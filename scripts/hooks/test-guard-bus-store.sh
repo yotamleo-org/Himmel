@@ -175,8 +175,38 @@ deny "XDG_STATE_HOME literal in the command, then bus" \
 allow "in-command cd into the state dir with no bus token" "$(bash_json 'cd ~/.local/state/himmel && ls')"
 allow "bus send from an ordinary cwd" "$(cwd_json 'bus send console /tmp/b.txt --re 4' '/tmp')"
 allow "bus status from an ordinary cwd" "$(cwd_json 'bus status' '/tmp')"
-allow "residual: separator inside a quoted option value is not parsed" \
+deny  "a separator inside a quoted option value does not hide the verb (model)" \
     "$(bash_json 'bus --note "a;b" register legX')"
+
+echo "== command-position model: a quoted string is one word, a heredoc body is data =="
+allow "a commit message naming bus and register is one word" "$(bash_json 'git commit -m "fix bus register retry"')"
+allow "bus send with a summary that says rebind" "$(bash_json 'bus send console /tmp/b.txt --summary "rebind done"')"
+allow "a heredoc body naming bus register is data" "$(bash_json $'cat > /tmp/notes.md <<\'EOF\'\nbus register x\nEOF')"
+deny  "bus register inside a bash -c body" "$(bash_json 'bash -c "bus register x"')"
+deny  "bus register inside an eval body" "$(bash_json "eval 'bus register x'")"
+deny  "bus register behind a runner the model cannot read (text reader)" "$(bash_json 'nice bus register x')"
+deny  "bus register behind xargs (text reader)" "$(bash_json 'echo x | xargs bus register')"
+deny  "bus register behind env (text reader)" "$(bash_json 'env -i bus register x')"
+deny  "bus register behind env NAME=value" "$(bash_json 'env HOME=/tmp bus register x')"
+allow "an env value naming bus register is data (text reader)" "$(bash_json "env X='bus register x' true")"
+deny  "a heredoc fed to a shell (text reader)" "$(bash_json $'bash <<\'EOF\'\nbus register x\nEOF')"
+deny  "a script file run by a shell (text reader)" "$(bash_json 'echo "bus register x" > /tmp/f.sh; bash /tmp/f.sh')"
+allow "residual: a quoted string later run as an executable script is data" \
+    "$(bash_json 'echo "bus register x" > /tmp/f.sh; chmod +x /tmp/f.sh; /tmp/f.sh')"
+
+echo "== no shfmt: the text reader decides, exactly as before the model =="
+NOSHFMT="$(mktemp -d "${TMPDIR:-/tmp}/busstore-noshfmt.XXXXXX")" || exit 1
+for t in jq cat tr readlink; do ln -s "$(command -v "$t")" "$NOSHFMT/$t"; done
+OUT="$(printf '%s' "$(bash_json 'bus register x')" | env -i PATH="$NOSHFMT" "$BASH" "$HOOK" 2>/dev/null)"
+RC=$?
+if [ "$RC" = 2 ]; then ok "no shfmt, bus register -> deny"; else bad "no shfmt, bus register: rc=$RC"; fi
+OUT="$(printf '%s' "$(bash_json 'git commit -m "fix bus register retry"')" | env -i PATH="$NOSHFMT" "$BASH" "$HOOK" 2>/dev/null)"
+RC=$?
+if [ "$RC" = 2 ]; then ok "no shfmt, quoted bus register text -> deny (text reader)"; else bad "no shfmt, quoted text: rc=$RC"; fi
+OUT="$(printf '%s' "$(bash_json 'bus status')" | env -i PATH="$NOSHFMT" "$BASH" "$HOOK" 2>/dev/null)"
+RC=$?
+if [ "$RC" = 0 ] && [ -z "$OUT" ]; then ok "no shfmt, bus status -> allow, silent"; else bad "no shfmt, bus status: rc=$RC out=$OUT"; fi
+rm -rf "$NOSHFMT"
 
 echo "== allowed bus verbs =="
 allow "bus status" "$(bash_json 'bus status')"

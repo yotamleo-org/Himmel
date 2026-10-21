@@ -21,7 +21,12 @@
 #         Reads and writes are both denied: a log read is the T5 leak.
 #     (b) calls `bus register`, `bus bind` or `bus rebind` (the identity verbs
 #         the launcher owns; `bus` bounded the same way, so `bin/bus register`
-#         counts).
+#         counts). When the text names bus and a verb, the command-position
+#         model (scripts/lib/bash-ast.sh) reads it first: a quoted string or a
+#         heredoc body is one word of data, and `bash -c` / `eval` bodies are
+#         read. A position it cannot read (a runner such as nice or xargs, an
+#         interpreter with no body, a command reached through env, an expansion
+#         or glob word) hands the call to the word walker below.
 #     (c) assigns a HIMMEL_BUS_* variable (`HIMMEL_BUS_NAME=x claude`, `export
 #         ...`, `env ...`), including a name built by quoting or expansion
 #         (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_${x}=1`, `$'HIMMEL_BUS_NAME=x'`).
@@ -39,6 +44,8 @@
 # DENIED when it names the bus root; with no mention of the root it is allowed.
 # Failing closed on every unparseable call would lock the session out of every
 # tool for a hook bug (scripts/hooks/CLAUDE.md fail-open-vs-closed rule).
+# A missing bash-ast lib or shfmt, a shfmt parse failure or a jq failure in the
+# model leaves (b) to the word walker, so the model never changes this fail mode.
 #
 # RESIDUAL (deliberate, plan T6, threat model T3/T5/T6): this is text matching,
 # not a shell parser or a sandbox. An interpreter that assembles the path
@@ -48,14 +55,15 @@
 # (only file-tool paths are resolved), or the Read tool pointed at a log are not
 # caught. The Read and Grep tools are not wired to this hook. Same-uid tampering that re-chains is
 # undetected (phase 2's dedicated uid closes it).
-# Also not caught: a separator inside a quoted option value, the verb fed on
-# stdin to xargs, the verb or the store path held in a shell variable
-# (`v=register; bus $v x`, `$S/bus`: a bare expansion carries no literal
-# character to match), and a symlinked payload cwd or a relative file path
-# against it (all tracked).
-# Deliberately over-denied (the safe direction): a verb word anywhere after a
-# bus-able word in one segment (`bus send ... --summary "rebind done"`, `git
-# commit -m "fix(bus): register retry"`), a glob or expansion under `himmel/`
+# Also not caught: a separator inside a quoted option value when the model
+# cannot read the command, the verb fed on stdin to xargs, the verb or the store
+# path held in a shell variable (`v=register; bus $v x`, `$S/bus`: a bare
+# expansion carries no literal character to match), a quoted string written to
+# a file later run as an executable (`/tmp/f.sh`; the model reads it as data),
+# and a symlinked payload cwd or a relative file path against it (all tracked).
+# Deliberately over-denied (the safe direction): when the model hands the call
+# to the word walker, a verb word anywhere after a bus-able word in one segment
+# (`bus send ... --summary "rebind done" $x`), a glob or expansion under `himmel/`
 # (`himmel/*`), and any word that can expand to `bus` (`*`, `b?s`, `$x`) once
 # the cwd or the command names the himmel state dir. The bypass flag covers all.
 # The verb side uses the same normaliser as the `bus` side: a word is verbish
@@ -367,6 +375,41 @@ deny() {
     exit 2
 }
 
+# The verdict over bash_ast_positions output: deny when one position's literal
+# words hold a bus word (`bus`, or a path component `bus`) and, later, a word that
+# is exactly register|bind|rebind. A position the model cannot read (a runner, an
+# interpreter with no body, one reached through env) or one with an expansion or
+# glob word leaves the verdict "legacy": the word walker reads the text then.
+# swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' BS_JQ <<'BS_JQ_EOF' || true
+def base: (. // "") | sub("^.*/"; "");
+def interp: (.prog | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def unread: (.opaque != null) or (interp and (.body == null));
+def viaenv: (.via // []) | any(. == "env");
+def lit: .t == "lit" and (.g | not);
+def isbus: lit and (.v | split("/") | any(. == "bus"));
+def isverb: lit and (.v | IN("register", "bind", "rebind"));
+def bad: .argv as $a
+  | any(range(0; $a | length); ($a[.] | isbus) and any($a[. + 1:][]; isverb));
+if any(.[]; bad) then "deny"
+elif any(.[]; unread or viaenv or any(.argv[]; lit | not)) then "legacy"
+else "allow" end
+BS_JQ_EOF
+
+# model_verdict <cmd>: deny, allow or legacy. The fail mode is the word walker's:
+# a missing lib or shfmt, a parse failure or a jq failure is "legacy".
+model_verdict() {
+    local lib pos v
+    lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+    # shellcheck source=../lib/bash-ast.sh
+    if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+        echo legacy; return
+    fi
+    pos=$(bash_ast_positions "$1" 2>/dev/null) || { echo legacy; return; } # swallow-ok: legacy hands the call to the unchanged word walker
+    v=$(printf '%s' "$pos" | jq -r "$BS_JQ" 2>/dev/null) || v=legacy # swallow-ok: legacy hands the call to the unchanged word walker
+    case "$v" in deny | allow) echo "$v" ;; *) echo legacy ;; esac
+}
+
 raw_scan() {
     [[ "$input" =~ $ROOT_RE ]] && deny "the call names the himmel-bus store (payload not parseable, scanned as raw text)"
     exit 0
@@ -417,8 +460,16 @@ case "$tool" in
                 fi
             done
         fi
-        # Identity verbs, per segment (; & | newline).
-        verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
+        # Identity verbs: the command-position model first, when the text names
+        # bus and a verb; the per-segment word walker otherwise.
+        verdict=legacy
+        case "$cmd_q" in
+            *bus*) case "$cmd_q" in *register* | *bind*) verdict=$(model_verdict "$cmd") ;; esac ;;
+        esac
+        [ "$verdict" = deny ] && deny "bus register|bind|rebind is the launcher's, not a session's"
+        if [ "$verdict" != allow ]; then
+            verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
+        fi
         [[ "$cmd" =~ $ENV_RE || "$cmd_q" =~ $ENV_RE ]] && deny "a session does not set HIMMEL_BUS_* for itself or a child"
         env_assign_word "$cmd" && deny "a session does not set HIMMEL_BUS_* for itself or a child (name built by quoting or expansion)"
         ;;
