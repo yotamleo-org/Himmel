@@ -1,0 +1,3 @@
+# fixture, not executable
+echo hi
+run x X_FILE=1; cat "$X_FILE"

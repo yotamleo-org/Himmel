@@ -1,0 +1,3 @@
+# fixture, not executable
+echo "usage: X_FILE=path $0"
+cat "$X_FILE"

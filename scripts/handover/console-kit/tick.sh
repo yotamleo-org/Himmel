@@ -1390,8 +1390,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -f "${console_doc%/*}/clo
     case "$cloud_summary" in ok|skip|STALL:*) ;; *) cloud_summary=skip ;; esac
 fi
 
-# orphans-wip=<n[:KEY,...]|?|skip>: In Progress / In Review tickets with no
-# leg, cloud session or open PR holding them. next-dispatchable.sh --resume-only owns the
+# orphans-wip=<n[:KEY,...]|?|skip>: In Progress / In Review / IN CI tickets with no
+# leg, cloud session or open PR holding them (an IN CI one a merged PR cites counts too). next-dispatchable.sh --resume-only owns the
 # derivation from the Jira mirror (one `gh pr list`, no per-PR diff). Keys are named for
 # n <= 5. A failed PR read is `?` (not an all-clear); no mirror or helper reads skip.
 orphans_wip=skip
@@ -1399,10 +1399,10 @@ nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMME
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
     if nd_out="$(timeout -k 5 60 bash "$HERE/next-dispatchable.sh" --resume-only --top 1000 --owners "$owner_keys" 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only
         case "$nd_out" in
-            *'open PRs unknown'*|*'live legs unknown'*) orphans_wip='?' ;;
+            *'open PRs unknown'*|*'live legs unknown'*|*'merged PRs unknown'*) orphans_wip='?' ;;
             *)
-                nd_keys="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" { print $2 }' | paste -sd, -)"
-                nd_n="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME"' | wc -l | tr -d ' ')"
+                nd_keys="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" || $1 == "MERGED-NOT-CLOSED" { print $2 }' | paste -sd, -)"
+                nd_n="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" || $1 == "MERGED-NOT-CLOSED"' | wc -l | tr -d ' ')"
                 if [ "$nd_n" -eq 0 ]; then orphans_wip=0
                 elif [ "$nd_n" -le 5 ]; then orphans_wip="$nd_n:$nd_keys"
                 else orphans_wip="$nd_n"; fi

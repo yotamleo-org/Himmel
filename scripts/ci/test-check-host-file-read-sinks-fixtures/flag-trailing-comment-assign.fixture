@@ -1,0 +1,3 @@
+# fixture, not executable
+echo hi
+cat "$PROMPT_FILE"  # caller sets PROMPT_FILE=<path>

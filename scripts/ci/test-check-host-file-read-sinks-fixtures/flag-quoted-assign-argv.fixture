@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+path="prefix NAME=$1"
+cat "$path"

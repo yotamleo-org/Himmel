@@ -1,0 +1,6 @@
+# fixture, not executable
+echo hi
+cat <<EOF
+usage: PROMPT_FILE=<path> ./run.sh
+EOF
+cat "$PROMPT_FILE"

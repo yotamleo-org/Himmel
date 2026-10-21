@@ -69,7 +69,96 @@ case_repo base flag-double-dash
 run_check
 [ "$RC" -eq 1 ] && ok "cat -- \"\$1\" is flagged" || bad "-- terminator not flagged (rc=$RC): $OUT"
 
+case_repo base flag-multi-export-argv
+run_check
+[ "$RC" -eq 1 ] && ok "a later name on a multi-assignment line, assigned from \$1, is flagged" || bad "multi-export argv path not flagged (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-reassigned
+run_check
+[ "$RC" -eq 1 ] && ok "a mktemp variable reassigned from \$1 is flagged" || bad "reassigned mktemp var not flagged (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-substring
+run_check
+[ "$RC" -eq 1 ] && ok "the word mktemp inside an argv-built path is flagged" || bad "mktemp substring cleared the taint (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-suffix
+run_check
+[ "$RC" -eq 1 ] && ok "an argv suffix after a mktemp substitution is flagged" || bad "mktemp-rooted argv suffix cleared the taint (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-space-suffix
+run_check
+[ "$RC" -eq 1 ] && ok "an argv word after a mktemp substitution inside the same quotes is flagged" || bad "mktemp then quoted argv word cleared the taint (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-wrapper
+run_check
+[ "$RC" -eq 1 ] && ok "a command whose name only starts with mktemp is flagged" || bad "mktemp_wrapper cleared the taint (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-env-prefix
+run_check
+[ "$RC" -eq 1 ] && ok "a command-scoped mktemp assignment does not clear a tainted name" || bad "env-prefix mktemp cleared the taint (rc=$RC): $OUT"
+
+case_repo base flag-head-name-repeat
+run_check
+[ "$RC" -eq 1 ] && ok "the line-head name reassigned from argv later on the same line is flagged" || bad "repeated head name hid the taint (rc=$RC): $OUT"
+
+case_repo base flag-comment-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a comment does not count as an assignment" || bad "header comment NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-quoted-usage-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= inside a quoted usage string does not count as an assignment" || bad "quoted NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-trailing-assign
+run_check
+[ "$RC" -eq 1 ] && ok "a mktemp assignment followed by a command with its own NAME= does not clear taint" || bad "trailing NAME= made the mktemp assignment look lasting (rc=$RC): $OUT"
+
+case_repo base flag-quoted-assign-argv
+run_check
+[ "$RC" -eq 1 ] && ok "assignment-shaped text inside a quoted value does not hide argv" || bad "quoted NAME=\$1 hid the taint (rc=$RC): $OUT"
+
+case_repo base flag-trailing-comment-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a trailing comment does not count as an assignment" || bad "trailing comment NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-heredoc-usage-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a heredoc usage line does not count as an assignment" || bad "heredoc NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-multiline-usage-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a multi-line quoted usage string does not count as an assignment" || bad "multi-line quoted NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-arg-assign
+run_check
+[ "$RC" -eq 1 ] && ok "a NAME=value command argument is not an assignment" || bad "argument NAME=value hid the read (rc=$RC): $OUT"
+
+case_repo base flag-env-prefix-stub
+run_check
+[ "$RC" -eq 1 ] && ok "the PR 3461 stub line (assignment as a run argument) is flagged and needs a read-sink-ok marker" || bad "run-argument assignment hid the read (rc=$RC): $OUT"
+
 # --- must-pass --------------------------------------------------------------------
+# Real lines from PRs 3460 and 3461 (each needed a read-sink-ok marker before).
+case_repo base pass-tempdir-multi-export
+run_check
+[ "$RC" -eq 0 ] && ok "a name assigned second on an export line is assigned" || bad "multi-export temp read flagged (rc=$RC): $OUT"
+
+case_repo base pass-head-forms
+run_check
+[ "$RC" -eq 0 ] && ok "a line-head command prefix and a declare/typeset list count as assigned" || bad "line-head assignment forms flagged (rc=$RC): $OUT"
+
+case_repo base pass-local-later-lowercase
+run_check
+[ "$RC" -eq 0 ] && ok "a later lowercase name on a local list is not tainted by argv (taint reach unchanged from main)" || bad "later lowercase local name newly flagged (rc=$RC): $OUT"
+
+case_repo base pass-nonleading-argv-assign
+run_check
+[ "$RC" -eq 0 ] && ok "taint still starts only from an assignment at the head of a line" || bad "non-leading argv assignment newly flagged (rc=$RC): $OUT"
+
+case_repo base pass-mktemp-argv
+run_check
+[ "$RC" -eq 0 ] && ok "a mktemp result is test-owned even when its template is argv" || bad "mktemp result flagged (rc=$RC): $OUT"
+
 case_repo base pass-allowlist
 run_check
 [ "$RC" -eq 0 ] && ok "a realpath prefix check on the next lines passes" || bad "allowlisted read flagged (rc=$RC): $OUT"
