@@ -400,7 +400,8 @@ if [ "$TRACKER_MODE" = jira ]; then
     fi
 
     # No --class: take the one real class the CR ledger holds for these files on
-    # this branch (an amend's last class= wins; unattributed is no class). Two
+    # this branch among findings whose latest verdict is deferred (an amend's
+    # last class= wins; unattributed is no class). Two
     # classes, none or an unreadable ledger leave the placeholder.
     if [ -z "$CR_CLASS" ]; then
         fdi_ledger="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}" # swallow-ok: an unresolvable git dir leaves a path the node read below treats as no ledger
@@ -408,15 +409,20 @@ if [ "$TRACKER_MODE" = jira ]; then
         CR_CLASS=$(printf '%s\n' "$candidates" | LEDGER="$fdi_ledger" BRANCH="$fdi_branch" node -e '
 const fs = require("fs"), e = process.env;
 const files = new Set(fs.readFileSync(0, "utf8").split("\n").map(l => l.replace(/^\s*[-*]\s+/, "").replace(/^`+/, "").split(":")[0]).filter(Boolean));
-const file = {}, cls = {};
+const file = {}, cls = {}, verdict = {};
 let raw = ""; try { raw = fs.readFileSync(e.LEDGER, "utf8"); } catch { /* no ledger: the placeholder stays */ }
 for (const l of raw.split("\n")) {
   let r; try { r = JSON.parse(l); } catch { continue; }
   if (r.branch !== e.BRANCH) continue;
-  if (r.kind === "finding") file[r.head + "\0" + r.finding_id] = r.file;
-  else if (r.kind === "amend" && r.set && r.set.class && r.set.class !== "unattributed") cls[r.target_head + "\0" + r.finding_id] = r.set.class;
+  if (r.kind === "finding") { const k = r.head + "\0" + r.finding_id; file[k] = r.file; verdict[k] = r.verdict; }
+  else if (r.kind === "amend" && r.set) {
+    const k = r.target_head + "\0" + r.finding_id;
+    if (r.set.verdict) verdict[k] = r.set.verdict;
+    if (r.set.class === "unattributed") delete cls[k];
+    else if (r.set.class) cls[k] = r.set.class;
+  }
 }
-const found = new Set(Object.keys(cls).filter(k => files.has(file[k])).map(k => cls[k]));
+const found = new Set(Object.keys(cls).filter(k => verdict[k] === "deferred" && files.has(file[k])).map(k => cls[k]));
 console.log(found.size === 1 ? [...found][0] : "");
 ') || CR_CLASS=""
         [ -n "$CR_CLASS" ] || CR_CLASS="unclassified"
