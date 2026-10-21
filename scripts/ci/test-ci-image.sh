@@ -149,16 +149,16 @@ for p in bison gcc libc6-dev cron zsh python-is-python3 python3-yaml; do
 done
 if has 'zsh=5.9-*' "$apt_text"; then ok "Dockerfile pins zsh 5.9"
 else bad "Dockerfile does not pin zsh=5.9-*"; fi
-for v in SHFMT UV JQ; do
-  if grep -Eq "^ARG ${v}_VERSION=[0-9.]+$" <<< "$df_text" && grep -Eq "^ARG ${v}_SHA256=[0-9a-f]{64}$" <<< "$df_text"; then
-    ok "Dockerfile pins ${v}_VERSION with a sha256"
-  else bad "Dockerfile does not pin ${v}_VERSION with ${v}_SHA256"; fi
-done
 if grep -Eq '^ARG JQ_VERSION=(1\.([89]|[1-9][0-9])|[2-9]|[1-9][0-9]+)(\.[0-9]+)*$' <<< "$df_text"; then
   ok "Dockerfile pins jq 1.8 or later"
 else bad "Dockerfile pins no jq 1.8 or later (the bash-ast jq programs do not compile on 1.7)"; fi
 if grep -Fq "jq -n '{a: [1] + [2]}'" <<< "$df_text"; then ok "Dockerfile build compiles a bare binary-expression object value with jq"
 else bad "Dockerfile build does not check that jq compiles {a: [1] + [2]}"; fi
+for v in SHFMT UV JQ; do
+  if grep -Eq "^ARG ${v}_VERSION=[0-9.]+$" <<< "$df_text" && grep -Eq "^ARG ${v}_SHA256=[0-9a-f]{64}$" <<< "$df_text"; then
+    ok "Dockerfile pins ${v}_VERSION with a sha256"
+  else bad "Dockerfile does not pin ${v}_VERSION with ${v}_SHA256"; fi
+done
 smoke="$(grep -oE 'for t in [^;]+' "$WORKFLOW" 2>/dev/null | head -n 1)"
 for t in bison gcc crontab shfmt uv zsh python; do
   if has "$t" "$smoke"; then ok "workflow smoke-checks $t"
