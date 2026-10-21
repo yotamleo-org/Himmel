@@ -125,15 +125,16 @@ assert_rc "--device /dev/fuse (char dev)"      0 "$(run_case "$(j_bash 'docker r
 assert_rc "--mount source=/usr,readonly (ro)"  0 "$(run_case "$(j_bash 'docker run --mount type=bind,source=/usr,target=/u,readonly img app')")"
 assert_rc "docker cp ctr:/x ./local (dst ok)"  0 "$(run_case "$(j_bash 'docker cp ctr:/x ./local')")"
 
-# --- command-position model (scripts/lib/bash-ast.sh): data is not a command, and a
-# program or flag spelled through quotes, a backslash or a line continuation is
-# still that program or flag.
-assert_rc "echo string naming docker run --privileged is data" 0 "$(run_case "$(j_bash 'echo "docker run --privileged img sh"')")"
-assert_rc "grep pattern naming a docker bind mount is data" 0 "$(run_case "$(j_bash "grep -n 'docker run -v /etc:/h' notes.txt")")"
+# --- command-position model (scripts/lib/bash-ast.sh): a heredoc body is not a
+# command, a program or flag spelled through quotes, a backslash or a line
+# continuation is still that program or flag, and any other position naming docker
+# keeps the regex verdict.
+assert_rc "echo string naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash 'echo "docker run --privileged img sh"')")"
+assert_rc "grep pattern naming a docker bind mount keeps the regex verdict" 2 "$(run_case "$(j_bash "grep -n 'docker run -v /etc:/h' notes.txt")")"
 assert_rc "heredoc body naming docker run --privileged is data" 0 "$(run_case "$(j_bash "cat <<'EOF' > notes.txt
 docker run --privileged img sh
 EOF")")"
-assert_rc "jq string naming docker run --privileged is data" 0 "$(run_case "$(j_bash "jq '.[] | docker run --privileged' notes.json")")"
+assert_rc "jq string naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash "jq '.[] | docker run --privileged' notes.json")")"
 assert_rc "quote-split program (dock'er' run --privileged)" 2 "$(run_case "$(j_bash "dock'er' run --privileged img sh")")"
 assert_rc "backslash-split program (d\\ocker run --privileged)" 2 "$(run_case "$(j_bash 'd\ocker run --privileged img sh')")"
 assert_rc "quote-split program (pod\"man\" run -v /etc:/h:rw)" 2 "$(run_case "$(j_bash 'pod"man" run -v /etc:/h:rw img sh')")"
@@ -166,7 +167,16 @@ assert_rc "setpriv --reuid 0 docker run --privileged" 2 "$(run_case "$(j_bash 's
 assert_rc "rtk proxy docker run --privileged" 2 "$(run_case "$(j_bash 'rtk proxy docker run --privileged img sh')")"
 assert_rc "git rebase -x runs docker run --privileged" 2 "$(run_case "$(j_bash 'git rebase -x "true; docker run --privileged img sh" HEAD~1')")"
 assert_rc "numactl -N 0 docker run of a safe image" 0 "$(run_case "$(j_bash 'numactl -N 0 docker run --rm img sh')")"
-assert_rc "git log --grep naming docker run --privileged is data" 0 "$(run_case "$(j_bash 'git log --grep="docker run --privileged" --oneline')")"
+assert_rc "git log --grep naming docker run --privileged keeps the regex verdict" 0 "$(run_case "$(j_bash 'git log --grep="docker run --privileged" --oneline')")"
+# no program is exempt: any other position naming docker keeps the regex verdict
+assert_rc "git bisect run docker run --privileged" 2 "$(run_case "$(j_bash 'git bisect run docker run --privileged img sh')")"
+assert_rc "git filter-branch --tree-filter runs docker run --privileged" 2 "$(run_case "$(j_bash 'git filter-branch --tree-filter "docker run --privileged img sh" HEAD')")"
+assert_rc "git send-email --to-cmd runs docker run --privileged" 2 "$(run_case "$(j_bash 'git send-email --to-cmd "docker run --privileged img sh" p')")"
+assert_rc "git rebase --exe (abbreviated --exec) runs docker run --privileged" 2 "$(run_case "$(j_bash 'git rebase --exe "docker run --privileged img sh" HEAD~1')")"
+assert_rc "GIT_SSH_COMMAND value runs docker run --privileged" 2 "$(run_case "$(j_bash "GIT_SSH_COMMAND='true; docker run --privileged -v /:/h img sh' git fetch origin")")"
+assert_rc "ssh heredoc runs docker run --privileged on the host" 2 "$(run_case "$(j_bash "ssh host <<'EOF'
+docker run --privileged img sh
+EOF")")"
 
 # --- a missing shfmt denies a command that names docker/podman, and the message
 # names shfmt; a command that names neither never pays for it.

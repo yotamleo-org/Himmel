@@ -1920,13 +1920,13 @@ qmd_check() {
 
 # The command-position model (scripts/lib/bash-ast.sh) reads where each command
 # runs. qa_verdict is `deny` when a position runs qmd with a search verb (a verb
-# brace expansion splits out included), `allow` when every position is read and
-# qmd is named only as data to a program that does not run it (git commit -m,
-# curl -d, a jq filter, a heredoc to cat) and takes no exec option (-c, -x, -u,
-# --exec, --extcmd, --pre, --upload-pack, foreach), and `legacy` for everything else: an
-# opaque position, an interpreter with no literal body, an echo or printf, a
-# launcher, a dynamic word after qmd. `legacy` leaves the verdict to qmd_check
-# below, so the model only adds a denial or clears a mention it fully read.
+# brace expansion splits out included), `allow` when no position names qmd except
+# a wrapper that runs another program, and `legacy` for everything else: a position
+# carrying an assignment (the model does not expose its value), an opaque position,
+# an interpreter with no literal body, any other position whose arguments or
+# heredoc name qmd, a pipe consumer beside a mention, a dynamic word after qmd. No
+# program is exempt. `legacy` leaves the verdict to qmd_check below, so the model
+# only adds a denial.
 IFS= read -r -d '' QA_JQ <<'QA_JQ_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
 def lc: (. // "") | ascii_downcase;
 def b: lc | sub("^.*[/\\\\]"; "") | sub("\\.(exe|cmd)$"; "");
@@ -1955,20 +1955,17 @@ def qverdict($q):
        elif $x | isverb then "deny"
        else empty end]
   | (first // "allow");
-def data: (.prog | b) | IN("git", "gh", "curl", "wget", "jq", "cat", "head", "tail", "wc", "ls", "diff", "grep", "egrep", "fgrep", "rg");
-def execarg: any(.argv[]; .t == "lit" and (.v | test("^-[A-Za-z]*[cxu]|^--(pre|exec|extcmd|upload-pack|receive-pack|use-askpass)|^foreach$")));
 def words: [.argv[] | wv] | join(" ") | ascii_downcase;
 def mention: ([.argv[] | wv] + [(.redirs // [])[] | ((.text // ""), (.w.raw // ""))]) | join(" ") | ascii_downcase | contains("qmd");
 def namesverb: words | test("qmd.*(^|[^a-z0-9_-])(query|search|vsearch)([^a-z0-9_-]|$)");
 def inpipe: any((.in // [])[]; . == "pipe");
 def posv($men):
   runq as $q
-  | if any((.assigns // [])[]; . == "PATH") then "legacy"
+  | if ((.assigns // []) | length) > 0 then "legacy"
     elif $q != null then qverdict($q)
     elif (.opaque != null) or (interp and (.body == null)) then "legacy"
-    elif mention and ((data | not) or execarg) then
-      (if data and namesverb then "deny" else "legacy" end)
-    elif $men and inpipe and (data | not) then "legacy"
+    elif mention then "legacy"
+    elif $men and inpipe then "legacy"
     else "allow" end;
 ([.[] | select(runq == null and mention)] | length > 0) as $men
 | [.[] | posv($men)] as $v

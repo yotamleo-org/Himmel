@@ -1193,15 +1193,16 @@ deny "ssh host '~/.bun/bin/qmd vsearch x'"
 deny "ssh host bunx @tobilu/qmd search x"
 
 # --- the command-position model (scripts/lib/bash-ast.sh): a word brace
-# expansion splits into the verb is the verb, and a string, heredoc body or jq
-# filter handed to a data program is data, not a command boundary.
+# expansion splits into the verb is the verb. A position that only names qmd (a
+# commit message, a jq filter, a heredoc to cat) keeps the regex verdict, so the
+# model is never weaker than the unmodified guard.
 deny 'qmd que{ry,} x'
 deny 'qmd {query,status} x'
 deny 'timeout 5 qmd que{ry,} x'
-allow 'git commit -m "x; qmd query y"'
-allow 'curl -d "a; qmd query b" http://example.invalid'
-allow "jq '.a | qmd query' f"
-allow "cat <<EOF
+deny 'git commit -m "x; qmd query y"'
+deny 'curl -d "a; qmd query b" http://example.invalid'
+deny "jq '.a | qmd query' f"
+deny "cat <<EOF
 qmd query x
 EOF"
 allow "git commit -F - <<EOF
@@ -1213,8 +1214,8 @@ deny 'echo "x; qmd query"'
 deny "bash <<EOF
 qmd query x
 EOF"
-deny "git -c core.pager='qmd query' log"
-deny 'grep --pre="qmd query" x f'
+deny "git -c core.pager='cd x; qmd query y' log"
+allow 'grep --pre="cd x; qmd query y" x f'
 deny 'ssh host "qmd query x"'
 allow 'qmd_bounded 60 qmd query x'
 # qmd is the wrapped program only after the wrapper's own options and operands
@@ -1225,17 +1226,23 @@ deny 'env FOO=bar qmd query x'
 deny 'timeout -k 5 10 qmd query x'
 deny 'sudo -u bob qmd query x'
 allow 'qmd status; qmd collection list'
-# a data program that runs its option argument as a command is not data
+# no program is exempt: a position whose arguments or assignment values name qmd
+# keeps the regex verdict, so a program that runs its option argument stays denied
 deny 'git rebase -x "cd docs; qmd query x" HEAD~1'
-deny 'git rebase --exec "qmd query x" HEAD~1'
-deny 'git difftool -x "qmd query x" a b'
-deny 'git difftool --extcmd="qmd query x" a b'
-deny 'git submodule foreach "qmd query x"'
-deny 'git clone --upload-pack="qmd query x" url dir'
-deny 'git clone -u "qmd query x" url dir'
-deny 'git fetch --receive-pack="qmd query x" origin'
-deny 'git archive --exec="qmd query x" HEAD'
-deny 'wget --use-askpass="qmd query x" http://example.invalid'
+deny 'git rebase --exec "cd x; qmd query y" HEAD~1'
+deny 'git rebase --exe "cd x; qmd query y" HEAD~1'
+deny 'git difftool -x "cd x; qmd query y" a b'
+deny 'git difftool --extcmd="cd x; qmd query y" a b'
+deny 'git submodule foreach "cd x; qmd query y"'
+deny 'git clone --upload-pack="cd x; qmd query y" url dir'
+deny 'git clone -u "cd x; qmd query y" url dir'
+deny 'git fetch --receive-pack="cd x; qmd query y" origin'
+deny 'git archive --exec="cd x; qmd query y" HEAD'
+deny 'wget --use-askpass="cd x; qmd query y" http://example.invalid'
+deny 'git bisect run sh -c "cd x; qmd query y"'
+deny 'git filter-branch --tree-filter "cd x; qmd query y" HEAD'
+deny 'git send-email --to-cmd "cd x; qmd query y" p'
+deny "GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
 allow 'git rebase -x "make test" HEAD~1'
 allow 'git log --grep="qmd query" --oneline'
 
