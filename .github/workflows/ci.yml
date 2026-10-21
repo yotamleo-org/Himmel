@@ -961,7 +961,7 @@ jobs:
           scope=all
           changed="$RUNNER_TEMP/leak-changed.txt"
           touched="$RUNNER_TEMP/leak-touched.txt"
-          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMR HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
+          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMRT HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
             scope=files
             # $touched keeps deletions and rename sources, so removing the
             # scanner or its ignore list also scans the whole tree.
@@ -1010,7 +1010,7 @@ jobs:
           scope=all
           changed="$RUNNER_TEMP/scrub-changed.txt"
           touched="$RUNNER_TEMP/scrub-touched.txt"
-          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMR HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
+          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMRT HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
             scope=files
             # $touched keeps deletions and rename sources, so removing the
             # scanner, its baseline or a scrub helper also scans every trust path.

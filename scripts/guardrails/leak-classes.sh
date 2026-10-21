@@ -209,7 +209,7 @@ if [ "$FILES_MODE" -eq 1 ]; then
     for _p in "${TREE_PATHS[@]}"; do
         # The listing must be exactly the operand: a directory operand lists its
         # tracked files and a missing one lists nothing.
-        if [ "$(git ls-files -z -- "$_p" | tr '\0' '\n')" != "${_p#:(literal)}" ]; then
+        if ! printf '%s\0' "${_p#:(literal)}" | cmp -s - <(git ls-files -z -- "$_p"); then
             echo "leak-classes: --files: not a tracked file: ${_p#:(literal)}" >&2
             exit 2
         fi
