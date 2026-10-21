@@ -273,6 +273,11 @@ pr 31 "chore: [HIMMEL-1] a" a; pr 32 "chore: [HIMMEL-2] b" b
 TICKET_STATUS_PR_LIMIT=2 fn "$K" --event sweep
 check "unreadable: a saturated PR list -> no write" "$(ntrans)" 0
 check "unreadable: saturated -> miss stage=pr-limit" "$(row stage)" pr-limit
+reset "In Review"; owned WRAPPED 0
+echo '[{"number":11,"title":{"x":1},"headRefOid":"a","baseRefName":"main","reviewDecision":""}]' > "$FX/pr-list.json"
+fn "$K" --event sweep
+check "unreadable: a PR row jq cannot decode is never 'no open PR' (no D6)" "$(ntrans)" 0
+check "unreadable: undecodable PR row -> miss stage=gh" "$(row result)/$(row stage)" miss/gh
 reset "IN CI"; owned; pr 11 "feat: [$K] x" aaa; checks 11 fail:shell-unit; touch "$FX/classic.403"
 fn "$K" --event ci-exit --pr 11 --head aaa
 check "unreadable: a 403 on branch protection -> no write" "$(ntrans)" 0

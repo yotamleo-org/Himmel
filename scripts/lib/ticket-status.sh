@@ -108,7 +108,7 @@ ts_read_jira() {
 # TS_PRS = "<pr>\t<head>\t<base>\t<reviewDecision>" lines, TS_HEADS = "<pr>:<head>,...".
 # rc 1 = unreadable (TS_STAGE gh) or the list hit its limit (TS_STAGE pr-limit).
 ts_read_prs() {
-    local limit="${TICKET_STATUS_PR_LIMIT:-50}" json n num title head base rd k
+    local limit="${TICKET_STATUS_PR_LIMIT:-50}" json n rows num title head base rd k
     TS_PRS=""
     TS_HEADS=""
     json=$(gh pr list --state open --search "$1 in:title" --limit "$limit" \
@@ -116,13 +116,15 @@ ts_read_prs() {
     n=$(jq 'length' <<<"$json" 2>/dev/null) || { TS_STAGE=gh; return 1; }
     case "$n" in ''|*[!0-9]*) TS_STAGE=gh; return 1 ;; esac
     [ "$n" -lt "$limit" ] || { TS_STAGE=pr-limit; return 1; }
+    rows=$(jq -r 'sort_by(.number) | .[] | [.number, .title, .headRefOid, .baseRefName, (.reviewDecision // "")] | @tsv' <<<"$json" 2>/dev/null) \
+        || { TS_STAGE=gh; return 1; }
     while IFS=$'\t' read -r num title head base rd; do
         [ -n "$num" ] || continue
         k=$(ticket_key_from_title "$title") || continue
         [ "$k" = "$1" ] || continue
         TS_PRS="$TS_PRS$num"$'\t'"$head"$'\t'"$base"$'\t'"$rd"$'\n'
         TS_HEADS="${TS_HEADS:+$TS_HEADS,}$num:$head"
-    done < <(jq -r 'sort_by(.number) | .[] | [.number, .title, .headRefOid, .baseRefName, (.reviewDecision // "")] | @tsv' <<<"$json")
+    done <<<"$rows"
     return 0
 }
 

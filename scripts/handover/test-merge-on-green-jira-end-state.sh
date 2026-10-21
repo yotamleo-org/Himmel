@@ -137,7 +137,7 @@ case "$1 $2" in
     "pr checks")
         [ -e "$d/checks-$3.json" ] && { cat "$d/checks-$3.json"; exit 0; }
         echo "no checks reported on the 'x' branch" >&2; exit 1 ;;
-    "api graphql") echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0 ;;
+    "api graphql") echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; exit 0 ;;
     "api repos/{owner}/{repo}/rules/branches/"*) echo '[]'; exit 0 ;;
     "api repos/{owner}/{repo}/branches/"*) echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
 esac
@@ -249,7 +249,7 @@ cat > "$CC_DIR/gh" <<'STUBGH'
 case "$*" in
     "pr list "*) echo '[{"number":42,"title":"feat(x): [HIMMEL-9001] a thing","headRefOid":"sha1","baseRefName":"main","reviewDecision":""}]'; exit 0 ;;
     "pr checks 42 --json bucket,name") echo '[{"bucket":"pass","name":"unit-tests"}]'; exit 0 ;;
-    "api graphql -F owner={owner}"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0 ;;
+    "api graphql -F owner={owner}"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; exit 0 ;;
     "api repos/{owner}/{repo}/rules/branches/"*) echo '[]'; exit 0 ;;
     "api repos/{owner}/{repo}/branches/"*) echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
 esac
