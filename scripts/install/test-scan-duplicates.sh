@@ -157,5 +157,49 @@ out=$(run_scan)
 if printf '%s' "$out" | grep -qi 'clean'; then ok "row 11: disjoint matchers are not flagged"
 else bad "row 11: false positive on disjoint matchers, got: $out"; fi
 
+# ── row 12: a regex matcher overlaps a literal one ───────────────────────────
+fixture regex-matcher
+hook_settings PreToolUse '.*' 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/rx.sh"' > "$FX_HOME/.claude/settings.json"
+hook_settings PreToolUse Bash 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/rx.sh"' > "$FX_PROJ/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'rx.sh'; then ok "row 12: regex matcher overlapping a literal one is flagged"
+else bad "row 12: regex-matcher overlap missed, got: $out"; fi
+
+# ── row 13: a same-file duplicate is reported even when another source has a disjoint matcher
+fixture intra-plus-disjoint
+jq -n '{hooks:{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:"bash x/same2.sh"}]},{matcher:"Bash",hooks:[{type:"command",command:"bash y/same2.sh"}]}]}}' > "$FX_HOME/.claude/settings.json"
+hook_settings PreToolUse Read 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/same2.sh"' > "$FX_PROJ/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'same2.sh'; then ok "row 13: same-file duplicate is flagged beside a disjoint-matcher copy"
+else bad "row 13: same-file duplicate suppressed, got: $out"; fi
+
+# ── row 14: a relative project argument still matches a project-scoped plugin ─
+fixture relproj
+cp "$guard_hooks" "$work/guard-hooks-rel.json"
+add_plugin himmel-guard@himmel "$work/guard-hooks-rel.json"
+jq --arg p "$FX_PROJ" '.plugins["himmel-guard@himmel"][0].projectPath = $p' "$FX_HOME/.claude/plugins/installed_plugins.json" \
+  > "$work/ip.new" && mv "$work/ip.new" "$FX_HOME/.claude/plugins/installed_plugins.json"
+jq '{hooks:{PreToolUse:[.hooks.PreToolUse[0]]}}' "$work/guard-hooks-rel.json" > "$FX_PROJ/.claude/settings.json"
+echo '{"enabledPlugins":{"himmel-guard@himmel":true}}' > "$FX_HOME/.claude/settings.json"
+out=$(cd "$FX_PROJ" && HOME="$FX_HOME" bash "$scan" . 2>&1)
+if printf '%s' "$out" | grep -q 'block-destructive-commands.sh'; then ok "row 14: relative project path still finds the project-scoped plugin"
+else bad "row 14: relative project path missed the plugin, got: $out"; fi
+
+# ── row 15: an unparsable settings file is never reported as clean ───────────
+fixture corrupt
+echo '{not json' > "$FX_HOME/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'incomplete' && ! printf '%s' "$out" | grep -q 'scan-duplicates: clean'; then ok "row 15: unparsable settings file reads incomplete, not clean"
+else bad "row 15: corrupt settings reported clean, got: $out"; fi
+
+# ── row 16: an unparsable enabled-plugin hooks.json is never reported as clean
+fixture corrupt-plugin
+echo '{not json' > "$work/bad-hooks.json"
+add_plugin alpha@mkt "$work/bad-hooks.json"
+echo '{"enabledPlugins":{"alpha@mkt":true}}' > "$FX_HOME/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'incomplete'; then ok "row 16: unparsable plugin hooks.json reads incomplete, not clean"
+else bad "row 16: corrupt plugin hooks.json reported clean, got: $out"; fi
+
 echo "$(basename "$0"): $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -27,6 +27,7 @@ set -u
 command -v jq >/dev/null 2>&1 || { echo "scan-duplicates: jq is required" >&2; exit 2; }
 
 PROJECT=${1:-$PWD}
+PROJECT=$(cd "$PROJECT" 2>/dev/null && pwd) || PROJECT=${1:-$PWD}
 NL='
 '
 TAB=$(printf '\t')
@@ -53,10 +54,11 @@ hook_rows=""   # event, matcher, command, kind (S|P), source label, location
 plugin_rows="" # key, value, scope, file
 placeholders=""
 checked=0
+unparsed=0
 
 while IFS='|' read -r scope file; do
   [ -f "$file" ] || continue
-  jq -e . "$file" >/dev/null 2>&1 || { echo "scan-duplicates: skipping unparsable $file" >&2; continue; }
+  jq -e . "$file" >/dev/null 2>&1 || { echo "scan-duplicates: skipping unparsable $file" >&2; unparsed=$((unparsed + 1)); continue; }
   checked=$((checked + 1))
   hook_rows="$hook_rows$(jq -r --arg kind S --arg src "$scope settings" --arg file "$file" "$HOOK_Q" "$file" 2>/dev/null)$NL"
   plugin_rows="$plugin_rows$(jq -r --arg scope "$scope" --arg file "$file" "$PLUGIN_Q" "$file" 2>/dev/null)$NL"
@@ -68,7 +70,10 @@ EOF
 # Effective enablement: a later (more specific) settings file overrides an earlier one.
 enabled_keys=$(printf '%s' "$plugin_rows" | awk -F'\t' 'NF { v[$1] = $2 } END { for (k in v) if (v[k] == "true") print k }' | sort)
 
-if [ -f "$INSTALLED" ]; then
+if [ -f "$INSTALLED" ] && ! jq -e . "$INSTALLED" >/dev/null 2>&1; then
+  echo "scan-duplicates: skipping unparsable $INSTALLED" >&2
+  unparsed=$((unparsed + 1))
+elif [ -f "$INSTALLED" ]; then
   while IFS= read -r key; do
     [ -n "$key" ] || continue
     ipaths=$(jq -r --arg k "$key" --arg proj "$PROJECT" \
@@ -76,6 +81,7 @@ if [ -f "$INSTALLED" ]; then
     while IFS= read -r ipath; do
       hf="$ipath/hooks/hooks.json"
       [ -n "$ipath" ] && [ -f "$hf" ] || continue
+      jq -e . "$hf" >/dev/null 2>&1 || { echo "scan-duplicates: skipping unparsable $hf" >&2; unparsed=$((unparsed + 1)); continue; }
       hook_rows="$hook_rows$(jq -r --arg kind P --arg src "plugin $key" --arg file "$hf" "$HOOK_Q" "$hf" 2>/dev/null)$NL"
     done <<EOF2
 $ipaths
@@ -117,12 +123,21 @@ NF {
     if (nl[mk] == 1) { mord[++mn] = mk; mg[mk] = g; msrc[mk] = $5; mm[mk] = $2 }
   }
 }
-# Two matcher sets overlap when they share a token; "*" matches every tool.
+# Matcher tokens are regexes. "*" matches every tool; a literal token is tested
+# against the other token as an anchored regex; two regexes are assumed to overlap.
+function isre(t) { return t ~ /[^A-Za-z0-9_]/ }
+function tokmatch(x, y) {
+  if (x == y || x == "*" || y == "*") return 1
+  if (isre(x) && isre(y)) return 1
+  if (isre(x)) return (y ~ ("^(" x ")$"))
+  if (isre(y)) return (x ~ ("^(" y ")$"))
+  return 0
+}
 function overlap(x, y,   xs, ys, nx, ny, i, j) {
   nx = split(x, xs, "|"); ny = split(y, ys, "|")
   for (i = 1; i <= nx; i++) {
     if (xs[i] == "") continue
-    for (j = 1; j <= ny; j++) if (ys[j] != "" && (xs[i] == ys[j] || xs[i] == "*" || ys[j] == "*")) return 1
+    for (j = 1; j <= ny; j++) if (ys[j] != "" && tokmatch(xs[i], ys[j])) return 1
   }
   return 0
 }
@@ -144,7 +159,7 @@ END {
   }
   for (i = 1; i <= mn; i++) {
     mk = mord[i]; g = mg[mk]
-    if (nl[mk] < 2 || ns[g] != 1 || msrc[mk] ~ /^plugin /) continue
+    if (nl[mk] < 2 || msrc[mk] ~ /^plugin /) continue
     printf "[hook] %s on %s (matcher %s) is wired %d times in %s:\n", gsc[g], gev[g], mm[mk], nl[mk], msrc[mk]
     for (j = 1; j <= nl[mk]; j++) printf "  - %s\n", mloc[mk, j]
     print "  fix: keep one entry and delete the others."
@@ -198,6 +213,11 @@ report=""
 for part in "$hook_report" "$scope_report" "$market_report" "$leftover_report"; do
   [ -n "$part" ] && report="$report${report:+$NL$NL}$part"
 done
+
+if [ -z "$report" ] && [ "$unparsed" -gt 0 ]; then
+  echo "scan-duplicates: incomplete - $unparsed settings file(s) could not be parsed, so the scan cannot call this install clean ($checked checked)"
+  exit 0
+fi
 
 if [ -z "$report" ]; then
   echo "scan-duplicates: clean - no duplicate hooks, plugins or stale keys found ($checked settings file(s) checked)"
