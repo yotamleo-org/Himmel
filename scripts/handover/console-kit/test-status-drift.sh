@@ -789,7 +789,8 @@ if command -v flock >/dev/null 2>&1; then
     fr_reset
     ( exec 9>"$FR/mir/HIMMEL.lock"; flock 9; sleep 3 ) &
     holder=$!
-    sleep 1
+    n=0
+    while [ "$n" -lt 50 ] && ( exec 8>"$FR/mir/HIMMEL.lock"; flock -n 8 ); do sleep 0.1; n=$((n + 1)); done
     fr
     check "3c: a refresh that finds the lock held prints busy" "$(frout)" "focus=busy"
     check "3c: and exits 0 without running a step" "$(frrc)$([ -e "$FX/fr.log" ] && echo ran)" 0

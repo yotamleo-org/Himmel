@@ -237,6 +237,15 @@ describe('edit --add-labels (HIMMEL-3610)', () => {
     ).rejects.toThrow(/remove-labels was not changed/);
   });
 
+  it('fails loud when --remove-labels reads back with no labels field', async () => {
+    mockRequest.mockImplementation(async (method: string) => (method === 'GET' ? { fields: {} } : {}));
+    const { registerEdit } = await import('./edit.js');
+    const p = freshProgram(registerEdit);
+    await expect(
+      p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--remove-labels', 'held']),
+    ).rejects.toThrow(/remove-labels was not changed/);
+  });
+
   it('control: --labels alone still sends a full-replace fields.labels, unchanged', async () => {
     const { registerEdit } = await import('./edit.js');
     const p = freshProgram(registerEdit);

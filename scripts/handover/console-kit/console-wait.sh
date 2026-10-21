@@ -669,8 +669,10 @@ sweep_wake() {
             [ "$age" -ge 10 ] || return 1 ;;
         *) rm -f "$sweep_focus_file"; return 1 ;;
     esac
-    [ "$(cat "$sweep_focus_file" 2>/dev/null)" != "$fstat" ] || return 1  # swallow-ok: no marker reads empty, so the first sight wakes
-    printf '%s\n' "$fstat" > "$sweep_focus_file" 2>/dev/null
+    fkey="$fstat"
+    case "$fstat" in DIRTY:*) fkey=DIRTY ;; esac
+    [ "$(cat "$sweep_focus_file" 2>/dev/null)" != "$fkey" ] || return 1  # swallow-ok: no marker reads empty, so the first sight wakes
+    printf '%s\n' "$fkey" > "$sweep_focus_file" 2>/dev/null
     printf 'WAKE focus %s\n' "$fstat"
 }
 

@@ -197,7 +197,8 @@ function verifyReadBack(
   }
   if (o.removeLabels !== undefined) {
     const want = parseLabels(o.removeLabels);
-    if (want.some((l) => labels.includes(l))) bad('remove-labels', `without ${want.join(', ')}`, labels.join(', '));
+    if (!Array.isArray(got['labels'])) bad('remove-labels', `without ${want.join(', ')}`, 'labels not returned');
+    else if (want.some((l) => labels.includes(l))) bad('remove-labels', `without ${want.join(', ')}`, labels.join(', '));
   }
   if (o.fixVersion !== undefined) {
     if (versions.length !== 1 || versions[0] !== o.fixVersion) {

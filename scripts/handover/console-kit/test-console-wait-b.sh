@@ -772,6 +772,9 @@ reset_stub; I="$(new_inbox sw10)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.swe
 start "$I" "$WORK/sw10.out" --doc "$SWDOC" --legs "N1.md"
 wait_exit "$WPID"
 check "(sw10) DIRTY for 10 minutes or more wakes" "WAKE focus DIRTY:12m" "$(head -n1 "$WORK/sw10.out")"
+printf 'focus=DIRTY:27m\n' > "$STUB/focus.out"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw10b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw10b) the same DIRTY state, older, does not wake twice" "124:" "$rc:$(cat "$WORK/sw10b.out")"
 printf 'focus=DIRTY:unknown\n' > "$STUB/focus.out"
 reset_stub; I="$(new_inbox sw11)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
 start "$I" "$WORK/sw11.out" --doc "$SWDOC" --legs "N1.md"

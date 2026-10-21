@@ -1063,7 +1063,7 @@ cat > "$W/vp-chains2.json" <<'EOF'
 EOF
 wk="$W/wk"
 mkdir -p "$wk"
-ago="$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+ago="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","last_event_ts":"%s","prs":{"500":{"head":"abc1234def5678","ci":"red","red_latch":true,"open":true},"499":{"head":"old","ci":"green","open":false}}}\n' "$ago" > "$wk/HIMMEL-401.json"
 printf '{"key":"HIMMEL-400","leg":"N2","state":"wrapped","prs":{}}\n' > "$wk/HIMMEL-400.json"
 printf '{bad json\n' > "$wk/HIMMEL-402.json"

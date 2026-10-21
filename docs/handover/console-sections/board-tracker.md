@@ -111,9 +111,10 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     `wrap-merged.sh` runs `bash "<kit>/focus-refresh.sh" --doc <console doc>` after
     every merge (it also reads `focus-plan:` and `<doc dir>/focus-chains.json`).
     It stages the mirror, versions, status sweep, open PRs, the page and
-    `status-drift.sh` output, and publishes `roadmap-tracker.html`, `focus-drift.txt` and
-    `focus-state` only on full success; the wrap prints `focus=ok|DIRTY|FAILED:<stage>|skip`
-    and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
+    `status-drift.sh` output. Only on full success does it publish `focus-drift.txt` and
+    replace `roadmap-tracker.html` (and only when the page fingerprint moved); `focus-state`
+    records every run, `FAILED:<stage>` included. The wrap prints
+    `focus=ok|busy|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
     (`console-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). Republish the page
     with the `Artifact` tool as above. Each card also shows its worker (owner, PR, state).
     `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`);
