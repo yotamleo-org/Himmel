@@ -53,7 +53,7 @@ _usage_lift_epoch() {
   return 1
 }
 
-_usage_lift_default_cache() { printf '%s' "${CADENCE_BANK_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}"; }
+_usage_lift_default_cache() { printf '%s' "${CADENCE_USAGE_CACHE:-${CADENCE_BANK_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}}"; }
 
 # _usage_lift_trusted <file>: owned by the current uid and not group/world-writable.
 _usage_lift_trusted() {

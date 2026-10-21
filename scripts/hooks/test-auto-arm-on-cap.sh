@@ -1143,7 +1143,7 @@ if [ -z "$LIFT_RESET" ]; then
 fi
 LIFT_FILE="$TMP/lift-fixture.json"
 # Hermetic: an operator's exported values must not steer the lift cases.
-unset CADENCE_BANK_MAX_PCT BANK_LIFT_FILE USAGE_LIFT_FILE
+unset CADENCE_BANK_MAX_PCT CADENCE_USAGE_MAX_PCT BANK_LIFT_FILE USAGE_LIFT_FILE
 
 write_lift_cache() {  # $1 path, $2 five_hour util, $3 seven_day util
     cat > "$1" <<EOF2
@@ -1206,6 +1206,15 @@ rm -f "$ARM_LOG"
 CADENCE_BANK_MAX_PCT=90 USAGE_LIFT_FILE="$LIFT_FILE" AUTO_ARM_THRESHOLD=97 run_hook "$S" "$C"
 assert_rc "explicit CADENCE_BANK_MAX_PCT: five_hour 97 trips (exit 2)" 2 $?
 assert_file "explicit CADENCE_BANK_MAX_PCT: arm called" present "$ARM_LOG"
+rm -f "$ARM_LOG"
+
+echo "Test 59b: standing lift with explicit CADENCE_USAGE_MAX_PCT keeps five_hour at the threshold — arms"
+S="$TMP/s4948-explicit-usage"; mkdir -p "$S"
+C="$TMP/c4948-explicit-usage.json"; write_lift_cache "$C" 97 20
+rm -f "$ARM_LOG"
+CADENCE_USAGE_MAX_PCT=90 USAGE_LIFT_FILE="$LIFT_FILE" AUTO_ARM_THRESHOLD=97 run_hook "$S" "$C"
+assert_rc "explicit CADENCE_USAGE_MAX_PCT: five_hour 97 trips (exit 2)" 2 $?
+assert_file "explicit CADENCE_USAGE_MAX_PCT: arm called" present "$ARM_LOG"
 rm -f "$ARM_LOG"
 
 # --- Leak guard -- real ledger untouched by the suite -----------

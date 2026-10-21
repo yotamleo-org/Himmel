@@ -287,15 +287,15 @@ chmod 755 "$SKIPPED_FLEET_PREFLIGHT"
 # SKIPPED-BANK token it computes (CADENCE_BANK_LANE="$LANE") instead of
 # discarding it, same rationale as SKIPPED_FLEET_PREFLIGHT above.
 # Also write a `pid` file into the
-# reservation it is standing in for, matching CADENCE_BANK_CALLER_PID - the
+# reservation it is standing in for, matching CADENCE_USAGE_CALLER_PID - the
 # real bank-preflight.sh now does the same, and headed-arm-leg.sh's release
 # path on this refusal only deletes a reservation it can verify it owns.
 SKIPPED_BANK_PREFLIGHT="$tmp/skipped-bank-preflight.sh"
 # shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
 printf '%s\n' '#!/usr/bin/env bash' \
   'slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"' \
-  'mkdir -p "$slots/$CADENCE_BANK_LEG" 2>/dev/null' \
-  'printf "%s\n" "$CADENCE_BANK_CALLER_PID" > "$slots/$CADENCE_BANK_LEG/pid" 2>/dev/null' \
+  'mkdir -p "$slots/$CADENCE_USAGE_LEG" 2>/dev/null' \
+  'printf "%s\n" "$CADENCE_USAGE_CALLER_PID" > "$slots/$CADENCE_USAGE_LEG/pid" 2>/dev/null' \
   'echo SKIPPED-BANK' > "$SKIPPED_BANK_PREFLIGHT"
 chmod 755 "$SKIPPED_BANK_PREFLIGHT"
 
@@ -328,6 +328,23 @@ check 'fleet: failed target leaves manifest absent' no "$([ -e "$fleet_manifest"
 rc=0; out="$(fleet_launch --dry-run 2>&1)" || rc=$?
 check 'fleet: dry run succeeds without adding' 0 "$rc"
 check 'fleet: dry run leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
+
+# The launch preflight reads CADENCE_USAGE_* first, so an inherited new-name
+# lane or leg must not beat the values this launch passes it.
+REC_PREFLIGHT="$tmp/recording-preflight.sh"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'env | grep -E "^CADENCE_USAGE_(LEG|LANE|LAUNCH)=" | sort > "$REC_PREFLIGHT_OUT"' \
+  'echo PROCEED' > "$REC_PREFLIGHT"
+chmod 755 "$REC_PREFLIGHT"
+rc=0; out="$(CADENCE_USAGE_LANE=claudex CADENCE_USAGE_LEG=stale-leg CADENCE_USAGE_LAUNCH='' \
+  REC_PREFLIGHT_OUT="$tmp/rec-preflight.env" FLEET_TEST_MANIFEST="$fleet_manifest" \
+  HEADED_ARM_LEG_TARGET="$fleet_target" HEADED_ARM_LEG_PREFLIGHT="$REC_PREFLIGHT" bash "$SCRIPT" \
+  --no-profile HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
+check 'usage names: launch with inherited CADENCE_USAGE_* exits 0' 0 "$rc"
+check 'usage names: the launch preflight sees this launch, not the inherited lane and leg' \
+  "$(printf '%s\n' CADENCE_USAGE_LANE=native CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_LEG=HIMMEL-3748-N7-fleet)" \
+  "$(cat "$tmp/rec-preflight.env" 2>/dev/null)"
 rc=0; out="$(HEADED_ARM_LEG_PREFLIGHT="$SKIPPED_FLEET_PREFLIGHT" \
   HEADED_ARM_LEG_TARGET="$fleet_target" bash "$SCRIPT" --no-profile --fleet "$fleet_manifest" \
   HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
@@ -1070,6 +1087,7 @@ contains "dry-run --lane claudex: resolved launcher names claude-codex" "$out" "
 contains "dry-run --lane claudex: env carries CLAUDEX_LANE_OK=1" "$out" "CLAUDEX_LANE_OK=1"
 contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "LEG_LANE=claudex"
 contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_BANK_LANE=claudex"
+contains "dry-run --lane claudex: usage lane is claudex" "$out" "CADENCE_USAGE_LANE=claudex"
 contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
@@ -1079,6 +1097,10 @@ contains "claudex: resolved lane replaces stale launcher token" "$out" "LEG_LANE
 contains "claudex: resolved bank replaces stale launcher token" "$out" "CADENCE_BANK_LANE=claudex"
 not_contains "claudex: stale lane token is absent" "$out" "LEG_LANE=native"
 not_contains "claudex: stale bank token is absent" "$out" "CADENCE_BANK_LANE=native"
+rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "claudex: a stale CADENCE_USAGE_LANE token does not refuse launch" "$rc" "0"
+contains "claudex: resolved usage lane replaces the stale launcher token" "$out" "CADENCE_USAGE_LANE=claudex"
+not_contains "claudex: stale usage lane token is absent" "$out" "CADENCE_USAGE_LANE=native"
 
 rc=0; out="$(LEG_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: LEG_EFFORT overrides the medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
@@ -1113,6 +1135,7 @@ contains "dry-run, no --lane: reports lane=native" "$out" "lane=native"
 not_contains "dry-run, no --lane: no claude-codex launcher" "$out" "claude-codex"
 not_contains "dry-run, native: no added lane env" "$out" "LEG_LANE="
 not_contains "dry-run, native: no added bank lane env" "$out" "CADENCE_BANK_LANE="
+not_contains "dry-run, native: no added usage lane env" "$out" "CADENCE_USAGE_LANE="
 
 # a lane typo, missing model mapping or dropped backend must
 # never silently start a native/subscription session. Dry runs make no calls.
@@ -1120,6 +1143,7 @@ rc=0; out="$(LEG_LANE=native bash "$SCRIPT" --dry-run --no-profile --lane openro
 check "openrouter: flag selects lane" "$rc" "0"
 contains "openrouter: lane reported" "$out" "lane=openrouter"
 contains "openrouter: bank lane remains openrouter" "$out" "CADENCE_BANK_LANE=openrouter"
+contains "openrouter: usage lane remains openrouter" "$out" "CADENCE_USAGE_LANE=openrouter"
 contains "openrouter: default Sonnet slug pinned" "$out" "OPENROUTER_MODEL=anthropic/claude-sonnet-5.5"
 contains "openrouter: backend is claude-openrouter" "$out" "claude-openrouter"
 contains "openrouter: alias route uses sonnet" "$out" " sonnet "

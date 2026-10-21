@@ -249,7 +249,7 @@ usage() {
 # A caller-preset HEADED_ARM_LAUNCHER_ENV is preserved (appended to, never
 # replaced) and wins on a name clash: this function only ever adds a NAME not
 # already present as a token. HEADED_ARM_LAUNCHER_ENV is a whitespace-split
-# token list (same contract as CODEX_BANK_PROBE_CMD) with no quoting scheme,
+# token list (same contract as CODEX_USAGE_PROBE_CMD) with no quoting scheme,
 # so a value containing whitespace cannot become a token: it would silently
 # mis-split into extra bogus tokens. On macOS (HEADED_ARM_UNAME=Darwin), the
 # token list is the ONLY channel to the leg, so such a value is refused
@@ -1576,15 +1576,18 @@ if [ "$LANE" = "native" ]; then
     [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
 fi
 
-# the leg's own bank-preflight reads CADENCE_BANK_LANE before
-# LEG_LANE. Propagate the resolved registry values, including DeepSeek's
-# existing openrouter bank gate, rather than inheriting the console's lane.
+# the leg's own bank-preflight reads CADENCE_USAGE_LANE, then CADENCE_BANK_LANE,
+# before LEG_LANE; older leg code reads only the old name, so both are set.
+# Propagate the resolved registry values, including DeepSeek's existing
+# openrouter bank gate, rather than inheriting the console's lane.
 # Native launches keep their environment unchanged.
 if [ "$LANE" != "native" ]; then
     leg_env_drop_token LEG_LANE
     leg_env_drop_token CADENCE_BANK_LANE
+    leg_env_drop_token CADENCE_USAGE_LANE
     leg_propagate_env LEG_LANE "$LANE"
     leg_propagate_env CADENCE_BANK_LANE "$LANE_BANK_GATE"
+    leg_propagate_env CADENCE_USAGE_LANE "$LANE_BANK_GATE"
 fi
 
 # claudex lane: see the --lane header comment above.
@@ -2316,7 +2319,7 @@ fi
 # signal/deadline wait loop even starts - refusing now is cheaper than
 # refusing after waiting out the deadline. SKIPPED-FLEET refuses the launch
 # outright. SKIPPED-BANK also refuses: we set
-# CADENCE_BANK_LANE="$LANE" above specifically so bank-preflight.sh checks
+# CADENCE_USAGE_LANE="$LANE" above specifically so bank-preflight.sh checks
 # the bank this lane actually draws on (the codex weekly bank for claudex,
 # the CLAUDE five_hour/seven_day bank for native) - unlike arm-resume.sh,
 # this wrapper has no separate bank-aware scheduling path to fall back on,
@@ -2339,7 +2342,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # this call launches a leg, so it declares launch intent —
     # the fleet cap must be able to actually refuse it, unlike a plain
     # bank-status READ.
-    preflight_token="$(CADENCE_BANK_LEG="$NAME" CADENCE_BANK_LANE="$LANE_BANK_GATE" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
+    preflight_token="$(CADENCE_USAGE_LEG="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
     if [ "$preflight_token" = SKIPPED-FLEET ]; then
         # NOT a reservation release here — bank-preflight.sh
         # only ever returns SKIPPED-FLEET from its admission block itself

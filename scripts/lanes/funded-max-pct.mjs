@@ -27,8 +27,12 @@ export function parseFundedMaxPct(raw, fallback = DEFAULT_FUNDED_MAX_PCT) {
 // LANE_FUNDED_MAX_PCT wins; CLAUDEX_BANK_REFUSE_PCT (documented in .env.example
 // and docs/configuration.md) stays a working alias so an existing pin keeps
 // moving both consumers together; an invalid value falls through to the next.
+// CLAUDEX_USAGE_REFUSE_PCT is its new name: with both set the narrower counts.
 export function resolveFundedMaxPct(env) {
-  const alias = parseFundedMaxPct(env.CLAUDEX_BANK_REFUSE_PCT);
+  const set = [env.CLAUDEX_USAGE_REFUSE_PCT, env.CLAUDEX_BANK_REFUSE_PCT]
+    .map((v) => parseFundedMaxPct(v, NaN))
+    .filter((n) => !Number.isNaN(n));
+  const alias = set.length ? Math.min(...set) : DEFAULT_FUNDED_MAX_PCT;
   return parseFundedMaxPct(env.LANE_FUNDED_MAX_PCT, alias);
 }
 

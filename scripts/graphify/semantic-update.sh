@@ -268,7 +268,7 @@ if [ "$N_BATCH" -gt 0 ]; then
       # refresh-graph-map.sh, so a hung or silent preflight is visible.
       _bound=()
       if command -v timeout >/dev/null 2>&1; then _bound=(timeout -k 10 120); fi
-      verdict="$(CADENCE_BANK_LEG="graphmap-semantic-$NAME" ${_bound[@]+"${_bound[@]}"} bash "$REPO_ROOT/scripts/lib/bank-preflight.sh" || true)"
+      verdict="$(CADENCE_USAGE_LEG="graphmap-semantic-$NAME" ${_bound[@]+"${_bound[@]}"} bash "$REPO_ROOT/scripts/lib/bank-preflight.sh" || true)"
       if [ -z "$verdict" ]; then
         echo "semantic-update: WARN bank-preflight gave no verdict (timed out or failed) -- proceeding UNGUARDED" >&2
       fi

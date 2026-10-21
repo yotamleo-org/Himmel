@@ -310,7 +310,7 @@ bank_word() {
         out="$(bash "$CONSOLE_WAIT_BANK" 2>/dev/null)" || return 1
     else
         # gnu-ok: Linux-only kit (timeout). Same side-effect-free spelling tick.sh uses for its fleet census.
-        out="$(CADENCE_BANK_LAUNCH='' CADENCE_BANK_LEDGER=/dev/null timeout -k 5 "$tick_timeout" \
+        out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 "$tick_timeout" \
             bash "$REPO/scripts/lib/bank-preflight.sh" 2>/dev/null)" || return 1
     fi
     out="$(printf '%s\n' "$out" | tail -n 1)"

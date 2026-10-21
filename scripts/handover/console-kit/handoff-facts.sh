@@ -64,7 +64,7 @@ case "$field" in
         if [ -n "${HANDOFF_FACTS_BANK:-}" ]; then
             out="$(bash "$HANDOFF_FACTS_BANK" 2>/dev/null)" || out=""
         else
-            out="$(CADENCE_BANK_LAUNCH='' CADENCE_BANK_LEDGER=/dev/null timeout -k 5 60 bash "$repo/scripts/lib/bank-preflight.sh" 2>/dev/null)" || out=""  # gnu-ok: Linux-only kit
+            out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 60 bash "$repo/scripts/lib/bank-preflight.sh" 2>/dev/null)" || out=""  # gnu-ok: Linux-only kit
         fi
         five="$(printf '%s\n' "$out" | tr ' ' '\n' | sed -n 's/^five_hour=//p' | head -n 1)"
         seven="$(printf '%s\n' "$out" | tr ' ' '\n' | sed -n 's/^seven_day=//p' | head -n 1)"

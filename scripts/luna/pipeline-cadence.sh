@@ -688,7 +688,7 @@ emit_bat() {
     fi
 
     # --- Gate 2: may we spend the bank? ---------------------
-    # CADENCE_BANK_LEG is what makes the spend ATTRIBUTABLE: before this every
+    # CADENCE_USAGE_LEG is what makes the spend ATTRIBUTABLE: before this every
     # row in ~/.himmel/cadence-ledger.jsonl read leg:"unknown". The flow name
     # (pipeline-harvest / -synthesize / -health) is already this leg's identity
     # in flow-runs.jsonl, so the two ledgers join on the same word.
@@ -702,7 +702,7 @@ emit_bat() {
     # quoting risk than it removes. Revisit if the producer ever grows an
     # unbounded call.
     if [ -n "$bank_lib_m_esc" ]; then
-        printf 'set "CADENCE_BANK_LEG=%s"\r\n' "$flow_esc"
+        printf 'set "CADENCE_USAGE_LEG=%s"\r\n' "$flow_esc"
         printf 'set "PIPELINE_BANK="\r\n'
         printf '"%s" "%s" > "%%FLOW_RUN_TMP%%" 2>> "%s"\r\n' "$bash_win_esc" "$bank_lib_m_esc" "$log_win_esc"
         printf 'if exist "%%FLOW_RUN_TMP%%" set /p PIPELINE_BANK=<"%%FLOW_RUN_TMP%%"\r\n'
@@ -1828,7 +1828,7 @@ emit_runner() {
     # helper's BANK-STALE / BANK-UNKNOWN verdicts are fail-open by design and
     # an empty capture means it could not run at all.
     if [ -n "$q_bank_lib" ]; then
-        printf '    _bank=$(CADENCE_BANK_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
+        printf '    _bank=$(CADENCE_USAGE_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
         printf '    if [ "$_bank" = SKIPPED-BANK ]; then\n'
         printf '        echo "[%s bank-at-threshold]"\n' "$LEG_SKIPPED_MARKER"
         # One skipped night is the guard working; two running is

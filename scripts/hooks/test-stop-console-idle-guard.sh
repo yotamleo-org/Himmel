@@ -179,6 +179,8 @@ STUB="$TMP/bank-preflight-stub.sh"
 chmod +x "$STUB"
 out="$(run_guard "$CONSOLE_PAYLOAD" HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$STUB")"
 if is_block "$out"; then bad "(d-ii) bank-preflight.sh exit!=0 -> expected allow, got: $out"; else ok "(d-ii) bank-preflight.sh exit!=0 -> allow"; fi
+out="$(run_guard "$CONSOLE_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
+if is_block "$out"; then bad "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> expected allow, got: $out"; else ok "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> allow"; fi
 # Prove the stub's precondition was real, not a no-op: case (a) already
 # showed the REAL bank-preflight.sh path blocks — re-run it here once more
 # so a future refactor that stops calling BANK_PREFLIGHT_SH at all can't

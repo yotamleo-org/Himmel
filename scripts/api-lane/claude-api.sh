@@ -124,13 +124,13 @@ fi
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
-LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_BANK_LEG: it could escape the api cap
+LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_LEG: it could escape the api cap
 # the reservation is owned by THIS shell, which waits on claude below, so it
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
-  CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
-  CADENCE_BANK_LEG="$LEG_NAME" CADENCE_BANK_CALLER_PID="$$" \
+  CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 LEG_LANE=api \
+  CADENCE_USAGE_LEG="$LEG_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 

@@ -291,6 +291,18 @@ check 'five_hour_reset_in: --spare carries the field' 'five_hour_reset_in=2.0h' 
 check 'five_hour_reset_in: --spare stays read-only (no state)' 'no' "$([ -e "$BANK_STATE_FILE" ] && echo yes || echo no)"
 check 'five_hour_reset_in: --spare leaves the ring byte-identical' "$ring_before" "$(cat "$BANK_STATE_FILE.samples")"
 
+# the USAGE_MONITOR_* names win over BANK_CACHE_FILE, BANK_STATE_FILE and BANK_SAMPLES_FILE
+export BANK_STATE_FILE="$W/alias-old-state"
+sample 10 20
+mv "$BANK_CACHE_FILE" "$W/alias-cache.json"
+out="$(USAGE_MONITOR_CACHE_FILE="$W/alias-cache.json" USAGE_MONITOR_STATE_FILE="$W/alias-new-state" \
+    USAGE_MONITOR_SAMPLES_FILE="$W/alias-new-samples" run_at 1000 12:00)"
+case "$out" in 'BANK 12:00 '*) pass 'USAGE_MONITOR_CACHE_FILE is the cache read' ;; *) fail "USAGE_MONITOR_CACHE_FILE is the cache read (out='$out')" ;; esac
+check 'USAGE_MONITOR_STATE_FILE is the state written' 'yes' "$([ -s "$W/alias-new-state" ] && echo yes || echo no)"
+check 'USAGE_MONITOR_SAMPLES_FILE is the ring written' 'yes' "$([ -s "$W/alias-new-samples" ] && echo yes || echo no)"
+check 'the old BANK_STATE_FILE is not written when the new name is set' 'no' \
+    "$([ -e "$W/alias-old-state" ] || [ -e "$W/alias-old-state.samples" ] && echo yes || echo no)"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-bank-monitor.sh'
     exit 0

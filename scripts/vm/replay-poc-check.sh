@@ -63,7 +63,7 @@ replay_valid "$CACHE" "$KEY" && recorded=yes
 need_model=yes
 [ "$recorded" = yes ] && [ "$HIMMEL_REPLAY_MODE" != record ] && need_model=no
 if [ "$need_model" = yes ] && [ "$HIMMEL_REPLAY_MODE" != replay-only ]; then
-  verdict="$(CADENCE_BANK_LEG=replay-poc bash "$REPO/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -1)"
+  verdict="$(CADENCE_USAGE_LEG=replay-poc bash "$REPO/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -1)"
   if [ "$verdict" != PROCEED ]; then
     echo "replay-poc-check: doctor: a model call is needed and bank-preflight says '${verdict:-?}' - not driving" >&2
     exit 3

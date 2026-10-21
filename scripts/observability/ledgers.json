@@ -97,7 +97,7 @@
     {
       "id": "cadence-bank",
       "default_path": "~/.himmel/cadence-ledger.jsonl",
-      "override_env": "CADENCE_BANK_LEDGER",
+      "override_env": "CADENCE_USAGE_LEDGER",
       "writer": "scripts/lib/bank-preflight.sh",
       "readers": [],
       "format": "jsonl",

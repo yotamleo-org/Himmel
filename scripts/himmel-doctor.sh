@@ -4013,12 +4013,12 @@ check_c57_dotenv_allowlists() {
 
 # --- C59-codex-bank-cache: a codex bank cache older than its TTL ---
 # bank-status reads this cache and reports codex=? once it is older than
-# CODEX_BANK_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
+# CODEX_USAGE_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
 # WARN here means the refresh did not run or failed (codex missing, logged out,
 # probe timing out). Read-only: it never runs the probe.
 check_c59_codex_bank_cache() {
-    local cache="${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
-    local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
+    local cache="${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}}"
+    local ttl="${CODEX_USAGE_CACHE_TTL_SECONDS:-${CODEX_BANK_CACHE_TTL_SECONDS:-21600}}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
     local at captured now age
     case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; *) ttl=$((10#$ttl)) ;; esac
     if [ ! -f "$cache" ]; then

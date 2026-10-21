@@ -309,7 +309,7 @@ run_claude_review() {
     # a critic. Only SKIPPED-BANK refuses: BANK-STALE / BANK-UNKNOWN are the
     # helper's deliberate fail-open verdicts, and a missing helper yields no
     # token at all, which must not block an adopter who does not ship one.
-    bank="$(CADENCE_BANK_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null)"
+    bank="$(CADENCE_USAGE_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null)"
     if [ "$bank" = "SKIPPED-BANK" ]; then
         echo "hermes-critic.sh: claude route refused — bank preflight returned $bank (HIMMEL-128); fall back to another review route" >&2
         return 1

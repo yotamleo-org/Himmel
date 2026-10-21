@@ -1532,7 +1532,7 @@ spare_hours="${TICK_SPARE_HOURS:-24}"
 case "$spare_min" in ''|*[!0-9]*) spare_min=10 ;; esac
 case "$spare_hours" in ''|*[!0-9]*) spare_hours=24 ;; esac
 spare_tail=""
-spare_out="$(BANK_CACHE_FILE="$bank_cache" bash "$REPO/scripts/lib/bank-monitor.sh" --spare 2>/dev/null)" || spare_out=""
+spare_out="$(USAGE_MONITOR_CACHE_FILE="$bank_cache" bash "$REPO/scripts/lib/bank-monitor.sh" --spare 2>/dev/null)" || spare_out=""
 spare_in="$(printf '%s\n' "$spare_out" | sed -n 's/.*seven_day_reset_in=\([0-9][0-9.]*\)h.*/\1/p')"
 spare_pct="$(printf '%s\n' "$spare_out" | sed -n 's/.*unspent_at_reset=\([0-9][0-9.]*\).*/\1/p')"
 if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
@@ -1828,14 +1828,14 @@ fi
 # own -- it counts native + claudex + reserved against HIMMEL_FLEET_CAP inline,
 # in a script that exits, so its `FLEET ... total=<n>/<cap>` line is the seam
 # (a second count here would be the drift this field exists to end). Run as a
-# plain read: CADENCE_BANK_LAUNCH stays empty so it can never refuse anything,
+# plain read: CADENCE_USAGE_LAUNCH stays empty so it can never refuse anything,
 # and the ledger goes to /dev/null so a tick writes no cadence-ledger row.
 # ponytail: bank-preflight still takes its fleet admission lock and prunes
 # expired/consumed reservations while it counts, exactly as any bank read does.
-fleet_out="$(CADENCE_BANK_LAUNCH='' CADENCE_BANK_LEDGER=/dev/null bash "$REPO/scripts/lib/bank-preflight.sh" 2>&1)" || fleet_out=""
+fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/bank-preflight.sh" 2>&1)" || fleet_out=""
 # bank= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
-if [ "${CADENCE_BANK_LANE:-${LEG_LANE:-native}}" = openrouter ]; then
+if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${LEG_LANE:-native}}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi

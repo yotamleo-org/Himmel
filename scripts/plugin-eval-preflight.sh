@@ -11,7 +11,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIN_VERSION="2.1.269"
 
-bank="$(CADENCE_BANK_LEG=plugin-eval bash "$SCRIPT_DIR/lib/bank-preflight.sh" 2>/dev/null)"
+bank="$(CADENCE_USAGE_LEG=plugin-eval bash "$SCRIPT_DIR/lib/bank-preflight.sh" 2>/dev/null)"
 bank_rc=$?
 if [ "$bank_rc" -ne 0 ]; then
     echo "plugin-eval-preflight: refused — bank-preflight.sh exited $bank_rc (contract is always-0; treat as a failed bank check)" >&2

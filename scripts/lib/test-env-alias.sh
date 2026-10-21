@@ -61,6 +61,18 @@ check "alias_env returns 0 in every state (strict mode survives)" "ok" \
 check "alias_env exports NEW to children" "legacy" \
   "$(T_OLD=legacy child 'alias_env T_NEW T_OLD; bash -c "echo \${T_NEW-unset}"')"
 
+cap() { child 'alias_env_cap T_NEW T_OLD; echo "${T_NEW-unset}"'; }
+check "alias_env_cap old only: NEW takes OLD" "85" "$(T_OLD=85 cap)"
+check "alias_env_cap new only: NEW kept" "85" "$(T_NEW=85 cap)"
+check "alias_env_cap neither: NEW stays unset" "unset" "$(cap)"
+check "alias_env_cap both: a wider NEW narrows to OLD" "50" "$(T_NEW=99 T_OLD=50 cap)"
+check "alias_env_cap both: a narrower NEW is kept" "50" "$(T_NEW=50 T_OLD=99 cap)"
+check "alias_env_cap both: decimals compare as numbers" "9.5" "$(T_NEW=10 T_OLD=9.5 cap)"
+check "alias_env_cap both: a non-number OLD wins over a number" "abc" "$(T_NEW=85 T_OLD=abc cap)"
+check "alias_env_cap both: a non-number NEW is kept" "abc" "$(T_NEW=abc T_OLD=85 cap)"
+check "alias_env_cap invalid name returns 2" "2" \
+  "$(child 'rc=0; alias_env_cap bad-name T_OLD || rc=$?; echo $rc')"
+
 check "env_alias_any old only: true" "yes" \
   "$(T_OLD=1 child 'if env_alias_any T_NEW T_OLD; then echo yes; else echo no; fi')"
 check "env_alias_any new only: true" "yes" \

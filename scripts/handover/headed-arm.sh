@@ -237,7 +237,7 @@
 # execs (default: claude, PATH-resolved - unchanged for every existing
 # caller). HEADED_ARM_LAUNCHER_ENV is a space-separated list of extra
 # NAME=VALUE tokens (same "no spaces inside a value" contract as
-# codex-bank-probe.ts's CODEX_BANK_PROBE_CMD) added to the `env` command
+# codex-bank-probe.ts's CODEX_USAGE_PROBE_CMD) added to the `env` command
 # ahead of the launcher, for a lane that needs its own opt-in/effort env
 # (e.g. the claudex lane's CLAUDEX_LANE_OK=1). HEADED_ARM_RECORDER=1 wraps
 # the launcher in `script -q -f "$LOG" -c ...` instead of execing it

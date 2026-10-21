@@ -37,16 +37,17 @@ the page.
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
 | What is broken | feed rows with health `fail` or `warn`, worst first, plus firing alerts | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Legs and the usage bank | bank: the newest row with bank numbers in the last 64 KiB of `$CADENCE_BANK_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; legs: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with bank numbers; no handover root or fleet manifest |
+| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
 The **Bank windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
-probe: the Claude usage cache (`$CADENCE_BANK_CACHE`, else `$CLAUDE_USAGE_CACHE`,
+probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,
 default `/tmp/claude/statusline-usage-cache.json`, stale after
-`$CADENCE_BANK_MAX_AGE`, default 600 s) and the Codex bank cache
-(`$CODEX_BANK_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
-`$CODEX_BANK_CACHE_TTL_SECONDS`, default 6 h). Per bank and window it returns
+`$CADENCE_USAGE_MAX_AGE`, default 600 s) and the Codex usage cache
+(`$CODEX_USAGE_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
+`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). The old `CADENCE_BANK_*` and
+`CODEX_BANK_*` names are still read. Per usage source and window it returns
 `{used_pct|null, resets_at|null, captured_at, age_s, state: ok|stale|unknown,
 possibly_reset, reason}`. A missing or unreadable cache, or a window the plan
 does not report (Codex 5h is often null), is `unknown (why)`, never 0 %; a

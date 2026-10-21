@@ -1303,7 +1303,7 @@ _arm_mktemp_or_fail() {
 # scripts/chokepoints.json so a per-call prefix cannot forge it).
 #
 # refinements (disclosed in the PR body):
-#   - CADENCE_BANK_LEG must be a bare name (bank-preflight.sh's reservation
+#   - CADENCE_USAGE_LEG must be a bare name (bank-preflight.sh's reservation
 #     directory is `mkdir "$SLOTS/$LEG"`) — HANDOVER_PATH almost always
 #     contains '/', which the pre-fix caller passed straight through. Under
 #     the fixed script that would hit its defensive `*/*` guard and proceed
@@ -1356,7 +1356,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_BANK_LEG="$_arm_fleet_leg" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_CALLER_PID="$$" CADENCE_BANK_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_BANK_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(CADENCE_USAGE_LEG="$_arm_fleet_leg" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-${CADENCE_BANK_SKIP_REFRESH:-}}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
             echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another leg. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
             exit 22
