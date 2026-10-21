@@ -61,7 +61,10 @@ export function App({ source }: { source: Source }) {
     if (only && f.agentId !== only) setOnly(null);
     setCur({ key: fkey(f.ref), wrapped });
     if (f.ref.kind === "tool") reveal(f.ref.id);
-    else focus(`msg-${f.ref.id}`);
+    else {
+      setOpen((o) => ({ ...o, [`fold-${f.agentId}`]: true })); // a folded block opens around its message
+      focus(`msg-${f.ref.id}`);
+    }
   };
   const stepFailure = (dir: 1 | -1) => {
     if (!items.length) return;
