@@ -1094,8 +1094,8 @@ printf '[{"number":3001,"title":"a","mergedAt":"%s","headRefName":"feat/a"},{"nu
     for h in h1 h1 h2 h3; do printf '{"kind":"score","ts":"%s","branch":"feat/a","head":"%s","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 1)" "$h"; done
     printf '{"kind":"score","ts":"%s","branch":"feat/b","head":"h4","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 2)"
     for h in o1 o2 o3 o4 o5; do printf '{"kind":"score","ts":"%s","branch":"feat/c","head":"%s","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 10)" "$h"; done
-    printf '{"kind":"preflight","ts":"%s","branch":"feat/a","head":"h1","classes":[{"class":"x","state":"fixed"},{"class":"y","state":"waived"}]}\n' "$(ago 1)"
-    printf '{"kind":"preflight","ts":"%s","branch":"feat/b","head":"h4","classes":[]}\n' "$(ago 2)"
+    printf '{"kind":"preflight","ts":"%s","branch":"feat/a","head":"h1","hits":[{"class":"x","state":"fixed"},{"class":"y","state":"waived"}],"hit_n":2,"fixed":1,"waived":1,"checked":0}\n' "$(ago 1)"
+    printf '{"kind":"preflight","ts":"%s","branch":"feat/b","head":"h4","hits":[],"hit_n":0,"fixed":0,"waived":0,"checked":0}\n' "$(ago 2)"
 } > "$CL/ledger.jsonl"
 mirror_issue() {  # mirror_issue <key> <labels json> <versions json> <status> <days old> [resolved days ago] [statusCategory]
     {
@@ -1115,7 +1115,7 @@ for n in $(seq 9110 9125); do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"
 crrun() {
     PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
         BOARD_SESSIONS="$W/bin/sessions-empty.sh" CR_LEDGER="${CL_LEDGER:-$CL/ledger.jsonl}" BOARD_MIRROR="${CL_MIRROR:-$CL/mirror/HIMMEL}" \
-        GH_OPEN="$W/open.json" GH_MERGED="$CL/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        GH_OPEN="$W/open.json" GH_MERGED="${CL_MERGED:-$CL/merged.json}" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
         node "$SUT" --doc "$CL/console-c.md" --repo "$W/repo" --out "$CL/board.html" --json "$CL/board.json" 2>"$W/stderr.log"
 }
 crrun >/dev/null; rc=$?
@@ -1143,6 +1143,43 @@ jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 contains 'cr-loop: an absent ledger and mirror never fail the render (rc 0)' "rc=$rc" 'rc=0'
 jcheck 'cr-loop --json: absent ledger and mirror read n/a (null), the before row stays' 'M.trends.cr_loop.rounds.mean === null && M.trends.cr_loop.residual.inflow === null && M.trends.cr_loop.before.rounds_mean === 2.71'
 jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 'M.trends.cr_loop.preflight.per_pr === null'
+
+# Preflight adoption and the baseline-method residual figure. RED control
+# (pre-fix board.mjs): preflight.hits reads 0 for the real hits[] row shape, and
+# per_merged_pr counts only residual-labelled tickets (1, not 2).
+crrun >/dev/null; rc=$?
+contains 'cr-loop adoption run: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+jcheck 'cr-loop --json: preflight adoption is PRs with a pass over merged PRs' 'M.trends.cr_loop.preflight.prs === 2 && M.trends.cr_loop.preflight.merged === 2'
+contains 'cr-loop html: preflight adoption and hits per PR' "$chtml" 'preflight 2/2 PRs · 1.0 hits/PR'
+printf '{"kind":"score","ts":"%s","branch":"feat/a","head":"h1","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 1)" > "$CL/ledger-nopre.jsonl"
+CL_LEDGER="$CL/ledger-nopre.jsonl" crrun >/dev/null; rc=$?
+contains 'cr-loop no-preflight run: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+jcheck 'cr-loop --json: a readable ledger with no preflight pass reads adoption 0 of the merged PRs, hits per PR stays n/a' 'M.trends.cr_loop.preflight.prs === 0 && M.trends.cr_loop.preflight.merged === 2 && M.trends.cr_loop.preflight.per_pr === null'
+CL_DEF="$CL/ledger-deferred.jsonl"
+{
+    printf '{"kind":"finding","ts":"%s","branch":"feat/a","head":"h1","finding_id":"f1","verdict":"deferred","deferred_to":"HIMMEL-9101"}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/a","head":"h2","finding_id":"f2","verdict":"deferred","deferred_to":"HIMMEL-9105"}\n' "$(ago 1)"
+    printf '{"kind":"amend","ts":"%s","branch":"feat/a","head":"h3","finding_id":"f1","set":{"deferred_to":"HIMMEL-9101"}}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/a","head":"h3","finding_id":"f3","verdict":"deferred","deferred_to":"HIMMEL-9110"}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/b","head":"h4","finding_id":"f5","verdict":"deferred","deferred_to":"HIMMEL-9107"}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/b","head":"h4","finding_id":"f6","verdict":"deferred","deferred_to":"HIMMEL-9108"}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/x","head":"hx","finding_id":"f4","verdict":"deferred","deferred_to":"HIMMEL-9102"}\n' "$(ago 1)"
+    printf '{"kind":"amend","ts":"%s","branch":"","target_head":"h5","finding_id":"f7","set":{"verdict":"deferred","deferred_to":"HIMMEL-9301"}}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/a","head":"h5","finding_id":"f7","verdict":"open"}\n' "$(ago 1)"
+} > "$CL_DEF"
+mirror_issue HIMMEL-9107 '["theme"]' '["v1.1.3"]' 'To Do' 2
+mirror_issue HIMMEL-9108 '["theme"]' '["v1.1.3"]' 'To Do' 2
+mirror_issue HIMMEL-9301 '["theme"]' '["v1.1.3"]' 'To Do' 2
+CL_LEDGER="$CL_DEF" crrun >/dev/null; rc=$?
+contains 'cr-loop deferred-keys run: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+jcheck 'cr-loop --json: residuals per merged PR count distinct deferred_to keys created in the window (5 keys, 2 PRs; one recorded only by an amend row with an empty branch), labelled or not' 'M.trends.cr_loop.residual.per_merged_pr === 2.5'
+jcheck 'cr-loop --json: labelled share is the residual-labelled part of those keys (1 of 5)' 'M.trends.cr_loop.residual.labelled_share === 0.2'
+contains 'cr-loop html: the labelled inflow is a second figure' "$chtml" 'labelled 20 %'
 
 # --- Cadence staleness: days since the newest cr-tune/proposals-*.md and since the newest
 # restructure-class ticket (created or updated, so a comment counts); older than 8 days is
