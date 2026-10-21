@@ -323,7 +323,7 @@ def _stmts($env):
       elif $t == "WhileClause" then {k: "compound", t: $t, words: [], bodies: [(.Cond | body), (.Do | body)]}
       elif $t == "ForClause" then
         {k: "compound", t: $t, bodies: [.Do | body],
-         words: [(.Loop.Items // [])[] | word($env)] + [.Loop | (.Init, .Cond, .Post) | select(. != null) | .. | objects | select(.Parts?) | word($env)]}
+         words: ([(.Loop.Items // [])[] | word($env)] + [.Loop | (.Init, .Cond, .Post) | select(. != null) | .. | objects | select(.Parts?) | word($env)])}
       elif $t == "CaseClause" then
         {k: "compound", t: $t, words: ([.Word | word($env)] + [(.Items // [])[] | (.Patterns // [])[] | word($env)]),
          bodies: [(.Items // [])[] | .Stmts | body]}
