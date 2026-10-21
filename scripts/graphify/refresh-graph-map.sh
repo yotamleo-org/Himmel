@@ -2513,6 +2513,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   python3 "$HERE/harden-graph.py" --out "$SCRATCH_OUT" --root "$CORPUS_ROOT" >&2 || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     echo "refresh-graph-map: harden-graph failed -- graphify-out left unpromoted" >&2
+    _keep_finished_chunks
     exit 2
   fi
   _rc=0
@@ -2523,6 +2524,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     else
       echo "refresh-graph-map: cluster-only failed" >&2
     fi
+    _keep_finished_chunks
     exit 2
   fi
 fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins here)

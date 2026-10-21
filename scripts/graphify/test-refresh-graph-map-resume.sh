@@ -52,6 +52,7 @@ cat > "$BIN/graphify" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then echo "graphify 0.9.93"; exit 0; fi
 if [ "$1" = "cluster-only" ]; then
+  [ -z "${STUB_CLUSTER_FAIL:-}" ] || exit 1
   mkdir -p "$2/graphify-out"
   printf '{"nodes":[],"links":[]}' > "$2/graphify-out/graph.json"
   printf '%s\n' "$STUB_REPORT" > "$2/graphify-out/GRAPH_REPORT.md"
@@ -162,6 +163,17 @@ out=$( STUB_CHUNKS=1 GRAPHIFY_SECONDS_PER_CHUNK=00 run_refresh 2>&1 ); rc=$?
 echo "$out" | grep -q 'positive integer' && pass "R6 names the positive-integer rule" || fail "R6 should say positive integer: $out"
 out=$( STUB_CHUNKS=1 GRAPHIFY_HOLLOW_RETRY_MAX=00 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 1 ] && pass "R6 hollow-retry-max 00 exits 1" || fail "R6 hollow max 00 should exit 1 (got $rc): $out"
+
+# --- R7: extraction finished but clustering failed: the whole extraction is the
+# expensive part, so its cache is kept for the next run. ---
+echo "R7: a failure after extraction keeps the extraction cache"
+reset
+out=$( STUB_CHUNKS=3 STUB_CLUSTER_FAIL=1 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && pass "R7 exits 2" || fail "R7 should exit 2 (got $rc): $out"
+cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
+[ "$cached" = "c1.json c2.json c3.json " ] \
+  && pass "R7 the extraction cache is kept" || fail "R7 cache should hold c1..c3: $cached"
+[ ! -e "$OUTD/graph.json" ] && pass "R7 nothing partial was promoted" || fail "R7 a partial graph.json was promoted"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
