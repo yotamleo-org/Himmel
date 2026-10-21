@@ -179,7 +179,7 @@ check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d 
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
 
 # --- J1: full site (one page per IA section, trail page, raw passthrough, search)
-for r in daily-loop handover/overnight-mode glossary internals/stuck-playbook contributing; do
+for r in daily-loop handover/afk-mode glossary internals/stuck-playbook contributing; do
   check "J1: IA page /$r/ built" test -f "$dist/$r/index.html"
 done
 check "J1: /adoption-trail.html served" test -f "$dist/adoption-trail.html"

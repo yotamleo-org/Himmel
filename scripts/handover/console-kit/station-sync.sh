@@ -66,6 +66,7 @@ if [ -n "${SS_UPGRADE:-}" ]; then UPGRADE=("$SS_UPGRADE"); else UPGRADE=(bash "$
 # One sync at a time: two merges close together queue here, so the update steps never
 # run twice at once and an earlier run's verdict never lands over a later run's pending.
 mkdir -p "$(dirname "$STATE")" 2>/dev/null
+# prim-ok: a blocking lock held on fd 9 until the script exits; with_lock wraps one command
 exec 9>"$STATE.lock" && flock 9
 # Pending until the run ends: a sync killed mid-way must not leave the previous `ok`.
 echo "BEHIND:pending" > "$STATE" 2>/dev/null

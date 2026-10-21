@@ -1488,12 +1488,12 @@ check "58b next with an unresolvable console profile: exit 2" "$rc58x" "2"
 check "58b next refusal: successor doc removed" "$([ -e "$doc58xB" ] && echo 1 || echo 0)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58xA" "$token58x" >/dev/null 2>&1
 
-# --- 60: `next` copies the predecessor's
-# `## Live state` verbatim into the successor's HANDOFF `## In flight`
-# section, and ONLY that section: a marker planted in the neighbouring
-# `## Compact instructions` body must NOT leak. Two controls, not one
-# presence check -- a copy that grabbed the whole rest of the file would
-# also make the first assertion pass.
+# --- 60: `next` seeds the predecessor's `legs:`, `queue:`, `last GO:` and
+# `acked:` verbatim into the successor's own `## Live state`, and ONLY those
+# lines: a marker planted in the neighbouring `## Compact instructions` body
+# must NOT leak. The HANDOFF points at the seeded doc and carries no nonce, so
+# the successor's `action-zero.sh --render-legs` keeps the nonce from its own
+# line (it refuses a listed leg with no nonce).
 out60a="$(console new --bucket livestatesrc)"
 token60a="$(token_of "$out60a")"
 doc60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-console.md"
@@ -1528,14 +1528,37 @@ awk -v legs_line="$fixture60_legs" -v marker="$marker60" '
     { print }
 ' "$doc60A" > "$doc60A.new" && mv "$doc60A.new" "$doc60A"
 
+leg60="$root/tester/livestatesrc/DEMO-leg60-N9.md"
+printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — fixture' > "$leg60"
+printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
+leg60tok="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$leg60" 2>/dev/null)")"
+
 rc60=0
 console next --bucket livestatedst --doc "$doc60A" >/dev/null 2>&1 || rc60=$?
 check "60 next succeeds against a doc with a real Live state section" "$rc60" "0"
-check "60 HANDOFF carries the Live state legs line verbatim" \
-    "$(grep -Fc "$fixture60_legs" "$handoff60A" 2>/dev/null)" "1"
-check "60 the control: Compact instructions marker does not leak into the HANDOFF" \
-    "$(grep -Fc "$marker60" "$handoff60A" 2>/dev/null)" "0"
+live60B="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc60B" 2>/dev/null)"
+check "60 successor Live state seeds the predecessor's legs line verbatim" \
+    "$(printf '%s\n' "$live60B" | grep -Fxc "$fixture60_legs")" "1"
+# shellcheck disable=SC2016  # literal fixture text
+check "60 successor Live state seeds queue, last GO and acked verbatim" \
+    "$(printf '%s\n' "$live60B" | grep -Fxc -e 'queue: N9' -e 'last GO: `#999:deadbeef00`' -e 'acked: none')" "3"
+check "60 successor Live state keeps no placeholder legs line" \
+    "$(printf '%s\n' "$live60B" | grep -c '^legs: <')" "0"
+check "60 HANDOFF carries no copy of the fixture nonce" \
+    "$(grep -Fc 'nonce-fixture-60' "$handoff60A" 2>/dev/null)" "0"
+check "60 HANDOFF points at the seeded successor doc" \
+    "$(grep -Ec "Live state: seeded into \`([^\`]*/)?$(basename "$doc60B")\`" "$handoff60A" 2>/dev/null)" "1"
+check "60 the control: Compact instructions marker does not leak into the successor or the HANDOFF" \
+    "$(cat "$doc60B" "$handoff60A" 2>/dev/null | grep -Fc "$marker60")" "0"
 check "60 successor doc itself was still written" "$([ -s "$doc60B" ] && echo yes)" "yes"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/az60-doctor.sh"
+rc60z=0
+ACTION_ZERO_BANK="$tmp/facts-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az60-doctor.sh" \
+    bash "$fixture_repo/scripts/handover/console-kit/action-zero.sh" --doc "$doc60B" --root "$root" --repo "$fixture_repo" --render-legs >"$tmp/az60.out" 2>&1 || rc60z=$?
+check "60 action-zero.sh --render-legs on the seeded successor exits 0" "$rc60z" "0"
+check "60 the re-rendered legs line keeps the seeded nonce with the held lock's token" \
+    "$(grep -Fc "\`N9:nonce-fixture-60:$leg60tok:" "$doc60B" 2>/dev/null)" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$leg60" "$leg60tok" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$doc60A" "$token60a" >/dev/null 2>&1
 
 # --- 60b: the console board's artifact URL rides on the
@@ -2482,9 +2505,9 @@ check "81 doc with no predecessor passes" "$rc81" "0"
 mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-console.md"; run81 dec81k
 check "81 predecessor doc absent passes" "$rc81" "0"
 
-# --- 82: the rendered HANDOFF stays under the ~3k-token budget:
+# --- 82: the rendered HANDOFF stays under the ~1.5k-token budget:
 # a large open-PR set, many legs and a full Results tail become pointers; the
-# Live state (rulings, tokens) stays inline.
+# Live state (rulings, tokens) is seeded into the successor doc whole.
 out82="$(console new --bucket cap82)"
 token82="$(token_of "$out82")"
 doc82A="$root/tester/cap82/DEMO-nextleg-${today}A-console.md"
@@ -2500,25 +2523,26 @@ printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
 awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" console next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
-check "82 HANDOFF is at most 12000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 12000 ] && echo yes || echo no)" "yes"
+doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-console.md"
+check "82 HANDOFF is at most 6000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 6000 ] && echo yes || echo no)" "yes"
 check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
-check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$handoff82A")" "1"
-check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$handoff82A")" "1"
-check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$handoff82A")" "1"
+check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$doc82B")" "1"
+check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$doc82B")" "1"
+check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$doc82B")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
 check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
 
 # --- 83: still over budget after the pointer pass: a stderr warning with the
-# byte count and a one-line note in the HANDOFF; the Live state is not trimmed.
+# byte count and a one-line note in the HANDOFF; the rulings are not trimmed.
 out83="$(console new --bucket cap83)"
 token83="$(token_of "$out83")"
 doc83A="$root/tester/cap83/DEMO-nextleg-${today}A-console.md"
 handoff83A="$root/tester/cap83/DEMO-nextleg-${today}A-console-HANDOFF.md"
 HANDOFF_BUDGET_BYTES=1000 console next --bucket cap83dst --doc "$doc83A" >/dev/null 2>"$tmp/err83"
 check "83 stderr warns with the byte count" "$(grep -cE 'warning: HANDOFF over budget: [0-9]+ bytes \(limit 1000\)' "$tmp/err83")" "1"
-check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); Live state [0-9]+ bytes' "$handoff83A")" "1"
+check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); wrapped-PR list [0-9]+ bytes' "$handoff83A")" "1"
 check "83 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff83A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
 
@@ -2595,6 +2619,11 @@ rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-next
 check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc86" "1"
 check "86 refusal quotes the predecessor's priority line" \
     "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
+# A prune that closed every key leaves `priority: none`; a PRIORITY-PRUNE bullet accepts it.
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
+rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
+check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
 
 # --- 87. a shorter decisions: line that points at a bucket decisions file ----
 # It passes only when the file exists and every numbered "(N) " entry of the

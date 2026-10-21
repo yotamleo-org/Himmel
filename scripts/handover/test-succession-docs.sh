@@ -156,7 +156,7 @@ handing="$(section "$CONSOLE" '^## Handing over')"
 contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
 before 'template Handing over: quote-backs are collected BEFORE the lock is released' "$handing" 'quote-back' 'release your lock'
 
-live="$(section "$CONSOLE" '^## Live state')"
+live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/console-sections/live-state.md")"
 contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 'only after'
 
 # --- 3. running-a-console.md: the mirror --------------------------------------

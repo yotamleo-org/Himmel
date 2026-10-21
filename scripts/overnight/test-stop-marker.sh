@@ -46,7 +46,7 @@ assert_contains() {
 
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
-export OVERNIGHT_STOP_DIR="$TMP_ROOT"
+export AFK_STOP_DIR="$TMP_ROOT"
 MARKER="$TMP_ROOT/.overnight-stop"
 
 # Test 1: set + check ------------------------------------------------
@@ -125,13 +125,20 @@ echo "TEST: set with bad MARKER_DIR exits 3"
 # fail).
 fake_file="$TMP_ROOT/blocking-file"
 : > "$fake_file"
-rc=0; out=$(OVERNIGHT_STOP_DIR="$fake_file/sub" bash "$SCRIPT" set 2>&1) || rc=$?
+rc=0; out=$(AFK_STOP_DIR="$fake_file/sub" bash "$SCRIPT" set 2>&1) || rc=$?
 # mkdir -p over a file path returns non-zero on Linux/Git Bash. Our script
 # checks rc and exits 3.
 case "$rc" in
     3) pass "set rc=3 on bad dir" ;;
     *) fail "expected rc=3, got $rc" "$out" ;;
 esac
+
+# Test 10: the old name still places the marker ---------------------
+echo "TEST: OVERNIGHT_STOP_DIR alone still sets the marker dir"
+old_dir="$TMP_ROOT/old-name"
+rc=0; out=$(env -u AFK_STOP_DIR OVERNIGHT_STOP_DIR="$old_dir" bash "$SCRIPT" set 2>&1) || rc=$?
+assert_rc "old-name set rc=0" "0" "$rc"
+if [ -f "$old_dir/.overnight-stop" ]; then pass "old name places the marker"; else fail "old name ignored" "$out"; fi
 
 echo
 echo "===================================="

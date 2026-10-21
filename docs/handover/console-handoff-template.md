@@ -1,9 +1,7 @@
 # {{PREDECESSOR_LETTER}} → {{LETTER}} handoff state
 
-> Written by {{PREDECESSOR_LETTER}} at handover. **This file wins over the
-> {{PREDECESSOR_LETTER}} Results tail** wherever the two differ — the successor
-> reads this, and only falls back to the Results tail bottom-up if a section
-> here is empty.
+> **This file wins over the {{PREDECESSOR_LETTER}} Results tail**; use that tail
+> only where a section here is empty.
 
 **Head:** {{HEAD_LINE}}
 **Bank at write:** {{BANK_LINE}}
@@ -11,39 +9,28 @@
 
 ## How {{LETTER}} starts
 
-Run ACTION ZERO from `{{SUCCESSOR_DOC}}` unchanged. Expect at the root sweep:
-`<the locks the successor should find>`. Kit is in-tree at `{{KIT}}`.
-The live legs and their tokens are listed below. A relay MAY keep a
-leg's token, so rotating it to `{{LETTER}}-<leg>-<hex>` is optional, not a
-precondition of succession. Ask the {{PREDECESSOR_LETTER}} console session
-(`{{PREDECESSOR}}` minus the `.md`) to re-brief each inherited leg from its own
-socket, naming you and quoting the leg's current token (plus your fresh one only
-if you chose to issue one). A leg's quote-back is its `SUCCESSION accepted`
-Results bullet: arm `console-wait.sh` with `--succession <your session name>` before
-you wait (ACTION ZERO step 9) and it wakes you once. **The tokens in
-the list below are the predecessor's, and a leg is yours only once it has quoted
-back**; until then do not treat them as yours. Only on `WAKE succession complete`
-send **`{{LETTER}} LIVE`** to that
-session so it releases its lock and wraps — or, on `WAKE succession partial`, send
-it with each leg named as one that did not quote back, and why (ACTION
-ZERO step 9), rather than waiting on it indefinitely. `LIVE` first strands
-every leg that has not been re-briefed. Then re-arm without `--succession`.
+Run ACTION ZERO from `{{SUCCESSOR_DOC}}` unchanged; expect at the root sweep
+`<the locks the successor should find>`. Kit: `{{KIT}}`. Its `legs:` line holds
+the predecessor's workers and tokens; a worker is yours only once it has quoted back.
+A relay MAY keep a worker's token (a `{{LETTER}}-<leg>-<hex>` rotation is optional).
+Ask `{{PREDECESSOR}}` (minus `.md`) to re-brief each worker from its own socket,
+naming you and quoting the worker's token (and your fresh one, if issued).
+Arm `console-wait.sh --succession <your session name>` before you wait (ACTION
+ZERO step 9); a quote-back is the worker's `SUCCESSION accepted` bullet. On
+`WAKE succession complete` send **`{{LETTER}} LIVE`** to that session; on
+`WAKE succession partial` send it naming each worker that did not quote back, and
+why (`LIVE` first strands every worker not yet re-briefed). Then re-arm without
+`--succession`.
 
 ## In flight
 
-> The pre-filled fact sections are capped at about 3k tokens in total: one that reads
-> `over the HANDOFF size budget — run: …` is a pointer; run that command if you need it.
-> The Live state and the rulings are never trimmed, so they alone can exceed the cap.
+> Facts cap at ~1.5k tokens (`over the HANDOFF size budget — run: …` is a
+> pointer); rulings are never trimmed.
 
-{{LIVE_STATE}}
+{{LIVE_STATE}}; never retype a worker's nonce, lock token or pid. A worker not on its
+`legs:` line is not alive (confirm with ListAgents).
 
-<Copied verbatim from the predecessor's `## Live state` —
-each leg's nonce, lock release token and pid are already there; do not
-retype them. A leg not listed above is not alive — the successor confirms with
-ListAgents regardless.>
-
-**Legs** (fleet manifest, last Results marker of each; `console.sh next`
-filled this):
+**Workers** (fleet manifest, last Results marker of each):
 
 {{LEG_LIST}}
 
@@ -54,33 +41,26 @@ filled this):
 **Held queue:** {{QUEUE_LINE}}
 **Last GO:** {{LAST_GO}}
 
-**Open judge calls**. Subagents still running in this session
-when `console.sh next` ran:
+**Open judge subagents** (running when `console.sh next` ran):
 
 {{JUDGE_CALLS}}
 
-<One line per judge qid this shift dispatched: `<qid> — pending | GO | NO-GO`,
-read from its `verdicts/<qid>/` file (every judge call persists through
-`write-verdict.sh`; no file = pending). The successor reads `verdicts/<qid>/`
-before it re-dispatches a judge and never re-runs one whose verdict is written.
-`console.sh wrap` refuses while any judge child above is still running.>
+<Per qid: `<qid> — pending | GO | NO-GO` from `verdicts/<qid>/` (no file =
+pending); never re-run a written verdict.>
 
-## This shift (the console's last Results bullets)
+## This shift (last Results bullets)
 
 {{SHIFT_SUMMARY}}
 
 ## Rulings and judgement notes — the only part the console writes
 
-<Numbered, one line each: the operator rulings binding on the successor, and
-anything the pre-filled sections above cannot know — each leg's model, brief
-path and what it owes next; the held queue's model tiers and owned files so
-the successor can collision-check the fan-out. One Edit replaces this block.>
+<Numbered, one line each: binding rulings, each worker's model, brief and
+debt, the queue's tiers and owned files. One Edit replaces this block.>
 
 ## Wrapped this shift
 
-<Legs whose windows are closed and locks free, with the PRs they landed.>
+<Closed workers (locks free) and their PRs.>
 
 ## Open operator items
 
-<Things only the operator can do: a merge you cannot make, a credential, a
-dashboard flip, a window to close.>
+<What only the operator can do: a merge, a credential, a dashboard flip.>

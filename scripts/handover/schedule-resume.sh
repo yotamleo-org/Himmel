@@ -29,7 +29,7 @@
 # - After hitting the limit, plan ~5 hours before retry; schedule a touch
 #   later to be safe. The operator picks RESUME_TIME_LOCAL with that buffer.
 #
-# Companion docs: docs/handover/overnight-mode.md "Phase 6.5".
+# Companion docs: docs/handover/afk-mode.md "Phase 6.5".
 
 set -uo pipefail
 
@@ -60,8 +60,8 @@ fi
 # Self-contained resume prompt. Single line so it survives both schtasks
 # (CMD quoting) and `at` (heredoc). Avoid backticks and $() so the operator's
 # shell does not pre-interpolate anything before scheduling.
-# the pointer clause names § Launch preamble (docs/handover/overnight-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
-RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
+# the pointer clause names § Launch preamble (docs/handover/afk-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
+RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 
 # Platform detection. Prefer OSTYPE (set by bash); fall back to uname.
 detect_platform() {
@@ -167,5 +167,5 @@ Verify before running:
 - Platform:    $platform
 
 For sessions that must survive even local-machine death, prefer a remote
-agent via /schedule (see docs/handover/overnight-mode.md Phase 6.5).
+agent via /schedule (see docs/handover/afk-mode.md Phase 6.5).
 EOF

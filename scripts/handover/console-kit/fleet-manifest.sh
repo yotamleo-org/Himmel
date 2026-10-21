@@ -45,6 +45,9 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/prim.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/prim.sh" || exit 2
 # shellcheck source=../../lib/leg-identity.sh
 . "$HERE/../../lib/leg-identity.sh"
 
@@ -127,6 +130,7 @@ EOD
     done
 fi
 
+# prim-ok: a 30 s bounded flock held on fd 9 for the rest of the script; with_lock waits without limit and wraps one command
 if ! exec 9>>"$manifest.lock" || ! flock -x -w 30 9; then  # gnu-ok: Linux-only kit (util-linux flock, PLATFORM GUARD)
     echo "fleet-manifest: cannot lock $manifest.lock" >&2
     exit 1
@@ -162,9 +166,7 @@ for arg in "$@"; do
     fi
 done
 
-tmp="$(mktemp "$manifest.XXXXXX")" || { echo "fleet-manifest: cannot create a temp file next to $manifest" >&2; exit 1; }
-if ! printf '%s\n' "$cur" > "$tmp" || ! mv -f "$tmp" "$manifest"; then
-    rm -f "$tmp"
+if ! printf '%s\n' "$cur" | atomic_write "$manifest"; then
     echo "fleet-manifest: cannot write $manifest" >&2
     exit 1
 fi

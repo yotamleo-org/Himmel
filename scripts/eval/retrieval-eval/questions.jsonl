@@ -18,7 +18,7 @@
 {"id":"q18","kind":"where","src":"qmd","q":"check the subscription budget before launching an unattended claude run","gold":["scripts/lib/bank-preflight.sh"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q19","kind":"what","src":"qmd","q":"which hosts may receive text from a salus session and which are blocked","gold":["scripts/guardrails/egress-matrix.json","docs/internals/egress-matrix.md"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q20","kind":"how","src":"qmd","q":"how to re-embed the qmd index on another embedding model without a mixed-model index","gold":["docs/internals/qmd-embed-model.md","scripts/luna/qmd-embed-model.sh"],"reason":[]}
-{"id":"q21","kind":"where","src":"qmd","q":"running a well scoped ticket end to end without an operator present","gold":["docs/handover/overnight-mode.md"],"gold1":["docs/handover/running-a-console.md"],"reason":[]}
+{"id":"q21","kind":"where","src":"qmd","q":"running a well scoped ticket end to end without an operator present","gold":["docs/handover/afk-mode.md"],"gold1":["docs/handover/running-a-console.md"],"reason":[]}
 {"id":"q22","kind":"where","src":"qmd","q":"himmel doctor vector probe","gold":["scripts/himmel-doctor.sh"],"gold1":["docs/commands-catalog.md"],"reason":[]}
 {"id":"q23","kind":"how","src":"qmd","q":"how does a leg make sure only one session works on a handover document at a time","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"gold1":["docs/handover/leg-preface.md"],"reason":[]}
 {"id":"q24","kind":"where","src":"selfq","q":"where is sanitize_settings called","gold":["scripts/claude-codex","scripts/claude-glm","scripts/claude-openrouter","scripts/claude-deepseek"],"reason":[]}

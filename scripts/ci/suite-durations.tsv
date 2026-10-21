@@ -363,6 +363,7 @@ scripts/handover/console-kit/test-ops-run.sh	1
 scripts/handover/console-kit/test-orphan-loops.sh	0
 scripts/handover/console-kit/test-parked-on-prompt.sh	0
 scripts/handover/console-kit/test-pr-stall.sh	1
+scripts/handover/console-kit/test-priority-prune.sh	0
 scripts/handover/console-kit/test-ready-check.sh	36
 scripts/handover/console-kit/test-ready-go.sh	2
 scripts/handover/console-kit/test-relay-batch.sh	1

@@ -9,18 +9,18 @@
 # Atomic (tmp in the same dir, then mv) so a HUD read never sees a torn file.
 # Returns non-zero on any failure; callers treat that as best-effort.
 # bash 3.2-safe; sourced, no side effects.
+# shellcheck source=lib/prim.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/prim.sh" || return 1
+
 doctor_counts_write() {
-    local dir="${1:-}" f="${2:-}" w="${3:-}" tmp
+    local dir="${1:-}" f="${2:-}" w="${3:-}"
     [ -n "$dir" ] || return 2
     case "$f" in ''|*[!0-9]*) return 2 ;; esac
     case "$w" in ''|*[!0-9]*) return 2 ;; esac
     mkdir -p "$dir" || return 1
-    tmp="$(mktemp "$dir/.counts.XXXXXX")" || return 1
-    if printf 'fail=%s warn=%s\n' "$f" "$w" > "$tmp" && mv -f "$tmp" "$dir/counts"; then
-        return 0
-    fi
-    rm -f "$tmp"
-    return 1
+    printf 'fail=%s warn=%s\n' "$f" "$w" | atomic_write "$dir/counts" || return 1
+    return 0
 }
 
 # doctor_state_publish <state-dir> <keys-file> <fail> <warn>
@@ -29,14 +29,12 @@ doctor_counts_write() {
 # from the same run. Callers: a full himmel-doctor run on the primary
 # checkout, and doctor-cadence.
 doctor_state_publish() {
-    local dir="${1:-}" keys="${2:-}" f="${3:-}" w="${4:-}" tmp
+    local dir="${1:-}" keys="${2:-}" f="${3:-}" w="${4:-}" out
     [ -n "$dir" ] && [ -f "$keys" ] || return 2
     mkdir -p "$dir" || return 1
-    tmp="$(mktemp "$dir/.last.XXXXXX")" || return 1
-    if sed '/^$/d' "$keys" | sort -u > "$tmp" && mv -f "$tmp" "$dir/last.tsv"; then
+    if out="$(sed '/^$/d' "$keys" | sort -u && printf x)" && printf '%s' "${out%x}" | atomic_write "$dir/last.tsv"; then
         doctor_counts_write "$dir" "$f" "$w"
         return $?
     fi
-    rm -f "$tmp"
     return 1
 }

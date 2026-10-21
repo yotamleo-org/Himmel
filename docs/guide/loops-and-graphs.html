@@ -337,15 +337,15 @@
             </div>
           </fieldset>
 
-          <!-- source: docs/configuration.md §3.3 + §4.1; docs/handover/overnight-mode.md -->
+          <!-- source: docs/configuration.md §3.3 + §4.1; docs/handover/afk-mode.md -->
           <fieldset><legend class="grp">Unattended runs</legend>
-            <div class="setting" data-key="HIMMEL_OVERNIGHT">
-              <div class="setting-row"><label for="s-on">HIMMEL_OVERNIGHT</label>
+            <div class="setting" data-key="HIMMEL_AFK">
+              <div class="setting-row"><label for="s-on">HIMMEL_AFK</label>
                 <span class="switch"><input type="checkbox" id="s-on" data-set="overnight" role="switch"><span></span></span></div>
               <span class="where conf">himmel.conf</span>
             </div>
-            <div class="setting" data-key="HIMMEL_INITIATIVE_OVERNIGHT">
-              <div class="setting-row"><label for="s-ion">HIMMEL_INITIATIVE_OVERNIGHT</label>
+            <div class="setting" data-key="HIMMEL_INITIATIVE_AFK">
+              <div class="setting-row"><label for="s-ion">HIMMEL_INITIATIVE_AFK</label>
                 <select id="s-ion" data-set="initOvernight"><option value="off">off</option><option value="prcheck,pr">prcheck,pr</option><option value="all">all</option></select></div>
               <span class="where conf">himmel.conf</span>
             </div>
@@ -452,7 +452,7 @@
     <nav aria-label="Further reading">
       <a href="../cadences.md">Cadences reference</a>
       <a href="../handover/running-a-console.md">Running a supervisor session</a>
-      <a href="../handover/overnight-mode.md">AFK (unattended) mode</a>
+      <a href="../handover/afk-mode.md">AFK (unattended) mode</a>
       <a href="../internals/graph-cadence.md">Graph refresh internals</a>
       <a href="../glossary.md">Glossary</a>
     </nav>
@@ -533,16 +533,16 @@
           { k: 'next', l: 'Hand over', sub: 'succession', st: 'manual', n: 'Near its context limit the supervisor session starts its successor with /console next and writes a handoff.' }
         ];
       } },
-    { id: 'overnight', tab: 'AFK mode', title: 'An unattended overnight shift',
-      blurb: '/overnight-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_OVERNIGHT switches which steps run without asking.',
-      meta: 'source: overnight-mode',
+    { id: 'overnight', tab: 'AFK mode', title: 'An unattended AFK shift',
+      blurb: '/afk-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_AFK switches which steps run without asking.',
+      meta: 'source: afk-mode',
       nodes: function () {
         var r = reviewState();
         var off = !s.overnight;
         return [
           { k: 'lock', l: 'Queue lock', sub: 'one run per queue', st: 'auto', n: 'Taken first, so a second launch on the same queue stops instead of doubling the work.' },
           { k: 'plan', l: 'Plan', sub: 'from the brief', st: 'auto', n: 'A written plan for the ticket, committed beside the handover.' },
-          { k: 'impl', l: 'Implement', sub: 'agents', st: off ? 'manual' : (has('execute') ? 'auto' : 'manual'), n: off ? 'HIMMEL_OVERNIGHT is off: the overnight initiative profile is not active.' : (has('execute') ? 'The execute step runs unasked.' : 'Not in the overnight step list; it waits for you.') },
+          { k: 'impl', l: 'Implement', sub: 'agents', st: off ? 'manual' : (has('execute') ? 'auto' : 'manual'), n: off ? 'HIMMEL_AFK is off: the afk initiative profile is not active.' : (has('execute') ? 'The execute step runs unasked.' : 'Not in the afk step list; it waits for you.') },
           { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : (off ? 'manual' : (has('prcheck') ? 'auto' : 'manual')), n: r.note },
           { k: 'fix', l: 'Fix and re-review', sub: 'until clean', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Review rounds repeat until no critical finding is left.' },
           { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'off' : (!off && has('pr') ? 'auto' : 'manual'), n: !off && has('pr') ? 'Opened unasked.' : 'Waits for you.' },
@@ -601,8 +601,8 @@
     crAgents: { t: 'CR_CLAUDE_AGENTS', d: 'Adds a fan-out of Claude reviewer agents inside /pr-check.' },
     crossModel: { t: 'CR_REQUIRE_CROSS_MODEL', d: 'Gate policy. When on, the review-owed marker clears only after a critic from a different model family has passed the exact commit, so a Claude-only review is not enough.' },
     floor: { t: 'CR_FLOOR_FALLBACK', d: 'Gate policy. With the cross-model rule on, "claude-only" lets a fresh Claude review with no shared context stand in when every other critic is out of quota. It is never counted as cross-model.' },
-    overnight: { t: 'HIMMEL_OVERNIGHT', d: 'Switches sessions to the overnight initiative profile, read from HIMMEL_INITIATIVE_OVERNIGHT instead of HIMMEL_INITIATIVE.' },
-    initOvernight: { t: 'HIMMEL_INITIATIVE_OVERNIGHT', d: 'The overnight step list. "all" adds implementing and merging to the daytime set. It has no effect unless HIMMEL_OVERNIGHT is on.' },
+    overnight: { t: 'HIMMEL_AFK', d: 'Switches sessions to the afk initiative profile, read from HIMMEL_INITIATIVE_AFK instead of HIMMEL_INITIATIVE.' },
+    initOvernight: { t: 'HIMMEL_INITIATIVE_AFK', d: 'The afk step list. "all" adds implementing and merging to the daytime set. It has no effect unless HIMMEL_AFK is on.' },
     automerge: { t: 'ARMAUTOMERGE', d: 'Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.' },
     vault: { t: 'companion vault', d: 'Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.' },
     vm: { t: 'vm.mode', d: 'Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.' },

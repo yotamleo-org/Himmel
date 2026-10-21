@@ -34,9 +34,9 @@ export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
-# Every Live-state field and where `next` puts it. CARRIED fields land in the
-# successor doc's own Live state; HANDOFF fields are per-shift and ride in the
-# HANDOFF's copy of the predecessor's Live state. Add a new field here first.
+# Every Live-state field and where `next` puts it. CARRIED fields span shifts;
+# SEEDED fields are per-shift. Both land verbatim in the successor doc's own
+# Live state; the HANDOFF only points at it. Add a new field here first.
 carried_fields="board
 tracker
 epics
@@ -44,7 +44,7 @@ decisions
 priority
 versions
 tracker-plan"
-handoff_fields="legs
+seeded_fields="legs
 queue
 last GO
 acked"
@@ -76,7 +76,7 @@ tpl_fields="$(awk '
 ' "$tpl")"
 sh_fields="$(sed -n 's/^    for field in \(.*\); do$/\1/p' "$REPO_REAL/scripts/handover/console/console.sh" | head -n 1 | tr ' ' '\n')"
 listed="$carried_fields
-$handoff_fields"
+$seeded_fields"
 missing=""
 while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -126,10 +126,11 @@ $carried_fields
 EOF
 while IFS= read -r f; do
     want="$(printf '%s\n' "$fixture_live" | grep -m 1 "^$f:")"
-    check "2 HANDOFF Live state carries '$f:' verbatim" "$(live_state "$handoff" 2>/dev/null | grep -Fxc "$want")" "1"
+    check "2 successor Live state seeds '$f:' verbatim" "$(live_state "$docB" 2>/dev/null | grep -Fxc "$want")" "1"
 done <<EOF
-$handoff_fields
+$seeded_fields
 EOF
+check "2 HANDOFF carries no copy of a leg nonce" "$(grep -c 'AP-N[12]-' "$handoff" 2>/dev/null)" "0"
 check "2 successor doc has no placeholder decisions: none" "$(grep -Fxc 'decisions: none' "$docB" 2>/dev/null)" "0"
 check "2 successor doc has no unrendered slot" "$(grep -c '{{[A-Z_]*}}' "$docB" 2>/dev/null)" "0"
 

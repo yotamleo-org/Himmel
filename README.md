@@ -35,7 +35,7 @@ Claude remembering a paragraph of instructions.
 - **Work carries over between sessions.** Each session leaves a plain
   markdown handover doc behind. A fresh session reads it and resumes where the
   last one stopped, with the decisions and the reasons for them intact.
-- **Work runs while you sleep.** `/overnight-shift` hands scoped tickets to
+- **Work runs while you sleep.** `/afk-shift` hands scoped tickets to
   parallel agents that branch, review themselves and open PRs. When a session
   nears its usage cap, a usage-cap auto-relaunch schedules a relaunch with the operating
   system's scheduler, so a long run survives the cap.
@@ -118,7 +118,7 @@ gh pr create              # then merge once CI is green and the PR is approved
 Going unattended:
 
 ```bash
-/overnight-shift --limit 5   # five scoped tickets to parallel agents, each ending in a PR
+/afk-shift --limit 5   # five scoped tickets to parallel agents, each ending in a PR
 /stop                        # ask an overnight run to halt gracefully
 ```
 
@@ -341,8 +341,8 @@ Every feature has one doc that owns its detail; the full map is
 - Collision preflight before starting a session: `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
   warns (exit 20) when a file you intend to touch is already changed in another
   live session's checkout; read-only, `queue-lock.sh` header lists the contract
-- AFK (unattended) mode runs (`/overnight-shift`, `/stop` to halt):
-  [`docs/handover/overnight-mode.md`](docs/handover/overnight-mode.md)
+- AFK (unattended) mode runs (`/afk-shift`, `/stop` to halt):
+  [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md)
 
 **Lifecycle and delegation**
 - `himmelctl` install, update and uninstall:

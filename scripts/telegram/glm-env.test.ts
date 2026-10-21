@@ -128,6 +128,8 @@ test("context diet: GLM env block force-disables the env-gated session injection
   process.env.ZAI_API_KEY = "k-123";
   const e = buildGlmEnv(root);
   expect(e.HIMMEL_INITIATIVE).toBe("0");
+  expect(e.HIMMEL_INITIATIVE_AFK).toBe("0");
+  expect(e.HIMMEL_AFK).toBe("0");
   expect(e.HIMMEL_INITIATIVE_OVERNIGHT).toBe("0");
   expect(e.HIMMEL_OVERNIGHT).toBe("0");
   expect(e.HIMMEL_WHERE_ARE_WE).toBe("0");
