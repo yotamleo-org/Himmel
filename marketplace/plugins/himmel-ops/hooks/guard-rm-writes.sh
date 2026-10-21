@@ -28,10 +28,13 @@
 #   Write|Edit|MultiEdit|NotebookEdit — the path, lexically normalised or
 #     resolved, is an authority file.
 #   Bash — a redirect (>, >>, >|, &>, N>) targets an authority file; or a
-#     command segment (split on ; | & ( ) ` and newlines) runs tee, cp, mv, or
-#     sed with -i/--in-place and names an authority file, unless the segment's
-#     command (after VAR=value prefixes and an optional node) is the Jira CLI
-#     with `release` as its op. ~/, $HOME/ and ${HOME}/ expand to $HOME.
+#     command segment (split on ; | & ( ) ` and newlines) runs tee, or sed
+#     with -i/--in-place, and names an authority file; or runs cp or mv whose
+#     destination (the last operand or -t DIR, or that directory joined with
+#     a source's name) is one, or mv with an authority file as a source.
+#     Exempt: a segment whose command (after VAR=value prefixes and an
+#     optional node) is the Jira CLI with `release` as its op. ~/, $HOME/ and
+#     ${HOME}/ expand to $HOME.
 # TRIP CONDITION, mode 2 (HIMMEL_RELEASE_MANAGER=1, on top of mode 1):
 #   Bash — the text names HIMMEL_RELEASE_MANAGER, leg-pr-open, merge-on-green,
 #     console-kit/go.sh, inbox-send or leg-jira-status; a mutating git verb; a
@@ -303,8 +306,39 @@ EOF
             case "${1:-}" in node | */node) shift ;; esac
             is_jira_word "${1:-}" && [ "${2:-}" = "release" ] && continue
             words=$(printf '%s' "$seg" | tr '<>=\t\r' '     ')
+            # cp and mv write their destination: the last operand, or -t DIR.
+            # A directory destination writes <dir>/<source name>; mv also
+            # removes its sources, cp only reads them.
+            # Redirections and their targets are not operands.
+            opwords=$(printf '%s' "$seg" \
+                | sed -E 's/[0-9]*[<>]+&?[[:space:]]*[^[:space:]]*//g' \
+                | tr '=\t\r' '   ')
+            wverb=""; ops=""; dest=""; tdir=0
+            for t in $opwords; do
+                if [ -z "$wverb" ]; then
+                    case "${t##*/}" in cp | mv) wverb="${t##*/}" ;; esac
+                    continue
+                fi
+                if [ "$tdir" -eq 1 ]; then dest="$t"; tdir=0; continue; fi
+                case "$t" in
+                    -t | --target-directory) tdir=1 ;;
+                    -t?*) dest="${t#-t}" ;;
+                    -*) ;;
+                    *) ops="$ops $t" ;;
+                esac
+            done
+            if [ -n "$wverb" ]; then
+                if [ -z "$dest" ]; then
+                    dest="${ops##* }"; ops="${ops% *}"
+                fi
+                is_authority "$dest" && deny "authority-write" "$dest"
+                for t in $ops; do
+                    [ "$wverb" = "mv" ] && is_authority "$t" && deny "authority-write" "$t"
+                    is_authority "${dest%/}/${t##*/}" && deny "authority-write" "${dest%/}/${t##*/}"
+                done
+            fi
             writer=0
-            has_word tee cp mv && writer=1
+            has_word tee && writer=1
             if [ "$writer" -eq 0 ] && has_word sed; then
                 for t in $words; do
                     case "$t" in --in-place* | -i* | -[!-]*i*) writer=1 ;; esac
