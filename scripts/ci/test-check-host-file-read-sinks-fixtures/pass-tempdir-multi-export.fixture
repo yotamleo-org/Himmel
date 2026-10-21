@@ -1,0 +1,5 @@
+# fixture, not executable
+echo hi
+WS="$(mktemp -d "${TMPDIR:-/tmp}/rgm-resume.XXXXXX")" || { echo "cannot create test workspace" >&2; exit 1; }; trap 'rm -rf "$WS"' EXIT
+export STUB_CALLS="$WS/calls.log" STUB_HOLLOW_COUNT="$WS/hollow.log"
+n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)

@@ -12,8 +12,11 @@
 # A line is a sink when a reader (cat head tail less more source `.` or a `<`
 # redirect) takes, as its whole operand, one of:
 #   - an argv expansion       $1  ${1:-}  $@  $*
-#   - a variable assigned from argv in the same added lines (path laundering)
-#   - an UPPER_CASE variable the file never assigns (environment-supplied path)
+#   - a variable assigned from argv in the same added lines (path laundering),
+#     unless it was last assigned from mktemp (a file the script made itself)
+#   - an UPPER_CASE variable the file never assigns (environment-supplied path);
+#     a NAME=value token anywhere in the file counts as an assignment, including
+#     the second name on an `export A=.. B=..` line and a `cmd NAME=value` argument
 # An operand with a suffix ("$ROOT/x", "$(dirname "$0")/lib.sh") is rooted and
 # passes. A sink passes when, within 3 lines either side, there is an allowlist
 # signal (`case ... in`, the word allowlist/allowed, or a realpath/readlink -f
@@ -90,12 +93,23 @@ while IFS= read -r -d '' path; do
       }
       return 0
     }
-    { line[NR] = $0; total = NR
-      if (match($0, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
-        a = substr($0, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", a); assigned[a] = 1
+    function scan_assigns(l,   s, off, eq, eqp, m, nm, k) {   # every NAME=value token on a line
+      ACNT = 0; s = l; off = 0
+      while (match(s, /(^|[ \t;(&|{])[A-Za-z_][A-Za-z0-9_]*=([^=]|$)/)) {
+        m = substr(s, RSTART, RLENGTH); eq = index(m, "=")
+        nm = m; sub(/^[ \t;(&|{]/, "", nm); sub(/=.*$/, "", nm)
+        eqp = off + RSTART - 1 + eq
+        ACNT++; AN[ACNT] = nm; AP[ACNT] = eqp; AL[ACNT] = length(nm)
+        s = substr(s, RSTART + eq); off = eqp
       }
+      for (k = 1; k <= ACNT; k++)       # a value runs up to the next name on the line
+        AV[k] = (k < ACNT) ? substr(l, AP[k] + 1, AP[k + 1] - AL[k + 1] - 1 - AP[k]) : substr(l, AP[k] + 1)
     }
-    # ponytail: any assignment clears an UPPER_CASE name (X="${X:-}" then cat "$X" passes), upgrade by tracking env-preserving assignments if it matters
+    { line[NR] = $0; total = NR
+      scan_assigns($0)
+      for (k = 1; k <= ACNT; k++) assigned[AN[k]] = 1
+    }
+    # ponytail: any assignment, anywhere on any line, clears an UPPER_CASE name (X="${X:-}" then cat "$X" passes; so does the word NAME=x inside an echo), upgrade by tracking env-preserving assignments if it matters
     END {
       OPER = "\"?\\$(\\{[^}]*\\}|[A-Za-z0-9_@*]+)\"?"
       CMD  = "(^|[;&|({`]|[ \t](then|do|else))[ \t]*(cat|head|tail|less|more|source|\\.)([ \t]+(-[A-Za-z0-9]+([ \t]+[0-9]+)?|--))*[ \t]+"
@@ -104,11 +118,12 @@ while IFS= read -r -d '' path; do
         if (!is_added(n)) continue
         l = line[n]
         if (l ~ /^[ \t]*#/) continue
-        # taint: x=...$1... / x="${2:-}" / x=$(realpath "$1")
-        if (match(l, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
-          lhs = substr(l, 1, RLENGTH); rhs = substr(l, RLENGTH + 1)
-          gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", lhs)
-          if (rhs ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/) tainted[lhs] = 1
+        # taint: x=...$1... / x="${2:-}" / x=$(realpath "$1"), on any name of the line;
+        # a mktemp result is a file the script made itself, so it clears the taint
+        scan_assigns(l)
+        for (k = 1; k <= ACNT; k++) {
+          if (AV[k] ~ /mktemp/) delete tainted[AN[k]]
+          else if (AV[k] ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/) tainted[AN[k]] = 1
         }
         hit = ""
         s = l

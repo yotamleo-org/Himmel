@@ -1,0 +1,5 @@
+# fixture, not executable
+echo hi
+out="$(mktemp "${1:-/tmp}/own.XXXXXX")"
+echo data > "$out"
+cat "$out"

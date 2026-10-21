@@ -69,7 +69,28 @@ case_repo base flag-double-dash
 run_check
 [ "$RC" -eq 1 ] && ok "cat -- \"\$1\" is flagged" || bad "-- terminator not flagged (rc=$RC): $OUT"
 
+case_repo base flag-multi-export-argv
+run_check
+[ "$RC" -eq 1 ] && ok "a later name on a multi-assignment line, assigned from \$1, is flagged" || bad "multi-export argv path not flagged (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-reassigned
+run_check
+[ "$RC" -eq 1 ] && ok "a mktemp variable reassigned from \$1 is flagged" || bad "reassigned mktemp var not flagged (rc=$RC): $OUT"
+
 # --- must-pass --------------------------------------------------------------------
+# Real lines from PRs 3460 and 3461 (each needed a read-sink-ok marker before).
+case_repo base pass-tempdir-multi-export
+run_check
+[ "$RC" -eq 0 ] && ok "a name assigned second on an export line is assigned" || bad "multi-export temp read flagged (rc=$RC): $OUT"
+
+case_repo base pass-env-prefix-stub
+run_check
+[ "$RC" -eq 0 ] && ok "a name assigned as a NAME=value argument counts as assigned" || bad "env-prefix stub read flagged (rc=$RC): $OUT"
+
+case_repo base pass-mktemp-argv
+run_check
+[ "$RC" -eq 0 ] && ok "a mktemp result is test-owned even when its template is argv" || bad "mktemp result flagged (rc=$RC): $OUT"
+
 case_repo base pass-allowlist
 run_check
 [ "$RC" -eq 0 ] && ok "a realpath prefix check on the next lines passes" || bad "allowlisted read flagged (rc=$RC): $OUT"
