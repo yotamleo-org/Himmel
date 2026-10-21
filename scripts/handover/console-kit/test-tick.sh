@@ -2769,6 +2769,27 @@ printf '%s\n' '# console' '' 'decisions: a brief note above Live state, not the 
 contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECISIONS_BUDGET_BYTES=10 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION decisions-over-budget=21/10: '
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"
 
+# --- effort=MISMATCH:<leg> ----------------------------------------------------
+# The asked effort is the LEG_EFFORT line in the launch-<label>.sh the console
+# wrote beside the leg doc; the live effort is the effort= token on the leg's
+# newest LIVE bullet. A leg asked for high that reports medium is the 09-23 to
+# 10-20 incident this field exists to show.
+ef_doc="$W/handover/HIMMEL-6588-N77-effort.md"
+ef_ok="$W/handover/HIMMEL-6588-N78-effort.md"
+ef_none="$W/handover/HIMMEL-6588-N79-effort.md"
+printf '%s\n' '# leg' '- 09:00 LIVE — started effort=medium model=claude-sonnet-5-5' > "$ef_doc"
+printf '%s\n' '# leg' '- 09:00 LIVE — started effort=high model=claude-sonnet-5-5' > "$ef_ok"
+printf '%s\n' '# leg' '- 09:00 LIVE — started, no effort token' > "$ef_none"
+for ef_l in N77 N78 N79; do printf '%s\n' '#!/usr/bin/env bash' 'export LEG_EFFORT=high' > "$W/handover/launch-$ef_l.sh"; done
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N77","lockless":true},{"doc":"%s","label":"N78","lockless":true},{"doc":"%s","label":"N79","lockless":true}]}\n' "$ef_doc" "$ef_ok" "$ef_none" > "$fm"
+ef_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"
+contains 'a leg asked for high whose LIVE bullet says medium reads effort=MISMATCH:N77 (HIMMEL-6588)' "$ef_out" ' effort=MISMATCH:N77'
+not_contains 'a leg whose LIVE effort matches the asked one is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N78'
+not_contains 'a LIVE bullet with no effort= token is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N79'
+printf '%s\n' '- 09:30 LIVE — resumed effort=high model=claude-sonnet-5-5' >> "$ef_doc"
+not_contains 'only the newest LIVE bullet decides the effort (HIMMEL-6588)' "$(LEGS='' bash "$SUT" --legs-from "$fm")" 'effort=MISMATCH'
+rm -f "$ef_doc" "$ef_ok" "$ef_none" "$W/handover/launch-N77.sh" "$W/handover/launch-N78.sh" "$W/handover/launch-N79.sh" "$fm"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

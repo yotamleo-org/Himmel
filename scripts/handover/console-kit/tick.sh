@@ -599,9 +599,24 @@ leg_forked() {
     grep -v '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
 }
 
+# leg_effort_mismatch <doc> <label>: succeeds only when the effort the
+# console asked for (the LEG_EFFORT export in the launch-<label>.sh gen-briefs.py
+# writes beside the leg doc) differs from the effort= token on the leg's newest LIVE
+# bullet. A missing launcher, export or token leaves nothing to compare, so no flag.
+leg_effort_mismatch() {
+    local doc="$1" label="$2" launch asked live
+    launch="${doc%/*}/launch-$label.sh"
+    [ -r "$launch" ] || return 1
+    asked="$(sed -nE 's/^export LEG_EFFORT=(low|medium|high|xhigh|max)$/\1/p' "$launch" | tail -n 1)"  # pipefail-ok: tail reads sed to EOF
+    live="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' "$doc" 2>/dev/null | tail -n 1 \
+        | sed -nE 's/^(.*[[:space:]])?effort=(low|medium|high|xhigh|max)([^A-Za-z0-9_].*)?$/\2/p')"  # pipefail-ok: tail reads grep to EOF
+    [ -n "$asked" ] && [ -n "$live" ] && [ "$asked" != "$live" ]
+}
+
 legs_summary=""
 tails_summary=""
 acts_summary=""
+effort_summary=""
 leg_docmap=""
 # label<TAB>lock status<TAB>candidate session names, one line per leg (procs= below).
 leg_candmap=""
@@ -722,7 +737,11 @@ for leg in $LEGS_SPLIT; do
     tails_summary="$(csv_add "$tails_summary" "$label:$tail_status")"
     leg_docmap="$leg_docmap$label=$leg_doc"$'\n'
     leg_candmap="$leg_candmap$label"$'\t'"$lock_status"$'\t'"$leg_cands"$'\n'
+    if [ -f "$leg_doc" ] && leg_effort_mismatch "$leg_doc" "$label"; then
+        effort_summary="$(csv_add "$effort_summary" "MISMATCH:$label")"
+    fi
 done
+[ -n "$effort_summary" ] || effort_summary=ok
 # #1335: legs_summary's "none" default is resolved further down, once
 # the census (below) says whether it can back that up -- see the comment
 # there.
@@ -2234,6 +2253,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
+    [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
     [ -z "$ready_tail" ] || printf 'ready-mismatch: %s\n' "${ready_tail# ready-mismatch=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
@@ -2253,7 +2273,7 @@ else
     # Only unconsumed healthy/default values are elided; unknowns stay visible.
     compact_field() {
         case "$1=$2" in
-            *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
+            *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
@@ -2276,6 +2296,7 @@ else
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
     compact_field acts "$acts_summary"
+    compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"
     [ "$burn" -eq 0 ] || compact_field burn "$burn_summary"
