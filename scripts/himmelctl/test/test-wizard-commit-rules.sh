@@ -164,7 +164,7 @@ no
 
 yes
 INPUT
-)
+) || fail "case3b: wizard dry-run failed with JIRA_PROJECT_KEY unset"
 grepq "$out" 'would write TRACKER=none to ' \
   || fail "case3b: a blank tracker answer with JIRA_PROJECT_KEY unset must default to none: $out"
 h3c="$work/h3c"; mkdir -p "$h3c"
@@ -183,7 +183,7 @@ yes
 
 yes
 INPUT
-)
+) || fail "case3b: wizard dry-run failed with JIRA_PROJECT_KEY=ABC"
 grepq "$out" 'would write TRACKER=jira, TICKET_ID_REQUIRED=1 to ' \
   || fail "case3b: a blank tracker answer with JIRA_PROJECT_KEY set must stay jira: $out"
 echo "ok: case3b the tracker defaults to none without JIRA_PROJECT_KEY and stays jira with it"

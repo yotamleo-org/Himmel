@@ -351,7 +351,10 @@ printed_tp=$(sed -n 's/^.*Commit it once with: //p' <<< "$out_tp")
 [ -n "$printed_tp" ] || fail "HIMMEL-6852: install on main printed no 'Commit it once with:' line: $out_tp"
 eval "printed_argv=($printed_tp)"
 case "${printed_argv[1]:-}" in /*) ;; *) fail "HIMMEL-6852: the printed adopt.sh path must be absolute (got: $printed_tp)" ;; esac
+head_before=$(git -C "$tp" rev-parse HEAD)
 ( cd "$tp" && HOME="$base_home" "${printed_argv[@]}" >/dev/null 2>&1 ) || fail "HIMMEL-6852: the printed line failed from the project cwd: $printed_tp"
+[ "$(git -C "$tp" rev-parse HEAD)" != "$head_before" ] || fail "HIMMEL-6852: the printed line created no commit"
+git -C "$tp" show --name-only --format= HEAD | grep -q '^scripts/' || fail "HIMMEL-6852: the printed line's commit does not hold the installed scripts/"
 [ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6852: the printed line left the install uncommitted"
 echo "ok: the printed --commit-install line runs from the project cwd (HIMMEL-6852)"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
