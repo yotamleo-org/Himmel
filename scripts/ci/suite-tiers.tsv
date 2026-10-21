@@ -3,8 +3,9 @@
 # tier    pr | local | flow | quarantine
 # reason  pr: catch:<PR> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>; any other tier: free text
 # A trust-owned suite (its path, or a sibling of a file, under ci-trust-paths.txt) is never local.
-# No runner reads this file yet. scripts/ci/test-suite-tiers.sh lints it: a suite with no row, a row with
-# no suite, an unknown tier or an unjustified pr reason fails the build.
+# No runner reads this file yet. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
+# a suite with no row, a row with no suite (stale), a duplicate row, a malformed row (not three fields),
+# an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
