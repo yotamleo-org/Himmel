@@ -5,7 +5,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SCRIPT="$ROOT/scripts/ci/queue-latency.sh"
+SCRIPT="${QUEUE_LATENCY_SCRIPT:-$ROOT/scripts/ci/queue-latency.sh}"
 TMP="$(mktemp -d "/tmp/himmel-test-queue-latency.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 2; }
 trap 'rm -rf "$TMP"' EXIT
 # shellcheck source=../lib/timeout-bin.sh
@@ -31,7 +31,8 @@ case "$path" in
   *status=in_progress*) f="$FX/runs-in_progress.json" ;;
   *status=queued*)      f="$FX/runs-queued.json" ;;
   *status=pending*)     f="$FX/runs-pending.json"; [ -f "$f" ] || echo '{"workflow_runs":[]}' > "$f" ;;
-  */runs/*/jobs*)       id="${path#*/runs/}"; id="${id%%/*}"; f="$FX/jobs-$id.json" ;;
+  */runs/*/jobs*)       [ -z "${FAKE_GH_SLOW:-}" ] || sleep 8
+                       id="${path#*/runs/}"; id="${id%%/*}"; f="$FX/jobs-$id.json" ;;
   *) echo "fake-gh: unsupported $path" >&2; exit 1 ;;
 esac
 [ -f "$f" ] || { echo "fake-gh: no fixture $f" >&2; exit 1; }
@@ -93,6 +94,43 @@ for count in 150 400; do
   is "$count runs: partial counts labelled" "ci-queue: jobs_in_progress=32/60 macos=0/5 queued=32 oldest_wait=10m sampled=true" "$out"
   is "$count runs: uses read token" "0" "$(grep -c '^other$' "$TMP/fx/tokens.log")"
 done
+
+# A truncated sample that already proves saturation must reach exact-count readers.
+for count in 75 150; do
+  reset
+  ids=()
+  for ((id = 1; id <= count; id++)); do
+    ids+=("$id")
+    jobs_json 2 0 1 "$t10" > "$TMP/fx/jobs-$id.json"
+  done
+  runs_json in_progress "${ids[@]}" > "$TMP/fx/runs-in_progress.json"
+  runs_json queued > "$TMP/fx/runs-queued.json"
+  out="$(CI_MAX_JOBS=60 run)"
+  is "$count runs: proven saturation remains parser-compatible" $'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true' "$out"
+done
+
+# A slow jobs call must be unknown after 5s, not complete when it returns at 8s.
+if [ -n "$_TIMEOUT_BIN" ]; then
+  reset
+  runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+  jobs_json 1 0 0 "$t10" > "$TMP/fx/jobs-1.json"
+  started=$SECONDS
+  out="$(FAKE_GH_SLOW=1 run)"
+  elapsed=$((SECONDS - started))
+  is "slow jobs call times out as unknown" "ci-queue: unknown" "$out"
+  if [ "$elapsed" -lt 8 ]; then ok "slow jobs call cut off before completion"; else bad "slow jobs call took ${elapsed}s"; fi
+fi
+
+# Both GNU timeout spellings exist but are unusable; never fall back to unbounded gh.
+reset
+mkdir -p "$TMP/no-timeout"
+printf '#!/bin/sh\nexit 1\n' > "$TMP/no-timeout/timeout"
+cp "$TMP/no-timeout/timeout" "$TMP/no-timeout/gtimeout"
+chmod +x "$TMP/no-timeout/timeout" "$TMP/no-timeout/gtimeout"
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+out="$(PATH="$TMP/no-timeout:$PATH" run)"
+is "no timeout binary reports unknown" "ci-queue: unknown" "$out"
+if [ ! -e "$TMP/fx/calls.log" ]; then ok "no timeout binary makes no API calls"; else bad "no timeout binary ran gh unbounded"; fi
 
 # Zero, empty and nonnumeric overrides must not silently change the denominator.
 reset

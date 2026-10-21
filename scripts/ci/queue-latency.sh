@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/queue-latency.sh
 #
-# One read-only line for the console tick: how saturated is GitHub Actions?
+# Read-only counts for the console tick: how saturated is GitHub Actions?
 #   ci-queue: jobs_in_progress=N/60 macos=M/5 queued=Q oldest_wait=Xm
 # Fails soft: any API error, or a listing with no parseable body, prints
 # `ci-queue: unknown` and exits 0, so the tick is never blocked by it and an
@@ -126,4 +126,10 @@ done <<< "$runs"
 wait_min=0
 [ "$oldest" -gt 0 ] && wait_min=$(( (now - oldest) / 60 ))
 [ "$wait_min" -lt 0 ] && wait_min=0
+# A lower bound at the cap proves saturation. Keep that count parseable by
+# the tick, with the partial-count label on a separate metadata line; below
+# the cap, the inline label makes an exact-count reader report unknown.
+if [ -n "$sampled" ] && [ "$ip" -ge "$CI_MAX_JOBS" ]; then
+  sampled=$'\nci-queue: sampled=true'
+fi
 echo "ci-queue: jobs_in_progress=$ip/$CI_MAX_JOBS macos=$mac/$CI_MAX_MACOS queued=$q oldest_wait=${wait_min}m$sampled"

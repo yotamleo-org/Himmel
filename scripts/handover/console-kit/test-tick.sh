@@ -223,6 +223,28 @@ export CLAUDE_SESSIONS_PROC="$W/proc"
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
 
+# Partial counts below the cap cannot become an exact, healthy tick sample.
+mkdir -p "$W/repo/scripts/ci"
+cat > "$W/repo/scripts/ci/queue-latency.sh" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$STUB_CIQ_OUT"
+STUB
+sampled_out='ci-queue: jobs_in_progress=44/60 macos=0/5 queued=29 oldest_wait=10m sampled=true'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'a below-cap sampled probe stays unknown' "$sampled_tick" 'ciq=unknown'
+not_contains 'a below-cap sampled probe is not an exact count' "$sampled_tick" 'ciq=44/60'
+not_contains 'a below-cap sampled probe cannot claim saturation' "$sampled_tick" 'SATURATED'
+# Proven saturation keeps a parser-compatible count and a separate sample label.
+sampled_out=$'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true'
+STUB_CIQ_OUT="$sampled_out" bash "$SUT" >/dev/null 2>&1
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'two proven sampled breaches still raise SATURATED' "$sampled_tick" 'ciq=64/60,mac=0/5,q=32,wait=10m,SATURATED'
+rm -f "$W/repo/scripts/ci/queue-latency.sh"
+rm -rf "$W/state"
+if [ "${1:-}" = --ciq-sampled ]; then
+    if [ "$fails" -eq 0 ]; then printf 'PASSED\n'; exit 0; else printf 'FAILED=%s\n' "$fails"; exit 1; fi
+fi
+
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
