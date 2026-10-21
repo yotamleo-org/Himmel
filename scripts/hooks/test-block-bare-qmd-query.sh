@@ -1243,6 +1243,9 @@ deny 'git bisect run sh -c "cd x; qmd query y"'
 deny 'git filter-branch --tree-filter "cd x; qmd query y" HEAD'
 deny 'git send-email --to-cmd "cd x; qmd query y" p'
 deny "GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+deny "env GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+deny "env -i GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+deny "command env GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
 allow 'git rebase -x "make test" HEAD~1'
 allow 'git log --grep="qmd query" --oneline'
 
