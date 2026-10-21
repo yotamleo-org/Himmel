@@ -174,6 +174,7 @@ PORTABLE_FILES=(
   scripts/lib/load-dotenv.sh
   scripts/hooks/check-worktree-isolation.sh
   scripts/hooks/check-push-target.sh
+  scripts/hooks/check-no-force-push.sh
   scripts/guardrails/lib.sh
   scripts/guardrails/guard-gh.sh
   scripts/lib/py-armor.sh
@@ -996,7 +997,7 @@ install_native_hooks() {
     # Preserve the relative layout: check-worktree-isolation.sh and
     # check-push-target.sh both `source "$SCRIPT_DIR/../guardrails/lib.sh"`,
     # so a flat copy would break them.
-    for payload_file in scripts/hooks/check-commit-msg.sh scripts/hooks/check-worktree-isolation.sh scripts/hooks/check-push-target.sh scripts/guardrails/lib.sh scripts/lib/project-mode.sh scripts/lib/git-clean.sh; do
+    for payload_file in scripts/hooks/check-commit-msg.sh scripts/hooks/check-worktree-isolation.sh scripts/hooks/check-push-target.sh scripts/hooks/check-no-force-push.sh scripts/guardrails/lib.sh scripts/lib/project-mode.sh scripts/lib/git-clean.sh; do
       if ! mkdir -p "$payload_dir/$(dirname "$payload_file")" || ! cp "$HIMMEL_ROOT/$payload_file" "$payload_dir/$payload_file"; then
         echo "  git gate hooks — FAILED (native: cannot copy $payload_file into $payload_dir)" >&2
         return 1
@@ -1004,7 +1005,8 @@ install_native_hooks() {
     done
     if ! chmod +x "$payload_dir/scripts/hooks/check-commit-msg.sh" \
                   "$payload_dir/scripts/hooks/check-worktree-isolation.sh" \
-                  "$payload_dir/scripts/hooks/check-push-target.sh"; then
+                  "$payload_dir/scripts/hooks/check-push-target.sh" \
+                  "$payload_dir/scripts/hooks/check-no-force-push.sh"; then
       echo "  git gate hooks — FAILED (native: cannot chmod +x payload scripts in $payload_dir)" >&2
       return 1
     fi
@@ -1016,7 +1018,7 @@ install_native_hooks() {
   # User scope normally references this clone; native Git gates must survive
   # its removal too. Project scope already copied these portable files.
   if [[ "$SCOPE" == "user" && ! "$TARGET" -ef "$HIMMEL_ROOT" ]]; then
-    for script in scripts/hooks/check-commit-msg.sh scripts/hooks/check-worktree-isolation.sh scripts/hooks/check-push-target.sh scripts/guardrails/lib.sh scripts/lib/project-mode.sh scripts/lib/git-clean.sh; do
+    for script in scripts/hooks/check-commit-msg.sh scripts/hooks/check-worktree-isolation.sh scripts/hooks/check-push-target.sh scripts/hooks/check-no-force-push.sh scripts/guardrails/lib.sh scripts/lib/project-mode.sh scripts/lib/git-clean.sh; do
       if ! copy_recorded "$script"; then
         echo "  git gate hooks — FAILED (native: cannot copy $script into $TARGET)" >&2
         return 1
@@ -1144,6 +1146,14 @@ else
 fi
 bash "\$gate" "\$@" < "\$reffile"
 gate_rc=\$?
+fp_gate="\$root/scripts/hooks/check-no-force-push.sh"
+[ -f "\$fp_gate" ] || fp_gate="\$hook_dir/himmel-payload/scripts/hooks/check-no-force-push.sh"
+if [ ! -f "\$fp_gate" ]; then
+  echo "himmel gate: check-no-force-push.sh not found in \$root/scripts/hooks or \$hook_dir/himmel-payload — re-run adopt.sh against this repository" >&2
+  gate_rc=1
+else
+  bash "\$fp_gate" "\$@" < "\$reffile" || gate_rc=1
+fi
 backup="\$hook_dir/$hook.himmel-backup"
 backup_rc=0
 if [ -x "\$backup" ]; then
