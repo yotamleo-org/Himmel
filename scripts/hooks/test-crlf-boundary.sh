@@ -616,9 +616,10 @@ check_bounded block-glm-external-writes Bash 0 "gi""t status" \
 # itself, isolating "does the hook reach the fence" from "what the fence
 # would decide" — exactly the boundary this suite is auditing.
 GE_PROJECT="$TMP/ge-project"
-mkdir -p "$GE_PROJECT/scripts/hooks" "$GE_PROJECT/scripts/guardrails"
+mkdir -p "$GE_PROJECT/scripts/hooks" "$GE_PROJECT/scripts/guardrails" "$GE_PROJECT/scripts/lib"
 cp "$SCRIPT_DIR/block-graphify-egress.sh" "$GE_PROJECT/scripts/hooks/block-graphify-egress.sh"
 cp "$SCRIPT_DIR/../guardrails/lib.sh" "$GE_PROJECT/scripts/guardrails/lib.sh"
+cp "$SCRIPT_DIR/../lib/bash-ast.sh" "$GE_PROJECT/scripts/lib/bash-ast.sh"
 cat > "$GE_PROJECT/scripts/guardrails/graphify-fence.sh" <<'FENCE'
 #!/usr/bin/env bash
 echo "FENCE_INVOKED"

@@ -79,13 +79,10 @@ block-rogue-claude-schedule.sh bs-newline-inside-word HIMMEL-5333
 guard-pr-check-literal.sh ansi-c-command-word HIMMEL-5335
 # block-git-stash.sh keeps only its literal core; these evasion
 # shapes are accepted misses, not chased.
-block-git-stash.sh bs-newline-inside-word HIMMEL-5745
-block-git-stash.sh ansi-c-command-word HIMMEL-5745
 block-git-stash.sh expansion-default-empty HIMMEL-5745
 block-git-stash.sh expansion-strip-empty HIMMEL-5745
 block-git-stash.sh expansion-indirect-empty HIMMEL-5745
 block-git-stash.sh expansion-adjacent-empty HIMMEL-5745
-block-git-stash.sh expansion-empty-word HIMMEL-5745
 block-git-stash.sh expansion-empty-arg HIMMEL-5745
 block-git-stash.sh zsh-modifier-tail-braceless HIMMEL-5745
 block-git-stash.sh zsh-modifier-tail-braced HIMMEL-5745
@@ -94,7 +91,6 @@ block-git-stash.sh zsh-modifier-root-braced HIMMEL-5745
 block-git-stash.sh zsh-subscript-braceless HIMMEL-5745
 block-git-stash.sh zsh-subscript-braced HIMMEL-5745
 block-git-stash.sh zsh-paramflag-indirect-empty HIMMEL-5745
-block-git-stash.sh zsh-modifier-empty-word HIMMEL-5745
 block-git-stash.sh zsh-modifier-empty-arg HIMMEL-5745
 '
 
