@@ -5,7 +5,8 @@
 #   K1  each containerized job has a block-form container: with the canonical
 #       image expression, registry credentials from github.token, --init (so
 #       orphaned descendants are reaped), --user 1001 (plus --privileged where
-#       bwrap needs it) and packages: read
+#       bwrap needs it) and packages: read, and sets defaults.run.shell to
+#       bash (a container's default run shell is sh, which has no pipefail)
 #   K2  every job names the same default ref, pinned by digest
 #   K3  the image expression is EVALUATED (python3 translation of the GitHub
 #       expression subset): push, schedule, dispatch and a same-repo PR get the
@@ -77,6 +78,8 @@ for j in $JOBS; do
   done
   if [ -n "$img" ] && [ -z "$miss" ]; then ok "K1 $j runs in the image ($opts, packages: read)"
   else bad "K1 $j container shape: missing${miss:- image line}"; fi
+  if grep -qxF "    defaults:" <<< "$b" && grep -qxE '        shell: bash( -e [{]0[}])?' <<< "$b"; then ok "K1 $j sets defaults.run.shell: bash"
+  else bad "K1 $j has no defaults.run.shell: bash, so its run steps get the container's sh"; fi
   # K2
   if [[ "$ref" =~ $REF_RE ]]; then ok "K2 $j default ref is digest-pinned"; else bad "K2 $j default ref '${ref:-<none>}' is not ghcr.io/yotamleo-org/himmel-ci@sha256:<64 hex>"; fi
   refs="$refs$ref"$'\n'
