@@ -202,6 +202,7 @@ forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
   mkdir -p "$d"
   check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
   cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
+  [ "$old" = bank-preflight.sh ] && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/"
   printf '%s\n' "$src" > "$d/$new"
   out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
   rc=$?

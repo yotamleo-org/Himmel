@@ -392,7 +392,7 @@ for key in $KEYS; do
     mkdir -p "$FC/$(dirname "$key")"
     cp "$REPO/$key" "$FC/$key"
     out=$(cd "$FC/home" && env -i PATH="/usr/bin:/bin" HOME="$FC/home" bash "$FC/$key" --help </dev/null 2>&1); rc=$?
-    case "$out" in *"cannot load"*"HIMMEL-3914"*) said=named ;; *) said=silent ;; esac
+    case "$out" in *"cannot load "*"/chokepoint-seam-guard.sh - refusing"*) said=named ;; *) said=silent ;; esac
     assert_eq "F1 $key without its lib -> rc 96, names the lib" "96|named" "$rc|$said"
 done
 
