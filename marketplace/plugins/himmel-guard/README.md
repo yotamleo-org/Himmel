@@ -27,7 +27,9 @@ install refuses destructive commands with no extra step. To opt out:
 `/himmel-update` with `HIMMEL_RECONCILE_PLUGINS=1` rewrites the template map
 verbatim and turns it back on, so to keep it off permanently also record
 `"himmel-guard@himmel": false` under `enabledPlugins` in
-`~/.claude/settings.local.json`. Turn it back on with
+`~/.claude/settings.local.json`. Claude Code does not read that file at
+runtime; himmel's reconcile reads it as an override input and copies the
+`false` into `settings.json` on its next run. Turn it back on with
 `/profile enable himmel-guard@himmel`.
 
 ## Layout
