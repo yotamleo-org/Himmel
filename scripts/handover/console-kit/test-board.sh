@@ -1147,7 +1147,8 @@ jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 
 # Preflight adoption and the baseline-method residual figure. RED control
 # (pre-fix board.mjs): preflight.hits reads 0 for the real hits[] row shape, and
 # per_merged_pr counts only residual-labelled tickets (1, not 2).
-crrun >/dev/null
+crrun >/dev/null; rc=$?
+contains 'cr-loop adoption run: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 chtml="$(cat "$CL/board.html" 2>/dev/null)"
 jcheck 'cr-loop --json: preflight adoption is PRs with a pass over merged PRs' 'M.trends.cr_loop.preflight.prs === 2 && M.trends.cr_loop.preflight.merged === 2'
@@ -1164,7 +1165,8 @@ CL_DEF="$CL/ledger-deferred.jsonl"
 } > "$CL_DEF"
 mirror_issue HIMMEL-9107 '["theme"]' '["v1.1.3"]' 'To Do' 2
 mirror_issue HIMMEL-9108 '["theme"]' '["v1.1.3"]' 'To Do' 2
-CL_LEDGER="$CL_DEF" crrun >/dev/null
+CL_LEDGER="$CL_DEF" crrun >/dev/null; rc=$?
+contains 'cr-loop deferred-keys run: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 chtml="$(cat "$CL/board.html" 2>/dev/null)"
 jcheck 'cr-loop --json: residuals per merged PR count distinct deferred_to keys created in the window (4 keys, 2 PRs), labelled or not' 'M.trends.cr_loop.residual.per_merged_pr === 2'
