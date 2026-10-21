@@ -1233,8 +1233,7 @@ EOF'
 # earlier word carried: ${_@P} and ${x@P} prompt-expand it, an arithmetic
 # subscript evaluates $_ again. A git -c alias runs its quoted value. The
 # command-position relief must not apply; the hook's own scan then decides
-# (it withdraws on an unquoted heredoc and reads a quoted alias as data), so
-# these rows assert the relief predicate itself.
+# (the 6338 rows below), so these rows assert the relief predicate itself.
 # relief NAME clean|withheld CMD — whether lib-cmdpos-clean.sh calls CMD clean.
 relief() {
     local got=withheld
@@ -1270,6 +1269,86 @@ relief "6015 control: a git -c alias running a gate is not clean" withheld \
 relief "6015 \${_@P} in a QUOTED heredoc body is data" clean 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
 cat <<'"'"'EOF'"'"'
 ${_@P}
+EOF'
+
+# 6338: the hook itself must act on those shapes, not only the relief predicate.
+# An unquoted heredoc body with a live $ beside a gate the rest of the command
+# carries fails closed; a quoted body, or an unquoted body with no $, stays data.
+# shellcheck disable=SC2016 # literal command text
+deny "6338 \${_@P} in an unquoted heredoc body re-expands a gate" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+${_@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+deny "6338 \${x@P} in an unquoted heredoc body re-expands a gate" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+deny "6338 an arithmetic subscript in an unquoted heredoc body re-expands a gate" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+$[a[$_]]
+EOF'
+# shellcheck disable=SC2016 # literal command text
+deny "6338 second heredoc of a command carries the live \$" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<A; cat <<B
+plain
+A
+${x@P}
+B'
+# shellcheck disable=SC2016 # literal command text
+deny "6338 <<- unquoted body with a live \$" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<-EOF
+	${x@P}
+	EOF'
+deny "6338 gate | tail before an unquoted heredoc" 'bash scripts/check-ci.sh 1 | tail -5
+cat <<EOF
+body
+EOF'
+# A delimiter ending in CR: the shell's heredoc runs to a line of `EOF<CR>`, the
+# hook sees the CR-stripped text and ends the body at the first `EOF`, so the
+# `${x@P}` line reads as outside the body.
+# shellcheck disable=SC2016 # literal command text
+cr_cmd=$(printf '%s\n' "echo '\$(bash scripts/check-ci.sh 1 | tail -1)'"; printf 'cat <<EOF\r\n'; printf '%s\n' body EOF '${x@P}' EOF)
+deny "6338 CR-ended heredoc delimiter keeps a live \$ line in the body" "$cr_cmd"
+# A `<<` inside a quote is not a heredoc: it must not queue a fake delimiter that
+# swallows the real body's live $ as data.
+# shellcheck disable=SC2016 # literal command text
+deny "6338 a quoted << does not hide the real unquoted body" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+echo '"'"'<<FAKE'"'"'
+cat <<EOF
+${x@P}
+EOF'
+# The marker exempts the line it sits on, not the whole command.
+# shellcheck disable=SC2016 # literal command text
+deny "6338 a marker on an unrelated command does not exempt the heredoc" 'echo hi # tail-pipe-ok: unrelated
+echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+allow "6338 unquoted body with a live \$ and no gate anywhere" 'cat <<EOF
+home is $HOME
+EOF'
+# shellcheck disable=SC2016 # literal command text
+allow "6338 \${x@P} in a QUOTED heredoc body is data" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<'"'"'EOF'"'"'
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+allow "6338 \${x@P} in a heredoc whose delimiter is backslash-quoted is data" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<\EOF
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+allow "6338 the opt-out marker still opts out" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"' # tail-pipe-ok: documented
+cat <<EOF
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+allow "6338 the opt-out marker on the heredoc opener line opts out" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF # tail-pipe-ok: documented
+${x@P}
 EOF'
 
 if [ "$FAILED" -eq 0 ]; then

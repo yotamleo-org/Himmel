@@ -14,8 +14,7 @@ depth*, not a prerequisite — the steps below stand on their own.
 
 > **Before you start:** himmel is a harness *for* Claude Code, so you need
 > [Claude Code](https://claude.com/claude-code) installed —
-> `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS) or
-> `irm https://claude.ai/install.ps1 | iex` (Windows). The install wizard
+> `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). The install wizard
 > checks for it — and for the other prerequisites, failing fast with install
 > hints (the node-less bootstrap step below installs Node itself).
 
@@ -24,7 +23,7 @@ depth*, not a prerequisite — the steps below stand on their own.
 Clone once, then run the installer against the repo you want the harness in:
 
 ```bash
-git clone https://github.com/yotamleo/himmel
+git clone https://github.com/yotamleo-org/Himmel himmel
 node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 ```
 
@@ -93,8 +92,8 @@ a real toy change? The **[daily-loop walkthrough](daily-loop.md)** runs the real
 workflow on a real branch (≈15 min). Optional, but the best way to build trust in
 what each guard does.
 
-Going unattended later: `/overnight-shift --limit 5` dispatches scoped tickets as
-parallel agents that open PRs while you sleep ([AFK (unattended) mode](handover/overnight-mode.md)).
+Going unattended later: `/afk-shift --limit 5` dispatches scoped tickets as
+parallel agents that open PRs while you sleep ([AFK (unattended) mode](handover/afk-mode.md)).
 
 ## Initiative mode + planning pipelines
 
@@ -220,7 +219,7 @@ guard is yours to lift:
 | Understand every hook + gate | [internals/enforcement.md](internals/enforcement.md) |
 | Browse the slash commands | [commands-catalog.md](commands-catalog.md) |
 | Browse every tool/script | [tooling-catalog.md](tooling-catalog.md) |
-| Run unattended overnight | [handover/overnight-mode.md](handover/overnight-mode.md) |
+| Run unattended overnight | [handover/afk-mode.md](handover/afk-mode.md) |
 | Adopt the core in another repo | [setup/install.md](setup/install.md) |
 | Full machine setup + gotchas | [setup/new-machine.md](setup/new-machine.md) |
 | Update the harness + upgrade the vault | [setup/updating.md](setup/updating.md) |

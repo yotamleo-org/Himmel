@@ -1,12 +1,12 @@
 # himmel
 
-> A harness that runs Claude Code as a managed, PR-gated, overnight-capable agent: hooks, git gates and guardrails enforce the workflow at the tool-call layer instead of asking the model to remember prose. Memory is durable, hand-editable markdown — handover files plus an optional companion vault — not a vector DB.
+> A harness that runs Claude Code as a managed, PR-gated, overnight-capable agent: hooks, git gates and guardrails enforce the workflow at the tool-call layer instead of asking the model to remember prose. Memory is durable, hand-editable markdown (handover files plus an optional companion vault), not a vector DB.
 
-Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first — it is the authoritative rule set. Just **pointed at** this repo to set it up? Start at Install. Everything below is a router: open the linked file.
+Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first, the authoritative rule set. Just **pointed at** it to set it up? Start at Install. Everything below is a router: open the linked file.
 
 ## Install
 
-himmel is a harness *for* [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `jq`, `python3`; `gh` and `bun` optional) and fails fast with hints.
+himmel is a harness *for* [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `jq`, `python3`; `gh`, `bun` optional).
 
 ```bash
 git clone https://github.com/yotamleo/himmel
@@ -14,32 +14,28 @@ node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 # node-less machine? run first: bash himmel/scripts/himmelctl/bootstrap.sh
 ```
 
-Four independent axes, each named exactly once here:
+Four independent axes:
 
-- **Scope** — `project` wires the target repo's `.claude/settings.json` (commit it and everyone who clones the repo gets the harness); `user` wires `~/.claude/settings.json` (you, in every project on this machine). Change it later with `himmelctl scope set <project|user>`.
-- **Install profile** — `core` (hooks, git gates, worktree workflow, marketplace plugins), `luna` (companion-vault scaffold), or `all`. Item membership is data: `scripts/install/manifest.json`.
-- **Saved install-profile file** — a `*.install-profile.json` preset of every wizard answer, including the release channel. `--scope` loads a shipped adopter one; `--from-profile <file>` loads your own. Detail: [docs/setup/profiles/README.md](docs/setup/profiles/README.md).
-- **Release channel** — `stable` (highest `vX.Y.Z` tag) or `pre` (prereleases too), read from `HIMMEL_UPDATE_CHANNEL` or the saved install-profile file's `channel`; neither set means a plain `git pull`. Detail: [docs/setup/updating.md](docs/setup/updating.md).
+- **Scope** — `project` wires the target repo's `.claude/settings.json` (commit it and everyone who clones the repo gets the harness); `user` wires `~/.claude/settings.json` (you, in every project). Change it later with `himmelctl scope set <project|user>`.
+- **Install profile** — `core` (hooks, git gates, worktree workflow, marketplace plugins), `luna` (companion-vault scaffold), or `all`. Membership: `scripts/install/manifest.json`.
+- **Saved install-profile file** — a `*.install-profile.json` preset of every wizard answer, including the release channel; `--scope` loads a shipped one, `--from-profile <file>` your own. Detail: [docs/setup/profiles/README.md](docs/setup/profiles/README.md).
+- **Release channel** — `stable` (highest `vX.Y.Z` tag) or `pre` (prereleases too), from `HIMMEL_UPDATE_CHANNEL` or the saved file's `channel`; neither set means a plain `git pull`. Detail: [docs/setup/updating.md](docs/setup/updating.md).
 
-A fifth, unrelated axis: the **plugin profile** — `lean` vs `full` marketplace plugin sets, toggled with `/profile`, registry at `scripts/lanes/plugin-profiles.json`. The always-on `base` carries `lean-skills@himmel` (vendored workflow skills) and `i-have-adhd@himmel` (vendored; the installer and updater create its flag file unless `HIMMEL_NO_ADHD_ALWAYS=1`); `design` adds the HTML/UI design kit and `domain-modeling@himmel` per-dispatch; `user` enables opt-in `pstack@himmel`; `humanizer@himmel` is in no plugin profile.
-
-Full walkthrough plus the adaptation checklist for a non-himmel repo: [docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
+Full walkthrough and the adaptation checklist for a non-himmel repo: [docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
 
 ## Lifecycle verbs
 
-- `/himmel-doctor` — read-only, severity-grouped health report; `--fix` repairs the node wiring.
-- `/himmel-update` — harness `git pull` plus a marketplace re-sync. Claude Code's `autoUpdate` does **not** deliver himmel.
-- `node scripts/himmelctl/bin.js ensure` — reconcile a drifted install against the manifest, per item, with severities.
-- `node scripts/himmelctl/bin.js uninstall` — symmetric offboarding, both scopes.
-- `/luna-upgrade` — upgrade a companion vault to the current template.
-
-All five paths: [docs/setup/updating.md](docs/setup/updating.md).
+`/himmel-doctor` (read-only health report; `--fix` repairs the node wiring), `/himmel-update` (harness `git pull` plus a marketplace re-sync; Claude Code's `autoUpdate` does **not** deliver himmel), `node scripts/himmelctl/bin.js ensure` (reconcile a drifted install) and `uninstall`, `/luna-upgrade` (upgrade a companion vault). All paths: [docs/setup/updating.md](docs/setup/updating.md).
 
 ## Enforcement
 
-Structural, not prose: Claude Code PreToolUse/PostToolUse hooks plus `pre-commit` / `commit-msg` / `pre-push` git gates. **Do not read an enumerated hook list from any document — it drifts.** The live inventory is `.claude/settings.json` and `.pre-commit-config.yaml`; the classification of every gate as HARD / auth-gated / warn-only, plus each layer's off-switch, is [docs/configuration.md](docs/configuration.md). Off switches are session env vars set in the *launching* shell, never a per-call prefix.
+Structural, not prose: Claude Code PreToolUse/PostToolUse hooks plus `pre-commit` / `commit-msg` / `pre-push` git gates. **Do not read an enumerated hook list from any document; it drifts.** The live inventory is `.claude/settings.json` and `.pre-commit-config.yaml`; every gate's class (HARD / auth-gated / warn-only) and off-switch is in [docs/configuration.md](docs/configuration.md). Off switches are session env vars set in the *launching* shell, never a per-call prefix.
 
 Data egress from graph extraction is fenced by one policy file, `scripts/guardrails/egress-matrix.json`.
+
+## Docs site
+
+The published [docs site](https://yotamleo-org.github.io/Himmel/) and its [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html) are the human front door. Also: [glossary](docs/glossary.md), [stuck playbook](marketplace/plugins/himmel-ops/skills/stuck-playbook/SKILL.md), [contributing](docs/contributing.md). <!-- env-literal-ok: published docs site -->
 
 ## Guide map
 
@@ -48,13 +44,13 @@ Data egress from graph extraction is fenced by one policy file, `scripts/guardra
 - [docs/getting-started.md](docs/getting-started.md) — install to first PR-gated loop, ~15 minutes.
 - [docs/daily-loop.md](docs/daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), each gate explained where it fires.
 - [docs/architecture.md](docs/architecture.md) — the enforcement, handover, fleet and observability diagrams.
-- [docs/handover/overnight-mode.md](docs/handover/overnight-mode.md) — unattended end-to-end execution of a scoped ticket.
+- [docs/handover/afk-mode.md](docs/handover/afk-mode.md) — unattended end-to-end execution of a scoped ticket.
 - [docs/commands-catalog.md](docs/commands-catalog.md) · [docs/tooling-catalog.md](docs/tooling-catalog.md) — the slash commands, and every tool/script/plugin in use.
-- [docs/ui.md](docs/ui.md) — the UI surfaces: `himmelctl ui` config console (Config, Health, Fleet, Roadmap, AG-UI run view; operator runs it, needs bun), the console board (`board.mjs`), the roadmap tracker (`tracker.py`).
+- [docs/ui.md](docs/ui.md) — the UI surfaces: the `himmelctl ui` config console (needs bun), the console board (`board.mjs`), the roadmap tracker (`tracker.py`).
 - [docs/setup/new-machine.md](docs/setup/new-machine.md) — fresh-machine setup and the contributor path.
 - [.env.example](.env.example) — every operator flag, grouped by how it reaches code.
 - [marketplace/plugins/handover/README.md](marketplace/plugins/handover/README.md) — cross-session handover state.
 - [docs/himmelctl.md](docs/himmelctl.md) · [docs/cadences.md](docs/cadences.md) · [docs/himmel-bus.md](docs/himmel-bus.md) — `himmelctl` verbs, recurring jobs, the local session bus.
-- [marketplace/plugins/himmel-guard/README.md](marketplace/plugins/himmel-guard/README.md) · [marketplace/plugins/shadcn-mcp/README.md](marketplace/plugins/shadcn-mcp/README.md) · [marketplace/plugins/graphify/README.md](marketplace/plugins/graphify/README.md) — guard, shadcn/ui, graphify plugins.
+- [marketplace/plugins/himmel-guard/README.md](marketplace/plugins/himmel-guard/README.md) · [marketplace/plugins/shadcn-mcp/README.md](marketplace/plugins/shadcn-mcp/README.md) · [marketplace/plugins/graphify/README.md](marketplace/plugins/graphify/README.md) — guard, shadcn/ui and graphify plugins.
 - [docs/telegram-bridge.md](docs/telegram-bridge.md) · [docs/hermes-runbook.md](docs/hermes-runbook.md) · [docs/launchers.md](docs/launchers.md) — optional remote control and alternate-model launchers.
 - [docs/README.md](docs/README.md) — the full docs map. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — license attribution.

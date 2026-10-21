@@ -1,0 +1,18 @@
+mode impacted
+reason base-sourced selector
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head 2e471d1a5db00f5857cd0a0a83d5f3ddc7a4163a
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+changed scripts/hooks/test-log-classifier-denial.sh
+suite scripts/cr/test-pr-check-run.sh
+suite scripts/guardrails/test-check-git-env-scrub.sh
+suite scripts/guardrails/test-lint-fail-open.sh
+suite scripts/hooks/test-check-hook-file-parse.sh
+suite scripts/hooks/test-crlf-boundary.sh
+suite scripts/hooks/test-log-classifier-denial.sh
+suite scripts/hooks/test-wired-hooks-integrity-resolution.sh
+suite scripts/lib/test-override-env.sh
+suite scripts/lib/test-red-control-extraction-lint.sh
+suite scripts/lint/test-shell-lint.sh
+suite scripts/testing/test-unwired-hooks.sh
+shard 1/1

@@ -145,6 +145,13 @@ test("leg -> Jira sync: flag a stuck leg with the reason, clear the flag on resu
   expect(ops.some((o) => o.argv.includes("transition"))).toBe(false);
 });
 
+test("leg -> Jira sync: a parked leg is stuck under either marker name", () => {
+  for (const marker of ["PARKED-USAGE", "PARKED-BANK"]) {
+    const ops = legSync([{ k: 1, labels: [], noted: "", leg: { label: "N1", marker, reason: "" } } as any]);
+    expect(ops.map((o) => o.argv)[0]).toEqual(["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL]);
+  }
+});
+
 test("librarian: stale In Progress, drift, unthemed, released-but-open and duplicate titles, as proposals", () => {
   const l = read(station()).librarian;
   expect(l.staleInProgress.map((p) => p.k)).toEqual([2]);
@@ -183,7 +190,7 @@ test("the page renders every section and escapes ticket text", () => {
 
 test("the rail lists Roadmap and Kanban after Fleet, and both are console routes", () => {
   const labels = navLinks({ here: "console", token: TOKEN, current: "roadmap" }).map((l) => l.label);
-  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Roadmap", "Kanban"]);
+  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
   expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "roadmap" });
   expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "kanban" });
 });

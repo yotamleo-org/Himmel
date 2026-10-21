@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# overnight/morning-report — consolidated morning report for /overnight-shift.
+# overnight/morning-report — consolidated morning report for /afk-shift.
 #
-# The run-end path of /overnight-shift collects one TSV row per dispatched
+# The run-end path of /afk-shift collects one TSV row per dispatched
 # ticket and feeds it here (stdin or --rows FILE):
 #
 #   KEY \t BRANCH \t PR \t STATUS \t OUTCOME [\t DECISION]

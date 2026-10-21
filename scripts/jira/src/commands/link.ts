@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
+import { earliestUnreleased, fetchVersions } from './versions.js';
 
 interface IssueLinkType {
   name: string;
@@ -51,10 +52,11 @@ export function findLinkType(
 }
 
 /**
- * Create the link and return the relationship as Jira STORES it: the inward
- * issue reads with the type's inward text ("HIM-1 is blocked by HIM-2"), which
- * is what `links` shows afterwards (HIMMEL-3901). inwardKey/outwardKey map
- * directly to Jira's inwardIssue/outwardIssue.
+ * Create the link and return the relationship as Jira STORES it. Jira's POST
+ * takes the inward issue as the SOURCE of the link: it reads with the type's
+ * outward text ("HIM-1 blocks HIM-2") and the outward issue with the inward
+ * text ("HIM-2 is blocked by HIM-1"), which is what `links` shows afterwards.
+ * inwardKey/outwardKey map directly to Jira's inwardIssue/outwardIssue.
  */
 export async function createIssueLink(
   inwardKey: string,
@@ -67,9 +69,36 @@ export async function createIssueLink(
     inwardIssue: { key: inwardKey },
     outwardIssue: { key: outwardKey },
   });
-  return `Linked: ${inwardKey} ${type.inward ?? type.name} ${outwardKey}`;
+  return `Linked: ${inwardKey} ${type.outward ?? type.name} ${outwardKey}`;
 }
 
+// A 2xx POST does not prove the link exists (Jira can accept and drop it), so
+// read the inward issue back and fail loud when the pair is not there.
+export async function verifyIssueLink(
+  inwardKey: string,
+  outwardKey: string,
+  type: IssueLinkType,
+  requestFn: RequestFn = request,
+): Promise<void> {
+  const issue = await requestFn('GET', `/issue/${inwardKey}?fields=issuelinks`) as IssueLinksResponse;
+  const found = (issue.fields.issuelinks ?? []).some(
+    (link) =>
+      link.type.name.toLowerCase() === type.name.toLowerCase() &&
+      link.outwardIssue !== undefined &&
+      sameIssueKey(link.outwardIssue.key, outwardKey),
+  );
+  if (!found) {
+    throw new Error(
+      `Link ${inwardKey}: the ${type.name} link was not changed — requested inward=${inwardKey}, ` +
+        `outward=${outwardKey} but the issue still shows no such link after the POST.`,
+    );
+  }
+}
+
+// A GET entry names the OTHER issue: `outwardIssue` means this issue reads with
+// the type's outward text ("this blocks that") and is the inward (source) issue
+// of the POST that made it; `inwardIssue` means this issue reads with the
+// inward text ("this is blocked by that").
 function directedIssueLink(
   currentKey: string,
   link: IssueLink,
@@ -96,7 +125,7 @@ function directedIssueLink(
 function formatDirectedIssueLink(currentKey: string, candidate: DirectedIssueLink): string {
   const { link, inwardKey, outwardKey, currentSide } = candidate;
   const otherKey = currentSide === 'inward' ? outwardKey : inwardKey;
-  const relation = currentSide === 'inward' ? link.type.inward : link.type.outward;
+  const relation = currentSide === 'inward' ? link.type.outward : link.type.inward;
   return `${link.id}\t${link.type.name}\tinward=${inwardKey}\toutward=${outwardKey}\t${currentKey} ${relation} ${otherKey}`;
 }
 
@@ -165,13 +194,37 @@ export async function unlinkIssueLink(
   return match.link;
 }
 
+interface VersionPlacement {
+  fields: {
+    project: { key: string };
+    fixVersions?: { name: string }[];
+    status?: { statusCategory: { key: string } };
+  };
+}
+
+/** Only the target project's active version is inherited, never a released or future version. */
+export async function targetFixVersion(key: string): Promise<string | undefined> {
+  const { fields } = await request<VersionPlacement>('GET', `/issue/${key}?fields=project,fixVersions`);
+  if (!fields.fixVersions?.length) return undefined;
+  const current = earliestUnreleased(await fetchVersions(fields.project.key));
+  return fields.fixVersions.some((v) => v.name === current) ? current : undefined;
+}
+
+/** Existing tickets are never silently re-versioned: place the blocker first or explicitly opt out. */
+export async function requireBlockerVersion(key: string, version: string): Promise<void> {
+  const { fields } = await request<VersionPlacement>('GET', `/issue/${key}?fields=status,fixVersions`);
+  if (fields.status?.statusCategory.key === 'done') return;
+  if (fields.fixVersions?.some((v) => v.name === version)) return;
+  throw new Error(`${key} must carry fixVersion ${version} before linking; add that version first, or pass --backlog to opt out`);
+}
+
 export function registerLink(program: Command): void {
   program
     .command('link <key> [otherKey]')
     .description(
       'Create an issue link: `link A B [--type T]` (first key is the inward issue). ' +
-      'Blocks is refused in the bare two-key form because it stores "A is blocked ' +
-      'by B"; use `link A --blocks B` ("A blocks B") or `link A --blocked-by B` ' +
+      'Blocks is refused in the bare two-key form because it stores "A blocks ' +
+      'B"; use `link A --blocks B` ("A blocks B") or `link A --blocked-by B` ' +
       '("A is blocked by B").',
     )
     .option(
@@ -180,30 +233,32 @@ export function registerLink(program: Command): void {
     )
     .option('--blocks <key>', 'Create `link A --blocks B`: A blocks B')
     .option('--blocked-by <key>', 'Create `link A --blocked-by B`: A is blocked by B')
+    .option('--split-from <key>', 'Record this issue as split from <key> with a Relates link and require its active version')
+    .option('--backlog', 'Explicitly allow a blocker outside the active target version (does not edit either ticket)')
     .action(
       async (
         key: string,
         otherKey: string | undefined,
-        opts: { type?: string; blocks?: string; blockedBy?: string },
+        opts: { type?: string; blocks?: string; blockedBy?: string; splitFrom?: string; backlog?: boolean },
       ) => {
         const fail = (msg: string): never => {
           console.error(msg);
           process.exit(1);
         };
-        const explicit = opts.blocks !== undefined || opts.blockedBy !== undefined;
-        if (opts.blocks !== undefined && opts.blockedBy !== undefined) {
-          fail('Use only one of --blocks and --blocked-by.');
+        const explicit = [opts.blocks, opts.blockedBy, opts.splitFrom].filter((v) => v !== undefined);
+        if (explicit.length > 1) {
+          fail('Use only one of --blocks, --blocked-by and --split-from.');
         }
-        if (explicit && otherKey !== undefined) {
-          fail('--blocks/--blocked-by take the other key as their value; drop the second positional key.');
+        if (explicit.length && otherKey !== undefined) {
+          fail('--blocks/--blocked-by/--split-from take the other key as their value; drop the second positional key.');
         }
-        if (explicit && opts.type !== undefined && opts.type.toLowerCase() !== 'blocks') {
-          fail(`--blocks/--blocked-by create Blocks links; --type ${opts.type} conflicts.`);
+        const typeName = opts.splitFrom !== undefined ? 'Relates' : explicit.length ? 'Blocks' : (opts.type ?? 'Relates');
+        if (explicit.length && opts.type !== undefined && opts.type.toLowerCase() !== typeName.toLowerCase()) {
+          fail(`The relationship flag creates ${typeName} links; --type ${opts.type} conflicts.`);
         }
-        if (!explicit && otherKey === undefined) {
+        if (!explicit.length && otherKey === undefined) {
           fail('Missing second key: `link A B` (Relates), `link A --blocks B` or `link A --blocked-by B`.');
         }
-        const typeName = explicit ? 'Blocks' : (opts.type ?? 'Relates');
         // Validate the type up front so an unknown --type yields the list of
         // valid types instead of a raw 404 from the create call.
         const { issueLinkTypes } = await request<{
@@ -218,24 +273,29 @@ export function registerLink(program: Command): void {
         let inwardKey: string;
         let outwardKey: string;
         if (opts.blocks !== undefined) {
-          // "key blocks X": X is the inward ("is blocked by") issue.
-          inwardKey = opts.blocks;
-          outwardKey = key;
-        } else if (opts.blockedBy !== undefined) {
+          // "key blocks X": the blocker is the inward (source) issue.
           inwardKey = key;
-          outwardKey = opts.blockedBy;
+          outwardKey = opts.blocks;
+        } else if (opts.blockedBy !== undefined) {
+          inwardKey = opts.blockedBy;
+          outwardKey = key;
         } else {
           if (match.name.toLowerCase() === 'blocks') {
             fail(
-              'The bare two-key form is ambiguous for Blocks (it stores "A is blocked by B"). ' +
+              'The bare two-key form is ambiguous for Blocks (it stores "A blocks B"). ' +
               'Use `link A --blocks B` (A blocks B) or `link A --blocked-by B` (A is blocked by B).',
             );
           }
           inwardKey = key;
-          outwardKey = otherKey as string;
+          outwardKey = opts.splitFrom ?? otherKey as string;
+        }
+        if (explicit.length && !opts.backlog) {
+          const version = await targetFixVersion(outwardKey);
+          if (version) await requireBlockerVersion(inwardKey, version);
         }
         const line = await createIssueLink(inwardKey, outwardKey, match);
-        writeJiraBreadcrumb(inwardKey);
+        await verifyIssueLink(inwardKey, outwardKey, match);
+        writeJiraBreadcrumb(key);
         console.log(line);
       },
     );

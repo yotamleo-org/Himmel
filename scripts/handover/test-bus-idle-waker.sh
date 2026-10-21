@@ -14,6 +14,7 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/bus-waker.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export HANDOVER_DIR="$tmp/handovers"
+export BUS_WAKER_STATE_DIR="$tmp/wstate"
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 
 # Fake qdbus6: processId answers $QPID (or $QPID_LATER after its first call),
@@ -164,6 +165,7 @@ QSCREEN="$FIX/screen-trust.txt" BUS_N=2 run 8 0
 QSCREEN="$FIX/screen-busy.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn (spinner above the input box) gets no keystroke" || fail "typed into a busy turn: $(cat "$QLOG")"
 sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle.txt" > "$tmp/draft-screen"
+grep -qFx '❯ half-typed reply' "$tmp/draft-screen" || fail "draft fixture was not generated"
 QSCREEN="$tmp/draft-screen" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "an input box holding a draft gets no keystroke (Enter would submit it)" || fail "typed onto a draft: $(cat "$QLOG")"
 : > "$tmp/empty-screen"
@@ -173,6 +175,15 @@ BUS_N=2 run 3 0
 if grep -q sendText "$QLOG" && ! sed 's/.*sendText //' "$QLOG" | grep -q '[0-9]'; then
   pass "the idle prompt is woken, and the typed line carries no digit"
 else fail "idle wake or digit-free text: $(cat "$QLOG")"; fi
+# A leg name wider than the window truncates the box's top rule to ` <name>… ─`.
+QSCREEN="$FIX/screen-idle-longname.txt" BUS_N=2 run 3 0
+grep -qF "$FIXED" "$QLOG" && pass "an idle prompt under a truncated session-name rule is woken" || fail "long-name idle prompt not woken: $(cat "$QLOG")"
+sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle-longname.txt" > "$tmp/draft-longname"
+grep -qFx '❯ half-typed reply' "$tmp/draft-longname" || fail "long-name draft fixture was not generated"
+QSCREEN="$tmp/draft-longname" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a draft under a truncated session-name rule gets no keystroke" || fail "typed onto a long-name draft: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-nonrule-top.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a non-rule line ending in the rule character above an empty prompt gets no keystroke" || fail "woke on a non-rule top line: $(cat "$QLOG")"
 
 QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
@@ -191,6 +202,17 @@ rc=$?
 [ "$rc" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a real leg argv naming the session (-n <name>) is accepted" || fail "real leg argv: rc=$rc, qlog: $(cat "$QLOG")"
 QPID=4545 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "the same real argv aimed at another --name is refused, rc=4" || fail "real argv, wrong name: rc=$RUN_RC"
+
+echo "== waker state file =="
+# A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the
+# console tick; a healthy start clears a stale one, and a clean end leaves none.
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-denied" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>&1
+[ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = rc3 ] && pass "an AccessDenied end (rc=3) leaves state rc3" || fail "rc3 state: '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+QPID=4343 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = rc4 ] && pass "a refused target (rc=4) leaves state rc4" || fail "rc4 state: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+BUS_N=0 run 2 0
+[ "$RUN_RC" -eq 0 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a healthy start clears a stale rc4 state" || fail "stale state kept: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
 
 echo "== succession doc =="
 if grep -q 'run `bus adopt <new console>` as the leg' "$REPO/docs/handover/leg-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi

@@ -137,3 +137,12 @@ test('a token-shaped body makes a c=1 message a ruling', async t => {
   assert.equal(flat.find(o => o.path === '/bus/msgs/T1').value.kind, 'ruling');
   assert.equal(flat.find(o => o.path === '/bus/msgs/T2').value.kind, 'data');
 });
+
+test('a parked marker under either name is a report', async t => {
+  const { store, agui, root } = await fixture(t);
+  await store.append(root, 'leg', rec({ i: 'P1', b: 'PARKED-USAGE committed, waiting for RESUME' }));
+  await store.append(root, 'leg', rec({ i: 'P2', b: 'PARKED-BANK committed, waiting for RESUME' }));
+  const flat = ops(await collect(agui, root));
+  assert.equal(flat.find(o => o.path === '/bus/msgs/P1').value.kind, 'report');
+  assert.equal(flat.find(o => o.path === '/bus/msgs/P2').value.kind, 'report');
+});

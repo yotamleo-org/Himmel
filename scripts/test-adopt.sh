@@ -315,6 +315,26 @@ if [ -e "$base_home/.codex/AGENTS.md" ]; then
 fi
 echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md (HIMMEL-3309)"
 
+# ── 1c2. the adopted commit gate honours the project's .env ─────────────────
+# check-commit-msg.sh sources scripts/lib/load-dotenv.sh to read
+# TICKET_ID_REQUIRED from the project .env; a target without that lib silently
+# ignores the documented opt-out and refuses every commit.
+printf 'chore: add himmel\n' > "$work/msg-noticket.txt"
+gate_noticket() {  # run the adopted gate on a ticket-less message, rule vars scrubbed from the env
+  (cd "$proj" && export HOME="$base_home" \
+    && unset TICKET_ID_REQUIRED TICKET_ID_PATTERN TICKET_ID_EXEMPT_AUTHORS JIRA_PROJECT_KEY TRACKER \
+    && bash scripts/hooks/check-commit-msg.sh "$work/msg-noticket.txt" >/dev/null 2>&1)
+}
+set +e
+gate_noticket; rc_no_env=$?
+printf 'TICKET_ID_REQUIRED=0\n' > "$proj/.env"
+gate_noticket; rc_env=$?
+rm -f "$proj/.env"
+set -e
+[ "$rc_no_env" -ne 0 ] || fail "HIMMEL-6327: control: a ticket-less message passed with no opt-out"
+[ "$rc_env" -eq 0 ] || fail "HIMMEL-6327: TICKET_ID_REQUIRED=0 in the adopter project's .env did not reach the commit gate (rc=$rc_env)"
+echo "ok: adopted commit gate reads TICKET_ID_REQUIRED=0 from the project .env (HIMMEL-6327)"
+
 # ── 1d. trial path: no-origin repo on main ──────────────────────────────────
 # Install, commit the install on main (the one allowed commit), then cut a
 # worktree with no origin: it must carry scripts/ and .claude/worktrees/ must
@@ -324,9 +344,19 @@ git -C "$tp" init -q -b main
 git -C "$tp" config user.email t@t; git -C "$tp" config user.name t
 git -C "$tp" config commit.gpgsign false
 git -C "$tp" commit -q --allow-empty -m "chore: initial commit"
-HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" >/dev/null
+out_tp=$(HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" 2>&1)
 [ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "HIMMEL-6326: install without --commit-install must stay uncommitted"
 grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
+printed_tp=$(sed -n 's/^.*Commit it once with: //p' <<< "$out_tp")
+[ -n "$printed_tp" ] || fail "HIMMEL-6852: install on main printed no 'Commit it once with:' line: $out_tp"
+eval "printed_argv=($printed_tp)"
+case "${printed_argv[1]:-}" in /*) ;; *) fail "HIMMEL-6852: the printed adopt.sh path must be absolute (got: $printed_tp)" ;; esac
+head_before=$(git -C "$tp" rev-parse HEAD)
+( cd "$tp" && HOME="$base_home" "${printed_argv[@]}" >/dev/null 2>&1 ) || fail "HIMMEL-6852: the printed line failed from the project cwd: $printed_tp"
+[ "$(git -C "$tp" rev-parse HEAD)" != "$head_before" ] || fail "HIMMEL-6852: the printed line created no commit"
+git -C "$tp" show --name-only --format= HEAD | grep -q '^scripts/' || fail "HIMMEL-6852: the printed line's commit does not hold the installed scripts/"
+[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6852: the printed line left the install uncommitted"
+echo "ok: the printed --commit-install line runs from the project cwd (HIMMEL-6852)"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
 [ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
 [ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
@@ -2407,8 +2437,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "26" ] \
-  || fail "HIMMEL-3332 S4: expected 26 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "28" ] \
+  || fail "HIMMEL-3332 S4: expected 28 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

@@ -128,7 +128,7 @@ run_hook() {
     pf="$(mktemp "$ROOT_TMP/payload.XXXXXX")"
     printf '%s' "$CASE_PAYLOAD" > "$pf"
     out="$(env -u JIRA_PROJECT_KEY \
-        -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT \
+        -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
         HOME="$CASE_HOME" USERPROFILE="$CASE_HOME" PATH="$STUB_DIR:$PATH" \
         HIMMEL_JIRA_NUDGE="$gate" HIMMEL_INITIATIVE="$initiative" \
         JIRA_NUDGE_RELAY_CMD="$RELAY_CMD" \
@@ -164,6 +164,12 @@ if [ ! -f "$RELAY_LOG" ] || [ "$(grep -c . "$RELAY_LOG" 2>/dev/null || echo 0)" 
 build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
 OUT="$(run_hook 1 "ticket")"
 assert_no_nudge "ticket-leg suppresses" "$OUT"
+
+# 3b. afk profile by its new names from .env, ticket in its step list → suppress.
+build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
+printf 'HIMMEL_AFK=1\nHIMMEL_INITIATIVE_AFK=ticket\n' >> "$CASE_REPO/.env"
+OUT="$(run_hook 1 "")"
+assert_no_nudge "afk ticket leg from .env suppresses" "$OUT"
 
 # 4. No commit in window (the only commit predates session start) → no nudge.
 # Use real past dates (commit 2010, session start 2015) rather than a far-future
@@ -238,7 +244,7 @@ CURLEOF
     # queued path is owned by scripts/hooks/stop-queue.test.mjs and
     # scripts/lib/test-detach.sh (which assert enqueue, drain and fallback).
     printf '%s' "$CASE_PAYLOAD" | "$_TIMEOUT_BIN" 15 env -u JIRA_PROJECT_KEY \
-        -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT \
+        -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
         HOME="$CASE_HOME" USERPROFILE="$CASE_HOME" PATH="$STUB_DIR:$PATH" \
         TMPDIR="$TMPDIR_8B" HIMMEL_STOP_QUEUE_OFF=1 \
         HIMMEL_JIRA_NUDGE=1 TELEGRAM_BOT_TOKEN=t TELEGRAM_CHAT_ID=c \
@@ -283,7 +289,7 @@ build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
 PF_8C="$(mktemp "$ROOT_TMP/payload.XXXXXX")"
 printf '%s' "$CASE_PAYLOAD" > "$PF_8C"
 OUT="$(env -u JIRA_PROJECT_KEY \
-    -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT \
+    -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
     -u JIRA_NUDGE_RELAY_CMD -u TELEGRAM_BOT_TOKEN -u TELEGRAM_CHAT_ID \
     HOME="$CASE_HOME" USERPROFILE="$CASE_HOME" PATH="$STUB_DIR:$PATH" \
     HIMMEL_JIRA_NUDGE=1 bash "$HOOK" __himmel_detached "$PF_8C" 2>/dev/null)"
@@ -303,7 +309,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
     _t0=$(date +%s)
     printf '%s' "$CASE_PAYLOAD" | "$_TIMEOUT_BIN" 15 env -u JIRA_PROJECT_KEY \
-        -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT \
+        -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
         HOME="$CASE_HOME" USERPROFILE="$CASE_HOME" PATH="$STUB_DIR:$PATH" \
         HIMMEL_JIRA_NUDGE=0 JIRA_NUDGE_TEST_DELAY=12 HIMMEL_STOP_QUEUE_OFF=1 \
         bash "$HOOK" >/dev/null 2>&1
@@ -327,7 +333,7 @@ build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
 EMPTY_TMPDIR="$ROOT_TMP/empty-tmpdir"
 mkdir -p "$EMPTY_TMPDIR"
 printf '' | env -u JIRA_PROJECT_KEY \
-    -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT \
+    -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
     HOME="$CASE_HOME" USERPROFILE="$CASE_HOME" PATH="$STUB_DIR:$PATH" \
     TMPDIR="$EMPTY_TMPDIR" HIMMEL_JIRA_NUDGE=1 JIRA_NUDGE_TEST_DELAY=12 \
     JIRA_NUDGE_RELAY_CMD="$RELAY_CMD" \

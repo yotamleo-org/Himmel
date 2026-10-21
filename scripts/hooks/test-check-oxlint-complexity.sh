@@ -76,10 +76,10 @@ assert_says() {
 # both gates must invoke the SAME oxlint version, so a future bump of one
 # without the other goes red here rather than in CI.
 HARDENING_GATE="$SCRIPT_DIR/check-oxlint-hardening.sh"
-if grep -q '^OXLINT_VERSION=1\.88\.0$' "$GATE"; then
-    echo "PASS gate pins OXLINT_VERSION=1.88.0"
+if grep -q '^OXLINT_VERSION=1\.89\.0$' "$GATE"; then
+    echo "PASS gate pins OXLINT_VERSION=1.89.0"
 else
-    echo "FAIL gate must pin OXLINT_VERSION=1.88.0"
+    echo "FAIL gate must pin OXLINT_VERSION=1.89.0"
     FAILED=$((FAILED + 1))
 fi
 
@@ -121,7 +121,7 @@ out=$(cd "$BUN_ONLY" && PATH="$BUN_ONLY_BIN" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
 assert_eq "bun without bunx → gate passes (exit 0)" "0" "$rc"
 rec=$(cat "$BUN_ONLY/record.txt" 2>/dev/null || true)
 assert_says "bun without bunx → ran oxlint through bun x" "arg=x" "$rec"
-assert_says "bun without bunx → pinned package" "arg=oxlint@1.88.0" "$rec"
+assert_says "bun without bunx → pinned package" "arg=oxlint@1.89.0" "$rec"
 rm -f "$BUN_ONLY/record.txt"
 rc=0
 out=$(cd "$BUN_ONLY" && OXLINT_STUB_REGRESSION=1 OXLINT_COMPLEXITY_MAX=22 PATH="$BUN_ONLY_BIN" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
@@ -130,7 +130,7 @@ rm -rf "$BUN_ONLY" "$BUN_ONLY_BIN"
 
 # --- `--files` changed-files mode + OXLINT_FAIL_CLOSED ---
 # The stub's finding line is copied from a real run on this station:
-#   bun x oxlint@1.88.0 -A all -W complexity scripts/lanes/b.mjs  (25-branch function)
+#   bun x oxlint@1.89.0 -A all -W complexity scripts/lanes/b.mjs  (25-branch function)
 #   -> scripts/lanes/b.mjs:1:8: warning eslint(complexity): function `b` has a complexity of 26. Maximum allowed is 20.
 # and real oxlint exits 0 on a warning-only run, which the stub copies.
 FILES_FX=$(fixture_mktemp_dir) || exit 1
@@ -181,7 +181,7 @@ CRASH_BIN=$(fixture_mktemp_dir) || exit 1
 ln -s "$(command -v grep)" "$CRASH_BIN/grep"
 cat > "$CRASH_BIN/bun" <<EOF
 #!$BASH_ABS
-echo 'error: failed to fetch oxlint@1.88.0' >&2
+echo 'error: failed to fetch oxlint@1.89.0' >&2
 exit 1
 EOF
 chmod +x "$CRASH_BIN/bun"

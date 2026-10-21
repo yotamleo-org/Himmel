@@ -22,7 +22,9 @@
 //            source of truth is `codex app-server`
 //            (JSON-RPC account/rateLimits/read), captured by the BOUNDED
 //            probe scripts/lanes/codex-bank-probe.ts into
-//            ${CODEX_BANK_CACHE:-~/.himmel/cache/codex-bank.json}. bank-status
+//            ${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-~/.himmel/cache/codex-bank.json}}
+//            (every CODEX_USAGE_* name here wins over its old CODEX_BANK_*
+//            name, which is still read). bank-status
 //            runs the probe at most once per stale/missing read, locked,
 //            time-boxed and backed off: the
 //            probe reaps its own app-server tree, so the bounded run does not
@@ -91,8 +93,9 @@ const nowMs = Date.now();
 const env = process.env;
 const home = env.HOME ?? homedir();
 const claudeCache = defaultClaudeCachePath(env, process.platform);
-const codexBankCachePath = env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
-const codexBankTtlSeconds = positiveEnvNumber(env.CODEX_BANK_CACHE_TTL_SECONDS) ?? CODEX_BANK_TTL_DEFAULT_SECONDS;
+const codexBankCachePath = env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
+const codexBankTtlSeconds = positiveEnvNumber(env.CODEX_USAGE_CACHE_TTL_SECONDS)
+  ?? positiveEnvNumber(env.CODEX_BANK_CACHE_TTL_SECONDS) ?? CODEX_BANK_TTL_DEFAULT_SECONDS;
 const glmLedger = quotaGaugeLedgerPath(env);
 
 function positiveEnvNumber(v: string | undefined): number | null {
@@ -137,17 +140,19 @@ type DisplayResult =
 // run, so the console's bank line stops reading codex=? for days. Guards:
 //   - one refresher at a time (mkdir lock beside the cache); a concurrent
 //     caller waits inside the same box, then re-reads the cache;
-//   - the whole attempt is time-boxed (CODEX_BANK_REFRESH_BOX_MS, default 30s);
+//   - the whole attempt is time-boxed (CODEX_USAGE_REFRESH_BOX_MS, default 30s);
 //     the probe gets SIGTERM, whose handler reaps the codex app-server tree;
-//   - a failed or hung attempt is not retried for CODEX_BANK_REFRESH_BACKOFF_MS
+//   - a failed or hung attempt is not retried for CODEX_USAGE_REFRESH_BACKOFF_MS
 //     (attempt stamp), so a broken codex costs one box, not one box per call;
-//   - an overridden CODEX_BANK_CACHE without CODEX_BANK_PROBE_CMD is a test/ops
+//   - an overridden CODEX_USAGE_CACHE without CODEX_USAGE_PROBE_CMD is a test/ops
 //     seam and never spawns the real codex.
 // ponytail: refresh is triggered by the bank-status read (no daemon, no LLM
 // cadence), so a station nobody reads stays stale until the next read; add an
 // LLM-free cron only if the doctor WARN keeps firing.
-const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_BANK_REFRESH_BOX_MS) ?? 30_000;
-const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_BANK_REFRESH_BACKOFF_MS) ?? 300_000;
+const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BOX_MS)
+  ?? positiveEnvNumber(env.CODEX_BANK_REFRESH_BOX_MS) ?? 30_000;
+const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BACKOFF_MS)
+  ?? positiveEnvNumber(env.CODEX_BANK_REFRESH_BACKOFF_MS) ?? 300_000;
 const REFRESH_LOCK_STALE_MS = REFRESH_BOX_MS + 30_000;
 
 function sleepMs(ms: number): void {
@@ -155,7 +160,7 @@ function sleepMs(ms: number): void {
 }
 
 function refreshCodexCache(cachePath: string): void {
-  if (env.CODEX_BANK_CACHE && !env.CODEX_BANK_PROBE_CMD) return;
+  if ((env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE) && !(env.CODEX_USAGE_PROBE_CMD || env.CODEX_BANK_PROBE_CMD)) return;
   const lock = `${cachePath}.refresh.lock`;
   const stamp = `${cachePath}.refresh.attempt`;
   const deadline = Date.now() + REFRESH_BOX_MS;

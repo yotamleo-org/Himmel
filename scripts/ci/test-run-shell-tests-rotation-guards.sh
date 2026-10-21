@@ -7,9 +7,8 @@
 # other two are test-run-shell-tests-rotation.sh (17a-17f: the rotation
 # contract proper) and test-run-shell-tests-rotation-cursor.sh (17k-17m: the
 # cursor file's path — symlink refusal and key encoding). Split
-# them because each sub-case costs 25-51s against the same 25s-sleep sandbox,
-# and the eleven of them were 327s of the original file's 382s — the floor on
-# every shard of the sharded shell-unit job.
+# them because the sharded shell-unit job parallelises across FILES, so one
+# long file was the floor on every shard.
 #
 #   17g  HOME unset does not crash the runner (FIX 3): a bare $HOME under
 #        `set -u` would abort the WHOLE runner on a host that merely lacks a
@@ -82,7 +81,7 @@ fi
 # reaches the harmless "clear the cursor" branch and never exercises the
 # WRITE branch that used to build the dangerous "/.himmel/..." path in the
 # first place (that omission is exactly why 17g did not catch this). This
-# sub-case reuses the SAME truncating 15s budget as 17a/17e specifically to
+# sub-case reuses the SAME truncating budget as 17a/17e specifically to
 # reach that write branch.
 #
 # The real vulnerability was `mkdir -p /.himmel` SUCCEEDING when run as root
@@ -104,7 +103,7 @@ fi
 # without this test ever touching a real "/" itself.
 echo "== Case 17h: HOME unset disables rotation, no shared-root path (FIX 4) =="
 : > "$order17"
-out17h=$(env -u HOME -u SUITE_ROTATE_STATE SUITE_RUN_BUDGET=15 bash "$RUNNER" "$sb17" 2>&1)
+out17h=$(env -u HOME -u SUITE_ROTATE_STATE SUITE_RUN_BUDGET="$RST_ROTATE_BUDGET" bash "$RUNNER" "$sb17" 2>&1)
 rc17h=$?
 if [ "$rc17h" -eq 1 ]; then
   pass "17h: HOME unset, truncating budget -> still exit 1"

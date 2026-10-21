@@ -529,7 +529,7 @@ export function contextForProfile(registry, name) {
 // Profiles that cannot be members of a `--profile a,b` list: operator
 // injects nothing, bare skips base, and the role profiles carry guard semantics, so
 // none of them is additive. Shared with the launcher's --consult refusal.
-export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'console', 'console-relay', 'console-judge'];
+export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'console', 'console-relay', 'console-judge', 'release-manager'];
 
 // A comma list resolves to the UNION of its members. enabledPlugins is
 // an OR (a member's drop never switches off another member's enable), the floor
@@ -656,13 +656,13 @@ export function primaryCheckout(dir) {
 // "external" to it, so its install, tests, push and PR are denied. The documented
 // fix is an autoMode.environment entry, read only from user, managed or --settings
 // scope (never project settings), so it rides the resolved leg --settings file.
-// Exact owner/repo names only: no org wildcard, nothing outside yotamleo.
-const FORK_NWO_RE = /^yotamleo\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// Exact owner/repo names only: no org wildcard, nothing outside yotamleo-org.
+const FORK_NWO_RE = /^yotamleo-org\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export function forkTrustSettings(nwos) {
   if (!Array.isArray(nwos) || nwos.length === 0) return {};
   for (const n of nwos) {
     if (typeof n !== 'string' || !FORK_NWO_RE.test(n) || n.includes('..')) {
-      throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo/<repo> name`);
+      throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo-org/<repo> name`);
     }
   }
   const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
@@ -895,8 +895,10 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
     const { scanSkillCosts } = await import('./skill-cost.mjs');
     const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const skillEntries = scanSkillCosts({ cwd: process.cwd(), configDir }).entries;
-    // Fork trust is read from the ANCHOR's registry copy, never a leg worktree's bytes.
-    const forkNwos = anchor ? forkNwosFromAdapters(join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json')) : [];
+    // Fork trust is read from the ANCHOR's registry copy, never a leg worktree's bytes,
+    // unless the launching environment names a registry file (a suite testing a registry change).
+    const adaptersPath = process.env.PLUGIN_PROFILES_ADAPTERS || (anchor ? join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json') : null);
+    const forkNwos = adaptersPath ? forkNwosFromAdapters(adaptersPath) : [];
     const settings = resolveProfileByName(name, { addPlugins, installed, anchor: anchor ?? undefined, forkNwos, skillEntries, configDir, cwd: process.cwd() });
     if (settings === null) process.exit(0); // operator: nothing to inject
     process.stdout.write(JSON.stringify(settings) + '\n');

@@ -74,14 +74,15 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 _kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|disposition) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|disposition" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
 prompt_chars="" response_chars="" reason="" detail="" deferred_to="" fu_class="" set_pairs="" attempt_num="" duration_secs="" batch_file="" text=""
 round="" disposition_round="" hit_pairs=""
 crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
+target_head="" disposition="" source="" attest="" pr="" mac=""
 while [ $# -gt 0 ]; do case "$1" in
   --branch) branch="$2"; shift 2;; --head) head="$2"; shift 2;;
   --model) model="$2"; shift 2;; --responding-model) responding_model="$2"; shift 2;;
@@ -104,6 +105,9 @@ while [ $# -gt 0 ]; do case "$1" in
   --hit) hit_pairs="$hit_pairs$2"$'\n'; shift 2;;
   --attempt) attempt_num="$2"; shift 2;; --duration-secs) duration_secs="$2"; shift 2;;
   --batch-file) batch_file="$2"; shift 2;;
+  --target-head) target_head="$2"; shift 2;; --disposition) disposition="$2"; shift 2;;
+  --source) source="$2"; shift 2;; --attest) attest="$2"; shift 2;;
+  --pr) pr="$2"; shift 2;; --mac) mac="$2"; shift 2;;
   *) echo "ledger-append.sh: unknown $1" >&2; exit 2;;
 esac; done
 
@@ -426,6 +430,19 @@ if [ "$kind" = "preflight" ]; then
   done <<< "$hit_pairs"
 fi
 
+# disposition: cr-disposition.sh record's signed row. It is an `amend` row
+# (set.disposition) on the finding at --target-head, bound to the PR (--pr) and
+# the PR head (--head) it was recorded at; cr-disposition.sh computes --mac over
+# those fields, so this writer only stamps and appends. NEVER deduped: the
+# latest row for the PR head wins.
+if [ "$kind" = "disposition" ]; then
+  for _dp in "branch:$branch" "head:$head" "id:$id" "target-head:$target_head" "disposition:$disposition" "source:$source" "pr:$pr" "mac:$mac"; do
+    [ -n "${_dp#*:}" ] || { echo "ledger-append.sh: disposition requires --${_dp%%:*}" >&2; exit 2; }
+  done
+  expr "$target_head" : '^[0-9a-f]\{40\}$' >/dev/null 2>&1 || { echo "ledger-append.sh: disposition --target-head must be a full 40-hex sha (got '$target_head')" >&2; exit 2; }
+  expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: disposition --pr must be a positive integer (got '$pr')" >&2; exit 2; }
+fi
+
 # attempt: one row per invocation ATTEMPT (primary + each
 # fallback candidate), never deduped — unlike avail (one authoritative row per
 # head+model), the point of this kind is to keep every attempt's own timing,
@@ -558,10 +575,17 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
+  // Every amend is signed so the gate readers honour it (ledger-amend-auth.js);
+  // a fixture copy run without that helper writes it unsigned.
+  const signAmend=(rec)=>{
+    try { require(e.AMEND_AUTH).sign(rec); }
+    catch(err){ process.stderr.write("ledger-append.sh: amend written unsigned ("+err.message.split("\n")[0]+")\n"); }
+    return rec;
+  };
   // Keep this small inline copy in parity with finding-fingerprint.js. The
   // writer is intentionally standalone: anchor/fixture flows copy this one
   // script without adjacent JS files. test-ledger-append.sh locks single/batch
@@ -868,7 +892,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
             if(rec.deferred_to) set.deferred_to=rec.deferred_to;
             const amend={kind:"amend",ts:spec.ts||e.TS,branch:spec.branch,target_head:prior.head,finding_id:sid,
                          artifact,perspective,set,reason:"verdict appended after adjudication"};
-            fs.appendFileSync(led, JSON.stringify(amend)+"\n");
+            fs.appendFileSync(led, JSON.stringify(signAmend(amend))+"\n");
             parsed.push(amend);
             const amKey=[amend.branch||"",amend.target_head,amend.finding_id,amend.artifact,amend.perspective].join(SEP);
             amendsByKey.set(amKey,Object.assign({},amendsByKey.get(amKey)||{},amend.set));
@@ -1079,7 +1103,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // producer round as the disposition round. Only an amend that actually
     // sets a verdict is an adjudication; a bookkeeping amend carries no round.
     if(e.DISPOSITION_ROUND&&set.verdict) rec.disposition_round=Number(e.DISPOSITION_ROUND);
-    fs.appendFileSync(led, JSON.stringify(rec)+"\n");
+    fs.appendFileSync(led, JSON.stringify(signAmend(rec))+"\n");
     process.stderr.write("ledger-append.sh: amended "+e.ID+" at "+e.HEAD_.slice(0,8)+" -> "
       +JSON.stringify(set)+"\n");
     process.exit(0);
@@ -1174,7 +1198,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
           const amend={kind:"amend",ts:e.TS,branch:e.BRANCH,target_head:prior.head,finding_id:e.ID,
                        artifact:e.ARTIFACT,perspective:e.PERSPECTIVE,set,
                        reason:"verdict appended after adjudication"};
-          fs.appendFileSync(led, JSON.stringify(amend)+"\n");
+          fs.appendFileSync(led, JSON.stringify(signAmend(amend))+"\n");
           process.stderr.write("ledger-append.sh: appended verdict amend for "+e.ID+" at "+e.HEAD_.slice(0,8)+"\n");
           process.exit(0);
         }
@@ -1241,6 +1265,21 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     const n=(s)=>hits.filter(h=>h.state===s).length;
     rec={kind:"preflight",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,hits,hit_n:hits.length,fixed:n("fixed"),waived:n("waived"),checked:n("checked")};
     if(e.DURATION_SECS!=="") rec.duration_secs=Number(e.DURATION_SECS)||0;
+    dup=false;
+  } else if(e.KIND==="disposition"){
+    // The amend row cr-disposition.sh check reads (set.disposition, keyed on
+    // the finding's branch + head + id). The finding must already be on the
+    // ledger at --target-head; its artifact/perspective ride onto the row.
+    let f=null;
+    for(const o of parsed) if(o.kind==="finding"&&o.branch===e.BRANCH&&o.finding_id===e.ID&&o.head===e.TARGET_HEAD) f=o;
+    if(!f){
+      process.stderr.write("ledger-append.sh: disposition found no finding "+e.ID+"@"+e.TARGET_HEAD+" on "+e.BRANCH+" in the CR ledger - NOTHING was written\n");
+      process.exit(2);
+    }
+    rec={kind:"amend",ts:e.TS,branch:e.BRANCH,target_head:e.TARGET_HEAD,finding_id:e.ID,
+         artifact:f.artifact||"diff",perspective:f.perspective||"off",set:{disposition:e.DISPOSITION},
+         reason:"disposition recorded by "+e.SOURCE,source:e.SOURCE,attest:e.ATTEST?e.ATTEST.split(","):[],
+         pr:Number(e.PR),head:e.HEAD_,mac:e.MAC};
     dup=false;
   } else if(e.KIND==="delegation"){
     // One row per anchor->branch delegation event. NEVER

@@ -809,6 +809,70 @@ assert_rc "4502 env --chdir=dir cat id_*"     2 "$(run_in_shiftdir 'env --chdir=
 assert_rc "4502 bash -c 'cd x; cat .e*'"      2 "$(run_in_shiftdir "bash -c 'cd /some/repo; cat .e*'")"
 assert_rc "4502 control: cd x; cat *.tsv"     0 "$(run_in_shiftdir 'cd /some/repo; cat *.tsv')"
 assert_rc "4502 control: cat .e* here (no .env)" 0 "$(run_in_shiftdir 'cat .e*')"
+# The shfmt position model (scripts/lib/bash-ast.sh) allows a shift-glob read
+# only when it proves every directory the glob can expand in and none holds a
+# secret match; with no shfmt every row denies as before.
+mkdir -p "$SHIFTDIR/sub" "$SHIFTDIR/empty"
+: >"$SHIFTDIR/sub/.env"; : >"$SHIFTDIR/sub/id_ed25519"
+if command -v shfmt >/dev/null 2>&1; then rs_proved=0; else rs_proved=2; echo "NOTE: shfmt not on PATH — the 6014 allow rows expect a deny"; fi
+assert_rc "6014 cd left of a pipe runs in a subshell"  "$rs_proved" "$(run_in_shiftdir 'cd sub | true; cat .en*')"
+assert_rc "6014 cd skipped by ||"                       "$rs_proved" "$(run_in_shiftdir 'cd sub || cat .en*')"
+assert_rc "6014 cd inside a subshell"                   "$rs_proved" "$(run_in_shiftdir '(cd sub) && cat .en*')"
+assert_rc "6014 cd into a dir with no secret match"     "$rs_proved" "$(run_in_shiftdir 'cd empty && cat .en*')"
+assert_rc "6014 pushd into a dir with no secret match"  "$rs_proved" "$(run_in_shiftdir 'pushd empty; head id_*')"
+assert_rc "6014 cd && cat .en* into a secret dir"       2 "$(run_in_shiftdir 'cd sub && cat .en*')"
+assert_rc "6014 cd; cat id_* into a secret dir"         2 "$(run_in_shiftdir 'cd sub; cat id_*')"
+assert_rc "6014 false || cd && cat .en*"                2 "$(run_in_shiftdir 'false || cd sub && cat .en*')"
+assert_rc "6014 cd right of a pipe (zsh runs it here)"  2 "$(run_in_shiftdir 'echo x | cd sub && cat .en*')"
+assert_rc "6014 cd ../ hop back into a secret dir"      2 "$(run_in_shiftdir 'cd empty && cd ../sub && cat .en*')"
+assert_rc "6014 env -C a secret dir"                    2 "$(run_in_shiftdir 'env -C sub cat .en*')"
+assert_rc "6014 cd that fails here stays unknown"       2 "$(run_in_shiftdir 'cd /nonexistent-6014; cat .en*')"
+# shellcheck disable=SC2016
+assert_rc "6014 cd to an expansion stays unknown"      2 "$(run_in_shiftdir 'cd "$D" && cat .en*')"
+assert_rc "6014 bash -c body cd into a secret dir"      2 "$(run_in_shiftdir "cd empty && bash -c 'cd ../sub; cat .en*'")"
+assert_rc "6014 bash -c body after an outer cd"         2 "$(run_in_shiftdir "cd sub && bash -c 'cat .en*'")"
+assert_rc "6014 quoted glob char is not proved"         2 "$(run_in_shiftdir 'cd empty && cat ".en"*')"
+# a .. hop resolves differently under cd -P (lnk is a symlink to sub/inner)
+mkdir -p "$SHIFTDIR/sub/inner"; ln -s sub/inner "$SHIFTDIR/lnk"
+assert_rc "6014 cd -P then .. lands in a secret dir"    2 "$(run_in_shiftdir 'cd -P lnk && cd .. && cat .en*')"
+assert_rc "6014 env -C redirect opens in the caller's dir" 2 "$(run_in_shiftdir "cd sub && env -C $SHIFTDIR/empty cat < .en*")"
+mkdir -p "$SHIFTDIR/empty/sub"
+assert_rc "6014 env -C a -C b runs in b alone"           2 "$(run_in_shiftdir "env -C empty -C sub bash -c 'cat .en*'")"
+# bash 3.2 has no globstar: a shopt that refuses it must not skip the match step
+# shellcheck disable=SC2329
+rs_shopt32() {
+    shopt() { case " $* " in *" globstar "*) echo "shopt: globstar: invalid shell option name" >&2; return 1 ;; esac; builtin shopt "$@"; }
+    export -f shopt
+    run_in_shiftdir "$1"
+}
+assert_rc "6014 a shell with no globstar keeps the deny" 2 "$(rs_shopt32 'cd sub && cat .en*')"
+# bash reads CDPATH in cd and GLOBIGNORE in compgen; zsh ignores GLOBIGNORE, and a
+# missing compgen (rc 127) is not "no match"
+mkdir -p "$SHIFTDIR/cdp/sub"
+run_in_cdp() { (cd "$SHIFTDIR/cdp" && printf '%s' "$(j_bash "$1")" | bash "$HOOK" >/dev/null 2>&1; echo "$?"); }
+assert_rc "6014 an exported CDPATH keeps the deny"        2 "$(CDPATH=$SHIFTDIR run_in_cdp 'cd sub && cat .en*')"
+assert_rc "6014 control: no CDPATH proves ./sub clean"    "$rs_proved" "$(run_in_cdp 'cd sub && cat .en*')"
+assert_rc "6014 an exported GLOBIGNORE keeps the deny"    2 "$(GLOBIGNORE=.env run_in_shiftdir 'cd sub && cat .en*')"
+# shellcheck disable=SC2329
+rs_nocompgen() { compgen() { return 127; }; export -f compgen; run_in_shiftdir "$1"; }
+assert_rc "6014 a shell with no compgen keeps the deny"   2 "$(rs_nocompgen 'cd empty && cat .en*')"
+assert_rc "6014 pushd -n leaves the read in a secret dir" 2 "$(run_in_shiftdir "cd sub && pushd -n $SHIFTDIR/empty && cat .en*")"
+assert_rc "6014 brace redirect reads a secret glob"     2 "$(run_in_shiftdir 'cd sub && { cat; } < .en*')"
+assert_rc "6014 subshell redirect reads a secret glob"  2 "$(run_in_shiftdir 'cd sub && (cat) < .en*')"
+assert_rc "6014 loop redirect reads a secret glob"      2 "$(run_in_shiftdir 'cd sub && while read -r l; do :; done < .en*')"
+# a PATH holding every tool but shfmt: the model cannot run, so the gate denies
+# and says why
+rs_nosh="$SHIFTDIR/no-shfmt-bin"; mkdir -p "$rs_nosh"
+rs_oifs=$IFS; IFS=:
+for rs_d in $PATH; do
+    for rs_t in "$rs_d"/*; do
+        case "${rs_t##*/}" in shfmt) ;; *) [ -e "$rs_nosh/${rs_t##*/}" ] || ln -s "$rs_t" "$rs_nosh/${rs_t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$rs_oifs
+rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash 'cd empty && cat .en*')" | PATH="$rs_nosh" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+assert_rc "6014 no shfmt denies"                        2 "${rs_err##*rc=}"
+case "$rs_err" in *"shfmt not on PATH"*) echo "PASS 6014 no shfmt names shfmt" ;; *) echo "FAIL 6014 no shfmt names shfmt — got: $rs_err"; FAILED=$((FAILED + 1)) ;; esac
 rm -rf "$SHIFTDIR"
 nolib=$(mktemp -d "${TMPDIR:-/tmp}/guard-nolib.XXXXXX") || exit 1
 cp "$HOOK" "$nolib/block-read-secrets.sh"

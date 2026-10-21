@@ -65,7 +65,8 @@ cat > "$LAUNCH" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$REC/argv"
 pwd > "$REC/cwd"
-printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" > "$REC/env"
+printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
+    "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" > "$REC/env"
 if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit 2; fi
 [ -z "${FAKE_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
 [ -z "${FAKE_RC5:-}" ] || { echo "boom" >&2; exit 5; }
@@ -79,6 +80,25 @@ run_cfp() { # run_cfp <provider> [extra args]; stdout -> $W/out, stderr -> $W/er
     local p="$1"; shift
     RC=0; printf '%s\n' "$DIFF" | bash "$CFP" --model claude-opus-5-5 --slug claude --provider "$p" "$@" >"$W/out" 2>"$W/err" || RC=$?
 }
+
+# A readonly routing variable survives the pin: skip without leaking its scratch.
+_test_native_auth_skip() {
+    fresh_rec native-auth-skip; bank 10
+    mkdir -p "$W/native-auth-tmp"
+    printf 'readonly ANTHROPIC_TEST_PIN=fixture\n' > "$W/readonly-pin.sh"
+    BASH_ENV="$W/readonly-pin.sh" TMPDIR="$W/native-auth-tmp" run_cfp claude-subscription
+    check "native-auth refusal exits 5" 5 "$RC"
+    has "native-auth refusal reaches the skip branch" "native auth pin could not clear" "$W/err"
+    check "native-auth refusal prints no review" "" "$(cat "$W/out")"
+    check "native-auth refusal does not launch claude" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+    check "native-auth refusal removes the critic scratch directory" "" "$(find "$W/native-auth-tmp" -name 'prim.*' -type d -print)"
+}
+
+if [ "${1:-}" = --native-auth-skip ]; then
+    _test_native_auth_skip
+    echo "pass=$PASS fail=$FAIL"
+    [ "$FAIL" -eq 0 ]; exit "$?"
+fi
 
 # --- 0. the shipped registry row -------------------------------------------
 row="$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).panel.find(r=>r.slug==="claude");process.stdout.write(p?[p.model,p.effort,p.route_provider,p.tier].join(" "):"MISSING")' "$REPO/scripts/cr/critics.json")"
@@ -97,6 +117,11 @@ has "1 json output" "json" "$REC/argv"
 hasnt "1 never bypassPermissions" "bypassPermissions" "$REC/argv"
 has "1 read-only tool grant" "HIMMEL_API_TOOLS=Read,Glob,Grep" "$REC/env"
 has "1 cost logged from the usage block" "cost_usd=0.1234" "$W/err"
+fresh_rec 1k
+CR_TARGET_BRANCH=feat/keyed CR_TARGET_HEAD=abc1234 CR_TARGET_PR=4242 run_cfp claude-api
+has "1k branch reaches the launcher" "HIMMEL_API_BRANCH=feat/keyed" "$REC/env"
+has "1k head reaches the launcher" "HIMMEL_API_HEAD=abc1234" "$REC/env"
+has "1k PR reaches the launcher" "HIMMEL_API_PR=4242" "$REC/env"
 
 # --- 2. api provider refusal (lane off / no key / exhausted) is a clean skip ---
 fresh_rec 2; export FAKE_REFUSE="api lane is OFF (set HIMMEL_API_LANE=on)"
@@ -164,6 +189,8 @@ fresh_rec 10; bank 10
 run_cfp subscription
 check "9 provider 'subscription' routes to the native claude" 0 "$RC"
 has "9 claude saw the call" "Read,Glob,Grep" "$REC/argv"
+
+_test_native_auth_skip
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

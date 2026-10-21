@@ -13,7 +13,7 @@
 # CODEX_LANE / CLAUDE_LANE pick which lanes.json lane's reading represents
 # each bank (default: claudex for codex, sonnet for claude — any claude-tier
 # lane reads the SAME account-wide number per spec §1.1). Every env var
-# bank-status.ts itself honors (LANES_REGISTRY, CODEX_BANK_CACHE,
+# bank-status.ts itself honors (LANES_REGISTRY, CODEX_USAGE_CACHE,
 # CLAUDE_USAGE_CACHE, LANE_FUNDED_MAX_PCT, ...) passes through untouched —
 # this script sets none of them, so the same test hooks bank-status.test.mjs
 # already relies on work here too.

@@ -60,6 +60,8 @@ set -u
 # shared with arm-resume.sh's own macOS headed launch -- one
 # copy of the ARM_TERMINAL_APP / ARM_APP_DIRS resolution instead of two.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/macos-app-resolve.sh"
+# shellcheck source=scripts/lib/prim.sh
+. "$(cd "$(dirname "$0")" && pwd)/../lib/prim.sh"
 
 WORKDIR=""
 TABTITLE=""
@@ -143,7 +145,7 @@ case "$_ticks" in
 esac
 _ticks=$(( 10#$_ticks ))
 
-RUNDIR="$(mktemp -d "${TMPDIR:-/tmp}/konsole-macos.XXXXXX")" || {
+RUNDIR="$(tmpdir)" || {
     echo "konsole-macos: could not create a scratch dir for the launch body" >&2
     exit 3
 }

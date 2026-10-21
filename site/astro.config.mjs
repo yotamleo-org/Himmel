@@ -4,13 +4,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { remarkDocs } from './src/plugins/remark-docs.mjs';
+import { SITE_ORIGIN, REPO_URL } from './src/urls.mjs';
 import { readAllowlist } from './src/loaders/docs-loader.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DOCS = path.resolve(here, '../docs');
 const BASE = '/Himmel';
 const ALLOW = readAllowlist(path.join(here, 'allowlist.txt'));
-const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html'];
+const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html', 'guide/dev-graph.html'];
+// The development graph page loads these next to itself.
+const GUIDE_ASSETS = ['guide/dev-graph/dev-graph.js', 'guide/dev-graph/dev-graph.css', 'guide/dev-graph/tokens.css', 'guide/dev-graph/graph.json'];
 
 // Raw files that keep resolving at their docs/ paths: every allowlisted .md
 // plus the install JSON files the setup pages link to.
@@ -25,7 +28,7 @@ const copyPassthrough = {
   name: 'copy-passthrough',
   hooks: {
     'astro:build:done': ({ dir }) => {
-      for (const rel of [...HTML_PASSTHROUGH, ...RAW_FILES]) {
+      for (const rel of [...HTML_PASSTHROUGH, ...GUIDE_ASSETS, ...RAW_FILES]) {
         const out = path.join(fileURLToPath(dir), rel);
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.copyFileSync(path.join(DOCS, rel), out);
@@ -34,54 +37,72 @@ const copyPassthrough = {
   },
 };
 
-// Mermaid blocks are emitted as <pre class="mermaid">; bundle the renderer.
+// Mermaid blocks are emitted as <pre class="mermaid">; the renderer is a lazy chunk fetched only on pages that have one.
+// A render replaces the source with an SVG, so the source is kept on the node to redraw after a theme toggle.
 const mermaid = {
   name: 'mermaid-inject',
   hooks: {
     'astro:config:setup': ({ injectScript }) => {
       injectScript('page', `
-import mermaid from 'mermaid';
-const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
-if (document.querySelector('pre.mermaid')) mermaid.run({ querySelector: 'pre.mermaid' });
+if (document.querySelector('pre.mermaid')) import('mermaid').then(({ default: mermaid }) => {
+  const nodes = [...document.querySelectorAll('pre.mermaid')];
+  for (const n of nodes) n.dataset.src = n.textContent;
+  const isDark = () => {
+    const t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  };
+  let queue = Promise.resolve();
+  const render = () => {
+    queue = queue.then(async () => {
+      for (const n of nodes) { n.textContent = n.dataset.src; n.removeAttribute('data-processed'); }
+      mermaid.initialize({ startOnLoad: false, theme: isDark() ? 'dark' : 'default' });
+      await mermaid.run({ nodes });
+    }).catch(console.error);
+  };
+  render();
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+});
 `);
     },
   },
 };
 
 export default defineConfig({
-  site: 'https://yotamleo.github.io',
+  site: SITE_ORIGIN,
   base: BASE,
-  // Starlight drops the .html from a sidebar link; this serves the trail at the extensionless path too.
-  redirects: { '/adoption-trail': `${BASE}/adoption-trail.html` },
+  // Starlight drops the .html from a sidebar link; this serves the trail and the development graph at the extensionless path too.
+  redirects: { '/adoption-trail': `${BASE}/adoption-trail.html`, '/guide/dev-graph': `${BASE}/guide/dev-graph.html` },
   markdown: { remarkPlugins: [[remarkDocs, { base: BASE, allow: ALLOW, html: HTML_PASSTHROUGH }]] },
   integrations: [
     starlight({
-      title: 'Himmel',
+      title: 'himmel',
+      // tokens.css is the canonical palette (the console serves a byte copy); the map points Starlight's --sl-* at it.
+      customCss: ['./src/styles/tokens.css', './src/styles/starlight-map.css'],
+      // Top-level groups are the F1 frame of docs-mockup-v4-agreed.html; test-site-build.sh asserts the list.
       sidebar: [
-        { label: 'Home', slug: '' },
         {
           label: 'Get started',
           items: [
-            'why-himmel',
-            { label: 'Adoption trail', link: '/adoption-trail.html' },
-            { label: 'Quickstart (15 min)', slug: 'getting-started' },
+            { label: 'What himmel is', slug: 'why-himmel' },
+            { label: 'Quickstart', slug: 'getting-started' },
+            { label: 'The adoption trail', link: '/adoption-trail.html' },
             { label: 'Install on your project', slug: 'setup/install' },
             { label: 'Install profiles', slug: 'setup/profiles' },
             'setup/new-machine',
             { label: 'Updating & uninstalling', slug: 'setup/updating' },
-            { label: 'Migrating an older install', slug: 'setup/migrating' },
+            { label: 'Moving from an older install', slug: 'setup/migrating' },
           ],
         },
         {
           label: 'Use it',
           items: [
             { label: 'The daily loop', slug: 'daily-loop' },
+            { label: 'The development graph', link: '/guide/dev-graph.html' },
             { label: 'Slash commands', slug: 'commands-catalog' },
-            { label: 'himmelctl', slug: 'himmelctl' },
-            { label: 'Configuration & gates', slug: 'configuration' },
-            { label: 'Cadences (scheduled jobs)', slug: 'cadences' },
-            { label: 'UI surfaces', slug: 'ui' },
+            { label: 'The himmelctl command', slug: 'himmelctl' },
+            { label: 'Settings & configuration', slug: 'configuration' },
+            { label: 'Scheduled jobs', slug: 'cadences' },
+            { label: 'The local dashboard', slug: 'ui' },
             {
               label: 'Lanes & launchers',
               items: [
@@ -94,7 +115,7 @@ export default defineConfig({
             { label: 'Cloud sessions', slug: 'setup/cloud-environment' },
             { label: 'Telegram bridge', slug: 'telegram-bridge' },
             {
-              label: 'Second brain (luna)',
+              label: 'Second brain (notes vault)',
               items: [
                 { label: 'Overview', slug: 'luna' },
                 { label: 'Compounding loop', slug: 'luna/compounding' },
@@ -115,60 +136,70 @@ export default defineConfig({
             {
               label: 'Plugins',
               items: [
-                { label: 'himmel-guard', link: 'https://github.com/yotamleo/himmel/tree/main/marketplace/plugins/himmel-guard' },
-                { label: 'shadcn-mcp', link: 'https://github.com/yotamleo/himmel/tree/main/marketplace/plugins/shadcn-mcp' },
-                { label: 'handover', link: 'https://github.com/yotamleo/himmel/tree/main/marketplace/plugins/handover' },
+                { label: 'himmel-guard', link: `${REPO_URL}/tree/main/marketplace/plugins/himmel-guard` },
+                { label: 'shadcn-mcp', link: `${REPO_URL}/tree/main/marketplace/plugins/shadcn-mcp` },
+                { label: 'handover', link: `${REPO_URL}/tree/main/marketplace/plugins/handover` },
               ],
             },
           ],
         },
         {
-          label: 'Run a fleet',
+          label: 'Run many sessions',
           items: [
-            { label: 'Overnight mode', slug: 'handover/overnight-mode' },
-            { label: 'Running a console', slug: 'handover/running-a-console' },
-            { label: 'Handover system', slug: 'internals/handover-system' },
+            { label: 'Unattended runs', slug: 'handover/afk-mode' },
+            { label: 'Supervisor sessions', slug: 'handover/running-a-console' },
+            { label: 'Handover notes', slug: 'internals/handover-system' },
             { label: 'Orchestration patterns', slug: 'orchestration-patterns' },
-            { label: 'Token economy', slug: 'token-economy' },
-          ],
-        },
-        {
-          label: 'Concepts',
-          items: [
-            { label: 'System design', slug: 'system-design' },
-            { label: 'Architecture diagrams', slug: 'architecture' },
-            { label: 'Context architecture', slug: 'internals/context-architecture' },
-            { label: 'Glossary', slug: 'glossary' },
+            { label: 'Usage and cost', slug: 'token-economy' },
           ],
         },
         {
           label: 'Reference',
           items: [
-            { label: 'Enforcement layers', slug: 'internals/enforcement' },
+            { label: 'Every guardrail and gate', slug: 'internals/enforcement' },
             { label: 'When a guardrail stops you', slug: 'internals/stuck-playbook' },
-            { label: 'Data-egress matrix', slug: 'internals/egress-matrix' },
-            { label: 'Harness compatibility (Codex)', slug: 'internals/harness-compat' },
-            { label: 'Headless modes', slug: 'internals/headless-modes' },
-            { label: 'Jira CLI and MCP', slug: 'internals/jira-plugin' },
-            { label: 'Testing', slug: 'internals/testing' },
-            { label: 'Environment gotchas', slug: 'internals/environment-gotchas' },
-            { label: 'Lane calibration', slug: 'internals/lane-calibration' },
-            { label: 'Lane parity', slug: 'internals/lane-parity' },
-            { label: 'RETASK channel', slug: 'internals/retask-channel' },
-            { label: 'Prompt cache', slug: 'internals/prompt-cache' },
-            { label: 'Config layers', slug: 'internals/config-layers' },
-            { label: 'MCP servers', slug: 'internals/mcp-servers' },
-            { label: 'The ponytail convention', slug: 'internals/ponytail-convention' },
+            { label: 'What data leaves your machine', slug: 'internals/egress-matrix' },
+            { label: 'Running without a terminal', slug: 'internals/headless-modes' },
+            { label: 'Using it from Codex', slug: 'internals/harness-compat' },
+            { label: 'Jira integration', slug: 'internals/jira-plugin' },
+            { label: 'Glossary', slug: 'glossary' },
           ],
         },
         {
-          label: 'Project',
+          label: 'For contributors',
           items: [
             { label: 'Contributing', slug: 'contributing' },
+            { label: 'How himmel is built', slug: 'system-design' },
+            { label: 'Security review', slug: 'security-review' },
+            { label: 'Testing', slug: 'internals/testing' },
             {
-              label: 'Security',
+              label: 'Releases & licenses',
               items: [
-                { label: 'Security review', slug: 'security-review' },
+                { label: 'v1.1.2 notes', slug: 'release/v1.1.2-notes' },
+                { label: 'v1.0.0 notes', slug: 'release/v1.0.0-notes' },
+                { label: 'Versioning scheme', slug: 'release/versioning-scheme' },
+                { label: 'License audit', slug: 'license-audit' },
+                { label: 'Third-party licenses', slug: 'third-party-licenses' },
+              ],
+            },
+            {
+              label: 'Internals',
+              items: [
+                { label: 'Architecture diagrams', slug: 'architecture' },
+                { label: 'Context architecture', slug: 'internals/context-architecture' },
+                { label: 'Environment gotchas', slug: 'internals/environment-gotchas' },
+                { label: 'Lane calibration', slug: 'internals/lane-calibration' },
+                { label: 'Lane parity', slug: 'internals/lane-parity' },
+                { label: 'RETASK channel', slug: 'internals/retask-channel' },
+                { label: 'Prompt cache', slug: 'internals/prompt-cache' },
+                { label: 'Config layers', slug: 'internals/config-layers' },
+                { label: 'MCP servers', slug: 'internals/mcp-servers' },
+                { label: 'The ponytail convention', slug: 'internals/ponytail-convention' },
+              ],
+            },
+            {
+              label: 'Security policies',
+              items: [
                 { label: 'npm policy', slug: 'security/npm-policy' },
                 { label: 'Python policy', slug: 'security/python-policy' },
               ],
@@ -187,21 +218,6 @@ export default defineConfig({
               items: [
                 { label: 'Prompt cache', slug: 'evals/prompt-cache' },
                 { label: 'Review panel', slug: 'evals/review-panel' },
-              ],
-            },
-            {
-              label: 'Releases',
-              items: [
-                { label: 'v1.1.2 notes', slug: 'release/v1.1.2-notes' },
-                { label: 'v1.0.0 notes', slug: 'release/v1.0.0-notes' },
-                { label: 'Versioning scheme', slug: 'release/versioning-scheme' },
-              ],
-            },
-            {
-              label: 'Licenses',
-              items: [
-                { label: 'License audit', slug: 'license-audit' },
-                { label: 'Third-party licenses', slug: 'third-party-licenses' },
               ],
             },
           ],

@@ -530,8 +530,8 @@ cat > "$FG/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 # default repo = the fork (what gh's default-repo setting could resolve to)
 case "$1 $2" in
-    "repo view") case "$*" in *defaultBranchRef*) printf 'main' ;; *) printf 'yotamleo/qmd' ;; esac ;;
-    "api repos/"*) case "$2" in "repos/$FG_ORIGIN/contents/"*) printf '%s' '[{"nwo":"yotamleo/qmd","himmel_branch":"himmel/pin","merge_allowed":true}]' ;; *) exit 1 ;; esac ;;
+    "repo view") case "$*" in *defaultBranchRef*) printf 'main' ;; *) printf 'yotamleo-org/qmd' ;; esac ;;
+    "api repos/"*) case "$2" in "repos/$FG_ORIGIN/contents/"*) printf '%s' '[{"nwo":"yotamleo-org/qmd","himmel_branch":"himmel/pin","merge_allowed":true}]' ;; *) exit 1 ;; esac ;;
     "pr view") cat "$FG_PRVIEW" ;;
     "api graphql") printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}\n' ;;
     *) exit 91 ;;
@@ -548,7 +548,7 @@ fg_anchor sshurl ssh://git@github.com/owner/Himmel
 fg_anchor junk   'not a url'
 fg_anchor none   ''
 for a in https ssh sshurl; do
-    got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo/qmd' _ "$GO_GATE_SRC" "$FG/$a") || got="rc"
+    got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo-org/qmd' _ "$GO_GATE_SRC" "$FG/$a") || got="rc"
     [ "$got" = himmel/pin ] || fail "10a: origin form [$a] with gh defaulting to the fork: expected the fork's branch, got [$got]"
 done
 for tgt in owner/Himmel owner/himmel OWNER/HIMMEL; do
@@ -556,7 +556,7 @@ for tgt in owner/Himmel owner/himmel OWNER/HIMMEL; do
     { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'harness repo itself'; } || fail "10b: the harness repo [$tgt] must refuse as itself (rc=$rc, out=[$got])"
 done
 for a in junk none; do
-    rc=0; got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo/qmd' _ "$GO_GATE_SRC" "$FG/$a") || rc=$?
+    rc=0; got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo-org/qmd' _ "$GO_GATE_SRC" "$FG/$a") || rc=$?
     { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'origin remote'; } || fail "10c: anchor origin [$a] must refuse fail-closed (rc=$rc, out=[$got])"
 done
 # 10d. the case mapping holds under a non-C locale (the Turkish dotless-i trap needs tr_TR, which is

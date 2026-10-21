@@ -12,7 +12,7 @@ const NOW = Date.parse("2026-10-13T12:00:00Z");
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function boot(files: { claude?: unknown; codex?: unknown } = {}) {
+function boot(files: { claude?: unknown; codex?: unknown } = {}, usageNames = false) {
   const dir = mkdtempSync(join(tmpdir(), "bank-route-"));
   const home = join(dir, "home"), root = join(dir, "root");
   mkdirSync(home); mkdirSync(root);
@@ -22,7 +22,11 @@ function boot(files: { claude?: unknown; codex?: unknown } = {}) {
   const s = startServer({
     port: 0, token: TOKEN, now: () => NOW,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
-      CLAUDE_USAGE_CACHE: claude, CODEX_BANK_CACHE: codex },
+      CLAUDE_USAGE_CACHE: claude, CODEX_BANK_CACHE: codex,
+      ...(usageNames ? { CODEX_USAGE_CACHE: codex, CODEX_BANK_CACHE: join(dir, "absent.json"),
+        CODEX_USAGE_CACHE_TTL_SECONDS: "60", CODEX_BANK_CACHE_TTL_SECONDS: "999999",
+        CADENCE_USAGE_CACHE: claude, CADENCE_BANK_CACHE: join(dir, "absent.json"),
+        CADENCE_USAGE_MAX_AGE: "60", CADENCE_BANK_MAX_AGE: "999999" } : {}) },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return s;
@@ -48,6 +52,16 @@ test("fresh caches: used_pct, resets_at, captured_at, age_s and state ok per ban
   expect(b.claude.seven_day).toMatchObject({ used_pct: 74, state: "ok" });
   expect(b.codex.weekly).toMatchObject({ used_pct: 12, state: "ok", age_s: 7200 });
   expect(b.codex.weekly.captured_at).toBe("2026-10-13T10:00:00.000Z");
+});
+
+test("CODEX_USAGE_CACHE and CODEX_USAGE_CACHE_TTL_SECONDS win over the old CODEX_BANK_* names", async () => {
+  const s = boot({ codex: codexCache("2026-10-13T10:00:00Z", [weekly(12, epoch("2026-10-18T00:00:00Z"))]) }, true);
+  expect((await get(s.port)).codex.weekly).toMatchObject({ used_pct: 12, state: "stale", age_s: 7200 });
+});
+
+test("CADENCE_USAGE_CACHE and CADENCE_USAGE_MAX_AGE win over the old CADENCE_BANK_* names", async () => {
+  const s = boot({ claude: claudeCache("2026-10-13T11:58:00Z") }, true);
+  expect((await get(s.port)).claude.five_hour).toMatchObject({ used_pct: 9, state: "stale", age_s: 120 });
 });
 
 test("stale: Claude over 600 s and Codex over 6 h keep their numbers but say stale", async () => {

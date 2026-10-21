@@ -1136,6 +1136,62 @@ deny "grep -h 'qmd query' commands.txt | perl -ne 'readpipe(\$_)'"
 deny "grep -h 'qmd query' commands.txt | ruby -ne 'spawn(\$_)'"
 allow "grep -h 'qmd query' commands.txt | perl -ne 'print'"
 
+# A command that never runs qmd is no business of the guard. The fail-closed
+# text tests read qmd and a search verb as words, not as substrings of a file
+# name (block-bare-qmd-query.sh), a host name (research) or a path.
+allow "cd /repo && JIRA_PROJECT_KEY=HIMMEL timeout 60 node scripts/jira/dist/index.js search 'block-bare-qmd-query' | head; sed -n 1,40p scripts/hooks/block-bare-qmd-query.sh | rtk proxy grep -n -E 'qmd|grep|case|=~'"
+allow "sed -n 1,40p scripts/hooks/block-bare-qmd-query.sh | rtk proxy grep -n -E 'qmd|grep|case|=~'"
+allow "node scripts/jira/dist/index.js search 'qmd-notes' | python3 -c 'import sys; print(sys.stdin.read())'"
+allow "cat scripts/lib/qmd-search-notes.sh | sh"
+allow "ssh research qmd status"
+# A duration is timeout's operand, so the program after it is read as the
+# program and its for-bound arguments are data, not a program position.
+allow 'for f in a b; do timeout 60 chromium --headless --disable-gpu --no-sandbox --window-size=1200,1500 --screenshot=/tmp/$f.png file:///tmp/$f.html; done'
+allow 'for f in a b; do timeout 60 chromium /tmp/$f.html; done'
+allow 'for f in a b; do timeout 2m chromium /tmp/$f.html; done'
+# The same shapes stay refused where qmd is the word run, or the program after
+# the duration is itself a dynamic word.
+deny 'for f in a b; do timeout 60 qmd query /tmp/$f.html; done'
+deny 'for f in tmux x; do timeout 60 $f new -d "qmd query x"; done'
+deny 'for f in a b; do timeout -k 5 60 $f /tmp/x; done'
+deny "bash scripts/lib/qmd-bounded.sh query -c luna x | sh"
+deny "cat scripts/lib/qmd_search_notes.sh | sh"
+deny 'echo "${Q:-qmd} query x" | sh'
+deny 'echo "qmd ${V:--query} x" | sh'
+deny 'timeout -k 5 $f $(echo tmux) new -d x'
+deny "ssh research 'qmd query x'"
+# A backslash escape the shell or printf turns into a blank or newline is a word
+# boundary, not a letter glued onto qmd or the verb.
+deny 'printf "x\nqmd query" | sh'
+deny 'printf "qmd\tquery" | sh'
+deny 'printf "a\x20qmd query" | sh'
+deny 'printf "qmd\x20query" | sh'
+deny 'printf "qmd query\nx" | sh'
+# The same escapes in a launcher's words (names_verb_nb) and in a file the
+# command writes and then runs (qmd_words prints the quoted backslash as `_`).
+deny "ssh research \"echo 'x\nqmd query'\""
+deny "ssh research \"printf 'x\nqmd query'\""
+deny "printf 'x\nqmd query' > f.sh; sh f.sh"
+deny "printf 'qmd\tquery' > f.sh; bash f.sh"
+deny "printf 'qmd\x20query' > f.py; python3 f.py"
+deny "printf \"x\nqmd query\" > f.sh; sh f.sh"
+# A \u or \U code point and a four-digit \0nnn octal are one escape too: the
+# digits after a three-digit read must not stay glued to the verb.
+deny "printf 'qmd\u0020query x' | sh"
+deny "printf 'qmd\0040query x' | sh"
+deny "printf 'qmd\U00000020query x' | sh"
+deny "printf 'qmd\u0020query x' > f.sh; sh f.sh"
+deny "printf 'qmd\0040query x' > f.sh; bash f.sh"
+deny "ssh research \"printf 'qmd\u0020query x'\""
+# Pinned over-deny (the tmux/screen launcher text keeps a substring test): no
+# search verb runs here, yet it is refused until that test is word-bounded.
+deny "tmux new -s research 'qmd status'"
+deny "tmux new -s research 'qmd search x'"
+deny "tmux new -s research 'qmd.ts query x'"
+deny "ssh host bun /opt/qmd/src/cli/qmd.ts query x"
+deny "ssh host '~/.bun/bin/qmd vsearch x'"
+deny "ssh host bunx @tobilu/qmd search x"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0

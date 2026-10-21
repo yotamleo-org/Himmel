@@ -88,6 +88,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/git-clean.sh
 . "$SCRIPT_DIR/../lib/git-clean.sh"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 git_env_scrub
 # a run with no job rows, or only cancelled/skipped rows and at least one cancelled, was cancelled (a superseded pending sweep has 0 jobs)
 is_cancelled() { awk -F'\t' 'NF {n++} NF && $2=="cancelled" {c++} NF && $2!="cancelled" && $2!="skipped" {o=1} END {exit !(n==0 || (!o && c))}' "$1"; }
@@ -174,8 +176,24 @@ if [ -n "$lc" ]; then
   fi
 fi
 
+# Job identity is the family, not the run's spelling: the shell-unit aggregator is named
+# "shell-unit (dispatch verify) (os)" on a dispatch run, and a shard index differs between a PR
+# run (impacted suites only) and a full main run, so one case lands in different shards. Both are
+# folded to the family name in every input, which makes the existing per-job rules (base red if ANY
+# row is red, latest green only if EVERY row is success, PR case in the base's cases) span all shards.
+nd="$(tmpdir)" || { echo "usage: cannot create a scratch directory" >&2; exit 2; }
+trap 'rm -rf "$nd"' EXIT
+norm() { sed -e 's/^shell-unit (dispatch verify) (/shell-unit (/' -e 's/^\(shell-unit-shard ([^,)]*\), [0-9][0-9]*)/\1)/' "$1" > "$nd/$2" || exit 2; }
+norm "$pr" pr; pr="$nd/pr"
+norm "$base" base; base="$nd/base"
+norm "$latest" latest; latest="$nd/latest"
+norm "$prc" prc; prc="$nd/prc"
+norm "$bc" bc; bc="$nd/bc"
+[ -z "$cover" ] || { norm "$cover" cover; cover="$nd/cover"; }
+[ -z "$lc" ] || { norm "$lc" lc; lc="$nd/lc"; }
+
 # a parse failure here must not read as "nothing red": it is an input error
-if ! reds="$(awk -F'\t' '$2=="failure"||$2=="timed_out"||$2=="startup_failure" {print $1}' "$pr")"; then
+if ! reds="$(awk -F'\t' '($2=="failure"||$2=="timed_out"||$2=="startup_failure") && !seen[$1 ""]++ {print $1}' "$pr")"; then
   echo "usage: cannot parse $pr: a failed read must not pass as nothing red" >&2
   exit 2
 fi

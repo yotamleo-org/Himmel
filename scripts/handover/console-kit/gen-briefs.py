@@ -31,14 +31,21 @@ opus or fable model, because headed-arm-leg.sh refuses such a launch without a
 design|unverified-finding|tier-return|operator-ruling, reason is non-blank single-line
 text; the brief gets that line, and nothing is written for a leg without it), lane (the manifest
 lane the printed add line passes as --lane; default native, the lane of the
-launchers written here; a non-native lane's text may not name a path under the handover root,
-that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
+launchers written here; a lane other than native or claudex may not name a path under the
+handover root, that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
 the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; no line when it
 states neither), which the merge script reads through --leg-doc to bind the merge (HIMMEL-5843).
 The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
 is refused, since it would otherwise fall through to the closing merge (HIMMEL-6091).
 The brief follows the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
 leg preface and are not repeated.
+
+kind "rm" (HIMMEL-6796) is a release-manager session, not a leg: the brief is the fenced block of
+docs/handover/rm-brief-template.md filled in, and the launcher arms `--profile release-manager`.
+Required: kind, label, keys, slug, release (letters, digits, `.`, `_`, `-`), versions (current
+first), epoch (the lease epoch the RM must find, an integer from 0), state_dir (the absolute
+release/<R>/ directory), mode (observe|live). Optional: model (default claude-opus-5-5). It has no
+branch, worktree or scope; the lane is native. The doc is `<KEY>-<label>-rm-<release>-<date>.md`.
 
 Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
@@ -58,6 +65,9 @@ import argparse, hashlib, json, os, re, secrets, shlex, subprocess, sys
 from datetime import date as _date, datetime
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
+RM_REQUIRED = ['label', 'keys', 'slug', 'release', 'versions', 'state_dir', 'mode']
+RM_MODEL = 'claude-opus-5-5'
+RM_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'handover', 'rm-brief-template.md')
 HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file; "
              "that flag covers ONLY the integrity pin. No other `*_OK=1` bypass. Probe a guard only by feeding JSON to the worktree "
              "copy (as its test file does); keep payloads in fixture files, never on your own Bash command line.")
@@ -70,6 +80,8 @@ TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruli
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 # Mirrors headed-arm-leg.sh's claudex default (`[ -z "$MODEL" ] && MODEL="gpt-6.1-sol"`).
 LANE_MODELS = {'claudex': 'gpt-6.1-sol'}
+# Lanes whose legs can read the handover root (see check_lane_reads).
+READS_HANDOVER_ROOT = ('native', 'claudex')
 EFFORTS = ('low', 'medium', 'high', 'xhigh')
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
@@ -134,12 +146,50 @@ def refuse_git_bucket(bucket, hroot):
         die('--bucket %s is inside a git checkout (%s) outside the handover root; pass a bucket under %s' % (bucket, r.stdout.strip(), root))
 
 
+def validate_rm(leg, i):
+    label = leg.get('label', '?')
+    missing = [k for k in RM_REQUIRED if not leg.get(k)]
+    if missing:
+        die('rm leg #%d (%s) missing: %s' % (i, label, ', '.join(missing)))
+    if not re.fullmatch(r'N[0-9]{1,5}', leg['label']):
+        die('rm leg #%d: label %r is not N<k> with 1-5 digits (the vault token grammar)' % (i, leg['label']))
+    if not isinstance(leg['keys'], list) or not all(re.match(r'^[A-Z]+-\d+$', k) for k in leg['keys']):
+        die('rm leg %s: keys must be a list of ticket keys' % label)
+    if not re.match(r'^[a-z0-9][a-z0-9-]*$', leg['slug']):
+        die('rm leg %s: slug %r must be kebab-case' % (label, leg['slug']))
+    # headed-arm-leg.sh's own --rm-release grammar.
+    if not isinstance(leg['release'], str) or leg['release'] in ('.', '..') or not re.fullmatch(r'[A-Za-z0-9._-]+', leg['release']):
+        die("rm leg %s: release %r must be letters, digits, '.', '_' or '-'" % (label, leg['release']))
+    if not isinstance(leg['versions'], str) or '\n' in leg['versions']:
+        die('rm leg %s: versions must be single-line text' % label)
+    epoch = leg.get('epoch')
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+        die('rm leg %s: epoch %r must be an integer from 0' % (label, epoch))
+    if not isinstance(leg['state_dir'], str) or not os.path.isabs(leg['state_dir']):
+        die('rm leg %s: state_dir %r must be an absolute path' % (label, leg['state_dir']))
+    sd = leg['state_dir'].rstrip('/')
+    if '\n' in sd or os.path.basename(sd) != leg['release'] or os.path.basename(os.path.dirname(sd)) != 'release':
+        die('rm leg %s: state_dir %r must end in release/%s' % (label, leg['state_dir'], leg['release']))
+    if leg['mode'] not in ('observe', 'live'):
+        die('rm leg %s: mode %r must be observe or live' % (label, leg['mode']))
+    if leg.get('lane', 'native') != 'native':
+        die('rm leg %s: lane %r is refused; the release manager is native-lane only' % (label, leg['lane']))
+    if leg.get('model') is not None and (not isinstance(leg['model'], str) or tier_gate(leg['model']) != 'opus'):
+        die('rm leg %s: model %r must be an opus model (the release manager runs at opus; the brief carries an opus Tier line)' % (label, leg['model']))
+    if leg.get('effort') not in (None,) + EFFORTS:
+        die('rm leg %s: effort %r must be one of %s' % (label, leg.get('effort'), '|'.join(EFFORTS)))
+
+
 def validate(leg, i):
+    if leg.get('kind') == 'rm':
+        return validate_rm(leg, i)
+    if leg.get('kind') is not None:
+        die('leg #%d (%s): kind %r must be rm or absent' % (i, leg.get('label', '?'), leg['kind']))
     missing = [k for k in REQUIRED if not leg.get(k)]
     if missing:
         die('leg #%d (%s) missing: %s' % (i, leg.get('label', '?'), ', '.join(missing)))
-    if not re.match(r'^N\d+$', leg['label']):
-        die('leg #%d: label %r is not N<k>' % (i, leg['label']))
+    if not re.fullmatch(r'N[0-9]{1,5}', leg['label']):
+        die('leg #%d: label %r is not N<k> with 1-5 digits (the vault token grammar)' % (i, leg['label']))
     if not isinstance(leg['keys'], list) or not all(re.match(r'^[A-Z]+-\d+$', k) for k in leg['keys']):
         die('leg %s: keys must be a list of ticket keys' % leg['label'])
     if not re.match(r'^(feat|fix|chore|docs|refactor|test)/[a-z0-9][a-z0-9-]*$', leg['branch']):
@@ -187,9 +237,10 @@ def validate(leg, i):
 
 def check_lane_reads(l, hroot):
     # A lane worker cannot read the state repo, so a brief that points it at a
-    # handover-root path would be a silent no-op instruction. Native legs can read it.
+    # handover-root path would be a silent no-op instruction. Native and claudex legs
+    # can read it: a claudex leg loads the same project additionalDirectories.
     root = hroot.rstrip('/')
-    if l.get('lane', 'native') == 'native' or not root:
+    if l.get('lane', 'native') in READS_HANDOVER_ROOT or not root:
         return
     tier = l.get('tier')
     texts = [(k, l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra')]
@@ -212,15 +263,53 @@ def ship_completes(scope):
     found = COMPLETES_RE.findall(scope)
     if found and found[-1].lower() == 'no':
         return ('completes-ticket: no (leave the ticket In Progress after MERGED)',
-                '`merge-on-green.sh` (bare, without the Jira-transition flag)')
+                '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root)')
     return ('completes-ticket: yes (if the PR title carries a second key, say so after MERGED so the console closes it)',
-            '`merge-on-green.sh --jira-transition`')
+            '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root)')
+
+
+def render_rm_brief(l, ctx):
+    # The template's fill-in block is the single source; every placeholder is substituted
+    # (longest first, so `<versions, current first>` goes before `<versions>`), and a
+    # leftover <placeholder> means the template grew a slot this generator does not fill.
+    text = open(RM_TEMPLATE).read()
+    m = re.search(r'```markdown\n(.*?)\n```', text, re.S)
+    if not m:
+        die('no ```markdown fill-in block in %s' % RM_TEMPLATE)
+    out = m.group(1)
+    out = re.sub(r'^> `<n>` = 0 for the first RM of a release\.\n', '', out, flags=re.M)
+    subs = [
+        ('<console letter>-RM-<R>-<hex>', l['nonce']),
+        ('<absolute release/<R>/ dir>', l['state_dir']),
+        ('<absolute $HOME>', os.path.expanduser('~')),
+        ('<versions, current first>', l['versions']),
+        ('<console session name>', ctx['console']),
+        ('<HANDOVER_DIR>', ctx['hroot']),
+        ('<observe|live>', l['mode']),
+        ('<versions>', l['versions']),
+        ('<doc stem>', l['stem']),
+        ('<doc>', os.path.join(ctx['bucket'], l['stem'] + '.md')),
+        ('<TICKET>', l['keys'][0]),
+        ('<token>', l['nonce']),
+        ('<model>', l['model']),
+        ('<date>', ctx['date']),
+        ('<N>', l['label']),
+        ('<R>', l['release']),
+        ('<n>', str(l['epoch'])),
+    ]
+    for old, new in subs:
+        out = out.replace(old, new)
+    # `REQ <id>` is the console's wake message shape, a literal the RM reads at run time.
+    left = re.search(r'<[A-Za-z$][^>\n]*>', out.replace('REQ <id>', 'REQ'))
+    if left:
+        die('rm leg %s: %s still has the placeholder %s after filling' % (l['label'], os.path.basename(RM_TEMPLATE), left.group(0)))
+    return out + '\n'
 
 
 def render_brief(l, ctx):
     n, keys = l['label'], l['keys']
-    gets = ' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['repo'], k) for k in keys)
-    others = ', '.join('%s (%s)' % (x['label'], x['scope_short']) for x in ctx['legs'] if x['label'] != n)
+    gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['repo'], k) for k in keys)
+    others = ', '.join('%s (%s)' % (x['label'], x['scope_short']) for x in ctx['legs'] if x['label'] != n and x.get('kind') != 'rm')
     also = ('; ' + ctx['also_live']) if ctx['also_live'] else ''
     return """---
 resume_cwd: {wt}
@@ -245,7 +334,8 @@ template_version: 3
 > **Contract:**
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix. {extra}{envline}
-> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Run them, and the full suite of every file you touched, BEFORE opening the PR: a CI fix after the third review round cannot be re-reviewed without the operator.
+> 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
+> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Locally run only the RED rows of the item you build; a VM-only check goes through the VM queue; list every other impacted suite as `SKIP CI-gated per decision 101 (GitHub CI is the gate)`; never run run-shell-tests.sh full or sharded locally.
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
@@ -266,7 +356,31 @@ template_version: 3
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 
+def render_rm_launcher(l, ctx, doc):
+    q = shlex.quote
+    stem = l['stem']
+    w = ctx['work_dir']
+    lines = ['#!/usr/bin/env bash',
+             '# Console launch: %s release manager for %s (%s). Generated by gen-briefs.py (HIMMEL-6796); it prints, you run it.' % (l['label'], l['release'], l['model'])]
+    if l.get('effort'):
+        lines.append('export LEG_EFFORT=%s' % l['effort'])
+    lines += [
+        'W=%s' % q(w),
+        'mkdir -p "$W"',
+        # The RM brief has no Prior art line, and headed-arm-leg.sh sets the RM env itself.
+        'setsid nohup bash %s --profile release-manager --rm-release %s --no-prior-art-check --console %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: prints the console's launch line, nothing starts here
+            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-leg.sh'), q(l['release']), q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
+        'sleep 12',
+        'tail -n 2 "$W/%s.launch.out"' % stem,
+        'touch "$W/sig-%s"' % stem,
+        'echo "fired sig-%s"' % stem,
+    ]
+    return '\n'.join(lines) + '\n'
+
+
 def render_launcher(l, ctx, doc):
+    if l.get('kind') == 'rm':
+        return render_rm_launcher(l, ctx, doc)
     q = shlex.quote
     stem, n = l['stem'], l['label']
     lane = l.get('lane', 'native')
@@ -321,9 +435,11 @@ def main():
     if not re.match(r'^\d{4}-\d\d-\d\d$', a.date):
         die('--date must be YYYY-MM-DD', 2)
     letter = a.letter
-    if not letter:
+    if letter is None:
         m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.console)
         letter = m.group(1) if m else 'X'
+    if not re.fullmatch(r'[A-Z]{1,3}', letter):
+        die('console letter %r must be 1-3 upper-case letters (the vault token grammar); pass --letter' % (letter,))
     if not a.handover_root:
         die('--handover-root (or HANDOVER_DIR) is required', 2)
     try:
@@ -337,7 +453,7 @@ def main():
     labels = [l['label'] for l in legs]
     if len(set(labels)) != len(labels):
         die('duplicate leg labels')
-    branches = [l['branch'] for l in legs]
+    branches = [l['branch'] for l in legs if l.get('kind') != 'rm']
     if len(set(branches)) != len(branches):
         die('duplicate leg branches (two legs would share one worktree)')
 
@@ -356,15 +472,20 @@ def main():
         l['hook'] = bool(l.get('hook'))
         l['judge'] = bool(l.get('judge'))
         l['model_key'] = bool(l.get('model'))
-        l['model'] = l.get('model') or LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL)
-        l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
-        l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
-        l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
+        rm = l.get('kind') == 'rm'
+        l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))
+        if rm:
+            l['nonce'] = '%s-RM-%s-%s' % (letter, l['release'], secrets.token_hex(4))
+            l['stem'] = '%s-%s-rm-%s-%s' % (l['keys'][0], l['label'], l['release'], a.date)
+        else:
+            l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
+            l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
+            l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):
             die('%s already exists in the bucket; refusing to overwrite a live leg doc' % (l['stem'] + '.md'))
         if os.path.exists(os.path.join(a.bucket, 'launch-%s.sh' % l['label'])):
             die('launch-%s.sh already exists in the bucket; refusing to overwrite a launcher' % l['label'])
-        if a.no_worktree and not os.environ.get('GEN_BRIEFS_NO_WT_CHECK'):
+        if a.no_worktree and not rm and not os.environ.get('GEN_BRIEFS_NO_WT_CHECK'):
             # headed-arm-leg.sh refuses a resume_cwd that is not a git worktree; never create it here.
             top = subprocess.run(['git', '-C', l['wt'], 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
             if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(l['wt']):
@@ -372,7 +493,7 @@ def main():
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
     for l in legs:
-        if not a.no_worktree:
+        if not a.no_worktree and l.get('kind') != 'rm':
             argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
             r = subprocess.run(argv, cwd=a.repo, capture_output=True, text=True)
             tail = (r.stdout + r.stderr).strip().splitlines()
@@ -386,7 +507,7 @@ def main():
                     die('worktree %s is not based on %s; no brief written for %s or the legs after it' % (l['wt'], a.base, l['label']))
         doc = os.path.join(a.bucket, l['stem'] + '.md')
         with open(doc, 'w') as f:
-            f.write(render_brief(l, ctx))
+            f.write(render_rm_brief(l, ctx) if l.get('kind') == 'rm' else render_brief(l, ctx))
         launcher = os.path.join(a.bucket, 'launch-%s.sh' % l['label'])
         with open(launcher, 'w') as f:
             f.write(render_launcher(l, ctx, doc))
@@ -399,7 +520,9 @@ def main():
             with open(re.sub(r'\.json$', '', a.manifest) + '.launchers.sha256', 'a') as f:
                 f.write('%s  %s\n' % (digest, os.path.abspath(launcher)))
 
-    json.dump(legs, open(a.legs + '.out', 'w'), indent=1)
+    with open(a.legs + '.out', 'w') as f:
+        json.dump(legs, f, indent=1)
+        f.write('\n')
     for l in legs:
         doc = os.path.join(a.bucket, l['stem'] + '.md')
         print('%s %s %s' % (l['label'], l['nonce'], doc))

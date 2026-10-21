@@ -46,6 +46,8 @@ git init -q "$REPO"
 git -C "$REPO" config user.email t@example.com
 git -C "$REPO" config user.name tester
 git -C "$REPO" commit -q --allow-empty -m init
+# The branch names the PR's ticket: the residual writer files against it.
+git -C "$REPO" checkout -q -b feat/tst-5-fixture
 
 # Two deferred-class findings.
 INPUT="$TMP_ROOT/review.txt"
@@ -248,6 +250,7 @@ case "$1" in
             printf '%s' "${JIRA_LIST_RESULT:-}" ;;
     create) [ "${JIRA_CREATE_FAIL:-}" = 1 ] && { echo "jira: create refused" >&2; exit 1; }
             while [ $# -gt 0 ]; do [ "$1" = --desc-file ] && cp "$2" "$JDESC"; shift; done
+            [ "${JIRA_CREATE_DUP:-}" = 1 ] && { echo "Duplicate TST-31"; exit 0; }
             echo "Created TST-7" ;;
 esac
 STUB
@@ -258,7 +261,7 @@ run_mode() {  # run_mode <TRACKER> <FORGE> [args...] — gh+jira stubs, logs res
     : >"$GLOG"; : >"$JLOG"; rm -f "$JDESC"
     ( cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER="$t" FORGE="$f" GH_CMD="$LBIN/gh" \
         JIRA_PROJECT_KEY="${JKEY-TST}" JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" \
-        JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" \
+        JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" JIRA_CREATE_DUP="${JIRA_CREATE_DUP:-}" \
         bash "$FDI" --pr 1 --input "$INPUT" "$@" 2>&1 )
 }
 
@@ -316,6 +319,34 @@ out=$(JIRA_CREATE_FAIL=1 run_mode jira github); rc=$?
 assert_eq "jira create-fail → exit 3" "3" "$rc"
 assert_contains "jira FAILED line" "$out" "FAILED"
 assert_eq "jira create-fail never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: tracker=jira files through the residual writer (RED: raw create, no --residual-of)"
+out=$(run_mode jira github); rc=$?
+assert_eq "writer → exit 0" "0" "$rc"
+assert_contains "create carries --residual-of from the branch ticket" "$(grep '^create' "$JLOG")" "--residual-of TST-5"
+assert_contains "create defaults --fu-class polish" "$(grep '^create' "$JLOG")" "--fu-class polish"
+assert_contains "create defaults --class unclassified" "$(grep '^create' "$JLOG")" "--class unclassified"
+assert_contains "create keeps the cr-deferred label" "$(grep '^create' "$JLOG")" "--labels cr-deferred"
+
+echo "TEST: explicit --residual-of / --fu-class / --class override the defaults"
+out=$(run_mode jira github --residual-of TST-9 --fu-class hardening --class shell-quoting); rc=$?
+assert_eq "override → exit 0" "0" "$rc"
+assert_contains "override parent" "$(grep '^create' "$JLOG")" "--residual-of TST-9"
+assert_contains "override fu-class" "$(grep '^create' "$JLOG")" "--fu-class hardening"
+assert_contains "override class" "$(grep '^create' "$JLOG")" "--class shell-quoting"
+
+echo "TEST: the writer reports an existing residual as a duplicate"
+out=$(JIRA_CREATE_DUP=1 run_mode jira github); rc=$?
+assert_eq "dup → exit 0" "0" "$rc"
+assert_contains "dup reported" "$out" "skipped (duplicate, TST-31)"
+
+echo "TEST: no parent ticket on the branch and no --residual-of is refused, nothing created"
+git -C "$REPO" checkout -q -b plain-branch
+out=$(run_mode jira github); rc=$?
+git -C "$REPO" checkout -q feat/tst-5-fixture
+assert_eq "no parent → exit 1" "1" "$rc"
+assert_contains "no parent names the flag" "$out" "--residual-of"
+assert_eq "no parent creates nothing" "0" "$(grep -c '^create' "$JLOG")"
 
 echo "TEST: tracker=none (local tracker, no remote forge) files nothing remote"
 out=$(run_mode local local-git); rc=$?

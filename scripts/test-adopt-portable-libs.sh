@@ -19,7 +19,7 @@ set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel) || { echo "FAIL: not in a git repo" >&2; exit 1; }
 adopt="${ADOPT_SH:-$repo_root/scripts/adopt.sh}"
-OPTIONAL='scripts/lib/load-dotenv.sh'
+OPTIONAL=''
 
 fail=0
 portable=$(awk '/^PORTABLE_FILES=\(/{f=1;next} f&&/^\)/{exit} f{print $1}' "$adopt")

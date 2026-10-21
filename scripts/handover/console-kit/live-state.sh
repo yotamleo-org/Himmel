@@ -196,6 +196,7 @@ if ! NL="$new_line" awk '
     s && /^lockless:/ { f = 0; next }
     f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
     f { next }
+    # prim-ok: the temp takes the doc mode via chmod --reference; atomic_write would reset it to 0600
     { print }' "$doc" > "$tmp" || ! mv -f "$tmp" "$doc"; then
     rm -f "$tmp"
     echo "live-state: cannot write $doc" >&2

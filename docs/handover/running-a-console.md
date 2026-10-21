@@ -19,11 +19,11 @@ new. This page is how to run one.
   supervisor session a ticket and a brief; never pass it a ruling by way of a relay. A
   ruling reaches the supervisor session from you directly, or not at all.
 
-## Console vs. `/overnight-shift`
+## Console vs. `/afk-shift` <!-- old-term-ok: console is renamed in slice V5 -->
 
 They look adjacent and are not interchangeable.
 
-| | `/overnight-shift` | supervisor session |
+| | `/afk-shift` | supervisor session |
 |---|---|---|
 | Shape | one session fans out N subagents inside itself | one session dispatches N *separate* sessions |
 | Lifetime | one run, then done | a succession — each supervisor session arms its successor |
@@ -32,7 +32,7 @@ They look adjacent and are not interchangeable.
 | Rulings | none — the plan is fixed at fanout | RETASK channel, mid-flight, authenticated |
 | Handover | none | `/console next` writes the successor + a HANDOFF |
 
-Reach for `/overnight-shift` when you have a fixed list of well-scoped tickets
+Reach for `/afk-shift` when you have a fixed list of well-scoped tickets
 and want them done unattended. Reach for a supervisor session when the work will need
 decisions you cannot pre-write, or will outlive one context window.
 
@@ -247,6 +247,11 @@ itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 `worktree.sh new` line to run.
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
+
+**A red orphan is owed a worker.** An `unowned-prs=` entry ending `:dispatch-owed`
+(`#<pr>:<age>m:dispatch-owed`) is an open, non-draft PR with no live worker and at least one
+failed check. Launch a resume worker for it on the next WAKE; triaging the red is that
+resumed worker's job. A pending or green orphan keeps its plain `#<pr>:<age>m` entry.
 
 **Reading worker session locks and the tick.** `tick.sh --legs` takes **absolute**
 handover-doc paths on ONE `legs:` line; a relative path drops the bucket
@@ -570,16 +575,16 @@ means the cache is still the old account's — refresh again, or check the login
 
 **4. Confirm the weekly budget override voided itself.** An override is bound to the
 account that set it, so it is no override under the new login; only the operator can
-set one (`bank-lift.sh set`). Verify:
+set one (`usage-lift.sh set`, old name `bank-lift.sh`). Verify:
 
 ```bash
-bash scripts/lib/bank-lift.sh show
+bash scripts/lib/usage-lift.sh show
 ```
 
-Expect `bank-lift: INVALID: account` after an account switch. Other invalid
+Expect `usage-lift: INVALID: account` after an account switch. Other invalid
 reasons are `expired`, `window`, `trust`, `parse` (or `missing` when unset).
 The doctor reports `lift set but INVALID: <reason>`. A stale file is harmless
-and can be removed with `bash scripts/lib/bank-lift.sh clear`.
+and can be removed with `bash scripts/lib/usage-lift.sh clear`.
 
 A one-window weekly budget override skips only the weekly ceiling; `five_hour` still binds.
 Whole-second reset values tolerate up to one second of fractional API jitter,
@@ -587,12 +592,12 @@ not a different weekly window. Only the operator can enable the standing
 "spend to 100 %" policy:
 
 ```bash
-bash scripts/lib/bank-lift.sh set --standing
+bash scripts/lib/usage-lift.sh set --standing
 ```
 
 It records `standing:true` in the same operator-only, account-bound override file
 (no new state path or hook bypass). The policy applies to every fresh window
-for that account and defaults `CADENCE_BANK_MAX_PCT` to 100 for launch checks.
+for that account and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
 An explicit ceiling still controls `five_hour`; either usage budget at 100 refuses,
 so extra usage is never spent. Plain `set` replaces it with a one-window weekly budget override;
 `clear` disables it. Agents must never run either form of `set`.
@@ -623,13 +628,13 @@ bash scripts/handover/console-kit/vm-runner.sh status
   writes the stop file and stops the units; a job already running is not
   re-queued but no new runner is minted.
 - `status` prints the variable, per-VM up/idle/busy state and the last error.
-- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING | DISAGREE:<up>/<want>,online=0>`.
+- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING | DISAGREE:<up>/<want>,online=<n>>`.
   `DEAD` is variable on with no unit up; `STUCK` is a job running past its
   budget plus ten minutes; `FAILING` is a loop whose newest log line is an
-  error, or a GitHub runner count that could not be read; `DISAGREE` is a unit
-  with a registered, unfinished runner while GitHub shows no himmel-vm runner
-  online (zero online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD` or
-  `STUCK`; answer with `status`, then `off` and a note to the operator.
+  error, or a GitHub runner count that could not be read; `DISAGREE` is more units
+  with a registered, unfinished runner than GitHub shows himmel-vm runners
+  online (fewer online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD`,
+  `STUCK` or `DISAGREE`; answer with `status`, then `off` and a note to the operator.
 - With the variable `on`, `ci.yml` runs the `shell-unit-shard` matrix on the VM
   runner for a same-repo `pull_request` whose author and actor are the operator
   accounts; everything else (fork PRs, other authors, push, schedule, dispatch)
@@ -649,6 +654,6 @@ bash scripts/handover/console-kit/vm-runner.sh status
 - [`console-template.md`](console-template.md) — the supervisor session's operating contract
 - [`console-handoff-template.md`](console-handoff-template.md) — the handover skeleton
 - [`leg-brief-template.md`](leg-brief-template.md) — what a dispatched worker session gets
-- [`overnight-mode.md`](overnight-mode.md) — the unattended-pipeline alternative
+- [`afk-mode.md`](afk-mode.md) — the unattended-pipeline alternative
 - [`../internals/retask-channel.md`](../internals/retask-channel.md) — authenticated re-tasking
 - [`../internals/lane-calibration.md`](../internals/lane-calibration.md) — tiers, effort, wake-up budget

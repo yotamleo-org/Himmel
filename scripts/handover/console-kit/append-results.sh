@@ -80,9 +80,9 @@ esac
 case "$is_leg:$lead" in
     1:??*)
         case "$lead" in
-            LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED|CONSULT|CONSULT-ANSWER|ANSWER|SUCCESSION|MAIN-RED|PARK-BANK) ;;
+            LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|CONSULT|CONSULT-ANSWER|ANSWER|SUCCESSION|MAIN-RED|PARK-BANK) ;;
             *)
-                echo "append-results: '$lead' is not in the marker vocabulary (LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-BANK RESUMED) - refusing" >&2
+                echo "append-results: '$lead' is not in the marker vocabulary (LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-USAGE PARKED-BANK RESUMED) - refusing" >&2
                 exit 6 ;;
         esac ;;
 esac
@@ -128,16 +128,18 @@ fi
 [ "$locked" -eq 1 ] && doc_unlock
 echo "append-results: appended to $DOC"
 
-# a LIVE bullet moves the leg's ticket (the key in the doc name)
-# to In Progress. Best-effort - leg-jira-status.sh warns and exits 0 on any
-# Jira failure, and LEG_JIRA_STATUS=0 opts out.
+# a LIVE or WRAPPED bullet records the doc as the ticket's owner (the key in
+# the doc name) and re-derives its Jira status. Best-effort - leg-jira-status.sh
+# warns and exits 0 on any Jira failure, and LEG_JIRA_STATUS=0 opts out.
+event=""
 case "$TEXT" in
-    LIVE|LIVE[!A-Za-z0-9]*)
-        if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
-            base="${DOC##*/}"
-            if [[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]]; then
-                bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" "In Progress" || true
-            fi
-        fi ;;
+    LIVE|LIVE[!A-Za-z0-9]*) event=live ;;
+    WRAPPED|WRAPPED[!A-Za-z0-9]*) event=wrapped ;;
 esac
+if [ -n "$event" ] && [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+    base="${DOC##*/}"
+    if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
+        bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
+    fi
+fi
 exit 0

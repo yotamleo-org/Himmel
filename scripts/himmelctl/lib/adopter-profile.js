@@ -920,7 +920,7 @@ function hardeningPointerLines() {
   return [
     '',
     'always-on hardening: skipped (you answered alwaysOn=no).',
-    '  If you later run this machine unattended, see the Phase 6 hardening steps.',
+    '  If you later run this machine unattended, re-run the install and answer yes to the always-on question to print the checklist (docs/setup/new-machine.md).',
     '',
   ];
 }
@@ -937,7 +937,7 @@ function hardeningNotAskedLines() {
   return [
     '',
     'always-on hardening: not asked (this flow does not ask the always-on question).',
-    '  If this machine runs unattended, see the Phase 6 hardening steps.',
+    '  If this machine runs unattended, re-run the install and answer yes to the always-on question to print the checklist (docs/setup/new-machine.md).',
     '',
   ];
 }

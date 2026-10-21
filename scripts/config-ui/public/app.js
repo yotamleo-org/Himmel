@@ -3,6 +3,8 @@ import { render, renderNav, renderHeader, renderProbe } from "/render.js";
 import { renderHealth, verdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
+import { renderWorkflow, mountWorkflow } from "/workflow.js";
+import { renderSetup } from "/setup.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -28,16 +30,24 @@ let health = null; // GET /api/health, null while loading
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let toolHealth = null, toolHealthGen = 0;
+let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
+const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
 const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
+let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides Roadmap and Kanban
+const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
+const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
-  { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
+  { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
+  { id: "setup", label: "Setup", needsFeed: false, render: () => renderSetup(setup, state.plans, setupMsgs), onVisit: () => loadSetup() },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
-  { id: "roadmap", label: "Roadmap", needsFeed: false, render: () => renderRoadmap(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
-  { id: "kanban", label: "Kanban", needsFeed: false, render: () => renderKanban(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
+  { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
+  { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
+  { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
 ];
+let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
 
 function route() {
@@ -48,6 +58,7 @@ function route() {
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
   roadmapUi.ver = ver;
+  if (unmountPage) { unmountPage(); unmountPage = null; } // the branch below can replace #main without a paint
   renderPages();
   loadFleet();
   if (currentPage.onVisit) currentPage.onVisit();
@@ -58,12 +69,22 @@ function route() {
 }
 addEventListener("hashchange", route);
 route();
+loadSources();
 
 // The rail (nav.js, shared with the AG-UI page): Config and Health are routes here, Fleet is /agui/.
 function renderPages() {
   const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
-  $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id }).map((l) =>
-    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("");
+  $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id, sources }).map((l) =>
+    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("");
+}
+
+async function loadSources() {
+  try {
+    const r = await fetch("/api/sources", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (r.ok) sources = (await r.json()).sources;
+  } catch (_) { /* unknown stays unknown: nothing is hidden */ }
+  renderPages();
+  if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
 
 async function loadFleet() {
@@ -78,7 +99,9 @@ function paint() {
   const keep = document.activeElement && document.activeElement.id === "q" ? document.activeElement.selectionStart : null;
   const focusK = document.activeElement && document.activeElement.matches && document.activeElement.matches(".row-head") ? document.activeElement.dataset.k : null;
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
+  if (unmountPage) { unmountPage(); unmountPage = null; }
   $("#main").innerHTML = currentPage.render(feed);
+  if (currentPage.afterPaint) unmountPage = currentPage.afterPaint();
   $("#nav").innerHTML = currentPage.regions && feed ? renderNav(feed, current) : "";
   $("#top").innerHTML = renderHeader(feed);
   renderPages(); // the Health dot follows the feed and the health read
@@ -199,6 +222,28 @@ async function loadHealth() {
   if (currentPage.needsFeed === false) paint();
 }
 
+async function loadSetup() {
+  const gen = ++setupGen;
+  let data;
+  try {
+    const r = await fetch("/api/setup", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    data = r.ok ? await r.json() : { error: `setup failed (${r.status})` };
+  } catch (_) { data = { error: "server unreachable" }; }
+  if (gen !== setupGen) return;
+  setup = data;
+  if (currentPage.id === "setup") paint();
+}
+// The value leaves the field in this one request and the field is cleared whatever the answer is.
+async function saveSecret(name, op, input) {
+  const body = { name, op };
+  if (input) { if (!input.value) { setupMsgs[name] = "type a value first"; return paint(); } body.value = input.value; input.value = ""; }
+  const { ok, j } = await post("/api/setup/secret", body);
+  setupMsgs[name] = ok ? (op === "set" ? "saved" : "removed") : (j.error || "failed");
+  const s = ok && setup && setup.secrets && setup.secrets.find((x) => x.name === name);
+  if (s) s.status = j.status;
+  paint();
+}
+
 async function loadToolHealth() {
   const gen = ++toolHealthGen;
   let data;
@@ -220,6 +265,7 @@ async function loadRoadmap() {
   } catch (_) { data = { state: "error", reason: "server unreachable" }; }
   if (gen !== roadmapGen) return;
   roadmap = data;
+  roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
 // a drop or a theme select goes to Jira through the server. The board is redrawn from the server's data either way:
@@ -292,8 +338,14 @@ async function run(k) {
   const { ok, j } = await post("/api/run", { previewId: p.previewId, ...p.req, consent: p.typed });
   state.plans[k] = ok ? { stage: "done", ...j } : { stage: "error", error: j.error || "run failed", output: j.output };
   paint();
-  if (ok) loadFeed();
+  if (ok) { loadFeed(); if (currentPage.id === "setup") loadSetup(); }
 }
+document.addEventListener("submit", (e) => {
+  const f = e.target.closest && e.target.closest("[data-setup-form]");
+  if (!f) return;
+  e.preventDefault();
+  void saveSecret(f.dataset.name, "set", f.querySelector("input"));
+});
 
 // A header click records an override with the bundle's rank at click time; a
 // later worse rank makes render.js drop it (isOpen).
@@ -314,13 +366,14 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth();
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
   if (b.dataset.act === "vm-save") return void saveVm();
+  if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") {
     state.filt = { health: null, kind: null, q: b.dataset.id, problems: false };
     location.hash = "#/config";
     return;
   }
-  if (!feed) return;
+  if (!feed && currentPage.needsFeed !== false) return;
   if (b.dataset.go) return go(b.dataset.go);
   if (b.dataset.f) { state.filt[b.dataset.f] = state.filt[b.dataset.f] === b.dataset.v ? null : b.dataset.v; return paint(); }
   if (b.dataset.act === "copy") {
@@ -355,7 +408,7 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (!feed || e.target.matches("input,select")) return;
-  if (currentPage.regions && ["1", "2", "3"].includes(e.key)) return go(["triage", "controls", "inventory"][Number(e.key) - 1]);
+  if (currentPage.regions && ["1", "2", "3"].includes(e.key)) return go(["triage", "settings", "inventory"][Number(e.key) - 1]);
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".bhead")) {
     e.preventDefault();
     return toggleBundle(e.target);

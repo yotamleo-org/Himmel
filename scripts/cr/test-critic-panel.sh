@@ -1030,6 +1030,21 @@ rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 print('yes' if rows and all(r.get('branch') == 'feature' for r in rows) else 'no')
 PYEOF
 )" "yes"
+PR_STUB="$tmp/stub-dump-pr.sh"
+cat > "$PR_STUB" <<'EOS'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '%s\n' "${CR_TARGET_PR:-}" > "$PR_DUMP"
+printf '# pr First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
+EOS
+chmod +x "$PR_STUB"
+PR_BIN="$tmp/pr-bin"; mkdir -p "$PR_BIN"
+printf '#!/bin/sh\necho 4242\n' > "$PR_BIN/gh"; chmod +x "$PR_BIN/gh"
+PR_DUMP="$tmp/pr-dump.txt"; export PR_DUMP
+PATH="$PR_BIN:$PATH" CR_LEDGER="$tmp/pr-ledger.jsonl" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+    CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PR_STUB" \
+    bash "$PANEL" --worktree "$WT_REPO" --head "$wt_head" --branch feature > /dev/null 2>&1 || true  # swallow-ok: asserted on the dump below
+check "HIMMEL-6490: the critic receives the branch's open PR number" "$(cat "$PR_DUMP" 2>/dev/null)" "4242"
 check "PIN1: the critic saw the diff of the PINNED range" \
     "$(cat "$PIN_DUMP" 2>/dev/null)" "$(git -C "$WT_REPO" diff "main...$wt_head")"
 check "PIN1: ledger rows stamp the pinned head" \
@@ -1962,7 +1977,9 @@ check "PV3: anchor-only fallback threads --provider ANCHOR_PROVIDER" "$(grep -c 
 # survives; CRITICS_JSON env still wins over both (no merge). Run a COPY of the
 # panel from a tmp dir so the repo tree is never polluted with a local overlay
 # file (concurrent sessions share this checkout).
-mkdir -p "$tmp/panelcopy"
+mkdir -p "$tmp/panelcopy" "$tmp/lib"
+cp "$HERE/../lib/prim.sh" "$tmp/lib/prim.sh"
+cp "$HERE/../lib/critics-config.sh" "$tmp/lib/critics-config.sh"
 cp "$PANEL" "$tmp/panelcopy/critic-panel.sh"
 printf '%s' '{"panel":[{"slug":"repodefault","model":"fake/repo","provider":"test","tier":"free"}]}' > "$tmp/panelcopy/critics.json"
 printf '%s' '{"panel":[{"slug":"localoverlay","model":"fake/local","provider":"test","tier":"free"}]}' > "$tmp/panelcopy/critics.local.json"
@@ -2195,6 +2212,7 @@ check "W7c: the clamp never emits a 0 or negative timeout" \
 P1648_ROOT="$tmp/p1648-root"; mkdir -p "$P1648_ROOT/scripts/cr" "$P1648_ROOT/scripts/lib"
 cp "$PANEL" "$P1648_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$P1648_ROOT/scripts/lib/load-dotenv.sh"
+cp "$HERE/../lib/prim.sh" "$P1648_ROOT/scripts/lib/prim.sh"
 printf 'GLM_API_KEY=zk-himmel-root\n' > "$P1648_ROOT/.env"
 P1648_CWX="$tmp/p1648-cwd"; mkdir -p "$P1648_CWX"; git init -q "$P1648_CWX"
 git -C "$P1648_CWX" config user.name test
@@ -2243,6 +2261,7 @@ check "HIMMEL-1648: panel preserves the live process env key over .env" "$(cat "
 P1065_ROOT="$tmp/p1065-root"; mkdir -p "$P1065_ROOT/scripts/cr" "$P1065_ROOT/scripts/lib"
 cp "$PANEL" "$P1065_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$P1065_ROOT/scripts/lib/load-dotenv.sh"
+cp "$HERE/../lib/prim.sh" "$P1065_ROOT/scripts/lib/prim.sh"
 printf 'CLIPROXY_API_KEY=cpx-himmel-root\n' > "$P1065_ROOT/.env"
 P1065_CWX="$tmp/p1065-cwd"; mkdir -p "$P1065_CWX"; git init -q "$P1065_CWX"
 git -C "$P1065_CWX" config user.name test
@@ -2399,7 +2418,7 @@ M3492_BIN="$tmp/m3492-bin"; mkdir -p "$M3492_BIN"
 M3492_REAL="$(command -v mktemp)"
 cat > "$M3492_BIN/mktemp" <<STUBEOF
 #!/usr/bin/env bash
-case "\$*" in *critic-panel-spool.*) exit 1 ;; esac
+case "\$*" in *prim.*) exit 1 ;; esac
 exec "$M3492_REAL" "\$@"
 STUBEOF
 chmod +x "$M3492_BIN/mktemp"
@@ -2467,7 +2486,19 @@ m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/cr
     CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
 m5866_assert "sequential err" "$?" "$m5866_err"
 
-m5866_bin="$(m5866_stub par '*critic-panel-par.*')"
+# Both tmpdir sites share the prim.XXXXXX template: the stub lets the first (the
+# spool dir) through and fails the second (the parallel outdir).
+m5866_bin="$tmp/m5866-par-bin"; mkdir -p "$m5866_bin"
+rm -f "$tmp/m5866-par-count"
+cat > "$m5866_bin/mktemp" <<STUBEOF
+#!/usr/bin/env bash
+case "\$*" in *prim.*)
+    printf x >> "$tmp/m5866-par-count"
+    [ "\$(wc -c < "$tmp/m5866-par-count")" -ge 2 ] && exit 1 ;;
+esac
+exec "$M3492_REAL" "\$@"
+STUBEOF
+chmod +x "$m5866_bin/mktemp"
 m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
     CRITIC_FIRST_PASS="$STUB" CRITIC_PARALLEL=1 bash "$PANEL" 2>&1 >/dev/null)"
 m5866_assert "parallel outdir" "$?" "$m5866_err"

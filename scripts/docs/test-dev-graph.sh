@@ -237,24 +237,107 @@ mut "$D" '.nodes[0].lane = "nolane"'
 run "$D"
 expect_fail "integrity: node in an unknown lane fails" "n.a" "nolane"
 
-D=$TMP/min; fx "$D"
-printf '{"version":1}\n' > "$D/graph.json"
-run "$D"
-if [ "$rc" -eq 2 ]; then ok "integrity: a graph holding only a version is a usage error, not a pass"; else bad "integrity: version-only graph rc=$rc, want 2 :: $out"; fi
-D=$TMP/min2; fx "$D"
-mut "$D" '.edges = [1]'
-run "$D"
-if [ "$rc" -eq 2 ]; then ok "integrity: a non-object edge entry is a usage error, not a pass"; else bad "integrity: edges [1] rc=$rc, want 2 :: $out"; fi
-D=$TMP/min3; fx "$D"
-mut "$D" '.nodes[0].sources = [{"file": 7}]'
-run "$D"
-if [ "$rc" -eq 2 ]; then ok "integrity: a non-string source file is a usage error, not a pass"; else bad "integrity: file 7 rc=$rc, want 2 :: $out"; fi
+D=$TMP/min
+if fx "$D" && printf '{"version":1}\n' > "$D/graph.json"; then
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: a graph holding only a version is a usage error, not a pass"; else bad "integrity: version-only graph rc=$rc, want 2 :: $out"; fi
+else
+  bad "integrity: version-only graph fixture setup failed"
+fi
+D=$TMP/min2
+if fx "$D" && mut "$D" '.edges = [1]'; then
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: a non-object edge entry is a usage error, not a pass"; else bad "integrity: edges [1] rc=$rc, want 2 :: $out"; fi
+else
+  bad "integrity: non-object edge fixture setup failed"
+fi
+D=$TMP/min3
+if fx "$D" && mut "$D" '.nodes[0].sources = [{"file": 7}]'; then
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: a non-string source file is a usage error, not a pass"; else bad "integrity: file 7 rc=$rc, want 2 :: $out"; fi
+else
+  bad "integrity: non-string source fixture setup failed"
+fi
+
+for entry in '.nodes[0]' '.edges[0]'; do
+  D=$TMP/false-source
+  if ! fx "$D" || ! mut "$D" "$entry.sources = false"; then
+    bad "integrity: $entry sources false fixture setup failed"
+    continue
+  fi
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: $entry sources false is a usage error, not a pass"; else bad "integrity: $entry sources false rc=$rc, want 2 :: $out"; fi
+done
 
 # --- selection -------------------------------------------------------------
 D=$TMP/s1; fx "$D"
 printf 'tool.sh gate.sh preface.md\n' > "$D/suite.txt"
 run "$D"
 expect_fail "selection: a source basename the suite never names fails" "wake.sh" "suite"
+
+# --- drawing data: token copy and path endpoints ---------------------------
+# The docs page loads its own byte copy of the canonical tokens.css.
+tokens_in_sync() { cmp -s "$1" "$2"; }
+CANON=$ROOT/site/src/styles/tokens.css
+COPY=$ROOT/docs/guide/dev-graph/tokens.css
+D=$TMP/tok; mkdir -p "$D"
+cp "$CANON" "$D/canon.css"; cp "$CANON" "$D/copy.css"
+if tokens_in_sync "$D/canon.css" "$D/copy.css"; then ok "tokens: an identical copy is in sync"; else bad "tokens: an identical copy reads as drifted"; fi
+printf ' ' >> "$D/copy.css"
+if tokens_in_sync "$D/canon.css" "$D/copy.css"; then bad "tokens: a one-byte edit to the copy still reads as in sync (vacuous)"; else ok "tokens: a one-byte edit to the copy fails the sync"; fi
+if tokens_in_sync "$CANON" "$COPY"; then ok "tokens: docs/guide/dev-graph/tokens.css is byte-identical to the canonical file"; else bad "tokens: docs/guide/dev-graph/tokens.css differs from site/src/styles/tokens.css"; fi
+
+# Prints the id of every edge whose wide path is missing, or does not start on its
+# source node's box and end on its target's, within 2 px. M/H/V paths only.
+# shellcheck disable=SC2016  # jq program text, not shell expansion
+PTS_JQ='
+  def pts: reduce (scan("([MHV])\\s*(-?[0-9.]+)(?:\\s*,\\s*(-?[0-9.]+))?")) as $t ({pts: []};
+    if $t[0] == "M" then .x = ($t[1] | tonumber) | .y = ($t[2] | tonumber)
+    elif $t[0] == "H" then .x = ($t[1] | tonumber)
+    else .y = ($t[1] | tonumber) end
+    | .pts += [[.x, .y]]) | .pts;'
+# shellcheck disable=SC2016  # jq program text, not shell expansion
+PATHS_JQ="$PTS_JQ"'
+  def onbox($c; $hw; $hh; $p):
+    (($p[0] - $c.x) | fabs) as $dx | (($p[1] - $c.y) | fabs) as $dy
+    | $dx <= $hw + 2 and $dy <= $hh + 2 and ($dx >= $hw - 2 or $dy >= $hh - 2);
+  (.view.wide.box[0] / 2) as $hw | (.view.wide.box[1] / 2) as $hh
+  | (.nodes | map({key: .id, value: .pos.wide}) | from_entries) as $at
+  | .edges[]
+  | . as $e
+  | ((.path.wide // "") | pts) as $p
+  | select(($p | length) < 2
+      or (onbox($at[$e.from]; $hw; $hh; $p[0]) | not)
+      or (onbox($at[$e.to]; $hw; $hh; $p[-1]) | not))
+  | .id'
+paths_bad() { jq -r "$PATHS_JQ" "$1" 2>&1; }
+
+REAL=$ROOT/docs/guide/dev-graph/graph.json
+if [ -f "$REAL" ]; then
+  bad_ids=$(paths_bad "$REAL")
+  if [ -z "$bad_ids" ]; then ok "paths: every edge path starts and ends on its nodes' boxes"; else bad "paths: edges off their boxes: $bad_ids"; fi
+  D=$TMP/pathmut; mkdir -p "$D"
+  jq '.edges[0].path.wide |= sub("^M(?<x>[0-9]+)"; "M\(.x | tonumber + 10)")' "$REAL" > "$D/moved.json"
+  first_id=$(jq -r '.edges[0].id' "$REAL")
+  case $(paths_bad "$D/moved.json") in
+    *"$first_id"*) ok "paths: a start moved 10 px off its box fails, naming $first_id" ;;
+    *) bad "paths: a start moved 10 px off its box still passes (vacuous)" ;;
+  esac
+  # two edges on one path, drawn in either direction, stack their badges and arrowheads and hide one
+  shared_paths() { jq -r "$PTS_JQ"'[.edges[] | {id, p: ((.path.wide | pts) as $a | [$a, ($a | reverse)] | map(tojson) | min)}] | group_by(.p) | map(select(length > 1) | map(.id) | join("+")) | .[]' "$1"; }
+  dups=$(shared_paths "$REAL")
+  if [ -z "$dups" ]; then ok "paths: no two edges share one wide path"; else bad "paths: edges share a path: $dups"; fi
+  jq '.edges[1].path.wide = .edges[0].path.wide' "$REAL" > "$D/shared.json"
+  if [ -n "$(shared_paths "$D/shared.json")" ]; then ok "paths: two edges copied onto one path fail the shared-path check"; else bad "paths: a shared path still passes (vacuous)"; fi
+  jq '.edges[0].path.wide = "M7,40 V10" | .edges[1].path.wide = "M7,10 V40"' "$REAL" > "$D/reversed.json"
+  if [ -n "$(shared_paths "$D/reversed.json")" ]; then ok "paths: two edges drawn over one path in opposite directions fail the shared-path check"; else bad "paths: a reversed shared path still passes (vacuous)"; fi
+  jq 'del(.edges[1].path)' "$REAL" > "$D/missing.json"
+  second_id=$(jq -r '.edges[1].id' "$REAL")
+  case $(paths_bad "$D/missing.json") in
+    *"$second_id"*) ok "paths: an edge with no wide path fails, naming $second_id" ;;
+    *) bad "paths: an edge with no wide path still passes (vacuous)" ;;
+  esac
+fi
 
 # --- the real graph --------------------------------------------------------
 if [ -f "$ROOT/docs/guide/dev-graph/graph.json" ]; then

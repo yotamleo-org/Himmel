@@ -105,7 +105,8 @@ deny() {
         echo "equals the HIMMEL_REPO anchor's byte for byte and mode for mode (compared raw, so a CRLF"
         echo "checkout differs): scripts/cr/, scripts/guardrails/lib.sh and scripts/lib/load-dotenv.sh"
         echo "for pr-check-context.sh / pr-check-env.sh; the script and scripts/cr/anchor-handoff.sh"
-        echo "for every other target, merge-on-green.sh and console-kit/go.sh included."
+        echo "for every other target, merge-on-green.sh and console-kit/go.sh included. A scripts/handover/"
+        echo "entry the branch never changed may instead equal its merge-base with main's copy."
         echo "If the command only mentions the script (a message, a heredoc), move that text into a file."
         case "$flat" in
             *pr-check-env*)
@@ -235,7 +236,8 @@ flat=$REPLY
 #               a segment of its own.
 #   ST_SUBST ST_HEREDOC ST_ANSIC ST_COMMENT — 1 when the command carries a
 #               live command/process substitution (including inside "…" and
-#               an unquoted heredoc body), a heredoc, a $'…' word, a comment.
+#               any live $ in an unquoted heredoc body), a heredoc, a $'…'
+#               word, a comment.
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 st_tokenize() {
     local LC_ALL=C
@@ -483,7 +485,7 @@ _st_resume() { # back from a substitution: inside "…" the word goes on
 
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 _st_heredocs() { # skip the bodies of every heredoc queued on the line just ended
-    local d line
+    local d line t
     while [ "$hd_i" -lt "$hd_n" ]; do
         d=${hd_d[hd_i]}
         while [ "$i" -lt "$n" ]; do
@@ -495,7 +497,11 @@ _st_heredocs() { # skip the bodies of every heredoc queued on the line just ende
             fi
             [ "$line" != "$d" ] || break
             if [ "${hd_q[hd_i]}" = 0 ]; then
-                case "$line" in *'$('*|*'`'*) ST_SUBST=1 ;; esac
+                # Any live $ expands: ${x@P} and an array subscript re-expand
+                # a $(...) held in a variable. Only a \$ is literal.
+                t=${line//\\\\/}
+                t=${t//\\\$/}
+                case "$t" in *'$'*|*'`'*) ST_SUBST=1 ;; esac
             fi
         done
         hd_i=$((hd_i + 1))
@@ -1521,7 +1527,8 @@ edhook_deny() {
 # (but for a lone --help) are refused here. No VAR= word, no substitution,
 # no $'…', no comment, no write redirect but an fd dup or /dev/null, and a
 # live `$` only as a plain $NAME / ${NAME} reference. A heredoc body is not a
-# word and is allowed. Anything else falls through unchanged.
+# word and is allowed, but a live `$` in an unquoted one counts as a
+# substitution. Anything else falls through unchanged.
 is_target() { # is_target <basename> - names, or globs onto, a guarded script, in any case
     local t rc=1
     shopt -s nocasematch
@@ -2462,7 +2469,57 @@ if ! have=$(manifest "$cwd") || [ -z "$have" ]; then
     deny "the worktree's scripts/cr/ and sourced libs cannot be read and hashed."
 fi
 case "$have" in ODD\ *) deny "a non-regular file or a control-character name sits under the guarded paths: ${have#ODD }" ;; esac
-if [ "$have" != "$want" ]; then
+# A branch cut before main moved a scripts/handover/ entry still carries the
+# copy of its merge-base with main when the branch never touched it: main-
+# reviewed bytes whose first statement sources the hand-off, which then execs
+# the anchor's copy. Only the entries may differ that way; the hand-off and
+# go.sh's siblings must still equal the anchor's. The merge-base is computed
+# with grafts and the commit-graph off (both are files a leg can write in the
+# shared .git, and either can fake a parent), and replace refs off as above.
+# ponytail: scripts/cr/ entries keep the strict equality (/pr-check's anchored
+# fence covers them); a hand-off whose own runtime check finds
+# scripts/guardrails/lib.sh or scripts/lib/load-dotenv.sh moved on main still
+# refuses at run time - merge main forward in that case.
+behind_main_entries_ok() {
+    local wt_head mb base e rest_have rest_want
+    [ -z "$entries" ] && [ -n "$hentries" ] || return 1
+    wt_head=$(gitq rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null) || return 1 # swallow-ok: a failure denies
+    mb=$(GIT_GRAFT_FILE=/dev/null anchorq -c core.commitGraph=false merge-base refs/heads/main "$wt_head" 2>/dev/null) || return 1 # swallow-ok: a failure denies
+    [ -n "$mb" ] || return 1
+    # shellcheck disable=SC2086 # $hentries is a fixed, space-free word list
+    base=$(anchorq ls-tree -r --full-tree "$mb" -- $hentries 2>/dev/null \
+        | awk -F'\t' '{ split($1, m, " "); print m[1] " " m[3] " " $2 }' | LC_ALL=C sort) || return 1
+    [ -n "$base" ] || return 1
+    [ "$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } ($3 in h)')" = "$base" ] || return 1
+    # The merge-base copy must run nothing before the hand-off: past comments,
+    # blank lines and one `set -u` / `set -uo pipefail` line, its first
+    # statements are the `_ah_d` line and the hand-off source line, which
+    # reaches scripts/cr/anchor-handoff.sh at the entry's own depth (any other
+    # depth sources a file the guard never hashes). Blank means space or tab
+    # only: bash does not treat \v, \f or \r as blank, so [[:space:]] would
+    # skip a line bash runs.
+    for e in $hentries; do
+        case "$e" in
+            scripts/handover/merge-on-green.sh) up=.. ;;
+            scripts/handover/console-kit/go.sh) up=../.. ;;
+            *) return 1 ;;
+        esac
+        # shellcheck disable=SC2016 # the entries' literal `_ah_d` and source lines
+        anchorq cat-file blob "$mb:$e" 2>/dev/null \
+            | awk -v c='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac' \
+                -v s=". \"\$_ah_d/$up/cr/anchor-handoff.sh\" || exit 2" '
+                d { next }
+                /^[ \t]*(#|$)/ { next }
+                n == 0 && /^set -u(o pipefail)?$/ { n = 1; next }
+                n < 2 { if ($0 != c) d = 1; else n = 2; next }
+                { f = ($0 == s); d = 1 }
+                END { exit !f }' || return 1
+    done
+    rest_have=$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
+    rest_want=$(printf '%s\n' "$want" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
+    [ "$rest_have" = "$rest_want" ]
+}
+if [ "$have" != "$want" ] && ! behind_main_entries_ok; then
     differ=$(LC_ALL=C comm -3 <(printf '%s\n' "$want") <(printf '%s\n' "$have") \
         | awk '{ sub(/^\t/, ""); sub(/^[^ ]* [^ ]* /, ""); print }' | LC_ALL=C sort -u | tr '\n' ' ')
     deny "this tree's copy of the bytes step 0 runs differs from the HIMMEL_REPO anchor's ($repo): $differ"

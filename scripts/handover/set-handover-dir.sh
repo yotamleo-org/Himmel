@@ -88,6 +88,7 @@ if grep -qE '^[[:space:]]*HANDOVER_DIR=' "$ENV_FILE"; then
         !done && /^[[:space:]]*HANDOVER_DIR=/ { print repl; done=1; next }
         { print }
     ' "$ENV_FILE" > "$tmp"
+    # prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
     mv "$tmp" "$ENV_FILE"
     echo "OK set-handover-dir: updated HANDOVER_DIR in $ENV_FILE"
 else

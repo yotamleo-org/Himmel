@@ -118,7 +118,7 @@ shape is a shape denial (`block-jira-compound-write.sh` now
 bounces loop, `$J` and `xargs` shapes itself with that recipe). If the single
 literal write is still denied, that is not a shape problem — defer to the
 operator (a review-thread write goes to the console instead, above), do **not** reshape again to dodge the classifier. See
-[`overnight-mode.md`](../handover/overnight-mode.md) § Auto-mode classifier &
+[`afk-mode.md`](../handover/afk-mode.md) § Auto-mode classifier &
 attestation. Multi-line bodies: use `--comment-file <path>` / `--desc-file
 <path>` so the shell command stays single-line.
 
@@ -802,7 +802,7 @@ then rolls back — silently reverting OTHER unstaged files on disk, including
 ones the committing session never touched. It is deterministic, not a race:
 it reproduces on the immediate retry, and the commit itself reports `exit 0`.
 A vault scaffolded from `templates/luna-second-brain/` on or after 0.4.55
-installs `scripts/hooks/install-nostash-hooks.sh`'s wrappers instead, which
+installs `templates/luna-second-brain/scripts/hooks/install-nostash-hooks.sh`'s wrappers instead, which
 never stash (`pre-commit run --files <staged>` never invokes the stash at
 all — `pre_commit/commands/run.py`'s `stash = not args.all_files and not
 args.files`). `--files` only selects which PATHNAMES run hooks; it does not

@@ -81,6 +81,15 @@
 # BOTH gates carry every skip wording on a clean
 #           exact-head panel, so the description now only labels the audit line.
 #
+# cr_signal_rate_limit <owner> <name> <pr> <sha>
+#   stdout: "rate_limited" when CodeRabbit declined THIS head for its rate
+#           limit, else empty. rc 0 = read ok; rc 1 = cannot evaluate.
+#   Two shapes, both seen live: the status description ("Review rate limited",
+#   #2214), and, when no status is posted, the bot's "Rate Limit Exceeded"
+#   reply comment (#3215). A reply counts for this head only when it is newer
+#   than both the head's commit and the first `@coderabbitai review` trigger
+#   posted after it, so an older head's refusal never names this one.
+#
 #   A SHA that does not exist returns `[]` with HTTP 200 on this endpoint, so it
 #   is indistinguishable from "no CodeRabbit status" and reports "absent". That
 #   conflation is safe in one direction only — every caller fails CLOSED on
@@ -348,4 +357,32 @@ cr_signal_probe() {
             return 0 ;;
         *) return 1 ;;
     esac
+}
+
+cr_signal_rate_limit() {
+    local owner="$1" name="$2" pr="$3" sha="$4"
+    local uid desc commit since comments
+    uid=$(cr_signal_bot_id)
+    if [ -z "$owner" ] || [ -z "$name" ] || [ -z "$pr" ] || [ -z "$sha" ]; then return 1; fi
+    case "$uid" in ''|*[!0-9]*) return 1 ;; esac
+    case "$pr" in *[!0-9]*) return 1 ;; esac
+
+    desc=$(cr_signal_description "$owner" "$name" "$sha") || return 1
+    if printf '%s' "$desc" | grep -qiE 'rate.?limit'; then
+        printf 'rate_limited\n'; return 0
+    fi
+
+    commit=$(_crs_gh api "repos/$owner/$name/commits/$sha" 2>/dev/null) || return 1
+    since=$(printf '%s' "$commit" | jq -r '.commit.committer.date // empty' 2>/dev/null) || return 1
+    [ -n "$since" ] || return 1
+    comments=$(_crs_gh api "repos/$owner/$name/issues/$pr/comments?per_page=100&since=$since" 2>/dev/null) || return 1
+    printf '%s' "$comments" | jq -r --arg d "$since" --argjson uid "$uid" '
+        if type != "array" then error("not an array") else . end
+        | ([ .[] | select(.created_at >= $d)
+                 | select((.body // "") | test("@coderabbitai\\s+review"; "i")) ]
+           | sort_by(.created_at) | first | .created_at // $d) as $t
+        | if any(.[]; .user.id == $uid and .created_at >= $t
+                      and ((.body // "") | test("Rate Limit Exceeded"; "i")))
+          then "rate_limited" else empty end' 2>/dev/null || return 1
+    return 0
 }

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Mock the network + breadcrumb layers so the command action resolves without
 // a real Jira or a real breadcrumb file write (same pattern as
@@ -149,7 +152,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('defaults a Bug to the earliest unreleased version and says so', async () => {
     withVersions(VERSIONS);
-    await createFields(['--type', 'Bug']);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
     expect(postedFields().fixVersions).toEqual([{ name: 'v1.0.2' }]);
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/defaults to fixVersion v1\.0\.2/));
   });
@@ -162,7 +165,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('files with no fixVersion and a warning when no unreleased version can be found', async () => {
     withVersions([{ id: '1', name: 'v1.0.0', released: true }]);
-    await createFields(['--type', 'Bug']);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
     expect(postedFields().fixVersions).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/no unreleased version.*no fixVersion/));
   });
@@ -172,7 +175,7 @@ describe('create — Bug default fixVersion wiring', () => {
       if (method === 'GET') throw new Error('boom');
       return { key: 'HIMMEL-1' };
     });
-    await createFields(['--type', 'Bug']);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
     expect(postedFields().fixVersions).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/no unreleased version.*no fixVersion/));
   });
@@ -447,5 +450,728 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
       /Unknown sector 'Bogus'/,
     );
     expect(posted()).toBeUndefined();
+  });
+});
+
+// The one residual writer. The mock plays Jira: a parent with labels, a
+// version list, and a search whose hit count is the open residuals.
+describe('create --residual-of', () => {
+  type Opts = { parentLabels?: string[]; open?: number; budgetDesc?: string; dup?: string; noVersion?: boolean };
+  let searches: string[];
+  const play = (o: Opts = {}) => {
+    searches = [];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return { fields: { labels: o.parentLabels ?? [] } };
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return o.noVersion
+          ? []
+          : [{ name: 'v1.1.3', released: false, description: o.budgetDesc }, { name: 'v1.1.4', released: false }];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        const jql = decodeURIComponent(path);
+        searches.push(jql);
+        if (jql.includes('area-')) return { issues: o.dup ? [{ key: o.dup }] : [] };
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+      }
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'r', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const RES = ['--residual-of', 'HIMMEL-50', '--class', 'shell-quoting'];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('polish goes to the backlog: no fixVersion, labels residual, depth 1, class', async () => {
+    play();
+    await file(...RES, '--fu-class', 'polish');
+    const f = created()!;
+    expect(f['fixVersions']).toBeUndefined();
+    expect(f['labels']).toEqual(expect.arrayContaining(['residual', 'residual-depth-1', 'class-shell-quoting']));
+    expect(f['labels']).not.toContain('residual-overflow');
+  });
+
+  it('escape goes to the current version even with the version full, and stamps affectsVersion', async () => {
+    play({ open: 40 });
+    await file(...RES, '--fu-class', 'escape');
+    const f = created()!;
+    expect(f['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('hardening under the budget lands in the current version', async () => {
+    play({ open: 14 });
+    await file(...RES, '--fu-class', 'hardening');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('hardening at 15/15 goes to the backlog with residual-overflow', async () => {
+    play({ open: 15 });
+    await file(...RES, '--fu-class', 'hardening');
+    const f = created()!;
+    expect(f['fixVersions']).toBeUndefined();
+    expect(f['labels']).toContain('residual-overflow');
+  });
+
+  it('a residual-budget:N line in the version description overrides the default', async () => {
+    play({ open: 3, budgetDesc: 'sprint goal\nresidual-budget:3' });
+    await file(...RES, '--fu-class', 'hardening');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('residual-overflow');
+  });
+
+  it('depth 2 or more goes to the backlog even for an escape', async () => {
+    play({ parentLabels: ['residual-depth-1'] });
+    await file(...RES, '--fu-class', 'escape');
+    const f = created()!;
+    expect(f['labels']).toContain('residual-depth-2');
+    expect(f['fixVersions']).toBeUndefined();
+  });
+
+  it('an open residual with the same class and area gets a comment and a link, not a ticket', async () => {
+    play({ dup: 'HIMMEL-31' });
+    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    expect(created()).toBeUndefined();
+    const posts = mockRequest.mock.calls.filter((x) => x[0] === 'POST').map((x) => x[1]);
+    expect(posts).toEqual(['/issue/HIMMEL-31/comment', '/issueLink']);
+    const comment = mockRequest.mock.calls.find((x) => x[1] === '/issue/HIMMEL-31/comment');
+    expect(JSON.stringify(comment![2])).toContain('filled');
+    expect(searches.join('\n')).toMatch(/class-shell-quoting.*area-cr-scripts/s);
+  });
+
+  it('a new residual is linked to its parent', async () => {
+    play();
+    await file(...RES, '--fu-class', 'polish');
+    const link = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issueLink');
+    expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50|HIMMEL-50.*HIMMEL-77/s);
+  });
+
+  it('a failed parent link still names the created key and exits non-zero', async () => {
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (m: string, path: string, b?: unknown) => {
+      if (path === '/issueLink') throw new Error('link boom');
+      return base(m, path, b);
+    });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    const err = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(err).toMatch(/HIMMEL-77 but linking to HIMMEL-50 failed: link boom/);
+    exit.mockRestore();
+  });
+
+  it('the duplicate search leaves out the parent itself', async () => {
+    play();
+    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    expect(searches.find((j) => j.includes('area-'))).toMatch(/key != "?HIMMEL-50"?/);
+  });
+
+  it('refuses a missing --fu-class or --class, an unknown fu-class, and an explicit --fix-version', async () => {
+    play();
+    await expect(file('--residual-of', 'HIMMEL-50', '--class', 'x')).rejects.toThrow(/--fu-class/);
+    await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'polish')).rejects.toThrow(/--class/);
+    await expect(file(...RES, '--fu-class', 'nit')).rejects.toThrow(/polish, escape, hardening/);
+    await expect(file(...RES, '--fu-class', 'polish', '--fix-version', 'v1.1.3')).rejects.toThrow(/--fix-version/);
+    expect(created()).toBeUndefined();
+  });
+});
+
+// The cap gate: filing into the current unreleased version is
+// refused at the residual cap unless --over-cap <reason> is given; an
+// operator-directed ticket is exempt. The mock plays Jira: a version list and
+// a search whose hit count is the open residuals in the current version.
+describe('create — cap gate (HIMMEL-6485)', () => {
+  type Opts = { open?: number; budgetDesc?: string; noNext?: boolean; searchFails?: boolean };
+  let searches: string[];
+  const play = (o: Opts = {}) => {
+    searches = [];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false, description: o.budgetDesc },
+          ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false }]),
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        if (o.searchFails) throw new Error('search boom');
+        searches.push(decodeURIComponent(path));
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+      }
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'g', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const exitSpy = () =>
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+  const stderr = () => (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('refuses a filing into the current version at the cap, without POSTing', async () => {
+    play({ open: 15 });
+    const exit = exitSpy();
+    await expect(file('--fix-version', 'v1.1.3')).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(stderr()).toMatch(/v1\.1\.3.*15\/15.*--over-cap/s);
+    expect(created()).toBeUndefined();
+    exit.mockRestore();
+  });
+
+  it('counts only open residuals in the current version', async () => {
+    play({ open: 3 });
+    await file('--fix-version', 'v1.1.3');
+    expect(searches[0]).toMatch(/fixVersion = "v1\.1\.3".*labels = residual.*statusCategory != Done/s);
+  });
+
+  it('files under the cap', async () => {
+    play({ open: 14 });
+    await file('--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('a residual-budget line in the version description moves the cap', async () => {
+    play({ open: 3, budgetDesc: 'residual-budget:3' });
+    const exit = exitSpy();
+    await expect(file('--fix-version', 'v1.1.3')).rejects.toThrow('exit');
+    exit.mockRestore();
+  });
+
+  it('files at the cap with --over-cap, labels it and records the reason', async () => {
+    play({ open: 15 });
+    await file('--fix-version', 'v1.1.3', '--over-cap', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['labels']).toContain('over-cap');
+    const comment = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue/HIMMEL-77/comment');
+    expect(JSON.stringify(comment![2])).toContain('blocks the v1 gate');
+  });
+
+  it('an operator-directed ticket is not refused at the cap', async () => {
+    play({ open: 15 });
+    await file('--fix-version', 'v1.1.3', '--labels', 'operator-directed');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['labels']).not.toContain('over-cap');
+  });
+
+  it('a filing into a later version is not gated', async () => {
+    play({ open: 15 });
+    await file('--fix-version', 'v1.1.4');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
+    expect(searches).toEqual([]);
+  });
+
+  it('a versionless Bug over the cap gets the next version, and says so', async () => {
+    play({ open: 15 });
+    await file('--type', 'Bug', '--priority', 'Highest');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
+    expect(stderr()).toMatch(/over its cap.*v1\.1\.4/s);
+    expect(stderr()).not.toMatch(/earliest unreleased|defaults to fixVersion/);
+  });
+
+  it('a versionless Bug over the cap with no next version files with no fixVersion', async () => {
+    play({ open: 15, noNext: true });
+    await file('--type', 'Bug', '--priority', 'Highest');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(stderr()).not.toMatch(/no unreleased version found/);
+  });
+
+  it('a versionless Bug under the cap still defaults to the current version', async () => {
+    play({ open: 2 });
+    await file('--type', 'Bug', '--priority', 'Highest');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('a Bug --over-cap defaults to the current version past the cap', async () => {
+    play({ open: 15 });
+    await file('--type', 'Bug', '--priority', 'Highest', '--over-cap', 'release blocker');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['labels']).toContain('over-cap');
+  });
+
+  it('files unguarded, with a warning, when the open count cannot be read', async () => {
+    play({ searchFails: true });
+    await file('--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(stderr()).toMatch(/cap check skipped/);
+  });
+
+  it('--follow-up-of stamps the residual label and links the parent', async () => {
+    play({ open: 0 });
+    await file('--follow-up-of', 'HIMMEL-50', '--labels', 'standalone');
+    expect(created()!['labels']).toEqual(expect.arrayContaining(['residual', 'standalone']));
+    const link = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issueLink');
+    expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50/s);
+  });
+
+  it('--follow-up-of into the current version at the cap is gated like any filing', async () => {
+    play({ open: 15 });
+    const exit = exitSpy();
+    await expect(file('--follow-up-of', 'HIMMEL-50', '--fix-version', 'v1.1.3')).rejects.toThrow('exit');
+    expect(created()).toBeUndefined();
+    exit.mockRestore();
+  });
+
+  it('--follow-up-of cannot be combined with --residual-of', async () => {
+    play();
+    await expect(file('--follow-up-of', 'HIMMEL-50', '--residual-of', 'HIMMEL-50')).rejects.toThrow(/--residual-of/);
+  });
+});
+
+// A Bug is placed at filing: backlog, or the active version for a Highest or
+// gated one; the console can overrule with a reason that lands in the ledger.
+describe('create — Bug placement (HIMMEL-6776)', () => {
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+
+  const play = () =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false },
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      return { key: 'HIMMEL-77' };
+    });
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Bug', '--title', 'b', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const ledger = () => {
+    try {
+      return readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'admissions-'));
+    process.env['HANDOVER_DIR'] = dir;
+    play();
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses a Bug with no placement, naming both choices and the sector hint, without POSTing', async () => {
+    await expect(file()).rejects.toThrow(/Ship loop.*--backlog.*--fix-version/s);
+    expect(created()).toBeUndefined();
+  });
+
+  it('files a --backlog Bug with the backlog label and no fixVersion', async () => {
+    await file('--backlog');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('backlog');
+  });
+
+  it('puts a Highest Bug in the earliest unreleased version', async () => {
+    await file('--priority', 'Highest');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['priority']).toEqual({ name: 'Highest' });
+    expect(created()!['labels'] ?? []).not.toContain('backlog');
+  });
+
+  it.each(['critical', 'regression'])('puts a --gate %s Bug in the earliest unreleased version', async (gate) => {
+    await file('--gate', gate);
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('refuses an unknown --gate', async () => {
+    await expect(file('--gate', 'urgent')).rejects.toThrow(/--gate/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses --backlog together with a gate or a --fix-version', async () => {
+    await expect(file('--backlog', '--gate', 'critical')).rejects.toThrow(/--backlog/);
+    await expect(file('--backlog', '--fix-version', 'v1.1.3')).rejects.toThrow(/--backlog/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('still files a Medium Bug with an explicit --fix-version', async () => {
+    await file('--priority', 'Medium', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toEqual([]);
+  });
+
+  it('does not touch a Task', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 't', '--desc', PLAIN, ...HOME]);
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toBeUndefined();
+  });
+
+  it('lets the console put a Medium Bug into a version, and records the reason in the ledger', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('--priority', 'Medium', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    const [row] = ledger();
+    expect(row).toMatchObject({ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' });
+    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(typeof row.actor).toBe('string');
+  });
+
+  it('refuses the override without a reason', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', '  ')).rejects.toThrow(/reason/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override without the console marker', async () => {
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('refuses the override when there is no ledger location, rather than writing elsewhere', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    delete process.env['HANDOVER_DIR'];
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/HANDOVER_DIR/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override without a --fix-version to admit into', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('--console-override', 'because')).rejects.toThrow(/--fix-version/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override when the ledger is readable but not writable, before any ticket is created', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    const path = join(dir, 'admissions-ledger.jsonl');
+    writeFileSync(path, '');
+    chmodSync(path, 0o444);
+    try {
+      if (process.getuid?.() === 0) return;
+      await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+      expect(created()).toBeUndefined();
+    } finally {
+      chmodSync(path, 0o644);
+    }
+  });
+
+  it('refuses the override when the ledger location cannot be opened for append, before any ticket is created', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+});
+
+describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+
+  const play = (description?: string) =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false, description },
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/')) return { fields: { labels: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  const file = async (type: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 't', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const ledger = () => {
+    try {
+      return readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'admissions-'));
+    process.env['HANDOVER_DIR'] = dir;
+    play('Release train.\nfrozen: 2026-10-20');
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses a Task into a frozen version with no gate, naming the gates, without POSTing', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3 is frozen.*--gate critical\|regression\|must:/s);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('admits a Task with --gate must:98 and writes a ledger row', async () => {
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    const [row] = ledger();
+    expect(row).toMatchObject({ key: 'HIMMEL-77', version: 'v1.1.3', gate: 'must:98' });
+    expect(row.kind).toBeUndefined();
+    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it.each(['critical', 'regression', 'receipt'])('admits a Task with --gate %s', async (gate) => {
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', gate);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', gate }]);
+  });
+
+  it.each(['must:', 'must:  ', 'urgent'])('refuses the malformed gate "%s"', async (gate) => {
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--gate', gate)).rejects.toThrow(/--gate/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('files a --backlog Bug on a frozen version with no gate and no row', async () => {
+    await file('Bug', '--backlog');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('backlog');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('holds a Highest Bug, whose default is the frozen version, to the gate', async () => {
+    await expect(file('Bug', '--priority', 'Highest')).rejects.toThrow(/frozen/);
+    expect(created()).toBeUndefined();
+    await file('Bug', '--priority', 'Highest', '--gate', 'critical');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'critical' }]);
+  });
+
+  it('holds an escape residual, routed to the frozen version, to the gate', async () => {
+    const residual = ['--residual-of', 'HIMMEL-1', '--fu-class', 'escape', '--class', 'c'];
+    await expect(file('Task', ...residual)).rejects.toThrow(/frozen/);
+    expect(created()).toBeUndefined();
+    await file('Task', ...residual, '--gate', 'receipt');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'receipt' }]);
+  });
+
+  it('lets the console past the gate with a reason, and writes an override row carrying it', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('Bug', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' }]);
+  });
+
+  it('refuses the override on a frozen version without a reason or without the console marker', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', ' ')).rejects.toThrow(/reason/);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('refuses a gated filing when the ledger cannot take the row, before any ticket is created', async () => {
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('behaves as before on a version without a frozen: line', async () => {
+    play('Release train.');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('ignores a frozen: line that is not on a line of its own', async () => {
+    play('not yet frozen: 2026-10-20');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('reads a frozen: line from a CRLF description', async () => {
+    play('Release train.\r\nfrozen: 2026-10-20\r\n');
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/frozen \(2026-10-20\)/);
+  });
+
+  it('ignores a frozen: marker whose date is on the next line', async () => {
+    play('Release train.\nfrozen:\nnotes');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+});
+
+describe('create — blocker version placement', () => {
+  let frozen: boolean;
+  let full: boolean;
+  let targetVersions: { name: string }[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((code: number) => { throw new Error(`exit ${code}`); }) as never);
+    frozen = false;
+    full = false;
+    targetVersions = [{ name: 'v1.1.3' }];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/project/')) return [
+        { id: '113', name: 'v1.1.3', released: false, description: frozen ? 'frozen: 2026-10-20' : '' },
+        { id: '114', name: 'v1.1.4', released: false },
+      ];
+      if (method === 'GET' && path.startsWith('/issue/')) return { fields: {
+        project: { key: 'HIMMEL' }, fixVersions: targetVersions, status: { statusCategory: { key: 'new' } },
+      } };
+      if (method === 'GET' && path.startsWith('/search/')) return { issues: full ? Array(15).fill({ key: 'HIMMEL-10' }) : [] };
+      if (method === 'POST' && path === '/issue') return { key: 'HIMMEL-6559' };
+      return {};
+    });
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  const file = (...args: string[]) => {
+    const p = new Command().exitOverride();
+    registerCreate(p);
+    return p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'Blocker', '--desc', PLAIN, '--labels', 'standalone', ...args]);
+  };
+  const created = () => (mockRequest.mock.calls.find(([m, p]) => m === 'POST' && p === '/issue')?.[2] as { fields: Record<string, unknown> } | undefined)?.fields;
+  const writes = () => mockRequest.mock.calls.filter(([m]) => m !== 'GET');
+
+  it.each(['HIMMEL-6575', 'HIMMEL-6582', 'HIMMEL-1620'])('inherits the version when creating a blocker of %s', async (target) => {
+    await file('--blocks', target);
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: 'Blocks' }, inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: target },
+    });
+  });
+
+  it('handles both 6559 dependents in one filing', async () => {
+    await file('--blocks', 'HIMMEL-6575', '--blocks', 'HIMMEL-6582');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(writes().filter(([, path]) => path === '/issueLink')).toHaveLength(2);
+  });
+
+  it('inherits on --split-from and records the source with a Relates link', async () => {
+    await file('--split-from', 'HIMMEL-1620');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: 'Relates' }, inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: 'HIMMEL-1620' },
+    });
+  });
+
+  it('allows --backlog explicitly, labelling the Task without stamping a version', async () => {
+    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    expect(created()?.fixVersions).toBeUndefined();
+    expect(created()?.labels).toContain('backlog');
+  });
+
+  it('refuses an explicit version that omits the current dependent version', async () => {
+    await expect(file('--blocks', 'HIMMEL-1620', '--fix-version', 'v1.1.4')).rejects.toThrow(/v1\.1\.3/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('does not bypass frozen-version admission through inheritance', async () => {
+    frozen = true;
+    await expect(file('--blocks', 'HIMMEL-1620')).rejects.toThrow(/frozen/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('does not bypass the residual cap through inheritance', async () => {
+    full = true;
+    await expect(file('--blocks', 'HIMMEL-1620')).rejects.toThrow(/exit 1/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('does not copy a future version from a non-current target', async () => {
+    targetVersions = [{ name: 'v1.1.4' }];
+    await file('--blocks', 'HIMMEL-1620');
+    expect(created()?.fixVersions).toBeUndefined();
+  });
+
+  it('create --blocked-by records the existing blocker as inward, not the new issue', async () => {
+    await file('--blocked-by', 'HIMMEL-1158', '--fix-version', 'v1.1.3');
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: 'Blocks' }, inwardIssue: { key: 'HIMMEL-1158' }, outwardIssue: { key: 'HIMMEL-6559' },
+    });
+  });
+
+  it('create --blocked-by refuses a versionless existing blocker before creating its dependent', async () => {
+    targetVersions = [];
+    await expect(file('--blocked-by', 'HIMMEL-1158', '--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3.*--backlog/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('create --blocked-by does not inherit from the blocker in the opposite direction', async () => {
+    await file('--blocked-by', 'HIMMEL-1158');
+    expect(created()?.fixVersions).toBeUndefined();
+  });
+
+  it('refuses a versionless split when its source cannot be read', async () => {
+    mockRequest.mockImplementation(async () => { throw new Error('Jira unavailable'); });
+    await expect(file('--split-from', 'HIMMEL-1620')).rejects.toThrow(/Jira unavailable/);
+    expect(writes()).toEqual([]);
+  });
+
+  it.each(['--blocks', '--split-from'])('reports the inherited residual destination for %s', async (relation) => {
+    await file('--residual-of', 'HIMMEL-3', '--fu-class', 'polish', '--class', 'routing', relation, 'HIMMEL-1620');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
+    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
   });
 });

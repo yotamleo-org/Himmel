@@ -1720,6 +1720,65 @@ else
 fi
 
 echo
+echo "== --files: scan only the named tracked files (HIMMEL-3898) =="
+
+# F1: a leak planted in a listed file is still caught, named by path:line.
+r=$(new_repo)
+printf 'See /home/alexphantom/data for details.\n' > "$r/changed.txt"  # leak-allow: home-path test fixture
+printf 'nothing here\n' > "$r/other.txt"
+git -C "$r" add changed.txt other.txt
+scan "$r" --files changed.txt
+if [ "$SCAN_RC" -eq 1 ] && grepq "$SCAN_OUT" -F "home-path" && grepq "$SCAN_OUT" -F "changed.txt:1"; then
+    pass "F1 --files: a leak in a listed file is flagged"
+else
+    fail "F1 --files: a leak in a listed file is flagged (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
+# F2: a leak in an UNLISTED tracked file is not scanned (the narrowing itself).
+scan "$r" --files other.txt
+if [ "$SCAN_RC" -eq 0 ] && ! grepq "$SCAN_OUT" -F "changed.txt"; then
+    pass "F2 --files: an unlisted tracked file is not scanned"
+else
+    fail "F2 --files: an unlisted tracked file is not scanned (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
+# F3: --files with no operands scans nothing; it must not fall back to the whole tree.
+scan "$r" --files
+if [ "$SCAN_RC" -eq 0 ] && ! grepq "$SCAN_OUT" -F "changed.txt"; then
+    pass "F3 --files with no operands is clean, not a whole-tree scan"
+else
+    fail "F3 --files with no operands is clean, not a whole-tree scan (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
+# F4: an operand git does not track fails closed, never a silent skip.
+printf 'x\n' > "$r/untracked.txt"
+scan "$r" --files untracked.txt
+if [ "$SCAN_RC" -eq 2 ] && grepq "$SCAN_OUT" -F "untracked.txt"; then
+    pass "F4 --files: an untracked operand fails closed"
+else
+    fail "F4 --files: an untracked operand fails closed (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
+# F5: an operand is a literal path, never a glob that widens to unlisted files.
+scan "$r" --files '*.txt'
+if [ "$SCAN_RC" -eq 2 ]; then
+    pass "F5 --files: a glob operand is not expanded"
+else
+    fail "F5 --files: a glob operand is not expanded (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
+# F6: a directory operand never expands to the tracked files under it.
+mkdir -p "$r/sub"
+printf 'See /home/alexphantom/data for details.\n' > "$r/sub/inner.txt"  # leak-allow: home-path test fixture
+git -C "$r" add sub/inner.txt
+scan "$r" --files sub
+if [ "$SCAN_RC" -eq 2 ] && ! grepq "$SCAN_OUT" -F "inner.txt:1"; then
+    pass "F6 --files: a directory operand is not expanded"
+else
+    fail "F6 --files: a directory operand is not expanded (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
+echo
 echo "== summary =="
 if [ "$failures" -eq 0 ]; then
     if [ "$skips" -gt 0 ]; then

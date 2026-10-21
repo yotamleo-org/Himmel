@@ -19,20 +19,17 @@ const feed = {
   ],
   summary: { total: 7, ok: 2, warn: 1, fail: 1, off: 2, info: 1 },
 };
-// The fixture has no `bundles`, so rows fall into one "All rows" bundle per region; its Controls bundle (one off
-// toggle) is collapsed by default, so these cases open it the way an operator's click does.
-const openControls = { "controls|all": { open: true, rank: 4 } };
-const html: string = render(feed, { open: new Set(), bundles: openControls, filt: { health: null, kind: null, q: "" } });
+const html: string = render(feed, { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "" } });
 const region = (id: string) => html.slice(html.indexOf(`id="${id}"`), html.indexOf("</section>", html.indexOf(`id="${id}"`)));
 
-test("three regions in order: Triage, Controls, Inventory", () => {
-  const at = ["triage", "controls", "inventory"].map((id) => html.indexOf(`<section id="${id}"`));
+test("three regions in order: Triage, Settings, Inventory", () => {
+  const at = ["triage", "settings", "inventory"].map((id) => html.indexOf(`<section id="${id}"`));
   expect(at.every((n) => n >= 0)).toBe(true);
   expect([...at].sort((a, b) => a - b)).toEqual(at);
 });
 
 test("Triage is the landing region (first in the page, current in the nav)", () => {
-  expect(html.indexOf('id="triage"')).toBeLessThan(html.indexOf('id="controls"'));
+  expect(html.indexOf('id="triage"')).toBeLessThan(html.indexOf('id="settings"'));
   expect(renderNav(feed, "triage")).toMatch(/aria-current="true"[^>]*>\s*<span>Triage/);
 });
 
@@ -44,8 +41,8 @@ test("Triage lists fail then warn rows and omits off, ok and info rows", () => {
   for (const id of ["r-off", "r-ok", "cadence-x", "F_OK"]) expect(t).not.toContain(id);
 });
 
-test("right slot: a toggle in Controls is an enabled switch that opens a plan", () => {
-  const c = region("controls");
+test("right slot: a toggle in Settings is an enabled switch that opens a plan", () => {
+  const c = region("settings");
   expect(c).toContain("cadence-x");
   expect(c).toMatch(/<button[^>]*role="switch"[^>]*data-act="plan"/);
   expect(c).not.toMatch(/<button[^>]*role="switch"[^>]*disabled/);
@@ -53,9 +50,9 @@ test("right slot: a toggle in Controls is an enabled switch that opens a plan", 
 });
 
 // T4.7: preview → typed consent → run → before/after.
-const K = "controls|cadence-x";
+const K = "settings|cadence-x";
 const withPlan = (plan: Record<string, unknown>) => {
-  const out: string = render(feed, { open: new Set([K]), bundles: openControls, filt: { health: null, kind: null, q: "" }, plans: { [K]: plan } });
+  const out: string = render(feed, { open: new Set([K]), bundles: {}, filt: { health: null, kind: null, q: "" }, plans: { [K]: plan } });
   return out.slice(out.indexOf('<div class="plan"'), out.indexOf("</section>", out.indexOf('<div class="plan"')));
 };
 const planned = { stage: "plan", previewId: "p", command: "bash /c/x-cadence.sh arm --dry-run", output: "would arm x", consent: { kind: "typed", expect: "x" }, bank: "draws the bank", effect: "at the next scheduled fire" };
@@ -116,7 +113,7 @@ test("right slot: read-only rows say why, in words", () => {
   expect(i).toContain("read-only · presence probe");
 });
 
-test("a toggle outside Controls links back instead of switching", () => {
+test("a toggle outside Settings links back instead of switching", () => {
   expect(region("inventory")).toContain("control ↗");
 });
 
@@ -126,10 +123,10 @@ test("rows are escaped (no markup from the feed reaches the page)", () => {
   expect(out).not.toContain("<img");
 });
 
-test("nav counts: Triage 2 · Controls 1 · Inventory 7", () => {
+test("nav counts: Triage 2 · Settings 1 · Inventory 7", () => {
   const n = renderNav(feed, "triage");
   expect(n).toContain("Triage 2");
-  expect(n).toContain("Controls 1");
+  expect(n).toContain("Settings 1");
   expect(n).toContain("Inventory 7");
 });
 
@@ -152,7 +149,7 @@ const bst = (o: Record<string, unknown> = {}, filt: Record<string, unknown> = {}
   ({ open: new Set(), bundles: {}, plans: {}, ...o, filt: { health: null, kind: null, q: "", problems: false, ...filt } });
 const bhtml = (o?: Record<string, unknown>, filt?: Record<string, unknown>, f: any = bfeed): string => render(f, bst(o, filt));
 const inv = (h: string) => h.slice(h.indexOf('id="inventory"'), h.indexOf("</section>", h.indexOf('id="inventory"')));
-const ctl = (h: string) => h.slice(h.indexOf('id="controls"'), h.indexOf("</section>", h.indexOf('id="controls"')));
+const set = (h: string) => h.slice(h.indexOf('id="settings"'), h.indexOf("</section>", h.indexOf('id="settings"')));
 // one bundle's header plus its rows, up to the next header
 const bun = (region: string, id: string, h: string) => {
   const hit = h.indexOf(`data-b="${region}|${id}"`);
@@ -187,7 +184,7 @@ test("isOpen: default from the base set (fail or warn opens), an override wins",
   expect(isOpen("inventory", "x", bad, bst({ bundles: { "inventory|x": { open: false, rank } } }), "")).toBe(false);
   expect(isOpen("inventory", "x", good, bst({ bundles: { "inventory|x": { open: true, rank: rollup(good).rank } } }), "")).toBe(true);
   // an override is per region
-  expect(isOpen("controls", "x", bad, bst({ bundles: { "inventory|x": { open: false, rank } } }), "")).toBe(true);
+  expect(isOpen("other", "x", bad, bst({ bundles: { "inventory|x": { open: false, rank } } }), "")).toBe(true);
 });
 
 test("isOpen: an override goes stale when the rank worsens, and holds when it improves", () => {
@@ -308,25 +305,20 @@ test("empty states: problems-only with nothing failing vs any other empty filter
   expect(inv(bhtml({}, { q: "zzz-nothing" }))).toContain("No rows match these filters.");
 });
 
-test("Controls: a failing non-toggle row neither opens nor counts in the bundle; no n of N unfiltered", () => {
-  const c = ctl(bhtml());
-  const d = bun("controls", "delta", c);
-  expect(d).toContain('aria-expanded="false"');
-  expect(d).not.toContain("d-fail");
-  expect(d.slice(0, 400)).toContain("1 ok");
-  expect(d.slice(0, 400)).not.toContain("fail");
-  expect(c).not.toContain(" of ");
+test("Settings: only toggle rows, drawn in groups rather than feed bundles", () => {
+  const c = set(bhtml());
+  expect(c).toContain("d-tog");
+  expect(c).not.toContain("d-fail");
   expect(c).not.toContain("a-fail");
+  expect(c).not.toContain('data-act="bundle"');
   expect(c).not.toContain('data-act="problems"');
 });
 
-test("a header override is per region and keyed by bundle", () => {
+test("a header override is keyed by region and bundle", () => {
   const rank = rollup([row("x", "fail")]).rank;
   const h = bhtml({ bundles: { "inventory|delta": { open: false, rank } } });
   expect(bun("inventory", "delta", inv(h))).toContain('aria-expanded="false"');
-  expect(bun("controls", "delta", ctl(h))).toContain('aria-expanded="false"');
-  const o = bhtml({ bundles: { "controls|delta": { open: true, rank } } });
-  expect(bun("controls", "delta", ctl(o))).toContain('aria-expanded="true"');
+  const o = bhtml({ bundles: { "inventory|delta": { open: true, rank } } });
   expect(bun("inventory", "delta", inv(o))).toContain('aria-expanded="true"');
 });
 

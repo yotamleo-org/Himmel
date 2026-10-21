@@ -615,16 +615,34 @@ check_c12() {
 # a missing/moved himmel hook script silent in a himmel checkout.  Doctor surfaces
 # that drift without changing hook runtime semantics.
 check_c13() {
-    local hooks_files=() hooks_json f unverified=""
+    local hooks_files=() hooks_json f unverified="" stale="" stale_fix="" served="" served_ver=""
     if [ -n "${DOCTOR_HIMMEL_OPS_HOOKS_JSON:-}" ]; then
         hooks_files=("$DOCTOR_HIMMEL_OPS_HOOKS_JSON")
     else
         # Only cache versions installed_plugins.json pins are live; unpinned
         # leftovers are dead weight. No readable registry -> scan the whole cache.
+        # A directory-sourced himmel marketplace serves himmel-ops from its folder,
+        # so a pin older than that folder's version is stale registry data: report
+        # it as INFO and check the served hooks.json instead.
         local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
-        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]?.installPath // empty' "$installed" 2>/dev/null)" || pins=""; }
+        local known="$CLAUDE_DIR_R/plugins/known_marketplaces.json" pin_ver pin_scope pin_proj pin_fix
+        if [ -r "$known" ]; then
+            served="$(jq -r '.himmel.source | select(.source == "directory") | .path // empty' "$known" 2>/dev/null)"
+            [ -n "$served" ] && served="$served/plugins/himmel-ops"
+        fi
+        [ -n "$served" ] && [ -f "$served/hooks/hooks.json" ] && served_ver="$(jq -r '.version // empty' "$served/.claude-plugin/plugin.json" 2>/dev/null)"
+        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]? | [.installPath // empty, .version // "", .scope // "", .projectPath // ""] | join("|")' "$installed" 2>/dev/null)" || pins=""; }
         if [ -n "$pins" ]; then
-            while IFS= read -r f; do
+            while IFS='|' read -r f pin_ver pin_scope pin_proj; do
+                [ -n "$f" ] || continue
+                [ -n "$pin_ver" ] || pin_ver="${f##*/}"
+                if [ -n "$served_ver" ] && [ "$pin_ver" != "$served_ver" ] \
+                   && [ "$(printf '%s\n%s\n' "$pin_ver" "$served_ver" | sort -V | head -n1)" = "$pin_ver" ]; then
+                    stale="$stale $pin_ver${pin_proj:+@$pin_proj}"
+                    pin_fix="claude plugin uninstall himmel-ops@himmel --scope ${pin_scope:-user}"
+                    stale_fix="$stale_fix${stale_fix:+; }${pin_proj:+cd $(printf '%q' "$pin_proj") && }$pin_fix"
+                    continue
+                fi
                 if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
             done <<EOF_PINS
 $pins
@@ -633,6 +651,7 @@ EOF_PINS
             cache_hooks=("$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json)
         fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
+                 "${served:+$served/hooks/hooks.json}" \
                  "${cache_hooks[@]}" \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
@@ -658,6 +677,8 @@ EOF_CMDS
         emit WARN C13-plugin-hooks "himmel-ops hooks.json references missing checkout hook(s):$missing - guarded [ -f ] wrappers will silently no-op" "run /himmel-update or restore the missing script(s), then re-run"
     elif [ -n "$unverified" ]; then
         emit WARN C13-plugin-hooks "pinned himmel-ops install(s) have no hooks/hooks.json, cannot verify:$unverified" "run /himmel-update to reinstall the plugin"
+    elif [ -n "$stale" ]; then
+        emit INFO C13-plugin-hooks "served himmel-ops $served_ver hooks resolve; skipped stale registry pin(s) older than the served plugin:$stale" "remove each stale pin: $stale_fix"
     else
         emit OK C13-plugin-hooks "himmel-ops plugin hooks resolve in this checkout"
     fi
@@ -2824,15 +2845,15 @@ check_c34() {
     local subagent_guard="$REPO_ROOT/scripts/hooks/guard-subagent-model.sh"
     local impl_guard="$REPO_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
     local ctx_fill="$REPO_ROOT/scripts/context-fill.sh"
-    local lift_lib="$REPO_ROOT/scripts/lib/bank-lift.sh"
+    local lift_lib="$REPO_ROOT/scripts/lib/usage-lift.sh"
     # Read the same fenced policy and validation reason as the launch gate.
     # shellcheck disable=SC1090
-    if [ -r "$lift_lib" ] && . "$lift_lib" && [ -f "$(bank_lift_file)" ]; then
-        if bank_lift_valid; then
-            emit OK C34-cost-guards "lift set and VALID (standing=${BANK_LIFT_STANDING:-false})"
-        else
-            emit WARN C34-cost-guards "lift set but INVALID: ${BANK_LIFT_REASON:-unknown}" \
-                "operator: inspect bank-lift.sh show; clear or re-set for the current account"
+    if [ -r "$lift_lib" ] && . "$lift_lib"; then
+        if usage_lift_valid; then
+            emit OK C34-cost-guards "lift set and VALID (standing=${USAGE_LIFT_STANDING:-false})"
+        elif [ "${USAGE_LIFT_REASON:-unknown}" != missing ]; then
+            emit WARN C34-cost-guards "lift set but INVALID: ${USAGE_LIFT_REASON:-unknown}" \
+                "operator: inspect usage-lift.sh show; clear or re-set for the current account"
         fi
     fi
 
@@ -3992,13 +4013,18 @@ check_c57_dotenv_allowlists() {
 
 # --- C59-codex-bank-cache: a codex bank cache older than its TTL ---
 # bank-status reads this cache and reports codex=? once it is older than
-# CODEX_BANK_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
+# CODEX_USAGE_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
 # WARN here means the refresh did not run or failed (codex missing, logged out,
 # probe timing out). Read-only: it never runs the probe.
 check_c59_codex_bank_cache() {
-    local cache="${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
+    local cache="${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}}"
     local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
     local at captured now age
+    # the new name counts only when it is a positive number, as bank-status reads it.
+    case "${CODEX_USAGE_CACHE_TTL_SECONDS:-}" in
+        '' | *[!0-9]*) ;;
+        *) if [ "$((10#$CODEX_USAGE_CACHE_TTL_SECONDS))" -gt 0 ]; then ttl="$CODEX_USAGE_CACHE_TTL_SECONDS"; fi ;;
+    esac
     case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; *) ttl=$((10#$ttl)) ;; esac
     if [ ! -f "$cache" ]; then
         emit INFO C59-codex-bank-cache "no codex bank cache at $cache — the codex lane reads unmeasurable until the probe has run once" "run: $cmd"
@@ -4161,6 +4187,100 @@ check_c68_konsole_dbus() {
     fi
     emit WARN C68-konsole-dbus "$rc lacks EnableSecuritySensitiveDBusAPI=true under [KonsoleWindow] — konsole refuses sendText, so bus-idle-waker cannot wake an idle console (rc 3)" \
         "add 'EnableSecuritySensitiveDBusAPI=true' under [KonsoleWindow] in $rc, then restart konsole"
+}
+
+# --- C70-graph-semantic: the himmel graph's semantic layer is stale or stuck ---
+# Runs check-graph-freshness.sh against the graph-cadence corpus and prints its
+# "graph-freshness: semantic ..." line verbatim (last run, failed, refused,
+# backed-off, oldest unstamped file). A file failed or refused in each of the
+# last 3 runs (the script's rc 2 "semantic refresh stuck") is WARN. No cadence
+# corpus or no semantic-runs.jsonl is an OK skip; any other rc 2, or an rc the
+# script does not define (it could not run), is INFO -- never a healthy OK -- the
+# graph's own staleness being C33's. Seams: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out
+# dir), HIMMEL_DOCTOR_GRAPH_CHECK (the freshness script).
+check_c70_graph_semantic() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-${HOME:-}/.claude/graph-cadence/himmel/graphify-out}"
+    local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
+    local res rc=0 line fail_line
+    if [ ! -d "$out" ]; then
+        emit OK C70-graph-semantic "no cadence graphify-out at $out -- semantic freshness check skipped"
+        return 0
+    fi
+    if [ ! -f "$out/semantic-runs.jsonl" ]; then
+        emit OK C70-graph-semantic "no semantic-runs.jsonl in $out -- no semantic run recorded, check skipped"
+        return 0
+    fi
+    res="$(bash "$check" --out "$out" 2>&1)" || rc=$?
+    line="$(printf '%s\n' "$res" | grep -m1 '^graph-freshness: semantic ')" || true
+    fail_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: FAIL //p' | head -1)"
+    if [ "$rc" -eq 2 ] && grep -q 'semantic refresh stuck' <<< "$res"; then
+        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $fail_line" \
+            "bash scripts/graphify/check-graph-freshness.sh --out $out   # names the stuck files; python3 scripts/graphify/semantic-merge.py status shows the backoff state"
+    elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
+            "bash scripts/graphify/check-graph-freshness.sh --out $out"
+    elif [ -n "$line" ]; then
+        emit OK C70-graph-semantic "$line"
+    else
+        emit OK C70-graph-semantic "no semantic merge row in $out/semantic-runs.jsonl yet -- check skipped"
+    fi
+}
+
+# --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
+# A key-less CLI call gets "401 No cookie auth credentials found" on every
+# generate and embed, while the daemon (which loads its own key) still answers,
+# so C40 stays green. This row loads the key the way scripts/lib/qmd-bin.sh does
+# (scripts/lib/qmd-daemon-env.sh) and asks OpenRouter's key endpoint whether it
+# is accepted. Silent when the config names no OpenRouter model. A missing or
+# group-readable key file and a 401/403 are FAIL; an unreachable provider or no
+# curl is INFO, never a credential verdict. The key reaches curl on stdin only.
+# Seams: HIMMEL_DOCTOR_QMD_CURL (curl binary), HIMMEL_DOCTOR_QMD_KEY_URL.
+check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and asks the provider, starts nothing
+    local cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+    local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
+    local url="${HIMMEL_DOCTOR_QMD_KEY_URL:-https://openrouter.ai/api/v1/auth/key}"
+    local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code=""
+    case "${QMD_OPENAI_BASE_URL:-}" in
+        *openrouter.ai*) ;;
+        *) grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0 ;;
+    esac
+    if [ ! -f "$lib" ]; then
+        emit INFO C69-qmd-cli-key "qmd-daemon-env.sh not found -- key check skipped"
+        return
+    fi
+    # the subshell keeps the key out of the doctor's own environment; it prints a
+    # verdict word, never the key; tracing stays off here so `bash -x` never prints it
+    out="$(
+        set +x
+        # shellcheck disable=SC1090
+        . "$lib"  # t13b-ok: sources the key loader, starts nothing
+        rc=0 sess_key="${QMD_OPENAI_API_KEY:-}"
+        qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
+        set +x
+        case "$rc" in
+            10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; exit 0 ;;
+            11) # the CLI also accepts a session key when the file holds none
+                if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; exit 0; fi ;;
+        esac
+        if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; exit 0; fi
+        code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
+        echo "code:${code:-000}"
+    )"
+    case "$out" in
+        readable-by-others:*)
+            emit FAIL C69-qmd-cli-key "the qmd provider key file ${out#*:} is readable by others -- qmd refuses to use it, every CLI vec query fails" \
+                "chmod 600 ${out#*:}" ;;
+        missing:*)
+            emit FAIL C69-qmd-cli-key "an OpenRouter qmd config but no QMD_OPENAI_API_KEY line in ${out#*:} -- every CLI generate and embed answers 401" \
+                "put a QMD_OPENAI_API_KEY=... line (mode 0600) in ${out#*:}, then restart the qmd daemon" ;;
+        no-curl) emit INFO C69-qmd-cli-key "curl not found -- qmd provider key not checked" ;;
+        code:200) emit OK C69-qmd-cli-key "the qmd provider key is present and OpenRouter accepts it" ;;
+        code:401|code:403)
+            code="${out#code:}"
+            emit FAIL C69-qmd-cli-key "OpenRouter answered HTTP $code for the qmd provider key -- every CLI generate and embed fails" \
+                "replace the QMD_OPENAI_API_KEY (the line in the qmd daemon env file, mode 0600, or your session's value), then restart the qmd daemon" ;;
+        *) emit INFO C69-qmd-cli-key "could not verify the qmd provider key with OpenRouter (${out#code:}) -- not a credential verdict" ;;
+    esac
 }
 
 # --- C61-codex-cli: codex CLI older than the latest release ------
@@ -4492,6 +4612,8 @@ run_check C65 check_c65_git_gates
 run_check C66 check_c66_hermes_cron_hooks
 run_check C67 check_c67_hermes_fail_open
 run_check C68 check_c68_konsole_dbus
+run_check C69 check_c69_qmd_cli_key
+run_check C70 check_c70_graph_semantic
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

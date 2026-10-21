@@ -56,9 +56,9 @@ What exists
 - docs/adoption-trail.html — the user-facing adoption trail page, already in the tree of the (now public) yotamleo/Himmel repo, so its SOURCE is public since the HIMMEL-2705 cutover.
 - The same page is published as a private claude.ai artifact ("Himmel Adoption Trail", b13de5c0-...), owned by the operator.
 Ask — give it a public URL
-Preferred: GitHub Pages from the public repo, source = main / docs/ (or a gh-pages deploy workflow if docs/ must stay a plain folder). Then https://yotamleo.github.io/Himmel/adoption-trail.html is the URL, and every merge to main updates it — no second copy to keep in sync. Enabling Pages is a repo setting = operator action (gh api -X POST repos/yotamleo/Himmel/pages -f build_type=legacy -f source[branch]=main -f source[path]=/docs, or the Settings -> Pages UI); the leg prepares and verifies, the operator flips it.
+Preferred: GitHub Pages from the public repo, source = main / docs/ (or a gh-pages deploy workflow if docs/ must stay a plain folder). Then https://yotamleo-org.github.io/Himmel/adoption-trail.html is the URL, and every merge to main updates it — no second copy to keep in sync. Enabling Pages is a repo setting = operator action (gh api -X POST repos/yotamleo/Himmel/pages -f build_type=legacy -f source[branch]=main -f source[path]=/docs, or the Settings -> Pages UI); the leg prepares and verifies, the operator flips it.
 Verification
-curl -sI https://yotamleo.github.io/Himmel/adoption-trail.html -> 200 after the operator enables Pages; the page renders in light/dark; no private-era string survives (git grep the audit list against docs/).`;
+curl -sI https://yotamleo-org.github.io/Himmel/adoption-trail.html -> 200 after the operator enables Pages; the page renders in light/dark; no private-era string survives (git grep the audit list against docs/).`;
 
 function commit(subject, { body = '', sha = 'deadbee', date = '2026-09-01' } = {}) {
   return { sha, date, subject, body };
@@ -231,10 +231,10 @@ describe('buildEvidenceComment — outcome-acceptance names the unverified exter
       disposition: 'RESCOPE',
       reason: 'outcome-acceptance',
       evidence: commit('docs: [HIMMEL-2875] adoption trail prep'),
-      detail: 'curl -sI https://yotamleo.github.io/Himmel/adoption-trail.html -> 200 after the operator enables Pages',
+      detail: 'curl -sI https://yotamleo-org.github.io/Himmel/adoption-trail.html -> 200 after the operator enables Pages',
     });
     expect(text).toContain('Unverified external outcome');
-    expect(text).toContain('yotamleo.github.io');
+    expect(text).toContain('yotamleo-org.github.io');
   });
 });
 

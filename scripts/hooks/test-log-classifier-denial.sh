@@ -17,6 +17,9 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
+# Token-shaped fixtures are BUILT at run time, so no literal token sits in this
+# file for the PostToolUse detector (detect-token-in-output.sh) to flag on a Read.
+rep() { local ch="$1" n="$2" s="" i; for ((i = 0; i < n; i++)); do s="$s$ch"; done; printf '%s' "$s"; }
 
 run_hook() {
     local input="$1" out="$2"
@@ -81,7 +84,7 @@ fi
 
 # --- 3. RED-shaped redaction control: a gitleaks-shaped token must never
 # reach the jsonl, in either the raw or hashed form's preimage. ---
-SECRET="ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+SECRET="gh""p_$(rep A 36)"
 LOG2="$WORKDIR/c2.jsonl"
 run_hook "$(payload s2 /tmp/repo Bash "curl -H \"Authorization: token $SECRET\" https://api.github.com" '[Data Exfiltration]')" "$LOG2" >/dev/null
 if grep -qF "$SECRET" "$LOG2" 2>/dev/null; then
@@ -99,7 +102,7 @@ fi
 # path: a classifier denial_reason with no bracketed tag can itself quote
 # the offending command, so the fallback must redact it too, not just
 # input_head. ---
-SECRET2="ghp_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+SECRET2="gh""p_$(rep C 36)"
 LOG2B="$WORKDIR/c2b.jsonl"
 run_hook "$(payload s2b /tmp/repo Bash 'ls' "denied because $SECRET2 was found")" "$LOG2B" >/dev/null
 if grep -qF "$SECRET2" "$LOG2B" 2>/dev/null; then
@@ -117,7 +120,7 @@ fi
 # secret embedded INSIDE the brackets must also be redacted, not just an
 # unbracketed fallback; the bracket extraction itself must not see raw
 # text. ---
-SECRET3="ghp_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+SECRET3="gh""p_$(rep D 36)"
 LOG2C="$WORKDIR/c2c.jsonl"
 run_hook "$(payload s2c /tmp/repo Bash 'ls' "[LEAK $SECRET3]")" "$LOG2C" >/dev/null
 if grep -qF "$SECRET3" "$LOG2C" 2>/dev/null; then
@@ -181,7 +184,7 @@ fi
 
 # --- 3f. RED-shaped redaction control: a github_pat_ token was uncovered
 # by the gh[pousr]_-only pattern set. ---
-SECRET4="github_pat_11AAAAAAAAAAAAAAAAAAAA_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+SECRET4="github""_pat_11$(rep A 20)_$(rep B 74)"
 LOG2F="$WORKDIR/c2f.jsonl"
 run_hook "$(payload s2f /tmp/repo Bash 'ls' "denied because $SECRET4 was found")" "$LOG2F" >/dev/null
 if grep -qF "$SECRET4" "$LOG2F" 2>/dev/null; then
@@ -294,10 +297,11 @@ if grep -qF -e '--host' "$LOGK" 2>/dev/null; then pass "a flag after a value-les
 
 # --- 9. cwd, session_title, session_id and tool go through redact() too. ---
 LOG9="$WORKDIR/c9.jsonl"
-S9="ghp_EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+S9="gh""p_$(rep E 36)"
 run_hook "$(payload "sid-$S9" "/w/token=zzz/worktrees/slug-$S9" "Tool$S9" 'ls' '[X]')" "$LOG9" >/dev/null
-for leak in "$S9" "zzz"; do
-    if grep -qF "$leak" "$LOG9" 2>/dev/null; then fail "secret '$leak' in cwd/session_id/tool/title is redacted"; else pass "secret '$leak' in cwd/session_id/tool/title is redacted"; fi
+for leak_name in token zzz; do
+    case "$leak_name" in token) leak="$S9" ;; *) leak="zzz" ;; esac
+    if grep -qF "$leak" "$LOG9" 2>/dev/null; then fail "secret '$leak_name' in cwd/session_id/tool/title is redacted"; else pass "secret '$leak_name' in cwd/session_id/tool/title is redacted"; fi
 done
 if [ -s "$LOG9" ]; then pass "a redacted-field denial still writes a row"; else fail "a redacted-field denial still writes a row"; fi
 
@@ -358,7 +362,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "$HOOK")/../.." && pwd)"
 if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     readers=$(git -C "$REPO_ROOT" grep -l -E 'input_head|reason_tag' -- scripts ':!*.md' | sort | tr '\n' ' ')
-    want="scripts/eval/leg-digest/fixtures/classifier-denials.jsonl scripts/eval/leg-digest/leg-digest.ts scripts/eval/leg-digest/test-leg-digest.sh scripts/handover/console-kit/test-tick.sh scripts/handover/console-kit/tick.sh scripts/hooks/log-classifier-denial.sh scripts/hooks/test-log-classifier-denial.sh "
+    want="scripts/eval/leg-digest/fixtures/classifier-denials.jsonl scripts/eval/leg-digest/leg-digest.ts scripts/eval/leg-digest/test-leg-digest.sh scripts/handover/console-kit/denied-launch-alert.sh scripts/handover/console-kit/test-denied-launch-alert.sh scripts/handover/console-kit/test-tick.sh scripts/handover/console-kit/tick.sh scripts/hooks/log-classifier-denial.sh scripts/hooks/test-log-classifier-denial.sh "
     if [ "$readers" = "$want" ]; then
         pass "only the host-local files reference input_head / reason_tag"
     else
@@ -367,6 +371,23 @@ if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
 else
     pass "input_head/reason_tag reader pin skipped (not a git checkout)"
 fi
+
+# --- 15. this file holds no token-shaped literal: the PostToolUse detector
+# (detect-token-in-output.sh) scans a Read/Grep of it as text and would page the
+# operator for a leak that never happened. The detector is the oracle; a token
+# built at run time must still alert, so the silence is not a dead detector. ---
+DETECTOR="$(dirname "$HOOK")/detect-token-in-output.sh"
+printf '{"allowFrom":["12345"]}' >"$WORKDIR/access.json"
+printf '#!/usr/bin/env bash\nprintf sent >>"%s"\n' "$WORKDIR/sent.mark" >"$WORKDIR/send.sh"; chmod +x "$WORKDIR/send.sh"
+detect() {
+    jq -cn --rawfile r "$1" '{session_id:"s15",tool_name:"Read",tool_response:{stdout:$r}}' \
+        | TOKEN_ALERT_DIR="$WORKDIR/alerts" MERGE_BLOCK_ALERT_CMD="$WORKDIR/send.sh" \
+            TELEGRAM_ACCESS_PATH="$WORKDIR/access.json" bash "$DETECTOR" 2>/dev/null
+}
+quiet=$(detect "$0"); quiet_rc=$?
+if [ "$quiet_rc" = "0" ] && [ -z "$quiet" ]; then pass "the detector finds no token shape in this file"; else fail "the detector finds no token shape in this file"; fi
+printf 'X=%s\n' "gh""p_$(rep aB3dE5gH7jK9 3)" >"$WORKDIR/live.txt"
+if detect "$WORKDIR/live.txt" | grep -q 'TOKEN-IN-OUTPUT' && [ -s "$WORKDIR/sent.mark" ]; then pass "a run-time built token still alerts"; else fail "a run-time built token still alerts"; fi
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then

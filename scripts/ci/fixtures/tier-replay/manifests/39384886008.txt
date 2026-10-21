@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/hooks/check-cr-marker-on-pr-create.sh
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head 565f7fb135a848ff5a3fb446d54fcbc35041f7f2
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

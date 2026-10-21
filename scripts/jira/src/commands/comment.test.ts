@@ -98,4 +98,63 @@ describe('comment', () => {
     expect(console.error).toHaveBeenCalledWith('Comment added to HIMMEL-1 but attachment failed: a.txt: boom');
     exit.mockRestore();
   });
+
+  it('--edit <id> PUTs /issue/<key>/comment/<id> with the ADF body, then breadcrumb + edited line', async () => {
+    await run(['HIMMEL-1', 'new text', '--edit', '10042']);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    const [method, path, payload] = mockRequest.mock.calls[0];
+    expect(method).toBe('PUT');
+    expect(path).toBe('/issue/HIMMEL-1/comment/10042');
+    const body = (payload as { body: { type: string; version: number } }).body;
+    expect(body.type).toBe('doc');
+    expect(JSON.stringify(body)).toContain('new text');
+    expect(writeJiraBreadcrumb).toHaveBeenCalledWith('HIMMEL-1');
+    expect(console.log).toHaveBeenCalledWith('Comment 10042 edited on HIMMEL-1');
+  });
+
+  it('--edit with --comment-file sends the file markdown', async () => {
+    const f = join(dir, 'e.md');
+    writeFileSync(f, 'edited from file');
+    await run(['HIMMEL-1', '--edit', '7', '--comment-file', f]);
+    expect(mockRequest.mock.calls[0][0]).toBe('PUT');
+    expect(JSON.stringify(mockRequest.mock.calls[0][2])).toContain('edited from file');
+  });
+
+  it('--edit percent-encodes the id so it cannot rewrite the request path', async () => {
+    await run(['HIMMEL-1', 'text', '--edit', '10042/../10043']);
+    expect(mockRequest.mock.calls[0][1]).toBe('/issue/HIMMEL-1/comment/10042%2F..%2F10043');
+  });
+
+  it('--print-id prints only the created comment id on stdout', async () => {
+    mockRequest.mockResolvedValue({ id: '10077' });
+    await run(['HIMMEL-1', 'hello', '--print-id']);
+    expect(mockRequest.mock.calls[0][0]).toBe('POST');
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith('10077');
+    expect(console.error).toHaveBeenCalledWith('Comment added to HIMMEL-1');
+  });
+
+  it('--print-id with --edit prints the edited comment id', async () => {
+    await run(['HIMMEL-1', 'again', '--edit', '10042', '--print-id']);
+    expect(mockRequest.mock.calls[0][0]).toBe('PUT');
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith('10042');
+  });
+
+  it('--print-id with no id in the response prints nothing and warns on stderr', async () => {
+    mockRequest.mockResolvedValue({});
+    await run(['HIMMEL-1', 'hello', '--print-id']);
+    expect(console.log).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('jira: the response carried no comment id');
+  });
+
+  it('--edit with an empty id exits 1 and never POSTs a new comment', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(run(['HIMMEL-1', 'text', '--edit', ''])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(mockRequest).not.toHaveBeenCalled();
+    exit.mockRestore();
+  });
 });

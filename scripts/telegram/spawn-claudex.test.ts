@@ -19,6 +19,8 @@ import {
   codexBankCachePath,
   fetchCodexWeeklyUsedPercent,
   parsePct,
+  codexBankOverride,
+  codexBankWarnPct,
   evaluateCodexBankPreflight,
   detectClaudexCap,
   parseAuthRetryDelaysMs,
@@ -1138,6 +1140,29 @@ test("codexBankCachePath defaults under ~/.himmel/cache, CODEX_BANK_CACHE overri
   expect(codexBankCachePath("/home/t", { CODEX_BANK_CACHE: "/tmp/c.json" })).toBe("/tmp/c.json");
 });
 
+test("codexBankCachePath: CODEX_USAGE_CACHE wins over the old CODEX_BANK_CACHE", () => {
+  expect(codexBankCachePath("/home/t", { CODEX_USAGE_CACHE: "/tmp/u.json", CODEX_BANK_CACHE: "/tmp/c.json" })).toBe("/tmp/u.json");
+});
+
+test("codexBankOverride: CLAUDEX_USAGE_OK or the old CLAUDEX_BANK_OK, and either set to anything but 1 refuses", () => {
+  expect(codexBankOverride({})).toBe(false);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "1" })).toBe(true);
+  expect(codexBankOverride({ CLAUDEX_BANK_OK: "1" })).toBe(true);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "1", CLAUDEX_BANK_OK: "1" })).toBe(true);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "0", CLAUDEX_BANK_OK: "1" })).toBe(false);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "1", CLAUDEX_BANK_OK: "0" })).toBe(false);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "", CLAUDEX_BANK_OK: "1" })).toBe(true);
+});
+
+test("codexBankWarnPct: default 80; CLAUDEX_USAGE_WARN_PCT beside the old name, the narrower wins", () => {
+  expect(codexBankWarnPct({})).toBe(80);
+  expect(codexBankWarnPct({ CLAUDEX_BANK_WARN_PCT: "70" })).toBe(70);
+  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "70" })).toBe(70);
+  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "95", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(70);
+  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "60", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(60);
+  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "abc", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(70);
+});
+
 test("fetchCodexWeeklyUsedPercent: a fresh cache yields the weekly used%", () => {
   const read = fetchCodexWeeklyUsedPercent("/home/t", NOW, 21600, () => bankCacheText(42));
   expect(read.usedPct).toBe(42);
@@ -1200,7 +1225,7 @@ test("evaluateCodexBankPreflight: ok below warn, warn between warn/refuse, refus
   const refuse = evaluateCodexBankPreflight(90, opts);
   expect(refuse.action).toBe("refuse");
   expect(refuse.message).toMatch(/refuse threshold 90/);
-  expect(refuse.message).toMatch(/CLAUDEX_BANK_OK=1 or --force/);
+  expect(refuse.message).toMatch(/CLAUDEX_USAGE_OK=1 or --force/);
 });
 
 test("evaluateCodexBankPreflight: override downgrades a refuse to warn, names the override", () => {

@@ -48,6 +48,8 @@ set -uo pipefail
 # sanctioned product surface, not unattended background work.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 INVOKE="$SCRIPT_DIR/../hermes/invoke.sh"
 
 usage() {
@@ -307,7 +309,7 @@ run_claude_review() {
     # a critic. Only SKIPPED-BANK refuses: BANK-STALE / BANK-UNKNOWN are the
     # helper's deliberate fail-open verdicts, and a missing helper yields no
     # token at all, which must not block an adopter who does not ship one.
-    bank="$(CADENCE_BANK_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null)"
+    bank="$(CADENCE_USAGE_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null)"
     if [ "$bank" = "SKIPPED-BANK" ]; then
         echo "hermes-critic.sh: claude route refused — bank preflight returned $bank (HIMMEL-128); fall back to another review route" >&2
         return 1
@@ -335,7 +337,7 @@ run_claude_review() {
     deduped_path="$(dedupe_path "$PATH")"
     # Removed below rather than via the EXIT trap: this function always runs
     # inside a command substitution, whose subshell resets the parent's trap.
-    scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/hermes-critic-cwd.XXXXXX")"
+    scratch_dir="$(tmpdir)"
     # Reviewer isolation depends on this cwd, so do not lean on `cd ""` failing
     # (POSIX leaves an empty operand unspecified) — refuse the route instead.
     if [ -z "$scratch_dir" ] || [ ! -d "$scratch_dir" ]; then

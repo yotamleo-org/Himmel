@@ -53,7 +53,7 @@ if [ "$got" = "go_sh " ]; then pass "A1 go.sh resolves to its file node"
 else fail "A1 got='$got'"; fi
 
 # A2: a snake_case identifier resolves to the symbol, not to tail() or status().
-got="$(seeds "where is leg_tail_status defined")"
+got="$(seeds "which file defines leg_tail_status")"
 if [ "$got" = "lts_fn " ]; then pass "A2 leg_tail_status resolves to its function"
 else fail "A2 got='$got'"; fi
 
@@ -63,13 +63,14 @@ if [ "$got" = "ql_sh " ]; then pass "A3 queue-lock resolves to the non-test file
 else fail "A3 got='$got'"; fi
 
 # A4: plain words, and a name that matches nothing, give no seeds.
-got="$(seeds "how do a console and a leg relate") $(seeds "what does foo-bar do")"
+got="$(seeds "how does a console hand work to a leg") $(seeds "what does foo-bar do")"
 if [ "$got" = " " ]; then pass "A4 no name, or an unknown name, seeds nothing"
 else fail "A4 got='$got'"; fi
 
 # Stub graphify: logs each call's arguments and answers by mode, as the real printer does.
 cat > "$T/bin/graphify" <<STUB
 #!/bin/sh
+[ "\$1" = --help ] && { echo "  --rationale"; exit 0; }
 echo "\$*" >> "$T/calls"
 case "\$*" in
   *--seed*)
@@ -97,8 +98,8 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 out="$(run query "how does go.sh write a GO file")"; rc=$?
 calls="$(cat "$T/calls")"
 order="$(grep '^NODE ' <<<"$out" | sed 's/^NODE //; s/ \[src=.*//' | tr '\n' '|')"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --seed deferred --budget 4000" <<<"$calls" \
-  && grep -qx -- "query how does go.sh write a GO file --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 4000" <<<"$calls" \
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
   pass "A5 two graphify calls, half the budget each"
 else fail "A5 rc=$rc calls='$calls'"; fi
 if [ "$order" = "go.sh|write_go_file()|write_file()|" ] && grep -q "Start (given): \['go.sh'\] | Keyword start: \['write_file()', 'Write'\] | " <<<"$out" \
@@ -109,21 +110,22 @@ if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "leg-graph.sh query 'how do
 else fail "A5c out='$out' err=$(cat "$T/err")"; fi
 
 # A6: a caller's own --seed is left alone: one call, no anchor seeds added.
-run query "how does go.sh write a GO file" --seed write_file >/dev/null
+run query "how does go.sh write a GO file" --seed write_file >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how does go.sh write a GO file --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
+if [ "$rc" = 0 ] && [ "$calls" = "query how does go.sh write a GO file --rationale --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
 else fail "A6 calls='$calls'"; fi
 
 # A7: a question naming nothing, and matching nothing semantically, runs exactly as before: one call, the caller's arguments.
-run query "how do planets orbit" >/dev/null
+run query "how do planets orbit" >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how do planets orbit --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
+if [ "$rc" = 0 ] && [ "$calls" = "query how do planets orbit --rationale --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
 else fail "A7 calls='$calls'"; fi
 
 # A9: a budget with a leading zero is decimal, not octal: both halves still run.
 run query "how does go.sh write a GO file" --budget 0800 >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --seed deferred --budget 400" <<<"$calls"; then
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 400" <<<"$calls" \
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 400" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
   pass "A9 --budget 0800 halves to 400"
 else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
 
@@ -140,9 +142,34 @@ if grep -q -- "--seed other_go " <<<"$calls" && ! grep -q -- "--seed go_sh " <<<
   pass "A10 anchors resolve in the --graph graph"
 else fail "A10 calls='$calls'"; fi
 
+# A11-A13: a file named in the other fleet vocabulary resolves through the rename registry
+# (headed-arm-worker.sh is headed-arm-leg.sh, console-relay.sh is chief-relay.sh), never onto a
+# lane-worker file the registry marks other-sense, and a name as written still wins.
+python3 -I - "$T/alias.json" <<'PY'
+import json, sys
+def node(i, label, src):
+    return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "code", "source_file": src, "source_location": "L1"}
+nodes = [
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/console-kit/headed-arm-leg.sh"),
+    node("chief_relay", "chief-relay.sh", "scripts/handover/chief-relay.sh"),
+    node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
+]
+json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
+PY
+aseeds() { python3 -I "$ANCHOR" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
+got="$(aseeds "how does headed-arm-worker.sh start a session")|$(aseeds "what does console-relay.sh send")"
+if [ "$got" = "arm_leg |chief_relay " ]; then pass "A11 a name in either vocabulary resolves through the registry"
+else fail "A11 got='$got'"; fi
+got="$(aseeds "what does stop-leg.sh do")"
+if [ "$got" = "" ]; then pass "A12 a renamed word never resolves onto an other-sense lane-worker file"
+else fail "A12 got='$got'"; fi
+got="$(aseeds "how does stop-worker.sh stop a lane worker")"
+if [ "$got" = "stop_w " ]; then pass "A13 a lane-worker file named as written resolves"
+else fail "A13 got='$got'"; fi
+
 # A8: the real graphify on the fixture: the bare query never reaches go.sh's file, the wrapper
 # starts from it.
-if command -v graphify >/dev/null 2>&1; then
+if command -v graphify >/dev/null 2>&1 && graphify --help 2>&1 | grep -q -- '--rationale'; then
   rm -f "$T/bin/graphify"
   bare="$(GRAPHIFY_OUT="$P/graphify-out" graphify query "how does go.sh write a GO file" --budget 8000 | grep -m1 '^NODE ')"
   first="$(run query "how does go.sh write a GO file" | grep -m1 '^NODE ')"
@@ -150,7 +177,7 @@ if command -v graphify >/dev/null 2>&1; then
     pass "A8 real graphify: the named file leads the answer (bare graphify led with '${bare%% \[src=*}')"
   else fail "A8 bare='$bare' first='$first' err=$(cat "$T/err")"; fi
 else
-  echo "  skip: A8 real graphify row (graphify not installed)"
+  echo "  skip: A8 real graphify row (graphify missing or without --rationale)"
 fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

@@ -62,7 +62,7 @@ IFS= read -r -d '' payload 2>/dev/null || true
 # skips this hook entirely. That edit is documented in the PR body — apply
 # it manually if/when the permission rules allow.)
 case "$payload" in
-    *create*) ;;  # might be a real invocation — fall through to slow path
+    *create* | *new*) ;;  # might be a real invocation (`pr create` / `pr new`) — fall through to slow path
     *) exit 0 ;;
 esac
 
@@ -230,9 +230,14 @@ strip_quoted_spans() {
 # three word-taking wrappers (e.g. `xargs grep 'gh pr create'`) matches. On this
 # BLOCKING gate that is a false block, so it is bounded to those three heads
 # only — the cheap direction is to over-block a wrapper line, never to un-gate.
+# `gh` may carry global options before `pr` (`gh --repo a/b pr create`,
+# `gh -R a/b pr create`): a dash word plus an optional non-dash value, repeated;
+# neither may contain a shell separator, so `gh --version; echo pr create` stays out.
+# `pr new` is gh's alias for `pr create`. Same shape as GH_PR_CREATE in
+# scripts/hermes/assets/parity_guard.py.
 stripped=$(strip_quoted_spans "$cmd")
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
-if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh[[:space:]]+pr[[:space:]]+create([^[:alnum:]_-]|$)'; then
+if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh([[:space:]]+-[^[:space:];&|()<>`]+([[:space:]]+[^[:space:];&|()<>`-][^[:space:];&|()<>`]*)?)*[[:space:]]+pr[[:space:]]+(create|new)([^[:alnum:]_-]|$)'; then
     exit 0
 fi
 
@@ -342,6 +347,8 @@ fi
 # `--head=feat/x`. Fall back to the repo_dir branch when --head is absent
 # (do not regress that path — a missed block beats a false block).
 head_branch=""
+head_from_short=0
+long_head=""
 repo_nwo=""
 # Disable pathname expansion before the unquoted split: we want word-splitting
 # of $cmd into argv, but NOT glob expansion — a title like `--title "fix *.md"`
@@ -352,9 +359,42 @@ set -- $cmd
 set +f
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --head=*) head_branch="${1#--head=}" ;;
-        --head|-H)
-            if [ "$#" -ge 2 ]; then head_branch="$2"; fi
+        --head=*) head_branch="${1#--head=}"; head_from_short=0; long_head="$head_branch" ;;
+        --head)
+            if [ "$#" -ge 2 ]; then head_branch="$2"; head_from_short=0; long_head="$2"; fi
+            ;;
+        # gh (pflag) shorthand: -H x, -Hx, -H=x, and stacked forms (-dH x,
+        # -dHx, -dH=x). The value is the text after the first H, else the
+        # next token. Only gh's boolean shorthands (d f w e h) may precede the
+        # H; any other letter means the word is not a flag cluster (a title
+        # word, grep -nH, -SHA), so the whole token is ignored. A word such as
+        # `-Hfoo` is still ambiguous without a value-aware walk, so a head read
+        # from a short flag is advisory: with no marker of its own the check
+        # falls back to the last long --head, else the cwd branch, so it is
+        # never laxer than before short heads were read.
+        -H*|-[!-]*H*)
+            # A bare `-H <value>` is authoritative, like --head.
+            if [ "$1" = "-H" ] && [ "$#" -ge 2 ]; then long_head="$2"; fi
+            _short_rest="${1#-}"
+            while [ -n "$_short_rest" ]; do
+                _short_ch="${_short_rest%"${_short_rest#?}"}"
+                _short_rest="${_short_rest#?}"
+                case "$_short_ch" in
+                    H)
+                        _short_rest="${_short_rest#=}"
+                        if [ -n "$_short_rest" ]; then
+                            head_branch="$_short_rest"
+                            head_from_short=1
+                        elif [ "$#" -ge 2 ]; then
+                            head_branch="$2"
+                            head_from_short=1
+                        fi
+                        break
+                        ;;
+                    [dfweh]) ;;
+                    *) break ;;
+                esac
+            done
             ;;
         --repo=*) repo_nwo="${1#--repo=}" ;;
         --repo|-R)
@@ -411,9 +451,17 @@ if [ -n "$head_branch" ]; then
 else
     branch=$(git -C "$repo_dir" branch --show-current 2>/dev/null || true)
 fi
-if [ -z "$branch" ]; then
+if [ -z "$branch" ] && [ "$head_from_short" != "1" ]; then
     warn "WARNING: no branch resolved (no --head, detached HEAD?); fail-open"
     exit 0
+fi
+
+# claude/backup-<ticket>-<slug> is a worktree backup ref: check-cr-before-push.sh
+# writes it no marker, so the marker lookup below cannot gate it. It is never a
+# PR (same shape as that hook's is_backup_branch).
+if [[ "$branch" =~ ^claude/backup-[0-9]+-[A-Za-z0-9._+-]+$ ]]; then
+    echo "${branch} is a worktree backup ref, never a PR head — it carries no review. Open the PR from the real feature branch." >&2
+    exit 2
 fi
 
 git_dir=$(git -C "$repo_dir" rev-parse --git-common-dir 2>/dev/null || true)
@@ -432,8 +480,20 @@ esac
 
 marker="${git_dir}/cr-pending/${branch}"
 
+# A head read from a short flag may be a title word, not a head: with no marker
+# for it, judge an earlier long --head, else the cwd branch.
+if [ ! -f "$marker" ] && [ "$head_from_short" = "1" ]; then
+    if [ -n "$long_head" ]; then
+        branch="${long_head##*:}"
+    else
+        branch=$(git -C "$repo_dir" branch --show-current 2>/dev/null || true) # swallow-ok: empty branch falls through to allow, same as the no-head path
+        resolved_from_head=0
+    fi
+    marker="${git_dir}/cr-pending/${branch}"
+fi
+
 # No marker → nothing pending → allow.
-if [ ! -f "$marker" ]; then
+if [ -z "$branch" ] || [ ! -f "$marker" ]; then
     exit 0
 fi
 

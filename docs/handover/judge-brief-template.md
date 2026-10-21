@@ -294,6 +294,20 @@ gathering, per the rule below.>
 > missing or already Done is a NO-GO line in your verdict. The console puts the
 > ticket body and the PR body in `## Evidence`.
 
+> **Critical/Important disposition (PR-review judges).** A CR finding of
+> severity Critical or Important deferred on the PR's branch blocks the GO until
+> it has a disposition at this head. Rule one per finding: (a) **fix-here** — the
+> diff fixes it and its ledger verdict reads fixed or disproved; or (b)
+> **follow-up:<KEY>** — merge now with the follow-up ticket already filed, and
+> only if all three hold, each with evidence: CI green at this head, no data
+> loss, no weakened guard. If any of the three fails, the answer is (a). Name
+> each finding on a line of its own in your GO verdict, exactly
+> `<finding id>@<finding head> fix-here|follow-up:<KEY>` (a leading `- ` is
+> allowed): the GO gate accepts the disposition only when the judge's GO for
+> that head carries that line. The console (never the leg) records it with `cr-disposition.sh record … --source
+> judge:<qid>`. A Critical always needs this judge ruling; so does an Important
+> on a trust-path PR.
+
 > **Judge checklist (code, CI and infra PRs).** A green CI and a
 > clean review are not a verdict. Rule on these, each with evidence:
 > 1. **Real environment, not fixtures.** For a CI, infra or environment change,
@@ -310,8 +324,8 @@ gathering, per the rule below.>
 >    compared across processes or sessions (`ps lstart`, `date`, `sort`, `ls`)
 >    without `TZ` and `LC_ALL` pinned (`proc-tree.sh:94` is the reference;
 >    j2271a hit it).
-> 4. **Tree-scan suites.** A diff that ADDS a script, ledger, launch site or
->    `.ps1`: name the tree-scan suites you ran in full (not only the impacted
+> 4. **Tree-scan suites.** A diff that ADDS a script, ledger, launch site
+>    or shell script: name the tree-scan suites you ran in full (not only the impacted
 >    ones), with counts.
 
 > **RETASK.** A narrowing or a halt from `<console session name>` needs no

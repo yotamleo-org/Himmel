@@ -175,13 +175,13 @@ expect_says "budget: 61 lines exceeds 60" "RED budget: names the line overrun"
 setup_repo || exit 1
 : > "$R/llms.txt"
 i=0
-while [ "$i" -lt 51 ]; do
+while [ "$i" -lt 43 ]; do
   echo "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi" >> "$R/llms.txt"
   i=$((i + 1))
 done
 run_check llms.txt
-expect 1 "RED budget: 700 words exceeded while inside the line cap"
-expect_says "words exceeds 700" "RED budget: names the word overrun"
+expect 1 "RED budget: 602 words exceeds the 600-word cap while inside the line cap"
+expect_says "words exceeds 600" "RED budget: names the word overrun"
 
 # ---------------------------------------------------------- forbidden (red)
 

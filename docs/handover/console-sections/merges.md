@@ -51,3 +51,30 @@ own `v<X>.<Y>.<Z>-pre.` series — the series is derived from `<version>`
 itself, not hardcoded to any one release line, so `v0.3.0-pre.9` and a future
 `v0.4.0-pre.1` are each checked against their own prior tags — (or carries
 `--version-override <reason>`).
+
+To drain the hosted CI queue on an operator order, run
+`bash scripts/handover/console-kit/cancel-runs.sh --keep-pr <n>` (repeat the
+flag, or add `--keep-sha <sha>`) — a dry run that prints the count; add `--live`
+to cancel. It cancels every non-completed run on the `origin` repo (not
+overridable: a `--repo` that differs from origin refuses, as does an origin on
+any host but github.com) except those on the
+kept heads, and prints `cancelled=<n> failed=<n> kept=<list>`. A keep is
+required; `--all` is the explicit way to keep nothing. A keep that cannot be
+resolved refuses before anything is cancelled. Runs on `main`, and any run not
+from a `pull_request` or `pull_request_target` (push, tag, schedule,
+workflow_dispatch), are protected
+and reported as `protected=<n>`; only `--include-protected` cancels them. At
+most `--max-cancels` (default 100, up to 500) runs are cancelled per call, and
+each cancel writes one stderr line with run, branch, sha, event and rc.
+Cancels are paced at 10 per minute and 30 per 10 minutes (failed attempts
+count): past a limit the verb waits and says so on stderr (`pacing - waiting
+<n>s`), so a drain of 100 runs takes about half an hour; a dry run never waits.
+The cancel times persist in the git common dir (`cancel-runs-pace`), so a
+re-run after a tool timeout keeps the limits (a state file that cannot be
+written stops a live run, exit 2, before the cancel it could not record). Two
+drains running at once do not see each other's cancels live, so run one drain
+at a time. A
+listing that fills `CANCEL_RUNS_LIMIT` (500), or the cancel cap, exits 1 after
+cancelling what it could: re-run until it exits 0. It refuses (exit 3) in a leg
+or relay. Never hand-roll a `gh run cancel` loop: the classifier denies it as
+Interfere With Workloads.

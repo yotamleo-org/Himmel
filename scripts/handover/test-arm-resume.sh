@@ -228,9 +228,21 @@ export ARM_ISOLATION_ROOT="$TMP/no-primary"
 # any case below that fails to stub crontab/at must not be able
 # to silently touch the operator's REAL scheduler. Snapshot now, before any
 # case runs, and diff again right before the summary -- a change either way
-# fails the suite outright, regardless of --only.
-CRONTAB_SNAPSHOT_BEFORE=$(crontab -l 2>/dev/null || true)
-ATQ_SNAPSHOT_BEFORE=$(atq 2>/dev/null || true)
+# fails the suite outright, regardless of --only. Under run-shell-tests.sh the
+# snapshot reads past the runner's recording shim (HIMMEL_SUITE_SHIM_DIR): the
+# shim sees only PATH lookups, this diff also sees an absolute or reset-PATH one.
+SCHED_REAL_PATH=":$PATH:"
+[ -z "${HIMMEL_SUITE_SHIM_DIR:-}" ] || SCHED_REAL_PATH="${SCHED_REAL_PATH//":$HIMMEL_SUITE_SHIM_DIR:"/:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH#:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH%:}"
+CRONTAB_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
+ATQ_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
+# A dry-run arm lists already-armed jobs with `atq`; an empty queue keeps cases
+# without their own scheduler stub off the operator's real one.
+mkdir -p "$TMP/empty-atq-bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/empty-atq-bin/atq"
+chmod +x "$TMP/empty-atq-bin/atq"
+export PATH="$TMP/empty-atq-bin:$PATH"
 # every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 # This file is also the body of test-arm-resume-fast.sh / -1879.sh (`--only`).
@@ -1410,6 +1422,11 @@ case "\${1:-}" in
     *) cat > /dev/null 2>&1 || true; exit 0 ;;
 esac
 EOF
+cat > "$ARMED_STUB/atrm" <<EOF
+#!/usr/bin/env bash
+rm -f "$TMP/armed-stub.atdir/job-\${1:-}" 2>/dev/null || true
+exit 0
+EOF
 # file-backed, like the mac cron suite's stub -- never touches
 # the real crontab, even on a Linux host where arm-resume.sh would otherwise
 # prefer `at` but a case still lists/reads via `crontab -l` first.
@@ -1435,7 +1452,7 @@ cat > "$ARMED_STUB/powershell" <<'EOF'
 # Probe "unavailable" -> verify fail-opens (see SCHED_STUB_T17 note).
 exit 1
 EOF
-chmod +x "$ARMED_STUB/schtasks" "$ARMED_STUB/atq" "$ARMED_STUB/at" "$ARMED_STUB/crontab" "$ARMED_STUB/claude" "$ARMED_STUB/powershell"
+chmod +x "$ARMED_STUB/schtasks" "$ARMED_STUB/atq" "$ARMED_STUB/at" "$ARMED_STUB/atrm" "$ARMED_STUB/crontab" "$ARMED_STUB/claude" "$ARMED_STUB/powershell"
 
 if _sec_selected "T23"; then
 TELEMETRY_T23="$TMP/telemetry-t23"
@@ -3151,7 +3168,7 @@ assert_not_contains "T-wsl body never quotes the -d value" 'wsl.exe -d "' "$out"
 # rather than left to assert a launch line arm-resume.sh no longer emits.
 assert_contains "T-wsl body has in-distro cd+unset+claude" "cd '$WSL_CWD' && unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM AUTO_ARM_SAFETY_CHILD CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 && claude" "$out"
 assert_not_contains "T-wsl no caret escapes inside CMD quotes" '^&' "$out"
-assert_contains "T-wsl prompt precedes channels" "'load $WSL_HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1.' --channels 'plugin:test@local'" "$out"
+assert_contains "T-wsl prompt precedes channels" "'load $WSL_HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1.' --channels 'plugin:test@local'" "$out"
 assert_not_contains "T-wsl body drops Windows cd" "cd /d" "$out"
 # Regression (s52/s53 live fire): the flow-run tmp path must carry a LITERAL
 # backslash-f — a mangled printf escape (\f form feed) makes an invalid
@@ -5219,7 +5236,7 @@ fi
 # ---------------------------------------------------------------------------
 # --- -
 # C1 delivery fix: RESUME_PROMPT carries a single-line pointer clause naming
-# § Launch preamble in docs/handover/overnight-mode.md, so every armed
+# § Launch preamble in docs/handover/afk-mode.md, so every armed
 # relaunch names the standing instructions (the template preamble copies are
 # retired — the doc is the single source). Guards: exactly one line (the
 # prompt is re-quoted via printf %q / _bash_single_quote into schtasks .bat
@@ -5231,7 +5248,7 @@ fi
 if _sec_selected "1719" "HIMMEL-1719"; then
 echo "--- 1719 ---"
 HO=$(make_handover "$WORK_REPO")
-EXPECTED_1719="load $HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
+EXPECTED_1719="load $HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 
 # Single-line + charset invariants on the fixture itself (pins the contract
 # any future rewording must keep).
@@ -5262,7 +5279,7 @@ out=$(win_env "$SCHED_STUB_T17" \
 rc=$?
 assert_rc "1719d pointer-clause dry-run exits 0" 0 "$rc"
 assert_contains "1719d .bat carries the full prompt incl. pointer clause" "$EXPECTED_1719" "$out"
-if grepq "$out" -E 'overnight mode\. Apply the Launch preamble standing instructions in docs/handover/overnight-mode\.md before Phase 1\.'; then
+if grepq "$out" -E 'overnight mode\. Apply the Launch preamble standing instructions in docs/handover/afk-mode\.md before Phase 1\.'; then
     echo "PASS 1719e trigger phrase and pointer clause share one line"
 else
     echo "FAIL 1719e pointer clause split from the trigger phrase (embedded newline?)"
@@ -5276,7 +5293,7 @@ fi
 # divergence this check exists to catch. Per-file also sidesteps `grep -c`'s
 # `file:count` prefix, which an `awk -F:` split mis-parses on a Windows
 # `C:/...` path. -F keeps the literal dots literal.
-_clause_1719="overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
+_clause_1719="overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 # `|| true`, NOT `|| echo 0`: grep -c ALREADY prints its count (0) and exits 1
 # on no-match, so an `echo 0` fallback appends a SECOND line and the numeric
 # test below dies with "integer expected" instead of failing cleanly. The
@@ -6616,13 +6633,13 @@ if [ -z "$ONLY_FILTERS" ]; then
         FAILED=$((FAILED + 1))
     fi
 fi
-CRONTAB_SNAPSHOT_AFTER=$(crontab -l 2>/dev/null || true)
+CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
 if [ "$CRONTAB_SNAPSHOT_AFTER" != "$CRONTAB_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real crontab changed during this run -- a case leaked into the operator's live crontab:"
     diff <(printf '%s\n' "$CRONTAB_SNAPSHOT_BEFORE") <(printf '%s\n' "$CRONTAB_SNAPSHOT_AFTER") || true
     FAILED=$((FAILED + 1))
 fi
-ATQ_SNAPSHOT_AFTER=$(atq 2>/dev/null || true)
+ATQ_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
 if [ "$ATQ_SNAPSHOT_AFTER" != "$ATQ_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real at queue changed during this run -- a case leaked into the operator's live at queue:"
     diff <(printf '%s\n' "$ATQ_SNAPSHOT_BEFORE") <(printf '%s\n' "$ATQ_SNAPSHOT_AFTER") || true

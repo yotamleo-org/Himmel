@@ -136,7 +136,7 @@ make_git_stub() {
   cat > "$_d/git" <<STUB
 #!/usr/bin/env bash
 if [ "\$1" = "remote" ] && [ "\$2" = "get-url" ] && [ "\$3" = "origin" ]; then
-  printf '%s\n' 'https://github.com/yotamleo/himmel.git'
+  printf '%s\n' 'https://github.com/yotamleo-org/Himmel.git'
   exit 0
 fi
 if [ "\$1" = "rev-parse" ] && [ "\$2" = "--show-toplevel" ]; then

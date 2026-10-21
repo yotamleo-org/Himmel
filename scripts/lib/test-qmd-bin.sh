@@ -56,12 +56,12 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.2" \
-  test "$default_ref" = "2d8589c6ace332c351e9f6e1ac7400aab7a4ee02"
+assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.3" \
+  test "$default_ref" = "5490d8947d3d8c9edbb6c1288174005d35f44e81"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment names the tag and HIMMEL-5952" \
-  bash -c 'grep -q "v2.8.3-himmel.2" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+  bash -c 'grep -q "v2.8.3-himmel.3" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment no longer calls the pin the pin-http-auth tip" \
@@ -1159,6 +1159,52 @@ assert "QMD_EMBED_MODEL=openai:... over a project-local salus config: refused (r
 assert "env-model refusal comes from the gate and checked the project-local file" refused_by_gate "$out" "$gh_home/proj/.qmd/index.yml"
 rc=0; out="$(gate_run "$gh_home/proj")" || rc=$?
 assert "project-local salus on local models: allowed" test "$rc" -eq 0
+
+# the CLI path takes the provider key from the daemon env file, as the daemon and qmd-reindex do
+keystub="$tmpdir/key-stub"; mkdir -p "$keystub"
+printf "#!/usr/bin/env bash\necho \"PATH-QMD KEY=\${QMD_OPENAI_API_KEY:+set}\"\n" >"$keystub/qmd"; chmod +x "$keystub/qmd"
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+KEY_SENTINEL=sk-test-sentinel-6633
+printf 'QMD_OPENAI_API_KEY=%s\n' "$KEY_SENTINEL" >"$tmpdir/daemon.env"; chmod 600 "$tmpdir/daemon.env"
+# key_run <env file> [VAR=value...] -- qmd_cmd query x with NO session key
+key_run() {
+  local f="$1"; shift
+  ( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_API_KEY HOME="$gh_home" PATH="$keystub:$PATH" QMD_DAEMON_ENV_FILE="$f" "$@" \
+      bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1 )
+}
+rc=0; out="$(key_run "$tmpdir/daemon.env")" || rc=$?
+assert "OpenRouter config, key only in the daemon env file: allowed" test "$rc" -eq 0
+assert "OpenRouter config, key only in the daemon env file: qmd gets the key" grep -q '^PATH-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "the key value never reaches the output" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$KEY_SENTINEL"
+rc=0; out="$(key_run "$tmpdir/absent.env")" || rc=$?
+assert "OpenRouter config, no key anywhere: refused (rc 10)" test "$rc" -eq 10
+assert "OpenRouter config, no key anywhere: the message names the env file" grep -q 'absent.env' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "OpenRouter config, no key anywhere: never reached qmd" bash -c '! grep -q "PATH-QMD" <<<"$1"' _ "$out"
+chmod 644 "$tmpdir/daemon.env"
+rc=0; out="$(key_run "$tmpdir/daemon.env")" || rc=$?
+assert "a group-readable key file is refused (rc 10)" test "$rc" -eq 10
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "a group-readable key file never leaks the key" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$KEY_SENTINEL"
+chmod 600 "$tmpdir/daemon.env"
+rc=0; out="$(key_run "$tmpdir/absent.env" QMD_OPENAI_API_KEY=session-key)" || rc=$?
+assert "no key file but a session key: the session key still reaches qmd" grep -q '^PATH-QMD KEY=set' <<<"$out"
+assert "no key file but a session key: qmd_cmd succeeds" test "$rc" -eq 0
+# a traced caller must not see the key in stderr, from the file or from the session
+key_run_x() {
+  local f="$1"; shift
+  ( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_API_KEY HOME="$gh_home" PATH="$keystub:$PATH" QMD_DAEMON_ENV_FILE="$f" "$@" \
+      bash -x -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1 )
+}
+out="$(key_run_x "$tmpdir/daemon.env")" || true
+assert "traced run, file key: qmd still gets the key" grep -q '^PATH-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "traced run, file key: the key never reaches the trace" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$KEY_SENTINEL"
+out="$(key_run_x "$tmpdir/absent.env" QMD_OPENAI_API_KEY="$KEY_SENTINEL")" || true
+assert "traced run, session key: qmd still gets the key" grep -q '^PATH-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "traced run, session key: the key never reaches the trace" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$KEY_SENTINEL"
 
 # node absent: a remote config must fail with the node message and a refused row must NOT pass for the wrong reason
 printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"

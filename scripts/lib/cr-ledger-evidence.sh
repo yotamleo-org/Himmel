@@ -52,6 +52,9 @@
 # Sourceable from check-ci.sh and cr-merge-gate.sh: uses only `return`, never
 # `exit`; does not toggle set -e. bash 3.2-safe.
 
+# Past the cutover only a signed lowering amend counts; resolved once, at source time.
+_CR_LEDGER_AMEND_AUTH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../cr" 2>/dev/null && pwd)/ledger-amend-auth.js"
+
 cr_ledger_carries_gate() {
     local full_sha="${1:-}"
 
@@ -76,7 +79,7 @@ cr_ledger_carries_gate() {
     # verdict; responders=/models= ride along for the audit line on a carry,
     # reason= names the refusal otherwise.
     local line
-    line=$(LEDGER="$ledger" FULL_SHA="$full_sha" node -e '
+    line=$(LEDGER="$ledger" FULL_SHA="$full_sha" AMEND_AUTH="$_CR_LEDGER_AMEND_AUTH" node -e '
       const fs = require("fs"), e = process.env;
       const lines = fs.existsSync(e.LEDGER)
           ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
@@ -158,7 +161,8 @@ cr_ledger_carries_gate() {
       };
       const SEP = String.fromCharCode(31);
       const amends = new Map();
-      for (const l of lines) {
+      // Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+      for (const l of require(e.AMEND_AUTH).filterLines(lines)) {
           let a;
           try { a = JSON.parse(l); } catch { continue; }
           if (a.kind !== "amend" || !a.set || typeof a.set !== "object") continue;
@@ -264,7 +268,7 @@ cr_ledger_outside_dispositioned() {
 
     # Single-quoted block: NO apostrophes / backticks / dollar-braces inside.
     local out
-    out=$(LEDGER="$ledger" FULL_SHA="$full_sha" OD_ID="$id" OD_FILE="$file" OD_LINE="$line" CUR_HEAD="$cur_head" node -e '
+    out=$(LEDGER="$ledger" FULL_SHA="$full_sha" OD_ID="$id" OD_FILE="$file" OD_LINE="$line" CUR_HEAD="$cur_head" AMEND_AUTH="$_CR_LEDGER_AMEND_AUTH" node -e '
       const fs = require("fs"), cp = require("child_process"), e = process.env;
       if (!fs.existsSync(e.LEDGER)) { process.stdout.write("no"); process.exit(0); }
       const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
@@ -308,7 +312,8 @@ cr_ledger_outside_dispositioned() {
       const SEP = String.fromCharCode(31);
       const amends = new Map();
       let malformed = 0;
-      for (const l of lines) {
+      // Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+      for (const l of require(e.AMEND_AUTH).filterLines(lines)) {
           let a;
           try { a = JSON.parse(l); } catch { malformed++; continue; }
           if (a.kind !== "amend" || !a.set || typeof a.set !== "object") continue;

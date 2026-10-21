@@ -2274,9 +2274,9 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       _bank_preflight="$REPO_ROOT/scripts/lib/bank-preflight.sh"
       if [ -f "$_bank_preflight" ]; then
         if [ -n "$_deadline_bin" ]; then
-          _bank_verdict="$(CADENCE_BANK_LEG="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
+          _bank_verdict="$(CADENCE_USAGE_LEG="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
         else
-          _bank_verdict="$(CADENCE_BANK_LEG="graphmap-$NAME" bash "$_bank_preflight" || true)"
+          _bank_verdict="$(CADENCE_USAGE_LEG="graphmap-$NAME" bash "$_bank_preflight" || true)"
         fi
         # bank-preflight always exits 0 by design (see above), but wrapped in
         # timeout a kill yields 124, and `|| true` swallows that so `set -e`

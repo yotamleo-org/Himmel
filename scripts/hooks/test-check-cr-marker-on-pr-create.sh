@@ -182,6 +182,97 @@ case "$out" in
     *) fail "expected 'Automated review pending for feat/X' in stderr" "out: $out" ;;
 esac
 
+# Test 2d: attached and stacked gh short-flag spellings of --head -> BLOCK
+# gh (pflag) also accepts -Hx, -H=x and stacked shorthands (-d is --draft).
+for spelling in "-dH feat/X" "-dHfeat/X" "-dH=feat/X" "-H=feat/X" "-Hfeat/X" "-Hsomefork:feat/X"; do
+    echo "TEST: gh pr create $spelling, marker present -> BLOCK"
+    run_hook "gh pr create $spelling --base main"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2) on $spelling with marker"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
+# Test 2e: a dash word that only LOOKS like a head must never un-gate the
+# worktree's own pending branch. cwd = the feat/X worktree (marker present, no
+# --head): every spelling below must still BLOCK on that marker.
+write_marker "feat/X"
+for spelling in "--title fix -Hfoo" "--title fix -SHA" "--title fix -HEAD" "--title fix -Hotfix" "--title fix ; grep -nH pat f"; do
+    echo "TEST: gh pr create $spelling, marker on the cwd branch -> BLOCK"
+    run_hook "gh pr create $spelling --base main" "$WORKTREE"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2) on $spelling"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
+# Test 2e2: a short head naming a branch with no marker, from a cwd branch
+# with no marker either -> allow (the cwd fall-back does not over-block).
+echo "TEST: -Hother (no marker), cwd on main with no marker -> allow"
+run_hook "gh pr create -Hother --base main"
+if [ "$rc" -eq 0 ]; then
+    pass "allowed (exit 0): unmarked short head, unmarked cwd branch"
+else
+    fail "expected exit 0, got rc=$rc" "out: $out"
+fi
+
+# Test 2f: an attached value of another short flag must not overwrite --head
+echo "TEST: --head feat/X -tHotfix, marker present -> BLOCK (H in -t value ignored)"
+run_hook "gh pr create --head feat/X -tHotfix --base main"
+if [ "$rc" -eq 2 ]; then
+    pass "blocked (exit 2): -tHotfix did not replace the head"
+else
+    fail "expected exit 2, got rc=$rc" "out: $out"
+fi
+
+# Test 2g: a dash word inside a title/body must not throw away an earlier
+# authoritative --head. cwd = the primary on unmarked main; only feat/X holds a
+# marker, so every spelling below must still BLOCK on it.
+for spelling in "--title \\\"x -Hfoo\\\"" "--title \\\"-Hotfix release\\\"" "--body \\\"see -Hfoo\\\"" "-t -Hfoo" "--title \\\"diff against -HEAD~1\\\""; do
+    echo "TEST: --head feat/X $spelling, cwd on unmarked main -> BLOCK"
+    run_hook "gh pr create --head feat/X --base main $spelling"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling did not replace the head"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
+# Test 2h: the bare `-H <value>` is as authoritative as --head, so a later dash
+# word must not discard it either, nor an unmarked earlier --head hide it.
+for spelling in "-H feat/X --base main --title \\\"x -Hfoo\\\"" "-H feat/X --base main -t -Hfoo" "-H feat/X --base main --body \\\"see -Hfoo\\\"" "-H feat/X --base main --title \\\"diff against -HEAD~1\\\"" "--head other -H feat/X --base main --title \\\"x -Hfoo\\\""; do
+    echo "TEST: gh pr create $spelling, cwd on unmarked main -> BLOCK"
+    run_hook "gh pr create $spelling"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling kept the bare -H head"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
+# Test 2i: a short-flag word ending in ':' strips to an empty branch; that must
+# not exit 0 before the fall-back runs. Marker present for feat/X only.
+for spelling in "--head feat/X --body \\\"see -Hint: y\\\"" "--head feat/X -H: --base main" "--head feat/X -dH=: --base main" "-H feat/X --body \\\"see -Hint: y\\\""; do
+    echo "TEST: gh pr create $spelling, cwd on unmarked main -> BLOCK"
+    run_hook "gh pr create $spelling"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling kept the head"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+for spelling in "--body \\\"see -Hint: y\\\"" "-H: --base main" "-dH=: --base main"; do
+    echo "TEST: gh pr create $spelling, marker on the cwd branch -> BLOCK"
+    run_hook "gh pr create $spelling" "$WORKTREE"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling judged the cwd branch"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
 echo "TEST: --head feat/X, no marker -> allow"
 rm -f "$(marker_for feat/X)"
@@ -190,6 +281,33 @@ if [ "$rc" -eq 0 ]; then
     pass "allowed (exit 0) when no marker for head branch"
 else
     fail "expected exit 0, got rc=$rc" "out: $out"
+fi
+
+# A claude/backup-<ticket>-<slug> ref carries no CR marker (the pre-push gate
+# exempts it), so the marker lookup can never protect it: refuse it as a PR head.
+echo "TEST: --head claude/backup-6584-x (no marker by design) -> BLOCK"
+rm -f "$(marker_for claude/backup-6584-x)"
+run_hook "gh pr create --head claude/backup-6584-x --base main"
+if [ "$rc" -eq 2 ] && [[ "$out" == *"backup"* ]]; then
+    pass "a worktree backup ref is refused as a PR head even with no marker"
+else
+    fail "expected exit 2 naming the backup ref, got rc=$rc" "out: $out"
+fi
+echo "TEST: --head owner:claude/backup-6584-x (fork form) -> BLOCK"
+run_hook "gh pr create --head somefork:claude/backup-6584-x --base main"
+if [ "$rc" -eq 2 ]; then
+    pass "fork-form backup head is refused too"
+else
+    fail "expected exit 2, got rc=$rc" "out: $out"
+fi
+echo "TEST: --head claude/feature-x and claude/backup-x (not the backup shape), no marker -> allow"
+run_hook "gh pr create --head claude/feature-x --base main"
+rc_feature=$rc
+run_hook "gh pr create --head claude/backup-x --base main"
+if [ "$rc_feature" -eq 0 ] && [ "$rc" -eq 0 ]; then
+    pass "only the exact backup shape is refused"
+else
+    fail "expected exit 0 for both, got feature=$rc_feature backup-x=$rc" "out: $out"
 fi
 
 # Test 4: no --head, marker present on project_dir branch + SHA match -> BLOCK
@@ -345,14 +463,57 @@ for label in $neg2_labels; do
     shift
 done
 
+# Test 11b: gh global options before `pr`, and the `pr new` alias -> BLOCK
+# `gh --repo a/b pr create` is the same invocation as `gh pr create --repo a/b`;
+# the matcher must not require `pr` to follow `gh` directly. `pr new` is gh's
+# alias for `pr create`.
+echo "TEST: gh global options and the pr new alias -> BLOCK"
+write_marker "feat/X"
+for gopt_cmd in \
+    'gh --repo a/b pr create --head feat/X --base main' \
+    'gh -R a/b pr create --head feat/X --base main' \
+    'gh --repo=a/b pr create --head feat/X --base main' \
+    'gh --repo a/b --hostname h.example pr create --head feat/X --base main' \
+    'gh pr new --head feat/X --base main' \
+    'gh -R a/b pr new --head feat/X --base main' \
+    'sudo gh --repo a/b pr create --head feat/X --base main'
+do
+    run_hook "$gopt_cmd"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2) on '$gopt_cmd'"
+    else
+        fail "'$gopt_cmd' slipped the gate (rc=$rc)" "out: $out"
+    fi
+done
+
+# The widened `gh` prefix stays anchored to `pr create|new`: other subcommands,
+# a longer word, and an option word that is not followed by `pr create` allow.
+echo "TEST: gh global options on other subcommands stay negative"
+for gneg_cmd in \
+    'gh --repo a/b pr view --head feat/X' \
+    'gh -R a/b pr newest --head feat/X' \
+    'gh --repo a/b release create --head feat/X' \
+    'gh api -X POST pr create --head feat/X' \
+    'gh --version; echo pr create --head feat/X' \
+    'gh --version && echo pr new --head feat/X' \
+    'gh --version | grep pr create --head feat/X'
+do
+    run_hook "$gneg_cmd"
+    if [ "$rc" -eq 0 ]; then
+        pass "allowed (exit 0) for '$gneg_cmd'"
+    else
+        fail "negative '$gneg_cmd' matched (rc=$rc)" "out: $out"
+    fi
+done
+
 # Test 12: the two twins carry the SAME matcher line (lockstep) --
 # They have diverged once already (the end-of-token class landed in this hook
 # and not in the sibling), and a divergence means the PostToolUse
 # trigger silently stops firing on shapes the PreToolUse gate blocks.
 echo "TEST: PreToolUse and PostToolUse matchers are byte-identical"
 twin="$SCRIPT_DIR/trigger-cr-on-pr-create.sh"
-this_matcher=$(grep -F "grep -qE" "$HOOK" | grep -F "pr[[:space:]]+create" || true)
-twin_matcher=$(grep -F "grep -qE" "$twin" | grep -F "pr[[:space:]]+create" || true)
+this_matcher=$(grep -F "grep -qE" "$HOOK" | grep -F "pr[[:space:]]+(create|new)" || true)
+twin_matcher=$(grep -F "grep -qE" "$twin" | grep -F "pr[[:space:]]+(create|new)" || true)
 if [ -z "$this_matcher" ] || [ -z "$twin_matcher" ]; then
     fail "could not locate the matcher line in one of the twins"
 elif [ "$this_matcher" = "$twin_matcher" ]; then

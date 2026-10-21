@@ -131,7 +131,7 @@ prefix does NOT work. Per-repo opt-out: a local gitignored `.single-writer` at a
 repo root allows on-main edits there (single-writer repos — personal vaults,
 state repos — that commit straight to main by design); clones without the marker
 stay protected. Required environment:
-[`docs/setup/new-machine.md`](../setup/new-machine.md#1-required-environment-himmel-123).
+[`docs/setup/new-machine.md`](../setup/new-machine.md#1-required-environment).
 
 When a guardrail stops you — a denial, a permission prompt, a silent no-op at
 rc=0, a failed attestation gate, a refused worktree — the recovery lives in
@@ -147,8 +147,8 @@ Docs not already linked from a rule above (relative to `docs/`):
 |---|---|
 | `internals/harness-compat.md` | himmel under Codex / other harnesses |
 | `internals/testing.md` | non-guessable test invocations (`bash scripts/ci/run-shell-tests.sh`, lanes, bun) |
-| `handover/overnight-mode.md` | autonomous end-to-end execution of a well-scoped ticket |
+| `handover/afk-mode.md` | autonomous end-to-end execution of a well-scoped ticket |
 | `glossary.md` | the one definition site: console, judge, relay, leg, chain, wave, arming, manual override |
-| `handover/running-a-console.md` | starting + handing over a console (`/console new\|next`), vs `/overnight-shift` |
+| `handover/running-a-console.md` | starting + handing over a console (`/console new\|next`), vs `/afk-shift` <!-- old-term-ok: console is renamed in slice V5 --> |
 | `internals/prompt-cache.md` | the verified prompt-cache model, audit of every cache claim, the `scripts/eval/cache-probe.sh` re-run |
 | `internals/headless-modes.md` | `claude -p` vs `claude --bg` vs headed — which fits which job, env/permission/confirm details |

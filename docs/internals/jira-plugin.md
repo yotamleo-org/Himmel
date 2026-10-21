@@ -30,16 +30,16 @@ For Jira ops in this repo, default to the local CLI at
 |-------------|-----------------------------------------------------------------------------|------------------------------------------------------------------|
 | Get         | `node scripts/jira/dist/index.js get HIMMEL-N` (default includes description body, a `Labels:` line when the issue has any, and a `Fix versions:` line when it has any; add `--short` for header-only) | `getJiraIssue`                                                   |
 | List/search | `... list --jql "..."`; `... list --label <l>` filters by label (composed into the built JQL, `--jql` still wins); `... list --labels` appends each issue's labels as a trailing comma-separated column (off by default — on by default would break fixed-column consumers of the TSV output) | `searchJiraIssuesUsingJql`                                       |
-| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it defaults to the earliest unreleased version; `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
+| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it needs a placement: `--backlog`, `--gate critical\|regression` or `--priority Highest` (see "Bug placement" below); `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
 | Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name; `... edit HIMMEL-N --affects-version v1.0.0\|current` sets affectsVersion (FULL-REPLACE, same validation, read back after the PUT) | `editJiraIssue`                                                  |
-| Comment     | `... comment HIMMEL-N "text"`                                               | `addCommentToJiraIssue`                                          |
+| Comment     | `... comment HIMMEL-N "text"` / `... comment HIMMEL-N --edit <commentId> "text"` (replace a comment's body, PUT) | `addCommentToJiraIssue` / `addOrEditJiraIssueComment`            |
 | Comments    | `... comments HIMMEL-N [--last N]` (read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
 | Attach      | `... attach HIMMEL-N file.png`                                              | (none — MCP has no attach)                                       |
 | Transition  | `... transition HIMMEL-N Done`                                              | `getTransitionsForJiraIssue` + `transitionJiraIssue` (two calls) |
 | Transitions | `... transitions HIMMEL-N` (id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
 | Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--dry-run]` (close source + create target + copy comments) | (none — Jira Cloud REST API has no direct project-change endpoint) |
 | Projects    | `... projects` / `... project-create ...`                                   | `getVisibleJiraProjects` / no equivalent for create              |
-| Link        | `... link HIMMEL-A HIMMEL-B` (Relates, the default; case-insensitive `--type`, validated against the live type list). Blocks is explicit: `link A --blocks B` (A blocks B) and `link A --blocked-by B` (A is blocked by B); the bare two-key form is refused for Blocks, because the stored direction (first key = inward, so `link A B --type Blocks` meant "A is blocked by B") read backwards. The output prints the stored relation (`Linked: B is blocked by A`), matching `links`. `scripts/jira/audit-blocks-links.mjs` is a read-only TSV audit of open-ticket Blocks links with proposed flips | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
+| Link        | `... link HIMMEL-A HIMMEL-B` (Relates, the default; case-insensitive `--type`, validated against the live type list). Blocks is explicit: `link A --blocks B` (A blocks B) and `link A --blocked-by B` (A is blocked by B); the bare two-key form is refused for Blocks, because the first key is the blocker (`link A B --type Blocks` stores "A blocks B") and callers often expect the reverse; the explicit flags state the direction. The output prints the stored relation (`Linked: A blocks B`), matching `links` and the Jira UI (HIMMEL-6577). `scripts/jira/audit-blocks-links.mjs` is a read-only TSV audit of open-ticket Blocks links with proposed flips | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
 | Links       | `... links HIMMEL-N` (lists id, type, canonical `inward=` / `outward=` keys, and the relation from the queried issue) | `getJiraIssue` with the `issuelinks` field |
 | Unlink      | `... unlink HIMMEL-INWARD HIMMEL-OUTWARD [--type Relates]` (resolves the REST id from the directed pair and refuses ambiguous matches) | (none — use `DELETE /rest/api/3/issueLink/{id}`) |
 | Assign      | `... assign HIMMEL-N <email\|accountId>` (`-`/`unassigned` clears, `auto` = default assignee; email → accountId via `/user/search`) | `editJiraIssue` (assignee field) |
@@ -49,10 +49,12 @@ For Jira ops in this repo, default to the local CLI at
 | Sprint      | `... boards` / `... sprints [--board N]` / `... sprint HIMMEL-N <sprintId\|backlog>` (Agile API `/rest/agile/1.0`; `JIRA_BOARD_ID` default) | (none — MCP has no Agile-board ops) |
 | Sector      | `... edit HIMMEL-N --sector "Ship loop"` (single-select custom field named by `jira.sectorField` in `~/.himmel/config.json`, opt-in via `... sector setup`; case-insensitive against the live option list, unknown option refused, value read back after the PUT) / `... edit-batch --file <tsv>` (columns `key`, `sector`; prints one `key<TAB>sector<TAB>set\|unchanged\|failed[<TAB>reason]` row per input row; a failed row never aborts, exit 1 if any failed; re-running is idempotent). `get` prints a `Sector:` line. | (none) |
 | Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... affects-version HIMMEL-N --add\|--remove <name\|current>` (the `update.versions` add/remove verbs, same validation; `current` = earliest unreleased version) / `... fix-version HIMMEL-N --add\|--remove <name>` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
+| Freeze      | `... version-freeze <name> [--at YYYY-MM-DD] [--keys-file <path>] [--dry-run]` (writes `frozen: <date>` and `frozen-keys: A,B` into the version description and labels the set `scope-<name>`; the set is the version's open tickets, or the `--keys-file` list (one key per line, `#` comments) for a freeze that happened before the tool; refused on an already-frozen version) / `... version-ready <name> [--console-override <row-id> "<reason>"]...` (prints the P1 tag criterion as tab-separated `PASS`/`FAIL` rows: `frozen-set` every frozen key Done or deferred from this version (label `deferred` plus a deferral ledger row for it) and every key in the version but not in the frozen list either carrying an admission ledger row or Done (a Done key with no row is a Done-fold; any other without a row is a leak and fails the row), `no-blocker-bug` no open Highest-priority or `critical`/`blocker`/`v1-blocker`-labelled Bug in the version, `main-ci` every CI run green at main's head, `done-fold` every Done frozen key still carries the version; then `frozen-open`, `admitted-after-freeze` and `done-folded` counts, one `admitted<TAB><key><TAB><reason>[<TAB><by>]` line per ruled admission, and every ledger override/deferral; informational, exit 0, it refuses nothing, gates on no count and prints no roll date) / `... version-admit <KEY> --version <name> --reason "<why>" --by <rm-session>` (records a release-manager admission as an `rm-admit` ledger row) / `... version-defer <KEY> --version <name> --reason "<why>"` (labels `deferred` and records the deferral). `--console-override` is per row and repeatable, each overridden row gets its own ledger row; it and `version-admit` and `version-defer` need `HIMMEL_CONSOLE=1` (the same marker as `create --console-override`) and a non-blank reason; every row lands in the admissions ledger (`$HANDOVER_DIR/admissions-ledger.jsonl`, `HIMMEL_ADMISSIONS_LEDGER` overrides) <!-- old-term-ok: the console role and the --console-override flag are the operator-approved names --> | (none) |
 | Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
 | Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
 | Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
+| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> --sector S --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker session). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/` (HIMMEL-6796); the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
 
 **Use MCP only when the plugin lacks the operation** (custom-field
 discovery, account-ID lookup via `lookupJiraAccountId`). Confluence now has
@@ -241,14 +243,46 @@ prints the `jira.sectorField` config.json snippet (it never writes the file;
 config.json writes are operator-only); `--opt-out` prints the `none` snippet. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
-**Bug default fixVersion.** `create --type Bug` without
-`--fix-version` sets the earliest unreleased, unarchived version from the project's
-versions and prints one stderr line saying so; an explicit `--fix-version` always
-wins, and when no unreleased version can be read the Bug is filed with no
-fixVersion and a warning. Other types are untouched. There is no date cutoff and
-no deferral of every Bug (the v1 bug freeze and its `freeze-check` op
-were removed by operator ruling 2026-10-05): the release gate is the `v1-blocker`
-label and priority, which the board shows.
+**Bug placement (HIMMEL-6776).** `create --type Bug` without `--fix-version` is
+placed at filing, never defaulted silently. `--backlog` files it with the
+`backlog` label and no fixVersion. `--priority Highest` or a valid `--gate`
+(see the intake gate below) sets the earliest unreleased, unarchived version from the
+project's versions and prints one stderr line saying so (no readable unreleased
+version: filed with no fixVersion and a warning). With none of those the create
+is refused, naming both choices and the `--sector` given. An explicit
+`--fix-version` is untouched, as are other types. `create --priority <name>`
+sets the Jira priority. This reverses the PR #1237 earliest-unreleased default
+(decision 100, 2026-10-20); there is still no date cutoff (the v1 bug freeze was
+removed by operator ruling 2026-10-05) and the release gate is the `v1-blocker`
+label and priority.
+
+**Override and admissions ledger.** `create --fix-version <v>
+--console-override "<reason>"` is honoured only with `HIMMEL_CONSOLE=1` set, a
+non-empty reason and a ledger that can take an append (`HANDOVER_DIR`, or
+`HIMMEL_ADMISSIONS_LEDGER`); any miss, including an unwritable ledger, refuses
+before the ticket is filed. After
+the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
+(`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
+spoofable by any same-uid caller (ponytail, upgrade path HIMMEL-6796). Code:
+`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)`,
+`readAdmissions(version?)` and the preflight `assertAdmissionsWritable()`, the
+whole API).
+
+**Intake gate for a frozen version (HIMMEL-6775).** A version whose description
+has a line `frozen: <date>` takes no new ticket without a reason. `create` checks
+the version the ticket will land in, whether from `--fix-version`, a Highest or
+`--gate` Bug's default, or a `--residual-of` escape or hardening route, and
+refuses unless `--gate critical|regression|must:<decision-ref>|receipt` is given
+(`must:` needs a non-empty ref). The refusal comes before the ticket is filed, and
+a gated filing also needs a ledger that can take an append. After the create it
+appends the row `{ts, version, key, gate, actor}` to the admissions ledger.
+`--console-override "<reason>"` (rules above) admits past the gate and writes its
+override row instead. A version without the `frozen:` line behaves as before and
+writes no row; `--backlog` files a Bug with no version, so it needs no gate. The
+gate reason is recorded, not verified (ponytail, upgrade path HIMMEL-6796).
+`jira fix-version --add` is not gated yet (HIMMEL-6828). Code:
+`scripts/jira/src/commands/intake-gate.ts` (`frozenDate`, `assertIntakeGate`,
+`checkIntakeGate`).
 
 ## Confluence CLI
 

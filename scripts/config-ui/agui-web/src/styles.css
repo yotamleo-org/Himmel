@@ -19,8 +19,11 @@ button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* The bar stays in view on a long run: status, the failure count and the jump controls are always one glance away. */
-.top{position:sticky;top:0;z-index:2;background:var(--bg);display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--line);font:12.5px var(--mono)}
+.head{position:sticky;top:0;z-index:2;background:var(--bg)}
+[id^="call-"],[id^="msg-"]{scroll-margin-top:120px}
+.top{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--line);font:12.5px var(--mono)}
 .brand{font-weight:600}
+.rail-hint{margin:12px 14px;font-size:12px;line-height:1.4;color:var(--muted,#8b949e)}
 .run,.meta{color:var(--dim)}
 .meta{font-variant-numeric:tabular-nums}
 .state::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:currentColor;vertical-align:1px}
@@ -28,9 +31,23 @@ button{font:inherit;color:inherit}
 .btn{cursor:pointer;background:none;border:1px solid var(--line);border-radius:3px;padding:2px 10px;font:12px var(--mono)}
 .btn:hover{border-color:var(--accent)}
 .replay{margin-left:auto}
-.fails{display:inline-flex;gap:6px;align-items:center;color:var(--fail)}
-.fails .btn{color:var(--fail);border-color:color-mix(in srgb,var(--fail) 45%,var(--line))}
-.fails-count{font-variant-numeric:tabular-nums}
+.fails{color:var(--fail);font-variant-numeric:tabular-nums}
+/* failure navigator: a sentence, two worded buttons, then every failure as a numbered list; the current one is marked
+   (.on-f) on its strip bar, its agent row and its call card */
+.fnav{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 24px;border-bottom:1px solid var(--line)}
+.fnav-now{margin:0;flex:1 1 320px;color:var(--fail);font:12.5px var(--mono);overflow-wrap:anywhere}
+.fnav-btns{display:flex;gap:6px}
+.fnav .btn{color:var(--fail);border-color:color-mix(in srgb,var(--fail) 45%,var(--line))}
+.fnav-list{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:4px 16px;margin:0;padding:0;list-style:none;font:11.5px var(--mono);max-height:5.5em;overflow-y:auto}
+.fnav-list a{color:var(--dim);text-decoration:none}
+.fnav-list a:hover,.fnav-list a[aria-current="true"]{color:var(--fg)}
+.fnav-list a[aria-current="true"]{text-decoration:underline}
+.fk{display:inline-block;min-width:16px;margin-right:6px;padding:0 4px;border-radius:8px;background:var(--fail);color:var(--bg);font:600 11px/16px var(--mono);font-style:normal;text-align:center}
+.fw{margin-right:6px;color:var(--fail)}
+.fw.denied,.fw.blocked{color:var(--warn)}
+.on-f{outline:2px solid var(--fail);outline-offset:1px}
+.bar.on-f{outline-width:2px;outline-offset:1px;z-index:1}
+li.on-f{outline-offset:-2px}
 .dot{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;background:var(--ag)}
 
 /* run strip */
@@ -104,7 +121,7 @@ button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;c
 .more{cursor:pointer;background:none;border:0;padding:2px 0;color:var(--accent);font:12px var(--mono)}
 .more:hover{text-decoration:underline}
 
-.side{position:sticky;top:60px;align-self:start;display:grid;gap:28px;min-width:0}
+.side{position:sticky;top:108px;align-self:start;display:grid;gap:28px;min-width:0}
 .agents h2,.panel h2{font:600 16px var(--sans);margin:0}
 .agents ul{list-style:none;margin:10px 0 10px;padding:0}
 .agents li{margin-left:calc(var(--depth,0) * 16px)}

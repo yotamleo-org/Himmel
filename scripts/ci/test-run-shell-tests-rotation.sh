@@ -7,13 +7,11 @@
 # narrowed plans) and test-run-shell-tests-rotation-cursor.sh (17k-17m: the
 # cursor file's path — symlink refusal and key encoding).
 #
-# Why three files: every 17x sub-case drives the same six-suite sandbox whose
-# test-a.sh sleeps 25s, so each one costs 25-51s and the eleven of them were
-# 327s of the original single file's 382s. The
-# sharded shell-unit job parallelises across FILES, so that was
-# the floor on every shard count. The sleep is load-bearing — a
-# SUITE_RUN_BUDGET below it is what truncates the run — so the cases were
-# split, not made cheaper.
+# Why three files: every 17x sub-case drives the same six-suite sandbox, and
+# the sharded shell-unit job parallelises across FILES, so one long file was
+# the floor on every shard count. The sandbox's test-a.sh sleep is load-bearing
+# — a SUITE_RUN_BUDGET below it is what truncates the run — and is held at the
+# 3s floor ($RST_ROTATE_SLEEP / $RST_ROTATE_BUDGET in the fixture).
 #
 # 17a-17f, the rotation contract proper: a truncated run writes a cursor
 # naming the first unrun suite; the next run resumes there and wraps, covering
@@ -56,26 +54,26 @@ mk_rotate_sandbox "$sb17" "$order17"
 
 # 17a — truncation writes the cursor.
 echo "== Case 17a: truncation writes the cursor =="
-out17a=$(SUITE_ROTATE_STATE="$cursor17" SUITE_RUN_BUDGET=15 bash "$RUNNER" "$sb17" 2>&1)
+out17a=$(SUITE_ROTATE_STATE="$cursor17" SUITE_RUN_BUDGET="$RST_ROTATE_BUDGET" bash "$RUNNER" "$sb17" 2>&1)
 rc17a=$?
 # Guard first: if this ever fails, the assertions below are meaningless — it
-# means the runner's OWN pre-first-suite setup ate the 15s budget on this box,
-# not a rotation bug. The fix for a red HERE is to raise the fixture's budget
-# (or test-a.sh's sleep), never to touch the rotation logic.
+# means the runner's OWN pre-first-suite setup ate the fixture's budget on this
+# box, not a rotation bug. The fix for a red HERE is to raise RST_ROTATE_BUDGET
+# and RST_ROTATE_SLEEP together, never to touch the rotation logic.
 if [ "$(cat "$order17" 2>/dev/null)" = "test-a.sh" ]; then
   pass "17a: exactly test-a.sh ran before the budget expired"
 else
-  fail "17a: expected only test-a.sh in the order log, got: '$(cat "$order17" 2>/dev/null)' -- this means the runner's pre-first-suite setup (git_test_env_pin_perf / runtime preflight / lock acquire) exceeded the 15s budget on this box; raise the fixture's budget, do not change the rotation logic"
+  fail "17a: expected only test-a.sh in the order log, got: '$(cat "$order17" 2>/dev/null)' -- this means the runner's pre-first-suite setup (git_test_env_pin_perf / runtime preflight / lock acquire) exceeded the ${RST_ROTATE_BUDGET}s budget on this box; raise RST_ROTATE_BUDGET and RST_ROTATE_SLEEP together, do not change the rotation logic"
 fi
 if [ "$rc17a" -eq 1 ]; then
   pass "17a: truncated run -> exit 1"
 else
   fail "17a: expected exit 1 got $rc17a; output: $out17a"
 fi
-if grepq "$out17a" -F 'run budget of 15s expired'; then
+if grepq "$out17a" -F "run budget of ${RST_ROTATE_BUDGET}s expired"; then
   pass "17a: names the expired budget"
 else
-  fail "17a: expected 'run budget of 15s expired'; output: $out17a"
+  fail "17a: expected 'run budget of ${RST_ROTATE_BUDGET}s expired'; output: $out17a"
 fi
 if [ -f "$cursor17" ]; then
   cursor_val17a=$(cat "$cursor17")
@@ -173,7 +171,7 @@ fi
 echo "== Case 17e: SUITE_ROTATE=0 disables rotation =="
 rm -f "$cursor17"
 : > "$order17"
-out17e=$(SUITE_ROTATE=0 SUITE_ROTATE_STATE="$cursor17" SUITE_RUN_BUDGET=15 bash "$RUNNER" "$sb17" 2>&1)
+out17e=$(SUITE_ROTATE=0 SUITE_ROTATE_STATE="$cursor17" SUITE_RUN_BUDGET="$RST_ROTATE_BUDGET" bash "$RUNNER" "$sb17" 2>&1)
 rc17e=$?
 if [ "$rc17e" -eq 1 ]; then
   pass "17e: still a truncation -> exit 1"

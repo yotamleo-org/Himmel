@@ -5,7 +5,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 ## Start here
 
 - [why-himmel.md](why-himmel.md) — the case for the harness: the five failure modes it exists for, the evidence, and what it costs you.
-- [adoption-trail.html](adoption-trail.html) — the eight-level adoption trail, as a page you open in a browser: what each level turns on, what it changes, and what it does not. Public URL: https://yotamleo.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
+- [adoption-trail.html](adoption-trail.html) — the eight-level adoption trail, as a page you open in a browser: what each level turns on, what it changes, and what it does not. Public URL: https://yotamleo-org.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
 - [system-design.md](system-design.md) — the narrative design document: goals, the parts, one ticket's flow from file to merge, the trust and safety model, and the trade-offs behind the key decisions.
 - [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/supervisor session model, the Jira seam, the observability chain.
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
@@ -44,7 +44,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/handover-system.md](internals/handover-system.md) — the full cross-session handover system + user-slug resolution.
 - [internals/jira-plugin.md](internals/jira-plugin.md) — the local Jira CLI ↔ Atlassian MCP op mapping.
 - [internals/stuck-playbook.md](internals/stuck-playbook.md) — guardrail-recovery escape hatches.
-- [handover/overnight-mode.md](handover/overnight-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
+- [handover/afk-mode.md](handover/afk-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
 - [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a supervisor session with `/console new|next`; the supervisor session + worker-session-brief templates.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
 - [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses — the compatibility matrix + per-feature port/guard/accept decisions.
@@ -85,7 +85,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 ## Publishing these docs (GitHub Pages)
 
-The public repo serves a built docs site at `https://yotamleo.github.io/Himmel/`
+The public repo serves a built docs site at `https://yotamleo-org.github.io/Himmel/`
 (sidebar, search, readable pages). Raw files stay at their old paths, for
 example `/Himmel/setup/install.md` and `/Himmel/setup/settings-template.json`,
 and `/Himmel/adoption-trail.html` is unchanged.
@@ -108,7 +108,7 @@ and `/Himmel/adoption-trail.html` is unchanged.
   resolves every link on the trail page and pins the claims that have drifted
   before (cadence count, lanes menu, plugin provenance) to the tree.
 - **Check after.** Once the `Pages` run succeeds,
-  `curl -s https://yotamleo.github.io/Himmel/adoption-trail.html | cmp - docs/adoption-trail.html`
+  `curl -s https://yotamleo-org.github.io/Himmel/adoption-trail.html | cmp - docs/adoption-trail.html`
   prints nothing when the live page matches your checkout.
 
 ## Historical / working records (not a navigation target)

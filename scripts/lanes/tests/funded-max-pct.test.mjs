@@ -52,6 +52,14 @@ test('resolveFundedMaxPct: default 90; LANE_FUNDED_MAX_PCT wins; CLAUDEX_BANK_RE
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '', CLAUDEX_BANK_REFUSE_PCT: '-3' }), 90);
 });
 
+test('resolveFundedMaxPct: CLAUDEX_USAGE_REFUSE_PCT is read beside the old name, and the narrower one wins', () => {
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '95', CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '70', CLAUDEX_BANK_REFUSE_PCT: '95' }), 70);
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: 'abc', CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
+  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60', CLAUDEX_USAGE_REFUSE_PCT: '70' }), 60);
+});
+
 test('HIMMEL-1700 band: codex weekly at 95% is spent under the shared default (was funded at 99)', () => {
   const active = { ok: true, path: { kind: 'subscription', windows: ['weekly'] } };
   const at95 = { kind: 'measured', readings: [{ window: 'weekly', usedPct: 95 }] };

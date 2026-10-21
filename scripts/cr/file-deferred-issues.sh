@@ -60,6 +60,9 @@ PR_NUMBER=""
 INPUT=""
 LABEL="cr-deferred"
 DRY_RUN=0
+RESIDUAL_OF=""
+FU_CLASS="polish"
+CR_CLASS="unclassified"
 SEVERITIES_REGEX='NIT|LOW|SUGGESTION|IMPROVEMENT|DEFERRED'
 
 usage() {
@@ -74,6 +77,11 @@ Optional:
   --label <name>        Label to apply (default: cr-deferred). On the forge
                         path it is auto-created on first non-dry-run invocation.
   --dry-run             Parse + show plan, don't create tickets, issues or labels.
+  --residual-of <KEY>   Jira only: the PR's ticket the residual hangs off (default: the
+                        ticket key in the branch name). The Jira ticket is filed by
+                        `jira create --residual-of`, which picks version and depth.
+  --fu-class <c>        Jira only: polish (default) | escape | hardening.
+  --class <id>          Jira only: CR class id (default: unclassified).
 
 Tracker (printed as tracker=jira|forge|none): jira when Jira is configured
 (one ticket per run), else forge issues on a github/bitbucket forge, else
@@ -90,6 +98,9 @@ while [ $# -gt 0 ]; do
         --input)    INPUT="${2:-}"; shift 2 ;;
         --label)    LABEL="${2:-}"; shift 2 ;;
         --dry-run)  DRY_RUN=1; shift ;;
+        --residual-of) RESIDUAL_OF="${2:-}"; shift 2 ;;
+        --fu-class) FU_CLASS="${2:-}"; shift 2 ;;
+        --class)    CR_CLASS="${2:-}"; shift 2 ;;
         -h|--help)  usage; exit 0 ;;
         *)          echo "ERR file-deferred-issues: unknown arg: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -374,6 +385,19 @@ if [ "$TRACKER_MODE" = jira ]; then
         exit 0
     fi
 
+    # Residuals are filed only through the writer, which needs the parent ticket.
+    if [ -z "$RESIDUAL_OF" ]; then
+        shopt -s nocasematch
+        if branch_name=$(git rev-parse --abbrev-ref HEAD) && [[ "$branch_name" =~ ${JIRA_PROJECT_KEY}-[0-9]+ ]]; then
+            RESIDUAL_OF=$(printf '%s' "${BASH_REMATCH[0]}" | tr '[:lower:]' '[:upper:]')
+        fi
+        shopt -u nocasematch
+    fi
+    if [ -z "$RESIDUAL_OF" ]; then
+        echo "ERR file-deferred-issues: no parent ticket: pass --residual-of <KEY> (the branch name carries no ${JIRA_PROJECT_KEY}-<n> key); nothing filed." >&2
+        exit 1
+    fi
+
     # printf, not a heredoc: the findings are review text and must not be
     # expanded. The body carries the Impact/What/Why/Plan/DoD/Agent detail shape
     # the Jira CLI's ticket-shape check requires.
@@ -406,9 +430,16 @@ if [ "$TRACKER_MODE" = jira ]; then
     jira_err_file=$(mktemp -t fdi-jira.err.XXXXXX) || exit 1
     create_rc=0
     created=$(jira_run create --type Task --title "$jira_title" --labels "$LABEL,standalone" --sector 'Ship loop' \
-        --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" 2>"$jira_err_file") || create_rc=$?
+        --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" \
+        --residual-of "$RESIDUAL_OF" --fu-class "$FU_CLASS" --class "$CR_CLASS" 2>"$jira_err_file") || create_rc=$?
     create_err=$(cat "$jira_err_file" 2>/dev/null || true)
     rm -f "$jira_err_file" "$jira_body_file"
+    dup_key=$(printf '%s\n' "$created" | sed -n 's/^Duplicate \([A-Za-z][A-Za-z0-9]*-[0-9][0-9]*\).*/\1/p' | head -n1)
+    if [ "$create_rc" -eq 0 ] && [ -n "$dup_key" ]; then
+        echo "skipped (duplicate, ${dup_key}) ${batch_short}"
+        echo "file-deferred-issues: summary — 0 filed, 1 duplicates, 0 dry-run, 0 failed, 0 dedupe-check-failed"
+        exit 0
+    fi
     new_key=$(printf '%s\n' "$created" | sed -n 's/^Created \([A-Za-z][A-Za-z0-9]*-[0-9][0-9]*\).*/\1/p' | head -n1)
     if [ "$create_rc" -ne 0 ] || [ -z "$new_key" ]; then
         echo "FAILED ${batch_short}: ${create_err:-no 'Created <KEY>' line in the Jira CLI output: $created}" >&2

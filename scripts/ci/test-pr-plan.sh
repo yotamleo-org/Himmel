@@ -296,6 +296,7 @@ cat > "$SHW/run-shell-tests.sh" <<'STUB'
 #!/usr/bin/env bash
 case "$STUB_MODE" in
   fail) exit 1 ;;
+  args) printf '%s\n' "$*" > "$ARGS_OUT"; echo "== Summary =="; exit 0 ;;
   nofooter) echo "[RUN ] a/test-x.sh"; exit 0 ;;
   empty) echo "[SKIP] a/test-x.sh"; echo "== Summary =="; exit 0 ;;
   run) echo "[SKIP] a/test-x.sh"; echo "[RUN ] a/test-y.sh"; echo "== Summary =="; exit 0 ;;
@@ -312,5 +313,10 @@ s_case "S2 a [RUN ] line" run has_work=true
 s_case "S3 --list failure (fail closed)" fail has_work=true
 s_case "S4 no summary footer (fail closed)" nofooter has_work=true
 s_case "S5 listing over 64 KiB with an early [RUN ]" big has_work=true
+# S6: runner args after the root reach the --list that decides the shard.
+ARGS_OUT="$SHW/args.out" STUB_MODE=args bash "$SHW/shard-has-work.sh" 1/8 /some/root -- --impacted a..b >/dev/null 2>&1
+if [ "$(cat "$SHW/args.out" 2>/dev/null)" = "--list --shard 1/8 --impacted a..b /some/root" ]; then pass "S6 runner args reach the --list"; else fail "S6 got: $(cat "$SHW/args.out" 2>/dev/null)"; fi
+ARGS_OUT="$SHW/args.out" STUB_MODE=args bash "$SHW/shard-has-work.sh" 1/8 >/dev/null 2>&1
+if [ "$(cat "$SHW/args.out" 2>/dev/null)" = "--list --shard 1/8 ." ]; then pass "S6 no runner args, the plain --list"; else fail "S6 plain got: $(cat "$SHW/args.out" 2>/dev/null)"; fi
 
 rst_tally

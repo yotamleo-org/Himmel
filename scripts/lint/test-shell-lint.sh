@@ -94,6 +94,62 @@ if [ "$HAVE_SHELLCHECK" -eq 0 ]; then
     PATH="$STUB_SC_BIN:$PATH"
 fi
 
+# Probe filtering and exemptions must leave real calls visible, not message text.
+_test_prim_probes() {
+    local fixture="$TMP_ROOT/probe-filter.sh" out line
+    cat > "$fixture" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+command -v flock >/dev/null 2>&1 || exit 1
+command -v flock >/dev/null 2>&1 && flock -x 9
+if command -v realpath >/dev/null 2>&1; then p=$(realpath "$1"); fi
+command -v flock >/dev/null 2>&1 || { echo "ERR vault-stall: flock not on PATH (install util-linux)" >&2; exit 1; }
+command -v flock >/dev/null 2>&1 || { echo 'ERR vault-stall: flock not on PATH' >&2; exit 1; }
+command -v realpath >/dev/null 2>&1 || printf '%s\n' 'ERR: realpath not on PATH' >&2
+command -v flock && flock -x 9 # prim-ok
+# prim-ok:
+flock -x 9
+# prim-ok:
+flock -x 9
+printf '%s\n' prim-ok; flock -x 9
+flock -x 9 # prim-ok: descriptor intentionally owned here
+# prim-ok: descriptor intentionally owned here
+flock -x 9
+command -v flock || { echo "ERR: flock not on PATH"; flock -x 9; }
+command -v realpath || echo "$(realpath "$1")"
+type flock >/dev/null 2>&1
+which realpath >/dev/null 2>&1
+command -v realpath && p=$(realpath "$1") # prim-ok:
+type flock;which realpath
+command -v flock;type flock;which realpath
+type flock;which realpath;flock -x 9
+command -v flock || echo -e "flock unavailable"
+command -v realpath || printf -- '%s\n' 'realpath unavailable'
+command -v flock || printf -v message '%s\n' 'flock unavailable'
+command -v realpath || echo -n "$(realpath "$1")"
+command -v flock || { echo -en "flock unavailable"; flock -x 9; }
+PRIMEOF
+    out="$(bash "$LINT" "$fixture" 2>&1)"
+    for line in 4 9 11 13 14 18 25 30; do
+        assert_contains "probe filter keeps raw flock on line $line" "[prim-lock] line $line:" "$out"
+    done
+    for line in 5 19 22 29; do
+        assert_contains "probe filter keeps realpath on line $line" "[prim-canon] line $line:" "$out"
+    done
+    for line in 3 6 7 15 17 20 23 24 26 28; do
+        assert_not_contains "probe filter ignores probes, messages and reasoned exemptions on line $line" "[prim-lock] line $line:" "$out"
+    done
+    for line in 8 21 23 24 25 27; do
+        assert_not_contains "probe filter ignores realpath probes and messages on line $line" "[prim-canon] line $line:" "$out"
+    done
+}
+
+if [ "${1:-}" = --prim-probes ]; then
+    _test_prim_probes
+    printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
+    [ "$FAIL" -eq 0 ]; exit "$?"
+fi
+
 # Write a UTF-8 BOM (EF BB BF) then the given body to $1.
 _write_bom_file() {
     local path="$1"; shift
@@ -365,6 +421,98 @@ echo "$x" | grep -oP '"id"'
 EOF
 OUT15c="$(bash "$LINT" "$GF_OK" 2>&1)"
 if grepq "$OUT15c" -F '[gnu-flag]'; then fail "gnu-ok marker did not exempt grep -P" "$OUT15c"; else pass "gnu-ok marker exempts grep -P"; fi
+
+# Case 15p: [prim-*] — ad-hoc tmpdir / lock / atomic-write / canonical-path forms
+# are flagged, the scripts/lib/prim.sh calls are not, `# prim-ok:` exempts, and
+# the baseline accepts existing findings but refuses a new one.
+printf '\nCase 15p: prim-* detection, lib calls clean, prim-ok exemption, baseline\n'
+PRIM_BAD="$TMP_ROOT/prim_bad.sh"
+cat > "$PRIM_BAD" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+t=$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")
+mkdir "$LOCKDIR" || exit 1
+flock -x 9
+mv -f "$tmpfile" "$dest"
+sed -i 's/a/b/' "$dest"
+here=$(readlink -f "$0")
+there=$(realpath "$1")
+PRIMEOF
+OUT15P="$(bash "$LINT" "$PRIM_BAD" 2>&1)"
+for _tl in prim-tmpdir:3 prim-lock:4 prim-lock:5 prim-atomic:6 prim-atomic:7 prim-canon:8 prim-canon:9; do
+    _t="${_tl%%:*}"; _l="${_tl##*:}"
+    if grepq "$OUT15P" -F "[$_t] line $_l:"; then pass "15p $_t flags the ad-hoc form on line $_l"; else fail "15p $_t should flag the ad-hoc form on line $_l" "$OUT15P"; fi
+done
+PRIM_OK="$TMP_ROOT/prim_ok.sh"
+cat > "$PRIM_OK" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+. "$(dirname "$0")/prim.sh"
+t=$(tmpdir) || exit 1
+with_lock "$t/lock" do_work
+printf 'x\n' | atomic_write "$t/out"
+here=$(canon_path "$0")
+mkdir -p "$t/locks"
+# prim-ok: the scratch dir is the fixture under test
+d=$(mktemp -d "${TMPDIR:-/tmp}/y.XXXXXX")
+PRIMEOF
+OUT15Q="$(bash "$LINT" "$PRIM_OK" 2>&1)"
+if grepq "$OUT15Q" -F '[prim-'; then fail "15p lib calls and a prim-ok line must be clean" "$OUT15Q"; else pass "15p lib calls, mkdir -p and prim-ok are clean"; fi
+PRIM_NOOK="$TMP_ROOT/prim_nook.sh"
+grep -v 'prim-ok' "$PRIM_OK" > "$PRIM_NOOK"
+OUT15V="$(bash "$LINT" "$PRIM_NOOK" 2>&1)"
+if grepq "$OUT15V" -F '[prim-tmpdir]'; then pass "15p the same fixture without prim-ok is flagged"; else fail "15p removing prim-ok must expose the tmpdir finding" "$OUT15V"; fi
+mkdir -p "$TMP_ROOT/prim-skip"
+cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/normal.sh"
+OUT15N="$(bash "$LINT" "$TMP_ROOT/prim-skip/normal.sh" 2>&1)"
+if grepq "$OUT15N" -F '[prim-'; then pass "15p a normal-name file in the skip directory is scanned"; else fail "15p a normal-name file in the skip directory must be scanned" "$OUT15N"; fi
+cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/test-thing.sh"
+OUT15R="$(bash "$LINT" "$TMP_ROOT/prim-skip/test-thing.sh" 2>&1)"
+if grepq "$OUT15R" -F '[prim-'; then fail "15p a test-* file must not be scanned" "$OUT15R"; else pass "15p a test-* file is not scanned"; fi
+cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/prim.sh"
+OUT15S="$(bash "$LINT" "$TMP_ROOT/prim-skip/prim.sh" 2>&1)"
+if grepq "$OUT15S" -F '[prim-'; then fail "15p the lib's own prim.sh must not be scanned" "$OUT15S"; else pass "15p prim.sh is not scanned"; fi
+PRIM_BASE="$TMP_ROOT/prim_base.tsv"
+printf '%s\tprim-tmpdir\t1\n%s\tprim-lock\t2\n%s\tprim-atomic\t2\n%s\tprim-canon\t2\n' "$PRIM_BAD" "$PRIM_BAD" "$PRIM_BAD" "$PRIM_BAD" > "$PRIM_BASE"
+OUT15T="$(bash "$LINT" --baseline "$PRIM_BASE" "$PRIM_BAD" 2>&1)"
+if grepq "$OUT15T" -F '[prim-'; then fail "15p baselined findings must be accepted" "$OUT15T"; else pass "15p baselined findings are accepted"; fi
+cat >> "$PRIM_BAD" <<'PRIMEOF'
+d2=$(mktemp -d "${TMPDIR:-/tmp}/z.XXXXXX")
+PRIMEOF
+OUT15U="$(bash "$LINT" --baseline "$PRIM_BASE" "$PRIM_BAD" 2>&1)"
+if grepq "$OUT15U" -F '[prim-tmpdir]'; then pass "15p one new ad-hoc tmpdir over the baseline is refused"; else fail "15p a new finding over the baseline must be refused" "$OUT15U"; fi
+# One ad-hoc form per fixture: a detected neighbour (flock beside mkdir, realpath
+# beside readlink -f) cannot mask a broken pattern for the form under test.
+# shellcheck disable=SC2016  # the forms are fixture text, not expansions
+for _f in \
+    'prim-tmpdir|t=$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")' \
+    'prim-lock|mkdir "$LOCKDIR" || exit 1' \
+    'prim-lock|flock -x 9' \
+    'prim-atomic|mv -f "$tmpfile" "$dest"' \
+    'prim-atomic|sed -i "s/a/b/" "$dest"' \
+    'prim-canon|here=$(readlink -f "$0")' \
+    'prim-canon|there=$(realpath "$1")'; do
+    _t="${_f%%|*}"; _form="${_f#*|}"
+    PRIM_ONE="$TMP_ROOT/prim_one.sh"
+    printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\n' "$_form" > "$PRIM_ONE"
+    OUT15O="$(bash "$LINT" "$PRIM_ONE" 2>&1)"
+    if grepq "$OUT15O" -F "[$_t] line 3:"; then pass "15p alone, '$_form' is flagged as $_t"; else fail "15p alone, '$_form' must be flagged as $_t" "$OUT15O"; fi
+done
+# A probe line is not a use of the tool, but a call sharing the line with the probe is.
+PRIM_PROBE_F="$TMP_ROOT/prim_probe.sh"
+cat > "$PRIM_PROBE_F" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+command -v flock >/dev/null 2>&1 || exit 1
+command -v flock >/dev/null 2>&1 && flock -x 9
+if command -v realpath >/dev/null 2>&1; then p=$(realpath "$1"); fi
+PRIMEOF
+OUT15W="$(bash "$LINT" "$PRIM_PROBE_F" 2>&1)"
+if grepq "$OUT15W" -F '[prim-lock] line 3:'; then fail "15p a probe-only line must not be flagged" "$OUT15W"; else pass "15p a probe-only line is not flagged"; fi
+if grepq "$OUT15W" -F '[prim-lock] line 4:'; then pass "15p a flock call sharing a line with its probe is flagged"; else fail "15p a flock call sharing a line with its probe must be flagged" "$OUT15W"; fi
+if grepq "$OUT15W" -F '[prim-canon] line 5:'; then pass "15p a realpath call sharing a line with its probe is flagged"; else fail "15p a realpath call sharing a line with its probe must be flagged" "$OUT15W"; fi
+
+_test_prim_probes
 
 # Case 16: BOM policy is split by file type. A BOM is CORRECT for
 # *.ps1 (PS5.1 needs it to decode UTF-8) -> [BOM] is never reported on a .ps1.

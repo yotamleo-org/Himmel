@@ -77,6 +77,7 @@ index 0000000..1111111 100644
 T1_ROOT="$tmp/t1-root"; mkdir -p "$T1_ROOT/scripts/cr" "$T1_ROOT/scripts/lib"
 cp "$PANEL" "$T1_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$T1_ROOT/scripts/lib/load-dotenv.sh"
+cp "$HERE/../lib/prim.sh" "$T1_ROOT/scripts/lib/prim.sh"
 SENTINEL="sentinel-zai-9f3a7c"
 printf 'ZAI_API_KEY=%s\n' "$SENTINEL" > "$T1_ROOT/.env"
 printf '%s' '{"panel":[{"slug":"glm","model":"glm-5.2","provider":"zai","tier":"free","route_provider":"glm"}]}' > "$tmp/t1-reg.json"
@@ -166,6 +167,60 @@ env -u CRITICS_JSON -u CR_PROFILE -u CRITIC_PANEL_TIERS \
     CRITIC_FIRST_PASS="$STUB" bash "$PANEL" >/dev/null 2>&1 <<< "$DIFF"
 check "T5b: explicit CRITICS_LOCAL_JSON overrides the cache dir" "$(grep -c 'slug=other ' "$LOG5b")" "1"
 check "T5b: cache-dir overlay not used when explicit is set"    "$(grep -c 'slug=cachecrit ' "$LOG5b")" "0"
+
+# ---------------------------------------------------------------------------
+# M20 — the overlay resolves the same from a linked worktree as from the
+# primary: the gitignored critics.local.json only ever exists in the primary
+# checkout, so a panel run from a worktree must find it through the common dir.
+# ---------------------------------------------------------------------------
+PRIM="$tmp/m20-prim"; WT="$tmp/m20-wt"; EMPTYCACHE="$tmp/m20-cache"
+mkdir -p "$PRIM/scripts/cr" "$EMPTYCACHE"
+git -C "$PRIM" init -q
+m20_c=$(git -C "$PRIM" -c user.name=t -c user.email=t@t commit-tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904 -m init)
+git -C "$PRIM" update-ref refs/heads/main "$m20_c"
+git -C "$PRIM" worktree add -q --detach "$WT" "$m20_c" 2>/dev/null
+mkdir -p "$WT/scripts"; cp -R "$HERE/../cr" "$HERE/../lib" "$WT/scripts/"
+cp "$tmp/t3-local.json" "$PRIM/scripts/cr/critics.local.json"
+rm -f "$WT/scripts/cr/critics.local.json"
+LOG20="$tmp/m20.log"; : > "$LOG20"
+env -u CRITICS_JSON -u CRITICS_LOCAL_JSON -u CR_PROFILE -u CRITIC_PANEL_TIERS \
+    HIMMELCTL_CACHE_DIR="$EMPTYCACHE" \
+    PANEL_TEST_LOG="$LOG20" CRITICS_BASE_JSON="$tmp/t2-base.json" \
+    CRITIC_FIRST_PASS="$STUB" bash "$WT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 <<< "$DIFF"
+check "M20: worktree panel resolves the primary's critics.local.json" "$(grep -c 'slug=other ' "$LOG20")" "1"
+
+# ---------------------------------------------------------------------------
+# --check prints the effective reviewer set: every row with its mode, required
+# flag and state. The claude API row is absent while the API lane is off; the
+# CodeRabbit github-app row is absent on a clone where the app is not armed.
+# ---------------------------------------------------------------------------
+cat > "$tmp/chk.json" <<'CHKEOF'
+{"panel":[
+ {"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true},
+ {"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","tier":"paid","mode":"hard","required":false},
+ {"slug":"coderabbit","provider":"github-app","mode":"best-effort"}
+]}
+CHKEOF
+chk() {
+    env -u CR_PROFILE CRITICS_BASE_JSON="$tmp/chk.json" \
+        CRITICS_LOCAL_JSON="$tmp/none.json" "$@" bash "$PANEL" --check 2>/dev/null
+}
+CHK_OFF=$(chk env -u HIMMEL_API_LANE CR_APP=1)
+CHK_ON=$(chk env HIMMEL_API_LANE=on CR_APP=1)
+CHK_UN=$(chk env -u HIMMEL_API_LANE CR_APP=0)
+check "check: codex row"                "$(printf '%s\n' "$CHK_OFF" | grep -c '^reviewer codex: mode=hard required=true state=selected$')" "1"
+check "check: claude absent, lane off"  "$(printf '%s\n' "$CHK_OFF" | grep -c '^reviewer claude: mode=hard required=false state=absent(api lane is OFF)$')" "1"
+check "check: coderabbit row"           "$(printf '%s\n' "$CHK_OFF" | grep -c '^reviewer coderabbit: mode=best-effort required=false state=selected$')" "1"
+check "check: set, lane off"            "$(printf '%s\n' "$CHK_OFF" | grep '^effective reviewers:')" "effective reviewers: codex coderabbit"
+check "check: set, lane on"             "$(printf '%s\n' "$CHK_ON" | grep '^effective reviewers:')" "effective reviewers: codex claude coderabbit"
+check "check: set, app not armed"       "$(printf '%s\n' "$CHK_UN" | grep '^effective reviewers:')" "effective reviewers: codex"
+check "check: github-app row never probed" "$(printf '%s\n' "$CHK_ON" | grep -c '^row coderabbit')" "0"
+
+# A drop overlay leaves a codex-only set.
+printf '%s' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/chk-drop.json"
+CHK_DROP=$(env -u CR_PROFILE CRITICS_BASE_JSON="$tmp/chk.json" CRITICS_LOCAL_JSON="$tmp/chk-drop.json" \
+    HIMMEL_API_LANE=on CR_APP=0 bash "$PANEL" --check 2>/dev/null)
+check "check: drop claude gives codex only" "$(printf '%s\n' "$CHK_DROP" | grep '^effective reviewers:')" "effective reviewers: codex"
 
 if [ "$fails" -eq 0 ]; then
     echo "ALL PASS"

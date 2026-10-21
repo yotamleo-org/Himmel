@@ -165,12 +165,13 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 --staged | --tree [PATH...]" >&2
+    echo "usage: $0 --staged | --tree [PATH...] | --files [FILE...]" >&2
     exit 2
 }
 
 MODE=""
 TREE_PATHS=()
+FILES_MODE=0
 case "${1:-}" in
     --staged)
         shift
@@ -182,6 +183,12 @@ case "${1:-}" in
         MODE=tree
         TREE_PATHS=("$@")
         ;;
+    --files)
+        shift
+        MODE=tree
+        FILES_MODE=1
+        for _f in "$@"; do TREE_PATHS+=(":(literal)$_f"); done
+        ;;
     *)
         usage
         ;;
@@ -189,6 +196,25 @@ esac
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "leak-classes: not inside a git repo" >&2; exit 2; }
 cd "$REPO_ROOT"
+
+# --files: the PR's changed files, each a LITERAL tracked path (a glob or a
+# directory is never expanded to unlisted files). An operand git does not
+# track fails closed. No operands scans nothing: run_tree would otherwise
+# treat an empty path list as the whole tree.
+if [ "$FILES_MODE" -eq 1 ]; then
+    if [ "${#TREE_PATHS[@]}" -eq 0 ]; then
+        echo "leak-classes: --files: no files to scan"
+        exit 0
+    fi
+    for _p in "${TREE_PATHS[@]}"; do
+        # The listing must be exactly the operand: a directory operand lists its
+        # tracked files and a missing one lists nothing.
+        if ! printf '%s\0' "${_p#:(literal)}" | cmp -s - <(git ls-files -z -- "$_p"); then
+            echo "leak-classes: --files: not a tracked file: ${_p#:(literal)}" >&2
+            exit 2
+        fi
+    done
+fi
 
 HITS=0
 # Populated by each check_* detector below with EVERY non-allowlisted match on

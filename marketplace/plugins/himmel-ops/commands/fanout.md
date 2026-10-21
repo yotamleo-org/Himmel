@@ -3,7 +3,7 @@ description: Fan out N work items to the right lane by TYPE; refuses to route de
 argument-hint: [work items, one per line or a numbered list]
 ---
 
-Fan-out has been a HABIT, not a primitive: `/overnight-shift` dispatches with
+Fan-out has been a HABIT, not a primitive: `/afk-shift` dispatches with
 no model named at all, and a destructive worktree cleanup was once fanned out
 to Sonnet — judgement work with an unrecoverable failure mode. This command
 makes lane selection a lookup instead of an improvisation.
@@ -54,7 +54,7 @@ exists to prevent.
    - Exit 2 → items file didn't parse.
 
 4. **Show the plan, then confirm before dispatching** (the same
-   confirm-before-fanout shape `/overnight-shift` already has). One line per
+   confirm-before-fanout shape `/afk-shift` already has). One line per
    item: id, type, destructive?, lane, model, why. Use `AskUserQuestion` (or a
    plain-text confirm if unavailable):
    - `Dispatch all N (Recommended)`
@@ -110,7 +110,7 @@ exactly as before. Thresholds live in `scripts/lanes/effort-routing.json`.
   "unavailable"; it is never routed around even when its own probe passes).
 - Spawn-depth limit 2 and "Haiku does not spawn" still hold; this command
   doesn't relax either.
-- `/overnight-shift`'s dispatch step should be updated to name models via this
+- `/afk-shift`'s dispatch step should be updated to name models via this
   same validator (one routing implementation, not two) — tracked as a
   follow-up; see the HIMMEL-1829 PR notes for why it wasn't done in the same
   change.

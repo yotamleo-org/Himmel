@@ -26,6 +26,8 @@ QL="$REPO_REAL/scripts/handover/queue-lock.sh"
 . "$HERE/../../lib/permission-test.sh"
 # shellcheck source=../../lib/host-caps.sh
 . "$HERE/../../lib/host-caps.sh"
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
 # Cases 27/29/30/40 need a real symlink, 31/32/33/36/39/41/42 a
 # chmod / `mkdir -m` that sticks -- neither holds on Git Bash / NTFS, so those
 # cases SKIP there (measured, not keyed off uname) rather than fail.
@@ -266,7 +268,7 @@ check "5d launch line forces session persistence" \
 # The env prefix must precede the binary, not trail it -- `claude ... env -u X`
 # would pass the flags to claude as arguments instead of scrubbing anything.
 check "5d env prefix precedes the claude binary" \
-    "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
+    "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; (if \[ -f [^;]*console-bus-exec.sh \]; then bash [^;]*console-bus-exec.sh [^;]* -- )?env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
 
 # --- 6: next writes the successor stub + predecessor HANDOFF ----------
 doc6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-console.md"
@@ -1486,12 +1488,12 @@ check "58b next with an unresolvable console profile: exit 2" "$rc58x" "2"
 check "58b next refusal: successor doc removed" "$([ -e "$doc58xB" ] && echo 1 || echo 0)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58xA" "$token58x" >/dev/null 2>&1
 
-# --- 60: `next` copies the predecessor's
-# `## Live state` verbatim into the successor's HANDOFF `## In flight`
-# section, and ONLY that section: a marker planted in the neighbouring
-# `## Compact instructions` body must NOT leak. Two controls, not one
-# presence check -- a copy that grabbed the whole rest of the file would
-# also make the first assertion pass.
+# --- 60: `next` seeds the predecessor's `legs:`, `queue:`, `last GO:` and
+# `acked:` verbatim into the successor's own `## Live state`, and ONLY those
+# lines: a marker planted in the neighbouring `## Compact instructions` body
+# must NOT leak. The HANDOFF points at the seeded doc and carries no nonce, so
+# the successor's `action-zero.sh --render-legs` keeps the nonce from its own
+# line (it refuses a listed leg with no nonce).
 out60a="$(console new --bucket livestatesrc)"
 token60a="$(token_of "$out60a")"
 doc60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-console.md"
@@ -1526,14 +1528,37 @@ awk -v legs_line="$fixture60_legs" -v marker="$marker60" '
     { print }
 ' "$doc60A" > "$doc60A.new" && mv "$doc60A.new" "$doc60A"
 
+leg60="$root/tester/livestatesrc/DEMO-leg60-N9.md"
+printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — fixture' > "$leg60"
+printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
+leg60tok="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$leg60" 2>/dev/null)")"
+
 rc60=0
 console next --bucket livestatedst --doc "$doc60A" >/dev/null 2>&1 || rc60=$?
 check "60 next succeeds against a doc with a real Live state section" "$rc60" "0"
-check "60 HANDOFF carries the Live state legs line verbatim" \
-    "$(grep -Fc "$fixture60_legs" "$handoff60A" 2>/dev/null)" "1"
-check "60 the control: Compact instructions marker does not leak into the HANDOFF" \
-    "$(grep -Fc "$marker60" "$handoff60A" 2>/dev/null)" "0"
+live60B="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc60B" 2>/dev/null)"
+check "60 successor Live state seeds the predecessor's legs line verbatim" \
+    "$(printf '%s\n' "$live60B" | grep -Fxc "$fixture60_legs")" "1"
+# shellcheck disable=SC2016  # literal fixture text
+check "60 successor Live state seeds queue, last GO and acked verbatim" \
+    "$(printf '%s\n' "$live60B" | grep -Fxc -e 'queue: N9' -e 'last GO: `#999:deadbeef00`' -e 'acked: none')" "3"
+check "60 successor Live state keeps no placeholder legs line" \
+    "$(printf '%s\n' "$live60B" | grep -c '^legs: <')" "0"
+check "60 HANDOFF carries no copy of the fixture nonce" \
+    "$(grep -Fc 'nonce-fixture-60' "$handoff60A" 2>/dev/null)" "0"
+check "60 HANDOFF points at the seeded successor doc" \
+    "$(grep -Ec "Live state: seeded into \`([^\`]*/)?$(basename "$doc60B")\`" "$handoff60A" 2>/dev/null)" "1"
+check "60 the control: Compact instructions marker does not leak into the successor or the HANDOFF" \
+    "$(cat "$doc60B" "$handoff60A" 2>/dev/null | grep -Fc "$marker60")" "0"
 check "60 successor doc itself was still written" "$([ -s "$doc60B" ] && echo yes)" "yes"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/az60-doctor.sh"
+rc60z=0
+ACTION_ZERO_BANK="$tmp/facts-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az60-doctor.sh" \
+    bash "$fixture_repo/scripts/handover/console-kit/action-zero.sh" --doc "$doc60B" --root "$root" --repo "$fixture_repo" --render-legs >"$tmp/az60.out" 2>&1 || rc60z=$?
+check "60 action-zero.sh --render-legs on the seeded successor exits 0" "$rc60z" "0"
+check "60 the re-rendered legs line keeps the seeded nonce with the held lock's token" \
+    "$(grep -Fc "\`N9:nonce-fixture-60:$leg60tok:" "$doc60B" 2>/dev/null)" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$leg60" "$leg60tok" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$doc60A" "$token60a" >/dev/null 2>&1
 
 # --- 60b: the console board's artifact URL rides on the
@@ -2480,9 +2505,9 @@ check "81 doc with no predecessor passes" "$rc81" "0"
 mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-console.md"; run81 dec81k
 check "81 predecessor doc absent passes" "$rc81" "0"
 
-# --- 82: the rendered HANDOFF stays under the ~3k-token budget:
+# --- 82: the rendered HANDOFF stays under the ~1.5k-token budget:
 # a large open-PR set, many legs and a full Results tail become pointers; the
-# Live state (rulings, tokens) stays inline.
+# Live state (rulings, tokens) is seeded into the successor doc whole.
 out82="$(console new --bucket cap82)"
 token82="$(token_of "$out82")"
 doc82A="$root/tester/cap82/DEMO-nextleg-${today}A-console.md"
@@ -2498,25 +2523,26 @@ printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
 awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" console next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
-check "82 HANDOFF is at most 12000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 12000 ] && echo yes || echo no)" "yes"
+doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-console.md"
+check "82 HANDOFF is at most 6000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 6000 ] && echo yes || echo no)" "yes"
 check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
-check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$handoff82A")" "1"
-check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$handoff82A")" "1"
-check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$handoff82A")" "1"
+check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$doc82B")" "1"
+check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$doc82B")" "1"
+check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$doc82B")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
 check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
 
 # --- 83: still over budget after the pointer pass: a stderr warning with the
-# byte count and a one-line note in the HANDOFF; the Live state is not trimmed.
+# byte count and a one-line note in the HANDOFF; the rulings are not trimmed.
 out83="$(console new --bucket cap83)"
 token83="$(token_of "$out83")"
 doc83A="$root/tester/cap83/DEMO-nextleg-${today}A-console.md"
 handoff83A="$root/tester/cap83/DEMO-nextleg-${today}A-console-HANDOFF.md"
 HANDOFF_BUDGET_BYTES=1000 console next --bucket cap83dst --doc "$doc83A" >/dev/null 2>"$tmp/err83"
 check "83 stderr warns with the byte count" "$(grep -cE 'warning: HANDOFF over budget: [0-9]+ bytes \(limit 1000\)' "$tmp/err83")" "1"
-check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); Live state [0-9]+ bytes' "$handoff83A")" "1"
+check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); wrapped-PR list [0-9]+ bytes' "$handoff83A")" "1"
 check "83 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff83A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
 
@@ -2568,14 +2594,16 @@ dec86='decisions: OPERATOR 10-17 (BINDING): free slots fill only from the priori
 epi86='epics: HIMMEL-6169=12'
 ver86='versions: v1.1.3'
 tpl86='tracker-plan: /fixture/plan'
-awk -v p="$pri86" -v d="$dec86" -v e="$epi86" -v v="$ver86" -v t="$tpl86" '
+rel86='release: v1.1.3-4'
+rm86='rm: HIMMEL-rm-fixture /fixture/rm/doc.md epoch=2'
+awk -v p="$pri86" -v d="$dec86" -v e="$epi86" -v v="$ver86" -v t="$tpl86" -v r="$rel86" -v m="$rm86" '
     /^epics: none$/ { print e; next }
-    /^decisions: none$/ { print d; print p; print v; print t; next }
+    /^decisions: none$/ { print d; print p; print v; print t; print r; print m; next }
     { print }' "$doc86A" > "$doc86A.new" && mv "$doc86A.new" "$doc86A"
 rc86=0
 console next --bucket carrydst --doc "$doc86A" >/dev/null 2>&1 || rc86=$?
 check "86 next succeeds against a doc carrying priority/decisions/epics" "$rc86" "0"
-for line86 in "$pri86" "$dec86" "$epi86" "$ver86" "$tpl86"; do
+for line86 in "$pri86" "$dec86" "$epi86" "$ver86" "$tpl86" "$rel86" "$rm86"; do
     check "86 successor doc carries '${line86%%:*}:' verbatim" \
         "$(grep -Fxc "$line86" "$doc86B" 2>/dev/null)" "1"
 done
@@ -2593,5 +2621,130 @@ rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-next
 check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc86" "1"
 check "86 refusal quotes the predecessor's priority line" \
     "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
+# A prune that closed every key leaves `priority: none`; a PRIORITY-PRUNE bullet accepts it.
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
+rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
+check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
+
+# --- 87. a shorter decisions: line that points at a bucket decisions file ----
+# It passes only when the file exists and every numbered "(N) " entry of the
+# predecessor's line (and of any decisions file that line names) is found
+# verbatim in the outgoing line or the file(s) it names; else DECISIONS-DROP.
+# The entries are copied from a live console's decisions: line.
+p87='OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.'
+e87_3='(3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched.'
+e87_4='(4) qmd fork: version with tags + main (bump main too, tag releases).'
+e87_5='(6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.'
+f87='specs/decisions/console-decisions-2026-10-20.md'
+o87="$f87 holds #3-#4; active: $e87_5"
+# mk87 <bucket> <file body|-> [pred-line]; "-" = no decisions file.
+mk87() {
+    mk81 "$1" "${3:-$p87}" "$o87"
+    [ "$2" = "-" ] || { mkdir -p "$root/tester/$1/specs/decisions"; printf '%s\n' "$2" > "$root/tester/$1/$f87"; }
+}
+mk87 dec87a "$(printf '%s\n%s' "$e87_3" "$e87_4")"; run81 dec87a
+check "87 pointer line whose file holds the moved entries verbatim passes" "$rc81" "0"
+mk87 dec87b -; run81 dec87b
+check "87 pointer line whose file is missing refuses" "$rc81" "1"
+mk87 dec87c "$e87_3"; run81 dec87c
+check "87 pointer line whose file lacks an entry refuses" "$rc81" "1"
+check "87 refusal names the entry not found verbatim" "$(printf '%s\n' "$out81" | grep -cF 'not found verbatim: (4) qmd fork')" "1"
+mk87 dec87d "$(printf '%s\n%s' "$e87_3" "${e87_4/tag releases/tag release}")"; run81 dec87d
+check "87 pointer line whose file reworded an entry refuses" "$rc81" "1"
+mk81 dec87e "$p87" "$e87_3 $e87_4 $e87_5"; run81 dec87e
+check "87 shorter line with every entry but no decisions file refuses" "$rc81" "1"
+mk87 dec87f "$(printf '%s\n%s' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+mkdir -p "$root/tester/dec87f/specs/decisions"; printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87f/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87f
+check "87 pointer line dropping its predecessor's decisions file entries refuses" "$rc81" "1"
+mk87 dec87g "$(printf '%s\n%s\n%s' '(1) TOP of v1.1.3 = the audit items as tickets.' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87g/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87g
+check "87 pointer line carrying its predecessor's file entries forward passes" "$rc81" "0"
+mk87 dec87h "$(printf '%s\n%s\n%s' '(1) TOP of v1.1.3 = the audit items as tickets.' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+printf '%s\n%s\n' '# Console decisions 2026-10-19' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87h/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87h
+check "87 a heading in the predecessor's decisions file is not part of an entry" "$rc81" "0"
+mk81 dec87i "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5" "$e87_3 $e87_4 $e87_5 (7) Fleet cap 50; fill free slots from the FOCUS v1.1.3 To Do pool after draining owner-less In Progress."
+mkdir -p "$root/tester/dec87i/specs/decisions"; printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87i/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87i
+check "87 a longer line that drops its predecessor's decisions file refuses" "$rc81" "1"
+mk87 dec87j "$(printf '%s\n%s' "$e87_3" "$e87_4 Only on Sundays.")"; run81 dec87j
+check "87 pointer line whose file extended an entry refuses" "$rc81" "1"
+
+# --- 88: the pasted launch line binds the console on the bus, as the armed
+# path does: the console profile's opt-in registers the session as a console
+# (--predecessor on next) and binds the pid claude then runs as, and claude
+# gets HIMMEL_BUS_NAME and none of the pasting shell's HIMMEL_BUS_*; opted-out
+# calls nothing; a failed register still starts claude, unbound.
+b88="$tmp/bus88"; mkdir -p "$b88/bin"
+cat > "$b88/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+printf 'pid=%s bus_name=%s extra=%s\n' "$$" "${HIMMEL_BUS_NAME:-<unset>}" "${HIMMEL_BUS_EXTRA:-<unset>}" >> "$B88_SEEN"
+STUB
+cat > "$b88/bus" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -z "${BUS88_HANG:-}" ] || exec sleep 30
+[ -z "${BUS88_FAIL:-}" ]
+STUB
+chmod +x "$b88/bin/claude" "$b88/bus"
+print88() { # <in|out> <new|next> <bucket>
+  ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/work88" \
+      CONSOLE_BUS_PROFILES_MJS="$bus79/profiles-$1.mjs" bash "$C" "$2" --bucket "$3" --name bus88-console ) 2>&1
+}
+paste88() { # <printed output> [extra env...]
+  local line; line="$(printf '%s\n' "$1" | sed -n 's/^launch: //p')"; shift
+  rm -f "$b88/calls" "$b88/seen"
+  ( cd "$tmp" && env PATH="$b88/bin:$PATH" B88_SEEN="$b88/seen" CONSOLE_BUS_CLI="$b88/bus" \
+      HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" bash -c "$line" ) >/dev/null 2>&1
+}
+pid88() { sed -n 's/^pid=\([0-9]*\) .*/\1/p' "$b88/seen" 2>/dev/null; }
+s88a="DEMO-nextleg-${today}A-bus88-console"
+out88a="$(print88 in new bus88in)"
+paste88 "$out88a"
+check "88 opted-in new: the pasted line registers the console, then binds the pid claude runs as" \
+    "$(cat "$b88/calls" 2>/dev/null)" "register $s88a --role console
+bind $s88a $(pid88)"
+check "88 opted-in new: claude gets HIMMEL_BUS_NAME and no other HIMMEL_BUS_*" \
+    "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=$s88a extra=<unset>"
+s88b="DEMO-nextleg-${today}B-bus88-console"
+out88b="$(print88 in next bus88in)"
+paste88 "$out88b"
+check "88 opted-in next: register carries --predecessor <outgoing session>" \
+    "$(sed -n 1p "$b88/calls" 2>/dev/null)" "register $s88b --role console --predecessor $s88a"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88b.md" "$(token_of "$out88b")" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88a.md" "$(token_of "$out88a")" >/dev/null 2>&1
+out88c="$(print88 out new bus88out)"
+paste88 "$out88c"
+check "88 opted-out: bus never called" "$([ -e "$b88/calls" ] && echo called || echo none)" "none"
+check "88 opted-out: claude still starts" "$([ -s "$b88/seen" ] && echo started || echo not-started)" "started"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88out/$s88a.md" "$(token_of "$out88c")" >/dev/null 2>&1
+out88d="$(print88 in new bus88fail)"
+paste88 "$out88d" BUS88_FAIL=1
+check "88 failed register: no bind, claude starts unbound" \
+    "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
+
+# --- 89: the pasted line never hangs on the bus: a bus call stuck past
+# BUS_EXEC_SECS is killed and claude starts unbound; and a line whose
+# console-bus-exec.sh is gone runs claude directly.
+out89a="$(print88 in new bus89hang)"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    rc89=0
+    paste88 "$out89a" BUS88_HANG=1 BUS_EXEC_SECS=1 "$_TIMEOUT_BIN" 20 || rc89=$?
+    check "89 stuck bus: the pasted line does not hang" "$rc89" "0"
+    check "89 stuck bus: claude starts unbound" \
+        "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=<unset> extra=<unset>"
+else
+    echo "ok - SKIPPED: 89 stuck bus: no timeout or gtimeout on this host"
+fi
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89hang/$s88a.md" "$(token_of "$out89a")" >/dev/null 2>&1
+out89b="$(print88 in new bus89gone)"
+paste88 "$(printf '%s\n' "$out89b" | sed 's/console-bus-exec\.sh/console-bus-exec-gone.sh/g')"
+check "89 wrapper missing: claude still starts" "$([ -s "$b88/seen" ] && echo started || echo not-started)" "started"
+check "89 wrapper missing: bus never called" "$([ -e "$b88/calls" ] && echo called || echo none)" "none"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89gone/$s88a.md" "$(token_of "$out89b")" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

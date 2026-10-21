@@ -126,8 +126,8 @@ if [ -r "$HOOK_LIB/load-dotenv.sh" ]; then
     # shellcheck source=/dev/null
     . "$HOOK_LIB/load-dotenv.sh"
     load_dotenv --root "$ENV_ROOT" \
-        HIMMEL_JIRA_NUDGE HIMMEL_INITIATIVE HIMMEL_INITIATIVE_OVERNIGHT \
-        HIMMEL_OVERNIGHT JIRA_PROJECT_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID \
+        HIMMEL_JIRA_NUDGE HIMMEL_INITIATIVE HIMMEL_INITIATIVE_AFK HIMMEL_AFK \
+        HIMMEL_INITIATIVE_OVERNIGHT HIMMEL_OVERNIGHT JIRA_PROJECT_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID \
         2>/dev/null || true
 fi
 
@@ -144,7 +144,7 @@ _truthy "${HIMMEL_JIRA_NUDGE:-}" || exit 0
 if [ -r "$HOOK_LIB/initiative-legs.sh" ]; then
     # shellcheck source=/dev/null
     . "$HOOK_LIB/initiative-legs.sh"
-    LEGS="$(resolve_legs "${HIMMEL_INITIATIVE:-}" "${HIMMEL_INITIATIVE_OVERNIGHT:-}" "${HIMMEL_OVERNIGHT:-}")"
+    LEGS="$(resolve_legs_env)"
     case " $LEGS " in *" ticket "*) exit 0 ;; esac
 fi
 

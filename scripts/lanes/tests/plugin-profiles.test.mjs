@@ -90,9 +90,11 @@ for (const tail of SUITE_TAILS) {
   });
 }
 
-// The one leg profile that opts in to himmel-bus also allows its tools, both name forms.
+// The headed leg profiles opt in to himmel-bus and also allow its tools, both name forms.
+const BUS_PROFILES = ['leg-impl', 'leg-bus', 'leg-vm', 'leg-e2e'];
 const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
-const expectedAllow = (name) => (name === 'leg-bus' ? [...REG.gateAllow, ...BUS_TOOL_ALLOW] : REG.gateAllow);
+const busAllow = (name) => (BUS_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
+const expectedAllow = (name) => [...REG.gateAllow, ...busAllow(name)];
 
 for (const name of LEG_PROFILES) {
   test(`${name} emits every registry gateAllow rule`, () => {
@@ -152,8 +154,10 @@ test('leg settings leave pushes on the classifier path', () => {
 test('absent/false gateAllow does not inject permissions into a leg', () => {
   for (const value of [undefined, false]) {
     const registry = structuredClone(REG);
+    registry.profiles['lane-impl'].gateAllow = value;
+    assert.ok(!Object.hasOwn(resolveProfile(registry, 'lane-impl'), 'permissions'));
     registry.profiles['leg-impl'].gateAllow = value;
-    assert.ok(!Object.hasOwn(resolveProfile(registry, 'leg-impl'), 'permissions'));
+    assert.deepEqual(resolveProfile(registry, 'leg-impl').permissions, { allow: BUS_TOOL_ALLOW }, 'only the bus tools, no gate rule');
   }
 });
 
@@ -391,7 +395,8 @@ test('CLI arg parsing: unknown/dangling args die instead of being silently ignor
   // The CLI is a thin wrapper, but a typo'd flag that LOOKS applied while doing
   // nothing is the opposite of this resolver's fail-closed contract.
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-  const run = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  const env = { ...process.env, PLUGIN_PROFILES_ADAPTERS: join(dirname(cli), '..', 'guardrails', 'himmel-adapters.json') };
+  const run = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env });
   const unknown = run(['lane-impl', '--bogus']);
   assert.equal(unknown.status, 2);
   assert.match(unknown.stderr, /unknown argument "--bogus"/);
@@ -743,6 +748,25 @@ test('every shipped profile declares its role requirements and resolves them (HI
   }
 });
 
+test('no role requires a himmel plugin whose skills are all disable-model-invocation (HIMMEL-4017)', () => {
+  // such a skill never reaches the model's skill listing, so the live probe's
+  // listing check could never pass for the row that names it
+  const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const hidden = (plugin) => {
+    const dir = join(REPO_ROOT, 'marketplace', 'plugins', plugin, 'skills');
+    if (!existsSync(dir)) return false;
+    const skills = readdirSync(dir).map((s) => join(dir, s, 'SKILL.md')).filter((f) => existsSync(f));
+    return skills.length > 0 && skills.every((f) => /^disable-model-invocation:\s*["']?true["']?\s*$/m.test(readFileSync(f, 'utf8').split(/^---\s*$/m)[1] ?? ''));
+  };
+  assert.ok(hidden('pstack'), 'positive control: the matcher must fire on the plugin that motivated this test');
+  for (const [name, ids] of Object.entries(ROLE_REQUIRES)) {
+    for (const id of ids) {
+      const [plugin, marketplace] = id.split('@');
+      assert.ok(!(marketplace === 'himmel' && hidden(plugin)), `${name} requires ${id}, whose skills are all hidden from the model listing`);
+    }
+  }
+});
+
 test('every himmel-marketplace catalog id exists in the himmel marketplace (HIMMEL-4012)', () => {
   const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const mp = JSON.parse(readFileSync(join(REPO_ROOT, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
@@ -1030,7 +1054,7 @@ test('CLI: --mcp-servers prints the profile\'s allowlist, or null when the field
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const okRun = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-servers'], { encoding: 'utf8' });
   assert.equal(okRun.status, 0, okRun.stderr);
-  assert.deepEqual(JSON.parse(okRun.stdout), ['qmd']);
+  assert.deepEqual(JSON.parse(okRun.stdout), ['qmd', 'himmel-bus']);
   const bareRun = spawnSync(process.execPath, [cli, 'bare', '--mcp-servers'], { encoding: 'utf8' });
   assert.equal(bareRun.status, 0, bareRun.stderr);
   assert.equal(JSON.parse(bareRun.stdout), null);
@@ -1284,6 +1308,25 @@ test('console-judge resolves via resolveProfileByName/resolveProfile to the floo
   assert.ok(!REG.profiles['console-judge'].gateAllow, 'console-judge must not set gateAllow');
 });
 
+// ── release-manager ───────────────────────────────────────────
+// Judge-shaped role session (headed-arm-leg.sh --profile release-manager):
+// floor plus qmd, no gateAllow, never composed into a profile list.
+test('release-manager resolves to the floor plus qmd, no gateAllow, and requires himmel-ops', () => {
+  const settings = resolveProfileByName('release-manager', {}, REGISTRY_PATH);
+  const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
+  assert.deepEqual(enabled.sort(), [...REG.floor].sort());
+  assert.deepEqual(mcpServersForProfile(REG, 'release-manager'), ['qmd']);
+  assert.ok(!Object.hasOwn(settings, 'permissions'), 'release-manager must not emit gateAllow permissions');
+  assert.ok(PP.NON_ADDITIVE_PROFILES.includes('release-manager'));
+  assert.ok(enabled.includes('himmel-ops@himmel'), 'the guard ships in himmel-ops');
+});
+
+for (const list of ['release-manager,design', 'leg-impl,release-manager']) {
+  test(`release-manager refuses to compose in a profile list (${list})`, () => {
+    assert.throws(() => resolveProfile(REG, list), /cannot be composed/);
+  });
+}
+
 test('validateRegistry: the shipped registry (console-relay included) validates clean', () => {
   assert.deepEqual(validateRegistry(REG), []);
 });
@@ -1430,7 +1473,7 @@ const SHIP_STEP_ANCHOR_RULES = [
 for (const name of LEG_PROFILES) {
   test(`HIMMEL-3783: ${name} with an anchor adds exactly every ship-step anchor twin, nothing more`, () => {
     const { permissions } = resolveProfile(REG, name, { anchor: ANCHOR, installed: [] });
-    assert.deepEqual(permissions.allow, [...REG.gateAllow, ...SHIP_STEP_ANCHOR_RULES, ...(name === 'leg-bus' ? BUS_TOOL_ALLOW : [])]);
+    assert.deepEqual(permissions.allow, [...REG.gateAllow, ...SHIP_STEP_ANCHOR_RULES, ...busAllow(name)]);
   });
 
   for (const rule of SHIP_STEP_ANCHOR_RULES) {
@@ -1462,7 +1505,7 @@ for (const bad of ['/home/u/himmel/.claude/worktrees/fix+x', '/home/u/himmel/.cl
 for (const odd of ['/home/u/him mel', '/home/u/*', '/home/u/a)b', '/home/u/$X']) {
   test(`HIMMEL-3567: anchor ${JSON.stringify(odd)} with a matcher-unsafe character adds no rule`, () => {
     const { permissions } = resolveProfile(REG, 'leg-impl', { anchor: odd, installed: [] });
-    assert.deepEqual(permissions.allow, REG.gateAllow);
+    assert.deepEqual(permissions.allow, expectedAllow('leg-impl'));
   });
 }
 
@@ -1578,7 +1621,35 @@ test('HIMMEL-4024: no non-kit profile enables a code kit plugin; the kit compose
   }
   const both = resolveProfile(REG, 'leg-impl,code,code-ui', { installed: [] }).enabledPlugins;
   for (const id of kitIds) assert.equal(both[id], true, id);
-  assert.equal(both['pr-review-toolkit-himmel@himmel'], true);
+});
+
+test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins back; other members keep them', () => {
+  const dropped = ['pr-review-toolkit-himmel@himmel', 'i-have-adhd@himmel'];
+  for (const list of ['leg-impl,code', 'leg-impl,code-ui', 'leg-impl,code,code-ui', 'leg-e2e,code']) {
+    const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
+    for (const id of dropped) assert.notEqual(p[id], true, `${list} must not enable ${id}`);
+  }
+  for (const list of ['lane-impl,code', 'user,code', 'user,code-ui']) {
+    const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
+    assert.equal(p['pr-review-toolkit-himmel@himmel'], true, `${list} keeps pr-review-toolkit-himmel`);
+  }
+  for (const list of ['user,code', 'user,code-ui']) {
+    assert.equal(resolveProfile(REG, list, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${list} keeps i-have-adhd`);
+  }
+});
+
+// Operator decision 52: the reading-style ruleset is for the operator's windows. A lane worker
+// is read by a console, not the operator, so lane-impl, lane-review and lane-content drop it
+// (measured 2430 first-turn tokens each); telegram's output is read by the operator and keeps it.
+test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram and console keep it (HIMMEL-4017)', () => {
+  for (const name of ['lane-impl', 'lane-review', 'lane-content']) {
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p['i-have-adhd@himmel'], false, `${name}: i-have-adhd dropped`);
+    for (const id of [...REG.floor, 'lean-skills@himmel', 'pr-review-toolkit-himmel@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+  }
+  for (const name of ['telegram', 'console']) {
+    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${name} keeps i-have-adhd`);
+  }
 });
 
 test('HIMMEL-4024: code kit CLIs (ast-grep, shfmt, bats) have drift rows, a catalog entry and an install step', () => {
@@ -1599,7 +1670,7 @@ test('HIMMEL-4024: code kit CLIs (ast-grep, shfmt, bats) have drift rows, a cata
 // plugin's own .mcp.json is flat-form and lives in the plugin cache, so the server def is
 // resolved from the registry mcpCatalog, the tier after home / repo / marketplace manifest.
 test('leg-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-4400)', () => {
-  assert.deepEqual(mcpServersForProfile(REG, 'leg-e2e'), ['qmd', 'playwright']);
+  assert.deepEqual(mcpServersForProfile(REG, 'leg-e2e'), ['qmd', 'playwright', 'himmel-bus']);
   const dir = makeTmpDir('pp-e2e-');
   const marketplaceDir = join(dir, 'marketplace', 'plugins');
   mkdirSync(join(marketplaceDir, 'qmd'), { recursive: true });
@@ -1621,7 +1692,6 @@ test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so o
 // No profile listed himmel-bus and nothing could define it, so no leg ever registered.
 test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
   assert.deepEqual(mcpServersForProfile(REG, 'leg-bus'), ['qmd', 'himmel-bus']);
-  assert.ok(!mcpServersForProfile(REG, 'leg-impl').includes('himmel-bus'), 'leg-impl is unchanged');
   assert.deepEqual(resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, 'plugins are leg-impl\'s (HIMMEL-4830 adds none)');
   assert.equal(REG.profiles['leg-bus'].gateAllow, true);
   const dir = makeTmpDir('pp-bus-');
@@ -1630,6 +1700,16 @@ test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the pl
   assert.equal(def.command, 'npm');
   assert.deepEqual(def.args, ['--prefix', '/srv/himmel/marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
   assert.ok(!JSON.stringify(def).includes('${'), 'no placeholder left');
+  assert.deepEqual(validateRegistry(REG), []);
+});
+
+// headed-arm-leg.sh registers a leg on the bus only when its profile lists himmel-bus.
+test('every headed leg profile opts in to himmel-bus and allows its tools (HIMMEL-4841)', () => {
+  for (const name of BUS_PROFILES) {
+    assert.ok(mcpServersForProfile(REG, name)?.includes('himmel-bus'), `${name} must list himmel-bus`);
+    const allow = resolveProfile(REG, name, { installed: [] }).permissions.allow;
+    for (const tool of BUS_TOOL_ALLOW) assert.ok(allow.includes(tool), `${name}: missing ${tool}`);
+  }
   assert.deepEqual(validateRegistry(REG), []);
 });
 
@@ -1703,16 +1783,16 @@ test('HIMMEL-4830: mcpAllow shape is validated (unknown server, bad tool name)',
   assert.ok(validateRegistry({ ...BUS_REG, mcpAllow: { 'fx-bus': ['a b'] } }).some((e) => /mcpAllow/.test(e)));
 });
 
-test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and allows its tools on leg-bus and console', () => {
+test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and allows its tools on every headed leg and console', () => {
   assert.deepEqual(validateRegistry(REG), []);
   const dir = makeTmpDir('pp-bus-real-');
   const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'm'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
   assert.deepEqual(cfg.mcpServers['himmel-bus'].args, ['--prefix', '/srv/himmel/marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
-  for (const p of ['leg-bus', 'console']) {
+  for (const p of [...BUS_PROFILES, 'console']) {
     const allow = resolveProfile(REG, p, { installed: [] }).permissions?.allow ?? [];
     for (const n of ['mcp__himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__read']) assert.ok(allow.includes(n), `${p} allows ${n}`);
   }
-  assert.ok(!(resolveProfile(REG, 'leg-impl', { installed: [] }).permissions?.allow ?? []).some((r) => r.includes('himmel-bus')), 'leg-impl opted out');
+  assert.ok(!(resolveProfile(REG, 'lane-impl', { installed: [] }).permissions?.allow ?? []).some((r) => r.includes('himmel-bus')), 'lane-impl opted out');
 });
 
 test('HIMMEL-4830: leg-bus enables no plugin beyond leg-impl (profile-manifest stays untouched)', () => {
@@ -1753,32 +1833,32 @@ test('design core carries the motion-budget note', () => {
 // Legs on our own registered forks get the classifier's
 // autoMode.environment trust through the resolved --settings file, never blanket.
 test('forkNwos adds one exact autoMode.environment entry per fork on a gateAllow profile', () => {
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo/qmd', 'yotamleo/graphify'] });
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo-org/qmd', 'yotamleo-org/graphify'] });
   assert.equal(s.autoMode.environment[0], '$defaults');
   assert.equal(s.autoMode.environment.length, 3);
-  assert.match(s.autoMode.environment[1], /^Source control: github\.com\/yotamleo\/qmd /);
-  assert.match(s.autoMode.environment[2], /^Source control: github\.com\/yotamleo\/graphify /);
+  assert.match(s.autoMode.environment[1], /^Source control: github\.com\/yotamleo-org\/qmd /);
+  assert.match(s.autoMode.environment[2], /^Source control: github\.com\/yotamleo-org\/graphify /);
 });
 test('no forkNwos, or a profile without gateAllow, emits no autoMode key', () => {
   assert.equal(resolveProfile(REG, 'leg-impl').autoMode, undefined);
   assert.equal(resolveProfile(REG, 'leg-impl', { forkNwos: [] }).autoMode, undefined);
-  assert.equal(resolveProfile(REG, 'bare', { forkNwos: ['yotamleo/qmd'] }).autoMode, undefined);
+  assert.equal(resolveProfile(REG, 'bare', { forkNwos: ['yotamleo-org/qmd'] }).autoMode, undefined);
 });
-test('forkNwos refuses anything but an exact owner/repo under yotamleo', () => {
-  for (const bad of ['yotamleo', 'yotamleo/', 'yotamleo/*', 'tobi/qmd', 'yotamleo/a b', 'github.com/yotamleo/qmd', 'yotamleo/../x', '']) {
+test('forkNwos refuses anything but an exact owner/repo under yotamleo-org', () => {
+  for (const bad of ['yotamleo', 'yotamleo-org', 'yotamleo/qmd','yotamleo-org/', 'yotamleo-org/*', 'tobi/qmd', 'yotamleo-org/a b', 'github.com/yotamleo-org/qmd', 'yotamleo-org/../x', '']) {
     assert.throws(() => resolveProfile(REG, 'leg-impl', { forkNwos: [bad] }), /fork nwo/, bad);
   }
 });
 test('a composed profile list unions the autoMode entries once', () => {
-  const s = resolveProfile(REG, 'leg-impl,code-ui', { forkNwos: ['yotamleo/qmd'] });
+  const s = resolveProfile(REG, 'leg-impl,code-ui', { forkNwos: ['yotamleo-org/qmd'] });
   assert.deepEqual(s.autoMode.environment.filter((e) => e === '$defaults'), ['$defaults']);
   assert.equal(s.autoMode.environment.length, 2);
 });
 test('forkNwosFromAdapters reads exact nwo entries from a registry file shape', () => {
   const dir = makeTmpDir('fork-trust');
   const f = join(dir, 'himmel-adapters.json');
-  writeFileSync(f, JSON.stringify([{ nwo: 'yotamleo/qmd', upstream: 'tobi/qmd', himmel_branch: 'x', pin_site: 'y', role: 'runtime-dependency', merge_allowed: true }]));
-  assert.deepEqual(PP.forkNwosFromAdapters(f), ['yotamleo/qmd']);
+  writeFileSync(f, JSON.stringify([{ nwo: 'yotamleo-org/qmd', upstream: 'tobi/qmd', himmel_branch: 'x', pin_site: 'y', role: 'runtime-dependency', merge_allowed: true }]));
+  assert.deepEqual(PP.forkNwosFromAdapters(f), ['yotamleo-org/qmd']);
   assert.deepEqual(PP.forkNwosFromAdapters(join(dir, 'absent.json')), []);
   writeFileSync(f, '{not json');
   assert.throws(() => PP.forkNwosFromAdapters(f), /himmel-adapters/);
@@ -1787,24 +1867,24 @@ test('registry-driven trust: three registered forks are trusted, an unregistered
   const dir = makeTmpDir('fork-trust-three');
   const f = join(dir, 'himmel-adapters.json');
   const row = (nwo) => ({ nwo, upstream: 'u/x', himmel_branch: 'b', pin_site: 'p', role: 'runtime-dependency', merge_allowed: true });
-  writeFileSync(f, JSON.stringify([row('yotamleo/qmd'), row('yotamleo/graphify'), row('yotamleo/third-fork')]));
+  writeFileSync(f, JSON.stringify([row('yotamleo-org/qmd'), row('yotamleo-org/graphify'), row('yotamleo-org/third-fork')]));
   const s = resolveProfile(REG, 'leg-impl', { forkNwos: PP.forkNwosFromAdapters(f) });
   const text = s.autoMode.environment.join('\n');
-  for (const nwo of ['yotamleo/qmd', 'yotamleo/graphify', 'yotamleo/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
+  for (const nwo of ['yotamleo-org/qmd', 'yotamleo-org/graphify', 'yotamleo-org/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
   assert.equal(s.autoMode.environment.length, 4);
-  assert.ok(!text.includes('yotamleo/not-registered'));
-  assert.ok(!text.includes('github.com/yotamleo '), 'never an owner-wide entry');
+  assert.ok(!text.includes('yotamleo-org/not-registered'));
+  assert.ok(!text.includes('github.com/yotamleo-org '), 'never an owner-wide entry');
   assert.ok(!/tobi\/qmd/.test(text), 'upstream is not trusted');
 });
 test('fork trust text names the destination and excludes upstream, parent, force-push, delete and publish', () => {
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo/qmd'] });
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo-org/qmd'] });
   const line = s.autoMode.environment.find((e) => e !== '$defaults');
-  assert.match(line, /push only to the origin remote github\.com\/yotamleo\/qmd/);
-  assert.match(line, /gh pr create --repo yotamleo\/qmd/);
+  assert.match(line, /push only to the origin remote github\.com\/yotamleo-org\/qmd/);
+  assert.match(line, /gh pr create --repo yotamleo-org\/qmd/);
   assert.match(line, /Not covered:[^.]*upstream/);
   for (const word of ['parent repo', 'force-push', 'branch delete', 'publish']) assert.ok(line.includes(word), word);
   assert.ok(!line.includes('trusted like the working repo'));
-  assert.deepEqual([...line.matchAll(/github\.com\/([\w.-]+\/[\w.-]+)/g)].map((m) => m[1].replace(/\.$/, '')), ['yotamleo/qmd', 'yotamleo/qmd']);
+  assert.deepEqual([...line.matchAll(/github\.com\/([\w.-]+\/[\w.-]+)/g)].map((m) => m[1].replace(/\.$/, '')), ['yotamleo-org/qmd', 'yotamleo-org/qmd']);
 });
 test('CLI reads the fork registry from the anchor, never the worktree copy', () => {
   const { root, repo, wt } = primaryWithWorktree();
@@ -1812,16 +1892,39 @@ test('CLI reads the fork registry from the anchor, never the worktree copy', () 
     mkdirSync(join(base, 'scripts', 'guardrails'), { recursive: true });
     writeFileSync(join(base, 'scripts', 'guardrails', 'himmel-adapters.json'), JSON.stringify([{ nwo }]));
   };
-  put(repo, 'yotamleo/qmd');
-  put(wt, 'yotamleo/evil');
+  put(repo, 'yotamleo-org/qmd');
+  put(wt, 'yotamleo-org/evil');
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-  const run = spawnSync(process.execPath, [cli, 'leg-impl'], {
-    encoding: 'utf8', cwd: wt, env: { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt },
-  });
+  const env = { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt };
+  delete env.PLUGIN_PROFILES_ADAPTERS;
+  const run = spawnSync(process.execPath, [cli, 'leg-impl'], { encoding: 'utf8', cwd: wt, env });
   assert.equal(run.status, 0, run.stderr);
   const text = JSON.parse(run.stdout).autoMode.environment.join('\n');
-  assert.ok(text.includes('github.com/yotamleo/qmd '), text);
-  assert.ok(!text.includes('yotamleo/evil'), text);
+  assert.ok(text.includes('github.com/yotamleo-org/qmd '), text);
+  assert.ok(!text.includes('yotamleo-org/evil'), text);
+});
+test('PLUGIN_PROFILES_ADAPTERS reads the fork registry of the tree under test; unset still reads the primary', () => {
+  const { root, repo, wt } = primaryWithWorktree();
+  const put = (base, nwo) => {
+    mkdirSync(join(base, 'scripts', 'guardrails'), { recursive: true });
+    writeFileSync(join(base, 'scripts', 'guardrails', 'himmel-adapters.json'), JSON.stringify([{ nwo }]));
+    return join(base, 'scripts', 'guardrails', 'himmel-adapters.json');
+  };
+  put(repo, 'not-our-org/stale'); // the primary on an older registry the resolver refuses
+  const treeRegistry = put(wt, 'yotamleo-org/qmd');
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const run = (override) => {
+    const env = { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt };
+    delete env.PLUGIN_PROFILES_ADAPTERS;
+    if (override) env.PLUGIN_PROFILES_ADAPTERS = override;
+    return spawnSync(process.execPath, [cli, 'leg-impl'], { encoding: 'utf8', cwd: wt, env });
+  };
+  const withOverride = run(treeRegistry);
+  assert.equal(withOverride.status, 0, withOverride.stderr);
+  assert.ok(JSON.parse(withOverride.stdout).autoMode.environment.join('\n').includes('github.com/yotamleo-org/qmd '));
+  const station = run(undefined);
+  assert.equal(station.status, 2, 'no override: the primary registry is the one read');
+  assert.match(station.stderr, /fork nwo/);
 });
 
 // leg-vm: leg-impl plus ONE rule for the sanctioned guest-launch script.
@@ -1884,5 +1987,41 @@ test('graphify@himmel is enabled only in the user profile (HIMMEL-6465)', () => 
     if (def === null) continue; // operator: everything installed
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     assert.equal(p[id], name === 'user', `${name}: ${id} enabled must be ${name === 'user'}`);
+  }
+});
+
+// A profile with no required plugin gets no skillOverrides, so it lists about 7.4k more
+// first-turn tokens (leg-impl note in plugin-profiles.json). The 35000 budgets cannot be met
+// that way: the live probe measured console-judge and console-relay at 36886 before they
+// required the floor plugin whose skills they call, 29950 after.
+test('a profile on the 35000 budget requires a plugin, so skillOverrides engage (HIMMEL-4017)', () => {
+  for (const [name, def] of Object.entries(REG.profiles)) {
+    if (def === null || def.contextBudget > 35000) continue;
+    assert.ok(ROLE_REQUIRES[name].length > 0, `${name}: contextBudget ${def.contextBudget} needs a ROLE_REQUIRES plugin`);
+  }
+  for (const name of ['console-judge', 'console-relay']) {
+    assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills it calls`);
+  }
+});
+
+// A leg composes an add-on onto a leg profile (`leg-impl,design`); the composed list keeps the
+// leg member's allowlist, so the add-on legs register on the bus too.
+test('leg profiles composed with design, code and code-ui keep himmel-bus and its tool allow (HIMMEL-4841)', () => {
+  for (const list of ['leg-impl,design', 'leg-impl,code', 'leg-impl,code-ui']) {
+    assert.ok(mcpServersForProfile(REG, list)?.includes('himmel-bus'), `${list} must list himmel-bus`);
+    const allow = resolveProfile(REG, list, { installed: [] }).permissions.allow;
+    for (const tool of BUS_TOOL_ALLOW) assert.ok(allow.includes(tool), `${list}: missing ${tool}`);
+  }
+});
+
+// The claudex and openrouter lanes concatenate their preface after the standing one; both forbid
+// SendMessage, so a leg registered on the bus needs the preface to say the bus tools are fine.
+test('the claudex and openrouter lane prefaces let a registered leg use the bus tools beside the doc channel (HIMMEL-4841)', () => {
+  const docs = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'handover');
+  for (const lane of ['claudex', 'openrouter']) {
+    const text = readFileSync(join(docs, `leg-preface-${lane}.md`), 'utf8').replace(/\s+/g, ' ');
+    assert.match(text, /himmel-bus/, `${lane}: names himmel-bus`);
+    assert.match(text, /HIMMEL_BUS_NAME/, `${lane}: gates the bus on the registered name`);
+    assert.match(text, /handover document stays/i, `${lane}: the doc stays the fallback and the record`);
   }
 });

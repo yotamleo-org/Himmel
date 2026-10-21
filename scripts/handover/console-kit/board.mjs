@@ -31,6 +31,8 @@
 // Optional Live-state lines the console may keep (console-template.md):
 //   epics: HIMMEL-3332=4, HIMMEL-3340=2     declared totals; merged is counted from gh
 //   decisions: first?; second?              open operator decisions, ';'-separated
+//   decisions: specs/decisions/console-decisions-<date>.md (latest #<n>)
+//                                           the `(N) ` entries of the named bucket file(s)
 //   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion
 //
 // The published page shows live work only. WRAPPED and MERGED legs and the merged PRs
@@ -157,6 +159,8 @@ const epicsDeclared = liveField('epics').split(/[,\s]+/).filter(Boolean).map((e)
 }).filter(Boolean);
 // A version name lands inside a JQL string: only a plain release token is accepted.
 const versionsDeclared = liveField('versions').split(/[,\s]+/).filter((v) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v));
+// The release the release manager rules: the same plain-token rule.
+const releaseDeclared = [liveField('release')].find((v) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v)) || '';
 // Split on ';' only at parenthesis depth 0, so "A (x; y); B?" -> ["A (x; y)", "B?"].
 const splitTopLevel = (s) => {
     const out = [];
@@ -170,7 +174,21 @@ const splitTopLevel = (s) => {
     out.push(cur);
     return out;
 };
-const decisions = splitTopLevel(liveField('decisions')).map((d) => d.trim()).filter((d) => d && d !== 'none');
+// A `decisions:` line naming bucket decisions files lists the `(N) ` entries of
+// those files and of the line itself, never the path as one row; a named file
+// that does not exist is one row saying so.
+// ponytail: every numbered entry is listed, superseded ones too; an open/closed mark on the entry is the upgrade.
+const numberedEntries = (text) => text.split('\n')
+    .flatMap((l) => l.split(/(?=\(\d+\) )/)).filter((e) => /^\(\d+\) /.test(e)).map((e) => e.trim());
+const decisionsLine = liveField('decisions');
+const decisionFiles = decisionsLine.match(/specs\/decisions\/console-decisions-[0-9-]+\.md/g) || [];
+const fileDecisions = [
+    ...decisionFiles.flatMap((f) => (existsSync(join(bucket, f))
+        ? numberedEntries(readFileSync(join(bucket, f), 'utf8')) : [`missing decisions file: ${f}`])),
+    ...(decisionFiles.length ? numberedEntries(decisionsLine) : []),
+];
+const decisions = fileDecisions.length ? fileDecisions
+    : splitTopLevel(decisionsLine).map((d) => d.trim()).filter((d) => d && d !== 'none');
 const queueLine = liveField('queue');
 const lastGo = liveField('last GO').replace(/`/g, '');
 const consoleResults = section('## Results').filter((l) => l.startsWith('- ')).slice(-8);
@@ -332,7 +350,7 @@ const primaryRoot = () => {
     } catch { /* fall through to the tree this script sits in */ }
     return resolve(HERE, '..', '..', '..');
 };
-const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length ? join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
+const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length || releaseDeclared ?join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
 // the legs' Jira ladder, in the order a Release panel shows it.
 const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
 const DONE_STATUS = /^(done|resolved)$/i;
@@ -357,9 +375,29 @@ const releaseOf = (version) => {
     return { version, done: counted.length - open.length, total: counted.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
 };
 const releases = versionsDeclared.map(releaseOf);
+// The release manager's state: ONE `release state <R> --json` call, the engine's own
+// counts. Exit 3 is the CLI's not-OK status and still prints the state; any other
+// failure reads unavailable.
+const rmState = (() => {
+    if (!releaseDeclared) return null;
+    const a = ['release', 'state', releaseDeclared, '--json'];
+    let out;
+    try {
+        out = execFileSync(...(JIRA_CLI.endsWith('.js') ? ['node', [JIRA_CLI, ...a]] : [JIRA_CLI, a]),
+            { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) {
+        if (e.status !== 3) return { release: releaseDeclared, unavailable: true };
+        out = e.stdout;
+    }
+    try {
+        const s = JSON.parse(out);
+        return s && s.burndown && s.trend && s.leaks ? s : { release: releaseDeclared, unavailable: true };
+    } catch { return { release: releaseDeclared, unavailable: true }; }
+})();
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
 const releaseSig = releases.map((r) => (r.unavailable ? `${r.version}=unavailable`
-    : `${r.version}=${r.done}/${r.total}:${LEG_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`)).join(',');
+    : `${r.version}=${r.done}/${r.total}:${LEG_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
+    .concat(rmState ? [`rm:${rmState.unavailable ? 'unavailable' : JSON.stringify([rmState.status, rmState.burndown, rmState.leaks, rmState.trend])}`] : []).join(',');
 const ciOf = (pr) => {
     const rollup = (pr && pr.statusCheckRollup) || [];
     // No checks reported yet is not a green build: it reads pending.
@@ -383,7 +421,7 @@ for (const n of new Set([...legInfo.values()].map((i) => i.pr).filter(Boolean)))
 }
 
 // ---------------------------------------------------------------- phases
-const LADDER = ['LIVE', 'PARKED-BANK', 'READY-TO-OPEN', 'PR open', 'READY', 'BLOCKED','MERGED', 'WRAPPED', 'WRAPPED, window still open'];
+const LADDER = ['LIVE', 'PARKED-USAGE', 'READY-TO-OPEN', 'PR open', 'READY', 'BLOCKED','MERGED', 'WRAPPED', 'WRAPPED, window still open'];
 const labels = [...new Set([...liveLabels, ...locks.keys(), ...tails.keys(), ...legInfo.keys()])]
     .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10) || a.localeCompare(b));
 const legs = labels.map((label) => {
@@ -398,7 +436,7 @@ const legs = labels.map((label) => {
     if (tail === 'WRAPPED' || lock === 'WRAPPED' || docDone) phase = 'WRAPPED';
     else if (info.pr && mergedNums.has(info.pr)) phase = 'MERGED';
     else if (tail === 'BLOCKED' || tail === 'HALTED') phase = 'BLOCKED';
-    else if (tail === 'PARKED-BANK') phase = 'PARKED-BANK';
+    else if (tail === 'PARKED-USAGE' || tail === 'PARKED-BANK') phase = 'PARKED-USAGE';
     else if (tail === 'READY') phase = info.pr ? 'READY' : 'READY-TO-OPEN';
     else if (info.pr && openByNum.has(info.pr)) phase = 'PR open';
     else phase = 'LIVE';
@@ -516,6 +554,15 @@ const releasePanel = (r) => {
     const blockers = r.blockers.map((b) => `<li data-blocker="${esc(b.key)}"><b>${esc(b.key)}</b> ${safe(b.title, 90)} <span class="pr">${safe(b.status)}</span></li>`).join('\n');
     return `<section data-release="${esc(r.version)}" data-done="${r.done}" data-total="${r.total}"><h2>Release ${safe(r.version)}</h2><b>${r.done}/${r.total}</b><div class="bar"><i style="width:${pct}%"></i></div><p class="status">${breakdown}</p>${blockers ? `<ul>${blockers}</ul>` : '<p class="none">no open v1-blocker tickets</p>'}</section>`;
 };
+// M4 burn-down per version, the leaks and the M1 trend (last 7 days): display only, no count gate.
+const rmPanel = (s) => {
+    if (s.unavailable) return `<section data-rm-release="${esc(s.release)}" data-unavailable="1"><h2>Release manager ${safe(s.release)}</h2><p class="none">unavailable</p></section>`;
+    const n = Number;
+    const bd = Object.entries(s.burndown).map(([v, b]) => `<li data-burndown="${esc(v)}" data-baseline-open="${n(b.baseline_open)}" data-baseline="${n(b.baseline)}"><b>${safe(v)}</b> baseline open ${n(b.baseline_open)}/${n(b.baseline)} · admitted open ${n(b.admitted_open)} · emergency open ${n(b.emergency_open)} · deferred out ${n(b.deferred_out)}</li>`);
+    const leaks = [...(s.leaks.unauthorized || []), ...(s.leaks.ruled_in_non_member || [])].map((k) => `<li data-leak="${esc(k)}"><b>${safe(k)}</b> leak</li>`);
+    const trend = Object.keys(s.trend).sort().slice(-7).map((day) => `<li data-trend="${esc(day)}">${safe(day)}: ${Object.keys(s.trend[day]).sort().map((k) => `${safe(k)} ${n(s.trend[day][k])}`).join(' · ')}</li>`);
+    return `<section data-rm-release="${esc(s.release)}" data-status="${esc(s.status)}"><h2>Release manager ${safe(s.release)} · ${safe(s.status)}</h2><ul>${[...bd, ...leaks, ...trend].join('\n')}</ul></section>`;
+};
 const prRows = (openPrs || []).map((p) => `<li data-ci="${ciOf(p)}"><b>#${p.number}</b> ${safe(p.title, 90)} <span class="pr">${ciOf(p)}${p.isDraft ? ' · draft' : ''}</span></li>`).join('\n');
 // Done work never reaches the published page: a WRAPPED or MERGED leg and the merged PRs
 // go to a local archive file beside it (written below), one self-contained line each.
@@ -537,36 +584,45 @@ const cloudPanel = (() => {
     return panel('Cloud sessions', rows, 'no cloud session launched in the last 48 hours');
 })();
 
-// Bank lift: one read-only line from the lift's `show` output -- the
-// same reason source as the doctor's C34 row. BOARD_BANK_LIFT overrides the script
-// (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS). Never renders the account or any
+// Usage lift: one read-only line from the lift's `show` output -- the
+// same reason source as the doctor's C34 row. BOARD_USAGE_LIFT (old name
+// BOARD_BANK_LIFT) overrides the script (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS).
+// Reads the usage-lift: and the old bank-lift: prefix. Never renders the account or any
 // field but until/standing; not part of the fingerprint; never fatal.
-const BANK_LIFT_BIN = process.env.BOARD_BANK_LIFT || join(HERE, '..', '..', 'lib', 'bank-lift.sh');
+const USAGE_LIFT_BIN = process.env.BOARD_USAGE_LIFT || process.env.BOARD_BANK_LIFT || join(HERE, '..', '..', 'lib', 'usage-lift.sh');
 const bankLiftLine = (() => {
     const row = (kind, text) => `<p class="sub" data-bank-lift="${kind}">weekly budget override: ${text}</p>`;
     try {
         let out = '';
         try {
-            out = execFileSync('bash', [BANK_LIFT_BIN, 'show'], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] });
+            out = execFileSync('bash', [USAGE_LIFT_BIN, 'show'], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] });
         } catch (e) {
             out = e && e.stdout ? String(e.stdout) : '';
         }
         const lines = out.split('\n').map((l) => l.replace(/\r$/, ''));
         let status = null;
-        for (const l of lines) { const m = /^bank-lift: (VALID|INVALID: (.+))$/.exec(l); if (m) status = m; }
+        for (const l of lines) { const m = /^(?:usage|bank)-lift: (VALID|INVALID: (.+))$/.exec(l); if (m) status = m; }
         if (!status) return row('?', 'unavailable');
-        if (lines.includes('bank-lift: none') || status[2] === 'missing') return row('none', 'no lift set');
+        if (lines.some((l) => /^(?:usage|bank)-lift: none$/.test(l)) || status[2] === 'missing') return row('none', 'no lift set');
         if (status[1] !== 'VALID') return row('invalid', `lift set but INVALID: ${safe(status[2], 40)}`);
         let tail = '';
         try {
-            const idx = lines.findIndex((l) => l.startsWith('bank-lift:'));
-            const j = JSON.parse(lines.slice(0, idx).join('\n'));
-            if (typeof j.until === 'number' && Number.isFinite(j.until)) {
-                const u = new Date(j.until * 1000);
+            // With both lift files read, show the stricter of the two, as the validator does.
+            const blocks = [[]];
+            for (const l of lines) {
+                if (/^(?:usage|bank)-lift:/.test(l)) blocks.push([]);
+                else blocks[blocks.length - 1].push(l);
+            }
+            const js = blocks.filter((b) => b.join('').trim()).map((b) => JSON.parse(b.join('\n')));
+            // A standing policy's stored until is ignored by the validator: a window lift's binds.
+            const windows = js.filter((j) => j.standing !== true);
+            const untils = (windows.length ? windows : js).map((j) => j.until).filter((u) => typeof u === 'number' && Number.isFinite(u));
+            if (untils.length) {
+                const u = new Date(Math.min(...untils) * 1000);
                 const p2 = (n) => String(n).padStart(2, '0');
                 tail = ` until ${u.getFullYear()}-${p2(u.getMonth() + 1)}-${p2(u.getDate())} ${p2(u.getHours())}:${p2(u.getMinutes())}`;
             }
-            tail += j.standing === true ? ' · standing' : ' · window';
+            tail += js.length && js.every((j) => j.standing === true) ? ' · standing' : ' · window';
         } catch { tail = tail || ' · window'; }
         return row('valid', `VALID${tail}`);
     } catch { return row('?', 'unavailable'); }
@@ -817,6 +873,9 @@ const crLoopSection = (() => {
     const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
+// Versions past the soft cap, folded into --changed (and the page's meta) so a cap over-run
+// wakes a console that waits on the board, as a CI or fleet move does; not part of board-fp.
+const capSig = (trend.cr_loop.versions || []).filter((v) => v.over).map((v) => `${v.version}=${v.slots}`).join(',');
 
 // ICE-parked follow-ups: HIMMEL keys cited as follow-ups in the last 14 days of comments
 // that now live in the icebox, from ice-followups.sh over the Jira mirror (BOARD_MIRROR is
@@ -838,6 +897,26 @@ const iceFollowupsSection = (() => {
         if (!keys.length) return na;
         return `<section data-ice-followups="${keys.length}">${title}<p class="sub">ice-followups=${keys.length}: cited as follow-ups, now parked in ICE</p><ul>${keys.map((k) => `<li data-ice-key="${esc(k)}">${esc(k)}</li>`).join('')}</ul></section>`;
     } catch { return na; }
+})();
+
+// Classes overdue for escalation: the PROPOSE lines of `known-findings.sh --ladder`, read
+// as printed -- the ladder is never recomputed here. A `retire` proposal is not an escalation
+// and is left out. BOARD_KNOWN_FINDINGS overrides the
+// script (test seam). The panel shows only when a class is proposed; an unreadable ladder
+// renders nothing; never fatal; not part of the fingerprint.
+const KNOWN_FINDINGS_BIN = process.env.BOARD_KNOWN_FINDINGS || join(HERE, '..', '..', 'cr', 'known-findings.sh');
+const overdueClassesSection = (() => {
+    trend.overdue_classes = [];
+    try {
+        const out = execFileSync('bash', [KNOWN_FINDINGS_BIN, '--ladder'], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'ignore'] });
+        for (const l of out.split('\n')) {
+            const m = /^\s*PROPOSE \[([^\]]+)\] (.*?)\s*$/.exec(l.replace(/\r$/, ''));
+            if (m && !/^retire\b/.test(m[2])) trend.overdue_classes.push({ id: m[1], proposal: m[2] });
+        }
+        if (!trend.overdue_classes.length) return '';
+        const rows = trend.overdue_classes.map((c) => `<li data-overdue-class="${esc(c.id)}"><b>${safe(c.id, 80)}</b> ${safe(c.proposal, 240)}</li>`).join('');
+        return `<section data-overdue-classes="${trend.overdue_classes.length}"><h2>Classes overdue for escalation</h2><p class="sub">PROPOSE lines of known-findings.sh --ladder; the refresh prints the same</p><ul>${rows}</ul></section>`;
+    } catch { trend.overdue_classes = []; return ''; }
 })();
 
 const archiveHtml = `<!doctype html>
@@ -864,7 +943,7 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supervisor Session Board</title>
 ${fp ? `<meta name="console-board-fp" content="${fp}">` : ''}
-${ciFleetSig ? `<meta name="console-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="console-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="console-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="console-board-manifest-fp" content="${esc(manifestSig)}">` : ''}
+${ciFleetSig ? `<meta name="console-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="console-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="console-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="console-board-manifest-fp" content="${esc(manifestSig)}">` : ''}${capSig ? `\n<meta name="console-board-cap-fp" content="${esc(capSig)}">` : ''}
 <style>
 :root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; } }
@@ -919,9 +998,10 @@ ${failuresSection}
 ${flakesSection}
 ${crLoopSection}
 ${iceFollowupsSection}
+${overdueClassesSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
-${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
+${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}${rmState ? `\n${rmPanel(rmState)}` : ''}
 <section class="wide">
 <h2>Worker sessions</h2>
 ${liveLegs.length ? `<ul>${liveLegs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'worker-session labels unavailable' : 'no live worker sessions'}</p>`}
@@ -1171,7 +1251,7 @@ const boardModel = {
     milestones,
     needs_you: needsYou,
     legs: legsOut,
-    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, tools: succession },
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, overdue_classes: trend.overdue_classes, tools: succession },
     legend,
     cards,
 };
@@ -1185,6 +1265,7 @@ let oldCensusSig = '';
 let oldReleaseSig = '';
 let oldCiFleetSig = '';
 let oldManifestSig = '';
+let oldCapSig = '';
 if (changedFlag && existsSync(outPath)) {
     const prev = readFileSync(outPath, 'utf8');
     oldFp = (/<meta name="console-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
@@ -1192,6 +1273,7 @@ if (changedFlag && existsSync(outPath)) {
     oldCiFleetSig = (/<meta name="console-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
     oldReleaseSig = (/<meta name="console-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
     oldManifestSig = (/<meta name="console-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldCapSig = (/<meta name="console-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
 }
 const tmp = `${outPath}.tmp${process.pid}`;
 writeFileSync(tmp, html);
@@ -1207,7 +1289,7 @@ renameSync(archiveTmp, archivePath);
     renameSync(jsonTmp, jsonPath);
 }
 if (changedFlag) {
-    console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
+    console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig || esc(capSig) !== oldCapSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
 } else {
     console.log(outPath);
 }

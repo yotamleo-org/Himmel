@@ -79,6 +79,14 @@ else
     bad "plugin guard-judge-writes.sh drifted from scripts/hooks/guard-judge-writes.sh"
 fi
 
+# The release-manager write guard ships in the plugin for the same reason:
+# its mode-1 file fence must fire in every session, checkout or not.
+if cmp -s "$HOOKS_DIR/guard-rm-writes.sh" "$PLUGIN_ROOT/hooks/guard-rm-writes.sh"; then
+    ok "plugin guard-rm-writes.sh is byte-identical to scripts/hooks/guard-rm-writes.sh"
+else
+    bad "plugin guard-rm-writes.sh drifted from scripts/hooks/guard-rm-writes.sh"
+fi
+
 # No hardcoded inventory count here — wire-plugin-hook-bash.mjs's
 # own EXPECTED_HOOKS/EXPECTED_COUNTS (exercised by
 # wire-plugin-hook-bash.test.mjs, which already hardcodes "20" as an

@@ -479,6 +479,15 @@ if [ "$rc" -ne 0 ]; then
                 benign=1 ;;
         esac
     fi
+    # A worktree that is unregistered AND absent on disk was already pruned
+    # (by the leg, a sweep, or an earlier close): nothing is left to remove.
+    case "$out" in
+        *'is not a registered worktree'*)
+            if [ ! -e "$WT" ]; then
+                echo "close-wrapped-leg: worktree $WT already gone - nothing to prune"
+                close_success
+            fi ;;
+    esac
     if [ "$benign" -eq 1 ]; then
         echo "close-wrapped-leg: worktree $WT not pruned (see message above) - not a failure, retry --only shortly"
         close_success

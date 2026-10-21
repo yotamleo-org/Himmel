@@ -32,7 +32,7 @@ cost. Fleet admission still applies, but native Claude and codex subscription
 usage budgets do not. The backend refuses unknown credit or key-limit readings and
 an effective balance below `OPENROUTER_MIN_CREDIT_USD` (default **3 USD**):
 the smaller of account credit and the key's `limit_remaining` is available.
-`bank-preflight.sh` selects this gate via `CADENCE_BANK_LANE=openrouter`
+`bank-preflight.sh` selects this gate via `CADENCE_USAGE_LANE=openrouter`
 (or `LEG_LANE=openrouter`), reusing the balance helper and the same floor:
 `PROCEED` at/above the floor, `SKIPPED-BANK` below it, `BANK-UNKNOWN` when
 unmeasurable. Tick's `bank=openrouter:<verdict>` reports that lane verdict;
@@ -510,7 +510,7 @@ point a reader would check it
 
 ### GPT-6 Astra — the claudex launcher defaults to `medium`, `low` first
 
-The `claudex` launcher (`scripts/claude-codex` / `.ps1`, documented in
+The `claudex` launcher (`scripts/claude-codex`, documented in
 `scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`. It
 now defaults to **`medium`** (an explicitly exported value still wins). The
 reason is a vendor calibration note, recorded on the ticket as reported (we have
@@ -855,7 +855,7 @@ pending a proper per-session burn-rate measurement to replace it with a
 derived number.
 
 **Launch vs. read.** The `SKIPPED-FLEET` refusal itself only
-fires when the caller sets `CADENCE_BANK_LAUNCH=1`, declaring an actual arm
+fires when the caller sets `CADENCE_USAGE_LAUNCH=1`, declaring an actual arm
 intent (`arm-resume.sh`, `headed-arm-leg.sh`) — a plain usage budget READ (a
 `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the same
 informational `FLEET native=N claudex=M total=X/CAP` line, printed
@@ -961,7 +961,7 @@ run with no profile (the probes, `claude-headless.sh`, the cadence runners)
 carry a `launch-profile-ok:` reason; `scripts/lanes/test-launch-site-profiles.sh`
 scans `scripts/` and fails on any other claude exec.
 
-**Fanout and overnight-shift subagents inherit the parent's plugins** (see
+**Fanout and afk-shift subagents inherit the parent's plugins** (see
 "Subagents inherit" above - there is no per-subagent plugin control). So the
 parent must be armed with the profile its CHILDREN need, not just the one it
 needs itself: a supervisor session that dispatches design work arms with a profile that

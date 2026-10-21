@@ -63,10 +63,15 @@
 # position (`| nice $l` is unread), and a written file only as the first
 # operand and only when written by the same command; tracking values across
 # commands and wrappers is the upgrade.
-# ponytail: names_verb is a substring test, so a launcher whose words merely
-# contain one (`tmux new -s research 'qmd status'`, `ssh research qmd status`)
-# is over-denied — the safe direction; a word-bounded test is the upgrade,
-# taken when such an over-deny is reported.
+# ponytail: names_verb reads qmd and the verb as words, bounded by anything but
+# a letter, digit or `-`, so a file name (block-bare-qmd-query.sh) or a host
+# (`ssh research qmd status`) is no hit; a qmd program under another name
+# (a symlink, `bun cli.js`) is a miss, as it is for the grammar above, and so
+# is a search verb qmd adds beyond query, search and vsearch.
+# ponytail: a tmux/screen launcher's typed text has no word boundary left
+# (names_verb_cat stays a substring test), so `tmux new -s research 'qmd status'`
+# is still over-denied — the safe direction; the upgrade is testing the
+# words before they are concatenated.
 # Where the consumer takes its program from elsewhere, the
 # sanctioned wrapper (qmd-bounded.sh) and a file search (rg, grep, egrep,
 # fgrep, not with --pre) name no verb (names_verb_nb): an interpreter with a
@@ -643,13 +648,48 @@ nest_mode() {
         *) return 1 ;;
     esac
 }
-# names_verb TEXT — succeed when TEXT, quotes and backslashes removed, names
-# qmd and a search verb anywhere: the fail-closed test for text a shell
-# will run that cannot be read as words (a pipe's output, a substitution).
+# _qmd_verb_words TEXT — succeed when the lower-cased TEXT holds qmd (also
+# qmd-bounded.sh and the qmd-fork directory) and a search verb as words. A word
+# is bounded by anything but a letter or digit, and a `-` binds the word to its
+# left only when a letter or digit sits before it (`bare-qmd`); `:-qmd` (a
+# `${V:-qmd}` default) and `--query` begin a word. `_` counts as a boundary
+# because a quoted blank reads as `_` in qmd_words' first line. So a file name
+# (block-bare-qmd-query.sh, qmd-notes.sh) or a host (research) is no qmd or verb.
+# The verbs are QMDVERB's closed set. Only names_verb reads qmd-bounded.sh as
+# qmd: names_verb_nb sets it aside before calling.
+_qmd_verb_words() {
+    local LC_ALL=C
+    [[ $1 =~ (^|[^[:alnum:]-]|(^|[^[:alnum:]])-)qmd(-bounded\.sh|-fork)?([^[:alnum:]-]|$) ]] &&
+        [[ $1 =~ (^|[^[:alnum:]-]|(^|[^[:alnum:]])-)(query|search|vsearch)([^[:alnum:]-]|$) ]]
+}
+# _nv_fold TEXT — print TEXT lower-cased, quotes and backslashes removed.
+# shellcheck disable=SC1003 # a literal backslash in the tr set
+_nv_fold() { printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
+# _nv_fold_esc TEXT — _nv_fold with each backslash escape (\n, \t, \x20, \040,
+# \0040,  , `\ `) read as a blank instead of removed: printf and echo -e turn those into
+# the word boundary the removal would glue a letter onto qmd or the verb across.
+# qmd_words prints a quoted backslash as `_`, so `_n`, `_t`, `_x20` read the same.
+_nv_fold_esc() {
+    printf '%s' "$1" | LC_ALL=C sed -E 's/\\([xX][0-9a-fA-F]{1,2}|[uU][0-9a-fA-F]{1,8}|0[0-7]{1,3}|[0-7]{1,3}|.)/ /g; s/_([xX][0-9a-fA-F]{1,2}|[uU][0-9a-fA-F]{1,8}|0[0-7]{1,3}|[0-7]{1,3}|[ntrvabfe])/ /g' |
+        LC_ALL=C tr -d '"'\''' | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
+# names_verb TEXT — succeed when TEXT, quotes and backslashes removed (or a
+# backslash escape read as a blank), names qmd and a search verb as words: the
+# fail-closed test for text a shell will run that cannot be read as words (a
+# pipe's output, a substitution).
 names_verb() {
     local s
-    # shellcheck disable=SC1003 # a literal backslash in the tr set
-    s=$(printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    s=$(_nv_fold "$1")
+    if _qmd_verb_words "$s"; then return 0; fi
+    s=$(_nv_fold_esc "$1")
+    _qmd_verb_words "$s"
+}
+# names_verb_cat TEXT — names_verb as a substring test, for text whose words
+# were concatenated (tmux send-keys types its arguments with no blank between
+# them, screen stuff its string), so no word boundary survives to test.
+names_verb_cat() {
+    local s
+    s=$(_nv_fold "$1")
     [[ $s == *qmd* ]] && [[ $s == *query* || $s == *search* ]]
 }
 # names_verb_nb TEXT — names_verb for text whose output only ever reaches a
@@ -665,10 +705,12 @@ names_verb() {
 # ponytail: an interpreter code string that execs its own stdin
 # (`python3 -c 'exec(sys.stdin.read())'`) runs the output; telling it from a
 # reader needs a parser for every language — file a ticket if seen.
-# shellcheck disable=SC1003 # a literal backslash in the tr set
 names_verb_nb() {
-    local s seg w rest='' ws k ok
-    s=$(printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    _nvnb_folded "$(_nv_fold "$1")" || _nvnb_folded "$(_nv_fold_esc "$1")"
+}
+# _nvnb_folded S — names_verb_nb's test on the already folded text S.
+_nvnb_folded() {
+    local s=$1 seg w rest='' ws k ok
     s=${s//qmd-bounded.sh/ }
     [[ $s == *qmd* ]] || return 1
     s=$(printf '%s' "$s" | LC_ALL=C tr '|;&(){}`<>' '\n')
@@ -708,7 +750,7 @@ names_verb_nb() {
             *) rest="$rest$seg"$'\n' ;;
         esac
     done <<<"$s"
-    [[ $rest == *qmd* ]] && [[ $rest == *query* || $rest == *search* ]]
+    _qmd_verb_words "$rest"
 }
 # The helpers below run inside qmd_nested and read its locals (w, dec, n,
 # pipe, pfrom, pp and the caches sk, se, sf, nk, nr).
@@ -1418,7 +1460,7 @@ qmd_nested() {
         case "$mode" in
             tmux|screen)
                 if [ "$mode" = screen ]; then _screen_dec "$ct"; ct=$sd; fi
-                if [[ $ct == *[qQ]* ]] && names_verb "$ct"; then deny=1; return 0; fi
+                if [[ $ct == *[qQ]* ]] && names_verb_cat "$ct"; then deny=1; return 0; fi
                 ;;
             rem)
                 # The wrapper or a file search among a launcher's
@@ -1618,8 +1660,15 @@ dyn_check() {
         if [ "$pp" = 1 ] && [ "$ar" = 0 ]; then
             # A case arm's pattern (`*)`) is no program.
             if [ "$nx" = ')' ] && [ -z "$subs" ]; then i=$j; continue; fi
-            if [ "$wo" = 1 ] && { [[ $w == -* ]] || [[ $w =~ ^[0-9.]+[smhd]?$ ]]; }; then
+            if [ "$wo" = 1 ] && [[ $w == -* ]]; then
                 wopt=1; i=$j; continue
+            fi
+            # A duration straight after the wrapper (`timeout 60`) takes no
+            # operand, so the word after it is the program, not an operand.
+            # After an option (`timeout -k 5 60`) it may be that option's
+            # operand and the next word may still be one: wopt keeps its value.
+            if [ "$wo" = 1 ] && [[ $w =~ ^[0-9.]+[smhd]?$ ]]; then
+                i=$j; continue
             fi
             # A wrapper option may take an operand (`env -u HOME`), so the word
             # after one is read as a program and the next is read as one too.

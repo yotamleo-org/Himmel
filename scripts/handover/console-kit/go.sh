@@ -70,6 +70,8 @@
 #   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
 #      only --trust-reviewed <judge qid> may write it. The leg's READY text is never read.
+#   9  refused: cr-disposition.sh check found a deferred Critical or Important
+#      finding on the PR's branch with no valid disposition at <head>
 #
 # A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -96,6 +98,13 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/console-kit/go.sh || exit 96
+
+# The reads below (PR view, repo name) ride the read-only token via gh-read.sh
+# and a missing or refused read token falls back to the main one, so
+# a GO is never refused for it. Nothing here writes through it: the GO file is a
+# local write.
+GH_READ="$(cd "$_csg_dir/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no helper file, and the next line falls back to plain gh
+[ -f "$GH_READ" ] || GH_READ=gh
 
 usage() {
     echo "usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
@@ -237,13 +246,13 @@ if [ "$FORK_SET" -eq 1 ]; then
         echo "go: refusing the fork GO for $FORK PR #$PR - $HBRANCH No GO written." >&2
         exit 6
     fi
-    FVIEW=$(gh pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
+    FVIEW=$("$GH_READ" pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
     FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
     if [ "$FSTATE" != "OPEN|$SHA|MERGEABLE|$HBRANCH" ]; then
         echo "go: refusing the fork GO for $FORK PR #$PR - it must be OPEN at $SHA, MERGEABLE and based on $HBRANCH (state|head|mergeable|base read: '$FSTATE'). No GO written." >&2
         exit 7
     fi
-    if ! REASON=$(go_fork_ready "$FORK" "$PR"); then
+    if ! REASON=$(GH="${GH:-$GH_READ}" go_fork_ready "$FORK" "$PR"); then
         echo "go: refusing the fork GO for $FORK PR #$PR - $REASON No GO written." >&2
         exit 7
     fi
@@ -276,6 +285,19 @@ if [ "$FORK_SET" -eq 0 ] && [ "$TRUST_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ] \
     exit 8
 fi
 
+# a Critical or Important finding the leg deferred on its own never merges:
+# cr-disposition.sh check refuses unless a judge (or, for an Important off a
+# trust path, the console) recorded a follow-up with its three risk attests.
+if [ "$FORK_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ]; then
+    DTRUST=no
+    printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes' && DTRUST=yes
+    if ! DISP_OUT=$(bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1); then
+        printf '%s\n' "$DISP_OUT" >&2
+        echo "go: refusing the GO for PR #$PR at $SHA - a Critical or Important finding has no valid disposition (above). A judge (or the console, for an Important off a trust path) records one with cr-disposition.sh record, or the PR fixes it. No GO written." >&2
+        exit 9
+    fi
+fi
+
 # the mac binds the repo (himmel-go-v2|<nwo>|<pr>|<sha>) - a GO
 # minted for one repo's PR #N at a sha must not validate another repo's PR #N
 # at the same sha. Resolve nwo from the HARNESS ANCHOR (not the PR's own
@@ -287,7 +309,7 @@ fi
 # CLOSED (the merge is refused, never allowed), so it does not block this
 # PR, but the case is unhandled -- upgrade: HIMMEL-3582 resolves nwo
 # per-target-repo instead of always from ANCHOR.
-NWO=$(cd "$ANCHOR" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
+NWO=$(cd "$ANCHOR" && "$GH_READ" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
 # A fork GO signs the fork's nwo (already allowlisted above): it validates for
 # that repo's PR only, never for a himmel PR of the same number and sha.
 [ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"
