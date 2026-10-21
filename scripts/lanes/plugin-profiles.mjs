@@ -895,8 +895,10 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
     const { scanSkillCosts } = await import('./skill-cost.mjs');
     const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const skillEntries = scanSkillCosts({ cwd: process.cwd(), configDir }).entries;
-    // Fork trust is read from the ANCHOR's registry copy, never a leg worktree's bytes.
-    const forkNwos = anchor ? forkNwosFromAdapters(join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json')) : [];
+    // Fork trust is read from the ANCHOR's registry copy, never a leg worktree's bytes,
+    // unless the launching environment names a registry file (a suite testing a registry change).
+    const adaptersPath = process.env.PLUGIN_PROFILES_ADAPTERS || (anchor ? join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json') : null);
+    const forkNwos = adaptersPath ? forkNwosFromAdapters(adaptersPath) : [];
     const settings = resolveProfileByName(name, { addPlugins, installed, anchor: anchor ?? undefined, forkNwos, skillEntries, configDir, cwd: process.cwd() });
     if (settings === null) process.exit(0); // operator: nothing to inject
     process.stdout.write(JSON.stringify(settings) + '\n');

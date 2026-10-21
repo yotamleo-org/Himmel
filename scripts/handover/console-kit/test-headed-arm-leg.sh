@@ -118,6 +118,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/headed-arm-leg.sh"
 HEADED_ARM="$HERE/../headed-arm.sh"
 export HEADED_ARM_LEG_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
+export PLUGIN_PROFILES_ADAPTERS="$HERE/../../guardrails/himmel-adapters.json"
 unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 # shellcheck source=scripts/lib/timeout-bin.sh
 # shellcheck disable=SC1091
