@@ -144,7 +144,7 @@ jq -r '.[] | .number as $n | (.statusCheckRollup // [])[]
         else "fail" end),
        (.name // .context)] | @tsv' "$snap/prs.json" 2>/dev/null \
     | awk -F'\t' -v d="$snap" '{ f = d "/rows-" $1 ".tsv"; sub(/^[^\t]*\t/, ""); print >> f; close(f) }'
-[ "${PIPESTATUS[0]}" -eq 0 ] || unknown gh
+[ "${PIPESTATUS[0]}${PIPESTATUS[1]}" = 00 ] || unknown gh
 jq -r '.data.repository.pullRequests.nodes[] | .number as $n
     | (.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])[] | select(.__typename == "CheckRun" and .databaseId != null)
     | [$n,
@@ -153,7 +153,7 @@ jq -r '.data.repository.pullRequests.nodes[] | .number as $n
         elif .conclusion == "CANCELLED" then "cancel" else "fail" end),
        .name, (.checkSuite.app.databaseId // ""), (.startedAt // ""), .databaseId] | @tsv' "$snap/graphql.json" 2>/dev/null \
     | awk -F'\t' -v d="$snap" '{ f = d "/prows-" $1 ".tsv"; sub(/^[^\t]*\t/, ""); print >> f; close(f) }'
-[ "${PIPESTATUS[0]}" -eq 0 ] || unknown gh
+[ "${PIPESTATUS[0]}${PIPESTATUS[1]}" = 00 ] || unknown gh
 
 # --- the key set ------------------------------------------------------------------
 KEY_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
@@ -174,7 +174,7 @@ seed=$(printf '%s\n%s\n' "$pr_keys" "$rec_live" | grep -E "$KEY_RE" | sort -u)
 jql="project = ${JIRA_PROJECT_KEY:-HIMMEL} AND status in (\"In Progress\",\"In Review\",\"IN CI\")"
 [ -z "$seed" ] || jql="key in ($(printf '%s' "$seed" | tr '\n' ',' | sed 's/,$//')) OR ($jql)"
 ts_jira list --jql "$jql" --limit 300 2>/dev/null | awk -F'\t' '$1 ~ /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/ && NF >= 3 { print $1 "\t" $2 "\t" $3 }' > "$snap/jira.tsv"
-[ "${PIPESTATUS[0]}" -eq 0 ] || unknown jira
+[ "${PIPESTATUS[0]}${PIPESTATUS[1]}" = 00 ] || unknown jira
 [ "$(wc -l < "$snap/jira.tsv")" -lt 300 ] || unknown jira-limit
 
 ladder=$(awk -F'\t' '$3 == "In Progress" || $3 == "In Review" || $3 == "IN CI" { print $1 }' "$snap/jira.tsv" | sort -u)
