@@ -420,8 +420,8 @@ early or late; it never lets anything merge. Adding `ci:go` by hand starts
 heavy CI at once, which is the lever when a hold is understood. Until the
 heavy jobs report, `check-ci.sh` prints `CR-FIRST HOLD <reason>` for the head
 instead of failing on missing checks. A thread resolved in the GitHub web UI
-is picked up by the next `/pr-check` or `check-ci.sh` run, or by the console
-tick when you run a console.
+is picked up by the next `/pr-check` or `check-ci.sh` run, or by the
+supervisor's next tick when one is running.
 
 Opting in is one repository variable, read by both the workflow and the
 station, so the two cannot disagree; turning it off brings back CI on every
