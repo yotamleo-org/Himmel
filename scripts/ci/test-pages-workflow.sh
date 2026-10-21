@@ -75,6 +75,8 @@ check_file() {
     grep -qE '^      pages:[[:space:]]*write' <<< "$deploy" || echo "no-pages-write"
     grep -qE '^      id-token:[[:space:]]*write' <<< "$deploy" || echo "no-id-token"
     grep -vE '^      (pages|id-token):[[:space:]]*write' <<< "$deploy" | grep -qE '^      [a-z-]+:[[:space:]]*write[[:space:]]*$' && echo "extra-write-permission" # pipefail-ok: small input
+    grep -qE '^[[:space:]]*permissions:[[:space:]]*write-all' <<< "$s" && echo "extra-write-permission"
+    grep -qE '^[[:space:]]*permissions:[[:space:]]*write-all' <<< "$build" && echo "build-job-writes"
 
     # build job: credentials, npm ci in site/, build before upload, upload path bound to its own step
     bstep=$(step_of 'uses:[[:space:]]*actions/checkout@' <<< "$build")
@@ -137,6 +139,8 @@ if [ -f "$WF" ]; then
     mutate extra-write-permission "s#^  contents: read#  contents: read\n  pages: write#"
     mutate extra-write-permission "s#^      id-token: write#      id-token: write\n      issues: write#"
     mutate build-job-writes "s#^  build:#  build:\n    permissions:\n      id-token: write#"
+    mutate extra-write-permission "s#^permissions:#permissions: write-all#"
+    mutate build-job-writes "s#^  build:#  build:\n    permissions: write-all#"
     mutate no-id-token "s#id-token: write#id-token: read#"
     mutate no-pages-write "s#pages: write#pages: read#"
     mutate jobs-not-build-deploy "/^  deploy:/,\$d"
