@@ -35,6 +35,9 @@
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
 # A start at the head the last counted round ran on, below the cap, reuses that
 # round; bookkeeping-only heads get their ledger row from the `evidence` verb.
+# defer exits 6 when automatic residual filing cannot resolve the parent from
+# the open PR title or cannot create a ticket; supply --defer-to to recover
+# against the recorded findings without rerunning the panel.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -1864,16 +1867,29 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
             break
         fi
         class_args=()
+        body_file="$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md"
+        body_tmp=""
         if [ -n "$finding_class" ]; then
             class_args=(--class "$finding_class")
         else
             echo "review-round: finding $finding_id has no class id; omitting --class" >&2
+            if ! body_tmp="$(mktemp -t cr-residual-body.XXXXXX)"; then
+                amend_rc=5
+                break
+            fi
+            if ! { cat "$body_file" && printf '\nclass: unclassified\n'; } > "$body_tmp"; then
+                rm -f "$body_tmp"
+                amend_rc=5
+                break
+            fi
+            body_file="$body_tmp"
         fi
         create_rc=0
         created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
             --type Task --title "Deferred /pr-check finding $finding_id" --sector 'Ship loop' --labels standalone \
-            --desc-file "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
+            --desc-file "$body_file" \
             --residual-of "$residual_parent" --fu-class "$fu_class" "${class_args[@]}")" || create_rc=$?
+        if [ -n "$body_tmp" ]; then rm -f "$body_tmp"; fi
         defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
         if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
             echo "review-round: could not file residual for $finding_id; marker remains pending. ${created}" >&2

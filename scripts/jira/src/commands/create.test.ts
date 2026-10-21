@@ -581,10 +581,22 @@ describe('create --residual-of', () => {
     expect(searches.find((j) => j.includes('area-'))).toMatch(/key != "?HIMMEL-50"?/);
   });
 
-  it('refuses a missing --fu-class or --class, an unknown fu-class, and an explicit --fix-version', async () => {
+  it.each([0, 1, 2])('files a classless residual at parent depth %i without class labels or class-area deduplication', async (depth) => {
+    play({ parentLabels: depth ? [`residual-depth-${depth}`] : [], dup: 'HIMMEL-31' });
+    await file('--residual-of', 'HIMMEL-50', '--fu-class', 'escape', '--area', 'cr scripts',
+      '--desc', `${PLAIN}\nclass: unclassified`);
+    const f = created()!;
+    expect(f['labels']).toEqual(['residual', 'area-cr-scripts', `residual-depth-${depth + 1}`]);
+    expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(f['fixVersions']).toEqual(depth === 0 ? [{ name: 'v1.1.3' }] : undefined);
+    expect(JSON.stringify(f['description'])).toContain('class: unclassified');
+    expect(searches).toEqual([]);
+  });
+
+  it('refuses a missing --fu-class, an empty --class, an unknown fu-class, and an explicit --fix-version', async () => {
     play();
     await expect(file('--residual-of', 'HIMMEL-50', '--class', 'x')).rejects.toThrow(/--fu-class/);
-    await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'polish')).rejects.toThrow(/--class/);
+    await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'polish', '--class', '')).rejects.toThrow(/--class/);
     await expect(file(...RES, '--fu-class', 'nit')).rejects.toThrow(/polish, escape, hardening/);
     await expect(file(...RES, '--fu-class', 'polish', '--fix-version', 'v1.1.3')).rejects.toThrow(/--fix-version/);
     expect(created()).toBeUndefined();

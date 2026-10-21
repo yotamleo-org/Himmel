@@ -188,11 +188,8 @@ cp "$HERE/deferred-ticket-body.md" "$fx/scripts/cr/deferred-ticket-body.md"
 cat > "$fx/scripts/jira/dist/index.js" <<'STUB'
 const fs = require('fs');
 fs.appendFileSync(process.env.RECOVERY_JIRA_LOG, JSON.stringify(process.argv.slice(2)) + '\n');
+fs.writeFileSync(process.env.RECOVERY_JIRA_LOG + '.body', fs.readFileSync(process.argv[process.argv.indexOf('--desc-file') + 1]));
 if (process.env.RECOVERY_JIRA_FAIL === '1') process.exit(1);
-if (!process.argv.includes('--class')) {
-    console.error('--residual-of requires --class <id>');
-    process.exit(1);
-}
 console.log('Created HIMMEL-9500');
 STUB
 recovery_repo="$tmp/residual-repo"
@@ -233,13 +230,27 @@ for recovery_spec in 'sug polish' 'imp hardening'; do
     if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "$recovery_class recovery clears the marker"; else pass "$recovery_class recovery clears the marker"; fi
     assert_lacks "$recovery_out" 'create --type Task' "$recovery_class recovery does not print a raw-create command"
 done
-for recovery_failure in create-failed classless no-parent; do
+# A missing class is recorded in the body, never invented as a class label.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"sug"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+: > "$recovery_log"
+recovery_rc=0
+recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] recovery' \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" 2>&1)" || recovery_rc=$?
+assert_eq "$recovery_rc" 0 "classless recovery files without inventing a class label"
+assert_lacks "$(cat "$recovery_log")" '"--class"' "classless recovery omits the class option"
+assert_has "$(cat "$recovery_log.body")" 'class: unclassified' "classless recovery records classification in the body"
+assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"deferred_to":"HIMMEL-9500"' "classless recovery records the created ticket"
+if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "classless recovery clears the marker"; else pass "classless recovery clears the marker"; fi
+
+for recovery_failure in create-failed no-parent; do
     recovery_class_id=reader-allowlist
     recovery_title='fix: [HIMMEL-123] recovery'
     recovery_create_fail=0
     case "$recovery_failure" in
         create-failed) recovery_create_fail=1 ;;
-        classless) recovery_class_id='' ;;
         no-parent) recovery_title='fix: recovery without a ticket' ;;
     esac
     printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","class":"%s"}\n' \
@@ -255,9 +266,6 @@ for recovery_failure in create-failed classless no-parent; do
     if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "$recovery_failure recovery keeps the marker"; else fail "$recovery_failure recovery keeps the marker"; fi
     case "$recovery_failure" in
         no-parent) assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "missing parent never invokes Jira" ;;
-        classless)
-            assert_has "$recovery_out" 'omitting --class' "classless recovery warns instead of inventing a class"
-            assert_lacks "$(cat "$recovery_log")" '"--class"' "classless recovery omits the class option" ;;
     esac
 done
 if [ "${1:-}" = --residual-recovery-only ]; then

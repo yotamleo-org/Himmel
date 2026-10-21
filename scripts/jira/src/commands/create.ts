@@ -99,18 +99,20 @@ async function planResidual(
   o: { residualOf: string; fuClass?: string; class?: string; area?: string; fixVersion?: string },
 ): Promise<ResidualPlan> {
   if (!o.fuClass) throw new Error('--residual-of requires --fu-class <polish|escape|hardening>');
-  if (!o.class) throw new Error('--residual-of requires --class <id>');
+  if (o.class !== undefined && !o.class) throw new Error('--class needs an id');
   if (!FU_CLASSES.includes(o.fuClass)) {
     throw new Error(`--fu-class must be one of ${FU_CLASSES.join(', ')} (got "${o.fuClass}")`);
   }
   if (o.fixVersion !== undefined) throw new Error('--residual-of chooses the version itself; drop --fix-version');
-  const labels = ['residual', `class-${labelSlug(o.class)}`];
+  const classLabel = o.class !== undefined ? `class-${labelSlug(o.class)}` : undefined;
+  const labels = ['residual'];
+  if (classLabel) labels.push(classLabel);
   const area = o.area ? `area-${labelSlug(o.area)}` : undefined;
   if (area) labels.push(area);
 
-  if (area) {
+  if (area && classLabel) {
     const jql =
-      `project = ${project} AND labels = residual AND labels = ${jqlQuote(labels[1])} AND labels = ${jqlQuote(area)}` +
+      `project = ${project} AND labels = residual AND labels = ${jqlQuote(classLabel)} AND labels = ${jqlQuote(area)}` +
       ` AND key != ${jqlQuote(o.residualOf)} AND statusCategory != Done`;
     const [dup] = await searchAllIssues(jql, '1', request);
     if (dup) return { labels, duplicateOf: dup.key };
@@ -324,7 +326,7 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--residual-of <key>',
-      'File this as a review residual of <key>: the writer picks the version, depth and labels (needs --fu-class and --class)',
+      'File this as a review residual of <key>: the writer picks the version, depth and labels (needs --fu-class; --class is optional)',
     )
     .option(
       '--follow-up-of <key>',
