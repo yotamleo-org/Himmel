@@ -252,7 +252,7 @@ if [ "$FORK_SET" -eq 1 ]; then
         echo "go: refusing the fork GO for $FORK PR #$PR - it must be OPEN at $SHA, MERGEABLE and based on $HBRANCH (state|head|mergeable|base read: '$FSTATE'). No GO written." >&2
         exit 7
     fi
-    if ! REASON=$(GH="$GH_READ" go_fork_ready "$FORK" "$PR"); then
+    if ! REASON=$(GH="${GH:-$GH_READ}" go_fork_ready "$FORK" "$PR"); then
         echo "go: refusing the fork GO for $FORK PR #$PR - $REASON No GO written." >&2
         exit 7
     fi
