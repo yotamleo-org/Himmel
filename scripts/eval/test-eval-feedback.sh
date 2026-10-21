@@ -22,6 +22,8 @@ pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2'"; fi; }
 has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; }
+# ok <label> <cmd>...: run a setup command quietly and assert it exited 0
+ok() { local l="$1"; shift; "$@" >/dev/null 2>&1; eq "$l: exit 0" "$?" "0"; }
 
 command -v python3 >/dev/null 2>&1 || { echo "SKIP test-eval-feedback: python3 not on PATH"; exit 0; }
 
@@ -68,15 +70,16 @@ eq "learning change: one memory-inbox line" "$(rows "$IN")" "1"
 has "inbox line names the metric and topic" "$(cat "$IN" 2>/dev/null)" "eval/friction $CLS value=1 threshold=0 topic=shell-and-gate-traps.md"
 
 # --- the same run again changes nothing --------------------------------------------------------------
-python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" >/dev/null 2>&1
+ok "rerun" python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN"
 eq "rerun on the same eval run: no second record" "$(rows "$C")" "1"
 eq "rerun: no second inbox line" "$(rows "$IN")" "1"
 
 # --- run 2: the next run of the same series re-measures the change ----------------------------------
-python3 -I "$RUNS" append --ledger "$L" --eval friction --source scripts/eval/friction/friction.py \
+ok "run 2 row" python3 -I "$RUNS" append --ledger "$L" --eval friction --source scripts/eval/friction/friction.py \
   --config-json "{\"friction_v\":1,\"days\":7,\"projects\":[\"$HERE/friction/fixtures/proj\"]}" \
-  --metrics-json '{"refusals":2,"over_deny":0,"over_deny_share":0}' >/dev/null 2>&1
-out=$(python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" 2>&1)
+  --metrics-json '{"refusals":2,"over_deny":0,"over_deny_share":0}'
+out=$(python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" 2>&1); rc=$?
+eq "run 2: exit 0" "$rc" "0"
 eq "run 2: a measured record" "$(rows "$C")" "2"
 eq "measured: status" "$(field "$C" 1 status)" "measured"
 eq "measured: same change id" "$(field "$C" 1 id)" "$(field "$C" 0 id)"
@@ -85,33 +88,33 @@ eq "measured: after (absent metric counts as 0)" "$(field "$C" 1 after)" "0"
 eq "measured: delta" "$(field "$C" 1 delta)" "-1"
 eq "measured: verdict" "$(field "$C" 1 verdict)" "improved"
 has "run 2: prints the before and after" "$out" "before=1 after=0 delta=-1 improved"
-python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" >/dev/null 2>&1
+ok "rerun after measure" python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN"
 eq "a measured change is not measured again" "$(rows "$C")" "2"
 
 # --- a run of another config is another series: it neither measures nor is measured ------------------
 L3="$TMP/runs3.jsonl"; C3="$TMP/changes3.jsonl"
-python3 -I "$RUNS" append --ledger "$L3" --eval friction --source s --config-json '{"friction_v":1,"days":7}' \
-  --metrics-json "{\"over_deny\":5,\"$CLS\":5}" >/dev/null 2>&1
-python3 -I "$FB" run --ledger "$L3" --changes "$C3" --rules "$RULES" >/dev/null 2>&1
-python3 -I "$RUNS" append --ledger "$L3" --eval friction --source s --config-json '{"friction_v":1,"days":14}' \
-  --metrics-json "{\"over_deny\":3,\"$CLS\":3}" >/dev/null 2>&1
-python3 -I "$FB" run --ledger "$L3" --changes "$C3" --rules "$RULES" >/dev/null 2>&1
+ok "days-7 row" python3 -I "$RUNS" append --ledger "$L3" --eval friction --source s \
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":5,\"$CLS\":5}"
+ok "days-7 feedback" python3 -I "$FB" run --ledger "$L3" --changes "$C3" --rules "$RULES"
+ok "days-14 row" python3 -I "$RUNS" append --ledger "$L3" --eval friction --source s \
+  --config-json '{"friction_v":1,"days":14}' --metrics-json "{\"over_deny\":3,\"$CLS\":3}"
+ok "days-14 feedback" python3 -I "$FB" run --ledger "$L3" --changes "$C3" --rules "$RULES"
 eq "another config: the open change stays unmeasured" "$(field "$C3" 1 status)" "open"
 eq "another config: its own change opens on the same metric" "$(rows "$C3")" "2"
 eq "another config: the new change is that config's" "$(field "$C3" 1 value)" "3"
 
 # --- under the threshold: no change ------------------------------------------------------------------
 L4="$TMP/runs4.jsonl"; C4="$TMP/changes4.jsonl"
-python3 -I "$RUNS" append --ledger "$L4" --eval friction --source s --config-json '{"friction_v":1,"days":7}' \
-  --metrics-json "{\"over_deny\":0,\"$CLS\":0}" >/dev/null 2>&1
-python3 -I "$FB" run --ledger "$L4" --changes "$C4" --rules "$RULES" >/dev/null 2>&1
+ok "threshold row" python3 -I "$RUNS" append --ledger "$L4" --eval friction --source s \
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":0,\"$CLS\":0}"
+ok "threshold feedback" python3 -I "$FB" run --ledger "$L4" --changes "$C4" --rules "$RULES"
 eq "a result at the threshold makes no change record" "$(rows "$C4")" "0"
 
 # --- the daily failure review runs the feedback step and shows it ------------------------------------
 D="$TMP/review"; mkdir -p "$D"
 : >"$D/ledger.jsonl"
-python3 -I "$RUNS" append --ledger "$D/runs.jsonl" --eval friction --source s --config-json '{"friction_v":1,"days":7}' \
-  --metrics-json "{\"over_deny\":500,\"$CLS\":500}" >/dev/null 2>&1
+ok "review row" python3 -I "$RUNS" append --ledger "$D/runs.jsonl" --eval friction --source s \
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":500,\"$CLS\":500}"
 HIMMEL_EVAL_RUNS_LEDGER="$D/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$D/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
   JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$D/ledger.jsonl" --state "$D/state.json" --log "$D/log.jsonl" \
   --inbox "$D/inbox.md" --out-dir "$D/out" --now 2026-10-07T12:00:00Z --notify-cmd true >"$D/run.out" 2>&1
