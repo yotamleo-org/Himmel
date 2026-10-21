@@ -36,7 +36,7 @@
         "initiative:*", "handover-wiring", "jira-cli-dist-build", "jira-env-keys", "bitbucket-cli-build",
         "secret:BITBUCKET_*", "secret:JIRA_*", "doctor:C4-forge", "doctor:C5-handover", "doctor:C7-shipped",
         "doctor:C23-unlanded", "doctor:C29-child-session", "doctor:C42-sweep-health",
-        "doctor:C55-project-mode"
+        "doctor:C55-project-mode", "doctor:C71-verdict-scratch"
       ]
     },
     {

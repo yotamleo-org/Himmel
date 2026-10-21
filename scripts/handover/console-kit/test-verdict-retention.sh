@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check()/contains(); the backticks are the verdict line's literal text
+# scripts/handover/console-kit/test-verdict-retention.sh - suite for
+# verdict-retention.sh:
+#   1. archive is a dry run by default: it lists the one dir whose PR has been
+#      closed past the age and moves nothing, writes no ledger row
+#   2. --apply appends one ledger row per verdict file (qid, pr, head, verdict,
+#      model, written-at, sha256, archive path), then moves only that dir to
+#      archive/<YYYY-MM>/verdicts/<qid>/; an open-PR dir and a dir with no pr:
+#      line stay in place
+#   3. go_trust_verdict (the parser go.sh --trust-reviewed calls) still accepts
+#      the open-PR fixture after the apply
+#   4. a rerun appends no second row; a PR closed inside the age, a failing PR
+#      lookup and a dir holding a non-verdict entry all keep the dir
+#   5. inside a git bucket the move is a git rename
+#   6. prune removes only judge-scratch dirs older than the age from the cache,
+#      dry-run by default, never a file, a symlink or a young dir, and refuses
+#      a cache inside the handover root
+#
+# Hermetic: temp dir and a scratch HOME only; the real vault and cache are
+# never read. Platform guard: POSIX bash 3.2+ with GNU or BSD date.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT="$HERE/verdict-retention.sh"
+WRITER="$HERE/write-verdict.sh"
+REPO="$(cd "$HERE/../../.." && pwd)"
+SHA_A=0123456789abcdef0123456789abcdef01234567
+SHA_B=89abcdef0123456789abcdef0123456789abcdef
+NOW=1792540800   # 2026-10-21T00:00:00Z
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/verdict-retention-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+scratch="/tmp/claude-$(id -u)"
+[ -d "$scratch" ] || mkdir -m 700 "$scratch" || { echo "FAIL: cannot create $scratch" >&2; exit 1; }
+evd="$(mktemp -d "$scratch/verdict-retention-test.XXXXXX")" || { echo "FAIL: mktemp -d in $scratch failed" >&2; rm -rf "$tmp"; exit 1; }
+trap 'rm -rf "$tmp" "$evd"' EXIT
+tmp="$(cd "$tmp" && pwd -P)"
+root="$tmp/root"
+mkdir -p "$root" "$tmp/home/.config/himmel" || exit 1
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
+export HOME="$tmp/home" USER_SLUG=tuser HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
+
+fails=0
+check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
+contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
+lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)) ;; *) echo "ok - $1" ;; esac; }
+
+wv() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY \
+        HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-6915 bash "$WRITER" "$@"
+}
+verdict_rc() {
+    (
+        unset HIMMEL_CONSOLE_LEG
+        export HANDOVER_DIR="$root"
+        # shellcheck source=scripts/lib/handover-path.sh
+        # shellcheck disable=SC1091
+        . "$REPO/scripts/lib/handover-path.sh" || exit 9
+        # shellcheck source=scripts/lib/go-gate.sh
+        # shellcheck disable=SC1091
+        . "$REPO/scripts/lib/go-gate.sh" || exit 9
+        r=$(go_resolve_root "$REPO") || exit 8
+        go_trust_verdict "$r" "$1" "$2" "$REPO" "$3" >/dev/null
+    )
+}
+scope=$(
+    # shellcheck source=scripts/lib/go-gate.sh
+    # shellcheck disable=SC1091
+    . "$REPO/scripts/lib/go-gate.sh" && go_verdict_scope "$REPO"
+) || { echo "FAIL: cannot resolve the verdict scope"; exit 1; }
+vdir="$root/$scope/verdicts"
+bucket="$root/$scope"
+
+ev="$evd/evidence.md"
+printf 'class: option-parsing\n\n## Evidence checked\n\n- read the parser\n' > "$ev"
+wv qopen GO "$SHA_A" --pr 501 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qopen"; exit 1; }
+wv qclosed GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qclosed"; exit 1; }
+wv qrecent GO "$SHA_B" --pr 503 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qrecent"; exit 1; }
+wv qlookup GO "$SHA_B" --pr 504 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qlookup"; exit 1; }
+wv qscratch GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qscratch"; exit 1; }
+mkdir -p "$vdir/qscratch/scratch"
+mkdir -p "$vdir/qnopr"
+printf '# VERDICT qnopr - judge\n\nwritten-at: 2026-09-01T00:00:00Z\n\n## Verdict\n\n**GO** for head `%s`.\n\nmodel: old\n' "$SHA_A" > "$vdir/qnopr/judge.md"
+
+# The PR lookup stand-in: prints "<STATE> <closedAt>" for the PR number in $1.
+stub="$tmp/pr-state.sh"
+cat > "$stub" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    501) echo "OPEN" ;;
+    502) echo "CLOSED 2026-10-01T00:00:00Z" ;;
+    503) echo "MERGED 2026-10-16T00:00:00Z" ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$stub"
+ret() {
+    env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" "$@"
+}
+
+# --- 1. dry run by default -------------------------------------------------
+rc=0; out=$(ret archive 2>&1) || rc=$?
+check "1: dry run rc 0" "$rc" 0
+contains "1: lists the closed dir" "$out" "MOVE qclosed"
+lacks "1: does not list the open-PR dir" "$out" "MOVE qopen"
+contains "1: lists the no-pr dir as kept" "$out" "KEEP qnopr"
+check "1: nothing moved" "$([ -d "$vdir/qclosed" ] && echo yes)" yes
+check "1: no ledger written" "$([ -e "$vdir/_ledger.jsonl" ] && echo yes || echo no)" no
+
+# --- 2. apply --------------------------------------------------------------
+want_sha=$(sha256sum "$vdir/qclosed/judge.md" | awk '{print $1}')
+rc=0; out=$(ret archive --apply 2>&1) || rc=$?
+check "2: apply rc 0" "$rc" 0
+check "2: closed dir moved" "$([ -f "$bucket/archive/2026-10/verdicts/qclosed/judge.md" ] && echo yes)" yes
+check "2: closed dir gone from verdicts" "$([ -e "$vdir/qclosed" ] && echo yes || echo no)" no
+check "2: open-PR dir stays" "$([ -f "$vdir/qopen/judge.md" ] && echo yes)" yes
+check "2: no-pr dir stays" "$([ -f "$vdir/qnopr/judge.md" ] && echo yes)" yes
+check "2: one ledger row for the one file" "$(grep -c . "$vdir/_ledger.jsonl")" 1
+row=$(grep qclosed "$vdir/_ledger.jsonl")
+check "2: row pr" "$(printf '%s' "$row" | jq -r .pr)" 502
+check "2: row verdict" "$(printf '%s' "$row" | jq -r .verdict)" GO
+check "2: row head" "$(printf '%s' "$row" | jq -r .head)" "$SHA_B"
+check "2: row model" "$(printf '%s' "$row" | jq -r .model)" test-model
+check "2: row sha256" "$(printf '%s' "$row" | jq -r .sha256)" "$want_sha"
+check "2: row archive path" "$(printf '%s' "$row" | jq -r .archive_path)" "archive/2026-10/verdicts/qclosed/judge.md"
+check "2: moved file keeps its bytes" "$(sha256sum "$bucket/archive/2026-10/verdicts/qclosed/judge.md" | awk '{print $1}')" "$want_sha"
+
+# --- 3. the trust gate still reads the open-PR fixture ----------------------
+rc=0; verdict_rc qopen "$SHA_A" 501 || rc=$?
+check "3: go_trust_verdict still accepts the open-PR GO" "$rc" 0
+
+# --- 4. idempotent and conservative ------------------------------------------
+rc=0; out=$(ret archive --apply 2>&1) || rc=$?
+check "4: rerun rc 0" "$rc" 0
+check "4: rerun adds no row" "$(grep -c . "$vdir/_ledger.jsonl")" 1
+check "4: PR closed inside the age stays" "$([ -f "$vdir/qrecent/judge.md" ] && echo yes)" yes
+check "4: failing PR lookup keeps the dir" "$([ -f "$vdir/qlookup/judge.md" ] && echo yes)" yes
+check "4: dir with a scratch subdir stays" "$([ -d "$vdir/qscratch/scratch" ] && echo yes)" yes
+contains "4: scratch dir kept with its reason" "$out" "KEEP qscratch"
+
+# --- 5. git bucket: the move is a rename --------------------------------------
+wv qgit GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qgit"; exit 1; }
+git -C "$bucket" init -q . 2>/dev/null
+git -C "$bucket" add verdicts/qgit 2>/dev/null
+git -C "$bucket" -c user.name=t -c user.email=t@example.invalid commit -q -m fixture 2>/dev/null
+rc=0; ret archive --apply >/dev/null 2>&1 || rc=$?
+check "5: git apply rc 0" "$rc" 0
+check "5: staged as a rename" "$(git -C "$bucket" status --porcelain -- verdicts/qgit archive/2026-10/verdicts/qgit | cut -c1)" R
+
+# --- 6. scratch pruner ---------------------------------------------------------
+cache="$HOME/.cache/himmel/verdicts"
+mkdir -p "$cache/old1/scratch" "$cache/young1" "$tmp/outside"
+echo big > "$cache/old1/scratch/f"
+echo keep > "$tmp/outside/keepme"
+ln -s "$tmp/outside" "$cache/oldlink"
+echo '{}' > "$cache/admissions-ledger.jsonl"
+touch -d '30 days ago' "$cache/old1/scratch/f" "$cache/old1/scratch" "$cache/old1" "$cache/admissions-ledger.jsonl"
+touch -h -d '30 days ago' "$cache/oldlink"
+rc=0; out=$(env HANDOVER_DIR="$root" bash "$SCRIPT" prune 2>&1) || rc=$?
+check "6: prune dry run rc 0" "$rc" 0
+contains "6: dry run lists the old dir" "$out" "PRUNE old1"
+check "6: dry run removes nothing" "$([ -d "$cache/old1" ] && echo yes)" yes
+rc=0; out=$(env HANDOVER_DIR="$root" bash "$SCRIPT" prune --apply 2>&1) || rc=$?
+check "6: prune apply rc 0" "$rc" 0
+check "6: old dir removed" "$([ -e "$cache/old1" ] && echo yes || echo no)" no
+check "6: young dir kept" "$([ -d "$cache/young1" ] && echo yes)" yes
+check "6: file in the cache kept" "$([ -f "$cache/admissions-ledger.jsonl" ] && echo yes)" yes
+check "6: symlink kept" "$([ -L "$cache/oldlink" ] && echo yes)" yes
+check "6: symlink target untouched" "$([ -f "$tmp/outside/keepme" ] && echo yes)" yes
+check "6: vault verdicts untouched" "$([ -f "$vdir/qopen/judge.md" ] && echo yes)" yes
+mkdir -p "$root/$scope/verdicts/inroot"
+touch -d '30 days ago' "$root/$scope/verdicts/inroot"
+rc=0; out=$(env HANDOVER_DIR="$root" bash "$SCRIPT" prune --apply --cache "$root/$scope/verdicts" 2>&1) || rc=$?
+check "6: a cache inside the handover root is refused" "$rc" 2
+check "6: the in-root dir survives" "$([ -d "$root/$scope/verdicts/inroot" ] && echo yes)" yes
+
+echo
+[ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

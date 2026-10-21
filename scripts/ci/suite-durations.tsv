@@ -387,6 +387,7 @@ scripts/handover/console-kit/test-tick.sh	128
 scripts/handover/console-kit/test-tracker.sh	5
 scripts/handover/console-kit/test-vault-status.sh	2
 scripts/handover/console-kit/test-verdict-go.sh	0
+scripts/handover/console-kit/test-verdict-retention.sh	1
 scripts/handover/console-kit/test-versionless-done.sh	1
 scripts/handover/console-kit/test-vm-runner.sh	5
 scripts/handover/console-kit/test-wrap-merged.sh	36
