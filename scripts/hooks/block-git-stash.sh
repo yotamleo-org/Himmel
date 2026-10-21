@@ -257,7 +257,8 @@ DENY
 # whose subcommand is a stash mutation, or an update-ref / symbolic-ref that
 # names refs/stash. The subcommand is reachable the way the regex above reads it
 # (global dash-options, each with one optional value word), and a verb the model
-# cannot read (an expansion) is a deny.
+# cannot read (an expansion) is a deny. A git whose words include an expansion
+# leaves the verdict "legacy": the model cannot tell an option from a value there.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' GS_JQ <<'GS_JQ_EOF' || true
 def lcs: (. // "") | ascii_downcase;
@@ -298,8 +299,9 @@ def bad($w):
              or (.t != "lit" and (.raw | lcs | contains("refs/stash")))
              or ($sub == "update-ref" and .t == "lit" and (.v | lcs | test("^--stdin($|[^a-z0-9_-])"))))
          else false end));
+def dynargs: [gitwords | any(.[]; .t != "lit")] | any;
 if any(.[]; gitwords as $w | bad($w)) then "deny"
-elif any(.[]; unread) then "legacy"
+elif any(.[]; unread or dynargs) then "legacy"
 else "allow" end
 GS_JQ_EOF
 

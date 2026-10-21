@@ -251,6 +251,19 @@ assert_rc "rbash --rcfile heredoc runs git stash drop" 2 "$(run_case "$(j_bash "
 git stash drop
 EOF")")"
 assert_rc "rbash --init-file -c body runs git stash drop" 2 "$(run_case "$(j_bash "rbash --init-file /dev/null -c 'true; git stash drop'")")"
+# An option word with an expansion in it cannot be read by the model, so the regex decides.
+# shellcheck disable=SC2016  # the literal expansion is the payload under test
+assert_rc "git --git-dir=expansion stash drop" 2 "$(run_case "$(j_bash 'git --git-dir="$d" stash drop')")"
+# shellcheck disable=SC2016  # the literal expansion is the payload under test
+assert_rc "git --work-tree=expansion stash pop" 2 "$(run_case "$(j_bash 'git --work-tree="$W" stash pop')")"
+# shellcheck disable=SC2016  # the literal expansion is the payload under test
+assert_rc "git -C expansion glued stash clear" 2 "$(run_case "$(j_bash 'git -C"$wt" stash clear')")"
+# shellcheck disable=SC2016  # the literal expansion is the payload under test
+assert_rc "git -c expansion glued stash drop" 2 "$(run_case "$(j_bash 'git -c"$k" stash drop')")"
+# shellcheck disable=SC2016  # the literal expansion is the payload under test
+assert_rc "git --git-dir=expansion update-ref -d refs/stash" 2 "$(run_case "$(j_bash 'git --git-dir="$d" update-ref -d refs/stash')")"
+# shellcheck disable=SC2016  # the literal expansion is the payload under test
+assert_rc "git --git-dir=expansion stash list stays allowed" 0 "$(run_case "$(j_bash 'git --git-dir="$d" stash list')")"
 # Every shell the bash-ast model knows must also be in the guards' interp list, or the regex fallback skips it.
 drift=""
 for sh_name in $(sed -n 's/^def _shells: \[\(.*\)\];$/\1/p' "$(dirname "$HOOK")/../lib/bash-ast.sh" | tr -d '"' | tr ',' ' '); do
