@@ -109,8 +109,12 @@ while IFS= read -r -d '' path; do
         AV[k] = (k < ACNT) ? substr(l, AP[k] + 1, AP[k + 1] - AL[k + 1] - 1 - AP[k]) : substr(l, AP[k] + 1)
     }
     { line[NR] = $0; total = NR
-      scan_assigns($0)
-      for (k = 1; k <= ACNT; k++) assigned[AN[k]] = 1
+      t = $0   # comments and quoted text (usage strings) do not assign anything
+      if (t !~ /^[ \t]*#/) {
+        gsub(/"[^"]*"/, "\"\"", t); gsub(/\047[^\047]*\047/, "\047\047", t)
+        scan_assigns(t)
+        for (k = 1; k <= ACNT; k++) assigned[AN[k]] = 1
+      }
       if (match($0, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
         a = substr($0, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", a); headassigned[a] = 1
       }
@@ -136,7 +140,9 @@ while IFS= read -r -d '' path; do
         }
         # an assignment run followed by a command word (out=$(mktemp) env true) only sets
         # that command environment, so it never clears the taint of the shell variable
-        lasting = (ACNT > 0 && AV[ACNT] ~ ("^(\"[^\"]*\"|\\$\\([^)]*\\)|\\$\\{[^}]*\\}|\\$[A-Za-z0-9_@*#?!-]|`[^`]*`|[^ \t\"`$;&|)}])*[ \t]*([;&|)}#]|$)"))
+        WORD = "^(\"[^\"]*\"|\\$\\([^)]*\\)|\\$\\{[^}]*\\}|\\$[A-Za-z0-9_@*#?!-]|`[^`]*`|[^ \t\"`$;&|)}])*[ \t]*([;&|)}#]|$)"
+        lasting = (ACNT > 0)
+        for (k = 1; k <= ACNT; k++) if (AV[k] !~ WORD) lasting = 0
         for (k = 1; k <= ACNT; k++) {
           if (lasting && (AV[k] ~ /^"(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]"([ \t;&|)}]|$)/ || AV[k] ~ /^(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]([ \t;&|)}]|$)/)) delete tainted[AN[k]]
           else if (substr(l, AP[k] + 1) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ && (AN[k] == hd || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1

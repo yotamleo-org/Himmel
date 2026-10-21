@@ -101,6 +101,18 @@ case_repo base flag-head-name-repeat
 run_check
 [ "$RC" -eq 1 ] && ok "the line-head name reassigned from argv later on the same line is flagged" || bad "repeated head name hid the taint (rc=$RC): $OUT"
 
+case_repo base flag-comment-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a comment does not count as an assignment" || bad "header comment NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-quoted-usage-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= inside a quoted usage string does not count as an assignment" || bad "quoted NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-mktemp-trailing-assign
+run_check
+[ "$RC" -eq 1 ] && ok "a mktemp assignment followed by a command with its own NAME= does not clear taint" || bad "trailing NAME= made the mktemp assignment look lasting (rc=$RC): $OUT"
+
 case_repo base flag-quoted-assign-argv
 run_check
 [ "$RC" -eq 1 ] && ok "assignment-shaped text inside a quoted value does not hide argv" || bad "quoted NAME=\$1 hid the taint (rc=$RC): $OUT"
