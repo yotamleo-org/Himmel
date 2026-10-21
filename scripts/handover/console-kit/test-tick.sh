@@ -162,7 +162,7 @@ cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-
 # ledger row or a launch refusal.
 cat > "$W/repo/scripts/lib/bank-preflight.sh" <<'STUB'
 #!/usr/bin/env bash
-[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_BANK_LEDGER:-unset}" "${CADENCE_BANK_LAUNCH:-unset}" > "$STUB_PF_SEEN"
+[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-${CADENCE_BANK_LEDGER:-unset}}" "${CADENCE_USAGE_LAUNCH:-${CADENCE_BANK_LAUNCH:-unset}}" > "$STUB_PF_SEEN"
 printf '%s\n' "${STUB_FLEET_LINE-bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/8}" >&2
 printf '%s\n' "${STUB_PF_VERDICT:-PROCEED}"
 STUB

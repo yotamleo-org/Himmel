@@ -6524,17 +6524,17 @@ c59_run() { CODEX_BANK_CACHE="$c59_t/codex-bank.json" CLAUDE_DIR="$c59_t/home/cl
 
 echo "== C59-codex-bank-cache: cache older than the TTL -> WARN naming the refresh command (RED) =="
 c59_write 172800
-out="$(c59_run)"
+out="$(CODEX_USAGE_CACHE='' c59_run)"
 if grepq "$out" -F 'WARN C59-codex-bank-cache' && grepq "$out" -F 'codex-bank-probe.ts'; then pass "C59 stale -> WARN"; else fail "C59 stale -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: fresh cache -> OK =="
 c59_write 60
-out="$(c59_run)"
+out="$(CODEX_USAGE_CACHE='' c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 fresh -> OK"; else fail "C59 fresh -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: a leading-zero TTL is read as decimal, not octal =="
 c59_write 60
-out="$(CODEX_BANK_CACHE_TTL_SECONDS=0099999 c59_run)"
+out="$(CODEX_USAGE_CACHE='' CODEX_BANK_CACHE_TTL_SECONDS=0099999 c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache' && ! grepq "$out" -F 'value too great'; then pass "C59 TTL 0099999 -> decimal"; else fail "C59 TTL 0099999 -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: CODEX_USAGE_CACHE and its TTL win over the old names =="
