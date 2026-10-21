@@ -22,14 +22,12 @@
 #     (b) calls `bus register`, `bus bind` or `bus rebind` (the identity verbs
 #         the launcher owns; `bus` bounded the same way, so `bin/bus register`
 #         counts). When the text names bus and a verb, the command-position
-#         model (scripts/lib/bash-ast.sh) reads it first: a heredoc body is
-#         data, `bash -c` / `eval` bodies are read, and a quoted string whose
-#         tokens put bus before a verb denies (trap, git -c alias, tmux and
-#         expect run such strings). A position it cannot read (a runner such
-#         as nice or xargs, an interpreter with no body, a file run by path or
-#         sourced, a command reached through env, an expansion or glob word,
-#         a string with a verb before bus, a heredoc naming bus and a verb fed
-#         to anything but cat or tee) hands the call to the word walker below.
+#         model (scripts/lib/bash-ast.sh) reads it first: `bash -c` / `eval`
+#         bodies are read, a quoted string whose tokens put bus before a verb
+#         denies (trap, git -c alias, tmux, expect and at run such strings),
+#         and a call made only of cat, tee or a non-identity bus verb is data
+#         (a heredoc body, a --summary).
+#         Every other call goes to the word walker below.
 #     (c) assigns a HIMMEL_BUS_* variable (`HIMMEL_BUS_NAME=x claude`, `export
 #         ...`, `env ...`), including a name built by quoting or expansion
 #         (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_${x}=1`, `$'HIMMEL_BUS_NAME=x'`).
@@ -379,41 +377,34 @@ deny() {
 
 # The verdict over bash_ast_positions output: deny when one position's literal
 # words hold a bus word (`bus`, or a path component `bus`) and, later, a word that
-# is exactly register|bind|rebind. A position the model cannot read (a runner, an
-# interpreter with no body, a file run by path or sourced, one reached through
-# env) or one with an expansion or glob word leaves the verdict "legacy": the
-# word walker reads the text then.
-# One literal word, an argument or a redirect word such as a here-string, is a
-# string some command may run (trap, git -c alias, tmux, expect, at): a bus
-# token followed by a verb token inside it denies, and both in the other order
-# leave the verdict "legacy".
-# A heredoc body naming bus and a verb, or one with an expansion, is data only
-# when every position is cat or tee; any other command may run it (make -f -,
-# crontab -, a file it writes), so the verdict is "legacy".
+# is exactly register|bind|rebind. One literal word, an argument or a redirect
+# word such as a here-string, is a string some command may run (trap, git -c
+# alias, tmux, expect, at): a bus token followed by a verb token inside it
+# denies too.
+# The model allows only a call whose every position is cat, tee or a bus
+# status|peers|wait|send|adopt with literal words: none of them runs a string,
+# so a heredoc or a --summary naming bus and a verb is data.
+# Every other call is "legacy": the word walker reads the text then, with its
+# own quote and backslash handling and its split across words.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' BS_JQ <<'BS_JQ_EOF' || true
 def base: (. // "") | sub("^.*/"; "");
-def interp: (.prog | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
-def runsfile: (.argv[0].v // "") | contains("/");
-def unread: (.opaque != null) or (interp and (.body == null)) or runsfile;
-def viaenv: (.via // []) | any(. == "env");
 def lit: .t == "lit" and (.g | not);
 def isbus: lit and (.v | split("/") | any(. == "bus"));
 def verb: IN("register", "bind", "rebind");
 def isverb: lit and (.v | verb);
 def tokens: [.v | scan("[A-Za-z0-9_.-]+")];
-def mixed: lit and (tokens | any(. == "bus") and any(verb));
 def ordered: lit and (tokens as $t | any(range(0; $t | length); $t[.] == "bus" and any($t[. + 1:][]; verb)));
 def rwords: [(.redirs // [])[] | .w | select(. != null)];
-def hdrisk: any((.redirs // [])[] | select(.hdoc) | .text; . == null or ({t: "lit", g: false, v: .} | mixed));
-def sink: .opaque == null and ((.via // []) | length == 0) and ((.prog | base) | IN("cat", "tee"));
+def sink: .opaque == null and ((.via // []) | length == 0) and all(.argv[], rwords[]; lit)
+  and (((.prog | base) | IN("cat", "tee"))
+    or ((.prog | base) == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
 def bad: .argv as $a
   | any(range(0; $a | length); ($a[.] | isbus) and any($a[. + 1:][]; isverb))
   or any($a[], rwords[]; ordered);
 if any(.[]; bad) then "deny"
-elif any(.[]; unread or viaenv or any(.argv[], rwords[]; (lit | not) or mixed)) then "legacy"
-elif any(.[]; hdrisk) and any(.[]; sink | not) then "legacy"
-else "allow" end
+elif length > 0 and all(.[]; sink) then "allow"
+else "legacy" end
 BS_JQ_EOF
 
 # model_verdict <cmd>: deny, allow or legacy. The fail mode is the word walker's:

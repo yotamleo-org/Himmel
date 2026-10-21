@@ -212,6 +212,14 @@ deny  "a heredoc written to a file that the next command runs" \
 deny  "crontab reads its table from a heredoc" "$(bash_json $'crontab - <<\'EOF\'\n* * * * * bus register x\nEOF')"
 deny  "batch reads its job from a heredoc" "$(bash_json $'batch <<\'EOF\'\nbus register x\nEOF')"
 deny  "expect reads its script from a heredoc" "$(bash_json $'expect <<\'EOF\'\nspawn bus register x\nEOF')"
+deny  "a trap string with a backslash in bus (text reader)" "$(bash_json "trap 'b\\us register x' EXIT")"
+deny  "a trap string with an empty quote pair in bus (text reader)" "$(bash_json $'trap "b\'\'us register x" EXIT')"
+deny  "make reads a heredoc with a backslash in bus (text reader)" \
+    "$(bash_json $'make -f - <<\'EOF\'\nall:\n\tb\\us register x\nEOF')"
+deny  "at reads a here-string with a backslash in bus (text reader)" "$(bash_json "at now <<< 'b\\us register x'")"
+deny  "at reads bus and the verb from two echo words (text reader)" "$(bash_json "echo bus 'register x' | at now")"
+deny  "tmux sends bus and a spaced verb as two words (text reader)" \
+    "$(bash_json "tmux send-keys -t z bus ' register x' Enter")"
 allow "tee writes a heredoc body to a file" "$(bash_json $'tee /tmp/notes.md <<\'EOF\'\nbus register x\nEOF')"
 
 echo "== model failures: the text reader decides =="
