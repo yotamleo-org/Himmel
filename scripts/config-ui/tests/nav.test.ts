@@ -18,9 +18,9 @@ const tokenOnlyInFragment = (href: string) => {
 };
 
 test("the rail lists Config, Health and Fleet on every page, plus Run when a run is open", () => {
-  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Docs"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Docs"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Run", "Docs"]);
+  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
 });
 
 test("the rail ends with Docs, an external link to DOCS_URL that is never the current page and carries no token", () => {

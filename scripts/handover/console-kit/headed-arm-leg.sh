@@ -229,7 +229,7 @@ HEADED_ARM_UNAME="${HEADED_ARM_UNAME:-$(uname -s 2>/dev/null)}"
 export HEADED_ARM_UNAME
 
 usage() {
-    echo "usage: headed-arm-leg.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--console <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
+    echo "usage: headed-arm-leg.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--console <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
     echo "  --context-guard: turn the leg context guard on (default none = off); see docs/internals/leg-context-guard.md" >&2
 }
 
@@ -329,7 +329,9 @@ DRY_RUN=0
 RELAY=0
 JUDGE=0
 CONSULT=0
-READONLY_ROLE=0   # judge or consult: no implementation permissions, raised read clamp
+RM=0              # --profile release-manager
+RM_RELEASE=""     # --rm-release <R>, required by that profile
+READONLY_ROLE=0   # judge, consult or release manager: no implementation permissions, raised read clamp
 NO_PROFILE=0
 IGNORE_DENIALS=0
 NO_PRIOR_ART_CHECK=0
@@ -383,6 +385,14 @@ while :; do
                 exit 2
             fi
             CONSOLE_FLAG="$2"; shift 2 ;;
+        --rm-release)
+            # Same missing-value trap as --lane/--profile above.
+            if [ "$#" -lt 2 ]; then
+                usage
+                echo "headed-arm-leg: --rm-release requires a value (the release the manager is bound to, e.g. v1.1.3)" >&2
+                exit 2
+            fi
+            RM_RELEASE="$2"; shift 2 ;;
         --context-guard)
             # Same missing-value trap as --lane/--profile above.
             if [ "$#" -lt 2 ]; then
@@ -444,7 +454,7 @@ if [ "$CONSULT" -eq 1 ]; then
     while [ -n "$_consult_rest" ]; do
         _consult_m="${_consult_rest%%,*}"; _consult_rest="${_consult_rest#*,}"
         case "$_consult_m" in
-            operator|bare|console|console-relay|console-judge)
+            operator|bare|console|console-relay|console-judge|release-manager)
                 usage
                 echo "headed-arm-leg: --consult refuses profile \"$_consult_m\": non-additive or role profiles cannot back a consult (got: $PROFILE)" >&2
                 exit 2
@@ -672,6 +682,41 @@ if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ] && [ -f "$DOC" ]; then
     PROFILE="$(head -n 60 "$DOC" | sed -n -E 's/^[>* -]*profile:[[:space:]]*`?([A-Za-z0-9._,-]+)`?[[:space:]]*$/\1/p' | head -n 1)"
 fi
 
+# --profile release-manager: a judge-shaped role session bound to one release.
+# It is read-only like a judge, native-lane only, never composed into a profile
+# list, and requires --rm-release <R>, which names its state dir
+# (release/<R>/) to guard-rm-writes.sh. --judge/--relay/--consult already
+# refused it above.
+case ",$PROFILE," in
+    *,release-manager,*)
+        if [ "$PROFILE" != "release-manager" ]; then
+            usage
+            echo "headed-arm-leg: profile \"release-manager\" cannot be composed in a profile list (got: $PROFILE)" >&2
+            exit 2
+        fi
+        RM=1
+        ;;
+esac
+if [ "$RM" -eq 1 ]; then
+    if [ "$LANE" != "native" ]; then
+        usage
+        echo "headed-arm-leg: --profile release-manager refuses --lane $LANE: the release manager is native-lane only" >&2
+        exit 2
+    fi
+    case "$RM_RELEASE" in
+        "" | . | .. | *[!A-Za-z0-9._-]*)
+            usage
+            echo "headed-arm-leg: --profile release-manager requires --rm-release <R> (letters, digits, '.', '_' or '-'; got: ${RM_RELEASE:-<none>})" >&2
+            exit 2
+            ;;
+    esac
+    READONLY_ROLE=1
+elif [ -n "$RM_RELEASE" ]; then
+    usage
+    echo "headed-arm-leg: --rm-release is only for --profile release-manager (got profile: ${PROFILE:-<none>})" >&2
+    exit 2
+fi
+
 # same stance as the Tier-line refusal below - this wrapper
 # refuses an under-specified dispatch rather than launching it. No profile and
 # no explicit --no-profile would launch a leg with no standing preface and no
@@ -786,6 +831,12 @@ fi
 if [ "$JUDGE" -eq 1 ] && [ "$LANE" = "native" ]; then
     [ -z "$MODEL" ] && MODEL=claude-opus-5-5
     CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_CONSOLE_JUDGE_EFFORT:-high}"
+fi
+# the release manager takes the judge's explicit-effort path under its own
+# override name, HIMMEL_RM_EFFORT.
+if [ "$RM" -eq 1 ]; then
+    [ -z "$MODEL" ] && MODEL=claude-opus-5-5
+    CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_RM_EFFORT:-high}"
 fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -953,6 +1004,9 @@ if [ "$JUDGE" -eq 1 ]; then
         esac
     fi
 fi
+# the release manager's own doc, for guard-rm-writes.sh the same way.
+_rm_doc=""
+[ "$RM" -eq 1 ] && { _rm_doc="$(_leg_phys_path "$DOC")" || _rm_doc=""; }
 unset -f _leg_phys_path
 unset -v _leg_rcwd _leg_rcwd_phys _leg_vroot _leg_vroot_phys _leg_wt_top _leg_wt_phys _leg_wt_base
 
@@ -1055,7 +1109,9 @@ unset -v _ab_in
 # nested judge would otherwise have its ambient (inherited, not deliberate)
 # HIMMEL_CONSOLE_JUDGE_EFFORT silently win again, the exact same "ambient
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
-LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID"
+# The release-manager marker, binding and effort override are the same class:
+# a release manager arming a leg must not hand that leg its mode-2 fence.
+LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT"
 for _leg_env_scrub in $LEG_ENV_SCRUB; do
     unset "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"
@@ -1339,6 +1395,14 @@ if [ "$JUDGE" -eq 1 ]; then
     case "$_judge_doc" in /*) leg_propagate_env HIMMEL_CONSOLE_JUDGE_DOC "$_judge_doc" ;; esac
     [ -n "$_judge_qid" ] && leg_propagate_env HIMMEL_CONSOLE_JUDGE_QID "$_judge_qid"
 fi
+# HIMMEL_RELEASE_MANAGER=1 turns on guard-rm-writes.sh's mode 2, bound to this
+# doc and release. An underivable doc stays unexported, so the guard then
+# allows no file write at all (fail closed).
+if [ "$RM" -eq 1 ]; then
+    leg_propagate_env HIMMEL_RELEASE_MANAGER 1
+    case "$_rm_doc" in /*) leg_propagate_env HIMMEL_RM_DOC "$_rm_doc" ;; esac
+    leg_propagate_env HIMMEL_RM_RELEASE "$RM_RELEASE"
+fi
 # HIMMEL_CONSOLE_NAME: the owning console's session name, so a
 # leg's merge-block alert (scripts/lib/merge-block-alert.sh,
 # untouched by this ticket - it already reads this var) can route to the
@@ -1609,6 +1673,8 @@ if [ -n "$PROFILE" ]; then
         LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/judge-preface.md}"
     elif [ "$CONSULT" -eq 1 ]; then
         LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/consult-preface.md}"
+    elif [ "$RM" -eq 1 ]; then
+        LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/rm-preface.md}"
     else
         LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/leg-preface.md}"
     fi
@@ -2133,6 +2199,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     if [ "$CONSULT" -eq 1 ]; then
         printf 'headed-arm-leg: consult=%s read-clamp-lines=%s preface-source=%s\n' \
             "$CONSULT" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
+    fi
+    if [ "$RM" -eq 1 ]; then
+        printf 'headed-arm-leg: release-manager=%s readonly-role=%s HIMMEL_RELEASE_MANAGER=%s HIMMEL_RM_DOC=%s HIMMEL_RM_RELEASE=%s read-clamp-lines=%s preface-source=%s\n' \
+            "$RM" "$READONLY_ROLE" "$HIMMEL_RELEASE_MANAGER" "${HIMMEL_RM_DOC:-<unset>}" "$HIMMEL_RM_RELEASE" \
+            "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
     fi
     printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s memory-max=%s scope=%s' \
         "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}" \

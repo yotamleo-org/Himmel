@@ -86,6 +86,11 @@ sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<versio
 theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
 hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
 
+The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
+`graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files
+are `docs/guide/dev-graph/`'s `.json`, `.js` and `.css` only). A walkthrough step rides the fragment beside the
+route, `#/workflow&w=<id>&s=<n>`.
+
 - **Sources.** The Jira mirror (`HIMMEL_JIRA_MIRROR`, else `~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY or HIMMEL>`)
   plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
   `stage1/themes-overlay.tsv`, `stage3/placement.tsv`; without it the board still renders and drift is 0); the drift
@@ -343,6 +348,14 @@ imports, so its suite runs in CI without an install.
   autoplay, no `animate` call, no running animation), no horizontal scroll at
   390 px, dark `--bg`, and the error banner for an unknown id or an unjoined
   step. A spec must be named `*.e2e.ts` to be picked up.
+- Workflow page e2e (`dev-graph-ui.e2e.ts`, journey J-DG2, same suite): the rail
+  shows Workflow, the page loads `/dev-graph/graph.json` and draws every node,
+  W1 steps to its last step with `#/workflow&w=&s=` riding the fragment, a deep
+  link restores a step, leaving and coming back does not stack a second graph,
+  and the page runs under the server's CSP with zero violations (a planted
+  inline style proves the detector fires). `/dev-graph/` serves only the
+  `.json`/`.js`/`.css` files of `docs/guide/dev-graph/`: traversal, a path
+  outside the directory, the directory itself and a POST are refused.
 
 ## Manual pass (the same 7 items)
 
