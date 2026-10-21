@@ -1453,6 +1453,15 @@ assert_not_contains "cron_payload leaves GRAPHIFY_OUT_ROOT alone when --out-root
 assert_contains "ast_cron_payload unsets GRAPHIFY_OUT when GRAPHIFY_OUT= is omitted" "unset GRAPHIFY_OUT" "$acp_no_dir"
 assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$acp_with_dir"
 
+# The luna semantic payload reads GRAPHIFY_OUT from its environment too; without an out dir it must clear an ambient one.
+LSP_SRC="$(sed -n '/^luna_semantic_cron_payload()/,/^}/p' "$SCRIPT")"
+run_lsp() { bash -c "$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
+lsp_no_dir=$(run_lsp bash script.sh corpus)
+assert_contains "luna_semantic_cron_payload unsets GRAPHIFY_OUT when no out dir is given" "unset GRAPHIFY_OUT" "$lsp_no_dir"
+lsp_with_dir=$(run_lsp bash script.sh corpus /out/root/graphify-out)
+assert_contains "luna_semantic_cron_payload prefixes GRAPHIFY_OUT= when set" "GRAPHIFY_OUT=/out/root/graphify-out" "$lsp_with_dir"
+assert_not_contains "luna_semantic_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$lsp_with_dir"
+
 # Luna semantic leg: HIMMEL-GraphSemantic-Luna, POSIX/cron path. Reuses the publish
 # fixture's fake crontab and runner dir, disarmed first so nothing from that block leaks in.
 # The GRAPHIFY_OUT shape asserted below is the one the station's armed graphmap-ast-luna.sh carries

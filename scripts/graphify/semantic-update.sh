@@ -111,6 +111,12 @@ case "$_out_name" in
     esac
     OUT_DIR="$CORPUS_ROOT/$_out_name" ;;
 esac
+# A symlink at an overridden out dir escapes the directory named; -d and the graph.json check follow it, -L sees the
+# link itself. ast-update.sh refuses the same value with the same exit.
+if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
+  echo "semantic-update: GRAPHIFY_OUT is overridden to '$_out_name' and $OUT_DIR is a SYMLINK, which would place the graph write outside the directory named. Point it at a real directory" >&2
+  exit 3
+fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 if [ "$BACKEND" = "claude-api" ]; then

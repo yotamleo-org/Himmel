@@ -678,5 +678,11 @@ echo "T63: a multi-line relative GRAPHIFY_OUT whose later line is a traversal is
 out=$(GRAPHIFY_OUT=$'ok\n../elsewhere' run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
 [ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_OUT"* ]] && pass "T63 refused" || fail "T63 (rc=$rc): $out"
 
+echo "T64: an absolute GRAPHIFY_OUT that is a symlink is refused, as ast-update.sh refuses it"
+C64="$WS/c64"; new_corpus "$C64"; mv "$C64/graphify-out" "$WS/real64"; ln -s "$WS/real64" "$WS/link64"
+out=$(GRAPHIFY_OUT="$WS/link64" run --name t64 --corpus-root "$C64" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"SYMLINK"* ]] && [ ! -e "$WS/real64/semantic-manifest.json" ] \
+  && pass "T64 symlinked override refused, nothing written through it" || fail "T64 (rc=$rc): $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

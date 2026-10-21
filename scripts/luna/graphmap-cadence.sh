@@ -1942,9 +1942,9 @@ luna_semantic_cron_payload() {
     q_pause=$(printf '%q' "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER")
     base=$(printf '%s %s --name luna --corpus-root %s --corpus-class luna-personal --backend claude-api --max-files %s --max-run-usd %s' \
         "$q_bash" "$q_script" "$q_corpus" "$LUNA_SEMANTIC_MAX_FILES" "$LUNA_SEMANTIC_RUN_USD")
-    local env_prefix='HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto'
-    if [ -n "$q_out_dir" ]; then env_prefix="$env_prefix GRAPHIFY_OUT=$q_out_dir"; fi
-    printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; else %s %s; fi' "$q_pause" "$env_prefix" "$base"
+    local env_prefix='HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto' unset_out=''
+    if [ -n "$q_out_dir" ]; then env_prefix="$env_prefix GRAPHIFY_OUT=$q_out_dir"; else unset_out='unset GRAPHIFY_OUT; '; fi
+    printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; else %s%s %s; fi' "$q_pause" "$unset_out" "$env_prefix" "$base"
 }
 
 # Emit the runner .sh body for one cadence task: stamp the format version,
