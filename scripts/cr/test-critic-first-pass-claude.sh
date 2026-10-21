@@ -81,6 +81,25 @@ run_cfp() { # run_cfp <provider> [extra args]; stdout -> $W/out, stderr -> $W/er
     RC=0; printf '%s\n' "$DIFF" | bash "$CFP" --model claude-opus-5-5 --slug claude --provider "$p" "$@" >"$W/out" 2>"$W/err" || RC=$?
 }
 
+# A readonly routing variable survives the pin: skip without leaking its scratch.
+_test_native_auth_skip() {
+    fresh_rec native-auth-skip; bank 10
+    mkdir -p "$W/native-auth-tmp"
+    printf 'readonly ANTHROPIC_TEST_PIN=fixture\n' > "$W/readonly-pin.sh"
+    BASH_ENV="$W/readonly-pin.sh" TMPDIR="$W/native-auth-tmp" run_cfp claude-subscription
+    check "native-auth refusal exits 5" 5 "$RC"
+    has "native-auth refusal reaches the skip branch" "native auth pin could not clear" "$W/err"
+    check "native-auth refusal prints no review" "" "$(cat "$W/out")"
+    check "native-auth refusal does not launch claude" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+    check "native-auth refusal removes the critic scratch directory" "" "$(find "$W/native-auth-tmp" -name 'prim.*' -type d -print)"
+}
+
+if [ "${1:-}" = --native-auth-skip ]; then
+    _test_native_auth_skip
+    echo "pass=$PASS fail=$FAIL"
+    [ "$FAIL" -eq 0 ]; exit "$?"
+fi
+
 # --- 0. the shipped registry row -------------------------------------------
 row="$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).panel.find(r=>r.slug==="claude");process.stdout.write(p?[p.model,p.effort,p.route_provider,p.tier].join(" "):"MISSING")' "$REPO/scripts/cr/critics.json")"
 check "0 critics.json carries the claude row: opus, medium, claude-api, paid" "claude-opus-5-5 medium claude-api paid" "$row"
@@ -170,6 +189,8 @@ fresh_rec 10; bank 10
 run_cfp subscription
 check "9 provider 'subscription' routes to the native claude" 0 "$RC"
 has "9 claude saw the call" "Read,Glob,Grep" "$REC/argv"
+
+_test_native_auth_skip
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

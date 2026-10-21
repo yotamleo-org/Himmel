@@ -74,7 +74,7 @@ export const GH_ISSUES = [
   { number: 22, title: "Closed gh issue", state: "CLOSED", stateReason: "COMPLETED", labels: [], milestone: { number: 1, title: "m1" }, updatedAt: "2026-10-02T00:00:00Z" },
 ];
 export type Harness = {
-  url: string; argv: () => string[]; stateFiles: () => string[]; stop: () => Promise<void>;
+  url: string; home: string; argv: () => string[]; argvFile: string; stateFiles: () => string[]; stop: () => Promise<void>;
   ledgerLines: () => number; writeLedger: (rows: object[]) => void; setBullet: (bullet: string) => void; legDoc: string;
 };
 
@@ -128,6 +128,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     HANDOVER_DIR: hroot, HIMMEL_PROMETHEUS_URL: promUrl, HIMMEL_FLOW_EXPORTER_PORT: "1", E2E_FEED_DELAY_MS: String(o.feedDelayMs ?? 0),
   };
   delete env.CADENCE_BANK_LEDGER; // the operator's own ledger, root and monitoring never reach the child
+  delete env.TELEGRAM_ENV; delete env.TELEGRAM_BOT_TOKEN; // the Setup page writes a Telegram token under the temp HOME, never the operator's
   for (const k of Object.keys(env)) if (k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) delete env[k];
   const child: ChildProcess = spawn("node", [BIN, "ui", "--port", "0"], { env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -150,8 +151,9 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     throw e;
   }).finally(() => clearTimeout(timer));
   return {
-    url,
+    url, home,
     argv: () => readFileSync(argv, "utf8").split("\n").filter(Boolean),
+    argvFile: argv,
     stateFiles: () => (existsSync(state) ? readdirSync(state) : []),
     ledgerLines: () => (existsSync(ledger) ? readFileSync(ledger, "utf8").split("\n").filter(Boolean).length : 0),
     writeLedger: (rows) => writeRows(ledger, rows),

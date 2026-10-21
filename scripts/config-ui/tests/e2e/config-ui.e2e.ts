@@ -131,9 +131,9 @@ test("header without feed.himmel reads version unknown, never blank", async ({ p
   await expect(page.locator("header.top")).toContainText("version unknown (feed has no himmel identity)");
 });
 
-test("rail page links are [Config, Health, Tool health, Fleet, Roadmap, Kanban, Workflow, Docs]; Config is current and the hash is #/config", async ({ page }) => {
+test("rail page links are [Fleet, Health, Tool health, Settings, Setup, Roadmap, Kanban, Workflow, Docs]; Config is current and the hash is #/config", async ({ page }) => {
   await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Settings", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
 });
@@ -162,7 +162,7 @@ const verdictWord = (page: Page) => page.locator("#verdict .word");
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Settings", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await page.getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");

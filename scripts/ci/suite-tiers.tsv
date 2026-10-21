@@ -3,8 +3,9 @@
 # tier    pr | local | flow | quarantine
 # reason  pr: catch:<PR> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>; any other tier: free text
 # A trust-owned suite (its path, or a sibling of a file, under ci-trust-paths.txt) is never local.
-# No runner reads this file yet. scripts/ci/test-suite-tiers.sh lints it: a suite with no row, a row with
-# no suite, an unknown tier or an unjustified pr reason fails the build.
+# No runner reads this file yet. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
+# a suite with no row, a row with no suite (stale), a duplicate row, a malformed row (not three fields),
+# an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -104,6 +105,7 @@ scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
 scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
 scripts/ci/test-check-no-secrets.sh	pr	guard
 scripts/ci/test-check-vacuous-path-assert.sh	pr	trust-path
+scripts/ci/test-ci-container-jobs.sh	pr	trust-path
 scripts/ci/test-ci-gcp-routing.sh	pr	trust-path
 scripts/ci/test-ci-image.sh	pr	trust-path
 scripts/ci/test-ci-job-timeouts.sh	pr	trust-path
@@ -116,6 +118,7 @@ scripts/ci/test-ci-quick.sh	pr	trust-path
 scripts/ci/test-ci-vm-routing.sh	pr	trust-path
 scripts/ci/test-codeowner-review-gate.sh	pr	trust-path
 scripts/ci/test-corpus-sandbox.sh	pr	guard
+scripts/ci/test-cr-first-measure.sh	pr	trust-path
 scripts/ci/test-fork-drift-issue.sh	pr	static-gate
 scripts/ci/test-gcp-net.sh	pr	trust-path
 scripts/ci/test-gcp-runner-autoscale.sh	pr	trust-path
@@ -369,6 +372,7 @@ scripts/handover/console-kit/test-relay-batch.sh	local	behaviour suite, 0 catche
 scripts/handover/console-kit/test-run-suite.sh	pr	trust-path
 scripts/handover/console-kit/test-shepherd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-status-drift.sh	pr	trust-path
 scripts/handover/console-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/console-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/console-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite

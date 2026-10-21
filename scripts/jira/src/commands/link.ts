@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
+import { earliestUnreleased, fetchVersions } from './versions.js';
 
 interface IssueLinkType {
   name: string;
@@ -193,6 +194,30 @@ export async function unlinkIssueLink(
   return match.link;
 }
 
+interface VersionPlacement {
+  fields: {
+    project: { key: string };
+    fixVersions?: { name: string }[];
+    status?: { statusCategory: { key: string } };
+  };
+}
+
+/** Only the target project's active version is inherited, never a released or future version. */
+export async function targetFixVersion(key: string): Promise<string | undefined> {
+  const { fields } = await request<VersionPlacement>('GET', `/issue/${key}?fields=project,fixVersions`);
+  if (!fields.fixVersions?.length) return undefined;
+  const current = earliestUnreleased(await fetchVersions(fields.project.key));
+  return fields.fixVersions.some((v) => v.name === current) ? current : undefined;
+}
+
+/** Existing tickets are never silently re-versioned: place the blocker first or explicitly opt out. */
+export async function requireBlockerVersion(key: string, version: string): Promise<void> {
+  const { fields } = await request<VersionPlacement>('GET', `/issue/${key}?fields=status,fixVersions`);
+  if (fields.status?.statusCategory.key === 'done') return;
+  if (fields.fixVersions?.some((v) => v.name === version)) return;
+  throw new Error(`${key} must carry fixVersion ${version} before linking; add that version first, or pass --backlog to opt out`);
+}
+
 export function registerLink(program: Command): void {
   program
     .command('link <key> [otherKey]')
@@ -208,30 +233,32 @@ export function registerLink(program: Command): void {
     )
     .option('--blocks <key>', 'Create `link A --blocks B`: A blocks B')
     .option('--blocked-by <key>', 'Create `link A --blocked-by B`: A is blocked by B')
+    .option('--split-from <key>', 'Record this issue as split from <key> with a Relates link and require its active version')
+    .option('--backlog', 'Explicitly allow a blocker outside the active target version (does not edit either ticket)')
     .action(
       async (
         key: string,
         otherKey: string | undefined,
-        opts: { type?: string; blocks?: string; blockedBy?: string },
+        opts: { type?: string; blocks?: string; blockedBy?: string; splitFrom?: string; backlog?: boolean },
       ) => {
         const fail = (msg: string): never => {
           console.error(msg);
           process.exit(1);
         };
-        const explicit = opts.blocks !== undefined || opts.blockedBy !== undefined;
-        if (opts.blocks !== undefined && opts.blockedBy !== undefined) {
-          fail('Use only one of --blocks and --blocked-by.');
+        const explicit = [opts.blocks, opts.blockedBy, opts.splitFrom].filter((v) => v !== undefined);
+        if (explicit.length > 1) {
+          fail('Use only one of --blocks, --blocked-by and --split-from.');
         }
-        if (explicit && otherKey !== undefined) {
-          fail('--blocks/--blocked-by take the other key as their value; drop the second positional key.');
+        if (explicit.length && otherKey !== undefined) {
+          fail('--blocks/--blocked-by/--split-from take the other key as their value; drop the second positional key.');
         }
-        if (explicit && opts.type !== undefined && opts.type.toLowerCase() !== 'blocks') {
-          fail(`--blocks/--blocked-by create Blocks links; --type ${opts.type} conflicts.`);
+        const typeName = opts.splitFrom !== undefined ? 'Relates' : explicit.length ? 'Blocks' : (opts.type ?? 'Relates');
+        if (explicit.length && opts.type !== undefined && opts.type.toLowerCase() !== typeName.toLowerCase()) {
+          fail(`The relationship flag creates ${typeName} links; --type ${opts.type} conflicts.`);
         }
-        if (!explicit && otherKey === undefined) {
+        if (!explicit.length && otherKey === undefined) {
           fail('Missing second key: `link A B` (Relates), `link A --blocks B` or `link A --blocked-by B`.');
         }
-        const typeName = explicit ? 'Blocks' : (opts.type ?? 'Relates');
         // Validate the type up front so an unknown --type yields the list of
         // valid types instead of a raw 404 from the create call.
         const { issueLinkTypes } = await request<{
@@ -260,7 +287,11 @@ export function registerLink(program: Command): void {
             );
           }
           inwardKey = key;
-          outwardKey = otherKey as string;
+          outwardKey = opts.splitFrom ?? otherKey as string;
+        }
+        if (explicit.length && !opts.backlog) {
+          const version = await targetFixVersion(outwardKey);
+          if (version) await requireBlockerVersion(inwardKey, version);
         }
         const line = await createIssueLink(inwardKey, outwardKey, match);
         await verifyIssueLink(inwardKey, outwardKey, match);

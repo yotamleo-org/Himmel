@@ -18,7 +18,7 @@
 # contract.
 #
 # the fleet cap's REFUSAL (SKIPPED-FLEET) only fires when the
-# caller sets CADENCE_BANK_LAUNCH=1, declaring an actual arm/launch intent
+# caller sets CADENCE_USAGE_LAUNCH=1, declaring an actual arm/launch intent
 # (arm-resume.sh, headed-arm-leg.sh). A plain bank READ — hermes-critic.sh's
 # /pr-check pass, bank-monitor, the statusline/hook-smoke test suites — gets
 # the same bank verdict and the same informational FLEET line (printed
@@ -38,23 +38,34 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/lib/bank-preflight.sh || exit 96
+# read-both: CADENCE_USAGE_* is read, CADENCE_BANK_* still is (rename-aliases.tsv).
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_dir/env-alias.sh" ] && . "$_csg_dir/env-alias.sh"; }; then
+    echo "bank-preflight.sh: cannot load $_csg_dir/env-alias.sh - refusing" >&2
+    exit 96
+fi
+for _ua in PRODUCER MAX_AGE CACHE LEDGER LEG LAUNCH LANE CALLER_PID STATUS_CMD SKIP_REFRESH CODEX_TIMEOUT; do
+    alias_env "CADENCE_USAGE_$_ua" "CADENCE_BANK_$_ua"
+done
+alias_env_cap CADENCE_USAGE_MAX_PCT CADENCE_BANK_MAX_PCT
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PRODUCER="${CADENCE_BANK_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
-MAX_PCT="${CADENCE_BANK_MAX_PCT:-85}"
-MAX_AGE="${CADENCE_BANK_MAX_AGE:-600}"
+PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
+MAX_PCT="${CADENCE_USAGE_MAX_PCT:-85}"
+MAX_AGE="${CADENCE_USAGE_MAX_AGE:-600}"
 # MUST match the producer + every shipped consumer. CLAUDE_USAGE_CACHE is the
 # producer's own knob; USAGE_CACHE_FILE does not exist.
-CACHE="${CADENCE_BANK_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}"
+CACHE="${CADENCE_USAGE_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}"
 # Home dir, NOT the checkout: $REPO/.himmel/cadence-ledger.jsonl is not
 # gitignored, so nightly runs would grow an untracked file inside the primary
 # checkout on main. $HOME/.himmel is where flow-run-ledger.sh already writes.
-LEDGER="${CADENCE_BANK_LEDGER:-${HOME:-/tmp}/.himmel/cadence-ledger.jsonl}"
+LEDGER="${CADENCE_USAGE_LEDGER:-${HOME:-/tmp}/.himmel/cadence-ledger.jsonl}"
 case "$LEDGER" in
   */*) LEDGER_DIR=${LEDGER%/*}; [ -n "$LEDGER_DIR" ] || LEDGER_DIR=/ ;;
   *) LEDGER_DIR=. ;;
 esac
-LEG="${CADENCE_BANK_LEG:-unknown}"
+LEG="${CADENCE_USAGE_LEG:-unknown}"
 # whether THIS call declares an actual arm/launch intent. The
 # fleet-size cap below exists to refuse a NEW arm when the fleet is already
 # at CAP — it has no business refusing a plain bank READ (a
@@ -62,13 +73,13 @@ LEG="${CADENCE_BANK_LEG:-unknown}"
 # launches anything. Only a caller that is about to actually spawn a leg
 # (arm-resume.sh, headed-arm-leg.sh) sets this. The informational FLEET line
 # below still prints unconditionally either way — only the refusal is gated.
-LAUNCH_INTENT="${CADENCE_BANK_LAUNCH:-}"
+LAUNCH_INTENT="${CADENCE_USAGE_LAUNCH:-}"
 # which bank this leg parks on. native (default) is the
 # existing Claude five_hour/seven_day check below; claudex parks on the
 # codex weekly bank instead (scripts/lanes/bank-status.ts's "claudex" row) —
 # a claudex leg must never be refused by the Claude subscription bank, a
 # different bucket entirely.
-LANE="${CADENCE_BANK_LANE:-${LEG_LANE:-native}}"
+LANE="${CADENCE_USAGE_LANE:-${LEG_LANE:-native}}"
 
 is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) return 0 ;; *) return 1 ;; esac; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
@@ -740,7 +751,7 @@ if ! _fleet_census; then
   elif [ "$LAUNCH_INTENT" = "1" ]; then
     emit SKIPPED-FLEET
   else
-    echo "bank-preflight: not a declared launch (CADENCE_BANK_LAUNCH unset) — reporting only, not refusing" >&2
+    echo "bank-preflight: not a declared launch (CADENCE_USAGE_LAUNCH unset) — reporting only, not refusing" >&2
   fi
 fi
 
@@ -793,7 +804,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
     elif [ "$LAUNCH_INTENT" = "1" ]; then
       emit SKIPPED-FLEET
     else
-      echo "bank-preflight: not a declared launch (CADENCE_BANK_LAUNCH unset) — reporting only, not refusing" >&2
+      echo "bank-preflight: not a declared launch (CADENCE_USAGE_LAUNCH unset) — reporting only, not refusing" >&2
     fi
   fi
   # this whole prune pass must stay
@@ -955,7 +966,7 @@ if [ "$_fleet_admitted" -eq 0 ]; then
   elif [ "$LAUNCH_INTENT" = "1" ]; then
     emit SKIPPED-FLEET
   else
-    echo "bank-preflight: not a declared launch (CADENCE_BANK_LAUNCH unset) — reporting only, not refusing" >&2
+    echo "bank-preflight: not a declared launch (CADENCE_USAGE_LAUNCH unset) — reporting only, not refusing" >&2
   fi
 elif [ "$LANE" = api ] && [ "$fleet_api_reserved" -ge "$API_CAP" ]; then
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
@@ -965,7 +976,7 @@ elif [ "$LANE" = api ] && [ "$fleet_api_reserved" -ge "$API_CAP" ]; then
     _fleet_release_admit "$SLOTS/.admit"
     emit SKIPPED-FLEET
   else
-    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — not a declared launch (CADENCE_BANK_LAUNCH unset), reporting only" >&2
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — not a declared launch (CADENCE_USAGE_LAUNCH unset), reporting only" >&2
   fi
 elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
   # codex-3 (CR review, 2nd panel round, Suggestion): the documented
@@ -979,7 +990,7 @@ elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
     _fleet_release_admit "$SLOTS/.admit"
     emit SKIPPED-FLEET
   else
-    echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — not a declared launch (CADENCE_BANK_LAUNCH unset), reporting only" >&2
+    echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — not a declared launch (CADENCE_USAGE_LAUNCH unset), reporting only" >&2
   fi
 elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
   # '/', a leading '.', and
@@ -1005,7 +1016,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
   # (unreadable/corrupt metadata) removes immediately — silently reusing the
   # capacity this reservation existed to hold. Refuse and clean up instead
   # of proceeding on an unprotected slot. `pid` (the CALLER's pid, passed
-  # through by launchers that set CADENCE_BANK_CALLER_PID, not this
+  # through by launchers that set CADENCE_USAGE_CALLER_PID, not this
   # subshell's own $$ — so a release can verify it owns the slot before
   # deleting it) is what arm-resume.sh's release checks ownership against, so
   # a reservation without it could never be released by its owner and would
@@ -1014,7 +1025,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
     local dir="$1"   # failed (not a dup — e.g. ENAMETOOLONG), 2 duplicate,
     if mkdir "$dir" 2>/dev/null; then    # 3 metadata write failed
       if printf '%s\n' "$(( $(date +%s) + ${FLEET_RESERVE_TTL:-1800} ))" > "$dir/expires" 2>/dev/null &&
-         printf '%s\n' "${CADENCE_BANK_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null &&
+         printf '%s\n' "${CADENCE_USAGE_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null &&
          printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null; then
         # the raw leg name, for the consume check in the prune
         # pass — the directory name is a hash whenever $LEG cannot be one
@@ -1024,7 +1035,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$LEG" > "$dir/name" 2>/dev/null || true
         # `lane` (written above, refusing admission on failure) keys the
-        # api-vs-fleet split, never the leg name: an inherited CADENCE_BANK_LEG could
+        # api-vs-fleet split, never the leg name: an inherited CADENCE_USAGE_LEG could
         # escape both caps, and a lost lane file would under-count the api cap.
         return 0
       fi
@@ -1175,8 +1186,8 @@ if [ "$LANE" = claudex ]; then
   # an unquoted override word-splits a path containing a space. The
   # DEFAULT genuinely needs word-splitting (it is a command plus flags);
   # an override is a single executable path and must be quoted.
-  if [ -n "${CADENCE_BANK_STATUS_CMD:-}" ]; then
-    _claudex_status_line="$("$CADENCE_BANK_STATUS_CMD" 2>/dev/null | grep -E '^claudex ' | head -1)"
+  if [ -n "${CADENCE_USAGE_STATUS_CMD:-}" ]; then
+    _claudex_status_line="$("$CADENCE_USAGE_STATUS_CMD" 2>/dev/null | grep -E '^claudex ' | head -1)"
   else
     _claudex_status_line="$(bun "$REPO/scripts/lanes/bank-status.ts" 2>/dev/null | grep -E '^claudex ' | head -1)"
   fi
@@ -1197,15 +1208,15 @@ if [ "$LANE" = claudex ]; then
   esac
 fi
 
-is_num "$MAX_PCT" || { echo "bank-preflight: invalid CADENCE_BANK_MAX_PCT '$MAX_PCT'" >&2; emit BANK-UNKNOWN; }
-is_int "$MAX_AGE" || { echo "bank-preflight: invalid CADENCE_BANK_MAX_AGE '$MAX_AGE'" >&2; emit BANK-UNKNOWN; }
+is_num "$MAX_PCT" || { echo "bank-preflight: invalid CADENCE_USAGE_MAX_PCT '$MAX_PCT'" >&2; emit BANK-UNKNOWN; }
+is_int "$MAX_AGE" || { echo "bank-preflight: invalid CADENCE_USAGE_MAX_AGE '$MAX_AGE'" >&2; emit BANK-UNKNOWN; }
 
 # Refresh first. USAGE_OAUTH_TTL=0 is load-bearing: the producer skips the
 # fetch when oauth_checked_at is younger than the default 3540s, and the
 # drift pair fires 30 min apart — without this, leg 2 is BANK-STALE every
 # night. </dev/null is load-bearing too: the producer reads `input=$(cat)`
 # and blocks until EOF.
-if [ -z "${CADENCE_BANK_SKIP_REFRESH:-}" ] && [ -f "$PRODUCER" ]; then
+if [ -z "${CADENCE_USAGE_SKIP_REFRESH:-}" ] && [ -f "$PRODUCER" ]; then
   CLAUDE_USAGE_CACHE="$CACHE" USAGE_OAUTH_TTL=0 USAGE_PRODUCER_CALLER="bank-preflight/${LEG:-unknown}" \
     bash "$PRODUCER" </dev/null >/dev/null 2>&1 || true
 fi
@@ -1282,16 +1293,16 @@ fi
 # row of scripts/lanes/bank-status.ts (it reads what codex-bank-probe.ts wrote
 # and never spawns the probe itself), as `5h<n>/wk<n>` (`5hnone` when only the
 # weekly window is reported), else `?`. Bounded by
-# CADENCE_BANK_CODEX_TIMEOUT (default 5s) through the repo's `timeout` resolver;
+# CADENCE_USAGE_CODEX_TIMEOUT (default 5s) through the repo's `timeout` resolver;
 # with no timeout binary the read is SKIPPED rather than run unbounded.
 _codex_bank_figure() {
-  local _bound="${CADENCE_BANK_CODEX_TIMEOUT:-5}" _out _line _c5 _cw
+  local _bound="${CADENCE_USAGE_CODEX_TIMEOUT:-5}" _out _line _c5 _cw
   is_int "$_bound" && [ "$_bound" -gt 0 ] || _bound=5
   # shellcheck source=scripts/lib/timeout-bin.sh
   . "$(dirname "$0")/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
   [ -n "${_TIMEOUT_BIN:-}" ] || { printf '?'; return 0; }
-  if [ -n "${CADENCE_BANK_STATUS_CMD:-}" ]; then
-    _out="$("$_TIMEOUT_BIN" -k 1 "$_bound" "$CADENCE_BANK_STATUS_CMD" </dev/null 2>/dev/null)" || { printf '?'; return 0; }
+  if [ -n "${CADENCE_USAGE_STATUS_CMD:-}" ]; then
+    _out="$("$_TIMEOUT_BIN" -k 1 "$_bound" "$CADENCE_USAGE_STATUS_CMD" </dev/null 2>/dev/null)" || { printf '?'; return 0; }
   else
     _out="$("$_TIMEOUT_BIN" -k 1 "$_bound" bun "$REPO/scripts/lanes/bank-status.ts" </dev/null 2>/dev/null)" || { printf '?'; return 0; }
   fi
@@ -1323,8 +1334,8 @@ lift=false
 if { . "$REPO/scripts/lib/usage-lift.sh"; } 2>/dev/null && usage_lift_valid "$CACHE"; then
   lift=true
   # Standing operator policy spends both banks to 100 by default. Explicit
-  # CADENCE_BANK_MAX_PCT still controls five_hour; neither bank spends extra_usage.
-  if [ "$USAGE_LIFT_STANDING" = true ] && [ -z "${CADENCE_BANK_MAX_PCT:-}" ]; then MAX_PCT=100; fi
+  # CADENCE_USAGE_MAX_PCT still controls five_hour; neither bank spends extra_usage.
+  if [ "$USAGE_LIFT_STANDING" = true ] && [ -z "${CADENCE_USAGE_MAX_PCT:-}" ]; then MAX_PCT=100; fi
 fi
 over_fh=false; over_sd=false
 over "$fh" && over_fh=true

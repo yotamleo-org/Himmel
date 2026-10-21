@@ -66,7 +66,7 @@ ds_balance() { # the launcher's own balance read, no inference
 
 bank_five() { # five_hour used % from the bank preflight, "?" if unread
   local l="$1" out
-  out="$(LEG_LANE="$l" CADENCE_BANK_LANE="$l" bash "$PREFLIGHT" 2>&1)"
+  out="$(LEG_LANE="$l" CADENCE_USAGE_LANE="$l" bash "$PREFLIGHT" 2>&1)"
   printf '%s\n' "$out" | sed -n 's/.*five_hour=\([0-9.?]*\).*/\1/p' | tail -1 | grep . || echo '?'
 }
 

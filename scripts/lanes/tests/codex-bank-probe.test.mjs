@@ -273,6 +273,34 @@ test('bank-status CLI: fresh cache measured, missing/stale cache unmeasurable â€
   assert.match(stale, /^claudex unknown unmeasurable reason="codex bank cache stale \(age 60min > TTL 0min\) â€” run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
 });
 
+test('bank-status CLI and probe read the CODEX_USAGE_* names over the old ones', { skip: BUN_SKIP }, () => {
+  const dir = makeTmpDir('codex-usage-names-');
+  const registry = fixtureRegistry(dir);
+  const cache = join(dir, 'codex-usage.json');
+  const run = spawnSync('bun', [PROBE], {
+    encoding: 'utf8',
+    timeout: 60_000,
+    env: {
+      ...process.env,
+      CODEX_USAGE_CACHE: cache, CODEX_USAGE_PROBE_CMD: `node ${STUB}`,
+      CODEX_BANK_CACHE: join(dir, 'old.json'), CODEX_BANK_PROBE_CMD: join(dir, 'no-such-codex'),
+      STUB_PID_FILE: join(dir, 'stub.pid'),
+    },
+  });
+  assert.equal(run.status, 0, `probe failed: ${run.stderr}`);
+  assert.equal(JSON.parse(readFileSync(cache, 'utf8')).planType, 'prolite');
+  writeFileSync(cache, JSON.stringify({
+    limits: [{ limitId: 'primary', usedPercent: 20, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 86400 }],
+    capturedAt: new Date(Date.now() - 3600_000).toISOString(),
+  }));
+  const stale = execFileSync('bun', [BANK_STATUS], {
+    encoding: 'utf8',
+    env: { ...process.env, LANES_REGISTRY: registry, CODEX_USAGE_CACHE: cache, CODEX_BANK_CACHE: join(dir, 'absent.json'),
+      CODEX_USAGE_CACHE_TTL_SECONDS: '1', CODEX_BANK_CACHE_TTL_SECONDS: '999999' },
+  });
+  assert.match(stale, /^claudex unknown unmeasurable reason="codex bank cache stale \(age 60min > TTL 0min\)/m);
+});
+
 test('probe: bounded handshake against a STUB app-server writes the cache AND kills the stub', { skip: BUN_SKIP }, async () => {
   const dir = makeTmpDir('codex-bank-probe-ok-');
   const pidFile = join(dir, 'stub.pid');

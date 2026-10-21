@@ -686,7 +686,7 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |
 | `GLM_MODEL` / `GLM_CONTEXT_WINDOW` | `glm-5.2[1m]` / 1M | env | lane launcher tuning (`scripts/claude-glm`) |
 | `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-glm`, `~/.claude-codex`) auto-reseeding from `~/.claude` |
-| `CLAUDEX_BANK_WARN_PCT` / `CLAUDEX_BANK_REFUSE_PCT` / `CLAUDEX_BANK_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override; the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; other banks keep 99) |
+| `CLAUDEX_USAGE_WARN_PCT` / `CLAUDEX_USAGE_REFUSE_PCT` / `CLAUDEX_USAGE_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override (the old `CLAUDEX_BANK_*` names are still read; with both set the narrower percentage counts); the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; every other usage source keeps 99) |
 | `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / … | env | implementor-dispatch cost-guard thresholds |
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |
 | `GLM_EXTERNAL_WRITES_OK` / `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the external-write fences on dispatched lane workers |

@@ -851,7 +851,7 @@ scripts/luna/test-qmd-reindex.sh	errexit	1
 scripts/luna/test-qmd-reindex.sh	mktemp	1
 scripts/luna/test-qmd-staleness.sh	errexit	1
 scripts/luna/test-sweep.sh	errexit	1
-scripts/luna/vault-stall-cadence.sh	prim-lock	3
+scripts/luna/vault-stall-cadence.sh	prim-lock	1
 scripts/luna/vault-stall-cadence.sh	prim-tmpdir	1
 scripts/machine-setup/install-code-kit-clis.sh	errexit	1
 scripts/machine-setup/install-plugins.sh	errexit	1

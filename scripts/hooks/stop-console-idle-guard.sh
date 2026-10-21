@@ -81,8 +81,9 @@ GUARD_TIMEOUT_SECS="${HIMMEL_STOP_GUARD_TIMEOUT:-8}"
 GUARD_DEADLINE_EPOCH=$(( $(date +%s) + GUARD_TIMEOUT_SECS ))
 # Test seams (default: the real scripts) -- so the fault-injection tests can
 # point these at a stub without PATH tricks, the same convention as tick.sh's
-# TICK_BANK_CACHE_FILE / FLEET_PS_CMD.
-BANK_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_BANK_PREFLIGHT:-$REPO/scripts/lib/bank-preflight.sh}"
+# TICK_BANK_CACHE_FILE / FLEET_PS_CMD. HIMMEL_STOP_GUARD_USAGE_PREFLIGHT wins over
+# the old HIMMEL_STOP_GUARD_BANK_PREFLIGHT, which is still read.
+BANK_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_USAGE_PREFLIGHT:-${HIMMEL_STOP_GUARD_BANK_PREFLIGHT:-$REPO/scripts/lib/bank-preflight.sh}}"
 QUEUE_LOCK_SH="${HIMMEL_STOP_GUARD_QUEUE_LOCK:-$REPO/scripts/handover/queue-lock.sh}"
 
 # _bounded <cmd...> -- run under whatever remains of the SHARED
@@ -183,7 +184,7 @@ done
 # outright rather than blocking with an empty/generic reason:
 # "a reason that only says do not idle is not acceptable".
 bank_err_file="$(mktemp "${TMPDIR:-/tmp}/stop-console-idle-guard-bank.XXXXXX" 2>/dev/null)" || exit 0
-bank_token="$(_bounded env CADENCE_BANK_LEG=stop-console-idle-guard bash "$BANK_PREFLIGHT_SH" 2>"$bank_err_file")"
+bank_token="$(_bounded env CADENCE_USAGE_LEG=stop-console-idle-guard bash "$BANK_PREFLIGHT_SH" 2>"$bank_err_file")"
 bank_rc=$?
 bank_fleet_line="$(grep -m1 '^bank-preflight: FLEET ' "$bank_err_file" 2>/dev/null)"
 rm -f "$bank_err_file" 2>/dev/null

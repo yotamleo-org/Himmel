@@ -3786,7 +3786,7 @@ absent or unrunnable), the guard falls through to the pre-existing usage budget-
 cost guard instead of allowing unconditionally. `IMPL_GUARD_HARD` (default 80)
 and `IMPL_GUARD_WEEKLY_HARD` (default 85) refuse at their respective usage budget ceilings.
 A weekly budget override validated by `scripts/lib/bank-lift.sh` raises weekly HARD to 100;
-a standing override also raises five-hour HARD to `CADENCE_BANK_MAX_PCT` (default
+a standing override also raises five-hour HARD to `CADENCE_USAGE_MAX_PCT` (default
 100). Explicit `IMPL_GUARD_*` overrides win; invalid overrides retain their
 original defaults. Invalid/unreadable lifts warn and retain defaults; absent
 lifts retain the existing policy and refusal message. WARN is unchanged.
@@ -4887,7 +4887,7 @@ dispatch the next queued item, verify a READY PR, or run `/console next --arm`.
 Every subprocess shares ONE 8 s budget (`HIMMEL_STOP_GUARD_TIMEOUT`, under the
 wired 10 s Stop timeout), and the JSON is printed only as the last statement.
 It does not inspect the held Jira/dispatch queue. Test seams:
-`HIMMEL_STOP_GUARD_BANK_PREFLIGHT`, `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
+`HIMMEL_STOP_GUARD_USAGE_PREFLIGHT` (old `HIMMEL_STOP_GUARD_BANK_PREFLIGHT` still read), `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-console-idle-guard.sh`.
 
 ### `console-precompact-snapshot.sh` — snapshot a supervisor session's Live state at compaction (HIMMEL-2973)
@@ -5757,7 +5757,7 @@ usage counters, so counting lines instead of requests inflates the total by
 ~83%.
 
 `scripts/lib/bank-preflight.sh`'s fleet-size cap only REFUSES a caller that
-declares `CADENCE_BANK_LAUNCH=1` (an actual arm/launch); a plain usage budget read
+declares `CADENCE_USAGE_LAUNCH=1` (an actual arm/launch); a plain usage budget read
 (a `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the
 same verdict and FLEET line but is never refused by it — detail:
 [lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident).

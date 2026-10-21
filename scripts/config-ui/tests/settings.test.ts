@@ -102,6 +102,7 @@ test("settingsCommand spells exactly the argv the server runs, for every action 
     ["profile.set", "lean", undefined], ["profile.set", "full", undefined],
     ["config.lanes", "codex", "on"], ["config.lanes", "codex", "off"],
     ["config.initiative", "prcheck", "on"], ["config.initiative", "prcheck", "off"],
+    ["config.commitRules", "tracker", "jira"], ["config.commitRules", "ticket-id-required", "off"],
     ...["pipeline", "graphmap", "qmd", "doctor"].flatMap((t) => [["cadence.arm", t, undefined], ["cadence.disarm", t, undefined]] as [string, string, undefined][]),
   ];
   expect(new Set(cases.map((c) => c[0]))).toEqual(new Set(table.keys()));

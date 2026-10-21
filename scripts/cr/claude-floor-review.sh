@@ -44,7 +44,7 @@
 #       recorded as `avail claude-floor unavailable` with a reason.
 # Env: CR_LEDGER (ledger path, default <git-common-dir>/cr-critic-scores.jsonl;
 #      the gate itself reads only the default), HIMMEL_CLAUDE_BIN and the
-#      CADENCE_BANK_* / HIMMEL_REGISTRY_DIR knobs pass through to
+#      CADENCE_USAGE_* / HIMMEL_REGISTRY_DIR knobs pass through to
 #      scripts/lib/claude-headless.sh (tests inject a fake claude there).
 set -uo pipefail
 

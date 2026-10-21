@@ -133,6 +133,7 @@ scripts/ci/test-check-host-file-read-sinks.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
 scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-vacuous-path-assert.sh	1
+scripts/ci/test-ci-container-jobs.sh	1
 scripts/ci/test-ci-gcp-routing.sh	0
 scripts/ci/test-ci-image.sh	0
 scripts/ci/test-ci-job-timeouts.sh	0
@@ -144,6 +145,7 @@ scripts/ci/test-ci-push-concurrency.sh	0
 scripts/ci/test-ci-vm-routing.sh	0
 scripts/ci/test-codeowner-review-gate.sh	3
 scripts/ci/test-corpus-sandbox.sh	2
+scripts/ci/test-cr-first-measure.sh	0
 scripts/ci/test-fork-drift-issue.sh	0
 scripts/ci/test-gcp-net.sh	1
 scripts/ci/test-gcp-runner-autoscale.sh	1
@@ -374,6 +376,7 @@ scripts/handover/console-kit/test-relay-batch.sh	1
 scripts/handover/console-kit/test-run-suite.sh	1
 scripts/handover/console-kit/test-shepherd.sh	1
 scripts/handover/console-kit/test-station-sync.sh	3
+scripts/handover/console-kit/test-status-drift.sh	10
 scripts/handover/console-kit/test-succession-tracker.sh	0
 scripts/handover/console-kit/test-tick-deadwin.sh	5
 scripts/handover/console-kit/test-tick-nolive.sh	9
