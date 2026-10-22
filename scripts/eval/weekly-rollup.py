@@ -25,7 +25,7 @@ Sources, none of them a new pipeline:
                                PR-body lines (`cost-eq=` summed, `k` = x1000)
   cache_hit_pct                mean `overall` of the cache-health rolling history
                                (CACHE_HEALTH_HISTORY, default
-                               ~/.himmel/state/cache-health/history.jsonl)
+                               history.jsonl in cache-health.py's state dir)
   flake_rows                   scripts/observability/suite-flake-summary.sh over
                                the run-shell-tests.sh FLAKE ledger (rows in the
                                window = rows since start minus rows since end);
@@ -43,6 +43,7 @@ import fcntl
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -182,7 +183,8 @@ def build_row(kind, key, t0, t1, a):
     n_t = len(costed)
     merges = sr["merges"] if sr else None
     return {
-        "v": 1, "kind": kind, "key": key, "since": since, "until": until,
+        "v": 1, "ts": int(a.now.timestamp()), "host": socket.gethostname(), "source": "weekly-rollup",
+        "kind": kind, "key": key, "since": since, "until": until,
         "partial": a.now <= t1,
         "merges": merges,
         "tickets": len(tickets),
@@ -256,7 +258,7 @@ def cmd_write(a):
     a.repo = os.path.abspath(a.repo)
     a.ref = a.ref or default_ref(a.repo)
     a.self_review = a.self_review or os.environ.get("SELF_REVIEW_SCRIPT") or str(ROOT / "scripts/insights/self-review.sh")
-    a.cache_history = os.environ.get("CACHE_HEALTH_HISTORY") or str(Path.home() / ".himmel/state/cache-health/history.jsonl")
+    a.cache_history = os.environ.get("CACHE_HEALTH_HISTORY") or str(Path.home() / ".himmel/state/cache-health" / "history.jsonl")
     a.flake_script = os.environ.get("FLAKE_SUMMARY_SCRIPT") or str(ROOT / "scripts/observability/suite-flake-summary.sh")
     end = dt.date.fromisoformat(a.end) if a.end else a.now.date()
     out = Path(a.out or os.environ.get("WEEKLY_ROLLUP_FILE") or Path.home() / ".himmel/state/rollup/weekly.jsonl")
