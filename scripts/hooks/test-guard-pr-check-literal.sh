@@ -2176,7 +2176,9 @@ for v in \
     "git rebase -x 'scripts/c?/write-verdicts.sh' HEAD~1" \
     "rg --pre=bash -g 'scripts/cr/*.sh' x ." \
     "rg -g 'scripts/cr/*.sh' --pre bash x ." \
-    "timeout 60 rg --pre=bash --glob '*.sh' x ."; do
+    "timeout 60 rg --pre=bash --glob '*.sh' x ." \
+    "rg -g 'scripts/cr/*.sh' -ge --pre=bash x ." \
+    "rg -g 'scripts/cr/*.sh' -Ae --pre=bash x ."; do
     run "HIMMEL-6927 s3 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 # `git tag -l|--list <pattern>` only lists; the same glob on a non-listing tag stays denied.
