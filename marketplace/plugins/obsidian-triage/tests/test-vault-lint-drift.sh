@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for check-vendor-drift.sh
 # Run from the repo root: bash marketplace/plugins/obsidian-triage/tests/test-vault-lint-drift.sh
+# Add --station to require a real upstream cache check instead of allowing a skip.
 set -euo pipefail
 
 # This test lives at: marketplace/plugins/obsidian-triage/tests/test-vault-lint-drift.sh
@@ -111,7 +112,11 @@ echo "Test 4: real cache → should exit 0"
 
 OUTPUT4="$(bash "$DRIFT_SCRIPT" --strict 2>&1)" && EXIT_CODE4=0 || EXIT_CODE4=$?
 if [ "$EXIT_CODE4" -eq 0 ] && grep -q "skipping" <<< "$OUTPUT4"; then
-  echo "  SKIP: $OUTPUT4 — real-upstream drift NOT checked on this host"
+  if [ "${1:-}" = "--station" ]; then
+    fail "station cache check skipped: $OUTPUT4"
+  else
+    echo "  SKIP: $OUTPUT4 — real-upstream drift NOT checked on this host"
+  fi
 elif [ "$EXIT_CODE4" -eq 0 ] && grep -q "in sync with upstream wiki-lint" <<< "$OUTPUT4"; then
   ok "exit 0 and 'in sync' against real (unchanged) cache"
 else
