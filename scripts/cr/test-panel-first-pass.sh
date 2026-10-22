@@ -662,7 +662,11 @@ rm -rf "$repo/.git/cr-review-rounds"
 # T21: an ambient CR_LEDGER cannot split the preflight lookup from its write:
 # the row lands on the git-common ledger the marker gate reads.
 amb="$tmp/ambient-ledger.jsonl"
-rm -f "$amb" "$CALL_LOG" "$tmp/err"
+kf_sh="$fx/scripts/cr/known-findings.sh"
+cp "$kf_sh" "$tmp/known-findings.sh.orig"
+# shellcheck disable=SC2016 # the stub body expands in the stub, not here
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${CR_LEDGER:-unset}" > "%s"\nexit 0\n' "$tmp/kf-ledger-seen" > "$kf_sh"
+rm -f "$amb" "$CALL_LOG" "$tmp/err" "$tmp/kf-ledger-seen"
 git -C "$repo" worktree add -q -b feature-ambient "$tmp/wt-ambient" main
 (
     cd "$tmp/wt-ambient" || exit 1
@@ -673,7 +677,10 @@ git -C "$repo" worktree add -q -b feature-ambient "$tmp/wt-ambient" main
 amb_sha="$(git -C "$tmp/wt-ambient" rev-parse HEAD)"
 out="$( (cd "$tmp/wt-ambient" && CR_LEDGER="$amb" FAKE_RC=0 bash "$SCRIPT" --head "$amb_sha" --branch feature-ambient) 2>"$tmp/err" )"; rc=$?
 err="$(cat "$tmp/err")"
+cp "$tmp/known-findings.sh.orig" "$kf_sh"
 git -C "$repo" worktree remove --force "$tmp/wt-ambient" 2>/dev/null
+kf_seen="$(cat "$tmp/kf-ledger-seen" 2>/dev/null)"
+if [ "$kf_seen" = "$ledger" ]; then ok "T21 known-findings.sh reads the git-common ledger"; else bad "T21 known-findings.sh saw CR_LEDGER=$kf_seen (want $ledger)"; fi
 if [ "$rc" -eq 0 ]; then ok "T21 run with an ambient CR_LEDGER exits 0"; else bad "T21 exit (got $rc; err: $err)"; fi
 amb_rows="$(grep -F '"kind":"preflight"' "$ledger" | grep -F '"branch":"feature-ambient"')"
 if [ -n "$amb_rows" ]; then ok "T21 preflight row recorded on the git-common ledger"; else bad "T21 no preflight row on the git-common ledger"; fi
