@@ -29,8 +29,8 @@ the relays below follow in the very next turn.
 
    **Restate the direction.** The successor's `LIVE` restates the first lines of
    the HANDOFF's `## Current direction`, so the outgoing chief can catch a misread
-   before it wraps. `chief.sh next` carries that block (and the `focus-chains.json`
-   chain order) into the successor doc and the HANDOFF. Keep the block current on
+   before it wraps. `chief.sh next` carries that block into the successor doc and
+   the HANDOFF (the HANDOFF also gets the `focus-chains.json` chain order). Keep the block current on
    every ruling and wrap: `next` refuses (exit 7) an absent, empty or placeholder
    block, and (exit 6) while a Results bullet quotes an `OPERATOR ... (verbatim)`
    ruling that `decisions:` and its decisions files do not hold.
