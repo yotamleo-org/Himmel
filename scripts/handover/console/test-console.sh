@@ -345,7 +345,9 @@ check "6d --relay-on-live is next-only" "$(console new --bucket reldemo2 --relay
 # relay-batch.sh (bus record + SendMessage lines) instead of a hand relay that leaves the
 # legs with no bus edge to the successor.
 rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover" "$mark6d"
-HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-console" console next --bucket reldemo >/dev/null
+rc6e=0
+HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-console" console next --bucket reldemo >/dev/null || rc6e=$?
+check "6e bus-identified next succeeds" "$rc6e" "0"
 check "6e next from a bus-identified console writes the relay-on-live marker unasked" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
 HANDOVER_DIR="$root" bash "$QL" release "$doc6dA" "$token6da" >/dev/null 2>&1
 
