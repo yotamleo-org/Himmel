@@ -15,21 +15,17 @@
 Run these, in order, and write the result as the first bullet under
 `## Results` at the bottom of this file.
 
-1. **One batch, one turn** — issue all of these as parallel tool calls in a single
-   response, never one per turn:
-   - **`ListAgents`** — who is alive. Workers the handoff claims alive but absent here
-     are gone; never relay a window as live without checking.
-   - **`ToolSearch`** `select:SendMessage` — it is deferred; load it now, not at the first relay.
+1. **One batch, one turn** — all of these as parallel tool calls in one response:
+   - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
+   - **`ToolSearch`** `select:SendMessage` (deferred).
    - **`Read`** each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
    - **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-legs`**
-     in the **foreground** (never `run_in_background`, never twice). It prints the
-     lock sweep, head/remote, usage, worker processes, C29, load and this document's
-     lock state for steps 2–6 and 8, takes a `free` lock (prints the token, never
-     a held one) and renders the `## Live state` worker entries. When `chief.sh next` pre-computed
-     steps 2–6, verify them and pass `--acquire --lock-only` instead.
+     in the **foreground** (never `run_in_background`, never twice): lock sweep,
+     head/remote, usage, worker processes, C29, load and lock state for steps 2–6
+     and 8; takes a `free` lock and prints the token (never a held one). If
+     `chief.sh next` pre-computed steps 2–6, verify them and pass `--acquire --lock-only`.
 
-   Relays and quote-backs (step 9), LIVE and the waiter (step 10) stay yours:
-   the next turn is step 9's relays, then step 10's waiter, then LIVE.
+   Relays and quote-backs (step 9), the waiter (step 10) and LIVE stay yours.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
    locks"): `HANDOVER_DIR="{{HANDOVER_ROOT}}" bash "{{REPO}}/scripts/handover/queue-lock.sh" status --sweep "{{HANDOVER_ROOT}}"`.
