@@ -130,6 +130,10 @@ SNYK_BIN="$W/does-not-exist" bash "$SCAN" --repo "$R" --out-dir "$OUTDIR" --chec
 check "--check on missing snyk exits 0" 0 "$?"
 has "--check on missing snyk prints WARN" "WARN snyk" "$W/nosnyk-check.log"
 
+: > "$W/empty.json"
+STUB_OS="$W/empty.json" STUB_OS_RC=0 run emptyos
+check "empty snyk test output exits 2, not a clean scan" 2 "$RC"
+
 # --- quota guard ------------------------------------------------------------
 OUTDIR="$W/out-quota"; rm -rf "$OUTDIR" "$SNYK_SCAN_STATE_DIR"; mkdir -p "$SNYK_SCAN_STATE_DIR"
 : > "$W/calls.log"
@@ -143,6 +147,12 @@ check "snyk test never ran past the cap" 0 "$(grep -c '^[^|]*|test' "$W/calls.lo
 : > "$W/calls.log"
 SNYK_SCAN_OS_CAP=250 bash "$SCAN" --repo "$R" --out-dir "$OUTDIR" --date 2026-10-23 > "$W/quota-raised.log" 2>&1
 check "a raised cap lets the run through" 0 "$?"
+
+# boundary: 198 used + 2 counted dirs = the cap, allowed; counting the fixtures dir would make it 201
+: > "$W/calls.log"; rm -rf "$SNYK_SCAN_STATE_DIR"; mkdir -p "$SNYK_SCAN_STATE_DIR"
+printf '2026-10-01\topen_source\t198\n' > "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv"
+bash "$SCAN" --repo "$R" --out-dir "$W/out-boundary" --date 2026-10-23 > "$W/boundary.log" 2>&1
+check "the estimate excludes fixtures dirs (198 + 2 = cap, allowed)" 0 "$?"
 
 # a different month does not count against this one
 rm -rf "$SNYK_SCAN_STATE_DIR"; mkdir -p "$SNYK_SCAN_STATE_DIR"
@@ -216,10 +226,13 @@ export SNYKCAD_CRONTAB="$W/crontab" SNYKCAD_RUNNER_DIR="$W/runner"
 bash "$CAD" arm --dry-run > "$W/arm-dry.log" 2>&1
 check "arm --dry-run exits 0" 0 "$?"
 [ ! -e "$W/crontab.txt" ] && pass "arm --dry-run installs nothing" || fail "arm --dry-run installs nothing"
+export HANDOVER_DIR="$W/ho"
 bash "$CAD" arm > "$W/arm.log" 2>&1
 check "arm exits 0" 0 "$?"
 has "arm installs one weekly entry (Monday 06:30)" "30 06 * * 1 " "$W/crontab.txt"
 has "arm tags the entry" "# HIMMEL-SnykScan" "$W/crontab.txt"
+has "the runner starts in the primary checkout" "cd " "$W/runner/snyk-scan-cadence.sh"
+has "the runner carries the arm-time handover dir" "HANDOVER_DIR=$W/ho" "$W/runner/snyk-scan-cadence.sh"
 bash "$CAD" arm > "$W/arm2.log" 2>&1
 check "a second arm refuses without --force" 3 "$?"
 bash "$CAD" status > "$W/status.log" 2>&1
