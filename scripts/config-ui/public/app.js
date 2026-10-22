@@ -463,6 +463,12 @@ document.addEventListener("click", (e) => {
 document.addEventListener("input", (e) => {
   const vf = e.target.dataset.vm;
   if (vf && vf !== "mode" && state.vm && state.vm.draft) { state.vm.draft[vf] = e.target.value; return; } // no repaint: keep the caret
+  if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; } // typed text survives a repaint before blur
+  if (e.target.dataset.rg === "model" && state.reviewGate && state.reviewGate.draft) {
+    const x = state.reviewGate.draft.find((y) => y.slug === e.target.dataset.slug);
+    if (x) { x.model = e.target.value; state.reviewGate.msg = null; }
+    return;
+  }
   if (e.target.id === "q") { state.filt.q = e.target.value; paint(); return; }
   if (e.target.dataset.act === "consent") {
     // No repaint: keep the caret; only flip the confirm button.
