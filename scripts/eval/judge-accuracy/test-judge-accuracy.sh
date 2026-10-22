@@ -52,6 +52,7 @@ verdict q5 judge NO-GO eee1 2026-10-14T10:00:00Z "pr: 105" "model: opus" "effort
 verdict q5b judge GO eee1 2026-10-14T12:00:00Z "pr: 105" "model: opus" "effort: high" -- "class: option-parsing"
 verdict go-pr-106 console-go-fff1 GO fff1 2026-10-15T10:00:00Z "pr: 106" "model: unknown" "effort: unknown" -- "console GO"
 verdict q7 judge GO abc7 2026-08-01T10:00:00Z "pr: 107" "model: opus" "effort: high" -- "class: none"
+verdict q8 judge GO abc8 2026-10-16T10:00:00Z "pr: 108" "model: opus" "effort: high" -- "class: none"
 mkdir -p "$TMP/v/notes"; printf 'a disposition note, no verdict line\n' >"$TMP/v/notes/judge.md"
 
 cat >"$TMP/prs.json" <<'EOF'
@@ -61,10 +62,12 @@ cat >"$TMP/prs.json" <<'EOF'
  {"number":104,"state":"MERGED","mergedAt":"2026-10-13T11:00:00Z","headRefOid":"ddd1","mergeCommit":{"oid":"m104"}},
  {"number":105,"state":"MERGED","mergedAt":"2026-10-14T13:00:00Z","headRefOid":"eee1","mergeCommit":{"oid":"m105"}},
  {"number":106,"state":"MERGED","mergedAt":"2026-10-15T11:00:00Z","headRefOid":"fff1","mergeCommit":{"oid":"m106"}},
- {"number":107,"state":"MERGED","mergedAt":"2026-08-01T11:00:00Z","headRefOid":"abc7","mergeCommit":{"oid":"m107"}}]
+ {"number":107,"state":"MERGED","mergedAt":"2026-08-01T11:00:00Z","headRefOid":"abc7","mergeCommit":{"oid":"m107"}},
+ {"number":108,"state":"MERGED","mergedAt":"2026-10-17T11:00:00Z","headRefOid":"abc9","mergeCommit":{"oid":"m108"}}]
 EOF
 cat >"$TMP/runs.json" <<'EOF'
 [{"databaseId":501,"headSha":"m102","conclusion":"failure","createdAt":"2026-10-12T11:05:00Z"},
+ {"databaseId":503,"headSha":"m105","conclusion":"failure","createdAt":"2026-10-21T05:00:00Z"},
  {"databaseId":502,"headSha":"m101","conclusion":"success","createdAt":"2026-10-10T11:05:00Z"}]
 EOF
 mkdir -p "$TMP/mirror"
@@ -78,6 +81,8 @@ caused-by: #101"
 mirror HIMMEL-9002 Bug '["bug"]' "2026-10-16T09:00:00.000+0200" "Something broke, maybe since #106 merged."
 mirror HIMMEL-9003 Task '[]' "2026-10-16T09:00:00.000+0200" "caused-by: #102"
 mirror HIMMEL-9004 Bug '["bug"]' "2026-10-01T09:00:00.000+0200" "Filed before #106 existed."
+mirror HIMMEL-9005 Bug '["bug"]' "2026-10-18T09:00:00.000+0200" "caused-by: #108"
+mirror HIMMEL-9006 Bug '["bug"]' "2026-10-21T09:00:00.000+0200" "caused-by: #105"
 
 L="$TMP/ledger.jsonl"; Q="$TMP/queue.jsonl"
 ja() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
@@ -101,6 +106,7 @@ eq "per model: the last GO's model" "$(field "$L" 0 model.opus.escapes)" "1"
 eq "coverage: a judge record with no model" "$(field "$L" 0 coverage.no_model)" "1"
 eq "coverage: a merged NO-GO'd PR with no GO" "$(field "$L" 0 coverage.merged_without_go)" "1"
 eq "coverage: a file with no verdict line" "$(field "$L" 0 coverage.unparsed)" "1"
+eq "coverage: a PR merged past its GO'd head is not scored" "$(field "$L" 0 coverage.merged_past_go)" "1"
 eq "three candidates wait for a ruling" "$(field "$L" 0 pending)" "3"
 eq "a row with pending candidates is partial" "$(field "$L" 0 status)" "partial"
 has "run 1: prints the escape rate" "$out" "escape_rate"
@@ -145,6 +151,8 @@ eq "run 2: same series as run 1" "$(field "$L" 2 confighash)" "$(field "$L" 0 co
 # --- refused input ---------------------------------------------------------------------------------
 python3 -I "$JA" run --verdicts "$TMP/nope" --prs "$TMP/prs.json" --mirror "$TMP/mirror" --queue "$Q" --no-ledger >/dev/null 2>&1
 eq "a missing verdict dir is refused" "$?" "2"
+python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --mirror "$TMP/nope" --queue "$Q" --no-ledger >/dev/null 2>&1
+eq "a missing Jira mirror is refused" "$?" "2"
 
 echo "judge-accuracy: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

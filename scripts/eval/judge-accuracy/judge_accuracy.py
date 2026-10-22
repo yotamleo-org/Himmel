@@ -14,8 +14,9 @@ Inputs. --verdicts is the bucket's verdicts/ tree (verdicts/<qid>/<name>.md, wri
 (default ~/.himmel/state/jira-mirror/HIMMEL). The window is the verdicts written in [until - days, until).
 
 Join.
-  escape     a merged PR with a GO record in the window, and either a Bug whose `caused-by: #<pr>` names
-             it (sure) or a candidate ruled S (sure) or P (plausible). A PR counts once.
+  escape     a PR merged at the head of a GO record in the window, and either a Bug whose `caused-by: #<pr>`
+             names it (sure) or a candidate ruled S (sure) or P (plausible). A PR counts once. A PR merged
+             past its GO'd head is coverage, never scored. Bugs and main runs from `until` on are ignored.
   candidate  an escape signal no caused-by settles: a Bug created after the merge that cites the PR and
              has no caused-by line, or a failed main run on the merge commit; and a NO-GO overturned by a
              GO at the same head. Each goes once to the adjudication queue; a console-judge-ro call
@@ -138,7 +139,7 @@ def load_bugs(mirror):
     """Bug tickets of the mirror: key, labels, created, caused-by target and the PRs the text cites."""
     bugs = []
     if not os.path.isdir(mirror):
-        return bugs
+        raise ValueError("no Jira mirror: %s" % mirror)
     for f in sorted(os.listdir(mirror)):
         if not f.endswith(".md"):
             continue
@@ -205,9 +206,13 @@ def join(recs, prs, runs, bugs, since, until):
     for r in win:
         if r["verdict"] == "GO" and r["pr"] is not None:
             gos.setdefault(r["pr"], []).append(r)
-    merged = {n: prs[n] for n in gos if n in prs and prs[n].get("state") == "MERGED"}
+    shipped = {n: prs[n] for n in gos if n in prs and prs[n].get("state") == "MERGED"}
+    merged = {n: p for n, p in shipped.items() if any(g["head"] == p.get("headRefOid") for g in gos[n])}
+    m["coverage.merged_past_go"] = len(shipped) - len(merged)
     signals = {n: [] for n in merged}  # pr -> [(level S|P|pending, cause)]
     for b in bugs:
+        if b["created"] and b["created"] >= until:
+            continue
         if b["caused_by"] and b["caused_by"].isdigit():
             n = int(b["caused_by"])
             if n in signals:
@@ -223,7 +228,8 @@ def join(recs, prs, runs, bugs, since, until):
     sha = {(p.get("mergeCommit") or {}).get("oid"): n for n, p in merged.items()}
     for run in runs:
         n = sha.get(run.get("headSha"))
-        if n is not None and run.get("conclusion") == "failure":
+        at = when(run.get("createdAt") or "")
+        if n is not None and run.get("conclusion") == "failure" and not (at and at >= until):
             cands.append({"id": "esc:%d:red-main:%s" % (n, run.get("databaseId")), "pr": n, "signal": "red-main",
                           "ref": str(run.get("databaseId")), "cause": "ci-selection",
                           "question": "Did PR #%d break main run %s on its own merge commit? S sure, P plausible, "
