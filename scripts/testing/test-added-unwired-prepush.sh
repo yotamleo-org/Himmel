@@ -96,6 +96,18 @@ rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
   && ok "B9 control: a bun test under a dir no workflow names is still unwired" || no "B9 (rc=$rc): $out"
 git -C "$R" checkout -q main || exit 1
 
+# run-bun-tests.sh takes its first argument as the suite label and forwards the rest to bun test.
+git -C "$R" checkout -q -b feat/v main || exit 1
+mkdir -p "$R/.github/workflows" "$R/scripts/decoy/tests" "$R/scripts/real/tests"
+printf 'jobs:\n  b:\n    steps:\n      - run: bash scripts/ci/run-bun-tests.sh scripts/decoy scripts/real --dots\n' > "$R/.github/workflows/ci.yml"
+printf 'test("c", () => {});\n' > "$R/scripts/decoy/tests/c.test.ts"
+printf 'test("d", () => {});\n' > "$R/scripts/real/tests/d.test.ts"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add bun tests under a label dir and a forwarded dir" || exit 1
+rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/decoy/tests/c.test.ts' <<<"$out" && ! grep -q 'UNWIRED scripts/real/tests/d.test.ts' <<<"$out"; } \
+  && ok "B10 only a dir forwarded to bun test is wired, not the suite label" || no "B10 (rc=$rc): $out"
+git -C "$R" checkout -q main || exit 1
+
 R2="$T/nobase"; git init -q -b topic "$R2"; git -C "$R2" config user.email t@t; git -C "$R2" config user.name t
 git -C "$R2" commit -q --allow-empty -m "chore: x"
 rc=0; out=$(cd "$R2" && bash "$CHECK" --branch-diff 2>&1) || rc=$?
