@@ -57,6 +57,16 @@ jq '.hooks.Extra = [.hooks[][0]]' "$REAL" > "$WORK/dup2.json"
 OUT="$(settings_dup_hooks "$WORK/dup2.json")"
 if [ -n "$OUT" ]; then pass "a command repeated across events is detected"; else fail_case "a command repeated across events is detected"; fi
 
+# The over-install hook set must equal a fresh install's: a dropped or an extra hook shows up.
+OUT="$(settings_hook_set_diff "$REAL" "$REAL")"
+if [ -z "$OUT" ]; then pass "identical hook sets have no diff"; else fail_case "identical hook sets have no diff ($OUT)"; fi
+jq '.hooks[(.hooks | keys[0])] |= .[1:]' "$REAL" > "$WORK/drop.json"
+OUT="$(settings_hook_set_diff "$REAL" "$WORK/drop.json")"
+if [ -n "$OUT" ]; then pass "RED control: a dropped hook entry is detected"; else fail_case "RED control: a dropped hook entry is detected"; fi
+expect_has "...as an expected-only line" "< " "$OUT"
+OUT="$(settings_hook_set_diff "$WORK/dup.json" "$REAL")"
+expect_has "a duplicated entry shows as an extra line" "< " "$OUT"
+
 # --- status summary line -----------------------------------------------------------
 if [ "$(status_red_count $'7 green\n0 red, 1 degraded, 7 green, 40 n/a')" = 0 ]; then rc=0; else rc=1; fi
 expect_rc "status red count reads 0" 0 "$rc"

@@ -11,7 +11,8 @@
 #      dropped are removed, as an update does) and run `himmelctl install` again
 #   3. assert: status has no red row; the secret is still set and its file is 0600;
 #      the commit rule and project scope are kept; every settings hook command
-#      appears once; a second install with nothing changed is a no-op
+#      appears once and matches the hook set a fresh candidate install writes; a
+#      second install with nothing changed is a no-op
 #
 # A bug the stage finds in the base release or in the candidate is REPORTED, never
 # fixed here: a migration step belongs to the migration work, not to this test.
@@ -37,6 +38,13 @@ settings_hook_commands() {
 # as "<count> <command>"; empty output means every hook appears once.
 settings_dup_hooks() {
   settings_hook_commands "$1" | sort | uniq -c | awk '$1 > 1 { c = $1; $1 = ""; sub(/^ /, ""); print c, $0 }'
+}
+
+# settings_hook_set_diff <expected-settings.json> <actual-settings.json> -- hook commands
+# missing from or extra in the actual file, as diff lines ("< " expected only, "> " actual
+# only); empty output means both files carry the same hook commands the same number of times.
+settings_hook_set_diff() {
+  diff <(settings_hook_commands "$1" | sort) <(settings_hook_commands "$2" | sort) | grep -E '^[<>]' || true
 }
 
 # status_red_count <himmelctl-status-output> -- the red count from the summary line
@@ -132,6 +140,17 @@ ctl install --scope project > "$WORK/install-over.log" 2>&1; rc=$?
 if [ "$rc" -eq 0 ]; then pass "over-install exits 0"; else fail "over-install exits 0 (rc=$rc)"; tail -20 "$WORK/install-over.log"; fi
 
 SETTINGS="$PROJ/.claude/settings.json"
+
+# The hook set a fresh candidate install writes, for the "same hooks" assertion below.
+PROJ2="$WORK/proj-fresh"
+mkdir -p "$PROJ2"
+git -C "$PROJ2" init -q -b main
+git -C "$PROJ2" -c user.email=ovr@example.invalid -c user.name=ovr commit -q --allow-empty -m init
+( cd "$PROJ2" && env -i HOME="$HOME" PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" \
+    HIMMELCTL_CACHE_DIR="$CACHE" node "$TREE/scripts/himmelctl/bin.js" install --scope project ) > "$WORK/install-fresh.log" 2>&1; rc=$?
+if [ "$rc" -eq 0 ]; then pass "fresh candidate install exits 0"; else fail "fresh candidate install exits 0 (rc=$rc)"; tail -20 "$WORK/install-fresh.log"; fi
+FRESH_SETTINGS="$PROJ2/.claude/settings.json"
+
 if [ "$RED" = "dup-hook" ]; then
   # RED control: duplicate the first hook entry of the first event, as a broken
   # merge would; the "hooks appear once each" assertion below must catch it.
@@ -163,7 +182,8 @@ rule_now="$( ( cd "$TREE" && env -i HOME="$HOME" PATH="$PATH" bash -c '. scripts
 if [ "$rule_now" = "$RULE" ]; then pass "commit rule kept (TICKET_ID_PATTERN=$rule_now)"; else fail "commit rule kept (got '$rule_now', want '$RULE')"; fi
 
 scope_after="$(ctl scope get 2>&1 | head -1)"
-if [ -n "$scope_after" ] && [ "$scope_after" = "$scope_before" ]; then pass "project scope kept ($scope_after)"; else fail "project scope kept (before '$scope_before', after '$scope_after')"; fi
+case "$scope_after" in *project*) scope_is_project=1 ;; *) scope_is_project=0 ;; esac
+if [ "$scope_is_project" = 1 ] && [ "$scope_after" = "$scope_before" ]; then pass "project scope kept ($scope_after)"; else fail "project scope kept (before '$scope_before', after '$scope_after')"; fi
 
 if [ ! -s "$SETTINGS" ]; then
   fail "settings hooks appear once each (no $SETTINGS)"
@@ -172,6 +192,9 @@ else
   dups="$(settings_dup_hooks "$SETTINGS")"
   if [ "$n_hooks" -gt 0 ] && [ -z "$dups" ]; then pass "settings hooks appear once each ($n_hooks hook commands)"
   else fail "settings hooks appear once each ($n_hooks hook commands; duplicated: ${dups:-none, but no hooks found})"; fi
+  hook_diff="$(settings_hook_set_diff "$FRESH_SETTINGS" "$SETTINGS")"
+  if [ -s "$FRESH_SETTINGS" ] && [ -z "$hook_diff" ]; then pass "settings hooks match a fresh candidate install"
+  else fail "settings hooks match a fresh candidate install (diff vs fresh: ${hook_diff:-no fresh settings})"; fi
 fi
 
 # no-op: snapshot the user-visible state, install again, compare. The provenance ledger
