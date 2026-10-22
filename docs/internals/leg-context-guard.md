@@ -1,25 +1,25 @@
 # Leg context guard
 
 `scripts/hooks/guard-leg-context-handoff.sh` is the
-one reference for what the worker session context guard does, when it runs, and how a worker session
+one reference for what the worker context guard does, when it runs, and how a worker
 gets past it. The hook header carries the same facts for whoever edits the code.
 Hook wiring and the enforcement matrix are in
 [`enforcement.md`](enforcement.md#guard-leg-context-handoffsh--console-spawned-leg-context-hand-off-himmel-4569).
 
 ## Purpose
 
-A supervisor-session-spawned worker session auto-compacts at its `--autocompact` ceiling. Compaction
-is a backstop and not data loss: 309 of 349 compacted worker sessions still reached
+A supervisor-session-spawned worker auto-compacts at its `--autocompact` ceiling. Compaction
+is a backstop and not data loss: 309 of 349 compacted workers still reached
 `WRAPPED`. The guard is there for one job. When a launch wants
-uncommitted work pushed **before** that lossy summary, the guard makes the worker session
+uncommitted work pushed **before** that lossy summary, the guard makes the worker
 checkpoint, or hand off to a successor, first.
 
 ## Off by default
 
 The operator ruled on 2026-10-07 that the guard is
-**off by default**. A worker session launched without a mode never sees it: the hook exits 0 with no
-output for every PreToolUse call and every PreCompact, at any fill. Worker sessions
-auto-compact anyway, and an always-on guard stopped every opus worker session at 13 % fill.
+**off by default**. A worker launched without a mode never sees it: the hook exits 0 with no
+output for every PreToolUse call and every PreCompact, at any fill. Workers
+auto-compact anyway, and an always-on guard stopped every opus worker at 13 % fill.
 
 ## Turning it on
 
@@ -38,14 +38,14 @@ bash scripts/handover/console-kit/headed-arm-leg.sh --context-guard handoff …
   prints `HIMMEL_LEG_CONTEXT_MODE=<unset>` when the guard is off.
 
 The hook reads the mode only from its own process env, which is fixed at launch.
-A worker session cannot turn the guard on, off or across modes mid-session: an `export` or
+A worker cannot turn the guard on, off or across modes mid-session: an `export` or
 a per-call prefix never reaches a hook process. At the hook, an unset, empty or
 `none` mode means off. Any other unknown value is treated as `compact` and
 prints one stderr line, because someone asked for the guard.
 
 ## The threshold
 
-The threshold is **75 % of the leg's autocompact ceiling**, not 75 % of the
+The threshold is **75 % of the worker's autocompact ceiling**, not 75 % of the
 model window.
 
 - **Ceiling.** The ceiling is resolved in this order:
@@ -59,24 +59,24 @@ model window.
 - **Share.** The share is `HIMMEL_LEG_CONTEXT_SHARE`, from the launch env only.
   Any value other than 1-100 gives 75.
 
-A worked example: an opus worker session pinned at `--autocompact 200000` reports a
+A worked example: an opus worker pinned at `--autocompact 200000` reports a
 1000000-token window. Its ceiling is 20 % fill, and 75 % of it is **150000
 tokens, which is 15 % fill**.
 
 **Why 75 %.** Compactions have been observed firing from **157k** of a 200k
-ceiling (157k-176k over 349 compactions). At 75 %, the worker session has
+ceiling (157k-176k over 349 compactions). At 75 %, the worker has
 7000 tokens (3.5 pp of the ceiling) before the earliest compaction to commit,
 push and write the CHECKPOINT bullet.
 
 The deny must land before the earliest compaction. A higher share, such as
 85 % (170000), would let a compaction fire first and then be refused blind. The
-earlier 65 % (130000) left 27000 tokens of room but stopped every opus worker session at
-13 % fill. If a leg needs more headroom than 7000 tokens, raise the launcher
+earlier 65 % (130000) left 27000 tokens of room but stopped every opus worker at
+13 % fill. If a worker needs more headroom than 7000 tokens, raise the launcher
 ceiling; that is an operator decision.
 
 ## The autocompact A/B arm
 
-The 200000 ceiling is the default for every worker session. A measured A/B against 400000
+The 200000 ceiling is the default for every worker. A measured A/B against 400000
 is opt-in and audited:
 
 - **Launch.** `LEG_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything
@@ -90,17 +90,17 @@ is opt-in and audited:
 - **Record.** The arm goes in the launch log (`ab_arm=`), the arm log line and
   the fleet-manifest entry (`arm`).
 - **Report.** `python3 -I scripts/eval/autocompact-ab.py --manifest <fleet.json>`
-  prints, per wrapped worker session, compactions with the token level at each, handoffs,
+  prints, per wrapped worker, compactions with the token level at each, handoffs,
   the cache_read / cache_create / uncached split, price-weighted cost,
   wall-clock, PR outcome and mean output tokens per turn, then a per-arm table.
   The arm is the manifest record only (the brief line alone is not evidence);
   one row per `TICKET-N<k>` (`scripts/lib/leg-identity.sh`): a RESUME successor
-  folds into its parent's row, the worker session is wrapped when the last doc of the
+  folds into its parent's row, the worker is wrapped when the last doc of the
   chain is, and every transcript is counted once. A chain whose listed docs
   carry different manifest arms, or that holds a doc the manifest never listed,
-  is `unproven` and left out of the summary; `--all` marks open worker sessions and never
+  is `unproven` and left out of the summary; `--all` marks open workers and never
   averages them. A
-  worker session with no matching transcript is counted as `unmeasured` and left out of
+  worker with no matching transcript is counted as `unmeasured` and left out of
   the arm means.
 
 ## Past the threshold
@@ -145,7 +145,7 @@ git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trail
 |---|---|---|
 | `LIVE — CHECKPOINT <full sha of HEAD> pushed` | compact | everything, while that sha is HEAD and HEAD equals its upstream |
 | `LIVE — CHECKPOINT <full sha of HEAD> clean` | compact | everything, while that sha is HEAD, `git status --porcelain` is empty, and nothing is unpushed (HEAD equals its upstream, or HEAD is in `origin/main`) |
-| a `*-RESUME.md` beside the worker session doc | handoff | everything (the worker session then stops) |
+| a `*-RESUME.md` beside the worker doc | handoff | everything (the worker then stops) |
 | last marker `WRAPPED` | both | everything |
 | last marker `BLOCKED` | both | **only the hand-off calls and reads** (Read, Grep, Glob) |
 
@@ -153,14 +153,14 @@ Notes on each unlock:
 
 - **CHECKPOINT bullets.** Write them with `append-results.sh`. Only the newest
   CHECKPOINT bullet counts.
-- **The clean form.** It covers a worker session with nothing to push: an empty push would
+- **The clean form.** It covers a worker with nothing to push: an empty push would
   otherwise leave the pushed form unprovable (N1386).
-- **The RESUME doc.** It must carry the worker session doc's id (`N1364`, `N1364b` …) with
+- **The RESUME doc.** It must carry the worker doc's id (`N1364`, `N1364b` …) with
   any one-letter suffix. It must also have been modified after the session's
   first turn, so an older link of the same chain never counts.
-- **BLOCKED.** A `BLOCKED` is a hand-off to the supervisor session, not an unlock. N1383
-  wrote `BLOCKED` and then kept editing. A worker session that cannot commit or push
-  should `SendMessage` its supervisor session, append a `BLOCKED` bullet and stop.
+- **BLOCKED.** A `BLOCKED` is a hand-off to the chief, not an unlock. N1383
+  wrote `BLOCKED` and then kept editing. A worker that cannot commit or push
+  should `SendMessage` its chief, append a `BLOCKED` bullet and stop.
   While `BLOCKED` is the last marker, an earlier CHECKPOINT or a RESUME doc
   does not reopen ordinary work either. They still let an auto-compaction
   through, because the state is saved.
@@ -171,7 +171,7 @@ Notes on each unlock:
   `LIVE — CHECKPOINT <full sha of HEAD> pushed` (or `… clean` when there is
   nothing to push). Then carry on. The session compacts at its ceiling. After
   the compaction, re-read the worker system prompt and the handover doc.
-- **`handoff`.** Write `…legN<n>b-…-RESUME.md`, message the supervisor session, and stop. A
+- **`handoff`.** Write `…legN<n>b-…-RESUME.md`, message the chief, and stop. A
   successor resumes from that doc.
 
 ## PreCompact
@@ -192,7 +192,7 @@ The hook is also wired as a PreCompact hook:
 Claude Code does not document what follows a refused auto-compaction. This is
 why the threshold sits below the earliest observed compaction and the refusal
 is only the second line of defence. Measuring it on a
-VM worker session is a planned follow-up.
+VM worker is a planned follow-up.
 
 ## Fail-open, scope and bypass
 
@@ -200,12 +200,12 @@ VM worker session is a planned follow-up.
   infrastructure gap:
   - fill UNKNOWN or STALE;
   - no transcript;
-  - worker session doc not found;
+  - worker doc not found;
   - no `jq`;
   - input that does not parse.
 
-  A false block strands a worker session that nobody watches.
-- **Scope.** The hook acts only on a supervisor-session-spawned worker session: `HIMMEL_CONSOLE_LEG=1`
+  A false block strands a worker that nobody watches.
+- **Scope.** The hook acts only on a supervisor-session-spawned worker: `HIMMEL_CONSOLE_LEG=1`
   plus a non-empty `HIMMEL_CONSOLE_NAME`. In-process subagents (a non-empty
   `agent_id`) are exempt.
 - **Codex.** Codex wires the hook for PreToolUse only. Codex has no PreCompact

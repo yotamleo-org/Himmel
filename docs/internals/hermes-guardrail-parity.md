@@ -64,8 +64,8 @@ Result, default env: **MATCH 29, GAP 9, OVER-DENY 5**
 
 | Row | Hermes reason | Assessment |
 |---|---|---|
-| `git-push-plain`, `gh-pr-create`, `gh-pr-merge` | write fence: untrusted/unknown engine | By design (fail-closed, HIMMEL-695). All three flip to MATCH with `HERMES_EXTERNAL_WRITES_OK=1`; the console gates the merge itself. |
-| `mcp-other` | blanket `mcp__*` refusal (qmd carve-out only) | By design (HIMMEL-731); a hermes leg cannot use MCP servers. |
+| `git-push-plain`, `gh-pr-create`, `gh-pr-merge` | write fence: untrusted/unknown engine | By design (fail-closed, HIMMEL-695). All three flip to MATCH with `HERMES_EXTERNAL_WRITES_OK=1`; the chief gates the merge itself. |
+| `mcp-other` | blanket `mcp__*` refusal (qmd carve-out only) | By design (HIMMEL-731); a hermes worker cannot use MCP servers. |
 | `self-write-claude-md` | any write under `~/.claude` | Stricter than CC, which only fences settings; harmless. |
 
 ## CR gate enforcement matrix (HIMMEL-2053)
