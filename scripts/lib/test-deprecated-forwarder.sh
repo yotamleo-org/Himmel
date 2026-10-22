@@ -100,7 +100,7 @@ if ln -s ../old-name.sh "$T/bin/old-name.sh" 2>/dev/null && [ -L "$T/bin/old-nam
     check "symlink $via: rc passes through" "6" "$?"
     check "symlink $via: argv reaches the target" "$(expect_argv s1)" "$(od -An -c "$T/argv")"
   done
-  RC_GOT=$(cd "$T/elsewhere" && FWD_RC=7 FWD_ARGV="$T/argv" bash "$T/bin/old-name.sh" y < "$T/stdin" > /dev/null 2>&1; echo $?)
+  RC_GOT=$(cd "$T/elsewhere" && FWD_RC=7 FWD_ARGV="$T/argv" bash "$T/bin/old-name.sh" y < "$T/stdin" > /dev/null 2> "$T/err"; echo $?)
   check "symlink runs from another cwd" "7" "$RC_GOT"
   check "symlink stderr is still exactly one line" "1" "$(wc -l < "$T/err" | tr -d ' ')"
 else

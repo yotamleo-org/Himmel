@@ -34,7 +34,9 @@ class Rows(unittest.TestCase):
     def test_every_declared_row_was_read(self):
         declared = re.search(r"^# rows: (\d+)$", read_fixture(), re.M)
         self.assertIsNotNone(declared)
-        self.assertEqual(len(read_rows()), int(declared.group(1)))
+        rows = read_rows()
+        self.assertGreater(len(rows), 0)
+        self.assertEqual(len(rows), int(declared.group(1)))
 
     def test_parse_and_cli(self):
         for line, want in read_rows():

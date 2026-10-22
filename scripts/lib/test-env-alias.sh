@@ -148,6 +148,7 @@ while IFS=$'\t' read -r fn nn on nv ov want || [ -n "$fn" ]; do
     _ "$SCRIPT" "$fn" "$nn" "$on" 2>&1)
   check "row $n: $fn '$nn'=$nv '$on'=$ov" "$want" "$got"
 done < "$NOEOL"
+check "fixture has at least one row" "yes" "$([ "$n" -gt 0 ] && echo yes || echo no)"
 check "every declared row was read" "$want_rows" "$n"
 
 # --- the JS and Python twins run the same rows ---

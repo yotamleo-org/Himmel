@@ -53,6 +53,7 @@ while IFS=$'\t' read -r line want || [ -n "$line" ]; do
   rc=$(bash -c 'set -euo pipefail; . "$1"; rc=0; status_marker_parse "$2" >/dev/null || rc=$?; echo "$rc"' _ "$SCRIPT" "$line" 2>&1)
   if [ "$want" = "-" ]; then check "row $n rc: no marker is 1" "1" "$rc"; else check "row $n rc: marker is 0" "0" "$rc"; fi
 done < "$NOEOL"
+check "fixture has at least one row" "yes" "$([ "$n" -gt 0 ] && echo yes || echo no)"
 check "every declared row was read" "$want_rows" "$n"
 
 # read-sink-ok: sources the script under test ($SCRIPT), not a host file; no allowlist applies

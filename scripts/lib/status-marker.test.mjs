@@ -19,6 +19,7 @@ const ROWS = FIXTURE
   .map((l) => l.split('\t'));
 
 test('every declared row was read', () => {
+  assert.ok(ROWS.length > 0);
   assert.equal(ROWS.length, WANT_ROWS);
 });
 
