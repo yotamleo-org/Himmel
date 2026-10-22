@@ -2153,7 +2153,14 @@ done
 for v in \
     "git tag -d 'v1.1*'" \
     "git tag -a 'v1.1*' HEAD" \
-    "git tag --contains 'v1.1*'"; do
+    "git tag --contains 'v1.1*'" \
+    "git tag -l -d 'v*'" \
+    "git tag --list --delete 'v*'" \
+    "git tag -d 'v*' -l" \
+    "git tag -d 'v*' -- -l" \
+    "git tag -l -a 'v*' HEAD" \
+    "git tag --list -f 'v*' HEAD" \
+    "git tag -l -s 'v*'"; do
     run "HIMMEL-6927 s3 tag-list control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 # Line-level fail-closed rules on a line with a git word or a
