@@ -16,6 +16,8 @@ set -uo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/scripts/release/build-tarball.sh"
 WORKFLOW="$ROOT/.github/workflows/release.yml"
+# shellcheck source=../lib/timeout-bin.sh
+. "$ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "PASS  $1"; }
@@ -97,9 +99,13 @@ check "GREEN: matching pair verifies with the adopter one-liner" bash -c "cd '$o
 
 # RED: with the fetch bounds removed, a build must not wait on the registry.
 # On npm 10 an unflagged install/ci/prune sat on the silent registry past the CI cap.
-check "RED: the build does not wait on the registry (no fetch bounds, 20 s cap)" \
-  env -u npm_config_fetch_retries -u npm_config_fetch_timeout \
-    timeout 20 bash "$BUILD" --version 1.2.5 --src "$fx" --out "$tmp/out-silent"
+if [ -n "$_TIMEOUT_BIN" ]; then
+  check "RED: the build does not wait on the registry (no fetch bounds, 20 s cap)" \
+    env -u npm_config_fetch_retries -u npm_config_fetch_timeout \
+      "$_TIMEOUT_BIN" 20 bash "$BUILD" --version 1.2.5 --src "$fx" --out "$tmp/out-silent"
+else
+  echo "skip - build does not wait on the registry: no timeout binary"
+fi
 
 # --- T2: RED controls -- the same one-liner must FAIL when the cause varies ---
 bad_dir="$tmp/tampered"; mkdir -p "$bad_dir"
