@@ -65,6 +65,8 @@ export JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}"
 
 GH=(gh)
 [ -z "$REPO" ] || GH=(gh -R "$REPO")
+case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
+cd "$ROOT" || { echo "escape-report: cannot enter $ROOT" >&2; exit 1; }
 
 # shellcheck source=../lib/prim.sh
 . "$ROOT/scripts/lib/prim.sh" || { echo "escape-report: cannot load prim.sh" >&2; exit 1; }
@@ -169,15 +171,16 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
   : > "$WORK/enriched.jsonl"; nojobs=0
   while IFS= read -r run; do
     id="$(jq -r '.databaseId' <<< "$run")"
-    if "${GH[@]}" run view "$id" --json jobs > "$WORK/jobs.json" 2>/dev/null </dev/null && jq -e '.jobs' "$WORK/jobs.json" >/dev/null 2>&1; then
-      jq -c --argjson run "$run" '
+    if "${GH[@]}" run view "$id" --json jobs > "$WORK/jobs.json" 2>/dev/null </dev/null && jq -e '.jobs' "$WORK/jobs.json" >/dev/null 2>&1 \
+       && jq -c --argjson run "$run" '
         def sec: fromdateiso8601;
         ($run + {
           runner_s: ([.jobs[] | select(.conclusion != "skipped" and .startedAt != null and .completedAt != null)
                       | ((.completedAt | sec) - (.startedAt | sec)) | select(. > 0)] | add // 0),
           first_start: ([.jobs[].startedAt | select(. != null)] | min),
           families: ([.jobs[] | select(.conclusion == "failure") | .name | sub(" \\(.*$"; "")] | unique)
-        })' "$WORK/jobs.json" >> "$WORK/enriched.jsonl"
+        })' "$WORK/jobs.json" >> "$WORK/enriched.jsonl"; then
+      :
     else
       nojobs=$((nojobs + 1))
       jq -c --argjson run "$run" -n '$run + {runner_s: 0, first_start: null, families: []}' >> "$WORK/enriched.jsonl"
@@ -186,14 +189,18 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
 
   jq -s -r '
     def sec: fromdateiso8601;
+    def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
+    def fixed($f; $n): $n != null and $n.status == "completed"
+      and ($n.conclusion == "success"
+           or ($n.conclusion == "failure" and ($n.families | length) > 0
+               and (($n.families | any(. as $x | ($f.families | index($x)) != null)) | not)));
     def pct($p): sort as $a | if ($a | length) == 0 then "n/a"
       else $a[(((($p / 100) * ($a | length)) | ceil) - 1 | if . < 0 then 0 else . end)] end;
     . as $r
     | ($r | map(select(.event == "pull_request"))) as $pr
     | ($r | map(select(.event != "pull_request"))) as $other
     | ($pr | map(select(.conclusion == "failure"))) as $failed
-    | ($failed | map(. as $f | select($pr | any(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha
-        and (.conclusion == "success" or ((.families // []) | any(. as $x | ($f.families | index($x)) != null) | not)))))) as $caught
+    | ($failed | map(. as $f | select(fixed($f; nextpush($f; $pr))))) as $caught
     | [ ($r | length),
         ($pr | map(.runner_s) | add // 0) / 60,
         ($other | map(.runner_s) | add // 0) / 60,
@@ -211,13 +218,18 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
     echo "## 3. CI catches"
     echo
     echo "Catches: $n_caught (of $n_failed failed PR runs)"
-    echo "Failed with no later push: $((n_failed - n_caught))"
+    echo "Failed without a fixing next push: $((n_failed - n_caught))"
     echo
     echo "By job family:"
     jq -s -r '
-      . as $r | ($r | map(select(.event == "pull_request" and .conclusion == "failure"))) as $failed
-      | $failed | map(. as $f | select($r | any(.event == "pull_request" and .headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha
-        and (.conclusion == "success" or ((.families // []) | any(. as $x | ($f.families | index($x)) != null) | not)))))
+      def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
+    def fixed($f; $n): $n != null and $n.status == "completed"
+      and ($n.conclusion == "success"
+           or ($n.conclusion == "failure" and ($n.families | length) > 0
+               and (($n.families | any(. as $x | ($f.families | index($x)) != null)) | not)));
+      . as $r | ($r | map(select(.event == "pull_request"))) as $pr
+      | ($pr | map(select(.conclusion == "failure"))) as $failed
+      | $failed | map(. as $f | select(fixed($f; nextpush($f; $pr))))
       | map(.families[]) | group_by(.) | map({f: .[0], n: length}) | sort_by(-.n, .f)[] | "- \(.f): \(.n)"' "$WORK/enriched.jsonl"
     [ "$n_caught" != 0 ] || echo "- (none)"
   } > "$sec3"

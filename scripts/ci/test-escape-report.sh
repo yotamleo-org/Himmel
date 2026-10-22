@@ -126,7 +126,7 @@ echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","start
 report --since 2026-10-15 --out "$TMP/r5.md"
 has "catch counted once for the fixed-by-next-push failure" "$TMP/r5.md" "Catches: 1 (of 2 failed PR runs)"
 has "catch grouped by job family" "$TMP/r5.md" "- shell-unit-shard: 1"
-has "a failure with no later push is not a catch" "$TMP/r5.md" "Failed with no later push: 1"
+has "a failure with no later push is not a catch" "$TMP/r5.md" "Failed without a fixing next push: 1"
 # runner-min total: 10 + 1 + 2 + 1 = 14.0 -> catches per 1000 runner-min = 71.4
 has "catches per 1000 runner-min" "$TMP/r5.md" "Catches per 1000 runner-min: 71.4"
 
@@ -157,20 +157,32 @@ printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv
 cat > "$FX/runs.json" <<'EOF'
 [
  {"databaseId":9101,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T10:00:00Z","startedAt":"2026-10-20T10:00:05Z","updatedAt":"2026-10-20T10:20:00Z","headBranch":"feat/c","headSha":"ccc"},
- {"databaseId":9102,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T11:00:00Z","startedAt":"2026-10-20T11:00:05Z","updatedAt":"2026-10-20T11:15:00Z","headBranch":"feat/c","headSha":"ddd"}
+ {"databaseId":9102,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T11:00:00Z","startedAt":"2026-10-20T11:00:05Z","updatedAt":"2026-10-20T11:15:00Z","headBranch":"feat/c","headSha":"ddd"},
+ {"databaseId":9103,"event":"pull_request","status":"completed","conclusion":"success","createdAt":"2026-10-20T12:00:00Z","startedAt":"2026-10-20T12:00:05Z","updatedAt":"2026-10-20T12:10:00Z","headBranch":"feat/c","headSha":"eee"},
+ {"databaseId":9104,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T13:00:00Z","startedAt":"2026-10-20T13:00:05Z","updatedAt":"2026-10-20T13:10:00Z","headBranch":"feat/d","headSha":"fff"},
+ {"databaseId":9105,"event":"pull_request","status":"in_progress","conclusion":null,"createdAt":"2026-10-20T14:00:00Z","startedAt":"2026-10-20T14:00:05Z","updatedAt":"2026-10-20T14:05:00Z","headBranch":"feat/d","headSha":"ggg"}
 ]
 EOF
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:01:30Z"}]}' > "$FX/jobs-9101.json"
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:01:30Z"}]}' > "$FX/jobs-9102.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"success","startedAt":"2026-10-20T12:00:30Z","completedAt":"2026-10-20T12:01:30Z"}]}' > "$FX/jobs-9103.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T13:00:30Z","completedAt":"2026-10-20T13:01:30Z"}]}' > "$FX/jobs-9104.json"
+echo '{"jobs":[]}' > "$FX/jobs-9105.json"
 report --since 2026-10-15 --out "$TMP/r8.md"
-has "same-family failure on the next push is not a catch" "$TMP/r8.md" "Catches: 0 (of 2 failed PR runs)"
+# 9101 is followed by a same-family failure, 9102 by a success, 9104 by a run still going
+has "only the push that fixes the failure is credited" "$TMP/r8.md" "Catches: 1 (of 3 failed PR runs)"
+has "a run still going is no evidence of a fix" "$TMP/r8.md" "Failed without a fixing next push: 2"
 
 # --- unreadable job times degrade the cost section and fail the run -----------
 scenario s9
 printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
-cp "$TMP/s8/runs.json" "$FX/runs.json"
-rm -f "$FX/jobs-9101.json" "$FX/jobs-9102.json"
-echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:01:30Z"}]}' > "$FX/jobs-9102.json"
+cat > "$FX/runs.json" <<'EOF'
+[
+ {"databaseId":9201,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T10:00:00Z","startedAt":"2026-10-20T10:00:05Z","updatedAt":"2026-10-20T10:20:00Z","headBranch":"feat/e","headSha":"hhh"},
+ {"databaseId":9202,"event":"pull_request","status":"completed","conclusion":"success","createdAt":"2026-10-20T11:00:00Z","startedAt":"2026-10-20T11:00:05Z","updatedAt":"2026-10-20T11:15:00Z","headBranch":"feat/e","headSha":"iii"}
+]
+EOF
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"success","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:01:30Z"}]}' > "$FX/jobs-9202.json"
 report --since 2026-10-15 --out "$TMP/r9.md"
 is "unreadable job times exit 3" 3 "$rc"
 if grep -q '^UNAVAILABLE: runner time of 1 run' "$TMP/r9.md"; then ok "cost section names the unreadable runs"; else bad "no UNAVAILABLE runner time line"; fi
