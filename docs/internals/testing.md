@@ -171,6 +171,17 @@ range, so a suite still untracked is not listed and not run by it — commit the
 new suite first (or run it by the `quiet-run` form above), then the range
 selects it.
 
+## Local suite-result ledger
+
+`quiet-run.sh suite` and `scripts/ci/run-shell-tests.sh` append one JSON row per
+suite run (`ts`, `suite`, `head`, `rc`, `sec`, `station`) to
+`~/.himmel/state/suite-runs.jsonl`, so local catches are countable. The append
+never changes a suite's exit code and creates the directory on demand. A
+fixture-marked run (`HIMMEL_TEST_FIXTURE=1`) or a GitHub Actions run writes
+nothing unless `HIMMEL_SUITE_LEDGER` names a file; tests point that variable at
+a temp path. `bash scripts/ci/suite-runs-summary.sh --days N` (default 7)
+prints `<red>/<runs>  <suite>` for every suite with a red run in the window.
+
 ## Impacted suites — which suites a change actually reaches
 
 `bash scripts/cr/impacted-suites.sh <base>..<head>` lists every suite
