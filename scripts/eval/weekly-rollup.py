@@ -136,7 +136,7 @@ def cache_hit(path, t0, t1):
                 vals.append(float(row["overall"]))
         except (ValueError, KeyError, TypeError):
             continue
-    return (num(sum(vals) / len(vals)) if vals else None), "ok"
+    return (num(sum(vals) / len(vals)), "ok") if vals else (None, "no-samples")
 
 
 def flake_total(script, epoch):

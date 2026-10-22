@@ -144,6 +144,13 @@ check "a finished week keeps its flake rows when the script is gone" 2 "$(k 2026
 check "a kept source is still named ok" "ok ok ok" "$(k 2026-W37 '[.sources.self_review, .sources.cache, .sources.flake] | join(" ")')"
 check "a partial week is replaced, not kept" absent "$(k 2026-W39 .sources.self_review)"
 
+OUT6="$W/aged.jsonl"
+run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT6" >/dev/null 2>&1
+: >"$W/empty-cache.jsonl"
+CACHE_HEALTH_HISTORY="$W/empty-cache.jsonl" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT6" >/dev/null 2>&1
+check "a finished week keeps its cache hit when the history has aged out" 92 \
+  "$(jq -r 'select(.kind=="week" and .key=="2026-W37") | .cache_hit_pct' "$OUT6")"
+
 run write --repo "$REPO" --ref main --weeks 0 --versions 2 --out "$OUT" >"$W/w2.out" 2>&1
 check "version rows come from stable tags" "v1.0.0 v1.1.0" \
   "$(jq -r 'select(.kind=="version") | .key' "$OUT" | tr '\n' ' ' | sed 's/ $//')"
