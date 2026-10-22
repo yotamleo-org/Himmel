@@ -201,6 +201,9 @@ chokepoint_seam_guard scripts/ci/run-shell-tests.sh || exit 96
 # prints the directory to stdout.
 unset CDPATH
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+# Stock macOS has no `timeout`; the shim reaches every suite and child shell through PATH.
+# shellcheck source=../lib/portable-timeout.sh
+. "$REPO_ROOT/scripts/lib/portable-timeout.sh"
 # The caller's git work tree, captured BEFORE the cd below throws the caller's
 # cwd away: the scan-root guard after arg parsing compares it with
 # REPO_ROOT. Empty when the caller is not inside a work tree. Physical (-P) form
@@ -792,6 +795,14 @@ scripts/handover/console-kit/test-console-wait.sh    # HIMMEL-3699: skipped off-
 scripts/handover/console-kit/test-console-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-console-wait.sh above, same console-kit Linux-only-by-design PLATFORM GUARD (console-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
 scripts/handover/console-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same console-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
 scripts/handover/console-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same console-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
+scripts/handover/console-kit/test-console-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-console-wait-r0.sh:25) says \"Linux-only: console-wait.sh has no .ps1 twin by design\"; the kit PLATFORM GUARD is console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/console-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/console-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only)\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
+scripts/handover/console-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says no .ps1 twin by design (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/console-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/console-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/ci/test-ci-lint-tree-gates.sh  # HIMMEL-7101: skipped off-Linux only — it extracts and runs the real ci.yml lint-job step (ci.yml:1273), which calls GNU tar \`--verbatim-files-from\` (bsdtar: \"Option --verbatim-files-from is not supported\"); that job is \`runs-on: ubuntu-latest\` (ci.yml:1128), so the step never runs on macOS
+scripts/handover/console-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in
   Linux) ;;
