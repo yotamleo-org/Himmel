@@ -80,6 +80,20 @@ humanizer_rows(){
   printf 'HIMMEL-6967 took 142 seconds.\n' >"$rewrite"
   out="$(python3 -I "$facts" "$td/number.md" "$rewrite" 2>&1)"; rc=$?
   check "number substring is not preservation" "$rc" 1
+  printf 'Use v1.2 before filing.\n' >"$td/version.md"
+  printf 'Use v9.2 before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/version.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed prefixed version refused" "$rc" 1
+  printf 'Before filing, use v1.2.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/version.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful prefixed version passes" "$rc" 0
+  printf 'Read scripts/check before filing.\n' >"$td/path.md"
+  printf 'Read scripts/other before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/path.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed extensionless path refused" "$rc" 1
+  printf 'Before filing, read scripts/check.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/path.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful extensionless path passes" "$rc" 0
   : >"$rewrite"
   out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
   check "empty rewrite refused" "$rc" 1
