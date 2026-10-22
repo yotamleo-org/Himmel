@@ -150,18 +150,30 @@ fillable_keys() {
 # _fe_store <key> <env-file> -- the file KEY's answer is written to: the tracked
 # config file for a behaviour-config key, the env file for everything else.
 _fe_store() {
+  local conf
   if [ "$(_himmel_key_class "$1")" = config ]; then
-    printf '%s/himmel.conf' "$(_himmel_config_dir)"
+    conf="$(_himmel_config_dir)/himmel.conf"
+    # A himmel.conf.local value outranks himmel.conf, so the answer goes there.
+    if [ -f "$conf.local" ] && [ -n "$(dotenv_get "$conf.local" "$1")" ]; then
+      printf '%s' "$conf.local"
+    else
+      printf '%s' "$conf"
+    fi
   else
     printf '%s' "$2"
   fi
 }
 
 # _fe_current <key> <env-file> -- the value the prompt shows: the key's store,
+# then himmel.conf (a config key's local override is its store when it has one),
 # then (config keys not yet migrated) the legacy value still in the env file.
 _fe_current() {
-  local v
+  local v conf
   v="$(dotenv_get "$(_fe_store "$1" "$2")" "$1")"
+  if [ -z "$v" ] && [ "$(_himmel_key_class "$1")" = config ]; then
+    conf="$(_himmel_config_dir)/himmel.conf"
+    v="$(dotenv_get "$conf" "$1")"
+  fi
   [ -n "$v" ] || v="$(dotenv_get "$2" "$1")"
   printf '%s' "$v"
 }

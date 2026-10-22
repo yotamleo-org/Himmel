@@ -730,6 +730,16 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target3/.claude/settings.j
 grepq "$out" 'himmel.conf' || fail "HIMMEL-7021 preserve: missing the himmel.conf-preserve message (got: $out)"
 echo "ok: HIMMEL-7021 preserves a himmel.conf HANDOVER_DIR (does not shadow it via settings.json)"
 
+# An empty HANDOVER_DIR= reads as unset, so it must not suppress the wiring.
+emptyhome="$work/emptyhome"; mkdir -p "$emptyhome/.himmel"
+printf 'HANDOVER_DIR=\n' > "$emptyhome/.himmel/himmel.conf"
+empty_vault="$work/empty-vault"
+empty_target="$work/empty-target"; mkdir -p "$empty_target"
+HOME="$emptyhome" bash "$adopt" --profile luna --target "$empty_target" --luna-target "$empty_vault" >/dev/null 2>&1
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$empty_target/.claude/settings.json" 2>/dev/null)
+[ "$hd" != "ABSENT" ] || fail "HIMMEL-7021 empty: an empty HANDOVER_DIR= in himmel.conf suppressed the settings.json wiring"
+echo "ok: HIMMEL-7021 an empty himmel.conf HANDOVER_DIR= does not count as configured"
+
 # ── 4d. canonicalize a relative --luna-target ────────
 # A relative --luna-target must not persist a CWD-dependent relative path.
 relhome="$work/relhome"; mkdir -p "$relhome"

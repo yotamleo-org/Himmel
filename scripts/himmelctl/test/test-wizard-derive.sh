@@ -534,6 +534,21 @@ grepq "$out" -F 'To uninstall later' \
   || fail "caseQ: expected the uninstall footer after a successful T5b install"
 echo "ok: caseQ T5b existing-vault STAMPED honors handover.mode=external (dry-run DRY preview + real write on accept); a legacy pluginSet=full no-ops there too"
 
+# A himmel.conf.local HANDOVER_DIR outranks himmel.conf, so the wizard's write must land there.
+hQ2="$work/hQ2"; mkdir -p "$hQ2/.himmel"
+printf 'HANDOVER_DIR=/old/local/handovers\n' > "$hQ2/.himmel/himmel.conf.local"
+fixtureQ2="$work/caseQ2-fixture"; build_fixture "$fixtureQ2"
+set +e
+out=$(PATH="$cQ" HOME="$hQ2" USERPROFILE="$(winpath "$hQ2")" HIMMELCTL_CACHE_DIR="$(winpath "$hQ2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hQ2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
+      HIMMELCTL_REPO_ROOT="$(winpath "$fixtureQ2")" \
+      "$node_bin" "$wizard" install --from-profile "$(winpath "$cacheQ")" \
+      <<<"" 2>&1); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "caseQ2: accept should exit 0 (got rc=$rc): $out"
+grep -qE 'HANDOVER_DIR=.*caseQ-handover-target' "$hQ2/.himmel/himmel.conf.local" \
+  || fail "caseQ2: the write must land in the himmel.conf.local override (got: $(cat "$hQ2/.himmel/himmel.conf.local"))"
+echo "ok: caseQ2 a himmel.conf.local HANDOVER_DIR override receives the wizard write"
+
 # ── Case E: a legacy contributor cache migrates to devOverlay ─
 # =true — deriveCommand ALWAYS derives adopt.sh now (ONE execution engine);
 # the old contributor role's setup.sh/setup.ps1 is layered on TOP as the dev

@@ -162,5 +162,13 @@ HOME="$fh" _fe_save JIRA_API_TOKEN "$fe" newtok
 check "save: secret key lands in the env file" "$(dotenv_get "$fe" JIRA_API_TOKEN)" "newtok"
 check "save: secret key never reaches himmel.conf" "$(grep -c JIRA_API_TOKEN "$fh/.himmel/himmel.conf")" "0"
 
+# A himmel.conf.local value outranks himmel.conf: it is shown, and the answer lands there.
+printf 'USER_SLUG=local-slug\n' > "$fh/.himmel/himmel.conf.local"
+check "current: himmel.conf.local value is shown" "$(HOME="$fh" _fe_current USER_SLUG "$fe")" "local-slug"
+check "store: a key set in himmel.conf.local saves there" "$(HOME="$fh" _fe_store USER_SLUG "$fe")" "$fh/.himmel/himmel.conf.local"
+HOME="$fh" _fe_save USER_SLUG "$fe" newer-slug
+check "save: answer updates the local override" "$(dotenv_get "$fh/.himmel/himmel.conf.local" USER_SLUG)" "newer-slug"
+check "save: himmel.conf keeps its own value" "$(dotenv_get "$fh/.himmel/himmel.conf" USER_SLUG)" "new-slug"
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

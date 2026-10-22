@@ -2843,11 +2843,17 @@ function runSpawn(cmd, opts = {}) {
 // the wizard's own ONE confirmable summary line prints.
 function writeHandoverDir(p) {
   const target = path.resolve(expandHome(p));
-  const confFile = behaviourConfigLib.confPath();
   try {
     fs.mkdirSync(target, { recursive: true });
   } catch (e) {
     console.error(`himmelctl: failed to create handover dir ${target}: ${e.message}`);
+    return false;
+  }
+  let confFile;
+  try {
+    confFile = behaviourConfigLib.writeTarget('HANDOVER_DIR');
+  } catch (e) {
+    console.error(`himmelctl: failed to write HANDOVER_DIR to ${behaviourConfigLib.confPath()}: ${e.message}`);
     return false;
   }
   const recorded = provBefore(confFile, { scope: 'user', cls: 'keep' });
@@ -7788,7 +7794,7 @@ function cmdConfigSetInitiative(leg, onOff, args) {
     console.error(`himmelctl: unknown initiative leg '${leg}' (known: ${INITIATIVE_LEGS.join(', ')})`);
     return 2;
   }
-  const { value: current, file } = readConfigVar('HIMMEL_INITIATIVE');
+  const current = readConfigVar('HIMMEL_INITIATIVE').value;
   const next = toggleToken(current, leg, onOff === 'on');
   // An empty value reads as unset and falls through to the next layer, so
   // clearing the last leg blanks every layer that carries one; otherwise the
@@ -7796,7 +7802,7 @@ function cmdConfigSetInitiative(leg, onOff, args) {
   // himmel.conf.local override, else himmel.conf.
   const targets = next === ''
     ? behaviourConfigLib.layersSetting('HIMMEL_INITIATIVE', envFilePath())
-    : [file === behaviourConfigLib.confLocalPath() ? file : behaviourConfigLib.confPath()];
+    : [behaviourConfigLib.writeTarget('HIMMEL_INITIATIVE')];
   return writeConfigVar('HIMMEL_INITIATIVE', next, args, targets.length ? targets : undefined) ? 0 : 1;
 }
 

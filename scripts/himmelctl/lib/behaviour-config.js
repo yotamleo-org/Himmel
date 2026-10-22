@@ -56,6 +56,14 @@ function layersSetting(key, legacyEnvFile) {
   return files;
 }
 
+// The file a non-empty write of KEY must land in to take effect: the
+// himmel.conf.local override when it sets KEY, else himmel.conf.
+function writeTarget(key) {
+  const local = confLocalPath();
+  const parsed = readParsed(local);
+  return parsed && parsed[key] ? local : confPath();
+}
+
 // Replace each key's line in place (first match; later duplicates dropped),
 // append the missing ones, drop every dropKeys entry not in entries, leave every
 // other line untouched. Creates the file and its directory when absent.
@@ -77,4 +85,4 @@ function upsertConfEntries(file, entries, dropKeys) {
   fs.writeFileSync(file, `${lines.join('\n')}\n`);
 }
 
-module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, upsertConfEntries };
+module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, writeTarget, upsertConfEntries };
