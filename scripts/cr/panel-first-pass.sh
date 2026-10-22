@@ -176,7 +176,7 @@ else
     if ! { [ -f "$pf_ledger" ] && awk -v b="\"branch\":\"$BRANCH\"" 'index($0, "\"kind\":\"preflight\"") && index($0, b) { f = 1 } END { exit !f }' "$pf_ledger"; }; then
         pf_t0=$SECONDS
         pf_rc=0
-        pf_out=$(bash "$HIMMEL_ROOT/scripts/cr/known-findings.sh" --diff "$diff_range" --area 2>&1) || pf_rc=$?
+        pf_out=$(CR_LEDGER="$pf_ledger" bash "$HIMMEL_ROOT/scripts/cr/known-findings.sh" --diff "$diff_range" --area 2>&1) || pf_rc=$?
         printf '%s\n' "$pf_out" >&2
         if [ "$pf_rc" -eq 3 ]; then
             echo "panel-first-pass ABORT - the step 2.8 known-findings preflight has open hits on $BRANCH, so no round was started. Close each hit (fixed in a follow-up commit, waived with a reason, or checked), then record the pass and re-run /pr-check:" >&2
@@ -184,7 +184,7 @@ else
             echo "  bash \"$HIMMEL_ROOT/scripts/cr/ledger-append.sh\" preflight --head $HEAD_SHA --duration-secs <s> --hit <class>=fixed|checked|waived:<reason>" >&2
             exit 3
         fi
-        if [ "$pf_rc" -ne 0 ] || ! bash "$HIMMEL_ROOT/scripts/cr/ledger-append.sh" preflight --branch "$BRANCH" --head "$HEAD_SHA" --duration-secs "$((SECONDS - pf_t0))" >&2; then
+        if [ "$pf_rc" -ne 0 ] || ! CR_LEDGER="$pf_ledger" bash "$HIMMEL_ROOT/scripts/cr/ledger-append.sh" preflight --branch "$BRANCH" --head "$HEAD_SHA" --duration-secs "$((SECONDS - pf_t0))" >&2; then
             echo "panel-first-pass ABORT - could not run or record the step 2.8 known-findings preflight on $BRANCH (known-findings rc=$pf_rc). No round was started. Run it by hand, then re-run /pr-check:" >&2
             echo "  bash \"$HIMMEL_ROOT/scripts/cr/known-findings.sh\" --diff --area" >&2
             echo "  bash \"$HIMMEL_ROOT/scripts/cr/ledger-append.sh\" preflight --head $HEAD_SHA --duration-secs <s>" >&2

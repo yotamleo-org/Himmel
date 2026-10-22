@@ -659,6 +659,27 @@ if compgen -G "$repo/.git/cr-review-rounds/*" >/dev/null; then bad "T20 a review
 assert_has "$err" "ledger-append.sh" "T20 message names ledger-append.sh"
 rm -rf "$repo/.git/cr-review-rounds"
 
+# T21: an ambient CR_LEDGER cannot split the preflight lookup from its write:
+# the row lands on the git-common ledger the marker gate reads.
+amb="$tmp/ambient-ledger.jsonl"
+rm -f "$amb" "$CALL_LOG" "$tmp/err"
+git -C "$repo" worktree add -q -b feature-ambient "$tmp/wt-ambient" main
+(
+    cd "$tmp/wt-ambient" || exit 1
+    printf 'clean\n' > ambient.txt
+    git add ambient.txt
+    git -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m clean
+) || bad "T21 fixture commit failed"
+amb_sha="$(git -C "$tmp/wt-ambient" rev-parse HEAD)"
+out="$( (cd "$tmp/wt-ambient" && CR_LEDGER="$amb" FAKE_RC=0 bash "$SCRIPT" --head "$amb_sha" --branch feature-ambient) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+git -C "$repo" worktree remove --force "$tmp/wt-ambient" 2>/dev/null
+if [ "$rc" -eq 0 ]; then ok "T21 run with an ambient CR_LEDGER exits 0"; else bad "T21 exit (got $rc; err: $err)"; fi
+amb_rows="$(grep -F '"kind":"preflight"' "$ledger" | grep -F '"branch":"feature-ambient"')"
+if [ -n "$amb_rows" ]; then ok "T21 preflight row recorded on the git-common ledger"; else bad "T21 no preflight row on the git-common ledger"; fi
+if [ -e "$amb" ]; then bad "T21 the ambient CR_LEDGER file was written"; else ok "T21 the ambient CR_LEDGER file is untouched"; fi
+rm -rf "$repo/.git/cr-review-rounds"
+
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*
 # scratch files, always rm -f'd before it returns. Any NEW one since the
