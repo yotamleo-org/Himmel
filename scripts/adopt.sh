@@ -390,7 +390,10 @@ copy_portable() {
   echo "──── Copying portable core into $TARGET ────"
   local f
   for f in "${PORTABLE_FILES[@]}"; do
-    copy_recorded "$f" exec
+    case "$f" in
+      *.sh) copy_recorded "$f" exec ;;
+      *)    copy_recorded "$f" ;;
+    esac
     echo "  $f"
   done
 }

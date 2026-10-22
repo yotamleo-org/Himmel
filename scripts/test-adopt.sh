@@ -1570,6 +1570,10 @@ for f in .claude/commands/cr-scores.md .claude/commands/cr-tune.md .claude/comma
          scripts/cr/standards-cadence.sh scripts/cr/anchor-handoff.sh scripts/lib/handover-path.sh; do
   [ -f "$crtarget/$f" ] || fail "HIMMEL-6999: $f was not copied into the project"
   cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-6999: the project's $f differs from himmel's"
+  case "$f" in
+    *.sh) [ -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f is not executable" ;;
+    *)    [ ! -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f (not a script) was made executable" ;;
+  esac
 done
 for f in scripts/cr/anchor-handoff.sh scripts/cr/cr-scores.sh scripts/cr/known-findings.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh; do
   mkdir -p "$crclone/$(dirname "$f")"; cp "$repo_root/$f" "$crclone/$f"

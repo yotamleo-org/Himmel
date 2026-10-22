@@ -356,10 +356,11 @@
         <span class="mono">worktree.sh</span>,
         <span class="mono">clean.sh</span> and
         <span class="mono">_new-worktree.sh</span>. If a file with one of
-        those names is already there, it is replaced in place: no backup is
-        made, and no record is kept of which files were yours. In a test, a
-        committed <span class="mono">scripts/worktree.sh</span> was replaced
-        by himmel's version. Run the install in a project where
+        those names is already there, it is replaced in place after its
+        bytes are backed up and the replacement is recorded, so uninstall can
+        put your file back. When the backup cannot be made the file is left
+        untouched and the install ends with an error. Run the install in a
+        project where
         <span class="mono">git status</span> shows nothing uncommitted, so
         git can bring anything back. The same install also replaces the
         project's <span class="mono">statusLine</span> setting (item 6).
@@ -367,7 +368,12 @@
         <span class="mono">/cr-tune</span> and
         <span class="mono">/cr-learnings-refresh</span> are copied into
         <span class="mono">.claude/commands/</span> the same way and read the
-        project's own review ledger.</p>
+        project's own review ledger. <span class="mono">/cr-learnings-refresh</span>
+        can also update the shared anchor's
+        <span class="mono">scripts/cr/known-findings.json</span> through
+        <span class="mono">HIMMEL_REPO</span>, and step 6 of
+        <span class="mono">/cr-tune</span> runs
+        <span class="mono">escape-classes.sh</span> from that same checkout.</p>
       </div>
 
       <div class="answer">
