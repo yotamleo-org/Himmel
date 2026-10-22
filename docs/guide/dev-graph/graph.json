@@ -60,11 +60,11 @@
       "lane": "console",
       "phase": "dispatch",
       "label": "Console start",
-      "summary": "console.sh new writes the console doc, takes its queue lock and prints the launch line",
+      "summary": "chief.sh new writes the console doc, takes its queue lock and prints the launch line",
       "sources": [
         {
-          "file": "scripts/handover/console/console.sh",
-          "anchor": "console.sh new  — write the console doc + acquire its queue lock"
+          "file": "scripts/handover/console/chief.sh",
+          "anchor": "chief.sh new  — write the console doc + acquire its queue lock"
         }
       ],
       "pos": {
@@ -736,11 +736,11 @@
       "lane": "console",
       "phase": "succession",
       "label": "Succession",
-      "summary": "console.sh next at 45 percent fill; the successor goes LIVE, legs quote back SUCCESSION accepted",
+      "summary": "chief.sh next at 45 percent fill; the successor goes LIVE, legs quote back SUCCESSION accepted",
       "sources": [
         {
-          "file": "scripts/handover/console/console.sh",
-          "anchor": "console.sh next — write the successor's doc stub"
+          "file": "scripts/handover/console/chief.sh",
+          "anchor": "chief.sh next — write the successor's doc stub"
         },
         {
           "file": "scripts/handover/console-kit/succession-tracker.sh",
@@ -1380,7 +1380,7 @@
       "condition": "context fill at CONSOLE_FILL_PERCENT (45) or the handover-budget WAKE",
       "sources": [
         {
-          "file": "scripts/handover/console/console.sh",
+          "file": "scripts/handover/console/chief.sh",
           "anchor": "fill_percent=\"${CONSOLE_FILL_PERCENT:-45}\""
         }
       ],
@@ -1394,10 +1394,10 @@
       "to": "c.next",
       "kind": "refusal",
       "exit": 4,
-      "condition": "console.sh wrap exit 4 or 5: live subagent or non-harness process",
+      "condition": "chief.sh wrap exit 4 or 5: live subagent or non-harness process",
       "sources": [
         {
-          "file": "scripts/handover/console/console.sh",
+          "file": "scripts/handover/console/chief.sh",
           "anchor": "wrap refused: this session has live subagents (above)"
         }
       ],

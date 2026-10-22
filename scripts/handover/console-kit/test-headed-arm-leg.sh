@@ -1008,7 +1008,7 @@ mkdir -p "$mutantdir/scripts/handover" "$mutantdir/scripts/lib"
 mutant="$mutantdir/scripts/handover/headed-arm.sh"
 # shellcheck disable=SC2016  # literal source-text mutation, not shell expansion
 sed 's/ --autocompact "$AUTOCOMPACT"//' "$HEADED_ARM" > "$mutant"
-cp "$HERE/../../lib/console-context.sh" "$mutantdir/scripts/lib/console-context.sh"
+cp "$HERE/../../lib/chief-context.sh" "$mutantdir/scripts/lib/chief-context.sh"
 cp "$HERE/../../lib/claude-version.sh" "$mutantdir/scripts/lib/claude-version.sh"
 chmod 755 "$mutant"
 d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-leg"; mkdir -p "$tmp/repo12"

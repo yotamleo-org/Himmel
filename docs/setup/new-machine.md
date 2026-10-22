@@ -604,7 +604,7 @@ mode — and set the mode where it is actually observable, at arming.
 Context mode is an **arming-time** choice instead: `--context 1m|standard` on
 `scripts/handover/arm-resume.sh` (7th positional on `headed-arm.sh`), defaulting
 to `standard` for every arm, supervisor session or not — a supervisor session (armed
-through `console.sh`, which has no `--context` flag of its own) can still
+through `chief.sh`, which has no `--context` flag of its own) can still
 opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching shell. The measured
 behaviour of both levers — which model ids accept the suffix, what a plain launch
 actually reports, and why `--autocompact` is the half that does the work — is in

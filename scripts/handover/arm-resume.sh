@@ -572,7 +572,7 @@ EOF
 # file) because --context validation below needs console_context_valid
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/console-context.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chief-context.sh"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/claude-version.sh"
 

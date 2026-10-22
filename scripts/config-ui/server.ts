@@ -25,6 +25,7 @@ import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
+import { readGate, writeGate } from "./review-gate";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 import { secretWrite, setupState } from "./setup";
 
@@ -549,7 +550,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       }
       // the vm section of the himmel config, validated and saved through luna-config.js.
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
+      // the review gate: reviewers, order, mode and required, read through the one resolver; a write edits the critics.local.json overlay only.
+      if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -558,6 +561,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       let b: unknown;
       try { b = JSON.parse(text); } catch { return json({ error: "bad json" }, 400); }
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
+      if (path === "/api/review-gate") { const g = writeGate(env, b as Record<string, unknown>); return json(redactOut(g.body), g.status); }
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
       if (path === "/api/setup/secret") return setupSecretRoute(b as Record<string, unknown>);

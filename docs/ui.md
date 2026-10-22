@@ -24,6 +24,13 @@ A confirmed switch runs the `himmelctl` command printed under it, and writes:
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
+| Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
+
+The Review gate card lists the reviewers in the order they run, says in plain words what `hard` and `best-effort`
+mean, marks the recommended value, and states the ruled rate-limit behaviour: with CodeRabbit on best-effort (the default), rate limited or absent is a
+note and the gate continues, it never waits; a reviewer set to `hard` holds the merge when it is rate limited or unavailable. The timeout, parallelism, tier and profile settings
+(`CRITIC_TIMEOUT_SECS`, `CRITIC_PARALLEL`, `CRITIC_PANEL_TIERS`, `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`,
+`CR_FLOOR_FALLBACK`) are shown with their current value and default, and are set in `.env` or the launching shell.
 
 The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
 secret store only and is never shown, logged or returned), and a save is refused while the page runs

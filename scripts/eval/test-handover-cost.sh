@@ -102,6 +102,9 @@ check "an invalid --name-re is a usage error (exit 2), not a traceback" '[ "$rrc
 if ! { mkdir "$TMP/n" && cp "$FX"/*.jsonl "$TMP/n/" && sed -e 's/console\.sh next/console.sh nope/' "$FX/console-p.jsonl" >"$TMP/n/console-p.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 python3 "$HC" --dir "$TMP/n" >"$TMP/n.out" 2>&1; nrc=$?
 check "two consoles with no measurable handover exit 2 with a message, no silent 0" '[ "$nrc" = 2 ] && grep -q "no measurable handover" "$TMP/n.out" && ! grep -q "^HANDOVER " "$TMP/n.out" && ! grep -q "^MEAN " "$TMP/n.out"'
+if ! { mkdir "$TMP/ch" && cp "$FX"/*.jsonl "$TMP/ch/" && sed -e 's/console\.sh next/chief.sh next/' "$FX/console-p.jsonl" >"$TMP/ch/console-p.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+python3 "$HC" --dir "$TMP/ch" >"$TMP/ch.out" 2>&1; chrc=$?
+check "a chief.sh next call marks the handover the same as console.sh next" '[ "$chrc" = 0 ] && grep -q "^HANDOVER " "$TMP/ch.out"'
 
 echo "handover-cost: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

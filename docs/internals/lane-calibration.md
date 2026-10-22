@@ -591,7 +591,7 @@ via `--context 1m|standard` (`arm-resume.sh`, and the 7th positional of
 `headed-arm.sh`). The baseline default is **`standard`**;
 the headed launchers now use per-profile defaults, including
 `design`'s declared `1m` mode and numeric ceiling, without an operator override. A
-supervisor session arm (launched through `console.sh`, which has no `--context` flag of
+supervisor session arm (launched through `chief.sh`, which has no `--context` flag of
 its own) can still opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching
 shell.
 
@@ -946,7 +946,7 @@ fallback to the full set) and the profile is picked from the role:
 
 | Launch path | Profile |
 |---|---|
-| `console.sh` arm / `headed-arm.sh --role console` | `console` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
+| `chief.sh` arm / `headed-arm.sh --role console` | `console` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
 | `arm-resume.sh`, `schedule-resume.sh` | from the resumed doc via `scripts/lanes/role-profile.sh`; `--profile <name>` overrides (arm-resume) |
 | `hop.sh` | `HOP_PROFILE`, else console / leg-impl from the caller's role env, else `user` |
 | worker session brief (`headed-arm-leg.sh`) | `--profile` / `LEG_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
