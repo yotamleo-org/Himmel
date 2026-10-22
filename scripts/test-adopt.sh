@@ -1579,8 +1579,10 @@ HOME="$pchome" git -C "$crclone" add scripts
   echo '{"kind":"finding","ts":"2026-07-01T10:00:00Z","branch":"b1","head":"aaaa111","model":"crloop-modelA","finding_id":"crloop-modelA-1","severity":"imp","file":"scripts/foo.sh","line":10,"verdict":"agreed"}'
   echo '{"kind":"finding","ts":"2026-07-01T10:01:00Z","branch":"b1","head":"aaaa111","model":"crloop-modelA","finding_id":"crloop-modelA-2","severity":"crit","file":"scripts/bar.sh","line":5,"verdict":"disproved"}'
 } > "$crtarget/.git/cr-critic-scores.jsonl"
+crloop_node="$work/crloop-6999-node"; mkdir -p "$crloop_node"
+ln -sf "$(PATH="$saved_path" command -v node)" "$crloop_node/node"
 cr_run() {
-  (cd "$crtarget" && HOME="$pchome" HIMMEL_REPO="$crclone" bash scripts/cr/"$1" "${@:2}" 2>"$work/crloop-6999.err")
+  (cd "$crtarget" && PATH="$crloop_node:$PATH" HOME="$pchome" HIMMEL_REPO="$crclone" bash scripts/cr/"$1" "${@:2}" 2>"$work/crloop-6999.err")
 }
 out=$(cr_run cr-scores.sh) || fail "HIMMEL-6999: the project's cr-scores.sh failed: $(cat "$work/crloop-6999.err")"
 grepq "$out" 'crloop-modelA' || fail "HIMMEL-6999: cr-scores.sh did not print the project ledger's rows: $out"
