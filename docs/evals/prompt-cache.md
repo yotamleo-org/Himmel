@@ -91,7 +91,7 @@ How the probe counts:
 - **Long pause (cold-expected):** a gap at or past the file's TTL. It `rewrote`
   when the later turn's `cache_read` is below half the earlier one's and its
   `cache_creation` exceeds its `cache_read`. An earlier turn with `cache_read`
-  0 cannot rewrite, so such a gap counts as expected and not as rewrote.
+  0 cannot rewrite, so such a gap counts as expected, not as a rewrite.
 - **Idle gap inside the TTL (warm-expected):** 60 s up to the TTL. Gaps under
   60 s are not counted at all.
 
