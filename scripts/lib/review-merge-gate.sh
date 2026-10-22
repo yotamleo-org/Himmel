@@ -6,8 +6,8 @@
 #   rc 3 = allow, but the SELECTOR did not resolve to a PR (gh pr view failed)
 #          — callers that extracted the selector heuristically (the PreToolUse
 #          hook) should retry once with a better-anchored selector (the cwd
-#          branch) so quoted/mis-tokenized selectors cannot dodge the gate
-# (/ codex-adv-1, CR round). Top-level consumers
+#          branch) so quoted/mis-tokenized selectors cannot dodge the gate.
+# Top-level consumers
 #          treat any non-2 rc as allow.
 # Who must pass is configuration (docs/configuration.md): every critics.json
 #   row is `mode` hard (must pass at the head) or best-effort (only a posted,
@@ -67,7 +67,7 @@ _cmg_prior_outside_block() {
     return "$rc"
 }
 
-# _cmg_outside_block <gate_head> <expected_count> — /.
+# _cmg_outside_block <gate_head> <expected_count>:
 # Reads + dispositions the outside-diff findings CodeRabbit posted AT
 # <gate_head> — either the PR's real head, or a PRIOR head
 # _cmg_prior_outside_block walks, when the real head carries no review of its
@@ -160,7 +160,7 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 { [ -r "$_cmg_dir/review-ledger-evidence.sh" ] && . "$_cmg_dir/review-ledger-evidence.sh"; } || return 1
 
 # _cmg_canon_nwo / _cmg_nwo_eq / _cmg_local_nwo — moved to scripts/lib/nwo.sh
-#  so the CodeRabbit TRIGGER path can reuse the same "is this OUR
+# so the CodeRabbit TRIGGER path can reuse the same "is this OUR
 # repo?" answer instead of re-deriving origin-URL parsing. Names unchanged.
 # shellcheck source=scripts/lib/nwo.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
@@ -337,7 +337,7 @@ _crg_coderabbit() {
         [ "$_CRG_CR_STATE" = pass ] && { _CRG_CR_STATE=degraded; _CRG_CR_DETAIL="threads query failed"; }
         return 0
     fi
-    # Page-completeness marker (codex-adv-1): this single-page query is the
+    # Page-completeness marker: this single-page query is the
     # only thread evidence, so "zero unresolved on page one" is a pass ONLY
     # when page one was the whole story. `== false` on purpose (coderabbit
     # 980-r2): only an EXPLICIT hasNextPage:false proves completeness; jq's
@@ -556,7 +556,7 @@ cr_merge_gate() {
                 # trailing-slash URL, ...). Arming is a deliberate per-clone
                 # act, so an armed-but-unparseable clone is treated as LOCAL
                 # (fall through and gate) rather than silently disabled as
-                # foreign (T9). An unarmed clone still exits here
+                # foreign. An unarmed clone still exits here
                 # via the same cr_app_configured check used below, preserving
                 # today's unarmed behaviour.
                 cr_app_configured "$PWD" || return 0

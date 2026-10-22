@@ -239,7 +239,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - (g) no hashed-key reservation created for the over-length name"
 fi
 
-# --- (h) /a stale .admit
+# --- (h) a stale .admit
 # (age past FLEET_ADMIT_STALE_SECS) whose recorded pid is still LIVE must
 # never be reclaimed by age alone — reclaiming out from under a still-running
 # holder loses mutual exclusion outright. Use the test's own $$ (guaranteed
