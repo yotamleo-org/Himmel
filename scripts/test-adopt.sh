@@ -269,6 +269,8 @@ echo "ok: self-test reproduces HIMMEL-874 (co-located npm+sed dir scrubbed, sed 
 # A missing portable gate or helper must not silently drop the merge refusal.
 # --merge-gate-only runs this adoption row without the unrelated install cases.
 test_adopt_merge_gate() (
+  unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+  unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
   local target="$work/merge-gate-project" home="$work/merge-gate-home" settings hook_cmd f rc out trust
   trust="$target/scripts/ci/ci-trust-paths.txt"
   mkdir -p "$target/.claude" "$home" "$work/merge-gate-bin"
@@ -302,14 +304,15 @@ test_adopt_merge_gate() (
       scripts/lib/user-slug.sh scripts/lib/resolve-node.sh .claude/settings.json; do
     grep -Eq -f "$trust" <<< "$f" || fail "HIMMEL-7000: seeded trust list does not cover $f"
   done
+  HOME="$home" git -C "$target" init -q -b main
+  [ -d "$target/.git" ] || fail "HIMMEL-7000: inherited Git variables redirected fixture init outside the target"
+  HOME="$home" git -C "$target" config user.name fixture
+  HOME="$home" git -C "$target" config user.email fixture@example.invalid
+  HOME="$home" git -C "$target" config --local himmel.coderabbit true
+  HOME="$home" git -C "$target" remote add origin https://github.com/adopter/project.git
+  HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt
+  HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: install merge trust policy'
   if [ "${1:-}" != --merge-gate-only ]; then
-    HOME="$home" git -C "$target" init -q -b main
-    HOME="$home" git -C "$target" config user.name fixture
-    HOME="$home" git -C "$target" config user.email fixture@example.invalid
-    HOME="$home" git -C "$target" config --local himmel.coderabbit true
-    HOME="$home" git -C "$target" remote add origin https://github.com/adopter/project.git
-    HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt
-    HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: install merge trust policy'
     printf '%s\n' \
       '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"codex","status":"ok"}' \
       '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"claude","status":"ok"}' \
@@ -374,7 +377,9 @@ STUB
   echo "ok: HIMMEL-7000 all four hooks record fresh-container ownership for uninstall; all 74 file rows recorded"
 )
 
-test_adopt_merge_gate "${1:-}"
+mkdir -p "$work/merge-gate-foreign-worktree"
+GIT_DIR="$work/merge-gate-foreign.git" GIT_WORK_TREE="$work/merge-gate-foreign-worktree" test_adopt_merge_gate "${1:-}"
+[ ! -e "$work/merge-gate-foreign.git" ] || fail "HIMMEL-7000: fixture setup wrote the inherited Git directory"
 case "${1:-}" in --merge-gate-only|--merge-gate-behavior) exit 0 ;; esac
 
 # ── 5. invalid args (run first — validated before any tool preflight) ────────
