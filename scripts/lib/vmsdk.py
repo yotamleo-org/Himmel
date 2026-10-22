@@ -647,6 +647,10 @@ class VM:
             key = os.path.expanduser("~/.ssh/id_ed25519").replace("\\", "/")
             known_hosts = self._known_hosts_file()
             known_hosts.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            # ssh would create the file under the umask (0644): make it 0600
+            # first, and tighten one a previous run left loose.
+            os.close(os.open(known_hosts, os.O_CREAT | os.O_WRONLY, 0o600))
+            os.chmod(known_hosts, 0o600)
             # ssh splits a UserKnownHostsFile value on spaces: the double quotes
             # are ssh's own, the shlex.quote around them is the pipe shell's.
             kh_opt = shlex.quote(f'UserKnownHostsFile="{known_hosts.as_posix()}"')

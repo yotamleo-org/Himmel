@@ -832,8 +832,9 @@ class TestKnownHostsReset(unittest.TestCase):
         named = self.kh_dir / "ubuntu_new"
         named.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
         self._restore(vm)
-        self.assertIn(f'UserKnownHostsFile="{named.as_posix()}"', shlex.split(self._pipe(vm)))
         self.assertFalse(named.exists())
+        self.assertIn(f'UserKnownHostsFile="{named.as_posix()}"', shlex.split(self._pipe(vm)))
+        self.assertEqual(named.read_bytes(), b"")
 
     def test_failed_restore_readback_keeps_the_known_hosts(self):
         vm = self._vm()
@@ -847,6 +848,21 @@ class TestKnownHostsReset(unittest.TestCase):
     def test_known_hosts_dir_is_private(self):
         self._pipe(self._vm())
         self.assertEqual(self.kh_dir.stat().st_mode & 0o777, 0o700)
+
+    def test_known_hosts_file_is_private_whatever_the_umask(self):
+        old = os.umask(0o022)
+        self.addCleanup(os.umask, old)
+        self._pipe(self._vm())
+        self.assertEqual((self.kh_dir / "ubuntu_new").stat().st_mode & 0o777, 0o600)
+
+    def test_loose_existing_known_hosts_file_is_tightened(self):
+        self.kh_dir.mkdir(parents=True)
+        mine = self.kh_dir / "ubuntu_new"
+        mine.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
+        mine.chmod(0o644)
+        self._pipe(self._vm())
+        self.assertEqual(mine.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(mine.read_bytes(), b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
 
 
 class TestSecretBoundary(unittest.TestCase):
