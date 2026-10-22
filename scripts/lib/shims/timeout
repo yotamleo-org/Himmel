@@ -53,14 +53,20 @@ secs="$(_secs "$1")" || usage "invalid time interval '$1'"
 kill_secs="$(_secs "$kill_after")" || usage "invalid time interval '$kill_after'"
 shift
 case "$sig" in [0-9]*) ;; *) sig="${sig#SIG}" ;; esac
+kill -l "$sig" >/dev/null 2>&1 || usage "'$sig': invalid signal"
 
 if [ "$secs" = "0" ]; then exec "$@"; fi
 
 flag="$(mktemp "${TMPDIR:-/tmp}/portable-timeout.XXXXXX")" || usage "cannot create a state file"
 trap 'rm -f "$flag" "$flag.done"' EXIT
 
-[ "$foreground" = 1 ] || set -m
-"$@" &
+if [ "$foreground" = 1 ]; then
+    # the explicit <&0 stops bash redirecting an async command's stdin from /dev/null
+    "$@" <&0 &
+else
+    set -m
+    "$@" &
+fi
 pid=$!
 set +m
 
@@ -91,7 +97,7 @@ if [ "$got_sig" = 1 ]; then
     # a signal sent to this wrapper interrupted wait: keep waiting for CMD, escalating to KILL after -k like the bound does
     esc=""
     if [ "$kill_secs" != "0" ]; then
-        ( sleep "$kill_secs"; kill -s KILL -- "-$pid" 2>/dev/null ) >/dev/null 2>&1 </dev/null &
+        ( sleep "$kill_secs"; kill -s KILL -- "-$pid" 2>/dev/null || kill -s KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 </dev/null &
         esc=$!
     fi
     rc=0

@@ -169,6 +169,29 @@ PATH="$d7" "$BASH_BIN" "$t7sig" "$PORTF" "$t7pid" >/dev/null 2>&1 || true
 if [ -s "$t7pid" ] && ! kill -0 "$(cat "$t7pid")" 2>/dev/null; then ok "T7 a TERM sent to the wrapper still runs the -k escalation (TERM-ignoring child gone)"; else bad "T7 a TERM-ignoring child outlived a TERM sent to the wrapper"; fi
 [ ! -s "$t7pid" ] || kill -s KILL "$(cat "$t7pid")" 2>/dev/null || true
 if [ $((SECONDS - t0)) -lt 20 ]; then ok "T7 the wrapper returned in time after the TERM"; else bad "T7 the wrapper hung $((SECONDS - t0))s after the TERM"; fi
+t7fg="$W/t7-fg.sh"
+# shellcheck disable=SC2016 # single quotes intentional: the script body is expanded by the child shell
+printf '%s\n' \
+    '. "$1"' \
+    'timeout --foreground -k 1 60 sh -c '"'"'echo $$ > "$1"; trap "" TERM; sleep 30'"'"' _ "$2" &' \
+    'tp=$!' \
+    'i=0; while [ ! -s "$2" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done' \
+    'kill -s TERM "$tp"' \
+    'wait "$tp"' >"$t7fg"
+rm -f "$t7pid"
+t0=$SECONDS
+PATH="$d7" "$BASH_BIN" "$t7fg" "$PORTF" "$t7pid" >/dev/null 2>&1 || true
+if [ -s "$t7pid" ] && ! kill -0 "$(cat "$t7pid")" 2>/dev/null; then ok "T7 --foreground: a TERM sent to the wrapper still runs the -k escalation"; else bad "T7 --foreground: a TERM-ignoring child outlived a TERM sent to the wrapper"; fi
+[ ! -s "$t7pid" ] || kill -s KILL "$(cat "$t7pid")" 2>/dev/null || true
+if [ $((SECONDS - t0)) -lt 20 ]; then ok "T7 --foreground: the wrapper returned in time after the TERM"; else bad "T7 --foreground: the wrapper hung $((SECONDS - t0))s after the TERM"; fi
+d7e="$(stub_dir t7e env bash sleep awk mktemp rm cat pkill sh)"
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+got="$(echo hello | PATH="$d7e" "$BASH_BIN" -c '. "$1"; timeout --foreground 5 cat' _ "$PORTF" 2>&1)"
+eq "T7 --foreground hands the caller's stdin to the command" "$got" "hello"
+rc=0
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7e" "$BASH_BIN" -c '. "$1"; timeout -s BOGUS 5 sh -c "exit 0"' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 an invalid --signal is a usage error (rc 125)" "$rc" "125"
 t7ic="$W/t7-int-child.sh"
 # shellcheck disable=SC2016 # single quotes intentional: the child body is expanded by the child shell
 printf '%s\n' 'echo $$ > "$1"' 'trap "" TERM' 'trap "exit 0" INT' 'while :; do sleep 1; done' >"$t7ic"
