@@ -243,6 +243,8 @@ fakeproc 5040 5041 script -q
 fakeproc 5041 5042 sh -c wrap
 fakeproc 5042 5043 env wrap
 fakeproc 5043 '' claude -n legX
+fgstat 5041 5041 5041
+fgstat 5042 5042 5042
 fgstat 5043 5043 5043
 QPID=5040 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a claude 3 levels below the session is accepted" || fail "depth 3: rc=$RUN_RC, qlog: $(cat "$QLOG")"
@@ -264,6 +266,21 @@ fgstat 5071 5071 5072
 fgstat 5072 5072 5072
 QPID=5070 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "of two named claudes only the foreground group counts, so the target is unambiguous" || fail "one foreground of two: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+# script gives claude its own pty, so claude is foreground there even when the script wrapper itself is backgrounded on the session's terminal.
+fakeproc 5080 5081 bash
+fakeproc 5081 5082 script -q -c /x/leg-claude-launcher.sh
+fakeproc 5082 '' claude -n legX
+fgstat 5081 5081 5999
+fgstat 5082 5082 5082
+QPID=5080 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a foreground claude under a backgrounded script wrapper is refused, rc=4" || fail "background wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5090 5091 bash
+fakeproc 5091 5092 script -q -c /x/leg-claude-launcher.sh
+fakeproc 5092 '' claude -n legX
+fgstat 5091 5091 5091
+fgstat 5092 5092 5092
+QPID=5090 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a foreground claude under a foreground script wrapper below a shell is accepted" || fail "foreground wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 
 echo "== waker state file =="
 # A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the

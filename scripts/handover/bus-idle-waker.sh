@@ -23,8 +23,9 @@
 # the konsole session's process, or exactly one process up to 3 levels below it
 # (a claudex leg runs konsole, script, then claude), must run claude (argv0) with
 # `-n <name>`, or the waker refuses with rc=4; a process below the session's own
-# counts only while its process group is the terminal's foreground group (stat
-# pgrp = tpgid), so a backgrounded claude never receives a keystroke meant for
+# counts only while it and every process between it and the session hold their
+# terminal's foreground group (stat pgrp = tpgid), so a backgrounded claude, or
+# one under a backgrounded script wrapper, never receives a keystroke meant for
 # the program in front. Two such processes are ambiguous.
 # A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (the
 # EnableSecuritySensitiveDBusAPI setting is off, or konsole read it before it was
@@ -123,7 +124,7 @@ in_foreground() { # in_foreground <pid>: its process group is the terminal's for
     num "$pgrp" && num "$tpgid" && [ "$pgrp" -gt 0 ] && [ "$pgrp" = "$tpgid" ]
 }
 
-named_target() { # exactly one process, the session's or up to 3 levels below it (and then the terminal's foreground group), must be the claude launched as `-n <name>`; checked before every wake
+named_target() { # exactly one process, the session's or up to 3 levels below it through foreground processes only (each below the session holds its own terminal's foreground), must be the claude launched as `-n <name>`; checked before every wake
     local level=0 layer next p matches=0
     konsole processId
     layer="$out"
@@ -132,7 +133,8 @@ named_target() { # exactly one process, the session's or up to 3 levels below it
         next=""
         for p in $layer; do
             num "$p" || continue
-            if is_named_claude "$p" && { [ "$level" -eq 0 ] || in_foreground "$p"; }; then matches=$((matches + 1)); fi
+            [ "$level" -eq 0 ] || in_foreground "$p" || continue
+            if is_named_claude "$p"; then matches=$((matches + 1)); fi
             next="$next $(cat "$PROC/$p"/task/*/children 2>/dev/null)" # swallow-ok: no children file = a leaf, nothing below it to match
         done
         layer="$next"
