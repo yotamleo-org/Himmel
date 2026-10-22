@@ -488,6 +488,19 @@ class TestCloneToken(unittest.TestCase):
         self.assertIsNotNone(err)
         self.assertTrue(any(c.startswith("rm -rf ") and "/tmp/tok.X" in c for c in cmds))
 
+    def test_failed_cleanup_is_reported_not_swallowed(self):
+        vm = vmsdk.VM("ubuntu_new")
+        def fake_run(cmd, **kw):
+            if cmd.startswith("rm -rf "):
+                return (1, "Permission denied")
+            return (1, "") if cmd.startswith("test -e") else (0, "/tmp/tok.X" if "mktemp" in cmd else "")
+        with mock.patch.object(vm, "run", side_effect=fake_run), \
+             mock.patch.object(vm, "push_file", return_value="/x"):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.clone_himmel()
+        self.assertIn("/tmp/tok.X", str(cm.exception))
+        self.assertIn("token", str(cm.exception).lower())
+
     def test_clone_error_has_no_credential(self):
         _, _, err = self._clone(clone_out=(
             "fatal: unable to access 'https://x-access-token:TKN@github.com/o/r.git/': "

@@ -613,7 +613,11 @@ class VM:
                 raise VMError(f"chmod of the askpass helper failed on {self.name} (rc {rc})")
             return self.run(f"GIT_ASKPASS={d}/askpass {git_cmd}")
         finally:
-            self.run(f"rm -rf {d}")
+            rc, out = self.run(f"rm -rf {d}")
+            if rc != 0:
+                raise VMError(
+                    f"could not remove {d} on {self.name} (rc {rc}); the token file "
+                    f"may persist there: {out.strip()[-200:]}")
 
     def clone_himmel(self, ref="main", depth=1, dest=None):
         """Shallow-clone the private repo onto the guest. ref = branch/tag (not a SHA)."""
