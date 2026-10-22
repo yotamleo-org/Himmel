@@ -86,6 +86,8 @@ MIN_QUERIES="${QMD_QUALITY_MIN_QUERIES:-150}"
 case "$MIN_QUERIES" in
   '' | *[!0-9]* | 0*) echo "qmd-quality: QMD_QUALITY_MIN_QUERIES must be a positive integer, got '$MIN_QUERIES'" >&2; exit 64 ;;
 esac
+# More than 9 digits is past any real golden set and can overflow the shell's integer test.
+[ "${#MIN_QUERIES}" -le 9 ] || { echo "qmd-quality: QMD_QUALITY_MIN_QUERIES must have at most 9 digits, got '$MIN_QUERIES'" >&2; exit 64; }
 n_queries="$(grep -c '[^[:space:]]' "$GOLDEN")"
 if [ "$n_queries" -lt "$MIN_QUERIES" ]; then
   echo "qmd-quality: golden set '$GOLDEN' has $n_queries queries; the minimum is $MIN_QUERIES (a few queries cannot tell a retrieval regression from noise)" >&2

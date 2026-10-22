@@ -130,14 +130,17 @@ out=$(QMD_QUALITY_MIN_QUERIES=3 XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-qualit
 eq "size: QMD_QUALITY_MIN_QUERIES lowers the minimum" "$rc" "3"
 out=$(QMD_QUALITY_MIN_QUERIES=abc XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s6" 2>&1); rc=$?
 eq "size: a non-numeric minimum is a usage error" "$rc" "64"
+out=$(QMD_QUALITY_MIN_QUERIES=9223372036854775808 XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s6b" 2>&1); rc=$?
+eq "size: a minimum past the shell's integer range is a usage error" "$rc" "64"
 
 # --- the shipped himmel golden set is large enough and every label is a real file -
 REPO="$(cd "$HERE/../../.." && pwd)"
 SHIPPED="$HERE/golden/himmel.jsonl"
 out=$(env -u QMD_QUALITY_MIN_QUERIES XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$SHIPPED" --index "$TMP/idx.sqlite" --out "$TMP/s7" 2>&1); rc=$?
 eq "shipped: the himmel golden set passes the size check (reaches the model check)" "$rc" "3"
-out=$(cd "$HERE" && bun -e 'import { readJsonl, validateGolden } from "./score.ts"; const g = readJsonl(process.argv[1]); console.log(validateGolden(g) ?? "valid", g.length)' "$SHIPPED" 2>&1)
-has "shipped: ids are unique and every row has an expect doc and a collection" "$out" "valid"
+out=$(cd "$HERE" && bun -e 'import { readJsonl, validateGolden } from "./score.ts"; const g = readJsonl(process.argv[1]); console.log(validateGolden(g) ?? "valid", g.length)' "$SHIPPED" 2>&1); rc=$?
+eq "shipped: the validation command succeeds" "$rc" "0"
+eq "shipped: 200 rows validate (unique ids, an expect doc and a collection each)" "$out" "valid 200"
 missing=""
 for p in $(sed -n 's/.*"expect":\[\(.*\)\].*/\1/p' "$SHIPPED" | tr ',' '\n' | tr -d '"' | sort -u); do
   [ -f "$REPO/${p#himmel/}" ] || missing="$missing $p"
