@@ -804,6 +804,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
   let residents: ReturnType<typeof residual>[];
   let parent: ReturnType<typeof residual>;
   let frozen: boolean;
+  let afterCreate: () => void;
   let dir: string;
   const saved: Record<string, string | undefined> = {};
   const env = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'JIRA_SECTOR_FIELD'];
@@ -824,11 +825,15 @@ describe('HIMMEL-6924 residual rank slots', () => {
     process.env.HANDOVER_DIR = dir;
     resetSectorCache();
     frozen = false;
+    afterCreate = () => {};
     parent = residual('HIMMEL-50', [], 'In Progress');
     parent.fields.customfield_rank.value = 'Ship loop';
     residents = Array.from({ length: 15 }, (_, i) => residual(`HIMMEL-${900 + i}`));
     mockRequest.mockImplementation(async (method: string, path: string) => {
-      if (method !== 'GET') return { key: 'HIMMEL-77' };
+      if (method !== 'GET') {
+        if (method === 'POST' && path === '/issue') afterCreate();
+        return { key: 'HIMMEL-77' };
+      }
       if (path.endsWith('/versions')) return [
         { name: 'v1.1.3', released: false, description: frozen ? 'frozen: 2026-10-20' : '' },
         { name: 'v1.1.4', released: false },
@@ -915,6 +920,29 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
       fields: { fixVersions: [] }, update: { labels: [{ add: 'residual-displaced' }] },
     });
+  });
+
+  it('RED a: displacement preserves unrelated fixVersion assignments', async () => {
+    residents[0].fields.fixVersions.push({ name: 'v9.0.0' });
+    await file('--fu-class', 'escape');
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
+      fields: { fixVersions: [{ name: 'v9.0.0' }, { name: 'v1.1.4' }] },
+      update: { labels: [{ add: 'residual-displaced' }] },
+    });
+  });
+
+  it.each(['started', 'gated', 'legacy-gated'])('RED b: a resident %s after creation is protected and the newcomer steps down', async (change) => {
+    afterCreate = () => {
+      if (change === 'started') residents[0].fields.status.name = 'In Progress';
+      else if (change === 'gated') residents[0].fields.labels.push('gate-receipt');
+      else writeFileSync(join(dir, 'admissions-ledger.jsonl'),
+        JSON.stringify({ key: residents[0].key, version: 'v1.1.3', gate: 'receipt' }) + '\n');
+    };
+    await file('--fu-class', 'escape');
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-77', {
+      fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
+    });
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] === '/issue/HIMMEL-900')).toBe(false);
   });
 
   it('RED b: blocker inheritance does not put a displaced newcomer back into the full version', async () => {

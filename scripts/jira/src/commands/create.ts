@@ -11,7 +11,7 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titl
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
-import { appendAdmission, readAdmissions, type AdmissionInput } from './admissions-ledger.js';
+import { appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
@@ -144,6 +144,13 @@ const compareRank = (a: number[], b: number[]) => {
   return 0;
 };
 
+function residualGateRank(i: RankedIssue, ledger: Admission[]): number {
+  const row = ledger.filter((r) => r.key === i.key).pop();
+  const gate = row?.kind !== 'deferral' && row?.kind !== 'rm-remove' ? row?.gate?.split(':')[0] : undefined;
+  return Math.max(0, ...GATE_RANK.map((g, index) =>
+    (i.fields.labels ?? []).includes(`gate-${g}`) || gate === g ? index + 1 : 0));
+}
+
 /** Read all rank fields while retaining the shared search helper's pagination. */
 async function rankIssues(jql: string): Promise<RankedIssue[]> {
   const fields = ['labels', 'status', 'priority', 'created', 'fixVersions', 'issuelinks', 'parent', sectorField()].filter(Boolean).join(',');
@@ -188,12 +195,6 @@ async function competeForSlot(
   const sectorOf = (i: RankedIssue) => sectorId ? (i.fields[sectorId] as { value?: string } | undefined)?.value : undefined;
   const sharedSectors = new Set(headKeys.map(openHead).filter((i) => i !== undefined).map(sectorOf).filter(Boolean));
   const ledger = readAdmissions(version);
-  const gateRank = (i: RankedIssue) => {
-    const row = ledger.filter((r) => r.key === i.key).pop();
-    const gate = row?.kind !== 'deferral' && row?.kind !== 'rm-remove' ? row?.gate?.split(':')[0] : undefined;
-    return Math.max(0, ...GATE_RANK.map((g, index) =>
-      (i.fields.labels ?? []).includes(`gate-${g}`) || gate === g ? index + 1 : 0));
-  };
   const rank = (i: RankedIssue, targets: string[], gate: number, sector: string | undefined): number[] => {
     const ls = i.fields.labels ?? [];
     const created = Date.parse(i.fields.created ?? '');
@@ -204,7 +205,7 @@ async function competeForSlot(
   };
   const newcomer = rank({ key: '', fields: { labels, priority: { name: o.priority ?? 'Medium' }, created: new Date().toISOString() } },
     newcomerLinks, GATE_RANK.indexOf(o.gate?.split(':')[0] ?? '') + 1, o.sector);
-  const candidates = residents.filter((i) => i.fields?.status?.name === 'To Do' && gateRank(i) === 0)
+  const candidates = residents.filter((i) => i.fields?.status?.name === 'To Do' && residualGateRank(i, ledger) === 0)
     .map((i) => ({ key: i.key, tuple: rank(i, links(i), 0, sectorOf(i)) }))
     .sort((a, b) => compareRank(a.tuple, b.tuple) || a.key.localeCompare(b.key));
   const lowest = candidates[0];
@@ -467,8 +468,21 @@ async function residualInheritedVersion(o: RelationshipOptions, residual: Residu
 async function displaceResidual(residual: ResidualPlan | undefined, newcomer: string): Promise<void> {
   if (!residual?.displaced) return;
   const displaced = residual.displaced;
+  const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
+  const source = residual.fixVersion!;
+  if (!resident.fields.fixVersions?.some((v) => v.name === source)) return;
+  if (resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
+    await request('PUT', `/issue/${newcomer}`, {
+      fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
+      update: { labels: [{ add: 'residual-displaced' }] },
+    });
+    console.error(`jira: ${displaced.key} is now protected; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
+    return;
+  }
+  const fixVersions = resident.fields.fixVersions.filter((v) => v.name !== source);
+  if (displaced.fixVersion && !fixVersions.some((v) => v.name === displaced.fixVersion)) fixVersions.push({ name: displaced.fixVersion });
   await request('PUT', `/issue/${displaced.key}`, {
-    fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
+    fields: { fixVersions },
     update: { labels: [{ add: 'residual-displaced' }] },
   });
   await request('POST', `/issue/${displaced.key}/comment`, {
