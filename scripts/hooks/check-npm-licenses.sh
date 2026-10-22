@@ -15,7 +15,9 @@ ALLOWED="MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;Unlicense;0BSD;Pyt
 
 # Bench FIXTURES excluded — fixture packages are benchmark
 # inputs, not shipped dependencies; see check-npm-audit.sh for the rationale.
-if ! pkgs_raw=$(git ls-files '*package.json' ':(exclude)*/node_modules/*' ':(exclude)scripts/lanes/bench/fixtures/*'); then
+# .github/claude-cli is the integrity-pinned claude-code CI tool lockfile: a
+# proprietary Anthropic binary that ships nowhere.
+if ! pkgs_raw=$(git ls-files '*package.json' ':(exclude)*/node_modules/*' ':(exclude)scripts/lanes/bench/fixtures/*' ':(exclude).github/claude-cli/*'); then
     echo "ERROR: 'git ls-files' failed — cannot enumerate packages to license-check." >&2
     exit 1
 fi

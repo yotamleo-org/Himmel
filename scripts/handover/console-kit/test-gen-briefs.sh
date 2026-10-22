@@ -492,6 +492,17 @@ rmbad "an rm leg whose state_dir names another release is refused" 'd["state_dir
 rmbad "an rm leg whose state_dir is not under a release directory is refused" 'd["state_dir"]="/h/tester/himmel/R1"' "must end in release/R1"
 rmbad "an rm leg on a non-opus model is refused" 'd["model"]="claude-sonnet-5-5"' "opus"
 
+# --- a brief naming VM work carries the guest-exec line; one that does not stays without it ---
+python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); l[0]['why']='the install must be proven on a test VM first'; json.dump(l,open(sys.argv[2],'w'))" "$WORK/legs.json" "$WORK/vmlegs.json"
+rc=0; python3 "$SUT" "$WORK/vmlegs.json" --base 4ccb59d --console BZ --bucket "$WORK/vmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/vm.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && pass "a legs file naming VM work generates (rc 0)" || fail "vm legs rc=$rc: $(cat "$WORK/vm.out")"
+VMB1="$(tr '\n' ' ' < "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
+VMB2="$(tr '\n' ' ' < "$WORK/vmb/HIMMEL-9002-N902-hook-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
+has "a brief naming VM work says to drive the guest only through guest-exec.sh" "$VMB1" "drive the guest only through guest-exec.sh"
+lacks "a brief that names no VM work does not carry the guest-exec line" "$VMB2" "guest-exec.sh"
+bash "$HERE/brief-lint.sh" "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/vmlint.err"; rc=$?
+[ "$rc" = 0 ] && pass "the VM brief passes brief-lint.sh" || fail "vm brief brief-lint rc=$rc: $(cat "$WORK/vmlint.err")"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

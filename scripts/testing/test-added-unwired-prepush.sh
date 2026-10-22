@@ -78,6 +78,36 @@ rc=0; out=$(cd "$R" && PRE_COMMIT_TO_REF=feat/z eval "$ENTRY" 2>&1) || rc=$?
   && ok "B7 a path with a space reaches the check as one argument" || no "B7 (rc=$rc): $out"
 git -C "$R" checkout -q main || exit 1
 
+# A bun test file under a directory CI runs through scripts/ci/run-bun-tests.sh is wired;
+# a directory no workflow names is not (the wrapper replaced the literal `bun test` step).
+git -C "$R" checkout -q -b feat/w main || exit 1
+mkdir -p "$R/.github/workflows" "$R/scripts/wired/tests" "$R/scripts/loose/tests"
+printf 'jobs:\n  b:\n    steps:\n      - run: bash scripts/ci/run-bun-tests.sh scripts/wired scripts/wired --dots\n' > "$R/.github/workflows/ci.yml"
+printf 'test("x", () => {});\n' > "$R/scripts/wired/tests/a.test.ts"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add a bun test under a run-bun-tests.sh dir" || exit 1
+rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
+{ [ "$rc" -eq 0 ] && ! grep -q 'UNWIRED scripts/wired/tests/a.test.ts' <<<"$out"; } \
+  && ok "B8 RED: a bun test under a dir wired by run-bun-tests.sh passes" || no "B8 (rc=$rc): $out"
+
+printf 'test("y", () => {});\n' > "$R/scripts/loose/tests/b.test.ts"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add a bun test no workflow names" || exit 1
+rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/loose/tests/b.test.ts' <<<"$out" && ! grep -q 'UNWIRED scripts/wired/tests/a.test.ts' <<<"$out"; } \
+  && ok "B9 control: a bun test under a dir no workflow names is still unwired" || no "B9 (rc=$rc): $out"
+git -C "$R" checkout -q main || exit 1
+
+# run-bun-tests.sh takes its first argument as the suite label and forwards the rest to bun test.
+git -C "$R" checkout -q -b feat/v main || exit 1
+mkdir -p "$R/.github/workflows" "$R/scripts/decoy/tests" "$R/scripts/real/tests"
+printf 'jobs:\n  b:\n    steps:\n      - run: bash scripts/ci/run-bun-tests.sh scripts/decoy scripts/real --dots\n' > "$R/.github/workflows/ci.yml"
+printf 'test("c", () => {});\n' > "$R/scripts/decoy/tests/c.test.ts"
+printf 'test("d", () => {});\n' > "$R/scripts/real/tests/d.test.ts"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add bun tests under a label dir and a forwarded dir" || exit 1
+rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/decoy/tests/c.test.ts' <<<"$out" && ! grep -q 'UNWIRED scripts/real/tests/d.test.ts' <<<"$out"; } \
+  && ok "B10 only a dir forwarded to bun test is wired, not the suite label" || no "B10 (rc=$rc): $out"
+git -C "$R" checkout -q main || exit 1
+
 R2="$T/nobase"; git init -q -b topic "$R2"; git -C "$R2" config user.email t@t; git -C "$R2" config user.name t
 git -C "$R2" commit -q --allow-empty -m "chore: x"
 rc=0; out=$(cd "$R2" && bash "$CHECK" --branch-diff 2>&1) || rc=$?

@@ -26,6 +26,7 @@ import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { readGate, writeGate } from "./review-gate";
+import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 import { secretWrite, setupState } from "./setup";
 
@@ -302,6 +303,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // `config set` writes .env and lanes.local.json under himmelctl's repo root; the feed and the live hooks read the
   // station anchor, so a worktree-served console points the config children there (an operator override wins).
   const stationEnv = env.HIMMELCTL_REPO_ROOT ? env : { ...env, HIMMELCTL_REPO_ROOT: stationRoot(root) };
+  const capEnvFile = () => envFileOf(env.HIMMELCTL_REPO_ROOT || stationRoot(root));
   const childOpts = (p: Resolved, lock: Lock) => ({ cwd: p.cwd, env: p.action.startsWith("config.") ? stationEnv : env, timeoutMs: opts.actionTimeoutMs ?? p.timeoutMs, onSpawn: lock.setGroup });
 
   async function reprobe(rowIds: string[]): Promise<{ probe: Probe | null; state: string }> {
@@ -552,7 +554,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
       // the review gate: reviewers, order, mode and required, read through the one resolver; a write edits the critics.local.json overlay only.
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
+      // the fleet cap: HIMMEL_FLEET_CAP read from the launching shell and the station .env; a write replaces that one .env line.
+      if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -562,6 +566,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       try { b = JSON.parse(text); } catch { return json({ error: "bad json" }, 400); }
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
       if (path === "/api/review-gate") { const g = writeGate(env, b as Record<string, unknown>); return json(redactOut(g.body), g.status); }
+      if (path === "/api/fleet-cap") {
+        const lock = acquireLock(lockPath);
+        if ("busy" in lock) return json({ error: lock.busy }, 409);
+        let c;
+        try { c = writeCap(capEnvFile(), env, b as Record<string, unknown>); } finally { lock.release(); }
+        if (c.status === 200) { feedRun = null; feedLast = null; feedEpoch++; }
+        return json(redactOut(c.body), c.status);
+      }
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
       if (path === "/api/setup/secret") return setupSecretRoute(b as Record<string, unknown>);

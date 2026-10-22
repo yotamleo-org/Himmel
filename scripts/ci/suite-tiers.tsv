@@ -96,6 +96,7 @@ scripts/api-lane/test-claude-api.sh	local	behaviour suite, 0 catches in the 400-
 scripts/ci/test-apt-install.sh	pr	trust-path
 scripts/ci/test-cancel-superseded-runs.sh	pr	trust-path
 scripts/ci/test-check-actions-pinned.sh	pr	static-gate
+scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
 scripts/ci/test-check-cr-terminology.sh	pr	trust-path
@@ -894,6 +895,7 @@ scripts/machine-setup/test-install-plugins-ondemand.sh	local	behaviour suite, 0 
 scripts/machine-setup/test-install-plugins-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-install-plugins-scope.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-install-plugins-verify.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/machine-setup/test-installer-pins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-machine-setup-hermetic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-macos.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-make-cloudinit-seed.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1072,6 +1074,7 @@ scripts/vm/test-assert-provenance.sh	local	behaviour suite, 0 catches in the 400
 scripts/vm/test-ci-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-dry-run-restore.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-egress-refresh.sh	pr	guard
+scripts/vm/test-guest-exec.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-launch-guest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-model-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window

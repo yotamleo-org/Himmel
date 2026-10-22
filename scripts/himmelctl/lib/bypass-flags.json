@@ -26,6 +26,14 @@
       "remedy": "BUS_STORE_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "BWIMC_ENGINE",
+      "hooks": [
+        "scripts/hooks/block-write-into-main-checkout.sh"
+      ],
+      "bypasses": "Picks the write guard's engine for a Bash call: regex (the default text scan), ast (shfmt syntax tree; a missing shfmt denies) or both (denies when either denies). Not a bypass: it never loosens the guard.",
+      "remedy": "BWIMC_ENGINE=ast claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "CADENCE_POWERSHELL_OK",
       "hooks": [
         "scripts/hooks/cadence-deny-powershell.sh"

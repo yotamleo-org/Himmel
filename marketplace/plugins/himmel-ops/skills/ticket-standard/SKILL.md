@@ -70,6 +70,36 @@ A check that cannot fail is not proof.
 | Task, Story, Bug | refused: names every missing section, parks the draft, exit 1 | warns, exit 0 |
 | Epic, Subtask | warns, exit 0 | warns, exit 0 |
 
+## Optional deterministic normalization before filing
+
+Offer a deterministic punctuation pass, not a model rewrite. Skip is valid and
+never blocks filing. Keep the original and write a separate candidate:
+
+```bash
+python3 -I marketplace/plugins/himmel-ops/scripts/humanizer-facts.py --normalize draft.md normalized.md
+```
+
+Only continue with the candidate if normalization succeeds. It changes spaced
+em/en dashes after leading bold/code labels to colons, other spaced dashes to
+commas, and curly quotes to straight quotes. Its banned-word list only flags
+possible filler; it never removes or rewrites words. Technical uses may be valid.
+No model runs, no plugin is enabled, and no default profile changes.
+
+Run the checker with `--draft draft.md --rewrite normalized.md`. Both steps
+compare ticket keys, numbers, file names, inline code, fenced/indented code and
+bare command lines. If punctuation changes a protected literal, normalization
+refuses without writing a candidate; keep the original rather than altering
+code. Changed facts, an unreadable candidate or an unavailable checker also
+retain the original. An accepted candidate still has to meet the ticket standard.
+Read its diff: punctuation and literal checks do not prove semantic equivalence.
+File `normalized.md` only after normalization succeeds, `humanizer: accepted`
+and the ticket-standard `ok:`; otherwise file the passing original.
+
+Record `humanizer: skipped`, `humanizer: kept <count>`, or `humanizer: dropped
+<count>` in the filing note (counts are passages the writer kept or rejected,
+not a style score). Never add this bookkeeping to user-facing prose. The pilot
+counts later operator-kept changes; acceptance by the script is not that count.
+
 ## Run it
 
 ```bash

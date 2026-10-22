@@ -49,6 +49,7 @@
       "Bash(shellcheck *)",
       "Bash(uv run --with shellcheck-py shellcheck *)",
       "Bash(ssh -p *)",
+      "Bash(bash scripts/vm/guest-exec.sh:*)",
       "Bash(command -v *)",
       "Bash(bash scripts/check-ci.sh:*)",
       "Bash(bash scripts/context-fill.sh:*)",

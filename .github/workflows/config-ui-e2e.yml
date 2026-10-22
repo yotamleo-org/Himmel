@@ -33,11 +33,11 @@ jobs:
         with:
           bun-version-file: .bun-version
       - name: Install pinned Playwright
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
       - name: Build AG-UI so its browser tests run
         working-directory: scripts/config-ui/agui-web
         run: |
-          bun install --frozen-lockfile
+          bun install --frozen-lockfile --ignore-scripts
           bun run build
       - name: Cache Chromium
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

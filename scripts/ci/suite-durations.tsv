@@ -124,6 +124,7 @@ scripts/agents-md/test-pointers.sh	1
 scripts/api-lane/test-claude-api.sh	24
 scripts/ci/test-apt-install.sh	6
 scripts/ci/test-cancel-superseded-runs.sh	1
+scripts/ci/test-check-ci-install-locks.sh	5
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
 scripts/ci/test-check-cr-terminology.sh	0
@@ -883,6 +884,7 @@ scripts/machine-setup/test-install-plugins-ondemand.sh	13
 scripts/machine-setup/test-install-plugins-provenance.sh	20
 scripts/machine-setup/test-install-plugins-scope.sh	0
 scripts/machine-setup/test-install-plugins-verify.sh	1
+scripts/machine-setup/test-installer-pins.sh	0
 scripts/machine-setup/test-machine-setup-hermetic.sh	11
 scripts/machine-setup/test-macos.sh	0
 scripts/machine-setup/test-make-cloudinit-seed.sh	1
@@ -1046,6 +1048,7 @@ scripts/vm/test-assert-provenance.sh	11
 scripts/vm/test-ci-runner.sh	9
 scripts/vm/test-dry-run-restore.sh	10
 scripts/vm/test-egress-refresh.sh	0
+scripts/vm/test-guest-exec.sh	1
 scripts/vm/test-inventory.sh	1
 scripts/vm/test-launch-guest.sh	1
 scripts/vm/test-model-replay.sh	0

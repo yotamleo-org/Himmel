@@ -33,7 +33,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .det{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .slot{justify-self:end;white-space:nowrap}
-.ro{color:var(--dim);font-size:12px}
+.sethead .slot{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;white-space:normal;max-width:100%}.sethead .slot input[type=text]{width:13em;max-width:100%}.ro{color:var(--dim);font-size:12px}
 .btn{all:unset;cursor:pointer;border:1px solid var(--line);padding:2px 8px;border-radius:3px;font:12px var(--mono);color:var(--fg)}
 .btn:hover{border-color:var(--accent)}
 .btn.primary{border-color:var(--accent);color:var(--accent)}

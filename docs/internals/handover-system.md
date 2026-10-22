@@ -92,6 +92,32 @@ sections: `## Summary` (Jira ticket title when available),
 `## Files changed` (auto from `git diff --name-status vs base`),
 `## Ticket` (HIMMEL-N link).
 
+Before publication, both `scripts/handover/pr-open.sh` and
+`scripts/lanes/leg-pr-open.sh` offer optional deterministic punctuation
+normalization on stderr. No model rewrite is offered or run, and no plugin is
+enabled. Skip continues unchanged. Generate a separate candidate:
+
+```bash
+python3 -I marketplace/plugins/himmel-ops/scripts/humanizer-facts.py --normalize body.md normalized.md
+```
+
+Only after successful normalization, pass `--humanized-body normalized.md`.
+Leading bold/code labels get a colon instead of a spaced em/en dash, other
+spaced dashes become commas, and curly quotes become straight. Banned words
+are flagged, never rewritten. The normalizer refuses if it would change a
+protected literal; use the original rather than editing commands. The helper
+checks literal facts again and uses the candidate only on acceptance. Changed
+keys, numbers, file names, inline code or commands refuse the candidate, not
+the PR; unavailable checker or candidate also retains the original. Mark other
+commands as code and review meaning before supplying a candidate. Record
+skipped, kept or dropped passages in test notes, not as operator-kept counts.
+
+For handover-generated bodies, first use `--dry-run` and save only the text
+between `--- body ---` and `--- /body ---`, without those delimiters. Normalize
+that body and rerun with the candidate flag. For the worker helper, keep the
+original body file as the second argument and add the candidate flag; its
+computed `leg-burn:` line is inserted after the fact check.
+
 PR-create failures are best-effort: the branch is still pushed and
 an operator can open the PR manually later. `HANDOVER_PR_AUTO=0`
 skips the PR layer entirely (no-op exit 0).

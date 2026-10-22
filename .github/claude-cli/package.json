@@ -1,0 +1,8 @@
+{
+  "name": "himmel-ci-claude-cli",
+  "private": true,
+  "description": "Lockfile for the claude CLI the ci.yml claude-startup job installs; bump CLAUDE_CLI_VERSION in ci.yml and this together.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.296"
+  }
+}

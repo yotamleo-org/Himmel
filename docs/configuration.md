@@ -52,7 +52,7 @@ sites are changed here.
 | Console ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
 | Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
 | Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` (old names `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` still read); freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
-| Bank preflight | `HIMMEL_FLEET_CAP` |
+| Bank preflight | `HIMMEL_FLEET_CAP` (default 4; also set from the config UI, Settings, "Fleet cap": a whole number from 1 to 50, written to the station `.env`; a value exported in the launching shell wins until that shell restarts) <!-- old-term-ok: existing row label --> |
 | Updater | `HIMMEL_UPDATE_AUTOSTASH`, `LUNA_VAULT_PATH` |
 | Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS` (only actions allow a process-env override) |
 | Telegram session-status / luna-sync-alert (dedicated bridge file) | `TELEGRAM_BOT_TOKEN`; notification shell hooks separately load repo `TELEGRAM_GROUP_CHAT_ID` |
@@ -569,7 +569,10 @@ reviewer and claude advisory only:
 
 The himmel config UI (Settings, "Review gate") edits the same overlay: each reviewer's
 mode, required flag and on/off, validated by the resolver before anything is written.
-It never writes `scripts/cr/critics.json`. See [ui.md](ui.md).
+It also sets each dispatched reviewer's `model` and, for the Claude critic, its `effort`
+(`low`, `medium`, `high`, `xhigh` or `max`; blank keeps the shared value). Only the Claude
+critic reads an effort; the GPT/Codex reviewer has no effort setting yet, so the UI does not
+offer one. It never writes `scripts/cr/critics.json`. See [ui.md](ui.md).
 
 A Codex-only gate drops the other two:
 

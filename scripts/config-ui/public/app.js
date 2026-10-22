@@ -8,7 +8,7 @@ import { renderSetup } from "/setup.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
-const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null };
+const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, fleetCap: null };
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 let current = "triage";
@@ -30,6 +30,7 @@ let health = null; // GET /api/health, null while loading
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
+let fleetCapLoadGen = 0, fleetCapSaving = false; // likewise for loadFleetCap()
 let toolHealth = null, toolHealthGen = 0;
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
@@ -40,7 +41,7 @@ let sources; // GET /api/sources: the trackers the UI can read; undefined until 
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
-  { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); } },
+  { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); } },
   { id: "setup", label: "Setup", needsFeed: false, render: () => renderSetup(setup, state.plans, setupMsgs), onVisit: () => loadSetup() },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
@@ -206,6 +207,31 @@ async function saveVm() {
   paint();
 }
 
+// the fleet cap card. The draft is the cap as typed; a saved or loaded answer resets it.
+async function loadFleetCap() {
+  const gen = ++fleetCapLoadGen;
+  state.fleetCap = { data: null, error: null };
+  try {
+    const r = await fetch("/api/fleet-cap", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = await r.json();
+    if (gen !== fleetCapLoadGen) return;
+    state.fleetCap = r.ok ? { data: j, error: null, draft: String(j.cap) } : { data: null, error: j.error || `fleet cap failed (${r.status})` };
+  } catch (_) { if (gen !== fleetCapLoadGen) return; state.fleetCap = { data: null, error: "fleet cap: server unreachable" }; }
+  if (currentPage.id === "config" && feed) paint();
+}
+async function saveFleetCap() {
+  const fc = state.fleetCap;
+  if (!fc || !fc.data || fleetCapSaving) return;
+  fleetCapSaving = true;
+  const sent = fc.draft;
+  let res;
+  try { res = await post("/api/fleet-cap", { cap: sent }); } finally { fleetCapSaving = false; }
+  const { ok, j } = res;
+  const edited = state.fleetCap && state.fleetCap.draft !== sent;
+  state.fleetCap = ok ? { data: j, error: null, draft: edited ? state.fleetCap.draft : String(j.cap), msg: { ok: true, text: edited ? "saved; later edits not saved yet" : "saved" } } : { ...state.fleetCap, msg: { ok: false, text: j.error || "save failed" } };
+  paint();
+}
+
 // the review gate card. The draft is the per-reviewer choice being edited; a saved or loaded answer resets it.
 async function loadReviewGate() {
   const gen = ++reviewGateLoadGen;
@@ -340,8 +366,13 @@ document.addEventListener("change", (e) => {
   const rgf = e.target.dataset.rg, rgd = state.reviewGate && state.reviewGate.draft;
   if (rgf && rgd) {
     const x = rgd.find((y) => y.slug === e.target.dataset.slug);
-    if (x) { x[rgf] = rgf === "mode" ? e.target.value : e.target.checked; state.reviewGate.msg = null; return paint(); }
+    if (x) {
+      x[rgf] = rgf === "mode" || rgf === "model" || rgf === "effort" ? e.target.value : e.target.checked;
+      state.reviewGate.msg = null;
+      return rgf === "model" ? undefined : paint(); // a text box commits on blur: repainting would swallow the click on save that caused it
+    }
   }
+  if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; }
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;
@@ -401,6 +432,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
+  if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
   if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") {
@@ -431,6 +463,12 @@ document.addEventListener("click", (e) => {
 document.addEventListener("input", (e) => {
   const vf = e.target.dataset.vm;
   if (vf && vf !== "mode" && state.vm && state.vm.draft) { state.vm.draft[vf] = e.target.value; return; } // no repaint: keep the caret
+  if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; } // typed text survives a repaint before blur
+  if (e.target.dataset.rg === "model" && state.reviewGate && state.reviewGate.draft) {
+    const x = state.reviewGate.draft.find((y) => y.slug === e.target.dataset.slug);
+    if (x) { x.model = e.target.value; state.reviewGate.msg = null; }
+    return;
+  }
   if (e.target.id === "q") { state.filt.q = e.target.value; paint(); return; }
   if (e.target.dataset.act === "consent") {
     // No repaint: keep the caret; only flip the confirm button.
