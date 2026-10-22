@@ -57,7 +57,7 @@ for f in "${files[@]}"; do
 done
 
 if [ "$flagged" -eq 1 ]; then
-  printf 'The public repo describes what himmel has, not what it chose not to have (HIMMEL-5878).\n'
+  printf 'The public repo describes what himmel has, not what it chose not to have.\n'
   printf 'Put the record in the state repo under specs/research/ or specs/decisions/ instead.\n'
   exit 1
 fi

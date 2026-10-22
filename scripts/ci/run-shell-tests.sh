@@ -188,7 +188,7 @@ _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "run-shell-tests.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "run-shell-tests.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/ci/run-shell-tests.sh || exit 96
@@ -2378,7 +2378,7 @@ suite_lock_acquire() {
     elif [ "$lost_race" -eq 1 ]; then
       printf 'REFUSED: lost the race to take over the machine lock of scan root "%s".\n' "$scan"
       printf '  lock: %s\n' "$SUITE_LOCK_DIR"
-      printf '  Concurrent runs test the same tree and starve each other (HIMMEL-1338).\n'
+      printf '  Concurrent runs test the same tree and starve each other.\n'
       printf '  TAKEOVER IN PROGRESS: this run judged the lock abandoned (last observed\n'
       printf '  pid=%s host=%s age=%s), but the takeover lost the race — another run\n' \
         "${o_pid:-unknown}" "${o_host:-unknown}" "$age_disp"
@@ -2390,7 +2390,7 @@ suite_lock_acquire() {
       printf 'REFUSED: another run of scan root "%s" holds the machine lock (pid=%s host=%s age=%s).\n' \
         "$scan" "${o_pid:-unknown}" "${o_host:-unknown}" "$age_disp"
       printf '  lock: %s\n' "$SUITE_LOCK_DIR"
-      printf '  Concurrent runs test the same tree and starve each other (HIMMEL-1338).\n'
+      printf '  Concurrent runs test the same tree and starve each other.\n'
       # Say WHICH case this is. One message used to cover a live
       # holder and an unverifiable one, so its "wait for it" advice was wrong
       # half the time — counselling up to four hours of waiting for a corpse,
@@ -2559,7 +2559,7 @@ suite_lock_acquire_waiting() {
         printf 'REFUSED: %s queued waiter(s) are already ahead of scan root "%s" for the machine lock.\n' \
           "$_qcount" "$scan"
         printf '  lock: %s\n' "$SUITE_LOCK_DIR"
-        printf '  Concurrent runs test the same tree and starve each other (HIMMEL-1338). This is a\n'
+        printf '  Concurrent runs test the same tree and starve each other. This is a\n'
         printf '  no-wait, ad-hoc attempt (SUITE_LOCK_WAIT unset or 0) -- it yields to the run(s)\n'
         printf '  already queued for this lock instead of cutting in front of them, even though the\n'
         printf '  lock itself may be free RIGHT NOW: taking it here would let an ad-hoc run starve the\n'
@@ -2875,7 +2875,7 @@ done
 if [ "$scan_repo_of_script" -eq 0 ] && [ -n "$caller_top" ]; then
   _script_top=$(cd "$REPO_ROOT" && pwd -P)
   if [ "$caller_top" != "$_script_top" ]; then
-    printf 'run-shell-tests.sh: REFUSED - called from git work tree %s, but this script belongs to %s and would scan THAT tree, not yours (HIMMEL-2504).\n' "$caller_top" "$_script_top" >&2
+    printf 'run-shell-tests.sh: REFUSED - called from git work tree %s, but this script belongs to %s and would scan THAT tree, not yours.\n' "$caller_top" "$_script_top" >&2
     printf '  Run the copy in your own tree (scripts/ci/run-shell-tests.sh), or pass --scan-repo-of-script to scan the script'"'"'s repo on purpose.\n' >&2
     exit 6
   fi
@@ -2910,7 +2910,7 @@ if [ -n "$_scan_dir" ]; then
   _root_top=$(git rev-parse --show-toplevel 2>/dev/null) || _root_top=""
   [ -n "$_root_top" ] && { _root_top=$(cd "$_root_top" 2>/dev/null && pwd -P) || _root_top=""; }
   if [ -n "$_scan_top" ] && [ "$_scan_top" != "$_root_top" ]; then
-    printf 'run-shell-tests.sh: REFUSED - scan root %s is inside git work tree %s, but this run is rooted at %s%s; the scanning line would name the wrong tree (HIMMEL-5104).\n' "$_scan_dir" "$_scan_top" "$(pwd -P)" "${_root_top:+ (work tree $_root_top)}" >&2
+    printf 'run-shell-tests.sh: REFUSED - scan root %s is inside git work tree %s, but this run is rooted at %s%s; the scanning line would name the wrong tree.\n' "$_scan_dir" "$_scan_top" "$(pwd -P)" "${_root_top:+ (work tree $_root_top)}" >&2
     printf '  Run the copy of this script that lives in that tree instead.\n' >&2
     exit 6
   fi
@@ -3196,7 +3196,7 @@ scan_root_abort_if_vanished() {
   local _now
   if [ ! -d "$scan_resolved" ]; then
     printf 'ABORTED: scan root vanished (%s)\n' "$scan_resolved" >&2
-    printf '  It existed when this run started and does not now — most likely the worktree was pruned underneath it (HIMMEL-2517).\n' >&2
+    printf '  It existed when this run started and does not now — most likely the worktree was pruned underneath it.\n' >&2
     printf '  Refusing to print a FAIL tally or post an after-report: every suite path is gone, so any count would measure the deletion, not the tests.\n' >&2
     exit 3
   fi
@@ -3205,7 +3205,7 @@ scan_root_abort_if_vanished() {
   [ -n "$_now" ] || return 0
   [ "$_now" = "$scan_root_id" ] && return 0
   printf 'ABORTED: scan root replaced (%s)\n' "$scan_resolved" >&2
-  printf '  A directory still exists at that path, but it is not the one this run started in (device:inode %s, now %s) — the tree was removed and recreated, or remounted, underneath it (HIMMEL-2517).\n' "$scan_root_id" "$_now" >&2
+  printf '  A directory still exists at that path, but it is not the one this run started in (device:inode %s, now %s) — the tree was removed and recreated, or remounted, underneath it.\n' "$scan_root_id" "$_now" >&2
   printf '  Refusing to print a FAIL tally or post an after-report: the suites were measured across two different checkouts, so no tally describes either.\n' >&2
   exit 3
 }
@@ -3591,7 +3591,7 @@ _flake_record() {
     printf 'WARN: could not append the flake ledger row to %s\n' "$SUITE_FLAKE_LEDGER" >&2
   fi
   if [ "${_prior:-0}" -ge 1 ]; then
-    printf '[FLAKE-TICKET] file a ticket: %s has flaked %s time(s) before inside %s days — a repeat flake is a defect, not noise (HIMMEL-5116; no Jira call is made from CI)\n' \
+    printf '[FLAKE-TICKET] file a ticket: %s has flaked %s time(s) before inside %s days — a repeat flake is a defect, not noise (no Jira call is made from CI)\n' \
       "$1" "$_prior" "$SUITE_FLAKE_WINDOW_DAYS"
   fi
 }
@@ -4486,7 +4486,7 @@ LIVEMSGS
   fi
 
   if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
-    printf '[RETRY] %s failed (rc=%s); re-running it once (HIMMEL-5116)\n' "$suite" "$rc"
+    printf '[RETRY] %s failed (rc=%s); re-running it once\n' "$suite" "$rc"
     echo '----- first attempt, last 40 lines -----'
     tail -n 40 "$log" | sed 's/^/    /'
     echo '--------------------------'
@@ -4721,7 +4721,7 @@ fi
 SUITE_RC127_FLOOR=10
 if [ "$rc127" -ge "$SUITE_RC127_FLOOR" ] && [ $((rc127 * 100)) -ge $((ran * 90)) ]; then
   printf 'CONTAMINATED: %s of the %s suites that ran exited rc=127 (command or path not found).\n' "$rc127" "$ran" >&2
-  printf '  A run this uniformly rc=127 measured its own environment, not the tests — nearly nothing here could be executed at all (HIMMEL-2517).\n' >&2
+  printf '  A run this uniformly rc=127 measured its own environment, not the tests — nearly nothing here could be executed at all.\n' >&2
   printf '  Refusing to report this as a result or post an after-report. Re-run from a checkout you have verified is intact.\n' >&2
   exit 4
 fi
@@ -4872,7 +4872,7 @@ if [ "$fail" -gt 0 ]; then
   printf 'Failed suites:\n%s' "$failed_suites"
   # A red suite's most likely cause, cheapest-to-rule-out first —
   # printed only on a real failure so a green run stays quiet.
-  printf 'Disposition order for a red suite (HIMMEL-2231):\n'
+  printf 'Disposition order for a red suite:\n'
   printf '  1. CAP EXCEEDED  -> the runner'"'"'s watchdog killed it; re-run that suite alone\n'
   printf '                      (or raise its entry in _suite_timeout_for) before reading it as a bug.\n'
   printf '  2. fails on main too -> pre-existing; not your diff.\n'

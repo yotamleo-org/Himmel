@@ -37,7 +37,7 @@ matches=$(grep -rnE '\bCR\b[^.]{0,40}(is short for|stands for|means)[^.]{0,40}Co
   "${existing[@]}" 2>/dev/null || true)
 
 if [ -n "$matches" ]; then
-  printf 'ERROR: CR means code review, not CodeRabbit (HIMMEL-3561) — CodeRabbit is always spelled out:\n'
+  printf 'ERROR: CR means code review, not CodeRabbit — CodeRabbit is always spelled out:\n'
   printf '%s\n' "$matches"
   exit 1
 fi
