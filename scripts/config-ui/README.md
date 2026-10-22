@@ -1,6 +1,6 @@
 # config-ui
 
-`himmelctl ui` serves the config console on `127.0.0.1` (Bun, loopback only,
+`himmelctl ui` serves the config UI on `127.0.0.1` (Bun, loopback only,
 per-launch token). Operator-only: it refuses to start inside a Claude session.
 
 ## The config feed
@@ -11,12 +11,12 @@ every request (about two minutes on the station, most of it the doctor).
 - **Progress.** The report runs under `probe-progress.cjs` (`node --require`),
   which writes one stderr line per source as it starts:
   `himmel-probe {"i":2,"n":8,"source":"doctor checks"}` (install items, doctor
-  checks, each cadence, plugin profile, then lanes, initiative legs, flags and
+  checks, each cadence, plugin profile, then lanes, initiative steps, flags and
   secrets). The steps are inferred from the report's spawns, in its fixed order.
   While it runs, a `202` carries `progress` and answers as soon as the step
   changes, and the page shows `probing <source> (i of N)` over a progress bar.
 - **Background loading.** `himmelctl ui` starts the report at launch, so it is
-  ready by the time you go from Fleet to Config. While the console is in use
+  ready by the time you go from Fleet to Config. While the config UI is in use
   (any authenticated request in the last 10 minutes) the server refreshes it
   every 10 minutes; once you close it, nothing runs and the server still idles
   out. The page asks again when you come back to Config or the tab becomes
@@ -40,7 +40,7 @@ the page.
 | Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
-The **Bank windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
+The **Usage windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
 probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,
 default `/tmp/claude/statusline-usage-cache.json`, stale after
@@ -76,13 +76,13 @@ inconclusive digests also lack complete call denominators. Unknown
 recovery outcomes are excluded; trend gaps have no denominator. Day-level
 cohorts cannot certify an intraday shift cutoff, so those denominators stay
 unknown. Lane comes only from launch metadata, never from a model name;
-a document fallback reads the assigned leg's title, not sibling mentions. Ledger overrides:
+a document fallback reads the assigned worker's title, not sibling mentions. Ledger overrides:
 `HIMMEL_EVAL_RUNS_LEDGER`, `HIMMEL_LEG_FAILURES_LEDGER`.
 
 ## Roadmap page (`#/roadmap`)
 
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
-request: no static render, no republish. The page draws release panels, the drift counts and trend, the leg to Jira
+request: no static render, no republish. The page draws release panels, the drift counts and trend, the worker to Jira
 sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
 theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
 hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
@@ -96,10 +96,10 @@ route, `#/workflow&w=<id>&s=<n>`.
   plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
   `stage1/themes-overlay.tsv`, `stage3/placement.tsv`; without it the board still renders and drift is 0); the drift
   log (`HIMMEL_ROADMAP_DRIFT_LOG`, else `$TRACKER_HANDOVERS_DIR/roadmap-drift.tsv`; read only, `tracker.py` is its
-  writer); the legs from `legs.sh`. No mirror: the page says so and names `node scripts/jira/dist/index.js mirror`.
+  writer); the workers from `legs.sh`. No mirror: the page says so and names `node scripts/jira/dist/index.js mirror`.
 - **tracker.py** stays the CLI/offline renderer until the page reaches parity; the semantics here are a port of it.
-- **Sync plan.** `legSync` lists the Jira CLI commands that mirror each leg marker onto its ticket (flag and comment
-  a stuck leg, clear the flag on resume, note READY/WRAPPED once). The console kit is the one writer; legs never
+- **Sync plan.** `legSync` lists the Jira CLI commands that mirror each worker marker onto its ticket (flag and comment
+  a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
   write Jira and the sync plan never does; only the Kanban writes below change Jira from this page.
 - **Writes (HIMMEL-5491).** The Kanban boards are writable: dragging a card to another column transitions the ticket in
   Jira, and the per-card theme select sets its single `theme-<slug>` label (replacing any other `theme-*` label;
@@ -124,7 +124,7 @@ recorded fixture `agui-web/src/fixture.json`, so it previews without a server.
 
 **Who did what, and where it failed**. Every text and call
 belongs to an agent: the session's own (named by its `agent-name` record: a
-`-console`, a leg's `-N<digits>-`, a judge) or a subagent (named by the Agent
+`-console`, a worker's `-N<digits>-`, a judge) or a subagent (named by the Agent
 call that spawned it: its description, `subagent_type` and model). Each agent
 has a colour, a band in the run strip, and a row in the **Agents** list that
 shows its role, model, call count and failure count; click a row to show only
@@ -188,21 +188,21 @@ the foreground (Ctrl-C to stop); an open stream keeps it from idling out.
 
 **Fleet view.** `--agui` with no session id prints the fleet URL,
 `http://127.0.0.1:<port>/agui/#t=<64 hex>` (the token, no `run`): one row per
-live Claude session (console, leg, judge or interactive) with its ticket and PR,
+live Claude session (chief, worker, judge or interactive) with its ticket and PR,
 state (running, idle, waiting for GO, wrapped), latest tool call and its age,
-subagent counts and failure count. Wrapped legs sit in a closed section, never
+subagent counts and failure count. Wrapped workers sit in a closed section, never
 in the live list. Clicking a row's name opens that session's run page. The page polls
 `GET /api/agui/fleet` (token-gated, GET only, read-only, `agui/fleet.ts`),
-whose census is `fleet.sh`: `claude_sessions` plus each leg doc's last marker
+whose census is `fleet.sh`: `claude_sessions` plus each worker doc's last marker
 (`leg_tail_status`). A session whose journal has been quiet for an hour is left
 out.
 
 **Cloud sessions.** A `claude --cloud` session has no local
-process, so its node comes from the console buckets' `cloud-route.jsonl` (each
+process, so its node comes from the chief buckets' `cloud-route.jsonl` (each
 ticket's newest routing across them; a CLOUD-OK from the last 72 hours) plus its
 PR on GitHub: the newest PR whose title cites the ticket, and the `CLOUD-DONE` /
-`CLOUD-BLOCKED` comment carrying the session link. It hangs under the console
-its brief names, and a local leg on the same ticket (its shepherd) hangs under
+`CLOUD-BLOCKED` comment carrying the session link. It hangs under the chief
+its brief names, and a local worker on the same ticket (its shepherd) hangs under
 it. Its tokens read "not measured": no source exposes a cloud session's usage.
 GitHub is read in one batched GraphQL query per minute at most
 (`agui/fleet-cloud.ts`, shared and cached); a failed or throttled read, or one
@@ -211,24 +211,24 @@ that poll and never holds up the page longer.
 
 **Sections, orphans and filters.** The page has four sections:
 
-- **Needs attention** lists sessions that want a console action, by severity:
+- **Needs attention** lists sessions that want a chief action, by severity:
   - a `BLOCKED` or `FINDING` marker;
   - context at 85 % or more of the session's real window (the launch's declared
     `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, then `--autocompact`, then the model's);
   - a `CLOUD-DONE` PR awaiting its shepherd.
-- **Orphans** lists live sessions no live console watches, with the reason and
-  "adopt via relay / close". It also lists the shell-tool wrappers the console
-  tick reports, read from the console kit's `orphan-loops.sh --list`, with pid,
+- **Orphans** lists live sessions no live chief watches, with the reason and
+  "adopt via relay / close". It also lists the shell-tool wrappers the chief
+  tick reports, read from the chief kit's `orphan-loops.sh --list`, with pid,
   owner, age and how to close each. The page never signals a process.
-- **Running** groups sessions per live console.
+- **Running** groups sessions per live chief.
 - **Finished** is closed by default.
 
 Cloud is a lane like native and claudex. A cloud session is never an orphan for
 want of a shepherd.
 
 Each card is one line: its name links to the run page (a cloud session's to its
-cloud session) and its chevron expands the status and lineage detail. A leg's
-hops (`N1494`, `N1494b`, `-RESUME`) and a console's succession chain each fold
+cloud session) and its chevron expands the status and lineage detail. A worker's
+hops (`N1494`, `N1494b`, `-RESUME`) and a chief's succession chain each fold
 into one entry, with every hop linked.
 
 The rail's filters (lane, state, text, finished inline) narrow every section.
@@ -237,18 +237,18 @@ They are kept per viewer in the browser.
 A finished row links its PR to this checkout's GitHub origin
 (`CONFIG_UI_GITHUB_REPO=<owner>/<name>` overrides it).
 
-**One app.** The console and the AG-UI pages share one rail and one
+**One app.** The config UI and the AG-UI pages share one rail and one
 theme (`public/nav.js`, `public/theme.css`): Config, Health and Fleet, plus Run
 on a run page. Plain `himmelctl ui` prints ONE URL and lands on the fleet when
-`agui-web/dist` is built, on the console when it is not; `LANDING` in
-`server.ts` is the one-line switch (`"config"` lands on the console). The token
-only ever travels in the URL fragment: the console reads `#t=<token>[&page=<id>]`
+`agui-web/dist` is built, on the config UI when it is not; `LANDING` in
+`server.ts` is the one-line switch (`"config"` lands on the config UI). The token
+only ever travels in the URL fragment: the config UI reads `#t=<token>[&page=<id>]`
 and clears it from the address bar, the AG-UI page keeps `#t=<token>`, and
 requests carry it in the `X-Himmel-Token` header. The rail's Fleet dot is the
 census health (ok, degraded = warn, unavailable or unreachable = fail, not yet
-read = off), in the status colours; on the console it is read on load and on
-each page change, never polled, so an open console still idles out. A leg's
-fleet row also links to the Health page (its legs and bank cards).
+read = off), in the status colours; on the config UI it is read on load and on
+each page change, never polled, so an open config UI still idles out. A worker's
+fleet row also links to the Health page (its workers and usage cards).
 
 **Service mode.** `server.ts --service` (what `himmelctl ui --service install` runs under
 systemd) takes its token from `~/.himmel/state/ui-token` (`token-file.ts`: created once,
@@ -258,7 +258,7 @@ a symlink or a file that is not mode 600 is refused), never idles out, and rebui
 `board.mjs`. Tests: `tests/service-mode.test.ts` (real server), `tests/service-verb.test.ts`
 (the verb against a stub `systemctl`).
 
-![The AG-UI page streaming a /pr-check round: a leg and its critic subagent in their own colours and bands, the review panel filling with three findings and their verdicts, and four failures marked by kind](docs/agui-live-run.gif)
+![The AG-UI page streaming a /pr-check round: a worker and its critic subagent in their own colours and bands, the review panel filling with three findings and their verdicts, and four failures marked by kind](docs/agui-live-run.gif)
 
 *A live stream over the real SSE path, not a mock: a fixture session journal and
 its subagent's transcript are appended to while the page is open, and the page
@@ -279,7 +279,7 @@ imports, so its suite runs in CI without an install.
   `feed-background.test.ts` covers the progress `202`, the launch prewarm, the
   in-use refresh and stale-while-revalidate.
 - Toggles end to end (`toggles.test.ts`, CI-gated, skipped on
-  Windows): every console toggle through the real `himmelctl` and the real
+  Windows): every config UI toggle through the real `himmelctl` and the real
   server routes (preview, run), checking that the setting is written, that its
   owner reads it back, and that the run's re-probe and a fresh feed show it,
   then the opposite flip. It runs against a temp `HOME` and a temp repo of
@@ -296,7 +296,7 @@ imports, so its suite runs in CI without an install.
   | lane on/off | written and read back (`probe.kind` always / never), but **the row cannot show which**: it reads `local override in lanes.local.json` for both (config-feed.js `laneRows`) |
 
   `profile.set` is in the action table, but no feed row offers it, so it is not
-  a console toggle. Served from a git **worktree**, the server runs `config set`
+  a config UI toggle. Served from a git **worktree**, the server runs `config set`
   with `HIMMELCTL_REPO_ROOT` set to the primary checkout (the feed's station
   anchor), so initiative and lane toggles write the `.env` and `lanes.local.json`
   the feed and the live hooks read. An operator-set `HIMMELCTL_REPO_ROOT` wins.
@@ -324,16 +324,16 @@ imports, so its suite runs in CI without an install.
   test boots `himmelctl ui --agui` against a temp `HOME` and appends journal
   lines while the page is open, asserting the live render, the wrong-token
   error state, and both themes at desktop and phone width. A further case adds
-  a leg with a critic subagent (`SCENE` in `agui-fixtures.ts`, also the GIF's
+  a worker with a critic subagent (`SCENE` in `agui-fixtures.ts`, also the GIF's
   run): agent attribution and the filter, failure marking and the jump
   control, and the long-output control. Another adds the fleet landing
   over a fixture fleet (`agui-fleet-fixture.ts`: 3 live sessions and 1
-  wrapped) and the click through to a run. Another adds the walk console to
+  wrapped) and the click through to a run. Another adds the walk config UI to
   Fleet to a run and back over the shared rail, and checks no request line
   carries the token.
 - Docs link and tokens e2e (`docs-link.e2e.ts`, same opt-in suite): the rail
   ends with a Docs link to the public site in a new tab with
-  `rel="noopener noreferrer"` and no session token, and the console reads the
+  `rel="noopener noreferrer"` and no session token, and the config UI reads the
   shared tokens (`public/tokens.css`) in light and dark with system fonts.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the

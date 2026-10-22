@@ -15,7 +15,7 @@ This page walks one complete loop — a toy change from worktree creation
 to handover — explaining every hook and gate you will hit along the way.
 By the end you will have run the real workflow on a real branch.
 
-This is the solo loop. The agent loop (console, legs, judges) is the
+This is the solo loop. The agent loop (chief, workers, judges) is the
 development graph.
 
 The agent loop drawn out: [the development graph](guide/dev-graph.html).
@@ -286,7 +286,7 @@ continuing.
 
 Reviews are counted in rounds: `/pr-check` prints `round N of 3` and, after
 round 3, allows one delta round scoped to what changed since; a further full
-round exits 8 and goes to the operator or console (`scripts/cr/review-round.sh`).
+round exits 8 and goes to the operator or chief (`scripts/cr/review-round.sh`).
 
 While the marker exists, `gh pr create` is blocked by the
 `check-cr-marker-on-pr-create` PreToolUse hook:
@@ -447,7 +447,7 @@ until four gates pass:
    limited or absent prints a NOTE and does not block
    ([reviewer modes](configuration.md#reviewer-modes));
 2. the head SHA has green overall CI (no failing or pending check or status);
-3. in a console-spawned leg, a console GO file matches the head SHA;
+3. in a console-spawned worker, a chief GO file matches the head SHA;
 4. a PR touching a CI trust path (`scripts/ci/ci-trust-paths.txt`) carries a
    trust-reviewed GO and is merged pinned to its head.
 
@@ -459,11 +459,11 @@ reviewer, a bad `mode`) fails gate 1 closed.
 
 The branch is squash-merged into main. The worktree is now stale.
 
-Console legs do not call `gh pr merge`; they merge through
+Chief workers do not call `gh pr merge`; they merge through
 `merge-on-green.sh` on a GO file, which also refuses while the newest main CI
-run is red. The console verifies each PR with `ready-check.sh` before it
-writes that GO. This page covers the solo loop; the agent loop (console,
-legs, judges) is the development graph.
+run is red. The chief verifies each PR with `ready-check.sh` before it
+writes that GO. This page covers the solo loop; the agent loop (chief,
+workers, judges) is the development graph.
 
 ---
 

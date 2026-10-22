@@ -10,7 +10,7 @@ scheduler invoke, dedup guard, runner indirection (`.bat` with
 `cygpath`-converted paths on Windows; `.sh` with `printf %q`-quoted
 values on POSIX, crontab entries marker-tagged `# HIMMEL-Pipeline-*`).
 
-Armed defaults (operator decision pinned on HIMMEL-255; daily harvest leg
+Armed defaults (operator decision pinned on HIMMEL-255; daily harvest step
 added on HIMMEL-357; model pins + frequency shift on HIMMEL-506; overridable
 via flags):
 
@@ -20,7 +20,7 @@ via flags):
 | `HIMMEL-Pipeline-Synthesize` | daily 03:00 | sonnet | `/synthesize-clips`, then `/archive-clips` chained in the same session |
 | `HIMMEL-Pipeline-Health` | daily 04:00 | haiku | `obsidian-triage:vault-lint` (HIMMEL-1386; `/obsidian-health` stays available for manual use) |
 
-Each leg launches with an explicit cheap **`--model` pin** (HIMMEL-506) so the
+Each step launches with an explicit cheap **`--model` pin** (HIMMEL-506) so the
 cadence never inherits the operator's saved default (the scarcest tier) — the
 cheap pins are what make the higher frequencies affordable. **Daily**
 harvest+triage is cheap and idempotent so it keeps the `Clippings/` inbox
@@ -32,7 +32,7 @@ drift was only visible once a week, and the haiku pin makes nightly cheap).
 Each task launches a **bounded interactive** claude session in the luna
 vault — `claude --model <pin> --settings <fragment> "<prompt>" < NUL` on
 Windows / `< /dev/null` on POSIX (the bounded-run primitive: the session
-runs the full turn on stdin-EOF, then exits clean). `status` parses each leg's pinned model back out of its runner, so an
+runs the full turn on stdin-EOF, then exits clean). `status` parses each step's pinned model back out of its runner, so an
 armed-but-wrong-model cadence is visible.
 
 **Auto-approve injection (HIMMEL-575).** The runs fire in the luna vault cwd,
@@ -73,16 +73,16 @@ restores the auto-approve posture in the luna cwd. The fragment is created on
   path uses `schtasks /create /xml` rather than the flag-based `/sc` create
   (`/create` has no flag for `StartWhenAvailable`). POSIX/cron has the same
   missed-run gap with no equivalent here yet (would need anacron / a
-  `@reboot` catch-up leg).
+  `@reboot` catch-up step).
 - **Cron-safe by design:** every pipeline stage is idempotent (markers:
   `harvested_at`, `processed`, synthesis dedup window, `_done/` move), so a
   fired run that finds nothing to do exits clean.
-- **Bounded retry/resume (HIMMEL-1152):** a claude leg that exits non-zero
+- **Bounded retry/resume (HIMMEL-1152):** a claude step that exits non-zero
   with a transient upstream signature in its own attempt log (`API Error:` +
   server error / overloaded / 5xx / mid-response) is re-invoked up to twice
   (60s then 180s backoff) and resumes through those same idempotent markers;
   any other failure is not retried. Each attempt writes its own flow-run
-  ledger row pair tagged `attempt=N/3`, and the leg log carries a
+  ledger row pair tagged `attempt=N/3`, and the step log carries a
   `[retry N/2 …]` line.
 
 Run:

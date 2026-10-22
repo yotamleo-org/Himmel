@@ -8,7 +8,7 @@ it):
 
 | Tier | What it does | Status |
 |------|--------------|--------|
-| **CR critic** | Independent model-family reviewer over a branch diff, wired into `/pr-check` (`scripts/cr/hermes-critic.sh` + `critic-first-pass.sh` → `scripts/hermes/invoke.sh`). No free critic is registered (`scripts/cr/critics.json`); the panel defaults straight to the paid `codex`/`gpt-6.1-sol` anchor — set `CR_PROFILE=none` for claude-only. A second paid row, `claude` (`claude-opus-5-5`, effort `medium`), runs the official claude binary read-only, not hermes: provider `claude-api` (default, per-token key through `scripts/api-lane/claude-api.sh`) or `claude-subscription` (behind bank-preflight and the native-auth pin). A missing key, closed lane, exhausted credit or non-PROCEED bank is a clean skip (`critic-first-pass.sh` exit 5), never a red panel. It is same-family, so it never counts toward `CR_REQUIRE_CROSS_MODEL`. Tune with `CR_CLAUDE_CRITIC_EFFORT` / `CR_CLAUDE_CRITIC_MAX_USD`; turn it off with a `drop:true` row for slug `claude` in `critics.local.json`. Fail-closed verdict, fail-open transport. Routes + the proven invocation: [CR critic: routes + proven invocation](#cr-critic-routes--proven-invocation). | **Working — the production hermes lane today.** |
+| **CR critic** | Independent model-family reviewer over a branch diff, wired into `/pr-check` (`scripts/cr/hermes-critic.sh` + `critic-first-pass.sh` → `scripts/hermes/invoke.sh`). No free critic is registered (`scripts/cr/critics.json`); the panel defaults straight to the paid `codex`/`gpt-6.1-sol` anchor — set `CR_PROFILE=none` for claude-only. A second paid row, `claude` (`claude-opus-5-5`, effort `medium`), runs the official claude binary read-only, not hermes: provider `claude-api` (default, per-token key through `scripts/api-lane/claude-api.sh`) or `claude-subscription` (behind bank-preflight and the native-auth pin). A missing key, closed lane, exhausted credit or non-PROCEED usage is a clean skip (`critic-first-pass.sh` exit 5), never a red panel. It is same-family, so it never counts toward `CR_REQUIRE_CROSS_MODEL`. Tune with `CR_CLAUDE_CRITIC_EFFORT` / `CR_CLAUDE_CRITIC_MAX_USD`; turn it off with a `drop:true` row for slug `claude` in `critics.local.json`. Fail-closed verdict, fail-open transport. Routes + the proven invocation: [CR critic: routes + proven invocation](#cr-critic-routes--proven-invocation). | **Working — the production hermes lane today.** |
 | **Junior** | Chore-shaped work (vault inbox capture, summaries, note-taking) on free inference, behind a read-only `luna_vault_guard` write fence. | **Working.** |
 | **`himmel_agent` main tier** | A full-control orchestrator (Codex / GPT-5.5) carrying `parity_guard` instead of the junior fence — does real engineering / research / vault work. | **Alpha - guard parity now tests green; still treat as experimental until more live mileage.** |
 
@@ -480,7 +480,7 @@ is a PAYG 90-day trial with **per-model** free quotas (not every model gets
 
 A `403 AccessDenied.Unpurchased` from the API means **the Model Studio
 service has not been activated** — not an identity, key, URL, or region
-problem. Fix it in the Singapore-pinned console
+problem. Fix it in the Singapore-pinned web UI
 (`https://modelstudio.console.alibabacloud.com/ap-southeast-1`):
 
 1. Accept the service agreement — this auto-activates the service **and**
@@ -555,7 +555,7 @@ free quotas exhaust, record the swap in the gitignored
 `scripts/cr/critics.local.json` overlay (auto-picked-up) —
 do not edit the shipped registry for account state (an earlier change did, and was reverted).
 Free-quota exhaustion is why a quota guard is tracked
-separately — it needs a dynamic API pull (console screenshots are not
+separately — it needs a dynamic API pull (UI screenshots are not
 automatable).
 
 ## Verify after a rebuild (zero inference cost)

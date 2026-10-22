@@ -360,7 +360,7 @@ precomputed hash, or `--password-file <path>` for a plaintext file, hashed
 in-process and never printed or logged. Do **NOT** pass the plaintext as an
 inline env assignment (`ubuntu_vm_pass=... python ...`) — that lands it in
 shell history and the process environment just the same; rely on the `.env`
-fallback (above) instead. That password is for the **VirtualBox console
+fallback (above) instead. That password is for the **VirtualBox window
 only**: the guest's `ssh_pwauth` stays off (SSH accepts the pubkey alone)
 unless you also pass `--allow-password-ssh`. `--dry-run` prints the generated
 `user-data` (passwd line redacted) without writing the ISO. Attach the

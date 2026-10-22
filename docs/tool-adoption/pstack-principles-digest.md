@@ -85,7 +85,7 @@ covered by the entry below.
 Leaf: `pstack/skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md`.
 
 When a new internal API replaces an old one and no external users depend on the
-old shape, migrate every caller and delete the old API in the same wave instead
+old shape, migrate every caller and delete the old API in the same pass instead
 of keeping a compatibility layer. Update tests to assert the new contract and
 delete tests that only protect pre-refactor internals. Does not apply when
 outside users depend on backward compatibility.

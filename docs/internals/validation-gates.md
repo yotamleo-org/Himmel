@@ -149,7 +149,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
 3. **The selected panel runs but every critic errors/times out** (panel rc=1)
    ⇒ Claude-only fail-open, exactly as this fork has always specified.
    Unchanged, and still fires. Observed live 2026-07-17: the sole registered
-   critic (paid codex) returned rc=1 for a whole run once its weekly bank was
+   critic (paid codex) returned rc=1 for a whole run once its weekly usage was
    exhausted — with no free row registered, that is 0/1 panel critics.
    **This does NOT by itself block the automated review gate.** `clear-cr-marker.sh` counts
    ANY ledger `avail … status=ok` as a responder (`:176`), so the interactive
@@ -170,7 +170,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    (exit 14) until a panel critic responds.
 
    The caveat that survives: the panel's non-Claude rows can share a provider.
-   An OpenAI-side outage or an exhausted bank takes the `codex` row out, and
+   An OpenAI-side outage or an exhausted usage takes the `codex` row out, and
    then nothing can satisfy gate 3b. That single point of failure is what
    was re-introduced when the `glm` row was retired, and it is a known
    limitation.
@@ -179,7 +179,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    failed …)") ⇒ Claude-only fail-open. `CR_PROFILE=none` is the explicit
    operator opt-out onto the same path; an empty diff skips the panel outright.
 
-Operator-relevant consequence: cases 1 and 2 both SPEND the OpenAI bank on the
+Operator-relevant consequence: cases 1 and 2 both SPEND the OpenAI usage on the
 paid anchor (paid usage is user-enabled by design). Do not read "the panel was
 unavailable" as "nothing was billed" — only 3 and 4 reach zero panel members.
 
@@ -281,7 +281,7 @@ protection.
 
 The live claudex implementation lane runs through the Claude Code harness
 ([lane calibration](lane-calibration.md#claudex-leg--implementor-default-operating-model)),
-with publication subject to its permission classifier. The supervisor session's
+with publication subject to its permission classifier. The chief's
 `scripts/handover/console-kit/ready-check.sh` separately refuses a head without
 an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
 not the historical GLM `d1_verdict` field.
@@ -309,7 +309,7 @@ no rewrite.
 
 ## Carry-forwards
 
-- **→ WS8 (Mission Control):** the Phase 1 read-only console
+- **→ WS8 (Mission Control):** the Phase 1 read-only dashboard
   (`scripts/fleet-control/`, see `docs/jarvis-subsystems.md`) ships fleet/
   escalation/quota surfaces but not gate verdicts or trust-tier state; making
   those (what's quarantined, what's pending verdict) first-class C&C surfaces

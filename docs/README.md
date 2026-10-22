@@ -7,11 +7,11 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [why-himmel.md](why-himmel.md) — the case for the harness: the five failure modes it exists for, the evidence, and what it costs you.
 - [adoption-trail.html](adoption-trail.html) — the eight-level adoption trail, as a page you open in a browser: what each level turns on, what it changes, and what it does not. Public URL: https://yotamleo-org.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
 - [system-design.md](system-design.md) — the narrative design document: goals, the parts, one ticket's flow from file to merge, the trust and safety model, and the trade-offs behind the key decisions.
-- [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/supervisor session model, the Jira seam, the observability chain.
+- [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/chief model, the Jira seam, the observability chain.
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
 - [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / warn-only, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
-- [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config console, the console board, and the roadmap tracker; what each is, how to start it, where it opens.
+- [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config UI, the chief board, and the roadmap tracker; what each is, how to start it, where it opens.
 
 ## Setup
 
@@ -25,7 +25,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 ## Daily use & reference
 
-- [glossary.md](glossary.md) — the one definition site for the handover vocabulary: console, judge, relay, leg, chain, wave, arming, manual override.
+- [glossary.md](glossary.md) — the one definition site for the handover vocabulary: chief, judge, relay, worker, dependency chain, parallel wave, arming, manual override.
 - [commands-catalog.md](commands-catalog.md) — every project-local slash command.
 - [tooling-catalog.md](tooling-catalog.md) — every tool, script, and plugin in active use.
 - [himmelctl.md](himmelctl.md) — every `himmelctl` verb (status, ensure, update, scope, profile, config, deps, gaps, trust, `--version --all`) with its exit codes.
@@ -45,7 +45,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/jira-plugin.md](internals/jira-plugin.md) — the local Jira CLI ↔ Atlassian MCP op mapping.
 - [internals/stuck-playbook.md](internals/stuck-playbook.md) — guardrail-recovery escape hatches.
 - [handover/afk-mode.md](handover/afk-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
-- [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a supervisor session with `/console new|next`; the supervisor session + worker-session-brief templates.
+- [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a chief with `/console new|next`; the chief + worker-session-brief templates.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
 - [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses — the compatibility matrix + per-feature port/guard/accept decisions.
 - [internals/environment-gotchas.md](internals/environment-gotchas.md) — Windows / Git-Bash / git-worktree / scheduler / Bash-tool / content-filter environment traps.

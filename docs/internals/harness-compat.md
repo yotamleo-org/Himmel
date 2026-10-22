@@ -90,16 +90,16 @@ bash scripts/codex/hook-smoke-demo.sh --codex-only --keep   # one harness, keep 
 ```
 
 It clones the checkout under test into a throwaway dir under the scratch root —
-so a broken hook set can never touch the real checkout — and runs four legs:
+so a broken hook set can never touch the real checkout — and runs four cases:
 
-| leg | what it proves |
+| case | what it proves |
 |---|---|
 | `codex-exec` | a real `codex exec` turn (a shell call plus a file read) exits 0, proves both tool calls, and emits no hook-failure banner in stdout/stderr or the session rollout |
 | `codex-replay` | **unavailable**: it needs the hook-replay probe, which was Windows-only and is removed with Windows. It was the positive control that every project hook **executes** (separating "clean" from "never fired") |
 | `claude-print` | the same turn under `claude -p --model haiku` (gated on the subscription usage budget via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
 | `claude-replay` | every `run-hook-with-bash.js` PreToolUse entry in `.claude/settings.json` is fed a canned benign payload and must exit **0** |
 
-The two replay legs are deliberately asymmetric. `codex-replay` covers every
+The two replay cases are deliberately asymmetric. `codex-replay` covers every
 event; `claude-replay` covers PreToolUse only — that is where the guardrails
 live, and it is the one event whose payload can be synthesised without side
 effects (a Stop/SessionEnd replay would drive `speak-reply` and the wiki writer
@@ -116,8 +116,8 @@ check does not care *which* tool did the read: Codex has no `Read` tool at all
 (see the Codex deep-dive below), and either route fires the PreToolUse chain,
 which is what is under test.
 
-Exit 0 = all ran legs clean, 1 = a leg failed, 2 = nothing ran, or an agent leg
-ran without its replay leg (both vacuous-pass guards), or a usage error.
+Exit 0 = all ran cases clean, 1 = a case failed, 2 = nothing ran, or an agent case
+ran without its replay case (both vacuous-pass guards), or a usage error.
 While `codex-replay` is unavailable (HIMMEL-6813 removes it), a run that includes
 `codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
 `scripts/codex/test-hook-smoke-demo.sh` pins the runner's own contract with
@@ -128,10 +128,10 @@ Three non-obvious things the runner depends on, in both directions:
 - **Codex hook trust is keyed to the absolute `hooks.json` path**
   (`~/.codex/config.toml` → `[hooks.state.'<abs path>:<event>:<i>:<j>']`), so a
   fresh clone at a fresh path is untrusted and its hooks would silently **not
-  run** — a vacuous pass. That is why the codex leg passes
+  run** — a vacuous pass. That is why the codex case passes
   `--dangerously-bypass-hook-trust`: the hook source is one the runner just
   cloned itself from the checkout under test.
-- **The Claude leg's untrusted workspace is a feature.** Claude prints
+- **The Claude case's untrusted workspace is a feature.** Claude prints
   `Ignoring N permissions.allow entries … not been trusted` and runs with no
   allow-list, so the only thing left that can approve the `git log` call is
   `auto-approve-safe-bash` — a `DONE` reply *is* proof the PreToolUse chain
@@ -142,7 +142,7 @@ Three non-obvious things the runner depends on, in both directions:
   HEAD, so uncommitted hook edits are invisible to it — commit first, then
   smoke.
 - **`--from` is a trust boundary.** Running the hook chain *is* the job, so
-  every leg executes the target checkout's hook commands unsandboxed on this
+  every case executes the target checkout's hook commands unsandboxed on this
   host. The disposable clone protects the real *checkout* from a broken hook
   set; it is not a sandbox. Point `--from` only at a branch you would open
   interactively. Two things the branch is deliberately *not* trusted with: the
@@ -159,7 +159,7 @@ blanks every ambient credential a hook could reach out with, by prefix/suffix
 rule rather than a list (`TELEGRAM_*`, `JIRA_*`, `ATLASSIAN_*`, `OBSIDIAN_*`,
 `*_API_KEY`, `*_API_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`) — `CLAUDE_*`/`ANTHROPIC_*`
 excluded, since that family is `native-auth-pin.sh`'s job and blanking it would
-break the lane the Claude leg needs. `.env` and `scripts/jira/dist/` are
+break the lane the Claude case needs. `.env` and `scripts/jira/dist/` are
 untracked, so the clone itself carries no credentials and no Jira CLI either.
 
 ## Codex deep-dive

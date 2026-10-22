@@ -27,7 +27,7 @@ the ones those pages only mention in passing.
 | `gaps` | no | What this setup lacks relative to a reference install profile |
 | `trust` | yes | Wire or unwire the trust shadow ledger's hook entries |
 | `report` | no | Read-only JSON config feed that the config UI renders; secrets show presence, never values. See [ui.md](ui.md) |
-| `ui` | no | Read-only config console on 127.0.0.1 (needs bun); the operator runs it from a terminal. See [ui.md](ui.md) |
+| `ui` | no | Read-only config UI on 127.0.0.1 (needs bun); the operator runs it from a terminal. See [ui.md](ui.md) |
 | `--version [--all]` | no | Version, describe string, commit; `--all` adds per-component currency |
 
 Shared flags: `--dry-run` / `-n` prints the plan and changes nothing,

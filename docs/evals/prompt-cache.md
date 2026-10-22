@@ -14,7 +14,7 @@ A prompt-cache claim counts only once a probe shows it. The probe is
 (`input`, `cache_read`, `cache_creation`) and timestamps from Claude Code
 session transcripts (JSONL), and prints a deterministic report and a verdict
 exit code. It makes **no model call**, so a run costs nothing from the
-subscription bank. It needs bash 3.2+ and `jq`.
+subscription usage. It needs bash 3.2+ and `jq`.
 
 - Rows are deduplicated by `message.id` (one message streams as several rows
   that repeat one usage object) and sorted by timestamp.
@@ -32,7 +32,7 @@ subscription bank. It needs bash 3.2+ and `jq`.
 
 | Probe | Question | Verdict | Exit codes |
 |---|---|---|---|
-| `invalidation --event <time>` | Did an event (an edit, a bank reset) rewrite the cache of sessions live across it? Only the first turn after the event is judged. | `not-invalidated` / `invalidated` / `inconclusive` | 0 / 1 / 2 |
+| `invalidation --event <time>` | Did an event (an edit, a usage reset) rewrite the cache of sessions live across it? Only the first turn after the event is judged. | `not-invalidated` / `invalidated` / `inconclusive` | 0 / 1 / 2 |
 | `idle-gap` | Does an idle gap at or past the TTL re-pay the prefix, and a shorter one not? | `ttl-consistent` / `ttl-inconsistent` / `inconclusive` | 0 / 1 / 2 |
 | `first-turn` | Does a session's first request read a warm shared prefix, or start cold? | `warm-start` / `cold-start` | 0 / 1 (2 = no sessions) |
 | `scripts/eval/harness-run.py` | Does a judge or differential harness leave **no** descendant process behind, under a hard deadline? (Not a cache probe: it shares the `scripts/eval/` home and the "no claim without a check" rule.) | fixture suite pass/fail | 124 deadline, 125 survivor |
@@ -60,7 +60,7 @@ How to read it:
 - Gaps past the TTL rewrote the prefix in 155 of 172 cases (90 %); gaps inside
   it rewrote in 46 of 25,056 (0.18 %). That is the cost of a parked session: the
   wake re-pays the prefix, and an idle one costs nothing.
-- The 2026-10-05 bank reset did not invalidate the two sessions live across it
+- The 2026-10-05 usage reset did not invalidate the two sessions live across it
   (317.5k to 319.5k read over a 2,101 s gap; 155.0k to 119.1k read with a 15.8k
   write over 1,605 s, still above half).
 - Compared with the 2026-09-29 run in the internals doc, the counts grew with
@@ -71,9 +71,9 @@ How to read it:
 
 Zero model calls. `cache-probe.sh` and both fixture suites read local files
 only; a probe over all 2,019 transcripts took roughly one to two minutes per mode on one
-core, and the fixture suites take under 10 s. Bank preflight
+core, and the fixture suites take under 10 s. Usage preflight
 (`bash scripts/lib/bank-preflight.sh`) printed `PROCEED` at 18 % of the 5-hour
-and 45 % of the weekly bank before the runs, which only matters for the other
+and 45 % of the weekly usage before the runs, which only matters for the other
 evals in this directory that do call a model.
 
 ## Limitations

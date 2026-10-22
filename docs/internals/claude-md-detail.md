@@ -148,7 +148,7 @@ Docs not already linked from a rule above (relative to `docs/`):
 | `internals/harness-compat.md` | himmel under Codex / other harnesses |
 | `internals/testing.md` | non-guessable test invocations (`bash scripts/ci/run-shell-tests.sh`, lanes, bun) |
 | `handover/afk-mode.md` | autonomous end-to-end execution of a well-scoped ticket |
-| `glossary.md` | the one definition site: console, judge, relay, leg, chain, wave, arming, manual override |
+| `glossary.md` | the one definition site: chief, judge, relay, worker, dependency chain, parallel wave, arming, manual override |
 | `handover/running-a-console.md` | starting + handing over a console (`/console new\|next`), vs `/afk-shift` <!-- old-term-ok: console is renamed in slice V5 --> |
 | `internals/prompt-cache.md` | the verified prompt-cache model, audit of every cache claim, the `scripts/eval/cache-probe.sh` re-run |
 | `internals/headless-modes.md` | `claude -p` vs `claude --bg` vs headed — which fits which job, env/permission/confirm details |

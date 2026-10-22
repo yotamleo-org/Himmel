@@ -54,9 +54,9 @@ setup inside the guest. **Re-verify the flags below on the first real run.**
   container capped at RAM+2 GiB, `--pids-limit 4096`.
 - Disk: ~50 GiB for the persistent image with Xcode CLT, git, bash 5, node, bun, gh.
 - Per-run wall clock: boot to SSH ~3-6 min (600 s budget), sync ~1 min, then the suites.
-- Do not start it while the fleet is near the RAM ceiling; the supervisor session decides.
+- Do not start it while the fleet is near the RAM ceiling; the chief decides.
 
-## One-time setup (needs the operator go; run from a supervisor session shell, never a worker session)
+## One-time setup (needs the operator go; run from a chief shell, never a worker)
 
 1. `export HIMMEL_MACOS_LANE_OK=1` in the launching shell.
 2. Pull `sickcodes/docker-osx:latest`; produce `mac_hdd_ng.img` under

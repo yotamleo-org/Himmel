@@ -19,7 +19,7 @@ one call"; read this file for "what the layer is made of".
 
 - [1. The enforcement layers](#1-the-enforcement-layers)
 - [2. The handover system](#2-the-handover-system)
-- [3. The fleet and the console](#3-the-fleet-and-the-console)
+- [3. The fleet and the chief](#3-the-fleet-and-the-chief)
 - [4. The Jira / backend seam](#4-the-jira--backend-seam)
 - [5. The observability chain](#5-the-observability-chain)
 
@@ -137,7 +137,7 @@ flowchart TD
     W --> C
 ```
 
-**The invariant that makes it work.** One worker session is one file: state and orders
+**The invariant that makes it work.** One worker is one file: state and orders
 never split across two documents, so a resuming session cannot read half the
 picture. The queue lock is structural rather than advisory because prose
 coordination between two armed sessions failed three ways in one night — the
@@ -148,7 +148,7 @@ Full flows and the resolver contract:
 
 ---
 
-## 3. The fleet and the console
+## 3. The fleet and the chief
 
 More than one Claude session runs at a time. The fleet model says who may
 write what, who may spawn whom, and how a revision reaches a running agent.
