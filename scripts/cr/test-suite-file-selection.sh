@@ -45,8 +45,16 @@ WHOLE_REPO = {
 }
 
 
-def run(*args, cwd, **kwargs):
-    return subprocess.run(args, cwd=cwd, text=True, capture_output=True, **kwargs)
+GIT_REPO_SCRUB = {'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
+                  'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+                  'GIT_PREFIX', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE',
+                  'GIT_REPLACE_REF_BASE', 'GIT_SHALLOW_FILE', 'GIT_CONFIG'}
+
+
+def run(*args, cwd, env=None, **kwargs):
+    incoming = os.environ if env is None else env
+    clean = {key: value for key, value in incoming.items() if key not in GIT_REPO_SCRUB}
+    return subprocess.run(args, cwd=cwd, env=clean, text=True, capture_output=True, **kwargs)
 
 
 def require_roots(actual, pinned):
@@ -110,6 +118,35 @@ with tempfile.TemporaryDirectory(prefix='suite-selection-') as scratch:
         write(path, text)
     git('add', '.')
     git('commit', '-qm', 'baseline')
+    with tempfile.TemporaryDirectory(prefix='suite-outer-') as outer_scratch:
+        outer = Path(outer_scratch)
+        initialized = run('git', 'init', '-q', cwd=outer)
+        assert initialized.returncode == 0, initialized.stderr
+        outer_before = {str(path.relative_to(outer)): path.read_bytes()
+                        for path in outer.rglob('*') if path.is_file()}
+        poisoned_environment = dict(os.environ, GIT_DIR=str(outer / '.git'),
+                                    GIT_WORK_TREE=str(outer), GIT_INDEX_FILE=str(outer / '.git/index'),
+                                    GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='core.fsync', GIT_CONFIG_VALUE_0='none')
+        for inherited in (False, True):
+            saved_environment = dict(os.environ)
+            try:
+                if inherited:
+                    os.environ.clear()
+                    os.environ.update(poisoned_environment)
+                updated = run('git', 'config', 'fixture.safety', 'contained', cwd=repo,
+                              **({} if inherited else {'env': poisoned_environment}))
+                pinned = run('git', 'config', '--get', 'core.fsync', cwd=repo,
+                             **({} if inherited else {'env': poisoned_environment}))
+            finally:
+                os.environ.clear()
+                os.environ.update(saved_environment)
+            outer_after = {str(path.relative_to(outer)): path.read_bytes()
+                           for path in outer.rglob('*') if path.is_file()}
+            assert outer_after == outer_before, 'fixture Git environment touched the outer repository'
+            assert updated.returncode == 0, updated.stderr
+            assert git('config', '--get', 'fixture.safety') == 'contained', 'fixture config write was redirected'
+            assert pinned.returncode == 0 and pinned.stdout.strip() == 'none', 'fixture performance pins were dropped'
+    print('PASS fixture Git calls isolate inherited and explicit repository redirects while preserving performance pins', flush=True)
     saved_environment = dict(os.environ)
     os.environ['GIT_DIR'] = str(repo / 'absent.git')
     try:
