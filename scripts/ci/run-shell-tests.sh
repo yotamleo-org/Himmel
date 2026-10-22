@@ -222,6 +222,9 @@ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
 caller_top=$(git rev-parse --show-toplevel 2>/dev/null) || caller_top=""
 [ -n "$caller_top" ] && { caller_top=$(cd "$caller_top" 2>/dev/null && pwd -P) || caller_top=""; }
 cd "$REPO_ROOT" || exit 1
+# shellcheck source=suite-ledger.sh
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/ci/suite-ledger.sh"
 
 # Captured HERE, before the (potentially hours-long) suite run below, not
 # after it: resolving it only at
@@ -4505,6 +4508,7 @@ LIVEMSGS
   fi
   ran=$((ran + 1))
   manifest_add "ran $rc ${mf_rel:-}"
+  suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
   if [ "$rc" -ne 0 ] && [ "$SUITE_TIER_MODE" = "pr" ]; then
     case "$tiers_quarantine_nl" in

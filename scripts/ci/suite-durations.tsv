@@ -184,6 +184,7 @@ scripts/ci/test-shell-extended-nightly-issue.sh	0
 scripts/ci/test-shell-unit-dispatch-name.sh	0
 scripts/ci/test-shellcheck-pr-range.sh	2
 scripts/ci/test-suite-concurrency.sh	117
+scripts/ci/test-suite-ledger.sh	2
 scripts/ci/test-suite-lock-brand-gap.sh	70
 scripts/ci/test-suite-lock-orphan-reaper.sh	15
 scripts/ci/test-tmp-sweep.sh	1
