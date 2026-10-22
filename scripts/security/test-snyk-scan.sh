@@ -210,6 +210,7 @@ has "failed scan raises scan-rc-2" "snyk-scan scan-rc-2" "$W/alerts.log"
 
 # arm / status / disarm against a stub crontab (never the real one)
 # shellcheck disable=SC2016  # the stub crontab keeps its own $ literal
+# read-sink-ok: printf writes the stub script text; the $TAB reads run inside the stub, on a file under the suite's own temp dir
 printf '#!/usr/bin/env bash\nTAB="%s/crontab.txt"\ncase "$1" in -l) [ -f "$TAB" ] && cat "$TAB" || { echo "no crontab for t" >&2; exit 1; } ;; -) cat > "$TAB" ;; esac\n' "$W" > "$W/crontab"; chmod +x "$W/crontab"
 export SNYKCAD_CRONTAB="$W/crontab" SNYKCAD_RUNNER_DIR="$W/runner"
 bash "$CAD" arm --dry-run > "$W/arm-dry.log" 2>&1
