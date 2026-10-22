@@ -1713,6 +1713,16 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   `--hourly`, and `--qmd-bin` settings if needed; do not pass the retired
   `--ship-to` option. This replaces the old ship runner with local reindexing;
   upgrading the checkout alone does not migrate scheduled tasks.
+- `scripts/luna/luna-index-hygiene.sh` — keeps graphify's own output out of the luna
+  index. Adds `graphify-out/**`, `60-Maps/graph/**` and the verdict scratch trees to the
+  collection's `ignore:` list in the qmd config, adds the graph export and `graphify-out/`
+  to the vault's `.graphifyignore` (read by the hourly AST run), and with `--offload-root`
+  MOVES the stale in-vault `graphify-out/` to `<root>/graphify-snapshots/` (never rm;
+  refused while a promote lock is held or a file changed in the last 24 h). Dry-run unless
+  `--apply`; idempotent. Operator-run:
+  `bash scripts/luna/luna-index-hygiene.sh --vault <vault> --qmd-config <index.yml> --apply`
+  (`--collection` defaults to `luna`), then `qmd update`. The `60-Maps/graph/` export itself
+  is never touched. Hermetic test `test-luna-index-hygiene.sh` (real qmd on a scratch index).
 - `scripts/eval/qmd-quality/qmd-quality-cadence.sh run|arm|status|disarm`
   — the weekly retrieval-quality drift check. `run` scores the
   private golden set with `qmd-quality.sh --scope golden` (read-only snapshot of

@@ -864,6 +864,7 @@ scripts/luna/test-crystallize-note.sh	local	behaviour suite, 0 catches in the 40
 scripts/luna/test-fetch-health.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/luna/test-file-clipper-tickets.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/luna/test-graphmap-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/luna/test-luna-index-hygiene.sh	local	new since the audit, behaviour suite
 scripts/luna/test-pipeline-cadence.sh	local	new since the audit, behaviour suite
 scripts/luna/test-qmd-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/luna/test-qmd-embed-model.sh	local	behaviour suite, 0 catches in the 400-PR audit window
