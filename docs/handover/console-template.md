@@ -15,15 +15,21 @@
 Run these, in order, and write the result as the first bullet under
 `## Results` at the bottom of this file.
 
-1. **`ListAgents`** — who is alive. Legs the handoff claims alive but absent here
-   are gone; never relay a window as live without checking. In the same batch,
-   `Read` each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
-> **One command for steps 2–6 and 8** (when `chief.sh next` pre-computed steps 2–6 under this heading, verify them and run only step 8 with `--acquire --lock-only`):
-> `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
-> prints the lock sweep, head/remote, bank, leg processes, C29, load and this
-> document's lock state (read-only; `--acquire` takes a `free` lock, prints the
-> token, never a held one). `ListAgents`, relays and quote-backs (step 9),
-> LIVE and the waiter (step 10) stay yours.
+1. **One batch, one turn** — issue all of these as parallel tool calls in a single
+   response, never one per turn:
+   - **`ListAgents`** — who is alive. Workers the handoff claims alive but absent here
+     are gone; never relay a window as live without checking.
+   - **`ToolSearch`** `select:SendMessage` — it is deferred; load it now, not at the first relay.
+   - **`Read`** each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
+   - **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-legs`**
+     in the **foreground** (never `run_in_background`, never twice). It prints the
+     lock sweep, head/remote, usage, worker processes, C29, load and this document's
+     lock state for steps 2–6 and 8, takes a `free` lock (prints the token, never
+     a held one) and renders the `## Live state` worker entries. When `chief.sh next` pre-computed
+     steps 2–6, verify them and pass `--acquire --lock-only` instead.
+
+   Relays and quote-backs (step 9), LIVE and the waiter (step 10) stay yours:
+   the next turn is step 9's relays, then step 10's waiter, then LIVE.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
    locks"): `HANDOVER_DIR="{{HANDOVER_ROOT}}" bash "{{REPO}}/scripts/handover/queue-lock.sh" status --sweep "{{HANDOVER_ROOT}}"`.

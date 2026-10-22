@@ -362,6 +362,18 @@ absent 'ACTION ZERO step 9 no longer waits on a SendMessage quote-back' "$(flat 
 absent 'handoff no longer waits on a SendMessage quote-back' "$(flat "$starts")" "wait for each leg's quote-back"
 absent 'running-a-console no longer has the leg answer with a SendMessage quote-back' "$(flat "$running")" 'answers with a quote-back'
 
+# --- 9. ACTION ZERO is one batched turn --------------------------------------
+step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CONSOLE")"
+step1flat="$(flat "$step1")"
+contains 'ACTION ZERO step 1 names action-zero.sh with --acquire --render-legs' "$step1flat" 'action-zero.sh" --doc'
+contains 'ACTION ZERO step 1: --acquire --render-legs in one call' "$step1flat" '--acquire --render-legs'
+contains 'ACTION ZERO step 1: ListAgents in the same batch' "$step1flat" 'ListAgents'
+contains 'ACTION ZERO step 1: ToolSearch loads SendMessage in the same batch' "$step1flat" 'ToolSearch'
+contains 'ACTION ZERO step 1: Read of the decisions file in the same batch' "$step1flat" 'Read'
+contains 'ACTION ZERO step 1: one batch' "$step1flat" 'one batch'
+contains 'ACTION ZERO step 1: action-zero.sh runs in the foreground' "$step1flat" 'foreground'
+absent 'ACTION ZERO step 1: action-zero.sh is never run_in_background' "$step1flat" 'run_in_background: true'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'
     exit 0
