@@ -2455,6 +2455,153 @@ class TestStation(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+_GE_FIXTURE = (Path(__file__).resolve().parents[1] / "vm" / "fixtures" / "guest-exec-6266.txt")
+
+
+class TestGuestExec(unittest.TestCase):
+    """guest_exec: run a command in a himmel test VM only after proving the
+    target is one (ubuntu guest, running, loopback NAT rule to guest port 22 on
+    the registry port), and log every command, refused ones included."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        self.log = Path(self.tmp) / "guest-exec.log"
+        env = mock.patch.dict(os.environ, {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p",
+                                           "windows_vm_user": "w", "windows_vm_pass": "p",
+                                           "HIMMEL_GUEST_EXEC_LOG": str(self.log)}, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+
+    def _vm(self, name="ubuntu_new", port=None):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+            vm = vmsdk.VM(name)
+        if port is not None:
+            vm.port = port
+        return vm
+
+    @staticmethod
+    def _showvminfo(fixture_line):
+        return f'name="ubuntu_new"\n{fixture_line}\n'
+
+    def _real_forward(self):
+        # the NAT rule line of a real `showvminfo --machinereadable`, kept in the fixture
+        return _GE_FIXTURE.read_text().splitlines()[1]
+
+    def test_runs_in_a_running_vm_with_a_matching_loopback_forward(self):
+        vm = self._vm(port=2235)
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=self._showvminfo(self._real_forward())), \
+             mock.patch.object(vm, "run", return_value=(0, "ok\n")) as r:
+            rc, out = vm.guest_exec("apt-get update", sudo=True, timeout=60)
+        self.assertEqual((rc, out), (0, "ok\n"))
+        r.assert_called_once_with("apt-get update", sudo=True, timeout=60)
+
+    def test_station_refused_without_running_anything(self):
+        vm = self._vm("win2")
+        with mock.patch.object(vm, "run") as r:
+            with self.assertRaises(vmsdk.VMError):
+                vm.guest_exec("pip install x")
+        r.assert_not_called()
+
+    def test_windows_guest_refused(self):
+        vm = self._vm("win11_base_himmel")
+        with mock.patch.object(vm, "run") as r:
+            with self.assertRaises(vmsdk.VMError):
+                vm.guest_exec("whoami")
+        r.assert_not_called()
+
+    def test_vm_not_running_refused(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk, "_running_vms", return_value=[]), \
+             mock.patch.object(vm, "run") as r:
+            with self.assertRaisesRegex(vmsdk.VMError, "not running"):
+                vm.guest_exec("ls")
+        r.assert_not_called()
+
+    def test_port_that_is_not_the_vms_nat_forward_refused(self):
+        vm = self._vm(port=2222)   # registry says 2222, VirtualBox forwards 2235
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=self._showvminfo(self._real_forward())), \
+             mock.patch.object(vm, "run") as r:
+            with self.assertRaisesRegex(vmsdk.VMError, "2222"):
+                vm.guest_exec("ls")
+        r.assert_not_called()
+
+    def test_forward_to_a_non_ssh_guest_port_refused(self):
+        vm = self._vm(port=2235)
+        info = self._showvminfo('Forwarding(0)="web,tcp,127.0.0.1,2235,,80"')
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=info), \
+             mock.patch.object(vm, "run") as r:
+            with self.assertRaises(vmsdk.VMError):
+                vm.guest_exec("ls")
+        r.assert_not_called()
+
+    def test_forward_on_a_non_loopback_host_ip_refused(self):
+        vm = self._vm(port=2235)
+        info = self._showvminfo('Forwarding(0)="ssh,tcp,0.0.0.0,2235,,22"')
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=info), \
+             mock.patch.object(vm, "run") as r:
+            with self.assertRaises(vmsdk.VMError):
+                vm.guest_exec("ls")
+        r.assert_not_called()
+
+    def test_every_command_is_logged_including_a_refused_one(self):
+        vm = self._vm(port=2235)
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=self._showvminfo(self._real_forward())), \
+             mock.patch.object(vm, "run", return_value=(3, "")):
+            vm.guest_exec("python3 -m venv ~/v")
+        refused = self._vm("win2")
+        with self.assertRaises(vmsdk.VMError):
+            refused.guest_exec("pip install x")
+        lines = self.log.read_text().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertIn("ubuntu_new", lines[0])
+        self.assertIn("python3 -m venv ~/v", lines[0])
+        self.assertIn("rc=3", lines[0])
+        self.assertIn("win2", lines[1])
+        self.assertIn("refused", lines[1])
+
+    def test_multiline_command_stays_one_log_line(self):
+        vm = self._vm(port=2235)
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=self._showvminfo(self._real_forward())), \
+             mock.patch.object(vm, "run", return_value=(0, "")):
+            vm.guest_exec("echo a\necho b")
+        self.assertEqual(len(self.log.read_text().splitlines()), 1)
+
+    def test_cli_exec_parses_flags_and_joins_the_command(self):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.VM, "guest_exec", return_value=(0, "done\n")) as g:
+            rc = vmsdk.main(["ubuntu_new", "exec", "--sudo", "--timeout", "90", "--",
+                             "apt-get", "install", "-y", "git"])
+        self.assertEqual(rc, 0)
+        g.assert_called_once_with("apt-get install -y git", sudo=True, timeout=90)
+
+    def test_cli_exec_without_separator_exit_2(self):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.VM, "guest_exec") as g:
+            rc = vmsdk.main(["ubuntu_new", "exec", "ls"])
+        self.assertEqual(rc, 2)
+        g.assert_not_called()
+
+    def test_cli_exec_propagates_the_guest_rc(self):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.VM, "guest_exec", return_value=(7, "")):
+            rc = vmsdk.main(["ubuntu_new", "exec", "--", "false"])
+        self.assertEqual(rc, 7)
+
+    def test_cli_exec_refused_target_exit_1(self):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.VM, "guest_exec", side_effect=vmsdk.VMError("not a test VM")):
+            rc = vmsdk.main(["win2", "exec", "--", "ls"])
+        self.assertEqual(rc, 1)
+
+
 def _ubuntu_up():
     import socket as _s
     try:

@@ -100,6 +100,24 @@ esac
 
 [ -z "$cmd" ] && exit 0
 
+# The guest-exec entry point runs its payload inside a himmel test VM, not on
+# this host, so the payload is not scanned: a download-then-run there is the
+# disposable guest's own business. Only the WHOLE command in exactly this shape
+# is exempt: `bash [dir/]scripts/vm/guest-exec.sh <vm> [--sudo] [--timeout N]
+# -- 'payload' ['payload'...]`, every payload argument single-quoted (inert to
+# this shell, no expansion) and nothing before, between or after. Separators
+# outside the quotes are blanks only, so a newline or `;` cannot smuggle a
+# second host command in. Anything else (an unquoted or double-quoted payload,
+# a host command chained around it, the output piped on) is scanned like any
+# command. guest-exec.sh itself refuses a target that is not a test VM.
+if [ "$tool" != PowerShell ]; then
+    _ge_b=$'[ \t]'
+    _ge_re="^bash${_ge_b}+([A-Za-z0-9_./~-]*/)?scripts/vm/guest-exec\.sh${_ge_b}+[A-Za-z0-9_-]+(${_ge_b}+--sudo|${_ge_b}+--timeout${_ge_b}+[0-9]+)*${_ge_b}+--(${_ge_b}+'[^']*')+${_ge_b}*\$"
+    if [[ $cmd =~ $_ge_re && ${BASH_REMATCH[1]} != *..* ]]; then
+        exit 0
+    fi
+fi
+
 # Re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
 # is a must-run dependency: if it cannot be sourced, deny. It is
@@ -258,6 +276,17 @@ case "$cmd_lc" in
         exit 0
         ;;
 esac
+
+# A chief-spawned session never drives a test VM by hand: raw ssh/scp/sftp to a
+# loopback NAT port of a test VM (2222-2299) is refused so the guest is reached
+# only through guest-exec.sh, which checks the target and logs the command.
+# Other ports (22, 22220) and ssh aliases are untouched.
+if [ "${HIMMEL_CONSOLE_LEG:-}" = "1" ]; then
+    _vp='(222[2-9]|22[3-9][0-9])([^0-9]|$)'
+    if contains '(^|[^[:alnum:]_.-])(ssh|scp|sftp)(\.exe)?[[:space:]][^;&|]*(-p[[:space:]]*|-o[[:space:]]*port[=[:space:]]+|ssh://[^[:space:]/]*:)'"$_vp"; then
+        deny "raw ssh to a test VM port; drive the guest with: bash scripts/vm/guest-exec.sh <vm> -- '<cmd>'"
+    fi
+fi
 
 # Binary boundary helpers are inlined in the patterns below. Every binary atom
 # that parity_guard names tolerates an optional .exe suffix for the Windows lane.
