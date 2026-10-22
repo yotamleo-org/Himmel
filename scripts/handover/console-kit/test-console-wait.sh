@@ -2,11 +2,12 @@
 # test-console-wait.sh — Exercises console-wait.sh, the console's
 # one event waiter: silent while nothing changes, exits with exactly one WAKE
 # block on a Telegram inbox line or a confirmed change of the tick's action
-# key. tick.sh and the bank verdict are stubbed (CONSOLE_WAIT_TICK /
-# CONSOLE_WAIT_BANK), so no gh, lock or bank read happens here. bash 3.2-safe.
+# key. tick.sh and the bank verdict are stubbed (CHIEF_WAIT_TICK /
+# CHIEF_WAIT_USAGE), so no gh, lock or bank read happens here. bash 3.2-safe.
 #
-# CONSOLE_WAIT overrides the script under test (the RED control: today's
-# Monitor-arm shape, which runs tick.sh on every arm, fails the idle cases).
+# CHIEF_WAIT (old name CONSOLE_WAIT) overrides the script under test (the RED
+# control: today's Monitor-arm shape, which runs tick.sh on every arm, fails the
+# idle cases).
 #
 # Split in two so each half runs well under the 600 s shard watchdog: this file
 # holds the cases up to (y4); test-console-wait-b.sh holds (vmrun) onward.
@@ -14,7 +15,7 @@
 # Run: bash scripts/handover/console-kit/test-console-wait.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WAIT="${CONSOLE_WAIT:-$HERE/console-wait.sh}"
+WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/console-wait.sh}}"
 
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -51,13 +52,13 @@ cat > "$STUB/bank.sh" <<'EOF'
 cat "$STUB/bank"
 EOF
 export STUB
-export CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
-export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2
+export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
+export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2
 # A failure streak wakes only in (f4); elsewhere a failed sample is just "not a change".
-export CONSOLE_WAIT_FAIL_WAKE=1000
+export CHIEF_WAIT_FAIL_WAKE=1000
 # a denials rise pages the operator. The suite owns the sender and
 # the record dir (never a real Telegram send, never ~/.himmel/state): the stub
-# appends each page text to $STUB/pages. CONSOLE_WAIT_PAGE_TIMEOUT is kept short
+# appends each page text to $STUB/pages. CHIEF_WAIT_PAGE_TIMEOUT is kept short
 # so the hung-sender case (p6) finishes fast.
 cat > "$STUB/page.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -65,14 +66,14 @@ printf '%s\n' "$1" >> "$STUB/pages"
 exit 0
 EOF
 chmod +x "$STUB/page.sh"  # the sender seam is exec'd directly, not run via bash
-export CONSOLE_WAIT_PAGE_CMD="$STUB/page.sh" CONSOLE_WAIT_PAGE_TIMEOUT=2
+export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_WAIT_PAGE_TIMEOUT=2
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 # No test reads the real transcripts: the budget seam answers "unreadable" (exit 2) until (hb).
 cat > "$STUB/budget-off.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 2
 EOF
-export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+export CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 
@@ -188,7 +189,7 @@ I="$(new_inbox hm)"
 printf 'DEMO-nextleg-B\n' > "$I.handover"
 # shellcheck disable=SC2016  # $STUB is meant to expand in the generated stub, not here
 printf '#!/usr/bin/env bash\ntouch "%s/hm.ticked"\ncat "$STUB/tick.line"\n' "$WORK" > "$STUB/tick-count.sh"
-CONSOLE_WAIT_TICK="$STUB/tick-count.sh" start "$I" "$WORK/hm.out" --legs "N1.md"
+CHIEF_WAIT_TICK="$STUB/tick-count.sh" start "$I" "$WORK/hm.out" --legs "N1.md"
 sleep 1.5
 tick_line "N1:FREE" "ok"
 sleep 2
@@ -206,9 +207,20 @@ printf 'DEMO-nextleg-B\n' > "$I.handover"
 touch -d '3 hours ago' "$I.handover"  # gnu-ok: Linux-only kit
 # shellcheck disable=SC2016  # $STUB is meant to expand in the generated stub, not here
 printf '#!/usr/bin/env bash\ntouch "%s/hs.ticked"\ncat "$STUB/tick.line"\n' "$WORK" > "$STUB/tick-count.sh"
-CONSOLE_WAIT_TICK="$STUB/tick-count.sh" CONSOLE_WAIT_INTERVAL=1 start "$I" "$WORK/hs.out" --legs "N1.md"
+CHIEF_WAIT_TICK="$STUB/tick-count.sh" CHIEF_WAIT_INTERVAL=1 start "$I" "$WORK/hs.out" --legs "N1.md"
 sleep 3
 check "(hs) a stale handover marker does not suppress ticks" "yes" "$([ -e "$WORK/hs.ticked" ] && echo yes || echo no)"
+kill "$WPID" 2>/dev/null
+
+# --- (hso) the old name CONSOLE_WAIT_TICK alone still names the tick command ---
+reset_stub
+I="$(new_inbox hso)"
+# shellcheck disable=SC2016  # $STUB is meant to expand in the generated stub, not here
+printf '#!/usr/bin/env bash\ntouch "%s/hso.ticked"\ncat "$STUB/tick.line"\n' "$WORK" > "$STUB/tick-old.sh"
+env -u CHIEF_WAIT_TICK CONSOLE_WAIT_TICK="$STUB/tick-old.sh" bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hso.out" 2>"$WORK/hso.out.err" &
+WPID=$!
+wait_hb "$I" || fail "(hso) no baseline heartbeat"
+check "(hso) CONSOLE_WAIT_TICK still names the tick command" "yes" "$([ -e "$WORK/hso.ticked" ] && echo yes || echo no)"
 kill "$WPID" 2>/dev/null
 
 # --- (b3724) a denials= class change wakes, naming denials ---
@@ -351,20 +363,20 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # --- (f4) a failure streak wakes once; the re-arm stays quiet until a success -
 reset_stub
 I="$(new_inbox f4)"
-CONSOLE_WAIT_FAIL_WAKE=3 start "$I" "$WORK/f4.out" --legs "N1.md"
+CHIEF_WAIT_FAIL_WAKE=3 start "$I" "$WORK/f4.out" --legs "N1.md"
 wait_hb "$I" || fail "(f4) no baseline heartbeat"
 printf '1\n' > "$STUB/tick.rc"
 wait_exit "$WPID"
 check "(f4) a streak of failed samples ends the wait" "0" "$rc"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 check "(f4) the wake names the failure streak" "WAKE tick-fail samples=3" "$(head -n1 "$WORK/f4.out")"
-CONSOLE_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) the re-arm during the same streak runs silent" "124" "$rc"
 check "(f4) the re-arm during the same streak prints nothing" "" "$(cat "$WORK/f4b.out")"
 rm -f "$STUB/tick.rc"
-CONSOLE_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --legs "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
+CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --legs "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
 printf '1\n' > "$STUB/tick.rc"
-CONSOLE_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) a new streak after a success wakes again" "WAKE tick-fail samples=3" "$(head -n1 "$WORK/f4c.out")"
 
 # --- (g) a Telegram line wakes at once; a re-arm replays nothing -----------
@@ -446,7 +458,7 @@ check "(n) completing the line wakes with it whole" "$(printf 'WAKE telegram\n- 
 reset_stub
 : > "$STUB/tick.ignoreterm"
 I="$(new_inbox o)"
-CONSOLE_WAIT_TICK_TIMEOUT=1 start "$I" "$WORK/o.out" --legs "N1.md"
+CHIEF_WAIT_TICK_TIMEOUT=1 start "$I" "$WORK/o.out" --legs "N1.md"
 # The line lands after the TERM (1 s), while the first sample is still hung.
 sleep 2
 printf -- '- 03:40 [telegram from=1 chat=2] hello\n' >> "$I"
@@ -482,7 +494,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # changed-key wake, even across two consecutive malformed samples -----------
 reset_stub
 I="$(new_inbox r)"
-CONSOLE_WAIT_FAIL_WAKE=2 start "$I" "$WORK/r.out" --legs "N1.md"
+CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/r.out" --legs "N1.md"
 wait_hb "$I" || fail "(r) no baseline heartbeat"
 sed 's/ tails=N1:LIVE//' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
@@ -587,7 +599,7 @@ cat > "$STUB/page-fail.sh" <<'EOF'
 exit 7
 EOF
 chmod +x "$STUB/page-fail.sh"
-CONSOLE_WAIT_PAGE_CMD="$STUB/page-fail.sh" denials_rise p6a none 'N1:1:SHIP-STEP'
+CHIEF_WAIT_PAGE_CMD="$STUB/page-fail.sh" denials_rise p6a none 'N1:1:SHIP-STEP'
 check "(p6) a failing sender still wakes with rc 0" "0" "$rc"
 check "(p6) and the wake block is intact" "WAKE tick changed=denials bank=PROCEED" "$(head -n1 "$WORK/p6a.out")"
 check "(p6) and the page record is written even though the send failed" "SHIP-STEP" "$(sed -n 's/^class=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
@@ -596,7 +608,7 @@ cat > "$STUB/page-hang.sh" <<'EOF'
 sleep 30
 EOF
 chmod +x "$STUB/page-hang.sh"
-CONSOLE_WAIT_PAGE_CMD="$STUB/page-hang.sh" denials_rise p6b none 'N1:1:SHIP-STEP'
+CHIEF_WAIT_PAGE_CMD="$STUB/page-hang.sh" denials_rise p6b none 'N1:1:SHIP-STEP'
 check "(p6) a hung sender is cut off by the page timeout and the wake still lands" "0" "$rc"
 
 # Two legs rise at once and the sender hangs: the page timeout is ONE budget for
@@ -609,7 +621,7 @@ sleep 30
 EOF
 chmod +x "$STUB/page-hang-log.sh"
 rm -f "$STUB/hang-calls"
-CONSOLE_WAIT_PAGE_CMD="$STUB/page-hang-log.sh" denials_rise p6d 'N1:1' 'N1:1:SHIP-STEP,N2:1:SHIP-STEP'
+CHIEF_WAIT_PAGE_CMD="$STUB/page-hang-log.sh" denials_rise p6d 'N1:1' 'N1:1:SHIP-STEP,N2:1:SHIP-STEP'
 check "(p6d) two hung sends still wake with rc 0" "0" "$rc"
 check "(p6d) only one send is attempted inside the shared budget" "1" "$(wc -l < "$STUB/hang-calls" 2>/dev/null | tr -d ' ')"
 check "(p6d) and both legs still get a page record" "N1 N2" "$(for k in N1 N2; do [ -f "$HIMMEL_DENIAL_ACK_DIR/$k.page" ] && printf '%s ' "$k"; done | sed 's/ $//')"

@@ -345,6 +345,65 @@ for a in supervisor-session console; do
   check "himmel-ops $a.md runs /himmel-ops:chief" "yes" "$(grep -qF -- "\`/himmel-ops:chief \$ARGUMENTS\`" "$ROOT/marketplace/plugins/himmel-ops/commands/$a.md" && echo yes || echo no)"
 done
 
+# --- slice V5b-1: the chief launcher, waiter and budget env names, each old name still read ---
+V5B1_ROWS='CONSOLE_ARM_FOREGROUND|CHIEF_ARM_FOREGROUND|identifier|old-to-new|V5|X
+CONSOLE_BUCKET|CHIEF_BUCKET|identifier|old-to-new|V5|X
+CONSOLE_BUS_CLI|CHIEF_BUS_CLI|identifier|old-to-new|V5|X
+CONSOLE_BUS_PREDECESSOR|CHIEF_BUS_PREDECESSOR|identifier|old-to-new|V5|X
+CONSOLE_BUS_PROFILES_MJS|CHIEF_BUS_PROFILES_MJS|identifier|old-to-new|V5|X
+CONSOLE_CACHE_READ_BUDGET_M|CHIEF_CACHE_READ_BUDGET_M|identifier|old-to-new|V5|X
+CONSOLE_CONTEXT|CHIEF_CONTEXT|identifier|old-to-new|V5|X
+CONSOLE_CONTEXT_|CHIEF_CONTEXT_|identifier|old-to-new|V5|X
+CONSOLE_CONTEXT_RECORD_DIR|CHIEF_CONTEXT_RECORD_DIR|identifier|old-to-new|V5|X
+CONSOLE_CONTEXT_RESOLVED_MODE|CHIEF_CONTEXT_RESOLVED_MODE|identifier|old-to-new|V5|X
+CONSOLE_CONTEXT_RESOLVED_SOURCE|CHIEF_CONTEXT_RESOLVED_SOURCE|identifier|old-to-new|V5|X
+CONSOLE_DOC|CHIEF_DOC|identifier|old-to-new|V5|X
+CONSOLE_ENV|CHIEF_ENV|identifier|old-to-new|V5|X
+CONSOLE_FILL_PERCENT|CHIEF_FILL_PERCENT|identifier|old-to-new|V5|X
+CONSOLE_FLAG|CHIEF_FLAG|identifier|old-to-new|V5|X
+CONSOLE_HEADED_ARM|CHIEF_HEADED_ARM|identifier|old-to-new|V5|X
+CONSOLE_LAUNCH_ENV|CHIEF_LAUNCH_ENV|identifier|old-to-new|V5|X
+CONSOLE_MODE|CHIEF_MODE|identifier|old-to-new|V5|X
+CONSOLE_MODEL|CHIEF_MODEL|identifier|old-to-new|V5|X
+CONSOLE_NAME|CHIEF_NAME|identifier|old-to-new|V5|X
+CONSOLE_PRECOMPACT_DOC|CHIEF_PRECOMPACT_DOC|identifier|old-to-new|V5|X
+CONSOLE_PRECOMPACT_WORKDIR|CHIEF_PRECOMPACT_WORKDIR|identifier|old-to-new|V5|X
+CONSOLE_TEMPLATE_DIR|CHIEF_TEMPLATE_DIR|identifier|old-to-new|V5|X
+CONSOLE_TURN_BUDGET|CHIEF_TURN_BUDGET|identifier|old-to-new|V5|X
+CONSOLE_WAIT|CHIEF_WAIT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_BANK|CHIEF_WAIT_USAGE|identifier|old-to-new|V5|X
+CONSOLE_WAIT_BUDGET|CHIEF_WAIT_BUDGET|identifier|old-to-new|V5|X
+CONSOLE_WAIT_BUDGET_TIMEOUT|CHIEF_WAIT_BUDGET_TIMEOUT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_CLOSE|CHIEF_WAIT_CLOSE|identifier|old-to-new|V5|X
+CONSOLE_WAIT_CLOSE_HANGS|CHIEF_WAIT_CLOSE_HANGS|identifier|old-to-new|V5|X
+CONSOLE_WAIT_CLOSE_TIMEOUT|CHIEF_WAIT_CLOSE_TIMEOUT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_DISPATCH|CHIEF_WAIT_DISPATCH|identifier|old-to-new|V5|X
+CONSOLE_WAIT_DISPATCH_TIMEOUT|CHIEF_WAIT_DISPATCH_TIMEOUT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_FAIL_WAKE|CHIEF_WAIT_FAIL_WAKE|identifier|old-to-new|V5|X
+CONSOLE_WAIT_HANDOVER_MIN|CHIEF_WAIT_HANDOVER_MIN|identifier|old-to-new|V5|X
+CONSOLE_WAIT_INTERVAL|CHIEF_WAIT_INTERVAL|identifier|old-to-new|V5|X
+CONSOLE_WAIT_LEG_EVENT|CHIEF_WAIT_WORKER_EVENT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_LOCK_STATUS|CHIEF_WAIT_LOCK_STATUS|identifier|old-to-new|V5|X
+CONSOLE_WAIT_PAGE_CMD|CHIEF_WAIT_PAGE_CMD|identifier|old-to-new|V5|X
+CONSOLE_WAIT_PAGE_TIMEOUT|CHIEF_WAIT_PAGE_TIMEOUT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_POLL_SEC|CHIEF_WAIT_POLL_SEC|identifier|old-to-new|V5|X
+CONSOLE_WAIT_RELAY|CHIEF_WAIT_RELAY|identifier|old-to-new|V5|X
+CONSOLE_WAIT_SUCCESSION_SEC|CHIEF_WAIT_SUCCESSION_SEC|identifier|old-to-new|V5|X
+CONSOLE_WAIT_TICK|CHIEF_WAIT_TICK|identifier|old-to-new|V5|X
+CONSOLE_WAIT_TICK_TIMEOUT|CHIEF_WAIT_TICK_TIMEOUT|identifier|old-to-new|V5|X
+CONSOLE_WAIT_TRACKER|CHIEF_WAIT_TRACKER|identifier|old-to-new|V5|X
+CONSOLE_WAIT_TRACKER_STALE_MIN|CHIEF_WAIT_TRACKER_STALE_MIN|identifier|old-to-new|V5|X
+CONSOLE_WAIT_UNOWNED_REWAKE_MIN|CHIEF_WAIT_UNOWNED_REWAKE_MIN|identifier|old-to-new|V5|X
+CONSOLE_WORK_DIR|CHIEF_WORK_DIR|identifier|old-to-new|V5|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V5b-1 row '$old'" "$tabbed" "$got"
+done <<EOF
+$V5B1_ROWS
+EOF
+
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
   { line[NR] = $1; old[NR] = $2; kind[NR] = $4; n = NR }

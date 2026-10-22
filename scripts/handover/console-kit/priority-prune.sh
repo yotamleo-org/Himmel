@@ -3,9 +3,9 @@
 # The line only shrinks as keys ship, so a stale line keeps the pool LOW; this
 # prints the line with every closed key removed and the rest in its order.
 #
-#   priority-prune.sh --doc CONSOLE_DOC [--mirror DIR]           print the pruned line
-#   priority-prune.sh --doc CONSOLE_DOC [--mirror DIR] --count   print <closed>/<total>
-#   priority-prune.sh --doc CONSOLE_DOC [--mirror DIR] --apply   also rewrite the line
+#   priority-prune.sh --doc CHIEF_DOC [--mirror DIR]           print the pruned line
+#   priority-prune.sh --doc CHIEF_DOC [--mirror DIR] --count   print <closed>/<total>
+#   priority-prune.sh --doc CHIEF_DOC [--mirror DIR] --apply   also rewrite the line
 #
 # The line is the first `priority:` line in the doc's `## Live state`, read
 # with next-dispatchable.sh's tokenizer (read_priority_line): keep the two in
@@ -29,10 +29,10 @@ while [ "$#" -gt 0 ]; do
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
         --count) mode=count; shift ;;
         --apply) mode=apply; shift ;;
-        *) echo "usage: priority-prune.sh --doc CONSOLE_DOC [--mirror DIR] [--count|--apply]" >&2; exit 2 ;;
+        *) echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply]" >&2; exit 2 ;;
     esac
 done
-[ -n "$doc" ] || { echo "usage: priority-prune.sh --doc CONSOLE_DOC [--mirror DIR] [--count|--apply]" >&2; exit 2; }
+[ -n "$doc" ] || { echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply]" >&2; exit 2; }
 [ -f "$doc" ] || { echo "priority-prune: no doc $doc" >&2; exit 1; }
 [ -d "$mirror" ] || { echo "priority-prune: no Jira mirror $mirror" >&2; exit 1; }
 

@@ -19,7 +19,7 @@ SCRIPT="$HERE/console-budget.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/console-budget-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 fails=0
-unset CONSOLE_TURN_BUDGET CONSOLE_CACHE_READ_BUDGET_M
+unset CHIEF_TURN_BUDGET CHIEF_CACHE_READ_BUDGET_M CONSOLE_TURN_BUDGET CONSOLE_CACHE_READ_BUDGET_M
 check()   { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
 lacks()    { printf '%s' "$2" | grep -qF -e "$3" && { echo "FAIL - $1: output unexpectedly contains [$3]"; fails=$((fails+1)); } || echo "ok - $1"; }
@@ -52,8 +52,12 @@ contains "2: verdict" "$out" "verdict=HANDOVER"
 mk "$tmp/t149.jsonl" 149 1000
 run "$tmp/t149.jsonl"
 check    "2: 149 turns still OK (rc 0)" "$rc" 0
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "2: CHIEF_TURN_BUDGET overrides (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "2: CONSOLE_TURN_BUDGET overrides (rc 3)" "$rc" 3
+check    "2: the old name CONSOLE_TURN_BUDGET still overrides (rc 3)" "$rc" 3
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=200 CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "2: CHIEF_TURN_BUDGET wins over the old name (rc 0)" "$rc" 0
 
 # --- 3. cache-read at the budget -----------------------------------------------
 mk "$tmp/cr.jsonl" 30 1000000
@@ -63,16 +67,18 @@ contains "3: verdict" "$out" "cache_read=30.0M verdict=HANDOVER"
 mk "$tmp/cr2.jsonl" 29 1000000
 run "$tmp/cr2.jsonl"
 check    "3: 29.0M still OK (rc 0)" "$rc" 0
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=20 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "3: CHIEF_CACHE_READ_BUDGET_M overrides (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=20 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "3: CONSOLE_CACHE_READ_BUDGET_M overrides (rc 3)" "$rc" 3
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=08 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "3: the old name CONSOLE_CACHE_READ_BUDGET_M still overrides (rc 3)" "$rc" 3
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=08 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: leading-zero budget 08 is decimal (rc 3, no octal abort)" "$rc" 3
 contains "3: leading-zero budget still prints the line" "$out" "verdict=HANDOVER"
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=008 bash "$SCRIPT" 2>&1)" || rc=$?
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=008 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: 008 reads as decimal eight (rc 3)" "$rc" 3
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: 000 is zero, falls back to the default (rc 0 at 29M)" "$rc" 0
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr.jsonl" CONSOLE_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr.jsonl" CHIEF_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: 000 falls back to the default, not disabled (rc 3 at 30M)" "$rc" 3
 
 # --- 4. duplicate requestIds ---------------------------------------------------
@@ -127,7 +133,7 @@ rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRI
 check    "6: a renamed session no longer answers to its old title (rc 2)" "$rc" 2
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title new-name-console 2>&1)" || rc=$?
 check    "6: a renamed session answers to its latest title" "$out" "budget turns=4 cache_read=4.0M verdict=OK"
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=99999999999999999999 bash "$SCRIPT" 2>&1)" || rc=$?
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=99999999999999999999 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "6: an oversized budget falls back to the default (rc 0 at 29M)" "$rc" 0
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title no-such-console 2>&1)" || rc=$?
 check    "6: unknown --title rc 2" "$rc" 2

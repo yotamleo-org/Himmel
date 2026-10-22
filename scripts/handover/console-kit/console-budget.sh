@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # console-budget.sh - the console's handover budget. Prints one line
 #   budget turns=<n> cache_read=<M>M verdict=OK|HANDOVER
-# HANDOVER when turns >= CONSOLE_TURN_BUDGET (default 150) or cumulative
-# cache-read >= CONSOLE_CACHE_READ_BUDGET_M million tokens (default 30): past
+# HANDOVER when turns >= CHIEF_TURN_BUDGET (default 150) or cumulative
+# cache-read >= CHIEF_CACHE_READ_BUDGET_M million tokens (default 30; the old
+# names CONSOLE_TURN_BUDGET and CONSOLE_CACHE_READ_BUDGET_M still read): past
 # either, every further turn re-reads the largest context for less than a
 # fresh console would cost. A turn is one assistant API call, deduped by
 # requestId (message.id when absent); sidechain (subagent) rows are not turns.
@@ -29,8 +30,12 @@ num_env() { # <name> <default> - a bad value warns and falls back, never disable
   fi
   printf '%s\n' "$v"
 }
-TURN_BUDGET="$(num_env CONSOLE_TURN_BUDGET 150)"
-CR_BUDGET_M="$(num_env CONSOLE_CACHE_READ_BUDGET_M 30)"
+# shellcheck source=../../lib/env-alias.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/env-alias.sh"
+alias_env CHIEF_TURN_BUDGET CONSOLE_TURN_BUDGET
+alias_env CHIEF_CACHE_READ_BUDGET_M CONSOLE_CACHE_READ_BUDGET_M
+TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 150)"
+CR_BUDGET_M="$(num_env CHIEF_CACHE_READ_BUDGET_M 30)"
 
 title=""; resolve_only=""
 while [ "$#" -gt 0 ]; do

@@ -12,7 +12,7 @@
 //
 // Heartbeat contract (owned by console-wait.sh):
 //   hb=<epoch> pid=<pid> key=<sha16> tick=<ok|fail|-> state=<waiting|exited> [exit=<reason>]
-// rewritten on every poll (CONSOLE_WAIT_POLL_SEC, default 1s), atomically
+// rewritten on every poll (CHIEF_WAIT_POLL_SEC, default 1s), atomically
 // (write-then-rename). A line that doesn't match the contract is read
 // defensively and is NEVER an alert — the contract can change out from under
 // this file (send a FINDING to the console per the brief, don't guess).
@@ -39,10 +39,10 @@ export function parseHeartbeat(raw: string): Heartbeat | null {
 }
 
 // Default staleness threshold. The heartbeat is rewritten on every poll
-// (CONSOLE_WAIT_POLL_SEC, default 1s) in the common case, but console-wait.sh
+// (CHIEF_WAIT_POLL_SEC, default 1s) in the common case, but console-wait.sh
 // only reaches that write AFTER a due tick's sample() call returns — and a
 // single tick call may legitimately block the waiter for up to
-// CONSOLE_WAIT_TICK_TIMEOUT (default 120s: a slow `gh`/jira/bank-preflight
+// CHIEF_WAIT_TICK_TIMEOUT (default 120s: a slow `gh`/jira/bank-preflight
 // call, not a dead waiter) before the next heartbeat write. 3x that ceiling
 // clears the worst legitimate gap with margin, so a slow-but-alive tick never
 // reads as a silent kill. Configurable by the caller (poller.ts wires

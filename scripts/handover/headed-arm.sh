@@ -32,7 +32,7 @@
 # silently a no-op on a Fable-family model, and the actual cost-driving
 # --autocompact auto|200000). Direct consoles default to `1m` (auto),
 # a console-class exemption from the general 200000 default. A positional
-# `standard` or CONSOLE_CONTEXT=standard opts down to 200000. Leg-wrapper
+# `standard` or CHIEF_CONTEXT=standard opts down to 200000. Leg-wrapper
 # launches retain their profile mode and existing ceiling guard.
 # Run detached, so it outlives the session that armed it:
 #   setsid nohup bash scripts/handover/headed-arm.sh ... >/dev/null 2>&1 &
@@ -309,6 +309,8 @@ fi
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/chief-context.sh"
+# CHIEF_CONTEXT still reads its old name, CONSOLE_CONTEXT.
+CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
 # shellcheck source=../lib/dedupe-path.sh
@@ -320,7 +322,7 @@ NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-claude-op
 # --context resolution (shared via scripts/lib/chief-context.sh), arming-time
 # only (see the header comment above). Direct consoles default to 1m/auto;
 # non-console wrapper profiles retain their configured mode. A positional
-# choice overrides CONSOLE_CONTEXT and the default. $#-ge 7 (not just
+# choice overrides CHIEF_CONTEXT and the default. $#-ge 7 (not just
 # "${7:-}" non-empty) is what distinguishes
 # an explicit empty-string 7th positional from "omitted" for the log line
 # below -- nothing currently passes an empty string here, but the
@@ -359,9 +361,9 @@ if [ "$#" -ge 7 ]; then
     CONTEXT="$7"
     _headed_context_source=$(console_context_source_label 1)
 else
-    console_context_default 1 "${CONSOLE_CONTEXT:-}"
-    CONTEXT="$CONSOLE_CONTEXT_RESOLVED_MODE"
-    if [ "$_context_profile" != "console" ] && [ "${CONSOLE_CONTEXT:-}" != "1m" ]; then
+    console_context_default 1 "${CHIEF_CONTEXT:-}"
+    CONTEXT="$CHIEF_CONTEXT_RESOLVED_MODE"
+    if [ "$_context_profile" != "console" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ]; then
         CONTEXT="$_profile_mode"
     fi
     # The source word (an env opt-in spells `explicit` too)
@@ -375,9 +377,9 @@ if ! console_context_valid "$CONTEXT"; then
 fi
 # Direct consoles may select 1m without an env opt-in.
 # Keep the existing non-console profile guard for leg-wrapper launches.
-if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "${CONSOLE_CONTEXT:-}" != "1m" ] && [ "$_profile_mode" != "1m" ]; then
+if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ] && [ "$_profile_mode" != "1m" ]; then
     usage
-    echo "headed-arm: refusing 1m context: set CONSOLE_CONTEXT=1m in the launching shell to opt in; omit [context] or pass standard for the --autocompact 200000 default." >&2
+    echo "headed-arm: refusing 1m context: set CHIEF_CONTEXT=1m in the launching shell to opt in; omit [context] or pass standard for the --autocompact 200000 default." >&2
     exit 2
 fi
 if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "console" ]; }; then
@@ -394,14 +396,14 @@ fi
 # Strip any [1m] suffix the caller may have typed into MODEL directly, so
 # `standard` can guarantee its absence and `1m` never doubles it.
 MODEL="$(console_context_strip_1m_suffix "$MODEL")"
-if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "$_profile_mode" = "1m" ] && [ "${CONSOLE_CONTEXT:-}" != "1m" ]; then
+if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "$_profile_mode" = "1m" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ]; then
     _headed_context_source="profile $_context_profile contextMode 1m"
 fi
 AUTOCOMPACT="$_profile_autocompact"
 if [ "$CONTEXT" = "standard" ]; then
     AUTOCOMPACT="200000"
     [ "$_ab_autocompact" != "400000" ] || AUTOCOMPACT="400000"
-elif [ "$_context_profile" = "console" ] || [ "${CONSOLE_CONTEXT:-}" = "1m" ]; then
+elif [ "$_context_profile" = "console" ] || [ "${CHIEF_CONTEXT:-}" = "1m" ]; then
     AUTOCOMPACT="auto"
 fi
 if [ "$CONTEXT" = "1m" ]; then
@@ -527,7 +529,7 @@ ROLE_ENV_UNSET=""
 # ponytail: keyed on --role console only. A console armed without --role (a
 # hand-pasted headed-arm.sh line) gets no export and so no snapshot; G11
 # (compacted-check.sh) reports that as `no snapshot` rc 2, never a false pass.
-CONSOLE_ENV=()
+CHIEF_ENV=()
 if [ "$ROLE" = "console" ]; then
     ROLE_ENV_UNSET="-u HIMMEL_CONSOLE_RELAY"
     # The `-u` above sits BEFORE $LAUNCHER_ENV in both konsole
@@ -558,7 +560,7 @@ if [ "$ROLE" = "console" ]; then
     # HIMMEL_CONSOLE=1 is the console marker the jira admission overrides
     # (create --console-override, version-admit/-defer/-ready) check; legs never
     # get it (headed-arm-leg.sh scrubs it).
-    CONSOLE_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")" "HIMMEL_CONSOLE=1")
+    CHIEF_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")" "HIMMEL_CONSOLE=1")
 fi
 # This argv carries --autocompact and an Opus 5.5 id, which a CLI
 # below the floor rejects at parse time -- refuse here, naming the version,
@@ -714,7 +716,7 @@ fi
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
     printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
-        "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CONSOLE_ENV[0]:+ ${CONSOLE_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
+        "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
     printf 'headed-arm: name=%s doc=%s signal=%s deadline=%s log=%s role=%s\n' \
         "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "${ROLE:-unsplit}"
     printf 'headed-arm: %s (autocompact=%s)\n' "$CONTEXT_REASON" "$AUTOCOMPACT"
@@ -1037,7 +1039,7 @@ headless_launch() {
     for tok in $ROLE_ENV_UNSET; do
         [ "$tok" = "-u" ] || _hl_set "$tok" ""
     done
-    for tok in ${CONSOLE_ENV[@]+"${CONSOLE_ENV[@]}"} $LAUNCHER_ENV; do
+    for tok in ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV; do
         case "$tok" in *=*) _hl_set "${tok%%=*}" "${tok#*=}" ;; esac
     done
     set +f
@@ -1078,7 +1080,7 @@ headless_launch() {
     local lrc=0
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
     env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CONSOLE_ENV[@]+"${CONSOLE_ENV[@]}"} $LAUNCHER_ENV \
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
 
@@ -1492,7 +1494,7 @@ if [ "$RECORDER" = "1" ]; then
     # deliberately unquoted, same word-split contract as LAUNCHER_ENV above.
     "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" \
         -e env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
-            CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CONSOLE_ENV[@]+"${CONSOLE_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
+            CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
             script -q -a -f "$LOG" -c "$LAUNCH_CMD" \
         >> "$LOG" 2>&1 &
 else
@@ -1502,7 +1504,7 @@ else
     # recorder branch above.
     "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" \
         -e env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
-            CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CONSOLE_ENV[@]+"${CONSOLE_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
+            CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
             "${LAUNCH_ARGV[@]}" \
         >> "$LOG" 2>&1 &
 fi
@@ -1525,7 +1527,7 @@ KPID=$!
 # shape.
 if [ "$ROLE" = "console" ]; then
     if ! console_context_write_record "$NAME" "$CONTEXT" "$_headed_context_source" "$AUTOCOMPACT"; then
-        echo "$(date +%F_%T) WARN context record NOT written under ${CONSOLE_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >> "$LOG"
+        echo "$(date +%F_%T) WARN context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >> "$LOG"
     fi
 fi
 

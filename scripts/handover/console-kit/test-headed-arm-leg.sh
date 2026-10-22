@@ -27,10 +27,10 @@
 #       own process environment (the leg-only env headed-arm.sh's child-env
 #       block does not set).
 #   11. LEG_REPO reaches headed-arm.sh's --workdir.
-#   3b/10b: CONSOLE_CONTEXT is a console-only knob (the
-#       CONSOLE_CONTEXT=1m 1M-context opt-in, console.sh:382) that must never
+#   3b/10b: CHIEF_CONTEXT is a console-only knob (the
+#       CHIEF_CONTEXT=1m 1M-context opt-in, console.sh:382) that must never
 #       reach a leg - --dry-run reports the enumerated scrub set and the
-#       resolved value as <unset> even with CONSOLE_CONTEXT=1m ambient in the
+#       resolved value as <unset> even with CHIEF_CONTEXT=1m ambient in the
 #       launching shell (3b); the real (non-dry) path proves it never reaches
 #       the konsole child's own process environment either (10b).
 #   12. RED control: a mutant headed-arm renderer with --autocompact removed is
@@ -90,14 +90,14 @@
 #       Tier-line gate, case 6c's fixture-doc shape); stays refused for no
 #       line, an empty reason, or a malformed line (wrong dash, wrong mode,
 #       missing marker). On acceptance: dry-run reports context=1m
-#       (operator-ruling) and CONSOLE_CONTEXT=1m (proving the same-process
+#       (operator-ruling) and CHIEF_CONTEXT=1m (proving the same-process
 #       export ran before this wrapper execs into headed-arm.sh, whose own
 #       gate this satisfies without editing that read-only file); a direct
 #       invocation of headed-arm.sh's own --dry-run with the same env proves
 #       the accepted argv actually carries --autocompact auto and [1m]; the
 #       full non-dry launch reaches konsole with HEADED_ARM_REQUIRED_AUTOCOMPACT
 #       resolved to auto (never leaking into the launched leg's own env,
-#       same non-leak shape as case 10) and CONSOLE_CONTEXT=1m recorded, and
+#       same non-leak shape as case 10) and CHIEF_CONTEXT=1m recorded, and
 #       the arm log records context=1m (operator-ruling).
 #   39. a doc whose resume_cwd resolves inside the handover root
 #       (symlinks followed, a not-yet-existing tail resolved through its
@@ -229,7 +229,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -414,7 +414,7 @@ contains "dry-run default: reports IMPL_GUARD_OK=1" "$out" "IMPL_GUARD_OK=1"
 contains "dry-run default: reports INLINE_IMPL_OK=1" "$out" "INLINE_IMPL_OK=1"
 contains "dry-run default: reports HIMMEL_CONSOLE_LEG=1" "$out" "HIMMEL_CONSOLE_LEG=1"
 not_contains "dry-run default: no HIMMEL_CONSOLE_RELAY without --relay" "$out" "HIMMEL_CONSOLE_RELAY"
-contains "dry-run default: scrub list names CONSOLE_CONTEXT" "$out" "scrub=CONSOLE_CONTEXT"
+contains "dry-run default: scrub list names CHIEF_CONTEXT" "$out" "scrub=CHIEF_CONTEXT"
 contains "dry-run default: no console-name source -> HIMMEL_CONSOLE_NAME absent" "$out" "HIMMEL_CONSOLE_NAME=<unset>"
 # the leg's context guard reads its mode and ceiling from the
 # launch env - the 200000 pin by default, the console's mode when set, and a
@@ -442,18 +442,24 @@ rc=0; out="$(HIMMEL_LEG_CONTEXT_MODE=bogus LEG_CONTEXT='' LEG_REPO='' bash "$SCR
 check "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: refused" "$rc" "2"
 contains "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: names the allowed modes" "$out" "compact or handoff"
 
-# a console armed with CONSOLE_CONTEXT=1m in its own environ (the
+# a console armed with CHIEF_CONTEXT=1m in its own environ (the
 # mandatory opt-in for a 1M successor, console.sh:382) must not forward that
-# console-only knob into a leg it arms. Ambient CONSOLE_CONTEXT=1m in THIS
+# console-only knob into a leg it arms. Ambient CHIEF_CONTEXT=1m in THIS
 # suite's own launching shell must not silently satisfy the assertion either -
 # not_contains on a value the wrapper never receives proves nothing - so this
 # sets it explicitly on the invocation, same shape as the LEG_CONTEXT=1m case
 # below. Enumerates the expected scrub set explicitly (not merely "non-empty")
 # so a future console-only knob added without a matching scrub here fails
 # this exact assertion, not a vaguer one.
+rc=0; out="$(CHIEF_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
+contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> CONSOLE_CONTEXT=<unset>"
+not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
+# The old name CONSOLE_CONTEXT is scrubbed the same way: headed-arm.sh still
+# reads it.
 rc=0; out="$(CONSOLE_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run, ambient CONSOLE_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
-contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CONSOLE_CONTEXT=<unset>"
+check "dry-run, ambient CONSOLE_CONTEXT=1m: exit 0" "$rc" "0"
+contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset>" "$out" "CONSOLE_CONTEXT=<unset>"
 not_contains "dry-run, ambient CONSOLE_CONTEXT=1m: never reported as still set" "$out" "CONSOLE_CONTEXT=1m"
 
 # --- HIMMEL_CONSOLE_NAME resolution (--console, launching
@@ -532,10 +538,10 @@ done
 # on every lane - so a scrubbed var carried there would come back past the
 # `unset`. The scrub strips it from the token list too; siblings survive.
 for lane in native claudex; do
-  out="$(HEADED_ARM_LAUNCHER_ENV="CONSOLE_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
+  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
   lenv="$(printf '%s\n' "$out" | grep '^headed-arm-leg: lane=')"
   contains "--lane $lane, caller-preset launcher-env: dry-run reached the lane line" "$lenv" "launcher-env="
-  not_contains "--lane $lane, caller-preset launcher-env: scrubbed CONSOLE_CONTEXT stripped" "$lenv" "CONSOLE_CONTEXT="
+  not_contains "--lane $lane, caller-preset launcher-env: scrubbed CHIEF_CONTEXT stripped" "$lenv" "CHIEF_CONTEXT="
   contains "--lane $lane, caller-preset launcher-env: sibling token kept" "$lenv" "KEEP_ME=1"
 done
 
@@ -601,7 +607,7 @@ rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-le
 check "dry-run LEG_CONTEXT=1m, sanctioned Context line: accepted (exit 0)" "$rc" "0"
 contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: reports context=1m (operator-ruling)" "$out" "context=1m (operator-ruling)"
 contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: reports the reason" "$out" "HIMMEL-3581 sanctioned 1m leg test"
-contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: exports CONSOLE_CONTEXT=1m before the exec" "$out" "CONSOLE_CONTEXT=1m"
+contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: exports CHIEF_CONTEXT=1m before the exec" "$out" "CHIEF_CONTEXT=1m"
 
 # --- the audited autocompact A/B arm (LEG_AUTOCOMPACT_AB) -----
 # 400000 needs the brief ruling line, standard context and a valid value; 200000
@@ -642,7 +648,7 @@ not_contains "ambient HEADED_ARM_AB_AUTOCOMPACT is not honoured" "$out" "ab-arm=
 # Proves the ACCEPTED argv (not just this wrapper's own dry-run report) really
 # carries --autocompact auto and a [1m]-suffixed model - headed-arm.sh is
 # read-only for this ticket, so this drives its own --dry-run directly with
-# the same CONSOLE_CONTEXT=1m + context=1m pair the wrapper's sanctioned
+# the same CHIEF_CONTEXT=1m + context=1m pair the wrapper's sanctioned
 # branch would hand it, rather than editing that file to observe it.
 # KONSOLE_CMD is stubbed because headed-arm.sh's own terminal-emulator
 # dependency check runs before --dry-run short-circuits, and a real konsole
@@ -653,8 +659,8 @@ cat > "$d_sanctioned/konsole" <<'KONSOLE_STUB_EOF'
 exit 0
 KONSOLE_STUB_EOF
 chmod 755 "$d_sanctioned/konsole"
-rc=0; out="$(CONSOLE_CONTEXT=1m KONSOLE_CMD="$d_sanctioned/konsole" bash "$HEADED_ARM" --dry-run HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-4-6 1m 2>&1)" || rc=$?
-check "headed-arm.sh --dry-run, sanctioned pair (CONSOLE_CONTEXT=1m, context=1m): exit 0" "$rc" "0"
+rc=0; out="$(CHIEF_CONTEXT=1m KONSOLE_CMD="$d_sanctioned/konsole" bash "$HEADED_ARM" --dry-run HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-4-6 1m 2>&1)" || rc=$?
+check "headed-arm.sh --dry-run, sanctioned pair (CHIEF_CONTEXT=1m, context=1m): exit 0" "$rc" "0"
 contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries --autocompact auto" "$out" "--autocompact auto"
 contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries the [1m] model suffix" "$out" "claude-sonnet-4-6[1m]"
 
@@ -968,7 +974,7 @@ env9c="$(cat "$d9c/env-record" 2>/dev/null || true)"
 check "full launch, sanctioned Context line: exit 0" "$rc" "0"
 contains "full launch, sanctioned Context line: --autocompact auto reaches konsole's argv" "$rec9c" "--autocompact auto"
 contains "full launch, sanctioned Context line: model carries the [1m] suffix" "$rec9c" "claude-sonnet-4-6[1m]"
-contains "full launch, sanctioned Context line: CONSOLE_CONTEXT=1m reaches konsole's own env" "$env9c" "CONSOLE_CONTEXT=1m"
+contains "full launch, sanctioned Context line: CHIEF_CONTEXT=1m reaches konsole's own env" "$env9c" "CHIEF_CONTEXT=1m"
 not_contains "full launch, sanctioned Context line: internal autocompact requirement does not leak into the launched leg" "$env9c" "HEADED_ARM_REQUIRED_AUTOCOMPACT="
 logline9c="$(cat "$d9c/log" 2>/dev/null || true)"
 contains "full launch, sanctioned Context line: arm log records context=1m (operator-ruling)" "$logline9c" "context=1m (operator-ruling)"
@@ -984,19 +990,19 @@ not_contains "full launch: a plain leg carries no HIMMEL_CONSOLE_JUDGE (HIMMEL-4
 not_contains "full launch: internal autocompact requirement does not leak into the launched leg" "$env8" "HEADED_ARM_REQUIRED_AUTOCOMPACT="
 
 # --- 10b. Asserted absence on the REAL (non-dry) path: a
-# console armed with CONSOLE_CONTEXT=1m in its own environ must not forward
+# console armed with CHIEF_CONTEXT=1m in its own environ must not forward
 # it into the konsole child's own process environment when it arms a leg -
 # the live symptom this ticket fixes. Mirrors case 10's shape (env-record,
-# not argv - CONSOLE_CONTEXT never appears in argv either way, only in
+# not argv - CHIEF_CONTEXT never appears in argv either way, only in
 # inherited env) so the control is on the same deterministic seam headed-arm's
 # own suite already trusts, not a live /proc read.
 d10b="$tmp/c10b"; mk_launch_stubs "$d10b" "HIMMEL-3139-leg"; mkdir -p "$tmp/repo10b"
 rc=0
-CONSOLE_CONTEXT=1m LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10b" "$tmp/repo10b" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+CHIEF_CONTEXT=1m LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10b" "$tmp/repo10b" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d10b" || true
 env10b="$(cat "$d10b/env-record" 2>/dev/null || true)"
-check "full launch, ambient CONSOLE_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
-not_contains "full launch, ambient CONSOLE_CONTEXT=1m: absent from the konsole invocation's own env" "$env10b" "CONSOLE_CONTEXT="
+check "full launch, ambient CHIEF_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
+not_contains "full launch, ambient CHIEF_CONTEXT=1m: absent from the konsole invocation's own env" "$env10b" "CHIEF_CONTEXT="
 
 # --- 12. RED control: mutate the ACTUAL headed-arm launch renderer to drop
 # --autocompact, then drive the wrapper's full non-dry path. The shared argv

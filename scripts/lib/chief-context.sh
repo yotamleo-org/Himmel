@@ -13,7 +13,7 @@
 #
 # Bash 3.2-compatible: no `local -n` namerefs (unavailable pre-4.3). Each
 # function that needs to hand back more than an exit code sets a bare
-# CONSOLE_CONTEXT_* global instead. Callers keep their own prose/wording --
+# CHIEF_CONTEXT_* global instead. Callers keep their own prose/wording --
 # this file only owns the DECISION, not the human-readable reason string
 # each caller logs (those strings are pinned by each caller's own test
 # suite and legitimately differ between scripts) -- except the source word
@@ -32,8 +32,8 @@
 #   console_context_autocompact <mode>       -- prints the autocompact value
 #                                                for a resolved mode
 #   console_context_default <is_console> <console_context_env>
-#                                             -- sets CONSOLE_CONTEXT_RESOLVED_MODE
-#                                                and CONSOLE_CONTEXT_RESOLVED_SOURCE
+#                                             -- sets CHIEF_CONTEXT_RESOLVED_MODE
+#                                                and CHIEF_CONTEXT_RESOLVED_SOURCE
 #                                                for when no explicit value
 #                                                was given
 #   console_context_source_label <explicit 0|1>
@@ -120,32 +120,33 @@ console_context_autocompact() {
 #
 # Only for the no-explicit-value path. It exempts consoles from
 # the standard default: consoles default to 1m, with
-# CONSOLE_CONTEXT=standard opting down. Non-console arms remain standard
+# CHIEF_CONTEXT=standard (old name CONSOLE_CONTEXT) opting down; each caller
+# passes the env value it read both ways. Non-console arms remain standard
 # and ignore the environment. A valid env choice is explicit provenance.
 # shellcheck disable=SC2034  # output-contract globals, read by sourcing callers (arm-resume.sh, headed-arm.sh, console.sh)
 console_context_default() {
-    CONSOLE_CONTEXT_RESOLVED_MODE="standard"
-    CONSOLE_CONTEXT_RESOLVED_SOURCE="default"
+    CHIEF_CONTEXT_RESOLVED_MODE="standard"
+    CHIEF_CONTEXT_RESOLVED_SOURCE="default"
     if [ "$1" -eq 1 ]; then
-        CONSOLE_CONTEXT_RESOLVED_MODE="1m"
+        CHIEF_CONTEXT_RESOLVED_MODE="1m"
         if console_context_valid "$2"; then
-            CONSOLE_CONTEXT_RESOLVED_MODE="$2"
-            CONSOLE_CONTEXT_RESOLVED_SOURCE="console-context-env"
+            CHIEF_CONTEXT_RESOLVED_MODE="$2"
+            CHIEF_CONTEXT_RESOLVED_SOURCE="console-context-env"
         fi
     fi
 }
 
 # console_context_source_label <explicit_given 0|1> -- prints the source word
 # both arming paths log and record: `explicit` when the mode was named
-# (--context / the launcher's positional) OR selected with CONSOLE_CONTEXT
+# (--context / the launcher's positional) OR selected with CHIEF_CONTEXT
 # (1m or standard), else `default`.
 # Spec 2973 sec 2.4 keys on `context=1m (explicit)`. arm-resume.sh
 # used to spell this from its own prose while headed-arm.sh spelled `(explicit)`,
 # so a reader keying on the spec attributed one path and silently skipped the
 # other; both callers take the word from here now. Read
-# CONSOLE_CONTEXT_RESOLVED_SOURCE only after console_context_default ran.
+# CHIEF_CONTEXT_RESOLVED_SOURCE only after console_context_default ran.
 console_context_source_label() {
-    if [ "$1" -eq 1 ] || [ "${CONSOLE_CONTEXT_RESOLVED_SOURCE:-}" = "console-context-env" ]; then
+    if [ "$1" -eq 1 ] || [ "${CHIEF_CONTEXT_RESOLVED_SOURCE:-}" = "console-context-env" ]; then
         printf '%s' explicit
     else
         printf '%s' default
@@ -168,19 +169,19 @@ console_context_source_label() {
 # Best-effort: rc 0 iff the row was appended; rc 1 otherwise, and the caller
 # says so in its own log (a lost record is `unknown` to the reader, never a
 # proxy). A session name that is empty or carries `/` is refused here -- it is
-# a filename component. Sets CONSOLE_CONTEXT_RECORD_DIR (the dir the row went,
+# a filename component. Sets CHIEF_CONTEXT_RECORD_DIR (the dir the row went,
 # or would have gone, to) for the caller's warning.
 # shellcheck disable=SC2034  # output-contract global, read by sourcing callers
 console_context_write_record() {
-    CONSOLE_CONTEXT_RECORD_DIR="${HIMMELCTL_CACHE_DIR:-}"
-    [ -z "$CONSOLE_CONTEXT_RECORD_DIR" ] && [ -n "${HOME:-}" ] && CONSOLE_CONTEXT_RECORD_DIR="$HOME/.claude/himmel"
-    [ -n "$CONSOLE_CONTEXT_RECORD_DIR" ] && CONSOLE_CONTEXT_RECORD_DIR="$CONSOLE_CONTEXT_RECORD_DIR/launch-logs"
+    CHIEF_CONTEXT_RECORD_DIR="${HIMMELCTL_CACHE_DIR:-}"
+    [ -z "$CHIEF_CONTEXT_RECORD_DIR" ] && [ -n "${HOME:-}" ] && CHIEF_CONTEXT_RECORD_DIR="$HOME/.claude/himmel"
+    [ -n "$CHIEF_CONTEXT_RECORD_DIR" ] && CHIEF_CONTEXT_RECORD_DIR="$CHIEF_CONTEXT_RECORD_DIR/launch-logs"
     case "$1" in ""|*/*) return 1 ;; esac
-    [ -n "$CONSOLE_CONTEXT_RECORD_DIR" ] || return 1
-    ( umask 077 && mkdir -p "$CONSOLE_CONTEXT_RECORD_DIR" && \
+    [ -n "$CHIEF_CONTEXT_RECORD_DIR" ] || return 1
+    ( umask 077 && mkdir -p "$CHIEF_CONTEXT_RECORD_DIR" && \
         printf 'headed-arm: role=console session=%s context=%s source=%s autocompact=%s launched=%s\n' \
             "$1" "$2" "$3" "$4" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            >> "$CONSOLE_CONTEXT_RECORD_DIR/$1.log" ) 2>/dev/null
+            >> "$CHIEF_CONTEXT_RECORD_DIR/$1.log" ) 2>/dev/null
 }
 
 # console_context_leg_env_unset_names -- prints, one per line, every env var

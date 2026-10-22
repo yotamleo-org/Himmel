@@ -106,7 +106,7 @@ usage() {
 }
 
 FLEET_MANIFEST=""
-CONSOLE_MODE=0
+CHIEF_MODE=0
 CHECK_MODE=0
 SWEEP_MODE=0
 if [ "${1:-}" = --check ]; then
@@ -119,7 +119,7 @@ if [ "${1:-}" = --fleet ]; then
     if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then usage; exit 2; fi
     FLEET_MANIFEST="$2"; shift 2
 elif [ "${1:-}" = --console ]; then
-    CONSOLE_MODE=1; shift
+    CHIEF_MODE=1; shift
 fi
 
 # Only successful close exits retire the leg; refusals and failed pruning keep it.
@@ -351,7 +351,7 @@ fi
 # Every check above ran unchanged. A console has no worktree, cost row, scratch
 # or failure digest of its own, so the leg-only steps below are skipped: TERM
 # the one proven pid and stop.
-if [ "$CONSOLE_MODE" -eq 1 ]; then
+if [ "$CHIEF_MODE" -eq 1 ]; then
     if ! "$KILL" -TERM "$matched"; then
         echo "close-wrapped-leg: failed to send TERM to pid $matched" >&2
         exit 1

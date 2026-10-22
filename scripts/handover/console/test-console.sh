@@ -108,13 +108,13 @@ root_digest="$(root_digest_of "$root")"
 console_root() {  # console_root <root> <args...> -- invoke console.sh with
                   # cwd pinned to the fixture repo, against an ARBITRARY
                   # handover root (used by cases exercising a non-default
-                  # root, e.g. one containing a space). CONSOLE_WORK_DIR is
+                  # root, e.g. one containing a space). CHIEF_WORK_DIR is
                   # pinned to an isolated fixture dir so the eager work-dir
                   # hardening never touches, and every case
                   # here never collides on, the REAL live
                   # /tmp/himmel-console-<uid> tree other running consoles use.
     local r="$1"; shift
-    ( cd "$fixture_repo" && HANDOVER_DIR="$r" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/defaultwork" bash "$C" "$@" )
+    ( cd "$fixture_repo" && HANDOVER_DIR="$r" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/defaultwork" bash "$C" "$@" )
 }
 
 console() { console_root "$root" "$@"; }
@@ -199,7 +199,7 @@ check "5 dry-run writes nothing" "$before5" "$after5"
 check "5 dry-run prints would-doc" "$(printf '%s\n' "$out5" | grep -c '^would-doc: ')" "1"
 
 # --- 5b: consoles default to 1m/auto, not standard.
-out5b="$(unset CONSOLE_CONTEXT; console new --bucket dryrepo5b --dry-run)"
+out5b="$(unset CHIEF_CONTEXT CONSOLE_CONTEXT; console new --bucket dryrepo5b --dry-run)"
 check "5b default launch line carries --autocompact auto" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--autocompact auto')" "1"
 check "5b default launch line carries no --autocompact 200000" \
@@ -223,25 +223,25 @@ out5d="$(PLUGIN_PROFILES_REGISTRY="$tmp/registry-5310.json" console new --bucket
 check "5d unresolvable MCP allowlist: console new --dry-run exits 2" "$rc5d" "2"
 check "5d unresolvable MCP allowlist: no launch line printed" \
     "$(printf '%s\n' "$out5d" | grep -c -- 'launch:')" "0"
-out5c="$(CONSOLE_CONTEXT=1m console new --bucket dryrepo5c --dry-run)"
-check "5c CONSOLE_CONTEXT=1m launch line carries --autocompact auto" \
+out5c="$(CHIEF_CONTEXT=1m console new --bucket dryrepo5c --dry-run)"
+check "5c CHIEF_CONTEXT=1m launch line carries --autocompact auto" \
     "$(printf '%s\n' "$out5c" | grep -c -- '--autocompact auto')" "1"
-check "5c CONSOLE_CONTEXT=1m launch line carries no --autocompact 200000" \
+check "5c CHIEF_CONTEXT=1m launch line carries no --autocompact 200000" \
     "$(printf '%s\n' "$out5c" | grep -c -- '--autocompact 200000')" "0"
 
 # Catch console default regressions and ignored CLI overrides.
-out3884="$(unset CONSOLE_CONTEXT; console next --bucket demorepo --doc "$docA" --dry-run)"
+out3884="$(unset CHIEF_CONTEXT CONSOLE_CONTEXT; console next --bucket demorepo --doc "$docA" --dry-run)"
 check "3884 next defaults to --autocompact auto" \
     "$(printf '%s\n' "$out3884" | grep -c -- '--autocompact auto')" "1"
 check "3884 next records 1m default auto" \
     "$(printf '%s\n' "$out3884" | grep -c -- "record-launch.sh DEMO-nextleg-${today}B-console 1m default auto")" "1"
 for command3884 in new next; do
-    out3884="$(CONSOLE_CONTEXT=1m console "$command3884" --bucket demorepo --context standard --dry-run)"
+    out3884="$(CHIEF_CONTEXT=1m console "$command3884" --bucket demorepo --context standard --dry-run)"
     check "3884 $command3884 --context standard overrides env" \
         "$(printf '%s\n' "$out3884" | grep -c -- '--autocompact 200000')" "1"
     check "3884 $command3884 standard source is explicit" \
         "$(printf '%s\n' "$out3884" | grep -c -- 'standard explicit 200000')" "1"
-    out3884="$(CONSOLE_CONTEXT=standard console "$command3884" --bucket demorepo --context=1m --dry-run)"
+    out3884="$(CHIEF_CONTEXT=standard console "$command3884" --bucket demorepo --context=1m --dry-run)"
     check "3884 $command3884 --context=1m overrides env" \
         "$(printf '%s\n' "$out3884" | grep -c -- '1m explicit auto')" "1"
     rc3884=0
@@ -250,10 +250,10 @@ for command3884 in new next; do
     check "3884 $command3884 bogus diagnostic" \
         "$(printf '%s\n' "$out3884" | grep -c -- '--context must be 1m or standard')" "1"
 done
-out3884="$(CONSOLE_CONTEXT=standard console new --bucket dry3884 --dry-run)"
+out3884="$(CHIEF_CONTEXT=standard console new --bucket dry3884 --dry-run)"
 check "3884 env opt-down is explicit" \
     "$(printf '%s\n' "$out3884" | grep -c -- 'standard explicit 200000')" "1"
-resolved3884="$(. "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_default 0 1m; printf '%s %s' "$CONSOLE_CONTEXT_RESOLVED_MODE" "$CONSOLE_CONTEXT_RESOLVED_SOURCE")"
+resolved3884="$(. "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_default 0 1m; printf '%s %s' "$CHIEF_CONTEXT_RESOLVED_MODE" "$CHIEF_CONTEXT_RESOLVED_SOURCE")"
 check "3884 non-console ignores env and stays standard" "$resolved3884" "standard default"
 
 # --- 5d: the printed launch line must clear the inherited
@@ -379,14 +379,14 @@ log7B="$tmp/work/tester-armrepo-${root_digest}/launch-${session7B}.log"
 cat > "$tmp/stub-arm.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = --role ] && shift 2
-echo "armed: name=$1 doc=$2 signal=$3 deadline=$4 context=${7:-${CONSOLE_CONTEXT:-default}}" >> "$5"
+echo "armed: name=$1 doc=$2 signal=$3 deadline=$4 context=${7:-${CHIEF_CONTEXT:-default}}" >> "$5"
 STUB
 chmod +x "$tmp/stub-arm.sh"
 
 out7a="$(console new --bucket armrepo)"
 token7a="$(token_of "$out7a")"
 out7b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" CONSOLE_CONTEXT=1m \
+    CHIEF_HEADED_ARM="$tmp/stub-arm.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" CHIEF_CONTEXT=1m \
     bash "$C" next --bucket armrepo --arm --deadline-min 0 --context standard ) )"
 check "7 next --arm reports armed" "$(printf '%s\n' "$out7b" | grep -c '^armed: ')" "1"
 check "7 arm log written" "$([ -f "$log7B" ] && echo yes)" "yes"
@@ -774,7 +774,7 @@ doc25bB="$root/tester/renderdst/DEMO-nextleg-${today}B-console.md"
 handoff25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
 printf 'predecessor\n' > "$doc25bA"
 rc25c=0
-out25c="$(CONSOLE_TEMPLATE_DIR="$render_tpl_dir" console next --bucket renderdst --doc "$doc25bA" 2>&1)" || rc25c=$?
+out25c="$(CHIEF_TEMPLATE_DIR="$render_tpl_dir" console next --bucket renderdst --doc "$doc25bA" 2>&1)" || rc25c=$?
 check "25b step1: render aborts with exit 1" "$rc25c" "1"
 check "25b step1: failure names the unresolved placeholder" "$(printf '%s\n' "$out25c" | grep -c 'unresolved placeholder {{BROKEN_PLACEHOLDER}}')" "1"
 check "25b step1: render failure prints no launch line" "$(printf '%s\n' "$out25c" | grep -c '^launch: ')" "0"
@@ -782,7 +782,7 @@ check "25b step2: leaves no successor stub" "$([ -e "$doc25bB" ] && echo yes || 
 check "25b step2: leaves no partial HANDOFF" "$([ -e "$handoff25bA" ] && echo yes || echo no)" "no"
 cp "$REPO_REAL/docs/handover/console-handoff-template.md" "$render_tpl_dir/console-handoff-template.md"
 rc25d=0
-CONSOLE_TEMPLATE_DIR="$render_tpl_dir" console next --bucket renderdst --doc "$doc25bA" >/dev/null 2>&1 || rc25d=$?
+CHIEF_TEMPLATE_DIR="$render_tpl_dir" console next --bucket renderdst --doc "$doc25bA" >/dev/null 2>&1 || rc25d=$?
 check "25b step3 (the control): retry with repaired template succeeds" "$rc25d" "0"
 check "25b step3: retry wrote the successor doc" "$([ -s "$doc25bB" ] && echo yes)" "yes"
 check "25b step3: retry wrote the HANDOFF" "$([ -s "$handoff25bA" ] && echo yes)" "yes"
@@ -814,8 +814,8 @@ release_token: {{RELEASE_TOKEN}}
 EOF
 
 out26="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_TEMPLATE_DIR="$stub_tpl_dir" CONSOLE_HEADED_ARM="$tmp/stub-arm.sh" \
-    CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
+    CHIEF_TEMPLATE_DIR="$stub_tpl_dir" CHIEF_HEADED_ARM="$tmp/stub-arm.sh" \
+    CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" new --bucket tokenbucket --arm ) )"
 doc26="$root/tester/tokenbucket/DEMO-nextleg-${today}A-console.md"
 token26_printed="$(token_of "$out26")"
@@ -838,7 +838,7 @@ tmp27="$tmp/c27"
 mkdir -p "$tmp27/real-elsewhere"
 ln -s "$tmp27/real-elsewhere" "$tmp27/himmel-console-$(id -u)"
 rc27=0
-out27="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+out27="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO TMPDIR="$tmp27" \
     bash "$C" new --bucket wdlinktest --dry-run ) 2>&1 )" || rc27=$?
 check "27 symlinked default work dir: refuses with a distinct exit code" "$rc27" "3"
@@ -858,7 +858,7 @@ else
     mkdir -p "$tmp28/himmel-console-$(id -u)"
     if sudo -n chown nobody:nobody "$tmp28/himmel-console-$(id -u)" >/dev/null 2>&1; then
         rc28=0
-        out28="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+        out28="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
             HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO TMPDIR="$tmp28" \
             bash "$C" new --bucket wdotheruid --dry-run ) 2>&1 )" || rc28=$?
         check "28 default work dir owned by another uid: refuses with a distinct exit code" "$rc28" "3"
@@ -914,7 +914,7 @@ exec "$real_mkdir30" "\$@"
 STUB_EOF
 chmod +x "$tmp30/bin/mkdir"
 rc30=0
-out30="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+out30="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO TMPDIR="$tmp30" \
     PATH="$tmp30/bin:$PATH" \
     bash "$C" new --bucket wdtoctou --dry-run ) 2>&1 )" || rc30=$?
@@ -939,7 +939,7 @@ if [ "$HOST_MODES_STICK" = 1 ]; then
 tmp31="$tmp/c31"
 mkdir -p "$tmp31/xdg" "$tmp31/tmp"
 chmod 0777 "$tmp31/xdg"
-out31="$( ( cd "$fixture_repo" && env -u CONSOLE_WORK_DIR \
+out31="$( ( cd "$fixture_repo" && env -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     XDG_RUNTIME_DIR="$tmp31/xdg" TMPDIR="$tmp31/tmp" \
     bash "$C" new --bucket wdgwtest --dry-run --arm ) 2>&1 )"
@@ -954,7 +954,7 @@ else
     host_skip "31 group/world-writable XDG_RUNTIME_DIR: chmod does not stick on this host"
 fi
 
-# --- 32: a CONSOLE_WORK_DIR override sitting under a group/world-writable,
+# --- 32: a CHIEF_WORK_DIR override sitting under a group/world-writable,
 # non-sticky PARENT must be refused -- console_workdir_ensure only ever validates the override path
 # itself, never its parent; an override is exactly as reachable by another
 # local user as the default path, so an insecure parent lets that user
@@ -968,23 +968,23 @@ mkdir -p "$tmp32/parent"
 chmod 0777 "$tmp32/parent"
 out32="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp32/parent/work" \
+    CHIEF_WORK_DIR="$tmp32/parent/work" \
     bash "$C" new --bucket wdparent32 --dry-run ) 2>&1 )"; rc32=$?
-check "32 CONSOLE_WORK_DIR under an insecure parent: refuses with a distinct exit code" "$rc32" "3"
-check "32 CONSOLE_WORK_DIR under an insecure parent: stderr names the cause" "$(printf '%s\n' "$out32" | grep -ci parent)" "1"
+check "32 CHIEF_WORK_DIR under an insecure parent: refuses with a distinct exit code" "$rc32" "3"
+check "32 CHIEF_WORK_DIR under an insecure parent: stderr names the cause" "$(printf '%s\n' "$out32" | grep -ci parent)" "1"
 else
-    host_skip "32 CONSOLE_WORK_DIR under an insecure parent: chmod does not stick on this host"
+    host_skip "32 CHIEF_WORK_DIR under an insecure parent: chmod does not stick on this host"
 fi
 
 # --- 33: the TMPDIR-fallback work dir's parent (normally /tmp, sticky) must
 # be checked the same way when TMPDIR itself is overridden to a
-# group/world-writable, non-sticky directory (TMPDIR half). No XDG_RUNTIME_DIR and no CONSOLE_WORK_DIR
+# group/world-writable, non-sticky directory (TMPDIR half). No XDG_RUNTIME_DIR and no CHIEF_WORK_DIR
 # override, so the default TMPDIR-fallback path is exercised directly.
 if [ "$HOST_MODES_STICK" = 1 ]; then
 tmp33="$tmp/c33"
 mkdir -p "$tmp33/insecure-tmp"
 chmod 0777 "$tmp33/insecure-tmp"
-out33="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+out33="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp33/insecure-tmp" \
     bash "$C" new --bucket wdparent33 --dry-run ) 2>&1 )"; rc33=$?
@@ -1019,7 +1019,7 @@ fi
 exec "$real_stat34" "\$@"
 STUB_EOF
 chmod +x "$tmp34/bin/stat"
-out34="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+out34="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp34/attacker-owned" \
     PATH="$tmp34/bin:$PATH" \
@@ -1034,7 +1034,7 @@ tmp35="$tmp/c35"
 mkdir -p "$tmp35/self-owned"
 chmod 1777 "$tmp35/self-owned"
 rc35=0
-( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp35/self-owned" \
     bash "$C" new --bucket wdparent35 --dry-run ) >/dev/null 2>&1 || rc35=$?
@@ -1053,7 +1053,7 @@ chmod 0777 "$tmp36/grandparent"
 chmod 0700 "$tmp36/grandparent/parent"
 out36="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp36/grandparent/parent/work" \
+    CHIEF_WORK_DIR="$tmp36/grandparent/parent/work" \
     bash "$C" new --bucket wdparent36 --dry-run ) 2>&1 )"; rc36=$?
 check "36 insecure grandparent despite safe immediate parent: refuses with a distinct exit code" "$rc36" "3"
 check "36 insecure grandparent despite safe immediate parent: stderr names the cause" "$(printf '%s\n' "$out36" | grep -ci parent)" "1"
@@ -1081,7 +1081,7 @@ fi
 exec "$real_stat37" "\$@"
 STUB_EOF
 chmod +x "$tmp37/bin/stat"
-out37="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+out37="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp37/attacker-0755" \
     PATH="$tmp37/bin:$PATH" \
@@ -1096,13 +1096,13 @@ tmp38="$tmp/c38"
 mkdir -p "$tmp38/self-0755"
 chmod 0755 "$tmp38/self-0755"
 rc38=0
-( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CONSOLE_WORK_DIR \
+( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp38/self-0755" \
     bash "$C" new --bucket wdparent38 --dry-run ) >/dev/null 2>&1 || rc38=$?
 check "38 self-owned non-writable (0755) parent: accepted" "$rc38" "0"
 
-# --- 39: a RELATIVE CONSOLE_WORK_DIR must still walk the real ancestor
+# --- 39: a RELATIVE CHIEF_WORK_DIR must still walk the real ancestor
 # chain above the current working directory -- a lexical `dirname` loop on a relative path like "work"
 # stops at "." (dirname(".") is itself "."), so only the cwd is ever
 # checked; canonicalizing to an absolute path first is required to reach an
@@ -1114,15 +1114,15 @@ chmod 0777 "$tmp39/insecure-ancestor"
 chmod 0700 "$tmp39/insecure-ancestor/cwd-dir"
 out39="$( ( cd "$tmp39/insecure-ancestor/cwd-dir" && env -u XDG_RUNTIME_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="work" \
+    CHIEF_WORK_DIR="work" \
     bash "$C" new --bucket wdparent39 --dry-run ) 2>&1 )"; rc39=$?
-check "39 relative CONSOLE_WORK_DIR under an insecure ancestor: refuses with a distinct exit code" "$rc39" "3"
-check "39 relative CONSOLE_WORK_DIR under an insecure ancestor: stderr names the cause" "$(printf '%s\n' "$out39" | grep -ci parent)" "1"
+check "39 relative CHIEF_WORK_DIR under an insecure ancestor: refuses with a distinct exit code" "$rc39" "3"
+check "39 relative CHIEF_WORK_DIR under an insecure ancestor: stderr names the cause" "$(printf '%s\n' "$out39" | grep -ci parent)" "1"
 else
-    host_skip "39 relative CONSOLE_WORK_DIR under an insecure ancestor: chmod does not stick on this host"
+    host_skip "39 relative CHIEF_WORK_DIR under an insecure ancestor: chmod does not stick on this host"
 fi
 
-# --- 40: a symlink ANCESTOR of CONSOLE_WORK_DIR must be resolved ONCE and
+# --- 40: a symlink ANCESTOR of CHIEF_WORK_DIR must be resolved ONCE and
 # the canonical form reused for every subsequent operation
 # console_workdir_ensure already refuses
 # $workdir itself being a symlink, but a symlink one level UP (workdir's
@@ -1140,16 +1140,16 @@ chmod 0700 "$tmp40/real-target"
 ln -s "$tmp40/real-target" "$tmp40/linky"
 out40="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp40/linky/subdir" \
+    CHIEF_WORK_DIR="$tmp40/linky/subdir" \
     bash "$C" new --bucket wdparent40 --dry-run --arm ) 2>&1 )"; rc40=$?
-check "40 symlink ancestor in CONSOLE_WORK_DIR: dry-run succeeds" "$rc40" "0"
-check "40 symlink ancestor in CONSOLE_WORK_DIR: signal path resolves through the real target" "$(printf '%s\n' "$out40" | grep -c "signal=$tmp40/real-target/subdir/")" "1"
-check "40 symlink ancestor in CONSOLE_WORK_DIR: signal path never embeds the symlink spelling" "$(printf '%s\n' "$out40" | grep -c "signal=$tmp40/linky/")" "0"
+check "40 symlink ancestor in CHIEF_WORK_DIR: dry-run succeeds" "$rc40" "0"
+check "40 symlink ancestor in CHIEF_WORK_DIR: signal path resolves through the real target" "$(printf '%s\n' "$out40" | grep -c "signal=$tmp40/real-target/subdir/")" "1"
+check "40 symlink ancestor in CHIEF_WORK_DIR: signal path never embeds the symlink spelling" "$(printf '%s\n' "$out40" | grep -c "signal=$tmp40/linky/")" "0"
 else
-    host_skip "40 symlink ancestor in CONSOLE_WORK_DIR: ln -s does not make a real link on this host"
+    host_skip "40 symlink ancestor in CHIEF_WORK_DIR: ln -s does not make a real link on this host"
 fi
 
-# --- 41: a MISSING intermediate ancestor of CONSOLE_WORK_DIR is skipped by
+# --- 41: a MISSING intermediate ancestor of CHIEF_WORK_DIR is skipped by
 # the ancestor-walk above (nothing to validate yet) and then created by a
 # single `mkdir -p` alongside the work dir itself, with no ownership check
 # of its own. A local attacker
@@ -1189,12 +1189,12 @@ chmod +x "$tmp41/bin/mkdir"
 rc41=0
 out41="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$target41" \
+    CHIEF_WORK_DIR="$target41" \
     PATH="$tmp41/bin:$PATH" \
     bash "$C" new --bucket wdancestor41 --dry-run ) 2>&1 )"; rc41=$?
-check "41 raced intermediate ancestor of CONSOLE_WORK_DIR: refuses with a distinct exit code" "$rc41" "3"
-check "41 raced intermediate ancestor of CONSOLE_WORK_DIR: stderr names the cause" "$([ "$(printf '%s\n' "$out41" | grep -ci ancestor)" -ge 1 ] && echo yes || echo no)" "yes"
-check "41 raced intermediate ancestor of CONSOLE_WORK_DIR: never created the work dir beneath the raced ancestor" "$([ -e "$target41" ] && echo yes || echo no)" "no"
+check "41 raced intermediate ancestor of CHIEF_WORK_DIR: refuses with a distinct exit code" "$rc41" "3"
+check "41 raced intermediate ancestor of CHIEF_WORK_DIR: stderr names the cause" "$([ "$(printf '%s\n' "$out41" | grep -ci ancestor)" -ge 1 ] && echo yes || echo no)" "yes"
+check "41 raced intermediate ancestor of CHIEF_WORK_DIR: never created the work dir beneath the raced ancestor" "$([ -e "$target41" ] && echo yes || echo no)" "no"
 else
     host_skip "41 raced intermediate ancestor: chmod/mkdir -m does not stick on this host"
 fi
@@ -1238,7 +1238,7 @@ chmod +x "$tmp42/bin/stat"
 rc42=0
 out42="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$target42" \
+    CHIEF_WORK_DIR="$target42" \
     PATH="$tmp42/bin:$PATH" \
     bash "$C" new --bucket wdancestor42 --dry-run ) 2>&1 )"; rc42=$?
 check "42 ancestor raced in between the outer walk and the create scan: refuses with a distinct exit code" "$rc42" "3"
@@ -1252,32 +1252,32 @@ fi
 # same class as the --bucket and --prefix flags: the doc
 # tells its own console what to literally run at handover, so any flag
 # missing from that line is a flag the next `console next` invocation never
-# receives, and re-resolves from CONSOLE_MODEL / the built-in default
-# instead of inheriting. CONSOLE_MODEL is deliberately set to
+# receives, and re-resolves from CHIEF_MODEL / the built-in default
+# instead of inheriting. CHIEF_MODEL is deliberately set to
 # a DIFFERENT value than --model on every invocation below, so a fallback
 # to the environment shows up as the wrong string landing in the doc.
 doc43A="$root/tester/modelbucket/DEMO-nextleg-${today}A-console.md"
 out43a="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_MODEL=envdefault-model \
+    CHIEF_MODEL=envdefault-model \
     bash "$C" new --bucket modelbucket --model custom-model-x ) )"
 token43a="$(token_of "$out43a")"
 # The value is single-quoted in the rendered line -- an unquoted
 # claude-opus-5[1m] is a zsh glob and fails at the exact moment of handover.
 check "43 new's own rendered handover line carries --model <given>" "$(grep -c -- "--model 'custom-model-x'" "$doc43A")" "1"
-check "43 new's rendered handover line does not carry CONSOLE_MODEL instead" "$(grep -c -e '--model envdefault-model' -e "--model 'envdefault-model'" "$doc43A")" "0"
+check "43 new's rendered handover line does not carry CHIEF_MODEL instead" "$(grep -c -e '--model envdefault-model' -e "--model 'envdefault-model'" "$doc43A")" "0"
 
 # next, invoked the way the line above actually instructs (no --model of its
 # own is available to a copy-pasting operator/console unless THIS fix put
 # one there) but run here with an explicit --model so the successor's own
-# resolved model is known -- under a CONSOLE_MODEL that again differs, to
+# resolved model is known -- under a CHIEF_MODEL that again differs, to
 # prove the successor's rendered doc carries the given --model forward
 # rather than re-deriving it from the environment.
 doc43B="$root/tester/modelbucket/DEMO-nextleg-${today}B-console.md"
 ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_MODEL=envdefault-model \
+    CHIEF_MODEL=envdefault-model \
     bash "$C" next --bucket modelbucket --model custom-model-x ) >/dev/null
 check "43 next's rendered successor doc carries --model <given>" "$(grep -c -- "--model 'custom-model-x'" "$doc43B")" "1"
-check "43 next's rendered successor doc does not carry CONSOLE_MODEL instead" "$(grep -c -e '--model envdefault-model' -e "--model 'envdefault-model'" "$doc43B")" "0"
+check "43 next's rendered successor doc does not carry CHIEF_MODEL instead" "$(grep -c -e '--model envdefault-model' -e "--model 'envdefault-model'" "$doc43B")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc43A" "$token43a" >/dev/null 2>&1
 
 # --- 44: same-day rollover past Z --------------------------
@@ -1397,7 +1397,7 @@ chmod +x "$tmp/stub-arm-role-56.sh"
 out56a="$(console new --bucket rolerepo)"
 token56a="$(token_of "$out56a")"
 out56b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm-role-56.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-role-56.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     CONSOLE_ROLE=console \
     bash "$C" next --bucket rolerepo --arm --deadline-min 0 ) )"
 check "56 next --arm reports armed" "$(printf '%s\n' "$out56b" | grep -c '^armed: ')" "1"
@@ -1417,7 +1417,7 @@ chmod +x "$tmp/stub-arm-role-57.sh"
 out57a="$(console new --bucket rolerepo2)"
 token57a="$(token_of "$out57a")"
 out57b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm-role-57.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-role-57.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" next --bucket rolerepo2 --arm --deadline-min 0 ) )"
 check "57 next --arm reports armed" "$(printf '%s\n' "$out57b" | grep -c '^armed: ')" "1"
 check "57 no CONSOLE_ROLE: the arm is launched --role console (HIMMEL-4052)" \
@@ -1440,7 +1440,7 @@ out58a="$(console new --bucket rolerepo3)"
 token58a="$(token_of "$out58a")"
 rc58b=0
 out58b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm-role-58.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-role-58.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     CONSOLE_ROLE=relay \
     bash "$C" next --bucket rolerepo3 --arm --deadline-min 0 ) 2>&1 )" || rc58b=$?
 check "58 CONSOLE_ROLE=relay (retired): exits 0" "$rc58b" "0"
@@ -1463,8 +1463,8 @@ STUB
 chmod +x "$tmp/stub-arm-role-58b.sh"
 rc58n=0
 out58n="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    HIMMEL_PROFILE_SETTINGS_DIR=/dev/null/no-such CONSOLE_HEADED_ARM="$tmp/stub-arm-role-58b.sh" \
-    CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
+    HIMMEL_PROFILE_SETTINGS_DIR=/dev/null/no-such CHIEF_HEADED_ARM="$tmp/stub-arm-role-58b.sh" \
+    CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" new --bucket rolerepo4 --arm --deadline-min 0 ) 2>&1 )" || rc58n=$?
 check "58b new --arm with an unresolvable console profile: exit 2" "$rc58n" "2"
 # The profile is resolved BEFORE the lock, so the refusal leaves no
@@ -1611,21 +1611,21 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 # (Opus = default parent, Fable = the escalation target; operator halt
 # 2026-09-14). The armed path has no terminal to notice a wrong default, so
 # the check reads what the arm stub actually RECEIVED (its model positional,
-# $6), not just the printed --dry-run line. CONSOLE_MODEL is unset in every
+# $6), not just the printed --dry-run line. CHIEF_MODEL is unset in every
 # subshell so an ambient value cannot mask the built-in default. Fable stays
-# reachable through an explicit --model / CONSOLE_MODEL.
-out61a="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
+# reachable through an explicit --model / CHIEF_MODEL.
+out61a="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
 check "61 dry-run --arm launch line defaults to bare claude-opus-5-5 (native 1M, HIMMEL-5501)" \
     "$(printf '%s\n' "$out61a" | grep -cF -- '--model claude-opus-5-5 ')" "1"
 check "61 dry-run --arm launch line carries no [1m] suffix on a native-1M model" \
     "$(printf '%s\n' "$out61a" | grep -cF -- 'claude-opus-5-5\[1m\]')" "0"
-out61c="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-opus-4-6 ) )"
+out61c="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-opus-4-6 ) )"
 check "61 a 4.6-family model keeps the [1m] suffix (HIMMEL-5501)" \
     "$(printf '%s\n' "$out61c" | grep -cF -- '--model claude-opus-4-6\[1m\] ')" "1"
-out61d="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model gpt-5.6-sol ) )"
+out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model gpt-5.6-sol ) )"
 check "61 a non-Anthropic model never gets [1m] (HIMMEL-5501)" \
     "$(printf '%s\n' "$out61d" | grep -cF -- '--model gpt-5.6-sol ')" "1"
 
@@ -1638,26 +1638,30 @@ echo "2.1.100 (Claude Code)"
 OLD_STUB
 chmod +x "$tmp/claude-old-61f"
 out61f="$( ( cd "$fixture_repo" && HEADED_ARM_CLAUDE_CLI="$tmp/claude-old-61f" HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket floor61f --arm 2>&1 ) )"
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket floor61f --arm 2>&1 ) )"
 rc61f=$?
 check "61f armed launch below the floor refused (rc=2)" "$rc61f" "2"
 check "61f message names the installed version and the fix" \
     "$(printf '%s\n' "$out61f" | grep -c '2\.1\.100.*claude update\|claude update.*2\.1\.100')" "1"
 check "61f nothing was armed" "$(printf '%s\n' "$out61f" | grep -c '^armed: ')" "0"
 out61g="$( ( cd "$fixture_repo" && HEADED_ARM_CLAUDE_CLI="$tmp/claude-old-61f" HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket floor61f --dry-run --arm 2>&1 ) )"
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket floor61f --dry-run --arm 2>&1 ) )"
 rc61g=$?
 check "61f dry-run below the floor only warns (rc=0)" "$rc61g" "0"
 check "61f dry-run warning names the fix" "$(printf '%s\n' "$out61g" | grep -c 'claude update')" "1"
 check "61 dry-run --arm launch line carries no fable model" \
     "$(printf '%s\n' "$out61a" | grep -c 'claude-fable-5-1')" "0"
-out61b="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-fable-5-1 ) )"
+out61b="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-fable-5-1 ) )"
 check "61 explicit --model claude-fable-5-1 still launches Fable" \
     "$(printf '%s\n' "$out61b" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
-out61c="$( ( cd "$fixture_repo" && CONSOLE_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
-check "61 CONSOLE_MODEL=claude-fable-5-1 still launches Fable" \
+out61o="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && CONSOLE_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
+check "61 the old name CONSOLE_MODEL still sets the model" \
+    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
+out61c="$( ( cd "$fixture_repo" && CHIEF_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
+check "61 CHIEF_MODEL=claude-fable-5-1 still launches Fable" \
     "$(printf '%s\n' "$out61c" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
 
 record61="$tmp/record-61"
@@ -1667,8 +1671,8 @@ cat > "$tmp/stub-arm-model-61.sh" <<STUB
 printf '%s\n' "\$6" >> "$record61"
 STUB
 chmod +x "$tmp/stub-arm-model-61.sh"
-out61d="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm-model-61.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
+out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-model-61.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" new --bucket modeldefault --arm --deadline-min 0 ) )"
 token61d="$(token_of "$out61d")"
 check "61 armed console without --model: the arm target received claude-opus-5-5" "$(cat "$record61" 2>/dev/null)" "claude-opus-5-5"
@@ -1729,13 +1733,13 @@ contains "$argv63a" "--autocompact auto -n $S63" "63a the row's autocompact is t
 contains "$argv63a" "row-existed" "63a the row was already there when claude started"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/rec63a/$S63.md" "$token63a" >/dev/null 2>&1
 
-# 63b. CONSOLE_CONTEXT=1m is the one opt-in: the row says so, as the arm paths do.
+# 63b. CHIEF_CONTEXT=1m is the one opt-in: the row says so, as the arm paths do.
 S63b="DEMO-nextleg-${today}A-rec63b-console"
-out63b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/defaultwork" \
-    CONSOLE_CONTEXT=1m bash "$C" new --bucket rec63b --name rec63b-console ) )"
+out63b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/defaultwork" \
+    CHIEF_CONTEXT=1m bash "$C" new --bucket rec63b --name rec63b-console ) )"
 token63b="$(token_of "$out63b")"
 run_launch_line "$out63b"
-check "63b CONSOLE_CONTEXT=1m: the row is context=1m source=explicit autocompact=auto" \
+check "63b CHIEF_CONTEXT=1m: the row is context=1m source=explicit autocompact=auto" \
     "$(grep -c "^headed-arm: role=console session=$S63b context=1m source=explicit autocompact=auto launched=" "$LL63/$S63b.log" 2>/dev/null || true)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/rec63b/$S63b.md" "$token63b" >/dev/null 2>&1
 
@@ -1790,7 +1794,7 @@ printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\nJIRA_PROJECT_KEY=OWNKEY\n' "$own65/s
 foreign65="$tmp/foreign-repo-65"
 mkdir -p "$foreign65/nested"
 ( cd "$foreign65" && git init -q )
-out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CONSOLE_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/chief.sh" new --name rec65-console --dry-run 2>&1)"
+out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CHIEF_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/chief.sh" new --name rec65-console --dry-run 2>&1)"
 rc65=$?
 check "65 own-checkout .env resolves rc=0" "$rc65" "0"
 case "$out65" in
@@ -1805,9 +1809,9 @@ check "65 own-checkout's HANDOVER_DIR used, not the foreign CWD repo" "$contains
 # export crosses every descendant of that long-running process, not just its
 # immediate child), so a later `console.sh next --arm` in that same shell
 # used to inherit all of it unfiltered. Runs the REAL headed-arm.sh (not a
-# stub) via --dry-run, reached through do_arm()'s own CONSOLE_ARM_FOREGROUND
+# stub) via --dry-run, reached through do_arm()'s own CHIEF_ARM_FOREGROUND
 # path -- this exercises the actual strip, not a hand-written substitute.
-# CONSOLE_CONTEXT=1m is the operator's real opt-in mechanism (headed-arm.sh
+# CHIEF_CONTEXT=1m is the operator's real opt-in mechanism (headed-arm.sh
 # only ever appends [1m] to MODEL when CONTEXT resolves to 1m, regardless of
 # what --model was given) -- a leaked HEADED_ARM_REQUIRED_AUTOCOMPACT=200000
 # refuses that launch outright (see the RED excerpt in this ticket's PR).
@@ -1857,13 +1861,13 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
     HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 LEG_PROFILE_SETTINGS=/leaked-66/settings.json" \
     HEADED_ARM_UNAME=Darwin \
-    CONSOLE_CONTEXT=1m \
+    CHIEF_CONTEXT=1m \
     KONSOLE_CMD="$tmp/konsole-66" \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm-66.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work66" \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-66.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work66" \
     bash "$C" next --bucket cleanenv66 --arm --deadline-min 0 ) 2>&1 )"
 rc66b=$?
 check "66 next --arm from a leaked leg env still succeeds (rc=0)" "$rc66b" "0"
-check "66 CONSOLE_CONTEXT=1m survives the leaked required-autocompact pin, model stays bare (native 1M)" \
+check "66 CHIEF_CONTEXT=1m survives the leaked required-autocompact pin, model stays bare (native 1M)" \
     "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: context=1m .*model=claude-opus-5-5 runs 1M without a suffix .*(autocompact=auto)$')" "1"
 check "66 dry-run resolves the real launcher, not the leaked shim; recorder not inherited" \
     "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: launcher=claude recorder=0 ')" "1"
@@ -1922,7 +1926,7 @@ echo "stub-arm-68: HEADED_ARM_REPO=${HEADED_ARM_REPO:-<unset>}"
 STUB
 out68d="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     HANDOVER_REGISTRY="$tmp/no-such-registry-68.json" \
-    CONSOLE_HEADED_ARM="$tmp/stub-arm-68.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work68" \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-68.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work68" \
     bash "$C" new --project "$proj68" --arm --deadline-min 0 ) 2>&1 )"
 # 68d: the console session itself stays
 # in the himmel checkout -- --project is data recorded in the doc, never an
@@ -2037,7 +2041,7 @@ check "69c a predecessor doc with no recorded project prints no would-project (n
 # cwd-first resolve_repo (missing template rc=2 / the foreign queue-lock ran).
 console_from() {  # console_from <cwd> <args...>
     local d="$1"; shift
-    ( cd "$d" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/defaultwork" bash "$C" "$@" )
+    ( cd "$d" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/defaultwork" bash "$C" "$@" )
 }
 foreign70="$tmp/foreign70"; mkdir -p "$foreign70"; git init -q "$foreign70"
 rc70a=0; out70a="$(console_from "$foreign70" new --bucket c1plain --dry-run 2>&1)" || rc70a=$?
@@ -2124,7 +2128,7 @@ check "72 (control) an intact recorded project still inherits" "$(printf '%s\n' 
 HANDOVER_DIR="$root" bash "$QL" release "$doc72" "$(token_of "$out72")" >/dev/null 2>&1
 
 # --- 73: a bare `next` with NOTHING pinning down where to
-# search (no --doc, no CONSOLE_DOC, no --bucket/--project/--prefix) must
+# search (no --doc, no CHIEF_DOC, no --bucket/--project/--prefix) must
 # still find a foreign predecessor and inherit ITS bucket/prefix/project --
 # not silently fall back to himmel's own DEMO bucket. RED against pre-fix
 # console.sh (state_dir, needed to search, can only ever resolve to himmel's
@@ -2183,7 +2187,7 @@ chmod +x "$tmp75/bin/gh"
 printf '[user]\n\tname = Cwd Fallback\n' > "$tmp75/gitconfig"
 git -C "$fixture_repo" remote add origin https://github.com/example/himmel.git
 out75="$( cd "$tmp75/foreign-cwd" && env -u USER_SLUG -u FORGE HANDOVER_DIR="$root" JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/defaultwork" GIT_CONFIG_GLOBAL="$tmp75/gitconfig" GH_CMD="$tmp75/bin/gh" \
+    CHIEF_WORK_DIR="$tmp/defaultwork" GIT_CONFIG_GLOBAL="$tmp75/gitconfig" GH_CMD="$tmp75/bin/gh" \
     bash "$C" new --dry-run --bucket slug75 2>&1 )"
 check "75 slug is console.sh's own checkout's forge login, not the cwd's git user.name" \
     "$(printf '%s\n' "$out75" | grep -c "^would-doc: $root/forge-login-75/slug75/")" "1"
@@ -2196,7 +2200,7 @@ mkdir -p "$tmp76/foreign-cwd"
 git init -q "$tmp76/poison"
 git -C "$tmp76/poison" config user.name "Env Poison"
 out76="$( cd "$tmp76/foreign-cwd" && env -u USER_SLUG -u FORGE HANDOVER_DIR="$root" JIRA_PROJECT_KEY=DEMO \
-    CONSOLE_WORK_DIR="$tmp/defaultwork" GIT_CONFIG_GLOBAL="$tmp75/gitconfig" GH_CMD="$tmp75/bin/gh" \
+    CHIEF_WORK_DIR="$tmp/defaultwork" GIT_CONFIG_GLOBAL="$tmp75/gitconfig" GH_CMD="$tmp75/bin/gh" \
     GIT_DIR="$tmp76/poison/.git" bash "$C" new --dry-run --bucket slug76 2>&1 )"
 check "76 slug ignores an inherited GIT_DIR (checkout's forge login, not GIT_DIR's user.name)" \
     "$(printf '%s\n' "$out76" | grep -c "^would-doc: $root/forge-login-75/slug76/")" "1"
@@ -2260,8 +2264,8 @@ run79() { # <variant> <cmd> <bucket> [extra env...]
   local variant="$1" cmd="$2" bucket="$3"; shift 3
   ( cd "$fixture_repo" && env HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
       HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" \
-      CONSOLE_BUS_CLI="$bus79/bus" CONSOLE_BUS_PROFILES_MJS="$bus79/profiles-$variant.mjs" \
-      CONSOLE_HEADED_ARM="$bus79/arm.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work79" \
+      CHIEF_BUS_CLI="$bus79/bus" CHIEF_BUS_PROFILES_MJS="$bus79/profiles-$variant.mjs" \
+      CHIEF_HEADED_ARM="$bus79/arm.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work79" \
       bash "$C" "$cmd" --bucket "$bucket" --name bus79-console --arm --deadline-min 0 ) 2>&1
 }
 out79a="$(run79 in new bus79in)"
@@ -2317,7 +2321,7 @@ STUB
 chmod +x "$w80/lsa.sh" "$w80/subtree.sh"
 wrap80() { # wrap80 <doc> <token>
     ( cd "$fixture_repo" && W80="$w80" HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-        CONSOLE_WORK_DIR="$tmp/defaultwork" LIVE_SUBAGENTS_BIN="$w80/lsa.sh" WRAP_SUBTREE_CHECK_BIN="$w80/subtree.sh" \
+        CHIEF_WORK_DIR="$tmp/defaultwork" LIVE_SUBAGENTS_BIN="$w80/lsa.sh" WRAP_SUBTREE_CHECK_BIN="$w80/subtree.sh" \
         W80_RC2="${W80_RC2:-}" bash "$C" wrap "$1" "$2" ) 2>&1
 }
 mk80() { # mk80 <name> -> sets doc80 and tok80 (a live console doc with the lock held)
@@ -2696,13 +2700,13 @@ printf '%s\n' "$*" >> "$(dirname "$0")/calls"
 STUB
 chmod +x "$b88/bin/claude" "$b88/bus"
 print88() { # <in|out> <new|next> <bucket>
-  ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/work88" \
-      CONSOLE_BUS_PROFILES_MJS="$bus79/profiles-$1.mjs" bash "$C" "$2" --bucket "$3" --name bus88-console ) 2>&1
+  ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/work88" \
+      CHIEF_BUS_PROFILES_MJS="$bus79/profiles-$1.mjs" bash "$C" "$2" --bucket "$3" --name bus88-console ) 2>&1
 }
 paste88() { # <printed output> [extra env...]
   local line; line="$(printf '%s\n' "$1" | sed -n 's/^launch: //p')"; shift
   rm -f "$b88/calls" "$b88/seen"
-  ( cd "$tmp" && env PATH="$b88/bin:$PATH" B88_SEEN="$b88/seen" CONSOLE_BUS_CLI="$b88/bus" \
+  ( cd "$tmp" && env PATH="$b88/bin:$PATH" B88_SEEN="$b88/seen" CHIEF_BUS_CLI="$b88/bus" \
       HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" bash -c "$line" ) >/dev/null 2>&1
 }
 pid88() { sed -n 's/^pid=\([0-9]*\) .*/\1/p' "$b88/seen" 2>/dev/null; }
