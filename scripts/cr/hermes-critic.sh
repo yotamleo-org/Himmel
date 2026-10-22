@@ -14,8 +14,8 @@
 # Max 2-3 iterations, then escalate to the operator.
 #
 # Failure mode (ticket item 5): hermes quota/auth/transport errors exit 3
-# (fail-open) with a warning on stderr — the caller falls back to the
-# gemini-cli route or claude-only review and notes that in its summary.
+# (fail-open) with a warning on stderr — the caller falls back to a
+# claude-only review and notes that in its summary.
 #
 # Exit codes:
 #   0  review ran, verdict passed=true   (JSON report on stdout)

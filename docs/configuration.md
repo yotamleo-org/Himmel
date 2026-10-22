@@ -230,8 +230,7 @@ Security properties (all in `scripts/telegram/poller.ts` / `gate.ts` /
 
 Work can be delegated: down the Claude tiers (native subagents), or out to
 external lanes through sanctioned spawn scripts — GLM (Z.ai's GLM coding models),
-claudex/codex (OpenAI Codex-side models via a local proxy), gemini (Google's
-gemini-cli), and hermes (a local multi-provider critic/junior runner). The
+claudex/codex (OpenAI Codex-side models via a local proxy), and hermes (a local multi-provider critic/junior runner). The
 lane *inventory* is data, not prose: `scripts/lanes/lanes.json` resolved
 against machine state by `/lanes` (`scripts/lanes/resolve.mjs`). A "subscription usage budget"
 below is a usage-quota window — the rolling 5-hour Claude window, or the
@@ -247,7 +246,6 @@ flowchart TD
     EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree, push-url poisoned"]
     EXT -->|"codex on PATH"| CDX["codex-exec"]
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
-    ROUTE --> GEM["scripts/gemini/invoke.sh — stateless<br/>second-opinion helper (not a lanes.json lane)"]
     GLM --> BACK["worker commits on its own branch;<br/>parent session owns review + merge"]
     CLX --> BACK
 ```
@@ -688,7 +686,6 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `ZAI_API_KEY` | unset (lane absent) | `.env` | makes the `glm` lane *detectable*; the registry marks it dormant, so dispatching it also needs `GLM_LANE_OK=1`. Legacy aliases `GLM_API_KEY`/`Z_AI_API_KEY` also accepted by the critic panel |
 | `CLIPROXY_API_KEY` | unset (lane absent) | `.env` | makes the `claudex` lane *detectable*; the registry marks it dormant, so dispatching it also needs `CLAUDEX_LANE_OK=1` |
 | `OPENROUTER_API_KEY` | unset (lane absent) | `.env` | enables the openrouter-free lane |
-| `GEMINI_API_KEY`/`GOOGLE_API_KEY` | unset | `.env` | auth for the gemini helper (`scripts/gemini/invoke.sh`) — real, but *outside* the `lanes.json` registry (`/lanes` does not list it) |
 | `scripts/lanes/lanes.local.json` | absent | `node scripts/lanes/set-lane-override.mjs <lane> <always\|never>` | per-machine forced lane override — the sanctioned way to turn a lane off (`never`) without touching the shared registry |
 | `LANES_REGISTRY` | unset | env | full registry-path override (test/CI; skips the local overlay) |
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |

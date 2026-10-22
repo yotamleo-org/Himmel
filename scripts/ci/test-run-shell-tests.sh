@@ -2291,7 +2291,7 @@ exit 0
 SHEOF
 cat > "$sb24/test-skip-space.sh" <<'SHEOF'
 #!/usr/bin/env bash
-echo "SKIP no gemini on PATH" >&2
+echo "SKIP no hermes on PATH" >&2
 exit 0
 SHEOF
 chmod +x "$sb24"/test-*.sh

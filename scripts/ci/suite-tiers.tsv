@@ -289,7 +289,6 @@ scripts/eval/test-session-retro.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/gemini/test-invoke.sh	local	new since the audit, behaviour suite
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/glm/test-append-outbox.sh	local	behaviour suite, 0 catches in the 400-PR audit window
