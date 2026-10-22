@@ -300,17 +300,35 @@ def enricher_gap_host(canonical: str) -> str | None:
     return None
 
 
-def is_thin_body(body: str) -> bool:
-    """harvest-clips.md Phase 4 thinness heuristic: True iff the body has
-    fewer than 10 non-blank, non-heading lines AND carries no
-    Highlights / The Idea / Summary / Key Points section with real
-    content (>40 chars below the heading, before the next H2)."""
-    content_lines = [
+# A line that holds no source text: an empty bullet or checkbox, an italic
+# template prompt, a one-line comment, a bare link or URL.
+_PLACEHOLDER_LINE_RE = re.compile(
+    r"^(?:[-*+]\s*(?:\[[ xX]?\])?|\*\(.*\)\*|<!--.*-->|\[[^\]]*\]\(\S+\)|https?://\S+)$")
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+# triage-authored, never source text
+_PROMOTION_SECTION_RE = re.compile(r"(?ms)^## Promotion candidate\b.*?(?=^## |\Z)")
+
+
+def _capture_lines(body: str) -> list:
+    """The non-blank, non-heading lines that can carry captured source text:
+    HTML comments, template placeholders and the triage promotion block are
+    not capture (a Web Clipper skeleton is not a harvested article)."""
+    body = _PROMOTION_SECTION_RE.sub("", _COMMENT_RE.sub("", body))
+    return [
         ln for ln in body.split("\n")
         if ln.strip() and not ln.lstrip().startswith("#")
+        and not _PLACEHOLDER_LINE_RE.match(ln.strip())
     ]
-    if len(content_lines) >= 10:
+
+
+def is_thin_body(body: str) -> bool:
+    """harvest-clips.md Phase 4 thinness heuristic: True iff the body has
+    fewer than 10 capture lines (see _capture_lines) AND carries no
+    Highlights / The Idea / Summary / Key Points section with real
+    content (>40 chars below the heading, before the next H2)."""
+    if len(_capture_lines(body)) >= 10:
         return False
+    body = _PROMOTION_SECTION_RE.sub("", _COMMENT_RE.sub("", body))
     lowered = body.lower()
     for heading in _RICH_SECTION_HEADINGS:
         idx = lowered.find(heading)
@@ -320,6 +338,8 @@ def is_thin_body(body: str) -> bool:
         for ln in body[idx:].split("\n")[1:]:
             if ln.lstrip().startswith("## "):
                 break
+            if _PLACEHOLDER_LINE_RE.match(ln.strip()):
+                continue
             chars += len(ln.strip())
         if chars > 40:
             return False
@@ -1404,6 +1424,15 @@ def already_harvested(fm_raw: str) -> bool:
     return bool(re.search(r"^harvested_at:[\s]*\S", fm_raw, re.MULTILINE))
 
 
+def stamped_thin(fm: dict, body: str) -> bool:
+    """A clip-body harvest stamp over a thin body is a silent partial (the
+    old gate accepted placeholders): it is re-checked instead of skipped for
+    good. Other harvest skills wrote their own content and are left alone."""
+    return (fm.get("harvest_skill") == "clip-body"
+            and fm.get("harvest_status") in ("ok", "partial")
+            and is_thin_body(body))
+
+
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
     """Insert zero-indent YAML key lines after the last existing non-empty
     frontmatter line, preserving existing content."""
@@ -1573,7 +1602,7 @@ def write_pending_report(vault: Path, clips: list) -> tuple[int, int]:
             fm, fm_raw, _b, ok = parse_frontmatter(p.read_text(encoding="utf-8"))
         except Exception:
             continue
-        if not ok or already_harvested(fm_raw) or fm.get("harvest_status") != "partial":
+        if not ok or fm.get("harvest_status") != "partial":
             continue
         rel = p.relative_to(vault).with_suffix("").as_posix()
         line = f"- [[{rel}]] — {pending_reason(fm)}, deferred {fm.get('harvest_defer_count') or 0}/{DEFER_ATTENTION_AFTER}"
@@ -1636,7 +1665,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
     fm, fm_raw, body, fm_present = parse_frontmatter(text)
     if not fm_present:
         return ("o", "skipped (frontmatter): no closing --- delimiter", [])
-    if already_harvested(fm_raw):
+    if already_harvested(fm_raw) and not stamped_thin(fm, body):
         return ("o", "skipped (already-harvested)", [])
     # Injection screen — flag-only, never blocks the harvest.
     # Runs BEFORE the outcome branches so skips/failures still carry the
@@ -1774,8 +1803,10 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
             return ("v", f"would harvest via youtube-scrapling (thin-body): {canonical} [dry-run]{flag_suffix}", injection_hits)
         vault = next((q.parent for q in path.parents if q.name == "Clippings"), None)
         out, reason = youtube_scrapling(yt.group(1), vault)
-        if out is not None:
+        if out is not None and out.get("transcript"):
             return write_youtube_harvest(path, text, fm_raw, body, canonical, out, injection_hits)
+        if out is not None:
+            reason = f"transcript unavailable ({out.get('transcript_error') or 'transcript_empty'})"
         yt_miss = f"; youtube-scrapling: {reason}"
 
     if is_thin_body(body):
@@ -1925,6 +1956,78 @@ def write_done_marker(vault: Path, clips: list, failed: int) -> None:
           "G-8 renames it to .harvest.done")
 
 
+def silent_partial_marks(fm: dict, body: str) -> tuple[list, list]:
+    """(reasons, frontmatter pairs) for a note stamped ok over a partial
+    capture; ([], []) when it is not one. The rules are independent: one note
+    can carry a thin body and an uncaptured thread."""
+    reasons, pairs = [], []
+    harvest_ok = fm.get("harvest_status") == "ok"
+    if harvest_ok and fm.get("harvest_skill") == "clip-body" and is_thin_body(body):
+        reasons.append("thin-body")
+    elif harvest_ok and "_Transcript unavailable" in body:
+        reasons.append("transcript-unavailable")
+    if reasons:
+        pairs.append(("harvest_status", "harvest_status: partial"))
+        if "harvest_flag" not in fm:
+            pairs.append(("harvest_flag", f"harvest_flag: {reasons[0]}"))
+    if fm.get("enrichment_status") == "ok" and fm.get("needs_thread") == "true":
+        reasons.append("thread-not-captured")
+        pairs.append(("enrichment_status", "enrichment_status: partial"))
+        if fm.get("last_error") in (None, "", "null"):
+            pairs.append(("last_error", "last_error: thread_not_captured"))
+    return reasons, pairs
+
+
+def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
+    """--reflag-silent-partials: one-time backfill over EVERY clip, _done/ and
+    _evidence/ included (the loss is already archived there). Notes stamped
+    ok over a template-only body, an unavailable transcript or an uncaptured
+    thread get partial marks. Frontmatter only; body byte-identical or revert;
+    idempotent (a partial note is not matched again)."""
+    clips = sorted(
+        p for p in (vault / "Clippings").rglob("*.md")
+        if "_synthesis" not in p.parts and p.name != "_deferred.md"
+    )
+    counts: dict = {}
+    notes = failed = 0
+    for clip in clips:
+        relpath = clip.relative_to(vault).as_posix()
+        try:
+            text = clip.read_text(encoding="utf-8")
+        except Exception as e:
+            print(f"FAIL {relpath} -- failed (read): {e}", file=sys.stderr)
+            failed += 1
+            continue
+        fm, fm_raw, body, fm_present = parse_frontmatter(text)
+        if not fm_present:
+            continue
+        reasons, pairs = silent_partial_marks(fm, body)
+        if not reasons:
+            continue
+        reason = "+".join(reasons)
+        notes += 1
+        for r in reasons:
+            counts[r] = counts.get(r, 0) + 1
+        if dry_run:
+            print(f"PART {relpath} -- silent partial ({reason}) [dry-run]")
+            continue
+        clip.write_text(f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}", encoding="utf-8", newline="\n")
+        _dfm, _draw, disk_body, disk_ok = parse_frontmatter(clip.read_text(encoding="utf-8"))
+        if not disk_ok or disk_body != body:
+            clip.write_text(text, encoding="utf-8", newline="\n")
+            print(f"FAIL {relpath} -- failed (G-3): reflag write altered body; reverted", file=sys.stderr)
+            failed += 1
+            continue
+        print(f"PART {relpath} -- silent partial ({reason})")
+    print(
+        f"\nharvest-clip-body-batch --reflag-silent-partials: {notes} silent partials "
+        f"({', '.join(f'{k}={v}' for k, v in sorted(counts.items())) or 'none'}), {failed} failed. (dry_run={dry_run})"
+    )
+    if dry_run:
+        print("  (DRY-RUN — no files modified)")
+    return 4 if failed else 0
+
+
 def main():
     global TODAY
     ap = argparse.ArgumentParser()
@@ -1938,6 +2041,10 @@ def main():
     ap.add_argument("--rescan-flags", action="store_true",
                     help="Backfill: scan already-harvested clips, add only "
                          "harvest_flag/_detail on hits.")
+    ap.add_argument("--reflag-silent-partials", action="store_true",
+                    help="Backfill: mark clips (_done/ included) stamped ok over a "
+                         "template-only body, an unavailable transcript or an "
+                         "uncaptured thread as partial. Frontmatter only.")
     ap.add_argument("--firecrawl-thin", action="store_true",
                     help="Escalation: fetch clean markdown via firecrawl for "
                          "thin-body article/web clips (keyless Jina first; the firecrawl rung needs FIRECRAWL_API_KEY). "
@@ -1973,6 +2080,8 @@ def main():
         and "_evidence" not in p.parts
         and p.name != "_deferred.md"
     )
+    if args.reflag_silent_partials:
+        sys.exit(run_reflag_silent_partials(args.vault, args.dry_run))
     if args.rescan_flags:
         # Backfill mode ignores --limit (one-time full pass).
         sys.exit(run_rescan_flags(clips, args.vault, args.dry_run))
