@@ -683,7 +683,7 @@ describe('edit into a frozen version (HIMMEL-6918)', () => {
 
 describe('edit --residual-of (HIMMEL-6544)', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
-  type Issue = { labels: string[]; fixVersions: Array<{ name: string }> };
+  type Issue = { labels?: string[]; fixVersions?: Array<{ name: string }> };
   let issues: Record<string, Issue>;
   let dropFixVersions: boolean;
   let omitFixVersionsReadBack: boolean;
@@ -780,6 +780,20 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
     issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
     await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/fix-version was not changed/);
+  });
+
+  it('refuses to guess the depth when the parent read carries no labels list', async () => {
+    issues['HIMMEL-900'] = {};
+    issues['HIMMEL-901'] = { labels: [], fixVersions: [{ name: 'v1.1.3' }] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/read of HIMMEL-900 carried no labels list/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('refuses to skip the fixVersion drop when the own read carries no fixVersions list', async () => {
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'] };
+    issues['HIMMEL-901'] = { labels: [] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/read of HIMMEL-901 carried no fixVersions list/);
+    expect(puts()).toHaveLength(0);
   });
 
   it('fails loud when the read-back carries no fixVersions list at all', async () => {

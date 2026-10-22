@@ -244,12 +244,20 @@ async function stampResidual(key: string, options: EditOptions & { residualOf?: 
     throw new Error(`Edit --residual-of cannot be combined with ${clashing.map(([f]) => f).join(', ')}: it sets the labels and versions itself.`);
   }
   const parentIssue = await request<{ fields?: { labels?: string[] } }>('GET', `/issue/${parent}?fields=labels`);
-  const depth = nextResidualDepth(parentIssue.fields?.labels ?? []);
+  const parentLabels = parentIssue.fields?.labels;
+  if (!Array.isArray(parentLabels)) {
+    throw new Error(`Edit ${key}: the read of ${parent} carried no labels list; refusing to guess the residual depth.`);
+  }
+  const depth = nextResidualDepth(parentLabels);
   options.addLabels = `residual-depth-${depth}`;
   options.affectsVersion = 'current';
   if (depth < 2) return [];
   const own = await request<{ fields?: { fixVersions?: Array<{ name?: string }> } }>('GET', `/issue/${key}?fields=fixVersions`);
-  return (own.fields?.fixVersions ?? []).map((v) => v.name ?? '').filter((name) => name !== '');
+  const ownVersions = own.fields?.fixVersions;
+  if (!Array.isArray(ownVersions)) {
+    throw new Error(`Edit ${key}: the read of ${key} carried no fixVersions list; refusing to skip the fix-version drop.`);
+  }
+  return ownVersions.map((v) => v.name ?? '').filter((name) => name !== '');
 }
 
 export function registerEdit(program: Command): void {
