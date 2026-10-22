@@ -115,9 +115,12 @@ if [ $((used_os + est_os)) -gt "$OS_CAP" ]; then
     exit 2
 fi
 
+# fail closed: a ledger that cannot be written would let every run bypass the cap
+mkdir -p "$STATE_DIR" 2>/dev/null && [ -w "$STATE_DIR" ] || { err "cannot write the usage ledger in $STATE_DIR; refusing to scan unmetered"; exit 2; }
+usage_failed=0
 record_usage() { # <product> <tests>
-    mkdir -p "$STATE_DIR" || return 0
-    printf '%s\t%s\t%s\n' "$date" "$1" "$2" >> "$usage_file"
+    printf '%s\t%s\t%s\n' "$date" "$1" "$2" >> "$usage_file" \
+        || { err "cannot append to the usage ledger $usage_file"; usage_failed=1; }
 }
 
 # shellcheck source=../lib/prim.sh
@@ -203,4 +206,6 @@ gate=$((os_crit + os_high + code_high))
 
 echo "snyk-scan: $os_projects projects, open source critical=$os_crit high=$os_high; code $code_status high=$code_high -> $out_dir/$date.summary.md"
 [ "$gate" -eq 0 ] || exit 1
+# an incomplete scan is never a clean pass: a Code skip (not-enabled, quota, no files) is intended, an error is not
+if [ "$code_status" = error ] || [ "$usage_failed" -ne 0 ]; then exit 2; fi
 exit 0

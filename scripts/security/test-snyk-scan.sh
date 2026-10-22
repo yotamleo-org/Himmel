@@ -147,6 +147,22 @@ printf '2026-09-30\topen_source\t199\n' > "$SNYK_SCAN_STATE_DIR/usage-2026-09.ts
 bash "$SCAN" --repo "$R" --out-dir "$W/out-month" --date 2026-10-23 > "$W/month.log" 2>&1
 check "last month's usage does not count" 0 "$?"
 
+# --- a scan that did not complete is never a clean pass ----------------------
+printf 'boom\n' > "$W/bad-code.json"
+export STUB_OS="$FIX/snyk-os-clean.json" STUB_OS_RC=0 STUB_CODE="$W/bad-code.json" STUB_CODE_RC=2
+run codeerr
+check "a failed Code scan (not a skip) exits 2" 2 "$RC"
+check "the failed Code scan is recorded as error" "error" "$(jq -r '.code_status' "$OUTDIR/2026-10-23.json")"
+export STUB_CODE=off STUB_CODE_RC=0
+
+# a state dir that cannot be created must refuse the run, never scan unmetered
+printf 'x\n' > "$W/not-a-dir"
+: > "$W/calls.log"
+SNYK_SCAN_STATE_DIR="$W/not-a-dir/state" bash "$SCAN" --repo "$R" --out-dir "$W/out-nostate" --date 2026-10-23 > "$W/nostate.log" 2>&1
+check "an unwritable usage ledger refuses the run" 2 "$?"
+has "refusal names the ledger" "usage" "$W/nostate.log"
+check "no scan ran with an unwritable ledger" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+
 # --- usage is recorded as tests (one per project), not as runs --------------
 rm -rf "$SNYK_SCAN_STATE_DIR"
 bash "$SCAN" --repo "$R" --out-dir "$W/out-usage" --date 2026-10-23 > "$W/usage.log" 2>&1
