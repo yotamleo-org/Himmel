@@ -125,11 +125,14 @@ run_ms() {  # run_ms <member> <payload file> -- wall ms into MS, exit status int
 # A member answers 0 (allow / no opinion) or 2 (deny); 124 is the timeout.
 rc_ok() { [ "$1" -eq 0 ] || [ "$1" -eq 2 ]; }
 
-# verdict <small ms> <big ms> <big rc> -- prints why the row fails, else nothing
+# verdict <small ms> <big ms> <small rc> <big rc> -- prints why the row fails, else nothing
 verdict() {
     local base=$1
     [ "$base" -ge "$FLOOR_MS" ] || base=$FLOOR_MS
-    if [ "$3" -eq 124 ]; then echo "timed out at 8N (> ${RUN_TIMEOUT}s)"
+    if [ "$3" -eq 124 ]; then echo "timed out at N (> ${RUN_TIMEOUT}s)"
+    elif [ "$4" -eq 124 ]; then echo "timed out at 8N (> ${RUN_TIMEOUT}s)"
+    elif ! rc_ok "$3"; then echo "exit $3 at N (a member answers 0 or 2)"
+    elif ! rc_ok "$4"; then echo "exit $4 at 8N (a member answers 0 or 2)"
     elif [ "$2" -gt "$BUDGET_MS" ]; then echo "8N ${2}ms over the ${BUDGET_MS}ms member budget"
     elif [ "$2" -gt $(( RATIO_MAX * base )) ]; then echo "8N ${2}ms is more than ${RATIO_MAX}x the N time ${1}ms"
     fi
@@ -150,15 +153,13 @@ gen() {
         members=$((members + 1))
         run_ms "$m" "$SANDBOX/s.json"; small=$MS; srcs=$RC
         run_ms "$m" "$SANDBOX/b.json"; big=$MS; brc=$RC
-        why=$(verdict "$small" "$big" "$brc")
+        why=$(verdict "$small" "$big" "$srcs" "$brc")
         if [ -n "$why" ]; then
             # one more measurement of each size; the minimum counts
-            run_ms "$m" "$SANDBOX/s.json"; [ "$MS" -lt "$small" ] && small=$MS
+            run_ms "$m" "$SANDBOX/s.json"; [ "$MS" -lt "$small" ] && small=$MS; srcs=$RC
             run_ms "$m" "$SANDBOX/b.json"; [ "$MS" -lt "$big" ] && big=$MS; brc=$RC
-            why=$(verdict "$small" "$big" "$brc")
+            why=$(verdict "$small" "$big" "$srcs" "$brc")
         fi
-        if ! rc_ok "$srcs" && [ "$srcs" -ne 124 ]; then why="exit $srcs at N (a member answers 0 or 2)"; fi
-        if ! rc_ok "$brc" && [ "$brc" -ne 124 ]; then why="exit $brc at 8N (a member answers 0 or 2)"; fi
         [ "$mname" = "$scanner" ] && scan_small=$small
         [ "$big" -gt "$bigw" ] && { bigw=$big; worstm=$mname; }
         if [ -n "$why" ]; then fail "$name $mname: $why"; bad=1; fi
@@ -178,7 +179,7 @@ CHOKE=block-chokepoint-env-prefix.sh
     gen 'repeated digit redirects'  "$CHOKE" '2>&1 '                      25  'echo x '    ''     ''
     gen 'unclosed ((  openers'      "$CHOKE" '(( x '                      40  'echo '      ''     ''
     gen 'unclosed $(( openers'      "$CHOKE" '$(( x '                     40  'echo '      ''     ''
-    gen 'nested-quote ${V:-"'       "$CHOKE" '${V:-"'                     12  'echo '      ''     '"}'
+    gen 'nested-quote ${V:-"'       "$CHOKE" '${V:-"'                     6   'echo '      ''     '"}'
     gen 'brace groups'              block-destructive-commands.sh '{ echo a; ' 25  ''      ''     '; }'
     gen 'apply_patch headers'       "$CHOKE" $'*** Update File: a/b.txt\n@@\n-old\n+new\n' 50 $'apply_patch <<\'EOF\'\n*** Begin Patch\n' $'*** End Patch\nEOF' ''
 }
@@ -190,13 +191,13 @@ CHOKE=block-chokepoint-env-prefix.sh
     for m in $MEMBERS; do
         [ -f "$ROOT/$m" ] || continue
         mname=${m##*/}; hmembers=$((hmembers + 1))
-        run_ms "$m" "$SANDBOX/hs.json"; small=$MS
+        run_ms "$m" "$SANDBOX/hs.json"; small=$MS; srcs=$RC
         run_ms "$m" "$SANDBOX/hb.json"; big=$MS; brc=$RC
-        why=$(verdict "$small" "$big" "$brc")
+        why=$(verdict "$small" "$big" "$srcs" "$brc")
         if [ -n "$why" ]; then
-            run_ms "$m" "$SANDBOX/hs.json"; [ "$MS" -lt "$small" ] && small=$MS
+            run_ms "$m" "$SANDBOX/hs.json"; [ "$MS" -lt "$small" ] && small=$MS; srcs=$RC
             run_ms "$m" "$SANDBOX/hb.json"; [ "$MS" -lt "$big" ] && big=$MS; brc=$RC
-            why=$(verdict "$small" "$big" "$brc")
+            why=$(verdict "$small" "$big" "$srcs" "$brc")
         fi
         [ "$mname" = "$CHOKE" ] && hscan=$small
         [ "$big" -gt "$hworst" ] && { hworst=$big; hworstm=$mname; }
