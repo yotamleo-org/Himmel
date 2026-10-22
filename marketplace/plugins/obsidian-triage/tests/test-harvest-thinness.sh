@@ -203,4 +203,13 @@ done
 python3 "$tool" "$VR" --reflag-silent-partials 2>&1 | grep -q "0 silent partial" || { echo "FAIL: reflag not idempotent"; exit 1; }
 echo "OK --reflag-silent-partials: dry-run counts, marks A/C/E, bodies identical, idempotent"
 
+VC="$tmp/vault-crlf"
+mkdir -p "$VC/Clippings/_done"
+printf -- '---\nsource: "https://skillsmp.com/search"\nharvested_at: 2026-05-26\nharvest_skill: clip-body\nharvest_status: ok\n---\n# T\r\n\r\n## Core Argument\r\n*(claim?)*\r\n\r\n## Source\r\n[Read here](https://skillsmp.com/search)\r\n' > "$VC/Clippings/_done/crlf.md"
+cp "$VC/Clippings/_done/crlf.md" "$tmp/crlf-before.md"
+python3 "$tool" "$VC" --reflag-silent-partials >"$tmp/crlf.out" 2>&1 || { echo "FAIL: CRLF reflag run failed"; cat "$tmp/crlf.out"; exit 1; }
+cmp -s "$VC/Clippings/_done/crlf.md" "$tmp/crlf-before.md" || { echo "FAIL: reflag rewrote a CRLF note"; exit 1; }
+grep -q "1 skipped" "$tmp/crlf.out" || { echo "FAIL: CRLF skip not reported"; cat "$tmp/crlf.out"; exit 1; }
+echo "OK --reflag-silent-partials: CRLF note left byte-identical and reported skipped"
+
 echo "HARVEST-THINNESS PASS"

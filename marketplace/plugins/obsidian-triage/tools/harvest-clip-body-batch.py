@@ -1964,7 +1964,7 @@ def silent_partial_marks(fm: dict, body: str) -> tuple[list, list]:
     harvest_ok = fm.get("harvest_status") == "ok"
     if harvest_ok and fm.get("harvest_skill") == "clip-body" and is_thin_body(body):
         reasons.append("thin-body")
-    elif harvest_ok and "_Transcript unavailable" in body:
+    elif harvest_ok and fm.get("harvest_skill") == "youtube-scrapling" and "_Transcript unavailable" in body:
         reasons.append("transcript-unavailable")
     if reasons:
         pairs.append(("harvest_status", "harvest_status: partial"))
@@ -1989,11 +1989,12 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
         if "_synthesis" not in p.parts and p.name != "_deferred.md"
     )
     counts: dict = {}
-    notes = failed = 0
+    notes = failed = skipped = 0
     for clip in clips:
         relpath = clip.relative_to(vault).as_posix()
         try:
-            text = clip.read_text(encoding="utf-8")
+            raw = clip.read_bytes()
+            text = raw.decode("utf-8")
         except Exception as e:
             print(f"FAIL {relpath} -- failed (read): {e}", file=sys.stderr)
             failed += 1
@@ -2005,11 +2006,22 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
         if not reasons:
             continue
         reason = "+".join(reasons)
+        if b"\r" in raw:
+            print(f"SKIP {relpath} -- silent partial ({reason}) but CRLF; left untouched", file=sys.stderr)
+            skipped += 1
+            continue
         notes += 1
         for r in reasons:
             counts[r] = counts.get(r, 0) + 1
         if dry_run:
             print(f"PART {relpath} -- silent partial ({reason}) [dry-run]")
+            continue
+        if clip.read_bytes() != raw:
+            print(f"SKIP {relpath} -- changed since it was read; left untouched", file=sys.stderr)
+            skipped += 1
+            notes -= 1
+            for r in reasons:
+                counts[r] -= 1
             continue
         clip.write_text(f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}", encoding="utf-8", newline="\n")
         _dfm, _draw, disk_body, disk_ok = parse_frontmatter(clip.read_text(encoding="utf-8"))
@@ -2021,7 +2033,7 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
         print(f"PART {relpath} -- silent partial ({reason})")
     print(
         f"\nharvest-clip-body-batch --reflag-silent-partials: {notes} silent partials "
-        f"({', '.join(f'{k}={v}' for k, v in sorted(counts.items())) or 'none'}), {failed} failed. (dry_run={dry_run})"
+        f"({', '.join(f'{k}={v}' for k, v in sorted(counts.items())) or 'none'}), {failed} failed, {skipped} skipped. (dry_run={dry_run})"
     )
     if dry_run:
         print("  (DRY-RUN — no files modified)")
