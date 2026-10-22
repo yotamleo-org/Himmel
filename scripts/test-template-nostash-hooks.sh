@@ -839,7 +839,7 @@ if [ -n "${N3:-}" ]; then
 fi
 
 # The template config must not carry the framework gitleaks hook any more.
-check "N4: template .pre-commit-config.yaml has no framework gitleaks hook" "$(grep -c '^[[:space:]]*- id: gitleaks' "$TEMPLATE/.pre-commit-config.yaml")" "0"
+check "N4: template .pre-commit-config.yaml has no framework gitleaks hook" "$(grep -v '^[[:space:]]*#' "$TEMPLATE/.pre-commit-config.yaml" | grep -c 'gitleaks')" "0"
 
 # ---------------------------------------------------------------------------
 # 2. Wiring: a fresh scaffold from the template must get the wrapper.
