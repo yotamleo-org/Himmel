@@ -168,7 +168,7 @@ before 'ACTION ZERO step 9: quote-back is collected BEFORE sending LIVE' "$step9
 
 handing="$(section "$CONSOLE" '^## Handing over')"
 contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
-contains 'template Handing over: the relay goes through relay-batch.sh (bus record + SendMessage)' "$handing" 'relay-batch.sh <this doc> --successor'
+contains 'template Handing over: the relay goes through relay-batch.sh (bus record + SendMessage)' "$handing" 'relay-batch.sh <this doc> --successor <it>'
 contains 'template Handing over: the relay-on-live wake path is named' "$handing" 'WAKE relay-on-live'
 contains 'template Handing over: the relay run is never repeated' "$(flat "$handing")" 'never re-run it'
 contains 'template Handing over: relay-batch carries no fresh token' "$(flat "$handing")" 'carries no fresh token'
@@ -181,7 +181,7 @@ contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 
 # --- 3. running-a-console.md: the mirror --------------------------------------
 running="$(section "$RUNNING" '^## Handing over')"
 contains 'running-a-console Handing over: the outgoing console re-briefs the legs' "$running" 're-brief'
-contains 'running-a-console Handing over: the relay goes through relay-batch.sh' "$running" 'relay-batch.sh <this doc> --successor'
+contains 'running-a-console Handing over: the relay goes through relay-batch.sh' "$(flat "$running")" 'relay-batch.sh <this doc> --successor <it>'
 contains 'running-a-console Handing over: the relay-on-live wake path is named' "$running" 'WAKE relay-on-live'
 contains 'running-a-console Handing over: the relay run is never repeated' "$(flat "$running")" 'never re-run it'
 contains 'running-a-console Handing over: relay-batch never carries a fresh token' "$(flat "$running")" 'never carries a fresh token'
