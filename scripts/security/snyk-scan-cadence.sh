@@ -16,6 +16,11 @@
 # the state repo (see snyk-scan.sh). OFF by default: only `arm` installs it.
 # Default schedule: Monday 06:30.
 #
+# Exit: run 0 clean, 1 High/Critical finding or failed scan, 64 usage.
+#       arm 0 armed (or dry-run), 1 bad argument, 2 no crontab / Windows / no primary checkout,
+#       3 already armed (use --force), 4 crontab or runner write failed.
+#       status 0 (1 unreadable crontab). disarm 0 (4 crontab write failed). Other verbs 64.
+#
 # Seams (tests): SNYKCAD_CRONTAB, SNYKCAD_RUNNER_DIR, SNYKCAD_SCAN, SNYK_SCAN_STATE_DIR,
 # plus cadence-alert.sh's CADENCE_ALERT_*.
 # Platform: cron (Linux). Windows development is parked.
