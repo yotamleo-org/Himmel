@@ -466,8 +466,8 @@ async function residualInheritedVersion(
   o: RelationshipOptions & { gate?: string },
   residual: ResidualPlan | undefined,
 ): Promise<string | undefined> {
-  if (residual?.ranks !== undefined) return undefined;
   const inherited = await inheritedFixVersion(o);
+  if (residual?.ranks !== undefined) return undefined;
   return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
 }
 

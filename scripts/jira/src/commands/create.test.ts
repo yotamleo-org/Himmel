@@ -954,6 +954,22 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.4');
   });
 
+  it.each(['--blocks', '--split-from'])('RED b: competed placement still refuses conflicting active target versions through %s before creating', async (relation) => {
+    const other = residual('OTHER-1');
+    other.fields.project.key = 'OTHER';
+    other.fields.fixVersions = [{ name: 'v2.0.0' }];
+    const play = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/issue/OTHER-1?')) return other;
+      if (method === 'GET' && path === '/project/OTHER/versions') return [{ name: 'v2.0.0', released: false }];
+      return play(method, path);
+    });
+    await expect(file('--fu-class', 'escape', '--blocks', 'HIMMEL-50', relation, 'OTHER-1'))
+      .rejects.toThrow(/blocker must carry fixVersion v2\.0\.0/);
+    expect(created()).toBeUndefined();
+    expect(mockRequest.mock.calls.some(([method]) => method !== 'GET')).toBe(false);
+  });
+
   it.each(['high', 'hIgHeSt'])('RED a: newcomer priority %s outranks Medium case-insensitively', async (priority) => {
     residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape']));
     for (const r of residents) r.fields.issuelinks.push({ type: { name: 'Relates' }, outwardIssue: { key: parent.key } });
