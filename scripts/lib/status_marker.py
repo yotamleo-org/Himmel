@@ -42,7 +42,9 @@ def main(argv):
     marker = parse(argv[1])
     if marker is None:
         return 1
-    print(marker)
+    sys.stdout.flush()
+    sys.stdout.buffer.write(f"{marker}\n".encode("ascii"))
+    sys.stdout.buffer.flush()
     return 0
 
 

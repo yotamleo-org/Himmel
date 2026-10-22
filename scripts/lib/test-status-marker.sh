@@ -32,8 +32,19 @@ child() {
 
 check "sourced under strict mode prints nothing" "" "$(child ':')"
 
+ROWS="$HERE/fixtures/status-marker-rows.tsv"
+want_rows=$(sed -n 's/^# rows: \([0-9][0-9]*\)$/\1/p' "$ROWS")
+check "fixture declares its row count" "yes" "$([ -n "$want_rows" ] && echo yes || echo no)"
+# the loop reads a copy whose last row has no trailing newline
+T=$(mktemp -d "${TMPDIR:-/tmp}/himmel-status-marker.XXXXXX") || exit 1
+trap 'rm -rf "$T"' EXIT
+NOEOL="$T/status-marker-rows-noeol.tsv"
+printf '%s' "$(cat "$ROWS")" > "$NOEOL"
+check "noeol copy really lacks the final newline" "no" \
+  "$([ "$(tail -c1 "$NOEOL" | od -An -tx1 | tr -d ' ')" = 0a ] && echo yes || echo no)"
+
 n=0
-while IFS=$'\t' read -r line want; do
+while IFS=$'\t' read -r line want || [ -n "$line" ]; do
   case "$line" in ''|'#'*) continue ;; esac
   n=$((n + 1))
   got=$(bash -c 'set -euo pipefail; . "$1"; if out=$(status_marker_parse "$2"); then printf "%s" "$out"; else printf "%s" "-"; fi' _ "$SCRIPT" "$line" 2>&1)
@@ -41,8 +52,8 @@ while IFS=$'\t' read -r line want; do
   # read-sink-ok: sources the script under test ($SCRIPT), not a host file
   rc=$(bash -c 'set -euo pipefail; . "$1"; rc=0; status_marker_parse "$2" >/dev/null || rc=$?; echo "$rc"' _ "$SCRIPT" "$line" 2>&1)
   if [ "$want" = "-" ]; then check "row $n rc: no marker is 1" "1" "$rc"; else check "row $n rc: marker is 0" "0" "$rc"; fi
-done < "$HERE/fixtures/status-marker-rows.tsv"
-check "rows file was read (not vacuous)" "yes" "$([ "$n" -ge 20 ] && echo yes || echo no)"
+done < "$NOEOL"
+check "every declared row was read" "$want_rows" "$n"
 
 # read-sink-ok: sources the script under test ($SCRIPT), not a host file; no allowlist applies
 for line in $'- 23:47 LIVE \xe2\x80\x94 note\r' $'- LIVE \xe2\x80\x94 a\nb' $'- LIVE\r'; do
