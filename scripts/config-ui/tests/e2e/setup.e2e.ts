@@ -78,6 +78,7 @@ test("J5. a saved secret is set in the store and its value is nowhere else", asy
 // the control for the scan above: a value left in any place the scan looks must be named.
 test("J5. the leak scan names every place a value is left", async ({ page }) => {
   await open(page);
+  await page.locator(`input[data-secret="${NAME}"]`).waitFor();
   const secret = canary();
   await page.evaluate((v) => {
     localStorage.setItem("x", v); sessionStorage.setItem("x", v); document.cookie = `x=${v}`; document.body.append(v);

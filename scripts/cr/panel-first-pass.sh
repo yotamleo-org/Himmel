@@ -41,6 +41,10 @@
 #   0 - ran to completion (panel invoked, skipped, or failed open to
 #       claude-only). Findings, if any, are on stdout.
 #   2 - usage error: missing --head or --branch.
+#   3 - the branch has no preflight row and the step 2.8 known-findings pass
+#       it ran first has open hits: no round was started. Close the hits and
+#       record the pass (the message names both commands), then re-run.
+#   9 - that preflight could not be run or recorded: no round was started.
 #   7 - input-pin failure. Two causes, both ABORT: (a) the
 #       --head this script was given names no commit in this repo, detected
 #       here before any git command consumes it; (b)
@@ -163,6 +167,30 @@ elif [ "$diff_rc" -ne 0 ]; then
 elif [ -z "$diff_out" ]; then
     echo "empty diff - critic panel skipped"
 else
+    # step 2.8 is structural: a branch with no preflight row gets the
+    # known-findings pass run (and, when clean, recorded) before a score row
+    # can exist. Open hits cannot be closed here, so they stop the run
+    # with the commands that close them. clear-review-marker.sh gate 4e stays
+    # the backstop.
+    pf_ledger="$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl" # swallow-ok: a failed rev-parse names no ledger, so the preflight runs and ledger-append refuses (exit 9)
+    if ! { [ -f "$pf_ledger" ] && awk -v b="\"branch\":\"$BRANCH\"" 'index($0, "\"kind\":\"preflight\"") && index($0, b) { f = 1 } END { exit !f }' "$pf_ledger"; }; then
+        pf_t0=$SECONDS
+        pf_rc=0
+        pf_out=$(CR_LEDGER="$pf_ledger" bash "$HIMMEL_ROOT/scripts/cr/known-findings.sh" --diff "$diff_range" --area 2>&1) || pf_rc=$?
+        printf '%s\n' "$pf_out" >&2
+        if [ "$pf_rc" -eq 3 ]; then
+            echo "panel-first-pass ABORT - the step 2.8 known-findings preflight has open hits on $BRANCH, so no round was started. Close each hit (fixed in a follow-up commit, waived with a reason, or checked), then record the pass and re-run /pr-check:" >&2
+            echo "  bash \"$HIMMEL_ROOT/scripts/cr/known-findings.sh\" --diff --area" >&2
+            echo "  bash \"$HIMMEL_ROOT/scripts/cr/ledger-append.sh\" preflight --head $HEAD_SHA --duration-secs <s> --hit <class>=fixed|checked|waived:<reason>" >&2
+            exit 3
+        fi
+        if [ "$pf_rc" -ne 0 ] || ! CR_LEDGER="$pf_ledger" bash "$HIMMEL_ROOT/scripts/cr/ledger-append.sh" preflight --branch "$BRANCH" --head "$HEAD_SHA" --duration-secs "$((SECONDS - pf_t0))" >&2; then
+            echo "panel-first-pass ABORT - could not run or record the step 2.8 known-findings preflight on $BRANCH (known-findings rc=$pf_rc). No round was started. Run it by hand, then re-run /pr-check:" >&2
+            echo "  bash \"$HIMMEL_ROOT/scripts/cr/known-findings.sh\" --diff --area" >&2
+            echo "  bash \"$HIMMEL_ROOT/scripts/cr/ledger-append.sh\" preflight --head $HEAD_SHA --duration-secs <s>" >&2
+            exit 9
+        fi
+    fi
     review_round="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" start --branch "$BRANCH" --head "$HEAD_SHA" --base-sha "$db_sha")"
     round_rc=$?
     if [ "$round_rc" -eq 8 ]; then

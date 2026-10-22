@@ -1,6 +1,6 @@
 # Google Health Connector Setup Guide (alpha)
 
-- **Status:** ALPHA — opt-in, inert until configured
+- **Status:** ALPHA: opt-in, inert until configured
 - **API surface:** Google Health API v4 (`health.googleapis.com/v4`), the Fitbit-Web-API successor
 
 ---
@@ -11,7 +11,7 @@ The Google Health connector pulls wearable vitals directly from Google's cloud a
 into the luna-vitals series pipeline (`50-Vitals/` → luna-correlate). It is **opt-in and inert**
 until you supply OAuth credentials. At personal data volumes the API is free ($0).
 
-The connector writes a **review artifact** — a JSON file of proposed `(metric, date, value)` rows.
+The connector writes a **review artifact**: a JSON file of proposed `(metric, date, value)` rows.
 You inspect it, then land it with the existing `cli.ts merge` + `cli.ts write` commands.
 Nothing writes to `50-Vitals/` automatically.
 
@@ -20,12 +20,12 @@ Nothing writes to `50-Vitals/` automatically.
 ## Prerequisites
 
 - A Google account with wearable data actively syncing into **Google Health**. Two common paths:
-  - **Fitbit** — syncs natively via a connected Google account (Settings → Fitbit → Link).
-  - **Samsung Galaxy Watch / Galaxy Ring** — sync via **Health Connect** on Android (Samsung Health
+  - **Fitbit** syncs natively via a connected Google account (Settings → Fitbit → Link).
+  - **Samsung Galaxy Watch / Galaxy Ring** sync via **Health Connect** on Android (Samsung Health
     → Settings → Manage data → Connect apps → Health Connect). Samsung has no direct cloud API;
     Health Connect is the Android-side funnel that moves the data into Google Health.
 - **Bun** installed (`bun --version` ≥ 1.0).
-- The repo `.env` file (gitignored) at the project root — the connector reads from and writes
+- The repo `.env` file (gitignored) at the project root. The connector reads from and writes
   credentials to it.
 
 ---
@@ -60,7 +60,7 @@ https://www.googleapis.com/auth/googlehealth.ecg.readonly
 https://www.googleapis.com/auth/googlehealth.irn.readonly
 ```
 
-These are restricted scopes; Google will show a verification warning during the OAuth flow —
+These are restricted scopes; Google will show a verification warning during the OAuth flow;
 this is expected for a personal Testing app.
 
 **5. Create an OAuth 2.0 client.**
@@ -76,7 +76,7 @@ Copy the **Client ID** and **Client Secret**.
 
 > **Why not the OAuth Playground?** The Playground mints tokens under Google's own client ID,
 > not yours. Google Health's restricted scopes reject tokens from any client that isn't the one
-> registered on your consent screen — you'll get `unauthorized_client`. Use the flow below instead.
+> registered on your consent screen, so you'll get `unauthorized_client`. Use the flow below instead.
 
 **Step 1.** Add your credentials to the repo `.env`:
 
@@ -103,7 +103,7 @@ address bar.
 bun scripts/luna-vitals/connectors/google-health.ts auth-exchange --code "<code-or-full-url>"
 ```
 
-You can pass either the bare `code` value or the full `http://localhost/?code=...` URL — the
+You can pass either the bare `code` value or the full `http://localhost/?code=...` URL; the
 connector extracts the code either way.
 
 On success it prints `OK: refresh token written to .env` and adds
@@ -125,7 +125,7 @@ To refresh: re-run Steps 2–4 above. The `auth-exchange` command overwrites the
 `GOOGLE_HEALTH_REFRESH_TOKEN` line in `.env` in place.
 
 Going **Production** (verified app) removes the expiry but requires a CASA Tier 2 security
-assessment for restricted scopes — out of scope for alpha personal use.
+assessment for restricted scopes, which is out of scope for alpha personal use.
 
 ---
 
@@ -172,7 +172,7 @@ thin wrapper that:
 - Writes the artifact to `LUNA_VITALS_ARTIFACT_DIR` (default: a `.gh-vitals/` sibling to the script).
 - Exits 75 with a re-consent reminder if the OAuth token has expired.
 - Exits non-zero on any other error.
-- Does **not** call `write` — that remains a manual step.
+- Does **not** call `write`; that remains a manual step.
 
 Wire it into your scheduler using the **pipeline-cadence** mechanism (`/pipeline-cadence` in
 himmel):
@@ -196,7 +196,7 @@ FROM=2026-06-01 TO=2026-06-15 pull-cadence.sh
 
 The connector covers approximately 30 data streams, collapsed into the series below.
 Three rollup-only types (`calories-in-heart-rate-zone`, `floors`, `total-calories`) are
-scaffolded but gated — their API response shape is unverified and they are skipped at runtime
+scaffolded but gated: their API response shape is unverified and they are skipped at runtime
 with a logged notice.
 Categorical and bulky types (ECG waveforms, food database entries, activity-level enums,
 HR-zone config, nutrition-log multi-nutrient arrays) are excluded from the series.
@@ -222,13 +222,13 @@ HR-zone config, nutrition-log multi-nutrient arrays) are excluded from the serie
 
 Vitals are personal health information (PHI):
 
-- Keep `GOOGLE_HEALTH_REFRESH_TOKEN` in `.env` only. The `.env` file is gitignored — confirm
+- Keep `GOOGLE_HEALTH_REFRESH_TOKEN` in `.env` only. The `.env` file is gitignored; confirm
   `git check-ignore -v .env` before the first commit in a new clone.
-- The connector **never prints secret values** — `auth-exchange` prints only a confirmation
+- The connector **never prints secret values**: `auth-exchange` prints only a confirmation
   message and the granted scope string.
 - Review artifacts and `50-Vitals/` CSVs contain health data. Treat them per your vault's
   privacy posture: do not commit them to a public repository, and do not sync them to
   cloud storage you do not control.
 - The OAuth flow uses `http://localhost` as the redirect URI. The browser navigates to that
-  address and fails to load (no local server is running) — copy the code from the URL bar
+  address and fails to load (no local server is running), so copy the code from the URL bar
   before closing the tab.

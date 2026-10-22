@@ -216,3 +216,27 @@ network call and writes nothing. Its suite is
 ledger: per-slug agreed%, availability and drop advice over a recent window.
 This script differs in three ways: it splits a slug by responding model, it
 reports the interval, and it pins a cut.
+
+## The judges: the weekly judge-accuracy job
+
+The judges are the third measured reviewer. `scripts/eval/judge-accuracy/judge_accuracy.py`
+joins the persisted verdict records to PR state, main CI and caused-by bugs, and
+appends one `judge-accuracy` row to the eval-runs ledger. Run it weekly from a
+himmel checkout, with `gh` snapshots taken first:
+
+```bash
+gh pr list --state all --limit 1000 --json number,state,mergedAt,headRefOid,mergeCommit > prs.json
+gh run list --branch main --limit 1000 --json databaseId,headSha,conclusion,createdAt > runs.json
+python3 scripts/eval/judge-accuracy/judge_accuracy.py run \
+  --verdicts <handover root>/<user>/<bucket>/verdicts --prs prs.json --main-runs runs.json
+python3 scripts/eval/judge-accuracy/judge_accuracy.py queue
+```
+
+`queue` lists the escape candidates no caused-by line settles. The chief rules
+each one once with a console-judge-ro call (opus, high; about 15 a week) and
+records it with `judge_accuracy.py rule <id> S|P|N --evidence <text>`. A row stays
+`partial` until every candidate in its window is ruled. Then
+`python3 scripts/eval/lib/eval_feedback.py run` raises at most one change per critic
+from the rules in `scripts/eval/feedback-rules.json`, and the next run of the same
+series re-measures it. The suite is
+`scripts/eval/judge-accuracy/test-judge-accuracy.sh`, on fixture verdicts.

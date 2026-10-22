@@ -33,6 +33,13 @@ the stability-scorecard metric it moves (columns: `specs/research/stability-scor
 `Metric:` may be bare, bulleted (`- Metric:`) or bold (`**Metric:**`), in any case.
 Without one it is refused like a missing section.
 
+A **Bug** draft also asks for two labels, so the weekly escape report
+(`scripts/ci/escape-report.sh`) can group it: `found-by:<who>` (`operator`, `leg`,
+`console`, `tick`, `ci-pr`, `ci-main`, `review` or `user`) and `escape:<class>`
+(`contract`, `merge-skew`, `platform`, `guard` or `flake`). Ask for both when you file
+a Bug; a Bug missing either is listed as UNLABELLED in the report. This is a request,
+not a refusal: the checker does not gate on it.
+
 ## The title (HIMMEL-6968)
 
 One of two kinds:

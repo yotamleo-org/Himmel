@@ -10,7 +10,7 @@ An always-on **bun** process (`scripts/telegram/supervisor.ts` +
 token. For each inbound message it spawns a short-lived, bounded `claude` run
 that does one turn and exits; a file-backed bus (under
 `~/.claude/handover/bridge/`) carries per-session state across runs, usage
-caps, and crashes. There is no long-lived Claude session to babysit — the
+caps, and crashes. There is no long-lived Claude session to babysit; the
 bridge itself is just the bun process.
 
 Mechanism detail (delivery model, file bus layout, IPC, hardening) lives in
@@ -42,22 +42,22 @@ cd scripts/telegram && bun supervisor.ts --kill
 
 DM the bot once it's running:
 
-- `work on <TICKET-KEY>` — dispatch: create/resume a session for that ticket and run it.
-- `<TICKET-KEY>: <text>` — send a follow-up to that session.
-- `status` / `sessions` / `stop <TICKET-KEY>` — control commands.
-- Anything else — ordinary chat with the current session.
+- `work on <TICKET-KEY>`: dispatch: create/resume a session for that ticket and run it.
+- `<TICKET-KEY>: <text>`: send a follow-up to that session.
+- `status` / `sessions` / `stop <TICKET-KEY>`: control commands.
+- Anything else: ordinary chat with the current session.
 
 The bot also answers three Telegram slash commands, **in a DM only** (it stays
 silent in groups so pairing codes never leak to other members):
 
-- `/start` — pairing instructions.
-- `/help` — what the bot does and the two commands below.
-- `/status` — your pairing state: paired (and as whom), a pending code to
+- `/start`: pairing instructions.
+- `/help`: what the bot does and the two commands below.
+- `/status`: your pairing state: paired (and as whom), a pending code to
   approve with `/telegram:access pair <code>` in Claude Code, or not paired.
 
 Privileged actions (arming a resume, restarting the bridge, and other
 operator-only ops) are gated behind an explicit auto-command syntax and an
-allowlisted-operator check — see the auto-action docs in
+allowlisted-operator check; see the auto-action docs in
 [`internals/telegram-bridge.md`](internals/telegram-bridge.md#ws-d--auto-mode)
 for what's enabled and how it's authorized. A forwarded message can never
 trigger one of these commands.
@@ -93,7 +93,7 @@ file, so a line is never lost across a re-start).
 - **Who:** only the `allowFrom` operator, in an allowed chat, with a typed (not
   forwarded, not captioned) message. Anyone else's `/console …` is ordinary
   chat, exactly as before. `access.json` remains the only sender gate.
-- **Ack:** `→ console <name>` means the line was queued — not that the chief
+- **Ack:** `→ console <name>` means the line was queued, not that the chief
   has read it. A response with no live chief, or an ambiguous one, queues nothing;
   delivery never creates a chief inbox.
 - **Reply:** the chief answers through the same outbox as every other bridge
@@ -101,8 +101,8 @@ file, so a line is never lost across a re-start).
   running poller sends it. On Linux the CLI resolves the calling session name
   automatically when its inbox exists. For an explicit identity (including
   other platforms), use `reply --console <session-name> <chat_id> <text>`.
-- **Authority:** the line carries your authority — a ruling, a halt or new
-  work, as if typed in the chief's terminal. It never changes the chief's
+- **Authority:** the line carries your authority (a ruling, a halt or new
+  work), as if typed in the chief's terminal. It never changes the chief's
   permissions or settings and never bypasses `merge-on-green.sh`'s own GO
   verification.
 - **A wrapped chief leaves its file behind**, so a line to one is acked but
@@ -212,14 +212,14 @@ After deploying an updated bridge, restart it **at the station** on Linux:
 
 Telegram allows exactly **one** `getUpdates` consumer per bot token. Do not
 launch a `claude --channels` (or `TELEGRAM_OWN_POLLER=1`) session by hand
-while the bun bridge is running — it becomes a second consumer and Telegram
+while the bun bridge is running: it becomes a second consumer and Telegram
 returns `409 Conflict`, breaking delivery for both. If you need a manual
 `--channels` session, stop the bridge first (`bun supervisor.ts --kill`).
 
 ## Troubleshooting
 
-- **`409 Conflict` in the poller log** — another poller holds the token
+- **`409 Conflict` in the poller log:** another poller holds the token
   (usually a stray hand-launched `--channels` session, or two supervisors).
   Kill the extra poller.
-- **No reply to a DM** — check that your Telegram user id is in
+- **No reply to a DM:** check that your Telegram user id is in
   `access.json`'s `allowFrom`, and that the bridge process is actually up.

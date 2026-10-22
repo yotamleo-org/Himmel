@@ -326,9 +326,11 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 
 # ---- jobs per PR push ----
 | ($J | map(select(.ev == "pull_request")) | group_by(.sha) | map({key: .[0].sha, value: length}) | from_entries) as $JS
+| ($J | map(select(.ev == "pull_request" and .started)) | group_by(.sha) | map({key: .[0].sha, value: length}) | from_entries) as $JSR
 | ($R | map(select(.event == "pull_request")) | group_by(.head_sha)
-    | map({sha: .[0].head_sha, canc: (any(.[]; .conclusion == "cancelled")), jobs: ($JS[.[0].head_sha] // 0)})) as $PUSH
+    | map({sha: .[0].head_sha, canc: (any(.[]; .conclusion == "cancelled")), jobs: ($JS[.[0].head_sha] // 0), ran: ($JSR[.[0].head_sha] // 0)})) as $PUSH
 | ($PUSH | map(.jobs) | sort) as $PJ
+| ($PUSH | map(.ran) | sort) as $PJR
 
 # ---- queue backlog ----
 | ($J | map(select(.status == "queued" or .status == "waiting" or .status == "pending" or .status == "requested"))) as $wait
@@ -461,6 +463,9 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
   "| jobs per push mean | \(if ($PJ | length) == 0 then "-" else (($PJ | add) * 10 / ($PJ | length) + 0.5 | floor) as $x | "\($x / 10 | floor).\($x % 10)" end) |",
   "| jobs per push median | \($PJ | pct(0.5) | sec) |",
   "| jobs per push max | \($PJ | max // "-") |",
+  "| runner jobs per push mean | \(if ($PJR | length) == 0 then "-" else (($PJR | add) * 10 / ($PJR | length) + 0.5 | floor) as $x | "\($x / 10 | floor).\($x % 10)" end) |",
+  "| runner jobs per push median | \($PJR | pct(0.5) | sec) |",
+  "| runner jobs per push max | \($PJR | max // "-") |",
   "| pushes with a cancelled run | \($PUSH | map(select(.canc)) | length) |",
   "",
   "## Peak concurrent in_progress jobs per hour",
