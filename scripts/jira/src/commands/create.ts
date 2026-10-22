@@ -12,7 +12,7 @@ import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
 import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
-import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -36,6 +36,7 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
 }
 
 const FU_CLASSES = ['polish', 'escape', 'hardening'];
+export const FU_WHY_CODES = ['unseen-failure', 'no-check', 'vacuous-check', 'no-recovery', 'silent-rot'];
 // Open hardening residuals a version takes before the rest go to the backlog;
 // a `residual-budget:N` line in the version description overrides it.
 export const RESIDUAL_BUDGET = 15;
@@ -92,20 +93,58 @@ interface ResidualPlan {
   fixVersion?: string;
   affectsVersion?: string;
   duplicateOf?: string;
+  frozen: string[];
 }
 
-async function planResidual(
-  project: string,
-  o: { residualOf: string; fuClass?: string; class?: string; area?: string; fixVersion?: string },
-): Promise<ResidualPlan> {
+interface ResidualOptions {
+  residualOf: string;
+  fuClass?: string;
+  fuWhy?: string;
+  class?: string;
+  area?: string;
+  fixVersion?: string;
+  gate?: string;
+  priority?: string;
+  blocks?: string[];
+}
+
+interface TicketState {
+  status?: { statusCategory: { key: string } };
+  fixVersions?: { name: string }[];
+}
+
+/** The unreleased version an open ticket sits in; a Done ticket, or one in no live version, is no chain. */
+function openVersion(t: TicketState, unreleased: Set<string>): string | undefined {
+  if (t.status?.statusCategory.key === 'done') return undefined;
+  return t.fixVersions?.find((v) => unreleased.has(v.name))?.name;
+}
+
+/**
+ * Places a residual (plan 9.1 as corrected by 10.5); the first matching row wins:
+ * a. depth >= 2, b. polish: backlog. c. --gate: current. d. escape: current if
+ * unfrozen, else next. e. hardening with a chain: its version V if unfrozen,
+ * else next. f. hardening, no chain, High or above: next. g. anything else: backlog.
+ * Next is the earliest unreleased version after current. It never throws on a
+ * frozen version; a frozen or missing next sends the residual to the backlog.
+ */
+async function planResidual(project: string, o: ResidualOptions): Promise<ResidualPlan> {
   if (!o.fuClass) throw new Error('--residual-of requires --fu-class <polish|escape|hardening>');
   if (o.class !== undefined && !o.class) throw new Error('--class needs an id');
   if (!FU_CLASSES.includes(o.fuClass)) {
     throw new Error(`--fu-class must be one of ${FU_CLASSES.join(', ')} (got "${o.fuClass}")`);
   }
+  if (o.fuClass === 'hardening') {
+    if (!o.fuWhy) throw new Error(`--fu-class hardening requires --fu-why <${FU_WHY_CODES.join('|')}>`);
+    if (!FU_WHY_CODES.includes(o.fuWhy)) {
+      throw new Error(`--fu-why must be one of ${FU_WHY_CODES.join(', ')} (got "${o.fuWhy}")`);
+    }
+  } else if (o.fuWhy !== undefined) {
+    throw new Error('--fu-why applies only to --fu-class hardening');
+  }
   if (o.fixVersion !== undefined) throw new Error('--residual-of chooses the version itself; drop --fix-version');
   const classLabel = o.class !== undefined ? `class-${labelSlug(o.class)}` : undefined;
-  const labels = ['residual'];
+  const labels = ['residual', `fu-${o.fuClass}`];
+  if (o.fuClass === 'hardening') labels.push(`fu-why-${o.fuWhy}`);
   if (classLabel) labels.push(classLabel);
   const area = o.area ? `area-${labelSlug(o.area)}` : undefined;
   if (area) labels.push(area);
@@ -115,31 +154,53 @@ async function planResidual(
       `project = ${project} AND labels = residual AND labels = ${jqlQuote(classLabel)} AND labels = ${jqlQuote(area)}` +
       ` AND key != ${jqlQuote(o.residualOf)} AND statusCategory != Done`;
     const [dup] = await searchAllIssues(jql, '1', request);
-    if (dup) return { labels, duplicateOf: dup.key };
+    if (dup) return { labels, duplicateOf: dup.key, frozen: [] };
   }
 
-  const parent = await request<{ fields: { labels?: string[] } }>('GET', `/issue/${o.residualOf}?fields=labels`);
+  const parent = await request<{ fields: TicketState & { labels?: string[] } }>(
+    'GET',
+    `/issue/${o.residualOf}?fields=labels,status,fixVersions`,
+  );
   const depth = nextResidualDepth(parent.fields.labels ?? []);
   labels.push(`residual-depth-${depth}`);
 
   const versions = await fetchVersions(project);
   const current = earliestUnreleased(versions);
+  const frozen = versions.filter((v) => frozenDate(v.description) !== undefined).map((v) => v.name);
+  const next = current ? earliestUnreleased(versions.filter((v) => v.name !== current)) : undefined;
+  const nextOpen = next !== undefined && !frozen.includes(next) ? next : undefined;
+  const unfrozenOrNext = (v: string): string | undefined => (frozen.includes(v) ? nextOpen : v);
+
   let fixVersion: string | undefined;
   if (current && depth < 2 && o.fuClass !== 'polish') {
-    fixVersion = current;
-    if (o.fuClass === 'hardening') {
-      const budget = residualBudget(versions.find((v) => v.name === current)?.description);
-      const jql =
-        `project = ${project} AND fixVersion = ${jqlQuote(current)} AND labels = residual` +
-        ' AND labels != residual-overflow AND statusCategory != Done';
-      const open = await searchAllIssues(jql, String(budget), request);
-      if (open.length >= budget) {
-        fixVersion = undefined;
-        labels.push('residual-overflow');
+    if (o.gate !== undefined) {
+      fixVersion = current;
+    } else if (o.fuClass === 'escape') {
+      fixVersion = unfrozenOrNext(current);
+    } else {
+      const unreleased = new Set(versions.filter((v) => !v.released && !v.archived).map((v) => v.name));
+      let chain = openVersion(parent.fields, unreleased);
+      for (const target of chain ? [] : (o.blocks ?? [])) {
+        const t = await request<{ fields: TicketState }>('GET', `/issue/${target}?fields=status,fixVersions`);
+        chain = openVersion(t.fields, unreleased);
+        if (chain) break;
+      }
+      if (chain) fixVersion = unfrozenOrNext(chain);
+      else if (/^(high|highest)$/i.test(o.priority ?? '')) fixVersion = nextOpen;
+      if (fixVersion) {
+        const budget = residualBudget(versions.find((v) => v.name === fixVersion)?.description);
+        const jql =
+          `project = ${project} AND fixVersion = ${jqlQuote(fixVersion)} AND labels = residual` +
+          ' AND labels != residual-overflow AND statusCategory != Done';
+        const open = await searchAllIssues(jql, String(budget), request);
+        if (open.length >= budget) {
+          fixVersion = undefined;
+          labels.push('residual-overflow');
+        }
       }
     }
   }
-  return { labels, fixVersion, affectsVersion: current };
+  return { labels, fixVersion, affectsVersion: current, frozen };
 }
 
 /**
@@ -292,6 +353,15 @@ async function inheritedFixVersion(o: RelationshipOptions): Promise<string | und
   return inherited;
 }
 
+/** A residual without a gate never inherits a frozen version: its placement row chose its version. */
+async function residualInheritedVersion(
+  o: RelationshipOptions & { gate?: string },
+  residual: ResidualPlan | undefined,
+): Promise<string | undefined> {
+  const inherited = await inheritedFixVersion(o);
+  return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
+}
+
 async function checkExistingBlocker(project: string, fixVersions: unknown, o: RelationshipOptions): Promise<void> {
   if (!o.blockedBy || o.backlog || !fixVersions) return;
   const current = earliestUnreleased(await fetchVersions(project));
@@ -367,7 +437,8 @@ export function registerCreate(program: Command): void {
       '--over-cap <reason>',
       'File into the current version although it is at its residual cap; the reason is recorded on the ticket',
     )
-    .option('--fu-class <class>', 'Residual routing class: polish (backlog), escape (current version), hardening (current version under budget)')
+    .option('--fu-class <class>', 'Residual class: polish (backlog), escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog)')
+    .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
     .option('--area <name>', 'Residual area; an open residual with the same class and area is commented on instead of filing a new one')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
@@ -401,6 +472,7 @@ export function registerCreate(program: Command): void {
         followUpOf?: string;
         overCap?: string;
         fuClass?: string;
+        fuWhy?: string;
         class?: string;
         area?: string;
         project?: string;
@@ -477,7 +549,7 @@ export function registerCreate(program: Command): void {
           labels = [...new Set([...(labels ?? []), ...residual.labels])];
         }
         if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
-        const inherited = await inheritedFixVersion(options);
+        const inherited = await residualInheritedVersion(options, residual);
         const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
         if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
         const placed = placeBug(versionOptions, labels, residual !== undefined);

@@ -762,7 +762,7 @@ check "amend resolves a finding through a prior re-key" "$?" "0"
 check "the follow-up amend still keys on the ORIGINAL head" "$(L="$AM" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].target_head)')" "AH1"
 
 # ── the deferral field ─────────────────────────────────────────
-CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH3 --model glm --id glm-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason "pre-existing, already public" --fu-class hardening
+CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH3 --model glm --id glm-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason "pre-existing, already public" --fu-class hardening --fu-why no-check
 check "finding stores deferred_to" "$(L="$AM" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="AH3");console.log(o.verdict+","+o.deferred_to)')" "deferred,HIMMEL-1293"
 CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH4 --model glm --id glm-2 --severity imp --file f --line 1 --verdict deferred --deferred-to "not a ticket" 2>/dev/null
 check "a malformed --deferred-to is rejected" "$?" "2"
@@ -775,7 +775,7 @@ CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH5 --model glm --id glm-3 
 check "ticket key with a trailing non-digit is rejected (glob-vs-regex)" "$?" "2"
 CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH5 --model glm --id glm-3 --severity imp --file f --line 1 --verdict deferred --deferred-to "himmel-1" --reason r 2>/dev/null
 check "lowercase ticket key is rejected" "$?" "2"
-CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH6 --model glm --id glm-4 --severity imp --file f --line 1 --verdict deferred --deferred-to "HI-1" --reason r --fu-class hardening
+CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH6 --model glm --id glm-4 --severity imp --file f --line 1 --verdict deferred --deferred-to "HI-1" --reason r --fu-class hardening --fu-why no-check
 check "a minimal well-formed ticket key is accepted" "$?" "0"
 
 # codex-1: gate 4 blocks on severity IN (crit, imp), so a typo matches neither
@@ -807,9 +807,17 @@ check "finding --deferred-to without --fu-class is refused" "$?" "2"
 check "  ...and nothing was written" "$(if [ -f "$FU" ]; then wc -l <"$FU" | tr -d ' '; else echo 0; fi)" "0"
 CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r --fu-class nonsense 2>/dev/null
 check "finding --fu-class outside escape|hardening|polish is refused" "$?" "2"
-CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r --fu-class hardening
+CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r --fu-class hardening 2>/dev/null
+check "finding hardening deferral without --fu-why is refused" "$?" "2"
+check "  ...and nothing was written" "$(if [ -f "$FU" ]; then wc -l <"$FU" | tr -d ' '; else echo 0; fi)" "0"
+CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r --fu-class hardening --fu-why bogus 2>/dev/null
+check "finding --fu-why outside the five codes is refused" "$?" "2"
+CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r --fu-class escape --fu-why no-check 2>/dev/null
+check "finding --fu-why with a non-hardening class is refused" "$?" "2"
+CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r --fu-class hardening --fu-why no-check
 check "finding --deferred-to with a valid --fu-class is accepted" "$?" "0"
 check "  ...and stores fu_class" "$(L="$FU" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse)[0];console.log(o.fu_class)')" "hardening"
+check "  ...and stores fu_why" "$(L="$FU" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse)[0];console.log(o.fu_why)')" "no-check"
 CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU2 --model m --id fu-2 --severity imp --file f --line 1 --verdict agreed
 check "control: a non-deferral finding needs no --fu-class" "$?" "0"
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set verdict=deferred --set deferred_to=HIMMEL-1293 --set reason=r --reason x 2>/dev/null
@@ -819,6 +827,15 @@ check "amend to a deferral with fu_class is accepted" "$?" "0"
 check "  ...and the amend carries fu_class" "$(L="$FU" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].set.fu_class)')" "polish"
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set fu_class=bogus --reason x 2>/dev/null
 check "amend rejects an invalid fu_class" "$?" "2"
+FU_N=$(wc -l <"$FU" | tr -d ' ')
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set verdict=deferred --set deferred_to=HIMMEL-1293 --set reason=r --set fu_class=hardening --set class=new:fu-test --reason x 2>/dev/null
+check "amend to fu_class=hardening without fu_why is refused" "$?" "2"
+check "  ...and nothing was written" "$(wc -l <"$FU" | tr -d ' ')" "$FU_N"
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set fu_why=bogus --set fu_class=hardening --reason x 2>/dev/null
+check "amend rejects an fu_why outside the five codes" "$?" "2"
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set verdict=deferred --set deferred_to=HIMMEL-1293 --set reason=r --set fu_class=hardening --set fu_why=silent-rot --set class=new:fu-test --reason x
+check "amend to fu_class=hardening with fu_why is accepted" "$?" "0"
+check "  ...and the amend carries fu_why" "$(L="$FU" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].set.fu_why)')" "silent-rot"
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set reason=updated --reason x
 check "control: amending only the reason needs no fu_class" "$?" "0"
 
@@ -1406,11 +1423,11 @@ check "control: batch spec.reason with no secret keeps its double spaces byte-id
 check "batch spec.reason flattens an embedded newline like --detail" "$(rs_field finding rb-6 reason)" "line one line two"
 check "control: batch spec.reason is NOT capped (a long disposition is kept whole)" "$(rs_field finding rb-7 reason | tr -d '\n' | wc -c | tr -d ' ')" "600"
 # argv paths
-CR_LEDGER="$RSL" bash "$LA" finding --branch b --head "$RSH" --model m --id ra-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1234 --reason "tracked Bearer $_c_tok" --fu-class hardening
+CR_LEDGER="$RSL" bash "$LA" finding --branch b --head "$RSH" --model m --id ra-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1234 --reason "tracked Bearer $_c_tok" --fu-class hardening --fu-why no-check
 check "argv finding --reason: Bearer<tok> is redacted" "$(rs_field finding ra-1 reason)" "tracked Bearer [REDACTED]"
-CR_LEDGER="$RSL" bash "$LA" finding --branch b --head "$RSH" --model m --id ra-2 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1234 --reason "tracked Bearer"$'\r\n'"$_c_tok" --fu-class hardening
+CR_LEDGER="$RSL" bash "$LA" finding --branch b --head "$RSH" --model m --id ra-2 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1234 --reason "tracked Bearer"$'\r\n'"$_c_tok" --fu-class hardening --fu-why no-check
 check "argv finding --reason: Bearer<CRLF><tok> is redacted" "$(rs_field finding ra-2 reason)" "tracked Bearer [REDACTED]"
-CR_LEDGER="$RSL" bash "$LA" finding --branch b --head "$RSH" --model m --id ra-3 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1234 --reason "plain  reason with two  spaces" --fu-class hardening
+CR_LEDGER="$RSL" bash "$LA" finding --branch b --head "$RSH" --model m --id ra-3 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1234 --reason "plain  reason with two  spaces" --fu-class hardening --fu-why no-check
 check "control: argv finding --reason with no secret is byte-identical" "$(rs_field finding ra-3 reason)" "plain  reason with two  spaces"
 CR_LEDGER="$RSL" bash "$LA" amend --branch b --head "$RSH" --id rb-5 --set severity=sug --reason "why Bearer $_c_tok"
 check "argv amend --reason: Bearer<tok> is redacted" "$(rs_field amend rb-5 reason)" "why Bearer [REDACTED]"
@@ -1637,7 +1654,7 @@ CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-hit 
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-miss --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim'
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-own --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim two'
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-ok --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim three'
-KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-hit --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --reason 'tracked' 2>/dev/null
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-hit --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set fu_why=no-check --reason 'tracked' 2>/dev/null
 check "HIMMEL-6376: a deferred amend is auto-attributed to the matching class" "$(cls_of cl-hit)" "hook-fail-direction"
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-miss --set verdict=fixed --reason 'fixed in follow-up' 2>/dev/null
 check "HIMMEL-6376: a fixed amend with no matching class is recorded as unattributed" "$(cls_of cl-miss)" "unattributed"
@@ -1646,11 +1663,11 @@ check "HIMMEL-6376: a supplied class=new:<slug> is kept" "$(cls_of cl-own)" "new
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-ok --set verdict=fixed --set 'class=Bad Class' --reason 'fixed in follow-up' 2>/dev/null
 check "HIMMEL-6376: a malformed class= is refused" "$?" "2"
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-def --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim four'
-KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --reason 'tracked' 2>"$tmp/cld.err"
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set fu_why=no-check --reason 'tracked' 2>"$tmp/cld.err"
 check "HIMMEL-6922: an unattributed deferred amend with no class= is refused" "$?" "2"
 check "HIMMEL-6922: the refusal names --set class=" "$(grep -c -e '--set class=' "$tmp/cld.err")" "1"
 check "HIMMEL-6922: the refused deferral wrote no amend" "$(cls_of cl-def)" ""
-KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set class=new:late-bind --reason 'tracked' 2>/dev/null
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set fu_why=no-check --set class=new:late-bind --reason 'tracked' 2>/dev/null
 check "HIMMEL-6922: an unattributed deferral with --set class=new:<slug> is accepted" "$?" "0"
 check "HIMMEL-6922: ...and carries the supplied class" "$(cls_of cl-def)" "new:late-bind"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit hook-fail-direction=fixed --hit exit-contract-drift=waived:false-positive-out-of-scope --hit docs-flag-drift=checked --duration-secs 3 2>/dev/null

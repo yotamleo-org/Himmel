@@ -213,9 +213,35 @@ mkdir -p "$recovery_git/cr-review-rounds" "$recovery_git/cr-pending"
 printf '4\n' > "$recovery_git/cr-review-rounds/recovery.round"
 printf '%s %s fix\n' "$recovery_head" "$recovery_head" > "$recovery_git/cr-review-rounds/recovery.delta"
 recovery_log="$tmp/residual-jira.log"
+# A hardening finding with no recorded fu_why fails closed: no ticket is filed, the marker stays pending.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"imp","fu_class":"hardening","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+: > "$recovery_log"
+nowhy_rc=0
+nowhy_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" 2>&1)" || nowhy_rc=$?
+assert_eq "$nowhy_rc" 6 "hardening recovery without fu_why fails closed"
+assert_has "$nowhy_out" "--fu-why <" "hardening recovery without fu_why names the --fu-why recovery"
+assert_eq "$(cat "$recovery_log")" "" "hardening recovery without fu_why files nothing"
+if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "hardening recovery without fu_why leaves the marker pending"; else fail "hardening recovery without fu_why leaves the marker pending"; fi
+# An invalid recorded fu_why yields to a valid supplied --fu-why.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"imp","fu_class":"hardening","fu_why":"bogus","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+: > "$recovery_log"
+badwhy_rc=0
+(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" --fu-why no-check >/dev/null 2>&1) || badwhy_rc=$?
+assert_eq "$badwhy_rc" 0 "hardening recovery with an invalid recorded fu_why takes the supplied --fu-why"
+assert_has "$(cat "$recovery_log")" '"--fu-why","no-check"' "invalid recorded fu_why is replaced by the supplied one"
 for recovery_spec in 'sug polish' 'imp hardening'; do
     recovery_severity="${recovery_spec%% *}"
     recovery_class="${recovery_spec#* }"
+    recovery_why=()
+    if [ "$recovery_class" = hardening ]; then recovery_why=(--fu-why no-check); fi
     printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"%s","fu_class":"%s","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
         "$recovery_head" "$recovery_severity" "$recovery_class" > "$recovery_git/cr-critic-scores.jsonl"
     printf 'pending\n' > "$recovery_git/cr-pending/recovery"
@@ -223,9 +249,13 @@ for recovery_spec in 'sug polish' 'imp hardening'; do
     recovery_rc=0
     recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up [HIMMEL-456]' \
         RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
-        --branch recovery --head "$recovery_head" 2>&1)" || recovery_rc=$?
+        --branch recovery --head "$recovery_head" ${recovery_why[@]+"${recovery_why[@]}"} 2>&1)" || recovery_rc=$?
     assert_eq "$recovery_rc" 0 "$recovery_class recovery files and dispositions without a supplied ticket"
     recovery_args="$(cat "$recovery_log")"
+    if [ "$recovery_class" = hardening ]; then
+        assert_has "$recovery_args" '"--fu-why","no-check"' "hardening recovery passes --fu-why to the residual verb"
+        assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"fu_why":"no-check"' "hardening recovery records fu_why on the amend"
+    fi
     assert_has "$recovery_args" '"--residual-of","HIMMEL-123"' "$recovery_class recovery uses the first PR-title key"
     assert_has "$recovery_args" "\"--fu-class\",\"$recovery_class\"" "$recovery_class recovery delegates follow-up routing"
     assert_has "$recovery_args" '"--class","reader-allowlist"' "$recovery_class recovery preserves the finding class"
@@ -1104,7 +1134,7 @@ assert_eq "$defer6u_rc" "4" "a delta-round Important without an fu_class amend i
 assert_has "$(cat "$tmp/defer6u.err")" "explicit fu_class amend" "unclassified Important refusal names the remedy"
 if [ -e "$git_dir/cr-pending/important" ]; then pass "an unclassified Important leaves the marker pending"; else fail "an unclassified Important leaves the marker pending"; fi
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
-    --branch important --head "$important_head" --id stub-1 --set fu_class=hardening \
+    --branch important --head "$important_head" --id stub-1 --set fu_class=hardening --set fu_why=no-check \
     --reason 'classified hardening by the adjudicator' >/dev/null 2>"$tmp/important-class.err" || fail "important fu_class amend"
 defer6="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$important_head" --branch important --defer-to HIMMEL-9001 2>"$tmp/defer6.err")"; defer6_rc=$?
 assert_eq "$defer6_rc" "0" "delta-round Important finding is deferred"
@@ -1223,7 +1253,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture delta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-d \
-    --set verdict=deferred --set deferred_to=HIMMEL-9010 --set fu_class=hardening --set class=new:promote-fixture --reason "deferred by hand"
+    --set verdict=deferred --set deferred_to=HIMMEL-9010 --set fu_class=hardening --set fu_why=no-check --set class=new:promote-fixture --reason "deferred by hand"
 
 # (h) agreed at an earlier head, its fingerprint reappears at the clean head
 # but that reappearance is deferred, not resolved

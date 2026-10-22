@@ -62,6 +62,7 @@ LABEL="cr-deferred"
 DRY_RUN=0
 RESIDUAL_OF=""
 FU_CLASS="polish"
+FU_WHY=""
 CR_CLASS=""
 SEVERITIES_REGEX='NIT|LOW|SUGGESTION|IMPROVEMENT|DEFERRED'
 
@@ -81,6 +82,8 @@ Optional:
                         ticket key in the branch name). The Jira ticket is filed by
                         `jira create --residual-of`, which picks version and depth.
   --fu-class <c>        Jira only: polish (default) | escape | hardening.
+  --fu-why <code>       Jira only: required with --fu-class hardening (and only then):
+                        unseen-failure | no-check | vacuous-check | no-recovery | silent-rot.
   --class <id>          Jira only: CR class id (default: the one class the CR ledger holds
                         for these findings on this branch, else unclassified).
 
@@ -101,7 +104,8 @@ while [ $# -gt 0 ]; do
         --dry-run)  DRY_RUN=1; shift ;;
         --residual-of) RESIDUAL_OF="${2:-}"; shift 2 ;;
         --fu-class) FU_CLASS="${2:-}"; shift 2 ;;
-        --class)    CR_CLASS="${2:-}"; shift 2 ;;
+        --fu-why)   FU_WHY="${2:-}"; shift 2 ;;
+        --class)   CR_CLASS="${2:-}"; shift 2 ;;
         -h|--help)  usage; exit 0 ;;
         *)          echo "ERR file-deferred-issues: unknown arg: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -114,6 +118,19 @@ if [ -z "$PR_NUMBER" ] || [ -z "$INPUT" ]; then
 fi
 if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
     echo "ERR file-deferred-issues: --pr must be a positive integer, got: $PR_NUMBER" >&2
+    exit 1
+fi
+FU_WHY_ARGS=()
+if [ "$FU_CLASS" = "hardening" ]; then
+    case "$FU_WHY" in
+        unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) FU_WHY_ARGS=(--fu-why "$FU_WHY") ;;
+        *)
+            echo "ERR file-deferred-issues: --fu-class hardening requires --fu-why unseen-failure|no-check|vacuous-check|no-recovery|silent-rot (got: ${FU_WHY:-none})" >&2
+            exit 1
+            ;;
+    esac
+elif [ -n "$FU_WHY" ]; then
+    echo "ERR file-deferred-issues: --fu-why applies only to --fu-class hardening" >&2
     exit 1
 fi
 
@@ -461,7 +478,7 @@ console.log(found.size === 1 ? [...found][0] : "");
     create_rc=0
     created=$(jira_run create --type Task --title "$jira_title" --labels "$LABEL,standalone" --sector 'Ship loop' \
         --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" \
-        --residual-of "$RESIDUAL_OF" --fu-class "$FU_CLASS" --class "$CR_CLASS" 2>"$jira_err_file") || create_rc=$?
+        --residual-of "$RESIDUAL_OF" --fu-class "$FU_CLASS" ${FU_WHY_ARGS[@]+"${FU_WHY_ARGS[@]}"} --class "$CR_CLASS" 2>"$jira_err_file") || create_rc=$?
     create_err=$(cat "$jira_err_file" 2>/dev/null || true)
     rm -f "$jira_err_file" "$jira_body_file"
     dup_key=$(printf '%s\n' "$created" | sed -n 's/^Duplicate \([A-Za-z][A-Za-z0-9]*-[0-9][0-9]*\).*/\1/p' | head -n1)

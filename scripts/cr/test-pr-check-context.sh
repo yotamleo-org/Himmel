@@ -2697,21 +2697,27 @@ mkdir -p "$unrelated69"
 out69b="$(cd "$anchor13" && CDPATH="$unrelated69" HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
 check "$(get_kv "$out69b" anchor_lane)" "himmel" "T69b anchor_lane=himmel (CDPATH poisoned toward an unrelated dir must not break the legitimate himmel-lane match)"
 
-# T70: step 0 prints the two base-skew numbers on every lane:
-# behind_base= (commits the branch lacks from the diff base) and main_ahead=
-# (commits local <base> carries beyond origin/<base>).
+# T70: a foreign clone's origin/HEAD wins over local main/master decoys.
+# Hard-coding main would select the wrong base and base-skew counts.
 origin70="$tmp/origin-70.git"
 work70="$tmp/work-70"
-git init -q --bare -b main "$origin70" || { echo "FAIL: T70 could not init origin"; fail=1; }
+git init -q --bare -b trunk "$origin70" || { echo "FAIL: T70 could not init origin"; fail=1; }
 git clone -q "$origin70" "$work70" 2>/dev/null || { echo "FAIL: T70 could not clone"; fail=1; }
-(cd "$work70" && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init && git push -q origin main && git checkout -q -b t70-skew && git commit -q --allow-empty -m branch-work) || { echo "FAIL: T70 could not seed branch"; fail=1; }
-(cd "$work70" && git checkout -q main && git commit -q --allow-empty -m m1 && git commit -q --allow-empty -m m2 && git push -q origin main && git checkout -q t70-skew) || { echo "FAIL: T70 could not advance origin/main"; fail=1; }
+(cd "$work70" && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init && git push -q origin trunk && git remote set-head origin -a && git branch main && git branch master && git checkout -q -b t70-skew && git commit -q --allow-empty -m branch-work) || { echo "FAIL: T70 could not seed branch"; fail=1; }
+check "$(git -C "$work70" symbolic-ref refs/remotes/origin/HEAD)" "refs/remotes/origin/trunk" "T70 origin/HEAD fixture precondition"
+(cd "$work70" && git checkout -q trunk && git commit -q --allow-empty -m m1 && git commit -q --allow-empty -m m2 && git push -q origin trunk && git checkout -q t70-skew) || { echo "FAIL: T70 could not advance origin/trunk"; fail=1; }
 out70a="$(cd "$work70" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
-check "$(get_kv "$out70a" behind_base)" "2" "T70a behind_base=2 (branch lacks two commits of origin/main)"
-check "$(get_kv "$out70a" main_ahead)" "0" "T70a main_ahead=0 (local main equals origin/main)"
-(cd "$work70" && git checkout -q main && git commit -q --allow-empty -m unpushed && git checkout -q t70-skew) || { echo "FAIL: T70 could not add unpushed main commit"; fail=1; }
+check "$?" "0" "T70a foreign-clone context exits 0"
+check "$(get_kv "$out70a" repo)" "$work70" "T70a repo is the foreign clone"
+check "$(get_kv "$out70a" anchor_lane)" "adopter" "T70a foreign clone uses the trusted anchor"
+check "$(get_kv "$out70a" base)" "trunk" "T70a base comes from origin/HEAD, not local main/master"
+check "$(get_kv "$out70a" behind_base)" "2" "T70a behind_base=2 (branch lacks two commits of origin/trunk)"
+check "$(get_kv "$out70a" main_ahead)" "0" "T70a main_ahead=0 (local trunk equals origin/trunk)"
+(cd "$work70" && git checkout -q trunk && git commit -q --allow-empty -m unpushed && git checkout -q t70-skew) || { echo "FAIL: T70 could not add unpushed trunk commit"; fail=1; }
 out70b="$(cd "$work70" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
-check "$(get_kv "$out70b" behind_base)" "2" "T70b behind_base stays 2 (diff base is origin/main, not local main)"
-check "$(get_kv "$out70b" main_ahead)" "1" "T70b main_ahead=1 (one unpushed local main commit)"
+check "$?" "0" "T70b foreign-clone context exits 0"
+check "$(get_kv "$out70b" base)" "trunk" "T70b base stays origin/HEAD after an unpushed local commit"
+check "$(get_kv "$out70b" behind_base)" "2" "T70b behind_base stays 2 (diff base is origin/trunk, not local trunk)"
+check "$(get_kv "$out70b" main_ahead)" "1" "T70b main_ahead=1 (one unpushed local trunk commit)"
 
 [ "$fail" -eq 0 ] && echo "PASS test-pr-check-context" || exit 1

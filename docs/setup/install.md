@@ -3,7 +3,7 @@
 himmel is a harness *for* [Claude Code](https://claude.com/claude-code): hooks,
 git gates and guardrails that enforce a PR-gated workflow at the tool-call layer
 instead of asking the model to remember prose, plus handover files that carry
-context across sessions. This page is the whole adopter path — install it,
+context across sessions. This page is the whole adopter path: install it,
 choose what lands, and adapt the parts that assume himmel's own conventions.
 
 Developing himmel *itself* is a different path:
@@ -19,7 +19,7 @@ node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 `--scope` is the non-interactive path: it loads a shipped, runnable preset
 ([`docs/setup/profiles/adopter-project.install-profile.json`](profiles/adopter-project.install-profile.json)
 or the `adopter-user` twin) and installs without asking anything. Drop the flag
-to get the wizard instead — it asks a handful of questions and lets you confirm
+to get the wizard instead; it asks a handful of questions and lets you confirm
 each default. `--dry-run` prints the plan and writes nothing.
 
 No `node` on the machine yet? Run `bash himmel/scripts/himmelctl/bootstrap.sh`
@@ -36,7 +36,7 @@ vault tooling, qmd search, the Telegram bridge, armed resume).
 > **Git Bash** (`bash` 3.2+), and the PowerShell twins exist but are not part of
 > the v1 support claim. Treat a Windows install as opt-in and self-supported:
 > the Git Bash path is the one to prefer. Expect quoting and `PATH` differences
-> from a Linux shell, and open an issue for whatever breaks — that is how the
+> from a Linux shell, and open an issue for whatever breaks. That is how the
 > v1 support claim grows.
 
 ## What `profile` means: three unrelated things
@@ -52,7 +52,7 @@ named once, up front, and every later mention in this guide is qualified.
 
 They are independent. A `starter` install profile with the `lean` plugin
 profile, recorded in a saved install-profile file, is the ordinary adopter
-setup — and is exactly what `--scope project` gives you.
+setup, and is exactly what `--scope project` gives you.
 
 The plugin profile toggles with `/profile`; its registry is
 `scripts/lanes/plugin-profiles.json`. The always-on `base` carries
@@ -81,13 +81,13 @@ deal, and every guard has an off switch (see
 | **Plugin profile** | `lean` | The everyday plugin set | Nothing | Fewer skills loaded, less context spent per session |
 | | `full` | Every marketplace plugin | Nothing | More context per session for surfaces you may never invoke |
 
-Item membership is **data, not prose** — read
+Item membership is **data, not prose**. Read
 [`scripts/install/manifest.json`](../../scripts/install/manifest.json) rather
 than trusting the counts above if they ever disagree. Channels are defined once,
 in [updating.md](updating.md#release-channels); this table cites
 them rather than restating the resolution rules. Two senses of "default" that
 are easy to conflate: the unset row is what the resolver falls back to when
-*nothing* is recorded, while `install` on a new station records `stable` — so a
+*nothing* is recorded, while `install` on a new station records `stable`, so a
 fresh install tracks releases, and only a station whose channel was never
 written tracks the tip.
 
@@ -98,15 +98,15 @@ written tracks the tip.
 
 ## Minimal config
 
-- **`USER_SLUG`** — your kebab-case handle. Skip it and himmel derives one from
+- **`USER_SLUG`:** your kebab-case handle. Skip it and himmel derives one from
   `git config user.name`. That is the whole required configuration.
 - **Everything else is opt-in.** The companion vault, Telegram, hermes and Jira
   are all absent until you configure them; the harness runs fully without any of
-  them. Add Jira later by filling the `JIRA_*` values in `.env` — the local CLI
+  them. Add Jira later by filling the `JIRA_*` values in `.env`; the local CLI
   needs four values and no cloud ID.
-- **Handover state** — run `/handover-setup` once to say where cross-session
+- **Handover state:** run `/handover-setup` once to say where cross-session
   notes live: an inline folder in the repo, or a separate git repo via
-  `HANDOVER_DIR`. A fresh clone has no handover root until you do — until then
+  `HANDOVER_DIR`. A fresh clone has no handover root until you do. Until then
   `handover_root` fails closed with a diagnostic (`scripts/lib/handover-path.sh`),
   it does not crash, and nothing silently writes to the wrong place.
 
@@ -121,7 +121,7 @@ commit subject to reference a ticket. It assumes a Jira-style key: with
 `JIRA_PROJECT_KEY` set, the pattern is `<KEY>-<number>`; with no key set it
 falls back to `#<number>`, which is a GitHub issue reference and probably
 already right for you. To use your own convention, set `TICKET_ID_PATTERN` to an
-extended-regex. To switch it off entirely, set `TICKET_ID_REQUIRED=0` — the
+extended-regex. To switch it off entirely, set `TICKET_ID_REQUIRED=0`. The
 conventional-commit shape is still enforced, only the ticket reference is
 dropped.
 
@@ -132,22 +132,22 @@ commit message, that you did something a machine cannot verify:
 and `Security reviewed: <token>` on non-docs code
 ([`scripts/hooks/check-security-reviewed.sh`](../../scripts/hooks/check-security-reviewed.sh)).
 Both belong in the **first** commit of a branch, written after actually testing
-and reviewing — the gate fires at push, far too late to teach the habit. They
+and reviewing: the gate fires at push, far too late to teach the habit. They
 are opt-in for adopters: they run only if you list the `platforms-tested` and
 `security-reviewed` hook ids in your own `.pre-commit-config.yaml`. Omit the ids
 and neither ever fires.
 
-**3. `.single-writer` — the one you will want on day one.** `block-edit-on-main`
+**3. `.single-writer`: the one you will want on day one.** `block-edit-on-main`
 refuses edits when `HEAD` is your default branch, which is correct for a
 review-gated team repo and wrong for a personal repo you commit straight to.
 Drop a `.single-writer` file at that repo's root (`touch .single-writer`) and
 on-main edits are allowed there. It is local and gitignored, so clones of the
-same repo stay protected — this is a per-checkout opt-out, not a repo policy.
+same repo stay protected; this is a per-checkout opt-out, not a repo policy.
 
 **4. The worktree workflow, and where the off switch goes.** `/worktree` creates an
 isolated branch and worktree next to your `.claude/` directory; `block-edit-on-main` and
 `check-worktree-isolation` keep work inside one. For a deliberate one-off, the
-off switch is `EDIT_ON_MAIN_OK=1` — and it must be set in the shell that **launches**
+off switch is `EDIT_ON_MAIN_OK=1`, and it must be set in the shell that **launches**
 Claude Code (`EDIT_ON_MAIN_OK=1 claude`). A per-call prefix inside a session does
 nothing, because the hook runs in a process that never sees it. This is the most
 common adopter confusion; it is worth reading twice.
@@ -168,7 +168,7 @@ wired, or the hook id from `.pre-commit-config.yaml`.
   [plugin README](../../marketplace/plugins/himmel-guard/README.md#on-by-default-and-how-to-opt-out)
   covers keeping it off across a reconcile.
 
-**6. Operator-personal subsystems — skip all of these.** None of them is part of
+**6. Operator-personal subsystems: skip all of these.** None of them is part of
 the portable core, and skipping them changes nothing about the hooks or the
 worktree workflow.
 
@@ -183,8 +183,8 @@ worktree workflow.
 
 ## Verify
 
-Open a Claude Code session at the repo root (`claude`) — hooks only fire inside
-a session — then:
+Open a Claude Code session at the repo root (`claude`); hooks only fire inside
+a session. Then:
 
 1. Try to edit a file while on the default branch. `block-edit-on-main` should
    refuse and point you at `/worktree`. That refusal *is* the success signal.
@@ -213,7 +213,7 @@ himmel install rather than a fresh one: [migrating.md](migrating.md).
 
 ### Uninstalling
 
-`himmelctl uninstall` is the inverse of install. Preview first — `--dry-run`
+`himmelctl uninstall` is the inverse of install. Preview first: `--dry-run`
 lists every path, plugin, hook and settings key it would touch and changes
 nothing:
 
@@ -240,24 +240,24 @@ conservative one:
 - **Never touched**: the himmel clone, your `.env`, worktrees, handover state,
   and any `settings.json` key himmel did not add. Also left in place, and named
   in the footprint: Claude Code's workspace-trust entry in `~/.claude.json`, and
-  the himmel scripts a project-scope install copied into your repo's `scripts/`
-  — deleting the himmel clone does not remove them; drop them with git if you
+  the himmel scripts a project-scope install copied into your repo's `scripts/`.
+  Deleting the himmel clone does not remove them; drop them with git if you
   no longer want them.
 
 Every change is printed with its exact path and line (`removing hook
 PreToolUse: …`). After the settings step it re-reads the file and prints
-`verified: no himmel wiring left in <file>` — a check of the file (hooks,
+`verified: no himmel wiring left in <file>`, a check of the file (hooks,
 statusLine and the himmel `env` keys), not of a return code; if any of it is
 still wired the run stops with a non-zero exit. The full path list lives in
 [`scripts/install/uninstall-manifest.tsv`](../../scripts/install/uninstall-manifest.tsv),
-which the uninstaller reads — `--dry-run` prints it as a `KEEP`/`REMOVE`
+which the uninstaller reads; `--dry-run` prints it as a `KEEP`/`REMOVE`
 footprint. Flags and exit codes: [updating.md](updating.md#uninstalling--offboarding).
 
 ## Appendix — manual install (recovery only)
 
 **Use `himmelctl install`.** This sequence exists for one situation: the
 installer cannot run and you need the portable core anyway. If you end up here,
-that is a bug worth reporting, not a supported second path — and
+that is a bug worth reporting, not a supported second path, and
 `/himmel-doctor` is the first thing to try instead.
 
 The portable core needs `bash` 3.2+, `git`, `jq`, `python3`. Copy these files
@@ -299,7 +299,7 @@ Make them executable, then wire the three hooks into your repo's
 `CLAUDE_PROJECT_DIR` is set by Claude Code to the directory holding
 `.claude/settings.json`, so that directory must be your repo root. Verify with
 the four steps under [Verify](#verify) above, then run
-`node scripts/himmelctl/bin.js status` as soon as the installer works again — it
+`node scripts/himmelctl/bin.js status` as soon as the installer works again. It
 will tell you what the manual copy missed.
 
 ## Where to go next

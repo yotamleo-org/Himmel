@@ -85,7 +85,7 @@ defer_finding() {
   dout=$(CR_LEDGER="$LEDGER" bash "$LA" finding --branch "$BR" --head "$FHEAD" --model gpt-6.1-sol --id "$1" \
     --severity "$2" --file scripts/config-ui/agui-web/src/main.tsx --line 23 --verdict deferred \
     --reason "Pre-existing production lifecycle defect outside approved e2e-only repair scope; console-directed Bug follow-up verified and linked" \
-    --deferred-to HIMMEL-6352 --fu-class hardening --text "$3" 2>&1) || {
+    --deferred-to HIMMEL-6352 --fu-class hardening --fu-why no-check --text "$3" 2>&1) || {
     echo "FAIL: fixture finding $1 was not written: $dout" >&2; exit 1; }
 }
 defer_finding census-reset-1 imp "Fleet census rerender recreates source and resets active transcript"
