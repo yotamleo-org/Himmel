@@ -121,6 +121,30 @@ else
   fi
 fi
 
+# --- Test 5: the tracked record is the marketplace pin's wiki-lint files, not a stale release ---
+echo ""
+echo "Test 5: tracked UPSTREAM.json ref equals the claude-obsidian marketplace pin and carries its wiki-lint hashes"
+
+MARKETPLACE_JSON="$(cd "$TESTS_DIR/../../../.claude-plugin" && pwd)/marketplace.json"
+WANT_REF="v3.0.1"
+WANT_SKILL_SHA="a660684a0b1cb5ea1382556922976b1abafa19e77992e694a7d8d9496d8a8215"
+WANT_AGENT_SHA="7abb46a3ed549cc83a70a8d2d4096a4ceed58f7617a81441c786be6734df233f"
+if python -c "
+import json, sys
+up = json.load(open(sys.argv[1]))
+mk = json.load(open(sys.argv[2]))
+pin = next(p['source']['ref'] for p in mk['plugins'] if p['name'] == 'claude-obsidian')
+assert pin == sys.argv[3], 'marketplace pin %s' % pin
+assert up.get('ref') == pin, 'UPSTREAM.json ref %r vs pin %r' % (up.get('ref'), pin)
+got = {f['path']: f['sha256'] for f in up['files']}
+assert got['skills/wiki-lint/SKILL.md'] == sys.argv[4], got['skills/wiki-lint/SKILL.md']
+assert got['agents/wiki-lint.md'] == sys.argv[5], got['agents/wiki-lint.md']
+" "$UPSTREAM_JSON" "$MARKETPLACE_JSON" "$WANT_REF" "$WANT_SKILL_SHA" "$WANT_AGENT_SHA"; then
+  ok "UPSTREAM.json ref and hashes match the v3.0.1 marketplace pin"
+else
+  fail "UPSTREAM.json does not record the v3.0.1 wiki-lint files the marketplace pin installs"
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
