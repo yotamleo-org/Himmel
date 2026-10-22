@@ -682,7 +682,7 @@ scripts/hooks/test-memory-bash-line-check.sh	local	behaviour suite, 0 catches in
 scripts/hooks/test-notify-console-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-orchestrator-inline-guard.sh	pr	trust-path
 scripts/hooks/test-permission-allow-gate-shapes.sh	pr	trust-path
-scripts/hooks/test-plugin-hook-bash-wiring.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/hooks/test-plugin-hook-bash-wiring.sh	pr	trust-path
 scripts/hooks/test-qmd-staleness-notice.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-quota-gauge-claude-writer.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-quota-gauge-ledger.sh	pr	static-gate
