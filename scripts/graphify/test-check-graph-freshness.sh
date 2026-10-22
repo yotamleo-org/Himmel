@@ -253,6 +253,11 @@ out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"semantic refresh stuck: x.md failed, was refused or stayed backed off in each of the last 3 runs"* ]] \
   && pass "T10e a backed-off file keeps the check non-zero" || fail "T10e rc=3 (got $rc): $out"
 [[ "$out" == *"semantic-merge.py unstick --out $OUT"* ]] && pass "T10e the message names the unstick verb to clear a back-off" || fail "T10e no unstick hint: $out"
+OUT="$WS/t10e sp/graphify-out"; CORPUS="$WS/t10e sp/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "x.md||" "x.md||" "||x.md"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ) || true
+[[ "$out" == *"unstick --out $(printf '%q' "$OUT")"* ]] && pass "T10e2 a path with a space is shell-escaped in the unstick command" || fail "T10e2 unescaped unstick path: $out"
 
 # --- T10f: a stuck semantic layer on a STALE graph still reports stale (rc=1) and still names the stuck file ---
 OUT="$WS/t10f/graphify-out"; CORPUS="$WS/t10f/corpus"; build_out "$OUT" "$CORPUS"

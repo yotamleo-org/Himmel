@@ -242,7 +242,7 @@ PYEOF
   [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE $SEM_STATUS"
   SEM_STUCK="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^STUCK //p')"
   if [ -n "$SEM_STUCK" ]; then
-    STUCK_MSG="semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes; to retry it now run: python3 $HERE/semantic-merge.py unstick --out $OUT)."
+    STUCK_MSG="semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes; to retry it now run: python3 $(printf '%q' "$HERE")/semantic-merge.py unstick --out $(printf '%q' "$OUT"))."
     echo "graph-freshness: STUCK $STUCK_MSG" >&2
   fi
 fi

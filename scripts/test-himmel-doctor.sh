@@ -7031,8 +7031,9 @@ printf '#!/bin/sh\nexit 3\n' > "$c70_t/bare3-check.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/bare3-check.sh")"
 if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 3'; then pass "C70 rc 3 without a stuck message -> INFO, not a healthy OK"; else fail "C70 bare rc 3 -> $(printf '%s' "$out" | head -3)"; fi
 # the default graph is the station checkout's graphify-out, never a graph under HOME
-out="$(env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
-if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F "$c70_t"; then pass "C70 default judges the station graphify-out, not a graph under HOME"; else fail "C70 default root -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c70_t/root"; cp -R "$c70_out" "$c70_t/root/graphify-out"
+out="$(env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_ROOT="$c70_t/root" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
+if grepq "$out" -F "unstick --out $c70_t/root/graphify-out" && ! grepq "$out" -F "unstick --out $c70_out"; then pass "C70 default judges the root's graphify-out, not a graph under HOME"; else fail "C70 default root -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="

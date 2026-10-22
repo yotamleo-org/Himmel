@@ -461,7 +461,9 @@ real_git="$(command -v git)"
 # shellcheck disable=SC2016
 printf '#!/bin/sh\n[ "$1" = merge-base ] && echo "$*" >> "%s/mb.log"\nexec "%s" "$@"\n' "$t" "$real_git" > "$t/bin/git"
 chmod +x "$t/bin/git"
-out="$(cd "$t/repo" && PATH="$t/bin:$PATH" GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
+if ! out="$(cd "$t/repo" && PATH="$t/bin:$PATH" GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"; then
+    fail "tip lookup command exited nonzero -> $out"
+fi
 r90="$(tsv_row "$out" pr90)"; rahead="$(tsv_row "$out" feat/himmel-9390-ahead)"
 if grepq "$r90" '^LANDED-ELSEWHERE' && grepq "$r90" -F 'merged PR #904'; then pass "tip lookup: pr ref at the 4th of 6 merged heads -> merged PR #904"; else fail "tip lookup answer -> $r90"; fi
 if [ -n "$rahead" ] && ! grepq "$rahead" '^LANDED-ELSEWHERE'; then pass "tip lookup control: an ahead, unmerged branch is not called landed"; else fail "tip lookup ahead control -> $rahead"; fi

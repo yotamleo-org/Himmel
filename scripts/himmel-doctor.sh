@@ -4203,7 +4203,7 @@ check_c70_graph_semantic() {
     stuck_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: STUCK //p' | head -1)"
     if { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stuck_line" ]; then
         emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stuck_line" \
-            "python3 $SELF_DIR/graphify/semantic-merge.py unstick --out $out   # then run a semantic batch; bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
+            "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then run a semantic batch; bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
     elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out"
