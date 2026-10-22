@@ -68,8 +68,21 @@ fail_nonfatal() {
 # an older one carries the advisory that pin was raised for.
 # shellcheck source=installer-pins.sh
 . "$HIMMEL_PATH/scripts/machine-setup/installer-pins.sh"
+version_ge() {   # <have> <want>: dotted numeric compare, no GNU sort -V (bash 3.2 safe)
+  local IFS=. i a b
+  local -a have want
+  read -r -a have <<< "$1"
+  read -r -a want <<< "$2"
+  for i in 0 1 2; do
+    a="${have[i]:-0}"; a="${a%%[!0-9]*}"
+    b="${want[i]:-0}"; b="${b%%[!0-9]*}"
+    [ "${a:-0}" -gt "${b:-0}" ] && return 0
+    [ "${a:-0}" -lt "${b:-0}" ] && return 1
+  done
+  return 0
+}
 require_min_version() {   # <tool> <have> <want>
-  if [ "$(printf '%s\n%s\n' "$2" "$3" | sort -V | head -1)" != "$3" ]; then
+  if ! version_ge "$2" "$3"; then
     echo "  $1 $2 is older than the pinned $3 — run: brew upgrade $1" >&2
     return 1
   fi
