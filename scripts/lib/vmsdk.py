@@ -651,7 +651,7 @@ class VM:
         if rc != 0:
             raise VMError(f"git fetch failed on {self.name} (rc {rc}): "
                           f"{out.replace(token, '***').strip()[-200:]}")
-        rc, out = self.run(f"git -C {dest} checkout --detach FETCH_HEAD")
+        rc, out = self.run(f"git -C {dest} checkout --detach --no-overwrite-ignore FETCH_HEAD")
         if rc != 0:
             raise VMError(f"git checkout failed on {self.name} (rc {rc}): {out.strip()[-200:]}")
 

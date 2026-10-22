@@ -494,7 +494,7 @@ class TestCloneOnExistingCheckout(unittest.TestCase):
         self.assertEqual(dest, "~/himmel")
         joined = "\n".join(calls)
         self.assertIn(" fetch ", joined)
-        self.assertIn("checkout --detach FETCH_HEAD", joined)
+        self.assertIn("checkout --detach --no-overwrite-ignore FETCH_HEAD", joined)
         self.assertNotIn(" clone ", joined)
 
     def test_existing_non_git_dest_still_refuses(self):
