@@ -12,7 +12,8 @@
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
 # candidate is a To Do issue that is not an Epic/Sub-task, carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
-# blocked_by link. Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
+# blocked_by link (focus-chains-links.sh writes the console's chain order as
+# those links). Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
 # natural order; none last), then priority, then key.
 #
 # Tiers (the first that applies; tier_of() in the script): 1 the operator pool
