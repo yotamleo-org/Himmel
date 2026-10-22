@@ -3,9 +3,9 @@
 // critics.local.json overlay: a candidate overlay is resolved first, and nothing lands unless the resolver and the
 // "one hard reviewer" rule accept it. The base scripts/cr/critics.json is a trust path and is never opened for write.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 type Env = Record<string, string | undefined>;
 type Row = { slug: string; provider?: string; model?: string; tier?: string; mode: string; required: boolean };
@@ -50,6 +50,18 @@ function overlayPath(env: Env, r: Resolved): string {
   return r.files.local ?? join(env.HIMMELCTL_CACHE_DIR || join(env.HOME || homedir(), ".claude", "himmel"), "critics.local.json");
 }
 
+// the shared base alone, through the resolver with an empty overlay in place of the real one: the resolver knows where
+// the base lives (a file, or main's copy), so a dropped reviewer's shared settings are the ones the gate would use.
+function baseSettings(env: Env): Map<string, { mode: string; required: boolean }> | null {
+  const d = mkdtempSync(join(tmpdir(), "review-gate-base-"));
+  try {
+    const empty = join(d, "critics.local.json");
+    writeFileSync(empty, '{"panel":[]}\n');
+    const b = resolveGate(env, empty);
+    return b.ok ? new Map(b.r.panel.map((x) => [x.slug, { mode: x.mode, required: x.required }])) : null;
+  } finally { rmSync(d, { recursive: true, force: true }); }
+}
+
 function readOverlay(path: string): { panel: Record<string, unknown>[]; rest: Record<string, unknown> } {
   if (!existsSync(path)) return { panel: [], rest: {} };
   const j = JSON.parse(readFileSync(path, "utf8"));
@@ -67,12 +79,8 @@ export function readGate(env: Env): GateResult {
   try { dropped = readOverlay(path).panel.filter((x) => x.drop === true && typeof x.slug === "string").map((x) => x.slug as string); } catch { /* an unreadable overlay shows as no drops; the resolver already named it */ }
   // a dropped row is off the resolved panel, so its shared settings come from the base file: turning it back on restores them.
   const droppedBase: Record<string, { mode: string; required: boolean }> = {};
-  try {
-    for (const x of readOverlay(g.r.files.base).panel) {
-      if (typeof x.slug !== "string" || !dropped.includes(x.slug)) continue;
-      droppedBase[x.slug] = { mode: typeof x.mode === "string" ? x.mode : x.provider === "github-app" ? "best-effort" : "hard", required: x.required === true };
-    }
-  } catch { /* an unreadable base shows the plain defaults; the resolver already named it */ }
+  const base = dropped.length ? baseSettings(env) : null;
+  for (const slug of dropped) { const s = base?.get(slug); if (s) droppedBase[slug] = s; }
   return {
     status: 200,
     body: {
@@ -99,7 +107,9 @@ export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
   if (!g.ok) return { status: 422, body: { error: g.error } };
   const path = overlayPath(env, g.r);
   if (basename(path) !== "critics.local.json") return fail("refusing to write anything but a critics.local.json overlay");
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) return fail("critics.local.json is a symlink; refusing to replace it");
   if (!Array.isArray(b.reviewers)) return fail("reviewers must be a list");
+  const base = baseSettings(env);
   let cur: ReturnType<typeof readOverlay>;
   try { cur = readOverlay(path); } catch (e) { return { status: 422, body: { error: (e as Error).message } }; }
   const known = new Set([...g.r.panel.map((x) => x.slug), ...cur.panel.map((x) => x.slug as string)]);
@@ -108,16 +118,22 @@ export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
     if (!isObject(x) || typeof x.slug !== "string" || !known.has(x.slug)) return fail("unknown reviewer");
     if (typeof x.mode !== "string" || !MODES.includes(x.mode)) return fail(`mode must be ${MODES.join(" or ")}`);
     if (typeof x.required !== "boolean" || typeof x.enabled !== "boolean") return fail("required and enabled must be true or false");
-    const row: Record<string, unknown> = x.enabled ? { slug: x.slug, mode: x.mode, required: x.required } : { slug: x.slug, drop: true };
     const at = panel.findIndex((p) => p.slug === x.slug);
-    const eff = g.r.panel.find((p) => p.slug === x.slug);
-    if (at < 0 && x.enabled && eff && eff.mode === x.mode && eff.required === x.required) continue; // as the base has it: keep inheriting
-    if (at < 0) panel.push(row);
-    else {
-      const merged = { ...panel[at], ...row };
-      if (x.enabled) delete merged.drop; else { delete merged.mode; delete merged.required; }
-      panel[at] = merged;
+    if (!x.enabled) {
+      const merged = { ...panel[at], slug: x.slug, drop: true };
+      delete merged.mode; delete merged.required;
+      if (at < 0) panel.push(merged); else panel[at] = merged;
+      continue;
     }
+    // only what differs from the base is written, so the rest keeps following the base; a row left with its slug alone goes.
+    const shared = base?.get(x.slug);
+    const merged: Record<string, unknown> = { ...panel[at], slug: x.slug };
+    delete merged.drop;
+    for (const [k, v] of [["mode", x.mode], ["required", x.required]] as const) {
+      if (shared && shared[k] === v) delete merged[k]; else merged[k] = v;
+    }
+    if (shared && Object.keys(merged).length === 1) { if (at >= 0) panel.splice(at, 1); continue; }
+    if (at < 0) panel.push(merged); else panel[at] = merged;
   }
   const text = JSON.stringify({ ...cur.rest, panel }, null, 2) + "\n";
   const tmp = `${path}.tmp-${process.pid}`;

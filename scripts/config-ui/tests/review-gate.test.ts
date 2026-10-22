@@ -2,7 +2,7 @@
 // critics.local.json overlay. Every test points the base and the overlay at a temp dir.
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -82,7 +82,7 @@ test("POST writes the overlay only, and a read back equals what was written", as
   expect(j.reviewers.map((x: { slug: string }) => x.slug)).toEqual(["codex", "coderabbit"]); // claude dropped
   expect(j.dropped).toEqual(["claude"]);
   const overlay = JSON.parse(readFileSync(local, "utf8"));
-  expect(overlay.panel).toContainEqual({ slug: "coderabbit", mode: "hard", required: false });
+  expect(overlay.panel).toContainEqual({ slug: "coderabbit", mode: "hard" }); // required is as the base has it, so it is not written
   expect(overlay.panel).toContainEqual({ slug: "claude", drop: true });
   expect(sha(base)).toBe(before);
 });
@@ -103,7 +103,38 @@ test("a reviewer left as the base has it is not copied into the overlay, so base
     { slug: "coderabbit", mode: "hard", required: false, enabled: true },
   ];
   expect((await post(port, { reviewers: sent })).status).toBe(200);
-  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([{ slug: "coderabbit", mode: "hard", required: false }]);
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([{ slug: "coderabbit", mode: "hard" }]);
+});
+
+test("with the base read from main (CRITICS_BASE_JSON unset), a turned-off reviewer comes back with the base settings and writes nothing extra", async () => {
+  const port = boot({ CRITICS_BASE_JSON: "" });
+  const first = await (await get(port)).json();
+  expect(first.reviewers.find((x: { slug: string }) => x.slug === "claude")).toMatchObject({ mode: "hard", required: false });
+  await post(port, { reviewers: [{ slug: "claude", mode: "best-effort", required: false, enabled: false }] });
+  const j = await (await get(port)).json();
+  expect(j.droppedBase.claude).toEqual({ mode: "hard", required: false });
+  const back = reviewGateDraft(j).find((x: { slug: string }) => x.slug === "claude");
+  expect(back).toEqual({ slug: "claude", mode: "hard", required: false, enabled: false });
+  expect((await post(port, { reviewers: [{ ...back, enabled: true }] })).status).toBe(200);
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([]);
+});
+
+test("a change put back to the base value leaves no field behind in the overlay", async () => {
+  const port = boot();
+  await post(port, { reviewers: [{ slug: "coderabbit", mode: "hard", required: true, enabled: true }] });
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([{ slug: "coderabbit", mode: "hard", required: true }]);
+  await post(port, { reviewers: [{ slug: "coderabbit", mode: "best-effort", required: false, enabled: true }] });
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([]);
+});
+
+test("POST refuses a critics.local.json that is a symlink and leaves its target alone", async () => {
+  const target = join(dir, "elsewhere.json");
+  writeFileSync(target, '{"panel":[]}\n');
+  symlinkSync(target, local);
+  const r = await post(boot(), { reviewers: [{ slug: "coderabbit", mode: "hard", required: false, enabled: true }] });
+  expect(r.status).toBe(400);
+  expect((await r.json()).error).toMatch(/symlink/);
+  expect(readFileSync(target, "utf8")).toBe('{"panel":[]}\n');
 });
 
 test("POST refuses to write when the overlay path is the base critics.json", async () => {
