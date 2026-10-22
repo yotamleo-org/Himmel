@@ -3,7 +3,7 @@
 #
 # Sourced, never executed. suite_ledger_append <suite> <rc> <sec> adds
 #   {"ts":"<UTC>","suite":"<suite>","head":"<sha>","rc":<n>,"sec":<n>,"station":"<host>"}
-# to $HIMMEL_SUITE_LEDGER, default $HOME/.himmel/state/suite-runs.jsonl (the
+# (plus the registry envelope v, host, source, kind) to $HIMMEL_SUITE_LEDGER, default $HOME/.himmel/state/suite-runs.jsonl (the
 # directory is created on demand). Read by suite-runs-summary.sh.
 #
 # It can never change a suite's verdict: every failure is swallowed and the
@@ -28,8 +28,8 @@ suite_ledger_append() {
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     esc=$(printf '%s' "$suite" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
     station=$(printf '%s' "$station" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
-    printf '{"ts":"%s","suite":"%s","head":"%s","rc":%s,"sec":%s,"station":"%s"}\n' \
-      "$ts" "$esc" "$head" "$rc" "$sec" "$station" >> "$ledger"
+    printf '{"v":1,"ts":"%s","host":"%s","source":"suite-ledger","kind":"suite-run","suite":"%s","head":"%s","rc":%s,"sec":%s,"station":"%s"}\n' \
+      "$ts" "$station" "$esc" "$head" "$rc" "$sec" "$station" >> "$ledger"
   } 2>/dev/null || true
   return 0
 }
