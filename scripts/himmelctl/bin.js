@@ -1136,7 +1136,18 @@ function applyCommitRulesStep(answers) {
   if (!answers.commitRules) return { rc: 0 };
   const file = commitRulesPath();
   try {
-    behaviourConfigLib.upsertConfEntries(file, commitRulesEntries(answers.commitRules), ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']);
+    // Each key lands in the layer that wins for it; a key the answers omit is
+    // dropped from every layer so no stale value survives in either.
+    const entries = commitRulesEntries(answers.commitRules);
+    const omitted = ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN'].filter((k) => !entries.some(([ek]) => ek === k));
+    const byFile = new Map([[file, []]]);
+    for (const e of entries) {
+      const target = behaviourConfigLib.writeTarget(e[0]);
+      byFile.set(target, [...(byFile.get(target) || []), e]);
+    }
+    const local = behaviourConfigLib.confLocalPath();
+    if (!byFile.has(local) && fs.existsSync(local)) byFile.set(local, []);
+    for (const [target, list] of byFile) behaviourConfigLib.upsertConfEntries(target, list, omitted);
   } catch (e) {
     console.error(`himmelctl: could not write commit rules to ${file}: ${e.message}`);
     return { rc: 1 };
@@ -8079,9 +8090,9 @@ function cmdConfigSetCommit(rest, value, args) {
   }
   const kv = {};
   try {
-    for (const l of fs.readFileSync(commitRulesPath(), 'utf8').split('\n')) {
-      const m = /^(TRACKER|TICKET_ID_REQUIRED|TICKET_ID_PATTERN)=(.*)$/.exec(l);
-      if (m && !(m[1] in kv)) kv[m[1]] = m[2];
+    for (const k of ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']) {
+      const v = behaviourConfigLib.readConfigVar(k).value;
+      if (v) kv[k] = v;
     }
   } catch (e) { if (e.code !== 'ENOENT') { console.error(`himmelctl: config set: could not read ${commitRulesPath()}: ${e.message}`); return 1; } }
   const cr = {

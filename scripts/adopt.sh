@@ -618,7 +618,7 @@ wire_handover_dir_luna() {
     fi
   fi
   for conf in "$HOME/.himmel/himmel.conf.local" "$HOME/.himmel/himmel.conf"; do
-    if [[ -f "$conf" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=[[:space:]]*[^[:space:]]' "$conf"; then
+    if [[ -f "$conf" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=[[:space:]]*(["'"'"'][^"'"'"']|[^[:space:]"'"'"'])' "$conf"; then
       echo "  HANDOVER_DIR already set in $conf — leaving it, not wiring env.HANDOVER_DIR into $settings"
       return
     fi
