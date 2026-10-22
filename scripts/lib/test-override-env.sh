@@ -226,4 +226,22 @@ for s in scripts/hooks/test-orchestrator-inline-guard.sh \
   fi
 done
 
+echo "== Case 8: BWIMC_ENGINE (an engine selector, not *_OK) is scrubbed and registered =="
+out8=$(
+  export BWIMC_ENGINE=ast
+  scrub_override_env
+  printf '%s' "${BWIMC_ENGINE-}"
+)
+if [ -z "$out8" ]; then
+  pass "scrub_override_env clears BWIMC_ENGINE"
+else
+  fail "scrub_override_env left BWIMC_ENGINE set to $out8"
+fi
+if jq -e '.flags[] | select(.name == "BWIMC_ENGINE" and (.hooks | index("scripts/hooks/block-write-into-main-checkout.sh")))' \
+  "$REPO/scripts/himmelctl/lib/bypass-flags.json" >/dev/null 2>&1; then
+  pass "bypass-flags.json registers BWIMC_ENGINE for the write guard"
+else
+  fail "bypass-flags.json has no BWIMC_ENGINE entry naming block-write-into-main-checkout.sh"
+fi
+
 rst_tally

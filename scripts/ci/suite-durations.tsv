@@ -885,6 +885,7 @@ scripts/machine-setup/test-install-plugins-ondemand.sh	13
 scripts/machine-setup/test-install-plugins-provenance.sh	20
 scripts/machine-setup/test-install-plugins-scope.sh	0
 scripts/machine-setup/test-install-plugins-verify.sh	1
+scripts/machine-setup/test-installer-pins.sh	0
 scripts/machine-setup/test-machine-setup-hermetic.sh	11
 scripts/machine-setup/test-macos.sh	0
 scripts/machine-setup/test-make-cloudinit-seed.sh	1

@@ -8,12 +8,17 @@ import { basename, dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 
 type Env = Record<string, string | undefined>;
-type Row = { slug: string; provider?: string; model?: string; tier?: string; mode: string; required: boolean };
+type Row = { slug: string; provider?: string; model?: string; effort?: string; tier?: string; mode: string; required: boolean };
+type Shared = { mode: string; required: boolean; provider?: string; model?: string; effort?: string };
 type Resolved = { review: string | null; panel: Row[]; files: { base: string; local: string | null } };
 export type GateResult = { status: number; body: Record<string, unknown> };
 
 const RESOLVER = resolve(import.meta.dir, "../lib/critics-config.sh");
 const MODES: readonly string[] = ["hard", "best-effort"];
+const EFFORTS: readonly string[] = ["low", "medium", "high", "xhigh", "max"]; // the values critic-first-pass.sh accepts
+// only the Claude critic reads an effort (critic-first-pass.sh); the codex reviewer is dispatched through hermes, which takes none yet.
+const EFFORT_PROVIDERS: readonly string[] = ["claude-api", "claude-subscription"];
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:\/@-]{0,99}$/;
 const RECOMMENDED: Readonly<Record<string, { mode: string; required: boolean; enabled: boolean }>> = {
   codex: { mode: "hard", required: true, enabled: true },
   claude: { mode: "best-effort", required: false, enabled: false }, // the Claude API critic is off (decision 108)
@@ -52,13 +57,13 @@ function overlayPath(env: Env, r: Resolved): string {
 
 // the shared base alone, through the resolver with an empty overlay in place of the real one: the resolver knows where
 // the base lives (a file, or main's copy), so a dropped reviewer's shared settings are the ones the gate would use.
-function baseSettings(env: Env): Map<string, { mode: string; required: boolean }> | null {
+function baseSettings(env: Env): Map<string, Shared> | null {
   const d = mkdtempSync(join(tmpdir(), "review-gate-base-"));
   try {
     const empty = join(d, "critics.local.json");
     writeFileSync(empty, '{"panel":[]}\n');
     const b = resolveGate(env, empty);
-    return b.ok ? new Map(b.r.panel.map((x) => [x.slug, { mode: x.mode, required: x.required }])) : null;
+    return b.ok ? new Map(b.r.panel.map((x) => [x.slug, { mode: x.mode, required: x.required, provider: x.provider, model: x.model, effort: x.effort }])) : null;
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 
@@ -80,7 +85,7 @@ export function readGate(env: Env): GateResult {
   // a dropped row is off the resolved panel, so its shared settings come from the base file: turning it back on restores them.
   const droppedBase: Record<string, { mode: string; required: boolean }> = {};
   const base = dropped.length ? baseSettings(env) : null;
-  for (const slug of dropped) { const s = base?.get(slug); if (s) droppedBase[slug] = s; }
+  for (const slug of dropped) { const s = base?.get(slug); if (s) droppedBase[slug] = { mode: s.mode, required: s.required }; }
   return {
     status: 200,
     body: {
@@ -89,8 +94,10 @@ export function readGate(env: Env): GateResult {
       dropped,
       droppedBase,
       rateLimit: RATE_LIMIT,
+      efforts: EFFORTS,
       reviewers: g.r.panel.map((row, i) => ({
         slug: row.slug, order: i + 1, provider: row.provider ?? "", mode: row.mode, required: row.required, enabled: true,
+        hasModel: row.provider !== "github-app", hasEffort: EFFORT_PROVIDERS.includes(row.provider ?? ""), model: row.model ?? "", effort: row.effort ?? "",
         recommended: RECOMMENDED[row.slug] ?? { mode: row.mode, required: row.required, enabled: true },
       })),
       env: ENV_KNOBS.map((k) => ({ ...k, value: env[k.name] ?? null })),
@@ -100,7 +107,21 @@ export function readGate(env: Env): GateResult {
 
 const fail = (error: string): GateResult => ({ status: 400, body: { error } });
 
-// body: { reviewers: [{ slug, mode, required, enabled }] }. Only those three fields of a row are ever written.
+// the optional model and effort of a row: "" follows the base. A reviewer that is a GitHub app is never dispatched, so it has neither.
+function extrasError(x: Record<string, unknown>, provider: string | undefined): string | null {
+  for (const k of ["model", "effort"] as const) {
+    const v = x[k];
+    if (v === undefined) continue;
+    if (typeof v !== "string") return `${k} must be text`;
+    if (v !== "" && provider === "github-app") return `${x.slug} is a GitHub app and has no ${k}`;
+    if (k === "effort" && v !== "" && !EFFORT_PROVIDERS.includes(provider ?? "")) return `${x.slug} has no effort setting: nothing reads one for it yet`;
+    if (k === "effort" && v !== "" && !EFFORTS.includes(v)) return `effort must be ${EFFORTS.join(", ")} or empty`;
+    if (k === "model" && v !== "" && !MODEL_RE.test(v)) return "model must be a model id such as gpt-6.1-sol (letters, digits and . _ : / @ -)";
+  }
+  return null;
+}
+
+// body: { reviewers: [{ slug, mode, required, enabled, model?, effort? }] }. Only those fields of a row are ever written.
 export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
   if (env.CRITICS_JSON) return fail("CRITICS_JSON is set, so no overlay is read; unset it to edit the review gate here");
   const g = resolveGate(env);
@@ -119,18 +140,25 @@ export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
     if (typeof x.mode !== "string" || !MODES.includes(x.mode)) return fail(`mode must be ${MODES.join(" or ")}`);
     if (typeof x.required !== "boolean" || typeof x.enabled !== "boolean") return fail("required and enabled must be true or false");
     const at = panel.findIndex((p) => p.slug === x.slug);
+    const shared = base?.get(x.slug);
+    const bad = extrasError(x, g.r.panel.find((p) => p.slug === x.slug)?.provider ?? shared?.provider);
+    if (bad) return fail(bad);
     if (!x.enabled) {
       const merged = { ...panel[at], slug: x.slug, drop: true };
-      delete merged.mode; delete merged.required;
+      delete merged.mode; delete merged.required; delete merged.model; delete merged.effort;
       if (at < 0) panel.push(merged); else panel[at] = merged;
       continue;
     }
     // only what differs from the base is written, so the rest keeps following the base; a row left with its slug alone goes.
-    const shared = base?.get(x.slug);
     const merged: Record<string, unknown> = { ...panel[at], slug: x.slug };
     delete merged.drop;
     for (const [k, v] of [["mode", x.mode], ["required", x.required]] as const) {
       if (shared && shared[k] === v) delete merged[k]; else merged[k] = v;
+    }
+    for (const k of ["model", "effort"] as const) {
+      const v = x[k];
+      if (v === undefined) continue; // not named: the overlay keeps what it had
+      if (v === "" || shared?.[k] === v) delete merged[k]; else merged[k] = v;
     }
     if (shared && Object.keys(merged).length === 1) { if (at >= 0) panel.splice(at, 1); continue; }
     if (at < 0) panel.push(merged); else panel[at] = merged;
@@ -139,7 +167,8 @@ export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
   const tmp = `${path}.tmp-${process.pid}`;
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(tmp, text);
+    try { unlinkSync(tmp); } catch { /* no stale file at the temporary name */ }
+    writeFileSync(tmp, text, { flag: "wx" }); // wx never follows a symlink planted at the name
     const c = resolveGate(env, tmp);
     if (!c.ok) return fail(c.error.replace(tmp, path));
     if (!c.r.review && !c.r.panel.some((r) => r.mode === "hard")) return fail("no hard reviewer would be left; keep at least one reviewer on hard");

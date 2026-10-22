@@ -12,7 +12,8 @@
 #   suite  test-*.sh: scripts/ci/run-shell-tests.sh finds it (scan roots scripts,
 #          templates, marketplace, packaging) and suite-coverage.sh does not call it
 #          SKIP_LIST. *.test.*: another WIRED file names it (a wrapper suite runs
-#          it), a .github/workflows job runs bun test / node --test / vitest / jest
+#          it), a .github/workflows job runs bun test (or scripts/ci/run-bun-tests.sh) /
+#          node --test / vitest / jest
 #          on a directory above it, or a package.json above it has a "test" script
 #          whose runner's discovery reaches it (path args narrow; node --test
 #          reaches only JS unless the script loads a TS transform; node may carry
@@ -208,7 +209,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
           d="${p%/*}"
           while :; do
             dre=$(printf '%s' "$d" | sed 's/[.+]/\\&/g')
-            git grep -qIE -e "(bun test|node --test|vitest|jest)[^#]*[ '\"]${dre}(/?|/[^ /'\"]*\\*[^ '\"]*)( |\$|'|\")" -e "cd ${dre}/?[ ;&'\"][^#]*(bun test|node --test|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
+            git grep -qIE -e "((bun test|node --test|vitest|jest)|run-bun-tests\\.sh[ ]+[^ ]+)[^#]*[ '\"]${dre}(/?|/[^ /'\"]*\\*[^ '\"]*)( |\$|'|\")" -e "cd ${dre}/?[ ;&'\"][^#]*(bun test|run-bun-tests\\.sh|node --test|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
             [ "$d" = "${d%/*}" ] && break
             d="${d%/*}"
           done

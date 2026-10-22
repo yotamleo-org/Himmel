@@ -758,8 +758,10 @@ launch):
     # edit .claude/settings.json there
 
 If this is a heredoc that only MENTIONS a settings path in its body (the
-write target is some other file), the guard cannot tell it from a write
-(HIMMEL-3615): write that file with the Write tool instead and retry.
+write target is some other file) and its consumer is not a bare \`cat\`, the
+guard cannot tell it from a write (HIMMEL-3615): write that file with the
+Write tool instead and retry.
+$([ "${SHFMT_NOTE:-0}" = 1 ] && echo "shfmt is not on PATH, so the heredoc could not be read as data; install shfmt (a station install goes to a test VM first).")
 
 Bypass (single-run, set in the LAUNCHING shell — a per-call prefix cannot
 reach the hook process):
@@ -3265,6 +3267,52 @@ esac
 if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
     cmd_n=$cmd
+    # A heredoc body is DATA, not a write. shfmt's command
+    # positions (scripts/lib/bash-ast.sh) are bash's own parse, so they settle
+    # what the hand tokenizer could not (`<<` in arithmetic, a
+    # backslash-newline delimiter). When EVERY command is a bare `cat` with no
+    # prefix assignment or wrapper, and every heredoc body is literal (quoted
+    # delimiter, no expansion, no backslash: shfmt reads a backslash-newline
+    # delimiter differently from bash; a command text holding a backslash-newline
+    # is never cleared, shfmt drops it from the body), and every other redirect is a plain
+    # `>` / `>>` to a literal non-/dev, non-/proc path (an fd dup or /dev/fd
+    # may name a settings file opened earlier), the body cannot run or reach a
+    # file but through the command's own words, so the scan below reads those
+    # words and redirects only. Any other consumer (a shell, an interpreter, `read`,
+    # `patch`, `xargs`, ...) keeps the whole text. A parse failure keeps it too;
+    # no shfmt keeps it and the deny names shfmt (SHFMT_NOTE).
+    SHFMT_NOTE=0
+    hd_bsnl=$'\\\n'
+    case "$cmd" in
+        *"$hd_bsnl"*) ;; # a backslash-newline can join a body line into the delimiter: keep the whole text
+        *'<<'*)
+            if { [ -r "$SCRIPT_DIR/../lib/bash-ast.sh" ] && . "$SCRIPT_DIR/../lib/bash-ast.sh"; } 2>/dev/null; then
+                hd_rc=0
+                hd_pos=$(bash_ast_positions "$cmd" 2>/dev/null) || hd_rc=$? # swallow-ok: the rc is read next
+                if [ "$hd_rc" -eq 2 ]; then
+                    SHFMT_NOTE=1
+                elif [ "$hd_rc" -eq 0 ]; then
+                    hd_text=$(printf '%s' "$hd_pos" | jq -r '
+                        if length > 0
+                            and all(.[]; .prog == "cat" and .argv[0].raw == "cat" and .opaque == null
+                                and (.via | length) == 0 and (.assigns | length) == 0
+                                and all(.redirs[]?;
+                                    if .hdoc == true then .text != null and (.text | contains("\\") | not)
+                                    else (.op == ">" or .op == ">>") and .w.t == "lit"
+                                        and (.w.raw | test("^/(dev|proc)/") | not) end))
+                            and any(.[]; any(.redirs[]?; .hdoc == true))
+                        then [.[] | ([.argv[].raw]
+                            + [.redirs[] | select(.hdoc != true) | ((.fd // "") | tostring) + .op + " " + (.w.raw // "")])
+                            | join(" ")] | join(" ; ")
+                        else empty end' 2>/dev/null) || hd_text="" # swallow-ok: an empty text keeps the whole command
+                    if [ -n "$hd_text" ]; then
+                        cmd=$hd_text
+                        cmd_n=$cmd
+                    fi
+                fi
+            fi
+            ;;
+    esac
     # _cd_bases — HIMMEL-4394: CD_B lists the directories a cd/pushd in the
     # command can move a later relative word to (the PreToolUse cwd itself
     # aside), so `cd ~/.claude && echo x > sett*.json` judges its glob leaf

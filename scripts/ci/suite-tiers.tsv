@@ -895,6 +895,7 @@ scripts/machine-setup/test-install-plugins-ondemand.sh	local	behaviour suite, 0 
 scripts/machine-setup/test-install-plugins-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-install-plugins-scope.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-install-plugins-verify.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/machine-setup/test-installer-pins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-machine-setup-hermetic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-macos.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/machine-setup/test-make-cloudinit-seed.sh	local	behaviour suite, 0 catches in the 400-PR audit window

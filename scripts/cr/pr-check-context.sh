@@ -810,6 +810,7 @@ scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-dif
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
 scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/lib/burn-weights.sh
 scripts/handover/console-kit/leg-jira-status.sh
+marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
 scripts/handover/console-kit/append-results.sh scripts/handover/console-kit/leg-doc-lock.sh
 scripts/handover/console-kit/bucket-gitleaks.sh scripts/handover/console-kit/vault-status.sh"
 cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
@@ -842,6 +843,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/lanes/plugin-profiles.mjs' ':(top)scripts/lanes/plugin-profiles.json' ':(top)scripts/lanes/role-requires.mjs' ':(top)scripts/lanes/skill-cost.mjs' ':(top)scripts/lanes/skill-listing.mjs' ':(top)scripts/lanes/profile-settings.sh'
     ':(top)scripts/lanes/leg-pr-open.sh' ':(top)scripts/lanes/leg-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
     ':(top)scripts/handover/console-kit/leg-jira-status.sh'
+    ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
     ':(top)scripts/handover/console-kit/append-results.sh' ':(top)scripts/handover/console-kit/leg-doc-lock.sh'
     ':(top)scripts/handover/console-kit/bucket-gitleaks.sh' ':(top)scripts/handover/console-kit/vault-status.sh'
     ':(top,exclude,glob)scripts/**/__pycache__/**')

@@ -42,6 +42,142 @@ run(){
   out="$(TICKET_STANDARD_QUEUE_DIR="$q" bash "$tool" --type "$t" --draft "$d" "$@" 2>&1)"; rc=$?
 }
 
+# These rows catch a rewrite that loses facts or bypasses the ticket shape check.
+# shellcheck disable=SC2016 # Backticks in Markdown fixtures are literal data.
+humanizer_rows(){
+  local facts="$here/humanizer-facts.py" original="$td/original.md" rewrite="$td/rewrite.md"
+  printf 'HIMMEL-6967 checks 42 rows in scripts/check.sh using `bash scripts/check.sh --count 42`.\n' >"$original"
+  printf 'Using `bash scripts/check.sh --count 42`, scripts/check.sh checks 42 rows for HIMMEL-6967.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+  check "faithful rewrite passes" "$rc" 0
+  for pair in 'HIMMEL-6967 HIMMEL-6968' '42 43' 'scripts/check.sh scripts/other.sh' '--count --total'; do
+    from="${pair% *}"; to="${pair#* }"
+    sed "s|$from|$to|g" "$original" >"$rewrite"
+    out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+    check "changed fact $from refused" "$rc" 1
+  done
+  printf '\n```bash\nbash scripts/check.sh --count 42\n```\n' >>"$original"
+  cp "$original" "$rewrite"
+  out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+  check "unchanged fenced command passes" "$rc" 0
+  sed 's/bash scripts\/check.sh/sh scripts\/check.sh/g' "$original" >"$rewrite"
+  out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+  check "changed fenced command refused" "$rc" 1
+  for removed in HIMMEL-6967 42; do
+    sed "s/$removed//g" "$original" >"$rewrite"
+    out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+    check "dropped $removed refused" "$rc" 1
+  done
+  printf 'Read .env before filing.\n' >"$td/dotfile.md"
+  printf 'Read .other before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/dotfile.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed bare dotfile refused" "$rc" 1
+  printf 'bash scripts/check.sh --count 42\n' >"$td/command.md"
+  printf 'bash scripts/check.sh --total 42\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/command.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed bare command refused" "$rc" 1
+  printf 'HIMMEL-6967 took 42 seconds.\n' >"$td/number.md"
+  printf 'HIMMEL-6967 took 142 seconds.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/number.md" "$rewrite" 2>&1)"; rc=$?
+  check "number substring is not preservation" "$rc" 1
+  printf 'Use v1.2 before filing.\n' >"$td/version.md"
+  printf 'Use v9.2 before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/version.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed prefixed version refused" "$rc" 1
+  printf 'Before filing, use v1.2.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/version.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful prefixed version passes" "$rc" 0
+  printf 'Read scripts/check before filing.\n' >"$td/path.md"
+  printf 'Read scripts/other before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/path.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed extensionless path refused" "$rc" 1
+  printf 'Before filing, read scripts/check.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/path.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful extensionless path passes" "$rc" 0
+  printf 'Use 1e3 rows before filing.\n' >"$td/exponent.md"
+  printf 'Use 2e3 rows before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/exponent.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed exponent number refused" "$rc" 1
+  printf 'Before filing, use 1e3 rows.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/exponent.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful exponent number passes" "$rc" 0
+  printf 'Before filing, read .env.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/dotfile.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful sentence-final dotfile passes" "$rc" 0
+  printf 'Before filing, read .other.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/dotfile.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed sentence-final dotfile refused" "$rc" 1
+  : >"$rewrite"
+  out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+  check "empty rewrite refused" "$rc" 1
+  printf 'Run ``echo `pwd` `` before filing.\n' >"$td/nested.md"
+  printf 'Run ``echo `whoami` `` before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/nested.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed nested-backtick command refused" "$rc" 1
+  cp "$td/nested.md" "$rewrite"
+  out="$(python3 -I "$facts" "$td/nested.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful nested-backtick command passes" "$rc" 0
+  printf '    cd staging\n    pwd\n' >"$td/indented.md"
+  printf '    pwd\n    cd staging\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/indented.md" "$rewrite" 2>&1)"; rc=$?
+  check "reordered indented commands refused" "$rc" 1
+  cp "$td/indented.md" "$rewrite"
+  out="$(python3 -I "$facts" "$td/indented.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful indented block passes" "$rc" 0
+  mkdraft "$td/ticket-original.md"
+  printf 'HIMMEL-6967 covers 42 rows.\n' >>"$td/ticket-original.md"
+  sed 's/42/43/' "$td/ticket-original.md" >"$rewrite"
+  run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X --rewrite "$rewrite"
+  check "unsafe rewrite never blocks original ticket" "$rc" 0
+  has "unsafe rewrite reported" "$out" "rewrite refused"
+  sed 's/Tickets without a plan fail late./Without a plan, tickets fail late./' "$td/ticket-original.md" >"$rewrite"
+  run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X --rewrite "$rewrite"
+  check "faithful ticket rewrite accepted" "$rc" 0
+  has "chosen ticket body identified" "$out" "humanizer: accepted"
+  run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X
+  check "skip never blocks ticket" "$rc" 0
+  has "ticket offers deterministic pass" "$out" "deterministic"
+  hasnt "ticket does not offer a model rewrite" "$out" "/humanizer"
+  run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X --rewrite "$td/absent.md"
+  check "missing rewrite never blocks original" "$rc" 0
+  mkdraft "$rewrite" Proof
+  printf 'HIMMEL-6967 covers 42 rows.\n' >>"$rewrite"
+  run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X --rewrite "$rewrite"
+  check "accepted facts cannot bypass missing Proof" "$rc" 1
+
+  cat >"$original" <<'NORMALIZE'
+**Proof** — HIMMEL-6967 checks 42 rows in scripts/check.sh.
+- `check` – “Ready” and ‘done’.
+Additionally — review the robust result.
+NORMALIZE
+  printf '**Proof:** HIMMEL-6967 checks 42 rows in scripts/check.sh.\n- `check`: "Ready" and '\''done'\''.\nAdditionally, review the robust result.\n' >"$td/expected.md"
+  before="$(cksum <"$original")"
+  out="$(python3 -I "$facts" --normalize "$original" "$rewrite" 2>&1)"; rc=$?
+  check "deterministic normalization succeeds" "$rc" 0
+  check "normalization changes only the specified punctuation" "$(cat "$rewrite")" "$(cat "$td/expected.md")"
+  check "normalization leaves original untouched" "$(cksum <"$original")" "$before"
+  has "banned words are advisory flags" "$out" "word flags (advisory only): additionally, robust"
+  out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+  check "normalized candidate passes independent fact check" "$rc" 0
+  out="$(python3 -I "$facts" --normalize "$rewrite" "$td/again.md" 2>&1)"; rc=$?
+  check "normalization is repeatable" "$rc" 0
+  check "normalization is idempotent" "$(cat "$td/again.md" 2>/dev/null)" "$(cat "$rewrite")"
+  out="$(python3 -I "$facts" --normalize "$original" "$original" 2>&1)"; rc=$?
+  check "normalization refuses in-place output" "$rc" 2
+  check "in-place refusal preserves original" "$(cksum <"$original")" "$before"
+  printf 'Run `printf “do not change”` before filing.\n' >"$td/protected.md"
+  out="$(python3 -I "$facts" --normalize "$td/protected.md" "$td/protected-out.md" 2>&1)"; rc=$?
+  check "normalization refuses changed protected code" "$rc" 1
+  check "unsafe normalization writes no candidate" "$([ -e "$td/protected-out.md" ] && printf yes || printf no)" no
+}
+
+if [ "${1:-}" = --humanizer-only ]; then
+  humanizer_rows
+  [ "$fails" -eq 0 ] && { echo PASS; exit 0; }
+  echo "FAILED: $fails"; exit 1
+fi
+humanizer_rows
+
 # --- Task missing DoD: refused, parked, original untouched ---
 q="$td/q1"; mkdraft "$td/t1.md" DoD; before="$(cksum <"$td/t1.md")"
 run Task "$td/t1.md" "$q" --sector "Planning & tracking"

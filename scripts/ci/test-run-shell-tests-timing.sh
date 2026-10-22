@@ -110,7 +110,7 @@ else
 fi
 
 # 5. Disposition order block present on a red run.
-if grepq "$out16" -F 'Disposition order for a red suite (HIMMEL-2231):'; then
+if grepq "$out16" -F 'Disposition order for a red suite:'; then
   pass "16: Disposition order block is present on a red run"
 else
   fail "16: expected the Disposition order block; out: $out16"
@@ -136,7 +136,7 @@ SHEOF
 chmod +x "$sb16g/test-ok.sh"
 out16g=$(bash "$RUNNER" "$sb16g" 2>&1)
 rc16g=$?
-if [ "$rc16g" -eq 0 ] && ! grepq "$out16g" -F 'Disposition order for a red suite (HIMMEL-2231):'; then
+if [ "$rc16g" -eq 0 ] && ! grepq "$out16g" -F 'Disposition order for a red suite:'; then
   pass "16: all-green sandbox omits the Disposition order block"
 else
   fail "16: expected no Disposition order block on an all-green run; rc=$rc16g out: $out16g"

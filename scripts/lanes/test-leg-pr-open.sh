@@ -123,6 +123,37 @@ run_sut() {  # args passed straight through to the SUT
     )
 }
 
+# A candidate may change prose, never facts; refusal still publishes the original.
+# shellcheck disable=SC2016 # Backticks in Markdown fixtures are literal data.
+humanizer_rows() {
+    local original="$TMP_ROOT/original.md" candidate="$TMP_ROOT/candidate.md" output rc body_text
+    printf '## Summary\nHIMMEL-3031 checks 42 rows in scripts/check.sh with `bash scripts/check.sh`.\n' > "$original"
+    printf '## Summary\nWith `bash scripts/check.sh`, HIMMEL-3031 checks 42 rows in scripts/check.sh.\n' > "$candidate"
+    output=$(run_sut "$TITLE_FILE" "$original" --humanized-body "$candidate" 2>"$TMP_ROOT/humanizer.err"); rc=$?
+    assert_eq "faithful PR rewrite publishes" 0 "$rc"
+    body_text=$(cat "${ARGV_LOG}.body" 2>/dev/null)
+    contains "published body uses faithful rewrite" "$body_text" 'With `bash scripts/check.sh`'
+    for pair in 'HIMMEL-3031 HIMMEL-3032' '42 43' 'scripts/check.sh scripts/other.sh'; do
+        sed "s|${pair% *}|${pair#* }|g" "$original" > "$candidate"
+        output=$(run_sut "$TITLE_FILE" "$original" --humanized-body "$candidate" 2>"$TMP_ROOT/humanizer.err"); rc=$?
+        assert_eq "changed ${pair% *} falls back without blocking PR" 0 "$rc"
+        body_text=$(cat "${ARGV_LOG}.body" 2>/dev/null)
+        contains "fallback publishes original ${pair% *}" "$body_text" 'HIMMEL-3031 checks 42 rows in scripts/check.sh'
+    done
+    output=$(run_sut "$TITLE_FILE" "$original" --humanized-body "$TMP_ROOT/missing.md" 2>"$TMP_ROOT/humanizer.err"); rc=$?
+    assert_eq "missing PR candidate never blocks" 0 "$rc"
+    output=$(run_sut "$TITLE_FILE" "$original" 2>"$TMP_ROOT/humanizer.err"); rc=$?
+    assert_eq "skipping PR rewrite never blocks" 0 "$rc"
+    contains "skip keeps one-line publication result" "$output" 'PR 9 https://github.com/owner/repo/pull/9 '
+    contains "PR helper offers deterministic pass on stderr" "$(cat "$TMP_ROOT/humanizer.err")" deterministic
+    not_contains "PR helper does not offer a model rewrite" "$(cat "$TMP_ROOT/humanizer.err")" /humanizer
+}
+humanizer_rows
+if [ "${1:-}" = --humanizer-only ]; then
+    echo "test summary: $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]; exit $?
+fi
+
 # ── (a) create path: no open PR -> pr create, never pr edit ─────────────────
 echo "TEST: create path (no existing PR)"
 : > "$ARGV_LOG"

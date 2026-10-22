@@ -48,6 +48,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 JIRA_CMD="${JIRA_CMD:-}"
 DRY_RUN=0
+HUMANIZED_BODY=""
 BASE_REF="${HANDOVER_PR_BASE:-main}"
 
 usage() {
@@ -62,6 +63,7 @@ is scoped to the auto-commit branched flow.
 
 Optional:
   --dry-run         Print intended gh calls; don't invoke them.
+  --humanized-body <file>  Use a rewrite only if its literal facts match the generated body.
   --base <branch>   Compare base for "Files changed" + PR target.
                     Default: $HANDOVER_PR_BASE or `main`.
 
@@ -75,6 +77,7 @@ EOF
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run)   DRY_RUN=1; shift ;;
+        --humanized-body) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; HUMANIZED_BODY="$2"; shift 2 ;;
         --base)      BASE_REF="${2:-main}"; shift 2 ;;
         -h|--help)   usage; exit 0 ;;
         *)           echo "ERR pr-open: unknown arg: $1" >&2; usage >&2; exit 1 ;;
@@ -201,6 +204,16 @@ ${ticket_block}
 🤖 Opened by \`scripts/handover/pr-open.sh\` (HIMMEL-141).
 EOF
 )
+
+if [ -n "$HUMANIZED_BODY" ]; then
+    if python3 -I "$SCRIPT_DIR/../../marketplace/plugins/himmel-ops/scripts/humanizer-facts.py" - "$HUMANIZED_BODY" <<< "$body"; then
+        body=$(cat "$HUMANIZED_BODY")
+    else
+        echo "humanizer: rewrite refused or checker unavailable; keeping original PR body" >&2
+    fi
+else
+    echo 'humanizer: optional deterministic humanizer-facts.py --normalize ORIGINAL CANDIDATE; skip keeps original, --humanized-body FILE checks a candidate; no model rewrite' >&2
+fi
 
 # Idempotent open/update ------------------------------------------------------
 

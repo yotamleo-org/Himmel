@@ -180,7 +180,7 @@ build_body() {
     echo ""
     echo "</details>"
     echo ""
-    echo "_Maintained in place by the nightly \`fork-drift\` workflow (HIMMEL-1046); auto-closed when drift clears. Last drift detected: $(now)._"
+    echo "_Maintained in place by the nightly \`fork-drift\` workflow; auto-closed when drift clears. Last drift detected: $(now)._"
     echo ""
     echo "To resolve: run the action in each row, then this issue closes on the next nightly run."
     echo ""

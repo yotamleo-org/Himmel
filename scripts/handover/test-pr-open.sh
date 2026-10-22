@@ -160,6 +160,36 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || git init -q "$REPO"
 export FAKE_GH_LOG="$TMP_ROOT/gh.log"
 : > "$FAKE_GH_LOG"
 
+# Exercise candidate selection against the actual generated body.
+humanizer_rows() {
+    local original candidate output rc
+    original=$(cd "$REPO"; GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main 2>"$TMP_ROOT/humanizer.err")
+    assert_contains "handover PR offers deterministic pass" deterministic "$(cat "$TMP_ROOT/humanizer.err")"
+    if grepq "$(cat "$TMP_ROOT/humanizer.err")" -F /humanizer; then
+        fail "handover PR does not offer a model rewrite"
+    else
+        pass "handover PR does not offer a model rewrite"
+    fi
+    candidate="$TMP_ROOT/rewrite.md"
+    printf '%s\n' "$original" | sed -n '/^--- body ---$/,/^--- \/body ---$/p' | sed '1d;$d' > "$candidate"
+    sed 's/Handover mutation on/State update on/' "$candidate" > "$TMP_ROOT/faithful.md"
+    rc=0
+    output=$(cd "$REPO"; GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main --humanized-body "$TMP_ROOT/faithful.md" 2>&1) || rc=$?
+    assert_eq "faithful handover PR rewrite passes" 0 "$rc"
+    assert_contains "handover PR selects rewrite" 'State update on' "$output"
+    sed 's/HIMMEL-141/HIMMEL-142/g' "$candidate" > "$TMP_ROOT/unsafe.md"
+    rc=0
+    output=$(cd "$REPO"; GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main --humanized-body "$TMP_ROOT/unsafe.md" 2>&1) || rc=$?
+    assert_eq "unsafe handover rewrite never blocks" 0 "$rc"
+    assert_contains "unsafe handover rewrite refused" 'rewrite refused' "$output"
+    assert_contains "handover PR keeps original" 'Handover mutation on' "$output"
+}
+humanizer_rows
+if [ "${1:-}" = --humanizer-only ]; then
+    echo "test summary: $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]; exit $?
+fi
+
 # Test 1: dry-run produces required sections ---------------------------
 
 echo "TEST: pr-open --dry-run body has Summary + Files changed + Ticket"
