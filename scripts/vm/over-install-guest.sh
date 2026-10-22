@@ -44,7 +44,13 @@ settings_dup_hooks() {
 # missing from or extra in the actual file, as diff lines ("< " expected only, "> " actual
 # only); empty output means both files carry the same hook commands the same number of times.
 settings_hook_set_diff() {
-  diff <(settings_hook_commands "$1" | sort) <(settings_hook_commands "$2" | sort) | grep -E '^[<>]' || true
+  diff <(settings_hook_registrations "$1" | sort) <(settings_hook_registrations "$2" | sort) | grep -E '^[<>]' || true
+}
+
+# settings_hook_registrations <settings.json> -- one "event<TAB>matcher<TAB>command" line per
+# registration, so a hook moved to another event or matcher differs from the baseline.
+settings_hook_registrations() {
+  jq -r '.hooks // {} | to_entries[] | .key as $e | .value[]? | (.matcher // "") as $m | .hooks[]? | [$e, $m, (.command // "")] | @tsv' "$1"
 }
 
 # status_red_count <himmelctl-status-output> -- the red count from the summary line
@@ -200,7 +206,7 @@ fi
 # no-op: snapshot the user-visible state, install again, compare. The provenance ledger
 # and its per-run backup/uninstall bookkeeping change on every install by design.
 snap() { ( cd "$WORK" && find proj/.claude proj/scripts hm/.env "$HOME/.claude.json" "$HOME/.claude/settings.json" "$HOME/.himmel/himmel.conf" \
-    -type f 2>/dev/null | sort | xargs -r sha256sum ); }
+    -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum ); }
 snap > "$WORK/snap-a.txt"
 ctl install --scope project > "$WORK/install-again.log" 2>&1; rc=$?
 snap > "$WORK/snap-b.txt"

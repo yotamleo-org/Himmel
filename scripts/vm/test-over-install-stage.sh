@@ -64,6 +64,9 @@ jq '.hooks[(.hooks | keys[0])] |= .[1:]' "$REAL" > "$WORK/drop.json"
 OUT="$(settings_hook_set_diff "$REAL" "$WORK/drop.json")"
 if [ -n "$OUT" ]; then pass "RED control: a dropped hook entry is detected"; else fail_case "RED control: a dropped hook entry is detected"; fi
 expect_has "...as an expected-only line" "< " "$OUT"
+jq '(.hooks | keys) as $k | .hooks[$k[1]] += .hooks[$k[0]] | .hooks[$k[0]] = []' "$REAL" > "$WORK/moved.json"
+OUT="$(settings_hook_set_diff "$REAL" "$WORK/moved.json")"
+if [ -n "$OUT" ]; then pass "RED control: a hook moved to another event is detected"; else fail_case "RED control: a hook moved to another event is detected"; fi
 OUT="$(settings_hook_set_diff "$WORK/dup.json" "$REAL")"
 expect_has "a duplicated entry shows as an extra line" "< " "$OUT"
 
