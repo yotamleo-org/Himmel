@@ -515,8 +515,14 @@ case "$provider" in api) provider="claude-api" ;; subscription) provider="claude
 _cfp_claude_effort() {
     _cce_e="${CR_CLAUDE_CRITIC_EFFORT:-}"
     if [ -z "$_cce_e" ] && command -v node >/dev/null 2>&1; then
-        _cce_e="$(REG="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" node -e '
-          try { const r = (JSON.parse(require("fs").readFileSync(process.env.REG, "utf8")).panel || []).find(x => x && x.slug === "claude" && !x.drop);
+        # the merged registry (overlay over base), the one the panel and the config UI read; a resolver
+        # failure falls back to the base file alone
+        _cce_reg="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && critics_config_resolve "$SCRIPT_DIR" 2>/dev/null )" || _cce_reg=""  # swallow-ok: falls back to the base file below
+        if [ -z "$_cce_reg" ]; then
+            _cce_reg="$(cat "${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
+        fi
+        _cce_e="$(printf '%s' "$_cce_reg" | node -e '
+          try { const r = (JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []).find(x => x && x.slug === "claude" && !x.drop);
             if (r && r.effort) process.stdout.write(String(r.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
     fi
     case "$_cce_e" in low|medium|high|xhigh|max) printf '%s' "$_cce_e" ;; *) printf 'medium' ;; esac

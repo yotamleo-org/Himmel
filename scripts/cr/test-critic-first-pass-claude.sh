@@ -175,6 +175,23 @@ fresh_rec 7; unset FAKE_REFUSE
 RC=0; printf '%s\n' "$DIFF" | CR_CLAUDE_CRITIC_EFFORT=high bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
 has "7 CR_CLAUDE_CRITIC_EFFORT overrides the row" "high" "$REC/argv"
 
+# --- 7b. the claude row's effort follows the merged registry (overlay over base) ---
+printf '%s\n' '{"panel":[{"slug":"claude","effort":"xhigh"}]}' > "$W/local-effort.json"
+fresh_rec 7b; unset FAKE_REFUSE
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-effort.json" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "7b an overlay effort reaches the claude critic" 1 "$(grep -cx xhigh "$REC/argv")"
+fresh_rec 7c; unset FAKE_REFUSE
+RC=0; printf '%s\n' "$DIFF" | CR_CLAUDE_CRITIC_EFFORT=low CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-effort.json" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "7c CR_CLAUDE_CRITIC_EFFORT still wins over the overlay" 1 "$(grep -cx low "$REC/argv")"
+printf '%s\n' '{"panel":[{"slug":"claude","effort":"extreme"}]}' > "$W/local-bad.json"
+fresh_rec 7d; unset FAKE_REFUSE
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-bad.json" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "7d an unknown overlay effort falls to medium" 1 "$(grep -cx medium "$REC/argv")"
+printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$W/local-drop.json"
+fresh_rec 7e; unset FAKE_REFUSE
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-drop.json" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "7e a dropped claude row falls to medium" 1 "$(grep -cx medium "$REC/argv")"
+
 # --- 8. the other families are untouched: --print-prompt still works -------
 RC=0; printf '%s\n' "$DIFF" | bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api --print-prompt >"$W/out" 2>"$W/err" || RC=$?
 check "8 --print-prompt exits 0 for the claude row" 0 "$RC"
