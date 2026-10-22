@@ -476,7 +476,7 @@ assert_rc "R6266+ guest-exec without --"      2 "$(run_case "$(j_bash "bash scri
 assert_rc "R6266+ guest-exec host rm after"   2 "$(run_case "$(j_bash "$_ge 'ls' && rm -rf /tmp/x")")"
 
 # --- raw ssh to a test-VM port is denied in a leg session ---
-_raw_ssh=$(sed -n 1p "$(cd "$(dirname "$HOOK")/../vm/fixtures" && pwd)/guest-exec-6266.txt")
+_raw_ssh=$(sed -n 1p "$(cd "$(dirname "$0")/../vm/fixtures" && pwd)/guest-exec-6266.txt")
 assert_rc "R6266+ leg raw ssh -p 2235 (fixture)" 2 "$(run_case "$(j_bash "$_raw_ssh")" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg ssh -i k -p 2222"       2 "$(run_case "$(j_bash 'ssh -i ~/.ssh/id_ed25519 -p 2222 himmel@127.0.0.1 true')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg ssh -p2235"             2 "$(run_case "$(j_bash 'ssh -p2235 himmel@127.0.0.1 true')" HIMMEL_CONSOLE_LEG=1)"
