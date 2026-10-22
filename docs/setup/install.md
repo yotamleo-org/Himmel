@@ -96,10 +96,14 @@ written tracks the tip.
 > particular (`cadence-armed`, the arming legs) use `schtasks` there and are the
 > least exercised.
 
-A project-scope install also copies and wires the unresolved-review merge gate
-and its libraries. It seeds `scripts/ci/ci-trust-paths.txt` only when absent;
-your existing trust list is never overwritten. Commit the seeded list with the
-installation so the merge gate can read it from your default branch.
+A project-scope install copies and wires the unresolved-review merge gate and
+its libraries. The install commit adds `scripts/ci/ci-trust-paths.txt`, seeded
+only when absent; your existing trust list is never overwritten. Until that
+list is on your default branch, the gate refuses every merge from a session
+that loads the new settings, including the adoption PR. The operator must
+merge that first adoption PR outside Claude, using the forge web UI or their
+own terminal; no agent session merges it. Afterward, any PR touching a listed
+trust path requires a trust-reviewed GO.
 
 ## Minimal config
 

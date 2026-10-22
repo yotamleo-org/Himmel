@@ -303,13 +303,13 @@ test_adopt_merge_gate() (
     grep -Eq -f "$trust" <<< "$f" || fail "HIMMEL-7000: seeded trust list does not cover $f"
   done
   if [ "${1:-}" != --merge-gate-only ]; then
-    git -C "$target" init -q -b main
-    git -C "$target" config user.name fixture
-    git -C "$target" config user.email fixture@example.invalid
-    git -C "$target" config --local himmel.coderabbit true
-    git -C "$target" remote add origin https://github.com/adopter/project.git
-    git -C "$target" add scripts/ci/ci-trust-paths.txt
-    git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: install merge trust policy'
+    HOME="$home" git -C "$target" init -q -b main
+    HOME="$home" git -C "$target" config user.name fixture
+    HOME="$home" git -C "$target" config user.email fixture@example.invalid
+    HOME="$home" git -C "$target" config --local himmel.coderabbit true
+    HOME="$home" git -C "$target" remote add origin https://github.com/adopter/project.git
+    HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt
+    HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: install merge trust policy'
     printf '%s\n' \
       '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"codex","status":"ok"}' \
       '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"claude","status":"ok"}' \
