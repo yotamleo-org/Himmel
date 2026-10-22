@@ -30,6 +30,7 @@ echo called >> "$STUB_LOG"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV"
+[ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 [ -z "\${STUB_DIE:-}" ] || kill -9 $$
@@ -727,11 +728,11 @@ test('HIMMEL-7111: a launcher terminated mid-call stops the call and settles its
   } finally { rmSync(hold, { force: true }); if (stub && alive(stub)) process.kill(stub, 'SIGKILL'); }
 });
 
-test('HIMMEL-7111: a call that outruns the call timeout is stopped and settles, so the sweep never releases a live reservation', () => {
+test('HIMMEL-7111: a call that outruns the call timeout is stopped, even one ignoring TERM, and settles', () => {
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
   try {
-    const r = f.run(f.good, { STUB_HOLD: hold, HIMMEL_API_CALL_TIMEOUT_S: '1' });
+    const r = f.run(f.good, { STUB_HOLD: hold, STUB_IGNORE_TERM: '1', HIMMEL_API_CALL_TIMEOUT_S: '1' });
     assert.notEqual(r.status, 0);
     assert.equal(f.status().reserved_usd, '0.000000');
     const stub = Number(/^stub_pid=(\d+)$/m.exec(readFileSync(f.paths.env, 'utf8'))[1]);

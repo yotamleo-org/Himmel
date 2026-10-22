@@ -161,7 +161,8 @@ function sweep(a, now, timeout) {
   let released = false;
   for (const j of Object.values(a?.jobs ?? {})) {
     if (j.status === 'settled') continue;
-    if (Number.isSafeInteger(j.reserved_at) && now - j.reserved_at <= timeout) continue;
+    const limit = Number.isSafeInteger(j.timeout_s) && j.timeout_s > 0 ? j.timeout_s : timeout;
+    if (Number.isSafeInteger(j.reserved_at) && now - j.reserved_at <= limit) continue;
     j.status = 'settled'; j.actual_usd = usd(0n); j.released = true; released = true;
   }
   return released;
@@ -270,7 +271,7 @@ export function creditState(command, options = {}, env = process.env) {
         a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };
         state.accounts[account] = a;
       }
-      a.jobs[options.id] = { status: 'reserved', maximum_usd: usd(maximum), reserved_at: now };
+      a.jobs[options.id] = { status: 'reserved', maximum_usd: usd(maximum), reserved_at: now, timeout_s: callTimeout(env) };
       save(statePath, state, lock, sentinels);
       // Report the committed admission, not a second clock-dependent verdict.
       return { ...result, verdict: 'PROCEED', job_id: options.id,

@@ -208,11 +208,19 @@ settle_dead() {
   state settle --id "$JOB_ID" --usd "${1:-0.000000}" --completion verified >/dev/null 2>&1 ||
     state unknown --id "$JOB_ID" >/dev/null 2>&1
 }
+# TERM first; a call that ignores it is KILLed after five seconds, so none outlives its stop.
+# shellcheck disable=SC2329 # invoked from the signal trap and the watchdog below
+stop_call() {
+  local i=0
+  [ -n "$CALL_PID" ] && kill -TERM "$CALL_PID" 2>/dev/null || return 0
+  while kill -0 "$CALL_PID" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  kill -KILL "$CALL_PID" 2>/dev/null
+  wait "$CALL_PID" 2>/dev/null
+}
 # shellcheck disable=SC2329 # invoked from the signal trap below
 on_signal() {
   [ -z "$WATCHDOG_PID" ] || kill "$WATCHDOG_PID" 2>/dev/null
-  if [ -n "$CALL_PID" ]; then kill -TERM "$CALL_PID" 2>/dev/null; wait "$CALL_PID" 2>/dev/null; fi
-  settle_dead; exit 143
+  stop_call; settle_dead; exit 143
 }
 trap on_signal TERM INT HUP
 
@@ -230,8 +238,8 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT" <&0 &
 CALL_PID=$!
 # the watchdog's own sleep is ended with it, so no timer outlives the call
-( sleep "$CALL_TIMEOUT_S" & SLEEP_PID=$!; trap 'kill $SLEEP_PID 2>/dev/null; exit 0' TERM
-  wait $SLEEP_PID; kill -TERM "$CALL_PID" 2>/dev/null ) &
+( sleep "$((CALL_TIMEOUT_S > 10 ? CALL_TIMEOUT_S - 5 : CALL_TIMEOUT_S))" & SLEEP_PID=$!; trap 'kill $SLEEP_PID 2>/dev/null; exit 0' TERM
+  wait $SLEEP_PID; stop_call ) &
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?

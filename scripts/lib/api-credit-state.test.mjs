@@ -577,6 +577,16 @@ test('HIMMEL-7111: a reservation older than the call timeout is released, a youn
   assert.equal(f.call('reserve', ['--id', 'dead', '--usd', '0.01']).reason, 'duplicate-job');
 });
 
+test('HIMMEL-7111: a reservation is swept on the timeout it was made with, not the status caller\'s', () => {
+  const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '7200';
+  f.call('reserve', ['--id', 'long', '--usd', '0.30']);
+  ageJob(f, 'long', 5000);
+  f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
+  assert.equal(f.call().reserved_usd, '0.300000');
+  ageJob(f, 'long', 8000);
+  assert.equal(f.call().reserved_usd, '0.000000');
+});
+
 test('HIMMEL-7111: an unknown or pre-timestamp reservation is released once past the timeout', () => {
   const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
   f.call('reserve', ['--id', 'lost', '--usd', '0.30']); f.call('unknown', ['--id', 'lost']);
