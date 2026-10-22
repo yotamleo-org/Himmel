@@ -599,7 +599,8 @@ if [ "$rc" -eq 3 ]; then ok "T18 open preflight hits exit 3"; else bad "T18 open
 if [ -f "$CALL_LOG" ]; then bad "T18 panel invoked past open preflight hits"; else ok "T18 panel never invoked"; fi
 assert_has "$err" "known-findings.sh" "T18 message names known-findings.sh"
 assert_has "$err" "ledger-append.sh" "T18 message names ledger-append.sh preflight"
-if grep -F '"kind":"preflight"' "$ledger" | grep -qF '"branch":"feature-hit"'; then bad "T18 a preflight row was written for a branch with open hits"; else ok "T18 no preflight row for open hits"; fi
+hit_rows="$(grep -F '"kind":"preflight"' "$ledger" | grep -F '"branch":"feature-hit"')"
+if [ -n "$hit_rows" ]; then bad "T18 a preflight row was written for a branch with open hits"; else ok "T18 no preflight row for open hits"; fi
 if compgen -G "$repo/.git/cr-review-rounds/*" >/dev/null; then bad "T18 a review round was started"; else ok "T18 no review round started"; fi
 git -C "$repo" worktree remove --force "$tmp/wt-hit" 2>/dev/null
 rm -rf "$repo/.git/cr-review-rounds"
