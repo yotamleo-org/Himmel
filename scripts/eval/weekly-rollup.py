@@ -210,7 +210,7 @@ KEPT = {"self_review": ("merges", "fix_share_pct", "red_main"),
 
 
 def keep_recorded(old, new):
-    if not old or old.get("partial"):
+    if not old or old.get("partial") or (old["since"], old["until"]) != (new["since"], new["until"]):
         return new
     for src, cols in KEPT.items():
         if new["sources"].get(src) != "ok" and old.get("sources", {}).get(src) == "ok":

@@ -29,7 +29,7 @@ source yet and are `null` (listed in `no_source`). If `self-review.sh` is not
 in the checkout, `merges`, `fix_share_pct` and `red_main` are `null` and
 `sources.self_review` says `absent`. A re-run never overwrites a finished
 week or version with less: when a source is not `ok` and the
-recorded row had it `ok`, that source's columns keep their recorded values.
+recorded row had it `ok`, that source's columns keep their recorded values, provided the row's window is unchanged.
 
 ## Checklist lines
 

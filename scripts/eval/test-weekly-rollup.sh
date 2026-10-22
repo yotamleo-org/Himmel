@@ -151,6 +151,13 @@ CACHE_HEALTH_HISTORY="$W/empty-cache.jsonl" run write --repo "$REPO" --ref main 
 check "a finished week keeps its cache hit when the history has aged out" 92 \
   "$(jq -r 'select(.kind=="week" and .key=="2026-W37") | .cache_hit_pct' "$OUT6")"
 
+OUT7="$W/moved.jsonl"
+run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT7" >/dev/null 2>&1
+jq -c 'if .key=="2026-W37" then .since="2026-01-01T00:00:00Z" else . end' "$OUT7" >"$W/moved.tmp" && mv "$W/moved.tmp" "$OUT7"
+CACHE_HEALTH_HISTORY="$W/empty-cache.jsonl" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT7" >/dev/null 2>&1
+check "a row whose window moved does not keep the old window's values" null \
+  "$(jq -r 'select(.kind=="week" and .key=="2026-W37") | .cache_hit_pct' "$OUT7")"
+
 run write --repo "$REPO" --ref main --weeks 0 --versions 2 --out "$OUT" >"$W/w2.out" 2>&1
 check "version rows come from stable tags" "v1.0.0 v1.1.0" \
   "$(jq -r 'select(.kind=="version") | .key' "$OUT" | tr '\n' ' ' | sed 's/ $//')"
