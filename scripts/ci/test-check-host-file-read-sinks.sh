@@ -10,6 +10,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=/dev/null
+. "$ROOT/scripts/lib/portable-timeout.sh"
 CHECK="$ROOT/scripts/ci/check-host-file-read-sinks.sh"
 FIX="$ROOT/scripts/ci/test-check-host-file-read-sinks-fixtures"
 fails=0

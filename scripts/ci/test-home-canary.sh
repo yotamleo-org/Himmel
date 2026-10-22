@@ -10,6 +10,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=/dev/null
+. "$ROOT/scripts/lib/portable-timeout.sh"
 CANARY="$ROOT/scripts/ci/home-canary.sh"
 fails=0
 ok()  { echo "ok - $1"; }
@@ -44,6 +46,20 @@ mkfx clean 'echo "suite ok"; exit 0'
 run_canary clean
 [ "$RC" -eq 0 ] && ok "clean runner passes" || bad "clean runner failed rc=$RC: $OUT"
 
+# --- 1b. BSD touch has no -d @N (macos-cadence log: "touch: out of range or illegal time specification") ---
+mkdir -p "$SCRATCH/bsdbin"
+REAL_TOUCH="$(command -v touch)"
+cat > "$SCRATCH/bsdbin/touch" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case "\$a" in -d) echo "touch: out of range or illegal time specification: YYYY-MM-DDThh:mm:SS[.frac][tz]" >&2; exit 1 ;; esac
+done
+exec "$REAL_TOUCH" "\$@"
+EOF
+chmod +x "$SCRATCH/bsdbin/touch"
+OUT="$(PATH="$SCRATCH/bsdbin:$PATH" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/clean.sh" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && ok "clean runner passes under a touch without -d" || bad "clean runner failed under BSD-style touch rc=$RC: $OUT"
+
 # --- 2. the PR 2883 shape: a test that cats $HOME/.env -------------------------
 mkfx cat-env 'cat "$HOME/.env"; exit 0'
 run_canary cat-env
@@ -65,7 +81,7 @@ run_canary touch-env
 
 # A real silent read only registers where the filesystem tracks atime.
 mkfx silent-read 'cat "$HOME/.env" >/dev/null; exit 0'
-probe="$SCRATCH/probe"; : > "$probe"; touch -a -d @0 "$probe"; touch -m -d @1000 "$probe"
+probe="$SCRATCH/probe"; : > "$probe"; TZ=UTC touch -a -t 197001010000.00 "$probe"; TZ=UTC touch -m -t 197001010016.40 "$probe"
 cat "$probe" >/dev/null
 if [ "$(stat -c %X "$probe" 2>/dev/null || stat -f %a "$probe")" != 0 ]; then
   run_canary silent-read

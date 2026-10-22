@@ -25,6 +25,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/lib/portable-timeout.sh"
 SCRIPT="$HERE/tmp-reap.sh"
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/tmp-reap-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }

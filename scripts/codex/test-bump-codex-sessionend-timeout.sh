@@ -77,7 +77,7 @@ cat > "$BASE/nokey/hooks/hooks.json" <<'JSON'
 { "hooks": { "SessionEnd": [ { "matcher": "x" }, { "hooks": [ { "type": "command", "command": "node session-lifecycle-hook.mjs SessionEnd", "timeout": 5 } ] } ] } }
 JSON
 CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" > "$TMP/run2.out" 2>&1 || true
-chk "mode 0644 preserved" "644" "$(stat -c %a "$BASE/mode/hooks/hooks.json")"
+chk "mode 0644 preserved" "644" "$(stat -c %a "$BASE/mode/hooks/hooks.json" 2>/dev/null || stat -f %Lp "$BASE/mode/hooks/hooks.json")"
 chk "mode-fixture bumped" "30" "$(end_t mode)"
 chk "symlink still a symlink" "yes" "$([ -L "$BASE/sym/hooks/hooks.json" ] && echo yes || echo no)"
 chk "symlink target patched" "30" "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$TMP/real/hooks.json")"

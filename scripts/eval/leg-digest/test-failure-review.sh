@@ -18,6 +18,8 @@
 # shellcheck disable=SC2016,SC2034  # check() evals single-quoted asserts that read these vars
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../../lib/portable-timeout.sh"
 FRV="$HERE/failure_review.py"
 CAD="$HERE/failure-review-cadence.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/failure-review-test.XXXXXX")" || { echo "test-failure-review: mktemp -d failed" >&2; exit 1; }
