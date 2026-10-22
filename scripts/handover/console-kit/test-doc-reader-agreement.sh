@@ -175,7 +175,7 @@ mkdir -p "$W/tpl"
     export HIMMELCTL_CACHE_DIR="$W/cache" HANDOVER_REGISTRY="$W/noreg.json" BRIDGE_ROOT="$W/bridge" \
         HANDOFF_FACTS_BANK="$W/facts-bank.sh" HANDOFF_FACTS_PRS="$W/facts-prs.sh" HANDOVER_DIR="$W/tpl" \
         USER_SLUG=u JIRA_PROJECT_KEY=HIMMEL CONSOLE_WORK_DIR="$W/work"
-    bash "$REPO/scripts/handover/console/console.sh" new --name tpl-console --bucket himmel >/dev/null 2>&1
+    bash "$REPO/scripts/handover/console/chief.sh" new --name tpl-console --bucket himmel >/dev/null 2>&1
 )
 tpl_rc=$?
 if [ "$tpl_rc" -ne 0 ]; then fail "console.sh new exited $tpl_rc"; echo "FAILED: $fails"; exit 1; fi

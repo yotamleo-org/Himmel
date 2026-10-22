@@ -105,8 +105,10 @@ check("no cookie handed to the helper", "--cookie" not in args.lower() and "stor
 
 p, g, msg = run("v2", "notx.json")
 text = p.read_text(encoding="utf-8")
-check("metadata without transcript still ok", g == "v" and "Probe Talk" in text, f"{g} {msg}\n{text}")
-check("missing transcript named", "transcript_empty" in text, text)
+check("no transcript is a deferred partial, never ok", g == "~" and fm(p).get("harvest_status") == "partial"
+      and fm(p).get("harvest_flag") == "thin-body" and "harvested_at" not in fm(p), f"{g} {msg}\n{text}")
+check("missing transcript named in the log", "transcript_empty" in msg, msg)
+check("no transcript section is written", "## Harvested content" not in text, text)
 
 p, g, msg = run("v3", "wall.json", rc="4")
 check("login wall stays a deferred thin partial", g == "~" and "deferred 1/5" in msg

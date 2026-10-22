@@ -17,8 +17,8 @@ the classifier. The cases below are the residual judgment calls after the
 structural fixes are exhausted. **Never reshape a command to dodge a guardrail —
 if a write is denied after following this playbook, defer to the operator.**
 The one carve-out is a review-thread resolve or reply: it is verifiable
-against the PR head, so a leg sends it to the console as
-`BLOCKED resolve <pr> <thread ids>` and the console verifies and resolves it
+against the PR head, so a worker sends it to the chief as
+`BLOCKED resolve <pr> <thread ids>` and the chief verifies and resolves it
 itself, never handing it to the operator.
 
 ---
@@ -117,7 +117,7 @@ vars, no loops, body via file) and retry once; a classifier denial on a loop
 shape is a shape denial (`block-jira-compound-write.sh` now
 bounces loop, `$J` and `xargs` shapes itself with that recipe). If the single
 literal write is still denied, that is not a shape problem — defer to the
-operator (a review-thread write goes to the console instead, above), do **not** reshape again to dodge the classifier. See
+operator (a review-thread write goes to the chief instead, above), do **not** reshape again to dodge the classifier. See
 [`afk-mode.md`](../handover/afk-mode.md) § Auto-mode classifier &
 attestation. Multi-line bodies: use `--comment-file <path>` / `--desc-file
 <path>` so the shell command stays single-line.
@@ -136,9 +136,9 @@ auto-mode the amend is flagged as gate-circumvention and **HARD-blocked
 
 **What to do if the branch is already pushed without the trailer:** recut it.
 The pre-push gate accepts a trailer in any commit of the range or the PR body,
-but the supervisor session's `ready-check.sh` check 5 reads **only the PR's first
+but the chief's `ready-check.sh` check 5 reads **only the PR's first
 commit** — a PR-body or later-commit trailer clears the push gate
-and still FAILS ready-check, so the PR can never be merged by a supervisor session. A
+and still FAILS ready-check, so the PR can never be merged by a chief. A
 typical case: a docs-only first commit (which needs no trailer), then a later
 commit adds a non-docs path (which does).
 
@@ -221,9 +221,9 @@ head>`). The PR's own green rollup is not the question here: main is.
    verified against the run, never trusted: a wrong run id or an unrelated name
    is refused with the same exit 22. Trailers belong in the FIRST commit; a
    late declaration costs a new commit, never `--amend`.
-   **Or the supervisor session writes a fix-GO**, when a commit line is not
+   **Or the chief writes a fix-GO**, when a commit line is not
    an option: `bash <anchor>/scripts/handover/console-kit/go.sh --fix-main-red
-   <red run id> <pr> <full head sha>`, from the supervisor session (a worker session cannot; it needs
+   <red run id> <pr> <full head sha>`, from the chief (a worker cannot; it needs
    the same ready-check PASS as any GO). The signed file names ONE red run, one
    PR and one head, and the gate accepts it only while that run is still
    main's latest completed red run: after another sweep goes red, or the PR
@@ -231,7 +231,7 @@ head>`). The PR's own green rollup is not the question here: main is.
    ordinary GO file (merge approval) (and a trust-reviewed GO on a trust path) is still required.
 3. **Your PR is unrelated:** do not merge. Report `MAIN-RED <job> <case> caused-by: #<pr>`
    (`caused-by: unknown` when no PR in the range can be named) to the
-   supervisor session (or confirm one is open), and merge after the fix lands. Main stays
+   chief (or confirm one is open), and merge after the fix lands. Main stays
    "red" until the next cron sweep or a manual
    `gh workflow run ci.yml --ref main` completes green; dispatching one is the
    quickest way to clear the gate once the fix is on main.
@@ -372,10 +372,10 @@ standing workaround to normalize.
 
 ## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one leg's session
 
-A worktree-pinned worker session that has been running `git` normally can reach a state
-where its `git` Bash calls are refused. Observed 2026-09-20, worker session N198.
+A worktree-pinned worker that has been running `git` normally can reach a state
+where its `git` Bash calls are refused. Observed 2026-09-20, worker N198.
 The text as recorded — both `...` are elisions in the record (the
-full message was not preserved), and the worktree path is the worker session's own:
+full message was not preserved), and the worktree path is the worker's own:
 
 ```text
 This session is isolated in the worktree .../fix+himmel-3279-durable-launch-context, but this command runs rtk with a git command among its operands: what runs it, and from which directory or root, cannot be read here ... Refusing to run it
@@ -389,7 +389,7 @@ statically reads each Bash command line of an `EnterWorktree`-pinned session
 -C`, which is a correct refusal and stays one).
 Observed refused: `git diff -U0 <file>`, `git diff -U0 -- <file>` and a bare
 `git status --short`. Earlier in the same session `git grep` and `git log` ran
-fine — **partial function is not evidence against this symptom**: a worker session where
+fine — **partial function is not evidence against this symptom**: a worker where
 `git log` works while `git status` / `diff` / `commit` are refused has it.
 
 **Why it happens.** The rtk PreToolUse hook rewrites `git …` to `rtk git …`,
@@ -409,7 +409,7 @@ rewrite that names git as a word when the hook payload's cwd is inside a
 harness sees plain `git`. Nothing hook-visible marks a session as pinned, hence
 the cwd proxy; the cost is that rtk's git output compression is also lost in
 *unpinned* worktree sessions. It takes effect once the checkout the user-scope
-hook runs from has this change. A worker session that typed `rtk git …` or `rtk proxy git …`
+hook runs from has this change. A worker that typed `rtk git …` or `rtk proxy git …`
 itself is refused by the same screen — type plain `git`; that removes a wrapper
 you added, it does not reshape the operation.
 
@@ -434,11 +434,11 @@ root") — leads only because the alternatives are gone; it has had no positive
 test. Do not act on it as if it were the cause.
 
 **It is rare.** On 2026-09-20 one session was refused against four other native
-worker sessions running `git` unrefused (N197, N197b, N198b, N200) — a day's sample, not a
-rate. A worker session that hits it has hit something uncommon, not a routine gate; the
+workers running `git` unrefused (N197, N197b, N198b, N200) — a day's sample, not a
+rate. A worker that hits it has hit something uncommon, not a routine gate; the
 cause is not identified, so do not spend the session diagnosing your own conduct.
 
-**What to do — the worker session:**
+**What to do — the worker:**
 
 - Stop at the **first** refusal carrying this text. Unlike the entries above, do
   not wait for a second: N198 tried three spellings and none cleared it, and
@@ -447,7 +447,7 @@ cause is not identified, so do not spend the session diagnosing your own conduct
   command, and do not hunt for a spelling, a wrapper or another tool that slips
   the same operation past the scan. That is not a recovery and must not become a
   standing recipe.
-- `BLOCKED` to the supervisor session by `SendMessage` (it needs no git). The work is
+- `BLOCKED` to the chief by `SendMessage` (it needs no git). The work is
   safe **only** on disk in the worktree — uncommitted, unpushed, held nowhere
   else — so touch nothing further and do not prune or remove the worktree.
 - **Preserve what the diff cannot carry** in that message *before* you wrap:
@@ -455,28 +455,28 @@ cause is not identified, so do not spend the session diagnosing your own conduct
   count and any pasted RED, claims you have not verified, the ship steps still
   owed, your worktree path, branch and base sha, and your queue-lock doc and
   release token (in backticks). Your own handover doc is under your lock, so the
-  supervisor session cannot write there — the message is the channel.
+  chief cannot write there — the message is the channel.
 
-**What to do — the supervisor session:**
+**What to do — the chief:**
 
-- **Never run the worker session's refused git command on its behalf.** That is permission
+- **Never run the worker's refused git command on its behalf.** That is permission
   laundering, exactly as for `[Out-of-Place Publication]` above.
-- Write the worker session's message to a **supervisor-session-owned** file in the state repo (the
+- Write the worker's message to a **supervisor-session-owned** file in the state repo (the
   N198 record, `<TICKET>-N198-BLOCKED-state-2026-09-20.md`, is the shape) so
-  the reasoning survives the worker session's transcript.
-- Recover by **re-dispatching a fresh worker session onto the identical worktree**: same
+  the reasoning survives the worker's transcript.
+- Recover by **re-dispatching a fresh worker onto the identical worktree**: same
   path, branch and base, the state file in its brief. Release the stale lock
-  with the worker session's token first, and close the stuck worker session's window (it still holds a
-  fleet slot). The fresh worker session faces the same guards, so this is a re-dispatch,
+  with the worker's token first, and close the stuck worker's window (it still holds a
+  fleet slot). The fresh worker faces the same guards, so this is a re-dispatch,
   not a dodge — a new session is the one thing that varied in the controls. It
-  has been exercised end to end: N198 → N198b → PR #987. Have the fresh worker session
-  re-run the verification it will attest to; the prior worker session's greens are a report,
+  has been exercised end to end: N198 → N198b → PR #987. Have the fresh worker
+  re-run the verification it will attest to; the prior worker's greens are a report,
   not evidence in the new session.
-- **If a fresh worker session on the same worktree is refused with the same text, the
+- **If a fresh worker on the same worktree is refused with the same text, the
   session-scoped reading is wrong** — that is structural. Stop, note it on
   the ticket, and take it to the operator.
 
-**Settled:** the suppression now covers a native worker session whose cwd is in
+**Settled:** the suppression now covers a native worker whose cwd is in
 `.claude/worktrees/` (see above), so a hook-produced `rtk git` no longer reaches
 the screen there. The session-scoped reading above was the right observation
 with the wrong variable: what the "session rules" varied was the `EnterWorktree`
@@ -484,9 +484,9 @@ pin. A worktree outside `.claude/worktrees/` (`git worktree add ../x`) keeps the
 rewrite and can still hit this.
 
 **Not settled:** a blocked ship tail has no recovery cheaper than the full
-re-dispatch above — none was found, and a worker session still refused after the fix means
+re-dispatch above — none was found, and a worker still refused after the fix means
 the hook is not the source (a stale or unwired `rtk-hook-guard.sh`, or a
-hand-typed `rtk`), which the supervisor session should check before re-dispatching. The
+hand-typed `rtk`), which the chief should check before re-dispatching. The
 screen's inconsistency inside a pinned session is Claude Code's, not himmel's,
 and is unreported upstream.
 
@@ -494,30 +494,30 @@ and is unreported upstream.
 
 ## Symptom: `/pr-check` step 0's canonical fence is refused — "runs bash in a plain command … cannot be shown not to run git"
 
-The worker session called `EnterWorktree`. That refusal comes from the worktree-isolation
+The worker called `EnterWorktree`. That refusal comes from the worktree-isolation
 screen, which reads only `EnterWorktree`-pinned sessions: the fence runs the
 `HIMMEL_REPO` anchor's `scripts/cr/pr-check-context.sh`, outside the pin, so
-the screen refuses it. The operator's `!` in that window is refused too. A worker session
+the screen refuses it. The operator's `!` in that window is refused too. A worker
 whose diff touches `scripts/cr/` cannot fall back to the bare relative literal,
 because `guard-pr-check-literal` correctly refuses branch bytes. Before the fix,
 N376 and N386 each sat `BLOCKED` for 10-12 h on this (2026-09-23).
 
-A worker session that `cd`s into its worktree without the pin runs the exact fence
+A worker that `cd`s into its worktree without the pin runs the exact fence
 unrefused (measured in N418: rc=0, `anchor_lane=himmel`). The anchor still
 decides whether to hand off to the branch's copy, so nothing about the anchor
 trust changes.
 
 **The fix.** `headed-arm-leg.sh` writes `permissions.deny: ["EnterWorktree"]`
-into every profiled worker session's generated `<name>.leg-settings.json` (all lanes,
-not the relay). The tool is then absent from the worker session's tool list. A worker session works
+into every profiled worker's generated `<name>.leg-settings.json` (all lanes,
+not the relay). The tool is then absent from the worker's tool list. A worker works
 in its worktree by `cd <worktree path>` from its launch directory. Writes into
 the primary stay fenced without the pin: `block-edit-on-main` and
 `block-write-into-main-checkout` resolve the target path, and
 `check-worktree-isolation` checks the branch at commit time.
 
-**A worker session launched before the fix that is already pinned:** `BLOCKED` to the
-supervisor session. The supervisor session runs the canonical fence from its own unpinned session
-with cwd set to the worker session's worktree, and hands the worker session the output.
+**A worker launched before the fix that is already pinned:** `BLOCKED` to the
+chief. The chief runs the canonical fence from its own unpinned session
+with cwd set to the worker's worktree, and hands the worker the output.
 
 ---
 
@@ -535,7 +535,7 @@ allow rule spells out — unquoted, no `$VAR`, no `cd … &&` prefix, no pipe
 into the gate script itself (write the input to a file first). That is the
 one permitted retry (`docs/handover/leg-sections/shell-and-tests.md`). If the
 bare literal is *still* denied, this is not a spelling problem: stop, do not
-try a third spelling, and go `BLOCKED` to the supervisor session.
+try a third spelling, and go `BLOCKED` to the chief.
 
 ---
 
@@ -577,7 +577,7 @@ content, or the literal `Stage 2 classifier error`, is the classifier.
 
 **What to do:** run every suite — new or old — only through `bash
 scripts/quiet-run.sh suite -- bash <suite>` as **one literal command**, never
-a hand-rolled compound. This is already the sanctioned shape in every worker session
+a hand-rolled compound. This is already the sanctioned shape in every worker
 brief. The label is the literal `suite`: only that label is
 auto-allowed, so any other label goes to the classifier.
 
@@ -590,8 +590,8 @@ commands like any other, so `block-destructive-commands` inspects the **whole
 command string**, including a quoted TEXT argument — not just the binary
 being invoked. Quoting a guarded flag (e.g. naming the force-push flag, or
 echoing a suite's `rm -rf` cleanup line) gets refused even though the flag
-never runs. Confirmed twice: a worker session's `inbox-send.sh`
-call and a supervisor session's `printf` log bullet, both denied for quoting text only.
+never runs. Confirmed twice: a worker's `inbox-send.sh`
+call and a chief's `printf` log bullet, both denied for quoting text only.
 
 **What to do:** write the text with the **Write tool** first, then pass it by
 path — `inbox-send.sh <session> --file <path>` for a message, `cat >>` from a
@@ -639,9 +639,9 @@ head:
   command once, not a contrived alternate spelling.
 
 A second denial of **any** wording, on any of these, → stop, `BLOCKED` to the
-supervisor session with the exact denial text; the supervisor session never runs the denied command
+chief with the exact denial text; the chief never runs the denied command
 itself (permission laundering) — it routes it to the operator's own shell or
-the worker session's window via `!`.
+the worker's window via `!`.
 
 ---
 
@@ -656,25 +656,25 @@ pattern**, not the content.
 **What to do:** unlike the row above, this string earns **no retry at all** —
 whether you are seeing it after your own delayed retry (the usual path) or as
 the very first denial on this attempt. Stop immediately: `BLOCKED` to the
-supervisor session with the exact denial text; the supervisor session never runs the denied command
+chief with the exact denial text; the chief never runs the denied command
 itself (permission laundering) — it routes it to the operator's own shell or
-the worker session's window via `!`.
+the worker's window via `!`.
 
-A worker session's writes to its own handover doc are a common source of
-this symptom, since the resolved handover root sits outside the leg's working
-directories. `headed-arm-leg.sh --profile` now grants every generated worker session
-settings file (native and claudex) only the leg **doc's own directory** as a
+A worker's writes to its own handover doc are a common source of
+this symptom, since the resolved handover root sits outside the worker's working
+directories. `headed-arm-leg.sh --profile` now grants every generated worker
+settings file (native and claudex) only the worker **doc's own directory** as a
 `permissions.additionalDirectories` entry — never the whole handover root —
 so a Results write no longer falls to the classifier on a fresh launch. The
 grant is scoped this narrowly because `console-kit/go.sh`'s merge GO is
 authenticated only by the *existence* of a file under
 `<handover_root>/.locks/go/<pr>.<sha>` (`go-gate.sh`, `merge-on-green.sh`),
 with no hook guarding that path: widening the grant to the root would let a
-worker session's own Write auto-approve into `.locks/`, minting its own merge GO. As
+worker's own Write auto-approve into `.locks/`, minting its own merge GO. As
 defense in depth, the same profile block also denies
 Edit/Write/MultiEdit/NotebookEdit on `<handover_root>/.locks/**` outright
-(the relay half of a split console is exempt, matching its existing
-no-worktree-deny settings). A worker session already running before its next launch
+(the relay half of a split chief is exempt, matching its existing
+no-worktree-deny settings). A worker already running before its next launch
 does not pick this up — the interim above still applies to it.
 
 ---
@@ -683,7 +683,7 @@ does not pick this up — the interim above still applies to it.
 
 `HANDOVER_DIR=<root> bash scripts/handover/queue-lock.sh release <doc> <token>`
 acquired the lock at session start, but the same shape is denied after the
-worker session's GO'd merge landed. The command is not a merge — it writes one lock dir
+worker's GO'd merge landed. The command is not a merge — it writes one lock dir
 under the handover root and touches no git ref — but the auto-mode classifier
 reads the session narrative (a merge just happened), not only the payload.
 
@@ -697,7 +697,7 @@ reads the session narrative (a merge just happened), not only the payload.
   is not the root of a real checkout (a sub-directory or a lookalike dir: run it
   from the worktree root). Re-issue the one bare literal — do not add a second spelling.
 - Still denied (or a permission prompt) → **stop and escalate**: `BLOCKED` to the
-  supervisor session with the doc path and your release token. The supervisor session releases with
+  chief with the doc path and your release token. The chief releases with
   your token as ordinary lock administration. **Never** reshape the command,
   touch the lock file directly, or force-release yourself.
 - **Verify with `status`, not the return code:** `release` succeeds silently
@@ -747,8 +747,8 @@ so an arm that "went through" is not evidence the brief was in place.
 
 ## Symptom: a background task "stopped because the system is running low on memory" at zero pressure
 
-Observed only in worker sessions: the same command exits 0 from the supervisor session and
-dies in the worker session. All-zero `/proc/pressure/memory` (including
+Observed only in workers: the same command exits 0 from the chief and
+dies in the worker. All-zero `/proc/pressure/memory` (including
 `total=`) and `oom_kill 0` in the session cgroup's `memory.events` mean there
 is **no evidence of contention**; the kill is unexplained, not explained by
 memory. The worker system prompt carries the exact reading recipe.
@@ -764,11 +764,11 @@ have not controlled for.
 `bash scripts/lanes/leg-burn.sh <session>` only READS the session's
 transcript JSONL to price its token usage for the PR body's `leg-burn:` line,
 but the auto-mode classifier can read "a script opening session transcripts"
-as tampering and deny it, twice in a row for the same worker session (2026-09-24).
+as tampering and deny it, twice in a row for the same worker (2026-09-24).
 
 **What to do:** do not reshape the command or read the JSONL another way.
-Report `BLOCKED` to the supervisor session, which routes it to the operator, who runs
-`! bash scripts/lanes/leg-burn.sh <session>` in the worker session's tab; paste the
+Report `BLOCKED` to the chief, which routes it to the operator, who runs
+`! bash scripts/lanes/leg-burn.sh <session>` in the worker's tab; paste the
 printed line into the PR body. The rest of the ship flow is not blocked by
 it, so keep working while you wait.
 
@@ -786,7 +786,7 @@ flag, a `cd … &&`, a pipe). **Never reshape the command**, never call
 effect, and never widen the rule to a wildcard.
 
 **What to do:** retype the bare relative literal once from the worktree root.
-If it is still denied, report `BLOCKED` to the console naming the exact text
+If it is still denied, report `BLOCKED` to the chief naming the exact text
 that was refused; the operator runs `! bash scripts/handover/console-kit/vm-runner.sh <on|off|status>`
 at the station. `off` is the kill switch and is always safe to ask for.
 

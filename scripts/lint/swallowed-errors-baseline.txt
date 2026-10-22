@@ -126,7 +126,7 @@ scripts/handover/console-kit/vm-runner.sh	cmdsub-devnull	3
 scripts/handover/console-kit/wrap-merged.sh	cmdsub-devnull	6
 scripts/handover/console-kit/write-verdict.sh	cmdsub-devnull	5
 scripts/handover/console-kit/write-verdict.sh	true-after-read	1
-scripts/handover/console/console.sh	cmdsub-devnull	12
+scripts/handover/console/chief.sh	cmdsub-devnull	12
 scripts/handover/flush.sh	cmdsub-devnull	4
 scripts/handover/flush.sh	true-after-read	1
 scripts/handover/generate-morning-briefing.sh	cmdsub-devnull	14

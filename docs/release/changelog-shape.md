@@ -23,7 +23,7 @@ reads `Nothing.`
 A change is user-visible if an adopter can see it from outside the repo: a
 command, flag, config key, skill, UI, doc or default changed, or a bug they
 could hit is gone. Everything else is internal: guards and hooks, console-kit
-and leg mechanics, review gates, CI and test tooling, lint baselines, refactors,
+and worker mechanics, review gates, CI and test tooling, lint baselines, refactors,
 dependency pins.
 
 User sections are written in plain words and contain no ticket key

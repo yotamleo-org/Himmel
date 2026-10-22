@@ -120,8 +120,8 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    // nor is the vm form's read (Config's onVisit) or the tracker sources' read: neither may take the feed's fetch slot.
-    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" || url === "/api/sources" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
+    // nor is the vm form's or the review gate's read (Config's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
+    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/sources" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);
     }),
@@ -136,6 +136,30 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
     waiting[0]("older"); await a; // the older report lands last
   } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
   expect(painted).toEqual(["initial", "newer"]);
+});
+
+test("page: a repaint after a review gate control changes puts the focus back on that control", async () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
+    .replace(/^import .*$/gm, "").concat("\nglobalThis.__paint = paint;\n");
+  const focused: string[] = [];
+  const ctl = (rg: string, slug: string) => ({ dataset: { rg, slug }, matches: (q: string) => q === "[data-rg]", focus() { focused.push(`${rg}:${slug}`); } });
+  const rendered = [ctl("mode", "codex"), ctl("required", "claude"), ctl("enabled", "claude")];
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  const g = globalThis as Record<string, unknown>;
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  Object.assign(g, {
+    render: () => "", renderNav: () => "", renderHeader: () => "",
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    document: { querySelector: el, querySelectorAll: (q: string) => (q === "[data-rg]" ? rendered : []), getElementById: el, activeElement: rendered[1], addEventListener() {} },
+    location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
+    fetch: () => new Promise(() => {}),
+  });
+  try {
+    new Function(src)();
+    (g.__paint as () => void)();
+  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  expect(focused).toEqual(["required:claude"]);
 });
 
 test("the server refuses to start when a route budget would outlast idleTimeout", () => {
