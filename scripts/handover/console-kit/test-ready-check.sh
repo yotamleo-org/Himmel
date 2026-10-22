@@ -341,14 +341,18 @@ contains "unresolved-threads: check 3 fails" "$out" "[FAIL] 3. unresolved review
 reset_stubs
 RUN_CACHE=$(mktemp -d "$tmp/cache.XXXXXX") || exit 1
 STUB_UNRESOLVED=1
-run >/dev/null 2>&1 || true
+rc=0; run >/dev/null 2>&1 || rc=$?
+check "stale-cache-thread-resolved: warm-up exit 1" "$rc" "1"
+check "stale-cache-thread-resolved: warm-up cached 1 thread" "$(jq -s -r '.[0].value.reviewThreads.nodes | length' "$RUN_CACHE"/*-"$PR".json 2>/dev/null)" "1"
 STUB_UNRESOLVED=0
 rc=0; out="$(run)" || rc=$?
 check "stale-cache-thread-resolved: exit 0" "$rc" "0"
 contains "stale-cache-thread-resolved: check 3 passes" "$out" "[PASS] 3."
 reset_stubs
 RUN_CACHE=$(mktemp -d "$tmp/cache.XXXXXX") || exit 1
-run >/dev/null 2>&1 || true
+rc=0; run >/dev/null 2>&1 || rc=$?
+check "stale-cache-thread-opened: warm-up exit 0" "$rc" "0"
+check "stale-cache-thread-opened: warm-up cached 0 threads" "$(jq -s -r '.[0].value.reviewThreads.nodes | length' "$RUN_CACHE"/*-"$PR".json 2>/dev/null)" "0"
 STUB_UNRESOLVED=1
 rc=0; out="$(run)" || rc=$?
 check "stale-cache-thread-opened: exit 1" "$rc" "1"
