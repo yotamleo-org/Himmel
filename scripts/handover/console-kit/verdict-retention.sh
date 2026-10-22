@@ -243,6 +243,7 @@ if [ "$verb" = prune ]; then
     hroot=$(handover_root) && [ -d "$hroot" ] || { echo "verdict-retention: cannot resolve the handover root; refusing to prune" >&2; exit 3; }
     phys_root=$(cd "$hroot" && pwd -P) || exit 3
     phys_root="${phys_root%/}"
+    phys_cache="${phys_cache%/}"
     case "$phys_cache/" in
         "$phys_root"/*) echo "verdict-retention: refusing - $cache is inside the handover root $hroot; this pruner never touches vault verdicts" >&2; exit 2 ;;
     esac
