@@ -17,7 +17,7 @@ Join.
   escape     a PR merged at the head of a GO record in the window written before the merge, and either a Bug
              whose `caused-by: #<pr>` names it (sure) or a candidate ruled S (sure) or P (plausible). A PR
              counts once. A PR merged past its GO'd head or before its GO is coverage, never scored, and only
-             those GOs give its class and model. Merges, verdicts, bugs and main runs from `until` on are ignored.
+             those GOs give its class and model. Merges, verdicts, bugs and main runs from `until` on, or undated, are ignored.
   candidate  an escape signal whose cause no caused-by on the PR already settles: a Bug created after the merge
              that cites the PR and has no caused-by line, or a failed main run on the merge commit
              (ci-selection); and a NO-GO overturned by a
@@ -220,7 +220,7 @@ def join(recs, prs, runs, bugs, since, until):
     merged = {n: p for n, p in shipped.items() if gos[n]}
     m["coverage.merged_past_go"] = len(shipped) - len(merged)
     signals = {n: [] for n in merged}  # pr -> [(level S|P|pending, cause)]
-    bugs = [b for b in bugs if not (b["created"] and b["created"] >= until)]
+    bugs = [b for b in bugs if b["created"] and b["created"] < until]
     for b in bugs:
         if b["caused_by"] and b["caused_by"].isdigit() and int(b["caused_by"]) in signals:
             signals[int(b["caused_by"])].append(("S", "ci-selection" if "main-red" in b["labels"] else "review"))
@@ -241,7 +241,7 @@ def join(recs, prs, runs, bugs, since, until):
         n = sha.get(run.get("headSha"))
         at = when(run.get("createdAt") or "")
         if (n is not None and (n, "ci-selection") not in settled and run.get("conclusion") == "failure"
-                and not (at and at >= until)):
+                and at and at < until):
             cands.append({"id": "esc:%d:red-main:%s" % (n, run.get("databaseId")), "pr": n, "signal": "red-main",
                           "ref": str(run.get("databaseId")), "cause": "ci-selection",
                           "question": "Did PR #%d break main run %s on its own merge commit? S sure, P plausible, "
@@ -261,7 +261,7 @@ def join(recs, prs, runs, bugs, since, until):
                           "question": "Was the NO-GO %s/%s on PR #%d at %s wrong (overturned by a GO at the same "
                                       "head)? S the blocking finding was wrong, P plausibly wrong, N it was right."
                                       % (r["qid"], r["name"], r["pr"], r["head"][:12])})
-        elif not later and landed(pr, until) and pr.get("headRefOid") == r["head"]:
+        elif landed(pr, until) and pr.get("headRefOid") == r["head"]:
             m["overridden"] += 1
     return m, ci, cands, merged, signals, gos, judge, win
 

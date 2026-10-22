@@ -58,6 +58,8 @@ verdict q9 judge GO abd1 2026-10-19T10:00:00Z "pr: 109" "model: opus" "effort: h
 verdict q10 judge NO-GO abe1 2026-10-18T10:00:00Z "pr: 110" "model: opus" "effort: high" -- "class: other" "class-reason: x"
 verdict q11 judge GO abf1 2026-10-18T12:00:00Z "pr: 111" "model: opus" "effort: high" -- "class: none"
 verdict q10b judge GO abe1 2026-10-22T10:00:00Z "pr: 110" "model: opus" "effort: high" -- "class: none"
+verdict q12 judge GO ab12 2026-09-20T10:00:00Z "pr: 112" "model: opus" "effort: high" -- "class: none"
+verdict q12b judge NO-GO ab12 2026-10-16T10:00:00Z "pr: 112" "model: opus" "effort: high" -- "class: other" "class-reason: x"
 mkdir -p "$TMP/v/notes"; printf 'a disposition note, no verdict line\n' >"$TMP/v/notes/judge.md"
 
 cat >"$TMP/prs.json" <<'EOF'
@@ -71,13 +73,15 @@ cat >"$TMP/prs.json" <<'EOF'
  {"number":108,"state":"MERGED","mergedAt":"2026-10-17T11:00:00Z","headRefOid":"abc9","mergeCommit":{"oid":"m108"}},
  {"number":109,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abd1","mergeCommit":{"oid":"m109"}},
  {"number":110,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abe1","mergeCommit":{"oid":"m110"}},
- {"number":111,"state":"MERGED","mergedAt":"2026-10-18T11:00:00Z","headRefOid":"abf1","mergeCommit":{"oid":"m111"}}]
+ {"number":111,"state":"MERGED","mergedAt":"2026-10-18T11:00:00Z","headRefOid":"abf1","mergeCommit":{"oid":"m111"}},
+ {"number":112,"state":"MERGED","mergedAt":"2026-10-16T11:00:00Z","headRefOid":"ab12","mergeCommit":{"oid":"m112"}}]
 EOF
 cat >"$TMP/runs.json" <<'EOF'
 [{"databaseId":501,"headSha":"m102","conclusion":"failure","createdAt":"2026-10-12T11:05:00Z"},
  {"databaseId":503,"headSha":"m105","conclusion":"failure","createdAt":"2026-10-21T05:00:00Z"},
  {"databaseId":502,"headSha":"m101","conclusion":"success","createdAt":"2026-10-10T11:05:00Z"},
- {"databaseId":504,"headSha":"m101","conclusion":"failure","createdAt":"2026-10-11T11:05:00Z"}]
+ {"databaseId":504,"headSha":"m101","conclusion":"failure","createdAt":"2026-10-11T11:05:00Z"},
+ {"databaseId":505,"headSha":"m102","conclusion":"failure","createdAt":""}]
 EOF
 mkdir -p "$TMP/mirror"
 # mirror <key> <type> <labels json> <created> <description>
@@ -93,6 +97,7 @@ mirror HIMMEL-9004 Bug '["bug"]' "2026-10-01T09:00:00.000+0200" "Filed before #1
 mirror HIMMEL-9005 Bug '["bug"]' "2026-10-18T09:00:00.000+0200" "caused-by: #108"
 mirror HIMMEL-9006 Bug '["bug"]' "2026-10-21T09:00:00.000+0200" "caused-by: #105"
 mirror HIMMEL-9000 Bug '["bug"]' "2026-10-17T09:00:00.000+0200" "Seen again after #101 merged."
+mirror HIMMEL-9007 Bug '["bug"]' "" "caused-by: #106"
 
 L="$TMP/ledger.jsonl"; Q="$TMP/queue.jsonl"
 ja() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
@@ -110,7 +115,7 @@ has "escape rate has a Wilson interval" "$(field "$L" 0 ci:escape_rate)" '"lo": 
 eq "flip rate: procedural and prior-less records excluded" "$(field "$L" 0 flip_n)" "3"
 eq "flips" "$(field "$L" 0 flips)" "1"
 eq "procedural NO-GOs counted apart" "$(field "$L" 0 procedural)" "1"
-eq "a NO-GO merged at its own head is overridden" "$(field "$L" 0 overridden)" "1"
+eq "a NO-GO merged at its own head is overridden, an older GO at that head notwithstanding" "$(field "$L" 0 overridden)" "2"
 eq "per class: the escaped PR's class" "$(field "$L" 0 class.reader-allowlist.escapes)" "1"
 eq "per model: the last GO's model" "$(field "$L" 0 model.opus.escapes)" "1"
 eq "per class: a GO on a superseded head is not attributed" "$(field "$L" 0 class.stale-class.n)" "null"
@@ -138,7 +143,10 @@ case "$q" in *esc:101:bug:*) fail "queue: a cause a caused-by bug settles asks f
 has "queue: a settled PR's red main run still asks for its ci-selection cause" "$q" "esc:101:red-main:504"
 case "$q" in *nogo:q10/*) fail "queue: a GO from until on overturns no NO-GO";;
   *) pass "queue: a GO from until on overturns no NO-GO";; esac
+case "$q" in *red-main:505*) fail "queue: a main run with no creation time is no candidate";;
+  *) pass "queue: a main run with no creation time is no candidate";; esac
 ja >/dev/null 2>&1
+eq "rerun: exit 0" "$?" "0"
 eq "rerun: a queued candidate is not queued again" "$(rows "$Q")" "4"
 
 # --- rulings: once each, and the next run counts them ------------------------------------------------
