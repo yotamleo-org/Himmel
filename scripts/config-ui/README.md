@@ -1,6 +1,6 @@
 # config-ui
 
-`himmelctl ui` serves the config UI on `127.0.0.1` (Bun, loopback only,
+`himmelctl ui` serves the config console on `127.0.0.1` (Bun, loopback only,
 per-launch token). Operator-only: it refuses to start inside a Claude session.
 
 ## The config feed
@@ -16,7 +16,7 @@ every request (about two minutes on the station, most of it the doctor).
   While it runs, a `202` carries `progress` and answers as soon as the step
   changes, and the page shows `probing <source> (i of N)` over a progress bar.
 - **Background loading.** `himmelctl ui` starts the report at launch, so it is
-  ready by the time you go from Fleet to Config. While the config UI is in use
+  ready by the time you go from Fleet to Config. While the config console is in use
   (any authenticated request in the last 10 minutes) the server refreshes it
   every 10 minutes; once you close it, nothing runs and the server still idles
   out. The page asks again when you come back to Config or the tab becomes
@@ -237,17 +237,17 @@ They are kept per viewer in the browser.
 A finished row links its PR to this checkout's GitHub origin
 (`CONFIG_UI_GITHUB_REPO=<owner>/<name>` overrides it).
 
-**One app.** The config UI and the AG-UI pages share one rail and one
+**One app.** The config console and the AG-UI pages share one rail and one
 theme (`public/nav.js`, `public/theme.css`): Config, Health and Fleet, plus Run
 on a run page. Plain `himmelctl ui` prints ONE URL and lands on the fleet when
-`agui-web/dist` is built, on the config UI when it is not; `LANDING` in
-`server.ts` is the one-line switch (`"config"` lands on the config UI). The token
-only ever travels in the URL fragment: the config UI reads `#t=<token>[&page=<id>]`
+`agui-web/dist` is built, on the config console when it is not; `LANDING` in
+`server.ts` is the one-line switch (`"config"` lands on the config console). The token
+only ever travels in the URL fragment: the config console reads `#t=<token>[&page=<id>]`
 and clears it from the address bar, the AG-UI page keeps `#t=<token>`, and
 requests carry it in the `X-Himmel-Token` header. The rail's Fleet dot is the
 census health (ok, degraded = warn, unavailable or unreachable = fail, not yet
-read = off), in the status colours; on the config UI it is read on load and on
-each page change, never polled, so an open config UI still idles out. A worker's
+read = off), in the status colours; on the config console it is read on load and on
+each page change, never polled, so an open config console still idles out. A worker's
 fleet row also links to the Health page (its workers and usage cards).
 
 **Service mode.** `server.ts --service` (what `himmelctl ui --service install` runs under
@@ -279,7 +279,7 @@ imports, so its suite runs in CI without an install.
   `feed-background.test.ts` covers the progress `202`, the launch prewarm, the
   in-use refresh and stale-while-revalidate.
 - Toggles end to end (`toggles.test.ts`, CI-gated, skipped on
-  Windows): every config UI toggle through the real `himmelctl` and the real
+  Windows): every config console toggle through the real `himmelctl` and the real
   server routes (preview, run), checking that the setting is written, that its
   owner reads it back, and that the run's re-probe and a fresh feed show it,
   then the opposite flip. It runs against a temp `HOME` and a temp repo of
@@ -296,7 +296,7 @@ imports, so its suite runs in CI without an install.
   | lane on/off | written and read back (`probe.kind` always / never), but **the row cannot show which**: it reads `local override in lanes.local.json` for both (config-feed.js `laneRows`) |
 
   `profile.set` is in the action table, but no feed row offers it, so it is not
-  a config UI toggle. Served from a git **worktree**, the server runs `config set`
+  a config console toggle. Served from a git **worktree**, the server runs `config set`
   with `HIMMELCTL_REPO_ROOT` set to the primary checkout (the feed's station
   anchor), so initiative and lane toggles write the `.env` and `lanes.local.json`
   the feed and the live hooks read. An operator-set `HIMMELCTL_REPO_ROOT` wins.
@@ -328,12 +328,12 @@ imports, so its suite runs in CI without an install.
   run): agent attribution and the filter, failure marking and the jump
   control, and the long-output control. Another adds the fleet landing
   over a fixture fleet (`agui-fleet-fixture.ts`: 3 live sessions and 1
-  wrapped) and the click through to a run. Another adds the walk config UI to
+  wrapped) and the click through to a run. Another adds the walk config console to
   Fleet to a run and back over the shared rail, and checks no request line
   carries the token.
 - Docs link and tokens e2e (`docs-link.e2e.ts`, same opt-in suite): the rail
   ends with a Docs link to the public site in a new tab with
-  `rel="noopener noreferrer"` and no session token, and the config UI reads the
+  `rel="noopener noreferrer"` and no session token, and the config console reads the
   shared tokens (`public/tokens.css`) in light and dark with system fonts.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the

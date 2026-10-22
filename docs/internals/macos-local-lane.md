@@ -56,7 +56,7 @@ setup inside the guest. **Re-verify the flags below on the first real run.**
 - Per-run wall clock: boot to SSH ~3-6 min (600 s budget), sync ~1 min, then the suites.
 - Do not start it while the fleet is near the RAM ceiling; the chief decides.
 
-## One-time setup (needs the operator go; run from a chief shell, never a worker)
+## One-time setup (needs the operator go; run from a supervisor session shell, never a worker session)
 
 1. `export HIMMEL_MACOS_LANE_OK=1` in the launching shell.
 2. Pull `sickcodes/docker-osx:latest`; produce `mac_hdd_ng.img` under

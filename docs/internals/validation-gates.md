@@ -309,7 +309,7 @@ no rewrite.
 
 ## Carry-forwards
 
-- **→ WS8 (Mission Control):** the Phase 1 read-only dashboard
+- **→ WS8 (Mission Control):** the Phase 1 read-only console
   (`scripts/fleet-control/`, see `docs/jarvis-subsystems.md`) ships fleet/
   escalation/quota surfaces but not gate verdicts or trust-tier state; making
   those (what's quarantined, what's pending verdict) first-class C&C surfaces

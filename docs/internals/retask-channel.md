@@ -187,7 +187,7 @@ consumption, and never advances the hook's authoritative delivery cursor.
 - **Document mirroring:** `--doc` writers serialize on a canonical-path hash lock in a private user directory under `${TMPDIR:-/tmp}`; other doc writers must use the same lock to participate, and missing/failed `flock` aborts before mirroring or inbox append.
 - **Sent-record + audit:** every `--token` send records a `sha256` of the delivered bullet in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<console.sh convention>}/<sender>/inbox-sent.log`); `scripts/handover/console-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names any token-quoting bullet in an inbox with no matching ledger line — a forged bullet, or one lost to an `inbox-send.sh` exit-4 ledger-write failure.
 
-## 3a. Chief succession
+## 3a. Console succession
 
 The nonce authenticates a revision *to one chief*. Chiefs hand over, so the
 rule "only the session my brief names" has, on its own, no path by which the

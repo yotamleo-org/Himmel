@@ -480,7 +480,7 @@ is a PAYG 90-day trial with **per-model** free quotas (not every model gets
 
 A `403 AccessDenied.Unpurchased` from the API means **the Model Studio
 service has not been activated** — not an identity, key, URL, or region
-problem. Fix it in the Singapore-pinned web UI
+problem. Fix it in the Singapore-pinned console
 (`https://modelstudio.console.alibabacloud.com/ap-southeast-1`):
 
 1. Accept the service agreement — this auto-activates the service **and**
@@ -555,7 +555,7 @@ free quotas exhaust, record the swap in the gitignored
 `scripts/cr/critics.local.json` overlay (auto-picked-up) —
 do not edit the shipped registry for account state (an earlier change did, and was reverted).
 Free-quota exhaustion is why a quota guard is tracked
-separately — it needs a dynamic API pull (UI screenshots are not
+separately — it needs a dynamic API pull (console screenshots are not
 automatable).
 
 ## Verify after a rebuild (zero inference cost)

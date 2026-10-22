@@ -119,11 +119,11 @@ HIMMEL_INITIATIVE=prcheck,pr,ticket,handover
 `himmelctl install` keeps the `policy` field untouched and names it in one
 `WARN` line, as it does for any field outside its own schema.
 
-## Chief rules
+## Console rules
 
 Prose and hooks stay where they are: the chief template, the worker and judge
 system prompts, and the hooks are code, reviewed in the himmel repo. A rule that is
-a tunable number or switch moves to `himmel.conf`; per-supervisor-session state stays in
+a tunable number or switch moves to `himmel.conf`; per-chief state stays in
 the fleet manifest.
 
 Example: the fleet size cap. The rule "a chief never runs more workers than

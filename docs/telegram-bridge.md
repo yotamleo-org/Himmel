@@ -77,7 +77,7 @@ case and the `/verb@botname` form; the auto ops stay
 strict.
 
 Each chief's first waiter arm queues a DM: “Console <name> is live — just <!-- old-term-ok: quotes the DM text the bridge sends until V5 -->
-send /chief <text>”. A successor announces its new identity on its first arm;
+send /console <text>”. A successor announces its new identity on its first arm; <!-- old-term-ok: quotes the DM text the bridge sends until V5 -->
 restarting the same waiter does not repeat the announcement. Replying to an
 announcement, chief acknowledgement, or chief answer routes to that
 chief using the bridge's saved chat/message-id receipt, not quoted text.
@@ -108,7 +108,7 @@ file, so a line is never lost across a re-start).
 - **A wrapped chief leaves its file behind**, so a line to one is acked but
   read by no one; check the chief is live before relying on it.
 
-## Slash chief requests and emergency lockdown
+## Slash supervisor session requests and emergency lockdown
 
 These **slash forms only** carry the same authority as free `/console` text:
 

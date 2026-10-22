@@ -162,7 +162,7 @@ misfits are flagged only.
 | `scripts/probes/claude-p/*.sh` (~20 sites) | `-p` | Probes exercising specific `-p` behaviors, named for the mode they test | Fits (probes for `-p` are `-p` calls by construction) |
 | `docs/internals/token-economy-bench.md:94` | `-p` (bench recipe) | Operator-run bench recipe in a quiet window | Fits |
 | `scripts/graphify/refresh-graph-map.sh:63,393,2106` | Not controlled by these scripts — they configure graphify's `claude-cli` backend, which is graphify's own upstream dispatch code, not a `claude -p`/`--bg` flag visible in this repo | Graphify's intentional CLI dispatch (documented, not this repo's call site) | Out of scope — external tool |
-| `scripts/handover/headed-arm.sh:573` | `--bg --permission-mode auto` | Supervisor-session-armed worker | Fits |
+| `scripts/handover/headed-arm.sh:573` | `--bg --permission-mode auto` | Chief-armed worker | Fits |
 
 No misfits found: every direct `-p` site in this repo is a one-shot,
 preflighted against the subscription usage budget, artifact-checked scripted/CI-shaped call, and the one

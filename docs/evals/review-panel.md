@@ -175,7 +175,7 @@ What the classes say:
 - **The author grades their own homework.** Verdicts come from the session
   that has to fix the finding, which has a motive to disprove or defer. The
   `no-rationale` share is the visible part of that risk. Precision here is
-  biased in an unknown direction: down where authors brush off real findings,
+  biased in an unknown direction: down where authors wave off real findings,
   up where they accept wrong ones to end the review loop. The seeded recall eval, with a
   hidden key, is the unbiased check.
 - **Observational, not controlled.** No PR was reviewed by two critic models,

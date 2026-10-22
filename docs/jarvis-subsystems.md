@@ -112,7 +112,7 @@ on a cadence.
 
 ## Mission Control / C&C
 
-**What it is.** A read-only web dashboard for observing the fleet — worker
+**What it is.** A read-only web console for observing the fleet — worker
 status per lane (Codex / Hermes / armed slots), pending escalations, and
 quota/posture gauges, with live updates over SSE so the page refetches as
 state changes.
@@ -122,13 +122,13 @@ state changes.
 yet — the page's own banner says it plainly: "Read-only Phase 1 pane. Dispatch
 and adjudication controls remain disabled until Phase 2." Fleet state also
 remains available the older way, through the `where-are-we` ledger and the
-`/morning-report` command; the dashboard reads that same ledger rather than
+`/morning-report` command; the console reads that same ledger rather than
 replacing it. The adoptable, productized judge module is tracked separately
 as a planned follow-up.
 
 **Use it.** `bun scripts/fleet-control/server.ts serve` starts the server,
 binding **loopback only** (`127.0.0.1:7350` by default, override with
-`FLEET_CONTROL_PORT`). It serves `/` (the dashboard), `/fleet` and
+`FLEET_CONTROL_PORT`). It serves `/` (the console), `/fleet` and
 `/escalations` (JSON) and `/events` (SSE); state and bridge roots resolve from
 `FLEET_CONTROL_STATE_ROOT` / `FLEET_CONTROL_BRIDGE_ROOT` (`BRIDGE_ROOT`),
 defaulting under `~/.claude/handover/bridge`.

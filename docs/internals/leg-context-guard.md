@@ -1,4 +1,4 @@
-# Worker context guard
+# Leg context guard
 
 `scripts/hooks/guard-leg-context-handoff.sh` is the
 one reference for what the worker context guard does, when it runs, and how a worker

@@ -3,7 +3,7 @@
 This directory holds committed **v2 install-profile** files
 (`schemaVersion: 2` — see `scripts/install/capture-operator-profile.mjs`'s
 header comment for the exact shape). Filename suffix `.install-profile.json`
-is load-bearing: a CI glob elsewhere (the schema-validation job)
+is load-bearing: a CI glob elsewhere (the schema-validation leg)
 matches it across this directory.
 
 ## `operator.install-profile.json`
@@ -105,4 +105,4 @@ that machine's `.env`). On drift, the fix is always the same: re-run the
 regenerate command above and commit.
 
 This directory's schema validity (not staleness) is a separate CI check
-owned by the schema-validation job — this suite does not duplicate it.
+owned by the schema-validation leg — this suite does not duplicate it.

@@ -34,7 +34,7 @@ act-matrix × github-up) → lane | defer`. Never a "skip" — only route or def
 
 1. Required **light** gate → `self-hosted-runner` ▸ `private-gha-hosted`
    (fallback) ▸ `act-exec` (only if GitHub is down).
-2. Everything else → `act-exec` if the job's Linux variant is `act`-eligible and
+2. Everything else → `act-exec` if the job's Linux leg is `act`-eligible and
    under cap.
 3. `publicSafe && !required` → `public-fork` (if GitHub is up).
 4. `required && needsSecrets`, backbone unavailable, with headroom →

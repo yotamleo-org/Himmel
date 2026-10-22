@@ -1,4 +1,4 @@
-# Chief ops lane
+# Console ops lane
 
 A cheap session runs the chief's mechanical scripts and wakes the chief
 with one verdict line, instead of the chief running them itself. HIMMEL-5973
@@ -56,7 +56,7 @@ other last line may carry PR or worker text and is replaced by `see out file`. T
 or when it needs the evidence for a ruling. One event costs the chief one
 turn: the verdict wake.
 
-## What stays on the chief
+## What stays on the console
 
 Rulings, the GO decision and `go.sh`, judge dispatch, every token-quoting
 message, `SendMessage` to workers, Artifact publish, and every write to the chief

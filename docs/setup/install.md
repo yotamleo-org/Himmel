@@ -93,7 +93,7 @@ written tracks the tip.
 
 > **The Windows row-note.** Every axis above is available on Windows and none of
 > them is covered by the v1 support claim. The scheduler-backed items in
-> particular (`cadence-armed`, the arming runs) use `schtasks` there and are the
+> particular (`cadence-armed`, the arming legs) use `schtasks` there and are the
 > least exercised.
 
 ## Minimal config

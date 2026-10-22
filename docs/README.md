@@ -11,7 +11,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
 - [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / warn-only, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
-- [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config UI, the chief board, and the roadmap tracker; what each is, how to start it, where it opens.
+- [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config console, the console board, and the roadmap tracker; what each is, how to start it, where it opens.
 
 ## Setup
 

@@ -447,7 +447,7 @@ until four gates pass:
    limited or absent prints a NOTE and does not block
    ([reviewer modes](configuration.md#reviewer-modes));
 2. the head SHA has green overall CI (no failing or pending check or status);
-3. in a console-spawned worker, a chief GO file matches the head SHA;
+3. in a chief-spawned worker, a chief GO file matches the head SHA;
 4. a PR touching a CI trust path (`scripts/ci/ci-trust-paths.txt`) carries a
    trust-reviewed GO and is merged pinned to its head.
 

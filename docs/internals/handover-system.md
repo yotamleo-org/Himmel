@@ -266,17 +266,17 @@ tells a worker to wrap at once when its only remaining dependency is an operator
 action: append a resume brief, release the queue lock, and end the turn
 instead of idle-waiting.
 
-**Chief Rulings clause:** the same templates also carry a
+**`## Console Rulings` clause:** the same templates also carry a
 `## Console Rulings` clause, asserted byte-identical by the same test suite,
 prefacing every worker brief with how rulings actually reach it — a claudex worker
 via the file inbox hook (`scripts/hooks/claudex-inbox-hook.sh`), a native worker
 via a direct `SendMessage` — so the doc's own `## Console Rulings` section is
 what a worker checks, not something it idle-waits or gets pasted. See
 [`lane-calibration.md`](lane-calibration.md#non-claude-lane-calibration)'s
-`claudex` reachability note for the delivery mechanism itself.
+`claudex` supervisor session reachability note for the delivery mechanism itself. <!-- old-term-ok: names the lane-calibration.md note title until V5 -->
 
 `scripts/handover/leg-resume-brief.sh <leg-doc> [--branch <name>] [--repo <path>] [--dry-run]`
-is the supervisor-session-side half of that clause: it reconstructs everything about a
+is the chief-side half of that clause: it reconstructs everything about a
 worker's state that git already knows (worktree path, `git status --short`,
 merge-base + head SHAs and their subjects, dirty paths) and appends a
 `## RESUME BRIEF (generated ...)` section to the worker's own handover doc,

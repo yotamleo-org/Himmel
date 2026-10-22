@@ -52,7 +52,7 @@ operator, don't reshape to dodge it.
 
 ---
 
-## Symptom: a worker needs a tracked file back at HEAD and `git checkout -- <path>` is denied
+## Symptom: a leg needs a tracked file back at HEAD and `git checkout -- <path>` is denied
 
 Every TDD RED control needs a way to restore a dirtied tracked file to HEAD
 before implementing, but `Bash(git checkout -- *)` is a `deny` entry in
@@ -370,7 +370,7 @@ standing workaround to normalize.
 
 ---
 
-## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one worker's session
+## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one leg's session
 
 A worktree-pinned worker that has been running `git` normally can reach a state
 where its `git` Bash calls are refused. Observed 2026-09-20, worker N198.
@@ -679,7 +679,7 @@ does not pick this up — the interim above still applies to it.
 
 ---
 
-## Symptom: a worker's `queue-lock.sh release` is denied `[Merge Without Review]` right after its merge
+## Symptom: a leg's `queue-lock.sh release` is denied `[Merge Without Review]` right after its merge
 
 `HANDOVER_DIR=<root> bash scripts/handover/queue-lock.sh release <doc> <token>`
 acquired the lock at session start, but the same shape is denied after the
