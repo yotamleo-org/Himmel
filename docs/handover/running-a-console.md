@@ -491,9 +491,11 @@ bus identity a `WAKE relay-on-live` (or run `console-kit/relay-batch.sh <this do
 <it>`), which sends the bus record each worker session's `bus adopt` needs, delivers the claudex
 relays and prints the `SENDMESSAGE` line for each other worker session. The worker session's quote-back is the `SUCCESSION
 accepted` Results bullet in its own doc (the successor's waiter tallies it); it sends a
-`SendMessage` only on a timeout or a decline. A fresh
-token is optional: a successor MAY issue one per worker session (then quote it too, and the
-worker session quotes it back); a relay with none is complete and the worker session keeps its own.
+`SendMessage` only on a timeout or a decline. That run is the relay: never re-run it (a retry
+resends the claudex inbox relays). It never carries a fresh token, and a relay with none is
+complete (the worker session keeps its own). A successor that rotates appends the fresh token by
+hand to a native `SENDMESSAGE` line, and the worker session quotes it back; claudex workers are
+not rotated on a bus succession.
 A successor that arrives after you have left can prove itself only with the
 two-token chain form; a worker session that cannot verify that is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's
