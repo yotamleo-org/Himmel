@@ -1,0 +1,11 @@
+floor-reviewer.md
+Copyright 2026 yotamleo
+
+This file is a derivative work of the "code-reviewer" agent of the
+"pr-review-toolkit" plugin from the claude-plugins-official marketplace,
+published by Anthropic, and licensed under the Apache License, Version 2.0.
+See LICENSE-floor-reviewer for the full text.
+
+Modifications by yotamleo, licensed under the Apache License, Version 2.0:
+- An appended "Verify-before-critical" section.
+- No confidence floor: every finding is reported, with a Suggestion tier.

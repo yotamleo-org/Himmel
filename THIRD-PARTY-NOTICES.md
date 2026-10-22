@@ -64,7 +64,8 @@ under their upstream **Apache-2.0** license:
 - `scripts/cr/floor-reviewer.md` — the `code-reviewer` agent of `pr-review-toolkit`
   (`anthropics/claude-plugins-official`, Apache-2.0, © Anthropic), modified by
   himmel: no confidence floor (HIMMEL-480, HIMMEL-1405) and a verify-before-critical
-  rule (HIMMEL-178). Upstream license: https://www.apache.org/licenses/LICENSE-2.0
+  rule (HIMMEL-178). See `scripts/cr/LICENSE-floor-reviewer` (Apache-2.0 text) and
+  `scripts/cr/NOTICE-floor-reviewer`.
 
 ## Vendored skill content
 
