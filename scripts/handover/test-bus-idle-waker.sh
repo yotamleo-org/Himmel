@@ -236,6 +236,9 @@ fakeproc 5031 5032 sh -c wrap
 fakeproc 5032 5033 env wrap
 fakeproc 5033 5034 env wrap
 fakeproc 5034 '' claude -n legX
+fgstat 5031 5031 5031
+fgstat 5032 5032 5032
+fgstat 5033 5033 5033
 fgstat 5034 5034 5034
 QPID=5030 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a claude 4 levels below the session is out of reach, refused rc=4" || fail "depth bound: rc=$RUN_RC, qlog: $(cat "$QLOG")"
