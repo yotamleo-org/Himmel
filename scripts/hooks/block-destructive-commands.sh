@@ -103,7 +103,7 @@ esac
 # The guest-exec entry point runs its payload inside a himmel test VM, not on
 # this host, so the payload is not scanned: a download-then-run there is the
 # disposable guest's own business. Only the WHOLE command in exactly this shape
-# is exempt: `bash [dir/]scripts/vm/guest-exec.sh <vm> [--sudo] [--timeout N]
+# is exempt: `bash [./|$CLAUDE_PROJECT_DIR/]scripts/vm/guest-exec.sh <vm> [--sudo] [--timeout N]
 # -- 'payload' ['payload'...]`, every payload argument single-quoted (inert to
 # this shell, no expansion) and nothing before, between or after. Separators
 # outside the quotes are blanks only, so a newline or `;` cannot smuggle a
@@ -113,8 +113,14 @@ esac
 if [ "$tool" != PowerShell ]; then
     _ge_b=$'[ \t]'
     _ge_re="^bash${_ge_b}+([A-Za-z0-9_./~-]*/)?scripts/vm/guest-exec\.sh${_ge_b}+[A-Za-z0-9_-]+(${_ge_b}+--sudo|${_ge_b}+--timeout${_ge_b}+[0-9]+)*${_ge_b}+--(${_ge_b}+'[^']*')+${_ge_b}*\$"
-    if [[ $cmd =~ $_ge_re && ${BASH_REMATCH[1]} != *..* ]]; then
-        exit 0
+    if [[ $cmd =~ $_ge_re ]]; then
+        # The script path is the trust anchor: only the cwd-relative spelling
+        # or the project checkout's own copy, never an arbitrary directory's.
+        _ge_pre=${BASH_REMATCH[1]}
+        if [ -z "$_ge_pre" ] || [ "$_ge_pre" = "./" ] \
+           || { [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$_ge_pre" = "${CLAUDE_PROJECT_DIR%/}/" ]; }; then
+            exit 0
+        fi
     fi
 fi
 
@@ -283,7 +289,7 @@ esac
 # Other ports (22, 22220) and ssh aliases are untouched.
 if [ "${HIMMEL_CONSOLE_LEG:-}" = "1" ]; then
     _vp='(222[2-9]|22[3-9][0-9])([^0-9]|$)'
-    if contains '(^|[^[:alnum:]_.-])(ssh|scp|sftp)(\.exe)?[[:space:]][^;&|]*(-p[[:space:]]*|-o[[:space:]]*port[=[:space:]]+|ssh://[^[:space:]/]*:)'"$_vp"; then
+    if contains '(^|[^[:alnum:]_.-])(ssh|scp|sftp)(\.exe)?[[:space:]][^;&|]*(-p[[:space:]]*|-o[[:space:]]*["'"'"']?port[=[:space:]]+|ssh://[^[:space:]/]*:)'"$_vp"; then
         deny "raw ssh to a test VM port; drive the guest with: bash scripts/vm/guest-exec.sh <vm> -- '<cmd>'"
     fi
 fi

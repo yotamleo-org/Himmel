@@ -17,11 +17,12 @@ esac
 
 # the command must follow a literal -- with at least one word after it
 seen=0
+after=0
 for a in "$@"; do
-    if [ "$a" = "--" ]; then seen=1; break; fi
+    if [ "$seen" -eq 1 ]; then after=$((after + 1)); continue; fi
+    if [ "$a" = "--" ]; then seen=1; fi
 done
-[ "$seen" -eq 1 ] || usage
-[ "${*: -1}" != "--" ] || usage
+[ "$seen" -eq 1 ] && [ "$after" -ge 1 ] || usage
 
 sdk="${HIMMEL_VMSDK:-$(cd "$(dirname "$0")/../lib" && pwd)/vmsdk.py}"
 if command -v uv >/dev/null 2>&1; then

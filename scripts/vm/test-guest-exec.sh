@@ -59,6 +59,10 @@ check "passes vm, exec, flags and command to vmsdk verbatim" [ "$out" = "$want" 
 out=$(run ubuntu_new -- 'echo a | cat; echo b'); rc=$?
 check "a payload with shell syntax stays one argument" [ "$(printf '%s\n' "$out" | tail -1)" = 'ARG:echo a | cat; echo b' ]
 
+out=$(run ubuntu_new -- echo --); rc=$?
+check "a payload ending in -- is still a command" rc_is 0
+check "a payload ending in -- reaches vmsdk intact" [ "$(printf '%s\n' "$out" | tail -2 | tr '\n' ' ')" = 'ARG:echo ARG:-- ' ]
+
 out=$(STUB_RC=7 run ubuntu_new -- false); rc=$?
 check "propagates the guest rc" rc_is 7
 
