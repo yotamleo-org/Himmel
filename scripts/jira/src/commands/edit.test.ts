@@ -686,6 +686,7 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
   type Issue = { labels: string[]; fixVersions: Array<{ name: string }> };
   let issues: Record<string, Issue>;
   let dropFixVersions: boolean;
+  let omitFixVersionsReadBack: boolean;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -695,6 +696,7 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
     issues = {};
     dropFixVersions = true;
+    omitFixVersionsReadBack = false;
     mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: Record<string, unknown> }) => {
       if (path.startsWith('/project/')) return [{ name: 'v1.1.3', released: false, archived: false }];
       const m = /^\/issue\/([A-Z]+-\d+)/.exec(path);
@@ -702,7 +704,9 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
       if (method === 'GET' && issue) {
         return { fields: { labels: issue.labels, fixVersions: issue.fixVersions, versions: [{ name: 'v1.1.3' }] } };
       }
-      if (method === 'PUT' && issue && body?.update?.['fixVersions'] && dropFixVersions) issue.fixVersions = [];
+      if (method === 'PUT' && issue && body?.update?.['fixVersions'] && dropFixVersions) {
+        issue.fixVersions = omitFixVersionsReadBack ? undefined : [];
+      }
       return {};
     });
   });
@@ -776,5 +780,12 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
     issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
     await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/fix-version was not changed/);
+  });
+
+  it('fails loud when the read-back carries no fixVersions list at all', async () => {
+    omitFixVersionsReadBack = true;
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/fix-version was not changed.*no fixVersions list/s);
   });
 });

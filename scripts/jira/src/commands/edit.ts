@@ -380,10 +380,15 @@ export function registerEdit(program: Command): void {
           `/issue/${key}?fields=${names.join(',')}`,
         );
         const mismatches = verifyReadBack(key, options, fields, got.fields ?? {});
-        const stillThere = dropFixVersions.filter((name) =>
-          (Array.isArray(got.fields?.['fixVersions']) ? (got.fields['fixVersions'] as Array<{ name?: string }>) : []).some((v) => v.name === name),
-        );
-        if (stillThere.length > 0) {
+        const readBackVersions = got.fields?.['fixVersions'];
+        const stillThere = Array.isArray(readBackVersions)
+          ? dropFixVersions.filter((name) => (readBackVersions as Array<{ name?: string }>).some((v) => v.name === name))
+          : dropFixVersions;
+        if (dropFixVersions.length > 0 && !Array.isArray(readBackVersions)) {
+          mismatches.push(
+            `Edit ${key}: fix-version was not changed — requested removal of '${dropFixVersions.join(', ')}' but the read-back carried no fixVersions list, so the removal is unproven.`,
+          );
+        } else if (stillThere.length > 0) {
           mismatches.push(
             `Edit ${key}: fix-version was not changed — requested removal of '${stillThere.join(', ')}' but the issue still carries it after the PUT.`,
           );
