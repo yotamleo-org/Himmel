@@ -145,7 +145,8 @@ humanizer_rows() {
     output=$(run_sut "$TITLE_FILE" "$original" 2>"$TMP_ROOT/humanizer.err"); rc=$?
     assert_eq "skipping PR rewrite never blocks" 0 "$rc"
     contains "skip keeps one-line publication result" "$output" 'PR 9 https://github.com/owner/repo/pull/9 '
-    contains "PR helper offers optional pass on stderr" "$(cat "$TMP_ROOT/humanizer.err")" /humanizer
+    contains "PR helper offers deterministic pass on stderr" "$(cat "$TMP_ROOT/humanizer.err")" deterministic
+    not_contains "PR helper does not offer a model rewrite" "$(cat "$TMP_ROOT/humanizer.err")" /humanizer
 }
 humanizer_rows
 if [ "${1:-}" = --humanizer-only ]; then

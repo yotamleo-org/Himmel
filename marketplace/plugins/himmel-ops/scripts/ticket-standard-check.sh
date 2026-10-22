@@ -40,7 +40,7 @@ if [ -n "$rewrite" ]; then
     echo "humanizer: rewrite refused or checker unavailable; checking original" >&2
   fi
 else
-  echo 'humanizer: optional /humanizer (or /unslop for terse text); skip keeps original, --rewrite FILE checks a candidate' >&2
+  echo 'humanizer: optional deterministic humanizer-facts.py --normalize ORIGINAL CANDIDATE; skip keeps original, --rewrite FILE checks a candidate; no model rewrite' >&2
 fi
 
 # Sections whose heading is present but whose body has no real line; or whose heading is absent.

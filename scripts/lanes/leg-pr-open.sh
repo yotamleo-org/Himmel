@@ -85,7 +85,7 @@ if [ -n "$HUMANIZED_BODY" ]; then
         echo "humanizer: rewrite refused or checker unavailable; keeping original PR body" >&2
     fi
 else
-    echo 'humanizer: optional /humanizer (or /unslop for terse text); skip keeps original, --humanized-body FILE checks a candidate' >&2
+    echo 'humanizer: optional deterministic humanizer-facts.py --normalize ORIGINAL CANDIDATE; skip keeps original, --humanized-body FILE checks a candidate; no model rewrite' >&2
 fi
 
 # The squash merge makes this TITLE main's commit subject, so

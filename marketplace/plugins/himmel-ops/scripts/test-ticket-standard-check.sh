@@ -136,13 +136,39 @@ humanizer_rows(){
   has "chosen ticket body identified" "$out" "humanizer: accepted"
   run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X
   check "skip never blocks ticket" "$rc" 0
-  has "ticket offers optional pass" "$out" "/humanizer"
+  has "ticket offers deterministic pass" "$out" "deterministic"
+  hasnt "ticket does not offer a model rewrite" "$out" "/humanizer"
   run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X --rewrite "$td/absent.md"
   check "missing rewrite never blocks original" "$rc" 0
   mkdraft "$rewrite" Proof
   printf 'HIMMEL-6967 covers 42 rows.\n' >>"$rewrite"
   run Task "$td/ticket-original.md" "$td/q-humanizer" --sector X --rewrite "$rewrite"
   check "accepted facts cannot bypass missing Proof" "$rc" 1
+
+  cat >"$original" <<'NORMALIZE'
+**Proof** — HIMMEL-6967 checks 42 rows in scripts/check.sh.
+- `check` – “Ready” and ‘done’.
+Additionally — review the robust result.
+NORMALIZE
+  printf '**Proof:** HIMMEL-6967 checks 42 rows in scripts/check.sh.\n- `check`: "Ready" and '\''done'\''.\nAdditionally, review the robust result.\n' >"$td/expected.md"
+  before="$(cksum <"$original")"
+  out="$(python3 -I "$facts" --normalize "$original" "$rewrite" 2>&1)"; rc=$?
+  check "deterministic normalization succeeds" "$rc" 0
+  check "normalization changes only the specified punctuation" "$(cat "$rewrite")" "$(cat "$td/expected.md")"
+  check "normalization leaves original untouched" "$(cksum <"$original")" "$before"
+  has "banned words are advisory flags" "$out" "word flags (advisory only): additionally, robust"
+  out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
+  check "normalized candidate passes independent fact check" "$rc" 0
+  out="$(python3 -I "$facts" --normalize "$rewrite" "$td/again.md" 2>&1)"; rc=$?
+  check "normalization is repeatable" "$rc" 0
+  check "normalization is idempotent" "$(cat "$td/again.md" 2>/dev/null)" "$(cat "$rewrite")"
+  out="$(python3 -I "$facts" --normalize "$original" "$original" 2>&1)"; rc=$?
+  check "normalization refuses in-place output" "$rc" 2
+  check "in-place refusal preserves original" "$(cksum <"$original")" "$before"
+  printf 'Run `printf “do not change”` before filing.\n' >"$td/protected.md"
+  out="$(python3 -I "$facts" --normalize "$td/protected.md" "$td/protected-out.md" 2>&1)"; rc=$?
+  check "normalization refuses changed protected code" "$rc" 1
+  check "unsafe normalization writes no candidate" "$([ -e "$td/protected-out.md" ] && printf yes || printf no)" no
 }
 
 if [ "${1:-}" = --humanizer-only ]; then

@@ -1,4 +1,4 @@
-"""Compare literal facts in a draft and rewrite; '-' reads the draft from stdin."""
+"""Normalize punctuation or compare literal facts; '-' reads the draft from stdin."""
 import collections
 import pathlib
 import re
@@ -51,13 +51,43 @@ def facts(text):
     return protected
 
 
+BANNED_WORDS = (
+    "actually", "additionally", "align with", "bolstered", "crucial", "deep dive", "delve",
+    "enduring", "enhance", "garner", "gate", "gated", "gating", "highlight", "interplay",
+    "intricate", "intricacies", "key", "landscape", "meticulous", "meticulously", "pivotal",
+    "quietly", "robust", "showcase", "tapestry", "testament", "underscore", "valuable", "vibrant",
+    "stands as a testament", "a pivotal or crucial moment", "plays a key role",
+    "marking or shaping the", "underscores its importance", "reflects a broader",
+    "enduring or lasting legacy", "setting the stage for", "evolving landscape", "indelible mark",
+    "despite these challenges", "continues to thrive", "challenges and legacy", "future outlook",
+    "awards and recognition", "the future looks bright", "exciting times ahead",
+    "a step in the right direction", "rich", "profound", "exemplifies", "commitment to",
+    "natural beauty", "nestled", "in the heart of", "groundbreaking", "renowned", "featuring",
+    "diverse array", "breathtaking", "must-visit", "stunning",
+)
+
+
+def normalize(text):
+    text = re.sub(r"(?m)^([ \t]*(?:[-*+] |\d+[.)] )?)\*\*([^*\n]+)\*\*[ \t]+[—–][ \t]+", r"\1**\2:** ", text)
+    text = re.sub(r"(?m)^([ \t]*(?:[-*+] |\d+[.)] )?)(`+)([^\n]+?)\2[ \t]+[—–][ \t]+", r"\1\2\3\2: ", text)
+    text = re.sub(r"(?<=\S)[ \t]+[—–][ \t]+(?=\S)", ", ", text)
+    return text.translate(str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"}))
+
+
 def main():
-    if len(sys.argv) != 3:
-        print("usage: humanizer-facts.py ORIGINAL REWRITE", file=sys.stderr)
+    normalizing = sys.argv[1:2] == ["--normalize"]
+    args = sys.argv[2:] if normalizing else sys.argv[1:]
+    if len(args) != 2:
+        print("usage: humanizer-facts.py [--normalize] ORIGINAL CANDIDATE", file=sys.stderr)
         return 2
     try:
-        original = sys.stdin.read() if sys.argv[1] == "-" else pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-        rewrite = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+        original = sys.stdin.read() if args[0] == "-" else pathlib.Path(args[0]).read_text(encoding="utf-8")
+        candidate = pathlib.Path(args[1])
+        if normalizing and args[0] != "-" and (candidate.resolve() == pathlib.Path(args[0]).resolve() or
+                (candidate.exists() and candidate.samefile(args[0]))):
+            print("humanizer: normalization needs a separate candidate; use original", file=sys.stderr)
+            return 2
+        rewrite = normalize(original) if normalizing else candidate.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         print("humanizer: rewrite refused (cannot read draft or rewrite); use original", file=sys.stderr)
         return 2
@@ -69,6 +99,15 @@ def main():
         kinds = sorted({kind for kind, value in (before - after) + (after - before)})
         print("humanizer: rewrite refused (changed " + ", ".join(kinds) + "); use original", file=sys.stderr)
         return 1
+    if normalizing:
+        try:
+            candidate.write_text(rewrite, encoding="utf-8")
+        except (OSError, UnicodeError):
+            print("humanizer: cannot write candidate; use original", file=sys.stderr)
+            return 2
+        flags = [word for word in BANNED_WORDS if re.search(r"(?<!\w)" + re.escape(word) + r"(?!\w)", rewrite, re.I)]
+        if flags:
+            print("humanizer: word flags (advisory only): " + ", ".join(flags), file=sys.stderr)
     print("humanizer: accepted (literal facts unchanged; review claims before filing)", file=sys.stderr)
     return 0
 

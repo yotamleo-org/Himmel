@@ -82,25 +82,30 @@ A `JIRA_PROJECT_KEY` *unset in your shell* is irrelevant and is **not**
 the cause of a `projectKey()` error; check the repo-root `.env` instead.
 Only pass `--project FOO` for a one-off call against a different project.
 
-## Optional ticket-body rewrite
+## Optional deterministic ticket-body normalization
 
-Before `create --desc-file`, ticket-standard offers `/humanizer` (or `/unslop`
-for terse drafts). It is on demand, not enabled in a default profile. Missing
-plugin or a skipped pass never blocks filing. Save the original as `draft.md`
-and the candidate as `rewritten.md`, then run:
+Before `create --desc-file`, ticket-standard offers a local punctuation pass,
+not a model rewrite. No model or plugin is invoked; a skipped pass never blocks
+filing. Keep `draft.md`, generate a separate candidate, and only check that
+candidate if normalization exits successfully:
 
 ```bash
-bash marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh --type Task --sector "Ship loop" --draft draft.md --rewrite rewritten.md
+python3 -I marketplace/plugins/himmel-ops/scripts/humanizer-facts.py --normalize draft.md normalized.md
+bash marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh --type Task --sector "Ship loop" --draft draft.md --rewrite normalized.md
 ```
 
-Only file `rewritten.md` after `humanizer: accepted` and `ok:`. A refused or
-unreadable rewrite, or a missing fact checker, falls back to checking `draft.md`;
-file that original if it passes. Both files stay untouched. The literal check
-preserves ticket keys, numbers, file names, inline code, fenced/indented code
-and bare command lines. Mark other commands as code. It rejects changed fact
-counts, including additions, but cannot judge meaning: read the diff for claims,
-negation and which number belongs to which result. Record skipped/kept/dropped
-passages in the filing note, not in the ticket's plain block.
+Leading bold/code labels get a colon instead of a spaced em/en dash; other
+spaced dashes become commas and curly quotes become straight. Banned words are
+advisory warnings only, never substitutions. No claims or connectives are added.
+If a protected literal would change, normalization refuses and writes nothing;
+use the original. The checker also falls back to `draft.md` when a candidate is
+unreadable or unsafe, or Python is unavailable. Only file `normalized.md` after
+normalization succeeds, `humanizer: accepted` and `ok:`; otherwise file the passing
+original. The original is never modified. Literal checks preserve ticket keys,
+numbers, file names, inline code, fenced/indented code and bare command lines.
+Mark other commands as code. Changed counts, including additions, are refused,
+but meaning still needs diff review. Record skipped/kept/dropped passages in the
+filing note, not in the ticket's plain block.
 
 ## Gotchas
 

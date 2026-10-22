@@ -163,7 +163,13 @@ export FAKE_GH_LOG="$TMP_ROOT/gh.log"
 # Exercise candidate selection against the actual generated body.
 humanizer_rows() {
     local original candidate output rc
-    original=$(cd "$REPO"; GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main)
+    original=$(cd "$REPO"; GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main 2>"$TMP_ROOT/humanizer.err")
+    assert_contains "handover PR offers deterministic pass" deterministic "$(cat "$TMP_ROOT/humanizer.err")"
+    if grepq "$(cat "$TMP_ROOT/humanizer.err")" -F /humanizer; then
+        fail "handover PR does not offer a model rewrite"
+    else
+        pass "handover PR does not offer a model rewrite"
+    fi
     candidate="$TMP_ROOT/rewrite.md"
     printf '%s\n' "$original" | sed -n '/^--- body ---$/,/^--- \/body ---$/p' | sed '1d;$d' > "$candidate"
     sed 's/Handover mutation on/State update on/' "$candidate" > "$TMP_ROOT/faithful.md"
