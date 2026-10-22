@@ -35,7 +35,9 @@
 # deleted or quarantined; success prints "promoted; safe to remove <dir>".
 #
 # Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped (bank
-# at/over threshold — not a failure, graphify-out was left untouched).
+# at/over threshold — not a failure, graphify-out was left untouched);
+# 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
+# Exits 4/5 keep finished chunks cached without promoting a partial graph.
 #
 # Freshness guard: this script REBUILDS the graph. To CHECK whether an existing
 # graphify-out/ is still fresh (and not orphaned from its corpus) before querying
