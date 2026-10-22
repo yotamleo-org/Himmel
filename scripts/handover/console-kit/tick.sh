@@ -2167,18 +2167,17 @@ elif command -v jq >/dev/null 2>&1 && [ ! -e "$denials_log" ]; then
 fi
 
 # ciq=<in_progress>/<cap>,mac=<n>/<cap>,q=<queued>,wait=<m>m[,SATURATED]
-# one scripts/ci/queue-latency.sh probe per tick. SATURATED =
-# jobs_in_progress at the cap on two consecutive probes; the previous probe's
-# "<in_progress>/<cap>" lives in $TICK_STATE_DIR/tick-ciq-last (default
-# ~/.himmel/state, like the denials log). ciq=unknown = the probe is missing,
-# failed, timed out or printed something else; it neither sets nor clears the
-# state. The probe is bounded by TICK_CIQ_TIMEOUT (default 45 s, well inside
-# console-wait's 120 s tick budget). console-wait.sh's wake key deliberately
-# does not carry ciq: a changing queue count must not wake the console.
-# ponytail: with no timeout binary the probe runs unbounded (queue-latency.sh
-# still bounds each gh call to 15 s); one probe is up to ~42 REST calls, so on
-# console-wait's 180 s cadence that is ~840 calls/h -- cache or cut MAX_RUNS if
-# the shared token's rate limit bites again.
+# one scripts/ci/queue-latency.sh probe per tick. SATURATED = queued jobs or
+# oldest wait above zero on two consecutive known probes; the cap is report-only.
+# The previous waiting/idle state lives in $TICK_STATE_DIR/tick-ciq-last (default
+# ~/.himmel/state). The probe samples at most 32 live runs: sampled=true marks
+# lower bounds, on a separate line when waiting is observed. A partial no-wait
+# sample stays inline-labelled and reads ciq=unknown during a storm, as do API
+# errors, a missing probe, timeout or malformed output; unknown neither sets nor
+# clears state. TICK_CIQ_TIMEOUT bounds the probe (default 45 s); the probe also
+# bounds API waiting to 30 s and returns unknown without a timeout binary.
+# console-wait.sh's wake key deliberately does not carry ciq: a changing queue
+# count must not wake the console.
 ciq_summary=unknown
 ciq_probe="$REPO/scripts/ci/queue-latency.sh"
 if [ -f "$ciq_probe" ]; then
@@ -2193,13 +2192,14 @@ if [ -f "$ciq_probe" ]; then
         ciq_state="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-ciq-last"
         ciq_prev="$(cat "$ciq_state" 2>/dev/null)" || ciq_prev=""
         ciq_summary="$ciq_ip/$ciq_cap,mac=$ciq_mac/$ciq_macmax,q=$ciq_q,wait=${ciq_wait}m"
-        if [ "$ciq_cap" -gt 0 ] && [ "$ciq_ip" -ge "$ciq_cap" ] && [ "$ciq_prev" = "$ciq_cap/$ciq_cap" ]; then
-            ciq_summary="$ciq_summary,SATURATED"
+        ciq_current=idle
+        if [ "$ciq_q" -gt 0 ] || [ "$ciq_wait" -gt 0 ]; then
+            ciq_current=waiting
+            if [ "$ciq_prev" = waiting ]; then
+                ciq_summary="$ciq_summary,SATURATED"
+            fi
         fi
-        # An in-progress count past the cap is stored as the cap, so the
-        # comparison above only ever has to match "<cap>/<cap>".
-        [ "$ciq_ip" -le "$ciq_cap" ] || ciq_ip="$ciq_cap"
-        { mkdir -p "$(dirname "$ciq_state")" && printf '%s/%s\n' "$ciq_ip" "$ciq_cap" > "$ciq_state"; } 2>/dev/null || true
+        { mkdir -p "$(dirname "$ciq_state")" && printf '%s\n' "$ciq_current" > "$ciq_state"; } 2>/dev/null || true
     fi
 fi
 

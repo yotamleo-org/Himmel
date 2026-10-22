@@ -1,12 +1,12 @@
 # VirtualBox VMs
 
-Local VMs for testing and automation. Credentials stored in `.env` — see `.env.example` for variable names.
+Local VMs for testing and automation. Credentials stored in `.env`; see `.env.example` for variable names.
 
 Adopters install himmel via the `himmelctl` wizard (`node scripts/himmelctl/bin.js install`); the VM docs below keep referencing the underlying scripts directly, since VM provisioning is a different (test-harness) path.
 
 To provision a fresh Ubuntu VM run: `python scripts/machine-setup/ubuntu-vm-setup.py`
 
-No local VM, or proving on a remote one? Set `vm.mode` — see [vm-mode.md](vm-mode.md).
+No local VM, or proving on a remote one? Set `vm.mode`: see [vm-mode.md](vm-mode.md).
 
 ## Dependency split — test-harness vs user-runtime
 
@@ -17,16 +17,16 @@ Two **different** dependency sets; do not conflate them:
 | **Test harness** | throwaway test VMs + CI runners (to *run* himmel's bash suites) | `bash git jq` | `scripts/machine-setup/test-bootstrap.sh` |
 | **User runtime** | himmel adopters (to *use* himmel) | `bash git node npm bun python3 jq gh mktemp` (+ `claude`) | `scripts/setup.sh` `[0/10]` (R6 `ensure-tools` auto-installs git/jq/python3, flags the rest) |
 
-A bare test VM only needs `test-bootstrap.sh` to run the suites — it does **not**
+A bare test VM only needs `test-bootstrap.sh` to run the suites; it does **not**
 need the full user runtime. `bash scripts/machine-setup/test-bootstrap.sh`
 (`--check` to report only, `--no-sudo` if already root).
 
 **Provision test VMs / CI with NOPASSWD sudo** (or run as root) so `test-bootstrap`
-and the R6 `ensure-tools` apt path run non-interactively — a password-prompted
+and the R6 `ensure-tools` apt path run non-interactively: a password-prompted
 `sudo` over a non-TTY ssh fails with `A terminal is required to authenticate`.
 On Ubuntu the provisioner (`ubuntu-vm-setup.py`, step 7c) installs this
 automatically: a *command-scoped* drop-in `/etc/sudoers.d/90-<user>-nopasswd`
-(`apt-get`/`apt`/`dpkg`/`systemctl`/`tee` only — never a blanket `NOPASSWD:ALL`),
+(`apt-get`/`apt`/`dpkg`/`systemctl`/`tee` only, never a blanket `NOPASSWD:ALL`),
 `visudo -cf`-validated before install and written `0440 root:root`.
 The host-driven validator `scripts/test-install-symmetry-vm.sh [user@host] [port]
 [identity]` GAP-skips the git-dependent suites when git is absent rather than
@@ -62,9 +62,9 @@ The upgrade-path counterpart `scripts/test-luna-upgrade-vm.sh [user@host] [port]
 (`templates/luna-second-brain/scripts/upgrade.sh`): it runs the shipped hermetic engine suite + a real
 scaffold→rollback→upgrade roundtrip (asserts owned files refresh, user content is
 preserved byte-identical, the version stamp advances, and a re-run is
-idempotent). Deterministic — no claude call. It runs the suite + roundtrip under the Ubuntu guest shell (`… 2222 …`).
+idempotent). Deterministic: no claude call. It runs the suite + roundtrip under the Ubuntu guest shell (`… 2222 …`).
 
-The engine's real deps are a **working python + git + sha256sum** — NOT `node`
+The engine's real deps are a **working python + git + sha256sum**, NOT `node`
 (it is never invoked; the prior node gate was vestigial). A bootstrap-floor Linux
 VM lacking python3 gets a best-effort `sudo apt-get install python3` (scoped
 NOPASSWD).
@@ -77,16 +77,16 @@ Both VM e2e scripts exit 3 (not 1) when the VM is unreachable.
 `claude` session on the `ubuntu_new` VM against a scaffolded old-version vault
 and asserts the upgrade roundtrip on filesystem state. Where `test-luna-upgrade-vm.sh`
 invokes `upgrade.sh` directly (deterministic, no claude call), this probe exercises
-the full user-facing path — the same `/luna-upgrade` a real adopter hits. It
+the full user-facing path: the same `/luna-upgrade` a real adopter hits. It
 builds on the central VM control SDK (`scripts/lib/vmsdk.py`: `sync_repo` /
 `install_plugin` / `drive_claude`).
 
 Exit codes: `0` pass · `1` assertion failed · `3` environment (VM unreachable,
-`claude` not installed / not authenticated, plugin-install env-block) — exit 3
+`claude` not installed / not authenticated, plugin-install env-block); exit 3
 is **not a defect**.
 
 **NON-GATING**: a local on-demand probe only. It is NOT wired into pre-push /
-pre-commit / PR CI — LLM-in-the-loop, VM-dependent, and billing-consuming means
+pre-commit / PR CI: LLM-in-the-loop, VM-dependent, and billing-consuming means
 it must never block a merge. Requires the `ubuntu_new` VM up with an authenticated
 `claude`.
 
@@ -98,11 +98,11 @@ severity-grouped report (authorized_keys, listening sockets + NIC, auth.log
 non-local logins, sudoers NOPASSWD, IP-forwarding). It replaces the throwaway
 `$TEMP` paramiko *forensic* sweeps every e2e session used to re-write: it is
 reusable, hermetically tested (no VM needed to run `test-vm_posture.py`), and
-read-only (re-running changes nothing on the guest — it never powers the VM
+read-only (re-running changes nothing on the guest; it never powers the VM
 on/off). Exit `0` = no FAIL; `1` = a real violation; `3` = VM unreachable (bring
 it up first); `4` = non-ubuntu guest (v1 is Ubuntu-only). This audits *security
-posture* only — the *functional* smoke ("is claude installed, is the vault
-present" — the `vm-probe*.py` `$TEMP` scripts) is a separate, still-needed
+posture* only. The *functional* smoke ("is claude installed, is the vault
+present": the `vm-probe*.py` `$TEMP` scripts) is a separate, still-needed
 concern and is NOT replaced by this tool.
 
 ### Install-provenance round trip
@@ -218,8 +218,8 @@ python and `ssh`, and does run in CI.
 ### Credentials
 
 Read from `.env`:
-- `ubuntu_vm_user` — SSH username
-- `ubuntu_vm_pass` — SSH password (also used for sudo)
+- `ubuntu_vm_user`: SSH username
+- `ubuntu_vm_pass`: SSH password (also used for sudo)
 
 ### SSH Key
 
@@ -311,7 +311,7 @@ systemctl status sleep.target   # verify: masked
 ## Linux host
 
 Provisioning path when the **himmel station itself runs Linux** (verified
-2026-09-04 on CachyOS, VirtualBox 7.2.16) — a different guest and workflow from
+2026-09-04 on CachyOS, VirtualBox 7.2.16), with a different guest and workflow from
 the Windows-host `ubuntu_new` documented above under "Ubuntu VM". This guest is
 a Ubuntu **server** cloud image driven entirely by cloud-init; there is no
 desktop session, guest additions, or X11 on it.
@@ -334,7 +334,7 @@ VBoxManage modifyvm ubuntu_new --nic1 nat
 VBoxManage modifyvm ubuntu_new --natpf1 "ssh,tcp,127.0.0.1,2222,,22"
 ```
 
-Keep the NIC and the `natpf1` rule in **two separate `modifyvm` calls** — a
+Keep the NIC and the `natpf1` rule in **two separate `modifyvm` calls**: a
 combined `--nic1 nat --natpf1 ...` call aborts on a "rule exists" error (e.g. a
 re-run) and leaves the NIC on its prior (bridged) setting.
 
@@ -343,7 +343,7 @@ re-run) and leaves the NIC on its prior (bridged) setting.
 The station has no `genisoimage` / `cloud-localds`, and installing either needs
 sudo, so the NoCloud seed ISO (`cidata.iso`) is built with `pycdlib` instead,
 via `scripts/machine-setup/make-cloudinit-seed.py` (run it from the
-`~/.himmel/vm-venv` venv — see "vmsdk.py Python environment" below). The
+`~/.himmel/vm-venv` venv; see "vmsdk.py Python environment" below). The
 primary checkout's `.env` already carries `ubuntu_vm_pass`, so this needs no
 password flag at all:
 
@@ -353,12 +353,12 @@ password flag at all:
 
 `user-data` provisions the `himmel` user with the host's
 `~/.ssh/id_ed25519.pub`, NOPASSWD sudo, and packages `git jq curl rsync
-openssh-server` — **not** `nodejs`; that's installed afterwards via `apt` (see
-"Snapshots" below). There is no `--password` argv flag — a plaintext argument
-would leak via shell history and `ps` — so pass `--password-hash` for a
+openssh-server`, **not** `nodejs`; that's installed afterwards via `apt` (see
+"Snapshots" below). There is no `--password` argv flag (a plaintext argument
+would leak via shell history and `ps`), so pass `--password-hash` for a
 precomputed hash, or `--password-file <path>` for a plaintext file, hashed
 in-process and never printed or logged. Do **NOT** pass the plaintext as an
-inline env assignment (`ubuntu_vm_pass=... python ...`) — that lands it in
+inline env assignment (`ubuntu_vm_pass=... python ...`): that lands it in
 shell history and the process environment just the same; rely on the `.env`
 fallback (above) instead. That password is for the **VirtualBox console
 only**: the guest's `ssh_pwauth` stays off (SSH accepts the pubkey alone)
@@ -373,9 +373,9 @@ VBoxManage storageattach ubuntu_new --storagectl IDE --port 1 --device 0 \
 
 ### Snapshots
 
-- `clean` — post-cloud-init baseline (guest booted, seed packages applied:
+- `clean`: post-cloud-init baseline (guest booted, seed packages applied:
   `git jq curl rsync openssh-server`; no `nodejs`).
-- `clean-tools` — `clean` + `nodejs` installed afterwards via `apt`.
+- `clean-tools`: `clean` + `nodejs` installed afterwards via `apt`.
 
 ```bash
 VBoxManage snapshot ubuntu_new restore clean
@@ -387,7 +387,7 @@ VBoxManage snapshot ubuntu_new restore clean
 ssh -p 2222 -i ~/.ssh/id_ed25519 himmel@127.0.0.1
 ```
 
-Stage a worktree for testing — **two** rsync calls, since `scripts` and
+Stage a worktree for testing with **two** rsync calls, since `scripts` and
 `docs/setup` need different destination shapes (a single call syncing both
 source dirs to `/tmp/<name>/` would land `docs/setup` as `/tmp/<name>/setup`,
 not the `/tmp/<name>/docs/setup/` the fixtures expect):
@@ -400,7 +400,7 @@ rsync -az --delete --mkpath -e "ssh -p 2222 -i ~/.ssh/id_ed25519" \
 ```
 
 `--mkpath` (rsync ≥3.2.3; Ubuntu 24.04 ships 3.2.7) creates the missing
-`/tmp/<name>/docs/` destination directory — no separate guest-side `mkdir -p`
+`/tmp/<name>/docs/` destination directory; no separate guest-side `mkdir -p`
 needed. The guest needs `node` on `PATH` for the hermetic-PATH fixture, and
 this lands `docs/setup/settings-template.json` at
 `/tmp/<name>/docs/setup/settings-template.json` for `uninstall-plugins.sh` to
@@ -426,7 +426,7 @@ off.
 ### vmsdk.py Python environment
 
 `vmsdk.py` needs `paramiko` + `python-dotenv`. The station's system python is
-externally-managed (PEP 668) — `pip install` against it fails. Use a dedicated
+externally-managed (PEP 668): `pip install` against it fails. Use a dedicated
 venv instead:
 
 ```bash
@@ -440,14 +440,14 @@ Drive the guest with `~/.himmel/vm-venv/bin/python` (any script that imports
 ### VBOXMANAGE_PATH
 
 On a Linux host `scripts/lib/vbox.py` now resolves `VBoxManage` via `PATH`
-(`shutil.which`) instead of hardcoding the Windows install path — no env var
+(`shutil.which`) instead of hardcoding the Windows install path; no env var
 is needed once `VBoxManage` is on `PATH` (VirtualBox's Linux installer puts it
 there). An explicit `VBOXMANAGE_PATH` still wins over PATH resolution when set.
 
 ### Operator rule
 
 Destructive suites (`uninstall`, install/uninstall symmetry) run **WET only
-inside this guest** — restore the `clean` snapshot first, never on a station.
+inside this guest**: restore the `clean` snapshot first, never on a station.
 
 ---
 

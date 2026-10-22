@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 # scripts/ci/queue-latency.sh
 #
-# Read-only counts for the console tick: how saturated is GitHub Actions?
-#   ci-queue: jobs_in_progress=N/60 macos=M/5 queued=Q oldest_wait=Xm
-# Fails soft: any API error, or a listing with no parseable body, prints
-# `ci-queue: unknown` and exits 0, so the tick is never blocked by it and an
-# unread queue is never reported as an empty one.
+# Read-only counts for the console tick: are GitHub Actions jobs waiting?
+#   ci-queue: jobs_in_progress=N/500 macos=M/5 queued=Q oldest_wait=Xm
+# The plan figure is report-only, never a dispatch gate. At most 32 live runs
+# are sampled; sampled=true labels lower bounds. Observed waiting remains
+# parseable by tick; a partial no-wait sample reads unknown during a storm.
+# Any API error or unreadable body prints `ci-queue: unknown` and exits 0.
 #
 # Usage: queue-latency.sh [-R owner/repo]   (default: parsed from `origin`)
 set -uo pipefail
 
-# GitHub Team plan Actions limits (docs.github.com "Actions limits":
-# 60 concurrent jobs, of which at most 5 macOS). ci-queue-saturated readers
-# (tick.sh) compare jobs_in_progress against the first number printed here.
-# CI_MAX_JOBS overrides the cap for another plan.
-CI_MAX_JOBS="${CI_MAX_JOBS-60}"
+# GitHub Enterprise standard hosted runners: 500 concurrent jobs
+# (https://docs.github.com/en/actions/reference/limits). The org plan was
+# confirmed through the org API. CI_MAX_JOBS overrides the reporting figure;
+# its source is logged on stderr, preserving the stdout counts protocol.
+cap_source=default:github-enterprise
+[ "${CI_MAX_JOBS+x}" != x ] || cap_source=env:CI_MAX_JOBS
+CI_MAX_JOBS="${CI_MAX_JOBS-500}"
 valid_cap=1
 case "$CI_MAX_JOBS" in
   ''|*[!0-9]*) valid_cap=0 ;;
@@ -22,11 +25,11 @@ case "$CI_MAX_JOBS" in
   *) valid_cap=0 ;;
 esac
 if [ "$valid_cap" -eq 0 ]; then
-  echo "ci-queue: invalid CI_MAX_JOBS; using default 60" >&2
-  CI_MAX_JOBS=60
-elif [ "$CI_MAX_JOBS" != 60 ]; then
-  echo "ci-queue: CI_MAX_JOBS=$CI_MAX_JOBS (non-default cap)" >&2
+  echo "ci-queue: invalid CI_MAX_JOBS; using default 500" >&2
+  CI_MAX_JOBS=500
+  cap_source=default:github-enterprise
 fi
+echo "ci-queue: CI_MAX_JOBS=$CI_MAX_JOBS (source=$cap_source)" >&2
 CI_MAX_MACOS=5
 
 unknown() { echo "ci-queue: unknown"; exit 0; }
@@ -126,10 +129,10 @@ done <<< "$runs"
 wait_min=0
 [ "$oldest" -gt 0 ] && wait_min=$(( (now - oldest) / 60 ))
 [ "$wait_min" -lt 0 ] && wait_min=0
-# A lower bound at the cap proves saturation. Keep that count parseable by
-# the tick, with the partial-count label on a separate metadata line; below
-# the cap, the inline label makes an exact-count reader report unknown.
-if [ -n "$sampled" ] && [ "$ip" -ge "$CI_MAX_JOBS" ]; then
+# Observed waiting proves contention even in a partial sample. Keep those
+# counts parseable by tick with sampled=true on a separate metadata line.
+# A partial no-wait sample cannot establish an idle queue and stays unknown.
+if [ -n "$sampled" ] && { [ "$q" -gt 0 ] || [ "$wait_min" -gt 0 ]; }; then
   sampled=$'\nci-queue: sampled=true'
 fi
 echo "ci-queue: jobs_in_progress=$ip/$CI_MAX_JOBS macos=$mac/$CI_MAX_MACOS queued=$q oldest_wait=${wait_min}m$sampled"

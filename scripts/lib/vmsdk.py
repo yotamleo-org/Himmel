@@ -586,38 +586,62 @@ class VM:
         return "provisioned"
 
     # --- shallow clone ---
+    _ASKPASS = (b'#!/bin/sh\n'
+                b'case "$1" in Username*) echo x-access-token;; '
+                b'*) cat "$(dirname "$0")/token";; esac\n')
+
+    @staticmethod
+    def _scrub(text, token):
+        """Drop the PAT and any user:pass@ URL userinfo from git output."""
+        text = re.sub(r"(https?://)[^/@\s]+@", r"\1***@", text)
+        return text.replace(token, "***")
+
+    def _git_with_token(self, git_cmd, token):
+        """Run a git command that needs the PAT without it ever reaching a guest
+        command line (ps shows argv): the token and a GIT_ASKPASS helper are
+        uploaded over SFTP into a private temp dir, removed again on every path."""
+        rc, out = self.run("umask 077 && mktemp -d")
+        lines = out.strip().splitlines()
+        d = lines[-1].strip() if lines else ""
+        if rc != 0 or not d:
+            raise VMError(f"could not create a private temp dir on {self.name} (rc {rc})")
+        try:
+            self.push_file(Path("askpass"), f"{d}/askpass", data=self._ASKPASS)
+            self.push_file(Path("token"), f"{d}/token", data=token.encode())
+            rc, out = self.run(f"chmod 700 {d}/askpass")
+            if rc != 0:
+                raise VMError(f"chmod of the askpass helper failed on {self.name} (rc {rc})")
+            return self.run(f"GIT_ASKPASS={d}/askpass {git_cmd}")
+        finally:
+            rc, out = self.run(f"rm -rf {d}")
+            if rc != 0:
+                raise VMError(
+                    f"could not remove {d} on {self.name} (rc {rc}); the token file "
+                    f"may persist there: {out.strip()[-200:]}")
+
     def clone_himmel(self, ref="main", depth=1, dest=None):
         """Shallow-clone the private repo onto the guest. ref = branch/tag (not a SHA)."""
-        if not re.fullmatch(r"[A-Za-z0-9._/-]+", ref):
+        if not re.fullmatch(r"[A-Za-z0-9._/][A-Za-z0-9._/-]*", ref):
             raise VMError(f"invalid ref {ref!r}: branch/tag characters only")
+        if self.os != "ubuntu":
+            raise VMError(
+                f"clone_himmel on windows guest {self.name} is unsupported: the PAT "
+                "could only reach git on a command line there")
         _load_dotenv_into_env(list(PAT_ENVS))
         token_key = next((k for k in PAT_ENVS if os.environ.get(k)), None)
         token = os.environ[token_key] if token_key else None
         if not token:
             raise VMError(f"required env key {' or '.join(PAT_ENVS)} not set (check primary .env)")
-        token_url = f"https://x-access-token:{token}@github.com/{OWNER_REPO}.git"
-        bare_url = f"https://github.com/{OWNER_REPO}.git"
+        url = f"https://github.com/{OWNER_REPO}.git"
         if dest is None:
-            dest = "~/himmel" if self.os == "ubuntu" else r"C:\himmel"
+            dest = "~/himmel"
 
-        if self.os == "ubuntu":
-            exists_rc, _ = self.run(f"test -e {dest}")
-            if exists_rc == 0:
-                self._update_existing_checkout(dest, ref, token, token_url)
-                return dest
-            git = "git"
-            wrap = lambda c: c
-        else:
-            # Windows: route through the Git-Bash the provisioner verifies, so git
-            # is on PATH without guessing the install root (design F7/round-2 #3).
-            bash = GIT_BASH
-            exists_rc, _ = self.run(f'if exist {dest} (exit 1) else (exit 0)')
-            if exists_rc != 0:
-                raise VMError(f"clone dest {dest} already exists on {self.name}")
-            git = "git"
-            wrap = lambda c: f'"{bash}" -lc {repr(c)}'
+        exists_rc, _ = self.run(f"test -e {dest}")
+        if exists_rc == 0:
+            self._update_existing_checkout(dest, ref, token, url)
+            return dest
 
-        rc, out = self.run(wrap(f"{git} clone --depth {depth} --branch {ref} {token_url} {dest}"))
+        rc, out = self._git_with_token(f"git clone --depth {depth} --branch {ref} {url} {dest}", token)
         if rc != 0:
             hint = ""
             if token_key == PAT_ENVS[1] and re.search(
@@ -625,18 +649,11 @@ class VM:
                 hint = (f" [{token_key} is documented as a read-only token for public "
                         f"repos and may lack access to the private repo; try "
                         f"{PAT_ENVS[0]}]")
-            raise VMError(f"git clone failed on {self.name} (rc {rc}): {out.strip()[-200:]}{hint}")
-        # Strip the token from the persisted remote. This is a security guarantee
-        # (the PAT must not survive in the guest's .git/config) — fail loudly if
-        # the strip does not happen, rather than silently leaving the token.
-        rc2, out2 = self.run(wrap(f"{git} -C {dest} remote set-url origin {bare_url}"))
-        if rc2 != 0:
-            raise VMError(
-                f"token-strip set-url failed on {self.name} (rc {rc2}); PAT may "
-                f"persist in {dest}/.git/config: {out2.strip()[-200:]}")
+            raise VMError(f"git clone failed on {self.name} (rc {rc}): "
+                          f"{self._scrub(out, token).strip()[-200:]}{hint}")
         return dest
 
-    def _update_existing_checkout(self, dest, ref, token, token_url):
+    def _update_existing_checkout(self, dest, ref, token, url):
         """A leftover git checkout at dest (the baked-in one in suite-ready-v4) is
         fetched and detached at ref; a non-git or locally modified dest is refused."""
         rc, _ = self.run(f"git -C {dest} rev-parse --is-inside-work-tree")
@@ -646,11 +663,11 @@ class VM:
         if rc != 0 or out.strip():
             raise VMError(f"clone dest {dest} on {self.name} has local changes; "
                           f"refusing to move it to {ref}")
-        # The token rides the fetch URL only, so it is never written to .git/config.
-        rc, out = self.run(f"git -C {dest} fetch --depth 1 {token_url} {ref}")
+        # The tokenless URL is fetched directly, so nothing is written to .git/config.
+        rc, out = self._git_with_token(f"git -C {dest} fetch --depth 1 {url} {ref}", token)
         if rc != 0:
             raise VMError(f"git fetch failed on {self.name} (rc {rc}): "
-                          f"{out.replace(token, '***').strip()[-200:]}")
+                          f"{self._scrub(out, token).strip()[-200:]}")
         rc, out = self.run(f"git -C {dest} checkout --detach --no-overwrite-ignore FETCH_HEAD")
         if rc != 0:
             raise VMError(f"git checkout failed on {self.name} (rc {rc}): {out.strip()[-200:]}")
