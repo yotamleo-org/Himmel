@@ -540,46 +540,6 @@ check_c9() {
     esac
 }
 
-# --- C11: glm-launcher config-seed drift (read-only advisory) -------------------
-# The glm-LAUNCHER lane seeds ~/.claude-glm from ~/.claude once, then re-seeds
-# only on --reseed/missing .seeded, so a reused config dir lags the source.
-# Runs scripts/claude-glm-seed-check.sh --check (read-only; NEVER mutates) when
-# ~/.claude-glm exists and points to --reseed on drift. The glm-SPAWN lane has
-# no seeded dir, so the check is skipped there (no ~/.claude-glm -> OK skip).
-# NON-fatal (never FAIL): a stale launcher config is a nudge, not a breakage,
-# matching the read-only stance of C7/C8/C9. No --fix here.
-check_c11() {
-    # The launcher hardcodes ~/.claude-glm (NOT CLAUDE_DIR-derived), so this does
-    # too -- diverging when an operator relocates .claude via CLAUDE_DIR would
-    # check the wrong dir.
-    local glm_cfg="${HOME}/.claude-glm"
-    if [ ! -d "$glm_cfg" ]; then
-        emit OK C11-glm-seed "skipped (no ~/.claude-glm -- glm-launcher lane not in use)"
-        return
-    fi
-    local out rc
-    out="$(bash "$REPO_ROOT/scripts/claude-glm-seed-check.sh" --check 2>&1)"
-    rc=$?
-    case "$rc" in
-        0) emit OK C11-glm-seed "glm-launcher seeded set in sync (~/.claude-glm matches ~/.claude)" ;;
-        1)
-            emit WARN C11-glm-seed \
-                "glm-launcher config-seed drift -- ~/.claude-glm lags ~/.claude (reused config dir)" \
-                "claude-glm --reseed"
-            # Surface the per-file drift list (up to 8).
-            printf '%s\n' "$out" | grep '^  · ' | sed 's/^  /       /' | head -8
-            ;;
-        2)
-            emit INFO C11-glm-seed \
-                "glm-launcher config dir present but unseeded (no .seeded sentinel)" \
-                "run 'claude-glm' to seed on first launch"
-            ;;
-        *)
-            emit WARN C11-glm-seed "claude-glm-seed-check exited rc=$rc (unexpected)" "inspect scripts/claude-glm-seed-check.sh"
-            ;;
-    esac
-}
-
 # --- C12: codex startup health (read-only advisory) -----------------
 # Surfaces a DEGRADED codex CLI startup (skills silently truncated / lifecycle
 # hooks silently ignored / oversized _where-are-we injection) so a codex
@@ -4207,27 +4167,30 @@ check_c71_verdict_scratch() {
     case "$kb" in ''|*[!0-9]*) emit INFO C71-verdict-scratch "could not size $dir"; return 0 ;; esac
     if [ "$kb" -gt "$limit_kb" ]; then
         emit WARN C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)" \
-            "run: bash $REPO_ROOT/scripts/handover/console-kit/verdict-retention.sh prune (dry run lists what it would remove), then re-run it with --apply"
+            "run: bash $REPO_ROOT/scripts/handover/console-kit/verdict-retention.sh prune --unproven-older-than 14 (dry run lists what it would remove and why; plain prune frees only scratch whose PR is provably closed), then re-run it with --apply"
     else
         emit OK C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)"
     fi
 }
 
 # --- C70-graph-semantic: the himmel graph's semantic layer is stale or stuck ---
-# Runs check-graph-freshness.sh against the graph-cadence corpus and prints its
-# "graph-freshness: semantic ..." line verbatim (last run, failed, refused,
-# backed-off, oldest unstamped file). A file failed or refused in each of the
-# last 3 runs (the script's rc 2 "semantic refresh stuck") is WARN. No cadence
-# corpus or no semantic-runs.jsonl is an OK skip; any other rc 2, or an rc the
-# script does not define (it could not run), is INFO -- never a healthy OK -- the
-# graph's own staleness being C33's. Seams: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out
-# dir), HIMMEL_DOCTOR_GRAPH_CHECK (the freshness script).
+# Runs check-graph-freshness.sh against the graph the session-start advisory
+# reads (the station checkout's graphify-out, so the two never judge different
+# manifests) and prints its "graph-freshness: semantic ..." line verbatim (last
+# run, failed, refused, backed-off, oldest unstamped file). A file failed or
+# refused in each of the last 3 runs (the script's rc 3, or rc 1 on a stale
+# graph, carrying "semantic refresh stuck") is WARN naming the files and the
+# `semantic-merge.py unstick` verb that clears them. No graphify-out or no
+# semantic-runs.jsonl is an OK skip; any other rc 2, or an rc the script does not
+# define (it could not run), is INFO -- never a healthy OK -- the graph's own
+# staleness being C33's. Seams: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out dir),
+# HIMMEL_DOCTOR_GRAPH_CHECK (the freshness script).
 check_c70_graph_semantic() {
-    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-${HOME:-}/.claude/graph-cadence/himmel/graphify-out}"
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
-    local res rc=0 line fail_line
+    local res rc=0 line fail_line stuck_line
     if [ ! -d "$out" ]; then
-        emit OK C70-graph-semantic "no cadence graphify-out at $out -- semantic freshness check skipped"
+        emit OK C70-graph-semantic "no graphify-out at $out -- semantic freshness check skipped"
         return 0
     fi
     if [ ! -f "$out/semantic-runs.jsonl" ]; then
@@ -4237,9 +4200,10 @@ check_c70_graph_semantic() {
     res="$(bash "$check" --out "$out" 2>&1)" || rc=$?
     line="$(printf '%s\n' "$res" | grep -m1 '^graph-freshness: semantic ')" || true
     fail_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: FAIL //p' | head -1)"
-    if [ "$rc" -eq 2 ] && grep -q 'semantic refresh stuck' <<< "$res"; then
-        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $fail_line" \
-            "bash scripts/graphify/check-graph-freshness.sh --out $out   # names the stuck files; python3 scripts/graphify/semantic-merge.py status shows the backoff state"
+    stuck_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: STUCK //p' | head -1)"
+    if { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stuck_line" ]; then
+        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stuck_line" \
+            "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then run a semantic batch; bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
     elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out"
@@ -4579,7 +4543,6 @@ run_check C6 check_c6
 run_heavy C7 check_c7 C7-shipped
 run_check C8 check_c8
 run_check C9 check_c9
-run_check C11 check_c11
 run_check C12 check_c12
 run_check C13 check_c13
 run_check C14 check_c14

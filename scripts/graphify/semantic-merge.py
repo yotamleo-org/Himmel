@@ -11,6 +11,7 @@
 #   restore --out O --before B     put back the semantic items an AST rebuild
 #                                  (ast-update.sh) dropped from B's snapshot
 #   status --root R --out O        backed-off, unstamped and oldest-unstamped counts
+#   unstick --out O                drop every backed-off "stuck" record so the next plan retries it
 #
 # A batch file that fails or is shrink-refused gets a manifest "stuck" record
 # {hash, attempts, reason, since}. After MAX_ATTEMPTS on the same content it is
@@ -164,6 +165,17 @@ def cmd_status(a):
     now = time.time()
     oldest = max((now - os.path.getmtime(os.path.join(a.root, rel)) for rel in changed), default=0)
     print("backed_off=%d unstamped=%d oldest_unstamped=%dd" % (len(skipped), len(changed), oldest // 86400))
+
+
+def cmd_unstick(a):
+    m = load_manifest(a.out)
+    stuck = m.get("stuck", {})
+    gone = sorted(rel for rel, rec in stuck.items() if rec.get("attempts", 0) >= MAX_ATTEMPTS)
+    for rel in gone:
+        del stuck[rel]
+    if gone:
+        write_json_atomic(os.path.join(a.out, MANIFEST), m)
+    print("unstick: cleared %d backed-off record%s%s" % (len(gone), "" if len(gone) == 1 else "s", ": " + ", ".join(gone) if gone else ""))
 
 
 def cmd_seed(a):
@@ -443,9 +455,11 @@ def main():
     st = sub.add_parser("status")
     st.add_argument("--root", required=True)
     st.add_argument("--out", required=True)
+    u = sub.add_parser("unstick")
+    u.add_argument("--out", required=True)
     a = ap.parse_args()
     {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore,
-     "status": cmd_status}[a.cmd](a)
+     "status": cmd_status, "unstick": cmd_unstick}[a.cmd](a)
 
 
 if __name__ == "__main__":
