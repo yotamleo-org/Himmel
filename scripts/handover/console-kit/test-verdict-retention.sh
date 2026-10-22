@@ -57,24 +57,15 @@ wv() {
         HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-6915 bash "$WRITER" "$@"
 }
 verdict_rc() {
-    (
-        unset HIMMEL_CONSOLE_LEG
-        export HANDOVER_DIR="$root"
-        # shellcheck source=scripts/lib/handover-path.sh
-        # shellcheck disable=SC1091
-        . "$REPO/scripts/lib/handover-path.sh" || exit 9
-        # shellcheck source=scripts/lib/go-gate.sh
-        # shellcheck disable=SC1091
-        . "$REPO/scripts/lib/go-gate.sh" || exit 9
-        r=$(go_resolve_root "$REPO") || exit 8
-        go_trust_verdict "$r" "$1" "$2" "$REPO" "$3" >/dev/null
-    )
+    env -u HIMMEL_CONSOLE_LEG HANDOVER_DIR="$root" bash -c '
+        . "$1/scripts/lib/handover-path.sh" || exit 9
+        . "$1/scripts/lib/go-gate.sh" || exit 9
+        r=$(go_resolve_root "$1") || exit 8
+        go_trust_verdict "$r" "$2" "$3" "$1" "$4" >/dev/null
+    ' _ "$REPO" "$1" "$2" "$3"
 }
-scope=$(
-    # shellcheck source=scripts/lib/go-gate.sh
-    # shellcheck disable=SC1091
-    . "$REPO/scripts/lib/go-gate.sh" && go_verdict_scope "$REPO"
-) || { echo "FAIL: cannot resolve the verdict scope"; exit 1; }
+scope=$(bash -c '. "$1/scripts/lib/go-gate.sh" && go_verdict_scope "$1"' _ "$REPO") \
+    || { echo "FAIL: cannot resolve the verdict scope"; exit 1; }
 vdir="$root/$scope/verdicts"
 bucket="$root/$scope"
 
