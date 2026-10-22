@@ -30,5 +30,7 @@ is unreachable. 95% bootstrap CIs; one eval-runs ledger row per mode.
 | hybrid | 0.840 [0.790, 0.890] | 0.955 [0.925, 0.980] | 0.889 [0.852, 0.926] |
 | hybrid-rerank | 0.840 [0.790, 0.890] | 0.965 [0.935, 0.985] | 0.898 [0.863, 0.932] |
 
-The intervals overlap across modes, so these 200 queries cannot rank the modes
-against each other; they catch a regression larger than the interval width.
+Each interval is that mode's own uncertainty; overlapping intervals do not show
+two modes are equal. Compare two runs with the paired per-query test in
+`compare.ts` (`bun compare.ts --golden G --a A/runs.jsonl --b B/runs.jsonl`),
+which is the test for a regression or a mode difference.
