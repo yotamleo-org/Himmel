@@ -1459,6 +1459,9 @@ for ((i = 0; i < ${#a[@]}; i++)); do
 done
 emit() { if [ -n "$jq_arg" ]; then printf '%s' "$1" | jq -r "$jq_arg"; else printf '%s\n' "$1"; fi; }
 case "$1 ${2:-}" in
+  "pr view"|"pr checks") [ "${3:-}" = "7" ] || { echo "unexpected PR selector: $*" >&2; exit 1; } ;;
+esac
+case "$1 ${2:-}" in
   "pr view")
     emit '{"url":"https://github.com/acme/widgets/pull/7","reviewDecision":"","headRefOid":"abc123","baseRefName":"main","title":"feat: x","mergeStateStatus":"CLEAN"}' ;;
   "pr checks") echo '[{"name":"ci","bucket":"pass","state":"SUCCESS"}]' ;;
@@ -1490,10 +1493,11 @@ grep -q 'repos/acme/widgets/' "$work/checkci-6977.log" \
 if grep -q -i 'yotamleo' "$work/checkci-6977.log" "$cittarget/scripts/check-ci.sh"; then
   fail "HIMMEL-6977: the copied check-ci.sh or its gh calls name the himmel repo"
 fi
-cit_before=$(<"$cittarget/scripts/check-ci.sh")
+IFS= read -r -d '' cit_before < "$cittarget/scripts/check-ci.sh" || true
 HOME="$pchome" PATH="$pcbin:$work/bin:$native_free_path" bash "$adopt" --profile core --scope project --target "$cittarget" >/dev/null 2>&1 \
   || fail "HIMMEL-6977: re-adopt failed"
-[ "$(<"$cittarget/scripts/check-ci.sh")" = "$cit_before" ] \
+IFS= read -r -d '' cit_after < "$cittarget/scripts/check-ci.sh" || true
+[ "$cit_after" = "$cit_before" ] \
   || fail "HIMMEL-6977: re-adopt changed the project's check-ci.sh"
 echo "ok: HIMMEL-6977 the adopted check-ci.sh reaches a green verdict for the project's own repo; re-adopt is idempotent"
 
