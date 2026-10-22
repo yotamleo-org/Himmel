@@ -184,7 +184,7 @@
 #                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
-# 2 = usage; 3 = another waiter is already live on this inbox (its pid is named).
+# 2 = usage or an inbox outside the */consoles/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
 #
 # Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
 # CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_TICK_TIMEOUT
@@ -243,6 +243,27 @@ if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     exit 2
 fi
 inbox="$1"; shift
+# The inbox's lines are printed to stdout, so only the bridge's inbox layout
+# is read: its canonical path (symlinks resolved) must be
+# */consoles/<name>.md, and an existing inbox a regular file with one link.
+# A secret (the GO key, .env) never sits at that shape.
+# ponytail: checked once at start - an inbox swapped for a link after that is
+# read until the wait ends; upgrade path is re-checking before each drain.
+# prim-ok: canon_path resolves a directory only; the inbox is a file that may be a symlink or not exist yet
+canon="$(realpath -m -- "$inbox")" || canon=""  # gnu-ok: Linux-only kit (PLATFORM GUARD)
+inbox_name="${canon##*/}"
+case "$canon" in
+    */consoles/*.md) ;;
+    *) inbox_name="" ;;
+esac
+case "${inbox_name%.md}" in
+    "" | *[!A-Za-z0-9._-]*) inbox_name="" ;;
+esac
+if [ -z "$inbox_name" ] || [ "${canon%/consoles/*}/consoles/$inbox_name" != "$canon" ] \
+    || { [ -e "$inbox" ] && { [ ! -f "$canon" ] || [ "$(stat -c %h -- "$canon")" != 1 ]; }; }; then  # gnu-ok: Linux-only kit
+    echo "console-wait: refusing inbox '$inbox' - it must be a */consoles/<name>.md bridge inbox (a regular file with one link, no symlink out of the layout)" >&2
+    exit 2
+fi
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
 if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi

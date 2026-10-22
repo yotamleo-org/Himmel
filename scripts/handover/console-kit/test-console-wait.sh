@@ -799,6 +799,22 @@ wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (sec) an inbox outside the */consoles/<name>.md layout is refused before
+# a byte of it is read: the waiter streams the inbox's lines to stdout, so a
+# secret path would print the secret. A symlink into the layout is judged by
+# where it lands. RED control (console-wait.sh before this change): both
+# print the secret line under WAKE telegram and exit 0.
+reset_stub
+mkdir -p "$WORK/sec/.himmel" "$WORK/sec/consoles"
+printf 'SECRET-HMAC-KEY\n' > "$WORK/sec/.himmel/go-hmac.key"
+timeout 5 bash "$WAIT" "$WORK/sec/.himmel/go-hmac.key" --legs "N1.md" > "$WORK/sec.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(sec) a secret-shaped inbox path is refused" "2" "$rc"
+check "(sec) the refused secret is never printed" "0" "$(grep -c SECRET "$WORK/sec.out")"
+ln -s "$WORK/sec/.himmel/go-hmac.key" "$WORK/sec/consoles/c.md"
+timeout 5 bash "$WAIT" "$WORK/sec/consoles/c.md" --legs "N1.md" > "$WORK/sec-ln.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(sec) a consoles/ symlink onto a secret is refused" "2" "$rc"
+check "(sec) the symlinked secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-ln.out")"
+
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
