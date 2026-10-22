@@ -263,6 +263,7 @@ wire_merge_gate() {
     echo "DRY: merge unresolved-review PreToolUse hook into $settings"
     return 0
   fi
+  # read-sink-ok: fixed adopter settings path under the operator-selected target, merged in place.
   base="$(cat "$settings")"
   # Project-scope only: keep the prefix literal for hook-fire-time expansion.
   # shellcheck disable=SC2016
