@@ -7,10 +7,8 @@
 # set-lane-override.mjs, lanes.json) so nothing ever touches the real repo's
 # .env / scripts/lanes/lanes.json / scripts/lanes/lanes.local.json.
 #
-# Non-interactive path only (the brief's own scoping: "Keep the interactive
-# TUI thin so most logic is exercised via the setters") — the interactive TUI
-# is a thin caller over the exact same functions these cases exercise via
-# `config set`/`config get`.
+# There is no prompt loop: bare `config` hands off to the UI (case I), and
+# `config set`/`config get` are the scripted path over the same store.
 #
 # Covers:
 #   A. initiative.<leg> — set on/off toggles HIMMEL_INITIATIVE in the fixture
@@ -31,8 +29,9 @@
 #      unknown plugin name -> rc=2.
 #   H. value validation — anything other than on/off -> rc=2 for every
 #      surface; an unknown top-level path -> rc=2.
-#   I. interactive with closed stdin (`config` with no args, `</dev/null`)
-#      quits immediately (rc=0), never hangs.
+#   I. `config` with no args prints the UI Configure link (or how to open the
+#      UI when no service is installed) and exits 0 without asking anything;
+#      a CLI `config set` reads back as on in the report feed the UI draws.
 #   J. the lanes overlay MERGE itself (resolve.mjs's mergeLocalOverlay wired
 #      into loadRegistry()): base lanes.json + a local override -> the
 #      overridden lane is force-on/off in the RESOLVED set, every other lane
@@ -354,15 +353,53 @@ run_cfg "$fxA" get bogus.path
 [ "$CFG_RC" -eq 2 ] || fail "caseH: unknown top-level get path should exit 2 (got rc=$CFG_RC): $CFG_OUT"
 echo "ok: caseH invalid value / unknown path both rejected with rc=2"
 
-# ── Case I: interactive, closed stdin -> quits immediately, never hangs ────
+# ── Case I: `config` with no args hands off to the UI Configure link, no prompt ──
+# run_cfg_noargs <home> <stdin> -- the bare verb against $fxA with a fake HOME and a fake systemd unit dir.
+run_cfg_noargs() {
+  local _h="$1" _in="$2"
+  set +e
+  CFG_OUT=$(HOME="$_h" USERPROFILE="$(winpath "$_h")" HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$(winpath "$_h/units")" HIMMELCTL_CACHE_DIR="$(winpath "$_h.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_h.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxA")" \
+    "$node_bin" "$wizard" config <"$_in" 2>&1)
+  CFG_RC=$?
+  set -e
+}
+homeI="$work/homeI"; mkdir -p "$homeI/units" "$homeI/.himmel/state"
+tokI=$(printf 'ab%.0s' $(seq 1 32))
+printf '%s\n' "$tokI" > "$homeI/.himmel/state/ui-token"; chmod 600 "$homeI/.himmel/state/ui-token"
+printf 'ExecStart="/usr/bin/bun" "/x/server.ts" --service --port 47391\n' > "$homeI/units/himmel-ui.service"
+echo "n" > "$work/stdinI"
+run_cfg_noargs "$homeI" "$work/stdinI"
+[ "$CFG_RC" -eq 0 ] || fail "caseI: bare config should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F "http://127.0.0.1:47391/#t=${tokI}&page=config" \
+  || fail "caseI: expected the UI Configure link (got: $CFG_OUT)"
+grepq "$CFG_OUT" -F 'what would you like to configure' \
+  && fail "caseI: bare config must not ask a question (got: $CFG_OUT)"
+echo "ok: caseI bare config prints the UI Configure link and asks nothing"
+
+# ── Case I2: no UI service installed -> says how to open the UI, still no prompt ──
+homeI2="$work/homeI2"; mkdir -p "$homeI2/units"
+run_cfg_noargs "$homeI2" /dev/null
+[ "$CFG_RC" -eq 0 ] || fail "caseI2: bare config without a UI service should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'himmelctl ui' \
+  || fail "caseI2: expected how to open the UI (got: $CFG_OUT)"
+grepq "$CFG_OUT" -F 'what would you like to configure' \
+  && fail "caseI2: bare config must not ask a question (got: $CFG_OUT)"
+echo "ok: caseI2 bare config without a UI service says how to open it, asks nothing"
+
+# ── Case I3: a CLI set reads back through the report feed the UI draws ──
+fxI3="$work/fixtureI3"; build_fixture "$fxI3"
+mkdir -p "$fxI3/scripts/install"; cp "$repo_root/scripts/install/manifest.json" "$fxI3/scripts/install/manifest.json"
+run_cfg "$fxI3" set initiative.handover on
+[ "$CFG_RC" -eq 0 ] || fail "caseI3: set initiative.handover on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
 set +e
-outI=$(HOME="$work/homeI" USERPROFILE="$(winpath "$work/homeI")" HIMMELCTL_CACHE_DIR="$(winpath "$work/homeI.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/homeI.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxA")" \
-  "$node_bin" "$wizard" config </dev/null 2>&1); rcI=$?
+outI3=$(HOME="$homeI2" USERPROFILE="$(winpath "$homeI2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeI2.himmelctl-cache")" HIMMELCTL_REPO_ROOT="$(winpath "$fxI3")" \
+  "$node_bin" "$wizard" report --json --items initiative:handover 2>&1)
 set -e
-[ "$rcI" -eq 0 ] || fail "caseI: closed-stdin interactive config should exit 0 (got rc=$rcI): $outI"
-grepq "$outI" -F 'what would you like to configure' \
-  || fail "caseI: expected the top-level menu prompt (got: $outI)"
-echo "ok: caseI interactive config with closed stdin quits immediately (rc=0), never hangs"
+grepq "$outI3" -F '"id":"initiative:handover"' \
+  || fail "caseI3: the feed should carry initiative:handover (got: $outI3)"
+grepq "$outI3" -F '"installed":{"state":"present","detail":"on"}' \
+  || fail "caseI3: the feed should read initiative.handover as on after the CLI set (got: $outI3)"
+echo "ok: caseI3 a CLI config set reads back as on in the report feed the UI draws"
 
 # ── Case J: the lanes overlay MERGE itself (resolve.mjs) ───────────────────
 # An ISOLATED copy of resolve.mjs+probe.mjs+lanes.json (never the real repo's
