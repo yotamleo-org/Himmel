@@ -315,6 +315,20 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(out()).toMatch(/FAIL\s+frozen-set.*leak.*HIM-7/);
   });
 
+  it('a key admitted, then removed, then back in the version without a new ruling is a leak: the latest row wins', async () => {
+    mockRead.mockReturnValue([
+      { ts: '2026-10-21T01:00:00Z', version: 'v1.1.3', key: 'HIM-7', kind: 'rm-admit', actor: 'c', reason: 'found work, P1', by: 'rm-N3063' },
+      { ts: '2026-10-21T02:00:00Z', version: 'v1.1.3', key: 'HIM-7', kind: 'rm-remove', actor: 'c', by: 'rm-N3063' },
+    ]);
+    world({
+      description: FROZEN_DESC,
+      frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')],
+      inVersion: [issue('HIM-1', 'done'), issue('HIM-2', 'done'), issue('HIM-7', 'new')],
+    });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+frozen-set.*leak.*HIM-7/);
+  });
+
   it('a gate-filed ledger row also counts as an admission, and an unrecorded Done key is a Done-fold, not a leak', async () => {
     mockRead.mockReturnValue([{ ts: '2026-10-21T01:00:00Z', version: 'v1.1.3', key: 'HIM-5', gate: 'critical', actor: 'f' }]);
     world({
