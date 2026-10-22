@@ -189,7 +189,7 @@ export const SCENE: { sub?: string; rec: () => string; pause: number }[] = [
   { rec: () => J.tool("toolu_panel", "Bash", { command: `bash scripts/cr/panel-first-pass.sh --head ${HEAD} --branch 'fix/check-ci-cap'`, description: "Run the critic panel" }, OPUS), pause: 1400 },
   { rec: () => J.result("toolu_panel", PANEL), pause: 1200 },
   { rec: () => J.text("Three findings. A critic checks the critical one while the suite runs.", "tool_use", OPUS), pause: 600 },
-  { rec: () => J.tool("toolu_crit", "Agent", { description: "correctness critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", model: "sonnet", prompt: BRIEF }, OPUS), pause: 150 },
+  { rec: () => J.tool("toolu_crit", "Agent", { description: "correctness critic", subagent_type: "judge", model: "sonnet", prompt: BRIEF }, OPUS), pause: 150 },
   { rec: () => J.tool("toolu_suite", "Bash", { command: "bash scripts/quiet-run.sh suite -- bash tests/test-check-ci.sh", description: "Run the check-ci suite" }, OPUS), pause: 500 },
   { sub: CRITIC, rec: () => J.prompt(BRIEF, { sub: CRITIC }), pause: 500 },
   { sub: CRITIC, rec: () => J.tool("toolu_read", "Read", { file_path: "scripts/check-ci.sh" }, SONNET), pause: 500 },

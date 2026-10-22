@@ -154,7 +154,7 @@ ro_judge_pinned() {
 }
 lane_exempt=0
 case "$subagent_type" in
-    Explore|gemini-subagent|statusline-setup|pr-review-toolkit-himmel:code-reviewer|himmel-ops:claudex-subagent|codex:codex-rescue)
+    Explore|gemini-subagent|statusline-setup|himmel-ops:claudex-subagent|codex:codex-rescue)
         exit 0
         ;;
     judge-ro|console-judge-ro)

@@ -200,7 +200,7 @@ test("8. a running subagent shows running with its current call, then flips to d
   await page.goto(h.url);
   const sub = { sub: "b4d2f1", model: "claude-sonnet-5-5" };
   h.append(J.prompt("Check the diff with a critic."));
-  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", prompt: "Read check-ci.sh" }));
+  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "judge", prompt: "Read check-ci.sh" }));
   h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
   h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
   // by its name: the leg's own row also names the critic, in the Agent call it is running
@@ -227,7 +227,7 @@ test("8b. a running subagent is listed in the Now panel; once finished its block
   await page.goto(h.url);
   const sub = { sub: "b4d2f1", model: "claude-sonnet-5-5" };
   h.append(J.prompt("Check the diff with a critic."));
-  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", prompt: "Read check-ci.sh" }));
+  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "judge", prompt: "Read check-ci.sh" }));
   h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
   h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
   const row = page.locator(".now li", { has: page.locator(".agent-name", { hasText: "diff critic" }) });
