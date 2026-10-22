@@ -20,10 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   the pre-commit run, and refuses the commit (fail closed) when gitleaks cannot
   be found. `scripts/hooks/install-nostash-hooks.sh` bakes the gitleaks path
   like it does for `pre-commit` and warns when it is missing.
-- Upgrading an existing vault: remove the `gitleaks/gitleaks` repo block from the
-  vault's `.pre-commit-config.yaml` (the template no longer has it) and re-run
-  `bash scripts/hooks/install-nostash-hooks.sh` in the vault, never
-  `pre-commit install`.
+- Upgrading an existing vault: the old hook ran a `pre-commit`-managed gitleaks,
+  so the vault may have none on PATH. Install gitleaks and confirm
+  `command -v gitleaks` succeeds, remove the `gitleaks/gitleaks` repo block from
+  the vault's `.pre-commit-config.yaml` (the template no longer has it), then
+  re-run `bash scripts/hooks/install-nostash-hooks.sh` in the vault, never
+  `pre-commit install`. Without gitleaks the new hook refuses every commit.
 
 ## [0.4.81] — 2026-10-17
 
