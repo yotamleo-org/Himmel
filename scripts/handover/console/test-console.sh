@@ -1908,6 +1908,19 @@ check "67 every leg_propagate_env name in headed-arm-leg.sh is in the strip list
 # must be stripped too, and a launch-seam name's twin must be seam as well.
 twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
 check "67 headed-arm-leg.sh has a twin table" "$([ -n "$twins67" ] && echo found)" "found"
+want67='HIMMEL_LEAN_LEG HIMMEL_LEAN_WORKER_SESSION
+HIMMEL_LEG_AUTOCOMPACT HIMMEL_WORKER_SESSION_AUTOCOMPACT
+HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
+HIMMEL_LEG_PROFILE HIMMEL_WORKER_SESSION_PROFILE
+LEG_CLAUDE_BIN WORKER_SESSION_CLAUDE_BIN
+LEG_LANE WORKER_SESSION_LANE
+LEG_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_MCP_CONFIG
+LEG_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_PROFILE_NO_SETTING_SOURCES
+LEG_PROFILE_PREFACE WORKER_SESSION_PROFILE_PREFACE
+LEG_PROFILE_SETTINGS WORKER_SESSION_PROFILE_SETTINGS
+LEG_SESSION_ID WORKER_SESSION_ID
+'
+check "67 the twin table maps every required leg name to its worker-session twin" "$(comm -13 <(printf '%s\n' "$twins67" | sort -u) <(printf '%s' "$want67" | sort -u))" ""
 missing67t="$(comm -23 <(printf '%s\n' "$twins67" | awk '{print $2}' | sort -u) <(printf '%s\n' "$strip_list67"))"
 check "67 every worker-session twin in headed-arm-leg.sh is in the strip list" "$missing67t" ""
 seam67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_launch_seam_env_names ) | sort -u)"
