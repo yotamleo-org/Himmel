@@ -341,6 +341,7 @@ scripts/handover/console-kit/test-denied-launch-alert.sh	local	behaviour suite, 
 scripts/handover/console-kit/test-doc-reader-agreement.sh	local	behaviour suite, new generator-driven reader agreement
 scripts/handover/console-kit/test-fleet-manifest.sh	pr	static-gate
 scripts/handover/console-kit/test-fleet.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-focus-chains-links.sh	local	behaviour suite, new
 scripts/handover/console-kit/test-gen-briefs.sh	pr	catch:2887
 scripts/handover/console-kit/test-gen-judge-brief.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-gh-read.sh	pr	trust-path
