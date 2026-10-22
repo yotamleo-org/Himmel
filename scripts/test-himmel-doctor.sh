@@ -7022,6 +7022,10 @@ out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=1)"
 if grepq "$out" -F 'WARN C71-verdict-scratch' && grepq "$out" -F 'verdict-retention.sh prune'; then pass "C71 cache above the threshold -> WARN naming the pruner"; else fail "C71 over -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=1024)"
 if grepq "$out" -F 'OK   C71-verdict-scratch' && ! grepq "$out" -F 'WARN C71'; then pass "C71 cache below the threshold -> OK"; else fail "C71 under -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=08)"
+if grepq "$out" -F 'C71-verdict-scratch' && ! grepq "$out" -F 'did not complete'; then pass "C71 a leading-zero limit is decimal, not an octal abort"; else fail "C71 08 -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=abc)"
+if grepq "$out" -F 'OK   C71-verdict-scratch' && grepq "$out" -F 'warn above 5120 MB'; then pass "C71 a non-numeric limit falls back to the 5 GB default"; else fail "C71 abc -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE="$c71_t/no-such-cache")"
 if grepq "$out" -F 'OK   C71-verdict-scratch' && grepq "$out" -F 'no judge scratch cache'; then pass "C71 absent cache -> OK skip"; else fail "C71 absent -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c71_t"

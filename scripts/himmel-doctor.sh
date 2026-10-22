@@ -4197,6 +4197,8 @@ check_c68_konsole_dbus() {
 check_c71_verdict_scratch() {
     local dir="${HIMMEL_DOCTOR_VERDICT_CACHE:-${HOME:-}/.cache/himmel/verdicts}"
     local limit_kb="${HIMMEL_DOCTOR_VERDICT_CACHE_KB:-5242880}" kb
+    case "$limit_kb" in ''|*[!0-9]*) limit_kb=5242880 ;; esac
+    limit_kb=$((10#$limit_kb))
     if [ ! -d "$dir" ]; then
         emit OK C71-verdict-scratch "no judge scratch cache at $dir"
         return 0
