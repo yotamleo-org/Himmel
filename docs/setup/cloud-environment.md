@@ -152,7 +152,7 @@ version, a plugins directory, a `Graph: ... nodes` line, exactly one collection
 | Handover state | It lives in the state repo, which the cloud cannot reach; a cloud session reports through its PR |
 | A Jira token | Not in the environment on purpose; use the Atlassian connector |
 | Lane tickets (claudex, codex or another lane) | Cloud is Claude only; `/cloud-route` routes them LOCAL |
-| The supervisor session bridge and the hook-integrity off switch | Local launching-shell state; a ticket that edits `scripts/hooks/` routes HOOK-BYPASS |
+| The chief bridge and the hook-integrity off switch | Local launching-shell state; a ticket that edits `scripts/hooks/` routes HOOK-BYPASS |
 
 The cached graph and index live in `/tmp/himmel-setup`, a frozen clone. In the
 session's own worktree run `bash scripts/cloud/setup-env.sh` to rebuild both
@@ -192,7 +192,7 @@ post the full output as one top-level PR comment whose first line is
 | Jira access | local jira CLI | Atlassian MCP connector; the CLI dist is built but there is no token | By design: no token in the environment |
 | Bash timeouts | unset locally | 600000 / 600000, set through the dialog | By design, see Notes above; `check-env.sh` reports a mismatch |
 | Egress | unrestricted | pypi, npm, ubuntu archive 200; `example.com` 000 (outside the `Trusted` list, by design); a HEAD to `github.com` got 400 from the GitHub proxy | **Closed here:** the probe uses GET |
-| luna, vaults, handover state, supervisor session bridge, hook-integrity off switch | present | absent | By design, local only; two-way supervisor session channel: HIMMEL-4277 |
+| luna, vaults, handover state, chief bridge, hook-integrity off switch | present | absent | By design, local only; two-way chief channel: HIMMEL-4277 |
 
 The cloud column is one cloud run of the probe on this change's branch:
 `setup-env.sh`, `parity-probe.sh` and `check-env.sh` all exited 0.
@@ -207,7 +207,7 @@ The cloud column is one cloud run of the probe on this change's branch:
 3. A **local shepherd** takes it from there: `bash
    scripts/handover/console-kit/shepherd.sh <pr>` runs the coverage lint, the
    impacted suites, CI and the ready check; `/pr-check` and the CR gate run
-   locally, and the supervisor session merges on `GO`. The cloud session never merges and
+   locally, and the chief merges on `GO`. The cloud session never merges and
    stops pushing once the shepherd comments.
 4. The ticket stays `In Progress` until the merge closes it.
 

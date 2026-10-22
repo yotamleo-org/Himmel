@@ -40,8 +40,8 @@ script.
    `merge-on-green.sh` (`ARMAUTOMERGE=1`, the sanctioned auto-merge
    script) — all three against a **dedicated worktree**, never the
    primary checkout (see below). A failing refresh short-circuits the
-   remaining legs (see `graph-cadence.sh`'s own header for why this diverges
-   from `ggs-cadence.sh`'s "run every leg regardless" convention).
+   remaining steps (see `graph-cadence.sh`'s own header for why this diverges
+   from `ggs-cadence.sh`'s "run every step regardless" convention).
 
 ## Where it runs — the dedicated worktree
 
@@ -53,7 +53,7 @@ live agent sessions are working in and leave its tracked `graphify-out/`
 dirty — exactly the temptation that produced the manual bare commits this
 ticket exists to stop.
 
-So every mutating leg runs inside `~/.claude/graph-cadence/<corpus-slug>`
+So every mutating step runs inside `~/.claude/graph-cadence/<corpus-slug>`
 (himmel → `himmel`), created on demand via `git worktree add` off the
 primary and force-synced to `origin/main` (`checkout -B` + `reset --hard` +
 `clean -fdx`) at the start of every run. A worktree has its own HEAD/index
@@ -82,7 +82,7 @@ what `graph-publish.sh` actually creates.
 
 Same three verbs as every sibling cadence, via the shared
 `graphmap-cadence.sh` entry point — there is no separate arm command for
-this leg:
+this step:
 
 ```bash
 bash scripts/luna/graphmap-cadence.sh arm        # registers all five tasks
@@ -91,21 +91,21 @@ bash scripts/luna/graphmap-cadence.sh status     # per-task ARMED/not-armed + ru
 bash scripts/luna/graphmap-cadence.sh disarm     # removes all five
 ```
 
-The publish leg is grouped with the free structural (AST) pair for
+The publish step is grouped with the free structural (AST) pair for
 `--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
 `--ast-only` arms/replaces it too, alongside the AST pair, while leaving the
 weekly semantic pair untouched. Default schedule: **every 6 hours**,
 anchored at `:35` past (Windows: `<Repetition><Interval>PT6H</Interval>`;
 POSIX: `35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
 own `:15`-past hourly fire, wider than the AST pair's own 10-minute mutual
-stagger, because this leg is not free-and-instant like the AST pair: it can
+stagger, because this step is not free-and-instant like the AST pair: it can
 run `ast-update.sh`, open/refresh a PR, and drive `merge-on-green.sh`'s own
-`check-ci` watch, all in one fire. Both legs would otherwise contend for
+`check-ci` watch, all in one fire. Both steps would otherwise contend for
 `ast-update.sh`'s HIMMEL-910 promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
 just makes that the exception rather than the rule).
 
-Two fires of this leg itself are serialized by `graph-cadence.sh`'s own
+Two fires of this step itself are serialized by `graph-cadence.sh`'s own
 pipeline lock (`<worktree>.lock`), because each run `reset --hard` +
 `clean -fdx`es the same worktree. `mkdir` is the whole protocol (HIMMEL-2654,
 following `scripts/luna/qmd-cadence.sh`, where three rounds of automatic
@@ -128,7 +128,7 @@ PR merged on green — never a direct push to `main` (asserted in
 
 Two ledgers, both written every run:
 
-1. **`<handover-root>/.graph-cadence/ledger.jsonl`** — this leg's own,
+1. **`<handover-root>/.graph-cadence/ledger.jsonl`** — this step's own,
    resolved via `scripts/lib/handover-path.sh`'s `handover_root` (never a
    literal path). One JSON line per run:
 
@@ -144,13 +144,13 @@ Two ledgers, both written every run:
    OTHER non-zero `merge-on-green.sh` exit — a missing tool, an unwritable
    audit sink, a misconfigured base/privacy binding — is `failed`, not
    `published`: not every non-landing merge is a benign "not yet", and a
-   permanently broken merge leg must not read as healthy forever).
+   permanently broken merge step must not read as healthy forever).
 
 2. **The standard flow-run ledger** (`~/.himmel/flow-runs.jsonl` by default,
    `scripts/lib/flow-run-ledger.sh`) — a `start`/`end` row pair under flow
    name `graph-publish-himmel`, the same mechanism every other cadence in
    this repo writes, so the existing cadence-audit/staleness tooling is not
-   blind to this leg.
+   blind to this step.
 
 **`HANDOVER_DIR` is required, not optional** (HIMMEL-2619 class): cron gives
 no login shell, so `HANDOVER_DIR` is exactly the variable that goes missing
@@ -237,7 +237,7 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
   pre-worktree failure mode reached before the run log above even exists);
   it is not rotated and is not where a normal run's output lands. Don't
   confuse the two.
-- **This leg's own ledger** (`<handover-root>/.graph-cadence/ledger.jsonl`)
+- **This step's own ledger** (`<handover-root>/.graph-cadence/ledger.jsonl`)
   — `action:"failed"` plus the real error text. A failed *append* to this
   file is itself a hard failure (exit 4, distinct from every other code) —
   see `graph-cadence.sh`'s own exit-code table: the ledger IS the report, so
@@ -290,7 +290,7 @@ up) and its own scheduler task name (following the
 ## Explicitly out of scope
 
 graphify version bumps; the refresh-lock bugs (HIMMEL-2618/2106/1414/914 —
-this leg reuses `ast-update.sh`'s existing promote-lock, unmodified, and
+this step reuses `ast-update.sh`'s existing promote-lock, unmodified, and
 does not fix them); luna's graph corpus (not wired in v1); arming the real
-crontab/schtasks (an operator action after review); the supervisor session's own
+crontab/schtasks (an operator action after review); the chief's own
 `tick.sh`.

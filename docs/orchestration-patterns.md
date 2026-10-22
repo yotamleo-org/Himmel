@@ -14,7 +14,7 @@ clip path or a shipped himmel code path); the resolved evidence table is at the
 foot of the doc.
 
 Here *orchestrator* and *coordinator* mean the parent session running a fan-out,
-not a supervisor session role; supervisor session, worker session, judge subagent and relay are defined once in
+not a chief role; chief, worker, judge subagent and relay are defined once in
 [`glossary.md`](glossary.md).
 
 ## 1. Default shape: map-reduce-and-manage

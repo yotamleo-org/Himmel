@@ -16,7 +16,7 @@ and BASELINE (the 7 days before it), cut by turn timestamp.
 |---|---|---|
 | `role-drop:<role>` | recent hit more than 3 pts under baseline, both windows over 5M tokens | back within 2 pts (one recovery message) |
 | `session-low:<session id>` | session over 1M recent tokens with hit under 90 % | expires silently when it leaves the window |
-| `compactions:leg` | legs average more than 4 compactions in the recent window | below the limit (one recovery message) |
+| `compactions:leg` | workers average more than 4 compactions in the recent window | below the limit (one recovery message) |
 
 `role-drop` and `session-low` apply to `--alert-roles` (default `console,leg`);
 subagent, bridge and other hit rates swing with cold starts, so they are metrics
@@ -26,7 +26,7 @@ nothing wrong).
 One message per run carries every NEW crossing (max 5 lines shown). A key that
 stays crossed sends nothing. State is committed only for delivered messages, so
 a failed send retries on the next run. Delivery is Telegram plus the live
-console's bridge inbox; either channel counts as delivered.
+chief's bridge inbox; either channel counts as delivered.
 
 ## `~/.himmel/state/cache-health/` files
 

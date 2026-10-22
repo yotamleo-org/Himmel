@@ -156,7 +156,7 @@ What the classes say:
   from a bug. Giving the critic the ticket's acceptance criteria is the obvious
   lever. `unreachable` (10%) is the same blindness one level down: the critic
   cannot see that every caller passes an absolute path, or that only one
-  process ever closes a leg.
+  process ever closes a worker.
 - **Paraphrased re-raises leak past deduplication.** The panel suppresses a
   finding whose fingerprint matches an earlier disposition on the branch
   (`scripts/cr/finding-reraise.js`), and the ledger confirms that holds: 0 of
