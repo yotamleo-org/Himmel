@@ -2411,6 +2411,10 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     local gpid="$1" line done_n=0 hollow_n=0 giveup_n=0 pending_g=0 k n
     while IFS= read -r line; do
       printf '%s\n' "$line" >&2
+      case "$line" in
+        '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
+          printf '%s\n' "$line" >> "$_FAILED_FILE" ;;
+      esac
       [ -s "$_STOP_FILE" ] && continue
       case "$line" in
         '[graphify extract] chunk '*' done'*)
@@ -2424,7 +2428,6 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
             kill -TERM "$gpid" 2>/dev/null || true
           fi ;;
         '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
-          printf '%s\n' "$line" >> "$_FAILED_FILE"
           giveup_n=$((giveup_n + 1)); pending_g=$((pending_g + 1))
           if [ "$giveup_n" -ge "$GRAPHIFY_HOLLOW_RETRY_MAX" ]; then
             printf 'hollow %s %s\n' "$done_n" "$giveup_n" > "$_STOP_FILE"

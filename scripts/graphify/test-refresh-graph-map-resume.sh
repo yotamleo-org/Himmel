@@ -119,6 +119,12 @@ for i in "${todo[@]}"; do
   k=$((k+1))
   index=$k
   [ -z "${STUB_REVERSE_DONE:-}" ] || index=$((m - k + 1))
+  if [ -n "${STUB_GIVEUP_AFTER_CAP:-}" ]; then
+    # Queue both lines before the monitor can signal the producer at the cap.
+    printf '%s\n' "[graphify extract] chunk $index/$m done" \
+      '[graphify] chunk of 38 still hollow after 3 attempt(s) — giving up on this chunk. Its files are marked for re-extraction on the next run.' >&2
+    wait_for_stop
+  fi
   echo "[graphify extract] chunk $index/$m done" >&2
   [ "${STUB_WAIT_CHUNK:-0}" != "$k" ] || wait_for_stop
   [ "${STUB_DIE_AFTER:-0}" = "$k" ] && exit 137
@@ -299,6 +305,18 @@ out=$( STUB_CHUNKS=4 STUB_REVERSE_DONE=1 STUB_WAIT_CHUNK=1 GRAPHIFY_MAX_CHUNKS_P
 cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
 [ "$cached" = "c1.json " ] && pass "R11 only one completed chunk is cached" || fail "R11 cap 1 allowed extra chunks: $cached"
 [ ! -e "$OUTD/graph.json" ] && pass "R11 no partial graph promoted" || fail "R11 partial graph promoted"
+
+# --- R12: a cap stop must not hide a give-up already queued by another worker. ---
+echo "R12: queued give-up after a cap stop still records the failure"
+reset
+out=$( STUB_CHUNKS=4 STUB_GIVEUP_AFTER_CAP=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=1 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 5 ] && pass "R12 queued give-up overrides the capped exit with failure" || fail "R12 expected hollow exit 5 (got $rc): $out"
+grep -q 'still hollow after 3 attempt(s)' "$OUTD/.graphify_failed_chunks" 2>/dev/null \
+  && pass "R12 queued give-up is recorded" || fail "R12 queued give-up record missing"
+cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
+[ "$cached" = "c1.json " ] && pass "R12 completed chunk remains cached" || fail "R12 unexpected cached chunks: $cached"
+[ ! -e "$OUTD/graph.json" ] && [ ! -e "$OUTD/manifest.json" ] && [ ! -e "$MAPS/graphify-luna-map.md" ] \
+  && pass "R12 no incomplete graph, manifest or MOC promoted" || fail "R12 incomplete extraction was promoted"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
