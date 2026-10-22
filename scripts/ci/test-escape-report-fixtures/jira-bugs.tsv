@@ -1,0 +1,12 @@
+HIMMEL-7042	Bug	IN CI	main red: test-build-tarball.sh hangs to the 600 s runner cap on every CI run, blocking all merges	bug,main-red,standalone
+HIMMEL-7041	Bug	In Progress	ciq: tick reads CI as SATURATED on a 60-job cap while nothing is queued (real limit 500)	backlog,operator-directed,standalone
+HIMMEL-7040	Bug	To Do	tick: unowned-prs reads a live leg's PR as unowned when the leg ships a ticket other than its doc name	backlog,residual,standalone
+HIMMEL-7039	Bug	To Do	Fleet orchestration: takeover can delete a lock whose holder heartbeated just after the last check	backlog,standalone
+HIMMEL-7038	Bug	To Do	Fleet orchestration: heartbeat cannot write into a lock without an arbiter file	backlog,standalone
+HIMMEL-7036	Bug	In Progress	Fleet orchestration: a late release no longer deletes the new holder's lock	operator-directed,standalone
+HIMMEL-7024	Bug	To Do	vault-lint drift guard always skips: it reads the old claude-obsidian-marketplace cache path	residual-depth-1
+HIMMEL-7021	Bug	IN CI	AG-UI reports Jira not set, and the .env behaviour-config migration cannot run until setup reads the tracked file	operator-directed,standalone
+HIMMEL-7015	Bug	IN CI	Deployment: Node.js 2026-10-21 security releases (Brotli RCE, TLS hostname bypass): bump CI image, runners and station	operator-directed,security,standalone
+HIMMEL-7012	Bug	IN CI	Knowledge & steering: luna auto-commit stalled since 01:51 on a pre-commit (gitleaks) refusal	operator-directed,standalone
+HIMMEL-6975	Bug	Done	merge-public-on-green default CR_PUBLIC_REPO is the old slug, so /mergepub refuses every PR	standalone
+HIMMEL-6957	Bug	Done	fix(hooks): guard-agent-model pins console-judge-ro to opus like console-judge	deferred-escape,operator-directed,standalone

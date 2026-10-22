@@ -120,6 +120,7 @@ scripts/ci/test-ci-vm-routing.sh	pr	trust-path
 scripts/ci/test-codeowner-review-gate.sh	pr	trust-path
 scripts/ci/test-corpus-sandbox.sh	pr	guard
 scripts/ci/test-cr-first-measure.sh	pr	trust-path
+scripts/ci/test-escape-report.sh	pr	trust-path
 scripts/ci/test-fork-drift-issue.sh	pr	static-gate
 scripts/ci/test-gcp-net.sh	pr	trust-path
 scripts/ci/test-gcp-runner-autoscale.sh	pr	trust-path
