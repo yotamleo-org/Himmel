@@ -111,7 +111,6 @@ drift report; no marketplace install source or live setting is changed.
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
 | `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `5beb35b040e3de97e54fa9e386d7e42d15c295c2` |
 | `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `a8777050c0d9034d5de6beff3dfac9b43acb9854` |
-| `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.2.0` (`2961b52fc1fe6a5a87c7a959a79512e5c2f3ffe5`) |
 
 `scroll-world@scroll-world` also remains installed and off by default.
 
@@ -229,7 +228,6 @@ can also be passed to `--installed` for a hermetic observation.
 | `playground@claude-plugins-official` | INSTALLED |
 | `playwright@claude-plugins-official` | INSTALLED |
 | `plugin-dev@claude-plugins-official` | INSTALLED |
-| `ponytail@ponytail` | INSTALLED |
 | `pr-review-toolkit-himmel@himmel` | INSTALLED |
 | `pr-review-toolkit@claude-plugins-official` | INSTALLED |
 | `pstack@himmel` | NOT INSTALLED |
