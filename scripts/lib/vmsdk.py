@@ -333,7 +333,7 @@ class VM:
             self.host = HOST
             _load_dotenv_into_env([spec["pass_env"]] + ([] if spec.get("user") else [spec["user_env"]]))
             # A literal 'user' in the registry entry wins over 'user_env'
-            #: before this fix a VM-kind spec's 'user' key was
+            # Before this fix a VM-kind spec's 'user' key was
             # never even read here (only the station branch above consulted
             # it), so a stale .env value could never be overridden short of
             # editing .env itself. Surfaced when ubuntu_new's real guest user
