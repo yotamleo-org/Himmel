@@ -212,8 +212,12 @@ fakeproc() { # fakeproc <pid> <children or ''> <argv0> [argv...]
   : > "$tmp/proc/$p/cmdline"
   for a in "$@"; do printf '%s\0' "$a" >> "$tmp/proc/$p/cmdline"; done
 }
+fgstat() { # fgstat <pid> <pgrp> <tpgid>: /proc/<pid>/stat as the kernel prints it (state ppid pgrp session tty tpgid ...)
+  printf '%s (claude) S 1 %s %s 34832 %s 4194304\n' "$1" "$2" "$2" "$3" > "$tmp/proc/$1/stat"
+}
 fakeproc 5000 5001 script -q -a -f /x.log -c /x/leg-claude-launcher.sh -n legX
 fakeproc 5001 '' claude --model gpt-6.1-sol -n legX hello
+fgstat 5001 5001 5001
 QPID=5000 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a script wrapper whose child is the named claude is accepted" || fail "claudex wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 fakeproc 5010 5011 script -q -c /x/leg-claude-launcher.sh
@@ -223,6 +227,8 @@ QPID=5010 BUS_N=2 run 3 0
 fakeproc 5020 '5021 5022' script -q -c /x/leg-claude-launcher.sh
 fakeproc 5021 '' claude -n legX
 fakeproc 5022 '' claude -n legX
+fgstat 5021 5021 5021
+fgstat 5022 5022 5022
 QPID=5020 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "two descendant claudes named alike are ambiguous, refused rc=4" || fail "ambiguous descendants: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 fakeproc 5030 5031 script -q
@@ -230,14 +236,34 @@ fakeproc 5031 5032 sh -c wrap
 fakeproc 5032 5033 env wrap
 fakeproc 5033 5034 env wrap
 fakeproc 5034 '' claude -n legX
+fgstat 5034 5034 5034
 QPID=5030 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a claude 4 levels below the session is out of reach, refused rc=4" || fail "depth bound: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 fakeproc 5040 5041 script -q
 fakeproc 5041 5042 sh -c wrap
 fakeproc 5042 5043 env wrap
 fakeproc 5043 '' claude -n legX
+fgstat 5043 5043 5043
 QPID=5040 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a claude 3 levels below the session is accepted" || fail "depth 3: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+# A named claude that is not the terminal's foreground process group must not receive the wake: another program owns the input.
+fakeproc 5050 5051 bash
+fakeproc 5051 '' claude -n legX
+fgstat 5051 5051 5999
+QPID=5050 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a background named claude (another foreground group owns the terminal) is refused, rc=4" || fail "background claude: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5060 5061 bash
+fakeproc 5061 '' claude -n legX
+: > "$tmp/proc/5061/stat"
+QPID=5060 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a descendant claude whose stat cannot be read is refused, rc=4" || fail "unreadable stat: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5070 '5071 5072' bash
+fakeproc 5071 '' claude -n legX
+fakeproc 5072 '' claude -n legX
+fgstat 5071 5071 5072
+fgstat 5072 5072 5072
+QPID=5070 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "of two named claudes only the foreground group counts, so the target is unambiguous" || fail "one foreground of two: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 
 echo "== waker state file =="
 # A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the
