@@ -13,11 +13,14 @@
 #                relay-batch.sh output, which a script cannot observe being sent)
 #   missing      anything else: no bullet, a bullet naming another console, an ambiguous
 #                line, a leg with no manifest row. An ambiguous line is never accepted.
+#   own          the leg's brief names --successor as its console: the successor dispatched it,
+#                so it is not inherited and is left out of the tally
 # The bullet grammar is strict, one whole line:
 #   - [HH:MM ][LIVE — ]SUCCESSION accepted: [`]<incoming>[`] replaces [`]<outgoing>[`]
-# and it must be a `- ` bullet, so a prose line quoting it confirms nothing. The latest line
-# that mentions `SUCCESSION accepted` decides, so a newer ambiguous line outranks an older
-# clean one.
+# and it must be a `- ` bullet, so a prose line or a mirrored relay quoting it confirms nothing.
+# It is read from `## Results` to the end of the doc: append-results.sh writes at EOF, which on
+# a claudex leg is inside the `## Console Rulings` section inbox-send.sh opened. The latest
+# bullet that starts the handshake decides, so a newer ambiguous one outranks an older clean one.
 #
 # When every leg is quoted-back it prints `COMPLETE n/n` and the exact append-results.sh
 # command that writes the LIVE bullet. PRINT ONLY: it never sends a message, never edits a
@@ -110,13 +113,17 @@ if [ -n "$entries" ] && [ -f "$manifest" ]; then
     done
 fi
 
-# state of one leg doc: prints quoted-back or missing
+# state of one leg doc: prints own, quoted-back or missing
 leg_state() {
     local ldoc="$1" line inc
     [ -f "$ldoc" ] || { echo missing; return; }
-    # the latest line in the Results section mentioning the handshake decides; the same text
-    # in the brief or any other section confirms nothing
-    line="$(awk '/^## Results/ { s = 1; next } s && /^## / { s = 0 } s && /SUCCESSION accepted/ { l = $0 } END { print l }' "$ldoc")"
+    # shellcheck disable=SC2016
+    if awk '/^## Results/ { exit } { print }' "$ldoc" | grep -Fq -- "your console is **\`$successor\`**"; then
+        echo own; return
+    fi
+    # the latest handshake bullet from the Results section on decides; the same text in the
+    # brief confirms nothing
+    line="$(awk '/^## Results/ { s = 1; next } s && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted/ { l = $0 } END { print l }' "$ldoc")"
     [ -n "$line" ] || { echo missing; return; }
     # backticks come as a balanced pair or not at all
     # shellcheck disable=SC2016
@@ -129,12 +136,16 @@ leg_state() {
 total=0; ok=0; pending=""
 while IFS= read -r label; do
     [ -n "$label" ] || continue
-    total=$((total + 1))
     ldoc=""
     if [ -f "$manifest" ]; then
         ldoc="$(jq -r --arg l "$label" '[.legs[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"
     fi
     state="$(leg_state "$ldoc")"
+    if [ "$state" = own ]; then
+        echo "$label own (dispatched by $successor, not inherited)"
+        continue
+    fi
+    total=$((total + 1))
     if [ "$state" = missing ]; then
         case "$relayed" in *",$label,"*) state=relayed ;; esac
     fi

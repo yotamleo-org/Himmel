@@ -7,10 +7,10 @@
 #
 #   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
 #                        [--held FILE] [--no-classify] [--doc CONSOLE_DOC]
-#                        [--priority-pool-only] [--workers-dir DIR]
+#                        [--priority-pool-only] [--workers-dir DIR] [--why]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
-# candidate is a To Do issue that is not an Epic/Story/Sub-task, carries none of
+# candidate is a To Do issue that is not an Epic/Sub-task, carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
 # blocked_by link. Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
 # natural order; none last), then priority, then key.
@@ -32,8 +32,10 @@
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
-# line of its own (security, data loss or a broken operator flow only). No label
-# means depth 0.
+# line of its own (security, data loss or a broken operator flow only), or the
+# admissions ledger (HIMMEL_ADMISSIONS_LEDGER, else <handover root>/admissions-ledger.jsonl)
+# admitted it into the earliest unreleased version: its latest row there is not a
+# deferral. No label means depth 0.
 #
 # IN CI tickets: one nobody holds (no leg, no open PR) that a merged PR cites prints a
 # `MERGED-NOT-CLOSED` row (same columns as RESUME, nothing to dispatch: it needs closing);
@@ -50,9 +52,19 @@
 # Collision (one writer per file): the files a candidate names in its
 # description are checked against (a) the files in the live legs' docs (the
 # manifest's `legs[].doc`, scope lines), (b) the diff of every open PR (gh), and
-# (c) --held FILE (one path per line). A path equal to, or under/over, a held
-# path collides. When gh fails the list is printed with an `open PRs unknown`
-# header rather than silently trusting an empty set.
+# (c) --held FILE (one path per line). Only a concrete file collides (a path the
+# repo holds as a file, or a new one with a dotted basename): a directory a ticket
+# names is context. It collides with an equal held path, or with a directory a leg's
+# write scope or --held names above it; an open PR's diff is files, compared
+# exactly. Two listed tickets collide on an equal file only. When gh fails the
+# list is printed with an `open PRs unknown` header rather than silently trusting
+# an empty set.
+#
+# Drops: every To Do ticket of the earliest unreleased version that is not listed
+# is counted by reason on a `# dropped from <version>:` line (owned, collision,
+# blocker, type, label, platform, residual-depth, classification, below --top ...);
+# --why adds one `# drop <KEY> <reason>` line each, the collision naming the file and
+# its holder. --resume-only prints neither.
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
@@ -74,7 +86,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
-legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0
+legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -88,12 +100,19 @@ while [ "$#" -gt 0 ]; do
         --no-classify) classify=0; shift ;;
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
         --priority-pool-only) pool_only=1; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CONSOLE_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR]" >&2; exit 2 ;;
+        --why) why=1; shift ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CONSOLE_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
+ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
+# shellcheck source=scripts/lib/handover-path.sh
+# shellcheck disable=SC1091
+if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
+    root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
+fi
 
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, time
 
@@ -132,9 +151,25 @@ def write_scope(line):
             return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
     return ''
 
-def collides(a, b):
-    a, b = a.rstrip('/'), b.rstrip('/')
-    return a == b or a.startswith(b + '/') or b.startswith(a + '/')
+def concrete(f):
+    # a file, not a tree: a directory a ticket names is context and holds nothing
+    if f.endswith('/'):
+        return False
+    p = os.path.join(repo, f)
+    return os.path.isfile(p) or (not os.path.exists(p) and '.' in os.path.basename(f))
+
+def blocks(f, h, tree):
+    # a candidate's concrete file is held by an equal path, or by a tree (a live leg's write scope, --held)
+    h = h.rstrip('/')
+    return concrete(f) and (f == h or (tree and f.startswith(h + '/')))
+
+def held_hit(i):
+    # the first (file, holder) of held that holds one of the ticket's files, else None
+    for f in i['files']:
+        for h, who, tree in held:
+            if blocks(f, h, tree):
+                return f, who
+    return None
 
 def fm_val(fm, name):
     m = re.search(r'^%s: (.*)$' % re.escape(name), fm, re.M)
@@ -249,6 +284,31 @@ def read_residual_must(path):
 
 residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
 
+def read_admitted(path, ver):
+    # the admissions ledger: a key whose latest row for the version is not a deferral was admitted into it
+    last = {}
+    try:
+        for line in open(path, encoding='utf-8', errors='replace'):
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(r, dict) and r.get('version') == ver and r.get('key'):
+                last[str(r['key']).upper()] = r.get('kind')
+    except OSError:
+        pass
+    return {k for k, kind in last.items() if kind != 'deferral'}
+
+admitted = read_admitted(os.environ.get('ND_LEDGER', ''), first_ver) if first_ver else set()
+
+def residual_out(i):
+    return residual_depth(i) >= 1 and i['key'] not in residual_must and i['key'] not in admitted
+
+why = {}
+
+def drop(i, reason):
+    why.setdefault(i['key'], reason)
+
 def tier_of(i):
     # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
     # Tiers 2-3 hold only the earliest unreleased version: later or versionless work waits in tier 4.
@@ -307,18 +367,27 @@ except OSError:
 skipped_platform = []
 cands = []
 for i in issues.values():
-    if i['status'] != 'To Do' or i['type'] in ('Epic', 'Story', 'Sub-task') or i['key'] in briefs:
+    if i['status'] != 'To Do' or i['key'] in briefs:
+        continue
+    if i['type'] in ('Epic', 'Sub-task'):
+        drop(i, 'type ' + i['type'])
         continue
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
+        drop(i, 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
         continue
     if platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
         skipped_platform.append(i['key'])
+        drop(i, 'platform (windows/wsl title)')
         continue
-    if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
+    open_b = [b for b in i['blocked_by'] if issues.get(b, {}).get('status') != 'Done']
+    if open_b:
+        drop(i, 'blocker ' + ', '.join('%s (%s)' % (b, issues.get(b, {}).get('status') or 'not in mirror') for b in open_b))
         continue
     if i['key'] in prio_cloud:
+        drop(i, 'cloud-only on the priority line')
         continue
-    if residual_depth(i) >= 1 and i['key'] not in residual_must:
+    if residual_out(i):
+        drop(i, 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
         continue
     cands.append(i)
 cands.sort(key=ranked)
@@ -332,6 +401,7 @@ held = []
 legs_from = os.environ.get('ND_LEGS_FROM', '')
 legs_unknown = False
 leg_keys = set(os.environ.get('ND_OWNERS', '').split())
+owner = {k: 'the --owners list' for k in leg_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
 if legs_from and not os.path.isfile(legs_from):
     legs_unknown = True
@@ -342,16 +412,18 @@ if legs_from and os.path.isfile(legs_from):
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
             except OSError:
-                leg_keys.update(re.findall(r'[A-Z]+-\d+', os.path.basename(doc)))
+                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
+                    leg_keys.add(k); owner.setdefault(k, 'live leg %s' % leg.get('label', '?'))
                 legs_unknown = True
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             if marks and marks[-1] == 'WRAPPED':  # a wrapped leg holds no files and owns no ticket
                 continue
-            leg_keys.update(re.findall(r'[A-Z]+-\d+', os.path.basename(doc)))
+            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
+                leg_keys.add(k); owner.setdefault(k, 'live leg %s' % leg.get('label', '?'))
             for line in lines:
                 if line.startswith('> **Scope / do not:**') or 'writes confined to' in line:
-                    held += [(f, 'live leg %s' % leg.get('label', '?')) for f in files_in(write_scope(line))]
+                    held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in files_in(write_scope(line))]
     except (OSError, ValueError):
         legs_unknown = True
 if pool_only and not legs_from and not leg_keys:
@@ -370,10 +442,10 @@ if cloud_tsv and os.path.isfile(cloud_tsv):
         except ValueError:
             continue
         if time.time() - at <= window_s:
-            leg_keys.add(cols[1].strip().upper())
+            leg_keys.add(cols[1].strip().upper()); owner.setdefault(cols[1].strip().upper(), 'a cloud session')
 hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
-    held += [(l.strip(), 'held list') for l in open(hf) if l.strip()]
+    held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
 pr_unknown = False
 pr_keys = set()
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
@@ -388,11 +460,12 @@ try:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
             for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
-                held += [(f, 'open PR %s' % num) for f in d]
+                held += [(f, 'open PR %s' % num, False) for f in d]  # a diff is files: compared exactly
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
     for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
-        pr_keys.update(k.upper() for k in re.findall(r'[A-Za-z]+-\d+', line))
+        for k in re.findall(r'[A-Za-z]+-\d+', line):
+            pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % line.split('\t')[0])
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
@@ -431,7 +504,7 @@ for i in issues.values():
         continue
     if pool_only and platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
         continue
-    if pool_only and residual_depth(i) >= 1 and i['key'] not in residual_must:
+    if pool_only and residual_out(i):
         continue
     if i['key'] in leg_keys or i['key'] in pr_keys:
         continue
@@ -442,7 +515,7 @@ for i in issues.values():
         continue
     if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
-    if any(collides(f, h) for f in i['files'] for h, _ in held):
+    if held_hit(i):
         continue
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
@@ -450,8 +523,11 @@ resume.sort(key=ranked if pool_only else rank)
 free = []
 for i in cands:
     if i['key'] in leg_keys or i['key'] in pr_keys:  # a live leg or an open PR already owns the ticket
+        drop(i, 'owned by ' + owner.get(i['key'], 'a live leg'))
         continue
-    if any(collides(f, h) for f in i['files'] for h, _ in held):
+    hit = held_hit(i)
+    if hit:
+        drop(i, 'collision %s held by %s' % hit)
         continue
     free.append(i)
 
@@ -463,7 +539,7 @@ def classify(batch):
     if held:
         import tempfile
         t = tempfile.NamedTemporaryFile('w', suffix='.held', delete=False)
-        t.write('\n'.join(h for h, _ in held) + '\n'); t.close(); hfile = t.name
+        t.write('\n'.join(h for h, _, _ in held) + '\n'); t.close(); hfile = t.name
         if not cmd:
             argv += ['--held', hfile]
     try:
@@ -482,8 +558,42 @@ print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(c
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
-picked = []
+picked = []  # (file, key) a listed ticket holds against the rest of the list
+
+def picked_hit(i):
+    for f in i['files']:
+        for h, k in picked:
+            if blocks(f, h, False):
+                return f, k
+    return None
 emitted = []
+
+def drop_summary():
+    # every To Do ticket of the active version that is not listed, by reason (--why: one line each)
+    if first_ver is None:
+        return
+    listed = {i['key'] for i in emitted}
+    todo = sorted((i for i in issues.values() if i['status'] == 'To Do' and first_ver in i['ver']), key=lambda i: int(i['key'].split('-')[1]))
+    rows = []
+    for i in todo:
+        if i['key'] in listed:
+            continue
+        r = why.get(i['key'])
+        if r is None:
+            if i['key'] in briefs:
+                r = 'resume-brief (a wrapped leg resumes it: RESUME row)'
+            elif pool_only and tier_of(i) > 3:
+                r = 'tier 4 (outside the priority pool)'
+            else:
+                r = 'below --top %d' % top
+        rows.append((i['key'], r))
+    counts = {}
+    for _, r in rows:
+        counts[r.split(' ')[0]] = counts.get(r.split(' ')[0], 0) + 1
+    print('# dropped from %s: %d of %d To Do (%s)' % (first_ver, len(rows), len(todo), ', '.join('%s %d' % kv for kv in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))) or 'none'))
+    if os.environ.get('ND_WHY') == '1':
+        for k, r in rows:
+            print('# drop %s %s' % (k, r))
 
 def warn_missing():
     # a named file that is not in the repo leaves the collision check blind for that ticket
@@ -501,9 +611,9 @@ def emit_resume(rows):
             print('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
             n += 1
             continue
-        if not resume_only and any(collides(f, h) for f in i['files'] for h in picked):
+        if not resume_only and picked_hit(i):
             continue
-        picked.extend(i['files'])
+        picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
         print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])))
         n += 1
@@ -544,14 +654,17 @@ def emit_free(rows):
             c = cls_cache.get(i['key'])
             if classified:
                 if c is None or c == 'BLOCKED':
+                    drop(i, 'classification ' + (c or 'none (cloud-route gave no verdict)'))
                     continue
                 lane = 'CLOUD' if c == 'CLOUD-OK' else 'LOCAL'
             else:
                 lane, c = 'LOCAL?', ''
             # one writer per file: a listed ticket holds its files against the rest of the list
-            if any(collides(f, h) for f in i['files'] for h in picked):
+            hit = picked_hit(i)
+            if hit:
+                drop(i, 'collision %s held by listed %s' % hit)
                 continue
-            picked.extend(i['files'])
+            picked.extend((f, i['key']) for f in i['files'])
             emitted.append(i)
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             n += 1
@@ -571,9 +684,11 @@ if pool_only:
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the console to read, never to dispatch
-        for i in [i for i in next_tier if i['key'] not in leg_keys and i['key'] not in pr_keys and not any(collides(f, h) for f in i['files'] for h, _ in held)][:top]:
+        for i in [i for i in next_tier if i['key'] not in leg_keys and i['key'] not in pr_keys and not held_hit(i)][:top]:
             print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
     warn_missing()
+    if not resume_only:
+        drop_summary()
     sys.exit(0)
 emit_resume(resume)
 if resume_only:
@@ -581,4 +696,5 @@ if resume_only:
     sys.exit(0)
 emit_free(free)
 warn_missing()
+drop_summary()
 PY

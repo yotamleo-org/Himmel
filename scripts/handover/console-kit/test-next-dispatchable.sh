@@ -25,6 +25,8 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 # the default worker records live under the status state dir: keep it in the fixture
 export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
+# and the admissions ledger: the real one must never admit a fixture key
+export HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
 
 mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>
@@ -598,6 +600,51 @@ cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror23/HIMMEL.versions.
 f5="$(NEXT_DISPATCH_MIRROR="$M23" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"
 has "fix5: a ticket naming a missing file draws a warn line" "$f5" "# warn: HIMMEL-730 names scripts/handover/tick-ghost-6478.sh"
 lacks "fix5: a ticket naming an existing file draws none" "$f5" "# warn: HIMMEL-731"
+
+# --- the whole active version: Stories, RM-admitted residuals, a directory on the candidate side, a reason per drop ---
+M30="$WORK/jira-mirror30/HIMMEL"; mkdir -p "$M30"
+M_SAVE="$M"; M="$M30"
+mk HIMMEL-801 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a story with no blocker" "Edit scripts/lib/story.sh only."
+sed -i 's/^type: "Task"/type: "Story"/' "$M30/HIMMEL-801.md"  # gnu-ok: Linux-only kit
+mk HIMMEL-802 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the RM kept" "Edit scripts/lib/kept.sh only."
+mk HIMMEL-803 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the RM deferred" "Edit scripts/lib/deferred.sh only."
+mk HIMMEL-804 "To Do" Medium '[]' '["v1.0.1"]' '[]' "mentions trees a leg and a PR write in" "Read scripts/handover/console-kit/ and scripts/lib/ for context; edit scripts/lib/new-thing.sh."
+mk HIMMEL-805 "To Do" Medium '[]' '["v1.0.1"]' '[]' "first of two naming a tree" "See docs/guide/ then edit scripts/lib/d1.sh."
+mk HIMMEL-806 "To Do" Medium '[]' '["v1.0.1"]' '[]' "second of two naming a tree" "See docs/guide/ then edit scripts/lib/d2.sh."
+mk HIMMEL-807 "To Do" Medium '[]' '["v1.0.1"]' '[]' "an epic" "Edit scripts/lib/epic.sh."
+sed -i 's/^type: "Task"/type: "Epic"/' "$M30/HIMMEL-807.md"  # gnu-ok: Linux-only kit
+mk HIMMEL-3 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with an open PR" "Edit scripts/lib/pr-held.sh please."
+mk HIMMEL-4 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with a live leg" "Edit scripts/handover/console-kit/live-file.sh please."
+mk HIMMEL-5 "To Do" High '["operator-decision"]' '["v1.0.1"]' '[]' "decision pending" "Edit scripts/lib/gamma.sh."
+mk HIMMEL-8 "To Do" High '[]' '["v1.0.1"]' '["blocked by HIMMEL-801"]' "blocked by an open ticket" "Edit scripts/lib/zeta.sh."
+mk HIMMEL-10 "To Do" High '[]' '["v1.0.1"]' '[]' "refused by the classifier" "Edit scripts/lib/eta.sh."
+mk HIMMEL-52 "To Do" Medium '[]' '["v1.0.1"]' '[]' "owned by an open PR" "Edit scripts/lib/fresh-b.sh only."
+mk HIMMEL-99 "To Do" Medium '[]' '["v1.0.1"]' '[]' "owned by the live leg" "Edit scripts/lib/fresh-a.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror30/HIMMEL.versions.tsv"
+printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-802","kind":"rm-admit","actor":"rm","by":"rm-session"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-803","kind":"rm-admit","actor":"rm"}\n{"ts":"t2","version":"v1.0.1","key":"HIMMEL-803","kind":"deferral","actor":"rm"}\n{"ts":"t","version":"v1.0.2","key":"HIMMEL-804","kind":"rm-admit","actor":"rm"}\n' > "$WORK/ledger30.jsonl"
+run30() { HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger30.jsonl" NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --legs-from "$WORK/fleet.json" "$@" 2>/dev/null; }
+v1="$(run30)"
+has "version: a Story with no blocker is offered" "$v1" "HIMMEL-801	"
+has "version: a residual the RM admitted (ledger row) is offered without residual-must" "$v1" "HIMMEL-802	"
+lacks "version: a residual whose latest ledger row is a deferral is not offered" "$v1" "HIMMEL-803	"
+has "collision: a directory named on the candidate side collides with nothing" "$v1" "HIMMEL-804	"
+has "collision: two candidates naming the same directory are both offered" "$v1" "HIMMEL-805	"
+has "collision: and the second is offered too" "$v1" "HIMMEL-806	"
+lacks "collision: a concrete file in a live leg's write scope is still held" "$v1" "HIMMEL-4	"
+lacks "collision: a concrete file equal to an open PR's file is still held" "$v1" "HIMMEL-3	"
+has "drops: a per-reason summary of the active version is printed" "$v1" "# dropped from v1.0.1:"
+w1="$(run30 --why)"
+has "why: a collision names the file and its holder" "$w1" "# drop HIMMEL-3 collision scripts/lib/pr-held.sh held by open PR 4242"
+has "why: a leg collision names the leg" "$w1" "# drop HIMMEL-4 collision scripts/handover/console-kit/live-file.sh held by live leg N1"
+has "why: an open blocker is named" "$w1" "# drop HIMMEL-8 blocker HIMMEL-801"
+has "why: an exclusion label is named" "$w1" "# drop HIMMEL-5 label operator-decision"
+has "why: a type is named" "$w1" "# drop HIMMEL-807 type Epic"
+has "why: a residual depth is named" "$w1" "# drop HIMMEL-803 residual-depth 1"
+has "why: a classification refusal is named" "$w1" "# drop HIMMEL-10 classification BLOCKED"
+has "why: an open-PR owner is named" "$w1" "# drop HIMMEL-52 owned by open PR"
+has "why: a live-leg owner is named" "$w1" "# drop HIMMEL-99 owned by live leg"
+lacks "why: without --why no per-ticket line is printed" "$v1" "# drop HIMMEL-"
 
 # --- replay: the 10-19T console state (doc priority line, 28-leg manifest, open PRs, v1.1.3 Jira slice) frozen under fixtures/ ---
 RP="$HERE/fixtures/dispatcher-replay"
