@@ -2222,6 +2222,12 @@ for v in \
     "{ source /tmp/defs.sh; $AR; grep 'scripts/cr/*.sh' docs; }" \
     "! source /tmp/defs.sh; $AR; grep 'scripts/cr/*.sh' docs" \
     "time printf -v grep %s x; $AR; grep 'scripts/cr/*.sh' docs" \
+    "getopts x PATH -x; $AR; grep 'scripts/cr/*.sh' docs" \
+    "V=PATH; getopts x \$V -x; $AR; grep 'scripts/cr/*.sh' docs" \
+    "V=PATH; let \"\$V=1\"; $AR; grep 'scripts/cr/*.sh' docs" \
+    "V=PATH; select \$V in x; do :; done; $AR; grep 'scripts/cr/*.sh' docs" \
+    "let PATH=1; $AR; grep 'scripts/cr/*.sh' docs" \
+    "select PATH in x; do $AR; done; grep 'scripts/cr/*.sh' docs" \
     "PATH=/tmp/evil:\$PATH; $AR; grep 'scripts/cr/*.sh' docs" \
     "$AR; grep -n \$(echo 'scripts/cr/*.sh') docs" \
     "bash scripts/cr/write-verdicts.sh --help; grep -n 'scripts/cr/*.sh' docs" \

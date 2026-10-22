@@ -2069,7 +2069,8 @@ scrub_inert_readers() { # sets scan_flat
             if [ -z "${ST_RO[k]}" ]; then
                 case "$w" in
                     alias | unalias | function | eval | source | . | hash | enable | builtin | command | exec | trap | \
-                        shopt | set | unset | readonly | declare | typeset | local | export | read | map[f]ile | read[a]rray)
+                        shopt | set | unset | readonly | declare | typeset | local | export | read | map[f]ile | read[a]rray | \
+                        getopts | let | select | coproc | wait)
                         return 0 ;;
                     printf)
                         nxt=$((k + 1))
