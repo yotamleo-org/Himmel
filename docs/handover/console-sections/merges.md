@@ -26,15 +26,16 @@ on denial) and adds the console step that ruling lacked.
 at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
 classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
 the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
-judge or trust review the PR needs, `console-kit/go.sh [--trust-reviewed <!-- old-term-ok: console runbook wording -->
-<qid>] <pr> <head>`, then
+judge or trust review the PR needs, then
+`console-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
 `bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --leg-doc <leg doc>`. <!-- old-term-ok: console runbook wording -->
-Pass `--jira-transition` only when the leg doc's `Completes ticket:` line says <!-- old-term-ok: console runbook wording -->
-yes; the `--leg-doc` line binds it either way. Then send the leg <!-- old-term-ok: console runbook wording -->
-`MERGED #<pr> → <sha>` by SendMessage quoting its token; the leg `cd`s out, <!-- old-term-ok: console runbook wording -->
-sends `WRAPPED` and releases its lock. A merge that exits non-zero is not
-`MERGED`: send the leg the exit and reason instead, and it stays held. Native <!-- old-term-ok: console runbook wording -->
-legs are unchanged: they merge themselves on your GO. <!-- old-term-ok: console runbook wording -->
+Pass `--jira-transition` unless the leg doc's `Completes ticket:` line says no <!-- old-term-ok: console runbook wording -->
+(a brief whose scope states neither value has no such line and takes the yes
+wording, as the leg's own Ship step does); the `--leg-doc` line binds it either way. <!-- old-term-ok: console runbook wording -->
+Then send the leg `MERGED #<pr> → <sha>` by SendMessage quoting its token; <!-- old-term-ok: console runbook wording -->
+the leg `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits <!-- old-term-ok: console runbook wording -->
+non-zero is not `MERGED`: send the leg the exit and reason instead, and it <!-- old-term-ok: console runbook wording -->
+stays held. Native legs are unchanged: they merge themselves on your GO. <!-- old-term-ok: console runbook wording -->
 
 **Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite
