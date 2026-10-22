@@ -481,7 +481,7 @@ class VM:
             forwards = vbox.get_forwards(self.name)
         except vbox.VBoxError as e:
             raise VMError(f"cannot read the NAT rules of {self.name}: {e}") from e
-        if not any(f[1].lower() == "tcp" and f[2] in ("", "127.0.0.1")
+        if not any(f[1].lower() == "tcp" and f[2] == "127.0.0.1"
                    and f[3] == str(self.port) and f[5] == "22" for f in forwards):
             raise VMError(f"port {self.port} is not a loopback NAT forward to guest port 22 "
                           f"of {self.name!r}; refusing to treat it as a test VM")

@@ -2549,6 +2549,16 @@ class TestGuestExec(unittest.TestCase):
                 vm.guest_exec("ls")
         r.assert_not_called()
 
+    def test_forward_with_no_host_ip_refused(self):
+        vm = self._vm(port=2235)
+        info = self._showvminfo('Forwarding(0)="ssh,tcp,,2235,,22"')
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=info), \
+             mock.patch.object(vm, "run") as r:
+            with self.assertRaises(vmsdk.VMError):
+                vm.guest_exec("ls")
+        r.assert_not_called()
+
     def test_forward_on_a_non_loopback_host_ip_refused(self):
         vm = self._vm(port=2235)
         info = self._showvminfo('Forwarding(0)="ssh,tcp,0.0.0.0,2235,,22"')
