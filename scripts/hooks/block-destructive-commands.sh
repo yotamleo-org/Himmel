@@ -1047,8 +1047,23 @@ _gp_checkout() {
 # deliberate copy and passes. The text is lowercased, so -S reads as -s
 # (--source): a short group with an s counts as staged when the raw command
 # holds an upper-case S group, and as a source otherwise.
+# _gp_raw_upper WORD K — true when every spelling of the lowercased WORD in the
+# raw command has an uppercase letter at index K, so `-S` reads as --staged
+# only when no `-s` of the same word sits elsewhere in the command.
+_gp_raw_upper() {
+    local t n=0 up=0 toks=()
+    read -r -d '' -a toks <<< "$cmd" || true  # swallow-ok: -d '' always ends at EOF with rc 1
+    for t in "${toks[@]}"; do
+        [ "${#t}" = "${#1}" ] || continue
+        [ "$(printf '%s' "$t" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = "$1" ] || continue
+        n=$((n + 1))
+        case "${t:$2:1}" in [A-Z]) up=$((up + 1)) ;; esac
+    done
+    [ "$n" -gt 0 ] && [ "$up" = "$n" ]
+}
+
 _gp_restore() {
-    local j=$1 w s=0 wt=0 src=''
+    local j=$1 w k s=0 wt=0 src=''
     [ "$_gp_top" = 1 ] || return 0
     while [ "$j" -lt "${#_gc_w[@]}" ]; do
         w=${_gc_w[j]}
@@ -1059,14 +1074,22 @@ _gp_restore() {
             --so=*|--sou=*|--sour=*|--sourc=*|--source=*) src=${w#*=} ;;
             --so|--sou|--sour|--sourc|--source) j=$((j + 1)); src=${_gc_w[j]:-} ;;
             --*) ;;
-            -*w*) wt=1 ;;
-            -*s*)
-                if [[ $cmd =~ (^|[[:space:]])-[A-Za-z]*S ]]; then
-                    s=1
-                else
-                    src=${w#*s}
-                    if [ -z "$src" ]; then j=$((j + 1)); src=${_gc_w[j]:-}; fi
-                fi ;;
+            -?*)
+                k=1
+                while [ "$k" -lt "${#w}" ]; do
+                    case "${w:k:1}" in
+                        w) wt=1 ;;
+                        s)
+                            if _gp_raw_upper "$w" "$k"; then
+                                s=1
+                            else
+                                src=${w:k+1}
+                                if [ -z "$src" ]; then j=$((j + 1)); src=${_gc_w[j]:-}; fi
+                                break
+                            fi ;;
+                    esac
+                    k=$((k + 1))
+                done ;;
         esac
         j=$((j + 1))
     done
