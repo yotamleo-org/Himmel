@@ -14,6 +14,17 @@ export type SecretResult = { status: number; body: Record<string, unknown>; audi
 type Entry = { name: string; collect: string; feature?: string; required?: string };
 const entries = manifest.secrets as Entry[];
 
+// shown under each secret form: shaped like the real value, never a working one.
+const EXAMPLES: Record<string, string> = {
+  BITBUCKET_API_TOKEN: "<app password from Bitbucket settings>",
+  BITBUCKET_EMAIL: "you@example.com",
+  TELEGRAM_BOT_TOKEN: "<token from @BotFather, digits:letters>",
+  JIRA_API_TOKEN: "<API token from id.atlassian.com>",
+  JIRA_BASE_URL: "https://your-team.atlassian.net", // env-literal-ok: a placeholder shown as an example, never used as a host
+  JIRA_EMAIL: "you@example.com",
+  JIRA_PROJECT_KEY: "ABC",
+};
+
 const gitCheckIgnore = (file: string): boolean => {
   try { execFileSync("git", ["check-ignore", "-q", file], { cwd: dirname(file), stdio: "ignore", timeout: 10_000 }); return true; }
   catch { return false; }
@@ -32,12 +43,41 @@ function commitRules(home: string) {
   return { tracker: kv.TRACKER ?? null, ticketIdRequired: kv.TICKET_ID_REQUIRED === "1" ? true : kv.TICKET_ID_REQUIRED === "0" ? false : null };
 }
 
+const CR_APP_URL = "https://github.com/apps/coderabbitai";
+const CR_JQ = '[.[].statusCheckRollup[]? | select(.context == "CodeRabbit" or .name == "CodeRabbit")] | length';
+
+// CodeRabbit is an add-on: the App reviews a PR after it opens. "installed" means a CodeRabbit check shows on one of the
+// last 10 PRs of this repo; no gh, no sign-in or no remote is "unknown" and the page asks for a manual confirm.
+function coderabbit(o: SetupOpts) {
+  const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { cwd: o.projectRoot, env: o.env as NodeJS.ProcessEnv, timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  let installed: "installed" | "not-installed" | "unknown" = "unknown";
+  try {
+    const n = run("gh", ["pr", "list", "--state", "all", "--limit", "10", "--json", "statusCheckRollup", "--jq", CR_JQ]);
+    if (/^\d+$/.test(n)) installed = Number(n) > 0 ? "installed" : "not-installed";
+  } catch { /* unknown */ }
+  let armed = false;
+  try { armed = run("git", ["config", "--local", "--bool", "--get", "himmel.coderabbit"]) === "true"; } catch { /* unset */ }
+  return {
+    requirement: "optional",
+    what: "CodeRabbit is a GitHub App that reviews each pull request after it opens. himmel works without it; with it, its review is one more reviewer in the review gate.",
+    steps: [
+      `Install the GitHub App on this repo: ${CR_APP_URL}`,
+      "Open a pull request and wait for the CodeRabbit check to appear.",
+      "Arm the gates for this clone: git config --local himmel.coderabbit true",
+    ],
+    installed,
+    armed,
+    manual: installed === "unknown" ? `Could not check from here. Confirm the App is listed under the repo's Settings, Integrations, GitHub Apps (${CR_APP_URL}).` : "",
+  };
+}
+
 // GET /api/setup: presence only, never a value.
 export function setupState(o: SetupOpts) {
   const ctx = ctxOf(o);
   return {
-    secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, status: store.detect(e.name, ctx).status })),
+    secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, example: EXAMPLES[e.name] ?? "", status: store.detect(e.name, ctx).status })),
     commit: commitRules(o.home),
+    coderabbit: coderabbit(o),
   };
 }
 

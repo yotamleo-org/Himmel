@@ -1,7 +1,7 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, and the commit rules.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { esc, planHtml } from "/render.js";
+import { esc, planHtml } from "./render.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
 const TRACKERS = [["jira", "Jira"], ["local", "Local"], ["none", "None"]];
@@ -15,7 +15,20 @@ function secretRow(s, msg) {
     <form class="sform" data-setup-form data-name="${esc(s.name)}" autocomplete="off">
       <input type="password" data-secret="${esc(s.name)}" autocomplete="new-password" spellcheck="false" aria-label="${esc(s.name)} value">
       <button class="btn primary" type="submit">save</button>${remove}</form>
+    ${s.example ? `<span class="ro">e.g. ${esc(s.example)}</span>` : ""}
     ${msg ? `<span class="ro" role="status">${esc(msg)}</span>` : ""}</div>`;
+}
+
+const CR_STATE = { installed: "installed", "not-installed": "not installed", unknown: "not checked" };
+
+function coderabbit(c) {
+  if (!c) return "";
+  const st = `<span class="st ${c.installed === "installed" ? "ok" : "warn"}">${esc(CR_STATE[c.installed] || c.installed)}</span>`;
+  return `<h3>CodeRabbit</h3>
+    <div class="srow"><span class="id">CodeRabbit review</span><span class="det">${esc(c.requirement)} add-on · gates ${c.armed ? "armed" : "not armed"} in this clone</span>${st}</div>
+    <p class="sub">${esc(c.what)}</p>
+    <ol class="sub">${c.steps.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
+    ${c.manual ? `<p class="sub" role="status">${esc(c.manual)}</p>` : ""}`;
 }
 
 function choice(label, action, target, value, current, k, disabled) {
@@ -43,5 +56,6 @@ export function renderSetup(setup, plans, msgs) {
   if (setup.error) return `${head}<div class="nodata" role="alert">${esc(setup.error)}</div>`;
   return `${head}<p class="sub">Typing a secret in the terminal (<code>himmelctl install</code>) is the safest path: it never passes through a browser. This page shows only whether each secret is set, never its value.</p>
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
+    ${coderabbit(setup.coderabbit)}
     ${commitRules(setup.commit, plans)}`;
 }
