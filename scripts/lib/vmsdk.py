@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import vbox
 
 HOST = "127.0.0.1"
-OWNER_REPO = "yotamleo/himmel"  # leak-allow: hostname the actual private repo this SDK clones from
+OWNER_REPO = "yotamleo-org/Himmel"  # leak-allow: hostname the actual private repo this SDK clones from  # env-literal-ok: the VM SDK clones this one repo, a fixed identity
 # First present wins; either key is a valid clone credential.
 PAT_ENVS = ("himmel_github_token_vm", "himmel_github_token_vm2")
 # Standard Git-for-Windows bash, used both to drive the host e2e (avoiding WSL's
@@ -553,7 +553,8 @@ class VM:
         if not re.fullmatch(r"[A-Za-z0-9._/-]+", ref):
             raise VMError(f"invalid ref {ref!r}: branch/tag characters only")
         _load_dotenv_into_env(list(PAT_ENVS))
-        token = next((os.environ[k] for k in PAT_ENVS if os.environ.get(k)), None)
+        token_key = next((k for k in PAT_ENVS if os.environ.get(k)), None)
+        token = os.environ[token_key] if token_key else None
         if not token:
             raise VMError(f"required env key {' or '.join(PAT_ENVS)} not set (check primary .env)")
         token_url = f"https://x-access-token:{token}@github.com/{OWNER_REPO}.git"
@@ -579,7 +580,12 @@ class VM:
 
         rc, out = self.run(wrap(f"{git} clone --depth {depth} --branch {ref} {token_url} {dest}"))
         if rc != 0:
-            raise VMError(f"git clone failed on {self.name} (rc {rc}): {out.strip()[-200:]}")
+            hint = ""
+            if token_key == PAT_ENVS[1] and re.search(
+                    r"not found|403|404|denied|authentication failed", out, re.I):
+                hint = (f" [{token_key} is a read-only token for public repos and "
+                        f"cannot clone the private repo; set {PAT_ENVS[0]}]")
+            raise VMError(f"git clone failed on {self.name} (rc {rc}): {out.strip()[-200:]}{hint}")
         # Strip the token from the persisted remote. This is a security guarantee
         # (the PAT must not survive in the guest's .git/config) — fail loudly if
         # the strip does not happen, rather than silently leaving the token.
