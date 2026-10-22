@@ -3,7 +3,7 @@
 # its documented 0600 store in-process (never on a child's argv), detects it
 # without returning the value, and validates without echoing the input.
 #
-# WHY: the one .env writer (bin.js writeEnvVar -> set-env-var.sh KEY VALUE) puts
+# WHY: the .env writer (set-env-var.sh KEY VALUE) puts
 # the value on a child's argv, visible in `ps`. Every value here is generated at
 # runtime; nothing token-shaped is committed. Everything lives under a temp dir.
 set -uo pipefail

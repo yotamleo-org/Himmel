@@ -295,7 +295,7 @@
 
       <div class="answer">
         <h4>2. The install overwrites files in your project's scripts folder</h4>
-        <p>The starter install copies 52 helper scripts into the project's
+        <p>The starter install copies 59 helper scripts into the project's
         <span class="mono">scripts/</span> folder:
         <span class="mono">hooks/auto-approve-safe-bash.sh</span>,
         <span class="mono">hooks/block-edit-on-main.sh</span>,
@@ -345,17 +345,35 @@
         <span class="mono">lib/usage-lift.sh</span>,
         <span class="mono">lib/usage-cache-identity.sh</span>,
         <span class="mono">lib/fleet-reservation-key.sh</span>,
+        <span class="mono">lib/handover-path.sh</span>,
+        <span class="mono">cr/anchor-handoff.sh</span>,
+        <span class="mono">cr/cr-scores.sh</span>,
+        <span class="mono">cr/cr-tune.sh</span>,
+        <span class="mono">cr/known-findings.sh</span>,
+        <span class="mono">cr/known-findings.json</span>,
+        <span class="mono">cr/standards-cadence.sh</span>,
         <span class="mono">clean-garden.sh</span>,
         <span class="mono">worktree.sh</span>,
         <span class="mono">clean.sh</span> and
         <span class="mono">_new-worktree.sh</span>. If a file with one of
-        those names is already there, it is replaced in place: no backup is
-        made, and no record is kept of which files were yours. In a test, a
-        committed <span class="mono">scripts/worktree.sh</span> was replaced
-        by himmel's version. Run the install in a project where
+        those names is already there, it is replaced in place after its
+        bytes are backed up and the replacement is recorded, so uninstall can
+        put your file back. When the backup cannot be made the file is left
+        untouched and the install ends with an error. Run the install in a
+        project where
         <span class="mono">git status</span> shows nothing uncommitted, so
         git can bring anything back. The same install also replaces the
-        project's <span class="mono">statusLine</span> setting (item 6).</p>
+        project's <span class="mono">statusLine</span> setting (item 6).
+        The review-loop commands <span class="mono">/cr-scores</span>,
+        <span class="mono">/cr-tune</span> and
+        <span class="mono">/cr-learnings-refresh</span> are copied into
+        <span class="mono">.claude/commands/</span> the same way and read the
+        project's own review ledger. <span class="mono">/cr-learnings-refresh</span>
+        can also update the shared anchor's
+        <span class="mono">scripts/cr/known-findings.json</span> through
+        <span class="mono">HIMMEL_REPO</span>, and step 6 of
+        <span class="mono">/cr-tune</span> runs
+        <span class="mono">escape-classes.sh</span> from that same checkout.</p>
       </div>
 
       <div class="answer">
@@ -505,7 +523,7 @@ claude --version</pre>
         <a href="#undo">question 3</a>, once you also know how to undo it.</p>
         <h4>In the project folder you run it from</h4>
         <ul>
-          <li>Copies 52 helper scripts into the project's
+          <li>Copies 59 helper scripts into the project's
           <span class="mono">scripts/</span> folder (the hooks and the
           worktree commands), <b>overwriting any file of the same name</b>
           (see item 2 of

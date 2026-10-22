@@ -15,9 +15,11 @@
 #   every other leg: the SendMessage payload is PRINTED, one `SENDMESSAGE to=<leg
 #     session> :: <text>` line per leg, for the console to send. A SendMessage
 #     cannot be issued from a script; the console's `from` is what authenticates it.
-#     When the console has a bus identity (HIMMEL_BUS_NAME), each such leg also gets a
-#     token-free himmel-bus record naming the successor, sent after every SENDMESSAGE
-#     line (`BUS-RELAY <label> ok` / `BUS-RELAY-FAIL <label> (<reason>)`, never an error).
+#   When the console has a bus identity (HIMMEL_BUS_NAME), every relayed leg, claudex
+#     included, also gets a token-free himmel-bus record naming the successor, sent
+#     after every SENDMESSAGE line (`BUS-RELAY <label> ok` / `BUS-RELAY-FAIL <label>
+#     (<reason>)`, never an error). The leg's `bus adopt` needs that record while the
+#     outgoing console is still live; a hand relay leaves none.
 # What it never does: mint a token or nonce, rotate one, adopt one, write a leg's
 # Live state entry, or send LIVE. It copies the nonce the console already holds
 # and the console still waits for each leg's quote-back before it sends LIVE.
@@ -198,6 +200,7 @@ EOC
         claudex)
             if bash "$send" "$lsession" "$text" --token "$nonce" --doc "$ldoc" >/dev/null; then
                 echo "SENT-INBOX $label ($lsession)"; sent=$((sent + 1))
+                [ -n "${HIMMEL_BUS_NAME:-}" ] && bus_queue="$bus_queue$label $lsession"$'\n'
             else
                 echo "FAILED-INBOX $label ($lsession)"; rc=1
             fi ;;

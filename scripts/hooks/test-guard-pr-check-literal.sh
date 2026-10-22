@@ -2163,6 +2163,104 @@ for v in \
     "git tag -l -s 'v*'"; do
     run "HIMMEL-6927 s3 tag-list control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
+# A listing tag with a filter option and a glob only lists; a write option anywhere
+# before `--`, or another tag line in the same command, keeps the glob a tag name.
+for v in \
+    "git tag -l -n 'v*'" \
+    "git tag -l -n5 'v*'" \
+    "git tag -l -i 'v*'" \
+    "git tag -l --contains HEAD 'v*'" \
+    "git tag --list --format '%(refname)' 'v*'" \
+    "git tag --list --no-merged main --sort=-v:refname 'v*'" \
+    "git tag -l -- 'v*'"; do
+    run "HIMMEL-7066 tag filter [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+for v in \
+    "git tag -l -f 'v*' HEAD" \
+    "git tag -l -n -d 'v*'" \
+    "git tag -l --points-at HEAD -a 'v*'" \
+    "git tag -n 'v*'" \
+    "git tag -l 'v*'; git tag -d 'v*'" \
+    "git tag -d 'v*'; git tag -l 'v*'"; do
+    run "HIMMEL-7066 tag filter control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+# A quoted glob or regex inside a segment whose command is a plain reader names no
+# script, whatever else the line runs. AR is a handover writer outside the guarded set.
+AR='bash scripts/handover/console-kit/append-results.sh /tmp/d.md "LIVE"'
+for v in \
+    "$AR; grep -n '**' docs/a.md" \
+    "$AR; grep -nE '(a ?){2,}' docs/a.md | head -3" \
+    "$AR; grep -n 'scripts/cr/*.sh' docs/a.md | head -3" \
+    "$AR && grep -c 'scripts/cr/*.sh' docs/a.md" \
+    "$AR; gh pr diff 1 --name-only | grep -q 'scripts/cr/*.sh'" \
+    "$AR; sed -n '1,5p' scripts/cr/*.sh" \
+    "$AR; rg -n 'scripts/cr/*.sh' docs" \
+    "$AR; git diff main -- 'scripts/cr/*.sh'"; do
+    run "HIMMEL-7066 reader mention [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+# The same text stays refused when the segment can run what the glob names: a pipe into a runner,
+# a wrapper or xargs ahead of the reader, an rg --pre or config file, a redirect, a substitution,
+# a shadowed reader name, or a gate script run on the same line. An unquoted glob given to git stays
+# refused: git_mentions_only cannot prove an expanded word is not an option.
+for v in \
+    "$AR; git log --oneline -- scripts/cr/**" \
+    "$AR; grep 'scripts/cr/*.sh' docs/a.md | xargs bash" \
+    "$AR; rg -n 'scripts/cr/*.sh' docs | bash" \
+    "$AR; rg --pre scripts/cr/write-verdicts.sh x docs 'scripts/cr/*.sh'" \
+    "$AR; rg --pre=bash x docs 'scripts/cr/*.sh'" \
+    "$AR; rg --hostname-bin=bash x docs 'scripts/cr/*.sh'" \
+    "RIPGREP_CONFIG_PATH=/tmp/c rg 'scripts/cr/*.sh' docs; $AR" \
+    "export RIPGREP_CONFIG_PATH=/tmp/c; $AR; rg 'scripts/cr/*.sh' docs" \
+    "$AR; echo --pre=bash | xargs rg -g 'scripts/cr/*.sh' x ." \
+    "$AR; exec -a grep sh -c 'echo \$2' x -g 'scripts/cr/*.sh'" \
+    "$AR; xargs -I X grep 'scripts/cr/*.sh' docs" \
+    "$AR; env -u X grep 'scripts/cr/*.sh' docs" \
+    "$AR; timeout 5 grep 'scripts/cr/*.sh' docs" \
+    "$AR; grep -n 'scripts/cr/*.sh' docs > out.txt" \
+    "grep() { bash \"\$@\"; }; $AR; grep 'scripts/cr/*.sh' docs" \
+    "time eval defs; $AR; grep 'scripts/cr/*.sh' docs" \
+    "{ source /tmp/defs.sh; $AR; grep 'scripts/cr/*.sh' docs; }" \
+    "! source /tmp/defs.sh; $AR; grep 'scripts/cr/*.sh' docs" \
+    "time printf -v grep %s x; $AR; grep 'scripts/cr/*.sh' docs" \
+    "getopts x PATH -x; $AR; grep 'scripts/cr/*.sh' docs" \
+    "V=PATH; getopts x \$V -x; $AR; grep 'scripts/cr/*.sh' docs" \
+    "V=PATH; let \"\$V=1\"; $AR; grep 'scripts/cr/*.sh' docs" \
+    "V=PATH; select \$V in x; do :; done; $AR; grep 'scripts/cr/*.sh' docs" \
+    "let PATH=1; $AR; grep 'scripts/cr/*.sh' docs" \
+    "select PATH in x; do $AR; done; grep 'scripts/cr/*.sh' docs" \
+    "PATH=/tmp/evil:\$PATH; $AR; grep 'scripts/cr/*.sh' docs" \
+    "$AR; grep -n \$(echo 'scripts/cr/*.sh') docs" \
+    "bash scripts/cr/write-verdicts.sh --help; grep -n 'scripts/cr/*.sh' docs" \
+    "$AR; grep 'scripts/cr/*.sh' docs && bash scripts/cr/*.sh"; do
+    run "HIMMEL-7066 reader mention control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+# A reader inside a { } group, a loop or an if body whose output is piped onward feeds that pipe, and
+# a subscript assignment can redefine the reader itself: the scrub stays off for every such line.
+for v in \
+    "{ true; cat scripts/cr/write-verdicts.sh; } | bash" \
+    "{ $AR; cat scripts/cr/write-verdicts.sh; } | bash" \
+    "for x in 1; do cat scripts/cr/write-verdicts.sh; done | bash" \
+    "for x in 1; do true; cat scripts/cr/write-verdicts.sh; done | bash" \
+    "while true; do :; cat scripts/cr/write-verdicts.sh; break; done | bash" \
+    "until false; do :; cat scripts/cr/write-verdicts.sh; break; done | bash" \
+    "if true; then cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "if true; then :; cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "if false; then :; else :; cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "if false; then :; elif true; then :; cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "BASH_CMDS[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "{ BASH_CMDS[cat]=/usr/bin/bash; }; $AR; cat scripts/cr/write-verdicts.sh" \
+    "X=1 BASH_CMDS[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "PATH[0]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
+    "PATH[ 0 ]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
+    "BASH_CMDS[ cat ]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "X=1 BASH_CMDS[ cat ]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "X=1 PATH[ 0 ]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
+    "commands[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "functions[cat]='bash \$@'; $AR; cat scripts/cr/write-verdicts.sh" \
+    "aliases[cat]=bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "path[1]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh"; do
+    run "HIMMEL-7066 group and subscript control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
 # Line-level fail-closed rules on a line with a git word or a
 # GIT_*/EDITOR/VISUAL/PAGER assignment: a tokenizer failure plus any
 # metacharacter, a value slot that ends in a substitution, --config-env, and a

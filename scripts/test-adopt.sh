@@ -717,6 +717,39 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.j
 grepq "$out" 'via /handover-setup' || fail "HIMMEL-839 preserve: missing the .env-preserve message (got: $out)"
 echo "ok: HIMMEL-839 preserves an existing repo .env HANDOVER_DIR (does not shadow it via settings.json)"
 
+# ── 4c2. PRESERVE a HANDOVER_DIR in the tracked config file ──
+# The behaviour-config layer (~/.himmel/himmel.conf) is where HANDOVER_DIR now
+# lives; adopt must not shadow it with a settings.json write either.
+confhome="$work/confhome"; mkdir -p "$confhome/.himmel"
+printf 'HANDOVER_DIR=/some/conf/handovers\n' > "$confhome/.himmel/himmel.conf"
+preserve_vault3="$work/preserve-vault3"
+preserve_target3="$work/preserve-target3"; mkdir -p "$preserve_target3"
+out=$(HOME="$confhome" bash "$adopt" --profile luna --target "$preserve_target3" --luna-target "$preserve_vault3" 2>&1)
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target3/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "HIMMEL-7021 preserve: himmel.conf-configured HANDOVER_DIR was shadowed by a settings.json write ([$hd])"
+grepq "$out" 'himmel.conf' || fail "HIMMEL-7021 preserve: missing the himmel.conf-preserve message (got: $out)"
+echo "ok: HIMMEL-7021 preserves a himmel.conf HANDOVER_DIR (does not shadow it via settings.json)"
+
+# An empty HANDOVER_DIR= reads as unset, so it must not suppress the wiring.
+emptyhome="$work/emptyhome"; mkdir -p "$emptyhome/.himmel"
+printf 'HANDOVER_DIR=\n' > "$emptyhome/.himmel/himmel.conf"
+empty_vault="$work/empty-vault"
+empty_target="$work/empty-target"; mkdir -p "$empty_target"
+HOME="$emptyhome" bash "$adopt" --profile luna --target "$empty_target" --luna-target "$empty_vault" >/dev/null 2>&1
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$empty_target/.claude/settings.json" 2>/dev/null)
+[ -n "$hd" ] && [ "$hd" != "ABSENT" ] || fail "HIMMEL-7021 empty: an empty HANDOVER_DIR= in himmel.conf suppressed the settings.json wiring"
+echo "ok: HIMMEL-7021 an empty himmel.conf HANDOVER_DIR= does not count as configured"
+
+# A quoted-empty value parses empty too.
+qhome="$work/qhome"; mkdir -p "$qhome/.himmel"
+printf 'HANDOVER_DIR=""\n' > "$qhome/.himmel/himmel.conf"
+q_vault="$work/q-vault"
+q_target="$work/q-target"; mkdir -p "$q_target"
+HOME="$qhome" bash "$adopt" --profile luna --target "$q_target" --luna-target "$q_vault" >/dev/null 2>&1
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$q_target/.claude/settings.json" 2>/dev/null)
+[ -n "$hd" ] && [ "$hd" != "ABSENT" ] || fail "HIMMEL-7021 quoted-empty: HANDOVER_DIR=\"\" in himmel.conf suppressed the settings.json wiring"
+echo "ok: HIMMEL-7021 a quoted-empty himmel.conf HANDOVER_DIR does not count as configured"
+
 # ── 4d. canonicalize a relative --luna-target ────────
 # A relative --luna-target must not persist a CWD-dependent relative path.
 relhome="$work/relhome"; mkdir -p "$relhome"
@@ -1553,6 +1586,46 @@ if grep -q -i 'yotamleo' "$uptarget/scripts/lib/usage-preflight.sh"; then
   fail "HIMMEL-6965: the copied usage-preflight.sh names the himmel repo"
 fi
 echo "ok: HIMMEL-6965 the adopted usage-preflight.sh and its forwarder read the project's cache and print PROCEED / SKIPPED-BANK"
+
+# The adopted project's own copies of the review-loop commands and the scripts
+# they call read the PROJECT's review ledger (<project>/.git/cr-critic-scores.jsonl)
+# through the relative anchor hand-off, never a himmel checkout's. The anchor is a
+# scratch clone carrying only the files the hand-off byte-compares.
+crtarget="$work/crloop-6999"; crclone="$work/crloop-6999-clone"
+mkdir -p "$crtarget" "$crclone"
+HOME="$pchome" git init -q -b main "$crtarget"
+HOME="$pchome" git init -q -b main "$crclone"
+out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
+      --profile core --scope project --target "$crtarget" 2>&1) \
+  || fail "HIMMEL-6999: adopt failed: $out"
+for f in .claude/commands/cr-scores.md .claude/commands/cr-tune.md .claude/commands/cr-learnings-refresh.md \
+         scripts/cr/cr-scores.sh scripts/cr/cr-tune.sh scripts/cr/known-findings.sh scripts/cr/known-findings.json \
+         scripts/cr/standards-cadence.sh scripts/cr/anchor-handoff.sh scripts/lib/handover-path.sh; do
+  [ -f "$crtarget/$f" ] || fail "HIMMEL-6999: $f was not copied into the project"
+  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-6999: the project's $f differs from himmel's"
+  case "$f" in
+    *.sh) [ -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f is not executable" ;;
+    *)    [ ! -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f (not a script) was made executable" ;;
+  esac
+done
+for f in scripts/cr/anchor-handoff.sh scripts/cr/cr-scores.sh scripts/cr/known-findings.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh; do
+  mkdir -p "$crclone/$(dirname "$f")"; cp "$repo_root/$f" "$crclone/$f"
+done
+HOME="$pchome" git -C "$crclone" add scripts
+{
+  echo '{"kind":"finding","ts":"2026-07-01T10:00:00Z","branch":"b1","head":"aaaa111","model":"crloop-modelA","finding_id":"crloop-modelA-1","severity":"imp","file":"scripts/foo.sh","line":10,"verdict":"agreed"}'
+  echo '{"kind":"finding","ts":"2026-07-01T10:01:00Z","branch":"b1","head":"aaaa111","model":"crloop-modelA","finding_id":"crloop-modelA-2","severity":"crit","file":"scripts/bar.sh","line":5,"verdict":"disproved"}'
+} > "$crtarget/.git/cr-critic-scores.jsonl"
+crloop_node="$work/crloop-6999-node"; mkdir -p "$crloop_node"
+ln -sf "$(PATH="$saved_path" command -v node)" "$crloop_node/node"
+cr_run() {
+  (cd "$crtarget" && PATH="$crloop_node:$PATH" HOME="$pchome" HIMMEL_REPO="$crclone" bash scripts/cr/"$1" "${@:2}" 2>"$work/crloop-6999.err")
+}
+out=$(cr_run cr-scores.sh) || fail "HIMMEL-6999: the project's cr-scores.sh failed: $(cat "$work/crloop-6999.err")"
+grepq "$out" 'crloop-modelA' || fail "HIMMEL-6999: cr-scores.sh did not print the project ledger's rows: $out"
+out=$(cr_run cr-tune.sh) || fail "HIMMEL-6999: the project's cr-tune.sh failed: $(cat "$work/crloop-6999.err")"
+grepq "$out" 'crloop-modelA' || fail "HIMMEL-6999: cr-tune.sh did not mine the project ledger: $out"
+echo "ok: HIMMEL-6999 the adopted review-loop commands and scripts read the project's own ledger"
 
 # exercise the remaining bootstrap exits and Git's configured
 # hooks directory. User scope must also carry its own native gate payloads.
@@ -2609,8 +2682,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "52" ] \
-  || fail "HIMMEL-3332 S4: expected 52 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "62" ] \
+  || fail "HIMMEL-3332 S4: expected 62 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

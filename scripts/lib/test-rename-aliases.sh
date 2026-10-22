@@ -31,9 +31,9 @@ wave|parallel wave|prose|fail|R2|never
 HIMMEL_OVERNIGHT|HIMMEL_AFK|env|permit|V3|X
 HIMMEL_INITIATIVE_OVERNIGHT|HIMMEL_INITIATIVE_AFK|env|value|V3|X
 CADENCE_BANK_MAX_PCT|CADENCE_USAGE_MAX_PCT|env|cap|V1|X
-CONSOLE_FG_OK|CHIEF_FG_OK|env|permit|V5|pending-N2892
-CONSOLE_DISPATCH_OK|CHIEF_DISPATCH_OK|env|permit|V5|pending-N2892
-CONSOLE_DISPATCH_DISABLE|CHIEF_DISPATCH_DISABLE|env|restrict|V5|pending-N2892
+CONSOLE_FG_OK|CHIEF_FG_OK|env|permit|V5|X
+CONSOLE_DISPATCH_OK|CHIEF_DISPATCH_OK|env|permit|V5|X
+CONSOLE_DISPATCH_DISABLE|CHIEF_DISPATCH_DISABLE|env|permit|V5|X
 LEG_CONTEXT_HANDOFF_OK|WORKER_SESSION_CONTEXT_HANDOFF_OK|env|permit|V4a|pending-N2892
 HIMMEL_LEAN_LEG|HIMMEL_LEAN_WORKER_SESSION|env|value|V4a|pending-N2892
 PARKED-BANK|PARKED-USAGE|marker|old-to-new|V1|never
@@ -423,6 +423,18 @@ while IFS= read -r want; do
   check "V5b-2 row '$old'" "$tabbed" "$got"
 done <<EOF
 $V5B2_ROWS
+EOF
+
+# --- slice V5d: the judge agent ids, each old id still dispatchable ---
+V5D_ROWS='console-judge|judge|identifier|old-to-new|V5|X
+console-judge-ro|judge-ro|identifier|old-to-new|V5|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V5d row '$old'" "$tabbed" "$got"
+done <<EOF
+$V5D_ROWS
 EOF
 
 # --- an exact seed name sits above every prefix row that would swallow it ---

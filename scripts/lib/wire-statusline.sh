@@ -147,13 +147,13 @@ _wire_statusline_record_purge() {
     --writer wire-statusline.sh --pre-text "$(cat "$list")"
 }
 
-# Drop the hud's RUNTIME cache state — everything the hud writes under its
-# plugin dir EXCEPT the config.json this script owns.
+# Drop the hud's regenerable RUNTIME cache state, keeping config.json and
+# daily-cost.json (accumulated user cost history, not a cache).
 #
-# That dir holds per-session snapshots, not settings: transcript-cache/ (session
-# tokens, the prompt-cache anchor + TTL, compaction state), context-cache/ (the
-# context-window fallback frame), config-cache/, plus the cache-economics and
-# daily-cost ledgers. Wiring a DIFFERENT install over an existing one — the
+# Cache entries include transcript-cache/ (session tokens, the prompt-cache
+# anchor + TTL, compaction state), context-cache/ (the context-window fallback
+# frame), config-cache/, and the cache-economics ledger.
+# Wiring a DIFFERENT install over an existing one — the
 # migration case: an earlier himmel instance, a moved or renamed clone — leaves
 # that state behind, and the hud then renders the PREVIOUS install's counts
 # (with an already-expired cache clock, and no cost figure once the stale
@@ -161,9 +161,8 @@ _wire_statusline_record_purge() {
 # runs: a steady-state re-wire must NOT purge, or every himmel-update would
 # throw away the context fallback snapshot of every live session.
 #
-# Denylist, not allowlist: the hud gains state files over time (daily-cost.json
-# is itself recent), and a list enumerated here would silently stop covering
-# them — which is the bug this function exists to fix. Dotfiles are skipped,
+# Preserve user data explicitly while sweeping regenerable state files.
+# Dotfiles are skipped,
 # and that is load-bearing in BOTH directions: the hud's own interrupted-write
 # temp files are inert, and the caller stages its new config.json as a DOTFILE
 # (.config.json.tmp) precisely so the purge — which runs before either file is
@@ -205,7 +204,7 @@ _wire_statusline_purge_hud_cache() {
       # literal, and dotfiles are skipped by name, not only by glob option.
       [ -e "$entry" ] || continue
       case "${entry##*/}" in
-        config.json|.*) continue ;;
+        config.json|daily-cost.json|.*) continue ;;
       esac
       rm -rf "$entry" || exit 1
       [ -z "$list" ] || printf '%s\n' "${entry##*/}" >> "$list"

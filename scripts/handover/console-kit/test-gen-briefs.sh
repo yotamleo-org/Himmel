@@ -313,6 +313,29 @@ has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-gre
 has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the no Ship step names the relative merge spelling" "$ship_no" '`bash scripts/handover/merge-on-green.sh`'
+# A claudex leg's classifier refuses merge-path actions, so its Ship step ends at READY: no
+# merge command anywhere in the brief, the console is named as the merger, and the leg waits
+# for MERGED. A native leg of the same scope keeps the merge step (asserted above).
+cx_brief() { # <completes value> <bucket>
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/cx.json" "$1"
+    python3 "$SUT" "$WORK/cx.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/cx.err" || fail "claudex ship generation rc=$?: $(cat "$WORK/cx.err")"
+    cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
+}
+cx_no="$(cx_brief no "$WORK/cx1")"
+ship_cx="$(printf '%s\n' "$cx_no" | grep '^> 4\. Ship:')"
+lacks "a claudex Ship step has no merge-on-green.sh" "$ship_cx" "merge-on-green.sh"
+lacks "a claudex Ship step has no merge-on-GO clause" "$ship_cx" "Merge only on GO"
+has "a claudex Ship step names the console as the merger" "$ship_cx" "the console merges"
+has "a claudex Ship step waits for MERGED" "$ship_cx" "MERGED #<pr>"
+has "a claudex Ship step still ends at READY" "$ship_cx" 'READY <pr> <full-40-hex-head> GREEN'
+has "a claudex completes-ticket: no Ship step keeps the clause" "$ship_cx" "completes-ticket: no"
+lacks "the claudex brief carries no merge-on-green.sh anywhere" "$cx_no" "merge-on-green.sh"
+cx_yes="$(cx_brief yes "$WORK/cx2")"
+ship_cxy="$(printf '%s\n' "$cx_yes" | grep '^> 4\. Ship:')"
+lacks "a claudex completes-ticket: yes Ship step has no merge-on-green.sh" "$ship_cxy" "merge-on-green.sh"
+has "a claudex completes-ticket: yes Ship step keeps the clause" "$ship_cxy" "completes-ticket: yes"
+bash "$HERE/brief-lint.sh" "$WORK"/cx1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-cx.err"; rc=$?
+[ "$rc" = 0 ] && pass "a claudex brief with the console-merges Ship step passes brief-lint.sh" || fail "claudex brief-lint rc=$rc: $(cat "$WORK/lint-cx.err")"
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
 

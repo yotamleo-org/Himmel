@@ -311,7 +311,9 @@ fi
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/chief-context.sh"
-# CHIEF_CONTEXT still reads its old name, CONSOLE_CONTEXT.
+# CHIEF_CONTEXT still reads its old name, CONSOLE_CONTEXT. When the two
+# disagree, standard wins, so a stale name never widens the 1m gate.
+[ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"

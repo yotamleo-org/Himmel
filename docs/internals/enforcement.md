@@ -3853,18 +3853,18 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 "open a/the PR", `gh pr edit`), `cr-gate` (`/pr-check`, "CR-clean",
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
-frictionless. `subagent_type: Explore` and `console-judge-ro` (HIMMEL-5180:
-`.claude/agents/console-judge-ro.md` pins `tools: Read, Grep, Glob, Bash`, the
-same structural read-only lane) always allow — the
-ONLY carve-outs. `guard-implementor-dispatch.sh` exempts `console-judge-ro`
-the same way it exempts Explore.
+frictionless. `subagent_type: Explore` always allows, and `judge-ro` (old id
+`console-judge-ro`) allows while `.claude/agents/<id>.md` pins exactly
+`tools: Read, Grep, Glob, Bash`, the same structural read-only lane (HIMMEL-5180)
+— the ONLY carve-outs. `guard-implementor-dispatch.sh` exempts both ids the same
+way, on the same tools check.
 There is deliberately no prompt-text read-only declaration carve-out: three
 review rounds each added one and each leaked it a different way (a partial-scope
 aside, an output-shaped phrase, a mode declaration governing a subordinate
 clause rather than the whole dispatch), so it was removed rather than
 patched a fourth time. A genuinely read-only dispatch uses `Explore` or
-`console-judge-ro`, or the
-audited `CONSOLE_DISPATCH_OK=1` override below.
+`judge-ro`, or the
+audited `CHIEF_DISPATCH_OK=1` override below.
 
 **Supervisor session detection (fail-open — unknown means NOT a supervisor session):**
 `HIMMEL_SESSION_ROLE=console` (case-insensitive; any other non-empty value
@@ -3876,11 +3876,12 @@ e.g. a mission doc naming the supervisor session's own doc further down the same
 turn, does not count): console-shaped only if that first path's basename
 matches `*-console.md`.
 
-**Audited bypass:** `CONSOLE_DISPATCH_OK=1` (deliberate carve-out) or
-`CONSOLE_DISPATCH_DISABLE=1` (kill switch), set in the LAUNCHING shell and
-session-sticky. Every use warns and appends a JSONL audit row to
-`~/.claude/console-dispatch-guard/overrides.jsonl` (`CONSOLE_DISPATCH_LOG` is
-the test seam).
+**Audited bypass:** `CHIEF_DISPATCH_OK=1` (deliberate carve-out) or
+`CHIEF_DISPATCH_DISABLE=1` (kill switch), set in the LAUNCHING shell and
+session-sticky; the old names `CONSOLE_DISPATCH_OK` / `CONSOLE_DISPATCH_DISABLE`
+are still read. Every use warns and appends a JSONL audit row to
+`~/.claude/console-dispatch-guard/overrides.jsonl` (`CHIEF_DISPATCH_LOG`, old
+name `CONSOLE_DISPATCH_LOG`, is the test seam).
 
 **Delivery:** shipped via the **himmel-ops plugin `hooks.json`** (matcher
 `Agent`, second entry alongside `guard-implementor-dispatch.sh`); live only
@@ -3901,7 +3902,7 @@ A textual match (interpreter + name, or a path in command position), so a grep t
 names a script is allowed. A workflow nudge: fails open on missing `jq` or an
 unparseable payload.
 
-**Bypass:** `CONSOLE_FG_OK=1` in the LAUNCHING shell, session-sticky.
+**Bypass:** `CHIEF_FG_OK=1` (old name `CONSOLE_FG_OK`) in the LAUNCHING shell, session-sticky.
 
 **Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
 `guard-console-dispatch.sh`. Spec: `scripts/hooks/test-guard-console-foreground.sh`.
@@ -4096,8 +4097,8 @@ Suite: `scripts/hooks/test-guard-leg-context-handoff.sh`.
 Fires on `Agent`. Denies a `tool_input.model` matching a pattern in
 `scripts/guardrails/agent-model-policy.json` (`blocked_model_patterns`; today
 `fable` / `claude-fable-*`, matched case-insensitively), and a
-`console-judge` dispatch (`subagent_type` `console-judge`, plugin-namespaced or
-not) whose `model` is not Opus — its frontmatter tier — unless the prompt
+`judge` dispatch (`subagent_type` `judge`, `judge-ro` or another `judge-*` id,
+old ids `console-judge*`, plugin-namespaced or not) whose `model` is not Opus — its frontmatter tier — unless the prompt
 carries a line of its own `ESCALATION: <reason>` (the CLAUDE.md
 "Fable is the escalation target for ONE hard call" lane; a mid-sentence mention
 does not count). The reason must be real: empty, shorter than `min_reason_chars`
@@ -4119,7 +4120,7 @@ marker and the measured reason. No `model` (that is
 `guard-subagent-model.sh`'s deny, below, not this hook's), any
 other model, another tool, or an unparseable payload → exit 0 with **no output**
 (workflow nudge, not a security fence: fails open, like `guard-leg-wakeup.sh`).
-The suite asserts `console-judge.md` still says `model: opus`, so a tier change
+The suite asserts `judge.md` and `console-judge.md` still say `model: opus`, so a tier change
 there fails it. Not covered: a `Workflow` script's `agent()` dispatches — no
 per-dispatch hook seam is known (they run inside the one `Workflow` tool call;
 `ponytail:` in the hook header, follow-up ticket in the PR body). Claude lane only — `.codex/hooks.json` has no PreToolUse `Agent`
@@ -4132,7 +4133,7 @@ Fires on `Agent` (plugin-delivered, `marketplace/plugins/himmel-ops/hooks/hooks.
 Denies (exit 2, structured `permissionDecision: deny`) any dispatch whose
 `tool_input.model` is absent, `null`, empty or whitespace-only, for **every**
 `subagent_type` except `fork` (a fork inherits the parent model and ignores
-`model`). A typed agent (`Explore`, `Plan`, `console-judge-ro`, a plugin agent)
+`model`). A typed agent (`Explore`, `Plan`, `judge-ro`, a plugin agent)
 is no longer exempt: an unnamed model silently bills the parent tier. This
 hook owns "a model must be named"; `guard-agent-model.sh` owns "the named model
 must not be blocked" — neither repeats the other's check. The old

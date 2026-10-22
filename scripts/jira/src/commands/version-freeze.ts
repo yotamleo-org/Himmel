@@ -227,6 +227,16 @@ async function readinessRows(
     ok: blockers.length === 0,
     detail: blockers.length === 0 ? 'no open Critical/Blocker/Highest bug' : `open: ${list(blockers.map((i) => i.key))}`,
   });
+  const stationAdhoc = await searchAllIssues(
+    `project=${project} AND fixVersion="${name}" AND labels = station-adhoc AND statusCategory != Done`,
+    SEARCH_LIMIT,
+    request,
+  );
+  rows.push({
+    id: 'station-adhoc',
+    ok: stationAdhoc.length === 0,
+    detail: stationAdhoc.length === 0 ? 'no open station-adhoc ticket' : `open: ${list(stationAdhoc.map((i) => i.key))}`,
+  });
   const ci = probes.mainCi();
   rows.push({ id: 'main-ci', ok: ci.ok, detail: ci.detail });
   // The Done-fold stamps each Done ticket with the version; a Done frozen key

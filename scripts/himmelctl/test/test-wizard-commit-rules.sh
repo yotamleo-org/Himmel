@@ -122,6 +122,21 @@ body=$(cat "$h2b/.himmel/himmel.conf")
 grepq "$body" '^TICKET_ID_PATTERN=' && fail "case2b: blank pattern must drop the old TICKET_ID_PATTERN: $body"
 echo "ok: case2b omitted commit-rule keys are removed, not left stale"
 
+# ── Case 2c: a himmel.conf.local override wins, so the write lands there ─────
+h2c="$work/h2c"; mkdir -p "$h2c/.himmel"
+printf 'TRACKER=local\nTICKET_ID_REQUIRED=0\n' > "$h2c/.himmel/himmel.conf.local"
+printf 'TRACKER=jira\n' > "$h2c/.himmel/himmel.conf"
+out=$(run_apply "$h2c" '{"tracker":"jira","ticketIdRequired":true}')
+rc=$?
+[ "$rc" -eq 0 ] || fail "case2c: install should succeed (rc=$rc): $out"
+body=$(cat "$h2c/.himmel/himmel.conf.local")
+grepq "$body" '^TRACKER=jira$' || fail "case2c: TRACKER=jira not written to the winning himmel.conf.local: $body"
+grepq "$body" '^TICKET_ID_REQUIRED=1$' || fail "case2c: TICKET_ID_REQUIRED=1 not written to the winning himmel.conf.local: $body"
+out=$(run_apply "$h2c" '{"tracker":"none"}')
+body=$(cat "$h2c/.himmel/himmel.conf.local")
+grepq "$body" '^TICKET_ID_REQUIRED=' && fail "case2c: stale TICKET_ID_REQUIRED left in himmel.conf.local: $body"
+echo "ok: case2c commit rules follow a himmel.conf.local override"
+
 # ── Case 3: --dry-run prints the line, writes nothing ────────────────────────
 h3="$work/h3"; mkdir -p "$h3"
 out=$(run_wizard "$h3" --dry-run <<INPUT

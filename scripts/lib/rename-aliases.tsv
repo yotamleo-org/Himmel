@@ -29,9 +29,9 @@ CLAUDEX_BANK_OK	CLAUDEX_USAGE_OK	env	permit	V1	X
 CLAUDEX_BANK_REFUSE_PCT	CLAUDEX_USAGE_REFUSE_PCT	env	cap	V1	X
 CLAUDEX_BANK_WARN_PCT	CLAUDEX_USAGE_WARN_PCT	env	cap	V1	X
 CLEAR_CR_MARKER_BUDGET_WAIT	CLEAR_REVIEW_MARKER_BUDGET_WAIT	env	value	V2	X
-CONSOLE_FG_OK	CHIEF_FG_OK	env	permit	V5	pending-N2892
-CONSOLE_DISPATCH_OK	CHIEF_DISPATCH_OK	env	permit	V5	pending-N2892
-CONSOLE_DISPATCH_DISABLE	CHIEF_DISPATCH_DISABLE	env	restrict	V5	pending-N2892
+CONSOLE_FG_OK	CHIEF_FG_OK	env	permit	V5	X
+CONSOLE_DISPATCH_OK	CHIEF_DISPATCH_OK	env	permit	V5	X
+CONSOLE_DISPATCH_DISABLE	CHIEF_DISPATCH_DISABLE	env	permit	V5	X
 LEG_CONTEXT_HANDOFF_OK	WORKER_SESSION_CONTEXT_HANDOFF_OK	env	permit	V4a	pending-N2892
 HIMMEL_LEAN_LEG	HIMMEL_LEAN_WORKER_SESSION	env	value	V4a	pending-N2892
 PARKED-BANK	PARKED-USAGE	marker	old-to-new	V1	never
@@ -338,6 +338,8 @@ bank-status.ts	usage-status.ts	identifier	old-to-new	V1	X
 clear-cr-marker.sh	clear-review-marker.sh	identifier	old-to-new	V2	X
 codex-bank-probe.ts	codex-usage-probe.ts	identifier	old-to-new	V1	X
 console-context.sh	chief-context.sh	identifier	old-to-new	V5	X
+console-judge	judge	identifier	old-to-new	V5	X
+console-judge-ro	judge-ro	identifier	old-to-new	V5	X
 console.sh	chief.sh	identifier	old-to-new	V5	X
 cr-available.sh	coderabbit-available.sh	identifier	old-to-new	V2	X
 cr-body-findings.sh	coderabbit-body-findings.sh	identifier	old-to-new	V2	X

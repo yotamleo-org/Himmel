@@ -113,6 +113,19 @@ check "console-judge-ro + sonnet + marker -> allow" allow "$(agent console-judge
 check "plugin-namespaced console-judge-ro + sonnet -> deny" block "$(agent himmel-ops:console-judge-ro sonnet 'x')"
 check "console-judge-<future> + sonnet -> deny (any console-judge-* agent)" block "$(agent console-judge-future sonnet 'x')"
 check "console-judgement + sonnet -> allow (not a judge agent)" allow "$(agent console-judgement sonnet 'x')"
+if grep -q '^model: opus$' "$HOOKS/../../.claude/agents/judge.md"; then
+    ok "judge frontmatter is still model: opus"
+else
+    bad "judge frontmatter no longer model: opus - update the hook's tier"
+fi
+check "judge + sonnet -> deny" block "$(agent judge sonnet 'x')"
+check "judge + opus -> allow" allow "$(agent judge opus 'x')"
+check "judge-ro + sonnet -> deny" block "$(agent judge-ro sonnet 'x')"
+check "judge-ro + claude-opus-5-5 -> allow" allow "$(agent judge-ro claude-opus-5-5 'x')"
+check "judge-ro + sonnet + marker -> allow" allow "$(agent judge-ro sonnet "$MARK")"
+check "plugin-namespaced judge-ro + sonnet -> deny" block "$(agent himmel-ops:judge-ro sonnet 'x')"
+check "x-judge-ro + sonnet -> allow (not a judge agent)" allow "$(agent x-judge-ro sonnet 'x')"
+check "judgement + sonnet -> allow (not a judge agent)" allow "$(agent judgement sonnet 'x')"
 check "other agent + sonnet -> allow" allow "$(agent Explore sonnet 'x')"
 
 echo "== other tool / malformed / empty stdin -> allow (fail-open) =="

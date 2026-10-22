@@ -2534,6 +2534,7 @@ update_installed_plugins() {
     if [ -f "$manifest" ]; then
         remote_names="$(jq -c '[.plugins[]? | select(.source | type == "object") | .name]' "$manifest" 2>/dev/null)" || remote_names='[]'
     fi
+    # ponytail: installed specs absent from settings.json enabledPlugins keys are skipped, use an installed-plugin inventory if catch-up must cover them.
     specs="$(jq -r --argjson remote "$remote_names" '.enabledPlugins // {} | keys[]
         | select((endswith("@himmel") | not) or (sub("@himmel$"; "") as $n | $remote | index($n)))' "$settings" 2>/dev/null)" || {
         echo "    skip: could not read enabledPlugins from $settings."

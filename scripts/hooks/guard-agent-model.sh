@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # guard-agent-model.sh — PreToolUse hook (matcher "Agent"): denies an Agent
 # dispatch whose `model` matches a blocked pattern (today: Fable), and a
-# `console-judge` dispatch that overrides `model` off its frontmatter tier
+# `judge` dispatch (any judge* agent, old ids console-judge*) that overrides `model` off its frontmatter tier
 # (opus), unless the dispatch prompt carries a line `ESCALATION: <reason>` with a
 # real reason. Fable is no longer the judge default: Opus
 # 5.5 high measured ~2.7x cheaper per verdict ($8.23 vs $21.94) at
 # comparable wall time and no missed finding, yet an in-process Agent call passing
-# `model: fable` silently overrides .claude/agents/console-judge.md's
+# `model: fable` silently overrides .claude/agents/judge.md's
 # `model: opus` (console O did it three times on 2026-09-29). Fable stays
 # available as the CLAUDE.md escalation target for ONE hard call — the marker is
 # that lane.
@@ -21,7 +21,7 @@
 #
 # Allow prints NOTHING (no stdout, no stderr) unless a marker just rescued a
 # deny: zero context cost. A missing `model` is always allowed (the agent's own
-# frontmatter/default applies). The console-judge tier is hardcoded to opus;
+# frontmatter/default applies). The judge tier is hardcoded to opus;
 # test-guard-agent-model.sh asserts the frontmatter still says so, so a tier
 # change there fails the suite here.
 #
@@ -78,7 +78,7 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
     | (if $status == "ok" then $good[0] else ($rs[0] // "") end) as $reason
     | (if $tool != "Agent" or $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
-       elif ($t | test("(^|:)console-judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
+       elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
        else "allow" end) as $kind
     | if $kind == "allow" then "allow" else [$kind, $status, $m, $reason] | join("\t") end' 2>/dev/null) || exit 0
 
@@ -88,7 +88,7 @@ EOF
 
 case "$kind" in
     blocked) what="model '$model' (blocked by scripts/guardrails/agent-model-policy.json)" ;;
-    judge) what="a console-judge model override '$model' off its frontmatter tier (opus)" ;;
+    judge) what="a judge model override '$model' off its frontmatter tier (opus)" ;;
     *) exit 0 ;;
 esac
 

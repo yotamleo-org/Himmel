@@ -55,9 +55,13 @@ export RELAY_BATCH_BUS="$BUS"
 # The outgoing console's own bus identity: without one, no bus record is sent.
 export HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-08A-console
 
-out="$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)"
-check "a native leg also gets a bus record from the outgoing console" "send DEMO-1-N7-alpha" "$(cat "$WORK/bus.log" 2>/dev/null)"
-check "the bus record names the successor as a whole word" "1" "$(grep -c 'your console is now DEMO-nextleg-2026-10-08B-console ' "$WORK/bus.body" 2>/dev/null)"
+rc=0
+out="$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)" || rc=$?
+check "relay-batch succeeds for native and claudex relays" "0" "$rc"
+check "a native leg also gets a bus record from the outgoing console" "send DEMO-1-N7-alpha" "$(grep -x 'send DEMO-1-N7-alpha' "$WORK/bus.log" 2>/dev/null)"
+check "a claudex leg gets a bus record too, under its doc stem" "send DEMO-2-N8-beta" "$(grep -x 'send DEMO-2-N8-beta' "$WORK/bus.log" 2>/dev/null)"
+check "the claudex bus send is reported" "1" "$(printf '%s\n' "$out" | grep -c '^BUS-RELAY N8 ok$')"
+check "the bus record names the successor as a whole word, once per relayed leg" "2" "$(grep -c 'your console is now DEMO-nextleg-2026-10-08B-console ' "$WORK/bus.body" 2>/dev/null)"
 check "the bus record carries no token" "0" "$(grep -c 'tok-' "$WORK/bus.body" 2>/dev/null)"
 check "the bus send is reported" "1" "$(printf '%s\n' "$out" | grep -c '^BUS-RELAY N7 ok$')"
 check "native leg gets a printed SendMessage payload" "1" "$(printf '%s\n' "$out" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"

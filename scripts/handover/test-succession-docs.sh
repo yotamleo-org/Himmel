@@ -168,6 +168,11 @@ before 'ACTION ZERO step 9: quote-back is collected BEFORE sending LIVE' "$step9
 
 handing="$(section "$CONSOLE" '^## Handing over')"
 contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
+contains 'template Handing over: the relay goes through relay-batch.sh (bus record + SendMessage)' "$handing" 'relay-batch.sh <this doc> --successor <it>'
+contains 'template Handing over: the relay-on-live wake path is named' "$handing" 'WAKE relay-on-live'
+contains 'template Handing over: the relay run is never repeated' "$(flat "$handing")" 'never re-run it'
+contains 'template Handing over: relay-batch carries no fresh token' "$(flat "$handing")" 'carries no fresh token'
+if ! flat "$handing" | grep -iqF -- 'and the fresh one if the successor issued one'; then pass 'template Handing over: relay-batch is not said to carry the fresh token'; else fail 'template Handing over: relay-batch is not said to carry the fresh token (stale text present)'; fi
 before 'template Handing over: quote-backs are collected BEFORE the lock is released' "$handing" 'quote-back' 'release your lock'
 
 live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/console-sections/live-state.md")"
@@ -176,6 +181,11 @@ contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 
 # --- 3. running-a-console.md: the mirror --------------------------------------
 running="$(section "$RUNNING" '^## Handing over')"
 contains 'running-a-console Handing over: the outgoing console re-briefs the legs' "$running" 're-brief'
+contains 'running-a-console Handing over: the relay goes through relay-batch.sh' "$(flat "$running")" 'relay-batch.sh <this doc> --successor <it>'
+contains 'running-a-console Handing over: the relay-on-live wake path is named' "$running" 'WAKE relay-on-live'
+contains 'running-a-console Handing over: the relay run is never repeated' "$(flat "$running")" 'never re-run it'
+contains 'running-a-console Handing over: relay-batch never carries a fresh token' "$(flat "$running")" 'never carries a fresh token'
+if ! flat "$running" | grep -iqF -- 'MAY issue one per worker session'; then pass 'running-a-console Handing over: a successor is not said to issue the fresh token through the relay'; else fail 'running-a-console Handing over: a successor is not said to issue the fresh token through the relay (stale text present)'; fi
 contains 'running-a-console Handing over: the LIVE release rule keeps the did-not-quote-back exception' "$running" 'did not quote back'
 step5="$(printf '%s\n' "$handing" | awk '/^5\. \*\*/ { f = 1 } f')"
 contains 'template Handing over step 5: the LIVE release rule keeps the did-not-quote-back exception' "$step5" 'did not quote back'
@@ -197,7 +207,7 @@ contains 'retask-channel.md: the chain path prices persistent authority, not one
 contains 'retask-channel.md: the accepted amplification is tracked' "$retask" 'HIMMEL-3257'
 contains 'retask-channel.md: the chain path says the named-sender check no longer binds' "$retask" 'no longer binds'
 contains 'console-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
-contains 'console-template.md: handing over says the relay names the successor' "$handing" 'naming the successor'
+contains 'console-template.md: handing over says each SENDMESSAGE line carries the successor and the worker token' "$(flat "$handing")" '(successor, worker'"'"'s token)'
 contains 'console-template.md: step 9 names the leg last accepted console, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
 contains 'retask-channel.md: relay (1) is from the session the worker last accepted' "$(flat "$retask")" 'from the session the worker last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
@@ -271,10 +281,13 @@ contains 'ACTION ZERO step 9: only the chain form always rotates' "$(flat "$step
 
 step4="$(printf '%s\n' "$handing" | awk '/^4\. \*\*/ { f = 1 } /^5\. \*\*/ { f = 0 } f')"
 absent 'Handing over step 4 does not say the successor always hands over a fresh token' "$step4" "$stale_rotate"
-contains 'Handing over step 4: the fresh token is quoted only when the successor issued one' "$(flat "$step4")" 'if the successor issued one'
+contains 'Handing over step 4: a rotating successor adds the fresh token by hand' "$(flat "$step4")" 'a rotating successor adds it by hand'
+contains 'Handing over step 4: claudex workers are not rotated on a bus succession' "$(flat "$step4")" 'claudex workers are not rotated'
 
 absent 'running-a-console Handing over does not say the successor always hands over a fresh token' "$running" "$stale_rotate"
-contains 'running-a-console Handing over: the fresh token is optional' "$(flat "$running")" 'optional'
+contains 'running-a-console Handing over: a relay with no fresh token is complete' "$(flat "$running")" 'a relay with none is complete'
+contains 'running-a-console Handing over: a rotating successor appends the fresh token by hand' "$(flat "$running")" 'appends the fresh token by hand'
+contains 'running-a-console Handing over: claudex workers are not rotated on a bus succession' "$(flat "$running")" 'claudex workers are not rotated'
 
 absent 'handoff "How starts" does not tell the successor to rotate nonces' "$starts" "$stale_rotate"
 contains 'handoff "How starts": a relay MAY keep the leg token' "$(flat "$starts")" 'MAY keep'

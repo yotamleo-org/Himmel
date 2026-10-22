@@ -210,6 +210,16 @@ PORTABLE_FILES=(
   scripts/lib/usage-lift.sh
   scripts/lib/usage-cache-identity.sh
   scripts/lib/fleet-reservation-key.sh
+  scripts/lib/handover-path.sh
+  scripts/cr/anchor-handoff.sh
+  scripts/cr/cr-scores.sh
+  scripts/cr/cr-tune.sh
+  scripts/cr/known-findings.sh
+  scripts/cr/known-findings.json
+  scripts/cr/standards-cadence.sh
+  .claude/commands/cr-scores.md
+  .claude/commands/cr-tune.md
+  .claude/commands/cr-learnings-refresh.md
   scripts/clean-garden.sh
   scripts/worktree.sh
   scripts/clean.sh
@@ -380,7 +390,10 @@ copy_portable() {
   echo "──── Copying portable core into $TARGET ────"
   local f
   for f in "${PORTABLE_FILES[@]}"; do
-    copy_recorded "$f" exec
+    case "$f" in
+      *.sh) copy_recorded "$f" exec ;;
+      *)    copy_recorded "$f" ;;
+    esac
     echo "  $f"
   done
 }
@@ -576,7 +589,7 @@ wire_luna_vault_path() {
 # dir — scripts/lib/handover-path.sh). Sibling of wire_luna_vault_path; $1 =
 # the scaffolded vault dir.
 wire_handover_dir_luna() {
-  local dest="$1" hdir settings envfile existing
+  local dest="$1" hdir settings envfile existing conf
   # handover.mode=inline is a no-op here — handover state stays
   # the repo-local handovers/ stub, same as the T4.5 JS-side gate
   # (applyHandoverStep) already treats it. Only external (the default,
@@ -598,8 +611,9 @@ wire_handover_dir_luna() {
   # second, silent place that overrides that choice. Two places it could
   # already live:
   #   1. This settings.json's own env.HANDOVER_DIR (a prior adopt run).
-  #   2. The primary checkout's .env (set-handover-dir.sh / Mode B — the
-  #      actual file /handover-setup writes to). settings.json env takes
+  #   2. The tracked config file ~/.himmel/himmel.conf(.local), or the primary
+  #      checkout's .env (set-handover-dir.sh / Mode B — the actual file
+  #      /handover-setup writes to). settings.json env takes
   #      PROCESS-ENV precedence over .env (scripts/lib/load-dotenv.sh only
   #      fills currently-unset vars), so writing here would silently SHADOW
   #      that choice even though the .env file itself stayed untouched.
@@ -616,6 +630,12 @@ wire_handover_dir_luna() {
       return
     fi
   fi
+  for conf in "$HOME/.himmel/himmel.conf.local" "$HOME/.himmel/himmel.conf"; do
+    if [[ -f "$conf" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=[[:space:]]*(["'"'"'][^"'"'"']|[^[:space:]"'"'"'])' "$conf"; then
+      echo "  HANDOVER_DIR already set in $conf — leaving it, not wiring env.HANDOVER_DIR into $settings"
+      return
+    fi
+  done
   envfile="$HIMMEL_ROOT/.env"
   if [[ -f "$envfile" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=' "$envfile"; then
     echo "  HANDOVER_DIR already set in $envfile (via /handover-setup) — leaving it, not wiring env.HANDOVER_DIR into $settings (HIMMEL-839)"
@@ -1348,7 +1368,8 @@ print_machine_footprint() {
   fi
   echo "  qmd models + search index (~2.1 GB):   ${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
   echo "  bun runtime + global installs:         ${BUN_INSTALL:-$HOME/.bun}"
-  echo "  claude-hud status-line config:         $claude_cfg/plugins/claude-hud/config.json -- config.json written; hud cache purged when the config differs"
+  echo "  claude-hud status-line config:         $claude_cfg/claude-hud.json -- config written; himmel-owned legacy plugins/claude-hud/config.json removed after migration"
+  echo "  claude-hud regenerable cache:          $claude_cfg/plugins/claude-hud/ -- transcript-cache/, context-cache/, config-cache/ and cache-economics purged when wiring changes; daily-cost.json preserved"
   echo "  workspace-trust entry (himmelctl only): ${WORKSPACE_TRUST_CONFIG:-$HOME/.claude.json} -- the himmelctl wizard writes it; this bare adopt.sh does not"
   echo "  plugin content cache + install ledger: $claude_cfg/plugins/cache/<marketplace>/…, $claude_cfg/plugins/installed_plugins.json"
   echo "  marketplace clones + global registry:  $claude_cfg/plugins/marketplaces/<name>/, $claude_cfg/plugins/known_marketplaces.json -- a --scope project marketplace add still writes both machine-wide"

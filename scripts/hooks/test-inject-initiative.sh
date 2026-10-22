@@ -55,10 +55,13 @@ fail=0
 # for HIMMEL_INITIATIVE*. Point HIMMEL_REPO at an EMPTY temp dir so the existing
 # process-env cases are unaffected by whatever .env exists on the test machine.
 # The SC3 cases below override HIMMEL_REPO per-case to a fixture with a real .env.
+# The hook also reads ~/.himmel/himmel.conf, so HOME is pinned to an empty temp
+# dir too; the himmel.conf case sets its own HOME.
 TMPII=$(mktemp -d)
 trap 'rm -rf "$TMPII"' EXIT
-mkdir -p "$TMPII/noenv"
+mkdir -p "$TMPII/noenv" "$TMPII/home"
 export HIMMEL_REPO="$TMPII/noenv"
+export HOME="$TMPII/home"
 
 # Isolate the dedup markers (${TMPDIR:-/tmp}/himmel-inject-initiative-*)
 # inside this test's own scratch dir so runs never collide with a real session's
@@ -341,6 +344,14 @@ assert_has  "fail-open exits 0" "rc=0" "$out"
 # stdout should be only the rc marker (no directive).
 body=$(unset HIMMEL_INITIATIVE; printf '{}' | HIMMEL_REPO="$TMPII/noenv" bash "$hook")
 if [ -z "$body" ]; then assert_pass "no directive when no .env + env unset"; else assert_fail "expected OFF, got: $body"; fi
+
+# 25b. legs set only in the tracked config file ~/.himmel/himmel.conf (no clone
+# .env at all) still activate: himmelctl writes HIMMEL_INITIATIVE there.
+echo "Test 25b: HIMMEL_INITIATIVE in ~/.himmel/himmel.conf, no clone .env"
+CONFHOME="$TMPII/confhome"; mkdir -p "$CONFHOME/.himmel"
+printf 'HIMMEL_INITIATIVE=prcheck,pr\n' > "$CONFHOME/.himmel/himmel.conf"
+out=$(unset HIMMEL_INITIATIVE; printf '{}' | HOME="$CONFHOME" HIMMEL_REPO="$TMPII/noenv" bash "$hook")
+assert_has "active-steps echoes the himmel.conf subset" "Active steps: prcheck,pr" "$out"
 
 # ---------- 26. Runbook pointer resolves -----------------------
 # The pointer is only worth its bytes if the file it names exists and carries

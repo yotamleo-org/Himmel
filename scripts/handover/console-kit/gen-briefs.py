@@ -102,6 +102,8 @@ def load_platform_re():
 
 
 PLATFORM_RE = load_platform_re()
+MERGE_AT_READY_LINE = ("Stop at READY and never run a merge command: the console merges (it runs the gate checks, writes the GO and merges "
+                      "from the primary checkout), then sends you `MERGED #<pr> → <sha>`. Hold for that message; then `cd` out, WRAPPED, release the lock,")
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
@@ -257,15 +259,21 @@ def completes_line(scope):
     return '\n> **Completes ticket:** %s\n' % found[-1].lower() if found else ''
 
 
-def ship_completes(scope):
-    # The Ship step's completes-ticket clause and merge command, from the same LAST value
-    # completes_line() reads; a scope stating neither keeps the yes wording.
+def ship_completes(scope, lane='native'):
+    # The Ship step's completes-ticket clause and merge clause, from the same LAST value
+    # completes_line() reads; a scope stating neither keeps the yes wording. A claudex leg's
+    # auto-mode classifier refuses merge-path actions, so its merge clause stops at READY and
+    # the console runs the merge; every other lane merges on GO itself.
     found = COMPLETES_RE.findall(scope)
     if found and found[-1].lower() == 'no':
-        return ('completes-ticket: no (leave the ticket In Progress after MERGED)',
-                '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root)')
-    return ('completes-ticket: yes (if the PR title carries a second key, say so after MERGED so the console closes it)',
-            '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root)')
+        ct = 'completes-ticket: no (leave the ticket In Progress after MERGED)'
+        cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root)'
+    else:
+        ct = 'completes-ticket: yes (if the PR title carries a second key, say so after MERGED so the console closes it)'
+        cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root)'
+    if lane == 'claudex':
+        return ct, MERGE_AT_READY_LINE
+    return ct, 'Merge only on GO with %s. MERGED, `cd` out, WRAPPED, release the lock,' % cmd
 
 
 def render_rm_brief(l, ctx):
@@ -336,7 +344,7 @@ template_version: 3
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix. {extra}{envline}
 > 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
 > 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Locally run only the RED rows of the item you build; a VM-only check goes through the VM queue; list every other impacted suite as `SKIP CI-gated per decision 101 (GitHub CI is the gate)`; never run run-shell-tests.sh full or sharded locally.
-> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
+> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
 > **Scope / do not:** writes confined to {scope}. Other live legs and their files: {others}{also}. Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the console first). Remove any fixture you create under the real HOME before you wrap.
@@ -351,7 +359,7 @@ template_version: 3
            scope=l['scope'], others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
-           shipct=ship_completes(l['scope'])[0], shipmerge=ship_completes(l['scope'])[1],
+           shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
            ctline=completes_line(l['scope']),
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
