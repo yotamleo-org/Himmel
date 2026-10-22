@@ -366,9 +366,13 @@ document.addEventListener("change", (e) => {
   const rgf = e.target.dataset.rg, rgd = state.reviewGate && state.reviewGate.draft;
   if (rgf && rgd) {
     const x = rgd.find((y) => y.slug === e.target.dataset.slug);
-    if (x) { x[rgf] = rgf === "mode" || rgf === "model" || rgf === "effort" ? e.target.value : e.target.checked; state.reviewGate.msg = null; return paint(); }
+    if (x) {
+      x[rgf] = rgf === "mode" || rgf === "model" || rgf === "effort" ? e.target.value : e.target.checked;
+      state.reviewGate.msg = null;
+      return rgf === "model" ? undefined : paint(); // a text box commits on blur: repainting would swallow the click on save that caused it
+    }
   }
-  if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return paint(); }
+  if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; }
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;

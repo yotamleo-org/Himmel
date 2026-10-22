@@ -167,7 +167,8 @@ export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
   const tmp = `${path}.tmp-${process.pid}`;
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(tmp, text);
+    try { unlinkSync(tmp); } catch { /* no stale file at the temporary name */ }
+    writeFileSync(tmp, text, { flag: "wx" }); // wx never follows a symlink planted at the name
     const c = resolveGate(env, tmp);
     if (!c.ok) return fail(c.error.replace(tmp, path));
     if (!c.r.review && !c.r.panel.some((r) => r.mode === "hard")) return fail("no hard reviewer would be left; keep at least one reviewer on hard");

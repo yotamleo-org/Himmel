@@ -2,7 +2,7 @@
 // only, the model and effort to the critics.local.json overlay only; the committed critics.json is never opened for write.
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -84,6 +84,25 @@ test("writing the cap again replaces the line instead of adding a second one", a
 test("a new .env is created owner-only", async () => {
   expect((await post(boot(), "/api/fleet-cap", { cap: 5 })).status).toBe(200);
   expect(statSync(envFile).mode & 0o777).toBe(0o600);
+});
+
+test("a symlink planted at the temporary name is replaced, never written through", async () => {
+  const victim = join(dir, "victim.txt");
+  writeFileSync(victim, "untouched\n");
+  writeFileSync(envFile, "OTHER=1\n");
+  symlinkSync(victim, `${envFile}.tmp-${process.pid}`);
+  expect((await post(boot(), "/api/fleet-cap", { cap: 5 })).status).toBe(200);
+  expect(readFileSync(victim, "utf8")).toBe("untouched\n");
+  expect(readFileSync(envFile, "utf8")).toBe("OTHER=1\nHIMMEL_FLEET_CAP=5\n");
+});
+
+test("a symlink planted at the overlay's temporary name is replaced, never written through", async () => {
+  const victim = join(dir, "victim.txt");
+  writeFileSync(victim, "untouched\n");
+  symlinkSync(victim, `${local}.tmp-${process.pid}`);
+  expect((await post(boot(), "/api/review-gate", { reviewers: [row("codex", { model: "gpt-6.2-test" })] })).status).toBe(200);
+  expect(readFileSync(victim, "utf8")).toBe("untouched\n");
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([{ slug: "codex", model: "gpt-6.2-test" }]);
 });
 
 test("a cap the launching shell sets wins over .env and is reported as such", async () => {

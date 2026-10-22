@@ -50,7 +50,8 @@ export function writeCap(envFile: string, env: Env, b: Record<string, unknown>):
   if (!placed) { if (out.length && out[out.length - 1] === "") out.pop(); out.push(`${KEY}=${cap}`); out.push(""); }
   const tmp = `${envFile}.tmp-${process.pid}`;
   try {
-    writeFileSync(tmp, out.join(nl), { mode });
+    try { unlinkSync(tmp); } catch { /* no stale file at the temporary name */ }
+    writeFileSync(tmp, out.join(nl), { mode, flag: "wx" }); // wx never follows a symlink planted at the name
     chmodSync(tmp, mode);
     renameSync(tmp, envFile);
   } catch (e) {
