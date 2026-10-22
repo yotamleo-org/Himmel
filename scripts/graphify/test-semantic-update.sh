@@ -72,6 +72,7 @@ if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
 fi
 [ "\$1" = extract ] && ls "\$2/graphify-out/cache/semantic" > "$WS/seeded.log" 2>&1
 [ "\$1" = extract ] || exit 0
+if [ -n "\${GRAPHIFY_OUT:-}" ]; then echo "stub: GRAPHIFY_OUT=\$GRAPHIFY_OUT reached extract, which would read and write that live out-root instead of the scratch copy" >&2; exit 97; fi
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 # GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
 # 0.25 USD per-call cap (himmel batch 1, 2026-10-16); the run still wrote a graph and exited 0.
