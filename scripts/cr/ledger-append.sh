@@ -406,11 +406,11 @@ if [ "$kind" = "amend" ]; then
     echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
     exit 2
   fi
-  if printf '%s' "$set_pairs" | grep -qx 'fu_class=hardening' && ! printf '%s' "$set_pairs" | grep -q '^fu_why='; then
+  if grep -qx 'fu_class=hardening' <<< "$set_pairs" && ! grep -q '^fu_why=' <<< "$set_pairs"; then
     echo "ledger-append.sh: an amend that sets fu_class=hardening needs --set fu_why=unseen-failure|no-check|vacuous-check|no-recovery|silent-rot - NOTHING was written" >&2
     exit 2
   fi
-  if printf '%s' "$set_pairs" | grep -q '^fu_why=' && ! printf '%s' "$set_pairs" | grep -qx 'fu_class=hardening'; then
+  if grep -q '^fu_why=' <<< "$set_pairs" && ! grep -qx 'fu_class=hardening' <<< "$set_pairs"; then
     echo "ledger-append.sh: --set fu_why= applies only together with --set fu_class=hardening - NOTHING was written" >&2
     exit 2
   fi
