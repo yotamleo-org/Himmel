@@ -230,6 +230,9 @@ async function stampResidual(key: string, options: EditOptions & { residualOf?: 
   if (!/^[A-Z][A-Z0-9]*-[0-9]+$/.test(parent)) {
     throw new Error(`--residual-of must be a ticket key like PROJ-123 (got '${parent}')`);
   }
+  if (parent === key) {
+    throw new Error(`Edit ${key}: a ticket cannot be its own residual parent.`);
+  }
   const clashing = (
     [
       ['--labels', options.labels],

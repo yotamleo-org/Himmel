@@ -763,6 +763,11 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
+  it('refuses a ticket as its own residual parent, before any request', async () => {
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-901')).rejects.toThrow(/cannot be its own residual parent/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['--labels', 'a'],
     ['--add-labels', 'a'],
