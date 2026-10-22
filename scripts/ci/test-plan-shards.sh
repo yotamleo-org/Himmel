@@ -248,8 +248,8 @@ done
 check "PS19 a 16-shard plan lists all 16" "1=true 2=true 3=true 4=true 5=true 6=true 7=true 8=true 9=true 10=true 11=true 12=true 13=true 14=true 15=true 16=true" 16 "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]" ""
 
 # PS20: CI_MAX_SHARDS above 64 is clamped to 64 (a typo of 500 must not plan 500 jobs;
-# 64 keeps the shard matrix a quarter of GitHub's 256-job matrix limit, which the other
-# matrices share) and the message names the variable.
+# 64 is a quarter of GitHub's 256-job limit for one matrix) and the message names the
+# variable.
 shard_total_of() { printf '%s\n' "$1" | sed -n 's/^shard_total=//p'; }
 out=$(STUB_ANSWERS="" bash "$PS/plan-shards.sh" 500 . 2>"$PS/clamp.err")
 if [ "$(shard_total_of "$out")" = 64 ]; then pass "PS20 n=500 plans 64 shards"; else fail "PS20 n=500: got [$(shard_total_of "$out")]"; fi
