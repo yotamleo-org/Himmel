@@ -574,6 +574,9 @@ EOF
 # happens.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chief-context.sh"
 # CHIEF_CONTEXT and CHIEF_WORK_DIR still read their old names, CONSOLE_*.
+# When the two context names disagree, standard wins, so a stale name never
+# widens the 1m gate.
+[ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
 CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-${CONSOLE_WORK_DIR:-}}"
 # shellcheck source=../lib/claude-version.sh

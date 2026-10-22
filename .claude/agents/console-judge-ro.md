@@ -1,6 +1,6 @@
 ---
 name: console-judge-ro
-description: Read-only judge CALL for a console that dispatches judges as in-process children. Same job as console-judge (answer one verdict-grade question, return a verdict, never act) but with the tool list pinned to Read, Grep, Glob and Bash, which is what lets the console dispatch guard accept it as a read-only lane. Dispatch this instead of the built-in Explore agent for a judge call; use console-judge only when the brief needs no console-dispatch carve-out.
+description: Old id of the judge-ro agent, kept until the rename alias release X. Same file body as judge-ro; dispatch judge-ro instead.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

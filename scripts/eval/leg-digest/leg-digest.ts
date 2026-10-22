@@ -39,7 +39,7 @@ const TOOLS = new Set(["Bash", "Edit", "Write", "Read", "Grep", "Glob", "Noteboo
   "Agent", "Task", "TaskStop", "SendMessage", "Skill", "ToolSearch", "ListAgents", "Artifact"]);
 const RUN_ERRORS = new Set(["overloaded", "rate_limit", "max_tokens", "server_error", "authentication_failed",
   "billing_error", "invalid_request"]);
-const KINDS = new Set(["general-purpose", "Explore", "Plan", "claude", "console-judge", "statusline-setup",
+const KINDS = new Set(["general-purpose", "Explore", "Plan", "claude", "judge", "console-judge", "statusline-setup",
   "claude-code-guide", "gemini-subagent", "pr-review-toolkit-himmel:code-reviewer"]);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const CLASSIFIER_CATEGORIES = new Set(["Out-of-Place Publication", "Merge Without Review",

@@ -325,6 +325,15 @@ rec1bo="$(cat "$d1bo/record" 2>/dev/null || true)"
 check "CONSOLE_CONTEXT=1m (old name): exit 0" "$rc1bo" "0"
 contains "CONSOLE_CONTEXT=1m (old name): passes autocompact auto" "$rec1bo" "--autocompact auto"
 
+# --- 1b-conflict. the two names disagree: standard wins, never 1m -
+d1bx="$tmp/c1bx"; mk_stub "$d1bx" 1 alive "HIMMEL-9999bx-leg"
+rc1bx=0
+CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_headed_arm "$d1bx" "$REPO" "HIMMEL-9999bx-leg" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$?
+wait_record "$d1bx" || true
+rec1bx="$(cat "$d1bx/record" 2>/dev/null || true)"
+check "CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard: exit 0" "$rc1bx" "0"
+not_contains "CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard: no autocompact auto" "$rec1bx" "--autocompact auto"
+
 # --- 1c. positional 1m needs no environment workaround ----
 d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-leg"
 outc1c=$(env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT KONSOLE_CMD="$d1c/konsole" PGREP_CMD="$d1c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1c/locks" HEADED_ARM_PROC="$d1c/proc" \

@@ -43,9 +43,9 @@
 # prompt text cannot do it here. So there is none. The two carve-outs below are the only
 # ones left, and both are load-bearing (structural / audited), never
 # spoofable by the dispatch's own prompt text:
-#   * subagent_type: Explore, or console-judge-ro (a repo agent
-#     whose frontmatter pins tools Read, Grep, Glob, Bash only — the same
-#     structural read-only lane)
+#   * subagent_type: Explore, or judge-ro / its old id console-judge-ro (a
+#     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash only,
+#     checked at dispatch — the same structural read-only lane)
 #   * CHIEF_DISPATCH_OK=1 (see "Escape hatches" below)
 # A genuinely read-only dispatch uses one of those two; the deny message
 # names both.
@@ -147,8 +147,18 @@ fi
 [ "$tool" = "Agent" ] || exit 0
 
 subagent_type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true)
+# judge-ro (old id console-judge-ro) is matched exactly and keeps the
+# read-only lane only while its project agent file has one tools: line,
+# Read, Grep, Glob, Bash. A file that grants more, or no file, gets none.
+ro_judge_pinned() {
+    local f
+    f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"
+    [ -f "$f" ] && [ -r "$f" ] || return 1
+    [ "$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^tools:/ { n++; t = $0 } END { if (n == 1) print t }' "$f")" = "tools: Read, Grep, Glob, Bash" ]
+}
 case "$subagent_type" in
-    Explore|console-judge-ro) exit 0 ;;
+    Explore) exit 0 ;;
+    judge-ro|console-judge-ro) ro_judge_pinned "$subagent_type" && exit 0 ;;
 esac
 
 text=$(printf '%s' "$input" | jq -r '[.tool_input.description, .tool_input.prompt] | map(select(type == "string")) | join("\n")' 2>/dev/null || true)
@@ -274,7 +284,7 @@ Do this instead:
 
 Genuinely read-only work has two structural options, neither spoofable by prompt text (a
 prompt-text read-only claim is NOT a carve-out here — three CR rounds proved it leaks):
-  * dispatch with subagent_type: Explore (or console-judge-ro for a judge call), or
+  * dispatch with subagent_type: Explore (or judge-ro for a judge call), or
   * relaunch with CHIEF_DISPATCH_OK=1 (old name CONSOLE_DISPATCH_OK) in the launching shell
     (audited; a per-call prefix does not reach this hook)."
 

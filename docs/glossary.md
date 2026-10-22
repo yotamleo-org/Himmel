@@ -130,7 +130,7 @@ Names that stay as they are, and why. A rename slice and the old-term lint skip 
 | The initiative chain `legs.sh` / `resolve_legs` | The auto-ship step sense, not the fleet sense. |
 | The hook chain (`RUN_HOOK_CHAIN_*`, `--chain`) and `/himmel-update`'s "dependency chain" | Other senses of chain. |
 | Lane-worker files (`stop-worker.sh`, `await-glm-worker.sh`, `reconcile-workers.sh`) | Other sense of worker. |
-| `console-judge-ro` until the dispatch guard reads both ids; `/supervisor-session` | The old id is read-both until then; the command is a permanent alias. |
+| `/supervisor-session` | The command is a permanent alias. |
 
 ## Who holds what
 
@@ -164,7 +164,7 @@ does not implement, push or merge.
 | Shape | What it is | Brief |
 |---|---|---|
 | judge **session** | a judge worker with its own worktree, queue lock and lifecycle; survives past one turn | [`handover/judge-brief-template.md`](handover/judge-brief-template.md), verdict per [`handover/verdict-template.md`](handover/verdict-template.md) |
-| judge **subagent** [judge call] | an in-process child (`.claude/agents/console-judge-ro.md`, or `console-judge.md`) for one question that fits in one dispatch | the dispatch prompt |
+| judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`; old ids `console-judge-ro`, `console-judge`) for one question that fits in one dispatch | the dispatch prompt |
 
 The chief template (`console-template.md`) records which shape asked each question as
 `grade: call|session`.
@@ -437,7 +437,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
 | No commit onto a merged PR's branch | — | `block-merged-pr-commit` | `block-merged-pr-commit` | pc `check-merged-branch` (warns) | — | — |
 | Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec` | `guard-pr-check-literal` | — | — | — |
-| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `console-judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-console-dispatch` | — | — | — | — |
+| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-console-dispatch` | — | — | — | — |
 | Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress`, `block-glm-external-writes` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 | Worker session discipline | `block-leg-askuserquestion`, `guard-leg-wakeup`, `guard-leg-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-leg-context-handoff` | — | — | — |
 | Judge and relay writes confined | `guard-relay-writes` | `guard-judge-writes` | — | — | — | `go.sh` refuses under `HIMMEL_CONSOLE_LEG` / `HIMMEL_CONSOLE_RELAY` |
@@ -481,7 +481,7 @@ Facts only; nothing here is a proposed change.
 
 - `guard-agent-model` (settings) and `guard-subagent-model` (plugin) both read
   an `Agent` call's `model` field, but split the job. `guard-agent-model`
-  denies a blocked model (Fable) and a `console-judge` tier override, and
+  denies a blocked model (Fable) and a `judge` tier override, and
   allows a missing model. `guard-subagent-model` denies a missing model for
   every subagent type except a fork (`SUBAGENT_MODEL_OK=1` lets one through)
   and never reads the model's value.

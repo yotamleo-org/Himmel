@@ -1,6 +1,6 @@
 ---
 name: console-judge
-description: Answers one verdict-grade question independently and returns a verdict — it does not act. Use this agent for a judge CALL (an in-process child for one question inside a live console or leg turn), as distinct from a judge SESSION (a leg launched with `headed-arm-leg.sh --judge`, which has its own worktree, queue lock and lifecycle and is briefed via docs/handover/judge-brief-template.md, not this agent file). Reach for a call when the question is "is this finding real" or "which disposition" and the evidence fits in one dispatch; reach for a session when the question needs its own worktree, its own cold reads, or survives past one turn.
+description: Old id of the judge agent, kept until the rename alias release X. Same file body as judge; dispatch judge instead.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

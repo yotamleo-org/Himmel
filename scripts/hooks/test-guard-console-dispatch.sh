@@ -239,6 +239,44 @@ assert_rc "HIMMEL-5180: console + subagent_type console-judge-ro (read-only judg
 RC7C=$(run_hook console-judge-still-denied "$(payload console-judge 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "HIMMEL-5180: console-judge (not -ro) + ship-flow markers still denied" 2 "$RC7C"
 
+RC7D=$(run_hook judge-ro "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "console + subagent_type judge-ro (new id, tools Read/Grep/Glob/Bash) + ship-flow markers allowed" 0 "$RC7D"
+
+RC7E=$(run_hook judge-still-denied "$(payload judge 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "judge (not -ro) + ship-flow markers still denied" 2 "$RC7E"
+
+RC7F=$(run_hook x-judge-ro "$(payload x-judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "x-judge-ro does not match the judge-ro carve-out" 2 "$RC7F"
+
+# A copy of the hook beside its own .claude/agents, so a row can hand it an
+# agent file the repo does not ship.
+FT="$TMP/tree"
+mkdir -p "$FT/scripts/hooks" "$FT/scripts/lib" "$FT/.claude/agents"
+cp "$HOOK" "$FT/scripts/hooks/"
+cp "$SCRIPT_DIR/../lib/env-alias.sh" "$FT/scripts/lib/"
+agent_md() { printf -- '---\nname: %s\ntools: %s\nmodel: opus\n---\n\nbody\n' "$1" "$2" > "$FT/.claude/agents/$1.md"; }
+run_tree() { HOOK="$FT/scripts/hooks/guard-console-dispatch.sh"; run_hook "$@"; }
+
+agent_md judge-ro 'Read, Grep, Glob, Bash'
+RC7G=$(run_tree tree-judge-ro-ro "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash allowed" 0 "$RC7G"
+
+agent_md judge-ro 'Read, Grep, Glob, Bash, Write'
+RC7H=$(run_tree tree-judge-ro-write "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "judge-ro whose agent file declares Write gets no read-only carve-out" 2 "$RC7H"
+
+agent_md console-judge-ro 'Read, Write, Grep, Glob, Bash'
+RC7I=$(run_tree tree-console-judge-ro-write "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "console-judge-ro whose agent file declares Write gets no read-only carve-out" 2 "$RC7I"
+
+rm -f "$FT/.claude/agents/judge-ro.md"
+RC7J=$(run_tree tree-judge-ro-missing "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "judge-ro with no agent file gets no read-only carve-out" 2 "$RC7J"
+
+printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash\ntools: Read, Write\n---\n' > "$FT/.claude/agents/judge-ro.md"
+RC7K=$(run_tree tree-judge-ro-two-tools "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "judge-ro whose frontmatter repeats tools: gets no read-only carve-out" 2 "$RC7K"
+
 RC9=$(run_hook role-leg-wins "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=leg)
 assert_rc "HIMMEL_SESSION_ROLE=leg + full ship-flow prompt: explicit non-console wins" 0 "$RC9"
 

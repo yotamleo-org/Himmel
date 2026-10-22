@@ -425,6 +425,18 @@ done <<EOF
 $V5B2_ROWS
 EOF
 
+# --- slice V5d: the judge agent ids, each old id still dispatchable ---
+V5D_ROWS='console-judge|judge|identifier|old-to-new|V5|X
+console-judge-ro|judge-ro|identifier|old-to-new|V5|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V5d row '$old'" "$tabbed" "$got"
+done <<EOF
+$V5D_ROWS
+EOF
+
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
   { line[NR] = $1; old[NR] = $2; kind[NR] = $4; n = NR }
