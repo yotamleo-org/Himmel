@@ -173,6 +173,17 @@ run_cfg "$fxA4" get initiative.pr
 grepq "$CFG_OUT" -F 'initiative.pr: on' \
   || fail "caseA4: a set under a himmel.conf.local override must take effect (got: $CFG_OUT)"
 echo "ok: caseA4 a set writes the himmel.conf.local layer that overrides himmel.conf"
+
+# An indented duplicate assignment is read by the parser, so a set must replace it too.
+fxA5="$work/fixtureA5"; build_fixture "$fxA5"
+CFG_HOME="$work/homeA5"
+mkdir -p "$CFG_HOME/.himmel"
+printf 'HIMMEL_INITIATIVE=execute\n  HIMMEL_INITIATIVE=pr\n' > "$CFG_HOME/.himmel/himmel.conf"
+run_cfg "$fxA5" set initiative.ticket on
+[ "$CFG_RC" -eq 0 ] || fail "caseA5: set initiative.ticket on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+[ "$(grep -cE '^[[:space:]]*HIMMEL_INITIATIVE=' "$CFG_HOME/.himmel/himmel.conf")" -eq 1 ] \
+  || fail "caseA5: a stale indented duplicate was left behind (got: $(cat "$CFG_HOME/.himmel/himmel.conf"))"
+echo "ok: caseA5 a set replaces an indented duplicate assignment"
 CFG_HOME="$work/homeA"
 
 # ── Case B: initiative get ──────────────────────────────────────────────────

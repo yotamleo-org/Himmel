@@ -66,23 +66,35 @@ function writeTarget(key) {
 
 // Replace each key's line in place (first match; later duplicates dropped),
 // append the missing ones, drop every dropKeys entry not in entries, leave every
-// other line untouched. Creates the file and its directory when absent.
+// other line untouched. A line counts as the key's when the reader would read
+// it as that key (leading whitespace allowed). Creates the file and its
+// directory when absent; the write goes through a temp file and a rename.
 function upsertConfEntries(file, entries, dropKeys) {
+  const isKey = (l, k) => l.trimStart().startsWith(`${k}=`);
   let lines = [];
   try { lines = fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
   const kept = new Set(entries.map(([k]) => k));
   for (const k of dropKeys || []) {
-    if (!kept.has(k)) lines = lines.filter((l) => !l.startsWith(`${k}=`));
+    if (!kept.has(k)) lines = lines.filter((l) => !isKey(l, k));
   }
   for (const [k, v] of entries) {
-    const idx = lines.findIndex((l) => l.startsWith(`${k}=`));
+    const idx = lines.findIndex((l) => isKey(l, k));
     if (idx === -1) { lines.push(`${k}=${v}`); continue; }
     lines[idx] = `${k}=${v}`;
-    lines = lines.filter((l, i) => i <= idx || !l.startsWith(`${k}=`));
+    lines = lines.filter((l, i) => i <= idx || !isKey(l, k));
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${lines.join('\n')}\n`);
+  let mode = 0o644;
+  try { mode = fs.statSync(file).mode & 0o777; } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, `${lines.join('\n')}\n`, { mode });
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* tmp never created */ }
+    throw e;
+  }
 }
 
 module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, writeTarget, upsertConfEntries };

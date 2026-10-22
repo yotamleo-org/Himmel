@@ -41,6 +41,7 @@ rc=$?
 if [ "$rc" = 0 ]; then pass "a run without --ahead-of-setup exits 0"; else fail "a run without --ahead-of-setup exited $rc"; fi
 has "a run without the flag moves a config key" "moved HANDOVER_DIR" "$out"
 if [ -e "$HOME/.himmel/himmel.conf" ]; then pass "a run without the flag wrote himmel.conf"; else fail "a run without the flag wrote no himmel.conf"; fi
+has "a run without the flag migrates the HANDOVER_DIR value" "HANDOVER_DIR=/val/conf/handovers" "$(cat "$HOME/.himmel/himmel.conf")"
 rm -rf "$HOME/.himmel"
 
 # Dry run writes nothing and names keys only.
