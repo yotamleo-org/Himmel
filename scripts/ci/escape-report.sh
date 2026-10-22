@@ -107,6 +107,7 @@ fi
   echo
   if [ "$bugs_ok" = 1 ]; then
     echo "Bugs created since $SINCE: $(wc -l < "$WORK/bugs.tsv" | tr -d ' ')"
+    [ "$(wc -l < "$WORK/bugs.tsv")" -lt 200 ] || unavailable "the full Bug list" "Jira returned its 200-row cap, so these totals are a sample; narrow --since"
     echo
     echo "By found-by:"
     if [ -s "$WORK/fb" ]; then sort "$WORK/fb" | uniq -c | awk '{ printf "- %s: %s\n", $2, $1 }'; else echo "- (none labelled)"; fi
@@ -178,22 +179,21 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
           runner_s: ([.jobs[] | select(.conclusion != "skipped" and .startedAt != null and .completedAt != null)
                       | ((.completedAt | sec) - (.startedAt | sec)) | select(. > 0)] | add // 0),
           first_start: ([.jobs[].startedAt | select(. != null)] | min),
-          families: ([.jobs[] | select(.conclusion == "failure") | .name | sub(" \\(.*$"; "")] | unique)
+          families: ([.jobs[] | select(.conclusion == "failure") | .name | sub(" \\(.*$"; "")] | unique),
+          passed: ([.jobs[] | select(.conclusion == "success") | .name | sub(" \\(.*$"; "")] | unique)
         })' "$WORK/jobs.json" >> "$WORK/enriched.jsonl"; then
       :
     else
       nojobs=$((nojobs + 1))
-      jq -c --argjson run "$run" -n '$run + {runner_s: 0, first_start: null, families: []}' >> "$WORK/enriched.jsonl"
+      jq -c --argjson run "$run" -n '$run + {runner_s: 0, first_start: null, families: [], passed: []}' >> "$WORK/enriched.jsonl"
     fi
   done < <(jq -c --arg s "$SINCE" '[.[] | select(.createdAt[0:10] >= $s)] | .[0:60][]' "$WORK/runs.json")
 
   jq -s -r '
     def sec: fromdateiso8601;
     def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
-    def fixed($f; $n): $n != null and $n.status == "completed"
-      and ($n.conclusion == "success"
-           or ($n.conclusion == "failure" and ($n.families | length) > 0
-               and (($n.families | any(. as $x | ($f.families | index($x)) != null)) | not)));
+    def fixed($f; $n): $n != null and $n.status == "completed" and ($f.families | length) > 0
+      and ($f.families | all(. as $x | ($n.passed | index($x)) != null and ($n.families | index($x)) == null));
     def pct($p): sort as $a | if ($a | length) == 0 then "n/a"
       else $a[(((($p / 100) * ($a | length)) | ceil) - 1 | if . < 0 then 0 else . end)] end;
     . as $r
@@ -223,10 +223,8 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
     echo "By job family:"
     jq -s -r '
       def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
-    def fixed($f; $n): $n != null and $n.status == "completed"
-      and ($n.conclusion == "success"
-           or ($n.conclusion == "failure" and ($n.families | length) > 0
-               and (($n.families | any(. as $x | ($f.families | index($x)) != null)) | not)));
+    def fixed($f; $n): $n != null and $n.status == "completed" and ($f.families | length) > 0
+      and ($f.families | all(. as $x | ($n.passed | index($x)) != null and ($n.families | index($x)) == null));
       . as $r | ($r | map(select(.event == "pull_request"))) as $pr
       | ($pr | map(select(.conclusion == "failure"))) as $failed
       | $failed | map(. as $f | select(fixed($f; nextpush($f; $pr))))

@@ -121,7 +121,7 @@ cat > "$FX/runs.json" <<'EOF'
 ]
 EOF
 echo '{"jobs":[{"name":"shell-unit-shard (linux, 3)","status":"completed","conclusion":"failure","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:10:30Z"},{"name":"lint","status":"completed","conclusion":"success","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:01:30Z"}]}' > "$FX/jobs-9001.json"
-echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"success","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:02:30Z"}]}' > "$FX/jobs-9002.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"success","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:02:30Z"},{"name":"shell-unit-shard (linux, 3)","status":"completed","conclusion":"success","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:00:30Z"}]}' > "$FX/jobs-9002.json"
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T12:00:30Z","completedAt":"2026-10-20T12:01:30Z"}]}' > "$FX/jobs-9003.json"
 report --since 2026-10-15 --out "$TMP/r5.md"
 has "catch counted once for the fixed-by-next-push failure" "$TMP/r5.md" "Catches: 1 (of 2 failed PR runs)"
@@ -160,7 +160,9 @@ cat > "$FX/runs.json" <<'EOF'
  {"databaseId":9102,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T11:00:00Z","startedAt":"2026-10-20T11:00:05Z","updatedAt":"2026-10-20T11:15:00Z","headBranch":"feat/c","headSha":"ddd"},
  {"databaseId":9103,"event":"pull_request","status":"completed","conclusion":"success","createdAt":"2026-10-20T12:00:00Z","startedAt":"2026-10-20T12:00:05Z","updatedAt":"2026-10-20T12:10:00Z","headBranch":"feat/c","headSha":"eee"},
  {"databaseId":9104,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T13:00:00Z","startedAt":"2026-10-20T13:00:05Z","updatedAt":"2026-10-20T13:10:00Z","headBranch":"feat/d","headSha":"fff"},
- {"databaseId":9105,"event":"pull_request","status":"in_progress","conclusion":null,"createdAt":"2026-10-20T14:00:00Z","startedAt":"2026-10-20T14:00:05Z","updatedAt":"2026-10-20T14:05:00Z","headBranch":"feat/d","headSha":"ggg"}
+ {"databaseId":9105,"event":"pull_request","status":"in_progress","conclusion":null,"createdAt":"2026-10-20T14:00:00Z","startedAt":"2026-10-20T14:00:05Z","updatedAt":"2026-10-20T14:05:00Z","headBranch":"feat/d","headSha":"ggg"},
+ {"databaseId":9106,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T15:00:00Z","startedAt":"2026-10-20T15:00:05Z","updatedAt":"2026-10-20T15:10:00Z","headBranch":"feat/f","headSha":"jjj"},
+ {"databaseId":9107,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T16:00:00Z","startedAt":"2026-10-20T16:00:05Z","updatedAt":"2026-10-20T16:10:00Z","headBranch":"feat/f","headSha":"kkk"}
 ]
 EOF
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:01:30Z"}]}' > "$FX/jobs-9101.json"
@@ -168,10 +170,20 @@ echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","start
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"success","startedAt":"2026-10-20T12:00:30Z","completedAt":"2026-10-20T12:01:30Z"}]}' > "$FX/jobs-9103.json"
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T13:00:30Z","completedAt":"2026-10-20T13:01:30Z"}]}' > "$FX/jobs-9104.json"
 echo '{"jobs":[]}' > "$FX/jobs-9105.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T15:00:30Z","completedAt":"2026-10-20T15:01:30Z"}]}' > "$FX/jobs-9106.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"skipped","startedAt":"2026-10-20T16:00:30Z","completedAt":"2026-10-20T16:00:30Z"},{"name":"docs","status":"completed","conclusion":"failure","startedAt":"2026-10-20T16:00:30Z","completedAt":"2026-10-20T16:01:30Z"}]}' > "$FX/jobs-9107.json"
 report --since 2026-10-15 --out "$TMP/r8.md"
-# 9101 is followed by a same-family failure, 9102 by a success, 9104 by a run still going
-has "only the push that fixes the failure is credited" "$TMP/r8.md" "Catches: 1 (of 3 failed PR runs)"
-has "a run still going is no evidence of a fix" "$TMP/r8.md" "Failed without a fixing next push: 2"
+# 9101 is followed by a same-family failure, 9102 by a success, 9104 by a run still going,
+# 9106 by a push whose lint job was skipped behind another failure
+has "only the push that fixes the failure is credited" "$TMP/r8.md" "Catches: 1 (of 5 failed PR runs)"
+has "a run still going or a skipped job is no evidence of a fix" "$TMP/r8.md" "Failed without a fixing next push: 4"
+
+# --- a Jira result at its row cap is flagged, not presented as complete -------
+scenario s10
+awk 'BEGIN { for (i = 1; i <= 200; i++) printf "HIMMEL-%d\tBug\tTo Do\tbug %d\tfound-by:leg,escape:guard\n", 8000 + i, i }' > "$FX/jira.tsv"
+report --since 2026-10-15 --out "$TMP/r10.md"
+is "a capped Jira list exits 3" 3 "$rc"
+if grep -q '^UNAVAILABLE: the full Bug list' "$TMP/r10.md"; then ok "capped Jira list is flagged as a sample"; else bad "no cap warning"; fi
 
 # --- unreadable job times degrade the cost section and fail the run -----------
 scenario s9
