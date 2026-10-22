@@ -82,9 +82,9 @@ Runs Claude Code against DeepSeek's Anthropic-compatible endpoint
 ## `claude-glm` (removed)
 
 The Z.ai GLM lane has been dropped and is **not supported**. The launcher and
-its historical notes remain in the tree, but do not plan on it:
-the `claude-glm` section of
-[tooling-catalog.md](tooling-catalog.md) describes the retired design. Use
+its historical notes remain in the tree, but do not plan on it. The
+`claude-glm` section of [tooling-catalog.md](tooling-catalog.md) describes the
+retired design. Use
 `claude-codex` or a native Claude subagent instead.
 
 ## Not a lane: `himmel-run`
@@ -95,7 +95,7 @@ behaviour.
 
 ## See also
 
-- [setup/codex.md](setup/codex.md) — running himmel under `codex-cli` itself.
-- [hermes-runbook.md](hermes-runbook.md) — the hermes junior-tier model lane.
-- [orchestration-patterns.md](orchestration-patterns.md) — which work goes to which lane.
-- [configuration.md](configuration.md) — every knob and off-switch.
+- [setup/codex.md](setup/codex.md): running himmel under `codex-cli` itself.
+- [hermes-runbook.md](hermes-runbook.md): the hermes junior-tier model lane.
+- [orchestration-patterns.md](orchestration-patterns.md): which work goes to which lane.
+- [configuration.md](configuration.md): every knob and off-switch.
