@@ -93,7 +93,7 @@ EOF
   chmod +x "$stubs/curl"
   printf 'genuine bytes\n' > "$work/genuine"
   printf 'tampered bytes\n' > "$work/tampered"
-  want=$(sha256sum "$work/genuine" | cut -d' ' -f1)
+  want=$( (sha256sum "$work/genuine" 2>/dev/null || shasum -a 256 "$work/genuine") | cut -d' ' -f1)
   run_fetch() { ( PATH="$stubs:$PATH" PIN_TEST_SRC="$1" bash -c '. "$1"; pin_fetch https://example.invalid/x "$2" "$3"' _ "$pins" "$want" "$work/dest" ) >/dev/null 2>&1; }
   rm -f "$work/dest"
   check "genuine bytes accepted"          run_fetch "$work/genuine"

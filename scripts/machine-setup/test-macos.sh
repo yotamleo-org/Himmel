@@ -78,8 +78,8 @@ EOF
 chmod +x "$bin2/brew"
 uv_pin="$(sed -n 's/^UV_VERSION="\(.*\)"/\1/p' "$REPO_ROOT/scripts/machine-setup/installer-pins.sh")"
 bun_pin="$(tr -d '[:space:]' < "$REPO_ROOT/.bun-version")"
-printf '#!/bin/sh\necho "uv %s (Homebrew 2026-10-20)"\n' "$uv_pin" > "$bin2/uv"; chmod +x "$bin2/uv"
-printf '#!/bin/sh\necho "%s"\n' "$bun_pin" > "$bin2/bun"; chmod +x "$bin2/bun"
+printf '#!/bin/sh\n[ "$*" = "--version" ] || exit 64\necho "uv %s (Homebrew 2026-10-20)"\n' "$uv_pin" > "$bin2/uv"; chmod +x "$bin2/uv"
+printf '#!/bin/sh\n[ "$*" = "--version" ] || exit 64\necho "%s"\n' "$bun_pin" > "$bin2/bun"; chmod +x "$bin2/bun"
 
 run2() { env -i HOME="$t2/home" PATH="$bin2:$PATH" HIMMEL_PATH="$REPO_ROOT" \
              CLAUDE_DIR="$t2/home/.claude" MACOS_ASSUME_YES=1 bash "$M" 2>&1; }
@@ -95,8 +95,8 @@ if grepq "$out2" -F "$bun_pin"; then pass "brew-present: bun --version assertion
 if grepq "$out2" -F 'WARNING: install uv failed' || grepq "$out2" -F 'WARNING: install bun failed'; then fail "brew-present: pinned-version brew tools flagged as too old"; else pass "brew-present: uv/bun at the pinned versions pass the minimum-version check"; fi
 
 # Homebrew cannot pin a version: an older uv/bun than the pin is a loud non-fatal failure.
-printf '#!/bin/sh\necho "uv 0.9.99 (Homebrew 2026-01-01)"\n' > "$bin2/uv"
-printf '#!/bin/sh\necho "1.4.2"\n' > "$bin2/bun"
+printf '#!/bin/sh\n[ "$*" = "--version" ] || exit 64\necho "uv 0.9.99 (Homebrew 2026-01-01)"\n' > "$bin2/uv"
+printf '#!/bin/sh\n[ "$*" = "--version" ] || exit 64\necho "1.4.2"\n' > "$bin2/bun"
 out3="$(run2)"; rc3=$?
 if [ "$rc3" -eq 0 ]; then pass "stale brew tools: macos.sh still rc0 (non-fatal)"; else fail "stale brew tools: macos.sh rc=$rc3"; fi
 if grepq "$out3" -F "uv 0.9.99 is older than the pinned $uv_pin" && grepq "$out3" -F 'WARNING: install uv failed'; then pass "stale brew uv: below the pinned version is flagged"; else fail "stale brew uv not flagged: $out3"; fi

@@ -42,6 +42,12 @@ bun_sha256() {
   esac
 }
 
+# _sha256_check — verifies "<sha>  <file>" lines on stdin: sha256sum where it
+# exists (Linux, and the stub the ubuntu shim test puts on PATH), else macOS shasum.
+_sha256_check() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum -c -; else shasum -a 256 -c -; fi
+}
+
 # pin_fetch <https-url> <sha256> <dest> — download, verify, or leave nothing.
 pin_fetch() {
   local url="$1" sha="$2" dest="$3"
@@ -51,7 +57,7 @@ pin_fetch() {
     echo "ERROR: download failed: $url" >&2
     return 1
   fi
-  if ! printf '%s  %s\n' "$sha" "$dest" | sha256sum -c - >/dev/null 2>&1; then
+  if ! printf '%s  %s\n' "$sha" "$dest" | _sha256_check >/dev/null 2>&1; then
     rm -f "$dest"
     echo "ERROR: sha256 mismatch for $url (expected $sha) — refusing to install" >&2
     return 1
