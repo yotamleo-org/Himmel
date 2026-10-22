@@ -487,8 +487,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       if (last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
-        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key)) {
-          appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm' });
+        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
+          appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
         }
       }
       const marker = `[release-ruling ${id}]`;

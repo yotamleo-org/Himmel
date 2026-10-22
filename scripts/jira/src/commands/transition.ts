@@ -2,6 +2,8 @@ import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
+import { readAdmissions } from './admissions-ledger.js';
+import { parseFrozen } from './version-freeze.js';
 import { earliestUnreleased, fetchVersions, projectFromKey, setFixVersion } from './versions.js';
 
 // Jira's transitions list names the status each one lands on; the shared
@@ -43,8 +45,18 @@ export function registerTransition(program: Command): void {
           await request<{ fields: { fixVersions?: unknown[] } }>('GET', `/issue/${key}?fields=fixVersions`)
         ).fields.fixVersions;
         if (!fixVersions || fixVersions.length === 0) {
-          const version = earliestUnreleased(await fetchVersions(projectFromKey(key)));
-          if (version) {
+          const versions = await fetchVersions(projectFromKey(key));
+          const version = earliestUnreleased(versions);
+          // A frozen version takes only a ruled-in ticket: a frozen-set key or one with a
+          // non-deferral ledger row; any other is closed unstamped, never leaked in.
+          const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
+          const ruledIn =
+            !frozen ||
+            frozen.keys.includes(key) ||
+            readAdmissions(version).some((r) => r.key === key && r.kind !== 'deferral');
+          if (version && !ruledIn) {
+            console.log(`${key} not stamped: ${version} is frozen and ${key} has no intake ruling`);
+          } else if (version) {
             await setFixVersion(key, 'add', version);
             console.log(`${key} fixVersion +${version} (earliest unreleased; --no-version opts out)`);
           }

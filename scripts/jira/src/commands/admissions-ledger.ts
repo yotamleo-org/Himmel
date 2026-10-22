@@ -15,9 +15,11 @@ export interface Admission {
   reason?: string;
   /** The release-manager session that ruled an `rm-admit` row. */
   by?: string;
+  /** The release ruling an `rm-admit` row records, so a replay of that ruling finds its row. */
+  ruling?: string;
 }
 
-export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by'>;
+export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by' | 'ruling'>;
 
 function admissionsLedgerPath(): string {
   const explicit = process.env['HIMMEL_ADMISSIONS_LEDGER'];

@@ -108,6 +108,27 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(rows).toMatchObject([{ version: 'v1', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1' }]);
   });
 
+  it('a re-admission after a removal appends a second rm-admit row, and its replay adds no third (HIMMEL-6796)', async () => {
+    await setup();
+    const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const q1 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r1 = admit(q1.req);
+    await apply(ctx(rmEnv), r1.id);
+    const q2 = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: null, why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r2 = admit(q2.req, { outcome: 'MOVE', op: { kind: 'remove', from_v: 'v1', to_v: null }, supersedes: [r1.id] });
+    await apply(ctx(rmEnv), r2.id);
+    expect(jira.fv.get('K-2')).toEqual([]);
+    const q3 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r3 = admit(q3.req, { supersedes: [r2.id] });
+    await apply(ctx(rmEnv), r3.id);
+    await apply(ctx(rmEnv), r3.id);
+    expect(rows()).toHaveLength(2);
+    expect(rows().map((r) => r.ruling)).toEqual([r1.id, r3.id]);
+  });
+
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });

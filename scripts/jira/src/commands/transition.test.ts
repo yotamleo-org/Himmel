@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Command } from 'commander';
 
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
@@ -54,7 +57,7 @@ const VERSIONS = [
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
-function wire(fixVersions: Array<{ name: string }>) {
+function wire(fixVersions: Array<{ name: string }>, versions: unknown[] = VERSIONS) {
   let current = fixVersions;
   mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
     if (method === 'PUT') {
@@ -62,7 +65,7 @@ function wire(fixVersions: Array<{ name: string }>) {
       current = ops.flatMap((o) => (o.add ? [o.add] : []));
     }
     if (method === 'GET' && path.endsWith('/transitions')) return { transitions: LIVE };
-    if (method === 'GET' && path.endsWith('/versions')) return VERSIONS;
+    if (method === 'GET' && path.endsWith('/versions')) return versions;
     if (method === 'GET' && path.includes('/issue/')) return { fields: { fixVersions: current } };
     return {};
   });
@@ -125,6 +128,59 @@ describe('transition to Done stamps the current fixVersion (HIMMEL-6416)', () =>
   it('does not stamp a non-Done transition', async () => {
     wire([]);
     await run('HIMMEL-1', 'In Progress');
+    expect(puts()).toHaveLength(0);
+  });
+});
+
+describe('transition to Done respects the intake gate of a frozen version (HIMMEL-6796)', () => {
+  const FROZEN = [
+    { id: '1', name: 'v1.1.2', released: true },
+    { id: '2', name: 'v1.1.3', released: false, description: 'frozen: 2026-10-20\nfrozen-keys: HIMMEL-2, HIMMEL-3' },
+  ];
+  let dir: string;
+  const saved = process.env['HIMMEL_ADMISSIONS_LEDGER'];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    dir = mkdtempSync(join(tmpdir(), 'transition-gate-'));
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = join(dir, 'admissions-ledger.jsonl');
+  });
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env['HIMMEL_ADMISSIONS_LEDGER'];
+    else process.env['HIMMEL_ADMISSIONS_LEDGER'] = saved;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const ledger = (...rows: object[]) =>
+    writeFileSync(process.env['HIMMEL_ADMISSIONS_LEDGER']!, rows.map((r) => JSON.stringify(r) + '\n').join(''));
+
+  it('does not stamp a frozen version on a ticket with no ruling, but still closes it', async () => {
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(true);
+  });
+
+  it('stamps a frozen version on a ticket with an admission row', async () => {
+    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-admit', actor: 'a' });
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(1);
+  });
+
+  it('stamps a frozen version on a ticket in its frozen set', async () => {
+    wire([], FROZEN);
+    await run('HIMMEL-2', 'Done');
+    expect(puts()).toHaveLength(1);
+  });
+
+  it('a deferral row is not a ruling in', async () => {
+    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' });
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
     expect(puts()).toHaveLength(0);
   });
 });
