@@ -107,7 +107,7 @@ B4 (reference pages) and `tooling-catalog.md` stay out of the pass by ruling. `s
 
 ## Pilot verdict
 
-Totals over 44 pages: 875 passages kept, 4 dropped, em-dashes 1403 → 311. Not-X-but-Y and stock-word counts barely moved; nearly every kept change was a dash or bold-label fix that `unslop` leaves alone (deviation 3). The exit test asked for documents where `/humanizer` changed something `/unslop` missed and the operator kept it, and every batch merged with those changes, so the REJECT condition is not met. Verdict: **ADOPT, opt-in**. It stays out of every default profile.
+Totals over 44 pages: 875 passages kept, 4 dropped, em-dashes 1403 → 311. Not-X-but-Y and stock-word counts barely moved; nearly every kept change was a dash or bold-label fix that `unslop` leaves alone (deviation 3). The exit test asked for documents where `/humanizer` changed something `/unslop` missed and the operator kept it, and every batch merged with those changes, so the REJECT condition is not met. The verdict comes on day 6 of the two-week window the exit test names (vendored 2026-10-16); it closes early by chief ruling, on 44 pages of measured passes instead of two weeks of ad-hoc use. Verdict: **ADOPT, opt-in**. It stays out of every default profile.
 
 ## Decision
 
