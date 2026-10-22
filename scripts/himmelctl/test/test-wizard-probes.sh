@@ -1724,7 +1724,7 @@ git -C "$hd4403_primary" init -q -b main
 git -C "$hd4403_primary" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$hd4403_primary" worktree add -q "$work/hd4403-wt" -b hd4403-wt
 printf 'HANDOVER_DIR=%s\n' "$work/hd4403-real-root" > "$hd4403_primary/.env"
-hd4403_real=$(cd "$work/hd4403-real-root" && pwd)
+hd4403_real=$(cd "$work/hd4403-real-root" && pwd -P)
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_real" '.actual == "present" and .detail == $d' >/dev/null \
@@ -1732,7 +1732,7 @@ for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
 done
 # no .env value: a worktree falls back to the PRIMARY's inline dir, not <worktree>/handovers
 rm -f "$hd4403_primary/.env"
-hd4403_inline=$(cd "$hd4403_primary/handovers" && pwd)
+hd4403_inline=$(cd "$hd4403_primary/handovers" && pwd -P)
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_inline" '.actual == "present" and .detail == $d' >/dev/null \

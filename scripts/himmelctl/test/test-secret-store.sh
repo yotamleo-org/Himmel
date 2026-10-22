@@ -301,7 +301,7 @@ row('m himmel-env resolves to the primary checkout from a linked worktree, as th
   let checked = null;
   c2.gitCheckIgnore = (file) => { checked = file; return true; };
   store.write('JIRA_EMAIL', 'a@example.com', c2);
-  eq(checked, path.join(primary, '.env'));
+  eq(checked, path.join(fs.realpathSync(primary), '.env'));
   ok(fs.readFileSync(path.join(primary, '.env'), 'utf8').includes('JIRA_EMAIL=a@example.com'), 'write went to the primary .env');
   ok(!fs.existsSync(path.join(wt, '.env')), 'no .env created in the worktree');
   eq(store.detect('JIRA_API_TOKEN', { ...mk(), himmelRoot: path.join(tmp, 'nogit') }).status, 'not-set');
