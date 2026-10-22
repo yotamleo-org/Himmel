@@ -3,7 +3,7 @@
 HIMMEL-2307. The v2 install-profile schema (`scripts/install/
 capture-operator-profile.mjs`) captures what the wizard's questions *can*
 express today. This document lists what the operator's reference machine
-actually **runs** that no wizard question can currently produce — the gap
+actually **runs** that no wizard question can currently produce: the gap
 between "a fresh adopter install" and "the operator's own machine." Each row
 is one item from a live delta capture on that machine; regenerate the
 evidence with:
@@ -12,10 +12,10 @@ evidence with:
 node scripts/install/capture-operator-profile.mjs --delta-out /tmp/operator-delta.json
 ```
 
-Classification values: `covered-by-wizard` (the wizard already asks this —
+Classification values: `covered-by-wizard` (the wizard already asks this;
 listed here only if it was worth double-checking), `ticketed: HIMMEL-NNNN`
 (a filed ticket already scopes closing this gap), `NOT-TICKETED` (no ticket
-covers it yet — flagged for the parent to file).
+covers it yet; flagged for the parent to file).
 
 | # | Item | Captured how | Wizard coverage today | Classification |
 |---|------|--------------|------------------------|-----------------|
@@ -37,4 +37,4 @@ covers it yet — flagged for the parent to file).
 This document is hand-written frame + generated-content rows; when the delta
 shape changes materially, re-run the command above, diff it against the
 table, and update rows by hand (there is no automated doc generator for this
-file — it is meant to be read and judged, not templated).
+file; it is meant to be read and judged, not templated).

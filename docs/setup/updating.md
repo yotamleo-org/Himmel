@@ -1,6 +1,6 @@
 # Updating himmel
 
-**TL;DR — `git pull` your himmel checkout. Marketplace `autoUpdate` does NOT
+**TL;DR: `git pull` your himmel checkout. Marketplace `autoUpdate` does NOT
 deliver himmel updates on its own.** Run `/himmel-update` (or `bash
 scripts/himmel-update.sh`) to do the pull + marketplace re-sync in one step.
 From a shell, the command is `himmelctl update` (`himmel` is installed beside it
@@ -10,7 +10,7 @@ skipping because a Claude session is live, run `bash scripts/himmel-update.sh
 
 > This updates the himmel **harness**. A configured `LUNA_VAULT_PATH` is
 > already refreshed by `/himmel-update`'s own dependency chain (step 6,
-> below) — reserve
+> below); reserve
 > [`/luna-upgrade`](../../marketplace/plugins/obsidian-triage/skills/luna-upgrade/SKILL.md)
 > for an **explicit**, Luna-only run, and `/himmel-update-all` for running
 > both the harness and the vault update together deliberately. To bring
@@ -31,19 +31,19 @@ work vault), [`/luna-upgrade-all`](../../marketplace/plugins/obsidian-triage/ski
 sweeps them all in **one best-effort, dry-run-first pass** instead of running
 `/luna-upgrade` once per vault:
 
-1. **Sweep** — discovers your vaults (from `~/.claude/luna-vaults.json` and a
+1. **Sweep:** discovers your vaults (from `~/.claude/luna-vaults.json` and a
    scan of `~/Documents`), classifies each (luna-family vs not-yet-stamped), and
    prints a per-vault table: already-current / clean-upgrade / conflict.
-2. **Per-vault confirm** — it never auto-applies. You approve each vault before
+2. **Per-vault confirm:** it never auto-applies. You approve each vault before
    it is upgraded.
-3. **Backup before every apply** — a timestamped snapshot is written to
+3. **Backup before every apply:** a timestamped snapshot is written to
    `~/.claude/luna-upgrade-backups/<vault-slug>/<timestamp>/` *before* any change
    (`<vault-slug>` is the vault's directory name with non-alphanumeric characters
    replaced by `_`). If a backup can't be written, the upgrade is aborted and the
    vault is left untouched. To undo a vault, run
    `luna-upgrade-all.sh restore --vault <path>` (add `--list` to see available
    backups).
-4. **Conflict help** — if your customized `_CLAUDE.md` conflicts with the new
+4. **Conflict help:** if your customized `_CLAUDE.md` conflicts with the new
    template, the command proposes a merged version for you to approve rather than
    failing or silently overwriting your edits. On a heavily-customized vault this
    conflict is a **permanent shape**, not a transient (`git merge-file` exits 2 and
@@ -51,14 +51,14 @@ sweeps them all in **one best-effort, dry-run-first pass** instead of running
    template's semantic content already reached your `_CLAUDE.md` another way,
    resolve ours-wins (change nothing) and hand-stamp `.vault-template.json` to the
    new version so the next sweep reports current. Note the upgrade refreshing
-   template-owned `.obsidian` files on a live vault is designed behavior — with
+   template-owned `.obsidian` files on a live vault is designed behavior, with
    one consequence to check before committing the result: bundled plugin files
    (`.obsidian/plugins/*/{main.js,manifest.json,styles.css}`) are
    overwrite-class, so the upgrade can clobber a plugin you've since updated
    with the template's OLDER bundled copy. If your installed plugin versions
    are newer, restore the affected plugin paths from the timestamped pre-apply
    backup (`~/.claude/luna-upgrade-backups/<vault-slug>/<timestamp>/`) before
-   committing — or abandon the whole upgrade with
+   committing, or abandon the whole upgrade with
    `luna-upgrade-all.sh restore --vault <path>`.
 
 It is **best-effort**: a vault with uncommitted git changes under a path the
@@ -67,7 +67,7 @@ appears in the sweep table (flagged `dirty=true`, plan shown), but `apply`
 refuses it until those paths are committed or stashed. Uncommitted changes
 elsewhere (e.g. `handovers/`, your notes) do not block an apply. A vault that errors during its
 dry-run is reported with `error` state and the sweep continues to the rest. Your
-notes, journal, and data are never touched — only template-owned files are
+notes, journal, and data are never touched; only template-owned files are
 refreshed. Obsidian vaults without a luna stamp show as `unstamped` and are left
 alone (upgrade them deliberately, per vault, with `apply --force-unstamped`);
 directories that aren't Obsidian vaults are skipped entirely.
@@ -85,7 +85,7 @@ himmel ships as two delivery layers, and only one of them is a "plugin":
 | Upstream plugin (`claude-obsidian`) | GitHub `AgriciDaniel/claude-obsidian`, **tag-pinned** | only when the pin is bumped (= a `git pull`) |
 | Vendored plugin (`obsidian`) | GitHub, **SHA-pinned** | only when the pin is bumped (= a `git pull`) |
 
-The hooks and commands are **not plugins** — they execute out of your repo
+The hooks and commands are **not plugins**: they execute out of your repo
 checkout, so nothing but a pull changes them.
 
 The himmel *plugins* depend on **how the marketplace was registered**:
@@ -93,12 +93,12 @@ The himmel *plugins* depend on **how the marketplace was registered**:
 - **Default setup** ([`settings-template.json`](settings-template.json)) registers
   the marketplace from a local **`directory`** source
   (`path: <himmel-path>/marketplace`) with `autoUpdate: true`. A directory source
-  has nothing to fetch over the network — `autoUpdate` only **re-syncs plugins
+  has nothing to fetch over the network; `autoUpdate` only **re-syncs plugins
   from the on-disk dir**, which changes only when you `git pull`. So with the
   default setup, **everything is pull-gated**, plugins included.
 - **Direct-install path** (`claude plugin marketplace add yotamleo/himmel`) uses a
   **github** source. There `autoUpdate` pulls a separate Claude-managed clone from
-  GitHub, so *plugin* updates arrive without pulling your working checkout — but
+  GitHub, so *plugin* updates arrive without pulling your working checkout, but
   the core hooks and commands still run from your checkout and **still need a
   pull**.
 
@@ -119,10 +119,11 @@ Every update ends with an **installer-drift pass** (`--only drift`,
 read-only twin `--only drift-check`, also run by `--check`). It runs
 `himmelctl status --json`, converges the allow-listed items (today
 `pre-commit-hooks`, via `himmelctl ensure --items <id> --yes`) and re-checks, then
-prints everything it could not converge — credentials such as a `luna-sources`
+prints everything it could not converge in a loud **DRIFT** block with a remedy
+line: credentials such as a `luna-sources`
 re-auth, a leaked `url.*.insteadOf` in the repo's local git config (WARN with the
-unset command, never auto-deleted), a codex `plugin-unregistered` that the
-installer did not fix — in a loud **DRIFT** block with a remedy line.
+unset command, never auto-deleted), or a codex `plugin-unregistered` that the
+installer did not fix.
 
 `ensure --items <id>` is scoped to exactly those items: it does not
 run the additive recorded-profile reconcile (that belongs to bare `ensure`,
@@ -133,7 +134,7 @@ statusline or `CLAUDE.md` changes). A requested item whose own post-check is gre
 is not failed by an unrelated installer step; it prints a warning instead.
 
 `scripts/himmel-update.sh`, in **apply mode** (no `--check`),
-refuses to run against a **dirty checkout** (uncommitted changes) — commit or
+refuses to run against a **dirty checkout** (uncommitted changes); commit or
 stash first, then re-run. (The read-only `--check` mode does not reject a dirty
 tree; it reports the chain without pulling.) If you are **developing with local
 tracked diffs you deliberately keep** (e.g. locally-installed skills that append
@@ -150,29 +151,29 @@ reporting `updated` / `up-to-date` / `skipped` / `failed` / `not-attempted`
 in a closing status table:
 
 1. `git pull --ff-only` (fails loudly if your branch has diverged from upstream
-   or local edits block the update — reconcile manually, updates land on the
+   or local edits block the update. Reconcile manually; updates land on the
    currently checked-out branch's configured upstream).
-2. `claude plugin marketplace update himmel` — refresh plugins from the
+2. `claude plugin marketplace update himmel`: refresh plugins from the
    freshly-pulled local dir.
-3. **jira CLI dist rebuild** — `scripts/jira/dist` is a gitignored build
+3. **jira CLI dist rebuild:** `scripts/jira/dist` is a gitignored build
    artifact; a pull that changes the jira TypeScript source needs a rebuild
    to take effect.
-4. **qmd fork update** — qmd ships from a himmel-pinned fork outside this
+4. **qmd fork update:** qmd ships from a himmel-pinned fork outside this
    checkout, so `git pull` here never touches it.
-5. **hermes junior-tier update** — hermes is a separate editable
+5. **hermes junior-tier update:** hermes is a separate editable
    git checkout outside this repo; pulls + reinstalls it, skipping cleanly
    when hermes isn't installed.
-6. **luna template upgrade** (`LUNA_VAULT_PATH`) — content-preserving refresh
+6. **luna template upgrade** (`LUNA_VAULT_PATH`): content-preserving refresh
    of template-owned vault files only.
 
-The **first genuine failure aborts the chain** — later items report
+The **first genuine failure aborts the chain**: later items report
 `not-attempted`, the status table still prints, and the script exits
 non-zero. There is no rollback or atomicity: items that already succeeded
-before the failure are **not** undone — only the not-yet-attempted items are
+before the failure are **not** undone; only the not-yet-attempted items are
 skipped.
 
-After the chain — win or lose, these never abort and always run,
-including on a chain failure — six **best-effort advisory
+After the chain (win or lose, these never abort and always run,
+including on a chain failure), six **best-effort advisory
 steps** run: a codex plugin re-sync, a
 statusLine hud re-wire, a **plugin install-state report**
 (`marketplace update` only re-syncs *already-installed*
@@ -195,18 +196,18 @@ Nothing below changes that unless you opt in.
 Opting a station into a release channel makes the pull step follow a tagged
 release instead of your branch tip:
 
-- **`channel: stable`** — follows the highest `vX.Y.Z` release tag (no
+- **`channel: stable`:** follows the highest `vX.Y.Z` release tag (no
   `-pre.N` suffix).
-- **`channel: pre`** — follows the highest tag overall, `-pre.N` prereleases
+- **`channel: pre`:** follows the highest tag overall, `-pre.N` prereleases
   included (a stable tag still outranks a `-pre.N` of the same
-  major.minor.patch; `-pre.10` outranks `-pre.9` — compared numerically, not
+  major.minor.patch; `-pre.10` outranks `-pre.9`, compared numerically, not
   as text).
 
 Set it two ways, checked in this order (first one set wins):
 
-1. **`HIMMEL_UPDATE_CHANNEL=stable`** or **`HIMMEL_UPDATE_CHANNEL=pre`** —
+1. **`HIMMEL_UPDATE_CHANNEL=stable`** or **`HIMMEL_UPDATE_CHANNEL=pre`**:
    env var, per-invocation or exported.
-2. **`channel` in your install profile** —
+2. **`channel` in your install profile**:
    `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/install-profile.json`, the same
    cache `himmelctl install` writes its answers to. `himmelctl install`
    defaults a **new** adopter's profile to `channel: stable`; it never
@@ -221,9 +222,9 @@ resolves the highest matching one, then compares it to `HEAD`:
 - Already on that tag → up to date, nothing to do.
 - `HEAD` an ancestor of the tag (behind) → `--check` reports
   `behind stable vX.Y.Z (at <describe>)`; apply mode runs
-  `git switch --detach vX.Y.Z` (never `git checkout` — this repo hard-refuses
+  `git switch --detach vX.Y.Z` (never `git checkout`; this repo hard-refuses
   that shape).
-- `HEAD` a descendant of the tag (ahead — you're on newer work than the last
+- `HEAD` a descendant of the tag (ahead: you're on newer work than the last
   release) → left alone, reported `not behind — leaving as-is`. A channel
   never downgrades you.
 - `HEAD` and the tag diverged (neither is an ancestor of the other) → the
@@ -232,14 +233,14 @@ resolves the highest matching one, then compares it to `HEAD`:
   exactly `no stable release yet — nothing to follow` and exits `0`; it does
   **not** fall back to pulling the branch.
 
-Apply mode never moves a dirty checkout onto a tag — `git switch --detach`
+Apply mode never moves a dirty checkout onto a tag: `git switch --detach`
 refuses on uncommitted changes the same as a plain pull would, and
 **`HIMMEL_UPDATE_AUTOSTASH=1` does not apply here**: autostash's
 stash/pull/restore semantics are specific to `git pull`, not `git switch`, so
 a channel-following station must commit or stash by hand before updating.
 
 `--check` never moves `HEAD` or touches the working tree on a channel, same
-guarantee as the unset-channel path — it does fetch tags from `origin` first
+guarantee as the unset-channel path. It does fetch tags from `origin` first
 (writing Git objects/refs, same as any `git fetch`), but never switches,
 pulls, or otherwise changes what you're on.
 
@@ -297,9 +298,9 @@ bash scripts/himmel-update.sh --versions   # the same report, without himmelctl
 and the full commit. A checkout that is not itself a git root prints `unknown`
 for both rather than reading an enclosing repository.
 
-`--all` (`himmel-update.sh --versions`) prints one row per component — the himmel
+`--all` (`himmel-update.sh --versions`) prints one row per component (the himmel
 checkout, marketplace plugins, jira CLI build, qmd fork, hermes, luna template,
-cli-proxy pin, and node / npm / bun — with the installed value, the available
+cli-proxy pin, and node / npm / bun) with the installed value, the available
 one, and `current`, `behind`, `unknown` or `n/a` (not installed here; never
 counted). node is compared with `.nvmrc`; npm and bun have no pin and are shown
 as `info`. The report is **read-only** and runs the same probes as `--check`
@@ -309,8 +310,8 @@ offline), `0` otherwise.
 
 ## After upgrading
 
-A pull that moves you to a new release — whether the plain branch pull or a
-channel detaching onto a new tag — is not the end of the update. Two things
+A pull that moves you to a new release, whether the plain branch pull or a
+channel detaching onto a new tag, is not the end of the update. Two things
 still need doing:
 
 - **Project-scope adopters must re-run `adopt.sh`.** A pull changes the files
@@ -319,8 +320,8 @@ still need doing:
   project's `.claude/settings.json` and hooks pick up whatever this release
   changed.
 - **Read the release notes for the version you landed on.** Any upgrade step
-  specific to that release — a one-time migration, a config field that moved,
-  a dependency bump — is carried in that release's notes, not repeated here.
+  specific to that release (a one-time migration, a config field that moved,
+  a dependency bump) is carried in that release's notes, not repeated here.
 
 ## Machine-local catch-up
 
@@ -330,33 +331,33 @@ A merged pin bump reaches this checkout's **repo**. It does not reach the
 running cli-proxy binary, or reload the qmd daemon.
 
 That staleness is invisible to `scripts/check-plugin-drift.sh`. For a
-`tag_release` / `mode: base` entry the guard reads `synced_base` — a literal in
+`tag_release` / `mode: base` entry the guard reads `synced_base` (a literal in
 `scripts/upstreams.json` that `apply-drift-bump.sh` moves *together with* the
-in-repo pin — never the installed artifact. So the row flips to `CURRENT` the
+in-repo pin), never the installed artifact. So the row flips to `CURRENT` the
 instant the bump merges, while the host keeps running the old build. No
 `BEHIND` row will ever tell you about it, which is why these steps are
 unconditional rather than drift-driven:
 
-- **graphify pin sync** — reinstalls at the pinned version. When
+- **graphify pin sync:** reinstalls at the pinned version. When
   live `graphify-mcp` processes hold the `uv` tool dir it refuses to force and
   prints the exact reinstall command instead.
-- **cli-proxy-api host roll** — rolls the proxy only when the
+- **cli-proxy-api host roll:** rolls the proxy only when the
   machine's version stamp is **strictly older** than the `VERSION` pin. A host
   at or ahead of the pin is left alone (never a downgrade), and a version that
-  cannot be compared — no `python3`, or a stamp that is not a version — is left
+  cannot be compared (no `python3`, or a stamp that is not a version) is left
   alone too, with the manual roll command printed instead.
   `cli-proxy-lane.sh` owns the risk when it does roll: pin-aware, refuses to
   bounce under a live codex-lane client, staged rollback, health-gated on
   `/v1/models`.
-- **installed-marketplaces catch-up** —
+- **installed-marketplaces catch-up:**
   `scripts/upstreams/update-marketplaces.sh` re-syncs the `mkt-manual` rows
   (`autoUpdate` off) nothing else refreshes. Failure-isolated: every row is
   attempted regardless of the previous row.
-- **qmd daemon-restart notice** — a new qmd build on disk does not
+- **qmd daemon-restart notice:** a new qmd build on disk does not
   reload the daemon already resident on :8181, and stopping that process is
   termination an agent may not perform. The step prints the operator commands;
   it never kills anything.
-- **claude CLI sync (HIMMEL-5501)** — `claude` is held to a launch floor
+- **claude CLI sync (HIMMEL-5501):** `claude` is held to a launch floor
   (2.1.280, the first release with Opus 5.5 and `--autocompact`; one constant in
   `scripts/lib/claude-version.sh`). In apply mode a Claude Code below the floor
   or behind the latest is updated by its owner's updater (native `claude
@@ -366,10 +367,10 @@ unconditional rather than drift-driven:
   armed `console`/`headed-arm`/`arm-resume` launches refuse naming `claude
   update` (print-only and `--dry-run` warn), and `himmel-doctor` check **C63**
   WARNs.
-- **node/npm/bun toolchain** — reports node against the pinned
+- **node/npm/bun toolchain:** reports node against the pinned
   `.nvmrc` at the pin's own granularity (major, major.minor or
   major.minor.patch) as match / behind pin / ahead of pin, and a non-numeric
-  pin such as `lts/*` as a plain report (never moves it — a live lane is very likely running on the
+  pin such as `lts/*` as a plain report (never moves it: a live lane is very likely running on the
   current node the instant this runs; prints the `nvm`/`fnm` fix instead) and
   self-upgrades npm/bun in place via their own built-in updaters. If `bun` is
   missing entirely, the qmd fork step's "skipped" status gets a loud
@@ -378,7 +379,7 @@ unconditional rather than drift-driven:
 
 `--only <item>` re-runs any single step (`pull`, `marketplace`, `jira_cli`,
 `qmd_fork`, `hermes`, `luna_template`, `graphify`, `cli_proxy`, `marketplaces`,
-`toolchain`) without walking the chain — for the one thing that did not land.
+`toolchain`) without walking the chain, for the one thing that did not land.
 
 The nightly `/drift-fix` cadence runs this whole engine as its step 1A, so a
 machine that is on all day catches up without anyone asking.
@@ -387,10 +388,10 @@ Plain `git pull` works too if you don't need the rest of the chain.
 
 ## When changes take effect
 
-- **Hooks**: immediately on the next tool call — PreToolUse/etc. re-read the
+- **Hooks**: immediately on the next tool call; PreToolUse/etc. re-read the
   script from disk each invocation. (This is why the hook fix needs
   only a pull, no restart.)
-- **Plugins / slash commands / skills**: loaded at session start — **restart**
+- **Plugins / slash commands / skills**: loaded at session start; **restart**
   any running Claude session to pick them up.
 
 ## Lean plugin set — keeping session-start context low
@@ -398,8 +399,8 @@ Plain `git pull` works too if you don't need the rest of the chain.
 Every **enabled** plugin injects its agents + skills + commands into the
 context at session start, whether or not you use it. Ad-hoc `/plugin` installs
 (and older maximal templates) drift the enabled set upward over time, and the
-plugin install step is *additive* — it enables the lean template's plugins but
-never disables the extras — so a manual prune used to drift back after the next
+plugin install step is *additive* (it enables the lean template's plugins but
+never disables the extras), so a manual prune used to drift back after the next
 update.
 
 The **lean floor** is the set of plugins flagged `true` in
@@ -417,11 +418,11 @@ It uses a **whitelist**: only floor plugins survive; every other enabled plugin
 (including a future one that ships enabled) is set `false`. **`/himmel-doctor`**
 (check **C15**) reports drift read-only, so you can see the cost before acting.
 
-**Keep a plugin you actually want** — add it to `~/.claude/settings.local.json`.
+**Keep a plugin you actually want:** add it to `~/.claude/settings.local.json`.
 The reconciler reads this sibling file and **bakes its entries into
 `settings.json`** on every run, in both directions (a `true` keeps an off-floor
 plugin like `codex@openai-codex` enabled; a `false` disables a floor plugin like
-`playwright`), so your choice survives each reconcile — the override is enforced
+`playwright`), so your choice survives each reconcile. The override is enforced
 by the reconciler itself, not by Claude Code's runtime settings precedence:
 
 ```json
@@ -435,12 +436,12 @@ by the reconciler itself, not by Claude Code's runtime settings precedence:
 ```
 
 (All vendored `@himmel` plugins stay `true` in the shared template so adopters
-get them; disable the ones you personally don't run — like `luna-correlate` —
+get them; disable the ones you personally don't run (like `luna-correlate`)
 here, without editing the shared floor.)
 
 **`/himmel-update` is adopter-safe**: by default it only *warns* about drift.
-To have it *enforce* the floor on every update — the operator's "prune stays
-pruned" switch — export the opt-in and persist it in your shell profile (once
+To have it *enforce* the floor on every update (the operator's "prune stays
+pruned" switch), export the opt-in and persist it in your shell profile (once
 per machine) so it reaches `/himmel-update` and every new shell:
 
 ```bash
@@ -449,9 +450,9 @@ export HIMMEL_RECONCILE_PLUGINS=1                        # this shell, now
 ```
 
 Other lanes inherit this for free: GLM workers read the same
-`~/.claude/settings.json`. (The codex lane uses a different plugin model — its
+`~/.claude/settings.json`. (The codex lane uses a different plugin model: its
 leanness is governed by what `install-himmel-codex.sh` provisions, not an
-`enabledPlugins` map — and himmelctl's full-set enable stays a deliberate opt-in
+`enabledPlugins` map, and himmelctl's full-set enable stays a deliberate opt-in
 that `settings.local.json` protects.)
 
 ## Uninstalling / offboarding
@@ -476,7 +477,7 @@ otherwise the teardown script's own code is returned. For `uninstall.sh`,
 later steps), and `3` means the live-HOME safety fence refused a wet run.
 
 Under the hood it derives + confirms, then execs
-[`scripts/uninstall.sh`](../../scripts/uninstall.sh) — a symmetric eight-step teardown of what `setup.sh`/`adopt` onboard:
+[`scripts/uninstall.sh`](../../scripts/uninstall.sh), a symmetric eight-step teardown of what `setup.sh`/`adopt` onboard:
 stops the Telegram bridge, removes its pairing + bridge state (only with
 `--purge-state`, and never while the bridge is still running), deletes the
 `HIMMEL-Resume-*` scheduled jobs, uninstalls the installed Claude plugins at
@@ -486,14 +487,14 @@ it keeps both the current hook and the backup), unwires the user-scope
 `~/.claude/settings.json` keys himmel added, removes the Claude marketplaces
 (only those no installed plugin still needs), and removes the himmelctl
 cache + state dir. A provenance ledger, when install wrote one, decides
-ownership of the six overwrite-prone rows — your own pre-existing statusLine,
+ownership of the six overwrite-prone rows: your own pre-existing statusLine,
 `env.HANDOVER_DIR`, plugins, marketplaces, the claude-hud config and
 adopter-script copies are kept with a printed hand command rather than
 guessed at by template; with no ledger, those same six rows are kept the same
 way (hand command, never guessed) while everything else still falls back to
 template ownership. It is destructive and fail-closed
 (a non-interactive run aborts without `--yes`). Invoke `uninstall.sh` directly
-for the manual or CI path — preview any run with `--dry-run`, and skip
+for the manual or CI path; preview any run with `--dry-run`, and skip
 individual steps with `--skip-plugins` / `--skip-hooks` / `--skip-tasks` /
 `--skip-settings`:
 
@@ -511,7 +512,7 @@ The paths it acts on are listed in
 
 It deliberately leaves the himmel clone, your `.env`, worktrees, handover state
 outside the bridge root, and non-himmel `settings.json` keys untouched. **hermes
-is not torn down** — it installs outside the repo (`%LOCALAPPDATA%\hermes` /
+is not torn down**: it installs outside the repo (`%LOCALAPPDATA%\hermes` /
 `$HERMES_HOME`); stop its gateway and remove that directory by hand if you are
 decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
 
@@ -522,7 +523,7 @@ decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
   resolve from `$CLAUDE_PROJECT_DIR`, so the updated file is on disk as long as
   the default branch is checked out at pull time.
 - **Forked `yotamleo/Himmel`** instead of cloning it directly? Add an `upstream`
-  remote and `git pull upstream main` — a plain `git pull origin` only pulls your
+  remote and `git pull upstream main`; a plain `git pull origin` only pulls your
   fork.
 - Whether the *default* registration should switch to a github (floating) source
   so plugins auto-deliver without a pull is a deliberate trade-off (it would leave the core hooks pull-only regardless).
@@ -532,7 +533,7 @@ decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
   pinned `@himmel` source **operator-present, in a fresh session**:
   `bash scripts/machine-setup/migrate-plugin-to-himmel.sh --apply <name@market> …`
   (it mutates `settings.json` via `claude plugin`, so it is an operator step).
-  Run it from a shell where the `claude` CLI is on `PATH` — on Windows that is
+  Run it from a shell where the `claude` CLI is on `PATH`. On Windows that is
   PowerShell, **not** a bare Git Bash (which exits `ERROR: claude CLI required
   on PATH`). The external marketplace can silently re-appear later (its
   `autoUpdate` re-adds it), so re-run the migrate whenever `--plugins-check`

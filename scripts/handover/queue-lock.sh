@@ -2232,34 +2232,43 @@ queue_lock_release() {
     # generation read BEFORE the token check -- see heartbeat.
     # the arbiter is read alongside it -- see
     # _ql_write_owner's header.
-    local rel_gen rel_arbiter
+    local rel_gen rel_arbiter o_session=""
     rel_gen=$(_ql_read_gen "$lockdir")
     rel_arbiter=$(_ql_read_arbiter "$lockdir")
     if [ -f "$lockdir/owner.json" ]; then
-        local o_session
         o_session=$(_ql_json_field "$lockdir/owner.json" session)
+    fi
+    # A lock with no readable owner.json session is still somebody's: a taker
+    # that has branded the owner arbiter (before gen and owner.json) but not
+    # finished, or a lock whose owner.json was lost. The arbiter names that
+    # holder, so a stranger's release is refused instead of deleting a lock it
+    # does not own. Only a lock with neither is ownerless and cleaned up.
+    local rel_holder="${o_session:-$rel_arbiter}"
+    if [ -n "$rel_holder" ]; then
         # _ql_token_matches, not a bare `!=` -- see the
         # heartbeat function's identical comment. Normalize to the owner's
         # canonical value on a match so _ql_token_forget below compares the
         # PERSISTED file's exact content, not whatever form the caller
         # happened to pass.
-        if [ -n "$o_session" ] && ! _ql_token_matches "$session" "$o_session"; then
-            echo "queue-lock: release refused -- held by session=$o_session, not '$session' (QUEUE_LOCK_FORCE_RELEASE=1 to force)" >&2
+        if ! _ql_token_matches "$session" "$rel_holder"; then
+            echo "queue-lock: release refused -- held by session=$rel_holder, not '$session' (QUEUE_LOCK_FORCE_RELEASE=1 to force)" >&2
             return 2
         fi
-        [ -n "$o_session" ] && session="$o_session"
+        session="$rel_holder"
     fi
+    # the age at release time, read before the dir goes away. A
+    # leg that held its lock past half the TTL without a single heartbeat
+    # outran its own safety margin unseen -- say so now, while it still can.
+    # Read before the re-check: it forks, and any gap between the re-check
+    # and the rm below is a window for a takeover to land in.
+    local rel_age rel_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
+    case "$rel_ttl" in ''|*[!0-9]*) rel_ttl=21600 ;; esac
+    rel_age=$(_ql_hb_age "$lockdir")
     _ql_test_pause release-verified
     if [ "$(_ql_read_gen "$lockdir")" != "$rel_gen" ] || [ "$(_ql_read_arbiter "$lockdir")" != "$rel_arbiter" ]; then
         echo "queue-lock: release refused -- the lock was taken over after this release verified it (ownership changed; now held by session=$(_ql_json_field "$lockdir/owner.json" session)); nothing was released" >&2
         return 2
     fi
-    # the age at release time, read before the dir goes away. A
-    # leg that held its lock past half the TTL without a single heartbeat
-    # outran its own safety margin unseen -- say so now, while it still can.
-    local rel_age rel_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
-    case "$rel_ttl" in ''|*[!0-9]*) rel_ttl=21600 ;; esac
-    rel_age=$(_ql_hb_age "$lockdir")
     rm -rf "$lockdir" 2>/dev/null
     if [ -d "$lockdir" ]; then
         echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle on Windows? permission?); NOT released" >&2

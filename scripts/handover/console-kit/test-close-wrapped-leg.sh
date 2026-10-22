@@ -1276,17 +1276,26 @@ rm -rf "$W/proc"; mkdir -p "$W/proc"
 SW_A="$W/HIMMEL-9-N31-aaa-2026-01-01-RESUME.md"
 SW_B="$W/HIMMEL-9-N32-bbb-2026-01-01-RESUME.md"
 SW_C="$W/HIMMEL-9-N33-ccc-2026-01-01-RESUME.md"
-for d in "$SW_A" "$SW_B" "$SW_C"; do printf '# leg\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n' > "$d"; done
+SW_HELD="$W/HIMMEL-9-N34-held-2026-01-01-RESUME.md"
+for d in "$SW_A" "$SW_B" "$SW_C" "$SW_HELD"; do printf '# leg\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n' > "$d"; done
+SW_GONE="$W/.claude/worktrees/already-pruned"
+printf "worktree: \`%s\`\n" "$SW_GONE" >> "$SW_A"
 echo '- 10:00 WRAPPED - done' >> "$SW_A"
 echo '- 10:00 WRAPPED - done' >> "$SW_B"
 echo '- 10:00 LIVE - still working' >> "$SW_C"
+echo '- 10:00 WRAPPED - lock still held' >> "$SW_HELD"
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$SW_HELD" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+check "sweep setup: held leg lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+check "sweep setup: already-pruned worktree is absent" "$([ -e "$SW_GONE" ] && echo present || echo absent)" "absent"
 mkcmdline 270 claude -n HIMMEL-9-N31-aaa-2026-01-01 work
 mkcmdline 271 claude -n HIMMEL-9-N32-bbb-2026-01-01-r1 work
 mkcmdline 272 claude -n HIMMEL-9-N33-ccc-2026-01-01 work
-pgrep_x_stub 270 271 272
+mkcmdline 273 claude -n HIMMEL-9-N34-held-2026-01-01 work
+pgrep_x_stub 270 271 272 273
 sweep_manifest="$W/sweep-fleet.json"
 rm -f "$sweep_manifest"
-bash "$HERE/fleet-manifest.sh" add "$sweep_manifest" "$SW_A" "$SW_B" "$SW_C"
+bash "$HERE/fleet-manifest.sh" add "$sweep_manifest" "$SW_A" "$SW_HELD" "$SW_B" "$SW_C"
 # --check names what it would close and signals nothing
 : > "$CALLS"
 rc=0; out=$(run --check --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
@@ -1295,13 +1304,17 @@ contains "sweep --check: says would close" "$out" "sweep: would close $SW_A"
 not_contains "sweep --check: never says closed for a doc" "$out" "sweep: closed $SW_A"
 not_contains "sweep --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls
-rc=0; out=$(run --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
-check "sweep: rc 0" "$rc" "0"
+rc=0; out=$(CWL_CLEAN_MODE=unregistered run --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
+check "sweep: already-pruned worktree is non-fatal" "$rc" "0"
 exact_count "sweep: the first WRAPPED leg is closed" "$(cat "$CALLS")" "kill -TERM 270" "1"
-exact_count "sweep: the -r1 WRAPPED leg is closed" "$(cat "$CALLS")" "kill -TERM 271" "1"
+exact_count "sweep: the -r1 WRAPPED leg closes after the already-pruned and held legs" "$(cat "$CALLS")" "kill -TERM 271" "1"
+exact_count "sweep: already-pruned worktree reaches the single-leg prune check" "$(cat "$CALLS")" "clean.sh --only $SW_GONE --only-allow-unmerged" "1"
+check "sweep: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")" "2"
 not_contains "sweep: the still-working leg is never signaled" "$(cat "$CALLS")" "kill -TERM 272"
-contains "sweep: summary names the counts" "$out" "sweep: closed=2 refused=0 skipped=1"
-check "sweep: only the unfinished leg stays in the manifest" "$SW_C" "$(jq -r '.legs[].doc' "$sweep_manifest")"
+not_contains "sweep: the held WRAPPED leg is never signaled" "$(cat "$CALLS")" "kill -TERM 273"
+contains "sweep: summary names the counts" "$out" "sweep: closed=2 refused=0 skipped=2"
+check "sweep: held and live legs stay in the manifest" "$(printf '%s\n%s' "$SW_HELD" "$SW_C")" "$(jq -r '.legs[].doc' "$sweep_manifest")"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$SW_HELD" "$token" >/dev/null 2>&1
 # a sweep without a manifest is a usage error
 rc=0; run --sweep >/dev/null 2>&1 || rc=$?
 check "sweep: no --fleet manifest -> rc 2" "$rc" "2"

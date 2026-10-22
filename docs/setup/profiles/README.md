@@ -1,14 +1,14 @@
 # Install profiles
 
 This directory holds committed **v2 install-profile** files
-(`schemaVersion: 2` — see `scripts/install/capture-operator-profile.mjs`'s
+(`schemaVersion: 2`; see `scripts/install/capture-operator-profile.mjs`'s
 header comment for the exact shape). Filename suffix `.install-profile.json`
 is load-bearing: a CI glob elsewhere (the schema-validation leg)
 matches it across this directory.
 
 ## `operator.install-profile.json`
 
-A live capture of the operator's own reference machine — the most-loaded
+A live capture of the operator's own reference machine: the most-loaded
 himmel install that exists, used as the "does the wizard cover everything a
 real setup needs" reference. Every path in it is a placeholder token
 (`<LUNA_VAULT_PATH>`, `<HANDOVER_DIR>`, ...), never a real personal path.
@@ -19,7 +19,7 @@ Regenerate it with:
 node scripts/install/capture-operator-profile.mjs --profile-out docs/setup/profiles/operator.install-profile.json
 ```
 
-Run the command from the operator's **normal shell** — the capture reads live
+Run the command from the operator's **normal shell**. The capture reads live
 environment variables (`CLAUDE_CONFIG_DIR`, `HIMMEL_OBSERVABILITY_CONFIG`,
 `WHISPER_DIR`/`WHISPER_MODEL`, `HANDOVER_DIR`, `LUNA_VAULT_PATH`). A bare or
 sterile shell captures defaults and will drift against the staleness gate
@@ -27,13 +27,13 @@ sterile shell captures defaults and will drift against the staleness gate
 keys from the primary checkout's `.env` file.
 
 Then commit the result. The capture is read-only (no arm/disarm, no writes
-to `~/.claude`, no scheduled-task mutation) and deterministic — two
+to `~/.claude`, no scheduled-task mutation) and deterministic: two
 consecutive runs on an unchanged machine produce a byte-identical file.
 
 ## `adopter-project.install-profile.json` / `adopter-user.install-profile.json`
 
 Unlike `operator.install-profile.json` above, these carry **no
-placeholders** — every field is a concrete, runnable value (`profile:
+placeholders**: every field is a concrete, runnable value (`profile:
 "starter"`, `pluginSet: "lean"`, no lanes, `vault.mode: "none"`, `handover.mode:
 "inline"`, no `bridge` section) and pass both schema validation and `install
 --dry-run` on a bare checkout, first try. They're what `himmelctl install
@@ -45,11 +45,11 @@ node scripts/himmelctl/bin.js install --from-profile docs/setup/profiles/adopter
 node scripts/himmelctl/bin.js install --from-profile docs/setup/profiles/adopter-user.install-profile.json
 ```
 
-Only `scope` differs between the two. For anything beyond the lean default —
-a real vault, a bridge, extra lanes — copy one of these as a starting point
+Only `scope` differs between the two. For anything beyond the lean default
+(a real vault, a bridge, extra lanes), copy one of these as a starting point
 rather than hand-writing a profile from scratch.
 
-The `profile` field's enum is `starter|luna|operator|custom` — `custom` is the
+The `profile` field's enum is `starter|luna|operator|custom`; `custom` is the
 escape hatch when none of the named presets fit, not a free-form label: it is
 still validated against that fixed 4-value enum, so a fifth, invented value
 (e.g. `"minimal"`) still gets a validation refusal, not silent acceptance.
@@ -63,13 +63,13 @@ Two separate things, previously conflated here.
 that schema on main today: it branches on `obj.schemaVersion === 2` and
 validates the `profile` enum (`starter|luna|operator|custom`) plus a boolean
 `devOverlay`, instead of the v1 `role` field this file does not carry. The
-older note here — that `loadProfile` was still the v1 loader and would reject
-this file for a missing `role` — is no longer true. A profile with no
+older note here, that `loadProfile` was still the v1 loader and would reject
+this file for a missing `role`, is no longer true. A profile with no
 `schemaVersion` is still read as an implicit v1 (legacy) cache and validated
 against the old role-based shape; any other `schemaVersion` value fails loud
 rather than being reinterpreted.
 
-The `tier` field was dropped from what the wizard writes — it was a hardcoded
+The `tier` field was dropped from what the wizard writes; it was a hardcoded
 `'standard'` placeholder no reader ever consumed. `loadProfile` never
 enumerated it (it validates a named allowlist and ignores unknown keys), so a
 profile captured before this change and still carrying `tier` remains valid
@@ -77,7 +77,7 @@ input.
 
 **The committed file is still not runnable input as-is.** Every path in it is
 a placeholder token (`<LUNA_VAULT_PATH>`, `<HANDOVER_DIR>`, `<WHISPER_CLI>`)
-written by the capture's scrub pass, and **nothing expands those tokens** —
+written by the capture's scrub pass, and **nothing expands those tokens**:
 there is no substitution step in `bin.js` between `loadProfile` and the plan.
 They are non-empty strings, so they pass validation and would then be used
 verbatim as filesystem paths. So

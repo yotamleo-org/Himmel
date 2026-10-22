@@ -31,7 +31,7 @@ Refer to CLAUDE.md for full command reference.
 ## "No hook installed" banner
 
 `rtk init --show` reports `Hook: not found` and rewritten commands print
-`[rtk] /!\ No hook installed` to stderr. This is **benign** — himmel uses
+`[rtk] /!\ No hook installed` to stderr. This is **benign**: himmel uses
 `scripts/hooks/rtk-hook-guard.sh` instead of a bare `rtk hook claude` entry,
 so rtk's self-check can't find its own signature even though rewriting works.
 Do NOT re-run `rtk init -g` to resolve it; that re-adds the bare entry himmel

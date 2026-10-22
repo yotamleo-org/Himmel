@@ -34,7 +34,15 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 
 The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
 secret store only and is never shown, logged or returned), and a save is refused while the page runs
-as the always-on service. Session switches and Your install answers are shown, never written:
+as the always-on service. Each secret form shows an example value under it (a shape, never a working value).
+
+The Setup page also has a CodeRabbit step. It says what CodeRabbit is, that it is an optional add-on (himmel
+works without it), and the steps to install the GitHub App on the repo and arm the gates
+(`git config --local himmel.coderabbit true`). The installed check runs `gh pr list` over the last 10 PRs and looks
+for a `CodeRabbit` check: seen is `installed`; not seen is `not detected` (a new install, a repo with no PRs or skipped
+reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both of those show a manual confirm. The check only reads; it never installs or arms anything.
+
+Session switches and Your install answers are shown, never written:
 session switches are set when you start Claude.
 
 ```bash

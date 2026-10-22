@@ -6,9 +6,10 @@ Reads the eval-runs ledger (eval_runs.py) and the rules in scripts/eval/feedback
 eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" row:
   1. MEASURE: every open change of the eval whose baseline row is older and has the same confighash gets
      one "measured" record: before, after, delta and improved | regressed | flat.
-  2. CHANGE: when that row is not yet the baseline of any change, the first rule (file order) with a
-     metric worse than its threshold and no open change of the same confighash raises ONE "open" change
-     record for the worst such metric. A "learning" change also appends one candidate line to the failure-loop memory inbox
+  2. CHANGE: per critic (rules without one share the eval's slot), when that row is not yet the baseline
+     of a change of that critic, the first rule (file order) with a metric worse than its threshold and no
+     open change of the same confighash raises ONE "open" change record for the worst such metric.
+     A "learning" change also appends one candidate line to the failure-loop memory inbox
      (the HIMMEL-4670 loop's own learnings queue) when an inbox is given, once per change: each write leaves an
      "inbox" record, and a run given an inbox first delivers every open, unmeasured learning change whose latest
      inbox record is not inbox_written true (one opened without an inbox, or whose write failed).
@@ -16,10 +17,11 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
   Path: $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/eval-changes.jsonl.
 
 RULE  {eval, metric (fnmatch pattern), threshold, better "lower"|"higher", absent (value of a metric the
-      row lacks, or null), change "learning"|"routing"|"tool-ruling", target (inbox topic, route or tool)}
+      row lacks, or null), change "learning"|"routing"|"tool-ruling"|"prompt"|"cr-config"|"impacted-suites",
+      target (inbox topic, route, tool or the file the change edits), critic (optional: the measured reviewer)}
 CHANGE ROW (v 1): v, ts, host, source, kind "eval-change", id "<baseline run_id>:<metric>", eval, metric,
   status "open" | "measured" | "inbox", then
-  open      value, threshold, better, absent, change, target, baseline_run_id, confighash
+  open      value, threshold, better, absent, change, target, baseline_run_id, confighash, critic (null: none)
   measured  before, after, delta, verdict, after_run_id
   inbox     inbox_written (true: the line is in the inbox; false: the write failed and is due again)
 
@@ -44,7 +46,7 @@ import eval_runs  # noqa: E402
 CHANGES_ENV = "HIMMEL_EVAL_CHANGES_LEDGER"
 RULES = os.path.join(HERE, "..", "feedback-rules.json")
 SOURCE = "scripts/eval/lib/eval_feedback.py"
-KINDS = ("learning", "routing", "tool-ruling")
+KINDS = ("learning", "routing", "tool-ruling", "prompt", "cr-config", "impacted-suites")
 SAFE = re.compile(r"^[A-Za-z0-9._:/+-]{1,200}$")
 
 
@@ -155,28 +157,32 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 append(path, m)
                 measured.add(c["id"])
                 written.append(m)
-            if any(c["baseline_run_id"] == new["run_id"] for c in opened):
-                continue
             still_open = {c["metric"] for c in opened if c["eval"] == ev and c["id"] not in measured
                           and c["confighash"] == new["confighash"]}
-            for rule in [r for r in rules if r["eval"] == ev]:
-                hits = [(m, v) for m, v in new["metrics"].items() if fnmatch.fnmatchcase(m, rule["metric"])
-                        and eval_runs._num(v) and m not in still_open and worse(v, rule["threshold"], rule["better"])]
-                if not hits:
+            ev_rules = [r for r in rules if r["eval"] == ev]
+            for critic in dict.fromkeys(r.get("critic") for r in ev_rules):
+                if any(c["baseline_run_id"] == new["run_id"] and c.get("critic") == critic for c in opened):
                     continue
-                metric, value = sorted(hits, key=lambda h: (h[1] if rule["better"] == "higher" else -h[1], h[0]))[0]
-                c = envelope(id="%s:%s" % (new["run_id"], metric), eval=ev, metric=metric, status="open",
-                             value=value, threshold=rule["threshold"], better=rule["better"],
-                             absent=rule.get("absent"), change=rule["change"], target=rule["target"],
-                             baseline_run_id=new["run_id"], confighash=new["confighash"])
-                append(path, c)
-                opened.append(c)
-                written.append(c)
-                line = inbox_line(c) if inbox and rule["change"] == "learning" else None
-                if line:
-                    append(path, envelope(id=c["id"], eval=ev, metric=metric, status="inbox",
-                                          inbox_written=write_inbox(inbox, line)))
-                break
+                for rule in [r for r in ev_rules if r.get("critic") == critic]:
+                    hits = [(m, v) for m, v in new["metrics"].items() if fnmatch.fnmatchcase(m, rule["metric"])
+                            and eval_runs._num(v) and m not in still_open
+                            and worse(v, rule["threshold"], rule["better"])]
+                    if not hits:
+                        continue
+                    metric, value = sorted(hits, key=lambda h: (h[1] if rule["better"] == "higher" else -h[1],
+                                                                h[0]))[0]
+                    c = envelope(id="%s:%s" % (new["run_id"], metric), eval=ev, metric=metric, status="open",
+                                 value=value, threshold=rule["threshold"], better=rule["better"],
+                                 absent=rule.get("absent"), change=rule["change"], target=rule["target"],
+                                 baseline_run_id=new["run_id"], confighash=new["confighash"], critic=critic)
+                    append(path, c)
+                    opened.append(c)
+                    written.append(c)
+                    line = inbox_line(c) if inbox and rule["change"] == "learning" else None
+                    if line:
+                        append(path, envelope(id=c["id"], eval=ev, metric=metric, status="inbox",
+                                              inbox_written=write_inbox(inbox, line)))
+                    break
     return written
 
 

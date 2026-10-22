@@ -1,8 +1,16 @@
 {
   "v": 1,
-  "doc": "Thresholds for the eval feedback step (scripts/eval/lib/eval_feedback.py), as data. A rule fires when an eval's newest ok run has a metric matching `metric` (fnmatch) worse than `threshold` (`better` says which way is worse); the first firing rule raises one change on the worst such metric. `absent` is the value of a metric the next run lacks (a refusal class that stopped is 0). `change` is learning, routing or tool-ruling; `target` is the memory-inbox topic file, the route or the tool.",
+  "doc": "Thresholds for the eval feedback step (scripts/eval/lib/eval_feedback.py), as data. A rule fires when an eval's newest ok run has a metric matching `metric` (fnmatch) worse than `threshold` (`better` says which way is worse); per `critic` (rules without one share the eval's slot) the first firing rule raises one change on the worst such metric. `absent` is the value of a metric the next run lacks (a refusal class that stopped is 0). `change` is learning, routing, tool-ruling, prompt, cr-config or impacted-suites; `target` is the memory-inbox topic file, the route, the tool or the file the change edits.",
   "rules": [
     {"eval": "friction", "metric": "over_deny:*", "threshold": 100, "better": "lower", "absent": 0,
-     "change": "learning", "target": "shell-and-gate-traps.md"}
+     "change": "learning", "target": "shell-and-gate-traps.md"},
+    {"eval": "review-panel", "metric": "codex.class.*.recall", "threshold": 0.5, "better": "higher", "absent": null,
+     "change": "prompt", "target": "scripts/cr/critic-first-pass.sh", "critic": "codex"},
+    {"eval": "review-panel", "metric": "coderabbit.class.*.recall", "threshold": 0.5, "better": "higher",
+     "absent": null, "change": "cr-config", "target": ".coderabbit.yaml", "critic": "coderabbit"},
+    {"eval": "judge-accuracy", "metric": "cause.ci-selection.escape_rate", "threshold": 0.005, "better": "lower",
+     "absent": null, "change": "impacted-suites", "target": "scripts/cr/impacted-suites.sh", "critic": "judge"},
+    {"eval": "judge-accuracy", "metric": "class.*.escape_excess", "threshold": 0, "better": "lower", "absent": null,
+     "change": "prompt", "target": "docs/handover/judge-brief-template.md", "critic": "judge"}
   ]
 }

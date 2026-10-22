@@ -11,13 +11,13 @@ The proxy is a **HOST** process on `127.0.0.1:8317`. **One instance per host**
 serves *all three* clients on that machine:
 
 - the host bash launcher (`scripts/claude-codex`),
-- that host's **WSL** (`cc-codex`) — which reaches it over `127.0.0.1` via
+- that host's **WSL** (`cc-codex`), which reaches it over `127.0.0.1` via
   mirrored networking.
 
 So: install/run it **on each host, never inside WSL, never per-launcher**. On an
 N-host fleet you run N proxies, not N×(hosts+WSLs).
 
-> `cc-codex` needs the proxy. `cc-glm` does **not** — it goes direct to z.ai and
+> `cc-codex` needs the proxy. `cc-glm` does **not**: it goes direct to z.ai and
 > only needs `ZAI_API_KEY` in `.env`.
 
 ## The script
@@ -39,7 +39,7 @@ bash scripts/setup/cli-proxy-lane.sh
 | `--stop` / `--restart` | bounce-safe: refuses while a client is actively connected on port 8317 (`ss` ESTABLISHED check) unless `--force` |
 | `--verify` / `--status` | one-line / multi-line reachability + readiness report |
 
-**What to run — per host** (assumes `CLIPROXY_API_KEY` is set in `.env`):
+**What to run, per host** (assumes `CLIPROXY_API_KEY` is set in `.env`):
 
 ```shell
 bash scripts/setup/cli-proxy-lane.sh --install
@@ -65,7 +65,7 @@ cc-codex -p "reply OK"
 When the gateway's codex token goes stale, the lane fails with the proxy
 error log showing `authentication_error: Your authentication token has been
 invalidated. Please try signing in again`. This is a self-service re-login,
-not a blocking outage — re-auth with the DEVICE flow (`-codex-login` plain
+not a blocking outage. Re-auth with the DEVICE flow (`-codex-login` plain
 OAuth needs a localhost callback; the device flow does not):
 
 ```shell
@@ -74,19 +74,19 @@ cd ~/.cli-proxy-api && ./cli-proxy-api -config ./config.yaml -codex-device-login
 
 After ~2–4 seconds it prints
 `Codex device URL: https://auth.openai.com/codex/device` plus a 9-character
-device code, then polls until authorized — leave it running in the
+device code, then polls until authorized. Leave it running in the
 FOREGROUND of a dedicated terminal until authorization completes, and do
 NOT kill it early (the URL + code only print after that short delay).
 Authorize from a logged-in browser or a second terminal. Treat the device
 URL + code as sensitive authorization material: surface them to the
-operator directly and nowhere else — never into shared logs, chat
+operator directly and nowhere else, never into shared logs, chat
 channels, screenshots, or CI output (anyone holding the active code can
 authorize the login). On authorize the process writes
 `~/.cli-proxy-api/codex-<email>.json` ("Codex authentication
 successful") and exits 0; re-verify the lane end-to-end (section above).
 
 Detection caveat: the gateway's `/v1/models` endpoint is registry-backed and
-keeps returning 200 during an OAuth gap — probe a real completion
+keeps returning 200 during an OAuth gap. Probe a real completion
 (`/v1/messages`) to detect an auth gap, never `/v1/models`.
 
 ## Transient 5xx: bounded retry and a second credential (HIMMEL-5391)
@@ -114,7 +114,7 @@ does not add one. Two accounts mean two subscriptions' usage on one proxy.
 
 ## Notes
 
-- `config.yaml` pins `host: "127.0.0.1"` on purpose — the CLIProxyAPI default
+- `config.yaml` pins `host: "127.0.0.1"` on purpose: the CLIProxyAPI default
   (empty host) binds **all interfaces**, LAN-exposing the OAuth-wrapped
   subscription endpoint. Always start via the script / `-config`.
 - `CLIPROXY_API_KEY` in `.env` must match the `api-keys` entry

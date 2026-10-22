@@ -47,6 +47,11 @@ has "per-job table lists the shard job" "$OUT" "| shell-unit-shard (ubuntu-lates
 
 has "jobs per push: distinct pull_request pushes" "$OUT" "| pull_request pushes (distinct head sha) | 4 |"
 has "jobs per push: max" "$OUT" "| jobs per push max | 36 |"
+# Jobs that took a runner only: skipped jobs and jobs cancelled while queued hold no slot.
+# Per-push counts [2, 4, 6, 35] were summed from the fixture JSON with a separate jq program.
+has "runner jobs per push: mean" "$OUT" "| runner jobs per push mean | 11.8 |"
+has "runner jobs per push: median" "$OUT" "| runner jobs per push median | 4 |"
+has "runner jobs per push: max" "$OUT" "| runner jobs per push max | 35 |"
 has "peak table: busiest hour" "$OUT" "| 2026-10-13T05:00:00Z | 8 |"
 
 # Cancel cause is inferred from the run set: keep only runs created up to the

@@ -121,6 +121,7 @@ scripts/ci/test-ci-vm-routing.sh	pr	trust-path
 scripts/ci/test-codeowner-review-gate.sh	pr	trust-path
 scripts/ci/test-corpus-sandbox.sh	pr	guard
 scripts/ci/test-cr-first-measure.sh	pr	trust-path
+scripts/ci/test-escape-report.sh	pr	trust-path
 scripts/ci/test-fork-drift-issue.sh	pr	static-gate
 scripts/ci/test-gcp-net.sh	pr	trust-path
 scripts/ci/test-gcp-runner-autoscale.sh	pr	trust-path
@@ -253,6 +254,7 @@ scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
 scripts/eval/guard-corpus/test-guard-corpus.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new HIMMEL-6943
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -659,6 +661,7 @@ scripts/hooks/test-guard-rm-writes.sh	pr	guard
 scripts/hooks/test-guard-subagent-model.sh	pr	guard
 scripts/hooks/test-guard-unwrap-nested-xargs.sh	pr	guard
 scripts/hooks/test-hook-chain-latency.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/hooks/test-hook-construct-scaling.sh	pr	trust-path
 scripts/hooks/test-hook-rewrite-integrity.sh	pr	static-gate
 scripts/hooks/test-inbox-hook.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-inject-doc-freshness.sh	local	behaviour suite, 0 catches in the 400-PR audit window

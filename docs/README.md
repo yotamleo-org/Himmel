@@ -33,10 +33,10 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is removed.
 - [himmel-bus.md](himmel-bus.md) — **early.** The local session-to-session message bus: CLI, MCP tools, identity, delivery guarantees.
 - [jarvis-subsystems.md](jarvis-subsystems.md) — adopter usage map of the optional agentic-OS subsystems (GLM lane, quota-gauge, escalation channel, statusline, clipper pipeline).
-- [voice.md](voice.md) — **BETA.** Local speech I/O: `/speak`, the off-by-default `Stop` hook, the daemon, wake word and push-to-talk. Detached and hand-launched — not a `himmelctl` install item, not in the adopter template, and it needs a local runtime that is not in the repo.
+- [voice.md](voice.md) — **BETA.** Local speech I/O: `/speak`, the off-by-default `Stop` hook, the daemon, wake word and push-to-talk. Detached and hand-launched: not a `himmelctl` install item, not in the adopter template, and it needs a local runtime that is not in the repo.
 - [operator-conventions.md](operator-conventions.md) — durable operator working-habits.
 - [contributing.md](contributing.md) — the contribution workflow.
-- [token-economy.md](token-economy.md) — per-boundary token-optimizer policy — who owns which token cost and where it's paid.
+- [token-economy.md](token-economy.md) — per-boundary token-optimizer policy: who owns which token cost and where it's paid.
 
 ## How enforcement works (internals)
 
@@ -47,7 +47,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [handover/afk-mode.md](handover/afk-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
 - [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a chief with `/console new|next`; the chief + worker-session-brief templates.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
-- [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses — the compatibility matrix + per-feature port/guard/accept decisions.
+- [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses: the compatibility matrix + per-feature port/guard/accept decisions.
 - [internals/environment-gotchas.md](internals/environment-gotchas.md) — Windows / Git-Bash / git-worktree / scheduler / Bash-tool / content-filter environment traps.
 - [internals/egress-matrix.md](internals/egress-matrix.md) — the data-egress policy (owned corpus × provider × purpose) enforced by `scripts/guardrails/egress-matrix.json`.
 - [internals/lesson-audit.md](internals/lesson-audit.md) · [internals/lesson-provenance.md](internals/lesson-provenance.md) — the self-evolving lessons-loop precision gate + provenance schema.
@@ -71,7 +71,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 ## Setup (continued)
 
 - [setup/cli-proxy-lane.md](setup/cli-proxy-lane.md) — the `cc-codex` CLIProxyAPI lane per-host bring-up checksheet.
-- [setup/codex.md](setup/codex.md) — running himmel under OpenAI Codex (`codex-cli`) — step-by-step setup.
+- [setup/codex.md](setup/codex.md) — running himmel under OpenAI Codex (`codex-cli`): step-by-step setup.
 
 ## Process, security & audits
 
@@ -115,7 +115,7 @@ and `/Himmel/adoption-trail.html` is unchanged.
 ## Historical / working records (not a navigation target)
 
 `patches/` (dated point-fix logs) holds dated, single-purpose artifacts kept
-for provenance rather than day-to-day reference — browse the directory rather
+for provenance rather than day-to-day reference. Browse the directory rather
 than looking for an index here.
 
 ---

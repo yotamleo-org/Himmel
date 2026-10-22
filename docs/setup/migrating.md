@@ -1,7 +1,7 @@
 # Migrating an existing himmel install
 
-You already have himmel wired somewhere — by an old `adopt.sh` run, by hand
-from a setup guide, or by a `himmelctl` version older than this one — and you
+You already have himmel wired somewhere (by an old `adopt.sh` run, by hand
+from a setup guide, or by a `himmelctl` version older than this one) and you
 want to land on the current installer without losing the wiring you have.
 
 - Installing for the first time → [install.md](install.md).
@@ -25,7 +25,7 @@ Two outcomes matter:
   run himmelctl install first`. There is no install record on this machine, so
   `himmelctl` has nothing to reconcile *against* yet. You are in state 1 or 2.
 - **A severity-grouped item list** (`red` / `degraded` / `green` / `n/a`). The
-  record exists; the reds are your drift. You are in state 4 — and possibly
+  record exists; the reds are your drift. You are in state 4, and possibly
   state 3 as well, which is about your remote, not your wiring.
 
 The install record is two files in `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/`:
@@ -53,7 +53,7 @@ node scripts/himmelctl/bin.js install --scope project
 node scripts/himmelctl/bin.js ensure
 ```
 
-`install` is not a re-install here — it writes the record and adopts the wiring
+`install` is not a re-install here: it writes the record and adopts the wiring
 that is already present rather than replacing it. `--scope project` takes the
 shipped `adopter-project` preset without asking anything, which is what you
 want when the goal is simply to record a state that already exists; drop the
@@ -90,7 +90,7 @@ at project scope is not fighting this.
 
 ## State 3 — `origin` still points at the pre-cutover remote
 
-**The cutover has landed** — `yotamleo/Himmel` is now the
+**The cutover has landed.** `yotamleo/Himmel` is now the
 source of truth, and a release channel has tags to follow.
 
 Detect this state with `git remote -v`. If `origin` still names the
@@ -120,7 +120,7 @@ If `ensure` cannot converge something on its own it says so, naming the items:
 himmelctl: N item(s) need manual convergence (no automated install path yet): <ids>
 ```
 
-That line — and only that line — is your cue to consider the heavier path.
+That line, and only that line, is your cue to consider the heavier path.
 
 ## Why `ensure`, not `uninstall` → `install`
 
@@ -129,7 +129,7 @@ never off, and it never overwrites an item carrying a deliberate recorded
 choice. That is what makes it safe to run against a machine whose history you
 do not fully know.
 
-`uninstall` is the opposite by design — it offboards plugins, scheduled jobs,
+`uninstall` is the opposite by design: it offboards plugins, scheduled jobs,
 git hooks and settings wiring in one pass. Reaching for it as a migration step
 throws away the very wiring you are trying to preserve, and it takes your
 per-item decisions with it.
@@ -141,7 +141,7 @@ read the plan.
 
 ## Rollback
 
-Back up one file before you start: **`.claude/settings.json`** — the project's,
+Back up one file before you start: **`.claude/settings.json`**: the project's,
 at project scope, or `~/.claude/settings.json` at user scope. It is what the
 tool-call hook wiring lives in, so restoring it undoes that wiring at that
 scope in one step. It is not the whole rollback story, and the paragraph after
@@ -157,7 +157,7 @@ the wiring for the hooks that file declares, so the **tool-call** hooks at that
 scope stop firing, immediately. Everything else survives it. The **git** gates
 do not live in that file: they are `.git/hooks/` scripts, and a commit or a push
 will still be gated after the restore. Neither do the settings at the *other*
-scope — a user-scope install keeps wiring every repo on the machine after you
+scope: a user-scope install keeps wiring every repo on the machine after you
 restore a project's file. Nor does it touch installed marketplace plugins,
 scheduled jobs, or the install record in
 `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/`. All of that is what
@@ -188,13 +188,13 @@ The statusline is a renderer (`claude-hud`) with its own per-user state under
 `${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/claude-hud/`: cached session token
 counts, the prompt-cache anchor, the context-window fallback frame, and the
 cost ledgers. That state describes the install that wrote it, not the one you
-are converging onto — a macOS report of a statusline showing an expired cache
+are converging onto. A macOS report of a statusline showing an expired cache
 clock, the previous install's counts and no cost figure at all was exactly
 this, carried across from an earlier himmel instance.
 
 Nothing to do about it by hand: whichever path re-wires the statusline
 (`install`, `ensure`, or `himmel-update`'s own re-wire) drops that state as
-soon as the wiring it writes differs from what was already there — a different
+soon as the wiring it writes differs from what was already there: a different
 clone path, an older instance's hud config, or a first wire. A re-run that
 changes neither leaves the caches alone, so converging a machine that is
 already on this clone costs a live session nothing. The hud rebuilds whatever
@@ -205,7 +205,7 @@ it dropped on the next render.
 **Windows is EXPERIMENTAL in v1** and migrating is no exception. Run every
 command above under **Git Bash**; the PowerShell twins exist but are not part
 of the v1 support claim. The scheduler-backed items converge through `schtasks`
-and are the least exercised part of any of these paths — if `ensure` leaves one
+and are the least exercised part of any of these paths. If `ensure` leaves one
 red on Windows, that is the expected rough edge, not a signal to reinstall.
 
 ## Where to go next

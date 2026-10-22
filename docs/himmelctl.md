@@ -144,10 +144,10 @@ Read-only. Diffs your saved install profile against a reference profile
 with `--preset <name>`, which resolves to
 `docs/setup/profiles/<name>.install-profile.json`). It prints four groups:
 
-1. **Answered off/none** — your own choice, not a gap.
-2. **Not recorded** — the profile predates the question; not a choice.
-3. **Reference-only** — no wizard question can produce it yet (each carries its ticket).
-4. **Present but unverified** — recorded, but `gaps` is a static diff, not a
+1. **Answered off/none:** your own choice, not a gap.
+2. **Not recorded:** the profile predates the question; not a choice.
+3. **Reference-only:** no wizard question can produce it yet (each carries its ticket).
+4. **Present but unverified:** recorded, but `gaps` is a static diff, not a
    live probe; run `himmelctl status` to confirm it is still wired.
 
 It is a report, not a gate: it exits 0 whenever the report was produced, even
