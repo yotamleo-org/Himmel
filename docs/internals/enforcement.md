@@ -1177,10 +1177,11 @@ previously sailed through as an accepted missed block. That is a correct
 tightening — the marker exists, so the block is true.
 
 If the command carries `--repo <owner>/<name>` naming a different repo than the
-resolved repo's `origin`, the marker for the PR's actual target is not locatable
-from here: the hook emits one stderr advisory naming both nwos and exits 0
-(fail-open). Same path when `origin` is absent or its URL does not parse — an
-un-comparable pair must never block. A marker whose recorded SHA no longer
+resolved repo's `origin`, the hook emits one stderr advisory naming both nwos
+and still checks the resolved repo's marker. The source branch and its review
+evidence live in that local repo even when the PR targets an upstream repo.
+An absent or unparseable `origin` likewise only affects the advisory, never the
+marker decision. A marker whose recorded SHA no longer
 matches HEAD blocks as "stale marker — re-review needed" rather than silently
 passing. Fails OPEN on any parse/lookup failure (missing jq/git, no branch
 resolved, unreadable marker) — a missed block is cheaper than bricking
@@ -1260,6 +1261,9 @@ back would be arbitrary code execution the moment 0b runs a script from the
 resolved root. `pr-check-context.sh` then prints one
 `repo=… branch=… base=… head=…` line so the transcript records which repo the
 review certifies, and resolves the base from `origin/HEAD` in that repo.
+`scripts/cr/test-pr-check-context.sh` T70 exercises a foreign tmp clone whose
+remote default is `trunk`, despite local `main` and `master` decoys, and verifies
+that the base-skew counts also follow `origin/trunk`.
 **CodeRabbit runs only on an armed repo** — the same predicate
 HIMMEL-2034 scoped the trigger hooks with (`cr_trigger_repo_armed`:
 `git config --local himmel.coderabbit true` on a clone whose origin is that nwo,
@@ -1291,10 +1295,13 @@ of two situations it is in, because they differ completely:
   chain stanza to the shared hook. `install-cr-gate.sh` never edits git config
   or a machine-wide hook on anyone's behalf.
 
-Known limitations (accepted, both fail-open by design):
-- **`--repo <nwo>` divergence** — when `gh pr create --repo other/thing` targets
-  a repo other than the resolved repo's origin, the hook advises and exits 0. A
-  false block here is unrecoverable for the operator without a bypass.
+**Fork-to-upstream PRs remain gated.** When `gh pr create --repo other/thing`
+targets a repo other than the resolved repo's origin, the hook advises and
+continues checking the local source branch's marker. A pending marker blocks;
+no marker allows. `scripts/hooks/test-check-cr-marker-on-pr-create.sh` Test 14
+covers matching, divergent and missing origins with and without a marker.
+
+Known limitations:
 - **The compound-`cd` shape** — `cd /foreign && gh pr create` in one Bash call
   may carry the pre-`cd` cwd in the payload, leaving that PR un-gated. The marker
   still exists and `cr-pending-audit.sh` still reports it. Parsing `cd` out of the
