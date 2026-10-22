@@ -141,18 +141,21 @@ STUB
     # gates run. Either way the value is pinned here, never inherited.
     local err rc claudecode_env
     if [ "${CLAUDECODE_SET:-0}" = "1" ]; then claudecode_env="CLAUDECODE=1"; else claudecode_env="CLAUDECODE="; fi
+    # STUB_REPO_UNSET=1 leaves CR_PUBLIC_REPO out of the env so the script's own default applies.
+    local repo_env=("CR_PUBLIC_REPO=$TEST_REPO")
+    [ "${STUB_REPO_UNSET:-0}" = "1" ] && repo_env=("-u" "CR_PUBLIC_REPO")
     if [ "${STUB_AUDIT_NOSINK:-0}" = "1" ]; then
         # No MERGE_PUBLIC_ON_GREEN_LOG override AND run from a NON-repo cwd so
         # _audit_sink's `git rev-parse --git-dir` fallback also fails → empty sink
         # → preflight must refuse (codex CR-3). ($tmp is a mktemp dir under the
         # system temp root, which has no .git ancestor.)
         mkdir -p "$tmp/norepo"
-        ( cd "$tmp/norepo" && env $claudecode_env GH_LOG="$ghlog" CHECKCI_LOG="$ccilog" \
-            CR_PUBLIC_REPO="$TEST_REPO" PATH="$tmp/bin:$PATH" \
+        ( cd "$tmp/norepo" && env "${repo_env[@]}" $claudecode_env GH_LOG="$ghlog" CHECKCI_LOG="$ccilog" \
+            PATH="$tmp/bin:$PATH" \
             bash "$tmp/scripts/merge-public-on-green.sh" "$pr" "${CLI_SHA:-${STUB_SHA-abc123def456}}" "$@" ) >/dev/null 2>"$tmp/err"
     else
-        env $claudecode_env GH_LOG="$ghlog" CHECKCI_LOG="$ccilog" MERGE_PUBLIC_ON_GREEN_LOG="$audit" \
-            CR_PUBLIC_REPO="$TEST_REPO" PATH="$tmp/bin:$PATH" \
+        env "${repo_env[@]}" $claudecode_env GH_LOG="$ghlog" CHECKCI_LOG="$ccilog" MERGE_PUBLIC_ON_GREEN_LOG="$audit" \
+            PATH="$tmp/bin:$PATH" \
             bash "$tmp/scripts/merge-public-on-green.sh" "$pr" "${CLI_SHA:-${STUB_SHA-abc123def456}}" "$@" >/dev/null 2>"$tmp/err"
     fi
     rc=$?
@@ -222,6 +225,11 @@ STUB_STATE_FAIL=1 run_mpog 13 "gh pr view auth/network failure → exit 13"
 # 7. PR resolves to a DIFFERENT repo than the pinned one → refuse (exit 10).
 STUB_NWO="acme/other" run_mpog 10 "PR resolves to a non-pinned repo → exit 10"
 assert_gh_lacks "wrong-repo: no merge attempted" "pr merge"
+
+# 7b. CR_PUBLIC_REPO unset → the script's own default is the canonical slug, so a
+# PR on yotamleo-org/Himmel passes the repo check and reaches the merge.
+STUB_REPO_UNSET=1 STUB_NWO="yotamleo-org/Himmel" STUB_SHA="feedface9999" run_mpog 0 "default repo is yotamleo-org/Himmel → merged"
+assert_merge_has "default-repo merge scoped to yotamleo-org/Himmel" "--repo yotamleo-org/Himmel"
 
 # 8. Empty head SHA in the meta query (API returns "") → refuse (exit 13). The
 # operator's OWN CLI sha stays a valid shape (CLI_SHA) — this isolates "the API

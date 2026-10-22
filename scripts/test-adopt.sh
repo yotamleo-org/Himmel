@@ -1399,6 +1399,50 @@ PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" --profile
   || fail "HIMMEL-3306 skip-hooks: --skip-hooks still ran pre-commit"
 echo "ok: HIMMEL-3306 --skip-hooks still places nothing"
 
+# The native pre-push gate also runs check-no-force-push.sh -- a
+# force push to main is refused with THAT gate's own text (not just
+# check-push-target's), a fast-forward feature push is not, and a re-adopt
+# leaves one force-push invocation in the hook, not two.
+fptarget="$work/gates-6976"; fpremote="$work/gates-6976-remote.git"; fpseed="$work/gates-6976-seed"
+mkdir -p "$fptarget" "$fpseed"
+HOME="$pchome" git init -q -b main "$fptarget"
+HOME="$pchome" git init -q --bare "$fpremote"
+HOME="$pchome" git init -q -b main "$fpseed"
+for fpr in "$fptarget" "$fpseed"; do
+  HOME="$pchome" git -C "$fpr" config user.name 'Gate Test'
+  HOME="$pchome" git -C "$fpr" config user.email 'gate@example.invalid'
+done
+HOME="$pchome" git -C "$fptarget" remote add origin "$fpremote"
+HOME="$pchome" git -C "$fpseed" remote add origin "$fpremote"
+HOME="$pchome" git -C "$fpseed" commit -q --allow-empty -m 'seed remote main'
+HOME="$pchome" git -C "$fpseed" push -q origin main >/dev/null 2>&1 \
+  || fail "HIMMEL-6976: could not seed the remote's main"
+out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
+      --profile core --scope project --target "$fptarget" 2>&1) \
+  || fail "HIMMEL-6976: adopt failed: $out"
+[ -f "$fptarget/scripts/hooks/check-no-force-push.sh" ] \
+  || fail "HIMMEL-6976: check-no-force-push.sh was not copied into the project"
+HOME="$pchome" git -C "$fptarget" checkout -q -b feat/force-6976
+HOME="$pchome" git -C "$fptarget" commit -q --allow-empty --no-verify -m 'unrelated history' >/dev/null 2>&1
+set +e
+out=$(HOME="$pchome" git -C "$fptarget" push --force origin HEAD:refs/heads/main 2>&1); rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "HIMMEL-6976: a force push to main succeeded (rc=$rc): $out"
+grepq "$out" "Force-push to 'main' is not allowed" \
+  || fail "HIMMEL-6976: the force push to main was not refused by the no-force-push gate (rc=$rc): $out"
+[ "$(git -C "$fpremote" rev-parse main)" = "$(git -C "$fpseed" rev-parse main)" ] \
+  || fail "HIMMEL-6976: the remote's main moved despite the refusal"
+HOME="$pchome" git -C "$fptarget" push -q origin HEAD:refs/heads/feat/force-6976 >/dev/null 2>&1 \
+  || fail "HIMMEL-6976: a fast-forward feature push was refused"
+HOME="$pchome" PATH="$pcbin:$work/bin:$native_free_path" bash "$adopt" --profile core --scope project --target "$fptarget" >/dev/null 2>&1 \
+  || fail "HIMMEL-6976: re-adopt failed"
+# shellcheck disable=SC2016
+[ "$(grep -c 'bash "\$fp_gate"' "$fptarget/.git/hooks/pre-push" | tr -d ' ')" = "1" ] \
+  || fail "HIMMEL-6976: re-adopt did not leave exactly one force-push gate invocation in pre-push"
+[ ! -e "$fptarget/.git/hooks/pre-push.himmel-backup" ] || [ "$(grep -c 'check-no-force-push.sh' "$fptarget/.git/hooks/pre-push.himmel-backup")" = "0" ] \
+  || fail "HIMMEL-6976: re-adopt backed up its own pre-push over the adopter's"
+echo "ok: HIMMEL-6976 the native pre-push gate refuses a force push to main with the no-force-push gate; fast-forward lands; re-adopt keeps one invocation"
+
 # exercise the remaining bootstrap exits and Git's configured
 # hooks directory. User scope must also carry its own native gate payloads.
 for fallback_case in uv-fails pipx-fails unresolved user-hooks-path skip; do
@@ -2454,8 +2498,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "30" ] \
-  || fail "HIMMEL-3332 S4: expected 30 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "31" ] \
+  || fail "HIMMEL-3332 S4: expected 31 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

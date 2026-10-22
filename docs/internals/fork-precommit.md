@@ -97,7 +97,7 @@ Archived forks (`claude-statusline`, `claude-squad`) and the de-forked
 5. Check a commit with a fake secret and a commit with no ticket ID are both
    refused (`scripts/hooks/test-fork-precommit-core.sh` does this against a
    scratch repo).
-6. Open the fork PR through the himmel flow (judge, signed GO, console merge).
+6. Open the fork PR through the himmel flow (judge, signed GO, chief merge).
 
 A fork with its own `.pre-commit-config.yaml` (core, graphify) must keep its
 hooks running: append that file's `repos:` entries to `.himmel/pre-commit-config.yaml`

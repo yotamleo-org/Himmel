@@ -82,7 +82,8 @@ himmel ships as two delivery layers, and only one of them is a "plugin":
 | Slash commands (`.claude/commands/*`) | your checkout | **`git pull`** |
 | `settings.json` wiring, `scripts/*`, `CLAUDE.md`, docs | your checkout | **`git pull`** |
 | himmel plugins (`marketplace/plugins/*`) | your checkout, sourced `./plugins/*` | see below |
-| Vendored plugins (`claude-obsidian`, `obsidian`) | GitHub, **SHA-pinned** | only when the pin is bumped (= a `git pull`) |
+| Upstream plugin (`claude-obsidian`) | GitHub `AgriciDaniel/claude-obsidian`, **tag-pinned** | only when the pin is bumped (= a `git pull`) |
+| Vendored plugin (`obsidian`) | GitHub, **SHA-pinned** | only when the pin is bumped (= a `git pull`) |
 
 The hooks and commands are **not plugins** — they execute out of your repo
 checkout, so nothing but a pull changes them.

@@ -200,9 +200,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/AgriciDaniel/claude-obsidian.git",
-        "ref": "v2.2.0"
+        "ref": "v3.0.1"
       },
-      "description": "Claude + Obsidian knowledge companion (upstream AgriciDaniel/claude-obsidian, v2.2.0 — native Windows compatibility: read-only ops with symlink+junction rejection, fail-closed native writes, CRLF binary-mode fixes, CRLF frontmatter parsing). Wiki query, save, ingest, lint, autoresearch. Companion to obsidian-triage — its wiki-query skill optionally powers the Phase 4 Related Notes link-graph traversal. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH and fails host-key verification on a fresh machine with no github.com in ~/.ssh/known_hosts — HIMMEL-549). Pinned to an immutable tag per himmel supply-chain policy (a bare commit SHA is NOT installable — `claude plugin install` clones via `git clone --branch <ref>`, which only resolves branch/tag names; see marketplace/plugins/obsidian-triage/README.md § Pin update workflow). Fork `yotamleo/claude-obsidian` retired at v2.2.0 — its delta (#178 UTF-8 guards, #179 CRLF report) landed upstream (HIMMEL-2925).",
+      "description": "Claude + Obsidian knowledge companion (upstream AgriciDaniel/claude-obsidian, v3.0.1 at 6414e1a2; never v3.0.0). Wiki query, save, ingest, lint, autoresearch. Companion to obsidian-triage — its wiki-query skill optionally powers the Phase 4 Related Notes link-graph traversal. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH and fails host-key verification on a fresh machine with no github.com in ~/.ssh/known_hosts — HIMMEL-549). Pinned to an immutable tag per himmel supply-chain policy (a bare commit SHA is NOT installable — `claude plugin install` clones via `git clone --branch <ref>`, which only resolves branch/tag names; see marketplace/plugins/obsidian-triage/README.md § Pin update workflow). Fork `yotamleo/claude-obsidian` retired at v2.2.0 — its delta (#178 UTF-8 guards, #179 CRLF report) landed upstream (HIMMEL-2925). env-literal-ok: upstream plugin identity",
       "author": {
         "name": "AgriciDaniel",
         "url": "https://github.com/AgriciDaniel"

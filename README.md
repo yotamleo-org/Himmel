@@ -314,8 +314,8 @@ it. None of them is needed by the core harness.
 - **qmd** reaches Claude as an MCP server (`qmd@qmd`). The standalone CLI
   installs from himmel's qmd fork with `bash scripts/lib/qmd-bin.sh install`,
   which setup runs for you.
-- **[claude-obsidian](https://github.com/yotamleo/claude-obsidian)**, a pinned
-  fork of [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian):
+- **[claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian)**, pinned
+  to an upstream release tag:
   skills to ingest, query and save notes, and to lint vault health
   (`wiki-lint`).
 - **[obsidian (kepano)](https://github.com/kepano/obsidian-skills)**, pinned:

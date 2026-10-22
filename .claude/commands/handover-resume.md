@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash, Read, AskUserQuestion
 description: Resume a tracked handover item — cold-start brief, latest session, open bugs, CR findings. No arg picks from active.
-argument-hint: "[#N | HIMMEL-N | <ID>]  (omit → pick from active items; append 'overnight' for overnight mode)"
+argument-hint: "[#N | HIMMEL-N | <ID>]  (omit → pick from active items; append 'overnight' for AFK mode)"
 ---
 
 This is the **chain-resume** path — load a tracked handover item to *continue

@@ -24,9 +24,9 @@
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/console-context.sh
+# shellcheck source=../../lib/chief-context.sh
 # shellcheck disable=SC1091
-. "$HERE/../../lib/console-context.sh"
+. "$HERE/../../lib/chief-context.sh"
 
 if [ "$#" -ne 4 ]; then
     echo "record-launch: usage: record-launch.sh <session> <mode> <source> <autocompact>" >&2

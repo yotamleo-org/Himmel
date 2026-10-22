@@ -13,7 +13,7 @@
 #
 # Source basenames the real graph binds. impacted-suites.sh selects a suite by
 # basename, so each is named here literally (check-dev-graph.sh enforces it):
-#   console.sh console-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
+#   chief.sh console-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
 #   headed-arm-leg.sh running-a-console.md leg-preface.md check-commit-msg.sh
 #   .pre-commit-config.yaml check-cr-before-push.sh pr-check.md
 #   panel-first-pass.sh review-round.sh glossary.md grant-round.sh
@@ -348,7 +348,7 @@ else
 fi
 
 # every basename the header comment promises is really named in this file
-for b in console.sh console-wait.sh tick.sh merge-on-green.sh go.sh check-ci.sh ready-check.sh; do
+for b in chief.sh console-wait.sh tick.sh merge-on-green.sh go.sh check-ci.sh ready-check.sh; do
   if grep -qF "$b" "$SELF"; then :; else bad "suite does not name $b"; fi
 done
 

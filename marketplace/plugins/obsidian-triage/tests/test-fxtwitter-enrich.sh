@@ -376,6 +376,10 @@ else
     t12a_has_flag=no
 fi
 assert "Test12A: thread tweet writes needs_thread: true to frontmatter" "yes" "$t12a_has_flag"
+t12a_partial=no; grep -q "enrichment_status: partial" "$t12a_written" 2>/dev/null && t12a_partial=yes
+assert "Test12A: detected-but-uncaptured thread is enrichment_status partial, not ok" "yes" "$t12a_partial"
+t12a_err=no; grep -q "last_error: thread_not_captured" "$t12a_written" 2>/dev/null && t12a_err=yes
+assert "Test12A: thread partial names last_error thread_not_captured" "yes" "$t12a_err"
 if [ "$t12a_has_flag" != "yes" ]; then
     echo "  (debug rc=$t12a_rc out=$(cat "$tmpdir/t12a.out" 2>/dev/null))"
     echo "  (written file: $(head -20 "$t12a_written" 2>/dev/null))"
@@ -462,6 +466,8 @@ EOF
 FXT_FIXTURE="$tmpdir/fixture-reflag-thread.json" node "$SCRIPT" --vault "$reflag_vault" --reflag --limit 1 >"$tmpdir/t13a.out" 2>&1
 t13a_flag=no; grep -q "needs_thread: true" "$reflag_vault/Clippings/enriched-clip.md" 2>/dev/null && t13a_flag=yes
 assert "Test13A: --reflag adds needs_thread:true to enriched clip with signal" "yes" "$t13a_flag"
+t13a_partial=no; grep -q "enrichment_status: partial" "$reflag_vault/Clippings/enriched-clip.md" 2>/dev/null && t13a_partial=yes
+assert "Test13A: --reflag downgrades enrichment_status ok to partial" "yes" "$t13a_partial"
 t13a_enriched=no; grep -q "enriched_at: 2026-06-01" "$reflag_vault/Clippings/enriched-clip.md" 2>/dev/null && t13a_enriched=yes
 assert "Test13A: --reflag leaves enriched_at untouched" "yes" "$t13a_enriched"
 body_after_a=$(awk 'f{print} /^---$/{c++} c==2{f=1}' "$reflag_vault/Clippings/enriched-clip.md")
