@@ -203,6 +203,42 @@ rc=$?
 QPID=4545 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "the same real argv aimed at another --name is refused, rc=4" || fail "real argv, wrong name: rc=$RUN_RC"
 
+# A claudex leg runs konsole -> script -c leg-claude-launcher.sh -> claude -n <name>:
+# the session's own process is `script`, the named claude is its descendant.
+fakeproc() { # fakeproc <pid> <children or ''> <argv0> [argv...]
+  local p="$1" kids="$2"; shift 2
+  mkdir -p "$tmp/proc/$p/task/$p"
+  printf '%s' "$kids" > "$tmp/proc/$p/task/$p/children"
+  : > "$tmp/proc/$p/cmdline"
+  for a in "$@"; do printf '%s\0' "$a" >> "$tmp/proc/$p/cmdline"; done
+}
+fakeproc 5000 5001 script -q -a -f /x.log -c /x/leg-claude-launcher.sh -n legX
+fakeproc 5001 '' claude --model gpt-6.1-sol -n legX hello
+QPID=5000 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a script wrapper whose child is the named claude is accepted" || fail "claudex wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5010 5011 script -q -c /x/leg-claude-launcher.sh
+fakeproc 5011 '' claude -n other
+QPID=5010 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a descendant claude with a different -n is refused, rc=4" || fail "wrapped foreign claude: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5020 '5021 5022' script -q -c /x/leg-claude-launcher.sh
+fakeproc 5021 '' claude -n legX
+fakeproc 5022 '' claude -n legX
+QPID=5020 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "two descendant claudes named alike are ambiguous, refused rc=4" || fail "ambiguous descendants: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5030 5031 script -q
+fakeproc 5031 5032 sh -c wrap
+fakeproc 5032 5033 env wrap
+fakeproc 5033 5034 env wrap
+fakeproc 5034 '' claude -n legX
+QPID=5030 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a claude 4 levels below the session is out of reach, refused rc=4" || fail "depth bound: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+fakeproc 5040 5041 script -q
+fakeproc 5041 5042 sh -c wrap
+fakeproc 5042 5043 env wrap
+fakeproc 5043 '' claude -n legX
+QPID=5040 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a claude 3 levels below the session is accepted" || fail "depth 3: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+
 echo "== waker state file =="
 # A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the
 # console tick; a healthy start clears a stale one, and a clean end leaves none.
