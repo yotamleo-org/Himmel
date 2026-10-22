@@ -29,6 +29,7 @@ let fleet = { data: null, error: null };
 let health = null; // GET /api/health, null while loading
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
+let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
 let toolHealth = null, toolHealthGen = 0;
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
@@ -204,7 +205,6 @@ async function saveVm() {
 }
 
 // the review gate card. The draft is the per-reviewer choice being edited; a saved or loaded answer resets it.
-let reviewGateLoadGen = 0, reviewGateSaving = false;
 async function loadReviewGate() {
   const gen = ++reviewGateLoadGen;
   state.reviewGate = { data: null, error: null };
