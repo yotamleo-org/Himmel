@@ -66,7 +66,7 @@
       "emilkowalski-skills@himmel": false,
       "pstack@himmel": true,
       "humanizer@himmel": false,
-      "himmel-guard@himmel": false,
+      "himmel-guard@himmel": true,
       "domain-modeling@himmel": false
     }
   },

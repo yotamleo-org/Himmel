@@ -7,7 +7,7 @@ import type { CreateIssueResponse } from '../types.js';
 import { uploadAll } from './attach-helper.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
-import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
+import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
@@ -454,6 +454,8 @@ export function registerCreate(program: Command): void {
         // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
         const sectorId = sectorField();
         const sectors = sectorId ? await sectorOptions() : undefined;
+        const titleCheck = titleVerdict(options.type, resolveTitle(options), sectors);
+        if (titleCheck.action === 'warn') console.error(titleCheck.message);
         if (options.sector !== undefined && !sectors) {
           console.error('jira: warning: --sector ignored, Sector is not configured (run `jira sector setup`)');
         }
