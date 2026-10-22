@@ -1532,10 +1532,14 @@ describe('create — blocker version placement', () => {
     expect(created()?.labels).toContain('backlog');
   });
 
-  it('does not bypass the residual cap through inheritance', async () => {
+  it('RED c: inherited raw placement warns and labels over-cap instead of refusing', async () => {
     full = true;
-    await expect(file('--blocks', 'HIMMEL-1620')).rejects.toThrow(/exit 1/);
-    expect(writes()).toEqual([]);
+    await file('--blocks', 'HIMMEL-1620');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()?.labels).toContain('over-cap');
+    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning:.*15\/15.*over-cap/));
+    const comment = writes().find(([, path]) => path === '/issue/HIMMEL-6559/comment');
+    expect(JSON.stringify(comment?.[2])).toContain('raw create; cap is a warning');
   });
 
   it('does not copy a future version from a non-current target', async () => {
@@ -1568,10 +1572,14 @@ describe('create — blocker version placement', () => {
     expect(writes()).toEqual([]);
   });
 
-  it.each(['--blocks', '--split-from'])('reports the inherited residual destination for %s', async (relation) => {
+  it.each(['--blocks', '--split-from'])('RED b: reports the classified polish backlog instead of inheriting through %s', async (relation) => {
     await file('--residual-of', 'HIMMEL-3', '--fu-class', 'polish', '--class', 'routing', relation, 'HIMMEL-1620');
-    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
-    expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
-    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
+    expect(created()?.fixVersions).toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith('jira: residual routed to the backlog');
+    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to v1.1.3');
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: relation === '--blocks' ? 'Blocks' : 'Relates' },
+      inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: 'HIMMEL-1620' },
+    });
   });
 });
