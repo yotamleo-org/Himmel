@@ -1870,7 +1870,10 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     fu_why_args=()
     if [ "$fu_class" = "hardening" ]; then
         fu_why="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).fu_why||""))')" || fu_why=""
-        [ -n "$fu_why" ] || fu_why="$fu_why_arg"
+        case "$fu_why" in
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) ;;
+            *) fu_why="$fu_why_arg" ;;
+        esac
         case "$fu_why" in
             unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) fu_why_args=(--fu-why "$fu_why") ;;
             *)

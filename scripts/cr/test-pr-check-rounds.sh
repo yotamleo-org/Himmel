@@ -226,6 +226,17 @@ assert_eq "$nowhy_rc" 6 "hardening recovery without fu_why fails closed"
 assert_has "$nowhy_out" "--fu-why <" "hardening recovery without fu_why names the --fu-why recovery"
 assert_eq "$(cat "$recovery_log")" "" "hardening recovery without fu_why files nothing"
 if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "hardening recovery without fu_why leaves the marker pending"; else fail "hardening recovery without fu_why leaves the marker pending"; fi
+# An invalid recorded fu_why yields to a valid supplied --fu-why.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"imp","fu_class":"hardening","fu_why":"bogus","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+: > "$recovery_log"
+badwhy_rc=0
+(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" --fu-why no-check >/dev/null 2>&1) || badwhy_rc=$?
+assert_eq "$badwhy_rc" 0 "hardening recovery with an invalid recorded fu_why takes the supplied --fu-why"
+assert_has "$(cat "$recovery_log")" '"--fu-why","no-check"' "invalid recorded fu_why is replaced by the supplied one"
 for recovery_spec in 'sug polish' 'imp hardening'; do
     recovery_severity="${recovery_spec%% *}"
     recovery_class="${recovery_spec#* }"
