@@ -1,7 +1,7 @@
 # Headless modes: `claude -p` vs `claude --bg` vs headed
 
 Two headless invocation shapes exist in this repo, plus the headed (konsole
-+ TTY) shape worker sessions still default to. They are not interchangeable — each
++ TTY) shape workers still default to. They are not interchangeable — each
 suits a different failure mode, and collapsing everything onto one of them
 either burns subscription usage budget on a session nobody watches or blocks a script waiting on
 a TTY that never attaches. This doc picks the mode per job; the billing
@@ -14,8 +14,8 @@ and are not restated here.
 | Job shape | Mode | Why |
 |---|---|---|
 | One-shot scripted call, output parsed as JSON, a cron/pipeline step, a CI-adjacent check | `claude -p` | Exits when the turn budget or the prompt is exhausted; nothing is left running to confirm, track or clean up later. |
-| A long-lived worker session that needs cross-session `SendMessage`, survives operator idle time, or must show up in `claude agents --json` / the fleet UI | `claude --bg` | `-p` has no inbox and no idle-survival story — it is a single invocation, not a session. |
-| Anything that genuinely needs a live TTY (an interactive prompt, a supervisor session an operator is watching) | headed (konsole) | A session launched without a TTY exits at the first idle cross-session message ([`headed-arm-leg.sh` docstring](../../scripts/handover/console-kit/headed-arm-leg.sh) — see the `--headless` comment block); headed is the only shape where that isn't a problem because a human is attached. |
+| A long-lived worker that needs cross-session `SendMessage`, survives operator idle time, or must show up in `claude agents --json` / the fleet UI | `claude --bg` | `-p` has no inbox and no idle-survival story — it is a single invocation, not a session. |
+| Anything that genuinely needs a live TTY (an interactive prompt, a chief an operator is watching) | headed (konsole) | A session launched without a TTY exits at the first idle cross-session message ([`headed-arm-leg.sh` docstring](../../scripts/handover/console-kit/headed-arm-leg.sh) — see the `--headless` comment block); headed is the only shape where that isn't a problem because a human is attached. |
 
 ## `claude -p`
 
@@ -46,7 +46,7 @@ directly — one invocation site to audit instead of many
   every dispatch is recorded as a row in a file-per-session registry at
   `$HOME/.himmel/registry/live/<id>.json` (`claude-headless.sh:346-364`,
   header comment "Registry:" at line ~19).
-- **Fleet UI:** `fleet.mjs` models one row per *worker session* — a handover doc, a
+- **Fleet UI:** `fleet.mjs` models one row per *worker* — a handover doc, a
   queue lock, a session name (`console-kit/fleet.mjs:1-5, 427-444`). A `-p`
   dispatch has none of those; it is a short-lived subprocess the wrapper
   itself tracks via the registry above, not a fleet row. **Unverified**:
@@ -57,13 +57,13 @@ directly — one invocation site to audit instead of many
 
 Added as `headed-arm-leg.sh --headless` (or `LEG_HEADLESS=1`
 in the launching shell; the flag wins) — same profile injection, model and
-`--autocompact 200000` pin as a headed worker session, but no konsole
+`--autocompact 200000` pin as a headed worker, but no konsole
 (`headed-arm-leg.sh:40-45` docstring).
 
 - **Env inheritance:** the background session runs under the `claude`
   daemon and inherits *the daemon's* environment, not the launching shell's
   (`headed-arm-leg.sh:388-390`). `headed-arm.sh`'s `headless_launch` compensates
-  by writing every worker session env var into the per-worker-session `settings.json`
+  by writing every worker env var into the per-worker-session `settings.json`
   `.env` block before launch (`headed-arm.sh:1008-1062`), forcing
   `CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1` (`headed-arm.sh:1017`), and
   refusing to launch blind if it can't read the daemon's own `/proc/<pid>/environ`
@@ -75,12 +75,12 @@ in the launching shell; the flag wins) — same profile injection, model and
   outermost claude ancestor, which for a `--bg` session is the
   `claude daemon run` service. It deliberately ignores the per-leg settings
   file, because a session can write to that file. Any registered seam that
-  differs from the daemon's env therefore exits 96 with "headless (--bg) legs
+  differs from the daemon's env therefore exits 96 with "headless (--bg) legs <!-- old-term-ok: quotes the guard message text until V5 -->
   cannot pass seams to chokepoints". This includes `ARMAUTOMERGE` for
-  `merge-on-green.sh`. Ship from a headed worker session. The design for a headless
+  `merge-on-green.sh`. Ship from a headed worker. The design for a headless
   equivalent is a planned follow-up.
 - **Permission mode:** declared explicitly as `--permission-mode auto`
-  (`headed-arm.sh:574`), matching what a headed worker session runs under by default
+  (`headed-arm.sh:574`), matching what a headed worker runs under by default
   (comment at `headed-arm.sh:570-573`), never `bypassPermissions`.
 - **Billing:** same subscription usage budget as `-p` and headed —
   [enforcement.md](enforcement.md#claude-invocation-billing)
@@ -92,7 +92,7 @@ in the launching shell; the flag wins) — same profile injection, model and
   never does (`headed-arm.sh:1071-1079`) — exit 0 from the launch call alone
   is not treated as proof the session exists. On success it writes a launch
   log line `headless=1 pid=... session-id=... short-id=... settings=... argv=...`
-  (`headed-arm.sh:1084-1091`) that both the supervisor session and the fleet UI read.
+  (`headed-arm.sh:1084-1091`) that both the chief and the fleet UI read.
   Ending one: `kill <pid>` (the `pid=` in that log line, or from
   `claude agents --json`), then `claude rm <short-id>`
   (`headed-arm-leg.sh:44-45`).
@@ -100,12 +100,12 @@ in the launching shell; the flag wins) — same profile injection, model and
   agents census showing the session running, the launch log's `headless=1`,
   or the process argv containing `--bg`/`--background`
   (`console-kit/fleet.mjs:437-444`), and renders it in the per-worker-session row
-  (`console-kit/fleet.mjs:605`). Built specifically because headless worker sessions have no konsole window for an operator
+  (`console-kit/fleet.mjs:605`). Built specifically because headless workers have no konsole window for an operator
   to see (`fleet.mjs:3-5`).
 
 ## Headed (konsole)
 
-The default worker session shape today: `headed-arm-leg.sh` (no `--headless`) opens a
+The default worker shape today: `headed-arm-leg.sh` (no `--headless`) opens a
 konsole and runs `claude` interactively inside it, same profile/model/
 autocompact pin, same subscription usage budget/fleet preflight. It is the only mode where a
 missing TTY is not a failure mode, because a human (or an attached terminal)
@@ -162,9 +162,9 @@ misfits are flagged only.
 | `scripts/probes/claude-p/*.sh` (~20 sites) | `-p` | Probes exercising specific `-p` behaviors, named for the mode they test | Fits (probes for `-p` are `-p` calls by construction) |
 | `docs/internals/token-economy-bench.md:94` | `-p` (bench recipe) | Operator-run bench recipe in a quiet window | Fits |
 | `scripts/graphify/refresh-graph-map.sh:63,393,2106` | Not controlled by these scripts — they configure graphify's `claude-cli` backend, which is graphify's own upstream dispatch code, not a `claude -p`/`--bg` flag visible in this repo | Graphify's intentional CLI dispatch (documented, not this repo's call site) | Out of scope — external tool |
-| `scripts/handover/headed-arm.sh:573` | `--bg --permission-mode auto` | Supervisor-session-armed worker session | Fits |
+| `scripts/handover/headed-arm.sh:573` | `--bg --permission-mode auto` | Chief-armed worker | Fits |
 
 No misfits found: every direct `-p` site in this repo is a one-shot,
 preflighted against the subscription usage budget, artifact-checked scripted/CI-shaped call, and the one
-`--bg` site is the long-lived, fleet-visible worker session launcher — exactly the
+`--bg` site is the long-lived, fleet-visible worker launcher — exactly the
 split this doc's decision table describes.

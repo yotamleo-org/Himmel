@@ -9,7 +9,7 @@ the weekly cadence is `bash scripts/cr/standards-cadence.sh --since 7d` (see
 `/cr-tune` step 5), whose proposals file you read BEFORE this refresh so a lesson
 already learned is not paid for again. Approval split: `.coderabbit.yaml` and
 `critics.json` changes are operator-approved; catalog, lint and standard-line
-changes go through a console GO with an opus judge.
+changes go through a chief GO with an opus judge.
 
 1. Refresh evidence (ledger always; the export when you have one):
    ```bash
@@ -36,7 +36,7 @@ changes go through a console GO with an opus judge.
    learning that merely restates a rule a shell-lint check or `.coderabbit.yaml`
    instruction already enforces is NOT a new class — note the coverage instead.
 4. Do not finish while any `STALE` row is undeleted. Record each row's decision
-   (deleted / kept with reason / new class id) in the leg doc, not in the CSV or
+   (deleted / kept with reason / new class id) in the worker doc, not in the CSV or
    the JSON. Deleting in the CodeRabbit UI does not change the CSV you already
    have: download a fresh export, re-run step 1 with it, and check that
    `stale_rows` has dropped to what you kept.

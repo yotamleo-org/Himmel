@@ -43,7 +43,7 @@ Refs: HIMMEL-N
 
 ## Example PR-body attestation
 
-If the commit messages don't carry the line, the hook falls back to `gh pr view --json body` and matches there. That satisfies the pre-push gate only: a supervisor session's `ready-check.sh` check 5 reads the PR's **first commit** alone, so for a PR merged by the supervisor session the trailer belongs there (recovery: [stuck-playbook](internals/stuck-playbook.md)). Add a section to the PR description:
+If the commit messages don't carry the line, the hook falls back to `gh pr view --json body` and matches there. That satisfies the pre-push gate only: a chief's `ready-check.sh` check 5 reads the PR's **first commit** alone, so for a PR merged by the chief the trailer belongs there (recovery: [stuck-playbook](internals/stuck-playbook.md)). Add a section to the PR description:
 
 ```
 ## Security review

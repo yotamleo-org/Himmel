@@ -142,7 +142,10 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
 
 - **No replies/comments** — fxtwitter doesn't expose them (it returns a reply
   *count* only). When you need the self-thread or the first reply, fxtwitter
-  sets `needs_thread: true`; nothing escalates those since HIMMEL-4709.
+  sets `needs_thread: true`; nothing escalates those since HIMMEL-4709. A clip
+  with `needs_thread: true` is a detected-but-uncaptured thread, so it is
+  stamped `enrichment_status: partial` with `last_error: thread_not_captured`,
+  never `ok` (HIMMEL-6933).
 - **No video/STT/keyframes** — same as playwright path.
 - **Rate-limit is 1s per call** — fxtwitter is forgiving but be polite.
   145 clips ≈ 2-3 minutes wall-clock.
@@ -160,9 +163,28 @@ node fxtwitter-enrich.mjs --vault ~/Documents/luna --reflag             # backfi
 
 It selects already-enriched X clips lacking `needs_thread`, re-fetches the
 tweet, runs the pure `detectThreadSignal`, and writes **only** `needs_thread:
-true` when it fires — no body change, no other markers touched (body stays
+true` (plus `enrichment_status: partial` and, when `last_error` is empty,
+`last_error: thread_not_captured`) when it fires — no body change (body stays
 byte-identical under the no-section G-3 guard). Idempotent: a clip already
 flagged is skipped.
+
+### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)
+
+Clippings stamped ok over a partial capture before HIMMEL-6933 stay ok until
+marked. `python3 harvest-clip-body-batch.py <vault> --reflag-silent-partials
+[--dry-run]` scans every note under `Clippings/` (including `_done/` and
+`_evidence/`, excluding `_synthesis/` and `_deferred.md`) and writes
+frontmatter-only marks, never the body:
+
+- `harvest_skill: clip-body` + `harvest_status: ok` + a placeholder/template
+  body → `harvest_status: partial` + `harvest_flag: thin-body`.
+- `harvest_status: ok` + a `_Transcript unavailable` section → `harvest_status:
+  partial` + `harvest_flag: transcript-unavailable`.
+- `enrichment_status: ok` + `needs_thread: true` → `enrichment_status: partial`
+  + `last_error: thread_not_captured`.
+
+Idempotent; the summary line counts notes once and breaks the count down by
+reason. Run `--dry-run` first, and on a copy of the vault when unsure.
 
 ### Backfilling quote-tweet own-text (`--reenrich-quote-only`)
 

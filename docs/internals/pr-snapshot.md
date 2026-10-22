@@ -1,6 +1,6 @@
 # Shared PR snapshots
 
-`scripts/lib/gh-pr-snapshot.sh` is the read-only, cache-backed PR-facts entry point for supervisor session gates. It does not grant GO or replace the fresh merge-time checks.
+`scripts/lib/gh-pr-snapshot.sh` is the read-only, cache-backed PR-facts entry point for chief gates. It does not grant GO or replace the fresh merge-time checks.
 
 ```bash
 bash scripts/lib/gh-pr-snapshot.sh owner/repo 60 77 88
@@ -24,7 +24,7 @@ A settled, one-page ready-check uses **2 GraphQL calls instead of 7**: repositor
 
 `ready-check.sh --only 7` retains its body-only lint path, without requiring unrelated CI/commit/thread data. The full ready-check consumes the shared snapshot for checks 1, 2, 3, 5, 6 and 7. An unreadable snapshot fails all those checks. CR-ledger check 4 remains local.
 
-Tick and board migration is a separate follow-up slice: their open/recent-merged/epic discovery queries and historical worker session PR-state lookups need a shared or REST-backed discovery strategy. `merge-on-green.sh`, `go.sh`, `console-wait.sh`, `gh-ci-cache.sh`, and `check-ci-watch.sh` are unchanged.
+Tick and board migration is a separate follow-up slice: their open/recent-merged/epic discovery queries and historical worker PR-state lookups need a shared or REST-backed discovery strategy. `merge-on-green.sh`, `go.sh`, `console-wait.sh`, `gh-ci-cache.sh`, and `check-ci-watch.sh` are unchanged.
 
 ## Offline verification
 
