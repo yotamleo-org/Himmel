@@ -94,7 +94,7 @@ else
   fail "L5: a fixture-marked run wrote $FAKEHOME/.himmel/state/suite-runs.jsonl"
 fi
 # the default path is HOME-relative and created on demand
-(cd "$SRC_ROOT" && env -u HIMMEL_SUITE_LEDGER -u HIMMEL_TEST_FIXTURE HOME="$FAKEHOME" bash "$QUIET_RUN" suite -- bash "$REL/test-green.sh" >/dev/null 2>&1)
+(cd "$SRC_ROOT" && env -u HIMMEL_SUITE_LEDGER -u HIMMEL_TEST_FIXTURE -u GITHUB_ACTIONS HOME="$FAKEHOME" bash "$QUIET_RUN" suite -- bash "$REL/test-green.sh" >/dev/null 2>&1)
 if [ -s "$FAKEHOME/.himmel/state/suite-runs.jsonl" ]; then
   pass "L5: default path \$HOME/.himmel/state/suite-runs.jsonl created on demand"
 else
