@@ -931,10 +931,11 @@ describe('HIMMEL-6924 residual rank slots', () => {
     });
   });
 
-  it.each(['started', 'gated', 'legacy-gated'])('RED b: a resident %s after creation is protected and the newcomer steps down', async (change) => {
+  it.each(['started', 'gated', 'legacy-gated', 'already-displaced'])('RED b: a resident %s after creation is unavailable and the newcomer steps down', async (change) => {
     afterCreate = () => {
       if (change === 'started') residents[0].fields.status.name = 'In Progress';
       else if (change === 'gated') residents[0].fields.labels.push('gate-receipt');
+      else if (change === 'already-displaced') residents[0].fields.fixVersions = [{ name: 'v1.1.4' }];
       else writeFileSync(join(dir, 'admissions-ledger.jsonl'),
         JSON.stringify({ key: residents[0].key, version: 'v1.1.3', gate: 'receipt' }) + '\n');
     };

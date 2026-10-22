@@ -470,13 +470,13 @@ async function displaceResidual(residual: ResidualPlan | undefined, newcomer: st
   const displaced = residual.displaced;
   const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
   const source = residual.fixVersion!;
-  if (!resident.fields.fixVersions?.some((v) => v.name === source)) return;
-  if (resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
+  if (!resident.fields.fixVersions?.some((v) => v.name === source) ||
+      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
     await request('PUT', `/issue/${newcomer}`, {
       fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
       update: { labels: [{ add: 'residual-displaced' }] },
     });
-    console.error(`jira: ${displaced.key} is now protected; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
+    console.error(`jira: ${displaced.key} is no longer displaceable; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
     return;
   }
   const fixVersions = resident.fields.fixVersions.filter((v) => v.name !== source);
