@@ -96,6 +96,11 @@ written tracks the tip.
 > particular (`cadence-armed`, the arming legs) use `schtasks` there and are the
 > least exercised.
 
+A project-scope install also copies and wires the unresolved-review merge gate
+and its libraries. It seeds `scripts/ci/ci-trust-paths.txt` only when absent;
+your existing trust list is never overwritten. Commit the seeded list with the
+installation so the merge gate can read it from your default branch.
+
 ## Minimal config
 
 - **`USER_SLUG`:** your kebab-case handle. Skip it and himmel derives one from

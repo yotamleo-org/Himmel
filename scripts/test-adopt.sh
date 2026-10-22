@@ -8,7 +8,7 @@
 # NOT covered here; keep both in lockstep when changing either.
 #
 # Covers:
-#   1. core/project — copies the portable files, wires 3 PreToolUse hooks
+#   1. core/project — copies the portable files, wires 4 PreToolUse hooks
 #      ($CLAUDE_PROJECT_DIR prefix), idempotent on re-run.
 #   2. merge — pre-existing settings.json keys + hooks are preserved.
 #   3. core/user — wires ~/.claude/settings.json to the himmel abs path,
@@ -266,6 +266,109 @@ esac
   || fail "self-test: sed did not resolve via the hermetic stub dir after scrub"
 echo "ok: self-test reproduces HIMMEL-874 (co-located npm+sed dir scrubbed, sed still resolves via stub dir)"
 
+# A missing portable gate or helper must not silently drop the merge refusal.
+# --merge-gate-only runs this adoption row without the unrelated install cases.
+test_adopt_merge_gate() (
+  local target="$work/merge-gate-project" home="$work/merge-gate-home" settings hook_cmd f rc out trust
+  trust="$target/scripts/ci/ci-trust-paths.txt"
+  mkdir -p "$target/.claude" "$home" "$work/merge-gate-bin"
+  printf '{"permissions":{"allow":["Read"]},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo adopter-hook","timeout":17}]}]}}\n' \
+    > "$target/.claude/settings.json"
+  HOME="$home" bash "$adopt" --profile core --scope project --target "$target" >/dev/null
+  for f in scripts/hooks/block-unresolved-cr-merge.sh \
+      scripts/lib/review-merge-gate.sh scripts/lib/ci-green-gate.sh scripts/lib/go-gate.sh \
+      scripts/lib/coderabbit-signal.sh scripts/lib/coderabbit-body-findings.sh \
+      scripts/lib/coderabbit-available.sh scripts/lib/review-ledger-evidence.sh \
+      scripts/lib/nwo.sh scripts/lib/critics-config.sh scripts/lib/resolve-node.sh \
+      scripts/lib/timeout-bin.sh scripts/lib/handover-path.sh scripts/lib/load-dotenv.sh \
+      scripts/lib/user-slug.sh scripts/lib/forge.sh scripts/lib/forge-github.sh \
+      scripts/lib/forge-bitbucket.sh scripts/lib/forge-localgit.sh scripts/lib/forge-none.sh \
+      scripts/lib/coderabbit-trigger-ledger.sh scripts/lib/project-mode.sh scripts/cr/critics.json; do
+    [ -f "$target/$f" ] || fail "HIMMEL-7000: core/project did not copy $f"
+    cmp -s "$repo_root/$f" "$target/$f" || fail "HIMMEL-7000: adopted trust dependency differs: $f"
+  done
+  [ -s "$trust" ] || fail "HIMMEL-7000: a fresh adopter has no trust list"
+  settings="$target/.claude/settings.json"
+  hook_cmd=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("block-unresolved-cr-merge.sh")) | .command] | if length == 1 then .[0] else empty end' "$settings")
+  [ -n "$hook_cmd" ] || fail "HIMMEL-7000: core/project must wire exactly one Bash merge gate"
+  jq -e '.permissions.allow == ["Read"] and any(.hooks.PreToolUse[].hooks[]; .command == "echo adopter-hook" and .timeout == 17)' "$settings" >/dev/null \
+    || fail "HIMMEL-7000: merge gate wiring changed adopter settings"
+  cp "$settings" "$work/merge-gate-before.json"
+  HOME="$home" bash "$adopt" --profile core --scope project --target "$target" >/dev/null
+  cmp -s "$settings" "$work/merge-gate-before.json" || fail "HIMMEL-7000: merge gate wiring not idempotent"
+  [ -s "$trust" ] || fail "HIMMEL-7000: a fresh adopter has no trust list"
+  for f in scripts/hooks/block-unresolved-cr-merge.sh scripts/lib/review-merge-gate.sh \
+      scripts/lib/go-gate.sh scripts/lib/ci-green-gate.sh scripts/lib/critics-config.sh \
+      scripts/lib/user-slug.sh scripts/lib/resolve-node.sh .claude/settings.json; do
+    grep -Eq -f "$trust" <<< "$f" || fail "HIMMEL-7000: seeded trust list does not cover $f"
+  done
+  if [ "${1:-}" != --merge-gate-only ]; then
+    git -C "$target" init -q -b main
+    git -C "$target" config user.name fixture
+    git -C "$target" config user.email fixture@example.invalid
+    git -C "$target" config --local himmel.coderabbit true
+    git -C "$target" remote add origin https://github.com/adopter/project.git
+    git -C "$target" add scripts/ci/ci-trust-paths.txt
+    git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: install merge trust policy'
+    printf '%s\n' \
+      '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"codex","status":"ok"}' \
+      '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"claude","status":"ok"}' \
+      > "$target/.git/cr-critic-scores.jsonl"
+    cat > "$work/merge-gate-bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'pr view') printf '%s\n' '{"number":42,"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","url":"https://github.com/adopter/project/pull/42"}' ;;
+  'repo view')
+    case "$*" in
+      *defaultBranchRef*) echo main ;;
+      *'json url'*) echo https://github.com/adopter/project ;;
+      *) echo adopter/project ;;
+    esac ;;
+  'api graphql')
+    case "$*" in
+      *reviewThreads*)
+        jq -n --argjson resolved "$(cat .git/fixture-resolved)" '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:[{isResolved:$resolved,path:"README.md",line:1,comments:{nodes:[{author:{login:"coderabbitai"}}]}}]}}}}}' ;;
+      *reviews*) echo '{"data":{"repository":{"pullRequest":{"reviews":{"totalCount":0,"nodes":[]}}}}}' ;;
+      *) exit 1 ;;
+    esac ;;
+  'api repos/adopter/project/contents/scripts/ci/ci-trust-paths.txt?ref=main')
+    git show refs/heads/main:scripts/ci/ci-trust-paths.txt 2>/dev/null || { echo 'HTTP 404' >&2; exit 1; } ;;
+  'api repos/adopter/project/pulls/42') echo 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|1' ;;
+  'api repos/adopter/project/pulls/42/files'*) printf 'README.md\t\n' ;;
+  'api repos/adopter/project/commits/'*'/check-runs'*) echo '{"total_count":1,"check_runs":[{"name":"tests","status":"completed","conclusion":"success"}]}' ;;
+  'api repos/adopter/project/commits/'*'/statuses'*) echo '[{"context":"ci","state":"success","creator":{"id":1}}]' ;;
+  *) printf 'unexpected gh fixture request: %s\n' "$*" >&2; exit 1 ;;
+esac
+STUB
+    chmod +x "$work/merge-gate-bin/gh"
+    jq -n --arg cwd "$target" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:"gh pr merge 42 --squash --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}' > "$work/merge-gate-payload.json"
+    merge_gate_run() (
+      cd "$target"
+      unset GH GH_CMD CR_PROFILE CRITICS_JSON CRITICS_BASE_JSON CRITICS_LOCAL_JSON
+      unset CR_MERGE_GATE_OK CI_MERGE_GATE_OK HIMMEL_CONSOLE_LEG HIMMELCTL_CACHE_DIR
+      PATH="$work/merge-gate-bin:$saved_path" HOME="$home" CLAUDE_PROJECT_DIR="$target" \
+        bash -c "$hook_cmd" < "$work/merge-gate-payload.json"
+    )
+    printf 'false\n' > "$target/.git/fixture-resolved"
+    rc=0; out=$(merge_gate_run 2>&1) || rc=$?
+    [ "$rc" -eq 2 ] || fail "HIMMEL-7000: unresolved finding must refuse (rc=$rc): $out"
+    grepq "$out" 'unresolved CodeRabbit review thread' \
+      || fail "HIMMEL-7000: merge refused for something other than the finding: $out"
+    printf 'true\n' > "$target/.git/fixture-resolved"
+    rc=0; out=$(merge_gate_run 2>&1) || rc=$?
+    [ "$rc" -eq 0 ] || fail "HIMMEL-7000: resolved finding must allow a clean adopted merge (rc=$rc): $out"
+    echo "ok: HIMMEL-7000 adopted hook refuses unresolved finding and allows resolved finding with green CI"
+  fi
+  printf '# adopter-owned list\n^private-policy/\n' > "$trust"
+  HOME="$home" bash "$adopt" --profile core --scope project --target "$target" >/dev/null
+  [ "$(cat "$trust")" = $'# adopter-owned list\n^private-policy/' ] \
+    || fail "HIMMEL-7000: re-adopt overwrote the adopter trust list"
+  echo "ok: HIMMEL-7000 adopted merge gate and transitive helpers are byte-identical; wiring preserves settings and is idempotent; trust list is seeded but never overwritten"
+)
+
+test_adopt_merge_gate "${1:-}"
+case "${1:-}" in --merge-gate-only|--merge-gate-behavior) exit 0 ;; esac
+
 # ── 5. invalid args (run first — validated before any tool preflight) ────────
 set +e
 out=$(bash "$adopt" --profile bogus --scope project 2>&1); rc=$?
@@ -291,10 +394,10 @@ done
 [ -f "$proj/scripts/lib/project-mode.sh" ] || fail "core/project did not copy scripts/lib/project-mode.sh"
 s="$proj/.claude/settings.json"
 [ -f "$s" ] || fail "core/project did not write $s"
-[ "$(jq '.hooks.PreToolUse | length' "$s")" = "3" ] || fail "expected 3 PreToolUse hooks"
+[ "$(jq '.hooks.PreToolUse | length' "$s")" = "4" ] || fail "expected 4 PreToolUse hooks"
 jq -e '.hooks.PreToolUse[].hooks[].command | select(contains("$CLAUDE_PROJECT_DIR"))' "$s" >/dev/null \
   || fail "project-scope hooks must use \$CLAUDE_PROJECT_DIR"
-echo "ok: core/project copies portable files + wires 3 \$CLAUDE_PROJECT_DIR hooks"
+echo "ok: core/project copies portable files + wires 4 \$CLAUDE_PROJECT_DIR hooks"
 
 # idempotency
 cp "$s" "$work/before.json"
@@ -634,7 +737,7 @@ proj2="$work/proj2"; mkdir -p "$proj2/.claude"
 printf '%s' '{"permissions":{"allow":["Bash(ls)"]},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash /pre/existing.sh"}]}]}}' > "$proj2/.claude/settings.json"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$proj2" >/dev/null
 [ "$(jq -r '.permissions.allow[0]' "$proj2/.claude/settings.json")" = "Bash(ls)" ] || fail "merge dropped existing permissions"
-[ "$(jq '.hooks.PreToolUse | length' "$proj2/.claude/settings.json")" = "4" ] || fail "merge expected 4 PreToolUse hooks (1 existing + 3)"
+[ "$(jq '.hooks.PreToolUse | length' "$proj2/.claude/settings.json")" = "5" ] || fail "merge expected 5 PreToolUse hooks (1 existing + 4)"
 echo "ok: merge preserves existing keys + hooks"
 
 # ── 3. core/user (fake HOME) ─────────────────────────────────────────────────
@@ -2644,11 +2747,11 @@ esac
 
 # (d) exactly ONE block-edit-on-main entry (merged in place, not appended
 #     alongside the existing one), and the two hooks that were genuinely ABSENT
-#     are appended as fresh stanzas -> 2 seeded + 2 appended = 4.
+#     and the merge gate are appended as fresh stanzas -> 2 seeded + 3 appended = 5.
 [ "$(jq -r '[.hooks.PreToolUse[].hooks[].command | select(test("block-edit-on-main"))] | length' "$s2892")" = "1" ] \
   || fail "HIMMEL-2892 (d): expected exactly one block-edit-on-main entry after the merge"
-[ "$(jq '.hooks.PreToolUse | length' "$s2892")" = "4" ] \
-  || fail "HIMMEL-2892 (d): expected 4 PreToolUse stanzas (2 seeded + the 2 genuinely-absent himmel hooks appended), got $(jq '.hooks.PreToolUse | length' "$s2892")"
+[ "$(jq '.hooks.PreToolUse | length' "$s2892")" = "5" ] \
+  || fail "HIMMEL-2892 (d): expected 5 PreToolUse stanzas (2 seeded + the 3 genuinely-absent himmel hooks appended), got $(jq '.hooks.PreToolUse | length' "$s2892")"
 echo "ok: HIMMEL-2892 the hook block merges into an existing settings.json (foreign matcher + co-located entry + adopter matcher/timeout preserved; himmel command repointed in place)"
 
 # ── 19x. copy_portable + the user-scope gate copies record what

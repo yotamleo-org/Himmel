@@ -199,6 +199,17 @@ PORTABLE_FILES=(
   scripts/lib/merge-block-alert.sh
   scripts/lib/required-checks.sh
   scripts/lib/review-ledger-evidence.sh
+  scripts/hooks/block-unresolved-cr-merge.sh
+  scripts/lib/review-merge-gate.sh
+  scripts/lib/ci-green-gate.sh
+  scripts/lib/go-gate.sh
+  scripts/lib/nwo.sh
+  scripts/lib/critics-config.sh
+  scripts/lib/resolve-node.sh
+  scripts/lib/user-slug.sh
+  scripts/lib/forge-localgit.sh
+  scripts/lib/forge-none.sh
+  scripts/cr/critics.json
   scripts/lib/ticket-status.sh
   scripts/lib/timeout-bin.sh
   scripts/lib/prim.sh
@@ -225,6 +236,52 @@ PORTABLE_FILES=(
   scripts/clean.sh
   scripts/_new-worktree.sh
 )
+
+seed_merge_trust_paths() {
+  local dest="$TARGET/scripts/ci/ci-trust-paths.txt"
+  # An adopter owns their policy; never replace it, including a symlink.
+  [[ -e "$dest" || -L "$dest" ]] && return 0
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: seed merge-gate trust paths in $dest (only if absent)"
+    return 0
+  fi
+  mkdir -p "$(dirname "$dest")"
+  (set -C; printf '%s\n' \
+    '^scripts/hooks/block-unresolved-cr-merge[.]sh$' \
+    '^scripts/lib/(review-merge-gate|ci-green-gate|go-gate|coderabbit-signal|coderabbit-body-findings|coderabbit-available|review-ledger-evidence|nwo|critics-config|resolve-node|timeout-bin|handover-path|load-dotenv|user-slug|forge|forge-github|forge-bitbucket|forge-localgit|forge-none|coderabbit-trigger-ledger|project-mode)[.]sh$' \
+    '^scripts/cr/critics[.]json$' \
+    '^scripts/ci/ci-trust-paths[.]txt$' \
+    '^[.]claude/settings[.]json$' > "$dest")
+  prov_record create file "$dest" --scope project --class code --row adopter-scripts \
+    --writer adopt.sh --pre-absent --post-file "$dest" \
+    || echo "  warning: provenance record failed for $dest (uninstall will keep it)" >&2
+}
+
+wire_merge_gate() {
+  local settings="$TARGET/.claude/settings.json" base specs rows
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: merge unresolved-review PreToolUse hook into $settings"
+    return 0
+  fi
+  base="$(cat "$settings")"
+  # Project-scope only: keep the prefix literal for hook-fire-time expansion.
+  # shellcheck disable=SC2016
+  specs=$(jq -n '{cmd: "if [ -r \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-unresolved-cr-merge.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-unresolved-cr-merge.sh\"; else echo \"himmel: merge gate missing -- re-run adopt.sh\" >&2; exit 2; fi"} |
+    [{pat: "scripts/hooks/block-unresolved-cr-merge[.]sh", cmd: .cmd,
+      stanza: {matcher: "Bash", hooks: [{type: "command", command: .cmd, timeout: 120}]}}]')
+  printf '%s' "$base" | jq --argjson specs "$specs" "$WIRE_PRETOOLUSE_MERGE_JQ" \
+    > "$settings.mergegate.tmp"
+  mv "$settings.mergegate.tmp" "$settings"
+  # Record the affected stanza using the same provenance contract as the trio.
+  # shellcheck disable=SC2016
+  rows=$(jq -c --argjson pre "$base" '
+    .hooks.PreToolUse[] | select(any(.hooks[]; .command | contains("scripts/hooks/block-unresolved-cr-merge.sh"))) as $post
+    | ($pre.hooks.PreToolUse | map(select(.matcher == $post.matcher and any(.hooks[]; .command | contains("scripts/hooks/block-unresolved-cr-merge.sh")))) | .[0]) as $old
+    | {pre:$old, post:$post, cc:false, op:(if $old == null then "insert" elif $old == $post then "noop" else "replace" end)}
+  ' "$settings")
+  _wire_hooks_record "$settings" /hooks/PreToolUse "$rows" \
+    || echo "  warning: merge-gate provenance record failed (the hook is wired; uninstall will keep it)" >&2
+}
 
 require_tools() {
   local missing=() t
@@ -448,7 +505,7 @@ PRE_EDITED=0
 # from an edit the user made since.
 shared_file_hashes() {
   local f
-  for f in .gitignore .claude/settings.json; do
+  for f in .gitignore .claude/settings.json scripts/ci/ci-trust-paths.txt; do
     [[ -f "$TARGET/$f" ]] && git -C "$TARGET" hash-object -- "$f"
   done
   return 0
@@ -458,10 +515,10 @@ install_marker() {
 }
 snapshot_user_edits() {
   [[ -e "$TARGET/.git" ]] || return 0
-  [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json | wc -l)" -gt 0 ]] || return 0
+  [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json scripts/ci/ci-trust-paths.txt | wc -l)" -gt 0 ]] || return 0
   local marker; marker="$(install_marker)"
   if [[ -f "$marker" && "$(shared_file_hashes)" == "$(cat "$marker")" ]] \
-     && git -C "$TARGET" diff --cached --quiet -- .gitignore .claude/settings.json; then
+     && git -C "$TARGET" diff --cached --quiet -- .gitignore .claude/settings.json scripts/ci/ci-trust-paths.txt; then
     return 0
   fi
   PRE_EDITED=1
@@ -479,7 +536,7 @@ commit_install() {
     return 0
   fi
   local -a paths=()
-  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore; do
+  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore scripts/ci/ci-trust-paths.txt; do
     [[ -e "$TARGET/$f" ]] && paths+=("$f")
   done
   if [[ -z "$(git -C "$TARGET" status --porcelain -- "${paths[@]}")" ]]; then
@@ -1418,9 +1475,11 @@ do_core() {
   if [[ "$SCOPE" == "project" ]]; then
     snapshot_user_edits
     copy_portable
+    seed_merge_trust_paths
     # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
     # shellcheck disable=SC2016
     wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
+    wire_merge_gate
     # The initiative SessionStart hook is not a portable file: it reads THIS
     # clone's .env, which is where `himmelctl config set initiative.*` writes, so
     # it is referenced by the clone's path (like the statusline), not copied.
