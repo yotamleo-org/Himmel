@@ -2956,7 +2956,7 @@ KONSOLE_EOF
   echo claude > "$dir/proc/7777/comm"
   printf 'claude\0daemon\0run\0--origin\0transient\0' > "$dir/proc/7777/cmdline"
   printf '%s\0' HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HIMMEL_CONSOLE_DOC=/stale/console.md \
-    LEG_STALE_MARK=stale HIMMEL_STALE_TOKEN=s3cret PATH=/usr/bin > "$dir/proc/7777/environ"
+    LEG_STALE_MARK=stale HIMMEL_STALE_TOKEN=s3cret CHIEF_CONTEXT=1m CONSOLE_CONTEXT=1m PATH=/usr/bin > "$dir/proc/7777/environ"
 }
 run_headless() {
   local stubdir="$1" repo="$2" name="$3"; shift 3
@@ -2999,6 +2999,8 @@ check "29q settings env: HIMMEL_INITIATIVE set" "$(env29 HIMMEL_INITIATIVE)" "ex
 check "29r settings env: daemon-injected hook-integrity bypass blanked" "$(env29 HIMMEL_HOOK_INTEGRITY_BYPASS_OK)" ""
 check "29s settings env: stale console doc from the daemon blanked" "$(env29 HIMMEL_CONSOLE_DOC)" ""
 check "29t settings env: stale LEG_* from the daemon blanked" "$(env29 LEG_STALE_MARK)" ""
+check "29t2 settings env: daemon CHIEF_CONTEXT=1m blanked" "$(env29 CHIEF_CONTEXT)" ""
+check "29t3 settings env: daemon CONSOLE_CONTEXT=1m blanked (old name)" "$(env29 CONSOLE_CONTEXT)" ""
 check "29u settings env: secret-named daemon var blanked, never copied" "$(env29 HIMMEL_STALE_TOKEN)" ""
 check "29v settings env: secret-named launcher var never copied" "$(env29 HIMMEL_API_TOKEN)" "<absent>"
 check "29w settings env: non-pattern daemon var untouched" "$(env29 PATH)" "<absent>"

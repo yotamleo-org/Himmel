@@ -960,7 +960,7 @@ fi
 # secret-named vars are never copied into the file.
 _hl_leg_var() {
     case "$1" in
-        HIMMEL_*|LEG_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
+        HIMMEL_*|LEG_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
     return 1
 }
