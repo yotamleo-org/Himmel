@@ -13,9 +13,13 @@
 #   4. a rerun appends no second row; a PR closed inside the age, a failing PR
 #      lookup and a dir holding a non-verdict entry all keep the dir
 #   5. inside a git bucket the move is a git rename
-#   6. prune removes only judge-scratch dirs older than the age from the cache,
-#      dry-run by default, never a file, a symlink or a young dir, and refuses
-#      a cache inside the handover root
+#      a verdict head that is not a commit of the target repo keeps the dir
+#      (the pr: line names no repo, so a fork's PR number is not proven)
+#   6. prune removes only judge-scratch dirs older than the age whose PR is
+#      provably closed (live verdict dir or ledger row, head in the repo);
+#      an open, unresolvable or unproven one is kept; dry-run by default,
+#      never a file, a symlink or a young dir, and refuses a cache inside the
+#      handover root
 #
 # Hermetic: temp dir and a scratch HOME only; the real vault and cache are
 # never read. Platform guard: POSIX bash 3.2+ with GNU or BSD date.
@@ -27,6 +31,7 @@ WRITER="$HERE/write-verdict.sh"
 REPO="$(cd "$HERE/../../.." && pwd)"
 SHA_A=0123456789abcdef0123456789abcdef01234567
 SHA_B=89abcdef0123456789abcdef0123456789abcdef
+SHA_F=fedcba9876543210fedcba9876543210fedcba98   # a head that is not a commit of the target repo
 NOW=1792540800   # 2026-10-21T00:00:00Z
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/verdict-retention-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -78,6 +83,7 @@ wv qclosed GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo 
 wv qrecent GO "$SHA_B" --pr 503 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qrecent"; exit 1; }
 wv qlookup GO "$SHA_B" --pr 504 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qlookup"; exit 1; }
 wv qscratch GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qscratch"; exit 1; }
+wv qforeign GO "$SHA_F" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qforeign"; exit 1; }
 mkdir -p "$vdir/qscratch/scratch"
 mkdir -p "$vdir/qnopr"
 printf '# VERDICT qnopr - judge\n\nwritten-at: 2026-09-01T00:00:00Z\n\n## Verdict\n\n**GO** for head `%s`.\n\nmodel: old\n' "$SHA_A" > "$vdir/qnopr/judge.md"
@@ -94,8 +100,15 @@ case "$1" in
 esac
 EOF
 chmod +x "$stub"
+# The repo-proof stand-in: `<repo> <sha>`, rc 0 when the commit is in the repo.
+hstub="$tmp/head-check.sh"
+cat > "$hstub" <<EOF
+#!/usr/bin/env bash
+[ "\$2" != "$SHA_F" ]
+EOF
+chmod +x "$hstub"
 ret() {
-    env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" "$@"
+    env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" "$@"
 }
 
 # --- 1. dry run by default -------------------------------------------------
@@ -104,6 +117,8 @@ check "1: dry run rc 0" "$rc" 0
 contains "1: lists the closed dir" "$out" "MOVE qclosed"
 lacks "1: does not list the open-PR dir" "$out" "MOVE qopen"
 contains "1: lists the no-pr dir as kept" "$out" "KEEP qnopr"
+contains "1: a head outside the target repo is kept, repo not proven" "$out" "KEEP qforeign head fedcba987654 not found"
+lacks "1: the foreign-head dir is not listed for a move" "$out" "MOVE qforeign"
 check "1: nothing moved" "$([ -d "$vdir/qclosed" ] && echo yes)" yes
 check "1: no ledger written" "$([ -e "$vdir/_ledger.jsonl" ] && echo yes || echo no)" no
 
@@ -115,6 +130,8 @@ check "2: closed dir moved" "$([ -f "$bucket/archive/2026-10/verdicts/qclosed/ju
 check "2: closed dir gone from verdicts" "$([ -e "$vdir/qclosed" ] && echo yes || echo no)" no
 check "2: open-PR dir stays" "$([ -f "$vdir/qopen/judge.md" ] && echo yes)" yes
 check "2: no-pr dir stays" "$([ -f "$vdir/qnopr/judge.md" ] && echo yes)" yes
+check "2: foreign-head dir stays" "$([ -f "$vdir/qforeign/judge.md" ] && echo yes)" yes
+check "2: foreign-head dir has no ledger row" "$(grep -c qforeign "$vdir/_ledger.jsonl")" 0
 check "2: one ledger row for the one file" "$(grep -c . "$vdir/_ledger.jsonl")" 1
 row=$(grep qclosed "$vdir/_ledger.jsonl")
 check "2: row pr" "$(printf '%s' "$row" | jq -r .pr)" 502
@@ -149,20 +166,35 @@ check "5: staged as a rename" "$(git -C "$bucket" status --porcelain -- verdicts
 
 # --- 6. scratch pruner ---------------------------------------------------------
 cache="$HOME/.cache/himmel/verdicts"
-mkdir -p "$cache/old1/scratch" "$cache/young1" "$tmp/outside"
-echo big > "$cache/old1/scratch/f"
+mkdir -p "$tmp/outside" "$cache/young1"
+for q in old1 qopen qscratch qlookup qforeign qclosed; do
+    mkdir -p "$cache/$q/scratch"
+    echo big > "$cache/$q/scratch/f"
+    touch -d '30 days ago' "$cache/$q/scratch/f" "$cache/$q/scratch" "$cache/$q"
+done
 echo keep > "$tmp/outside/keepme"
 ln -s "$tmp/outside" "$cache/oldlink"
 echo '{}' > "$cache/admissions-ledger.jsonl"
-touch -d '30 days ago' "$cache/old1/scratch/f" "$cache/old1/scratch" "$cache/old1" "$cache/admissions-ledger.jsonl"
+touch -d '30 days ago' "$cache/admissions-ledger.jsonl"
 touch -h -d '30 days ago' "$cache/oldlink"
-rc=0; out=$(env HANDOVER_DIR="$root" bash "$SCRIPT" prune 2>&1) || rc=$?
+rc=0; out=$(ret prune 2>&1) || rc=$?
 check "6: prune dry run rc 0" "$rc" 0
-contains "6: dry run lists the old dir" "$out" "PRUNE old1"
-check "6: dry run removes nothing" "$([ -d "$cache/old1" ] && echo yes)" yes
-rc=0; out=$(env HANDOVER_DIR="$root" bash "$SCRIPT" prune --apply 2>&1) || rc=$?
+contains "6: dry run lists the closed-PR dir" "$out" "PRUNE qscratch"
+contains "6: dry run lists the archived dir" "$out" "PRUNE qclosed"
+contains "6: an open-PR dir is kept" "$out" "KEEP qopen PR 501 is open"
+contains "6: an unresolvable PR is kept" "$out" "KEEP qlookup PR 504 lookup failed"
+contains "6: a head outside the target repo is kept" "$out" "KEEP qforeign head fedcba987654 not found"
+contains "6: a dir no verdict names is kept" "$out" "KEEP old1 no verdict dir or ledger row names its PR"
+lacks "6: the young dir is not even a candidate" "$out" "young1"
+check "6: dry run removes nothing" "$([ -d "$cache/qscratch" ] && [ -d "$cache/qclosed" ] && echo yes)" yes
+rc=0; out=$(ret prune --apply 2>&1) || rc=$?
 check "6: prune apply rc 0" "$rc" 0
-check "6: old dir removed" "$([ -e "$cache/old1" ] && echo yes || echo no)" no
+check "6: closed-PR dir removed" "$([ -e "$cache/qscratch" ] && echo yes || echo no)" no
+check "6: archived dir removed" "$([ -e "$cache/qclosed" ] && echo yes || echo no)" no
+check "6: open-PR dir kept" "$([ -d "$cache/qopen" ] && echo yes)" yes
+check "6: unresolvable-PR dir kept" "$([ -d "$cache/qlookup" ] && echo yes)" yes
+check "6: foreign-head dir kept" "$([ -d "$cache/qforeign" ] && echo yes)" yes
+check "6: unnamed dir kept" "$([ -d "$cache/old1" ] && echo yes)" yes
 check "6: young dir kept" "$([ -d "$cache/young1" ] && echo yes)" yes
 check "6: file in the cache kept" "$([ -f "$cache/admissions-ledger.jsonl" ] && echo yes)" yes
 check "6: symlink kept" "$([ -L "$cache/oldlink" ] && echo yes)" yes
@@ -170,7 +202,7 @@ check "6: symlink target untouched" "$([ -f "$tmp/outside/keepme" ] && echo yes)
 check "6: vault verdicts untouched" "$([ -f "$vdir/qopen/judge.md" ] && echo yes)" yes
 mkdir -p "$root/$scope/verdicts/inroot"
 touch -d '30 days ago' "$root/$scope/verdicts/inroot"
-rc=0; out=$(env HANDOVER_DIR="$root" bash "$SCRIPT" prune --apply --cache "$root/$scope/verdicts" 2>&1) || rc=$?
+rc=0; out=$(ret prune --apply --cache "$root/$scope/verdicts" 2>&1) || rc=$?
 check "6: a cache inside the handover root is refused" "$rc" 2
 check "6: the in-root dir survives" "$([ -d "$root/$scope/verdicts/inroot" ] && echo yes)" yes
 
