@@ -48,7 +48,10 @@
 # owned by this user, is group/other-writable, or could not be created; 4 `wrap` refused: this session has a live in-process
 # subagent, or live-subagents.sh could not prove it has none; 5 `wrap` refused:
 # this session has a live non-harness process (wrap-subtree-check.sh WITHHELD),
-# other than its own console-wait.sh waiter, or that check could not run.
+# other than its own console-wait.sh waiter, or that check could not run;
+# 6 `next` refused: a Results bullet quotes an operator ruling (verbatim) that
+# the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
+# real `## Current direction` block.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+; --arm launches through
 # konsole (Linux/KDE, via headed-arm.sh), so no .ps1 twin — the Windows
@@ -1390,6 +1393,7 @@ cmd_new() {
         TRACKER_URL "none" \
         CARRIED_LIVE_STATE "epics: none
 decisions: none" \
+        CARRIED_DIRECTION "Chain order: none yet (first console of the chain). In work: nothing. Waits on the operator: nothing." \
         MODEL "$model" \
         PROJECT "$project_doc_value"
 
@@ -1568,6 +1572,88 @@ check_live_line_kept() {
     return 1
 }
 
+# The body of a doc's `## Current direction` block, without its `>` guidance lines.
+# Args: doc.
+direction_block() {
+    awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && !/^>/' "$1"
+}
+
+# Refuse a handover whose outgoing doc has no real `## Current direction` block:
+# absent, empty, `none`, or only a `<...>` placeholder.
+# Args: outgoing doc.
+check_direction_real() {
+    local body first
+    body="$(direction_block "$1")"
+    first="$(printf '%s\n' "$body" | sed -n '/[^[:space:]]/{p;q;}' | sed 's/^[[:space:]]*//')"
+    case "$first" in
+        ""|none|"none "*|"<"*) ;;
+        *) return 0 ;;
+    esac
+    err "refusing to hand over: $1 has no real '## Current direction' block (absent, empty or a placeholder)."
+    err "  write the chain order, what is in work and what waits on the operator, then retry"
+    return 1
+}
+
+# The verbatim quote of every `OPERATOR ... (verbatim): "<quote>"` (or '<quote>')
+# Results bullet of a doc, one per line. A quote ends at the first matching
+# quote mark not followed by a letter or digit, so an apostrophe inside is kept.
+# ponytail: a quote that spans bullets or holds a quote mark before a space is cut short, a structured ruling record would not.
+# Args: doc.
+verbatim_rulings() {
+    awk '
+        $0 == "## Results" { f = 1; next }
+        f && /^## / { f = 0 }
+        f && /^- / {
+            i = index($0, "(verbatim):"); if (!i || substr($0, 1, i - 1) !~ /OPERATOR/) next
+            rest = substr($0, i + 11); sub(/^[ \t]+/, "", rest); q = substr(rest, 1, 1)
+            if (q != "\"" && q != "\047") next
+            rest = substr(rest, 2); n = length(rest)
+            for (k = 1; k <= n; k++)
+                if (substr(rest, k, 1) == q && substr(rest, k + 1, 1) !~ /[A-Za-z0-9]/) { print substr(rest, 1, k - 1); break }
+        }' "$1"
+}
+
+# Refuse a handover when an operator ruling quoted verbatim in the outgoing
+# Results is on neither the outgoing `decisions:` line nor a decisions file
+# that line names; every missing ruling is named.
+# Args: outgoing doc, outgoing Live state.
+check_rulings_recorded() {
+    local outgoing="$1" live="$2" line hay q absent=""
+    line="$(printf '%s\n' "$live" | sed -n 's/^decisions:[[:space:]]*//p' | head -n 1)"
+    hay="$line"$'\n'"$(decisions_files_text "$line" "$(dirname "$outgoing")" 2>/dev/null)" || true  # swallow-ok: no readable decisions file leaves the line itself as the only record
+    while IFS= read -r q; do
+        [ -n "$q" ] || continue
+        case "$hay" in *"$q"*) ;; *) absent="$absent  $q"$'\n' ;; esac
+    done < <(verbatim_rulings "$outgoing")
+    [ -n "$absent" ] || return 0
+    err "refusing to hand over: $outgoing carries operator rulings (verbatim) that the decisions: line does not hold:"
+    printf '%s' "$absent" >&2
+    err "  add each to the decisions: line, or to the decisions file it names, then retry"
+    return 1
+}
+
+# The chain order of <doc dir>/focus-chains.json as one line; nothing when the
+# file is absent or unreadable.
+# Args: dir.
+chain_order_line() {
+    [ -f "$1/focus-chains.json" ] || return 0
+    python3 -c '
+import json, sys
+names = [c.get("name", "") for c in json.load(open(sys.argv[1], encoding="utf-8"))]
+print("Chain order (focus-chains.json): " + "; ".join(n for n in names if n))' "$1/focus-chains.json" 2>/dev/null || true  # swallow-ok: an unreadable chains file leaves the block as the console wrote it
+}
+
+# Report the whole-span `<...>` placeholders still in a HANDOFF's facts header
+# and start section (the Operator line, the root-sweep locks).
+# Args: handoff file.
+report_handoff_placeholders() {
+    local left
+    # shellcheck disable=SC2016  # the backticks are literal markdown code spans
+    left="$(grep -n '`<[^`]*>`' "$1" 2>/dev/null)" || return 0  # swallow-ok: no match (or no file) means no placeholder to report
+    err "warning: HANDOFF still has template placeholders ($1):"
+    printf '%s\n' "$left" | sed 's/^/  /' >&2
+}
+
 # The shift-spanning Live-state lines `next` copies verbatim into the
 # successor doc; `epics:` and `decisions:` fall back to `none`.
 carried_live_state() {
@@ -1665,6 +1751,12 @@ cmd_next() {
     ' "$predecessor_doc")"
     check_live_line_kept decisions DECISIONS-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_live_line_kept priority PRIORITY-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
+    check_rulings_recorded "$predecessor_doc" "$predecessor_live_state" || exit 6
+    check_direction_real "$predecessor_doc" || exit 7
+    # The outgoing direction rides into the successor doc and the HANDOFF; the
+    # successor's block starts as the predecessor's (a stale one is not detected).
+    local predecessor_direction
+    predecessor_direction="$(direction_block "$predecessor_doc" | sed '/./,$!d')"
     # The console board's artifact URL rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
     # updates the same artifact instead of minting a new one.
@@ -1816,6 +1908,7 @@ cmd_next() {
         BOARD_URL "$predecessor_board" \
         TRACKER_URL "$predecessor_tracker" \
         CARRIED_LIVE_STATE "$(carried_live_state "$predecessor_live_state")" \
+        CARRIED_DIRECTION "$predecessor_direction" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
     seed_live_fields "$doc" "$predecessor_live_state"
@@ -1844,11 +1937,15 @@ cmd_next() {
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
-        local hf_pass=1 hf_wrapped hf_wrapped_bytes
+        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_chain hf_direction
+        hf_chain="$(chain_order_line "$predecessor_dir")"
+        hf_direction="${hf_chain:+$hf_chain
+}$predecessor_direction"
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c)"
         while :; do
             render_template "$handoff_template" "$predecessor_handoff" \
+                CURRENT_DIRECTION "$hf_direction" \
                 HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
                 BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
                 LEG_LIST "$hf_legs" \
@@ -1883,6 +1980,7 @@ cmd_next() {
             printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
             err "warning: $hf_note"
         fi
+        report_handoff_placeholders "$predecessor_handoff"
         echo "handoff: $predecessor_handoff"
     else
         set +C
@@ -1895,6 +1993,7 @@ cmd_next() {
         # the successor would otherwise launch without its only required
         # read.
         if [ -f "$predecessor_handoff" ]; then
+            report_handoff_placeholders "$predecessor_handoff"
             echo "handoff: $predecessor_handoff (exists — left unchanged)"
         else
             err "could not create HANDOFF at $predecessor_handoff — this is not a collision (the file does not exist); check permissions on $(dirname "$predecessor_handoff")"

@@ -22,6 +22,10 @@ ZERO step 9); a quote-back is the worker's `SUCCESSION accepted` bullet. On
 why (`LIVE` first strands every worker not yet re-briefed). Then re-arm without
 `--succession`.
 
+## Current direction
+
+{{CURRENT_DIRECTION}}
+
 ## In flight
 
 > Facts cap at ~1.5k tokens (`over the HANDOFF size budget — run: …` is a
