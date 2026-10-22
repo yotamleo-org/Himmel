@@ -95,6 +95,17 @@ test("a dropped reviewer keeps its shared settings, so turning it back on restor
   expect(reviewGateDraft(j)).toContainEqual({ slug: "claude", mode: "hard", required: false, enabled: false });
 });
 
+test("a reviewer left as the base has it is not copied into the overlay, so base changes still reach it", async () => {
+  const port = boot();
+  const sent = [
+    { slug: "codex", mode: "hard", required: true, enabled: true },
+    { slug: "claude", mode: "hard", required: false, enabled: true },
+    { slug: "coderabbit", mode: "hard", required: false, enabled: true },
+  ];
+  expect((await post(port, { reviewers: sent })).status).toBe(200);
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([{ slug: "coderabbit", mode: "hard", required: false }]);
+});
+
 test("POST refuses to write when the overlay path is the base critics.json", async () => {
   const before = sha(base);
   const port = boot({ CRITICS_LOCAL_JSON: base });

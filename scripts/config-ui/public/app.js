@@ -100,6 +100,7 @@ function paint() {
   const keep = document.activeElement && document.activeElement.id === "q" ? document.activeElement.selectionStart : null;
   const focusK = document.activeElement && document.activeElement.matches && document.activeElement.matches(".row-head") ? document.activeElement.dataset.k : null;
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
+  const focusRg = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-rg]") ? { rg: document.activeElement.dataset.rg, slug: document.activeElement.dataset.slug } : null;
   if (unmountPage) { unmountPage(); unmountPage = null; }
   $("#main").innerHTML = currentPage.render(feed);
   if (currentPage.afterPaint) unmountPage = currentPage.afterPaint();
@@ -109,6 +110,7 @@ function paint() {
   $("#where").textContent = `${location.host} · ${feed && feed.target ? feed.target.scope : "?"} scope`;
   if (focusK !== null) { for (const h of document.querySelectorAll(".row-head")) if (h.dataset.k === focusK) { h.focus(); break; } }
   if (focusB !== null) { for (const h of document.querySelectorAll(".bhead")) if (h.dataset.b === focusB) { h.focus(); break; } }
+  if (focusRg !== null) { for (const c of document.querySelectorAll("[data-rg]")) if (c.dataset.rg === focusRg.rg && c.dataset.slug === focusRg.slug) { c.focus(); break; } }
   if (keep !== null) { const q = $("#q"); q.focus(); q.setSelectionRange(keep, keep); }
 }
 

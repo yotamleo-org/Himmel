@@ -110,6 +110,8 @@ export function writeGate(env: Env, b: Record<string, unknown>): GateResult {
     if (typeof x.required !== "boolean" || typeof x.enabled !== "boolean") return fail("required and enabled must be true or false");
     const row: Record<string, unknown> = x.enabled ? { slug: x.slug, mode: x.mode, required: x.required } : { slug: x.slug, drop: true };
     const at = panel.findIndex((p) => p.slug === x.slug);
+    const eff = g.r.panel.find((p) => p.slug === x.slug);
+    if (at < 0 && x.enabled && eff && eff.mode === x.mode && eff.required === x.required) continue; // as the base has it: keep inheriting
     if (at < 0) panel.push(row);
     else {
       const merged = { ...panel[at], ...row };
