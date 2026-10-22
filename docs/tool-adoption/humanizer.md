@@ -72,6 +72,16 @@ The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR
 | B2 | `himmel-bus.md` | 4 | 0 | 4 → 0 | 0 → 0 | 0 → 0 |
 | B2 | `jarvis-subsystems.md` | 7 | 1 | 17 → 5 | 1 → 1 | 1 → 1 |
 | B2 | `operator-conventions.md` | 50 | 0 | 126 → 5 | 11 → 11 | 6 → 6 |
+| B3 integrations | `hermes-runbook.md` | 61 | 0 | 79 → 8 | 1 → 0 | 17 → 17 |
+| B3 | `telegram-bridge.md` | 9 | 0 | 18 → 4 | 1 → 1 | 2 → 2 |
+| B3 | `luna/README.md` | 3 | 0 | 4 → 0 | 0 → 0 | 0 → 0 |
+| B3 | `luna/compounding.md` | 23 | 0 | 33 → 8 | 2 → 2 | 2 → 2 |
+| B3 | `luna/end-session-wiki.md` | 34 | 0 | 65 → 7 | 9 → 8 | 7 → 7 |
+| B3 | `luna/end-session-wiki-schema.md` | 26 | 0 | 34 → 1 | 2 → 2 | 1 → 1 |
+| B3 | `luna/google-health-connector-setup.md` | 13 | 0 | 15 → 1 | 0 → 0 | 0 → 0 |
+| B3 | `luna/pr-lane-guard.md` | 4 | 0 | 6 → 1 | 0 → 0 | 0 → 0 |
+| B3 | `handover/afk-mode.md` | 72 | 2 | 134 → 31 | 3 → 3 | 5 → 5 |
+| B3 | `handover/running-a-console.md` | 38 | 0 | 52 → 1 | 4 → 4 | 6 → 6 |
 
 The dash rule worked against the voice sample. Each page used dashes heavily, so the sample override would have kept them, but most of those dashes joined clauses that needed a comma, colon or full stop. The pass kept dashes in quoted rules and table cells and replaced the rest. `system-design.md` had already been through `unslop` and shows the smallest change: three passages, mostly table cells.
 
