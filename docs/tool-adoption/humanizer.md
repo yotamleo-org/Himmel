@@ -61,6 +61,17 @@ The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR
 | B1 | `daily-loop.md` | 14 | 0 | 16 → 6 | 0 → 0 | 1 → 1 |
 | B1 | `system-design.md` | 3 | 0 | 0 → 0 | 6 → 6 | 6 → 5 |
 | B1 | `architecture.md` | 13 | 0 | 15 → 1 | 4 → 3 | 0 → 0 |
+| B2 daily use | `cadences.md` | 0 | 0 | 0 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `ui.md` | 1 | 0 | 0 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `launchers.md` | 2 | 0 | 4 → 0 | 0 → 0 | 6 → 6 |
+| B2 | `orchestration-patterns.md` | 19 | 0 | 22 → 4 | 0 → 0 | 1 → 1 |
+| B2 | `token-economy.md` | 33 | 0 | 43 → 1 | 2 → 1 | 1 → 0 |
+| B2 | `contributing.md` | 5 | 0 | 3 → 0 | 2 → 1 | 3 → 3 |
+| B2 | `security-review.md` | 12 | 0 | 21 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `voice.md` | 32 | 0 | 37 → 8 | 6 → 3 | 4 → 3 |
+| B2 | `himmel-bus.md` | 4 | 0 | 4 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `jarvis-subsystems.md` | 7 | 1 | 17 → 5 | 1 → 1 | 1 → 1 |
+| B2 | `operator-conventions.md` | 50 | 0 | 126 → 5 | 11 → 11 | 6 → 6 |
 
 The dash rule worked against the voice sample. Each page used dashes heavily, so the sample override would have kept them, but most of those dashes joined clauses that needed a comma, colon or full stop. The pass kept dashes in quoted rules and table cells and replaced the rest. `system-design.md` had already been through `unslop` and shows the smallest change: three passages, mostly table cells.
 
