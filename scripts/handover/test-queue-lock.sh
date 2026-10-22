@@ -2802,6 +2802,58 @@ else
     fail "T87: pre-988-style takeover not fenced on release: a_rc=$a_rc out=$(cat "$F_P.out") owner.json=$(cat "$F_LK/owner.json" 2>/dev/null)"
 fi
 
+# --- T7036a-c: release over a lock with no readable owner.json. The token
+# check used to be skipped for it, so a stranger's release deleted a lock a
+# taker had branded (owner arbiter + gen) but not yet finished -- and the
+# generation re-check passed because both were branded before release read
+# them. The arbiter names the holder; a stranger is refused, the holder's own
+# ownerless lock and a genuinely empty husk still clean up.
+f_wait_reached_or_rc() {
+    local i=0
+    while [ ! -e "$1.reached" ] && [ ! -e "$1.rc" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+}
+F_DOC="$F_HO/fence-t7036a.md"; : > "$F_DOC"
+F_LK="$(f_lockdir fence-t7036a)"
+bash "$LIB" acquire "$F_DOC" tokA7036 >/dev/null 2>&1
+rm -f "$F_LK/owner.json"     # B's half-built generation: arbiter + gen, no owner.json yet
+printf '%s' tokB7036 > "$F_LK/owner"; printf '%s' genB7036-0001 > "$F_LK/gen"
+F_P="$TMPDIR_ROOT/pause-t7036a"; : > "$F_P"
+( QUEUE_LOCK_TEST_PAUSE_AT=release-verified QUEUE_LOCK_TEST_PAUSE_FILE="$F_P" \
+    bash "$LIB" release "$F_DOC" tokA7036 > "$F_P.out" 2>&1; echo $? > "$F_P.rc" ) &
+f_wait_reached_or_rc "$F_P"
+printf '{"session":"tokB7036","host":"h","handover":"%s","started":"2026-10-22T00:00:00Z","heartbeat":"2026-10-22T00:00:00Z"}\n' \
+    "$F_DOC" > "$F_LK/owner.json"     # B finishes its acquire
+rm -f "$F_P"; wait
+a_rc="$(cat "$F_P.rc" 2>/dev/null)"
+if [ "$a_rc" = 2 ] && grep -q '"session":"tokB7036"' "$F_LK/owner.json" 2>/dev/null \
+    && [ "$(cat "$F_LK/owner" 2>/dev/null)" = tokB7036 ]; then
+    pass "T7036a: a release over a half-built lock is refused (rc=2) and the taker's finished lock survives"
+else
+    fail "T7036a: release over a half-built lock: a_rc=$a_rc out=$(cat "$F_P.out") owner.json=$(cat "$F_LK/owner.json" 2>/dev/null || echo GONE)"
+fi
+rm -rf "$F_LK"
+
+F_DOC="$F_HO/fence-t7036b.md"; : > "$F_DOC"
+F_LK="$(f_lockdir fence-t7036b)"
+bash "$LIB" acquire "$F_DOC" tokOwn7036 >/dev/null 2>&1
+rm -f "$F_LK/owner.json"     # the holder's own lock lost its owner.json; the arbiter still names it
+out="$(bash "$LIB" release "$F_DOC" tokOwn7036 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$F_LK" ]; then
+    pass "T7036b: control -- a holder's own lock without owner.json still releases (rc=0)"
+else
+    fail "T7036b: own ownerless lock: rc=$rc out=$out lock=$(ls -d "$F_LK" 2>/dev/null || echo GONE)"
+fi
+
+F_DOC="$F_HO/fence-t7036c.md"; : > "$F_DOC"
+F_LK="$(f_lockdir fence-t7036c)"
+mkdir -p "$F_LK"     # no owner.json, no arbiter: nobody's lock
+out="$(bash "$LIB" release "$F_DOC" tokAny7036 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$F_LK" ]; then
+    pass "T7036c: control -- an empty lock husk (no owner.json, no arbiter) still cleans up (rc=0)"
+else
+    fail "T7036c: empty husk: rc=$rc out=$out lock=$(ls -d "$F_LK" 2>/dev/null || echo GONE)"
+fi
+
 # --- T88-T95: a live leg must not silently outrun the TTL. The
 # AGING warning used to live in `status` alone, which a leg never calls between
 # acquire and release; the harness now self-heartbeats the session's own locks
