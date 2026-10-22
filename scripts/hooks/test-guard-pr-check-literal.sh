@@ -2218,6 +2218,10 @@ for v in \
     "$AR; timeout 5 grep 'scripts/cr/*.sh' docs" \
     "$AR; grep -n 'scripts/cr/*.sh' docs > out.txt" \
     "grep() { bash \"\$@\"; }; $AR; grep 'scripts/cr/*.sh' docs" \
+    "time eval defs; $AR; grep 'scripts/cr/*.sh' docs" \
+    "{ source /tmp/defs.sh; $AR; grep 'scripts/cr/*.sh' docs; }" \
+    "! source /tmp/defs.sh; $AR; grep 'scripts/cr/*.sh' docs" \
+    "time printf -v grep %s x; $AR; grep 'scripts/cr/*.sh' docs" \
     "PATH=/tmp/evil:\$PATH; $AR; grep 'scripts/cr/*.sh' docs" \
     "$AR; grep -n \$(echo 'scripts/cr/*.sh') docs" \
     "bash scripts/cr/write-verdicts.sh --help; grep -n 'scripts/cr/*.sh' docs" \

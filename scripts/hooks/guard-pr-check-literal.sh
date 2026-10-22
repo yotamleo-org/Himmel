@@ -2055,7 +2055,8 @@ scrub_inert_readers() { # sets scan_flat
         fi
         k=$((k + 1))
     done
-    # What can change the meaning of a later reader disables the scrub.
+    # What can change the meaning of a later reader disables the scrub. Any word
+    # counts, not only the command word: `time`, `{` and `!` can precede the builtin.
     k=0
     while [ "$k" -lt "$ST_N" ]; do
         s=${ST_S[k]}
@@ -2065,7 +2066,7 @@ scrub_inert_readers() { # sets scan_flat
                 PATH | BASH_ENV | ENV | IFS | SHELLOPTS | BASHOPTS | CDPATH | GLOBIGNORE | PS4 | \
                     PROMPT_COMMAND | HOME | XDG_CONFIG_HOME | PAGER | GIT_* | RIPGREP* | LD_*) return 0 ;;
             esac
-            if [ -z "${ST_RO[k]}" ] && [ "$k" = "${seg_cw[s]:-}" ]; then
+            if [ -z "${ST_RO[k]}" ]; then
                 case "$w" in
                     alias | unalias | function | eval | source | . | hash | enable | builtin | command | exec | trap | \
                         shopt | set | unset | readonly | declare | typeset | local | export | read | map[f]ile | read[a]rray)
