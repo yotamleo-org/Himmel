@@ -39,7 +39,7 @@ A suite row, a fixture screenshot, or "the PR merged" is not a live proof row.
 4. Row fails, or the feature is absent on main: reopen the ticket with the
    failing output as the comment. Reopen only on concrete evidence; a row you
    could not run is `not verified`, never a reopen.
-5. Never reopen a ticket a live leg owns; message that leg's console instead.
+5. Never reopen a ticket a live worker owns; message that worker's chief instead.
 
 The reverse direction: a merged PR whose ticket is not Done, with every Done-when
 item evidenced on main, is closed with the evidence in the comment. A merge

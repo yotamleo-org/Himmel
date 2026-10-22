@@ -74,7 +74,7 @@ contains 'merges section names the ruling it codifies' "$merges" 'N2224'
 
 # --- 4. stuck-playbook + overnight-mode: the carve-out from "defer to the operator"
 contains 'stuck-playbook carves review-thread writes out of the operator defer' "$(cat "$PLAYBOOK")" 'review-thread resolve or reply'
-contains 'stuck-playbook sends them to the console' "$(cat "$PLAYBOOK")" 'a review-thread write goes to the console instead'
+contains 'stuck-playbook sends them to the chief' "$(cat "$PLAYBOOK")" 'a review-thread write goes to the chief instead'
 contains 'afk-mode step 11: a review-thread resolve is never an operator action' "$(cat "$AFK")" 'review-thread resolve is never an operator action'
 contains 'afk-mode external writes: the review-thread exception' "$(cat "$AFK")" 'A review-thread resolve is the exception'
 

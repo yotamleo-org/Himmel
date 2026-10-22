@@ -29,7 +29,7 @@ groups = {
         plannotator-effective-html platform-design-skills
         qmd shadcn-mcp taste-skill-core taste-skill-imagegen taste-skill-styles
         telegram-himmel threejs-skills ui-ux-pro-max''',
-    'openai-codex': 'codex', 'ponytail': 'ponytail', 'scroll-world': 'scroll-world',
+    'openai-codex': 'codex', 'scroll-world': 'scroll-world',
     'obsidian-skills': 'obsidian', 'ui-ux-pro-max-skill': 'ui-ux-pro-max',
     'claude-video': 'watch',
 }
