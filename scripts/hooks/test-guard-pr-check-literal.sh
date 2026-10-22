@@ -2152,7 +2152,8 @@ for v in \
     "timeout 60 rg -g '*.sh' foo docs" \
     "env LC_ALL=C grep -rn --exclude='*.sh' foo docs" \
     "git ls-files | xargs rg --glob '*.sh' foo" \
-    "nice grep -rn --exclude-dir='t*' --include '*.sh' foo docs"; do
+    "nice grep -rn --exclude-dir='t*' --include '*.sh' foo docs" \
+    "timeout 60 grep -rn -e foo --include='*.sh' docs"; do
     run "HIMMEL-6927 s3 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 for v in \
@@ -2160,6 +2161,8 @@ for v in \
     "timeout 60 grep -f '*.sh' foo docs" \
     "timeout 60 grep foo -- '*.sh'" \
     "timeout 60 bash -g '*.sh'" \
+    "timeout 60 grep -e --include '*.sh' docs" \
+    "timeout 60 grep -rne --include '*.sh' docs" \
     "xargs bash '*.sh'" \
     "timeout 60 grep -rn --include='*.sh' foo docs; timeout 5 bash '*.sh'" \
     "timeout 60 grep -rn --include='*.sh' \"\$X\" docs; bash '*.sh'" \

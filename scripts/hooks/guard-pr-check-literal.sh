@@ -2032,6 +2032,8 @@ inert_filter_globs() {
                             v=${ST_W[k]} vi=$k
                         fi
                         k=$((k + 1)) ;;
+                    # the pattern option's value is a pattern, never a filter option: skip it
+                    --regexp | --file | -e | -f | -[!-]*[ef]) k=$((k + 1)) ;;
                 esac
                 [ "$vi" -ge 0 ] || continue
                 [ "${ST_Q[vi]}${ST_X[vi]}${ST_G[vi]}" = 100 ] || continue

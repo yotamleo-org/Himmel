@@ -1826,7 +1826,7 @@ _tok_readonly_ok() {
                 # sort -o / --output writes a file and --compress-program runs
                 # one (long options take any unique prefix); printf -v sets a
                 # variable.
-                sort:-o*|sort:-[!-]*o*|sort:--o*|sort:--c*|printf:-v*) return 1 ;;
+                sort:-o*|sort:-[!-]*o*|sort:--o*|sort:--co*|printf:-v*) return 1 ;;
                 # --output=<file> writes these subcommands' output.
                 git:--output*) return 1 ;;
                 rg:--pre*) return 1 ;;

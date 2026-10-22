@@ -3495,6 +3495,8 @@ assert_rc "6927s3c echo naming home settings allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'echo "edit ~/.claude/settings.json by hand"' HOME="$FAKEHOME")"
 assert_rc "6927s3d printf naming home settings allows" 0 \
     "$(bash_rc_of "$PRIMARY" "printf '%s\n' ~/.claude/settings.json" HOME="$FAKEHOME")"
+assert_rc "6927s3l sort --check of home settings allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'sort --check ~/.claude/settings.json' HOME="$FAKEHOME")"
 assert_rc "6927s3e sort -o into home settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'cat x | sort -o ~/.claude/settings.json' HOME="$FAKEHOME")"
 assert_rc "6927s3f sort --output into home settings denies" 2 \
