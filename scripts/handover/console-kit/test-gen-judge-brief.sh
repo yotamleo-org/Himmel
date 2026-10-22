@@ -130,10 +130,12 @@ python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --letter ABC --bucket "$BU
 
 # the judge reads pin to the PR head sha through a per-PR ref, never FETCH_HEAD
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
-has "generated brief names the pinned per-PR ref" "$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)" "refs/judge/pr-"
+has "generated brief names the sha-pinned read" "$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)" "git cat-file -t $HEAD40"
+lacks "generated brief gives no refspec fetch" "$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)" "refs/judge/pr-"
 for f in .claude/agents/judge.md .claude/agents/judge-ro.md .claude/agents/console-judge.md .claude/agents/console-judge-ro.md docs/handover/console-sections/judge.md docs/handover/judge-brief-template.md; do
     c="$(cat "$REPO_ROOT/$f")"
-    has "$f names the pinned read" "$c" "refs/judge/pr-<N>"
+    has "$f names the sha-pinned read" "$c" "git cat-file -t <sha>"
+    lacks "$f gives no refspec fetch" "$c" "refs/judge/pr-"
     has "$f forbids FETCH_HEAD" "$c" "never FETCH_HEAD"
 done
 

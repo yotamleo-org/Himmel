@@ -158,10 +158,11 @@ gathering, per the rule below.>
 > (list only changed files that still exist at `<head>`; `git archive` rejects a deleted path)
 > (run in a checkout that has the head fetched).
 >
-> **Fetch the head into a per-PR ref, never FETCH_HEAD.** Parallel judges share
+> **Read the head by its full sha, never FETCH_HEAD.** Parallel judges share
 > a checkout and each `git fetch` overwrites `FETCH_HEAD`. Run
-> `git fetch origin pull/<N>/head:refs/judge/pr-<N>`, check
-> `git rev-parse refs/judge/pr-<N>` equals your head, then read with
+> Check `gh pr view <N> --json headRefOid` equals your head, check
+> `git cat-file -t <sha>` prints `commit` (a bare `git fetch origin` if not,
+> never a refspec fetch: the primary-checkout guard refuses it), then read with
 > `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
 
 > **Per-child scratch subdirectory.** If this question needs bulk
