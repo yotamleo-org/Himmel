@@ -1516,7 +1516,11 @@ for f in usage-preflight.sh bank-preflight.sh; do
   [ -f "$uptarget/scripts/lib/$f" ] || fail "HIMMEL-6965: $f was not copied into the project"
 done
 printf '{"oauthAccount":{"accountUuid":"11111111-2222-3333-4444-555555555555"}}\n' > "$uphome/.claude.json"
-up_acct=$(printf '%s' "11111111-2222-3333-4444-555555555555" | sha256sum | cut -c1-16)
+if command -v sha256sum >/dev/null 2>&1; then
+  up_acct=$(printf '%s' "11111111-2222-3333-4444-555555555555" | sha256sum | cut -c1-16)
+else
+  up_acct=$(printf '%s' "11111111-2222-3333-4444-555555555555" | shasum -a 256 | cut -c1-16)
+fi
 up_cache() {
   jq -n --argjson five "$1" --argjson seven "$2" --arg acct "$up_acct" --argjson now "$(date +%s)" '{
     five_hour: {utilization: $five, resets_at: "2026-10-22T05:39:59.541164+00:00"},
