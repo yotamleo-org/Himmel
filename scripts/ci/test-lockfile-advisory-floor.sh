@@ -22,9 +22,25 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
 # lock_versions <lockfile> <package>: every resolved version of <package>, hoisted or
-# nested, one per line. Exits non-zero when the lockfile cannot be read or parsed.
+# nested, one per line. Exits non-zero when the lockfile cannot be read or parsed, or
+# when a matching entry carries no version (a link entry), so it cannot be checked.
 lock_versions() {
-  node -e 'const l = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = "node_modules/" + process.argv[2]; for (const [k, v] of Object.entries(l.packages)) if (k === n || k.endsWith("/" + n)) console.log(v.version)' "$1" "$2"
+  node -e 'const l = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = "node_modules/" + process.argv[2]; for (const [k, v] of Object.entries(l.packages)) if (k === n || k.endsWith("/" + n)) { if (!v.version) process.exit(1); console.log(v.version) }' "$1" "$2"
+}
+
+# version_ge <have> <want>: 0 when the dotted numeric <have> is >= <want> (bash 3.2, no sort -V).
+version_ge() {
+  local IFS=. i a b
+  local -a have want
+  read -r -a have <<< "$1"
+  read -r -a want <<< "$2"
+  for i in 0 1 2; do
+    a="${have[i]:-0}"
+    b="${want[i]:-0}"
+    [ "$a" -gt "$b" ] && return 0
+    [ "$a" -lt "$b" ] && return 1
+  done
+  return 0
 }
 
 # meets_floor <lockfile> <package> <floor>: 0 when every resolved copy is >= floor,
@@ -34,7 +50,7 @@ meets_floor() {
   versions=$(lock_versions "$1" "$2" 2>/dev/null) || return 2
   [ -n "$versions" ] || return 2
   while IFS= read -r v; do
-    [ "$(printf '%s\n%s\n' "$3" "${v%%-*}" | sort -V | head -n 1)" = "$3" ] || return 1
+    version_ge "${v%%-*}" "$3" || return 1
     # a prerelease of the floor itself ranks below it under SemVer, which sort -V does not model
     [ "$v" = "${v%%-*}" ] || [ "${v%%-*}" != "$3" ] || return 1
   done <<< "$versions"
