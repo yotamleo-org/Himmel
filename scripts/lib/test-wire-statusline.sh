@@ -27,19 +27,21 @@ guarded_cmd() {
 # A pre-existing cost history must survive the adopter's wire and real uninstall.
 # Run this row in a clean scratch HOME so uninstall cannot reach operator state.
 if [ "${1:-}" = --daily-cost-case ]; then
-  [ "${TMPDIR:-}" = "${HOME%/home}/tmp" ] || fail "daily-cost case requires clean-sandbox"
-  cfg_cost="$HOME/.claude"; hud_cost="$cfg_cost/plugins/claude-hud"
+  cost_scratch="$TMP/daily-cost-case"
+  cfg_cost="$cost_scratch/home/.claude"; hud_cost="$cfg_cost/plugins/claude-hud"
   mkdir -p "$hud_cost/transcript-cache" "$TMP/project"
   printf '{"date":"20260101","sessions":{"session-a":{"costUsd":12.5}}}\n' > "$TMP/daily-cost-before.json"
   cp "$TMP/daily-cost-before.json" "$hud_cost/daily-cost.json"
   printf '{"stale":true}\n' > "$hud_cost/transcript-cache/session-a.json"
-  bash "$HELPER" "$cfg_cost/settings.json" "$REPO_ROOT" >/dev/null
+  bash "$HERE/clean-sandbox.sh" --scratch "$cost_scratch" -- \
+    bash "$HELPER" "$cfg_cost/settings.json" "$REPO_ROOT" >/dev/null
   cmp -s "$TMP/daily-cost-before.json" "$hud_cost/daily-cost.json" \
     || fail "daily-cost history changed or disappeared during adopt wiring"
   [ ! -e "$hud_cost/transcript-cache" ] || fail "adopt wiring did not purge the transcript cache"
   (
     cd "$TMP/project"
-    bash "$REPO_ROOT/scripts/uninstall.sh" --yes --skip-plugins --skip-tasks --skip-hooks
+    bash "$HERE/clean-sandbox.sh" --scratch "$cost_scratch" -- \
+      bash "$REPO_ROOT/scripts/uninstall.sh" --yes --skip-plugins --skip-tasks --skip-hooks
   ) > "$TMP/uninstall-cost.log" 2>&1 || { cat "$TMP/uninstall-cost.log"; fail "cost-history uninstall failed"; }
   [ ! -f "$cfg_cost/claude-hud.json" ] || fail "uninstall did not remove the wired HUD config"
   [ "$(jq -r 'has("statusLine")' "$cfg_cost/settings.json")" = false ] \
@@ -49,9 +51,17 @@ if [ "${1:-}" = --daily-cost-case ]; then
   echo "ok daily-cost history survives adopt wiring and uninstall byte-for-byte"
   exit 0
 fi
-bash "$HERE/clean-sandbox.sh" --scratch "$TMP/daily-cost" -- bash "${BASH_SOURCE[0]}" --daily-cost-case \
+operator_cost="$TMP/operator"
+mkdir -p "$operator_cost/tmp" "$operator_cost/.claude/plugins/claude-hud"
+printf '{"operator":"history-must-not-change"}\n' > "$TMP/operator-history.json"
+cp "$TMP/operator-history.json" "$operator_cost/.claude/plugins/claude-hud/daily-cost.json"
+bash "$HERE/clean-sandbox.sh" --scratch "$TMP/daily-cost" -- \
+  env HOME="$operator_cost" TMPDIR="$operator_cost/tmp" CLAUDE_CONFIG_DIR="$operator_cost/.claude" \
+  bash "${BASH_SOURCE[0]}" --daily-cost-case \
   > "$TMP/daily-cost.log" 2>&1 || { cat "$TMP/daily-cost.log"; fail "daily-cost preservation regression"; }
 cat "$TMP/daily-cost.log"
+cmp -s "$TMP/operator-history.json" "$operator_cost/.claude/plugins/claude-hud/daily-cost.json" \
+  || fail "direct daily-cost case modified caller HOME history"
 [ "${1:-}" != --daily-cost-only ] || exit 0
 
 # 1. fresh file gets a valid hud statusLine + the extra-cmd gate.
@@ -214,12 +224,13 @@ proj16="$TMP/proj16"; mkdir -p "$proj16/.claude"
 s16="$proj16/.claude/settings.json"
 echo '{"statusLine":{"type":"command","command":"node \"/old/himmel/marketplace/plugins/claude-hud/dist/index.js\""}}' > "$s16"
 seed_hud_cache "$hud16"
+cp "$hud16/daily-cost.json" "$TMP/history16.json"
 CLAUDE_CONFIG_DIR="$cfg16" bash "$HELPER" "$s16" "$REPO_ROOT" >/dev/null
 [ ! -e "$hud16/transcript-cache" ] || fail "16: transcript-cache survived a changed wiring"
 [ ! -e "$hud16/context-cache" ]    || fail "16: context-cache survived a changed wiring"
 [ ! -e "$hud16/config-cache" ]     || fail "16: config-cache survived a changed wiring"
 [ ! -e "$hud16/cache-economics-all.json" ] || fail "16: cache-economics ledger survived a changed wiring"
-[ -f "$hud16/daily-cost.json" ]  || fail "16: daily-cost history lost during a changed wiring"
+cmp -s "$TMP/history16.json" "$hud16/daily-cost.json" || fail "16: daily-cost history changed during a changed wiring"
 [ -f "$cfg16/claude-hud.json" ] || fail "16: config.json must SURVIVE the purge — this script owns it"
 jq -e . "$cfg16/claude-hud.json" >/dev/null 2>&1 || fail "16: surviving config.json is not valid JSON"
 echo "ok 16 changed wiring drops the hud cache state, keeps config.json"
@@ -253,9 +264,10 @@ proj19="$TMP/proj19"; mkdir -p "$proj19/.claude"
 s19="$proj19/.claude/settings.json"
 CLAUDE_CONFIG_DIR="$cfg19" bash "$HELPER" "$s19" "/old/path/himmel" >/dev/null
 seed_hud_cache "$hud19"
+cp "$hud19/daily-cost.json" "$TMP/history19.json"
 CLAUDE_CONFIG_DIR="$cfg19" bash "$HELPER" "$s19" "/new/path/himmel" >/dev/null
 [ ! -e "$hud19/transcript-cache" ] || fail "19: a moved clone did not drop the hud cache state"
-[ -f "$hud19/daily-cost.json" ]  || fail "19: a moved clone dropped the daily-cost history"
+cmp -s "$TMP/history19.json" "$hud19/daily-cost.json" || fail "19: a moved clone changed the daily-cost history"
 echo "ok 19 a moved himmel clone drops the hud cache state"
 
 # 20. the purge never reaches outside the hud plugin dir: Claude Code keeps its
