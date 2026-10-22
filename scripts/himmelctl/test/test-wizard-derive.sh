@@ -57,7 +57,7 @@
 #      with full is exactly the population most likely to still carry the
 #      retired plugin.
 #   J. handover.mode=external writes HANDOVER_DIR + prints the one summary
-#      line; handover.mode=inline is a no-op (no .env write, no line).
+#      line (both in ~/.himmel/himmel.conf); handover.mode=inline is a no-op.
 #   K. --dry-run never mutates anything (combined legacy-full/external/
 #      default-template plan): no adopt.sh call, no claude call, no .env
 #      write, no plugin DRY line — only the HANDOVER_DIR preview line.
@@ -518,10 +518,12 @@ set -e
 [ "$rc" -eq 0 ] || fail "caseQ: accept should exit 0 (got rc=$rc): $out"
 [ -f "$fixtureQ/adopt-calls.log" ] \
   || fail "caseQ (HIMMEL-2460): expected adopt.sh to run -- the core install must not be skipped for vault.mode=existing"
+[ -f "$hQ/.himmel/himmel.conf" ] \
+  || fail "caseQ: expected the T5b branch to write HANDOVER_DIR (himmel.conf missing)"
+grep -qE 'HANDOVER_DIR=.*caseQ-handover-target' "$hQ/.himmel/himmel.conf" \
+  || fail "caseQ: expected HANDOVER_DIR= in himmel.conf pointing at the target (got: $(cat "$hQ/.himmel/himmel.conf"))"
 [ -f "$fixtureQ/.env" ] \
-  || fail "caseQ: expected the T5b branch to write HANDOVER_DIR (.env missing)"
-grep -qE 'HANDOVER_DIR=.*caseQ-handover-target' "$fixtureQ/.env" \
-  || fail "caseQ: expected HANDOVER_DIR= in .env pointing at the target (got: $(cat "$fixtureQ/.env"))"
+  && fail "caseQ: HANDOVER_DIR is a config key and must not be written to the clone .env (got: $(cat "$fixtureQ/.env"))"
 [ -f "$fixtureQ/wire-luna-vault-calls.log" ] \
   || fail "caseQ: expected wire-luna-vault.sh to still run"
 [ -f "$fixtureQ/luna-upgrade-all-calls.log" ] \
@@ -913,12 +915,14 @@ out=$(PATH="$cJ" HOME="$hJ" USERPROFILE="$(winpath "$hJ")" HIMMELCTL_CACHE_DIR="
       </dev/null 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseJ(external): should exit 0 (got rc=$rc): $out"
-grepq "$out" -E 'HANDOVER_DIR -> .*caseJ-handover-target.*\(written to .*\.env\)' \
+grepq "$out" -E 'HANDOVER_DIR -> .*caseJ-handover-target.*\(written to .*himmel\.conf\)' \
   || fail "caseJ(external): expected the ONE HANDOVER_DIR summary line (got: $out)"
+[ -f "$hJ/.himmel/himmel.conf" ] \
+  || fail "caseJ(external): expected $hJ/.himmel/himmel.conf to be written"
+grep -qE '^HANDOVER_DIR=.*caseJ-handover-target$' "$hJ/.himmel/himmel.conf" \
+  || fail "caseJ(external): expected HANDOVER_DIR= in himmel.conf pointing at the target (got: $(cat "$hJ/.himmel/himmel.conf"))"
 [ -f "$fixtureJ/.env" ] \
-  || fail "caseJ(external): expected $fixtureJ/.env to be written"
-grep -qE 'HANDOVER_DIR=.*caseJ-handover-target' "$fixtureJ/.env" \
-  || fail "caseJ(external): expected HANDOVER_DIR= in .env pointing at the target (got: $(cat "$fixtureJ/.env"))"
+  && fail "caseJ(external): HANDOVER_DIR must not be written to the clone .env (got: $(cat "$fixtureJ/.env"))"
 echo "ok: caseJ(external) handover.mode=external -> HANDOVER_DIR written + ONE summary line"
 
 stubJ2="$work/caseJ2"; mkdir -p "$stubJ2"
@@ -936,21 +940,19 @@ set -e
 [ "$rc2" -eq 0 ] || fail "caseJ(inline): should exit 0 (got rc=$rc2): $out2"
 grepq "$out2" 'HANDOVER_DIR ->' \
   && fail "caseJ(inline): handover.mode=inline must be a no-op (got: $out2)"
+[ -f "$hJ2/.himmel/himmel.conf" ] \
+  && fail "caseJ(inline): handover.mode=inline must not write himmel.conf (got: $(cat "$hJ2/.himmel/himmel.conf"))"
 [ -f "$fixtureJ2/.env" ] \
   && fail "caseJ(inline): handover.mode=inline must not write .env (got: $(cat "$fixtureJ2/.env"))"
-echo "ok: caseJ(inline) handover.mode=inline -> no-op, no HANDOVER_DIR line, no .env write"
+echo "ok: caseJ(inline) handover.mode=inline -> no-op, no HANDOVER_DIR line, no config write"
 
 # ── Case R: a FAILED handover write aborts BEFORE the core install (FIX 3) ─
 stubR="$work/caseR"; mkdir -p "$stubR"
 cR=$(build_path "$stubR" bash git jq python3 npm -- )
 hR="$work/hR"; mkdir -p "$hR"
 fixtureR="$work/caseR-fixture"; build_fixture "$fixtureR"
-cat > "$fixtureR/scripts/handover/set-handover-dir.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "set-handover-dir.sh: stubbed failure" >&2
-exit 1
-STUB
-chmod +x "$fixtureR/scripts/handover/set-handover-dir.sh"
+# ~/.himmel as a regular file: the himmel.conf write cannot create its directory
+printf 'not a directory\n' > "$hR/.himmel"
 handoverTargetR="$work/caseR-handover-target"
 cacheR="$work/caseR-profile.json"
 write_cache "$cacheR" adopter project none "" external "$(winpath "$handoverTargetR")" lean
@@ -1053,6 +1055,8 @@ grep -q -- '--dry-run' "$fixtureK/adopt-calls.log" \
   && fail "caseK: dry-run must NOT invoke claude (got: $(cat "$stubK/claude-calls.log"))"
 [ -f "$fixtureK/.env" ] \
   && fail "caseK: dry-run must NOT write .env (got: $(cat "$fixtureK/.env"))"
+[ -e "$hK/.himmel/himmel.conf" ] \
+  && fail "caseK: dry-run must NOT write himmel.conf (got: $(cat "$hK/.himmel/himmel.conf"))"
 grepq "$out" '^DRY: HANDOVER_DIR ->' \
   || fail "caseK: expected a DRY HANDOVER_DIR preview line (got: $out)"
 grepq "$out" 'claude plugin' \

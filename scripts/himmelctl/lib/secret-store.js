@@ -2,7 +2,7 @@
 // scripts/himmelctl/lib/secret-store.js — wizard secret store: detect,
 // validate and write ONE secret into its documented store, in-process.
 //
-// Why not set-env-var.sh: bin.js writeEnvVar hands `KEY VALUE` to a child, so the
+// Why not set-env-var.sh: it takes `KEY VALUE` as arguments of a child, so the
 // value sits in `ps`. This module never spawns anything: Node fs only, and the
 // one git question (is the target ignored?) is asked through ctx.gitCheckIgnore,
 // which the caller supplies (it is a path, never a secret).

@@ -25,6 +25,7 @@ const { himmelIdentity } = require('./helpers.js');
 const adopterProfileLib = require('./adopter-profile.js');
 const bundlesLib = require('./feed-bundles.js');
 const wiringLib = require('./wiring-rows.js');
+const behaviourConfigLib = require('./behaviour-config.js');
 const { resolveBash } = require('../../hooks/run-hook-with-bash.js');
 
 const SCHEMA = 'himmel-config-feed/1';
@@ -341,14 +342,15 @@ function laneRows(ctx) {
 }
 
 function initiativeRows(ctx) {
-  const env = probesLib.parseDotEnv(readDotEnv());
-  const active = new Set(String(env.HIMMEL_INITIATIVE || '').split(',').map((s) => s.trim()).filter(Boolean));
+  let raw = '';
+  try { raw = behaviourConfigLib.readConfigVar('HIMMEL_INITIATIVE', path.join(repoRoot(), '.env')).value; } catch { /* unreadable layer: rows read as off */ }
+  const active = new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
   return INITIATIVE_LEGS.map((leg) => {
     const on = active.has(leg);
     const guard = INITIATIVE_GUARD.has(leg);
     return mkRow({
       id: `initiative:${leg}`, source: 'initiative', group: 'core', title: `initiative.${leg}`,
-      declared: { where: '.env#HIMMEL_INITIATIVE', desired: 'opt-in', profile: 'all' },
+      declared: { where: '~/.himmel/himmel.conf#HIMMEL_INITIATIVE', desired: 'opt-in', profile: 'all' },
       installed: { state: on ? 'present' : 'absent', detail: on ? 'on' : 'off' },
       health: on ? 'ok' : 'off',
       fix: { remedy: `himmelctl config set initiative.${leg} ${on ? 'off' : 'on'}`, owner: 'user' },

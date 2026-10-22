@@ -34,13 +34,13 @@ for flag in --env --vault; do
     if [ "$rc" = 2 ]; then pass "$flag with no value exits 2"; else fail "$flag with no value exited $rc"; fi
 done
 
-# Until setup, adopt and himmelctl read the new files, a real run refuses
-# without the explicit opt-in, so nothing half-migrates a station.
+# Setup, adopt and himmelctl read the tracked file now, so a real run needs no
+# opt-in flag; the old flag is still accepted and changes nothing.
 out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
 rc=$?
-if [ "$rc" = 3 ]; then pass "a run without --ahead-of-setup exits 3"; else fail "a run without --ahead-of-setup exited $rc"; fi
-has "the refusal names the opt-in flag" "--ahead-of-setup" "$out"
-if [ -e "$HOME/.himmel/himmel.conf" ]; then fail "a refused run wrote himmel.conf"; else pass "a refused run wrote nothing"; fi
+if [ "$rc" = 0 ]; then pass "a run without --ahead-of-setup exits 0"; else fail "a run without --ahead-of-setup exited $rc"; fi
+has "a run without the flag moves a config key" "moved HANDOVER_DIR" "$out"
+if [ -e "$HOME/.himmel/himmel.conf" ]; then pass "a run without the flag wrote himmel.conf"; else fail "a run without the flag wrote no himmel.conf"; fi
 rm -rf "$HOME/.himmel"
 
 # Dry run writes nothing and names keys only.

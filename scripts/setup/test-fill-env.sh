@@ -148,5 +148,19 @@ fill_env "$f5" "$f4" </dev/null >/dev/null 2>&1; rc=$?
 check "fill_env non-interactive rc 0" "$rc" "0"
 check "fill_env non-interactive no-op" "$(cat "$f5")" "$before"
 
+# Behaviour-config keys go to ~/.himmel/himmel.conf, secrets stay in the env file.
+fh="$td/home"; fe="$td/clone.env"
+printf 'USER_SLUG=old-slug\nJIRA_API_TOKEN=tok\n' > "$fe"
+check "store: config key -> himmel.conf" "$(HOME="$fh" _fe_store USER_SLUG "$fe")" "$fh/.himmel/himmel.conf"
+check "store: secret key -> env file"    "$(HOME="$fh" _fe_store JIRA_API_TOKEN "$fe")" "$fe"
+check "current: legacy env value shown until migrated" "$(HOME="$fh" _fe_current USER_SLUG "$fe")" "old-slug"
+HOME="$fh" _fe_save USER_SLUG "$fe" new-slug
+check "save: config key lands in himmel.conf" "$(dotenv_get "$fh/.himmel/himmel.conf" USER_SLUG)" "new-slug"
+check "save: config key leaves the env file alone" "$(dotenv_get "$fe" USER_SLUG)" "old-slug"
+check "current: himmel.conf wins over the legacy value" "$(HOME="$fh" _fe_current USER_SLUG "$fe")" "new-slug"
+HOME="$fh" _fe_save JIRA_API_TOKEN "$fe" newtok
+check "save: secret key lands in the env file" "$(dotenv_get "$fe" JIRA_API_TOKEN)" "newtok"
+check "save: secret key never reaches himmel.conf" "$(grep -c JIRA_API_TOKEN "$fh/.himmel/himmel.conf")" "0"
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

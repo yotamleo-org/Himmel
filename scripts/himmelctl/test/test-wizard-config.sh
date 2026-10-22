@@ -3,8 +3,8 @@
 # Mirrors test-wizard-uninstall.sh/
 # test-wizard-derive.sh conventions: node launched by absolute path, a fake
 # HOME, HIMMELCTL_REPO_ROOT pointed at a throwaway fixture carrying real copies
-# of the primitive scripts config shells out to (set-env-var.sh,
-# set-lane-override.mjs, lanes.json) so nothing ever touches the real repo's
+# of the primitive scripts config shells out to (set-lane-override.mjs,
+# lanes.json) so nothing ever touches the real repo's
 # .env / scripts/lanes/lanes.json / scripts/lanes/lanes.local.json.
 #
 # There is no prompt loop: bare `config` hands off to the UI (case I), and
@@ -91,8 +91,6 @@ trap cleanup EXIT
 build_fixture() {
   local _d="$1"
   mkdir -p "$_d/scripts/lib" "$_d/scripts/lanes" "$_d/scripts/machine-setup"
-  cp "$repo_root/scripts/lib/set-env-var.sh" "$_d/scripts/lib/set-env-var.sh"
-  cp "$repo_root/scripts/lib/env-append.sh" "$_d/scripts/lib/env-append.sh"
   cp "$repo_root/scripts/lanes/set-lane-override.mjs" "$_d/scripts/lanes/set-lane-override.mjs"
   cp "$repo_root/scripts/lanes/profile-managed.cjs" "$_d/scripts/lanes/profile-managed.cjs"
   cp "$repo_root/scripts/lanes/lanes.json" "$_d/scripts/lanes/lanes.json"
@@ -105,7 +103,7 @@ run_cfg() {
   # the caller's own `out`/`rc` locals via `local -n`-free convention (bash
   # 3.2-safe: assign globals `CFG_OUT`/`CFG_RC` instead of nameref).
   local _fixture="$1"; shift
-  local _h="$work/home-$$-$RANDOM"; mkdir -p "$_h"
+  local _h="${CFG_HOME:-$work/home-$$-$RANDOM}"; mkdir -p "$_h"
   set +e
   CFG_OUT=$(HOME="$_h" USERPROFILE="$(winpath "$_h")" HIMMELCTL_CACHE_DIR="$(winpath "$_h.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_h.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$_fixture")" \
     "$node_bin" "$wizard" config "$@" 2>&1)
@@ -113,27 +111,46 @@ run_cfg() {
   set -e
 }
 
+# CFG_HOME pins one fake HOME across calls, so a case can read back what ~/.himmel/himmel.conf holds.
 # ── Case A: initiative.<leg> set on/off ─────────────────────────────────────
 fxA="$work/fixtureA"; build_fixture "$fxA"
+CFG_HOME="$work/homeA"
+confA="$CFG_HOME/.himmel/himmel.conf"
 run_cfg "$fxA" set initiative.execute on
 [ "$CFG_RC" -eq 0 ] || fail "caseA: set initiative.execute on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
 grepq "$CFG_OUT" -F 'HIMMEL_INITIATIVE -> execute' \
-  || fail "caseA: expected confirmation line (got: $CFG_OUT)"
-grep -qE '^HIMMEL_INITIATIVE=execute$' "$fxA/.env" \
-  || fail "caseA: fixture .env should carry HIMMEL_INITIATIVE=execute (got: $(cat "$fxA/.env" 2>&1))"
+  || fail "caseA: expected the 'HIMMEL_INITIATIVE -> execute' summary (got: $CFG_OUT)"
+grep -qE '^HIMMEL_INITIATIVE=execute$' "$confA" \
+  || fail "caseA: himmel.conf should carry HIMMEL_INITIATIVE=execute (got: $(cat "$confA" 2>&1))"
+[ -f "$fxA/.env" ] \
+  && fail "caseA: a behaviour key must not be written to the fixture .env (got: $(cat "$fxA/.env" 2>&1))"
 run_cfg "$fxA" set initiative.pr on
-grep -qE '^HIMMEL_INITIATIVE=execute,pr$' "$fxA/.env" \
-  || fail "caseA: a second leg should APPEND, not replace (got: $(cat "$fxA/.env" 2>&1))"
+grep -qE '^HIMMEL_INITIATIVE=execute,pr$' "$confA" \
+  || fail "caseA: a second leg should APPEND, not replace (got: $(cat "$confA" 2>&1))"
 run_cfg "$fxA" set initiative.execute off
-grep -qE '^HIMMEL_INITIATIVE=pr$' "$fxA/.env" \
-  || fail "caseA: toggling execute off should remove ONLY execute (got: $(cat "$fxA/.env" 2>&1))"
+grep -qE '^HIMMEL_INITIATIVE=pr$' "$confA" \
+  || fail "caseA: toggling execute off should remove ONLY execute (got: $(cat "$confA" 2>&1))"
 run_cfg "$fxA" set initiative.bogus on
 [ "$CFG_RC" -eq 2 ] || fail "caseA: unknown leg should exit 2 (got rc=$CFG_RC): $CFG_OUT"
 grepq "$CFG_OUT" -F 'unknown initiative leg' \
   || fail "caseA: expected 'unknown initiative leg' message (got: $CFG_OUT)"
-grep -qE '^HIMMEL_INITIATIVE=pr$' "$fxA/.env" \
-  || fail "caseA: an unknown-leg rejection must not touch the .env (got: $(cat "$fxA/.env" 2>&1))"
-echo "ok: caseA initiative.<leg> set on/off toggles HIMMEL_INITIATIVE; unknown leg rejected without a write"
+grep -qE '^HIMMEL_INITIATIVE=pr$' "$confA" \
+  || fail "caseA: an unknown-leg rejection must not touch himmel.conf (got: $(cat "$confA" 2>&1))"
+echo "ok: caseA initiative.<leg> set on/off toggles HIMMEL_INITIATIVE in himmel.conf; unknown leg rejected without a write"
+
+# A key only in the legacy .env is still read, and the next set moves it into himmel.conf.
+fxA2="$work/fixtureA2"; build_fixture "$fxA2"
+printf 'HIMMEL_INITIATIVE=execute\n' > "$fxA2/.env"
+CFG_HOME="$work/homeA2"
+confA2="$CFG_HOME/.himmel/himmel.conf"
+run_cfg "$fxA2" get initiative.execute
+grepq "$CFG_OUT" -F 'initiative.execute: on' \
+  || fail "caseA2: a legacy .env value should still read as on (got: $CFG_OUT)"
+run_cfg "$fxA2" set initiative.pr on
+grep -qE '^HIMMEL_INITIATIVE=execute,pr$' "$confA2" \
+  || fail "caseA2: set should carry the legacy tokens into himmel.conf (got: $(cat "$confA2" 2>&1))"
+echo "ok: caseA2 a legacy .env value still reads, and a set moves it into himmel.conf"
+CFG_HOME="$work/homeA"
 
 # ── Case B: initiative get ──────────────────────────────────────────────────
 run_cfg "$fxA" get initiative
@@ -146,7 +163,8 @@ grepq "$CFG_OUT" -F 'initiative.pr: on' \
 run_cfg "$fxA" get initiative.execute
 grepq "$CFG_OUT" -F 'initiative.execute: off' \
   || fail "caseB: expected 'initiative.execute: off' (got: $CFG_OUT)"
-echo "ok: caseB initiative get (whole + single leg) reports the persisted .env state"
+echo "ok: caseB initiative get (whole + single leg) reports the persisted himmel.conf state"
+CFG_HOME=""
 
 # ── Case C: lanes.<id> set on/off — lanes.local.json only, lanes.json untouched ─
 fxC="$work/fixtureC"; build_fixture "$fxC"
@@ -389,7 +407,9 @@ echo "ok: caseI2 bare config without a UI service says how to open it, asks noth
 # ── Case I3: a CLI set reads back through the report feed the UI draws ──
 fxI3="$work/fixtureI3"; build_fixture "$fxI3"
 mkdir -p "$fxI3/scripts/install"; cp "$repo_root/scripts/install/manifest.json" "$fxI3/scripts/install/manifest.json"
+CFG_HOME="$homeI2"
 run_cfg "$fxI3" set initiative.handover on
+CFG_HOME=""
 [ "$CFG_RC" -eq 0 ] || fail "caseI3: set initiative.handover on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
 set +e
 outI3=$(HOME="$homeI2" USERPROFILE="$(winpath "$homeI2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeI2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeI2.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxI3")" \
@@ -454,11 +474,9 @@ case "$(uname -s)" in
           "$node_bin" "$wizard" config set initiative.execute on 2>&1); rcK=$?
         set -e
         [ "$rcK" -eq 0 ] || fail "caseK: backslash-root set should exit 0 (got rc=$rcK): $outK"
-        [ -f "$fxK/.env" ] \
-          || fail "caseK: the INTENDED fixture .env must exist after the write (out: $outK)"
-        grep -qE '^HIMMEL_INITIATIVE=execute$' "$fxK/.env" \
-          || fail "caseK: write must land in the intended fixture .env even under a backslash repoRoot (got: $(cat "$fxK/.env" 2>&1))"
-        echo "ok: caseK a native backslash HIMMELCTL_REPO_ROOT still resolves the .env write to the intended fixture (Git-Bash)"
+        grep -qE '^HIMMEL_INITIATIVE=execute$' "$_hK/.himmel/himmel.conf" \
+          || fail "caseK: write must land in himmel.conf even under a backslash repoRoot (got: $(cat "$_hK/.himmel/himmel.conf" 2>&1))"
+        echo "ok: caseK a native backslash HIMMELCTL_REPO_ROOT still resolves the himmel.conf write (Git-Bash)"
         ;;
       *)
         echo "ok: caseK skipped — cygpath emitted no backslashes (non-drive-letter tmp), nothing to prove"

@@ -717,6 +717,19 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.j
 grepq "$out" 'via /handover-setup' || fail "HIMMEL-839 preserve: missing the .env-preserve message (got: $out)"
 echo "ok: HIMMEL-839 preserves an existing repo .env HANDOVER_DIR (does not shadow it via settings.json)"
 
+# ── 4c2. PRESERVE a HANDOVER_DIR in the tracked config file ──
+# The behaviour-config layer (~/.himmel/himmel.conf) is where HANDOVER_DIR now
+# lives; adopt must not shadow it with a settings.json write either.
+confhome="$work/confhome"; mkdir -p "$confhome/.himmel"
+printf 'HANDOVER_DIR=/some/conf/handovers\n' > "$confhome/.himmel/himmel.conf"
+preserve_vault3="$work/preserve-vault3"
+preserve_target3="$work/preserve-target3"; mkdir -p "$preserve_target3"
+out=$(HOME="$confhome" bash "$adopt" --profile luna --target "$preserve_target3" --luna-target "$preserve_vault3" 2>&1)
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target3/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "HIMMEL-7021 preserve: himmel.conf-configured HANDOVER_DIR was shadowed by a settings.json write ([$hd])"
+grepq "$out" 'himmel.conf' || fail "HIMMEL-7021 preserve: missing the himmel.conf-preserve message (got: $out)"
+echo "ok: HIMMEL-7021 preserves a himmel.conf HANDOVER_DIR (does not shadow it via settings.json)"
+
 # ── 4d. canonicalize a relative --luna-target ────────
 # A relative --luna-target must not persist a CWD-dependent relative path.
 relhome="$work/relhome"; mkdir -p "$relhome"

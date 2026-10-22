@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# fill-env.sh -- interactive fill of the must-set .env values.
+# fill-env.sh -- interactive fill of the must-set values.
 # Prompts for each UNCOMMENTED `KEY=` line in .env.example (the must-set vars;
-# commented lines are opt-in -- uncomment first) and writes the answer into .env.
+# commented lines are opt-in -- uncomment first) and writes the answer into .env,
+# except a behaviour-config key (USER_SLUG, HANDOVER_DIR, ...: scripts/lib/
+# load-dotenv.sh _himmel_key_class), which goes to ~/.himmel/himmel.conf.
 # Press Enter at any prompt to SKIP that var (keep its current value).
 # Non-interactive stdin -> no-op with a notice.
 #
@@ -37,6 +39,10 @@ dotenv_get() {
 # shellcheck source=../lib/prim.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" || return 1
+
+# shellcheck source=../lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/load-dotenv.sh" || return 1
 
 # dotenv_set <file> <key> <value> -- replace the FIRST uncommented `KEY=` line in
 # place (CRLF on that line tolerated); append `KEY=value` if absent. Idempotent.
@@ -141,6 +147,32 @@ fillable_keys() {
   done < "$file"
 }
 
+# _fe_store <key> <env-file> -- the file KEY's answer is written to: the tracked
+# config file for a behaviour-config key, the env file for everything else.
+_fe_store() {
+  if [ "$(_himmel_key_class "$1")" = config ]; then
+    printf '%s/himmel.conf' "$(_himmel_config_dir)"
+  else
+    printf '%s' "$2"
+  fi
+}
+
+# _fe_current <key> <env-file> -- the value the prompt shows: the key's store,
+# then (config keys not yet migrated) the legacy value still in the env file.
+_fe_current() {
+  local v
+  v="$(dotenv_get "$(_fe_store "$1" "$2")" "$1")"
+  [ -n "$v" ] || v="$(dotenv_get "$2" "$1")"
+  printf '%s' "$v"
+}
+
+# _fe_save <key> <env-file> <value> -- write the answer to the key's store.
+_fe_save() {
+  local f
+  f="$(_fe_store "$1" "$2")"
+  mkdir -p "$(dirname "$f")" && dotenv_set "$f" "$1" "$3"
+}
+
 # fill_env <env-file> [example-file] -- interactive prompt loop.
 fill_env() {
   local envfile="$1" example="${2:-}" key cur ans
@@ -154,13 +186,13 @@ fill_env() {
   fi
   echo "Fill .env values (press Enter to skip / keep current):"
   while IFS= read -r key; do
-    cur="$(dotenv_get "$envfile" "$key")"
+    cur="$(_fe_current "$key" "$envfile")"
     # Per-var help blurb from the .env.example comments, indented above the prompt.
     _fe_format_help "$(dotenv_help "$example" "$key")"
     printf '  %s [%s]: ' "$key" "$cur"
     IFS= read -r ans || ans=""
     if [ -n "$ans" ]; then
-      dotenv_set "$envfile" "$key" "$ans" || echo "  WARNING: could not write $key" >&2
+      _fe_save "$key" "$envfile" "$ans" || echo "  WARNING: could not write $key" >&2
     fi
   done < <(fillable_keys "$example")
   echo "  done."

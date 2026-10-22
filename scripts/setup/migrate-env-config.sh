@@ -3,13 +3,12 @@
 # ~/.himmel/himmel.conf, so .env can hold secrets only.
 # Layer table: docs/internals/config-layers.md.
 #
-#   bash scripts/setup/migrate-env-config.sh --ahead-of-setup [--env <file>] [--vault <dir>]
+#   bash scripts/setup/migrate-env-config.sh [--env <file>] [--vault <dir>]
 #   bash scripts/setup/migrate-env-config.sh --dry-run [--env <file>]
 #
-#   --ahead-of-setup  required for a real run. Setup, adopt and himmelctl still
-#                  read and write these keys in .env until a later change
-#                  moves them to the new files, so migrating before that
-#                  leaves a station half-migrated. Without it the run exits 3.
+#   --ahead-of-setup  accepted and ignored: setup, adopt and himmelctl read and
+#                  write these keys in the tracked file, so a real run needs no
+#                  opt-in.
 #   --env <file>   the .env to read (default: the one load_dotenv reads)
 #   --vault <dir>  keep the tracked file in <dir>/.himmel/himmel.conf and link
 #                  ~/.himmel/himmel.conf to it (a luna install). Without it,
@@ -32,7 +31,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/load-dotenv.sh
 . "$HERE/../lib/load-dotenv.sh"
 
-envfile="" vault="" dry=0 ahead=0
+envfile="" vault="" dry=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --env|--vault)
@@ -40,16 +39,11 @@ while [ "$#" -gt 0 ]; do
             if [ "$1" = --env ]; then envfile="$2"; else vault="$2"; fi
             shift 2 ;;
         --dry-run) dry=1; shift ;;
-        --ahead-of-setup) ahead=1; shift ;;
-        -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+        --ahead-of-setup) shift ;;
+        -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
         *) echo "migrate-env-config: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-
-if [ "$dry" -eq 0 ] && [ "$ahead" -eq 0 ]; then
-    echo "migrate-env-config: not yet. Setup, adopt and himmelctl still read and write these keys in .env, so .env stays the live file until the second HIMMEL-3111 PR lands. Use --dry-run to list the keys, or --ahead-of-setup to migrate anyway." >&2
-    exit 3
-fi
 
 [ -n "$envfile" ] || envfile=$(_load_dotenv_envfile "")
 if [ -z "$envfile" ] || [ ! -f "$envfile" ]; then

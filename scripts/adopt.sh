@@ -576,7 +576,7 @@ wire_luna_vault_path() {
 # dir — scripts/lib/handover-path.sh). Sibling of wire_luna_vault_path; $1 =
 # the scaffolded vault dir.
 wire_handover_dir_luna() {
-  local dest="$1" hdir settings envfile existing
+  local dest="$1" hdir settings envfile existing conf
   # handover.mode=inline is a no-op here — handover state stays
   # the repo-local handovers/ stub, same as the T4.5 JS-side gate
   # (applyHandoverStep) already treats it. Only external (the default,
@@ -598,8 +598,9 @@ wire_handover_dir_luna() {
   # second, silent place that overrides that choice. Two places it could
   # already live:
   #   1. This settings.json's own env.HANDOVER_DIR (a prior adopt run).
-  #   2. The primary checkout's .env (set-handover-dir.sh / Mode B — the
-  #      actual file /handover-setup writes to). settings.json env takes
+  #   2. The tracked config file ~/.himmel/himmel.conf(.local), or the primary
+  #      checkout's .env (set-handover-dir.sh / Mode B — the actual file
+  #      /handover-setup writes to). settings.json env takes
   #      PROCESS-ENV precedence over .env (scripts/lib/load-dotenv.sh only
   #      fills currently-unset vars), so writing here would silently SHADOW
   #      that choice even though the .env file itself stayed untouched.
@@ -616,6 +617,12 @@ wire_handover_dir_luna() {
       return
     fi
   fi
+  for conf in "$HOME/.himmel/himmel.conf.local" "$HOME/.himmel/himmel.conf"; do
+    if [[ -f "$conf" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=' "$conf"; then
+      echo "  HANDOVER_DIR already set in $conf — leaving it, not wiring env.HANDOVER_DIR into $settings"
+      return
+    fi
+  done
   envfile="$HIMMEL_ROOT/.env"
   if [[ -f "$envfile" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=' "$envfile"; then
     echo "  HANDOVER_DIR already set in $envfile (via /handover-setup) — leaving it, not wiring env.HANDOVER_DIR into $settings (HIMMEL-839)"

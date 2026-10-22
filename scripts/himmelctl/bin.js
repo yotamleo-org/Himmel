@@ -38,8 +38,8 @@ const standaloneBundleLib = require('./lib/standalone-bundle.js');
 const tarballUpdateLib = require('./lib/tarball-update.js');
 const stateLib = require('./lib/state.js');
 const statusReportLib = require('./lib/status-report.js');
-// Expand a leading `~` to an absolute home path (adopt.sh/set-handover-dir.sh
-// receive an already-expanded path — a literal `~` would never expand inside
+// Expand a leading `~` to an absolute home path (adopt.sh
+// receives an already-expanded path — a literal `~` would never expand inside
 // a quoted spawn arg). Reused from status-report.js's copy
 // rather than kept as a second implementation to drift out of sync with.
 const { expandHome } = statusReportLib;
@@ -70,6 +70,7 @@ const CADENCE_REGISTRY = require('./lib/cadence-registry.json').cadences;
 // ponytail: provStep names only the plan step in flight, so install-end's
 // failed_step is the step that RETURNED non-zero, not a finer-grained cause.
 const provLib = require('./lib/provenance.js');
+const behaviourConfigLib = require('./lib/behaviour-config.js');
 let provStep = '';
 
 function provWarn(e) {
@@ -849,7 +850,7 @@ function himmelRealRoot() {
 }
 
 // Root used to locate setup.sh/setup.ps1/adopt.sh and scripts/handover/
-// set-handover-dir.sh (T4/T4.5/T5a). Overridable via HIMMELCTL_REPO_ROOT —
+// register-state.sh (T4/T4.5/T5a). Overridable via HIMMELCTL_REPO_ROOT —
 // same seam class as HIMMELCTL_CACHE_DIR — so a hermetic test can point the
 // derivation + shell-out at STUB fixtures in a temp dir instead of the real
 // himmel clone. Defaults to the real clone root.
@@ -1105,7 +1106,7 @@ const TICKET_REQUIRED_HELP = {
 // Commit rules are config-class keys (scripts/lib/load-dotenv.sh
 // _himmel_key_class), so they live in ~/.himmel/himmel.conf, not the .env.
 function commitRulesPath() {
-  return path.join(os.homedir(), '.himmel', 'himmel.conf');
+  return behaviourConfigLib.confPath();
 }
 
 // tracker none has no ticket pattern, so a required ID there would contradict
@@ -1129,29 +1130,13 @@ function previewCommitRules(answers) {
   console.log(`himmelctl: would write ${kv} to ${commitRulesPath()}`);
 }
 
-// Replace each key's line in place (first match; later duplicates dropped),
-// append the missing ones, drop a commit-rule key the answers leave out (a stale
-// value would contradict them), leave every other line untouched.
+// Drops a commit-rule key the answers leave out (a stale value would contradict
+// them); every other line of the file stays untouched.
 function applyCommitRulesStep(answers) {
   if (!answers.commitRules) return { rc: 0 };
   const file = commitRulesPath();
   try {
-    let lines = [];
-    try { lines = fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-    const entries = commitRulesEntries(answers.commitRules);
-    const kept = new Set(entries.map(([k]) => k));
-    for (const k of ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']) {
-      if (!kept.has(k)) lines = lines.filter((l) => !l.startsWith(`${k}=`));
-    }
-    for (const [k, v] of entries) {
-      const idx = lines.findIndex((l) => l.startsWith(`${k}=`));
-      if (idx === -1) { lines.push(`${k}=${v}`); continue; }
-      lines[idx] = `${k}=${v}`;
-      lines = lines.filter((l, i) => i <= idx || !l.startsWith(`${k}=`));
-    }
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${lines.join('\n')}\n`);
+    behaviourConfigLib.upsertConfEntries(file, commitRulesEntries(answers.commitRules), ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']);
   } catch (e) {
     console.error(`himmelctl: could not write commit rules to ${file}: ${e.message}`);
     return { rc: 1 };
@@ -2850,38 +2835,30 @@ function runSpawn(cmd, opts = {}) {
   return typeof r.status === 'number' ? r.status : 1;
 }
 
-// T4.5 handover.mode=external (locked O3). Reuses the CANONICAL
-// scripts/handover/set-handover-dir.sh (the same script /handover-setup
-// shells out to — see scripts/lib/handover-path.sh's deployment-guidance
-// comment) rather than reimplementing its .env upsert logic here, so the
-// wizard's write matches /handover-setup exactly. mkdir -p's the target
-// first: set-handover-dir.sh is fail-closed on a not-yet-existing dir, and a
-// freshly-chosen external state-repo path legitimately doesn't exist yet.
-// --env-file pins the target .env explicitly (repoRoot(), honoring the
-// HIMMELCTL_REPO_ROOT test seam) instead of letting the script's own git
-// discovery resolve the real repo's .env under test. Output is captured
-// (not inherited) so only the wizard's own ONE confirmable summary line
-// prints, per the brief's exact format — not also the script's own "OK ..."
-// line.
+// T4.5 handover.mode=external (locked O3). HANDOVER_DIR is a config-class key
+// (scripts/lib/load-dotenv.sh _himmel_key_class), so it is upserted into the
+// tracked config file ~/.himmel/himmel.conf. mkdir -p's the target first: the
+// handover-dir readers are fail-closed on a not-yet-existing dir, and a
+// freshly-chosen external state-repo path legitimately doesn't exist yet. Only
+// the wizard's own ONE confirmable summary line prints.
 function writeHandoverDir(p) {
-  const target = expandHome(p);
-  const envFile = path.join(repoRoot(), '.env');
-  const script = path.join(repoRoot(), 'scripts', 'handover', 'set-handover-dir.sh');
+  const target = path.resolve(expandHome(p));
+  const confFile = behaviourConfigLib.confPath();
   try {
     fs.mkdirSync(target, { recursive: true });
   } catch (e) {
     console.error(`himmelctl: failed to create handover dir ${target}: ${e.message}`);
     return false;
   }
-  const recorded = provBefore(envFile, { scope: 'clone', cls: 'keep' });
-  const r = spawnSync(resolveBash(), [toBashPath(script), target, '--env-file', toBashPath(envFile)], { encoding: 'utf8' });
-  if (r.error || r.status !== 0) {
-    const detail = (r.stderr || (r.error && r.error.message) || '').trim();
-    console.error(`himmelctl: failed to write HANDOVER_DIR via ${script}${detail ? `: ${detail}` : ''}`);
+  const recorded = provBefore(confFile, { scope: 'user', cls: 'keep' });
+  try {
+    behaviourConfigLib.upsertConfEntries(confFile, [['HANDOVER_DIR', target]]);
+  } catch (e) {
+    console.error(`himmelctl: failed to write HANDOVER_DIR to ${confFile}: ${e.message}`);
     return false;
   }
   recorded();
-  console.log(`HANDOVER_DIR -> ${target} (written to ${envFile})`);
+  console.log(`HANDOVER_DIR -> ${target} (written to ${confFile})`);
   return true;
 }
 
@@ -2968,8 +2945,7 @@ function askConfirmSafe(prompt, eofValue = 'n') {
 // dry-run bookkeeping) but there is nothing left to preview for plugins.
 function previewHandoverAndPlugins(answers) {
   if (answers.handover && answers.handover.mode === 'external') {
-    const envFile = path.join(repoRoot(), '.env');
-    console.log(`DRY: HANDOVER_DIR -> ${expandHome(answers.handover.path)} (would write to ${envFile})`);
+    console.log(`DRY: HANDOVER_DIR -> ${path.resolve(expandHome(answers.handover.path))} (would write to ${behaviourConfigLib.confPath()})`);
     if (answers.handover.register === 'yes') console.log(`DRY: would register handover state for ${repoRoot()} via scripts/handover/register-state.sh`);
   }
 }
@@ -4723,7 +4699,7 @@ async function runPlan(answers, args) {
     if (existsNow && !isStampedLunaVault(dest)) {
       console.error(`himmelctl: ${dest} appeared (or changed) since the preflight check and is not a luna vault — aborting before adopt.sh runs.`);
       if (answers.handover && answers.handover.mode === 'external') {
-        console.error('  The handover wiring was already applied (applyHandoverStep persisted HANDOVER_DIR to .env) — review or remove that entry if you re-run with a different vault path.');
+        console.error('  The handover wiring was already applied (applyHandoverStep persisted HANDOVER_DIR to himmel.conf) — review or remove that entry if you re-run with a different vault path.');
       }
       return 1;
     }
@@ -7623,10 +7599,10 @@ async function cmdTrust(args) {
 //
 // Three config surfaces, three DIFFERENT real mechanisms (never a uniform
 // fake one):
-//   initiative.<leg>     on|off  -> scripts/lib/set-env-var.sh upserts
-//                                  HIMMEL_INITIATIVE=<comma-legs> into the
-//                                  repo .env (the same file
-//                                  scripts/hooks/inject-initiative.sh sources).
+//   initiative.<leg>     on|off  -> upserts HIMMEL_INITIATIVE=<comma-legs>
+//                                  into ~/.himmel/himmel.conf (read by
+//                                  scripts/hooks/inject-initiative.sh through
+//                                  scripts/lib/load-dotenv.sh).
 //   lanes.<id>            on|off  -> scripts/lanes/set-lane-override.mjs
 //                                  upserts a `{id, probe:{kind}}` entry into
 //                                  the gitignored scripts/lanes/lanes.local.json
@@ -7748,9 +7724,8 @@ function firstNonWslBashOnPath() {
 // target to the wrong file, whereas the forward-slice form (C:/...) resolves
 // reliably — the same convention the test harness's own winpath()/cygpath -m
 // uses at the node/bash boundary. No-op on posix (no backslashes). Applied to
-// every SCRIPT-PATH arg handed to resolveBash() (writeEnvVar, writeHandoverDir,
-// runPreflight, deriveCommand, deriveExistingVaultPlan, deriveUpdateCommand)
-// and to the --env-file target by writeEnvVar/writeHandoverDir.
+// every SCRIPT-PATH arg handed to resolveBash() (runPreflight, deriveCommand,
+// deriveExistingVaultPlan, deriveUpdateCommand).
 function toBashPath(p) {
   return p.replace(/\\/g, '/');
 }
@@ -7783,20 +7758,24 @@ function toggleToken(csv, token, on) {
   return [...set].join(',');
 }
 
-// Write KEY=VALUE to the repo .env via set-env-var.sh (never a direct file
-// write of our own — see install-engine.js's own wiring-writer doctrine).
-// --dry-run prints the would-be line and returns without spawning anything.
-function writeEnvVar(key, value, args) {
-  const target = envFilePath();
+// Read one behaviour-config KEY: himmel.conf.local, then himmel.conf, then the
+// legacy clone .env. Never process.env (see readEnvVarFile). { value, file }.
+function readConfigVar(key) {
+  return behaviourConfigLib.readConfigVar(key, envFilePath());
+}
+
+// Write KEY=VALUE to the tracked config file ~/.himmel/himmel.conf.
+// --dry-run prints the would-be line and writes nothing.
+function writeConfigVar(key, value, args) {
+  const target = behaviourConfigLib.confPath();
   if (args.dryRun) {
     console.log(`DRY: ${key}=${value} (would write to ${target})`);
     return true;
   }
-  const script = path.join(repoRoot(), 'scripts', 'lib', 'set-env-var.sh');
-  const r = spawnSync(resolveBash(), [toBashPath(script), key, value, '--env-file', toBashPath(target)], { encoding: 'utf8' });
-  if (r.error || r.status !== 0) {
-    const detail = (r.stderr || (r.error && r.error.message) || '').trim();
-    console.error(`himmelctl: failed to write ${key} via ${script}${detail ? `: ${detail}` : ''}`);
+  try {
+    behaviourConfigLib.upsertConfEntries(target, [[key, value]]);
+  } catch (e) {
+    console.error(`himmelctl: failed to write ${key} to ${target}: ${e.message}`);
     return false;
   }
   console.log(`${key} -> ${value || '(empty)'} (written to ${target})`);
@@ -7808,13 +7787,13 @@ function cmdConfigSetInitiative(leg, onOff, args) {
     console.error(`himmelctl: unknown initiative leg '${leg}' (known: ${INITIATIVE_LEGS.join(', ')})`);
     return 2;
   }
-  const current = readEnvVarFile('HIMMEL_INITIATIVE');
+  const current = readConfigVar('HIMMEL_INITIATIVE').value;
   const next = toggleToken(current, leg, onOff === 'on');
-  return writeEnvVar('HIMMEL_INITIATIVE', next, args) ? 0 : 1;
+  return writeConfigVar('HIMMEL_INITIATIVE', next, args) ? 0 : 1;
 }
 
 function cmdConfigGetInitiative(leg) {
-  const current = readEnvVarFile('HIMMEL_INITIATIVE');
+  const { value: current, file } = readConfigVar('HIMMEL_INITIATIVE');
   const activeSet = new Set(current.split(',').map((s) => s.trim()).filter(Boolean));
   if (leg) {
     if (INITIATIVE_LEGS.indexOf(leg) === -1) {
@@ -7824,7 +7803,7 @@ function cmdConfigGetInitiative(leg) {
     console.log(`initiative.${leg}: ${activeSet.has(leg) ? 'on' : 'off'}`);
     return 0;
   }
-  console.log(`HIMMEL_INITIATIVE=${current || '(unset)'} (from ${envFilePath()})`);
+  console.log(`HIMMEL_INITIATIVE=${current || '(unset)'} (from ${file})`);
   const active = INITIATIVE_LEGS.filter((l) => activeSet.has(l));
   console.log(`active legs: ${active.length > 0 ? active.join(', ') : '(none)'}`);
   return 0;
