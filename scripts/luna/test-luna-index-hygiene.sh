@@ -170,9 +170,28 @@ fi
 V="$W/v13"; make_vault "$V"; CFG="$W/c13.yml"; write_cfg "$CFG" "$V"
 mkdir -p "$V/graphify-out/inner" || exit 1
 touch -t 202001010000 "$V/graphify-out/inner" "$V/graphify-out/d/GRAPH_REPORT.md" || exit 1
+cp "$CFG" "$W/c13.orig"
+nested_gi() { [ -d "$V/graphify-out/graphify-snapshots" ] || [ -d "$V/graphify-out/inner/graphify-snapshots" ] \
+  || [ -d "$V/graphify-out/new" ] || [ -d "$V/graphify-out/inner/new" ]; }
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$V/graphify-out/inner" --apply >/dev/null 2>&1
 check "an offload root inside graphify-out exits 2" 2 "$?"
-check "and graphify-out is untouched" 0 "$([ -f "$V/graphify-out/d/GRAPH_REPORT.md" ] && echo 0 || echo 1)"
+check "and nothing is created inside graphify-out" 1 "$(nested_gi && echo 0 || echo 1)"
+check "and the qmd config is untouched (refused before any write)" 0 "$(cmp -s "$CFG" "$W/c13.orig" && echo 0 || echo 1)"
+check "and .graphifyignore is not written" 1 "$([ -e "$V/.graphifyignore" ] && echo 0 || echo 1)"
+
+(cd "$V" && bash "$SUT" --vault . --qmd-config "$CFG" --offload-root graphify-out/new --apply >/dev/null 2>&1)
+check "a not-yet-existing relative root inside graphify-out exits 2" 2 "$?"
+check "and nothing is created for it" 1 "$(nested_gi && echo 0 || echo 1)"
+
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$V/graphify-out/../graphify-out/inner/new" --apply >/dev/null 2>&1
+check "a non-canonical not-yet-existing root inside graphify-out exits 2" 2 "$?"
+check "and nothing is created for it either" 1 "$(nested_gi && echo 0 || echo 1)"
+
+ln -s "$V/graphify-out/inner" "$W/link13" || exit 1
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/link13/new" --apply >/dev/null 2>&1
+check "a not-yet-existing root under a symlink into graphify-out exits 2" 2 "$?"
+check "and nothing is created through the symlink" 1 "$(nested_gi && echo 0 || echo 1)"
+check "and graphify-out still holds its files" 0 "$([ -f "$V/graphify-out/d/GRAPH_REPORT.md" ] && echo 0 || echo 1)"
 
 echo "pass=$PASS fail=$FAIL skip=$SKIP"
 [ "$FAIL" -eq 0 ]

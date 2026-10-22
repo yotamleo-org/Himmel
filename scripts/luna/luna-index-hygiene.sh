@@ -39,6 +39,15 @@ done
 [ -d "$VAULT" ] || { echo "luna-index-hygiene: --vault must be an existing directory" >&2; exit 2; }
 [ -f "$CFG" ] || { echo "luna-index-hygiene: --qmd-config must be an existing file" >&2; exit 2; }
 [ -n "$COLLECTION" ] || { echo "luna-index-hygiene: --collection must not be empty" >&2; exit 2; }
+if [ -n "$OFFLOAD_ROOT" ]; then
+  nested="$(python3 -I -c '
+import os, sys
+src = os.path.realpath(os.path.join(sys.argv[1], "graphify-out"))
+root = os.path.realpath(sys.argv[2])
+print("yes" if root == src or root.startswith(src + os.sep) else "no")' "$VAULT" "$OFFLOAD_ROOT")" \
+    || { echo "luna-index-hygiene: cannot resolve --offload-root" >&2; exit 2; }
+  [ "$nested" = no ] || { echo "luna-index-hygiene: --offload-root must not be inside $VAULT/graphify-out" >&2; exit 2; }
+fi
 
 QMD_IGNORE=('graphify-out/**' '60-Maps/graph/**' 'handovers/**/verdicts/*/scratch/**')
 GRAPHIFY_IGNORE=('60-Maps/graph/' 'graphify-out/')
@@ -130,13 +139,6 @@ fi
 # --- 3. offload the stale in-vault graphify-out -------------------------------
 if [ -n "$OFFLOAD_ROOT" ]; then
   SRC="$VAULT/graphify-out"
-  if [ -d "$SRC" ]; then
-    src_real="$(cd "$SRC" && pwd -P)" || exit 1
-    root_real="$(cd "$OFFLOAD_ROOT" 2>/dev/null && pwd -P)" || root_real="$OFFLOAD_ROOT"
-    case "$root_real/" in
-      "$src_real"/*) echo "luna-index-hygiene: --offload-root must not be inside $SRC" >&2; exit 2 ;;
-    esac
-  fi
   if [ ! -d "$SRC" ]; then
     echo "luna-index-hygiene: offload: no $SRC, nothing to move"
   elif [ -e "$SRC/.promote.lock" ]; then
