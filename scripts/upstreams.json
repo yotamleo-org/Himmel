@@ -13,7 +13,8 @@
     ],
     "skips": [
       { "name": "claude-statusline", "reason": "Archived rollback-only subtree superseded by claude-hud; its fork is archived and re-vendor path deliberately closed (scripts/statusline/VENDORED.md)." },
-      { "name": "luna optional plugin pointers", "reason": "Templater, Excalidraw, Thino, and Charts are documentation-only suggestions, not bundled assets; user-managed Obsidian installs own their updates." }
+      { "name": "luna optional plugin pointers", "reason": "Templater, Excalidraw, Thino, and Charts are documentation-only suggestions, not bundled assets; user-managed Obsidian installs own their updates." },
+      { "name": "scripts/cr/floor-reviewer.md", "reason": "Adapted from the Apache-2.0 pr-review-toolkit code-reviewer agent (attribution in THIRD-PARTY-NOTICES.md); it is himmel's own reviewer prompt now, loaded by claude-floor-review.sh, and is deliberately not tracked for upstream drift." }
     ]
   },
   "forks": [

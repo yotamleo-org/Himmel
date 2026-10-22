@@ -1637,9 +1637,6 @@ test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins bac
     const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
     for (const id of dropped) assert.notEqual(p[id], true, `${list} must not enable ${id}`);
   }
-  for (const list of ['lane-impl,code', 'user,code', 'user,code-ui']) {
-    const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
-  }
   for (const list of ['user,code', 'user,code-ui']) {
     assert.equal(resolveProfile(REG, list, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${list} keeps i-have-adhd`);
   }
