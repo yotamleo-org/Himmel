@@ -189,6 +189,20 @@ PORTABLE_FILES=(
   scripts/lib/worktree-inuse.sh
   scripts/lib/worktree-fresh-lock.sh
   scripts/lib/git-clean.sh
+  scripts/check-ci.sh
+  scripts/lib/check-ci-watch.sh
+  scripts/lib/coderabbit-body-findings.sh
+  scripts/lib/coderabbit-signal.sh
+  scripts/lib/gh-ci-cache.sh
+  scripts/lib/gh-graphql-budget.sh
+  scripts/lib/gh-read.sh
+  scripts/lib/merge-block-alert.sh
+  scripts/lib/required-checks.sh
+  scripts/lib/review-ledger-evidence.sh
+  scripts/lib/ticket-status.sh
+  scripts/lib/timeout-bin.sh
+  scripts/lib/prim.sh
+  scripts/lib/canon-path.sh
   scripts/clean-garden.sh
   scripts/worktree.sh
   scripts/clean.sh
