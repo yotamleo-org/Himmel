@@ -46,7 +46,7 @@
 #   * subagent_type: Explore, or console-judge-ro (a repo agent
 #     whose frontmatter pins tools Read, Grep, Glob, Bash only — the same
 #     structural read-only lane)
-#   * CONSOLE_DISPATCH_OK=1 (see "Escape hatches" below)
+#   * CHIEF_DISPATCH_OK=1 (see "Escape hatches" below)
 # A genuinely read-only dispatch uses one of those two; the deny message
 # names both.
 #
@@ -81,8 +81,9 @@
 # bound. Each CHIEF_* name here still reads its old CONSOLE_* name.
 #
 # Escape hatches (set in the shell that LAUNCHED Claude Code; session-sticky):
-#   CONSOLE_DISPATCH_OK=1       deliberate one-session carve-out
-#   CONSOLE_DISPATCH_DISABLE=1  emergency kill switch
+#   CHIEF_DISPATCH_OK=1       deliberate one-session carve-out
+#   CHIEF_DISPATCH_DISABLE=1  emergency kill switch
+# Each still reads its old name (CONSOLE_DISPATCH_OK, CONSOLE_DISPATCH_DISABLE).
 # Both are LOUD — warned on stderr and appended to CHIEF_DISPATCH_LOG
 # (default ~/.claude/console-dispatch-guard/overrides.jsonl), best-effort,
 # mirroring guard-implementor-dispatch.sh's log_override().
@@ -122,13 +123,18 @@ log_override() {
     warn "$override=1 — allowing by explicit session override; audit log: $log"
 }
 
-if [ "${CONSOLE_DISPATCH_OK:-0}" = "1" ]; then
-    log_override CONSOLE_DISPATCH_OK
-    exit 0
-fi
-if [ "${CONSOLE_DISPATCH_DISABLE:-0}" = "1" ]; then
-    log_override CONSOLE_DISPATCH_DISABLE
-    exit 0
+# Each escape hatch reads its old CONSOLE_* name too; a set falsy value of
+# either name keeps the guard on. An unloadable helper lifts nothing.
+alias_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/env-alias.sh"
+# shellcheck source=../lib/env-alias.sh
+if { [ -r "$alias_lib" ] && . "$alias_lib"; } 2>/dev/null; then
+    for pair in "CHIEF_DISPATCH_OK CONSOLE_DISPATCH_OK" "CHIEF_DISPATCH_DISABLE CONSOLE_DISPATCH_DISABLE"; do
+        new="${pair% *}" old="${pair#* }"
+        if env_alias_permit "$new" "$old"; then
+            if [ -n "${!new:-}" ]; then log_override "$new"; else log_override "$old"; fi
+            exit 0
+        fi
+    done
 fi
 
 command -v jq >/dev/null 2>&1 || { warn "jq not on PATH — allowing (fail-open)"; exit 0; }
@@ -269,8 +275,8 @@ Do this instead:
 Genuinely read-only work has two structural options, neither spoofable by prompt text (a
 prompt-text read-only claim is NOT a carve-out here — three CR rounds proved it leaks):
   * dispatch with subagent_type: Explore (or console-judge-ro for a judge call), or
-  * relaunch with CONSOLE_DISPATCH_OK=1 in the launching shell (audited; a per-call prefix
-    does not reach this hook)."
+  * relaunch with CHIEF_DISPATCH_OK=1 (old name CONSOLE_DISPATCH_OK) in the launching shell
+    (audited; a per-call prefix does not reach this hook)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"guard-console-dispatch: console session denied a ship-flow-shaped Agent dispatch"'

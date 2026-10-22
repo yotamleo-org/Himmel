@@ -11,7 +11,8 @@
 # a console inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
 # scripts/handover/console-kit/long-running.txt AND tool_input.run_in_background
 # is not true. "Runs" means the name follows an interpreter (bash, sh, node,
-# bun, python) in command position or sits in command position behind a path; a grep or cat that
+# bun, python) in command position or sits in command position behind a path,
+# after any VAR=value prefixes; a grep or cat that
 # merely names the script is not a run.
 # ponytail: a textual match, not a shell parser — a script run through eval, a
 # wrapper script or a quoted path slips past, and a listed name fed to an
@@ -24,7 +25,8 @@
 # unparseable payload or an unreadable list (scripts/hooks/CLAUDE.md).
 #
 # Single-run bypass (set in the shell that LAUNCHED Claude Code; a per-call
-# prefix does not reach this hook): CONSOLE_FG_OK=1.
+# prefix does not reach this hook): CHIEF_FG_OK=1. Its old name CONSOLE_FG_OK
+# is still read; a set falsy value of either name keeps the guard on.
 #
 # Test seam: CHIEF_FG_LIST (old name CONSOLE_FG_LIST, still read) points at
 # an alternate list file. Bash
@@ -32,7 +34,14 @@
 set -uo pipefail
 
 [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || exit 0
-[ "${CONSOLE_FG_OK:-}" = "1" ] && exit 0
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# An unloadable helper lifts nothing: the guard stays on.
+# shellcheck source=scripts/lib/env-alias.sh
+if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
+    env_alias_permit CHIEF_FG_OK CONSOLE_FG_OK && exit 0
+fi
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -47,8 +56,6 @@ bg=$(printf '%s' "$input" | jq -r '.tool_input.run_in_background // false' 2>/de
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
-
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # A leg launched from a console's Bash inherits HIMMEL_CONSOLE_DOC as ambient env,
 # so the env var alone cannot tell them apart: only a session named `*-console`
@@ -68,7 +75,8 @@ while IFS= read -r name; do
     esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
     tail='($|[[:space:];&|)])'
     tok='[^[:space:];&|()]+'
-    wrap="(((timeout|nohup)([[:space:]]+${tok})*)[[:space:]]+)?"
+    assign="([A-Za-z_][A-Za-z0-9_]*=${tok}[[:space:]]+)*"
+    wrap="${assign}(((timeout|nohup)([[:space:]]+${tok})*)[[:space:]]+)?"
     via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
     via_path="(^|[;&|(])[[:space:]]*${wrap}[^[:space:]]*/${esc}${tail}"
     if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
@@ -111,8 +119,8 @@ A bounded run is allowed in the foreground: make \`timeout 90\` (1 to 90 s) the 
 console-wait.sh and suites stay background. Short scripts (append-results.sh, go.sh, write-verdict.sh,
 fleet-manifest.sh, leg-event.sh) are not on the list and stay foreground. The list is scripts/handover/console-kit/long-running.txt.
 
-Bypass for one session: relaunch with CONSOLE_FG_OK=1 in the launching shell (a per-call prefix
-does not reach this hook)."
+Bypass for one session: relaunch with CHIEF_FG_OK=1 (old name CONSOLE_FG_OK) in the launching
+shell (a per-call prefix does not reach this hook)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"guard-console-foreground: console session denied a foreground long console-kit script"'
