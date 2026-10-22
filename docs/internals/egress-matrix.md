@@ -97,7 +97,7 @@ Semantics.)*
   NO handover-state cell and no enrichment cell; Codex holds NO vault cell.
   This was a *record-integrity* fix, not an incident: nothing routed to GLM —
   no GLM lane appears in `scripts/lanes/resolve.mjs` — but a live `allow+log`
-  cell is exactly what a later worker session would cite as pre-existing authorization.
+  cell is exactly what a later worker would cite as pre-existing authorization.
   As with DeepSeek/Alibaba the rows
   are `deny`, **not deleted** (a deleted row falls through to `default: deny`
   and loses the history), **not `hard`**, and `himmel-code × zai-glm` stays

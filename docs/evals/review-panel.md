@@ -156,7 +156,7 @@ What the classes say:
   from a bug. Giving the critic the ticket's acceptance criteria is the obvious
   lever. `unreachable` (10%) is the same blindness one level down: the critic
   cannot see that every caller passes an absolute path, or that only one
-  process ever closes a leg.
+  process ever closes a worker.
 - **Paraphrased re-raises leak past deduplication.** The panel suppresses a
   finding whose fingerprint matches an earlier disposition on the branch
   (`scripts/cr/finding-reraise.js`), and the ledger confirms that holds: 0 of
@@ -188,7 +188,8 @@ What the classes say:
   cut and the coded sample are public; the rows they read are not. Anyone with
   their own ledger can run the same analysis on it.
 - **Small critics are anecdotes.** Every critic other than the four codex
-  models has under 40 findings; their intervals are too wide to rank them.
+  models and the bare `codex` row (89 findings on three PRs) has under 40
+  findings; their intervals are too wide to rank them.
 - **A branch is not exactly a PR.** The resampling unit is the branch, which
   is a PR in all but a handful of cases.
 
