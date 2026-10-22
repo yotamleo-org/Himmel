@@ -8091,10 +8091,10 @@ function cmdConfigSetCommit(rest, value, args) {
   const kv = {};
   try {
     for (const k of ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']) {
-      const v = behaviourConfigLib.readConfigVar(k, envFilePath()).value;
+      const v = readConfigVar(k).value;
       if (v) kv[k] = v;
     }
-  } catch (e) { if (e.code !== 'ENOENT') { console.error(`himmelctl: config set: could not read ${commitRulesPath()}: ${e.message}`); return 1; } }
+  } catch (e) { if (e.code !== 'ENOENT') { console.error(`himmelctl: config set: could not read ${e.path || commitRulesPath()}: ${e.message}`); return 1; } }
   const cr = {
     tracker: kv.TRACKER || ((process.env.JIRA_PROJECT_KEY || '').trim() === '' ? 'none' : 'jira'),
     ticketIdRequired: kv.TICKET_ID_REQUIRED !== '0',

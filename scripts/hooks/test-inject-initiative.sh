@@ -55,10 +55,13 @@ fail=0
 # for HIMMEL_INITIATIVE*. Point HIMMEL_REPO at an EMPTY temp dir so the existing
 # process-env cases are unaffected by whatever .env exists on the test machine.
 # The SC3 cases below override HIMMEL_REPO per-case to a fixture with a real .env.
+# The hook also reads ~/.himmel/himmel.conf, so HOME is pinned to an empty temp
+# dir too; the himmel.conf case sets its own HOME.
 TMPII=$(mktemp -d)
 trap 'rm -rf "$TMPII"' EXIT
-mkdir -p "$TMPII/noenv"
+mkdir -p "$TMPII/noenv" "$TMPII/home"
 export HIMMEL_REPO="$TMPII/noenv"
+export HOME="$TMPII/home"
 
 # Isolate the dedup markers (${TMPDIR:-/tmp}/himmel-inject-initiative-*)
 # inside this test's own scratch dir so runs never collide with a real session's
