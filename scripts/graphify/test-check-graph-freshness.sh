@@ -236,23 +236,31 @@ OUT="$WS/t10/graphify-out"; CORPUS="$WS/t10/corpus"; build_out "$OUT" "$CORPUS"
 printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
 semantic_rows "$OUT" "x.md|" "x.md,real.md|" "x.md|"
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
-[ "$rc" -eq 2 ] && [[ "$out" == *"x.md"* ]] && pass "T10 a file stuck for 3 runs -> rc=2 naming it" || fail "T10 rc=2 (got $rc): $out"
+[ "$rc" -eq 3 ] && [[ "$out" == *"x.md"* ]] && pass "T10 a file stuck for 3 runs -> rc=3 (not rc=2: the graph itself is verified) naming it" || fail "T10 rc=3 (got $rc): $out"
 
 # --- T10b: a file shrink-refused in each of the last 3 runs -> FAIL too ---
 OUT="$WS/t10b/graphify-out"; CORPUS="$WS/t10b/corpus"; build_out "$OUT" "$CORPUS"
 printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
 semantic_rows "$OUT" "|y.md" "|y.md" "x.md|y.md"
 bash "$SCRIPT" --out "$OUT" --max-age-days 7 >/dev/null 2>&1; rc=$?
-[ "$rc" -eq 2 ] && pass "T10b a refused file stuck for 3 runs -> rc=2" || fail "T10b rc=2 (got $rc)"
+[ "$rc" -eq 3 ] && pass "T10b a refused file stuck for 3 runs -> rc=3" || fail "T10b rc=3 (got $rc)"
 
 # --- T10e: a file that failed twice and is then backed off stays stuck while it stays backed off ---
 OUT="$WS/t10e/graphify-out"; CORPUS="$WS/t10e/corpus"; build_out "$OUT" "$CORPUS"
 printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
 semantic_rows "$OUT" "x.md||" "x.md||" "||x.md"
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
-[ "$rc" -eq 2 ] && [[ "$out" == *"semantic refresh stuck: x.md failed, was refused or stayed backed off in each of the last 3 runs"* ]] \
-  && pass "T10e a backed-off file keeps the check failing" || fail "T10e rc=2 (got $rc): $out"
-[[ "$out" == *"stuck record in semantic-manifest.json"* ]] && pass "T10e the failure says how to clear a back-off" || fail "T10e no clear hint: $out"
+[ "$rc" -eq 3 ] && [[ "$out" == *"semantic refresh stuck: x.md failed, was refused or stayed backed off in each of the last 3 runs"* ]] \
+  && pass "T10e a backed-off file keeps the check non-zero" || fail "T10e rc=3 (got $rc): $out"
+[[ "$out" == *"semantic-merge.py unstick --out $OUT"* ]] && pass "T10e the message names the unstick verb to clear a back-off" || fail "T10e no unstick hint: $out"
+
+# --- T10f: a stuck semantic layer on a STALE graph still reports stale (rc=1) and still names the stuck file ---
+OUT="$WS/t10f/graphify-out"; CORPUS="$WS/t10f/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+backdate_days "$OUT/graph.json" 10
+semantic_rows "$OUT" "x.md|" "x.md|" "x.md|"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"semantic refresh stuck: x.md"* ]] && pass "T10f stale + stuck -> rc=1, stuck file still named" || fail "T10f rc=1 (got $rc): $out"
 
 # --- T10c: failures that drain (different files) stay OK and print the semantic line ---
 OUT="$WS/t10c/graphify-out"; CORPUS="$WS/t10c/corpus"; build_out "$OUT" "$CORPUS"

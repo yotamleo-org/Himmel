@@ -17,15 +17,17 @@
 #               corpus orphaned (no --corpus-root AND no .graphify_root marker,
 #               OR >50% of manifest.json's checkable paths do not resolve
 #               under the corpus root);
-#               semantic refresh stuck (one file failed, was shrink-refused or
-#               stayed backed off in each of the last 3 merge rows of
-#               semantic-runs.jsonl). A backed-off file is not retried until
-#               its content changes, so this stays rc=2 until then; to clear it
-#               without a content change, delete the file's entry under "stuck"
-#               in semantic-manifest.json (the next run retries it). Rows
-#               written before backed_off_files existed name no backed-off
-#               files, so one backed off at upgrade time counts as stuck only
-#               once 3 newer rows carry it.
+#   rc=3 STUCK — the graph is verified and fresh, but the semantic refresh is
+#               stuck (one file failed, was shrink-refused or stayed backed off
+#               in each of the last 3 merge rows of semantic-runs.jsonl). A
+#               backed-off file is not retried until its content changes; to
+#               clear it without a content change run
+#               `semantic-merge.py unstick --out <out>`. Rows written before
+#               backed_off_files existed name no backed-off files, so one backed
+#               off at upgrade time counts as stuck only once 3 newer rows
+#               carry it. A stale graph still reports rc=1; the stuck message
+#               is printed either way. rc=3 is not rc=2: the graph can be
+#               queried, only its semantic layer is behind.
 #   rc=1 WARN — age is older than --max-age-days. Age is measured from
 #               graph.json's embedded built_at_commit (via that commit's
 #               committer date in the resolved corpus, when available),
@@ -52,7 +54,7 @@
 # Usage:
 #   check-graph-freshness.sh --out <graphify-out dir> [--max-age-days N] [--corpus-root <path>]
 #
-# Exit: 0 ok; 1 stale (warn) / usage; 2 fail (missing/orphaned/unparseable).
+# Exit: 0 ok; 1 stale (warn) / usage; 2 fail (missing/orphaned/unparseable); 3 semantic refresh stuck.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -199,6 +201,7 @@ else
 fi
 
 # --- 3b. semantic refresh: the last merge row, and files stuck across runs ---
+STUCK_MSG=""
 SEMANTIC_RUNS="$OUT/semantic-runs.jsonl"
 if [ -f "$SEMANTIC_RUNS" ]; then
   SEM_STATUS=""
@@ -238,7 +241,10 @@ PYEOF
   SEM_LINE="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^LINE //p')"
   [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE $SEM_STATUS"
   SEM_STUCK="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^STUCK //p')"
-  [ -z "$SEM_STUCK" ] || fail "semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes or its stuck record in semantic-manifest.json is deleted)."
+  if [ -n "$SEM_STUCK" ]; then
+    STUCK_MSG="semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes; to retry it now run: python3 $HERE/semantic-merge.py unstick --out $OUT)."
+    echo "graph-freshness: STUCK $STUCK_MSG" >&2
+  fi
 fi
 
 # --- 4. age check: build identity (built_at_commit) preferred over mtime ---
@@ -294,5 +300,7 @@ if [ "$AGE_VERDICT" = "STALE" ]; then
   echo "  $REMEDIATION" >&2
   exit 1
 fi
+
+[ -z "${STUCK_MSG:-}" ] || exit 3
 
 echo "graph-freshness: OK (${AGE_DAYS_FLOOR}d old, corpus verified)"

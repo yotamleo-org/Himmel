@@ -350,6 +350,7 @@ if git -C "$REPO_ROOT" worktree add -q --detach "$WTD" HEAD 2>/dev/null; then
     # the fixture checks out HEAD; overlay the doctor under test so an
     # uncommitted change is what the worktree run executes.
     cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$REPO_ROOT/scripts/doctor-counts.sh" "$WTD/scripts/"
+    cp "$REPO_ROOT/scripts/graphify/check-graph-freshness.sh" "$REPO_ROOT/scripts/graphify/semantic-merge.py" "$WTD/scripts/graphify/"
     (cd "$WTD" && RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/wtstate" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$WTD/scripts/himmel-doctor.sh" --no-color >/dev/null 2>&1)
     if [ -n "$want" ] && [ "$(cat "$t/wtstate/counts" 2>/dev/null)" = "$want" ] && cmp -s "$t/full/last.tsv" "$t/wtstate/last.tsv"; then pass "a worktree run publishes the same counts and last.tsv as the primary run"; else fail "worktree run state differs from the primary run: '$(cat "$t/wtstate/counts" 2>/dev/null)' vs '$want'"; fi
     root_out="$(cd "$WTD" && RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/rootstate" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$WTD/scripts/himmel-doctor.sh" --no-color --root "$WTD" 2>&1)"
@@ -1053,8 +1054,15 @@ rm -rf "$t"
 echo "== C10: private→public propagation check is gone =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
-if [ "$rc" -ne 0 ] || ! grepq "$out" 'C9-scheduler' || ! grepq "$out" 'C11-glm-seed'; then fail "C10 -> doctor did not run its neighbouring checks (rc=$rc)"
+if [ "$rc" -ne 0 ] || ! grepq "$out" 'C9-scheduler' || ! grepq "$out" 'C12-codex'; then fail "C10 -> doctor did not run its neighbouring checks (rc=$rc)"
 elif grepq "$out" 'C10-propagation'; then fail "C10 -> still emitted: $(printf '%s' "$out" | grep C10)"; else pass "C10 -> not emitted"; fi
+rm -rf "$t"
+
+# ── C11 retired: the glm lane is dropped, no glm-seed row may appear ─────────
+echo "== C11: glm-seed check is retired =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c11.XXXXXX")" || exit 1; mkdir -p "$t/claude" "$t/home/.claude-glm"; write_settings "$t/claude" "$WRAPPER"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'C11-glm-seed'; then fail "C11 -> still emitted: $(printf '%s' "$out" | grep C11)"; else pass "C11 -> not emitted"; fi
 rm -rf "$t"
 
 echo "== C13: himmel-ops hooks.json target missing -> WARN C13-plugin-hooks =="
@@ -7003,7 +7011,7 @@ out="$(c70_run)"
 if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no semantic-runs.jsonl'; then pass "C70 no semantic-runs.jsonl -> OK skip"; else fail "C70 no runs -> $(printf '%s' "$out" | head -3)"; fi
 
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_OUT="$c70_t/no-such-out")"
-if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no cadence graphify-out'; then pass "C70 no cadence corpus -> OK skip"; else fail "C70 no corpus -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no graphify-out at'; then pass "C70 no graphify-out -> OK skip"; else fail "C70 no corpus -> $(printf '%s' "$out" | head -3)"; fi
 c70_rows "x.md" "x.md" "x.md"
 printf '#!/bin/sh\nexit 127\n' > "$c70_t/missing-check.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/missing-check.sh")"
@@ -7011,6 +7019,20 @@ if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 127'; th
 printf '#!/bin/sh\necho "graph-freshness: FAIL corpus orphaned: gone" >&2\nexit 2\n' > "$c70_t/orphan-check.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/orphan-check.sh")"
 if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'corpus orphaned'; then pass "C70 other rc 2 -> INFO with the reason"; else fail "C70 rc 2 -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F "semantic-merge.py unstick --out $c70_out"; then pass "C70 the WARN names the unstick command for the judged graph"; else fail "C70 unstick hint -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\necho "graph-freshness: STUCK semantic refresh stuck: x.md failed" >&2\nexit 3\n' > "$c70_t/stuck-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/stuck-check.sh")"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'semantic refresh stuck: x.md'; then pass "C70 checker rc 3 (stuck) -> WARN naming the file"; else fail "C70 rc 3 -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\necho "graph-freshness: STUCK semantic refresh stuck: x.md failed" >&2\necho "graph-freshness: WARN graph is 9d old" >&2\nexit 1\n' > "$c70_t/stale-stuck-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/stale-stuck-check.sh")"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'semantic refresh stuck: x.md'; then pass "C70 stuck on a stale graph (rc 1) still names the stuck file"; else fail "C70 rc 1 stuck -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\nexit 3\n' > "$c70_t/bare3-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/bare3-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 3'; then pass "C70 rc 3 without a stuck message -> INFO, not a healthy OK"; else fail "C70 bare rc 3 -> $(printf '%s' "$out" | head -3)"; fi
+# the default graph is the station checkout's graphify-out, never a graph under HOME
+out="$(env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F "$c70_t"; then pass "C70 default judges the station graphify-out, not a graph under HOME"; else fail "C70 default root -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="
@@ -7020,6 +7042,7 @@ head -c 3072 /dev/zero > "$c71_t/cache/q1/blob"
 c71_run() { env HOME="$c71_t/home" CLAUDE_DIR="$c71_t/claude" HIMMEL_DOCTOR_VERDICT_CACHE="$c71_t/cache" "$@" bash "$DOC" --no-color --only C71 2>&1; }
 out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=1)"
 if grepq "$out" -F 'WARN C71-verdict-scratch' && grepq "$out" -F 'verdict-retention.sh prune'; then pass "C71 cache above the threshold -> WARN naming the pruner"; else fail "C71 over -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'prune --unproven-older-than 14'; then pass "C71 hint names the flag that frees unprovable scratch"; else fail "C71 hint lacks --unproven-older-than 14 (plain prune frees nothing when no PR is provable): $(printf '%s' "$out" | head -3)"; fi
 out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=1024)"
 if grepq "$out" -F 'OK   C71-verdict-scratch' && ! grepq "$out" -F 'WARN C71'; then pass "C71 cache below the threshold -> OK"; else fail "C71 under -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=08)"

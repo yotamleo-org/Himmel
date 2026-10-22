@@ -207,18 +207,34 @@ fi
 # classifies a review snapshot (pr<N>, pr<N>tmp, ...) the name-keyed rule below
 # can never match. A tip AHEAD of the head is not an ancestor and
 # falls through to the git rules.
-forge_tip_lookup() {
-    local oid n
-    [ -n "$MERGED_HEADS" ] || return 0
-    while read -r oid n; do
-        [ -n "$oid" ] || continue
-        if git merge-base --is-ancestor "$1" "$oid" 2>/dev/null; then
-            printf 'TIPMERGED\t%s\n' "$n"
-            return 0
-        fi
-    done <<EOF
+#
+# One rev-list answers "is the tip reachable from ANY head in this slice" (the
+# tip minus everything the heads reach is empty), so a miss costs one git call
+# however many merged PRs exist, and a hit bisects to the first matching head
+# in about log2(heads) calls instead of forking merge-base per head.
+MH_OID=(); MH_NUM=()
+while read -r _o _n; do
+    [ -n "$_o" ] || continue
+    MH_OID+=("$_o"); MH_NUM+=("$_n")
+done <<EOF
 $MERGED_HEADS
 EOF
+
+# tip_in_heads <tip> <lo> <hi> -> 0 when <tip> is reachable from MH_OID[lo..hi].
+tip_in_heads() {
+    local k
+    [ "$(for ((k = $2; k <= $3; k++)); do printf '^%s\n' "${MH_OID[k]}"; done | git rev-list --count --stdin "$1" 2>/dev/null)" = 0 ]
+}
+
+forge_tip_lookup() {
+    local lo=0 hi=$(( ${#MH_OID[@]} - 1 )) mid
+    [ "$hi" -ge 0 ] || return 0
+    tip_in_heads "$1" "$lo" "$hi" || return 0
+    while [ "$lo" -lt "$hi" ]; do
+        mid=$(( (lo + hi) / 2 ))
+        if tip_in_heads "$1" "$lo" "$mid"; then hi=$mid; else lo=$((mid + 1)); fi
+    done
+    printf 'TIPMERGED\t%s\n' "${MH_NUM[lo]}"
 }
 
 # forge_lookup <branch> <tip-sha> -> "OPEN\t<n>" or "MERGED\t<n>" (by name) or
