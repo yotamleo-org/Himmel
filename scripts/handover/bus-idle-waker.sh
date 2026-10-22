@@ -109,11 +109,13 @@ konsole() { # konsole <method> [args]: one Session call into $out; a failure end
 }
 
 is_named_claude() { # is_named_claude <pid>: argv0 basename is claude and it was launched with -n/--name <name>
-    tr '\0' '\n' < "$PROC/$1/cmdline" 2>/dev/null | awk -v n="$NAME" '
-        NR == 1 { sub(/.*\//, ""); claude = ($0 == "claude") }
-        (prev == "-n" || prev == "--name") && $0 == n { named = 1 }
-        { prev = $0 }
-        END { exit !(claude && named) }'
+    local arg prev="" first=1 claude=0 named=0
+    while IFS= read -r -d '' arg; do # NUL-separated, so a newline inside an argument stays inside it
+        if [ "$first" -eq 1 ]; then first=0; [ "${arg##*/}" = claude ] && claude=1; fi
+        if [ "$prev" = -n ] || [ "$prev" = --name ]; then [ "$arg" = "$NAME" ] && named=1; fi
+        prev="$arg"
+    done 2>/dev/null < "$PROC/$1/cmdline"
+    [ "$claude" -eq 1 ] && [ "$named" -eq 1 ]
 }
 
 in_foreground() { # in_foreground <pid>: its process group is the terminal's foreground group (stat fields pgrp and tpgid, read after the comm's closing paren)

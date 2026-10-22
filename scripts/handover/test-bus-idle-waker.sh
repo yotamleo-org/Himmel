@@ -215,13 +215,17 @@ fakeproc() { # fakeproc <pid> <children or ''> <argv0> [argv...]
 fgstat() { # fgstat <pid> <pgrp> <tpgid>: /proc/<pid>/stat as the kernel prints it (state ppid pgrp session tty tpgid ...)
   printf '%s (claude) S 1 %s %s 34832 %s 4194304\n' "$1" "$2" "$2" "$3" > "$tmp/proc/$1/stat"
 }
+sent_once() { # the wake sentence was typed exactly once
+  [ "$(grep -cF "$FIXED" "$QLOG")" -eq 1 ]
+}
 fakeproc 5000 5001 script -q -a -f /x.log -c /x/leg-claude-launcher.sh -n legX
 fakeproc 5001 '' claude --model gpt-6.1-sol -n legX hello
 fgstat 5001 5001 5001
 QPID=5000 BUS_N=2 run 3 0
-[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a script wrapper whose child is the named claude is accepted" || fail "claudex wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && sent_once && pass "a script wrapper whose child is the named claude is accepted" || fail "claudex wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 fakeproc 5010 5011 script -q -c /x/leg-claude-launcher.sh
 fakeproc 5011 '' claude -n other
+fgstat 5011 5011 5011
 QPID=5010 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a descendant claude with a different -n is refused, rc=4" || fail "wrapped foreign claude: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 fakeproc 5020 '5021 5022' script -q -c /x/leg-claude-launcher.sh
@@ -250,7 +254,7 @@ fgstat 5041 5041 5041
 fgstat 5042 5042 5042
 fgstat 5043 5043 5043
 QPID=5040 BUS_N=2 run 3 0
-[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a claude 3 levels below the session is accepted" || fail "depth 3: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && sent_once && pass "a claude 3 levels below the session is accepted" || fail "depth 3: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 # A named claude that is not the terminal's foreground process group must not receive the wake: another program owns the input.
 fakeproc 5050 5051 bash
 fakeproc 5051 '' claude -n legX
@@ -268,7 +272,7 @@ fakeproc 5072 '' claude -n legX
 fgstat 5071 5071 5072
 fgstat 5072 5072 5072
 QPID=5070 BUS_N=2 run 3 0
-[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "of two named claudes only the foreground group counts, so the target is unambiguous" || fail "one foreground of two: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && sent_once && pass "of two named claudes only the foreground group counts, so the target is unambiguous" || fail "one foreground of two: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 # script gives claude its own pty, so claude is foreground there even when the script wrapper itself is backgrounded on the session's terminal.
 fakeproc 5080 5081 bash
 fakeproc 5081 5082 script -q -c /x/leg-claude-launcher.sh
@@ -283,7 +287,13 @@ fakeproc 5092 '' claude -n legX
 fgstat 5091 5091 5091
 fgstat 5092 5092 5092
 QPID=5090 BUS_N=2 run 3 0
-[ "$RUN_RC" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a foreground claude under a foreground script wrapper below a shell is accepted" || fail "foreground wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && sent_once && pass "a foreground claude under a foreground script wrapper below a shell is accepted" || fail "foreground wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+# An argument holding newlines must stay one argument: a foreground `claude -n other` whose argv carries "-n" and the name on separate lines is not the named claude.
+fakeproc 5100 5101 bash
+fakeproc 5101 '' claude -n other $'notes\n-n\nlegX'
+fgstat 5101 5101 5101
+QPID=5100 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "an argument containing newlines cannot spell -n <name>, refused rc=4" || fail "newline argument: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 
 echo "== waker state file =="
 # A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the
