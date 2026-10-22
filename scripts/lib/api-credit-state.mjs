@@ -315,12 +315,13 @@ export function pickAccount(budget, env = process.env) {
     const need = money(budget);
     const config = read(configPathFor(env));
     configs(config);
-    const roomy = Object.keys(config.accounts).sort()
-      .map((account) => creditState('status', {}, { ...env, HIMMEL_API_ACCOUNT: account }))
-      .filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
+    const all = Object.keys(config.accounts).sort()
+      .map((account) => creditState('status', {}, { ...env, HIMMEL_API_ACCOUNT: account }));
+    const roomy = all.filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
     const rows = roomy.filter((r) => !r.snapshot_stale).sort((x, y) => x.expires_at - y.expires_at);
     if (rows.length === 0) {
-      return { verdict: 'SKIPPED-BANK', reason: roomy.length ? 'stale-snapshot' : 'no-account-with-headroom' };
+      const stale = roomy.length > 0 || all.some((r) => r.reason === 'stale-snapshot');
+      return { verdict: 'SKIPPED-BANK', reason: stale ? 'stale-snapshot' : 'no-account-with-headroom' };
     }
     return { verdict: 'PROCEED', account: rows[0].account, expires_at: rows[0].expires_at };
   } catch (e) {

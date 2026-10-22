@@ -40,8 +40,8 @@ function fixture() {
   const now = Math.floor(Date.now() / 1000);
   const state = join(dir, 'ledger.json');
   const config = { version: 1, ledger_path: state, accounts: {
-    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', key_id: 'key-a' },
-    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', key_id: 'key-b' },
+    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', key_id: 'key-a', reset_at: '2099-01-01T00:00:00Z' },
+    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', key_id: 'key-b', reset_at: '2099-01-01T00:00:00Z' },
   } };
   const snapshot = { version: 1, accounts: Object.fromEntries(['A', 'B'].map((account) => [account, {
     organization_id: config.accounts[account].organization_id, cycle_id: config.accounts[account].cycle_id,

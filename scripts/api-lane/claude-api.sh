@@ -253,8 +253,8 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT" <&0 &
 CALL_PID=$!
 # the watchdog's own sleep is ended with it, so no timer outlives the call
-( sleep "$CALL_TIMEOUT_S" & SLEEP_PID=$!; trap 'kill $SLEEP_PID 2>/dev/null; exit 0' TERM
-  wait $SLEEP_PID; stop_call ) &
+( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
+  sleep "$CALL_TIMEOUT_S" & wait $!; stop_call ) &
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?

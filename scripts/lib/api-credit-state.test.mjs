@@ -14,13 +14,15 @@ const SUT = join(HERE, 'api-credit-state.mjs');
 const BANK = join(HERE, 'usage-preflight.sh');
 const T = mkdtempSync(join(tmpdir(), 'api-credit-'));
 process.on('exit', () => rmSync(T, { recursive: true, force: true }));
+// a reset far in the future, so the fixtures' relative grant dates never meet the real reset date
+const FAR_RESET = '2099-01-01T00:00:00Z';
 
 function fixture() {
   const dir = mkdtempSync(join(T, 'case-'));
   const now = Math.floor(Date.now() / 1000);
   const config = { version: 1, accounts: {
-    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00' },
-    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00' },
+    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', reset_at: FAR_RESET },
+    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', reset_at: FAR_RESET },
   } };
   const snapshot = { version: 1, accounts: Object.fromEntries(['A', 'B'].map((account) => [account, {
     organization_id: config.accounts[account].organization_id,
@@ -616,6 +618,17 @@ test('HIMMEL-7111: auto routing refuses a snapshot older than 24 h, and a fresh 
   f.snapshot.accounts.B.observed_at = f.now - 3600;
   f.save();
   assert.equal(pick().account, 'B');
+});
+
+test('HIMMEL-7111: auto routing reports stale-snapshot when an automatic snapshot has aged out of its window', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) {
+    Object.assign(f.snapshot.accounts[a], { source: 'automatic-snapshot', starts_at: f.now - 7200, observed_at: f.now - 3600 });
+  }
+  f.save();
+  const r = JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01'], { env: f.env, encoding: 'utf8' }).stdout);
+  assert.equal(r.verdict, 'SKIPPED-BANK');
+  assert.equal(r.reason, 'stale-snapshot');
 });
 
 test('HIMMEL-7111: the bank line shows the snapshot age and flags one past 24 h', () => {
