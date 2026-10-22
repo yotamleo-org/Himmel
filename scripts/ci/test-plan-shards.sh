@@ -23,6 +23,10 @@
 #   PS14 ci.yml sizes home-canary from the plan, one leg on an empty selection
 #   PS15 an empty or missing ledger -> the probes at n
 #   PS16 a root omitted before -- defaults to .
+#   PS20 n above the 64 cap is clamped to 64 with a message naming CI_MAX_SHARDS,
+#        at the planner and through ci.yml's own plan step
+#   PS21 n of 0 or a negative value is a usage error naming CI_MAX_SHARDS, and
+#        ci.yml's plan step then falls back to its empty output (8 legs)
 #
 # Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
 #
@@ -242,5 +246,45 @@ done
 
 # PS19: a plan at 16 lists at most 16 shards and shard_total is 16.
 check "PS19 a 16-shard plan lists all 16" "1=true 2=true 3=true 4=true 5=true 6=true 7=true 8=true 9=true 10=true 11=true 12=true 13=true 14=true 15=true 16=true" 16 "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]" ""
+
+# PS20: CI_MAX_SHARDS above 64 is clamped to 64 (a typo of 500 must not plan 500 jobs;
+# 64 keeps the shard matrix a quarter of GitHub's 256-job matrix limit, which the other
+# matrices share) and the message names the variable.
+shard_total_of() { printf '%s\n' "$1" | sed -n 's/^shard_total=//p'; }
+out=$(STUB_ANSWERS="" bash "$PS/plan-shards.sh" 500 . 2>"$PS/clamp.err")
+if [ "$(shard_total_of "$out")" = 64 ]; then pass "PS20 n=500 plans 64 shards"; else fail "PS20 n=500: got [$(shard_total_of "$out")]"; fi
+if grep -q 'CI_MAX_SHARDS' "$PS/clamp.err"; then pass "PS20 the clamp message names CI_MAX_SHARDS"; else fail "PS20 clamp message: [$(cat "$PS/clamp.err")]"; fi
+out=$(STUB_ANSWERS="" bash "$PS/plan-shards.sh" 64 . 2>"$PS/clamp.err")
+if [ "$(shard_total_of "$out")" = 64 ] && [ ! -s "$PS/clamp.err" ]; then pass "PS20 n=64 is the cap itself, not clamped"; else fail "PS20 n=64: [$(shard_total_of "$out")] [$(cat "$PS/clamp.err")]"; fi
+
+# The same through ci.yml's own shards step body, lifted from the workflow and run
+# against the real planner beside the stubs, as the plan job runs it.
+real_dir="$PS/real"
+mkdir -p "$real_dir/scripts/ci"
+cp "$PS/plan-shards.sh" "$PS/shard-has-work.sh" "$PS/run-shell-tests.sh" "$real_dir/scripts/ci/"
+run_real_step() { # run_real_step <CI_MAX_SHARDS value> -> the step's shard_total value ('' if none)
+  python3 -I - "$CI" "$real_dir/shards.run" <<'PY' || return 1
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1]))
+step = next(s for s in doc["jobs"]["plan"]["steps"] if s.get("id") == "shards")
+open(sys.argv[2], "w").write(step["run"])
+PY
+  : > "$real_dir/gho"
+  (cd "$real_dir" && RUNNER_TEMP="$real_dir" GITHUB_OUTPUT="$real_dir/gho" STUB_ANSWERS="" \
+     PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$1" bash "$real_dir/shards.run" >/dev/null 2>&1)
+  sed -n 's/^shard_total=//p' "$real_dir/gho"
+}
+got=$(run_real_step 500)
+if [ "$got" = 64 ]; then pass "PS20 ci.yml's plan step with CI_MAX_SHARDS=500 plans 64"; else fail "PS20 plan step 500: got [$got]"; fi
+
+# PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
+# step swallows the refusal into an empty output, which the shard job reads as 8 legs.
+for bad in 0 -3; do
+  if STUB_ANSWERS="" bash "$PS/plan-shards.sh" "$bad" . >"$PS/bad.out" 2>"$PS/bad.err"; then rc=0; else rc=$?; fi
+  if [ "$rc" -eq 2 ] && [ ! -s "$PS/bad.out" ]; then pass "PS21 n=$bad is a usage error with no plan"; else fail "PS21 n=$bad: rc $rc [$(cat "$PS/bad.out")]"; fi
+  if grep -q 'CI_MAX_SHARDS' "$PS/bad.err"; then pass "PS21 n=$bad message names CI_MAX_SHARDS"; else fail "PS21 n=$bad message: [$(cat "$PS/bad.err")]"; fi
+  got=$(run_real_step "$bad")
+  if [ -z "$got" ]; then pass "PS21 plan step with CI_MAX_SHARDS=$bad leaves no shard_total (8 legs)"; else fail "PS21 plan step $bad: got [$got]"; fi
+done
 
 rst_tally
