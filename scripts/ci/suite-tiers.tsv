@@ -140,6 +140,7 @@ scripts/ci/test-pr-plan.sh	pr	trust-path
 scripts/ci/test-pr-title-lint-trigger.sh	pr	trust-path
 scripts/ci/test-queue-latency.sh	pr	trust-path
 scripts/ci/test-rerun-head.sh	pr	trust-path
+scripts/ci/test-run-bun-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-discovery.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-impacted.sh	pr	trust-path

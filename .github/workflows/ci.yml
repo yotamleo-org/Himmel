@@ -1572,7 +1572,7 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
-      - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
+      - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bash ../ci/run-bun-tests.sh scripts/luna-vitals
       # Must run from the repo root, not scripts/telegram/ — these suites pin
       # their fixtures repo-root-relative, so running them from their own
       # directory fails every wired case (docs/internals/environment-gotchas.md,
@@ -1581,7 +1581,7 @@ jobs:
       # This is the largest bun test surface in the repo (971 tests) and had no
       # CI step at all until HIMMEL-2620. It runs on both matrix legs because
       # three of its cases are platform-sensitive by construction.
-      - run: bun test scripts/telegram --dots
+      - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
       # HIMMEL-3215: the luna source-identity suites (source-identity +
       # backfill, 40 tests) had no CI step, so a regression in
       # scripts/vault/** could merge green. Runs from the repo root like the
@@ -1593,31 +1593,40 @@ jobs:
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: bun test scripts/vault/tests --dots
+        run: bash scripts/ci/run-bun-tests.sh scripts/vault/tests scripts/vault/tests --dots
       # HIMMEL-4254 P3: the read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
       # above; hermetic (stub feed via CONFIG_UI_HIMMELCTL, loopback only).
       # Ubuntu only: it spawns node/bun children with POSIX signal semantics.
       - name: Config UI tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: bun test scripts/config-ui --dots
+        run: bash scripts/ci/run-bun-tests.sh scripts/config-ui scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
       # lockfile is never regenerated (HIMMEL-553). HIMMEL-2620 wired the test
       # run for the suite that was always there under tests/.
-      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bun test
+      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
       # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped and a red non-gating Windows leg would file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bun test
+        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
       # HIMMEL-3827: fleet-control (9 files) and observability (bun files) had
       # no CI step. Repo-root cwd like the suites above; ubuntu only (POSIX
       # fixtures, spawned servers) so the non-gating Windows leg stays quiet.
       - name: fleet-control + observability tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: ls scripts/fleet-control/tests/*.test.ts scripts/observability/*.test.ts && bun test scripts/fleet-control scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
+        run: ls scripts/fleet-control/tests/*.test.ts scripts/observability/*.test.ts && bash scripts/ci/run-bun-tests.sh scripts/fleet-control+observability scripts/fleet-control scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
+      - name: Upload bun flake ledger
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bun-suite-flakes-${{ matrix.os }}-attempt${{ github.run_attempt }}
+          path: ~/.himmel/suite-flake-ledger.jsonl
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30
 
   # CLAUDE.md-derived content invariants (HIMMEL-1305). The local pre-commit
   # copies of these gates judge the STAGED source, but they execute the repo's
@@ -2073,6 +2082,14 @@ jobs:
           # A re-run shard replaces its manifest, so the aggregator reads the
           # latest attempt's.
           overwrite: true
+      - name: Upload shell flake ledger
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shell-suite-flakes-${{ matrix.os }}-shard${{ matrix.shard }}-attempt${{ github.run_attempt }}
+          path: failed-suite-logs/flake-ledger.jsonl
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Upload failed-suite logs
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
