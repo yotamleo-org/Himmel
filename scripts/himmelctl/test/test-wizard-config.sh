@@ -394,10 +394,10 @@ run_cfg "$fxI3" set initiative.handover on
 set +e
 outI3=$(HOME="$homeI2" USERPROFILE="$(winpath "$homeI2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeI2.himmelctl-cache")" HIMMELCTL_REPO_ROOT="$(winpath "$fxI3")" \
   "$node_bin" "$wizard" report --json --items initiative:handover 2>&1)
+rcI3=$?
 set -e
-grepq "$outI3" -F '"id":"initiative:handover"' \
-  || fail "caseI3: the feed should carry initiative:handover (got: $outI3)"
-grepq "$outI3" -F '"installed":{"state":"present","detail":"on"}' \
+[ "$rcI3" -eq 0 ] || fail "caseI3: report --json should exit 0 (got rc=$rcI3): $outI3"
+printf '%s' "$outI3" | jq -e '[.rows[]|select(.id=="initiative:handover")|.installed.state=="present" and .installed.detail=="on"]==[true]' >/dev/null \
   || fail "caseI3: the feed should read initiative.handover as on after the CLI set (got: $outI3)"
 echo "ok: caseI3 a CLI config set reads back as on in the report feed the UI draws"
 
