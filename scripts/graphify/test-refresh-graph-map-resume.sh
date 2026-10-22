@@ -25,6 +25,8 @@ export HOME="$HERMETIC_HOME"
 export CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_CACHE="$WS/no-bank-cache.json"
 unset CLAUDE_USAGE_CACHE CLAUDE_ACCOUNT_CONFIG GRAPHIFY_MAX_CHUNKS_PER_RUN GRAPHIFY_SECONDS_PER_CHUNK GRAPHIFY_HOLLOW_RETRY_MAX
+export GRAPHIFY_CLAUDE_CONFIG_DIR="$WS/claude-graphify"
+export GRAPHIFY_CLAUDE_SOURCE_CONFIG_DIR="$HOME/.claude"
 
 REPORT_FIXTURE='# Graph Report - X
 
@@ -46,8 +48,18 @@ Nodes (20): a, b (+18 more)
 # (logged to STUB_CALLS), cached, and announced like graphify does. The chunk
 # STUB_HOLLOW_AT never recovers: it prints hollow-retry lines (counted in
 # STUB_HOLLOW_COUNT) until the run kills it. `cluster-only <target>` writes the
-# graph + report.
+# report without replacing the graph assembled from completed chunk caches.
 BIN="$WS/bin"; mkdir -p "$BIN"
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "$STUB_CLAUDE_CALLS"
+if [ "${STUB_GIVEUP_AT:-0}" = "$1" ]; then
+  printf '{"nodes":[],"edges":[]}\n'
+else
+  printf '{"nodes":[{"id":"note"}],"edges":[]}\n'
+fi
+STUB
+chmod +x "$BIN/claude"
 cat > "$BIN/graphify" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then echo "graphify 0.9.93"; exit 0; fi
@@ -55,7 +67,6 @@ if [ "$1" = "--version" ]; then echo "graphify 0.9.93"; exit 0; fi
 if [ "$1" = "cluster-only" ]; then
   [ -z "${STUB_CLUSTER_FAIL:-}" ] || exit 1
   mkdir -p "$2/graphify-out"
-  printf '{"nodes":[],"links":[]}' > "$2/graphify-out/graph.json"
   printf '%s\n' "$STUB_REPORT" > "$2/graphify-out/GRAPH_REPORT.md"
   exit 0
 fi
@@ -82,15 +93,35 @@ for i in "${todo[@]}"; do
       echo "[graphify] retrying the same chunk of 38 in 0s after a hollow response" >&2
     done
   fi
+  failed=0
+  if [ -n "${STUB_USE_CLAUDE:-}" ]; then
+    # Match the pinned graphify's three-attempt hollow policy. Only the CLI
+    # response is faked; refresh still owns the cache retention/promote decision.
+    for attempt in 1 2 3; do
+      response=$(claude "$i")
+      if [ "$response" != '{"nodes":[],"edges":[]}' ]; then failed=0; break; fi
+      failed=1
+    done
+  fi
   if [ -n "${STUB_GIVEUP_ALL:-}" ] || [ "${STUB_GIVEUP_AT:-0}" = "$i" ]; then
+    failed=1
     echo "[graphify] chunk of 38 still hollow after 3 attempt(s) — giving up on this chunk. Its files are marked for re-extraction on the next run." >&2
   fi
-  printf '{}' > "$target/graphify-out/cache/c$i.json"
+  [ "$failed" -eq 1 ] || printf '{}' > "$target/graphify-out/cache/c$i.json"
   k=$((k+1))
-  echo "[graphify extract] chunk $k/$m done" >&2
+  index=$k
+  [ -z "${STUB_REVERSE_DONE:-}" ] || index=$((m - k + 1))
+  echo "[graphify extract] chunk $index/$m done" >&2
   [ "${STUB_DIE_AFTER:-0}" = "$k" ] && exit 137
 done
-printf '{"nodes":[],"links":[]}' > "$target/graphify-out/graph.json"
+python3 -I - "$target/graphify-out" <<'PY'
+import json
+import pathlib
+import sys
+out = pathlib.Path(sys.argv[1])
+nodes = [{"id": p.stem, "label": p.stem} for p in sorted((out / "cache").glob("c*.json"))]
+(out / "graph.json").write_text(json.dumps({"nodes": nodes, "links": []}))
+PY
 exit 0
 STUB
 chmod +x "$BIN/graphify"
@@ -103,13 +134,14 @@ MAPS="$WS/vault/60-Maps"; mkdir -p "$MAPS"
 SP="$WS/scratch"; mkdir -p "$SP"
 OUTD="$CORPUS/graphify-out"
 export STUB_CALLS="$WS/calls.log" STUB_HOLLOW_COUNT="$WS/hollow.log"
+export STUB_CLAUDE_CALLS="$WS/claude-calls.log"
 
 run_refresh() {
-  bash "$SCRIPT" --name luna --corpus-root "$CORPUS" --backend claude \
+  bash "$SCRIPT" --name luna --corpus-root "$CORPUS" --backend "${STUB_BACKEND:-claude}" \
     --maps-dir "$MAPS" --title "Graphify Luna Map" --slug graphify-luna-map --corpus-tag luna \
     --scratch "$SP"
 }
-reset() { rm -rf "$OUTD" "${MAPS:?}"/*; rm -f "$STUB_CALLS" "$STUB_HOLLOW_COUNT"; }
+reset() { rm -rf "$OUTD" "${MAPS:?}"/*; rm -f "$STUB_CALLS" "$STUB_HOLLOW_COUNT" "$STUB_CLAUDE_CALLS"; }
 
 # --- R1: a chunk that keeps coming back hollow is retried a bounded number of
 # times, then the run stops as FAILED (rc 5), keeping the finished chunks and
@@ -217,8 +249,8 @@ n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
 
 # --- R10: graphify gives up on a chunk that stays hollow after its own retries,
 # marks it partial and carries on, so a completion line can still follow. A
-# give-up is not progress: an all-give-up run stops at exit 5, while one give-up
-# among real completions does not. ---
+# give-up is not progress: one give-up among real completions must still fail
+# the run without promoting, retaining good chunks for a later retry. ---
 echo "R10: a give-up on a hollow chunk counts as hollow, never as progress"
 reset
 out=$( STUB_CHUNKS=12 STUB_GIVEUP_ALL=1 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
@@ -228,8 +260,36 @@ out=$( STUB_CHUNKS=12 STUB_GIVEUP_ALL=1 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 
 n=$(wc -l < "$STUB_CALLS" 2>/dev/null || echo 0)
 [ "$n" -ge 3 ] && [ "$n" -le 4 ] && pass "R10 it stopped after $n chunks (limit 3 give-ups)" || fail "R10 should stop after 3 give-ups (4 chunks at most), saw $n"
 reset
-out=$( STUB_CHUNKS=4 STUB_GIVEUP_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
-[ "$rc" -eq 0 ] && pass "R10 a single give-up among real completions does not stop the run" || fail "R10 a single give-up should exit 0 (got $rc): $out"
+out=$( STUB_CHUNKS=4 STUB_GIVEUP_AT=2 STUB_USE_CLAUDE=1 STUB_BACKEND=claude-cli GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 5 ] && pass "R10 a single give-up exits 5 after continuing the remaining chunks" || fail "R10 a single give-up should exit 5 (got $rc): $out"
+[ ! -e "$OUTD/graph.json" ] && [ ! -e "$OUTD/manifest.json" ] && [ ! -e "$MAPS/graphify-luna-map.md" ] \
+  && pass "R10 incomplete extraction promotes no graph, freshness manifest or MOC" || fail "R10 incomplete extraction was promoted"
+cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
+[ "$cached" = "c1.json c3.json c4.json " ] && pass "R10 chunks after the failure finish and are cached" || fail "R10 expected good chunks c1 c3 c4, got: $cached"
+grep -q 'still hollow after 3 attempt(s)' "$OUTD/.graphify_failed_chunks" 2>/dev/null \
+  && pass "R10 isolated failed chunk is recorded" || fail "R10 failed chunk record missing"
+# read-sink-ok: test-owned stub CLI call log under the suite tmpdir
+calls=$(tr '\n' ' ' < "$STUB_CLAUDE_CALLS" 2>/dev/null)
+[ "$calls" = "1 2 2 2 3 4 " ] && pass "R10 the hollow CLI chunk is bounded at three attempts and later chunks run" || fail "R10 unexpected CLI attempts: $calls"
+rm -f "$STUB_CALLS" "$STUB_CLAUDE_CALLS"
+out=$( STUB_CHUNKS=4 STUB_USE_CLAUDE=1 STUB_BACKEND=claude-cli run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && [ -e "$OUTD/graph.json" ] && [ -e "$OUTD/manifest.json" ] \
+  && pass "R10 retry completes and promotes the full graph" || fail "R10 retry should complete (got $rc): $out"
+python3 -I -c 'import json,sys; assert {n["id"] for n in json.load(open(sys.argv[1]))["nodes"]} == {"c1", "c2", "c3", "c4"}' "$OUTD/graph.json" \
+  && pass "R10 promoted graph contains every cached and retried chunk" || fail "R10 resumed graph lost completed chunks"
+# read-sink-ok: test-owned stub CLI call log under the suite tmpdir
+calls=$(tr '\n' ' ' < "$STUB_CLAUDE_CALLS" 2>/dev/null)
+[ "$calls" = "2 " ] && pass "R10 retry only dispatches the failed chunk" || fail "R10 retry repeated finished chunks: $calls"
+
+# --- R11: parallel workers may report the highest chunk index first. The cap
+# counts completed chunks, not the index of the callback that arrived last. ---
+echo "R11: out-of-order completions still stop at the cap"
+reset
+out=$( STUB_CHUNKS=4 STUB_REVERSE_DONE=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=1 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 4 ] && pass "R11 last-index-first completion exits 4 at the cap" || fail "R11 expected capped exit 4 (got $rc): $out"
+cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
+[ "$cached" = "c1.json " ] && pass "R11 only one completed chunk is cached" || fail "R11 cap 1 allowed extra chunks: $cached"
+[ ! -e "$OUTD/graph.json" ] && pass "R11 no partial graph promoted" || fail "R11 partial graph promoted"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
