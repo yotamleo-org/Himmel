@@ -781,8 +781,7 @@ Kits are plugin profiles that stack on base and compose per task with
 `--profile a,b`, e.g. `--profile leg-impl,code`. No other
 profile enables a kit member. Both kit profiles drop `i-have-adhd` from base, so composing with the leg family (`leg-impl,code`) <!-- old-term-ok: rewrapped line, wording unchanged -->
 does not hand back what that family dropped. A kit used alone therefore lacks
-both; a composed list ORs its members, so `lane-impl,code` and `user,code`
-still carry them. Keyed items are tracked separately. This is the
+it; a composed list ORs its members, so `user,code` still carries it. Keyed items are tracked separately. This is the
 code kit; the content/research and ops kits follow separately.
 
 | Profile | Members | Listing cost | Use |

@@ -43,8 +43,9 @@ dependency graph.
 
 ## Fork handling
 
-Two vendored plugins are upstream forks and stay under their **upstream
-Apache-2.0** license — they are NOT relicensed to MIT:
+One vendored plugin and one standalone reviewer prompt derive from upstream
+and stay under their **upstream Apache-2.0** license — they are NOT
+relicensed to MIT:
 
 - `scripts/cr/floor-reviewer.md` — modified copy of the `code-reviewer` agent
   of `pr-review-toolkit` (`anthropics/claude-plugins-official`), Apache-2.0;

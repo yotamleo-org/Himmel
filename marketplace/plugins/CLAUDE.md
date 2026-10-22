@@ -18,7 +18,7 @@ marketplace (`obsidian@obsidian-skills`).
 
 ## Conventions
 - **Plugin specs belong in `<plugin>/README.md`** (luna-docs tier-1,
-  HIMMEL-138) — not in `docs/`. Author there (obsidian-triage and
+  HIMMEL-138) — not in `docs/`. Author there (obsidian-triage
   already does; handover predates the convention).
 - Forks keep the upstream `LICENSE` file and document the fork delta in
   the plugin's `README.md`, so the divergence from upstream is auditable.
