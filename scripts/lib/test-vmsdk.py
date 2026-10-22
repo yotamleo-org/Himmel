@@ -668,6 +668,14 @@ class TestCLI(unittest.TestCase):
 
 
 class TestSyncRepo(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        home = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(home, ignore_errors=True))
+        env = mock.patch.dict(os.environ, {"HOME": home})
+        env.start()
+        self.addCleanup(env.stop)
+
     def _vm(self):
         with mock.patch.dict(os.environ,
                              {"ubuntu_vm_user": "osboxes", "ubuntu_vm_pass": "pw"}, clear=False):
@@ -884,6 +892,14 @@ class TestKnownHostsReset(unittest.TestCase):
 class TestSecretBoundary(unittest.TestCase):
     """HIMMEL-2540: the host->guest copy must exclude the secret set and the
     guest must be asserted clean; a snapshot of an unverified guest is refused."""
+
+    def setUp(self):
+        import tempfile
+        home = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(home, ignore_errors=True))
+        env = mock.patch.dict(os.environ, {"HOME": home})
+        env.start()
+        self.addCleanup(env.stop)
 
     def _vm(self):
         with mock.patch.dict(os.environ,
