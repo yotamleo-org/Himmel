@@ -49,6 +49,10 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     - `legs`: each leg's stage, state, PR, ticket and brief links, and a
       timeline of its marker bullets.
     - `ci`, `bank`, and `milestones` (Jira fixVersion done/total).
+    - `red_main`: `{ days: 30, merges }`, the `red-main:` count of
+      `scripts/insights/self-review.sh` over the last 30 days (`merges` is null
+      when the script fails; the key is null in a checkout without it). The
+      page shows the same count in its "Red main" panel.
     - `trends`:
       - `leg_time` and `cost`;
       - `console_cost`: the console's own Opus-eq spend, deduplicated by

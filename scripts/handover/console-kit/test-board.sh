@@ -855,6 +855,29 @@ rm -f "$W/repo/scripts/observability/suite-flake-summary.sh"
 mrun >/dev/null
 lacks 'flakes panel: a checkout without the reader renders no panel (HIMMEL-5131)' "$(cat "$M/board.html")" 'data-flakes='
 
+# --- the red-main panel reads the checkout's own self-review.sh. The stub records
+# its argv and prints self-review.sh's six lines; RED_STUB_RC fails it.
+mkdir -p "$W/repo/scripts/insights"
+cat > "$W/repo/scripts/insights/self-review.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$RED_STUB_ARGS"
+printf 'merges: 9\nfix-share: fix=5 feat=2 share=55%%\nguard-churn: 1\ncompaction-share: compacted=0 runs=0 share=0%%\nsprawl: none\nred-main: 3\n'
+exit "${RED_STUB_RC:-0}"
+STUB
+export RED_STUB_ARGS="$W/red-stub.args"
+mrun --json "$W/red.json" >/dev/null; rc=$?
+same 'red-main panel: render succeeds, rc 0 (HIMMEL-6865)' "$rc" "0"
+same 'red-main panel: self-review.sh runs over the last 30 days of this checkout (HIMMEL-6865)' "$(cat "$RED_STUB_ARGS" 2>/dev/null)" "--repo $W/repo --since 30.days.ago"
+contains 'red-main panel: the count of red-main merges (HIMMEL-6865)' "$(cat "$M/board.html")" '<section data-red-main="3"><h2>Red main — last 30 days</h2><p>3 merges named a red main</p></section>'
+same 'red-main panel: the JSON model carries the count (HIMMEL-6865)' "$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).red_main))' "$W/red.json")" '{"days":30,"merges":3}'
+RED_STUB_RC=1 mrun --json "$W/red.json" >/dev/null; rc=$?
+same 'red-main panel: a failing self-review.sh, rc 0 (HIMMEL-6865)' "$rc" "0"
+contains 'red-main panel: a failing self-review.sh reads unavailable, not a count (HIMMEL-6865)' "$(cat "$M/board.html")" '<section data-red-main="?"><h2>Red main — last 30 days</h2><p class="none">red-main count unavailable</p></section>'
+same 'red-main panel: a failing self-review.sh gives a null count in the JSON (HIMMEL-6865)' "$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).red_main))' "$W/red.json")" '{"days":30,"merges":null}'
+rm -f "$W/repo/scripts/insights/self-review.sh"
+mrun >/dev/null
+lacks 'red-main panel: a checkout without self-review.sh renders no panel (HIMMEL-6865)' "$(cat "$M/board.html")" 'data-red-main='
+
 # --- a console FOR another checkout shows that checkout's PRs, not himmel's.
 # console.sh records the project on the doc's project line; every gh call must
 # run there. `none — ...` (a himmel console) keeps --repo. A recorded path that
