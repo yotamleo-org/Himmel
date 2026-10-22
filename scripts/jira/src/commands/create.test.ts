@@ -485,7 +485,8 @@ describe('create --residual-of', () => {
         const jql = decodeURIComponent(path);
         searches.push(jql);
         if (jql.includes('area-')) return { issues: o.dup ? [{ key: o.dup }] : [] };
-        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}`,
+          fields: { labels: ['residual', 'fu-hardening'], status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } })) };
       }
       return { key: 'HIMMEL-77' };
     });
@@ -514,14 +515,14 @@ describe('create --residual-of', () => {
     const f = created()!;
     expect(f['fixVersions']).toBeUndefined();
     expect(f['labels']).toEqual(expect.arrayContaining(['residual', 'residual-depth-1', 'class-shell-quoting']));
-    expect(f['labels']).not.toContain('residual-overflow');
+    expect(f['labels']).not.toContain('residual-displaced');
   });
 
-  it('escape goes to the current version even with the version full, and stamps affectsVersion', async () => {
+  it('RED b: escape steps down when a full version holds only started residuals, and stamps affectsVersion', async () => {
     play({ open: 40 });
     await file(...RES, '--fu-class', 'escape');
     const f = created()!;
-    expect(f['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(f['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
     expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
   });
 
@@ -533,19 +534,19 @@ describe('create --residual-of', () => {
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
   });
 
-  it('hardening at 15/15 goes to the backlog with residual-overflow', async () => {
+  it('hardening at 15/15 goes to the backlog with residual-displaced', async () => {
     play({ open: 15 });
     await file(...RES, ...HARD, '--priority', 'High');
     const f = created()!;
     expect(f['fixVersions']).toBeUndefined();
-    expect(f['labels']).toContain('residual-overflow');
+    expect(f['labels']).toContain('residual-displaced');
   });
 
   it('a residual-budget:N line in the version description overrides the default', async () => {
     play({ open: 3, budgetDesc: 'sprint goal\nresidual-budget:3', parentVersion: 'v1.1.3' });
     await file(...RES, ...HARD);
-    expect(created()!['fixVersions']).toBeUndefined();
-    expect(created()!['labels']).toContain('residual-overflow');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
+    expect(created()!['labels']).toContain('residual-displaced');
   });
 
   it('depth 2 or more goes to the backlog even for an escape', async () => {
@@ -606,7 +607,7 @@ describe('create --residual-of', () => {
     expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
     expect(f['fixVersions']).toEqual(depth === 0 ? [{ name: 'v1.1.3' }] : undefined);
     expect(JSON.stringify(f['description'])).toContain('class: unclassified');
-    expect(searches).toEqual([]);
+    expect(searches.some((q) => q.includes('area-'))).toBe(false);
   });
 
   it('refuses a missing --fu-class, an empty --class, an unknown fu-class, and an explicit --fix-version', async () => {
@@ -645,7 +646,8 @@ describe('create --residual-of placement (HIMMEL-6919)', () => {
         ];
       }
       if (method === 'GET' && path.startsWith('/search/jql')) {
-        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}`,
+          fields: { labels: ['residual', 'fu-hardening'], status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } })) };
       }
       if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return issue(o.parent, o.parentLabels);
       if (method === 'GET' && path.startsWith('/issue/HIMMEL-60')) return issue(o.target);
@@ -791,9 +793,148 @@ describe('create --residual-of placement (HIMMEL-6919)', () => {
   });
 });
 
-// The cap gate: filing into the current unreleased version is
-// refused at the residual cap unless --over-cap <reason> is given; an
-// operator-directed ticket is exempt. The mock plays Jira: a version list and
+describe('HIMMEL-6924 residual rank slots', () => {
+  const residual = (key: string, labels = ['residual', 'fu-hardening'], status = 'To Do', priority = 'Medium') => ({
+    key,
+    fields: { labels, status: { name: status, statusCategory: { key: status === 'To Do' ? 'new' : status === 'Done' ? 'done' : 'indeterminate' } },
+      project: { key: 'HIMMEL' }, priority: { name: priority }, created: '2026-10-01T00:00:00.000Z', fixVersions: [{ name: 'v1.1.3' }],
+      issuelinks: [] as { type: { name: string }; outwardIssue?: { key: string }; inwardIssue?: { key: string } }[],
+      customfield_rank: { value: 'Other' } },
+  });
+  let residents: ReturnType<typeof residual>[];
+  let parent: ReturnType<typeof residual>;
+  let frozen: boolean;
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const env = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'JIRA_SECTOR_FIELD'];
+  const created = () => mockRequest.mock.calls.find((c) => c[0] === 'POST' && c[1] === '/issue')?.[2].fields;
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'ranked newcomer', '--desc', PLAIN,
+      ...HOME, '--residual-of', 'HIMMEL-50', ...args]);
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of env) { saved[k] = process.env[k]; delete process.env[k]; }
+    dir = mkdtempSync(join(tmpdir(), 'rank-slots-'));
+    process.env.HANDOVER_DIR = dir;
+    resetSectorCache();
+    frozen = false;
+    parent = residual('HIMMEL-50', [], 'In Progress');
+    parent.fields.customfield_rank.value = 'Ship loop';
+    residents = Array.from({ length: 15 }, (_, i) => residual(`HIMMEL-${900 + i}`));
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method !== 'GET') return { key: 'HIMMEL-77' };
+      if (path.endsWith('/versions')) return [
+        { name: 'v1.1.3', released: false, description: frozen ? 'frozen: 2026-10-20' : '' },
+        { name: 'v1.1.4', released: false },
+      ];
+      if (path.startsWith('/issue/HIMMEL-50')) return parent;
+      if (path.endsWith('/context')) return { values: [{ id: '1' }], isLast: true };
+      if (path.endsWith('/option')) return { values: [{ value: 'Ship loop' }, { value: 'Other' }], isLast: true };
+      const found = residents.find((i) => path.startsWith(`/issue/${i.key}?`));
+      if (found) return found;
+      if (path.startsWith('/search/jql')) {
+        const jql = new URLSearchParams(path.split('?')[1]).get('jql') ?? '';
+        return { issues: jql.includes('labels = residual') ? residents : [parent, ...residents] };
+      }
+      throw new Error(`unexpected read ${path}`);
+    });
+  });
+  afterEach(() => {
+    for (const k of env) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    resetSectorCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('RED a: a higher-class newcomer displaces the lowest To Do residual at 15/15', async () => {
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
+      fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
+    });
+    const comment = mockRequest.mock.calls.find((c) => c[1] === '/issue/HIMMEL-900/comment');
+    expect(JSON.stringify(comment?.[2])).toContain('HIMMEL-77');
+    expect(created().labels).not.toContain('residual-displaced');
+  });
+
+  it.each(['critical', 'regression', 'must:decision-137', 'receipt'])('RED a: gate %s beats class and priority and is persisted', async (gate) => {
+    residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape'], 'To Do', 'Highest'));
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--gate', gate, '--priority', 'Lowest');
+    expect(created().labels).toContain(`gate-${gate.split(':')[0]}`);
+    expect(mockRequest.mock.calls.find((c) => c[0] === 'PUT')?.[1]).toBe('/issue/HIMMEL-900');
+  });
+
+  it.each(['class', 'priority', 'chain', 'sector'])('RED a: rank key %s beats older creation time', async (key) => {
+    residents = residents.map((r) => residual(r.key, key === 'class' ? ['residual'] : ['residual', 'fu-escape'],
+      'To Do', key === 'priority' ? 'Low' : 'Medium'));
+    if (key === 'sector') {
+      process.env.JIRA_SECTOR_FIELD = 'customfield_rank';
+      for (const r of residents) r.fields.issuelinks.push({ type: { name: 'Relates' }, outwardIssue: { key: parent.key } });
+    }
+    await file('--fu-class', 'escape');
+    expect(mockRequest.mock.calls.find((c) => c[0] === 'PUT')?.[1]).toBe('/issue/HIMMEL-900');
+    if (key === 'sector') {
+      const query = mockRequest.mock.calls.find((c) => c[1].includes('/search/jql'))?.[1];
+      expect(new URLSearchParams(query.split('?')[1]).get('fields')).toContain('customfield_rank');
+    }
+  });
+
+  it.each(['gate-label', 'legacy-gate', 'started', 'older'])('RED b: %s residents cannot be displaced', async (kind) => {
+    residents = residents.map((r) => residual(r.key,
+      ['residual', 'fu-escape', ...(kind === 'gate-label' ? ['gate-receipt'] : [])],
+      kind === 'started' ? 'In Progress' : 'To Do'));
+    parent.fields.status.statusCategory.key = 'done';
+    if (kind === 'legacy-gate') writeFileSync(join(dir, 'admissions-ledger.jsonl'), residents.map((r) =>
+      JSON.stringify({ key: r.key, version: 'v1.1.3', gate: 'receipt' })).join('\n'));
+    await file('--fu-class', 'escape', ...(kind === 'older' ? [] : ['--priority', 'Highest']));
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(created().labels).toContain('residual-displaced');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
+  });
+
+  it('RED a: the lowest rank is selected from the whole resident set, not its first 15 keys', async () => {
+    residents = Array.from({ length: 16 }, (_, i) => residual(`HIMMEL-${900 + i}`, ['residual', 'fu-escape'], 'To Do', 'Highest'));
+    residents[15] = residual('HIMMEL-915');
+    await file('--fu-class', 'escape');
+    expect(mockRequest.mock.calls.find((c) => c[0] === 'PUT')?.[1]).toBe('/issue/HIMMEL-915');
+  });
+
+  it('RED a: displacement from next clears the version instead of going to a third version', async () => {
+    frozen = true;
+    for (const r of residents) r.fields.fixVersions = [{ name: 'v1.1.4' }];
+    await file('--fu-class', 'escape');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
+      fields: { fixVersions: [] }, update: { labels: [{ add: 'residual-displaced' }] },
+    });
+  });
+
+  it('RED b: blocker inheritance does not put a displaced newcomer back into the full version', async () => {
+    residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape']));
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--blocks', 'HIMMEL-50');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(created().labels).toContain('residual-displaced');
+  });
+
+  it('RED b: higher-ranked and started residents keep their slots; newcomer steps down labelled', async () => {
+    residents = residents.map((r, i) => residual(r.key, ['residual', 'fu-escape'], i % 2 ? 'In Progress' : 'To Do', 'Highest'));
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--priority', 'Medium');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(created().labels).toContain('residual-displaced');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
+  });
+});
+
+// Filing into the current unreleased version at the cap warns and labels
+// over-cap; an operator-directed ticket is exempt. The mock plays Jira: a version list and
 // a search whose hit count is the open residuals in the current version.
 describe('create — cap gate (HIMMEL-6485)', () => {
   type Opts = { open?: number; budgetDesc?: string; noNext?: boolean; searchFails?: boolean };
@@ -811,7 +952,8 @@ describe('create — cap gate (HIMMEL-6485)', () => {
       if (method === 'GET' && path.startsWith('/search/jql')) {
         if (o.searchFails) throw new Error('search boom');
         searches.push(decodeURIComponent(path));
-        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}`,
+          fields: { labels: ['residual', 'fu-hardening'], status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } })) };
       }
       return { key: 'HIMMEL-77' };
     });
@@ -838,14 +980,18 @@ describe('create — cap gate (HIMMEL-6485)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  it('refuses a filing into the current version at the cap, without POSTing', async () => {
+  it('RED c: raw Task at 15/15 warns, labels over-cap and files without an override', async () => {
     play({ open: 15 });
     const exit = exitSpy();
-    await expect(file('--fix-version', 'v1.1.3')).rejects.toThrow('exit');
-    expect(exit).toHaveBeenCalledWith(1);
-    expect(stderr()).toMatch(/v1\.1\.3.*15\/15.*--over-cap/s);
-    expect(created()).toBeUndefined();
-    exit.mockRestore();
+    try {
+      await file('--fix-version', 'v1.1.3');
+      expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+      expect(created()!['labels']).toContain('over-cap');
+      expect(stderr()).toMatch(/warning.*v1\.1\.3.*15\/15/s);
+      expect(exit).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+    }
   });
 
   it('counts only open residuals in the current version', async () => {
@@ -862,9 +1008,9 @@ describe('create — cap gate (HIMMEL-6485)', () => {
 
   it('a residual-budget line in the version description moves the cap', async () => {
     play({ open: 3, budgetDesc: 'residual-budget:3' });
-    const exit = exitSpy();
-    await expect(file('--fix-version', 'v1.1.3')).rejects.toThrow('exit');
-    exit.mockRestore();
+    await file('--fix-version', 'v1.1.3');
+    expect(created()!['labels']).toContain('over-cap');
+    expect(stderr()).toMatch(/warning.*3\/3/s);
   });
 
   it('files at the cap with --over-cap, labels it and records the reason', async () => {
@@ -933,12 +1079,11 @@ describe('create — cap gate (HIMMEL-6485)', () => {
     expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50/s);
   });
 
-  it('--follow-up-of into the current version at the cap is gated like any filing', async () => {
+  it('RED c: --follow-up-of into the current version at the cap warns like any raw filing', async () => {
     play({ open: 15 });
-    const exit = exitSpy();
-    await expect(file('--follow-up-of', 'HIMMEL-50', '--fix-version', 'v1.1.3')).rejects.toThrow('exit');
-    expect(created()).toBeUndefined();
-    exit.mockRestore();
+    await file('--follow-up-of', 'HIMMEL-50', '--fix-version', 'v1.1.3');
+    expect(created()!['labels']).toEqual(expect.arrayContaining(['residual', 'over-cap']));
+    expect(stderr()).toMatch(/warning.*15\/15/s);
   });
 
   it('--follow-up-of cannot be combined with --residual-of', async () => {

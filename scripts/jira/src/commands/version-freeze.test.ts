@@ -57,6 +57,7 @@ function world(w: World): void {
       let issues: unknown[];
       if (jql === 'project=HIM AND fixVersion="v1.1.3"') issues = w.inVersion ?? w.frozen ?? [];
       else if (jql.includes('priority = Highest')) issues = w.blockers ?? [];
+      else if (jql.includes('labels = station-adhoc')) issues = (w.open ?? []).filter((i) => i.fields.labels.includes('station-adhoc'));
       else if (jql.includes('fixVersion != ')) issues = w.unfolded ?? [];
       else if (jql.includes('key in (')) issues = w.frozen ?? [];
       else issues = w.open ?? [];
@@ -208,6 +209,23 @@ describe('version-freeze / version-ready / version-defer', () => {
         : JSON.stringify(Array.from({ length: 200 }, () => ({ conclusion: 'success', headSha: 'abc123', workflowName: 'ci' }))),
     );
     expect(mainCiGreen().ok).toBe(false);
+  });
+
+  it('RED d: version-ready fails on an open station-adhoc ticket even when admitted and deferred', async () => {
+    mockRead.mockReturnValue([
+      { ts: '2026-10-21T01:00:00Z', version: 'v1.1.3', key: 'HIM-9', kind: 'rm-admit', actor: 'c', reason: 'station' },
+      { ts: '2026-10-21T02:00:00Z', version: 'v1.1.3', key: 'HIM-2', kind: 'deferral', actor: 'c', reason: 'later' },
+    ]);
+    world({
+      description: FROZEN_DESC,
+      frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new', ['deferred'])],
+      inVersion: [issue('HIM-1', 'done'), issue('HIM-2', 'new', ['deferred']), issue('HIM-9', 'new', ['station-adhoc'])],
+      open: [issue('HIM-9', 'new', ['station-adhoc'])],
+    });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/PASS\s+frozen-set/);
+    expect(out()).toMatch(/FAIL\s+station-adhoc.*HIM-9/);
+    expect(mockRequest.mock.calls.every((c) => c[0] === 'GET')).toBe(true);
   });
 
   it('version-ready FAILs on an open Highest bug, an unfolded Done key and a red main', async () => {
