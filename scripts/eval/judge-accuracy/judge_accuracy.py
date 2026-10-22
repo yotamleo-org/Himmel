@@ -14,12 +14,13 @@ Inputs. --verdicts is the bucket's verdicts/ tree (verdicts/<qid>/<name>.md, wri
 (default ~/.himmel/state/jira-mirror/HIMMEL). The window is the verdicts written in [until - days, until).
 
 Join.
-  escape     a PR merged at the head of a GO record in the window, and either a Bug whose `caused-by: #<pr>`
-             names it (sure) or a candidate ruled S (sure) or P (plausible). A PR counts once. A PR merged
-             past its GO'd head is coverage, never scored, and only the GOs at the merged head give its class
-             and model. Merges, verdicts, bugs and main runs from `until` on are ignored.
-  candidate  an escape signal on a PR no caused-by already settles: a Bug created after the merge that cites
-             the PR and has no caused-by line, or a failed main run on the merge commit; and a NO-GO overturned by a
+  escape     a PR merged at the head of a GO record in the window written before the merge, and either a Bug
+             whose `caused-by: #<pr>` names it (sure) or a candidate ruled S (sure) or P (plausible). A PR
+             counts once. A PR merged past its GO'd head or before its GO is coverage, never scored, and only
+             those GOs give its class and model. Merges, verdicts, bugs and main runs from `until` on are ignored.
+  candidate  an escape signal whose cause no caused-by on the PR already settles: a Bug created after the merge
+             that cites the PR and has no caused-by line, or a failed main run on the merge commit
+             (ci-selection); and a NO-GO overturned by a
              GO at the same head. Each goes once to the adjudication queue; a console-judge-ro call
              (opus, high) rules it S / P / N with `rule`, and a ruled id is never asked again.
   procedural a NO-GO that only buys a delta round; left out of every rate.
@@ -214,31 +215,33 @@ def join(recs, prs, runs, bugs, since, until):
         if r["verdict"] == "GO" and r["pr"] is not None:
             gos.setdefault(r["pr"], []).append(r)
     shipped = {n: prs[n] for n in gos if landed(prs.get(n), until)}
-    merged = {n: p for n, p in shipped.items() if any(g["head"] == p.get("headRefOid") for g in gos[n])}
+    for n, p in shipped.items():
+        gos[n] = [g for g in gos[n] if g["head"] == p.get("headRefOid") and g["at"] <= when(p["mergedAt"])]
+    merged = {n: p for n, p in shipped.items() if gos[n]}
     m["coverage.merged_past_go"] = len(shipped) - len(merged)
-    for n in merged:
-        gos[n] = [g for g in gos[n] if g["head"] == merged[n].get("headRefOid")]
     signals = {n: [] for n in merged}  # pr -> [(level S|P|pending, cause)]
     bugs = [b for b in bugs if not (b["created"] and b["created"] >= until)]
     for b in bugs:
         if b["caused_by"] and b["caused_by"].isdigit() and int(b["caused_by"]) in signals:
             signals[int(b["caused_by"])].append(("S", "ci-selection" if "main-red" in b["labels"] else "review"))
-    open_prs = {n for n, s in signals.items() if not s}
+    settled = {(n, cause) for n, s in signals.items() for _, cause in s}
     for b in bugs:
         if b["caused_by"] and b["caused_by"].isdigit():
             continue
-        for n in sorted(b["cites"] & open_prs):
+        cause = "ci-selection" if "main-red" in b["labels"] else "review"
+        for n in sorted(b["cites"] & set(merged)):
             at = when(merged[n].get("mergedAt") or "")
-            if at and b["created"] and b["created"] > at:
+            if at and b["created"] and b["created"] > at and (n, cause) not in settled:
                 cands.append({"id": "esc:%d:bug:%s" % (n, b["key"]), "pr": n, "signal": "bug", "ref": b["key"],
-                              "cause": "ci-selection" if "main-red" in b["labels"] else "review",
+                              "cause": cause,
                               "question": "Did PR #%d cause the bug %s? S sure, P plausible, N not caused by it."
                                           % (n, b["key"])})
     sha = {(p.get("mergeCommit") or {}).get("oid"): n for n, p in merged.items()}
     for run in runs:
         n = sha.get(run.get("headSha"))
         at = when(run.get("createdAt") or "")
-        if n in open_prs and run.get("conclusion") == "failure" and not (at and at >= until):
+        if (n is not None and (n, "ci-selection") not in settled and run.get("conclusion") == "failure"
+                and not (at and at >= until)):
             cands.append({"id": "esc:%d:red-main:%s" % (n, run.get("databaseId")), "pr": n, "signal": "red-main",
                           "ref": str(run.get("databaseId")), "cause": "ci-selection",
                           "question": "Did PR #%d break main run %s on its own merge commit? S sure, P plausible, "

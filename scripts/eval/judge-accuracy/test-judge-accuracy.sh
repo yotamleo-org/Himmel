@@ -56,6 +56,7 @@ verdict q7 judge GO abc7 2026-08-01T10:00:00Z "pr: 107" "model: opus" "effort: h
 verdict q8 judge GO abc8 2026-10-16T10:00:00Z "pr: 108" "model: opus" "effort: high" -- "class: none"
 verdict q9 judge GO abd1 2026-10-19T10:00:00Z "pr: 109" "model: opus" "effort: high" -- "class: none"
 verdict q10 judge NO-GO abe1 2026-10-18T10:00:00Z "pr: 110" "model: opus" "effort: high" -- "class: other" "class-reason: x"
+verdict q11 judge GO abf1 2026-10-18T12:00:00Z "pr: 111" "model: opus" "effort: high" -- "class: none"
 verdict q10b judge GO abe1 2026-10-22T10:00:00Z "pr: 110" "model: opus" "effort: high" -- "class: none"
 mkdir -p "$TMP/v/notes"; printf 'a disposition note, no verdict line\n' >"$TMP/v/notes/judge.md"
 
@@ -69,7 +70,8 @@ cat >"$TMP/prs.json" <<'EOF'
  {"number":107,"state":"MERGED","mergedAt":"2026-08-01T11:00:00Z","headRefOid":"abc7","mergeCommit":{"oid":"m107"}},
  {"number":108,"state":"MERGED","mergedAt":"2026-10-17T11:00:00Z","headRefOid":"abc9","mergeCommit":{"oid":"m108"}},
  {"number":109,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abd1","mergeCommit":{"oid":"m109"}},
- {"number":110,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abe1","mergeCommit":{"oid":"m110"}}]
+ {"number":110,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abe1","mergeCommit":{"oid":"m110"}},
+ {"number":111,"state":"MERGED","mergedAt":"2026-10-18T11:00:00Z","headRefOid":"abf1","mergeCommit":{"oid":"m111"}}]
 EOF
 cat >"$TMP/runs.json" <<'EOF'
 [{"databaseId":501,"headSha":"m102","conclusion":"failure","createdAt":"2026-10-12T11:05:00Z"},
@@ -116,27 +118,28 @@ eq "per model: a GO on a superseded head is not attributed" "$(field "$L" 0 mode
 eq "coverage: a judge record with no model" "$(field "$L" 0 coverage.no_model)" "1"
 eq "coverage: a merged NO-GO'd PR with no GO" "$(field "$L" 0 coverage.merged_without_go)" "1"
 eq "coverage: a file with no verdict line" "$(field "$L" 0 coverage.unparsed)" "1"
-eq "coverage: a PR merged past its GO'd head is not scored" "$(field "$L" 0 coverage.merged_past_go)" "1"
-eq "three candidates wait for a ruling" "$(field "$L" 0 pending)" "3"
+eq "coverage: a PR merged past its GO'd head or before its GO is not scored" "$(field "$L" 0 coverage.merged_past_go)" "2"
+eq "four candidates wait for a ruling" "$(field "$L" 0 pending)" "4"
 eq "a row with pending candidates is partial" "$(field "$L" 0 status)" "partial"
 has "run 1: prints the escape rate" "$out" "escape_rate"
 python3 -I "$RUNS" validate "$L" >/dev/null 2>&1
 eq "row: a valid eval-runs row" "$?" "0"
 
 # --- the queue: one row per candidate, shown until ruled ---------------------------------------------
-eq "queue: three candidate rows" "$(rows "$Q")" "3"
+eq "queue: four candidate rows" "$(rows "$Q")" "4"
 q=$(python3 -I "$JA" queue --queue "$Q" 2>&1)
 has "queue: the bug that cites the PR without caused-by" "$q" "esc:106:bug:HIMMEL-9002"
 has "queue: the red main run on the merge commit" "$q" "esc:102:red-main:501"
 has "queue: the NO-GO overturned at the same head" "$q" "nogo:q5/judge"
 case "$q" in *HIMMEL-9004*|*HIMMEL-9003*) fail "queue: a bug filed before the merge or a non-bug is no candidate";;
   *) pass "queue: a bug filed before the merge or a non-bug is no candidate";; esac
-case "$q" in *esc:101:*) fail "queue: a PR a caused-by bug settles asks for no ruling";;
-  *) pass "queue: a PR a caused-by bug settles asks for no ruling";; esac
+case "$q" in *esc:101:bug:*) fail "queue: a cause a caused-by bug settles asks for no ruling";;
+  *) pass "queue: a cause a caused-by bug settles asks for no ruling";; esac
+has "queue: a settled PR's red main run still asks for its ci-selection cause" "$q" "esc:101:red-main:504"
 case "$q" in *nogo:q10/*) fail "queue: a GO from until on overturns no NO-GO";;
   *) pass "queue: a GO from until on overturns no NO-GO";; esac
 ja >/dev/null 2>&1
-eq "rerun: a queued candidate is not queued again" "$(rows "$Q")" "3"
+eq "rerun: a queued candidate is not queued again" "$(rows "$Q")" "4"
 
 # --- rulings: once each, and the next run counts them ------------------------------------------------
 rule_ok() {
@@ -146,6 +149,7 @@ rule_ok() {
 rule_ok esc:102:red-main:501 S
 rule_ok esc:106:bug:HIMMEL-9002 P
 rule_ok nogo:q5/judge N
+rule_ok esc:101:red-main:504 N
 python3 -I "$JA" rule esc:102:red-main:501 N --evidence again --queue "$Q" >/dev/null 2>&1
 eq "a ruled candidate is never re-asked" "$?" "1"
 python3 -I "$JA" rule esc:999:bug:HIMMEL-1 S --evidence x --queue "$Q" >/dev/null 2>&1
