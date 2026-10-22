@@ -440,6 +440,37 @@ r77="$(tsv_row "$out" pr77)"
 if grepq "$r77" '^STALE'; then pass "control: merged PR into another base does not classify a pr ref LANDED"; else fail "pr ref, other-base PR -> $r77"; fi
 rm -rf "$t"
 
+echo "== tip lookup over many merged heads: same answer, no merge-base fork per head =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded-tip.XXXXXX")" || exit 1; make_repo "$t/repo"
+rows=(); heads=()
+for i in 1 2 3 4 5 6; do
+    git -C "$t/repo" checkout -q -b "feat/himmel-930$i-m" main
+    commit_dated "$t/repo" 0 "m$i.md" "merged $i" "feat: merged $i"
+    heads[i]="$(git -C "$t/repo" rev-parse HEAD)"
+    rows+=("feat/himmel-930$i-m:MERGED:90$i:${heads[$i]}")
+    git -C "$t/repo" checkout -q main
+    git -C "$t/repo" branch -q -D "feat/himmel-930$i-m"
+done
+git -C "$t/repo" branch pr90 "${heads[4]}"
+git -C "$t/repo" checkout -q -b feat/himmel-9390-ahead main
+commit_dated "$t/repo" 0 ahead.md "never merged" "feat: never merged"
+git -C "$t/repo" checkout -q main
+make_gh_stub "$t/stub" "${rows[@]}"
+mkdir -p "$t/bin"
+real_git="$(command -v git)"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\n[ "$1" = merge-base ] && echo "$*" >> "%s/mb.log"\nexec "%s" "$@"\n' "$t" "$real_git" > "$t/bin/git"
+chmod +x "$t/bin/git"
+if ! out="$(cd "$t/repo" && PATH="$t/bin:$PATH" GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"; then
+    fail "tip lookup command exited nonzero -> $out"
+fi
+r90="$(tsv_row "$out" pr90)"; rahead="$(tsv_row "$out" feat/himmel-9390-ahead)"
+if grepq "$r90" '^LANDED-ELSEWHERE' && grepq "$r90" -F 'merged PR #904'; then pass "tip lookup: pr ref at the 4th of 6 merged heads -> merged PR #904"; else fail "tip lookup answer -> $r90"; fi
+if [ -n "$rahead" ] && ! grepq "$rahead" '^LANDED-ELSEWHERE'; then pass "tip lookup control: an ahead, unmerged branch is not called landed"; else fail "tip lookup ahead control -> $rahead"; fi
+n_fork="$(grep -c -F -e '--is-ancestor' "$t/mb.log" 2>/dev/null || true)"
+if [ "${n_fork:-0}" -eq 0 ]; then pass "tip lookup: no merge-base --is-ancestor fork per merged head"; else fail "tip lookup forked merge-base --is-ancestor $n_fork times"; fi
+rm -rf "$t"
+
 echo "== no merge base with base -> readable cause, never a raw rc =="
 t="$(mktemp -d)"; make_repo "$t/repo"
 git -C "$t/repo" checkout -q --orphan fix/himmel-9210-unrelated

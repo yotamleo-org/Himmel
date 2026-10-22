@@ -72,6 +72,7 @@ if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
 fi
 [ "\$1" = extract ] && ls "\$2/graphify-out/cache/semantic" > "$WS/seeded.log" 2>&1
 [ "\$1" = extract ] || exit 0
+if [ -n "\${GRAPHIFY_OUT:-}" ]; then echo "stub: GRAPHIFY_OUT=\$GRAPHIFY_OUT reached extract, which would read and write that live out-root instead of the scratch copy" >&2; exit 97; fi
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 # GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
 # 0.25 USD per-call cap (himmel batch 1, 2026-10-16); the run still wrote a graph and exited 0.
@@ -628,6 +629,25 @@ printf 'aleph\n' > "$C56/a.md"; : > "$WS/calls.log"
 out=$(run --name t56 --corpus-root "$C56" --corpus-class himmel-code); rc=$?
 case " $(ids "$C56") " in *" sem_a.md_aleph "*) pass "T56 changed content is retried and lands" ;; *) fail "T56 retry (rc=$rc): $(ids "$C56") $out" ;; esac
 [ -z "$(stuck "$C56" a.md attempts)" ] && pass "T56 a landed file leaves the stuck record" || fail "T56 stuck kept: $(cat "$C56/graphify-out/semantic-manifest.json")"
+
+echo "T56b: unstick drops the backed-off records so the next run retries the same content"
+C56b="$WS/c56b"; new_corpus "$C56b"
+for _ in 1 2 3; do GRAPHIFY_STUB_SKIP=a.md run --name t56b --corpus-root "$C56b" --corpus-class himmel-code >/dev/null; done
+out=$(python3 "$HERE/semantic-merge.py" unstick --out "$C56b/graphify-out" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"unstick: cleared 1 backed-off record"* ]] && [[ "$out" == *"a.md"* ]] \
+  && pass "T56b unstick reports the cleared file" || fail "T56b unstick (rc=$rc): $out"
+[ -z "$(stuck "$C56b" a.md attempts)" ] && pass "T56b the stuck record is gone" || fail "T56b stuck kept: $(cat "$C56b/graphify-out/semantic-manifest.json")"
+out=$(run --name t56b --corpus-root "$C56b" --corpus-class himmel-code); rc=$?
+case " $(ids "$C56b") " in *" sem_a.md_"*) pass "T56b the unstuck file is re-extracted and lands" ;; *) fail "T56b retry (rc=$rc): $(ids "$C56b") $out" ;; esac
+python3 - "$C56b/graphify-out/semantic-manifest.json" <<'PY'
+import json, sys
+p = sys.argv[1]; m = json.load(open(p))
+m["stuck"] = {"young.md": {"hash": "h", "attempts": 2, "reason": "r"}}
+json.dump(m, open(p, "w"))
+PY
+out=$(python3 "$HERE/semantic-merge.py" unstick --out "$C56b/graphify-out" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"cleared 0 backed-off"* ]] && [ "$(stuck "$C56b" young.md attempts)" = 2 ] \
+  && pass "T56b control: a record still under the attempt limit is kept" || fail "T56b control (rc=$rc): $out"
 
 echo "T57: a refused file's own cache entry is evicted so the retry re-extracts; other entries stay"
 C57="$WS/c57"; new_corpus "$C57"; rm -f "$C57/b.md" "$C57/sub/c.md"

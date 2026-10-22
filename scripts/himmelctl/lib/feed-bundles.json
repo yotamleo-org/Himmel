@@ -62,7 +62,7 @@
       "title": "Lanes & models",
       "rows": [
         "lane:*", "hermes-checkout", "hermes-lanes", "codex-cli", "gemini-cli", "codex-sweep-cadence",
-        "plugin:codex@openai-codex", "doctor:C11-glm-seed", "doctor:C12-codex", "doctor:C21-hermes-profile",
+        "plugin:codex@openai-codex", "doctor:C12-codex", "doctor:C21-hermes-profile",
         "doctor:C31-tokensave-dropped", "doctor:C59-codex-bank-cache",
         "doctor:C60-hermes-origin", "doctor:C61-codex-cli", "doctor:C63-claude-cli",
         "doctor:C66-hermes-cron-hooks", "doctor:C67-hermes-fail-open"
