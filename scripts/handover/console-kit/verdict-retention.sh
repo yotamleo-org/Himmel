@@ -169,10 +169,9 @@ head_in_repo() {
 # and name a PR that is CLOSED or MERGED for at least <min-age-days>, and every
 # verdict head must exist in $repo.
 assess() {
-    local e f line word vpr vhead p st state closed ce h
+    local e f line word vpr vhead h bad=""
     keep="" files=() prs="" heads="" newest_iso=""
-    local newest_close=0
-    for e in "$2"/* "$2"/.[!.]*; do
+    for e in "$2"/* "$2"/.[!.]* "$2"/..?*; do
         [ -e "$e" ] || [ -L "$e" ] || continue
         if [ -f "$e" ] && [ ! -L "$e" ] && [ "${e##*.}" = md ]; then files+=("$e")
         elif [ "$3" = 1 ]; then keep="holds a non-verdict entry (${e##*/})"; return 0; fi
@@ -184,12 +183,36 @@ assess() {
         vhead=$(printf '%s\n' "$line" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]{40})`\.?$/\2/p')
         vpr=$(tr -d '\r' < "$f" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }' \
             | sed -nE 's/^pr: ([1-9][0-9]*)$/\1/p')
-        if [ -z "$word" ]; then keep="${f##*/} has no parsable verdict line"; return 0; fi
-        if [ -z "$vpr" ]; then keep="${f##*/} has no pr: line"; return 0; fi
+        # A bad file is only remembered: the PRs and heads of the good files
+        # are still checked first, so an open PR beside it wins.
+        if [ -z "$word" ]; then [ -n "$bad" ] || bad="${f##*/} has no parsable verdict line"; continue; fi
+        if [ -z "$vpr" ]; then [ -n "$bad" ] || bad="${f##*/} has no pr: line"; continue; fi
         case " $prs " in *" $vpr "*) ;; *) prs="$prs $vpr" ;; esac
         case " $heads " in *" $vhead "*) ;; *) heads="$heads $vhead" ;; esac
     done
-    for p in $prs; do
+    # shellcheck disable=SC2086  # $prs is a space-separated list of numbers
+    check_prs "$4" $prs
+    [ -z "$keep" ] || return 0
+    for h in $heads; do
+        head_in_repo "$h" || { keep="head ${h:0:12} not found in ${repo:-the target repo}, PR number not proven to be this repo's"; return 0; }
+    done
+    keep="$bad"
+    return 0
+}
+
+# ledger_prs <qid>: the PR numbers the ledger rows of <qid> were archived under.
+ledger_prs() {
+    jq -r --arg q "$1" 'select(.qid == $q) | .pr' "$ledger" 2>/dev/null | sort -u
+}
+
+# check_prs <min-age-days> <pr>...: sets keep unless every PR is CLOSED or
+# MERGED (and, with an age, for at least that long); newest_iso is the latest
+# close time.
+check_prs() {
+    local age="$1" p st state closed ce newest_close=0
+    shift
+    keep="" newest_iso=""
+    for p in "$@"; do
         pr_state "$p" || { keep="PR $p lookup failed"; return 0; }
         st="$PRST"
         state="${st%% *}"
@@ -200,16 +223,12 @@ assess() {
             OPEN) keep="PR $p is open"; return 0 ;;
             *) keep="PR $p state unknown ('$state')"; return 0 ;;
         esac
-        if [ "$4" -gt 0 ]; then
+        if [ "$age" -gt 0 ]; then
             ce=$(iso_epoch "$closed") || { keep="PR $p has no readable close time"; return 0; }
-            if [ $((ce + $4 * 86400)) -gt "$now" ]; then keep="PR $p closed inside the ${4}-day age"; return 0; fi
+            if [ $((ce + age * 86400)) -gt "$now" ]; then keep="PR $p closed inside the ${age}-day age"; return 0; fi
             [ "$ce" -gt "$newest_close" ] && { newest_close=$ce; newest_iso="$closed"; }
         fi
     done
-    for h in $heads; do
-        head_in_repo "$h" || { keep="head ${h:0:12} not found in ${repo:-the target repo}, PR number not proven to be this repo's"; return 0; }
-    done
-    return 0
 }
 
 valid_qid() {
@@ -226,6 +245,9 @@ if [ "$verb" = prune ]; then
     case "$phys_cache/" in
         "$phys_root"/*) echo "verdict-retention: refusing - $cache is inside the handover root $hroot; this pruner never touches vault verdicts" >&2; exit 2 ;;
     esac
+    case "$phys_root/" in
+        "$phys_cache"/*) echo "verdict-retention: refusing - the handover root $hroot is inside $cache; this pruner never touches vault verdicts" >&2; exit 2 ;;
+    esac
     rc=0 n=0 kept=0 kb_total=0 recent=""
     for d in "$cache"/*/; do
         d="${d%/}"
@@ -239,7 +261,11 @@ if [ "$verb" = prune ]; then
         if [ -d "$vdir/$q" ] && [ ! -L "$vdir/$q" ]; then
             assess "$q" "$vdir/$q" 0 0
         elif [ -f "$ledger" ] && grep -qF "\"qid\":\"$q\"" "$ledger"; then
-            keep=""
+            # Archived on proof of a closed PR; a PR reopened since keeps its scratch.
+            lprs=$(ledger_prs "$q")
+            # shellcheck disable=SC2086  # $lprs is a newline-separated list of numbers
+            check_prs 0 $lprs
+            [ -n "$lprs" ] || keep="ledger row for $q names no readable PR"
         else
             keep="no verdict dir or ledger row names its PR"
         fi

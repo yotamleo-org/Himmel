@@ -232,5 +232,31 @@ check "7: young dir kept" "$([ -d "$cache/young1" ] && echo yes)" yes
 rc=0; ret archive --unproven-older-than 20 >/dev/null 2>&1 || rc=$?
 check "7: the flag is refused on archive" "$rc" 2
 
+# --- 8. ledger-backed scratch re-checks its PR; no ancestor cache; every file counts ------
+for q in qled qled2 qmix; do
+    mkdir -p "$cache/$q/scratch"
+    touch -d '30 days ago' "$cache/$q/scratch" "$cache/$q"
+done
+printf '{"qid":"qled","pr":501,"head":"%s","verdict":"GO"}\n{"qid":"qled2","pr":502,"head":"%s","verdict":"GO"}\n' "$SHA_A" "$SHA_B" >> "$vdir/_ledger.jsonl"
+rc=0; out=$(ret prune 2>&1) || rc=$?
+contains "8: an archived qid whose PR is open again is kept" "$out" "KEEP qled PR 501 is open"
+contains "8: an archived qid whose PR is still closed is listed" "$out" "PRUNE qled2"
+rc=0; ret prune --apply >/dev/null 2>&1 || rc=$?
+check "8: the reopened-PR scratch survives apply" "$([ -d "$cache/qled" ] && echo yes)" yes
+check "8: the closed-PR scratch is removed" "$([ -e "$cache/qled2" ] && echo yes || echo no)" no
+rc=0; out=$(ret prune --apply --cache "$tmp" 2>&1) || rc=$?
+check "8: a cache that is an ancestor of the handover root is refused" "$rc" 2
+check "8: the handover root survives" "$([ -d "$vdir/qopen" ] && echo yes)" yes
+wv qmix GO "$SHA_A" --pr 501 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qmix"; exit 1; }
+printf '# VERDICT qmix - judge\n\nwritten-at: 2026-09-01T00:00:00Z\n\n## Verdict\n\n**GO** for head `%s`.\n\nmodel: old\n' "$SHA_A" > "$vdir/qmix/old.md"
+rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
+contains "8: a malformed file beside an open-PR file keeps the scratch" "$out" "KEEP qmix PR 501 is open"
+rc=0; ret prune --apply --unproven-older-than 20 >/dev/null 2>&1 || rc=$?
+check "8: the mixed dir survives apply" "$([ -d "$cache/qmix" ] && echo yes)" yes
+wv qdots GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qdots"; exit 1; }
+printf 'x\n' > "$vdir/qdots/..hidden"
+rc=0; out=$(ret archive 2>&1) || rc=$?
+contains "8: a two-dot entry counts as a non-verdict entry" "$out" "KEEP qdots holds a non-verdict entry (..hidden)"
+
 echo
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
