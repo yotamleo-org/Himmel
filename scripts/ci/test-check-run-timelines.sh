@@ -21,6 +21,8 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CORPUS="$ROOT/scripts/ci/check-run-timelines/testdata"
 CHECK_CI="$ROOT/scripts/check-ci.sh"
+# shellcheck source=../lib/timeout-bin.sh
+. "$ROOT/scripts/lib/timeout-bin.sh"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --check-ci) CHECK_CI="$2"; shift 2 ;;
@@ -133,7 +135,7 @@ run_check_ci() {
         CHECK_CI_CACHE_DIR="$CASE/cache" GH_BUDGET_JITTER_MAX=0 \
         HIMMEL_TEST_FIXTURE=1 HIMMEL_CONSOLE_LEG=0 MERGE_BLOCK_ALERT_DIR="$CASE/alerts" \
         MERGE_BLOCK_ALERT_CMD=true \
-        timeout -k 5 120 bash "$CHECK_CI" --grace 0 "$(jq -r .number "$CASE/pr.json")" >"$of" 2>"$ef"
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} bash "$CHECK_CI" --grace 0 "$(jq -r .number "$CASE/pr.json")" >"$of" 2>"$ef"
     RC=$?
     OUT=$(cat "$of"); ERR=$(cat "$ef")
 }
@@ -157,7 +159,7 @@ run_ready_check() {
     local of="$CASE/rc-out" sha
     sha=$(jq -r .headRefOid "$CASE/pr.json")
     PATH="$BIN:$PATH" HOME="$TMP/home" GH_CMD="$BIN/gh" GH_PR_SNAPSHOT_CACHE_DIR="$CASE/snap" \
-        timeout -k 5 120 bash "$ROOT/scripts/handover/console-kit/ready-check.sh" \
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} bash "$ROOT/scripts/handover/console-kit/ready-check.sh" \
         "$(jq -r .number "$CASE/pr.json")" "$sha" >"$of" 2>"$CASE/rc-err" </dev/null
     RC_OUT=$(cat "$of")
 }
@@ -233,13 +235,13 @@ done
 run_sweep() {
     new_case sweep-6122
     PATH="$BIN:$PATH" HOME="$TMP/home" GITHUB_REPOSITORY=octo/demo \
-        timeout -k 5 60 bash "$ROOT/scripts/ci/main-sweep-red-issue.sh" "$1" >"$CASE/out" 2>"$CASE/err" </dev/null
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 60} bash "$ROOT/scripts/ci/main-sweep-red-issue.sh" "$1" >"$CASE/out" 2>"$CASE/err" </dev/null
     RC=$?
     OUT=$(cat "$CASE/out"); ERR=$(cat "$CASE/err")
 }
 run_sweep 39029239710
 mut=$(grep -c -E '^issue (edit|comment|create|close|reopen)|^label create' "$CASE/calls")
-if [ "$RC" -eq 0 ] && [ "$mut" -eq 0 ] && printf '%s' "$OUT" | grep -q 'nothing to report'; then
+if [ "$RC" -eq 0 ] && [ "$mut" -eq 0 ] && grep -q 'nothing to report' <<< "$OUT"; then
     ok "sweep-red run 39029239710 (cancelled by the operator, no job red): no issue mutation"
 else
     bad "sweep-red run 39029239710: rc=$RC, $mut issue mutation(s); out: $OUT; err: $ERR"
@@ -258,19 +260,23 @@ LINT="$ROOT/scripts/ci/lint-required-check-cancel.sh"
 RULES="$CORPUS/rules-main.json"
 if python3 -I -c 'import yaml' 2>/dev/null; then
     lint_out=$(bash "$LINT" --required "$RULES" "$CORPUS/lint/3588-pr1226-codeowner-review-gate.yml.txt" 2>&1); lint_rc=$?
-    if [ "$lint_rc" -eq 1 ] && printf '%s' "$lint_out" | grep -q ': cancel: '; then
+    if [ "$lint_rc" -eq 1 ] && grep -q ': cancel: ' <<< "$lint_out"; then
         ok "lint flags the HIMMEL-3588 workflow (cancel-in-progress on the required codeowner-review-gate)"
     else
         bad "lint on the HIMMEL-3588 workflow: rc=$lint_rc, out: $lint_out"
     fi
     lint_out=$(bash "$LINT" --required "$RULES" "$CORPUS/lint/6562-pr3194-codeowner-review-gate.yml.txt" 2>&1); lint_rc=$?
-    if [ "$lint_rc" -eq 1 ] && printf '%s' "$lint_out" | grep -q ': shared: '; then
+    if [ "$lint_rc" -eq 1 ] && grep -q ': shared: ' <<< "$lint_out"; then
         ok "lint flags the HIMMEL-6562 workflow (review event shares the pull_request group)"
     else
         bad "lint on the HIMMEL-6562 workflow: rc=$lint_rc, out: $lint_out"
     fi
     lint_out=$(bash "$LINT" --required "$RULES" "$ROOT"/.github/workflows/*.yml 2>&1); lint_rc=$?
     if [ "$lint_rc" -eq 0 ]; then ok "lint: every current workflow is clean"; else bad "lint on current workflows: rc=$lint_rc, out: $lint_out"; fi
+    bash "$LINT" "$ROOT/.github/workflows/ci.yml" >/dev/null 2>&1; lint_rc=$?
+    if [ "$lint_rc" -eq 2 ]; then ok "lint: a call without --required is a usage error (rc 2)"; else bad "lint usage: rc=$lint_rc, want 2"; fi
+    bash "$LINT" --required "$TMP/no-such-rules" "$ROOT/.github/workflows/ci.yml" >/dev/null 2>&1; lint_rc=$?
+    if [ "$lint_rc" -eq 2 ]; then ok "lint: an unreadable required file is rc 2"; else bad "lint unreadable required: rc=$lint_rc, want 2"; fi
     for wf in ci codeowner-review-gate; do
         sed 's/^\( *cancel-in-progress:\).*/\1 true/' "$ROOT/.github/workflows/$wf.yml" > "$TMP/mutant-$wf.yml"
         lint_out=$(bash "$LINT" --required "$RULES" "$TMP/mutant-$wf.yml" 2>&1); lint_rc=$?
