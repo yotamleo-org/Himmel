@@ -118,8 +118,9 @@ In a shared checkout `FETCH_HEAD` is one file that every parallel judge's
 (HIMMEL-7062). Fetch into a per-PR ref, then read by sha:
 `git fetch origin pull/<N>/head:refs/judge/pr-<N>`, check
 `git rev-parse refs/judge/pr-<N>` equals the head you were given, then
-`git diff origin/main...<sha>` and `git show <sha>:<path>`. Read the head
-through `refs/judge/pr-<N>` or the sha only, never FETCH_HEAD.
+`git diff origin/main...<sha>` and `git show <sha>:<path>`. After that check
+read by the dispatched sha only (the ref moves if another judge fetches the
+same PR), never FETCH_HEAD.
 
 Scratch copies follow the same rule the brief template states (HIMMEL-5165,
 HIMMEL-5173): never `rsync`/`cp -a` the whole repo into `/tmp` (about 6 GB,
