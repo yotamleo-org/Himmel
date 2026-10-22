@@ -2498,6 +2498,16 @@ class TestGuestExec(unittest.TestCase):
         self.assertEqual((rc, out), (0, "ok\n"))
         r.assert_called_once_with("apt-get update", sudo=True, timeout=60)
 
+    def test_log_is_owner_only_even_when_it_already_existed_world_readable(self):
+        self.log.write_text("")
+        os.chmod(self.log, 0o644)
+        vm = self._vm(port=2235)
+        with mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=self._showvminfo(self._real_forward())), \
+             mock.patch.object(vm, "run", return_value=(0, "")):
+            vm.guest_exec("true")
+        self.assertEqual(self.log.stat().st_mode & 0o777, 0o600)
+
     def test_station_refused_without_running_anything(self):
         vm = self._vm("win2")
         with mock.patch.object(vm, "run") as r:

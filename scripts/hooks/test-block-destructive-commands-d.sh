@@ -485,6 +485,8 @@ assert_rc "R6266+ leg ssh -oPort=2235"        2 "$(run_case "$(j_bash 'ssh -oPor
 assert_rc "R6266+ leg ssh -o quoted Port=2235" 2 "$(run_case "$(j_bash 'ssh -o "Port=2235" himmel@127.0.0.1 true')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg ssh -o quoted Port 2235" 2 "$(run_case "$(j_bash "ssh -o 'Port 2235' himmel@127.0.0.1 true")" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg ssh -oPort 2235"        2 "$(run_case "$(j_bash 'ssh -oPort 2235 himmel@127.0.0.1 true')" HIMMEL_CONSOLE_LEG=1)"
+assert_rc "R6266+ leg ssh -vp 2235 clustered"  2 "$(run_case "$(j_bash 'ssh -vp 2235 himmel@127.0.0.1 true')" HIMMEL_CONSOLE_LEG=1)"
+assert_rc "R6266+ leg scp -rP 2235 clustered"  2 "$(run_case "$(j_bash 'scp -rP 2235 f himmel@127.0.0.1:')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg scp -P 2235"            2 "$(run_case "$(j_bash 'scp -P 2235 f himmel@127.0.0.1:')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg ssh:// url port"        2 "$(run_case "$(j_bash 'ssh ssh://himmel@127.0.0.1:2235 true')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266- operator raw ssh -p 2235"   0 "$(run_case "$(j_bash "$_raw_ssh")" HIMMEL_CONSOLE_LEG=0)"

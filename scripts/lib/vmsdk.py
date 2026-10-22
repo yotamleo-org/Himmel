@@ -499,8 +499,10 @@ class VM:
         def record(status):
             flat = cmd.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
             stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            log.parent.mkdir(parents=True, exist_ok=True)
-            with log.open("a") as f:
+            log.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            # command lines can carry credentials: owner-only, even for a pre-existing log
+            with os.fdopen(os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
+                os.fchmod(f.fileno(), 0o600)
                 f.write(f"{stamp} vm={self.name} sudo={int(sudo)} {status} cmd={flat}\n")
 
         try:

@@ -289,7 +289,7 @@ esac
 # Other ports (22, 22220) and ssh aliases are untouched.
 if [ "${HIMMEL_CONSOLE_LEG:-}" = "1" ]; then
     _vp='(222[2-9]|22[3-9][0-9])([^0-9]|$)'
-    if contains '(^|[^[:alnum:]_.-])(ssh|scp|sftp)(\.exe)?[[:space:]][^;&|]*(-p[[:space:]]*|-o[[:space:]]*["'"'"']?port[=[:space:]]+|ssh://[^[:space:]/]*:)'"$_vp"; then
+    if contains '(^|[^[:alnum:]_.-])(ssh|scp|sftp)(\.exe)?[[:space:]][^;&|]*(-[[:alnum:]]*p[[:space:]]*|-o[[:space:]]*["'"'"']?port[=[:space:]]+|ssh://[^[:space:]/]*:)'"$_vp"; then
         deny "raw ssh to a test VM port; drive the guest with: bash scripts/vm/guest-exec.sh <vm> -- '<cmd>'"
     fi
 fi
