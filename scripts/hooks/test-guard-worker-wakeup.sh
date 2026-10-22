@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-leg-wakeup.sh: a
+# Smoke suite for scripts/hooks/guard-worker-wakeup.sh: a
 # console-spawned leg (HIMMEL_CONSOLE_LEG=1, set by headed-arm-leg.sh) calling
 # ScheduleWakeup is denied — each self-scheduled wake re-reads the leg's whole
 # context to find "not yet". Covers: marker+tool -> deny with a `leg wakeup-deny:`
 # reason, marker unset / not "1" -> allow with ZERO output (context cost 0 for a
 # non-leg), marker+other tool -> allow with zero output, malformed/empty stdin ->
-# allow (fail-open; a hook crash must never lock an operator out).
+# allow (fail-open; a hook crash must never lock an operator out). The old
+# path guard-leg-wakeup.sh forwards here and denies the same; HIMMEL_WORKER=1
+# alone is not the leg marker.
 #
 # HIMMEL_CONSOLE_LEG is set/unset explicitly per case (this suite itself is
 # usually run from inside a leg, which already exports it): every case runs under
@@ -16,7 +18,7 @@
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$HOOKS/guard-leg-wakeup.sh"
+HOOK="$HOOKS/guard-worker-wakeup.sh"
 [ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
@@ -94,6 +96,15 @@ echo "== malformed/empty stdin -> allow (fail-open) =="
 check "marker + malformed JSON -> allow" allow '{not json' HIMMEL_CONSOLE_LEG=1
 check "marker + empty stdin -> allow" allow '' HIMMEL_CONSOLE_LEG=1
 silent "marker + malformed JSON -> no output" '{not json' HIMMEL_CONSOLE_LEG=1
+
+echo "== HIMMEL_WORKER=1 is not the leg marker =="
+check "HIMMEL_WORKER=1 alone + ScheduleWakeup -> allow" allow "$WAKE" HIMMEL_WORKER=1
+silent "HIMMEL_WORKER=1 alone + ScheduleWakeup -> no output" "$WAKE" HIMMEL_WORKER=1
+
+echo "== the old path forwards to this hook =="
+HOOK="$HOOKS/guard-leg-wakeup.sh"
+check "old path: marker + ScheduleWakeup -> deny" block "$WAKE" HIMMEL_CONSOLE_LEG=1
+silent "old path: no marker + ScheduleWakeup -> no output" "$WAKE"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

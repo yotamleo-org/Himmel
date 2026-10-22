@@ -1705,7 +1705,7 @@ fails_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fails_summary='?'
     fails_start="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$console_doc" 2>/dev/null | sed -n 's/.*"started":"\([0-9][0-9TZ:-]*\)".*/\1/p' | head -n 1)"
-    fl_ledger="${HIMMEL_LEG_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}"
+    fl_ledger="${HIMMEL_WORKER_SESSION_FAILURES_LEDGER:-${HIMMEL_LEG_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}}"
     fl_evals="${HIMMEL_EVAL_RUNS_LEDGER:-$HOME/.himmel/eval-runs.jsonl}"
     fl_routes="${HIMMEL_FAILURE_ROUTES_LOG:-$HOME/.himmel/state/failure-routes.log.jsonl}"
     # Readable-or-absent: an absent file is an empty one, anything else unreadable is ?.

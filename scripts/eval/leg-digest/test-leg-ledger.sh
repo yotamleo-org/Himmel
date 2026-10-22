@@ -176,5 +176,12 @@ check "the live journal has no marker and no rows in either ledger" '[ ! -e "$TM
 lbf --live-minutes 0 >"$TMP/l2.out" 2>&1
 check "control: with the skip disabled (--live-minutes 0) the same journal is digested" 'grep -q "live=0" "$TMP/l2.out" && [ -f "$TMP/l-state/$L1.json" ] && grep -q "$L1" "$TMP/l-eval.jsonl"'
 
+echo "W. the worker-session ledger name wins over the old one; the lane reads either name"
+lpath() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import leg_ledger; print(leg_ledger.ledger_path())' "$HERE"; }
+check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER wins over HIMMEL_LEG_FAILURES_LEDGER" '[ "$(HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$TMP/new.jsonl" lpath)" = "$TMP/new.jsonl" ]'
+check "control: the old name alone is still read" '[ "$(lpath)" = "$TMP/never-fail.jsonl" ]'
+printf '# HIMMEL-1-N9 worker (WORKER_SESSION_LANE=claudex)\n' >"$TMP/wlane.md"
+check "a doc title naming WORKER_SESSION_LANE gives the lane" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import leg_ledger; print(leg_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/wlane.md")" = claudex ]'
+
 echo "test-leg-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

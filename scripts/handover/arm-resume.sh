@@ -794,13 +794,13 @@ fi
 # short question; the console relaunches one with headed-arm-leg.sh if it must.
 # the read-only --list-temp-arms sweep arms nothing, so it alone passes,
 # and only as the SOLE argument (the flag beside any other mode or arm arg still refuses).
-# ponytail: the consult is identified by this env var alone, so a consult that unsets
-# LEG_PROFILE_NO_SETTING_SOURCES is not recognised here; the consult's deny rules and
+# ponytail: the consult is identified by these env vars alone, so a consult that unsets
+# both WORKER_SESSION_PROFILE_NO_SETTING_SOURCES and LEG_PROFILE_NO_SETTING_SOURCES is not recognised here; the consult's deny rules and
 # sandbox bound that, upgrade path = a process-ancestry check or a consult-workdir
 # token file, trigger = an exploit beyond the sandbox.
-if [ -n "${LEG_PROFILE_NO_SETTING_SOURCES:-}" ] \
+if [ -n "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}${LEG_PROFILE_NO_SETTING_SOURCES:-}" ] \
     && ! { [ "${LIST_TEMP_ARMS:-0}" -eq 1 ] && [ "$ARGC_AT_START" -eq 1 ]; }; then
-    echo "ERR arm-resume: refusing to arm from inside a consult (LEG_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-leg.sh --consult" >&2
+    echo "ERR arm-resume: refusing to arm from inside a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES or LEG_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-leg.sh --consult" >&2
     exit 2
 fi
 
