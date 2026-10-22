@@ -22,6 +22,21 @@ GitHub, so every resolve is auditable. It codifies console AS's 10-15 ruling
 to leg N2224 (resolveReviewThread allowed, one literal call per thread, stop
 on denial) and adds the console step that ruling lacked.
 
+**Claudex PRs: the console merges.** A claudex leg's brief ends its Ship step <!-- old-term-ok: console runbook wording -->
+at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
+classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
+the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
+judge or trust review the PR needs, then
+`console-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
+`bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --leg-doc <leg doc>`. <!-- old-term-ok: console runbook wording -->
+Pass `--jira-transition` unless the leg doc's `Completes ticket:` line says no <!-- old-term-ok: console runbook wording -->
+(a brief whose scope states neither value has no such line and takes the yes
+wording, as the leg's own Ship step does); the `--leg-doc` line binds it either way. <!-- old-term-ok: console runbook wording -->
+Then send the leg `MERGED #<pr> → <sha>` by SendMessage quoting its token; <!-- old-term-ok: console runbook wording -->
+the leg `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits <!-- old-term-ok: console runbook wording -->
+non-zero is not `MERGED`: send the leg the exit and reason instead, and it <!-- old-term-ok: console runbook wording -->
+stays held. Native legs are unchanged: they merge themselves on your GO. <!-- old-term-ok: console runbook wording -->
+
 **Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite
 selector and shared libs, the merge gate and GO writer — the list is read

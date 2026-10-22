@@ -161,7 +161,15 @@ template_version: 3
 >    worktree root, even on a branch behind main: the `$HIMMEL_REPO` spelling's
 >    rule carries an expansion the matcher does not resolve and the absolute
 >    spelling matches no rule, so both are left to the auto-mode classifier,
->    which allows and denies them run to run. **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
+>    which allows and denies them run to run. **A `lane: claudex` leg never
+>    runs that merge:** its auto-mode classifier refuses merge-path actions
+>    (a review-evidence append was refused as Instruction Poisoning and the
+>    leg sat BLOCKED for an hour, HIMMEL-4097), so `gen-briefs.py` ends its
+>    Ship step at `READY <pr> <head> GREEN`. The console merges
+>    (`console-sections/merges.md`) and sends `MERGED #<pr> → <sha>`; the leg
+>    then `cd`s out and wraps. `completes-ticket:` still decides the console's
+>    `--jira-transition`. A hand-written claudex brief says the same.
+>    **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
 >    `done` or `deferred → HIMMEL-<n>` (`->` also accepted), e.g.
 >    `- ask one: done` / `- ask two: deferred → HIMMEL-<n>`. A deferred key
 >    must exist and still be open; `ready-check.sh` item 7 FAILs a missing

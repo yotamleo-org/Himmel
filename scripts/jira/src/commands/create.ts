@@ -11,7 +11,7 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titl
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
-import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
+import { appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
@@ -37,8 +37,8 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
 
 const FU_CLASSES = ['polish', 'escape', 'hardening'];
 export const FU_WHY_CODES = ['unseen-failure', 'no-check', 'vacuous-check', 'no-recovery', 'silent-rot'];
-// Open hardening residuals a version takes before the rest go to the backlog;
-// a `residual-budget:N` line in the version description overrides it.
+// Open residual slots per version; a `residual-budget:N` line in the
+// version description overrides it.
 export const RESIDUAL_BUDGET = 15;
 
 export function residualBudget(description: string | undefined): number {
@@ -94,6 +94,8 @@ interface ResidualPlan {
   affectsVersion?: string;
   duplicateOf?: string;
   frozen: string[];
+  displaced?: { key: string; fixVersion?: string };
+  ranks?: { newcomer: number[]; resident?: { key: string; tuple: number[] } };
 }
 
 interface ResidualOptions {
@@ -106,6 +108,7 @@ interface ResidualOptions {
   gate?: string;
   priority?: string;
   blocks?: string[];
+  sector?: string;
 }
 
 interface TicketState {
@@ -119,6 +122,101 @@ function openVersion(t: TicketState, unreleased: Set<string>): string | undefine
   return t.fixVersions?.find((v) => unreleased.has(v.name))?.name;
 }
 
+interface RankedIssue {
+  key: string;
+  fields: TicketState & {
+    status?: { name?: string; statusCategory: { key: string } };
+    labels?: string[];
+    priority?: { name: string };
+    created?: string;
+    parent?: { key: string };
+    issuelinks?: { type: { name: string }; outwardIssue?: { key: string } }[];
+    [field: string]: unknown;
+  };
+}
+
+const GATE_RANK = ['receipt', 'must', 'regression', 'critical'];
+const PRIORITY_RANK = ['Lowest', 'Low', 'Medium', 'High', 'Highest'];
+const compareRank = (a: number[], b: number[]) => {
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+};
+
+function residualGateRank(i: RankedIssue, ledger: Admission[]): number {
+  const row = ledger.filter((r) => r.key === i.key).pop();
+  const gate = row?.kind !== 'deferral' && row?.kind !== 'rm-remove' ? row?.gate?.split(':')[0] : undefined;
+  return Math.max(0, ...GATE_RANK.map((g, index) =>
+    (i.fields.labels ?? []).includes(`gate-${g}`) || gate === g ? index + 1 : 0));
+}
+
+/** Read all rank fields while retaining the shared search helper's pagination. */
+async function rankIssues(jql: string): Promise<RankedIssue[]> {
+  const fields = ['labels', 'status', 'priority', 'created', 'fixVersions', 'issuelinks', 'parent', sectorField()].filter(Boolean).join(',');
+  const req: typeof request = (method, path, body) =>
+    request(method, path.replace(/&fields=[^&]*/, `&fields=${fields}`), body);
+  return await searchAllIssues(jql, String(Number.MAX_SAFE_INTEGER), req) as unknown as RankedIssue[];
+}
+
+async function competeForSlot(
+  project: string,
+  version: string,
+  budget: number,
+  stepDown: string | undefined,
+  o: ResidualOptions,
+  labels: string[],
+  parent: RankedIssue,
+): Promise<Pick<ResidualPlan, 'fixVersion' | 'displaced' | 'ranks'>> {
+  const residents = await rankIssues(
+    `project = ${project} AND fixVersion = ${jqlQuote(version)} AND labels = residual AND statusCategory != Done`,
+  );
+  if (residents.length < budget) return { fixVersion: version };
+
+  const heads = await rankIssues(`project = ${project} AND fixVersion = ${jqlQuote(version)} AND statusCategory != Done`);
+  const byKey = new Map(heads.map((i) => [i.key, i]));
+  // The parent is already read for placement, including when it is no longer open.
+  if (!byKey.has(o.residualOf)) byKey.set(o.residualOf, parent);
+  for (const key of o.blocks ?? []) {
+    if (!byKey.has(key)) byKey.set(key, await request<RankedIssue>('GET', `/issue/${key}?fields=status,fixVersions`));
+  }
+  const links = (i: RankedIssue): string[] => [
+    ...(i.fields.parent ? [i.fields.parent.key] : []),
+    ...(i.fields.issuelinks ?? []).filter((l) => ['Blocks', 'Relates'].includes(l.type.name))
+      .flatMap((l) => l.outwardIssue ? [l.outwardIssue.key] : []),
+  ];
+  const openHead = (key: string) => {
+    const issue = byKey.get(key);
+    return issue && openVersion(issue.fields, new Set([version])) === version ? issue : undefined;
+  };
+  const newcomerLinks = [o.residualOf, ...(o.blocks ?? [])];
+  const headKeys = [...new Set([...newcomerLinks, ...residents.flatMap(links)])];
+  const sectorId = sectorField();
+  const sectorOf = (i: RankedIssue) => sectorId ? (i.fields[sectorId] as { value?: string } | undefined)?.value : undefined;
+  const sharedSectors = new Set(headKeys.map(openHead).filter((i) => i !== undefined).map(sectorOf).filter(Boolean));
+  const ledger = readAdmissions(version);
+  const rank = (i: RankedIssue, targets: string[], gate: number, sector: string | undefined): number[] => {
+    const ls = i.fields.labels ?? [];
+    const created = Date.parse(i.fields.created ?? '');
+    return [gate, ls.includes('fu-escape') ? 2 : ls.includes('fu-hardening') ? 1 : 0,
+      PRIORITY_RANK.findIndex((p) => p.toLowerCase() === (i.fields.priority?.name ?? 'Medium').toLowerCase()) + 1,
+      Number(targets.some((key) => openHead(key) !== undefined)), Number(sector !== undefined && sharedSectors.has(sector)),
+      Number.isFinite(created) ? -created : 0];
+  };
+  const newcomer = rank({ key: '', fields: { labels, priority: { name: o.priority ?? 'Medium' }, created: new Date().toISOString() } },
+    newcomerLinks, GATE_RANK.indexOf(o.gate?.split(':')[0] ?? '') + 1, o.sector);
+  const candidates = residents.filter((i) => i.fields?.status?.name === 'To Do' && residualGateRank(i, ledger) === 0)
+    .map((i) => ({ key: i.key, tuple: rank(i, links(i), 0, sectorOf(i)) }))
+    .sort((a, b) => compareRank(a.tuple, b.tuple) || a.key.localeCompare(b.key));
+  const lowest = candidates[0];
+  const ranks = { newcomer, resident: lowest };
+  if (lowest && compareRank(newcomer, lowest.tuple) > 0) {
+    return { fixVersion: version, displaced: { key: lowest.key, fixVersion: stepDown }, ranks };
+  }
+  labels.push('residual-displaced');
+  return { fixVersion: stepDown, ranks };
+}
+
 /**
  * Places a residual (plan 9.1 as corrected by 10.5); the first matching row wins:
  * a. depth >= 2, b. polish: backlog. c. --gate: current. d. escape: current if
@@ -127,7 +225,7 @@ function openVersion(t: TicketState, unreleased: Set<string>): string | undefine
  * Next is the earliest unreleased version after current. It never throws on a
  * frozen version; a frozen or missing next sends the residual to the backlog.
  */
-async function planResidual(project: string, o: ResidualOptions): Promise<ResidualPlan> {
+export async function planResidual(project: string, o: ResidualOptions): Promise<ResidualPlan> {
   if (!o.fuClass) throw new Error('--residual-of requires --fu-class <polish|escape|hardening>');
   if (o.class !== undefined && !o.class) throw new Error('--class needs an id');
   if (!FU_CLASSES.includes(o.fuClass)) {
@@ -144,6 +242,7 @@ async function planResidual(project: string, o: ResidualOptions): Promise<Residu
   if (o.fixVersion !== undefined) throw new Error('--residual-of chooses the version itself; drop --fix-version');
   const classLabel = o.class !== undefined ? `class-${labelSlug(o.class)}` : undefined;
   const labels = ['residual', `fu-${o.fuClass}`];
+  if (o.gate !== undefined) labels.push(`gate-${o.gate.split(':')[0]}`);
   if (o.fuClass === 'hardening') labels.push(`fu-why-${o.fuWhy}`);
   if (classLabel) labels.push(classLabel);
   const area = o.area ? `area-${labelSlug(o.area)}` : undefined;
@@ -157,7 +256,7 @@ async function planResidual(project: string, o: ResidualOptions): Promise<Residu
     if (dup) return { labels, duplicateOf: dup.key, frozen: [] };
   }
 
-  const parent = await request<{ fields: TicketState & { labels?: string[] } }>(
+  const parent = await request<RankedIssue>(
     'GET',
     `/issue/${o.residualOf}?fields=labels,status,fixVersions`,
   );
@@ -187,25 +286,18 @@ async function planResidual(project: string, o: ResidualOptions): Promise<Residu
       }
       if (chain) fixVersion = unfrozenOrNext(chain);
       else if (/^(high|highest)$/i.test(o.priority ?? '')) fixVersion = nextOpen;
-      if (fixVersion) {
-        const budget = residualBudget(versions.find((v) => v.name === fixVersion)?.description);
-        const jql =
-          `project = ${project} AND fixVersion = ${jqlQuote(fixVersion)} AND labels = residual` +
-          ' AND labels != residual-overflow AND statusCategory != Done';
-        const open = await searchAllIssues(jql, String(budget), request);
-        if (open.length >= budget) {
-          fixVersion = undefined;
-          labels.push('residual-overflow');
-        }
-      }
     }
   }
-  return { labels, fixVersion, affectsVersion: current, frozen };
+  const competition = fixVersion && !frozen.includes(fixVersion)
+    ? await competeForSlot(project, fixVersion, residualBudget(versions.find((v) => v.name === fixVersion)?.description),
+      fixVersion === current ? nextOpen : undefined, o, labels, parent)
+    : { fixVersion };
+  return { labels, affectsVersion: current, frozen, ...competition };
 }
 
 /**
  * Sets fixVersions and versions on a new ticket. Filing into the current
- * unreleased version is held to its residual cap; an operator-directed ticket
+ * unreleased version warns at its residual cap; an operator-directed ticket
  * is exempt and a residual is routed by planResidual. Returns the over-cap
  * reason to comment on the ticket once it exists.
  */
@@ -218,7 +310,7 @@ async function applyVersions(
   const gated = !o.residual && !o.labels?.includes(OPERATOR_DIRECTED);
   let overCapReason: string | undefined;
   const markOverCap = (st: CapState): void => {
-    overCapReason = `Filed over the ${st.current} cap (${st.open}/${st.cap} open residuals): ${options.overCap}`;
+    overCapReason = `Filed over the ${st.current} cap (${st.open}/${st.cap} open residuals): ${options.overCap ?? 'raw create; cap is a warning'}`;
     fields['labels'] = [...new Set([...(o.labels ?? []), OVER_CAP_LABEL])];
   };
   if (options.fixVersion !== undefined) {
@@ -226,13 +318,7 @@ async function applyVersions(
     fields['fixVersions'] = [{ name: options.fixVersion }];
     const st = gated ? await capState(project, options.fixVersion) : undefined;
     if (st && st.open >= st.cap) {
-      if (options.overCap === undefined) {
-        console.error(
-          `jira: ${st.current} is at its residual cap (${st.open}/${st.cap} open); ` +
-            'pass --over-cap <reason> to file into it anyway, or file into a later version',
-        );
-        process.exit(1);
-      }
+      console.error(`jira: warning: ${st.current} is at its residual cap (${st.open}/${st.cap} open); filing with ${OVER_CAP_LABEL}`);
       markOverCap(st);
     }
   }
@@ -353,15 +439,6 @@ async function inheritedFixVersion(o: RelationshipOptions): Promise<string | und
   return inherited;
 }
 
-/** A residual without a gate never inherits a frozen version: its placement row chose its version. */
-async function residualInheritedVersion(
-  o: RelationshipOptions & { gate?: string },
-  residual: ResidualPlan | undefined,
-): Promise<string | undefined> {
-  const inherited = await inheritedFixVersion(o);
-  return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
-}
-
 async function checkExistingBlocker(project: string, fixVersions: unknown, o: RelationshipOptions): Promise<void> {
   if (!o.blockedBy || o.backlog || !fixVersions) return;
   const current = earliestUnreleased(await fetchVersions(project));
@@ -382,6 +459,41 @@ async function linkCreatedIssue(key: string, o: RelationshipOptions): Promise<vo
       process.exit(1);
     }
   }
+}
+
+/** Keep slot competition's decision; otherwise only ungated frozen inheritance is suppressed. */
+async function residualInheritedVersion(
+  o: RelationshipOptions & { gate?: string },
+  residual: ResidualPlan | undefined,
+): Promise<string | undefined> {
+  const inherited = await inheritedFixVersion(o);
+  if (residual?.ranks !== undefined) return undefined;
+  return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
+}
+
+async function displaceResidual(residual: ResidualPlan | undefined, newcomer: string): Promise<void> {
+  if (!residual?.displaced) return;
+  const displaced = residual.displaced;
+  const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
+  const source = residual.fixVersion!;
+  if (!resident.fields.fixVersions?.some((v) => v.name === source) ||
+      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
+    await request('PUT', `/issue/${newcomer}`, {
+      fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
+      update: { labels: [{ add: 'residual-displaced' }] },
+    });
+    console.error(`jira: ${displaced.key} is no longer displaceable; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
+    return;
+  }
+  const fixVersions = resident.fields.fixVersions.filter((v) => v.name !== source);
+  if (displaced.fixVersion && !fixVersions.some((v) => v.name === displaced.fixVersion)) fixVersions.push({ name: displaced.fixVersion });
+  await request('PUT', `/issue/${displaced.key}`, {
+    fields: { fixVersions },
+    update: { labels: [{ add: 'residual-displaced' }] },
+  });
+  await request('POST', `/issue/${displaced.key}/comment`, {
+    body: markdownToAdf(`Displaced by higher-ranked residual ${newcomer}; moved to ${displaced.fixVersion ?? 'the backlog'}.`),
+  });
 }
 
 export function registerCreate(program: Command): void {
@@ -536,7 +648,7 @@ export function registerCreate(program: Command): void {
         let labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
         let residual: ResidualPlan | undefined;
         if (options.residualOf !== undefined) {
-          residual = await planResidual(options.project ?? projectKey(), { ...options, residualOf: options.residualOf });
+          residual = await planResidual(options.project ?? projectKey(), { ...options, sector, residualOf: options.residualOf });
           if (residual.duplicateOf) {
             const dup = residual.duplicateOf;
             const head = markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`);
@@ -597,6 +709,7 @@ export function registerCreate(program: Command): void {
           recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
         }
         if (admission) recordAdmission(result.key, admission);
+        await displaceResidual(residual, result.key);
         // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
         if (overCapReason) {
           try {

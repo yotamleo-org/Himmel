@@ -53,10 +53,11 @@ trap cleanup EXIT
 # carry a .sh/.ps1/.mjs literal, so extract_script_targets() below can't
 # confuse them with a NEW script reference.
 #
-# set-env-var.sh (the `config` HIMMEL_INITIATIVE writer) and
-# set-lane-override.mjs (the `config` lanes.local.json writer) added — both
-# are existing-primitive shell-outs, same class as set-handover-dir.sh above,
-# not a reimplementation of the write logic inline in bin.js.
+# set-lane-override.mjs (the `config` lanes.local.json writer) added — an
+# existing-primitive shell-out, not a reimplementation of the write logic
+# inline in bin.js. (HIMMEL_INITIATIVE and HANDOVER_DIR are config-class keys
+# written to ~/.himmel/himmel.conf in-process, so set-env-var.sh and
+# set-handover-dir.sh are no longer shell-out targets.)
 #
 # himmel-update.sh — the existing dependency-chain update
 # engine `himmelctl update` (deriveUpdateCommand) delegates to. Same class:
@@ -123,12 +124,10 @@ setup.ps1
 adopt.sh
 wire-luna-vault.sh
 luna-upgrade-all.sh
-set-handover-dir.sh
 uninstall.sh
 uninstall.ps1
 himmel-update.sh
 himmelctl.ps1
-set-env-var.sh
 set-lane-override.mjs
 wire-trust-hooks.mjs
 remove-retired-plugin.sh
@@ -219,8 +218,8 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 # `dest` itself is left untouched until the rename, so a failure at any point
 # up to and including the write leaves a previously-saved profile intact.
 writes=$(grep -c 'fs\.writeFileSync' "$wizard")
-[ "$writes" -eq 6 ] \
-  || fail "caseC: expected exactly 6 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe + the ~/.himmel/himmel.conf commit-rules write, HIMMEL-6362; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1), got $writes"
+[ "$writes" -eq 5 ] \
+  || fail "caseC: expected exactly 5 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1, and the ~/.himmel/himmel.conf writes to lib/behaviour-config.js, HIMMEL-7021), got $writes"
 # vmProofRoute writes the doc-with-answer to a
 # mkdtemp dir under os.tmpdir() so scripts/lib/vm-mode.sh can resolve it,
 # and removes the dir in finally -- a probe, never an install write.
