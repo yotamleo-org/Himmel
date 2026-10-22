@@ -75,7 +75,7 @@ while IFS= read -r name; do
     esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
     tail='($|[[:space:];&|)])'
     tok='[^[:space:];&|()]+'
-    assign="([A-Za-z_][A-Za-z0-9_]*=${tok}[[:space:]]+)*"
+    assign="([A-Za-z_][A-Za-z0-9_]*=(${tok})?[[:space:]]+)*"
     wrap="${assign}(((timeout|nohup)([[:space:]]+${tok})*)[[:space:]]+)?"
     via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
     via_path="(^|[;&|(])[[:space:]]*${wrap}[^[:space:]]*/${esc}${tail}"
