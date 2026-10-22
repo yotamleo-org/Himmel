@@ -71,6 +71,13 @@ if [ "$1" = "cluster-only" ]; then
   exit 0
 fi
 target="$1"
+# A case expecting termination parks the stub at the exact boundary rather
+# than assuming the monitor wins a race with the next model call. A broken
+# monitor still returns promptly and fails the expected exit-code assertion.
+wait_for_stop() {
+  for _wait in $(seq 1 200); do sleep 0.05; done
+  exit 99
+}
 mkdir -p "$target/graphify-out/cache"
 todo=()
 for i in $(seq 1 "$STUB_CHUNKS"); do
@@ -81,9 +88,10 @@ for i in "${todo[@]}"; do
   sleep 0.3
   echo "c$i" >> "$STUB_CALLS"
   if [ "${STUB_HOLLOW_AT:-0}" = "$i" ]; then
-    for _ in $(seq 1 60); do
-      echo "[graphify] retrying the same chunk of 38 in 0s after a hollow response" >&2
+    for retry in $(seq 1 60); do
       echo x >> "$STUB_HOLLOW_COUNT"
+      echo "[graphify] retrying the same chunk of 38 in 0s after a hollow response" >&2
+      [ "${STUB_WAIT_HOLLOW:-0}" != "$retry" ] || wait_for_stop
       sleep 0.05
     done
     exit 1
@@ -112,6 +120,7 @@ for i in "${todo[@]}"; do
   index=$k
   [ -z "${STUB_REVERSE_DONE:-}" ] || index=$((m - k + 1))
   echo "[graphify extract] chunk $index/$m done" >&2
+  [ "${STUB_WAIT_CHUNK:-0}" != "$k" ] || wait_for_stop
   [ "${STUB_DIE_AFTER:-0}" = "$k" ] && exit 137
 done
 python3 -I - "$target/graphify-out" <<'PY'
@@ -148,7 +157,7 @@ reset() { rm -rf "$OUTD" "${MAPS:?}"/*; rm -f "$STUB_CALLS" "$STUB_HOLLOW_COUNT"
 # promoting nothing. ---
 echo "R1: a persistently hollow chunk is retried a bounded number of times"
 reset
-out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=1 run_refresh 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 STUB_WAIT_HOLLOW=3 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=1 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R1 exits 5 (chunk failed)" || fail "R1 should exit 5 (got $rc): $out"
 # read-sink-ok: test-owned stub count file under the suite tmpdir
 n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
@@ -163,7 +172,7 @@ grep -q 'chunk' "$OUTD/.graphify_failed_chunks" 2>/dev/null \
 # distinct resumable status and no partial promote. ---
 echo "R2: a run stops at the chunk cap with its chunks cached"
 reset
-out=$( STUB_CHUNKS=6 GRAPHIFY_MAX_CHUNKS_PER_RUN=3 run_refresh 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=6 STUB_WAIT_CHUNK=3 GRAPHIFY_MAX_CHUNKS_PER_RUN=3 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 4 ] && pass "R2 exits 4 (capped, resumable)" || fail "R2 should exit 4 (got $rc): $out"
 cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
 [ "$cached" = "c1.json c2.json c3.json " ] \
@@ -226,7 +235,7 @@ _tmo=$(command -v timeout || command -v gtimeout || true)
 if [ -z "$_tmo" ]; then
   echo "SKIP R8: neither timeout nor gtimeout is on PATH to bound the run"
 else
-out=$( STUB_CHUNKS=12 STUB_IGNORE_TERM=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=2 GRAPHIFY_STOP_KILL_GRACE_SECONDS=1 "$_tmo" 60 bash -c 'bash "$0" --name luna --corpus-root "$1" --backend claude --maps-dir "$2" --title "Graphify Luna Map" --slug graphify-luna-map --corpus-tag luna --scratch "$3"' "$SCRIPT" "$CORPUS" "$MAPS" "$SP" 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=12 STUB_IGNORE_TERM=1 STUB_WAIT_CHUNK=2 GRAPHIFY_MAX_CHUNKS_PER_RUN=2 GRAPHIFY_STOP_KILL_GRACE_SECONDS=1 "$_tmo" 60 bash -c 'bash "$0" --name luna --corpus-root "$1" --backend claude --maps-dir "$2" --title "Graphify Luna Map" --slug graphify-luna-map --corpus-tag luna --scratch "$3"' "$SCRIPT" "$CORPUS" "$MAPS" "$SP" 2>&1 ); rc=$?
 [ "$rc" -eq 4 ] && pass "R8 exits 4 despite the ignored TERM" || fail "R8 should exit 4 (got $rc): $out"
 [ -f "$OUTD/cache/c2.json" ] && [ ! -e "$OUTD/cache/c12.json" ] \
   && pass "R8 the run was cut short after the cap (c2 cached, c12 never reached)" || fail "R8 the TERM-ignoring graphify ran to the end or lost its chunks"
@@ -241,7 +250,7 @@ reset
 out=$( STUB_CHUNKS=4 STUB_HOLLOW_BLIP_AT=2 STUB_HOLLOW_BLIP=5 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=6 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && pass "R9 5 interleaved hollow lines at concurrency 6 do not stop the run" || fail "R9 should exit 0 (got $rc): $out"
 reset
-out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=2 run_refresh 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 STUB_WAIT_HOLLOW=6 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=2 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R9 an all-hollow run at concurrency 2 still exits 5" || fail "R9 all-hollow should exit 5 (got $rc): $out"
 # read-sink-ok: test-owned stub count file under the suite tmpdir
 n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
@@ -253,7 +262,7 @@ n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
 # the run without promoting, retaining good chunks for a later retry. ---
 echo "R10: a give-up on a hollow chunk counts as hollow, never as progress"
 reset
-out=$( STUB_CHUNKS=12 STUB_GIVEUP_ALL=1 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=12 STUB_GIVEUP_ALL=1 STUB_WAIT_CHUNK=3 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R10 an all-give-up run exits 5" || fail "R10 all-give-up should exit 5 (got $rc): $out"
 [ ! -e "$OUTD/cache/c12.json" ] && pass "R10 the run stopped before the last chunk" || fail "R10 the all-give-up run went through every chunk"
 # read-sink-ok: test-owned stub call log under the suite tmpdir
@@ -285,7 +294,7 @@ calls=$(tr '\n' ' ' < "$STUB_CLAUDE_CALLS" 2>/dev/null)
 # counts completed chunks, not the index of the callback that arrived last. ---
 echo "R11: out-of-order completions still stop at the cap"
 reset
-out=$( STUB_CHUNKS=4 STUB_REVERSE_DONE=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=1 run_refresh 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=4 STUB_REVERSE_DONE=1 STUB_WAIT_CHUNK=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=1 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 4 ] && pass "R11 last-index-first completion exits 4 at the cap" || fail "R11 expected capped exit 4 (got $rc): $out"
 cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
 [ "$cached" = "c1.json " ] && pass "R11 only one completed chunk is cached" || fail "R11 cap 1 allowed extra chunks: $cached"
