@@ -148,7 +148,7 @@ def build(a, rows, seen_before, rc, decisions, boxed):
 
     out += ["", "### Routing (%s)" % mode, ""]
     try:
-        days = "%d d" % failure_router.load_table(a.table or failure_router.TABLE)["window_days"]
+        days = "%s d" % failure_router.load_table(a.table or failure_router.TABLE)["window_days"]
     except (OSError, ValueError, KeyError):
         days = "the router window"
     routed = [d for d in decisions if d["decision"] in ROUTED]
