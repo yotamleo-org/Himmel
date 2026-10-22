@@ -20,6 +20,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/leg-ledger-test.XXXXXX")" || { echo "test-leg-
 trap 'rm -rf "$TMP"' EXIT
 # Never the live ledgers, whatever a case forgets to pass.
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-eval.jsonl"
+unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
 export HIMMEL_LEG_FAILURES_LEDGER="$TMP/never-fail.jsonl"
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
