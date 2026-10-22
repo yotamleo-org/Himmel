@@ -155,7 +155,7 @@ the next. So every committed sprint carries one standing re-audit item.
 
 **Scope per sprint:** re-check every registry verdict whose measured-on
 model has changed since it was measured, plus up to **2 new candidates**.
-Timebox: one small leg. It counts against the sprint's planned capacity,
+Timebox: one small worker. It counts against the sprint's planned capacity,
 not the surprise margin.
 
 **Each re-check answers four questions** (first case: caveman, which was removed):
@@ -175,7 +175,7 @@ not the surprise margin.
    ([`lane-calibration.md`](../internals/lane-calibration.md)). Count the
    tool's own prompt text as input cost. Record n per cell; n=1 shows
    "no clear win", not an effect size.
-4. **Harms output quality for legs or the review panel?** Put at least one
+4. **Harms output quality for workers or the review panel?** Put at least one
    gate-parsed output in the task set (a `FINDING:` review, a
    `READY <pr> <sha> GREEN` line). Terse output can drop the evidence
    lines gates parse, or drop findings, so compare format AND coverage.

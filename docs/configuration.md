@@ -567,6 +567,10 @@ reviewer and claude advisory only:
 ] }
 ```
 
+The himmel config UI (Settings, "Review gate") edits the same overlay: each reviewer's
+mode, required flag and on/off, validated by the resolver before anything is written.
+It never writes `scripts/cr/critics.json`. See [ui.md](ui.md).
+
 A Codex-only gate drops the other two:
 
 ```json
@@ -712,7 +716,7 @@ change; token and access config live *outside* the repo):
 | `WHISPER_MODEL` (+ `WHISPER_DIR`, `WHISPER_CLI`, `FFMPEG_BIN`, `TRANSCRIBE_TIMEOUT_MS`) | `ggml-small.bin` inside `WHISPER_DIR` (default `~/.himmel/whisper`) | own .env | local voice transcription (whisper.cpp — audio never leaves the machine) |
 | `TELEGRAM_ATTACHMENT_RETENTION_MS` | 7 days | own .env | attachment GC age |
 | `BRIDGE_ROOT` | `~/.claude/handover/bridge` | env | bridge session-state root |
-| `CR_PUBLIC_REPO` | `yotamleo/Himmel` | env | the pinned public repo `/mergepub` may merge into |
+| `CR_PUBLIC_REPO` | `yotamleo-org/Himmel` | env | the pinned public repo `/mergepub` may merge into |
 | `TELEGRAM_OWN_POLLER` / `HIMMEL_MCP_TELEGRAM` | OFF | shell | opt a Claude session into the vendored telegram plugin (poll-owner / send-only). Never run both the plugin poller and the bun bridge — one `getUpdates` consumer per token |
 | `TELEGRAM_CHAT_ID` / `TELEGRAM_GROUP_CHAT_ID` | unset (silent no-op) | `.env` (bridged) | targets for the opt-in jira-nudge and session-status relays. An explicitly EMPTY `TELEGRAM_GROUP_CHAT_ID` in the process env also suppresses the session-status hooks — it never falls back to `.env` |
 

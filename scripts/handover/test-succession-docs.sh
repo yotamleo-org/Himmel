@@ -199,9 +199,9 @@ contains 'retask-channel.md: the chain path says the named-sender check no longe
 contains 'console-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
 contains 'console-template.md: handing over says the relay names the successor' "$handing" 'naming the successor'
 contains 'console-template.md: step 9 names the leg last accepted console, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
-contains 'retask-channel.md: relay (1) is from the session the worker session last accepted' "$(flat "$retask")" 'from the session the worker session last accepted'
+contains 'retask-channel.md: relay (1) is from the session the worker last accepted' "$(flat "$retask")" 'from the session the worker last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'retask-channel.md: chain (2) tests the session the worker session last accepted' "$(flat "$retask")" 'the supervisor session the worker session last accepted is no longer in `ListAgents`'
+contains 'retask-channel.md: chain (2) tests the session the worker last accepted' "$(flat "$retask")" 'the chief the worker last accepted is no longer in `ListAgents`'
 
 RETASK_TEXT="$(cat "$RETASK")"
 # A relay MAY keep the leg's token: an unrotated relay is

@@ -54,7 +54,7 @@
 #
 # Environment:
 #   CR_PUBLIC_REPO             Pinned public repo, owner/name. Default
-#                               yotamleo/Himmel.
+#                               yotamleo-org/Himmel.
 #   MERGE_PUBLIC_ON_GREEN_LOG   Audit-log path override. Default:
 #                               "$(git rev-parse --git-dir)/merge-public-on-green.log".
 #
@@ -98,7 +98,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GH="gh"
 CHECK_CI="$SCRIPT_DIR/check-ci.sh"
-REPO="${CR_PUBLIC_REPO:-yotamleo/Himmel}"
+REPO="${CR_PUBLIC_REPO:-yotamleo-org/Himmel}" # env-literal-ok: the pinned public repo's canonical slug is the default
 
 pr=""
 sha=""

@@ -192,7 +192,7 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   token in the next checkpoint); treat your own no-reply state as
   **non-consent** and escalate the silence rather than acting on an
   assumption of approval.
-- **A supervisor session must not idle between notifications** (a judge ends its turn after its verdict; only the supervisor session sweeps) —
+- **A chief must not idle between notifications** (a judge ends its turn after its verdict; only the chief sweeps) —
   actively sweep for blockage (expected branches pushed? PRs opened or
   updated? reviews landed at head?) and act as an ENABLER: nudge a parked
   lane with independently checkable facts, or supply what a blocked lane is
@@ -218,11 +218,11 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   a ceiling of two attempts — after that, take over (stop the worker first,
   so the takeover stays single-writer, then land its diff yourself).
 - **A hook or permission PR gets an independent adversarial review before
-  GO.** A worker session's self-review, even one that tested its own guard adversarially
+  GO.** A worker's self-review, even one that tested its own guard adversarially
   with its impacted suites green, is not enough evidence for a guard change.
   In one shift (2026-09-24) an independent reviewer turned three self-reviewed
   guard PRs from GO to NO-GO: allow rules shadowed by an earlier hook, a
-  false deny that would have broken every leg, and in-scope bypasses. Brief
+  false deny that would have broken every worker, and in-scope bypasses. Brief
   the reviewer on the diff and the guard's threat model, and ask for a RED
   row per finding. When the rounds keep turning up new bypasses of the new
   coverage (text scanning is whack-a-mole), stop the rounds, ticket the

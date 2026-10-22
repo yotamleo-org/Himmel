@@ -13,7 +13,8 @@
 # execs THAT copy, which makes the decision. A PR therefore cannot narrow its
 # own selection except by editing one of those files — and every one of them
 # is a trust path, which forces `full` here and a trust-reviewed GO at merge.
-# A base that predates this script decides `full`.
+# A base that predates this script decides `full`. Under SUITE_TIER_MODE=pr a
+# trust path forces `full` only when it is a selector-integrity path (below).
 #
 # Output, one `key value` per line, in this order:
 #   mode full|impacted
@@ -107,10 +108,30 @@ trust_re=$(grep -vE '^[[:space:]]*(#|$)' "$tools/scripts/ci/ci-trust-paths.txt" 
 grep -z -E -f <(printf '%s\n' "$trust_re") "$tools/changed.z" > "$tools/hits.z"; grc=$?
 hits=$(tr '\0' '\n' < "$tools/hits.z")
 case $grc in
-  0) verdict_full "trust-path: ${hits%%$'\n'*}" "$base_sha" "$selector_blob" ;;
+  0) [ "${SUITE_TIER_MODE:-}" = pr ] \
+       || verdict_full "trust-path: ${hits%%$'\n'*}" "$base_sha" "$selector_blob" ;;
   1) ;;
   *) verdict_full "trust-match-failed" "$base_sha" "$selector_blob" ;;
 esac
+
+# Under SUITE_TIER_MODE=pr the runner adds the PR tier of suite-tiers.tsv to an
+# impacted selection, and every trust-owned suite is in that tier, so only a
+# change to what decides or applies the selection still forces `full`. Matched
+# against every changed path, not only the trust hits.
+if [ "${SUITE_TIER_MODE:-}" = pr ]; then
+  selector_re='^\.github/workflows/ci\.yml$
+^scripts/ci/(run-shell-tests\.sh|impacted-selection\.sh|ci-trust-paths\.txt|suite-tiers\.tsv)$
+^scripts/cr/impacted-
+^scripts/cr/anchor-handoff\.sh$'
+  : > "$tools/selector-hits.z" || verdict_full "selector-match-failed" "$base_sha" "$selector_blob"
+  grep -z -E -f <(printf '%s\n' "$selector_re") "$tools/changed.z" > "$tools/selector-hits.z"; grc=$?
+  hits=$(tr '\0' '\n' < "$tools/selector-hits.z")
+  case $grc in
+    0) verdict_full "selector-path: ${hits%%$'\n'*}" "$base_sha" "$selector_blob" ;;
+    1) ;;
+    *) verdict_full "selector-match-failed" "$base_sha" "$selector_blob" ;;
+  esac
+fi
 
 if ! suites=$(bash "$tools/scripts/cr/impacted-suites.sh" "${base_sha}..${head_sha}" --shell); then
   verdict_full "selector-error" "$base_sha" "$selector_blob"

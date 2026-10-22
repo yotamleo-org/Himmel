@@ -145,6 +145,30 @@ row "pushd -n does not move the cwd; a dash target is unknown" \
 row "a redirect on a subshell, brace or loop is a position in the outer cwd" \
     'cd sub && (cat) < a*; { cat; } < b*; while read -r l; do :; done < c*' \
     '[.[] | select(.prog == null) | {w: .redirs[0].w.v, cwd}] == [{w: "a*", cwd: [["sub"]]}, {w: "b*", cwd: [[], ["sub"]]}, {w: "c*", cwd: [[], ["sub"]]}]'
+row "a pipeline numbers its stages and keeps one id; in is unchanged" \
+    'a | b |& c; d' \
+    '([.[] | .pipe | if . == null then null else {stage, n} end] == [{stage: 0, n: 3}, {stage: 1, n: 3}, {stage: 2, n: 3}, null])
+     and ([.[:3][] | .pipe.id] | unique | length) == 1
+     and ([.[] | .in] == [["pipe", "pipe"], ["pipe", "pipe"], ["pipe"], []])'
+row "two pipelines have different ids" \
+    'a | b; c | d' \
+    '([.[] | .pipe.id] | .[0] == .[1] and .[2] == .[3] and .[0] != .[2])'
+row "a brace group takes its element's stage; a substitution is its own pipeline" \
+    '{ a; } | b; x=$(c | d); echo $(f) | g' \
+    '(.[] | select(.prog == "a") | .pipe | .stage == 0 and .n == 2)
+     and (.[] | select(.prog == "c") | .pipe | .stage == 0 and .n == 2)
+     and ((.[] | select(.prog == "c") | .pipe.id) != (.[] | select(.prog == "a") | .pipe.id))
+     and (.[] | select(.prog == "f") | .pipe == null)
+     and (.[] | select(.prog == "g") | .pipe.stage == 1)'
+row "a bash -c body inherits its caller's stage; its own pipeline wins inside" \
+    "bash -c 'a' | b; bash -c 'c | d' | e" \
+    '(.[] | select(.prog == "a") | .pipe) == (.[] | select(.prog == "bash" and .body == "a") | .pipe)
+     and (.[] | select(.prog == "a") | .pipe.id) == (.[] | select(.prog == "b") | .pipe.id)
+     and (.[] | select(.prog == "c") | .pipe | .stage == 0 and .n == 2)
+     and ((.[] | select(.prog == "c") | .pipe.id) != (.[] | select(.prog == "e") | .pipe.id))'
+row "two bash -c bodies get different pipeline ids" \
+    "bash -c 'a | b'; bash -c 'c | d'" \
+    '(.[] | select(.prog == "a") | .pipe.id) != (.[] | select(.prog == "c") | .pipe.id)'
 
 # jq 1.7 rejects a bare binary expression as an object value (jq -n '{a: [1] + [2]}'; jq 1.8 accepts it).
 # CI carries one jq, so these rows run where HIMMEL_JQ_171 names a real jq 1.7.1 binary.

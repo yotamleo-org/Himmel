@@ -114,7 +114,7 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
   class a standard line, a `rebuttal` class a CodeRabbit rule (source `coderabbit-learning`)
   or a critic rule.
 - Approval: CodeRabbit rule and critic rule edit `.coderabbit.yaml` / `critics.json` and are
-  operator-approved. Every other target goes through a console GO with an opus judge.
+  operator-approved. Every other target goes through a chief GO with an opus judge.
 - Promoted classes (`rung_since` set) show real findings per week before and after promotion
   (the before span runs from the class's first finding, at least a week). A class whose rate
   does not fall is demoted to restructure (S5).

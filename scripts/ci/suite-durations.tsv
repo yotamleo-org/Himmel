@@ -188,6 +188,7 @@ scripts/ci/test-tmp-sweep.sh	1
 scripts/ci/test-vm-runner-probe-workflow.sh	1
 scripts/ci/test-workflow-red-issue.sh	1
 scripts/ci/test-workflow-red-workflow.sh	0
+scripts/cleanup/test-batch-runners.sh	1
 scripts/cleanup/test-codex-sweep-cadence.sh	0
 scripts/cleanup/test-reap-mcp-orphans.sh	1
 scripts/cleanup/test-steering-cull-cadence.sh	2
@@ -687,6 +688,7 @@ scripts/hooks/test-template-version.sh	2
 scripts/hooks/test-trigger-cr-on-pr-create.sh	2
 scripts/hooks/test-trigger-cr-on-push.sh	1
 scripts/hooks/test-wired-hooks-integrity-resolution.sh	3
+scripts/insights/test-self-review.sh	0
 scripts/insights/test-session-analyzer.sh	0
 scripts/install/test-capture-operator-profile.sh	5
 scripts/install/test-himmel-ops-plugin-enablement.sh	1
@@ -694,6 +696,7 @@ scripts/install/test-mcp-profile-providers.sh	0
 scripts/install/test-observability-grafana-manifest.sh	1
 scripts/install/test-observability-stack-manifest.sh	2
 scripts/install/test-operator-profile-staleness.sh	0
+scripts/install/test-scan-duplicates.sh	1
 scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	0
 scripts/lanes/bench/scorecard/test-agg-burn.sh	3
 scripts/lanes/bench/scorecard/test-dead-parts.sh	5

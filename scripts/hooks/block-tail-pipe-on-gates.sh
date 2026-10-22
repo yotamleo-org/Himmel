@@ -124,13 +124,12 @@
 # of lexer-completeness chasing established that a complete POSIX
 # lexer is not the scope of an advisory-shaped deny hook. Every gap here forfeits
 # GUIDANCE only — the pre-hook status quo — and can never widen any grant.
-#   * NAMED CEILING: a gate invoked from INSIDE a `-c` payload —
-#     `bash -c 'scripts/check-ci.sh' | tail` — is not seen, because the payload
-#     is a quoted string this scanner reads as data. Catching it means re-running
-#     the scanner over that payload as a NESTED PROGRAM, which is the
-#     tokenizer class rather than another table, and it is not a shape written
-#     here (agents write `bash <gate> | tail`). Do not implement `-c` payload
-#     recursion without re-deciding this.
+#   * NAMED CEILING: a gate invoked from INSIDE a `-c` payload is read by the
+#     command-position model, not this scanner: the payload body takes the
+#     pipeline stage of its caller, so `bash -c 'scripts/check-ci.sh' | tail`
+#     is denied. A pipe INSIDE the payload is the body's own pipeline, so
+#     `bash -c '<gate> | cat' | tail` is not seen, and neither is a gate the
+#     model cannot read (a non-literal word, a shell reading stdin).
 #   * an UNQUOTED heredoc (`<<`), whose body text a scanner this flat cannot tell
 #     from syntax and which in this repo very often documents this exact shape;
 #     only the variant forms (st_expand) judge the command with the
@@ -1257,6 +1256,39 @@ done <<EOF
 $normalised
 EOF
 [ -z "$offender" ] && [ -n "$logical" ] && scan_line "$logical"
+
+# The command-position model (scripts/lib/bash-ast.sh) reads what the scan
+# above reads as data: a gate run from a `bash -c` / `sh -c` body takes the
+# pipeline stage of the body's caller, so `bash -c '<gate>' | tail` is a gate
+# piped to tail. It only adds a deny: a missing lib, shfmt or jq, or a command
+# shfmt cannot parse leaves the scan's verdict. The marker opts out here too.
+# swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' TP_JQ <<'TP_JQ_EOF' || true
+def words: [.argv[] | .raw] | join(" ");
+def gate($re): ((.argv[0].v? // "") | test($re))
+  or (((.prog // "") | test("^(bash|sh|zsh|dash|ksh)$"))
+      and (([.argv[1:][] | select(.t == "lit") | .v | select(startswith("-") | not)] | .[0] // "") | test($re)));
+[.[] | select(.pipe != null)] as $ps
+| first($ps[] | select(gate($re) and .pipe.stage < .pipe.n - 1) as $g
+        | $ps[] | select(.pipe.id == $g.pipe.id and .pipe.stage == .pipe.n - 1
+                         and ((.prog // "") | IN("tail", "head")))
+        | ($g | words) + " | … | " + words) // empty
+TP_JQ_EOF
+if [ -z "$offender" ] && [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ] && [ -z "$_tp_variant" ] \
+    && [[ $cmd =~ $GATE_ANY ]] && [[ $cmd =~ (tail|head) ]] \
+    && ! marker_on_relevant_line "$normalised"; then
+    _tp_lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+    _tp_hit=
+    # shellcheck source=../lib/bash-ast.sh
+    if { [ -r "$_tp_lib" ] && . "$_tp_lib"; } 2>/dev/null; then
+        # swallow-ok: the model only adds denies; a failed parse leaves the scanner verdict
+        _tp_hit=$(bash_ast_positions "$cmd" 2>/dev/null | jq -r --arg re "$GATE_RE" "$TP_JQ" 2>/dev/null)
+    fi
+    if [ -n "$_tp_hit" ]; then
+        offender=$_tp_hit
+        kind=pipe
+    fi
+fi
 
 [ -n "$offender" ] || exit 0
 

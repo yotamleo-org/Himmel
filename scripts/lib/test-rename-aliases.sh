@@ -310,6 +310,41 @@ print(" ".join(r[2] for r in friction.DOC_RULES if re.search(r[0], sys.argv[2]))
   check "friction reads $spelling as missing-variant-sweep" "missing-variant-sweep" "$got"
 done
 
+# --- slice V5a: the chief script and its context lib, /chief the canonical command ---
+V5A_ROWS='console-context.sh|chief-context.sh|identifier|old-to-new|V5|X
+console.sh|chief.sh|identifier|old-to-new|V5|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V5a row '$old'" "$tabbed" "$got"
+done <<EOF
+$V5A_ROWS
+EOF
+forwards bash scripts/handover/console console.sh chief.sh "$SH_STUB"
+# The launchers and the arm tests still source the old lib path, so it loads
+# the new file and stays silent.
+d="$FT/v5a-lib"
+mkdir -p "$d" "$FT/v5a-cwd"
+check "scripts/lib/chief-context.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/chief-context.sh" ] && echo yes || echo no)"
+if cp "$ROOT/scripts/lib/console-context.sh" "$d/console-context.sh" 2>/dev/null; then
+  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
+  printf 'v5a_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/chief-context.sh"
+  out="$(cd "$FT/v5a-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v5a_probe x' _ "$d/console-context.sh" 2> "$d/err")"
+  check "console-context.sh sources chief-context.sh from another cwd and keeps its status" "rc=5|NEW:x" "$out"
+  check "console-context.sh prints nothing when sourced" "" "$(cat "$d/err")"
+else
+  check "scripts/lib/console-context.sh exists" "yes" "no"
+fi
+stub .claude/commands/supervisor-session.md .claude/commands/chief.md
+stub .claude/commands/console.md .claude/commands/chief.md
+stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
+stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
+for a in supervisor-session console; do
+  check ".claude/commands/$a.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/console/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/$a.md" && [ -f "$ROOT/scripts/handover/console/chief.sh" ] && echo yes || echo no)"
+  check "himmel-ops $a.md runs /himmel-ops:chief" "yes" "$(grep -qF -- "\`/himmel-ops:chief \$ARGUMENTS\`" "$ROOT/marketplace/plugins/himmel-ops/commands/$a.md" && echo yes || echo no)"
+done
+
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
   { line[NR] = $1; old[NR] = $2; kind[NR] = $4; n = NR }

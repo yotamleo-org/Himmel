@@ -591,14 +591,14 @@ allow "timeout DURATION does not make a non-gate look like one" \
       'timeout 30 grep x f | head -5'
 allow "xargs -I{} does not make a non-gate look like one" \
       'xargs -I{} echo {} | head -5'
-# EXPECTED RESIDUAL (named ceiling): a gate invoked from inside a
-# `-c` PAYLOAD is not seen — the payload is a quoted string this scanner reads
-# as data, and catching it means running the scanner over it as a nested
-# program (the tokenizer class). This case asserts the CURRENT
-# fail-open behaviour on purpose, so a future change to it is deliberate rather
-# than accidental. It is not a shape written here: agents write `bash <gate>`.
-allow "EXPECTED RESIDUAL: gate inside a -c payload is not scanned" \
-      "bash -c 'scripts/check-ci.sh' | tail -20"
+# a gate invoked from inside a `-c` PAYLOAD: the scanner reads the payload as
+# data; the command-position model gives the body its caller's pipeline stage.
+deny "a gate inside a -c payload piped to tail" \
+     "bash -c 'scripts/check-ci.sh' | tail -20"
+# EXPECTED RESIDUAL (named ceiling): a pipe INSIDE the payload is the body's own
+# pipeline, so its last stage, not the caller's tail, is what the model reads.
+allow "EXPECTED RESIDUAL: a gate piped inside a -c payload, the payload piped to tail" \
+      "bash -c 'scripts/check-ci.sh | cat' | tail -20"
 
 # --- an ABBREVIATED long option must be recognized the same as
 # the full spelling (GNU getopt_long-style unambiguous abbreviation) — an
@@ -1352,6 +1352,35 @@ allow "6338 the opt-out marker on the heredoc opener line opts out" 'echo '"'"'$
 cat <<EOF # tail-pipe-ok: documented
 ${x@P}
 EOF'
+
+# --- the command-position model: a gate run from a `bash -c` body ----------
+deny "6548 a gate inside bash -c piped to tail" \
+     "bash -c 'scripts/check-ci.sh 1' | tail -5"
+deny "6548 a gate inside sh -c, run by bash, piped to head" \
+     "sh -c 'bash scripts/check-ci.sh 1' | head -3"
+deny "6548 a gate inside bash -c, through cat, to tail" \
+     "bash -c 'scripts/check-ci.sh 1' | cat | tail -5"
+allow "6548 a gate inside bash -c piped to cat" \
+      "bash -c 'scripts/check-ci.sh 1' | cat"
+allow "6548 a gate inside bash -c whose tail is not the last stage" \
+      "bash -c 'scripts/check-ci.sh 1' | tail -5 | cat"
+allow "6548 tail inside bash -c feeding a gate" \
+      "bash -c 'tail f' | scripts/check-ci.sh 1"
+allow "6548 the opt-out marker opts out of a bash -c gate" \
+      "bash -c 'scripts/check-ci.sh 1' | tail -5 # tail-pipe-ok: documented"
+# parity: what the scanner already decides, the model leaves alone
+deny "6548 parity gate | tail" 'bash scripts/check-ci.sh 1 | tail -5'
+deny "6548 parity gate | tee | tail" 'bash scripts/check-ci.sh 1 | tee f | tail -5'
+deny "6548 parity nice gate | tail" 'nice bash scripts/check-ci.sh 1 | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "6548 parity gate | tail inside \$(…)" 'x=$(bash scripts/check-ci.sh 1 | tail -5)'
+deny "6548 parity brace gate | tail" '{ bash scripts/check-ci.sh 1; } | tail -5'
+deny "6548 parity gate |& head" 'bash scripts/check-ci.sh 1 |& head -5'
+deny "6548 parity eval gate | tail" "eval 'bash scripts/check-ci.sh 1 | tail -5'"
+allow "6548 parity gate | cat" 'bash scripts/check-ci.sh 1 | cat'
+allow "6548 parity tail | gate" 'tail f | bash scripts/check-ci.sh 1'
+allow "6548 parity git log | tail" 'git log | tail -5'
+allow "6548 parity the shape quoted as data" 'echo "bash scripts/check-ci.sh 1 | tail -5"'
 
 if [ "$FAILED" -eq 0 ]; then
     echo "OK block-tail-pipe-on-gates: all cases passed"

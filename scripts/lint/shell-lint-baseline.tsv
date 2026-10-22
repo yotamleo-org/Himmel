@@ -330,7 +330,7 @@ scripts/handover/console-kit/tick.sh	mktemp	1
 scripts/handover/console-kit/wrap-merged.sh	prim-atomic	1
 scripts/handover/console-kit/write-verdict.sh	prim-atomic	1
 scripts/handover/console-kit/write-verdict.sh	prim-lock	1
-scripts/handover/console/console.sh	errexit	1
+scripts/handover/console/chief.sh	errexit	1
 scripts/handover/console/test-console.sh	gnu-flag	2
 scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
@@ -590,7 +590,7 @@ scripts/hooks/test-block-merged-pr-commit.sh	mktemp	1
 scripts/hooks/test-block-read-secrets.sh	gnu-flag	4
 scripts/hooks/test-block-read-secrets.sh	mktemp	2
 scripts/hooks/test-block-rogue-codex-exec.sh	mktemp	1
-scripts/hooks/test-block-tail-pipe-on-gates.sh	bash32	3
+scripts/hooks/test-block-tail-pipe-on-gates.sh	bash32	4
 scripts/hooks/test-block-tail-pipe-on-gates.sh	mktemp	1
 scripts/hooks/test-block-unresolved-cr-merge.sh	mktemp	1
 scripts/hooks/test-block-write-into-main-checkout-forms.sh	gnu-flag	16
@@ -739,6 +739,7 @@ scripts/lib/set-env-var.sh	prim-atomic	1
 scripts/lib/shared-branch-lock.sh	prim-lock	1
 scripts/lib/test-bank-attribution.sh	errexit	1
 scripts/lib/test-bank-preflight.sh	gnu-flag	1
+scripts/lib/test-bash-ast.sh	bash32	1
 scripts/lib/test-branch-shipped.sh	mktemp	1
 scripts/lib/test-ci-green-gate.sh	mktemp	1
 scripts/lib/test-compute-duration.sh	mktemp	1

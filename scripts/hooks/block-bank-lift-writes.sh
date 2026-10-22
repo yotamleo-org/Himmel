@@ -15,7 +15,8 @@
 #      ancestor of it) with a lift-named entry;
 #   2. run `usage-lift.sh set` or `bank-lift.sh set` (bash/sh/direct/source/.;
 #      through env, sudo, timeout, nice-style wrappers; in a bash -c / eval /
-#      stdin script), or copy either script to another name.
+#      stdin script, a literal echo/printf piped into a shell included), or
+#      copy either script to another name.
 # Reading the lift, `usage-lift.sh show` / `clear`, and any text that merely
 # NAMES the lift (a commit message, a ticket title, a Results bullet) stay
 # allowed. Remedy named in every deny: the operator runs
@@ -29,7 +30,8 @@
 # assigns, from $( ) / backticks or `$_`; an inherited env value or a ${E-x} /
 # ${!R} / zsh-flag expansion naming the lift; a brace-built or split ("bank"+
 # "-lift") name; the lift path handed to a writer through a reader, xargs or
-# find -exec; an archive extraction (tar/unzip/cpio/7z/…) into HOME or the
+# find -exec; a shell reading a script a file or a non-literal word supplies
+# (`cat f | bash`, `echo "$x" | bash`) or an escape echo -e / printf decodes; an archive extraction (tar/unzip/cpio/7z/…) into HOME or the
 # state dir, with or without a symlink member; a variable command word; sed's
 # `e` command and `s///e` flag; `less --log-file=`.
 #
@@ -951,4 +953,44 @@ if [[ "$CMD" =~ (^|[^A-Za-z0-9_.-])(cd|pushd|popd)([^A-Za-z0-9_.-]|$) ]]; then
     CWD_UNPROVEN=1
 fi
 analyse "$CMD" 0
+
+# A shell reading its script from a pipe runs the text an earlier stage prints.
+# The command-position model (scripts/lib/bash-ast.sh) says which stage feeds
+# which: through tee and a bare cat back to the producer, and when that is an
+# echo or printf of literal words, what it prints is analysed as the script: an
+# echo's words joined by spaces; a printf's format, each argument, and the
+# arguments joined, since the format is not rendered (an argument the format
+# would only print as data can still deny). Escapes are not decoded. It only
+# adds a deny; a missing lib, shfmt or jq, or a command shfmt cannot parse
+# leaves the tokenizer's verdict above. Pre-gated on a pipe beside a shell word.
+# swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' BL_JQ <<'BL_JQ_EOF' || true
+def thru: length == 1 and (.[0] | .prog == "tee"
+  or (.prog == "cat" and all(.argv[1:][]; .t == "lit" and (.v | startswith("-")))));
+[.[] | select(.pipe != null)] as $ps
+| $ps[] | select(((.opaque // "") | test("stdin")) and .pipe.stage > 0) as $sh
+| first(range($sh.pipe.stage - 1; -1; -1) as $j
+        | [$ps[] | select(.pipe.id == $sh.pipe.id and .pipe.stage == $j)] | select(thru | not))
+| .[] | select(((.prog // "") | IN("echo", "printf")) and all(.argv[1:][]; .t == "lit"))
+| .prog as $p | [.argv[1:][] | .v] as $a
+| if $p == "echo" then $a | until(length == 0 or (.[0] | test("^-[neE]+$") | not); .[1:]) | join(" ")
+  else $a[], ($a[1:] | join(" ")) end
+BL_JQ_EOF
+if [[ $CMD == *'|'* ]] && [[ "$CMD" =~ (^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh)([^A-Za-z0-9_.-]|$) ]]; then
+    bl_lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+    bl_texts=
+    # shellcheck source=../lib/bash-ast.sh
+    if { [ -r "$bl_lib" ] && . "$bl_lib"; } 2>/dev/null; then
+        # swallow-ok: the model only adds denies; a failed parse keeps the tokenizer verdict above
+        bl_texts=$(bash_ast_positions "$CMD" 2>/dev/null | jq -c "$BL_JQ" 2>/dev/null)
+    fi
+    while IFS= read -r bl_t; do
+        [ -n "$bl_t" ] || continue
+        # swallow-ok: an undecodable text adds no deny; the tokenizer verdict stands
+        bl_t=$(printf '%s' "$bl_t" | jq -r . 2>/dev/null) || continue
+        analyse "$bl_t" 1
+    done <<EOF
+$bl_texts
+EOF
+fi
 exit 0
