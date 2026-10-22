@@ -519,6 +519,7 @@ _cfp_claude_effort() {
         # failure falls back to the base file alone
         _cce_reg="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && critics_config_resolve "$SCRIPT_DIR" 2>/dev/null )" || _cce_reg=""  # swallow-ok: falls back to the base file below
         if [ -z "$_cce_reg" ]; then
+            # read-sink-ok: CRITICS_BASE_JSON is the test seam for the base registry; only the claude row's effort is read from it
             _cce_reg="$(cat "${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
         fi
         _cce_e="$(printf '%s' "$_cce_reg" | node -e '
