@@ -102,6 +102,7 @@ rep() {  # rep <string> <count> -- doubling, so building the payload is linear
 
 prose() {  # prose <lines> -- a python heredoc of multibyte prose
     local i out="python3 - <<'PYEOF'"$'\n'
+    # read-sink-ok: $1 is a line count in an arithmetic compare, not a path
     for ((i = 0; i < $1; i++)); do
         out+="print('line $i — the console hands the leg a brief; see the doc é')"$'\n'
     done
@@ -116,7 +117,7 @@ run_ms() {  # run_ms <member> <payload file> -- wall ms into MS, exit status int
     env -i PATH="$PATH" HOME="$SANDBOX/home" TMPDIR="${TMPDIR:-/tmp}" \
         LANG="$UTF8_LOCALE" LC_ALL="$UTF8_LOCALE" CLAUDE_PROJECT_DIR="$ROOT" \
         HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_RELAY=1 \
-        "${LIMIT[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$RUN_TIMEOUT"} bash "$ROOT/$1" < "$2" > /dev/null 2>&1
+        "${LIMIT[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$RUN_TIMEOUT"} bash "$ROOT/$1" < "$2" > /dev/null 2>&1  # read-sink-ok: $2 is a payload fixture this suite wrote under its own mktemp dir
     RC=$?
     t1=${EPOCHREALTIME//[!0-9]/}
     MS=$(( (t1 - t0) / 1000 ))
