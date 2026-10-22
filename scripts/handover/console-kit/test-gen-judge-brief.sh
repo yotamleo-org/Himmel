@@ -128,6 +128,15 @@ rm -rf "$BUCKET"
 python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && grep -q 'ABC-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
 
+# the judge reads pin to the PR head sha through a per-PR ref, never FETCH_HEAD
+REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
+has "generated brief names the pinned per-PR ref" "$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)" "refs/judge/pr-"
+for f in .claude/agents/judge.md .claude/agents/judge-ro.md .claude/agents/console-judge.md .claude/agents/console-judge-ro.md docs/handover/console-sections/judge.md docs/handover/judge-brief-template.md; do
+    c="$(cat "$REPO_ROOT/$f")"
+    has "$f names the pinned read" "$c" "refs/judge/pr-<N>"
+    has "$f forbids FETCH_HEAD" "$c" "never FETCH_HEAD"
+done
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

@@ -66,6 +66,15 @@ Run a hook or script against a fixture under a deadline that kills its whole
 process group (`qmd_bounded` from `scripts/lib/qmd-bounded.sh`), with a
 stdin, never a closed one.
 
+Pin every read of the PR under review to its head sha, never to a moving ref.
+In a shared checkout `FETCH_HEAD` is one file that every parallel judge's
+`git fetch` overwrites, so a read through it can land on another judge's PR
+(HIMMEL-7062). Fetch into a per-PR ref, then read by sha:
+`git fetch origin pull/<N>/head:refs/judge/pr-<N>`, check
+`git rev-parse refs/judge/pr-<N>` equals the head you were given, then
+`git diff origin/main...<sha>` and `git show <sha>:<path>`. Read the head
+through `refs/judge/pr-<N>` or the sha only, never FETCH_HEAD.
+
 ## Writing a verdict file
 
 Only when the dispatch asks for one. Write your reasoning to an evidence file
