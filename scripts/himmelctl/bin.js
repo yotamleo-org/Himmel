@@ -8091,7 +8091,7 @@ function cmdConfigSetCommit(rest, value, args) {
   const kv = {};
   try {
     for (const k of ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']) {
-      const v = behaviourConfigLib.readConfigVar(k).value;
+      const v = behaviourConfigLib.readConfigVar(k, envFilePath()).value;
       if (v) kv[k] = v;
     }
   } catch (e) { if (e.code !== 'ENOENT') { console.error(`himmelctl: config set: could not read ${commitRulesPath()}: ${e.message}`); return 1; } }

@@ -674,4 +674,17 @@ run_cfg_q set commit.ticketIdPattern '^X-1$'
 cmp -s "$confQ.before" "$confQ" || fail "caseQ: a refused set must leave himmel.conf untouched (got: $(cat "$confQ" 2>&1))"
 echo "ok: caseQ commit.tracker / commit.ticketIdRequired reuse the commit-rules writer; refusals write nothing"
 
+# Q2: commit rules still set in the clone's legacy .env (not yet migrated) are read, so a toggle keeps them.
+fxQ2="$work/fixtureQ2"; build_fixture "$fxQ2"
+printf 'TRACKER=jira\n' > "$fxQ2/.env"
+_hQ2="$work/home-Q2-$$-$RANDOM"; mkdir -p "$_hQ2"
+set +e
+CFG_OUT=$(HOME="$_hQ2" USERPROFILE="$(winpath "$_hQ2")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ2.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ2")" JIRA_PROJECT_KEY='' \
+  "$node_bin" "$wizard" config set commit.ticketIdRequired on 2>&1)
+CFG_RC=$?
+set -e
+[ "$CFG_RC" -eq 0 ] || fail "caseQ2: a tracker set only in the legacy .env must count (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^TRACKER=jira$' "$_hQ2/.himmel/himmel.conf" || fail "caseQ2: himmel.conf should carry TRACKER=jira (got: $(cat "$_hQ2/.himmel/himmel.conf" 2>&1))"
+echo "ok: caseQ2 commit-rule reads keep the legacy .env fallback"
+
 echo "PASS"
