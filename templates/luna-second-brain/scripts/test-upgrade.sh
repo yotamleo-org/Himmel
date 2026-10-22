@@ -2016,5 +2016,30 @@ run_upgrade --yes >/dev/null 2>&1
 assert_eq "T71 control: a vault with a base still gets the section once" "1" "$(rr_count "$V/_CLAUDE.md")"
 assert_eq "T71 control: the base snapshot advances to the template" "$(sha_of "$T/_CLAUDE.md")" "$(sha_of "$V/.vault-template.base/_CLAUDE.md")"
 
+# ---------------------------------------------------------------------------
+# T72: an upgrade re-runs the hook installer. The template config no longer
+# carries the framework gitleaks hook, so a vault left on its old
+# .git/hooks/pre-commit wrapper would commit with no secret scan at all.
+t72_installer() {
+    # shellcheck disable=SC2016
+    printf '#!/usr/bin/env bash\nrc=%s\nprintf "ran\\n" >> "$(dirname "$0")/../../installer-ran"\nexit "$rc"\n' "$2" > "$1/scripts/hooks/install-nostash-hooks.sh"
+}
+T="$TMP/t72-tmpl"; V="$TMP/t72-vault"; make_template "$T" "1.0.0"; t72_installer "$T" 0
+mkdir -p "$V/.git"; stamp_vault "$V" "0.9.0"
+run_upgrade --yes >/dev/null 2>&1; rc=$?
+assert_eq "T72 upgrade rc" "0" "$rc"
+assert_eq "T72 the hook installer ran once, from the refreshed vault copy" "1" "$(grep -c '^ran$' "$V/installer-ran" 2>/dev/null)"
+T="$TMP/t72b-tmpl"; V="$TMP/t72b-vault"; make_template "$T" "1.0.0"; t72_installer "$T" 1
+mkdir -p "$V/.git"; stamp_vault "$V" "0.9.0"
+out=$(run_upgrade --yes 2>&1); rc=$?
+assert_eq "T72 a failing installer fails the upgrade" "1" "$rc"
+got_ver=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$V/.vault-template.json" 2>/dev/null)
+assert_eq "T72 a failing installer leaves the stamp behind so a re-run retries" "0.9.0" "$got_ver"
+case "$out" in *"secret scan"*) pass "T72 the failure says the secret scan is off" ;; *) fail "T72 the failure says the secret scan is off" "got: $out" ;; esac
+T="$TMP/t72c-tmpl"; V="$TMP/t72c-vault"; make_template "$T" "1.0.0"; t72_installer "$T" 1
+mkdir -p "$V"; stamp_vault "$V" "0.9.0"
+run_upgrade --yes >/dev/null 2>&1; rc=$?
+assert_eq "T72 control: a vault with no .git skips the installer" "0" "$rc"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All upgrade tests passed."; else echo "$FAILED test(s) failed."; exit 1; fi

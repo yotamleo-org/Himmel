@@ -482,7 +482,7 @@ withhold_notice() {
 snapshot_git_equiv() {
     local rel="$1" dst="$2" snap="$3" committed rc=1
     [ "$BASELINE_ERROR" = 0 ] && [ -n "$STAMP_COMMIT" ] || return 1
-    committed="$(mktemp)" && [ -e "$committed" ] || return 1
+    committed="$(mktemp -t luna-upgrade.XXXXXX)" && [ -e "$committed" ] || return 1
     if git -C "$VAULT_DIR" show "$STAMP_COMMIT:./$rel" > "$committed" 2>/dev/null \
         && [ "sha256:$(sha_of "$committed")" = "$snap" ] \
         && content_equiv "$committed" "$dst" "$rel"; then
@@ -574,7 +574,7 @@ has_local_edit() {
                 ;;
         esac
     fi
-    local committed; committed="$(mktemp)"
+    local committed; committed="$(mktemp -t luna-upgrade.XXXXXX)"
     if [ -z "$committed" ] || [ ! -e "$committed" ]; then
         [ "$print" = 1 ] && echo "  could not verify local edits for $rel (mktemp failed) — withholding the write as a precaution"
         return 0
@@ -993,7 +993,7 @@ claude_threeway() {
     # would never arrive while the stamp still advanced. Insert it into the
     # merge input instead; a vault that already has the heading is untouched.
     if [ ! -f "$base" ] && ! grep -q '^## Retrieval Routing' "$ours" \
-        && grep -q '^## Retrieval Routing' "$theirs" && migrated="$(mktemp)" \
+        && grep -q '^## Retrieval Routing' "$theirs" && migrated="$(mktemp -t luna-upgrade.XXXXXX)" \
         && migrate_routing_section "$ours" "$theirs" "$migrated"; then
         ours_in="$migrated"
     fi
@@ -1008,7 +1008,11 @@ claude_threeway() {
         echo "  ERROR: git is missing or not runnable — cannot 3-way merge _CLAUDE.md" >&2
         return 0
     fi
-    merged="$(mktemp)"; mf_err="$(mktemp)"
+    if ! merged="$(mktemp -t luna-upgrade.XXXXXX)" || ! mf_err="$(mktemp -t luna-upgrade.XXXXXX)"; then
+        CLAUDE_MERGE_RESULT="error"
+        echo "  ERROR: could not create a temp file — cannot 3-way merge _CLAUDE.md" >&2
+        return 0
+    fi
     git merge-file -p "$ours_in" "$base_use" "$theirs" > "$merged" 2>"$mf_err"; rc=$?
     if [ "$rc" -eq 0 ]; then
         CLAUDE_MERGE_RESULT="clean"
@@ -1022,7 +1026,7 @@ claude_threeway() {
                 WRITE_FAILURES=$((WRITE_FAILURES+1))
             fi
         fi
-    elif [ "$rc" -ge 1 ] && [ "$rc" -le 127 ] && resolved="$(mktemp)" && report="$(mktemp)" \
+    elif [ "$rc" -ge 1 ] && [ "$rc" -le 127 ] && resolved="$(mktemp -t luna-upgrade.XXXXXX)" && report="$(mktemp -t luna-upgrade.XXXXXX)" \
         && resolve_vault_deletions "$ours" "$base_use" "$theirs" "$resolved" "$report"; then
         # Every conflict hunk was a vault-deleted section — the
         # deletion wins, the dropped template change is reported, and the base
@@ -1068,7 +1072,7 @@ claude_threeway() {
 # end. Args: <ours> <theirs> <out>; exit 1 = no section in <theirs>.
 migrate_routing_section() {
     local ours="$1" theirs="$2" out="$3" sec
-    sec="$(mktemp)" || return 1
+    sec="$(mktemp -t luna-upgrade.XXXXXX)" || return 1
     awk '/^## Retrieval Routing/ {on=1} on && /^---[ \t]*$/ {exit} on {print}' "$theirs" > "$sec"
     if [ ! -s "$sec" ]; then rm -f "$sec"; return 1; fi
     if grep -q '^## Vault Identity' "$ours"; then
@@ -1095,7 +1099,7 @@ migrate_routing_section() {
 resolve_vault_deletions() {
     local ours="$1" base="$2" theirs="$3" out="$4" report="$5"
     [ -n "$PYTHON" ] || return 1
-    local diff3; diff3="$(mktemp)"
+    local diff3; diff3="$(mktemp -t luna-upgrade.XXXXXX)"
     # A long marker size, so manual text (a setext `=======`
     # underline, a documented conflict example) is never taken for a marker.
     git merge-file -p --diff3 --marker-size 31 "$ours" "$base" "$theirs" > "$diff3" 2>/dev/null
@@ -1383,6 +1387,21 @@ if [ -f "$VAULT_DIR/.salus-profile" ] && [ -f "$TEMPLATE_DIR/scripts/lib/salus-o
     . "$TEMPLATE_DIR/scripts/lib/salus-overlay.sh"
     if apply_salus_overlay "$VAULT_DIR" >/dev/null; then
         echo "  salus profile: refreshed medic skill + egress floor (operator content untouched)."
+    fi
+fi
+
+# Re-run the hook installer from the refreshed vault copy. .git/hooks is not
+# versioned, so overwriting scripts/ and .pre-commit-config.yaml does not touch
+# the installed pre-commit wrapper; an old wrapper has no gitleaks step, and the
+# new config no longer carries the framework gitleaks hook, so without this the
+# vault commits unscanned. A failure counts as a write failure: no stamp, the
+# next run retries. A vault with no .git has no hooks to refresh.
+if [ -e "$VAULT_DIR/.git" ] && [ -f "$VAULT_DIR/scripts/hooks/install-nostash-hooks.sh" ]; then
+    echo "Refreshing git hooks (secret scan runs from the pre-commit wrapper)..."
+    if ! bash "$VAULT_DIR/scripts/hooks/install-nostash-hooks.sh"; then
+        WRITE_FAILURES=$((WRITE_FAILURES+1))
+        echo "upgrade: the hook installer failed — this vault's secret scan may be off until it succeeds." >&2
+        echo "  Fix the error above, then re-run the upgrade or run bash scripts/hooks/install-nostash-hooks.sh." >&2
     fi
 fi
 

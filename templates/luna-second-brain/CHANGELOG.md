@@ -8,6 +8,20 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.87] — 2026-10-22
+
+### Fixed
+- `scripts/upgrade.sh` re-runs `scripts/hooks/install-nostash-hooks.sh` after
+  writing the template files (`.git/hooks` is not versioned, so the installed
+  wrapper is otherwise left as it was, without the scan). A failing installer
+  fails the upgrade and leaves the version stamp behind, so a re-run retries.
+- Upgrading an existing vault: the old hook ran a `pre-commit`-managed gitleaks,
+  so the vault may have none on PATH. Install gitleaks and confirm
+  `command -v gitleaks` succeeds before upgrading; the upgrade drops the
+  `gitleaks/gitleaks` repo block with the rest of `.pre-commit-config.yaml` and
+  installs the new hook (never run `pre-commit install`). Without gitleaks the
+  new hook refuses every commit.
+
 ## [0.4.86] — 2026-10-22
 
 ### Fixed
@@ -20,12 +34,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   the pre-commit run, and refuses the commit (fail closed) when gitleaks cannot
   be found. `scripts/hooks/install-nostash-hooks.sh` bakes the gitleaks path
   like it does for `pre-commit` and warns when it is missing.
-- Upgrading an existing vault: the old hook ran a `pre-commit`-managed gitleaks,
-  so the vault may have none on PATH. Install gitleaks and confirm
-  `command -v gitleaks` succeeds, remove the `gitleaks/gitleaks` repo block from
-  the vault's `.pre-commit-config.yaml` (the template no longer has it), then
-  re-run `bash scripts/hooks/install-nostash-hooks.sh` in the vault, never
-  `pre-commit install`. Without gitleaks the new hook refuses every commit.
 
 ## [0.4.81] — 2026-10-17
 
