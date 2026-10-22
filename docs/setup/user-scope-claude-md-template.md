@@ -17,7 +17,7 @@ user-scope `CLAUDE.md` with these principles are detected and left alone.
 principles: that one is the *operator's* personal user-scope file, copied
 wholesale on a new machine and ending in an `@RTK.md` import an adopter has no
 file for. It is the operator's to reword. This one is the adopter payload with
-a stable marker fence, and adopt.sh reads it at run time — so an edit to the
+a stable marker fence, and adopt.sh reads it at run time, so an edit to the
 operator's personal prose can never silently change what adopters install.
 
 Everything between (and including) the two marker lines is the payload:

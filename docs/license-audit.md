@@ -2,14 +2,14 @@
 
 Durable record of the license decision and the housekeeping that
 implemented it. Visibility (private → public) is a separate, deferred
-step — see [Remaining deferred step](#remaining-deferred-step).
+step; see [Remaining deferred step](#remaining-deferred-step).
 
 ## Chosen license: MIT
 
 himmel-OWN code is licensed under the **MIT License**
 (see [`/LICENSE`](../LICENSE), copyright `2026 yotamleo`).
 
-Rationale: MIT is the most-permissive widely-recognized OSI license —
+Rationale: MIT is the most-permissive widely-recognized OSI license:
 minimal obligations on downstream users (attribution only), maximum reuse,
 and it matches the operator's stated target license. It imposes no
 copyleft and no patent-grant ceremony, which keeps adoption friction low
@@ -30,7 +30,7 @@ for a harness meant to be copied and adapted.
   copyleft is pulled into the distributed tree.
 - The `scripts/hooks/check-npm-licenses.sh` pre-push gate enforces a
   permissive-only allowlist, so a non-permissive dep cannot land silently.
-- `node_modules/` is **not** committed — only `package.json` /
+- `node_modules/` is **not** committed; only `package.json` /
   lockfiles are versioned, so the audit surface is the declared deps.
 - The allowlist permits **`Python-2.0`** (PSF License). It is permissive
   and GPL-compatible (no copyleft), consistent with MIT distribution.
@@ -44,13 +44,13 @@ dependency graph.
 ## Fork handling
 
 One vendored plugin and one standalone reviewer prompt derive from upstream
-and stay under their **upstream Apache-2.0** license — they are NOT
+and stay under their **upstream Apache-2.0** license. They are NOT
 relicensed to MIT:
 
-- `scripts/cr/floor-reviewer.md` — modified copy of the `code-reviewer` agent
+- `scripts/cr/floor-reviewer.md`: modified copy of the `code-reviewer` agent
   of `pr-review-toolkit` (`anthropics/claude-plugins-official`), Apache-2.0;
   attributed in `THIRD-PARTY-NOTICES.md`.
-- `marketplace/plugins/telegram-himmel/` — fork of
+- `marketplace/plugins/telegram-himmel/`: fork of
   `telegram@claude-plugins-official` v0.0.6; upstream `LICENSE`
   (Apache-2.0) carried forward, attributed in its `README.md`.
 

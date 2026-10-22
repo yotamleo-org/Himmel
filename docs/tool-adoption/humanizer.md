@@ -1,6 +1,6 @@
 # humanizer (`blader/humanizer`) — tool-adoption eval
 
-HIMMEL-5857, 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **vendor, opt-in** (PILOT-MEASURE, in no profile).
+HIMMEL-5857, 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **ADOPT, opt-in** (pilot closed 2026-10-22 by the HIMMEL-6966 docs pass, below; in no profile).
 
 ## Goal (rubric §1)
 
@@ -82,8 +82,32 @@ The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR
 | B3 | `luna/pr-lane-guard.md` | 4 | 0 | 6 → 1 | 0 → 0 | 0 → 0 |
 | B3 | `handover/afk-mode.md` | 72 | 2 | 134 → 31 | 3 → 3 | 5 → 5 |
 | B3 | `handover/running-a-console.md` | 38 | 0 | 52 → 1 | 4 → 4 | 6 → 6 |
+| B5 setup and reference | `README.md` | 0 | 0 | 0 → 0 | 1 → 1 | 0 → 0 |
+| B5 | `docs/README.md` | 5 | 0 | 62 → 57 | 1 → 1 | 2 → 2 |
+| B5 | `license-audit.md` | 6 | 0 | 9 → 3 | 0 → 0 | 0 → 0 |
+| B5 | `third-party-licenses.md` | 17 | 0 | 23 → 1 | 4 → 4 | 2 → 2 |
+| B5 | `himmelctl.md` | 1 | 0 | 4 → 0 | 0 → 0 | 3 → 3 |
+| B5 | `setup/cli-proxy-lane.md` | 8 | 0 | 13 → 5 | 0 → 0 | 1 → 1 |
+| B5 | `setup/cloud-environment.md` | 0 | 0 | 0 → 0 | 0 → 0 | 1 → 1 |
+| B5 | `setup/codex.md` | 9 | 0 | 17 → 8 | 0 → 0 | 1 → 1 |
+| B5 | `setup/global-claude-md.md` | 0 | 0 | 0 → 0 | 1 → 1 | 0 → 0 |
+| B5 | `setup/install.md` | 23 | 0 | 37 → 13 | 3 → 3 | 5 → 5 |
+| B5 | `setup/migrating.md` | 11 | 0 | 23 → 10 | 1 → 1 | 2 → 2 |
+| B5 | `setup/new-machine.md` | 189 | 0 | 308 → 97 | 31 → 31 | 38 → 38 |
+| B5 | `setup/operator-profile-tbd-delta.md` | 4 | 0 | 16 → 12 | 0 → 0 | 7 → 7 |
+| B5 | `setup/rtk-md.md` | 1 | 0 | 1 → 0 | 0 → 0 | 0 → 0 |
+| B5 | `setup/updating.md` | 63 | 0 | 71 → 1 | 5 → 5 | 2 → 2 |
+| B5 | `setup/user-scope-claude-md-template.md` | 1 | 0 | 5 → 4 | 1 → 1 | 0 → 0 |
+| B5 | `setup/vm-mode.md` | 1 | 0 | 3 → 2 | 0 → 0 | 0 → 0 |
+| B5 | `setup/profiles/README.md` | 10 | 0 | 13 → 1 | 3 → 3 | 0 → 0 |
 
 The dash rule worked against the voice sample. Each page used dashes heavily, so the sample override would have kept them, but most of those dashes joined clauses that needed a comma, colon or full stop. The pass kept dashes in quoted rules and table cells and replaced the rest. `system-design.md` had already been through `unslop` and shows the smallest change: three passages, mostly table cells.
+
+B4 (reference pages) and `tooling-catalog.md` stay out of the pass by ruling. `setup/vms.md` and `adoption-trail.html` land in a last batch once the open PRs that hold them merge.
+
+## Pilot verdict
+
+Totals over 44 pages: 875 passages kept, 4 dropped, em-dashes 1403 → 311. Not-X-but-Y and stock-word counts barely moved; nearly every kept change was a dash or bold-label fix that `unslop` leaves alone (deviation 3). The exit test asked for documents where `/humanizer` changed something `/unslop` missed and the operator kept it, and every batch merged with those changes, so the REJECT condition is not met. Verdict: **ADOPT, opt-in**. It stays out of every default profile.
 
 ## Decision
 

@@ -2,7 +2,7 @@
 
 Complete checklist for getting a new machine to full working state.
 
-**Adopting himmel on your own repo** (not developing himmel itself)? See [docs/setup/install.md](./install.md) instead — it covers the portable-core flow and tells you which sections here apply to you.
+**Adopting himmel on your own repo** (not developing himmel itself)? See [docs/setup/install.md](./install.md) instead; it covers the portable-core flow and tells you which sections here apply to you.
 
 
 ## Support matrix
@@ -12,7 +12,7 @@ Complete checklist for getting a new machine to full working state.
 | **Supported** | Linux, macOS | Linux is CI-gated on every PR (required check) — [green `bun-suites` runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain); adopter round trip verified on both. macOS CI runs on the nightly only (not a per-PR required check); its nightly is green — [macos-cadence nightly runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule) (8/8 shards, 0 red suites), with the [`macos-cadence`](../../.github/workflows/macos-cadence.yml) workflow as the ongoing check. |
 | **Not supported** | Windows (Git Bash), WSL | Code paths present but unverified, not CI-gated per-PR; unsupported. An operator-requested `os-verify` dispatch (`gh workflow run os-verify.yml --ref <branch> -f os=windows`; runs the impacted suites only — see [`docs/internals/testing.md`](../internals/testing.md)) remains available. Bug reports welcome; no guarantee. |
 
-**Install channels:** release tarball (`himmel-<version>-linux.tar.gz` + `.sha256`, Linux) — **supported**, steps in the [README](../../README.md#quickstart); `git clone` + `himmelctl install` — supported; plugin marketplace (`marketplace/plugins/*`) — supported, through the Claude Code plugin marketplace (`claude plugin install/update/uninstall`), not `himmelctl`; AUR — **landed** (recipe in [`packaging/aur/`](../../packaging/aur/)); brew — not supported, reopens only if a shared macOS/Linux tap becomes worthwhile; nix / deb / rpm — not supported, reopen on user-driven demand. The tarball's fresh-guest run is green.
+**Install channels:** release tarball (`himmel-<version>-linux.tar.gz` + `.sha256`, Linux): **supported**, steps in the [README](../../README.md#quickstart); `git clone` + `himmelctl install`: supported; plugin marketplace (`marketplace/plugins/*`): supported, through the Claude Code plugin marketplace (`claude plugin install/update/uninstall`), not `himmelctl`; AUR: **landed** (recipe in [`packaging/aur/`](../../packaging/aur/)); brew: not supported, reopens only if a shared macOS/Linux tap becomes worthwhile; nix / deb / rpm: not supported, reopen on user-driven demand. The tarball's fresh-guest run is green.
 
 Windows sections below are retained for reference, but Windows is not
 supported and nothing in them is CI-verified per-PR. See [`docs/internals/harness-compat.md`](../internals/harness-compat.md)
@@ -22,7 +22,7 @@ for the same tiering applied to hook/skill/agent compatibility.
 
 One row per platform, each floor linked to the run that actually proves it.
 A cell reading `unverified` means: no floor is declared/enforced anywhere in
-the repo for that tool, or no green run exists to cite — never assume a
+the repo for that tool, or no green run exists to cite. Never assume a
 value that isn't backed by one of these links.
 
 | OS/distro | Shell | Claude Code CLI floor | git floor | node / bun | Install channels | Proof |
@@ -104,9 +104,9 @@ evaluated both (a second Windows station, 2026-07-12):
   Windows-created worktrees (the `.git` pointer file carries a `C:/` absolute
   path). There is no setting that makes this configuration exist.
 - **WSL station profile (supported).** Claude Code installed *inside* a WSL
-  distro — repo clones on ext4 (never `/mnt/c`, see the
+  distro, with repo clones on ext4 (never `/mnt/c`, see the
   [/mnt/c performance cliff](../internals/environment-gotchas.md#wsl-the-mntc-performance-cliff)),
-  toolchain (node/jq/gh/bun/…) provisioned in-distro — is a supported,
+  and the toolchain (node/jq/gh/bun/…) provisioned in-distro, is a supported,
   documented Anthropic configuration. Effectively a Linux station that happens
   to run on a Windows host; the Linux column of this doc applies. Windows-side
   control-plane pieces (schtasks arming) remain reachable via interop
@@ -115,7 +115,7 @@ evaluated both (a second Windows station, 2026-07-12):
   run `bash scripts/setup.sh` (it installs all three hook types), or if
   installing manually, ALL THREE:
   `pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push`.
-  A bare `pre-commit install` installs only the pre-commit hook type — the
+  A bare `pre-commit install` installs only the pre-commit hook type; the
   commit-msg + pre-push gates (attestation trailers, review-owed marker write,
   conventional-commit lint) are then silently absent and the first push
   goes out ungated (a real workday hit exactly this).
@@ -153,7 +153,7 @@ and workaround quoted below is reproduced verbatim from that run; where himmel's
 own tooling could not do a step, it is called out rather than smoothed over, and
 the workaround is the documented path until the linked ticket lands.
 
-Two honest caveats about the walkthrough itself. The guest was not pristine — it
+Two honest caveats about the walkthrough itself. The guest was not pristine: it
 carried a `~/.claude` and an older himmel checkout from earlier test runs, which
 is why the hook-rewiring behaviour below could be observed at all. And steps 1-3
 are the standard documented installs for tools that box already had (uv,
@@ -202,9 +202,9 @@ without this, the `permissions.allow`/`permissions.additionalDirectories`
 entries it just wired into `.claude/settings.json` are silently ignored until
 a human runs `claude` interactively here once. If the trust write itself
 fails (an unwritable `~/.claude.json`, say), the install summary's `still
-manual` section names it — run `claude` interactively in the clone once and
+manual` section names it. Run `claude` interactively in the clone once and
 accept the trust dialog, or set `projects["<abs clone path>"].hasTrustDialogAccepted:
-true` in `~/.claude.json` yourself — the summary's remedy prints the exact key
+true` in `~/.claude.json` yourself; the summary's remedy prints the exact key
 to use, which on Windows is the forward-slash `C:/Users/.../clone` form, not
 the backslashed path.
 
@@ -241,7 +241,7 @@ a workaround that completes the install.
    ```
 
    On a box with a terminal, answer the questions interactively instead and
-   neither step is needed — the interactive path writes the cache itself.
+   neither step is needed: the interactive path writes the cache itself.
 
 **`himmelctl deps ensure` does not finish the job on Linux**. On a stock
 Ubuntu box it reports `0 installed, 4 failed`: its `apt-get` calls run
@@ -250,7 +250,7 @@ on PATH within the same pass. Install those four from step 0 and step 2 above
 and `himmelctl status` goes green on them.
 
 **Expect reds you did not cause.** A lean adopter's first `himmelctl status`
-lists rows for opt-in capabilities that were never selected — `hermes-checkout`
+lists rows for opt-in capabilities that were never selected; `hermes-checkout`
 in particular reports a Windows `AppData` path on Linux. Reds for
 `graphify`, `rtk`, and `telegram-bridge` simply mean those
 optional pieces are not set up; none of them blocks the core loop. A clean
@@ -267,7 +267,7 @@ up.
 already has a `.pre-commit-config.yaml`:
 
 - **Your own config present:** the installer runs `pre-commit install` and leaves
-  your config untouched — the hooks run whatever you configured.
+  your config untouched; the hooks run whatever you configured.
 - **No config:** the pre-commit framework's hooks would skip on every commit and
   push ("config file not found"), so the installer writes himmel's native
   `commit-msg`, `pre-push` and `pre-commit` gates directly instead. Those gate
@@ -282,7 +282,7 @@ Two things to know once they are placed:
   conventional-commit *shape* always, and a ticket reference unless you opt
   out. The pattern comes from `TICKET_ID_PATTERN` if set, else
   `JIRA_PROJECT_KEY` (`PROJECT-123`), else himmel's own `#N` enumeration
-  (`#123`) — that enumeration *is* the ticket system for a repo without Jira,
+  (`#123`). That enumeration *is* the ticket system for a repo without Jira,
   not a relaxed fallback, and `/handover new-epic` / `/handover new-task`
   allocate the next free number for you. To turn the ticket half off entirely,
   set `TICKET_ID_REQUIRED=0` in the repo's `.env` or the environment; the
@@ -292,16 +292,16 @@ Two things to know once they are placed:
   invoking git process rather than building a fresh PATH, so a commit from your
   own terminal worked (that shell sourced `~/.bashrc`, where bun's installer put
   `~/.bun/bin`) while the same commit from an SSH command, a script, CI or an
-  agent died with `ERROR: bun did not report a version` — on any commit,
+  agent died with `ERROR: bun did not report a version` on any commit,
   docs-only included. The gate now looks in `PATH`, `$BUN_INSTALL/bin` and
   `$HOME/.bun/bin` in turn, and when it still finds no bun it refuses only the
   commits that stage something under the bun package; a docs commit is skipped
   with a line naming everywhere it looked. Nothing to do on a normal install.
 
-  The symlink below is still worth making — it fixes the same blind spot for
+  The symlink below is still worth making: it fixes the same blind spot for
   every *other* non-interactive consumer (cadences, scheduled runs, `himmelctl
   deps ensure`), since `~/.local/bin` is exported by `~/.profile`, which has no
-  interactive-only early return — though that only helps a launching chain
+  interactive-only early return, though that only helps a launching chain
   that sources `~/.profile` in the first place (a login shell), not a bare
   `ssh host 'cmd'` or a cron job with neither PATH layer; see
   [the two PATH layers](../internals/environment-gotchas.md#linux-a-stock-ubuntu-user-has-two-path-layers-and-non-interactive-shells-see-only-one):
@@ -321,13 +321,13 @@ guest it took three attempts, in this order:
 2. It refused again for `scripts/jira` only: "found no dependencies to audit
    that were installed from a supported registry", because the worktree
    bootstrap had populated `node_modules` without registry provenance. `npm ci`
-   in `scripts/jira` fixes it — that is exactly the remediation the gate names.
+   in `scripts/jira` fixes it; that is exactly the remediation the gate names.
 3. The CR gate refused once to install its own ref-stream hook
    (`pre-push.legacy`) and told you to retry; the retry passes.
 
 Then it goes through. The attestation gates ("Cross-platform attestation",
 "Security-review attestation") pass first-try as long as the trailers are in
-the FIRST commit — do not try to add them with `git commit --amend` after a
+the FIRST commit. Do not try to add them with `git commit --amend` after a
 refusal.
 
 **`worktree.sh new` leaves the new worktree dirty.** It installs the Jira CLI
@@ -335,8 +335,8 @@ dependencies, which rewrites `scripts/jira/package-lock.json`. Revert that file
 rather than committing it: `git checkout -- scripts/jira/package-lock.json`.
 
 **PATH: `~/.bun/bin` will look missing even when bun works.** See
-[the two PATH layers](../internals/environment-gotchas.md#linux-a-stock-ubuntu-user-has-two-path-layers-and-non-interactive-shells-see-only-one)
-— this is why a probe can report `bun` (or `claude`) missing on a machine where
+[the two PATH layers](../internals/environment-gotchas.md#linux-a-stock-ubuntu-user-has-two-path-layers-and-non-interactive-shells-see-only-one).
+This is why a probe can report `bun` (or `claude`) missing on a machine where
 both are installed and working.
 
 ### Linux station (CachyOS, first fleet day 2026-09-04)
@@ -348,11 +348,11 @@ the daily driver on an Arch-family main station, not from a fresh install.
 above for how `settings.local.json` overrides the floor in both directions.
 The lesson on this box: toggling a plugin off with `claude plugin disable`
 alone does not survive the next reconcile if its key is still `true` in
-`settings.local.json` — flip the override, not just the live toggle.
+`settings.local.json`: flip the override, not just the live toggle.
 
 **`/plugins` → "enabled in project settings but isn't installed."** A
 migrated `~/.claude/settings.json` can carry `false` keys for plugins never
-installed on *this* machine — `reconcile-enabled-plugins.sh`'s whitelist
+installed on *this* machine: `reconcile-enabled-plugins.sh`'s whitelist
 logic carries any unknown live key forward as `false` rather than deleting
 it, so a dead entry survives every reconcile untouched. That's an
 `enabledPlugins` cleanup, not an install problem:
@@ -362,7 +362,7 @@ it, so a dead entry survives every reconcile untouched. That's an
 **Toggling a community plugin.** `claude plugin enable/disable <name>` is the
 sanctioned toggle. `himmelctl config set hooks.plugin.<name>` only knows the
 fixed table in `scripts/machine-setup/full-plugin-enable.json` (the
-lean-profile re-enable list above) — it rejects any other plugin name, so
+lean-profile re-enable list above); it rejects any other plugin name, so
 reach for `claude plugin` directly for anything outside that list. That
 toggle alone doesn't survive the next reconcile, though (see
 [Lean profile](#lean-profile--disabled-by-default-enable-on-need)
@@ -371,27 +371,27 @@ above): `claude plugin enable <name>` also needs `"<name>": true` under
 drops it back to the floor; `claude plugin disable <name>` mirrors this with
 `false` there, or the next reconcile brings it back.
 
-**arm-resume on Linux.** Needs `at` + a running `atd` — on Arch/CachyOS:
+**arm-resume on Linux.** Needs `at` + a running `atd`. On Arch/CachyOS:
 `sudo pacman -S at && sudo systemctl enable --now atd`; `cronie` is the
 weaker fallback when `at` is absent (see
 [§4c](#4c-scheduler-backend-auto-arm-resume) above). The POSIX
 launcher in `scripts/handover/arm-resume.sh`'s `schedule_arm` submits an
 `at -t <timestamp>` heredoc job whose body is a plain `claude ... --model
-...` invocation — no controlling terminal, nothing opens a window.
+...` invocation: no controlling terminal, nothing opens a window.
 `--dry-run` is side-effect-free (it prints the exact job body and "dry-run
 complete (no changes made)" without touching the `at` queue) and is the safe
 way to see what an arm will actually run. Because the fired session has no
 TTY/stdin, any permission-gated action it hits resolves as a silent DENY at
-rc=0 after a ~3s stdin watchdog rather than hanging — pass `--automerge` if
+rc=0 after a ~3s stdin watchdog rather than hanging. Pass `--automerge` if
 the arm must push a ticket sequence through green PRs unattended (it sets
 `ARMAUTOMERGE=1` + `CR_MERGE_GATE_OK=1` on the launched session); without it
 the script only WARNs and the ticket sequence stops at the first green PR. `.env`'s
 `ARMAUTOMERGE` is only the **default** used when `--automerge` was not passed
-on this invocation — an explicit flag always wins over it.
+on this invocation; an explicit flag always wins over it.
 
 **Jira CLI.** No env-assignment prefix on the invocation other than a bare
 literal `JIRA_PROJECT_KEY=<KEY>` and the innocuous
-`LANG`/`LANGUAGE`/`LC_*`/`TZ` locale prefixes —
+`LANG`/`LANGUAGE`/`LC_*`/`TZ` locale prefixes:
 `block-jira-compound-write.sh` refuses any other prefix *shape*, not Jira writes
 themselves. The sanctioned invocation is the plain `node
 <repo-root>/scripts/jira/dist/index.js <op>`, which picks the key up from the
@@ -400,7 +400,7 @@ primary checkout's `.env` (see
 above); pass `--project` only for cross-project work.
 
 **Station traps, one line each.** Arch ships `/usr/bin/pre-commit` and
-co-locates `node` with coreutils in `/usr/bin` — a hermetic-PATH test fixture
+co-locates `node` with coreutils in `/usr/bin`; a hermetic-PATH test fixture
 that pins `PATH=/usr/bin:/bin` or scrubs the PATH must **stub** these tools
 out, not assume scrubbing `/usr/bin` removes only what the suite intends (it
 also silently drops `xargs`). Scripts tracked from Windows commits land mode
@@ -412,18 +412,18 @@ inheriting an unrelated wait budget instead of the suite's own) is fixed.
 Verify hooks actually fire on a dash-`/bin/sh` box (Debian/Ubuntu; Arch's
 `/bin/sh` is bash, so this is silent here too): from inside a himmel clone,
 `dash -c 'command -p sh scripts/lib/run-node.sh -v'` prints a version,
-not nothing — then run `dash scripts/lib/run-node.sh -v` as well. Two
+not nothing. Then run `dash scripts/lib/run-node.sh -v` as well. Two
 probes because a launcher resolves to `/bin/sh`: the first pins the shape
 production actually wires, but on a bash-`/bin/sh` box it executes
 run-node.sh's own body under bash, so a dash-incompatible expansion *inside*
 the file sails straight through it. The second puts that body under dash. A
 bash-only expansion anywhere in the chain aborts silently at exit 0 instead. A third probe pins the PATH boundary:
 `env PATH=/nonexistent /bin/sh -c 'command -p sh scripts/lib/run-node.sh -v'`
-(the outer shell by ABSOLUTE path — `env` clobbers PATH before it could look
+(the outer shell by ABSOLUTE path; `env` clobbers PATH before it could look
 up a bare `dash`)
-must ALSO print a version — a bare `sh` there dies rc=127 before any guardrail
+must ALSO print a version; a bare `sh` there dies rc=127 before any guardrail
 runs, which is why hooks are wired `command -p sh`.
-(`command -p sh`, not `.` — POSIX leaves `.` with operands beyond the filename
+(`command -p sh`, not `.`: POSIX leaves `.` with operands beyond the filename
 **unspecified** and dash DROPS them: `dash -c '. probe.sh a b'` sees zero
 arguments where bash sees two. A dot-wired `run-node.sh` therefore ran a
 bare `node` with an empty argv, and every hook was a silent no-op on
@@ -455,7 +455,7 @@ Every other script is bash 3.2-compatible.
 
 ### Single-source tool dependencies
 
-These tools show up in only one script — easy to drop if not on PATH (the affected feature degrades):
+These tools show up in only one script, easy to drop if not on PATH (the affected feature degrades):
 
 - `cygpath` (Windows-only path translation) → `scripts/handover/arm-resume.sh` and `scripts/lib/qmd-bin.sh` (junction creation); falls back to the unconverted path when absent.
 - `shellcheck`, `gitleaks` → `scripts/machine-setup/ubuntu.sh` bootstrap only; pre-commit framework re-fetches them per-hook so they don't need to be on PATH for normal use.
@@ -464,36 +464,36 @@ These tools show up in only one script — easy to drop if not on PATH (the affe
 
 ### Other tools
 
-- **Obsidian** — https://obsidian.md (for luna vault).
-- **Claude Code CLI** — see foundational table above.
+- **Obsidian:** https://obsidian.md (for luna vault).
+- **Claude Code CLI:** see foundational table above.
 
 ### Required `.env` values (per-variable walkthrough)
 
 `scripts/setup.sh` copies `.env.example` → `.env` for you (§4); you
-then fill in your own values. Run setup with `--fill-env` to be **prompted** for each one — the prompt prints a short help
+then fill in your own values. Run setup with `--fill-env` to be **prompted** for each one; the prompt prints a short help
 blurb (what the value is + where to get it, sourced from the `.env.example`
 comments) before each field, so you don't have to read the file first. Press
 Enter at a prompt to keep the current value; non-interactive shells skip the
 prompt entirely.
 
-Two kinds of variable live in `.env` and they reach code **differently** — this
+Two kinds of variable live in `.env` and they reach code **differently**; this
 is the classic "I set it in `.env` but nothing happened" tax. The same split is
 documented at the top of [`.env.example`](../../.env.example):
 
-- **TOOL-LOADED** — a himmel CLI reads `.env` itself, so a value sitting in the
+- **TOOL-LOADED:** a himmel CLI reads `.env` itself, so a value sitting in the
   file is enough; no shell export needed.
-- **PROCESS-ENV** — hooks, shell scripts, and skill tools read the **live**
+- **PROCESS-ENV:** hooks, shell scripts, and skill tools read the **live**
   environment, not the file. Export these in the shell that launches `claude`,
   or set them in `~/.claude/settings.json` `"env": {}`. A value sitting only in
-  `.env` is not seen — **except** the ones bridged from `.env` by
+  `.env` is not seen, **except** the ones bridged from `.env` by
   `scripts/lib/load-dotenv.sh` (`HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the
-  `HIMMEL_INITIATIVE*` set, `HIMMEL_WHERE_ARE_WE` + `_STALE_HOURS` — but NOT
+  `HIMMEL_INITIATIVE*` set, `HIMMEL_WHERE_ARE_WE` + `_STALE_HOURS` (but NOT
   the statusline-only `_ROLLUP_TTL` / `_SEG_TIMEOUT` knobs, which are live-env
-  only — `HIMMEL_DOC_FRESHNESS` and the nudge flags; the full bridged list
+  only), `HIMMEL_DOC_FRESHNESS` and the nudge flags; the full bridged list
   lives in the `.env.example` header), noted
   below. A third class, **SESSION-ONLY** (guardrail bypasses like
   `EDIT_ON_MAIN_OK`, per-launch opt-ins like `TELEGRAM_OWN_POLLER`), is never
-  read from `.env` at all — set in the launching shell; inventoried in
+  read from `.env` at all: set in the launching shell; inventoried in
   `.env.example`'s SESSION-ONLY section.
 
 **TOOL-LOADED** (a value in `.env` is enough):
@@ -531,7 +531,7 @@ until you configure them.
 The valid options are read live from the field, so adding one in Jira needs no
 code change.
 
-**PROCESS-ENV** (export, or set in `settings.json` `"env"` — a value only in
+**PROCESS-ENV** (export, or set in `settings.json` `"env"`; a value only in
 `.env` is not read unless it's a bridged exception):
 
 | Variable | What it is | Where to get it / note |
@@ -547,7 +547,7 @@ code change.
 
 ### OLLAMA_NO_CLOUD (optional — ollama zero-egress defense-in-depth pin)
 
-Not a himmel `.env` variable — the `ollama` binary itself reads it, so it must
+Not a himmel `.env` variable: the `ollama` binary itself reads it, so it must
 be set at OS/user scope (not just exported in the shell that launches
 `claude`) to reach a background `ollama` service. The primary zero-egress
 guarantee for the `ollama-local` lane (see `/lanes`) is structural and holds
@@ -561,9 +561,9 @@ pin, checked (advisory, never a hard fail) by `/himmel-doctor`.
 | macOS | `launchctl setenv OLLAMA_NO_CLOUD 1` (current login session) — also add `export OLLAMA_NO_CLOUD=1` to your shell profile so it survives reboots |
 | Linux | Add `export OLLAMA_NO_CLOUD=1` to your shell profile, or if `ollama` runs as a systemd user service, a drop-in: `systemctl --user edit ollama.service` → `Environment=OLLAMA_NO_CLOUD=1` |
 
-For the full inventory — optional Bitbucket, Confluence, VM, and hermes keys,
+For the full inventory (optional Bitbucket, Confluence, VM, and hermes keys,
 the automated review / `pr-check` critic profile (`CR_PROFILE`), handover/AFK (unattended) mode tuning,
-Telegram bridge flags, and the SESSION-ONLY guardrail-bypass list — read the
+Telegram bridge flags, and the SESSION-ONLY guardrail-bypass list), read the
 annotated [`.env.example`](../../.env.example); it is the single source of
 truth (the complete operator flag map) and every entry there
 carries its own inline guidance.
@@ -587,34 +587,34 @@ cp docs/setup/rtk-md.md ~/.claude/RTK.md
 
 Source of truth: [`docs/setup/global-claude-md.md`](global-claude-md.md) and [`docs/setup/rtk-md.md`](rtk-md.md).
 
-> `CLAUDE.md` uses `@RTK.md` — both files must be present in `~/.claude/`.
+> `CLAUDE.md` uses `@RTK.md`; both files must be present in `~/.claude/`.
 
 ### The `model` key carries no `[1m]` suffix
 
 `~/.claude/settings.json`'s `model` key sets the station-wide default **model**.
-Write it bare — `"model": "claude-fable-5-1"`, never `"claude-fable-5-1[1m]"`.
+Write it bare: `"model": "claude-fable-5-1"`, never `"claude-fable-5-1[1m]"`.
 Say why precisely, because the measurements below do not support the stronger
 claim: a suffix there is a station-wide default nobody chose per worker session, and it is
-not even a reliable one. Fable — the very family in the example — silently
+not even a reliable one. Fable, the very family in the example, silently
 strips `[1m]`, so that exact string set nothing at all; and dropping the suffix
 did **not** move plain launches off a 1M window. So write it bare as
-configuration hygiene — the key should make no station-wide claim about context
-mode — and set the mode where it is actually observable, at arming.
+configuration hygiene (the key should make no station-wide claim about context
+mode) and set the mode where it is actually observable, at arming.
 
 Context mode is an **arming-time** choice instead: `--context 1m|standard` on
 `scripts/handover/arm-resume.sh` (7th positional on `headed-arm.sh`), defaulting
-to `standard` for every arm, supervisor session or not — a supervisor session (armed
+to `standard` for every arm, supervisor session or not; a supervisor session (armed
 through `chief.sh`, which has no `--context` flag of its own) can still
 opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching shell. The measured
-behaviour of both levers — which model ids accept the suffix, what a plain launch
-actually reports, and why `--autocompact` is the half that does the work — is in
+behaviour of both levers (which model ids accept the suffix, what a plain launch
+actually reports, and why `--autocompact` is the half that does the work) is in
 [`docs/internals/lane-calibration.md`](../internals/lane-calibration.md#context-mode--an-arming-time-choice-not-a-station-default).
 
 ### Two variants of the working principles, activated by profile
 
 The general engineering defaults (think before coding / simplicity first /
 surgical changes / goal-driven execution) are **not** in himmel's project
-`CLAUDE.md` — that file is held to a byte budget and carries himmel invariants
+`CLAUDE.md`; that file is held to a byte budget and carries himmel invariants
 only (gate `scripts/ci/check-claude-md-budget.sh`). They ship at
 **user scope** instead, in one of two ways:
 
@@ -627,7 +627,7 @@ The adopter path is idempotent and never destructive: it skips when the
 `HIMMEL:working-principles` marker is already present, appends (never
 overwrites) when it is not, and also skips on a heuristic phrase match so a
 hand-written target that already states the principles is left alone. It runs
-against **both** targets, but **only under `--scope user`** — a `--scope
+against **both** targets, but **only under `--scope user`**: a `--scope
 project` install must not touch anything under `$HOME`, so a
 project-scope adopter who also wants the principles runs `adopt.sh --scope
 user` separately. A Claude-only install would otherwise leave a Codex adopter
@@ -665,7 +665,7 @@ rtk --version
 rtk gain
 ```
 
-⚠️ Name collision risk — see [`docs/setup/rtk-md.md`](rtk-md.md).
+⚠️ Name collision risk: see [`docs/setup/rtk-md.md`](rtk-md.md).
 
 ### 3a. Expected post-setup state: "No hook installed" banner
 
@@ -681,8 +681,8 @@ And every rewritten command prints `[rtk] /!\ No hook installed` to stderr.
 **Both are benign and expected.** himmel replaces rtk's bare `rtk hook claude`
 PreToolUse entry with `scripts/hooks/rtk-hook-guard.sh`, which
 proxies rtk internally and adds a compound-predicate filter to fix broken
-`find` rewrites. rtk's self-check looks for its own `rtk hook claude` signature —
-which the guard replaces — so it can't find the hook even though rewriting is
+`find` rewrites. rtk's self-check looks for its own `rtk hook claude` signature
+(which the guard replaces), so it can't find the hook even though rewriting is
 fully operational. `rtk gain` will show real token savings accumulating.
 
 **Do NOT run `rtk init -g` to "fix" it.** That re-adds the bare entry the setup
@@ -741,13 +741,13 @@ runs non-interactively too, from a shipped profile rather than a saved one;
 contributor-dev `setup.sh` primitive on top of the install (never a
 question); `--lanes <csv|none>`,
 `--with-codex` and `--with-hermes` answer the lane question up front (all three
-are refused alongside `--from-profile` — a saved profile already carries its
+are refused alongside `--from-profile`; a saved profile already carries its
 lane selection and stays the sole authority on a replay). To offboard later:
-`node scripts/himmelctl/bin.js uninstall` — a thin wrapper over
+`node scripts/himmelctl/bin.js uninstall`, a thin wrapper over
 `scripts/uninstall.sh` (§8.7).
 
 **Non-interactive install.** `--default-scope` only presets a
-*wizard* answer — the wizard still prompts. To skip the wizard entirely, run
+*wizard* answer; the wizard still prompts. To skip the wizard entirely, run
 one of the shipped, placeholder-free adopter profiles:
 
 ```bash
@@ -755,7 +755,7 @@ node scripts/himmelctl/bin.js install --scope project   # or: --scope user
 ```
 
 This is shorthand for `--from-profile
-docs/setup/profiles/adopter-<scope>.install-profile.json` — a plain `starter`,
+docs/setup/profiles/adopter-<scope>.install-profile.json`: a plain `starter`,
 `pluginSet: lean` install with no lanes, no vault, and no telegram bridge (see
 `docs/setup/profiles/README.md`). Point `--from-profile` at your own saved or
 hand-authored profile instead for anything more; combining `--from-profile`
@@ -769,26 +769,26 @@ mean the installer asserting something it cannot stand behind:
   each selected lane through the *same* evaluator and the *same* merged
   configuration `/lanes` uses (`scripts/lanes/probe.mjs` + `resolve.mjs`, base
   `lanes.json` overlaid with `lanes.local.json`), so the two can never
-  disagree — notably `hermes` is detected via `$HERMES_PY` / venvs under
+  disagree; notably `hermes` is detected via `$HERMES_PY` / venvs under
   `$HERMES_HOME`, not by looking for `hermes` on `PATH`, and a lane you have
   turned off locally reports `DISABLED` (with the `config set` command that
   re-enables it) rather than `available`, and a corrupt `lanes.local.json`
   makes lanes report `UNKNOWN` naming that file rather than quietly falling
   back to the base registry. A single overlay *entry* that is degenerate (a
-  null/unknown-kind probe) fails closed the same way the resolver does — the
+  null/unknown-kind probe) fails closed the same way the resolver does: the
   lane reads not-usable with the reason named, because `/lanes` excludes it
   too. Whenever a lane needs an overlay fix, the summary lists that fix
-  **and** the lane's own setup step, in that order — including the case where
+  **and** the lane's own setup step, in that order, including the case where
   a lane is both missing *and* locally disabled, where installing the CLI
   alone would leave `/lanes` still excluding it. Under the resolver's
   `LANES_REGISTRY` test override the same replacement-no-overlay semantics
   apply here, so the report never describes a different lane set than
   `/lanes` resolves. Physical presence is always decided by the *base*
   registry probe, never by the overlay: an override can turn a lane off, but
-  `config set lanes.<id> on` cannot conjure a binary you never installed —
+  `config set lanes.<id> on` cannot conjure a binary you never installed;
   that combination reports `MISCONFIGURED` and keeps its install command.
   Note the probes establish that a **binary
-  exists** — not that a lane is *configured*: hermes has no richer readiness
+  exists**, not that a lane is *configured*: hermes has no richer readiness
   probe, so a present hermes binary always stays listed under `still manual`
   as a verify item (confirm the venv/auth manually). Only a lane with a richer
   readiness probe (codex, via the manifest's provisioning check) can report
@@ -806,14 +806,14 @@ mean the installer asserting something it cannot stand behind:
   `probe.kind=always` and make an absent lane report as available.
 - **Machine hardening is printed, never executed.** With `alwaysOn=yes` the run
   ends in a checklist of the
-  Phase-6 steps — power profile, no-lock-on-wake,
+  Phase-6 steps: power profile, no-lock-on-wake,
   sshd, auto-logon. They are machine-wide, need an elevated shell, and
   `himmelctl uninstall` cannot undo them, so they stay a checklist you run by
   hand.
 
 Every run ends with an honest summary: what was installed, what was skipped and
 why, and what remains manual. Under `--dry-run` the first bucket is labelled
-`would install` and the `installed` list is empty — a preview never reports
+`would install` and the `installed` list is empty; a preview never reports
 work it did not do.
 
 On an applied adopter install, the selection narrows the runtime `/lanes`
@@ -822,7 +822,7 @@ under `suppressed-by-profile`; they are physically available but not routable.
 No `profileAllowlist` means the pre-profile resolver behaviour is unchanged.
 
 **Node-less (clean) machine?** `himmelctl install` itself needs node. Run the
-bootstrap shim first — it installs node (+ bun on macOS via brew; apt has no
+bootstrap shim first. It installs node (+ bun on macOS via brew; apt has no
 bun package, so Linux gets node + npm and bun stays an optional post-bootstrap
 step) via the platform package manager (brew/apt/winget) then hands off to
 `himmelctl install` (himmelctl's own preflight covers every other tool):
@@ -832,9 +832,9 @@ bash scripts/himmelctl/bootstrap.sh --dry-run    # Linux/macOS: preview the plan
 bash scripts/himmelctl/bootstrap.sh              # then run for real
 ```
 
-> **Deprecated setup shim — `scripts/machine-setup/ubuntu.sh`.** This full-machine provisioning script is **soft-deprecated**
+> **Deprecated setup shim: `scripts/machine-setup/ubuntu.sh`.** This full-machine provisioning script is **soft-deprecated**
 > as an install entry point. They still provision the complete toolchain (git /
-> python / jq / shellcheck / gitleaks, nvm+node, uv, the Claude CLI, rtk — zero
+> python / jq / shellcheck / gitleaks, nvm+node, uv, the Claude CLI, rtk, with zero
 > capability loss, locked O4) but no longer do himmel/luna *wiring* themselves;
 > they print a deprecation notice and delegate the wiring to
 > `himmelctl bootstrap` → `himmelctl install`. Prefer `himmelctl install` (above)
@@ -843,15 +843,15 @@ bash scripts/himmelctl/bootstrap.sh              # then run for real
 > toolchain-provisioning role is also absorbed) is deferred to a follow-up.
 
 What the wizard runs under the hood no longer depends on a role (that
-fork was removed): `scripts/adopt.sh` (the portable-core flow — see
+fork was removed): `scripts/adopt.sh` (the portable-core flow; see
 [docs/setup/install.md](./install.md)) always runs.
 Passing `--contribute` layers `scripts/setup.sh` on top of it afterward
 (pre-commit install, Jira CLI build, `.env` from `.env.example`, plugin
 install, and wiring the statusline + `env.HIMMEL_REPO` + the **UNIVERSAL
-hooks** into `~/.claude/settings.json`, user scope — see §4b) — never instead
+hooks** into `~/.claude/settings.json`, user scope; see §4b), never instead
 of `adopt.sh`, and never asked as a question.
 
-> **Build artifacts are gitignored — build them after cloning.**
+> **Build artifacts are gitignored: build them after cloning.**
 > `scripts/jira/dist/index.js` and `scripts/bitbucket/dist/index.js` are TypeScript
 > build outputs, NOT tracked. A fresh clone has no `dist/`, so a direct
 > `node scripts/jira/dist/index.js list` dies with `MODULE_NOT_FOUND`. `bash scripts/setup.sh`
@@ -861,10 +861,10 @@ of `adopt.sh`, and never asked as a question.
 > node scripts/jira/dist/index.js list                          # verify
 > # same shape for the Bitbucket CLI: cd scripts/bitbucket && npm install && npm run build
 > ```
-> (Needs Node 18+ with npm, OR bun — see [§1](#1-required-environment).)
+> (Needs Node 18+ with npm, OR bun; see [§1](#1-required-environment).)
 
 To **update** an existing checkout later, run `/himmel-update` (or `bash scripts/himmel-update.sh`):
-`git pull` is what delivers himmel updates — marketplace `autoUpdate` does not.
+`git pull` is what delivers himmel updates; marketplace `autoUpdate` does not.
 See [`updating.md`](updating.md).
 
 ### `himmelctl status` — read-only install-state check
@@ -877,7 +877,7 @@ Diffs desired state (the manifest at `scripts/install/manifest.json`, crossed
 with your recorded install state) against actual state (live probes),
 severity-grouped (red/degraded/green/n/a). Read-only: never prompts;
 never mutates on repeat runs (the first check for a given target may
-persist one derived state entry — the sanctioned derive-write). `--items`
+persist one derived state entry: the sanctioned derive-write). `--items`
 scopes the run to a comma-list of item ids; `--json` emits stable
 machine-readable output instead of text.
 
@@ -894,27 +894,27 @@ for something never turned on:
 | `bridge-health` | `access.json` + a live `getMe` call + exactly one `getUpdates` consumer (it counts `poller.ts` command lines anchored to THIS checkout, so a supervisor plus its poller child is one consumer, not two). Windows uses CIM; Linux/macOS prefer `systemctl --user show telegram-bridge.service` and walk its MainPID's children (`pgrep -f <poller path>` when no unit exists). Any other platform reports `degraded` naming process identity as unverified, never a silent pass |
 | `bridge-persistence` | whether bridge persistence will actually survive a restart |
 
-`bridge-persistence` is pass/warn/opt-in — it never reports a hard red once
+`bridge-persistence` is pass/warn/opt-in; it never reports a hard red once
 opted in. On Windows it reads `Get-ScheduledTask`'s culture-invariant `State`
-enum; a query that FAILS reports `degraded`/unknown, never absent — "not
+enum; a query that FAILS reports `degraded`/unknown, never absent: "not
 there" and "could not ask" stay distinct results. On Linux it checks
 unit-installed + enabled + linger, each with its own `degraded` reason (a
 unit that installs but whose linger step fails is reported as a partial
-install with the remediation named, never auto-rolled-back — without
+install with the remediation named, never auto-rolled-back; without
 `loginctl enable-linger`, the systemd user unit only runs while that user is
 logged in and stops at logout). On macOS it always reports `degraded`, naming
-launchd as Stage 2 — an unverified persistence state is never reported as
+launchd as Stage 2; an unverified persistence state is never reported as
 healthy. When `bridge.enabled` is not `true` in `~/.himmel/config.json`,
 `bridge-persistence` and `bridge-health` report a clean absence (`n/a`), not a
-failure — opting out is not a fault.
+failure: opting out is not a fault.
 
 **Three items scoped by your recorded SELECTIONS, not a config
 flag.** `telegram-bridge`, `hermes-lanes` and `codex-cli` carry no
 `~/.himmel/config.json` flag of their own (unlike the six above), so their
 only record of whether you ever opted in is the cached wizard answers read
 from `install-profile.json` (see below). A missing credential/install for a
-feature you never selected — telegram bridge `off`, the `hermes`/`codex` lane
-not chosen — reports `n/a`, not red; a genuinely selected-but-absent one still
+feature you never selected (telegram bridge `off`, the `hermes`/`codex` lane
+not chosen) reports `n/a`, not red; a genuinely selected-but-absent one still
 reports red. A machine with no recorded profile at all keeps today's full-nag
 behavior rather than going quiet (fail-open, never silent). The same
 selection→feature mapping (`adopterProfileLib.resolveActiveFeatures()`) also
@@ -922,7 +922,7 @@ scopes the wizard's own secrets walk (previous section).
 
 The scope comes from your last wizard run (the cached
 `~/.claude/himmel/install-profile.json`): under **project** scope the target
-is keyed by the directory you run it from — run it from the adopted
+is keyed by the directory you run it from, so run it from the adopted
 project's root; under **user** scope the target is the single `user` entry
 regardless of cwd. (A per-run scope override lands with the Phase-2 verbs.)
 It's the shared pre-check/post-check/enable-time primitive later himmelctl
@@ -936,15 +936,15 @@ node scripts/himmelctl/bin.js ensure [--profile core|luna|all] [--items a,b] [--
 
 Three steps: a `status`-shaped pre-check read, driving whatever it reports
 red/degraded through the EXISTING install primitives (`adopt.sh`/`setup.sh`/
-the `wire-*.sh` libs/`install-plugins.sh`/qmd's `qmd_install` — never
-reimplemented), then a `status`-shaped post-check. Idempotent — an
+the `wire-*.sh` libs/`install-plugins.sh`/qmd's `qmd_install`, never
+reimplemented), then a `status`-shaped post-check. Idempotent: an
 already-green target is a no-op. `--profile` reconciles the target to a
 different profile FIRST (so e.g. `ensure --profile luna` on a core-derived
 target converges the luna-only items too) before converging. `--items` scopes
 the run to a comma-list of item ids. Both `status --items` and `ensure --items`
-reject an unknown item id outright (exit 2); what `ensure --items` adds —
-**unlike `status`**, which validates ids and nothing further, staying a pure
-read/display filter — is that it validates the
+reject an unknown item id outright (exit 2); what `ensure --items` adds
+(**unlike `status`**, which validates ids and nothing further, staying a pure
+read/display filter) is that it validates the
 selection's dependency closure in BOTH directions before touching anything: a
 selection that omits a still-desired, red/degraded prerequisite an item being
 converged depends on is **rejected** (exit 2, zero mutation), naming both ids
@@ -952,15 +952,15 @@ and the remediation that actually resolves it; the mirror check on the
 toward-disabled side rejects unwiring a prerequisite while a still-desired
 dependent isn't being unwired too. Naming a prerequisite in `--items` is not
 by itself sufficient to satisfy this check if that prerequisite is hint-only
-(see below, and the "never fail-closes" caveat there) — only a prerequisite
+(see below, and the "never fail-closes" caveat there); only a prerequisite
 that will genuinely converge this run does. `--dry-run` prints the
-ordered convergence plan and makes **zero mutations** — no primitive is ever
+ordered convergence plan and makes **zero mutations**: no primitive is ever
 invoked. **Converging and disabling are separately consented, and disabling is
 opt-in.** A default `ensure` converges only: it never disables
 anything, whatever the target's state says. Removing wiring requires
 `--prune`, and even then it is a **second, independent** `Proceed with
-disabling? [Y/n]`, asked after the converge confirm and declinable on its own
-— declining it still lets the convergence proceed. Each disable candidate is
+disabling? [Y/n]`, asked after the converge confirm and declinable on its own;
+declining it still lets the convergence proceed. Each disable candidate is
 printed with per-item evidence naming what the recorded profile says, what the
 live probe found, and the exact command the disable would run; `not enabled
 for this target (profile/scope)` alone is not something an operator can
@@ -968,7 +968,7 @@ consent to. When the recorded profile looks under-recorded relative to live
 state, `ensure` says so and refuses to offer mass disables **even under
 `--prune`**, pointing at the wizard rather than reconciling reality downward.
 
-Declining the converge confirm aborts the run outright — the `--prune` pass is
+Declining the converge confirm aborts the run outright: the `--prune` pass is
 not reached, and the message says so. That asymmetry is deliberate: "no" to
 the first prompt reads as "stop", and following it by offering to *remove*
 things would be a worse answer, not a more independent one.
@@ -980,10 +980,10 @@ semicolon-joined, and a **single** `Proceed?` authorized everything listed
 including the unwiring. That bundling is the incident this fixes: an
 operator had to accept eight unwanted disables to take one wanted
 convergence. A **non-interactive, non-dry-run** run
-(piped/automation — how `ensure` runs outside a Claude session) that has
+(piped/automation, how `ensure` runs outside a Claude session) that has
 **any work to perform** (convergence, disable, or both) and passes neither
 `--yes` nor `--dry-run` exits **2** with `non-interactive ensure requires
---yes` and makes zero mutations — automation must pass `--yes` explicitly;
+--yes` and makes zero mutations; automation must pass `--yes` explicitly;
 there is no silent unattended consent. An already-green run (nothing to
 converge or disable) needs no consent and exits **0** whether or not `--yes`
 is given.
@@ -991,10 +991,10 @@ is given.
 An item with no automated install path yet (a `config`-type item, pending
 sub-ticket D, or one with no `install` descriptor at all) is reported as a
 hint. Two distinct guarantees here, not one: once a run is actually
-converging, a hint-only item never fail-closes it on its own account — it's
+converging, a hint-only item never fail-closes it on its own account: it's
 never dispatched, so `ensure` never waits on or blocks over its success.
 But `--items` dependency-closure VALIDATION (above) is a separate, EARLIER
-gate — naming a dependent whose desired+red prerequisite is hint-only is
+gate: naming a dependent whose desired+red prerequisite is hint-only is
 rejected before anything runs at all, precisely because that prerequisite
 can never converge no matter how it's selected. So a hint-only item CAN
 block a selection from proceeding in the first place, even though it never
@@ -1005,53 +1005,53 @@ the item and pointing at `himmelctl uninstall`.
 
 #### `HIMMELCTL_SUDO_PASSWORD` — optional, for unattended Linux dep installs
 
-`ensure` can converge missing host binaries (`dep`-type manifest items —
+`ensure` can converge missing host binaries (`dep`-type manifest items:
 `jq`, `git`, `shellcheck`, ...) via the platform package manager. On Linux
 that means `apt-get`, which needs `sudo`. `HIMMELCTL_SUDO_PASSWORD` is an
 **optional** var: set it to let an unattended `ensure` run authenticate and
 install via apt non-interactively; leave it unset and `ensure` falls back to
-the non-interactive `sudo -n` form, which never prompts and never hangs —
+the non-interactive `sudo -n` form, which never prompts and never hangs:
 a dep whose sudo would PROMPT for a password fails FAST rather than blocking
 forever waiting for interactive input nobody outside a Claude session is
 there to provide. `sudo -n` is **not** an unconditional failure: where sudo
 is already cached from a recent authentication, or the account is configured
-`NOPASSWD`, it succeeds and the dep installs normally — the var only matters
+`NOPASSWD`, it succeeds and the dep installs normally; the var only matters
 when authentication would actually prompt. Resolution order mirrors every other himmel
 `.env`-backed setting: a live `HIMMELCTL_SUDO_PASSWORD` in the process
 environment wins; otherwise it's read from the **primary checkout's**
 `.env`. Without it configured, `ensure` prints a one-line advisory (once per
-run, never per dep item) pointing here — it never reveals whether the var
+run, never per dep item) pointing here; it never reveals whether the var
 was merely absent or present-but-empty, only "not configured".
 
 **Security:** the password is passed to `sudo` on **stdin only** (`sudo -S
--p ''`) — never as a command-line argument (`ps`-visible to every user on
+-p ''`), never as a command-line argument (`ps`-visible to every user on
 the box), never logged, never printed in a `--dry-run` preview or an error
 message, and never present in the **child process's environment** either:
 `ensure` passes every apt/winget/brew primitive an explicit, scrubbed copy
-of its own environment with `HIMMELCTL_SUDO_PASSWORD` deleted — an
+of its own environment with `HIMMELCTL_SUDO_PASSWORD` deleted. An
 inherited env var would otherwise be readable from `/proc/<pid>/environ` by
 any other process running as your user for the primitive's whole lifetime,
 and would propagate to every grandchild it spawns (apt hooks, postinst
 scripts, ...), none of which need it. A timed-out primitive is torn down
 tree-wide (not just the direct child) so a wedged installer does not leave a
-credential-bearing descendant running in the background — but the two
+credential-bearing descendant running in the background, but the two
 platforms give **materially different guarantees**, and the POSIX one is
 weaker: on Linux/macOS the installer runs in its own process group, killed
-as a group on timeout, which is **best-effort** — a descendant that
-deliberately leaves that group (a `setsid`, a double-fork — routine daemon
+as a group on timeout, which is **best-effort**: a descendant that
+deliberately leaves that group (a `setsid`, a double-fork: routine daemon
 behaviour) is no longer reached by the group kill and survives it. Do not
 read the POSIX path as a Job-Object equivalent; it has no comparable
 structural teardown.
 
 Because the value lives in a plaintext `.env` file, treat it like any other
 secret in that file:
-- The primary checkout's `.env` **must stay untracked** — it is already
+- The primary checkout's `.env` **must stay untracked**; it is already
   listed in himmel's `.gitignore`; never `git add -f` it or copy its
   contents into a tracked file.
 - Give it **owner-only permissions** on Linux/macOS: `chmod 600 .env`.
 - Where available, prefer a real secret manager (your OS keychain, `pass`,
   a vault/secrets-manager integration, CI secret store, ...) over a
-  plaintext `.env` value — set `HIMMELCTL_SUDO_PASSWORD` in the process
+  plaintext `.env` value. Set `HIMMELCTL_SUDO_PASSWORD` in the process
   environment from there instead of writing it to disk at all; recall the
   resolution order above (a live process-env value always wins over the
   `.env` fallback), so this requires no code changes, just not writing the
@@ -1062,7 +1062,7 @@ supported prefix (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel)
 is owned by the invoking user, so `brew install` never prompts for a
 password there. A **custom** prefix, or an install directory with
 pre-existing permission problems, can still require elevation or fail
-outright — `HIMMELCTL_SUDO_PASSWORD` has no effect on brew either way (it's
+outright. `HIMMELCTL_SUDO_PASSWORD` has no effect on brew either way (it's
 only ever consumed by the Linux `sudo -S apt-get` path), so a brew failure
 of that kind needs manual remediation. Windows dep installs go through
 `winget`, also non-interactive (`--silent --disable-interactivity
@@ -1071,7 +1071,7 @@ of that kind needs manual remediation. Windows dep installs go through
 The three generic guardrails (`auto-approve-safe-bash`, `block-edit-on-main`,
 `block-read-secrets`) can live at the **user** scope (protects every repo you
 work in) or the **project** scope only. himmel ships them project-level, so if
-you also wire them at the user scope they would fire twice inside himmel — a
+you also wire them at the user scope they would fire twice inside himmel: a
 doubled bash spawn per tool call. `setup-hooks.sh --guardrail-mode` manages the
 himmel-owned user-level block so exactly one layer is active:
 
@@ -1086,7 +1086,7 @@ bash scripts/setup-hooks.sh --guardrail-mode project
 A bare `bash scripts/setup-hooks.sh` installs the git hooks and only *prints* the
 current mode. `/himmel-update` reports if a global block's baked node path drifts.
 
-After setup, fill in your `.env` values — see the per-variable walkthrough in
+After setup, fill in your `.env` values; see the per-variable walkthrough in
 [§1 Required `.env` values](#required-env-values-per-variable-walkthrough), or
 re-run setup with `--fill-env` to be prompted with inline help for each field:
 
@@ -1103,16 +1103,16 @@ pre-commit run --all-files
 
 The luna-cadence, PHI-declaration and telegram-bridge wizard answers above are
 written to a single shared adopter config document, `~/.himmel/config.json`
-(override: `HIMMEL_LUNA_CONFIG_PATH`) — the same path on every platform. This
+(override: `HIMMEL_LUNA_CONFIG_PATH`), the same path on every platform. This
 is **not** the wizard's own private answer cache
-(`~/.claude/himmel/install-profile.json`, mentioned above) — that file
+(`~/.claude/himmel/install-profile.json`, mentioned above); that file
 replays your wizard answers on a `--from-profile` run; this one is the
 runtime config document the luna/bridge subsystems themselves read. Writes
 are atomic (write-to-temp, validate, rename) and keep one timestamped `.bak`.
 
-Schema v1 — these are the fields himmelctl manages; only a schedule's `day`
+Schema v1: these are the fields himmelctl manages; only a schedule's `day`
 is optional. A key **not** in this table (top level or nested) is yours: an
-install keeps it untouched and prints one `WARN` naming it — it never fails
+install keeps it untouched and prints one `WARN` naming it; it never fails
 the install. A value of the **wrong type** for a field below is
 still refused:
 
@@ -1133,11 +1133,11 @@ still refused:
 | `bridge.whisper.model` | string | `ggml-small.bin` |
 
 `luna.phi.declared` records only the adopter's yes/no **answer** to the PHI
-question above — himmelctl creates none of the PHI markers themselves; §4d
+question above; himmelctl creates none of the PHI markers themselves; §4d
 below stays the authority on those (the `.salus` marker, the `phi-roots`
 listing, the egress-denylist entries).
 
-The wizard writes **only the fields the run actually supplied** — an
+The wizard writes **only the fields the run actually supplied**. An
 unsupplied section (a contributor run, or an adopter who answered
 `vault=none` and so never saw these questions) is left exactly as loaded on
 disk, never coerced to a default; the write is skipped entirely when nothing
@@ -1152,7 +1152,7 @@ recording that backup in the install provenance ledger. It prints one
 line per field. A value you set is never dropped or rewritten, known key or
 not. A second run finds nothing missing, so it writes nothing and makes no
 second backup; `--dry-run` reports the migration and writes nothing. A file
-that is not valid JSON is refused and left untouched — the error names the
+that is not valid JSON is refused and left untouched; the error names the
 hand-fix command (`cp <file> <file>.hand-fix.bak && $EDITOR <file>`).
 
 **Precedence** (governs `WHISPER_CLI` / `WHISPER_MODEL` / `TELEGRAM_ENV`): a
@@ -1164,7 +1164,7 @@ the hardcoded default above.
 For personal repos that commit straight to main (e.g. `luna`, `salus`, your docs/state repo),
 opt them out of the `block-edit-on-main` hook by dropping a local `.single-writer`
 marker at each repo's root. The marker is gitignored (via global excludes) so it
-never propagates to a clone — a checkout without it stays protected.
+never propagates to a clone; a checkout without it stays protected.
 
 ```bash
 # Single-writer opt-out for block-edit-on-main: ignore the marker
@@ -1182,7 +1182,7 @@ ever being committed.
 
 himmel's hooks split into two scopes. `scripts/setup.sh` (and `adopt --scope
 user`) wires the **UNIVERSAL** set into your **user-scope** `~/.claude/settings.json`
-so they apply to *every* Claude session, in any directory — not just inside the
+so they apply to *every* Claude session, in any directory, not just inside the
 himmel clone:
 
 - **UNIVERSAL (user scope):** `auto-approve-safe-bash`, `block-edit-on-main`,
@@ -1191,7 +1191,7 @@ himmel clone:
   the allow-listed Jira CLI gets denied) and no auto-ship-step injector (so `HIMMEL_INITIATIVE`
   never fires).
 - **HIMMEL-DEV-ONLY (project scope):** `check-cr-marker-on-pr-create`,
-  `block-backend-tier`, `auto-arm-on-cap`, `check-update-available`, … — they only
+  `block-backend-tier`, `auto-arm-on-cap`, `check-update-available`, …; they only
   make sense while working inside the himmel repo, so they stay in the repo's
   committed `.claude/settings.json` and are **not** user-wired.
 
@@ -1201,7 +1201,7 @@ A fresh contributor who clones himmel still gets the safety hooks from the commi
 project `.claude/settings.json` even before running setup.
 
 **Duplication is benign.** Inside the himmel repo the UNIVERSAL hooks are wired at
-both scopes and fire twice — that is idempotent (two auto-approve passes = the same
+both scopes and fire twice; that is idempotent (two auto-approve passes = the same
 allow; two block passes = the same block), so setup stays silent about it in-repo.
 For *another* adopted project that also carries a project-scope copy, setup prints
 an advisory listing the dupes + the `unwire-pretooluse-hooks --scope project
@@ -1210,9 +1210,9 @@ an advisory listing the dupes + the `unwire-pretooluse-hooks --scope project
 `HIMMEL_INITIATIVE` and the AFK (unattended) pair are read from the himmel clone's `.env`
 by the SessionStart hook (a value exported in the launching shell or set in
 settings.json `env` still wins); they ship **commented** in `.env.example`, so the
-opt-in default-OFF is preserved — uncomment one line to enable.
+opt-in default-OFF is preserved; uncomment one line to enable.
 
-`scripts/uninstall.sh` step `[6/8]` is the symmetric teardown — it removes exactly
+`scripts/uninstall.sh` step `[6/8]` is the symmetric teardown: it removes exactly
 what setup/adopt wired (preserving your non-himmel keys); `--skip-settings` keeps it.
 
 ### 4c. Scheduler backend (auto-arm resume)
@@ -1222,14 +1222,14 @@ relaunch via the OS scheduler. The watchdog hook is wired above, but the
 *scheduler backend* it relies on must exist or the armed resume silently never
 fires:
 
-- **Linux** — needs `at` + a running `atd`. `ubuntu.sh` installs+enables it
+- **Linux:** needs `at` + a running `atd`. `ubuntu.sh` installs+enables it
   (prompted); or do it by hand: `sudo apt install -y at && sudo systemctl
   enable --now atd`. (crontab is only a weaker fallback when `at` is absent.)
-- **macOS** — uses `crontab` (arm-resume skips `at`/atrun, which is
-  off-by-default / SIP-fragile). Run `scripts/machine-setup/macos.sh` (**ALPHA**
-  — validate it fires and file an issue). cron may need Full Disk Access on
+- **macOS:** uses `crontab` (arm-resume skips `at`/atrun, which is
+  off-by-default / SIP-fragile). Run `scripts/machine-setup/macos.sh` (**ALPHA**:
+  validate it fires and file an issue). cron may need Full Disk Access on
   modern macOS.
-- **Windows** — `schtasks` is always present; nothing to do.
+- **Windows:** `schtasks` is always present; nothing to do.
 
 Diagnose any existing install with `/himmel-doctor` (the **C9-scheduler** check
 reports OK / WARN + the exact per-OS remediation; it never runs a privileged
@@ -1238,13 +1238,13 @@ command).
 ### 4d. Optional — PHI vault marker for claude-glm
 
 If you use the `claude-glm` overflow launcher (Claude Code on the Z.ai GLM
-flat-rate lane — see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
+flat-rate lane; see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
 drop a `.salus` marker file at the root of every PHI-bearing vault (e.g.
 `~/Documents/salus`). The launcher **refuses to start (exit 3, no override)**
-when the marker sits in the directory you launch from — the check is
+when the marker sits in the directory you launch from; the check is
 **per-directory, not subtree**: launching from a subdirectory of a marked
 vault does not see the marker. For a hand-rolled PHI vault the marker is
-**not placed by any himmel script** — create it by hand (a vault scaffolded
+**not placed by any himmel script**; create it by hand (a vault scaffolded
 via `setup.sh --medical` gets it automatically):
 
 ```bash
@@ -1252,7 +1252,7 @@ touch ~/Documents/salus/.salus
 ```
 
 For **whole-subtree** coverage (any launch cwd under the root refused), also
-list the absolute PHI roots one-per-line in `~/.config/claude-glm/phi-roots` —
+list the absolute PHI roots one-per-line in `~/.config/claude-glm/phi-roots`:
 same PHI-tier refusal, but subtree-wide.
 
 ### 4e. qmd search bootstrap (optional)
@@ -1267,10 +1267,10 @@ index. The standalone CLI installs from a **local clone of the carried fork
 launcher forwards signals to bun, upstream PR tobi/qmd#1030; a follow-up pins
 back to `tobi/qmd`, and re-running the install re-points an existing clone's
 origin in place), pinned to an immutable commit SHA
-rather than a mutable branch — never `bun add -g @tobilu/qmd`
+rather than a mutable branch. Never `bun add -g @tobilu/qmd`
 directly, which EPERM-wedges on this project's machines (zombie `qmd mcp`
 stdio processes hold locks) and bun blocks its postinstall script. `bun` itself is
-still required to build the clone (project rule: bun, never npm — see §1
+still required to build the clone (project rule: bun, never npm; see §1
 foundational table). `bash scripts/setup.sh` step `[4/10]` + `adopt.sh`'s
 `wire_qmd_core` already run this install, register the `himmel` collection,
 and best-effort `qmd pull`; this section is the **manual bootstrap** if you
@@ -1314,7 +1314,7 @@ Notes:
   that references an unbuilt `dist/`; `scripts/lib/fix-qmd-stub.sh` (run by setup +
   adopt) rewrites it to locate the bun-global install so plain `qmd` works everywhere.
 - Stop the shared daemon: `qmd mcp stop`. The index is sqlite+WAL read per query, so
-  docs added by `qmd update` are live immediately — no daemon restart needed.
+  docs added by `qmd update` are live immediately; no daemon restart needed.
 - WSL Claude sessions need qmd installed and indexed separately inside WSL. The
   fork is bun-built there, and its sqlite+WAL index must stay on the WSL
   filesystem rather than being shared over `/mnt/c`; this differs from
@@ -1337,9 +1337,9 @@ The resulting `~/.bashrc` line sources the checkout's absolute
 
 ## 5. Luna Vault
 
-> **Skip** if you don't use the Luna vault (the author's personal Obsidian vault). §§5a, 6, 7, 8, 8.6 all depend on it — skip those too.
+> **Skip** if you don't use the Luna vault (the author's personal Obsidian vault). §§5a, 6, 7, 8, 8.6 all depend on it; skip those too.
 
-> Canonical layout (after the layout fix): the vault lives at `~/Documents/luna` — flat, not double-nested. If your machine has `~/Documents/luna/luna` from a pre-fix clone, `scripts/machine-setup/ubuntu.sh` includes a migration step that flattens it.
+> Canonical layout (after the layout fix): the vault lives at `~/Documents/luna`, flat, not double-nested. If your machine has `~/Documents/luna/luna` from a pre-fix clone, `scripts/machine-setup/ubuntu.sh` includes a migration step that flattens it.
 
 ```bash
 # Clone (or restore from backup) — flat path, NOT ~/Documents/luna/luna
@@ -1356,9 +1356,9 @@ pre-commit install --hook-type pre-push
 pre-commit run --all-files
 ```
 
-Hooks: `gitleaks` (secrets scan) + standard hooks. Luna-specific rules live in `~/Documents/luna/CLAUDE.md` (not linked here — it's in a different repo).
+Hooks: `gitleaks` (secrets scan) + standard hooks. Luna-specific rules live in `~/Documents/luna/CLAUDE.md` (not linked here; it's in a different repo).
 
-> Vault not at `~/Documents/luna`, or want to route a repo's session notes to a different vault? Point the end-session-wiki capture at it — see [Choosing the target vault](../luna/end-session-wiki.md#choosing-the-target-vault) (and §7 below).
+> Vault not at `~/Documents/luna`, or want to route a repo's session notes to a different vault? Point the end-session-wiki capture at it; see [Choosing the target vault](../luna/end-session-wiki.md#choosing-the-target-vault) (and §7 below).
 
 ### 5a. Optional — Obsidian Web Clipper templates ([Jira LUNA-2](https://yotamleo.atlassian.net/browse/LUNA-2))
 
@@ -1376,22 +1376,22 @@ Install:
 
 1. Install [Obsidian Web Clipper](https://obsidian.md/clipper) from the Chrome Web Store.
 2. Extension icon → **Settings** (gear) → scroll to **Templates**.
-3. **Drag and drop** all 6 `.json` files from `~/Documents/luna/_Templates/Web-Clipper/import/` onto the Templates list. Six templates appear — names, triggers, properties, body all wired up.
+3. **Drag and drop** all 6 `.json` files from `~/Documents/luna/_Templates/Web-Clipper/import/` onto the Templates list. Six templates appear: names, triggers, properties, body all wired up.
 4. Mark **General Article** as Default template (it has no triggers → fires when no other template matches).
 5. Confirm `path: "Clippings"` matches Luna's `Clippings/` folder (or change in extension settings).
 6. Smoke-test: clip any `x.com/...` URL → confirm Tweet template fires + note lands in `Clippings/`.
 
 The drag-and-drop is the entire install. Trigger tables + post-install tuning live in luna at `_Templates/Web-Clipper/import/README.md`; the *why* behind each section lives in luna at `30-Resources/Tech/Obsidian Web Clipper Templates.md` (both in the luna repo, not linkable from himmel).
 
-Triage of clipped notes (action items / labels / Related Notes hygiene) is implemented as the **`obsidian-triage`** plugin shipped from himmel's marketplace — see §6 below for install. Ticket: [LUNA-3](https://yotamleo.atlassian.net/browse/LUNA-3); handover tracked in the operator's private handover repo.
+Triage of clipped notes (action items / labels / Related Notes hygiene) is implemented as the **`obsidian-triage`** plugin shipped from himmel's marketplace; see §6 below for install. Ticket: [LUNA-3](https://yotamleo.atlassian.net/browse/LUNA-3); handover tracked in the operator's private handover repo.
 
 ---
 
 ## 6. Claude Code Plugins
 
-> **Skip** if you skipped §5 (Luna vault). The plugins in this section are either luna-dependent or personal-workflow tools — none are required for core himmel operation. Install only what you need.
+> **Skip** if you skipped §5 (Luna vault). The plugins in this section are either luna-dependent or personal-workflow tools; none are required for core himmel operation. Install only what you need.
 
-Plugins live at `~/.claude/plugins/`. Different install methods per plugin — read the **Source** column carefully:
+Plugins live at `~/.claude/plugins/`. Different install methods per plugin: read the **Source** column carefully:
 
 | Plugin | Source | Install method | Why |
 |--------|--------|----------------|-----|
@@ -1404,35 +1404,35 @@ Plugins live at `~/.claude/plugins/`. Different install methods per plugin — r
 ### Two-tier plugin profile: ALWAYS / ON-DEMAND / NOT INSTALLED
 
 `docs/setup/settings-template.json` splits every plugin's install/enable state
-into three tiers — its own `_enabledPluginsComment` / `_onDemandPluginsComment` /
+into three tiers; its own `_enabledPluginsComment` / `_onDemandPluginsComment` /
 `_onDemandConnectorsComment` are the authoritative definitions; summarized here:
 
 - **ALWAYS** (`enabledPlugins` → `true`): installed AND enabled on every himmel
-  machine — `lean-skills`, `qmd@himmel`, `handover@himmel`,
+  machine: `lean-skills`, `qmd@himmel`, `handover@himmel`,
   `himmel-ops@himmel`. `lean-skills`
   replaces `superpowers` + `mattpocock-skills` (those two fat
   upstream plugins carried ~2.2k tok of skill listing into every session for
   skills almost never invoked; `lean-skills` vendors verbatim just the subset
-  himmel actually uses — see `marketplace/plugins/lean-skills/README.md`).
-  `plannotator-effective-html` (the design/UI kit) is no longer ALWAYS either
-  — it is design-profile-gated (see the `design` profile in
+  himmel actually uses; see `marketplace/plugins/lean-skills/README.md`).
+  `plannotator-effective-html` (the design/UI kit) is no longer ALWAYS either:
+  it is design-profile-gated (see the `design` profile in
   `scripts/lanes/plugin-profiles.json`): invoked once in 1628 local
   transcripts, it now opts in per design/UI work instead of paying its ~630
   tok cost on every session.
 - **ON-DEMAND** (a key of the top-level `onDemandPlugins` object, also `false`
   in `enabledPlugins`): INSTALLED by `install-plugins.sh` but left
-  DISABLED — reachable in one command, costing no session-start context. Table
+  DISABLED, reachable in one command, costing no session-start context. Table
   + toggle command below.
 - **NOT INSTALLED** (an `enabledPlugins` `false` entry absent from
   `onDemandPlugins`): the earlier lean floor, unchanged by the
-  two-tier profile — the table in the next subsection covers this tier, and re-enabling
+  two-tier profile; the table in the next subsection covers this tier, and re-enabling
   one there still means `claude plugin install`, not just `enable`.
 
 #### Toggling the on-demand tier — `plugin-profile.sh` / `/profile`
 
 `scripts/machine-setup/plugin-profile.sh` is the **only**
 sanctioned writer for an on-demand flip. It writes solely through
-`claude plugin enable|disable <spec> --scope user` — never a hand-edited
+`claude plugin enable|disable <spec> --scope user`, never a hand-edited
 settings.json (hook-blocked: `block-edit-live-settings`). The `/profile` slash
 command wraps it.
 
@@ -1449,7 +1449,7 @@ both tiers, or the full `plugin@marketplace` form. `--dry-run` prints the
 `claude plugin …` command instead of running it; `--json` (list only) emits
 the tier table as JSON; `--template PATH` overrides the template. `disable`
 refuses the three harness-operational plugins `handover@himmel`,
-`himmel-ops@himmel`, `qmd@himmel` — disabling any of them would break the
+`himmel-ops@himmel`, `qmd@himmel`; disabling any of them would break the
 session running the command.
 
 Each write is verified: after `claude plugin enable|disable` the script re-reads
@@ -1473,7 +1473,7 @@ or verified, or a bulk `lean`/`full` had any write refused (floor) or failed;
 
 An on-demand enable is a LIVE toggle only: an opt-in reconcile
 (`HIMMEL_RECONCILE_PLUGINS=1`, e.g. via `/himmel-update`) writes the
-template's `enabledPlugins` map verbatim and turns it back off — see the
+template's `enabledPlugins` map verbatim and turns it back off; see the
 floor-reapply note below, which now applies to this tier too. To keep one on
 permanently on **this** machine, record `"<spec>": true` in
 `~/.claude/settings.local.json` as himmel reconciliation input. The next
@@ -1494,8 +1494,8 @@ them.
 
 `scripts/luna/pipeline-cadence.sh`'s `emit_settings_fragment` force-enables
 `obsidian-triage@himmel` via a `--settings` fragment
-(`{"enabledPlugins": {"obsidian-triage@himmel": true}}`) on every cadence run
-— `--settings` is the highest non-managed precedence layer, so it wins over a
+(`{"enabledPlugins": {"obsidian-triage@himmel": true}}`) on every cadence run:
+`--settings` is the highest non-managed precedence layer, so it wins over a
 `settings.local.json` disable and keeps the cadence live even while the
 machine's own profile leaves `obsidian-triage` on the on-demand tier,
 disabled. This is the pattern for any future unattended leg that depends on
@@ -1504,16 +1504,16 @@ never by flipping the machine's live profile.
 
 ### Lean profile — disabled by default, enable on need
 
-This is the **NOT INSTALLED** tier of the two-tier profile above
-— none of the plugins in this table are keys of `onDemandPlugins`, so
+This is the **NOT INSTALLED** tier of the two-tier profile above:
+none of the plugins in this table are keys of `onDemandPlugins`, so
 re-enabling one here is a full `claude plugin install`, not just an
 `enable`. `docs/setup/settings-template.json` ships **lean**: 16 re-enableable
 `@claude-plugins-official` plugins (the table below) and `obsidian@obsidian-skills`
-are `false` in `enabledPlugins` — every adopter
+are `false` in `enabledPlugins`; every adopter
 and every re-provisioned operator machine gets the minimal set by default instead
 of re-creating the maximal 31-plugin install every time. (A 17th
 `@claude-plugins-official` entry, `pr-review-toolkit`, is also `false` but is not
-listed for re-enable — `/pr-check` dispatches `pr-review-toolkit:*` agents only
+listed for re-enable: `/pr-check` dispatches `pr-review-toolkit:*` agents only
 when `CR_CLAUDE_AGENTS=1`.)
 Turn any of these back on with one command
 (`--scope user` shown; swap for `project`/`local` per [Scope](#scope-user-vs-project) above):
@@ -1547,22 +1547,22 @@ Turn any of these back on with one command
 > those NOT INSTALLED plugins back in.
 
 > **Note:** the floor is re-applied on every `/himmel-update` by
-> `scripts/machine-setup/reconcile-enabled-plugins.sh` — a **whitelist**
+> `scripts/machine-setup/reconcile-enabled-plugins.sh`, a **whitelist**
 > reconciler, not the additive-only installer above: anything `true` in your
 > live `enabledPlugins` that isn't `true` in the template is forced back to
 > `false`, so a manual "turn it back on" toggle does not survive the next
 > update. Preview without writing: `bash
 > scripts/machine-setup/reconcile-enabled-plugins.sh --dry-run --scope user`;
 > an already-converged machine prints `no drift — already at the lean floor.`
-> `~/.claude/settings.local.json` is the one file reconcile never rewrites —
+> `~/.claude/settings.local.json` is the one file reconcile never rewrites;
 > it is read as an override that wins in **both** directions: a `true` there
 > keeps a personal plugin (e.g. `codex@openai-codex`) enabled through every
 > reconcile, a `false` there drops a floor plugin (e.g. `playwright`) you
 > don't want. Toggling a plugin off with `claude plugin disable` while its key
-> is still `true` in `settings.local.json` does not stick — the next
+> is still `true` in `settings.local.json` does not stick: the next
 > reconcile reads the override, not the live `claude plugin` state, and turns
 > it back on. Change the override, not just the live toggle. This is the same
-> mechanism the on-demand tier's escape hatch above relies on —
+> mechanism the on-demand tier's escape hatch above relies on;
 > it is not floor-specific.
 
 #### `security-guidance` — recommended OFF; **operator decision pending**
@@ -1572,7 +1572,7 @@ of every turn**, an **agentic commit review on every `git commit`**, and ~9 hook
 per session (Claude *and* Codex wiring). himmel already gates the same surface,
 harder and later: the `/pr-check` cross-model critic panel must be clean before
 `gh pr create` (the review-owed marker hook blocks it otherwise), and the CodeRabbit App
-review — which can only run once the PR exists — must be clean, with zero
+review (which can only run once the PR exists) must be clean, with zero
 unresolved threads, before merge. Running `security-guidance` too means paying a
 model call per turn for a weaker version of a check those gates already block
 on, and adding process spawns to the pool that a kernel-handle
@@ -1580,16 +1580,16 @@ leak was traced to.
 
 **Adopter default: OFF.** `docs/setup/settings-template.json` and the `user`
 profile in `scripts/lanes/plugin-profiles.json` both ship it `false` as of
-this change — no adopter or dispatched lane enables it.
+this change; no adopter or dispatched lane enables it.
 
 **Operator box: decision pending.** It is still ENABLED on the operator machine
-(user scope, Claude + Codex). The recommendation is to disable it —
+(user scope, Claude + Codex). The recommendation is to disable it:
 
 ```bash
 claude plugin disable security-guidance@claude-plugins-official
 ```
 
-— but that is a user-scope change the operator applies, so that change
+But that is a user-scope change the operator applies, so that change
 deliberately did **not** flip it. Re-enable per-session or per-repo instead if
 you ever want the per-turn review back.
 
@@ -1620,14 +1620,14 @@ After restoring plugins, verify skills load:
 /triage-clips --dry-run    # from obsidian-triage; should exit 0 with "no Clippings/" or per-clip preview
 ```
 
-Note: `claude-obsidian` is pinned to an immutable **tag** in himmel's `marketplace/.claude-plugin/marketplace.json` per supply-chain policy (a bare commit SHA is not installable). To update it, follow the Pin update workflow in `marketplace/plugins/obsidian-triage/README.md`. `obsidian` (kepano) is not in himmel's marketplace — install it from `obsidian@obsidian-skills`.
+Note: `claude-obsidian` is pinned to an immutable **tag** in himmel's `marketplace/.claude-plugin/marketplace.json` per supply-chain policy (a bare commit SHA is not installable). To update it, follow the Pin update workflow in `marketplace/plugins/obsidian-triage/README.md`. `obsidian` (kepano) is not in himmel's marketplace; install it from `obsidian@obsidian-skills`.
 
 ### Scope: user vs project
 
-The `/plugin install` flow above records the plugin at **user scope** (`~/.claude/settings.json`) — enabled for you across every project. That's the right default for personal-workflow plugins. The alternative is **project scope**: declare the marketplace + plugins in a *repo's* `.claude/settings.json`, so anyone who clones that repo gets them auto-known and enabled (each person is still prompted to trust the marketplace on first use).
+The `/plugin install` flow above records the plugin at **user scope** (`~/.claude/settings.json`), enabled for you across every project. That's the right default for personal-workflow plugins. The alternative is **project scope**: declare the marketplace + plugins in a *repo's* `.claude/settings.json`, so anyone who clones that repo gets them auto-known and enabled (each person is still prompted to trust the marketplace on first use).
 
 The setup scripts let you pick: `scripts/machine-setup/install-plugins.sh` takes `--scope user|project|local` (default `user`).
-The top-level setup script prompts you to choose. For project/local the target is the **current directory**, so run from the repo you want the plugins scoped to. The CLI does it directly too — `claude plugin install <name>@himmel --scope project` writes the block below for you. Same keys, different file:
+The top-level setup script prompts you to choose. For project/local the target is the **current directory**, so run from the repo you want the plugins scoped to. The CLI does it directly too: `claude plugin install <name>@himmel --scope project` writes the block below for you. Same keys, different file:
 
 ```jsonc
 // <repo>/.claude/settings.json
@@ -1641,13 +1641,13 @@ The top-level setup script prompts you to choose. For project/local the target i
 }
 ```
 
-Pick by intent: *yours, everywhere* → user scope; *part of this project, shared on clone* → project scope. Committing `extraKnownMarketplaces` ships a "trust this third-party registry" into the repo — fine for your own repos, a supply-chain call if it has outside contributors. (The JSON above is the illustrative hand-edit form. himmel's setup scripts instead read [`settings-template.json`](settings-template.json) — which registers the marketplace from a local `directory` source rather than the GitHub repo shown above — and apply the plugin set at whichever `--scope` you pick.)
+Pick by intent: *yours, everywhere* → user scope; *part of this project, shared on clone* → project scope. Committing `extraKnownMarketplaces` ships a "trust this third-party registry" into the repo: fine for your own repos, a supply-chain call if it has outside contributors. (The JSON above is the illustrative hand-edit form. himmel's setup scripts instead read [`settings-template.json`](settings-template.json) (which registers the marketplace from a local `directory` source rather than the GitHub repo shown above) and apply the plugin set at whichever `--scope` you pick.)
 
 ### Direct install (copy-paste, no setup script)
 
 The [Install sequence](#install-sequence) above runs as part of the machine
-setup. To skip setup and just add the marketplace + the plugins you want —
-choosing the scope per command — copy-paste instead:
+setup. To skip setup and just add the marketplace + the plugins you want,
+choosing the scope per command, copy-paste instead:
 
 ```bash
 # Register the marketplace (once; the GitHub slug is case-insensitive)
@@ -1673,7 +1673,7 @@ git clone https://github.com/yotamleo-org/Himmel himmel
 bash himmel/scripts/machine-setup/install-plugins.sh --scope project
 ```
 
-The plugins carry their own slash commands + skills — that's all you need to use
+The plugins carry their own slash commands + skills; that's all you need to use
 them.
 
 ### Troubleshooting: `Host key verification failed` on plugin install
@@ -1710,9 +1710,9 @@ claude plugin install claude-obsidian@himmel --scope user
 
 ## 7. End-session wiki hook (auto-capture to Luna vault)
 
-> **Skip** if you don't use the Luna vault — this hook writes session notes there and has no effect without it.
+> **Skip** if you don't use the Luna vault; this hook writes session notes there and has no effect without it.
 
-Every Claude Code session is auto-captured to the Luna vault as a structured note under `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md` via a `SessionEnd` hook. Built by epic #7 — full schema + opt-out in [`docs/luna/end-session-wiki.md`](../luna/end-session-wiki.md).
+Every Claude Code session is auto-captured to the Luna vault as a structured note under `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md` via a `SessionEnd` hook. Built by epic #7; full schema + opt-out in [`docs/luna/end-session-wiki.md`](../luna/end-session-wiki.md).
 
 **Register it by hand.** `bash scripts/setup.sh` hands off to `himmel install`, whose wire targets do not include `SessionEnd`, so add the block to `~/.claude/settings.json` yourself (back the file up first):
 
@@ -1743,39 +1743,39 @@ registration in `~/.claude.json` (for a focused check:
 
 ### tokensave — dropped
 
-tokensave was evaluated on 2026-09-06 and dropped — it lost to plain
+tokensave was evaluated on 2026-09-06 and dropped: it lost to plain
 Grep+Read on all three measured symbol-level ops. Do not install it; audit
 reports live in the state repo. The installer no longer provisions it
 (removed: the manifest item, install dispatch, and its
-`minimal`/other-profile membership) — a fresh install never registers it.
+`minimal`/other-profile membership); a fresh install never registers it.
 
 ### graphify — optional knowledge-graph CLI + MCP server
 
 graphify powers the structure/architecture leg of the retrieval routing
-(qmd finds content, **graphify explains structure** — `CLAUDE.md`). Opt-in
-— install via setup:
+(qmd finds content, **graphify explains structure**; see `CLAUDE.md`). Opt-in;
+install via setup:
 
 ```bash
 bash scripts/setup.sh --with-graphify
 ```
 
 (Installs the himmel fork via `uv tool install` at a pinned commit SHA;
-an existing foreign graphify install is adopted as-is, never reinstalled —
+an existing foreign graphify install is adopted as-is, never reinstalled;
 see `scripts/lib/graphify-bin.sh`.)
 
 The install exposes two binaries: `graphify` (the CLI) and `graphify-mcp`
 (the MCP server). **`setup.sh --with-graphify` (and `adopt.sh --with-graphify`)
-now register the MCP server automatically** — `setup.sh` at
-`user` scope, `adopt.sh` at its `--scope` — so the install delivers the
+now register the MCP server automatically** (`setup.sh` at
+`user` scope, `adopt.sh` at its `--scope`), so the install delivers the
 `mcp__graphify__*` tools, not just the CLI. Registration is idempotent (skips
 when graphify is already registered). The entry point is **scope-dependent**:
-`user`/`local` (a personal config) registers the **absolute** path — robust in
+`user`/`local` (a personal config) registers the **absolute** path, robust in
 the MCP launch context, and the form `/himmel-doctor` expects (it flags
 PATH-fragile bare entries); `project` (a committed `.mcp.json`) registers the
 **bare** name so the path stays portable across teammates' machines.
 
-To register (or re-register) manually — the shared implementation, same as the
-installers call — pass the scope explicitly (`user` or `project`, not both;
+To register (or re-register) manually (the shared implementation, same as the
+installers call), pass the scope explicitly (`user` or `project`, not both;
 `[user|project]` below is a placeholder):
 `bash scripts/lib/graphify-bin.sh register-mcp user`. For `user`/`local` it
 resolves the entry point from the directory `uv tool dir --bin` reports
@@ -1785,21 +1785,21 @@ resolves the entry point from the directory `uv tool dir --bin` reports
 claude mcp add --scope user graphify -- "$(uv tool dir --bin)/graphify-mcp"
 ```
 
-Claude Code is the only agent graphify needs — the MCP registration above is
+Claude Code is the only agent graphify needs; the MCP registration above is
 the whole integration (no codex/other-CLI prerequisite).
 
 **Windows + WSL on one machine share ONE graph store.** Graph extraction is
 LLM-backed (real spend), so the WSL side must not regenerate what the Windows
-side already extracted. The store (`~/.graphify/` — plain JSON, no
+side already extracted. The store (`~/.graphify/`: plain JSON, no
 sqlite/WAL hazard) is shared automatically: `graphify_install` on WSL
-symlinks `~/.graphify` at the Windows user's store — only when that Windows
+symlinks `~/.graphify` at the Windows user's store, only when that Windows
 store exists (manual: `bash scripts/lib/graphify-bin.sh share-store`). Both
 sides then read AND contribute to the same graphs. A WSL store that already
-has content is never replaced or auto-merged into the Windows one — how to
+has content is never replaced or auto-merged into the Windows one; how to
 merge pre-existing WSL data is your call.
 
 Graph refresh stays lean-invoke (`graphify <corpus-copy> --update`), never
-a hook; extraction backends are governed by the egress matrix — see the
+a hook; extraction backends are governed by the egress matrix; see the
 graphify section in `CLAUDE.md`.
 
 ### Optional integrations
@@ -1818,16 +1818,16 @@ Configure in Claude Code settings (`~/.claude/settings.json`):
 > **Skip** if you don't use the Telegram bridge for sending messages to Claude. This is operator-specific infrastructure; it is not required for any core himmel workflow.
 
 `scripts/setup.sh` step `[7/8]` runs
-`scripts/setup/onboard-telegram.sh` — **scaffold-only**, also safe to
+`scripts/setup/onboard-telegram.sh`: **scaffold-only**, also safe to
 run standalone. It:
 
 - creates `~/.claude/channels/telegram/` + a `TELEGRAM_BOT_TOKEN=` `.env`
   template (never overwrites an existing `.env`);
 - reports `access.json` (pairing) status. Setup **never writes
-  `access.json`** — the allowlist is a prompt-injection surface and the live
+  `access.json`**: the allowlist is a prompt-injection surface and the live
   bridge must be restarted by the operator after edits. Create it yourself:
   `{"allowFrom":["<your-telegram-user-id>"]}`;
-- **never starts the bridge** (one `getUpdates` owner per token — a blind
+- **never starts the bridge** (one `getUpdates` owner per token; a blind
   start could 409-conflict a live poller). Bring-up after token + pairing:
   `bash scripts/telegram/restart-bridge.sh start`. Reboot persistence + full ops:
   [`scripts/telegram/README.md`](../../scripts/telegram/README.md) /
@@ -1837,7 +1837,7 @@ To find the ids for `access.json` without guessing, run
 `bun scripts/telegram/onboard.ts [--timeout <seconds>]` (default 300s)
 **before** bringing the bridge up: it prints a one-time nonce, waits for that
 nonce to come back in a Telegram message, then reports the `chat.id` /
-`chat.type` / `from.id` it arrived on — the values you hand-copy in. It is a
+`chat.type` / `from.id` it arrived on: the values you hand-copy in. It is a
 `getUpdates` consumer itself, so it **refuses to start while a poller is
 live** (the same one-owner-per-token rule); stop the bridge first
 (`bash scripts/telegram/restart-bridge.sh stop`, or
@@ -1848,8 +1848,8 @@ the rest of setup it **never writes `access.json` itself**. Full walkthrough:
 ## 8.7. Uninstall / offboard
 
 `scripts/uninstall.sh` is the symmetric teardown of setup +
-install-plugins. Run it through the wizard — `node scripts/himmelctl/bin.js
-uninstall` — which adds its own one confirm then execs the script below with
+install-plugins. Run it through the wizard (`node scripts/himmelctl/bin.js
+uninstall`), which adds its own one confirm then execs the script below with
 `--yes` (see §4); or invoke the script directly. **Destructive and
 fail-closed**: interactive runs prompt; non-interactive runs abort without
 `--yes`. Preview first:
@@ -1867,7 +1867,7 @@ later steps), and `3` means the live-HOME safety fence refused a wet run.
 
 Steps: (1) stop the telegram bun bridge (`bun supervisor.ts --kill`),
 (2) remove telegram pairing + bridge state (`~/.claude/channels/telegram/`
-incl. token + `access.json`, `~/.claude/handover/bridge/`) — local delete
+incl. token + `access.json`, `~/.claude/handover/bridge/`); local delete
 does NOT revoke the bot token; revoke via @BotFather when decommissioning,
 (3) remove `HIMMEL-Resume-*` scheduled jobs + the `HimmelTelegramBridge`
 logon task, (4) uninstall each installed Claude plugin at its own scope as
@@ -1875,13 +1875,13 @@ reported by `claude plugin list --json`, with project-scope rows limited to
 the current project; the recorded install profile supplies only a fallback
 scope when enumeration is unavailable,
 (5) `pre-commit uninstall` ×3 hook types,
-(6) unwire `~/.claude/settings.json` — remove `env.HIMMEL_REPO`,
+(6) unwire `~/.claude/settings.json`: remove `env.HIMMEL_REPO`,
 `env.LUNA_VAULT_PATH`, and the UNIVERSAL hooks that setup/adopt wired
 unconditionally (each helper removes ONLY its own key/stanza; non-himmel keys
-— your own hooks, MCP config, the rtk guard — are preserved),
+(your own hooks, MCP config, the rtk guard) are preserved),
 (7) remove the Claude marketplaces (only those no installed plugin still
 needs), (8) remove the himmelctl cache + state dir. A provenance ledger,
-when install wrote one, decides ownership of the six overwrite-prone rows —
+when install wrote one, decides ownership of the six overwrite-prone rows:
 your own pre-existing statusLine, `env.HANDOVER_DIR`, plugins (4), the
 claude-hud config, marketplaces (7) and adopter-script copies are kept with a
 printed hand command instead of being guessed at by template; with no
@@ -1942,9 +1942,9 @@ it manually mid-overnight. This gate prevents recurrence.
 The same script (`scripts/hooks/check-hookspath.sh`) is wired in
 three other places:
 
-1. `.pre-commit-config.yaml` pre-commit stage — every commit fails if
+1. `.pre-commit-config.yaml` pre-commit stage: every commit fails if
    misconfigured.
-2. Claude Code `~/.claude/settings.json` SessionStart array — prints a
+2. Claude Code `~/.claude/settings.json` SessionStart array: prints a
    one-line warning when a session starts on a misconfigured repo.
    Non-blocking. The shared `docs/setup/settings-template.json` does
    NOT carry this entry; instead `scripts/machine-setup/ubuntu.sh`
@@ -1987,7 +1987,7 @@ Session-sticky: the env var must be set in the shell that launches the
 operation; it cannot be injected per-call by Claude. To restore the gate,
 unset the variable and re-launch.
 
-The SessionStart hook has NO bypass — it is non-blocking, the printed
+The SessionStart hook has NO bypass: it is non-blocking; the printed
 warning IS the affordance.
 
 ### Manual repro (verify the gate works)
