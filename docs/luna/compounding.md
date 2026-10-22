@@ -1,6 +1,6 @@
 # Luna Compounding Loop
 
-Your vault compounds value automatically — each stage in the pipeline
+Your vault compounds value automatically. Each stage in the pipeline
 transforms raw session output into structured knowledge, and that knowledge
 feeds the next stage. This document describes the loop, what each stage
 adds, the recommended cadence, and how to seed the vault with historical
@@ -9,10 +9,10 @@ sessions.
 There are **two complementary compounding loops**, and they feed different
 kinds of knowledge into the same vault:
 
-1. **The clips / session-capture loop** (most of this document) — turns raw
+1. **The clips / session-capture loop** (most of this document) turns raw
    session output and inbox clips into triaged, synthesized vault content.
 2. **The auto-memory → vault loop** ([below](#a-second-loop-auto-memory--vault))
-   — periodically distils Claude Code's own per-project *auto-memory* (the
+   periodically distils Claude Code's own per-project *auto-memory* (the
    always-loaded `MEMORY.md` index plus its topic files) into searchable vault
    reference notes, so durable learnings survive while the always-loaded index
    stays lean.
@@ -50,7 +50,7 @@ daily note, and flags promotion candidates.
 ### Stage 3 — Synthesize
 
 Cross-clip synthesis finds recurring patterns across processed clips and
-writes proposal pages to `Clippings/_synthesis/`. Proposals only — it never
+writes proposal pages to `Clippings/_synthesis/`. It only proposes and never
 restructures the vault.
 
 - **Entry point:** `/synthesize-clips`
@@ -91,22 +91,22 @@ same schema as the live capture hook.
 
 > **Token-usage caveat:** Backfill seeds many notes at once. Running
 > `/triage-clips` or `/synthesize-clips` immediately after a large backfill
-> can cost significant tokens — proportional to how many sessions were
+> can cost significant tokens, in proportion to how many sessions were
 > imported. Dry-run first and batch if the count is large.
 
 Recommended steps:
 
-1. **Dry-run** — check counts before writing anything:
+1. **Dry-run:** check counts before writing anything:
    ```bash
    /luna-backfill --dry-run
    ```
-2. **Scope** — start with the current project (default), then expand to
+2. **Scope:** start with the current project (default), then expand to
    `--all` once you are comfortable with the output.
-3. **Import** — write the notes:
+3. **Import:** write the notes:
    ```bash
    /luna-backfill
    ```
-4. **Triage** — run the triage pipeline over the new notes:
+4. **Triage:** run the triage pipeline over the new notes:
    ```bash
    /triage-clips
    ```
@@ -119,29 +119,29 @@ Full flag reference: [`/luna-backfill`](../../.claude/commands/luna-backfill.md)
 Claude Code keeps a per-project **auto-memory** store
 (`~/.claude/projects/<project-slug>/memory/`): a `MEMORY.md` index that is
 loaded into context *every session*, plus one topic file per remembered fact.
-It grows by itself — each session that learns something durable (a gotcha, a
+It grows by itself: each session that learns something durable (a gotcha, a
 preference, a project decision) appends an entry. That is exactly what makes it
 valuable *and* what eventually makes it a liability: an index that is paid for
 on every single turn cannot grow without bound. Left alone it bloats past its
-size budget, and once it is too long it stops being read — by you and by Claude.
+size budget, and once it is too long it stops being read, by you and by Claude.
 
 The fix is the same compounding move the clips loop makes, pointed at a
 different source. **Periodically distil the auto-memory into the vault:**
 
-1. **Mine** each topic file for the *durable* learning it carries — the
-   reusable gotcha or decision — as distinct from ephemeral status (PR numbers,
+1. **Mine** each topic file for the *durable* learning it carries (the
+   reusable gotcha or decision), as distinct from ephemeral status (PR numbers,
    "merged", ticket state, dates). Status is already recoverable from your issue
    tracker, git history, and the session captures in `sessions/`.
 2. **Land** that learning where it propagates. First classify it (the
-   propagation review — memory and the vault are operator-side only, no other
+   propagation review: memory and the vault are operator-side only, no other
    user ever sees them): an **operator-specific** learning goes to a vault
-   reference note under `30-Resources/Tech/` (grouped by theme — environment
+   reference note under `30-Resources/Tech/` (grouped by theme: environment
    traps, harness gotchas, operator conventions, …) so it becomes
    [qmd](../tooling-catalog.md)-searchable substrate rather than always-loaded
    weight; an **adopter-generic** learning (true for anyone running himmel)
    goes to himmel docs via the normal PR flow (e.g.
    [`docs/internals/environment-gotchas.md`](../internals/environment-gotchas.md),
-   [`docs/operator-conventions.md`](../operator-conventions.md)) — the full
+   [`docs/operator-conventions.md`](../operator-conventions.md)); the full
    routing table lives in the `himmel-ops:memory-compound` skill.
 3. **Slim** the `MEMORY.md` index: drop the now-compounded entry, or collapse it
    to a one-line pointer (`… → vault [[note-name]]`). Keep every topic file until
@@ -149,19 +149,19 @@ different source. **Periodically distil the auto-memory into the vault:**
 
 The ordering matters: **land the knowledge in the vault before trimming the
 index**, and re-index (`qmd update` + `qmd embed`) and spot-check findability
-before deleting any source file. Done in that order the move is zero-loss — the
+before deleting any source file. Done in that order the move is zero-loss: the
 learning is now searchable substrate, and the always-loaded index shrinks back
 under budget.
 
 This is a manual, operator-cadenced pass (run it when `MEMORY.md` approaches its
-size limit), not an automatic hook — it requires judgement about what is durable
+size limit), not an automatic hook, because it requires judgement about what is durable
 versus disposable. It is one of several capture paths, mapped next.
 
 ## What reaches the vault — automatic vs manual
 
 A new user reading "Stage 1 — Capture (automatic)" above can assume *everything*
 ends up in the vault. It does not. The automatic capture writes a session
-**summary** on a graceful exit — it does **not** capture the mid-session
+**summary** on a graceful exit. It does **not** capture the mid-session
 *findings, decisions, and learnings* themselves. Those reach the vault only when
 you **explicitly invoke a capture skill**. Knowing which paths are automatic,
 which are scheduled, and which are manual is the difference between a vault that
@@ -169,7 +169,7 @@ quietly compounds and one with silent gaps.
 
 | Tier | What it captures | Entry point |
 |------|------------------|-------------|
-| **Automatic** | Session **summary** (decisions/commands/follow-ups) on graceful `SessionEnd` — enabled by default | `end-session-wiki` hook — no action required |
+| **Automatic** | Session **summary** (decisions/commands/follow-ups) on graceful `SessionEnd`, enabled by default | `end-session-wiki` hook, no action required |
 | **Semi-automatic** (scheduled) | Inbox clips → triaged + synthesized notes; periodic vault health | `/pipeline-cadence arm` schedules `/harvest-clips`→`/triage-clips` (daily), `/synthesize-clips`→`/archive-clips` (daily), `vault-lint` (obsidian-triage:vault-lint, daily) — each leg pinned to a cheap `--model`. Generic `/schedule` + `/loop` drive any recurring pass. |
 | **Manual** (you invoke it) | The mid-session findings/sources the automatic path misses | see list below |
 
@@ -179,19 +179,19 @@ quietly compounds and one with silent gaps.
   capture skills: `/obsidian-save` (everything worth keeping from the chat),
   `/obsidian-log` (a dev/work session), `/obsidian-capture` (a quick idea). This
   is the path the "automatic" summary does **not** cover.
-- **A repo / issue / PR URL** → `/luna-ingest <url>` (obsidian-triage) — fetches,
+- **A repo / issue / PR URL** → `/luna-ingest <url>` (obsidian-triage) fetches,
   classifies, and files a structured note under `30-Resources/Tech/`.
 - **A Telegram message / URL / forward** → `/telegram-clip` files it into
   `Clippings/` for the harvest pipeline to pick up.
 - **Grounded research** → `/notebooklm` (open-web `/research`/`/research-deep`
-  from the obsidian-second-brain research toolkit are **not adopted** —
-  2026-07-29, no active Perplexity subscription; see `docs/tooling-catalog.md`).
+  from the obsidian-second-brain research toolkit are **not adopted**
+  (2026-07-29, no active Perplexity subscription; see `docs/tooling-catalog.md`)).
 - **Historical Claude Code sessions** (pre-vault) → `/luna-backfill`.
 - **Claude Code's own auto-memory** → the distil pass in
   [the section above](#a-second-loop-auto-memory--vault).
 
 The automatic and scheduled tiers keep the raw corpus flowing in on their own;
-the manual tier is where you decide what is worth keeping — and it is the only
+the manual tier is where you decide what is worth keeping, and it is the only
 tier that captures the substance of a working session, not just its summary.
 
 ## What the loop gives you over time
@@ -203,6 +203,6 @@ tier that captures the substance of a working session, not just its summary.
 | A few months | Synthesis proposes cross-session patterns and promotions |
 | Historical backfill | Fills gaps, giving synthesis a complete corpus |
 
-The vault is most useful after several synthesis cycles — the first pass
-identifies themes, subsequent passes refine and promote them into your
+The vault is most useful after several synthesis cycles: the first pass
+identifies themes, and subsequent passes refine and promote them into your
 `30-Resources/` and `60-Maps/` areas.

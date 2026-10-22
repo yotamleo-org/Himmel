@@ -11,23 +11,23 @@ Do **not** use AFK (unattended) mode when:
 - The work touches multiple independent subsystems (split into separate tickets first).
 - Destructive ops outside the worktree are required.
 
-For work that will need mid-flight decisions or will outlive one context window, run a **supervisor session** instead ([`glossary.md`](../glossary.md)) — it dispatches each ticket as its own session and hands itself over: [`running-a-console.md`](running-a-console.md).
+For work that will need mid-flight decisions or will outlive one context window, run a **supervisor session** instead ([`glossary.md`](../glossary.md)); it dispatches each ticket as its own session and hands itself over: [`running-a-console.md`](running-a-console.md).
 
 ## The 11 phases (+ step 0: queue lock)
 
-0. **Queue lock** — before Phase 1, run
+0. **Queue lock:** before Phase 1, run
    `bash scripts/handover/queue-lock.sh acquire <handover-path>`. rc=0
    (fresh acquire or an automatic stale takeover) proceeds straight to
-   Phase 1 — **capture the `release-token: <token>` line the acquire
+   Phase 1. **Capture the `release-token: <token>` line the acquire
    prints and keep the token for Phase 11**: `release` (and `heartbeat`)
    refuse without it, so a late or wrong-session release can never rm a
    live lock. The token ALSO persists per session (under
    `$XDG_RUNTIME_DIR/himmel-queue-lock/`, dir 0700 / file 0600), so a Phase
    11 release with no token on argv reads it back and names the file on
-   stderr — an argv token still wins. **That persistence is conditional:**
+   stderr; an argv token still wins. **That persistence is conditional:**
    it needs a per-session scope, which is `QUEUE_LOCK_SESSION_SCOPE` if you
    set it, else `CLAUDE_CODE_SESSION_ID`. With neither set nothing is
-   written and nothing is recalled — deliberately, because the only
+   written and nothing is recalled. That is deliberate, because the only
    remaining candidate (the POSIX session id) is shared by every process in
    one terminal and would let a sibling session recall your token. Under
    Claude Code the scope is always present; outside it, set
@@ -35,15 +35,15 @@ For work that will need mid-flight decisions or will outlive one context window,
    capturing the printed token: the file is a safety net for a mid-run
    autocompact eating the transcript line, not a replacement for carrying
    the token forward. **rc=2** means the queue is owned by a LIVE session elsewhere
-   right now (the exact 2026-07-10 00:51 double-fire shape) — do NOT
+   right now (the exact 2026-07-10 00:51 double-fire shape). Do NOT
    proceed on this queue: load the coordination file, pick a different
    queue, or stop with a clear message to the operator. Do not set
    `QUEUE_LOCK_TAKEOVER=1` to push past a FRESH lock unless you have
    independently confirmed the other holder is gone (the operator said so,
-   or the machine it names is verifiably offline) — a live double-acquire
+   or the machine it names is verifiably offline): a live double-acquire
    is the failure this step exists to prevent. Release the lock at wrap
    (Phase 11, with the captured token) or via `/stop`; an un-released lock
-   is covered by the TTL (default **6 h** — sized to cover the 3-4 h
+   is covered by the TTL (default **6 h**, sized to cover the 3-4 h
    overnight budget; `QUEUE_LOCK_TTL_SECONDS` tunes it — TTL sizing
    is an open operator question on the queue-lock design) so a crashed
    session never strands the queue. **A live worker session does not have to remember
@@ -65,27 +65,27 @@ For work that will need mid-flight decisions or will outlive one context window,
    outran its margin unseen finds out at its next refresh or at wrap.
    Without the hook, a manual `queue-lock.sh heartbeat <handover-path>
    <token>` on long sessions is still the lever.
-1. **Plan** — `superpowers:writing-plans` on the active brief; commit to `<plans-root>/YYYY-MM-DD-<slug>.md` where `<plans-root>` resolves as:
-   - `$HANDOVER_DIR/plans/` when `HANDOVER_DIR` is set (Mode B — plans live with handover state in `<state-repo>/handovers/plans/`).
-   - `<repo>/docs/superpowers/plans/` otherwise (Mode A default — backwards-compat;
+1. **Plan:** `superpowers:writing-plans` on the active brief; commit to `<plans-root>/YYYY-MM-DD-<slug>.md` where `<plans-root>` resolves as:
+   - `$HANDOVER_DIR/plans/` when `HANDOVER_DIR` is set (Mode B: plans live with handover state in `<state-repo>/handovers/plans/`).
+   - `<repo>/docs/superpowers/plans/` otherwise (Mode A default, for backwards-compat;
      this path is **gitignored**, so Mode-A plans stay local and are never committed
      to the public repo).
 
    The Mode B path collocates the plan with the per-ticket session notes (`<state-root>/<repo>/{epics,standalones}/<TICKET>/next-session-N.md`), so a reviewer auditing the work can grep one root for plan + decisions + outcomes. Mode A keeps plans inside the code repo for solo-operator no-env-var setups.
-2. **Worktree** — `/clean_garden feat/himmel-<N>-<slug>`.
-3. **Impl** — `superpowers:subagent-driven-development`. Sequential per task: implementer subagent → spec-compliance reviewer → code-quality reviewer → fix-on-finding → next task. **Verifier cadence (Fable-5 scaffolding):** every 3 completed tasks, dispatch one fresh-context verifier subagent that re-checks the accumulated branch diff against the Phase-1 plan. Fresh-context verification beats self-critique, and the per-task reviewers see one task at a time — this is the layer that catches cross-task drift before Phase 4. **Stop-check:** before EACH subagent dispatch in this loop, run `bash scripts/overnight/stop-marker.sh check` (silent; rc=0 = stop marker present, rc=1 = clear). When rc=0, finish the in-flight subagent if one is running, then halt the loop gracefully (write a `next-session-N.md` snapshot at the partial-completion point, file followup tickets for remaining tasks, and exit Phase 3). Operator-triggered via `/stop` (soft) or `/stop --hard` (also `TaskStop`s in-flight). `/stop --reset` clears the marker.
-4. **Final review** — one holistic pass over the full diff vs main, run as ONE `/pr-check`: the cross-model automated review matrix is the gate, not a hand-dispatched reviewer set. `/pr-check` runs the critic panel (default: the paid codex critic — there is no free anchor; `CR_PROFILE=none` skips it) and **you, the orchestrating session, adjudicate its `[<slug>-N]` candidates inline** (`agreed|disproved|conflict|unaddressed`) — no `pr-review-toolkit:*` Claude agents are dispatched. CodeRabbit is NOT part of the matrix: it is the GitHub App and reviews the PR once it exists (its threads are handled after the PR is open). **Optional, opt-in Claude pass:** only with `CR_CLAUDE_AGENTS=1` (launching shell / `.env`; default OFF) does `/pr-check` also dispatch the upstream `pr-review-toolkit:code-reviewer` — keep that to ONE holistic `code-reviewer` for this phase; the full per-agent matrix is the same opt-in branch, never the default. **Never zero automated review (2026-06-13):** a docs-only diff still gets the **docs-audit lane** — `/pr-check` applies the docs charter inline (or via ONE `code-reviewer` under `CR_CLAUDE_AGENTS=1`), scoped to repo-claim accuracy (hooks/gates/flags/paths/commands vs actual code), dead links, stale file/flag/ticket refs, example correctness, internal consistency; NOT prose nitpicks (`CLAUDE.md` → `/claude-md-audit`). Review is never skipped outright. Full semantics: [`.claude/commands/pr-check.md`](../../.claude/commands/pr-check.md) (steps 2.5, 3.0, 3.5).
+2. **Worktree:** `/clean_garden feat/himmel-<N>-<slug>`.
+3. **Impl:** `superpowers:subagent-driven-development`. Sequential per task: implementer subagent → spec-compliance reviewer → code-quality reviewer → fix-on-finding → next task. **Verifier cadence (Fable-5 scaffolding):** every 3 completed tasks, dispatch one fresh-context verifier subagent that re-checks the accumulated branch diff against the Phase-1 plan. Fresh-context verification beats self-critique, and the per-task reviewers see one task at a time; this is the layer that catches cross-task drift before Phase 4. **Stop-check:** before EACH subagent dispatch in this loop, run `bash scripts/overnight/stop-marker.sh check` (silent; rc=0 = stop marker present, rc=1 = clear). When rc=0, finish the in-flight subagent if one is running, then halt the loop gracefully (write a `next-session-N.md` snapshot at the partial-completion point, file followup tickets for remaining tasks, and exit Phase 3). Operator-triggered via `/stop` (soft) or `/stop --hard` (also `TaskStop`s in-flight). `/stop --reset` clears the marker.
+4. **Final review:** one holistic pass over the full diff vs main, run as ONE `/pr-check`: the cross-model automated review matrix is the gate, not a hand-dispatched reviewer set. `/pr-check` runs the critic panel (default: the paid codex critic, as there is no free anchor; `CR_PROFILE=none` skips it) and **you, the orchestrating session, adjudicate its `[<slug>-N]` candidates inline** (`agreed|disproved|conflict|unaddressed`); no `pr-review-toolkit:*` Claude agents are dispatched. CodeRabbit is NOT part of the matrix: it is the GitHub App and reviews the PR once it exists (its threads are handled after the PR is open). **Optional, opt-in Claude pass:** only with `CR_CLAUDE_AGENTS=1` (launching shell / `.env`; default OFF) does `/pr-check` also dispatch the upstream `pr-review-toolkit:code-reviewer`. Keep that to ONE holistic `code-reviewer` for this phase; the full per-agent matrix is the same opt-in branch, never the default. **Never zero automated review (2026-06-13):** a docs-only diff still gets the **docs-audit lane**: `/pr-check` applies the docs charter inline (or via ONE `code-reviewer` under `CR_CLAUDE_AGENTS=1`), scoped to repo-claim accuracy (hooks/gates/flags/paths/commands vs actual code), dead links, stale file/flag/ticket refs, example correctness, internal consistency; NOT prose nitpicks (`CLAUDE.md` → `/claude-md-audit`). Review is never skipped outright. Full semantics: [`.claude/commands/pr-check.md`](../../.claude/commands/pr-check.md) (steps 2.5, 3.0, 3.5).
 5. **Automated review gate (`/pr-check` clears the marker)** — aggregate the adjudicated findings into Critical/Important/Minor counts by file; `/pr-check` clears the pre-push review-owed marker only on a clean result, and without a clean run `gh pr create` is blocked by the PreToolUse hook. Cross-model floor behaviour (`CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK=claude-only`) and the park path when it is exhausted are in § Park protocol. **The parallel per-agent Claude heavy automated review is NOT the default** (it dispatched a Claude subagent per reviewer every round and was retired; an overnight run that followed the old text of this doc did exactly that). It exists only as the `CR_CLAUDE_AGENTS=1` branch of `/pr-check` step 3.5, where the applicable subset of `pr-review-toolkit` agents (`code-reviewer`, `pr-test-analyzer`, `comment-analyzer`, `silent-failure-hunter`, `type-design-analyzer`) runs in parallel and docs-only or test-free PRs skip the no-op reviewers. **`/code-review ultra` sits ABOVE the matrix (eval — ADOPT):** it is the MOST expensive lane — more than a default `/pr-check` run or the opt-in agent fan-out — so it is the top/last-resort escalation for the biggest/riskiest PRs, run AFTER `/pr-check` is clean, never as a cheaper first reach. It is operator-triggered + billed; the agent cannot launch it — record an `ultra` pass as a one-action operator step.
-6. **Fix batch** — dispatch fix subagent(s) for ALL Critical + Important findings. Run tests after each batch.
-7. **Automated re-review** — re-run `/pr-check` on the fixed head (same matrix; the Claude agents again only under `CR_CLAUDE_AGENTS=1`). Loop fix → re-review until 0 Critical remain.
-8. **PR open + push** — `gh pr create --body-file <path>`. Write the body to a file first to avoid shell-interpretation surprises (heredocs, `$()` substitutions, multi-line content with quotes). **Attestation trailers go in the FIRST commit, never a reactive amend** — see "Auto-mode classifier & attestation" below. Before the first `git commit` of any shippable change, after you have genuinely run tests + `/pr-check`, write the gate trailers directly into that commit body:
+6. **Fix batch:** dispatch fix subagent(s) for ALL Critical + Important findings. Run tests after each batch.
+7. **Automated re-review:** re-run `/pr-check` on the fixed head (same matrix; the Claude agents again only under `CR_CLAUDE_AGENTS=1`). Loop fix → re-review until 0 Critical remain.
+8. **PR open + push:** `gh pr create --body-file <path>`. Write the body to a file first to avoid shell-interpretation surprises (heredocs, `$()` substitutions, multi-line content with quotes). **Attestation trailers go in the FIRST commit, never a reactive amend**; see "Auto-mode classifier & attestation" below. Before the first `git commit` of any shippable change, after you have genuinely run tests + `/pr-check`, write the gate trailers directly into that commit body:
    ```text
    Platforms tested: <linux|windows|gitbash|…>   # only when the diff touches shell/scripts
    Security reviewed: <pr-review-toolkit|manual|claude-code-security-review>   # only for non-docs code
    ```
-   Then the push passes the `platforms-tested` / security-reviewed gates first-try with no amend. **Do NOT commit first, hit the gate, then `git commit --amend` to add the trailer** — the auto-mode classifier flags that reactive amend as security-gate circumvention and HARD-blocks it (uncleable, even with operator approval).
+   Then the push passes the `platforms-tested` / security-reviewed gates first-try with no amend. **Do NOT commit first, hit the gate, then `git commit --amend` to add the trailer**: the auto-mode classifier flags that reactive amend as security-gate circumvention and HARD-blocks it (uncleable, even with operator approval).
 9. **Merge** — `gh pr merge --squash` once automated review is clean. **Default to a PLAIN squash merge — do NOT add `--admin`**. `--admin` exists to bypass *branch protection*; this repo has none (the protection API returns 403 on a free private repo, and `reviewDecision` is empty), so `--admin` bypasses nothing useful yet it trips the auto-mode classifier's "bypassing the approval gate = destructive op outside the worktree" HARD-veto (see § Block-only criteria) — which is exactly what stalled an earlier run. Only reach for `--admin` if the repo *actually* has branch protection that blocks the plain merge, and then only with `GH_ADMIN_MERGE_OK=1` set in the launching shell (the `scripts/handover/pr-merge.sh` helper encodes this plain-first/admin-fallback logic). **If the merge is blocked for any reason, load the `himmel-ops:stuck-playbook` skill** (§ "a PR merge was blocked"), then — rather than guessing or routing around the block — record the merge as a one-action operator step in the Phase 11 handover. Retrying a blocked merge via a different command path is flagged as evasion and hardens the block. **Armed ticket sequences that auto-merge on green:** a *self-run* merge worker session is denied by the classifier ("Merge Without Review"), so an armed/overnight ticket sequence stops at a green, review-clean PR by default. To let a ticket sequence merge unattended — **PRIVATE repo only** — the sanctioned path is `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"` (the anchored spelling; the PROJECT and leg-profile relative `bash scripts/handover/merge-on-green.sh` standing allow-rules were retired — a user-scope settings rule may still admit the relative spelling on a given station, but the project and leg-profile registries no longer pre-approve it, so a station with no user-scope rule of its own loses the relative fallback and must type the anchored or absolute spelling): it merges ONLY when `ARMAUTOMERGE=1` is opted in (launching shell), the PR's own repo is private, `check-ci.sh` returns 0 (green + all threads resolved + no changes-requested), and the certified head SHA is still the PR head (`--match-head-commit`), logging every attempt (certified SHA + gate verdict). It is **not** a blanket `--dangerously-skip-permissions` (every other guard stays live). Activation is two **operator** steps (the agent cannot self-modify settings): add the specific standing allow-rule `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` and launch/arm the ticket sequence with `ARMAUTOMERGE=1`. Public propagation stays a separate one-go operator/bridge step.
-10. **Jira** — invoke the CLI as `node scripts/jira/dist/index.js transition <KEY> "<state>"` (NOT the global `jira` shim — it points at an unrelated, often-broken `jira-cli` package). This runs autonomously **provided the specific standing allow-rule `Bash(node scripts/jira/dist/index.js:*)` is present** — a generic `Bash(node *)` is NOT enough to authorize an external write (see § Auto-mode classifier). If the rule is missing, a transition is classifier-blocked; do NOT retry via a different path (evasion) — record it as an operator action in Phase 11 and have the operator add the rule once (it then works for all future runs).
+10. **Jira:** invoke the CLI as `node scripts/jira/dist/index.js transition <KEY> "<state>"` (NOT the global `jira` shim; it points at an unrelated, often-broken `jira-cli` package). This runs autonomously **provided the specific standing allow-rule `Bash(node scripts/jira/dist/index.js:*)` is present**. A generic `Bash(node *)` is NOT enough to authorize an external write (see § Auto-mode classifier). If the rule is missing, a transition is classifier-blocked; do NOT retry via a different path (evasion); record it as an operator action in Phase 11 and have the operator add the rule once (it then works for all future runs).
 11. **Handover** — write `next-session-<N+1>.md` (or whichever increment) in the right dir, file followup tickets for non-blocking findings, record any classifier-blocked Jira transitions as explicit operator actions (a classifier-blocked review-thread resolve is never an operator action: it goes to the console as `BLOCKED resolve <pr> <thread ids>`, which verifies it against the head and resolves it), update `status.md` + `roadmap.md`, commit + push (trailers in the first commit per Phase 8). **Release the step-0 queue lock** (`bash scripts/handover/queue-lock.sh release <handover-path> <release-token>` — the token captured from the step-0 acquire output; if the transcript line was lost to an autocompact, drop the token argument and the persisted per-session copy is used instead — it says `queue-lock: token read from <path>` on stderr, and it exists only when a session scope was resolvable at acquire time (`QUEUE_LOCK_SESSION_SCOPE` or `CLAUDE_CODE_SESSION_ID`; see Phase 0); only when that is gone too does `QUEUE_LOCK_FORCE_RELEASE=1 bash scripts/handover/queue-lock.sh release <handover-path>` force-release loudly and log the override — that log is the audit trail for genuine takeovers, so a routine wrap should never land in it) as part of this phase — the TTL is a safety net for a crashed session, not a substitute for releasing on a clean wrap.
 
 ## Launch preamble
@@ -96,7 +96,7 @@ instructions below. Delivery paths: the
 explicitly; the next-session `## Overnight Mode Trigger` block points here;
 and manual "overnight mode" invocations reach it because executing the
 pipeline requires reading this doc. This section is the SINGLE copy of the
-text — the next-session templates deliberately do not inline it (the
+text; the next-session templates deliberately do not inline it (the
 previous 4-copy duplication silently drifted: the seeded `_templates/` hop
 dropped the preamble from essentially every autonomously emitted session
 for ~2 months). It is model-neutral by design: overnight
@@ -122,12 +122,12 @@ prompting guides:
 
 The first counters overplanning on long autonomous turns; the second
 counters context-budget anxiety (Fable 5 occasionally wraps up early when
-it believes context is short — and the same instruction is directly
+it believes context is short, and the same instruction is directly
 relevant to known Opus 1M autocompact behaviour); the third counters
 written-deliverable padding (Opus 5 pads documents by default, and this
 harness writes `next-session-N.md`, `status.md`, `roadmap.md`, specs and
 morning reports on every run). The guides' grounded-progress-claims and
-early-stopping snippets are NOT duplicated here — the attestation
+early-stopping snippets are NOT duplicated here: the attestation
 discipline (§ Auto-mode classifier) and the block-only criteria already
 cover them.
 
@@ -135,7 +135,7 @@ cover them.
 faith.** `bash scripts/context-fill.sh` prints this session's
 own context-window fill; `--percent` gives a bare integer. It exits 3 (STALE)
 or 4 (UNKNOWN) with an EMPTY stdout rather than guessing, so a wrap check must
-branch on the exit status — a bare `[ "$(…)" -ge 65 ]` turns a missing reading
+branch on the exit status. A bare `[ "$(…)" -ge 65 ]` turns a missing reading
 into a false comparison that reads exactly like "below threshold":
 
 ```bash
@@ -147,7 +147,7 @@ fi
 ```
 
 A supervisor session deciding whether to arm a successor for a worker session should ask the worker session
-for this number instead of an estimate. It measures context-window FILL — not
+for this number instead of an estimate. It measures context-window FILL, not
 the `<total_tokens>` spend budget, which is a different, much larger
 allowance and was routinely conflated with fill before this ticket.
 
@@ -155,17 +155,17 @@ allowance and was routinely conflated with fill before this ticket.
 a (trigger-happy) safety classifier and route to Opus 4.8 **with a
 notification** (community-measured, @PawelHuryn). This is a different
 layer from the auto-mode classifier below: nothing was blocked, the floor
-is Opus 4.8, and the run should simply continue — do not halt, retry, or
+is Opus 4.8, and the run should simply continue. Do not halt, retry, or
 escalate to the operator over a reroute notice.
 
 **A zero is not evidence without a positive control.** Any
-count feeding a ruling — an unresolved-thread sweep, a grep count, a diff
-stat — first proves its instrument on a known-match pattern; read a tool's
+count feeding a ruling (an unresolved-thread sweep, a grep count, a diff
+stat) first proves its instrument on a known-match pattern; read a tool's
 header contract before invoking it. A wrong repo slug, an MSYS-mangled
 path, or a bare tool run against the wrong input can all render as a clean
 "0" indistinguishable from a genuine pass.
 
-**A read outside the working directory can still hang an unattended worker session.** Auto mode does not cover this class — a Read/Grep/Glob
+**A read outside the working directory can still hang an unattended worker session.** Auto mode does not cover this class: a Read/Grep/Glob
 target outside cwd/`additionalDirectories` prompts interactively regardless
 of mode, and nobody is there to answer it. Pre-listing the known-safe
 outside paths in `permissions.additionalDirectories` closes the common
@@ -180,14 +180,14 @@ operator recovery.
 (macOS/Linux; `HIMMEL_ARMED_RELAUNCH=1` marks it).** A session launched by
 `arm-resume.sh`'s crontab or `at` body carries `HIMMEL_ARMED_RELAUNCH=1` in
 its environment. When such a session's work is done and, if the plan calls
-for one, a successor is armed, it runs `kill -TERM "$CLAUDE_PID"` — SIGTERM
+for one, a successor is armed, it runs `kill -TERM "$CLAUDE_PID"`. SIGTERM
 runs SessionEnd hooks, so this is the clean shutdown path; never `kill -9`.
 This does not apply to a subagent (only the top-level session carries the
 grant), and Windows sessions are not covered.
 
 ## Operator-Gated Wrap
 
-If your only remaining dependency is an operator action, **wrap at once** — do
+If your only remaining dependency is an operator action, **wrap at once**; do
 not idle-wait. Append a RESUME BRIEF to this file (worktree, branch, base SHA,
 dirty paths, the verbatim operator block, the ordered remaining steps), release
 the queue lock, message the console `OPERATOR-GATED, wrapped, safe to close`,
@@ -197,7 +197,7 @@ indistinguishable from a crashed one. The console resumes it from that brief
 (`bash scripts/handover/leg-resume-brief.sh <this file>` regenerates the
 skeleton from git) instead of waking a cold session to ask.
 
-"End the turn" means the session actually **ends** — the harness exits. A
+"End the turn" means the session actually **ends**: the harness exits. A
 message announcing that you are closing is not closing: a leg that says
 "safe to close" and stays resident holds its RAM, keeps its queue lock, and
 still reads as live in `ListAgents`. If you cannot end your own session,
@@ -208,14 +208,14 @@ operator instead of assuming you are gone.
 
 **A worker session opens its PR on the SCOPED suite covering its diff, and reports the
 full run afterwards as a PR comment.** This is the default, not a
-time-pressure concession — it was re-derived per-worker-session per-shift for months
+time-pressure concession; it was re-derived per-worker-session per-shift for months
 before being written down here.
 
 Why it has to be the default: `scripts/ci/run-shell-tests.sh` takes a
 machine-wide advisory lock keyed by **scan root**, so exactly
 one full-tree run happens at a time on the box. On the 2026-08-29 shift six
 concurrent worker sessions each needed that run; the holder was measured at **2h20m and
-still going** — genuinely alive, just slow, because seven sessions were
+still going**: genuinely alive, just slow, because seven sessions were
 loading the machine. Six worker sessions × a serialized 2h+ run is a wall the parallel
 dispatch pattern cannot cross.
 
@@ -227,19 +227,19 @@ bash scripts/ci/run-shell-tests.sh scripts/<subtree-that-EXERCISES-your-change>
 ```
 
 **Scope by what the change is exercised BY, not by where the diff lives.** A
-scoped run covers the suites under that scan root — which is not the same set
+scoped run covers the suites under that scan root, which is not the same set
 as "every test that touches my change". Edit `scripts/lib/foo.sh` and run only
 `scripts/lib` and you have missed every `scripts/hooks` suite that sources it;
 the diff's own directory is the wrong default whenever the changed code is
 shared. Pick the root that contains the suites which actually exercise the
 change (grep for who sources or invokes it), and when that spans several
-roots, run each — several scoped runs still finish in minutes and still take
+roots, run each; several scoped runs still finish in minutes and still take
 different locks.
 
 So scoped evidence is **narrower** than a full run, deliberately. That is the
 trade the default makes: it covers what the change is exercised by, in
 minutes, instead of covering everything in hours behind a fleet-wide queue.
-It is not a claim that the full run would have found nothing — which is
+It is not a claim that the full run would have found nothing. That is
 exactly why the full run is still reported afterwards as a PR comment rather
 than skipped, and why a worker session that cannot identify the suites exercising its
 change should run the full tree (with `SUITE_LOCK_WAIT`, below) instead of
@@ -257,7 +257,7 @@ unread for that run's length; see the delivery limitation in
 [`retask-channel.md`](../internals/retask-channel.md).
 
 **When you do need the full tree, never hand-roll a retry loop.** An rc=2
-refusal used to send worker sessions into their own invisible wait — and a queued worker session is
+refusal used to send worker sessions into their own invisible wait, and a queued worker session is
 then indistinguishable from a **parked** one: both present as a worker session that has
 stopped reporting, and the remedies are opposite (a queued run needs
 patience, a parked worker needs a nudge). Getting it backwards is how a
@@ -281,18 +281,18 @@ pid=3221699 host=overlord8 held=2h14m (8040s); this run has waited 5m00s
 ```
 
 On acquiring it says so (`ACQUIRED: … after waiting …`); if the budget runs
-out it emits the full `REFUSED` verdict and still exits 2. Default is `0` —
-refuse on sight, the historical behaviour — so this is opt-in per run.
+out it emits the full `REFUSED` verdict and still exits 2. Default is `0`
+(refuse on sight, the historical behaviour), so this is opt-in per run.
 
 **For a dispatching parent:** a worker session reporting a `WAITING:` line is *queued*, and the
-holder pid + elapsed are right there — no `ps`, no reading
+holder pid + elapsed are right there: no `ps`, no reading
 `/tmp/himmel-shell-suite-*.lock/owner` by hand. A worker session reporting nothing at all
 is *parked*. That distinction is the point of the knob; a worker session that hand-rolls
 its own sleep loop throws it away.
 
 **A worker session that ends its turn on a background job never wakes.** The harness
 backgrounds any Bash call that runs past ~120 s, and a worker session whose turn ends
-waiting on that job gets no wake-up — it sits "working" forever while the
+waiting on that job gets no wake-up; it sits "working" forever while the
 supervisor session reads its silence as progress. The brief therefore **names the scoped
 suites** the worker session runs (each under the 120 s budget or explicitly foreground),
 and forbids "I'll wait for the notification": waiting is one foreground
@@ -308,10 +308,10 @@ touched it carries its after-report SUMMARY.**
 `scripts/console/base-status.sh <fence-path>...` lists the merged PRs on a
 fence that are still PENDING (no after-report comment yet) or RED (a red
 one); `arm-resume.sh` reads the handover's own `fence:` frontmatter key and
-calls it before arming, refusing (rc=21) on a non-clean fence — or when the
+calls it before arming, refusing (rc=21) on a non-clean fence, or when the
 certification itself fails (missing script, `gh` query error, truncated
 merged-PR list), because "cannot verify" refuses exactly like "verified
-dirty" — unless `--provisional-base-ok` is passed, which WARNS loudly and
+dirty", unless `--provisional-base-ok` is passed, which WARNS loudly and
 prints the warning text for the worker session's first message instead of refusing.
 `scripts/handover/merge-on-green.sh` records its own local
 after-report-pending marker at merge time (best-effort, mirrors the
@@ -322,10 +322,10 @@ PROCESS itself, so a closed parent session can never lose the report.
 **How worker sessions sync**, since there is no shared live state beyond the above:
 direct messages between sessions (`SendMessage`/`ListAgents`), the
 handover/ledger files each worker session already writes, and PR comments themselves
-(the after-report SUMMARY, `MERGED`/marker audit lines) — worker sessions coordinate by
+(the after-report SUMMARY, `MERGED`/marker audit lines). Worker sessions coordinate by
 reading each other's durable artifacts, not by a shared process. A **red**
 after-report routes to the supervisor session, which hands it to the **current owner of
-that fence** as a follow-up PR + ticket — never to whichever worker session happens to
+that fence** as a follow-up PR + ticket, never to whichever worker session happens to
 notice first. A **dependent worker session holds its fence conclusions** (does not
 build further on that fence, does not report it clean) until the fix lands
 and a fresh after-report replaces the red one.
@@ -334,15 +334,15 @@ and a fresh after-report replaces the red one.
 
 The pipeline ships code, but some repo artifacts mirror that code and must be
 updated in the **same PR** or they silently rot. **Owner: the executing agent,
-as the first action of Phase 8** (before `gh pr create`) — diff the change set
+as the first action of Phase 8** (before `gh pr create`): diff the change set
 against this list and commit any sync edit onto the branch. The Phase-4/5 `/pr-check`
 automated review (its adjudicated panel findings; `comment-analyzer` under `CR_CLAUDE_AGENTS=1`) is the backstop, not the primary
 catch.
 
-- **`docs/commands-catalog.md`** — if the diff adds, renames, or removes a
+- **`docs/commands-catalog.md`:** if the diff adds, renames, or removes a
   command under `.claude/commands/`, update the matching row (verbatim from the
   command's `description:` frontmatter; the doc carries a regen snippet).
-- **`CLAUDE.md` quality** — if the diff changes any `CLAUDE.md` (root or
+- **`CLAUDE.md` quality:** if the diff changes any `CLAUDE.md` (root or
   subtree), run `/claude-md-audit` before `gh pr create`. It runs
   the `claude-md-improver` rubric audit against the changed file(s) in the
   worktree and surfaces findings to fix in-branch; lean-invoke, not a hook
@@ -358,27 +358,27 @@ one artifact, `overnight-report-YYYY-MM-DD.md`, generated by
 (resolved via `scripts/lib/handover-path.sh` / `handover_root_ensure`,
 which creates the Mode A inline dir on demand; a broken `HANDOVER_DIR`
 fails closed with exit 2 instead of falling back to a hardcoded
-`./handovers/`). One row per dispatched ticket — ticket, branch,
-PR link, status (`done` / `blocked` / `partial`), one-line outcome — with
+`./handovers/`). One row per dispatched ticket (ticket, branch,
+PR link, status (`done` / `blocked` / `partial`), one-line outcome), with
 anything needing a human decision grouped in a "Decisions needed" block at
 the top and those tickets sorted first in the table.
 
 The morning-review flow is therefore **read one report, then drill into
-PRs** — not per-ticket discovery across N branches/PRs/reports. Rationale
+PRs**, not per-ticket discovery across N branches/PRs/reports. Rationale
 (Amdahl's Law applied to multi-agent work): human review is the serial
 fraction that caps fanout speedup, so the mandatory human checkpoint is
 batched into a single entry point. Work the decisions block first, then
-review PRs in report order (`/pr-check`). Merging stays human — only the
+review PRs in report order (`/pr-check`). Merging stays human; only the
 review *surface* is batched.
 
 **Standing operator actions.** The report is *regenerated* every
-run, so a one-off note elsewhere won't resurface. Durable manual actions —
-especially **single-session-only** ones (e.g. a history rewrite) — go in
+run, so a one-off note elsewhere won't resurface. Durable manual actions,
+especially **single-session-only** ones (e.g. a history rewrite), go in
 `<handover-root>/operator-actions.md`; `morning-report.sh` appends them verbatim
 as a `## Standing operator actions` section to *every* report until you delete
-them. Use plain bullets (not headings — they'd compete with the report's H2s);
+them. Use plain bullets (not headings, which would compete with the report's H2s);
 absent or blank ⇒ no section. The run-end command relies on the default path
-(`<dirname report>/operator-actions.md`) — no `--actions` flag needed. With no
+(`<dirname report>/operator-actions.md`), so no `--actions` flag is needed. With no
 overnight run, just read the file directly; it's plain markdown.
 
 ## Budget (informational)
@@ -386,9 +386,9 @@ overnight run, just read the file directly; it's plain markdown.
 - **Subagent dispatches:** ~50-60 per overnight run. Per phase 3, impl is ~3 subagents per task (implementer + 2 reviewers); a 16-task plan = ~48 just for impl. The default `/pr-check` automated review matrix adds ~0 Claude subagent dispatches (cross-model critic calls + inline adjudication); only the opt-in `CR_CLAUDE_AGENTS=1` fan-out adds ~6-12 over 1-2 rounds. Plus fix-batch dispatches (5-10).
 - **Wall time:** ~3-4 hours.
 - **Inference cost:** ~$10-20 on Sonnet. Bump to Opus for the planning / final-review phases if extra rigor is wanted; Sonnet is enough for impl + per-task reviews.
-- **Effort tiering (Fable-5):** on Fable 5, `low` effort ≈ `xhigh` on prior models — this strengthens the raise-effort-before-tier rule of the Subagent delegation & escalation policy (root `CLAUDE.md`). For mechanical subagent work, raise effort before raising the model tier; reach for Opus-class only with a concrete reason. Default effort `high`; `max` is a re-verification tax (2-3× time for the same answer, community-measured) — reserve it for capability-critical single calls, not pipeline phases.
+- **Effort tiering (Fable-5):** on Fable 5, `low` effort ≈ `xhigh` on prior models, which strengthens the raise-effort-before-tier rule of the Subagent delegation & escalation policy (root `CLAUDE.md`). For mechanical subagent work, raise effort before raising the model tier; reach for Opus-class only with a concrete reason. Default effort `high`; `max` is a re-verification tax (2-3× time for the same answer, community-measured); reserve it for capability-critical single calls, not pipeline phases.
 
-These are estimates from the reference run. The operator decides when to stop — no auto-pause guardrails.
+These are estimates from the reference run. The operator decides when to stop; there are no auto-pause guardrails.
 
 ## Block-only criteria
 
@@ -396,7 +396,7 @@ Block for human input ONLY when:
 - An ambiguous design decision is not covered by the spec.
 - Ticket creation needs a human judgment call on Jira project or priority.
 - A destructive op outside the worktree is required (e.g. force-push to main, drop a remote branch the operator owns).
-- A plain Phase-9 `--squash` merge is blocked by *real* branch protection (not the no-op case that was removed) and `--admin` would be needed but is not authorized (`GH_ADMIN_MERGE_OK` unset) — bypassing a genuine approval gate is exactly the kind of "destructive op outside the worktree" AFK (unattended) mode should NOT do unattended. Defer the merge to the operator.
+- A plain Phase-9 `--squash` merge is blocked by *real* branch protection (not the no-op case that was removed) and `--admin` would be needed but is not authorized (`GH_ADMIN_MERGE_OK` unset). Bypassing a genuine approval gate is exactly the kind of "destructive op outside the worktree" AFK (unattended) mode should NOT do unattended. Defer the merge to the operator.
 
 Everything else proceeds without confirmation.
 
@@ -405,88 +405,88 @@ Everything else proceeds without confirmation.
 Every controllable hang class in an armed/overnight run resolves to one of
 two policies: **fallback** (an opt-in knob lets the gate accept a weaker-but-
 verified floor and keep going) or **park** (the gate stays closed and the item
-is set aside). Park is never a retry-loop — a worker session that hits a park-policy
+is set aside). Park is never a retry-loop: a worker session that hits a park-policy
 gate does this, and only this:
 
 1. **Write the pending item into the handover's Pending block**: the PR#, the
    head SHA, which gate blocked it and why (its refusal reason), and the exact
    command to resume once the blocking condition clears. For a cross-model
    floor exhaustion, that is **`/pr-check` on the branch, not a bare
-   `clear-cr-marker.sh` recheck** — the exhausted critic's `avail` row is
+   `clear-cr-marker.sh` recheck**. The exhausted critic's `avail` row is
    already on the ledger, so re-running only `clear-cr-marker.sh` reads that
    same stale row and refuses again; `/pr-check` re-invokes the panel and
    records a FRESH row (`ok` once the subscription usage budget has actually reset, or a new
    `unavailable` if it has not) before the marker is re-checked. Enabling
-   `CR_FLOOR_FALLBACK=claude-only` is the other resume path — it ships on the
+   `CR_FLOOR_FALLBACK=claude-only` is the other resume path; it ships on the
    Claude-only floor without waiting for the reset at all. For other park
    classes, the resume command is the gate itself, e.g. re-running
    `check-ci.sh <pr>` once a stale review refreshes.
 2. **Continue with other queue items.** A park on one branch never idles the
    rest of the queue while independent work is ready to ship.
 3. **Never re-run the same blocked gate in a loop** hoping it resolves on its
-   own — park records the item once and moves on; it does not poll.
-4. **At wrap, the worker session pends for cold restart** — a fresh arm/handover once the
+   own. Park records the item once and moves on; it does not poll.
+4. **At wrap, the worker session pends for cold restart**: a fresh arm/handover once the
    blocking condition is confirmed cleared, not an in-leg retry.
 
 ### The five hang classes
 
 | # | Hang class | Disposition |
 |---|---|---|
-| 1 | Cross-model floor exhaustion — `CR_REQUIRE_CROSS_MODEL` set, every non-Claude critic down | `CR_FLOOR_FALLBACK=claude-only` (opt-in) when the exhaustion is VERIFIED quota/rate-limit — otherwise **park** the branch and continue |
+| 1 | Cross-model floor exhaustion: `CR_REQUIRE_CROSS_MODEL` set, every non-Claude critic down | `CR_FLOOR_FALLBACK=claude-only` (opt-in) when the exhaustion is VERIFIED quota/rate-limit; otherwise **park** the branch and continue |
 | 2 | Plugin-tool permission wall | Operator allow-rules close it; **park** the blocked item if hit |
 | 3 | CodeRabbit rate-limit vs. stale review | Neither blocks: CodeRabbit is best effort, so a rate-limited, absent or stale review is a NOTE from `check-ci.sh`, never a park. The gate that remains is CI green + zero unresolved threads + the panel; an unresolved CodeRabbit thread still blocks like any other reviewer's |
 | 4 | Live-worker rc=10 at arm | Wrap discipline (finish/reconcile the worker before arming) closes it in-leg; **park** if it cannot be resolved before the worker session ends |
-| 5 | `ARMAUTOMERGE` unset | Pre-arm WARN only (`arm-resume.sh`) — the run still deliberately stops at every green PR instead of merging; not itself a park |
+| 5 | `ARMAUTOMERGE` unset | Pre-arm WARN only (`arm-resume.sh`); the run still deliberately stops at every green PR instead of merging; not itself a park |
 
 ## Telegram relaunch — always PLAIN, never `--channels`
 
 When an overnight/armed session is scheduled to relaunch (via the
 `handover-arm-resume` skill / `scripts/handover/arm-resume.sh`), the relaunch
-is **PLAIN — no `--channels`**. The always-on bun Telegram bridge
+is **PLAIN, with no `--channels`**. The always-on bun Telegram bridge
 owns the single `getUpdates` slot and reaches Telegram
 independent of any session, so a `--channels` relaunch is actively harmful: it
 becomes a 2nd `getUpdates` consumer (409 Conflict) and its
 `--dangerously-load-development-channels` prompt **hangs the unattended
-launch**. `arm-resume.sh` enforces this — it refuses `--channels` (rc=5) while
+launch**. `arm-resume.sh` enforces this: it refuses `--channels` (rc=5) while
 the bridge is live. Keep the bun bridge up; relaunch plain. Full rationale:
 [`docs/internals/telegram-bridge.md`](../internals/telegram-bridge.md).
 
 ## Auto-mode classifier & attestation (Opus 4.8+)
 
-Opus 4.8 runs a model-based **auto-mode classifier** on every tool call in autonomous/auto-accept sessions. It is a SEPARATE layer from the `.claude/settings.json` permission allow-list. Crucially, **a generic catch-all allow-rule does NOT authorize a semantically-risky action — only a SPECIFIC, tool-named rule does**. Observed: a Jira write invoked as `node scripts/jira/dist/index.js …` matched only the generic `Bash(node *)` and was **blocked**, whereas the same write invoked as `jira …` matched the specific `Bash(jira *)` and **ran**. The classifier sorts actions into two tiers:
+Opus 4.8 runs a model-based **auto-mode classifier** on every tool call in autonomous/auto-accept sessions. It is a SEPARATE layer from the `.claude/settings.json` permission allow-list. Crucially, **a generic catch-all allow-rule does NOT authorize a semantically-risky action; only a SPECIFIC, tool-named rule does**. Observed: a Jira write invoked as `node scripts/jira/dist/index.js …` matched only the generic `Bash(node *)` and was **blocked**, whereas the same write invoked as `jira …` matched the specific `Bash(jira *)` and **ran**. The classifier sorts actions into two tiers:
 
 - **HARD vetoes — uncleable by any setting OR by operator approval** (this is the prompt-injection defense that makes unattended overnight runs safe):
-  - **Security-gate circumvention** — e.g. `git commit --amend` to add a `Security reviewed:` / `Platforms tested:` trailer *after* a push gate already failed. The reactive amend reads as "fabricate an attestation to bypass the gate."
-  - **Self-modification** — editing `.claude/settings.json` (or via the update-config skill) to widen your own allow-rules. An agent cannot escalate its own permissions.
-- **Authorization-gated — cleared by a SPECIFIC, tool-named standing allow-rule** (operator-authored once):
-  - **External-system writes** — Jira transitions, posting comments, etc. A broad `Bash(node *)` does NOT authorize these; a specific rule naming the exact CLI does. For himmel Jira, the rule is `Bash(node scripts/jira/dist/index.js:*)` — with it present, transitions run autonomously (no defer). Retrying a *blocked* write via a different command path is flagged as **evasion** and hardens the block, so the fix is the standing rule, not retrying.
+  - **Security-gate circumvention:** e.g. `git commit --amend` to add a `Security reviewed:` / `Platforms tested:` trailer *after* a push gate already failed. The reactive amend reads as "fabricate an attestation to bypass the gate."
+  - **Self-modification:** editing `.claude/settings.json` (or via the update-config skill) to widen your own allow-rules. An agent cannot escalate its own permissions.
+- **Authorization-gated, cleared by a SPECIFIC, tool-named standing allow-rule** (operator-authored once):
+  - **External-system writes:** Jira transitions, posting comments, etc. A broad `Bash(node *)` does NOT authorize these; a specific rule naming the exact CLI does. For himmel Jira, the rule is `Bash(node scripts/jira/dist/index.js:*)`; with it present, transitions run autonomously (no defer). Retrying a *blocked* write via a different command path is flagged as **evasion** and hardens the block, so the fix is the standing rule, not retrying.
 
 What this means for an autonomous run, and how to stay unblocked:
 
-1. **Attestation: write trailers into the FIRST commit** (Phase 8), never a reactive amend. This avoids the gate-circumvention veto entirely — the push passes the deterministic git hook first-try and there is no amend for the classifier to flag. This is the single most important rule for shipping autonomously.
-2. **Never `git commit --amend` to satisfy a just-failed push gate.** If you somehow committed without a required trailer, the recovery is to author a clean replacement commit message *before* the first push of that branch — not an amend after a failed push. If the branch is already pushed, recut it: a fresh branch from main with ONE new commit carrying the trailers, a new PR, and the old one closed (a PR-body trailer clears the pre-push gate but fails the supervisor session's ready-check, which reads only the first commit; see [`stuck-playbook.md`](../internals/stuck-playbook.md) § missing attestation trailer). Do not amend.
-3. **Self-modification is operator-only by design.** The agent cannot add allow-rules to its own settings, nor edit `CLAUDE.md` / `.claude/settings.json`, even in a worktree PR branch — the *commit* of such a change is classified as self-modification and HARD-blocked when the change is **agent-inferred**. The unblock is **explicit user specification**: when the operator states the exact allow-rule string (or exact rule text) verbatim, the intent bar is met and the agent may commit it. Pure operational docs (this file) are NOT governing config and commit freely.
+1. **Attestation: write trailers into the FIRST commit** (Phase 8), never a reactive amend. This avoids the gate-circumvention veto entirely: the push passes the deterministic git hook first-try and there is no amend for the classifier to flag. This is the single most important rule for shipping autonomously.
+2. **Never `git commit --amend` to satisfy a just-failed push gate.** If you somehow committed without a required trailer, the recovery is to author a clean replacement commit message *before* the first push of that branch, not an amend after a failed push. If the branch is already pushed, recut it: a fresh branch from main with ONE new commit carrying the trailers, a new PR, and the old one closed (a PR-body trailer clears the pre-push gate but fails the supervisor session's ready-check, which reads only the first commit; see [`stuck-playbook.md`](../internals/stuck-playbook.md) § missing attestation trailer). Do not amend.
+3. **Self-modification is operator-only by design.** The agent cannot add allow-rules to its own settings, nor edit `CLAUDE.md` / `.claude/settings.json`, even in a worktree PR branch: the *commit* of such a change is classified as self-modification and HARD-blocked when the change is **agent-inferred**. The unblock is **explicit user specification**: when the operator states the exact allow-rule string (or exact rule text) verbatim, the intent bar is met and the agent may commit it. Pure operational docs (this file) are NOT governing config and commit freely.
 4. **External writes (Jira): ensure the specific standing allow-rule exists, then run them.** With `Bash(node scripts/jira/dist/index.js:*)` in settings, transitions run autonomously — 100%, no defer. If the rule is absent (and you cannot add it — that's operator self-mod), do NOT probe alternative invocations (flagged as evasion); record the transition as an operator action in the handover and ask the operator to add the rule once. A review-thread resolve is the exception: it goes to the console, never the operator (see `stuck-playbook.md`).
 
-These are environment behaviors, not himmel policy — documented here so every operator's overnight run understands why an agent stalls and what the unblocked path is.
+These are environment behaviors, not himmel policy, documented here so every operator's overnight run understands why an agent stalls and what the unblocked path is.
 
 ## Failure modes to watch (operator layer)
 
 AFK (unattended) mode fans out N parallel sub-agents (Phase 3) and the operator
 becomes their coordinator. [@nyk_builderz](https://x.com/nyk_builderz) named
-four operator-layer failure modes that nobody screenshots — "ignore the
+four operator-layer failure modes that nobody screenshots: "ignore the
 operator layer and your team collapses into a single blurry agent within a
 month." How each shows up here, what mitigates it today, and what the operator
 should check **after** a shift:
 
-1. **Voice blur** — sub-agents converge on the same style after enough shared
+1. **Voice blur:** sub-agents converge on the same style after enough shared
    context; the N PRs read cookie-cutter and reviewers stop noticing.
    - *Mitigation:* **NONE.** Candidate: seed each ticket's implementer with a
      per-ticket persona (different altitude/emphasis) so approaches diverge.
-   - *Post-shift check:* skim the N PRs side by side — do they vary in approach
+   - *Post-shift check:* skim the N PRs side by side. Do they vary in approach
      and commit cadence, or is every one structurally identical? Identical = blur.
 
-2. **Memory pollution** — personal/unrelated context bleeds into a shared layer.
+2. **Memory pollution:** personal/unrelated context bleeds into a shared layer.
    - *Mitigation:* **PARTIAL.** Per-branch worktree isolation + per-ticket
      `handover/<TICKET>` branches keep one ticket's state out of another's; the
      nested subdir `CLAUDE.md` tree scopes context to the subtree.
@@ -494,36 +494,36 @@ should check **after** a shift:
    - *Post-shift check:* did any PR commit unrelated-ticket context, scratch
      notes, or personal state into a tracked file?
 
-3. **Handoff drift** — context lost between agent A and agent B.
+3. **Handoff drift:** context lost between agent A and agent B.
    - *Mitigation:* **ADDRESSED.** `next-session-N.md` snapshots carry decisions
      forward; `/handover-flush` consolidates across `handover/*`
      branches; the Phase-3 implementer → spec-compliance reviewer →
      code-quality reviewer → fix loop hands forward a reviewed diff, not raw
      intent.
-   - *Post-shift check:* read the resume snapshot cold — can you reconstruct
+   - *Post-shift check:* read the resume snapshot cold. Can you reconstruct
      *why* each decision was made, or only *what* shipped? Only-what = drift.
 
-4. **Coordination overhead** — the person coordinating (here, the operator reviewing N
+4. **Coordination overhead:** the person coordinating (here, the operator reviewing N
    PRs) becomes the bottleneck past some size.
-   - *Mitigation:* **PARTIAL — batch the entry point + enforce a ceiling.**
+   - *Mitigation:* **PARTIAL: batch the entry point + enforce a ceiling.**
      The consolidated morning report (§ Morning review) collapses
      N-PR discovery into one decisions-first artifact, but review depth is
      still serial: keep an overnight fan-out to **≈6–8 tickets**. Beyond
      that, manual N-PR review degrades to rubber-stamping (defeating the automated review
      gate); split into multiple shifts instead.
    - *Post-shift check:* if a shift dispatched >8 tickets, assume review fatigue
-     — spot-check rather than pretend-to-deep-review all of them.
+     and spot-check rather than pretend-to-deep-review all of them.
 
 ## Lessons learned
 
 Non-obvious gotchas that surfaced during the proof-of-concept run; carry forward to future overnights:
 
-- **Lock target must be a FILE not a directory.** Pass a real file path to `lockfile.lock()` — e.g. `<tDir>/.lock`, touched into existence first (see the `// B2:` comment block in `scripts/himmel-run/src/run.ts`). `proper-lockfile` v4 then creates the lock artifact at `<target>.lock` (so `<tDir>/.lock.lock` here) as a sibling **directory**, not a file — verified by the `mkdirSync(lockPath)` line in the `'recovers from stale lockfile'` test at `scripts/himmel-run/tests/lock.test.ts`. To clean a stale lock: `rm -rf <target>.lock` (or `rmdir <target>.lock` since the dir is empty in v4). POSIX `rm` without `-r` refuses directories — that is the failure mode if you treat the artifact as a file.
-- **`lastIndexOf('--')` not `indexOf('--')`** in arg parsers — the user can write `--` inside earlier flag values.
+- **Lock target must be a FILE not a directory.** Pass a real file path to `lockfile.lock()`, e.g. `<tDir>/.lock`, touched into existence first (see the `// B2:` comment block in `scripts/himmel-run/src/run.ts`). `proper-lockfile` v4 then creates the lock artifact at `<target>.lock` (so `<tDir>/.lock.lock` here) as a sibling **directory**, not a file, as verified by the `mkdirSync(lockPath)` line in the `'recovers from stale lockfile'` test at `scripts/himmel-run/tests/lock.test.ts`. To clean a stale lock: `rm -rf <target>.lock` (or `rmdir <target>.lock` since the dir is empty in v4). POSIX `rm` without `-r` refuses directories; that is the failure mode if you treat the artifact as a file.
+- **`lastIndexOf('--')` not `indexOf('--')`** in arg parsers: the user can write `--` inside earlier flag values.
 - **Init flow must collect ALL required env vars upfront.** The reference run missed `JIRA_BASE_URL` and had to re-init. Enumerate from the runner config.
-- **Skill markdown body should be a single command line.** ALL retry/fallback/recovery logic lives in the runner — skills cannot enforce branching deterministically.
+- **Skill markdown body should be a single command line.** ALL retry/fallback/recovery logic lives in the runner; skills cannot enforce branching deterministically.
 - **Log/cache paths need Windows variants** in skill markdown (`%LOCALAPPDATA%` vs `$XDG_CACHE_HOME`).
-- **`gh api graphql` uses `-F query=@file.gql`** (capital F) — verified during the reference run's automated review.
+- **`gh api graphql` uses `-F query=@file.gql`** (capital F), verified during the reference run's automated review.
 - **Heavy automated review catches 30+ Critical/Important issues** on a fresh runner. Budget ~2 rounds of fix-then-review minimum.
 
 ## Reference run
@@ -532,5 +532,5 @@ Non-obvious gotchas that surfaced during the proof-of-concept run; carry forward
 - Task: runner + plugin
 - PR: #97 (squash `8c482b5`), merged 2026-05-23
 - 36 commits on feat branch, 113 tests at merge, 2 review rounds, ~30 distinct Critical/Important fixes
-- HIMTEST Jira project created mid-flow as a **permanent** sandbox — do not delete; `scripts/himmel-run/tests/integration.test.ts` hard-codes `--project HIMTEST` and asserts issue keys match `/^HIMTEST-\d+$/`
+- HIMTEST Jira project created mid-flow as a **permanent** sandbox; do not delete it; `scripts/himmel-run/tests/integration.test.ts` hard-codes `--project HIMTEST` and asserts issue keys match `/^HIMTEST-\d+$/`
 - Followups were filed as separate tickets

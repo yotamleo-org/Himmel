@@ -4,11 +4,11 @@
 
 Worktree/branch isolation is structurally enforced only in himmel
 (`block-edit-on-main.sh`, `check-worktree-isolation.sh`). luna documents a
-**two-lane model** in its `_CLAUDE.md` — PR lane (worktree + branch + PR)
-for structural files, plugin lane (direct commits to main via the
-github-sync plugin, or the `vault-autosync.{sh,ps1}` sweeper — the two are
+**two-lane model** in its `_CLAUDE.md`: a PR lane (worktree + branch + PR)
+for structural files, and a plugin lane (direct commits to main via the
+github-sync plugin, or the `vault-autosync.{sh,ps1}` sweeper; the two are
 mutually exclusive opt-in/default sync mechanisms) for
-vault content — but nothing enforced the PR lane.
+vault content. Nothing enforced the PR lane.
 A structural edit committed directly to luna `main` passed every luna hook
 (observed risk: luna PR #33 used a worktree voluntarily).
 
@@ -32,7 +32,7 @@ notes, clips) to main keep flowing untouched.
 
 ## luna opt-in snippet
 
-Add to luna's `.pre-commit-config.yaml` (himmel is private — pre-commit
+Add to luna's `.pre-commit-config.yaml` (himmel is private, so pre-commit
 clones with the operator's normal git credentials):
 
 ```yaml
@@ -81,7 +81,7 @@ git restore --staged docs/probe.md && rm docs/probe.md
 
 - The hook needs bash (Git for Windows ships it; pre-commit resolves the
   `#!/usr/bin/env bash` shebang for `language: script` hooks).
-- pre-commit caches the himmel clone keyed by `(repo, rev)` — gate fixes in
+- pre-commit caches the himmel clone keyed by `(repo, rev)`, so gate fixes in
   himmel reach luna only after bumping `rev`.
 - `main` is hardcoded as the protected branch (shared
   `scripts/guardrails/lib.sh` predicate; both repos use `main`).
