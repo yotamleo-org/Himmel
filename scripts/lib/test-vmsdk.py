@@ -382,7 +382,7 @@ class TestClone(unittest.TestCase):
 
     def test_clone_refuses_existing_dest(self):
         vm = self._vm()
-        with mock.patch.object(vm, "run", return_value=(0, "")):  # test -e => exists
+        with mock.patch.object(vm, "run", side_effect=lambda cmd, **kw: (0, "") if cmd.startswith("test -e") else (128, "")):  # exists, not a git checkout
             with self.assertRaises(vmsdk.VMError):
                 vm.clone_himmel()
 
@@ -414,6 +414,111 @@ class TestClone(unittest.TestCase):
         self.assertIn(r'"C:\Program Files\Git\bin\bash.exe" -lc', joined)
         self.assertIn("x-access-token:TKN@github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the token-clone-URL assertion
         self.assertIn("set-url origin https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the origin-rewrite assertion
+
+
+class TestAfterReportClones(unittest.TestCase):
+    """himmel-ar-<n> resolve from the registered VM's NAT rule; user/pass come from ubuntu_new."""
+
+    # Taken from `VBoxManage showvminfo himmel-ar-2 --machinereadable` on the station:
+    # the name and Forwarding lines only.
+    SHOWVMINFO_AR2 = 'name="himmel-ar-2"\nForwarding(0)="ssh,tcp,127.0.0.1,2233,,22"\n'
+
+    def setUp(self):
+        envp = mock.patch.dict(os.environ, {"ubuntu_vm_user": "osboxes", "ubuntu_vm_pass": "pw"}, clear=False)
+        envp.start(); self.addCleanup(envp.stop)
+        dp = mock.patch.object(vmsdk, "_load_dotenv_into_env")
+        dp.start(); self.addCleanup(dp.stop)
+
+    def _ar(self, name="himmel-ar-2", info=None, ar_max=None):
+        env = {} if ar_max is None else {"HIMMEL_VM_AR_MAX": str(ar_max)}
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value=info or self.SHOWVMINFO_AR2):
+            return vmsdk.VM(name)
+
+    def test_ar_clone_resolves_port_from_nat_rule_and_user_from_ubuntu_new(self):
+        vm = self._ar()
+        self.assertEqual(vm.port, 2233)
+        self.assertEqual(vm.host, "127.0.0.1")
+        self.assertEqual(vm.os, "ubuntu")
+        self.assertEqual(vm.user, "himmel")
+        self.assertEqual(vm.password, "pw")
+
+    def test_ar_clone_beyond_max_is_unknown(self):
+        with self.assertRaises(vmsdk.VMError):
+            self._ar("himmel-ar-3", ar_max=2)
+
+    def test_ar_clone_zero_and_non_canonical_numbers_are_unknown(self):
+        for bad in ("himmel-ar-0", "himmel-ar-x", "himmel-ar-02"):
+            with self.subTest(bad), self.assertRaises(vmsdk.VMError):
+                self._ar(bad)
+
+    def test_ar_clone_without_ssh_rule_fails_loudly(self):
+        with self.assertRaises(vmsdk.VMError) as cm:
+            self._ar(info='name="himmel-ar-2"\n')
+        self.assertIn("NAT", str(cm.exception))
+
+    def test_ar_clone_unregistered_vm_fails_loudly(self):
+        with mock.patch.object(vmsdk.vbox, "_info", side_effect=vmsdk.vbox.VBoxError("showvminfo failed")):
+            with self.assertRaises(vmsdk.VMError):
+                vmsdk.VM("himmel-ar-2")
+
+
+class TestCloneOnExistingCheckout(unittest.TestCase):
+    """clone onto a leftover ~/himmel checkout fetches and checks out the ref."""
+
+    def setUp(self):
+        envp = mock.patch.dict(os.environ,
+            {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p", "himmel_github_token_vm": "TKN"}, clear=False)
+        envp.start(); self.addCleanup(envp.stop)
+        dp = mock.patch.object(vmsdk, "_load_dotenv_into_env")
+        dp.start(); self.addCleanup(dp.stop)
+
+    def _run_with(self, git_repo, dirty=False):
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            if cmd.startswith("test -e"):
+                return (0, "")
+            if "rev-parse --is-inside-work-tree" in cmd:
+                return (0, "true") if git_repo else (128, "fatal: not a git repository")
+            if "status --porcelain" in cmd:
+                return (0, " M README.md\n" if dirty else "")
+            return (0, "")
+        return calls, fake_run
+
+    def test_existing_git_checkout_is_fetched_and_checked_out(self):
+        vm = vmsdk.VM("ubuntu_new")
+        calls, fake_run = self._run_with(git_repo=True)
+        with mock.patch.object(vm, "run", side_effect=fake_run):
+            dest = vm.clone_himmel(ref="dca4d345640a0ce0030fe626f1ae011f957634a1")
+        self.assertEqual(dest, "~/himmel")
+        joined = "\n".join(calls)
+        self.assertIn(" fetch ", joined)
+        self.assertIn("checkout --detach FETCH_HEAD", joined)
+        self.assertNotIn(" clone ", joined)
+
+    def test_existing_non_git_dest_still_refuses(self):
+        vm = vmsdk.VM("ubuntu_new")
+        _, fake_run = self._run_with(git_repo=False)
+        with mock.patch.object(vm, "run", side_effect=fake_run):
+            with self.assertRaises(vmsdk.VMError):
+                vm.clone_himmel()
+
+    def test_existing_dirty_checkout_still_refuses(self):
+        vm = vmsdk.VM("ubuntu_new")
+        calls, fake_run = self._run_with(git_repo=True, dirty=True)
+        with mock.patch.object(vm, "run", side_effect=fake_run):
+            with self.assertRaises(vmsdk.VMError):
+                vm.clone_himmel()
+        self.assertNotIn("checkout", "\n".join(calls))
+
+    def test_existing_checkout_never_persists_the_token(self):
+        vm = vmsdk.VM("ubuntu_new")
+        calls, fake_run = self._run_with(git_repo=True)
+        with mock.patch.object(vm, "run", side_effect=fake_run):
+            vm.clone_himmel(ref="main")
+        self.assertTrue([c for c in calls if " fetch " in c and "x-access-token:TKN@" in c])
+        self.assertFalse([c for c in calls if "set-url" in c and "TKN" in c])
 
 
 class TestProvisionE2E(unittest.TestCase):
