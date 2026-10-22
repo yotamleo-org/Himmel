@@ -777,10 +777,11 @@ if [ -n "${N1:-}" ]; then
       waited=0
       while [ ! -e "$N1/.gl-started" ] && [ "$waited" -lt 100 ]; do sleep 0.05; waited=$((waited + 1)); done
       [ -e "$N1/.gl-started" ] && { sleep 0.5; printf '{"external-write":true}\n' > "$N1/data.json"; }
-    ) & disown
+    ) &
+    n1_writer=$!
     n1_out=$(cd "$N1" && FAKE_GITLEAKS_LOG="$N1/.gl-log" FAKE_GITLEAKS_HOLD="$N1/.gl-started" git commit -qm "feat: scan with concurrent writer" 2>&1)
     n1_rc=$?
-    wait 2>/dev/null
+    wait "$n1_writer" 2>/dev/null
     check "N1: gitleaks is called on the staged set by the wrapper" "$(cat "$N1/.gl-log" 2>/dev/null)" "git --pre-commit --staged --redact --verbose --no-banner"
     check "N1: a concurrent write during the gitleaks scan does not fail the commit" "$n1_rc" "0"
     [ "$n1_rc" -ne 0 ] && echo "  N1 output: $n1_out"
@@ -796,12 +797,12 @@ if [ -n "${N2:-}" ]; then
     fails=$((fails+1))
   else
     # Own copy of the stub so the baked path can be deleted after install.
-    n2_gl=$(mktemp -d "${TMPDIR:-/tmp}/himmel-n2-gl.XXXXXX") || { echo "FAIL - could not allocate N2 gl dir"; fails=$((fails+1)); }
+    n2_gl=$(mktemp -d "${TMPDIR:-/tmp}/himmel-n2-gl.XXXXXX") || { echo "FAIL - could not allocate N2 gl dir"; exit 1; }
     printf '%s\n' "$n2_gl" >>"$FIXTURE_LIST"
     cp "$GLBIN/gitleaks" "$n2_gl/gitleaks"
     (cd "$N2" && PATH="$n2_gl:$PATH" bash "$N2/scripts/hooks/install-nostash-hooks.sh" >/dev/null) || { echo "FAIL - N2 install-nostash-hooks.sh failed"; fails=$((fails+1)); }
     rm -f "$n2_gl/gitleaks"
-    n2_minbin=$(mktemp -d "${TMPDIR:-/tmp}/himmel-n2-minbin.XXXXXX") || { echo "FAIL - could not allocate N2 minbin"; fails=$((fails+1)); }
+    n2_minbin=$(mktemp -d "${TMPDIR:-/tmp}/himmel-n2-minbin.XXXXXX") || { echo "FAIL - could not allocate N2 minbin"; exit 1; }
     printf '%s\n' "$n2_minbin" >>"$FIXTURE_LIST"
     for b in git bash env sh cat sleep mkdir dirname touch rm ls true sed grep awk ssh-keygen xargs python python3; do
       bin_path=$(type -P "$b" 2>/dev/null) && ln -sf "$bin_path" "$n2_minbin/$b"
