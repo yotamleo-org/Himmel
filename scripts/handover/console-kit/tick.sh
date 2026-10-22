@@ -79,6 +79,11 @@ per-row suite, case, sha and run: scripts/observability/suite-flake-summary.sh
 console-wait's action key, so it wakes nothing. Env seams: SUITE_FLAKE_LEDGER,
 SUITE_FLAKE_REPO_ID, SUITE_FLAKE_TAIL_ROWS.
 
+cachettl=<leg>[,<leg>] names live legs idle at least 50 minutes since the last
+transcript row with no armed background task or Monitor. Absent when none qualify
+or the transcript cannot be read. TICK_PROJECTS_DIR overrides transcript roots;
+otherwise both native and claudex roots are read. Advisory: no waiter action change.
+
 parked=<leg>:<age>m[,...] (HIMMEL-2563) follows vmrun= (and flakes= when present), comes
 before spare= when present, and is ABSENT
 unless a leg's newest trust-ledger row (scripts/trust/shadow-ledger.mjs) is a
@@ -605,6 +610,55 @@ leg_forked() {
     grep -v '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
 }
 
+# leg_cachettl <candidate names, comma list>: only warn on a known idle
+# transcript with no running wait. Mirror guard-leg-cache-ttl.sh's task signal;
+# factoring it out would change the Stop hook as well as this read-only view.
+leg_cachettl() {
+    local dir cand f newest="" stamp epoch running
+    local dirs=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
+    if [ -n "${TICK_PROJECTS_DIR:-}" ]; then
+        dirs=("$TICK_PROJECTS_DIR")
+    elif [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude-codex" ]; then
+        dirs+=("$CLAUDE_CONFIG_DIR/projects")
+    fi
+    for dir in "${dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        for cand in ${1//,/ }; do
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
+            done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
+        done
+    done
+    [ -n "$newest" ] || return 1
+    stamp="$(tail -n 1 "$newest" | jq -r '.timestamp // empty' 2>/dev/null)" || return 1  # swallow-ok: unreadable activity cannot establish an idle leg
+    if [ -n "$stamp" ]; then
+        epoch="$(date -d "$stamp" +%s 2>/dev/null)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: an invalid timestamp cannot establish idleness
+    else
+        # Title/cost rows have no timestamp; their write time is still activity.
+        epoch="$(stat -c %Y "$newest" 2>/dev/null)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: missing write time cannot establish idleness
+    fi
+    [ $(( $(date +%s) - epoch )) -ge 3000 ] || return 1
+    running="$(jq -R -r '
+        fromjson? // empty
+        | ( (.toolUseResult? | objects | (.backgroundTaskId // .taskId) | strings | "S " + .),
+            (.toolUseResult? | objects | .task_id | strings | "E " + .),
+            ( ( if .type == "user" then (.message.content | strings)
+                elif .type == "queue-operation" then (.content | strings)
+                elif .type == "attachment" then (.attachment.prompt? | strings)
+                else empty end )
+              | split("<task-notification>")[1:][]
+              | select(contains("<status>"))
+              | capture("<task-id>(?<id>[^<]+)</task-id>").id
+              | "E " + . ) )
+    ' "$newest" 2>/dev/null | awk '
+        $1 == "S" { s[$2] = 1 }
+        $1 == "E" { e[$2] = 1 }
+        END { n = 0; for (k in s) if (!(k in e)) n++; print n }
+    ')" || return 1
+    [ "$running" = 0 ]
+}
+
 # leg_effort_mismatch <doc> <label>: succeeds only when the effort the
 # console asked for (the LEG_EFFORT export in the launch-<label>.sh gen-briefs.py
 # writes beside the leg doc) differs from the effort= token on the leg's newest LIVE
@@ -623,6 +677,7 @@ legs_summary=""
 tails_summary=""
 acts_summary=""
 effort_summary=""
+cachettl_summary=""
 leg_docmap=""
 # label<TAB>lock status<TAB>candidate session names, one line per leg (procs= below).
 leg_candmap=""
@@ -739,6 +794,12 @@ for leg in $LEGS_SPLIT; do
             fi
         fi
     fi
+    case "$lock_status" in
+        FRESH|STALE|NOLOCK)
+            if [ "$tail_status" != WRAPPED ] && leg_cachettl "$leg_cands"; then
+                cachettl_summary="$(csv_add "$cachettl_summary" "$label")"
+            fi ;;
+    esac
     legs_summary="$(csv_add "$legs_summary" "$label:$leg_label_state")"
     tails_summary="$(csv_add "$tails_summary" "$label:$tail_status")"
     leg_docmap="$leg_docmap$label=$leg_doc"$'\n'
@@ -2253,6 +2314,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'subscription usage budget: %s\n' "$bank"
     printf 'fill: %s\n' "$fill"
     printf 'worker-session tails: %s\n' "$tails_summary"
+    [ -z "$cachettl_summary" ] || printf 'cachettl: %s\n' "$cachettl_summary"
     printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
     printf 'inbox size/cursor: %s\n' "$inbox_summary"
     printf 'tick monitor: %s\n' "$tick_status"
@@ -2326,6 +2388,7 @@ else
     compact_field bank "$bank"
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
+    compact_field cachettl "$cachettl_summary"
     compact_field acts "$acts_summary"
     compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
