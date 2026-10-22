@@ -628,7 +628,7 @@ export function registerCreate(program: Command): void {
         let labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
         let residual: ResidualPlan | undefined;
         if (options.residualOf !== undefined) {
-          residual = await planResidual(options.project ?? projectKey(), { ...options, residualOf: options.residualOf });
+          residual = await planResidual(options.project ?? projectKey(), { ...options, sector, residualOf: options.residualOf });
           if (residual.duplicateOf) {
             const dup = residual.duplicateOf;
             const head = markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`);

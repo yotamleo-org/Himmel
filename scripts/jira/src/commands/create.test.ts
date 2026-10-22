@@ -834,8 +834,8 @@ describe('HIMMEL-6924 residual rank slots', () => {
         { name: 'v1.1.4', released: false },
       ];
       if (path.startsWith('/issue/HIMMEL-50')) return parent;
-      if (path.endsWith('/context')) return { values: [{ id: '1' }], isLast: true };
-      if (path.endsWith('/option')) return { values: [{ value: 'Ship loop' }, { value: 'Other' }], isLast: true };
+      if (path.includes('/context?')) return { values: [{ id: '1' }], isLast: true };
+      if (path.includes('/option?')) return { values: [{ value: 'Ship loop' }, { value: 'Other' }], isLast: true };
       const found = residents.find((i) => path.startsWith(`/issue/${i.key}?`));
       if (found) return found;
       if (path.startsWith('/search/jql')) {
@@ -879,7 +879,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
       process.env.JIRA_SECTOR_FIELD = 'customfield_rank';
       for (const r of residents) r.fields.issuelinks.push({ type: { name: 'Relates' }, outwardIssue: { key: parent.key } });
     }
-    await file('--fu-class', 'escape');
+    await file('--fu-class', 'escape', ...(key === 'sector' ? ['--sector', 'ship loop'] : []));
     expect(mockRequest.mock.calls.find((c) => c[0] === 'PUT')?.[1]).toBe('/issue/HIMMEL-900');
     if (key === 'sector') {
       const query = mockRequest.mock.calls.find((c) => c[1].includes('/search/jql'))?.[1];
