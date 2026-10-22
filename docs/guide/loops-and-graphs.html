@@ -80,6 +80,7 @@
   .sw.gated { background: var(--amber-soft); border-color: var(--amber); }
   .sw.off { background: transparent; border-color: var(--faint); border-style: dashed; }
   .sw.blocked { background: var(--red-soft); border-color: var(--red); }
+  .sw.relaxed { background: var(--line); border-color: var(--faint); }
 
   /* explorer layout */
   .explorer { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
@@ -110,11 +111,13 @@
   .node.gated circle { fill: var(--amber-soft); stroke: var(--amber); }
   .node.off circle { fill: var(--surface); stroke: var(--faint); stroke-dasharray: 4 4; }
   .node.blocked circle { fill: var(--red-soft); stroke: var(--red); }
+  .node.relaxed circle { fill: var(--line); stroke: var(--faint); }
   .node .ix { font-size: 12px; font-weight: 700; fill: var(--accent-ink); }
   .node.auto .ix { fill: var(--surface); }
   .node.off .ix { fill: var(--faint); }
   .node.blocked .ix { fill: var(--red); }
   .node.gated .ix { fill: var(--amber); }
+  .node.relaxed .ix { fill: var(--muted); }
   .node.changed circle { filter: drop-shadow(0 0 6px var(--amber)); }
   .node { cursor: pointer; }
   .node:focus { outline: none; }
@@ -129,6 +132,7 @@
   .step.gated .dot { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
   .step.off .dot { border-color: var(--faint); border-style: dashed; color: var(--faint); }
   .step.blocked .dot { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+  .step.relaxed .dot { border-color: var(--faint); color: var(--muted); background: var(--line); }
   .step b { font-weight: 600; }
   .step .who { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; margin-left: 8px; color: var(--faint); }
   .step.auto .who { color: var(--accent-ink); }
@@ -155,6 +159,7 @@
   .where.policy { background: var(--red-soft); color: var(--red); }
   .where.env { background: var(--green-soft); color: var(--green); }
   .where.wizard { background: var(--amber-soft); color: var(--amber); }
+  .where.sim { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
   select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; max-width: 170px; }
   .switch { position: relative; width: 42px; height: 24px; flex: none; }
   .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
@@ -286,6 +291,7 @@
       <li><span class="sw gated" aria-hidden="true"></span>waits on a gate</li>
       <li><span class="sw off" aria-hidden="true"></span>not running</li>
       <li><span class="sw blocked" aria-hidden="true"></span>cannot pass with these settings</li>
+      <li><span class="sw relaxed" aria-hidden="true"></span>relaxed: skipped on purpose</li>
     </ul>
 
     <!-- no-JS fallback: generated from the loops and explain data in the script below, at the default settings -->
@@ -296,14 +302,18 @@
         <p class="blurb">/afk-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_AFK switches which steps run without asking. <span class="loop-meta">source: afk-mode</span></p>
         <ol class="steps">
           <li class="step auto"><span class="dot" aria-hidden="true">1</span><div><div><b>Queue lock</b> <span class="sub">one run per queue</span><span class="who">on its own</span></div><p>Taken first, so a second launch on the same queue stops instead of doubling the work.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">2</span><div><div><b>Plan</b> <span class="sub">from the brief</span><span class="who">on its own</span></div><p>A written plan for the ticket, committed beside the handover.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">3</span><div><div><b>Implement</b> <span class="sub">agents</span><span class="who">you</span></div><p>HIMMEL_AFK is off: the afk initiative profile is not active.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">4</span><div><div><b>Review</b> <span class="sub">/pr-check</span><span class="who">you</span></div><p>The free tier runs; with no free critic configured it falls back to the codex critic where that lane is set up, else a Claude review.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">5</span><div><div><b>Fix and re-review</b> <span class="sub">until clean</span><span class="who">on its own</span></div><p>Review rounds repeat until no critical finding is left.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">6</span><div><div><b>Pull request</b> <span class="sub">opened</span><span class="who">you</span></div><p>Waits for you.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">7</span><div><div><b>Merge</b> <span class="sub">private repo</span><span class="who">you</span></div><p>Not enabled: the run stops at the pull request. With ARMAUTOMERGE off, merge-on-green refuses, so a merge is a plain squash merge.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">8</span><div><div><b>Ticket</b> <span class="sub">tracker</span><span class="who">you</span></div><p>Waits for you.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">9</span><div><div><b>Handover</b> <span class="sub">next session</span><span class="who">you</span></div><p>Writes the next session’s brief and files follow-up tickets.</p></div></li>
+          <li class="step gated"><span class="dot" aria-hidden="true">2</span><div><div><b>Ticket</b> <span class="sub">start from one</span><span class="who">gate</span></div><p>Every commit subject and pull request title carries its ID; the commit-message gate refuses one without it. Extend an existing ticket before filing a new one.</p></div></li>
+          <li class="step auto"><span class="dot" aria-hidden="true">3</span><div><div><b>Plan</b> <span class="sub">from the brief</span><span class="who">on its own</span></div><p>A written plan for the ticket, committed beside the handover.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">4</span><div><div><b>Implement</b> <span class="sub">agents</span><span class="who">you</span></div><p>HIMMEL_AFK is off: the afk initiative profile is not active.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">5</span><div><div><b>Review</b> <span class="sub">/pr-check</span><span class="who">you</span></div><p>The free tier runs; with no free critic configured it falls back to the codex critic where that lane is set up, else a Claude review.</p></div></li>
+          <li class="step auto"><span class="dot" aria-hidden="true">6</span><div><div><b>Fix and re-review</b> <span class="sub">until clean</span><span class="who">on its own</span></div><p>Review rounds repeat until no critical finding is left.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">7</span><div><div><b>Pull request</b> <span class="sub">opened</span><span class="who">you</span></div><p>Waits for you.</p></div></li>
+          <li class="step gated"><span class="dot" aria-hidden="true">8</span><div><div><b>CodeRabbit</b> <span class="sub">on the pull request</span><span class="who">gate</span></div><p>Reviews the pull request once it opens and posts threads and a commit status. Every thread it posts must be resolved before the merge: fix it, or reply with why and resolve it.</p></div></li>
+          <li class="step gated"><span class="dot" aria-hidden="true">9</span><div><div><b>Review gate</b> <span class="sub">at the head</span><span class="who">gate</span></div><p>Waits until every hard reviewer (codex) passes at the head and no reviewer has an open finding.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">10</span><div><div><b>CI release</b> <span class="sub">ci:go, planned</span><span class="who">not running</span></div><p>Planned, opt-in per repository. Not opted in: CI runs on every push, as today.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">11</span><div><div><b>Merge</b> <span class="sub">private repo</span><span class="who">you</span></div><p>Not enabled: the run stops at the pull request. With ARMAUTOMERGE off, merge-on-green refuses, so a merge is a plain squash merge.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">12</span><div><div><b>Close ticket</b> <span class="sub">tracker</span><span class="who">you</span></div><p>A merge does not close the ticket by itself: if the pull request finishes it, you move it to Done.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">13</span><div><div><b>Handover</b> <span class="sub">next session</span><span class="who">you</span></div><p>Writes the next session’s brief and files follow-up tickets.</p></div></li>
         </ol>
       </details>
       <details class="sloop">
@@ -346,6 +356,12 @@
           <dt class="mono">CR_CLAUDE_AGENTS</dt><dd>Adds a fan-out of Claude reviewer agents inside /pr-check.</dd>
           <dt class="mono">CR_REQUIRE_CROSS_MODEL</dt><dd>Gate policy. When on, the review-owed marker clears only after a critic from a different model family has passed the exact commit, so a Claude-only review is not enough.</dd>
           <dt class="mono">CR_FLOOR_FALLBACK</dt><dd>Gate policy. With the cross-model rule on, "claude-only" lets a fresh Claude review with no shared context stand in when every other critic is out of quota. It is never counted as cross-model.</dd>
+          <dt class="mono">codex mode</dt><dd>The codex critic’s row in critics.json. As shipped it is hard and required: it must pass at the head, and absent on a machine it still counts, as unavailable, which holds the merge.</dd>
+          <dt class="mono">claude mode</dt><dd>The Claude API critic’s row. As shipped it is hard, but absent while the Claude API lane is off, so it leaves the set. Change any mode for one machine in critics.local.json.</dd>
+          <dt class="mono">coderabbit mode</dt><dd>The CodeRabbit app’s row. As shipped it is best-effort: an open thread holds the merge, but a missing or rate-limited review is relaxed to a NOTE. Absent means the app is not armed here.</dd>
+          <dt class="mono">review</dt><dd>Set "review": "no_code_review" in critics.json to say on purpose that no reviewer gates this repo, so CI alone decides. Without it, a set with no hard reviewer left is a config error and the gate refuses.</dd>
+          <dt class="mono">CodeRabbit right now</dt><dd>Not a setting: try what a rate limit does. A best-effort CodeRabbit is relaxed and the head moves on; a hard one holds the merge.</dd>
+          <dt class="mono">CI release</dt><dd>Planned, opt-in per repository. The heavy CI jobs wait for the ci:go label, which the station adds once the review gate passes at the head. Off, CI runs on every push. It never lets anything merge.</dd>
           <dt class="mono">HIMMEL_AFK</dt><dd>Switches sessions to the afk initiative profile, read from HIMMEL_INITIATIVE_AFK instead of HIMMEL_INITIATIVE.</dd>
           <dt class="mono">HIMMEL_INITIATIVE_AFK</dt><dd>The afk step list. "all" adds implementing and merging to the daytime set. It has no effect unless HIMMEL_AFK is on.</dd>
           <dt class="mono">ARMAUTOMERGE</dt><dd>Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.</dd>
@@ -421,6 +437,38 @@
               <div class="setting-row"><label for="s-crf">CR_FLOOR_FALLBACK</label>
                 <select id="s-crf" data-set="floor"><option value="unset">unset</option><option value="claude-only">claude-only</option></select></div>
               <span class="where policy">policy</span>
+            </div>
+            <!-- source: docs/configuration.md Reviewer modes; scripts/cr/critics.json; docs/daily-loop.md step 7a -->
+            <div class="setting">
+              <div class="setting-row"><label for="s-mcx">codex mode</label>
+                <select id="s-mcx" data-set="mCodex"><option value="hard">hard</option><option value="best-effort">best-effort</option><option value="absent">absent</option></select></div>
+              <span class="where conf">critics.local.json</span>
+            </div>
+            <div class="setting">
+              <div class="setting-row"><label for="s-mcl">claude mode</label>
+                <select id="s-mcl" data-set="mClaude"><option value="hard">hard</option><option value="best-effort">best-effort</option><option value="absent">absent</option></select></div>
+              <span class="where conf">critics.local.json</span>
+            </div>
+            <div class="setting">
+              <div class="setting-row"><label for="s-mcr">coderabbit mode</label>
+                <select id="s-mcr" data-set="mRabbit"><option value="hard">hard</option><option value="best-effort">best-effort</option><option value="absent">absent</option></select></div>
+              <span class="where conf">critics.local.json</span>
+            </div>
+            <div class="setting">
+              <div class="setting-row"><label for="s-rev">review</label>
+                <select id="s-rev" data-set="review"><option value="unset">unset</option><option value="no_code_review">no_code_review</option></select></div>
+              <span class="where conf">critics.json</span>
+            </div>
+            <div class="setting">
+              <div class="setting-row"><label for="s-rl">CodeRabbit right now</label>
+                <select id="s-rl" data-set="rabbit"><option value="available">available</option><option value="rate-limited">rate-limited</option></select></div>
+              <span class="where sim">what if</span>
+            </div>
+            <!-- source: docs/daily-loop.md "CI release" (planned); docs/glossary.md CI release -->
+            <div class="setting">
+              <div class="setting-row"><label for="s-rel">CI release<span class="soon">planned</span></label>
+                <span class="switch"><input type="checkbox" id="s-rel" data-set="ciRelease" role="switch"><span></span></span></div>
+              <span class="where sim">repository variable</span>
             </div>
           </fieldset>
 
@@ -551,7 +599,8 @@
   'use strict';
   var defaults = { init: 'off', ticket: '1', handover: 'unset', nudge: false, crProfile: 'unset', crAgents: false,
     crossModel: false, floor: 'unset', overnight: false, initOvernight: 'off', automerge: false,
-    vault: false, vm: 'local', graphmap: false, backend: 'claude-cli' };
+    vault: false, vm: 'local', graphmap: false, backend: 'claude-cli',
+    mCodex: 'hard', mClaude: 'absent', mRabbit: 'best-effort', review: 'unset', rabbit: 'available', ciRelease: false };
   var s = {};
   var last = null;
 
@@ -579,6 +628,36 @@
     return { st: has('prcheck') ? 'auto' : 'manual', note: who };
   }
 
+  // Reviewer modes: docs/configuration.md "Reviewer modes"; daily-loop step 7a.
+  function gateState() {
+    if (s.review === 'no_code_review' || s.crProfile === 'none') {
+      return { st: 'relaxed', note: 'review: no_code_review (or CR_PROFILE=none) says no reviewer gates this repo. The gate prints a NOTE and CI alone decides.' };
+    }
+    if (s.mCodex === 'absent') {
+      return { st: 'blocked', note: 'codex is required: absent on this machine it counts as unavailable, and an unavailable hard reviewer holds the merge, with one ALERT per head.' };
+    }
+    var hard = [['codex', s.mCodex], ['claude', s.mClaude], ['coderabbit', s.mRabbit]]
+      .filter(function (r) { return r[1] === 'hard'; }).map(function (r) { return r[0]; });
+    if (!hard.length) {
+      return { st: 'blocked', note: 'No hard reviewer is left and the config does not say review: no_code_review. That is a config error: the gate refuses until a reviewer is hard again or the value is set.' };
+    }
+    var limited = s.mRabbit !== 'absent' && s.rabbit === 'rate-limited';
+    if (limited && s.mRabbit === 'hard') {
+      return { st: 'blocked', note: 'CodeRabbit is a hard reviewer and cannot review this head, so the merge holds until it does.' };
+    }
+    return { st: 'gated', note: 'Waits until every hard reviewer (' + hard.join(', ') + ') passes at the head and no reviewer has an open finding.' + (limited ? ' A rate-limited best-effort CodeRabbit is relaxed: a NOTE, not a hold.' : '') };
+  }
+
+  function rabbitNode() {
+    var nd = { k: 'coderabbit', l: 'CodeRabbit', sub: 'on the pull request' };
+    if (s.review === 'no_code_review' || s.crProfile === 'none') { nd.st = 'relaxed'; nd.n = 'No reviewer gates this repo, so CodeRabbit holds nothing here.'; }
+    else if (s.mRabbit === 'absent') { nd.st = 'off'; nd.n = 'Not in the set: the CodeRabbit app is not armed here, so its gate is a no-op.'; }
+    else if (s.rabbit === 'rate-limited' && s.mRabbit === 'hard') { nd.st = 'blocked'; nd.n = 'Hard and rate limited: the head holds, with one ALERT per head, until CodeRabbit reviews it. Restore the lane, or set it to best-effort in critics.local.json for the duration.'; }
+    else if (s.rabbit === 'rate-limited') { nd.st = 'relaxed'; nd.n = 'Rate limited and best-effort, so it is relaxed: a NOTE, and the head moves on once the hard reviewers pass. If it posts later, its threads still have to be resolved before the merge.'; }
+    else { nd.st = 'gated'; nd.n = 'Reviews the pull request once it opens and posts threads and a commit status. Every thread it posts must be resolved before the merge: fix it, or reply with why and resolve it.' + (s.mRabbit === 'hard' ? ' As a hard reviewer it must also pass at the head.' : ''); }
+    return nd;
+  }
+
   function mergeNote() {
     return s.automerge ? 'Merges through merge-on-green: it waits for CI to pass and for branch protection to be confirmed, then merges.'
       : 'With ARMAUTOMERGE off, merge-on-green refuses, so a merge is a plain squash merge.';
@@ -591,15 +670,26 @@
       nodes: function () {
         var r = reviewState();
         var off = !s.overnight;
+        var rb = r.st === 'blocked';
+        var g = gateState();
+        var gb = rb || g.st === 'blocked';
+        var rabbit = rabbitNode();
+        if (rb) rabbit.st = 'off';
         return [
           { k: 'lock', l: 'Queue lock', sub: 'one run per queue', st: 'auto', n: 'Taken first, so a second launch on the same queue stops instead of doubling the work.' },
+          { k: 'ticket', l: 'Ticket', sub: 'start from one', st: s.ticket === '1' ? 'gated' : 'manual', n: s.ticket === '1' ? 'Every commit subject and pull request title carries its ID; the commit-message gate refuses one without it. Extend an existing ticket before filing a new one.' : 'TICKET_ID_REQUIRED is 0: commit subjects need no ticket ID, so a ticket is up to you.' },
           { k: 'plan', l: 'Plan', sub: 'from the brief', st: 'auto', n: 'A written plan for the ticket, committed beside the handover.' },
           { k: 'impl', l: 'Implement', sub: 'agents', st: off ? 'manual' : (has('execute') ? 'auto' : 'manual'), n: off ? 'HIMMEL_AFK is off: the afk initiative profile is not active.' : (has('execute') ? 'The execute step runs unasked.' : 'Not in the afk step list; it waits for you.') },
           { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : (off ? 'manual' : (has('prcheck') ? 'auto' : 'manual')), n: r.note },
           { k: 'fix', l: 'Fix and re-review', sub: 'until clean', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Review rounds repeat until no critical finding is left.' },
           { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'off' : (!off && has('pr') ? 'auto' : 'manual'), n: !off && has('pr') ? 'Opened unasked.' : 'Waits for you.' },
-          { k: 'merge', l: 'Merge', sub: 'private repo', st: r.st === 'blocked' ? 'off' : (!off && has('merge') ? 'auto' : 'manual'), n: (!off && has('merge') ? 'The merge step authorizes an unattended merge. ' : 'Not enabled: the run stops at the pull request. ') + mergeNote() },
-          { k: 'ticket', l: 'Ticket', sub: 'tracker', st: !off && has('ticket') ? 'auto' : 'manual', n: !off && has('ticket') ? 'Moved unasked.' : 'Waits for you.' },
+          rabbit,
+          { k: 'gate', l: 'Review gate', sub: 'at the head', st: rb ? 'off' : g.st, n: g.note },
+          { k: 'release', l: 'CI release', sub: 'ci:go, planned', st: s.ciRelease && !gb ? 'auto' : 'off', n: !s.ciRelease ? 'Planned, opt-in per repository. Not opted in: CI runs on every push, as today.'
+            : gb ? 'Planned. ci:go waits for the review gate, which cannot pass with these settings, so the heavy CI jobs do not start.'
+            : 'Planned. Once the review gate passes at the head and the cheap checks are green, the station adds the ci:go label, which starts the heavy CI jobs. It never merges anything.' },
+          { k: 'merge', l: 'Merge', sub: 'private repo', st: gb ? 'off' : (!off && has('merge') ? 'auto' : 'manual'), n: gb ? 'The review gate cannot pass with these settings, so nothing merges.' : (!off && has('merge') ? 'The merge step authorizes an unattended merge. ' : 'Not enabled: the run stops at the pull request. ') + mergeNote() },
+          { k: 'close', l: 'Close ticket', sub: 'tracker', st: gb ? 'off' : (!off && has('ticket') ? 'auto' : 'manual'), n: gb ? 'Nothing merges with these settings, so the ticket stays open.' : !off && has('ticket') ? 'Moved to Done unasked when the pull request finishes the ticket, with the PR number and merge commit noted on it.' : 'A merge does not close the ticket by itself: if the pull request finishes it, you move it to Done.' },
           { k: 'handover', l: 'Handover', sub: 'next session', st: !off && has('handover') ? 'auto' : 'manual', n: 'Writes the next session’s brief and files follow-up tickets.' }
         ];
       } },
@@ -659,6 +749,12 @@
     vault: { t: 'companion vault', d: 'Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.' },
     vm: { t: 'vm.mode', d: 'Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.' },
     graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh, the weekly semantic refresh and the 6-hourly publish of himmel’s own graph.' },
+    mCodex: { t: 'codex mode', d: 'The codex critic’s row in critics.json. As shipped it is hard and required: it must pass at the head, and absent on a machine it still counts, as unavailable, which holds the merge.' },
+    mClaude: { t: 'claude mode', d: 'The Claude API critic’s row. As shipped it is hard, but absent while the Claude API lane is off, so it leaves the set. Change any mode for one machine in critics.local.json.' },
+    mRabbit: { t: 'coderabbit mode', d: 'The CodeRabbit app’s row. As shipped it is best-effort: an open thread holds the merge, but a missing or rate-limited review is relaxed to a NOTE. Absent means the app is not armed here.' },
+    review: { t: 'review', d: 'Set "review": "no_code_review" in critics.json to say on purpose that no reviewer gates this repo, so CI alone decides. Without it, a set with no hard reviewer left is a config error and the gate refuses.' },
+    rabbit: { t: 'CodeRabbit right now', d: 'Not a setting: try what a rate limit does. A best-effort CodeRabbit is relaxed and the head moves on; a hard one holds the merge.' },
+    ciRelease: { t: 'CI release', d: 'Planned, opt-in per repository. The heavy CI jobs wait for the ci:go label, which the station adds once the review gate passes at the head. Off, CI runs on every push. It never lets anything merge.' },
     backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget) or ollama (local GPU). Any other value is refused before work starts.' }
   };
 
@@ -677,7 +773,7 @@
     if (text !== undefined) e.textContent = text;
     return e;
   }
-  var whoLabel = { auto: 'on its own', manual: 'you', gated: 'gate', off: 'not running', blocked: 'blocked' };
+  var whoLabel = { auto: 'on its own', manual: 'you', gated: 'gate', off: 'not running', blocked: 'blocked', relaxed: 'relaxed' };
 
   function renderTabs() {
     var t = document.getElementById('tabs');

@@ -387,7 +387,9 @@ PY
   # GRAPHIFY_NO_AUTO_REFRESH=1: no skill-dir rewrite from a cadence run.
   export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e
-  graphify extract "$SCRATCH" --backend "$GRAPHIFY_BACKEND" ${EXTRA[@]+"${EXTRA[@]}"} --no-cluster > "$WORK/extract.log" 2>&1
+  # env -u GRAPHIFY_OUT: extract reads and writes the out-root GRAPHIFY_OUT names, so an inherited absolute one
+  # (the luna AST wrapper's) would make it work on the LIVE graph instead of the scratch copy.
+  env -u GRAPHIFY_OUT graphify extract "$SCRATCH" --backend "$GRAPHIFY_BACKEND" ${EXTRA[@]+"${EXTRA[@]}"} --no-cluster > "$WORK/extract.log" 2>&1
   rc=$?
   set -e
   cat "$WORK/extract.log" >&2
