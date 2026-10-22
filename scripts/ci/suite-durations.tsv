@@ -6,7 +6,7 @@
 #   60c48341eb8cda279c3a771d22d378ea23078973, 2026-10-18) of yotamleo/Himmel,
 #   shell-unit-shard (ubuntu-latest, 1..8), fast tier, full run (no
 #   SUITE_CHANGED_SINCE); each row is the mean of the runs that suite appeared in.
-#   990 unique suites; no row is local-measured. Timings are a snapshot, not a
+#   990 unique suites in that refresh; local measurements are labelled below. Timings are a snapshot, not a
 #   worst-case bound. Replay on run 39180908042: max/min 2.454 before, 1.304 after;
 #   slowest shard 2800s before, 2304s after (suite time only, excluding setup/waits).
 #   2304s was the floor: scripts/hooks/test-block-destructive-commands.sh alone
@@ -258,6 +258,8 @@ scripts/cr/test-pr-check-run.sh	4
 scripts/cr/test-pr-check-step0.sh	0
 scripts/cr/test-residue-scan.sh	0
 scripts/cr/test-ship-tail-model-free.sh	1
+# Local Linux measurement: fast default fixtures; explicit full diagnostics are not scheduled here.
+scripts/cr/test-suite-file-selection.sh	3
 scripts/cr/test-triviality-gate.sh	1
 scripts/cr/test-write-verdicts.sh	1
 scripts/docs-site/test-serve.sh	0
