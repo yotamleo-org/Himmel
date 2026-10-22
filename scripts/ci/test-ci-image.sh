@@ -83,6 +83,10 @@ if [ -n "$node_major" ] && [ "${node_ver%%.*}" = "$node_major" ] && grep -Eq '^A
   ok "Dockerfile pins node $node_ver (major $node_major) with a sha256"
 else bad "Dockerfile does not pin a node ${node_major:-?}.x NODE_VERSION with NODE_SHA256 (found ${node_ver:-none})"; fi
 
+# 5a. the node patch level carries the 2026-10-21 security release (22.23.4)
+if [ "$(printf '%s\n' 22.23.4 "$node_ver" | sort -V | head -n 1)" = "22.23.4" ]; then ok "Dockerfile node $node_ver is at or above the patched 22.23.4"
+else bad "Dockerfile node ${node_ver:-none} is below the patched 22.23.4"; fi
+
 # 5b. the base image is pinned by digest, not a mutable tag
 if grep -Eq '^FROM [^[:space:]@]+@sha256:[0-9a-f]{64}$' <<< "$df_text"; then ok "Dockerfile FROM is pinned by @sha256: digest"
 else bad "Dockerfile FROM is not pinned by @sha256: digest"; fi
