@@ -40,7 +40,8 @@ changes go through a chief GO with an opus judge.
    the JSON. Deleting in the CodeRabbit UI does not change the CSV you already
    have: download a fresh export, re-run step 1 with it, and check that
    `stale_rows` has dropped to what you kept.
-5. `bash scripts/cr/test-known-findings.sh` must stay green; if ids changed,
+5. `bash "$HIMMEL_REPO/scripts/cr/test-known-findings.sh"` must stay green (the
+   test is not shipped to adopted projects); if ids changed,
    paste the output of `bash scripts/cr/known-findings.sh --list` over the class
    table in [`docs/internals/known-findings.md`](../../docs/internals/known-findings.md)
    (it prints the table; nothing edits the doc for you). Land it as a normal

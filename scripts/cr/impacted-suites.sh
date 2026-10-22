@@ -195,15 +195,15 @@ trust-suites|node-test|scripts/trust/tests/*.test.mjs
 hook-lib-suites|hook-lib|check-hook-lib-suites.sh
 matrix-npm-test|npm-test|npm test
 luna-vitals|bun-test|scripts/luna-vitals && bun install
-telegram-suites|bun-test|bun test scripts/telegram --dots
-vault-suites|bun-test|bun test scripts/vault/tests --dots
-config-ui-suites|bun-test|bun test scripts/config-ui --dots
+telegram-suites|bun-test|scripts/telegram --dots
+vault-suites|bun-test|scripts/vault/tests --dots
+config-ui-suites|bun-test|scripts/config-ui --dots
 luna-correlate|bun-test|marketplace/plugins/luna-correlate && bun install
 telegram-himmel|bun-test|marketplace/plugins/telegram-himmel && bun install
 where-are-we|node-test|scripts/where-are-we/tests/*.test.mjs
 lessons|node-test|scripts/lessons/tests/*.test.mjs
 op-env-observability-mjs|node-test|"scripts/observability/*.test.mjs"
-fleet-control-observability|bun-test|bun test scripts/fleet-control scripts/observability
+fleet-control-observability|bun-test|scripts/fleet-control scripts/observability
 EOF
 }
 
@@ -214,7 +214,7 @@ EOF
 line_kind() {
     local line="$1" n=0 kind=""
     case "$line" in *"node --test"*) n=$((n + 1)); kind=node-test ;; esac
-    case "$line" in *"bun test"*) n=$((n + 1)); kind=bun-test ;; esac
+    case "$line" in *"bun test"*|*"run-bun-tests.sh"*) n=$((n + 1)); kind=bun-test ;; esac
     case "$line" in *"npm test"*) n=$((n + 1)); kind=npm-test ;; esac
     case "$line" in *"npx vitest"*|*"bunx vitest"*|*"vitest run"*) n=$((n + 1)); kind=vitest ;; esac
     case "$line" in *"check-hook-lib-suites.sh"*) n=$((n + 1)); kind=hook-lib ;; esac
@@ -254,7 +254,7 @@ runner_check() {
             echo "impacted-suites: --runner-check: runner drift — ${drift}: ${line}" >&2
             missing=1
         fi
-    done < <(grep -vE '^[[:space:]]*#' "$ci" | grep -E 'run:.*(node --test|bun test|npm test|npx vitest|bunx vitest|vitest run|check-hook-lib-suites\.sh)')
+    done < <(grep -vE '^[[:space:]]*#' "$ci" | grep -E 'run:.*(node --test|bun test|run-bun-tests\.sh|npm test|npx vitest|bunx vitest|vitest run|check-hook-lib-suites\.sh)')
     [ "$missing" -eq 0 ]
 }
 

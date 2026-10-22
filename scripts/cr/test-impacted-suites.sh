@@ -377,6 +377,49 @@ YAML
 out="$(run_rc)"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" 'lanes'; then pass "runner drift (node --test -> bun test) fails --runner-check, naming the suite"; else fail "runner drift: rc=$rc out=$out"; fi
 
+# Wrapped Bun invocations must be checked, including unknown paths and drift.
+cat > "$FX/.github/workflows/ci.yml" <<'YAML'
+name: ci
+on: push
+jobs:
+  wrapped:
+    steps:
+      - run: bash scripts/ci/run-bun-tests.sh scripts/newthing scripts/newthing/foo.test.ts
+YAML
+out="$(run_rc)"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" 'newthing'; then pass "unmapped wrapped Bun step fails runner-check"; else fail "unmapped wrapped Bun step: rc=$rc out=$out"; fi
+cat > "$FX/.github/workflows/ci.yml" <<'YAML'
+name: ci
+on: push
+jobs:
+  wrapped:
+    steps:
+      - run: bash scripts/ci/run-bun-tests.sh scripts/lanes "scripts/lanes/tests/**/*.test.mjs"
+YAML
+out="$(run_rc)"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" 'runner drift'; then pass "wrapped Bun cannot evade node runner drift guard"; else fail "wrapped Bun drift: rc=$rc out=$out"; fi
+cat > "$FX/.github/workflows/ci.yml" <<'YAML'
+name: ci
+on: push
+jobs:
+  wrapped:
+    steps:
+      - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
+      - run: bun test scripts/telegram --dots
+YAML
+out="$(run_rc)"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "known wrapped and inline Bun invocations both pass"; else fail "known Bun invocation: rc=$rc out=$out"; fi
+cat > "$FX/.github/workflows/ci.yml" <<'YAML'
+name: ci
+on: push
+jobs:
+  wrapped:
+    steps:
+      - run: node --test "scripts/lanes/tests/**/*.test.mjs" && bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
+YAML
+out="$(run_rc)"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" 'ambiguous'; then pass "wrapped Bun plus node fails closed as ambiguous"; else fail "wrapped Bun ambiguity: rc=$rc out=$out"; fi
+
 # (c) control: today's real .github/workflows/ci.yml still passes.
 out="$( cd "$REPO_ROOT" && bash "$IS" --runner-check 2>&1 )"; rc=$?
 if [ "$rc" -eq 0 ]; then pass "control: today's real ci.yml still passes --runner-check"; else fail "real ci.yml regressed: rc=$rc out=$out"; fi
@@ -399,7 +442,7 @@ if [ "$rc" -eq 1 ] && grepq "$out" 'ambiguous'; then pass "a line naming two run
 # observability node tests. The guard prefixes are extracted from the REAL
 # ci.yml and executed in a scratch tree, so the row tracks the live step text.
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
-bun_guard="$(sed -n 's/^[ -]*run:\(.*\) && bun test scripts\/fleet-control .*/\1/p' "$CI_YML")"
+bun_guard="$(sed -nE 's/^[ -]*run:(.*) && (bun test scripts\/fleet-control |bash scripts\/ci\/run-bun-tests\.sh scripts\/fleet-control\+observability ).*/\1/p' "$CI_YML")"
 node_guard="$(sed -n 's/^[ -]*run:\(.*\) && node --test .*scripts\/observability\/\*\.test\.mjs.*/\1/p' "$CI_YML")"
 if [ -n "$bun_guard" ]; then pass "bun step's presence guard extracted from real ci.yml"; else fail "bun step guard not found in ci.yml"; fi
 if [ -n "$node_guard" ]; then pass "node step globs scripts/observability/*.test.mjs in real ci.yml"; else fail "node step does not glob scripts/observability/*.test.mjs"; fi

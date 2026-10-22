@@ -239,7 +239,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "oven-sh/bun",
-      "synced_base": "1.4.3",
+      "synced_base": "1.4.4",
       "latest_source": "release",
       "tag_prefix": "bun-v",
       "version_pin": {

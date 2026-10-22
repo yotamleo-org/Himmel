@@ -242,6 +242,7 @@
       "default_path": "~/.himmel/suite-flake-ledger.jsonl",
       "override_env": "SUITE_FLAKE_LEDGER",
       "writer": "scripts/ci/run-shell-tests.sh",
+      "additional_writers": ["scripts/ci/run-bun-tests.sh"],
       "readers": ["scripts/ci/run-shell-tests.sh", "scripts/observability/suite-flake-summary.sh"],
       "format": "jsonl",
       "rotation": "none",

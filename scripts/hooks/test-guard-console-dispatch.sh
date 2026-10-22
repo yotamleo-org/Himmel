@@ -166,7 +166,7 @@ RC1=$(run_hook env-console-worktree-propen "$(payload general-purpose 'ship it' 
 assert_rc "env console + worktree + gh pr create refuses" 2 "$RC1"
 assert_contains "deny names the exact arm-resume.sh replacement" "bash scripts/handover/arm-resume.sh --time smart --handover <path-to-mission-doc>" "$(combined_output env-console-worktree-propen)"
 assert_contains "deny states in-process subagents die with the parent" "die with the parent" "$(combined_output env-console-worktree-propen)"
-assert_contains "deny names CONSOLE_DISPATCH_OK override" "CONSOLE_DISPATCH_OK=1" "$(combined_output env-console-worktree-propen)"
+assert_contains "deny names CHIEF_DISPATCH_OK override" "CHIEF_DISPATCH_OK=1" "$(combined_output env-console-worktree-propen)"
 
 RC2=$(run_hook transcript-console-propen-crgate "$(payload general-purpose 'ship it' 'gh pr create --title x; then run /pr-check' "$CHIEF_TRANSCRIPT")")
 assert_rc "transcript-detected console + pr-open + cr-gate refuses" 2 "$RC2"
@@ -301,6 +301,20 @@ CHIEF_LOG="$TMP/chief-overrides.jsonl"
 RC17=$(run_hook override-chief-log "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CONSOLE_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$CHIEF_LOG" CONSOLE_DISPATCH_LOG="$OK_LOG.unused")
 assert_rc "override with CHIEF_DISPATCH_LOG set allows" 0 "$RC17"
 assert_contains "CHIEF_DISPATCH_LOG wins over CONSOLE_DISPATCH_LOG for the audit log" '"override":"CONSOLE_DISPATCH_OK"' "$(cat "$CHIEF_LOG" 2>/dev/null || true)"
+
+CHIEF_OK_LOG="$TMP/chief-ok-overrides.jsonl"
+RC18=$(run_hook override-chief-ok "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CHIEF_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$CHIEF_OK_LOG")
+assert_rc "CHIEF_DISPATCH_OK=1 overrides an otherwise-denied payload" 0 "$RC18"
+assert_contains "override audit log records CHIEF_DISPATCH_OK" '"override":"CHIEF_DISPATCH_OK"' "$(cat "$CHIEF_OK_LOG" 2>/dev/null || true)"
+
+RC19=$(run_hook override-chief-disable "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CHIEF_DISPATCH_DISABLE=1 CHIEF_DISPATCH_LOG="$TMP/chief-disable.jsonl")
+assert_rc "CHIEF_DISPATCH_DISABLE=1 overrides an otherwise-denied payload" 0 "$RC19"
+
+RC20=$(run_hook override-chief-ok-falsy "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CHIEF_DISPATCH_OK=0 CONSOLE_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$TMP/chief-falsy.jsonl")
+assert_rc "CHIEF_DISPATCH_OK=0 with CONSOLE_DISPATCH_OK=1 stays denied" 2 "$RC20"
+
+RC21=$(run_hook override-chief-disable-falsy "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CHIEF_DISPATCH_DISABLE=0 CONSOLE_DISPATCH_DISABLE=1 CHIEF_DISPATCH_LOG="$TMP/chief-disable-falsy.jsonl")
+assert_rc "CHIEF_DISPATCH_DISABLE=0 with CONSOLE_DISPATCH_DISABLE=1 stays denied" 2 "$RC21"
 
 echo "=== Transcript head bound ==="
 

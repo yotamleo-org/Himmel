@@ -182,6 +182,18 @@ expect "console, CHIEF_FG_LIST wins over CONSOLE_FG_LIST" 0 \
 # --- documented bypass
 expect "console, CONSOLE_FG_OK=1 in the launching shell: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CONSOLE_FG_OK=1)" ""
+expect "console, CHIEF_FG_OK=1 in the launching shell: allowed" 0 \
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=1)" ""
+expect "console, a per-call CHIEF_FG_OK=1 prefix does not lift the guard" 2 \
+    "$(run_hook yes "CHIEF_FG_OK=1 $K/wrap-merged.sh --pr 12" absent)" "run_in_background"
+expect "console, an empty VAR= prefix does not hide the script" 2 \
+    "$(run_hook yes "FOO= $K/wrap-merged.sh --pr 12" absent)" "run_in_background"
+expect "console, CHIEF_FG_OK=0 with CONSOLE_FG_OK=1 in the launching shell: denied" 2 \
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=0 CONSOLE_FG_OK=1)" "run_in_background"
+expect "console, CHIEF_FG_OK=1 with CONSOLE_FG_OK=0 in the launching shell: denied" 2 \
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=1 CONSOLE_FG_OK=0)" "run_in_background"
+expect "console, deny names CHIEF_FG_OK as the bypass" 2 \
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent)" "CHIEF_FG_OK=1"
 
 # --- data file shape: every non-comment line is a kit script that exists
 bad_rows=0

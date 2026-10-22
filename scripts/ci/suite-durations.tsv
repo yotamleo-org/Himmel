@@ -168,6 +168,7 @@ scripts/ci/test-plan-shards.sh	0
 scripts/ci/test-pr-plan.sh	2
 scripts/ci/test-pr-title-lint-trigger.sh	0
 scripts/ci/test-queue-latency.sh	0
+scripts/ci/test-run-bun-tests-flake.sh	0
 scripts/ci/test-run-shell-tests-discovery.sh	16
 scripts/ci/test-run-shell-tests-flake.sh	12
 scripts/ci/test-run-shell-tests-impacted.sh	8

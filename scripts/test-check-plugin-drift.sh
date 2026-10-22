@@ -1428,7 +1428,7 @@ if [ "$rc14" -eq 3 ] && grepq "$out14" 'parse failed'; then ok "invalid standalo
 rm -rf "$W13"
 
 # 15. Registry tag_prefix on a latest_source=release entry: bun
-#     publishes `bun-v1.4.3`, which the bare-version release match rejected as
+#     publishes `bun-v1.4.4`, which the bare-version release match rejected as
 #     UNCHECKED. tag_prefix strips the stream prefix so synced_base stays a bare
 #     version (what .bun-version holds) and the BEHIND line names a bare version
 #     apply-drift-bump.sh can take as-is.
@@ -1438,22 +1438,22 @@ cat > "$W15/bin/gh" <<'GH'
 [ "$1" = auth ] && [ "$2" = status ] && exit 0
 [ "$1 $2" = 'repo list' ] && { printf '[]\n'; exit 0; }
 case "$*" in
-  *"/releases/latest"*) printf 'bun-v1.4.3\n'; exit 0 ;;
+  *"/releases/latest"*) printf 'bun-v1.4.4\n'; exit 0 ;;
 esac
 exit 0
 GH
 chmod +x "$W15/bin/gh"
 printf '{"plugins":[]}' >"$W15/m.json"; printf '{}' >"$W15/u.json"
-for base in 1.4.2 1.4.3; do
+for base in 1.4.2 1.4.4; do
   cat > "$W15/reg.json" <<JSON
 {"entries":[{"name":"bun-pin","kind":"tag_release","mode":"base","tracked_repo":"oven-sh/bun","synced_base":"$base","latest_source":"release","tag_prefix":"bun-v","tier":"A"}]}
 JSON
   out15="$(PATH="$W15/bin:$PATH" DRIFT_REGISTRY="$W15/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null DRIFT_MJSON="$W15/m.json" DRIFT_UPSTREAMS="$W15/u.json" bash "$SCRIPT" 2>&1)"
   line15="$(printf '%s' "$out15" | grep 'bun-pin')"
   if [ "$base" = 1.4.2 ]; then
-    if grepq "$line15" 'BEHIND.*1\.4\.3'; then ok "release tag_prefix: bun-v1.4.3 vs 1.4.2 -> BEHIND naming the bare 1.4.3"; else bad "bun-pin not BEHIND; $line15"; fi
+    if grepq "$line15" 'BEHIND.*1\.4\.4'; then ok "release tag_prefix: bun-v1.4.4 vs 1.4.2 -> BEHIND naming the bare 1.4.4"; else bad "bun-pin not BEHIND; $line15"; fi
   else
-    if grepq "$line15" 'CURRENT'; then ok "release tag_prefix: bun-v1.4.3 vs 1.4.3 -> CURRENT"; else bad "bun-pin not CURRENT; $line15"; fi
+    if grepq "$line15" 'CURRENT'; then ok "release tag_prefix: bun-v1.4.4 vs 1.4.4 -> CURRENT"; else bad "bun-pin not CURRENT; $line15"; fi
   fi
 done
 rm -rf "$W15"
