@@ -23,7 +23,7 @@
 # real orderings, not groups). Each write is `jira link <blocker> --blocks <blocked>`,
 # which itself reads the issue back after the POST; then every written pair is read
 # back once more with `jira links <blocker>` and printed `readback <A> blocks <B> ok`
-# or `MISSING`. Exit: 0 dry run or every write read back; 1 a write or a read-back
+# or `MISSING` (`FAILED: <error>` when the links call itself fails). Exit: 0 dry run or every write read back; 1 a write or a read-back
 # failed; 2 usage.
 #
 # Test seam (env): FCL_JIRA (an executable standing in for the jira CLI).
@@ -124,7 +124,9 @@ $rows
 EOF
 for pair in $written; do
     a="${pair%%:*}"; b="${pair#*:}"
-    if "${jira[@]}" links "$a" 2>/dev/null | grep -Eq "^[0-9]+	Blocks	inward=$a	outward=$b	"; then
+    if ! got="$("${jira[@]}" links "$a" 2>&1)"; then
+        echo "readback $a blocks $b FAILED: $got"; rc=1
+    elif grep -Eq "^[0-9]+	Blocks	inward=$a	outward=$b	" <<< "$got"; then
         echo "readback $a blocks $b ok"
     else
         echo "readback $a blocks $b MISSING"; rc=1

@@ -115,10 +115,11 @@ fi
 
 # state of one leg doc: prints own, quoted-back or missing
 leg_state() {
-    local ldoc="$1" line inc
+    local ldoc="$1" line inc brief
     [ -f "$ldoc" ] || { echo missing; return; }
+    brief="$(awk '/^## Results/ { exit } { print }' "$ldoc")"
     # shellcheck disable=SC2016
-    if awk '/^## Results/ { exit } { print }' "$ldoc" | grep -Fq -- "your console is **\`$successor\`**"; then
+    if grep -Fq -- "your console is **\`$successor\`**" <<< "$brief"; then
         echo own; return
     fi
     # the latest handshake bullet from the Results section on decides; the same text in the

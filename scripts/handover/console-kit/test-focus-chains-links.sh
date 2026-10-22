@@ -46,7 +46,8 @@ cat > "$WORK/jira" <<EOF
 printf '%s\n' "\$*" >> "$WORK/calls"
 case "\$1" in
     link) echo "Linked: \$2 blocks \$4" ;;
-    links) cat "$WORK/links.\$2" 2>/dev/null ;;
+    links) [ -f "$WORK/links-down" ] && { echo "jira: 503 unavailable" >&2; exit 1; }
+           cat "$WORK/links.\$2" 2>/dev/null || true ;;
 esac
 EOF
 chmod +x "$WORK/jira"
@@ -80,6 +81,11 @@ out="$(bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 2 --apply 2>&1)"; r
 eq "a pair missing on read-back exits 1" "$rc" 1
 has "a pair missing on read-back is named" "$out" "readback HIMMEL-2 blocks HIMMEL-7 MISSING"
 lacks "a reversed row is never written" "$(cat "$WORK/calls")" "link HIMMEL-7"
+
+: > "$WORK/links-down"
+out="$(bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 0 --apply 2>&1)"; rc=$?
+eq "a failed read-back call exits 1" "$rc" 1
+has "a failed read-back call is named with its error" "$out" "readback HIMMEL-1 blocks HIMMEL-2 FAILED: jira: 503 unavailable"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
