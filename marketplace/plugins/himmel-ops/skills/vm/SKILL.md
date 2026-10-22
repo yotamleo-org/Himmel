@@ -38,7 +38,9 @@ Do NOT use this as an always-on rule.
   **2231** and step upward, skipping any port already claimed by a
   registered VM (`scripts/vm/port-alloc.sh`) — never assume a fixed block is
   free; enumerate via `VBoxManage list vms` + `showvminfo --machinereadable`
-  before hardcoding a port.
+  before hardcoding a port. `vmsdk.py himmel-ar-<n>` (n in 1..`HIMMEL_VM_AR_MAX`,
+  default 2) reads that port from the clone's NAT rule and takes the user and
+  password from `ubuntu_new`; no registry entry is needed.
 - **After-report clones are PERSISTENT, never deleted** — `VBoxManage
   unregistervm --delete` is refused by this harness's auto-mode classifier,
   so `scripts/vm/after-report.sh` creates each clone ONCE and RESTORES it to
@@ -100,7 +102,7 @@ usage: vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|audi
 | `restore NAME` | Restore to a named snapshot (powers off + restores) |
 | `audit-base NAME` | Restore snapshot `NAME`, run the snapshot secret scan on it (HIMMEL-2540), power off. Exits 1 (REFUSING) if the image holds a `.env`; use it before trusting or sharing an old base. Overwrites the VM's current state. If a matrix base is wanted later, rebuild it by staging the RC with `vm_stage_tree` (excludes the secret set) and snapshotting; `snapshot` runs the same scan. |
 | `baseline NAME` | Restore `NAME` if it exists, else provision from scratch and snapshot it — idempotent clean-state shortcut |
-| `clone [REF]` | Shallow-clone the private himmel repo onto the guest (`REF` defaults to `main`) |
+| `clone [REF]` | Shallow-clone the private himmel repo onto the guest (`REF` defaults to `main`). A git checkout already at `~/himmel` (the one baked into `suite-ready-v4`) is fetched and detached at `REF` (a branch, tag or SHA) instead; a non-git or locally modified `~/himmel` is refused |
 | `provision` | Run the per-OS provisioner (`ubuntu-vm-setup.py` or `windows-vm-setup.py`) |
 | `e2e` | Run the install/uninstall symmetry e2e against an Ubuntu VM (delegates to `scripts/test-install-symmetry-vm.sh`) |
 | `push FILE [DEST]` | Copy one host file to the guest via SFTP (`DEST` defaults to `~/handover-inbox/<name>`; `.env*`, `*.local.json` and any other secret-set file refused) |

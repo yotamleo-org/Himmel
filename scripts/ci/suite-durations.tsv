@@ -269,6 +269,7 @@ scripts/eval/cr-ledger/test-cr-ledger.sh	1
 scripts/eval/friction/test-friction.sh	1
 scripts/eval/graphify-ab/test-graphify-ab.sh	5
 scripts/eval/guard-corpus/test-guard-corpus.sh	173
+scripts/eval/judge-accuracy/test-judge-accuracy.sh	1
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	38
 scripts/eval/lane-quality/test-lane-quality.sh	25
 scripts/eval/lane-quality/test-trajectory.sh	5

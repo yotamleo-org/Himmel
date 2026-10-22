@@ -186,6 +186,19 @@
       "grandfathered": false
     },
     {
+      "id": "judge-adjudication",
+      "default_path": "~/.himmel/eval/judge-accuracy/adjudication.jsonl",
+      "override_env": "HIMMEL_JUDGE_ADJUDICATION",
+      "writer": "scripts/eval/judge-accuracy/judge_accuracy.py",
+      "readers": [],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "mcp-audit",
       "default_path": "~/.himmel/state/mcp-audit.jsonl",
       "override_env": "MCP_POLICY_AUDIT_LOG",

@@ -171,5 +171,30 @@ for i in 1 2; do
 done
 has "live review: the line names the metric and topic" "$(cat "$E/inbox.md" 2>/dev/null)" "eval/friction $CLS value=500 threshold=100 topic=shell-and-gate-traps.md"
 
+# --- the shipped rules: a critic class below its threshold yields one improvement record per critic -----
+G="$TMP/critics"; mkdir -p "$G"
+ok "panel row" python3 -I "$RUNS" append --ledger "$G/runs.jsonl" --eval review-panel --source s \
+  --config-json '{"review_panel_v":1}' --metrics-json '{"codex.class.logic.recall":1,"codex.class.quoting.recall":0,
+  "codex.class.toctou.recall":0.5,"coderabbit.class.logic.recall":0.25,"coderabbit.class.quoting.recall":1}'
+ok "judge row" python3 -I "$RUNS" append --ledger "$G/runs.jsonl" --eval judge-accuracy --source s \
+  --config-json '{"judge_accuracy_v":1,"days":28}' --metrics-json '{"class.reader-allowlist.escape_excess":0.036,
+  "class.other.escape_excess":-0.007,"cause.ci-selection.escape_rate":0.002}'
+ok "shipped rules" python3 -I "$FB" run --ledger "$G/runs.jsonl" --changes "$G/changes.jsonl"
+eq "shipped rules: one change per critic" "$(rows "$G/changes.jsonl")" "3"
+eq "codex: its weakest class" "$(field "$G/changes.jsonl" 1 metric)" "codex.class.quoting.recall"
+eq "codex: a prompt change" "$(field "$G/changes.jsonl" 1 change)" "prompt"
+eq "codex: the critic is named" "$(field "$G/changes.jsonl" 1 critic)" "codex"
+eq "coderabbit: its weakest class" "$(field "$G/changes.jsonl" 2 metric)" "coderabbit.class.logic.recall"
+eq "coderabbit: a config change" "$(field "$G/changes.jsonl" 2 change)" "cr-config"
+eq "judges: the class whose interval sits above the whole" "$(field "$G/changes.jsonl" 0 metric)" "class.reader-allowlist.escape_excess"
+eq "judges: a judge-brief change" "$(field "$G/changes.jsonl" 0 target)" "docs/handover/judge-brief-template.md"
+ok "judge row 2" python3 -I "$RUNS" append --ledger "$G/runs.jsonl" --eval judge-accuracy --source s \
+  --config-json '{"judge_accuracy_v":1,"days":28}' --metrics-json '{"class.reader-allowlist.escape_excess":0.01,
+  "cause.ci-selection.escape_rate":0.009}'
+ok "shipped rules rerun" python3 -I "$FB" run --ledger "$G/runs.jsonl" --changes "$G/changes.jsonl"
+eq "judges rerun: a measured record and a new change" "$(rows "$G/changes.jsonl")" "5"
+eq "judges rerun: re-measured" "$(field "$G/changes.jsonl" 3 verdict)" "improved"
+eq "judges rerun: ci-selection escapes come first" "$(field "$G/changes.jsonl" 4 change)" "impacted-suites"
+
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

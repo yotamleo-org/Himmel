@@ -3,13 +3,13 @@
 himmel is built around Claude Code's contract, but most of it carries to
 **OpenAI Codex** (`codex-cli`). This is the step-by-step setup. For *why* each
 piece works (the compat matrix, port/guard/accept decisions, prompt-anatomy
-differences), see [`docs/internals/harness-compat.md`](../internals/harness-compat.md) —
-this guide is the operational checklist, that doc is the reference.
+differences), see [`docs/internals/harness-compat.md`](../internals/harness-compat.md).
+This guide is the operational checklist; that doc is the reference.
 
 > **Status:** Codex is the primary non-Claude harness. The hook adapter,
 > AGENTS.md rule file, plugins, `.agents/skills` driver wrappers, and the two
 > plugin-delivered security guards are all live-verified under **codex-cli
-> 0.142.0**. Cursor/Copilot/Gemini are audited but lower-priority — see
+> 0.142.0**. Cursor/Copilot/Gemini are audited but lower-priority; see
 > harness-compat.md.
 
 ## 1. Prerequisites
@@ -20,8 +20,8 @@ this guide is the operational checklist, that doc is the reference.
   guardrails are bash; the Codex hook wrapper finds Git Bash explicitly and
   **fails closed** if it's missing. NOT WSL `bash` (the System32 stub trap).
 - **`jq`** and **`gh`** on `PATH` (guards + handover flows need them).
-- A himmel checkout (clone the repo). Run Codex **from the primary checkout** —
-  if you run from a git worktree, Codex resolves the project root to the main
+- A himmel checkout (clone the repo). Run Codex **from the primary checkout**.
+  If you run from a git worktree, Codex resolves the project root to the main
   checkout and loads *its* `.codex/hooks.json` (the worktree's `.git` is a file).
 
 ## 2. Instruction file — `AGENTS.md` (not `CLAUDE.md`)
@@ -29,7 +29,7 @@ this guide is the operational checklist, that doc is the reference.
 Codex does not read `CLAUDE.md`; it reads **`AGENTS.md`**. himmel generates a real
 repo `AGENTS.md` from `CLAUDE.md`, adapted to GPT anatomy. It's
 tracked and kept fresh by the `agents-md-fresh` pre-commit gate. Nothing to do at
-setup — it's already in the repo. (If you edit `CLAUDE.md`, regenerate with
+setup: it's already in the repo. (If you edit `CLAUDE.md`, regenerate with
 `node scripts/agents-md/generate.mjs`.)
 
 ## 3. Plugins / marketplace — `~/.codex/config.toml`
@@ -65,7 +65,7 @@ ignores bare exit 2). Wired guards include `auto-approve-safe-bash`,
 `block-docker-privesc`, and `block-merged-pr-commit`.
 
 **Hook trust.** New project hooks are trust-hashed on first use. Interactive
-Codex prompts you to trust them once — accept, and subsequent runs (interactive
+Codex prompts you to trust them once. Accept, and subsequent runs (interactive
 *and* `codex exec`) honor them with no extra flag. Only fully-unattended
 automation against a not-yet-trusted clone needs
 `codex exec --dangerously-bypass-hook-trust` — **a disarming flag; use it only
@@ -85,12 +85,12 @@ wrappers that shell the same `scripts/` the Claude `.claude/commands/` use: `wor
 `handover-pr-open`, `handover-pr-merge`), and `cr-scores`, `retitle`, `quiet-run`,
 `pipeline-cadence`, `luna-backfill`, `skill-find`. Tier-A skills
 (minerva, handover, stuck-playbook, vm, himmel-update) load from the plugins.
-Claude `.claude/commands/*.md` do **not** auto-load — Codex has its own slash
+Claude `.claude/commands/*.md` do **not** auto-load; Codex has its own slash
 surface.
 
 ## 6. Verify the guardrails actually block
 
-Confirm a guard *blocks* at Codex runtime (this is the security-critical check —
+Confirm a guard *blocks* at Codex runtime (this is the security-critical check:
 G1 was that two guards silently no-op'd under Codex before the fix):
 
 ```bash
@@ -104,11 +104,11 @@ Expected: Codex reports `PreToolUse Blocked` with
 `⛔ block-docker-privesc: refusing Bash command — root-equivalent container
 access`. A `git commit` on a merged-PR branch should likewise hit
 `⛔ block-merged-pr-commit`. If a command runs instead of blocking, the hooks
-aren't trusted/loaded — re-check §3/§4.
+aren't trusted/loaded. Re-check §3/§4.
 
 ## 7. Known Claude-only / degraded surfaces under Codex
 
-- **`AskUserQuestion`** is a Claude-only interactive tool — under Codex it
+- **`AskUserQuestion`** is a Claude-only interactive tool. Under Codex it
   degrades to a plain conversational prose question (harness-compat §9).
 - **statusLine** (where-are-we bar) is Claude-only; Codex status context is a
   separate follow-up.
