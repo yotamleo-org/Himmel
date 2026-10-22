@@ -605,6 +605,60 @@ if compgen -G "$repo/.git/cr-review-rounds/*" >/dev/null; then bad "T18 a review
 git -C "$repo" worktree remove --force "$tmp/wt-hit" 2>/dev/null
 rm -rf "$repo/.git/cr-review-rounds"
 
+# T19: a known-findings.sh that cannot run (corrupt catalog) is not a clean
+# pass: exit 9, no preflight row, the panel never invoked, no review round.
+kf_json="$fx/scripts/cr/known-findings.json"
+cp "$kf_json" "$tmp/known-findings.json.orig"
+printf '{ not json' > "$kf_json"
+rm -f "$CALL_LOG" "$tmp/err"
+rm -rf "$repo/.git/cr-review-rounds"
+git -C "$repo" worktree add -q -b feature-kfcrash "$tmp/wt-kfcrash" main
+(
+    cd "$tmp/wt-kfcrash" || exit 1
+    printf 'clean\n' > kfcrash.txt
+    git add kfcrash.txt
+    git -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m clean
+) || bad "T19 fixture commit failed"
+kfc_sha="$(git -C "$tmp/wt-kfcrash" rev-parse HEAD)"
+out="$( (cd "$tmp/wt-kfcrash" && FAKE_RC=0 bash "$SCRIPT" --head "$kfc_sha" --branch feature-kfcrash) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+cp "$tmp/known-findings.json.orig" "$kf_json"
+git -C "$repo" worktree remove --force "$tmp/wt-kfcrash" 2>/dev/null
+if [ "$rc" -eq 9 ]; then ok "T19 a crashed known-findings.sh exits 9"; else bad "T19 crashed preflight exit (got $rc; err: $err)"; fi
+if [ -f "$CALL_LOG" ]; then bad "T19 panel invoked past a crashed preflight"; else ok "T19 panel never invoked"; fi
+crash_rows="$(grep -F '"kind":"preflight"' "$ledger" | grep -F '"branch":"feature-kfcrash"')"
+if [ -n "$crash_rows" ]; then bad "T19 a preflight row was written for a crashed preflight"; else ok "T19 no preflight row for a crashed preflight"; fi
+if compgen -G "$repo/.git/cr-review-rounds/*" >/dev/null; then bad "T19 a review round was started"; else ok "T19 no review round started"; fi
+assert_has "$err" "known-findings.sh" "T19 message names known-findings.sh"
+rm -rf "$repo/.git/cr-review-rounds"
+
+# T20: a ledger-append.sh that refuses to record the pass is not a clean pass
+# either: the same four properties.
+la="$fx/scripts/cr/ledger-append.sh"
+cp "$la" "$tmp/ledger-append.sh.orig"
+printf '#!/usr/bin/env bash\necho "ledger-append: refused" >&2\nexit 1\n' > "$la"
+rm -f "$CALL_LOG" "$tmp/err"
+rm -rf "$repo/.git/cr-review-rounds"
+git -C "$repo" worktree add -q -b feature-lafail "$tmp/wt-lafail" main
+(
+    cd "$tmp/wt-lafail" || exit 1
+    printf 'clean\n' > lafail.txt
+    git add lafail.txt
+    git -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m clean
+) || bad "T20 fixture commit failed"
+laf_sha="$(git -C "$tmp/wt-lafail" rev-parse HEAD)"
+out="$( (cd "$tmp/wt-lafail" && FAKE_RC=0 bash "$SCRIPT" --head "$laf_sha" --branch feature-lafail) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+cp "$tmp/ledger-append.sh.orig" "$la"
+git -C "$repo" worktree remove --force "$tmp/wt-lafail" 2>/dev/null
+if [ "$rc" -eq 9 ]; then ok "T20 a refused ledger-append exits 9"; else bad "T20 unrecorded preflight exit (got $rc; err: $err)"; fi
+if [ -f "$CALL_LOG" ]; then bad "T20 panel invoked past an unrecorded preflight"; else ok "T20 panel never invoked"; fi
+la_rows="$(grep -F '"kind":"preflight"' "$ledger" | grep -F '"branch":"feature-lafail"')"
+if [ -n "$la_rows" ]; then bad "T20 a preflight row exists for an unrecorded preflight"; else ok "T20 no preflight row"; fi
+if compgen -G "$repo/.git/cr-review-rounds/*" >/dev/null; then bad "T20 a review round was started"; else ok "T20 no review round started"; fi
+assert_has "$err" "ledger-append.sh" "T20 message names ledger-append.sh"
+rm -rf "$repo/.git/cr-review-rounds"
+
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*
 # scratch files, always rm -f'd before it returns. Any NEW one since the
