@@ -169,6 +169,39 @@ PATH="$d7" "$BASH_BIN" "$t7sig" "$PORTF" "$t7pid" >/dev/null 2>&1 || true
 if [ -s "$t7pid" ] && ! kill -0 "$(cat "$t7pid")" 2>/dev/null; then ok "T7 a TERM sent to the wrapper still runs the -k escalation (TERM-ignoring child gone)"; else bad "T7 a TERM-ignoring child outlived a TERM sent to the wrapper"; fi
 [ ! -s "$t7pid" ] || kill -s KILL "$(cat "$t7pid")" 2>/dev/null || true
 if [ $((SECONDS - t0)) -lt 20 ]; then ok "T7 the wrapper returned in time after the TERM"; else bad "T7 the wrapper hung $((SECONDS - t0))s after the TERM"; fi
+t7ic="$W/t7-int-child.sh"
+# shellcheck disable=SC2016 # single quotes intentional: the child body is expanded by the child shell
+printf '%s\n' 'echo $$ > "$1"' 'trap "" TERM' 'trap "exit 0" INT' 'while :; do sleep 1; done' >"$t7ic"
+t7int="$W/t7-int.sh"
+# shellcheck disable=SC2016 # single quotes intentional: the script body is expanded by the child shell
+printf '%s\n' \
+    'set -m' \
+    '. "$1"' \
+    'timeout -k 2 60 sh "$3" "$2" &' \
+    'tp=$!' \
+    'i=0; while [ ! -s "$2" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done' \
+    'kill -s INT "$tp"' \
+    'wait "$tp"; echo "rc=$?"' >"$t7int"
+rm -f "$t7pid"
+got="$(PATH="$d7" "$BASH_BIN" "$t7int" "$PORTF" "$t7pid" "$t7ic" 2>/dev/null)"
+[ ! -s "$t7pid" ] || kill -s KILL "$(cat "$t7pid")" 2>/dev/null || true
+eq "T7 an INT sent to the wrapper reaches the command as INT (its handler ran, rc 0, not a KILL)" "$got" "rc=0"
+d7d="$(stub_dir t7d env bash sleep awk mktemp rm cat pkill sh ps)"
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+got="$(PATH="$d7d" "$BASH_BIN" -c '. "$1"; mine="$(ps -o pgid= -p $$)"; fg="$(timeout --foreground 5 sh -c "ps -o pgid= -p \$\$")"; bg="$(timeout 5 sh -c "ps -o pgid= -p \$\$")"; a=differ; [ "${mine// /}" = "${fg// /}" ] && a=same; b=differ; [ "${mine// /}" = "${bg// /}" ] && b=same; echo "fg=$a plain=$b"' _ "$PORTF" 2>&1)"
+eq "T7 --foreground keeps the command in the caller's process group, plain does not" "$got" "fg=same plain=differ"
+for iv in . 1h2 1ss h; do
+    rc=0
+    # shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1/$2
+    PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout "$2" sh -c "exit 0"' _ "$PORTF" "$iv" >/dev/null 2>&1 || rc=$?
+    eq "T7 a malformed interval [$iv] is a usage error (rc 125)" "$rc" "125"
+done
+for iv in .5 2s 1m 0; do
+    rc=0
+    # shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1/$2
+    PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout "$2" sh -c "exit 0"' _ "$PORTF" "$iv" >/dev/null 2>&1 || rc=$?
+    eq "T7 a valid interval [$iv] runs the command (rc 0)" "$rc" "0"
+done
 
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -11,15 +11,17 @@
 # `--version` probe accepts it.
 #
 # bash 3.2-safe. CMD runs in its own process group (set -m) and the whole group
-# is signalled, like GNU timeout without --foreground.
+# is signalled, like GNU timeout without --foreground; with --foreground CMD stays
+# in the caller's group and only CMD is signalled.
 
 set -u
 
 usage() { echo "timeout: $1" >&2; exit 125; }
 
 _secs() {
-    case "$1" in
-        ''|*[!0-9.smhd]*|*.*.*|[smhd]*) return 1 ;;
+    # digits with at most one dot, then one optional s/m/h/d suffix
+    case "${1%[smhd]}" in
+        ''|*[!0-9.]*|*.*.*|.) return 1 ;;
     esac
     awk -v d="$1" 'BEGIN { n = d + 0; u = substr(d, length(d)); if (u == "m") n *= 60; else if (u == "h") n *= 3600; else if (u == "d") n *= 86400; printf "%s", n }'
 }
@@ -27,6 +29,7 @@ _secs() {
 kill_after=0
 sig=TERM
 preserve=0
+foreground=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --version) echo "timeout (himmel portable fallback)"; exit 0 ;;
@@ -37,7 +40,8 @@ while [ $# -gt 0 ]; do
         --signal=*) sig="${1#*=}"; shift ;;
         -s?*) sig="${1#-s}"; shift ;;
         --preserve-status) preserve=1; shift ;;
-        --foreground|-v|--verbose) shift ;;
+        --foreground) foreground=1; shift ;;
+        -v|--verbose) shift ;;
         --) shift; break ;;
         -*) usage "unrecognized option '$1'" ;;
         *) break ;;
@@ -55,7 +59,7 @@ if [ "$secs" = "0" ]; then exec "$@"; fi
 flag="$(mktemp "${TMPDIR:-/tmp}/portable-timeout.XXXXXX")" || usage "cannot create a state file"
 trap 'rm -f "$flag" "$flag.done"' EXIT
 
-set -m
+[ "$foreground" = 1 ] || set -m
 "$@" &
 pid=$!
 set +m
@@ -79,7 +83,8 @@ set +m
 watcher=$!
 
 got_sig=0
-trap 'got_sig=1; kill -s TERM -- "-$pid" 2>/dev/null' TERM INT
+trap 'got_sig=1; kill -s TERM -- "-$pid" 2>/dev/null || kill -s TERM "$pid" 2>/dev/null' TERM
+trap 'got_sig=1; kill -s INT -- "-$pid" 2>/dev/null || kill -s INT "$pid" 2>/dev/null' INT
 rc=0
 wait "$pid" 2>/dev/null || rc=$?
 if [ "$got_sig" = 1 ]; then
@@ -89,6 +94,7 @@ if [ "$got_sig" = 1 ]; then
         ( sleep "$kill_secs"; kill -s KILL -- "-$pid" 2>/dev/null ) >/dev/null 2>&1 </dev/null &
         esc=$!
     fi
+    rc=0
     wait "$pid" 2>/dev/null || rc=$?
     if [ -n "$esc" ]; then pkill -P "$esc" 2>/dev/null; kill "$esc" 2>/dev/null; fi
 fi
