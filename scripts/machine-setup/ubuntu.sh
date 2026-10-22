@@ -71,7 +71,7 @@ step "Install core tools: git, Python, jq, curl, shellcheck, gitleaks"
 # The shellcheck and gitleaks binaries are referenced by .pre-commit-config.yaml.
 # pre-commit downloads its own copies inside the hook framework, but local
 # direct invocation (manual lint runs, smoke tests) needs them on PATH.
-sudo apt install -y git python3 python3-pip jq curl shellcheck gitleaks
+sudo apt install -y git python3 python3-pip jq curl xz-utils shellcheck gitleaks
 
 step "Install nvm + Node from .nvmrc"
 export NVM_DIR="$HOME/.nvm"
@@ -88,11 +88,20 @@ fi
 # shellcheck disable=SC1091
 . "$NVM_DIR/nvm.sh"
 NVMRC_VERSION="$(cat "$REPO_ROOT/.nvmrc")"
+# nvm runs the node it unpacks, so the verified tarball is unpacked into nvm's
+# version directory first; nvm then finds the version installed and downloads nothing.
+NODE_DIR="$NVM_DIR/versions/node/v${NODE_VERSION}"
+if [ ! -x "$NODE_DIR/bin/node" ]; then
+  pin_fetch "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    "$NODE_TARBALL_SHA256" "$PIN_TMP/node.tar.xz"
+  mkdir -p "$NODE_DIR"
+  tar -xf "$PIN_TMP/node.tar.xz" -C "$NODE_DIR" --strip-components=1
+fi
+printf '%s  %s\n' "$NODE_BIN_SHA256" "$NODE_DIR/bin/node" | sha256sum -c - >/dev/null \
+  || { echo "ERROR: node $NODE_VERSION binary does not match the pinned sha256" >&2; exit 1; }
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 nvm alias default "$NODE_VERSION"
-printf '%s  %s\n' "$NODE_BIN_SHA256" "$(nvm which "$NODE_VERSION")" | sha256sum -c - >/dev/null \
-  || { echo "ERROR: node $NODE_VERSION binary does not match the pinned sha256" >&2; exit 1; }
 
 ACTUAL_MAJOR="$(node --version | sed 's/^v\([0-9]*\).*/\1/')"
 _nv="${NVMRC_VERSION#v}"

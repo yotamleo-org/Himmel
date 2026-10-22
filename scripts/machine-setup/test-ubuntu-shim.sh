@@ -39,7 +39,7 @@ trap cleanup EXIT
 # The committed expected tool list — every tool the old
 # ubuntu.sh's fatal provisioning block (steps 1-6) installed, before wiring
 # was dropped. If this list shrinks, provisioning capability regressed.
-expected_apt_tools="curl git gitleaks jq python3 python3-pip shellcheck"
+expected_apt_tools="curl git gitleaks jq python3 python3-pip shellcheck xz-utils"
 
 apt_line=$(grep -oE 'sudo apt install -y [a-z0-9. -]+' "$target" | head -1)
 [ -n "$apt_line" ] || fail "caseA: could not find the core-tools 'sudo apt install -y ...' line"
@@ -86,6 +86,11 @@ for b in uv uvx; do
   chmod +x "$fix/uv/uv-x86_64-unknown-linux-gnu/$b"
 done
 tar -czf "$fix/uv.tar.gz" -C "$fix/uv" uv-x86_64-unknown-linux-gnu
+mkdir -p "$fix/node/node-v${NODE_VERSION}-linux-x64/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fix/node/node-v${NODE_VERSION}-linux-x64/bin/node"
+chmod +x "$fix/node/node-v${NODE_VERSION}-linux-x64/bin/node"
+# gz bytes under the .xz name: ubuntu.sh's tar autodetects, and xz may be absent here
+tar -czf "$fix/node.tar.xz" -C "$fix/node" "node-v${NODE_VERSION}-linux-x64"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fix/bun/bun-linux-x64/bun"
 python3 -c 'import sys, zipfile
 z = zipfile.ZipFile(sys.argv[1], "w"); z.write(sys.argv[2], "bun-linux-x64/bun"); z.close()' "$fix/bun.zip" "$fix/bun/bun-linux-x64/bun"
@@ -109,6 +114,7 @@ echo "CURL:$url" >> "$CURL_LOG"
 case "$url" in
   https://raw.githubusercontent.com/nvm-sh/nvm/*/install.sh)
     printf '#!/usr/bin/env bash\ntouch "%s"\n' "$NVM_FLAG" > "$out" ;;
+  https://nodejs.org/dist/*) cp "$FIX/node.tar.xz" "$out" ;;
   https://github.com/astral-sh/uv/releases/download/*) cp "$FIX/uv.tar.gz" "$out" ;;
   https://github.com/oven-sh/bun/releases/download/*) cp "$FIX/bun.zip" "$out" ;;
   https://downloads.claude.ai/claude-code-releases/*) cp "$FIX/claude" "$out" ;;
@@ -288,6 +294,8 @@ echo "ok: caseD existing clone -> fetch --all --prune + reuse, no second clone"
 # ── Case F: every pinned artifact is fetched at its exact version and checked ─
 bun_pin=$(bun_sha256 "$(tr -d '[:space:]' < "$repo_root/.bun-version")")
 for want in \
+  "CURL:https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+  "SHA256CHECK:${NODE_TARBALL_SHA256}  " \
   "CURL:https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
   "CURL:https://github.com/oven-sh/bun/releases/download/bun-v$(tr -d '[:space:]' < "$repo_root/.bun-version")/bun-linux-x64.zip" \
   "CURL:https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude" \
