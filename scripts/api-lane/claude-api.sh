@@ -13,7 +13,7 @@
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
-#        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] the launcher stops a call at this age, and the credit-state sweep releases a reservation older than it (default 3600)
+#        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] the launcher stops a call at this age, and the credit-state sweep releases a reservation older than it plus the five-second kill grace (default 3600)
 #        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
 #        the launch record so a cost can be joined to a PR by key (absent = empty / null)
 # OFF by default. No subscription fallback: a refusal is final.
@@ -208,13 +208,28 @@ settle_dead() {
   state settle --id "$JOB_ID" --usd "${1:-0.000000}" --completion verified >/dev/null 2>&1 ||
     state unknown --id "$JOB_ID" >/dev/null 2>&1
 }
-# TERM first; a call that ignores it is KILLed after five seconds, so none outlives its stop.
+# every process below a pid, deepest first
+# shellcheck disable=SC2329 # invoked from stop_call
+descendants() {
+  local c
+  for c in $(pgrep -P "$1" 2>/dev/null); do descendants "$c"; echo "$c"; done
+}
+# The call and its subprocesses get TERM first; any that ignore it are KILLed after five seconds
+# (the credit-state sweep holds the reservation for that grace), so none outlives its stop.
 # shellcheck disable=SC2329 # invoked from the signal trap and the watchdog below
 stop_call() {
-  local i=0
-  [ -n "$CALL_PID" ] && kill -TERM "$CALL_PID" 2>/dev/null || return 0
-  while kill -0 "$CALL_PID" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-  kill -KILL "$CALL_PID" 2>/dev/null
+  local i=0 all p
+  [ -n "$CALL_PID" ] || return 0
+  all="$(descendants "$CALL_PID") $CALL_PID"
+  # shellcheck disable=SC2086 # a list of pids
+  kill -TERM $all 2>/dev/null
+  while [ "$i" -lt 50 ]; do
+    for p in $all; do kill -0 "$p" 2>/dev/null && break; p=""; done
+    [ -n "$p" ] || break
+    sleep 0.1; i=$((i + 1))
+  done
+  # shellcheck disable=SC2086
+  kill -KILL $all 2>/dev/null
   wait "$CALL_PID" 2>/dev/null
 }
 # shellcheck disable=SC2329 # invoked from the signal trap below
@@ -238,7 +253,7 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT" <&0 &
 CALL_PID=$!
 # the watchdog's own sleep is ended with it, so no timer outlives the call
-( sleep "$((CALL_TIMEOUT_S > 10 ? CALL_TIMEOUT_S - 5 : CALL_TIMEOUT_S))" & SLEEP_PID=$!; trap 'kill $SLEEP_PID 2>/dev/null; exit 0' TERM
+( sleep "$CALL_TIMEOUT_S" & SLEEP_PID=$!; trap 'kill $SLEEP_PID 2>/dev/null; exit 0' TERM
   wait $SLEEP_PID; stop_call ) &
 WATCHDOG_PID=$!
 wait "$CALL_PID"

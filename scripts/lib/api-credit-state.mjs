@@ -22,6 +22,8 @@ export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:
 const ROUTE_MAX_AGE = 86400;
 // A call past this has died or been killed: its reservation is released, never held for good.
 const CALL_TIMEOUT = 3600;
+// The launcher stops a call at its timeout and kills what ignored TERM this many seconds later.
+const KILL_GRACE = 5;
 // ponytail: the cost report cannot separate promotional from card spend, so
 // 'automatic-snapshot' treats all spend since the grant start as grant spend; upgrade
 // path: a promotional-credit balance endpoint, if Anthropic exposes one.
@@ -161,7 +163,7 @@ function sweep(a, now, timeout) {
   let released = false;
   for (const j of Object.values(a?.jobs ?? {})) {
     if (j.status === 'settled') continue;
-    const limit = Number.isSafeInteger(j.timeout_s) && j.timeout_s > 0 ? j.timeout_s : timeout;
+    const limit = (Number.isSafeInteger(j.timeout_s) && j.timeout_s > 0 ? j.timeout_s : timeout) + KILL_GRACE;
     if (Number.isSafeInteger(j.reserved_at) && now - j.reserved_at <= limit) continue;
     j.status = 'settled'; j.actual_usd = usd(0n); j.released = true; released = true;
   }

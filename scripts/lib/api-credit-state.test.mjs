@@ -587,6 +587,15 @@ test('HIMMEL-7111: a reservation is swept on the timeout it was made with, not t
   assert.equal(f.call().reserved_usd, '0.000000');
 });
 
+test('HIMMEL-7111: a reservation is kept through the launcher\'s five-second kill grace after its timeout', () => {
+  const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
+  f.call('reserve', ['--id', 'stopping', '--usd', '0.30']);
+  ageJob(f, 'stopping', 3603);
+  assert.equal(f.call().reserved_usd, '0.300000');
+  ageJob(f, 'stopping', 3606);
+  assert.equal(f.call().reserved_usd, '0.000000');
+});
+
 test('HIMMEL-7111: an unknown or pre-timestamp reservation is released once past the timeout', () => {
   const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
   f.call('reserve', ['--id', 'lost', '--usd', '0.30']); f.call('unknown', ['--id', 'lost']);

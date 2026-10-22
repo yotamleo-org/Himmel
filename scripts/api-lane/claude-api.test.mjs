@@ -31,6 +31,7 @@ echo called >> "$STUB_LOG"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV"
 [ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
+[ -z "\${STUB_CHILD:-}" ] || { sleep 300 & echo "child_pid=$!" >> "$STUB_ENV"; }
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 [ -z "\${STUB_DIE:-}" ] || kill -9 $$
@@ -732,10 +733,15 @@ test('HIMMEL-7111: a call that outruns the call timeout is stopped, even one ign
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
   try {
-    const r = f.run(f.good, { STUB_HOLD: hold, STUB_IGNORE_TERM: '1', HIMMEL_API_CALL_TIMEOUT_S: '1' });
+    const r = f.run(f.good, { STUB_HOLD: hold, STUB_IGNORE_TERM: '1', STUB_CHILD: '1', HIMMEL_API_CALL_TIMEOUT_S: '1' });
     assert.notEqual(r.status, 0);
     assert.equal(f.status().reserved_usd, '0.000000');
-    const stub = Number(/^stub_pid=(\d+)$/m.exec(readFileSync(f.paths.env, 'utf8'))[1]);
-    assert.equal(alive(stub), false, 'the call outlived the call timeout');
+    const seen = readFileSync(f.paths.env, 'utf8');
+    const stub = Number(/^stub_pid=(\d+)$/m.exec(seen)[1]);
+    const child = Number(/^child_pid=(\d+)$/m.exec(seen)[1]);
+    try {
+      assert.equal(alive(stub), false, 'the call outlived the call timeout');
+      assert.equal(alive(child), false, 'a subprocess of the call outlived the call timeout');
+    } finally { if (alive(child)) process.kill(child, 'SIGKILL'); }
   } finally { rmSync(hold, { force: true }); }
 });
