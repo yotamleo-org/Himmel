@@ -416,6 +416,86 @@ class TestClone(unittest.TestCase):
         self.assertIn("set-url origin https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the origin-rewrite assertion
 
 
+class TestCloneToken(unittest.TestCase):
+    """The clone PAT never rides a guest command line (ps shows argv), the
+    clone error carries no credential, and the two scripts that still named the
+    pre-move slug clone from the current one."""
+
+    def setUp(self):
+        envp = mock.patch.dict(os.environ,
+            {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p",
+             "himmel_github_token_vm": "TKN"}, clear=False)
+        envp.start(); self.addCleanup(envp.stop)
+        dp = mock.patch.object(vmsdk, "_load_dotenv_into_env")
+        dp.start(); self.addCleanup(dp.stop)
+
+    def _clone(self, env=None, clone_out=None):
+        """Run clone_himmel on a mocked guest; return (run commands, pushed
+        blobs, error text or None)."""
+        vm = vmsdk.VM("ubuntu_new")
+        cmds, pushed = [], []
+        def fake_run(cmd, **kw):
+            cmds.append(cmd)
+            if cmd.startswith("test -e"):
+                return (1, "")
+            if clone_out is not None and "clone" in cmd:
+                return (128, clone_out)
+            return (0, "/tmp/tok.X" if "mktemp" in cmd else "")
+        def fake_push(local, remote, data=None, **kw):
+            pushed.append((remote, data))
+            return remote
+        err = None
+        with mock.patch.dict(os.environ, env or {}, clear=False), \
+             mock.patch.object(vm, "run", side_effect=fake_run), \
+             mock.patch.object(vm, "push_file", side_effect=fake_push):
+            for k in ("himmel_github_token_vm", "himmel_github_token_vm2"):
+                if env is not None and k not in env:
+                    os.environ.pop(k, None)
+            try:
+                vm.clone_himmel()
+            except vmsdk.VMError as e:
+                err = str(e)
+        return cmds, pushed, err
+
+    def test_token_is_on_no_guest_command_line(self):
+        cmds, pushed, _ = self._clone()
+        self.assertTrue(cmds)
+        for c in cmds:
+            self.assertNotIn("TKN", c)
+            self.assertNotIn("x-access-token", c)
+        self.assertTrue(any(b"TKN" in (d or b"") for _, d in pushed),
+                        "the token must reach the guest some other way")
+        clone = next(c for c in cmds if " clone " in c)
+        self.assertIn("GIT_ASKPASS=", clone)
+
+    def test_askpass_dir_is_removed_even_when_the_clone_fails(self):
+        cmds, _, err = self._clone(clone_out="fatal: nope")
+        self.assertIsNotNone(err)
+        self.assertTrue(any(c.startswith("rm -rf ") and "/tmp/tok.X" in c for c in cmds))
+
+    def test_clone_error_has_no_credential(self):
+        _, _, err = self._clone(clone_out=(
+            "fatal: unable to access 'https://x-access-token:TKN@github.com/o/r.git/': "
+            "The requested URL returned error: 403 and https://bob:hunter2@example.com/x"))
+        self.assertIsNotNone(err)
+        self.assertNotIn("TKN", err)
+        self.assertNotIn("hunter2", err)
+        self.assertIn("403", err)
+
+    def test_empty_primary_token_is_skipped_for_vm2(self):
+        cmds, pushed, err = self._clone(env={"himmel_github_token_vm": "",
+                                             "himmel_github_token_vm2": "TKN2"})
+        self.assertIsNone(err)
+        self.assertTrue(any(b"TKN2" in (d or b"") for _, d in pushed))
+
+    def test_vm_clone_scripts_use_the_current_slug(self):
+        root = Path(__file__).resolve().parents[2]
+        for rel in ("scripts/vm/after-report.sh", "scripts/machine-setup/ubuntu.sh"):
+            text = (root / rel).read_text()
+            self.assertNotIn("github.com/yotamleo/himmel", text, rel)  # leak-allow: hostname pins that the pre-move slug is gone
+            self.assertIn("github.com/yotamleo-org/Himmel.git", text, rel)  # leak-allow: hostname pins the current slug
+
+
 class TestProvisionE2E(unittest.TestCase):
     def _ubuntu(self):
         with mock.patch.dict(os.environ,

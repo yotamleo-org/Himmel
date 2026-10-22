@@ -125,7 +125,7 @@ if [ -d "$HIMMEL_PATH/.git" ]; then
   git -C "$HIMMEL_PATH" merge --ff-only '@{u}' 2>/dev/null \
     || echo "  note: himmel clone not fast-forward-updatable (diverged/dirty/detached HEAD) — reusing the existing checkout; update it manually if a newer himmel is needed" >&2
 else
-  git clone https://github.com/yotamleo/himmel.git "$HIMMEL_PATH"
+  git clone https://github.com/yotamleo-org/Himmel.git "$HIMMEL_PATH" # env-literal-ok: the machine bootstrap clones the one himmel repo; leak-allow: hostname that repo
 fi
 cd "$HIMMEL_PATH"
 
