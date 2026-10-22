@@ -77,7 +77,7 @@ else bad "Dockerfile does not pin BUN_VERSION=$bun_ver"; fi
 pc_pin="$(grep -oE 'pre-commit==[0-9.]+' "$CI_YML" | head -n 1)"
 if [ -n "$pc_pin" ] && has "$pc_pin"; then ok "Dockerfile pins $pc_pin"
 else bad "Dockerfile does not pin ${pc_pin:-pre-commit (none found in ci.yml)}"; fi
-node_major="$(grep -oE "node-version: '[0-9]+'" "$CI_YML" | head -n 1 | grep -oE '[0-9]+')"
+node_major="$(grep -oE "node-version: '[0-9]+" "$CI_YML" | head -n 1 | grep -oE '[0-9]+')"
 node_ver="$(sed -n 's/^ARG NODE_VERSION=//p' <<< "$df_text")"
 if [ -n "$node_major" ] && [ "${node_ver%%.*}" = "$node_major" ] && grep -Eq '^ARG NODE_SHA256=[0-9a-f]{64}$' <<< "$df_text"; then
   ok "Dockerfile pins node $node_ver (major $node_major) with a sha256"
@@ -86,6 +86,12 @@ else bad "Dockerfile does not pin a node ${node_major:-?}.x NODE_VERSION with NO
 # 5a. the node patch level carries the 2026-10-21 security release (22.23.4)
 if [ "$(printf '%s\n' 22.23.4 "$node_ver" | sort -V | head -n 1)" = "22.23.4" ]; then ok "Dockerfile node $node_ver is at or above the patched 22.23.4"
 else bad "Dockerfile node ${node_ver:-none} is below the patched 22.23.4"; fi
+
+# 5a'. setup-node steps pin an exact patch: the hosted runner cache served 22.23.3 and 24.22.0 after the release
+wf_dir="$(dirname "$WORKFLOW")"
+loose="$(grep -hoE "(node-version: |\|\| |node: )'[0-9]+'" "$wf_dir/ci.yml" "$wf_dir/config-ui-e2e.yml" "$wf_dir/pages.yml" "$wf_dir/release.yml" | wc -l)"
+if [ "$loose" -eq 0 ]; then ok "every setup-node node-version pins an exact patch"
+else bad "$loose setup-node node-version value(s) pin only a major"; fi
 
 # 5b. the base image is pinned by digest, not a mutable tag
 if grep -Eq '^FROM [^[:space:]@]+@sha256:[0-9a-f]{64}$' <<< "$df_text"; then ok "Dockerfile FROM is pinned by @sha256: digest"
