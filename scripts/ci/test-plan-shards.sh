@@ -233,16 +233,16 @@ if step["env"].get("CI_MAX_SHARDS") != "${{ vars.CI_MAX_SHARDS }}":
 open(sys.argv[3], "w").write(step["run"])
 PY
   : > "$step_dir/args.log"
+  step_rc=0
   (cd "$step_dir" && RUNNER_TEMP="$step_dir" GITHUB_OUTPUT="$step_dir/gho" STEP_ARGS_LOG="$step_dir/args.log" \
-     PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$2" bash "$step_dir/$1.run" >/dev/null 2>&1)
+     PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$2" bash "$step_dir/$1.run" >/dev/null 2>&1) || step_rc=$?
   cat "$step_dir/args.log"
+  return "$step_rc"
 }
 for sid in shards canary; do
   case "$sid" in shards) tail_args="." ;; canary) tail_args=". -- --impacted abc..HEAD" ;; esac
-  got=$(run_plan_step "$sid" "")
-  if [ "$got" = "16 $tail_args" ]; then pass "PS18 $sid: variable empty plans at 16"; else fail "PS18 $sid empty: got [$got]"; fi
-  got=$(run_plan_step "$sid" 8)
-  if [ "$got" = "8 $tail_args" ]; then pass "PS18 $sid: variable 8 plans at 8"; else fail "PS18 $sid 8: got [$got]"; fi
+  if got=$(run_plan_step "$sid" "") && [ "$got" = "16 $tail_args" ]; then pass "PS18 $sid: variable empty plans at 16"; else fail "PS18 $sid empty: got [$got]"; fi
+  if got=$(run_plan_step "$sid" 8) && [ "$got" = "8 $tail_args" ]; then pass "PS18 $sid: variable 8 plans at 8"; else fail "PS18 $sid 8: got [$got]"; fi
 done
 
 # PS19: a plan at 16 lists at most 16 shards and shard_total is 16.
@@ -271,18 +271,18 @@ step = next(s for s in doc["jobs"]["plan"]["steps"] if s.get("id") == "shards")
 open(sys.argv[2], "w").write(step["run"])
 PY
   : > "$real_dir/gho"
+  step_rc=0
   (cd "$real_dir" && RUNNER_TEMP="$real_dir" GITHUB_OUTPUT="$real_dir/gho" STUB_ANSWERS="" \
-     PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$1" bash "$real_dir/shards.run" >/dev/null 2>&1)
-  echo $? > "$real_dir/step.rc"
+     PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$1" bash "$real_dir/shards.run" >/dev/null 2>&1) || step_rc=$?
+  echo "$step_rc" > "$real_dir/step.rc"
   sed -n 's/^shard_total=//p' "$real_dir/gho"
+  return "$step_rc"
 }
-got=$(run_real_step 500)
-if [ "$got" = 64 ]; then pass "PS20 ci.yml's plan step with CI_MAX_SHARDS=500 plans 64"; else fail "PS20 plan step 500: got [$got]"; fi
+if got=$(run_real_step 500) && [ "$got" = 64 ]; then pass "PS20 ci.yml's plan step with CI_MAX_SHARDS=500 plans 64"; else fail "PS20 plan step 500: got [$got]"; fi
 
 # PS22: ci.yml's own plan step, empty variable, real planner and the real ledger (suites
 # timed on green main CI runs): a full sweep plans 16 shards, where it planned 8.
-got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" run_real_step "")
-if [ "$got" = 16 ]; then pass "PS22 an empty CI_MAX_SHARDS plans a full real-ledger sweep at 16"; else fail "PS22 empty full sweep: got [$got]"; fi
+if got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" run_real_step "") && [ "$got" = 16 ]; then pass "PS22 an empty CI_MAX_SHARDS plans a full real-ledger sweep at 16"; else fail "PS22 empty full sweep: got [$got]"; fi
 
 # PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
 # step swallows the refusal into an empty output, which the shard job reads as 8 legs.
