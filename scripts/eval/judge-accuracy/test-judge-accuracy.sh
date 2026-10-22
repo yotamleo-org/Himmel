@@ -43,6 +43,7 @@ verdict() {
 }
 
 verdict q1 judge GO aaa1 2026-10-10T10:00:00Z "pr: 101" "prior: GO" "flipped: n" "model: opus" "effort: high" -- "class: reader-allowlist"
+verdict q1a judge GO aaa0 2026-10-10T10:30:00Z "pr: 101" "model: sonnet" "effort: high" -- "class: stale-class"
 verdict q2 judge NO-GO bbb1 2026-10-11T10:00:00Z "pr: 102" "prior: GO" "flipped: y" "model: opus" "effort: high" -- "class: other" "class-reason: x"
 verdict q2b judge GO bbb2 2026-10-12T10:00:00Z "pr: 102" "prior: GO" "flipped: n" "model: claude-opus-5-5" "effort: high" -- "class: none"
 verdict q3 judge NO-GO ccc1 2026-10-12T10:00:00Z "pr: 103" "prior: GO" "flipped: y" "model: opus" "effort: high" -- "class: other" \
@@ -53,6 +54,9 @@ verdict q5b judge GO eee1 2026-10-14T12:00:00Z "pr: 105" "model: opus" "effort: 
 verdict go-pr-106 console-go-fff1 GO fff1 2026-10-15T10:00:00Z "pr: 106" "model: unknown" "effort: unknown" -- "console GO"
 verdict q7 judge GO abc7 2026-08-01T10:00:00Z "pr: 107" "model: opus" "effort: high" -- "class: none"
 verdict q8 judge GO abc8 2026-10-16T10:00:00Z "pr: 108" "model: opus" "effort: high" -- "class: none"
+verdict q9 judge GO abd1 2026-10-19T10:00:00Z "pr: 109" "model: opus" "effort: high" -- "class: none"
+verdict q10 judge NO-GO abe1 2026-10-18T10:00:00Z "pr: 110" "model: opus" "effort: high" -- "class: other" "class-reason: x"
+verdict q10b judge GO abe1 2026-10-22T10:00:00Z "pr: 110" "model: opus" "effort: high" -- "class: none"
 mkdir -p "$TMP/v/notes"; printf 'a disposition note, no verdict line\n' >"$TMP/v/notes/judge.md"
 
 cat >"$TMP/prs.json" <<'EOF'
@@ -63,12 +67,15 @@ cat >"$TMP/prs.json" <<'EOF'
  {"number":105,"state":"MERGED","mergedAt":"2026-10-14T13:00:00Z","headRefOid":"eee1","mergeCommit":{"oid":"m105"}},
  {"number":106,"state":"MERGED","mergedAt":"2026-10-15T11:00:00Z","headRefOid":"fff1","mergeCommit":{"oid":"m106"}},
  {"number":107,"state":"MERGED","mergedAt":"2026-08-01T11:00:00Z","headRefOid":"abc7","mergeCommit":{"oid":"m107"}},
- {"number":108,"state":"MERGED","mergedAt":"2026-10-17T11:00:00Z","headRefOid":"abc9","mergeCommit":{"oid":"m108"}}]
+ {"number":108,"state":"MERGED","mergedAt":"2026-10-17T11:00:00Z","headRefOid":"abc9","mergeCommit":{"oid":"m108"}},
+ {"number":109,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abd1","mergeCommit":{"oid":"m109"}},
+ {"number":110,"state":"MERGED","mergedAt":"2026-10-22T11:00:00Z","headRefOid":"abe1","mergeCommit":{"oid":"m110"}}]
 EOF
 cat >"$TMP/runs.json" <<'EOF'
 [{"databaseId":501,"headSha":"m102","conclusion":"failure","createdAt":"2026-10-12T11:05:00Z"},
  {"databaseId":503,"headSha":"m105","conclusion":"failure","createdAt":"2026-10-21T05:00:00Z"},
- {"databaseId":502,"headSha":"m101","conclusion":"success","createdAt":"2026-10-10T11:05:00Z"}]
+ {"databaseId":502,"headSha":"m101","conclusion":"success","createdAt":"2026-10-10T11:05:00Z"},
+ {"databaseId":504,"headSha":"m101","conclusion":"failure","createdAt":"2026-10-11T11:05:00Z"}]
 EOF
 mkdir -p "$TMP/mirror"
 # mirror <key> <type> <labels json> <created> <description>
@@ -83,6 +90,7 @@ mirror HIMMEL-9003 Task '[]' "2026-10-16T09:00:00.000+0200" "caused-by: #102"
 mirror HIMMEL-9004 Bug '["bug"]' "2026-10-01T09:00:00.000+0200" "Filed before #106 existed."
 mirror HIMMEL-9005 Bug '["bug"]' "2026-10-18T09:00:00.000+0200" "caused-by: #108"
 mirror HIMMEL-9006 Bug '["bug"]' "2026-10-21T09:00:00.000+0200" "caused-by: #105"
+mirror HIMMEL-9000 Bug '["bug"]' "2026-10-17T09:00:00.000+0200" "Seen again after #101 merged."
 
 L="$TMP/ledger.jsonl"; Q="$TMP/queue.jsonl"
 ja() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
@@ -103,6 +111,8 @@ eq "procedural NO-GOs counted apart" "$(field "$L" 0 procedural)" "1"
 eq "a NO-GO merged at its own head is overridden" "$(field "$L" 0 overridden)" "1"
 eq "per class: the escaped PR's class" "$(field "$L" 0 class.reader-allowlist.escapes)" "1"
 eq "per model: the last GO's model" "$(field "$L" 0 model.opus.escapes)" "1"
+eq "per class: a GO on a superseded head is not attributed" "$(field "$L" 0 class.stale-class.n)" "null"
+eq "per model: a GO on a superseded head is not attributed" "$(field "$L" 0 model.sonnet.n)" "null"
 eq "coverage: a judge record with no model" "$(field "$L" 0 coverage.no_model)" "1"
 eq "coverage: a merged NO-GO'd PR with no GO" "$(field "$L" 0 coverage.merged_without_go)" "1"
 eq "coverage: a file with no verdict line" "$(field "$L" 0 coverage.unparsed)" "1"
@@ -121,6 +131,10 @@ has "queue: the red main run on the merge commit" "$q" "esc:102:red-main:501"
 has "queue: the NO-GO overturned at the same head" "$q" "nogo:q5/judge"
 case "$q" in *HIMMEL-9004*|*HIMMEL-9003*) fail "queue: a bug filed before the merge or a non-bug is no candidate";;
   *) pass "queue: a bug filed before the merge or a non-bug is no candidate";; esac
+case "$q" in *esc:101:*) fail "queue: a PR a caused-by bug settles asks for no ruling";;
+  *) pass "queue: a PR a caused-by bug settles asks for no ruling";; esac
+case "$q" in *nogo:q10/*) fail "queue: a GO from until on overturns no NO-GO";;
+  *) pass "queue: a GO from until on overturns no NO-GO";; esac
 ja >/dev/null 2>&1
 eq "rerun: a queued candidate is not queued again" "$(rows "$Q")" "3"
 
