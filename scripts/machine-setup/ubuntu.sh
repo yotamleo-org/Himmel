@@ -97,7 +97,11 @@ if [ ! -x "$NODE_DIR/bin/node" ]; then
   pin_fetch "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
     "$NODE_TARBALL_SHA256" "$PIN_TMP/node.tar.xz"
   mkdir -p "$NODE_DIR"
-  tar -xf "$PIN_TMP/node.tar.xz" -C "$NODE_DIR" --strip-components=1
+  if ! tar -xf "$PIN_TMP/node.tar.xz" -C "$NODE_DIR" --strip-components=1; then
+    rm -rf "$NODE_DIR"
+    echo "ERROR: could not unpack the node tarball" >&2
+    exit 1
+  fi
 fi
 printf '%s  %s\n' "$NODE_BIN_SHA256" "$NODE_DIR/bin/node" | sha256sum -c - >/dev/null \
   || { echo "ERROR: node $NODE_VERSION binary does not match the pinned sha256" >&2; exit 1; }
