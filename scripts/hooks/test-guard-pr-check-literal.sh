@@ -2234,6 +2234,29 @@ for v in \
     "$AR; grep 'scripts/cr/*.sh' docs && bash scripts/cr/*.sh"; do
     run "HIMMEL-7066 reader mention control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
+# A reader inside a { } group, a loop or an if body whose output is piped onward feeds that pipe, and
+# a subscript assignment can redefine the reader itself: the scrub stays off for every such line.
+for v in \
+    "{ true; cat scripts/cr/write-verdicts.sh; } | bash" \
+    "{ $AR; cat scripts/cr/write-verdicts.sh; } | bash" \
+    "for x in 1; do cat scripts/cr/write-verdicts.sh; done | bash" \
+    "for x in 1; do true; cat scripts/cr/write-verdicts.sh; done | bash" \
+    "while true; do :; cat scripts/cr/write-verdicts.sh; break; done | bash" \
+    "until false; do :; cat scripts/cr/write-verdicts.sh; break; done | bash" \
+    "if true; then cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "if true; then :; cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "if false; then :; else :; cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "if false; then :; elif true; then :; cat scripts/cr/write-verdicts.sh; fi | bash" \
+    "BASH_CMDS[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "{ BASH_CMDS[cat]=/usr/bin/bash; }; $AR; cat scripts/cr/write-verdicts.sh" \
+    "X=1 BASH_CMDS[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "PATH[0]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
+    "commands[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "functions[cat]='bash \$@'; $AR; cat scripts/cr/write-verdicts.sh" \
+    "aliases[cat]=bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "path[1]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh"; do
+    run "HIMMEL-7066 group and subscript control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
 # Line-level fail-closed rules on a line with a git word or a
 # GIT_*/EDITOR/VISUAL/PAGER assignment: a tokenizer failure plus any
 # metacharacter, a value slot that ends in a substitution, --config-env, and a

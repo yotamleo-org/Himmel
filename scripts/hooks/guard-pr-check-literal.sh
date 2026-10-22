@@ -1991,9 +1991,11 @@ unresolved=""
 # that stays (its separator is ; && || or a newline, or a pipe into another inert
 # segment). Wrappers (env, xargs, timeout, exec, sudo, stdbuf) are never inert.
 # Nothing is scrubbed when the line can change what a later reader means: a
-# function, subshell, alias, eval/source/export/read/printf -v, or a PATH, IFS,
-# BASH_ENV, HOME, GIT_*, RIPGREP*, LD_* style assignment.
-# ponytail: a heredoc, $(…) or $'…' line, a loop or `if` around the reader, and a
+# function, subshell, alias, eval/source/export/read/printf -v, a PATH, IFS,
+# BASH_ENV, HOME, GIT_*, RIPGREP*, LD_* style assignment, or a NAME[..]= subscript
+# assignment; nor when a { } group, loop, if or case word sits in a segment that stays,
+# since the reader's output could be piped onward from inside it.
+# ponytail: a heredoc, $(…) or $'…' line, any group, loop or `if` word, and a
 # VAR= prefix keep the whole line in scope, ceiling the residual shapes left denied;
 # upgrade path: model compound commands in the tokenizer.
 scan_flat=$flat
@@ -2067,6 +2069,13 @@ scrub_inert_readers() { # sets scan_flat
                     PROMPT_COMMAND | HOME | XDG_CONFIG_HOME | PAGER | GIT_* | RIPGREP* | LD_*) return 0 ;;
             esac
             if [ -z "${ST_RO[k]}" ]; then
+                case "$w" in
+                    # a group, loop or if body can pipe a reader's output onward, and a
+                    # subscript assignment (BASH_CMDS[..]=, PATH[0]=, commands[..]=) can
+                    # redefine the reader: the tokenizer sees neither
+                    '{' | '}' | do | done | then | fi | else | elif | 'esac' | [A-Za-z_]*'['*']'*=*)
+                        return 0 ;;
+                esac
                 case "$w" in
                     alias | unalias | function | eval | source | . | hash | enable | builtin | command | exec | trap | \
                         shopt | set | unset | readonly | declare | typeset | local | export | read | map[f]ile | read[a]rray | \
