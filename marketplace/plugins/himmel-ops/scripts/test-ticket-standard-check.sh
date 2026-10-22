@@ -94,6 +94,19 @@ humanizer_rows(){
   printf 'Before filing, read scripts/check.\n' >"$rewrite"
   out="$(python3 -I "$facts" "$td/path.md" "$rewrite" 2>&1)"; rc=$?
   check "faithful extensionless path passes" "$rc" 0
+  printf 'Use 1e3 rows before filing.\n' >"$td/exponent.md"
+  printf 'Use 2e3 rows before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/exponent.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed exponent number refused" "$rc" 1
+  printf 'Before filing, use 1e3 rows.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/exponent.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful exponent number passes" "$rc" 0
+  printf 'Before filing, read .env.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/dotfile.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful sentence-final dotfile passes" "$rc" 0
+  printf 'Before filing, read .other.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/dotfile.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed sentence-final dotfile refused" "$rc" 1
   : >"$rewrite"
   out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
   check "empty rewrite refused" "$rc" 1

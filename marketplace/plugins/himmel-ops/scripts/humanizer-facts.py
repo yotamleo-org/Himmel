@@ -39,10 +39,10 @@ def facts(text):
     patterns = {
         "inline code": r"(?<!`)(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)",
         "ticket": r"\b[A-Z][A-Z0-9]*-[0-9]+\b",
-        "number": r"(?<![\w])[vV]?[-+]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+)?(?![\w])",
+        "number": r"(?<![\w])[vV]?[-+]?\d+(?:[.,]\d+)*(?:[eE][-+]?\d+)?(?:%|[A-Za-z]+)?(?![\w])",
         "path": r"(?<![\w/])[~./A-Za-z0-9_@+-]*/[A-Za-z0-9_.@+-]*[A-Za-z0-9_@+-](?![\w/])",
         "file": r"(?<![\w/])[~./A-Za-z0-9_@+-]*[A-Za-z0-9_+-]\.[A-Za-z][A-Za-z0-9]*(?:/[A-Za-z0-9_.@+-]+)*(?![\w/])",
-        "dotfile": r"(?<![\w/])(?:[~./A-Za-z0-9_@+-]*/)?\.[A-Za-z][A-Za-z0-9_.-]*(?![\w/])",
+        "dotfile": r"(?<![\w/])(?:[~./A-Za-z0-9_@+-]*/)?\.[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?(?![\w/])",
         "command": r"(?m)^[ \t]*(?:\$ )?(?:bash|sh|node|python3?|git|gh|npm|npx|bun|curl|make|cargo|pytest) [^\n]+",
     }
     for kind, pattern in patterns.items():
