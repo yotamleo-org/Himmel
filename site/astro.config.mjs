@@ -180,6 +180,7 @@ export default defineConfig({
                 { label: 'Versioning scheme', slug: 'release/versioning-scheme' },
                 { label: 'License audit', slug: 'license-audit' },
                 { label: 'Third-party licenses', slug: 'third-party-licenses' },
+                { label: 'Credits', slug: 'credits' },
               ],
             },
             {

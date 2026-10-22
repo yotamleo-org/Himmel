@@ -246,6 +246,7 @@ scripts/docs/test-check-doc-terms.sh	pr	static-gate
 scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
+scripts/docs/test-generate-credits.sh	pr	static-gate
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate

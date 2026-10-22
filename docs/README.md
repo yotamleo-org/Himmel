@@ -82,6 +82,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [tool-adoption/telemetry.md](tool-adoption/telemetry.md) — adoption-outcome telemetry for the registry.
 - [license-audit.md](license-audit.md) — the license audit.
 - [third-party-licenses.md](third-party-licenses.md) — the third-party license audit of direct npm dependencies.
+- [credits.md](credits.md) — sources, authors, licences and pins for shipped plugins, skill families and registered forks.
 
 ## Publishing these docs (GitHub Pages)
 

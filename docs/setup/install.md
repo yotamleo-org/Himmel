@@ -310,3 +310,4 @@ will tell you what the manual copy missed.
 - [configuration.md](../configuration.md) — every knob, every gate's
   classification, every off switch.
 - [migrating.md](migrating.md) — converging an older himmel install.
+- [Credits](../credits.md) — the sources, authors, licences and pins behind the plugins, skills and forks.

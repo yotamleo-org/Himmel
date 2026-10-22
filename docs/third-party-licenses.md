@@ -299,3 +299,87 @@ SOFTWARE.
   `scripts/lib/wire-statusline.sh`) are internal cross-copies of himmel's own
   files (byte-identical duplicates shipped inside a plugin so it's
   self-contained) — not third-party code, no separate attribution needed.
+
+## Credits metadata
+
+[Credits](credits.md) is generated from the marketplace manifest, fork adapter
+registry and this table. This is the supplement for attribution fields those
+registries do not carry, not a second inventory: `plugin:` and `fork:` keys
+must name a live registry entry; `skill:` rows list the standalone vendored
+skill families. `—` means use the registry field. Manifest URLs, licences and
+remote pins win over supplements; fork upstreams, roles and pin sites always
+come from the adapter registry. In-tree pin links point to the maintained
+vendoring record instead of duplicating its revision here.
+
+Licence declarations below come from the retained local licence files,
+marketplace descriptions and upstream repository licence metadata read on
+2026-10-22. `home-assistant.io/LICENSE.md` declares CC-BY-NC-SA-4.0 despite
+GitHub reporting NOASSERTION. `animejs-skills` declares no licence; its row is
+an explicit unknown, not permission to vendor it. Anthropic's skills have
+per-skill terms, including source-available document skills, not a blanket
+Apache licence. These rows do not extend the npm compatibility verdict above
+to every registered repository; dormant and contribution-only forks are not
+claims that their code is distributed in himmel.
+
+Regenerate and check with `node scripts/docs/generate-credits.mjs` and
+`node scripts/docs/generate-credits.mjs --check`.
+
+<!-- credits-metadata:start -->
+| Item | Source | Author | Licence | Pin |
+|---|---|---|---|---|
+| plugin:luna-correlate | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/luna-correlate | — | MIT | In-tree |
+| plugin:himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | — | MIT | In-tree |
+| plugin:himmel-guard | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-guard | — | MIT | In-tree |
+| plugin:himmel-bus | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-bus | — | MIT | In-tree |
+| plugin:handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | — | MIT | In-tree |
+| plugin:telegram-himmel | https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram | — | — | [Fork record](../marketplace/plugins/telegram-himmel/README.md) |
+| plugin:qmd | https://github.com/tobi/qmd | — | — | [Fork pin](../scripts/lib/qmd-bin.sh) |
+| plugin:obsidian-triage | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/obsidian-triage | — | MIT | In-tree |
+| plugin:lean-skills | https://github.com/obra/superpowers , https://github.com/mattpocock/skills | — | — | [Per-family pins](../marketplace/plugins/lean-skills/VENDORED.md) |
+| plugin:i-have-adhd | https://github.com/ayghri/i-have-adhd | — | — | [Vendoring pin](../marketplace/plugins/i-have-adhd/VENDORED.md) |
+| plugin:pstack | https://github.com/cursor/plugins/tree/main/pstack | — | — | [Vendoring pin](../marketplace/plugins/pstack/VENDORED.md) |
+| plugin:humanizer | https://github.com/blader/humanizer | — | — | [Vendoring pin](../marketplace/plugins/humanizer/VENDORED.md) |
+| plugin:domain-modeling | https://github.com/mattpocock/skills | — | — | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
+| plugin:plannotator-effective-html | — | — | MIT | — |
+| plugin:impeccable | — | — | Apache-2.0 | — |
+| plugin:emilkowalski-skills | — | — | MIT | — |
+| plugin:ui-ux-pro-max | — | — | MIT | — |
+| plugin:taste-skill-core | — | — | MIT | — |
+| plugin:animejs-skills | — | — | Unknown (not declared upstream) | — |
+| plugin:gsap-skills | — | — | MIT | — |
+| plugin:lottie-motion-design | — | — | MIT | — |
+| plugin:motion-lexicon | — | — | MIT | — |
+| plugin:threejs-skills | — | — | MIT | — |
+| plugin:ai-image-prompts | — | — | MIT | — |
+| plugin:platform-design-skills | — | — | MIT | — |
+| plugin:diagram-design | — | — | MIT | — |
+| plugin:builder-visual | — | — | MIT | — |
+| plugin:frontend-slides | — | — | MIT | — |
+| plugin:design-dna | — | — | MIT | — |
+| plugin:anydesign | — | — | MIT | — |
+| plugin:anthropic-design-skills | — | — | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | — |
+| plugin:hallmark | — | — | MIT | — |
+| plugin:shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | — | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
+| plugin:graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | — | [Package pin](../scripts/lib/graphify-bin.sh) |
+| skill:unslop | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
+| skill:no-comments + comment-sicko | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
+| skill:test-audit | https://github.com/openclaw/openclaw | OpenClaw Foundation | MIT | 1370643e394f956dfae2e42f43ee030b0072434b |
+| skill:writing-for-agents | https://github.com/mattpocock/skills | Matt Pocock | MIT | 49dd158d1076134a641b33efb035946536778336 |
+| fork:yotamleo-org/qmd | — | Tobi Lütke | MIT | — |
+| fork:yotamleo-org/graphify | — | Graphify-Labs | Apache-2.0 | — |
+| fork:yotamleo-org/claude-video | — | bradautomates | MIT | — |
+| fork:yotamleo-org/obsidian-skills | — | Steph Ango | MIT | — |
+| fork:yotamleo-org/twitter-cli | — | public-clis | Apache-2.0 | — |
+| fork:yotamleo-org/claude-obsidian | — | AgriciDaniel | MIT | — |
+| fork:yotamleo-org/codex-plugin-cc | — | OpenAI | Apache-2.0 | — |
+| fork:yotamleo-org/obsidian-second-brain | — | Eugeniu Ghelbur | MIT | — |
+| fork:yotamleo-org/effective-html | — | plannotator | MIT | — |
+| fork:yotamleo-org/claude-hud | — | Jarrod Watts | MIT | — |
+| fork:yotamleo-org/claude-statusline | — | Kamran Ahmed | MIT | — |
+| fork:yotamleo-org/claude-squad | — | smtg-ai | AGPL-3.0 | — |
+| fork:yotamleo-org/hermes-agent | — | NousResearch | MIT | — |
+| fork:yotamleo-org/caveman | — | JuliusBrussee | Apache-2.0 | — |
+| fork:yotamleo-org/codex | — | OpenAI | Apache-2.0 | — |
+| fork:yotamleo-org/core | — | Home Assistant contributors | Apache-2.0 | — |
+| fork:yotamleo-org/home-assistant.io | — | Home Assistant contributors | CC-BY-NC-SA-4.0 | — |
+<!-- credits-metadata:end -->

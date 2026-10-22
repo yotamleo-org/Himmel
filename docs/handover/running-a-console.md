@@ -7,6 +7,8 @@ relay, ticket sequence, batch, arming and side session *are* is defined once, in
 new. This page is how to run one.
 
 `/console new` starts one. `/console next` hands it over to its successor.
+For the sources, authors and licences behind the team's tools, see
+[Credits](../credits.md).
 
 ## Who does what
 

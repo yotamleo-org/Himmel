@@ -70,3 +70,4 @@ release/v1.0.0-notes.md
 release/versioning-scheme.md
 license-audit.md
 third-party-licenses.md
+credits.md

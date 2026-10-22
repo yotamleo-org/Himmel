@@ -262,6 +262,7 @@ scripts/docs-site/test-site-build.sh	0
 scripts/docs/test-adoption-trail.sh	0
 scripts/docs/test-check-doc-terms.sh	1
 scripts/docs/test-check-llms-links.sh	1
+scripts/docs/test-generate-credits.sh	1
 scripts/docs/test-readme-hygiene.sh	0
 scripts/docs/test-site-guides.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
