@@ -56,7 +56,8 @@
 #      deferred key that does not exist or is already Done/Closed/Resolved/
 #      Won't Do, or is neither residual-labelled, older than the PR's own
 #      ticket, nor linked (either direction, any type) from it. The deferral
-#      keys must also equal the CR ledger's deferred_to rows for the PR head.
+#      keys must also equal the CR ledger's deferred_to rows for the PR head
+#      (or for the reviewed head a same-branch trivial-descendant row names).
 #      A Jira error reads UNKNOWN and fails — never a PASS.
 #   9. Plugin version bump vs CURRENT origin/main: every plugin
 #      under marketplace/plugins/ the PR touches must be versioned strictly
@@ -395,7 +396,8 @@ fi  # ONLY7 == 0: checks 1-6
 # Whether a line's "done" is TRUE stays the console's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
 # deferred key must exist and still be open, and the deferral keys must equal
-# the CR ledger's deferred_to rows for the PR head. A Jira error reads UNKNOWN and
+# the CR ledger's deferred_to rows for the PR head, or for the reviewed head a
+# same-branch trivial-descendant row names. A Jira error reads UNKNOWN and
 # fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
 jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
@@ -434,10 +436,13 @@ cov_ledger_keys() {
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
         [inputs | fromjson? | select(type == "object")] | to_entries | map(.value + {_ln: .key}) as $rows
         | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
+        [$rows[] | select(.kind == "avail" and (.branch | type == "string") and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
+            | {branch, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
+        | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head))) as $a ($f; . + $a.set)) as $e
-            | .[ak($f; $f.head)] = (if hm($e.head; $h) then vd($e) else {} end))
+            | .[ak($f; $f.head)] = (if at_head($f; $e) then vd($e) else {} end))
         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
         | .deferred_to | ascii_upcase' "$1") || return 1
     printf '%s\n' "$cov_led_out" | sort -u

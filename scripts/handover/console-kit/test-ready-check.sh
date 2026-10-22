@@ -753,6 +753,52 @@ seed_deferral HIMMEL-50 "${SHA:0:12}"
 rc=0; out="$(run)" || rc=$?
 check "ledger: an abbreviated head spelling matches: exit 0" "$rc" "0"
 
+# seed_descendant <reviewed head> [branch]: the avail row clear-review-marker writes for a tip it cleared as a trivial descendant of a reviewed head
+seed_descendant() {
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "${2:-b}" "$SHA" "$1" >> "$LEDGER"
+}
+REVHEAD=cafebabecafebabecafebabecafebabecafebabe
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: a deferral at the reviewed head counts at a trivial-descendant PR head: exit 0" "$rc" "0"
+contains "descendant: reviewed-head deferral: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: a reviewed-head deferral absent from the body: exit 1" "$rc" "1"
+contains "descendant: absent from body: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD" other
+rc=0; out="$(run)" || rc=$?
+check "descendant: a descendant row of another branch does not reach the deferral: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 deadbeefdeadbeefdeadbeefdeadbeefdeadbeef; seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: a deferral at a head the descendant row does not name does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: no trivial-descendant row, the reviewed-head deferral does not count: exit 1" "$rc" "1"
+contains "descendant: no row: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$REVHEAD" "$REVHEAD" >> "$LEDGER"
+seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
+
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
 printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SHA" "$SHA" >> "$LEDGER"
