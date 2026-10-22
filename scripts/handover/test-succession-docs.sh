@@ -366,6 +366,12 @@ absent 'running-a-console no longer has the leg answer with a SendMessage quote-
 step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CONSOLE")"
 step1flat="$(flat "$step1")"
 contains 'ACTION ZERO step 1 names action-zero.sh with --acquire --render-legs' "$step1flat" 'action-zero.sh" --doc'
+action_zero_calls="$(printf '%s\n' "$step1" | grep -ioF 'action-zero.sh' | wc -l | tr -d ' ')"
+if [ "$action_zero_calls" -eq 1 ]; then
+    pass 'ACTION ZERO step 1 invokes action-zero.sh exactly once'
+else
+    fail "ACTION ZERO step 1 invokes action-zero.sh $action_zero_calls times"
+fi
 contains 'ACTION ZERO step 1: --acquire --render-legs in one call' "$step1flat" '--acquire --render-legs'
 contains 'ACTION ZERO step 1: ListAgents in the same batch' "$step1flat" 'ListAgents'
 contains 'ACTION ZERO step 1: ToolSearch loads SendMessage in the same batch' "$step1flat" 'select:SendMessage'
