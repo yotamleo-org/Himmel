@@ -109,6 +109,7 @@ case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive n
 ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
+if [ -z "$ledger" ] && . "$REPO/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi  # swallow-ok: handover_root reads only the live env, so feed it the .env value first; no .env means the inline default
 if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
@@ -288,8 +289,8 @@ def read_residual_must(path):
 residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
 
 def read_admitted(path, ver):
-    # the admissions ledger: a key whose latest row for the version is a plain admission (no kind),
-    # an override or an rm-admit was admitted into it; a deferral or an unknown kind was not
+    # the admissions ledger: a key whose latest row for the version is an override or an rm-admit
+    # was admitted into it; a deferral, an unknown kind or a kind-less intake row was not
     last = {}
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
@@ -301,7 +302,7 @@ def read_admitted(path, ver):
                 last[str(r['key']).upper()] = r.get('kind')
     except OSError:
         pass
-    return {k for k, kind in last.items() if kind in (None, 'override', 'rm-admit')}
+    return {k for k, kind in last.items() if kind in ('override', 'rm-admit')}
 
 admitted = read_admitted(os.environ.get('ND_LEDGER', ''), first_ver) if first_ver else set()
 
@@ -497,7 +498,7 @@ for i in issues.values():
     if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
         continue
     wrapped = i['status'] == 'To Do' and i['key'] in briefs
-    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Story', 'Sub-task'):
+    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
         continue
     if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
         continue

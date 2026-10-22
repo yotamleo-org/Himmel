@@ -632,7 +632,7 @@ has "version: a Story with no blocker is offered" "$v1" "HIMMEL-801	"
 has "version: a residual the RM admitted (ledger row) is offered without residual-must" "$v1" "HIMMEL-802	"
 lacks "version: a residual whose latest ledger row is a deferral is not offered" "$v1" "HIMMEL-803	"
 lacks "version: a residual whose ledger row has an unknown kind is not offered" "$v1" "HIMMEL-808	"
-has "version: a residual with a plain (kindless) admission row is offered" "$v1" "HIMMEL-809	"
+lacks "version: a residual with a kindless intake row is not offered (only an rm-admit or override row admits)" "$v1" "HIMMEL-809	"
 has "collision: a directory named on the candidate side collides with nothing" "$v1" "HIMMEL-804	"
 has "collision: two candidates naming the same directory are both offered" "$v1" "HIMMEL-805	"
 has "collision: and the second is offered too" "$v1" "HIMMEL-806	"
@@ -652,6 +652,33 @@ has "why: a live-leg owner is named" "$w1" "# drop HIMMEL-99 owned by live leg"
 lacks "why: without --why no per-ticket line is printed" "$v1" "# drop HIMMEL-"
 printf 'scripts/lib/Brewfile\n' > "$WORK/held30.txt"
 lacks "collision: a new extensionless file equal to a held path is held" "$(run30 --held "$WORK/held30.txt")" "HIMMEL-810	"
+
+# an override row admits a residual too
+printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-811","kind":"override","actor":"operator"}\n' >> "$WORK/ledger30.jsonl"
+M_SAVE="$M"; M="$M30"; mk HIMMEL-811 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the operator overrode" "Edit scripts/lib/override.sh only."; M="$M_SAVE"
+has "version: a residual with an override row is offered" "$(run30)" "HIMMEL-811	"
+
+# HANDOVER_DIR only in .env (the cache-dir .env load_dotenv reads first): the ledger under it is read
+HD7064="$WORK/hd7064"; CD7064="$WORK/cache7064"; mkdir -p "$HD7064" "$CD7064"
+printf 'HANDOVER_DIR=%s\n' "$HD7064" > "$CD7064/.env"
+printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-802","kind":"rm-admit","actor":"rm"}\n' > "$HD7064/admissions-ledger.jsonl"
+denv="$(env -u HANDOVER_DIR -u HIMMEL_ADMISSIONS_LEDGER HIMMELCTL_CACHE_DIR="$CD7064" NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --legs-from "$WORK/fleet.json" 2>/dev/null)"
+has "env: a ledger under a HANDOVER_DIR set only in .env admits its residual" "$denv" "HIMMEL-802	"
+
+# a wrapped To Do Story with a resume brief is a RESUME row; an Epic still is not
+WS="$WORK/ts-story/workers"; mkdir -p "$WS"
+MS="$WORK/mstory/HIMMEL"; mkdir -p "$MS"
+M_SAVE="$M"; M="$MS"
+mk HIMMEL-66 "To Do" Medium '[]' '[]' '[]' "wrapped story with a brief" "Edit scripts/lib/w6.sh."
+sed -i 's/^type: "Task"/type: "Story"/' "$MS/HIMMEL-66.md"  # gnu-ok: Linux-only kit
+mk HIMMEL-67 "To Do" Medium '[]' '[]' '[]' "wrapped epic with a brief" "Edit scripts/lib/w7.sh."
+sed -i 's/^type: "Task"/type: "Epic"/' "$MS/HIMMEL-67.md"  # gnu-ok: Linux-only kit
+M="$M_SAVE"
+printf '{"key":"HIMMEL-66","state":"wrapped","resume_brief":"/x/HIMMEL-66-RESUME.md"}\n' > "$WS/HIMMEL-66.json"
+printf '{"key":"HIMMEL-67","state":"wrapped","resume_brief":"/x/HIMMEL-67-RESUME.md"}\n' > "$WS/HIMMEL-67.json"
+rs7="$(NEXT_DISPATCH_MIRROR="$MS" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --workers-dir "$WS" --legs-from "$WORK/fleet5.json" 2>/dev/null)"
+has "story: a wrapped To Do Story with a resume brief is a RESUME row" "$rs7" "RESUME	HIMMEL-66"
+lacks "story: a wrapped Epic is still never a RESUME row" "$rs7" "HIMMEL-67	"
 
 # --- replay: the 10-19T console state (doc priority line, 28-leg manifest, open PRs, v1.1.3 Jira slice) frozen under fixtures/ ---
 RP="$HERE/fixtures/dispatcher-replay"
