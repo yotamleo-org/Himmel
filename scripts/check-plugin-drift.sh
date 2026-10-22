@@ -26,7 +26,7 @@
 #   2. Vendored forks — any marketplace/plugins/<p>/UPSTREAM_PIN that carries the
 #      generic fields `upstream_repo` / `upstream_path` / `upstream_sha256`. Drift
 #      = the recorded sha256 != the sha256 of that upstream file fetched now.
-#      (telegram-himmel, pr-review-toolkit-himmel.)
+#      (telegram-himmel.)
 #   3. Carried upstreams — the rest of the fleet that the two
 #      classes above don't reach. A data-driven registry
 #      (scripts/upstreams.json, DRIFT_REGISTRY-overridable) enumerates each with a
@@ -72,7 +72,7 @@
 # a regression worth investigating unless the entry's own note says the delta
 # modifies upstream files (qmd's does), and the unattended cadence stops after
 # reporting, never pushes.
-# Vendored single-file forks (telegram-himmel, pr-review-toolkit-himmel) still
+# Vendored single-file forks (telegram-himmel) still
 # require a manual file-level delta judgment when their UPSTREAM_PIN changes.
 #
 # Exit codes (a cadence keys its alert on these):

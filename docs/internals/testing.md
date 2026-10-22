@@ -492,7 +492,7 @@ Three suites ship:
 ### Assumptions this round shipped on (unanswered by the operator)
 
 1. On-demand only — no CI or API-key wiring for these suites.
-2. Agent-shaped eval targets (e.g. `pr-review-toolkit-himmel`) are out of
+2. Agent-shaped eval targets (e.g. a review agent) are out of
    scope; only skill-invoked plugin surfaces are covered.
 3. The qmd mock lives at `marketplace/plugins/qmd/evals/mocks/`, owned by
    whoever next changes the `qmd` tool surface.
