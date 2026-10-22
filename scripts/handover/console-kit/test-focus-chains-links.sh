@@ -38,7 +38,9 @@ cat > "$WORK/chains.json" <<'EOF'
  {"name": "B — group", "steps": [{"key": "HIMMEL-6"}, {"key": "HIMMEL-5"}, {"key": "HIMMEL-9"}]},
  {"name": "C — again", "steps": [{"key": "HIMMEL-1"}, {"key": "HIMMEL-2"}, {"key": "HIMMEL-7"}, {"key": "HIMMEL-2"}]},
  {"name": "D — loop", "steps": [{"key": "HIMMEL-8"}, {"key": "HIMMEL-10"}, {"key": "HIMMEL-11"}, {"key": "HIMMEL-8"}]},
- {"name": "E — via mirror", "steps": [{"key": "HIMMEL-12"}, {"key": "HIMMEL-13"}]}
+ {"name": "E — via mirror", "steps": [{"key": "HIMMEL-12"}, {"key": "HIMMEL-13"}]},
+ {"name": "F — against A", "steps": [{"key": "HIMMEL-2"}, {"key": "HIMMEL-1"}]},
+ {"name": "G — via blocked_by", "steps": [{"key": "HIMMEL-15"}, {"key": "HIMMEL-16"}]}
 ]
 EOF
 mk 7 "To Do" "" ""
@@ -48,6 +50,9 @@ mk 11 "To Do" "" ""
 mk 12 "To Do" "" '"HIMMEL-14"'
 mk 13 "To Do" '"HIMMEL-14"' ""
 mk 14 "To Do" '"HIMMEL-12"' '"HIMMEL-13"'
+mk 15 "To Do" "" ""
+mk 16 "To Do" "" ""
+mk 17 "To Do" '"HIMMEL-15"' '"HIMMEL-16"'
 # fake jira: logs each call; `links` answers from $WORK/links.<key>
 cat > "$WORK/jira" <<EOF
 #!/usr/bin/env bash
@@ -73,7 +78,8 @@ has "the opposite of an earlier chain's pair is reversed" "$out" "2${TAB}HIMMEL-
 eq "a pair repeated in a later chain is listed once" "$(printf '%s\n' "$out" | grep -c "${TAB}HIMMEL-1${TAB}HIMMEL-2${TAB}")" 1
 has "a pair closing a loop of proposed pairs is a cycle" "$out" "3${TAB}HIMMEL-11${TAB}HIMMEL-8${TAB}cycle"
 has "a pair closing a loop over mirror links is a cycle" "$out" "4${TAB}HIMMEL-12${TAB}HIMMEL-13${TAB}cycle"
-has "the last line counts the rows by state" "$out" "# pairs: 11 (closed 1, cycle 2, linked 1, new 4, reversed 2, unknown 1)"
+has "a pair closing a loop over a link only the blocked side records is a cycle" "$out" "6${TAB}HIMMEL-15${TAB}HIMMEL-16${TAB}cycle"
+has "the last line counts the rows by state" "$out" "# pairs: 13 (closed 1, cycle 3, linked 1, new 4, reversed 3, unknown 1)"
 [ -f "$WORK/calls" ] && fail "a dry run calls jira ($(cat "$WORK/calls"))" || pass "a dry run calls jira never"
 
 bash "$SUT" "$WORK/chains.json" --mirror "$M" --apply >/dev/null 2>&1; rc=$?
@@ -97,6 +103,10 @@ rm -f "$WORK/calls"
 bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 3 --apply >/dev/null 2>&1
 eq "a cycle row is never written" "$(grep '^link ' "$WORK/calls")" "link HIMMEL-8 --blocks HIMMEL-10
 link HIMMEL-10 --blocks HIMMEL-11"
+
+rm -f "$WORK/calls"
+bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 5 --apply >/dev/null 2>&1
+eq "a chain not named never marks a named chain's pair reversed" "$(grep '^link ' "$WORK/calls")" "link HIMMEL-2 --blocks HIMMEL-1"
 
 rm -f "$WORK/calls"
 bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 9 --apply >/dev/null 2>&1; rc=$?

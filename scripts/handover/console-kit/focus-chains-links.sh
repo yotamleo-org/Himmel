@@ -13,13 +13,15 @@
 #   linked      the mirror already shows blocker blocks blocked
 #   reversed    the mirror shows the opposite link, or an earlier chain proposes it:
 #               never written (it would make a cycle)
-#   cycle       blocked already reaches blocker over the mirror's blocks links and
-#               the new or linked rows above: never written
+#   cycle       blocked already reaches blocker over the mirror's links (from
+#               either side's record) and the new or linked rows above: never written
 #   closed      a side is Done (statusCategory): nothing to order
 #   unknown     a key has no mirror file
 # A pair repeated in a later chain is listed once, its chain column naming every
 # chain that proposes it (0,2); --apply writes it when any of them is picked.
-# The last line counts the rows by state.
+# The last line counts the rows by state. --chain N (repeatable) reads only the
+# named chains, so a chain left out never marks a named one's pair reversed or a
+# cycle, and a dry run with the same --chain list shows what --apply writes.
 #
 # --apply writes the `new` rows of the chains named by --chain (index in the file,
 # repeatable; an index past the last chain, or --apply without one, is refused, so the console picks which chains are
@@ -82,8 +84,16 @@ def issue(key):
 seen = {}
 rows = []
 edges = {}
+back = None
 def reaches(src, dst):
-    # src reaches dst over the mirror's blocks links plus the new or linked pairs so far
+    # src reaches dst over the mirror's links (from either side's record) plus the new or linked pairs so far
+    global back
+    if back is None:
+        back = {}
+        for fn in os.listdir(mirror):
+            if fn.endswith('.md') and issue(fn[:-3]):
+                for x in issue(fn[:-3])['blocked_by']:
+                    back.setdefault(x, set()).add(fn[:-3])
     stack, done = [src], set()
     while stack:
         x = stack.pop()
@@ -93,9 +103,12 @@ def reaches(src, dst):
             continue
         done.add(x)
         ix = issue(x)
-        stack.extend((ix['blocks'] if ix else set()) | edges.get(x, set()))
+        stack.extend((ix['blocks'] if ix else set()) | back.get(x, set()) | edges.get(x, set()))
     return False
+picked = {int(c) for c in os.environ['FCL_PICKED'].split()}
 for n, ch in enumerate(chains):
+    if picked and n not in picked:
+        continue
     keys = [s.get('key') for s in ch.get('steps', []) if s.get('key')]
     for a, b in zip(keys, keys[1:]):
         if a == b:
