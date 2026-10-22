@@ -63,6 +63,18 @@ fail_nonfatal() {
   FAILURES+=("Step $STEP: $1")
 }
 
+# Homebrew verifies each bottle against its own checksum but cannot pin a
+# version, so the installed uv/bun must be at least the pinned patch release:
+# an older one carries the advisory that pin was raised for.
+# shellcheck source=installer-pins.sh
+. "$HIMMEL_PATH/scripts/machine-setup/installer-pins.sh"
+require_min_version() {   # <tool> <have> <want>
+  if [ "$(printf '%s\n%s\n' "$2" "$3" | sort -V | head -1)" != "$3" ]; then
+    echo "  $1 $2 is older than the pinned $3 — run: brew upgrade $1" >&2
+    return 1
+  fi
+}
+
 echo "════════════════════════════════════════"
 echo "himmel macOS installer — *** ALPHA (unvalidated) ***"
 echo "  Assumes git / node / Claude CLI / himmel clone already installed."
@@ -87,6 +99,7 @@ step "Install uv + uvx via Homebrew (graphify hard dependency)"
   if [ "$HAVE_BREW" -eq 1 ]; then
     brew install uv
     uv --version
+    require_min_version uv "$(uv --version | awk '{print $2}')" "$UV_VERSION"
   else
     echo "  skipped: Homebrew not found (see previous step) — install uv manually (https://astral.sh/uv) or install Homebrew and re-run." >&2
     false
@@ -105,6 +118,7 @@ step "Install bun via Homebrew (qmd fork updater + jira CLI hard dependency)"
     brew tap oven-sh/bun
     brew install oven-sh/bun/bun
     bun --version
+    require_min_version bun "$(bun --version)" "$(tr -d '[:space:]' < "$HIMMEL_PATH/.bun-version")"
   else
     echo "  skipped: Homebrew not found (see previous step) — install bun manually (https://bun.sh) or install Homebrew and re-run." >&2
     false

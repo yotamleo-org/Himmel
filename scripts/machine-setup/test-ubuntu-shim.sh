@@ -50,10 +50,10 @@ expected_sorted=$(echo "$expected_apt_tools" | tr ' ' '\n' | sort | tr '\n' ' ' 
 
 grep -q 'NVM_DIR' "$target" || fail "caseA: nvm provisioning missing"
 grep -q 'nvm install' "$target" || fail "caseA: nvm install call missing"
-grep -q 'astral.sh/uv/install.sh' "$target" || fail "caseA: uv provisioning missing"
-grep -q 'bun.sh/install' "$target" || fail "caseA: bun provisioning missing (HIMMEL-3068)"
-grep -q 'claude.ai/install.sh' "$target" || fail "caseA: claude CLI provisioning missing"
-grep -q 'rtk-ai/rtk/releases' "$target" || fail "caseA: rtk provisioning missing"
+grep -q 'astral-sh/uv/releases/download' "$target" || fail "caseA: uv provisioning missing"
+grep -q 'oven-sh/bun/releases/download' "$target" || fail "caseA: bun provisioning missing (HIMMEL-3068)"
+grep -q 'claude-code-releases' "$target" || fail "caseA: claude CLI provisioning missing"
+grep -q 'rtk-ai/rtk/releases/download' "$target" || fail "caseA: rtk provisioning missing"
 echo "ok: caseA every tool the old ubuntu.sh provisioned (${expected_sorted}, nvm, uv, bun, claude, rtk) is still provisioned"
 
 # ── Case B: order assertion (provisioning < notice < delegated bootstrap) ──
@@ -73,17 +73,68 @@ echo "PROVISION:apt $*"
 exit 0
 EOF
 
+# Pinned artifacts: the curl stub serves a fixture per URL and logs it; the
+# sha256sum stub logs the "<sha>  <file>" line ubuntu.sh asks it to verify and
+# fails when STUB_SHA_RC says so (the real bytes-vs-pin check is covered by
+# test-installer-pins.sh, which runs the real sha256sum).
+# shellcheck source=installer-pins.sh disable=SC2153 # NVM_* come from the pins file
+. "$repo_root/scripts/machine-setup/installer-pins.sh"
+fix="$work/fix"
+mkdir -p "$fix/uv/uv-x86_64-unknown-linux-gnu" "$fix/bun/bun-linux-x64"
+for b in uv uvx; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$fix/uv/uv-x86_64-unknown-linux-gnu/$b"
+  chmod +x "$fix/uv/uv-x86_64-unknown-linux-gnu/$b"
+done
+tar -czf "$fix/uv.tar.gz" -C "$fix/uv" uv-x86_64-unknown-linux-gnu
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fix/bun/bun-linux-x64/bun"
+python3 -c 'import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1], "w"); z.write(sys.argv[2], "bun-linux-x64/bun"); z.close()' "$fix/bun.zip" "$fix/bun/bun-linux-x64/bun"
+# shellcheck disable=SC2016 # the fixture's own $1/$* expand when it runs
+printf '#!/usr/bin/env bash\ncase "$1" in install) echo "CLAUDE-INSTALL $*" ;; esac\nexit 0\n' > "$fix/claude"
+export FIX="$fix" CURL_LOG="$work/curl.log" NVM_FLAG="$work/nvm-installed" NVM_PIN_COMMIT="$NVM_COMMIT"
+: > "$CURL_LOG"
+
 cat > "$stub_bin/curl" <<'EOF'
 #!/usr/bin/env bash
-args="$*"
-case "$args" in
-  *api.github.com*) echo '{"tag_name":"v1.0.0"}' ;;
-  *) exit 0 ;;
+out=""; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    --proto|--proto-redir) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+echo "CURL:$url" >> "$CURL_LOG"
+case "$url" in
+  https://raw.githubusercontent.com/nvm-sh/nvm/*/install.sh)
+    printf '#!/usr/bin/env bash\ntouch "%s"\n' "$NVM_FLAG" > "$out" ;;
+  https://github.com/astral-sh/uv/releases/download/*) cp "$FIX/uv.tar.gz" "$out" ;;
+  https://github.com/oven-sh/bun/releases/download/*) cp "$FIX/bun.zip" "$out" ;;
+  https://downloads.claude.ai/claude-code-releases/*) cp "$FIX/claude" "$out" ;;
+  https://github.com/rtk-ai/rtk/releases/download/*) echo deb > "$out" ;;
+  *) echo "UNEXPECTED-URL $url" >&2; exit 22 ;;
 esac
+EOF
+
+cat > "$stub_bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+sed 's/^/SHA256CHECK:/' >> "$CURL_LOG"
+[ "${STUB_SHA_RC:-0}" = 0 ]
+EOF
+
+cat > "$stub_bin/uname" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-m" ]; then echo x86_64; exit 0; fi
+exec /usr/bin/uname "$@"
 EOF
 
 cat > "$stub_bin/git" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = "-C" ] && [ "$3" = "rev-parse" ]; then
+  if [ -e "$NVM_FLAG" ]; then echo "$NVM_PIN_COMMIT"; else echo "${STUB_NVM_HEAD:-$NVM_PIN_COMMIT}"; fi
+  exit 0
+fi
 echo "GIT:$*"
 if [ "$1" = "clone" ]; then
   target="$*"
@@ -150,14 +201,15 @@ esac
 EOF
 
 chmod +x "$stub_bin"/sudo "$stub_bin"/apt "$stub_bin"/curl "$stub_bin"/git \
-  "$stub_bin"/node "$stub_bin"/uv "$stub_bin"/bun "$stub_bin"/claude "$stub_bin"/rtk
+  "$stub_bin"/sha256sum "$stub_bin"/uname "$stub_bin"/node "$stub_bin"/uv "$stub_bin"/bun "$stub_bin"/claude "$stub_bin"/rtk
 
 # Pre-create $NVM_DIR/nvm.sh as a shell-function stub (nvm is sourced, not
-# exec'd, so it can't be a PATH stub) — this also skips the real curl-based
-# nvm installer via ubuntu.sh's own `[ ! -d "$NVM_DIR" ]` guard.
+# exec'd, so it can't be a PATH stub). The git stub reports the pinned nvm
+# commit as its HEAD, so ubuntu.sh skips the nvm installer here (the
+# fresh-install path is Case F).
 mkdir -p "$tmp_home/.nvm"
 cat > "$tmp_home/.nvm/nvm.sh" <<'EOF'
-nvm() { echo "STUB:nvm $*"; return 0; }
+nvm() { case "$1" in which) echo "$HOME/.nvm/versions/node/v$2/bin/node" ;; *) echo "STUB:nvm $*" ;; esac; return 0; }
 EOF
 
 log="$work/run.log"
@@ -232,6 +284,49 @@ grep -q "^GIT:-C $expected_pwd fetch --all --prune$" "$logD" \
 grep -q '^GIT:clone ' "$logD" \
   && fail "caseD: re-run must not clone over the existing checkout"
 echo "ok: caseD existing clone -> fetch --all --prune + reuse, no second clone"
+
+# ── Case F: every pinned artifact is fetched at its exact version and checked ─
+bun_pin=$(bun_sha256 "$(tr -d '[:space:]' < "$repo_root/.bun-version")")
+for want in \
+  "CURL:https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+  "CURL:https://github.com/oven-sh/bun/releases/download/bun-v$(tr -d '[:space:]' < "$repo_root/.bun-version")/bun-linux-x64.zip" \
+  "CURL:https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude" \
+  "CURL:https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk_${RTK_VERSION}-1_amd64.deb" \
+  "SHA256CHECK:${UV_SHA256}  " \
+  "SHA256CHECK:${bun_pin}  " \
+  "SHA256CHECK:${CLAUDE_LINUX_X64_SHA256}  " \
+  "SHA256CHECK:${RTK_DEB_SHA256}  " \
+  "SHA256CHECK:${NODE_BIN_SHA256}  "; do
+  grep -qF -- "$want" "$CURL_LOG" || { cat "$CURL_LOG" >&2; fail "caseF: pinned fetch/check missing: $want"; }
+done
+grep -q "^CLAUDE-INSTALL install ${CLAUDE_VERSION}\$" "$log" \
+  ||{ cat "$log" >&2; fail "caseF: claude must be installed at the pinned version ${CLAUDE_VERSION}"; }
+echo "ok: caseF uv, bun, claude, rtk fetched at pinned versions; every sha256 pin (and node's) was checked"
+
+# ── Case G: a sha256 mismatch aborts before the delegated bootstrap ─────────
+logG="$work/run-badsha.log"
+set +e
+STUB_SHA_RC=1 HOME="$tmp_home" PATH="$stub_bin:$PATH" bash "$target" >"$logG" 2>&1
+run_rcG=$?
+set -e
+[ "$run_rcG" -ne 0 ] || { cat "$logG" >&2; fail "caseG: a failing sha256 check must abort ubuntu.sh (rc=0)"; }
+grep -q '^BOOTSTRAP:invoked' "$logG" && fail "caseG: bootstrap ran after a sha256 failure"
+echo "ok: caseG sha256 failure aborts before the delegated bootstrap (rc=$run_rcG)"
+
+# ── Case H: nvm not at the pinned commit -> the sha-pinned install.sh runs ──
+rm -f "$NVM_FLAG"; : > "$CURL_LOG"
+logH="$work/run-nvm.log"
+set +e
+STUB_NVM_HEAD="0000000000000000000000000000000000000000" HOME="$tmp_home" PATH="$stub_bin:$PATH" bash "$target" >"$logH" 2>&1
+run_rcH=$?
+set -e
+[ "$run_rcH" -eq 0 ] || { cat "$logH" >&2; fail "caseH: fresh-nvm run failed (rc=$run_rcH)"; }
+# shellcheck disable=SC2153 # NVM_TAG comes from installer-pins.sh
+grep -qF "CURL:https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_TAG}/install.sh" "$CURL_LOG" \
+  || { cat "$CURL_LOG" >&2; fail "caseH: nvm install.sh was not fetched at ${NVM_TAG}"; }
+grep -qF "SHA256CHECK:${NVM_INSTALL_SHA256}  " "$CURL_LOG" || fail "caseH: nvm install.sh sha256 was not checked"
+[ -e "$NVM_FLAG" ] || fail "caseH: the verified nvm install.sh was not executed"
+echo "ok: caseH nvm install.sh fetched at ${NVM_TAG}, sha256 checked, then run"
 
 # ── Case C: --luna-remote -> fail-closed BEFORE any provisioning ───────────
 # Reuses the Case B stub environment (same stub PATH + temp HOME) so a

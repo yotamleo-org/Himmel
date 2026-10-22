@@ -5,7 +5,7 @@
 # major.minor.patch) and says match / behind / ahead — report-only, always rc 0.
 #
 # node/npm/bun are STUBS on a private PATH: --only toolchain runs in apply mode,
-# which would otherwise self-upgrade the host's real npm and bun.
+# which would otherwise probe the host's real npm and bun.
 #
 # Bash 3.2 compatible.
 

@@ -27,6 +27,22 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck disable=SC2034
 HIMMEL_PATH="$HOME/github/himmel"
 
+# Every tool below is an exact version checked against a pinned sha256
+# (installer-pins.sh); nothing is fetched as a piped installer or as "latest".
+# shellcheck source=installer-pins.sh
+. "$REPO_ROOT/scripts/machine-setup/installer-pins.sh"
+
+# The pinned artifacts below are linux-x64 builds; fail before any provisioning
+# rather than install a binary that cannot run.
+if [ "$(uname -m)" != "x86_64" ]; then
+  echo "ERROR: this installer pins linux-x64 artifacts; $(uname -m) is not supported" >&2
+  exit 1
+fi
+
+PIN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/himmel-pins.XXXXXX")" || exit 1  # prim-ok: root-owned download dir, apt must read the .deb
+chmod 0755 "$PIN_TMP"   # apt (sandbox user _apt) must be able to read the .deb
+trap 'rm -rf "$PIN_TMP"' EXIT
+
 # ── PATH hoist ──────────────────────────────────────────────────────────────
 # uv and the native Claude Code installer both drop binaries into
 # ~/.local/bin. Prepend once here so every step picks them up — avoids the
@@ -58,28 +74,41 @@ step "Install core tools: git, Python, jq, curl, shellcheck, gitleaks"
 sudo apt install -y git python3 python3-pip jq curl shellcheck gitleaks
 
 step "Install nvm + Node from .nvmrc"
-NVM_DIR="$HOME/.nvm"
-if [ ! -d "$NVM_DIR" ]; then
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+nvm_head() { git -C "$NVM_DIR" rev-parse HEAD 2>/dev/null || true; }
+if [ "$(nvm_head)" != "$NVM_COMMIT" ]; then
+  pin_fetch "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_TAG}/install.sh" \
+    "$NVM_INSTALL_SHA256" "$PIN_TMP/nvm-install.sh"
+  bash "$PIN_TMP/nvm-install.sh"
+  if [ "$(nvm_head)" != "$NVM_COMMIT" ]; then
+    echo "ERROR: nvm at $NVM_DIR is not the pinned ${NVM_TAG} commit ${NVM_COMMIT}" >&2
+    exit 1
+  fi
 fi
 # shellcheck disable=SC1091
 . "$NVM_DIR/nvm.sh"
-NODE_VERSION="$(cat "$REPO_ROOT/.nvmrc")"
+NVMRC_VERSION="$(cat "$REPO_ROOT/.nvmrc")"
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 nvm alias default "$NODE_VERSION"
+printf '%s  %s\n' "$NODE_BIN_SHA256" "$(nvm which "$NODE_VERSION")" | sha256sum -c - >/dev/null \
+  || { echo "ERROR: node $NODE_VERSION binary does not match the pinned sha256" >&2; exit 1; }
 
 ACTUAL_MAJOR="$(node --version | sed 's/^v\([0-9]*\).*/\1/')"
-_nv="${NODE_VERSION#v}"
+_nv="${NVMRC_VERSION#v}"
 EXPECT_MAJOR="${_nv%%.*}"
 if [ "$ACTUAL_MAJOR" != "$EXPECT_MAJOR" ]; then
   echo "ERROR: node major $ACTUAL_MAJOR != expected $EXPECT_MAJOR from .nvmrc"
   exit 1
 fi
-echo "Node $(node --version) active (.nvmrc=$NODE_VERSION)"
+echo "Node $(node --version) active (.nvmrc=$NVMRC_VERSION, pinned $NODE_VERSION)"
 
 step "Install uv + uvx"
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# shellcheck disable=SC2153 # UV_* come from installer-pins.sh
+pin_fetch "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+  "$UV_SHA256" "$PIN_TMP/uv.tar.gz"
+tar -xzf "$PIN_TMP/uv.tar.gz" -C "$PIN_TMP"
+install -m 0755 "$PIN_TMP/uv-x86_64-unknown-linux-gnu/uv" "$PIN_TMP/uv-x86_64-unknown-linux-gnu/uvx" "$HOME/.local/bin/"
 uv --version
 
 # Bun is a hard dependency of himmel-update.sh's qmd fork
@@ -89,25 +118,37 @@ uv --version
 # in himmel-update.sh for the loud follow-up now added for that case). Same
 # official installer docs/setup/new-machine.md already documents for Linux;
 # it lands the binary in ~/.bun/bin, which is NOT on the default PATH.
+# The version is .bun-version; installer-pins.sh refuses one it has no sha256 for.
 step "Install bun (qmd fork updater + jira CLI hard dependency)"
-curl -fsSL https://bun.sh/install | bash
+BUN_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/.bun-version")"
+BUN_SHA256="$(bun_sha256 "$BUN_VERSION")"
+pin_fetch "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+  "$BUN_SHA256" "$PIN_TMP/bun.zip"
+python3 -m zipfile -e "$PIN_TMP/bun.zip" "$PIN_TMP/bun-x"
+mkdir -p "$HOME/.bun/bin"
+install -m 0755 "$PIN_TMP/bun-x/bun-linux-x64/bun" "$HOME/.bun/bin/bun"
+ln -sf bun "$HOME/.bun/bin/bunx"
 export PATH="$HOME/.bun/bin:$PATH"
+# shellcheck disable=SC2016 # the literal $HOME/$PATH belong in the rc file
+bun_path_line='export PATH="$HOME/.bun/bin:$PATH"'
+grep -qsF "$bun_path_line" "$HOME/.bashrc" || printf '\n# bun (himmel installer)\n%s\n' "$bun_path_line" >> "$HOME/.bashrc"
 bun --version
 
 step "Install Claude Code CLI (native installer — no npm dependency)"
-curl -fsSL https://claude.ai/install.sh | bash
+pin_fetch "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude" \
+  "$CLAUDE_LINUX_X64_SHA256" "$PIN_TMP/claude"
+chmod +x "$PIN_TMP/claude"
+"$PIN_TMP/claude" install "$CLAUDE_VERSION"
 claude --version
 
 step "Install RTK"
-# Use the unversioned `rtk_amd64.deb` alias rather than `rtk_${VER}_amd64.deb`.
-# The release also publishes `rtk_${VER}-1_amd64.deb` (note the `-1` debian
-# revision) but no `rtk_${VER}_amd64.deb` — the old derivation 404'd silently.
-# The alias survives both version and revision bumps.
-RTK_TAG=$(curl -s https://api.github.com/repos/rtk-ai/rtk/releases/latest | jq -r .tag_name)
-RTK_DEB="rtk_amd64.deb"
-curl -fL "https://github.com/rtk-ai/rtk/releases/download/${RTK_TAG}/${RTK_DEB}" \
-  -o "/tmp/${RTK_DEB}"
-sudo apt install -y "/tmp/${RTK_DEB}"
+# The versioned `rtk_${VER}-1_amd64.deb` (note the `-1` debian revision),
+# checksum-pinned — never the release's mutable unversioned alias or a
+# latest-release lookup, either of which would install whatever was published last.
+pin_fetch "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk_${RTK_VERSION}-1_amd64.deb" \
+  "$RTK_DEB_SHA256" "$PIN_TMP/rtk.deb"
+sudo apt install -y "$PIN_TMP/rtk.deb"
+rm -rf "$PIN_TMP"
 # Hook wiring (`rtk init -g --auto-patch` + guard reconcile) happens in the
 # clone step below — adjacent to the reconcile so a clone/hookspath failure
 # can never strand a raw unguarded hook.
