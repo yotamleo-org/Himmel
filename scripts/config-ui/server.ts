@@ -546,7 +546,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // which secrets are set (presence only) and the commit rules in effect, for the Setup page.
       if (path === "/api/setup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json(setupState(setupOpts));
+        return json(await setupState(setupOpts));
       }
       // the vm section of the himmel config, validated and saved through luna-config.js.
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }

@@ -50,6 +50,41 @@ PILOT-MEASURE exit: after two weeks of use, count documents where `/humanizer` c
 
 **Coexist, do not merge or replace.** `unslop` stays the himmel house-style pass for terse internal documents: it carries himmel's three recorded deviations and its plain-speech rules. `humanizer` is an on-demand full-rewrite pass for longer prose written for people outside the harness, where voice matching and the fact-preservation check earn their cost. Merging would break byte-identical vendoring of both. Replacing `unslop` would lose rules 26 to 33. If the pilot finds humanizer never beats unslop on himmel text, drop humanizer; do not fold its rules into unslop.
 
+## Docs pass (HIMMEL-6966)
+
+The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR per docs section, each page as its own voice sample. A change is one changed passage (a diff hunk at zero context); it is *kept* when it survives the fact check and *dropped* when the check reverts it. The fact check compares every fenced block, inline code span, link target, heading and number before and after (zero differences on every page), then a read of each diff for added or dropped claims. Counts use the value-test method above, on prose outside code.
+
+| Batch | Page | Kept | Dropped | Em-dashes | Not-X-but-Y | Stock AI words |
+|---|---|---:|---:|---|---|---|
+| B1 start here | `why-himmel.md` | 23 | 1 | 18 → 2 | 2 → 1 | 2 → 0 |
+| B1 | `getting-started.md` | 25 | 0 | 32 → 3 | 0 → 0 | 1 → 0 |
+| B1 | `daily-loop.md` | 14 | 0 | 16 → 6 | 0 → 0 | 1 → 1 |
+| B1 | `system-design.md` | 3 | 0 | 0 → 0 | 6 → 6 | 6 → 5 |
+| B1 | `architecture.md` | 13 | 0 | 15 → 1 | 4 → 3 | 0 → 0 |
+| B2 daily use | `cadences.md` | 0 | 0 | 0 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `ui.md` | 1 | 0 | 0 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `launchers.md` | 2 | 0 | 4 → 0 | 0 → 0 | 6 → 6 |
+| B2 | `orchestration-patterns.md` | 19 | 0 | 22 → 4 | 0 → 0 | 1 → 1 |
+| B2 | `token-economy.md` | 33 | 0 | 43 → 1 | 2 → 1 | 1 → 0 |
+| B2 | `contributing.md` | 5 | 0 | 3 → 0 | 2 → 1 | 3 → 3 |
+| B2 | `security-review.md` | 12 | 0 | 21 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `voice.md` | 32 | 0 | 37 → 8 | 6 → 3 | 4 → 3 |
+| B2 | `himmel-bus.md` | 4 | 0 | 4 → 0 | 0 → 0 | 0 → 0 |
+| B2 | `jarvis-subsystems.md` | 7 | 1 | 17 → 5 | 1 → 1 | 1 → 1 |
+| B2 | `operator-conventions.md` | 50 | 0 | 126 → 5 | 11 → 11 | 6 → 6 |
+| B3 integrations | `hermes-runbook.md` | 61 | 0 | 79 → 8 | 1 → 0 | 17 → 17 |
+| B3 | `telegram-bridge.md` | 9 | 0 | 18 → 4 | 1 → 1 | 2 → 2 |
+| B3 | `luna/README.md` | 3 | 0 | 4 → 0 | 0 → 0 | 0 → 0 |
+| B3 | `luna/compounding.md` | 23 | 0 | 33 → 8 | 2 → 2 | 2 → 2 |
+| B3 | `luna/end-session-wiki.md` | 34 | 0 | 65 → 7 | 9 → 8 | 7 → 7 |
+| B3 | `luna/end-session-wiki-schema.md` | 26 | 0 | 34 → 1 | 2 → 2 | 1 → 1 |
+| B3 | `luna/google-health-connector-setup.md` | 13 | 0 | 15 → 1 | 0 → 0 | 0 → 0 |
+| B3 | `luna/pr-lane-guard.md` | 4 | 0 | 6 → 1 | 0 → 0 | 0 → 0 |
+| B3 | `handover/afk-mode.md` | 72 | 2 | 134 → 31 | 3 → 3 | 5 → 5 |
+| B3 | `handover/running-a-console.md` | 38 | 0 | 52 → 1 | 4 → 4 | 6 → 6 |
+
+The dash rule worked against the voice sample. Each page used dashes heavily, so the sample override would have kept them, but most of those dashes joined clauses that needed a comma, colon or full stop. The pass kept dashes in quoted rules and table cells and replaced the rest. `system-design.md` had already been through `unslop` and shows the smallest change: three passages, mostly table cells.
+
 ## Decision
 
 Vendor as `marketplace/plugins/humanizer/` with `disable-model-invocation: true` (one frontmatter line added, recorded in `VENDORED.md`), in no profile. The adopter template installs it on-demand (installed, disabled); the operator enables it by hand. Removal is `claude plugin disable humanizer@himmel`.

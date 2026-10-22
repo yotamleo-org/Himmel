@@ -3,6 +3,10 @@
 # (status-marker.sh), scripts/lib/status-marker.test.mjs (status-marker.mjs) and
 # scripts/lib/test-status_marker.py (status_marker.py).
 #
+# The data row count is declared on the next line; every reader asserts it, so
+# a reader that drops a row (a last row with no trailing newline) goes red.
+# rows: 25
+#
 # Columns (TAB-separated):
 #   line  a results-doc line, exactly as written
 #   want  the canonical marker the parse prints, or - when the line carries none

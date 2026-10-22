@@ -295,7 +295,7 @@
 
       <div class="answer">
         <h4>2. The install overwrites files in your project's scripts folder</h4>
-        <p>The starter install copies 22 helper scripts into the project's
+        <p>The starter install copies 23 helper scripts into the project's
         <span class="mono">scripts/</span> folder:
         <span class="mono">hooks/auto-approve-safe-bash.sh</span>,
         <span class="mono">hooks/block-edit-on-main.sh</span>,
@@ -315,6 +315,7 @@
         <span class="mono">lib/branch-shipped.sh</span>,
         <span class="mono">lib/worktree-inuse.sh</span>,
         <span class="mono">lib/worktree-fresh-lock.sh</span>,
+        <span class="mono">check-ci.sh</span>,
         <span class="mono">clean-garden.sh</span>,
         <span class="mono">worktree.sh</span>,
         <span class="mono">clean.sh</span> and
@@ -475,7 +476,7 @@ claude --version</pre>
         <a href="#undo">question 3</a>, once you also know how to undo it.</p>
         <h4>In the project folder you run it from</h4>
         <ul>
-          <li>Copies 22 helper scripts into the project's
+          <li>Copies 23 helper scripts into the project's
           <span class="mono">scripts/</span> folder (the hooks and the
           worktree commands), <b>overwriting any file of the same name</b>
           &mdash; see item 2 of
@@ -942,7 +943,6 @@ claude</pre>
           <ul class="chips">
             <li><button class="chip" data-detail="himmel-ops">himmel-ops</button></li>
             <li><button class="chip" data-detail="handover">handover</button></li>
-            <li><button class="chip" data-detail="review-toolkit">pr-review-toolkit</button></li>
             <li><button class="chip" data-detail="bridge">telegram-himmel</button></li>
             <li><button class="chip" data-detail="jira-cli">Jira
             CLI</button></li>
@@ -1469,7 +1469,7 @@ claude</pre>
     '<p>himmel ships its own plugin marketplace and installs a further set from elsewhere.</p>' +
     '<span class="listhead">himmel’s own plugins</span>' +
     '<ul>' +
-    '<li><b>himmel-ops · handover · qmd · obsidian-triage · pr-review-toolkit-himmel · ' +
+    '<li><b>himmel-ops · handover · qmd · obsidian-triage · ' +
     'telegram-himmel · luna-correlate · lean-skills</b></li>' +
     '<li><b>claude-obsidian</b> is listed in the same marketplace but comes from upstream, pinned to a release tag — not a himmel fork</li>' +
     '<li><b>claude-hud</b>, vendored in-repo rather than marketplace-registered</li>' +
@@ -1507,8 +1507,6 @@ claude</pre>
     'handover': { t: 'Handover system', s: 'ship', h:
       '<p>Work state that survives any single session: per-ticket handover notes, a state directory (inline or an external repo), and a registry. Set up interactively with <span class="mono">/handover-setup</span>.</p>' +
       '<p>This is what lets a session stop mid-task and a successor resume cold without losing decisions.</p>' },
-    'review-toolkit': { t: 'pr-review-toolkit-himmel', s: 'ship', h:
-      '<p>himmel’s <b>fork of Anthropic’s pr-review-toolkit</b> plugin: review agents plus the <span class="mono">/pr-check</span> flow — a multi-reviewer pass over your branch whose verdict gates the merge at the exact commit reviewed.</p>' },
     'himmel-ops': { t: 'himmel-ops', s: 'ship', h:
       '<p>himmel’s core ops plugin: the <b>guard hooks</b> behind Level 1 plus the operational commands the workflow runs on — worktree management, review gating, update and doctor flows.</p>' },
     'claude-obsidian': { t: 'claude-obsidian', s: 'ship', h:

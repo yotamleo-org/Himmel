@@ -680,3 +680,131 @@ describe('edit into a frozen version (HIMMEL-6918)', () => {
     expect(ledger()).toEqual([]);
   });
 });
+
+describe('edit --residual-of (HIMMEL-6544)', () => {
+  let mockRequest: ReturnType<typeof vi.fn>;
+  type Issue = { labels?: string[]; fixVersions?: Array<{ name: string }> };
+  let issues: Record<string, Issue>;
+  let dropFixVersions: boolean;
+  let omitFixVersionsReadBack: boolean;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { request } = await import('../client.js');
+    mockRequest = request as unknown as ReturnType<typeof vi.fn>;
+    issues = {};
+    dropFixVersions = true;
+    omitFixVersionsReadBack = false;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: Record<string, unknown> }) => {
+      if (path.startsWith('/project/')) return [{ name: 'v1.1.3', released: false, archived: false }];
+      const m = /^\/issue\/([A-Z]+-\d+)/.exec(path);
+      const issue = m ? issues[m[1]] : undefined;
+      if (method === 'GET' && issue) {
+        return { fields: { labels: issue.labels, fixVersions: issue.fixVersions, versions: [{ name: 'v1.1.3' }] } };
+      }
+      if (method === 'PUT' && issue && body?.update?.['fixVersions'] && dropFixVersions) {
+        issue.fixVersions = omitFixVersionsReadBack ? undefined : [];
+      }
+      return {};
+    });
+  });
+
+  async function run(...args: string[]): Promise<void> {
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await p.parseAsync(['node', 'jira', 'edit', ...args]);
+  }
+
+  const puts = (): Array<{ path: string; body: { fields?: Record<string, unknown>; update?: Record<string, unknown> } }> =>
+    mockRequest.mock.calls.filter((c) => c[0] === 'PUT').map((c) => ({ path: c[1], body: c[2] }));
+
+  it('a parent with no depth label stamps residual-depth-1 and affects-version, keeping fixVersions', async () => {
+    issues['HIMMEL-900'] = { labels: ['operator-directed'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-1'], fixVersions: [{ name: 'v1.1.3' }] };
+    await run('HIMMEL-901', '--residual-of', 'HIMMEL-900');
+    const [put] = puts();
+    expect(put.path).toBe('/issue/HIMMEL-901');
+    expect(put.body.update?.['labels']).toEqual([{ add: 'residual-depth-1' }]);
+    expect(put.body.fields?.['versions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(put.body.update?.['fixVersions']).toBeUndefined();
+  });
+
+  it('a depth-1 parent stamps residual-depth-2 and removes the fixVersions', async () => {
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
+    await run('HIMMEL-901', '--residual-of', 'HIMMEL-900');
+    const [put] = puts();
+    expect(put.body.update?.['labels']).toEqual([{ add: 'residual-depth-2' }]);
+    expect(put.body.update?.['fixVersions']).toEqual([{ remove: { name: 'v1.1.3' } }]);
+  });
+
+  it('a depth-2 parent stamps residual-depth-3 and removes the fixVersions', async () => {
+    issues['HIMMEL-900'] = { labels: ['residual-depth-2'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-3'], fixVersions: [{ name: 'v1.1.3' }] };
+    await run('HIMMEL-901', '--residual-of', 'HIMMEL-900');
+    const [put] = puts();
+    expect(put.body.update?.['labels']).toEqual([{ add: 'residual-depth-3' }]);
+    expect(put.body.update?.['fixVersions']).toEqual([{ remove: { name: 'v1.1.3' } }]);
+  });
+
+  it('a leading-zero parent label is read as decimal', async () => {
+    issues['HIMMEL-900'] = { labels: ['residual-depth-08'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-9'], fixVersions: [] };
+    await run('HIMMEL-901', '--residual-of', 'HIMMEL-900');
+    expect(puts()[0].body.update?.['labels']).toEqual([{ add: 'residual-depth-9' }]);
+  });
+
+  it('refuses a --residual-of that is not a ticket key, before any request', async () => {
+    await expect(run('HIMMEL-901', '--residual-of', 'bogus')).rejects.toThrow(/ticket key/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('refuses a ticket as its own residual parent, before any request', async () => {
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-901')).rejects.toThrow(/cannot be its own residual parent/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['--labels', 'a'],
+    ['--add-labels', 'a'],
+    ['--remove-labels', 'a'],
+    ['--fix-version', 'v1.1.3'],
+    ['--add-fix-version', 'v1.1.3'],
+    ['--affects-version', 'v1.1.3'],
+  ])('refuses --residual-of combined with %s', async (flag, value) => {
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900', flag, value)).rejects.toThrow(/cannot be combined/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('fails loud when a depth >= 2 residual still reads back with its fixVersion', async () => {
+    dropFixVersions = false;
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/fix-version was not changed/);
+  });
+
+  it('refuses to guess the depth when the parent read carries no labels list', async () => {
+    issues['HIMMEL-900'] = {};
+    issues['HIMMEL-901'] = { labels: [], fixVersions: [{ name: 'v1.1.3' }] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/read of HIMMEL-900 carried no labels list/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('refuses to skip the fixVersion drop when the own read carries no fixVersions list', async () => {
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'] };
+    issues['HIMMEL-901'] = { labels: [] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/read of HIMMEL-901 carried no fixVersions list/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('fails loud when the read-back carries no fixVersions list at all', async () => {
+    omitFixVersionsReadBack = true;
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/fix-version was not changed.*no fixVersions list/s);
+  });
+});

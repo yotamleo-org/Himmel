@@ -11,13 +11,16 @@ import { fileURLToPath } from 'node:url';
 import { statusMarkerParse, statusMarkerIsParked } from './status-marker.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROWS = readFileSync(join(HERE, 'fixtures', 'status-marker-rows.tsv'), 'utf8')
+const FIXTURE = readFileSync(join(HERE, 'fixtures', 'status-marker-rows.tsv'), 'utf8');
+const WANT_ROWS = Number(/^# rows: (\d+)$/m.exec(FIXTURE)?.[1]);
+const ROWS = FIXTURE
   .split('\n')
   .filter((l) => l && !l.startsWith('#'))
   .map((l) => l.split('\t'));
 
-test('the shared rows were read (not vacuous)', () => {
-  assert.ok(ROWS.length >= 20);
+test('every declared row was read', () => {
+  assert.ok(ROWS.length > 0);
+  assert.equal(ROWS.length, WANT_ROWS);
 });
 
 for (const [line, want] of ROWS) {

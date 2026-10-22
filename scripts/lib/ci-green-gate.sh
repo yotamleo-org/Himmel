@@ -14,10 +14,10 @@
 #   (failure, timed_out, cancelled, action_required, startup_failure, stale), a
 #   check-run still PENDING (status != completed) — or a NON-CodeRabbit commit
 #   status (newest per context) of failure/error/pending. CodeRabbit is EXCLUDED
-# from BOTH (the CR gate, owns CodeRabbit; this
+# from BOTH (the CR gate owns CodeRabbit; this
 #   gate owns the tests/lint/build CI the repo otherwise has no guard for — see
 #   brief WHY "a red or still-running non-CodeRabbit check", and it keeps a hung
-# CodeRabbit review from false-blocking here — which, until it did
+# CodeRabbit review from false-blocking here — which, before the CR gate took it over, it did
 #   NOT: the exclusion was written against check-runs CodeRabbit never posts,
 #   while its real commit STATUS rode the combined aggregate straight into the
 #   pending block). This repo has NO branch

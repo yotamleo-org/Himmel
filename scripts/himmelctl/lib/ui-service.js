@@ -73,12 +73,13 @@ function ensureToken() {
   return p;
 }
 
-function url() {
+// page: a console page id (config, setup, ...) to land on; omitted, the fleet page.
+function url(page) {
   const port = installedPort();
   if (port === null) return { ok: false, lines: [`${UNIT_NAME} is not installed (run: himmelctl ui --service install)`] };
   let t;
   try { t = fs.readFileSync(tokenPath(), 'utf8').trim(); } catch (_e) { return { ok: false, lines: [`no token file at ${tokenPath()}`] }; }
-  return { ok: true, lines: [`http://127.0.0.1:${port}/agui/#t=${t}`] };
+  return { ok: true, lines: [page ? `http://127.0.0.1:${port}/#t=${t}&page=${page}` : `http://127.0.0.1:${port}/agui/#t=${t}`] };
 }
 
 function install({ repoRoot, port, dryRun }) {

@@ -133,6 +133,7 @@ scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
 scripts/ci/test-check-no-secrets.sh	0
+scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1
 scripts/ci/test-ci-container-jobs.sh	1
 scripts/ci/test-ci-gcp-routing.sh	0
@@ -147,6 +148,7 @@ scripts/ci/test-ci-vm-routing.sh	0
 scripts/ci/test-codeowner-review-gate.sh	3
 scripts/ci/test-corpus-sandbox.sh	2
 scripts/ci/test-cr-first-measure.sh	0
+scripts/ci/test-escape-report.sh	1
 scripts/ci/test-fork-drift-issue.sh	0
 scripts/ci/test-gcp-net.sh	1
 scripts/ci/test-gcp-runner-autoscale.sh	1
@@ -267,6 +269,7 @@ scripts/eval/cr-ledger/test-cr-ledger.sh	1
 scripts/eval/friction/test-friction.sh	1
 scripts/eval/graphify-ab/test-graphify-ab.sh	5
 scripts/eval/guard-corpus/test-guard-corpus.sh	173
+scripts/eval/judge-accuracy/test-judge-accuracy.sh	1
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	38
 scripts/eval/lane-quality/test-lane-quality.sh	25
 scripts/eval/lane-quality/test-trajectory.sh	5
@@ -295,6 +298,7 @@ scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0
+scripts/eval/test-weekly-rollup.sh	1
 scripts/eval/test-worktree-latency-curve.sh	0
 scripts/git/test-classify-branches.sh	1
 scripts/git/test-restore-to-head.sh	1
@@ -347,6 +351,7 @@ scripts/handover/console-kit/test-console-wait.sh	283
 scripts/handover/console-kit/test-cut-tag.sh	2
 scripts/handover/console-kit/test-fleet-manifest.sh	1
 scripts/handover/console-kit/test-fleet.sh	3
+scripts/handover/console-kit/test-focus-chains-links.sh	1
 scripts/handover/console-kit/test-gen-briefs.sh	6
 scripts/handover/console-kit/test-gen-judge-brief.sh	1
 scripts/handover/console-kit/test-gh-read.sh	1
@@ -388,6 +393,7 @@ scripts/handover/console-kit/test-tick.sh	128
 scripts/handover/console-kit/test-tracker.sh	5
 scripts/handover/console-kit/test-vault-status.sh	2
 scripts/handover/console-kit/test-verdict-go.sh	0
+scripts/handover/console-kit/test-verdict-retention.sh	1
 scripts/handover/console-kit/test-versionless-done.sh	1
 scripts/handover/console-kit/test-vm-runner.sh	5
 scripts/handover/console-kit/test-wrap-merged.sh	36
@@ -648,6 +654,7 @@ scripts/hooks/test-guard-rm-writes.sh	2
 scripts/hooks/test-guard-subagent-model.sh	0
 scripts/hooks/test-guard-unwrap-nested-xargs.sh	2
 scripts/hooks/test-hook-chain-latency.sh	143
+scripts/hooks/test-hook-construct-scaling.sh	62
 scripts/hooks/test-hook-rewrite-integrity.sh	13
 scripts/hooks/test-inbox-hook.sh	0
 scripts/hooks/test-inject-doc-freshness.sh	0

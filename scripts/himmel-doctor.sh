@@ -4189,6 +4189,30 @@ check_c68_konsole_dbus() {
         "add 'EnableSecuritySensitiveDBusAPI=true' under [KonsoleWindow] in $rc, then restart konsole"
 }
 
+# --- C71-verdict-scratch: judge scratch under ~/.cache/himmel/verdicts grows unpruned ---
+# Console judges write their scratch (repo extracts, tarballs) to
+# ~/.cache/himmel/verdicts/<qid>/, and nothing removes it on its own. WARN above
+# 5 GB (HIMMEL_DOCTOR_VERDICT_CACHE_KB) and name the pruner, which is a dry run
+# until --apply. Report only. Seam: HIMMEL_DOCTOR_VERDICT_CACHE (the cache dir).
+check_c71_verdict_scratch() {
+    local dir="${HIMMEL_DOCTOR_VERDICT_CACHE:-${HOME:-}/.cache/himmel/verdicts}"
+    local limit_kb="${HIMMEL_DOCTOR_VERDICT_CACHE_KB:-5242880}" kb
+    case "$limit_kb" in ''|*[!0-9]*) limit_kb=5242880 ;; esac
+    limit_kb=$((10#$limit_kb))
+    if [ ! -d "$dir" ]; then
+        emit OK C71-verdict-scratch "no judge scratch cache at $dir"
+        return 0
+    fi
+    kb="$(du -sk "$dir" 2>/dev/null | awk '{print $1}')"
+    case "$kb" in ''|*[!0-9]*) emit INFO C71-verdict-scratch "could not size $dir"; return 0 ;; esac
+    if [ "$kb" -gt "$limit_kb" ]; then
+        emit WARN C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)" \
+            "run: bash $REPO_ROOT/scripts/handover/console-kit/verdict-retention.sh prune (dry run lists what it would remove), then re-run it with --apply"
+    else
+        emit OK C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)"
+    fi
+}
+
 # --- C70-graph-semantic: the himmel graph's semantic layer is stale or stuck ---
 # Runs check-graph-freshness.sh against the graph-cadence corpus and prints its
 # "graph-freshness: semantic ..." line verbatim (last run, failed, refused,
@@ -4614,6 +4638,7 @@ run_check C67 check_c67_hermes_fail_open
 run_check C68 check_c68_konsole_dbus
 run_check C69 check_c69_qmd_cli_key
 run_check C70 check_c70_graph_semantic
+run_heavy C71 check_c71_verdict_scratch C71-verdict-scratch
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

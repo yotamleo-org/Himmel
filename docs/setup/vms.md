@@ -410,7 +410,13 @@ A rebuilt or snapshot-restored guest has a new host key, so the next ssh to
 port 2222 fails with `REMOTE HOST IDENTIFICATION HAS CHANGED`. known_hosts keys
 the entry by the name you connected with, so remove only that entry:
 `ssh-keygen -R "[127.0.0.1]:2222"` for the examples above, `"[localhost]:2222"`
-for the vm.mode default. Or keep a dedicated known_hosts file for the VM port.
+for the vm.mode default. `vmsdk.py sync_repo` is not affected: it keeps one
+known_hosts file per VM at `~/.himmel/vm/known_hosts/<vm name>` (host-key
+checking stays on, `accept-new`), and `vmsdk.py restore` deletes that VM's file
+after the snapshot readback succeeds. A restore done outside vmsdk (raw
+`VBoxManage snapshot restore`) leaves the stale file, so the next `sync_repo`
+fails loud with `REMOTE HOST IDENTIFICATION HAS CHANGED`; delete that one file.
+The station's own `~/.ssh/known_hosts` is never read or written for it.
 `scripts/test-install-symmetry-vm.sh` needs the user spelled out
 (`himmel@localhost 2222 ~/.ssh/id_ed25519`): its default host is a bare
 `localhost`, so ssh logs in as your local user, which the guest does not have.

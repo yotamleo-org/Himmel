@@ -1,14 +1,14 @@
 # Jarvis subsystems — adopter usage reference
 
-himmel is evolving into an "agentic OS": Claude-main orchestrates a fleet across
-model backends, routes each task to the right model, validates with diverse
-critics, under a command-and-control surface, on a token-economical footing
-(the Jarvis epic). This page is the **adopter-facing** map of the optional
-subsystems that make that up — what each is, whether it's on by default, how to
-enable it, and where the deep docs live.
+The Jarvis epic grows himmel into an "agentic OS". Claude-main orchestrates a
+fleet across model backends, routes each task to the right model and checks the
+work with diverse critics, all under a command-and-control surface and a tight
+token budget. This page maps the optional subsystems behind that for adopters:
+what each one is, whether it's on by default, how to enable it, and where the
+deep docs live.
 
-> **Default posture: every optional *lane* is OFF until you configure it** —
-> the escalation channel, the statusline, and the clipper pipeline each
+> **Default posture: every optional *lane* is OFF until you configure it.**
+> The escalation channel, the statusline, and the clipper pipeline each
 > need a key, flag, or vault before they do anything. The root `CLAUDE.md`
 > delegation table directs skipping absent lanes. Enable only the subsystems
 > you want.
@@ -26,8 +26,8 @@ enable it, and where the deep docs live.
 ## Quota-gauge — cross-lane quota observability
 
 **What it is.** A passive observability layer that answers "how much quota is
-left, per lane (Claude / Codex / Alibaba)?" — an append-only JSONL
-ledger, fail-open (a write failure never breaks a session), that **never**
+left, per lane (Claude / Codex / Alibaba)?" It is an append-only JSONL
+ledger, fail-open (a write failure never breaks a session), and it **never**
 routes, arms, spawns, or blocks.
 
 **Status: shipped** (#873/#877). The ledger, path resolver, and row-builders
@@ -35,8 +35,8 @@ live in **`scripts/telegram/quota-gauge.ts`** (TS twin) and
 **`scripts/lib/quota-gauge-ledger.sh`** (bash twin, byte-identical canonical
 record), with the shared path resolver in
 **`scripts/lib/quota-gauge-ledger-path.sh`**. Lane writers piggyback existing
-touchpoints (e.g. a lane's cap-guard) — no new fetch, no new poll — so there is
-no separate enable step; the ledger just accumulates as those touchpoints run.
+touchpoints (e.g. a lane's cap-guard) with no new fetch and no new poll, so there
+is no separate enable step: the ledger fills as those touchpoints run.
 
 **Name history.** Originally shipped as "headroom" (WS9). Renamed
 `headroom` → `quota-gauge` to free the "Headroom" name for an
@@ -79,7 +79,7 @@ the rollback fallback.
 **Use it.** Wire it into `~/.claude/settings.json` via
 **`scripts/lib/wire-statusline.sh`** (roll back via
 **`scripts/lib/unwire-statusline.sh`**, which repoints `.statusLine` to the
-bash wrapper `scripts/where-are-we/statusline.sh` — this composes the
+bash wrapper `scripts/where-are-we/statusline.sh`, which composes the
 vendored `scripts/statusline/` bar with a where-are-we ledger line). See
 **[../scripts/statusline/README.md](../scripts/statusline/README.md)** for the
 vendored bar's options and
@@ -92,17 +92,17 @@ error.
 
 **What it is.** An autonomous, staged pipeline that turns raw clips (web
 captures, Telegram forwards) dropped into a luna vault's `Clippings/` into
-triaged, synthesized, filed knowledge — the capture arm of the luna second-brain.
+triaged, synthesized, filed knowledge. It is the capture arm of the luna second-brain.
 
 **The stages** (each an idempotent `obsidian-triage` skill, safe to re-run):
 
-1. **`/harvest-clips`** — marks each clip harvest-ready; GitHub URLs are
-   dispatched to repo synthesis.
-2. **`/triage-clips`** — summarizes, infers tags against the vault tag set,
-   suggests related notes, extracts action items to the daily note.
-3. **`/synthesize-clips`** — cross-clip synthesis: recurring themes → synthesis
-   pages + proposed vault restructuring.
-4. **`/archive-clips`** — graduates fully-processed clips out of the inbox into
+1. **`/harvest-clips`** marks each clip harvest-ready and dispatches GitHub
+   URLs to repo synthesis.
+2. **`/triage-clips`** summarizes, infers tags against the vault tag set,
+   suggests related notes and extracts action items to the daily note.
+3. **`/synthesize-clips`** synthesizes across clips: recurring themes become
+   synthesis pages plus a proposed vault restructuring.
+4. **`/archive-clips`** graduates fully-processed clips out of the inbox into
    `Clippings/_done/`, rewriting inbound links.
 
 **Enable.** Requires a luna second-brain vault — scaffold one via the
@@ -119,7 +119,7 @@ state changes.
 
 **Status: shipped (WS8 Phase 1, read-only).** Lives at
 **`scripts/fleet-control/`**. There is no dispatch or adjudication in the UI
-yet — the page's own banner says it plainly: "Read-only Phase 1 pane. Dispatch
+yet; the page's own banner says so: "Read-only Phase 1 pane. Dispatch
 and adjudication controls remain disabled until Phase 2." Fleet state also
 remains available the older way, through the `where-are-we` ledger and the
 `/morning-report` command; the console reads that same ledger rather than

@@ -89,6 +89,24 @@ mkdir -p "$T/elsewhere"
 RC_GOT=$(cd "$T/elsewhere" && FWD_RC=4 FWD_ARGV="$T/argv" bash "$T/old-name.sh" y < "$T/stdin" > /dev/null 2>&1; echo $?)
 check "runs from another cwd" "4" "$RC_GOT"
 
+# an old path installed as a symlink still finds the target beside the real file
+mkdir -p "$T/bin" "$T/bin2"
+if ln -s ../old-name.sh "$T/bin/old-name.sh" 2>/dev/null && [ -L "$T/bin/old-name.sh" ]; then
+  ln -s "$T/bin/old-name.sh" "$T/bin2/chain.sh"
+  ln -s ../bin2/chain.sh "$T/bin/hop.sh"
+  for via in bin/old-name.sh bin2/chain.sh bin/hop.sh; do
+    : > "$T/argv"
+    FWD_RC=6 FWD_ARGV="$T/argv" bash "$T/$via" s1 < "$T/stdin" > "$T/out" 2> "$T/err"
+    check "symlink $via: rc passes through" "6" "$?"
+    check "symlink $via: argv reaches the target" "$(expect_argv s1)" "$(od -An -c "$T/argv")"
+  done
+  RC_GOT=$(cd "$T/elsewhere" && FWD_RC=7 FWD_ARGV="$T/argv" bash "$T/bin/old-name.sh" y < "$T/stdin" > /dev/null 2> "$T/err"; echo $?)
+  check "symlink runs from another cwd" "7" "$RC_GOT"
+  check "symlink stderr is still exactly one line" "1" "$(wc -l < "$T/err" | tr -d ' ')"
+else
+  echo "SKIP: this platform cannot create symlinks" >&2
+fi
+
 # sourced, it refuses before the exec, so the caller's shell survives
 OUT_GOT=$(FWD_ARGV="$T/argv" bash -c '. "$1"; echo "rc=$?"' _ "$T/old-name.sh" 2> "$T/err")
 check "sourcing refuses and runs nothing" "rc=2" "$OUT_GOT"

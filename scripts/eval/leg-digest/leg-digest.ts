@@ -1,14 +1,16 @@
 // leg-digest.ts — one leg session's failures as class keys. Read-only, zero model calls.
 //
 //   bun scripts/eval/leg-digest/leg-digest.ts (--transcript <journal.jsonl> | --session <uuid>)
-//       [--denials-ledger <classifier-denials.jsonl>] [--max-bytes N]
+//       [--denials-ledger <classifier-denials.jsonl>] [--max-bytes N] [--profile <launch profile>]
 //
 // The journal and its subagent transcripts are merged in the order the AG-UI page uses (journal-merge.ts),
 // mapped by the same mapper (journal-mapper.ts), and each failure event gets a class key <failure>/<sub>
 // whose <sub> comes only from closed vocabularies (spec section 2.2), never from journal text. Denied
 // events of the main agent are joined by tool_call_id to `trajectory.py score --denials`, which owns the
 // recovered / identical-retry rule. One digest JSON on stdout; nothing is written. Exit 2 on a usage error.
-// --max-bytes is the size cap (default 200 MB); over it the digest is inconclusive.
+// --max-bytes is the size cap (default 200 MB); over it the digest is inconclusive. --profile names the launch
+// profile the session ran under and is stamped on the digest and on every tool_health row; without it the profile
+// is "unknown", since the recorder's own environment says nothing about the session's.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -27,6 +29,7 @@ const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_]{1,160}$/.test
 const REPO = resolve(import.meta.dir, "../../..");
 const TRAJECTORY = join(REPO, "scripts/eval/lane-quality/trajectory.py");
 const MAX_BYTES = 200 * 1024 * 1024;
+const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const MAX_IDS = 5;
 const EXIT_CODES = join(REPO, "scripts/observability/exit-codes.json");
 const LEDGER_SLACK_MS = 10_000; // a ledger row joins a classifier refusal logged within this of its result
@@ -139,8 +142,8 @@ function usage(msg: string): never {
 }
 
 function args(argv: string[]) {
-  const o: { transcript?: string; session?: string; ledger: string; maxBytes: number } = {
-    ledger: join(homedir(), ".himmel/state/classifier-denials.jsonl"), maxBytes: MAX_BYTES,
+  const o: { transcript?: string; session?: string; ledger: string; maxBytes: number; profile: string } = {
+    ledger: join(homedir(), ".himmel/state/classifier-denials.jsonl"), maxBytes: MAX_BYTES, profile: "unknown",
   };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i + 1];
@@ -149,6 +152,7 @@ function args(argv: string[]) {
     else if (argv[i] === "--session") o.session = v;
     else if (argv[i] === "--denials-ledger") o.ledger = v;
     else if (argv[i] === "--max-bytes" && /^\d+$/.test(v)) o.maxBytes = Number(v);
+    else if (argv[i] === "--profile" && PROFILE.test(v)) o.profile = v;
     else usage(`unknown argument ${argv[i]}`);
     i++;
   }
@@ -303,11 +307,11 @@ async function main() {
   const callsByTool: Record<string, number> = Object.create(null);
   const failuresByTool: Record<string, number> = Object.create(null);
   const callDay = new Map<string, string | null>();
-  const health = new Map<string, { agent: Agent; lane: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number> }>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number> }>();
   const toolRow = (agent: Agent, tool: string, day: string | null) => {
     const key = `${agent.id}\0${day}\0${tool}`;
     let r = health.get(key);
-    if (!r) { r = { agent, lane, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, classes: Object.create(null) }; health.set(key, r); }
+    if (!r) { r = { agent, lane, profile: o.profile, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, classes: Object.create(null) }; health.set(key, r); }
     return r;
   };
 
@@ -492,7 +496,7 @@ async function main() {
     digest_v: DIGEST_SCHEMA, mapper_v: MAPPER_SCHEMA, trajectory_v: traj.trajectory_v ?? null, session,
     status: mapper.stats.malformed > 0 || capped || merged.skipped > 0 || trajOut === null || lookupsFailed.length > 0
       ? "partial" : "ok",
-    model: mainModel, lane,
+    model: mainModel, lane, profile: o.profile,
     started_ts: events.find((e) => typeof e.timestamp === "number")?.timestamp ?? null,
     tool_health: [...health.values()].map((r) => ({ ...r, agent: agents.get(r.agent.id) ?? r.agent })),
     metrics: { ...m, tool_calls_by_tool: callsByTool, tool_failures_by_tool: failuresByTool, red_before_green: bool(traj.red_before_green), denial_recovery: traj.denial_recovery ?? null,

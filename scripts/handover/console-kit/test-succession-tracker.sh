@@ -87,6 +87,23 @@ has "a strict bullet outside the Results section confirms nothing" "$(one N10)" 
 has "an opening backtick with no closing one is missing" "$(one N11)" "N11 missing"
 has "a closing backtick with no opening one is missing" "$(one N12)" "N12 missing"
 
+# a claudex leg's quote-back lands under the Console Rulings section inbox-send.sh opened
+# after Results, and a later relay mirror quoting the phrase is not a bullet of the leg's own
+RELAY="- 04:16 [Y-N13-aa] from=$PRED SUCCESSION relay: your quote-back is a Results bullet containing exactly: SUCCESSION accepted: $SUCC replaces $PRED"
+printf '# leg\n\n## Results (newest at the bottom)\n\n- 03:00 LIVE — started\n\n## Console Rulings (newest at the bottom)\n%s\n%s\n%s\n' "$RELAY" "$(q "$SUCC" "$PRED")" "$RELAY" > "$WORK/N13.md"
+has "a quote-back under Console Rulings (claudex) is quoted-back" "$(one N13)" "N13 quoted-back"
+
+# a leg the successor dispatched itself names the successor as its console and never quotes back
+# shellcheck disable=SC2016
+printf '# leg\n\n> - **Token and console:** your RETASK token is `Z-N14-cc`; your console is **`%s`** (the only session)\n\n## Results (newest at the bottom)\n\n- 03:00 LIVE — started\n' "$SUCC" > "$WORK/N14.md"
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N14:Z-N14-cc:lockC:13`\n' > "$CDOC"
+printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N14.md", "label": "N14", "lane": "native"}]}\n' "$WORK" "$WORK" > "$MAN"
+out="$(run)"; rc=$?
+has "a leg the successor dispatched is skipped, not missing" "$out" "N14 own"
+eq "and the inherited set reads complete without it (rc 0)" "$rc" 0
+has "and the tally counts inherited legs only" "$out" "COMPLETE 1/1"
+
 # a leg held in Live state with no manifest row cannot be read
 # shellcheck disable=SC2016
 printf '# console\n\n## Live state\nlegs: `N9:Y-N9-aa:lockA:11`\n' > "$CDOC"

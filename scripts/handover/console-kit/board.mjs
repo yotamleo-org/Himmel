@@ -796,6 +796,28 @@ const flakesSection = (() => {
     } catch { return `<section data-flakes="?">${title}<p class="none">suite flakes unavailable</p></section>`; }
 })();
 
+// Red main: merges on this checkout's main over the last 30 days whose body names a
+// red main, from the checkout's own scripts/insights/self-review.sh (its red-main:
+// line). A checkout without it renders no panel; a failed run reads "red-main count
+// unavailable" and a null count. Never fatal; not part of the fingerprint.
+const RED_MAIN_DAYS = 30;
+const redMain = (() => {
+    const reader = join(repo, 'scripts', 'insights', 'self-review.sh');
+    if (!existsSync(reader)) return null;
+    try {
+        const out = execFileSync('bash', [reader, '--repo', repo, '--since', `${RED_MAIN_DAYS}.days.ago`],
+            { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] });
+        const m = /^red-main: (\d+)$/m.exec(out);
+        return { days: RED_MAIN_DAYS, merges: m ? Number(m[1]) : null };
+    } catch { return { days: RED_MAIN_DAYS, merges: null }; }
+})();
+const redMainSection = (() => {
+    if (!redMain) return '';
+    const title = `<h2>Red main — last ${redMain.days} days</h2>`;
+    if (redMain.merges === null) return `<section data-red-main="?">${title}<p class="none">red-main count unavailable</p></section>`;
+    return `<section data-red-main="${redMain.merges}">${title}<p>${redMain.merges} merge${redMain.merges === 1 ? '' : 's'} named a red main</p></section>`;
+})();
+
 // CR loop, last 7 days: rounds per merged PR (distinct ledger `score` heads per merged
 // branch), preflight adoption and hits per PR (`preflight` rows' `hits[]`; n/a until the pre-round pass writes them),
 // residuals per merged PR as the CR_BEFORE baseline counted them (distinct ledger `deferred_to` keys on merged
@@ -1047,6 +1069,7 @@ ${costSection}
 ${explorationSection}
 ${failuresSection}
 ${flakesSection}
+${redMainSection}
 ${crLoopSection}
 ${iceFollowupsSection}
 ${overdueClassesSection}
@@ -1299,6 +1322,7 @@ const boardModel = {
     headline: { live: fleetOk ? fleetLive : liveLegs.length, cap: fleetOk ? fleetCap : null, merged_today: mergedToday, needs_you: needsYou.length, blocked: countState('blocked') },
     bank: bankOut,
     ci: ciOut,
+    red_main: redMain,
     milestones,
     needs_you: needsYou,
     legs: legsOut,

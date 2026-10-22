@@ -1443,6 +1443,64 @@ HOME="$pchome" PATH="$pcbin:$work/bin:$native_free_path" bash "$adopt" --profile
   || fail "HIMMEL-6976: re-adopt backed up its own pre-push over the adopter's"
 echo "ok: HIMMEL-6976 the native pre-push gate refuses a force push to main with the no-force-push gate; fast-forward lands; re-adopt keeps one invocation"
 
+# The adopted project's own copy of check-ci.sh runs against a stubbed gh and
+# resolves the project's repo from its PR URL, never himmel's; a second adopt
+# leaves it byte-identical.
+cittarget="$work/checkci-6977"; citbin="$work/checkci-6977-bin"; cithome="$work/checkci-6977-home"
+mkdir -p "$cittarget" "$citbin" "$cithome"
+HOME="$pchome" git init -q -b main "$cittarget"
+cat > "$citbin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$CIT_GH_LOG"
+jq_arg=""
+a=("$@")
+for ((i = 0; i < ${#a[@]}; i++)); do
+  [ "${a[$i]}" = "--jq" ] && jq_arg="${a[$((i + 1))]}"
+done
+emit() { if [ -n "$jq_arg" ]; then printf '%s' "$1" | jq -r "$jq_arg"; else printf '%s\n' "$1"; fi; }
+case "$1 ${2:-}" in
+  "pr view"|"pr checks") [ "${3:-}" = "7" ] || { echo "unexpected PR selector: $*" >&2; exit 1; } ;;
+esac
+case "$1 ${2:-}" in
+  "pr view")
+    emit '{"url":"https://github.com/acme/widgets/pull/7","reviewDecision":"","headRefOid":"abc123","baseRefName":"main","title":"feat: x","mergeStateStatus":"CLEAN"}' ;;
+  "pr checks") echo '[{"name":"ci","bucket":"pass","state":"SUCCESS"}]' ;;
+  "api graphql")
+    emit '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}' ;;
+  "api repos/acme/widgets/rules/branches/main") : ;;
+  "api repos/acme/widgets/branches/main/protection/required_status_checks") echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
+  "api repos/acme/widgets/commits/abc123/statuses?per_page=100"|"api repos/acme/widgets/pulls/7/reviews") echo '[]' ;;
+  "api -i") printf 'X-Ratelimit-Remaining: 4000\nX-Ratelimit-Reset: 9999999999\n' ;;
+  *) echo "unhandled: $*" >&2; exit 1 ;;
+esac
+EOF
+chmod +x "$citbin/gh"
+out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
+      --profile core --scope project --target "$cittarget" 2>&1) \
+  || fail "HIMMEL-6977: adopt failed: $out"
+[ -f "$cittarget/scripts/check-ci.sh" ] \
+  || fail "HIMMEL-6977: check-ci.sh was not copied into the project"
+set +e
+out=$(cd "$cittarget" && PATH="$citbin:$PATH" HOME="$cithome" CIT_GH_LOG="$work/checkci-6977.log" \
+      CHECK_CI_POLL_INTERVAL=0 CHECK_CI_SETTLE=0 CHECK_CI_CACHE=0 LEG_JIRA_STATUS=0 \
+      bash scripts/check-ci.sh 7 --max-wait 30 --grace 0 2>&1); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "HIMMEL-6977: the project's check-ci.sh did not reach a green verdict (rc=$rc): $out"
+grepq "$out" "all checks green + all review threads resolved (PR #7 @ abc123)" \
+  || fail "HIMMEL-6977: the project's check-ci.sh printed no green verdict: $out"
+grep -q 'repos/acme/widgets/' "$work/checkci-6977.log" \
+  || fail "HIMMEL-6977: check-ci.sh did not query the project's own repo"
+if grep -q -i 'yotamleo' "$work/checkci-6977.log" "$cittarget/scripts/check-ci.sh"; then
+  fail "HIMMEL-6977: the copied check-ci.sh or its gh calls name the himmel repo"
+fi
+IFS= read -r -d '' cit_before < "$cittarget/scripts/check-ci.sh" || true
+HOME="$pchome" PATH="$pcbin:$work/bin:$native_free_path" bash "$adopt" --profile core --scope project --target "$cittarget" >/dev/null 2>&1 \
+  || fail "HIMMEL-6977: re-adopt failed"
+IFS= read -r -d '' cit_after < "$cittarget/scripts/check-ci.sh" || true
+[ "$cit_after" = "$cit_before" ] \
+  || fail "HIMMEL-6977: re-adopt changed the project's check-ci.sh"
+echo "ok: HIMMEL-6977 the adopted check-ci.sh reaches a green verdict for the project's own repo; re-adopt is idempotent"
+
 # exercise the remaining bootstrap exits and Git's configured
 # hooks directory. User scope must also carry its own native gate payloads.
 for fallback_case in uv-fails pipx-fails unresolved user-hooks-path skip; do
@@ -2498,8 +2556,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "31" ] \
-  || fail "HIMMEL-3332 S4: expected 31 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "45" ] \
+  || fail "HIMMEL-3332 S4: expected 45 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

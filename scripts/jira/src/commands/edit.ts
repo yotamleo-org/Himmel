@@ -5,6 +5,7 @@ import { markdownToAdf } from '../adf.js';
 import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
+import { nextResidualDepth } from './create.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
@@ -221,6 +222,47 @@ function verifyReadBack(
   return out;
 }
 
+// `--residual-of <parent>`: turns the flag into the label and affects-version edits that
+// stamp the ticket as a residual one level below its parent, and returns the fixVersions to
+// drop (all of them at depth 2 or more, none below). The verb is the only place that depth is decided.
+async function stampResidual(key: string, options: EditOptions & { residualOf?: string }): Promise<string[]> {
+  const parent = options.residualOf as string;
+  if (!/^[A-Z][A-Z0-9]*-[0-9]+$/.test(parent)) {
+    throw new Error(`--residual-of must be a ticket key like PROJ-123 (got '${parent}')`);
+  }
+  if (parent === key) {
+    throw new Error(`Edit ${key}: a ticket cannot be its own residual parent.`);
+  }
+  const clashing = (
+    [
+      ['--labels', options.labels],
+      ['--add-labels', options.addLabels],
+      ['--remove-labels', options.removeLabels],
+      ['--fix-version', options.fixVersion],
+      ['--add-fix-version', options.addFixVersion],
+      ['--affects-version', options.affectsVersion],
+    ] as const
+  ).filter(([, v]) => v !== undefined);
+  if (clashing.length > 0) {
+    throw new Error(`Edit --residual-of cannot be combined with ${clashing.map(([f]) => f).join(', ')}: it sets the labels and versions itself.`);
+  }
+  const parentIssue = await request<{ fields?: { labels?: string[] } }>('GET', `/issue/${parent}?fields=labels`);
+  const parentLabels = parentIssue.fields?.labels;
+  if (!Array.isArray(parentLabels)) {
+    throw new Error(`Edit ${key}: the read of ${parent} carried no labels list; refusing to guess the residual depth.`);
+  }
+  const depth = nextResidualDepth(parentLabels);
+  options.addLabels = `residual-depth-${depth}`;
+  options.affectsVersion = 'current';
+  if (depth < 2) return [];
+  const own = await request<{ fields?: { fixVersions?: Array<{ name?: string }> } }>('GET', `/issue/${key}?fields=fixVersions`);
+  const ownVersions = own.fields?.fixVersions;
+  if (!Array.isArray(ownVersions)) {
+    throw new Error(`Edit ${key}: the read of ${key} carried no fixVersions list; refusing to skip the fix-version drop.`);
+  }
+  return ownVersions.map((v) => v.name ?? '').filter((name) => name !== '');
+}
+
 export function registerEdit(program: Command): void {
   program
     .command('edit <key>')
@@ -273,6 +315,12 @@ export function registerEdit(program: Command): void {
         "project's versions; `current` = the earliest unreleased version)",
     )
     .option(
+      '--residual-of <key>',
+      'Stamp this ticket as a review residual of <key>: adds residual-depth-<parent depth + 1>, ' +
+        'sets affectsVersion to the current version, and at depth 2 or more drops its fixVersions ' +
+        '(cannot be combined with the label or version flags)',
+    )
+    .option(
       '--gate <reason>',
       `Required to move a ticket into a frozen version (${INTAKE_GATES}); recorded in the admissions ledger`,
     )
@@ -280,7 +328,7 @@ export function registerEdit(program: Command): void {
       '--console-override <reason>',
       'Console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; consoleOverride?: string }) => {
+    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; consoleOverride?: string; residualOf?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
       // last by commander's option-order). `--desc-file` overrides both — it
@@ -290,6 +338,7 @@ export function registerEdit(program: Command): void {
       } else if (options.desc !== undefined && options.description === undefined) {
         options.description = options.desc;
       }
+      const dropFixVersions = options.residualOf === undefined ? [] : await stampResidual(key, options);
       if (options.affectsVersion !== undefined) {
         options.affectsVersion = await resolveAffectsVersion(projectFromKey(key), options.affectsVersion);
       }
@@ -326,19 +375,35 @@ export function registerEdit(program: Command): void {
       if (options.addFixVersion !== undefined) {
         Object.assign(update, buildFixVersionBody('add', options.addFixVersion).update);
       }
+      if (dropFixVersions.length > 0) {
+        update['fixVersions'] = dropFixVersions.map((name) => ({ remove: { name } }));
+      }
       if (Object.keys(update).length > 0) body.update = update;
       await request('PUT', `/issue/${key}`, body);
       // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority
       // back and fail loud instead of reporting a silent no-op as "edited".
       // Same for every other field edit sends — one GET covers all.
-      const names = readBackFieldNames(options);
+      const names = [...new Set([...readBackFieldNames(options), ...(dropFixVersions.length > 0 ? ['fixVersions'] : [])])];
       if (names.length > 0) {
         const got = await request<{ fields?: Record<string, unknown> }>(
           'GET',
           `/issue/${key}?fields=${names.join(',')}`,
         );
         const mismatches = verifyReadBack(key, options, fields, got.fields ?? {});
+        const readBackVersions = got.fields?.['fixVersions'];
+        const stillThere = Array.isArray(readBackVersions)
+          ? dropFixVersions.filter((name) => (readBackVersions as Array<{ name?: string }>).some((v) => v.name === name))
+          : dropFixVersions;
+        if (dropFixVersions.length > 0 && !Array.isArray(readBackVersions)) {
+          mismatches.push(
+            `Edit ${key}: fix-version was not changed — requested removal of '${dropFixVersions.join(', ')}' but the read-back carried no fixVersions list, so the removal is unproven.`,
+          );
+        } else if (stillThere.length > 0) {
+          mismatches.push(
+            `Edit ${key}: fix-version was not changed — requested removal of '${stillThere.join(', ')}' but the issue still carries it after the PUT.`,
+          );
+        }
         // The admission row is written once the target version reads back, so a dropped fixVersions
         // field leaves no row and another field failing its read-back cannot leave the admission unrecorded.
         const landed = Array.isArray(got.fields?.['fixVersions']) &&

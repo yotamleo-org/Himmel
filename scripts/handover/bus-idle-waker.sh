@@ -20,8 +20,13 @@
 # it, and that screen gets no keystroke either; nor does a box holding a draft,
 # which Enter would submit.
 # The target must be the named session: at startup and again before every wake
-# the konsole session's processId must run claude (argv0) with `-n <name>`, or
-# the waker refuses with rc=4.
+# the konsole session's process, or exactly one process up to 3 levels below it
+# (a claudex leg runs konsole, script, then claude), must run claude (argv0) with
+# `-n <name>`, or the waker refuses with rc=4; a process below the session's own
+# counts only while it and every process between it and the session hold their
+# terminal's foreground group (stat pgrp = tpgid), so a backgrounded claude, or
+# one under a backgrounded script wrapper, never receives a keystroke meant for
+# the program in front. Two such processes are ambiguous.
 # A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (the
 # EnableSecuritySensitiveDBusAPI setting is off, or konsole read it before it was
 # enabled: konsole reads it only at startup, so an older window refuses). qdbus6
@@ -33,7 +38,7 @@
 # ${XDG_STATE_HOME:-~/.local/state}/himmel/bus-waker.
 #
 # Seams: BUS_WAKER_QDBUS (default qdbus6), BUS_WAKER_BUS (default the himmel-bus CLI),
-# BUS_WAKER_PROC (default /proc).
+# BUS_WAKER_PROC (default /proc; <pid>/cmdline and <pid>/task/*/children are read).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -103,14 +108,42 @@ konsole() { # konsole <method> [args]: one Session call into $out; a failure end
     fi
 }
 
-named_target() { # the session's process must be claude launched as `-n <name>`; checked before every wake
+is_named_claude() { # is_named_claude <pid>: argv0 basename is claude and it was launched with -n/--name <name>
+    local arg prev="" first=1 claude=0 named=0
+    while IFS= read -r -d '' arg; do # NUL-separated, so a newline inside an argument stays inside it
+        if [ "$first" -eq 1 ]; then first=0; [ "${arg##*/}" = claude ] && claude=1; fi
+        if [ "$prev" = -n ] || [ "$prev" = --name ]; then [ "$arg" = "$NAME" ] && named=1; fi
+        prev="$arg"
+    done 2>/dev/null < "$PROC/$1/cmdline"
+    [ "$claude" -eq 1 ] && [ "$named" -eq 1 ]
+}
+
+in_foreground() { # in_foreground <pid>: its process group is the terminal's foreground group (stat fields pgrp and tpgid, read after the comm's closing paren)
+    local rest pgrp tpgid
+    rest="$(cat "$PROC/$1/stat" 2>/dev/null)" || return 1 # swallow-ok: an unreadable stat means not provably foreground, the caller refuses
+    rest="${rest##*) }"
+    read -r _ _ pgrp _ _ tpgid _ <<< "$rest"
+    num "$pgrp" && num "$tpgid" && [ "$pgrp" -gt 0 ] && [ "$pgrp" = "$tpgid" ]
+}
+
+named_target() { # exactly one process, the session's or up to 3 levels below it through foreground processes only (each below the session holds its own terminal's foreground), must be the claude launched as `-n <name>`; checked before every wake
+    local level=0 layer next p matches=0
     konsole processId
-    if ! num "$out" || ! tr '\0' '\n' < "$PROC/$out/cmdline" 2>/dev/null | awk -v n="$NAME" '
-        NR == 1 { sub(/.*\//, ""); claude = ($0 == "claude") }
-        (prev == "-n" || prev == "--name") && $0 == n { named = 1 }
-        { prev = $0 }
-        END { exit !(claude && named) }'; then
-        echo "bus-idle-waker: konsole session $SERVICE $SESSION does not run the claude named $NAME, refusing" >&2
+    layer="$out"
+    num "$layer" || layer=""
+    while [[ $layer =~ [0-9] ]] && [ "$level" -le 3 ]; do
+        next=""
+        for p in $layer; do
+            num "$p" || continue
+            [ "$level" -eq 0 ] || in_foreground "$p" || continue
+            if is_named_claude "$p"; then matches=$((matches + 1)); fi
+            next="$next $(cat "$PROC/$p"/task/*/children 2>/dev/null)" # swallow-ok: no children file = a leaf, nothing below it to match
+        done
+        layer="$next"
+        level=$((level + 1))
+    done
+    if [ "$matches" -ne 1 ]; then
+        echo "bus-idle-waker: konsole session $SERVICE $SESSION does not run exactly one claude named $NAME, refusing" >&2
         end_state rc4
         exit 4
     fi

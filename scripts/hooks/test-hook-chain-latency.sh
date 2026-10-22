@@ -17,17 +17,16 @@
 #   * SCALING: four times the input costs at most SCALE_MAX times the time
 #     (min of RUNS runs per size, so a load spike on one run does not count).
 #     Linear work is <= 4x; the quadratic walkers were 9-14x.
-#   * p95 PIN: across a corpus of everyday commands, the member's p95 wall time
-#     stays under P95_BUDGET_MS.
 #
-# Budgets, measured 2026-10-07 on the station at load average 8-10 with two
-# copies of this test running concurrently:
-#   * p95: the slowest member (block-write-into-main-checkout.sh) peaked at
-#     292 ms loaded; the budget is that x2 (the run-shell-tests.sh rule).
-#   * SCALE_MAX is a ratio, which load mostly cancels, so it is NOT doubled:
-#     the quadratic walkers this test was written against ran 9-14x. The pair is
-#     160 -> 640 lines: the UTF-8 pattern ops it fixed only went
-#     superlinear above about 20 KB, so the old 40 -> 160 pair could not see them.
+# The wall-clock p95 samples over a corpus of everyday commands are retired:
+# the escapes were construct-specific, and test-hook-construct-scaling.sh runs
+# each construct at N and 8N against every member. This file keeps the generic
+# 4x payload as one generator.
+#
+# SCALE_MAX is a ratio, which load mostly cancels, so it is not doubled: the
+# quadratic walkers this test was written against ran 9-14x. The pair is
+# 160 -> 640 lines: the UTF-8 pattern ops it fixed only went superlinear above
+# about 20 KB, so the old 40 -> 160 pair could not see them.
 # Env overrides exist for slower boxes, never to make a red go green.
 #
 # Exit codes: 0 all cases passed, 1 at least one failed.
@@ -46,7 +45,6 @@ SCALE_MAX="$((SCALE_MAX_X10 / 10)).$((SCALE_MAX_X10 % 10))"
 MEMBER_TIMEOUT=${HOOK_LATENCY_MEMBER_TIMEOUT:-60}
 # shellcheck source=../lib/timeout-bin.sh
 . "$ROOT/scripts/lib/timeout-bin.sh"
-P95_BUDGET_MS=${HOOK_LATENCY_P95_BUDGET_MS:-600}
 RUNS=3
 
 FAILED=0
@@ -98,22 +96,6 @@ prose() {  # prose <lines>
 payload "$(prose 160)" "$SANDBOX/small.json"
 payload "$(prose 640)" "$SANDBOX/big.json"
 
-# shellcheck disable=SC2016  # the corpus is command TEXT; nothing expands here
-CORPUS=(
-    'git status'
-    'ls -la scripts/hooks'
-    'cd /tmp && grep -rn "needle" . | head -5'
-    'bash scripts/quiet-run.sh suite -- bash scripts/hooks/test-block-git-stash.sh'
-    "jq -r '.hooks | keys[]' .claude/settings.json"
-    'for f in scripts/hooks/*.sh; do wc -l "$f"; done'
-    'git commit -m "fix(hooks): [HIMMEL-1] a subject — with a dash"'
-    'gh pr view 1 --json title,state'
-    'node scripts/jira/dist/index.js get HIMMEL-1'
-    "$(prose 12)"
-)
-n=0
-for c in "${CORPUS[@]}"; do payload "$c" "$SANDBOX/c$n.json"; n=$((n + 1)); done
-
 MS=0
 BAD_RC=''
 # The role flags switch on the members gated to a leg or a relay session
@@ -159,19 +141,6 @@ for m in $MEMBERS; do
         fail "$name scaling: 4x input ${small}ms -> ${big}ms (> ${SCALE_MAX}x: superlinear)"
     fi
 
-    samples=()
-    for ((k = 0; k < n; k++)); do
-        run_ms "$m" "$SANDBOX/c$k.json"; samples+=("$MS")
-        run_ms "$m" "$SANDBOX/c$k.json"; samples+=("$MS")
-    done
-    total=${#samples[@]}
-    idx=$(( (total * 95 + 99) / 100 - 1 ))
-    p95=$(printf '%s\n' "${samples[@]}" | sort -n | sed -n "$((idx + 1))p")
-    if [ "$p95" -le "$P95_BUDGET_MS" ]; then
-        pass "$name p95 ${p95}ms over $total runs (<= ${P95_BUDGET_MS}ms)"
-    else
-        fail "$name p95 ${p95}ms over $total runs (> ${P95_BUDGET_MS}ms)"
-    fi
     if [ -n "$BAD_RC" ]; then
         fail "$name: $BAD_RC (a member answers 0 or 2; anything else is broken)"
     fi

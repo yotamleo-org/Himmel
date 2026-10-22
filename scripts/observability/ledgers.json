@@ -186,6 +186,19 @@
       "grandfathered": false
     },
     {
+      "id": "judge-adjudication",
+      "default_path": "~/.himmel/eval/judge-accuracy/adjudication.jsonl",
+      "override_env": "HIMMEL_JUDGE_ADJUDICATION",
+      "writer": "scripts/eval/judge-accuracy/judge_accuracy.py",
+      "readers": [],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "mcp-audit",
       "default_path": "~/.himmel/state/mcp-audit.jsonl",
       "override_env": "MCP_POLICY_AUDIT_LOG",
@@ -235,6 +248,19 @@
       "retention": "unbounded",
       "schema_version": 1,
       "envelope": ["v", "ts", "host", "source", "kind", "repo"],
+      "grandfathered": false
+    },
+    {
+      "id": "weekly-rollup",
+      "default_path": "~/.himmel/state/rollup/weekly.jsonl",
+      "override_env": "WEEKLY_ROLLUP_FILE",
+      "writer": "scripts/eval/weekly-rollup.py",
+      "readers": ["scripts/eval/weekly-rollup.py"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "one row per ISO week and stable version, upserted by kind and key",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false
     }
   ]

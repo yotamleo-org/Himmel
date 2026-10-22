@@ -30,13 +30,21 @@
 # SAFETY MODEL — a command is granted ONLY when ALL hold:
 #   1. tool_name is Bash.
 #   2. No command/process substitution anywhere: no `$(`  `` ` ``  `<(`  `>(`.
-#   3. No shell-level redirect to a real file (`>`/`>>` output, `<` input);
-#      only /dev/null sinks and fd-dups (`2>&1`, `<&0`) are tolerated — a grant
-#      must never reshape the process's I/O at the shell level.
-#   4. Every top-level segment (split on unquoted ; | || && & newline) is EITHER
-#      an enumerated engine invocation OR a benign nav wrapper (cd/pushd/popd),
-#      so a `cd <repo> && python <engine> <vault>` paraphrase is covered. Any
-#      other segment -> fall through (do not grant).
+#   3. No shell-level redirect to a real file (`>`/`>>` output, `<` input) and
+#      no heredoc; only /dev/null sinks and fd-dups (`2>&1`, `<&0`) are
+#      tolerated — a grant must never reshape the process's I/O at the shell
+#      level.
+#   4. The command is read once by the shared command model (scripts/lib/
+#      bash-ast.sh, bash_ast_positions, which needs shfmt): every command in it
+#      is a plain top-level or piped simple command (no subshell, group,
+#      compound, background, wrapper or eval) and is EITHER an enumerated
+#      engine invocation, a read-shaped gh api call, OR a benign nav wrapper
+#      (cd/pushd), so a `cd <repo> && python <engine> <vault>` paraphrase is
+#      covered. Any other command -> fall through (do not grant). Every word is
+#      judged as bash hands it to the process (quotes and escapes removed), and
+#      relative args are judged against each directory the model says the
+#      command can run in. Without shfmt nothing is granted and the message
+#      names shfmt.
 #   5. An enumerated engine invocation is:
 #        binary == python|python3|node|bash   (bare interpreter name; no path,
 #                                    no .exe — a `$cmd`/absolute interpreter
@@ -340,16 +348,11 @@ path_is_under_session_cwd() {
     return 1
 }
 
-# Strip ONE surrounding quote pair (single or double) and fold backslashes to
-# forward slashes. The token comes from a quote-naive `read -ra` split, so a
-# quoted script path still carries its delimiters. The single-quote char is held
-# in a variable so the patterns/expansions stay shellcheck-clean.
+# Fold backslashes to forward slashes. The word is already what bash hands the
+# process (the command model removed its quotes and escapes), so nothing else
+# is stripped here.
 norm_path() {
-    local p="$1" sq="'" dq="\""
-    case "$p" in
-        "$sq"*) p="${p#"$sq"}"; p="${p%"$sq"}" ;;
-        "$dq"*) p="${p#"$dq"}"; p="${p%"$dq"}" ;;
-    esac
+    local p="$1"
     # Fold backslashes to forward slashes so a Windows engine path matches the
     # suffix. `'\\'` is correct: single quotes pass two backslashes literally and
     # tr unescapes them to one (SC1003 is a false positive on this idiom).
@@ -476,13 +479,14 @@ arg_is_vault_safe() {
             path_is_under_session_cwd "$norm" || return 1
             path_is_physically_in_vault "$norm" ;;
         *)
-            # After an approved cd into the checkout the shell resolves this
-            # token there, so it must stay contained in that base too.
-            if [ -n "$NAV_ROOT_PHYS" ] && [ "$NAV_ROOT_PHYS" != "$SESSION_CWD_PHYS" ]; then
-                path_is_physically_in_vault "$NAV_ROOT_PHYS/$norm" "$NAV_ROOT_PHYS" || return 1
-            fi
-            [ -n "$SESSION_CWD_PHYS" ] || return 0
-            path_is_physically_in_vault "$SESSION_CWD_POSIX/$norm" ;;
+            # The shell resolves this token in every directory the command can
+            # run in (BASES), so it must stay contained in each of them.
+            local b
+            for b in "${BASES[@]}"; do
+                [ -n "$b" ] || continue
+                path_is_physically_in_vault "$b/$norm" "$b" || return 1
+            done
+            return 0 ;;
     esac
 }
 
@@ -521,24 +525,27 @@ path_is_physically_in_vault() {
 # org/repo would pull an untrusted model on an unattended run. Granted: a
 # faster-whisper size name, or a directory that already exists in the vault.
 whisper_model_is_safe() {
-    local norm
+    local norm b
     norm=$(norm_path "$1")
     case "$norm" in
         tiny|tiny.en|base|base.en|small|small.en|medium|medium.en| \
         large|large-v1|large-v2|large-v3)
             # A same-named path on disk wins over the built-in size name.
-            if [ ! -e "$SESSION_CWD_POSIX/$norm" ] && [ ! -L "$SESSION_CWD_POSIX/$norm" ] \
-                && { [ -z "$NAV_ROOT_PHYS" ] || { [ ! -e "$NAV_ROOT_PHYS/$norm" ] && [ ! -L "$NAV_ROOT_PHYS/$norm" ]; }; }; then
-                return 0
-            fi ;;
+            local shadowed=0
+            for b in "${BASES[@]}"; do
+                [ -n "$b" ] || continue
+                if [ -e "$b/$norm" ] || [ -L "$b/$norm" ]; then shadowed=1; fi
+            done
+            [ "$shadowed" -eq 0 ] && return 0 ;;
     esac
     arg_is_vault_safe "$norm" || return 1
     case "$norm" in
         /*) [ -d "$norm" ] ;;
-        *)  # The segment split drops the separator, so after a cd the engine may run in
-            # the checkout (&&) or still in the session cwd (a pipe): the dir must exist in both.
-            [ -n "$SESSION_CWD_POSIX" ] && [ -d "$SESSION_CWD_POSIX/$norm" ] \
-                && { [ -z "$NAV_ROOT_PHYS" ] || [ -d "$NAV_ROOT_PHYS/$norm" ]; } ;;
+        *)  # The engine may run in any of BASES (a skipped cd, a pipe), so the dir must exist in each.
+            for b in "${BASES[@]}"; do
+                [ -n "$b" ] && [ -d "$b/$norm" ] || return 1
+            done
+            return 0 ;;
     esac
 }
 
@@ -566,150 +573,59 @@ script_matches_engine() {
     return 1
 }
 
-# Quote-aware reassembly of a token the caller's naive whitespace split may
-# have shredded. A quoted script path
-# CONTAINING SPACES survives `IFS=' ' read -ra` as multiple array elements
-# (`"C:/spaced` `path/vault_lint.py"`), so norm_path's single-quote-pair strip
-# never sees the whole path and the suffix match silently fails-closed —
-# which is the correct failure direction, but wrong for any adopter whose
-# checkout lives under a spaced path (common on Windows).
-#
-# $1 is the first token of the (possibly split) quoted path; "$@" after the
-# shift are the tokens that follow it in the segment. If $1 does not open a
-# quote, or opens and closes a quote within itself, it is already whole:
-# REASM_TOKEN=$1, REASM_CONSUMED=1. Otherwise absorb subsequent tokens
-# (rejoined with single spaces) until one's LAST character closes the same
-# quote. Sets REASM_TOKEN (joined, quotes NOT stripped) and REASM_CONSUMED
-# (how many of the passed-in tokens were absorbed, >=1). Returns 1 iff no
-# token before the list is exhausted closes the quote (unterminated, or the
-# quote closes somewhere other than a token boundary) — fail-safe: no grant.
-reassemble_token() {
-    local first="$1" sq="'" dq="\"" qc="" last joined tok consumed
-    case "$first" in
-        "$dq"*) qc="$dq" ;;
-        "$sq"*) qc="$sq" ;;
-        *) REASM_TOKEN="$first"; REASM_CONSUMED=1; return 0 ;;
-    esac
-    if [ "${#first}" -ge 2 ]; then
-        last="${first:$((${#first} - 1)):1}"
-        if [ "$last" = "$qc" ]; then
-            REASM_TOKEN="$first"; REASM_CONSUMED=1; return 0
-        fi
-    fi
-    joined="$first"; consumed=1
-    shift
-    while [ "$#" -gt 0 ]; do
-        tok="$1"; shift
-        joined="$joined $tok"
-        consumed=$((consumed + 1))
-        [ -n "$tok" ] || continue
-        last="${tok:$((${#tok} - 1)):1}"
-        if [ "$last" = "$qc" ]; then
-            REASM_TOKEN="$joined"; REASM_CONSUMED="$consumed"
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Is this one segment an enumerated engine invocation? Tokenise on whitespace
-# (quote-naive per-token: quotes are preserved so a quoted flag stays literal,
-# and the global tripwire above already rejected command substitution). Returns
-# 0 = this segment is an allowed engine call.
+# Is this one command an enumerated engine invocation? "$@" is its argv, one
+# element per word after quote removal, so a quoted flag or path arrives as the
+# text bash hands the process. Returns 0 = an allowed engine call.
 segment_is_engine() {
-    local seg="$1"
-    local -a w
-    # shellcheck disable=SC2206 # intentional word split for tokenisation
-    IFS=' ' read -ra w <<< "$seg"
+    local -a w=("$@")
     local n=${#w[@]}
     [ "$n" -ge 2 ] || return 1
-    local i=0
-    # A leading VAR=val assignment is deliberately NOT skipped. An earlier revision skipped them on the premise
-    # that an assignment "cannot turn vault_lint.py into code exec" — that
-    # premise is FALSE: PYTHONPATH shadows a stdlib module the engine imports,
-    # so `PYTHONPATH=/tmp python vault_lint.py` reaches arbitrary code execution
-    # while collecting an automatic allow. The cadence never needs an env
-    # prefix, so the fail-safe posture in this hook's header applies: the FIRST
-    # token must be the interpreter itself, and an env-prefixed invocation falls
-    # through ungranted to the normal permission flow.
-    #
-    # ONE exception: the EXACT literal assignment
-    # `PYTHONUTF8=1`, and ONLY when it immediately precedes the `uv run` chain,
-    # is allowed. This is the documented invocation shape for the three
-    # uv-capable engines (commands/ig-media-enrich.md:88 etc, README.md:118) --
-    # unlike PYTHONPATH, PYTHONUTF8 is a text-encoding runtime knob; it cannot
-    # shadow a module or redirect an import, so it carries none of the hijack
-    # risk the rule above exists to close. Any other name, any other value, or
-    # a bare-interpreter (non-uv) invocation still falls through ungranted.
-    local start=0
-    if [ "${w[0]}" = "PYTHONUTF8=1" ] && [ "${w[1]:-}" = "uv" ]; then
-        start=1
-    fi
     local bin script_idx via_uv=0
-    if [ "${w[$start]}" = "uv" ]; then
+    if [ "${w[0]}" = "uv" ]; then
         # `uv run [--python <ver>] python <script>` -- the shape
         # harvest-clip-body-batch.py's and ig-media-fetch.py's own leg docs
         # use. Restricted to those three engines below (after
         # script_matches_engine resolves MATCHED_SUFFIX), not opened up to
         # every python-based engine.
-        match_uv_prefix "${w[@]:$start}" || return 1
+        match_uv_prefix "${w[@]}" || return 1
         bin="python"
-        script_idx=$((start + UV_PREFIX_LEN))
+        script_idx=$UV_PREFIX_LEN
         via_uv=1
     else
-        is_engine_binary "${w[$i]}" || return 1
-        bin="${w[$i]}"
-        script_idx=$((i + 1))
+        is_engine_binary "${w[0]}" || return 1
+        bin="${w[0]}"
+        script_idx=1
     fi
     [ "$script_idx" -lt "$n" ] || return 1
-    # Reassemble a script token a quoted, spaced path shattered across several
-    # array elements. An unterminated quote -> do not grant.
-    reassemble_token "${w[@]:$script_idx}" || return 1
-    local script="$REASM_TOKEN"
-    local script_consumed="$REASM_CONSUMED"
-    # The script must be a non-empty LITERAL path. A variable token ($ENGINE)
-    # cannot be proven to be the enumerated engine, so do not grant. (The fuller
-    # substitution tripwires — $(, backtick, <(, >( — are already rejected on
-    # the whole command above, so only a bare `$` variable needs re-checking
-    # here on the reassembled script token.)
+    local script="${w[$script_idx]}"
+    # The script must be a non-empty LITERAL path. A `$` that survived quote
+    # removal cannot be proven to be the enumerated engine, so do not grant.
     [ -n "$script" ] || return 1
     # shellcheck disable=SC2016 # '$' is a literal dollar-sign match pattern
     case "$script" in
         *'$'*) return 1 ;;
     esac
     script_matches_engine "$bin" "$script" || return 1
-    # The uv-run prefix (with or without the PYTHONUTF8=1 lead-in above) is
-    # granted ONLY for the three engines documented as using it --
-    # a match against any other python-bin suffix (e.g. vault_lint) via
-    # `uv run ... python <script>` is refused: that leg's own docs invoke it
-    # with the bare interpreter, so widening this to "any python engine, via
-    # uv" is not something any leg actually needs.
+    # The uv-run prefix is granted ONLY for the three engines documented as
+    # using it -- a match against any other python-bin suffix (e.g.
+    # vault_lint) via `uv run ... python <script>` is refused: that leg's own
+    # docs invoke it with the bare interpreter, so widening this to "any
+    # python engine, via uv" is not something any leg actually needs.
     if [ "$via_uv" -eq 1 ]; then
         case "$MATCHED_SUFFIX" in
             "$HARVEST_SUFFIX"|"$IG_MEDIA_FETCH_SUFFIX"|"$X_MEDIA_FETCH_SUFFIX") ;;
             *) return 1 ;;
         esac
     fi
-    # Trailing args are constrained too (see the file header SAFETY MODEL point 6). MATCHED_SUFFIX was set by
-    # script_matches_engine above. Every remaining token must be a per-engine
-    # safe flag or a path that can only resolve inside the vault; ANY other
-    # token -> do not grant (fall through to the normal permission flow).
-    #
-    # RETASK R2124A IMPORTANT: `tok` is quote-normalized (norm_path) BEFORE
-    # the `-*` dispatch, not after. reassemble_token deliberately does NOT
-    # strip quotes (its own contract: "quotes NOT stripped"), so a quoted
-    # excluded flag like `"--config"` doesn't start with `-` raw, skips
-    # flag_is_safe entirely, and would otherwise fall to arg_is_vault_safe --
-    # which DOES quote-strip internally and would then wave it through as a
-    # harmless-looking relative path. Same root cause as segment_is_gh_read's
-    # fix above; norm_path is idempotent, so re-applying it inside
-    # arg_is_vault_safe on an already-stripped token is a no-op.
-    local idx=$((script_idx + script_consumed))
-    local tok model_next=""
+    # Trailing args are constrained too (see the file header SAFETY MODEL
+    # point 6). MATCHED_SUFFIX was set by script_matches_engine above. Every
+    # remaining word must be a per-engine safe flag or a path that can only
+    # resolve inside the vault; ANY other word -> do not grant (fall through
+    # to the normal permission flow).
+    local idx=$((script_idx + 1)) tok model_next=""
     while [ "$idx" -lt "$n" ]; do
-        reassemble_token "${w[@]:$idx}" || return 1
-        tok=$(norm_path "$REASM_TOKEN")
-        idx=$((idx + REASM_CONSUMED))
+        tok=$(norm_path "${w[$idx]}")
+        idx=$((idx + 1))
         case "$tok" in
             -*) flag_is_safe "$MATCHED_SUFFIX" "$tok" || return 1
                 model_next=""
@@ -725,228 +641,151 @@ segment_is_engine() {
     return 0
 }
 
-# A benign nav wrapper that may prefix the engine call (changes cwd only).
-# "cmd + arbitrary trailing tokens" would not be exploitable (extras become
-# invalid cd args; bash rejects >1 arg, nothing executes) — but a grant shouldn't cover more shape than the cadence needs.
-# Require cmd + AT MOST one dir argument, allowing that argument to be a
-# quoted, spaced path via the same reassembly used for the engine script.
-#
-# The dir argument must also land inside the vault (arg_is_vault_safe, which
-# resolves symlinks) or inside this checkout: a `cd /tmp/evil` would otherwise
-# re-root every later RELATIVE vault-safe argument outside the vault.
-segment_is_nav() {
-    local seg="$1"
-    local -a w
-    IFS=' ' read -ra w <<< "$seg"
-    local n=${#w[@]}
-    case "${w[0]}" in
-        cd|pushd|popd) ;;
-        *) return 1 ;;
-    esac
-    # A bare cd goes to $HOME and a bare pushd swaps the stack: no target to prove.
-    [ "$n" -gt 1 ] || return 1
-    reassemble_token "${w[@]:1}" || return 1
-    [ $((1 + REASM_CONSUMED)) -eq "$n" ] || return 1
-    nav_target_is_contained "$REASM_TOKEN"
+# BASES: the physical directories the command being judged can run in, one per
+# cwd candidate bash-ast gives it (CHAINS: each a US-joined chain of cd targets
+# from the session cwd). An empty entry is a session cwd the hook was not given.
+# A chain that cannot be resolved refuses the command.
+set_bases() {
+    local chain b t
+    local -a els
+    BASES=()
+    for chain in "${CHAINS[@]}"; do
+        b="$SESSION_CWD_PHYS"
+        if [ -n "$chain" ]; then
+            IFS=$'\x1f' read -ra els <<< "$chain"
+            for t in "${els[@]}"; do
+                case "$t" in
+                    /*) ;;
+                    *) [ -n "$b" ] || return 1; t="$b/$t" ;;
+                esac
+                b=$(cd -P "$t" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
+            done
+        fi
+        BASES+=("$b")
+    done
+    [ "${#BASES[@]}" -gt 0 ]
 }
 
+# A benign nav command (cd/pushd) that may prefix the engine call. Only the vault
+# root or the checkout root is a contained target; a deeper one would re-root the
+# later relative args, whose containment is judged against the base they run in.
+# The target is judged from every base the cd itself can run in, and the engine's
+# own cwd candidates come from the model, so a cd that was skipped (`||`), run in
+# a pipe's subshell or run after the engine is not credited to the engine.
 nav_target_is_contained() {
-    local norm p real root
-    # Bash drops an unquoted backslash, so a target carrying one is not the path norm_path folds it to.
+    local norm p real root b
     # shellcheck disable=SC1003 # '\' is a literal backslash match pattern
     case "$1" in *'\'*) return 1 ;; esac
-    # A CRLF-terminated line leaves a trailing CR on the last token, inside or outside the quotes' reach.
-    norm=$(norm_path "${1%$'\r'}")
-    norm="${norm%$'\r'}"
+    norm=$(norm_path "$1")
     case "$norm" in ''|-*|+*) return 1 ;; esac
     case "$norm" in
         *'$'*|'~'*|*'{'*|*'}'*|*'*'*|*'?'*|*'['*) return 1 ;;
     esac
     case "/$norm/" in */../*) return 1 ;; esac
-    # Only the vault root or the checkout root itself: a deeper target would
-    # re-root the later relative args, whose containment is judged against the
-    # session cwd. Symlinks are resolved so a link cannot stand in for either.
-    case "$norm" in
-        /*) p="$norm" ;;
-        *)  # Relative to wherever the previous approved cd left the shell.
-            if [ -n "$NAV_ROOT_PHYS" ]; then
-                p="$NAV_ROOT_PHYS/$norm"
-            else
-                [ -n "$SESSION_CWD_POSIX" ] || return 1
-                p="$SESSION_CWD_POSIX/$norm"
-            fi ;;
-    esac
-    real=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
-    [ -n "$real" ] || return 1
-    # A cd back into the vault never clears NAV_ROOT_PHYS: `||` may have skipped it,
-    # so every base visited stays checked.
-    if [ -n "$SESSION_CWD_PHYS" ] && [ "$real" = "$SESSION_CWD_PHYS" ]; then
-        return 0
-    fi
     root=$(cd -P "$ENGINE_ROOT_POSIX" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
-    [ "$real" = "$root" ] || return 1
-    NAV_ROOT_PHYS="$real"
+    for b in "${BASES[@]}"; do
+        case "$norm" in
+            /*) p="$norm" ;;
+            *)  [ -n "$b" ] || return 1
+                p="$b/$norm" ;;
+        esac
+        real=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
+        [ -n "$real" ] || return 1
+        if [ -n "$SESSION_CWD_PHYS" ] && [ "$real" = "$SESSION_CWD_PHYS" ]; then
+            continue
+        fi
+        [ "$real" = "$root" ] || return 1
+    done
+    return 0
 }
 
-# Is this segment a READ-shaped `gh api repos/...` call (see
-# SAFETY MODEL point 7)? The endpoint is the (quote-reassembled) token
-# immediately after `api` (every documented cadence usage puts it there, e.g.
-# `gh api repos/cli/cli` / `gh api "repos/${owner}/${repo}/issues/${n}"`);
-# it must start with `repos/`, carry no `$`, and carry no `..` (same
-# fail-safe stance as the engine script/arg tokens — a variable endpoint
-# cannot be vouched for, and `..` has no legitimate reason to appear in a
-# repo-scoped API path).
+# Is this command a READ-shaped `gh api repos/...` call (see
+# SAFETY MODEL point 7)? "$@" is its argv after quote removal. The endpoint is
+# the word immediately after `api` (every documented cadence usage puts it
+# there, e.g. `gh api repos/cli/cli` / `gh api "repos/${owner}/${repo}/issues/${n}"`);
+# it must start with `repos/`, carry no `$`, and carry no `..` (a variable
+# endpoint cannot be vouched for, and `..` has no legitimate reason to appear
+# in a repo-scoped API path).
 #
-# RETASK R2124A (3rd review round, root-cause fix): every OTHER token must be
-# in an explicit ALLOWLIST of known-safe `gh api` flags -- ANYTHING else
-# refuses the whole segment. This replaced a DENYLIST (name each dangerous
-# flag) after that shape failed three review rounds in a row (-X/-f/--method/
-# --hostname enumerated one at a time, then --raw-field missed, then a
-# backslash-escaped `--met\hod` evaded the literal-string comparison). A
-# denylist for an external CLI's flag surface is structurally unwinnable --
-# there is always one more flag. An allowlist closes the whole family at
-# once: `--raw-field`, `--hostname`, a future gh write flag, AND a
-# backslash-escaped or otherwise mangled token are all just "not in the
-# allowlist" -> refused by the same default branch, with no need to model
-# how the mangling works. Safe flags (gh api's own docs):
+# Every OTHER word must be in an explicit ALLOWLIST of known-safe `gh api`
+# flags -- ANYTHING else refuses the whole command. A denylist for an external
+# CLI's flag surface is structurally unwinnable (there is always one more
+# flag); an allowlist closes the whole family at once: `--raw-field`,
+# `--hostname`, a future gh write flag, AND a mangled token are all just "not
+# in the allowlist". Safe flags (gh api's own docs):
 #   --jq/-q <expr>     read-only local JSON filtering
 #   --paginate         follows pagination links (still GET-only under this
 #                      gate, since -X/--method aren't on the allowlist at all)
 #   --cache <dur>      client-side response caching
 #   --slurp            wraps paginated --jq results in an array
 #   -H/--header <val>  a request header; cannot induce a write or change host
-# The value immediately after a value-taking safe flag is consumed as ITS
-# value without being separately classified (it's free-form content, e.g. a
-# jq expression -- not a flag to allowlist against); a bare token that is
-# NOT one of the flags above, and was NOT consumed as such a value, refuses
-# the segment. Every token (endpoint and flags alike) is quote-normalized
-# (norm_path: strip one quote layer, fold backslashes) before comparison --
-# bash strips quotes before argv reaches a real process, so a quoted safe
-# flag (`"--jq"`) must still match, exactly as a quoted UNSAFE one must still
-# fail to match anything on the allowlist.
+# The word immediately after a value-taking safe flag is consumed as ITS value
+# without being separately classified (it's free-form content, e.g. a jq
+# expression -- not a flag to allowlist against).
 segment_is_gh_read() {
-    local seg="$1"
-    local -a w
-    IFS=' ' read -ra w <<< "$seg"
+    local -a w=("$@")
     local n=${#w[@]}
     [ "$n" -ge 3 ] || return 1
     [ "${w[0]}" = "gh" ] && [ "${w[1]}" = "api" ] || return 1
-    # Reassemble the endpoint the same way segment_is_engine reassembles its
-    # script/arg tokens (RETASK R2124A minor, earlier round): a raw `read -ra`
-    # split can leave a stray trailing quote/separator char on a naively-split
-    # token even though the real shell kept it one literal argument. Not
-    # exploitable today (the real process never sees the phantom split), but
-    # this keeps the hook's own view of "the endpoint" matching what actually
-    # runs instead of drifting from it.
-    reassemble_token "${w[@]:2}" || return 1
-    local endpoint="$REASM_TOKEN"
-    local endpoint_consumed="$REASM_CONSUMED"
-    endpoint=$(norm_path "$endpoint")
+    local endpoint
+    endpoint=$(norm_path "${w[2]}")
     [ -n "$endpoint" ] || return 1
     # shellcheck disable=SC2016 # '$' is a literal dollar-sign match pattern
     case "$endpoint" in *'$'*) return 1 ;; esac
     case "$endpoint" in repos/*) ;; *) return 1 ;; esac
     case "$endpoint" in *'..'*) return 1 ;; esac
-    local idx=$((2 + endpoint_consumed)) tok
+    local idx=3 tok
     while [ "$idx" -lt "$n" ]; do
-        reassemble_token "${w[@]:$idx}" || return 1
-        tok=$(norm_path "$REASM_TOKEN")
-        idx=$((idx + REASM_CONSUMED))
+        tok=$(norm_path "${w[$idx]}")
+        idx=$((idx + 1))
         case "$tok" in
             --paginate|--slurp) ;;
             --jq|-q|--cache|-H|--header)
-                # Value-taking safe flag: consume the NEXT token as its value,
-                # unexamined (free-form content, not itself a flag to
-                # allowlist). Missing value -> refuse (fail-safe).
+                # Value-taking safe flag: skip the NEXT word as its value.
+                # Missing value -> refuse (fail-safe).
                 [ "$idx" -lt "$n" ] || return 1
-                reassemble_token "${w[@]:$idx}" || return 1
-                idx=$((idx + REASM_CONSUMED)) ;;
+                idx=$((idx + 1)) ;;
             *) return 1 ;;
         esac
     done
     return 0
 }
 
-# Quote-aware structural scan (modelled on auto-approve-safe-bash's scan_cmd).
-# Walks char by char tracking single/double-quote state so command
-# separators (; | || && & newline) and `>` redirects INSIDE quotes stay literal.
-# Produces two globals, returns 1 (do not grant) on unbalanced quotes OR an
-# unquoted bare `&` (backgrounding):
-#   SCAN_SEGS — top-level segments (ORIGINAL text, one per line) split ONLY at
-#               UNQUOTED separators.
-#   SCAN_MASK — the command with every quoted span (+ quote delims + escaped
-#               chars) replaced by spaces, so the redirect detector sees only
-#               UNQUOTED '>'.
-# bash 3.2-safe: only ${s:i:1}, ${#s}, arithmetic.
-split_and_mask() {
-    local s="$1" n i c nx p st seg NL
-    NL=$'\n'
-    n=${#s}; i=0; st=0; seg=""; SCAN_SEGS=""; SCAN_MASK=""
-    while [ "$i" -lt "$n" ]; do
-        c="${s:$i:1}"
-        if [ "$st" = 1 ]; then                       # inside single quotes
-            seg="$seg${c/"$NL"/ }"; SCAN_MASK="$SCAN_MASK "
-            [ "$c" = "'" ] && st=0
-            i=$((i + 1)); continue
-        fi
-        if [ "$st" = 2 ]; then                       # inside double quotes
-            if [ "$c" = "\\" ]; then                 # \<x> keeps next char literal
-                nx="${s:$((i + 1)):1}"
-                seg="$seg${c/"$NL"/ }${nx/"$NL"/ }"; SCAN_MASK="$SCAN_MASK  "
-                i=$((i + 2)); continue
-            fi
-            seg="$seg${c/"$NL"/ }"; SCAN_MASK="$SCAN_MASK "
-            [ "$c" = '"' ] && st=0
-            i=$((i + 1)); continue
-        fi
-        # --- unquoted ---
-        nx="${s:$((i + 1)):1}"
-        case "$c" in
-            "'") st=1; seg="$seg$c"; SCAN_MASK="$SCAN_MASK "; i=$((i + 1)); continue ;;
-            '"') st=2; seg="$seg$c"; SCAN_MASK="$SCAN_MASK "; i=$((i + 1)); continue ;;
-            "\\") seg="$seg${c/"$NL"/ }${nx/"$NL"/ }"; SCAN_MASK="$SCAN_MASK  "; i=$((i + 2)); continue ;;
-            ';'|"$NL")                               # statement separator
-                SCAN_SEGS="$SCAN_SEGS$seg$NL"; seg=""
-                SCAN_MASK="$SCAN_MASK$c"; i=$((i + 1)); continue ;;
-            '|')                                     # | or || -> one break
-                # A piped cd runs in a subshell, so the cwd the nav tracker records is not the engine's.
-                if [ "$nx" != '|' ]; then
-                    case "${seg#"${seg%%[![:space:]]*}"}" in
-                        cd|cd[[:space:]]*|pushd|pushd[[:space:]]*|popd|popd[[:space:]]*) return 1 ;;
-                    esac
-                fi
-                SCAN_SEGS="$SCAN_SEGS$seg$NL"; seg=""
-                SCAN_MASK="$SCAN_MASK|"
-                if [ "$nx" = '|' ]; then SCAN_MASK="$SCAN_MASK|"; i=$((i + 2)); else i=$((i + 1)); fi
-                continue ;;
-            '&')
-                if [ "$nx" = '&' ]; then             # && logical-AND -> break
-                    SCAN_SEGS="$SCAN_SEGS$seg$NL"; seg=""
-                    SCAN_MASK="$SCAN_MASK&&"; i=$((i + 2)); continue
-                fi
-                if [ "$nx" = '>' ]; then             # &> redirect form -> keep
-                    seg="$seg$c"; SCAN_MASK="$SCAN_MASK&"; i=$((i + 1)); continue
-                fi
-                p=""; [ "$i" -gt 0 ] && p="${s:$((i - 1)):1}"
-                case "$p" in                         # fd-dup 2>&1 / >&2 -> keep
-                    '>'|'<'|'&') seg="$seg$c"; SCAN_MASK="$SCAN_MASK&"; i=$((i + 1)); continue ;;
-                esac
-                # A bare (unquoted) & backgrounds the
-                # preceding segment. Splitting it into a segment break left a
-                # trailing "python <engine> vault &" producing an engine segment
-                # plus an EMPTY tail; the main loop skips empty tails, so the hook
-                # allowed while the shell ran the engine detached in the
-                # background — defeating this PR's own run_in_background deny.
-                # The cadence never needs backgrounding, so refuse outright
-                # rather than split.
-                return 1 ;;
-        esac
-        seg="$seg$c"; SCAN_MASK="$SCAN_MASK$c"; i=$((i + 1))
-    done
-    [ "$st" = 0 ] || return 1                        # unbalanced quote -> no grant
-    SCAN_SEGS="$SCAN_SEGS$seg"
-    return 0
-}
+# The command model's output, reduced to what this hook judges. Input: the
+# bash_ast_positions array. Output: the single line REFUSE, or per command
+#   P<prog> / [U] / C<cd chain, US-joined> (one per cwd candidate) / A<word> (one per argv word) / E
+# A command is refused when it is not a plain top-level (or piped) simple
+# command: opaque or wrapped programs, any enclosing compound/subshell/bg
+# context, an unknown cwd, a non-literal or glob word, a control byte, a
+# redirect other than a /dev/null sink or an fd-dup (a heredoc included), or a
+# prefix assignment other than PYTHONUTF8 on `uv`.
+IFS= read -r -d '' _CAE_JQ <<'CAE_JQ_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
+def ctl: test("[\u0001-\u001f\u007f]");
+def okredir:
+  .hdoc == false
+  and (.fd == null or (.fd | type == "string" and test("^[0-9]+$")))
+  and .w != null and .w.t == "lit" and (.w.g | not)
+  and ( ((.op | IN(">", ">>", "&>", "&>>")) and .w.v == "/dev/null")
+        or (.op == ">&" and (.w.v | test("^[0-9]$")))
+        or (.op == "<&" and (.w.v | test("^[0-9-]$"))) );
+def okpos:
+  .opaque == null and ((.via | length) == 0)
+  and (.in | all(. == "pipe"))
+  and ((.cwd | length) > 0)
+  and (.cwd | all(. != null and all(type == "string" and length > 0 and (ctl | not))))
+  and (.redirs | all(okredir))
+  and .prog != null and ((.argv | length) > 0)
+  and (.argv | all(.t == "lit" and (.g | not) and (.v | ctl | not)))
+  and .argv[0].v == .prog
+  and (((.assigns | length) == 0) or (.prog == "uv" and .assigns == ["PYTHONUTF8"]));
+if length > 0 and all(okpos) then
+  .[] | ("P" + .prog),
+        (if (.assigns | length) > 0 then "U" else empty end),
+        (.cwd[] | "C" + join("\u001f")),
+        (.argv[] | "A" + .v),
+        "E"
+else "REFUSE" end
+CAE_JQ_EOF
 
 emit_allow() {
     local reason
@@ -976,7 +815,6 @@ cwd_raw=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev
 SESSION_CWD_POSIX=""
 SESSION_CWD_MIXED=""
 SESSION_CWD_PHYS=""
-NAV_ROOT_PHYS=""
 if [ -n "$cwd_raw" ]; then
     # shellcheck disable=SC1003 # '\\' is tr's two-char escape for one backslash
     cwd_folded=$(printf '%s' "$cwd_raw" | tr '\\' '/')
@@ -997,57 +835,82 @@ case "$cmd" in
     *'$('*|*'`'*|*'<('*|*'>('*)        exit 0 ;;
 esac
 
-# Quote-aware scan -> segments + redirect mask. Unbalanced quote -> no grant.
-split_and_mask "$cmd" || exit 0
+# Hot path: every Bash call of a cadence run reaches here, and only a command
+# that names an enumerated engine or `gh` can be granted, so any other never
+# pays for shfmt.
+names_candidate=0
+for entry in $ENGINE_LIST; do
+    case "$cmd" in *"${entry##*/}"*) names_candidate=1; break ;; esac
+done
+case "$cmd" in *gh*) names_candidate=1 ;; esac
+[ "$names_candidate" -eq 1 ] || exit 0
 
-# Heredocs turn following lines into redirection data, but the segment scanner
-# treats those lines as commands. Reject the unquoted forms outright rather
-# than risk granting a body/delimiter made entirely of benign-nav tokens.
-case "$SCAN_MASK" in
-    *'<<'*) exit 0 ;;
-esac
-
-# Shell-level redirect to a real file -> not granted. A grant must enable ONLY
-# the enumerated engine + its arg list, never reshape the process's I/O at the
-# shell level, so BOTH output (`>`/`>>`) and unquoted INPUT (`<`) redirection
-# are rejected (an unquoted `< file` would otherwise slip
-# past a `>`-only check). /dev/null sinks + fd-dups are stripped first as
-# benign; the heredoc and process-substitution forms (`<<`, `<(`) are already
-# rejected above, so a surviving unquoted `<`/`>` is a real file redirect.
-# shellcheck disable=SC2001 # sed is needed for the bracketed /dev/null anchors
-rd=$(printf '%s' "$SCAN_MASK" | sed -E \
-    -e 's@&?>>?[[:space:]]*/dev/null([[:space:]]|$)@ @g' \
-    -e 's@[0-9]*>>?[[:space:]]*/dev/null([[:space:]]|$)@ @g' \
-    -e 's@[0-9]*>&[0-9]@ @g' \
-    -e 's@[0-9]*<&[0-9-]@ @g')
-case "$rd" in
-    *'>'*|*'<'*) exit 0 ;;
-esac
-
-# --- Every segment must be an enumerated engine or a benign nav wrapper,
-# AND at least one segment must actually BE an enumerated engine. Without this, a nav-only command (e.g. a bare `cd /tmp`) satisfied
-# the "every segment is engine-or-nav" test vacuously and collected an
-# allow with a false "vault-lint engine" reason, even though no engine was
-# present. Harmless in effect (cd executes nothing), but contradicts this
-# hook's contract of granting only enumerated cadence engines.
-saw_engine=0
-while IFS= read -r seg; do
-    seg="${seg#"${seg%%[![:space:]]*}"}"   # ltrim
-    [ -z "$seg" ] && continue
-    # The tokenisers split on spaces only; bash also splits on tab, VT and FF,
-    # so a token joined by one would hide extra argv from every check below.
-    seg="${seg%$'\r'}"
-    case "$seg" in
-        *[$'\t\v\f\r']*) exit 0 ;;
-    esac
-    if segment_is_engine "$seg"; then
-        saw_engine=1
-    elif segment_is_gh_read "$seg"; then
-        saw_engine=1
-    elif ! segment_is_nav "$seg"; then
-        exit 0
+# The command model (shfmt) reads the command once; a station without shfmt only
+# loses the grant, and the message says what to install.
+ast_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/bash-ast.sh"
+# shellcheck source=../lib/bash-ast.sh
+if ! { [ -r "$ast_lib" ] && . "$ast_lib"; } 2>/dev/null; then
+    exit 0
+fi
+ast_rc=0
+pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+if [ "$ast_rc" -ne 0 ]; then
+    if [ "$ast_rc" -eq 2 ]; then
+        echo "cadence-approve-engines: shfmt not on PATH, so this command that names a cadence engine or gh api cannot be read and is not auto-approved; it falls through to the normal permission flow. Install shfmt (a station install goes to a test VM first)." >&2
     fi
-done <<< "$SCAN_SEGS"
+    exit 0
+fi
+lines=$(printf '%s' "$pos" | jq -r "$_CAE_JQ" 2>/dev/null) || exit 0 # swallow-ok: a jq failure exits 0 with no grant
+[ -n "$lines" ] && [ "$lines" != "REFUSE" ] || exit 0
+
+# --- Every command must be an enumerated engine, a read-shaped gh api call or a
+# benign cd/pushd, AND at least one must actually BE an engine or gh call.
+# Without that, a nav-only command (e.g. a bare `cd /tmp`) satisfied the "every
+# command is engine-or-nav" test vacuously and collected an allow with a false
+# "vault-lint engine" reason, even though no engine was present. Harmless in
+# effect (cd executes nothing), but contradicts this hook's contract of
+# granting only enumerated cadence engines.
+saw_engine=0
+utf8_pos=0
+cur_prog=""
+CHAINS=()
+WORDS=()
+BASES=("")
+while IFS= read -r line; do
+    case "$line" in
+        P*) cur_prog="${line#P}"; CHAINS=(); WORDS=() ;;
+        U) utf8_pos=$((utf8_pos + 1)) ;;
+        C*) CHAINS+=("${line#C}") ;;
+        A*) WORDS+=("${line#A}") ;;
+        E)
+            set_bases || exit 0
+            case "$cur_prog" in
+                cd|pushd)
+                    [ "${#WORDS[@]}" -eq 2 ] && nav_target_is_contained "${WORDS[1]}" || exit 0 ;;
+                gh)
+                    segment_is_gh_read "${WORDS[@]}" || exit 0
+                    saw_engine=1 ;;
+                *)
+                    segment_is_engine "${WORDS[@]}" || exit 0
+                    saw_engine=1 ;;
+            esac ;;
+        *) exit 0 ;;
+    esac
+done <<< "$lines"
 [ "$saw_engine" -eq 1 ] || exit 0
+
+# A prefix assignment is deliberately NOT part of a grant: `PYTHONPATH=/tmp
+# python vault_lint.py` shadows a stdlib module the engine imports and reaches
+# arbitrary code execution while collecting an automatic allow. The ONE
+# exception is the EXACT literal `PYTHONUTF8=1` directly before `uv`, the
+# documented invocation shape of the uv-capable engines (commands/
+# ig-media-enrich.md, README.md): a text-encoding runtime knob that cannot
+# shadow a module or redirect an import. The model reports an assignment's NAME
+# only, so the value is held to the text: every `PYTHONUTF8=` in the command is
+# one of the assignments the model found, and each reads `PYTHONUTF8=1 uv `.
+utf8_all_text=${cmd//PYTHONUTF8=/}
+utf8_ok_text=${cmd//PYTHONUTF8=1 uv /}
+[ $(((${#cmd} - ${#utf8_all_text}) / 11)) -eq "$utf8_pos" ] || exit 0
+[ $(((${#cmd} - ${#utf8_ok_text}) / 16)) -eq "$utf8_pos" ] || exit 0
 
 emit_allow "enumerated cadence engine or read-only gh api call (HIMMEL-1386/2124)"

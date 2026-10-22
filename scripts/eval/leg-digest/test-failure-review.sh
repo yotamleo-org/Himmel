@@ -117,6 +117,7 @@ check "no router state, log or inbox written" '[ ! -e "$C2/state.json" ] && [ ! 
 check "the digest names the mode dry-run" 'digest "$C2" | grep -q "mode: dry-run"'
 check "the digest shows the would-be routing" 'digest "$C2" | grep -q "would-file denied/guard-pr-check-literal"'
 check "the top classes list the class with its legs" 'digest "$C2" | grep -q "denied/guard-pr-check-literal: 2 rows, legs N100, N200"'
+check "the header names the 24 h window and the routing names the 14 d one" 'digest "$C2" | grep -q "^- window: .* (24 h), mode: dry-run" && digest "$C2" | grep -q "would-file denied/guard-pr-check-literal (legs 2 in 14 d)"'
 
 echo "3. --live routes through the router and sends one line"
 C3="$TMP/c3"; mkdir -p "$C3"; cp "$C2/ledger.jsonl" "$C3/ledger.jsonl"

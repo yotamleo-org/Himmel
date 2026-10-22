@@ -14,7 +14,7 @@ import {
   parseStreamJsonLines, findInitEvent, findResultEvent, firstTurnTokens,
   pluginSourceDiff, namespaceExtras, evaluateProfile, formatNote, roleCoverageProblems, countLoadedSkills,
   parseProbeArgs, resolveLedgerTarget, buildLedgerRow,
-  findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf,
+  findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
 } from '../profile-context-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -538,4 +538,10 @@ test('evaluateProfile: user-scope skill dirs on disk fail the profile; none pass
   assert.equal(bad.pass, false);
   assert.ok(bad.problems.some((p) => /user-scope skill/.test(p) && p.includes('find-docs') && p.includes('graphify')));
   assert.equal(evaluateProfile({ ...base, userScopeDirs: [] }).pass, true);
+});
+
+test('listingTokensByPlugin sums the Skill listing and splits it by plugin; empty usage is zero', () => {
+  const usage = JSON.parse(readFileSync(join(HERE, '..', '..', 'eval', 'leg-digest', 'fixtures', 'profiles', 'probe-context-usage.json'), 'utf8'));
+  assert.deepEqual(listingTokensByPlugin(usage), { skill: 260, plugins: { 'lean-skills': 200, qmd: 60 } });
+  assert.deepEqual(listingTokensByPlugin(null), { skill: 0, plugins: {} });
 });

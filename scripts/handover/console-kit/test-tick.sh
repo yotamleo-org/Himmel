@@ -223,6 +223,57 @@ export CLAUDE_SESSIONS_PROC="$W/proc"
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
 
+# cachettl must distinguish old idle transcripts from recent activity and
+# still-armed waits. Keep the transcript root private even in the full suite.
+export TICK_PROJECTS_DIR="$W/projects"
+mkdir -p "$TICK_PROJECTS_DIR/p"
+cachettl_cases() (
+    local stamp out verbose_out
+    stamp="$(date -u -d '55 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"custom-title","customTitle":"HIMMEL-111-legN61"}\n{"type":"assistant","timestamp":"%s"}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    contains 'an idle 55-minute leg is listed in cachettl' "$out" ' cachettl=N61'
+    verbose_out="$(bash "$SUT" --verbose)"
+    contains 'verbose output names the cachettl leg' "$verbose_out" 'cachettl: N61'
+    stamp="$(date -u -d '30 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"assistant","timestamp":"%s"}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    not_contains 'an idle 30-minute leg is not listed' "$out" ' cachettl='
+    stamp="$(date -u -d '55 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"user","timestamp":"%s","toolUseResult":{"taskId":"wait-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    not_contains 'an old leg with an armed Monitor is not listed' "$out" ' cachettl='
+    printf '{"type":"user","timestamp":"%s","toolUseResult":{"task_id":"wait-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    contains 'a stopped Monitor no longer hides an old idle leg' "$out" ' cachettl=N61'
+    printf '{"type":"user","timestamp":"%s","toolUseResult":{"backgroundTaskId":"bash-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    not_contains 'an old leg with background Bash is not listed' "$out" ' cachettl='
+    printf '{"type":"queue-operation","timestamp":"%s","content":"<task-notification><task-id>bash-1</task-id><status>completed</status></task-notification>"}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    contains 'a terminal task notification restores the idle warning' "$out" ' cachettl=N61'
+    printf '{"type":"user","timestamp":"%s","toolUseResult":{"taskId":"wait-2"}}\n{"type":"attachment","timestamp":"%s","attachment":{"prompt":"<task-notification><task-id>wait-2</task-id>still running</task-notification>"}}\n' "$stamp" "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    not_contains 'a nonterminal notification leaves its wait armed' "$out" ' cachettl='
+    printf '{"type":"user","timestamp":"%s","message":{"content":"<task-notification><task-id>wait-2</task-id><status>failed</status></task-notification>"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/HIMMEL-6532-N1-other.md"
+    printf '{"type":"custom-title","customTitle":"HIMMEL-6532-N1-other"}\n{"type":"assistant","timestamp":"%s"}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/other.jsonl"
+    out="$(LEGS='HIMMEL-111-legN61 HIMMEL-6532-N1-other' bash "$SUT")"
+    contains 'multiple idle legs are comma joined after terminal notifications' "$out" ' cachettl=N61,N1'
+    touch -d '25 hours ago' "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    not_contains 'a matching transcript older than the search window is ignored' "$out" ' cachettl='
+    rm -f "$TICK_PROJECTS_DIR/p/cache.jsonl" "$TICK_PROJECTS_DIR/p/other.jsonl" "$W/handover/HIMMEL-6532-N1-other.md"
+    out="$(bash "$SUT")"
+    not_contains 'a missing transcript never invents an idle leg' "$out" ' cachettl='
+    [ "$fails" -eq 0 ]
+)
+if ! cachettl_cases; then fails=$((fails + 1)); fi
+if [ "${1:-}" = --cachettl-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
+
 # Partial counts below the cap cannot become an exact, healthy tick sample.
 mkdir -p "$W/repo/scripts/ci"
 cat > "$W/repo/scripts/ci/queue-latency.sh" <<'STUB'

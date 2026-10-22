@@ -184,6 +184,9 @@ export HIMMEL_DOCTOR_HOOK_REAPER="$FAKEROOT/no-such-reaper"
 # Same for C48-tmp-usage: never read the operator's real /tmp
 # fill level; an absent df seam makes C48 silent, dedicated cases stub it.
 export HIMMEL_DOCTOR_TMP_DF="$FAKEROOT/no-such-df"
+# Same for C71-verdict-scratch: never size the operator's real judge cache;
+# an absent dir is an OK skip, dedicated cases point at a fixture.
+export HIMMEL_DOCTOR_VERDICT_CACHE="$FAKEROOT/no-such-verdict-cache"
 # Same for C49-qmd-embed-model: never read the operator's real
 # qmd index; an absent index makes C48 silent, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_QMD_INDEX="$FAKEROOT/no-such-index.sqlite"
@@ -7009,5 +7012,22 @@ printf '#!/bin/sh\necho "graph-freshness: FAIL corpus orphaned: gone" >&2\nexit 
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/orphan-check.sh")"
 if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'corpus orphaned'; then pass "C70 other rc 2 -> INFO with the reason"; else fail "C70 rc 2 -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c70_t"
+
+echo "== C71: judge scratch cache size =="
+c71_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c71.XXXXXX")" || { fail "C71 mktemp -d failed"; exit 1; }
+mkdir -p "$c71_t/cache/q1" "$c71_t/home" "$c71_t/claude"
+head -c 3072 /dev/zero > "$c71_t/cache/q1/blob"
+c71_run() { env HOME="$c71_t/home" CLAUDE_DIR="$c71_t/claude" HIMMEL_DOCTOR_VERDICT_CACHE="$c71_t/cache" "$@" bash "$DOC" --no-color --only C71 2>&1; }
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=1)"
+if grepq "$out" -F 'WARN C71-verdict-scratch' && grepq "$out" -F 'verdict-retention.sh prune'; then pass "C71 cache above the threshold -> WARN naming the pruner"; else fail "C71 over -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=1024)"
+if grepq "$out" -F 'OK   C71-verdict-scratch' && ! grepq "$out" -F 'WARN C71'; then pass "C71 cache below the threshold -> OK"; else fail "C71 under -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=08)"
+if grepq "$out" -F 'C71-verdict-scratch' && ! grepq "$out" -F 'did not complete'; then pass "C71 a leading-zero limit is decimal, not an octal abort"; else fail "C71 08 -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE_KB=abc)"
+if grepq "$out" -F 'OK   C71-verdict-scratch' && grepq "$out" -F 'warn above 5120 MB'; then pass "C71 a non-numeric limit falls back to the 5 GB default"; else fail "C71 abc -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c71_run HIMMEL_DOCTOR_VERDICT_CACHE="$c71_t/no-such-cache")"
+if grepq "$out" -F 'OK   C71-verdict-scratch' && grepq "$out" -F 'no judge scratch cache'; then pass "C71 absent cache -> OK skip"; else fail "C71 absent -> $(printf '%s' "$out" | head -3)"; fi
+rm -rf "$c71_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

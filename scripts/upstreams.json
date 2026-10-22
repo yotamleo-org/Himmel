@@ -5,7 +5,7 @@
     "_comment": "HIMMEL-1435 zero-gap inventory across marketplace pins, plugin-upstreams overrides, vendored UPSTREAM_PIN files, this registry, and known_marketplaces dynamic discovery. Keep explicit SKIP rows for deliberately untracked carried code so absence never looks accidental.",
     "covered_elsewhere": [
       { "name": "marketplace pinned remotes", "surface": "marketplace/.claude-plugin/marketplace.json + scripts/plugin-upstreams.json" },
-      { "name": "telegram-himmel and pr-review-toolkit-himmel", "surface": "marketplace/plugins/*/UPSTREAM_PIN" },
+      { "name": "telegram-himmel", "surface": "marketplace/plugins/*/UPSTREAM_PIN" },
       { "name": "claude-hud", "surface": "claude-hud registry row + scripts/statusline/check-hud-drift.sh vendored-tree hash" },
       { "name": "scripts/lib pinned binaries", "surface": "graphify and qmd registry rows; no other scripts/lib helper carries an upstream pin" },
       { "name": "codex companion and installed marketplaces", "surface": "known_marketplaces.json dynamic discovery" },
@@ -13,7 +13,8 @@
     ],
     "skips": [
       { "name": "claude-statusline", "reason": "Archived rollback-only subtree superseded by claude-hud; its fork is archived and re-vendor path deliberately closed (scripts/statusline/VENDORED.md)." },
-      { "name": "luna optional plugin pointers", "reason": "Templater, Excalidraw, Thino, and Charts are documentation-only suggestions, not bundled assets; user-managed Obsidian installs own their updates." }
+      { "name": "luna optional plugin pointers", "reason": "Templater, Excalidraw, Thino, and Charts are documentation-only suggestions, not bundled assets; user-managed Obsidian installs own their updates." },
+      { "name": "scripts/cr/floor-reviewer.md", "reason": "Adapted from the Apache-2.0 pr-review-toolkit code-reviewer agent (attribution in THIRD-PARTY-NOTICES.md); it is himmel's own reviewer prompt now, loaded by claude-floor-review.sh, and is deliberately not tracked for upstream drift." }
     ]
   },
   "forks": [

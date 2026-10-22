@@ -1,8 +1,8 @@
 # Contributing to himmel
 
-Solo-operator-first, multi-operator-capable workflow. The repo is engineered
-for one main maintainer + occasional collaborators; the conventions below
-keep that working at any team size.
+The workflow is built for one operator first and works with several. The repo
+is engineered for one main maintainer and occasional collaborators; the
+conventions below keep that working at any team size.
 
 ## Branch + PR workflow
 
@@ -72,8 +72,8 @@ keep that working at any team size.
 
 ## Pre-commit / pre-push gates
 
-All gates are wired in `.pre-commit-config.yaml`. Source of truth, not
-this doc. Highlights:
+All gates are wired in `.pre-commit-config.yaml`, and that file is the source
+of truth. Highlights:
 
 - **Format / lint:** trailing-whitespace, EOF, yaml, json, shellcheck, gitleaks.
 - **Branch hygiene:** worktree-isolation, merged-branch check, no-push-to-main.
@@ -90,8 +90,8 @@ this doc. Highlights:
 ## Cross-platform conventions
 
 - bash 3.2 is the floor (macOS default). Scripts that use `mapfile` require
-  bash 4+ — re-derive the set with
-  `grep -rl mapfile scripts --include='*.sh'` rather than trusting a count here.
+  bash 4+. Re-derive the set with
+  `grep -rl mapfile scripts --include='*.sh'` instead of trusting a count here.
 - Some scripts use `realpath -m` with a `python3` fallback so macOS works
   without `coreutils`.
 - Windows operators run via Git Bash. `cygpath -m` normalizes paths when
@@ -99,7 +99,7 @@ this doc. Highlights:
 
 ## Enable the doc-guard gate
 
-The catalog-sync gate (`doc-guard`, `scripts/hooks/check-doc-guard.sh`) is **opt-in** — it guards
+The catalog-sync gate (`doc-guard`, `scripts/hooks/check-doc-guard.sh`) is **opt-in**: it guards
 himmel contributors but must stay off for adopters who use himmel only as a
 harness. Enable it by dropping a gitignored marker at the repo root:
 
@@ -191,6 +191,6 @@ with 56 merges; 15 red-main merges. Compare each new 30-day window with it.
 Open a GitHub issue or file a Jira ticket directly. There's no separate
 issue-template gate.
 
-For **security vulnerabilities**, do not open a public issue — follow
+For **security vulnerabilities**, do not open a public issue; follow
 [`SECURITY.md`](../SECURITY.md). All participation is governed by our
 [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md).

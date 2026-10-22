@@ -1244,6 +1244,55 @@ _gh_api() {
     return 0
 }
 
+# _gh_cigcp J — true only for the CI_GCP kill switch: a first word whose
+# basename is gh or gh.exe (no env prefix, wrapper or computed word) running
+# `variable set CI_GCP` with one --body of on|off and exactly one -R/--repo
+# naming this repository (yotamleo/Himmel or its canonical slug
+# yotamleo-org/Himmel; an omitted repo would follow GH_REPO or the checkout),
+# nothing else. The command text must hold only ASCII letters, digits, _ . / =
+# -, space and tab: no quote, backslash, redirect, newline or other shell
+# metacharacter (the tokenizer splits `-r>x` into -r and a dropped redirect),
+# and no CR (the guard reads it as a line break, the shell does not). Its words
+# then split on whitespace alone, exactly as the shell splits them. The words
+# are lowercased but gh's flags and the stored value are case-sensitive (-r is
+# --repos, not --repo; ON is not on to the runner scripts), so no raw word may
+# start with a lowercase -r, and no word may hold an upper-case letter except
+# the ones whose fold is safe: -R, CI_GCP (names match case-insensitively) and
+# the repository slugs.
+_gh_cigcp() {
+    local j=$1 n=${#_gc_w[@]} w pos='' body='' repo='' nb=0 nr=0 raw LC_ALL=C
+    [ "$j" = 1 ] || return 1
+    [[ $cmd == *[!A-Za-z0-9_./=\ $'\t'-]* ]] && return 1
+    read -rd '' -a raw <<<"$cmd" || true # swallow-ok: read -d '' always ends at EOF with status 1
+    for w in ${raw[@]+"${raw[@]}"}; do
+        case "$w" in
+            -r*) return 1 ;;
+            *[A-Z]*)
+                case "$w" in
+                    -R|CI_GCP|yotamleo/Himmel|yotamleo-org/Himmel|--repo=yotamleo/Himmel|--repo=yotamleo-org/Himmel) ;;  # env-literal-ok: the one repo the kill switch may name
+                    *) return 1 ;;
+                esac ;;
+        esac
+    done
+    while [ "$j" -lt "$n" ]; do
+        [ "${_gc_k[j]}" = W ] || return 1
+        w=${_gc_w[j]}
+        case "$w" in
+            -r|--repo) [ "$nr" = 0 ] || return 1; nr=1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; repo=${_gc_w[j]} ;;
+            --repo=*) [ "$nr" = 0 ] || return 1; nr=1; repo=${w#--repo=} ;;
+            -b|--body) [ "$nb" = 0 ] || return 1; nb=1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; body=${_gc_w[j]} ;;
+            --body=*) [ "$nb" = 0 ] || return 1; nb=1; body=${w#--body=} ;;
+            -*) return 1 ;;
+            *) pos="$pos $w" ;;
+        esac
+        j=$((j + 1))
+    done
+    [ "$pos" = " variable set ci_gcp" ] || return 1
+    case "$body" in on|off) ;; *) return 1 ;; esac
+    case "$repo" in yotamleo/himmel|yotamleo-org/himmel) ;; *) return 1 ;; esac  # env-literal-ok: the one repo the kill switch may name
+    return 0
+}
+
 # _gh_inv J — one gh invocation whose first argument is word J.
 _gh_inv() {
     local j=$1 n=${#_gc_w[@]} w p1='' p2='' np=0 ai=0 e
@@ -1267,7 +1316,12 @@ _gh_inv() {
     done
     case "$p1" in
         api) _gh_api "$ai" ;;
-        secret|variable) case "$p2" in set|delete|remove) deny "gh $p1 $p2" ;; esac ;;
+        secret|variable)
+            case "$p2" in
+                set|delete|remove)
+                    [ "$p1" = variable ] && [ "$p2" = set ] && _gh_cigcp "$1" && return 0
+                    deny "gh $p1 $p2" ;;
+            esac ;;
         workflow) case "$p2" in disable|enable) deny "gh workflow $p2" ;; esac ;;
         repo) case "$p2" in delete|archive|unarchive|rename|transfer|edit) deny "gh repo $p2" ;; esac ;;
         release) case "$p2" in delete|delete-asset) deny "gh release $p2" ;; esac ;;

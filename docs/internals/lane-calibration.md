@@ -66,7 +66,7 @@ handover document/file inbox bridge, not cross-namespace `SendMessage`.
 `operator` is the no-override sentinel: it injects no plugin settings and
 preserves the operator's supervisor session's installed configuration. `lane-impl` instead
 injects an explicit lean surface of `handover@himmel`, `himmel-ops@himmel`,
-`qmd@himmel`, and `pr-review-toolkit-himmel@himmel`, plus `lean-skills@himmel`
+and `qmd@himmel`, plus `lean-skills@himmel`
 (in registry `base`, so every profile inherits it unless it says
 otherwise — `bare` carries no base at all, and `console-relay` drops it
 explicitly, a relay (the transport worker session kind — see [`docs/glossary.md`](../glossary.md))
@@ -89,9 +89,7 @@ cost is joined later from the session transcript, not written at launch.
 
 `leg-impl` is the profile a worker session gets from
 `headed-arm-leg.sh --profile leg-impl`. **There is exactly one worker session profile, and
-that is deliberate:** it is `lane-impl` minus `pr-review-toolkit-himmel` (no leg
-dispatches its agent; `/pr-check`'s Claude floor reads `agents/code-reviewer.md` by path)
-and minus `i-have-adhd` (the operator reads console windows, not leg windows) — HIMMEL-4017
+that is deliberate:** it is `lane-impl` minus `i-have-adhd` (the operator reads console windows, not leg windows) — HIMMEL-4017 <!-- old-term-ok: rewrapped line, wording unchanged -->
 audit, 33650 to 31219 first-turn tokens — because the measured worker session floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 sibling profiles for docs or upstream work would either resolve to `bare` and
@@ -145,8 +143,7 @@ resolves for every cold `claude` spawn dispatched from a Telegram message,
 via `resolveProfileSettings` (the same seam `spawn-claudex.ts` already uses)
 plus a poller-local `--mcp-config`/`--strict-mcp-config` helper built from
 `mcpServersForProfile`/`collectMcpServerDefs`. Its plugin set is
-`lane-content` minus `claude-obsidian` (floor + `obsidian-triage` +
-`pr-review-toolkit-himmel`) and its `mcpServers: ["qmd"]` matches `leg-impl`'s
+`lane-content` minus `claude-obsidian` (floor + `obsidian-triage`) and its `mcpServers: ["qmd"]` matches `leg-impl`'s
 allowlist. Measured (`profile-context-probe.mjs`): `telegram` = 32541
 first-turn tokens against `contextBudget: 45000`, below the unleaned
 `bare` baseline of 33493 — so unlike `leg-impl`'s token-reduction win, this

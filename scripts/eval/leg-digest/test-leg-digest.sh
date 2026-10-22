@@ -208,5 +208,33 @@ mkdir -p "$TMP/ex3" && mv "$TMP/ex3.jsonl" "$TMP/ex3/$S11.jsonl"
 digest "$TMP/ex3/$S11.jsonl" >"$TMP/ex3.json" 2>/dev/null || bad "the no-cut digest exits 0"
 check "no edit and no commit reports cut none" 'jq -e ".exploration.cut == \"none\"" "$TMP/ex3.json" >/dev/null'
 
+echo "12. per-profile tool usage and drop-from-default candidates (HIMMEL-6970)"
+check "the digest stamps --profile on every tool_health row and on the digest" 'bun "$DIG" --transcript "$TMP/$SID.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" --profile leg-impl | jq -e ".profile == \"leg-impl\" and ([.tool_health[].profile] | unique) == [\"leg-impl\"]" >/dev/null'
+check "without --profile the digest says unknown, never an ambient guess" 'jq -e ".profile == \"unknown\" and ([.tool_health[].profile] | unique) == [\"unknown\"]" "$TMP/classes.json" >/dev/null'
+check "a profile name outside the closed alphabet is a usage error" 'bun "$DIG" --transcript "$TMP/$SID.jsonl" --profile "A b" >/dev/null 2>&1; [ $? = 2 ]'
+PROLL() { node --input-type=module -e "
+import { readFileSync } from 'node:fs';
+import { rollupToolHealth } from '$HERE/tool-health.mjs';
+const rows = readFileSync('$FX/profiles/eval-runs.jsonl', 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const listing = JSON.parse(readFileSync('$FX/profiles/listing.json', 'utf8'));
+const out = rollupToolHealth(rows, [], new URLSearchParams('$1'), Date.parse('2026-10-22T12:00:00Z'), listing);
+console.log(JSON.stringify(out));"; }
+PROLL "" >"$TMP/prof.json" 2>"$TMP/prof.err" || bad "the profile roll-up runs: $(head -c 300 "$TMP/prof.err")"
+pt() { jq -c --arg p "$1" --arg t "$2" '.profiles[]? | select(.profile == $p) | .tools[] | select(.tool == $t)' "$TMP/prof.json"; }
+check "the roll-up lists the profiles it saw" 'jq -e ".filters.profiles == [\"console\", \"leg-impl\"]" "$TMP/prof.json" >/dev/null'
+check "a tool never called in profile A and called in profile B reads 0 calls in A and 20 in B" '[ "$(pt leg-impl mcp__qmd__query | jq .calls)" = 0 ] && [ "$(pt console mcp__qmd__query | jq -c "[.calls, .failures, .rate]")" = "[20,3,0.15]" ]'
+check "per-profile Bash counts do not mix: 70 in leg-impl, 15 in console" '[ "$(pt leg-impl Bash | jq .calls)" = 70 ] && [ "$(pt console Bash | jq .calls)" = 15 ]'
+check "a listed tool with a cost and no calls is a drop candidate, a called one is kept" '[ "$(pt leg-impl mcp__qmd__query | jq -r .verdict)" = drop-candidate ] && [ "$(pt console mcp__qmd__query | jq -r .verdict)" = keep ]'
+check "drop_candidates names exactly the two unused listed tools with their cost and window" '[ "$(jq -c "[.drop_candidates[] | [.profile, .tool, .listing_tokens, .window_days]] | sort" "$TMP/prof.json")" = "[[\"console\",\"mcp__graphify__query\",400,7],[\"leg-impl\",\"mcp__qmd__query\",900,7]]" ]'
+check "a listed tool with zero listing cost is never flagged" '[ "$(pt leg-impl Read | jq -c "[.listing_tokens, .verdict]")" = "[0,\"keep\"]" ]'
+check "the existing roll-up fields are untouched" 'jq -e ".tools | map(select(.tool == \"Bash\")) | .[0] | .calls == 85 and (has(\"rate\") and has(\"error_rate\") and has(\"trend\") and has(\"sessions\"))" "$TMP/prof.json" >/dev/null'
+PROLL "profile=console" >"$TMP/prof-c.json" 2>/dev/null || bad "the profile-filtered roll-up runs"
+check "profile=console keeps only that profile's sessions in the existing tools too" 'jq -e "(.tools | map(select(.tool == \"Bash\")) | .[0].calls) == 15 and (.profiles | map(.profile) == [\"console\"]) and .selected.profile == \"console\"" "$TMP/prof-c.json" >/dev/null'
+check "rows with no profile read unknown, so legacy history still rolls up" 'node --input-type=module -e "
+import { rollupToolHealth } from \"$HERE/tool-health.mjs\";
+const r = { eval: \"leg-trajectory\", run_id: \"s1\", status: \"ok\", lane: \"native\", model: \"m\", meta: { leg: \"N1\", started_ts: Date.parse(\"2026-10-21T12:00:00Z\"), tool_health: [{ agent: { id: \"main\", model: \"m\" }, tool: \"Bash\", calls: 3, failures: 0, errors: 0, denials: 0 }] } };
+const o = rollupToolHealth([r], [], new URLSearchParams(), Date.parse(\"2026-10-22T12:00:00Z\"));
+process.exit(o.profiles.length === 1 && o.profiles[0].profile === \"unknown\" && o.profiles[0].tools[0].calls === 3 ? 0 : 1);"'
+
 echo "test-leg-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -2,12 +2,12 @@
 
 Coordination doctrine for himmel fan-outs, verify loops, and overnight shifts,
 so every future dispatch stops re-deriving it. **The binding physical
-constraint: the operator's attention is the serial resource — "you are the
-GIL"** (`60-Maps/agent-orchestration-MOC.md`, addyosmani). Orchestration design
+constraint: the operator's attention is the serial resource ("you are the
+GIL")** (`60-Maps/agent-orchestration-MOC.md`, addyosmani). Orchestration design
 optimizes the human serial fraction (batched review surfaces, verifier lanes,
-closed-loop specialists), not raw agent count.
+closed-loop specialists) instead of raw agent count.
 
-This doc names slot **classes**, never concrete models — model binding is WS2's
+This doc names slot **classes**, never concrete models; model binding is WS2's
 router (the WS2↔WS3 seam: *routing = model selection; orchestration = task
 decomposition*). Each claim below carries its evidence pointer inline (a luna
 clip path or a shipped himmel code path); the resolved evidence table is at the
@@ -19,15 +19,15 @@ not a chief role; chief, worker, judge subagent and relay are defined once in
 
 ## 1. Default shape: map-reduce-and-manage
 
-The default — and only production-coherent — fan-out shape is
+The default fan-out shape, and the only one that holds up in production, is
 **map-reduce-and-manage**: the orchestrator decomposes, workers contribute
 **intelligence, not actions**, and **writes stay single-threaded through the
-orchestrator**. Unstructured swarms are a distraction, not a scaling strategy.
+orchestrator**. Unstructured swarms distract from the work and do not scale it.
 _Evidence:_ Cognition / walden_yan
 (`Clippings/_done/2026-05/@walden_yan – 2026-05-25T030401+0200.md`).
 _Shipped:_ `/afk-shift` (`.claude/commands/afk-shift.md`) is himmel's
-live implementation — one worktree-isolated subagent per ticket, a self-heal
-pass (`scripts/overnight/self-heal.sh`), then a single-threaded synthesis +
+live implementation: one worktree-isolated subagent per ticket, a self-heal
+pass (`scripts/overnight/self-heal.sh`), then a single-threaded synthesis and
 morning report (`scripts/overnight/morning-report.sh`); per-ticket branches are
 independent products, the parent owns merge + synthesis (single-writer).
 
@@ -50,30 +50,30 @@ coordinator shape breaks on ambiguous routing (sairahul1). map-reduce-and-manage
 
 ## 3. Slot classes (blast-radius routing — INPUT CONTRACT to WS2)
 
-Route by **blast radius**, expressed as classes — model binding is WS2's:
+Route by **blast radius**, expressed as classes; model binding is WS2's:
 
-- **planner / loose-spec implementer = top tier.** Gap-filling a loose spec is
-  reasoning work, not typing; it earns the top tier.
+- **planner / loose-spec implementer = top tier.** Filling the gaps in a loose
+  spec takes reasoning more than typing, so it earns the top tier.
 - **tight-spec implementer = mid tier, parallel-safe.** Exact-spec execution
   fans out cheaply.
 - **reviewer-judge = a DIFFERENT model family than the implementer**, never
-  self-grading — a weak/self verifier is the most expensive bug.
+  self-grading: a weak or self verifier is the most expensive bug.
 - **navigator-search = cheapest.** Locating code is the lowest-blast-radius slot.
 
-_Evidence:_ blast-radius routing — Av1dlive orchestration.md
+_Evidence:_ blast-radius routing, from Av1dlive orchestration.md
 (`Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md`); evaluator =
-different family, "cost = iterations not tokens" — Cherny
+different family, "cost = iterations not tokens", from Cherny
 (`Clippings/_done/2026-05/How Boris Cherny Uses Claude Code.md`). Optimize for
-mergeable output, not per-call price. **Classes only** — WS2's router owns which
+mergeable output over per-call price. **Classes only:** WS2's router owns which
 concrete model/lane fills a slot given class + compliance + cost state.
 
 ## 4. Context rule (resolving the sharing contradiction)
 
-The evidence contradiction — "share as much context as possible" vs. the
-clean-context verifier — resolves by role:
+The evidence contradicts itself ("share as much context as possible" vs. the
+clean-context verifier). It resolves by role:
 
 - **Share context among co-builders of ONE artifact** (Cognition principle 1).
-- **Isolate verifiers, critics, and independent parallel work** — the reviewer
+- **Isolate verifiers, critics, and independent parallel work.** The reviewer
   and the coder share ZERO context, so the review is not anchored by the
   author's framing (the clean-context verifier, same source).
 
@@ -82,20 +82,20 @@ _Evidence:_ Cognition / walden_yan
 
 ## 5. Invariants (hold in every shape)
 
-- **A verifier lane in every shape** — the single highest-leverage role
+- **A verifier lane in every shape**, the single highest-leverage role
   (0xMorlex,
   `Clippings/_evidence/telegram-tg-group_-1001234567890-1782407069-tweet-from-x-com-i-status-2070079645148451263.md`).
 - **The orchestrator owns stop-conditions; workers never self-report done**
   (0xMorlex, same clip). himmel enforces this structurally: `/afk-shift`
   reads `scripts/overnight/stop-marker.sh`, not a worker's claim of completion.
 - **The coordinator passes prior agent outputs into each subsequent agent's
-  prompt** — a concrete, testable coordinator obligation (eng-khairallah1,
+  prompt**, a concrete, testable coordinator obligation (eng-khairallah1,
   `Clippings/_done/2026-05/@eng_khairallah1 – 2026-05-25T023712+0200.md`).
 - **Guardrails:** per-agent token-budget auto-pause ~85 %; kill-and-reassign
   after 3 stuck iterations; any run >1 h gets a separate judge (Av1dlive,
   `Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md`).
 - **Claim-and-record shared state:** claim before start, record when done
-  (0xMorlex) — the same doctrine the machine-aware budget ADR's claim-file fallback rides.
+  (0xMorlex), the same doctrine the machine-aware budget ADR's claim-file fallback rides.
 
 _Shipped verifier lanes:_ the heavy automated review panel (`scripts/cr/critic-panel.sh`) and
 `/pr-check` steps 4.6 (handover automated review findings capture) and 4.7
@@ -119,7 +119,7 @@ The **machine-aware concurrency budget** (the ADR migrated out of
 himmel `docs/` to the state repo per the "Where artifacts land" rule) gates the
 himmel-OWNED dispatch points (`/afk-shift`, subagent fan-out scripts,
 arm-resume scheduling). The GA Workflow tool's 16-concurrent / 1000-total caps
-are Anthropic-enforced internals — a **fixed ceiling the machine budget lives
+are Anthropic-enforced internals: a **fixed ceiling the machine budget lives
 UNDER**, never a consumer of it.
 
 ## 8. Agent Teams (decision record)
@@ -129,8 +129,8 @@ UNDER**, never a consumer of it.
 teammate, and on Windows it is in-process only. **Opt-in trigger:** the operator
 names a debugging-competing-hypotheses case AND accepts the experimental flag;
 the pilot mechanics (single session, ≤3 teammates, explicit token cap)
-instantiate only then. **No WS3 machinery depends on Teams** — everything rides
-subagents + saved workflows until GA.
+instantiate only then. **No WS3 machinery depends on Teams**; everything rides
+subagents and saved workflows until GA.
 
 ---
 

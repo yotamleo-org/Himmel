@@ -3,6 +3,10 @@
 # scripts/lib/test-env-alias.sh (env-alias.sh), scripts/lib/env-alias.test.mjs
 # (env-alias.mjs) and scripts/lib/test-env_alias.py (env_alias.py).
 #
+# The data row count is declared on the next line; every reader asserts it, so
+# a reader that drops a row (a last row with no trailing newline) goes red.
+# rows: 48
+#
 # Columns (TAB-separated; no empty cell, a TAB would collapse):
 #   fn        restrict | permit
 #   new_name  name passed as NEW        (<empty> = the empty string)

@@ -39,7 +39,7 @@ plugin, and a re-run on a provisioned machine is a no-op.
 
 ```sh
 bash scripts/codex/install-himmel-codex.sh              # marketplace + default plugin set
-bash scripts/codex/install-himmel-codex.sh --all        # also luna-correlate + pr-review-toolkit-himmel
+bash scripts/codex/install-himmel-codex.sh --all        # also luna-correlate
 bash scripts/codex/install-himmel-codex.sh --plugins=himmel-ops,handover
 bash scripts/codex/install-himmel-codex.sh --dry-run    # report intended changes, change nothing
 ```
