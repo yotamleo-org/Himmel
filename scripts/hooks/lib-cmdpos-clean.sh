@@ -35,7 +35,8 @@ doc-freshness-advisory.sh docs-audit-panel.sh impacted-suites.sh known-findings.
 ledger-append.sh orphan-check.sh panel-first-pass.sh pr-check-context.sh
 pr-check-env.sh review-round.sh write-verdicts.sh'
 HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
-scripts/handover/console-kit/himmel-gate.sh'
+scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh
+scripts/handover/console-kit/console-wait.sh'
 PR_READERS=' grep egrep fgrep cat head tail wc ls cut tr uniq nl jq '
 PR_GIT_UNSAFE=0 PR_TOKFAIL=0 PR_GIT_EXEC=0
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh
@@ -78,6 +79,8 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     case "$1" in *[hH]andover/merge-on-green*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
 }
