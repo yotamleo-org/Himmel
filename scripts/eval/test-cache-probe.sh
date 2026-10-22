@@ -94,6 +94,43 @@ scenario first-turn-cold cold-start 1 first-turn
 scenario synthetic-first-turn warm-start 0 first-turn
 has "synthetic-first-turn: the first real turn is counted" "$LAST_OUT" "session	warm	2	80000	300"
 
+# --- known counts: the counting rules behind the published figures ----------
+# count-audit/ (a, b, c, d) is hand-counted: 3 sessions with a real turn (d holds
+# only a <synthetic> row, so no first turn), c repeats message c2 (counted once).
+#   first turn: a and c warm, b cold.
+#   gaps >= the 300s TTL (3): a4 and c2 rewrote; b2 follows a cache_read=0 turn,
+#     so it counts as expected and cannot count as rewrote.
+#   gaps 60s..TTL (4): a3, a5, c3 kept; b3 rewrote. a2 (30s) is in neither set.
+#   read-ratio: 369400 read / 553172 counted tokens.
+scenario count-audit warm-start 0 first-turn
+has "count-audit: first-turn counts" "$LAST_OUT" "warm=2 cold=1"
+has "count-audit: first-turn read-ratio" "$LAST_OUT" "read-ratio: 66.8% over 553172 tokens"
+scenario count-audit ttl-inconsistent 1 idle-gap
+has "count-audit: idle-gap counts" "$LAST_OUT" "cold-expected=3 cold-rewrote=2 warm-expected=4 warm-rewrote=1"
+has "count-audit: idle-gap read-ratio" "$LAST_OUT" "read-ratio: 66.8% over 553172 tokens"
+
+# A wrong counting rule must move a known count: each mutant edits one rule in a
+# copy of the probe and has to print something other than the real script does.
+# A mutation that does not apply would pass vacuously, so that fails too.
+mutant() {
+  local name="$1" expr="$2"; shift 2
+  local want got
+  sed "$expr" "$PROBE" > "$TMP/mutant.sh"
+  if cmp -s "$PROBE" "$TMP/mutant.sh"; then fail "mutant $name: the edit did not apply"; return; fi
+  want=$(bash "$PROBE" "$@" "$FIX/count-audit"/*.jsonl 2>&1 | sed -n '/^read-ratio/p;/^verdict/p')
+  got=$(bash "$TMP/mutant.sh" "$@" "$FIX/count-audit"/*.jsonl 2>&1 | sed -n '/^read-ratio/p;/^verdict/p')
+  if [ "$want" != "$got" ]; then pass "mutant $name: counts move ($got)"; else fail "mutant $name: counts did not move ($got)"; fi
+}
+# shellcheck disable=SC2016  # the sed expressions name jq variables, which must stay literal
+mutant "cold start counted warm" 's/if \$f\.cr > 0 then "warm"/if $f.cr >= 0 then "warm"/' first-turn
+# shellcheck disable=SC2016
+mutant "sub-60s gaps counted warm" 's/select(\.gap >= 60 and \.gap < \$ttl)/select(.gap >= 0 and .gap < $ttl)/' idle-gap
+# shellcheck disable=SC2016
+mutant "5m TTL read as 1h" 's/else 300 end) as \$ttl/else 3600 end) as $ttl/' idle-gap
+# shellcheck disable=SC2016
+mutant "rewrite threshold loosened"'s/\$c\.cr < 0\.5 \* \$p\.cr/$c.cr < 0.1 * $p.cr/' idle-gap
+mutant "duplicate message rows kept" 's/map(\.\[0\])/map(.[])/' idle-gap
+
 # --- usage errors exit 64, and never with a verdict --------------------------
 out=$(bash "$PROBE" 2>&1); rc=$?
 eq "no mode: usage error" "$rc" "64"

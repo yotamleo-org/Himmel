@@ -53,19 +53,85 @@ content is in this repo; the probe prints only ids, counts and token totals.
 | `test-cache-probe.sh` | fixture suite | 59 passed, 0 failed |
 | `test-harness-run.sh` | fixture suite | PASS |
 
-How to read it:
+How to read it (the 2026-10-22 audit below recounts these and adds intervals):
 
-- A new session starts warm in 1,966 of 1,985 cases (99.0 %). The 19 cold ones are
-  sessions whose first request found no warm prefix.
-- Gaps past the TTL rewrote the prefix in 155 of 172 cases (90 %); gaps inside
-  it rewrote in 46 of 25,056 (0.18 %). That is the cost of a parked session: the
-  wake re-pays the prefix, and an idle one costs nothing.
+- A new session starts warm in 1,966 of 1,985 cases (99.0 %, 95 % interval
+  98.5 to 99.4). The 19 cold ones are sessions whose first request found no
+  warm prefix. The 1,985 are the transcripts with a usable assistant turn; the
+  other 34 of the 2,019 (1.7 %) have none and are in no count.
+- Gaps past the TTL rewrote the prefix in 155 of 172 cases (90.1 %, interval
+  84.7 to 93.7); gaps from 60 s up to the TTL rewrote it in 46 of 25,056
+  (0.18 %, interval 0.14 to 0.24). Gaps under 60 s are in neither count. That is the
+  cost of a parked session: the wake re-pays the prefix, and an idle one costs
+  nothing.
+- The read-ratio is one number per run, the token-weighted ratio over every
+  counted turn of every file. The `first-turn` and `idle-gap` rows share it
+  because they read the same files, not because it is a first-turn figure.
 - The 2026-10-05 bank reset did not invalidate the two sessions live across it
   (317.5k to 319.5k read over a 2,101 s gap; 155.0k to 119.1k read with a 15.8k
   write over 1,605 s, still above half).
 - Compared with the 2026-09-29 run in the internals doc, the counts grew with
   the transcripts (1,210 to 1,985 first turns, 98.2 % to 98.3 %), and the
   `invalidation` result is the same as the earlier L5 row to the token.
+
+## Audit (2026-10-22)
+
+`cache-probe.sh` was read end to end and the headline figures recounted by a
+second implementation (a Python script written from the definitions in
+Method, not from the jq program), on a seeded sample of live transcripts.
+
+How the probe counts:
+
+- **Turn:** a deduplicated `assistant` row with a usage object, a timestamp and
+  a model other than `<synthetic>`. A file with no such row is in no count.
+- **First turn:** the earliest turn of a file; warm when `cache_read > 0`.
+- **Gap:** the time between two consecutive turns of one file. A pair that
+  crosses a compaction (a `compact_boundary` row, or the context shrinking by
+  more than 25 %) is dropped.
+- **Long pause (cold-expected):** a gap at or past the file's TTL. It `rewrote`
+  when the later turn's `cache_read` is below half the earlier one's and its
+  `cache_creation` exceeds its `cache_read`. An earlier turn with `cache_read`
+  0 cannot rewrite, so such a gap counts as expected and not as rewrote.
+- **Idle gap inside the TTL (warm-expected):** 60 s up to the TTL. Gaps under
+  60 s are not counted at all.
+
+Sample: 1,000 of the 4,073 transcripts of the himmel project (seeded draw,
+seed 6993, each under 30 MB, 4.8 GB in all; 990 have a usable turn). A second
+draw of 200 agrees too. Both counts are over the same files.
+
+| Figure | Probe | Recount | Share (95 % interval) | Published 2026-10-06 |
+|---|---|---|---|---|
+| First turn warm / cold | 974 / 16 | 974 / 16 | 98.4 % (97.4 to 99.0) | 1,966 / 19, 99.0 % (98.5 to 99.4) |
+| Past the TTL, rewrote | 70 of 75 | 70 of 75 | 93.3 % (85.3 to 97.1) | 155 of 172, 90.1 % (84.7 to 93.7) |
+| 60 s to the TTL, rewrote | 36 of 15,738 | 36 of 15,738 | 0.23 % (0.17 to 0.32) | 46 of 25,056, 0.18 % (0.14 to 0.24) |
+| Under 60 s, rewrote | not counted | 11 of 129,599 | 0.01 % (0.00 to 0.02) | not counted |
+| Read-ratio | 98.3 % | 98.3 % | over 22.68 billion tokens | 98.3 % |
+
+Findings:
+
+- **No miscount.** The probe and the recount agree on every count. Each
+  published figure falls inside, or overlaps, the interval of its recount.
+  The intervals treat each file or gap as independent, which understates the
+  spread because gaps within one session are correlated.
+- **Two denominators were under-described, now corrected above.** The "inside
+  the TTL" count leaves out the 89 % of gaps that are under 60 s, and the
+  1,985 first turns leave out the 1.7 % of transcripts with no usable turn.
+  The figures themselves are unchanged.
+- **The bank-reset row reproduces.** The 2026-10-05T16:00:00Z event, over the
+  transcripts live across it: 317,534 to 319,536 read over 2,101 s, and
+  154,984 to 119,075 read with a 15,783 write over 1,605 s, both `kept`,
+  read-ratio 98.1 %.
+- **Totals drift, verdicts do not.** Live sessions append between runs, so a
+  token total moved by 0.01 % between two runs a minute apart; no count did.
+- **Review-panel page re-checked.** `docs/evals/review-panel.md` re-run with
+  its pinned cut (`cr_ledger_eval.py --until 2026-10-06T20:00:00Z`) reproduces
+  every table, share and interval. One sentence was wrong and is fixed there:
+  the bare `codex` row has 89 findings, not under 40.
+
+`test-cache-probe.sh` now holds a hand-counted fixture (`count-audit`) that
+prints known first-turn and gap counts, and rows that edit one counting rule at
+a time in a copy of the probe and require the counts to move. The run was
+recorded in the eval-runs ledger as eval `cache-probe`.
 
 ## Cost
 
@@ -109,6 +175,11 @@ bash scripts/eval/cache-probe.sh first-turn $P/*.jsonl
 bash scripts/eval/cache-probe.sh idle-gap $P/*.jsonl
 bash scripts/eval/cache-probe.sh invalidation --event 2026-10-05T16:00:00Z $P/*.jsonl
 ```
+
+To record a run, append one row with `python3 scripts/eval/lib/eval_runs.py
+append --eval cache-probe --source scripts/eval/cache-probe.sh ...` (see
+[the ledger section of the eval README](../../scripts/eval/README.md)); the
+2026-10-22 audit row is the first of that eval.
 
 For `--event`, give an epoch, an ISO time, or `@<file>` to use that file's
 mtime. Sessions not live on both sides of the event are skipped.
