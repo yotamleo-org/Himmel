@@ -272,6 +272,7 @@ PY
   : > "$real_dir/gho"
   (cd "$real_dir" && RUNNER_TEMP="$real_dir" GITHUB_OUTPUT="$real_dir/gho" STUB_ANSWERS="" \
      PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$1" bash "$real_dir/shards.run" >/dev/null 2>&1)
+  echo $? > "$real_dir/step.rc"
   sed -n 's/^shard_total=//p' "$real_dir/gho"
 }
 got=$(run_real_step 500)
@@ -284,7 +285,7 @@ for bad in 0 -3; do
   if [ "$rc" -eq 2 ] && [ ! -s "$PS/bad.out" ]; then pass "PS21 n=$bad is a usage error with no plan"; else fail "PS21 n=$bad: rc $rc [$(cat "$PS/bad.out")]"; fi
   if grep -q 'CI_MAX_SHARDS' "$PS/bad.err"; then pass "PS21 n=$bad message names CI_MAX_SHARDS"; else fail "PS21 n=$bad message: [$(cat "$PS/bad.err")]"; fi
   got=$(run_real_step "$bad")
-  if [ -z "$got" ]; then pass "PS21 plan step with CI_MAX_SHARDS=$bad leaves no shard_total (8 legs)"; else fail "PS21 plan step $bad: got [$got]"; fi
+  if [ -z "$got" ] && [ "$(cat "$real_dir/step.rc")" = 0 ]; then pass "PS21 plan step with CI_MAX_SHARDS=$bad succeeds and leaves no shard_total (8 legs)"; else fail "PS21 plan step $bad: got [$got] rc $(cat "$real_dir/step.rc")"; fi
 done
 
 rst_tally
