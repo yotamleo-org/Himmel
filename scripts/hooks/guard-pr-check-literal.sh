@@ -1259,6 +1259,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
         log | diff | show | status | grep | blame | ls-files | rev-parse | rev-list | describe | shortlog | cat-file | ls-tree | for-each-ref | branch | merge-base | diff-tree | name-rev | whatchanged) rd=1 ;;
         # `git tag -l|--list <pattern>` only lists: the pattern is a refname glob, never run.
         # Any other option (-d, -a, -s, -f, --delete ...) keeps the pattern a tag name.
+        # The listing filters (-n, -i, --contains X, --format F, ...) only narrow what is listed.
         tag)
             w=$i
             tl=0
@@ -1266,7 +1267,10 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             while [ "$w" -lt "$e" ] && [ "${ST_W[w]}" != -- ]; do
                 case "${ST_W[w]}" in
                     -l | --list) tl=1 ;;
-                    --sort=*) ;;
+                    --sort=* | --sort | --format=* | --format | --column | --column=* | --no-column | \
+                        --color | --color=* | --no-color | -i | --ignore-case | --omit-empty | -n | -n[0-9]* | \
+                        --contains | --contains=* | --no-contains | --no-contains=* | \
+                        --merged | --merged=* | --no-merged | --no-merged=* | --points-at | --points-at=*) ;;
                     -*) to=1 ;;
                 esac
                 w=$((w + 1))
@@ -1976,13 +1980,143 @@ glob_is_literal_elsewhere() {
 # allow-listed scripts/ path anyway; this hook closes the two named scripts.
 hit=0
 unresolved=""
+# A gate path or a glob that only sits in the arguments of a read-only command
+# is text, not a run. scan_flat is $flat without every segment that is provably
+# inert, so the candidate scan below reads only what can run. A segment is inert
+# when its command word is a plain reader (PR_READERS minus uniq, whose second
+# operand is an output file), a sed script st_sed_args proves can neither write
+# nor run, a git line git_mentions_only proves is a pathspec mention, or an rg
+# with no --pre/--hostname-bin word and no RIPGREP* config variable; its only
+# redirects are fd dups and /dev/null; and nothing it prints reaches a command
+# that stays (its separator is ; && || or a newline, or a pipe into another inert
+# segment). Wrappers (env, xargs, timeout, exec, sudo, stdbuf) are never inert.
+# Nothing is scrubbed when the line can change what a later reader means: a
+# function, subshell, alias, eval/source/export/read/printf -v, or a PATH, IFS,
+# BASH_ENV, HOME, GIT_*, RIPGREP*, LD_* style assignment.
+# ponytail: a heredoc, $(…) or $'…' line, a loop or `if` around the reader, and a
+# VAR= prefix keep the whole line in scope, ceiling the residual shapes left denied;
+# upgrade path: model compound commands in the tokenizer.
+scan_flat=$flat
+scrub_inert_readers() { # sets scan_flat
+    local s k w cw inert sealed any=0 sfacc='' sfsep='' rgcfg=0 sftxt nxt
+    local -a seg_cw seg_inert seg_sealed seg_txt
+    [ "$PR_TOKENIZED" = 1 ] || return 0
+    st_tokenize "$cmd" || return 0
+    [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ] || return 0
+    [ "$ST_NSEG" -gt 1 ] || return 0
+    case "$cmd" in *RIPGREP*) rgcfg=1 ;; esac
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[s]}" in '(' | ')') return 0 ;; esac
+        seg_inert[s]=0
+        s=$((s + 1))
+    done
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        s=${ST_S[k]}
+        [ -n "${ST_RO[k]}" ] || [ -n "${seg_cw[s]:-}" ] || seg_cw[s]=$k
+        seg_txt[s]="${seg_txt[s]:-} ${ST_RO[k]}${ST_W[k]}"
+        k=$((k + 1))
+    done
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        cw=${seg_cw[s]:-}
+        inert=0
+        if [ -n "$cw" ] && [ "${ST_A[cw]}${ST_Q[cw]}${ST_X[cw]}${ST_G[cw]}" = 0000 ]; then
+            w=${ST_W[cw]}
+            case "$w" in
+                sed) st_sed_args "$cw" 0 && inert=1 ;;
+                git | /usr/bin/git) git_mentions_only "$cw" && inert=1 ;;
+                rg) [ "$rgcfg" = 0 ] && inert=1 ;;
+                uniq) ;;
+                *) case "$PR_READERS" in *" $w "*) inert=1 ;; esac ;;
+            esac
+        fi
+        seg_inert[s]=$inert
+        s=$((s + 1))
+    done
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        s=${ST_S[k]}
+        w=${ST_W[k]}
+        if [ "${seg_inert[s]}" = 1 ]; then
+            case "${ST_RO[k]}" in
+                *'>&') case "$w" in *[!0-9-]* | '') seg_inert[s]=0 ;; esac ;;
+                *'>' | *'>|') [ "$w" = /dev/null ] || seg_inert[s]=0 ;;
+            esac
+            # rg runs its --pre program; an expanded word can become that flag
+            if [ "${ST_W[seg_cw[s]]}" = rg ] && [ "$k" -ne "${seg_cw[s]}" ]; then
+                case "$w" in --pre* | --hostname-bin*) seg_inert[s]=0 ;; esac
+                [ "${ST_X[k]}" = 0 ] || seg_inert[s]=0
+                if [ "${ST_G[k]}" = 1 ]; then
+                    case "$w" in [A-Za-z0-9_./]*) ;; *) seg_inert[s]=0 ;; esac
+                fi
+            fi
+        fi
+        k=$((k + 1))
+    done
+    # What can change the meaning of a later reader disables the scrub.
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        s=${ST_S[k]}
+        if [ "${seg_inert[s]}" = 0 ]; then
+            w=${ST_W[k]}
+            case "${w%%=*}" in
+                PATH | BASH_ENV | ENV | IFS | SHELLOPTS | BASHOPTS | CDPATH | GLOBIGNORE | PS4 | \
+                    PROMPT_COMMAND | HOME | XDG_CONFIG_HOME | PAGER | GIT_* | RIPGREP* | LD_*) return 0 ;;
+            esac
+            if [ -z "${ST_RO[k]}" ] && [ "$k" = "${seg_cw[s]:-}" ]; then
+                case "$w" in
+                    alias | unalias | function | eval | source | . | hash | enable | builtin | command | exec | trap | \
+                        shopt | set | unset | readonly | declare | typeset | local | export | read | map[f]ile | read[a]rray)
+                        return 0 ;;
+                    printf)
+                        nxt=$((k + 1))
+                        while [ "$nxt" -lt "$ST_N" ] && [ "${ST_S[nxt]}" = "$s" ]; do
+                            case "${ST_W[nxt]}" in -v*) return 0 ;; esac
+                            nxt=$((nxt + 1))
+                        done ;;
+                esac
+            fi
+        fi
+        k=$((k + 1))
+    done
+    s=$((ST_NSEG - 1))
+    while [ "$s" -ge 0 ]; do
+        sealed=0
+        if [ "${seg_inert[s]}" = 1 ]; then
+            case "${ST_SEP[s]}" in
+                '' | ';' | '&&' | '||' | nl) sealed=1 ;;
+                '|' | '|&') [ "${seg_sealed[s + 1]:-0}" = 1 ] && sealed=1 ;;
+            esac
+        fi
+        seg_sealed[s]=$sealed
+        s=$((s - 1))
+    done
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        if [ "${seg_sealed[s]}" = 1 ]; then
+            any=1
+        else
+            sftxt=${seg_txt[s]:-}
+            sfacc="$sfacc$sfsep${sftxt# }"
+            sfsep=' ; '
+        fi
+        s=$((s + 1))
+    done
+    [ "$any" = 1 ] || return 0
+    _c_unquote "$sfacc"
+    scan_flat=$REPLY
+    return 0
+}
+scrub_inert_readers
 # A whole word that names a path through cr/ (any case) is read by its text
 # alone, so a word the shell rewrites first - an expansion, a substitution, a
 # glob, a brace list, a tilde - is unresolvable, and so is a relative one a
 # case-insensitive filesystem folds. Whole words, before any split: a
 # substitution ($(pwd)/scripts/cr/...) only looks absolute once split.
 # Absolute words keep their case (an adopter's /Users/... anchor path).
-for word in $flat; do
+for word in $scan_flat; do
     case "$word" in *[cC][rR]/*|*[hH]andover/*) ;; *) continue ;; esac
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
         # shellcheck disable=SC2016 # literal text match, never expanded
@@ -1996,7 +2130,7 @@ for word in $flat; do
 done
 entries=""
 hentries=""
-_c_ops_eq_to_nl "$flat"
+_c_ops_eq_to_nl "$scan_flat"
 for tok in $REPLY; do
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
         # shellcheck disable=SC2016 # literal text match, never expanded
