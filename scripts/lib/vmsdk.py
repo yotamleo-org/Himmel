@@ -583,8 +583,9 @@ class VM:
             hint = ""
             if token_key == PAT_ENVS[1] and re.search(
                     r"not found|403|404|denied|authentication failed", out, re.I):
-                hint = (f" [{token_key} is a read-only token for public repos and "
-                        f"cannot clone the private repo; set {PAT_ENVS[0]}]")
+                hint = (f" [{token_key} is documented as a read-only token for public "
+                        f"repos and may lack access to the private repo; try "
+                        f"{PAT_ENVS[0]}]")
             raise VMError(f"git clone failed on {self.name} (rc {rc}): {out.strip()[-200:]}{hint}")
         # Strip the token from the persisted remote. This is a security guarantee
         # (the PAT must not survive in the guest's .git/config) — fail loudly if
