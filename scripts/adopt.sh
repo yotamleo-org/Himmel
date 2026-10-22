@@ -210,6 +210,16 @@ PORTABLE_FILES=(
   scripts/lib/usage-lift.sh
   scripts/lib/usage-cache-identity.sh
   scripts/lib/fleet-reservation-key.sh
+  scripts/lib/handover-path.sh
+  scripts/cr/anchor-handoff.sh
+  scripts/cr/cr-scores.sh
+  scripts/cr/cr-tune.sh
+  scripts/cr/known-findings.sh
+  scripts/cr/known-findings.json
+  scripts/cr/standards-cadence.sh
+  .claude/commands/cr-scores.md
+  .claude/commands/cr-tune.md
+  .claude/commands/cr-learnings-refresh.md
   scripts/clean-garden.sh
   scripts/worktree.sh
   scripts/clean.sh
