@@ -37,6 +37,7 @@ version_ge() {
   for i in 0 1 2; do
     a="${have[i]:-0}"
     b="${want[i]:-0}"
+    case "$a$b" in *[!0-9]*) return 1 ;; esac
     [ "$a" -gt "$b" ] && return 0
     [ "$a" -lt "$b" ] && return 1
   done
@@ -50,8 +51,9 @@ meets_floor() {
   versions=$(lock_versions "$1" "$2" 2>/dev/null) || return 2
   [ -n "$versions" ] || return 2
   while IFS= read -r v; do
+    v="${v%%+*}"
     version_ge "${v%%-*}" "$3" || return 1
-    # a prerelease of the floor itself ranks below it under SemVer, which sort -V does not model
+    # a prerelease of the floor itself ranks below it under SemVer
     [ "$v" = "${v%%-*}" ] || [ "${v%%-*}" != "$3" ] || return 1
   done <<< "$versions"
   return 0
