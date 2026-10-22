@@ -128,10 +128,15 @@ rm -rf "$BUCKET"
 python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && grep -q 'ABC-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
 
-# the judge reads pin to the PR head sha through a per-PR ref, never FETCH_HEAD
+# the judge reads pin to the PR head sha directly, never FETCH_HEAD
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
-has "generated brief names the sha-pinned read" "$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)" "git cat-file -t $HEAD40"
-lacks "generated brief gives no refspec fetch" "$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)" "refs/judge/pr-"
+gb="$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)"
+has "generated brief names the sha-pinned read" "$gb" "git cat-file -t $HEAD40"
+has "generated brief names the sha-pinned diff" "$gb" "git diff origin/main...$HEAD40"
+has "generated brief names the sha-pinned tree read" "$gb" "git show $HEAD40:<path>"
+has "generated brief forbids FETCH_HEAD" "$gb" "never FETCH_HEAD"
+lacks "generated brief has no FETCH_HEAD tree read" "$gb" "git show FETCH_HEAD"
+lacks "generated brief gives no refspec fetch" "$gb" "refs/judge/pr-"
 for f in .claude/agents/judge.md .claude/agents/judge-ro.md .claude/agents/console-judge.md .claude/agents/console-judge-ro.md docs/handover/console-sections/judge.md docs/handover/judge-brief-template.md; do
     c="$(cat "$REPO_ROOT/$f")"
     has "$f names the sha-pinned read" "$c" "git cat-file -t <sha>"
