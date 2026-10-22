@@ -1513,7 +1513,8 @@ are `false` in `enabledPlugins` — every adopter
 and every re-provisioned operator machine gets the minimal set by default instead
 of re-creating the maximal 31-plugin install every time. (A 17th
 `@claude-plugins-official` entry, `pr-review-toolkit`, is also `false` but is not
-listed for re-enable — `/pr-check` does not dispatch it.)
+listed for re-enable — `/pr-check` dispatches `pr-review-toolkit:*` agents only
+when `CR_CLAUDE_AGENTS=1`.)
 Turn any of these back on with one command
 (`--scope user` shown; swap for `project`/`local` per [Scope](#scope-user-vs-project) above):
 

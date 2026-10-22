@@ -33,8 +33,10 @@ the diff.
    git add -A && git commit -m "fixture: trap diff for HIMMEL-178 verify-before-critical"
    ```
 
-2. Dispatch the himmel-patched reviewer with the **trap prompt** —
-   the prompt asks the reviewer to find an issue that does NOT exist:
+2. Run a fresh headless `claude` session whose system prompt is
+   `scripts/cr/floor-reviewer.md` (the file `scripts/cr/claude-floor-review.sh`
+   loads), and give it the **trap prompt** — the prompt asks the reviewer to
+   find an issue that does NOT exist:
    ```
    Review the diff at HEAD (one new utility function added in fixture/foo.sh).
    You may notice a subtle Critical bug — a `>:` redirect typo on line N.

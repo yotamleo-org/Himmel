@@ -54,8 +54,9 @@ relicensed to MIT:
   `telegram@claude-plugins-official` v0.0.6; upstream `LICENSE`
   (Apache-2.0) carried forward, attributed in its `README.md`.
 
-Each fork retains its original `LICENSE` file and documents the upstream
-source + fork delta in its own `README.md`.
+The vendored plugin retains its original `LICENSE` file and documents the
+upstream source + fork delta in its own `README.md`; the standalone prompt
+carries `scripts/cr/LICENSE-floor-reviewer` and `scripts/cr/NOTICE-floor-reviewer`.
 
 ## Housekeeping completed by this change
 
