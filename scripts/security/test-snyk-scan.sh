@@ -19,7 +19,10 @@ pass() { echo "PASS $1"; PASSED=$((PASSED + 1)); }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')"; fi; }
 has() { if grep -qF -- "$2" "$3" 2>/dev/null; then pass "$1"; else fail "$1 (no '$2' in $3)"; fi; }
-hasnt() { if grep -qF -- "$2" "$3" 2>/dev/null; then fail "$1 ('$2' present in $3)"; else pass "$1"; fi; }
+hasnt() { # a missing or unreadable file is a failure, never proof of absence
+    if [ ! -r "$3" ]; then fail "$1 ($3 is unreadable)"; return; fi
+    if grep -qF -- "$2" "$3" 2>/dev/null; then fail "$1 ('$2' present in $3)"; else pass "$1"; fi
+}
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/snyk-scan-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
@@ -162,6 +165,15 @@ SNYK_SCAN_STATE_DIR="$W/not-a-dir/state" bash "$SCAN" --repo "$R" --out-dir "$W/
 check "an unwritable usage ledger refuses the run" 2 "$?"
 has "refusal names the ledger" "usage" "$W/nostate.log"
 check "no scan ran with an unwritable ledger" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+
+# an existing ledger file that cannot be appended to is just as unmetered
+mkdir -p "$W/ro-state"
+printf '2026-10-01\topen_source\t1\n' > "$W/ro-state/usage-2026-10.tsv"; chmod 444 "$W/ro-state/usage-2026-10.tsv"
+: > "$W/calls.log"
+SNYK_SCAN_STATE_DIR="$W/ro-state" bash "$SCAN" --repo "$R" --out-dir "$W/out-ro" --date 2026-10-23 > "$W/rostate.log" 2>&1
+check "a read-only usage ledger refuses the run" 2 "$?"
+has "read-only refusal names the ledger" "usage" "$W/rostate.log"
+check "no scan ran with a read-only ledger" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
 
 # --- usage is recorded as tests (one per project), not as runs --------------
 rm -rf "$SNYK_SCAN_STATE_DIR"

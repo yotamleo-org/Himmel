@@ -116,7 +116,10 @@ if [ $((used_os + est_os)) -gt "$OS_CAP" ]; then
 fi
 
 # fail closed: a ledger that cannot be written would let every run bypass the cap
-mkdir -p "$STATE_DIR" 2>/dev/null && [ -w "$STATE_DIR" ] || { err "cannot write the usage ledger in $STATE_DIR; refusing to scan unmetered"; exit 2; }
+if ! mkdir -p "$STATE_DIR" 2>/dev/null || [ ! -w "$STATE_DIR" ] || { [ -e "$usage_file" ] && [ ! -w "$usage_file" ]; }; then
+    err "cannot write the usage ledger in $STATE_DIR; refusing to scan unmetered"
+    exit 2
+fi
 usage_failed=0
 record_usage() { # <product> <tests>
     printf '%s\t%s\t%s\n' "$date" "$1" "$2" >> "$usage_file" \
