@@ -199,7 +199,7 @@ async function competeForSlot(
     const ls = i.fields.labels ?? [];
     const created = Date.parse(i.fields.created ?? '');
     return [gate, ls.includes('fu-escape') ? 2 : ls.includes('fu-hardening') ? 1 : 0,
-      PRIORITY_RANK.indexOf(i.fields.priority?.name ?? 'Medium') + 1,
+      PRIORITY_RANK.findIndex((p) => p.toLowerCase() === (i.fields.priority?.name ?? 'Medium').toLowerCase()) + 1,
       Number(targets.some((key) => openHead(key) !== undefined)), Number(sector !== undefined && sharedSectors.has(sector)),
       Number.isFinite(created) ? -created : 0];
   };
@@ -461,8 +461,14 @@ async function linkCreatedIssue(key: string, o: RelationshipOptions): Promise<vo
   }
 }
 
-async function residualInheritedVersion(o: RelationshipOptions, residual: ResidualPlan | undefined): Promise<string | undefined> {
-  return residual ? undefined : inheritedFixVersion(o);
+/** Keep slot competition's decision; otherwise only ungated frozen inheritance is suppressed. */
+async function residualInheritedVersion(
+  o: RelationshipOptions & { gate?: string },
+  residual: ResidualPlan | undefined,
+): Promise<string | undefined> {
+  if (residual?.ranks !== undefined) return undefined;
+  const inherited = await inheritedFixVersion(o);
+  return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
 }
 
 async function displaceResidual(residual: ResidualPlan | undefined, newcomer: string): Promise<void> {

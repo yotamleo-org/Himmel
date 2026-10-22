@@ -946,11 +946,22 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] === '/issue/HIMMEL-900')).toBe(false);
   });
 
-  it('RED b: blocker inheritance does not put a displaced newcomer back into the full version', async () => {
+  it.each(['--blocks', '--split-from'])('RED b: %s inheritance does not put a competed newcomer back into the full version', async (relation) => {
     residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape']));
-    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--blocks', 'HIMMEL-50');
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', relation, 'HIMMEL-50');
     expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
     expect(created().labels).toContain('residual-displaced');
+    expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.4');
+  });
+
+  it.each(['high', 'hIgHeSt'])('RED a: newcomer priority %s outranks Medium case-insensitively', async (priority) => {
+    residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape']));
+    for (const r of residents) r.fields.issuelinks.push({ type: { name: 'Relates' }, outwardIssue: { key: parent.key } });
+    await file('--fu-class', 'escape', '--priority', priority);
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
+      fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
+    });
   });
 
   it('RED b: higher-ranked and started residents keep their slots; newcomer steps down labelled', async () => {
@@ -1572,11 +1583,11 @@ describe('create — blocker version placement', () => {
     expect(writes()).toEqual([]);
   });
 
-  it.each(['--blocks', '--split-from'])('RED b: reports the classified polish backlog instead of inheriting through %s', async (relation) => {
+  it.each(['--blocks', '--split-from'])('reports the inherited residual destination for %s', async (relation) => {
     await file('--residual-of', 'HIMMEL-3', '--fu-class', 'polish', '--class', 'routing', relation, 'HIMMEL-1620');
-    expect(created()?.fixVersions).toBeUndefined();
-    expect(console.error).toHaveBeenCalledWith('jira: residual routed to the backlog');
-    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to v1.1.3');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
+    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
     expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
       type: { name: relation === '--blocks' ? 'Blocks' : 'Relates' },
       inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: 'HIMMEL-1620' },
