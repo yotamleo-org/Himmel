@@ -87,6 +87,7 @@ cp "$HERE/anchor-handoff.sh" "$fx/scripts/cr/anchor-handoff.sh"
 cp "$HERE/base-resolver.sh" "$fx/scripts/cr/base-resolver.sh"
 cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
 cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
+cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$HERE/ledger-append.sh" "$fx/scripts/cr/"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
 cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
@@ -103,6 +104,9 @@ cat > "$fx/scripts/cr/critic-panel.sh" <<'STUBEOF'
 printf 'called\n' >> "$CALL_LOG"
 printf '%s\n' "$*" >> "$ARGS_LOG"
 cat >/dev/null
+if [ -n "${PROBE_LEDGER:-}" ]; then
+    if grep -qF '"kind":"preflight"' "$PROBE_LEDGER" 2>/dev/null; then echo yes; else echo no; fi > "$PROBE_OUT"
+fi
 [ -n "${FAKE_OUT:-}" ] && printf '%s\n' "$FAKE_OUT"
 [ -n "${FAKE_ERR:-}" ] && printf '%s\n' "$FAKE_ERR" >&2
 if [ -n "${FAKE_RC_RETRY:-}" ] && [ "$(wc -l < "$CALL_LOG")" -gt 1 ]; then exit "$FAKE_RC_RETRY"; fi
@@ -548,6 +552,56 @@ if [ "$rc" -ne 0 ]; then ok "T15 a base the remote does not vouch for aborts the
 assert_has "$err" "gh compare says 'diverged'" "T15 refusal names the remote verdict"
 assert_lacks "$out" "MUST-NOT-REVIEW" "T15 no findings from a refused run"
 if [ -f "$CALL_LOG" ]; then bad "T15 panel invoked past a refused base"; else ok "T15 panel never invoked"; fi
+rm -rf "$repo/.git/cr-review-rounds"
+
+# T16: a fresh branch with no preflight row reaches the panel. The
+# known-findings preflight runs first and records its row before the panel is
+# invoked (the stub probes the ledger at call time).
+ledger="$repo/.git/cr-critic-scores.jsonl"
+probe="$tmp/probe-out"
+rm -f "$ledger" "$probe" "$CALL_LOG" "$tmp/err"
+rm -rf "$repo/.git/cr-review-rounds"
+out="$( (cd "$repo" && PROBE_LEDGER="$ledger" PROBE_OUT="$probe" FAKE_RC=0 FAKE_OUT='[codex-1] f.txt:1 finding' \
+    bash "$SCRIPT" --head "$feature_sha" --branch feature) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+if [ "$rc" -eq 0 ]; then ok "T16 clean diff runs the preflight and reaches round 1"; else bad "T16 exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$probe" 2>/dev/null)" "yes" "T16 preflight row on the ledger BEFORE the panel ran"
+assert_has "$(cat "$ledger" 2>/dev/null)" "\"kind\":\"preflight\"" "T16 ledger holds a preflight row"
+assert_has "$(cat "$ledger" 2>/dev/null)" "\"branch\":\"feature\"" "T16 preflight row stamped with the branch"
+assert_has "$(cat "$ledger" 2>/dev/null)" "$feature_sha" "T16 preflight row stamped with the head"
+assert_has "$out" "[codex-1] f.txt:1 finding" "T16 panel findings still reach stdout"
+assert_has "$err" "preflight:" "T16 preflight summary line shown"
+
+# T17: a branch that already has a preflight row is not re-run (no second row).
+rm -f "$CALL_LOG" "$tmp/err"
+rm -rf "$repo/.git/cr-review-rounds"
+out="$( (cd "$repo" && FAKE_RC=0 bash "$SCRIPT" --head "$feature_sha" --branch feature) 2>"$tmp/err" )"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "T17 second run exits 0"; else bad "T17 second run exit (got $rc)"; fi
+n_pre="$(grep -cF '"kind":"preflight"' "$ledger" 2>/dev/null)"
+if [ "$n_pre" = 1 ]; then ok "T17 an existing preflight row is not duplicated"; else bad "T17 preflight rows after a second run (got $n_pre, want 1)"; fi
+
+# T18: a diff that hits a known class leaves hits open: exit 3, the panel never
+# runs, no preflight row is written, and the message names both commands.
+git -C "$repo" worktree add -q -b feature-hit "$tmp/wt-hit" main
+(
+    cd "$tmp/wt-hit" || exit 1
+    mkdir -p scripts
+    printf '#!/usr/bin/env bash\nrm -f /tmp/zz\n' > scripts/x.sh
+    git add scripts/x.sh
+    git -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m hit
+) || bad "T18 fixture commit failed"
+hit_sha="$(git -C "$tmp/wt-hit" rev-parse HEAD)"
+rm -f "$CALL_LOG" "$tmp/err"
+rm -rf "$repo/.git/cr-review-rounds"
+out="$( (cd "$tmp/wt-hit" && FAKE_RC=0 bash "$SCRIPT" --head "$hit_sha" --branch feature-hit) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+if [ "$rc" -eq 3 ]; then ok "T18 open preflight hits exit 3"; else bad "T18 open hits exit (got $rc; err: $err)"; fi
+if [ -f "$CALL_LOG" ]; then bad "T18 panel invoked past open preflight hits"; else ok "T18 panel never invoked"; fi
+assert_has "$err" "known-findings.sh" "T18 message names known-findings.sh"
+assert_has "$err" "ledger-append.sh" "T18 message names ledger-append.sh preflight"
+if grep -F '"kind":"preflight"' "$ledger" | grep -qF '"branch":"feature-hit"'; then bad "T18 a preflight row was written for a branch with open hits"; else ok "T18 no preflight row for open hits"; fi
+if compgen -G "$repo/.git/cr-review-rounds/*" >/dev/null; then bad "T18 a review round was started"; else ok "T18 no review round started"; fi
+git -C "$repo" worktree remove --force "$tmp/wt-hit" 2>/dev/null
 rm -rf "$repo/.git/cr-review-rounds"
 
 # --- no writes outside the mktemp fixture -----------------------------------
