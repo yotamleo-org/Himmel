@@ -101,7 +101,7 @@ check "GREEN: matching pair verifies with the adopter one-liner" bash -c "cd '$o
 # On npm 10 an unflagged install/ci/prune sat on the silent registry past the CI cap.
 if [ -n "$_TIMEOUT_BIN" ]; then
   check "RED: the build does not wait on the registry (no fetch bounds, 20 s cap)" \
-    env -u npm_config_fetch_retries -u npm_config_fetch_timeout \
+    env -u npm_config_fetch_retries -u npm_config_fetch_timeout npm_config_audit=true \
       "$_TIMEOUT_BIN" 20 bash "$BUILD" --version 1.2.5 --src "$fx" --out "$tmp/out-silent"
 else
   echo "skip - build does not wait on the registry: no timeout binary"
