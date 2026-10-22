@@ -18,7 +18,7 @@ Run these, in order, and write the result as the first bullet under
 1. **`ListAgents`** — who is alive. Legs the handoff claims alive but absent here
    are gone; never relay a window as live without checking. In the same batch,
    `Read` each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
-> **One command for steps 2–6 and 8** (when `console.sh next` pre-computed steps 2–6 under this heading, verify them and run only step 8 with `--acquire --lock-only`):
+> **One command for steps 2–6 and 8** (when `chief.sh next` pre-computed steps 2–6 under this heading, verify them and run only step 8 with `--acquire --lock-only`):
 > `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
 > prints the lock sweep, head/remote, bank, leg processes, C29, load and this
 > document's lock state (read-only; `--acquire` takes a `free` lock, prints the
@@ -241,7 +241,7 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    the only confirmation that ACTION ZERO completed, and it names any legs that
    did not quote back, and why. Then wrap with
    **one** command, which writes `WRAPPED` and releases the lock:
-   `bash scripts/handover/console/console.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
+   `bash scripts/handover/console/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4) while any subagent of yours, a judge call above all, is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.
 
