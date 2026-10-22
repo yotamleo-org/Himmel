@@ -515,14 +515,26 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 // --- state ---------------------------------------------------------------------------
 
 export interface StateOut extends ReleaseState {
+  /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
+  admissions_today: Record<string, number>;
   lease: Omit<Lease, 'mac'> | null;
   requests: { open: string[]; claimed: string[] };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
 }
 
+function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
+  const today = ts(ctx).slice(0, 10);
+  const counts: Record<string, number> = Object.fromEntries(l.decl.versions.map((v) => [v, 0]));
+  for (const o of l.operator.verified) {
+    if (o.kind !== 'decision' || (o.op !== 'add' && o.op !== 'move') || !o.to_v || !(o.to_v in counts) || !o.ts.startsWith(today)) continue;
+    counts[o.to_v] += o.keys?.length ?? 0;
+  }
+  return counts;
+}
+
 export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
-  const empty = { lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
+  const empty = { admissions_today: {}, lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
   const s = reduceLoaded(l, mirror);
@@ -543,6 +555,7 @@ export function state(ctx: Ctx): StateOut {
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
+    admissions_today: admissionsToday(ctx, l),
     lease: lease ? leaseOut : null,
     requests: { open, claimed },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },

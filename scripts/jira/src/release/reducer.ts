@@ -67,7 +67,7 @@ export function effectOn(op: RulingRow['op'], v: string): 'in' | 'out' | null {
   }
 }
 
-function terminalOf(i: IssueSnap | undefined): KeyRecord['terminal'] {
+export function terminalOf(i: IssueSnap | undefined): KeyRecord['terminal'] {
   if (!i) return null;
   const s = `${i.status} ${i.resolution ?? ''}`;
   if (/won'?t do/i.test(s)) return "Won't Do";
