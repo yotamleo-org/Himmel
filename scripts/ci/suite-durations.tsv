@@ -648,6 +648,7 @@ scripts/hooks/test-guard-rm-writes.sh	2
 scripts/hooks/test-guard-subagent-model.sh	0
 scripts/hooks/test-guard-unwrap-nested-xargs.sh	2
 scripts/hooks/test-hook-chain-latency.sh	143
+scripts/hooks/test-hook-construct-scaling.sh	62
 scripts/hooks/test-hook-rewrite-integrity.sh	13
 scripts/hooks/test-inbox-hook.sh	0
 scripts/hooks/test-inject-doc-freshness.sh	0
