@@ -734,6 +734,108 @@ class TestSyncRepo(unittest.TestCase):
         self.assertEqual(result, "~/github/himmel")
 
 
+class TestKnownHostsReset(unittest.TestCase):
+    """HIMMEL-6962: a snapshot restore regenerates the guest host key, so
+    sync_repo trusts a per-VM known_hosts file that restore() resets. Host-key
+    checking stays on (accept-new) and the station's real known_hosts is never
+    named or written."""
+
+    def setUp(self):
+        import tempfile
+        self.home = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.home, ignore_errors=True))
+        env = mock.patch.dict(os.environ, {"HOME": self.home})
+        env.start()
+        self.addCleanup(env.stop)
+        ssh_dir = Path(self.home) / ".ssh"
+        ssh_dir.mkdir()
+        self.station_kh = ssh_dir / "known_hosts"
+        self.station_kh.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAstation\n")
+        self.kh_dir = Path(self.home) / ".himmel" / "vm" / "known_hosts"
+
+    def _vm(self, name="ubuntu_new"):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "osboxes", "ubuntu_vm_pass": "pw"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                return vmsdk.VM(name)
+
+    def _station(self):
+        reg = Path(self.home) / "vms.json"
+        reg.write_text(json.dumps({"teststation": {
+            "os": "windows", "kind": "station", "host": "teststation",
+            "auth": "key", "user": "testuser", "repo_path": "~/repo/himmel"}}))
+        return vmsdk.VM("teststation", registry_path=str(reg))
+
+    def _pipe(self, vm):
+        calls = []
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+            return mock.Mock(returncode=0, stderr="")
+        with mock.patch.object(vmsdk.subprocess, "run", side_effect=fake_run), \
+             mock.patch.object(vm, "run", return_value=(0, "")):
+            vm.sync_repo(r"C:\Users\x\himmel")
+        return str(calls[0][-1])
+
+    def _restore(self, vm, current="clean"):
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value=current):
+            vm.restore("clean")
+
+    def test_vm_sync_uses_per_vm_known_hosts_file_with_accept_new(self):
+        pipe = self._pipe(self._vm())
+        want = (self.kh_dir / "ubuntu_new").as_posix()
+        self.assertIn(f"-o UserKnownHostsFile={want}", pipe)
+        self.assertIn("StrictHostKeyChecking=accept-new", pipe)
+
+    def test_options_never_disable_host_key_checking(self):
+        for vm in (self._vm(), self._station()):
+            pipe = self._pipe(vm)
+            self.assertNotIn("/dev/null", pipe)
+            self.assertIsNone(re.search(r"StrictHostKeyChecking[= ]+(no|off)\b", pipe))
+            self.assertNotIn(str(self.station_kh), pipe)
+
+    def test_station_kind_builds_no_known_hosts_option(self):
+        pipe = self._pipe(self._station())
+        self.assertNotIn("UserKnownHostsFile", pipe)
+        self.assertIn("StrictHostKeyChecking=accept-new", pipe)
+
+    def test_restore_resets_only_that_vms_known_hosts(self):
+        self.kh_dir.mkdir(parents=True)
+        mine = self.kh_dir / "ubuntu_new"
+        other = self.kh_dir / "ubuntu_other"
+        mine.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
+        other.write_bytes(b"[127.0.0.1]:2223 ssh-ed25519 AAAAother\n")
+        self._restore(self._vm())
+        self.assertFalse(mine.exists())
+        self.assertEqual(other.read_bytes(), b"[127.0.0.1]:2223 ssh-ed25519 AAAAother\n")
+        self.assertEqual(self.station_kh.read_bytes(),
+                         b"[127.0.0.1]:2222 ssh-ed25519 AAAAstation\n")
+
+    def test_changed_host_key_after_restore_leaves_nothing_to_mismatch(self):
+        """The file the sync_repo options name holds no key after a restore, so
+        the regenerated host key is learned (accept-new) instead of rejected."""
+        vm = self._vm()
+        self.kh_dir.mkdir(parents=True)
+        named = self.kh_dir / "ubuntu_new"
+        named.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
+        self._restore(vm)
+        self.assertIn(f"UserKnownHostsFile={named.as_posix()}", self._pipe(vm))
+        self.assertFalse(named.exists())
+
+    def test_failed_restore_readback_keeps_the_known_hosts(self):
+        vm = self._vm()
+        self.kh_dir.mkdir(parents=True)
+        mine = self.kh_dir / "ubuntu_new"
+        mine.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
+        with self.assertRaises(vmsdk.VMError):
+            self._restore(vm, current="other")
+        self.assertTrue(mine.exists())
+
+    def test_known_hosts_dir_is_private(self):
+        self._pipe(self._vm())
+        self.assertEqual(self.kh_dir.stat().st_mode & 0o777, 0o700)
+
+
 class TestSecretBoundary(unittest.TestCase):
     """HIMMEL-2540: the host->guest copy must exclude the secret set and the
     guest must be asserted clean; a snapshot of an unverified guest is refused."""

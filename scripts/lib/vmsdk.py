@@ -351,6 +351,11 @@ class VM:
         if self.name in _running_vms():
             raise VMError(f"down readback: {self.name} is still in `list runningvms`")
 
+    def _known_hosts_file(self):
+        """This VM's own known_hosts, apart from the station's ~/.ssh/known_hosts:
+        a snapshot restore regenerates the guest host key, so restore() resets it."""
+        return Path(os.path.expanduser("~/.himmel/vm/known_hosts")) / self.name
+
     # --- ssh / exec ---
     def _invalidate(self):
         if self._client is not None:
@@ -535,6 +540,7 @@ class VM:
                 f"restore readback: asked for snapshot {name!r} but "
                 f"CurrentSnapshotName of {self.name} is {current!r}; the VM "
                 "was NOT restored, do not trust its state")
+        self._known_hosts_file().unlink(missing_ok=True)
 
     def baseline(self, snap="clean"):
         self._require_vm("baseline")
@@ -639,8 +645,11 @@ class VM:
                           f"{target}")
         else:
             key = os.path.expanduser("~/.ssh/id_ed25519").replace("\\", "/")
+            known_hosts = self._known_hosts_file()
+            known_hosts.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             ssh_target = (f"-p {self.port} -i {key} "
                           f"-o BatchMode=yes -o StrictHostKeyChecking=accept-new "
+                          f"-o UserKnownHostsFile={shlex.quote(known_hosts.as_posix())} "
                           f"{self.user}@127.0.0.1")
         # refuse a dest the post-copy scan could not check BEFORE
         # any file crosses, and quote it (a spaced dest) for the guest shell.
