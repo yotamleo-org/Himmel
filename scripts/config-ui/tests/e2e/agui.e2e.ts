@@ -125,7 +125,7 @@ test("4. each agent is named with its role and model, its work under its name, a
   await expect(agents.nth(0)).toContainText("HIMMEL-1957-N1290-check-ci-cap");
   await expect(agents.nth(0)).toContainText("worker session · opus 5.5");
   await expect(agents.nth(1)).toContainText("correctness critic");
-  await expect(agents.nth(1)).toContainText("critic · code-reviewer · sonnet 5.5");
+  await expect(agents.nth(1)).toContainText("judge · sonnet 5.5");
   // the critic's Read sits in a block headed by the critic, one step in; the leg's calls do not
   const critic = page.locator(".block.sub", { hasText: "correctness critic" });
   await critic.locator(".fold-head").click();
