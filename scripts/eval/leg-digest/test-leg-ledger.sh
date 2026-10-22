@@ -182,6 +182,8 @@ check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER wins over HIMMEL_LEG_FAILURES_LEDGE
 check "control: the old name alone is still read" '[ "$(lpath)" = "$TMP/never-fail.jsonl" ]'
 printf '# HIMMEL-1-N9 worker (WORKER_SESSION_LANE=claudex)\n' >"$TMP/wlane.md"
 check "a doc title naming WORKER_SESSION_LANE gives the lane" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import leg_ledger; print(leg_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/wlane.md")" = claudex ]'
+printf '# HIMMEL-1-N9 worker (LEG_LANE=native, WORKER_SESSION_LANE=claudex)\n' >"$TMP/blane.md"
+check "a doc title naming both lane names gives the WORKER_SESSION_LANE one" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import leg_ledger; print(leg_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/blane.md")" = claudex ]'
 
 echo "test-leg-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -284,7 +284,8 @@ def launch_lane(digest, who):
             titles = [line for line in text.splitlines() if line.startswith("# ")
                       and (not leg or re.search(r"\b" + re.escape(leg) + r"\b", line))]
             text = titles[0] if titles else ""
-            hit = re.search(r"\b(?:(?:WORKER_SESSION|LEG)_LANE[=:]\s*|lane:\s*)(native|claudex|codex|openrouter|cloud)\b", text)
+            hit = re.search(r"\bWORKER_SESSION_LANE[=:]\s*(native|claudex|codex|openrouter|cloud)\b", text)
+            hit = hit or re.search(r"\b(?:LEG_LANE[=:]\s*|lane:\s*)(native|claudex|codex|openrouter|cloud)\b", text)
             hit = hit or re.search(r"\b(native|claudex|codex|openrouter|cloud)\s+lane\b", text)
             hit = hit or re.search(r",\s*(native|claudex|codex|openrouter|cloud)\)", text)
             if hit:
