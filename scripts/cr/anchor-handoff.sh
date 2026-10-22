@@ -45,7 +45,7 @@
 # still not the anchor refuses instead of looping.
 # ponytail: (HIMMEL-3437) this file and the one line sourcing it are branch bytes. For every
 # gate-allowed scripts/cr/ writer (its TARGETS) and for merge-on-green.sh,
-# console-kit/go.sh, himmel-gate.sh and write-verdict.sh (its HTARGETS),
+# console-kit/go.sh, himmel-gate.sh, write-verdict.sh and console-wait.sh (its HTARGETS),
 # guard-pr-check-literal.sh denies a relative run unless the entry script and
 # this file equal the anchor's byte for byte, so a branch that deletes either
 # is refused before it runs.

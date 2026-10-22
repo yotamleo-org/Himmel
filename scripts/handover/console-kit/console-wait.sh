@@ -208,6 +208,8 @@
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
 # bash 3.2-safe.
 set -u
+case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
+. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"

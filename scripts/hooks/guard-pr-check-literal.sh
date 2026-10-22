@@ -72,7 +72,7 @@ GUARDED=$FULL_GUARDED
 
 # the scripts/handover/ gate-writer entries the allow rules also pre-approve
 # as RELATIVE literals (merge-on-green.sh, console-kit/go.sh, himmel-gate.sh,
-# write-verdict.sh)
+# write-verdict.sh, console-wait.sh)
 # - outside scripts/cr/, so TARGETS above (and the derived/declared check in
 # the test suite, which is scoped to scripts/cr/ allow rows only) does not
 # reach them. Held to the same narrower condition as every TARGETS entry but
@@ -82,7 +82,8 @@ GUARDED=$FULL_GUARDED
 # too common a stem to key on alone, and matching the full path is exact
 # rather than relying on a directory-marker substring.
 HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
-scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh'
+scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh
+scripts/handover/console-kit/console-wait.sh'
 # shellcheck disable=SC2016 # printed verbatim as the remedy, never expanded
 FENCE='if himmel_repo=$(printenv HIMMEL_REPO | grep .); then
     bash "$himmel_repo/scripts/cr/pr-check-context.sh"
@@ -142,6 +143,11 @@ deny() {
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
                 echo "bash \"<himmel_dir>/scripts/handover/console-kit/write-verdict.sh\" <args>"
+                ;;
+            *console-kit/console-wait*)
+                echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
+                echo
+                echo "bash \"<himmel_dir>/scripts/handover/console-kit/console-wait.sh\" <args>"
                 ;;
             *)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -738,6 +744,7 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
 }
@@ -2598,7 +2605,7 @@ manifest() { # manifest <root> - "<mode> <blob-id> <path>" per regular file, sor
     # and an unconditional check here would deny those runs on a missing path.
     prune_dirs='scripts scripts/cr'
     case " $GUARDED " in
-        *' scripts/handover/console-kit/go.sh '* | *' scripts/handover/console-kit/himmel-gate.sh '* | *' scripts/handover/console-kit/write-verdict.sh '*) prune_dirs="$prune_dirs scripts/handover scripts/handover/console-kit" ;;
+        *' scripts/handover/console-kit/go.sh '* | *' scripts/handover/console-kit/himmel-gate.sh '* | *' scripts/handover/console-kit/write-verdict.sh '* | *' scripts/handover/console-kit/console-wait.sh '*) prune_dirs="$prune_dirs scripts/handover scripts/handover/console-kit" ;;
         *' scripts/handover/merge-on-green.sh '*) prune_dirs="$prune_dirs scripts/handover" ;;
     esac
     # shellcheck disable=SC2086 # prune_dirs is a fixed, space-free word list
@@ -2671,7 +2678,8 @@ behind_main_entries_ok() {
     for e in $hentries; do
         case "$e" in
             scripts/handover/merge-on-green.sh) up=.. ;;
-            scripts/handover/console-kit/go.sh | scripts/handover/console-kit/write-verdict.sh) up=../.. ;;
+            scripts/handover/console-kit/go.sh | scripts/handover/console-kit/write-verdict.sh \
+                | scripts/handover/console-kit/console-wait.sh) up=../.. ;;
             *) return 1 ;;
         esac
         # shellcheck disable=SC2016 # the entries' literal `_ah_d` and source lines
