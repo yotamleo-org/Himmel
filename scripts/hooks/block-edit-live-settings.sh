@@ -1840,10 +1840,10 @@ _tok_readonly_ok() {
 }
 
 # _tok_printf_n WORD — success when WORD holds a printf %n conversion (flags,
-# width, precision and length modifiers allowed between % and n), which
-# assigns the output length to a shell variable.
+# width, precision, a dynamic * and length modifiers allowed between % and n),
+# which assigns the output length to a shell variable.
 _tok_printf_n() {
-    local re="%[-+ #0-9.'hlLjzqt]*n"
+    local re="%[-+ #0-9.*'hlLjzqt]*n"
     [[ $1 =~ $re ]]
 }
 

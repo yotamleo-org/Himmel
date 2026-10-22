@@ -3524,6 +3524,12 @@ assert_rc "6927s3p printf with a %n conversion denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'printf '"'"'%n%s'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
 assert_rc "6927s3q printf with a widthed %n conversion denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'printf '"'"'%10n%s'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3s printf with a dynamic-width %*n conversion and a numeric width denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%*n%s'"'"' 10 HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3t printf with a dynamic-width %*n conversion and only the variable denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%*n'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3u printf with a dynamic-precision %.*n conversion denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%.*n%s'"'"' 3 HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
 assert_rc "6927s3r printf %s with a newline and home settings stays allowed" 0 \
     "$(bash_rc_of "$PRIMARY" 'printf '"'"'%s\n'"'"' ~/.claude/settings.json' HOME="$FAKEHOME")"
 
