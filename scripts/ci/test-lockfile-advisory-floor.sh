@@ -34,7 +34,9 @@ meets_floor() {
   versions=$(lock_versions "$1" "$2" 2>/dev/null) || return 2
   [ -n "$versions" ] || return 2
   while IFS= read -r v; do
-    [ "$(printf '%s\n%s\n' "$3" "$v" | sort -V | head -n 1)" = "$3" ] || return 1
+    [ "$(printf '%s\n%s\n' "$3" "${v%%-*}" | sort -V | head -n 1)" = "$3" ] || return 1
+    # a prerelease of the floor itself ranks below it under SemVer, which sort -V does not model
+    [ "$v" = "${v%%-*}" ] || [ "${v%%-*}" != "$3" ] || return 1
   done <<< "$versions"
   return 0
 }
