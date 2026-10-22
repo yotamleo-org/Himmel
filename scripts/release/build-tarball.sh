@@ -80,7 +80,9 @@ if [ "$build" -eq 1 ]; then
     [ -f "$tree/$pkg/package.json" ] || die "package '$pkg' has no package.json in the tree"
     # ci = lockfile-exact install; build needs the devDependencies (tsc), then
     # prune to runtime deps so the tarball ships what the CLI actually loads.
-    ( cd "$tree/$pkg" && npm ci --silent && npm run build --silent && npm prune --omit=dev --silent ) \
+    # --no-audit --no-fund: npm 10 otherwise waits on an audit request to the registry
+    # (minutes when it is down); a release build gains nothing from either call.
+    ( cd "$tree/$pkg" && npm ci --silent --no-audit --no-fund && npm run build --silent && npm prune --omit=dev --silent --no-audit --no-fund ) \
       || die "node build failed in $pkg"
     [ -f "$tree/$pkg/dist/index.js" ] || die "build of $pkg produced no dist/index.js"
     [ -d "$tree/$pkg/node_modules" ] || die "$pkg has no node_modules/ after the build"
