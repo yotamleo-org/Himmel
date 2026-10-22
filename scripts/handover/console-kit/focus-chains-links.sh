@@ -22,7 +22,7 @@
 # The last line counts the rows by state.
 #
 # --apply writes the `new` rows of the chains named by --chain (index in the file,
-# repeatable; --apply without one is refused, so the console picks which chains are
+# repeatable; an index past the last chain, or --apply without one, is refused, so the console picks which chains are
 # real orderings, not groups). Each write is `jira link <blocker> --blocks <blocked>`,
 # which itself reads the issue back after the POST; then every written pair is read
 # back once more with `jira links <blocker>` and printed `readback <A> blocks <B> ok`
@@ -46,7 +46,7 @@ apply=0; picked=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --mirror) [ "$#" -ge 2 ] || usage; mirror="$2"; shift 2 ;;
-        --chain) [ "$#" -ge 2 ] || usage; case "$2" in ''|*[!0-9]*) usage ;; esac; picked="$picked $2"; shift 2 ;;
+        --chain) [ "$#" -ge 2 ] || usage; case "$2" in ''|*[!0-9]*) usage ;; esac; picked="$picked $((10#$2))"; shift 2 ;;
         --apply) apply=1; shift ;;
         *) usage ;;
     esac
@@ -56,10 +56,14 @@ if [ "$apply" -eq 1 ] && [ -z "$picked" ]; then
     echo "focus-chains-links: --apply needs --chain N for every chain to write (dry-run first)" >&2; exit 2
 fi
 
-rows="$(FCL_CHAINS="$chains" FCL_MIRROR="$mirror" python3 - <<'PY'
+rows="$(FCL_CHAINS="$chains" FCL_MIRROR="$mirror" FCL_PICKED="$picked" python3 - <<'PY'
 import json, os, re, sys
 chains = json.load(open(os.environ['FCL_CHAINS'], encoding='utf-8'))
 mirror = os.environ['FCL_MIRROR']
+for c in os.environ['FCL_PICKED'].split():
+    if int(c) >= len(chains):
+        sys.stderr.write('focus-chains-links: no chain %s (the file has %d)\n' % (c, len(chains)))
+        sys.exit(3)
 cache = {}
 def issue(key):
     if key not in cache:
@@ -125,7 +129,7 @@ for r in rows:
     print('\t'.join([','.join(str(c) for c in r[0])] + r[1:]))
 print('# pairs: %d (%s)' % (len(rows), ', '.join('%s %d' % kv for kv in sorted(counts.items())) or 'none'))
 PY
-)" || { echo "focus-chains-links: cannot read $chains" >&2; exit 2; }
+)" || { prc=$?; [ "$prc" -eq 3 ] || echo "focus-chains-links: cannot read $chains" >&2; exit 2; }
 printf 'chain\tblocker\tblocked\tstate\tnote\n%s\n' "$rows"
 [ "$apply" -eq 1 ] || exit 0
 

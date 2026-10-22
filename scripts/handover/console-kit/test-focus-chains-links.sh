@@ -98,6 +98,13 @@ bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 3 --apply >/dev/null 2>&1
 eq "a cycle row is never written" "$(grep '^link ' "$WORK/calls")" "link HIMMEL-8 --blocks HIMMEL-10
 link HIMMEL-10 --blocks HIMMEL-11"
 
+rm -f "$WORK/calls"
+bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 9 --apply >/dev/null 2>&1; rc=$?
+eq "--chain past the last chain is refused (rc 2)" "$rc" 2
+[ -f "$WORK/calls" ] && fail "a refused --chain calls jira" || pass "a refused --chain calls jira never"
+bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 00 --apply >/dev/null 2>&1
+has "--chain 00 names chain 0" "$(cat "$WORK/calls" 2>/dev/null)" "link HIMMEL-1 --blocks HIMMEL-2"
+
 : > "$WORK/links-down"
 out="$(bash "$SUT" "$WORK/chains.json" --mirror "$M" --chain 0 --apply 2>&1)"; rc=$?
 eq "a failed read-back call exits 1" "$rc" 1

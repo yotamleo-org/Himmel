@@ -53,11 +53,11 @@
 # Collision (one writer per file): the files a candidate names in its
 # description are checked against (a) the files in the live legs' docs (the
 # manifest's `legs[].doc`, scope lines), (b) the diff of every open PR (gh), and
-# (c) --held FILE (one path per line). Only a concrete file collides (a path the
-# repo holds as a file, or a new one with a dotted basename): a directory a ticket
-# names is context. It collides with an equal held path, or with a directory a leg's
-# write scope or --held names above it; an open PR's diff is files, compared
-# exactly. Two listed tickets collide on an equal file only. When gh fails the
+# (c) --held FILE (one path per line). A directory a ticket names is context and
+# collides with nothing. Any other path collides with an equal held path; a concrete
+# file (one the repo holds, or a new one with a dotted basename) also collides with a
+# directory a leg's write scope or --held names above it; an open PR's diff is files,
+# compared exactly. Two listed tickets collide on an equal file only. When gh fails the
 # list is printed with an `open PRs unknown` header rather than silently trusting
 # an empty set.
 #
@@ -162,7 +162,9 @@ def concrete(f):
 def blocks(f, h, tree):
     # a candidate's concrete file is held by an equal path, or by a tree (a live leg's write scope, --held)
     h = h.rstrip('/')
-    return concrete(f) and (f == h or (tree and f.startswith(h + '/')))
+    if f == h:
+        return not os.path.isdir(os.path.join(repo, f))
+    return tree and concrete(f) and f.startswith(h + '/')
 
 def held_hit(i):
     # the first (file, holder) of held that holds one of the ticket's files, else None

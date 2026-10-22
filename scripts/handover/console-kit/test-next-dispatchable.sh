@@ -610,6 +610,7 @@ mk HIMMEL-802 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual 
 mk HIMMEL-803 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the RM deferred" "Edit scripts/lib/deferred.sh only."
 mk HIMMEL-808 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with an unknown ledger kind" "Edit scripts/lib/typo.sh only."
 mk HIMMEL-809 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with a plain admission row" "Edit scripts/lib/plain.sh only."
+mk HIMMEL-810 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a new extensionless file a leg holds" "Add scripts/lib/Brewfile only."
 mk HIMMEL-804 "To Do" Medium '[]' '["v1.0.1"]' '[]' "mentions trees a leg and a PR write in" "Read scripts/handover/console-kit/ and scripts/lib/ for context; edit scripts/lib/new-thing.sh."
 mk HIMMEL-805 "To Do" Medium '[]' '["v1.0.1"]' '[]' "first of two naming a tree" "See docs/guide/ then edit scripts/lib/d1.sh."
 mk HIMMEL-806 "To Do" Medium '[]' '["v1.0.1"]' '[]' "second of two naming a tree" "See docs/guide/ then edit scripts/lib/d2.sh."
@@ -649,6 +650,8 @@ has "why: a classification refusal is named" "$w1" "# drop HIMMEL-10 classificat
 has "why: an open-PR owner is named" "$w1" "# drop HIMMEL-52 owned by open PR"
 has "why: a live-leg owner is named" "$w1" "# drop HIMMEL-99 owned by live leg"
 lacks "why: without --why no per-ticket line is printed" "$v1" "# drop HIMMEL-"
+printf 'scripts/lib/Brewfile\n' > "$WORK/held30.txt"
+lacks "collision: a new extensionless file equal to a held path is held" "$(run30 --held "$WORK/held30.txt")" "HIMMEL-810	"
 
 # --- replay: the 10-19T console state (doc priority line, 28-leg manifest, open PRs, v1.1.3 Jira slice) frozen under fixtures/ ---
 RP="$HERE/fixtures/dispatcher-replay"
