@@ -290,26 +290,37 @@ class TestClone(unittest.TestCase):
         envp.start(); self.addCleanup(envp.stop)
         dp = mock.patch.object(vmsdk, "_load_dotenv_into_env")
         dp.start(); self.addCleanup(dp.stop)
+        self.pushed = []
+        pp = mock.patch.object(
+            vmsdk.VM, "push_file",
+            new=lambda vm_self, local, remote, data=None, **kw: self.pushed.append((remote, data)) or remote)
+        pp.start(); self.addCleanup(pp.stop)
 
     def _vm(self, name="ubuntu_new"):
         return vmsdk.VM(name)
 
-    def test_clone_builds_token_url_and_strips(self):
+    @staticmethod
+    def _guest(cmd, **kw):
+        """A fresh guest: dest absent, mktemp yields a private dir, the rest succeeds."""
+        if cmd.startswith("test -e"):
+            return (1, "")
+        return (0, "/tmp/tok.X" if "mktemp" in cmd else "")
+
+    def test_clone_uses_tokenless_url(self):
         vm = self._vm()
         calls = []
         def fake_run(cmd, **kw):
             calls.append(cmd)
-            if cmd.startswith("test -e"):
-                return (1, "")          # dest absent
-            return (0, "")
+            return self._guest(cmd)
         with mock.patch.object(vm, "run", side_effect=fake_run):
             dest = vm.clone_himmel(ref="main", depth=1)
         self.assertEqual(dest, "~/himmel")
         joined = "\n".join(calls)
-        self.assertIn("x-access-token:TKN@github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname assertion on the token-embedded clone URL
+        self.assertIn("https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname assertion on the credential-free clone URL
+        self.assertNotIn("TKN", joined)
         self.assertIn("--depth 1", joined)
         self.assertIn("--branch main", joined)
-        self.assertIn("set-url origin https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname assertion on the post-clone origin rewrite
+        self.assertNotIn("set-url", joined)
 
     def test_clone_slug_is_current_repo(self):
         self.assertEqual(vmsdk.OWNER_REPO, "yotamleo-org/Himmel")  # leak-allow: hostname pins the repo slug after the 2026-10-19 move
@@ -317,11 +328,9 @@ class TestClone(unittest.TestCase):
     def _clone_failing(self, env, out):
         vm = self._vm()
         def fake_run(cmd, **kw):
-            if cmd.startswith("test -e"):
-                return (1, "")
-            if "clone" in cmd:
+            if " clone " in cmd:
                 return (128, out)
-            return (0, "")
+            return self._guest(cmd)
         with mock.patch.dict(os.environ, env, clear=False), \
              mock.patch.object(vm, "run", side_effect=fake_run):
             for k in ("himmel_github_token_vm", "himmel_github_token_vm2"):
@@ -347,7 +356,7 @@ class TestClone(unittest.TestCase):
         calls = []
         def fake_run(cmd, **kw):
             calls.append(cmd)
-            return (1, "") if cmd.startswith("test -e") else (0, "")
+            return self._guest(cmd)
         with mock.patch.dict(os.environ, env, clear=False), \
              mock.patch.object(vm, "run", side_effect=fake_run):
             for k in ("himmel_github_token_vm", "himmel_github_token_vm2"):
@@ -356,15 +365,18 @@ class TestClone(unittest.TestCase):
             vm.clone_himmel()
         return "\n".join(calls)
 
+    def _pushed_tokens(self):
+        return [d for r, d in self.pushed if r.endswith("/token")]
+
     def test_clone_token_only_vm2(self):
-        joined = self._clone_joined({"himmel_github_token_vm2": "TKN2"})
-        self.assertIn("x-access-token:TKN2@", joined)
+        self._clone_joined({"himmel_github_token_vm2": "TKN2"})
+        self.assertEqual(self._pushed_tokens(), [b"TKN2"])
 
     def test_clone_token_vm_wins_over_vm2(self):
         joined = self._clone_joined({"himmel_github_token_vm": "TKN1",
                                      "himmel_github_token_vm2": "TKN2"})
-        self.assertIn("x-access-token:TKN1@", joined)
-        self.assertNotIn("TKN2", joined)
+        self.assertEqual(self._pushed_tokens(), [b"TKN1"])
+        self.assertNotIn("TKN", joined)
 
     def test_clone_token_neither_names_both(self):
         with self.assertRaises(vmsdk.VMError) as cm:
@@ -376,44 +388,140 @@ class TestClone(unittest.TestCase):
         vm = self._vm()
         with mock.patch.object(vmsdk, "_load_dotenv_into_env") as ld, \
              mock.patch.object(vm, "run",
-                               side_effect=lambda cmd, **kw: (1, "") if cmd.startswith("test -e") else (0, "")):
+                               side_effect=lambda cmd, **kw: self._guest(cmd)):
             vm.clone_himmel()
         ld.assert_called_with(["himmel_github_token_vm", "himmel_github_token_vm2"])
 
     def test_clone_refuses_existing_dest(self):
         vm = self._vm()
-        with mock.patch.object(vm, "run", side_effect=lambda cmd, **kw: (0, "") if cmd.startswith("test -e") else (128, "")):  # exists, not a git checkout
-            with self.assertRaises(vmsdk.VMError):
+        def fake_run(cmd, **kw):
+            if "rev-parse" in cmd:
+                return (128, "fatal: not a git repository")
+            return (0, "")                  # dest exists, everything else would succeed
+        with mock.patch.object(vm, "run", side_effect=fake_run):
+            with self.assertRaises(vmsdk.VMError) as cm:
                 vm.clone_himmel()
+        self.assertIn("not a git checkout", str(cm.exception))
+
+    def test_clone_ref_cannot_start_with_a_dash(self):
+        vm = self._vm()
+        for ref in ("--force", "-x", "-"):
+            with self.subTest(ref), mock.patch.object(vm, "run", return_value=(1, "")) as run:
+                with self.assertRaises(vmsdk.VMError) as cm:
+                    vm.clone_himmel(ref=ref)
+                self.assertIn("invalid ref", str(cm.exception))
+                run.assert_not_called()
 
     def test_clone_raises_on_clone_failure(self):
         vm = self._vm()
         def fake_run(cmd, **kw):
-            if cmd.startswith("test -e"):
-                return (1, "")
-            if "clone" in cmd:
+            if " clone " in cmd:
                 return (128, "fatal: auth")
-            return (0, "")
+            return self._guest(cmd)
         with mock.patch.object(vm, "run", side_effect=fake_run):
             with self.assertRaises(vmsdk.VMError):
                 vm.clone_himmel()
 
-    def test_clone_windows_routes_through_git_bash(self):
+    def test_clone_windows_refuses_rather_than_put_the_token_on_a_command_line(self):
         vm = self._vm("win11_base_himmel")
-        calls = []
+        with mock.patch.object(vm, "run", return_value=(0, "")) as run:
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.clone_himmel(ref="main", depth=1)
+        self.assertIn("windows", str(cm.exception).lower())
+        run.assert_not_called()
+
+
+class TestCloneToken(unittest.TestCase):
+    """The clone PAT never rides a guest command line (ps shows argv), the
+    clone error carries no credential, and the two scripts that still named the
+    pre-move slug clone from the current one."""
+
+    def setUp(self):
+        envp = mock.patch.dict(os.environ,
+            {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p",
+             "himmel_github_token_vm": "TKN"}, clear=False)
+        envp.start(); self.addCleanup(envp.stop)
+        dp = mock.patch.object(vmsdk, "_load_dotenv_into_env")
+        dp.start(); self.addCleanup(dp.stop)
+
+    def _clone(self, env=None, clone_out=None):
+        """Run clone_himmel on a mocked guest; return (run commands, pushed
+        blobs, error text or None)."""
+        vm = vmsdk.VM("ubuntu_new")
+        cmds, pushed = [], []
         def fake_run(cmd, **kw):
-            calls.append(cmd)
-            if cmd.startswith("if exist"):
-                return (0, "")          # else-branch exit 0 => dest absent
-            return (0, "")
-        with mock.patch.object(vm, "run", side_effect=fake_run):
-            dest = vm.clone_himmel(ref="main", depth=1)
-        self.assertEqual(dest, r"C:\himmel")
-        joined = "\n".join(calls)
-        self.assertIn(r"if exist C:\himmel", joined)
-        self.assertIn(r'"C:\Program Files\Git\bin\bash.exe" -lc', joined)
-        self.assertIn("x-access-token:TKN@github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the token-clone-URL assertion
-        self.assertIn("set-url origin https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the origin-rewrite assertion
+            cmds.append(cmd)
+            if cmd.startswith("test -e"):
+                return (1, "")
+            if clone_out is not None and "clone" in cmd:
+                return (128, clone_out)
+            return (0, "/tmp/tok.X" if "mktemp" in cmd else "")
+        def fake_push(local, remote, data=None, **kw):
+            pushed.append((remote, data))
+            return remote
+        err = None
+        with mock.patch.dict(os.environ, env or {}, clear=False), \
+             mock.patch.object(vm, "run", side_effect=fake_run), \
+             mock.patch.object(vm, "push_file", side_effect=fake_push):
+            for k in ("himmel_github_token_vm", "himmel_github_token_vm2"):
+                if env is not None and k not in env:
+                    os.environ.pop(k, None)
+            try:
+                vm.clone_himmel()
+            except vmsdk.VMError as e:
+                err = str(e)
+        return cmds, pushed, err
+
+    def test_token_is_on_no_guest_command_line(self):
+        cmds, pushed, _ = self._clone()
+        self.assertTrue(cmds)
+        for c in cmds:
+            self.assertNotIn("TKN", c)
+            self.assertNotIn("x-access-token", c)
+        self.assertTrue(any(b"TKN" in (d or b"") for _, d in pushed),
+                        "the token must reach the guest some other way")
+        clone = next(c for c in cmds if " clone " in c)
+        self.assertIn("GIT_ASKPASS=", clone)
+
+    def test_askpass_dir_is_removed_even_when_the_clone_fails(self):
+        cmds, _, err = self._clone(clone_out="fatal: nope")
+        self.assertIsNotNone(err)
+        self.assertTrue(any(c.startswith("rm -rf ") and "/tmp/tok.X" in c for c in cmds))
+
+    def test_failed_cleanup_is_reported_not_swallowed(self):
+        vm = vmsdk.VM("ubuntu_new")
+        def fake_run(cmd, **kw):
+            if cmd.startswith("rm -rf "):
+                return (1, "Permission denied")
+            return (1, "") if cmd.startswith("test -e") else (0, "/tmp/tok.X" if "mktemp" in cmd else "")
+        with mock.patch.object(vm, "run", side_effect=fake_run), \
+             mock.patch.object(vm, "push_file", return_value="/x"):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.clone_himmel()
+        self.assertIn("/tmp/tok.X", str(cm.exception))
+        self.assertIn("token", str(cm.exception).lower())
+
+    def test_clone_error_has_no_credential(self):
+        _, _, err = self._clone(clone_out=(
+            "fatal: unable to access 'https://x-access-token:TKN@github.com/o/r.git/': "
+            "The requested URL returned error: 403 and https://bob:hunter2@example.com/x"))
+        self.assertIsNotNone(err)
+        self.assertNotIn("TKN", err)
+        self.assertNotIn("hunter2", err)
+        self.assertIn("403", err)
+
+    def test_empty_primary_token_is_skipped_for_vm2(self):
+        cmds, pushed, err = self._clone(env={"himmel_github_token_vm": "",
+                                             "himmel_github_token_vm2": "TKN2"})
+        self.assertIsNone(err)
+        self.assertTrue(any(b"TKN2" in (d or b"") for _, d in pushed))
+
+    def test_vm_clone_scripts_use_the_current_slug(self):
+        root = Path(__file__).resolve().parents[2]
+        for rel in ("scripts/vm/after-report.sh", "scripts/machine-setup/ubuntu.sh"):
+            text = (root / rel).read_text()
+            self.assertNotIn("github.com/yotamleo/himmel", text, rel)  # leak-allow: hostname pins that the pre-move slug is gone
+            self.assertIn("github.com/yotamleo-org/Himmel.git", text, rel)  # leak-allow: hostname pins the current slug
 
 
 class TestAfterReportClones(unittest.TestCase):
@@ -430,7 +538,7 @@ class TestAfterReportClones(unittest.TestCase):
         dp.start(); self.addCleanup(dp.stop)
 
     def _ar(self, name="himmel-ar-2", info=None, ar_max=None):
-        env = {} if ar_max is None else {"HIMMEL_VM_AR_MAX": str(ar_max)}
+        env = {"HIMMEL_VM_AR_MAX": str(2 if ar_max is None else ar_max)}
         with mock.patch.dict(os.environ, env, clear=False), \
              mock.patch.object(vmsdk.vbox, "_info", return_value=info or self.SHOWVMINFO_AR2):
             return vmsdk.VM(name)
@@ -472,6 +580,8 @@ class TestCloneOnExistingCheckout(unittest.TestCase):
         envp.start(); self.addCleanup(envp.stop)
         dp = mock.patch.object(vmsdk, "_load_dotenv_into_env")
         dp.start(); self.addCleanup(dp.stop)
+        pp = mock.patch.object(vmsdk.VM, "push_file", new=lambda vm_self, local, remote, data=None, **kw: remote)
+        pp.start(); self.addCleanup(pp.stop)
 
     def _run_with(self, git_repo, dirty=False):
         calls = []
@@ -479,6 +589,8 @@ class TestCloneOnExistingCheckout(unittest.TestCase):
             calls.append(cmd)
             if cmd.startswith("test -e"):
                 return (0, "")
+            if "mktemp" in cmd:
+                return (0, "/tmp/tok.X")
             if "rev-parse --is-inside-work-tree" in cmd:
                 return (0, "true") if git_repo else (128, "fatal: not a git repository")
             if "status --porcelain" in cmd:
@@ -517,8 +629,15 @@ class TestCloneOnExistingCheckout(unittest.TestCase):
         calls, fake_run = self._run_with(git_repo=True)
         with mock.patch.object(vm, "run", side_effect=fake_run):
             vm.clone_himmel(ref="main")
-        self.assertTrue([c for c in calls if " fetch " in c and "x-access-token:TKN@" in c])
-        self.assertFalse([c for c in calls if "set-url" in c and "TKN" in c])
+        fetches = [c for c in calls if " fetch " in c]
+        self.assertTrue(fetches)
+        for c in fetches:
+            self.assertIn("GIT_ASKPASS=", c)
+        for c in calls:
+            self.assertNotIn("TKN", c)
+            self.assertNotIn("x-access-token", c)
+        self.assertFalse([c for c in calls if "set-url" in c])
+        self.assertTrue(any(c.startswith("rm -rf ") and "/tmp/tok.X" in c for c in calls))
 
 
 class TestProvisionE2E(unittest.TestCase):

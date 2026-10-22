@@ -469,7 +469,7 @@ guest_ssh() { vm_ssh "$@"; }
 . "$REPO_ROOT/scripts/lib/load-dotenv.sh"
 load_dotenv himmel_github_token_vm
 [ -n "${himmel_github_token_vm:-}" ] || fail "himmel_github_token_vm not set in the primary checkout's .env"
-FETCH_URL="https://github.com/yotamleo/himmel.git" # leak-allow: hostname the actual private repo this VM script fetches from
+FETCH_URL="https://github.com/yotamleo-org/Himmel.git" # leak-allow: hostname the actual private repo this VM script fetches from # env-literal-ok: the VM suite fetches the one himmel repo
 # shellcheck disable=SC2088 # a REMOTE path handed to guest_ssh's command
 # string — the tilde is expanded by the GUEST's shell, not this one.
 GUEST_DEST="~/himmel"
