@@ -23,6 +23,8 @@ guardrail-skip-in-himmel.js|module required by guardrail-block.mjs, himmel-updat
 guardrail-block.mjs|CLI invoked by himmel-doctor.sh, himmel-update.sh and himmelctl, not a registered hook
 simulate-memory-edit.js|module required by guard-memory-capture.sh
 narrow-allow.mjs|operator-run settings narrowing chokepoint (HIMMEL-1513), invoked by hand
+block-worker-askuserquestion.sh|sourced by the old path block-leg-askuserquestion.sh, which settings wire until HIMMEL-7139 switches them
+guard-worker-wakeup.sh|sourced by the old path guard-leg-wakeup.sh, which settings wire until HIMMEL-7139 switches them
 #
 # Shipped unwired on purpose, activation is an operator step:
 block-pr-check-args.sh|HIMMEL-2306: UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md

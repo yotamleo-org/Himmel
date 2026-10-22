@@ -31,12 +31,8 @@ input schema mirrors the corresponding CLI option/argument semantics and
 routes to the same underlying Jira REST client — so the MCP and CLI surfaces
 behave identically.
 
-Register it with gemini-cli (replace `<himmel>` with the absolute path to
-this repo):
-
-```bash
-gemini mcp add jira -- node <himmel>/scripts/jira/dist/index.js mcp
-```
+Register it with your MCP client (replace `<himmel>` with the absolute path
+to this repo): the command is `node <himmel>/scripts/jira/dist/index.js mcp`.
 
 The tools require the same `JIRA_*` environment the CLI uses; the server
 inherits them from the launching process / repo-root `.env`.

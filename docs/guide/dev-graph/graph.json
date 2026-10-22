@@ -169,8 +169,8 @@
       "id": "c.arm",
       "lane": "console",
       "phase": "dispatch",
-      "label": "Arm leg",
-      "summary": "headed-arm-leg.sh launches the leg in its own window",
+      "label": "Arm worker",
+      "summary": "headed-arm-leg.sh launches the worker in its own window",
       "sources": [
         {
           "file": "scripts/handover/console-kit/headed-arm-leg.sh",
@@ -665,7 +665,7 @@
       "id": "c.legevent",
       "lane": "console",
       "phase": "merge",
-      "label": "Leg event",
+      "label": "Worker event",
       "summary": "MERGED or WRAPPED goes to wrap-merged; anything else is ESCALATE",
       "sources": [
         {

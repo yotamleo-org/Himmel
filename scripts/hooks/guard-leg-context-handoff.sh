@@ -13,7 +13,8 @@
 # Anything else returns at once with no output. The leg's
 # in-process subagents (a non-empty string agent_id) are exempt.
 #
-# Two modes, HIMMEL_LEG_CONTEXT_MODE, set at launch by
+# Two modes, HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name HIMMEL_LEG_CONTEXT_MODE,
+# still read: either name on turns the guard on, a set new name wins), set at launch by
 # `headed-arm-leg.sh --context-guard compact|handoff` and read only from this
 # hook's own process env, so a leg cannot flip it mid-session (an export or a
 # per-call prefix never reaches a hook process). Unset, empty or `none` = the
@@ -37,9 +38,9 @@
 # window: an opus leg launched with --autocompact 200000 reports a 1000000-token
 # window, so the ceiling sits at 20 % fill and a flat % of the window never
 # fired. Ceiling = CLAUDE_CODE_AUTO_COMPACT_WINDOW if numeric (it outranks the
-# flag), else HIMMEL_LEG_AUTOCOMPACT (the launcher's resolved --autocompact;
+# flag), else HIMMEL_WORKER_SESSION_AUTOCOMPACT, old name HIMMEL_LEG_AUTOCOMPACT (the launcher's resolved --autocompact;
 # unset = the 200000 pin, `auto` = the window), clamped to the window. The share
-# is HIMMEL_LEG_CONTEXT_SHARE (1-100, launch env only; anything else = 75).
+# is HIMMEL_WORKER_SESSION_CONTEXT_SHARE, old name HIMMEL_LEG_CONTEXT_SHARE (1-100, launch env only; anything else = 75).
 # 75 % of 200000 is 150000 tokens (15 % fill on a 1M window). Compactions were
 # observed firing from 157k of a 200k ceiling (157k-176k over 349
 # compactions), so 75 % leaves 7000 tokens (3.5 pp of the ceiling) before the
@@ -97,7 +98,8 @@
 # the threshold only (below it the leg was never told to checkpoint); upgrade
 # path: measure it on a VM leg (HIMMEL-4710 item 7) and re-derive the share.
 #
-# Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell (session-sticky; a
+# Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (old name LEG_CONTEXT_HANDOFF_OK; a
+# falsy value in either name keeps the guard on) in the launching shell (session-sticky; a
 # per-call prefix does not reach this hook process).
 #
 # Platform guard (gitbash-only): env vars, jq, git, stat -c/-f, sed; bash
@@ -110,14 +112,20 @@ set -uo pipefail
 
 [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0
 [ -n "${HIMMEL_CONSOLE_NAME:-}" ] || exit 0
-[ "${LEG_CONTEXT_HANDOFF_OK:-0}" = "1" ] && exit 0
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# An unloadable helper lifts nothing: the guard stays on.
+# shellcheck source=../lib/env-alias.sh
+if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
+    env_alias_permit WORKER_SESSION_CONTEXT_HANDOFF_OK LEG_CONTEXT_HANDOFF_OK && exit 0
+fi
 
 CEILING_SHARE=75
-case "${HIMMEL_LEG_CONTEXT_SHARE:-}" in
-    [1-9]|[1-9][0-9]|100) CEILING_SHARE="$HIMMEL_LEG_CONTEXT_SHARE" ;;
+share="${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-${HIMMEL_LEG_CONTEXT_SHARE:-}}"
+case "$share" in
+    [1-9]|[1-9][0-9]|100) CEILING_SHARE="$share" ;;
 esac
 PIN_AUTOCOMPACT=200000
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+autocompact="${HIMMEL_WORKER_SESSION_AUTOCOMPACT:-${HIMMEL_LEG_AUTOCOMPACT:-$PIN_AUTOCOMPACT}}"
 
 warn_allow() {
     printf 'guard-leg-context-handoff: allowing - %s (fail-open)\n' "$1" >&2
@@ -184,12 +192,14 @@ is_handoff_script_call() {
     return 0
 }
 
-MODE="${HIMMEL_LEG_CONTEXT_MODE:-}"
+# Either name on turns the guard on; a set new name decides the mode.
+MODE="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-}"
+case "$MODE" in ''|none) MODE="${HIMMEL_LEG_CONTEXT_MODE:-}" ;; esac
 case "$MODE" in
     ''|none) exit 0 ;;
     compact|handoff) ;;
     *)
-        printf 'guard-leg-context-handoff: unknown HIMMEL_LEG_CONTEXT_MODE %s - using compact\n' "$MODE" >&2
+        printf 'guard-leg-context-handoff: unknown HIMMEL_WORKER_SESSION_CONTEXT_MODE %s - using compact\n' "$MODE" >&2
         MODE=compact
         ;;
 esac
@@ -238,14 +248,14 @@ case "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}" in
     *) ceiling="$CLAUDE_CODE_AUTO_COMPACT_WINDOW" ;;
 esac
 if [ -z "$ceiling" ]; then
-    case "${HIMMEL_LEG_AUTOCOMPACT:-$PIN_AUTOCOMPACT}" in
+    case "$autocompact" in
         auto) ceiling="$window" ;;
         ''|*[!0-9]*)
-            printf 'guard-leg-context-handoff: HIMMEL_LEG_AUTOCOMPACT %s is not a token count - using the window (fail-open)\n' \
-                "${HIMMEL_LEG_AUTOCOMPACT:-}" >&2
+            printf 'guard-leg-context-handoff: HIMMEL_WORKER_SESSION_AUTOCOMPACT %s is not a token count - using the window (fail-open)\n' \
+                "$autocompact" >&2
             ceiling="$window"
             ;;
-        *) ceiling="${HIMMEL_LEG_AUTOCOMPACT:-$PIN_AUTOCOMPACT}" ;;
+        *) ceiling="$autocompact" ;;
     esac
 fi
 if [ -n "$window" ] && [ -n "$ceiling" ] && [ "$ceiling" -gt 0 ]; then
@@ -410,16 +420,17 @@ fi
 allowed="SendMessage, ListAgents, ToolSearch, TaskStop, append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd"
 commit_form='A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>".'
 stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your console ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
-mode_note="The mode is set at launch by the console (HIMMEL_LEG_CONTEXT_MODE); it cannot be changed in-session."
+mode_note="The mode is set at launch by the console (HIMMEL_WORKER_SESSION_CONTEXT_MODE, old name HIMMEL_LEG_CONTEXT_MODE); it cannot be changed in-session."
+bypass_note="Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (old name LEG_CONTEXT_HANDOFF_OK) in the launching shell."
 if [ "$MODE" = "compact" ]; then
-    deny_msg="leg context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell."
+    deny_msg="leg context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} ${bypass_note}"
 else
     if [ "$no_successor" = 1 ]; then
         write_to="a new *-RESUME.md in ${dir} that is not ${doc}, whose name carries the leg id ${leg_base} with no suffix (the leg id ${leg_id} ends in z, so no successor suffix exists)"
     else
         write_to="${want}"
     fi
-    deny_msg="leg context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your console ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell."
+    deny_msg="leg context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your console ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
 fi
 
 if [ "$event" = "PreCompact" ]; then

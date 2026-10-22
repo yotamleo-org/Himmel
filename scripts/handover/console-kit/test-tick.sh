@@ -207,6 +207,7 @@ export TICK_STATE_DIR="$W/state"
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
 export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
+unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
@@ -2381,6 +2382,9 @@ same 'a failed digest from before this shift does not read ? (HIMMEL-4670)' "$(f
 rm -f "$HIMMEL_LEG_FAILURES_LEDGER"; mkdir -p "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'fails=? when the ledger is unreadable (HIMMEL-4670)' "$(fails_of "$d4670")" '?'
 rmdir "$HIMMEL_LEG_FAILURES_LEDGER"
+mkdir -p "$W/fl-new-dir"
+same 'fails=? reads HIMMEL_WORKER_SESSION_FAILURES_LEDGER before the old name' "$(HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-new-dir" fails_of "$d4670")" '?'
+rmdir "$W/fl-new-dir"
 frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_LEG_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"

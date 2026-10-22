@@ -258,7 +258,7 @@ usage() {
 # inheritance (this was true before and must stay true), so the
 # value is left there untouched, a stderr warning explains why no token was
 # added, and this function returns without exit.
-leg_propagate_env() {
+_leg_propagate_one() {
     _leg_prop_name="$1"
     _leg_prop_value="$2"
     case "$_leg_prop_value" in
@@ -290,12 +290,52 @@ leg_propagate_env() {
     unset -v _leg_prop_name _leg_prop_value _leg_prop_tok
 }
 
+# leg_env_twin NAME - the worker-session name a leg env name is mirrored
+# to, or nothing. The leg reads both names (the new one wins), so every set
+# and every drop below covers the pair.
+leg_env_twin() {
+    case "$1" in
+        HIMMEL_LEG_CONTEXT_MODE) echo HIMMEL_WORKER_SESSION_CONTEXT_MODE ;;
+        HIMMEL_LEG_AUTOCOMPACT) echo HIMMEL_WORKER_SESSION_AUTOCOMPACT ;;
+        LEG_LANE) echo WORKER_SESSION_LANE ;;
+        LEG_PROFILE_SETTINGS) echo WORKER_SESSION_PROFILE_SETTINGS ;;
+        LEG_PROFILE_PREFACE) echo WORKER_SESSION_PROFILE_PREFACE ;;
+        LEG_PROFILE_MCP_CONFIG) echo WORKER_SESSION_PROFILE_MCP_CONFIG ;;
+        LEG_PROFILE_NO_SETTING_SOURCES) echo WORKER_SESSION_PROFILE_NO_SETTING_SOURCES ;;
+        LEG_SESSION_ID) echo WORKER_SESSION_ID ;;
+        HIMMEL_LEG_PROFILE) echo HIMMEL_WORKER_SESSION_PROFILE ;;
+        LEG_CLAUDE_BIN) echo WORKER_SESSION_CLAUDE_BIN ;;
+        HIMMEL_LEAN_LEG) echo HIMMEL_LEAN_WORKER_SESSION ;;
+    esac
+}
+
+# leg_propagate_env NAME VALUE - _leg_propagate_one for NAME and its twin.
+# Every twinned name is dropped (leg_env_drop_token) before it is set, so no
+# caller-preset token can leave the pair carrying two values.
+leg_propagate_env() {
+    _leg_prop_twin="$(leg_env_twin "$1")"
+    _leg_propagate_one "$1" "$2"
+    if [ -n "$_leg_prop_twin" ]; then
+        _leg_propagate_one "$_leg_prop_twin" "$2"
+    fi
+    unset -v _leg_prop_twin
+}
+
 # leg_env_drop_token NAME - remove every NAME=... token from a
 # caller-preset HEADED_ARM_LAUNCHER_ENV, keeping the rest in order. For a var
 # this wrapper must own outright (a scrubbed knob, a validated value), where
 # leg_propagate_env's caller-wins de-dupe would otherwise let the preset token
-# reach the leg. set -f so no caller token is glob-expanded.
+# reach the leg. set -f so no caller token is glob-expanded. NAME's twin goes too.
 leg_env_drop_token() {
+    _leg_drop_one "$1"
+    _leg_drop_twin="$(leg_env_twin "$1")"
+    if [ -n "$_leg_drop_twin" ]; then
+        _leg_drop_one "$_leg_drop_twin"
+    fi
+    unset -v _leg_drop_twin
+}
+
+_leg_drop_one() {
     _leg_drop_kept=""
     set -f
     for _leg_drop_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
@@ -337,12 +377,16 @@ IGNORE_DENIALS=0
 NO_PRIOR_ART_CHECK=0
 HEADLESS=0
 [ "${LEG_HEADLESS:-}" = "1" ] && HEADLESS=1
-LANE="${LEG_LANE:-native}"
+LANE="${WORKER_SESSION_LANE:-${LEG_LANE:-native}}"
+# WORKER_SESSION_EFFORT is the new name of LEG_EFFORT and wins when set.
+[ -n "${WORKER_SESSION_EFFORT:-}" ] && LEG_EFFORT="$WORKER_SESSION_EFFORT"
 PROFILE="${LEG_PROFILE:-}"
 CHIEF_FLAG=""
 # the leg context guard is off unless the caller asks, by
-# --context-guard or a HIMMEL_LEG_CONTEXT_MODE in the launching env (the flag wins).
-CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-}"
+# --context-guard or a HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name
+# HIMMEL_LEG_CONTEXT_MODE) in the launching env (the flag wins).
+CONTEXT_GUARD="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-}"
+case "$CONTEXT_GUARD" in ''|none) CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-$CONTEXT_GUARD}" ;; esac
 FLEET_MANIFEST=""
 while :; do
     case "${1:-}" in
@@ -682,6 +726,15 @@ if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ] && [ -f "$DOC" ]; then
     PROFILE="$(head -n 60 "$DOC" | sed -n -E 's/^[>* -]*profile:[[:space:]]*`?([A-Za-z0-9._,-]+)`?[[:space:]]*$/\1/p' | head -n 1)"
 fi
 
+# worker-* profile ids are the new names of the leg-* registry keys
+# (plugin-profiles.mjs PROFILE_ALIASES); map them here so the leg-vm check
+# below and every profile consumer see one name.
+case "$PROFILE" in
+    *worker-*)
+        PROFILE="$(printf '%s' "$PROFILE" | sed -E 's/(^|,)worker-(impl|bus|vm|e2e)(,|$)/\1leg-\2\3/g; s/(^|,)worker-(impl|bus|vm|e2e)(,|$)/\1leg-\2\3/g')"
+        ;;
+esac
+
 # --profile release-manager: a judge-shaped role session bound to one release.
 # It is read-only like a judge, native-lane only, never composed into a profile
 # list, and requires --rm-release <R>, which names its state dir
@@ -784,7 +837,8 @@ fi
 if [ "$RELAY" -eq 1 ]; then
     [ -z "$MODEL" ] && MODEL=claude-sonnet-5-5
     : "${LEG_EFFORT:=low}"
-    export LEG_EFFORT
+    WORKER_SESSION_EFFORT="$LEG_EFFORT"
+    export LEG_EFFORT WORKER_SESSION_EFFORT
 fi
 
 # --judge defaults MODEL to the Opus tier at high effort, but ONLY on the
@@ -1142,7 +1196,9 @@ unset -v _leg_env_scrub
 # leg_propagate_env calls are the only thing that can set them again.
 # LEG_PROFILE_NO_SETTING_SOURCES rides the same scrub: only --consult sets it.
 # LEG_SESSION_ID too: a sibling's id reused here would collide.
-for _leg_env_scrub in LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID; do
+# Each worker-session twin rides the same scrub.
+for _leg_env_scrub in LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID \
+    WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID; do
     unset -v "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"
 done
@@ -1190,11 +1246,12 @@ unset -v _leg_env_scrub
 # that if the judge role ever grows a claudex-arming path.
 for _leg_env_scrub in $(console_context_leg_env_unset_names); do
     case "$_leg_env_scrub" in
-        HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|LEG_EFFORT|HEADED_ARM_UNAME) continue ;;
+        HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|LEG_EFFORT|WORKER_SESSION_EFFORT|HEADED_ARM_UNAME) continue ;;
         HIMMEL_CONSOLE_LEG) continue ;;
         # the console's chosen context mode is launch input, read below.
-        HIMMEL_LEG_CONTEXT_MODE) continue ;;
+        HIMMEL_LEG_CONTEXT_MODE|HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
         LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG) continue ;;
+        WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
     esac
     unset -v "$_leg_env_scrub"
@@ -1484,7 +1541,7 @@ case "$CONTEXT_GUARD" in
     ''|none) CONTEXT_GUARD="" ;;
     compact|handoff) ;;
     *)
-        echo "headed-arm-leg: --context-guard / HIMMEL_LEG_CONTEXT_MODE must be compact or handoff, or none for off (got ${CONTEXT_GUARD})" >&2
+        echo "headed-arm-leg: --context-guard / HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name HIMMEL_LEG_CONTEXT_MODE) must be compact or handoff, or none for off (got ${CONTEXT_GUARD})" >&2
         exit 2
         ;;
 esac
@@ -1492,7 +1549,7 @@ leg_env_drop_token HIMMEL_LEG_CONTEXT_MODE
 if [ -n "$CONTEXT_GUARD" ]; then
     leg_propagate_env HIMMEL_LEG_CONTEXT_MODE "$CONTEXT_GUARD"
 else
-    unset -v HIMMEL_LEG_CONTEXT_MODE
+    unset -v HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
 fi
 unset -v CONTEXT_GUARD
 leg_env_drop_token HIMMEL_LEG_AUTOCOMPACT
@@ -2214,10 +2271,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the leg's context guard reads.
-    printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s\n' \
+    printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
         "$LEG_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
-        "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}"
+        "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
+        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
     # as the --profile line below.

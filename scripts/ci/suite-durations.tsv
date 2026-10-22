@@ -364,6 +364,7 @@ scripts/handover/console-kit/test-gh-read.sh	1
 scripts/handover/console-kit/test-go.sh	13
 scripts/handover/console-kit/test-grant-round.sh	7
 scripts/handover/console-kit/test-handoff-facts.sh	0
+scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh	2
 scripts/handover/console-kit/test-headed-arm-leg.sh	117
 scripts/handover/console-kit/test-himmel-gate.sh	0
 scripts/handover/console-kit/test-hook-copy-reaper.sh	0
@@ -559,7 +560,7 @@ scripts/hooks/test-block-graphify-egress.sh	2
 scripts/hooks/test-block-himmel-config-writes.sh	5
 scripts/hooks/test-block-infra-destroy.sh	4
 scripts/hooks/test-block-jira-compound-write.sh	16
-scripts/hooks/test-block-leg-askuserquestion.sh	0
+scripts/hooks/test-block-worker-askuserquestion.sh	0
 scripts/hooks/test-block-lesson-enforcement-writes.sh	0
 scripts/hooks/test-block-mcp-when-plugin-exists.sh	3
 scripts/hooks/test-block-merged-pr-commit.sh	3
@@ -652,7 +653,7 @@ scripts/hooks/test-guard-identical-denied-retry.sh	1
 scripts/hooks/test-guard-implementor-dispatch.sh	237
 scripts/hooks/test-guard-judge-writes.sh	1
 scripts/hooks/test-guard-leg-context-handoff.sh	18
-scripts/hooks/test-guard-leg-wakeup.sh	0
+scripts/hooks/test-guard-worker-wakeup.sh	0
 scripts/hooks/test-guard-memory-capture.sh	1
 scripts/hooks/test-guard-pr-check-literal.sh	32
 scripts/hooks/test-guard-relay-writes.sh	5

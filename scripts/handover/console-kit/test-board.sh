@@ -35,6 +35,7 @@ same() {
 B="$W/bucket"
 mkdir -p "$B" "$W/bin" "$W/repo"
 # the failures panel reads these ledgers; never the operator's own.
+unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 # the usage lift row reads the lift's `show` output through this stub,
 # never the operator's lift file or account. USAGE_LIFT_STUB_OUT is a fixture file
@@ -816,6 +817,10 @@ mkdir -p "$W/fl-dir"
 QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_LEG_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
 same 'failures panel: unreadable ledger, rc 0' "$rc" "0"
 contains 'failures panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
+rm -f "$M/board.html"
+QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
+same 'failures panel: worker-session unreadable ledger, rc 0' "$rc" "0"
+contains 'failures panel: HIMMEL_WORKER_SESSION_FAILURES_LEDGER wins over the old name' "$(cat "$M/board.html")" 'leg failures unavailable'
 for i in $(seq 1 12); do frow 2026-10-07T03:10:00Z "N$i" "c/k$(printf '%02d' "$i")" 1 false; done > "$FL"
 QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null
 same 'failures panel: the live page shows the top 5 rows' "$(grep -o '<tr data-class=' "$M/board.html" | wc -l | tr -d ' ')" "5"
