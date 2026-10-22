@@ -688,8 +688,8 @@
           { k: 'release', l: 'CI release', sub: 'ci:go, planned', st: s.ciRelease && !gb ? 'auto' : 'off', n: !s.ciRelease ? 'Planned, opt-in per repository. Not opted in: CI runs on every push, as today.'
             : gb ? 'Planned. ci:go waits for the review gate, which cannot pass with these settings, so the heavy CI jobs do not start.'
             : 'Planned. Once the review gate passes at the head and the cheap checks are green, the station adds the ci:go label, which starts the heavy CI jobs. It never merges anything.' },
-          { k: 'merge', l: 'Merge', sub: 'private repo', st: gb ? 'off' : (!off && has('merge') ? 'auto' : 'manual'), n: (!off && has('merge') ? 'The merge step authorizes an unattended merge. ' : 'Not enabled: the run stops at the pull request. ') + mergeNote() },
-          { k: 'close', l: 'Close ticket', sub: 'tracker', st: !off && has('ticket') ? 'auto' : 'manual', n: !off && has('ticket') ? 'Moved to Done unasked when the pull request finishes the ticket, with the PR number and merge commit noted on it.' : 'A merge does not close the ticket by itself: if the pull request finishes it, you move it to Done.' },
+          { k: 'merge', l: 'Merge', sub: 'private repo', st: gb ? 'off' : (!off && has('merge') ? 'auto' : 'manual'), n: gb ? 'The review gate cannot pass with these settings, so nothing merges.' : (!off && has('merge') ? 'The merge step authorizes an unattended merge. ' : 'Not enabled: the run stops at the pull request. ') + mergeNote() },
+          { k: 'close', l: 'Close ticket', sub: 'tracker', st: gb ? 'off' : (!off && has('ticket') ? 'auto' : 'manual'), n: gb ? 'Nothing merges with these settings, so the ticket stays open.' : !off && has('ticket') ? 'Moved to Done unasked when the pull request finishes the ticket, with the PR number and merge commit noted on it.' : 'A merge does not close the ticket by itself: if the pull request finishes it, you move it to Done.' },
           { k: 'handover', l: 'Handover', sub: 'next session', st: !off && has('handover') ? 'auto' : 'manual', n: 'Writes the next session’s brief and files follow-up tickets.' }
         ];
       } },
