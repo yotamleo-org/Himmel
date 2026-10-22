@@ -2153,7 +2153,10 @@ for v in \
     "env LC_ALL=C grep -rn --exclude='*.sh' foo docs" \
     "git ls-files | xargs rg --glob '*.sh' foo" \
     "nice grep -rn --exclude-dir='t*' --include '*.sh' foo docs" \
-    "timeout 60 grep -rn -e foo --include='*.sh' docs"; do
+    "timeout 60 grep -rn -e foo --include='*.sh' docs" \
+    "timeout 60 grep -rn --include='scripts/cr/*.sh' foo docs" \
+    "timeout 60 rg -g 'scripts/cr/*.sh' foo docs" \
+    "git ls-files | xargs grep -n --include='scripts/handover/*.sh' foo"; do
     run "HIMMEL-6927 s3 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 for v in \
@@ -2164,6 +2167,8 @@ for v in \
     "timeout 60 grep -e --include '*.sh' docs" \
     "timeout 60 grep -rne --include '*.sh' docs" \
     "xargs bash '*.sh'" \
+    "timeout 60 grep -rn --include='scripts/cr/*.sh' foo docs; bash scripts/cr/*.sh" \
+    "timeout 60 grep -rn --include=scripts/cr/*.sh foo docs" \
     "timeout 60 grep -rn --include='*.sh' foo docs; timeout 5 bash '*.sh'" \
     "timeout 60 grep -rn --include='*.sh' \"\$X\" docs; bash '*.sh'" \
     "git config core.pager 'scripts/c?/write-verdicts.sh'" \

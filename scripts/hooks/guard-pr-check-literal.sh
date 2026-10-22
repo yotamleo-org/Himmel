@@ -1968,24 +1968,6 @@ glob_is_literal_elsewhere() {
 # allow-listed scripts/ path anyway; this hook closes the two named scripts.
 hit=0
 unresolved=""
-# A whole word that names a path through cr/ (any case) is read by its text
-# alone, so a word the shell rewrites first - an expansion, a substitution, a
-# glob, a brace list, a tilde - is unresolvable, and so is a relative one a
-# case-insensitive filesystem folds. Whole words, before any split: a
-# substitution ($(pwd)/scripts/cr/...) only looks absolute once split.
-# Absolute words keep their case (an adopter's /Users/... anchor path).
-for word in $flat; do
-    case "$word" in *[cC][rR]/*|*[hH]andover/*) ;; *) continue ;; esac
-    if [ "$himmel_anchor_prefix" -eq 1 ]; then
-        # shellcheck disable=SC2016 # literal text match, never expanded
-        case "$word" in '$HIMMEL_REPO/'*|'${HIMMEL_REPO}/'*) continue ;; esac
-    fi
-    case "$word" in
-        *[][*?~\$\(\`]*|*'{'*|*'}'*) hit=1; unresolved=$word ;;
-        /*) ;;
-        *[[:upper:]]*) hit=1; unresolved=$word ;;
-    esac
-done
 entries=""
 hentries=""
 # inert_filter_globs - a pure searcher (grep, egrep, fgrep, rg), also behind a
@@ -2045,6 +2027,35 @@ inert_filter_globs() {
     return 0
 }
 inert_filter_globs
+# A whole word that names a path through cr/ (any case) is read by its text
+# alone, so a word the shell rewrites first - an expansion, a substitution, a
+# glob, a brace list, a tilde - is unresolvable, and so is a relative one a
+# case-insensitive filesystem folds. Whole words, before any split: a
+# substitution ($(pwd)/scripts/cr/...) only looks absolute once split.
+# Absolute words keep their case (an adopter's /Users/... anchor path).
+# An inert filter value (inert_filter_globs) is dropped here once per occurrence.
+INERT_PRE=()
+ig=0
+while [ "$ig" -lt "${#INERT_GLOBS[@]}" ]; do INERT_PRE+=("${INERT_GLOBS[ig]}"); ig=$((ig + 1)); done
+for word in $flat; do
+    case "$word" in *[cC][rR]/*|*[hH]andover/*) ;; *) continue ;; esac
+    if [ "$himmel_anchor_prefix" -eq 1 ]; then
+        # shellcheck disable=SC2016 # literal text match, never expanded
+        case "$word" in '$HIMMEL_REPO/'*|'${HIMMEL_REPO}/'*) continue ;; esac
+    fi
+    wv=$word
+    case "$word" in --*=*) wv=${word#*=} ;; esac
+    ig=0
+    while [ "$ig" -lt "${#INERT_PRE[@]}" ]; do
+        if [ "${INERT_PRE[ig]}" = "$wv" ]; then INERT_PRE[ig]=''; continue 2; fi
+        ig=$((ig + 1))
+    done
+    case "$word" in
+        *[][*?~\$\(\`]*|*'{'*|*'}'*) hit=1; unresolved=$word ;;
+        /*) ;;
+        *[[:upper:]]*) hit=1; unresolved=$word ;;
+    esac
+done
 _c_ops_eq_to_nl "$flat"
 for tok in $REPLY; do
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
