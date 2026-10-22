@@ -124,6 +124,7 @@ scripts/agents-md/test-pointers.sh	1
 scripts/api-lane/test-claude-api.sh	24
 scripts/ci/test-apt-install.sh	6
 scripts/ci/test-cancel-superseded-runs.sh	1
+scripts/ci/test-check-ci-install-locks.sh	5
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
 scripts/ci/test-check-cr-terminology.sh	0

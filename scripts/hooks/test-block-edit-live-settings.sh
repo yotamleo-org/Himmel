@@ -536,12 +536,15 @@ assert_rc "69 nested worktree abs write to its own settings.json allows" 0 \
 # below (J1282O-F1 through J1282O-F3).
 assert_rc "70 accepted false deny: harmless cd + worktree settings write denies" 2 \
     "$(bash_rc_of "$WT2" "cd . && echo x > .claude/settings.json")"
-assert_rc "71 accepted false deny: cat >> other file with settings.json in heredoc prose denies" 2 \
+# Reading a heredoc body as data needs shfmt; a host without it keeps the deny (6548i).
+HD_ALLOW=0
+command -v shfmt >/dev/null 2>&1 || HD_ALLOW=2
+assert_rc "71 cat >> other file with settings.json in a quoted heredoc body allows (HIMMEL-6548; was an accepted false deny)" "$HD_ALLOW" \
     "$(bash_rc_of "$PRIMARY" "cat >> /tmp/doc.md <<'EOF'
 - avoided .claude/settings.json
 EOF")"
-# 71m (HIMMEL-4934): the accepted false deny at least names the Write-tool retry.
-MSG71=$(jq -n --arg cmd "cat >> /tmp/doc.md <<'EOF'
+# 71m: a heredoc-mention deny that remains (a consumer other than cat) names the Write-tool retry.
+MSG71=$(jq -n --arg cmd "tee /tmp/doc.md <<'EOF'
 - avoided .claude/settings.json
 EOF" --arg cwd "$PRIMARY" '{tool_name: "Bash", tool_input: {command: $cmd, cwd: $cwd}}' \
     | bash "$HOOK" 2>&1 >/dev/null)
@@ -551,6 +554,62 @@ case "$MSG71" in
 esac
 assert_rc "72 piped grep naming settings.json from primary allows (HIMMEL-3546; was an accepted false deny)" 0 \
     "$(bash_rc_of "$PRIMARY" "grep -rl x scripts .claude/settings.json docs | head")"
+
+# A heredoc body is data when shfmt's positions show a bare `cat`
+# consumer and a literal body; every other shape keeps the whole text judged.
+# 6548a-6548d are the shared command-position corpus; the rest pin what stays a deny.
+assert_rc "6548a jq program string naming settings.json is data" 0 \
+    "$(bash_rc_of "$PRIMARY" "jq -n '\"> .claude/settings.json\"'")"
+assert_rc "6548b a quoted heredoc body naming settings.json is data" "$HD_ALLOW" \
+    "$(bash_rc_of "$PRIMARY" "cat <<'EOF'
+echo x > .claude/settings.json
+EOF")"
+assert_rc "6548c a cd right of a pipe may reach the next settings write" 2 \
+    "$(bash_rc_of "$SANDBOX" "echo x | cd ~/.claude; echo x > settings.json" HOME="$FAKEHOME")"
+assert_rc "6548d a cd behind || may reach the next settings write" 2 \
+    "$(bash_rc_of "$SANDBOX" "false || cd ~/.claude; echo x > settings.json" HOME="$FAKEHOME")"
+assert_rc "6548e cat > settings.json with a heredoc body still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat > .claude/settings.json <<'EOF'
+{}
+EOF")"
+assert_rc "6548f an unquoted heredoc body with an expansion naming settings.json denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat >> /tmp/doc.md <<EOF
+- avoided \$PWD/.claude/settings.json
+EOF")"
+assert_rc "6548g a quoted heredoc piped into bash denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat <<'EOF' | bash
+- avoided .claude/settings.json
+EOF")"
+assert_rc "6548h a quoted heredoc to cat beside a real settings write denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat <<'EOF'
+note
+EOF
+echo x > .claude/settings.json")"
+if command -v shfmt >/dev/null 2>&1; then
+    # a PATH holding every tool but shfmt
+    NOSH="$SANDBOX/no-shfmt-bin"; mkdir -p "$NOSH"
+    _oifs=$IFS; IFS=:
+    for _d in $PATH; do
+        for _t in "$_d"/*; do
+            case "${_t##*/}" in shfmt) ;; *) [ -e "$NOSH/${_t##*/}" ] || ln -s "$_t" "$NOSH/${_t##*/}" 2>/dev/null ;; esac
+        done
+    done
+    IFS=$_oifs
+    assert_rc "6548i shfmt missing keeps the heredoc-mention deny" 2 \
+        "$(bash_rc_of "$PRIMARY" "cat >> /tmp/doc.md <<'EOF'
+- avoided .claude/settings.json
+EOF" PATH="$NOSH")"
+    MSG6548=$(jq -n --arg cmd "cat >> /tmp/doc.md <<'EOF'
+- avoided .claude/settings.json
+EOF" --arg cwd "$PRIMARY" '{tool_name: "Bash", tool_input: {command: $cmd, cwd: $cwd}}' \
+        | env PATH="$NOSH" bash "$HOOK" 2>&1 >/dev/null)
+    case "$MSG6548" in
+        *shfmt*) assert_rc "6548j the shfmt-missing deny names shfmt" 0 0 ;;
+        *) assert_rc "6548j the shfmt-missing deny names shfmt" 0 1 ;;
+    esac
+else
+    echo "SKIP 6548i/6548j: shfmt not on PATH"
+fi
 
 # 71d-71g (HIMMEL-3615 ticket rows, user-scope \$HOME): the ticket's own
 # repro list, run against \$HOME's live settings.json rather than the

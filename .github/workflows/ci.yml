@@ -579,6 +579,7 @@ jobs:
         run: |
           bash scripts/ci/check-no-secrets.sh
           bash scripts/ci/check-actions-pinned.sh
+          bash scripts/ci/check-ci-install-locks.sh
       - id: bwk-awk-mktemp-gate
         if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_bwk_gate == 'false') }}
         timeout-minutes: 10
@@ -636,7 +637,7 @@ jobs:
       - id: jira-cli-smoke__npm
         if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
         timeout-minutes: 10
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: scripts/jira
       - id: jira-cli-smoke
         if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
@@ -665,11 +666,12 @@ jobs:
         name: Install the pinned claude CLI
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        # The image's /usr/local is root-owned; setup-node's prefix is the runner's.
-        env:
-          IN_IMAGE: ${{ job.container.id }}
+        # HIMMEL-7092: installed from .github/claude-cli/package-lock.json (sha512 per
+        # package) with no install scripts; the native binary is the locked platform
+        # package's own file. /usr/local is root-owned in the image and the runner alike.
         run: |
-          ${IN_IMAGE:+sudo} npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          npm ci --ignore-scripts --no-audit --no-fund --prefix .github/claude-cli
+          sudo install -m 0755 .github/claude-cli/node_modules/@anthropic-ai/claude-code-linux-x64/claude /usr/local/bin/claude
           claude --version
       # ubuntu-24.04 refuses unprivileged user namespaces by default (AppArmor);
       # the suite needs `unshare -rn` and fails closed without it.
@@ -1162,7 +1164,8 @@ jobs:
       # reach main. The old `shellcheck --severity=warning` over a hand-kept
       # file list let info-level findings (SC2119) through CI and fail locally.
       - if: ${{ !job.container.id }}
-        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt
       # HIMMEL-4319: the hook is require_serial, so `--all-files` is one
       # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
       # shellcheck resolves `source` across the files of ONE invocation, so
@@ -1336,7 +1339,7 @@ jobs:
         run: |
           rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
           [ -n "$rev" ] || { echo "no shellcheck-py rev in .pre-commit-config.yaml" >&2; exit 1; }
-          python -m pip install --disable-pip-version-check --target "$RUNNER_TEMP/shellcheck-pinned" "shellcheck-py==$rev"
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: --target "$RUNNER_TEMP/shellcheck-pinned" -r .github/ci-image/requirements-shellcheck.txt
           echo "$RUNNER_TEMP/shellcheck-pinned/bin" >> "$GITHUB_PATH"
           echo "SHELLCHECK_PIN=$rev" >> "$GITHUB_ENV"
       # The image bakes the same shellcheck-py rev; the next step checks it.
@@ -1386,7 +1389,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}/package-lock.json
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: npm test
@@ -1410,8 +1413,10 @@ jobs:
   # namespace and no model turn runs, so it needs no login, no secret and no
   # network (see scripts/testing/fakekey-claude.sh). The CLI is PINNED to an
   # exact version so a Claude Code release cannot redden or silently change this
-  # job: to bump it, change CLAUDE_CLI_VERSION below (it must exist on npm:
-  # `npm view @anthropic-ai/claude-code@<v> version`), run
+  # job: to bump it, change CLAUDE_CLI_VERSION below and regenerate
+  # .github/claude-cli/package-lock.json on a test VM (the version must exist on npm:
+  # `npm view @anthropic-ai/claude-code@<v> version`; then in .github/claude-cli:
+  # `npm install --package-lock-only --ignore-scripts @anthropic-ai/claude-code@<v>`), run
   # `bash scripts/testing/test-fakekey-claude-startup.sh` against that version
   # locally, and fix any assertion the new debug-log wording breaks in the same PR.
   # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
@@ -1572,7 +1577,7 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
-      - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bash ../ci/run-bun-tests.sh scripts/luna-vitals
+      - run: cd scripts/luna-vitals && bun install --frozen-lockfile --ignore-scripts && bash ../ci/run-bun-tests.sh scripts/luna-vitals
       # Must run from the repo root, not scripts/telegram/ — these suites pin
       # their fixtures repo-root-relative, so running them from their own
       # directory fails every wired case (docs/internals/environment-gotchas.md,
@@ -1605,13 +1610,13 @@ jobs:
       # the class of bug where a dep range is bumped in package.json but the
       # lockfile is never regenerated (HIMMEL-553). HIMMEL-2620 wired the test
       # run for the suite that was always there under tests/.
-      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
+      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
       # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped and a red non-gating Windows leg would file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
+        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
       # HIMMEL-3827: fleet-control (9 files) and observability (bun files) had
       # no CI step. Repo-root cwd like the suites above; ubuntu only (POSIX
       # fixtures, spawned servers) so the non-gating Windows leg stays quiet.
@@ -2035,7 +2040,8 @@ jobs:
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
         if: runner.environment == 'github-hosted' && !job.container.id
         shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt
       # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,
       # but Git Bash is preinstalled + on PATH, so `bash …` runs under MSYS2.
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
