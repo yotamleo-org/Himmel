@@ -150,6 +150,29 @@ run_cfg "$fxA2" set initiative.pr on
 grep -qE '^HIMMEL_INITIATIVE=execute,pr$' "$confA2" \
   || fail "caseA2: set should carry the legacy tokens into himmel.conf (got: $(cat "$confA2" 2>&1))"
 echo "ok: caseA2 a legacy .env value still reads, and a set moves it into himmel.conf"
+
+# Turning off the last leg must not fall through to a lower layer still carrying it.
+fxA3="$work/fixtureA3"; build_fixture "$fxA3"
+printf 'HIMMEL_INITIATIVE=execute\n' > "$fxA3/.env"
+CFG_HOME="$work/homeA3"
+run_cfg "$fxA3" set initiative.execute off
+[ "$CFG_RC" -eq 0 ] || fail "caseA3: set initiative.execute off should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+run_cfg "$fxA3" get initiative.execute
+grepq "$CFG_OUT" -F 'initiative.execute: off' \
+  || fail "caseA3: the last legacy leg should read off after set off (got: $CFG_OUT)"
+echo "ok: caseA3 turning off the last leg also clears the lower layer that carried it"
+
+# A himmel.conf.local override is the layer a set must change, or the set has no effect.
+fxA4="$work/fixtureA4"; build_fixture "$fxA4"
+CFG_HOME="$work/homeA4"
+mkdir -p "$CFG_HOME/.himmel"
+printf 'HIMMEL_INITIATIVE=execute\n' > "$CFG_HOME/.himmel/himmel.conf.local"
+run_cfg "$fxA4" set initiative.pr on
+[ "$CFG_RC" -eq 0 ] || fail "caseA4: set initiative.pr on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+run_cfg "$fxA4" get initiative.pr
+grepq "$CFG_OUT" -F 'initiative.pr: on' \
+  || fail "caseA4: a set under a himmel.conf.local override must take effect (got: $CFG_OUT)"
+echo "ok: caseA4 a set writes the himmel.conf.local layer that overrides himmel.conf"
 CFG_HOME="$work/homeA"
 
 # ── Case B: initiative get ──────────────────────────────────────────────────

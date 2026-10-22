@@ -7764,21 +7764,22 @@ function readConfigVar(key) {
   return behaviourConfigLib.readConfigVar(key, envFilePath());
 }
 
-// Write KEY=VALUE to the tracked config file ~/.himmel/himmel.conf.
-// --dry-run prints the would-be line and writes nothing.
-function writeConfigVar(key, value, args) {
-  const target = behaviourConfigLib.confPath();
-  if (args.dryRun) {
-    console.log(`DRY: ${key}=${value} (would write to ${target})`);
-    return true;
+// Write KEY=VALUE to each of `targets` (default: the tracked config file
+// ~/.himmel/himmel.conf). --dry-run prints the would-be line and writes nothing.
+function writeConfigVar(key, value, args, targets) {
+  for (const target of targets || [behaviourConfigLib.confPath()]) {
+    if (args.dryRun) {
+      console.log(`DRY: ${key}=${value} (would write to ${target})`);
+      continue;
+    }
+    try {
+      behaviourConfigLib.upsertConfEntries(target, [[key, value]]);
+    } catch (e) {
+      console.error(`himmelctl: failed to write ${key} to ${target}: ${e.message}`);
+      return false;
+    }
+    console.log(`${key} -> ${value || '(empty)'} (written to ${target})`);
   }
-  try {
-    behaviourConfigLib.upsertConfEntries(target, [[key, value]]);
-  } catch (e) {
-    console.error(`himmelctl: failed to write ${key} to ${target}: ${e.message}`);
-    return false;
-  }
-  console.log(`${key} -> ${value || '(empty)'} (written to ${target})`);
   return true;
 }
 
@@ -7787,9 +7788,16 @@ function cmdConfigSetInitiative(leg, onOff, args) {
     console.error(`himmelctl: unknown initiative leg '${leg}' (known: ${INITIATIVE_LEGS.join(', ')})`);
     return 2;
   }
-  const current = readConfigVar('HIMMEL_INITIATIVE').value;
+  const { value: current, file } = readConfigVar('HIMMEL_INITIATIVE');
   const next = toggleToken(current, leg, onOff === 'on');
-  return writeConfigVar('HIMMEL_INITIATIVE', next, args) ? 0 : 1;
+  // An empty value reads as unset and falls through to the next layer, so
+  // clearing the last leg blanks every layer that carries one; otherwise the
+  // write lands in the layer the current value came from when that is the
+  // himmel.conf.local override, else himmel.conf.
+  const targets = next === ''
+    ? behaviourConfigLib.layersSetting('HIMMEL_INITIATIVE', envFilePath())
+    : [file === behaviourConfigLib.confLocalPath() ? file : behaviourConfigLib.confPath()];
+  return writeConfigVar('HIMMEL_INITIATIVE', next, args, targets.length ? targets : undefined) ? 0 : 1;
 }
 
 function cmdConfigGetInitiative(leg) {

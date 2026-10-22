@@ -44,6 +44,18 @@ function readConfigVar(key, legacyEnvFile) {
   return { value: '', file: confPath() };
 }
 
+// Every layer file that sets KEY non-empty, highest precedence first. An empty
+// value reads as unset, so clearing a key means blanking it in each of these.
+function layersSetting(key, legacyEnvFile) {
+  const files = [];
+  for (const file of [confLocalPath(), confPath(), legacyEnvFile]) {
+    if (!file) continue;
+    const parsed = readParsed(file);
+    if (parsed && parsed[key]) files.push(file);
+  }
+  return files;
+}
+
 // Replace each key's line in place (first match; later duplicates dropped),
 // append the missing ones, drop every dropKeys entry not in entries, leave every
 // other line untouched. Creates the file and its directory when absent.
@@ -65,4 +77,4 @@ function upsertConfEntries(file, entries, dropKeys) {
   fs.writeFileSync(file, `${lines.join('\n')}\n`);
 }
 
-module.exports = { confPath, confLocalPath, readConfigVar, upsertConfEntries };
+module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, upsertConfEntries };
