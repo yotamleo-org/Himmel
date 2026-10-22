@@ -68,6 +68,45 @@ runs_json() { # runs_json <status> <id>...
 reset() { rm -f "$TMP"/fx/*; }
 run() { GH_READ_ENV_ROOT="$TMP/env" FX="$TMP/fx" PATH="$TMP/bin:$PATH" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 45} bash "$SCRIPT" -R owner/repo 2> "$TMP/stderr"; }
 
+# A real jobs response copied from the Actions API on 2026-10-22 exercises
+# the plan default without inventing runner labels, job states or timestamps.
+reset
+runs_json in_progress 39312674478 > "$TMP/fx/runs-in_progress.json"
+runs_json queued > "$TMP/fx/runs-queued.json"
+cat > "$TMP/fx/jobs-39312674478.json" <<'EOF'
+{"total_count":1,"jobs":[{"id":118267302169,"run_id":39312674478,"workflow_name":"PR Title Lint","head_branch":"fix/himmel-2053-hermes-cr-gate-parity","run_url":"https://api.github.com/repos/yotamleo-org/Himmel/actions/runs/39312674478","run_attempt":1,"node_id":"CR_kwDOS8WKNM8AAAAbiUfRGQ","head_sha":"965a4d4cf1aebd617f288d66f4fa5d284d34dc42","url":"https://api.github.com/repos/yotamleo-org/Himmel/actions/jobs/118267302169","html_url":"https://github.com/yotamleo-org/Himmel/actions/runs/39312674478/job/118267302169","status":"completed","conclusion":"success","created_at":"2026-10-19T19:41:11Z","started_at":"2026-10-19T20:05:52Z","completed_at":"2026-10-19T20:06:01Z","name":"pr-title-lint","steps":[{"name":"Set up job","status":"completed","conclusion":"success","number":1,"started_at":"2026-10-19T20:05:53Z","completed_at":"2026-10-19T20:05:54Z"},{"name":"Run actions/checkout@v7","status":"completed","conclusion":"success","number":2,"started_at":"2026-10-19T20:05:54Z","completed_at":"2026-10-19T20:05:58Z"},{"name":"Lint the PR title","status":"completed","conclusion":"success","number":3,"started_at":"2026-10-19T20:05:58Z","completed_at":"2026-10-19T20:05:58Z"},{"name":"Post Run actions/checkout@v7","status":"completed","conclusion":"success","number":6,"started_at":"2026-10-19T20:05:58Z","completed_at":"2026-10-19T20:05:59Z"},{"name":"Complete job","status":"completed","conclusion":"success","number":7,"started_at":"2026-10-19T20:05:59Z","completed_at":"2026-10-19T20:05:59Z"}],"check_run_url":"https://api.github.com/repos/yotamleo-org/Himmel/check-runs/118267302169","labels":["ubuntu-latest"],"runner_id":1000002305,"runner_name":"GitHub Actions 1000002305","runner_group_id":0,"runner_group_name":"GitHub Actions"}]}
+EOF
+out="$(unset CI_MAX_JOBS; run)"
+is "real jobs payload uses Enterprise plan figure" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=0 oldest_wait=0m" "$out"
+if grep -q 'source=default:github-enterprise' "$TMP/stderr"; then ok "default cap source logged"; else bad "default cap source missing"; fi
+out="$(CI_MAX_JOBS=500 run)"
+if grep -q 'source=env:CI_MAX_JOBS' "$TMP/stderr"; then ok "explicit plan-sized cap keeps env provenance"; else bad "explicit cap source missing"; fi
+for cap in 0 00 abc ''; do
+  out="$(CI_MAX_JOBS="$cap" run)"
+  is "invalid cap '$cap' falls back to Enterprise figure" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=0 oldest_wait=0m" "$out"
+  if grep -q 'source=default:github-enterprise' "$TMP/stderr"; then ok "invalid cap '$cap' logs default source"; else bad "invalid cap '$cap' source missing"; fi
+done
+
+# Sampled waiting counts must reach tick even below the plan figure; a high
+# in-progress count alone must not turn a partial idle sample into an exact one.
+reset
+ids=()
+for ((id = 1; id <= 33; id++)); do
+  ids+=("$id")
+  jobs_json 2 0 1 "$t10" > "$TMP/fx/jobs-$id.json"
+done
+runs_json in_progress "${ids[@]}" > "$TMP/fx/runs-in_progress.json"
+runs_json queued > "$TMP/fx/runs-queued.json"
+out="$(CI_MAX_JOBS=500 run)"
+is "sampled waiting below cap remains parser-compatible" $'ci-queue: jobs_in_progress=64/500 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true' "$out"
+for id in "${ids[@]}"; do jobs_json 2 0 0 "$t10" > "$TMP/fx/jobs-$id.json"; done
+out="$(CI_MAX_JOBS=60 run)"
+is "sampled no-wait count above cap stays partial" "ci-queue: jobs_in_progress=64/60 macos=0/5 queued=0 oldest_wait=0m sampled=true" "$out"
+
+if [ "${1:-}" = --cap ]; then
+  if [ "$fails" -eq 0 ]; then echo "PASSED"; exit 0; else echo "FAILED=$fails"; exit 1; fi
+fi
+
 # Removing the jobs bound must break the request budget, even across pages.
 for count in 150 400; do
   reset
@@ -91,7 +130,7 @@ for count in 150 400; do
   calls=$(grep -c '^repos/' "$TMP/fx/calls.log")
   if [ "$calls" -le 38 ]; then ok "$count runs: $calls REST requests within 38/probe budget"; else bad "$count runs: $calls REST requests exceeds 38/probe budget"; fi
   is "$count runs: bounded jobs reads" "32" "$(grep -c '/jobs?' "$TMP/fx/calls.log")"
-  is "$count runs: partial counts labelled" "ci-queue: jobs_in_progress=32/60 macos=0/5 queued=32 oldest_wait=10m sampled=true" "$out"
+  is "$count runs: partial waiting counts labelled" $'ci-queue: jobs_in_progress=32/500 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true' "$out"
   is "$count runs: uses read token" "0" "$(grep -c '^other$' "$TMP/fx/tokens.log")"
 done
 
@@ -106,7 +145,7 @@ for count in 75 150; do
   runs_json in_progress "${ids[@]}" > "$TMP/fx/runs-in_progress.json"
   runs_json queued > "$TMP/fx/runs-queued.json"
   out="$(CI_MAX_JOBS=60 run)"
-  is "$count runs: proven saturation remains parser-compatible" $'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true' "$out"
+  is "$count runs: observed waiting remains parser-compatible" $'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true' "$out"
 done
 
 # A slow jobs call must be unknown after 5s, not complete when it returns at 8s.
@@ -137,7 +176,7 @@ reset
 runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
 for cap in 0 00 abc ''; do
   out="$(CI_MAX_JOBS="$cap" run)"
-  is "bad CI_MAX_JOBS '$cap': default" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+  is "bad CI_MAX_JOBS '$cap': default" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=0 oldest_wait=0m" "$out"
   if grep -q 'invalid CI_MAX_JOBS' "$TMP/stderr"; then ok "bad CI_MAX_JOBS '$cap': warning"; else bad "bad CI_MAX_JOBS '$cap': no warning"; fi
 done
 out="$(CI_MAX_JOBS=20 run)"
@@ -155,37 +194,37 @@ if bash -n "$SCRIPT"; then ok "syntax (bash -n)"; else bad "syntax"; fi
 reset
 runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
 out="$(run)"
-is "idle" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+is "idle" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=0 oldest_wait=0m" "$out"
 
-# saturated 20/60 across two runs, 2 queued jobs waiting 10m
+# 20/500 across two runs, 2 queued jobs waiting 10m
 reset
 runs_json in_progress 1 2 > "$TMP/fx/runs-in_progress.json"; runs_json queued 3 > "$TMP/fx/runs-queued.json"
 jobs_json 12 0 0 "$t10" > "$TMP/fx/jobs-1.json"
 jobs_json 8 0 0 "$t10" > "$TMP/fx/jobs-2.json"
 jobs_json 0 0 2 "$t10" > "$TMP/fx/jobs-3.json"
 out="$(run)"
-is "20 running, 2 queued" "ci-queue: jobs_in_progress=20/60 macos=0/5 queued=2 oldest_wait=10m" "$out"
+is "20 running, 2 queued" "ci-queue: jobs_in_progress=20/500 macos=0/5 queued=2 oldest_wait=10m" "$out"
 
 # macOS 5/5 (counted inside the total)
 reset
 runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
 jobs_json 3 5 0 "$t3" > "$TMP/fx/jobs-1.json"
 out="$(run)"
-is "macOS 5/5" "ci-queue: jobs_in_progress=8/60 macos=5/5 queued=0 oldest_wait=0m" "$out"
+is "macOS 5/5" "ci-queue: jobs_in_progress=8/500 macos=5/5 queued=0 oldest_wait=0m" "$out"
 
 # a run in BOTH lists is counted once
 reset
 runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued 1 > "$TMP/fx/runs-queued.json"
 jobs_json 2 0 0 "$t3" > "$TMP/fx/jobs-1.json"
 out="$(run)"
-case "$out" in *jobs_in_progress=2/60*) ok "dedupe run listed twice" ;; *) bad "dedupe: $out" ;; esac
+case "$out" in *jobs_in_progress=2/500*) ok "dedupe run listed twice" ;; *) bad "dedupe: $out" ;; esac
 
 # storm: queued runs with no jobs materialised still count as waiting
 reset
 runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued 7 8 > "$TMP/fx/runs-queued.json"
 echo '{"jobs":[]}' > "$TMP/fx/jobs-7.json"; echo '{"jobs":[]}' > "$TMP/fx/jobs-8.json"
 out="$(run)"
-is "queued runs with 0 jobs" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=2 oldest_wait=10m" "$out"
+is "queued runs with 0 jobs" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=2 oldest_wait=10m" "$out"
 
 # 75 live runs (3 in progress, 72 queued); every queued run is still running
 # one job while another waits, so run-level status hides the running jobs.
@@ -197,7 +236,7 @@ runs_json in_progress 1 2 3 > "$TMP/fx/runs-in_progress.json"; runs_json queued 
 for i in 1 2 3; do jobs_json 5 0 0 "$t10" > "$TMP/fx/jobs-$i.json"; done
 for id in "${ids[@]}"; do jobs_json 1 0 1 "$t10" > "$TMP/fx/jobs-$id.json"; done
 out="$(run)"
-is "75 runs: in-progress first, labelled lower bounds" "ci-queue: jobs_in_progress=44/60 macos=0/5 queued=29 oldest_wait=10m sampled=true" "$out"
+is "75 runs: in-progress first, labelled lower bounds" $'ci-queue: jobs_in_progress=44/500 macos=0/5 queued=29 oldest_wait=10m\nci-queue: sampled=true' "$out"
 
 # pending runs (no jobs yet) wait like queued ones
 reset
@@ -205,7 +244,7 @@ runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TM
 runs_json pending 5 6 7 > "$TMP/fx/runs-pending.json"
 for id in 5 6 7; do echo '{"jobs":[]}' > "$TMP/fx/jobs-$id.json"; done
 out="$(run)"
-is "pending runs counted" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=3 oldest_wait=10m" "$out"
+is "pending runs counted" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=3 oldest_wait=10m" "$out"
 
 # the cap is overridable
 reset
@@ -213,7 +252,7 @@ runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TM
 out="$(CI_MAX_JOBS=20 run)"
 is "CI_MAX_JOBS override" "ci-queue: jobs_in_progress=0/20 macos=0/5 queued=0 oldest_wait=0m" "$out"
 out="$(CI_MAX_JOBS=abc run)"
-is "non-numeric CI_MAX_JOBS -> default" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+is "non-numeric CI_MAX_JOBS -> default" "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=0 oldest_wait=0m" "$out"
 
 # a real jobs payload (verbatim from the Actions API, 2026-10-19) parses as one queued job
 reset
@@ -222,7 +261,7 @@ cat > "$TMP/fx/jobs-39312674478.json" <<'EOF'
 {"total_count":1,"jobs":[{"id":118267302169,"run_id":39312674478,"workflow_name":"PR Title Lint","head_branch":"fix/himmel-2053-hermes-cr-gate-parity","run_url":"https://api.github.com/repos/yotamleo-org/Himmel/actions/runs/39312674478","run_attempt":1,"node_id":"CR_kwDOS8WKNM8AAAAbiUfRGQ","head_sha":"965a4d4cf1aebd617f288d66f4fa5d284d34dc42","url":"https://api.github.com/repos/yotamleo-org/Himmel/actions/jobs/118267302169","html_url":"https://github.com/yotamleo-org/Himmel/actions/runs/39312674478/job/118267302169","status":"queued","conclusion":null,"created_at":"2026-10-19T19:41:11Z","started_at":"2026-10-19T19:41:11Z","completed_at":null,"name":"pr-title-lint","steps":[],"check_run_url":"https://api.github.com/repos/yotamleo-org/Himmel/check-runs/118267302169","labels":["ubuntu-latest"],"runner_id":0,"runner_name":"","runner_group_id":0,"runner_group_name":""}]}
 EOF
 out="$(run)"
-case "$out" in "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=1 oldest_wait="*) ok "real jobs payload" ;; *) bad "real jobs payload: $out" ;; esac
+case "$out" in "ci-queue: jobs_in_progress=0/500 macos=0/5 queued=1 oldest_wait="*) ok "real jobs payload" ;; *) bad "real jobs payload: $out" ;; esac
 
 # an empty-body runs listing is not an empty queue
 reset
@@ -259,7 +298,7 @@ runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json in_progress
 runs_json queued > "$TMP/fx/runs-queued.json"
 jobs_json 3 0 0 "$t3" > "$TMP/fx/jobs-1.json"; jobs_json 4 0 0 "$t3" > "$TMP/fx/jobs-2.json"
 out="$(run)"
-is "run on listing page two counted" "ci-queue: jobs_in_progress=7/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+is "run on listing page two counted" "ci-queue: jobs_in_progress=7/500 macos=0/5 queued=0 oldest_wait=0m" "$out"
 
 # a jobs page that is shorter than the run's total_count is not a full count
 reset
