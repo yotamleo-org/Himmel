@@ -1968,138 +1968,32 @@ glob_is_literal_elsewhere() {
 # allow-listed scripts/ path anyway; this hook closes the two named scripts.
 hit=0
 unresolved=""
-entries=""
-hentries=""
-# inert_filter_globs - a pure searcher (grep, egrep, fgrep, rg), also behind a
-# wrapper or in a later pipeline segment, hands a quoted glob to --include /
-# --exclude / --exclude-dir / --include-dir / --glob / --iglob / -g only to
-# filter file names: it runs nothing. Sets INERT_GLOBS to those values, one array
-# element each, so the token loop below drops exactly that many occurrences of
-# the same text and a repeat anywhere else (a pattern, a path, an operand of a
-# runner) is still classified. An unquoted value is not collected (the shell
-# expands it), nor is one with a `$`, a brace or a word after `--`.
-INERT_GLOBS=()
-# inert_trunc N - keep only the first N collected globs.
-inert_trunc() {
-    local n=$1 ig=0 keep=()
-    while [ "$ig" -lt "$n" ]; do keep+=("${INERT_GLOBS[ig]}"); ig=$((ig + 1)); done
-    INERT_GLOBS=()
-    ig=0
-    while [ "$ig" -lt "$n" ]; do INERT_GLOBS+=("${keep[ig]}"); ig=$((ig + 1)); done
-}
-inert_filter_globs() {
-    # st: 0 looking for the command word, 1 inside a searcher's arguments, 2 done
-    local k=0 sg=-1 st=0 wr=0 wn='' xa=0 rc=0 j w v vi sb=0
-    [ "$PR_TOKENIZED" = 1 ] || return 0
-    st_tokenize "$cmd" || return 0
-    [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC" = 000 ] || return 0
-    # a ripgrep config file can carry --pre, so rg's globs stay classified when one is named
-    case "$cmd" in *RIPGREP_CONFIG_PATH*) rc=1 ;; esac
-    while [ "$k" -lt "$ST_N" ]; do
-        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; st=0; wr=0 wn='' xa=0; fi
-        j=$k
-        w=${ST_W[j]}
-        k=$((k + 1))
-        [ -z "${ST_RO[j]}" ] || continue
-        case "$st" in
-            0)
-                [ "${ST_A[j]}" = 0 ] || continue
-                if [ "$wr" = 1 ]; then
-                    # timeout's signal and kill-after options take a value word
-                    case "$wn:$w" in
-                        timeout:-s | timeout:-k | timeout:--signal | timeout:--kill-after) k=$((k + 1)); continue ;;
-                    esac
-                    # an option of unknown arity may take the command word as its value
-                    # (exec -a, xargs -I, env -u, sudo -u, stdbuf -o): stop collecting
-                    case "$w" in
-                        -0 | -r | -t | -x | -p | --null | --no-run-if-empty | --verbose | --foreground | --preserve-status) continue ;;
-                        -*) st=2; continue ;;
-                    esac
-                    case "$w" in *[!0-9]*) ;; *) continue ;; esac
-                fi
-                case "$w" in
-                    time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs)
-                        wr=1 wn=$w
-                        [ "$w" != xargs ] || xa=1 ;;
-                    grep | egrep | fgrep | rg)
-                        # rg behind xargs takes its arguments from stdin, where --pre can hide
-                        if [ "$w" = rg ] && { [ "$xa" = 1 ] || [ "$rc" = 1 ]; }; then st=2
-                        elif [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ]; then st=1; sb=${#INERT_GLOBS[@]}; else st=2; fi ;;
-                    *) st=2 ;;
-                esac
-                ;;
-            1)
-                v='' vi=-1
-                case "$w" in
-                    --) st=2 ;;
-                    # rg --pre runs a program on every file, so this segment's
-                    # globs stay classified: drop the ones already collected
-                    --pre | --pre=*) inert_trunc "$sb"; st=2 ;;
-                    --include=* | --exclude=* | --exclude-dir=* | --include-dir=* | --glob=* | --iglob=*) v=${w#*=} vi=$j ;;
-                    --include | --exclude | --exclude-dir | --include-dir | --glob | --iglob | -g)
-                        if [ "$k" -lt "$ST_N" ] && [ "${ST_S[k]}" = "$sg" ] && [ -z "${ST_RO[k]}" ]; then
-                            v=${ST_W[k]} vi=$k
-                        fi
-                        k=$((k + 1)) ;;
-                    # the pattern option's value is a pattern, never a filter option: skip it.
-                    # A bundle ending in e or f may be another option holding that letter as
-                    # its value (-ge, -Ae), so a skipped --pre still counts.
-                    --regexp | --file | -e | -f | -[!-]*[ef])
-                        if [ "$k" -lt "$ST_N" ]; then
-                            case "${ST_W[k]}" in --pre | --pre=*) inert_trunc "$sb"; st=2 ;; esac
-                        fi
-                        k=$((k + 1)) ;;
-                esac
-                [ "$vi" -ge 0 ] || continue
-                [ "${ST_Q[vi]}${ST_X[vi]}${ST_G[vi]}" = 100 ] || continue
-                case "$v" in *[!A-Za-z0-9_.*?/!-]*) continue ;; esac
-                case "$v" in *[*?]*) INERT_GLOBS+=("$v") ;; esac
-                ;;
-        esac
-    done
-    return 0
-}
-inert_filter_globs
 # A whole word that names a path through cr/ (any case) is read by its text
 # alone, so a word the shell rewrites first - an expansion, a substitution, a
 # glob, a brace list, a tilde - is unresolvable, and so is a relative one a
 # case-insensitive filesystem folds. Whole words, before any split: a
 # substitution ($(pwd)/scripts/cr/...) only looks absolute once split.
 # Absolute words keep their case (an adopter's /Users/... anchor path).
-# An inert filter value (inert_filter_globs) is dropped here once per occurrence.
-INERT_PRE=()
-ig=0
-while [ "$ig" -lt "${#INERT_GLOBS[@]}" ]; do INERT_PRE+=("${INERT_GLOBS[ig]}"); ig=$((ig + 1)); done
 for word in $flat; do
     case "$word" in *[cC][rR]/*|*[hH]andover/*) ;; *) continue ;; esac
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
         # shellcheck disable=SC2016 # literal text match, never expanded
         case "$word" in '$HIMMEL_REPO/'*|'${HIMMEL_REPO}/'*) continue ;; esac
     fi
-    wv=$word
-    case "$word" in --*=*) wv=${word#*=} ;; esac
-    ig=0
-    while [ "$ig" -lt "${#INERT_PRE[@]}" ]; do
-        if [ "${INERT_PRE[ig]}" = "$wv" ]; then INERT_PRE[ig]=''; continue 2; fi
-        ig=$((ig + 1))
-    done
     case "$word" in
         *[][*?~\$\(\`]*|*'{'*|*'}'*) hit=1; unresolved=$word ;;
         /*) ;;
         *[[:upper:]]*) hit=1; unresolved=$word ;;
     esac
 done
+entries=""
+hentries=""
 _c_ops_eq_to_nl "$flat"
 for tok in $REPLY; do
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
         # shellcheck disable=SC2016 # literal text match, never expanded
         case "$tok" in '$HIMMEL_REPO/'*|'${HIMMEL_REPO}/'*) continue ;; esac
     fi
-    ig=0
-    while [ "$ig" -lt "${#INERT_GLOBS[@]}" ]; do
-        if [ "${INERT_GLOBS[ig]}" = "$tok" ]; then INERT_GLOBS[ig]=''; continue 2; fi
-        ig=$((ig + 1))
-    done
     case "$tok" in /*|'~'*) continue ;; esac
     case "$tok" in
         *'$'[A-Za-z_'{']*) [ "$mentions" -eq 0 ] || { hit=1; unresolved=$tok; } ;;
