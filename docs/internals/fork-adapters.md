@@ -2,7 +2,7 @@
 
 Every `yotamleo/*` fork is a himmel adapter (HIMMEL-5900): it is listed in
 `scripts/guardrails/himmel-adapters.json`, and a change to it follows the himmel
-flow (ticket ID on every commit and PR, judge, signed GO, console merge). The
+flow (ticket ID on every commit and PR, judge, signed GO, chief merge). The
 registry is read from the default branch of the harness repo, so a worktree edit
 cannot widen it. Shape and coverage are checked by
 `scripts/guardrails/test-himmel-adapters.sh`.
@@ -13,7 +13,7 @@ cannot widen it. Shape and coverage are checked by
 |---|---|
 | `nwo` | `owner/name` of our fork; one row per fork, no duplicates |
 | `upstream` | the repo the fork tracks |
-| `himmel_branch` | the one branch a console merge may land on; the fork's default branch where himmel carries no delta |
+| `himmel_branch` | the one branch a chief merge may land on; the fork's default branch where himmel carries no delta |
 | `pin_site` | the himmel file that pins the fork, or `null` |
 | `role` | `runtime-dependency`, `upstream-contribution`, `vendored-source` or `dormant` |
 | `merge_allowed` | `true` only for a fork himmel carries a delta on and merges into itself |
@@ -36,5 +36,5 @@ true, so an archived or contribution-only fork stays false.
 
 ## Sync rule
 
-A fork is synced with its upstream (`/fork-resync`) whenever a leg handles it,
+A fork is synced with its upstream (`/fork-resync`) whenever a worker handles it,
 before any work on it. A fork behind its upstream is resynced first.

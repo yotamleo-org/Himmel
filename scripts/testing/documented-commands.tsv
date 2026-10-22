@@ -75,5 +75,5 @@ L74	docs/handover/console-template.md	anchor	ask	-	bash "@ANCHOR@/scripts/handov
 L75	docs/handover/console-template.md	anchor	ask	-	node "@ANCHOR@/scripts/handover/console-kit/board.mjs" --doc "@SCRATCH@" --changed
 L76	docs/handover/console-template.md	anchor	ask	-	bash scripts/handover/console-kit/leg-event.sh --doc @SCRATCH@ --fleet @SCRATCH@ @SCRATCH@
 L77	docs/handover/console-template.md	anchor	ask	-	bash scripts/handover/console-kit/close-wrapped-leg.sh @SCRATCH@
-L78	docs/handover/console-template.md	anchor	ask	-	bash scripts/handover/console/console.sh wrap "@SCRATCH@" release-token-x 'done'
+L78	docs/handover/console-template.md	anchor	ask	-	bash scripts/handover/console/chief.sh wrap "@SCRATCH@" release-token-x 'done'
 L79	docs/handover/console-template.md	anchor	ask	-	bash scripts/handover/console-kit/append-results.sh @SCRATCH@ 'LIVE ok'

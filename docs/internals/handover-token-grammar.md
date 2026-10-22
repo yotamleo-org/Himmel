@@ -22,8 +22,8 @@ The rule has four alternatives:
 | 64 lowercase hex | a sha256 digest, a GO `mac=` line |
 
 - The host is the lowercased hostname. Each non-alphanumeric run in it is folded to one `-`.
-- The letters are one to three upper-case console letters.
-- The label is a leg label or a judge qid in one of two low-entropy shapes: up to
+- The letters are one to three upper-case chief letters.
+- The label is a worker label or a judge qid in one of two low-entropy shapes: up to
   four letters, one to five digits and up to two letters (`N2802`, `N236b`,
   `jX3206m`), or an upper-case ticket key (`HIMMEL-4999`). Either may end in
   `_` and up to eight lower-case letters (`J12_tune`). A random string does not
@@ -37,7 +37,7 @@ The rule is anchored, so a secret with a token prefix or suffix is still caught.
 | Site | Token |
 |---|---|
 | `scripts/handover/queue-lock.sh` (`_ql_default_session`) | release token `<host>-pid<N>` |
-| `scripts/handover/console-kit/gen-briefs.py` | leg RETASK nonce `<letters>-<label>-<hex8>` |
+| `scripts/handover/console-kit/gen-briefs.py` | worker RETASK nonce `<letters>-<label>-<hex8>` |
 | `scripts/handover/console-kit/gen-judge-brief.py` | judge nonce `<letters>-<qid>-<hex8>` |
 | fresh-leg recovery and legacy nonces | `V-N236b-1d281f74`, `Y-N204-a68d71` |
 | briefs, GO and verdict lines | commit shas, sha256 digests |

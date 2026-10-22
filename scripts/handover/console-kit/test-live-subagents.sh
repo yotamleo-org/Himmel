@@ -15,7 +15,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LS="$HERE/live-subagents.sh"
-CONSOLE="$HERE/../console/console.sh"
+CONSOLE="$HERE/../console/chief.sh"
 QL="$HERE/../queue-lock.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/lsa-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }

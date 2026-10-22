@@ -946,7 +946,12 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
     }
     return await writeEnrichment({
       clipPath, rel, text, baselineSha, fmRaw, body,
-      markers: { needs_thread: true }, section: null, resetTriage: false,
+      markers: {
+        needs_thread: true,
+        enrichment_status: "partial",
+        ...(!fm.last_error || fm.last_error === "null" ? { last_error: "thread_not_captured" } : {}),
+      },
+      section: null, resetTriage: false,
       statusGlyph: "v", statusMsg: "reflagged needs_thread",
     });
   }
@@ -1078,13 +1083,15 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
   const markers = {
     enriched_at: TODAY,
     enrichment_source: "fxtwitter",
-    enrichment_status: "ok",
+    // fxtwitter has no replies, so a detected thread is never captured here:
+    // the enrichment is partial, not ok with the continuation silently missing.
+    enrichment_status: needsThread ? "partial" : "ok",
     tweet_stats: stats,
     tweet_is_note: isNote,
     tweet_is_article: isArticle,
     tweet_has_quote: hasQuote,
     ...(needsThread ? { needs_thread: true } : {}),
-    last_error: quoteOnlyNoOwnText ? "quote_only_no_own_text" : null,
+    last_error: quoteOnlyNoOwnText ? "quote_only_no_own_text" : needsThread ? "thread_not_captured" : null,
     ...bodyFill,
   };
   const res = await writeEnrichment({

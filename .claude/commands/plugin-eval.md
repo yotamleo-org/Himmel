@@ -16,7 +16,7 @@ running anything.
 
 Steps:
 
-1. **Preflight — bank check and version floor, before anything else.**
+1. **Preflight — usage check and version floor, before anything else.**
    `scripts/plugin-eval-preflight.sh` wraps both checks (it calls
    `bank-preflight.sh` directly, mirroring `scripts/cr/hermes-critic.sh`'s
    own direct-call convention, then checks `claude --version` against the
@@ -27,7 +27,7 @@ Steps:
    bash scripts/plugin-eval-preflight.sh
    ```
    Non-zero exit → the script has already printed the refusal reason on
-   stderr (bank at/over cap, or the version floor unmet). Report it and
+   stderr (usage at/over cap, or the version floor unmet). Report it and
    stop — never re-run preflight "to confirm", never fall back to running
    anyway.
 

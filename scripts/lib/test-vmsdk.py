@@ -297,10 +297,41 @@ class TestClone(unittest.TestCase):
             dest = vm.clone_himmel(ref="main", depth=1)
         self.assertEqual(dest, "~/himmel")
         joined = "\n".join(calls)
-        self.assertIn("x-access-token:TKN@github.com/yotamleo/himmel.git", joined)  # leak-allow: hostname assertion on the token-embedded clone URL
+        self.assertIn("x-access-token:TKN@github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname assertion on the token-embedded clone URL
         self.assertIn("--depth 1", joined)
         self.assertIn("--branch main", joined)
-        self.assertIn("set-url origin https://github.com/yotamleo/himmel.git", joined)  # leak-allow: hostname assertion on the post-clone origin rewrite
+        self.assertIn("set-url origin https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname assertion on the post-clone origin rewrite
+
+    def test_clone_slug_is_current_repo(self):
+        self.assertEqual(vmsdk.OWNER_REPO, "yotamleo-org/Himmel")  # leak-allow: hostname pins the repo slug after the 2026-10-19 move
+
+    def _clone_failing(self, env, out):
+        vm = self._vm()
+        def fake_run(cmd, **kw):
+            if cmd.startswith("test -e"):
+                return (1, "")
+            if "clone" in cmd:
+                return (128, out)
+            return (0, "")
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(vm, "run", side_effect=fake_run):
+            for k in ("himmel_github_token_vm", "himmel_github_token_vm2"):
+                if k not in env:
+                    os.environ.pop(k, None)
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.clone_himmel()
+        return str(cm.exception)
+
+    def test_clone_vm2_auth_failure_says_token_cannot_read_private_repo(self):
+        msg = self._clone_failing({"himmel_github_token_vm2": "TKN2"},
+                                  "remote: Repository not found.\nfatal: repository not found")
+        self.assertIn("himmel_github_token_vm2", msg)
+        self.assertIn("read-only", msg)
+
+    def test_clone_vm_token_failure_has_no_vm2_hint(self):
+        msg = self._clone_failing({"himmel_github_token_vm": "TKN"},
+                                  "remote: Repository not found.")
+        self.assertNotIn("read-only", msg)
 
     def _clone_joined(self, env):
         vm = self._vm()
@@ -372,8 +403,8 @@ class TestClone(unittest.TestCase):
         joined = "\n".join(calls)
         self.assertIn(r"if exist C:\himmel", joined)
         self.assertIn(r'"C:\Program Files\Git\bin\bash.exe" -lc', joined)
-        self.assertIn("x-access-token:TKN@github.com/yotamleo/himmel.git", joined)  # leak-allow: hostname Windows-path variant of the token-clone-URL assertion
-        self.assertIn("set-url origin https://github.com/yotamleo/himmel.git", joined)  # leak-allow: hostname Windows-path variant of the origin-rewrite assertion
+        self.assertIn("x-access-token:TKN@github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the token-clone-URL assertion
+        self.assertIn("set-url origin https://github.com/yotamleo-org/Himmel.git", joined)  # leak-allow: hostname Windows-path variant of the origin-rewrite assertion
 
 
 class TestProvisionE2E(unittest.TestCase):
