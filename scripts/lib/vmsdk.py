@@ -490,20 +490,22 @@ class VM:
         """Run `cmd` in this test VM after `_assert_test_vm`.
 
         Every command is appended to ~/.himmel/vm/guest-exec.log
-        (HIMMEL_GUEST_EXEC_LOG overrides) as one line with its outcome (rc,
-        error or refused). Returns (rc, output) like `run`.
+        (HIMMEL_GUEST_EXEC_LOG overrides) as one JSON line with its outcome
+        (rc, error or refused). Returns (rc, output) like `run`.
         """
         log = Path(os.environ.get("HIMMEL_GUEST_EXEC_LOG")
                    or os.path.expanduser("~/.himmel/vm/guest-exec.log"))
 
         def record(status):
-            flat = cmd.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
             stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            row = {"v": 1, "ts": stamp, "host": socket.gethostname(), "source": "vmsdk",
+                   "kind": "guest-exec", "vm": self.name, "sudo": int(sudo),
+                   "status": status, "cmd": cmd}
             log.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             # command lines can carry credentials: owner-only, even for a pre-existing log
             with os.fdopen(os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
                 os.fchmod(f.fileno(), 0o600)
-                f.write(f"{stamp} vm={self.name} sudo={int(sudo)} {status} cmd={flat}\n")
+                f.write(json.dumps(row) + "\n")
 
         try:
             self._assert_test_vm()
