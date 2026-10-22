@@ -263,6 +263,102 @@ for c in \
     assert_rc "5275 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
 done
 
+# CI_GCP kill switch: exactly the on/off literal is allowed, nothing else.
+# The guard reads lowercased words, so the only upper-case letters it lets
+# through are folds that are safe: -R (a lowercase -r is denied on the raw
+# text, so a folded -r here was typed -R, gh's --repo), CI_GCP (GitHub matches
+# variable names case-insensitively) and Himmel (owner/repo slugs are
+# case-insensitive). Each allow row keeps only those folds.
+for c in \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'gh variable set ci_gcp --body off -R yotamleo/himmel' \
+    'gh variable set CI_GCP --body on -R yotamleo/Himmel' \
+    'gh variable set CI_GCP -R yotamleo/Himmel --body on' \
+    'gh variable set CI_GCP --body=off --repo yotamleo/Himmel' \
+    'gh -R yotamleo/Himmel variable set CI_GCP -b off' \
+    'gh variable set CI_GCP --body off -R yotamleo-org/Himmel' \
+    'gh variable set CI_GCP --body=on --repo=yotamleo-org/Himmel'; do
+    assert_rc "6431 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
+done
+# shellcheck disable=SC2016  # literal $VAR in a payload is the point
+for c in \
+    'gh variable set CI_GCP --body off' \
+    'gh variable set CI_GCP --body on' \
+    'gh variable set CI_GCP_X --body off -R yotamleo/Himmel' \
+    'gh variable set OTHER --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body maybe -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body ON -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body=On -R yotamleo-org/Himmel' \
+    'gh variable set CI_GCP -b oN -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body OFF -R yotamleo/Himmel' \
+    'gh variable set CI_GCP -B off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --BODY off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body offf -R yotamleo/Himmel' \
+    'gh variable set CI_GCP -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --body on -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --env-file x -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --org o -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -R other/repo' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel -R other/repo' \
+    'gh variable set CI_GCP --body on -r yotamleo/Himmel' \
+    'gh variable set -r yotamleo/Himmel CI_GCP --body on' \
+    'gh -r yotamleo/Himmel variable set CI_GCP --body on' \
+    'gh variable set CI_GCP --body on --REPO yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on --Repo=yotamleo/Himmel' \
+    "gh variable set CI_GCP --body on '-r' yotamleo/Himmel" \
+    'gh variable set CI_GCP --body on "-r" yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on -"r" yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on \-r yotamleo/Himmel' \
+    "gh variable set CI_GCP --body on --'repo' yotamleo/Himmel -r x/y" \
+    'gh variable set CI_GCP --body on -R yotamleo-org/Himmel2' \
+    'gh variable set CI_GCP --body on -R yotamleo-org/other' \
+    'gh variable set CI_GCP --body on -R yotamleo-org/Himmel -R other/repo' \
+    'gh variable set CI_GCP --body on -R evil-yotamleo-org/Himmel' \
+    'gh variable set CI_GCP CI_GCP2 --body off -R yotamleo/Himmel' \
+    'gh variable delete CI_GCP -R yotamleo/Himmel' \
+    'gh variable remove CI_GCP -R yotamleo/Himmel' \
+    'gh secret set CI_GCP --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel && gh secret set A' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel; gh variable set OTHER --body 1' \
+    'gh variable set CI_GCP --body $(echo off) -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body "$X" -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -R "$R"' \
+    'gh variable set "$N" --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body `echo off` -R yotamleo/Himmel' \
+    'GH_REPO=other/repo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'GH_TOKEN=x gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'env GH_REPO=other/repo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'command gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'sudo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'bash -c "gh variable set OTHER --body off"' \
+    'gh api -X PATCH repos/yotamleo/Himmel/actions/variables/CI_GCP -f value=off' \
+    'gh variable set CI_GCP --body off -Rfoo/bar' \
+    'gh variable set CI_GCP --body ＯＮ -R yotamleo/Himmel' \
+    "gh variable set CI_GCP --body '' -R yotamleo/Himmel" \
+    'gh variable set CI_GCP --body off -r>/dev/null yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r</dev/null yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r&>x yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r>&2 yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r<>x yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -ryotamleo/himmel' \
+    'gh variable set CI_GCP --body= --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --repo= --repo yotamleo/Himmel'; do
+    assert_rc "6431 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+# The guard reads a CR as a line break, the shell does not: everything after
+# it still reaches gh, where the last -R wins.
+for c in \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r -R other/repo' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --org x' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --env production' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --body maybe' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\v -R other/repo' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\f -R other/repo' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\ngh issue list'; do
+    l=${c//$'\r'/<CR>}; l=${l//$'\v'/<VT>}; l=${l//$'\f'/<FF>}; l=${l//$'\n'/<LF>}
+    assert_rc "6431 deny: $l" 2 "$(run_case "$(j_bash "$c")")"
+done
+
 # Remote exec beyond curl|sh.
 # shellcheck disable=SC2016  # payloads are literal command text
 for c in \
