@@ -146,10 +146,29 @@ t0=$SECONDS
 # shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
 PATH="$d7" "$BASH_BIN" -c '. "$1"; out="$(timeout 1 sh -c "sleep 30 & wait")"' _ "$PORTF" >/dev/null 2>&1 || true
 if [ $((SECONDS - t0)) -lt 10 ]; then ok "T7 a grandchild holding stdout does not outlive the bound"; else bad "T7 command substitution hung $((SECONDS - t0))s"; fi
-d7b="$(stub_dir t7b)"; fake_gnu "$d7b" gtimeout
+d7b="$(stub_dir t7b)"; fake_gnu "$d7b" timeout
 # shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
 got="$(PATH="$d7b" "$BASH_BIN" -c '. "$1"; printf "%s" "$PATH"' _ "$PORTF" 2>/dev/null)"
-eq "T7 a host with gtimeout keeps its PATH untouched" "$got" "$d7b"
+eq "T7 a host with a real timeout keeps its PATH untouched" "$got" "$d7b"
+d7c="$(stub_dir t7c env bash sleep awk mktemp rm cat pkill sh)"; fake_gnu "$d7c" gtimeout
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+got="$(PATH="$d7c" "$BASH_BIN" -c '. "$1"; command -v timeout' _ "$PORTF" 2>&1)"
+case "$got" in */shims/timeout) ok "T7 a gtimeout-only host still gets a bare timeout (the suites call it bare)" ;; *) bad "T7 gtimeout-only got [$got]" ;; esac
+t7sig="$W/t7-sig.sh"
+# shellcheck disable=SC2016 # single quotes intentional: the script body is expanded by the child shell
+printf '%s\n' \
+    '. "$1"' \
+    'timeout -k 1 60 sh -c '"'"'echo $$ > "$1"; trap "" TERM; sleep 30'"'"' _ "$2" &' \
+    'tp=$!' \
+    'i=0; while [ ! -s "$2" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done' \
+    'kill -s TERM "$tp"' \
+    'wait "$tp"' >"$t7sig"
+t7pid="$W/t7-child.pid"; rm -f "$t7pid"
+t0=$SECONDS
+PATH="$d7" "$BASH_BIN" "$t7sig" "$PORTF" "$t7pid" >/dev/null 2>&1 || true
+if [ -s "$t7pid" ] && ! kill -0 "$(cat "$t7pid")" 2>/dev/null; then ok "T7 a TERM sent to the wrapper still runs the -k escalation (TERM-ignoring child gone)"; else bad "T7 a TERM-ignoring child outlived a TERM sent to the wrapper"; fi
+[ ! -s "$t7pid" ] || kill -s KILL "$(cat "$t7pid")" 2>/dev/null || true
+if [ $((SECONDS - t0)) -lt 20 ]; then ok "T7 the wrapper returned in time after the TERM"; else bad "T7 the wrapper hung $((SECONDS - t0))s after the TERM"; fi
 
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

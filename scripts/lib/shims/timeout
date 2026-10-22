@@ -78,9 +78,20 @@ set +m
 ) >/dev/null 2>&1 </dev/null &
 watcher=$!
 
-trap 'kill -s TERM -- "-$pid" 2>/dev/null' TERM INT
+got_sig=0
+trap 'got_sig=1; kill -s TERM -- "-$pid" 2>/dev/null' TERM INT
 rc=0
 wait "$pid" 2>/dev/null || rc=$?
+if [ "$got_sig" = 1 ]; then
+    # a signal sent to this wrapper interrupted wait: keep waiting for CMD, escalating to KILL after -k like the bound does
+    esc=""
+    if [ "$kill_secs" != "0" ]; then
+        ( sleep "$kill_secs"; kill -s KILL -- "-$pid" 2>/dev/null ) >/dev/null 2>&1 </dev/null &
+        esc=$!
+    fi
+    wait "$pid" 2>/dev/null || rc=$?
+    if [ -n "$esc" ]; then pkill -P "$esc" 2>/dev/null; kill "$esc" 2>/dev/null; fi
+fi
 case "$(cat "$flag" 2>/dev/null)" in '') : > "$flag.done" ;; esac
 pkill -P "$watcher" 2>/dev/null
 kill "$watcher" 2>/dev/null
