@@ -80,8 +80,8 @@ combined_output() {
 }
 
 # --- transcript fixtures ---
-CONSOLE_TRANSCRIPT="$TMP/leg-console.md-loaded.jsonl"
-printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/leg-console.md — resume from there."}}' > "$CONSOLE_TRANSCRIPT"
+CHIEF_TRANSCRIPT="$TMP/leg-console.md-loaded.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/leg-console.md — resume from there."}}' > "$CHIEF_TRANSCRIPT"
 
 LEG_TRANSCRIPT="$TMP/leg-w1-normal.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/HIMMEL-2323-w1.md — implement the guard."}}' > "$LEG_TRANSCRIPT"
@@ -168,7 +168,7 @@ assert_contains "deny names the exact arm-resume.sh replacement" "bash scripts/h
 assert_contains "deny states in-process subagents die with the parent" "die with the parent" "$(combined_output env-console-worktree-propen)"
 assert_contains "deny names CONSOLE_DISPATCH_OK override" "CONSOLE_DISPATCH_OK=1" "$(combined_output env-console-worktree-propen)"
 
-RC2=$(run_hook transcript-console-propen-crgate "$(payload general-purpose 'ship it' 'gh pr create --title x; then run /pr-check' "$CONSOLE_TRANSCRIPT")")
+RC2=$(run_hook transcript-console-propen-crgate "$(payload general-purpose 'ship it' 'gh pr create --title x; then run /pr-check' "$CHIEF_TRANSCRIPT")")
 assert_rc "transcript-detected console + pr-open + cr-gate refuses" 2 "$RC2"
 
 RC3=$(run_hook env-console-worktree-crgate "$(payload general-purpose 'ship it' 'Create a worktree at .claude/worktrees/fix-x and get it CR-clean via /pr-check.')" HIMMEL_SESSION_ROLE=console)
@@ -296,6 +296,24 @@ assert_contains "override audit log records CONSOLE_DISPATCH_OK" '"override":"CO
 DISABLE_LOG="$TMP/disable-overrides.jsonl"
 RC16=$(run_hook override-disable "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CONSOLE_DISPATCH_DISABLE=1 CONSOLE_DISPATCH_LOG="$DISABLE_LOG")
 assert_rc "CONSOLE_DISPATCH_DISABLE=1 overrides an otherwise-denied payload" 0 "$RC16"
+
+CHIEF_LOG="$TMP/chief-overrides.jsonl"
+RC17=$(run_hook override-chief-log "$DENIED_JSON" HIMMEL_SESSION_ROLE=console CONSOLE_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$CHIEF_LOG" CONSOLE_DISPATCH_LOG="$OK_LOG.unused")
+assert_rc "override with CHIEF_DISPATCH_LOG set allows" 0 "$RC17"
+assert_contains "CHIEF_DISPATCH_LOG wins over CONSOLE_DISPATCH_LOG for the audit log" '"override":"CONSOLE_DISPATCH_OK"' "$(cat "$CHIEF_LOG" 2>/dev/null || true)"
+
+echo "=== Transcript head bound ==="
+
+# The console launch turn sits on line 2, so a 1-line bound never reaches it.
+LATE_TRANSCRIPT="$TMP/late-console.jsonl"
+printf '%s\n' '{"type":"system","content":"boot"}' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/leg-console.md — resume from there."}}' > "$LATE_TRANSCRIPT"
+LATE_JSON="$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$LATE_TRANSCRIPT")"
+RC18=$(run_hook bound-default "$LATE_JSON" -u HIMMEL_SESSION_ROLE)
+assert_rc "default bound reaches a line-2 console launch turn: refuses" 2 "$RC18"
+RC19=$(run_hook bound-chief "$LATE_JSON" -u HIMMEL_SESSION_ROLE CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES=1)
+assert_rc "CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES=1 stops before the launch turn: allows" 0 "$RC19"
+RC20=$(run_hook bound-old "$LATE_JSON" -u HIMMEL_SESSION_ROLE CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1)
+assert_rc "old name CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1 still bounds the read: allows" 0 "$RC20"
 
 echo ""
 echo "$((pass + fail)) checks, $pass passed, $fail failed"

@@ -107,7 +107,7 @@ if [ "$VERB" = record ]; then
     esac
     case "$SRC" in
         console)
-            SRC="console:$(printf '%s' "${CONSOLE_SESSION_NAME:-${USER:-unknown}@$(hostname 2>/dev/null || uname -n)}" | tr -c 'A-Za-z0-9._@-' '_')" ;;  # swallow-ok: hostname is only a label fallback
+            SRC="console:$(printf '%s' "${CHIEF_SESSION_NAME:-${CONSOLE_SESSION_NAME:-${USER:-unknown}@$(hostname 2>/dev/null || uname -n)}}" | tr -c 'A-Za-z0-9._@-' '_')" ;;  # swallow-ok: hostname is only a label fallback
         judge:*) go_trust_id_ok "${SRC#judge:}" || { usage; exit 2; } ;;
         *) usage; exit 2 ;;
     esac

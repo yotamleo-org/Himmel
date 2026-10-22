@@ -65,8 +65,8 @@ mkdir -p "$BRIDGE_ROOT/consoles"
 export BRIDGE_ROOT
 
 SESSION_ID="test-session-himmel-3144"
-CONSOLE_DOC="$HANDOVER_DIR/FIXTURE-nextleg-console.md"
-printf 'fixture console doc\n' > "$CONSOLE_DOC"
+CHIEF_DOC="$HANDOVER_DIR/FIXTURE-nextleg-console.md"
+printf 'fixture console doc\n' > "$CHIEF_DOC"
 
 LEG_DOC="$HANDOVER_DIR/FIXTURE-leg-N1.md"
 
@@ -74,14 +74,14 @@ RELEASE_TOKEN=""
 cleanup() {
     if [ -n "$RELEASE_TOKEN" ]; then
         chmod 644 "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json 2>/dev/null
-        bash "$REPO/scripts/handover/queue-lock.sh" release "$CONSOLE_DOC" "$RELEASE_TOKEN" >/dev/null 2>&1
+        bash "$REPO/scripts/handover/queue-lock.sh" release "$CHIEF_DOC" "$RELEASE_TOKEN" >/dev/null 2>&1
     fi
     for f in "$HANDOVER_DIR"/.locks/queue/*.lock/*; do rm -f "$f" 2>/dev/null; done
     for d in "$HANDOVER_DIR"/.locks/queue/*.lock; do rmdir "$d" 2>/dev/null; done
     rm -f "$HANDOVER_DIR/.locks/queue/takeovers.log" 2>/dev/null
     rmdir "$HANDOVER_DIR/.locks/queue" 2>/dev/null
     rmdir "$HANDOVER_DIR/.locks" 2>/dev/null
-    rm -f "$CONSOLE_DOC" 2>/dev/null
+    rm -f "$CHIEF_DOC" 2>/dev/null
     rm -f "$LEG_DOC" 2>/dev/null
     rmdir "$HANDOVER_DIR" 2>/dev/null
     for f in "$XDG_RUNTIME_DIR/himmel-queue-lock"/*; do rm -f "$f" 2>/dev/null; done
@@ -101,14 +101,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$CONSOLE_DOC")" \
+lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$CHIEF_DOC")" \
     || { echo "setup: could not acquire the fixture console lock" >&2; exit 1; }
 # shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
 RELEASE_TOKEN="$(printf '%s\n' "$lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
 [ -n "$RELEASE_TOKEN" ] || { echo "setup: acquire printed no release token" >&2; exit 1; }
 
-CONSOLE_PAYLOAD="$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$SESSION_ID")"
-CONSOLE_PAYLOAD_ACTIVE="$(printf '{"session_id":"%s","stop_hook_active":true,"hook_event_name":"Stop"}' "$SESSION_ID")"
+CHIEF_PAYLOAD="$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$SESSION_ID")"
+CHIEF_PAYLOAD_ACTIVE="$(printf '{"session_id":"%s","stop_hook_active":true,"hook_event_name":"Stop"}' "$SESSION_ID")"
 LEG_PAYLOAD='{"session_id":"a-leg-session-not-a-console","stop_hook_active":false,"hook_event_name":"Stop"}'
 
 is_block() { local out; out="$(printf '%s' "$1" | grep '"decision":"block"')"; [ -n "$out" ]; }
@@ -138,7 +138,7 @@ else
 fi
 
 # --- (a) console session + outstanding work -> block once ------------------
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then ok "(a) console stop, lock held -> block"; else bad "(a) console stop -> expected block, got: $out"; fi
 reason="$(printf '%s' "$out" | sed -n 's/.*"reason":"\(.*\)"}$/\1/p')"
 if [ -n "$reason" ]; then ok "(a) reason is non-empty"; else bad "(a) reason is empty"; fi
@@ -148,7 +148,7 @@ case "$reason" in
 esac
 
 # --- (b) same payload, stop_hook_active:true -> allow (loop guard) --------
-out="$(run_guard "$CONSOLE_PAYLOAD_ACTIVE")"
+out="$(run_guard "$CHIEF_PAYLOAD_ACTIVE")"
 if is_block "$out"; then bad "(b) stop_hook_active=true -> expected allow, got: $out"; else ok "(b) stop_hook_active=true -> allow"; fi
 
 # --- (c) a leg's stop payload (no console lock held) -> allow -------------
@@ -161,7 +161,7 @@ readable=1
 for f in "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json; do
     [ -r "$f" ] && readable=0
 done
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 chmod 644 "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json 2>/dev/null
 if [ "$readable" -eq 0 ]; then
     skip "(d-i) owner.json is still readable after chmod 000 (running as root?) — precondition not engaged"
@@ -177,15 +177,15 @@ STUB="$TMP/bank-preflight-stub.sh"
     printf 'exit 7\n'
 } > "$STUB"
 chmod +x "$STUB"
-out="$(run_guard "$CONSOLE_PAYLOAD" HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$STUB")"
+out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$STUB")"
 if is_block "$out"; then bad "(d-ii) usage-preflight.sh exit!=0 -> expected allow, got: $out"; else ok "(d-ii) usage-preflight.sh exit!=0 -> allow"; fi
-out="$(run_guard "$CONSOLE_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
+out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
 if is_block "$out"; then bad "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> expected allow, got: $out"; else ok "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> allow"; fi
 # Prove the stub's precondition was real, not a no-op: case (a) already
 # showed the REAL usage-preflight.sh path blocks — re-run it here once more
 # so a future refactor that stops calling BANK_PREFLIGHT_SH at all can't
 # silently turn (d-ii) into a vacuous control.
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then ok "(d-ii) control: the real usage-preflight.sh still blocks (stub was exercised, not bypassed)"; else bad "(d-ii) control: the real usage-preflight.sh no longer blocks — got: $out"; fi
 
 # --- a held leg lock IS the wake path -------------------------
@@ -241,7 +241,7 @@ write_hb 0 "$$" waiting
 
 # --- (e) RED control: the PRE-FIX hook still blocks with a leg held -------
 if [ -n "$PREFIX_HOOK" ]; then
-    out="$(run_guard_hook "$PREFIX_HOOK" "$CONSOLE_PAYLOAD" \
+    out="$(run_guard_hook "$PREFIX_HOOK" "$CHIEF_PAYLOAD" \
         HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
         HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
     rc=$?
@@ -255,7 +255,7 @@ if [ -n "$PREFIX_HOOK" ]; then
 fi
 
 # --- (f) fixed hook allows once a leg lock is held -------------------------
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then bad "(f) console + leg held -> expected allow, got: $out"; else ok "(f) console + leg held -> allow"; fi
 
 # --- (g) trap: a STALE/IDLE-HELD? leg lock must still allow (
@@ -274,7 +274,7 @@ case "$sweep_check" in
     *'FIXTURE-leg-N1'*'IDLE-HELD?'*) ok "(g) precondition: fixture sweep shows the leg lock as IDLE-HELD?" ;;
     *) bad "(g) precondition: fixture sweep did not flag the leg lock IDLE-HELD? — got: $sweep_check" ;;
 esac
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then bad "(g) stale/IDLE-HELD? leg lock -> expected allow, got: $out"; else ok "(g) stale/IDLE-HELD? leg lock -> allow (age is not death)"; fi
 
 # --- (h) paired control: release the leg lock -> back to block -------------
@@ -288,7 +288,7 @@ if is_block "$out"; then bad "(g) stale/IDLE-HELD? leg lock -> expected allow, g
 if ! release_out="$(QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" "$LEG_RELEASE_TOKEN" 2>&1)"; then
     bad "(h) setup: could not release the fixture leg lock: $release_out"
 fi
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then ok "(h) paired control: leg lock removed -> block again (same fixture, leg count is the only variable)"; else bad "(h) paired control: expected block once the leg lock is gone, got: $out"; fi
 
 # --- a leg lock past its TTL whose owner is PROVABLY dead is not a
@@ -304,11 +304,11 @@ fi
 rm -f "$LEG_LOCKDIR/liveness"
 printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
     "$fixture_host" "$dead_pid_sh" "$fixture_host" "$LEG_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$LEG_LOCKDIR/owner.json"
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then ok "(DEAD) past-TTL leg lock with a dead owner is not counted as held -> block"; else bad "(DEAD) dead-owner leg lock -> expected block, got: $out"; fi
 printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
     "$fixture_host" "$$" "$fixture_host" "$LEG_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$LEG_LOCKDIR/owner.json"
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then bad "(ALIVE) past-TTL leg lock with a live owner pid -> expected allow, got: $out"; else ok "(ALIVE) past-TTL leg lock with a live owner pid is still held -> allow"; fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" >/dev/null 2>&1
 
@@ -346,7 +346,7 @@ check_waiter() {
         *) write_hb "$1" "$2" "$3" ;;
     esac
     if [ -n "$PRE4567_HOOK" ] && [ "$expect" = block ]; then
-        out="$(run_guard_hook "$PRE4567_HOOK" "$CONSOLE_PAYLOAD" \
+        out="$(run_guard_hook "$PRE4567_HOOK" "$CHIEF_PAYLOAD" \
             HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
             HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
         rc=$?
@@ -354,7 +354,7 @@ check_waiter() {
         elif is_block "$out"; then bad "$label RED: pre-fix hook already blocks — got: $out"
         else ok "$label RED: pre-fix hook allows (bug reproduced)"; fi
     fi
-    out="$(run_guard "$CONSOLE_PAYLOAD")"
+    out="$(run_guard "$CHIEF_PAYLOAD")"
     rc=$?
     # A crashed hook prints nothing, which reads as allow: require rc 0 first.
     if [ "$rc" -ne 0 ]; then
@@ -386,7 +386,7 @@ check_waiter "(v) heartbeat epoch of 0"                           block raw "hb=
 # ...and refused as malformed (no valid heartbeat), not left to the age arithmetic.
 for hb in 99999999999999999999 1234567890123 0; do
     printf 'hb=%s pid=%s key=- tick=ok state=waiting\n' "$hb" "$$" > "$WAIT_HB"
-    out="$(run_guard "$CONSOLE_PAYLOAD")"
+    out="$(run_guard "$CHIEF_PAYLOAD")"
     case "$out" in
         *'no valid waiter heartbeat'*) ok "(w) epoch $hb -> refused as malformed" ;;
         *) bad "(w) epoch $hb -> not refused as malformed: $out" ;;
@@ -394,7 +394,7 @@ for hb in 99999999999999999999 1234567890123 0; do
 done
 
 rm -f "$WAIT_HB"
-out="$(run_guard "$CONSOLE_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD")"
 case "$out" in
     *console-wait.sh*) ok "(o) the no-waiter reason names console-wait.sh" ;;
     *) bad "(o) the no-waiter reason does not name console-wait.sh — got: $out" ;;

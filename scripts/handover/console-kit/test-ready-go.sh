@@ -18,7 +18,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${READY_GO_UNDER_TEST:-$HERE/ready-go.sh}"
-unset HIMMEL_CONSOLE_LEG CONSOLE_SESSION_NAME 2>/dev/null || true
+unset HIMMEL_CONSOLE_LEG CHIEF_SESSION_NAME CONSOLE_SESSION_NAME 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/ready-go-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT

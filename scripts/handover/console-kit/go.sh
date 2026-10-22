@@ -395,7 +395,7 @@ fi
 DIR="$ROOT/.locks/go"
 DEST="$DIR/$PR.$SHA"
 [ "$FIX_SET" -eq 0 ] || DEST=$(go_fixred_file "$ROOT" "$PR" "$SHA" "$FIXRUN")
-BY="${CONSOLE_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostname 2>/dev/null || uname -n)}"
+BY="${CHIEF_SESSION_NAME:-${CONSOLE_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostname 2>/dev/null || uname -n)}}"
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

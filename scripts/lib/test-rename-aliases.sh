@@ -404,6 +404,27 @@ done <<EOF
 $V5B1_ROWS
 EOF
 
+# --- slice V5b-2: the hook-side env names and test locals, each old env name still read;
+# three retired or foreign names are kept ---
+V5B2_ROWS='CONSOLE_DISPATCH_LOG|CHIEF_DISPATCH_LOG|identifier|old-to-new|V5|X
+CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES|CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES|identifier|old-to-new|V5|X
+CONSOLE_FG_LIST|CHIEF_FG_LIST|identifier|old-to-new|V5|X
+CONSOLE_KIT_FIXTURE|CONSOLE_KIT_FIXTURE|identifier|keep|none|never
+CONSOLE_PAYLOAD|CHIEF_PAYLOAD|identifier|old-to-new|V5|X
+CONSOLE_PAYLOAD_ACTIVE|CHIEF_PAYLOAD_ACTIVE|identifier|old-to-new|V5|X
+CONSOLE_ROLE|CONSOLE_ROLE|identifier|keep|none|never
+CONSOLE_SESSION_NAME|CHIEF_SESSION_NAME|identifier|old-to-new|V5|X
+CONSOLE_TRANSCRIPT|CHIEF_TRANSCRIPT|identifier|old-to-new|V5|X
+CONSOLE_VERB|CONSOLE_VERB|identifier|keep|none|never'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V5b-2 row '$old'" "$tabbed" "$got"
+done <<EOF
+$V5B2_ROWS
+EOF
+
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
   { line[NR] = $1; old[NR] = $2; kind[NR] = $4; n = NR }

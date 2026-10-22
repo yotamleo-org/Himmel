@@ -59,7 +59,7 @@
 #   2. Otherwise, a BOUNDED head read of transcript_path (the launch prompt
 #      lives in the first turns, unlike orchestrator-inline-guard.sh's
 #      model-tail-sniff, which reads the END for the MOST RECENT turn) —
-#      default CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES leading JSONL lines,
+#      default CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES leading JSONL lines,
 #      scoped to the FIRST entry whose "type" is "user", further scoped to
 #      the FIRST handover-doc path NAMED in that turn's own text (in order —
 #      the launch prompt loads exactly one doc, and it is the first path
@@ -77,13 +77,13 @@
 #   3. Otherwise: NOT console. A missing/unreadable/unparseable transcript,
 #      or no user turn found in the bound, allows.
 # Test seam: the payload's own transcript_path field IS the seam (point it at
-# a fixture in a test); CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES tunes the
-# bound.
+# a fixture in a test); CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES tunes the
+# bound. Each CHIEF_* name here still reads its old CONSOLE_* name.
 #
 # Escape hatches (set in the shell that LAUNCHED Claude Code; session-sticky):
 #   CONSOLE_DISPATCH_OK=1       deliberate one-session carve-out
 #   CONSOLE_DISPATCH_DISABLE=1  emergency kill switch
-# Both are LOUD — warned on stderr and appended to CONSOLE_DISPATCH_LOG
+# Both are LOUD — warned on stderr and appended to CHIEF_DISPATCH_LOG
 # (default ~/.claude/console-dispatch-guard/overrides.jsonl), best-effort,
 # mirroring guard-implementor-dispatch.sh's log_override().
 #
@@ -102,7 +102,7 @@ input=$(cat 2>/dev/null || true)
 
 log_override() {
     local override="$1" log now session subagent log_dir
-    log="${CONSOLE_DISPATCH_LOG:-${HOME:-}/.claude/console-dispatch-guard/overrides.jsonl}"
+    log="${CHIEF_DISPATCH_LOG:-${CONSOLE_DISPATCH_LOG:-${HOME:-}/.claude/console-dispatch-guard/overrides.jsonl}}"
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf 'unknown')
     session=""
     subagent=""
@@ -177,7 +177,7 @@ else
         # entry's own message text. A system prompt, a tool result, or an
         # assistant turn mentioning the path no longer counts. No user turn
         # in the bound, or an unparseable line, is NOT console (fail-open).
-        head_lines="${CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES:-40}"
+        head_lines="${CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES:-${CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES:-40}}"
         first_user_text=""
         while IFS= read -r line; do
             entry_type=$(printf '%s' "$line" | jq -r '.type // empty' 2>/dev/null || true)

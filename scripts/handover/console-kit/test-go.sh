@@ -21,7 +21,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/go.sh"
-unset HIMMEL_CONSOLE_LEG CONSOLE_SESSION_NAME 2>/dev/null || true
+unset HIMMEL_CONSOLE_LEG CHIEF_SESSION_NAME CONSOLE_SESSION_NAME 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/go-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
@@ -128,6 +128,12 @@ contains "write: head= field" "$body" "head=$SHA"
 contains "write: by= is the console session name" "$body" "by=console-x"
 grepq "$body" -Ex 'at=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
   && echo "ok - write: at= is ISO-8601 UTC" || { echo "FAIL - write: at= not ISO-8601 UTC: [$body]"; fails=$((fails+1)); }
+
+# --- 2a. CHIEF_SESSION_NAME is the by= name, over its old name CONSOLE_SESSION_NAME
+ROOT2A="$tmp/root2a"; mkdir -p "$ROOT2A"
+rc=0; HANDOVER_DIR="$ROOT2A" CHIEF_SESSION_NAME=chief-x CONSOLE_SESSION_NAME=console-x bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
+check "write: CHIEF_SESSION_NAME set -> exit 0" "$rc" "0"
+contains "write: by= is CHIEF_SESSION_NAME when both names are set" "$(cat "$ROOT2A/.locks/go/77.$SHA" 2>/dev/null)" "by=chief-x"
 
 # --- 2b. the read token is optional ------------------------------
 # go.sh reads through gh-read.sh; with no read token anywhere (an empty .env root)

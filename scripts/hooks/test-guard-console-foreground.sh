@@ -32,9 +32,9 @@ run_hook() {
         *)      payload=$(jq -nc --arg c "$cmd" '{tool_name:"Bash",tool_input:{command:$c}}') ;;
     esac
     if [ "$console" = yes ]; then
-        out=$(printf '%s' "$payload" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console" CONSOLE_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
+        out=$(printf '%s' "$payload" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console" CHIEF_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
     else
-        out=$(printf '%s' "$payload" | env -u HIMMEL_CONSOLE_DOC CONSOLE_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
+        out=$(printf '%s' "$payload" | env -u HIMMEL_CONSOLE_DOC CHIEF_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
     fi
     rc=$?
     printf '%s|%s' "$rc" "$out"
@@ -73,9 +73,9 @@ expect "leg (no HIMMEL_CONSOLE_DOC), foreground wrap-merged.sh: allowed" 0 \
 
 # a leg launched from the console inherits HIMMEL_CONSOLE_DOC; only the session name tells them apart
 payload_leg=$(jq -nc --arg c "$K/ready-check.sh --only 7 12" '{tool_name:"Bash",tool_input:{command:$c}}')
-out=$(printf '%s' "$payload_leg" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-leg" CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+out=$(printf '%s' "$payload_leg" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-leg" CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
 expect "leg session name with inherited HIMMEL_CONSOLE_DOC, foreground ready-check.sh: allowed" 0 "$rc|$out"
-out=$(printf '%s' "$payload_leg" | env -u CLAUDE_PID HIMMEL_CONSOLE_DOC=/x/N-console.md CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+out=$(printf '%s' "$payload_leg" | env -u CLAUDE_PID HIMMEL_CONSOLE_DOC=/x/N-console.md CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
 expect "unresolvable session name: fails open" 0 "$rc|$out"
 
 # --- the short scripts stay foreground
@@ -165,10 +165,19 @@ expect "console, timeout -s KILL 600 (signal word before the bound): denied" 2 \
 
 # --- not a Bash call / unusable payload: fail open
 nonbash=$(jq -nc '{tool_name:"Edit",tool_input:{file_path:"/x/wrap-merged.sh"}}')
-out=$(printf '%s' "$nonbash" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+out=$(printf '%s' "$nonbash" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
 expect "console, non-Bash tool: allowed" 0 "$rc|$out"
-out=$(printf '%s' 'not json' | env HIMMEL_CONSOLE_DOC=/x/N-console.md CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+out=$(printf '%s' 'not json' | env HIMMEL_CONSOLE_DOC=/x/N-console.md CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
 expect "console, unparseable payload: fails open" 0 "$rc|$out"
+
+# --- the list seam reads CHIEF_FG_LIST, and its old name CONSOLE_FG_LIST still works
+printf 'alt-only.sh\n' > "$TMP/alt-list.txt"
+expect "console, CHIEF_FG_LIST names an alternate list: its script is denied" 2 \
+    "$(run_hook yes "bash alt-only.sh" absent CHIEF_FG_LIST="$TMP/alt-list.txt")" "alt-only.sh"
+expect "console, old name CONSOLE_FG_LIST alone still selects the list" 2 \
+    "$(run_hook yes "bash alt-only.sh" absent CHIEF_FG_LIST= CONSOLE_FG_LIST="$TMP/alt-list.txt")" "alt-only.sh"
+expect "console, CHIEF_FG_LIST wins over CONSOLE_FG_LIST" 0 \
+    "$(run_hook yes "bash alt-only.sh" absent CHIEF_FG_LIST="$LIST" CONSOLE_FG_LIST="$TMP/alt-list.txt")"
 
 # --- documented bypass
 expect "console, CONSOLE_FG_OK=1 in the launching shell: allowed" 0 \

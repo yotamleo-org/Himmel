@@ -207,7 +207,7 @@ esac
 echo "== HIMMEL-3599: a LEG/JUDGE session (own name NOT *-console) inherits a console's ambient HIMMEL_CONSOLE_DOC/WORKDIR -- must stay SILENT, never trust it =="
 # Reproduces the leak: headed-arm-leg.sh launches a leg/judge from a Bash
 # subprocess of the console's own claude process, which had HIMMEL_CONSOLE_DOC
-# set on ITS OWN env (headed-arm.sh CONSOLE_ENV). Nothing
+# set on ITS OWN env (headed-arm.sh CHIEF_ENV). Nothing
 # strips that var for a non-console role, so it rides along as ordinary
 # ambient env into the leg/judge's process -- exactly the shape this hook
 # must refuse. At base (pre-fix) the hook honored HIMMEL_CONSOLE_DOC BEFORE

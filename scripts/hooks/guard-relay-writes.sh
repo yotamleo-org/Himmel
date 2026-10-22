@@ -33,7 +33,8 @@
 #     ${TMPDIR:-/tmp}/himmel-console-*, or its basename matches
 #     *-legN*-RESUME.md.
 #   Bash — the command text contains HIMMEL_CONSOLE_RELAY, HIMMEL_CONSOLE_LEG,
-#     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID or CONSOLE_SESSION_NAME (an
+#     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID, CHIEF_SESSION_NAME or its old
+#     name CONSOLE_SESSION_NAME (an
 #     env-prefix override, `unset`, or `env -u` of an identity/marker
 #     variable); or contains "inbox-send" AND "--token"; or contains a
 #     write-shaped verb (">", or the command WORD "tee", "cp", "cpio", "mv",
@@ -271,7 +272,7 @@ case "$tool" in
             || deny "unparseable-payload" "cannot read command"
         [ -n "$cmd" ] || exit 0
 
-        for needle in HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG SESSION_NAME_CMDLINE_FILE CLAUDE_PID CONSOLE_SESSION_NAME; do
+        for needle in HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG SESSION_NAME_CMDLINE_FILE CLAUDE_PID CHIEF_SESSION_NAME CONSOLE_SESSION_NAME; do
             case "$cmd" in
                 *"$needle"*) deny "env-override" "$needle" ;;
             esac

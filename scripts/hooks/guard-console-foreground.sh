@@ -26,7 +26,8 @@
 # Single-run bypass (set in the shell that LAUNCHED Claude Code; a per-call
 # prefix does not reach this hook): CONSOLE_FG_OK=1.
 #
-# Test seam: CONSOLE_FG_LIST points at an alternate list file. Bash
+# Test seam: CHIEF_FG_LIST (old name CONSOLE_FG_LIST, still read) points at
+# an alternate list file. Bash
 # 3.2-compatible. Exit codes: 0 allow; 2 refuse.
 set -uo pipefail
 
@@ -58,7 +59,7 @@ lib="$HERE/../lib/session-name.sh"
 sname=$(current_session_name 2>/dev/null) || exit 0
 case "$sname" in *-console) ;; *) exit 0 ;; esac
 
-list="${CONSOLE_FG_LIST:-$HERE/../handover/console-kit/long-running.txt}"
+list="${CHIEF_FG_LIST:-${CONSOLE_FG_LIST:-$HERE/../handover/console-kit/long-running.txt}}"
 [ -r "$list" ] || exit 0
 
 hit=""
