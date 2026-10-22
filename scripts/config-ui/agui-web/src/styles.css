@@ -1,5 +1,5 @@
-/* The AG-UI run view. The palette, the Plex pair and the rail are config-ui's (public/theme.css), but prose is set
-   in Plex Sans and only machine text (tool names, args, paths) in Plex Mono. The one bold element is the run
+/* The AG-UI run view. The palette, the fonts and the rail are config-ui's (public/theme.css, the docs site's shared tokens), but prose is set
+   in --sans and only machine text (tool names, args, paths) in --mono. The one bold element is the run
    strip: parallel tool calls as lanes over time, one band per agent. Each agent carries one of six
    colours (--ag0..5, none of them the status green or red) on its band, its row in the agent list and the rail
    beside its work; failures alone are red (errors, failed suites) or amber (denials, BLOCKED reports).

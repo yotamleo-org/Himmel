@@ -567,3 +567,16 @@ test("15. a fleet census refresh keeps the live transcript and its one stream; a
   await expect.poll(() => streams.length).toBe(3);
   await expect(page.getByRole("alert")).toContainText("The run stopped");
 });
+
+test("J2. the AG-UI rail's Docs link opens the public site in a new tab, no session token, and the page wears the shared tokens", async ({ page }) => {
+  h = await bootAgui(J.prompt("hi") + J.text("hello") + J.end());
+  await page.goto(h.url);
+  const docs = page.locator(".rail .pages a", { hasText: "Docs" });
+  await expect(docs).toHaveCount(1);
+  await expect(docs).toHaveAttribute("href", "https://yotamleo-org.github.io/Himmel/");
+  await expect(docs).toHaveAttribute("target", "_blank");
+  await expect(docs).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.locator(".rail .pages a").first()).not.toHaveAttribute("target", /./);
+  const panel = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--panel").trim());
+  expect(panel).toMatch(/^#(fff|ffffff)$/i);
+});

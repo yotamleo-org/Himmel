@@ -14,7 +14,7 @@ export function Shell({ token, run, fleet, children, console: selected = null }:
     if (!token) return;
     fetch("/api/sources", { headers: { "X-Himmel-Token": token } }).then((r) => r.json()).then((j) => setSources(Array.isArray(j.sources) ? j.sources : undefined)).catch(() => {});
   }, [token]);
-  const links: { id: string; label: string; href: string; current: boolean }[] = token ? navLinks({ here: "agui", token, current: run ? "run" : "fleet", run, sources }) : [];
+  const links: { id: string; label: string; href: string; current: boolean; external?: boolean }[] = token ? navLinks({ here: "agui", token, current: run ? "run" : "fleet", run, sources }) : [];
   return (
     <div className="shell">
       <aside className="rail" aria-label="Regions">
@@ -22,7 +22,7 @@ export function Shell({ token, run, fleet, children, console: selected = null }:
         {links.length > 0 && (
           <nav className="pages" aria-label="Pages">
             {links.map((l) => (
-              <a key={l.id} href={l.href} aria-current={l.current ? "page" : undefined}>
+              <a key={l.id} href={l.href} aria-current={l.current ? "page" : undefined} {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
                 {l.label}
                 {l.id === "fleet" && <span className={`st-dot ${dot.cls}`} title={dot.title} />}
               </a>
