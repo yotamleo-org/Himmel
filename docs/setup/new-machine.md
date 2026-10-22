@@ -1399,7 +1399,7 @@ Plugins live at `~/.claude/plugins/`. Different install methods per plugin — r
 | `handover` | himmel marketplace | `/plugin install` after adding himmel marketplace | Handover doc workflows for cross-session continuity |
 | `obsidian-triage` (LUNA-3) | himmel marketplace | `/plugin install` after adding himmel marketplace | Autonomous triage of Web Clipper output: `/triage-clips` + `/synthesize-clips`. Required only if you set up the Web Clipper templates in §5a |
 | `obsidian` (Steph Ango's skills) | himmel marketplace (sources `kepano/obsidian-skills`, SHA-pinned) | `/plugin install` after adding himmel marketplace | `obsidian-markdown`, `obsidian-bases`, `json-canvas`, `obsidian-cli`, `defuddle`. `obsidian-triage` can use `obsidian-markdown` for proper OFM when editing clipped notes (recommended, not required — fallback documented in the command body) |
-| `claude-obsidian` | himmel marketplace (sources `yotamleo/claude-obsidian` vendor fork of `AgriciDaniel/claude-obsidian`, SHA-pinned) | `/plugin install` after adding himmel marketplace | Wiki query, save, ingest, lint, autoresearch. Companion to `obsidian-triage` — `wiki-query` optionally powers richer Related Notes inference |
+| `claude-obsidian` | himmel marketplace (sources upstream `AgriciDaniel/claude-obsidian`, tag-pinned) | `/plugin install` after adding himmel marketplace | Wiki query, save, ingest, lint, autoresearch. Companion to `obsidian-triage` — `wiki-query` optionally powers richer Related Notes inference |
 
 ### Two-tier plugin profile: ALWAYS / ON-DEMAND / NOT INSTALLED
 
@@ -1608,7 +1608,7 @@ you ever want the per-turn review back.
 #
 #   # Optional — Web Clipper triage stack (skip if §5a was skipped)
 #   /plugin install obsidian-triage
-#   /plugin install claude-obsidian     # yotamleo/claude-obsidian (vendor fork of AgriciDaniel/claude-obsidian), tag-pinned
+#   /plugin install claude-obsidian     # AgriciDaniel/claude-obsidian (upstream), tag-pinned
 #   # obsidian (kepano) is NOT in the himmel marketplace — install from its own:
 #   /plugin marketplace add kepano/obsidian-skills && /plugin install obsidian@obsidian-skills
 ```
