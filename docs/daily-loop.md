@@ -1,31 +1,29 @@
 # Daily loop walkthrough
 
 > **Prerequisites:**
-> 1. himmel installed and configured on your machine — see
+> 1. himmel installed and configured on your machine: see
 >    [docs/setup/new-machine.md](setup/new-machine.md) (or
 >    [docs/setup/install.md](setup/install.md) if you're
 >    adopting the portable core in your own repo).
-> 2. **An active Claude Code session in the repo root** — run `claude` in your
+> 2. **An active Claude Code session in the repo root**: run `claude` in your
 >    terminal (or use your IDE's Claude extension). Need
 >    [Claude Code](https://claude.com/claude-code) first?
 >    `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). Every hook behaviour
 >    below fires *inside* a session; the steps assume you are already in one.
 
-This page walks one complete loop — a toy change from worktree creation
-to handover — explaining every hook and gate you will hit along the way.
+This page walks one complete loop, a toy change from worktree creation
+to handover, and explains every hook and gate you will hit along the way.
 By the end you will have run the real workflow on a real branch.
 
-This is the solo loop. The agent loop (chief, workers, judges) is the
-development graph.
-
-The agent loop drawn out: [the development graph](guide/dev-graph.html).
+This is the solo loop. The agent loop (chief, workers, judges) is drawn out
+in [the development graph](guide/dev-graph.html).
 
 ---
 
 ## Toy change used throughout
 
-We will add a single line to `docs/contributing.md`. Docs-only change, no
-shell scripts touched. That simplifies the attestation story; the
+We will add a single line to `docs/contributing.md`. It is a docs-only
+change that touches no shell scripts, which keeps attestation simple; the
 differences for code or script changes are called out inline.
 
 ---
@@ -84,9 +82,9 @@ the error and the edit never happens. The message tells you exactly what
 to do: create a worktree first.
 
 **The bypass** (`EDIT_ON_MAIN_OK=1`) must be set in the shell that
-launched `claude`, not as a per-command prefix — a per-call prefix cannot
-reach the hook process. Bypass is intentionally session-sticky so you
-cannot accidentally toggle it per-edit. The per-repo alternative is the
+launched `claude`, because a per-command prefix cannot reach the hook
+process. The bypass is session-sticky on purpose, so you cannot toggle it
+per-edit by accident. The per-repo alternative is the
 gitignored `.single-writer` marker shown above.
 
 ---
@@ -103,8 +101,8 @@ branch `docs/himmel-289-daily-loop`. Branch names must be `type/slug`
 (for example `feat/foo`, `docs/bar`).
 
 You now have an isolated copy of the repo. Claude's file operations in
-this session target the worktree path, not the primary checkout — the
-`block-edit-on-main` hook will no longer fire.
+this session target the worktree path, not the primary checkout, so the
+`block-edit-on-main` hook no longer fires.
 
 To prune old merged-PR worktrees at the same time, use `/clean_garden
 docs/himmel-289-daily-loop` (runs prune then create). To only prune
@@ -121,8 +119,8 @@ add one line:
 <!-- toy change for daily-loop walkthrough -->
 ```
 
-`block-edit-on-main` no longer blocks you inside a worktree, but edits are
-not unguarded: `orchestrator-inline-guard`, `shadow-ledger` and
+`block-edit-on-main` no longer blocks you inside a worktree, but other hooks
+still watch edits: `orchestrator-inline-guard`, `shadow-ledger` and
 `check-hook-file-parse` also run on Edit/Write and stay silent on a
 well-formed docs change.
 
@@ -186,7 +184,7 @@ the subject line. They are required only in certain circumstances:
 | Touches any non-docs code (non-`*.md`/`*.txt`/`docs/`/`handovers/`) | `Security reviewed: <token>` |
 | Docs-only (`*.md`, `*.txt`, `docs/**`, `handovers/**`) | _neither required_ |
 
-Our toy change is docs-only — no trailers needed. For a change that DOES
+Our toy change is docs-only, so it needs no trailers. For a change that DOES
 require them, the full commit looks like:
 
 ```
@@ -198,8 +196,8 @@ Security reviewed: manual
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
-Trailers go in the **first commit** after genuinely testing and reviewing
-— not in a reactive amend. If you forget, add a **new commit** that only
+Trailers go in the **first commit**, after you have tested and reviewed,
+never in a reactive amend. If you forget, add a **new commit** that only
 adds the trailer (amending is hard-blocked in auto-mode). Details:
 [docs/internals/stuck-playbook.md](internals/stuck-playbook.md).
 
@@ -239,7 +237,7 @@ themselves (docs-only fast-path). The important gate is
 
 On push, `check-cr-before-push.sh` writes a marker file at
 `.git/cr-pending/docs/himmel-289-daily-loop`. It does NOT run a review;
-it just flags that a review is owed. You see:
+it flags that a review is owed. You see:
 
 ```
 → code-review: docs-audit marker written for docs/himmel-289-daily-loop (HEAD=abc1234). Run /pr-check (docs-audit lane: one code-reviewer with the docs charter) before opening the PR — docs are never zero-CR.
@@ -253,8 +251,8 @@ is advisory at push time and becomes a hard block at PR creation time.
 > **Docs-only path:** Reviewable docs (`docs/`, repo
 > `*.md`/`*.txt`) are **never zero-CR**. The `code-review-before-push` gate
 > writes a **`docs-audit` marker** for them, so `gh pr create`
-> is blocked until `/pr-check` clears it — same hard gate as code, but a
-> lighter lane: `/pr-check` reads the marker's `docs-audit` lane and applies
+> is blocked until `/pr-check` clears it. It is the same hard gate as code,
+> with a lighter lane: `/pr-check` reads the marker's `docs-audit` lane and applies
 > the docs charter (repo-claim accuracy — hooks/gates/flags/paths/commands vs
 > the actual code — dead links, stale file/flag/ticket refs, example
 > correctness, internal consistency; not prose nitpicks; `CLAUDE.md` →
@@ -263,7 +261,8 @@ is advisory at push time and becomes a hard block at PR creation time.
 > cross-model critic also runs when `CR_REQUIRE_CROSS_MODEL` is set. It does
 > not run the full lane's critic panel.
 > **Handover state stays exempt:** `handovers/` diffs (and handover/* state
-> commits) get NO marker — personal auto-committed state, not reviewable docs.
+> commits) get NO marker: they are personal auto-committed state, not
+> reviewable docs.
 
 ---
 
@@ -462,8 +461,7 @@ The branch is squash-merged into main. The worktree is now stale.
 Chief workers do not call `gh pr merge`; they merge through
 `merge-on-green.sh` on a GO file, which also refuses while the newest main CI
 run is red. The chief verifies each PR with `ready-check.sh` before it
-writes that GO. This page covers the solo loop; the agent loop (chief,
-workers, judges) is the development graph.
+writes that GO.
 
 ---
 

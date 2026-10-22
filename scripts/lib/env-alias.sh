@@ -25,8 +25,10 @@
 # when one is invalid. Otherwise restrict, permit and env_alias_any return 0
 # (true) or 1 (false), and alias_env returns 0. A caller that must fail closed
 # reads the status (`rc=0; env_alias_restrict A B || rc=$?`): a restrict caller
-# treats anything but 1 as "on", a permit caller anything but 0 as "denied". A
-# bare `if env_alias_any A B` reads 2 as "not set", so give it a literal name pair.
+# treats anything but 1 as "on", a permit caller anything but 0 as "denied".
+# env_alias_any does not fail closed: it answers "is a name set", an invalid name
+# is rc 2 like the rest, and a bare `if env_alias_any A B` reads 2 as "not set".
+# Give it a literal name pair, read its status, or gate with env_alias_restrict.
 # The JS and Python twins (env-alias.mjs, env_alias.py) answer the same rows,
 # fixtures/env-alias-rows.tsv.
 # Sibling rename helpers: status-marker.sh (+ status-marker.mjs, status_marker.py)
@@ -34,10 +36,11 @@
 # old script path that forwards to its renamed script.
 # Bash 3.2-safe (indirect expansion, no namerefs).
 
-# _env_alias_valid NAME: [A-Z_][A-Z0-9_]*, spelled out so no locale widens A-Z.
+# _env_alias_valid NAME: [A-Z_][A-Z0-9_]*, letters and digits spelled out so no
+# locale widens a range.
 _env_alias_valid() {
   case "$1" in
-    ''|[!ABCDEFGHIJKLMNOPQRSTUVWXYZ_]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZ0-9_]*) return 1 ;;
+    ''|[!ABCDEFGHIJKLMNOPQRSTUVWXYZ_]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) return 1 ;;
   esac
   return 0
 }
@@ -60,7 +63,7 @@ alias_env() {
 
 _env_alias_num() {
   case "$1" in
-    ''|.|*[!0-9.]*|*.*.*) return 1 ;;
+    ''|.|*[!0123456789.]*|*.*.*) return 1 ;;
   esac
   return 0
 }

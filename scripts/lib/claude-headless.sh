@@ -20,7 +20,7 @@
 # (himmel-architecture-2026-08-28.md §3 — file-per-session, no shared-write
 # store), written ONLY by this script.
 set -uo pipefail
-# /refuse a chokepoint seam (NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK)
+# Refuse a chokepoint seam (NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK)
 # that differs from the session's launch env. Parameter expansion, not dirname:
 # a PATH-shadowed dirname must not pick what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
@@ -531,7 +531,7 @@ finalize_on_exit() {
   if [ -n "${_LAUNCHED_CLAUDE_PID:-}" ] && kill -0 "$_LAUNCHED_CLAUDE_PID" 2>/dev/null; then
     kill_tree "$_LAUNCHED_CLAUDE_PID"
   else
-    # ` &` and the very next line
+    # `( ... ) &` and the very next line
     # (`_LAUNCHED_CLAUDE_PID=$!`) are two separate commands — bash runs
     # pending traps BETWEEN commands, so a SIGTERM/SIGINT landing in that
     # exact window fires this trap while the variable is still empty, and
@@ -570,7 +570,7 @@ finalize_on_exit() {
     rm -f "${PROMPT_FILE:-}" 2>/dev/null
     PROMPT_CLEANED=1
   fi
-  # codex-3 (final round, suggestion): STDOUT_FILE/STDERR_FILE (assigned
+  # STDOUT_FILE/STDERR_FILE (assigned
   # later, once the invocation is assembled) can carry the model's raw
   # output and diagnostics — an interruption before their normal
   # post-invocation cleanup left them behind too. `${VAR:-}` is safe here

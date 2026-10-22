@@ -15,15 +15,18 @@
 Run these, in order, and write the result as the first bullet under
 `## Results` at the bottom of this file.
 
-1. **`ListAgents`** — who is alive. Legs the handoff claims alive but absent here
-   are gone; never relay a window as live without checking. In the same batch,
-   `Read` each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
-> **One command for steps 2–6 and 8** (when `chief.sh next` pre-computed steps 2–6 under this heading, verify them and run only step 8 with `--acquire --lock-only`):
-> `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
-> prints the lock sweep, head/remote, bank, leg processes, C29, load and this
-> document's lock state (read-only; `--acquire` takes a `free` lock, prints the
-> token, never a held one). `ListAgents`, relays and quote-backs (step 9),
-> LIVE and the waiter (step 10) stay yours.
+1. **One batch, one turn** — all of these as parallel tool calls in one response:
+   - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
+   - **`ToolSearch`** `select:SendMessage` (deferred).
+   - **`Read`** each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
+   - **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-legs`**
+     in the **foreground** (never `run_in_background`, never twice): lock sweep,
+     head/remote, usage, worker processes, C29, load and lock state for steps 2–6
+     and 8; takes a `free` lock and prints the token (never a held one). If
+     `chief.sh next` pre-computed steps 2–6, verify them and pass `--acquire --lock-only`.
+
+   Steps 2–6 and 8 below interpret that call's output: never re-run their commands.
+   Relays and quote-backs (step 9), the waiter (step 10) and LIVE stay yours.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
    locks"): `HANDOVER_DIR="{{HANDOVER_ROOT}}" bash "{{REPO}}/scripts/handover/queue-lock.sh" status --sweep "{{HANDOVER_ROOT}}"`.

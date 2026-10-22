@@ -14,7 +14,7 @@
 # set; it never removes or disables anything, and re-runs are no-ops.
 #
 #   install-himmel-codex.sh                 # register marketplace + enable default set
-#   install-himmel-codex.sh --all           # also enable luna-correlate + pr-review-toolkit-himmel
+#   install-himmel-codex.sh --all           # also enable luna-correlate
 #   install-himmel-codex.sh --plugins=himmel-ops,handover
 #   install-himmel-codex.sh --dry-run       # report intended changes, mutate nothing
 #

@@ -470,7 +470,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
-      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT') assertAdmissionsWritable();
+      if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || ((op.kind === 'remove' || op.kind === 'move') && op.from_v)) assertAdmissionsWritable();
       const cur = await ctx.jira.fixVersions(k);
       if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
@@ -483,12 +483,23 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 
     if (last.phase === 'applied') {
       event('ok');
+      // A later applied ruling that supersedes this one owns the ledger now; a replay must not write after it.
+      const phaseOf = new Map(rows.verified.map((r) => [r.id, r.phase]));
+      const superseded = rows.verified.some((s) => s.supersedes.includes(id) && ['applied', 'receipted'].includes(phaseOf.get(s.id) ?? ''));
       // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
-      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
+      if (!superseded && last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
-        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key)) {
-          appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm' });
+        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
+          appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
+        }
+      }
+      // A removal is a ledger row too, so a later reader sees the ruling-in withdrawn.
+      if (!superseded && (last.op.kind === 'remove' || last.op.kind === 'move') && last.op.from_v) {
+        const version = last.op.from_v;
+        const key = last.key;
+        if (!readAdmissions(version).some((r) => r.kind === 'rm-remove' && r.key === key && r.ruling === id)) {
+          appendAdmission({ version, key, kind: 'rm-remove', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
         }
       }
       const marker = `[release-ruling ${id}]`;

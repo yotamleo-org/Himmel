@@ -101,8 +101,8 @@ Full reference, endpoints and environment overrides:
 
 Both belong to the himmel **supervisor session**, the long-running session that
 dispatches and watches worker sessions ([glossary](glossary.md)). They are static HTML
-files the supervisor session renders from its own state and republishes as artifacts, not
-servers.
+files, which the supervisor session renders from its own state and republishes as
+artifacts; neither runs a server.
 
 - **Board** (`board.mjs`): fleet size against the cap, each worker session's phase from
   LIVE to WRAPPED, what needs the supervisor session, epic progress and open decisions.

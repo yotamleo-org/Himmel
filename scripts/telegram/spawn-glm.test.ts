@@ -1135,7 +1135,6 @@ test("resolveProfileSettings: lane-impl → complete enabledPlugins JSON with fl
   expect(typeof s).toBe("string");
   const parsed = JSON.parse(s as string);
   expect(parsed.enabledPlugins["qmd@himmel"]).toBe(true); // floor
-  expect(parsed.enabledPlugins["pr-review-toolkit-himmel@himmel"]).toBe(true);
   expect(parsed.enabledPlugins["claude-obsidian@himmel"]).toBe(false); // dropped content
 });
 

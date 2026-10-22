@@ -1,0 +1,73 @@
+name: codeowner-review-gate
+
+# HIMMEL-3372. Produces the status check `codeowner-review-gate`: code-owner
+# review is mandatory for OUTSIDE pull requests only; the owner's own PRs (every
+# console leg PR) pass on author permission and keep merging through
+# merge-on-green.sh. A ruleset cannot scope a review rule by author (a direct
+# attempt blocked owner PR #1039 and was reverted), hence a check. Decision
+# logic + tests: scripts/ci/codeowner-review-gate.mjs,
+# scripts/ci/test-codeowner-review-gate.sh.
+#
+# The ruleset must require the check named exactly `codeowner-review-gate` (the
+# job `name:` below, which is the check-run context). Adding it is a console
+# step AFTER this workflow has merged; this file never touches rulesets.
+#
+# Security posture (asserted mechanically by the suite above):
+#   * `pull_request` + `pull_request_review` only. Neither the target-privileged
+#     PR trigger nor the chained workflow_run trigger is used, and nothing from
+#     the PR is checked out or executed: there is no checkout step at all.
+#   * The gate script and CODEOWNERS are read from the BASE commit through the
+#     API, so an outside PR can neither edit its own gate nor its own owners.
+#   * Read-only token. On a fork PR the token is read-only regardless, which is
+#     sufficient: the job only reads.
+#   * No third-party action, so nothing to pin; the suite fails on any `uses:`
+#     that is not a full commit sha.
+#   * Every event-derived value reaches the shell through `env:`, never through
+#     a `${{ }}` expression inside `run:`.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# One run per PR: a newer event supersedes a stale one, which re-reads live API
+# state anyway, so the latest completed run is always the authoritative check.
+concurrency:
+  group: codeowner-review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: codeowner-review-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # HIMMEL-3380: the check is required, so there is no bootstrap exemption.
+      # Any failure to fetch the script (a 404 included) fails this step, and the
+      # evaluate step below then never runs, so the job fails closed on every base.
+      - name: Fetch the gate script from the base commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/codeowner-review-gate.mjs"
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$REPO/contents/scripts/ci/codeowner-review-gate.mjs?ref=$BASE_SHA" \
+            > "$script"
+          [ -s "$script" ]
+
+      - name: Evaluate code-owner review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node "$RUNNER_TEMP/codeowner-review-gate.mjs" \
+            --repo "$REPO" --pr-number "$PR_NUMBER" --base-sha "$BASE_SHA"

@@ -1,0 +1,8 @@
+{
+  "number": 1378,
+  "headRefOid": "a11dedcabea13fc5b6ed8b2dc0606d3cbf1e66d7",
+  "baseRefName": "main",
+  "mergeStateStatus": "BLOCKED",
+  "reviewDecision": null,
+  "source": "HIMMEL-3788: a force_all_os dispatch run posts a failing same-named shell-unit (ubuntu-latest) at the PR head, shadowing the required check"
+}

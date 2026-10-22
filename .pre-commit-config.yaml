@@ -451,6 +451,14 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      # ponytail: the required set is the recorded rules/branches snapshot, so a context added since is not linted, upgrade = read the live ruleset
+      - id: required-check-no-cancel
+        name: a workflow providing a required check must not cancel a run nothing re-triggers
+        language: system
+        entry: bash scripts/ci/lint-required-check-cancel.sh --required scripts/ci/check-run-timelines/testdata/rules-main.json
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+        stages: [pre-commit]
+
       - id: added-unwired-check
         name: A file this branch adds must be wired (ready-check item 11)
         language: system

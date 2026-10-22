@@ -4,9 +4,8 @@
 # When CR_REQUIRE_CROSS_MODEL=1 + CR_FLOOR_FALLBACK=claude-only and every
 # non-Claude lane is exhausted, clear-review-marker.sh accepts a Claude-only floor
 # — but only THIS script's review, never a row the authoring session records
-# about its own work. It runs the review plugin's reviewer
-# (pr-review-toolkit-himmel:code-reviewer, its agent body read from the plugin
-# at runtime, never a paraphrase) in a FRESH headless claude session whose only
+# about its own work. It runs the reviewer in scripts/cr/floor-reviewer.md
+# (its body read from that file at runtime, never a paraphrase) in a FRESH headless claude session whose only
 # inputs are the diff and a snapshot of every tracked file at the head:
 #   - cwd = the snapshot (no .git, so no history, no ledger, no handovers);
 #   - --isolated = --safe-mode --strict-mcp-config --no-session-persistence
@@ -50,7 +49,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-AGENT_MD="$REPO_ROOT/marketplace/plugins/pr-review-toolkit-himmel/agents/code-reviewer.md"
+AGENT_MD="$REPO_ROOT/scripts/cr/floor-reviewer.md"
 
 die() { echo "claude-floor-review: $*" >&2; exit "${2:-2}"; }
 
@@ -252,7 +251,7 @@ mkdir -p "$git_dir/cr-floor" || die "cannot create $git_dir/cr-floor" 1
 if ! jq -n --arg head "$head" --arg base "$base" --arg diff_hash "$diff_hash" --arg session_id "$session_id" \
     --arg dispatch_id "$dispatch_id" --arg unlocked "$unlocked" --argjson findings "$findings" \
     '{schema:2, head:$head, base:$base, diff_hash:$diff_hash, session_id:$session_id, dispatch_id:$dispatch_id,
-      model:"claude-floor", reviewer:"pr-review-toolkit-himmel:code-reviewer", same_model:true, context_free:true,
+      model:"claude-floor", reviewer:"scripts/cr/floor-reviewer.md", same_model:true, context_free:true,
       unlocked_by:($unlocked | split(" ")), findings:$findings}' > "$work/artifact.json" \
     || ! node "$SCRIPT_DIR/claude-floor.mjs" sign "$work/artifact.json" "$row" >"$git_dir/cr-floor/$head.json.tmp" \
     || ! mv "$git_dir/cr-floor/$head.json.tmp" "$git_dir/cr-floor/$head.json"; then
@@ -260,6 +259,6 @@ if ! jq -n --arg head "$head" --arg base "$base" --arg diff_hash "$diff_hash" --
 fi
 
 echo "claude-floor-review: reviewed ${head:0:8} ($n finding(s), session $session_id). Unlocked by: $unlocked."
-echo "  COVERED: pr-review-toolkit-himmel:code-reviewer in a fresh headless claude session over the diff + a snapshot of this head only (no session context)."
+echo "  COVERED: scripts/cr/floor-reviewer.md in a fresh headless claude session over the diff + a snapshot of this head only (no session context)."
 echo "  NOT COVERED: cross-model review. Same model family as the author — the shared-model blind spot remains."
 [ "$n" -eq 0 ] || echo "  Adjudicate the claude-floor-N findings (ledger-append.sh finding ... --verdict) before clearing."

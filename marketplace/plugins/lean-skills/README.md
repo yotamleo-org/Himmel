@@ -154,7 +154,7 @@ vendored script is not locally edited to fix this — tracked in HIMMEL-3106.
 ## How drift is detected
 
 **Release-level, not per-file.** This is a deliberate departure from the
-class-2 `UPSTREAM_PIN` format `pr-review-toolkit-himmel` (above) uses — that
+class-2 `UPSTREAM_PIN` format `telegram-himmel` uses — that
 format parses exactly one `upstream_repo`/`upstream_path`/`upstream_sha256`
 triple per plugin, and this plugin vendors 13 whole skill *directories*
 (`SKILL.md` plus companion prompts/scripts), not one file. A per-file sha256

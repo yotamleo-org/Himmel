@@ -287,7 +287,7 @@ SOFTWARE.
 - Every `marketplace/plugins/*` plugin with a `LICENSE` file declares MIT
   (`claude-hud` — fork, upstream copyright by Jarrod Watts, preserved per
   convention; `handover`, `himmel-ops`, `obsidian-triage`, `qmd` — MIT) or
-  Apache-2.0 (`pr-review-toolkit-himmel`, `telegram-himmel` — both also carry
+  Apache-2.0 (`telegram-himmel` — also carries
   a `NOTICE` file). All compatible with an MIT-top-level project.
   `luna-correlate` has no separate `LICENSE` (first-party, no fork lineage;
   inherits the repo root license).

@@ -1,0 +1,8 @@
+{
+  "number": 1079,
+  "headRefOid": "ffb7c39522021884341ffeb876620012b8f43a9a",
+  "baseRefName": "main",
+  "mergeStateStatus": "CLEAN",
+  "reviewDecision": null,
+  "source": "HIMMEL-3434: gh pr checks 1079 is 25/25 green (GitHub's own gate judges the latest run); PR merged"
+}

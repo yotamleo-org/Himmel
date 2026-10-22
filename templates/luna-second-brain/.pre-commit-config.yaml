@@ -92,10 +92,12 @@ repos:
         # vault-stall cadence adds this same exclude if an older vault lacks it).
         exclude: ^handovers/
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
-    hooks:
-      - id: gitleaks
+  # gitleaks is NOT a framework hook here: the generated pre-commit hook
+  # (scripts/hooks/install-nostash-hooks.sh) runs `gitleaks git --pre-commit
+  # --staged` itself. A framework hook is covered by pre-commit's whole-tree
+  # "files were modified by this hook" check, and a scan of a large staged set
+  # takes long enough for a concurrent writer to trip it, stalling every vault
+  # commit. The hook fails closed when gitleaks is missing.
 
   - repo: local
     hooks:

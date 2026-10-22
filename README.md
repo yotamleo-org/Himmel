@@ -447,9 +447,10 @@ platform attestation and the rules for headless Claude runs are all in
 
 himmel is licensed under the MIT License; see [`LICENSE`](LICENSE).
 
-The vendored forks `marketplace/plugins/pr-review-toolkit-himmel` and
-`marketplace/plugins/telegram-himmel` keep their upstream **Apache-2.0**
-licenses; see each plugin's `LICENSE` file.
+The vendored fork `marketplace/plugins/telegram-himmel` keeps its upstream
+**Apache-2.0** license; see its `LICENSE` file. `scripts/cr/floor-reviewer.md`
+is a modified copy of the Apache-2.0 `code-reviewer` agent from
+`anthropics/claude-plugins-official` (see `THIRD-PARTY-NOTICES.md`).
 
 Third-party attribution for vendored bundles and the dependency-license
 audit (clean, fully permissive) is in

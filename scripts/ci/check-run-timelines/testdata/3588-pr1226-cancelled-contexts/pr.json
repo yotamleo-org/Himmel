@@ -1,0 +1,8 @@
+{
+  "number": 1226,
+  "headRefOid": "10141d9a418be92acdd142e391f531848a9b5963",
+  "baseRefName": "main",
+  "mergeStateStatus": "BLOCKED",
+  "reviewDecision": null,
+  "source": "HIMMEL-3588: PR 1226 at 10141d9a had 23/23 required contexts green and 0 unresolved threads, but was BLOCKED by 3 CANCELLED codeowner-review-gate contexts"
+}

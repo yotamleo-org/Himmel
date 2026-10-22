@@ -1,0 +1,8 @@
+{
+  "number": 1115,
+  "headRefOid": "da43ee9f3182be2a405b051842057134ecab17b0",
+  "baseRefName": "main",
+  "mergeStateStatus": "BLOCKED",
+  "reviewDecision": null,
+  "source": "HIMMEL-3473 Evidence: mergeable_state blocked, 23/23 required contexts SUCCESS by latest-run, 0 unresolved threads"
+}

@@ -1409,7 +1409,7 @@ into three tiers — its own `_enabledPluginsComment` / `_onDemandPluginsComment
 
 - **ALWAYS** (`enabledPlugins` → `true`): installed AND enabled on every himmel
   machine — `lean-skills`, `qmd@himmel`, `handover@himmel`,
-  `himmel-ops@himmel`, `pr-review-toolkit-himmel@himmel`. `lean-skills`
+  `himmel-ops@himmel`. `lean-skills`
   replaces `superpowers` + `mattpocock-skills` (those two fat
   upstream plugins carried ~2.2k tok of skill listing into every session for
   skills almost never invoked; `lean-skills` vendors verbatim just the subset
@@ -1513,7 +1513,8 @@ are `false` in `enabledPlugins` — every adopter
 and every re-provisioned operator machine gets the minimal set by default instead
 of re-creating the maximal 31-plugin install every time. (A 17th
 `@claude-plugins-official` entry, `pr-review-toolkit`, is also `false` but is not
-listed for re-enable — himmel ships its own `pr-review-toolkit-himmel` fork.)
+listed for re-enable — `/pr-check` dispatches `pr-review-toolkit:*` agents only
+when `CR_CLAUDE_AGENTS=1`.)
 Turn any of these back on with one command
 (`--scope user` shown; swap for `project`/`local` per [Scope](#scope-user-vs-project) above):
 
@@ -1661,7 +1662,7 @@ claude plugin install himmel-ops@himmel       --scope user
 # obsidian (kepano) is NOT in himmel's marketplace — install from its own:
 claude plugin marketplace add kepano/obsidian-skills
 claude plugin install obsidian@obsidian-skills --scope user
-# optional operator-coupled forks: telegram-himmel@himmel, pr-review-toolkit-himmel@himmel
+# optional operator-coupled fork: telegram-himmel@himmel
 ```
 
 Or install the entire manifest (the himmel plugins plus the official ones it
