@@ -110,6 +110,6 @@ node scripts/docs/generate-credits.mjs --check
 
 When adding a plugin or fork, record any missing attribution fields in the
 credits metadata table in `docs/third-party-licenses.md`, then regenerate.
-The check rejects missing rows, changed pins, missing licence metadata and
-unused plugin/fork metadata. `scripts/docs/test-generate-credits.sh` runs it
+The check rejects missing rows, changed pins, missing licence metadata,
+uncredited standalone directories under `.claude/skills`, and unused plugin/fork metadata. `scripts/docs/test-generate-credits.sh` runs it
 against this tree as well as missing-row fixtures in CI.

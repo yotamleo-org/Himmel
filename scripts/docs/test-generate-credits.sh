@@ -136,6 +136,27 @@ test('unknown attribution keys cannot leave removed plugins on the page', () => 
   red(run(), /removed|unused/i);
 });
 
+test('an uncredited standalone skill directory fails even before the page becomes stale', () => {
+  green(run());
+  const original = read(pagePath);
+  put('.claude/skills/new-vendored/SKILL.md', '# New vendored skill\n');
+  red(run('--check'), /missing credits metadata.*skill:new-vendored/i);
+  assert.equal(read(pagePath), original);
+  metadata(forkMetadata + '\n| skill:new-vendored | https://github.com/example/new-vendored | New author | MIT | abc123 |');
+  green(run());
+  assert.match(read(pagePath), /\| new-vendored \|/);
+  green(run('--check'));
+});
+
+test('grouped standalone families cover each directory, but non-skill directories are ignored', () => {
+  put('.claude/skills/one/SKILL.md', '# One\n');
+  put('.claude/skills/two/SKILL.md', '# Two\n');
+  put('.claude/skills/notes/README.md', '# Notes\n');
+  metadata(forkMetadata + '\n| skill:one + two | https://github.com/example/group | Group author | MIT | abc123 |');
+  green(run());
+  green(run('--check'));
+});
+
 test('explicit unknown licence is reported, never silently converted to MIT', () => {
   metadata('| fork:fixture-org/fork | — | Original author | Unknown (not declared upstream) | — |');
   green(run());

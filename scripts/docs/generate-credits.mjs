@@ -86,6 +86,15 @@ function generate(root) {
     if (key.startsWith('skill:')) skills.push(complete({ name: key.slice(6), ...extra }));
     else if (!seen.has(key)) throw new Error(`unused credits metadata: ${key}`);
   }
+  const standaloneRoot = path.join(root, '.claude/skills');
+  const creditedSkills = new Set(skills.flatMap(row => row.name.split(' + ')));
+  if (fs.existsSync(standaloneRoot)) {
+    for (const entry of fs.readdirSync(standaloneRoot, { withFileTypes: true })) {
+      if (entry.isDirectory() && fs.existsSync(path.join(standaloneRoot, entry.name, 'SKILL.md')) && !creditedSkills.has(entry.name)) {
+        throw new Error(`missing credits metadata: skill:${entry.name}`);
+      }
+    }
+  }
   return `# Credits
 
 himmel builds on the work of the authors and communities below. Thank you.
@@ -137,8 +146,8 @@ node scripts/docs/generate-credits.mjs --check
 
 When adding a plugin or fork, record any missing attribution fields in the
 credits metadata table in \`docs/third-party-licenses.md\`, then regenerate.
-The check rejects missing rows, changed pins, missing licence metadata and
-unused plugin/fork metadata. \`scripts/docs/test-generate-credits.sh\` runs it
+The check rejects missing rows, changed pins, missing licence metadata,
+uncredited standalone directories under \`.claude/skills\`, and unused plugin/fork metadata. \`scripts/docs/test-generate-credits.sh\` runs it
 against this tree as well as missing-row fixtures in CI.
 `;
 }
