@@ -489,6 +489,8 @@ assert_rc "R6266+ leg ssh -vp 2235 clustered"  2 "$(run_case "$(j_bash 'ssh -vp 
 assert_rc "R6266+ leg scp -rP 2235 clustered"  2 "$(run_case "$(j_bash 'scp -rP 2235 f himmel@127.0.0.1:')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg scp -P 2235"            2 "$(run_case "$(j_bash 'scp -P 2235 f himmel@127.0.0.1:')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266+ leg ssh:// url port"        2 "$(run_case "$(j_bash 'ssh ssh://himmel@127.0.0.1:2235 true')" HIMMEL_CONSOLE_LEG=1)"
+assert_rc "R6266+ leg scp:// url port"        2 "$(run_case "$(j_bash 'scp f scp://himmel@127.0.0.1:2235/tmp/f')" HIMMEL_CONSOLE_LEG=1)"
+assert_rc "R6266+ leg sftp:// url port"       2 "$(run_case "$(j_bash 'sftp sftp://himmel@127.0.0.1:2235/tmp')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266- operator raw ssh -p 2235"   0 "$(run_case "$(j_bash "$_raw_ssh")" HIMMEL_CONSOLE_LEG=0)"
 assert_rc "R6266- leg ssh -p 22 github"       0 "$(run_case "$(j_bash 'ssh -p 22 git@github.com')" HIMMEL_CONSOLE_LEG=1)"
 assert_rc "R6266- leg ssh station alias"      0 "$(run_case "$(j_bash 'ssh win2 true')" HIMMEL_CONSOLE_LEG=1)"
