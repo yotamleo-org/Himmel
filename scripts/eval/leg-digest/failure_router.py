@@ -310,9 +310,14 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
         # The label search would match the other class's ticket too: never adopt it.
         return "skipped:slug-collision", None
     if a.dry_run:
+        if c.get("ticket"):
+            return "would-comment", c["ticket"]
         cap = state["created"]["n"] if state["created"].get("day") == today else 0
-        return ("would-comment" if c.get("ticket") else "would-cap" if cap >= table["daily_cap"]
-                else "would-file"), c.get("ticket")
+        if cap >= table["daily_cap"]:
+            return "would-cap", None
+        # The dry run is never saved, so counting here only makes it show the cap a live run would hit.
+        state["created"] = {"day": today, "n": cap + 1}
+        return "would-file", None
     hits = search(jbin, project, cls)
     if hits is None:
         return "skipped:search-error", c.get("ticket")
@@ -386,11 +391,10 @@ def route(a):
         for k in set(by) | set(state["classes"] if state_ok else ()):
             slugs.setdefault(slug(k), set()).add(k)
         decisions = 0
-        for cls in sorted(by):
-            fire = firing(table, cls, by[cls])
-            if not fire:
-                continue
-            t, legs, counted = fire
+        fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
+        # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
+        for cls in sorted((c for c in fires if fires[c]), key=lambda c: (-len(fires[c][1]), c)):
+            t, legs, counted = fires[cls]
             n = len(legs)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
             if set(legs) <= set(c.get("acted", [])):
