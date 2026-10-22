@@ -1048,6 +1048,7 @@ scripts/vm/test-assert-provenance.sh	11
 scripts/vm/test-ci-runner.sh	9
 scripts/vm/test-dry-run-restore.sh	10
 scripts/vm/test-egress-refresh.sh	0
+scripts/vm/test-guest-exec.sh	1
 scripts/vm/test-inventory.sh	1
 scripts/vm/test-launch-guest.sh	1
 scripts/vm/test-model-replay.sh	0
