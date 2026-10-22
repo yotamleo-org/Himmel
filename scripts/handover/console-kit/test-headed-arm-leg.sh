@@ -4504,7 +4504,7 @@ d43m="$tmp/c43-m"; mk_launch_stubs "$d43m" "HIMMEL-43-mode"
 some_doc="$mode43" run_leg "$d43m" "$tmp/repo43" "HIMMEL-43-mode" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d43m" || true
 check "43k0 the mode-doc launch recorded an id" "$(grep -c '^session_ids:' "$mode43")" "1"
-check "43k the rewrite keeps the doc's mode" "$(stat -c %a "$mode43")" "600"
+check "43k the rewrite keeps the doc's mode" "$(stat -c %a "$mode43" 2>/dev/null || stat -f %Lp "$mode43")" "600"  # gnu-ok: BSD stat -f fallback on the same line
 
 # --- 44. a real launch pre-accepts folder/hooks trust ------------
 # The cwd of a console-created worktree is trusted before konsole starts, on the

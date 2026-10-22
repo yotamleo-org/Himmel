@@ -58,7 +58,7 @@ resolve() {
 }
 
 echo "[test-timeout-bin] T1 GNU timeout present: resolved AND still bounds a sleeper"
-if timeout --version >/dev/null 2>&1; then
+if timeout --version >/dev/null 2>&1 && [ "$(dirname "$(command -v timeout)")" != "$SCRIPT_DIR/shims" ]; then
     real="$(dirname "$(command -v timeout)")"
     d1="$(stub_dir t1 sleep)"
     got="$(resolve "$d1:$real")"
@@ -69,7 +69,7 @@ if timeout --version >/dev/null 2>&1; then
     PATH="$d1:$real" "$BASH_BIN" -c '. "$1"; ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 1} sleep 30' _ "$LIBF" 2>/dev/null || rc=$?
     eq "T1 sleeping child killed by the bound (rc 124)" "$rc" "124"
 else
-    echo "  SKIP T1: no GNU timeout on this host (nothing to prove the bound with)"
+    echo "  SKIP T1: no real GNU timeout on this host (absent, or only the portable shim, whose env-bash shebang needs a PATH T1 does not give it)"
 fi
 
 echo "[test-timeout-bin] T2 no timeout/gtimeout: empty, one note, idiom runs unbounded"

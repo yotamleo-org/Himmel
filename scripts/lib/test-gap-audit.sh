@@ -20,6 +20,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/gap-audit.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 NOW=1760000000
 DAY=86400
+touch_at() { TZ=UTC touch -t "$(TZ=UTC date -d "@$2" +%Y%m%d%H%M.%S 2>/dev/null || TZ=UTC date -r "$2" +%Y%m%d%H%M.%S)" "$1"; }  # GNU date -d @N, BSD date -r N
 
 # --- green fixtures ---------------------------------------------------------
 mkdir -p "$TMP/repo" "$TMP/go" "$TMP/mirror"
@@ -34,7 +35,7 @@ EOF
 printf 'Pending:  0 need embedding\n  luna (qmd://luna/)\n    Files:    9 (updated 5m ago)\n' > "$TMP/qmd-green.txt"
 printf '{}' > "$TMP/go/graph.json"
 printf '{}' > "$TMP/go/semantic-manifest.json"
-touch -d "@$((NOW - 2 * DAY))" "$TMP/go/semantic-manifest.json"
+touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
 run() { # run <extra env assignments...> ; prints gap_audit_offer
     env GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" \
@@ -76,13 +77,13 @@ rm -f "$TMP/go/semantic-manifest.json"
 out="$(run)"
 has "no semantic manifest flagged" "$out" "semantic manifest"
 printf '{}' > "$TMP/go/semantic-manifest.json"
-touch -d "@$((NOW - 40 * DAY))" "$TMP/go/semantic-manifest.json"
+touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 40 * DAY))"
 out="$(run)"
 has "old semantic manifest flagged" "$out" "40d"
 mkdir -p "$TMP/nogo"
 out="$(run GAP_AUDIT_GRAPH_OUT="$TMP/nogo")"
 lacks "no graph at all: graphify check skipped" "$out" "semantic manifest"
-touch -d "@$((NOW - 2 * DAY))" "$TMP/go/semantic-manifest.json"
+touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
 # --- orphaned in-work tickets: RESUME detector ------------------------------
 cat > "$TMP/resume.sh" <<'EOF'
