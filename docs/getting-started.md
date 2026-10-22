@@ -1,10 +1,10 @@
 # Getting Started
 
-New to himmel? This is the path from clone to your first PR-gated loop — about
-**15 minutes**, most of it just watching the installer run. The core install is
-three commands, and you stay in control the whole way. The deeper
-[daily-loop walkthrough](daily-loop.md) that narrates every hook is *optional
-depth*, not a prerequisite — the steps below stand on their own.
+New to himmel? This is the path from clone to your first PR-gated loop. It
+takes about **15 minutes**, most of it watching the installer run. The core
+install is three commands, and you stay in control the whole way. The
+[daily-loop walkthrough](daily-loop.md), which narrates every hook, is
+*optional depth*; the steps below stand on their own.
 
 > **What is himmel?** A harness that runs Claude Code as a PR-gated,
 > overnight-capable agent: worktree isolation, multi-agent review, guardrail
@@ -13,9 +13,9 @@ depth*, not a prerequisite — the steps below stand on their own.
 > [advantages](../README.md#what-you-get).
 
 > **Before you start:** himmel is a harness *for* Claude Code, so you need
-> [Claude Code](https://claude.com/claude-code) installed —
+> [Claude Code](https://claude.com/claude-code) installed:
 > `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). The install wizard
-> checks for it — and for the other prerequisites, failing fast with install
+> checks for it and for the other prerequisites, and fails fast with install
 > hints (the node-less bootstrap step below installs Node itself).
 
 ## 1. Install (≈3 min hands-on, plus install time)
@@ -31,29 +31,29 @@ Node-less machine? Run `bash himmel/scripts/himmelctl/bootstrap.sh` first, then
 re-run `install`.
 
 That is the whole install for the common case. **The full guide is
-[setup/install.md](setup/install.md)** — prerequisites, what each scope and
-install profile actually lands, the Windows caveat, and the adaptation
-checklist for a repo that is not himmel. Already have himmel wired some older
-way? [setup/migrating.md](setup/migrating.md).
+[setup/install.md](setup/install.md)**: prerequisites, what each scope and
+install profile lands, the Windows caveat, and the adaptation checklist for a
+repo that is not himmel. Already have himmel wired some older way? See
+[setup/migrating.md](setup/migrating.md).
 
-> **Developing himmel itself** — running the repo standalone, hacking on the
-> harness — is a different path: see
+> **Developing himmel itself** (running the repo standalone, hacking on the
+> harness) is a different path: see
 > [setup/new-machine.md](setup/new-machine.md#4-himmel-repo).
 
 ## 2. Minimal config (≈1 minute)
 
-**`USER_SLUG`** — your kebab-case handle (e.g. `jane-doe`). Skip it and himmel
+**`USER_SLUG`** is your kebab-case handle (e.g. `jane-doe`). Skip it and himmel
 derives one from your `git config user.name`. That is the whole required
 configuration; luna, Telegram, [hermes](hermes-runbook.md) and Jira are all
 opt-in. The details, including the companion vault, are in
 [setup/install.md](setup/install.md#minimal-config).
 
-**For your first loop you need none of this** — the installer already did the
-work. Skip straight to step 3.
+**For your first loop you need none of this**, because the installer already
+did the work. Skip straight to step 3.
 
 ## 3. Your first loop (≈5 minutes)
 
-First, **open a Claude Code session in the repo** — run `claude` in your terminal
+First, **open a Claude Code session in the repo**: run `claude` in your terminal
 at the repo root (or use your IDE's Claude extension). The hooks below only fire
 inside an active session. Then the day-to-day loop is:
 
@@ -72,25 +72,25 @@ git add -A && git commit -m "feat: my change" && git push -u origin feat/my-thin
 ```
 
 > **First time using `/handover`?** Run **`/handover-setup`** once to point it at
-> your own state store — an inline `handovers/` folder in the repo, or a separate
-> git repo (via `HANDOVER_DIR`). It's configurable, not hardcoded, so your
-> cross-session notes land wherever you want them.
+> your own state store: an inline `handovers/` folder in the repo, or a separate
+> git repo (via `HANDOVER_DIR`). Your cross-session notes land wherever you
+> point it.
 
 **How to tell it's working:** if you try to edit a file on `main` you'll get a
 `block-edit-on-main` message pointing you back into a worktree (`/clean_garden`
-or `/worktree`). That message is the guardrail doing its job — a sign of
-success, not an error. (If you also installed the optional pre-commit gates,
+or `/worktree`). That message means the guardrail works; it is not an error.
+(If you also installed the optional pre-commit gates,
 `pre-commit run --all-files` should pass too.)
 
 **You're done when:** `/pr-check` reports clean, the PR merges, `/clean` removes
 the worktree, and `/handover` confirms a saved snapshot. To verify, run
-`git checkout main && git pull && git log --oneline -3` — your change is on `main`.
-That's one full PR-gated loop.
+`git checkout main && git pull && git log --oneline -3` and look for your
+change on `main`.
 
-Want it explained line-by-line — every hook and gate at the moment it fires, on
-a real toy change? The **[daily-loop walkthrough](daily-loop.md)** runs the real
-workflow on a real branch (≈15 min). Optional, but the best way to build trust in
-what each guard does.
+Want every hook and gate explained at the moment it fires, on a real toy
+change? The optional **[daily-loop walkthrough](daily-loop.md)** runs the real
+workflow on a real branch (≈15 min). It is the best way to see what each guard
+does before you rely on it.
 
 Going unattended later: `/afk-shift --limit 5` dispatches scoped tickets as
 parallel agents that open PRs while you sleep ([AFK (unattended) mode](handover/afk-mode.md)).
@@ -101,29 +101,29 @@ Two optional accelerators sit on top of the loop. Both are opt-in.
 
 ### `HIMMEL_INITIATIVE` — drive-to-ship
 
-When set, each session proactively drives finished work toward shipping at
-*natural completion points* (a logical chunk is done **and** verified), instead
-of waiting for you to say "ship it" each time. In the default (interactive)
+When set, each session drives finished work toward shipping at *natural
+completion points* (a logical chunk is done **and** verified), instead of
+waiting for you to say "ship it" each time. In the default (interactive)
 profile, the `all` master switch runs four auto-ship steps, in order:
 
-1. **`prcheck`** — run `/pr-check` and loop until the review is clean.
-2. **`pr`** — open or refresh the PR.
-3. **`ticket`** — transition the Jira ticket.
-4. **`handover`** — write the handover.
+1. `prcheck`: run `/pr-check` and loop until the review is clean.
+2. `pr`: open or refresh the PR.
+3. `ticket`: transition the Jira ticket.
+4. `handover`: write the handover.
 
-> **Merging is opt-in, never a surprise.** None of the four interactive auto-ship steps
-> merges. The full grammar does include `merge` and `public` auto-ship steps — used by
-> the overnight profile or an explicit subset. Know exactly what `merge`
+> **Merging is opt-in.** None of the four interactive auto-ship steps
+> merges. The full grammar does include `merge` and `public` auto-ship steps,
+> used by the overnight profile or an explicit subset. Know what `merge`
 > means before enabling it: **the auto-ship step itself authorizes an autonomous private
-> merge** — `ARMAUTOMERGE` only selects *which* merge path it takes (the
-> CI-certified sanctioned script vs a plain squash-merge), it is not an extra on/off
-> gate. The off switch is simply not enabling the step. With `ARMAUTOMERGE=1` that
+> merge**. `ARMAUTOMERGE` only selects *which* merge path it takes (the
+> CI-certified sanctioned script vs a plain squash-merge); it is not an extra
+> on/off gate. To turn merging off, do not enable the step. With `ARMAUTOMERGE=1` that
 > script can also merge the one configured public origin, but only after a live read
 > shows branch protection with `enforce_admins` and a non-empty required-status-checks
 > list; any other public repo, or an unreadable protection read, is refused. The
 > `public` auto-ship step is retired and does nothing. See
 > [configuration.md](configuration.md) for the complete grammar and gate
-> conditions. The directive also can't relax any safety rail — every gate in
+> conditions. The directive also can't relax any safety rail. Every gate in
 > [configuration.md](configuration.md) still applies: the review-owed marker
 > still gates `gh pr create`, the attestation commit-lines
 > (`Platforms tested:` / `Security reviewed:`) are still required, and
@@ -141,14 +141,15 @@ or a comma-separated subset of the full vocabulary
 `plan,execute,prcheck,pr,ticket,merge,public,handover`. Case-insensitive,
 whitespace-tolerant; an unset/falsy/typo value is **OFF** (the default), a
 byte-identical no-op. A separate overnight profile (`HIMMEL_OVERNIGHT` +
-`HIMMEL_INITIATIVE_OVERNIGHT`) widens `all` to six auto-ship steps for unattended runs —
-grammar, per-step semantics, and profiles:
+`HIMMEL_INITIATIVE_OVERNIGHT`) widens `all` to six auto-ship steps for
+unattended runs. Grammar, per-step semantics, and profiles are in
 [configuration.md](configuration.md).
 
-**Most people should leave the aggressive auto-ship steps OFF.** Default is OFF for a
-reason — auto-opening PRs and transitioning tickets is a lot of initiative. If
-you want some of it, start conservative (`prcheck`, or `prcheck,handover`) and
-reserve `all` (or the overnight profile) for trusted/overnight contexts.
+**Most people should leave the aggressive auto-ship steps OFF.** It is the
+default because auto-opening PRs and transitioning tickets is a lot of
+initiative. If you want some of it, start conservative (`prcheck`, or
+`prcheck,handover`) and reserve `all` (or the overnight profile) for
+trusted/overnight contexts.
 
 **Per-project override (user default + per-repo tightening).** Beyond the
 launching-shell variable, you can set it via the `env` block in
@@ -178,7 +179,7 @@ implement) and hands off.
 
 ## You're in control
 
-himmel makes the workflow *structurally* safe — but nothing is hidden, and every
+himmel makes the workflow *structurally* safe, but nothing is hidden, and every
 guard is yours to lift:
 
 - **Everything is plain files.** Rules live in [`CLAUDE.md`](../CLAUDE.md), hooks
@@ -187,27 +188,27 @@ guard is yours to lift:
 - **What himmel adds to your repo:** PreToolUse hooks (block edits on `main`,
   block secret reads, gate PR creation on a passing review) and
   pre-commit/pre-push gates. (The auto-mode classifier you may hit in
-  unattended sessions is Claude Code's own, not himmel's — himmel just routes
-  sanctioned commands around it.) The full inventory + exactly what each does:
+  unattended sessions is Claude Code's own, not himmel's; himmel routes
+  sanctioned commands around it.) The full inventory and what each one does:
   [`docs/internals/enforcement.md`](internals/enforcement.md).
 - **Nearly every guard has an off switch.** Each session hook is bypassed by an
   env var set in the launching shell, e.g. `EDIT_ON_MAIN_OK=1 claude` to edit
   `main`, or `READ_SECRETS_OK=1 claude` if the (deliberately strict)
   secret-read guard blocks a file you need to inspect. A small set of gates is
-  deliberately hard (secret-leak scans, the human-only public merge) — the
+  deliberately hard (secret-leak scans, the human-only public merge). The
   per-gate map, including that list, is in
   [configuration.md](configuration.md); the
   [`stuck-playbook`](internals/stuck-playbook.md) has the recovery flow for
   each guard.
-- **No surprise network or spend — with three named exceptions.** Optional
+- **No surprise network or spend, with three named exceptions.** Optional
   integrations are opt-in; headless Claude/Gemini calls are gated; the local
-  Jira CLI talks only to your own Atlassian site. The exceptions, all
-  switchable: a throttled session-start update check (a plain `git fetch` of
-  your own himmel clone's remote, no data sent — `UPDATE_CHECK_DISABLE=1`);
-  the usage-cap auto-relaunch, which schedules a local session relaunch when a cap
+  Jira CLI talks only to your own Atlassian site. Each exception has a switch:
+  a throttled session-start update check (a plain `git fetch` of your own
+  himmel clone's remote, no data sent; `UPDATE_CHECK_DISABLE=1`); the
+  usage-cap auto-relaunch, which schedules a local session relaunch when a cap
   approaches (`AUTO_ARM_DISABLE=1`); and `/pr-check`'s external review
-  critics, which run only where you configured their lane — `CR_PROFILE=none`
-  forces a Claude-only automated review with no external spend. The full map:
+  critics, which run only where you configured their lane (`CR_PROFILE=none`
+  forces a Claude-only automated review with no external spend). The full map:
   [configuration.md](configuration.md).
 
 ## Where to go next
