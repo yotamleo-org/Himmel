@@ -422,6 +422,17 @@ printf '#!/bin/sh\nexit 3\n' > "$T/noawk/awk"; chmod +x "$T/noawk/awk"
 got=$(printf '%s' "$(bash_json "echo hi")" | PATH="$T/noawk" "$(command -v bash)" "$HOOK" >/dev/null 2>&1; echo $?)
 if [ "$got" = 2 ]; then ok "tokenizer failure denies"; else bad "tokenizer failure denies — rc=$got"; fi
 
+echo "== a reader's bare -o is --only-matching =="
+# After a cd the cwd is unknown, so a glob-shaped pattern word is judged by name alone.
+row "6927: cd; grep -o specs pattern allows" allow "cd /tmp; grep -o 'specs/[^ )]*' notes.md"
+row "6927: cd; grep -o in a pipeline allows" allow "cd /tmp; grep '^d:' f.md | grep -o 'specs/[^ )]*' | sort -u; ls specs | head -40"
+row "6927: cd; rg -o allows" allow "cd /tmp; rg -o 'specs/[^ )]*' notes.md"
+row "6927: grep -o with a lift-named operand still reads" allow "grep -o 'x' $P"
+row "6927: cd; curl -o a glob lift name denies" deny "cd /tmp; curl -s -o 'bank-l?ft.json' https://example.invalid/x"
+row "6927: cd; sort -o a lift name denies" deny "cd /tmp; sort -o 'usage-l?ft.json' x.json"
+row "6927: cd; less -o a lift name denies" deny "cd /tmp; less -o 'usage-l?ft.json' x.json"
+row "6927: grep -o redirect into the lift denies" deny "grep -o 'specs/[^ )]*' notes.md > $P"
+
 echo
 echo "PASS: $pass  FAIL: $fail"
 [ "$fail" -eq 0 ]

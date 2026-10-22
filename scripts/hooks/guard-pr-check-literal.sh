@@ -1257,6 +1257,13 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
     # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
     case "$sub" in
         log | diff | show | status | grep | blame | ls-files | rev-parse | rev-list | describe | shortlog | cat-file | ls-tree | for-each-ref | branch | merge-base | diff-tree | name-rev | whatchanged) rd=1 ;;
+        # `git tag -l|--list <pattern>` only lists: the pattern is a refname glob, never run.
+        tag)
+            w=$i
+            while [ "$w" -lt "$e" ] && [ "${ST_W[w]}" != -- ]; do
+                case "${ST_W[w]}" in -l | --list) rd=1 ;; esac
+                w=$((w + 1))
+            done ;;
     esac
     while [ "$i" -lt "$e" ]; do
         w=${ST_W[i]}
@@ -1981,12 +1988,72 @@ for word in $flat; do
 done
 entries=""
 hentries=""
+# inert_filter_globs - a pure searcher (grep, egrep, fgrep, rg), also behind a
+# wrapper or in a later pipeline segment, hands a quoted glob to --include /
+# --exclude / --exclude-dir / --include-dir / --glob / --iglob / -g only to
+# filter file names: it runs nothing. Sets INERT_GLOBS to those values, one array
+# element each, so the token loop below drops exactly that many occurrences of
+# the same text and a repeat anywhere else (a pattern, a path, an operand of a
+# runner) is still classified. An unquoted value is not collected (the shell
+# expands it), nor is one with a `$`, a brace or a word after `--`.
+INERT_GLOBS=()
+inert_filter_globs() {
+    # st: 0 looking for the command word, 1 inside a searcher's arguments, 2 done
+    local k=0 sg=-1 st=0 wr=0 j w v vi
+    [ "$PR_TOKENIZED" = 1 ] || return 0
+    st_tokenize "$cmd" || return 0
+    [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC" = 000 ] || return 0
+    while [ "$k" -lt "$ST_N" ]; do
+        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; st=0; wr=0; fi
+        j=$k
+        w=${ST_W[j]}
+        k=$((k + 1))
+        [ -z "${ST_RO[j]}" ] || continue
+        case "$st" in
+            0)
+                [ "${ST_A[j]}" = 0 ] || continue
+                if [ "$wr" = 1 ]; then
+                    case "$w" in -*) continue ;; esac
+                    case "$w" in *[!0-9]*) ;; *) continue ;; esac
+                fi
+                case "$w" in
+                    time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs) wr=1 ;;
+                    grep | egrep | fgrep | rg) [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ] && st=1 || st=2 ;;
+                    *) st=2 ;;
+                esac
+                ;;
+            1)
+                v='' vi=-1
+                case "$w" in
+                    --) st=2 ;;
+                    --include=* | --exclude=* | --exclude-dir=* | --include-dir=* | --glob=* | --iglob=*) v=${w#*=} vi=$j ;;
+                    --include | --exclude | --exclude-dir | --include-dir | --glob | --iglob | -g)
+                        if [ "$k" -lt "$ST_N" ] && [ "${ST_S[k]}" = "$sg" ] && [ -z "${ST_RO[k]}" ]; then
+                            v=${ST_W[k]} vi=$k
+                        fi
+                        k=$((k + 1)) ;;
+                esac
+                [ "$vi" -ge 0 ] || continue
+                [ "${ST_Q[vi]}${ST_X[vi]}${ST_G[vi]}" = 100 ] || continue
+                case "$v" in *[!A-Za-z0-9_.*?/!-]*) continue ;; esac
+                case "$v" in *[*?]*) INERT_GLOBS+=("$v") ;; esac
+                ;;
+        esac
+    done
+    return 0
+}
+inert_filter_globs
 _c_ops_eq_to_nl "$flat"
 for tok in $REPLY; do
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
         # shellcheck disable=SC2016 # literal text match, never expanded
         case "$tok" in '$HIMMEL_REPO/'*|'${HIMMEL_REPO}/'*) continue ;; esac
     fi
+    ig=0
+    while [ "$ig" -lt "${#INERT_GLOBS[@]}" ]; do
+        if [ "${INERT_GLOBS[ig]}" = "$tok" ]; then INERT_GLOBS[ig]=''; continue 2; fi
+        ig=$((ig + 1))
+    done
     case "$tok" in /*|'~'*) continue ;; esac
     case "$tok" in
         *'$'[A-Za-z_'{']*) [ "$mentions" -eq 0 ] || { hit=1; unresolved=$tok; } ;;

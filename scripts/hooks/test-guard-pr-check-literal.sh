@@ -2143,6 +2143,44 @@ for v in \
     "git log --oneline 'scripts/*.sh'"; do
     run "HIMMEL-5170 j2353d control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
+# A quoted glob handed to a pure searcher as a filter value (--include, --exclude,
+# -g/--glob) is data, also behind a wrapper or in a later pipeline segment; the
+# same glob as any other word, unquoted, after `--`, or under a runner stays denied.
+for v in \
+    "timeout 60 grep -rn --include='*.sh' foo docs" \
+    "git ls-files | xargs grep -n --include='*.sh' foo" \
+    "timeout 60 rg -g '*.sh' foo docs" \
+    "env LC_ALL=C grep -rn --exclude='*.sh' foo docs" \
+    "git ls-files | xargs rg --glob '*.sh' foo" \
+    "nice grep -rn --exclude-dir='t*' --include '*.sh' foo docs"; do
+    run "HIMMEL-6927 s3 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+for v in \
+    "timeout 60 grep -rn --include=*.sh foo docs" \
+    "timeout 60 grep -f '*.sh' foo docs" \
+    "timeout 60 grep foo -- '*.sh'" \
+    "timeout 60 bash -g '*.sh'" \
+    "xargs bash '*.sh'" \
+    "timeout 60 grep -rn --include='*.sh' foo docs; timeout 5 bash '*.sh'" \
+    "timeout 60 grep -rn --include='*.sh' \"\$X\" docs; bash '*.sh'" \
+    "git config core.pager 'scripts/c?/write-verdicts.sh'" \
+    "git bisect run 'scripts/c?/write-verdicts.sh'" \
+    "git rebase -x 'scripts/c?/write-verdicts.sh' HEAD~1"; do
+    run "HIMMEL-6927 s3 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+# `git tag -l|--list <pattern>` only lists; the same glob on a non-listing tag stays denied.
+for v in \
+    "git tag --list 'v1.1*'" \
+    "git tag -l 'v1.1*'" \
+    "git tag --list 'v1.1*' --sort=-v:refname"; do
+    run "HIMMEL-6927 s3 tag-list [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+for v in \
+    "git tag -d 'v1.1*'" \
+    "git tag -a 'v1.1*' HEAD" \
+    "git tag --contains 'v1.1*'"; do
+    run "HIMMEL-6927 s3 tag-list control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
 # Line-level fail-closed rules on a line with a git word or a
 # GIT_*/EDITOR/VISUAL/PAGER assignment: a tokenizer failure plus any
 # metacharacter, a value slot that ends in a substitution, --config-env, and a

@@ -1823,6 +1823,10 @@ _tok_readonly_ok() {
                 # less command at startup (`+!cmd`).
                 less:-o*|less:-[!-]*o*|less:--log-file*|less:+*) return 1 ;;
                 jq:-i*|jq:--in-place*) return 1 ;;
+                # sort -o / --output writes a file and --compress-program runs
+                # one (long options take any unique prefix); printf -v sets a
+                # variable.
+                sort:-o*|sort:-[!-]*o*|sort:--o*|sort:--c*|printf:-v*) return 1 ;;
                 # --output=<file> writes these subcommands' output.
                 git:--output*) return 1 ;;
                 rg:--pre*) return 1 ;;
@@ -1840,7 +1844,7 @@ _tok_readonly_ok() {
 _tok_ro_segment() {
     [ "$fk" -ge 0 ] || return 0
     case "$first" in
-        cat|head|tail|grep|diff|wc|jq|rg|less|sed|cut) ;;
+        cat|head|tail|grep|diff|wc|jq|rg|less|sed|cut|sort|tr|echo|printf) ;;
         ls) [ "$_RO_LS" = 1 ] || return 1 ;;
         # HIMMEL-4364: `eval` as the command word has had its body judged by
         # this same hook in a run of its own (the body scan above, which
