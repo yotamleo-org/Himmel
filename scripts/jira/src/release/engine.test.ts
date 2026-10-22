@@ -147,6 +147,40 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(jira.fv.get('K-2')).toEqual(['v1']);
   });
 
+  it('a REMOVE ruling with an unwritable ledger refuses before Jira is touched', async () => {
+    await setup();
+    const q1 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r1 = admit(q1.req);
+    await apply(ctx(rmEnv), r1.id);
+    const q2 = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: null, why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r2 = admit(q2.req, { outcome: 'MOVE', op: { kind: 'remove', from_v: 'v1', to_v: null }, supersedes: [r1.id] });
+    writeFileSync(join(root, 'not-a-dir'), 'a file where the ledger directory should be');
+    process.env.HIMMEL_ADMISSIONS_LEDGER = join(root, 'not-a-dir', 'ledger.jsonl');
+    await expect(apply(ctx(rmEnv), r2.id)).rejects.toThrow();
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+  });
+
+  it('replaying an applied ruling that a later applied ruling superseded appends no ledger row', async () => {
+    await setup();
+    const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const q1 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r1 = admit(q1.req);
+    const post = jira.addComment.bind(jira);
+    jira.addComment = async () => { throw new Error('jira down before the receipt'); };
+    await expect(apply(ctx(rmEnv), r1.id)).rejects.toThrow('jira down');
+    jira.addComment = post;
+    unlinkSync(process.env.HIMMEL_ADMISSIONS_LEDGER!);
+    const q2 = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: null, why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r2 = admit(q2.req, { outcome: 'MOVE', op: { kind: 'remove', from_v: 'v1', to_v: null }, supersedes: [r1.id] });
+    await apply(ctx(rmEnv), r2.id);
+    expect((await apply(ctx(rmEnv), r1.id)).phase).toBe('receipted');
+    expect(rows().map((r) => [r.kind, r.key, r.version, r.ruling])).toEqual([['rm-remove', 'K-2', 'v1', r2.id]]);
+  });
+
   it('a replayed apply never posts a second comment', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });

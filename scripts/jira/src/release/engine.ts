@@ -483,8 +483,11 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 
     if (last.phase === 'applied') {
       event('ok');
+      // A later applied ruling that supersedes this one owns the ledger now; a replay must not write after it.
+      const phaseOf = new Map(rows.verified.map((r) => [r.id, r.phase]));
+      const superseded = rows.verified.some((s) => s.supersedes.includes(id) && ['applied', 'receipted'].includes(phaseOf.get(s.id) ?? ''));
       // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
-      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
+      if (!superseded && last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
         if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
@@ -492,7 +495,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         }
       }
       // A removal is a ledger row too, so a later reader sees the ruling-in withdrawn.
-      if ((last.op.kind === 'remove' || last.op.kind === 'move') && last.op.from_v) {
+      if (!superseded && (last.op.kind === 'remove' || last.op.kind === 'move') && last.op.from_v) {
         const version = last.op.from_v;
         const key = last.key;
         if (!readAdmissions(version).some((r) => r.kind === 'rm-remove' && r.key === key && r.ruling === id)) {
