@@ -30,6 +30,8 @@ directly when you already hold the leg doc. The hand sequence below is the
 fallback, not the default: a measured console spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it (HIMMEL-5592).
 
+For a batch close, run `bash scripts/handover/console-kit/close-wrapped-leg.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
+
 On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
 leg's window with `bash scripts/handover/console-kit/close-wrapped-leg.sh
 <leg-doc>` — it verifies the lock is free and the doc's last
