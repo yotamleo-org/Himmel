@@ -185,10 +185,10 @@ assess() {
             | sed -nE 's/^pr: ([1-9][0-9]*)$/\1/p')
         # A bad file is only remembered: the PRs and heads of the good files
         # are still checked first, so an open PR beside it wins.
-        if [ -z "$word" ]; then [ -n "$bad" ] || bad="${f##*/} has no parsable verdict line"; continue; fi
-        if [ -z "$vpr" ]; then [ -n "$bad" ] || bad="${f##*/} has no pr: line"; continue; fi
-        case " $prs " in *" $vpr "*) ;; *) prs="$prs $vpr" ;; esac
-        case " $heads " in *" $vhead "*) ;; *) heads="$heads $vhead" ;; esac
+        if [ -n "$vpr" ]; then case " $prs " in *" $vpr "*) ;; *) prs="$prs $vpr" ;; esac; fi
+        if [ -n "$vhead" ]; then case " $heads " in *" $vhead "*) ;; *) heads="$heads $vhead" ;; esac; fi
+        if [ -z "$word" ]; then [ -n "$bad" ] || bad="${f##*/} has no parsable verdict line"
+        elif [ -z "$vpr" ]; then [ -n "$bad" ] || bad="${f##*/} has no pr: line"; fi
     done
     # shellcheck disable=SC2086  # $prs is a space-separated list of numbers
     check_prs "$4" $prs

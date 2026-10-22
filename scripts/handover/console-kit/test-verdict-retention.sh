@@ -253,6 +253,11 @@ rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
 contains "8: a malformed file beside an open-PR file keeps the scratch" "$out" "KEEP qmix PR 501 is open"
 rc=0; ret prune --apply --unproven-older-than 20 >/dev/null 2>&1 || rc=$?
 check "8: the mixed dir survives apply" "$([ -d "$cache/qmix" ] && echo yes)" yes
+mkdir -p "$vdir/qmix2" "$cache/qmix2/scratch"
+touch -d '30 days ago' "$cache/qmix2/scratch" "$cache/qmix2"
+printf '# VERDICT qmix2 - judge\n\n## Verdict\n\n**GO** for head `short`\n\npr: 501\n' > "$vdir/qmix2/bad.md"
+rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
+contains "8: a readable pr: line beside a malformed verdict line still counts" "$out" "KEEP qmix2 PR 501 is open"
 wv qdots GO "$SHA_B" --pr 502 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qdots"; exit 1; }
 printf 'x\n' > "$vdir/qdots/..hidden"
 rc=0; out=$(ret archive 2>&1) || rc=$?
