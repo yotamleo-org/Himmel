@@ -814,6 +814,16 @@ ln -s "$WORK/sec/.himmel/go-hmac.key" "$WORK/sec/consoles/c.md"
 timeout 5 bash "$WAIT" "$WORK/sec/consoles/c.md" --legs "N1.md" > "$WORK/sec-ln.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(sec) a consoles/ symlink onto a secret is refused" "2" "$rc"
 check "(sec) the symlinked secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-ln.out")"
+# An inbox swapped for a link onto a secret after the start check is refused
+# at the next drain, never printed.
+I="$(new_inbox sec-swap)"
+start "$I" "$WORK/sec-swap.out" --legs "N1.md"
+wait_hb "$I" || fail "(sec) no baseline heartbeat"
+rm -f "$I"; ln -s "$WORK/sec/.himmel/go-hmac.key" "$I"
+wait_exit "$WPID"
+check "(sec) an inbox swapped for a secret link mid-wait ends the wait" "1" "$rc"
+check "(sec) the swapped-in secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-swap.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 
 printf '\n%d failure(s)\n' "$fails"
