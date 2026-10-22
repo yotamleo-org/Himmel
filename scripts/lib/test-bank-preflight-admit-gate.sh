@@ -145,7 +145,7 @@ D_WON=0; D_RC=""; REL_RC=""; B1_RC=""; P_STALE=""; B_FENCE=""
 # shellcheck disable=SC1091
 . "$W/fns.sh"
 
-# hermetic identity so the cache fixture below matches the
+# Hermetic identity so the cache fixture below matches the
 # current session -- this suite is about the admit-gate lock, not identity.
 # Below the mkdir()/printf() shadows above so shellcheck sees them in
 # definition order (it flags a bare call to a name shadowed further down).

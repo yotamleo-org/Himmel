@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ask 3: scratch reservations only, no real sessions.
+# Scratch reservations only, no real sessions.
 # PLATFORM GUARD: fleet admission uses the POSIX shell/tmpfs path.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -31,7 +31,7 @@ seed() {
 }
 run() {
   local slots="$1"; shift
-  # Grace 0 keeps the pre-cases about identity, not timing; the
+  # Grace 0 keeps the earlier cases about identity, not timing; the
   # grace cases below pass their own value ("$@" comes later, so it wins).
   env FLEET_RECLAIM_GRACE_SECS=0 "$@" HOME="$W/home" HIMMEL_FLEET_CAP=1 HIMMEL_FLEET_SLOTS="$W/$slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" PS_DATA="$W/ps.data" CADENCE_BANK_LEDGER="$W/ledger" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LANE=openrouter CADENCE_BANK_LEG=HIMMEL-9001-test CADENCE_BANK_CALLER_PID="$$" FLEET_CAP_OK= bash "$W/repo/scripts/lib/usage-preflight.sh" 2>"$W/err"
 }

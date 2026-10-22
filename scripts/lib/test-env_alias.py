@@ -16,13 +16,13 @@ import env_alias  # noqa: E402
 VALID = re.compile(r"[A-Z_][A-Z0-9_]*")
 
 
-def read_rows():
-    rows = []
+def read_fixture():
     with open(os.path.join(HERE, "fixtures", "env-alias-rows.tsv"), encoding="utf8") as f:
-        for line in f.read().split("\n"):
-            if line and not line.startswith("#"):
-                rows.append(line.split("\t"))
-    return rows
+        return f.read()
+
+
+def read_rows():
+    return [l.split("\t") for l in read_fixture().split("\n") if l and not l.startswith("#")]
 
 
 def row_env(nn, on, nv, ov):
@@ -35,8 +35,12 @@ def row_env(nn, on, nv, ov):
 
 
 class Rows(unittest.TestCase):
-    def test_rows_were_read(self):
-        self.assertGreaterEqual(len(read_rows()), 40)
+    def test_every_declared_row_was_read(self):
+        declared = re.search(r"^# rows: (\d+)$", read_fixture(), re.M)
+        self.assertIsNotNone(declared)
+        rows = read_rows()
+        self.assertGreater(len(rows), 0)
+        self.assertEqual(len(rows), int(declared.group(1)))
 
     def test_function_and_cli(self):
         fns = {"restrict": env_alias.env_alias_restrict, "permit": env_alias.env_alias_permit}

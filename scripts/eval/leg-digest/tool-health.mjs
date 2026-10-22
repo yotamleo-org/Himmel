@@ -19,19 +19,23 @@ export function readToolHealth(env = process.env, query = new URLSearchParams(),
     readRows(env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now);
 }
 
-export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now()) {
+const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
+const profileOf = (...candidates) => candidates.find((c) => typeof c === 'string' && PROFILE.test(c)) || 'unknown';
+
+// listing: {profile: {tool: listing tokens}} from profile-context-probe; absent = no drop candidates.
+export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}) {
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
-  const selected = { model: query.get('model') || '', lane: query.get('lane') || '', role: query.get('role') || '', days };
-  const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!withLane || !selected.lane || r.lane === selected.lane);
+  const selected = { model: query.get('model') || '', lane: query.get('lane') || '', role: query.get('role') || '', profile: query.get('profile') || '', days };
+  const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane);
   const sessions = new Map();
   for (const r of evals) {
     if (r.eval !== 'leg-trajectory' || typeof r.run_id !== 'string' || !['ok', 'partial', 'inconclusive'].includes(r.status)) continue;
     const prev = sessions.get(r.run_id);
     if (!prev || prev.status !== 'ok' || r.status === 'ok') sessions.set(r.run_id, r);
   }
-  const slots = new Map(), byAgent = new Map(), models = new Set(), roles = new Set();
+  const slots = new Map(), byAgent = new Map(), models = new Set(), roles = new Set(), profiles = new Set();
   for (const [session, r] of sessions) {
     const ts = typeof r.meta?.started_ts === 'number' ? r.meta.started_ts : Date.parse(r.ts);
     const day = dayOf(ts);
@@ -39,21 +43,21 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const lane = LANES.includes(r.lane) ? r.lane : 'unknown';
     const role = r.meta?.leg ? 'leg' : 'console';
     const health = Array.isArray(r.meta?.tool_health) ? r.meta.tool_health : [];
-    const addSlot = (agent, model, cohort = day) => {
+    const addSlot = (agent, model, cohort = day, profile = profileOf(r.meta?.profile, r.config?.profile)) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;
       const key = `${session}\0${agent}\0${cohort}`;
       if (!slots.has(key)) {
-        const slot = { session, agent, day: cohort, lane, role, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
+        const slot = { session, agent, day: cohort, lane, role, profile, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
         slots.set(key, slot);
         const agentKey = `${session}\0${agent}`, cohorts = byAgent.get(agentKey) || [];
         cohorts.push(slot); byAgent.set(agentKey, cohorts);
       }
-      const slot = slots.get(key); models.add(slot.model); roles.add(slot.role); return slot;
+      const slot = slots.get(key); models.add(slot.model); roles.add(slot.role); profiles.add(slot.profile); return slot;
     };
     if (!health.length) addSlot('main', r.model);
     for (const h of health) {
       if (!h || typeof h.tool !== 'string' || !num(h.calls) || !num(h.failures) || !num(h.errors) || !num(h.denials) || typeof h.agent?.id !== 'string') continue;
-      const slot = addSlot(h.agent.id, h.agent.model || (h.agent.id === 'main' ? r.model : null), h.day || day);
+      const slot = addSlot(h.agent.id, h.agent.model || (h.agent.id === 'main' ? r.model : null), h.day || day, profileOf(h.profile, r.meta?.profile, r.config?.profile));
       if (slot) slot.tools.set(h.tool, h);
     }
   }
@@ -69,7 +73,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       const main = byAgent.get(`${r.session}\0main`)?.[0];
       if (main && !main.known) {
         const slot = { ...main, agent: r.agent.id, model: r.agent.model || 'unknown', known: false, tools: new Map(), failures: [] };
-        models.add(slot.model); slots.set(`${r.session}\0${r.agent.id}\0${slot.day}`, slot); candidates = [slot]; byAgent.set(`${r.session}\0${r.agent.id}`, candidates);
+        models.add(slot.model); profiles.add(slot.profile); slots.set(`${r.session}\0${r.agent.id}\0${slot.day}`, slot); candidates = [slot]; byAgent.set(`${r.session}\0${r.agent.id}`, candidates);
       }
     }
     for (const slot of candidates) {
@@ -170,5 +174,22 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const n = related.reduce((n, r) => n + (r.classes.find((x) => x.class === c.class)?.count || 0), 0);
     class_rates.set(c.class, rate(n, calls));
   }
-  return { state: slots.size ? 'ok' : 'absent', ...result, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort() }, selected };
+  // Per profile: the same tool roll-up over that profile's sessions, joined to its listing cost. A listed tool no
+  // session called reads 0 calls (null when a session's denominators are unknown); cost over 0 and 0 calls is a
+  // drop-from-default candidate. Proposal only, nothing here changes a profile.
+  const byProfile = [...new Set(filtered.map((s) => s.profile))].sort().map((profile) => {
+    const list = filtered.filter((s) => s.profile === profile), a = aggregate(list), costs = listing[profile] || {};
+    const unknown = list.some((s) => !s.known || s.incomplete), seen = new Set(a.tools.map((t) => t.tool));
+    const cost = (tool) => num(costs[tool]) ? costs[tool] : null;
+    const verdict = (calls, tokens) => calls === 0 && tokens > 0 ? 'drop-candidate' : 'keep';
+    const tools = [...a.tools.map((t) => ({ ...t, listing_tokens: cost(t.tool), verdict: verdict(t.calls, cost(t.tool)) })),
+      ...Object.keys(costs).filter((tool) => !seen.has(tool) && cost(tool) !== null).sort().map((tool) => {
+        const calls = unknown ? null : 0;
+        return { ...finish({ ...blank(), tool, calls }), listing_tokens: cost(tool), verdict: verdict(calls, cost(tool)) };
+      })];
+    return { profile, sessions: new Set(list.map((s) => s.session)).size, tools };
+  });
+  const drop_candidates = byProfile.flatMap((p) => p.tools.filter((t) => t.verdict === 'drop-candidate')
+    .map((t) => ({ profile: p.profile, tool: t.tool, listing_tokens: t.listing_tokens, calls: t.calls, window_days: days, sessions: p.sessions })));
+  return { state: slots.size ? 'ok' : 'absent', ...result, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort() }, selected };
 }

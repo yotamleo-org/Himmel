@@ -139,7 +139,7 @@ fi
 # (<sessionId>/subagents/*.jsonl, isSidechain:true throughout)
 # plus a wake source set BEFORE the --since cutoff
 #     whose classification must still carry forward to an in-window turn
-#     (codex-2: title/account/wake tracking must never be gated by --since,
+#     (title/account/wake tracking must never be gated by --since,
 #     only the counted usage rows are). --------------------------------
 ROOT2="$(mktemp -d "${TMPDIR:-/tmp}/test-bank-attribution-2.XXXXXX")"
 SLUG_DIR2="$ROOT2/test-slug"
@@ -159,7 +159,7 @@ EOF
 
 # --- Session F (same root): an ORPHANED subagents/ directory -- its own
 #     top-level <sid>.jsonl does not exist (pruned/rotated), but the
-# subagents/ tree survives. Confirmed on this station (CR
+# subagents/ tree survives. Confirmed on this station: the
 # subagent directories must be discovered
 #     independently of the top-level file, not only alongside it. --------
 SID_F="ffffffff-0000-0000-0000-000000000006"
@@ -253,7 +253,7 @@ rm -f "$BAD_ERR"
 #     must NOT overwrite the wake classification set by the actual triggering
 # row, a genuine operator-typed slash command carrying the
 #     same `<command-name>` prefix but with `isMeta` ABSENT that MUST reset
-# the wake to "op" (-- supersedes the fixture row
+# the wake to "op" (this supersedes the fixture row
 #     that pinned the bare-prefix text alone as sufficient to exclude a row;
 #     the real discriminator is isMeta, not the prefix), an injected
 #     command-body row carrying the same prefix WITH `isMeta:true` that must

@@ -15,6 +15,11 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${ENV_ALIAS_SCRIPT:-$HERE/env-alias.sh}"
+# shellcheck source=fixture-tempdir.sh
+# shellcheck disable=SC1091
+. "$HERE/fixture-tempdir.sh"
+T=$(fixture_mktemp_dir) || exit 1
+trap 'rm -rf "$T"' EXIT
 
 FAIL=0
 PASS=0
@@ -94,16 +99,36 @@ for fn in alias_env env_alias_any; do
     "$(child "rc=0; $fn T_NEW 'lower' || rc=\$?; echo \$rc")"
 done
 
+# env_alias_any does NOT fail closed: an invalid name is rc 2, and a bare `if`
+# reads it as "not set". A guard reads the status or uses env_alias_restrict.
+check "env_alias_any invalid name: a bare if takes the else branch" "no" \
+  "$(T_OLD=1 child 'if env_alias_any bad-name T_OLD; then echo yes; else echo no; fi')"
+check "env_alias_any invalid name: reading the status denies" "deny" \
+  "$(T_OLD=1 child 'rc=0; env_alias_any bad-name T_OLD || rc=$?; if [ "$rc" -eq 1 ]; then echo allow; else echo deny; fi')"
+check "env_alias_any header states the decision" "yes" \
+  "$(grep -q 'env_alias_any does not fail closed' "$SCRIPT" && echo yes || echo no)"
+
+# the name validators spell the digits out: no 0-9 range outside a comment
+check "env-alias.sh has no 0-9 range outside a comment" "0" \
+  "$(grep -v '^[[:space:]]*#' "$SCRIPT" | grep -c '0-9' || true)"
+
 # --- restrict / permit: the shared rows ---
 ROWS="$HERE/fixtures/env-alias-rows.tsv"
+want_rows=$(sed -n 's/^# rows: \([0-9][0-9]*\)$/\1/p' "$ROWS")
+check "fixture declares its row count" "yes" "$([ -n "$want_rows" ] && echo yes || echo no)"
+# the loop reads a copy whose last row has no trailing newline
+NOEOL="$T/env-alias-rows-noeol.tsv"
+printf '%s' "$(cat "$ROWS")" > "$NOEOL"
+check "noeol copy really lacks the final newline" "no" \
+  "$([ "$(tail -c1 "$NOEOL" | od -An -tx1 | tr -d ' ')" = 0a ] && echo yes || echo no)"
 valid_name() {
   case "$1" in
-    ''|[!ABCDEFGHIJKLMNOPQRSTUVWXYZ_]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZ0-9_]*) return 1 ;;
+    ''|[!ABCDEFGHIJKLMNOPQRSTUVWXYZ_]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) return 1 ;;
   esac
   return 0
 }
 n=0
-while IFS=$'\t' read -r fn nn on nv ov want; do
+while IFS=$'\t' read -r fn nn on nv ov want || [ -n "$fn" ]; do
   case "$fn" in ''|'#'*) continue ;; esac
   n=$((n + 1))
   [ "$nn" = "<empty>" ] && nn=""
@@ -122,8 +147,9 @@ while IFS=$'\t' read -r fn nn on nv ov want; do
     'set -euo pipefail; . "$1"; rc=0; "env_alias_$2" "$3" "$4" || rc=$?; echo "$rc"' \
     _ "$SCRIPT" "$fn" "$nn" "$on" 2>&1)
   check "row $n: $fn '$nn'=$nv '$on'=$ov" "$want" "$got"
-done < "$ROWS"
-check "rows file was read (not vacuous)" "yes" "$([ "$n" -ge 40 ] && echo yes || echo no)"
+done < "$NOEOL"
+check "fixture has at least one row" "yes" "$([ "$n" -gt 0 ] && echo yes || echo no)"
+check "every declared row was read" "$want_rows" "$n"
 
 # --- the JS and Python twins run the same rows ---
 if command -v node >/dev/null 2>&1; then

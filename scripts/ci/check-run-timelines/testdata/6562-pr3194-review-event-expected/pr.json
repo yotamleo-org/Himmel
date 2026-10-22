@@ -1,0 +1,8 @@
+{
+  "number": 3194,
+  "headRefOid": "869b6da34d6f8a817f130dd64a47adeacee69012",
+  "baseRefName": "main",
+  "mergeStateStatus": "BLOCKED",
+  "reviewDecision": null,
+  "source": "HIMMEL-6562: codeowner-review-gate Expected, PR BLOCKED until the console re-ran the cancelled pull_request run"
+}

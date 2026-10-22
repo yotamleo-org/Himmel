@@ -1,6 +1,9 @@
 # Console section — after the successor LIVE: close the predecessor, re-ask judges
 
 Read on demand from `console-template.md` ACTION ZERO step 9. Moved verbatim from the template.
+ACTION ZERO step 1 is one batched turn (`ListAgents`, `ToolSearch` for `SendMessage`,
+the decisions `Read`, and a foreground `action-zero.sh --acquire --render-legs`);
+the relays below follow in the very next turn.
 
    **Wake-once succession (step 9).** A leg's quote-back is its own `SUCCESSION
    accepted` Results bullet (no token in it); it sends a `SendMessage` only on a
