@@ -1,0 +1,6 @@
+# pre-commit and the shellcheck rev the pre-commit hook pins; pip puts shellcheck in
+# /usr/local/bin, ahead of the apt 0.9.0 in /usr/bin.
+# ponytail: top-level pins only, no --require-hashes (pre-commit's transitive closure
+# floats); upgrade path: a hashed requirements.txt beside this file.
+RUN python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed \
+      pre-commit==4.7.0 shellcheck-py==0.11.0.1

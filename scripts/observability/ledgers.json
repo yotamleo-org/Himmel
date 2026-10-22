@@ -276,6 +276,19 @@
       "schema_version": 1,
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false
+    },
+    {
+      "id": "guest-exec",
+      "default_path": "~/.himmel/vm/guest-exec.log",
+      "override_env": "HIMMEL_GUEST_EXEC_LOG",
+      "writer": "scripts/lib/vmsdk.py",
+      "readers": [],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
     }
   ]
 }

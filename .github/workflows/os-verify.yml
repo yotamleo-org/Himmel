@@ -80,7 +80,7 @@ jobs:
         run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
         shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
+        run: python -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
       # Explicit `bash` keeps the shell the same on any runner. SUITE_TIER_MODE=all so an impacted extended-tier suite still runs
       # (the runner's default is already all; spelled so it cannot drift).
       # An empty impacted set (a docs-only branch, or a dispatch on main itself)

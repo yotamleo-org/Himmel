@@ -9,8 +9,8 @@
 #   2. two jobs, build and deploy (needs: build). The workflow token is
 #      contents:read only and the build job holds no write permission; the
 #      deploy job holds pages:write + id-token:write;
-#   3. build job: checkout with persist-credentials:false, `npm ci` and
-#      `npm run build` in one step with working-directory: site, then the
+#   3. build job: checkout with persist-credentials:false, `npm ci --ignore-scripts`
+#      and `npm run build` in one step with working-directory: site, then the
 #      upload-pages-artifact step (after the build) whose own with.path is
 #      site/dist; deploy job: configure-pages + deploy-pages, no repo code;
 #      docs/.nojekyll exists;
@@ -83,7 +83,7 @@ check_file() {
     grep -qE '^[[:space:]]+persist-credentials:[[:space:]]*false[[:space:]]*$' <<< "$bstep" || echo "checkout-persists-credentials"
     bstep=$(step_of 'npm run build' <<< "$build")
     grep -qE '^[[:space:]]+npm run build[[:space:]]*$' <<< "$bstep" || echo "no-site-build"
-    grep -qE '^[[:space:]]+npm ci[[:space:]]*$' <<< "$bstep" || echo "no-npm-ci"
+    grep -qE '^[[:space:]]+npm ci --ignore-scripts[[:space:]]*$' <<< "$bstep" || echo "no-npm-ci"
     grep -qE '^[[:space:]]+working-directory:[[:space:]]*site[[:space:]]*$' <<< "$bstep" || echo "no-working-directory-site"
     ustep=$(step_of 'uses:[[:space:]]*actions/upload-pages-artifact@' <<< "$build")
     [ -n "$ustep" ] || echo "no-upload-pages-artifact"

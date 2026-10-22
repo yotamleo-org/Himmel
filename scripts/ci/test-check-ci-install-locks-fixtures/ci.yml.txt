@@ -1,0 +1,39 @@
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      CLAUDE_CLI_VERSION: '2.1.296'
+    # A container's default run shell is sh; this is the host runner's default.
+      - id: jira-cli-smoke__npm
+        if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
+        timeout-minutes: 10
+        run: npm ci
+        working-directory: scripts/jira
+          IN_IMAGE: ${{ job.container.id }}
+        run: |
+          ${IN_IMAGE:+sudo} npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          claude --version
+      # file list let info-level findings (SC2119) through CI and fail locally.
+      - if: ${{ !job.container.id }}
+        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
+          rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
+          [ -n "$rev" ] || { echo "no shellcheck-py rev in .pre-commit-config.yaml" >&2; exit 1; }
+          python -m pip install --disable-pip-version-check --target "$RUNNER_TEMP/shellcheck-pinned" "shellcheck-py==$rev"
+          echo "$RUNNER_TEMP/shellcheck-pinned/bin" >> "$GITHUB_PATH"
+          cache-dependency-path: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}/package-lock.json
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: npm ci
+        with:
+          bun-version-file: .bun-version
+      - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bash ../ci/run-bun-tests.sh scripts/luna-vitals
+      # lockfile is never regenerated (HIMMEL-553). HIMMEL-2620 wired the test
+      # run for the suite that was always there under tests/.
+      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
+      - name: telegram-himmel plugin tests (ubuntu only)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
+          IN_IMAGE: ${{ job.container.id }}
+        run: |
+          ${IN_IMAGE:+sudo} npm i -g npm@^11
+          npm --version
+        if: runner.environment == 'github-hosted' && !job.container.id
+        shell: bash
+        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0

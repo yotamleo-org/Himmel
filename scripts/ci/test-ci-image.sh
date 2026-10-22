@@ -73,10 +73,13 @@ bun_ver="$(tr -d '[:space:]' < "$ROOT/.bun-version")"
 if has "BUN_VERSION=${bun_ver}"; then ok "Dockerfile pins bun $bun_ver (.bun-version)"
 else bad "Dockerfile does not pin BUN_VERSION=$bun_ver"; fi
 
-# 5. pre-commit, and the node major ci.yml sets up
-pc_pin="$(grep -oE 'pre-commit==[0-9.]+' "$CI_YML" | head -n 1)"
-if [ -n "$pc_pin" ] && has "$pc_pin"; then ok "Dockerfile pins $pc_pin"
-else bad "Dockerfile does not pin ${pc_pin:-pre-commit (none found in ci.yml)}"; fi
+# 5. pre-commit: ci.yml and the Dockerfile both install the hashed requirements-ci.txt;
+#    and the node major ci.yml sets up
+pc_pin="$(grep -oE '^pre-commit==[0-9.]+' "$ROOT/.github/ci-image/requirements-ci.txt" | head -n 1)"
+if [ -n "$pc_pin" ] && grep -qF -- '--require-hashes' <<< "$df_text" && grep -qF -- '-r /tmp/requirements-ci.txt' <<< "$df_text" \
+  && grep -qF -- '--require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt' "$CI_YML"; then
+  ok "Dockerfile and ci.yml install $pc_pin from the hashed requirements-ci.txt"
+else bad "Dockerfile and ci.yml do not both install the hashed requirements-ci.txt (${pc_pin:-no pre-commit pin in it})"; fi
 node_major="$(grep -oE "node-version: '[0-9]+" "$CI_YML" | head -n 1 | grep -oE '[0-9]+')"
 node_ver="$(sed -n 's/^ARG NODE_VERSION=//p' <<< "$df_text")"
 if [ -n "$node_major" ] && [ "${node_ver%%.*}" = "$node_major" ] && grep -Eq '^ARG NODE_SHA256=[0-9a-f]{64}$' <<< "$df_text"; then
@@ -106,8 +109,10 @@ else bad "Dockerfile does not pin gitleaks ${gl_ver:-?} / ${gl_sha:-?}"; fi
 
 # 7. shellcheck-py at the rev the pre-commit config pins
 sc_rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$ROOT/.pre-commit-config.yaml")"
-if [ -n "$sc_rev" ] && has "shellcheck-py==${sc_rev}"; then ok "Dockerfile pins shellcheck-py $sc_rev"
-else bad "Dockerfile does not pin shellcheck-py==${sc_rev:-?}"; fi
+sc_req="$(sed -n 's/^shellcheck-py==\([0-9.]*\).*/\1/p' "$ROOT/.github/ci-image/requirements-shellcheck.txt" | head -n 1)"
+if [ -n "$sc_rev" ] && [ "$sc_req" = "$sc_rev" ] && grep -qF -- '-r /tmp/requirements-shellcheck.txt' <<< "$df_text"; then
+  ok "Dockerfile installs shellcheck-py $sc_rev from the hashed requirements-shellcheck.txt"
+else bad "Dockerfile does not install shellcheck-py==${sc_rev:-?} from requirements-shellcheck.txt (file pins ${sc_req:-none})"; fi
 
 # 9. the parsers themselves, on inline fixtures: a single-line `run:` call is read,
 #    and a pin that appears only in a comment satisfies nothing.
@@ -139,7 +144,9 @@ else
   wfrow "has workflow_dispatch" 'workflow_dispatch'
   wfrow "tags :<sha> and :latest" 'IMAGE: ghcr\.io/[$][{][{] *github\.repository_owner *[}][}]/himmel-ci( #.*)?$' '[$]IMAGE:[$][{][{] *github\.sha *[}][}]' '[$]IMAGE:latest'
   wfrow "IMAGE line carries env-literal-ok so the base copy of the env-value lint accepts it" 'IMAGE: ghcr\.io/.* # env-literal-ok: [^ ]'
-  wfrow "permissions are packages:write + contents:read" '^  packages: write' '^  contents: read'
+  wfrow "permissions are contents:read, with packages:write on the pushing job only" '^  contents: read' '^      packages: write'
+  if grep -q '^  packages: write' <<< "$wf"; then bad "workflow grants packages:write at the workflow level"
+  else ok "workflow grants packages:write at the job level only"; fi
   wfrow "job runs only on main of the real repo" "^    if: .*github\.repository == 'yotamleo-org/Himmel'.*github\.ref == 'refs/heads/main'"
   wfrow "job has timeout-minutes" 'timeout-minutes:'
   if grep -q 'pull_request' <<< "$wf"; then bad "workflow must not trigger on pull_request (no push from a fork PR)"

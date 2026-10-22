@@ -29,6 +29,7 @@ CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|
                                       push FILE [DEST]|
                                       trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>
 """
+import datetime
 import hashlib
 import fnmatch
 import io
@@ -461,6 +462,63 @@ class VM:
         _in, out, err = client.exec_command(cmd, timeout=timeout)
         text = out.read().decode(errors="replace") + err.read().decode(errors="replace")
         return out.channel.recv_exit_status(), text
+
+    def _assert_test_vm(self):
+        """Prove this entry is a himmel test VM before a command reaches it.
+
+        Refused unless it is an ubuntu VirtualBox guest (never a station), is in
+        `list runningvms`, and VirtualBox itself forwards the registry port on
+        the loopback to guest port 22. A port that belongs to something else on
+        the station (its own sshd, another service) therefore never passes.
+        """
+        self._require_vm("guest-exec")
+        if self.os != "ubuntu":
+            raise VMError(f"{self.name!r} is a {self.os} guest; guest-exec drives ubuntu test VMs only")
+        if self.name not in _running_vms():
+            raise VMError(f"{self.name!r} is not running; boot it with `vmsdk.py {self.name} up` "
+                          f"or `restore` first")
+        try:
+            forwards = vbox.get_forwards(self.name)
+        except vbox.VBoxError as e:
+            raise VMError(f"cannot read the NAT rules of {self.name}: {e}") from e
+        if not any(f[1].lower() == "tcp" and f[2] == "127.0.0.1"
+                   and f[3] == str(self.port) and f[5] == "22" for f in forwards):
+            raise VMError(f"port {self.port} is not a loopback NAT forward to guest port 22 "
+                          f"of {self.name!r}; refusing to treat it as a test VM")
+
+    def guest_exec(self, cmd, sudo=False, timeout=300):
+        """Run `cmd` in this test VM after `_assert_test_vm`.
+
+        Every command is appended to ~/.himmel/vm/guest-exec.log
+        (HIMMEL_GUEST_EXEC_LOG overrides) as one JSON line with its outcome
+        (rc, error or refused). Returns (rc, output) like `run`.
+        """
+        log = Path(os.environ.get("HIMMEL_GUEST_EXEC_LOG")
+                   or os.path.expanduser("~/.himmel/vm/guest-exec.log"))
+
+        def record(status):
+            stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            row = {"v": 1, "ts": stamp, "host": socket.gethostname(), "source": "vmsdk",
+                   "kind": "guest-exec", "vm": self.name, "sudo": int(sudo),
+                   "status": status, "cmd": cmd}
+            log.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            # command lines can carry credentials: owner-only, even for a pre-existing log
+            with os.fdopen(os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
+                os.fchmod(f.fileno(), 0o600)
+                f.write(json.dumps(row) + "\n")
+
+        try:
+            self._assert_test_vm()
+        except VMError as e:
+            record(f"refused ({e})".replace("\n", " "))
+            raise
+        try:
+            rc, out = self.run(cmd, sudo=sudo, timeout=timeout)
+        except Exception as e:
+            record(f"error ({type(e).__name__})")
+            raise
+        record(f"rc={rc}")
+        return rc, out
 
     def close(self):
         self._invalidate()
@@ -1059,7 +1117,29 @@ class VM:
 _USAGE = ("usage: vmsdk.py <vm> "
           "<up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|baseline NAME|clone [REF]|provision|e2e|"
           "push FILE [DEST]|"
+          "exec [--sudo] [--timeout N] -- CMD...|"
           "trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>")
+
+
+def _parse_exec_args(rest):
+    """Parse `exec [--sudo] [--timeout N] -- CMD...`; ValueError when malformed."""
+    if "--" not in rest:
+        raise ValueError("missing `--` before the command")
+    flags, cmd = rest[:rest.index("--")], rest[rest.index("--") + 1:]
+    if not cmd:
+        raise ValueError("no command after `--`")
+    kw, i = {}, 0
+    while i < len(flags):
+        if flags[i] == "--sudo":
+            kw["sudo"] = True
+            i += 1
+        elif flags[i] == "--timeout" and i + 1 < len(flags) and flags[i + 1].isdigit() \
+                and int(flags[i + 1]) > 0:
+            kw["timeout"] = int(flags[i + 1])
+            i += 2
+        else:
+            raise ValueError(f"unknown or incomplete flag {flags[i]!r}")
+    return " ".join(cmd), kw
 
 
 def _parse_trigger_args(rest):
@@ -1130,6 +1210,16 @@ def main(argv):
         elif cmd == "push" and rest:
             dest = rest[1] if len(rest) > 1 else f"~/handover-inbox/{Path(rest[0]).name}"
             print(vm.push_file(rest[0], dest))
+        elif cmd == "exec":
+            try:
+                guest_cmd, kw = _parse_exec_args(rest)
+            except ValueError as e:
+                print(f"exec: {e}", file=sys.stderr)
+                print(_USAGE, file=sys.stderr)
+                return 2
+            rc, out = vm.guest_exec(guest_cmd, **kw)
+            print(out, end="" if out.endswith("\n") else "\n")
+            return rc
         elif cmd == "trigger" and rest:
             try:
                 handover, kw = _parse_trigger_args(rest)
