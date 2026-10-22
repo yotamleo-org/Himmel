@@ -196,7 +196,7 @@ settings_file="$(awk 'p==1{ print; exit } /^--settings$/{ p=1 }' "$work/claude-a
 [ -n "$settings_file" ] && [ -f "$settings_file" ] \
     || fail "claude route: --settings <profile file> missing or unreadable (got '$settings_file')"
 node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).enabledPlugins||{}; process.exit(p["lean-skills@himmel"]===true?1:0)' "$settings_file" \
-    || fail "claude route: the critic profile enables the review toolkit, or its settings do not parse (not the bare profile)"
+    || fail "claude route: the critic profile enables lean-skills, or its settings do not parse (not the bare profile)"
 # --tools must be present AND its value empty (the whole built-in toolset off).
 # Checked on the raw one-arg-per-line capture, since an empty arg vanishes in
 # the joined form.
