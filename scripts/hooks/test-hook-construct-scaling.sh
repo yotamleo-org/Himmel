@@ -125,6 +125,16 @@ run_ms() {  # run_ms <member> <payload file> -- wall ms into MS, exit status int
 # A member answers 0 (allow / no opinion) or 2 (deny); 124 is the timeout.
 rc_ok() { [ "$1" -eq 0 ] || [ "$1" -eq 2 ]; }
 
+# merge_run <member> <payload file> <old ms> <old rc> -- one more run; only
+# successful runs feed the minimum, and a failed status other than a timeout
+# stays failed.
+merge_run() {
+    local oms=$3 orc=$4
+    run_ms "$1" "$2"
+    if [ "$orc" -ne 124 ] && ! rc_ok "$orc"; then MS=$oms; RC=$orc; return; fi
+    if rc_ok "$RC" && rc_ok "$orc" && [ "$oms" -lt "$MS" ]; then MS=$oms; fi
+}
+
 # verdict <small ms> <big ms> <small rc> <big rc> -- prints why the row fails, else nothing
 verdict() {
     local base=$1
@@ -155,9 +165,8 @@ gen() {
         run_ms "$m" "$SANDBOX/b.json"; big=$MS; brc=$RC
         why=$(verdict "$small" "$big" "$srcs" "$brc")
         if [ -n "$why" ]; then
-            # one more measurement of each size; the minimum counts
-            run_ms "$m" "$SANDBOX/s.json"; [ "$MS" -lt "$small" ] && small=$MS; srcs=$RC
-            run_ms "$m" "$SANDBOX/b.json"; [ "$MS" -lt "$big" ] && big=$MS; brc=$RC
+            merge_run "$m" "$SANDBOX/s.json" "$small" "$srcs"; small=$MS; srcs=$RC
+            merge_run "$m" "$SANDBOX/b.json" "$big" "$brc"; big=$MS; brc=$RC
             why=$(verdict "$small" "$big" "$srcs" "$brc")
         fi
         [ "$mname" = "$scanner" ] && scan_small=$small
@@ -165,7 +174,9 @@ gen() {
         if [ -n "$why" ]; then fail "$name $mname: $why"; bad=1; fi
     done
     if [ "$members" -eq 0 ]; then fail "$name: no member ran"; return; fi
-    if [ "$scan_small" -ge 0 ] && [ "$scan_small" -lt "$VACUOUS_MS" ]; then
+    if [ "$scan_small" -lt 0 ] && [ "$ROOT" = "$REPO_ROOT" ]; then
+        fail "$name $scanner: not a chain member, so the vacuity check measured nothing"; bad=1
+    elif [ "$scan_small" -ge 0 ] && [ "$scan_small" -lt "$VACUOUS_MS" ]; then
         fail "$name $scanner: ran ${scan_small}ms at N (exited before scanning: vacuous generator)"; bad=1
     fi
     line="$name: $members members, slowest 8N ${bigw}ms ($worstm)"
@@ -195,15 +206,17 @@ CHOKE=block-chokepoint-env-prefix.sh
         run_ms "$m" "$SANDBOX/hb.json"; big=$MS; brc=$RC
         why=$(verdict "$small" "$big" "$srcs" "$brc")
         if [ -n "$why" ]; then
-            run_ms "$m" "$SANDBOX/hs.json"; [ "$MS" -lt "$small" ] && small=$MS; srcs=$RC
-            run_ms "$m" "$SANDBOX/hb.json"; [ "$MS" -lt "$big" ] && big=$MS; brc=$RC
+            merge_run "$m" "$SANDBOX/hs.json" "$small" "$srcs"; small=$MS; srcs=$RC
+            merge_run "$m" "$SANDBOX/hb.json" "$big" "$brc"; big=$MS; brc=$RC
             why=$(verdict "$small" "$big" "$srcs" "$brc")
         fi
         [ "$mname" = "$CHOKE" ] && hscan=$small
         [ "$big" -gt "$hworst" ] && { hworst=$big; hworstm=$mname; }
         if [ -n "$why" ]; then fail "22 KB heredoc $mname: $why"; hbad=1; fi
     done
-    if [ "$hscan" -ge 0 ] && [ "$hscan" -lt "$VACUOUS_MS" ]; then
+    if [ "$hscan" -lt 0 ] && [ "$ROOT" = "$REPO_ROOT" ]; then
+        fail "22 KB heredoc $CHOKE: not a chain member, so the vacuity check measured nothing"; hbad=1
+    elif [ "$hscan" -ge 0 ] && [ "$hscan" -lt "$VACUOUS_MS" ]; then
         fail "22 KB heredoc $CHOKE: ran ${hscan}ms at N (exited before scanning: vacuous generator)"; hbad=1
     fi
     [ "$hbad" -eq 0 ] && pass "22 KB heredoc: $hmembers members, slowest 8N ${hworst}ms ($hworstm) (<= ${RATIO_MAX}x, <= ${BUDGET_MS}ms)"
