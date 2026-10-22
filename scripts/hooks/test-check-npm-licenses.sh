@@ -169,6 +169,30 @@ else
     echo "PASS allowlist rejects GPL-3.0"
 fi
 
+# Case 7: the integrity-pinned claude-code CI tool lockfile is not license-checked
+# (a proprietary binary that ships nowhere): a repo whose only package is
+# .github/claude-cli has nothing to check, so the real script passes (rc 0).
+CLI_REPO=$(fixture_mktemp_dir) || exit 1
+(
+    fixture_enter_git_init_dir "$CLI_REPO" || exit 1
+    git init -q -b main
+    git config user.email t@t
+    git config user.name t
+    mkdir -p .github/claude-cli
+    echo '{"name":"claude-cli-ci","private":true}' > .github/claude-cli/package.json
+    git add -A
+    git -c commit.gpgsign=false commit -q -m "claude-cli only"
+) || exit 1
+cli_out=$( cd "$CLI_REPO" && bash "$SCRIPT" 2>&1 ); cli_rc=$?
+if [ "$cli_rc" -eq 0 ] && grepq "$cli_out" "nothing to check"; then
+    echo "PASS .github/claude-cli excluded from the license check"
+else
+    echo "FAIL .github/claude-cli excluded: rc=$cli_rc"
+    echo "     out: $cli_out"
+    FAILED=$((FAILED + 1))
+fi
+rm -rf "$CLI_REPO"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
