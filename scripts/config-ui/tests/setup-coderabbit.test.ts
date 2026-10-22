@@ -43,8 +43,14 @@ test("installed: CodeRabbit shows on a recent PR", async () => {
   expect((await boot("ok:3")()).coderabbit.installed).toBe("installed");
 });
 
-test("not-installed: no CodeRabbit check on any recent PR", async () => {
-  expect((await boot("ok:0")()).coderabbit.installed).toBe("not-installed");
+test("not-installed: no CodeRabbit check on any recent PR, with a manual confirm since absence is not proof", async () => {
+  const cr = (await boot("ok:0")()).coderabbit;
+  expect(cr.installed).toBe("not-installed");
+  expect(cr.manual).toMatch(/Confirm the App is listed/);
+});
+
+test("installed carries no manual confirm", async () => {
+  expect((await boot("ok:2")()).coderabbit.manual).toBe("");
 });
 
 test("unknown: gh fails or is missing, so the page asks for a manual confirm", async () => {
@@ -72,7 +78,8 @@ test("the page renders the step with its label and an example under each secret 
   const html: string = renderSetup(state, {}, {});
   expect(html).toContain("CodeRabbit");
   expect(html).toMatch(/optional/i);
-  expect(html).toContain("not installed");
+  expect(html).toContain("not detected");
+  expect(html).toMatch(/Confirm the App is listed/);
   expect(html).toContain("https://github.com/apps/coderabbitai");
   expect(html).toContain("e.g. ");
   expect(html).toContain("you@example.com");

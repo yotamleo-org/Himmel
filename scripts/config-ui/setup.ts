@@ -72,7 +72,8 @@ async function coderabbit(o: SetupOpts) {
     ],
     installed,
     armed,
-    manual: installed === "unknown" ? `Could not check from here. Confirm the App is listed under the repo's Settings, Integrations, GitHub Apps (${CR_APP_URL}).` : "",
+    manual: installed === "installed" ? ""
+      : `${installed === "unknown" ? "Could not check from here." : "No CodeRabbit check on the last 10 PRs; a new install, a repo with no PRs or skipped reviews look the same."} Confirm the App is listed under the repo's Settings, Integrations, GitHub Apps (${CR_APP_URL}).`,
   };
 }
 

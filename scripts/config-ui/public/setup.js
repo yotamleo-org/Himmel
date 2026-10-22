@@ -19,7 +19,7 @@ function secretRow(s, msg) {
     ${msg ? `<span class="ro" role="status">${esc(msg)}</span>` : ""}</div>`;
 }
 
-const CR_STATE = { installed: "installed", "not-installed": "not installed", unknown: "not checked" };
+const CR_STATE = { installed: "installed", "not-installed": "not detected", unknown: "not checked" };
 
 function coderabbit(c) {
   if (!c) return "";
