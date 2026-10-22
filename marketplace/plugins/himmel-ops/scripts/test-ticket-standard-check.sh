@@ -83,6 +83,20 @@ humanizer_rows(){
   : >"$rewrite"
   out="$(python3 -I "$facts" "$original" "$rewrite" 2>&1)"; rc=$?
   check "empty rewrite refused" "$rc" 1
+  printf 'Run ``echo `pwd` `` before filing.\n' >"$td/nested.md"
+  printf 'Run ``echo `whoami` `` before filing.\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/nested.md" "$rewrite" 2>&1)"; rc=$?
+  check "changed nested-backtick command refused" "$rc" 1
+  cp "$td/nested.md" "$rewrite"
+  out="$(python3 -I "$facts" "$td/nested.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful nested-backtick command passes" "$rc" 0
+  printf '    cd staging\n    pwd\n' >"$td/indented.md"
+  printf '    pwd\n    cd staging\n' >"$rewrite"
+  out="$(python3 -I "$facts" "$td/indented.md" "$rewrite" 2>&1)"; rc=$?
+  check "reordered indented commands refused" "$rc" 1
+  cp "$td/indented.md" "$rewrite"
+  out="$(python3 -I "$facts" "$td/indented.md" "$rewrite" 2>&1)"; rc=$?
+  check "faithful indented block passes" "$rc" 0
   mkdraft "$td/ticket-original.md"
   printf 'HIMMEL-6967 covers 42 rows.\n' >>"$td/ticket-original.md"
   sed 's/42/43/' "$td/ticket-original.md" >"$rewrite"

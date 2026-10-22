@@ -10,7 +10,14 @@ def facts(text):
     fence = None
     block = []
     prose = []
+    indented = []
     for line in text.splitlines(keepends=True):
+        if not fence and (line.startswith(("    ", "\t")) or (indented and not line.strip())):
+            indented.append(line)
+            continue
+        if indented:
+            protected[("code", "".join(indented))] += 1
+            indented = []
         match = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
         if fence:
             block.append(line)
@@ -22,15 +29,15 @@ def facts(text):
         elif match:
             fence = match[1]
             block = [line]
-        elif line.startswith(("    ", "\t")):
-            protected[("code", line.rstrip("\r\n"))] += 1
         else:
             prose.append(line)
+    if indented:
+        protected[("code", "".join(indented))] += 1
     if block:
         protected[("code", "".join(block))] += 1
     prose = "".join(prose)
     patterns = {
-        "inline code": r"(`+)([^`\n]+)\1",
+        "inline code": r"(?<!`)(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)",
         "ticket": r"\b[A-Z][A-Z0-9]*-[0-9]+\b",
         "number": r"(?<![\w])[-+]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+)?(?![\w])",
         "file": r"(?<![\w/])[~./A-Za-z0-9_@+-]*[A-Za-z0-9_+-]\.[A-Za-z][A-Za-z0-9]*(?:/[A-Za-z0-9_.@+-]+)*(?![\w/])",
