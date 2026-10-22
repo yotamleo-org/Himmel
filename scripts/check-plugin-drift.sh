@@ -51,7 +51,7 @@
 #           NON-MONOTONIC (a stale higher-semver tag would otherwise be a phantom
 #           "latest"; graphify's months-old v1.0.0 vs its current v0.9.x line).
 #           `tag_prefix` (with latest_source: release) strips a tag stream's prefix
-#           from the release tag before comparing — bun tags `bun-v1.4.3`, so the
+#           from the release tag before comparing — bun tags `bun-v1.4.4`, so the
 #           entry keeps a bare synced_base and a bare BEHIND version.
 #      Installed marketplaces (obsidian-skills, openai-codex,
 #      claude-video, claude-plugins-official, …) are NOT listed in the registry:
@@ -841,7 +841,7 @@ PY
             # BEHIND. Opt into the maintainer's own latest-non-prerelease
             # designation (the Releases API), which reflects real recency.
             latest="$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null)"; api_rc=$?
-            # tag_prefix: bun tags its releases `bun-v1.4.3`; strip the
+            # tag_prefix: bun tags its releases `bun-v1.4.4`; strip the
             # stream prefix so synced_base and the BEHIND line stay bare versions.
             [ -z "$tag_pfx" ] || latest="${latest#"$tag_pfx"}"
             if [ "$api_rc" -ne 0 ] || ! printf '%s' "$latest" | grep -qE '^v?[0-9]+\.[0-9]+(\.[0-9]+)?$'; then

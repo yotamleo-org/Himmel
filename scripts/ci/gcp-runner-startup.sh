@@ -41,8 +41,8 @@ python3 -m pip install --break-system-packages --ignore-installed --disable-pip-
 id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
 # ci.yml runs oven-sh/setup-bun on every runner and it expects the binary here; bump
 # BUN_VERSION and BUN_SHA256 with .bun-version (the release's SHASUMS256.txt).
-BUN_VERSION=1.4.3
-BUN_SHA256=3e730528d89775f03f87f05c06787c4df4099d0a37f3f252e7b829cb23816e18
+BUN_VERSION=1.4.4
+BUN_SHA256=bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
 bun_dir="$(mktemp -d -t bun.XXXXXX)" || exit 1
 bun_zip="$bun_dir/bun-linux-x64.zip"
 curl -fsSL -o "$bun_zip" "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" || exit 1

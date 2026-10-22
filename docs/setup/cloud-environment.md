@@ -183,7 +183,7 @@ post the full output as one top-level PR comment whose first line is
 | `pre-commit` binary | 4.6.2 | 4.6.2 | none |
 | Git gate hooks (pre-commit, commit-msg, pre-push) | installed | **closed here:** a fresh clone had none; step `git-hooks` installs all three | The hook environments are fetched on first use, not at setup, to fit the ~5 min snapshot |
 | Attestation and ticket-ID gate | refuses a ticketless message (rc 1) | same, rc 1 | none |
-| bun | 1.4.3 | 1.4.2 | Image version, no action |
+| bun | 1.4.4 | 1.4.2 | Image version, no action |
 | node, jq, gh, git | 24.21.0, 1.8.2, 2.102.0, 2.56.0 | 22.22.0, 1.7, 2.89.0, 2.43.0 | Image versions lag the station; the probe and its checks ran on both. No action |
 | gitleaks, `HIMMEL_REPO` | present | **closed here:** step `gitleaks` of `setup-env.sh` installs gitleaks 8.30.1, sha256-pinned to the CI release; `HIMMEL_REPO` not set | `HIMMEL_REPO`: HIMMEL-4580 |
 | shellcheck, `at` | present | present | none |

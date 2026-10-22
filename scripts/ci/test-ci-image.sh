@@ -33,7 +33,7 @@ df_text="$(dockerfile_text < "$DOCKERFILE")"
 # the apt-get install stanza only: a package named by a later RUN line is not installed by apt.
 apt_stanza() { awk '/apt-get install/ {f=1} f {print} f && !/\\$/ {exit}'; }
 apt_text="$(apt_stanza <<< "$df_text")"
-# has <token> [haystack]: the token as a whole word, so BUN_VERSION=1.4.3 does not match =1.4.30.
+# has <token> [haystack]: the token as a whole word, so BUN_VERSION=1.4.4 does not match =1.4.40.
 has() {
   local esc
   esc="$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')"
