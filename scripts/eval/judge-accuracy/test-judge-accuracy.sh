@@ -111,7 +111,7 @@ eq "row: eval" "$(field "$L" 0 eval)" "judge-accuracy"
 eq "caused-by bug: the GO'd PR is an escape" "$(field "$L" 0 escapes)" "1"
 eq "merged GO'd PRs in the window (console GO counts, out-of-window and GO-less do not)" "$(field "$L" 0 go_merged)" "4"
 eq "escape rate" "$(field "$L" 0 escape_rate)" "0.25"
-has "escape rate has a Wilson interval" "$(field "$L" 0 ci:escape_rate)" '"lo": 0.0'
+eq "escape rate has a Wilson interval" "$(field "$L" 0 ci:escape_rate)" '{"lo": 0.0456, "hi": 0.6994}'
 eq "flip rate: procedural and prior-less records excluded" "$(field "$L" 0 flip_n)" "3"
 eq "flips" "$(field "$L" 0 flips)" "1"
 eq "procedural NO-GOs counted apart" "$(field "$L" 0 procedural)" "1"
@@ -183,6 +183,29 @@ python3 -I "$JA" run --verdicts "$TMP/nope" --prs "$TMP/prs.json" --mirror "$TMP
 eq "a missing verdict dir is refused" "$?" "2"
 python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --mirror "$TMP/nope" --queue "$Q" --no-ledger >/dev/null 2>&1
 eq "a missing Jira mirror is refused" "$?" "2"
+printf '[1]\n' > "$TMP/not-rows.json"
+printf '[{"number": "107"}]\n' > "$TMP/str-number.json"
+python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/not-rows.json" --mirror "$TMP/mirror" --queue "$Q" --no-ledger >/dev/null 2>&1
+eq "a PR snapshot row that is not an object is refused" "$?" "2"
+python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/str-number.json" --mirror "$TMP/mirror" --queue "$Q" --no-ledger >/dev/null 2>&1
+eq "a PR snapshot row without an integer number is refused" "$?" "2"
+python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/not-rows.json" --mirror "$TMP/mirror" --queue "$Q" --no-ledger >/dev/null 2>&1
+eq "a main-run snapshot row that is not an object is refused" "$?" "2"
+
+# --- Jira's +0200 offset, which fromisoformat reads only from 3.11 on ----------------------------------
+eq "a +0200 stamp parses where fromisoformat reads only +HH:MM" "$(python3 -I -c '
+import re, sys
+from datetime import datetime
+sys.path.insert(0, sys.argv[1])
+import judge_accuracy as j
+class Strict(datetime):
+    @classmethod
+    def fromisoformat(cls, s):
+        if re.search(r"[+-][0-9]{4}$", s):
+            raise ValueError("only +HH:MM")
+        return datetime.fromisoformat(s)
+j.datetime = Strict
+print(j.when("2026-10-16T11:00:00.000+0200").isoformat())' "$HERE" 2>&1)" "2026-10-16T11:00:00+02:00"
 
 echo "judge-accuracy: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

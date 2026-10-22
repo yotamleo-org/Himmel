@@ -74,7 +74,7 @@ def queue_path(path=None):
 def when(s):
     """An aware datetime from an ISO stamp (Z, +02:00 or +0200), or None."""
     try:
-        d = datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
+        d = datetime.fromisoformat(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", s.strip().replace("Z", "+00:00")))
     except (AttributeError, ValueError):
         return None
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
@@ -333,8 +333,8 @@ def load_json(path, what):
             data = json.load(fh)
     except (OSError, ValueError) as e:
         raise ValueError("unreadable %s %s: %s" % (what, path, e))
-    if not isinstance(data, list):
-        raise ValueError("%s %s is not a JSON list" % (what, path))
+    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+        raise ValueError("%s %s is not a JSON list of objects" % (what, path))
     return data
 
 
@@ -344,7 +344,10 @@ def cmd_run(a):
         raise ValueError("--until must be an ISO time and --days positive")
     since = until - timedelta(days=a.days)
     recs, unparsed = load_verdicts(a.verdicts)
-    prs = {p["number"]: p for p in load_json(a.prs, "PR snapshot") if isinstance(p, dict) and "number" in p}
+    pr_rows = load_json(a.prs, "PR snapshot")
+    if not all(type(p.get("number")) is int for p in pr_rows):
+        raise ValueError("PR snapshot %s has a row without an integer number" % a.prs)
+    prs = {p["number"]: p for p in pr_rows}
     runs = load_json(a.main_runs, "main-run snapshot")
     bugs = load_bugs(a.mirror)
     qpath = queue_path(a.queue)
