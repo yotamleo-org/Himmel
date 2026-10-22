@@ -258,7 +258,7 @@ seed_merge_trust_paths() {
 }
 
 wire_merge_gate() {
-  local settings="$TARGET/.claude/settings.json" base specs rows
+  local settings="$TARGET/.claude/settings.json" base specs rows container_created="$1"
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "DRY: merge unresolved-review PreToolUse hook into $settings"
     return 0
@@ -274,10 +274,10 @@ wire_merge_gate() {
   mv "$settings.mergegate.tmp" "$settings"
   # Record the affected stanza using the same provenance contract as the trio.
   # shellcheck disable=SC2016
-  rows=$(jq -c --argjson pre "$base" '
+  rows=$(jq -c --argjson pre "$base" --argjson cc "$container_created" '
     .hooks.PreToolUse[] | select(any(.hooks[]; .command | contains("scripts/hooks/block-unresolved-cr-merge.sh"))) as $post
     | ($pre.hooks.PreToolUse | map(select(.matcher == $post.matcher and any(.hooks[]; .command | contains("scripts/hooks/block-unresolved-cr-merge.sh")))) | .[0]) as $old
-    | {pre:$old, post:$post, cc:false, op:(if $old == null then "insert" elif $old == $post then "noop" else "replace" end)}
+    | {pre:$old, post:$post, cc:$cc, op:(if $old == null then "insert" elif $old == $post then "noop" else "replace" end)}
   ' "$settings")
   _wire_hooks_record "$settings" /hooks/PreToolUse "$rows" \
     || echo "  warning: merge-gate provenance record failed (the hook is wired; uninstall will keep it)" >&2
@@ -1476,10 +1476,14 @@ do_core() {
     snapshot_user_edits
     copy_portable
     seed_merge_trust_paths
+    local merge_container_created=true
+    if [[ -s "$TARGET/.claude/settings.json" ]]; then
+      merge_container_created=$(jq '.hooks.PreToolUse == null' "$TARGET/.claude/settings.json")
+    fi
     # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
     # shellcheck disable=SC2016
     wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
-    wire_merge_gate
+    wire_merge_gate "$merge_container_created"
     # The initiative SessionStart hook is not a portable file: it reads THIS
     # clone's .env, which is where `himmelctl config set initiative.*` writes, so
     # it is referenced by the clone's path (like the statusline), not copied.

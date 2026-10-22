@@ -364,6 +364,14 @@ STUB
   [ "$(cat "$trust")" = $'# adopter-owned list\n^private-policy/' ] \
     || fail "HIMMEL-7000: re-adopt overwrote the adopter trust list"
   echo "ok: HIMMEL-7000 adopted merge gate and transitive helpers are byte-identical; wiring preserves settings and is idempotent; trust list is seeded but never overwritten"
+  local fresh="$work/merge-gate-fresh-project" ledger="$work/merge-gate-fresh-ledger"
+  mkdir -p "$fresh"
+  HOME="$home" HIMMEL_PROVENANCE_DIR="$ledger" bash "$adopt" --profile core --scope project --target "$fresh" >/dev/null
+  jq -se '[.[] | select(.kind == "json-elem" and .unit == "/hooks/PreToolUse" and .op == "insert")] | length == 4 and all(.[]; .container_created == true)' "$ledger/provenance.jsonl" >/dev/null \
+    || fail "HIMMEL-7000: every inserted hook must record ownership of the newly created PreToolUse container"
+  jq -se '[.[] | select(.kind == "file" and .manifest_row == "adopter-scripts")] | length == 74' "$ledger/provenance.jsonl" >/dev/null \
+    || fail "HIMMEL-7000: expected 73 portable file rows plus the trust policy seed"
+  echo "ok: HIMMEL-7000 all four hooks record fresh-container ownership for uninstall; all 74 file rows recorded"
 )
 
 test_adopt_merge_gate "${1:-}"
@@ -2785,8 +2793,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "62" ] \
-  || fail "HIMMEL-3332 S4: expected 62 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "74" ] \
+  || fail "HIMMEL-3332 S4: expected 74 file rows (73 portable entries plus the trust policy seed)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups
