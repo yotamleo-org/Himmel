@@ -229,6 +229,14 @@ class TestLifecycleExec(unittest.TestCase):
 
 
 class TestSnapshots(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        home = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(home, ignore_errors=True))
+        env = mock.patch.dict(os.environ, {"HOME": home})
+        env.start()
+        self.addCleanup(env.stop)
+
     def _vm(self):
         with mock.patch.dict(os.environ,
                              {"ubuntu_vm_user": "osboxes", "ubuntu_vm_pass": "pw"}, clear=False):
@@ -474,6 +482,14 @@ _RUNNINGVMS_UP = '"ubuntu_new" {1482f800-d810-43b9-80c9-29baa40b8c52}\n'
 
 class TestReadback(unittest.TestCase):
     """HIMMEL-2471: every state-changing verb reads its own result back."""
+
+    def setUp(self):
+        import tempfile
+        home = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(home, ignore_errors=True))
+        env = mock.patch.dict(os.environ, {"HOME": home})
+        env.start()
+        self.addCleanup(env.stop)
 
     def _vm(self):
         with mock.patch.dict(os.environ,
