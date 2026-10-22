@@ -130,6 +130,13 @@ fi
 # --- 3. offload the stale in-vault graphify-out -------------------------------
 if [ -n "$OFFLOAD_ROOT" ]; then
   SRC="$VAULT/graphify-out"
+  if [ -d "$SRC" ]; then
+    src_real="$(cd "$SRC" && pwd -P)" || exit 1
+    root_real="$(cd "$OFFLOAD_ROOT" 2>/dev/null && pwd -P)" || root_real="$OFFLOAD_ROOT"
+    case "$root_real/" in
+      "$src_real"/*) echo "luna-index-hygiene: --offload-root must not be inside $SRC" >&2; exit 2 ;;
+    esac
+  fi
   if [ ! -d "$SRC" ]; then
     echo "luna-index-hygiene: offload: no $SRC, nothing to move"
   elif [ -e "$SRC/.promote.lock" ]; then

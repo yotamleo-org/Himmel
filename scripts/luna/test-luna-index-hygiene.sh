@@ -160,10 +160,19 @@ else
 
   V="$W/v9"; make_vault "$V"; CFG="$W/c9.yml"; write_cfg "$CFG" "$V"
   chmod 000 "$V/graphify-out/d"
-  bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off9" --apply >/dev/null 2>&1
+  err9="$(bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off9" --apply 2>&1 >/dev/null)"
   chmod 755 "$V/graphify-out/d"
   check "an unreadable subtree blocks the offload" 0 "$([ -d "$V/graphify-out" ] && echo 0 || echo 1)"
+  check "and it says it could not scan" 0 "$(printf '%s' "$err9" | grep -q 'could not scan' && echo 0 || echo 1)"
 fi
+
+# --- an offload root inside graphify-out is refused before anything moves -----
+V="$W/v13"; make_vault "$V"; CFG="$W/c13.yml"; write_cfg "$CFG" "$V"
+mkdir -p "$V/graphify-out/inner" || exit 1
+touch -t 202001010000 "$V/graphify-out/inner" "$V/graphify-out/d/GRAPH_REPORT.md" || exit 1
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$V/graphify-out/inner" --apply >/dev/null 2>&1
+check "an offload root inside graphify-out exits 2" 2 "$?"
+check "and graphify-out is untouched" 0 "$([ -f "$V/graphify-out/d/GRAPH_REPORT.md" ] && echo 0 || echo 1)"
 
 echo "pass=$PASS fail=$FAIL skip=$SKIP"
 [ "$FAIL" -eq 0 ]
