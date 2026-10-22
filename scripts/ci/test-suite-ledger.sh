@@ -130,7 +130,7 @@ old=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-30d
   printf '{"ts":"%s","suite":"s/test-clean.sh","head":"h","rc":0,"sec":3,"station":"x"}\n' "$today"
 } > "$LEDGER"
 out=$(HIMMEL_SUITE_LEDGER="$LEDGER" bash "$SUMMARY" --days 7 2>&1); rc=$?
-if [ "$rc" -eq 0 ] && grepq "$out" 'test-flaky\.sh' && grepq "$out" '2.*test-flaky\.sh\|test-flaky\.sh.*2' \
+if [ "$rc" -eq 0 ] && grepq "$out" '^2/3  s/test-flaky\.sh$' \
   && ! grepq "$out" 'test-old\.sh' && ! grepq "$out" 'test-clean\.sh'; then
   pass "L7: --days 7 -> flaky suite red 2 of 3 runs; old and all-green suites absent"
 else
@@ -147,6 +147,24 @@ if [ "$rc" -eq 0 ]; then
   pass "L7: an absent ledger is an empty report, rc 0"
 else
   fail "L7: absent ledger rc=$rc out=$out"
+fi
+
+# --- L8. a basename-only override is a file; control characters stay one row --
+# shellcheck source=suite-ledger.sh
+# shellcheck disable=SC1091
+. "$RST_FIXTURE_DIR/suite-ledger.sh"
+mkdir -p "$SANDBOX/l8"
+(cd "$SANDBOX/l8" && HIMMEL_SUITE_LEDGER=runs.jsonl suite_ledger_append "s/test-a.sh" 0 1)
+if [ -f "$SANDBOX/l8/runs.jsonl" ] && [ "$(grep -c '' "$SANDBOX/l8/runs.jsonl")" -eq 1 ]; then
+  pass "L8: HIMMEL_SUITE_LEDGER=runs.jsonl (no slash) appends to a file in the cwd"
+else
+  fail "L8: basename override did not produce a one-row file"
+fi
+HIMMEL_SUITE_LEDGER="$SANDBOX/l8/ctl.jsonl" suite_ledger_append "$(printf 's/test-\tx\ny.sh')" 0 1
+if [ "$(grep -c '' "$SANDBOX/l8/ctl.jsonl")" -eq 1 ] && grepq "$(cat "$SANDBOX/l8/ctl.jsonl")" '"suite":"s/test-xy\.sh"'; then
+  pass "L8: tab and newline in a suite name stay one valid row"
+else
+  fail "L8: control characters split or garbled the row"
 fi
 
 rst_tally

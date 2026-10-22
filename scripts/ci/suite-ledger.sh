@@ -21,13 +21,13 @@ suite_ledger_append() {
   ledger="${HIMMEL_SUITE_LEDGER:-${HOME:-}/.himmel/state/suite-runs.jsonl}"
   case "$rc$sec" in *[!0-9]*|'') return 0 ;; esac
   {
-    mkdir -p "${ledger%/*}" || return 0
+    case "$ledger" in */*) mkdir -p "${ledger%/*}" || return 0 ;; esac
     head=$(git rev-parse HEAD 2>/dev/null) || head='' # swallow-ok: the ledger must never fail a suite; an empty head is a row without a sha
     station=$(hostname 2>/dev/null) || station='' # swallow-ok: the ledger must never fail a suite; falls back to "unknown" below
     [ -n "$station" ] || station=unknown
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    esc=$(printf '%s' "$suite" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    station=$(printf '%s' "$station" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc=$(printf '%s' "$suite" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
+    station=$(printf '%s' "$station" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
     printf '{"ts":"%s","suite":"%s","head":"%s","rc":%s,"sec":%s,"station":"%s"}\n' \
       "$ts" "$esc" "$head" "$rc" "$sec" "$station" >> "$ledger"
   } 2>/dev/null || true
