@@ -295,6 +295,7 @@ scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0
+scripts/eval/test-weekly-rollup.sh	1
 scripts/eval/test-worktree-latency-curve.sh	0
 scripts/git/test-classify-branches.sh	1
 scripts/git/test-restore-to-head.sh	1
