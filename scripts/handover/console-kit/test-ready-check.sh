@@ -178,8 +178,8 @@ seed_deferral() {
 }
 
 run() {
-    local cache
-    cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
+    local cache="${RUN_CACHE:-}"
+    [ -n "$cache" ] || cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
         JIRA_PROJECT_KEY=HIMMEL \
         STUB_NWO="$NWO" \
@@ -336,6 +336,24 @@ STUB_UNRESOLVED=2
 rc=0; out="$(run)" || rc=$?
 check "unresolved-threads: exit 1" "$rc" "1"
 contains "unresolved-threads: check 3 fails" "$out" "[FAIL] 3. unresolved review threads = 2"
+
+# --- 3 fresh. the decision reads the PR live, never a same-head cached snapshot ---
+reset_stubs
+RUN_CACHE=$(mktemp -d "$tmp/cache.XXXXXX") || exit 1
+STUB_UNRESOLVED=1
+run >/dev/null 2>&1 || true
+STUB_UNRESOLVED=0
+rc=0; out="$(run)" || rc=$?
+check "stale-cache-thread-resolved: exit 0" "$rc" "0"
+contains "stale-cache-thread-resolved: check 3 passes" "$out" "[PASS] 3."
+reset_stubs
+RUN_CACHE=$(mktemp -d "$tmp/cache.XXXXXX") || exit 1
+run >/dev/null 2>&1 || true
+STUB_UNRESOLVED=1
+rc=0; out="$(run)" || rc=$?
+check "stale-cache-thread-opened: exit 1" "$rc" "1"
+contains "stale-cache-thread-opened: check 3 fails" "$out" "[FAIL] 3. unresolved review threads = 1"
+RUN_CACHE=
 
 # --- 4. check 4 fails: no ledger row for this head ----------------------
 reset_stubs

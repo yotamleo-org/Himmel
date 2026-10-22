@@ -4,7 +4,8 @@
 # checklist by hand ~12 times on 2026-09-18 with zero variance; the fleet cap
 # doubling (4 -> 8) doubles the READYs per hour, so it is worth a script.
 #
-# Read-only except the shared PR snapshot cache. Prints one
+# Read-only except the shared PR snapshot cache, which it refreshes (TTL 0:
+# every run reads the PR live, never a same-head cached snapshot). Prints one
 # line per check, then READY-CHECK PASS|FAIL. It does
 # NOT read the three-dot diff — that judgement call stays the console's own,
 # and the script says so on its last line.
@@ -171,7 +172,7 @@ mark_fail() { RESULT=1; }
 SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
 snapshot=""
 if [ "$ONLY7" -eq 0 ]; then
-    snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 60 "$PR" 2>/dev/null) || snapshot=""
+    snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
 fi
 
 if [ "$ONLY7" -eq 0 ]; then
