@@ -204,7 +204,7 @@ async function readinessRows(
       const latest = ledger.filter((l) => l.key === i.key).pop();
       const record = latest && isAdmission(latest) ? latest : undefined;
       if (record) admitted.push({ key: i.key, reason: record.reason ?? record.gate ?? '', by: record.by });
-      else if (done(i)) folded += 1;
+      else if (done(i) && !latest) folded += 1;
       else leaks.push(i.key);
     }
     const problems = [
