@@ -647,9 +647,12 @@ class VM:
             key = os.path.expanduser("~/.ssh/id_ed25519").replace("\\", "/")
             known_hosts = self._known_hosts_file()
             known_hosts.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            ssh_target = (f"-p {self.port} -i {key} "
+            # ssh splits a UserKnownHostsFile value on spaces: the double quotes
+            # are ssh's own, the shlex.quote around them is the pipe shell's.
+            kh_opt = shlex.quote(f'UserKnownHostsFile="{known_hosts.as_posix()}"')
+            ssh_target = (f"-p {self.port} -i {shlex.quote(key)} "
                           f"-o BatchMode=yes -o StrictHostKeyChecking=accept-new "
-                          f"-o UserKnownHostsFile={shlex.quote(known_hosts.as_posix())} "
+                          f"-o {kh_opt} "
                           f"{self.user}@127.0.0.1")
         # refuse a dest the post-copy scan could not check BEFORE
         # any file crosses, and quote it (a spaced dest) for the guest shell.

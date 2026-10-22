@@ -8,6 +8,7 @@ failed) when ubuntu_new is not up on 127.0.0.1:2222.
 import json
 import os
 import re
+import shlex
 import shutil
 import socket
 import sys
@@ -784,8 +785,20 @@ class TestKnownHostsReset(unittest.TestCase):
     def test_vm_sync_uses_per_vm_known_hosts_file_with_accept_new(self):
         pipe = self._pipe(self._vm())
         want = (self.kh_dir / "ubuntu_new").as_posix()
-        self.assertIn(f"-o UserKnownHostsFile={want}", pipe)
+        self.assertIn(f'UserKnownHostsFile="{want}"', shlex.split(pipe))
         self.assertIn("StrictHostKeyChecking=accept-new", pipe)
+
+    def test_spaced_home_keeps_known_hosts_and_key_as_one_path_each(self):
+        """ssh splits a UserKnownHostsFile value on spaces and the pipe shell
+        splits -i: a HOME with a space must still name one file each."""
+        spaced = Path(self.home) / "a b"
+        spaced.mkdir()
+        with mock.patch.dict(os.environ, {"HOME": str(spaced)}):
+            toks = shlex.split(self._pipe(self._vm()))
+        want = (spaced / ".himmel/vm/known_hosts/ubuntu_new").as_posix()
+        opt = next(t for t in toks if t.startswith("UserKnownHostsFile="))
+        self.assertEqual(shlex.split(opt.replace("=", " ", 1)), ["UserKnownHostsFile", want])
+        self.assertEqual(toks[toks.index("-i") + 1], (spaced / ".ssh/id_ed25519").as_posix())
 
     def test_options_never_disable_host_key_checking(self):
         for vm in (self._vm(), self._station()):
@@ -819,7 +832,7 @@ class TestKnownHostsReset(unittest.TestCase):
         named = self.kh_dir / "ubuntu_new"
         named.write_bytes(b"[127.0.0.1]:2222 ssh-ed25519 AAAAold\n")
         self._restore(vm)
-        self.assertIn(f"UserKnownHostsFile={named.as_posix()}", self._pipe(vm))
+        self.assertIn(f'UserKnownHostsFile="{named.as_posix()}"', shlex.split(self._pipe(vm)))
         self.assertFalse(named.exists())
 
     def test_failed_restore_readback_keeps_the_known_hosts(self):
