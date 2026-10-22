@@ -105,6 +105,7 @@ scripts/ci/test-check-hooks-on-pr-range.sh	pr	trust-path
 scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
 scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
 scripts/ci/test-check-no-secrets.sh	pr	guard
+scripts/ci/test-check-run-timelines.sh	pr	trust-path
 scripts/ci/test-check-vacuous-path-assert.sh	pr	trust-path
 scripts/ci/test-ci-container-jobs.sh	pr	trust-path
 scripts/ci/test-ci-gcp-routing.sh	pr	trust-path

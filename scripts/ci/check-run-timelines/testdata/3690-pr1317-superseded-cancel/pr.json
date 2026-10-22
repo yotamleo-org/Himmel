@@ -1,0 +1,8 @@
+{
+  "number": 1317,
+  "headRefOid": "65e97c1447fdd596d63289383c3293f72c520bcc",
+  "baseRefName": "main",
+  "mergeStateStatus": "CLEAN",
+  "reviewDecision": null,
+  "source": "HIMMEL-3690: pr-title-lint CANCELLED then SUCCESS at the same head while mergeStateStatus was CLEAN"
+}
