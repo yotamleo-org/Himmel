@@ -26,10 +26,10 @@ groups = {
         builder-visual claude-obsidian design-dna diagram-design emilkowalski-skills
         frontend-slides gsap-skills hallmark handover himmel-ops impeccable lean-skills
         lottie-motion-design luna-correlate motion-lexicon obsidian-triage
-        plannotator-effective-html platform-design-skills pr-review-toolkit-himmel
+        plannotator-effective-html platform-design-skills
         qmd shadcn-mcp taste-skill-core taste-skill-imagegen taste-skill-styles
         telegram-himmel threejs-skills ui-ux-pro-max''',
-    'openai-codex': 'codex', 'ponytail': 'ponytail', 'scroll-world': 'scroll-world',
+    'openai-codex': 'codex', 'scroll-world': 'scroll-world',
     'obsidian-skills': 'obsidian', 'ui-ux-pro-max-skill': 'ui-ux-pro-max',
     'claude-video': 'watch',
 }

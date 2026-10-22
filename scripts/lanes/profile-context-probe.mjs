@@ -230,6 +230,20 @@ export function listingReport(contextUsage, requiredIds, runtimeNames) {
   });
 }
 
+// Measured listing cost for the per-profile tool roll-up: the Skill tool's
+// total listing tokens and the same split by plugin, from a /context reply.
+export function listingTokensByPlugin(contextUsage) {
+  const plugins = {};
+  let skill = 0;
+  for (const s of contextUsage?.skills ?? []) {
+    const t = s.tokens ?? 0;
+    const plugin = s.plugin_name ?? 'unknown';
+    skill += t;
+    plugins[plugin] = (plugins[plugin] ?? 0) + t;
+  }
+  return { skill, plugins };
+}
+
 // The listing budget (a fraction of the context window) at which every
 // role-required skill keeps its description while all other skills sit
 // name-only: current listing tokens plus the uncapped cost of each name-only

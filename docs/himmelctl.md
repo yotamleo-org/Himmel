@@ -107,8 +107,11 @@ and `gaps` read.
 
 ## `config`
 
-An interactive TUI to toggle himmel capabilities without hand-editing files.
-Non-interactively:
+Bare `himmelctl config` asks nothing: it prints the link to the UI Configure
+page, where himmel capabilities are toggled without hand-editing files. When
+the UI service is not installed it says how to open the UI (`himmelctl ui`, or
+`himmelctl ui --service install` to keep it running). For scripts, the same
+settings the UI shows are read and written with:
 
 ```bash
 himmelctl config get <path>

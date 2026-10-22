@@ -16,7 +16,7 @@
 # which is why the rollup showed CodeRabbit while the check-runs API did not.
 #
 # ENDPOINT CHOICE (this is the load-bearing detail):
-# wants the bot matched by IDENTITY, not display name. Only the
+# The bot is matched by IDENTITY, not display name. Only the
 # /statuses LIST endpoint carries one:
 #   /commits/<sha>/status   (combined) -> creator is NULL. No identity. Unusable.
 #   /commits/<sha>/statuses (list)     -> creator{id,login,type}. Usable.
@@ -31,7 +31,7 @@
 #
 # SKIPPED IS NOT SUCCESS — the second shape nobody checked:
 # when a repo disables automatic reviews (the standing posture since
-# made the App the reviewer, and permanent since deleted the CLI),
+# the App became the reviewer, and permanent since the CLI was deleted),
 # CodeRabbit still posts a status on every untriggered PR — and posts it as
 #   state=success  description="Review skipped: automatic reviews are disabled"
 # This reader used to project ONLY .state, so a refusal to review and a clean
@@ -75,7 +75,7 @@
 #           none, or no CodeRabbit status exists). rc 0 = read ok (incl. empty);
 #           rc 1 = cannot evaluate. Same identity-matched query as the probe, so
 #           the description belongs to the status cr_signal_state classified.
-# Added for when only a rate-limited skip was panel-
+# It exists for the case where only a rate-limited skip was panel-
 #           carriable and the gates needed the description to tell it from an
 #           auto-reviews-disabled one (both project to `skipped`). Since
 # BOTH gates carry every skip wording on a clean

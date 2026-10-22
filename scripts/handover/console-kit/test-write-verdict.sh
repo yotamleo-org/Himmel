@@ -714,62 +714,42 @@ printf '## Non-blocking\n\n- HIMMEL-9 filed\n\nThe next paragraph is plain prose
 rc=0; wv q22k GO "$SHA_A" --evidence-file "$evd/r-block-end.md" >/dev/null 2>&1 || rc=$?
 check "22: a bullet after the residual block ended is not refused" "$rc" 0
 
-# --- 23. --residual-of <KEY> stamps residual-depth-<parent+1> on each keyed residual ---
-rdm="$tmp/rd-mirror"; mkdir -p "$rdm"
-printf -- '---\nkey: "HIMMEL-900"\nlabels: ["residual-depth-1"]\nfixVersions: []\n---\n' > "$rdm/HIMMEL-900.md"
-printf -- '---\nkey: "HIMMEL-910"\nlabels: ["operator-directed"]\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-910.md"
-printf -- '---\nkey: "HIMMEL-902"\nlabels: ["residual-depth-2"]\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-902.md"
+# --- 23. --residual-of <KEY> hands each keyed residual to the jira edit --residual-of verb ---
+# The verb decides depth, affectsVersion and fixVersions (edit.test.ts covers depth 0, 1 and 2);
+# the writer only makes one verb call per cited key and holds no depth arithmetic of its own.
 rdlog="$tmp/rd-jira.log"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$rdlog" > "$tmp/rd-jira"
 chmod +x "$tmp/rd-jira"
-rdwv() { WV_MIRROR="$rdm" WV_JIRA_CMD="$tmp/rd-jira" wv "$@"; }
+rdwv() { WV_JIRA_CMD="$tmp/rd-jira" wv "$@"; }
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 tighten the regex\n- other thing, no-ticket: operator accepted\n' > "$evd/rd-ev1.md"
 : > "$rdlog"
 rc=0; rdwv q23a GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
 check "23: --residual-of is accepted rc 0" "$rc" 0
-check "23: a depth-1 parent stamps its keyed residual residual-depth-2" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-2$' "$rdlog")" 1
-check "23: a residual is stamped affectsVersion current" "$(grep -c '^edit HIMMEL-901 --affects-version current$' "$rdlog")" 1
-check "23: a no-ticket residual line is not stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 2
-: > "$rdlog"
-rc=0; rdwv q23b GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-910 >/dev/null 2>&1 || rc=$?
-check "23: an unlabelled parent is depth 0, so the residual is stamped residual-depth-1" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-1$' "$rdlog")" 1
+check "23: a keyed residual is stamped through the verb" "$(grep -c '^edit HIMMEL-901 --residual-of HIMMEL-900$' "$rdlog")" 1
+check "23: the verb call is the only call, one per keyed residual" "$(wc -l < "$rdlog" | tr -d ' ')" 1
 : > "$rdlog"
 rc=0; rdwv q23c GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" >/dev/null 2>&1 || rc=$?
 check "23: without --residual-of nothing is stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 0
-printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-903 a depth-3 child\n' > "$evd/rd-ev2.md"
-printf -- '---\nkey: "HIMMEL-903"\nlabels: []\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-903.md"
 : > "$rdlog"
-rc=0; out=$(rdwv q23d GO "$SHA_A" --evidence-file "$evd/rd-ev2.md" --residual-of HIMMEL-902 2>&1) || rc=$?
-check "23: a depth-3 stamp still writes the verdict rc 0" "$rc" 0
-check "23: a depth-2+ residual carrying a fixVersion has it removed" "$(grep -c '^fix-version HIMMEL-903 --remove v1.1.3$' "$rdlog")" 1
-check "23: a depth-2+ residual is also stamped affectsVersion current" "$(grep -c '^edit HIMMEL-903 --affects-version current$' "$rdlog")" 1
-: > "$rdlog"
-printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-904 a depth-1 child\n' > "$evd/rd-ev5.md"
-printf -- '---\nkey: "HIMMEL-904"\nlabels: []\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-904.md"
-rc=0; rdwv q23d2 GO "$SHA_A" --evidence-file "$evd/rd-ev5.md" --residual-of HIMMEL-910 >/dev/null 2>&1 || rc=$?
-check "23: the depth-1 residual is stamped, so the fixVersion check is not vacuous" "$(grep -c '^edit HIMMEL-904 --affects-version current$' "$rdlog")" 1
-check "23: a depth-1 residual keeps its fixVersion" "$(grep -c 'fix-version' "$rdlog")" 0
 rc=0; rdwv q23e GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of bogus >/dev/null 2>&1 || rc=$?
 check "23: a --residual-of that is not a ticket key is refused rc 2" "$rc" 2
-printf -- '---\nkey: "HIMMEL-920"\nlabels: ["residual-depth-08"]\nfixVersions: []\n---\n' > "$rdm/HIMMEL-920.md"
-: > "$rdlog"
-rc=0; rdwv q23z GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-920 >/dev/null 2>&1 || rc=$?
-check "23: a leading-zero parent label is read as decimal, so the writer exits rc 0" "$rc" 0
-check "23: a residual-depth-08 parent stamps residual-depth-9" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-9$' "$rdlog")" 1
-: > "$rdlog"
-rc=0; out=$(rdwv q23f GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-999 2>&1) || rc=$?
-check "23: a parent with no mirror still writes the verdict rc 0" "$rc" 0
-check "23: a parent with no mirror stamps nothing" "$(wc -l < "$rdlog" | tr -d ' ')" 0
-contains "23: a parent with no mirror warns" "$out" "no mirror for HIMMEL-999"
+check "23: a refused --residual-of makes no verb call" "$(wc -l < "$rdlog" | tr -d ' ')" 0
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 follow-up to HIMMEL-900\n- HIMMEL-910 again\n' > "$evd/rd-ev3.md"
 : > "$rdlog"
 rc=0; rdwv q23g GO "$SHA_A" --evidence-file "$evd/rd-ev3.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
-check "23: only the first key on a residual line is stamped" "$(grep -c '^edit HIMMEL-901 --add-labels' "$rdlog")" 1
+check "23: only the first key on a residual line is stamped" "$(grep -c '^edit HIMMEL-901 --residual-of' "$rdlog")" 1
 check "23: a contextual parent key on a residual line is not stamped" "$(grep -c '^edit HIMMEL-900 ' "$rdlog")" 0
+check "23: the second residual line is stamped too" "$(grep -c '^edit HIMMEL-910 --residual-of HIMMEL-900$' "$rdlog")" 1
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-900 the parent itself\n' > "$evd/rd-ev4.md"
 : > "$rdlog"
 rc=0; rdwv q23h GO "$SHA_A" --evidence-file "$evd/rd-ev4.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
 check "23: the --residual-of parent is never relabelled" "$(wc -l < "$rdlog" | tr -d ' ')" 0
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/rd-jira-fail"
+chmod +x "$tmp/rd-jira-fail"
+rc=0; out=$(WV_JIRA_CMD="$tmp/rd-jira-fail" wv q23f GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-900 2>&1) || rc=$?
+check "23: a failing verb still writes the verdict rc 0" "$rc" 0
+contains "23: a failing verb warns to stamp by hand" "$out" "could not stamp HIMMEL-901"
+check "23: the writer holds no depth arithmetic or mirror read" "$(grep -c 'residual-depth\|WV_MIRROR\|jira-mirror' "$SCRIPT")" 0
 
 # strict parse of every file this suite wrote through the writer (hand-built fixtures excluded)
 strict_bad=0 strict_n=0

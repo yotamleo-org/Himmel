@@ -199,9 +199,9 @@ contains 'retask-channel.md: the chain path says the named-sender check no longe
 contains 'console-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
 contains 'console-template.md: handing over says the relay names the successor' "$handing" 'naming the successor'
 contains 'console-template.md: step 9 names the leg last accepted console, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
-contains 'retask-channel.md: relay (1) is from the session the worker session last accepted' "$(flat "$retask")" 'from the session the worker session last accepted'
+contains 'retask-channel.md: relay (1) is from the session the worker last accepted' "$(flat "$retask")" 'from the session the worker last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'retask-channel.md: chain (2) tests the session the worker session last accepted' "$(flat "$retask")" 'the supervisor session the worker session last accepted is no longer in `ListAgents`'
+contains 'retask-channel.md: chain (2) tests the session the worker last accepted' "$(flat "$retask")" 'the chief the worker last accepted is no longer in `ListAgents`'
 
 RETASK_TEXT="$(cat "$RETASK")"
 # A relay MAY keep the leg's token: an unrotated relay is
@@ -361,6 +361,24 @@ contains 'leg-preface: a console change is quoted back by its SUCCESSION bullet'
 absent 'ACTION ZERO step 9 no longer waits on a SendMessage quote-back' "$(flat "$step9")" "Wait for each leg's quote-back"
 absent 'handoff no longer waits on a SendMessage quote-back' "$(flat "$starts")" "wait for each leg's quote-back"
 absent 'running-a-console no longer has the leg answer with a SendMessage quote-back' "$(flat "$running")" 'answers with a quote-back'
+
+# --- 9. ACTION ZERO is one batched turn --------------------------------------
+step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CONSOLE")"
+step1flat="$(flat "$step1")"
+contains 'ACTION ZERO step 1 names action-zero.sh with --acquire --render-legs' "$step1flat" 'action-zero.sh" --doc'
+action_zero_calls="$(printf '%s\n' "$step1" | grep -ioF 'action-zero.sh' | wc -l | tr -d ' ')"
+if [ "$action_zero_calls" -eq 1 ]; then
+    pass 'ACTION ZERO step 1 invokes action-zero.sh exactly once'
+else
+    fail "ACTION ZERO step 1 invokes action-zero.sh $action_zero_calls times"
+fi
+contains 'ACTION ZERO step 1: --acquire --render-legs in one call' "$step1flat" '--acquire --render-legs'
+contains 'ACTION ZERO step 1: ListAgents in the same batch' "$step1flat" 'ListAgents'
+contains 'ACTION ZERO step 1: ToolSearch loads SendMessage in the same batch' "$step1flat" 'select:SendMessage'
+contains 'ACTION ZERO step 1: Read of the decisions file in the same batch' "$step1flat" 'specs/decisions/console-decisions-<date>.md'
+contains 'ACTION ZERO step 1: one batch' "$step1flat" 'one batch'
+contains 'ACTION ZERO step 1: action-zero.sh runs in the foreground' "$step1flat" 'foreground'
+absent 'ACTION ZERO step 1: action-zero.sh is never run_in_background' "$step1flat" 'run_in_background: true'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'

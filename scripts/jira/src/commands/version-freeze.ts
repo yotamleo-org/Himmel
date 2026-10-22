@@ -161,10 +161,11 @@ const list = (keys: string[]) => keys.join(',');
 
 // A key in the version that is not in the frozen list was admitted after the
 // freeze: a ledger row (a gate or console-override filing, or an rm-admit)
-// gives it a reason, none makes it a leak. A Done key without a row is a
+// gives it a reason, none makes it a leak; the key's latest row decides, so a
+// removal or deferral after an admission withdraws it. A Done key without a row is a
 // Done-fold, not a leak. A row keyed by a check id (a version-ready override)
 // is not an admission.
-const isAdmission = (l: Admission) => l.kind !== 'deferral' && KEY.test(l.key);
+const isAdmission = (l: Admission) => l.kind !== 'deferral' && l.kind !== 'rm-remove' && KEY.test(l.key);
 
 async function readinessRows(
   project: string,
@@ -200,9 +201,10 @@ async function readinessRows(
     )) as Issue[];
     const frozenKeys = new Set(frozen.keys);
     for (const i of inVersion.filter((x) => !frozenKeys.has(x.key))) {
-      const record = ledger.find((l) => l.key === i.key && isAdmission(l));
+      const latest = ledger.filter((l) => l.key === i.key).pop();
+      const record = latest && isAdmission(latest) ? latest : undefined;
       if (record) admitted.push({ key: i.key, reason: record.reason ?? record.gate ?? '', by: record.by });
-      else if (done(i)) folded += 1;
+      else if (done(i) && !latest) folded += 1;
       else leaks.push(i.key);
     }
     const problems = [

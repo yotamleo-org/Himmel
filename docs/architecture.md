@@ -1,13 +1,12 @@
 # himmel architecture — the diagrams
 
-Five views of how the harness is wired. For the narrative version — what the
-parts are, how one ticket moves through them and why it is built this way —
+Five views of how the harness is wired. For the narrative version (what the
+parts are, how one ticket moves through them and why it is built this way),
 start with [`system-design.md`](system-design.md).
 
-A box that names a repo path points at
-a file you can open and read — with one exception, `scripts/jira/dist/index.js`,
-a generated build artifact that only exists after a build (see "Keeping these
-accurate" below). The diagrams also contain actor and external-system boxes
+A box that names a repo path points at a file you can open and read. The one
+exception is `scripts/jira/dist/index.js`, a generated build artifact that only
+exists after a build (see "Keeping these accurate" below). The diagrams also contain actor and external-system boxes
 (`Claude tool call`, `operator`, `Prometheus`, `Telegram`, `Atlassian REST`,
 …) that deliberately name no file.
 
@@ -30,7 +29,7 @@ one call"; read this file for "what the layer is made of".
 himmel enforces structurally, at five independent stages. A rule that lives at
 only one stage can be forgotten; the same invariant is often checked at two.
 The live inventory is `.claude/settings.json`, the plugin `hooks.json` files,
-and `.pre-commit-config.yaml` — this diagram is the shape, not the list.
+and `.pre-commit-config.yaml`; this diagram shows the shape, not the list.
 
 ```mermaid
 flowchart TD
@@ -81,9 +80,9 @@ flowchart TD
 PreToolUse hook sees the *intent* of a single call but not the diff. A
 pre-commit gate sees the staged diff but not the branch's history. A pre-push
 gate sees the whole range and the remote. CI sees a clean machine. The merge
-gate sees the CI result plus review state — which is why it comes last, and why
+gate sees the CI result plus review state, which is why it comes last and why
 the arrow runs CI → merge gate and never the reverse. An invariant that matters
-gets checked wherever it is cheapest to catch — and the ones that matter most
+gets checked wherever it is cheapest to catch, and the ones that matter most
 get checked twice.
 
 Per-hook behaviour, the guardrail matrix, and the bypass env var for each:
@@ -137,10 +136,10 @@ flowchart TD
     W --> C
 ```
 
-**The invariant that makes it work.** One worker session is one file: state and orders
+**The invariant that makes it work.** One worker is one file: state and orders
 never split across two documents, so a resuming session cannot read half the
 picture. The queue lock is structural rather than advisory because prose
-coordination between two armed sessions failed three ways in one night — the
+coordination between two armed sessions failed three ways in one night. The
 escalation is recorded in `scripts/handover/queue-lock.sh`'s own header.
 
 Full flows and the resolver contract:
@@ -176,8 +175,8 @@ flowchart TD
 
 **Caps that are not model-tuned.** Spawn depth and concurrency come from
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` and
-`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` — read the environment; unset means the
-harness default applies. Haiku does not spawn.
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, so read the environment; unset means
+the harness default applies. Haiku does not spawn.
 
 Tier semantics, effort-before-tier, and cost:
 [`internals/lane-calibration.md`](internals/lane-calibration.md). The RETASK
@@ -191,8 +190,8 @@ Native subagents vs. external lane workers:
 
 An MCP server costs context on every session that loads it. A local CLI costs
 nothing until it is called. himmel routes issue-tracker work to the CLI and
-keeps MCP for the individual ops a backend's CLI does not implement — and
-enforces that routing rather than asking Claude to remember it.
+keeps MCP for the individual ops a backend's CLI does not implement. A hook
+enforces that routing, so Claude does not have to remember it.
 
 ```mermaid
 flowchart TD
@@ -212,13 +211,12 @@ flowchart TD
     CLI -.->|"jira mcp"| SELF["the same verbs re-exposed over MCP on stdio,<br/>lazily imported so the SDK stays off the hot path"]
 ```
 
-**The detail that keeps it honest.** The gate does not hand-maintain a list of
-blocked MCP tools — it asks the CLI what verbs it has. Adding a verb tightens
-the gate automatically; removing one loosens it. That is the difference
-between a rule and a structure.
+**The gate asks the CLI.** It keeps no hand-maintained list of blocked MCP
+tools; it asks the CLI what verbs it has. Adding a verb tightens the gate
+automatically; removing one loosens it.
 
-Invocation shape (absolute path from the primary checkout — `dist/` is an
-untracked build artifact, so a worktree lacks it) and the full op ↔ MCP
+Invocation shape (absolute path from the primary checkout, because `dist/` is
+an untracked build artifact and a worktree lacks it) and the full op ↔ MCP
 mapping: [`internals/jira-plugin.md`](internals/jira-plugin.md).
 
 ---
@@ -266,10 +264,10 @@ flowchart LR
 
 **The record that never gets written is the important one.** `SessionEnd` is a
 graceful-exit hook: a crash, an OOM, or a window the operator eventually closes
-emits `session_start` and no `session_end`, ever. Liveness is therefore decided
-by the *reader*, from transcript mtime — not asserted by the writer. The same
+emits `session_start` and no `session_end`, ever. So the *reader* decides
+liveness, from transcript mtime; the writer does not assert it. The same
 reasoning splits an expired unpaired row into `abandoned` (its pid is confirmed
-dead — real hygiene information, but nothing is hung and nobody can act, so it
+dead: real hygiene information, but nothing is hung and nobody can act, so it
 must not page) and `stalled` (everything else).
 
 `alerts.rules.yml` is loaded into Prometheus for self-visibility and
@@ -282,7 +280,7 @@ ever delivered. Details and the passivity invariant:
 ## Keeping these accurate
 
 When you move or rename a file a box above names, this file is part of
-the change — the same rule that governs
+the change, the same rule that governs
 [`commands-catalog.md`](commands-catalog.md). Every count here is derivable:
 the gate ids and their split across the three git stages (37 pre-commit,
 11 pre-push, 1 commit-msg) from `.pre-commit-config.yaml`, the job count from

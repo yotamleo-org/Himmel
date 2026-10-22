@@ -100,7 +100,7 @@ Act on the exit code:
   commit only — it is not a review-state gate; if meaningful time passed since
   exit 0, re-run /check-ci before merging (the block-unresolved-cr-merge hook,
   HIMMEL-936, independently blocks `gh pr merge` while review threads are
-  unresolved). Auto/overnight mode: stop at PR-ready — merge stays an
+  unresolved). Auto/AFK mode: stop at PR-ready — merge stays an
   operator action.
 - `1` — a check failed (fail-fast: returns on the first red). If it went red
   within seconds, suspect a GitHub Actions billing/permissions block rather

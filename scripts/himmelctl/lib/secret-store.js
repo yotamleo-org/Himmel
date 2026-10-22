@@ -68,10 +68,21 @@ function telegramEnv(ctx) {
   if (o) return /^~[\\/]/.test(o) ? path.join(ctx.home, o.slice(2)) : o;
   return path.join(ctx.home, '.claude', 'channels', 'telegram', '.env');
 }
+// The checkout the Jira CLI loads .env from (git-common-dir's parent): a linked worktree answers its primary.
+// Read from the .git pointer files, since this module never spawns git.
+function envAnchor(root) {
+  try {
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(path.join(root, '.git'), 'utf8'));
+    if (!m) return root;
+    const gitdir = path.resolve(root, m[1]);
+    const common = path.resolve(gitdir, fs.readFileSync(path.join(gitdir, 'commondir'), 'utf8').trim());
+    return path.basename(common) === '.git' ? path.dirname(common) : root;
+  } catch { return root; }
+}
 function storeFile(storeId, ctx) {
   switch (storeId) {
-    case 'himmel-env': return path.join(ctx.himmelRoot, '.env');
-    case 'project-env': return path.join(ctx.projectRoot, '.env');
+    case 'himmel-env': return path.join(envAnchor(ctx.himmelRoot), '.env');
+    case 'project-env': return path.join(envAnchor(ctx.projectRoot), '.env');
     case 'bridge-env': return telegramEnv(ctx);
     default: return null;
   }

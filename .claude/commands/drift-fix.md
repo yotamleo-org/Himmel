@@ -63,7 +63,7 @@ qmd, the marketplaces, hermes, the jira dist). Running it first means step 2
 reads drift against a machine that is actually current — and its own
 `--only <item>` flag is how you re-run a single step that did not land.
 
-**Its outcome is ADVISORY to this runbook: never abort the drift leg on a
+**Its outcome is ADVISORY to this runbook: never abort the drift worker on a
 non-zero rc.** A failed luna-template upgrade must not stop a graphify pin bump,
 and a `skipped` item is not a failure at all. It produces no repo diff and
 therefore never opens a PR.

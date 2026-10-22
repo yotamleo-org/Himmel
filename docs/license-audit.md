@@ -43,18 +43,20 @@ dependency graph.
 
 ## Fork handling
 
-Two vendored plugins are upstream forks and stay under their **upstream
-Apache-2.0** license — they are NOT relicensed to MIT:
+One vendored plugin and one standalone reviewer prompt derive from upstream
+and stay under their **upstream Apache-2.0** license — they are NOT
+relicensed to MIT:
 
-- `marketplace/plugins/pr-review-toolkit-himmel/` — fork of
-  `pr-review-toolkit`; upstream `LICENSE` (Apache-2.0) carried forward,
-  attributed in its `README.md`.
+- `scripts/cr/floor-reviewer.md` — modified copy of the `code-reviewer` agent
+  of `pr-review-toolkit` (`anthropics/claude-plugins-official`), Apache-2.0;
+  attributed in `THIRD-PARTY-NOTICES.md`.
 - `marketplace/plugins/telegram-himmel/` — fork of
   `telegram@claude-plugins-official` v0.0.6; upstream `LICENSE`
   (Apache-2.0) carried forward, attributed in its `README.md`.
 
-Each fork retains its original `LICENSE` file and documents the upstream
-source + fork delta in its own `README.md`.
+The vendored plugin retains its original `LICENSE` file and documents the
+upstream source + fork delta in its own `README.md`; the standalone prompt
+carries `scripts/cr/LICENSE-floor-reviewer` and `scripts/cr/NOTICE-floor-reviewer`.
 
 ## Housekeeping completed by this change
 

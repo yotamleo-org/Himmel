@@ -113,6 +113,23 @@ if ! xargs_bin=$(command -v xargs); then
   exit 1
 fi
 
+# gitleaks runs from the generated pre-commit hook itself, NOT as a
+# pre-commit-framework hook: pre-commit fails any hook during
+# which a tracked file changes ("files were modified by this hook"), and a
+# gitleaks scan of a large staged set takes seconds -- long enough that a
+# concurrent writer (another session appending to a tracked handover doc)
+# always lands in the window, so every commit attempt failed and the autosync
+# stalled behind a scan that found nothing. Resolved and baked like pre-commit
+# above; a missing gitleaks is NOT fatal here but the generated hook then
+# refuses every commit (fail closed -- never a silently unscanned commit).
+gl_bin=""
+if candidate=$(command -v gitleaks 2>/dev/null) && [ -x "$candidate" ]; then
+  gl_bin="$candidate"
+else
+  echo "warning: gitleaks not found on PATH; commits will be REFUSED (fail closed) until it is installed and this script is re-run." >&2
+fi
+printf -v gl_q '%q' "$gl_bin"
+
 # Is $1 a hook WE generated? Requires the marker as an EXACT line-2 match,
 # not just present somewhere in the file (a foreign hook that merely quotes
 # or embeds that sentence elsewhere must still be treated as foreign, backed
@@ -234,6 +251,18 @@ fi
 # Batched via xargs, not one argv -- a large commit's staged-file list can
 # exceed the platform's command-line length limit (Windows: ~32K chars).
 printf '%s\0' "\${files[@]}" | $xargs_q -0 "\${pc[@]}" run --hook-stage pre-commit --files
+# Secret scan of the staged set, run here and not through pre-commit so its
+# duration cannot trip pre-commit's whole-tree modified-files check (see the
+# installer's gitleaks comment). Fail closed when gitleaks cannot be found.
+gl=$gl_q
+if [ -z "\$gl" ] || [ ! -x "\$gl" ]; then
+  gl=\$(command -v gitleaks 2>/dev/null || true)
+  if [ -z "\$gl" ]; then
+    echo "error: gitleaks not found (baked path gone, none on PATH); refusing the commit. Install gitleaks, then re-run scripts/hooks/install-nostash-hooks.sh." >&2
+    exit 1
+  fi
+fi
+"\$gl" git --pre-commit --staged --redact --verbose --no-banner
 HOOK
 
 cat >"$hooks_dir/commit-msg" <<HOOK

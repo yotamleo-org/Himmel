@@ -140,7 +140,7 @@ Added 2026-10-15 (HIMMEL-5803). `marketplace/plugins/pstack/`, seven skills
 `cursor/plugins` at pinned commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path `pstack/`. Every file
 names the pin and its deviations; the `unslop`, `no-comments` and
 `comment-sicko` files above are re-synced to the same pin (HIMMEL-5812). Never
-sourced from the `michael-denyer/pstack-claude` fork. Opt-in, off in every leg
+sourced from the `michael-denyer/pstack-claude` fork. Opt-in, off in every worker
 profile (registry row: [`tool-adoption/registry.md`](tool-adoption/registry.md)).
 The same pin also feeds a take-parts digest of six principles restated in our
 wording; the digest itself vendors no files (HIMMEL-5810:
@@ -287,7 +287,7 @@ SOFTWARE.
 - Every `marketplace/plugins/*` plugin with a `LICENSE` file declares MIT
   (`claude-hud` — fork, upstream copyright by Jarrod Watts, preserved per
   convention; `handover`, `himmel-ops`, `obsidian-triage`, `qmd` — MIT) or
-  Apache-2.0 (`pr-review-toolkit-himmel`, `telegram-himmel` — both also carry
+  Apache-2.0 (`telegram-himmel` — also carries
   a `NOTICE` file). All compatible with an MIT-top-level project.
   `luna-correlate` has no separate `LICENSE` (first-party, no fork lineage;
   inherits the repo root license).

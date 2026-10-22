@@ -7,7 +7,7 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/cr/claude-floor-review.sh"
-AGENT_MD="$REPO/marketplace/plugins/pr-review-toolkit-himmel/agents/code-reviewer.md"
+AGENT_MD="$REPO/scripts/cr/floor-reviewer.md"
 PASS=0; FAIL=0
 W="$(mktemp -d -t claude-floor-test.XXXXXX)" || { echo "FAIL - mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
@@ -104,6 +104,8 @@ awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$AGENT_M
 if head -c "$(wc -c < "$W/agent-body.md")" "$REC/system.md" | cmp -s - "$W/agent-body.md"; then
     ok "1 system prompt starts with the reviewer agent body verbatim"; else bad "1 system prompt starts with the reviewer agent body verbatim"; fi
 hasnt "1 system prompt carries no agent frontmatter" '^name: code-reviewer' "$REC/system.md"
+has "1 script loads its prompt from scripts/cr/floor-reviewer.md" "scripts/cr/floor-reviewer.md" "$SUT"
+hasnt "1 script no longer names the dropped plugin" "pr-review-toolkit-himmel" "$SUT"
 # -- provenance + ledger --
 ART="$R/.git/cr-floor/$HEAD_SHA.json"
 check "1 artifact head" "$HEAD_SHA" "$(jq -r .head "$ART" 2>/dev/null)"

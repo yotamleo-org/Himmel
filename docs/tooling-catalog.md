@@ -59,7 +59,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the automated review gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending)) |
 | `commit-commands` | Git commit helpers and conventions | ON-DEMAND — cached, off by default |
 | `claude-code-setup` | Setup assistant for new Claude Code environments | ON-DEMAND — cached, off by default |
-| `pr-review-toolkit` | PR review tools (code, tests, types, silent failures, comments) | ON-DEMAND — cached, off by default (himmel ships its own `pr-review-toolkit-himmel@himmel` fork instead, which IS on the ALWAYS tier) |
+| `pr-review-toolkit` | PR review tools (code, tests, types, silent failures, comments) | ON-DEMAND — cached, off by default (`/pr-check` dispatches it only with `CR_CLAUDE_AGENTS=1`) |
 | `playwright` | Browser automation via Playwright MCP | ON-DEMAND |
 | `ralph-loop` | Autonomous loop execution | ON-DEMAND — cached, off by default |
 | `typescript-lsp` | TypeScript language server integration | ON-DEMAND |
@@ -111,7 +111,6 @@ drift report; no marketplace install source or live setting is changed.
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
 | `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `5beb35b040e3de97e54fa9e386d7e42d15c295c2` |
 | `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `a8777050c0d9034d5de6beff3dfac9b43acb9854` |
-| `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.2.0` (`2961b52fc1fe6a5a87c7a959a79512e5c2f3ffe5`) |
 
 `scroll-world@scroll-world` also remains installed and off by default.
 
@@ -229,8 +228,6 @@ can also be passed to `--installed` for a hermetic observation.
 | `playground@claude-plugins-official` | INSTALLED |
 | `playwright@claude-plugins-official` | INSTALLED |
 | `plugin-dev@claude-plugins-official` | INSTALLED |
-| `ponytail@ponytail` | INSTALLED |
-| `pr-review-toolkit-himmel@himmel` | INSTALLED |
 | `pr-review-toolkit@claude-plugins-official` | INSTALLED |
 | `pstack@himmel` | NOT INSTALLED |
 | `pyright-lsp@claude-plugins-official` | INSTALLED |
@@ -780,11 +777,9 @@ checklist**.
 
 Kits are plugin profiles that stack on base and compose per task with
 `--profile a,b`, e.g. `--profile leg-impl,code`. No other
-profile enables a kit member. Both kit profiles drop `pr-review-toolkit-himmel`
-and `i-have-adhd` from base, so composing with the leg family (`leg-impl,code`)
+profile enables a kit member. Both kit profiles drop `i-have-adhd` from base, so composing with the leg family (`leg-impl,code`) <!-- old-term-ok: rewrapped line, wording unchanged -->
 does not hand back what that family dropped. A kit used alone therefore lacks
-both; a composed list ORs its members, so `lane-impl,code` and `user,code`
-still carry them. Keyed items are tracked separately. This is the
+it; a composed list ORs its members, so `user,code` still carries it. Keyed items are tracked separately. This is the
 code kit; the content/research and ops kits follow separately.
 
 | Profile | Members | Listing cost | Use |
@@ -852,7 +847,7 @@ changing which config dir loads, so hooks are unaffected).
     state until added (the same staleness class).
 - `profiles` — `operator` (`null` sentinel: full `~/.claude`, never injected),
   `user` (adopter set), `lane-impl` (impl workers: floor +
-  `pr-review-toolkit-himmel`), `lane-review` (automated review-only, same lean set),
+  `lean-skills`), `lane-review` (automated review-only, same lean set),
   `lane-content` (impl + `claude-obsidian` + `obsidian-triage`), `telegram`
   (the Telegram bridge's lean set + `mcpServers: ["qmd"]`
   allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-operator-console)).

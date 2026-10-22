@@ -141,7 +141,7 @@ check "the next day the capped class files and the open ticket gets its daily co
 check "and it still writes no second inbox candidate" '[ "$(grep -c "^- " "$INBOX")" = 1 ]'
 
 echo "f. every decision has exactly one decision-log line"
-check "the log is 8 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 8 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed capped filed commented " ]'
+check "the log is 8 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 8 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed capped commented filed " ]'
 check "every line is the standard envelope plus {class,legs,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"legs\",\"source\",\"ticket\",\"ts\",\"v\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/leg-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
 check "every route-intent line is the standard envelope plus {class,legs,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"legs\",\"source\",\"ts\",\"v\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
 
@@ -258,7 +258,8 @@ for n in N1 N2 N3 N4 N5; do row "$n" error/Bash:cr-gate-exit-14; done
 row N1 denied/guard-leg-context-handoff 1; row N2 denied/guard-leg-context-handoff 1
 LED="$SAVE"
 DRY10="$TMP/dry10.out"
-python3 "$FR" route --dry-run --ledger "$F10/l.jsonl" --state "$F10/s.json" --log "$F10/log" --inbox "$F10/inbox" --now "$NOW" >"$DRY10" 2>&1
+jq '.daily_cap = 99' "$HERE/failure-routes.table.json" >"$F10/table.json"
+python3 "$FR" route --dry-run --table "$F10/table.json" --ledger "$F10/l.jsonl" --state "$F10/s.json" --log "$F10/log" --inbox "$F10/inbox" --now "$NOW" >"$DRY10" 2>&1
 wf10() { jq -e --arg c "$1" "select(.class == \$c and .decision == \"would-file\")" "$DRY10" >/dev/null; }
 check "each sub-class would be filed under its own class" '[ -z "$(for c in error/Bash:usage:impacted-suites error/Bash:zsh-nomatch error/Bash:no-such-file error/Bash:cr-gate-exit-14; do wf10 "$c" || echo "$c"; done)" ]'
 check "the usage ticket names the script and the fix, not just Bash errors" 'jq -er ".routes[] | select(.match == \"error/Bash:usage:*\") | .summary" "$HERE/failure-routes.table.json" | grep -q "{sub}" && ! jq -er ".routes[] | select(.match == \"error/Bash:usage:*\") | .summary" "$HERE/failure-routes.table.json" | grep -q "errors recur"'
@@ -299,6 +300,22 @@ n13="$(calls create)"
 python3 "$FR" route --ledger "$F13/l.jsonl" --state "$F13/s.json" --log "$F13/log" --inbox "$F13/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 check "10 distinct legs of one denied/<hook> file exactly one ticket" '[ "$(calls create)" = "$((n13 + 1))" ] && [ "$(decs "$F13/log" | jq -r "select(.class == \"denied/guard-wide\") | .decision")" = filed ]'
 check "9 distinct legs of another denied/<hook> file nothing" '[ -z "$(decs "$F13/log" | jq -r "select(.class == \"denied/guard-narrow\") | .decision")" ]'
+
+echo "HIMMEL-7004: 65 firing classes under cap 3 file the 3 widest classes, and a dry run shows the same cap"
+F14="$TMP/f14"; mkdir -p "$F14"
+SAVE="$LED"; LED="$F14/l.jsonl"
+for i in $(seq 1 62); do c="error/A$(printf '%02d' "$i")"; row N1 "$c"; row N2 "$c"; row N3 "$c"; done
+for n in 1 2 3 4 5 6 7 8 9; do row "N$n" error/Zwide9; done
+for n in 1 2 3 4 5 6 7 8; do row "N$n" error/Zwide8; done
+for n in 1 2 3 4 5 6 7; do row "N$n" error/Zwide7; done
+LED="$SAVE"
+DRY14="$TMP/dry14.out"
+python3 "$FR" route --dry-run --ledger "$F14/l.jsonl" --state "$F14/s.json" --log "$F14/log" --inbox "$F14/inbox" --now "$NOW" >"$DRY14" 2>&1
+check "the dry run would file exactly the 3 widest classes, widest first" '[ "$(jq -r "select(.decision == \"would-file\") | .class" "$DRY14" | paste -sd, -)" = "error/Zwide9,error/Zwide8,error/Zwide7" ]'
+check "the dry run prints every other firing class as would-cap" '[ "$(jq -r "select(.decision == \"would-cap\") | .class" "$DRY14" | grep -c .)" = 62 ]'
+n14="$(calls create)"
+python3 "$FR" route --ledger "$F14/l.jsonl" --state "$F14/s.json" --log "$F14/log" --inbox "$F14/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "a live run files exactly the 3 widest classes" '[ "$(calls create)" = "$((n14 + 3))" ] && [ "$(decs "$F14/log" | jq -r "select(.decision == \"filed\") | .class" | sort | paste -sd, -)" = "error/Zwide7,error/Zwide8,error/Zwide9" ]'
 
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'

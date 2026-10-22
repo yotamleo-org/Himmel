@@ -61,8 +61,7 @@ marketplace pin is an installable TAG (claude-obsidian's old shape, so
 publishing there was a tag re-cut) both ran the nightly rebase-audit here the
 same way. Still **not** in scope, each needing its own judgment call — say so
 rather than touching them:
-- vendored forks with an `UPSTREAM_PIN` (`telegram-himmel`,
-  `pr-review-toolkit-himmel`) — a re-vendor plus a file-level delta audit.
+- vendored forks with an `UPSTREAM_PIN` (`telegram-himmel`) — a re-vendor plus a file-level delta audit.
 
 ## 3. Rebase and audit
 
