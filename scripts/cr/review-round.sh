@@ -37,7 +37,9 @@
 # round; bookkeeping-only heads get their ledger row from the `evidence` verb.
 # defer exits 6 when automatic residual filing cannot resolve the parent from
 # the open PR title or cannot create a ticket; supply --defer-to to recover
-# against the recorded findings without rerunning the panel.
+# against the recorded findings without rerunning the panel. A hardening
+# finding with no recorded fu_why also exits 6 until --fu-why <code> names one
+# of unseen-failure|no-check|vacuous-check|no-recovery|silent-rot.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -50,7 +52,7 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
-    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>]" >&2
+    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>]" >&2
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests/comments-only head after a reviewed head; spends no round)" >&2
@@ -133,12 +135,14 @@ branch=""
 head_sha=""
 base_sha=""
 defer_to="${CR_DEFER_TO:-}"
+fu_why_arg=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --branch) [ $# -ge 2 ] || usage; branch="$2"; shift 2 ;;
         --head) [ $# -ge 2 ] || usage; head_sha="$2"; shift 2 ;;
         --base-sha) [ $# -ge 2 ] || usage; base_sha="$2"; shift 2 ;;
         --defer-to) [ $# -ge 2 ] || usage; defer_to="$2"; shift 2 ;;
+        --fu-why) [ $# -ge 2 ] || usage; fu_why_arg="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -1759,6 +1763,7 @@ for (const o of findings.values()) {
       artifact: o.artifact || "diff",
       perspective: o.perspective || "off",
       fu_class: severity === "imp" ? fuClass : "polish",
+      fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
       class: typeof o.class === "string" ? o.class.trim() : ""
     });
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
@@ -1861,6 +1866,21 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         amend_rc=5
         break
     fi
+    fu_why=""
+    fu_why_args=()
+    if [ "$fu_class" = "hardening" ]; then
+        fu_why="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).fu_why||""))')" || fu_why=""
+        [ -n "$fu_why" ] || fu_why="$fu_why_arg"
+        case "$fu_why" in
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) fu_why_args=(--fu-why "$fu_why") ;;
+            *)
+                echo "review-round: finding $finding_id is hardening but has no valid fu_why; marker remains pending" >&2
+                echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+                amend_rc=6
+                break
+                ;;
+        esac
+    fi
     if [ "$auto_defer" -eq 1 ]; then
         if ! finding_class="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).class))')"; then
             amend_rc=5
@@ -1888,7 +1908,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
             --type Task --title "Deferred /pr-check finding $finding_id" --sector 'Ship loop' --labels standalone \
             --desc-file "$body_file" \
-            --residual-of "$residual_parent" --fu-class "$fu_class" ${class_args[@]+"${class_args[@]}"})" || create_rc=$?
+            --residual-of "$residual_parent" --fu-class "$fu_class" ${fu_why_args[@]+"${fu_why_args[@]}"} ${class_args[@]+"${class_args[@]}"})" || create_rc=$?
         if [ -n "$body_tmp" ]; then rm -f "$body_tmp"; fi
         defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
         if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
@@ -1901,7 +1921,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
         --branch "$branch" --head "$full_head" --id "$finding_id" \
         --artifact "$artifact" --perspective "$perspective" \
-        --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" \
+        --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" ${fu_why:+--set "fu_why=$fu_why"} \
         --set class=unattributed --set "reason=$defer_reason" \
         --reason 'deferred by review-round.sh after the three-round cap'; then
         amend_rc=5

@@ -79,7 +79,7 @@ case "$kind" in
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
-prompt_chars="" response_chars="" reason="" detail="" deferred_to="" fu_class="" set_pairs="" attempt_num="" duration_secs="" batch_file="" text=""
+prompt_chars="" response_chars="" reason="" detail="" deferred_to="" fu_class="" fu_why="" set_pairs="" attempt_num="" duration_secs="" batch_file="" text=""
 round="" disposition_round="" hit_pairs=""
 crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
 target_head="" disposition="" source="" attest="" pr="" mac=""
@@ -95,6 +95,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --reason) reason="$2"; shift 2;; --detail) detail="$2"; shift 2;;
   --deferred-to) deferred_to="$2"; shift 2;;
   --fu-class) fu_class="$2"; shift 2;;
+  --fu-why) fu_why="$2"; shift 2;;
   --text) text="$2"; shift 2;;
   --round) round="$2"; shift 2;;
   --disposition-round) disposition_round="$2"; shift 2;;
@@ -193,6 +194,8 @@ fi
 # path and `amend` enforce it; a batch spec row (panel output) does not --
 # ponytail: batch rows are not deferrals a person classifies, add if one ever is.
 valid_fu_class() { case "$1" in escape|hardening|polish) return 0;; *) return 1;; esac; }
+# A hardening deferral names its reason code (plan 10.1), the same five as `jira create --fu-why`.
+valid_fu_why() { case "$1" in unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) return 0;; *) return 1;; esac; }
 # A class id is a known-findings.json id; new:<slug> names a class the catalog lacks.
 valid_class() { [[ "$1" =~ ^(new:)?[a-z0-9][a-z0-9-]*$ ]]; }
 if [ -n "$fu_class" ] && ! valid_fu_class "$fu_class"; then
@@ -201,6 +204,18 @@ if [ -n "$fu_class" ] && ! valid_fu_class "$fu_class"; then
 fi
 if [ "$kind" = "finding" ] && [ -z "$batch_file" ] && { [ -n "$deferred_to" ] || [ "$verdict" = "deferred" ]; } && [ -z "$fu_class" ]; then
   echo "ledger-append.sh: a deferral needs --fu-class escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
+  exit 2
+fi
+if [ -n "$fu_why" ] && ! valid_fu_why "$fu_why"; then
+  echo "ledger-append.sh: --fu-why must be unseen-failure|no-check|vacuous-check|no-recovery|silent-rot (got '$fu_why') - NOTHING was written" >&2
+  exit 2
+fi
+if [ -n "$fu_why" ] && [ "$fu_class" != "hardening" ]; then
+  echo "ledger-append.sh: --fu-why applies only to --fu-class hardening - NOTHING was written" >&2
+  exit 2
+fi
+if [ "$kind" = "finding" ] && [ -z "$batch_file" ] && [ "$fu_class" = "hardening" ] && [ -z "$fu_why" ]; then
+  echo "ledger-append.sh: a hardening deferral needs --fu-why unseen-failure|no-check|vacuous-check|no-recovery|silent-rot - NOTHING was written" >&2
   exit 2
 fi
 # The single-row finding verb is held to the batch writers' bar.
@@ -320,8 +335,8 @@ if [ "$kind" = "amend" ]; then
       # RECORD was wrong — a different field. Without this key, the deferral
       # path clear-cr-marker itself recommends is a dead end for any finding
       # originally recorded without a reason, which is most of them.
-      severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|class=*|reason=*|file=*|line=*) ;;
-      *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, class, reason, file, line)" >&2; exit 2;;
+      severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|fu_why=*|class=*|reason=*|file=*|line=*) ;;
+      *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, fu_why, class, reason, file, line)" >&2; exit 2;;
       *)   echo "ledger-append.sh: --set expects <key>=<value> (got '$_pair')" >&2; exit 2;;
     esac
     # Same eager validation as --deferred-to (glm-5): otherwise a typo'd ticket
@@ -347,6 +362,11 @@ if [ "$kind" = "amend" ]; then
       fu_class=*)
         if ! valid_fu_class "${_pair#fu_class=}"; then
           echo "ledger-append.sh: --set fu_class= must be escape|hardening|polish (got '${_pair#fu_class=}')" >&2
+          exit 2
+        fi ;;
+      fu_why=*)
+        if ! valid_fu_why "${_pair#fu_why=}"; then
+          echo "ledger-append.sh: --set fu_why= must be unseen-failure|no-check|vacuous-check|no-recovery|silent-rot (got '${_pair#fu_why=}')" >&2
           exit 2
         fi ;;
       class=*)
@@ -384,6 +404,14 @@ if [ "$kind" = "amend" ]; then
   # An amend that makes a finding a deferral must classify it.
   if printf '%s' "$set_pairs" | grep -qE '^(verdict=deferred|deferred_to=)' && ! printf '%s' "$set_pairs" | grep -q '^fu_class='; then
     echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
+    exit 2
+  fi
+  if printf '%s' "$set_pairs" | grep -qx 'fu_class=hardening' && ! printf '%s' "$set_pairs" | grep -q '^fu_why='; then
+    echo "ledger-append.sh: an amend that sets fu_class=hardening needs --set fu_why=unseen-failure|no-check|vacuous-check|no-recovery|silent-rot - NOTHING was written" >&2
+    exit 2
+  fi
+  if printf '%s' "$set_pairs" | grep -q '^fu_why=' && ! printf '%s' "$set_pairs" | grep -qx 'fu_class=hardening'; then
+    echo "ledger-append.sh: --set fu_why= applies only together with --set fu_class=hardening - NOTHING was written" >&2
     exit 2
   fi
   if [ "$_disproving" = 1 ]; then disproval_bar_ok "$_evidence" || exit 2; fi
@@ -575,7 +603,7 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
@@ -840,6 +868,13 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       if(spec.detail) rec.detail=scrubSecrets(String(spec.detail).replace(/[\r\n]/g," ")).slice(0,200);
       if(spec.deferred_to) rec.deferred_to=cleanFree(spec.deferred_to);
       if(["escape","hardening","polish"].includes(spec.fu_class)) rec.fu_class=spec.fu_class;
+      if(rec.fu_class==="hardening"){
+        if(!["unseen-failure","no-check","vacuous-check","no-recovery","silent-rot"].includes(spec.fu_why)){
+          process.stderr.write("ledger-append.sh: batch row "+sid+": a hardening deferral needs fu_why unseen-failure|no-check|vacuous-check|no-recovery|silent-rot - refusing this row.\n");
+          anyFail=true; continue;
+        }
+        rec.fu_why=spec.fu_why;
+      }
       if(spec.round) rec.round=Number(spec.round);
       if(spec.disposition_round) rec.disposition_round=Number(spec.disposition_round);
       else if(spec.verdict&&spec.round) rec.disposition_round=Number(spec.round);
@@ -1123,6 +1158,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     if(e.DETAIL) rec.detail=e.DETAIL;
     if(e.DEFERRED_TO) rec.deferred_to=e.DEFERRED_TO;
     if(e.FU_CLASS) rec.fu_class=e.FU_CLASS;
+    if(e.FU_WHY) rec.fu_why=e.FU_WHY;
     if(e.ROUND) rec.round=Number(e.ROUND);
     if(e.DISPOSITION_ROUND) rec.disposition_round=Number(e.DISPOSITION_ROUND);
     else if(e.VERDICT&&e.ROUND) rec.disposition_round=Number(e.ROUND);

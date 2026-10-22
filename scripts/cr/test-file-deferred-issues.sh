@@ -329,11 +329,23 @@ assert_contains "create defaults --class unclassified" "$(grep '^create' "$JLOG"
 assert_contains "create keeps the cr-deferred label" "$(grep '^create' "$JLOG")" "--labels cr-deferred"
 
 echo "TEST: explicit --residual-of / --fu-class / --class override the defaults"
-out=$(run_mode jira github --residual-of TST-9 --fu-class hardening --class shell-quoting); rc=$?
+out=$(run_mode jira github --residual-of TST-9 --fu-class hardening --fu-why no-check --class shell-quoting); rc=$?
 assert_eq "override → exit 0" "0" "$rc"
 assert_contains "override parent" "$(grep '^create' "$JLOG")" "--residual-of TST-9"
 assert_contains "override fu-class" "$(grep '^create' "$JLOG")" "--fu-class hardening"
+assert_contains "override fu-why" "$(grep '^create' "$JLOG")" "--fu-why no-check"
 assert_contains "override class" "$(grep '^create' "$JLOG")" "--class shell-quoting"
+
+echo "TEST: --fu-class hardening needs a valid --fu-why, and --fu-why needs hardening"
+: >"$JLOG"
+out=$(run_mode jira github --fu-class hardening 2>&1); rc=$?
+assert_eq "hardening without --fu-why → exit 1" "1" "$rc"
+assert_contains "hardening without --fu-why names the flag" "$out" "--fu-why"
+assert_eq "hardening without --fu-why files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+out=$(run_mode jira github --fu-class hardening --fu-why bogus 2>&1); rc=$?
+assert_eq "hardening with an unknown --fu-why → exit 1" "1" "$rc"
+out=$(run_mode jira github --fu-class escape --fu-why no-check 2>&1); rc=$?
+assert_eq "--fu-why with a non-hardening class → exit 1" "1" "$rc"
 
 echo "TEST: the batch carries the class its findings hold in the CR ledger (RED: always unclassified)"
 LEDGER_CLS="$TMP_ROOT/ledger-class.jsonl"
