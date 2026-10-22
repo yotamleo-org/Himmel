@@ -1267,9 +1267,10 @@ that the base-skew counts also follow `origin/trunk`.
 **CodeRabbit runs only on an armed repo** — the same predicate
 HIMMEL-2034 scoped the trigger hooks with (`cr_trigger_repo_armed`:
 `git config --local himmel.coderabbit true` on a clone whose origin is that nwo,
-or the nwo named in `CR_TRIGGER_REPOS`). The `/pr-check` runbook has no
-CodeRabbit step of its own; the only CodeRabbit action is the `@coderabbitai`
-trigger hook, and on an unarmed repo it prints `CR_TRIGGER_FOREIGN_ADVISORY`
+or the nwo named in `CR_TRIGGER_REPOS`). The `/pr-check` runbook posts no
+CodeRabbit request (it only reads the App's commit status, as a note); the one
+thing that posts `@coderabbitai` is the trigger hook, and on an unarmed repo it
+prints `CR_TRIGGER_FOREIGN_ADVISORY`
 (`foreign repo — not triggering CodeRabbit; …`) and exits 0 — an advisory,
 never a failure. No `coderabbit=unarmed` token is emitted anywhere. The critic
 panel carries the gate. `scripts/cr/test-pr-check-pair.sh` check (iii) pins the
