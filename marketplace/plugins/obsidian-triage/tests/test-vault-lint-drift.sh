@@ -109,16 +109,13 @@ fi
 echo ""
 echo "Test 4: real cache → should exit 0"
 
-CO="$HOME/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian"
-if [ ! -d "$CO" ]; then
-  echo "  SKIP: upstream cache not installed ($CO) — real-upstream drift NOT checked on this host"
+OUTPUT4="$(bash "$DRIFT_SCRIPT" --strict 2>&1)" && EXIT_CODE4=0 || EXIT_CODE4=$?
+if [ "$EXIT_CODE4" -eq 0 ] && grep -q "skipping" <<< "$OUTPUT4"; then
+  echo "  SKIP: $OUTPUT4 — real-upstream drift NOT checked on this host"
+elif [ "$EXIT_CODE4" -eq 0 ] && grep -q "in sync with upstream wiki-lint" <<< "$OUTPUT4"; then
+  ok "exit 0 and 'in sync' against real (unchanged) cache"
 else
-  OUTPUT4="$(bash "$DRIFT_SCRIPT" --strict 2>&1)" && EXIT_CODE4=0 || EXIT_CODE4=$?
-  if [ "$EXIT_CODE4" -eq 0 ]; then
-    ok "exit 0 against real (unchanged) cache"
-  else
-    fail "expected exit 0 against real cache, got $EXIT_CODE4; output: $OUTPUT4"
-  fi
+  fail "expected exit 0 + 'in sync' against real cache, got $EXIT_CODE4; output: $OUTPUT4"
 fi
 
 # --- Test 5: the tracked record is the marketplace pin's wiki-lint files, not a stale release ---
@@ -143,6 +140,49 @@ assert got['agents/wiki-lint.md'] == sys.argv[5], got['agents/wiki-lint.md']
   ok "UPSTREAM.json ref and hashes match the v3.0.1 marketplace pin"
 else
   fail "UPSTREAM.json does not record the v3.0.1 wiki-lint files the marketplace pin installs"
+fi
+
+# --- Test 6: himmel-only cache uses the installed version, not a leftover version ---
+echo ""
+echo "Test 6: installed himmel cache with a drifted SKILL.md → --strict reports drift"
+
+HIMMEL_HOME="$FIX/himmel-home"
+HIMMEL_CACHE="$HIMMEL_HOME/.claude/plugins/cache/himmel/claude-obsidian"
+mkdir -p "$HIMMEL_CACHE/3.0.1/skills/wiki-lint" "$HIMMEL_CACHE/3.0.1/agents"
+cp "$CACHE_VER/skills/wiki-lint/SKILL.md" "$HIMMEL_CACHE/3.0.1/skills/wiki-lint/SKILL.md"
+cp "$CACHE_VER/agents/wiki-lint.md" "$HIMMEL_CACHE/3.0.1/agents/wiki-lint.md"
+cp -R "$HIMMEL_CACHE/3.0.1" "$HIMMEL_CACHE/9.9.9"
+# User installation record copied from the station's installed_plugins.json;
+# only installPath is relocated beneath the fixture HOME.
+python -c "
+import json, sys
+record = {
+  'scope': 'user',
+  'installPath': sys.argv[1] + '/3.0.1',
+  'version': '3.0.1',
+  'installedAt': '2026-10-12T13:27:05.502Z',
+  'lastUpdated': '2026-10-22T00:35:20.825Z',
+  'gitCommitSha': '6414e1a232a00515dc0b89f61b1d792b3dc93237'
+}
+print(json.dumps({'version': 2, 'plugins': {'claude-obsidian@himmel': [record]}}))
+" "$HIMMEL_CACHE" > "$HIMMEL_HOME/.claude/plugins/installed_plugins.json"
+printf 'drifted upstream skill\n' > "$HIMMEL_CACHE/3.0.1/skills/wiki-lint/SKILL.md"
+write_upstream_json "$GOOD_SKILL_SHA" "$GOOD_AGENT_SHA"
+OUTPUT6="$(HOME="$HIMMEL_HOME" bash "$FIX_SKILL_DIR/check-vendor-drift.sh" --strict 2>&1)" && EXIT_CODE6=0 || EXIT_CODE6=$?
+if [ "$EXIT_CODE6" -eq 1 ] && grep -q "upstream wiki-lint changed since fork" <<< "$OUTPUT6"; then
+  ok "himmel-only installed version reports drift even with a matching leftover version"
+else
+  fail "expected exit 1 + drift warning from installed himmel version, got $EXIT_CODE6; output: $OUTPUT6"
+fi
+
+echo ""
+echo "Test 7: matching installed himmel cache → exit 0, in sync"
+cp "$CACHE_VER/skills/wiki-lint/SKILL.md" "$HIMMEL_CACHE/3.0.1/skills/wiki-lint/SKILL.md"
+OUTPUT7="$(HOME="$HIMMEL_HOME" bash "$FIX_SKILL_DIR/check-vendor-drift.sh" --strict 2>&1)" && EXIT_CODE7=0 || EXIT_CODE7=$?
+if [ "$EXIT_CODE7" -eq 0 ] && grep -q "in sync with upstream wiki-lint" <<< "$OUTPUT7"; then
+  ok "matching installed himmel version is checked, not skipped"
+else
+  fail "expected exit 0 + 'in sync' from himmel cache, got $EXIT_CODE7; output: $OUTPUT7"
 fi
 
 # --- Summary ---
