@@ -158,7 +158,7 @@ block, the concurrency discipline, and the attestation-trailer requirement.
 
 ## ticket-standard — refuse a draft without Plan, DoD and named proof (`himmel-ops:ticket-standard`)
 
-Lean-invoke skill (HIMMEL-5702): `scripts/ticket-standard-check.sh --type <T> --draft <file>` refuses a Task, Story or Bug missing Impact, What, Why, Plan, DoD, Proof or Agent detail and parks the draft in an intake queue (never discarded); Epic, Subtask and a missing Sector only warn. Tests: `bash marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh`.
+Lean-invoke skill (HIMMEL-5702): `scripts/ticket-standard-check.sh --type <T> --draft <file>` refuses a Task, Story or Bug missing Impact, What, Why, Plan, DoD, Proof or Agent detail and parks the draft in an intake queue (never discarded); Epic, Subtask and a missing Sector only warn. It offers an optional on-demand `/humanizer` or `/unslop` pass; `--rewrite <file>` checks literal facts before selecting a candidate. Skipped, unsafe or unavailable rewrites keep the original; style never blocks filing. Tests: `bash marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh`.
 
 ## release-manager — every placement into a release is a reasoned ruling (`himmel-ops:release-manager`)
 

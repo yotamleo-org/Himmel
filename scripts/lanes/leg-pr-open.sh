@@ -14,7 +14,7 @@
 # of a CHILD process this script execs (via the forge seam below); it never
 # appears in the command the classifier reads.
 #
-# Usage: leg-pr-open.sh <title-file> <body-file> [--base <branch>]
+# Usage: leg-pr-open.sh <title-file> <body-file> [--base <branch>] [--humanized-body <file>]
 #
 # Idempotent: finds an open PR for the current branch (forge_pr_find_open)
 # and updates its body instead of opening a second one.
@@ -41,7 +41,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../lib/forge.sh"
 
 usage() {
-    echo "Usage: leg-pr-open.sh <title-file> <body-file> [--base <branch>]" >&2
+    echo "Usage: leg-pr-open.sh <title-file> <body-file> [--base <branch>] [--humanized-body <file>]" >&2
 }
 
 if [ "$#" -lt 2 ]; then
@@ -51,10 +51,12 @@ fi
 
 TITLE_FILE="$1"; shift
 BODY_FILE="$1"; shift
+HUMANIZED_BODY=""
 BASE="main"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --base) BASE="${2:-main}"; shift 2 ;;
+        --humanized-body) [ "$#" -ge 2 ] || { usage; exit 1; }; HUMANIZED_BODY="$2"; shift 2 ;;
         *) echo "ERR leg-pr-open: unknown arg: $1" >&2; usage; exit 1 ;;
     esac
 done
@@ -63,8 +65,8 @@ if [ ! -f "$TITLE_FILE" ]; then
     echo "ERR leg-pr-open: no such title file: $TITLE_FILE" >&2
     exit 1
 fi
-if [ ! -f "$BODY_FILE" ]; then
-    echo "ERR leg-pr-open: no such body file: $BODY_FILE" >&2
+if [ ! -f "$BODY_FILE" ] || [ ! -r "$BODY_FILE" ]; then
+    echo "ERR leg-pr-open: missing or unreadable body file: $BODY_FILE" >&2
     exit 1
 fi
 
@@ -74,6 +76,16 @@ body=$(cat "$BODY_FILE")
 if [ -z "$body" ]; then
     echo "ERR leg-pr-open: body file is empty: $BODY_FILE" >&2
     exit 1
+fi
+
+if [ -n "$HUMANIZED_BODY" ]; then
+    if python3 -I "$HERE/../../marketplace/plugins/himmel-ops/scripts/humanizer-facts.py" "$BODY_FILE" "$HUMANIZED_BODY"; then
+        body=$(cat "$HUMANIZED_BODY")
+    else
+        echo "humanizer: rewrite refused or checker unavailable; keeping original PR body" >&2
+    fi
+else
+    echo 'humanizer: optional /humanizer (or /unslop for terse text); skip keeps original, --humanized-body FILE checks a candidate' >&2
 fi
 
 # The squash merge makes this TITLE main's commit subject, so

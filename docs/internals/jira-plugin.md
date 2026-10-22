@@ -82,6 +82,26 @@ A `JIRA_PROJECT_KEY` *unset in your shell* is irrelevant and is **not**
 the cause of a `projectKey()` error; check the repo-root `.env` instead.
 Only pass `--project FOO` for a one-off call against a different project.
 
+## Optional ticket-body rewrite
+
+Before `create --desc-file`, ticket-standard offers `/humanizer` (or `/unslop`
+for terse drafts). It is on demand, not enabled in a default profile. Missing
+plugin or a skipped pass never blocks filing. Save the original as `draft.md`
+and the candidate as `rewritten.md`, then run:
+
+```bash
+bash marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh --type Task --sector "Ship loop" --draft draft.md --rewrite rewritten.md
+```
+
+Only file `rewritten.md` after `humanizer: accepted` and `ok:`. A refused or
+unreadable rewrite, or a missing fact checker, falls back to checking `draft.md`;
+file that original if it passes. Both files stay untouched. The literal check
+preserves ticket keys, numbers, file names, inline code, fenced/indented code
+and bare command lines. Mark other commands as code. It rejects changed fact
+counts, including additions, but cannot judge meaning: read the diff for claims,
+negation and which number belongs to which result. Record skipped/kept/dropped
+passages in the filing note, not in the ticket's plain block.
+
 ## Gotchas
 
 **`transition <key> <numeric-id>` is a vacuous success.** `transitions <key>`

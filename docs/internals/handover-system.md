@@ -92,6 +92,25 @@ sections: `## Summary` (Jira ticket title when available),
 `## Files changed` (auto from `git diff --name-status vs base`),
 `## Ticket` (HIMMEL-N link).
 
+Before publication, both `scripts/handover/pr-open.sh` and
+`scripts/lanes/leg-pr-open.sh` offer an optional `/humanizer` pass (`/unslop`
+for terse text) on stderr. Nothing invokes a model or enables a plugin.
+Skip continues unchanged. To use a separate candidate, pass
+`--humanized-body rewritten.md`; the helper checks its literal facts against
+the original and uses it only on acceptance. A changed key, number, file name,
+inline code or command refuses the rewrite, not the PR: the original is used
+instead, including when the checker or candidate is unavailable. Code fences
+and indented code are preserved verbatim; mark other commands as code. Review
+claims and meaning yourself before supplying a candidate. Record skipped,
+kept or dropped passages in the PR's test notes; script acceptance is not an
+operator-kept count.
+
+For handover-generated bodies, first use `--dry-run` and save only the text
+between `--- body ---` and `--- /body ---`, without those delimiters. Rewrite
+that body and rerun with `--humanized-body rewritten.md`. For the worker helper,
+keep the original body file as the second argument and add the candidate flag;
+its computed `leg-burn:` line is inserted after the rewrite check.
+
 PR-create failures are best-effort: the branch is still pushed and
 an operator can open the PR manually later. `HANDOVER_PR_AUTO=0`
 skips the PR layer entirely (no-op exit 0).

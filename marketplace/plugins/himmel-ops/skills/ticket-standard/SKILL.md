@@ -70,6 +70,27 @@ A check that cannot fail is not proof.
 | Task, Story, Bug | refused: names every missing section, parks the draft, exit 1 | warns, exit 0 |
 | Epic, Subtask | warns, exit 0 | warns, exit 0 |
 
+## Optional rewrite before filing
+
+Offer `/humanizer` on the draft, or `/unslop` for terse text. Skip is a valid
+choice and never blocks filing. Keep the original file; put a rewrite in a
+separate file. Humanizer stays opt-in, in no default profile: use it on demand
+when available, without changing settings or making an extra model call from
+the checker. If unavailable, skip.
+
+Run the checker with `--draft draft.md --rewrite rewritten.md`. It compares
+ticket keys, numbers, file names, inline code, fenced/indented code and bare
+command lines. Changed or missing facts, an unreadable rewrite, or an unavailable
+checker retain the original. An accepted rewrite still has to meet the ticket
+standard. Read the diff for changed claims and meaning; literal checks cannot
+prove semantic equivalence. File `rewritten.md` only after `humanizer: accepted`
+and the ticket-standard `ok:`; otherwise file the passing original.
+
+Record `humanizer: skipped`, `humanizer: kept <count>`, or `humanizer: dropped
+<count>` in the filing note (counts are passages the writer kept or rejected,
+not a style score). Never add this bookkeeping to user-facing prose. The pilot
+counts later operator-kept changes; acceptance by the script is not that count.
+
 ## Run it
 
 ```bash

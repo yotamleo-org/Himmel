@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ticket-standard-check.sh — check a ticket draft against the himmel ticket standard.
 #
-#   ticket-standard-check.sh --type Task|Story|Bug|Epic|Subtask [--sector NAME] --draft FILE
+#   ticket-standard-check.sh --type Task|Story|Bug|Epic|Subtask [--sector NAME] --draft FILE [--rewrite FILE]
 #
 # A draft needs Impact, What, Why, Plan, DoD, Proof and Agent detail, each with at
 # least one non-placeholder line. Task, Story and Bug that fail are REFUSED: every
@@ -17,19 +17,31 @@
 # ponytail: heading rules duplicate scripts/jira/src/plain-block.ts (dist is absent in worktrees), call that lint once HIMMEL-5643 is merged
 set -u
 
-usage(){ echo "usage: ticket-standard-check.sh --type Task|Story|Bug|Epic|Subtask [--sector NAME] --draft FILE" >&2; exit 2; }
+usage(){ echo "usage: ticket-standard-check.sh --type Task|Story|Bug|Epic|Subtask [--sector NAME] --draft FILE [--rewrite FILE]" >&2; exit 2; }
 
-type="" sector="" draft=""
+type="" sector="" draft="" rewrite=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --type) [ $# -ge 2 ] || usage; type="$2"; shift 2;;
     --sector) [ $# -ge 2 ] || usage; sector="$2"; shift 2;;
     --draft) [ $# -ge 2 ] || usage; draft="$2"; shift 2;;
+    --rewrite) [ $# -ge 2 ] || usage; rewrite="$2"; shift 2;;
     *) usage;;
   esac
 done
 case "$type" in Task|Story|Bug|Epic|Subtask) ;; *) echo "ticket-standard-check: unknown --type '$type'" >&2; usage;; esac
 if ! { [ -n "$draft" ] && [ -f "$draft" ] && [ -r "$draft" ]; }; then echo "ticket-standard-check: cannot read draft '$draft'" >&2; exit 2; fi
+
+if [ -n "$rewrite" ]; then
+  here="$(cd "$(dirname "$0")" && pwd)"
+  if python3 -I "$here/humanizer-facts.py" "$draft" "$rewrite"; then
+    draft="$rewrite"
+  else
+    echo "humanizer: rewrite refused or checker unavailable; checking original" >&2
+  fi
+else
+  echo 'humanizer: optional /humanizer (or /unslop for terse text); skip keeps original, --rewrite FILE checks a candidate' >&2
+fi
 
 # Sections whose heading is present but whose body has no real line; or whose heading is absent.
 missing="$(awk '
