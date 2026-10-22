@@ -13,7 +13,7 @@
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
-#        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] a reservation older than this is a dead call's and is released by the credit-state sweep (default 3600)
+#        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] the launcher stops a call at this age, and the credit-state sweep releases a reservation older than it (default 3600)
 #        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
 #        the launch record so a cost can be joined to a PR by key (absent = empty / null)
 # OFF by default. No subscription fallback: a refusal is final.
@@ -193,8 +193,13 @@ RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
 
 # A call that dies settles its reservation (verified cost, else zero) so nothing stays reserved past it.
-# A launcher killed hard leaves its reservation to the credit-state sweep, which releases it once it is
-# older than HIMMEL_API_CALL_TIMEOUT_S.
+# The call runs in the background so a signal reaches this shell at once: the handler stops the call before it
+# settles, and a watchdog stops it at HIMMEL_API_CALL_TIMEOUT_S, the age at which the credit-state sweep
+# releases a reservation. A launcher killed hard leaves its reservation to that sweep.
+CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
+[[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
+CALL_PID=""
+WATCHDOG_PID=""
 DEAD_SETTLED=0
 # shellcheck disable=SC2329 # invoked from the signal trap below and from the failed-call branch
 settle_dead() {
@@ -204,7 +209,11 @@ settle_dead() {
     state unknown --id "$JOB_ID" >/dev/null 2>&1
 }
 # shellcheck disable=SC2329 # invoked from the signal trap below
-on_signal() { settle_dead; exit 143; }
+on_signal() {
+  [ -z "$WATCHDOG_PID" ] || kill "$WATCHDOG_PID" 2>/dev/null
+  if [ -n "$CALL_PID" ]; then kill -TERM "$CALL_PID" 2>/dev/null; wait "$CALL_PID" 2>/dev/null; fi
+  settle_dead; exit 143
+}
 trap on_signal TERM INT HUP
 
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
@@ -218,8 +227,15 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
-  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT"
+  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT" <&0 &
+CALL_PID=$!
+# the watchdog's own sleep is ended with it, so no timer outlives the call
+( sleep "$CALL_TIMEOUT_S" & SLEEP_PID=$!; trap 'kill $SLEEP_PID 2>/dev/null; exit 0' TERM
+  wait $SLEEP_PID; kill -TERM "$CALL_PID" 2>/dev/null ) &
+WATCHDOG_PID=$!
+wait "$CALL_PID"
 RC=$?
+kill "$WATCHDOG_PID" 2>/dev/null
 trap - TERM INT HUP
 
 # --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---
