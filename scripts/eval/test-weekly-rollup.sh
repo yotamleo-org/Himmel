@@ -109,6 +109,7 @@ check "W37 flake rows ignore another repo" 2 "$(f 2026-W37 flake_rows)"
 check "W38 red main" 1 "$(f 2026-W38 red_main)"
 check "W38 cost is null with no leg-burn line" null "$(f 2026-W38 cost_eq)"
 check "W39 empty week has zero merges" 0 "$(f 2026-W39 merges)"
+check "an empty week has no fix share" null "$(f 2026-W39 fix_share_pct)"
 check "first week has no delta" null "$(f 2026-W36 delta.merges)"
 check "delta merges W37 vs W36" 1 "$(f 2026-W37 delta.merges)"
 check "delta tickets W37 vs W36" 0 "$(f 2026-W37 delta.tickets)"
@@ -124,9 +125,24 @@ check "a finished week is not partial" false "$(f 2026-W36 partial)"
 
 cp "$OUT" "$W/first.jsonl"
 run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT" >/dev/null 2>&1
+check "re-run exits 0" 0 $?
 check "a re-run is idempotent" "$(cat "$W/first.jsonl")" "$(cat "$OUT")"
-run write --repo "$REPO" --ref main --weeks 1 --end 2026-09-27 --out "$OUT" >/dev/null 2>&1
+WEEKLY_ROLLUP_NOW="2026-09-25T00:00:00Z" run write --repo "$REPO" --ref main --weeks 1 --end 2026-09-27 --out "$OUT" >/dev/null 2>&1
+check "shorter re-run exits 0" 0 $?
 check "a shorter re-run keeps older rows" 4 "$(jq -s '[.[] | select(.kind=="week")] | length' "$OUT")"
+check "a shorter re-run rewrites its own week" "$(ts 2026-09-25T00:00:00Z)" "$(f 2026-W39 ts)"
+
+OUT4="$W/kept.jsonl"
+run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT4" >/dev/null 2>&1
+SELF_REVIEW_SCRIPT="$W/missing.sh" CACHE_HEALTH_HISTORY="$W/no-cache.jsonl" FLAKE_SUMMARY_SCRIPT="$W/missing.sh" \
+  run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT4" >/dev/null 2>&1
+k() { jq -r --arg k "$1" "select(.kind==\"week\" and .key==\$k) | $2" "$OUT4"; }
+check "a finished week keeps its merges when self-review goes absent" 3 "$(k 2026-W37 .merges)"
+check "a finished week keeps its fix share when self-review goes absent" 33.33 "$(k 2026-W37 .fix_share_pct)"
+check "a finished week keeps its cache hit when the history is gone" 92 "$(k 2026-W37 .cache_hit_pct)"
+check "a finished week keeps its flake rows when the script is gone" 2 "$(k 2026-W37 .flake_rows)"
+check "a kept source is still named ok" "ok ok ok" "$(k 2026-W37 '[.sources.self_review, .sources.cache, .sources.flake] | join(" ")')"
+check "a partial week is replaced, not kept" absent "$(k 2026-W39 .sources.self_review)"
 
 run write --repo "$REPO" --ref main --weeks 0 --versions 2 --out "$OUT" >"$W/w2.out" 2>&1
 check "version rows come from stable tags" "v1.0.0 v1.1.0" \
@@ -150,6 +166,23 @@ check "a post-tag commit stays out of the version cost" 400000 \
   "$(jq -r 'select(.key=="v1.1.0") | .cost_eq' "$OUT3")"
 check "rows carry ts, host and source" "true true weekly-rollup" \
   "$(jq -r 'select(.key=="v1.1.0") | [(.ts|type=="number"), (.host|length>0), .source] | map(tostring) | join(" ")' "$OUT3")"
+
+# Merges dated out of order: git stops at a run of commits older than --since unless told to filter.
+git init -q -b main "$W/repo3"
+git -C "$W/repo3" config user.email t@example.com
+git -C "$W/repo3" config user.name t
+git -C "$W/repo3" config commit.gpgsign false
+GIT_AUTHOR_DATE="2026-09-08T12:00:00Z" GIT_COMMITTER_DATE="2026-09-08T12:00:00Z" \
+  git -C "$W/repo3" commit -q --allow-empty -m 'feat(x): [HIMMEL-7] in window (#1)' \
+  -m "leg-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=70k floor-share=1%"
+for i in 1 2 3 4 5 6 7; do
+  GIT_AUTHOR_DATE="2026-01-0${i}T12:00:00Z" GIT_COMMITTER_DATE="2026-01-0${i}T12:00:00Z" \
+    git -C "$W/repo3" commit -q --allow-empty -m "feat(x): [HIMMEL-8] old $i (#1$i)" -m "no burn line"
+done
+OUT5="$W/skew.jsonl"
+run write --repo "$W/repo3" --ref main --weeks 1 --end 2026-09-10 --out "$OUT5" >/dev/null 2>&1
+check "an out-of-order history still counts the in-window merge" "1 70000" \
+  "$(jq -r 'select(.key=="2026-W37") | [.tickets, .cost_eq] | map(tostring) | join(" ")' "$OUT5")"
 
 OUT2="$W/noscript.jsonl"
 SELF_REVIEW_SCRIPT="$W/missing.sh" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT2" >/dev/null 2>&1

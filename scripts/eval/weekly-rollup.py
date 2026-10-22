@@ -113,7 +113,7 @@ def self_review(script, repo, ref, since, until):
 
 
 def merge_bodies(repo, ref, since, until):
-    raw = git(repo, "log", ref, "--first-parent", "--since=" + since, "--until=" + until,
+    raw = git(repo, "log", ref, "--first-parent", "--since-as-filter=" + since, "--until=" + until,
               "--format=%x1e%s%n%b")
     for rec in raw.split("\x1e"):
         if not rec.strip():
@@ -190,7 +190,7 @@ def build_row(kind, key, t0, t1, a):
         "merges": merges,
         "tickets": len(tickets),
         "days": num((t1 - t0).total_seconds() / 86400) if t0.year > 2000 else None,
-        "fix_share_pct": (num(100.0 * sr["fix"] / sr["merges"]) if sr["merges"] else 0) if sr else None,
+        "fix_share_pct": num(100.0 * sr["fix"] / sr["merges"]) if sr and sr["merges"] else None,
         "red_main": sr["red_main"] if sr else None,
         "cost_eq": num(cost) if legs else None,
         "cost_eq_per_ticket": num(ticket_cost / n_t) if n_t else None,
@@ -202,6 +202,22 @@ def build_row(kind, key, t0, t1, a):
         "sources": {"self_review": sr_state, "cost": "ok" if legs else "no-burn-lines",
                     "cache": cache_state, "flake": flake_state},
     }
+
+
+KEPT = {"self_review": ("merges", "fix_share_pct", "red_main"),
+        "cache": ("cache_hit_pct",),
+        "flake": ("flake_rows",)}
+
+
+def keep_recorded(old, new):
+    if not old or old.get("partial"):
+        return new
+    for src, cols in KEPT.items():
+        if new["sources"].get(src) != "ok" and old.get("sources", {}).get(src) == "ok":
+            for c in cols:
+                new[c] = old.get(c)
+            new["sources"][src] = "ok"
+    return new
 
 
 def week_windows(end, n):
@@ -269,9 +285,9 @@ def cmd_write(a):
     rows = load(out)
     try:
         for key, t0, t1 in (week_windows(end, a.weeks) if a.weeks else ()):
-            rows[("week", key)] = build_row("week", key, t0, t1, a)
+            rows[("week", key)] = keep_recorded(rows.get(("week", key)), build_row("week", key, t0, t1, a))
         for key, t0, t1 in (version_windows(a.repo, a.ref, a.versions) if a.versions else ()):
-            rows[("version", key)] = build_row("version", key, t0, t1, a)
+            rows[("version", key)] = keep_recorded(rows.get(("version", key)), build_row("version", key, t0, t1, a))
     except RuntimeError as e:
         print("weekly-rollup: %s" % e, file=sys.stderr)
         return 2

@@ -27,7 +27,9 @@ contains now is `partial`; do not read its delta as a trend.
 `failure_rate_pct`, `denial_rate_pct` and `ship_stage_median_min` have no
 source yet and are `null` (listed in `no_source`). If `self-review.sh` is not
 in the checkout, `merges`, `fix_share_pct` and `red_main` are `null` and
-`sources.self_review` says `absent`.
+`sources.self_review` says `absent`. A re-run never overwrites a finished
+week or version with less: when a source is not `ok` and the
+recorded row had it `ok`, that source's columns keep their recorded values.
 
 ## Checklist lines
 
