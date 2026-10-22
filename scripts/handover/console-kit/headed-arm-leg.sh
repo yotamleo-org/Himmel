@@ -339,7 +339,7 @@ HEADLESS=0
 [ "${LEG_HEADLESS:-}" = "1" ] && HEADLESS=1
 LANE="${LEG_LANE:-native}"
 PROFILE="${LEG_PROFILE:-}"
-CONSOLE_FLAG=""
+CHIEF_FLAG=""
 # the leg context guard is off unless the caller asks, by
 # --context-guard or a HIMMEL_LEG_CONTEXT_MODE in the launching env (the flag wins).
 CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-}"
@@ -384,7 +384,7 @@ while :; do
                 echo "headed-arm-leg: --console requires a value (the owning console's session name)" >&2
                 exit 2
             fi
-            CONSOLE_FLAG="$2"; shift 2 ;;
+            CHIEF_FLAG="$2"; shift 2 ;;
         --rm-release)
             # Same missing-value trap as --lane/--profile above.
             if [ "$#" -lt 2 ]; then
@@ -629,16 +629,16 @@ fi
 # console inbox lookup), so only letters, digits, '.', '_' and '-' pass, and
 # "." / ".." are refused outright: they pass that charset but
 # are path components, routing the lookup outside the console directory.
-if [ -n "$CONSOLE_FLAG" ]; then
-    case "$CONSOLE_FLAG" in
+if [ -n "$CHIEF_FLAG" ]; then
+    case "$CHIEF_FLAG" in
         .|..)
             usage
-            echo "headed-arm-leg: --console: name must not be '.' or '..' (got: $CONSOLE_FLAG)" >&2
+            echo "headed-arm-leg: --console: name must not be '.' or '..' (got: $CHIEF_FLAG)" >&2
             exit 2
             ;;
         *[!A-Za-z0-9._-]*)
             usage
-            echo "headed-arm-leg: --console: name must contain only letters, digits, '.', '_' or '-' (got: $CONSOLE_FLAG)" >&2
+            echo "headed-arm-leg: --console: name must contain only letters, digits, '.', '_' or '-' (got: $CHIEF_FLAG)" >&2
             exit 2
             ;;
     esac
@@ -1090,11 +1090,11 @@ unset -v _ab_in
 # console-only knobs that must never reach a leg's own process,
 # and therefore never reach the konsole child this wrapper execs into via
 # headed-arm.sh (whose env -u list only clears the three
-# session-identity vars, not this one). CONSOLE_CONTEXT is read by
+# session-identity vars, not this one). CHIEF_CONTEXT is read by
 # headed-arm.sh to pick a CONSOLE's --autocompact ceiling; a leg's ceiling is
 # already pinned above via LEG_CONTEXT/RESOLVED_AUTOCOMPACT, which never
-# consults CONSOLE_CONTEXT, so unsetting it here loses nothing. A console
-# armed with CONSOLE_CONTEXT=1m in its own environ (the same leak, one hop
+# consults CHIEF_CONTEXT, so unsetting it here loses nothing. A console
+# armed with CHIEF_CONTEXT=1m in its own environ (the same leak, one hop
 # earlier - out of scope here, see the ticket) would otherwise forward it to
 # every leg it arms. Kept as a list, not a bare `unset`, so --dry-run can
 # print it and test-headed-arm-leg.sh can assert the exact set and fail on
@@ -1102,11 +1102,14 @@ unset -v _ab_in
 # the scrub also strips NAME=... tokens from a caller-preset
 # HEADED_ARM_LAUNCHER_ENV. leg_propagate_env appends to that list rather than
 # replacing it, and headed-arm.sh hands every token to the leg on every lane,
-# so an `unset` alone let a caller-listed CONSOLE_CONTEXT=1m come straight
+# so an `unset` alone let a caller-listed CHIEF_CONTEXT=1m come straight
 # back into the leg.
 #
+# CONSOLE_CONTEXT is the old name of CHIEF_CONTEXT; headed-arm.sh still reads
+# it, so it is scrubbed too.
+#
 # HIMMEL_CONSOLE_JUDGE_EFFORT is the same class of hazard as
-# CONSOLE_CONTEXT, not the LEG_PROFILE_* class further down - it is consumed
+# CHIEF_CONTEXT, not the LEG_PROFILE_* class further down - it is consumed
 # above (line ~469) for THIS invocation only, and a judge's own persisting
 # shell must not keep it exported: an armed judge that itself later arms a
 # nested judge would otherwise have its ambient (inherited, not deliberate)
@@ -1114,19 +1117,19 @@ unset -v _ab_in
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
 # The release-manager marker, binding and effort override are the same class:
 # a release manager arming a leg must not hand that leg its mode-2 fence.
-LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
+LEG_ENV_SCRUB="CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
 for _leg_env_scrub in $LEG_ENV_SCRUB; do
     unset "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"
 done
 unset -v _leg_env_scrub
 
-# (#1334 CR follow-up) A different reason than the CONSOLE_CONTEXT scrub above
+# (#1334 CR follow-up) A different reason than the CHIEF_CONTEXT scrub above
 # but the same shape: this wrapper's own process may itself BE a leg that is
 # now arming a SIBLING leg, and LEG_PROFILE_SETTINGS/LEG_PROFILE_PREFACE/
 # LEG_PROFILE_MCP_CONFIG - both the plain env var and the
 # HEADED_ARM_LAUNCHER_ENV token leg-1's own launch added - are still live in
-# that shell. Unlike CONSOLE_CONTEXT these three names DO belong on a leg, so
+# that shell. Unlike CHIEF_CONTEXT these three names DO belong on a leg, so
 # this is not a "must never reach a leg" scrub - it is "must be recomputed by
 # THIS leg, never inherited from a sibling". Dropping the token only where a
 # name is re-propagated is not enough: a path that does NOT touch a given name
@@ -1246,7 +1249,7 @@ if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ]; then
         exit 2
     fi
     # headed-arm.sh's own 1m gate (unedited by this ticket) requires
-    # CONSOLE_CONTEXT=1m in ITS process env, not merely a resolved CONTEXT
+    # CHIEF_CONTEXT=1m in ITS process env, not merely a resolved CONTEXT
     # positional - a var it consumes in THIS SAME process tree, so a plain
     # export (never leg_propagate_env) is the right channel, same convention
     # leg_propagate_env's own header documents for HEADED_ARM_REPO etc. The
@@ -1255,10 +1258,10 @@ if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ]; then
     # for the one sanctioned exec below, not a change to that scrub. Any
     # further headed-arm-leg.sh launch this leg itself makes re-scrubs it
     # from scratch, so no ambient leak survives past this one call.
-    [ "$RESOLVED_AUTOCOMPACT" != "auto" ] || export CONSOLE_CONTEXT=1m
+    [ "$RESOLVED_AUTOCOMPACT" != "auto" ] || export CHIEF_CONTEXT=1m
 fi
 # the one marker headed-arm.sh honours (paired to its exec PID).
-# A plain export, same channel as CONSOLE_CONTEXT above; headed-arm.sh unsets it.
+# A plain export, same channel as CHIEF_CONTEXT above; headed-arm.sh unsets it.
 [ "$AB_ARM" != "400k" ] || export HEADED_ARM_AB_AUTOCOMPACT=400000
 
 # an Opus or Fable leg costs materially more per turn than the
@@ -1433,32 +1436,32 @@ _console_name_ok() {
 # leg_propagate_env's name clash and reach the leg unvalidated, so drop it -
 # only the name resolved below (or none) may propagate.
 leg_env_drop_token HIMMEL_CONSOLE_NAME
-if [ -n "$CONSOLE_FLAG" ]; then
-    CONSOLE_NAME="$CONSOLE_FLAG"
+if [ -n "$CHIEF_FLAG" ]; then
+    CHIEF_NAME="$CHIEF_FLAG"
 elif _console_name_ok "${HIMMEL_CONSOLE_NAME:-}"; then
-    CONSOLE_NAME="$HIMMEL_CONSOLE_NAME"
+    CHIEF_NAME="$HIMMEL_CONSOLE_NAME"
 else
-    CONSOLE_NAME=""
+    CHIEF_NAME=""
     # shellcheck source=../../lib/session-name.sh
     # shellcheck disable=SC1091
     if . "$HERE/../../lib/session-name.sh" 2>/dev/null; then
         _detected_console_name="$(current_session_name 2>/dev/null)" || _detected_console_name=""
-        _console_name_ok "$_detected_console_name" && CONSOLE_NAME="$_detected_console_name"
+        _console_name_ok "$_detected_console_name" && CHIEF_NAME="$_detected_console_name"
         unset -v _detected_console_name
     fi
 fi
-if [ -n "$CONSOLE_NAME" ]; then
+if [ -n "$CHIEF_NAME" ]; then
     # leg_propagate_env, not a bare export - on macOS `open -a`
     # starts a fresh environment, so a bare export never crosses and #1121's
     # console-alert routing would silently stop reaching the leg.
     # _console_name_ok already refuses whitespace, so leg_propagate_env's
     # Darwin exit 12 branch is unreachable for this variable.
-    leg_propagate_env HIMMEL_CONSOLE_NAME "$CONSOLE_NAME"
+    leg_propagate_env HIMMEL_CONSOLE_NAME "$CHIEF_NAME"
 else
     unset HIMMEL_CONSOLE_NAME
 fi
 # the bus registration below names this console as the leg's own.
-BUS_CONSOLE="$CONSOLE_NAME"
+BUS_CONSOLE="$CHIEF_NAME"
 # the bus identity is the launcher's alone. A caller-preset or
 # ambient HIMMEL_BUS_* (a console's own HIMMEL_BUS_NAME is live in its shell)
 # must never reach a leg - only the name registered below does - and neither
@@ -1469,7 +1472,7 @@ done
 unset -v _leg_bus_var HEADED_ARM_BUS
 leg_env_drop_prefix HIMMEL_BUS_
 leg_env_drop_token HEADED_ARM_BUS
-unset -v CONSOLE_NAME
+unset -v CHIEF_NAME
 unset -f _console_name_ok
 # guard-leg-context-handoff.sh reads both from its own process env,
 # which is fixed at launch, so a leg cannot flip them mid-session: the resolved
@@ -2192,10 +2195,10 @@ fi
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm-leg: would exec: %s %s %s %s %s %s %s %s\n' \
         "$HEADED_ARM" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT"
-    # scrub= and the resolved CONSOLE_CONTEXT are folded into this
+    # scrub= and the resolved CHIEF_CONTEXT are folded into this
     # existing unconditional line (rather than a new line) so the no-flag dry-run
     # report keeps its established line count - a caller can still set
-    # CONSOLE_CONTEXT=1m and see it reported <unset> here, proving the scrub
+    # CHIEF_CONTEXT=1m and see it reported <unset> here, proving the scrub
     # above ran in THIS wrapper's own process before it ever execs into
     # headed-arm.sh.
     # ${VAR:-<unset>}, not a bare $VAR - a --judge dry-run never
@@ -2211,9 +2214,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the leg's context guard reads.
-    printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s\n' \
+    printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
-        "$LEG_ENV_SCRUB" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
+        "$LEG_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
         "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
@@ -2479,7 +2482,7 @@ if [ -n "$_ll_cache" ]; then
     # a consult line also names the console that launched it; every other role's line
     # keeps its exact key set (the cost cohort reader and test 28c pin it).
     _ll_asker=""
-    [ "$CONSULT" -eq 1 ] && _ll_asker=" console=${CONSOLE_FLAG:-unknown}"
+    [ "$CONSULT" -eq 1 ] && _ll_asker=" console=${CHIEF_FLAG:-unknown}"
     # an A/B arm launch also records its arm; every other line keeps its key set.
     [ -z "$AB_ARM" ] || _ll_asker="$_ll_asker ab_arm=$AB_ARM"
     if ! ( umask 077 && mkdir -p "$_ll_cache/launch-logs" && \

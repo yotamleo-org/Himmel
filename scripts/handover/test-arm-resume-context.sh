@@ -330,13 +330,13 @@ assert_contains "e2: guard line defaults non-console to standard" 'context=stand
 assert_contains_either "e2: relaunch command carries --autocompact 200000" '--autocompact 200000' '--autocompact "200000"' "$out"
 
 # ---------------------------------------------------------------------------
-# (e3) CONSOLE_CONTEXT=1m remains supported as an explicit env choice.
+# (e3) CHIEF_CONTEXT=1m remains supported as an explicit env choice.
 #      Non-console handovers ignore this console-only environment setting.
 # ---------------------------------------------------------------------------
 HO_E3=$(make_handover "arm-context-console.md")
-out=$(CONSOLE_CONTEXT=1m run_arm --time "$(future_time)" --handover "$HO_E3" --dry-run 2>&1)
+out=$(CHIEF_CONTEXT=1m run_arm --time "$(future_time)" --handover "$HO_E3" --dry-run 2>&1)
 rc=$?
-assert_rc "e3: console handover, CONSOLE_CONTEXT=1m, no --context, exits 0" 0 "$rc"
+assert_rc "e3: console handover, CHIEF_CONTEXT=1m, no --context, exits 0" 0 "$rc"
 assert_contains "e3: guard line resolves 1m" 'context=1m (' "$out"
 assert_contains_either "e3: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
 
@@ -507,9 +507,9 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
         # env opt-in reads `explicit`, exactly as headed-arm.sh spells it
         HO_J2=$(make_handover "arm-context-1m-console.md")
         rm -f "$REAL_SCHED/job.body"
-        out=$(arm_j "$CACHE_J" "$HO_J2" CONSOLE_CONTEXT=1m)
+        out=$(arm_j "$CACHE_J" "$HO_J2" CHIEF_CONTEXT=1m)
         rc=$?
-        assert_rc "j2: CONSOLE_CONTEXT=1m console arm exits 0" 0 "$rc"
+        assert_rc "j2: CHIEF_CONTEXT=1m console arm exits 0" 0 "$rc"
         TITLE_J2=$(job_title "$REAL_SCHED/job.body")
         assert_contains "j2: the reason line spells the env opt-in (explicit)" 'context=1m (explicit)' "$out"
         assert_rc "j2: 1m is attributed from the record" 0 \

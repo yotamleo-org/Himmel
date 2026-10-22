@@ -6,7 +6,7 @@
 # spare-capacity suggestion it replaced.
 #
 #   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
-#                        [--held FILE] [--no-classify] [--doc CONSOLE_DOC]
+#                        [--held FILE] [--no-classify] [--doc CHIEF_DOC]
 #                        [--priority-pool-only] [--workers-dir DIR] [--why]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
@@ -102,7 +102,7 @@ while [ "$#" -gt 0 ]; do
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
         --priority-pool-only) pool_only=1; shift ;;
         --why) why=1; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CONSOLE_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why]" >&2; exit 2 ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac

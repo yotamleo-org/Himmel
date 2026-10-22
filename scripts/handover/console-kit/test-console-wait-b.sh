@@ -2,11 +2,12 @@
 # test-console-wait.sh — Exercises console-wait.sh, the console's
 # one event waiter: silent while nothing changes, exits with exactly one WAKE
 # block on a Telegram inbox line or a confirmed change of the tick's action
-# key. tick.sh and the bank verdict are stubbed (CONSOLE_WAIT_TICK /
-# CONSOLE_WAIT_BANK), so no gh, lock or bank read happens here. bash 3.2-safe.
+# key. tick.sh and the bank verdict are stubbed (CHIEF_WAIT_TICK /
+# CHIEF_WAIT_USAGE), so no gh, lock or bank read happens here. bash 3.2-safe.
 #
-# CONSOLE_WAIT overrides the script under test (the RED control: today's
-# Monitor-arm shape, which runs tick.sh on every arm, fails the idle cases).
+# CHIEF_WAIT (old name CONSOLE_WAIT) overrides the script under test (the RED
+# control: today's Monitor-arm shape, which runs tick.sh on every arm, fails the
+# idle cases).
 #
 # Linux-only: console-wait.sh has no .ps1 twin by design; this suite uses GNU
 # timeout and touch -d, so run-shell-tests.sh skips it off-Linux.
@@ -17,7 +18,7 @@
 # Run: bash scripts/handover/console-kit/test-console-wait-b.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WAIT="${CONSOLE_WAIT:-$HERE/console-wait.sh}"
+WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/console-wait.sh}}"
 
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -54,13 +55,13 @@ cat > "$STUB/bank.sh" <<'EOF'
 cat "$STUB/bank"
 EOF
 export STUB
-export CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
-export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2
+export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
+export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2
 # A failure streak wakes only in (f4); elsewhere a failed sample is just "not a change".
-export CONSOLE_WAIT_FAIL_WAKE=1000
+export CHIEF_WAIT_FAIL_WAKE=1000
 # a denials rise pages the operator. The suite owns the sender and
 # the record dir (never a real Telegram send, never ~/.himmel/state): the stub
-# appends each page text to $STUB/pages. CONSOLE_WAIT_PAGE_TIMEOUT is kept short
+# appends each page text to $STUB/pages. CHIEF_WAIT_PAGE_TIMEOUT is kept short
 # so the hung-sender case (p6) finishes fast.
 cat > "$STUB/page.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -68,14 +69,14 @@ printf '%s\n' "$1" >> "$STUB/pages"
 exit 0
 EOF
 chmod +x "$STUB/page.sh"  # the sender seam is exec'd directly, not run via bash
-export CONSOLE_WAIT_PAGE_CMD="$STUB/page.sh" CONSOLE_WAIT_PAGE_TIMEOUT=2
+export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_WAIT_PAGE_TIMEOUT=2
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 # No test reads the real transcripts: the budget seam answers "unreadable" (exit 2) until (hb).
 cat > "$STUB/budget-off.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 2
 EOF
-export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+export CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 # Nor does any test run the real status sweep or read a real FOCUS state: both seams answer nothing.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
@@ -301,7 +302,7 @@ cat > "$STUB/dispatch.sh" <<'EOF2'
 #!/usr/bin/env bash
 printf 'LOCAL HIMMEL-9001 stub-ticket\n'
 EOF2
-export CONSOLE_WAIT_DISPATCH="$STUB/dispatch.sh"
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
 under_line() { sed "s/ capacity=[^ ]*/ capacity=$1/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub
 I="$(new_inbox u4959)"
@@ -366,7 +367,7 @@ printf '#!/usr/bin/env bash\nprintf "ARGS %%s\\n" "$*"\n' > "$STUB/dispatch.sh"
 
 # --- (u5542) unowned-prs=: the first sight of an open PR with no live
 # owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes
-# again only after CONSOLE_WAIT_UNOWNED_REWAKE_MIN, and the marker clears once the
+# again only after CHIEF_WAIT_UNOWNED_REWAKE_MIN, and the marker clears once the
 # field has read none twice. The field is not in the action key, so its growing
 # age never wakes by itself. RED control (console-wait.sh before this change): none
 # of these woke ("running"). ------------------------------------------------------
@@ -440,7 +441,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # tracker= class changes wake once (w); after the first STALE the class never moves
 # again, so a console that did not act stayed unwoken for hours. The marker
 # <inbox>.wait.trackerstale holds the epoch the streak was first seen; it wakes once
-# past CONSOLE_WAIT_TRACKER_STALE_MIN (default 30) and clears when tracker leaves STALE.
+# past CHIEF_WAIT_TRACKER_STALE_MIN (default 30) and clears when tracker leaves STALE.
 reset_stub; tracker_line STALE:3h
 I="$(new_inbox ts1)"
 printf '%s\n' "$(( $(date +%s) - 2400 ))" > "$I.wait.trackerstale"
@@ -463,7 +464,7 @@ check "(ts4) tracker back to ok clears the streak marker" "absent" "$([ -e "$I.w
 reset_stub; tracker_line STALE:3h
 I="$(new_inbox ts5)"
 printf '%s\n' "$(( $(date +%s) - 2400 ))" > "$I.wait.trackerstale"
-CONSOLE_WAIT_TRACKER_STALE_MIN=08 start "$I" "$WORK/ts5.out" --legs "N1.md"
+CHIEF_WAIT_TRACKER_STALE_MIN=08 start "$I" "$WORK/ts5.out" --legs "N1.md"
 wait_exit "$WPID"
 check "(ts5) a leading-zero threshold (08) is decimal, not an octal error" "WAKE tracker-stale tracker=STALE:3h" "$(head -n1 "$WORK/ts5.out")"
 
@@ -480,7 +481,7 @@ rc="$(sed -n "${n}p" "$STUB/close.rcs" 2>/dev/null)"; [ -n "$rc" ] || rc="$(tail
 [ -z "$rc" ] || [ "$rc" -eq 0 ] || { [ -f "$STUB/close.msg" ] && cat "$STUB/close.msg" >&2 || echo "close-wrapped-leg: refusing - stub rc $rc" >&2; }
 exit "${rc:-0}"
 EOF
-export CONSOLE_WAIT_CLOSE="$STUB/close.sh"
+export CHIEF_WAIT_CLOSE="$STUB/close.sh"
 pc_console() { # <dir name>: fixture console doc naming predecessor AS.md; prints the console doc path
     mkdir -p "$WORK/$1"
     printf '# AT — CONSOLE — successor to AS.md (fill signal 45 %%)\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE AT\n' > "$WORK/$1/AT.md"
@@ -528,31 +529,31 @@ check "(pc6) 10 live sessions is not 0: the ambiguous refusal wakes" "WAKE prede
 reset_stub
 CD="$(pc_console pc7 0)"; I="$(new_inbox pc7)"
 printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$STUB/close.sleep.sh"; chmod +x "$STUB/close.sleep.sh"
-CONSOLE_WAIT_CLOSE="$STUB/close.sleep.sh" CONSOLE_WAIT_CLOSE_TIMEOUT=1 start "$I" "$WORK/pc7.out" --doc "$CD" --legs "N1.md"
+CHIEF_WAIT_CLOSE="$STUB/close.sleep.sh" CHIEF_WAIT_CLOSE_TIMEOUT=1 start "$I" "$WORK/pc7.out" --doc "$CD" --legs "N1.md"
 sleep 0.5
 printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
 n=0
 while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
-check "(pc7) a hung close is killed at CONSOLE_WAIT_CLOSE_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/pc7.out")"
+check "(pc7) a hung close is killed at CHIEF_WAIT_CLOSE_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/pc7.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 reset_stub
 CD="$(pc_console pc8 0)"; I="$(new_inbox pc8)"
-CONSOLE_WAIT_CLOSE="$STUB/close.sleep.sh" CONSOLE_WAIT_CLOSE_TIMEOUT=1 CONSOLE_WAIT_CLOSE_HANGS=2 start "$I" "$WORK/pc8.out" --doc "$CD" --legs "N1.md"
+CHIEF_WAIT_CLOSE="$STUB/close.sleep.sh" CHIEF_WAIT_CLOSE_TIMEOUT=1 CHIEF_WAIT_CLOSE_HANGS=2 start "$I" "$WORK/pc8.out" --doc "$CD" --legs "N1.md"
 n=0
 while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
-check "(pc8) a close that hangs every sample wakes after CONSOLE_WAIT_CLOSE_HANGS in a row" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/pc8.out")"
+check "(pc8) a close that hangs every sample wakes after CHIEF_WAIT_CLOSE_HANGS in a row" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/pc8.out")"
 check "(pc8) and it is marked woke, so it wakes once" "woke:$WORK/pc8/AS.md" "$(cat "$I.wait.predecessor" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
-unset CONSOLE_WAIT_CLOSE
+unset CHIEF_WAIT_CLOSE
 
 # --- (su) --succession: the successor's one wake -----------------------------
-# The tracker is stubbed (CONSOLE_WAIT_TRACKER): it prints $STUB/su.out. The waiter
+# The tracker is stubbed (CHIEF_WAIT_TRACKER): it prints $STUB/su.out. The waiter
 # itself only reads the COMPLETE / INCOMPLETE line and the clock.
 reset_stub
 # shellcheck disable=SC2016  # the stub body expands when the stub runs
 printf '#!/usr/bin/env bash\ncat "$STUB/su.out"\n' > "$STUB/su-tracker.sh"
 SUCD="$WORK/su-console.md"; : > "$SUCD"
-export CONSOLE_WAIT_TRACKER="$STUB/su-tracker.sh" CONSOLE_WAIT_SUCCESSION_SEC=1
+export CHIEF_WAIT_TRACKER="$STUB/su-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1
 printf 'N1 quoted-back\nN2 quoted-back\nCOMPLETE 2/2\nbash append-results.sh doc "LIVE - done"\n' > "$STUB/su.out"
 I="$(new_inbox su1)"
 start "$I" "$WORK/su1.out" --doc "$SUCD" --succession S2 --legs "N1.md"
@@ -602,7 +603,7 @@ check "(su5) first arm wakes once, rc 0" "0" "$rc"
 timeout 4 bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --legs "N1.md" > "$WORK/su5b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(su5) a re-arm with the same --succession does not re-wake at once" "124" "$rc"
 check "(su5) and prints no second wake" "" "$(cat "$WORK/su5b.out")"
-unset CONSOLE_WAIT_TRACKER CONSOLE_WAIT_SUCCESSION_SEC
+unset CHIEF_WAIT_TRACKER CHIEF_WAIT_SUCCESSION_SEC
 
 # --- (rol) <inbox>.relay-on-live: the outgoing console's one wake ------------------
 # Lock status and relay-batch are stubbed; the waiter reads only the lock rc (11 = held fresh).
@@ -611,7 +612,7 @@ reset_stub
 printf '#!/usr/bin/env bash\nexit "$(cat "$STUB/rol.rc")"\n' > "$STUB/rol-lock.sh"
 # shellcheck disable=SC2016  # as above
 printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay to $3"\n' > "$STUB/rol-relay.sh"
-export CONSOLE_WAIT_LOCK_STATUS="$STUB/rol-lock.sh" CONSOLE_WAIT_RELAY="$STUB/rol-relay.sh" CONSOLE_WAIT_SUCCESSION_SEC=1
+export CHIEF_WAIT_LOCK_STATUS="$STUB/rol-lock.sh" CHIEF_WAIT_RELAY="$STUB/rol-relay.sh" CHIEF_WAIT_SUCCESSION_SEC=1
 ROLD="$WORK/rol-console.md"; : > "$ROLD"
 echo 0 > "$STUB/rol.rc"
 I="$(new_inbox rol1)"
@@ -638,7 +639,7 @@ timeout 4 bash "$WAIT" "$I" --doc "$ROLD" --legs "N1.md" > "$WORK/rol3.out" 2>/d
 check "(rol3) a failing relay still wakes once, rc 0" "0" "$rc"
 check "(rol3) the wake carries the relay rc" "WAKE relay-on-live successor=S2 relay-failed rc=1" "$(head -n1 "$WORK/rol3.out")"
 check "(rol3) and the marker is consumed, so nothing is resent" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
-unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
+unset CHIEF_WAIT_LOCK_STATUS CHIEF_WAIT_RELAY CHIEF_WAIT_SUCCESSION_SEC
 
 # --- (k) usage ---------------------------------------------------------------
 bash "$WAIT" >/dev/null 2>&1; rc=$?
@@ -653,7 +654,7 @@ case "$*" in *--resolve*) printf 'x\n' >> "$STUB/budget.resolves"; printf '%s\n'
 printf '%s %s\n' "$*" "$CONTEXT_FILL_TRANSCRIPT" >> "$STUB/budget.calls"
 cat "$STUB/budget.out"; exit "$(cat "$STUB/budget.rc")"
 EOF
-export CONSOLE_WAIT_BUDGET="$STUB/budget.sh"
+export CHIEF_WAIT_BUDGET="$STUB/budget.sh"
 printf 'budget turns=151 cache_read=12.0M verdict=HANDOVER\n' > "$STUB/budget.out"; printf '3\n' > "$STUB/budget.rc"
 reset_stub; : > "$STUB/budget.calls"; I="$(new_inbox hb1)"
 start "$I" "$WORK/hb1.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
@@ -676,26 +677,26 @@ timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$
 check "(hb4b) rc 2 with no marker: no wake, no marker, the waiter ran to its timeout" "124:absent:" "$rc:$([ -e "$I.wait.budget" ] && echo present || echo absent):$(cat "$WORK/hb1e.out")"
 printf '#!/usr/bin/env bash\ncase "$*" in *--resolve*) echo /x; exit 0 ;; esac\nexec sleep 30\n' > "$STUB/budget.hang.sh"
 reset_stub; I="$(new_inbox hb6)"
-CONSOLE_WAIT_BUDGET="$STUB/budget.hang.sh" CONSOLE_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+CHIEF_WAIT_BUDGET="$STUB/budget.hang.sh" CHIEF_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
 sleep 0.5
 printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
 n=0
 while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
-check "(hb6) a hung budget read is killed at CONSOLE_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6.out")"
+check "(hb6) a hung budget read is killed at CHIEF_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$STUB/budget.hangresolve.sh"
 reset_stub; I="$(new_inbox hb6b)"
-CONSOLE_WAIT_BUDGET="$STUB/budget.hangresolve.sh" CONSOLE_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6b.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+CHIEF_WAIT_BUDGET="$STUB/budget.hangresolve.sh" CHIEF_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6b.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
 sleep 0.5
 printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
 n=0
 while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
-check "(hb6b) a hung --resolve is killed at CONSOLE_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6b.out")"
+check "(hb6b) a hung --resolve is killed at CHIEF_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6b.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
-export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+export CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 
 # --- (sw): the status sweep runs every WAIT_SWEEP_SEC with --doc, bounded, and wakes only when
 # it moved a ticket or its failure signature is new; the same pass wakes once per FAILED or stale-DIRTY

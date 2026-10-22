@@ -14,15 +14,17 @@
 #                     it has live subagents.
 #
 # Env seams: HANDOVER_DIR / USER_SLUG / JIRA_PROJECT_KEY (via .env, see
-# load-dotenv.sh); CONSOLE_BUCKET, CONSOLE_DOC, CONSOLE_MODEL,
-# CONSOLE_FILL_PERCENT, CONSOLE_TEMPLATE_DIR, CONSOLE_WORK_DIR (default:
+# load-dotenv.sh); CHIEF_BUCKET, CHIEF_DOC, CHIEF_MODEL,
+# CHIEF_FILL_PERCENT, CHIEF_TEMPLATE_DIR, CHIEF_WORK_DIR (default:
 # $XDG_RUNTIME_DIR/himmel-console when set and owned by this uid, else
 # ${TMPDIR:-/tmp}/himmel-console-<uid>; an override is validated the same as
-# the default — see below), CONSOLE_HEADED_ARM, ACTION_ZERO_SCRIPT (the
+# the default — see below), CHIEF_HEADED_ARM, ACTION_ZERO_SCRIPT (the
 # action-zero.sh that `next` pre-computes into the successor doc),
 # ACTION_ZERO_SECS (its bound, default 300),
-# CONSOLE_ARM_FOREGROUND (test seam: run the arm in the foreground instead of
+# CHIEF_ARM_FOREGROUND (test seam: run the arm in the foreground instead of
 # detaching it).
+# Each CHIEF_* env seam above, and CHIEF_CONTEXT and CHIEF_BUS_*, still reads
+# its old name, CONSOLE_*.
 # Flag seams: --name (both commands; on next it selects which console
 # succession to continue) --arm --dry-run --model --bucket --prefix --project
 # --deadline-min --doc
@@ -42,7 +44,7 @@
 # render); 2 unresolved handover root / user slug / a missing template file
 # / no sha256 hasher available to derive the per-chain digest
 # / a malformed --date value; 3
-# the work dir (default or CONSOLE_WORK_DIR) exists but is a symlink, is not
+# the work dir (default or CHIEF_WORK_DIR) exists but is a symlink, is not
 # owned by this user, is group/other-writable, or could not be created; 4 `wrap` refused: this session has a live in-process
 # subagent, or live-subagents.sh could not prove it has none; 5 `wrap` refused:
 # this session has a live non-harness process (wrap-subtree-check.sh WITHHELD),
@@ -65,7 +67,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # headed-arm.sh scrubs these on the --arm path; the printed line
 # was missed, so an un-armed console silently became a throwaway child session.
 # Keep this identical to headed-arm.sh's env prefix.
-CONSOLE_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
+CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 # shellcheck source=../../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/load-dotenv.sh"
@@ -76,6 +78,12 @@ CONSOLE_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_COD
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh"
 . "$HERE/../../lib/chief-context.sh"
+# shellcheck source=../../lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+for _chief_seam in ARM_FOREGROUND BUCKET BUS_CLI BUS_PROFILES_MJS CONTEXT DOC \
+    FILL_PERCENT HEADED_ARM MODEL TEMPLATE_DIR WORK_DIR; do
+    alias_env "CHIEF_$_chief_seam" "CONSOLE_$_chief_seam"
+done
 # shellcheck source=../../lib/claude-version.sh
 . "$HERE/../../lib/claude-version.sh"
 # shellcheck source=../../lib/git-clean.sh
@@ -104,8 +112,8 @@ wrap (the predecessor's last step, run from its own session) writes the
 WRAPPED bullet and releases the lock, and refuses (exit 4, nothing written)
 while this session has a live in-process subagent (HIMMEL-5071).
 
-Supervisor sessions (consoles) default to 1m. --context overrides CONSOLE_CONTEXT and the default;
---context standard or CONSOLE_CONTEXT=standard opts down to 200000.
+Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT and the default;
+--context standard or CHIEF_CONTEXT=standard opts down to 200000.
 
 --relay-on-live (next only) leaves a marker beside the outgoing console's inbox; its
 console-wait.sh waiter then wakes the outgoing console ONCE, when the successor holds
@@ -255,12 +263,12 @@ console_metadata() {
 
 # Set by cmd_next to the outgoing console's session name; assigned
 # here so an ambient value can never name a predecessor.
-CONSOLE_BUS_PREDECESSOR=""
+CHIEF_BUS_PREDECESSOR=""
 
 # console_bus_opted_in -- the console profile lists himmel-bus in its MCP servers.
 console_bus_opted_in() {
     local bus_names
-    bus_names="$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || return 1
+    bus_names="$(node "${CHIEF_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || return 1
     case "$bus_names" in
         *'"himmel-bus"'*) return 0 ;;
     esac
@@ -268,7 +276,7 @@ console_bus_opted_in() {
 }
 
 # do_arm <session> <doc> <fill-signal> <log> -- launch (or foreground-run,
-# under CONSOLE_ARM_FOREGROUND=1) the headed-arm target and print the armed
+# under CHIEF_ARM_FOREGROUND=1) the headed-arm target and print the armed
 # lines. deadline_epoch/model/workdir are read from the outer resolution
 # (constant for the whole invocation), not passed positionally.
 do_arm() {
@@ -279,7 +287,7 @@ do_arm() {
     # nothing is forwarded to headed-arm.sh's --role; a stale CONSOLE_ROLE in
     # the environment is ignored.
     mkdir -p "$(dirname "$log")"
-    arm="${CONSOLE_HEADED_ARM:-$HERE/../headed-arm.sh}"
+    arm="${CHIEF_HEADED_ARM:-$HERE/../headed-arm.sh}"
     # This process itself may BE a leg (chief.sh next --arm run
     # from inside one) -- a leg's own profile/launcher env stays live in its
     # shell for its whole session (see console_context_leg_env_unset_names),
@@ -305,10 +313,10 @@ do_arm() {
     local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
-    bus_cli="${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
+    bus_cli="${CHIEF_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
     if console_bus_opted_in; then
         bus_args=(register "$session" --role console)
-        [ -n "$CONSOLE_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CONSOLE_BUS_PREDECESSOR")
+        [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
         else
@@ -325,9 +333,9 @@ do_arm() {
     # explicitly with LEG_REPO=<project> (headed-arm-leg.sh), never by the
     # console inheriting a repo override.
     if [ "$CONTEXT_GIVEN" -eq 1 ]; then
-        export CONSOLE_CONTEXT="$CONSOLE_CONTEXT_RESOLVED_MODE"
+        export CHIEF_CONTEXT="$CHIEF_CONTEXT_RESOLVED_MODE"
     fi
-    if [ "${CONSOLE_ARM_FOREGROUND:-0}" = "1" ]; then
+    if [ "${CHIEF_ARM_FOREGROUND:-0}" = "1" ]; then
         bash "$arm" --role console "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model"
     elif command -v setsid >/dev/null 2>&1; then
         setsid nohup bash "$arm" --role console "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &
@@ -600,7 +608,7 @@ fi
 repo="$(resolve_repo)"
 
 # A bare `next` with nothing pinning down where to search (no
-# --doc, no $CONSOLE_DOC, no --bucket/$CONSOLE_BUCKET/--prefix/--project)
+# --doc, no $CHIEF_DOC, no --bucket/$CHIEF_BUCKET/--prefix/--project)
 # cannot resolve state_dir before searching for a predecessor -- state_dir
 # derives from bucket, which derives from the project this block is trying
 # to discover in the first place. Widen the search across every bucket this
@@ -611,10 +619,10 @@ repo="$(resolve_repo)"
 # project-inheritance block right after this one, the --name-from-doc
 # inference further down, resolve_predecessor itself) does the rest
 # unmodified -- including refusing a poisoned recorded project exactly as
-# --project would. Any of --doc/$CONSOLE_DOC/--bucket/
-# $CONSOLE_BUCKET/--prefix/--project pins the search on its own and skips
+# --project would. Any of --doc/$CHIEF_DOC/--bucket/
+# $CHIEF_BUCKET/--prefix/--project pins the search on its own and skips
 # this block entirely, so explicit flags always still win.
-if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CONSOLE_DOC:-}" ] && [ -z "$BUCKET" ] && [ -z "${CONSOLE_BUCKET:-}" ] && [ -z "$PREFIX" ]; then
+if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CHIEF_DOC:-}" ] && [ -z "$BUCKET" ] && [ -z "${CHIEF_BUCKET:-}" ] && [ -z "$PREFIX" ]; then
     _auto_name="$(slugify "$NAME")"
     if [ -n "$_auto_name" ]; then
         _auto_newest="" _auto_newest_key=""
@@ -650,10 +658,10 @@ fi
 # without one this defaults PROJECT_ARG from the predecessor doc's own
 # recorded project line, feeding the SAME bucket/prefix/registry resolution
 # below as an explicit --project would. Possible either when the predecessor
-# doc is known up front (--doc / $CONSOLE_DOC) or once the auto-discovery
+# doc is known up front (--doc / $CHIEF_DOC) or once the auto-discovery
 # block above has populated DOC_ARG; an explicit --project always still wins.
 if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ]; then
-    _predecessor_doc_early="${DOC_ARG:-${CONSOLE_DOC:-}}"
+    _predecessor_doc_early="${DOC_ARG:-${CHIEF_DOC:-}}"
     if [ -n "$_predecessor_doc_early" ] && [ -f "$_predecessor_doc_early" ]; then
         # shellcheck disable=SC2016  # single-quoted sed pattern; no expansion wanted
         _predecessor_project_early="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$_predecessor_doc_early" | head -n1)"
@@ -786,18 +794,18 @@ if [ -n "$project_dir" ]; then
     esac
 fi
 
-# bucket: --bucket, else $CONSOLE_BUCKET, else the registry key for a
+# bucket: --bucket, else $CHIEF_BUCKET, else the registry key for a
 # registered foreign --project, else basename of a foreign --project, else
 # derived from the repo basename — every branch already goes through
 # `slugify` uniformly, so no ONE source can bypass sanitization the others
 # get (the class of bug a --prefix flag branch alone would leave open). The only gap
 # slugify itself doesn't close is a source that slugifies to nothing (e.g.
-# CONSOLE_BUCKET='###') — refused once, after precedence settles, same
+# CHIEF_BUCKET='###') — refused once, after precedence settles, same
 # principle as prefix below.
 if [ -n "$BUCKET" ]; then
     bucket="$(slugify "$BUCKET")"
-elif [ -n "${CONSOLE_BUCKET:-}" ]; then
-    bucket="$(slugify "$CONSOLE_BUCKET")"
+elif [ -n "${CHIEF_BUCKET:-}" ]; then
+    bucket="$(slugify "$CHIEF_BUCKET")"
 elif [ -n "$project_registry_key" ]; then
     bucket="$(slugify "$project_registry_key")"
 elif [ -n "$project_dir" ]; then
@@ -842,7 +850,7 @@ esac
 # basename (<PREFIX>-nextleg-<DATE><LETTER>-<NAME>.md) — a cross-bucket
 # --doc flow must not force the operator to also repeat --name.
 if [ "$CMD" = next ] && [ "$NAME_GIVEN" -ne 1 ]; then
-    _doc_for_name="${DOC_ARG:-${CONSOLE_DOC:-}}"
+    _doc_for_name="${DOC_ARG:-${CHIEF_DOC:-}}"
     if [ -n "$_doc_for_name" ]; then
         _stem_for_name="$(basename "$_doc_for_name")"
         _stem_for_name="${_stem_for_name%.md}"
@@ -891,19 +899,19 @@ if [ "$DATE_GIVEN" -eq 1 ]; then
 fi
 state_dir="$root/$slug/$bucket"
 # The console parent defaults to Opus (default parent tier);
-# Fable is the escalation target, reached only via --model / CONSOLE_MODEL.
-model="${MODEL:-${CONSOLE_MODEL:-claude-opus-5-5}}"
-fill_percent="${CONSOLE_FILL_PERCENT:-45}"
+# Fable is the escalation target, reached only via --model / CHIEF_MODEL.
+model="${MODEL:-${CHIEF_MODEL:-claude-opus-5-5}}"
+fill_percent="${CHIEF_FILL_PERCENT:-45}"
 # Resolve once for both printed and armed launches. An explicit
 # --context overrides the console-only environment choice and 1m default.
 if [ "$CONTEXT_GIVEN" -eq 1 ]; then
-    CONSOLE_CONTEXT_RESOLVED_MODE="$CONTEXT"
+    CHIEF_CONTEXT_RESOLVED_MODE="$CONTEXT"
 else
-    console_context_default 1 "${CONSOLE_CONTEXT:-}"
+    console_context_default 1 "${CHIEF_CONTEXT:-}"
 fi
-console_autocompact="$(console_context_autocompact "$CONSOLE_CONTEXT_RESOLVED_MODE")"
+console_autocompact="$(console_context_autocompact "$CHIEF_CONTEXT_RESOLVED_MODE")"
 launch_model="$(console_context_strip_1m_suffix "$model")"
-if [ "$CONSOLE_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable "$launch_model" \
+if [ "$CHIEF_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable "$launch_model" \
     && console_context_model_takes_1m_suffix "$launch_model"; then
     launch_model="${launch_model}[1m]"
 fi
@@ -941,18 +949,18 @@ launch_cmd() {
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
     local claude_cmd
     claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \
-        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
+        "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
     # No launcher binds a pasted console on the bus, so the line runs claude
     # through console-bus-exec.sh, which registers and binds it first; a line
     # pasted after that file is gone runs claude directly.
     if console_bus_opted_in; then
         local bus_exec
         bus_exec="$(printf 'bash %q %q ' "$HERE/console-bus-exec.sh" "$1")"
-        [ -z "$CONSOLE_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CONSOLE_BUS_PREDECESSOR")"
+        [ -z "$CHIEF_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CHIEF_BUS_PREDECESSOR")"
         claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/console-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
     fi
     printf 'cd %q && { bash %q %s %s %s %s; %s; }' \
-        "$repo" "$HERE/record-launch.sh" "$1" "$CONSOLE_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
+        "$repo" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
         "$claude_cmd"
 }
 
@@ -1029,17 +1037,17 @@ if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNT
 else
     _console_default_workdir="${TMPDIR:-/tmp}/himmel-console-$(id -u)"
 fi
-# CONSOLE_WORK_DIR is a durable test/operator seam, not an escape hatch from
+# CHIEF_WORK_DIR is a durable test/operator seam, not an escape hatch from
 # this hardening: an override is exactly as reachable by another local user
 # guessing or being told the path as the default is, so it goes through the
 # SAME validation rather than being trusted outright.
-workdir="${CONSOLE_WORK_DIR:-$_console_default_workdir}"
+workdir="${CHIEF_WORK_DIR:-$_console_default_workdir}"
 
 # _console_dir_component_unsafe <dir> -- true if <dir> is group- or
 # world-writable AND (lacks the sticky bit OR the sticky bit is present but
 # <dir> is owned by neither root nor us). console_workdir_ensure (below) validates only $workdir
 # itself, in every one of its three origins -- the XDG_RUNTIME_DIR default,
-# a CONSOLE_WORK_DIR override, or the TMPDIR fallback. The XDG_RUNTIME_DIR
+# a CHIEF_WORK_DIR override, or the TMPDIR fallback. The XDG_RUNTIME_DIR
 # case alone got a parent check (the `if` above deciding whether to prefer
 # it); the override and TMPDIR-fallback parents would be left
 # unchecked, so another local user with write access to either parent could
@@ -1109,7 +1117,7 @@ _console_ancestor_unsafe() {
     return 1
 }
 # The ancestor walk is a
-# lexical `dirname` loop -- on a RELATIVE workdir (e.g. CONSOLE_WORK_DIR=work)
+# lexical `dirname` loop -- on a RELATIVE workdir (e.g. CHIEF_WORK_DIR=work)
 # `dirname` stops at "." after one step ("." is its own dirname), so only the
 # current working directory itself is ever checked, never anything above it.
 # Canonicalizing to an absolute path first (the same _arm_realpath already
@@ -1243,7 +1251,7 @@ chain_dir="$workdir/${slug}-${bucket}-${root_digest}"
 # leading zero (e.g. "08") is otherwise read as octal in arithmetic context,
 # and 8/9 are not valid octal digits.
 deadline_epoch=$(( $(date +%s) + 10#$DEADLINE_MIN * 60 ))
-template_dir="${CONSOLE_TEMPLATE_DIR:-$repo/docs/handover}"
+template_dir="${CHIEF_TEMPLATE_DIR:-$repo/docs/handover}"
 console_template="$template_dir/console-template.md"
 handoff_template="$template_dir/console-handoff-template.md"
 kit="$repo/scripts/handover/console-kit"
@@ -1397,15 +1405,15 @@ decisions: none" \
 # --- next -------------------------------------------------------------
 
 # resolve_predecessor -- print the predecessor doc path, per the precedence
-# in the header: --doc, CONSOLE_DOC, today's highest letter, else the
+# in the header: --doc, CHIEF_DOC, today's highest letter, else the
 # newest <PREFIX>-nextleg-*-<NAME>.md by name sort.
 resolve_predecessor() {
     if [ -n "$DOC_ARG" ]; then
         printf '%s' "$DOC_ARG"
         return 0
     fi
-    if [ -n "${CONSOLE_DOC:-}" ]; then
-        printf '%s' "$CONSOLE_DOC"
+    if [ -n "${CHIEF_DOC:-}" ]; then
+        printf '%s' "$CHIEF_DOC"
         return 0
     fi
     # Bijective base-26 letters ("AA" < "B" lexically, even though AA is the
@@ -1634,7 +1642,7 @@ cmd_next() {
 
     local predecessor_doc predecessor_base predecessor_stem predecessor_prefix_part predecessor_letter predecessor_live_state predecessor_board predecessor_tracker
     predecessor_doc="$(resolve_predecessor)" || { err "no predecessor console doc found under $state_dir for '$name' — pass --doc <path>"; exit 1; }
-    # An explicit --doc / CONSOLE_DOC is used as given, with no existence
+    # An explicit --doc / CHIEF_DOC is used as given, with no existence
     # check inside resolve_predecessor (the auto-discovery branches already
     # only ever return a path that exists) — a typo with a plausible
     # basename must not be allowed to happily create a successor and a
@@ -1668,7 +1676,7 @@ cmd_next() {
     [ -n "$predecessor_tracker" ] || predecessor_tracker="none"
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
-    CONSOLE_BUS_PREDECESSOR="$predecessor_stem"
+    CHIEF_BUS_PREDECESSOR="$predecessor_stem"
     predecessor_prefix_part="${predecessor_stem%-"$name"}"
     if [ "$predecessor_prefix_part" = "$predecessor_stem" ]; then
         err "cannot parse predecessor doc name '$predecessor_base' (expected suffix '-$name.md')"

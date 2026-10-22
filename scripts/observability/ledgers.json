@@ -262,6 +262,19 @@
       "schema_version": 1,
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false
+    },
+    {
+      "id": "suite-runs",
+      "default_path": "~/.himmel/state/suite-runs.jsonl",
+      "override_env": "HIMMEL_SUITE_LEDGER",
+      "writer": "scripts/ci/suite-ledger.sh",
+      "readers": ["scripts/ci/suite-runs-summary.sh"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
     }
   ]
 }

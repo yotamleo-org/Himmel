@@ -24,7 +24,7 @@ if [ "${1:-}" = --predecessor ]; then predecessor="$2"; shift 2; fi
 [ "${1:-}" = -- ] && shift
 
 for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
-bus_cli="${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
+bus_cli="${CHIEF_BUS_CLI:-${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}}"
 bus_secs="${BUS_EXEC_SECS:-15}"
 case "$bus_secs" in
     ''|*[!0-9]*) bus_secs=15 ;;

@@ -25,20 +25,20 @@
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
 #                               the pool, then a second pass without it lists the
-#                               version backlog) (CONSOLE_WAIT_DISPATCH
+#                               version backlog) (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
-#                               CONSOLE_WAIT_TRACKER_STALE_MIN (default 30); once
+#                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
 #                               per streak (the class-change wake fires only once).
 #   WAKE predecessor-open rc=<n>  with --doc <console doc> whose first line says
 #                               `successor to <doc>.md`: the waiter runs
 #                               close-wrapped-leg.sh --console on that wrapped,
 #                               lock-free predecessor once and logs a Results
 #                               bullet; rc 3/4/6/7 retry silently next sample, and so does a
-#                               hung close (rc 124/137) until CONSOLE_WAIT_CLOSE_HANGS
+#                               hung close (rc 124/137) until CHIEF_WAIT_CLOSE_HANGS
 #                               (default 3) in a row, then it wakes (the streak shows
 #                               in the heartbeat as pred_hangs=<n>); any other
-#                               refusal wakes once (CONSOLE_WAIT_CLOSE = seam).
+#                               refusal wakes once (CHIEF_WAIT_CLOSE = seam).
 #   WAKE leg-event <line> out=<file>  with --doc and --legs-from (the script relay,
 #                               R0): a leg whose tails= is WRAPPED or acts= MERGED is
 #                               wrapped by `timeout 90 leg-event.sh --doc --fleet` on
@@ -47,7 +47,7 @@
 #                               subtree-alive refusal retries next sample; any other
 #                               ESCALATE or rc wakes once per bullet, <line> being
 #                               leg-event's first output line, the tick line after it
-#                               (its key is saved) (CONSOLE_WAIT_LEG_EVENT = seam). Every WAKE block ends with `absorbed since last
+#                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
 #                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` when
 #                               the relay absorbed anything, and the digest clears.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <console doc>
@@ -57,19 +57,19 @@
 #                               bullet. Once, and it prints only: nothing is sent.
 #   WAKE succession partial <k/n> silent <T> min   the tally stayed short for
 #   <tracker output>            --silent-min T minutes (default 20); the table names
-#                               the legs still out. Once. CONSOLE_WAIT_SUCCESSION_SEC
-#                               (default 15) paces the tally; CONSOLE_WAIT_TRACKER
+#                               the legs still out. Once. CHIEF_WAIT_SUCCESSION_SEC
+#                               (default 15) paces the tally; CHIEF_WAIT_TRACKER
 #                               replaces the tracker (tests).
 #   WAKE handover-budget <line>  with --doc <console doc>: console-budget.sh --title
 #                               <the doc's basename> says HANDOVER (150 turns or 30M
 #                               cache-read); once per streak, the marker clears on OK
-#                               (CONSOLE_WAIT_BUDGET replaces the command, tests).
+#                               (CHIEF_WAIT_BUDGET replaces the command, tests).
 #   WAKE status-sweep <line>    with --doc <console doc>: status-sweep.sh every 15 min
 #                               (WAIT_SWEEP_SEC), bounded at 60 s, woke only when it
 #                               moved a ticket or its failure signature is new.
 #   WAKE focus <state>          the same pass: focus-refresh.sh --status is FAILED:<stage>,
 #                               or DIRTY:<n>m with n of 10 or more; once per state.
-#   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
+#   WAKE tick-fail samples=<n>  CHIEF_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
 #                               until a sample succeeds.
@@ -94,7 +94,7 @@
 # wakes once, while an unchanged alarm stays silent; absent is not a failure.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
 # non-empty list wakes on first sight (`WAKE unowned-prs <list>`), again at once when
-# a PR joins it, and again every CONSOLE_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
+# a PR joins it, and again every CHIEF_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
 # stays non-empty. The marker `<inbox>.wait.unowned` (its body the PR numbers last
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
@@ -125,7 +125,7 @@
 # The text is the leg label, count and class ONLY. It also writes a page record
 # (denial-ack-lib.sh) BEFORE the send, which headed-arm-leg.sh reads to refuse
 # re-dispatching the leg until `ack-denial.sh <leg>` is run. Both steps fail
-# open; the sends of one wake share ONE CONSOLE_WAIT_PAGE_TIMEOUT budget (default
+# open; the sends of one wake share ONE CHIEF_WAIT_PAGE_TIMEOUT budget (default
 # 45 s, plus a 2 s kill grace), the most hung senders can delay the WAKE block;
 # a leg past the budget still gets its page record, just no message. It pages what THIS
 # waiter saw rise: a denial that lands while no waiter runs is not paged.
@@ -155,8 +155,8 @@
 #                      `state=sampling` while a tick runs, then on every
 #                      catchable exit `... state=exited exit=<reason>`.
 #                      A sample (a predecessor close, a tick, then bank) can take up to
-#                      CONSOLE_WAIT_CLOSE_TIMEOUT once, then twice
-#                      CONSOLE_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
+#                      CHIEF_WAIT_CLOSE_TIMEOUT once, then twice
+#                      CHIEF_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
 #                      Telegram line waits for it. A heartbeat older than that
 #                      plus a few polls, still
 #                      waiting or sampling, is a waiter that died without
@@ -172,7 +172,7 @@
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        leg-event's last output for that leg, tokens scrubbed.
 #   <inbox>.handover     handover mode: while it is fresh (younger
-#                        than CONSOLE_WAIT_HANDOVER_MIN, default 60) the waiter
+#                        than CHIEF_WAIT_HANDOVER_MIN, default 60) the waiter
 #                        skips tick/bank/page sampling and wakes only on Telegram.
 #                        That mutes classifier-denial pages for up to that long;
 #                        `rm <inbox>.handover` ends the mode early.
@@ -181,19 +181,19 @@
 #                        is held fresh the waiter prints one `WAKE relay-on-live
 #                        successor=<s>` block (relay-batch.sh's output), removes the
 #                        marker and exits 0. It works in handover mode. Seams:
-#                        CONSOLE_WAIT_LOCK_STATUS, CONSOLE_WAIT_RELAY (tests).
+#                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
 # 2 = usage; 3 = another waiter is already live on this inbox (its pid is named).
 #
-# Env: CONSOLE_WAIT_INTERVAL tick interval in seconds (default 180);
-# CONSOLE_WAIT_POLL_SEC inbox poll (default 1); CONSOLE_WAIT_TICK_TIMEOUT
+# Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
+# CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_TICK_TIMEOUT
 # seconds a tick may run before it counts as failed (default 120), so a hung
-# tick cannot freeze the Telegram path; CONSOLE_WAIT_FAIL_WAKE consecutive
-# failed samples before a tick-fail wake (default 3); CONSOLE_WAIT_TICK / CONSOLE_WAIT_BANK
-# replace tick.sh / the bank verdict command (tests); CONSOLE_WAIT_PAGE_CMD
+# tick cannot freeze the Telegram path; CHIEF_WAIT_FAIL_WAKE consecutive
+# failed samples before a tick-fail wake (default 3); CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE
+# replace tick.sh / the bank verdict command (tests); CHIEF_WAIT_PAGE_CMD
 # replaces the Telegram sender (called as `$CMD <text>`, tests) and
-# CONSOLE_WAIT_PAGE_TIMEOUT bounds it (seconds, default 45); HIMMEL_DENIAL_ACK_DIR
+# CHIEF_WAIT_PAGE_TIMEOUT bounds it (seconds, default 45); HIMMEL_DENIAL_ACK_DIR
 # relocates the page/ack records (default ~/.himmel/state/denial-acks).
 #
 # Leg messages (SendMessage) wake a console on their own; only the Telegram
@@ -211,6 +211,32 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
+# Every CHIEF_WAIT_* knob still reads its old name.
+# shellcheck source=../../lib/env-alias.sh
+. "$REPO/scripts/lib/env-alias.sh"
+alias_env CHIEF_WAIT_USAGE CONSOLE_WAIT_BANK
+alias_env CHIEF_WAIT_WORKER_EVENT CONSOLE_WAIT_LEG_EVENT
+alias_env CHIEF_WAIT_BUDGET CONSOLE_WAIT_BUDGET
+alias_env CHIEF_WAIT_BUDGET_TIMEOUT CONSOLE_WAIT_BUDGET_TIMEOUT
+alias_env CHIEF_WAIT_CLOSE CONSOLE_WAIT_CLOSE
+alias_env CHIEF_WAIT_CLOSE_HANGS CONSOLE_WAIT_CLOSE_HANGS
+alias_env CHIEF_WAIT_CLOSE_TIMEOUT CONSOLE_WAIT_CLOSE_TIMEOUT
+alias_env CHIEF_WAIT_DISPATCH CONSOLE_WAIT_DISPATCH
+alias_env CHIEF_WAIT_DISPATCH_TIMEOUT CONSOLE_WAIT_DISPATCH_TIMEOUT
+alias_env CHIEF_WAIT_FAIL_WAKE CONSOLE_WAIT_FAIL_WAKE
+alias_env CHIEF_WAIT_HANDOVER_MIN CONSOLE_WAIT_HANDOVER_MIN
+alias_env CHIEF_WAIT_INTERVAL CONSOLE_WAIT_INTERVAL
+alias_env CHIEF_WAIT_LOCK_STATUS CONSOLE_WAIT_LOCK_STATUS
+alias_env CHIEF_WAIT_PAGE_CMD CONSOLE_WAIT_PAGE_CMD
+alias_env CHIEF_WAIT_PAGE_TIMEOUT CONSOLE_WAIT_PAGE_TIMEOUT
+alias_env CHIEF_WAIT_POLL_SEC CONSOLE_WAIT_POLL_SEC
+alias_env CHIEF_WAIT_RELAY CONSOLE_WAIT_RELAY
+alias_env CHIEF_WAIT_SUCCESSION_SEC CONSOLE_WAIT_SUCCESSION_SEC
+alias_env CHIEF_WAIT_TICK CONSOLE_WAIT_TICK
+alias_env CHIEF_WAIT_TICK_TIMEOUT CONSOLE_WAIT_TICK_TIMEOUT
+alias_env CHIEF_WAIT_TRACKER CONSOLE_WAIT_TRACKER
+alias_env CHIEF_WAIT_TRACKER_STALE_MIN CONSOLE_WAIT_TRACKER_STALE_MIN
+alias_env CHIEF_WAIT_UNOWNED_REWAKE_MIN CONSOLE_WAIT_UNOWNED_REWAKE_MIN
 
 if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     echo "usage: console-wait.sh <inbox-file> [tick.sh args...]" >&2
@@ -222,10 +248,10 @@ inbox="$1"; shift
 if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
 hb_file="$inbox.wait"
 key_file="$inbox.wait.state"
-interval="${CONSOLE_WAIT_INTERVAL:-180}"
-poll="${CONSOLE_WAIT_POLL_SEC:-1}"
-tick_timeout="${CONSOLE_WAIT_TICK_TIMEOUT:-120}"
-tick_cmd="${CONSOLE_WAIT_TICK:-$HERE/tick.sh}"
+interval="${CHIEF_WAIT_INTERVAL:-180}"
+poll="${CHIEF_WAIT_POLL_SEC:-1}"
+tick_timeout="${CHIEF_WAIT_TICK_TIMEOUT:-120}"
+tick_cmd="${CHIEF_WAIT_TICK:-$HERE/tick.sh}"
 
 # One waiter per inbox: a second would double every wake. flock is atomic and
 # the lock dies with the waiter; every child runs with fd 9 closed, so a killed
@@ -315,8 +341,8 @@ fi
 # failed, timed out, or its last line is not one of the verdict tokens.
 bank_word() {
     local out
-    if [ -n "${CONSOLE_WAIT_BANK:-}" ]; then
-        out="$(bash "$CONSOLE_WAIT_BANK" 2>/dev/null)" || return 1
+    if [ -n "${CHIEF_WAIT_USAGE:-}" ]; then
+        out="$(bash "$CHIEF_WAIT_USAGE" 2>/dev/null)" || return 1
     else
         # gnu-ok: Linux-only kit (timeout). Same side-effect-free spelling tick.sh uses for its fleet census.
         out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 "$tick_timeout" \
@@ -508,16 +534,16 @@ denial_pages() {
 
 # page_send: <text> — ONE operator Telegram message via the bridge path the kit
 # already uses (merge-block-alert.sh: the first positive allowFrom of access.json,
-# console-route.ts reply). CONSOLE_WAIT_PAGE_CMD replaces it (tests; called as
-# `$CMD <text>`). Bounded by CONSOLE_WAIT_PAGE_TIMEOUT (default 45 s) and always
+# console-route.ts reply). CHIEF_WAIT_PAGE_CMD replaces it (tests; called as
+# `$CMD <text>`). Bounded by CHIEF_WAIT_PAGE_TIMEOUT (default 45 s) and always
 # rc 0: a failed or hung send never breaks the waiter or delays the wake past
 # the bound.
-page_timeout="${CONSOLE_WAIT_PAGE_TIMEOUT:-45}"
+page_timeout="${CHIEF_WAIT_PAGE_TIMEOUT:-45}"
 page_send() {  # <text> <deadline epoch>: the timeout is what is left of the batch budget
     local left=$(( $2 - $(date +%s) ))
     [ "$left" -ge 1 ] || return 0
-    if [ -n "${CONSOLE_WAIT_PAGE_CMD:-}" ]; then
-        timeout -k 2 "$left" "$CONSOLE_WAIT_PAGE_CMD" "$1" </dev/null >/dev/null 2>&1 9>&-  # gnu-ok: Linux-only kit
+    if [ -n "${CHIEF_WAIT_PAGE_CMD:-}" ]; then
+        timeout -k 2 "$left" "$CHIEF_WAIT_PAGE_CMD" "$1" </dev/null >/dev/null 2>&1 9>&-  # gnu-ok: Linux-only kit
     else
         # shellcheck disable=SC2016  # $1/$2 expand in the child bash, not here
         timeout -k 2 "$left" bash -c '. "$1" && chat="$(_mba_operator_chat)" && [ -n "$chat" ] && _mba_send "$chat" "$2"' \
@@ -545,7 +571,7 @@ page_denials() {
 underfill_file="$inbox.wait.underfill"
 unowned_file="$inbox.wait.unowned"
 unowned_none_streak=0
-dispatch_cmd="${CONSOLE_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
+dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
     [ -r "$dispatch_cmd" ] || return 0
@@ -553,11 +579,11 @@ underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    out="$(timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${lf[@]}" </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: a failed dispatch leaves out empty, the wake block still prints
+    out="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${lf[@]}" </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: a failed dispatch leaves out empty, the wake block still prints
     [ -z "$out" ] || printf '%s\n' "$out"
     # an empty pool leaves the slots idle: a second pass without --priority-pool-only lists the version backlog
     case $'\n'"$out"$'\n' in *$'\nPOOL-EMPTY\n'*)
-        timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
+        timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
     esac
 }
 
@@ -569,7 +595,7 @@ unowned_wake() {
     nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
     if [ ! -e "$unowned_file" ]; then
         wake=1
-    elif [ -z "$(find "$unowned_file" -mmin "-${CONSOLE_WAIT_UNOWNED_REWAKE_MIN:-60}" 2>/dev/null)" ]; then
+    elif [ -z "$(find "$unowned_file" -mmin "-${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}" 2>/dev/null)" ]; then
         wake=1
     else
         for num in $nums; do
@@ -592,7 +618,7 @@ unowned_wake() {
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
 # wakes once (above); after the first STALE the class never moves again, so the
 # marker holds the epoch the streak was first seen and the wake fires once the
-# streak passes CONSOLE_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
+# streak passes CHIEF_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
 tracker_stale_file="$inbox.wait.trackerstale"
 tracker_stale_wake() {
@@ -606,7 +632,7 @@ tracker_stale_wake() {
     [ "$(sed -n 2p "$tracker_stale_file" 2>/dev/null)" = woke ] && return 1
     since="$(sed -n 1p "$tracker_stale_file" 2>/dev/null)"
     case "$since" in ''|*[!0-9]*) return 1 ;; esac
-    stale_min="${CONSOLE_WAIT_TRACKER_STALE_MIN:-30}"
+    stale_min="${CHIEF_WAIT_TRACKER_STALE_MIN:-30}"
     case "$stale_min" in ''|*[!0-9]*) stale_min=30 ;; esac
     [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
     printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
@@ -619,8 +645,8 @@ tracker_stale_wake() {
 # Exit 3 (HANDOVER) wakes once per streak and sets the marker `<inbox>.wait.budget`,
 # which outlives the waiter; 0 (OK) clears it; 2 (unreadable) does neither.
 budget_file="$inbox.wait.budget"
-budget_cmd="${CONSOLE_WAIT_BUDGET:-$HERE/console-budget.sh}"
-budget_timeout="${CONSOLE_WAIT_BUDGET_TIMEOUT:-30}"
+budget_cmd="${CHIEF_WAIT_BUDGET:-$HERE/console-budget.sh}"
+budget_timeout="${CHIEF_WAIT_BUDGET_TIMEOUT:-30}"
 budget_transcript=""; budget_resolved=""
 budget_wake() {
     local out rc title
@@ -694,9 +720,9 @@ sweep_wake() {
 # marker and prints the wake (rc 0). The marker `<inbox>.wait.predecessor` (body:
 # `<state>:<doc>`) outlives the waiter, so a done predecessor is never asked twice.
 pred_file="$inbox.wait.predecessor"
-close_cmd="${CONSOLE_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
+close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
 pred_hangs=0
-pred_hang_max="${CONSOLE_WAIT_CLOSE_HANGS:-3}"
+pred_hang_max="${CHIEF_WAIT_CLOSE_HANGS:-3}"
 case "$pred_hang_max" in ''|*[!0-9]*|0) pred_hang_max=3 ;; esac
 pred_hang_max=$((10#$pred_hang_max))
 predecessor_close() { # prints the WAKE block and returns 0 only for an unexpected refusal
@@ -709,7 +735,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     [ -f "$pdoc" ] || return 1
     [ "$(sed 's/^[a-z]*://' "$pred_file" 2>/dev/null)" = "$pdoc" ] && return 1
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
-    timeout -k 5 "${CONSOLE_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --console "$pdoc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
+    timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --console "$pdoc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
     case "$rc" in
         0) printf 'closed:%s\n' "$pdoc" > "$pred_file"
            bash "$HERE/append-results.sh" "$console_doc" "LIVE — predecessor console ${pred%.md} was WRAPPED and lock-free; the waiter closed its window" >/dev/null 2>&1 || true ;;
@@ -738,7 +764,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
-leg_event_cmd="${CONSOLE_WAIT_LEG_EVENT:-$HERE/leg-event.sh}"
+leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/leg-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
     local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "
@@ -848,7 +874,7 @@ succ_file="$inbox.wait.succession"
 pending=""
 r0_fold=""; r0_refold=""
 fail_streak=0
-fail_wake="${CONSOLE_WAIT_FAIL_WAKE:-3}"
+fail_wake="${CHIEF_WAIT_FAIL_WAKE:-3}"
 next_tick=0
 heartbeat sampling
 # Announce once per inbox identity, not per waiter process (each wake re-arms).
@@ -876,9 +902,9 @@ while :; do
     # --succession (the console forgot to drop it) does not wake again at once.
     # swallow-ok: a missing .woke marker reads empty, so the wake is simply not suppressed
     if [ -n "$succession" ] && [ "$(sed -n 1p "$succ_file.woke" 2>/dev/null)" != "$succession" ] && [ "$(date +%s)" -ge "${next_succ:-0}" ]; then
-        next_succ=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
+        next_succ=$(( $(date +%s) + ${CHIEF_WAIT_SUCCESSION_SEC:-15} ))
         [ -s "$succ_file" ] || date +%s > "$succ_file" 2>/dev/null
-        succ_out="$(timeout -k 2 30 bash "${CONSOLE_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit; swallow-ok: a tracker failure prints no summary and takes the INCOMPLETE branch below
+        succ_out="$(timeout -k 2 30 bash "${CHIEF_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit; swallow-ok: a tracker failure prints no summary and takes the INCOMPLETE branch below
         succ_sum="$(printf '%s\n' "$succ_out" | grep -E '^(COMPLETE|INCOMPLETE) ' | head -n 1)"
         case "$succ_sum" in
             COMPLETE*)
@@ -901,15 +927,15 @@ while :; do
     # waiter sends no SendMessage (relay-batch writes a claudex leg's inbox itself, as it
     # does when the console runs it); the console sends each SENDMESSAGE line.
     if [ -n "$console_doc" ] && [ -s "$inbox.relay-on-live" ] && [ "$(date +%s)" -ge "${next_rol:-0}" ]; then
-        next_rol=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
+        next_rol=$(( $(date +%s) + ${CHIEF_WAIT_SUCCESSION_SEC:-15} ))
         rol_succ="$(sed -n 1p "$inbox.relay-on-live" 2>/dev/null)"  # swallow-ok: an empty value skips the relay below
         rol_doc="$(sed -n 2p "$inbox.relay-on-live" 2>/dev/null)"  # swallow-ok: an empty value skips the relay below
         if [ -n "$rol_succ" ] && [ -n "$rol_doc" ]; then
-            bash "${CONSOLE_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$rol_doc" </dev/null >/dev/null 2>&1 9>&-; rol_rc=$?
+            bash "${CHIEF_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$rol_doc" </dev/null >/dev/null 2>&1 9>&-; rol_rc=$?
             if [ "$rol_rc" -eq 11 ]; then
                 # relay-batch may deliver a claudex leg by inbox-send (never re-run it: a retry
                 # would resend), so a failure still wakes, carrying its rc and output for the console.
-                rol_out="$(timeout -k 2 60 bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?  # gnu-ok: Linux-only kit
+                rol_out="$(timeout -k 2 60 bash "${CHIEF_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?  # gnu-ok: Linux-only kit
                 if [ "$rol_brc" -eq 0 ]; then
                     printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
                 else
@@ -925,14 +951,14 @@ while :; do
     # successor validated) puts this waiter in handover mode: no tick, bank or
     # page work (an outgoing console only waits for LIVE; a tick wake costs it
     # a full-context turn), while the Telegram check above still wakes it.
-    # The marker only counts while fresh (CONSOLE_WAIT_HANDOVER_MIN, default 60):
+    # The marker only counts while fresh (CHIEF_WAIT_HANDOVER_MIN, default 60):
     # a launch that failed or never ran must not leave this console unmonitored.
     handover_live=""
-    [ -e "$inbox.handover" ] && handover_live="$(find "$inbox.handover" -mmin "-${CONSOLE_WAIT_HANDOVER_MIN:-60}" 2>/dev/null)"
+    [ -e "$inbox.handover" ] && handover_live="$(find "$inbox.handover" -mmin "-${CHIEF_WAIT_HANDOVER_MIN:-60}" 2>/dev/null)"
     if [ -z "$handover_live" ] && [ "$(date +%s)" -ge "$next_tick" ]; then
         next_tick=$(( $(date +%s) + interval ))
         # The Telegram path is blocked while a tick runs (up to twice
-        # CONSOLE_WAIT_TICK_TIMEOUT with the bank read); say so in the heartbeat.
+        # CHIEF_WAIT_TICK_TIMEOUT with the bank read); say so in the heartbeat.
         heartbeat sampling
         if [ -n "$legs_from" ]; then
             new_hash="$(args_hash_of "$@" 9>&-)"

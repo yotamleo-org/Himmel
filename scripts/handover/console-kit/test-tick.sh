@@ -201,7 +201,7 @@ export TICK_STATION_STATE="$W/station-sync.state"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
-# ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
+# ciq= keeps the last tick's waiting state under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
 # ciguard= runs this probe; the default is a missing one (ciguard=unknown), never a live fetch.
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
@@ -268,7 +268,9 @@ cachettl_cases() (
     not_contains 'a missing transcript never invents an idle leg' "$out" ' cachettl='
     [ "$fails" -eq 0 ]
 )
-if ! cachettl_cases; then fails=$((fails + 1)); fi
+if [ "${1:-}" != --ciq-sampled ]; then
+    if ! cachettl_cases; then fails=$((fails + 1)); fi
+fi
 if [ "${1:-}" = --cachettl-only ]; then
     printf '\n%d failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]; exit $?
@@ -292,6 +294,46 @@ sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
 not_contains 'one proven sampled breach does not raise SATURATED' "$sampled_tick" 'SATURATED'
 sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
 contains 'two proven sampled breaches still raise SATURATED' "$sampled_tick" 'ciq=64/60,mac=0/5,q=32,wait=10m,SATURATED'
+
+# Running jobs alone never establish waiting, even above the reporting cap.
+rm -rf "$W/state"
+sampled_out='ci-queue: jobs_in_progress=136/60 macos=0/5 queued=0 oldest_wait=0m'
+STUB_CIQ_OUT="$sampled_out" bash "$SUT" >/dev/null 2>&1
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'running jobs preserve the reported count above the cap' "$sampled_tick" 'ciq=136/60,mac=0/5,q=0,wait=0m'
+not_contains 'two above-cap ticks without waiting never saturate' "$sampled_tick" 'SATURATED'
+
+# Waiting is sufficient below the cap, including a labelled partial sample.
+rm -rf "$W/state"
+sampled_out=$'ci-queue: jobs_in_progress=13/500 macos=0/5 queued=1 oldest_wait=0m\nci-queue: sampled=true'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'one below-cap waiting tick is not yet saturated' "$sampled_tick" 'SATURATED'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'two below-cap waiting ticks saturate' "$sampled_tick" 'ciq=13/500,mac=0/5,q=1,wait=0m,SATURATED'
+
+sampled_out='ci-queue: jobs_in_progress=500/500 macos=0/5 queued=1 oldest_wait=0m'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'waiting at the cap still saturates' "$sampled_tick" 'ciq=500/500,mac=0/5,q=1,wait=0m,SATURATED'
+
+sampled_out='ci-queue: jobs_in_progress=136/500 macos=0/5 queued=0 oldest_wait=0m'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'cleared waiting resets saturation despite running jobs' "$sampled_tick" 'SATURATED'
+sampled_out='ci-queue: jobs_in_progress=13/500 macos=0/5 queued=1 oldest_wait=0m'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'waiting after a clear starts a new streak' "$sampled_tick" 'SATURATED'
+sampled_out='ci-queue: unknown'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'unknown retains the waiting streak without certifying counts' "$sampled_tick" 'ciq=unknown'
+sampled_out='ci-queue: jobs_in_progress=13/500 macos=0/5 queued=1 oldest_wait=0m'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'unknown does not clear a below-cap waiting streak' "$sampled_tick" 'ciq=13/500,mac=0/5,q=1,wait=0m,SATURATED'
+
+rm -rf "$W/state"
+sampled_out='ci-queue: jobs_in_progress=0/500 macos=0/5 queued=0 oldest_wait=2m'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'one oldest-wait-only tick is not yet saturated' "$sampled_tick" 'SATURATED'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'oldest wait alone establishes persistent waiting' "$sampled_tick" 'ciq=0/500,mac=0/5,q=0,wait=2m,SATURATED'
 rm -f "$W/repo/scripts/ci/queue-latency.sh"
 rm -rf "$W/state"
 if [ "${1:-}" = --ciq-sampled ]; then

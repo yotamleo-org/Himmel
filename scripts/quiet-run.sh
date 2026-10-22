@@ -191,6 +191,14 @@ else
     CHILD=$!
     wait "$CHILD" || RC=$?
 fi
+if [ "$LABEL" = "suite" ]; then
+    LEDGER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci/suite-ledger.sh"
+    # shellcheck source=ci/suite-ledger.sh
+    # shellcheck disable=SC1091
+    if [ -r "$LEDGER_LIB" ] && . "$LEDGER_LIB" 2>/dev/null; then
+        suite_ledger_append "${SUITE_PATH:-$*}" "$RC" "$(( $(date +%s) - START ))" || true
+    fi
+fi
 # The one-line `OK quiet-run <label> (...)` / `ERR quiet-run <label> exit=<rc> (...)`
 # shape is read by scripts/eval/lane-quality/trajectory.py as a test run's outcome
 #  - keep it stable.

@@ -301,30 +301,39 @@ not_contains "happy path: native-1M default model gets no [1m] suffix" "$rec1" "
 log1="$(cat "$d1/log" 2>/dev/null || true)"
 contains "happy path: log records the default context (1m)" "$log1" "context=1m (default)"
 
-# --- 1b. CONSOLE_CONTEXT=1m opts into 1m without a positional -
+# --- 1b. CHIEF_CONTEXT=1m opts into 1m without a positional -
 d1b="$tmp/c1b"; mk_stub "$d1b" 1 alive "HIMMEL-9999b-leg"
 rc1b=0
-CONSOLE_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "HIMMEL-9999b-leg" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "HIMMEL-9999b-leg" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
 wait_record "$d1b" || true
 rec1b="$(cat "$d1b/record" 2>/dev/null || true)"
-check "CONSOLE_CONTEXT=1m: exit 0" "$rc1b" "0"
-contains     "CONSOLE_CONTEXT=1m: passes autocompact auto"   "$rec1b" "--autocompact auto"
-not_contains "CONSOLE_CONTEXT=1m: no autocompact 200000"     "$rec1b" "--autocompact 200000"
+check "CHIEF_CONTEXT=1m: exit 0" "$rc1b" "0"
+contains     "CHIEF_CONTEXT=1m: passes autocompact auto"   "$rec1b" "--autocompact auto"
+not_contains "CHIEF_CONTEXT=1m: no autocompact 200000"     "$rec1b" "--autocompact 200000"
 log1b="$(cat "$d1b/log" 2>/dev/null || true)"
 # Spec §2.4 keys on `context=1m (explicit)`; the emitter used to
-# say `(CONSOLE_CONTEXT=1m)`. One spelling, the spec's.
-contains     "CONSOLE_CONTEXT=1m: log spells the source (explicit)" "$log1b" "context=1m (explicit)"
-not_contains "CONSOLE_CONTEXT=1m: log no longer spells the mechanism as the source" "$log1b" "(CONSOLE_CONTEXT=1m)"
+# say `(CHIEF_CONTEXT=1m)`. One spelling, the spec's.
+contains     "CHIEF_CONTEXT=1m: log spells the source (explicit)" "$log1b" "context=1m (explicit)"
+not_contains "CHIEF_CONTEXT=1m: log no longer spells the mechanism as the source" "$log1b" "(CHIEF_CONTEXT=1m)"
+
+# --- 1b-old. the old name CONSOLE_CONTEXT=1m still opts in -
+d1bo="$tmp/c1bo"; mk_stub "$d1bo" 1 alive "HIMMEL-9999bo-leg"
+rc1bo=0
+CONSOLE_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "HIMMEL-9999bo-leg" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$?
+wait_record "$d1bo" || true
+rec1bo="$(cat "$d1bo/record" 2>/dev/null || true)"
+check "CONSOLE_CONTEXT=1m (old name): exit 0" "$rc1bo" "0"
+contains "CONSOLE_CONTEXT=1m (old name): passes autocompact auto" "$rec1bo" "--autocompact auto"
 
 # --- 1c. positional 1m needs no environment workaround ----
 d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-leg"
-outc1c=$(env -u CONSOLE_CONTEXT KONSOLE_CMD="$d1c/konsole" PGREP_CMD="$d1c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1c/locks" HEADED_ARM_PROC="$d1c/proc" \
+outc1c=$(env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT KONSOLE_CMD="$d1c/konsole" PGREP_CMD="$d1c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1c/locks" HEADED_ARM_PROC="$d1c/proc" \
     bash "$SCRIPT" --dry-run "HIMMEL-9999c-leg" "some/handover-doc.md" "$d1c/signal-never" "$PAST" "$d1c/log" claude-opus-5 1m 2>&1)
 rcc1c=$?
 check "positional 1m without env: exit 0" "$rcc1c" "0"
 contains "positional 1m without env: explicit source" "$outc1c" "context=1m (explicit)"
 contains "positional 1m without env: auto" "$outc1c" "--autocompact auto"
-outc1c=$(CONSOLE_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "HIMMEL-9999c-leg" "some/handover-doc.md" "$d1c/signal-never" "$PAST" claude-opus-5 standard 2>&1)
+outc1c=$(CHIEF_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "HIMMEL-9999c-leg" "some/handover-doc.md" "$d1c/signal-never" "$PAST" claude-opus-5 standard 2>&1)
 check "positional standard: exit 0" "$?" "0"
 wait_record "$d1c" || true
 contains "positional standard: argv opts down" "$(cat "$d1c/record" 2>/dev/null || true)" "--autocompact 200000"
@@ -383,7 +392,7 @@ for ambient in profile resolver both stale; do
     stale) ambient_env+=(HEADED_ARM_CONTEXT_PROFILE=design HEADED_ARM_LEG_PROFILES="$HERE/../lanes/plugin-profiles.mjs" HEADED_ARM_CONTEXT_PID=1) ;;
   esac
   rc=0
-  out="$(env -u CONSOLE_CONTEXT "${ambient_env[@]}" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
+  out="$(env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT "${ambient_env[@]}" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
     bash "$SCRIPT" --dry-run HIMMEL-4094-console some/doc.md /tmp/nosig 99999999999 "$tmp/ambient-$ambient.log" claude-sonnet-5 standard 2>&1)" || rc=$?
   check "ambient profile inputs ($ambient): direct standard arm succeeds" "$rc" "0"
   contains "ambient profile inputs ($ambient): console opt-down wins" "$out" "--autocompact 200000"
@@ -401,7 +410,7 @@ ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag>
     stale)  pidx='export HEADED_ARM_CONTEXT_PID=1' ;;
     *)      pidx=':' ;;
   esac
-  env -u CONSOLE_CONTEXT HEADED_ARM_CONTEXT_PROFILE=leg-impl HEADED_ARM_LEG_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
+  env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT HEADED_ARM_CONTEXT_PROFILE=leg-impl HEADED_ARM_LEG_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
     HEADED_ARM_AB_AUTOCOMPACT="$val" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
     bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-leg" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" claude-sonnet-5 "$ctx" 2>&1
 }
@@ -426,7 +435,7 @@ not_contains "A/B arm (value 300000): no launch argv" "$out" "--autocompact 3000
 # --- 1d. positional 1m WITH the env is accepted ---------------
 d1d="$tmp/c1d"; mk_stub "$d1d" 1 alive "HIMMEL-9999d-leg"
 rc1d=0
-CONSOLE_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "HIMMEL-9999d-leg" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "HIMMEL-9999d-leg" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
 wait_record "$d1d" || true
 rec1d="$(cat "$d1d/record" 2>/dev/null || true)"
 check "positional 1m with env: exit 0" "$rc1d" "0"
@@ -443,7 +452,7 @@ run_console_arm() {
 }
 d1e="$tmp/c1e"; mk_stub "$d1e" 1 alive "HIMMEL-9999e-console"; mkdir -p "$d1e/cache"
 rc1e=0
-run_console_arm "$d1e" "HIMMEL-9999e-console" -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1e=$?
+run_console_arm "$d1e" "HIMMEL-9999e-console" -u CHIEF_CONTEXT -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1e=$?
 wait_record "$d1e" || true
 check "durable record, default: exit 0 (precondition: the launch happened)" "$rc1e" "0"
 if [ -s "$d1e/record" ]; then echo "ok - durable record, default: konsole IS invoked (precondition)"
@@ -456,7 +465,7 @@ contains "durable record, default: records autocompact" "$rec1e" " autocompact=a
 
 d1f="$tmp/c1f"; mk_stub "$d1f" 1 alive "HIMMEL-9999f-console"; mkdir -p "$d1f/cache"
 rc1f=0
-run_console_arm "$d1f" "HIMMEL-9999f-console" CONSOLE_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
+run_console_arm "$d1f" "HIMMEL-9999f-console" CHIEF_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
 wait_record "$d1f" || true
 check "durable record, 1m opt-in: exit 0 (precondition: the launch happened)" "$rc1f" "0"
 rec1f="$(cat "$d1f/cache/launch-logs/HIMMEL-9999f-console.log" 2>/dev/null || true)"
@@ -467,7 +476,7 @@ contains "durable record, 1m opt-in: records autocompact" "$rec1f" " autocompact
 # a non-console arm (no --role) writes no durable context record
 d1g="$tmp/c1g"; mk_stub "$d1g" 1 alive "HIMMEL-9999g-leg"; mkdir -p "$d1g/cache"
 rc1g=0
-env -u CONSOLE_CONTEXT KONSOLE_CMD="$d1g/konsole" PGREP_CMD="$d1g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1g/locks" HEADED_ARM_PROC="$d1g/proc" HIMMELCTL_CACHE_DIR="$d1g/cache" \
+env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT KONSOLE_CMD="$d1g/konsole" PGREP_CMD="$d1g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1g/locks" HEADED_ARM_PROC="$d1g/proc" HIMMELCTL_CACHE_DIR="$d1g/cache" \
     bash "$SCRIPT" "HIMMEL-9999g-leg" "some/handover-doc.md" "$d1g/signal-never" "$PAST" "$d1g/log" >/dev/null 2>&1 || rc1g=$?
 wait_record "$d1g" || true
 check "no --role: exit 0 (precondition: the launch happened)" "$rc1g" "0"
@@ -477,7 +486,7 @@ else echo "ok - no --role: a non-console arm writes no durable context record"; 
 # a launch record that cannot be written never stops the launch, and says so
 d1h="$tmp/c1h"; mk_stub "$d1h" 1 alive "HIMMEL-9999h-console"; : > "$d1h/cache"
 rc1h=0
-run_console_arm "$d1h" "HIMMEL-9999h-console" -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1h=$?
+run_console_arm "$d1h" "HIMMEL-9999h-console" -u CHIEF_CONTEXT -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1h=$?
 wait_record "$d1h" || true
 check "unwritable launch-logs: launch still exits 0" "$rc1h" "0"
 contains "unwritable launch-logs: WARN names the gap in the arm log" "$(cat "$d1h/log" 2>/dev/null || true)" "WARN context record NOT written"

@@ -34,6 +34,6 @@ if [ "$#" -ne 4 ]; then
 fi
 
 if ! console_context_write_record "$1" "$2" "$3" "$4"; then
-    echo "record-launch: WARN launch record NOT written under ${CONSOLE_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context will read as unknown)" >&2
+    echo "record-launch: WARN launch record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context will read as unknown)" >&2
 fi
 exit 0

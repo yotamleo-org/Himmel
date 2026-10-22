@@ -100,14 +100,16 @@ The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR
 | B5 | `setup/user-scope-claude-md-template.md` | 1 | 0 | 5 → 4 | 1 → 1 | 0 → 0 |
 | B5 | `setup/vm-mode.md` | 1 | 0 | 3 → 2 | 0 → 0 | 0 → 0 |
 | B5 | `setup/profiles/README.md` | 10 | 0 | 13 → 1 | 3 → 3 | 0 → 0 |
+| B6 last batch | `setup/vms.md` | 25 | 0 | 32 → 4 | 1 → 1 | 8 → 8 |
+| B6 | `adoption-trail.html` | 79 | 0 | 128 → 10 | 8 → 8 | 14 → 14 |
 
 The dash rule worked against the voice sample. Each page used dashes heavily, so the sample override would have kept them, but most of those dashes joined clauses that needed a comma, colon or full stop. The pass kept dashes in quoted rules and table cells and replaced the rest. `system-design.md` had already been through `unslop` and shows the smallest change: three passages, mostly table cells.
 
-B4 (reference pages) and `tooling-catalog.md` stay out of the pass by ruling. `setup/vms.md` and `adoption-trail.html` land in a last batch once the open PRs that hold them merge.
+B4 (reference pages) and `tooling-catalog.md` stay out of the pass by ruling. `setup/vms.md` and `adoption-trail.html` landed in the last batch, B6, after the open PRs that held them merged. The `adoption-trail.html` dash count includes `&mdash;` entities; the dashes it keeps sit in CSS, script code, a heading, quoted output, a phrase its test suite asserts, and two lines carrying a term the old-term gate flags.
 
 ## Pilot verdict
 
-Totals over 44 pages: 875 passages kept, 4 dropped, em-dashes 1403 → 311. Not-X-but-Y and stock-word counts barely moved; nearly every kept change was a dash or bold-label fix that `unslop` leaves alone (deviation 3). The exit test asked for documents where `/humanizer` changed something `/unslop` missed and the operator kept it, and every batch merged with those changes, so the REJECT condition is not met. The verdict comes on day 6 of the two-week window the exit test names (vendored 2026-10-16); it closes early by chief ruling, on 44 pages of measured passes instead of two weeks of ad-hoc use. Verdict: **ADOPT, opt-in**. It stays out of every default profile.
+Totals over 46 pages: 979 passages kept, 4 dropped, em-dashes 1563 → 325. Not-X-but-Y and stock-word counts barely moved; nearly every kept change was a dash or bold-label fix that `unslop` leaves alone (deviation 3). The exit test asked for documents where `/humanizer` changed something `/unslop` missed and the operator kept it, and every batch merged with those changes, so the REJECT condition is not met. The verdict comes on day 6 of the two-week window the exit test names (vendored 2026-10-16); it closes early by chief ruling, on 46 pages of measured passes instead of two weeks of ad-hoc use. Verdict: **ADOPT, opt-in**. It stays out of every default profile.
 
 ## Decision
 

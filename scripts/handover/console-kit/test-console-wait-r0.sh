@@ -19,8 +19,8 @@
 #         move N1's wrap made: N2's change still wakes
 #   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
 #
-# tick.sh, the bank verdict and leg-event.sh are stubbed (CONSOLE_WAIT_TICK,
-# CONSOLE_WAIT_BANK, CONSOLE_WAIT_LEG_EVENT): nothing closes a window here.
+# tick.sh, the bank verdict and leg-event.sh are stubbed (CHIEF_WAIT_TICK,
+# CHIEF_WAIT_USAGE, CHIEF_WAIT_WORKER_EVENT): nothing closes a window here.
 #
 # Linux-only: console-wait.sh has no .ps1 twin by design; this suite uses GNU
 # timeout, so run-shell-tests.sh skips it off-Linux.
@@ -28,7 +28,7 @@
 # Run: bash scripts/handover/console-kit/test-console-wait-r0.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WAIT="${CONSOLE_WAIT:-$HERE/console-wait.sh}"
+WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/console-wait.sh}}"
 
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -76,11 +76,11 @@ cat > "$STUB/budget-off.sh" <<'EOF'
 exit 2
 EOF
 export STUB
-export CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
-export CONSOLE_WAIT_LEG_EVENT="$STUB/leg-event.sh" CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
+export CHIEF_WAIT_WORKER_EVENT="$STUB/leg-event.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
-export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2 CONSOLE_WAIT_FAIL_WAKE=1000
+export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
 # tick_line <tails> [acts]: a tick line with that tails= (and acts=, when given).

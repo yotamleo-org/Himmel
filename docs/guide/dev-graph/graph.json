@@ -1377,11 +1377,11 @@
       "from": "c.wait",
       "to": "c.next",
       "kind": "decision",
-      "condition": "context fill at CONSOLE_FILL_PERCENT (45) or the handover-budget WAKE",
+      "condition": "context fill at CHIEF_FILL_PERCENT (45) or the handover-budget WAKE",
       "sources": [
         {
           "file": "scripts/handover/console/chief.sh",
-          "anchor": "fill_percent=\"${CONSOLE_FILL_PERCENT:-45}\""
+          "anchor": "fill_percent=\"${CHIEF_FILL_PERCENT:-45}\""
         }
       ],
       "path": {

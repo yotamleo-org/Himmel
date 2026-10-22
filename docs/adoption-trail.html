@@ -295,27 +295,56 @@
 
       <div class="answer">
         <h4>2. The install overwrites files in your project's scripts folder</h4>
-        <p>The starter install copies 23 helper scripts into the project's
+        <p>The starter install copies 52 helper scripts into the project's
         <span class="mono">scripts/</span> folder:
         <span class="mono">hooks/auto-approve-safe-bash.sh</span>,
         <span class="mono">hooks/block-edit-on-main.sh</span>,
         <span class="mono">hooks/block-read-secrets.sh</span>,
+        <span class="mono">hooks/lib/guard-unwrap.sh</span>,
+        <span class="mono">hooks/lib/shell-tokenize.sh</span>,
         <span class="mono">hooks/check-commit-msg.sh</span>,
         <span class="mono">hooks/check-worktree-isolation.sh</span>,
         <span class="mono">hooks/check-push-target.sh</span>,
         <span class="mono">hooks/check-no-force-push.sh</span>,
         <span class="mono">guardrails/lib.sh</span>,
         <span class="mono">guardrails/guard-gh.sh</span>,
+        <span class="mono">lib/guard-empty-expansion.sh</span>,
+        <span class="mono">lib/bash-ast.sh</span>,
+        <span class="mono">lib/project-mode.sh</span>,
+        <span class="mono">lib/load-dotenv.sh</span>,
         <span class="mono">lib/py-armor.sh</span>,
         <span class="mono">lib/forge.sh</span>,
         <span class="mono">lib/forge-github.sh</span>,
         <span class="mono">lib/forge-bitbucket.sh</span>,
+        <span class="mono">lib/cr-trigger-ledger.sh</span>,
         <span class="mono">lib/coderabbit-trigger-ledger.sh</span>,
+        <span class="mono">lib/cr-available.sh</span>,
         <span class="mono">lib/coderabbit-available.sh</span>,
         <span class="mono">lib/branch-shipped.sh</span>,
         <span class="mono">lib/worktree-inuse.sh</span>,
         <span class="mono">lib/worktree-fresh-lock.sh</span>,
+        <span class="mono">lib/git-clean.sh</span>,
         <span class="mono">check-ci.sh</span>,
+        <span class="mono">lib/check-ci-watch.sh</span>,
+        <span class="mono">lib/coderabbit-body-findings.sh</span>,
+        <span class="mono">lib/coderabbit-signal.sh</span>,
+        <span class="mono">lib/gh-ci-cache.sh</span>,
+        <span class="mono">lib/gh-graphql-budget.sh</span>,
+        <span class="mono">lib/gh-read.sh</span>,
+        <span class="mono">lib/merge-block-alert.sh</span>,
+        <span class="mono">lib/required-checks.sh</span>,
+        <span class="mono">lib/review-ledger-evidence.sh</span>,
+        <span class="mono">lib/ticket-status.sh</span>,
+        <span class="mono">lib/timeout-bin.sh</span>,
+        <span class="mono">lib/prim.sh</span>,
+        <span class="mono">lib/canon-path.sh</span>,
+        <span class="mono">lib/usage-preflight.sh</span>,
+        <span class="mono">lib/bank-preflight.sh</span>,
+        <span class="mono">lib/chokepoint-seam-guard.sh</span>,
+        <span class="mono">lib/env-alias.sh</span>,
+        <span class="mono">lib/usage-lift.sh</span>,
+        <span class="mono">lib/usage-cache-identity.sh</span>,
+        <span class="mono">lib/fleet-reservation-key.sh</span>,
         <span class="mono">clean-garden.sh</span>,
         <span class="mono">worktree.sh</span>,
         <span class="mono">clean.sh</span> and
@@ -437,8 +466,8 @@ claude --version</pre>
       <div class="answer" id="what-is-this">
         <span class="qno">Question 1</span>
         <h3>What is this?</h3>
-        <p>Himmel is a set of add-ons for Claude Code &mdash; Anthropic's AI
-        coding assistant, which you run in a terminal &mdash; that makes the
+        <p>Himmel is a set of add-ons for Claude Code (Anthropic's AI
+        coding assistant, which you run in a terminal) that makes the
         assistant safer and more repeatable to work with. It does this with
         small scripts that fire automatically and refuse risky actions
         (editing your main branch, reading your secret files, pushing
@@ -451,7 +480,7 @@ claude --version</pre>
         tool, and it can refuse the action. A <dfn>gate</dfn> is a check that
         must pass before a commit, a push or a merge is allowed. A
         <dfn>worktree</dfn> is a second working folder on its own git branch
-        that shares your repository's history &mdash; the &ldquo;separate
+        that shares your repository's history: the &ldquo;separate
         working folder&rdquo; above. A <dfn>handover</dfn> is a written note
         that lets a later session pick up where an earlier one stopped.</p>
         <h4>Who it is for</h4>
@@ -472,15 +501,15 @@ claude --version</pre>
         <span class="mono">himmelctl install</span> command prints only a
         one-line summary and writes nothing; it does not list the files.
         To preview the file-level plan instead, run the installer script it
-        wraps &mdash; the command is at the end of
+        wraps; the command is at the end of
         <a href="#undo">question 3</a>, once you also know how to undo it.</p>
         <h4>In the project folder you run it from</h4>
         <ul>
-          <li>Copies 23 helper scripts into the project's
+          <li>Copies 52 helper scripts into the project's
           <span class="mono">scripts/</span> folder (the hooks and the
           worktree commands), <b>overwriting any file of the same name</b>
-          &mdash; see item 2 of
-          <a href="#before">Before you install</a> for the list.</li>
+          (see item 2 of
+          <a href="#before">Before you install</a> for the list).</li>
           <li>Adds to the project's
           <span class="mono">.claude/settings.json</span>: three hook entries
           (they refuse edits on your default branch, refuse reading secret
@@ -490,8 +519,8 @@ claude --version</pre>
           <span class="mono">HIMMEL_REPO</span> setting that points back at
           the himmel download, plus one more environment setting the status
           line needs (<span class="mono">CLAUDE_HUD_ALLOW_EXTRA_CMD</span>).</li>
-          <li>Places three git hooks in <span class="mono">.git/hooks</span>
-          &mdash; one before a commit, one on the commit message, one before
+          <li>Places three git hooks in <span class="mono">.git/hooks</span>:
+          one before a commit, one on the commit message, one before
           a push. If you already had git hooks, each is saved next to it as
           <span class="mono">&lt;hook&gt;.himmel-backup</span> and put back
           on uninstall. If the <span class="mono">pre-commit</span> tool that
@@ -538,8 +567,8 @@ claude --version</pre>
         Obsidian), does not arm any <dfn>cadence</dfn> (a recurring
         scheduled job that himmel sets up with your operating system's
         scheduler), does not set up the Telegram bridge, and leaves the
-        optional review <dfn>lanes</dfn> off. A lane is a backend &mdash; an
-        AI model plus its tooling &mdash; that himmel can run work on; the
+        optional review <dfn>lanes</dfn> off. A lane is a backend (an
+        AI model plus its tooling) that himmel can run work on; the
         review lanes give a second opinion on your changes, and without them
         review runs on Claude alone.</p>
         <h4>What changes about how you work</h4>
@@ -560,7 +589,7 @@ claude --version</pre>
         <p>Prefer to gate every project on the machine instead of one? Use
         <span class="mono">--scope user</span>, which wires the same hooks
         into <span class="mono">~/.claude/settings.json</span> so they apply
-        to every project you open &mdash; including ones you did not mean to
+        to every project you open, including ones you did not mean to
         gate. Try project scope first.</p>
       </div>
 
@@ -593,8 +622,8 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
           <span class="mono">.claude/settings.json</span> and in
           <span class="mono">~/.claude/settings.json</span>; your own
           settings keys are left as they are.</li>
-          <li>The plugins from himmel's marketplaces &mdash; this includes
-          any of them you also enabled for your whole account &mdash; and
+          <li>The plugins from himmel's marketplaces (this includes
+          any of them you also enabled for your whole account) and
           then the marketplaces that have no plugins left. If install kept a
           record of which ones were actually its own (its provenance
           ledger), that record decides; without it, uninstall keeps every
@@ -610,14 +639,14 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
           <span class="mono">~/.local/bin</span>.</li>
           <li>Claude Code's trust entry for the project
           (<span class="mono">~/.claude.json</span>), when this install
-          created it &mdash; install's own record is what tells that apart
+          created it; install's own record is what tells that apart
           from a trust entry you already had; without that record, or if
           you have since changed it, it is left alone.</li>
         </ul>
         <p>A status line or <span class="mono">env.HANDOVER_DIR</span> key
         that install's own record does not recognize as its own is left
-        alone, with a command printed for removing it by hand yourself
-        &mdash; that record is what tells apart something himmel wrote from
+        alone, with a command printed for removing it by hand yourself.
+        That record is what tells apart something himmel wrote from
         something you already had.</p>
         <p>The three writes install makes in your home folder
         (<a href="#what-it-does">Question 2</a> lists them: the status
@@ -627,10 +656,10 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
         anywhere else, so removing it is enough.</p>
         <h4>Kept on purpose</h4>
         <ul>
-          <li>Your Telegram pairing and bridge state &mdash; add
+          <li>Your Telegram pairing and bridge state; add
           <span class="mono">--purge-state</span> to remove them too.</li>
-          <li>Install's own record of what it did (its provenance ledger)
-          &mdash; also removed by <span class="mono">--purge-state</span>;
+          <li>Install's own record of what it did (its provenance ledger),
+          also removed by <span class="mono">--purge-state</span>;
           add <span class="mono">--keep-backups</span> on top of that to
           keep its backup copies even then.</li>
           <li>The himmel download itself, its <span class="mono">.env</span>
@@ -647,19 +676,19 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
           back to exactly what it was. Also the
           <span class="mono">env.CLAUDE_HUD_ALLOW_EXTRA_CMD</span> key of the
           status line, when there is no record of install to say himmel wrote
-          it &mdash; with a record it is removed, and it is left beside the
+          it; with a record it is removed, and it is left beside the
           status line it belongs to when that is left too.</li>
           <li>Helper scripts copied into the project's
           <span class="mono">scripts/</span> folder that install's own
-          record does not recognize as its own &mdash; a copy made before
+          record does not recognize as its own: a copy made before
           that record existed cannot be told apart from your own edits, so
           it is left in place; delete it with git if you do not want it.
           (Copies the record does recognize are removed.)</li>
           <li>The qmd fork checkout, its bun-global symlink and your vault's
-          index collection &mdash; kept by default; add
+          index collection: kept by default; add
           <span class="mono">--purge-state</span> to remove them, and only
           the ones install's own record shows it created.</li>
-          <li>Caches other tools wrote while himmel ran &mdash; npm's
+          <li>Caches other tools wrote while himmel ran: npm's
           <span class="mono">~/.npm/_cacache</span>, node-gyp's
           <span class="mono">~/.cache/node-gyp</span>, bun's
           <span class="mono">~/.bun/install/cache</span>, the Claude CLI's
@@ -668,7 +697,7 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
           so it will not remove them; clear them with the tool that owns
           them if you want the space back.</li>
           <li>The fix himmel applies to a broken plugin-cache stub qmd
-          needs &mdash; unlike the qmd fork checkout above, this patch is
+          needs. Unlike the qmd fork checkout above, this patch is
           never reverted, even with <span class="mono">--purge-state</span>:
           reverting it would restore the original broken stub, not undo an
           install.</li>
@@ -828,14 +857,14 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run</pre>
         (you signed in at step 1; if the trust dialog appears, accept it):</p>
         <pre class="cmd">claude</pre>
         <p>Ask it to create a file called <span class="mono">hello.txt</span>.
-        The edit is refused because you are on the default branch &mdash; that
+        The edit is refused because you are on the default branch; that
         refusal is the success signal. The refusal message contains
         <span class="mono">block-edit-on-main: refusing to edit</span> (we
         captured that by running the hook directly, not inside a live Claude
         Code session). A starter install does not ship a
         <span class="mono">/worktree</span> <em>slash command</em> (a command
         you type inside a Claude Code session, starting with
-        <span class="mono">/</span>) &mdash; only the script it wraps. So
+        <span class="mono">/</span>), only the script it wraps. So
         instead ask it to run
         <span class="mono">bash scripts/worktree.sh feat/try-himmel</span>.
         On success it prints a line beginning
@@ -883,7 +912,7 @@ claude</pre>
     <p>Eight levels from a fresh install to a fleet that ships while you
     sleep. Levels 0 and 1 are guardrails for Claude Code in any project;
     Levels 2 to 7 describe one operator's personal setup on top of that.
-    Climb as far as suits you &mdash; every level is optional, says
+    Climb as far as suits you: every level is optional, says
     what it changes, and is reversible. Click a level marker to remember
     where you are (kept on this device only) and any chip for its
     detail. Terms are explained the first time they appear and again in the
@@ -904,13 +933,13 @@ claude</pre>
         <h2>Install &amp; stay current</h2>
         <p>This is what the <a href="#first-5">first 5 minutes</a> already
         did: clone <span class="mono">github.com/yotamleo-org/Himmel</span> once,
-        then run its installer <em>from the project you want to adopt</em> &mdash;
-        not from inside the clone &mdash; with
+        then run its installer <em>from the project you want to adopt</em>,
+        not from inside the clone, with
         <span class="mono">node ~/himmel/scripts/himmelctl/bin.js install
         --scope project</span>. Leave off <span class="mono">--scope</span>
         and the installer instead reads your machine, asks
         <button class="textlink" data-detail="questions">a handful of
-        questions</button> — Enter always takes the safe default — and
+        questions</button> (Enter always takes the safe default) and
         shows the full plan with <span class="mono">--dry-run</span>
         before touching anything. Once an install has run,
         <span class="mono">himmelctl</span> is on your PATH (if
@@ -972,7 +1001,7 @@ claude</pre>
           </ul></div>
         <p class="impact"><b>Impact:</b> from minute one,
         <span class="mono">himmelctl status</span> reads your <b>real
-        machine</b> — what is actually installed, armed and working, never
+        machine</b>: what is actually installed, armed and working, never
         what a config file merely claims.</p>
         <div class="hint">Answers are cached; <span class="mono">himmelctl
         ensure</span> replays them.</div>
@@ -988,7 +1017,7 @@ claude</pre>
         <h2>Ship with guardrails</h2>
         <p>The git-side discipline himmel's own repository runs on: commit
         checks, ticket references, <dfn>attested</dfn> pushes and a review
-        loop that runs before anything merges — on GitHub via GitHub's
+        loop that runs before anything merges, on GitHub via GitHub's
         <span class="mono">gh</span> command-line tool, or Bitbucket via the
         bundled Bitbucket CLI (the <span class="mono">himmel-gh</span> plugin
         routes to whichever your repo uses). <b>A starter install does not
@@ -1005,50 +1034,50 @@ claude</pre>
         <span class="mono">Platforms tested: linux</span> and
         <span class="mono">Security reviewed: manual</span>, which the push
         gate checks; and <dfn>CR</dfn> is short for automated review, the pre-PR
-        review gate this level runs &mdash; himmel's docs say &ldquo;CR
+        review gate this level runs; himmel's docs say &ldquo;CR
         findings&rdquo; for the comments any reviewer leaves on a pull
         request. CodeRabbit, an automated pull-request review app, is one
         best-effort reviewer inside that gate and is always spelled out, never
         abbreviated CR. Review of a change is run by a <dfn>panel</dfn>: the group
-        of reviewers &mdash; Claude, plus any review lane you switched on
-        (Level 4) &mdash; that the <span class="mono">/pr-check</span>
+        of reviewers (Claude, plus any review lane you switched on
+        in Level 4) that the <span class="mono">/pr-check</span>
         command asks to look at the same diff.</p>
         <p>Wired by a starter install, on the Claude Code side:</p>
         <ul class="guard">
-          <li><b>Worktree isolation</b> — inside Claude Code, edits on
+          <li><b>Worktree isolation:</b> inside Claude Code, edits on
           your default branch are refused</li>
-          <li><b>Secret-file protection</b> — Claude Code is refused
+          <li><b>Secret-file protection:</b> Claude Code is refused
           reading files such as <span class="mono">.env</span></li>
         </ul>
         <p>What himmel's own repository adds on top; none of it is in a
         starter install:</p>
         <ul class="guard">
-          <li><b>Dangerous-command blocking</b> — destructive shell
+          <li><b>Dangerous-command blocking:</b> destructive shell
           operations are refused, not regretted</li>
-          <li><b>Secret leak fences</b> — credentials and private data
+          <li><b>Secret leak fences:</b> credentials and private data
           are stopped before they are sent to any outside service</li>
-          <li><b>Data routing</b> — a written policy table decides which
+          <li><b>Data routing:</b> a written policy table decides which
           kinds of data may be sent to which outside AI service at all; health
           data is refused by default</li>
-          <li><b>Attested pushes</b> — a push carries proof of testing and
+          <li><b>Attested pushes:</b> a push carries proof of testing and
           review, or it doesn't leave</li>
-          <li><b>Review gates</b> — a merge needs a clean review verdict
+          <li><b>Review gates:</b> a merge needs a clean review verdict
           at the exact commit being merged, not at some earlier one</li>
-          <li><b>Git-flow discipline</b> — conventional commits with
+          <li><b>Git-flow discipline:</b> conventional commits with
           ticket refs, feature work only in worktrees, and a runbook that
           drives execute → review → PR → ticket → merge → handover
           end-to-end</li>
-          <li><b>Usage guards</b> — unattended Claude runs use up the same
+          <li><b>Usage guards:</b> unattended Claude runs use up the same
           5-hour and weekly usage allowance as your own sessions, so they
           check it first and are gated, never silent</li>
-          <li><b>Scheduler safety</b> — raw scheduled-task mutation is
+          <li><b>Scheduler safety:</b> raw scheduled-task mutation is
           blocked; only vetted scripts arm or disarm</li>
         </ul>
-        <p>None of this is advice: each guard is wiring &mdash; hooks and
-        gates that fire whether or not anyone remembers them &mdash; but only
+        <p>None of this is advice: each guard is wiring (hooks and
+        gates that fire whether or not anyone remembers them), but only
         where the wiring is installed.</p>
         <p class="note">The <em>git</em> hooks (pre-commit, commit-msg,
-        pre-push) are placed by the install &mdash; the opt-out,
+        pre-push) are placed by the install. The opt-out,
         <span class="mono">--skip-hooks</span>, is a flag of
         <span class="mono">scripts/adopt.sh</span>, not of
         <span class="mono">himmelctl install</span>, so use it if you manage
@@ -1092,20 +1121,20 @@ claude</pre>
         scheduled jobs, phone messaging and a health-data pull. It is
         optional, and nothing in Levels 0 and 1 depends on it. If you only
         want guardrails, you can stop at Level 1.</p>
-        <p>Connect a vault — the folder of Markdown notes defined at the top
+        <p>Connect a vault, the folder of Markdown notes defined at the top
         of this page. Start from the bundled
         <button class="textlink" data-detail="luna-template">luna-second-brain
         template</button>, or connect a vault you already made from it;
         an arbitrary folder of notes is not enough (see
         <button class="textlink" data-detail="vault">what a vault must
         be</button>). Then
-        pick which of the ten <b>cadences</b> to arm — the recurring
-        scheduled jobs defined at the top of this page: the content
+        pick which of the ten <b>cadences</b> to arm (the recurring
+        scheduled jobs defined at the top of this page): the content
         pipeline (harvest, synthesize, health), the search reindex, the
         knowledge-graph refresh, a cleanup sweep (if you took the codex
-        lane), the upstream drift-fix and upstream watch, and — only where
-        they apply — a Windows repo sync and a Google Health pull.
-        <b>The search reindex is its own cadence with its own arming</b> —
+        lane), the upstream drift-fix and upstream watch, and, only where
+        they apply, a Windows repo sync and a Google Health pull.
+        <b>The search reindex is its own cadence with its own arming</b>:
         arm only the pipeline and your search goes stale.</p>
         <div class="chipgroup"><span class="glabel">himmel brings</span>
           <ul class="chips">
@@ -1133,7 +1162,7 @@ claude</pre>
         sleep. A link you toss in at midnight is a connected, summarized
         note by morning.</p>
         <div class="hint">The vault-dependent cadences are asked once a
-        vault exists. Anything you decline is recorded as declined — never switched on
+        vault exists. Anything you decline is recorded as declined, never switched on
         behind your back.</div>
       </div>
     </section>
@@ -1145,8 +1174,8 @@ claude</pre>
       <div class="card">
         <span class="lvl-tag">LEVEL 3</span>
         <h2>Reach: your phone joins</h2>
-        <p>Wire the Telegram bridge. The installer also asks — explicitly,
-        by name — whether the bridge should survive reboots, on the
+        <p>Wire the Telegram bridge. The installer also asks, explicitly
+        and by name, whether the bridge should survive reboots, on the
         platforms where it has an installer for that (Linux).</p>
         <ul class="chips">
           <li><button class="chip" data-detail="bridge">Telegram
@@ -1175,7 +1204,7 @@ claude</pre>
       <div class="card">
         <span class="lvl-tag">LEVEL 4</span>
         <h2>Review depth</h2>
-        <p>Add the optional <b>review</b> lanes — codex and hermes —
+        <p>Add the optional <b>review</b> lanes, codex and hermes,
         beside Claude's built-in review. They are offered as review lanes:
         a second opinion on your diff before it merges. Each is its own
         explicit opt-in, with its own login.</p>
@@ -1189,9 +1218,9 @@ claude</pre>
         </ul>
         <p class="impact"><b>Impact:</b> two model families argue over
         your diff before it merges. The trade, plainly: <b>without these
-        lanes, review runs Claude-only</b> — one reviewer, however
+        lanes, review runs Claude-only</b>: one reviewer, however
         good.</p>
-        <div class="hint">Skippable forever — and the wizard tells you at
+        <div class="hint">Skippable forever, and the wizard tells you at
         the question itself what skipping costs you.</div>
       </div>
     </section>
@@ -1203,8 +1232,8 @@ claude</pre>
       <div class="card">
         <span class="lvl-tag">LEVEL 5</span>
         <h2>Spend &amp; context, under control</h2>
-        <p>See and steer what agent work costs — tokens, quota windows,
-        context — before it surprises you.</p>
+        <p>See and steer what agent work costs (tokens, quota windows,
+        context) before it surprises you.</p>
         <div class="chipgroup"><span class="glabel">himmel brings</span>
           <ul class="chips">
             <li><button class="chip" data-detail="hud">claude-hud
@@ -1238,8 +1267,8 @@ claude</pre>
         <h2>Always-on operations</h2>
         <p>Harden for unattended work: always-on hardening, handover state
         so work survives any single session, AFK (unattended) runs, and a real
-        monitoring stack — <b>Grafana, Prometheus and himmel's own
-        exporters, installed on your machine</b> — feeding alerts to your
+        monitoring stack (<b>Grafana, Prometheus and himmel's own
+        exporters, installed on your machine</b>) feeding alerts to your
         bridge.</p>
         <ul class="chips">
           <li><button class="chip" data-detail="overnight">Overnight
@@ -1280,8 +1309,8 @@ claude</pre>
         sole authority to release a merge, and escalates to you only what
         genuinely needs you.</p>
         <p>The summit is many worker sessions running at once under one supervisor session.
-        They coordinate through a <b>written layer</b> — mission briefs
-        plus handover and roadmap documents every worker session reads and appends —
+        They coordinate through a <b>written layer</b> (mission briefs
+        plus handover and roadmap documents every worker session reads and appends)
         and by direct messages to the supervisor session when something is
         urgent.</p>
         <p>A read-only console for watching it happen ships today: a local
@@ -1305,7 +1334,7 @@ claude</pre>
           supervisor session module</button></li>
         </ul>
         <p class="impact"><b>Impact:</b> you stop being the bottleneck of
-        one session. A night's work is many tickets shipped in parallel —
+        one session. A night's work is many tickets shipped in parallel,
         and the morning report stays your single human surface.</p>
       </div>
     </section>
@@ -1339,7 +1368,7 @@ claude</pre>
       linux</span>. The push gate checks for them.</dd>
       <dt>cadence</dt>
       <dd>A recurring scheduled job that himmel arms with your operating
-      system's scheduler &mdash; a nightly search reindex, say. Level 2 lists
+      system's scheduler, a nightly search reindex, say. Level 2 lists
       them; you pick which to arm.</dd>
       <dt>CR</dt>
       <dd>Short for automated review, the pre-PR review gate. Also used
@@ -1363,7 +1392,7 @@ claude</pre>
       an edit on your main branch. (Git has its own, separate hooks; himmel
       uses those for its gates.)</dd>
       <dt>lane</dt>
-      <dd>A backend &mdash; an AI model and its tooling &mdash; that himmel
+      <dd>A backend (an AI model and its tooling) that himmel
       can run work on. The optional review lanes (codex, hermes) give a
       second opinion on your diff. The <span class="mono">/lanes</span>
       command lists the ones available to you.</dd>
@@ -1371,8 +1400,8 @@ claude</pre>
       <dd>One work session that owns exactly one ticket, in its own
       worktree. See the <a href="glossary.md">glossary</a>.</dd>
       <dt>panel</dt>
-      <dd>The group of reviewers &mdash; Claude, plus any review lane you
-      switched on &mdash; that the <span class="mono">/pr-check</span>
+      <dd>The group of reviewers (Claude, plus any review lane you
+      switched on) that the <span class="mono">/pr-check</span>
       command asks to look at the same diff.</dd>
       <dt>plugin</dt>
       <dd>An add-on pack for Claude Code: slash commands, skills and hooks
@@ -1395,7 +1424,7 @@ claude</pre>
     replays them, the wizard can be
     rerun any time, and <span class="mono">--dry-run</span> always shows
     the plan first.
-    Click any level marker to track where you are — it's remembered on
+    Click any level marker to track where you are; it's remembered on
     this device only.
     <br>Public URL:
     <a href="https://yotamleo-org.github.io/Himmel/adoption-trail.html" class="mono">yotamleo-org.github.io/Himmel/adoption-trail.html</a>
@@ -1471,13 +1500,13 @@ claude</pre>
     '<ul>' +
     '<li><b>himmel-ops · handover · qmd · obsidian-triage · ' +
     'telegram-himmel · luna-correlate · lean-skills</b></li>' +
-    '<li><b>claude-obsidian</b> is listed in the same marketplace but comes from upstream, pinned to a release tag — not a himmel fork</li>' +
+    '<li><b>claude-obsidian</b> is listed in the same marketplace but comes from upstream, pinned to a release tag, not a himmel fork</li>' +
     '<li><b>claude-hud</b>, vendored in-repo rather than marketplace-registered</li>' +
     '<li><b>himmel-gh</b>, a repo-root plugin that routes GitHub or Bitbucket operations to the right CLI</li>' +
     '<li>Bundled tooling: <b>Jira CLI · Bitbucket CLI · guard hooks</b></li>' +
     '</ul>' +
     '<span class="listhead">From elsewhere</span>' +
-    '<p>Official Claude Code plugins and a selection of community ones — the review, ' +
+    '<p>Official Claude Code plugins and a selection of community ones: the review, ' +
     'documentation and editor helpers the workflow leans on. The installer names each one ' +
     'in its plan, and <span class="mono">--dry-run</span> shows you that plan first.</p>' +
     '<p><b>Installed is not the same as enabled.</b> A reconciler keeps only a lean set ' +
@@ -1491,36 +1520,36 @@ claude</pre>
     'questions': { t: 'What the wizard asks', s: 'ship', h:
       '<p><b>Seven questions are always asked, and up to twenty-two in total, depending on your earlier answers.</b></p>' +
       '<p><b>Always asked:</b></p><ul>' +
-      '<li><b>profile</b> — starter | luna | operator | custom, default starter. A preset only <i>seeds</i> the default answer at each question below — it never skips one.</li>' +
-      '<li><b>scope</b> — this project, or your user account</li>' +
-      '<li><b>vault</b> — none | the bundled template | an existing vault (one made from the bundled template)</li>' +
-      '<li><b>handover</b> — inline, or an external state directory</li>' +
-      '<li><b>pluginSet</b> — <span class="mono">lean</span>, currently the only option</li>' +
-      '<li><b>lanes</b> — the review lanes: codex and hermes (each opt-in), or none</li>' +
-      '<li><b>alwaysOn</b> — unattended-machine hardening, yes or no</li></ul>' +
+      '<li><b>profile</b>: starter | luna | operator | custom, default starter. A preset only <i>seeds</i> the default answer at each question below; it never skips one.</li>' +
+      '<li><b>scope</b>: this project, or your user account</li>' +
+      '<li><b>vault</b>: none | the bundled template | an existing vault (one made from the bundled template)</li>' +
+      '<li><b>handover</b>: inline, or an external state directory</li>' +
+      '<li><b>pluginSet</b>: <span class="mono">lean</span>, currently the only option</li>' +
+      '<li><b>lanes</b>: the review lanes: codex and hermes (each opt-in), or none</li>' +
+      '<li><b>alwaysOn</b>: unattended-machine hardening, yes or no</li></ul>' +
       '<p><b>Conditional</b>, up to fifteen more: vault and handover paths, the per-cadence pick-list and a follow-up asking whether to tear down any cadence you declined, a PHI (protected health information) declaration, a separate personal/medical-vault declaration with its path and an optional <span class="mono">.salus</span> marker, an optional secrets walk, the Telegram bridge on or off with its env path, whisper CLI and model paths (plus a custom model filename), and bridge reboot persistence.</p>' +
       '<p>The secrets walk and the later status nags filter by what you actually selected, so a feature you declined never nags you again.</p>' +
       '<p>Every question has a safe default. <span class="mono">--dry-run</span> shows the whole plan first.</p>' },
     'jira-cli': { t: 'Jira CLI', s: 'ship', h:
-      '<p>A bundled command-line Jira client himmel <b>brings</b> — tickets are created, read, commented and transitioned from the terminal, so agents and humans share one audited path.</p>' +
+      '<p>A bundled command-line Jira client himmel <b>brings</b>: tickets are created, read, commented and transitioned from the terminal, so agents and humans share one audited path.</p>' +
       '<p>It is the sanctioned script: the guard hooks route agent ticket-writes through it.</p>' },
     'handover': { t: 'Handover system', s: 'ship', h:
       '<p>Work state that survives any single session: per-ticket handover notes, a state directory (inline or an external repo), and a registry. Set up interactively with <span class="mono">/handover-setup</span>.</p>' +
       '<p>This is what lets a session stop mid-task and a successor resume cold without losing decisions.</p>' },
     'himmel-ops': { t: 'himmel-ops', s: 'ship', h:
-      '<p>himmel’s core ops plugin: the <b>guard hooks</b> behind Level 1 plus the operational commands the workflow runs on — worktree management, review gating, update and doctor flows.</p>' },
+      '<p>himmel’s core ops plugin: the <b>guard hooks</b> behind Level 1 plus the operational commands the workflow runs on: worktree management, review gating, update and doctor flows.</p>' },
     'claude-obsidian': { t: 'claude-obsidian', s: 'ship', h:
       '<p>AgriciDaniel’s <b>claude-obsidian</b> plugin, installed <b>from upstream and pinned to a release tag</b> (himmel’s fork was retired once its fixes landed upstream): the vault connection layer Claude uses to read and write your Obsidian notes.</p>' },
     'luna-correlate': { t: 'luna-correlate', s: 'ship', h:
-      '<p>A bundled plugin for correlating vault content — surfacing connections across notes that the nightly synthesis builds on.</p>' },
+      '<p>A bundled plugin for correlating vault content, surfacing connections across notes that the nightly synthesis builds on.</p>' },
     'bitbucket': { t: 'Bitbucket CLI', s: 'ship', h:
       '<p>himmel <b>brings</b> a Bitbucket command-line client (built by the installer), so teams on Bitbucket get the same PR flow. The <span class="mono">himmel-gh</span> plugin routes each operation to it on a Bitbucket repo and to the <span class="mono">gh</span> CLI on a GitHub one.</p>' },
     'doctor': { t: 'himmel-doctor', s: 'ship', h:
-      '<p>The environment doctor: probes your tools, config and wiring, and reports honest per-item verdicts. A check that cannot run reports as unknown — never as a pass.</p>' },
+      '<p>The environment doctor: probes your tools, config and wiring, and reports honest per-item verdicts. A check that cannot run reports as unknown, never as a pass.</p>' },
     'gh': { t: 'gh CLI', s: 'ship', h:
       '<p>GitHub’s official command-line tool. You do not need it to install himmel, but the GitHub pull-request flow needs it: the installer probes for it and lists it in its plan, and all GitHub operations (PRs, checks, merges) route through it.</p>' },
     'graphify': { t: 'graphify', s: 'ship', h:
-      '<p>A knowledge-graph tool himmel <b>installs from upstream, version-pinned</b> — not a fork. It builds a queryable graph of your codebase (<span class="mono">graphify query</span>, <span class="mono">graphify explain</span>) and refreshes on a schedule. <span class="mono">/himmel-update</span> rolls the pin.</p>' },
+      '<p>A knowledge-graph tool himmel <b>installs from upstream, version-pinned</b>, not a fork. It builds a queryable graph of your codebase (<span class="mono">graphify query</span>, <span class="mono">graphify explain</span>) and refreshes on a schedule. <span class="mono">/himmel-update</span> rolls the pin.</p>' },
     'plugins': { t: 'The plugin roster', s: 'ship', h: PLUGINS },
     'rm-identity': { t: 'Identity setup', s: 'road', h:
       '<p><b>Roadmap.</b> First-run identity: your user slug and per-user paths collected once by the installer instead of via environment variables.</p>' },
@@ -1528,42 +1557,42 @@ claude</pre>
       '<p><b>Roadmap.</b> Choose which skills and agents your machine carries as named profiles, instead of inheriting one fixed set.</p>' },
     'git-flow': { t: 'PR-only git flow', s: 'ship', h:
       '<p>This is how himmel&rsquo;s own repository works; a starter install does not set it up for your project. There: no direct pushes to main (a gate refuses them), every change lands via a pull request, one sanctioned merge path verifies the review verdict at the exact head being merged, and auto-merge exists only when you opt in (<span class="mono">ARMAUTOMERGE</span>, honoured only on a private repo, or on your configured public origin once its branch protection is verified live).</p>' +
-      '<p>The workflow itself is a <b>configurable step list</b> — execute, review, PR, ticket, merge, publish, handover. Drop the merge step and the agent <b>stops at open, review-clean PRs</b>: push-without-merge exists today.</p>' +
+      '<p>The workflow itself is a <b>configurable step list</b>: execute, review, PR, ticket, merge, publish, handover. Drop the merge step and the agent <b>stops at open, review-clean PRs</b>: push-without-merge exists today.</p>' +
       '<p>Even with merge active, merging is <b>double-gated</b>: it only happens through the sanctioned merge script, and that script refuses unless an explicit opt-in was set when the session launched.</p>' +
       '<p>Git hooks are a separate layer that fires on commits from an agent or a human alike. The install places the hook files for every profile, but in a starter install they have no checks to run (see &ldquo;Before you install&rdquo;); <span class="mono">--skip-hooks</span> on <span class="mono">scripts/adopt.sh</span> opts out of placing them.</p>' },
     'rm-autonomy': { t: 'Git autonomy ceiling', s: 'road', h:
-      '<p><b>Roadmap.</b> Declare how much git autonomy the agent gets — e.g. never-push, never-merge, or no-agent-commits — as a per-user ceiling the harness enforces, below the structural PR-only floor that exists today.</p>' +
+      '<p><b>Roadmap.</b> Declare how much git autonomy the agent gets (e.g. never-push, never-merge, or no-agent-commits) as a per-user ceiling the harness enforces, below the structural PR-only floor that exists today.</p>' +
       '<p>The pieces exist now, but live in environment configuration set at launch. The roadmap item is exactly this promotion: from environment knobs to a <b>profile-declared ceiling</b> the installer records and every session honors.</p>' },
     'luna-template': { t: 'luna-second-brain template', s: 'ship', h:
-      '<p>The bundled vault template — notes structure, a clipper inbox, maps of content, and a daily flow — also published as a standalone repository. Start from it; a vault made from it can be connected again later as an existing vault.</p>' },
+      '<p>The bundled vault template (notes structure, a clipper inbox, maps of content, and a daily flow), also published as a standalone repository. Start from it; a vault made from it can be connected again later as an existing vault.</p>' },
     'obsidian-triage': { t: 'obsidian-triage skills', s: 'ship', h:
       '<p>Bundled vault skills: triage new clippings, harvest links, synthesize themes across notes, run vault health checks. They are what the nightly cadences execute.</p>' },
     'cadences': { t: 'Cadences (10, pick-list)', s: 'ship', h:
       '<p>The wizard offers a <b>per-cadence pick-list</b> read from the real registry — ten rows:</p><ul>' +
-      '<li><b>pipeline</b> — harvest, synthesize, health and fetch-health are all <b>steps of this one cadence</b>, armed together by a single call</li>' +
-      '<li><b>qmd</b> — the nightly search reindex, armed separately</li>' +
-      '<li><b>graphmap</b> — the graphify graph refresh</li>' +
-      '<li><b>codex-sweep</b> — a cleanup sweep, offered only if you took the codex lane</li>' +
-      '<li><b>drift-fix</b> — a nightly upstream-drift pass: bumps auto-bumpable pins into an ordinary PR and audits your forks; it never merges</li>' +
-      '<li><b>upstream-watch</b> — a daily scan of himmel’s open upstream PRs and issues, notifying you only when something changed</li>' +
-      '<li><b>doctor</b> — a daily himmel-doctor health check; a failure or a new warning is sent to Telegram and the statusline shows the counts; it reports only and fixes nothing</li>' +
-      '<li><b>repo-sync</b> — a daily fast-forward-only pull of your git repos plus stale-worktree cleanup; Windows only</li>' +
-      '<li><b>pull-cadence</b> — a daily Google Health pull, offered only once its refresh token is configured</li>' +
-      '<li><b>vault-stall</b> — every 15 minutes, catches a stalled vault auto-commit; it fixes only known-harmless refusals on session files under handovers/ and alerts on everything else, never quoting a secret</li></ul>' +
-      '<p>pipeline, qmd, graphmap and vault-stall need a vault (codex-sweep needs the codex lane instead); drift-fix, upstream-watch and doctor are always offered. Declining any is recorded as declined, and you are then asked whether to disarm anything already running — a no leaves it armed and the summary says so, per unit.</p>' },
+      '<li><b>pipeline</b>: harvest, synthesize, health and fetch-health are all <b>steps of this one cadence</b>, armed together by a single call</li>' +
+      '<li><b>qmd</b>: the nightly search reindex, armed separately</li>' +
+      '<li><b>graphmap</b>: the graphify graph refresh</li>' +
+      '<li><b>codex-sweep</b>: a cleanup sweep, offered only if you took the codex lane</li>' +
+      '<li><b>drift-fix</b>: a nightly upstream-drift pass: bumps auto-bumpable pins into an ordinary PR and audits your forks; it never merges</li>' +
+      '<li><b>upstream-watch</b>: a daily scan of himmel’s open upstream PRs and issues, notifying you only when something changed</li>' +
+      '<li><b>doctor</b>: a daily himmel-doctor health check; a failure or a new warning is sent to Telegram and the statusline shows the counts; it reports only and fixes nothing</li>' +
+      '<li><b>repo-sync</b>: a daily fast-forward-only pull of your git repos plus stale-worktree cleanup; Windows only</li>' +
+      '<li><b>pull-cadence</b>: a daily Google Health pull, offered only once its refresh token is configured</li>' +
+      '<li><b>vault-stall</b>: every 15 minutes, catches a stalled vault auto-commit; it fixes only known-harmless refusals on session files under handovers/ and alerts on everything else, never quoting a secret</li></ul>' +
+      '<p>pipeline, qmd, graphmap and vault-stall need a vault (codex-sweep needs the codex lane instead); drift-fix, upstream-watch and doctor are always offered. Declining any is recorded as declined, and you are then asked whether to disarm anything already running; a no leaves it armed and the summary says so, per unit.</p>' },
     'cadence-graphmap': { t: 'Graph refresh cadence', s: 'ship', h:
       '<p>One of the cadences: it keeps the graphify graph current on a schedule, instead of only when you run <span class="mono">graphify update</span> by hand. It also arms a separate six-hourly task that refreshes and publishes himmel’s own graph as a pull request.</p>' },
     'cadence-codex-sweep': { t: 'Codex sweep cadence', s: 'ship', h:
       '<p>One of the cadences: a cleanup sweep for orphaned codex broker processes. It is offered only if you selected the codex lane.</p>' },
     'qmd': { t: 'qmd vault search', s: 'ship', h:
-      '<p>himmel’s <b>fork of tobi’s qmd</b> search tool. <b>Installed by setup when <span class="mono">bun</span> is present</b>: the CLI is installed and your vault registered as a collection, so semantic search works immediately. The <b>nightly reindex</b> is its own cadence in the pick-list — arm it separately from the pipeline, or search goes stale.</p>' +
+      '<p>himmel’s <b>fork of tobi’s qmd</b> search tool. <b>Installed by setup when <span class="mono">bun</span> is present</b>: the CLI is installed and your vault registered as a collection, so semantic search works immediately. The <b>nightly reindex</b> is its own cadence in the pick-list: arm it separately from the pipeline, or search goes stale.</p>' +
       '<p>Uninstall keeps it by default; <span class="mono">--purge-state</span> removes it only if install’s own record shows this install created it.</p>' },
     'luna-sources': { t: 'Source connectors', s: 'ship', h:
       '<p>Offered alongside the vault question: connectors the installer can wire up so sources feed the pipeline, rather than being copy-pasted in by hand.</p>' },
     'vault': { t: 'Your Obsidian vault', s: 'ship', h:
       '<p>A <b>vault</b> is a folder of Markdown notes, usually opened in Obsidian. himmel does not work with just any folder of notes: the “existing vault” answer expects a vault that carries himmel’s luna template stamp, which a vault made from the bundled template has. To start fresh, choose the bundled template instead. himmel adds notes and structure through its skills; extraction runs on copies, never destructively on your live notes.</p>' },
     'bridge': { t: 'telegram-himmel bridge', s: 'ship', h:
-      '<p>himmel’s <b>fork of Anthropic’s Telegram plugin</b>: a small always-on service connecting your Telegram to the system — messages in, alerts and reports out. The wizard collects the bot token and env path, and asks — naming the exact artifact it would create (a Windows scheduled task or a Linux systemd unit) — whether to install reboot persistence.</p>' },
+      '<p>himmel’s <b>fork of Anthropic’s Telegram plugin</b>: a small always-on service connecting your Telegram to the system: messages in, alerts and reports out. The wizard collects the bot token and env path, and asks, naming the exact artifact it would create (a Windows scheduled task or a Linux systemd unit), whether to install reboot persistence.</p>' },
     'bridge-health': { t: 'Bridge health checks', s: 'ship', h:
       '<p>A separate item from bridge persistence: health probes for the running Telegram bridge, so a dead bridge is a detected fact, not a silent gap.</p>' },
     'capture': { t: 'Capture from chat', s: 'ship', h:
@@ -1573,27 +1602,27 @@ claude</pre>
     'voice': { t: 'Voice notes in', s: 'ship', h:
       '<p>Voice messages are transcribed locally (whisper) and filed like any other capture. The wizard asks for your whisper CLI and model paths.</p>' },
     'codex': { t: 'codex lane (review)', s: 'ship', h:
-      '<p>OpenAI’s codex CLI as an optional <b>review</b> lane — a second-opinion critic on your diff. It never takes implementation work of its own. Its own explicit opt-in with its own login; never installed behind your back.</p>' },
+      '<p>OpenAI’s codex CLI as an optional <b>review</b> lane: a second-opinion critic on your diff. It never takes implementation work of its own. Its own explicit opt-in with its own login; never installed behind your back.</p>' },
     'hermes': { t: 'hermes lane (review)', s: 'ship', h:
       '<p>A gateway lane reaching additional models for <b>review</b> second opinions only. Own opt-in, own install profile, own credentials.</p>' },
     'local-lanes': { t: 'What the lanes question offers', s: 'ship', h:
-      '<p>The lanes question offers exactly two: <b>codex</b> and <b>hermes</b> — or none. Both are review lanes, and each is off until you name it; none is the default.</p>' +
-      '<p>Either one puts a second model family in front of your diff. Skip both and review runs Claude-only — the wizard says so at the question, before you choose.</p>' },
+      '<p>The lanes question offers exactly two: <b>codex</b> and <b>hermes</b>, or none. Both are review lanes, and each is off until you name it; none is the default.</p>' +
+      '<p>Either one puts a second model family in front of your diff. Skip both and review runs Claude-only; the wizard says so at the question, before you choose.</p>' },
     'hud': { t: 'claude-hud statusline', s: 'ship', h:
-      '<p>A heads-up statusline himmel <b>brings, vendored in-repo</b>: context-fill bar, usage and quota windows, model badge, and a prompt-cache expiry clock — the live dashboard of every session.</p>' },
+      '<p>A heads-up statusline himmel <b>brings, vendored in-repo</b>: context-fill bar, usage and quota windows, model badge, and a prompt-cache expiry clock: the live dashboard of every session.</p>' },
     'bank': { t: 'Budget preflight', s: 'ship', h:
-      '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the subscription usage budget cannot afford. Anything that dispatches a batch of work checks it first.</p>' },
+      '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the subscription usage budget cannot afford. Anything that dispatches a batch of work checks it first. The installer copies the preflight into your project&rsquo;s <span class="mono">scripts/lib/</span>, and it reads the usage cache your own status line writes.</p>' },
     'fill': { t: 'Self-read context fill', s: 'ship', h:
-      '<p>A session can read its <b>own</b> context-window fill as a number instead of guessing. It also distinguishes a stale or unknown reading: rather than serving a frozen snapshot as though it were current, it refuses and says so — so a decision to wrap up is never made on a number that quietly stopped updating.</p>' },
+      '<p>A session can read its <b>own</b> context-window fill as a number instead of guessing. It also distinguishes a stale or unknown reading: rather than serving a frozen snapshot as though it were current, it refuses and says so, so that a decision to wrap up is never made on a number that quietly stopped updating.</p>' },
     'gemini-cli': { t: 'gemini-cli', s: 'ship', h:
       '<p>Google’s gemini-cli, installed as a dependency and dispatched through a single sanctioned script. Its win is a large context window for big-input reads and parallel triage.</p>' +
-      '<p>A <b>context</b> tool, not a spend control — and not a review or implementation lane.</p>' },
+      '<p>A <b>context</b> tool, not a spend control, and not a review or implementation lane.</p>' },
     'rtk': { t: 'rtk output trimming', s: 'ship', h:
       '<p>A token-optimizing command proxy in the stack: it trims verbose command output before it reaches the model, cutting cost on chatty tools.</p>' },
     'rm-headless': { t: 'Headless runs with budget guard', s: 'road', h:
       '<p><b>Roadmap.</b> One-shot headless agent runs wired through the budget preflight, so scripted invocations can’t drain your interactive quota.</p>' },
     'overnight': { t: 'Overnight shifts', s: 'ship', h:
-      '<p>A documented autonomous pipeline: plan, implement with reviews, heavy review rounds, PR, and a handover — run in AFK (unattended) mode on a well-scoped ticket, with clear rules for the few things that must stop and wait for a human.</p>' },
+      '<p>A documented autonomous pipeline: plan, implement with reviews, heavy review rounds, PR, and a handover, run in AFK (unattended) mode on a well-scoped ticket, with clear rules for the few things that must stop and wait for a human.</p>' },
     'handover-sessions': { t: 'Session handover', s: 'ship', h:
       '<p>Sessions write resumable state and can arm their own successors on a schedule, so work chains across sessions without a human re-briefing each one.</p>' },
     'morning': { t: 'Morning report', s: 'ship', h:
@@ -1601,21 +1630,21 @@ claude</pre>
     'monitoring': { t: 'Grafana + Prometheus + exporters', s: 'ship', h:
       '<p>A real monitoring stack installed on your machine: Prometheus scraping himmel’s own '
       + 'exporters for session and flow health, Grafana dashboards, and alerts routed to your bridge.</p>' +
-      '<p>The installer owns it through its own install script — but only on Linux today, and only once you opt in. On macOS '
+      '<p>The installer owns it through its own install script, but only on Linux today, and only once you opt in. On macOS '
       + 'that step reports as not yet runnable, and you would stand the stack up by hand.</p>' },
     'rm-mondeps': { t: 'Monitoring deps sorted', s: 'road', h:
       '<p><b>Roadmap.</b> Full dependency handling for the monitoring stack, and the platforms the '
-      + 'installer does not cover yet — today it wires the stack on Linux only.</p>' },
+      + 'installer does not cover yet; today it wires the stack on Linux only.</p>' },
     'rm-report': { t: 'Templatable report', s: 'road', h:
       '<p><b>Roadmap.</b> The morning report becomes a template you shape to your needs, instead of one fixed layout.</p>' },
     'briefs': { t: 'Mission briefs', s: 'ship', h:
       '<p>Every worker session starts from a written brief: scope, constraints, verified context, and what to do at a stop point. A worker session inherits nothing implicitly, so the brief has to carry everything.</p>' },
     'legs': { t: 'Parallel worker sessions', s: 'ship', h:
-      '<p>Independent work sessions, each owning one ticket in its own isolated worktree — many tickets progress at once without stepping on each other.</p>' },
+      '<p>Independent work sessions, each owning one ticket in its own isolated worktree: many tickets progress at once without stepping on each other.</p>' },
     'comms': { t: 'Written comms layer', s: 'ship', h:
       '<p>Worker sessions coordinate through <b>writing, not shared memory</b>: briefs carry everything a worker session needs, and handover and roadmap documents are read and appended by every worker session as work progresses. Anything urgent goes to the supervisor session as a direct message. The written layer is why work survives any single session dying.</p>' },
     'stops': { t: 'Stop-point reviews', s: 'ship', h:
-      '<p>A worker session drives its PR to a clean review verdict, then <b>stops</b> and reports. The supervisor session reviews the evidence — never a worker session’s own word for it — before anything merges.</p>' },
+      '<p>A worker session drives its PR to a clean review verdict, then <b>stops</b> and reports. The supervisor session reviews the evidence (never a worker session’s own word for it) before anything merges.</p>' },
     'merge-auth': { t: 'Supervisor-session-gated merge', s: 'ship', h:
       '<p>A merge needs the supervisor session’s explicit go: the supervisor session writes a per-PR, per-commit GO file (merge approval), and the sanctioned merge gate refuses a worker session launched by the supervisor session without it. The gate also verifies checks, resolved threads and the reviewed head, so a worker session cannot merge its own work on its own say-so.</p>' },
     'fleet-control': { t: 'Fleet console (read-only)', s: 'ship', h:
@@ -1626,7 +1655,7 @@ claude</pre>
     'xp-memory': { t: 'Memory compounding', s: 'wip', h:
       '<p><b>Testing in progress.</b> Persistent agent memory plus vault synthesis feeding each other, so lessons learned tonight change behavior tomorrow. Running daily; not yet proven enough to promise.</p>' },
     'xp-skill-eval': { t: 'Skill eval & optimization loops', s: 'wip', h:
-      '<p><b>Testing in progress.</b> Evaluating and tuning the skill and prompt surface from real usage — which skills earn their context, which get trimmed.</p>' },
+      '<p><b>Testing in progress.</b> Evaluating and tuning the skill and prompt surface from real usage: which skills earn their context, which get trimmed.</p>' },
     'xp-workflows': { t: 'Self-evolving workflows', s: 'wip', h:
       '<p><b>Testing in progress.</b> Workflows that observe their own failure patterns and propose their own structural fixes.</p>' }
   };

@@ -158,6 +158,7 @@ scripts/ci/test-shell-extended-nightly-issue.sh	pr	trust-path
 scripts/ci/test-shell-unit-dispatch-name.sh	pr	trust-path
 scripts/ci/test-shellcheck-pr-range.sh	pr	trust-path
 scripts/ci/test-suite-concurrency.sh	pr	trust-path
+scripts/ci/test-suite-ledger.sh	pr	trust-path
 scripts/ci/test-suite-lock-brand-gap.sh	pr	trust-path
 scripts/ci/test-suite-lock-orphan-reaper.sh	pr	trust-path
 scripts/ci/test-suite-tiers.sh	pr	trust-path

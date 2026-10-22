@@ -35,7 +35,9 @@
 # deleted or quarantined; success prints "promoted; safe to remove <dir>".
 #
 # Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped (bank
-# at/over threshold — not a failure, graphify-out was left untouched).
+# at/over threshold — not a failure, graphify-out was left untouched);
+# 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
+# Exits 4/5 keep finished chunks cached without promoting a partial graph.
 #
 # Freshness guard: this script REBUILDS the graph. To CHECK whether an existing
 # graphify-out/ is still fresh (and not orphaned from its corpus) before querying
@@ -2352,19 +2354,13 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # graph, and let the next run resume from that cache (seeded above).
   #   GRAPHIFY_SECONDS_PER_CHUNK  measured wall per claude-cli chunk (default 130)
   #   GRAPHIFY_MAX_CHUNKS_PER_RUN override; default deadline / seconds-per-chunk, 0 = no cap
-  #   GRAPHIFY_HOLLOW_RETRY_MAX   hollow retries of one chunk before it is failed (default 5);
-  #                               the run stops at this times the concurrent API workers, or after
-  #                               this many chunks graphify gave up on with none finishing cleanly
-  # Exit 4 = stopped at the chunk cap (resumable); exit 5 = a chunk kept coming
-  # back hollow (recorded in .graphify_failed_chunks).
-  # ponytail: graphify exposes no per-chunk skip, so a persistently hollow chunk
-  # is retried hollow-retry-max times EACH run. A run stops (exit 5) only when
-  # hollow retries or give-ups pile up with no clean completion between them (the
-  # retry line names only the batch size, so the count is a no-progress count,
-  # not a per-chunk one). A single give-up among real completions is promoted
-  # with that chunk partial and graphify re-extracts it next run; upgrade path:
-  # do not promote when any give-up occurred (or prove completeness first), split
-  # the chunk (backfill split design) or an upstream skip flag.
+  #   GRAPHIFY_HOLLOW_RETRY_MAX   no-progress fallback (default 5), scaled by workers
+  # The pinned graphify bounds each hollow chunk at three attempts, marks its
+  # files partial and continues. Record every give-up independently of later
+  # completions: even one failed chunk prevents promotion. The fallback stops
+  # older graphify versions that retry indefinitely or make no clean progress.
+  # Exit 4 = stopped at the chunk cap (resumable); exit 5 = hollow chunk failure
+  # (recorded in .graphify_failed_chunks).
   GRAPHIFY_SECONDS_PER_CHUNK="${GRAPHIFY_SECONDS_PER_CHUNK:-130}"
   GRAPHIFY_HOLLOW_RETRY_MAX="${GRAPHIFY_HOLLOW_RETRY_MAX:-5}"
   case "$GRAPHIFY_SECONDS_PER_CHUNK" in
@@ -2399,6 +2395,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   if [ "$BACKEND" = "claude-cli" ] && [ "${GRAPHIFY_CLAUDE_CLI_PARALLEL:-}" != "1" ]; then _hollow_workers=1; fi
   _HOLLOW_STOP_AT=$((GRAPHIFY_HOLLOW_RETRY_MAX * _hollow_workers))
   _STOP_FILE="$SCRATCH/.graphify-extract-stop"
+  _FAILED_FILE="$SCRATCH/.graphify-extract-failed"
   # Seconds graphify gets to exit after the TERM that stops it at the cap or on
   # hollow retries before it is SIGKILLed (timeout -k does not cover a TERM we send).
   _STOP_KILL_GRACE="${GRAPHIFY_STOP_KILL_GRACE_SECONDS:-30}"
@@ -2414,6 +2411,10 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     local gpid="$1" line done_n=0 hollow_n=0 giveup_n=0 pending_g=0 k n
     while IFS= read -r line; do
       printf '%s\n' "$line" >&2
+      case "$line" in
+        '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
+          printf '%s\n' "$line" >> "$_FAILED_FILE" ;;
+      esac
       [ -s "$_STOP_FILE" ] && continue
       case "$line" in
         '[graphify extract] chunk '*' done'*)
@@ -2422,7 +2423,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
           if [ "$pending_g" -gt 0 ]; then pending_g=$((pending_g - 1)); else giveup_n=0; fi
           k="${line#'[graphify extract] chunk '}"; n="${k#*/}"; k="${k%%/*}"; n="${n%% *}"
           case "$k$n" in ''|*[!0-9]*) continue ;; esac
-          if [ "$GRAPHIFY_MAX_CHUNKS_PER_RUN" -gt 0 ] && [ "$done_n" -ge "$GRAPHIFY_MAX_CHUNKS_PER_RUN" ] && [ "$k" -lt "$n" ]; then
+          if [ "$GRAPHIFY_MAX_CHUNKS_PER_RUN" -gt 0 ] && [ "$done_n" -ge "$GRAPHIFY_MAX_CHUNKS_PER_RUN" ] && [ "$done_n" -lt "$n" ]; then
             printf 'cap %s\n' "$done_n" > "$_STOP_FILE"
             kill -TERM "$gpid" 2>/dev/null || true
           fi ;;
@@ -2447,7 +2448,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # the TERM); a leaked grandchild holding the pipe open cannot hang the run.
   _run_extract() {
     local rem fifo="$SCRATCH/.graphify-extract.fifo" gpid mpid rc=0 i stop_at="" killed=0
-    rm -f "$fifo" "$_STOP_FILE"
+    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE"
     rem="$(_deadline_left)"
     if [ "$rem" != unbounded ] && [ "$rem" -eq 0 ]; then
       echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
@@ -2505,7 +2506,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     _promote_lock_release
   }
 
-  echo "refresh-graph-map: chunk cap=$GRAPHIFY_MAX_CHUNKS_PER_RUN per run (deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s / ${GRAPHIFY_SECONDS_PER_CHUNK}s per chunk; 0 = uncapped), hollow retry max=$GRAPHIFY_HOLLOW_RETRY_MAX per chunk" >&2
+  echo "refresh-graph-map: chunk cap=$GRAPHIFY_MAX_CHUNKS_PER_RUN per run (deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s / ${GRAPHIFY_SECONDS_PER_CHUNK}s per chunk; 0 = uncapped), hollow no-progress limit=$GRAPHIFY_HOLLOW_RETRY_MAX per worker" >&2
   echo "refresh-graph-map: incremental update on scratchpad copy ($SCRATCH) backend=$BACKEND deadline=${GRAPHIFY_RUN_DEADLINE_SECONDS}s" >&2
   # Billing note. Under the default BACKEND (claude-cli) graphify shells the
   # claude CLI headlessly from inside these two dispatches. Measured 2026-08-12:
@@ -2516,6 +2517,11 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # calls can reach is the reroute-selector clearing above + the egress fence.
   _rc=0
   _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+  if [ -s "$_FAILED_FILE" ]; then
+    echo "refresh-graph-map: hollow chunks failed after bounded retries -- finished chunks cached, graphify-out left unpromoted (exit 5)" >&2
+    _keep_finished_chunks "$(cat "$_FAILED_FILE")"
+    exit 5
+  fi
   _stop=""
   [ ! -s "$_STOP_FILE" ] || _stop="$(cat "$_STOP_FILE")"
   case "$_stop" in

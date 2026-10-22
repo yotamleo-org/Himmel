@@ -430,7 +430,7 @@ Optional:
                      passes --autocompact auto; standard strips any
                      [1m] suffix and passes --autocompact 200000.
                      Default: 1m for consoles (HIMMEL-3884), standard for
-                     non-console arms. CONSOLE_CONTEXT=standard opts a
+                     non-console arms. CHIEF_CONTEXT=standard opts a
                      console down; explicit --context overrides it. The
                      resolved mode, its source (explicit vs. default) and
                      the effective autocompact value are always echoed to
@@ -573,6 +573,9 @@ EOF
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chief-context.sh"
+# CHIEF_CONTEXT and CHIEF_WORK_DIR still read their old names, CONSOLE_*.
+CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
+CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-${CONSOLE_WORK_DIR:-}}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/claude-version.sh"
 
@@ -1082,15 +1085,15 @@ echo "arm-resume: $MODEL_REASON"
 # above for the MODEL_REASON block -- do not recompute either.
 #
 # consoles default to 1m; non-console arms remain standard.
-# The shared resolver honors CONSOLE_CONTEXT=standard as a console-only
+# The shared resolver honors CHIEF_CONTEXT=standard as a console-only
 # opt-down. An explicit --context takes precedence over both.
 if [ -z "$CONTEXT_MODE" ]; then
-    console_context_default "$_arm_is_console" "${CONSOLE_CONTEXT:-}"
-    CONTEXT_MODE="$CONSOLE_CONTEXT_RESOLVED_MODE"
+    console_context_default "$_arm_is_console" "${CHIEF_CONTEXT:-}"
+    CONTEXT_MODE="$CHIEF_CONTEXT_RESOLVED_MODE"
     # the source word is the one headed-arm.sh emits and spec
     # 2973 sec 2.4 keys on (`context=1m (explicit)`), from the shared
     # resolver. It used to be prose per case (console default,
-    # non-console default, the CONSOLE_CONTEXT=1m opt-in) that no
+    # non-console default, the CHIEF_CONTEXT=1m opt-in) that no
     # reader could match; the provenance is in those tickets, not the string.
     _arm_context_source=$(console_context_source_label 0)
 else
@@ -2686,7 +2689,7 @@ RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble sta
 # snapshot hook (scripts/hooks/console-precompact-snapshot.sh); any other arm
 # exports neither (the launch bodies still always-clear an ambient pair -- `at`
 # snapshots the submitting env). The workdir is the console work dir console.sh
-# resolves (CONSOLE_WORK_DIR, else $XDG_RUNTIME_DIR/himmel-console, else
+# resolves (CHIEF_WORK_DIR, else $XDG_RUNTIME_DIR/himmel-console, else
 # ${TMPDIR:-/tmp}/himmel-console-<uid>) plus a per-doc precompact-<doc> subdir:
 # arm-resume cannot reproduce console.sh's chain_dir (it needs the bucket + root
 # digest), and the hook creates the subdir 0700.
@@ -2695,9 +2698,9 @@ RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble sta
 # snapshot and G11 (compacted-check.sh) reports `no snapshot` rc 2 -- unverified,
 # never a false pass. "Console" = the same basename *-console.md test the model
 # default uses, so a console doc with another name is not snapshotted either.
-CONSOLE_PRECOMPACT_DOC=""; CONSOLE_PRECOMPACT_WORKDIR=""
+CHIEF_PRECOMPACT_DOC=""; CHIEF_PRECOMPACT_WORKDIR=""
 if [ "$_arm_is_console" -eq 1 ]; then
-    _cp_base="${CONSOLE_WORK_DIR:-}"
+    _cp_base="${CHIEF_WORK_DIR:-}"
     if [ -z "$_cp_base" ]; then
         if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
             _cp_base="$XDG_RUNTIME_DIR/himmel-console"
@@ -2705,13 +2708,13 @@ if [ "$_arm_is_console" -eq 1 ]; then
             _cp_base="${TMPDIR:-/tmp}/himmel-console-$(id -u)"
         fi
     fi
-    CONSOLE_PRECOMPACT_DOC=$(_arm_realpath "$HANDOVER_PATH")
-    _cp_slug=$(printf '%s' "$(basename -- "$CONSOLE_PRECOMPACT_DOC" .md)" | tr -c '[:alnum:]_-' '-')
+    CHIEF_PRECOMPACT_DOC=$(_arm_realpath "$HANDOVER_PATH")
+    _cp_slug=$(printf '%s' "$(basename -- "$CHIEF_PRECOMPACT_DOC" .md)" | tr -c '[:alnum:]_-' '-')
     # Two console docs can share a basename (every repo's handovers/ has an
     # n<k>-console.md); the checker reads the newest snap without checking which
     # document wrote it, so the workdir carries a path hash, like the lock slug.
-    _cp_hash=$(_arm_path_hash "$(_arm_identity_path "$CONSOLE_PRECOMPACT_DOC")")
-    CONSOLE_PRECOMPACT_WORKDIR="$_cp_base/precompact-$_cp_slug${_cp_hash:+-h$_cp_hash}"
+    _cp_hash=$(_arm_path_hash "$(_arm_identity_path "$CHIEF_PRECOMPACT_DOC")")
+    CHIEF_PRECOMPACT_WORKDIR="$_cp_base/precompact-$_cp_slug${_cp_hash:+-h$_cp_hash}"
 fi
 
 # Compute working directory for the relaunched claude process. Without
@@ -5022,10 +5025,10 @@ fi"
     # same always-clear-then-grant shape for the console
     # PreCompact pair. `%` is escaped for cron like q_log_file below.
     q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE && "
-    if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
+    if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then
         local q_cp_doc q_cp_wd
-        q_cp_doc=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC"); q_cp_doc=${q_cp_doc//%/\\%}
-        q_cp_wd=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR"); q_cp_wd=${q_cp_wd//%/\\%}
+        q_cp_doc=$(printf '%q' "$CHIEF_PRECOMPACT_DOC"); q_cp_doc=${q_cp_doc//%/\\%}
+        q_cp_wd=$(printf '%q' "$CHIEF_PRECOMPACT_WORKDIR"); q_cp_wd=${q_cp_wd//%/\\%}
         q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd HIMMEL_CONSOLE=1 && "
     fi
     # the headless shape (function header). The redirects hang
@@ -6241,8 +6244,8 @@ fi"
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(console_context_launch_seam_env_names | tr '\n' ' ')
 "
-                if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
-                    at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1
+                if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then
+                    at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CHIEF_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CHIEF_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1
 "
                 fi
                 # atd runs the job with stdin=/dev/null and no tty,
@@ -6488,7 +6491,7 @@ fi
 # is written by THIS shell at arm time (the mode is resolved and fixed now),
 # not by the schtasks .bat body, so it needs no Windows-side code.
 if [ "$_arm_is_console" -eq 1 ] && ! console_context_write_record "$SESSION_NAME" "$CONTEXT_MODE" "$_arm_context_source" "$AUTOCOMPACT"; then
-    echo "WARN arm-resume: context record NOT written under ${CONSOLE_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >&2
+    echo "WARN arm-resume: context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >&2
 fi
 
 # A CONSUMED arm exits HERE -- before the force-replace reap and
