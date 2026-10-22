@@ -1830,12 +1830,21 @@ _tok_readonly_ok() {
                 # --output=<file> writes these subcommands' output.
                 git:--output*) return 1 ;;
                 rg:--pre*) return 1 ;;
+                printf:*) ! _tok_printf_n "$lw" || return 1 ;;
             esac
         fi
         k=$((k + 1))
     done
     [ "$s" -lt 0 ] || _tok_ro_segment || return 1
     return 0
+}
+
+# _tok_printf_n WORD — success when WORD holds a printf %n conversion (flags,
+# width, precision and length modifiers allowed between % and n), which
+# assigns the output length to a shell variable.
+_tok_printf_n() {
+    local re="%[-+ #0-9.'hlLjzqt]*n"
+    [[ $1 =~ $re ]]
 }
 
 # _tok_ro_segment — the end of one segment, in _tok_readonly_ok's scope: its
@@ -2002,7 +2011,7 @@ _tok_lit_name() {
 # assignments) a plain word naming a program below that runs no text it is
 # given — git only as `git [-C DIR] <sub>` with a sub that runs no command
 # string (and git grep without its pager option), sed only with inert
-# scripts, sort without --compress-program, printf without -v.
+# scripts, sort without --compress-program, printf without -v or %n.
 # ponytail: an allowlist — a program not listed (awk, find, xargs, python,
 # bash, …) keeps the old any-`$'` reading, fail-closed; upgrade path: add a
 # program here with a RED row when the den-ls corpus shows it.
@@ -2039,6 +2048,7 @@ _tok_no_shell_ok() {
         else
             case "$first:$lw" in
                 sort:--co*|printf:-v*) return 1 ;;
+                printf:*) ! _tok_printf_n "$lw" || return 1 ;;
             esac
             if [ "$first" = git ]; then
                 if [ -z "$sub" ] && [ "$w" = -C ]; then

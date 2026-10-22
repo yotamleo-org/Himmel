@@ -3519,6 +3519,13 @@ assert_rc "6927s3n sort with a brace list of -o and home settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'sort {-o,~/.claude/settings.json} src' HOME="$FAKEHOME")"
 assert_rc "6927s3o printf with a variable holding -v denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'V=-v; printf $V x %s ~/.claude/settings.json' HOME="$FAKEHOME")"
+# printf's %n conversion assigns the output length to a shell variable.
+assert_rc "6927s3p printf with a %n conversion denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%n%s'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3q printf with a widthed %n conversion denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%10n%s'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3r printf %s with a newline and home settings stays allowed" 0 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%s\n'"'"' ~/.claude/settings.json' HOME="$FAKEHOME")"
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).

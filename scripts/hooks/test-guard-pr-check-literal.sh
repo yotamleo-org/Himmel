@@ -2156,6 +2156,8 @@ for v in \
     "timeout 60 grep -rn -e foo --include='*.sh' docs" \
     "timeout 60 grep -rn --include='scripts/cr/*.sh' foo docs" \
     "timeout 60 rg -g 'scripts/cr/*.sh' foo docs" \
+    "timeout -s TERM 60 grep -rn --include='scripts/cr/*.sh' foo docs" \
+    "timeout -k 5 -s TERM 60 rg -g 'scripts/cr/*.sh' foo docs" \
     "git ls-files | xargs grep -n --include='scripts/handover/*.sh' foo"; do
     run "HIMMEL-6927 s3 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
@@ -2177,6 +2179,7 @@ for v in \
     "rg --pre=bash -g 'scripts/cr/*.sh' x ." \
     "rg -g 'scripts/cr/*.sh' --pre bash x ." \
     "timeout 60 rg --pre=bash --glob '*.sh' x ." \
+    "timeout -k 5 -s TERM 60 rg --pre=bash -g 'scripts/cr/*.sh' x ." \
     "rg -g 'scripts/cr/*.sh' -ge --pre=bash x ." \
     "rg -g 'scripts/cr/*.sh' -Ae --pre=bash x ."; do
     run "HIMMEL-6927 s3 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"

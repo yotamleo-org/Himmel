@@ -1989,12 +1989,12 @@ inert_trunc() {
 }
 inert_filter_globs() {
     # st: 0 looking for the command word, 1 inside a searcher's arguments, 2 done
-    local k=0 sg=-1 st=0 wr=0 j w v vi sb=0
+    local k=0 sg=-1 st=0 wr=0 wn='' j w v vi sb=0
     [ "$PR_TOKENIZED" = 1 ] || return 0
     st_tokenize "$cmd" || return 0
     [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC" = 000 ] || return 0
     while [ "$k" -lt "$ST_N" ]; do
-        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; st=0; wr=0; fi
+        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; st=0; wr=0 wn=''; fi
         j=$k
         w=${ST_W[j]}
         k=$((k + 1))
@@ -2003,11 +2003,15 @@ inert_filter_globs() {
             0)
                 [ "${ST_A[j]}" = 0 ] || continue
                 if [ "$wr" = 1 ]; then
+                    # timeout's signal and kill-after options take a value word
+                    case "$wn:$w" in
+                        timeout:-s | timeout:-k | timeout:--signal | timeout:--kill-after) k=$((k + 1)); continue ;;
+                    esac
                     case "$w" in -*) continue ;; esac
                     case "$w" in *[!0-9]*) ;; *) continue ;; esac
                 fi
                 case "$w" in
-                    time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs) wr=1 ;;
+                    time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs) wr=1 wn=$w ;;
                     grep | egrep | fgrep | rg)
                         if [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ]; then st=1; sb=${#INERT_GLOBS[@]}; else st=2; fi ;;
                     *) st=2 ;;
