@@ -441,7 +441,7 @@ op_relaunch_console() {
         echo "ERR break-glass: bad console name: '$name'" >&2
         return 1
     fi
-    cmd="${BREAK_GLASS_CONSOLE_CMD:-bash $PRIMARY/scripts/handover/console/console.sh}"
+    cmd="${BREAK_GLASS_CONSOLE_CMD:-bash $PRIMARY/scripts/handover/console/chief.sh}"
     scrub_env
     # shellcheck disable=SC2086 # the seam is a command line by design
     (cd "$PRIMARY" && $cmd next --arm --name "$name")

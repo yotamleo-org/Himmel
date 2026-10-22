@@ -1638,14 +1638,14 @@ contains "resolved launcher: SHELL forced to bash ahead of script(1), independen
 # (unset) launcher - proves that assertion is not vacuous. -----------------
 # The mutant must keep the same scripts/handover + ../lib
 # layout as the real tree -- headed-arm.sh now sources
-# scripts/lib/console-context.sh relative to its OWN path ($0), and a bare
+# scripts/lib/chief-context.sh relative to its OWN path ($0), and a bare
 # copy dropped straight into $tmp has no sibling ../lib to find.
 mutant36dir="$tmp/mutant-headed-arm-recorder"
 mkdir -p "$mutant36dir/scripts/handover" "$mutant36dir/scripts/lib"
 mutant36="$mutant36dir/scripts/handover/headed-arm.sh"
 # shellcheck disable=SC2016 # single-quoted sed script; $RECORDER must stay literal
 sed 's/if \[ "\$RECORDER" = "1" \]; then/if true; then/' "$SCRIPT" > "$mutant36"
-cp "$HERE/../lib/console-context.sh" "$mutant36dir/scripts/lib/console-context.sh"
+cp "$HERE/../lib/chief-context.sh" "$mutant36dir/scripts/lib/chief-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$mutant36dir/scripts/lib/claude-version.sh"
 # Headed-arm.sh sources its argv check from its own directory.
 cp "$HERE/argv-has-n-name.sh" "$mutant36dir/scripts/handover/argv-has-n-name.sh"
@@ -1890,10 +1890,10 @@ check "40b the --role console rows landed in the suite's pinned record dir" \
 # passing-looking skip there.
 d43="$tmp/c43"; mkdir -p "$d43/bare" "$d43/lib"
 cp "$SCRIPT" "$d43/bare/headed-arm.sh"
-# headed-arm.sh sources $HERE/../lib/console-context.sh, so the
+# headed-arm.sh sources $HERE/../lib/chief-context.sh, so the
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
-cp "$HERE/../lib/console-context.sh" "$d43/lib/console-context.sh"
+cp "$HERE/../lib/chief-context.sh" "$d43/lib/chief-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43/lib/claude-version.sh"
 fixture_profiles "$d43"
 mk_stub "$d43" 1 alive
@@ -1915,10 +1915,10 @@ not_contains "43 macOS default is never a bare 'konsole'" "$out43" "no 'konsole'
 # konsole case already uses.
 d43b="$tmp/c43b"; mkdir -p "$d43b/bare" "$d43b/lib"
 cp "$SCRIPT" "$d43b/bare/headed-arm.sh"
-# headed-arm.sh sources $HERE/../lib/console-context.sh, so the
+# headed-arm.sh sources $HERE/../lib/chief-context.sh, so the
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
-cp "$HERE/../lib/console-context.sh" "$d43b/lib/console-context.sh"
+cp "$HERE/../lib/chief-context.sh" "$d43b/lib/chief-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43b/lib/claude-version.sh"
 fixture_profiles "$d43b"
 mk_stub "$d43b" 1 alive
@@ -1948,7 +1948,7 @@ not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konso
 # proving the fallback -- the gap this ticket closes.
 d43c="$tmp/c43c"; mkdir -p "$d43c/bare" "$d43c/lib"
 cp "$SCRIPT" "$d43c/bare/headed-arm.sh"
-cp "$HERE/../lib/console-context.sh" "$d43c/lib/console-context.sh"
+cp "$HERE/../lib/chief-context.sh" "$d43c/lib/chief-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43c/lib/claude-version.sh"
 fixture_profiles "$d43c"
 mk_stub "$d43c" 1 alive
@@ -2196,7 +2196,7 @@ check "46 not_contains reports a grep error as a failure, not as absence" "$nc46
 d42="$tmp/c42"; mkdir -p "$d42/bare" "$d42/lib"
 cp "$SCRIPT" "$d42/bare/headed-arm.sh"
 # The lone copy needs its ../lib sibling to get this far at all.
-cp "$HERE/../lib/console-context.sh" "$d42/lib/console-context.sh"
+cp "$HERE/../lib/chief-context.sh" "$d42/lib/chief-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$d42/lib/claude-version.sh"
 fixture_profiles "$d42"
 mk_stub "$d42" 1 alive

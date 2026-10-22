@@ -91,7 +91,7 @@ keeps returning 200 during an OAuth gap — probe a real completion
 
 ## Transient 5xx: bounded retry and a second credential (HIMMEL-5391)
 
-An upstream codex `502` ends a claudex worker session's turn, and the `503
+An upstream codex `502` ends a claudex worker's turn, and the `503
 auth_unavailable` that follows is the proxy cooling down the only codex
 credential. `--install` (and `--roll`) write two keys to
 `config.yaml`, and only when they are missing, so an operator-set value is

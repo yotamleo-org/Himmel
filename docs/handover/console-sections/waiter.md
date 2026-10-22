@@ -25,7 +25,7 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
     naming the legs still out. Each fires once; **re-arm without `--succession`**
     (a re-arm that keeps it after a complete wake stays quiet). An outgoing
-    console started with `console.sh next --relay-on-live` gets `WAKE relay-on-live
+    chief started with `chief.sh next --relay-on-live` gets `WAKE relay-on-live
     successor=<session>` plus `relay-batch.sh`'s SENDMESSAGE lines once the
     successor's lock is held fresh; send each line. It runs `tick.sh` every
     180 s and wakes only when two consecutive samples differ from the action

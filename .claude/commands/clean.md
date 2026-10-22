@@ -16,6 +16,6 @@ Run:
 bash scripts/clean.sh $ARGUMENTS
 ```
 
-To prune exactly ONE worktree (e.g. wrapping a single leg), pass `--only <worktree-path|branch>`: every gate above still applies, the fleet-wide sweeps are skipped, and it exits non-zero when the target is not a prune candidate. Prefer it over a bare `/clean` whenever other sessions may be live.
+To prune exactly ONE worktree (e.g. wrapping a single worker), pass `--only <worktree-path|branch>`: every gate above still applies, the fleet-wide sweeps are skipped, and it exits non-zero when the target is not a prune candidate. Prefer it over a bare `/clean` whenever other sessions may be live.
 
 For the combined prune + create flow, use `/clean_garden <branch>`. For create-only, use `/worktree <branch>`.

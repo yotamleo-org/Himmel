@@ -16,6 +16,8 @@ set -uo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/scripts/release/build-tarball.sh"
 WORKFLOW="$ROOT/.github/workflows/release.yml"
+# shellcheck source=../lib/timeout-bin.sh
+. "$ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "PASS  $1"; }
@@ -32,7 +34,25 @@ check_not() { # check_not <label> <command...> -- passes when the command exits 
 # Fixture must not inherit an outer git context (a leg runs inside a worktree).
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/himmel-buildtb-test.XXXXXX")" || { echo "cannot create a scratch dir" >&2; exit 1; }
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp"; [ -z "${srv:-}" ] || kill "$srv" 2>/dev/null' EXIT
+
+# A registry that accepts the connection and never answers -- what an npm outage looks
+# like to npm 10 (CI's npm), whose install/ci/prune wait on an audit request to the
+# registry for minutes even when every dependency is a local file: one. Every npm call
+# below goes through it; the fetch bounds keep a regression to seconds, not the 600 s cap.
+python3 - "$tmp/port" <<'PY' &
+import socket, sys
+s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen(16)
+open(sys.argv[1], 'w').write(str(s.getsockname()[1]))
+held = []
+while True:
+    held.append(s.accept()[0])
+PY
+srv=$!
+for _ in $(seq 1 50); do [ -s "$tmp/port" ] && break; sleep 0.1; done
+[ -s "$tmp/port" ] || { echo "FAIL  silent registry did not start"; exit 1; }
+port="$(cat "$tmp/port")"
+export npm_config_registry="http://127.0.0.1:$port/" npm_config_fetch_retries=0 npm_config_fetch_timeout=5000
 
 # --- fixture: a tiny git repo shaped like himmel's build surface -------------
 fx="$tmp/fx"
@@ -52,7 +72,7 @@ EOF
 # the "node_modules is in the tarball" assertion depend on a shim.
 echo '{ "name": "fx-dep", "version": "0.0.0" }' > "$fx/scripts/fxdep/package.json"
 printf 'dist/\nnode_modules/\n' > "$fx/.gitignore"
-( cd "$fx/scripts/jira" && npm install --package-lock-only --silent ) >/dev/null 2>&1
+( cd "$fx/scripts/jira" && npm install --package-lock-only --silent --offline --no-audit --no-fund ) >/dev/null 2>&1
 git -C "$fx" init -q .
 git -C "$fx" add -A
 git -C "$fx" -c user.name=t -c user.email=t@e.co commit -q -m fixture
@@ -76,6 +96,16 @@ check "asset paths are printed on stdout (both)" \
 expect="$(cd "$out" && sha256sum himmel-1.2.3-linux.tar.gz)"
 [ "$(cat "$sum")" = "$expect" ] && ok ".sha256 is exactly 'sha256sum <bare filename>'" || bad ".sha256 format" "got: $(cat "$sum")"
 check "GREEN: matching pair verifies with the adopter one-liner" bash -c "cd '$out' && sha256sum -c himmel-1.2.3-linux.tar.gz.sha256"
+
+# RED: with the fetch bounds removed, a build must not wait on the registry.
+# On npm 10 an unflagged install/ci/prune sat on the silent registry past the CI cap.
+if [ -n "$_TIMEOUT_BIN" ]; then
+  check "RED: the build does not wait on the registry (no fetch bounds, 20 s cap)" \
+    env -u npm_config_fetch_retries -u npm_config_fetch_timeout npm_config_audit=true \
+      "$_TIMEOUT_BIN" 20 bash "$BUILD" --version 1.2.5 --src "$fx" --out "$tmp/out-silent"
+else
+  echo "skip - build does not wait on the registry: no timeout binary"
+fi
 
 # --- T2: RED controls -- the same one-liner must FAIL when the cause varies ---
 bad_dir="$tmp/tampered"; mkdir -p "$bad_dir"
