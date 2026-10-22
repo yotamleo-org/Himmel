@@ -237,9 +237,9 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    `WAKE relay-on-live` (set by `next` for a bus chief) or by running
    `relay-batch.sh <this doc> --successor <it>`: it sends the bus record each worker's
    `bus adopt` needs plus the claudex relays, and prints one `SENDMESSAGE` per
-   worker, naming the successor and the worker's token (and the fresh one if the
+   native worker, naming the successor and the worker's token (and the fresh one if the
    successor issued one): send each from **your own session**. Only you can relay for a worker; a successor
-   arriving after you left can prove itself only with both tokens. Wait for each
+   arriving later can prove itself only with both tokens. Wait for each
    worker's quote-back.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any legs that
