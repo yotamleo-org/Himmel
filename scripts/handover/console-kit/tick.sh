@@ -627,7 +627,7 @@ leg_cachettl() {
             while IFS= read -r f; do
                 [ -n "$f" ] || continue
                 if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
-            done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
+            done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
         done
     done
     [ -n "$newest" ] || return 1

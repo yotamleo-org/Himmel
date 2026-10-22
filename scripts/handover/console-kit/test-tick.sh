@@ -260,6 +260,9 @@ cachettl_cases() (
     printf '{"type":"custom-title","customTitle":"HIMMEL-6532-N1-other"}\n{"type":"assistant","timestamp":"%s"}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/other.jsonl"
     out="$(LEGS='HIMMEL-111-legN61 HIMMEL-6532-N1-other' bash "$SUT")"
     contains 'multiple idle legs are comma joined after terminal notifications' "$out" ' cachettl=N61,N1'
+    touch -d '25 hours ago' "$TICK_PROJECTS_DIR/p/cache.jsonl"
+    out="$(bash "$SUT")"
+    not_contains 'a matching transcript older than the search window is ignored' "$out" ' cachettl='
     rm -f "$TICK_PROJECTS_DIR/p/cache.jsonl" "$TICK_PROJECTS_DIR/p/other.jsonl" "$W/handover/HIMMEL-6532-N1-other.md"
     out="$(bash "$SUT")"
     not_contains 'a missing transcript never invents an idle leg' "$out" ' cachettl='
