@@ -118,7 +118,8 @@ Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT 
 --relay-on-live (next only) leaves a marker beside the outgoing console's inbox; its
 console-wait.sh waiter then wakes the outgoing console ONCE, when the successor holds
 its queue lock, with relay-batch.sh's SENDMESSAGE lines, so the outgoing console need
-not ask before relaying. It sends nothing itself.
+not ask before relaying. It sends nothing itself. A console with a bus identity
+(HIMMEL_BUS_NAME) gets the marker without the flag.
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "console".
@@ -1919,8 +1920,10 @@ cmd_next() {
         echo "handover-mode: $pred_inbox.handover"
         # --relay-on-live: the outgoing waiter wakes its console once, when the successor
         # holds its lock, with the relay lines (line 1 successor session, line 2 its doc).
+        # A console with a bus identity always gets it: the legs' bus adopt needs the bus
+        # record relay-batch.sh sends, which a hand relay never does.
         # Written to a temp name then renamed, so the waiter never reads half a marker.
-        if [ "$RELAY_ON_LIVE" -eq 1 ] && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
+        if { [ "$RELAY_ON_LIVE" -eq 1 ] || [ -n "${HIMMEL_BUS_NAME:-}" ]; } && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
             && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
             echo "relay-on-live: $pred_inbox.relay-on-live"
         fi

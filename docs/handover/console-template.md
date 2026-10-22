@@ -233,13 +233,14 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    your waiter (nobody is paged on your side) for `CONSOLE_WAIT_HANDOVER_MIN`
    (default 60); `rm` it to end the mute early.
 3. `touch` the signal path from step 1 and hand your live legs to the successor.
-4. **Re-brief every live leg yourself, before you release.** The successor names
-   itself to you in ACTION ZERO step 9 and hands you a fresh token for a leg only
-   if it chose to; send each leg, from **your own session**, a message
-   naming the successor (the leg adopts the session the relay names, not the
-   sender) and quoting the leg's current token (and the fresh one if the successor issued one).
-   Only you can relay for a leg; a successor arriving after you left can prove
-   itself only with both tokens. Wait for each leg's quote-back.
+4. **Re-brief every live worker before you release, never by hand.** On
+   `WAKE relay-on-live` (set by `next` for a bus chief) or by running
+   `relay-batch.sh <this doc> --successor <it>`: it sends the bus record each worker's
+   `bus adopt` needs plus the claudex relays, and prints one `SENDMESSAGE` per
+   worker, naming the successor and the worker's token (and the fresh one if the
+   successor issued one): send each from **your own session**. Only you can relay for a worker; a successor
+   arriving after you left can prove itself only with both tokens. Wait for each
+   worker's quote-back.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any legs that
    did not quote back, and why. Then wrap with

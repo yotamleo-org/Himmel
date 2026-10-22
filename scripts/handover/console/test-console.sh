@@ -19,6 +19,8 @@
 # same platform scope, no .ps1 twin.
 set -uo pipefail
 
+# a bus-identified console's `next` leaves the relay-on-live marker unasked; only 6e sets it
+unset HIMMEL_BUS_NAME
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_REAL="$(cd "$HERE/../../.." && pwd)"
 QL="$REPO_REAL/scripts/handover/queue-lock.sh"
@@ -339,6 +341,12 @@ console next --bucket reldemo --relay-on-live >/dev/null
 check "6d next --relay-on-live writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
 check "6d next --relay-on-live writes the successor doc on line 2" "$(sed -n 2p "$mark6d" 2>/dev/null)" "$doc6dB"
 check "6d --relay-on-live is next-only" "$(console new --bucket reldemo2 --relay-on-live >/dev/null 2>&1; echo $?)" "1"
+# 6e: a console with a bus identity gets the marker without the flag, so its waiter runs
+# relay-batch.sh (bus record + SendMessage lines) instead of a hand relay that leaves the
+# legs with no bus edge to the successor.
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover" "$mark6d"
+HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-console" console next --bucket reldemo >/dev/null
+check "6e next from a bus-identified console writes the relay-on-live marker unasked" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
 HANDOVER_DIR="$root" bash "$QL" release "$doc6dA" "$token6da" >/dev/null 2>&1
 
 # --- 6b: --doc outside the successor's own state dir --------------------

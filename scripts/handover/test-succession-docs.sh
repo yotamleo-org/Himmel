@@ -168,6 +168,7 @@ before 'ACTION ZERO step 9: quote-back is collected BEFORE sending LIVE' "$step9
 
 handing="$(section "$CONSOLE" '^## Handing over')"
 contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
+contains 'template Handing over: the relay goes through relay-batch.sh (bus record + SendMessage)' "$handing" 'relay-batch.sh'
 before 'template Handing over: quote-backs are collected BEFORE the lock is released' "$handing" 'quote-back' 'release your lock'
 
 live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/console-sections/live-state.md")"
@@ -176,6 +177,7 @@ contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 
 # --- 3. running-a-console.md: the mirror --------------------------------------
 running="$(section "$RUNNING" '^## Handing over')"
 contains 'running-a-console Handing over: the outgoing console re-briefs the legs' "$running" 're-brief'
+contains 'running-a-console Handing over: the relay goes through relay-batch.sh' "$running" 'relay-batch.sh'
 contains 'running-a-console Handing over: the LIVE release rule keeps the did-not-quote-back exception' "$running" 'did not quote back'
 step5="$(printf '%s\n' "$handing" | awk '/^5\. \*\*/ { f = 1 } f')"
 contains 'template Handing over step 5: the LIVE release rule keeps the did-not-quote-back exception' "$step5" 'did not quote back'

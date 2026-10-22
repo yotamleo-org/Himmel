@@ -486,7 +486,10 @@ that `next --arm` printed and hand your live worker sessions over by name.
 worker session's brief names *you* as its supervisor session, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
 you send each worker session, from your own session, a message naming the successor and
-quoting the worker session's current token. The worker session's quote-back is the `SUCCESSION
+quoting the worker session's current token, never by hand: `next` leaves a chief with a
+bus identity a `WAKE relay-on-live` (or run `console-kit/relay-batch.sh <this doc> --successor
+<it>`), which sends the bus record each worker session's `bus adopt` needs, delivers the claudex
+relays and prints the `SENDMESSAGE` line for each other worker session. The worker session's quote-back is the `SUCCESSION
 accepted` Results bullet in its own doc (the successor's waiter tallies it); it sends a
 `SendMessage` only on a timeout or a decline. A fresh
 token is optional: a successor MAY issue one per worker session (then quote it too, and the
