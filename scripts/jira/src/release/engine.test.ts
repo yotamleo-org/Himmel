@@ -125,8 +125,12 @@ describe('release engine (HIMMEL-6796)', () => {
     const r3 = admit(q3.req, { supersedes: [r2.id] });
     await apply(ctx(rmEnv), r3.id);
     await apply(ctx(rmEnv), r3.id);
-    expect(rows()).toHaveLength(2);
-    expect(rows().map((r) => r.ruling)).toEqual([r1.id, r3.id]);
+    await apply(ctx(rmEnv), r2.id);
+    expect(rows().map((r) => [r.kind, r.key, r.version, r.ruling])).toEqual([
+      ['rm-admit', 'K-2', 'v1', r1.id],
+      ['rm-remove', 'K-2', 'v1', r2.id],
+      ['rm-admit', 'K-2', 'v1', r3.id],
+    ]);
   });
 
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {

@@ -164,7 +164,7 @@ const list = (keys: string[]) => keys.join(',');
 // gives it a reason, none makes it a leak. A Done key without a row is a
 // Done-fold, not a leak. A row keyed by a check id (a version-ready override)
 // is not an admission.
-const isAdmission = (l: Admission) => l.kind !== 'deferral' && KEY.test(l.key);
+const isAdmission = (l: Admission) => l.kind !== 'deferral' && l.kind !== 'rm-remove' && KEY.test(l.key);
 
 async function readinessRows(
   project: string,

@@ -177,6 +177,34 @@ describe('transition to Done respects the intake gate of a frozen version (HIMME
     expect(puts()).toHaveLength(1);
   });
 
+  it('a removal row after an admission withdraws the ruling, and a later admission restores it', async () => {
+    ledger(
+      { ts: 't1', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-admit', actor: 'a' },
+      { ts: 't2', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-remove', actor: 'a' },
+    );
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    ledger(
+      { ts: 't1', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-admit', actor: 'a' },
+      { ts: 't2', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-remove', actor: 'a' },
+      { ts: 't3', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-admit', actor: 'a' },
+    );
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(1);
+  });
+
+  it('a deferral row after an admission withdraws the ruling', async () => {
+    ledger(
+      { ts: 't1', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-admit', actor: 'a' },
+      { ts: 't2', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' },
+    );
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+  });
+
   it('a deferral row is not a ruling in', async () => {
     ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' });
     wire([], FROZEN);

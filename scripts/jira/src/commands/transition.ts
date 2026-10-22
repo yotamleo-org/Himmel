@@ -47,13 +47,12 @@ export function registerTransition(program: Command): void {
         if (!fixVersions || fixVersions.length === 0) {
           const versions = await fetchVersions(projectFromKey(key));
           const version = earliestUnreleased(versions);
-          // A frozen version takes only a ruled-in ticket: a frozen-set key or one with a
-          // non-deferral ledger row; any other is closed unstamped, never leaked in.
+          // A frozen version takes only a ruled-in ticket: a frozen-set key or one whose
+          // latest ledger row is not a deferral or a removal; any other is closed unstamped, never leaked in.
           const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
+          const latest = frozen ? readAdmissions(version).filter((r) => r.key === key).pop() : undefined;
           const ruledIn =
-            !frozen ||
-            frozen.keys.includes(key) ||
-            readAdmissions(version).some((r) => r.key === key && r.kind !== 'deferral');
+            !frozen || frozen.keys.includes(key) || (latest !== undefined && latest.kind !== 'deferral' && latest.kind !== 'rm-remove');
           if (version && !ruledIn) {
             console.log(`${key} not stamped: ${version} is frozen and ${key} has no intake ruling`);
           } else if (version) {
