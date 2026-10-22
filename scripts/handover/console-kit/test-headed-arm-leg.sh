@@ -229,7 +229,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -538,10 +538,11 @@ done
 # on every lane - so a scrubbed var carried there would come back past the
 # `unset`. The scrub strips it from the token list too; siblings survive.
 for lane in native claudex; do
-  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
+  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m CONSOLE_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
   lenv="$(printf '%s\n' "$out" | grep '^headed-arm-leg: lane=')"
   contains "--lane $lane, caller-preset launcher-env: dry-run reached the lane line" "$lenv" "launcher-env="
   not_contains "--lane $lane, caller-preset launcher-env: scrubbed CHIEF_CONTEXT stripped" "$lenv" "CHIEF_CONTEXT="
+  not_contains "--lane $lane, caller-preset launcher-env: scrubbed CONSOLE_CONTEXT stripped" "$lenv" "CONSOLE_CONTEXT="
   contains "--lane $lane, caller-preset launcher-env: sibling token kept" "$lenv" "KEEP_ME=1"
 done
 
@@ -1003,6 +1004,14 @@ wait_record "$d10b" || true
 env10b="$(cat "$d10b/env-record" 2>/dev/null || true)"
 check "full launch, ambient CHIEF_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
 not_contains "full launch, ambient CHIEF_CONTEXT=1m: absent from the konsole invocation's own env" "$env10b" "CHIEF_CONTEXT="
+# The old name CONSOLE_CONTEXT is kept out on the real path the same way.
+d10c="$tmp/c10c"; mk_launch_stubs "$d10c" "HIMMEL-3139-leg"; mkdir -p "$tmp/repo10c"
+rc=0
+CONSOLE_CONTEXT=1m LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10c" "$tmp/repo10c" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d10c" || true
+env10c="$(cat "$d10c/env-record" 2>/dev/null || true)"
+check "full launch, ambient CONSOLE_CONTEXT=1m: exit 0" "$rc" "0"
+not_contains "full launch, ambient CONSOLE_CONTEXT=1m: absent from the konsole invocation's own env" "$env10c" "CONSOLE_CONTEXT="
 
 # --- 12. RED control: mutate the ACTUAL headed-arm launch renderer to drop
 # --autocompact, then drive the wrapper's full non-dry path. The shared argv
