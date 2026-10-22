@@ -5,6 +5,8 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../../lib/portable-timeout.sh"
 FIX="$HERE/fixtures"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/qmd-quality-test.XXXXXX")" || { echo "test-qmd-quality: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT

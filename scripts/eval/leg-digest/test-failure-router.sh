@@ -189,13 +189,13 @@ printf '%s\tTask\tTo Do\tlegs retype past guard-y\n' "$k4" >"$STUB/list.fl-denie
 row N3 denied/guard-y 1 false leg 2026-10-20T10:00:00Z; row N4 denied/guard-y 1 false leg 2026-10-20T10:00:00Z
 LED="$SAVE"
 f4 --now 2026-10-21T12:00:00Z
-check "filed on N1+N2, then commented on N3+N4 once N1+N2 left the window" '[ "$(decs "$F4/log" | jq -r .decision | paste -sd " ")" = "filed commented" ]'
+check "filed on N1+N2, then commented on N3+N4 once N1+N2 left the window" '[ "$(decs "$F4/log" | jq -r .decision | paste -sd " " -)" = "filed commented" ]'
 c4="$(calls comment)"
 SAVE="$LED"; LED="$F4/l.jsonl"
 row N5 denied/guard-y 1 false leg 2026-11-05T10:00:00Z; row N6 denied/guard-y 1 false leg 2026-11-05T10:00:00Z
 LED="$SAVE"
 f4 --now 2026-11-06T12:00:00Z
-check "a comment on new legs at the same leg count still writes its decision line" '[ "$(calls comment)" = "$((c4 + 1))" ] && [ "$(decs "$F4/log" | jq -r .decision | paste -sd " ")" = "filed commented commented" ]'
+check "a comment on new legs at the same leg count still writes its decision line" '[ "$(calls comment)" = "$((c4 + 1))" ] && [ "$(decs "$F4/log" | jq -r .decision | paste -sd " " -)" = "filed commented commented" ]'
 
 echo "ledger rows dated after the routing time do not count"
 F5="$TMP/f5"; mkdir -p "$F5"; n5="$(calls create)"
@@ -221,7 +221,7 @@ SAVE="$LED"; LED="$F7/l.jsonl"; row N1 denied/guard-v 1; row N2 denied/guard-v 1
 rm -f "$STUB/intent-seen.log"; n7="$(calls create)"
 LOGPROBE="$F7/log" python3 "$FR" route --ledger "$F7/l.jsonl" --state "$F7/s.json" --log "$F7/log" --inbox "$F7/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 check "an intent line is already in the log when the create arrives" '[ "$(calls create)" = "$((n7 + 1))" ] && [ "$(tail -n 1 "$STUB/intent-seen.log")" = 1 ]'
-check "the intent line is a route-intent row with the envelope and no decision, and the decision line follows" '[ "$(jq -r .kind "$F7/log" | paste -sd " ")" = "route-intent route-decision" ] && jq -e -s ".[0] | .v == 1 and (.host | length) > 0 and .class == \"denied/guard-v\" and .intent == \"file\" and (has(\"decision\") | not)" "$F7/log" >/dev/null'
+check "the intent line is a route-intent row with the envelope and no decision, and the decision line follows" '[ "$(jq -r .kind "$F7/log" | paste -sd " " -)" = "route-intent route-decision" ] && jq -e -s ".[0] | .v == 1 and (.host | length) > 0 and .class == \"denied/guard-v\" and .intent == \"file\" and (has(\"decision\") | not)" "$F7/log" >/dev/null'
 k7="$(decs "$F7/log" | jq -r .ticket | head -n 1)"; printf "%s\tTask\tTo Do\tx\n" "$k7" >"$STUB/list.fl-denied-guard-v"
 SAVE="$LED"; LED="$F7/l.jsonl"; row N3 denied/guard-v 1; LED="$SAVE"
 rm -f "$STUB/intent-seen.log"

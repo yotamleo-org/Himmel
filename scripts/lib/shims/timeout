@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# scripts/lib/shims/timeout — a GNU `timeout` stand-in for hosts with neither
+# `timeout` nor `gtimeout` (stock macOS). Put on PATH by scripts/lib/portable-timeout.sh,
+# only when no real one exists.
+#
+# Supports the GNU surface the suites use: [-k DUR|--kill-after=DUR]
+# [-s SIG|--signal=SIG] [--preserve-status] [--foreground] [-v] DURATION CMD...
+# DURATION is a number with an optional s/m/h/d suffix; 0 means no bound.
+# Exit: CMD's status; 124 when the bound fired (137 when -k had to KILL);
+# 125 usage; 127 CMD not found. --version prints a line, exit 0, so a
+# `--version` probe accepts it.
+#
+# bash 3.2-safe. CMD runs in its own process group (set -m) and the whole group
+# is signalled, like GNU timeout without --foreground.
+
+set -u
+
+usage() { echo "timeout: $1" >&2; exit 125; }
+
+_secs() {
+    case "$1" in
+        ''|*[!0-9.smhd]*|*.*.*|[smhd]*) return 1 ;;
+    esac
+    awk -v d="$1" 'BEGIN { n = d + 0; u = substr(d, length(d)); if (u == "m") n *= 60; else if (u == "h") n *= 3600; else if (u == "d") n *= 86400; printf "%s", n }'
+}
+
+kill_after=0
+sig=TERM
+preserve=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version) echo "timeout (himmel portable fallback)"; exit 0 ;;
+        -k|--kill-after) [ $# -ge 2 ] || usage "option requires an argument -- 'k'"; kill_after="$2"; shift 2 ;;
+        --kill-after=*) kill_after="${1#*=}"; shift ;;
+        -k?*) kill_after="${1#-k}"; shift ;;
+        -s|--signal) [ $# -ge 2 ] || usage "option requires an argument -- 's'"; sig="$2"; shift 2 ;;
+        --signal=*) sig="${1#*=}"; shift ;;
+        -s?*) sig="${1#-s}"; shift ;;
+        --preserve-status) preserve=1; shift ;;
+        --foreground|-v|--verbose) shift ;;
+        --) shift; break ;;
+        -*) usage "unrecognized option '$1'" ;;
+        *) break ;;
+    esac
+done
+[ $# -ge 2 ] || usage "missing operand"
+
+secs="$(_secs "$1")" || usage "invalid time interval '$1'"
+kill_secs="$(_secs "$kill_after")" || usage "invalid time interval '$kill_after'"
+shift
+case "$sig" in [0-9]*) ;; *) sig="${sig#SIG}" ;; esac
+
+if [ "$secs" = "0" ]; then exec "$@"; fi
+
+flag="$(mktemp "${TMPDIR:-/tmp}/portable-timeout.XXXXXX")" || usage "cannot create a state file"
+trap 'rm -f "$flag" "$flag.done"' EXIT
+
+set -m
+"$@" &
+pid=$!
+set +m
+
+# the watcher's stdio is detached: a lingering `sleep` must not hold the
+# caller's pipe (e.g. `$(timeout ...)`) open past the command's exit
+(
+    sleep "$secs"
+    [ -e "$flag.done" ] && exit 0
+    echo term > "$flag"
+    kill -s "$sig" -- "-$pid" 2>/dev/null || kill -s "$sig" "$pid" 2>/dev/null
+    if [ "$kill_secs" != "0" ]; then
+        sleep "$kill_secs"
+        [ -e "$flag.done" ] && exit 0
+        if kill -0 "$pid" 2>/dev/null; then
+            echo kill > "$flag"
+            kill -s KILL -- "-$pid" 2>/dev/null || kill -s KILL "$pid" 2>/dev/null
+        fi
+    fi
+) >/dev/null 2>&1 </dev/null &
+watcher=$!
+
+trap 'kill -s TERM -- "-$pid" 2>/dev/null' TERM INT
+rc=0
+wait "$pid" 2>/dev/null || rc=$?
+case "$(cat "$flag" 2>/dev/null)" in '') : > "$flag.done" ;; esac
+pkill -P "$watcher" 2>/dev/null
+kill "$watcher" 2>/dev/null
+wait "$watcher" 2>/dev/null
+
+case "$(cat "$flag" 2>/dev/null)" in
+    kill) exit 137 ;;
+    term) [ "$preserve" = 1 ] || rc=124 ;;
+esac
+exit "$rc"

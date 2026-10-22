@@ -4,6 +4,8 @@
 # per-waiter fetches, wrong job selection, and spending the wrong rate bucket.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/lib/portable-timeout.sh"
 ROOT=$(mktemp -d "${TMPDIR:-/tmp}/check-ci-run.XXXXXX") || exit 1
 trap 'rm -rf "$ROOT"' EXIT
 PASS=0; FAIL=0

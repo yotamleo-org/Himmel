@@ -3,6 +3,8 @@
 # a clean diff and a waiver diff for scripts/cr/residue-scan.sh. Hermetic.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../lib/portable-timeout.sh"
 SCAN="$HERE/residue-scan.sh"
 FX="$HERE/testdata/residue-scan"
 fails=0

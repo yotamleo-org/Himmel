@@ -8,6 +8,8 @@
 # Run: bash scripts/handover/console-kit/test-action-zero.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../../lib/portable-timeout.sh"
 AZ="${ACTION_ZERO:-$HERE/action-zero.sh}"
 
 fails=0

@@ -116,5 +116,40 @@ eq "T6 the stored path still runs after a cd (rc 0, not 127)" "$rc" "0"
 out="$(PATH="$d2" "$BASH_BIN" -c 'timeout() { [ "$1" = "--version" ]; }; . "$1"; printf "[%s]" "$_TIMEOUT_BIN"' _ "$LIBF" 2>/dev/null)"
 eq "T6 a shell function named timeout is rejected" "$out" "[]"
 
+echo "[test-timeout-bin] T7 portable fallback (macOS shape: no timeout, no gtimeout) puts a bash timeout on PATH"
+PORTF="$SCRIPT_DIR/portable-timeout.sh"
+d7="$(stub_dir t7 env bash sleep awk mktemp rm cat pkill sh)"
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+got="$(PATH="$d7" "$BASH_BIN" -c '. "$1"; command -v timeout; timeout --version >/dev/null; echo "ver=$?"' _ "$PORTF" 2>&1)"
+case "$got" in */shims/timeout*ver=0) ok "T7 timeout resolves to the shim and answers --version" ;; *) bad "T7 got [$got]" ;; esac
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+got="$(PATH="$d7" "$BASH_BIN" -c '. "$1"; . "$2"; printf "%s" "$_TIMEOUT_BIN"' _ "$PORTF" "$LIBF" 2>/dev/null)"
+case "$got" in */shims/timeout) ok "T7 timeout-bin.sh resolves the shim afterwards" ;; *) bad "T7 timeout-bin got [$got]" ;; esac
+t0=$SECONDS; rc=0
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout 1 sleep 30' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 a sleeper is killed by the bound (rc 124)" "$rc" "124"
+if [ $((SECONDS - t0)) -lt 10 ]; then ok "T7 the bound fired in time"; else bad "T7 the bound took $((SECONDS - t0))s"; fi
+rc=0
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout 5 sh -c "exit 3"' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 the command's own exit status passes through" "$rc" "3"
+rc=0
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout 5 /nonexistent/cmd' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 a missing command is rc 127" "$rc" "127"
+rc=0
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout -k 1 1 sh -c "trap \"\" TERM; sleep 30"' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 -k escalates to KILL for a TERM-ignoring child (rc 137)" "$rc" "137"
+t0=$SECONDS
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7" "$BASH_BIN" -c '. "$1"; out="$(timeout 1 sh -c "sleep 30 & wait")"' _ "$PORTF" >/dev/null 2>&1 || true
+if [ $((SECONDS - t0)) -lt 10 ]; then ok "T7 a grandchild holding stdout does not outlive the bound"; else bad "T7 command substitution hung $((SECONDS - t0))s"; fi
+d7b="$(stub_dir t7b)"; fake_gnu "$d7b" gtimeout
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+got="$(PATH="$d7b" "$BASH_BIN" -c '. "$1"; printf "%s" "$PATH"' _ "$PORTF" 2>/dev/null)"
+eq "T7 a host with gtimeout keeps its PATH untouched" "$got" "$d7b"
+
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
