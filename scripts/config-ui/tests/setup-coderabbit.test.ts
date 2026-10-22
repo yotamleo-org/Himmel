@@ -25,7 +25,7 @@ function boot(gh: string) {
   }
   const s = startServer({
     port: 0, token: TOKEN, root, projectRoot: project,
-    env: { PATH: gh === "none" ? "/usr/bin:/bin" : `${bin}:/usr/bin:/bin`, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home },
+    env: { PATH: gh === "none" ? bin : `${bin}:/usr/bin:/bin`, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return async () => (await fetch(`http://127.0.0.1:${s.port}/api/setup`, { headers: { "x-himmel-token": TOKEN } })).json() as Promise<any>;

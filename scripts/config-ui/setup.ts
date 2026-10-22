@@ -1,11 +1,14 @@
 // the Setup page's server side: which secrets exist and whether each is set, the commit rules in effect, and the one
 // write path for a secret value. The value is held in a local for the write only: it is never logged, audited,
 // returned, or put in an error.
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import * as store from "../himmelctl/lib/secret-store.js";
 import manifest from "../himmelctl/lib/secrets-manifest.json";
+
+const execFileAsync = promisify(execFile);
 
 type Env = Record<string, string | undefined>;
 export type SetupOpts = { env: Env; home: string; himmelRoot: string; projectRoot: string };
@@ -48,15 +51,17 @@ const CR_JQ = '[.[].statusCheckRollup[]? | select(.context == "CodeRabbit" or .n
 
 // CodeRabbit is an add-on: the App reviews a PR after it opens. "installed" means a CodeRabbit check shows on one of the
 // last 10 PRs of this repo; no gh, no sign-in or no remote is "unknown" and the page asks for a manual confirm.
-function coderabbit(o: SetupOpts) {
-  const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { cwd: o.projectRoot, env: o.env as NodeJS.ProcessEnv, timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+// The probe is async so a slow GitHub never stalls the server's other requests.
+// ponytail: the Setup page waits for the probe (5 s cap), upgrade path is a separate route the page fills in after it paints.
+async function coderabbit(o: SetupOpts) {
+  const run = async (cmd: string, args: string[]) => (await execFileAsync(cmd, args, { cwd: o.projectRoot, env: o.env as NodeJS.ProcessEnv, timeout: 5_000 })).stdout.trim();
   let installed: "installed" | "not-installed" | "unknown" = "unknown";
   try {
-    const n = run("gh", ["pr", "list", "--state", "all", "--limit", "10", "--json", "statusCheckRollup", "--jq", CR_JQ]);
+    const n = await run("gh", ["pr", "list", "--state", "all", "--limit", "10", "--json", "statusCheckRollup", "--jq", CR_JQ]);
     if (/^\d+$/.test(n)) installed = Number(n) > 0 ? "installed" : "not-installed";
   } catch { /* unknown */ }
   let armed = false;
-  try { armed = run("git", ["config", "--local", "--bool", "--get", "himmel.coderabbit"]) === "true"; } catch { /* unset */ }
+  try { armed = (await run("git", ["config", "--local", "--bool", "--get", "himmel.coderabbit"])) === "true"; } catch { /* unset */ }
   return {
     requirement: "optional",
     what: "CodeRabbit is a GitHub App that reviews each pull request after it opens. himmel works without it; with it, its review is one more reviewer in the review gate.",
@@ -72,12 +77,12 @@ function coderabbit(o: SetupOpts) {
 }
 
 // GET /api/setup: presence only, never a value.
-export function setupState(o: SetupOpts) {
+export async function setupState(o: SetupOpts) {
   const ctx = ctxOf(o);
   return {
     secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, example: EXAMPLES[e.name] ?? "", status: store.detect(e.name, ctx).status })),
     commit: commitRules(o.home),
-    coderabbit: coderabbit(o),
+    coderabbit: await coderabbit(o),
   };
 }
 
