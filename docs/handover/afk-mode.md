@@ -187,7 +187,7 @@ grant), and Windows sessions are not covered.
 
 ## Operator-Gated Wrap
 
-If your only remaining dependency is an operator action, **wrap at once**; do
+If your only remaining dependency is an operator action, **wrap at once** — do
 not idle-wait. Append a RESUME BRIEF to this file (worktree, branch, base SHA,
 dirty paths, the verbatim operator block, the ordered remaining steps), release
 the queue lock, message the console `OPERATOR-GATED, wrapped, safe to close`,
@@ -197,7 +197,7 @@ indistinguishable from a crashed one. The console resumes it from that brief
 (`bash scripts/handover/leg-resume-brief.sh <this file>` regenerates the
 skeleton from git) instead of waking a cold session to ask.
 
-"End the turn" means the session actually **ends**: the harness exits. A
+"End the turn" means the session actually **ends** — the harness exits. A
 message announcing that you are closing is not closing: a leg that says
 "safe to close" and stays resident holds its RAM, keeps its queue lock, and
 still reads as live in `ListAgents`. If you cannot end your own session,
