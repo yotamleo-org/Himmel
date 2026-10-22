@@ -34,11 +34,11 @@ outside the tree.
   an automated review ledger row joins by the `KEY-n` inside its branch name.
 - A session whose title contains `console` is kind `console`; `judge` is kind
   `judge`; everything else is `leg`.
-- A console spans many tickets, so its title does not name one. Console
+- A chief spans many tickets, so its title does not name one. Chief
   sessions with no `KEY-n` prefix go to the pseudo-ticket `_console` as a pool,
   **with no allocation to tickets** (an allocation rule would change every
   ticket's record whenever the range changes). Sessions with no key and no
-  `console` go to `_unattributed`. A supervisor session titled with a ticket key stays
+  `console` go to `_unattributed`. A chief titled with a ticket key stays
   under that ticket, in `totals.console`.
 
 ## Record (one JSON object per line, keys sorted)
@@ -96,7 +96,7 @@ run fail rather than store incomplete totals.
 ## Consumers
 
 The usage-records epic's readers: the effort model, the tool
-re-audit, routing, worker session A/B, the
+re-audit, routing, worker A/B, the
 improvement lane, the tracker UI and cost reports. Siblings that
 will feed it: PR-body cost aggregation and the automated review loop ledger.
 
