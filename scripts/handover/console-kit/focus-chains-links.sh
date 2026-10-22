@@ -13,9 +13,12 @@
 #   linked      the mirror already shows blocker blocks blocked
 #   reversed    the mirror shows the opposite link, or an earlier chain proposes it:
 #               never written (it would make a cycle)
+#   cycle       blocked already reaches blocker over the mirror's blocks links and
+#               the new or linked rows above: never written
 #   closed      a side is Done (statusCategory): nothing to order
 #   unknown     a key has no mirror file
-# A pair repeated in a later chain is listed once, under the first.
+# A pair repeated in a later chain is listed once, its chain column naming every
+# chain that proposes it (0,2); --apply writes it when any of them is picked.
 # The last line counts the rows by state.
 #
 # --apply writes the `new` rows of the chains named by --chain (index in the file,
@@ -73,29 +76,54 @@ def issue(key):
         cache[key] = {'done': bool(cat) and cat.group(1) == 'Done', 'blocks': lst('blocks'), 'blocked_by': lst('blocked_by')}
     return cache[key]
 seen = {}
-counts = {}
+rows = []
+edges = {}
+def reaches(src, dst):
+    # src reaches dst over the mirror's blocks links plus the new or linked pairs so far
+    stack, done = [src], set()
+    while stack:
+        x = stack.pop()
+        if x == dst:
+            return True
+        if x in done:
+            continue
+        done.add(x)
+        ix = issue(x)
+        stack.extend((ix['blocks'] if ix else set()) | edges.get(x, set()))
+    return False
 for n, ch in enumerate(chains):
     keys = [s.get('key') for s in ch.get('steps', []) if s.get('key')]
     for a, b in zip(keys, keys[1:]):
-        if a == b or (a, b) in seen:
+        if a == b:
             continue
-        seen[(a, b)] = n
+        if (a, b) in seen:
+            if n not in rows[seen[(a, b)]][0]:
+                rows[seen[(a, b)]][0].append(n)
+            continue
+        seen[(a, b)] = len(rows)
         ia, ib = issue(a), issue(b)
         if (b, a) in seen:
-            state, note = 'reversed', 'chain %d proposes %s blocks %s' % (seen[(b, a)], b, a)
+            state, note = 'reversed', 'chain %d proposes %s blocks %s' % (rows[seen[(b, a)]][0][0], b, a)
         elif ia is None or ib is None:
             state, note = 'unknown', 'not in mirror: ' + ' '.join(k for k, i in ((a, ia), (b, ib)) if i is None)
         elif b in ia['blocks'] or a in ib['blocked_by']:
             state, note = 'linked', ''
         elif b in ia['blocked_by'] or a in ib['blocks']:
             state, note = 'reversed', '%s already blocks %s' % (b, a)
+        elif reaches(b, a):
+            state, note = 'cycle', '%s already reaches %s' % (b, a)
         elif ia['done'] or ib['done']:
             state, note = 'closed', 'Done: ' + ' '.join(k for k, i in ((a, ia), (b, ib)) if i['done'])
         else:
             state, note = 'new', ''
-        counts[state] = counts.get(state, 0) + 1
-        print('\t'.join([str(n), a, b, state, note or (ch.get('name') or '')[:60]]))
-print('# pairs: %d (%s)' % (sum(counts.values()), ', '.join('%s %d' % kv for kv in sorted(counts.items())) or 'none'))
+        if state in ('new', 'linked'):
+            edges.setdefault(a, set()).add(b)
+        rows.append([[n], a, b, state, note or (ch.get('name') or '')[:60]])
+counts = {}
+for r in rows:
+    counts[r[3]] = counts.get(r[3], 0) + 1
+    print('\t'.join([','.join(str(c) for c in r[0])] + r[1:]))
+print('# pairs: %d (%s)' % (len(rows), ', '.join('%s %d' % kv for kv in sorted(counts.items())) or 'none'))
 PY
 )" || { echo "focus-chains-links: cannot read $chains" >&2; exit 2; }
 printf 'chain\tblocker\tblocked\tstate\tnote\n%s\n' "$rows"
@@ -112,7 +140,9 @@ export JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}"
 rc=0; written=""
 while IFS="$(printf '\t')" read -r n a b state _; do
     [ "$state" = new ] || continue
-    case " $picked " in *" $n "*) ;; *) continue ;; esac
+    hit=0
+    for c in ${n//,/ }; do case " $picked " in *" $c "*) hit=1 ;; esac; done
+    [ "$hit" -eq 1 ] || continue
     if out="$("${jira[@]}" link "$a" --blocks "$b" 2>&1)"; then
         echo "write $a blocks $b: $out"
         written="$written $a:$b"

@@ -286,7 +286,8 @@ def read_residual_must(path):
 residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
 
 def read_admitted(path, ver):
-    # the admissions ledger: a key whose latest row for the version is not a deferral was admitted into it
+    # the admissions ledger: a key whose latest row for the version is a plain admission (no kind),
+    # an override or an rm-admit was admitted into it; a deferral or an unknown kind was not
     last = {}
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
@@ -298,7 +299,7 @@ def read_admitted(path, ver):
                 last[str(r['key']).upper()] = r.get('kind')
     except OSError:
         pass
-    return {k for k, kind in last.items() if kind != 'deferral'}
+    return {k for k, kind in last.items() if kind in (None, 'override', 'rm-admit')}
 
 admitted = read_admitted(os.environ.get('ND_LEDGER', ''), first_ver) if first_ver else set()
 
