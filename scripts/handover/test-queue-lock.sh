@@ -2811,6 +2811,7 @@ fi
 f_wait_reached_or_rc() {
     local i=0
     while [ ! -e "$1.reached" ] && [ ! -e "$1.rc" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+    [ -e "$1.reached" ] || [ -e "$1.rc" ]
 }
 F_DOC="$F_HO/fence-t7036a.md"; : > "$F_DOC"
 F_LK="$(f_lockdir fence-t7036a)"
@@ -2820,7 +2821,7 @@ printf '%s' tokB7036 > "$F_LK/owner"; printf '%s' genB7036-0001 > "$F_LK/gen"
 F_P="$TMPDIR_ROOT/pause-t7036a"; : > "$F_P"
 ( QUEUE_LOCK_TEST_PAUSE_AT=release-verified QUEUE_LOCK_TEST_PAUSE_FILE="$F_P" \
     bash "$LIB" release "$F_DOC" tokA7036 > "$F_P.out" 2>&1; echo $? > "$F_P.rc" ) &
-f_wait_reached_or_rc "$F_P"
+f_wait_reached_or_rc "$F_P" || fail "T7036a: release neither reached the pause nor finished"
 printf '{"session":"tokB7036","host":"h","handover":"%s","started":"2026-10-22T00:00:00Z","heartbeat":"2026-10-22T00:00:00Z"}\n' \
     "$F_DOC" > "$F_LK/owner.json"     # B finishes its acquire
 rm -f "$F_P"; wait
