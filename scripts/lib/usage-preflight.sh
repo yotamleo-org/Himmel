@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage-preflight.sh — (bank guard); (fleet-size cap).
+# usage-preflight.sh — the bank guard and the fleet-size cap.
 # Pre-run guard for scheduled legs.
 #
 # Prints ONE verdict token to stdout; diagnostics to stderr; a row to the
@@ -553,7 +553,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
   esac
   age=$(( $(date +%s) - held_at ))
   [ "$age" -ge "${FLEET_ADMIT_STALE_SECS:-60}" ] || return 1
-  # /age alone cannot tell a
+  # Age alone cannot tell a
   # crashed holder from one still legitimately inside the critical section
   # (a slow filesystem, a GC pause) — reclaiming out from under a still-live
   # holder loses mutual exclusion outright, and restoring its metadata on a
@@ -794,7 +794,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
     # this), execution falls through to the final
     # `[ "$_fleet_admitted" -eq 1 ] && _fleet_release_admit` cleanup, which would
     # then delete whatever a DIFFERENT caller has legitimately claimed in the
-    # meantime. CodeRabbit: the gated release can now FAIL (gate
+    # meantime. The gated release can now FAIL (gate
     # busy past its retries, lock left to age out), so the flag drops only on
     # success. A failed release keeps it set: the prune pass stays gated on
     # still holding the lock and the final cleanup retries — safe, since every
@@ -881,9 +881,9 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # reservation. A name with a control character is never a
       # census entry (and never a reservation, see `_fleet_reserve`'s caller),
       # so it cannot forge a match.
-      # ponytail: without a readable cmdline (no procfs — macOS/Windows — or a
+      # ponytail: HIMMEL-3012 — without a readable cmdline (no procfs — macOS/Windows — or a
       # stub) the census only has the FIRST whitespace token of the ps line, so
-      # there the shared-first-token consumption of stays: a
+      # there the shared-first-token consumption stays: a
       # whitespace-name reservation is never consumed (its full name is never a
       # first token), a plain one can still be consumed by another live leg that
       # shares its first token.
@@ -893,7 +893,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # script's EXIT trap (_arm_fleet_release_pending) on every exit instead.
       _fleet_resv_sname=""
       # The whole file, not its first line: a name file with a second line
-      # (— a forged or hand-edited one; `_fleet_reserve` writes one
+      # (a forged or hand-edited one; `_fleet_reserve` writes one
       # line) has no single identity, so it matches nothing. `read -d ''` keeps
       # every trailing newline (`$(cat)` would strip them all, turning
       # "name<LF><LF>" back into "name"); only the writer's one LF is dropped.

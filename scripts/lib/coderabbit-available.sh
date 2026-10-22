@@ -3,7 +3,7 @@
 # repo?".
 #
 # WHY THIS EXISTS — the adopter-hostile default it removes:
-# made an ABSENT CodeRabbit verdict a BLOCKER ("an unreviewed head
+# The merge gate makes an ABSENT CodeRabbit verdict a BLOCKER ("an unreviewed head
 # is not a green one"). That is right for a repo that HAS CodeRabbit. But the
 # harness ships to adopters who do not, and for them "absent" is the permanent
 # steady state — so `check-ci.sh` exited 2 and `cr_merge_gate` blocked EVERY
@@ -14,8 +14,8 @@
 # something.
 #
 # WHICH SURFACE THIS PROBE COVERS (the load-bearing distinction):
-# CodeRabbit had two independent surfaces; since (operator ruling
-# 2026-09-07) himmel uses exactly ONE:
+# CodeRabbit had two independent surfaces; since the operator ruling
+# of 2026-09-07 himmel uses exactly ONE:
 #
 #   the App  -> reviews the PR AFTER `gh pr create`. It is the ONLY surface that
 #               posts the commit status coderabbit-signal.sh reads and the review threads
@@ -26,7 +26,7 @@
 #               (scripts/cr/coderabbit-gate.sh) are deleted.
 #
 # Everything here gates POST-PR state, so it describes the APP — and always did.
-# That separation is why could delete the CLI without touching this
+# That separation is why the CLI could be deleted without touching this
 # file's contract: a probe that had conflated the two would have armed a status
 # gate on a machine that merely had a binary installed.
 #
@@ -65,8 +65,8 @@
 #   Silent: prints nothing on either path. An adopter must not notice it exists.
 #
 # Env:
-# CR_PROFILE=none      forces rc 1. The established opt-out (—
-#                        check-ci / cr-merge-gate read it), kept authoritative so
+# CR_PROFILE=none      forces rc 1. The established opt-out
+#                        (check-ci / cr-merge-gate read it), kept authoritative so
 #                        an operator who already set it sees no change. Any OTHER
 #                        value is a critic-TIER filter (free,paid — see
 #                        .env.example), NOT an availability signal: only `none` is

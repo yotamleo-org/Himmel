@@ -515,44 +515,21 @@ case "${PR:+$jd_seg}" in
     "j$PR"|"j$PR"[a-z])
         { [ -L "$SCRATCH/$jd_seg/.verdict-written" ] || : > "$SCRATCH/$jd_seg/.verdict-written"; } 2>/dev/null || true ;;
 esac
-# --residual-of <parent>: stamp residual-depth-<parent depth + 1> on each ticket the
-# residual lines cite, so next-dispatchable.sh can hold residuals back. Best effort:
-# the verdict is already on disk, a failed stamp only warns.
-# Each stamped residual also gets affectsVersion=current; a depth >= 2 one drops its fixVersions.
+# --residual-of <parent>: hand each ticket the residual lines cite to `jira edit --residual-of`,
+# which owns the depth, affectsVersion and fixVersion routing so next-dispatchable.sh can hold
+# residuals back. Best effort: the verdict is already on disk, a failed stamp only warns.
 if [ -n "$RESIDUAL_OF" ]; then
-    wv_mirror=${WV_MIRROR:-$HOME/.himmel/state/jira-mirror/${RESIDUAL_OF%%-*}}
     if [ -n "${WV_JIRA_CMD:-}" ]; then
         wv_jira=$WV_JIRA_CMD
     else
         # dist/ is built in the primary checkout only, which HIMMEL_REPO names
         wv_jira="node ${HIMMEL_REPO:-$_ah_d/../../..}/scripts/jira/dist/index.js"
     fi
-    # the depth of a mirrored ticket: its residual-depth-<n> label, 0 when it has none
-    wv_depth() {
-        sed -n 's/^labels: //p' "$wv_mirror/$1.md" 2>/dev/null | grep -o 'residual-depth-[0-9]*' | sed 's/residual-depth-//' | sort -n | tail -1
-    }
-    wv_new=
-    if [ -r "$wv_mirror/$RESIDUAL_OF.md" ]; then
-        wv_parent=$(wv_depth "$RESIDUAL_OF")
-        wv_new=$(( 10#${wv_parent:-0} + 1 ))
-    else
-        echo "write-verdict: warning - no mirror for $RESIDUAL_OF, so its depth is unknown; add the residual-depth label by hand" >&2
-    fi
-    for wv_key in $([ -n "$wv_new" ] && filed_residual_keys "$EVIDENCE"); do
+    for wv_key in $(filed_residual_keys "$EVIDENCE"); do
         [ "$wv_key" = "$RESIDUAL_OF" ] && continue
         # shellcheck disable=SC2086  # wv_jira is a command plus its script path
-        JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --add-labels "residual-depth-$wv_new" >/dev/null 2>&1 ||
-            echo "write-verdict: warning - could not stamp residual-depth-$wv_new on $wv_key; add the label by hand" >&2
-        # shellcheck disable=SC2086
-        JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --affects-version current >/dev/null 2>&1 ||
-            echo "write-verdict: warning - could not stamp affectsVersion on $wv_key; set it by hand" >&2
-        if [ "$wv_new" -ge 2 ] && [ -r "$wv_mirror/$wv_key.md" ]; then
-            while IFS= read -r wv_fv; do
-                # shellcheck disable=SC2086
-                JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira fix-version "$wv_key" --remove "$wv_fv" </dev/null >/dev/null 2>&1 ||
-                    echo "write-verdict: warning - could not remove fixVersion $wv_fv from $wv_key; a depth >= 2 residual files to ICE with none" >&2
-            done < <(sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" | grep -o '"[^"]*"' | sed 's/"//g')
-        fi
+        JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --residual-of "$RESIDUAL_OF" >/dev/null 2>&1 ||
+            echo "write-verdict: warning - could not stamp $wv_key as a residual of $RESIDUAL_OF; run 'jira edit $wv_key --residual-of $RESIDUAL_OF' by hand" >&2
     done
 fi
 printf '%s\n' "$TARGET"

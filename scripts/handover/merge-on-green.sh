@@ -262,7 +262,7 @@
 # (`bash scripts/handover/merge-on-green.sh`, still pre-approved, retirement planned) now hands off to the anchor's own copy on a
 # relative invocation too, the same one-hop, fail-closed pattern
 # scripts/cr/anchor-handoff.sh uses for the scripts/cr/ gate writers.
-# ponytail: that hand-off is DEFENCE IN DEPTH, not a closure. Unlike
+# ponytail: HIMMEL-3437 — that hand-off is DEFENCE IN DEPTH, not a closure. Unlike
 # scripts/cr/, where guard-pr-check-literal.sh byte-compares the entry script
 # and anchor-handoff.sh against the anchor before allowing a relative run,
 # the guard's TARGETS do not cover scripts/handover/ — a branch
@@ -818,7 +818,7 @@ fi
 # gate's output in front of an operator live. The narrowing is the honest trade;
 # the residual is recorded here rather than papered over.
 #
-# This is the honesty half of for the UNATTENDED path. check-ci.sh
+# This is the honesty half of the record for the UNATTENDED path. check-ci.sh
 # streams to this script's stdout, so an operator watching a live run already
 # sees whatever it says — but an ARMAUTOMERGE chain merges with nobody watching,
 # and the audit log is the only thing anyone reads afterwards. `gate=check-ci:0`
@@ -1149,10 +1149,10 @@ fi
 # The base-tip checker is what this gate executes, so scripts/check-plugin-drift.sh
 # is in ci-trust-paths.txt (scripts/lib/vm-mode.sh is covered by ^scripts/lib/)
 # and an empty or missing checker blob refuses.
-# ponytail: the base tip is read once here, so a sibling PR that merges between
+# ponytail: HIMMEL-1105, HIMMEL-5203 — the base tip is read once here, so a sibling PR that merges between
 # this recheck and `gh pr merge` is not seen (the base re-verification below
 # re-reads the base branch name, not its tip); upgrade path is a server-side
-# merge queue or required up-to-date branch, as for the window
+# merge queue or required up-to-date branch, as for the base-retarget window
 # (not narrowed, no cheap client-side seam exists).
 bp_ns="refs/himmel-mog-bump/$pr_num"
 bp_tmp=""

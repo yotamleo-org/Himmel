@@ -10,14 +10,16 @@ export interface Admission {
   version: string;
   key: string;
   gate?: string;
-  kind?: 'override' | 'deferral' | 'rm-admit';
+  kind?: 'override' | 'deferral' | 'rm-admit' | 'rm-remove';
   actor: string;
   reason?: string;
   /** The release-manager session that ruled an `rm-admit` row. */
   by?: string;
+  /** The release ruling an `rm-admit` or `rm-remove` row records, so a replay of that ruling finds its row. */
+  ruling?: string;
 }
 
-export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by'>;
+export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by' | 'ruling'>;
 
 function admissionsLedgerPath(): string {
   const explicit = process.env['HIMMEL_ADMISSIONS_LEDGER'];

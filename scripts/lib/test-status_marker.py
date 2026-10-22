@@ -5,6 +5,7 @@ Python parses cannot drift.
 Run: python3 -I scripts/lib/test-status_marker.py
 """
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -16,9 +17,13 @@ import status_marker  # noqa: E402
 SCRIPT = os.path.join(HERE, "status_marker.py")
 
 
-def read_rows():
+def read_fixture():
     with open(os.path.join(HERE, "fixtures", "status-marker-rows.tsv"), encoding="utf8") as f:
-        return [l.split("\t") for l in f.read().split("\n") if l and not l.startswith("#")]
+        return f.read()
+
+
+def read_rows():
+    return [l.split("\t") for l in read_fixture().split("\n") if l and not l.startswith("#")]
 
 
 def run(*args):
@@ -26,8 +31,12 @@ def run(*args):
 
 
 class Rows(unittest.TestCase):
-    def test_rows_were_read(self):
-        self.assertGreaterEqual(len(read_rows()), 20)
+    def test_every_declared_row_was_read(self):
+        declared = re.search(r"^# rows: (\d+)$", read_fixture(), re.M)
+        self.assertIsNotNone(declared)
+        rows = read_rows()
+        self.assertGreater(len(rows), 0)
+        self.assertEqual(len(rows), int(declared.group(1)))
 
     def test_parse_and_cli(self):
         for line, want in read_rows():
@@ -43,6 +52,16 @@ class Rows(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual(status_marker.parse(line), "LIVE")
                 self.assertEqual(run("parse", line).stdout, "LIVE\n")
+
+    def test_cli_writes_bytes_not_translated_text(self):
+        # a text-mode stdout that translates newlines (Windows) must not emit CRLF
+        code = (
+            "import sys; sys.stdout.reconfigure(newline='\\r\\n'); sys.path.insert(0, sys.argv[1]); "
+            "import status_marker; sys.exit(status_marker.main(['parse', '- LIVE']))"
+        )
+        r = subprocess.run([sys.executable, "-I", "-c", code, HERE], capture_output=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, b"LIVE\n")
 
     def test_is_parked(self):
         self.assertTrue(status_marker.is_parked("PARKED-BANK"))

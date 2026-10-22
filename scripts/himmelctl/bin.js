@@ -191,9 +191,9 @@ commands:
                           behind --prune (never bundled into the same Y/n as a
                           converge); run from the same location the
                           corresponding install was run from, same as status
-  config                  interactive TUI to toggle himmel capabilities (initiative
-                          legs, delegation lanes, opt-in hooks) without hand-editing
-                          files; or non-interactively:
+  config                  prints the link to the UI Configure page, where himmel
+                          capabilities (initiative legs, delegation lanes, opt-in
+                          hooks) are toggled without hand-editing files; scripts use:
                             config set <path> <value>   (value is on|off)
                             config get <path>
                           get/set paths: initiative.<leg>, lanes.<id>
@@ -1397,7 +1397,7 @@ function makeAsk(rl) {
 // is empty (accept default) or a member of opts. LITERAL-ONLY — no numeric
 // index acceptance. Used by the CONSENT/PHI prompts (PHI declaration, the two
 // "consented, --dry-run shows it" mutation prompts) and the unrelated
-// `config` TUI, both of which keep their plain, un-numbered wording.
+// consent prompts, both of which keep their plain, un-numbered wording.
 async function askEnum(ask, prompt, opts, defaultVal) {
   for (;;) {
     const ans = await ask(prompt);
@@ -7615,13 +7615,11 @@ async function cmdTrust(args) {
 
 // ── config ───────────────────────
 //
-// `himmelctl config` — an interactive TUI (reuses the T2 question engine's
-// own makeAsk()/askEnum()/askPath() readline primitives) plus a
-// non-interactive `config set <path> <value>` / `config get <path>` pair, so
-// an operator can toggle himmel capabilities without hand-editing files.
-// Kept THIN on purpose (P1 pattern): every actual mutation lives in a pure-
-// ish setter function below; the TUI only asks questions and calls them, so
-// the setters — not the interactive loop — are what the test suite exercises.
+// `himmelctl config` — bare, it hands off to the UI Configure page; with
+// `config set <path> <value>` / `config get <path>` an operator or script can
+// toggle himmel capabilities without hand-editing files. Every actual
+// mutation lives in a pure-ish setter function below, which is what the
+// test suite exercises.
 //
 // Three config surfaces, three DIFFERENT real mechanisms (never a uniform
 // fake one):
@@ -8133,65 +8131,21 @@ function cmdConfigSet(pathParts, value, args) {
   return 2;
 }
 
-// Interactive TUI — a THIN caller over the same setters `config set` uses
-// (P1 pattern: readline is hard to test, so it carries as little logic as
-// possible). Reuses makeAsk()/askEnum()/askPath() verbatim, same as
-// askQuestions() above. Loops until the operator picks 'quit' (or blank ->
-// default 'quit') at the top-level menu.
-async function cmdConfigInteractive(args) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
-  const ask = makeAsk(rl);
-  // Track the highest failure across the session — a failed .env/lane/plugin
-  // mutation must not let the interactive session still exit 0 once the
-  // operator quits. The loop keeps running (a mid-session setter failure
-  // shouldn't abort the whole TUI), but the process exit reflects it.
-  let exitCode = 0;
-  for (;;) {
-    const category = await askEnum(
-      ask,
-      '? config: what would you like to configure? [initiative|lanes|hooks|quit] (default: quit)\n> ',
-      ['initiative', 'lanes', 'hooks', 'quit'], 'quit',
-    );
-    if (category === 'quit') break;
-    if (category === 'initiative') {
-      const leg = await askEnum(ask, `? which leg? [${INITIATIVE_LEGS.join('|')}] (blank to cancel)\n> `, INITIATIVE_LEGS, '');
-      if (!leg) continue;
-      const onOff = await askEnum(ask, '? on or off? [on|off] (default: on)\n> ', ['on', 'off'], 'on');
-      const rc = cmdConfigSetInitiative(leg, onOff, args);
-      if (rc !== 0) exitCode = Math.max(exitCode, rc);
-      continue;
-    }
-    if (category === 'lanes') {
-      const known = knownLaneIds();
-      const prompt = (Array.isArray(known) && known.length > 0)
-        ? `? lane id [${known.join('|')}] (blank to cancel)\n> `
-        : '? lane id (blank to cancel)\n> ';
-      const laneId = await askPath(ask, prompt, '');
-      if (!laneId) continue;
-      const onOff = await askEnum(ask, '? on or off? [on|off] (default: on)\n> ', ['on', 'off'], 'on');
-      const rc = cmdConfigSetLane(laneId, onOff, args);
-      if (rc !== 0) exitCode = Math.max(exitCode, rc);
-      continue;
-    }
-    if (category === 'hooks') {
-      const target = await askPath(
-        ask,
-        `? hook target ('improveOnSubmit' or 'plugin.<name>'; known plugins: ${hookPluginNames().join(', ')}) (blank to cancel)\n> `,
-        '',
-      );
-      if (!target) continue;
-      const onOff = await askEnum(ask, '? on or off? [on|off] (default: on)\n> ', ['on', 'off'], 'on');
-      const rc = cmdConfigSetHook(target.split('.'), onOff, args);
-      if (rc !== 0) exitCode = Math.max(exitCode, rc);
-      continue;
-    }
+// Bare `himmelctl config`: the UI Configure page is the one place to change settings, so print its link (the
+// installed UI service's), else say how to open the UI. Never prompts and never reads stdin.
+function cmdConfigHandoff() {
+  const r = uiServiceLib.url('config');
+  if (r.ok) {
+    console.log(`Configure himmel in the UI: ${r.lines[0]}`);
+  } else {
+    console.log('Configure himmel in the UI. Open it with `himmelctl ui` (prints the link), or keep it running with `himmelctl ui --service install`.');
   }
-  rl.close();
-  return exitCode;
+  console.log('Scripts can still use `himmelctl config get <path>` and `himmelctl config set <path> <value>`; both read and write the same settings the UI shows.');
+  return 0;
 }
 
-// `himmelctl config [get <path> | set <path> <value>]` — no action -> the
-// interactive TUI. Owns its own tiny argv scan (see main()'s dispatch
+// `himmelctl config [get <path> | set <path> <value>]` — no action -> the UI
+// hand-off above. Owns its own tiny argv scan (see main()'s dispatch
 // comment for why): --dry-run is recognized ANYWHERE in argv, every other
 // token is positional.
 async function cmdConfig(argv) {
@@ -8205,7 +8159,7 @@ async function cmdConfig(argv) {
     }
     positional.push(a);
   }
-  if (positional.length === 0) return await cmdConfigInteractive(args);
+  if (positional.length === 0) return cmdConfigHandoff();
   const action = positional[0];
   if (action === 'get') {
     if (positional.length !== 2) {

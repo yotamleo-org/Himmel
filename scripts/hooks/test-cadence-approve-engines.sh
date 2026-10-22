@@ -7,7 +7,8 @@
 #   * ALLOW → stdout contains "permissionDecision":"allow"  (engine granted)
 #   * PASS  → no such decision on stdout                    (falls through to
 #             the normal permission flow; the grant stays narrow)
-#   The hook ALWAYS exits 0 and NEVER blocks/denies.
+#   The hook ALWAYS exits 0 and NEVER blocks/denies; with no shfmt it grants
+#   nothing and its stderr names shfmt.
 #
 # The load-bearing cases for the S2a fix:
 #   - the vault-lint engine IS granted under the cadence profile (the 04:00
@@ -164,9 +165,10 @@ mkdir -p "$SPACED_ROOT/scripts/hooks"
 CANON_SPACED=$(canon_path "$SPACED_ROOT") || { echo "setup: canon_path failed for the spaced root" >&2; exit 1; }
 SPACED_ROOT="$CANON_SPACED"
 cp "$HOOK" "$SPACED_ROOT/scripts/hooks/cadence-approve-engines.sh"
-# The hook sources scripts/lib/prim.sh (canon_path), so the copy needs its lib.
+# The hook sources scripts/lib/prim.sh (canon_path) and bash-ast.sh (the command
+# model), so the copy needs its libs.
 mkdir -p "$SPACED_ROOT/scripts/lib"
-cp "$(dirname "$HOOK")/../lib/prim.sh" "$(dirname "$HOOK")/../lib/canon-path.sh" "$SPACED_ROOT/scripts/lib/"
+cp "$(dirname "$HOOK")/../lib/prim.sh" "$(dirname "$HOOK")/../lib/canon-path.sh" "$(dirname "$HOOK")/../lib/bash-ast.sh" "$SPACED_ROOT/scripts/lib/"
 SPACED_HOOK="$SPACED_ROOT/scripts/hooks/cadence-approve-engines.sh"
 if command -v cygpath >/dev/null 2>&1; then
     SPACED_ROOT_MIXED=$(cygpath -m "$SPACED_ROOT" 2>/dev/null || printf '%s' "$SPACED_ROOT")
@@ -762,7 +764,8 @@ assert "6449 cd checkout && piped cd vault, engine runs in the checkout + vault-
 mkdir -p "$VAULT_FIXTURE/vo/nly" || { echo "setup: mkdir vo/nly failed" >&2; exit 1; }
 assert "6449 cd checkout || cd vault + slash-shaped vault-only model dir (the cd can be skipped) -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" || cd \"${VAULT_FIXTURE_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vo/nly" "$VAULT_FIXTURE_MIXED")")"
-assert "6449 cd checkout && cd vault + slash-shaped vault-only model dir -> refused" PASS \
+# The command model gives the engine the vault as its cwd here (both cds run), and the dir exists there.
+assert "6449 cd checkout && cd vault + slash-shaped vault-only model dir -> granted" ALLOW \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd \"${VAULT_FIXTURE_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vo/nly" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd into checkout + --whisper-model dir existing only in the vault -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
@@ -773,6 +776,69 @@ assert "6449 bare python, no script" PASS "$(decide "$(j_bash "python")")"
 assert "6449 python3 non-enumerated script" PASS "$(decide "$(j_bash "python3 /tmp/evil.py vault")")"
 assert "6449 python3 relative engine path" PASS "$(decide "$(j_bash "python3 ${ENG} vault")")"
 assert "6449 python3 -c" PASS "$(decide "$(j_bash "python3 -c \"import os\"")")"
+
+# --- The verdict is read from bash-ast command positions, so a word
+# is judged as the text bash hands the process (quotes and escapes removed).
+# A dot-dot spliced from quotes or an escape is still a dot-dot.
+assert "6548 quote-spliced dot-dot arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" .'.'/x" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 backslash-split dot-dot arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" .\\./x" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 quote-spliced dot-dot in the cd target -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd .'.'/x && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+# Quoted text that only looks like shell syntax stays data.
+assert "6548 quoted redirect-looking arg is data -> granted" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" vault '>out.txt'" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 env NAME='x; cmd' string on a non-engine -> not granted" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "NAME='x; python \"${ABS}\" vault' true" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 engine arg 'NAME=a; b' is one literal word -> granted" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" vault 'NAME=a; b'" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 heredoc body naming a file -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" vault <<EOF
+notes.md
+EOF" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 jq string reading like a write target is data -> not granted" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "jq '.a > \"out.txt\"' f.json | python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 cd behind || is not credited to the engine -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" || python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model scripts" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 cd right of a pipe is not credited to the engine -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model scripts | cd \"${SPACED_ROOT_MIXED}\"" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 PYTHONUTF8 assignment on an engine run by plain python -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6548 second PYTHONUTF8 assignment with another value -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run python \"${IG_MEDIA_FETCH_ABS}\" vault ; PYTHONUTF8=0 uv run python \"${IG_MEDIA_FETCH_ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+
+# A station without shfmt cannot read the command: no grant, and the message
+# names shfmt. A command that names neither an engine nor gh never pays for it.
+NOSH=$(mktemp -d "${TMPDIR:-/tmp}/cadence-nosh.XXXXXX") || exit 1
+trap 'rm -f "$EMPTY_ROOT_HOOK" "$CYGLESS_HOOK"; rm -rf "$SPACED_ROOT" "$VAULT_FIXTURE" "$FAKE_HOME" "$OUTSIDE_FIXTURE" "$NOSH"' EXIT
+oifs=$IFS; IFS=:
+for d in $PATH; do
+    for t in "$d"/*; do
+        case "${t##*/}" in shfmt) ;; *) [ -e "$NOSH/${t##*/}" ] || ln -s "$t" "$NOSH/${t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$oifs
+nosh_stdout() { printf '%s' "$1" | PATH="$NOSH" bash "$HOOK" 2>/dev/null; }
+# stderr is the captured stream here, stdout is discarded
+# shellcheck disable=SC2069
+nosh_stderr() { printf '%s' "$1" | PATH="$NOSH" bash "$HOOK" 2>&1 >/dev/null; }
+NOSH_IN=$(j_bash_cwd "python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")
+if grepq "$(nosh_stdout "$NOSH_IN")" '"permissionDecision":"allow"'; then
+    assert "6548 no shfmt: an engine command is not granted" PASS ALLOW
+else
+    assert "6548 no shfmt: an engine command is not granted" PASS PASS
+fi
+if grepq "$(nosh_stderr "$NOSH_IN")" 'shfmt'; then
+    assert "6548 no shfmt: the message names shfmt" yes yes
+else
+    assert "6548 no shfmt: the message names shfmt" yes no
+fi
+if [ -z "$(nosh_stderr "$(j_bash_cwd "ls -la" "$VAULT_FIXTURE_MIXED")")" ]; then
+    assert "6548 no shfmt: an unrelated command is silent" yes yes
+else
+    assert "6548 no shfmt: an unrelated command is silent" yes no
+fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "OK cadence-approve-engines: all cases passed"

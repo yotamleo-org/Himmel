@@ -127,7 +127,7 @@ for (const name of ['operator', 'user', 'bare']) {
       // by lean-skills@himmel, now in base — every non-bare profile gets it);
       // plannotator-effective-html@himmel moved out of the user always-tier into
       // the design profile.
-      'handover@himmel', 'himmel-ops@himmel', 'qmd@himmel', 'pr-review-toolkit-himmel@himmel',
+      'handover@himmel', 'himmel-ops@himmel', 'qmd@himmel',
       'lean-skills@himmel',
       // i-have-adhd@himmel rides base beside lean-skills.
       'i-have-adhd@himmel',
@@ -332,7 +332,6 @@ test('resolved map is COMPLETE — every catalog id is present', () => {
 
 test('lane-impl keeps its base surface (now including lean-skills) and disables operator always-tier extras', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'lane-impl');
-  assert.equal(p['pr-review-toolkit-himmel@himmel'], true);
   // lean-skills@himmel is in `base`, so every non-bare profile
   // (including a lane worker) gets it — it is not an "operator always-tier
   // extra" the way superpowers/mattpocock-skills used to be.
@@ -350,7 +349,6 @@ test('lane-content adds obsidian on top of the impl floor', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'lane-content');
   assert.equal(p['claude-obsidian@himmel'], true);
   assert.equal(p['obsidian-triage@himmel'], true);
-  assert.equal(p['pr-review-toolkit-himmel@himmel'], true);
   // still lean on dev-authoring
   assert.equal(p['skill-creator@claude-plugins-official'], false);
 });
@@ -359,14 +357,12 @@ test('telegram drops claude-obsidian but keeps the plugins the bridge actually c
   const { enabledPlugins: p } = resolveProfile(REG, 'telegram');
   assert.equal(p['claude-obsidian@himmel'], false);
   assert.equal(p['obsidian-triage@himmel'], true);
-  assert.equal(p['pr-review-toolkit-himmel@himmel'], true);
   assert.equal(p['telegram-himmel@himmel'], false);
 });
 
 test('per-dispatch overlay enables a plugin over the base profile', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'lane-impl', { addPlugins: ['claude-obsidian@himmel'] });
   assert.equal(p['claude-obsidian@himmel'], true); // overlaid on
-  assert.equal(p['pr-review-toolkit-himmel@himmel'], true); // base still there
 });
 
 test('overlay can never drop the floor (floor forced last)', () => {
@@ -583,7 +579,6 @@ test('user profile matches the installer always tier and leaves on-demand plugin
     'handover@himmel',
     'himmel-ops@himmel',
     'qmd@himmel',
-    'pr-review-toolkit-himmel@himmel',
   ]) assert.equal(p[id], true, `${id} must stay in the always tier`);
   for (const id of [
     'context7@claude-plugins-official',
@@ -606,7 +601,6 @@ test('design profile enables plannotator-effective-html on top of the base floor
   const { enabledPlugins: p } = resolveProfile(REG, 'design');
   assert.equal(p['plannotator-effective-html@himmel'], true);
   assert.equal(p['lean-skills@himmel'], true, 'base still applies to design');
-  assert.equal(p['pr-review-toolkit-himmel@himmel'], true, 'base still applies to design');
   assert.equal(REG.profiles.design.contextBudget, 50000);
 });
 
@@ -1638,14 +1632,10 @@ test('HIMMEL-4024: no non-kit profile enables a code kit plugin; the kit compose
 });
 
 test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins back; other members keep them', () => {
-  const dropped = ['pr-review-toolkit-himmel@himmel', 'i-have-adhd@himmel'];
+  const dropped = ['i-have-adhd@himmel'];
   for (const list of ['leg-impl,code', 'leg-impl,code-ui', 'leg-impl,code,code-ui', 'leg-e2e,code']) {
     const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
     for (const id of dropped) assert.notEqual(p[id], true, `${list} must not enable ${id}`);
-  }
-  for (const list of ['lane-impl,code', 'user,code', 'user,code-ui']) {
-    const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
-    assert.equal(p['pr-review-toolkit-himmel@himmel'], true, `${list} keeps pr-review-toolkit-himmel`);
   }
   for (const list of ['user,code', 'user,code-ui']) {
     assert.equal(resolveProfile(REG, list, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${list} keeps i-have-adhd`);
@@ -1659,7 +1649,7 @@ test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram and con
   for (const name of ['lane-impl', 'lane-review', 'lane-content']) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     assert.equal(p['i-have-adhd@himmel'], false, `${name}: i-have-adhd dropped`);
-    for (const id of [...REG.floor, 'lean-skills@himmel', 'pr-review-toolkit-himmel@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+    for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
   }
   for (const name of ['telegram', 'console']) {
     assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${name} keeps i-have-adhd`);
@@ -2002,13 +1992,12 @@ test('vmLaunch is restricted to leg-vm', () => {
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
 });
 
-// /pr-check dispatches no plugin agent, so the leg family drops the reviewer fork.
-test('leg family drops pr-review-toolkit-himmel and i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
+test('leg family drops i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
   const legs = Object.keys(REG.profiles).filter((n) => n.startsWith('leg-'));
   assert.deepEqual(legs.sort(), ['leg-bus', 'leg-e2e', 'leg-impl', 'leg-vm']);
   for (const name of legs) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
-    for (const id of ['pr-review-toolkit-himmel@himmel', 'i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
+    for (const id of ['i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
     for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
     assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills legs call`);
   }

@@ -236,6 +236,19 @@
       "schema_version": 1,
       "envelope": ["v", "ts", "host", "source", "kind", "repo"],
       "grandfathered": false
+    },
+    {
+      "id": "weekly-rollup",
+      "default_path": "~/.himmel/state/rollup/weekly.jsonl",
+      "override_env": "WEEKLY_ROLLUP_FILE",
+      "writer": "scripts/eval/weekly-rollup.py",
+      "readers": ["scripts/eval/weekly-rollup.py"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "one row per ISO week and stable version, upserted by kind and key",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
     }
   ]
 }

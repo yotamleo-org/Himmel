@@ -93,8 +93,8 @@ handover system, the fleet and the backend seam are in
 
 This is the path a single piece of work takes. The same path is drawn as a flow
 in [`configuration.md`](configuration.md#21-the-delivery-chain-end-to-end) and
-walked as a hands-on loop in [`daily-loop.md`](daily-loop.md); here the point is
-who does what and why each hand-off exists.
+walked as a hands-on loop in [`daily-loop.md`](daily-loop.md). This version
+names who does what and why each hand-off exists.
 
 1. **File.** The work starts as a ticket in the tracker, driven through the
    local Jira CLI. Every commit and every pull request carries a ticket ID, so
@@ -207,16 +207,16 @@ off-switches are in [`configuration.md`](configuration.md).
 
 | Decision | Why | What it costs |
 |---|---|---|
-| **Structural over instructional.** The first drift of a prose rule is a signal; on the second, it becomes a hook, gate or classifier, never stronger prose. | Prose in a context window decays with compaction and is silent when it fails. A refusal is observable. | Gates fire on you too. Some will stop a change you believe is fine, and every day has friction. The recovery path is documented, but it is still friction. |
-| **Derive a gate's input from the thing it guards.** The hook that blocks Jira MCP calls asks the CLI which verbs it has instead of keeping a list. | A hand-kept list is a second copy of the truth and quietly stops protecting. | Gates depend on the guarded tool exposing a way to be asked. Where that is missing, a list is kept and the drift risk remains. |
-| **Handover is plain markdown, one file per worker.** State and orders never split across two documents. | A resuming session cannot read half the picture, and a human can read, correct and diff the memory. | Writing state is a discipline, not magic. A worker that records nothing leaves nothing to resume from. |
+| **Structural over instructional.** The first drift of a prose rule is a signal; on the second, it becomes a hook, gate or classifier, never stronger prose. | Prose in a context window decays with compaction and is silent when it fails. A refusal is observable. | Gates fire on you too. Some will stop a change you believe is fine. The recovery path is documented, but you meet the friction every day. |
+| **Derive a gate's input from the thing it guards.** The hook that blocks Jira MCP calls asks the CLI which verbs it has instead of keeping a list. | A hand-kept list is a second copy of the truth and stops protecting without anyone noticing. | Gates depend on the guarded tool exposing a way to be asked. Where that is missing, a list is kept and the drift risk remains. |
+| **Handover is plain markdown, one file per worker.** State and orders never split across two documents. | A resuming session cannot read half the picture, and a human can read, correct and diff the memory. | Writing state takes discipline. A worker that records nothing leaves nothing to resume from. |
 | **A lock, not a convention, for one writer per queue.** The lock is a directory with a release token. | Prose coordination between two armed sessions failed in practice: duplicate dispatch and duplicate shipping. | A stale lock needs a deliberate release, and a session that dies holding one has to be recognised as dead. |
 | **A local CLI before an MCP server.** MCP is used only for operations the CLI does not implement, and routing is enforced. | An MCP server costs context in every session that loads it; a CLI costs nothing until called. | The CLI is a build artifact and must be invoked by absolute path from the primary checkout; a worktree does not have it. |
 | **Separate roles: chief, worker, judge.** The session that approves is not the session that writes. | A reviewer that shares the author's context shares the author's blind spots. | More sessions, more coordination and more cost for the same diff. It earns this on changes that touch trust, and is overkill on others. |
 | **Fail-safe revision.** A narrowing or halt needs no token; an expansion needs one. | Hostile text can only make a worker do less, never more. | A legitimate narrowing can be accepted from the wrong place; the cost is wasted work, not a breach. |
 | **Always-on context stays small.** Cross-cutting frame-shaping rules live in the root instruction file; domain-local rules live in subtree files; the rest loads on demand. | Every token in the always-loaded surface is paid in every session and every subagent. | Knowledge has to be found by retrieval or by following a pointer, and the pointer layer has to be curated. |
 | **Observability is passive.** The exporter reads; it never writes a ledger, mutates state or starts or kills a process, and missing data stays missing. | A monitor that guesses is worse than none: a crashed session never writes its end record. | Liveness is inferred by the reader from what exists, so some states are reported as stalled rather than known. |
-| **Opt-in autonomy.** Initiative mode, arming, AFK (unattended) mode and the Telegram bridge are each off until turned on, with an off-switch each. | Autonomy should be a choice made with eyes open, and a layer you did not enable cannot surprise you. | A fresh install does less than the full picture suggests, and the operator has to turn each layer on. |
+| **Opt-in autonomy.** Initiative mode, arming, AFK (unattended) mode and the Telegram bridge are each off until turned on, with an off-switch each. | Each layer of autonomy is a deliberate choice, and a layer you did not enable cannot surprise you. | A fresh install does less than the full picture suggests, and the operator has to turn each layer on. |
 
 Agent teams are an example of a decision recorded as *parked*. The feature is
 experimental, its token cost scales with every active teammate, and nothing in

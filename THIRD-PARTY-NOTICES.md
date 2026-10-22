@@ -57,12 +57,15 @@ plugin directory; all are permissive.
 
 ## Vendored forks
 
-Two plugins are minimal forks of Anthropic's `claude-plugins-official` plugins,
-kept under their upstream **Apache-2.0** license. Each ships its own `LICENSE` and
-a `NOTICE` documenting the upstream attribution and the himmel modifications:
+These are minimal forks of Anthropic's `claude-plugins-official` content, kept
+under their upstream **Apache-2.0** license:
 
-- `marketplace/plugins/pr-review-toolkit-himmel` — see its `LICENSE` and `NOTICE`.
 - `marketplace/plugins/telegram-himmel` — see its `LICENSE` and `NOTICE`.
+- `scripts/cr/floor-reviewer.md` — the `code-reviewer` agent of `pr-review-toolkit`
+  (`anthropics/claude-plugins-official`, Apache-2.0, © Anthropic), modified by
+  himmel: no confidence floor (HIMMEL-480, HIMMEL-1405) and a verify-before-critical
+  rule (HIMMEL-178). See `scripts/cr/LICENSE-floor-reviewer` (Apache-2.0 text) and
+  `scripts/cr/NOTICE-floor-reviewer`.
 
 ## Vendored skill content
 

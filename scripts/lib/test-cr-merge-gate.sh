@@ -2,7 +2,7 @@
 # Tests for scripts/lib/review-merge-gate.sh. Hermetic: gh is stubbed.
 set -uo pipefail
 
-# — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
+# An --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). cr_merge_gate short-circuits to allow on CR_MERGE_GATE_OK=1
@@ -78,7 +78,7 @@ case "$1 $2" in
     case "$GH_STUB_MODE" in
       api-error) exit 1 ;;
       # pageInfo mirrors the real API: the gate's query requests it, so GitHub
-      # always returns it (— fixtures without it hit the 980-r3
+      # always returns it (fixtures without it hit the
       # page-completeness BLOCK and mis-fail the allow cases).
       unresolved|cr-degraded-unresolved|cr-absent-unresolved) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
       other-author) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"someuser"}}]}}]}}}}}' ;;
@@ -196,7 +196,7 @@ export PATH="$TMP/bin:$PATH"
 pass=0; fail=0
 # ── the repo the gate runs IN ──────────────────────────────────
 # Availability is now a repo-scoped, non-versioned git config, and the gate only
-# answers for the repo it is standing in (codex-adv-2). Every case below calls
+# answers for the repo it is standing in. Every case below calls
 # `cr_merge_gate 42 o/r`, so the cwd must BE o/r and must be armed — otherwise
 # the gate short-circuits to "allow" and every block-case would pass vacuously.
 # Pinned explicitly rather than inherited from the real checkout: the suite must
@@ -351,7 +351,7 @@ GH_STUB_MODE=unresolved CR_APP=0 t cr-app-absent-allows 0
 grep -qE 'statuses|api graphql' "$TMP/calls-cr-app-absent-allows.log" && { echo "FAIL cr-app-absent made a CodeRabbit call"; fail=$((fail+1)); }
 unset CR_APP
 
-# — the marker is what arms this suite, so prove the gate is really
+# The marker is what arms this suite, so prove the gate is really
 # keyed on it: same blocking fixture, marker off -> allow. Default-disarmed is
 # the posture, and an unarmed repo is now the DEFAULT an adopter lands on.
 git -C "$TMP/repo" config --local --unset himmel.coderabbit

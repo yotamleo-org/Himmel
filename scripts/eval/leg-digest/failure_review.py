@@ -123,7 +123,7 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     mode = "live" if a.live else "dry-run"
     since = a.now - timedelta(hours=24)
     out = [HEADING, "",
-           "- window: %s to %s, mode: %s" % (failure_router.iso(since), failure_router.iso(a.now), mode)]
+           "- window: %s to %s (24 h), mode: %s" % (failure_router.iso(since), failure_router.iso(a.now), mode)]
     fails = {c: r for c, r in rows.items() if c not in EXCLUDED}
     new = sorted(c for c in fails if not c.startswith("traj/") and c not in seen_before)
     n = sum(len(r) for r in fails.values())
@@ -147,12 +147,16 @@ def build(a, rows, seen_before, rc, decisions, boxed):
         out.append("- none")
 
     out += ["", "### Routing (%s)" % mode, ""]
+    try:
+        days = "%s d" % failure_router.load_table(a.table or failure_router.TABLE)["window_days"]
+    except (OSError, ValueError, KeyError):
+        days = "the router window"
     routed = [d for d in decisions if d["decision"] in ROUTED]
     capped = [d for d in decisions if d["decision"] in CAPPED]
     skipped = [d for d in decisions if d["decision"].startswith("skipped:")]
     if routed:
-        out += ["- %s %s%s (legs %d)" % (d["decision"], d["class"], " " + d["ticket"] if d.get("ticket") else "",
-                                         d["legs"]) for d in routed]
+        out += ["- %s %s%s (legs %d in %s)" % (d["decision"], d["class"], " " + d["ticket"] if d.get("ticket") else "",
+                                               d["legs"], days) for d in routed]
     else:
         out.append("- routed: none")
     if boxed:

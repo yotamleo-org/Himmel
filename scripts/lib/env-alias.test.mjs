@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { envAliasRestrict, envAliasPermit } from './env-alias.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROWS = readFileSync(join(HERE, 'fixtures', 'env-alias-rows.tsv'), 'utf8')
+const FIXTURE = readFileSync(join(HERE, 'fixtures', 'env-alias-rows.tsv'), 'utf8');
+const WANT_ROWS = Number(/^# rows: (\d+)$/m.exec(FIXTURE)?.[1]);
+const ROWS = FIXTURE
   .split('\n')
   .filter((l) => l && !l.startsWith('#'))
   .map((l) => l.split('\t'));
@@ -24,8 +26,9 @@ function rowEnv(nn, on, nv, ov) {
   return env;
 }
 
-test('the shared rows were read (not vacuous)', () => {
-  assert.ok(ROWS.length >= 40);
+test('every declared row was read', () => {
+  assert.ok(ROWS.length > 0);
+  assert.equal(ROWS.length, WANT_ROWS);
 });
 
 for (const [fn, nnRaw, onRaw, nv, ov, want] of ROWS) {
