@@ -25,6 +25,7 @@ Run these, in order, and write the result as the first bullet under
      and 8; takes a `free` lock and prints the token (never a held one). If
      `chief.sh next` pre-computed steps 2–6, verify them and pass `--acquire --lock-only`.
 
+   Steps 2–6 and 8 below interpret that call's output: never re-run their commands.
    Relays and quote-backs (step 9), the waiter (step 10) and LIVE stay yours.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
