@@ -2530,6 +2530,19 @@ for f in "$FX_CMDPOS"/*.cmd; do
     g -C "$WT" checkout -q -- .
 done
 
+# ---- the shared command-position corpus, from the unrelated non-himmel repo ---
+# A run of the script is refused there (wrong lane); a mention is not a run.
+run "6548 jq program string naming the script is data -> allow" 0 \
+    "$(payload "jq -n '\"bash scripts/cr/pr-check-context.sh\"'" "$OTHER")" "$HR"
+run "6548 heredoc body naming the script is data -> allow" 0 \
+    "$(payload "cat <<'EOF'
+bash scripts/cr/pr-check-context.sh
+EOF" "$OTHER")" "$HR"
+run "6548 a cd right of a pipe can still reach the run -> deny" 2 \
+    "$(payload "echo x | cd /tmp; bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
+run "6548 a cd behind || can still reach the run -> deny" 2 \
+    "$(payload "false || cd /tmp; bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "all guard-pr-check-literal cases passed"

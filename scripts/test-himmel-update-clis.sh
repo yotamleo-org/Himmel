@@ -2,7 +2,7 @@
 # test-himmel-update-clis.sh — himmel-update.sh reports and upgrades the agent
 # CLIs and says so in the chain-status table:
 #   --only clis       codex (upgraded through its install method) + claude (report only)
-#   --only toolchain  a failing `bun upgrade` names its owner and the exact remedy
+#   --only toolchain  bun is report-only: an off-pin bun names its owner and the pinned-install remedy
 #   --only plugins    a missing @himmel plugin gets a table row + its install line
 #
 # Every binary is a STUB on a private PATH, and the npm stub is the only thing
@@ -45,6 +45,7 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     exit 1
 fi
 printf '20\n' > "$CLONE/.nvmrc"
+printf '1.4.4\n' > "$CLONE/.bun-version"
 
 # vm.mode=local so the VM-first gate lets a roll through; a separate case holds it.
 export HIMMEL_VM_MODE_CONFIG="$TMP/config.json"
@@ -92,7 +93,7 @@ EOF
 cat > "$STUBS/bun" <<'EOF'
 #!/bin/sh
 case "$1" in
-    upgrade) echo "error: EACCES: permission denied, rename '/usr/bin/bun'" >&2; exit 1 ;;
+    upgrade) echo "bun upgrade" >> "$STUB_STATE/bun.log"; echo "error: EACCES: permission denied, rename '/usr/bin/bun'" >&2; exit 1 ;;
     *) echo 1.2.3 ;;
 esac
 EOF
@@ -309,14 +310,15 @@ else
 fi
 rm -f "$STUBS/pacman"
 
-echo "bun: a failed self-upgrade names the remedy"
+echo "bun: report only — a version off the .bun-version pin is never self-upgraded (HIMMEL-7092)"
 reset_state
 run_only toolchain
-if has 'bun 1\.2\.3 .*self-upgrade failed' && has 'EACCES' && has 'fix: .*bun upgrade' \
-    && has '^    bun +failed'; then
-    assert_pass "failing bun upgrade prints the captured reason, the remedy and a table row"
+if has 'bun 1\.2\.3 differs from the \.bun-version pin \(1\.4\.4\) — NOT self-upgrading' \
+    && has 'fix: bash scripts/machine-setup/ubuntu\.sh' && has '^    bun +skipped' \
+    && ! has 'bun\.sh/install' && [ ! -f "$STATE/bun.log" ]; then
+    assert_pass "off-pin bun is reported with the pinned-installer remedy, a skipped row and no bun upgrade"
 else
-    assert_fail "bun failure → reason + remedy + row: $OUT"
+    assert_fail "off-pin bun → NOT self-upgrading + remedy + skipped row, no upgrade run: $OUT"
 fi
 
 # bun owned by the system package manager: say who updates it, never the curl installer.
@@ -327,43 +329,34 @@ exit 1
 EOF
 chmod +x "$STUBS/pacman"
 run_only toolchain
-if has 'updated by pacman' && has 'sudo pacman -Syu bun' && ! has 'bun\.sh/install'; then
-    assert_pass "pacman-owned bun reports 'updated by pacman' with the exact command"
+if has 'fix: sudo pacman -Syu bun' && has 'owned by pacman' && ! has 'bun\.sh/install' && [ ! -f "$STATE/bun.log" ]; then
+    assert_pass "pacman-owned bun names the exact pacman command and never self-upgrades"
 else
-    assert_fail "pacman-owned bun → 'updated by pacman: sudo pacman -Syu bun': $OUT"
+    assert_fail "pacman-owned bun → 'fix: sudo pacman -Syu bun', no upgrade: $OUT"
 fi
 rm -f "$STUBS/pacman"
 
-echo "bun: prefer the user install, warn on divergent versions, and retain VM proof"
+echo "bun: prefer the user install, warn on divergent versions, a pin match is up-to-date"
 mkdir -p "$HOME/.bun/bin"
 cat > "$HOME/.bun/bin/bun" <<'EOF'
 #!/bin/sh
 case "$1" in
     upgrade) echo user-bun >> "$STUB_STATE/bun.log" ;;
-    *) echo 1.4.3 ;;
+    *) echo 1.4.4 ;;
 esac
 EOF
 chmod +x "$HOME/.bun/bin/bun"
 run_only toolchain
-if has 'bun 1\.4\.3 already current' && [ -f "$STATE/bun.log" ] && has '^    bun +up-to-date'; then
-    assert_pass "the user Bun wins over PATH and its own updater runs"
+if has 'bun 1\.4\.4 matches the \.bun-version pin' && [ ! -f "$STATE/bun.log" ] && has '^    bun +up-to-date'; then
+    assert_pass "the user Bun wins over PATH; at the pin it is up-to-date and its updater never runs"
 else
-    assert_fail "preferred user Bun → self-upgrade and current row: $OUT"
+    assert_fail "preferred user Bun at the pin → current row, no upgrade: $OUT"
 fi
-if has 'WARN.*bun.*1\.4\.3.*1\.2\.3'; then
+if has 'WARN.*bun.*1\.4\.4.*1\.2\.3'; then
     assert_pass "different user and PATH Bun versions produce a WARN"
 else
     assert_fail "dual Bun → differing-version WARN: $OUT"
 fi
-rm -f "$STATE/bun.log"
-printf '{"vm":{"mode":"none"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
-run_only toolchain
-if has 'HELD' && [ ! -f "$STATE/bun.log" ] && has '^    bun +skipped'; then
-    assert_pass "VM proof holds the preferred Bun upgrade"
-else
-    assert_fail "no VM proof → no Bun upgrade and HELD row: $OUT"
-fi
-printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 rm -rf "$HOME/.bun"
 
 reset_state

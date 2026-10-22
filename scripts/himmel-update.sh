@@ -1618,7 +1618,7 @@ report_qmd_bun_missing() {
     echo "    on this machine until that is fixed. The status table below reports this as"
     echo "    'skipped', which looks like routine no-op — it is not."
     case "${QMD_FORK_MISSING_TOOLS:-}" in
-        *bun*) echo "    Install bun: curl -fsSL https://bun.sh/install | bash   (see docs/setup/new-machine.md)" ;;
+        *bun*) echo "    Install the pinned bun: bash scripts/machine-setup/ubuntu.sh (macOS: brew install oven-sh/bun/bun)   (see docs/setup/new-machine.md)" ;;
     esac
     case "${QMD_FORK_MISSING_TOOLS:-}" in
         *git*) echo "    Install git via your OS package manager (see docs/setup/new-machine.md)" ;;
@@ -2140,7 +2140,7 @@ sync_graphify() {
         if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
             uv_hint="brew install uv"
         else
-            uv_hint="curl -LsSf https://astral.sh/uv/install.sh | sh"
+            uv_hint="bash scripts/machine-setup/ubuntu.sh   (installs the checksum-pinned uv)"
         fi
         echo "    WARNING: uv not on PATH — graphify is uv-managed and will NOT install or update"
         echo "    on this machine until uv is installed. Install uv: $uv_hint   (see docs/setup/new-machine.md)"
@@ -2649,10 +2649,12 @@ _node_vs_pin() {
 # step must never cause ("Advisory-first" per the ticket). It prints the
 # exact remediation command and stops there.
 #
-# npm and bun DO self-upgrade in apply mode — both ship a safe, in-place,
-# built-in updater (`npm install -g npm@latest`, `bun upgrade`) that replaces
-# only themselves, never the node/bun runtime a live process is currently
-# executing out of, so neither carries the node hazard above.
+# npm and bun are REPORT-ONLY too. npm ships with the pinned node
+# and moves when node does; bun's version is .bun-version and the installers
+# fetch exactly that build against a pinned sha256. A self-updater (npm's or
+# bun's built-in one) would replace either with whatever was published last,
+# unverified and possibly minutes old, so neither runs; the fix hint names the
+# checksum-pinned install path instead.
 #
 # A node version that is behind the pin is also the trigger for the
 # guardrail-mode block hazard report_guardrail_block documents (a
@@ -2662,8 +2664,8 @@ _node_vs_pin() {
 # check re-runs and surfaces its remedy in the SAME pass, not several
 # sections later where it is easy to miss.
 report_toolchain() {
-    local mode="$1"   # check | apply — npm/bun self-upgrade only in apply; node
-                       # is report-only in both.
+    local mode="$1"   # check | apply — node, npm and bun are all report-only;
+                       # apply only adds the bun status-table row.
     echo ""
     echo "==> node/npm/bun toolchain (HIMMEL-3068)"
     warn_bun_versions
@@ -2715,59 +2717,30 @@ report_toolchain() {
     fi
 
     if command -v npm >/dev/null 2>&1; then
-        local npm_before npm_after
-        npm_before="$(npm --version 2>/dev/null)"
-        if [ "$mode" = "apply" ]; then
-            if npm install -g npm@latest >/dev/null 2>&1; then
-                npm_after="$(npm --version 2>/dev/null)"
-                if [ "$npm_after" != "$npm_before" ]; then
-                    echo "    npm $npm_before -> $npm_after (self-upgraded)."
-                else
-                    echo "    npm $npm_before already current."
-                fi
-            else
-                echo "    npm $npm_before — self-upgrade failed (non-fatal); run: npm install -g npm@latest" >&2
-            fi
-        else
-            echo "    npm $npm_before (check mode — self-upgrade deferred to apply)."
-        fi
+        echo "    npm $(npm --version 2>/dev/null) ships with node — report only; it moves when the pinned node does."
     else
         echo "    npm: not on PATH."
     fi
 
     if command -v bun >/dev/null 2>&1; then
-        local bun_before bun_after bun_path bun_owner bun_fix bun_out
-        bun_before="$(bun --version 2>/dev/null)"
+        local bun_ver bun_path bun_owner bun_fix bun_pin=""
+        bun_ver="$(bun --version 2>/dev/null)"
         bun_path="$(_cli_realpath "$(command -v bun)" 2>/dev/null || command -v bun)"
         bun_owner="$(_cli_owner "$bun_path")"
+        [ -f "$ROOT/.bun-version" ] && bun_pin="$(tr -d '[:space:]' < "$ROOT/.bun-version")"
         case "$bun_owner" in
             pacman) bun_fix="sudo pacman -Syu bun" ;;
             brew)   bun_fix="brew upgrade bun" ;;
-            npm)    bun_fix="npm install -g bun@latest" ;;
-            *)      bun_fix="bun upgrade" ;;
+            npm)    bun_fix="npm install -g bun@${bun_pin:-<the .bun-version pin>}" ;;
+            *)      bun_fix="bash scripts/machine-setup/ubuntu.sh   (installs the checksum-pinned bun${bun_pin:+ $bun_pin})" ;;
         esac
-        if [ "$mode" = "apply" ]; then
-            if [ "$bun_owner" = "pacman" ] || [ "$bun_owner" = "brew" ]; then
-                # bun upgrade replaces the binary in place; a package-owned one is not
-                # writable by the user, so it always fails — name the real updater.
-                echo "    bun $bun_before is owned by $bun_owner ($bun_path) — updated by $bun_owner, not bun upgrade; run: $bun_fix"
-                _probe_tool_row bun skipped "updated by $bun_owner — run: $bun_fix"
-            elif bun_out="$(bun upgrade 2>&1)"; then
-                bun_after="$(bun --version 2>/dev/null)"
-                if [ "$bun_after" != "$bun_before" ]; then
-                    echo "    bun $bun_before -> $bun_after (self-upgraded)."
-                    _probe_tool_row bun updated "$bun_before -> $bun_after"
-                else
-                    echo "    bun $bun_before already current."
-                    _probe_tool_row bun up-to-date "$bun_before"
-                fi
-            else
-                echo "    bun $bun_before — self-upgrade failed (non-fatal): $(_last_line_trimmed "$bun_out")" >&2
-                echo "    fix: $bun_fix   (bun is at $bun_path${bun_owner:+, owned by $bun_owner})" >&2
-                _probe_tool_row bun failed "$(_last_line_trimmed "$bun_out") — run: $bun_fix"
-            fi
+        if [ -z "$bun_pin" ] || [ "$bun_ver" = "$bun_pin" ]; then
+            echo "    bun $bun_ver${bun_pin:+ matches the .bun-version pin} — report only."
+            if [ "$mode" = "apply" ]; then _probe_tool_row bun up-to-date "$bun_ver"; fi
         else
-            echo "    bun $bun_before (check mode — self-upgrade deferred to apply)."
+            echo "    bun $bun_ver differs from the .bun-version pin ($bun_pin) — NOT self-upgrading (the built-in updater installs an unverified latest build)."
+            echo "    fix: $bun_fix   (bun is at $bun_path${bun_owner:+, owned by $bun_owner})"
+            if [ "$mode" = "apply" ]; then _probe_tool_row bun skipped "pinned $bun_pin, have $bun_ver — run: $bun_fix"; fi
         fi
     else
         echo "    bun: not on PATH — the qmd fork update and the jira CLI's bun fallback are both disabled (see above)."

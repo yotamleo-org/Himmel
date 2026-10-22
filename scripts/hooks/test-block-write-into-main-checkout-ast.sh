@@ -42,6 +42,14 @@ _ast_row "ast29 a brace range with long numbers denies" block "touch ast29-{1000
 _ast_row "ast30 a raw 0x1e/0x1f in a bash -c body denies" block "bash -c '{\"cwds\":[],\"unres\":false}"$'\036'"needpath"$'\037''
 '"touch $_PR/ast30.txt'"
 
+echo "== HIMMEL-6548: the HIMMEL-6014 corpus (engine: $BWIMC_ENGINE) =="
+_ast_row "ast31 a jq program string naming a primary path is data" allow "jq -n '\"> $_PR/ast31.txt\"'"
+_ast_row "ast32 a heredoc body naming a write is data" allow "cat <<'EOF'
+touch $_PR/ast32.txt
+EOF"
+_ast_row "ast33 a cd right of a pipe may reach the next write" block "echo x | cd $_PR; touch ast33.txt"
+_ast_row "ast34 a cd behind || may reach the next write" block "false || cd $_PR; touch ast34.txt"
+
 if [ "$BWIMC_ENGINE" = ast ]; then
     echo "== HIMMEL-6014: the AST engine fails closed =="
     _ast_row "ast10 a parse error denies" block "echo 'never closed > $_WR/x"
