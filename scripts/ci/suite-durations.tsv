@@ -938,6 +938,7 @@ scripts/release/test-gen-release-notes.sh	0
 scripts/release/test-tarball-vs-clone.sh	3
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	2
+scripts/security/test-snyk-scan.sh	1
 scripts/setup/test-check-jira-key.sh	0
 scripts/setup/test-check-user-slug.sh	0
 scripts/setup/test-choose-mode.sh	0
