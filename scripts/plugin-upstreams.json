@@ -3,7 +3,7 @@
   "claude-obsidian": {
     "upstream_repo": "AgriciDaniel/claude-obsidian",
     "track": "release",
-    "synced_base": "v2.2.0"
+    "synced_base": "v3.0.1"
   },
   "impeccable": {
     "upstream_repo": "pbakaus/impeccable",
@@ -54,12 +54,5 @@
     "upstream_repo": "coderabbitai/skills",
     "track": "head",
     "ref": "a8777050c0d9034d5de6beff3dfac9b43acb9854"
-  },
-  "ponytail": {
-    "standalone": true,
-    "upstream_repo": "DietrichGebert/ponytail",
-    "track": "release",
-    "synced_base": "v5.3.2",
-    "ref": "16352ac229eb08a9598dcae48fe9f2b342567d86"
   }
 }

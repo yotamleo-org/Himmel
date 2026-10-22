@@ -315,7 +315,7 @@ auto-compact is off.
 
 Mitigations:
 
-- **Keep `autoCompactEnabled: true`** for any session leg that runs a `[1m]`
+- **Keep `autoCompactEnabled: true`** for any session worker that runs a `[1m]`
   model unattended — auto-compact is the only automatic recovery path after
   the drop.
 - **Delegate drop-risk reads to a subagent.** Content that routinely trips
@@ -563,7 +563,7 @@ A Read/Grep/Glob whose target resolves outside the session's cwd and
 `permissions.additionalDirectories` always prompts interactively — even in
 `auto` mode, since the classifier doesn't cover this tool-call class (public
 docs confirm: no `auto`-mode carve-out is documented for it). An armed/
-overnight session has nobody to answer that prompt (a leg once hung
+overnight session has nobody to answer that prompt (a worker once hung
 on `Allow reads outside the working directories?` until the operator
 happened to be at the terminal). Fix: pre-list the known-safe outside paths
 (state repo, `~/.himmel`, the primary checkout, the interpreter's
@@ -575,7 +575,7 @@ re-prompt for the rest of that run. `queue-lock.sh status` flags a FRESH
 lock whose heartbeat exceeds `QUEUE_LOCK_IDLE_WARN_SECONDS` (default 45m,
 well short of the hours-scale TTL/aging thresholds) as "possibly stuck on
 a prompt" when `ListAgents` still shows the session — that's the signal an
-operator or console is watching for. As of main `f258800f`,
+operator or chief is watching for. As of main `f258800f`,
 `permissions.additionalDirectories` pins `~/Documents/github/himmel`,
 `~/.himmel`, `~/Documents/luna`, and `~/AppData/Local/Python` — outside-cwd
 reads under those four stop prompting on this deployment (workspace trust
@@ -1183,8 +1183,8 @@ both:
    (i.e. non-zero-length) process value still wins over the file, in both
    loaders.
 
-The corollary bites in leg launchers: `arm-resume` re-exports `.env` into
-every leg, so an operator who sets `CR_FLOOR_FALLBACK=` (empty) to decline a
+The corollary bites in worker launchers: `arm-resume` re-exports `.env` into
+every worker, so an operator who sets `CR_FLOOR_FALLBACK=` (empty) to decline a
 fallback declines nothing — the file value wins over the empty process value.
 Decline with a non-empty sentinel the reader treats as "off".
 
@@ -1454,7 +1454,7 @@ each capture site individually.
   identifies text-mode reading as the mechanism — the bare form fails on a file
   that genuinely IS CRLF, so it is not "correct when run directly". The nested
   `$( )` column reads exactly `wc -l` on a file with no CR in it at all, which
-  is how a leg once talked itself into converting three pure-LF `.sh` files to
+  is how a worker once talked itself into converting three pure-LF `.sh` files to
   CRLF (shellcheck SC1017 was what stopped it). **Do not theorise about which
   form is safe — measure with `tr -cd '\r' | wc -c`, or `grep -Uc`.** For a
   committed file read the bytes filter-free: `git cat-file -p <ref>:<path> |

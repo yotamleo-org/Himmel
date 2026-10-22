@@ -1,14 +1,15 @@
 {
   "source": "AgriciDaniel/claude-obsidian",
+  "ref": "v3.0.1",
   "note": "vault-lint generalizes this; drift = review for new checks",
   "files": [
     {
       "path": "skills/wiki-lint/SKILL.md",
-      "sha256": "25d0234f38654b103bcf67126b787edc40e3178ebe7951f00fc9417914caaa93"
+      "sha256": "a660684a0b1cb5ea1382556922976b1abafa19e77992e694a7d8d9496d8a8215"
     },
     {
       "path": "agents/wiki-lint.md",
-      "sha256": "ac0c7fa5c9ca212d5d2155af0410374f9bec2b41e84f10e7aba4f8622223a456"
+      "sha256": "7abb46a3ed549cc83a70a8d2d4096a4ceed58f7617a81441c786be6734df233f"
     }
   ]
 }

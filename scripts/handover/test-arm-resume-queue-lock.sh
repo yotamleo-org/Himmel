@@ -487,7 +487,7 @@ mkdir -p "$FAKE/handover" "$FAKE/lib"
 cp "$SCRIPT_DIR/arm-resume.sh" "$FAKE/handover/arm-resume.sh"
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$FAKE/lanes"
-for lib in console-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version; do
+for lib in chief-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version; do
     cp "$SCRIPT_DIR/../lib/$lib.sh" "$FAKE/lib/$lib.sh"
 done
 # guard: a lib arm-resume.sh hard-sources (column-0 `. .../lib/X.sh`

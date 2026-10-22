@@ -203,7 +203,11 @@ for the PR's diff (`SUITE_IMPACTED_FROM_BASE`). The script decides on the
 **full** sweep in any of these cases:
 
 - the PR changes a path listed in `scripts/ci/ci-trust-paths.txt` (ci.yml,
-  the runner, the selector, the trust list itself);
+  the runner, the selector, the trust list itself). Under
+  `SUITE_TIER_MODE=pr` only the selector-integrity paths count: ci.yml,
+  `run-shell-tests.sh`, `impacted-selection.sh`, `ci-trust-paths.txt`,
+  `suite-tiers.tsv`, `scripts/cr/impacted-*` and `anchor-handoff.sh`. Any other
+  trust path gets the impacted suites plus the PR tier;
 - the base is not on `origin/main`;
 - the base predates the script;
 - the selector errors.

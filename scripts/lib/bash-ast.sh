@@ -27,6 +27,10 @@
 #              stdin, …), else null
 #     body     the literal `bash -c`/`eval` body, re-parsed into the
 #              positions that follow it
+#     pipe     {id, stage, n}: the innermost pipeline it runs in, its stage
+#              (0-based) of n, else null. A brace group, subshell, loop or
+#              `bash -c` body takes its element's stage; a $(…) or backtick
+#              body is its own pipeline and never inherits one
 #
 #   S0 is the starting cwd set (default [[]]); TAGS the starting `in`.
 #   rc 2 = shfmt or jq missing (the message says so; the caller fails closed),
@@ -485,14 +489,21 @@ def _nav($S; $env):
       end
   else {ok: $S, fail: $S} end;
 
-def _pos($st; $S; $tg):
+def _pos($st; $S; $tg; $env):
   {prog, argv: .a, via, lookup, redirs: ($st.redirs | map(_redir)), assigns: [], cwd: $S, ecwd: $S,
-   in: $tg, opaque, body};
+   in: $tg, opaque, body, pipe: $env.pp};
+
+# . = a pipe cmd; the chain's elements in order, d = how many pipe nodes
+# enclose each (shfmt nests a | b | c to the left)
+def _pels($d):
+  def el($d): if .cmd.k? == "pipe" and (.neg | not) and (.bg | not) and (.redirs | length) == 0
+    then .cmd | _pels($d + 1) else {s: ., d: $d} end;
+  (.x | el($d)), (.y | el($d));
 
 # . = a stmt or a stmt list; returns {ok, fail, pos}: the cwd sets after it
 # succeeded and failed, and every position inside it
 def _w($S; $tags; $env):
-  def subs($S; $tg): [.[] | select(. != null) | .subs[]? | _w($S; $tg + ["subst"]; $env) | .pos[]];
+  def subs($S; $tg): [.[] | select(. != null) | .subs[]? | _w($S; $tg + ["subst"]; $env | .pp = null) | .pos[]];
   if type == "array" then
     if length == 0 then {ok: $S, fail: $S, pos: []}
     else reduce .[] as $s (null;
@@ -507,7 +518,7 @@ def _w($S; $tags; $env):
     | ([$st.redirs[] | .w, (.hdoc.words // [])[]] | subs($S; $tg)) as $rp
     | $st.cmd as $c
     | (if $c == null then
-         {ok: $S, fail: $S, pos: [{prog: null, a: [], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg)]}
+         {ok: $S, fail: $S, pos: [{prog: null, a: [], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg; $env)]}
        elif $c.k == "call" then
          ([$c.argv[], $c.assigns[].w, $c.assigns[].arr[]] | subs($S; $tg)) as $sp
          | ($c.assigns | map(.name)) as $an
@@ -515,7 +526,7 @@ def _w($S; $tags; $env):
              taint: any($an[]; test(_names))} | _unwrap | _classify) as $u
          | (reduce $u.cdx[] as $d ($S; _cdto(.; $d))) as $pc
          | ($u | _nav($S; $env)) as $nv
-         | {ok: $nv.ok, fail: $nv.fail, pos: ($sp + [$u | _pos($st; $pc; $tg) | .assigns = $an | .ecwd = $S])}
+         | {ok: $nv.ok, fail: $nv.fail, pos: ($sp + [$u | _pos($st; $pc; $tg; $env) | .assigns = $an | .ecwd = $S])}
        elif $c.k == "and" then
          ($c.x | _w($S; $tg; $env)) as $x | ($c.y | _w($x.ok; $tg; $env)) as $y
          | {ok: $y.ok, fail: _u($x.fail; $y.fail), pos: ($x.pos + $y.pos)}
@@ -523,9 +534,12 @@ def _w($S; $tags; $env):
          ($c.x | _w($S; $tg; $env)) as $x | ($c.y | _w($x.fail; $tg; $env)) as $y
          | {ok: _u($x.ok; $y.ok), fail: $y.fail, pos: ($x.pos + $y.pos)}
        elif $c.k == "pipe" then
-         ($c.x | _w($S; $tg + ["pipe"]; $env)) as $x | ($c.y | _w($S; $tg + ["pipe"]; $env)) as $y
-         | _u($S; _u($y.ok; $y.fail)) as $o
-         | {ok: $o, fail: $o, pos: ($x.pos + $y.pos)}
+         [$c | _pels(1)] as $els
+         | {id: ($env.scope + "@" + $c.at), n: ($els | length)} as $p
+         | [range($p.n) as $i | $els[$i] as $e
+            | $e.s | _w($S; $tg + [range($e.d) | "pipe"]; $env | .pp = ($p + {stage: $i}))] as $rs
+         | _u($S; _u($rs[-1].ok; $rs[-1].fail)) as $o
+         | {ok: $o, fail: $o, pos: [$rs[].pos[]]}
        elif $c.k == "sub" then {ok: $S, fail: $S, pos: ($c.body | _w($S; $tg + ["subshell"]; $env) | .pos)}
        elif $c.k == "block" then $c.body | _w($S; $tg + ["brace"]; $env)
        elif $c.k == "compound" then
@@ -547,26 +561,29 @@ def _w($S; $tags; $env):
          | (if $c.t == "DeclClause" then _u($S; [null]) else $S end) as $o
          | {ok: $o, fail: $o,
             pos: ($wp + [{prog: ({"DeclClause": "declare", "TestClause": "[[", "ArithmCmd": "((", "LetClause": "let"}[$c.t]),
-                          a: [$c.words[] | _args], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg)])}
+                          a: [$c.words[] | _args], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg; $env)])}
        else error("bash-ast: unknown model kind " + ($c.k | tostring)) end) as $r
     # a redirect on a subshell, brace group, loop or wrap opens its file in the outer cwd
     | (if $c != null and ($c.k | IN("sub", "block", "compound", "wrap")) and ($st.redirs | length) > 0
-       then [{prog: null, a: [], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg)]
+       then [{prog: null, a: [], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg; $env)]
        else [] end) as $sr
     | ($r | .pos = ($sr + .pos)) as $r
     | (if $st.neg then {ok: $r.fail, fail: $r.ok} else {ok: $r.ok, fail: $r.fail} end) as $nf
     | if $st.bg then {ok: $S, fail: $S, pos: ($rp + $r.pos)} else $nf + {pos: ($rp + $r.pos)} end
   end;
 
-def positions($home; $s0; $tags):
+def positions($home; $s0; $tags; $scope; $p0):
   ([walk(if type == "object" and .Type? == "ParamExp" then del(.Param) else . end) | .. | strings
     | select(test("HOME"))] | length > 0 or $home == "") as $ht
-  | {home: $home, home_taint: $ht} as $env
-  | model($env) | _w($s0; $tags; $env) | .pos;
+  | {home: $home, home_taint: $ht, scope: $scope, pp: $p0} as $env
+  | model($env)
+  # a pipe's id: where its node sits in the model, unique within one parse
+  | reduce paths(type == "object" and .k? == "pipe") as $p (.; setpath($p + ["at"]; $p | map(tostring) | join(".")))
+  | _w($s0; $tags; $env) | .pos;
 BASH_AST_POS_EOF
 
 bash_ast_positions() {
-    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} tree pos line inner acc rc
+    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0
     if ! command -v shfmt >/dev/null 2>&1; then
         echo "bash-ast: shfmt not on PATH, so the command model cannot run and the guard fails closed. Install shfmt (a station install goes to a test VM first)." >&2
         return 2
@@ -580,7 +597,8 @@ bash_ast_positions() {
         return 3
     }
     pos=$(printf '%s' "$tree" | jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
-        "$_BASH_AST_JQ$_BASH_AST_POS_JQ"'positions($home; $s0; $tags)' 2>/dev/null) || {
+        --arg scope "$scope" --argjson p0 "$p0" \
+        "$_BASH_AST_JQ$_BASH_AST_POS_JQ"'positions($home; $s0; $tags; $scope; $p0)' 2>/dev/null) || {
         echo "bash-ast: the command model could not read the command." >&2
         return 4
     }
@@ -597,9 +615,10 @@ bash_ast_positions() {
         inner=$(bash_ast_positions "$(printf '%s' "$line" | jq -r .body)" \
             "$(printf '%s' "$line" | jq -c .cwd)" \
             "$(printf '%s' "$line" | jq -c '.in + [if .prog == "eval" then "eval" else "shell-c" end]')" \
-            $((depth + 1)))
+            $((depth + 1)) "$scope.$k" "$(printf '%s' "$line" | jq -c .pipe)")
         rc=$?
         [ "$rc" = 0 ] || return "$rc"
+        k=$((k + 1))
         acc="$acc"$'\n'"$inner"
     done < <(printf '%s' "$pos" | jq -c '.[] | select(.body != null)')
     printf '%s\n' "$acc" | jq -cs 'add'

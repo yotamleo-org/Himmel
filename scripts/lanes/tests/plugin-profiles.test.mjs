@@ -1666,6 +1666,31 @@ test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram and con
   }
 });
 
+// v3.0.0 (c621ef21) is never the pin; v3.0.1 is 6414e1a232a00515dc0b89f61b1d792b3dc93237. A tag, not the sha, is what
+// `claude plugin install` can clone, so the row pins the ref and both drift registries to the same tag.
+test('claude-obsidian is pinned to upstream tag v3.0.1, in the install pin and both drift registries (HIMMEL-6985)', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const mp = JSON.parse(readFileSync(join(root, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
+  const entry = mp.plugins.find((x) => x.name === 'claude-obsidian');
+  assert.equal(entry?.source?.url, 'https://github.com/AgriciDaniel/claude-obsidian.git');
+  assert.equal(entry.source.ref, 'v3.0.1');
+  assert.ok(!('sha' in entry.source), 'a bare sha is not installable; pin the tag');
+  assert.ok(entry.description.includes('v3.0.1'), 'description names the pinned version');
+  const pu = JSON.parse(readFileSync(join(root, 'scripts', 'plugin-upstreams.json'), 'utf8'));
+  assert.equal(pu['claude-obsidian'].synced_base, 'v3.0.1');
+  const up = JSON.parse(readFileSync(join(root, 'scripts', 'upstreams.json'), 'utf8'));
+  assert.equal(up.entries.find((e) => e.name === 'claude-obsidian')?.synced_base, 'v3.0.1');
+});
+
+test('no doc calls claude-obsidian a vendor fork or SHA-pinned (HIMMEL-6985)', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const stale = /yotamleo\/claude-obsidian|\bclaude-obsidian[^\n]*(vendor fork|SHA-pinned)|Pinned GitHub fork of \[AgriciDaniel|a pinned\s+fork of \[AgriciDaniel/;
+  for (const f of ['README.md', 'marketplace/README.md', 'docs/setup/new-machine.md', 'docs/setup/updating.md']) {
+    const hit = readFileSync(join(root, f), 'utf8').match(stale);
+    assert.equal(hit, null, `${f}: stale claude-obsidian vendor-fork / SHA-pinned wording: ${hit?.[0]}`);
+  }
+});
+
 test('HIMMEL-4024: code kit CLIs (ast-grep, shfmt, bats) have drift rows, a catalog entry and an install step', () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const up = JSON.parse(readFileSync(join(root, 'scripts', 'upstreams.json'), 'utf8'));

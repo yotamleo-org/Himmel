@@ -87,7 +87,7 @@ The **Travels** column tells you how portable a plugin is on its own:
 | Plugin | What you get | Travels | License |
 |---|---|---|---|
 | **obsidian-triage** | Autonomous triage + cross-clip synthesis for Obsidian Web Clipper output. Commands: `/triage-clips`, `/synthesize-clips`, `/harvest-clips`, `/archive-clips`; skills: `telegram-clip`, `roadmap-clips`, `luna-ingest`. | ✅ standalone | — |
-| **claude-obsidian** | Claude + Obsidian knowledge companion — wiki query, save, ingest, lint, autoresearch. Companion to obsidian-triage. Pinned GitHub fork of [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian). | ✅ standalone | MIT |
+| **claude-obsidian** | Claude + Obsidian knowledge companion — wiki query, save, ingest, lint, autoresearch. Companion to obsidian-triage. Installed from upstream [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian), tag-pinned. | ✅ standalone | MIT |
 | **obsidian** | Steph Ango's Obsidian skills: `obsidian-markdown` (OFM), `obsidian-bases`, `json-canvas`, `obsidian-cli`, `defuddle`. Pinned fork of [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills). | ✅ standalone | MIT |
 | **pr-review-toolkit-himmel** | Vendored `code-reviewer` agent + a verify-before-critical sub-rule patch. The other 5 agents stay on upstream `pr-review-toolkit:*`. | 🔶 fork | Apache-2.0 |
 | **telegram-himmel** | Telegram channel MCP plugin with the `getUpdates` poller gated behind `TELEGRAM_OWN_POLLER=1`, so only the owner session polls the single bot-token slot. Fork of `telegram@claude-plugins-official` v0.0.6. | 🔶 fork | Apache-2.0 |

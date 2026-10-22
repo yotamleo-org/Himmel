@@ -1151,8 +1151,8 @@ unset -v _leg_env_scrub
 # never gets IMPL_GUARD_OK/INLINE_IMPL_OK re-set below (a judge doesn't
 # implement) - without this scrub, an inherited value from the calling leg's
 # own session reaches it anyway, unset+undetected. console_context_leg_env_unset_names
-# (scripts/lib/console-context.sh) is the single source of truth for this set
-# already - console.sh's do_arm() blindly unsets the whole list before arming
+# (scripts/lib/chief-context.sh) is the single source of truth for this set
+# already - chief.sh's do_arm() blindly unsets the whole list before arming
 # headed-arm.sh directly, which is safe there because do_arm() never reads any
 # of these names as input. This wrapper DOES read six of them as deliberate,
 # tested ambient input (HANDOVER_DIR above; HIMMEL_CONSOLE_NAME,
@@ -1175,9 +1175,9 @@ unset -v _leg_env_scrub
 # is set-only, so unsetting it early and letting the existing
 # leg_propagate_env/export calls below re-set it is a no-op for a normal
 # console-launched leg or judge and closes the leak for a leg-launched one.
-# shellcheck source=scripts/lib/console-context.sh
+# shellcheck source=scripts/lib/chief-context.sh
 # shellcheck disable=SC1091
-. "$HERE/../../lib/console-context.sh"
+. "$HERE/../../lib/chief-context.sh"
 # LEG_EFFORT is excluded (not scrubbed) same as the other five
 # names above, so it still passes through unchanged into a --judge launch as
 # a plain ambient var. Harmless today: a native judge never reads LEG_EFFORT

@@ -165,6 +165,7 @@ scripts/ci/test-vm-runner-probe-workflow.sh	pr	trust-path
 scripts/ci/test-workflow-red-issue.sh	pr	trust-path
 scripts/ci/test-workflow-red-workflow.sh	pr	trust-path
 scripts/claudex/test-probe-chunk.sh	local	new since the audit, behaviour suite
+scripts/cleanup/test-batch-runners.sh	local	behaviour suite, new HIMMEL-6865
 scripts/cleanup/test-codex-sweep-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cleanup/test-reap-mcp-orphans.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cleanup/test-steering-cull-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -693,6 +694,7 @@ scripts/hooks/test-template-version.sh	local	behaviour suite, 0 catches in the 4
 scripts/hooks/test-trigger-cr-on-pr-create.sh	pr	trust-path
 scripts/hooks/test-trigger-cr-on-push.sh	pr	trust-path
 scripts/hooks/test-wired-hooks-integrity-resolution.sh	pr	catch:2858
+scripts/insights/test-self-review.sh	local	behaviour suite, new HIMMEL-6865
 scripts/insights/test-session-analyzer.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/install/test-capture-operator-profile.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/install/test-himmel-ops-plugin-enablement.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -700,6 +702,7 @@ scripts/install/test-mcp-profile-providers.sh	local	behaviour suite, 0 catches i
 scripts/install/test-observability-grafana-manifest.sh	pr	static-gate
 scripts/install/test-observability-stack-manifest.sh	pr	static-gate
 scripts/install/test-operator-profile-staleness.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/install/test-scan-duplicates.sh	local	behaviour suite, new in HIMMEL-6972
 scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-agg-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-dead-parts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -861,6 +864,7 @@ scripts/luna/test-crystallize-note.sh	local	behaviour suite, 0 catches in the 40
 scripts/luna/test-fetch-health.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/luna/test-file-clipper-tickets.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/luna/test-graphmap-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/luna/test-luna-index-hygiene.sh	local	new since the audit, behaviour suite
 scripts/luna/test-pipeline-cadence.sh	local	new since the audit, behaviour suite
 scripts/luna/test-qmd-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/luna/test-qmd-embed-model.sh	local	behaviour suite, 0 catches in the 400-PR audit window

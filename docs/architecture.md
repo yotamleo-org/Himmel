@@ -137,7 +137,7 @@ flowchart TD
     W --> C
 ```
 
-**The invariant that makes it work.** One worker session is one file: state and orders
+**The invariant that makes it work.** One worker is one file: state and orders
 never split across two documents, so a resuming session cannot read half the
 picture. The queue lock is structural rather than advisory because prose
 coordination between two armed sessions failed three ways in one night — the
