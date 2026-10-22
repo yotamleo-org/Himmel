@@ -292,5 +292,5 @@ up) and its own scheduler task name (following the
 graphify version bumps; the refresh-lock bugs (HIMMEL-2618/2106/1414/914 —
 this leg reuses `ast-update.sh`'s existing promote-lock, unmodified, and
 does not fix them); luna's graph corpus (not wired in v1); arming the real
-crontab/schtasks (an operator action after review); the supervisor session's own
+crontab/schtasks (an operator action after review); the chief's own
 `tick.sh`.

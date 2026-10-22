@@ -330,7 +330,7 @@ scripts/handover/console-kit/tick.sh	mktemp	1
 scripts/handover/console-kit/wrap-merged.sh	prim-atomic	1
 scripts/handover/console-kit/write-verdict.sh	prim-atomic	1
 scripts/handover/console-kit/write-verdict.sh	prim-lock	1
-scripts/handover/console/console.sh	errexit	1
+scripts/handover/console/chief.sh	errexit	1
 scripts/handover/console/test-console.sh	gnu-flag	2
 scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1

@@ -308,7 +308,7 @@ fi
 # Resolved from $0, NOT $HEADED_ARM_REPO -- tests point that
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
-. "$(cd "$(dirname "$0")" && pwd)/../lib/console-context.sh"
+. "$(cd "$(dirname "$0")" && pwd)/../lib/chief-context.sh"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
 # shellcheck source=../lib/dedupe-path.sh
@@ -317,7 +317,7 @@ fi
 # The console parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via an explicit [model].
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-claude-opus-5-5}"
-# --context resolution (shared via scripts/lib/console-context.sh), arming-time
+# --context resolution (shared via scripts/lib/chief-context.sh), arming-time
 # only (see the header comment above). Direct consoles default to 1m/auto;
 # non-console wrapper profiles retain their configured mode. A positional
 # choice overrides CONSOLE_CONTEXT and the default. $#-ge 7 (not just
@@ -1520,7 +1520,7 @@ KPID=$!
 # headed-arm-leg.sh's, and it is always `standard`. Best-effort like that
 # one: a record that cannot be written is noted in $LOG, never stops the
 # launch (the reader then says `unknown`, never a proxy). The row itself comes
-# from console_context_write_record (scripts/lib/console-context.sh), the same
+# from console_context_write_record (scripts/lib/chief-context.sh), the same
 # function arm-resume.sh calls, so the two arming paths write one
 # shape.
 if [ "$ROLE" = "console" ]; then

@@ -13,7 +13,7 @@ measured POC. Verdicts live in [`registry.md`](registry.md) once the POC has run
 |---|---|---|---|---|
 | `blast-radius` | `/pr-check` step 3.5 (reviewer stage), opt-in | Surfaces breakage outside the diff by running real code; the CR panel reads the diff, so cross-file breakage is its blind spot | CR panel and `pr-review-toolkit` `code-reviewer` (diff-scoped); `impacted-suites.sh` finds suites by text reference, not by behaviour | **Yes** |
 | `correct` | Review-fix round; repeated-mistake classes become gates | Turns a class of repeated review findings into a lint or test instead of prose | CR learnings refresh (`cr-learnings-refresh`), the "second drift escalates to a hook" rule in `CLAUDE.md` | No: process skill, no single flow to wire |
-| `create-verification-skill` | RED-first leg contract; `docs/internals/testing.md` | A project-local skill that drives the harness like a user gives legs a scripted way to prove behaviour | `scripts/ci/run-shell-tests.sh`, `quiet-run` | No: needs a target app; himmel has no single target app |
+| `create-verification-skill` | RED-first worker contract; `docs/internals/testing.md` | A project-local skill that drives the harness like a user gives workers a scripted way to prove behaviour | `scripts/ci/run-shell-tests.sh`, `quiet-run` | No: needs a target app; himmel has no single target app |
 | `maintain-verification-skill` | Periodic upkeep of the above | Keeps the feature map honest | Only meaningful once `create-verification-skill` has a target | No: depends on the row above |
 | `benchmark-checklist` | Eval scorecards, cost reports, leg-digest | Stops an unvetted number reaching a report | Rubric measurement protocol (`rubric.md` §4), `docs/tool-adoption/telemetry.md` | No: candidate for a later wiring into the A/B scorecard |
 | `principle-explain-the-number` | Same as `benchmark-checklist` (its shorter principle form) | Names the limiter before a number is trusted | `benchmark-checklist` (it points to it for perf numbers) | No: fold with `benchmark-checklist` |
@@ -26,7 +26,7 @@ their scope stays in their own tickets: HIMMEL-5808 (`interrogate` verdict
 buckets into adversarial-verify), HIMMEL-5809 (`reflect` routing step into the
 wrap flow), HIMMEL-5810 (six-principle digest), HIMMEL-5811 (`arena` base
 selection and graft rule). The unvendored `poteto-mode` and the fork's
-SessionStart hook stay out: they grant autonomy the console, RETASK and GO rails
+SessionStart hook stay out: they grant autonomy the chief, RETASK and GO rails
 own (HIMMEL-5697, A1).
 
 No overlap with `unslop`, `no-comments` or `comment-sicko`: those edit prose and
@@ -50,7 +50,7 @@ adjudicating the panel, and records any proven breakage as a normal `[claude-N]`
 finding. That value runs no agent matrix. Default off: the unset path is
 unchanged. Follow-up on the default: HIMMEL-5855. Nothing
 in `scripts/lanes/plugin-profiles.json` changes; the procedure is read from the
-vendored skill file, so it works in a leg that has pstack disabled.
+vendored skill file, so it works in a worker that has pstack disabled.
 
 ## A/B result (2026-10-16)
 
