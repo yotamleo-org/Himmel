@@ -200,6 +200,42 @@ is "unreadable job times exit 3" 3 "$rc"
 if grep -q '^UNAVAILABLE: runner time of 1 run' "$TMP/r9.md"; then ok "cost section names the unreadable runs"; else bad "no UNAVAILABLE runner time line"; fi
 has "catch rate is n/a with partial runner time" "$TMP/r9.md" "Catches per 1000 runner-min: n/a"
 
+# --- --out must be a file path, not an existing directory ---------------------
+scenario s11
+cp "$REAL/jira-bugs.tsv" "$FX/jira.tsv"
+mkdir -p "$TMP/outdir"
+report --since 2026-10-15 --out "$TMP/outdir"
+is "a directory as --out exits 2" 2 "$rc"
+is "no report written into the directory" 0 "$(find "$TMP/outdir" -mindepth 1 | wc -l | tr -d ' ')"
+
+# --- a Done escape with several merged PRs: any of them may hold the test ------
+scenario s12
+printf 'HIMMEL-9001\tBug\tDone\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+echo '[{"number":9102,"title":"docs: [HIMMEL-9001] follow-up","body":"prose","mergedAt":"2026-10-21T00:00:00Z","files":[{"path":"docs/x.md"}]},{"number":9101,"title":"fix: [HIMMEL-9001] guard","body":"RED: failed before the fix","mergedAt":"2026-10-20T00:00:00Z","files":[{"path":"scripts/hooks/test-guard-x.sh"}]}]' > "$FX/pr-HIMMEL-9001.json"
+report --since 2026-10-15 --out "$TMP/r12.md"
+has "every matching PR is read for the test and the RED line" "$TMP/r12.md" "- HIMMEL-9001: PRs #9102 #9101, test in fix: yes, RED recorded: yes"
+
+# --- statistics that cannot be computed degrade sections 3 and 4, not read as zero
+scenario s13
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+echo '[{"databaseId":9301,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"garbage","startedAt":"garbage","updatedAt":"garbage","headBranch":"feat/g","headSha":"ggg"}]' > "$FX/runs.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:01:30Z"}]}' > "$FX/jobs-9301.json"
+report --since 2026-10-15 --out "$TMP/r13.md"
+is "uncomputable statistics exit 3" 3 "$rc"
+if grep -q '^UNAVAILABLE: sections 3 and 4' "$TMP/r13.md"; then ok "sections 3 and 4 are named unavailable"; else bad "no UNAVAILABLE for sections 3 and 4"; fi
+if grep -q '^Catches: ' "$TMP/r13.md"; then bad "metrics printed from empty statistics"; else ok "no metrics printed from empty statistics"; fi
+
+# --- a date that is not GNU date fails loudly, not as a usage error ------------
+scenario s14
+cp "$REAL/jira-bugs.tsv" "$FX/jira.tsv"
+mkdir -p "$TMP/bsd"
+printf '#!/usr/bin/env bash\ncase "$*" in *-d*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v date)" > "$TMP/bsd/date"
+chmod +x "$TMP/bsd/date"
+( cd "$TMP" && FX="$FX" PATH="$TMP/bsd:$TMP/bin:$PATH" ESCAPE_JIRA_CMD="$TMP/bin/jira" ESCAPE_REPORT_DATE=2026-10-22 \
+  bash "$SCRIPT" --since 2026-10-15 --out "$TMP/r14.md" ) > "$TMP/out" 2> "$TMP/err"
+is "a non-GNU date exits 2" 2 "$?"
+if grep -q 'GNU date' "$TMP/err"; then ok "the refusal names GNU date"; else bad "refusal does not name GNU date"; fi
+
 [ "$fails" -eq 0 ] && { echo "all rows passed"; exit 0; }
 echo "$fails row(s) failed" >&2
 exit 1

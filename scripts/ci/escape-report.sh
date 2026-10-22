@@ -5,6 +5,8 @@
 # Read-only against Jira (`list`) and GitHub (`run list`, `run view`, `pr list`,
 # `issue list`); the only file written is the report.
 #
+# Linux-only: needs GNU date (`date -d`); any other date exits 2 naming it.
+#
 # Usage: escape-report.sh --since YYYY-MM-DD [--out PATH] [--repo OWNER/NAME]
 #   --out   report path (default: <handover root>/reports/ci-escape-weekly-<today>.md)
 #   --repo  gh -R target (default: the checkout's own repo)
@@ -44,6 +46,7 @@ case "$SINCE" in
   [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
   *) usage ;;
 esac
+date -u -d 1970-01-02 +%s >/dev/null 2>&1 || { echo "escape-report: needs GNU date (Linux-only)" >&2; exit 2; }
 date -u -d "$SINCE" +%s >/dev/null 2>&1 || usage
 
 TODAY="${ESCAPE_REPORT_DATE:-$(date -u +%F)}"
@@ -66,6 +69,7 @@ export JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}"
 GH=(gh)
 [ -z "$REPO" ] || GH=(gh -R "$REPO")
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
+[ ! -d "$OUT" ] || { echo "escape-report: --out $OUT is a directory; pass a report file path" >&2; exit 2; }
 cd "$ROOT" || { echo "escape-report: cannot enter $ROOT" >&2; exit 1; }
 
 # shellcheck source=../lib/prim.sh
@@ -149,10 +153,10 @@ fi
         printf '%s\t%s\n' "$cl" "$key" >> "$WORK/gaps"
         continue
       fi
-      num="$(jq -r '.[0].number' "$WORK/pr.json")"
-      test_in="$(jq -r '[.[0].files[].path | select(test("(^|/)test[-_][^/]*$|(^|/)tests?/|\\.test\\.[^/]*$"))] | if length > 0 then "yes" else "no" end' "$WORK/pr.json")"
-      red="$(jq -r '.[0].body // "" | if test("(^|[^A-Za-z])RED([^A-Za-z]|$)") then "yes" else "no" end' "$WORK/pr.json")"
-      line="- $key: PR #$num, test in fix: $test_in, RED recorded: $red"
+      num="$(jq -r 'if length == 1 then "PR #\(.[0].number)" else "PRs " + ([.[] | "#\(.number)"] | join(" ")) end' "$WORK/pr.json")"
+      test_in="$(jq -r '[.[].files[].path | select(test("(^|/)test[-_][^/]*$|(^|/)tests?/|\\.test\\.[^/]*$"))] | if length > 0 then "yes" else "no" end' "$WORK/pr.json")"
+      red="$(jq -r '[.[].body // "" | select(test("(^|[^A-Za-z])RED([^A-Za-z]|$)"))] | if length > 0 then "yes" else "no" end' "$WORK/pr.json")"
+      line="- $key: $num, test in fix: $test_in, RED recorded: $red"
       if [ "$test_in" = no ]; then
         line="$line, GAP: no test in fix"
         printf '%s\t%s\n' "$cl" "$key" >> "$WORK/gaps"
@@ -189,7 +193,8 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
     fi
   done < <(jq -c --arg s "$SINCE" '[.[] | select(.createdAt[0:10] >= $s)] | .[0:60][]' "$WORK/runs.json")
 
-  jq -s -r '
+  stats_ok=0
+  if jq -s -r '
     def sec: fromdateiso8601;
     def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
     def fixed($f; $n): $n != null and $n.status == "completed" and ($f.families | length) > 0
@@ -210,44 +215,55 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
         ($r | map(select(.first_start != null) | (((.first_start | sec) - (.createdAt | sec)) / 60)) | pct(50)),
         ($failed | length), ($caught | length),
         ($r | map(.runner_s) | add // 0) / 60
-      ] | @tsv' "$WORK/enriched.jsonl" > "$WORK/stats.tsv"
-  IFS=$'\t' read -r n_runs pr_min full_min can_min wall50 wall90 q50 n_failed n_caught tot_min < "$WORK/stats.tsv"
-  num() { case "$1" in n/a) echo n/a ;; *) one "$1" ;; esac; }
+      ] | @tsv' "$WORK/enriched.jsonl" > "$WORK/stats.tsv" 2>/dev/null \
+     && IFS=$'\t' read -r n_runs pr_min full_min can_min wall50 wall90 q50 n_failed n_caught tot_min < "$WORK/stats.tsv" \
+     && [ -n "$tot_min" ]; then
+    stats_ok=1
+  fi
+  if [ "$stats_ok" = 1 ]; then
+    num() { case "$1" in n/a) echo n/a ;; *) one "$1" ;; esac; }
 
-  {
-    echo "## 3. CI catches"
-    echo
-    echo "Catches: $n_caught (of $n_failed failed PR runs)"
-    echo "Failed without a fixing next push: $((n_failed - n_caught))"
-    echo
-    echo "By job family:"
-    jq -s -r '
-      def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
-    def fixed($f; $n): $n != null and $n.status == "completed" and ($f.families | length) > 0
-      and ($f.families | all(. as $x | ($n.passed | index($x)) != null and ($n.families | index($x)) == null));
-      . as $r | ($r | map(select(.event == "pull_request"))) as $pr
-      | ($pr | map(select(.conclusion == "failure"))) as $failed
-      | $failed | map(. as $f | select(fixed($f; nextpush($f; $pr))))
-      | map(.families[]) | group_by(.) | map({f: .[0], n: length}) | sort_by(-.n, .f)[] | "- \(.f): \(.n)"' "$WORK/enriched.jsonl"
-    [ "$n_caught" != 0 ] || echo "- (none)"
-  } > "$sec3"
+    {
+      echo "## 3. CI catches"
+      echo
+      echo "Catches: $n_caught (of $n_failed failed PR runs)"
+      echo "Failed without a fixing next push: $((n_failed - n_caught))"
+      echo
+      echo "By job family:"
+      jq -s -r '
+        def nextpush($f; $pr): [$pr[] | select(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)] | sort_by(.createdAt) | .[0];
+      def fixed($f; $n): $n != null and $n.status == "completed" and ($f.families | length) > 0
+        and ($f.families | all(. as $x | ($n.passed | index($x)) != null and ($n.families | index($x)) == null));
+        . as $r | ($r | map(select(.event == "pull_request"))) as $pr
+        | ($pr | map(select(.conclusion == "failure"))) as $failed
+        | $failed | map(. as $f | select(fixed($f; nextpush($f; $pr))))
+        | map(.families[]) | group_by(.) | map({f: .[0], n: length}) | sort_by(-.n, .f)[] | "- \(.f): \(.n)"' "$WORK/enriched.jsonl" \
+        || unavailable "job families" "jq failed"
+      [ "$n_caught" != 0 ] || echo "- (none)"
+    } > "$sec3"
 
-  {
-    echo "## 4. CI cost"
-    echo
-    echo "Runs sampled: $n_runs"
-    [ "$nojobs" = 0 ] || unavailable "runner time of $nojobs run(s)" "gh run view failed; those runs count as 0 runner-min"
-    echo "PR runner-min (impacted selection): $(one "$pr_min")"
-    echo "Full runner-min (schedule, dispatch, push): $(one "$full_min")"
-    echo "PR wall p50/p90 min: $(num "$wall50") / $(num "$wall90")"
-    echo "Queue wait p50 min: $(num "$q50")"
-    echo "Cancelled-run minutes: $(one "$can_min")"
-    echo
-    echo "Main sweep and nightly runs:"
-    jq -s -r 'def sec: fromdateiso8601;
-      map(select(.event != "pull_request" and .status == "completed"))
-      | if length == 0 then "- (none in the sample)" else .[] | "- \(.databaseId) \(.event) \(.conclusion): \((((.updatedAt | sec) - ((.startedAt // .createdAt) | sec)) / 60) * 10 | round / 10) min" end' "$WORK/enriched.jsonl"
-  } > "$sec4"
+    {
+      echo "## 4. CI cost"
+      echo
+      echo "Runs sampled: $n_runs"
+      [ "$nojobs" = 0 ] || unavailable "runner time of $nojobs run(s)" "gh run view failed; those runs count as 0 runner-min"
+      echo "PR runner-min (impacted selection): $(one "$pr_min")"
+      echo "Full runner-min (schedule, dispatch, push): $(one "$full_min")"
+      echo "PR wall p50/p90 min: $(num "$wall50") / $(num "$wall90")"
+      echo "Queue wait p50 min: $(num "$q50")"
+      echo "Cancelled-run minutes: $(one "$can_min")"
+      echo
+      echo "Main sweep and nightly runs:"
+      jq -s -r 'def sec: fromdateiso8601;
+        map(select(.event != "pull_request" and .status == "completed"))
+        | if length == 0 then "- (none in the sample)" else .[] | "- \(.databaseId) \(.event) \(.conclusion): \((((.updatedAt | sec) - ((.startedAt // .createdAt) | sec)) / 60) * 10 | round / 10) min" end' "$WORK/enriched.jsonl" \
+        || unavailable "sweep runs" "jq failed"
+    } > "$sec4"
+  else
+    runs_ok=0
+    { echo "## 3. CI catches"; echo; unavailable "sections 3 and 4" "the run statistics could not be computed from the sampled runs"; } > "$sec3"
+    { echo "## 4. CI cost"; echo; echo "UNAVAILABLE: see section 3"; } > "$sec4"
+  fi
 else
   {
     echo "## 3. CI catches"; echo
