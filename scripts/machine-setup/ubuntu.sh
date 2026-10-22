@@ -79,7 +79,9 @@ nvm_head() { git -C "$NVM_DIR" rev-parse HEAD 2>/dev/null || true; }
 if [ "$(nvm_head)" != "$NVM_COMMIT" ]; then
   pin_fetch "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_TAG}/install.sh" \
     "$NVM_INSTALL_SHA256" "$PIN_TMP/nvm-install.sh"
-  bash "$PIN_TMP/nvm-install.sh"
+  # A commit id is content-addressed, so the nvm.sh install.sh sources at its end
+  # is the pinned one even if the tag was moved.
+  NVM_INSTALL_VERSION="$NVM_COMMIT" bash "$PIN_TMP/nvm-install.sh"
   if [ "$(nvm_head)" != "$NVM_COMMIT" ]; then
     echo "ERROR: nvm at $NVM_DIR is not the pinned ${NVM_TAG} commit ${NVM_COMMIT}" >&2
     exit 1

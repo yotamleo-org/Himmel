@@ -113,7 +113,7 @@ done
 echo "CURL:$url" >> "$CURL_LOG"
 case "$url" in
   https://raw.githubusercontent.com/nvm-sh/nvm/*/install.sh)
-    printf '#!/usr/bin/env bash\ntouch "%s"\n' "$NVM_FLAG" > "$out" ;;
+    printf '#!/usr/bin/env bash\nprintf "%%s" "${NVM_INSTALL_VERSION:-}" > "%s"\n' "$NVM_FLAG" > "$out" ;;
   https://nodejs.org/dist/*) cp "$FIX/node.tar.xz" "$out" ;;
   https://github.com/astral-sh/uv/releases/download/*) cp "$FIX/uv.tar.gz" "$out" ;;
   https://github.com/oven-sh/bun/releases/download/*) cp "$FIX/bun.zip" "$out" ;;
@@ -334,6 +334,7 @@ grep -qF "CURL:https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_TAG}/install.s
   || { cat "$CURL_LOG" >&2; fail "caseH: nvm install.sh was not fetched at ${NVM_TAG}"; }
 grep -qF "SHA256CHECK:${NVM_INSTALL_SHA256}  " "$CURL_LOG" || fail "caseH: nvm install.sh sha256 was not checked"
 [ -e "$NVM_FLAG" ] || fail "caseH: the verified nvm install.sh was not executed"
+[ "$(cat "$NVM_FLAG")" = "$NVM_COMMIT" ] || fail "caseH: install.sh was not told to fetch the pinned commit (NVM_INSTALL_VERSION=$(cat "$NVM_FLAG"))"
 echo "ok: caseH nvm install.sh fetched at ${NVM_TAG}, sha256 checked, then run"
 
 # ── Case C: --luna-remote -> fail-closed BEFORE any provisioning ───────────
