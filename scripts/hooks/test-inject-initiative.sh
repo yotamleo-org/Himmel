@@ -342,6 +342,14 @@ assert_has  "fail-open exits 0" "rc=0" "$out"
 body=$(unset HIMMEL_INITIATIVE; printf '{}' | HIMMEL_REPO="$TMPII/noenv" bash "$hook")
 if [ -z "$body" ]; then assert_pass "no directive when no .env + env unset"; else assert_fail "expected OFF, got: $body"; fi
 
+# 25b. legs set only in the tracked config file ~/.himmel/himmel.conf (no clone
+# .env at all) still activate: himmelctl writes HIMMEL_INITIATIVE there.
+echo "Test 25b: HIMMEL_INITIATIVE in ~/.himmel/himmel.conf, no clone .env"
+CONFHOME="$TMPII/confhome"; mkdir -p "$CONFHOME/.himmel"
+printf 'HIMMEL_INITIATIVE=prcheck,pr\n' > "$CONFHOME/.himmel/himmel.conf"
+out=$(unset HIMMEL_INITIATIVE; printf '{}' | HOME="$CONFHOME" HIMMEL_REPO="$TMPII/noenv" bash "$hook")
+assert_has "active-steps echoes the himmel.conf subset" "Active steps: prcheck,pr" "$out"
+
 # ---------- 26. Runbook pointer resolves -----------------------
 # The pointer is only worth its bytes if the file it names exists and carries
 # the content that left the hook. Assert BOTH: the emitted path, and that the

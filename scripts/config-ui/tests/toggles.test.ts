@@ -159,10 +159,10 @@ else if (a[0] === "plugin" && (a[1] === "enable" || a[1] === "disable")) {
   test.each(LEGS)("initiative %s: on, then off", async (leg) => {
     const id = `initiative:${leg}`;
     const get = () => run(["node", BIN, "config", "get", `initiative.${leg}`]).out.trim();
-    // The consumer: the SessionStart hook reads HIMMEL_INITIATIVE from the himmel clone's .env. HIMMEL_REPO names
-    // the clone; unset, the hook takes the git toplevel of its own path (the real checkout, behind the symlink).
+    // The consumer: the SessionStart hook reads HIMMEL_INITIATIVE from ~/.himmel/himmel.conf (the temp HOME here).
+    // HIMMEL_REPO names the clone; unset, the hook takes the git toplevel of its own path (the real checkout).
     const hook = () => run(["bash", join(CHECKOUT, "scripts/hooks/inject-initiative.sh")], JSON.stringify({ session_id: `t-${leg}-${Math.random()}` }), { HIMMEL_REPO: repo });
-    const envFile = () => readFileSync(join(repo, ".env"), "utf8");
+    const envFile = () => readFileSync(join(home, ".himmel", "himmel.conf"), "utf8");
     expect((await feedRow(id)).installed.state).toBe("absent");
 
     const on = await toggle("config.initiative", leg, "on");

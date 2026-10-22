@@ -81,7 +81,7 @@ else
     _ii_payload=$(cat 2>/dev/null) || true
 fi
 
-# --- Source the himmel clone's .env for the initiative vars -
+# --- Source ~/.himmel/himmel.conf, then the clone's .env, for the initiative vars -
 # The hook reads HIMMEL_INITIATIVE* from the process env, but a session launched
 # from a shell that never exported them (and without a settings.json `env` block)
 # would see no legs. Populate them from the himmel clone's .env — but ONLY for
@@ -93,7 +93,7 @@ _ii_root="${HIMMEL_REPO:-}"
 if [ -z "$_ii_root" ]; then
     _ii_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && git rev-parse --show-toplevel 2>/dev/null) || _ii_root=""
 fi
-if [ -n "$_ii_root" ] && [ -f "$_ii_root/.env" ]; then
+if [ -n "$_ii_root" ]; then
     # shellcheck source=/dev/null
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/load-dotenv.sh"
     load_dotenv --root "$_ii_root" HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK \
