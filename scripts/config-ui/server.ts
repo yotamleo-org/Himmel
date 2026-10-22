@@ -567,7 +567,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
       if (path === "/api/review-gate") { const g = writeGate(env, b as Record<string, unknown>); return json(redactOut(g.body), g.status); }
       if (path === "/api/fleet-cap") {
-        const c = writeCap(capEnvFile(), env, b as Record<string, unknown>);
+        const lock = acquireLock(lockPath);
+        if ("busy" in lock) return json({ error: lock.busy }, 409);
+        let c;
+        try { c = writeCap(capEnvFile(), env, b as Record<string, unknown>); } finally { lock.release(); }
         if (c.status === 200) { feedRun = null; feedLast = null; feedEpoch++; }
         return json(redactOut(c.body), c.status);
       }

@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
+import { acquireLock } from "../lock";
 // @ts-ignore plain browser ES module, no types
 import { renderFleetCap, renderReviewGate, reviewGateDraft } from "../public/render.js";
 
@@ -109,6 +110,28 @@ test("a cap the launching shell sets wins over .env and is reported as such", as
   writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
   const j = await (await get(boot({ HIMMEL_FLEET_CAP: "9" }), "/api/fleet-cap")).json();
   expect(j).toMatchObject({ cap: 9, source: "env", fileValue: 3 });
+});
+
+test("a shell value the preflight would use is shown as the effective cap, even past the UI's own range", async () => {
+  writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
+  expect(await (await get(boot({ HIMMEL_FLEET_CAP: "51" }), "/api/fleet-cap")).json()).toMatchObject({ cap: 51, source: "env", fileValue: 3 });
+});
+
+test("a non-numeric shell value is shown as the 4 the preflight falls back to, not the .env value", async () => {
+  writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
+  expect(await (await get(boot({ HIMMEL_FLEET_CAP: "many" }), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "env", fileValue: 3 });
+});
+
+test("a cap write waits out the station write lock instead of racing another .env writer", async () => {
+  writeFileSync(envFile, "OTHER=1\n");
+  const port = boot();
+  const held = acquireLock(join(dir, "home", ".himmel", "state", "config-ui", "write.lock"));
+  expect("busy" in held).toBe(false);
+  const r = await post(port, "/api/fleet-cap", { cap: 6 });
+  expect(r.status).toBe(409);
+  expect(readFileSync(envFile, "utf8")).toBe("OTHER=1\n");
+  (held as { release(): void }).release();
+  expect((await post(port, "/api/fleet-cap", { cap: 6 })).status).toBe(200);
 });
 
 test("an invalid cap is refused with a plain message and .env is untouched", async () => {

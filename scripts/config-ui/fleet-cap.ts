@@ -25,7 +25,9 @@ function fileValue(path: string): number | null {
 
 export function readCap(envFile: string, env: Env): CapResult {
   const fromFile = fileValue(envFile);
-  const fromEnv = whole(env[KEY]);
+  // The preflight takes any non-empty shell value over .env, uses it when it is all digits (range unchecked) and falls back to 4 otherwise.
+  const shell = env[KEY] ?? "";
+  const fromEnv = shell !== "" ? (/^[0-9]+$/.test(shell) ? Number(shell) : DEFAULT_CAP) : null;
   const cap = fromEnv ?? fromFile ?? DEFAULT_CAP;
   return { status: 200, body: { cap, default: DEFAULT_CAP, min: MIN_CAP, max: MAX_CAP, source: fromEnv !== null ? "env" : fromFile !== null ? ".env" : "default", fileValue: fromFile, envFile } };
 }
