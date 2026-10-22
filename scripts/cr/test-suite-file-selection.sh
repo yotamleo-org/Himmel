@@ -294,7 +294,7 @@ console.log("import '../data/fake.mjs'");
         'scripts/test-source.sh': 'source "$ROOT/scripts/bridge.sh"\n',
         'scripts/bridge.sh': 'source "$ROOT/scripts/lib/shared.sh"\n',
         'scripts/lib/shared.sh': 'true\n',
-        'scripts/new-setting.sh': 'HIMMEL_UNINSTALL_REAL_HOME=1\n',
+        'scripts/new-setting.sh': '# HIMMEL_UNINSTALL_REAL_HOME\n',
         'scripts/test-uninstall-real-home-callers.sh': 'true\n',
         'scripts/test-tree.sh': '# selector: tree-scan\ntrue\n',
         'scripts/lanes/test-veto.sh': 'true\n',
