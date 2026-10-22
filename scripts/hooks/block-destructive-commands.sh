@@ -909,6 +909,10 @@ _gp_re_text='(^|[^a-z0-9_.-])(git|gh)(\.exe)?([^a-z0-9_-]|$)'
 _gp_re_exp='\$(\{[^}]*\}|[a-z_][a-z0-9_]*|[0-9#?*@!$-])'
 _gp_prot=' main master '
 _gp_prot_done=0
+# _gp_top=1 while the walk reads the command text itself, not a quoted
+# payload or a heredoc's re-read lines. The pathspec-discard rules read only
+# there: a message or a test row that names `git restore .` is not run.
+_gp_top=1
 
 # _gp_protected_set — add the resolved default branch to _gp_prot, once.
 _gp_protected_set() {
@@ -985,6 +989,89 @@ _gp_clean() { # J FORCED — clean's argv from word J; FORCED=1 when -c turned r
         esac
         j=$((j + 1))
     done
+    return 0
+}
+
+# _gp_pathlike WORD KIND — true when WORD cannot be a ref, so git reads it as
+# a pathspec: a glob, or a name git's ref rules refuse (a leading . or /, a
+# trailing /, a : ? * or [).
+_gp_pathlike() {
+    [ "$2" != G ] || return 0
+    case "$1" in
+        .*|/*|*/|*:*|*'?'*|*'*'*|*'['*) return 0 ;;
+    esac
+    return 1
+}
+
+# _gp_named REV — true when REV names a source other than HEAD.
+_gp_named() {
+    case "$1" in ''|head|@) return 1 ;; esac
+    return 0
+}
+
+# _gp_checkout J — checkout's argv from word J. A pathspec with no source
+# before it overwrites the worktree from the index: `checkout -- <path>`, or a
+# first positional that cannot be a ref; a source of HEAD is no source. A
+# named source (`checkout <rev> -- <path>`) is a deliberate copy and a
+# conflict side (--ours, --theirs, --merge) resolves a conflict: both pass.
+# ponytail: -f and -p are not modelled, upgrade path a follow-up ticket for
+# the residual spellings.
+_gp_checkout() {
+    local j=$1 w n=0 src=''
+    [ "$_gp_top" = 1 ] || return 0
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do
+        w=${_gc_w[j]}
+        case "$w" in
+            --) if [ $((j + 1)) -lt "${#_gc_w[@]}" ] && ! _gp_named "$src"; then
+                    deny "git checkout pathspec discard"
+                fi
+                return 0 ;;
+            -b|--orphan|--ours|--theirs|-m|--merge) return 0 ;;
+            --pathspec-from-file*) _gp_named "$src" || deny "git checkout pathspec discard" ;;
+            -*) ;;
+            *) if [ "$n" = 0 ]; then
+                   ! _gp_pathlike "$w" "${_gc_k[j]}" || deny "git checkout pathspec discard"
+                   src=$w
+               else
+                   _gp_named "$src" || deny "git checkout pathspec discard"
+               fi
+               n=$((n + 1)) ;;
+        esac
+        j=$((j + 1))
+    done
+    return 0
+}
+
+# _gp_restore J — restore's argv from word J. It writes the worktree unless
+# --staged is given without --worktree; a source other than HEAD is a
+# deliberate copy and passes. The text is lowercased, so -S reads as -s
+# (--source): a short group with an s counts as staged when the raw command
+# holds an upper-case S group, and as a source otherwise.
+_gp_restore() {
+    local j=$1 w s=0 wt=0 src=''
+    [ "$_gp_top" = 1 ] || return 0
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do
+        w=${_gc_w[j]}
+        case "$w" in
+            --) break ;;
+            --st|--sta|--stag|--stage|--staged) s=1 ;;
+            --w|--wo|--wor|--work|--workt|--worktr|--worktre|--worktree) wt=1 ;;
+            --so=*|--sou=*|--sour=*|--sourc=*|--source=*) src=${w#*=} ;;
+            --so|--sou|--sour|--sourc|--source) j=$((j + 1)); src=${_gc_w[j]:-} ;;
+            --*) ;;
+            -*w*) wt=1 ;;
+            -*s*)
+                if [[ $cmd =~ (^|[[:space:]])-[A-Za-z]*S ]]; then
+                    s=1
+                else
+                    src=${w#*s}
+                    if [ -z "$src" ]; then j=$((j + 1)); src=${_gc_w[j]:-}; fi
+                fi ;;
+        esac
+        j=$((j + 1))
+    done
+    if _gp_named "$src"; then return 0; fi
+    [ "$s" = 1 ] && [ "$wt" = 0 ] || deny "git restore worktree discard"
     return 0
 }
 
@@ -1099,6 +1186,8 @@ _gp_inv() {
     case "${_gc_w[j]}" in
         reset) _gp_reset $((j + 1)) ;;
         clean) _gp_clean $((j + 1)) "$cf" ;;
+        checkout) _gp_checkout $((j + 1)) ;;
+        restore) _gp_restore $((j + 1)) ;;
         filter-branch) deny "git filter-branch" ;;
         push) _gp_push $((j + 1)) "$off" ;;
     esac
@@ -1422,7 +1511,7 @@ _gp_rec_word() {
 # _gp_pass DEPTH LINES — walk the ST_* arrays st_tokenize just set. LINES is
 # the raw text to re-read line by line when it carries a heredoc, else empty.
 _gp_pass() {
-    local d=$1 hd=$ST_HEREDOC k s top=0 e
+    local d=$1 hd=$ST_HEREDOC k s top=0 e top0=$_gp_top
     local -a segw=() ft=(T) fc=('') rec=()
     k=0
     while [ "$k" -lt "$ST_N" ]; do
@@ -1442,6 +1531,7 @@ _gp_pass() {
         k=$((k + 1))
     done
     s=0
+    [ "$d" = 0 ] || _gp_top=0
     while [ "$s" -lt "$ST_NSEG" ]; do
         fc[top]="${fc[top]}${segw[s]:-}"
         # shellcheck disable=SC2016 # separator tokens, not expansions
@@ -1464,7 +1554,8 @@ _gp_pass() {
     done
     while [ "$top" -ge 0 ]; do _gp_cmd "${fc[top]}"; top=$((top - 1)); done
     for e in ${rec[@]+"${rec[@]}"}; do _gp_scan "$e" $((d + 1)); done
-    if [ "$hd" = 1 ] && [ -n "$2" ]; then _gp_lines "$2" "$d"; fi
+    if [ "$hd" = 1 ] && [ -n "$2" ]; then _gp_top=0; _gp_lines "$2" "$d"; fi
+    _gp_top=$top0
     return 0
 }
 

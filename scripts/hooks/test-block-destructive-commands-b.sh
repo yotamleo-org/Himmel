@@ -184,6 +184,28 @@ assert_rc "R14- git reset --soft HEAD~1"    0 "$(run_case "$(j_bash 'git reset -
 # R15 git clean -f.
 assert_rc "R15+ git clean -fd"              2 "$(run_case "$(j_bash 'git clean -fd')")"
 assert_rc "R15- git clean -n (dry run)"     0 "$(run_case "$(j_bash 'git clean -n')")"
+# 6689 pathspec discards: a checkout with no source, or a restore of the worktree.
+assert_rc "6689+ git checkout ."                  2 "$(run_case "$(j_bash 'git checkout .')")"
+assert_rc "6689+ git checkout -- src/"            2 "$(run_case "$(j_bash 'git checkout -- src/')")"
+assert_rc "6689+ git checkout src/"               2 "$(run_case "$(j_bash 'git checkout src/')")"
+assert_rc "6689+ git restore ."                   2 "$(run_case "$(j_bash 'git restore .')")"
+assert_rc "6689+ git restore file"                2 "$(run_case "$(j_bash 'git restore a.txt')")"
+assert_rc "6689+ git restore --staged --worktree" 2 "$(run_case "$(j_bash 'git restore --staged --worktree a.txt')")"
+assert_rc "6689+ git -C x checkout -- a.txt"      2 "$(run_case "$(j_bash 'git -C x checkout -- a.txt')")"
+assert_rc "6689- git checkout main"               0 "$(run_case "$(j_bash 'git checkout main')")"
+assert_rc "6689- git checkout -b x"               0 "$(run_case "$(j_bash 'git checkout -b x')")"
+assert_rc "6689- git checkout feature/x"          0 "$(run_case "$(j_bash 'git checkout feature/x')")"
+assert_rc "6689- git checkout sha -- path"        0 "$(run_case "$(j_bash 'git checkout abc123 -- a.txt')")"
+assert_rc "6689- git restore --staged file"       0 "$(run_case "$(j_bash 'git restore --staged a.txt')")"
+assert_rc "6689- git restore -S file"             0 "$(run_case "$(j_bash 'git restore -S a.txt')")"
+assert_rc "6689+ git checkout HEAD -- ."          2 "$(run_case "$(j_bash 'git checkout HEAD -- .')")"
+assert_rc "6689+ git restore --source=HEAD ."     2 "$(run_case "$(j_bash 'git restore --source=HEAD .')")"
+assert_rc "6689- git checkout --ours -- a.txt"    0 "$(run_case "$(j_bash 'git checkout --ours -- a.txt')")"
+assert_rc "6689- git restore --source=abc123 f"   0 "$(run_case "$(j_bash 'git restore --source=abc123 a.txt')")"
+assert_rc "6689- git restore -s abc123 f"         0 "$(run_case "$(j_bash 'git restore -s abc123 a.txt')")"
+assert_rc "6689+ cd x && git restore a.txt"       2 "$(run_case "$(j_bash 'cd x && git restore a.txt')")"
+assert_rc "6689- discard named in a quoted title" 0 "$(run_case "$(j_bash 'gh pr create --title "deny git checkout . discards"')")"
+assert_rc "6689- discard in heredoc data"         0 "$(run_case "$(j_bash $'cat > rows.txt <<\'EOF\'\ngit restore .\nEOF')")"
 # R16 git filter-branch — trailing boundary rejects a longer word.
 assert_rc "R16- git filter-branches --list" 0 "$(run_case "$(j_bash 'git filter-branches --list')")"
 # R17 curl remote-exec pipe — `\|` literal pipe + the `sh` trailing boundary.
