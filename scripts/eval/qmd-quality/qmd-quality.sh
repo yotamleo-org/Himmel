@@ -38,7 +38,9 @@
 # --b B/runs.jsonl`.
 # QMD_EVAL_TIMEOUT_SECS bounds each mode (default 1800 s; the whole process group
 # is killed, as scripts/lib/qmd-bounded.sh does for qmd itself).
-# Exit: 0 scored, 2 eval failed or timed out, 3 a model is not cached, 64 usage error.
+# Exit: 0 scored, 2 eval failed or timed out, 3 a model is not cached, 64 usage
+# error (a missing or bad argument, no golden set, or a golden set under the
+# minimum size: the message names which).
 # Needs bash 3.2+, bun and sqlite3.
 set -u
 
