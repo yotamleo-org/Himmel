@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/suite-semaphore.sh -- the machine-wide suite concurrency budget
-#. Sourced by the two suite chokepoints: scripts/quiet-run.sh
+# Sourced by the two suite chokepoints: scripts/quiet-run.sh
 # (label `suite`) and scripts/ci/run-shell-tests.sh. The scan-root
 # lock inside run-shell-tests.sh serialises sweeps of ONE tree; this budget
 # counts every suite on the machine, whatever tree or runner it came from.

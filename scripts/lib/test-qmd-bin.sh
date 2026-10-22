@@ -263,7 +263,7 @@ case "$1" in
     fi
     if [ "$2" = "set-url" ]; then
       # `remote set-url origin <url>` -- the known-origin re-point
-      #; nothing to simulate, just succeed and let the GIT_LOG
+      # Nothing to simulate: just succeed and let the GIT_LOG
       # line above record it.
       exit 0
     fi
@@ -449,7 +449,7 @@ assert "pin-drift: re-pinned successfully (rc 0)" grep -q '^RC=0$' <<<"$out"
 assert "pin-drift: clone HEAD is the pinned SHA afterward" grep -q "$default_ref" "$drift_head"
 
 # -- pinned-update failure on a SERVED-but-drifted install: FAIL CLOSED
-#. The old fallback (WARN + build the clone
+# The old fallback (WARN + build the clone
 #    contents as-is) silently served an UNPINNED commit while reporting
 #    success. Now: honest nonzero, ERROR names the pinned SHA, and the
 #    previously served installation is left untouched (no rebuild, no
@@ -471,7 +471,7 @@ assert "served-drift update-fail: clone HEAD untouched (still drifted)" \
   grep -q 'deadbeef' "$drift_head"
 
 # -- build failure DURING a drifted upgrade must not mint a served pin
-#: checkout moves HEAD to the pin BEFORE bun
+# The checkout moves HEAD to the pin BEFORE bun
 #    runs, so a build failure leaves HEAD==pin while the OLD dist (built from
 #    the mutable commit) keeps serving. Without the build-success stamp a
 #    RETRY would see HEAD==pin + version>=min -> served -> skip silently

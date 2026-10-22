@@ -213,7 +213,7 @@ wire_pretooluse_hooks() {
   # the target carries no such entry at all.
   #
   # Built with `jq -n --arg pfx`, never by interpolating $pfx into JSON TEXT
-  #: a POSIX path may legally contain a `"`, which makes
+  # because a POSIX path may legally contain a `"`, which makes
   # hand-written JSON malformed, and `jq --argjson specs` then rejects the
   # argument outright — the settings file goes unwired. Passing the prefix as a
   # jq --arg lets jq do the escaping, for quotes, backslashes and newlines

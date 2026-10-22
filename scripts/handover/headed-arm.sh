@@ -132,6 +132,8 @@
 #    stale by definition", so it could NEVER be reclaimed - a permanent wedge
 #    for this session name. A failed stamp write removes the lock and exits 8
 #    rather than holding an unstampable one.
+# ponytail: HIMMEL-2558 - the steal restore below can lose a race, upgrade path is a lock
+# primitive that carries its identity inside the lock.
 #  - Known gap (needs a redesign of the lock primitive): the best-effort restore in
 #    steal_stale_lock (`mv "$victim" "$LOCK"` when the stolen stamp does not
 #    match) can itself lose a race, orphaning the real holder's lock so that

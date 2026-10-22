@@ -570,8 +570,8 @@ finalize_on_exit() {
     rm -f "${PROMPT_FILE:-}" 2>/dev/null
     PROMPT_CLEANED=1
   fi
-  # STDOUT_FILE/STDERR_FILE (assigned
-  # later, once the invocation is assembled) can carry the model's raw
+  # STDOUT_FILE/STDERR_FILE (assigned later, once the invocation is
+  # assembled) can carry the model's raw
   # output and diagnostics — an interruption before their normal
   # post-invocation cleanup left them behind too. `${VAR:-}` is safe here
   # even before those variables are assigned (not yet reached this run);
