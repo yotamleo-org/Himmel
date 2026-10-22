@@ -392,7 +392,7 @@ mkdir -p "$fxI3/scripts/install"; cp "$repo_root/scripts/install/manifest.json" 
 run_cfg "$fxI3" set initiative.handover on
 [ "$CFG_RC" -eq 0 ] || fail "caseI3: set initiative.handover on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
 set +e
-outI3=$(HOME="$homeI2" USERPROFILE="$(winpath "$homeI2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeI2.himmelctl-cache")" HIMMELCTL_REPO_ROOT="$(winpath "$fxI3")" \
+outI3=$(HOME="$homeI2" USERPROFILE="$(winpath "$homeI2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeI2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeI2.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxI3")" \
   "$node_bin" "$wizard" report --json --items initiative:handover 2>&1)
 rcI3=$?
 set -e
