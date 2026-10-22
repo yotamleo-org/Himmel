@@ -2073,7 +2073,7 @@ scrub_inert_readers() { # sets scan_flat
                     # a group, loop or if body can pipe a reader's output onward, and a
                     # subscript assignment (BASH_CMDS[..]=, PATH[0]=, commands[..]=) can
                     # redefine the reader: the tokenizer sees neither
-                    '{' | '}' | do | done | then | fi | else | elif | 'esac' | [A-Za-z_]*'['*']'*=*)
+                    '{' | '}' | do | done | then | fi | else | elif | 'esac' | [A-Za-z_]*'['*)
                         return 0 ;;
                 esac
                 case "$w" in

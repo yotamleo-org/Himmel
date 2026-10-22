@@ -2251,6 +2251,10 @@ for v in \
     "{ BASH_CMDS[cat]=/usr/bin/bash; }; $AR; cat scripts/cr/write-verdicts.sh" \
     "X=1 BASH_CMDS[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
     "PATH[0]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
+    "PATH[ 0 ]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
+    "BASH_CMDS[ cat ]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "X=1 BASH_CMDS[ cat ]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
+    "X=1 PATH[ 0 ]=/tmp/evil; $AR; cat scripts/cr/write-verdicts.sh" \
     "commands[cat]=/usr/bin/bash; $AR; cat scripts/cr/write-verdicts.sh" \
     "functions[cat]='bash \$@'; $AR; cat scripts/cr/write-verdicts.sh" \
     "aliases[cat]=bash; $AR; cat scripts/cr/write-verdicts.sh" \
