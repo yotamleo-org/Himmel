@@ -161,7 +161,7 @@ fi
 
 # --- 3 + 4. CI runs ------------------------------------------------------------
 sec3="$WORK/sec3"; sec4="$WORK/sec4"
-runs_ok=0
+runs_ok=0; nojobs=0
 if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINCE" \
      --json databaseId,event,status,conclusion,createdAt,startedAt,updatedAt,headBranch,headSha > "$WORK/runs.json" 2> "$WORK/runs.err" \
    && jq -e 'type == "array"' "$WORK/runs.json" >/dev/null 2>&1; then
@@ -192,7 +192,8 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
     | ($r | map(select(.event == "pull_request"))) as $pr
     | ($r | map(select(.event != "pull_request"))) as $other
     | ($pr | map(select(.conclusion == "failure"))) as $failed
-    | ($failed | map(. as $f | select($pr | any(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)))) as $caught
+    | ($failed | map(. as $f | select($pr | any(.headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha
+        and (.conclusion == "success" or ((.families // []) | any(. as $x | ($f.families | index($x)) != null) | not)))))) as $caught
     | [ ($r | length),
         ($pr | map(.runner_s) | add // 0) / 60,
         ($other | map(.runner_s) | add // 0) / 60,
@@ -215,7 +216,8 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
     echo "By job family:"
     jq -s -r '
       . as $r | ($r | map(select(.event == "pull_request" and .conclusion == "failure"))) as $failed
-      | $failed | map(. as $f | select($r | any(.event == "pull_request" and .headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha)))
+      | $failed | map(. as $f | select($r | any(.event == "pull_request" and .headBranch == $f.headBranch and .createdAt > $f.createdAt and .headSha != $f.headSha
+        and (.conclusion == "success" or ((.families // []) | any(. as $x | ($f.families | index($x)) != null) | not)))))
       | map(.families[]) | group_by(.) | map({f: .[0], n: length}) | sort_by(-.n, .f)[] | "- \(.f): \(.n)"' "$WORK/enriched.jsonl"
     [ "$n_caught" != 0 ] || echo "- (none)"
   } > "$sec3"
@@ -224,7 +226,7 @@ if "${GH[@]}" run list --workflow ci.yml --limit "$RUN_LIMIT" --created ">=$SINC
     echo "## 4. CI cost"
     echo
     echo "Runs sampled: $n_runs"
-    [ "$nojobs" = 0 ] || echo "Runs whose jobs could not be read (counted as 0 runner-min): $nojobs"
+    [ "$nojobs" = 0 ] || unavailable "runner time of $nojobs run(s)" "gh run view failed; those runs count as 0 runner-min"
     echo "PR runner-min (impacted selection): $(one "$pr_min")"
     echo "Full runner-min (schedule, dispatch, push): $(one "$full_min")"
     echo "PR wall p50/p90 min: $(num "$wall50") / $(num "$wall90")"
@@ -248,7 +250,7 @@ fi
 {
   echo "## 5. Judgement"
   echo
-  if [ "$runs_ok" = 1 ]; then
+  if [ "$runs_ok" = 1 ] && [ "$nojobs" = 0 ]; then
     echo "Catches per 1000 runner-min: $(awk -v c="$n_caught" -v m="$tot_min" 'BEGIN { if (m > 0) printf "%.1f", c / m * 1000; else printf "n/a" }')"
   else
     echo "Catches per 1000 runner-min: n/a"

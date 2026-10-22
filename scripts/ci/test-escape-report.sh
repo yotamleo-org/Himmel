@@ -151,6 +151,31 @@ report --since 2026-10-15 --out "$TMP/r7.md"
 is "unreadable gh data exits 3" 3 "$rc"
 if grep -q '^UNAVAILABLE: ' "$TMP/r7.md"; then ok "report names the unavailable section"; else bad "no UNAVAILABLE line"; fi
 
+# --- a later push that fails the same job family is not a catch ---------------
+scenario s8
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+cat > "$FX/runs.json" <<'EOF'
+[
+ {"databaseId":9101,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T10:00:00Z","startedAt":"2026-10-20T10:00:05Z","updatedAt":"2026-10-20T10:20:00Z","headBranch":"feat/c","headSha":"ccc"},
+ {"databaseId":9102,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T11:00:00Z","startedAt":"2026-10-20T11:00:05Z","updatedAt":"2026-10-20T11:15:00Z","headBranch":"feat/c","headSha":"ddd"}
+]
+EOF
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:01:30Z"}]}' > "$FX/jobs-9101.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:01:30Z"}]}' > "$FX/jobs-9102.json"
+report --since 2026-10-15 --out "$TMP/r8.md"
+has "same-family failure on the next push is not a catch" "$TMP/r8.md" "Catches: 0 (of 2 failed PR runs)"
+
+# --- unreadable job times degrade the cost section and fail the run -----------
+scenario s9
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+cp "$TMP/s8/runs.json" "$FX/runs.json"
+rm -f "$FX/jobs-9101.json" "$FX/jobs-9102.json"
+echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T11:00:30Z","completedAt":"2026-10-20T11:01:30Z"}]}' > "$FX/jobs-9102.json"
+report --since 2026-10-15 --out "$TMP/r9.md"
+is "unreadable job times exit 3" 3 "$rc"
+if grep -q '^UNAVAILABLE: runner time of 1 run' "$TMP/r9.md"; then ok "cost section names the unreadable runs"; else bad "no UNAVAILABLE runner time line"; fi
+has "catch rate is n/a with partial runner time" "$TMP/r9.md" "Catches per 1000 runner-min: n/a"
+
 [ "$fails" -eq 0 ] && { echo "all rows passed"; exit 0; }
 echo "$fails row(s) failed" >&2
 exit 1
