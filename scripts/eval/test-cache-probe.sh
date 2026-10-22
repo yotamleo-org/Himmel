@@ -111,7 +111,8 @@ has "count-audit: idle-gap read-ratio" "$LAST_OUT" "read-ratio: 66.8% over 55317
 
 # A wrong counting rule must move a known count: each mutant edits one rule in a
 # copy of the probe and has to print something other than the real script does.
-# A mutation that does not apply would pass vacuously, so that fails too.
+# A mutation that does not apply, or a mutant that crashes and prints no verdict,
+# would pass vacuously, so both fail.
 mutant() {
   local name="$1" expr="$2"; shift 2
   local want got
@@ -119,6 +120,7 @@ mutant() {
   if cmp -s "$PROBE" "$TMP/mutant.sh"; then fail "mutant $name: the edit did not apply"; return; fi
   want=$(bash "$PROBE" "$@" "$FIX/count-audit"/*.jsonl 2>&1 | sed -n '/^read-ratio/p;/^verdict/p')
   got=$(bash "$TMP/mutant.sh" "$@" "$FIX/count-audit"/*.jsonl 2>&1 | sed -n '/^read-ratio/p;/^verdict/p')
+  case "$got" in *verdict:*) ;; *) fail "mutant $name: the mutant printed no verdict ($got)"; return;; esac
   if [ "$want" != "$got" ]; then pass "mutant $name: counts move ($got)"; else fail "mutant $name: counts did not move ($got)"; fi
 }
 # shellcheck disable=SC2016  # the sed expressions name jq variables, which must stay literal
@@ -128,7 +130,7 @@ mutant "sub-60s gaps counted warm" 's/select(\.gap >= 60 and \.gap < \$ttl)/sele
 # shellcheck disable=SC2016
 mutant "5m TTL read as 1h" 's/else 300 end) as \$ttl/else 3600 end) as $ttl/' idle-gap
 # shellcheck disable=SC2016
-mutant "rewrite threshold loosened"'s/\$c\.cr < 0\.5 \* \$p\.cr/$c.cr < 0.1 * $p.cr/' idle-gap
+mutant "rewrite threshold loosened" 's/\$c\.cr < 0\.5 \* \$p\.cr/$c.cr < 0.1 * $p.cr/' idle-gap
 mutant "duplicate message rows kept" 's/map(\.\[0\])/map(.[])/' idle-gap
 
 # --- usage errors exit 64, and never with a verdict --------------------------
