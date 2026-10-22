@@ -71,15 +71,6 @@
       }
     },
     {
-      "name": "pr-review-toolkit-himmel",
-      "source": "./plugins/pr-review-toolkit-himmel",
-      "description": "[yotamleo minimal fork] Vendored code-reviewer agent from pr-review-toolkit + HIMMEL-178 verify-before-critical sub-rule patch. Other 5 agents stay upstream (use pr-review-toolkit:* namespace). See marketplace/plugins/pr-review-toolkit-himmel/README.md for the fork rationale + upstream-watch protocol.",
-      "author": {
-        "name": "Anthropic (upstream) / yotamleo (fork)"
-      },
-      "license": "Apache-2.0"
-    },
-    {
       "name": "telegram-himmel",
       "source": "./plugins/telegram-himmel",
       "description": "[yotamleo fork] Telegram channel plugin with the getUpdates poller gated behind TELEGRAM_OWN_POLLER=1, so only the designated owner session polls and ad-hoc claude windows can't steal the single bot-token poll slot. Forked from telegram@claude-plugins-official v0.0.6 — see marketplace/plugins/telegram-himmel/README.md.",

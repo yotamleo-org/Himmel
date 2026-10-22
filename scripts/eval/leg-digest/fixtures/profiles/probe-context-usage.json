@@ -1,0 +1,4 @@
+{"raw_max_tokens": 200000, "skills": [
+  {"name": "lean-skills:brainstorming", "plugin_name": "lean-skills", "tokens": 120},
+  {"name": "lean-skills:grilling", "plugin_name": "lean-skills", "tokens": 80},
+  {"name": "qmd:qmd", "plugin_name": "qmd", "tokens": 60}]}

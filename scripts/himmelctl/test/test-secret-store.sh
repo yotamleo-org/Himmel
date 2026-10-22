@@ -288,6 +288,25 @@ row('l one store interface: a registered backend takes the write (vault seam)', 
   ok(!fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'file backend bypassed');
 });
 
+row('m himmel-env resolves to the primary checkout from a linked worktree, as the Jira CLI does', () => {
+  const ctx = mk(); const primary = ctx.himmelRoot; const wt = path.join(path.dirname(primary), 'wt'); const v = fake();
+  const git = (...a) => { const r = spawnSync('git', ['-C', primary, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8' }); ok(r.status === 0, 'git ' + a[0] + ': ' + r.stderr); };
+  git('init', '-q'); git('commit', '-q', '--allow-empty', '-m', 'x'); git('worktree', 'add', '-q', wt);
+  fs.writeFileSync(path.join(primary, '.env'), 'JIRA_API_TOKEN=' + v + '\n');
+  fs.appendFileSync(path.join(primary, '.env'), 'JIRA_PROJECT_KEY=HIMMEL\n');
+  const c2 = { ...ctx, himmelRoot: wt, projectRoot: wt };
+  const d = store.detect('JIRA_API_TOKEN', c2); eq(d.status, 'set'); eq(d.source, 'store');
+  eq(store.detect('JIRA_PROJECT_KEY', c2).status, 'set');
+  eq(store.detect('JIRA_EMAIL', c2).status, 'not-set');
+  let checked = null;
+  c2.gitCheckIgnore = (file) => { checked = file; return true; };
+  store.write('JIRA_EMAIL', 'a@example.com', c2);
+  eq(checked, path.join(primary, '.env'));
+  ok(fs.readFileSync(path.join(primary, '.env'), 'utf8').includes('JIRA_EMAIL=a@example.com'), 'write went to the primary .env');
+  ok(!fs.existsSync(path.join(wt, '.env')), 'no .env created in the worktree');
+  eq(store.detect('JIRA_API_TOKEN', { ...mk(), himmelRoot: path.join(tmp, 'nogit') }).status, 'not-set');
+});
+
 console.log(fails ? fails + ' failure(s)' : 'all rows passed');
 process.exit(fails ? 1 : 0);
 NODE
