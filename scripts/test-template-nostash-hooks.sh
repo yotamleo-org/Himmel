@@ -52,6 +52,21 @@ tracked_fixture_dir() {
     printf '%s\n' "$d"
 }
 
+# A stub `gitleaks` first on PATH keeps every row hermetic (CI images need not
+# ship the real binary) and lets the N rows observe how the wrapper calls it.
+# FAKE_GITLEAKS_LOG gets one line per call; FAKE_GITLEAKS_HOLD names a marker
+# touched on entry, after which the stub sleeps 1.5s (a long scan);
+# FAKE_GITLEAKS_RC is its exit status.
+GLBIN=$(tracked_fixture_dir) || exit 1
+cat > "$GLBIN/gitleaks" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${FAKE_GITLEAKS_LOG:-}" ] && printf '%s\n' "$*" >> "$FAKE_GITLEAKS_LOG"
+if [ -n "${FAKE_GITLEAKS_HOLD:-}" ]; then touch "$FAKE_GITLEAKS_HOLD"; sleep 1.5; fi
+exit "${FAKE_GITLEAKS_RC:-0}"
+STUB
+chmod +x "$GLBIN/gitleaks"
+export PATH="$GLBIN:$PATH"
+
 if ! command -v pre-commit >/dev/null 2>&1; then
   echo "SKIP - the pre-commit COMMAND is not on PATH (a python3 -c 'import pre_commit' pass is not enough: this test invokes bare \`pre-commit\`); cannot exercise the real stash/no-stash hooks"
   exit 0
@@ -718,6 +733,112 @@ if [ -n "${M2:-}" ]; then
     echo "SKIP - M2c: no python/python3 can import pre_commit (isolated install)"
   fi
 fi
+
+# ---------------------------------------------------------------------------
+# N: gitleaks runs from the generated wrapper itself, NOT as a
+# pre-commit-framework hook. A framework hook is covered by pre-commit's
+# whole-tree "files were modified by this hook" check, and a real gitleaks
+# scan of a large staged set takes seconds: on a busy vault a concurrent
+# writer (another session appending to a tracked handover doc) always lands in
+# that window, so every commit attempt failed and the autosync stalled.
+# ---------------------------------------------------------------------------
+# mk_fast_repo <dir> -- mk_seed_repo, but with a no-op framework hook instead
+# of the 1.5s hold, so only gitleaks is slow.
+mk_fast_repo() {
+  local dir="$1"
+  mk_seed_repo "$dir"
+  cat > "$dir/.pre-commit-config.yaml" <<'CFG'
+repos:
+  - repo: local
+    hooks:
+      - id: noop
+        name: noop
+        entry: "true"
+        language: system
+        pass_filenames: false
+        always_run: true
+CFG
+  git -C "$dir" add .pre-commit-config.yaml
+  git -C "$dir" commit -qm fast-config
+}
+
+N1=$(tracked_fixture_dir) || { echo "FAIL - could not allocate N1 fixture dir"; fails=$((fails+1)); }
+if [ -n "${N1:-}" ]; then
+  mk_fast_repo "$N1"
+  if ! assert_toplevel_is "$N1"; then
+    echo "FAIL - N1 fixture toplevel is not [$N1]; refusing to install into it"
+    fails=$((fails+1))
+  else
+    (cd "$N1" && bash "$N1/scripts/hooks/install-nostash-hooks.sh" >/dev/null) || { echo "FAIL - N1 install-nostash-hooks.sh failed"; fails=$((fails+1)); }
+    printf '{"pending-edit":true}\n' > "$N1/data.json"
+    printf 'staged-change\n' > "$N1/commit-file.txt"
+    git -C "$N1" add commit-file.txt
+    (
+      waited=0
+      while [ ! -e "$N1/.gl-started" ] && [ "$waited" -lt 100 ]; do sleep 0.05; waited=$((waited + 1)); done
+      [ -e "$N1/.gl-started" ] && { sleep 0.5; printf '{"external-write":true}\n' > "$N1/data.json"; }
+    ) & disown
+    n1_out=$(cd "$N1" && FAKE_GITLEAKS_LOG="$N1/.gl-log" FAKE_GITLEAKS_HOLD="$N1/.gl-started" git commit -qm "feat: scan with concurrent writer" 2>&1)
+    n1_rc=$?
+    wait 2>/dev/null
+    check "N1: gitleaks is called on the staged set by the wrapper" "$(cat "$N1/.gl-log" 2>/dev/null)" "git --pre-commit --staged --redact --verbose --no-banner"
+    check "N1: a concurrent write during the gitleaks scan does not fail the commit" "$n1_rc" "0"
+    [ "$n1_rc" -ne 0 ] && echo "  N1 output: $n1_out"
+    check "N1: the concurrent write survives" "$(cat "$N1/data.json")" '{"external-write":true}'
+  fi
+fi
+
+N2=$(tracked_fixture_dir) || { echo "FAIL - could not allocate N2 fixture dir"; fails=$((fails+1)); }
+if [ -n "${N2:-}" ]; then
+  mk_fast_repo "$N2"
+  if ! assert_toplevel_is "$N2"; then
+    echo "FAIL - N2 fixture toplevel is not [$N2]; refusing to install into it"
+    fails=$((fails+1))
+  else
+    # Own copy of the stub so the baked path can be deleted after install.
+    n2_gl=$(mktemp -d "${TMPDIR:-/tmp}/himmel-n2-gl.XXXXXX") || { echo "FAIL - could not allocate N2 gl dir"; fails=$((fails+1)); }
+    printf '%s\n' "$n2_gl" >>"$FIXTURE_LIST"
+    cp "$GLBIN/gitleaks" "$n2_gl/gitleaks"
+    (cd "$N2" && PATH="$n2_gl:$PATH" bash "$N2/scripts/hooks/install-nostash-hooks.sh" >/dev/null) || { echo "FAIL - N2 install-nostash-hooks.sh failed"; fails=$((fails+1)); }
+    rm -f "$n2_gl/gitleaks"
+    n2_minbin=$(mktemp -d "${TMPDIR:-/tmp}/himmel-n2-minbin.XXXXXX") || { echo "FAIL - could not allocate N2 minbin"; fails=$((fails+1)); }
+    printf '%s\n' "$n2_minbin" >>"$FIXTURE_LIST"
+    for b in git bash env sh cat sleep mkdir dirname touch rm ls true sed grep awk ssh-keygen xargs python python3; do
+      bin_path=$(type -P "$b" 2>/dev/null) && ln -sf "$bin_path" "$n2_minbin/$b"
+    done
+    printf 'staged-change\n' > "$N2/commit-file.txt"
+    git -C "$N2" add commit-file.txt
+    n2_out=$(cd "$N2" && PATH="$n2_minbin" git commit -qm "feat: no gitleaks" 2>&1)
+    n2_rc=$?
+    check "N2: with gitleaks gone (baked path stale, none on PATH) the commit is refused" "$([ "$n2_rc" -ne 0 ] && echo refused || echo landed)" "refused"
+    case "$n2_out" in
+      *gitleaks*) check "N2: the refusal names gitleaks" yes yes ;;
+      *) check "N2: the refusal names gitleaks" no yes; echo "  N2 output: $n2_out" ;;
+    esac
+    check "N2: the commit did not land" "$(git -C "$N2" log -1 --format=%s)" "fast-config"
+  fi
+fi
+
+N3=$(tracked_fixture_dir) || { echo "FAIL - could not allocate N3 fixture dir"; fails=$((fails+1)); }
+if [ -n "${N3:-}" ]; then
+  mk_fast_repo "$N3"
+  if ! assert_toplevel_is "$N3"; then
+    echo "FAIL - N3 fixture toplevel is not [$N3]; refusing to install into it"
+    fails=$((fails+1))
+  else
+    (cd "$N3" && bash "$N3/scripts/hooks/install-nostash-hooks.sh" >/dev/null) || { echo "FAIL - N3 install-nostash-hooks.sh failed"; fails=$((fails+1)); }
+    printf 'staged-change\n' > "$N3/commit-file.txt"
+    git -C "$N3" add commit-file.txt
+    n3_out=$(cd "$N3" && FAKE_GITLEAKS_LOG="$N3/.gl-log" FAKE_GITLEAKS_RC=1 git commit -qm "feat: leak" 2>&1)
+    n3_rc=$?
+    check "N3: gitleaks finding (exit 1) is called and refuses the commit" "$([ -s "$N3/.gl-log" ] && [ "$n3_rc" -ne 0 ] && echo refused || echo not-refused)" "refused"
+    check "N3: the commit did not land" "$(git -C "$N3" log -1 --format=%s)" "fast-config"
+    : "$n3_out"
+  fi
+fi
+
+# The template config must not carry the framework gitleaks hook any more.
+check "N4: template .pre-commit-config.yaml has no framework gitleaks hook" "$(grep -c '^[[:space:]]*- id: gitleaks' "$TEMPLATE/.pre-commit-config.yaml")" "0"
 
 # ---------------------------------------------------------------------------
 # 2. Wiring: a fresh scaffold from the template must get the wrapper.
