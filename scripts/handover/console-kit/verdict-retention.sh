@@ -4,7 +4,7 @@
 #
 # Usage:
 #   verdict-retention.sh archive [--apply] [--days N] [--verdicts-dir DIR] [--repo OWNER/NAME]
-#   verdict-retention.sh prune   [--apply] [--days N] [--cache DIR] [--verdicts-dir DIR] [--repo OWNER/NAME]
+#   verdict-retention.sh prune   [--apply] [--days N] [--cache DIR] [--verdicts-dir DIR] [--repo OWNER/NAME] [--unproven-older-than N]
 #
 # archive: every <verdicts>/<qid>/ whose verdict files all name a PR that has
 #   been closed or merged for N days (default 14) gets one row per file in the
@@ -24,6 +24,10 @@
 #   _ledger.jsonl row. An open, unresolvable or unproven one is KEEP. Only real
 #   directories with a qid name are candidates, so files, symlinks and young
 #   dirs stay. A cache inside the handover root is refused.
+#   --unproven-older-than N (off by default) also takes scratch that has no PR
+#   to prove (no verdict dir, no pr: line, no parsable verdict, empty) once it
+#   is N days old; an open PR, a failed lookup or a head outside the repo is
+#   never taken. The dry run lists each dir with its reason.
 #
 # Both verbs are a dry run (PRUNE/MOVE/KEEP lines, nothing changed) unless
 # --apply is given.
@@ -44,18 +48,21 @@ export LC_ALL
 
 verb="${1:-}"
 [ $# -gt 0 ] && shift
-apply=0 days=14 vdir="" repo="" cache=""
+apply=0 days=14 vdir="" repo="" cache="" unproven=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --apply) apply=1; shift ;;
         --days) [ $# -ge 2 ] || { echo "verdict-retention: --days needs a value" >&2; exit 2; }; days="$2"; shift 2 ;;
         --verdicts-dir) [ $# -ge 2 ] || { echo "verdict-retention: --verdicts-dir needs a value" >&2; exit 2; }; vdir="$2"; shift 2 ;;
         --repo) [ $# -ge 2 ] || { echo "verdict-retention: --repo needs a value" >&2; exit 2; }; repo="$2"; shift 2 ;;
+        --unproven-older-than) [ $# -ge 2 ] || { echo "verdict-retention: --unproven-older-than needs a value" >&2; exit 2; }; unproven="$2"; shift 2 ;;
         --cache) [ $# -ge 2 ] || { echo "verdict-retention: --cache needs a value" >&2; exit 2; }; cache="$2"; shift 2 ;;
         *) echo "verdict-retention: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
 case "$days" in ''|*[!0-9]*|0*) echo "verdict-retention: --days must be a positive integer (got '$days')" >&2; exit 2 ;; esac
+case "$unproven" in ''|*[!0-9]*) echo "verdict-retention: --unproven-older-than must be a non-negative integer (got '$unproven')" >&2; exit 2 ;; esac
+[ "$unproven" = 0 ] || [ "$verb" = prune ] || { echo "verdict-retention: --unproven-older-than is a prune option" >&2; exit 2; }
 case "$verb" in archive|prune) ;; *) echo "usage: verdict-retention.sh archive|prune [--apply] [--days N] ..." >&2; exit 2 ;; esac
 
 now="${HIMMEL_VERDICT_NOW:-$(date +%s)}"
@@ -236,6 +243,16 @@ if [ "$verb" = prune ]; then
         else
             keep="no verdict dir or ledger row names its PR"
         fi
+        tag=""
+        if [ -n "$keep" ] && [ "$unproven" -gt 0 ]; then
+            # Opt-in: scratch with no PR to prove (never an open PR, a failed
+            # lookup or a head outside the repo) goes once it is old enough.
+            case "$keep" in
+                "no verdict dir or ledger row"*|*"has no pr: line"|*"has no parsable verdict line"|empty)
+                    recent=$(find "$d" -mtime "-$unproven" -print -quit) || { echo "FAILED $q: cannot scan for recent files" >&2; rc=1; continue; }
+                    if [ -z "$recent" ]; then tag=" (unproven: $keep)"; keep=""; fi ;;
+            esac
+        fi
         if [ -n "$keep" ]; then
             echo "KEEP $q $keep"
             kept=$((kept + 1))
@@ -245,9 +262,9 @@ if [ "$verb" = prune ]; then
         kb_total=$((kb_total + ${kb:-0}))
         n=$((n + 1))
         if [ "$apply" = 1 ]; then
-            if rm -rf -- "$d"; then echo "PRUNED $q ${kb:-?}K"; else echo "FAILED $q" >&2; rc=1; fi
+            if rm -rf -- "$d"; then echo "PRUNED $q ${kb:-?}K$tag"; else echo "FAILED $q" >&2; rc=1; fi
         else
-            echo "PRUNE $q ${kb:-?}K"
+            echo "PRUNE $q ${kb:-?}K$tag"
         fi
     done
     echo "verdict-retention: prune $n dir(s), ${kb_total}K, kept $kept$([ "$apply" = 1 ] || echo ' (dry run; --apply removes)')"

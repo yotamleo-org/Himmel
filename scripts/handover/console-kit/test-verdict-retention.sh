@@ -20,6 +20,8 @@
 #      an open, unresolvable or unproven one is kept; dry-run by default,
 #      never a file, a symlink or a young dir, and refuses a cache inside the
 #      handover root
+#   7. prune --unproven-older-than (off by default) also takes old scratch with
+#      no PR to prove, but never an open PR, a failed lookup or a foreign head
 #
 # Hermetic: temp dir and a scratch HOME only; the real vault and cache are
 # never read. Platform guard: POSIX bash 3.2+ with GNU or BSD date.
@@ -205,6 +207,30 @@ touch -d '30 days ago' "$root/$scope/verdicts/inroot"
 rc=0; out=$(ret prune --apply --cache "$root/$scope/verdicts" 2>&1) || rc=$?
 check "6: a cache inside the handover root is refused" "$rc" 2
 check "6: the in-root dir survives" "$([ -d "$root/$scope/verdicts/inroot" ] && echo yes)" yes
+
+# --- 7. --unproven-older-than: opt-in, never an open or foreign PR -----------------
+mkdir -p "$cache/qnopr/scratch"
+touch -d '30 days ago' "$cache/qnopr/scratch" "$cache/qnopr"
+rc=0; out=$(ret prune --unproven-older-than 40 2>&1) || rc=$?
+check "7: a cutoff older than the dirs takes nothing" "$(printf '%s\n' "$out" | grep -c '^PRUNE')" 0
+rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
+check "7: dry run rc 0" "$rc" 0
+contains "7: an unnamed dir is listed with its reason" "$out" "PRUNE old1"
+contains "7: a no-pr: verdict dir is listed" "$out" "PRUNE qnopr"
+contains "7: the reason is shown" "$out" "(unproven: no verdict dir or ledger row names its PR)"
+contains "7: an open PR is still kept" "$out" "KEEP qopen PR 501 is open"
+contains "7: a failed lookup is still kept" "$out" "KEEP qlookup PR 504 lookup failed"
+contains "7: a foreign head is still kept" "$out" "KEEP qforeign head fedcba987654 not found"
+check "7: dry run removes nothing" "$([ -d "$cache/old1" ] && [ -d "$cache/qnopr" ] && echo yes)" yes
+rc=0; out=$(ret prune --apply --unproven-older-than 20 2>&1) || rc=$?
+check "7: apply rc 0" "$rc" 0
+check "7: unnamed dir removed" "$([ -e "$cache/old1" ] && echo yes || echo no)" no
+check "7: no-pr dir removed" "$([ -e "$cache/qnopr" ] && echo yes || echo no)" no
+check "7: open-PR dir kept" "$([ -d "$cache/qopen" ] && echo yes)" yes
+check "7: foreign-head dir kept" "$([ -d "$cache/qforeign" ] && echo yes)" yes
+check "7: young dir kept" "$([ -d "$cache/young1" ] && echo yes)" yes
+rc=0; ret archive --unproven-older-than 20 >/dev/null 2>&1 || rc=$?
+check "7: the flag is refused on archive" "$rc" 2
 
 echo
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
