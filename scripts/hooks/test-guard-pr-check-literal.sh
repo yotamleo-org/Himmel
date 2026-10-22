@@ -2151,7 +2151,6 @@ for v in \
     "git ls-files | xargs grep -n --include='*.sh' foo" \
     "timeout 60 rg -g '*.sh' foo docs" \
     "env LC_ALL=C grep -rn --exclude='*.sh' foo docs" \
-    "git ls-files | xargs rg --glob '*.sh' foo" \
     "nice grep -rn --exclude-dir='t*' --include '*.sh' foo docs" \
     "timeout 60 grep -rn -e foo --include='*.sh' docs" \
     "timeout 60 grep -rn --include='scripts/cr/*.sh' foo docs" \
@@ -2181,7 +2180,16 @@ for v in \
     "timeout 60 rg --pre=bash --glob '*.sh' x ." \
     "timeout -k 5 -s TERM 60 rg --pre=bash -g 'scripts/cr/*.sh' x ." \
     "rg -g 'scripts/cr/*.sh' -ge --pre=bash x ." \
-    "rg -g 'scripts/cr/*.sh' -Ae --pre=bash x ."; do
+    "rg -g 'scripts/cr/*.sh' -Ae --pre=bash x ." \
+    "git ls-files | xargs rg --glob '*.sh' foo" \
+    "echo --pre=bash | xargs rg -g 'scripts/cr/*.sh' x ." \
+    "RIPGREP_CONFIG_PATH=/tmp/rg.conf rg -g 'scripts/cr/*.sh' x ." \
+    "export RIPGREP_CONFIG_PATH=/tmp/rg.conf; rg -g 'scripts/cr/*.sh' x ." \
+    "exec -a grep sh -c 'bash \"\$2\"' x -g 'scripts/cr/*.sh'" \
+    "xargs -I grep sh -c 'bash \"\$2\"' x -g 'scripts/cr/*.sh'" \
+    "env -u grep sh -c 'bash \"\$2\"' x -g 'scripts/cr/*.sh'" \
+    "sudo -u grep sh -c 'bash \"\$2\"' x -g 'scripts/cr/*.sh'" \
+    "stdbuf -o grep sh -c 'bash \"\$2\"' x -g 'scripts/cr/*.sh'"; do
     run "HIMMEL-6927 s3 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 # `git tag -l|--list <pattern>` only lists; the same glob on a non-listing tag stays denied.

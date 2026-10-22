@@ -1989,12 +1989,14 @@ inert_trunc() {
 }
 inert_filter_globs() {
     # st: 0 looking for the command word, 1 inside a searcher's arguments, 2 done
-    local k=0 sg=-1 st=0 wr=0 wn='' j w v vi sb=0
+    local k=0 sg=-1 st=0 wr=0 wn='' xa=0 rc=0 j w v vi sb=0
     [ "$PR_TOKENIZED" = 1 ] || return 0
     st_tokenize "$cmd" || return 0
     [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC" = 000 ] || return 0
+    # a ripgrep config file can carry --pre, so rg's globs stay classified when one is named
+    case "$cmd" in *RIPGREP_CONFIG_PATH*) rc=1 ;; esac
     while [ "$k" -lt "$ST_N" ]; do
-        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; st=0; wr=0 wn=''; fi
+        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; st=0; wr=0 wn='' xa=0; fi
         j=$k
         w=${ST_W[j]}
         k=$((k + 1))
@@ -2007,13 +2009,22 @@ inert_filter_globs() {
                     case "$wn:$w" in
                         timeout:-s | timeout:-k | timeout:--signal | timeout:--kill-after) k=$((k + 1)); continue ;;
                     esac
-                    case "$w" in -*) continue ;; esac
+                    # an option of unknown arity may take the command word as its value
+                    # (exec -a, xargs -I, env -u, sudo -u, stdbuf -o): stop collecting
+                    case "$w" in
+                        -0 | -r | -t | -x | -p | --null | --no-run-if-empty | --verbose | --foreground | --preserve-status) continue ;;
+                        -*) st=2; continue ;;
+                    esac
                     case "$w" in *[!0-9]*) ;; *) continue ;; esac
                 fi
                 case "$w" in
-                    time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs) wr=1 wn=$w ;;
+                    time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs)
+                        wr=1 wn=$w
+                        [ "$w" != xargs ] || xa=1 ;;
                     grep | egrep | fgrep | rg)
-                        if [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ]; then st=1; sb=${#INERT_GLOBS[@]}; else st=2; fi ;;
+                        # rg behind xargs takes its arguments from stdin, where --pre can hide
+                        if [ "$w" = rg ] && { [ "$xa" = 1 ] || [ "$rc" = 1 ]; }; then st=2
+                        elif [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ]; then st=1; sb=${#INERT_GLOBS[@]}; else st=2; fi ;;
                     *) st=2 ;;
                 esac
                 ;;
