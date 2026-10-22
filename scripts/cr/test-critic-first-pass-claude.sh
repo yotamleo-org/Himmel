@@ -176,6 +176,7 @@ RC=0; printf '%s\n' "$DIFF" | CR_CLAUDE_CRITIC_EFFORT=high bash "$CFP" --model c
 has "7 CR_CLAUDE_CRITIC_EFFORT overrides the row" "high" "$REC/argv"
 
 # --- 7b. the claude row's effort follows the merged registry (overlay over base) ---
+unset CR_CLAUDE_CRITIC_EFFORT CRITICS_JSON
 printf '%s\n' '{"panel":[{"slug":"claude","effort":"xhigh"}]}' > "$W/local-effort.json"
 fresh_rec 7b; unset FAKE_REFUSE
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-effort.json" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
