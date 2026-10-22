@@ -2495,6 +2495,24 @@ assert_deny "6015 control: a globbed printf format can carry %n" "$(j "printf %[
 assert_allow "6015 printf %%n prints a literal %n and keeps the relief" "$(j "printf '%%n' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 assert_allow "6015 printf with no %n conversion keeps the relief" "$(j "printf '%s\n' x; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 
+# 7009: a judge writes its reasoning to a scratch .md with a quoted heredoc and
+# hands it to write-verdict.sh. A body line opening with a verb word beside a
+# glob path under scripts/ is prose, not a seam write.
+EV=/tmp/claude-1000/j3611/evidence.md
+WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high"
+EVH="cat > $EV <<'EOF2'"
+assert_allow "7009 evidence heredoc, line-start read beside a glob scripts/ path" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh before judging; all unchanged."$'\n'"EOF2")"
+assert_allow "7009 evidence heredoc, verb line after a glob mention" "$(j "$EVH"$'\n'"- checked scripts/hooks/*.sh"$'\n'"export the notes."$'\n'"EOF2")"
+assert_allow "7009 evidence heredoc then the literal write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"$WV")"
+assert_allow "7009 the literal write-verdict.sh call alone" "$(j "$WV")"
+assert_deny "7009 control: a registered chokepoint env prefix beside the evidence heredoc" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN")"
+assert_deny "7009 control: a verb line AFTER the heredoc closes still denies" "$(j "$EVH"$'\n'"prose"$'\n'"EOF2"$'\n'"read scripts/hooks/*.sh")"
+assert_deny "7009 control: an evidence file that is then run still denies" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash $EV")"
+assert_deny "7009 control: an unquoted evidence heredoc keeps its scan" "$(j "cat > $EV <<EOF2"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
+assert_deny "7009 control: a heredoc to a non-scratch path keeps its scan" "$(j "cat > /tmp/hookprobe.md <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
+assert_deny "7009 control: a heredoc to a scratch .sh keeps its scan" "$(j "cat > /tmp/claude-1000/j3611/p.sh <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
+assert_deny "7009 control: an unterminated evidence heredoc keeps its scan" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh")"
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"

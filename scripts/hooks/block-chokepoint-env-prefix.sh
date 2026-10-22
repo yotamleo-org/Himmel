@@ -287,6 +287,50 @@ if [ "$kind" = "x" ]; then
 fi
 
 [ -n "$cmd" ] || exit 0
+
+# A judge records its reasoning with `cat > /tmp/claude-<uid>/.../x.md
+# <<'TAG'` and hands that file to write-verdict.sh. The prose body is data,
+# yet a body line that opens with a verb word (read, export, printf) beside a
+# glob path under scripts/ reads as a seam write to the text layers. Such a
+# body is dropped from the scanned text when the opener is the whole line (a
+# quoted tag, so nothing in the body expands), the file is a .md/.txt under
+# the scratch root, the tag closes, and the file is named nowhere else except
+# after --evidence-file (so it is never run or sourced). Anything else keeps
+# its full scan. Result in REPLY.
+strip_evidence_heredocs() {
+    local text="$1" line tag path i=0 j n=0 out='' open_re rest
+    local -a lines=()
+    REPLY=$text
+    case "$text" in *"<<'"*) ;; *) return 0 ;; esac
+    case "$text" in */tmp/claude-*) ;; *) return 0 ;; esac
+    open_re="^cat[[:blank:]]+>[[:blank:]]*(/tmp/claude-[0-9]+/[A-Za-z0-9_./+-]+\\.(md|txt))[[:blank:]]+<<[[:blank:]]*'([A-Za-z0-9_]+)'[[:blank:]]*\$"
+    while IFS= read -r line || [ -n "$line" ]; do
+        lines[n]=$line; n=$((n + 1))
+    done <<<"$text"
+    while [ "$i" -lt "$n" ]; do
+        line=${lines[$i]}
+        out+=$line$'\n'
+        i=$((i + 1))
+        [[ $line =~ $open_re ]] || continue
+        path=${BASH_REMATCH[1]}
+        tag=${BASH_REMATCH[3]}
+        case "$path" in *..*) continue ;; esac
+        j=$i
+        while [ "$j" -lt "$n" ] && [ "${lines[$j]}" != "$tag" ]; do j=$((j + 1)); done
+        [ "$j" -lt "$n" ] || continue
+        # Every later mention of the file must be a --evidence-file operand.
+        rest=$text
+        rest=${rest//"cat > $path "/}
+        rest=${rest//"cat >$path "/}
+        rest=${rest//"--evidence-file $path"/}
+        case "$rest" in *"$path"*) continue ;; esac
+        i=$j
+    done
+    REPLY=${out%$'\n'}
+}
+strip_evidence_heredocs "$cmd"
+cmd=$REPLY
+
 # The untouched command, newlines included, for the
 # parse-independent backstop (raw_mention) that runs before scan_text.
 raw_cmd=$cmd
