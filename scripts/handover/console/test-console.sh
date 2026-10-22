@@ -1913,8 +1913,8 @@ check "67 every worker-session twin in headed-arm-leg.sh is in the strip list" "
 seam67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_launch_seam_env_names ) | sort -u)"
 seam_missing67=""
 while read -r old67 new67; do
-    printf '%s\n' "$seam67" | grep -qx "$old67" || continue
-    printf '%s\n' "$seam67" | grep -qx "$new67" || seam_missing67="$seam_missing67 $new67"
+    grep -qx "$old67" <<< "$seam67" || continue
+    grep -qx "$new67" <<< "$seam67" || seam_missing67="$seam_missing67 $new67"
 done <<< "$twins67"
 check "67 every launch-seam name's worker-session twin is launch seam too" "$seam_missing67" ""
 check "67 armed child's own environment strips LEG_LANE" \
