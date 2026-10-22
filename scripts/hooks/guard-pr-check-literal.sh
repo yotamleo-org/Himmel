@@ -1257,6 +1257,21 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
     # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
     case "$sub" in
         log | diff | show | status | grep | blame | ls-files | rev-parse | rev-list | describe | shortlog | cat-file | ls-tree | for-each-ref | branch | merge-base | diff-tree | name-rev | whatchanged) rd=1 ;;
+        # `git tag -l|--list <pattern>` only lists: the pattern is a refname glob, never run.
+        # Any other option (-d, -a, -s, -f, --delete ...) keeps the pattern a tag name.
+        tag)
+            w=$i
+            tl=0
+            to=0
+            while [ "$w" -lt "$e" ] && [ "${ST_W[w]}" != -- ]; do
+                case "${ST_W[w]}" in
+                    -l | --list) tl=1 ;;
+                    --sort=*) ;;
+                    -*) to=1 ;;
+                esac
+                w=$((w + 1))
+            done
+            if [ "$tl" = 1 ] && [ "$to" = 0 ]; then rd=1; fi ;;
     esac
     while [ "$i" -lt "$e" ]; do
         w=${ST_W[i]}

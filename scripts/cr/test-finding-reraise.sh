@@ -290,7 +290,7 @@ assert_eq "$id_d7" "critic-a-1" "r7 deferred fixture produces the expected findi
 (
     cd "$repo" || exit 1
     CR_LEDGER="$ledger" bash "$LEDGER_APPEND" amend --branch deferred --head "$head_d7" \
-        --id "$id_d7" --set verdict=deferred --set deferred_to=HIMMEL-9007 --set fu_class=hardening \
+        --id "$id_d7" --set verdict=deferred --set deferred_to=HIMMEL-9007 --set fu_class=hardening --set fu_why=no-check \
         --set class=new:reraise-fixture --set 'reason=Tracked outside this branch.' --reason 'defer the accepted follow-up'
 ) >/dev/null 2>"$tmp/d7-amend.err"
 assert_eq "$?" "0" "r7 finding accepts a tracked deferred disposition"
@@ -402,6 +402,25 @@ run_panel 4 "$missing_claim" imp "$tmp/severity-missing.out" "$tmp/severity-miss
 assert_eq "$?" "0" "missing prior severity panel run succeeds"
 assert_has "$(cat "$tmp/severity-missing.out")" "## Important Issues (1 found)" "missing prior severity fails active"
 assert_lacks "$(cat "$tmp/severity-missing.out")" "RE-RAISE (" "missing prior severity is not inherited"
+
+# A legacy deferred hardening row has no fu_why. Its re-raise keeps the
+# deferral but drops the class, so the batch writer does not refuse the row.
+checkout_branch legacy-hardening
+head_lh3="$(advance_head legacy-hardening-seed)"
+legacy_claim='Legacy hardening claim [scripts/cr/severity.sh:90]'
+legacy_fp="$(MODEL=critic-a FILE_=scripts/cr/severity.sh TEXT_="- [legacy-1]: $legacy_claim" HELPER="$HERE/finding-fingerprint.js" node -e '
+const {findingFingerprint}=require(process.env.HELPER);
+process.stdout.write(findingFingerprint(process.env.MODEL,process.env.FILE_,process.env.TEXT_));
+')"
+printf '{"kind":"finding","ts":"2020-01-01T00:00:00Z","branch":"legacy-hardening","head":"%s","model":"critic-a","finding_id":"legacy-1","file":"scripts/cr/severity.sh","line":90,"severity":"sug","verdict":"deferred","deferred_to":"HIMMEL-9008","reason":"tracked outside this branch","fu_class":"hardening","round":3,"disposition_round":3,"fingerprint":"%s","artifact":"diff","perspective":"off","text":"- [legacy-1]: %s"}\n' \
+    "$head_lh3" "$legacy_fp" "$legacy_claim" >> "$ledger"
+head_lh4="$(advance_head legacy-hardening-current)"
+set_registry critic-a
+run_panel 4 "$legacy_claim" sug "$tmp/legacy.out" "$tmp/legacy.err"
+assert_eq "$?" "0" "legacy hardening re-raise panel run succeeds"
+assert_has "$(cat "$tmp/legacy.out")" "RE-RAISE (r3 deferred)" "legacy hardening row is still re-raised as deferred"
+assert_eq "$(ledger_value legacy-hardening "$head_lh4" deferred_to)" "HIMMEL-9008" "legacy hardening re-raise keeps the defer ticket"
+assert_eq "$(ledger_value legacy-hardening "$head_lh4" fu_class)" "<absent>" "legacy hardening re-raise does not copy the class without a fu_why"
 
 # Branch, critic, and artifact/perspective are controls outside the fingerprint
 # equality itself. Each mismatch must leave the current finding active.

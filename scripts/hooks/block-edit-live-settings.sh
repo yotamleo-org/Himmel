@@ -1796,7 +1796,7 @@ _tok_readonly_ok() {
             first=$lw fk=$k
         else
             case "$first" in
-                less|git|rg|sed|eval) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
+                less|git|rg|sed|eval|sort|printf) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
             esac
             # `git -C DIR` only picks the repo, so the word after DIR is the
             # subcommand (HIMMEL-4298: `git -C <primary> diff … | grep` was
@@ -1823,9 +1823,14 @@ _tok_readonly_ok() {
                 # less command at startup (`+!cmd`).
                 less:-o*|less:-[!-]*o*|less:--log-file*|less:+*) return 1 ;;
                 jq:-i*|jq:--in-place*) return 1 ;;
+                # sort -o / --output writes a file and --compress-program runs
+                # one (long options take any unique prefix); printf -v sets a
+                # variable.
+                sort:-o*|sort:-[!-]*o*|sort:--o*|sort:--co*|printf:-v*) return 1 ;;
                 # --output=<file> writes these subcommands' output.
                 git:--output*) return 1 ;;
                 rg:--pre*) return 1 ;;
+                printf:*) ! _tok_printf_n "$lw" || return 1 ;;
             esac
         fi
         k=$((k + 1))
@@ -1834,13 +1839,21 @@ _tok_readonly_ok() {
     return 0
 }
 
+# _tok_printf_n WORD — success when WORD holds a printf %n conversion (flags,
+# width, precision, a dynamic * and length modifiers allowed between % and n),
+# which assigns the output length to a shell variable.
+_tok_printf_n() {
+    local re="%[-+ #0-9.*'hlLjzqt]*n"
+    [[ $1 =~ $re ]]
+}
+
 # _tok_ro_segment — the end of one segment, in _tok_readonly_ok's scope: its
 # command word, if any, is an allowlisted read; git's first argument (`sub`,
 # prefixed x) is a read-only subcommand; sed runs only inert scripts.
 _tok_ro_segment() {
     [ "$fk" -ge 0 ] || return 0
     case "$first" in
-        cat|head|tail|grep|diff|wc|jq|rg|less|sed|cut) ;;
+        cat|head|tail|grep|diff|wc|jq|rg|less|sed|cut|sort|tr|echo|printf) ;;
         ls) [ "$_RO_LS" = 1 ] || return 1 ;;
         # HIMMEL-4364: `eval` as the command word has had its body judged by
         # this same hook in a run of its own (the body scan above, which
@@ -1998,7 +2011,7 @@ _tok_lit_name() {
 # assignments) a plain word naming a program below that runs no text it is
 # given — git only as `git [-C DIR] <sub>` with a sub that runs no command
 # string (and git grep without its pager option), sed only with inert
-# scripts, sort without --compress-program, printf without -v.
+# scripts, sort without --compress-program, printf without -v or %n.
 # ponytail: an allowlist — a program not listed (awk, find, xargs, python,
 # bash, …) keeps the old any-`$'` reading, fail-closed; upgrade path: add a
 # program here with a RED row when the den-ls corpus shows it.
@@ -2035,6 +2048,7 @@ _tok_no_shell_ok() {
         else
             case "$first:$lw" in
                 sort:--co*|printf:-v*) return 1 ;;
+                printf:*) ! _tok_printf_n "$lw" || return 1 ;;
             esac
             if [ "$first" = git ]; then
                 if [ -z "$sub" ] && [ "$w" = -C ]; then

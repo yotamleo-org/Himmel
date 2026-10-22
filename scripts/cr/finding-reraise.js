@@ -194,7 +194,8 @@ for (const line of input) {
     row.disposition_severity = dispositionSeverity;
     if (prior.reason) row.reason = prior.reason;
     if (prior.deferred_to) row.deferred_to = prior.deferred_to;
-    if (prior.fu_class) row.fu_class = prior.fu_class;
+    if (prior.fu_class && (prior.fu_class !== 'hardening' || prior.fu_why)) row.fu_class = prior.fu_class;
+    if (prior.fu_why) row.fu_why = prior.fu_why;
     const ticket = prior.verdict === 'deferred' && prior.deferred_to ? ` [${prior.deferred_to}]` : '';
     // name both rounds only when the finding was adjudicated in a
     // later round than it was first seen in; otherwise one round is the truth.

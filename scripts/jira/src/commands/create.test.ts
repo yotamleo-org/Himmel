@@ -468,12 +468,14 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
 // The one residual writer. The mock plays Jira: a parent with labels, a
 // version list, and a search whose hit count is the open residuals.
 describe('create --residual-of', () => {
-  type Opts = { parentLabels?: string[]; open?: number; budgetDesc?: string; dup?: string; noVersion?: boolean };
+  type Opts = { parentLabels?: string[]; open?: number; budgetDesc?: string; dup?: string; noVersion?: boolean; parentVersion?: string };
   let searches: string[];
   const play = (o: Opts = {}) => {
     searches = [];
     mockRequest.mockImplementation(async (method: string, path: string) => {
-      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return { fields: { labels: o.parentLabels ?? [] } };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) {
+        return { fields: { labels: o.parentLabels ?? [], fixVersions: o.parentVersion ? [{ name: o.parentVersion }] : [] } };
+      }
       if (method === 'GET' && path.endsWith('/versions')) {
         return o.noVersion
           ? []
@@ -523,23 +525,25 @@ describe('create --residual-of', () => {
     expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
   });
 
-  it('hardening under the budget lands in the current version', async () => {
+  const HARD = ['--fu-class', 'hardening', '--fu-why', 'no-check'];
+
+  it('hardening under the budget lands in its placed version', async () => {
     play({ open: 14 });
-    await file(...RES, '--fu-class', 'hardening');
-    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    await file(...RES, ...HARD, '--priority', 'High');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
   });
 
   it('hardening at 15/15 goes to the backlog with residual-overflow', async () => {
     play({ open: 15 });
-    await file(...RES, '--fu-class', 'hardening');
+    await file(...RES, ...HARD, '--priority', 'High');
     const f = created()!;
     expect(f['fixVersions']).toBeUndefined();
     expect(f['labels']).toContain('residual-overflow');
   });
 
   it('a residual-budget:N line in the version description overrides the default', async () => {
-    play({ open: 3, budgetDesc: 'sprint goal\nresidual-budget:3' });
-    await file(...RES, '--fu-class', 'hardening');
+    play({ open: 3, budgetDesc: 'sprint goal\nresidual-budget:3', parentVersion: 'v1.1.3' });
+    await file(...RES, ...HARD);
     expect(created()!['fixVersions']).toBeUndefined();
     expect(created()!['labels']).toContain('residual-overflow');
   });
@@ -554,7 +558,7 @@ describe('create --residual-of', () => {
 
   it('an open residual with the same class and area gets a comment and a link, not a ticket', async () => {
     play({ dup: 'HIMMEL-31' });
-    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    await file(...RES, ...HARD, '--area', 'cr scripts');
     expect(created()).toBeUndefined();
     const posts = mockRequest.mock.calls.filter((x) => x[0] === 'POST').map((x) => x[1]);
     expect(posts).toEqual(['/issue/HIMMEL-31/comment', '/issueLink']);
@@ -589,7 +593,7 @@ describe('create --residual-of', () => {
 
   it('the duplicate search leaves out the parent itself', async () => {
     play();
-    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    await file(...RES, ...HARD, '--area', 'cr scripts');
     expect(searches.find((j) => j.includes('area-'))).toMatch(/key != "?HIMMEL-50"?/);
   });
 
@@ -598,7 +602,7 @@ describe('create --residual-of', () => {
     await file('--residual-of', 'HIMMEL-50', '--fu-class', 'escape', '--area', 'cr scripts',
       '--desc', `${PLAIN}\nclass: unclassified`);
     const f = created()!;
-    expect(f['labels']).toEqual(['residual', 'area-cr-scripts', `residual-depth-${depth + 1}`]);
+    expect(f['labels']).toEqual(['residual', 'fu-escape', 'area-cr-scripts', `residual-depth-${depth + 1}`]);
     expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
     expect(f['fixVersions']).toEqual(depth === 0 ? [{ name: 'v1.1.3' }] : undefined);
     expect(JSON.stringify(f['description'])).toContain('class: unclassified');
@@ -611,6 +615,178 @@ describe('create --residual-of', () => {
     await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'polish', '--class', '')).rejects.toThrow(/--class/);
     await expect(file(...RES, '--fu-class', 'nit')).rejects.toThrow(/polish, escape, hardening/);
     await expect(file(...RES, '--fu-class', 'polish', '--fix-version', 'v1.1.3')).rejects.toThrow(/--fix-version/);
+    expect(created()).toBeUndefined();
+  });
+});
+
+// The residual verb places each residual (plan 9.1 as corrected by 10.5) and
+// stamps its class. The mock plays Jira: versions (v1.1.3 optionally frozen), a
+// parent and a --blocks target with a status and a fixVersion.
+describe('create --residual-of placement (HIMMEL-6919)', () => {
+  type Ticket = { done?: boolean; version?: string };
+  type Opts = { frozen?: boolean; nextFrozen?: boolean; noNext?: boolean; parentLabels?: string[]; parent?: Ticket; target?: Ticket; open?: number };
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+  const issue = (t: Ticket = {}, labels: string[] = []) => ({
+    fields: {
+      labels,
+      project: { key: 'HIMMEL' },
+      status: { statusCategory: { key: t.done ? 'done' : 'indeterminate' } },
+      fixVersions: t.version ? [{ name: t.version }] : [],
+    },
+  });
+  const play = (o: Opts = {}) =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.3', released: false, description: o.frozen ? 'frozen: 2026-10-20' : '' },
+          ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false, description: o.nextFrozen ? 'frozen: 2026-10-21' : '' }]),
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+      }
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return issue(o.parent, o.parentLabels);
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-60')) return issue(o.target);
+      return { key: 'HIMMEL-77' };
+    });
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'r', '--desc', PLAIN, ...HOME,
+      '--residual-of', 'HIMMEL-50', '--class', 'c', ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const lands = () => (created()!['fixVersions'] as { name: string }[] | undefined)?.map((v) => v.name);
+  const WHY = ['--fu-why', 'no-check'];
+  const HARD = ['--fu-class', 'hardening', ...WHY];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'placement-'));
+    process.env['HANDOVER_DIR'] = dir;
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('row a: depth 2 goes to the backlog even with a gate', async () => {
+    play({ parentLabels: ['residual-depth-1'] });
+    await file('--fu-class', 'escape', '--gate', 'receipt');
+    expect(lands()).toBeUndefined();
+  });
+
+  it('row b: polish goes to the backlog even with a gate', async () => {
+    play({ frozen: true });
+    await file('--fu-class', 'polish', '--gate', 'receipt');
+    expect(lands()).toBeUndefined();
+  });
+
+  it('row c: a gate files into the frozen current and records the admission', async () => {
+    play({ frozen: true });
+    await file(...HARD, '--gate', 'regression');
+    expect(lands()).toEqual(['v1.1.3']);
+    expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('"gate":"regression"');
+  });
+
+  it('row d: an escape files into the unfrozen current', async () => {
+    play();
+    await file('--fu-class', 'escape');
+    expect(lands()).toEqual(['v1.1.3']);
+  });
+
+  it('row d: an escape against the frozen current goes to next and does not throw', async () => {
+    play({ frozen: true });
+    await file('--fu-class', 'escape');
+    expect(lands()).toEqual(['v1.1.4']);
+    expect(created()!['versions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('row d: an escape goes to the backlog when next is frozen or missing', async () => {
+    play({ frozen: true, nextFrozen: true });
+    await file('--fu-class', 'escape');
+    expect(lands()).toBeUndefined();
+    vi.clearAllMocks();
+    play({ frozen: true, noNext: true });
+    await file('--fu-class', 'escape');
+    expect(lands()).toBeUndefined();
+  });
+
+  it('row e: hardening whose open parent is in the unfrozen current files there', async () => {
+    play({ parent: { version: 'v1.1.3' } });
+    await file(...HARD);
+    expect(lands()).toEqual(['v1.1.3']);
+  });
+
+  it('row e: hardening whose open parent is in the frozen current goes to next', async () => {
+    play({ frozen: true, parent: { version: 'v1.1.3' } });
+    await file(...HARD);
+    expect(lands()).toEqual(['v1.1.4']);
+  });
+
+  it('row e: hardening that blocks an open ticket in an unfrozen version files into that version', async () => {
+    play({ target: { version: 'v1.1.4' } });
+    await file(...HARD, '--blocks', 'HIMMEL-60');
+    expect(lands()).toEqual(['v1.1.4']);
+  });
+
+  it('row e: hardening that blocks an open ticket in the frozen current goes to next and does not throw', async () => {
+    play({ frozen: true, target: { version: 'v1.1.3' } });
+    await file(...HARD, '--blocks', 'HIMMEL-60');
+    expect(lands()).toEqual(['v1.1.4']);
+  });
+
+  it('10.5 (2): a Done parent is no chain: hardening at Medium goes to the backlog, at High to next', async () => {
+    play({ parent: { version: 'v1.1.3', done: true } });
+    await file(...HARD);
+    expect(lands()).toBeUndefined();
+    vi.clearAllMocks();
+    play({ parent: { version: 'v1.1.3', done: true } });
+    await file(...HARD, '--priority', 'High');
+    expect(lands()).toEqual(['v1.1.4']);
+  });
+
+  it.each(['High', 'Highest'])('row f: unchained hardening at %s goes to next', async (priority) => {
+    play({ frozen: true });
+    await file(...HARD, '--priority', priority);
+    expect(lands()).toEqual(['v1.1.4']);
+  });
+
+  it('row g: unchained hardening at Medium goes to the backlog', async () => {
+    play();
+    await file(...HARD, '--priority', 'Medium');
+    expect(lands()).toBeUndefined();
+  });
+
+  it('stamps fu-<class> on every residual and fu-why-<code> on hardening only', async () => {
+    play();
+    await file('--fu-class', 'polish');
+    expect(created()!['labels']).toContain('fu-polish');
+    expect(created()!['labels']).not.toEqual(expect.arrayContaining([expect.stringMatching(/^fu-why-/)]));
+    vi.clearAllMocks();
+    play();
+    await file('--fu-class', 'hardening', '--fu-why', 'silent-rot');
+    expect(created()!['labels']).toEqual(expect.arrayContaining(['fu-hardening', 'fu-why-silent-rot']));
+  });
+
+  it('refuses hardening without --fu-why, an unknown code, and --fu-why on another class, filing nothing', async () => {
+    play();
+    await expect(file('--fu-class', 'hardening')).rejects.toThrow(/--fu-why/);
+    await expect(file('--fu-class', 'hardening', '--fu-why', 'nit')).rejects.toThrow(/unseen-failure/);
+    await expect(file('--fu-class', 'escape', '--fu-why', 'no-check')).rejects.toThrow(/--fu-why/);
     expect(created()).toBeUndefined();
   });
 });
@@ -1024,10 +1200,13 @@ describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
     expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'critical' }]);
   });
 
-  it('holds an escape residual, routed to the frozen version, to the gate', async () => {
+  it('sends an ungated escape residual past the frozen version, and admits it only with a gate', async () => {
     const residual = ['--residual-of', 'HIMMEL-1', '--fu-class', 'escape', '--class', 'c'];
-    await expect(file('Task', ...residual)).rejects.toThrow(/frozen/);
-    expect(created()).toBeUndefined();
+    await file('Task', ...residual);
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(ledger()).toEqual([]);
+    vi.clearAllMocks();
+    play('Release train.\nfrozen: 2026-10-20');
     await file('Task', ...residual, '--gate', 'receipt');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
     expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'receipt' }]);

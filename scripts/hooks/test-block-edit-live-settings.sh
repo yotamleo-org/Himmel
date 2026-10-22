@@ -211,13 +211,11 @@ assert_rc "12 bash redirect into non-settings path allows" 0 \
     "$(bash_rc_of "$PRIMARY" "echo hi > notes.txt")"
 
 # 13: a settings.json mention with no redirect at all, piped through a
-# read-only-looking command (cwd=PRIMARY) -> DENY. v1 failed this OPEN
-# (fail-open on an unparseable case); v2's ONE fail-closed rule denies any
-# live mention that isn't a bare allowlisted read (a `|` metachar disallows
-# `is_readonly_allowlisted` even though the first token is `echo`) —
-# documented behaviour change, not a bypass: bypass is
-# `EDIT_LIVE_SETTINGS_OK=1` or an actually-bare allowlisted read (test 34).
-assert_rc "13 bash mentions settings.json through a pipe denies (fail-closed, v2)" 2 \
+# read-only command (cwd=PRIMARY) -> ALLOW. Every segment (`echo`, `cat`) is
+# an allowlisted reader and the mention is only an argument string. The
+# fail-closed rule still denies a mention beside a non-reader segment
+# (6927s3k) or a write (rows 8-10, 6927s3i/j).
+assert_rc "13 bash mentions settings.json through a read-only pipe allows" 0 \
     "$(bash_rc_of "$PRIMARY" "echo 'do not touch .claude/settings.json' | cat")"
 
 # 14: $HOME/.claude/settings.json rendered with a LOWERCASE drive letter
@@ -3485,6 +3483,55 @@ assert_rc "5744g plain rg of live settings allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'rg foo .claude/settings.json')"
 assert_rc "5744h plain grep of home settings allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'grep foo ~/.claude/settings.json' HOME="$FAKEHOME")"
+
+# 6927s3: a read of live settings piped through a pure text
+# filter (sort, tr) or a mention in echo/printf text is read-only; sort -o /
+# --output / --compress-program, printf -v and any write redirect stay denied.
+assert_rc "6927s3a grep of home settings piped through cut -d and tr -d allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "grep hooks ~/.claude/settings.json | cut -d: -f1 | tr -d ' '" HOME="$FAKEHOME")"
+assert_rc "6927s3b jq of home settings piped to sort allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "jq -r '.hooks | keys[]' ~/.claude/settings.json | sort -u" HOME="$FAKEHOME")"
+assert_rc "6927s3c echo naming home settings allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'echo "edit ~/.claude/settings.json by hand"' HOME="$FAKEHOME")"
+assert_rc "6927s3d printf naming home settings allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "printf '%s\n' ~/.claude/settings.json" HOME="$FAKEHOME")"
+assert_rc "6927s3l sort --check of home settings allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'sort --check ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3e sort -o into home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'cat x | sort -o ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3f sort --output into home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'sort --output=$HOME/.claude/settings.json x' HOME="$FAKEHOME")"
+assert_rc "6927s3g sort --compress-program on home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'sort --compress-program=./x ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3h printf -v with home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf -v x %s ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3i tr output redirected into home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat x | tr a b > ~/.claude/settings.json" HOME="$FAKEHOME")"
+assert_rc "6927s3j echo redirected into home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'echo "{}" > ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3k grep piped to sort then a write verb on home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'grep x y | sort | cp /dev/null ~/.claude/settings.json' HOME="$FAKEHOME")"
+# sort and printf take no live variable or glob word: the write option can be
+# assembled by the shell from pieces the text never spells.
+assert_rc "6927s3m sort with a variable holding --output=home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'O=--output=~/.claude/settings.json; sort $O src' HOME="$FAKEHOME")"
+assert_rc "6927s3n sort with a brace list of -o and home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'sort {-o,~/.claude/settings.json} src' HOME="$FAKEHOME")"
+assert_rc "6927s3o printf with a variable holding -v denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'V=-v; printf $V x %s ~/.claude/settings.json' HOME="$FAKEHOME")"
+# printf's %n conversion assigns the output length to a shell variable.
+assert_rc "6927s3p printf with a %n conversion denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%n%s'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3q printf with a widthed %n conversion denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%10n%s'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3s printf with a dynamic-width %*n conversion and a numeric width denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%*n%s'"'"' 10 HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3t printf with a dynamic-width %*n conversion and only the variable denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%*n'"'"' HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3u printf with a dynamic-precision %.*n conversion denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%.*n%s'"'"' 3 HOME ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "6927s3r printf %s with a newline and home settings stays allowed" 0 \
+    "$(bash_rc_of "$PRIMARY" 'printf '"'"'%s\n'"'"' ~/.claude/settings.json' HOME="$FAKEHOME")"
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).

@@ -273,12 +273,44 @@ def _repo_root():
     return _env_path().parent
 
 
+_AR_CLONE = re.compile(r"himmel-ar-([1-9][0-9]*)")
+
+
+def _ar_clone_spec(name, reg):
+    """Registry-shaped spec for an after-report clone (himmel-ar-1..HIMMEL_VM_AR_MAX), else None.
+
+    The clones are created by scripts/vm/after-report.sh with a loopback NAT rule
+    to guest port 22 on an allocated port, so the port is read back from the
+    registered VM; user and password come from the ubuntu_new entry.
+    """
+    m = _AR_CLONE.fullmatch(name)
+    if not m or "ubuntu_new" not in reg:
+        return None
+    ar_max = os.environ.get("HIMMEL_VM_AR_MAX", "2")
+    if not ar_max.isdigit() or int(ar_max) < 1:
+        raise VMError(f"HIMMEL_VM_AR_MAX must be a positive integer, got {ar_max!r}")
+    if int(m.group(1)) > int(ar_max):
+        return None
+    try:
+        forwards = vbox.get_forwards(name)
+    except vbox.VBoxError as e:
+        raise VMError(f"cannot read the NAT rules of {name}: {e}") from e
+    ports = [int(f[3]) for f in forwards
+             if f[1].lower() == "tcp" and f[2] in ("", "127.0.0.1") and f[5] == "22"]
+    if not ports:
+        raise VMError(f"{name} has no loopback NAT rule to guest port 22; "
+                      f"re-run scripts/vm/after-report.sh to create it")
+    spec = {k: v for k, v in reg["ubuntu_new"].items() if k != "ssh_port"}
+    spec["ssh_port"] = ports[0]
+    return spec
+
+
 class VM:
     def __init__(self, name, registry_path=None):
         reg = _load_registry(registry_path)
-        if name not in reg:
+        spec = reg.get(name) or _ar_clone_spec(name, reg)
+        if spec is None:
             raise VMError(f"unknown VM {name!r}; known: {', '.join(sorted(reg))}")
-        spec = reg[name]
         self.name = name
         self.os = spec["os"]
         self.kind = spec.get("kind", "vm")   # "vm" (default, back-compat) | "station"
@@ -571,7 +603,8 @@ class VM:
         if self.os == "ubuntu":
             exists_rc, _ = self.run(f"test -e {dest}")
             if exists_rc == 0:
-                raise VMError(f"clone dest {dest} already exists on {self.name}")
+                self._update_existing_checkout(dest, ref, token, token_url)
+                return dest
             git = "git"
             wrap = lambda c: c
         else:
@@ -602,6 +635,25 @@ class VM:
                 f"token-strip set-url failed on {self.name} (rc {rc2}); PAT may "
                 f"persist in {dest}/.git/config: {out2.strip()[-200:]}")
         return dest
+
+    def _update_existing_checkout(self, dest, ref, token, token_url):
+        """A leftover git checkout at dest (the baked-in one in suite-ready-v4) is
+        fetched and detached at ref; a non-git or locally modified dest is refused."""
+        rc, _ = self.run(f"git -C {dest} rev-parse --is-inside-work-tree")
+        if rc != 0:
+            raise VMError(f"clone dest {dest} already exists on {self.name} and is not a git checkout")
+        rc, out = self.run(f"git -C {dest} status --porcelain --untracked-files=no")
+        if rc != 0 or out.strip():
+            raise VMError(f"clone dest {dest} on {self.name} has local changes; "
+                          f"refusing to move it to {ref}")
+        # The token rides the fetch URL only, so it is never written to .git/config.
+        rc, out = self.run(f"git -C {dest} fetch --depth 1 {token_url} {ref}")
+        if rc != 0:
+            raise VMError(f"git fetch failed on {self.name} (rc {rc}): "
+                          f"{out.replace(token, '***').strip()[-200:]}")
+        rc, out = self.run(f"git -C {dest} checkout --detach --no-overwrite-ignore FETCH_HEAD")
+        if rc != 0:
+            raise VMError(f"git checkout failed on {self.name} (rc {rc}): {out.strip()[-200:]}")
 
     # --- per-OS handlers (delegation) ---
     def provision(self):

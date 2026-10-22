@@ -846,7 +846,8 @@ check_clause() {
         fi
         pexp=0
         case "$a" in
-            -o|-O) pexp=1 ;;
+            # A reader's bare -o is --only-matching (grep, rg), not an output file; less keeps its log-file meaning.
+            -o|-O) if [ "$cmd" = less ] || ! [[ "$cmd" =~ $READ_RE ]]; then pexp=1; fi ;;
             -o?*|-O?*) is_lift "${a:2}" && deny "$cmd $a writes the bank lift" ;;
             -[A-Za-z]*[oO]) [[ "$cmd" =~ $READ_RE ]] || pexp=1 ;;
             --output=*|--output-document=*|--out-file=*|--outfile=*)

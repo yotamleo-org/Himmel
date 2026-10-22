@@ -203,6 +203,13 @@ PORTABLE_FILES=(
   scripts/lib/timeout-bin.sh
   scripts/lib/prim.sh
   scripts/lib/canon-path.sh
+  scripts/lib/usage-preflight.sh
+  scripts/lib/bank-preflight.sh
+  scripts/lib/chokepoint-seam-guard.sh
+  scripts/lib/env-alias.sh
+  scripts/lib/usage-lift.sh
+  scripts/lib/usage-cache-identity.sh
+  scripts/lib/fleet-reservation-key.sh
   scripts/clean-garden.sh
   scripts/worktree.sh
   scripts/clean.sh

@@ -1357,7 +1357,7 @@ if [ -n "$blocking" ]; then
     # the FINDING's reason, while --reason documents why the RECORD was wrong.
     # Omitting it leaves the deferral rejected for a missing reason, i.e. this
     # very hint would send the reader into a dead end.
-    echo "    scripts/cr/ledger-append.sh amend --head ${tip_short:-$tip} --id <finding-id> --set verdict=deferred --set deferred_to=<TICKET> --set fu_class=<escape|hardening|polish> --set reason=\"<why it is out of scope here>\" --reason \"deferred after review\"" >&2
+    echo "    scripts/cr/ledger-append.sh amend --head ${tip_short:-$tip} --id <finding-id> --set verdict=deferred --set deferred_to=<TICKET> --set fu_class=<escape|hardening|polish> [--set fu_why=<unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> when hardening] --set reason=\"<why it is out of scope here>\" --reason \"deferred after review\"" >&2
     audit "REFUSED reason=blocking-findings branch=$branch sha=$tip findings=$blocking"
     exit 15
 fi
@@ -1409,7 +1409,7 @@ if [ "${unadjudicated_count:-0}" -gt 0 ]; then
     echo "  the WRONG ledger key and leaves the marker wedged:" >&2
     echo "    scripts/cr/ledger-append.sh amend --head ${tip_short:-$tip} --id <finding-id> --artifact <artifact-from-above> --perspective <perspective-from-above> --set verdict=<agreed-or-disproved> --reason \"<one line>\"" >&2
     echo "  For a suggestion that is real but out of scope here, defer it instead:" >&2
-    echo "    scripts/cr/ledger-append.sh amend --head ${tip_short:-$tip} --id <finding-id> --artifact <artifact-from-above> --perspective <perspective-from-above> --set verdict=deferred --set deferred_to=<TICKET> --set fu_class=<escape|hardening|polish> --reason \"<why>\"" >&2
+    echo "    scripts/cr/ledger-append.sh amend --head ${tip_short:-$tip} --id <finding-id> --artifact <artifact-from-above> --perspective <perspective-from-above> --set verdict=deferred --set deferred_to=<TICKET> --set fu_class=<escape|hardening|polish> [--set fu_why=<unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> when hardening] --reason \"<why>\"" >&2
     audit "REFUSED reason=unadjudicated-findings branch=$branch sha=$tip count=$unadjudicated_count"
     exit 14
 fi
