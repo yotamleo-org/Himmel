@@ -1501,6 +1501,55 @@ IFS= read -r -d '' cit_after < "$cittarget/scripts/check-ci.sh" || true
   || fail "HIMMEL-6977: re-adopt changed the project's check-ci.sh"
 echo "ok: HIMMEL-6977 the adopted check-ci.sh reaches a green verdict for the project's own repo; re-adopt is idempotent"
 
+# The adopted project's own copy of the usage preflight (and its old-name
+# forwarder) reads the usage cache and account identity the project's session
+# sees and prints a verdict, never a himmel-checkout path. The cache shape is the
+# status line producer's real output (five_hour / seven_day / extra_usage /
+# primaries_refreshed_at / account).
+uptarget="$work/usagepf-6965"; uphome="$work/usagepf-6965-home"
+mkdir -p "$uptarget" "$uphome"
+HOME="$pchome" git init -q -b main "$uptarget"
+out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
+      --profile core --scope project --target "$uptarget" 2>&1) \
+  || fail "HIMMEL-6965: adopt failed: $out"
+for f in usage-preflight.sh bank-preflight.sh; do
+  [ -f "$uptarget/scripts/lib/$f" ] || fail "HIMMEL-6965: $f was not copied into the project"
+done
+printf '{"oauthAccount":{"accountUuid":"11111111-2222-3333-4444-555555555555"}}\n' > "$uphome/.claude.json"
+up_acct=$(printf '%s' "11111111-2222-3333-4444-555555555555" | sha256sum | cut -c1-16)
+up_cache() {
+  jq -n --argjson five "$1" --argjson seven "$2" --arg acct "$up_acct" --argjson now "$(date +%s)" '{
+    five_hour: {utilization: $five, resets_at: "2026-10-22T05:39:59.541164+00:00"},
+    seven_day: {utilization: $seven, resets_at: "2026-10-24T08:59:59.541212+00:00"},
+    extra_usage: {is_enabled: false, utilization: null},
+    oauth_checked_at: $now, derived_at: $now, primaries_refreshed_at: $now, account: $acct}' \
+    > "$work/usagepf-6965-cache.json"
+}
+up_run() {
+  (cd "$uptarget" && HOME="$uphome" CADENCE_USAGE_CACHE="$work/usagepf-6965-cache.json" \
+     CADENCE_USAGE_LEDGER="$uphome/.himmel/cadence-ledger.jsonl" CADENCE_USAGE_SKIP_REFRESH=1 \
+     HIMMEL_FLEET_CAP=50 HIMMEL_FLEET_SLOTS="$work/usagepf-6965-slots" \
+     bash scripts/lib/"$1" 2>"$work/usagepf-6965.err")
+}
+up_cache 10 20
+out=$(up_run usage-preflight.sh) || fail "HIMMEL-6965: the project's usage-preflight.sh failed: $(cat "$work/usagepf-6965.err")"
+[ "$out" = "PROCEED" ] \
+  || fail "HIMMEL-6965: the project's usage-preflight.sh did not PROCEED on a low-usage cache: $out $(cat "$work/usagepf-6965.err")"
+up_cache 10 99
+out=$(up_run usage-preflight.sh) || fail "HIMMEL-6965: usage-preflight.sh failed on a high-usage cache"
+[ "$out" = "SKIPPED-BANK" ] \
+  || fail "HIMMEL-6965: the project's usage-preflight.sh did not hold on a 99% seven_day cache: $out"
+up_cache 10 20
+out=$(up_run bank-preflight.sh) || fail "HIMMEL-6965: the old-name forwarder failed: $(cat "$work/usagepf-6965.err")"
+[ "$out" = "PROCEED" ] \
+  || fail "HIMMEL-6965: the project's bank-preflight.sh forwarder did not PROCEED: $out $(cat "$work/usagepf-6965.err")"
+grep -q '"verdict":"PROCEED"' "$uphome/.himmel/cadence-ledger.jsonl" \
+  || fail "HIMMEL-6965: the preflight did not write its ledger row under the project's HOME"
+if grep -q -i 'yotamleo' "$uptarget/scripts/lib/usage-preflight.sh"; then
+  fail "HIMMEL-6965: the copied usage-preflight.sh names the himmel repo"
+fi
+echo "ok: HIMMEL-6965 the adopted usage-preflight.sh and its forwarder read the project's cache and print PROCEED / SKIPPED-BANK"
+
 # exercise the remaining bootstrap exits and Git's configured
 # hooks directory. User scope must also carry its own native gate payloads.
 for fallback_case in uv-fails pipx-fails unresolved user-hooks-path skip; do
@@ -2556,8 +2605,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "45" ] \
-  || fail "HIMMEL-3332 S4: expected 45 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "52" ] \
+  || fail "HIMMEL-3332 S4: expected 52 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

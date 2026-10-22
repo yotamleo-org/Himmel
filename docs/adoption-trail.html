@@ -295,7 +295,7 @@
 
       <div class="answer">
         <h4>2. The install overwrites files in your project's scripts folder</h4>
-        <p>The starter install copies 23 helper scripts into the project's
+        <p>The starter install copies 25 helper scripts into the project's
         <span class="mono">scripts/</span> folder:
         <span class="mono">hooks/auto-approve-safe-bash.sh</span>,
         <span class="mono">hooks/block-edit-on-main.sh</span>,
@@ -316,6 +316,8 @@
         <span class="mono">lib/worktree-inuse.sh</span>,
         <span class="mono">lib/worktree-fresh-lock.sh</span>,
         <span class="mono">check-ci.sh</span>,
+        <span class="mono">lib/usage-preflight.sh</span>,
+        <span class="mono">lib/bank-preflight.sh</span>,
         <span class="mono">clean-garden.sh</span>,
         <span class="mono">worktree.sh</span>,
         <span class="mono">clean.sh</span> and
@@ -476,7 +478,7 @@ claude --version</pre>
         <a href="#undo">question 3</a>, once you also know how to undo it.</p>
         <h4>In the project folder you run it from</h4>
         <ul>
-          <li>Copies 23 helper scripts into the project's
+          <li>Copies 25 helper scripts into the project's
           <span class="mono">scripts/</span> folder (the hooks and the
           worktree commands), <b>overwriting any file of the same name</b>
           &mdash; see item 2 of
@@ -1582,7 +1584,7 @@ claude</pre>
     'hud': { t: 'claude-hud statusline', s: 'ship', h:
       '<p>A heads-up statusline himmel <b>brings, vendored in-repo</b>: context-fill bar, usage and quota windows, model badge, and a prompt-cache expiry clock — the live dashboard of every session.</p>' },
     'bank': { t: 'Budget preflight', s: 'ship', h:
-      '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the subscription usage budget cannot afford. Anything that dispatches a batch of work checks it first.</p>' },
+      '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the subscription usage budget cannot afford. Anything that dispatches a batch of work checks it first. The installer copies the preflight into your project&rsquo;s <span class="mono">scripts/lib/</span>, and it reads the usage cache your own status line writes.</p>' },
     'fill': { t: 'Self-read context fill', s: 'ship', h:
       '<p>A session can read its <b>own</b> context-window fill as a number instead of guessing. It also distinguishes a stale or unknown reading: rather than serving a frozen snapshot as though it were current, it refuses and says so — so a decision to wrap up is never made on a number that quietly stopped updating.</p>' },
     'gemini-cli': { t: 'gemini-cli', s: 'ship', h:
