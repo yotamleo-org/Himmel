@@ -86,9 +86,18 @@ RUN curl -fsSL -o /tmp/uv.tgz "https://github.com/astral-sh/uv/releases/download
  && tar -xzf /tmp/uv.tgz --no-same-owner -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx \
  && rm -f /tmp/uv.tgz
 
-# pre-commit and the shellcheck rev the pre-commit hook pins; pip puts shellcheck in
+# pre-commit, its whole dependency closure and the shellcheck rev the pre-commit hook
+# pins, from hashed requirements files (uv pip compile --generate-hashes; the header of
+# each file says how to refresh it). --require-hashes refuses any file whose hash is not
+# listed, so a republished or tampered release fails the build; --only-binary=:all: keeps
+# pip from building an sdist (setup.py runs at install time). pip puts shellcheck in
 # /usr/local/bin, ahead of the apt 0.9.0 in /usr/bin.
-# ponytail: top-level pins only, no --require-hashes (pre-commit's transitive closure
-# floats); upgrade path: a hashed requirements.txt beside this file.
-RUN python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed \
-      pre-commit==4.7.0 shellcheck-py==0.11.0.1
+COPY requirements-ci.txt requirements-shellcheck.txt /tmp/
+RUN python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed --require-hashes --only-binary=:all: \
+      -r /tmp/requirements-ci.txt -r /tmp/requirements-shellcheck.txt \
+ && rm -f /tmp/requirements-ci.txt /tmp/requirements-shellcheck.txt
+
+# The eMudhra CA compromise (Mozilla bug 2083449) removed emSign ECC Root CA - G3 from the
+# trust stores. The apt ca-certificates above is unpinned, so a rebuild takes the fixed
+# package; this fails the build if the distrusted root is still in the bundle.
+RUN ! find /usr/share/ca-certificates /etc/ssl/certs -name 'emSign_ECC_Root_CA_-_G3*' | grep -q .

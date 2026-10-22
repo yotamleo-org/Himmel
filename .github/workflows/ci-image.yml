@@ -15,7 +15,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: ci-image
@@ -28,12 +27,18 @@ jobs:
     if: github.repository == 'yotamleo-org/Himmel' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # packages: write only on the job that pushes; the build context holds no git credentials.
+    permissions:
+      contents: read
+      packages: write
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/himmel-ci # env-literal-ok: owner comes from github.repository_owner
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build
         # The run number and attempt make the tag immutable: a weekly, manual or re-run rebuild of the same
         # commit pulls fresh base layers and must not move a tag a job already pins.

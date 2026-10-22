@@ -96,6 +96,7 @@ scripts/api-lane/test-claude-api.sh	local	behaviour suite, 0 catches in the 400-
 scripts/ci/test-apt-install.sh	pr	trust-path
 scripts/ci/test-cancel-superseded-runs.sh	pr	trust-path
 scripts/ci/test-check-actions-pinned.sh	pr	static-gate
+scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
 scripts/ci/test-check-cr-terminology.sh	pr	trust-path

@@ -1498,7 +1498,7 @@ fi
 # 22d: the CI lint job installs that pinned rev (read from the pre-commit config,
 # never hand-copied) BEFORE the shell-lint step.
 LINT_JOB="$(awk '/^  lint:/ {f=1; print; next} f && /^  [a-z]/ {exit} f {print}' "$CI_YML")"
-PIN_LN="$(grep -n 'shellcheck-py==' <<< "$LINT_JOB" | head -1 | cut -d: -f1)"
+PIN_LN="$(grep -n 'requirements-shellcheck.txt' <<< "$LINT_JOB" | head -1 | cut -d: -f1)"
 SL_LN="$(grep -n 'shell-lint.sh --changed' <<< "$LINT_JOB" | head -1 | cut -d: -f1)"
 if [ -n "$PIN_LN" ] && [ -n "$SL_LN" ] && [ "$PIN_LN" -lt "$SL_LN" ]; then pass "22d lint job installs the pinned shellcheck before the shell-lint step"; else fail "22d pinned shellcheck install not before shell-lint step in ci.yml" "pin line=${PIN_LN:-none} shell-lint line=${SL_LN:-none}"; fi
 assert_contains "22d rev is read from .pre-commit-config.yaml" "pre-commit-config.yaml" "$LINT_JOB"

@@ -1,0 +1,18 @@
+          bun-version-file: .bun-version
+      - name: Install pinned Playwright
+        run: bun install --frozen-lockfile
+      - name: Build AG-UI so its browser tests run
+        working-directory: scripts/config-ui/agui-web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+        run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
+      - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
+        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
+      - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
+        shell: bash
+        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
