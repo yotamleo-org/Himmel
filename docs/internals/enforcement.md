@@ -1299,7 +1299,8 @@ of two situations it is in, because they differ completely:
 targets a repo other than the resolved repo's origin, the hook advises and
 continues checking the local source branch's marker. A pending marker blocks;
 no marker allows. `scripts/hooks/test-check-cr-marker-on-pr-create.sh` Test 14
-covers matching, divergent and missing origins with and without a marker.
+covers matching and divergent origins with and without a marker, plus a
+missing-origin case with a marker.
 
 Known limitations:
 - **The compound-`cd` shape** — `cd /foreign && gh pr create` in one Bash call
