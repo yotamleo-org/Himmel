@@ -1198,7 +1198,7 @@ if [ -n "$paths_file" ]; then
         else
             printf '%s\t\n' "$query" || io_fail "writing an empty batch result"
         fi
-    done < "$paths_file"
+    done < "$paths_file" # read-sink-ok: explicit operator-selected query input; regular/readable/non-symlink checked, parsed only as literal paths
     exit 0
 fi
 
