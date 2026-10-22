@@ -166,9 +166,10 @@ def flake_rows(script, t0, t1):
 
 def build_row(kind, key, t0, t1, a):
     since, until = stamp(t0), stamp(t1)
-    sr, sr_state = self_review(a.self_review, a.repo, a.ref, since, until)
+    ref = key if kind == "version" else a.ref
+    sr, sr_state = self_review(a.self_review, a.repo, ref, since, until)
     tickets, costed, cost, ticket_cost, legs = set(), set(), 0.0, 0.0, 0
-    for subject, rec in merge_bodies(a.repo, a.ref, since, until):
+    for subject, rec in merge_bodies(a.repo, ref, since, until):
         m = TICKET.search(subject)
         if m:
             tickets.add(m.group(1))

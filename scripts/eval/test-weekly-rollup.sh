@@ -135,6 +135,22 @@ vrow() { jq -r --arg k "$1" "select(.kind==\"version\" and .key==\$k) | .$2" "$O
 check "v1.1.0 merges are the tag window" 3 "$(vrow v1.1.0 merges)"
 check "v1.1.0 delta merges vs v1.0.0" 1 "$(vrow v1.1.0 delta.merges)"
 
+# A commit landed after the tag but dated inside its window must not enter the version row.
+git clone -q "$REPO" "$W/repo2"
+git -C "$W/repo2" config user.email t@example.com
+git -C "$W/repo2" config user.name t
+GIT_AUTHOR_DATE="2026-09-10T12:00:00Z" GIT_COMMITTER_DATE="2026-09-10T12:00:00Z" \
+  git -C "$W/repo2" commit -q --allow-empty -m 'feat(x): [HIMMEL-9] late (#99)' \
+  -m "leg-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=900k floor-share=1%"
+OUT3="$W/late.jsonl"
+run write --repo "$W/repo2" --ref main --weeks 0 --versions 2 --out "$OUT3" >/dev/null 2>&1
+check "a post-tag commit stays out of the version merges" 3 \
+  "$(jq -r 'select(.key=="v1.1.0") | .merges' "$OUT3")"
+check "a post-tag commit stays out of the version cost" 400000 \
+  "$(jq -r 'select(.key=="v1.1.0") | .cost_eq' "$OUT3")"
+check "rows carry ts, host and source" "true true weekly-rollup" \
+  "$(jq -r 'select(.key=="v1.1.0") | [(.ts|type=="number"), (.host|length>0), .source] | map(tostring) | join(" ")' "$OUT3")"
+
 OUT2="$W/noscript.jsonl"
 SELF_REVIEW_SCRIPT="$W/missing.sh" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT2" >/dev/null 2>&1
 check "absent self-review still exits 0" 0 $?
