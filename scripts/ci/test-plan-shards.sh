@@ -25,6 +25,7 @@
 #   PS16 a root omitted before -- defaults to .
 #   PS20 n above the 64 cap is clamped to 64 with a message naming CI_MAX_SHARDS,
 #        at the planner and through ci.yml's own plan step
+#   PS22 ci.yml's plan step with an empty CI_MAX_SHARDS plans a full real-ledger sweep at 16
 #   PS21 n of 0 or a negative value is a usage error naming CI_MAX_SHARDS, and
 #        ci.yml's plan step then falls back to its empty output (8 legs)
 #
@@ -121,7 +122,7 @@ fi
 
 # PS14: home-canary is sized the same way, off its own --impacted selection, and
 # keeps one leg on an empty one (the host-file sink check runs in every leg).
-if grep -qF -- "plan-shards.sh \"\${CI_MAX_SHARDS:-8}\" . -- --impacted \"\$PR_BASE_SHA..HEAD\"" "$CI" \
+if grep -qF -- "plan-shards.sh \"\${CI_MAX_SHARDS:-16}\" . -- --impacted \"\$PR_BASE_SHA..HEAD\"" "$CI" \
    && grep -qF "canary_shards: \${{ steps.canary.outputs.canary_shards }}" "$CI" \
    && grep -qF "canary_total: \${{ steps.canary.outputs.canary_total }}" "$CI" \
    && grep -qF "shard: \${{ fromJSON(needs.plan.outputs.canary_shards == '[]' && '[1]' || needs.plan.outputs.canary_shards || '[1,2,3,4,5,6,7,8]') }}" "$CI" \
@@ -212,7 +213,7 @@ STUB_ARGS_LOG="$PS/args.log" STUB_ANSWERS="1=true 2=true" \
 if [ "$(sort "$PS/args.log")" = "$(printf '1/2 /some/root\n2/2 /some/root')" ]; then pass "PS17 no runner args, none passed to the probes"; else fail "PS17 none: $(cat "$PS/args.log")"; fi
 
 # PS18: the plan job's two plan-shards.sh calls take the cap from vars.CI_MAX_SHARDS
-# and keep 8 without it. The run bodies are lifted from ci.yml itself and run against
+# and plan at 16 without it. The run bodies are lifted from ci.yml itself and run against
 # a stub planner that logs its args; an unset repository variable reaches the step as
 # the empty string.
 step_dir="$PS/step"
@@ -239,9 +240,9 @@ PY
 for sid in shards canary; do
   case "$sid" in shards) tail_args="." ;; canary) tail_args=". -- --impacted abc..HEAD" ;; esac
   got=$(run_plan_step "$sid" "")
-  if [ "$got" = "8 $tail_args" ]; then pass "PS18 $sid: variable unset plans at 8, as before"; else fail "PS18 $sid unset: got [$got]"; fi
-  got=$(run_plan_step "$sid" 16)
-  if [ "$got" = "16 $tail_args" ]; then pass "PS18 $sid: variable 16 plans at 16"; else fail "PS18 $sid 16: got [$got]"; fi
+  if [ "$got" = "16 $tail_args" ]; then pass "PS18 $sid: variable empty plans at 16"; else fail "PS18 $sid empty: got [$got]"; fi
+  got=$(run_plan_step "$sid" 8)
+  if [ "$got" = "8 $tail_args" ]; then pass "PS18 $sid: variable 8 plans at 8"; else fail "PS18 $sid 8: got [$got]"; fi
 done
 
 # PS19: a plan at 16 lists at most 16 shards and shard_total is 16.
@@ -277,6 +278,11 @@ PY
 }
 got=$(run_real_step 500)
 if [ "$got" = 64 ]; then pass "PS20 ci.yml's plan step with CI_MAX_SHARDS=500 plans 64"; else fail "PS20 plan step 500: got [$got]"; fi
+
+# PS22: ci.yml's own plan step, empty variable, real planner and the real ledger (suites
+# timed on green main CI runs): a full sweep plans 16 shards, where it planned 8.
+got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" run_real_step "")
+if [ "$got" = 16 ]; then pass "PS22 an empty CI_MAX_SHARDS plans a full real-ledger sweep at 16"; else fail "PS22 empty full sweep: got [$got]"; fi
 
 # PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
 # step swallows the refusal into an empty output, which the shard job reads as 8 legs.
