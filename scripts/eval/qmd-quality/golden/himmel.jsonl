@@ -1,0 +1,200 @@
+{"id":"h001","query":"how do I install himmel on an existing project","lex":"install profile adopter","collections":["himmel"],"expect":["himmel/docs/setup/install.md"]}
+{"id":"h002","query":"what operating system floors and tools does a new machine need","lex":"support matrix verified floors","collections":["himmel"],"expect":["himmel/docs/setup/new-machine.md"]}
+{"id":"h003","query":"how do I update an existing himmel checkout and pick a release channel","lex":"updating himmel release channels","collections":["himmel"],"expect":["himmel/docs/setup/updating.md"]}
+{"id":"h004","query":"my install still points at the old git remote after the cutover","lex":"pre-cutover remote origin","collections":["himmel"],"expect":["himmel/docs/setup/migrating.md"]}
+{"id":"h005","query":"how do I create the cloud environment for claude --cloud","lex":"cloud environment create default","collections":["himmel"],"expect":["himmel/docs/setup/cloud-environment.md"]}
+{"id":"h006","query":"how do I run the himmel guardrails under the Codex CLI","lex":"codex AGENTS.md hooks config.toml","collections":["himmel"],"expect":["himmel/docs/setup/codex.md"]}
+{"id":"h007","query":"bring up the cc-codex proxy lane on a new host","lex":"CLIProxyAPI cc-codex","collections":["himmel"],"expect":["himmel/docs/setup/cli-proxy-lane.md"]}
+{"id":"h008","query":"what are the three different things called install profile","lex":"install profile meanings","collections":["himmel"],"expect":["himmel/docs/setup/install.md","himmel/docs/setup/profiles/README.md"]}
+{"id":"h009","query":"what does the operator install profile json contain","lex":"operator.install-profile.json","collections":["himmel"],"expect":["himmel/docs/setup/profiles/README.md"]}
+{"id":"h010","query":"how do I start and snapshot the VirtualBox test VMs","lex":"VirtualBox VM Ubuntu","collections":["himmel"],"expect":["himmel/docs/setup/vms.md"]}
+{"id":"h011","query":"how is the rule that proof must run in a VM first satisfied","lex":"vm.mode","collections":["himmel"],"expect":["himmel/docs/setup/vm-mode.md"]}
+{"id":"h012","query":"template for general working principles in my user-level CLAUDE.md","lex":"user-scope working principles","collections":["himmel"],"expect":["himmel/docs/setup/user-scope-claude-md-template.md"]}
+{"id":"h013","query":"walk me through the daily loop from a ticket to a merged PR","lex":"daily loop worktree commit","collections":["himmel"],"expect":["himmel/docs/daily-loop.md"]}
+{"id":"h014","query":"what happens the first time I edit a file on main","lex":"block-edit-on-main surprise","collections":["himmel"],"expect":["himmel/docs/daily-loop.md","himmel/docs/internals/enforcement.md"]}
+{"id":"h015","query":"when are Platforms tested and Security reviewed trailers required on a commit","lex":"attestation trailers Platforms tested","collections":["himmel"],"expect":["himmel/docs/daily-loop.md","himmel/docs/security-review.md"]}
+{"id":"h016","query":"first steps for a brand new user, installing and making a first change","lex":"getting started first loop","collections":["himmel"],"expect":["himmel/docs/getting-started.md"]}
+{"id":"h017","query":"what does HIMMEL_INITIATIVE do and how do I switch it off","lex":"HIMMEL_INITIATIVE initiative runbook","collections":["himmel"],"expect":["himmel/docs/getting-started.md","himmel/scripts/hooks/initiative-runbook.md"]}
+{"id":"h018","query":"which slash commands manage the worktree lifecycle","lex":"slash commands worktree lifecycle","collections":["himmel"],"expect":["himmel/docs/commands-catalog.md"]}
+{"id":"h019","query":"which pre-commit and pre-push gates will a contributor hit","lex":"pre-commit pre-push gates contributing","collections":["himmel"],"expect":["himmel/docs/contributing.md"]}
+{"id":"h020","query":"what problems is this harness meant to prevent","lex":"five failure modes","collections":["himmel"],"expect":["himmel/docs/why-himmel.md"]}
+{"id":"h021","query":"diagram of the enforcement layers and the handover system","lex":"architecture diagrams enforcement layers","collections":["himmel"],"expect":["himmel/docs/architecture.md"]}
+{"id":"h022","query":"what are the goals and non-goals and the trust model of the system","lex":"goals non-goals trust safety model","collections":["himmel"],"expect":["himmel/docs/system-design.md"]}
+{"id":"h023","query":"which orchestration shape should I use for a fan-out of workers","lex":"map-reduce-and-manage shapes","collections":["himmel"],"expect":["himmel/docs/orchestration-patterns.md"]}
+{"id":"h024","query":"which scheduled cadences exist and which are armed by hand","lex":"cadences registry armed wizard","collections":["himmel"],"expect":["himmel/docs/cadences.md"]}
+{"id":"h025","query":"which Jira projects exist and what are their conventions","lex":"Jira projects conventions","collections":["himmel"],"expect":["himmel/docs/jira-projects.md"]}
+{"id":"h026","query":"how do I make claude speak every reply aloud","lex":"voice speak every reply gate","collections":["himmel"],"expect":["himmel/docs/voice.md"]}
+{"id":"h027","query":"what web interfaces does himmel ship for configuration and the board","lex":"himmelctl ui config console board","collections":["himmel"],"expect":["himmel/docs/ui.md"]}
+{"id":"h028","query":"which launchers start the codex, openrouter and deepseek lanes","lex":"launchers claude-codex claude-openrouter","collections":["himmel"],"expect":["himmel/docs/launchers.md"]}
+{"id":"h029","query":"what is the quota gauge and the escalation channel","lex":"quota-gauge escalation channel","collections":["himmel"],"expect":["himmel/docs/jarvis-subsystems.md"]}
+{"id":"h030","query":"which license did we choose and why","lex":"license audit MIT","collections":["himmel"],"expect":["himmel/docs/license-audit.md","himmel/docs/third-party-licenses.md"]}
+{"id":"h031","query":"is the left-pad WTFPL package a licensing problem","lex":"left-pad WTFPL SBOM","collections":["himmel"],"expect":["himmel/docs/third-party-licenses.md"]}
+{"id":"h032","query":"which vendored plugins and forks are credited","lex":"credits plugins skill families forks","collections":["himmel"],"expect":["himmel/docs/credits.md"]}
+{"id":"h033","query":"what does a console do first when it starts up","lex":"ACTION ZERO","collections":["himmel"],"expect":["himmel/docs/handover/running-a-console.md","himmel/docs/handover/console-template.md"]}
+{"id":"h034","query":"what status markers does a leg report to its console","lex":"LIVE FINDING RESOLVED READY BLOCKED markers","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
+{"id":"h035","query":"under what condition may a leg merge its own PR","lex":"merge GO token merge-on-green","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
+{"id":"h036","query":"what should a leg do when CI goes red on its pull request","lex":"CI red merge-forward suite coverage","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/ci-red.md"]}
+{"id":"h037","query":"how can a leg borrow a skill its profile does not have","lex":"CONSULT borrow skill","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/consult.md"]}
+{"id":"h038","query":"idle leg: keep the prompt cache warm or wrap up","lex":"cache keepalive wrap","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/cache-keepalive.md"]}
+{"id":"h039","query":"a shell command shape was refused, how do I retry it","lex":"refused shapes literal retry","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/shell-and-tests.md","himmel/docs/handover/console-sections/refused-shapes.md"]}
+{"id":"h040","query":"how does a leg accept a new console after a handover","lex":"succession relay adopt","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/succession.md"]}
+{"id":"h041","query":"what rules must a judge session follow","lex":"judge preface verdict","collections":["himmel"],"expect":["himmel/docs/handover/judge-preface.md"]}
+{"id":"h042","query":"how do I write a judge brief that does not leak my opinion","lex":"judge brief template blind evidence","collections":["himmel"],"expect":["himmel/docs/handover/judge-brief-template.md"]}
+{"id":"h043","query":"which fields must a verdict file contain","lex":"verdict template VERDICT","collections":["himmel"],"expect":["himmel/docs/handover/verdict-template.md"]}
+{"id":"h044","query":"how does a release manager session work and when does it stop","lex":"release manager STANDBY protocol","collections":["himmel"],"expect":["himmel/docs/handover/rm-preface.md"]}
+{"id":"h045","query":"template for briefing a release manager leg","lex":"release-manager brief template","collections":["himmel"],"expect":["himmel/docs/handover/rm-brief-template.md"]}
+{"id":"h046","query":"how is a relay brief for the ops lane structured","lex":"relay brief template","collections":["himmel"],"expect":["himmel/docs/handover/relay-brief-template.md"]}
+{"id":"h047","query":"what does a cloud session have and what connectors does it lack","lex":"cloud brief template connectors","collections":["himmel"],"expect":["himmel/docs/handover/cloud-brief-template.md"]}
+{"id":"h048","query":"what sections belong in a leg brief","lex":"leg brief template ship contract","collections":["himmel"],"expect":["himmel/docs/handover/leg-brief-template.md"]}
+{"id":"h049","query":"what may a console consult do and how does it answer","lex":"consult preface","collections":["himmel"],"expect":["himmel/docs/handover/consult-preface.md"]}
+{"id":"h050","query":"how do claudex legs talk to the console","lex":"claudex inbox wake","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface-claudex.md","himmel/docs/handover/running-a-console.md"]}
+{"id":"h051","query":"coordination rules for metered OpenRouter legs","lex":"OpenRouter coordination","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface-openrouter.md"]}
+{"id":"h052","query":"how does the console wait for events from legs","lex":"event waiter ACTION ZERO","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/waiter.md"]}
+{"id":"h053","query":"which monitors does a console run and how are they armed","lex":"monitors console section","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/monitors.md"]}
+{"id":"h054","query":"how does the console keep the roadmap board up to date","lex":"board roadmap tracker","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/board-tracker.md"]}
+{"id":"h055","query":"what is the format of an entry in the console live state","lex":"live state entry format","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/live-state.md"]}
+{"id":"h056","query":"how do I cut a pre-release tag when a trust-path PR merges","lex":"trust-path PRs pre-release tag","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/merges.md"]}
+{"id":"h057","query":"how does the console wrap a leg by hand","lex":"wrapping leg digest line","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/wrapping.md"]}
+{"id":"h058","query":"after the new console is live, what happens to the old one","lex":"successor LIVE close predecessor","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/successor-start.md"]}
+{"id":"h059","query":"what is the weekly standards duty of the chief","lex":"weekly standards duty","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/weekly-duty.md"]}
+{"id":"h060","query":"how does the console route a judge question and read the verdict","lex":"judge questions verdict files","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/judge.md"]}
+{"id":"h061","query":"how do release requests get routed to the release manager","lex":"release manager routing placement","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/release-manager.md"]}
+{"id":"h062","query":"how many phases does the unattended pipeline have","lex":"AFK unattended 11 phases","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
+{"id":"h063","query":"what are the different ways an unattended run can hang","lex":"five hang classes","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
+{"id":"h064","query":"when should an unattended run park instead of continuing","lex":"park protocol block-only criteria","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
+{"id":"h065","query":"how are the handover root and the resume breadcrumb resolved","lex":"handover root resolver breadcrumb","collections":["himmel"],"expect":["himmel/docs/internals/handover-system.md"]}
+{"id":"h066","query":"what shapes can a minted handover token take","lex":"handover token grammar minting","collections":["himmel"],"expect":["himmel/docs/internals/handover-token-grammar.md"]}
+{"id":"h067","query":"why does a re-tasking message need a nonce","lex":"RETASK nonce threat model","collections":["himmel"],"expect":["himmel/docs/internals/retask-channel.md"]}
+{"id":"h068","query":"why is the ops lane the relay and what moves there","lex":"console ops lane relay","collections":["himmel"],"expect":["himmel/docs/internals/console-ops-lane.md"]}
+{"id":"h069","query":"what fields does a console handoff state carry","lex":"handoff state rulings in flight","collections":["himmel"],"expect":["himmel/docs/handover/console-handoff-template.md","himmel/docs/handover/console-template.md"]}
+{"id":"h070","query":"what a lane canary brief asks the lane to do","lex":"lane canary","collections":["himmel"],"expect":["himmel/docs/handover/lane-canary-brief-template.md"]}
+{"id":"h071","query":"a bash command is stopped by a permission prompt, what now","lex":"Symptom permission prompt Bash","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h072","query":"merge-on-green exits 22 with a main-red gate message","lex":"merge-on-green exit 22 main-red","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h073","query":"wrap-subtree-check prints WITHHELD although all tasks are stopped","lex":"wrap-subtree-check WITHHELD","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h074","query":"pre-push gate failed because an attestation trailer is missing","lex":"pre-push attestation trailer missing","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h075","query":"leg-burn was denied as session transcript tampering","lex":"leg-burn Session Transcript Tampering","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h076","query":"a background task was killed for running low on memory","lex":"running low on memory background task","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h077","query":"check-ci with --pr prints usage and no gate runs","lex":"check-ci pr usage gate","collections":["himmel"],"expect":["himmel/docs/internals/stuck-playbook.md"]}
+{"id":"h078","query":"which hook auto-approves safe bash commands","lex":"auto-approve-safe-bash pre-Bash gateway","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h079","query":"how does the destructive-command floor decide what to block","lex":"block-destructive-commands floor","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h080","query":"what is the timeout policy and latency budget for hooks","lex":"hook timeout policy latency SLO","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h081","query":"why is a shared git stash refused","lex":"shared refs/stash guard","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h082","query":"why are unbounded qmd search commands refused","lex":"unbounded qmd search verbs bounded","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h083","query":"what stops a session from arming a raw scheduler","lex":"rogue claude schedule scheduler arm","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h084","query":"how do I arm CodeRabbit for a repository","lex":"CodeRabbit availability arm per repo","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h085","query":"who may lower a finding in the review ledger","lex":"CR ledger amends signed adjudication","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h086","query":"how often does CI run on main","lex":"main CI cadence cron","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md"]}
+{"id":"h087","query":"wsl.exe from Git Bash mangles mnt path arguments","lex":"wsl.exe Git Bash mangles /mnt","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h088","query":"python3 on Windows opens the Microsoft Store","lex":"WindowsApps Store stub python3","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h089","query":"the 1Password ssh agent hangs unattended runs","lex":"1Password SSH agent unattended","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h090","query":"timeout in Git Bash leaves grandchild processes running","lex":"timeout grandchildren pipe","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h091","query":"a pruned worktree directory silently runs in the primary repo","lex":"pruned git worktree primary repo","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h092","query":"rtk rewrites my top-level Bash commands","lex":"rtk token-proxy rewrites","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md","himmel/docs/setup/rtk-md.md"]}
+{"id":"h093","query":"gitleaks allowlist regexes must be anchored and the pre-push scan reads the index","lex":"gitleaks anchor allowlist staged","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h094","query":"claude --bare does not read OAuth, how do I run without hooks","lex":"claude bare safe-mode OAuth keychain","collections":["himmel"],"expect":["himmel/docs/internals/environment-gotchas.md"]}
+{"id":"h095","query":"what are the standing habits for the Jira CLI","lex":"Jira CLI habits","collections":["himmel"],"expect":["himmel/docs/operator-conventions.md","himmel/docs/internals/jira-plugin.md"]}
+{"id":"h096","query":"what does the verification method require before claiming something works","lex":"verification method artifact not rc","collections":["himmel"],"expect":["himmel/docs/operator-conventions.md"]}
+{"id":"h097","query":"which frames does the harness compatibility matrix cover","lex":"frame matrix hook-chain smoke demo","collections":["himmel"],"expect":["himmel/docs/internals/harness-compat.md"]}
+{"id":"h098","query":"why does Codex ignore CLAUDE.md and what must AGENTS.md carry","lex":"CLAUDE.md invisible AGENTS.md Codex","collections":["himmel"],"expect":["himmel/docs/internals/harness-compat.md","himmel/docs/setup/codex.md"]}
+{"id":"h099","query":"traps of the Windows hook runner that uses pwsh -Command","lex":"pwsh Command Windows hook runner","collections":["himmel"],"expect":["himmel/docs/internals/harness-compat.md"]}
+{"id":"h100","query":"how do I run a brand-new test suite before its first commit","lex":"brand-new suite first commit","collections":["himmel"],"expect":["himmel/docs/internals/testing.md"]}
+{"id":"h101","query":"what does a suite that fails once and passes on retry count as","lex":"retried once FLAKE","collections":["himmel"],"expect":["himmel/docs/internals/testing.md"]}
+{"id":"h102","query":"how are suites assigned to CI shards","lex":"shard assignment duration ledger","collections":["himmel"],"expect":["himmel/docs/internals/testing.md"]}
+{"id":"h103","query":"what counts as CI evidence for a change","lex":"what counts as CI evidence","collections":["himmel"],"expect":["himmel/docs/internals/testing.md"]}
+{"id":"h104","query":"which suites does my diff reach","lex":"impacted suites","collections":["himmel"],"expect":["himmel/docs/internals/testing.md","himmel/scripts/cr/pr-check-ref/33-step3-impacted.md"]}
+{"id":"h105","query":"how does the critic panel do its first pass over a diff","lex":"critic panel first pass","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/30-step3-panel.md"]}
+{"id":"h106","query":"how are panel candidates adjudicated","lex":"adjudicate panel candidates","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/31-step3-adjudicate.md"]}
+{"id":"h107","query":"what does the reviewer stage of pr-check do","lex":"reviewer stage step 3.5","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/32-step3-reviewers.md"]}
+{"id":"h108","query":"what is the cross-check and orphan check step","lex":"cross-check orphan check","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/40-step4-crosscheck.md"]}
+{"id":"h109","query":"how are findings appended to the CR ledger","lex":"ledger append step 4.5","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/45-step4.5-ledger.md"]}
+{"id":"h110","query":"how does pr-check handle unresolved review threads","lex":"unresolved threads step 4.8","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/48-step4.8-threads.md"]}
+{"id":"h111","query":"how does pr-check decide whether the gate passes","lex":"gate decision step 5 marker","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/50-step5-decision.md"]}
+{"id":"h112","query":"how are deferred nits filed automatically","lex":"deferred nits auto-file step 7","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/70-step7-nits.md"]}
+{"id":"h113","query":"usage, fence contract and quoting rules for pr-check","lex":"fence contract quoting rules usage","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/00-preamble.md"]}
+{"id":"h114","query":"how does pr-check find the himmel checkout in step 0","lex":"step 0 resolve himmel checkout","collections":["himmel"],"expect":["himmel/scripts/cr/pr-check-ref/10-step0.md"]}
+{"id":"h115","query":"what is the floor reviewer","lex":"floor reviewer","collections":["himmel"],"expect":["himmel/scripts/cr/floor-reviewer.md"]}
+{"id":"h116","query":"how do I run a sweep of the review panel recall eval","lex":"review-panel recall eval sweep","collections":["himmel"],"expect":["himmel/scripts/eval/review-panel/README.md"]}
+{"id":"h117","query":"what does the review ledger say about how good the critics are","lex":"review panel ledger critics headline","collections":["himmel"],"expect":["himmel/docs/evals/review-panel.md"]}
+{"id":"h118","query":"what classes of known findings does the self-review check","lex":"known findings classes self-review","collections":["himmel"],"expect":["himmel/docs/internals/known-findings.md"]}
+{"id":"h119","query":"which fields does the lesson provenance schema define","lex":"lesson provenance schema","collections":["himmel"],"expect":["himmel/docs/internals/lesson-provenance.md"]}
+{"id":"h120","query":"how is the precision of lessons sample-audited","lex":"lesson audit precision sample","collections":["himmel"],"expect":["himmel/docs/internals/lesson-audit.md"]}
+{"id":"h121","query":"how are lane tiers, effort and cost calibrated","lex":"lane calibration tiers effort cost","collections":["himmel"],"expect":["himmel/docs/internals/lane-calibration.md"]}
+{"id":"h122","query":"how did haiku compare with sonnet and codex in the lane-fit eval","lex":"haiku sonnet lane-fit eval","collections":["himmel"],"expect":["himmel/docs/internals/lane-calibration.md"]}
+{"id":"h123","query":"which invariant guards must hold on every lane","lex":"lane-parity invariant guard set","collections":["himmel"],"expect":["himmel/docs/internals/lane-parity.md"]}
+{"id":"h124","query":"which guards does hermes lack compared with Claude Code","lex":"hermes guardrail parity gaps over-denys","collections":["himmel"],"expect":["himmel/docs/internals/hermes-guardrail-parity.md"]}
+{"id":"h125","query":"how do I install and configure hermes with a provider key","lex":"hermes install configure provider","collections":["himmel"],"expect":["himmel/docs/hermes-runbook.md"]}
+{"id":"h126","query":"native hermes subagents compared with external lane workers","lex":"worker-spawn matrix hermes native","collections":["himmel"],"expect":["himmel/docs/internals/worker-spawn-matrix.md"]}
+{"id":"h127","query":"when to use claude -p, claude --bg or a headed session","lex":"headless claude bg headed decision","collections":["himmel"],"expect":["himmel/docs/internals/headless-modes.md"]}
+{"id":"h128","query":"where does each new rule belong, lean-invoke or always-on","lex":"lean-surface doctrine layering","collections":["himmel"],"expect":["himmel/docs/internals/context-architecture.md"]}
+{"id":"h129","query":"full wording of the project CLAUDE.md rules","lex":"CLAUDE.md rule detail","collections":["himmel"],"expect":["himmel/docs/internals/claude-md-detail.md","himmel/CLAUDE.md"]}
+{"id":"h130","query":"how do I add or change a fork adapter registry row","lex":"fork adapter registry row sync rule","collections":["himmel"],"expect":["himmel/docs/internals/fork-adapters.md"]}
+{"id":"h131","query":"what does the shared fork pre-commit core contain","lex":"fork pre-commit core","collections":["himmel"],"expect":["himmel/docs/internals/fork-precommit.md"]}
+{"id":"h132","query":"how often is the knowledge graph republished and what threshold triggers it","lex":"graph publish cadence threshold","collections":["himmel"],"expect":["himmel/docs/internals/graph-cadence.md"]}
+{"id":"h133","query":"how does the install ledger back up bytes before overwriting","lex":"install provenance ledger snap","collections":["himmel"],"expect":["himmel/docs/internals/install-provenance.md"]}
+{"id":"h134","query":"which configuration layer wins when keys conflict","lex":"configuration layers who wins","collections":["himmel"],"expect":["himmel/docs/internals/config-layers.md"]}
+{"id":"h135","query":"inventory of hardcoded environment values and the lint that guards them","lex":"hardcoded environment values inventory lint","collections":["himmel"],"expect":["himmel/docs/internals/hardcoded-env-values.md"]}
+{"id":"h136","query":"which MCP servers and clients are in use and what is the v1 gate","lex":"MCP inventory v1 gate","collections":["himmel"],"expect":["himmel/docs/internals/mcp-servers.md"]}
+{"id":"h137","query":"how do I run the macOS test lane locally in Docker","lex":"Docker-OSX macOS local lane","collections":["himmel"],"expect":["himmel/docs/internals/macos-local-lane.md"]}
+{"id":"h138","query":"how fresh are the shared PR snapshots and how are they cached","lex":"PR snapshots cache freshness","collections":["himmel"],"expect":["himmel/docs/internals/pr-snapshot.md"]}
+{"id":"h139","query":"what happens if the query embed model differs from the index model","lex":"qmd embed model index mismatch","collections":["himmel"],"expect":["himmel/docs/internals/qmd-embed-model.md"]}
+{"id":"h140","query":"which text triggers the safety content filter and how do I avoid it","lex":"safeguard false-positive triggers","collections":["himmel"],"expect":["himmel/docs/internals/safeguard-false-positives.md"]}
+{"id":"h141","query":"how expensive is spawning processes on Windows and how do we reduce it","lex":"MSYS spawn economics defork","collections":["himmel"],"expect":["himmel/docs/internals/script-runtime-practices.md"]}
+{"id":"h142","query":"why must the ship tail not call a model","lex":"ship tail model-free hermes-critic","collections":["himmel"],"expect":["himmel/docs/internals/ship-tail-model-free.md"]}
+{"id":"h143","query":"how is the token economy benchmarked with and without a tool","lex":"token-economy bench arms","collections":["himmel"],"expect":["himmel/docs/internals/token-economy-bench.md"]}
+{"id":"h144","query":"what exit codes does the upstream watch return","lex":"upstream watch exit codes","collections":["himmel"],"expect":["himmel/docs/internals/upstream-watch.md"]}
+{"id":"h145","query":"what keys join a per-ticket usage record to its PR","lex":"usage records join keys","collections":["himmel"],"expect":["himmel/docs/internals/usage-records.md"]}
+{"id":"h146","query":"what is a gate and where do quality gates sit in the pipeline","lex":"validation gates placement doctrine","collections":["himmel"],"expect":["himmel/docs/internals/validation-gates.md"]}
+{"id":"h147","query":"which alert rules does cache health raise","lex":"cache health alert rules metrics.json","collections":["himmel"],"expect":["himmel/docs/internals/cache-health.md"]}
+{"id":"h148","query":"what is the verified model of the prompt cache","lex":"prompt cache verified model audit","collections":["himmel"],"expect":["himmel/docs/internals/prompt-cache.md","himmel/docs/evals/prompt-cache.md"]}
+{"id":"h149","query":"what is the per-boundary token optimizer policy","lex":"token economy per-boundary policy invariants","collections":["himmel"],"expect":["himmel/docs/token-economy.md"]}
+{"id":"h150","query":"what are the trust-posture tiers of the tool adoption rubric","lex":"tool-adoption rubric trust-posture tiers","collections":["himmel"],"expect":["himmel/docs/tool-adoption/rubric.md"]}
+{"id":"h151","query":"which tools are in the adoption registry and how are they layered","lex":"tool-adoption registry layer taxonomy","collections":["himmel"],"expect":["himmel/docs/tool-adoption/registry.md"]}
+{"id":"h152","query":"what must I check before adopting a new lane such as latency and context window","lex":"lane-adoption playbook latency budget context window","collections":["himmel"],"expect":["himmel/docs/tool-adoption/lane-adoption-playbook.md"]}
+{"id":"h153","query":"how is skill usage measured without extra cost","lex":"skill-usage telemetry 0-cost contract","collections":["himmel"],"expect":["himmel/docs/tool-adoption/telemetry.md"]}
+{"id":"h154","query":"how is pstack mapped onto our skills and why is blast-radius the first trial","lex":"pstack integration blast-radius","collections":["himmel"],"expect":["himmel/docs/tool-adoption/pstack-integration.md"]}
+{"id":"h155","query":"which pstack principles do we follow, e.g. idempotent operations","lex":"pstack principles make-operations-idempotent","collections":["himmel"],"expect":["himmel/docs/tool-adoption/pstack-principles-digest.md"]}
+{"id":"h156","query":"does humanizer overlap with unslop","lex":"humanizer unslop overlap","collections":["himmel"],"expect":["himmel/docs/tool-adoption/humanizer.md"]}
+{"id":"h157","query":"into which classes is a deferred follow-up sorted","lex":"follow-up triage classes deferral","collections":["himmel"],"expect":["himmel/docs/release/follow-up-triage.md"]}
+{"id":"h158","query":"how does a PR opt into the release notes","lex":"release notes shape user-visible internal","collections":["himmel"],"expect":["himmel/docs/release/changelog-shape.md"]}
+{"id":"h159","query":"how are release versions named and what was renumbered","lex":"version naming scheme renumber","collections":["himmel"],"expect":["himmel/docs/release/versioning-scheme.md"]}
+{"id":"h160","query":"what is on the version review checklist","lex":"version review roll-up checklist","collections":["himmel"],"expect":["himmel/docs/release/version-review.md"]}
+{"id":"h161","query":"what must I do when updating to v1.1.3","lex":"v1.1.3 what you must do on update","collections":["himmel"],"expect":["himmel/docs/release/v1.1.3-notes.md"]}
+{"id":"h162","query":"how does the end-session wiki hook crystallize session notes","lex":"end-session wiki crystallization reheal","collections":["himmel"],"expect":["himmel/docs/luna/end-session-wiki.md"]}
+{"id":"h163","query":"what frontmatter fields does a session note have and how do slugs collide","lex":"session note schema slug collision","collections":["himmel"],"expect":["himmel/docs/luna/end-session-wiki-schema.md"]}
+{"id":"h164","query":"what are the stages of the luna compounding loop","lex":"compounding loop capture triage synthesize archive","collections":["himmel"],"expect":["himmel/docs/luna/compounding.md"]}
+{"id":"h165","query":"how do I get a Google Health refresh token and why does it expire in 7 days","lex":"google health refresh token testing 7-day","collections":["himmel"],"expect":["himmel/docs/luna/google-health-connector-setup.md"]}
+{"id":"h166","query":"how does a vault opt into the PR-lane guard","lex":"luna PR-lane guard opt-in","collections":["himmel"],"expect":["himmel/docs/luna/pr-lane-guard.md"]}
+{"id":"h167","query":"why must observability stay passive","lex":"observability passivity invariant","collections":["himmel"],"expect":["himmel/scripts/observability/README.md"]}
+{"id":"h168","query":"what number does the R0 shadow ledger produce","lex":"R0 shadow ledger trust","collections":["himmel"],"expect":["himmel/scripts/trust/README.md"]}
+{"id":"h169","query":"how does CI skip a suite the runner cannot execute","lex":"SKIP_LIST runner-gap ledger SUITE_TIER","collections":["himmel"],"expect":["himmel/scripts/ci/README.md"]}
+{"id":"h170","query":"which pages does the config UI health view offer","lex":"config-ui health page toolhealth","collections":["himmel"],"expect":["himmel/scripts/config-ui/README.md"]}
+{"id":"h171","query":"what does the eval-runs ledger record","lex":"eval-runs ledger answer-ab","collections":["himmel"],"expect":["himmel/scripts/eval/README.md"]}
+{"id":"h172","query":"how do I dispatch a codex implementation worker on a shared branch","lex":"codex impl workers shared-branch chokepoint","collections":["himmel"],"expect":["himmel/scripts/codex/README.md"]}
+{"id":"h173","query":"how did the sandbox-runtime proof of concept for a claudex leg turn out","lex":"srt-poc sandbox-runtime AppArmor bwrap","collections":["himmel"],"expect":["himmel/scripts/lanes/srt-poc/README.md"]}
+{"id":"h174","query":"how do I add a new hook and avoid the silent duplicate trap","lex":"adding NEW hook silent-duplicate trap","collections":["himmel"],"expect":["himmel/scripts/hooks/CLAUDE.md"]}
+{"id":"h175","query":"what did the claude -p probes find","lex":"claude-p probes results","collections":["himmel"],"expect":["himmel/scripts/probes/claude-p/RESULTS.md","himmel/scripts/probes/claude-p/RESULTS-3e.md"]}
+{"id":"h176","query":"which privileged operations can I run from Telegram and what is break-glass","lex":"telegram privileged ops break-glass","collections":["himmel"],"expect":["himmel/scripts/telegram/README.md"]}
+{"id":"h177","query":"setup scripts for a Windows 11 or Ubuntu machine","lex":"machine setup Win11 Ubuntu","collections":["himmel"],"expect":["himmel/scripts/machine-setup/README.md"]}
+{"id":"h178","query":"what schema do the luna vitals connectors write","lex":"Google Health payload schema","collections":["himmel"],"expect":["himmel/scripts/luna-vitals/connectors/SCHEMA.md"]}
+{"id":"h179","query":"what persona does the hermes main tier agent run with","lex":"SOUL main tier persona","collections":["himmel"],"expect":["himmel/scripts/hermes/assets/himmel-agent.SOUL.md"]}
+{"id":"h180","query":"how do I open a PR through the gh-pr-create plugin command","lex":"gh-pr-create","collections":["himmel"],"expect":["himmel/plugins/himmel-gh/commands/gh-pr-create.md"]}
+{"id":"h181","query":"how do I create a Jira ticket through the plugin command","lex":"Create a Jira issue","collections":["himmel"],"expect":["himmel/plugins/himmel-jira/commands/jira-create.md"]}
+{"id":"h182","query":"which rules does the luna second-brain template put in its CLAUDE file","lex":"luna second brain CLAUDE template","collections":["himmel"],"expect":["himmel/templates/luna-second-brain/_CLAUDE.md"]}
+{"id":"h183","query":"how do I use the dermatology visit prep template","lex":"derm visit prep salus","collections":["himmel"],"expect":["himmel/templates/luna-second-brain/_profiles/salus/_derm-visit-prep.template.md"]}
+{"id":"h184","query":"how does the bitbucket CLI authenticate and what verbs does it have","lex":"bitbucket-cli auth verbs","collections":["himmel"],"expect":["himmel/scripts/bitbucket/README.md"]}
+{"id":"h185","query":"which hooks does the telegram bridge use to deliver messages to a running console","lex":"telegram bridge messaging running console","collections":["himmel"],"expect":["himmel/docs/telegram-bridge.md","himmel/docs/internals/telegram-bridge.md"]}
+{"id":"h186","query":"what is the himmel-bus delivery guarantee and where does its state live","lex":"himmel-bus delivery guarantees state","collections":["himmel"],"expect":["himmel/docs/himmel-bus.md"]}
+{"id":"h187","query":"can an agent-to-agent message carry authority","lex":"A2A authority decision record","collections":["himmel"],"expect":["himmel/docs/internals/himmel-bus-a2a.md"]}
+{"id":"h188","query":"which himmelctl verbs exist and what does ensure do","lex":"himmelctl ensure verbs","collections":["himmel"],"expect":["himmel/docs/himmelctl.md"]}
+{"id":"h189","query":"how does the CI orchestrator pick a lane for a job","lex":"CI orchestrator routing order lanes","collections":["himmel"],"expect":["himmel/docs/internals/ci-orchestrator.md"]}
+{"id":"h190","query":"which tool versions are pinned in the prebuilt CI image","lex":"CI image prebuilt tooling pinning","collections":["himmel"],"expect":["himmel/docs/internals/ci-image.md"]}
+{"id":"h191","query":"when may a ticket be moved to Done","lex":"live-proof test Done","collections":["himmel"],"expect":["himmel/docs/internals/live-proof-test.md"]}
+{"id":"h192","query":"what data may be sent to which remote provider","lex":"egress matrix corpus provider","collections":["himmel"],"expect":["himmel/docs/internals/egress-matrix.md"]}
+{"id":"h193","query":"how does the leg context guard decide when to compact","lex":"leg context guard threshold autocompact","collections":["himmel"],"expect":["himmel/docs/internals/leg-context-guard.md","himmel/docs/handover/leg-sections/context-guard.md"]}
+{"id":"h194","query":"what is the ponytail comment convention","lex":"ponytail ceiling upgrade path","collections":["himmel"],"expect":["himmel/docs/internals/ponytail-convention.md"]}
+{"id":"h195","query":"how do I security review a change and what bypasses exist","lex":"security review playbook bypass","collections":["himmel"],"expect":["himmel/docs/security-review.md"]}
+{"id":"h196","query":"what is the lockfile policy for npm and how is install enforced","lex":"npm lockfile policy install","collections":["himmel"],"expect":["himmel/docs/security/npm-policy.md"]}
+{"id":"h197","query":"how are python dependencies pinned","lex":"python dependency pinning policy","collections":["himmel"],"expect":["himmel/docs/security/python-policy.md"]}
+{"id":"h198","query":"describe the qmd embed models measured cost and quality","lex":"qmd embed model measured quality gemma Qwen","collections":["himmel"],"expect":["himmel/docs/internals/qmd-embed-model.md"]}
+{"id":"h199","query":"what does the AGENTS.md precedence note say for non-Claude harnesses","lex":"AGENTS.md precedence reading note","collections":["himmel"],"expect":["himmel/AGENTS.md"]}
+{"id":"h200","query":"how do adopters use the telegram bridge to message a console from a phone","lex":"telegram remote bridge adopter guide","collections":["himmel"],"expect":["himmel/docs/telegram-bridge.md"]}

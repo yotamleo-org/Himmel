@@ -1723,8 +1723,11 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   is never touched. Hermetic test `test-luna-index-hygiene.sh` (real qmd on a scratch index).
 - `scripts/eval/qmd-quality/qmd-quality-cadence.sh run|arm|status|disarm`
   — the weekly retrieval-quality drift check. `run` scores the
-  private golden set with `qmd-quality.sh --scope golden` (read-only snapshot of
-  the index, deleted after the run), appends each mode's hit@1 / hit@5 / MRR to
+  golden set with `qmd-quality.sh --scope golden` (read-only snapshot of
+  the index, deleted after the run; the repo-safe set is
+  `scripts/eval/qmd-quality/golden/himmel.jsonl`, 200 queries over the himmel
+  docs, and `qmd-quality.sh` refuses a set under `QMD_QUALITY_MIN_QUERIES`,
+  default 150), appends each mode's hit@1 / hit@5 / MRR to
   `~/.himmel/state/qmd-quality/metrics.tsv`, and alerts through
   `scripts/luna/cadence-alert.sh` when a mode's MRR drops by more than
   `QMD_QUALITY_DRIFT_MRR` (0.05) from the previous run, or the eval fails. Off
