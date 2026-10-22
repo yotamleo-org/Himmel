@@ -1348,7 +1348,8 @@ print_machine_footprint() {
   fi
   echo "  qmd models + search index (~2.1 GB):   ${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
   echo "  bun runtime + global installs:         ${BUN_INSTALL:-$HOME/.bun}"
-  echo "  claude-hud status-line config:         $claude_cfg/plugins/claude-hud/config.json -- config.json written; hud cache purged when the config differs"
+  echo "  claude-hud status-line config:         $claude_cfg/claude-hud.json -- config written; himmel-owned legacy plugins/claude-hud/config.json removed after migration"
+  echo "  claude-hud regenerable cache:          $claude_cfg/plugins/claude-hud/ -- transcript-cache/, context-cache/, config-cache/ and cache-economics purged when wiring changes; daily-cost.json preserved"
   echo "  workspace-trust entry (himmelctl only): ${WORKSPACE_TRUST_CONFIG:-$HOME/.claude.json} -- the himmelctl wizard writes it; this bare adopt.sh does not"
   echo "  plugin content cache + install ledger: $claude_cfg/plugins/cache/<marketplace>/…, $claude_cfg/plugins/installed_plugins.json"
   echo "  marketplace clones + global registry:  $claude_cfg/plugins/marketplaces/<name>/, $claude_cfg/plugins/known_marketplaces.json -- a --scope project marketplace add still writes both machine-wide"
