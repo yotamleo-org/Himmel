@@ -455,7 +455,7 @@ check "8 no leak in console-template.md" "$(leak_free "$REPO_REAL/docs/handover/
 check "8 no leak in console-handoff-template.md" "$(leak_free "$REPO_REAL/docs/handover/console-handoff-template.md")" "yes"
 check "8 no leak in leg-brief-template.md" "$(leak_free "$REPO_REAL/docs/handover/leg-brief-template.md")" "yes"
 check "8 no leak in running-a-console.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-console.md")" "yes"
-check "8 no leak in .claude/commands/chief.md" "$(leak_free "$REPO_REAL/.claude/commands/supervisor-session.md")" "yes"
+check "8 no leak in .claude/commands/chief.md" "$(leak_free "$REPO_REAL/.claude/commands/chief.md")" "yes"
 
 # --- 9: unresolvable handover root exits 2, writes nothing -------------
 badroot="$tmp/does-not-exist"

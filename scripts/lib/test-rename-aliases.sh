@@ -340,6 +340,10 @@ stub .claude/commands/supervisor-session.md .claude/commands/chief.md
 stub .claude/commands/console.md .claude/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
+for a in supervisor-session console; do
+  check ".claude/commands/$a.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/console/chief.sh \$ARGUMENTS""$ROOT/.claude/commands/$a.md" && [ -f "$ROOT/scripts/handover/console/chief.sh" ] && echo yes || echo no)"
+  check "himmel-ops $a.md runs /himmel-ops:chief" "yes" "$(grep -qF -- "\`/himmel-ops:chief \$ARGUMENTS\`""$ROOT/marketplace/plugins/himmel-ops/commands/$a.md" && echo yes || echo no)"
+done
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
