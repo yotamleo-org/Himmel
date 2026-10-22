@@ -1981,7 +1981,7 @@ hentries=""
 INERT_GLOBS=()
 inert_filter_globs() {
     # st: 0 looking for the command word, 1 inside a searcher's arguments, 2 done
-    local k=0 sg=-1 st=0 wr=0 j w v vi
+    local k=0 sg=-1 st=0 wr=0 j w v vi sb=0 ig
     [ "$PR_TOKENIZED" = 1 ] || return 0
     st_tokenize "$cmd" || return 0
     [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC" = 000 ] || return 0
@@ -2000,7 +2000,8 @@ inert_filter_globs() {
                 fi
                 case "$w" in
                     time | command | builtin | nohup | nice | stdbuf | sudo | env | exec | timeout | xargs) wr=1 ;;
-                    grep | egrep | fgrep | rg) [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ] && st=1 || st=2 ;;
+                    grep | egrep | fgrep | rg)
+                        if [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ]; then st=1; sb=${#INERT_GLOBS[@]}; else st=2; fi ;;
                     *) st=2 ;;
                 esac
                 ;;
@@ -2008,6 +2009,16 @@ inert_filter_globs() {
                 v='' vi=-1
                 case "$w" in
                     --) st=2 ;;
+                    # rg --pre runs a program on every file, so this segment's
+                    # globs stay classified: drop the ones already collected
+                    --pre | --pre=*)
+                        local keep=()
+                        ig=0
+                        while [ "$ig" -lt "$sb" ]; do keep+=("${INERT_GLOBS[ig]}"); ig=$((ig + 1)); done
+                        INERT_GLOBS=()
+                        ig=0
+                        while [ "$ig" -lt "$sb" ]; do INERT_GLOBS+=("${keep[ig]}"); ig=$((ig + 1)); done
+                        st=2 ;;
                     --include=* | --exclude=* | --exclude-dir=* | --include-dir=* | --glob=* | --iglob=*) v=${w#*=} vi=$j ;;
                     --include | --exclude | --exclude-dir | --include-dir | --glob | --iglob | -g)
                         if [ "$k" -lt "$ST_N" ] && [ "${ST_S[k]}" = "$sg" ] && [ -z "${ST_RO[k]}" ]; then

@@ -1796,7 +1796,7 @@ _tok_readonly_ok() {
             first=$lw fk=$k
         else
             case "$first" in
-                less|git|rg|sed|eval) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
+                less|git|rg|sed|eval|sort|printf) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
             esac
             # `git -C DIR` only picks the repo, so the word after DIR is the
             # subcommand (HIMMEL-4298: `git -C <primary> diff … | grep` was

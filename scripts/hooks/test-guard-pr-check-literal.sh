@@ -2173,7 +2173,10 @@ for v in \
     "timeout 60 grep -rn --include='*.sh' \"\$X\" docs; bash '*.sh'" \
     "git config core.pager 'scripts/c?/write-verdicts.sh'" \
     "git bisect run 'scripts/c?/write-verdicts.sh'" \
-    "git rebase -x 'scripts/c?/write-verdicts.sh' HEAD~1"; do
+    "git rebase -x 'scripts/c?/write-verdicts.sh' HEAD~1" \
+    "rg --pre=bash -g 'scripts/cr/*.sh' x ." \
+    "rg -g 'scripts/cr/*.sh' --pre bash x ." \
+    "timeout 60 rg --pre=bash --glob '*.sh' x ."; do
     run "HIMMEL-6927 s3 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 # `git tag -l|--list <pattern>` only lists; the same glob on a non-listing tag stays denied.

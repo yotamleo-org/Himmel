@@ -3511,6 +3511,14 @@ assert_rc "6927s3j echo redirected into home settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'echo "{}" > ~/.claude/settings.json' HOME="$FAKEHOME")"
 assert_rc "6927s3k grep piped to sort then a write verb on home settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'grep x y | sort | cp /dev/null ~/.claude/settings.json' HOME="$FAKEHOME")"
+# sort and printf take no live variable or glob word: the write option can be
+# assembled by the shell from pieces the text never spells.
+assert_rc "6927s3m sort with a variable holding --output=home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'O=--output=~/.claude/settings.json; sort $O src' HOME="$FAKEHOME")"
+assert_rc "6927s3n sort with a brace list of -o and home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'sort {-o,~/.claude/settings.json} src' HOME="$FAKEHOME")"
+assert_rc "6927s3o printf with a variable holding -v denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'V=-v; printf $V x %s ~/.claude/settings.json' HOME="$FAKEHOME")"
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
