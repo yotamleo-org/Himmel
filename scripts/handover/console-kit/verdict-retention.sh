@@ -239,9 +239,13 @@ valid_qid() {
 if [ "$verb" = prune ]; then
     cache="${cache:-${HOME:-}/.cache/himmel/verdicts}"
     [ -d "$cache" ] || { echo "verdict-retention: no cache dir at $cache - nothing to prune"; exit 0; }
-    phys_cache=$(cd "$cache" && pwd -P) || exit 2
+    phys_cache=$(cd -- "$cache" && pwd -P) || exit 2
     hroot=$(handover_root) && [ -d "$hroot" ] || { echo "verdict-retention: cannot resolve the handover root; refusing to prune" >&2; exit 3; }
-    phys_root=$(cd "$hroot" && pwd -P) || exit 3
+    phys_root=$(cd -- "$hroot" && pwd -P) || exit 3
+    # cd // prints //, which no "/"-anchored pattern below would match: fold a
+    # leading run of slashes to one, then drop the trailing one (so / is "").
+    while [ "${phys_root#//}" != "$phys_root" ]; do phys_root="${phys_root#/}"; done
+    while [ "${phys_cache#//}" != "$phys_cache" ]; do phys_cache="${phys_cache#/}"; done
     phys_root="${phys_root%/}"
     phys_cache="${phys_cache%/}"
     case "$phys_cache/" in
@@ -250,6 +254,7 @@ if [ "$verb" = prune ]; then
     case "$phys_root/" in
         "$phys_cache"/*) echo "verdict-retention: refusing - the handover root $hroot is inside $cache; this pruner never touches vault verdicts" >&2; exit 2 ;;
     esac
+    cache="$phys_cache"
     rc=0 n=0 kept=0 kb_total=0 recent=""
     for d in "$cache"/*/; do
         d="${d%/}"

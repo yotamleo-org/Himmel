@@ -242,6 +242,14 @@ rc=0; out=$(env HANDOVER_DIR=/ HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDIC
 check "8: a handover root of / still contains every cache" "$rc" 2
 rc=0; out=$(timeout 60 env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" prune --unproven-older-than 1 --cache / 2>&1) || rc=$?
 check "8: a cache of / is refused as an ancestor of the handover root" "$rc" 2
+rc=0; out=$(timeout 60 env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" prune --unproven-older-than 1 --cache // 2>&1) || rc=$?
+check "8: a cache of // is refused as an ancestor of the handover root" "$rc" 2
+rc=0; out=$(timeout 60 env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" prune --verdicts-dir "$vdir" --cache "/$vdir" 2>&1) || rc=$?
+check "8: a doubled leading slash on a cache inside the handover root is refused" "$rc" 2
+mkdir -p "$root/-P" "$tmp/otherhome"
+rc=0; out=$(cd "$root" && timeout 60 env HOME="$tmp/otherhome" HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" prune --verdicts-dir "$vdir" --cache -P 2>&1) || rc=$?
+check "8: a cache named -P is the directory, not a cd option" "$rc" 2
+rmdir "$root/-P"
 wv qmix GO "$SHA_A" --pr 501 --evidence-file "$ev" >/dev/null 2>&1 || { echo "FAIL: fixture qmix"; exit 1; }
 printf '# VERDICT qmix - judge\n\nwritten-at: 2026-09-01T00:00:00Z\n\n## Verdict\n\n**GO** for head `%s`.\n\nmodel: old\n' "$SHA_A" > "$vdir/qmix/old.md"
 rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
