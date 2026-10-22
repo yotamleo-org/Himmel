@@ -165,6 +165,10 @@ eq "an unknown candidate cannot be ruled" "$?" "1"
 python3 -I "$JA" rule nogo:q5/judge X --evidence x --queue "$Q" >/dev/null 2>&1
 eq "a ruling is S, P or N" "$?" "2"
 eq "queue: nothing pending" "$(python3 -I "$JA" queue --queue "$Q" 2>&1)" ""
+eq "queue: every candidate and ruling row carries the ledger envelope" "$(python3 -I -c '
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+print(sum(all(r.get(k) for k in ("v", "ts", "host", "source", "kind")) for r in rows), len(rows))' "$Q")" "8 8"
 ja >/dev/null 2>&1
 eq "run 2: a third row (the rerun wrote the second)" "$(rows "$L")" "3"
 eq "run 2: ruled, so ok" "$(field "$L" 2 status)" "ok"

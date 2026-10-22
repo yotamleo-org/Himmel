@@ -45,6 +45,7 @@ import json
 import math
 import os
 import re
+import socket
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -169,6 +170,7 @@ def read_queue(path):
 
 
 def append(path, row):
+    row = {"v": 1, "ts": stamp(), "host": socket.gethostname(), "source": SOURCE, **row}
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
@@ -357,7 +359,7 @@ def cmd_run(a):
                 rulings.setdefault(r["id"], r["ruling"])
         metrics, ci, new, pending = score(recs, unparsed, prs, runs, bugs, since, until, rulings, queued)
         for c in new:
-            append(qpath, {"v": 1, "ts": stamp(), "kind": "candidate", "id": c["id"], "pr": c["pr"],
+            append(qpath, {"kind": "candidate", "id": c["id"], "pr": c["pr"],
                            "signal": c["signal"], "ref": c["ref"], "question": c["question"]})
     status = "inconclusive" if not metrics["go_merged"] else "partial" if pending else "ok"
     row = eval_runs.make_row(EVAL_ID, SOURCE, {"judge_accuracy_v": 1, "days": a.days}, metrics,
@@ -399,7 +401,7 @@ def cmd_rule(a):
         if any(r.get("kind") == "ruling" and r["id"] == a.id for r in q):
             print("judge-accuracy: %s is already ruled; a ruled candidate is never re-asked" % a.id, file=sys.stderr)
             return 1
-        append(qpath, {"v": 1, "ts": stamp(), "kind": "ruling", "id": a.id, "ruling": a.ruling, "by": a.by,
+        append(qpath, {"kind": "ruling", "id": a.id, "ruling": a.ruling, "by": a.by,
                        "evidence": a.evidence})
     print("judge-accuracy: ruled %s %s" % (a.id, a.ruling))
     return 0
