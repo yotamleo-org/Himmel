@@ -208,7 +208,7 @@ test('the lane OFF is REFUSED: the stub never runs and there is no subscription 
   assert.equal(f.called(), false);
 });
 
-test('a timed-out call is TIMEOUT and its reservation stays held in the ledger', () => {
+test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {
   const f = fixture();
   writeFileSync(f.p.hold, '');
   const r = f.run([...f.args, '--timeout', '2'], { STUB_HOLD: f.p.hold, QMD_KILL_GRACE_SECS: '1' });
@@ -216,10 +216,11 @@ test('a timed-out call is TIMEOUT and its reservation stays held in the ledger',
   assert.equal(r.art.status, 'TIMEOUT');
   const jobs = Object.values(f.ledger().accounts.A.jobs);
   assert.equal(jobs.length, 1);
-  assert.notEqual(jobs[0].status, 'settled');
+  assert.equal(jobs[0].status, 'settled');
+  assert.equal(jobs[0].actual_usd, '0.000000');
 });
 
-test('--cancel stops a running call: CANCELLED, the stub is gone, the reservation stays held', async () => {
+test('--cancel stops a running call: CANCELLED, the stub is gone, the reservation is settled', async () => {
   const f = fixture();
   writeFileSync(f.p.hold, '');
   const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env: { ...f.env, STUB_HOLD: f.p.hold }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -234,7 +235,7 @@ test('--cancel stops a running call: CANCELLED, the stub is gone, the reservatio
   assert.equal(code, 3);
   assert.equal(f.read(out.trim()).status, 'CANCELLED');
   const jobs = Object.values(f.ledger().accounts.A.jobs);
-  assert.notEqual(jobs[0].status, 'settled');
+  assert.equal(jobs[0].status, 'settled');
   const gone = spawnSync('pgrep', ['-f', f.p.stub]);
   assert.notEqual(gone.status, 0, 'the stub claude is still running');
   assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env, encoding: 'utf8' }).status, 3);

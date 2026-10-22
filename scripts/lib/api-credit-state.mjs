@@ -15,6 +15,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCALE = 1000000n;
 const MAX_AGE = 600;
+// Operator decision 185: both grants reset on one date, whatever expiry a snapshot row carries.
+// A config account may override it with reset_at for the next cycle.
+export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
+// Auto routing refuses a snapshot older than this: the ledger cannot see spend billed outside it.
+const ROUTE_MAX_AGE = 86400;
+// A call past this has died or been killed: its reservation is released, never held for good.
+const CALL_TIMEOUT = 3600;
 // ponytail: the cost report cannot separate promotional from card spend, so
 // 'automatic-snapshot' treats all spend since the grant start as grant spend; upgrade
 // path: a promotional-credit balance endpoint, if Anthropic exposes one.
@@ -36,6 +43,18 @@ function takeLock(lock, env) {
     Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
   }
 }
+function callTimeout(env) {
+  const raw = env.HIMMEL_API_CALL_TIMEOUT_S;
+  return /^[1-9][0-9]{0,8}$/.test(raw ?? '') ? Number(raw) : CALL_TIMEOUT;
+}
+function instant(text) {
+  const t = Date.parse(text);
+  // Date.parse rolls 2026-02-30 over to March: only a timestamp that round-trips is real.
+  if (typeof text !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(text)
+    || !Number.isFinite(t) || new Date(t).toISOString().replace('.000Z', 'Z') !== text) refuse('invalid-config');
+  return Math.floor(t / 1000);
+}
+const resetAt = (c, account) => instant(c.reset_at ?? GRANT_RESET_AT[account]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (v, k) => Object.hasOwn(v, k);
@@ -69,6 +88,7 @@ function configs(config) {
     const c = config.accounts[account];
     if (!object(c)) refuse('invalid-account-config');
     id(c.organization_id); id(c.cycle_id); money(c.cap_usd);
+    if (own(c, 'reset_at')) instant(c.reset_at);
     if (own(c, 'key_id')) id(c.key_id);  // non-secret provider key identifier, never the key
     if (orgs.has(c.organization_id)) refuse('duplicate-organization');
     orgs.add(c.organization_id);
@@ -114,7 +134,10 @@ function row(config, snapshot, a, account, now) {
     if (!Number.isSafeInteger(t) || t < 0) refuse('invalid-timestamp');
   }
   if (s.starts_at >= s.expires_at || s.starts_at > now || s.observed_at < s.starts_at) refuse('invalid-grant-interval');
-  if (s.expires_at <= now) refuse('expired-grant', 'SKIPPED-BANK');
+  // A grant that began before the reset date ends there; one that begins on or after it is the next cycle.
+  const reset = resetAt(config, account);
+  const expires = s.starts_at < reset ? Math.min(s.expires_at, reset) : s.expires_at;
+  if (expires <= now) refuse('expired-grant', 'SKIPPED-BANK');
   const age = now - s.observed_at;
   // an operator reading never goes stale; the remaining credit is derived
   // from it minus the ledger below, and the cap plus reserve accounting stay the hard
@@ -129,8 +152,19 @@ function row(config, snapshot, a, account, now) {
     organization_id: s.organization_id, cycle_id: s.cycle_id,
     grant_usd: usd(grant), cap_usd: usd(cap), spent_est_usd: usd(consumed),
     reserved_usd: usd(reserved), available_est_usd: usd(available > 0n ? available : 0n),
-    expires_at: s.expires_at, age_seconds: age, source: s.source,
+    expires_at: expires, age_seconds: age, source: s.source, snapshot_stale: age > ROUTE_MAX_AGE,
   };
+}
+// Release every reservation past the call timeout (or without a timestamp, from before it was
+// recorded): the call is dead, so it settles at zero rather than holding credit for good.
+function sweep(a, now, timeout) {
+  let released = false;
+  for (const j of Object.values(a?.jobs ?? {})) {
+    if (j.status === 'settled') continue;
+    if (Number.isSafeInteger(j.reserved_at) && now - j.reserved_at <= timeout) continue;
+    j.status = 'settled'; j.actual_usd = usd(0n); j.released = true; released = true;
+  }
+  return released;
 }
 function durableFile(path, contents) {
   const fd = openSync(path, 'wx', 0o600);
@@ -222,8 +256,10 @@ export function creditState(command, options = {}, env = process.env) {
     }
     let a = state.accounts[account];
     if (command === 'status' || command === 'reserve') {
+      const now = Math.floor(Date.now() / 1000);
+      if (sweep(a, now, callTimeout(env))) save(statePath, state, lock, sentinels);
       const snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(root, 'snapshot.json'));
-      const result = row(c, snapshot, a, account, Math.floor(Date.now() / 1000));
+      const result = row(c, snapshot, a, account, now);
       if (command === 'status') return result;
       id(options.id);
       const maximum = money(options.usd);
@@ -234,7 +270,7 @@ export function creditState(command, options = {}, env = process.env) {
         a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };
         state.accounts[account] = a;
       }
-      a.jobs[options.id] = { status: 'reserved', maximum_usd: usd(maximum) };
+      a.jobs[options.id] = { status: 'reserved', maximum_usd: usd(maximum), reserved_at: now };
       save(statePath, state, lock, sentinels);
       // Report the committed admission, not a second clock-dependent verdict.
       return { ...result, verdict: 'PROCEED', job_id: options.id,
@@ -276,11 +312,13 @@ export function pickAccount(budget, env = process.env) {
     const need = money(budget);
     const config = read(configPathFor(env));
     configs(config);
-    const rows = Object.keys(config.accounts).sort()
+    const roomy = Object.keys(config.accounts).sort()
       .map((account) => creditState('status', {}, { ...env, HIMMEL_API_ACCOUNT: account }))
-      .filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need)
-      .sort((x, y) => x.expires_at - y.expires_at);
-    if (rows.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' };
+      .filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
+    const rows = roomy.filter((r) => !r.snapshot_stale).sort((x, y) => x.expires_at - y.expires_at);
+    if (rows.length === 0) {
+      return { verdict: 'SKIPPED-BANK', reason: roomy.length ? 'stale-snapshot' : 'no-account-with-headroom' };
+    }
     return { verdict: 'PROCEED', account: rows[0].account, expires_at: rows[0].expires_at };
   } catch (e) {
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
@@ -475,7 +513,7 @@ function main() {
   const result = creditState(command, options);
   if (process.env.HIMMEL_API_CREDIT_FORMAT === 'bank') {
     if (result.account && result.grant_usd) {
-      console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}`);
+      console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing refuses, refresh with grant-snapshot.mjs)' : ''}`);
     } else console.error(`api credit-state: ${result.reason}`);
     console.log(result.verdict);
   } else console.log(JSON.stringify(result));

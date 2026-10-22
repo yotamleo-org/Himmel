@@ -510,3 +510,101 @@ test('an empty HIMMEL_API_LOCK_WAIT_MS falls back to the default wait', () => {
   releaser.kill();
   assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
 });
+
+// operator decision 185 resets both grants on one date, whatever expiry a snapshot row carries.
+const iso = (t) => new Date(t * 1000).toISOString().replace('.000Z', 'Z');
+
+test('HIMMEL-7111: the default reset date of both grants is 2026-11-01T00:00:00Z', async () => {
+  const { GRANT_RESET_AT } = await import(SUT);
+  assert.deepEqual(GRANT_RESET_AT, { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' });
+});
+
+test('HIMMEL-7111: the reset date caps a later expiry on the snapshot row', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.expires_at = f.now + 9 * 86400;
+  f.config.accounts.A.reset_at = iso(f.now + 1800);
+  f.save();
+  assert.equal(f.call().expires_at, f.now + 1800);
+});
+
+test('HIMMEL-7111: auto routing ranks by the reset date, a tie going to A', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.expires_at = f.now + 9 * 86400;
+  f.snapshot.accounts.B.expires_at = f.now + 5 * 86400;
+  f.config.accounts.A.reset_at = iso(f.now + 3600);
+  f.config.accounts.B.reset_at = iso(f.now + 3600);
+  f.save();
+  const pick = JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01'], { env: f.env, encoding: 'utf8' }).stdout);
+  assert.equal(pick.account, 'A');
+});
+
+test('HIMMEL-7111: after the reset date the old grant refuses, and a grant starting on it is a fresh cycle', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.starts_at = f.now - 7200;
+  f.snapshot.accounts.A.expires_at = f.now + 9 * 86400;
+  f.config.accounts.A.reset_at = iso(f.now - 3600);
+  f.save();
+  const old = f.call();
+  assert.equal(old.verdict, 'SKIPPED-BANK');
+  assert.equal(old.reason, 'expired-grant');
+  f.snapshot.accounts.A.starts_at = f.now - 1800;
+  f.save();
+  assert.equal(f.call().verdict, 'PROCEED');
+});
+
+test('HIMMEL-7111: a malformed reset_at refuses', () => {
+  const f = fixture();
+  f.config.accounts.A.reset_at = '2026-11-01';
+  f.save();
+  assert.equal(f.call().verdict, 'BANK-UNKNOWN');
+});
+
+function ageJob(f, id, ageSeconds) {
+  const ledger = JSON.parse(readFileSync(f.paths.state, 'utf8'));
+  const job = ledger.accounts.A.jobs[id];
+  if (ageSeconds === null) delete job.reserved_at; else job.reserved_at = f.now - ageSeconds;
+  writeFileSync(f.paths.state, JSON.stringify(ledger));
+}
+
+test('HIMMEL-7111: a reservation older than the call timeout is released, a younger one is kept', () => {
+  const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
+  f.call('reserve', ['--id', 'dead', '--usd', '0.30']);
+  f.call('reserve', ['--id', 'live', '--usd', '0.20']);
+  ageJob(f, 'dead', 7200); ageJob(f, 'live', 60);
+  const row = f.call();
+  assert.equal(row.reserved_usd, '0.200000');
+  assert.equal(row.available_est_usd, '0.800000');
+  assert.equal(f.call('reserve', ['--id', 'dead', '--usd', '0.01']).reason, 'duplicate-job');
+});
+
+test('HIMMEL-7111: an unknown or pre-timestamp reservation is released once past the timeout', () => {
+  const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
+  f.call('reserve', ['--id', 'lost', '--usd', '0.30']); f.call('unknown', ['--id', 'lost']);
+  f.call('reserve', ['--id', 'legacy', '--usd', '0.20']);
+  ageJob(f, 'lost', 7200); ageJob(f, 'legacy', null);
+  assert.equal(f.call().reserved_usd, '0.000000');
+  assert.equal(f.call('reserve', ['--id', 'next', '--usd', '1.00']).verdict, 'PROCEED');
+});
+
+test('HIMMEL-7111: auto routing refuses a snapshot older than 24 h, and a fresh account still wins', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
+  f.save();
+  const pick = () => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01'], { env: f.env, encoding: 'utf8' }).stdout);
+  const stale = pick();
+  assert.equal(stale.verdict, 'SKIPPED-BANK');
+  assert.equal(stale.reason, 'stale-snapshot');
+  f.snapshot.accounts.B.observed_at = f.now - 3600;
+  f.save();
+  assert.equal(pick().account, 'B');
+});
+
+test('HIMMEL-7111: the bank line shows the snapshot age and flags one past 24 h', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.starts_at = f.now - 400000;
+  f.snapshot.accounts.A.observed_at = f.now - 90000;
+  f.save();
+  const r = spawnSync(process.execPath, [SUT, 'status'], { env: { ...f.env, HIMMEL_API_CREDIT_FORMAT: 'bank' }, encoding: 'utf8' });
+  assert.match(r.stderr, /age=9000\d .*stale-snapshot/);
+  assert.equal(r.stdout.trim(), 'PROCEED');
+});

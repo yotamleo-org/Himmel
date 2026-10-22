@@ -13,6 +13,7 @@
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
+#        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] a reservation older than this is a dead call's and is released by the credit-state sweep (default 3600)
 #        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
 #        the launch record so a cost can be joined to a PR by key (absent = empty / null)
 # OFF by default. No subscription fallback: a refusal is final.
@@ -191,6 +192,21 @@ state() { node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
 RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
 
+# A call that dies settles its reservation (verified cost, else zero) so nothing stays reserved past it.
+# A launcher killed hard leaves its reservation to the credit-state sweep, which releases it once it is
+# older than HIMMEL_API_CALL_TIMEOUT_S.
+DEAD_SETTLED=0
+# shellcheck disable=SC2329 # invoked from the signal trap below and from the failed-call branch
+settle_dead() {
+  [ "$DEAD_SETTLED" = 0 ] || return 0
+  DEAD_SETTLED=1
+  state settle --id "$JOB_ID" --usd "${1:-0.000000}" --completion verified >/dev/null 2>&1 ||
+    state unknown --id "$JOB_ID" >/dev/null 2>&1
+}
+# shellcheck disable=SC2329 # invoked from the signal trap below
+on_signal() { settle_dead; exit 143; }
+trap on_signal TERM INT HUP
+
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
 # The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
@@ -204,10 +220,12 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
   "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT"
 RC=$?
+trap - TERM INT HUP
 
-# --- settle on verified cost, otherwise keep the reservation as unknown ---
+# --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---
 COST="$(node "$REPO/scripts/api-lane/outcome.mjs" "$OUT")"
 if [ "$RC" -eq 0 ] && [ -n "$COST" ]; then
+  DEAD_SETTLED=1
   SETTLED="$(state settle --id "$JOB_ID" --usd "$COST" --completion verified)"
   case "$SETTLED" in
     *'"reason":"settled"'*) OUTCOME=settled ;;
@@ -215,6 +233,9 @@ if [ "$RC" -eq 0 ] && [ -n "$COST" ]; then
     *) echo "claude-api: warning: settle failed ($SETTLED); keeping the reservation as unknown" >&2
        state unknown --id "$JOB_ID" >/dev/null; OUTCOME=unknown ;;
   esac
+elif [ "$RC" -ne 0 ]; then
+  COST="${COST:-0.000000}"
+  settle_dead "$COST"; OUTCOME=failed
 else
   state unknown --id "$JOB_ID" >/dev/null; OUTCOME=unknown
 fi

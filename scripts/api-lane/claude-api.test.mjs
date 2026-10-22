@@ -32,6 +32,8 @@ echo called >> "$STUB_LOG"
   echo "args=$*"; } > "$STUB_ENV"
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
+[ -z "\${STUB_DIE:-}" ] || kill -9 $$
+exit "\${STUB_RC:-0}"
 `;
 
 // A call carrying Claude Code session markers runs under a parent whose argv[0] is `claude`, as it does
@@ -683,4 +685,38 @@ test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL fro
   assert.equal(out['bulk | m | o'].recommended_ttl, '1h');
   assert.equal(out['eval | m | other-org'].runs, 1, 'a run in another organization is its own group');
   assert.equal(out['__proto__ | m | o'].runs, 1, 'a kind named like an Object property still groups');
+});
+
+// a dead call must not hold its reservation (killed calls on account B kept 20.10 USD reserved).
+test('HIMMEL-7111: a call that exits non-zero settles its reservation instead of leaving it open', () => {
+  const f = fixture();
+  const r = f.run(f.good, { STUB_RC: '3', STUB_OUT: 'boom' });
+  assert.equal(r.status, 3);
+  assert.equal(f.status().reserved_usd, '0.000000');
+  const rec = JSON.parse(f.record().trim());
+  assert.equal(rec.outcome, 'failed');
+  assert.equal(rec.cost_usd, '0.000000');
+});
+
+test('HIMMEL-7111: a call killed by a signal settles its reservation too', () => {
+  const f = fixture();
+  const r = f.run(f.good, { STUB_DIE: '1' });
+  assert.equal(r.status, 137);
+  assert.equal(f.status().reserved_usd, '0.000000');
+});
+
+test('HIMMEL-7111: a launcher terminated mid-call settles its reservation', async () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  const first = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, STUB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise((resolve) => first.on('close', resolve));
+  try {
+    const until = Date.now() + 15000;
+    const ready = () => existsSync(f.paths.env) && /^resv_pid=\d+$/m.test(readFileSync(f.paths.env, 'utf8'));
+    while (!ready() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(f.status().reserved_usd, '0.100000');
+    first.kill('SIGTERM');
+  } finally { rmSync(hold, { force: true }); }
+  await done;
+  assert.equal(f.status().reserved_usd, '0.000000');
 });
