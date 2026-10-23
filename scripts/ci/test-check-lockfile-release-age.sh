@@ -142,7 +142,7 @@ says "its entries are examined" "UNKNOWN: other/bun.lock: "
 echo "== lockfile shapes =="
 # A registry entry without `resolved` (omit-lockfile-registry-resolved) is still checked.
 nores="$tmp/nores"; mkdir -p "$nores"
-printf '{"lockfileVersion":3,"packages":{"":{},"node_modules/noresolved":{"version":"2.0.0"},"node_modules/gitdep":{"version":"1.0.0","resolved":"git+ssh://git@github.com/x/y.git#abc"},"node_modules/bundled":{"version":"3.0.0","inBundle":true}}}\n' > "$nores/package-lock.json"
+printf '{"lockfileVersion":3,"packages":{"":{},"node_modules/noresolved":{"version":"2.0.0"},"node_modules/gitdep":{"version":"1.0.0","resolved":"git+ssh://git@github.com/x/y.git#abc"},"node_modules/bundled":{"version":"3.0.0","inBundle":true},"node_modules/tarball":{"version":"4.0.0","resolved":"https://codeload.github.com/x/y/tar.gz/abc"}}}\n' > "$nores/package-lock.json"
 printf '{"noresolved@2.0.0":"2026-10-22T12:00:00Z"}\n' > "$tmp/nores-times.json"
 run "an entry without resolved is checked" 1 --times "$tmp/nores-times.json" --allow "$tmp/noallow.txt" "$nores/package-lock.json"
 says "only the registry entry is examined" "1 unique entry in 1 lockfile(s)"

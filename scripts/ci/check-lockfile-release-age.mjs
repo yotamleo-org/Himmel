@@ -22,7 +22,8 @@
 // Exit codes:
 //   0 — every entry is old enough (or allowlisted)
 //   1 — at least one young entry (printed as `YOUNG: ...`)
-//   2 — no young entry found, but a publish time could not be read (`UNKNOWN: ...`)
+//   2 — no young entry found, but a publish time could not be read (`UNKNOWN: ...`),
+//       or the run itself failed (bad arguments, an unreadable or malformed lockfile)
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -65,8 +66,8 @@ function parse(file, text) {
     for (const [key, v] of Object.entries(lock.packages)) {
       const at = key.lastIndexOf('node_modules/');
       // A registry entry may omit `resolved` (npm's omit-lockfile-registry-resolved); a git, file or
-      // tarball URL is not a registry release, and a bundled dependency ships inside its parent.
-      if (at < 0 || !v.version || v.link || v.inBundle || (v.resolved && !/^https?:/.test(v.resolved))) continue;
+      // or other-host tarball URL is not a registry release, and a bundled dependency ships inside its parent.
+      if (at < 0 || !v.version || v.link || v.inBundle || (v.resolved && !v.resolved.startsWith('https://registry.npmjs.org/'))) continue;
       // An npm alias (`compat@npm:actual@1`) is installed under one name and published under v.name.
       found.push(`${v.name ?? key.slice(at + 'node_modules/'.length)}@${v.version}`);
     }
