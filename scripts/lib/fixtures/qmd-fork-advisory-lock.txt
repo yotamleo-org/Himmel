@@ -1,0 +1,14 @@
+fork-sha 6930b5b1e6a6def4f19794f465541958702cfca1
+name = "aiohttp"
+version = "3.14.5"
+name = "certifi"
+version = "2026.10.19"
+name = "fsspec"
+version = "2026.7.0"
+name = "pillow"
+version = "13.0.0"
+name = "starlette"
+version = "1.9.0"
+name = "transformers"
+version = "5.20.2"
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
