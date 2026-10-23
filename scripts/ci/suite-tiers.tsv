@@ -318,6 +318,7 @@ scripts/graphify/test-refresh-graph-map-scratch.sh	pr	guard
 scripts/graphify/test-refresh-graph-map.sh	pr	guard
 scripts/graphify/test-repo-map.sh	pr	guard
 scripts/graphify/test-seed-claude-config.sh	pr	guard
+scripts/graphify/test-semantic-batch.sh	pr	guard
 scripts/graphify/test-semantic-seeds.sh	local	new since the audit, behaviour suite
 scripts/graphify/test-semantic-update.sh	pr	guard
 scripts/guardrails/test-check-git-env-scrub.sh	pr	guard

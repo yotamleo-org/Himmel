@@ -333,6 +333,7 @@ scripts/graphify/test-refresh-graph-map-scratch.sh	1
 scripts/graphify/test-refresh-graph-map.sh	44
 scripts/graphify/test-repo-map.sh	0
 scripts/graphify/test-seed-claude-config.sh	5
+scripts/graphify/test-semantic-batch.sh	2
 scripts/graphify/test-semantic-update.sh	26
 scripts/guardrails/test-check-git-env-scrub.sh	13
 scripts/guardrails/test-gitleaks-retired-org.sh	2
