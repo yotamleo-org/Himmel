@@ -257,6 +257,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     if (spec.drop !== undefined) errors.push('profile "bare" must not declare drop — bare already resolves to floor-only, a drop list is meaningless there');
     if (spec.disallowedTools !== undefined) errors.push('profile "bare" must not declare disallowedTools — bare has no base capability to restrict');
     if (spec.denyTools !== undefined) errors.push('profile "bare" must not declare denyTools — bare has no base capability to restrict');
+    if (spec.disableWorkflows !== undefined) errors.push('profile "bare" must not declare disableWorkflows — bare has no base capability to restrict');
   }
   validateToolTrim(errors, name, spec);
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseStreamJsonLines, findInitEvent, findResultEvent, firstTurnTokens,
   pluginSourceDiff, namespaceExtras, evaluateProfile, formatNote, roleCoverageProblems, countLoadedSkills,
-  parseProbeArgs, resolveLedgerTarget, buildLedgerRow, rankToolBytes, pickMainRequest, untrimmedSettings, formatToolBytes,
+  parseProbeArgs, resolveLedgerTarget, buildLedgerRow, rankToolBytes, pickMainRequest, untrimmedSettings, formatToolBytes, trimmedProfileNames,
   findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
 } from '../profile-context-probe.mjs';
 
@@ -586,4 +586,10 @@ test('formatToolBytes renders a total line plus the top N tools', () => {
   assert.match(lines[0], /^leg-impl tools=2 bytes=\d+$/);
   assert.match(lines[1], /^  Workflow \d+$/);
   assert.equal(lines.length, 2);
+});
+
+test('trimmedProfileNames skips null registry entries and keeps only profiles that carry a trim', () => {
+  const reg = { profiles: { operator: null, 'leg-impl': { denyTools: ['NotebookEdit'] }, user: {} } };
+  assert.deepEqual(trimmedProfileNames(reg), ['leg-impl']);
+  assert.deepEqual(trimmedProfileNames({}), []);
 });

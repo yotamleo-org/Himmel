@@ -2121,6 +2121,7 @@ test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contr
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'user').some((e) => /"user" denyTools is restricted to leg-shaped profiles/.test(e)));
   assert.ok(errs({ disableWorkflows: true }, 'console').some((e) => /"console" disableWorkflows is restricted to leg-shaped profiles/.test(e)));
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'bare').some((e) => /"bare" must not declare denyTools/.test(e)));
+  for (const v of [true, false]) assert.ok(errs({ disableWorkflows: v }, 'bare').some((e) => /"bare" must not declare disableWorkflows/.test(e)), `bare refuses disableWorkflows: ${v}`);
 });
 
 test('HIMMEL-4983: a profile list denies a tool only when every member does', () => {

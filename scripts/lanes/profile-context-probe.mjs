@@ -436,6 +436,11 @@ export function pickMainRequest(captured) {
   return best;
 }
 
+// Registry profiles that carry a tool trim; a null entry (operator) carries none.
+export function trimmedProfileNames(registry) {
+  return Object.keys(registry.profiles ?? {}).filter((n) => registry.profiles[n]?.denyTools);
+}
+
 // The profile's settings minus its tool trim, for the "before" run.
 export function untrimmedSettings(settings, denyTools = []) {
   const { disableWorkflows: _drop, ...rest } = settings;
@@ -586,7 +591,7 @@ async function toolBytesMain(opts) {
     registry = loadRegistry();
     installed = readEnabledPluginIds(homedir(), REPO_ROOT, process.env.CLAUDE_CONFIG_DIR);
   } catch (e) { process.stderr.write(`profile-context-probe: ${e.message}\n`); process.exitCode = 2; return; }
-  const names = opts.profile ? [opts.profile] : Object.keys(registry.profiles ?? {}).filter((n) => registry.profiles[n].denyTools);
+  const names = opts.profile ? [opts.profile] : trimmedProfileNames(registry);
   const unknown = names.find((n) => !registry.profiles?.[n]);
   if (unknown) { process.stderr.write(`profile-context-probe: unknown profile "${unknown}"\n`); process.exitCode = 2; return; }
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
