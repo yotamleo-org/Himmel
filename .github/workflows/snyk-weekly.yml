@@ -42,6 +42,7 @@ jobs:
 
       - name: Install the Snyk CLI
         if: steps.gate.outputs.enabled == 'true'
+        # install-scripts-ok: the snyk postinstall downloads the native CLI binary
         run: npm install -g snyk@1.1308.2
 
       - name: Run the Snyk scan
