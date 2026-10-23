@@ -939,9 +939,11 @@ claude</pre>
       </li>
 
       <li>
-        <p><b>Check the result.</b> Back in the terminal, in the same
-        project folder:</p>
-        <pre class="cmd">node ~/himmel/scripts/himmelctl/bin.js status</pre>
+        <p><b>Check the result.</b> Back in the terminal, return to the
+        project folder (the terminal is still inside the linked worktree
+        after <span class="mono">/exit</span>):</p>
+        <pre class="cmd">cd ~/himmel-trial
+node ~/himmel/scripts/himmelctl/bin.js status</pre>
         <p>It prints one row for each thing himmel checks. Read the rows
         rather than expecting a clean board, and treat a green row as
         &ldquo;found&rdquo;, not &ldquo;working&rdquo;: for example, the row
@@ -956,7 +958,8 @@ claude</pre>
       </li>
 
       <li>
-        <p><b>Undo it whenever you like</b> with the commands under
+        <p><b>Undo it whenever you like</b>, from the project folder
+        (<span class="mono">cd ~/himmel-trial</span>), with the commands under
         <a href="#undo">question 3</a>: preview with
         <span class="mono">uninstall --dry-run</span>, then
         <span class="mono">uninstall --yes</span> (the form that works without
