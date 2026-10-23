@@ -165,7 +165,7 @@ run_gate() { # <label> <incoming rc> <opt-in value or -> <stub rc> <want stage r
   local optin=() got_ran got_rc
   [ "$3" = - ] || optin=(HIMMEL_VM_E2E_OVERINSTALL="$3")
   got_rc="$(env -i PATH="$PATH" REPO="$WORK/fakerepo" HOSTSPEC=h PORT=1 IDENT=k STUB_LOG="$WORK/stub.log" STUB_RC="$4" "${optin[@]}" \
-    RC0="$2" bash -c 'rc=$RC0; . "$1"; echo "$rc"' _ "$WORK/gate.sh" 2>/dev/null | tail -1)"
+    RC0="$2" bash -c 'rc=$RC0; . "$1"; echo "$rc"' _ "$WORK/gate.sh" 2>/dev/null | tail -1)" # read-sink-ok: gate.sh is the file this suite just wrote under its own $WORK
   got_ran="$(wc -l < "$WORK/stub.log" | tr -d ' ')"
   if [ "$got_ran" = "$5" ] && [ "$got_rc" = "$6" ]; then pass "opt-in gate: $1"; else fail_case "opt-in gate: $1 (stage ran $got_ran, want $5; rc $got_rc, want $6)"; fi
 }
