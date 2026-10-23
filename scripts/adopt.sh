@@ -190,6 +190,11 @@ PORTABLE_FILES=(
   scripts/lib/worktree-fresh-lock.sh
   scripts/lib/git-clean.sh
   scripts/check-ci.sh
+  scripts/handover/merge-on-green.sh
+  scripts/lib/check-pr-title.sh
+  scripts/lib/ticket-id-internal.sh
+  scripts/ci/ticket-id-internal-authors.txt
+  scripts/chokepoints.json
   scripts/lib/check-ci-watch.sh
   scripts/lib/non-gating-contexts.sh
   scripts/lib/non-gating-contexts.txt
