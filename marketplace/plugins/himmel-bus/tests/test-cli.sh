@@ -62,9 +62,14 @@ as() { REPOINT="$tmp/repoint.mjs" BUS_CLI="$BUS" "$tmp/claude" "$tmp/as.sh" "$@"
 
 # A bound identity is read from /proc (identity.mjs procStat), so a host with no
 # procfs (macOS) cannot bind one: the sections that act as a bound peer are
-# skipped there and the store-level ones still run.
+# skipped there and the store-level ones still run. An append takes the chain
+# lock through the flock binary (bus.ts withChainLock), which macOS lacks, so the
+# sections that append through the store skip there too.
 HAVE_PROC=1; [ -r /proc/self/stat ] || HAVE_PROC=0
-skip_section() { printf '  SKIP  %s: no /proc on this host, identity binding is Linux-only\n' "$1"; }
+HAVE_FLOCK=1; command -v flock >/dev/null 2>&1 || HAVE_FLOCK=0
+NOPROC_WHY='no /proc on this host, identity binding is Linux-only'
+NOFLOCK_WHY='no flock binary on this host, the chain lock is Linux-only'
+skip_section() { printf '  SKIP  %s: %s\n' "$1" "$2"; }
 # ago <days>: a touch -t stamp <days> back (GNU or BSD date).
 ago() { local s=$(( $(date +%s) - $1 * 86400 )); date -d "@$s" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$s" +%Y%m%d%H%M.%S; }
 
@@ -119,8 +124,9 @@ n0=$(lib "console.log((await store.scan(root, 'legA')).length)")
 out=$(as con send legA "$tmp/body" --doc "$tmp/no-such-doc.md" 2>&1); rc=$?
 n=$(lib "console.log((await store.scan(root, 'legA')).length)")
 if [ "$rc" -ne 0 ] && [ "$n" = "$n0" ]; then pass "a missing --doc refuses before anything is sent"; else fail "missing --doc (rc=$rc, legA log=$n): $out"; fi
-else skip_section "send as a bound peer, --re acks, --doc mirror"; fi
+else skip_section "send as a bound peer, --re acks, --doc mirror" "$NOPROC_WHY"; fi
 
+if [ "$HAVE_FLOCK" = 1 ]; then
 echo "== gc =="
 # Rotate legB's log into segments 0 and 1 (each record ~1.4 KB).
 lib "
@@ -155,6 +161,7 @@ before=$(lib "console.log((await store.scan(root, 'legB')).length)")
 rm -f "$seg0"
 after=$(lib "console.log((await store.scan(root, 'legB')).length)")
 if [ "$before" -gt 0 ] && [ "$after" = 0 ]; then pass "known break: scan of a log with a removed segment is empty ($before to $after), so gc stays report-only"; else fail "scan break not reproduced (before=$before after=$after)"; fi
+else skip_section "gc and the removed-segment scan break" "$NOFLOCK_WHY"; fi
 
 if [ "$HAVE_PROC" = 1 ]; then
 echo "== status --unacked =="
@@ -231,18 +238,20 @@ if grep -qx 'legA (gone)' <<< "$out"; then pass "the successor's peers lists the
 if grep -qx legL <<< "$out"; then pass "peers prints a live peer bare"; else fail "live peer: $out"; fi
 "$BUS" register legU --role leg --console con2 >/dev/null 2>&1
 if grep -qx 'legU (unbound)' <<< "$(as con2 peers 2>&1)"; then pass "peers marks a registered, never-bound peer"; else fail "unbound peer not marked"; fi
-else skip_section "status --unacked, wait, succession adopt"; fi
+else skip_section "status --unacked, wait, succession adopt" "$NOPROC_WHY"; fi
 "$BUS" register idler --role leg --console con >/dev/null 2>&1
 if [ "$HAVE_PROC" = 1 ]; then
 as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread is read-only"; else fail "unread consumed"; fi
-else skip_section "unread of undelivered records"; fi
+else skip_section "unread of undelivered records" "$NOPROC_WHY"; fi
 # A corrupt cursor must still reach the delivery hook's read(), which persists the halt and its notice.
+if [ "$HAVE_FLOCK" = 1 ]; then
 curdir=$(find "$XDG_STATE_HOME" -type d -name cur | head -1)
 printf 'not json' > "$curdir/idler"; chmod 600 "$curdir/idler"
 out=$("$BUS" unread idler 2>&1)
 if [ "$out" = 1 ] && [ "$(cat "$curdir/idler")" = 'not json' ]; then pass "unread leaves a corrupt cursor for the hook to halt with its notice"; else fail "unread on a corrupt cursor: $out / $(cat "$curdir/idler")"; fi
+else skip_section "unread on a corrupt cursor" "$NOFLOCK_WHY"; fi
 
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"
