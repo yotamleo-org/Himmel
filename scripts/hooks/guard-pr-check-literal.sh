@@ -44,6 +44,13 @@
 # same chain already does. There is no bypass variable: the canonical fence is
 # always available and is the remedy.
 #
+# ponytail: commands are classified by this file's own text scan, not by the
+# bash-ast command positions, because the model reads a heredoc body, ${x@P}
+# and arithmetic as inert data where the write-channel, heredoc-body and
+# printf -v rows this suite pins deny it; upgrade path: give the positions
+# model a deny-on-unreadable mode for those forms, then move the argv and cwd
+# reads.
+#
 # The targets are EVERY gate-allowed scripts/cr script (the
 # `Bash(bash scripts/cr/...` rows of .claude/settings.json and the leg
 # profiles' gateAllow). The other thirteen are held to the same three

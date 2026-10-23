@@ -84,7 +84,7 @@ function fixture() {
   };
   const called = () => existsSync(paths.log);
   const record = () => readFileSync(join(dir, 'launches.jsonl'), 'utf8');
-  return { dir, config, snapshot, paths, save, env, good, run, status, called, record };
+  return { dir, now, config, snapshot, paths, save, env, good, run, status, called, record };
 }
 
 test('funded API account proceeds while the native bank is exhausted; child sees an isolated env', () => {
@@ -499,6 +499,68 @@ test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant fi
   assert.equal(third.status, 2);
   assert.match(third.stderr, /no account has room/);
   assert.equal(f.called(), false);
+});
+
+test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
+  f.save();
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-stale-1' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /WARN.*credit reading/);
+  assert.equal(f.called(), true);
+});
+
+test('HIMMEL-7264: auto routing launches with no snapshot file at all, inside the caps', () => {
+  const f = fixture();
+  rmSync(f.paths.snapshot);
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-nosnap-1' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /WARN.*credit reading/);
+  assert.equal(f.called(), true);
+});
+
+function ledgerAtCap(f) {
+  const accounts = {};
+  for (const [name, cap] of [['A', '1.00'], ['B', '2.00']]) {
+    accounts[name] = { organization_id: f.config.accounts[name].organization_id, cycle_id: f.config.accounts[name].cycle_id,
+      discrepancy: false, jobs: { 'spent-1': { status: 'settled', maximum_usd: cap, actual_usd: cap } } };
+  }
+  writeFileSync(f.paths.state, JSON.stringify({ version: 1, accounts }));
+}
+
+test('HIMMEL-7264: auto routing goes on past the bank gate when the old reading and the ledger leave no room', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
+  f.save();
+  ledgerAtCap(f);
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-over-1' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /spend estimate has no room/);
+  assert.equal(f.called(), true);
+});
+
+test('HIMMEL-7264: a caller-set optional flag does not let an explicit account launch without a credit reading', () => {
+  const f = fixture();
+  rmSync(f.paths.snapshot);
+  const r = f.run(f.good, { HIMMEL_API_SNAPSHOT_OPTIONAL: '1' });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /api bank gate said/);
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-7264: a credit-exhausted result marks the account and the next auto call rotates to the other', () => {
+  const f = fixture();
+  const env = keyFiles(f);
+  const dead = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
+  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-dry-1', STUB_OUT: dead, STUB_RC: '1' });
+  assert.equal(first.status, 1);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
+  assert.match(first.stderr, /credit exhausted/);
+  assert.equal(Number.isInteger(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.exhausted_at), true);
+  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-dry-2' });
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
 });
 
 test('HIMMEL-5433: auto routing refuses a caller-supplied key, which cannot follow the pick', () => {

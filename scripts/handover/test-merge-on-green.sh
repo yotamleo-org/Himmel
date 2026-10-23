@@ -4649,6 +4649,71 @@ MOG_BUMP_STUBCHK=noise MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
 assert_audit_has "5208-b: audited as a checker-blob refusal" "phase=checker-blob"
 no_merge_call "5208-b: no merge call"
 
+# --- 7001. Solo mode — an adopted project whose git config says
+# himmel.mergeMode=solo merges a green PR with resolved threads and no GO file;
+# the mode relaxes no gate and is refused wherever a GO is the rule. -----------
+solo_cfg_setup() { git -C "$1" config --local himmel.mergeMode "${SOLO_CFG-solo}"; }
+solo_clone_setup() {
+    solo_cfg_setup "$1" && mkdir -p "$1/scripts/handover/console-kit" \
+        && : > "$1/scripts/handover/console-kit/go.sh"
+}
+
+# 7001-a — solo config, no GO file: a green PR merges, pinned and audited as solo.
+MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001a" \
+    run_mog 0 "7001-a: solo mode, green PR, no GO file → merged"
+assert_merge_has "7001-a: merge pins the certified head" "--match-head-commit solo7001a"
+assert_audit_has "7001-a: the merge is audited as solo" "mode=solo"
+assert_audit_has "7001-a: MERGED recorded" "MERGED repo="
+
+# 7001-b — solo mode keeps the green gate: red checks or an open review thread
+# (check-ci exit 3) refuse with no merge call.
+MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001b" STUB_CI_RC=3 \
+    run_mog 14 "7001-b: solo mode, check-ci not green → exit 14"
+assert_gh_lacks "7001-b: no merge attempted" "pr merge"
+
+# 7001-c — a console-spawned leg is never solo: the GO is the rule even when the
+# project config says solo.
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001c" \
+    run_mog 17 "7001-c: solo config under a console leg → exit 17"
+assert_audit_has "7001-c: audited as a solo refusal" "phase=solo-console-leg"
+no_merge_call "7001-c: no merge call"
+
+# 7001-c2 — an explicitly falsy marker is no leg: solo reads it the way the
+# console-GO gate does.
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001i" \
+    run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"
+assert_audit_has "7001-c2: audited as solo" "mode=solo"
+
+# 7001-d — never in the himmel clone: an anchor carrying console-kit/go.sh
+# refuses the config rather than ignoring it.
+MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_clone_setup STUB_SHA="solo7001d" \
+    run_mog 17 "7001-d: solo config in the himmel clone → exit 17"
+assert_audit_has "7001-d: audited as a solo refusal" "phase=solo-himmel-clone"
+no_merge_call "7001-d: no merge call"
+
+# 7001-e — a value other than solo fails closed.
+SOLO_CFG=team MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001e" \
+    run_mog 17 "7001-e: himmel.mergeMode=team → exit 17"
+assert_audit_has "7001-e: audited as a solo refusal" "phase=solo-invalid-mode"
+no_merge_call "7001-e: no merge call"
+
+# 7001-e2 — a key that is present but empty is a value too, not an absent key.
+SOLO_CFG='' MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001h" \
+    run_mog 17 "7001-e2: himmel.mergeMode set to empty → exit 17"
+assert_audit_has "7001-e2: audited as a solo refusal" "phase=solo-invalid-mode"
+no_merge_call "7001-e2: no merge call"
+
+# 7001-f — no config: the default path is unchanged, merged and not labelled solo.
+MOG_ANCHOR_GIT=1 STUB_SHA="solo7001f" \
+    run_mog 0 "7001-f: no solo config → merged as before"
+assert_audit_lacks "7001-f: not audited as solo" "mode=solo"
+
+# 7001-g — the himmel path still needs its GO: a leg with no solo config and no
+# GO file is refused.
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 STUB_SHA="solo7001g" \
+    run_mog 17 "7001-g: console leg, no solo config, no GO → exit 17"
+assert_audit_has "7001-g: still the console-GO refusal" "phase=console-go"
+
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

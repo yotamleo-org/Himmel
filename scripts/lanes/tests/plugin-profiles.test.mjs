@@ -106,7 +106,7 @@ for (const name of LEG_PROFILES) {
     const settings = resolveProfile(REG, name);
     assert.ok(Array.isArray(settings.permissions?.allow), 'missing permissions.allow');
     assert.ok(settings.permissions.allow.length > 0);
-    assert.deepEqual(settings.permissions, { allow: expectedAllow(name) });
+    assert.deepEqual(settings.permissions, { allow: expectedAllow(name), ...(BUS_PROFILES.includes(name) ? { deny: REG.profiles[name].denyTools } : {}) });
     assert.notEqual(settings.permissions.allow, REG.gateAllow, 'callers must not mutate the registry');
   });
 }
@@ -160,7 +160,7 @@ test('absent/false gateAllow does not inject permissions into a leg', () => {
     registry.profiles['lane-impl'].gateAllow = value;
     assert.ok(!Object.hasOwn(resolveProfile(registry, 'lane-impl'), 'permissions'));
     registry.profiles['leg-impl'].gateAllow = value;
-    assert.deepEqual(resolveProfile(registry, 'leg-impl').permissions, { allow: BUS_TOOL_ALLOW }, 'only the bus tools, no gate rule');
+    assert.deepEqual(resolveProfile(registry, 'leg-impl').permissions, { allow: BUS_TOOL_ALLOW, deny: REG.profiles['leg-impl'].denyTools }, 'only the bus tools, no gate rule');
   }
 });
 
@@ -2076,4 +2076,59 @@ test('himmel-guard is on by default in the starter install and the user profile 
   assert.equal(tmpl.enabledPlugins['himmel-guard@himmel'], true, 'the starter install template must enable himmel-guard');
   assert.ok(!Object.hasOwn(tmpl.onDemandPlugins, 'himmel-guard@himmel'), 'himmel-guard is the always tier, not on-demand');
   assert.equal(resolveProfile(REG, 'user').enabledPlugins['himmel-guard@himmel'], true, 'the user profile must enable himmel-guard');
+});
+
+// A bare tool name in permissions.deny removes the definition from the request
+// payload (a scoped rule only blocks calls); disableWorkflows drops Workflow.
+const TRIM_DENY = ['NotebookEdit', 'DesignSync', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'ReportFindings', 'RemoteTrigger', 'Artifact'];
+const TRIM_NEVER = ['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent'];
+
+for (const name of BUS_PROFILES) {
+  test(`HIMMEL-4983: ${name} denies exactly the unused tools by bare name and disables Workflows`, () => {
+    const settings = resolveProfile(REG, name, { installed: [] });
+    assert.deepEqual(settings.permissions.deny, TRIM_DENY);
+    assert.equal(settings.disableWorkflows, true);
+    assert.ok(settings.permissions.deny.every((t) => /^[A-Za-z]+$/.test(t)), 'bare names only: a scoped rule leaves the definition in the payload');
+  });
+}
+
+test('HIMMEL-4983: no shipped profile denies a tool a leg needs, and non-leg profiles carry no trim', () => {
+  for (const [name, spec] of Object.entries(REG.profiles)) {
+    for (const t of spec?.denyTools ?? []) assert.ok(!TRIM_NEVER.includes(t), `${name} denies ${t}`);
+    if (!BUS_PROFILES.includes(name)) {
+      assert.equal(spec?.denyTools, undefined, `${name} must not carry denyTools`);
+      assert.equal(spec?.disableWorkflows, undefined, `${name} must not carry disableWorkflows`);
+    }
+  }
+  for (const name of ['console', 'console-relay', 'console-judge', 'release-manager', 'lane-impl']) {
+    const settings = resolveProfile(REG, name, { installed: [] });
+    assert.ok(!settings.permissions?.deny, `${name} must not emit permissions.deny`);
+    assert.ok(!Object.hasOwn(settings, 'disableWorkflows'), `${name} must keep Workflow`);
+  }
+});
+
+test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contract', () => {
+  const errs = (spec, name = 'leg-impl') => {
+    const reg = structuredClone(REG);
+    reg.profiles[name] = { ...reg.profiles[name], ...spec };
+    return validateRegistry(reg);
+  };
+  assert.deepEqual(errs({ denyTools: ['NotebookEdit'], disableWorkflows: true }), []);
+  assert.ok(errs({ denyTools: 'NotebookEdit' }).some((e) => /denyTools must be an array of bare tool names/.test(e)));
+  assert.ok(errs({ denyTools: ['Bash(rm *)'] }).some((e) => /denyTools must be an array of bare tool names/.test(e)), 'a scoped rule does not shrink the payload');
+  for (const t of TRIM_NEVER) assert.ok(errs({ denyTools: [t] }).some((e) => new RegExp(`denyTools .*${t}`).test(e)), `${t} must be refused`);
+  assert.ok(errs({ disableWorkflows: 'yes' }).some((e) => /disableWorkflows must be a boolean/.test(e)));
+  assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'user').some((e) => /"user" denyTools is restricted to leg-shaped profiles/.test(e)));
+  assert.ok(errs({ disableWorkflows: true }, 'console').some((e) => /"console" disableWorkflows is restricted to leg-shaped profiles/.test(e)));
+  assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'bare').some((e) => /"bare" must not declare denyTools/.test(e)));
+  for (const v of [true, false]) assert.ok(errs({ disableWorkflows: v }, 'bare').some((e) => /"bare" must not declare disableWorkflows/.test(e)), `bare refuses disableWorkflows: ${v}`);
+});
+
+test('HIMMEL-4983: a profile list denies a tool only when every member does', () => {
+  const both = resolveProfile(REG, 'leg-impl,leg-bus', { installed: [] });
+  assert.deepEqual(both.permissions.deny, TRIM_DENY);
+  assert.equal(both.disableWorkflows, true);
+  const mixed = resolveProfile(REG, 'leg-impl,design', { installed: [] });
+  assert.ok(!mixed.permissions?.deny, 'design may need Artifact: one member without the deny keeps every tool');
+  assert.ok(!Object.hasOwn(mixed, 'disableWorkflows'));
 });

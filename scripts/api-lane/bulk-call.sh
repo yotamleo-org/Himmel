@@ -40,13 +40,19 @@ tree_pids() {
   echo "$1"
 }
 
-# TERM the whole tree, then KILL whatever ignored it after a short grace
+# TERM the whole tree, wait (bounded) for the call to stop and settle its reservation, then KILL whatever
+# ignored it. A fixed short grace let the KILL land on claude-api.sh mid-settle on a loaded box.
 # shellcheck disable=SC2329 # invoked from the TERM trap string below
 kill_tree() {
-  local pids p
+  local pids p i=0 live=1
   pids="$(tree_pids "$1")"
   for p in $pids; do kill -TERM "$p" 2>/dev/null; done
-  sleep 2
+  # the call's own pid is this shell's child and stays a zombie until the wait below, so it is not polled
+  while [ "$live" -eq 1 ] && [ "$i" -lt 100 ]; do
+    live=0
+    for p in $pids; do [ "$p" = "$1" ] || ! kill -0 "$p" 2>/dev/null || live=1; done
+    [ "$live" -eq 0 ] || { sleep 0.1; i=$((i + 1)); }
+  done
   for p in $pids; do kill -KILL "$p" 2>/dev/null; done
 }
 

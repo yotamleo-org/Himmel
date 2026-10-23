@@ -425,7 +425,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       // `claude plugin install`; himmel-update keeps it current.
       if (item.id === 'obsidian-second-brain') {
         severity = 'n/a';
-        detail = `${probe.detail} — opt-in (claude plugin install obsidian-second-brain@himmel; update: claude plugin update obsidian-second-brain@himmel)`;
+        detail = `${probe.detail} — opt-in (claude plugin install obsidian-second-brain@himmel, which also enables it at user scope: run himmelctl profile disable obsidian-second-brain@himmel to return to the lean floor; update: claude plugin update obsidian-second-brain@himmel)`;
       }
       // three items a clean STARTER install left red although
       // nothing was wrong. Each is downgraded ONLY on a probe-flagged clean

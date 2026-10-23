@@ -3019,9 +3019,13 @@ echo "ok: luna-sources — an empty configured-sources list reads absent"
 # obsidian-second-brain is now a url-sourced @himmel marketplace plugin
 # installed with `claude plugin install obsidian-second-brain@himmel`;
 # the old ~/.claude/skills manual clone is no longer what the probe checks.
+# The lean floor keeps it OFF at user scope (settings-template.json): only the
+# vault/operator profiles enable it per session. The probe therefore expects
+# `false` at user scope; expecting `true` made a luna/all converge demand the
+# state himmel-doctor C15 warns about and the update reconcile turns back off.
 # A stale skills-dir clone alone reads absent (RED control).
 osb_home_present="$work/osb-home-present"; mkdir -p "$osb_home_present/.claude"
-printf '{"enabledPlugins":{"obsidian-second-brain@himmel":true}}\n' > "$osb_home_present/.claude/settings.json"
+printf '{"enabledPlugins":{"obsidian-second-brain@himmel":false}}\n' > "$osb_home_present/.claude/settings.json"
 outOSBp=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
@@ -3030,7 +3034,19 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
   env: Object.assign({}, process.env, { HOME: '$(winpath "$osb_home_present")' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
-echo "$outOSBp" | jq -e '.actual == "present"' >/dev/null || fail "settings-key enabledPlugins (obsidian-second-brain) present: (got: $outOSBp)"
+echo "$outOSBp" | jq -e '.actual == "present"' >/dev/null || fail "settings-key enabledPlugins (obsidian-second-brain) off at user scope must read present: (got: $outOSBp)"
+
+osb_home_on="$work/osb-home-on"; mkdir -p "$osb_home_on/.claude"
+printf '{"enabledPlugins":{"obsidian-second-brain@himmel":true}}\n' > "$osb_home_on/.claude/settings.json"
+outOSBo=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'obsidian-second-brain');
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { HOME: '$(winpath "$osb_home_on")' }) };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outOSBo" | jq -e '.actual == "absent"' >/dev/null || fail "settings-key enabledPlugins (obsidian-second-brain) on at user scope must read absent: (got: $outOSBo)"
 
 osb_home_absent="$work/osb-home-absent"; mkdir -p "$osb_home_absent/.claude/skills/obsidian-second-brain/.git"
 outOSBa=$("$node_bin" -e "
@@ -3042,7 +3058,7 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outOSBa" | jq -e '.actual == "absent"' >/dev/null || fail "settings-key enabledPlugins (obsidian-second-brain) absent: (got: $outOSBa)"
-echo "ok: settings-key enabledPlugins (obsidian-second-brain) present/absent"
+echo "ok: settings-key enabledPlugins (obsidian-second-brain) off present / on or missing absent"
 
 # ── cmd:codex_provisioned — ─────────────────────────
 # the fixture must plant a himmel-marketplace
