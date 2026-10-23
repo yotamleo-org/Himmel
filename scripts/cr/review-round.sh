@@ -659,11 +659,11 @@ EOF_SNAP
 # <from> had. Sets mf_merged_base.
 merge_forward_shape() {
     [ -n "$base_sha" ] || return 1
-    [ -n "$(git rev-list --merges "$1..$2" 2>/dev/null)" ] || return 1
+    [ -n "$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
     [ -z "$(git rev-list --no-merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
     _mf_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
     [ -n "$_mf_old" ] || return 1
-    for _mf_m in $(git rev-list --merges "$1..$2" 2>/dev/null); do
+    for _mf_m in $(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null); do
         _mf_p1="" _mf_p2="" _mf_p3=""
         read -r _mf_p1 _mf_p2 _mf_p3 <<EOF
 $(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-)

@@ -2438,6 +2438,21 @@ mfc_rc=0; start_round "$(git -C "$repo" rev-parse mfchain)" clean mfchain >/dev/
 assert_eq "$mfc_rc" "0" "control: a chain of two merges of main is admitted free"
 if [ -e "$git_dir/cr-review-rounds/mfchain.delta" ]; then fail "control: a chain of clean merges leaves the delta round unspent"; else pass "control: a chain of clean merges leaves the delta round unspent"; fi
 
+# control: a merge commit that main itself gained (a side branch merged with
+# --no-ff) comes in with the merge-forward; it is on main, not part of the shape.
+three_rounds mfbasemerge clean
+git -C "$repo" checkout -q -b mfbasemerge-side main
+printf 'side\n' > "$repo/mfbasemerge-side.txt"
+git -C "$repo" add mfbasemerge-side.txt
+git -C "$repo" commit -q -m "mfbasemerge side"
+git -C "$repo" checkout -q main
+git -C "$repo" merge -q --no-ff -m "main merges the side branch" mfbasemerge-side
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q mfbasemerge
+git -C "$repo" merge -q --no-edit main
+mfb_rc=0; start_round "$(git -C "$repo" rev-parse mfbasemerge)" clean mfbasemerge >/dev/null || mfb_rc=$?
+assert_eq "$mfb_rc" "0" "a merge-forward that imports a merge commit main gained is admitted free"
+
 # Clean merges are free of the delta round but not of the round count: after
 # the delta was spent they stop at the free-round cap and need a judge record.
 three_rounds mfcap suggestion
