@@ -273,14 +273,19 @@ reset "In Progress"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"
 mkdoc "$DOC2" WRAPPED; echo 0 > "$FX/lock.rc.${DOC2##*/}"
 fn "$K" --event wrapped --doc "$DOC2"
+check "no D6: the wrapped event was derived" "$(row event)" wrapped
+check "no D6: the record holds both legs" "$(jq -r '.docs | join(" ")' "$REC")" "$DOC $DOC2"
 check "no D6: one leg wraps with no PR while another holds a live lock" "$(ntrans)" 0
 check "no D6: the live leg keeps rule D5" "$(row rule)" D5
 check "no D6: the record follows the live leg" "$(jq -r '.doc + " " + .leg + " " + .state' "$REC")" "$DOC N1 live"
-reset "In Progress"; owned WRAPPED 0
+reset "In Progress"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"
-mkdoc "$DOC2" WRAPPED; echo 0 > "$FX/lock.rc.${DOC2##*/}"
+mkdoc "$DOC" WRAPPED; echo 0 > "$FX/lock.rc"
+mkdoc "$DOC2" WRAPPED
 fn "$K" --event wrapped --doc "$DOC2"
+check "D6: every recorded leg ended -> one move" "$(ntrans)" 1
 check "D6: every recorded leg ended -> To Do" "$(moved)" "transition $K To Do"
+check "D6: the move is the wrapped event's" "$(row event)/$(row rule)" wrapped/D6
 reset "In Progress"
 fn "$K" --event sweep
 check "D7: never owned -> no write" "$(ntrans)" 0
