@@ -121,8 +121,8 @@ export function judgePrompt(input: JudgeInput, skill: string): string {
     'for the key and version (see records[].ruling) when the op changes membership. Cite an O- record as',
     'authority only when its keys, op and versions cover the request exactly; otherwise authority is rm.',
     'The sector is the ticket\'s sector: take it from issues[].sector for the key, else from prior rulings of the',
-    'same key or chain; null only when none of them names one (that request is then refused alone).',
-    'Outcome is one of the skill\'s outcomes for the request\'s verb, and ground is always a non-empty string.',
+    'same key or chain; null only when none of them names one (that request is then a HOLD, below).',
+    'A ruling\'s outcome is one of the skill\'s outcomes for the request\'s verb, and its ground is always a non-empty string.',
     'When you cannot rule a request (no sector, or the input is missing something the skill needs), do not',
     'invent an outcome and do not leave ground null: answer {"req","outcome":"HOLD","reason"} for it, the reason',
     'saying what the chief must supply. Nothing is ruled for a HOLD and the request stays claimed.',
@@ -146,7 +146,11 @@ function decisionFault(x: unknown): string | null {
   if (x === null || typeof x !== 'object' || Array.isArray(x)) return '(not an object)';
   const d = x as Record<string, unknown>;
   // HOLD is the judge's refusal to rule: it has no placement, so only req and reason are checked.
-  for (const f of d.outcome === 'HOLD' ? ['req', 'reason'] : ['req', 'outcome', 'ground', 'reason']) if (!isStr(d[f])) return f;
+  for (const f of d.outcome === 'HOLD' ? ['req', 'reason'] : ['req', 'outcome', 'ground', 'reason']) {
+    const value = d[f];
+    if (!isStr(value)) return f;
+    if (d.outcome === 'HOLD' && f === 'reason' && !value.trim()) return f;
+  }
   if (d.outcome === 'HOLD') return null;
   if (!isStrOrNull(d.sector)) return 'sector';
   if (!['add', 'remove', 'move', 'keep', 'discharge', 'none'].includes(d.op as string)) return 'op';

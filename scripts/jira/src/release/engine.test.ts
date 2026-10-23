@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
-  JudgeReplyError, readMirror, rmRun, type Ctx, type Decision, type JiraPort, type Judge,
+  JudgeReplyError, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import type { IssueSnap } from './types.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
@@ -630,7 +630,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     ask('K-2');
     const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
       req: q.req, outcome: 'HOLD', reason: 'no sector for K-2',
-    }) as Decision));
+    })));
     expect(lines).toEqual(['HELD Q-R1-0001: no sector for K-2']);
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
     expect(existsSync(join(ctx().dir, 'rulings.jsonl'))).toBe(false);
@@ -639,6 +639,16 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
   it('offers the judge the live Jira snapshot of a claimed key the mirror lacks', async () => {
     declared();
     mirror([{ key: 'K-9', fixVersions: [] }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop' })]);
+  });
+
+  it('a mirror row without a sector is replaced by the live Jira snapshot', async () => {
+    declared();
+    mirror([{ key: 'K-2', fixVersions: [] }]);
     ask('K-2');
     jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
     let seen: unknown;

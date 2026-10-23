@@ -639,9 +639,14 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- rm-run: the release manager as one on-demand batch -------------------------------
 
-// outcome HOLD says the judge cannot rule the request: only req and reason count, nothing is ruled and
-// the request stays claimed.
-export interface Decision {
+// The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed.
+export interface HoldDecision {
+  req: string;
+  outcome: 'HOLD';
+  reason: string;
+}
+
+export interface RuledDecision {
   req: string;
   outcome: string;
   op: Op['kind'];
@@ -654,6 +659,10 @@ export interface Decision {
   authority?: Authority['kind'];
   ref?: string | null;
 }
+
+export type Decision = HoldDecision | RuledDecision;
+
+const isHold = (d: Decision): d is HoldDecision => d.outcome === 'HOLD';
 
 // Everything a ruling weighs, read from disk: a standing session kept nothing else that counts.
 export interface JudgeInput {
@@ -742,7 +751,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
         try {
           const d = decisions.find((x) => x?.req === q.req);
           if (!d) throw new Error('the judge returned no decision');
-          if (d.outcome === 'HOLD') {
+          if (isHold(d)) {
             lines.push(`HELD ${q.req}: ${d.reason}`);
             continue;
           }
