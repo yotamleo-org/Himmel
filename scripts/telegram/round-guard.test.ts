@@ -83,6 +83,14 @@ test("rounds: two branches at one head stay distinct, a later clean review on th
   expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(0);
 });
 
+test("rounds: interleaved branches are ordered by their response, not their first ledger row", () => {
+  const unavailable = JSON.stringify({
+    kind: "avail", branch: "fix/himmel-1540-a", head: "1111111abc", model: "claude", status: "unavailable",
+  });
+  const lines = [unavailable, avail("glm/himmel-1540-b", "2222222abc"), finding("fix/himmel-1540-a", "1111111abc")];
+  expect(countReviewedRounds(lines, "HIMMEL-1540")).toEqual({ rounds: 1, heads: ["1111111"] });
+});
+
 test("rounds: another ticket's branches never count toward this one", () => {
   const lines = [finding("fix/himmel-1541-a", "1111111abc"), finding("fix/himmel-1541-b", "2222222abc")];
   expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(0);
