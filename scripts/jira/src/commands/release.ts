@@ -6,8 +6,8 @@ import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { setFixVersion } from './versions.js';
 import {
-  apply, claim, declare, freeze, leaseAcquire, leaseRelease, operatorDecision, request as releaseRequest, rule, state, takeover,
-  type Ctx, type JiraPort, type StateOut,
+  apply, claim, declare, fold, freeze, leaseAcquire, leaseRelease, operatorDecision, reopen, request as releaseRequest, rule, state, takeover,
+  type Ctx, type FoldItem, type JiraPort, type StateOut,
 } from '../release/engine.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
 import type { Authority, Op, Verb } from '../release/types.js';
@@ -56,6 +56,14 @@ export function op(kind: string, from?: string, to?: string): Op {
   const kinds: Op['kind'][] = ['add', 'remove', 'move', 'keep', 'discharge', 'none'];
   if (!kinds.includes(kind as Op['kind'])) throw new Error(`release: --op is one of ${kinds.join('|')}`);
   return { kind: kind as Op['kind'], from_v: ver(from), to_v: ver(to) };
+}
+
+export function parseFoldFile(text: string): FoldItem[] {
+  return text.split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean).map((l, i) => {
+    const m = /^(\S+)\s+(\d+)$/.exec(l);
+    if (!m) throw new Error(`release fold: --file line ${i + 1} is not "<key> <pr>": ${l}`);
+    return { key: m[1], pr: Number(m[2]) };
+  });
 }
 
 export function renderState(s: StateOut): string {
@@ -140,6 +148,33 @@ export function registerRelease(program: Command): void {
     .description('Apply a ruling to Jira, read it back and post its receipt comment (idempotent)')
     .action(async (release: string, id: string) => {
       console.log((await apply(ctxFor(release), id)).line);
+    });
+
+  rel.command('fold <release>')
+    .description('Record finished tickets as delivered in a version: one signed events row per key (the console)')
+    .requiredOption('--to <version>', 'The version the work was delivered in')
+    .option('--key <key>', 'One issue key (with --pr)')
+    .option('--pr <n>', 'The delivering PR number (with --key)')
+    .option('--file <path>', 'Batch: one "<key> <pr>" per line; blank lines and # comments are ignored')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { to: string; key?: string; pr?: string; file?: string; mirrorRoot?: string }) => {
+      if (!o.file === !o.key || (o.key && !o.pr) || (o.file && o.pr)) throw new Error('release fold: give --key with --pr, or --file');
+      const items = o.file ? parseFoldFile(readBodyFile(o.file, '--file')) : [{ key: o.key as string, pr: Number(o.pr) }];
+      const out = fold(ctxFor(release, o.mirrorRoot), { to: o.to, items });
+      for (const e of out.folded) console.log(`FOLD ${e.key} → ${o.to} (PR ${e.pr})`);
+      for (const k of out.already) console.log(`ALREADY ${k}`);
+      for (const s of out.skipped) console.log(`SKIPPED ${s.key} terminal=${JSON.stringify(s.terminal)} resolution=${JSON.stringify(s.resolution)}`);
+      console.log(`FOLDED ${out.folded.length}, ALREADY ${out.already.length}, SKIPPED ${out.skipped.length}`);
+      if (out.skipped.length) process.exitCode = 2;
+    });
+
+  rel.command('reopen <release>')
+    .description('Reverse a fold: the key counts against the version again (the console)')
+    .requiredOption('--key <key>', 'Issue key')
+    .requiredOption('--from <version>', 'The version the key was folded into')
+    .action((release: string, o: { key: string; from: string }) => {
+      const e = reopen(ctxFor(release), { key: o.key, from: o.from });
+      console.log(`REOPEN ${e.key} ← ${o.from}`);
     });
 
   const lease = rel.command('lease').description('The release-manager ownership lease');

@@ -31,8 +31,10 @@ function rule(id: string, key: string, kind: RulingRow['op']['kind'], from_v: st
     authority: { kind: 'rm', ref: null }, phase: 'applied', ...extra,
   };
 }
-const issue = (key: string, fixVersions: string[], status = 'To Do'): IssueSnap =>
-  ({ key, status, type: 'Task', priority: 'Medium', fixVersions, resolution: null });
+const issue = (key: string, fixVersions: string[], status = 'To Do', extra: Partial<IssueSnap> = {}): IssueSnap =>
+  ({ key, status, type: 'Task', priority: 'Medium', fixVersions, resolution: null, ...extra });
+const closed = (key: string, fixVersions: string[], resolution: string | null = 'Done'): IssueSnap =>
+  issue(key, fixVersions, 'Closed', { statusCategory: 'Done', resolution });
 
 function input(over: Partial<ReduceInput> & { rulingRows?: RulingRow[]; opRows?: OperatorRow[]; eventRows?: EventRow[];
   issueList?: IssueSnap[] }): ReduceInput {
@@ -213,6 +215,33 @@ describe('release reducer (HIMMEL-6796)', () => {
     const reopen: EventRow = { ts: '2026-10-21T11:00:00.000Z', kind: 'reopen', key: 'K-5', from: null, to: null };
     const r = reduce(input({ eventRows: [fold, reopen], issueList: done, mirrorSync: '2026-10-21T12:00:00.000Z' }));
     expect(r.leaks.unauthorized).toEqual(['K-5@v1']);
+  });
+
+  it('a Closed key in the Done status category is terminal Done, and a fold makes it bookkeeping (HIMMEL-7158)', () => {
+    const fold: EventRow = { ts: TS, kind: 'fold', key: 'K-5', from: null, to: 'v1', pr: 12 };
+    const issueList = [closed('K-1', ['v1']), closed('K-5', ['v1'], null)];
+    const s = reduce(input({ eventRows: [fold], issueList, mirrorSync: '2026-10-21T12:00:00.000Z' }));
+    expect(recordOf(s, 'K-1', 'v1')?.terminal).toBe('Done');
+    expect(s.burndown.v1.baseline_open).toBe(0);
+    expect(recordOf(s, 'K-5', 'v1')).toMatchObject({ terminal: 'Done', bookkeeping: 'fold:12' });
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('a Closed key with a resolution outside empty, Done and Fixed is terminal but never folds (HIMMEL-7158)', () => {
+    const fold: EventRow = { ts: TS, kind: 'fold', key: 'K-5', from: null, to: 'v1', pr: 12 };
+    for (const resolution of ['Cannot Reproduce', 'Obsolete', 'Never Seen Before']) {
+      const issueList = [issue('K-1', ['v1']), closed('K-5', ['v1'], resolution)];
+      const s = reduce(input({ eventRows: [fold], issueList, mirrorSync: '2026-10-21T12:00:00.000Z' }));
+      expect(recordOf(s, 'K-5', 'v1')).toMatchObject({ terminal: 'Other', bookkeeping: null });
+      expect(s.leaks.unauthorized).toEqual(['K-5@v1']);
+    }
+  });
+
+  it('a Closed key resolved Won\'t Do or Duplicate keeps its own terminal and never folds (HIMMEL-7158)', () => {
+    const issueList = [issue('K-1', ['v1']), closed('K-5', ['v1'], "Won't Do"), closed('K-6', ['v1'], 'Duplicate')];
+    const s = reduce(input({ issueList }));
+    expect(recordOf(s, 'K-5', 'v1')?.terminal).toBe("Won't Do");
+    expect(recordOf(s, 'K-6', 'v1')?.terminal).toBe('Duplicate');
   });
 
   it('burn-down counts baseline and admitted open keys per version', () => {

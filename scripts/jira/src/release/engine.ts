@@ -4,7 +4,7 @@ import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
-import { baselineId, effectOn, reduce, recordOf, scopeOk, unknownState, type ReleaseState } from './reducer.js';
+import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -142,7 +142,8 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
     const fm = frontmatter(readFileSync(join(root, name), 'utf8'));
     if (typeof fm.key !== 'string') continue;
     issues.set(fm.key, {
-      key: fm.key, status: String(fm.status ?? ''), type: String(fm.type ?? ''), priority: String(fm.priority ?? ''),
+      key: fm.key, status: String(fm.status ?? ''), statusCategory: typeof fm.statusCategory === 'string' ? fm.statusCategory : null,
+      type: String(fm.type ?? ''), priority: String(fm.priority ?? ''),
       fixVersions: Array.isArray(fm.fixVersions) ? fm.fixVersions.map(String) : [],
       resolution: typeof fm.resolution === 'string' ? fm.resolution : null,
     });
@@ -235,6 +236,71 @@ export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorR
   operatorFence(ctx);
   if (!isAbsolute(o.doc)) throw new Error('release operator takeover: the successor doc must be an absolute path');
   return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'takeover', decision: null, epoch: o.epoch, doc: o.doc }));
+}
+
+// --- fold: a finished ticket recorded as delivered in a version (the console) ---------
+
+export interface FoldItem { key: string; pr: number }
+export interface FoldSkip { key: string; terminal: string; resolution: string }
+export interface FoldOut { folded: EventRow[]; already: string[]; skipped: FoldSkip[] }
+
+const ISSUE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+
+const lastBookkeeping = (events: EventRow[], key: string) =>
+  [...events].reverse().find((e) => e.key === key && (e.kind === 'fold' || e.kind === 'reopen'));
+
+function foldVersion(ctx: Ctx, l: Loaded, v: string): void {
+  if (!l.decl.versions.includes(v)) throw new Error(`release: ${v} is not a version of ${ctx.release}`);
+  if (l.events.bad.length) throw new Error(`release: events.jsonl does not verify (${l.events.bad[0]})`);
+}
+
+// One signed events row per key. Only a key the mirror reads as terminal Done folds;
+// every other key is returned in `skipped` with its terminal and resolution, and stays
+// a leak until a ruling moves it out of the version. A key already folded to this
+// version under this PR is skipped silently, so a batch can be re-run.
+export function fold(ctx: Ctx, o: { to: string; items: FoldItem[] }): FoldOut {
+  operatorFence(ctx);
+  for (const it of o.items) {
+    if (!ISSUE_KEY.test(it.key)) throw new Error(`release fold: '${it.key}' is not an issue key`);
+    if (!Number.isInteger(it.pr) || it.pr <= 0) throw new Error(`release fold: ${it.key} needs a positive PR number`);
+  }
+  return locked(ctx, (l) => {
+    foldVersion(ctx, l, o.to);
+    const { issues } = readMirror(ctx.mirrorRoot);
+    if (!issues) throw new Error('release fold: the Jira mirror is unreadable; sync it first');
+    const eventsPath = f(ctx, 'events.jsonl');
+    const seen = [...l.events.verified];
+    const out: FoldOut = { folded: [], already: [], skipped: [] };
+    for (const { key: k, pr } of o.items) {
+      const issue = issues.get(k);
+      const terminal = terminalOf(issue);
+      if (terminal !== 'Done') {
+        out.skipped.push({ key: k, terminal: terminal ?? (issue ? 'open' : 'not-in-mirror'), resolution: issue?.resolution ?? 'none' });
+        continue;
+      }
+      const last = lastBookkeeping(seen, k);
+      if (last?.kind === 'fold' && last.to === o.to && last.pr === pr) {
+        out.already.push(k);
+        continue;
+      }
+      const row = appendChain<EventRow>(eventsPath, l.k, { ts: ts(ctx), kind: 'fold', key: k, from: null, to: o.to, pr });
+      seen.push(row);
+      out.folded.push(row);
+    }
+    return out;
+  });
+}
+
+// The twin of fold: the newest bookkeeping row of the key must be a fold into `from`.
+export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
+  operatorFence(ctx);
+  if (!ISSUE_KEY.test(o.key)) throw new Error(`release reopen: '${o.key}' is not an issue key`);
+  return locked(ctx, (l) => {
+    foldVersion(ctx, l, o.from);
+    const last = lastBookkeeping(l.events.verified, o.key);
+    if (last?.kind !== 'fold' || last.to !== o.from) throw new Error(`release reopen: ${o.key} has no fold into ${o.from} to reverse`);
+    return appendChain<EventRow>(f(ctx, 'events.jsonl'), l.k, { ts: ts(ctx), kind: 'reopen', key: o.key, from: o.from, to: null });
+  });
 }
 
 // --- the request queue (the console writes, the RM claims) ---------------------
