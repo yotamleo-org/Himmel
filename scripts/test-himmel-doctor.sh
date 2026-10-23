@@ -3981,6 +3981,33 @@ if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED'; th
 else
     fail "C33 failed-action -> $c33_line"
 fi
+# a failed row whose error carries the lane's refusal names that reason.
+printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":40,"action":"failed","pr":null,"duration_s":5,"error":"semantic-update.sh exited 1: semantic-update: graphify extract exited 1 (refused: stale-snapshot) -- graph and manifest untouched"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'refused: stale-snapshot'; then
+    pass "C33 -> WARN names the ledger's refusal reason"
+else
+    fail "C33 refusal reason -> $c33_line"
+fi
+# a cadence alert whose Telegram send failed is its own WARN.
+mkdir -p "$t/home/.himmel/state"
+printf '2026-10-23T14:35:00Z graph-cadence semantic-failed\n' > "$t/home/.himmel/state/cadence-alert-send-failed"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+al_line="$(printf '%s' "$out" | grep 'C33-alert-delivery')"
+if grepq "$al_line" 'WARN C33-alert-delivery' && grepq "$al_line" -F 'graph-cadence'; then
+    pass "C33 -> WARN when the last cadence alert could not be delivered"
+else
+    fail "C33 alert delivery -> $al_line"
+fi
+rm -f "$t/home/.himmel/state/cadence-alert-send-failed"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+if grep -q 'C33-alert-delivery' <<< "$out"; then
+    fail "C33 alert delivery reported with no failed-send marker"
+else
+    pass "C33 alert delivery is silent without the marker"
+fi
 # WARN never FAILs the scripted exit code (mirrors C7/C8/C9/C10's own
 # contract) — assert the overall run still exits 0.
 rc=0; CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color >/dev/null 2>&1 || rc=$?

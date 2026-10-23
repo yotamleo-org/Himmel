@@ -21,3 +21,6 @@
 ^scripts/ci/hardcoded-env-values-allow\.txt$
 ^scripts/guardrails/leak-classes\.sh$
 ^scripts/hooks/check-settings-portability\.sh$
+# fork registry and pin rows carry repo slugs by design (HIMMEL-7226); JSON cannot hold an env-literal-ok marker
+^marketplace/\.claude-plugin/marketplace\.json$
+^scripts/guardrails/himmel-adapters\.json$

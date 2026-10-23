@@ -1,6 +1,6 @@
 # Daily loop walkthrough
 
-Audience: contributor (the full PR loop of a himmel checkout). An adopter route is still to come. Owner of the rewrite: HIMMEL-7213.
+Audience: contributor (the full PR loop of a himmel checkout), and an adopter running himmel in their own repo, who takes the short [adopter route](#adopter-route-your-own-repo). Owner of the rewrite: HIMMEL-7213.
 
 > **Prerequisites:**
 > 1. himmel installed and configured on your machine: see
@@ -13,12 +13,60 @@ Audience: contributor (the full PR loop of a himmel checkout). An adopter route 
 >    `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). Every hook behaviour
 >    below fires *inside* a session; the steps assume you are already in one.
 
-This page walks one complete loop, a toy change from worktree creation
+This page has two routes. Take the one that matches where you work.
+
+| You work in | Take | What your repo has |
+|---|---|---|
+| your own repo, with himmel installed by `himmelctl install` or `adopt.sh` | [the adopter route](#adopter-route-your-own-repo), seven short steps | The worktree scripts, the `commit-msg` and `pre-push` git hooks, the edit-on-main guard and the merge gate. No review-owed marker, no attestation trailers, and few of the slash commands (which ones: [commands-catalog.md](commands-catalog.md#which-commands-reach-an-adopted-repo)). |
+| a checkout of himmel itself | [the contributor walkthrough](#contributor-walkthrough-the-full-loop-in-a-himmel-checkout) | Everything, including the review gate and the attestation trailers. |
+
+The agent loop (chief, workers, judges) is drawn out
+in [the development graph](guide/dev-graph.html).
+
+---
+
+## Adopter route: your own repo
+
+The install ([setup/install.md](setup/install.md)) is committed on your
+default branch, and you opened `claude` at the repo root; the edit guard fires
+only inside a session, while the `commit-msg` and `pre-push` git hooks run for
+every commit and push. The loop is the git you already use with a few guards
+around it, and you run scripts rather than slash commands.
+
+1. **Cut a worktree.** An edit on the default branch is refused by the
+   `block-edit-on-main` hook: that is the guard telling you where to work, not
+   a fault (the contributor walkthrough's step 1 shows the message). Run
+   `bash scripts/worktree.sh new feat/<slug>`, then `cd .claude/worktrees/feat+<slug>`.
+2. **Edit and commit** in the worktree. The `commit-msg` hook wants a
+   conventional subject, `type: message`, and a ticket reference: `#<number>`
+   unless `JIRA_PROJECT_KEY` is set. `TICKET_ID_REQUIRED=0` or `TICKET_ID_PATTERN`
+   changes that ([how](setup/install.md#adapting-himmel-to-a-repo-that-is-not-himmel)).
+3. **Push** with `git push -u origin <branch>`. The `pre-push` hook refuses a
+   push to the default branch and a force-push.
+4. **Open the PR** with `gh pr create`, or in your forge's UI.
+5. **Wait for CI** with `bash scripts/check-ci.sh <pr>`. Exit 0 means every
+   check is green and no review thread is unresolved.
+6. **Merge** with `gh pr merge --squash`. The installed merge gate refuses
+   while CI is red or pending or a reviewer finding is open ([step 8](#8-merge)
+   lists the gates). The first adoption PR is merged by you outside Claude
+   ([install.md](setup/install.md#what-you-are-opting-into)).
+7. **Prune** with `bash scripts/clean.sh`, which removes worktrees whose PR merged.
+
+Slash commands in an adopted repo: `/cr-scores`, `/cr-tune` and
+`/cr-learnings-refresh` (copied in by the install), and the commands of the
+plugins in the `lean` plugin set (`/handover-setup`, `/chief`, `/himmel-doctor`
+and the rest of the `himmel-ops` plugin). `/worktree`, `/clean`, `/pr-check` and
+`/check-ci` are not among them; steps 1, 5 and 7 above are their scripts.
+
+---
+
+## Contributor walkthrough: the full loop in a himmel checkout
+
+This walks one complete loop, a toy change from worktree creation
 to handover, and explains every hook and gate you will hit along the way.
 By the end you will have run the real workflow on a real branch.
 
-This is the solo loop. The agent loop (chief, workers, judges) is drawn out
-in [the development graph](guide/dev-graph.html).
+This is the solo loop.
 
 ---
 
@@ -47,7 +95,7 @@ The ticket moves with the work. With the `ticket` step in
 
 Before you create a worktree, try editing a file in the primary checkout
 (i.e., while Claude's working directory is the repo root with `HEAD ==
-main`). Claude will attempt the edit and immediately hit:
+main`). The edit never happens. Claude sees:
 
 ```
 ⛔ block-edit-on-main: refusing to edit `docs/contributing.md` — its repo is on main/master.
@@ -57,37 +105,15 @@ Feature work must go in a worktree per CLAUDE.md. To start one:
 
     bash scripts/worktree.sh feat/<scope>   # create the worktree
     cd .claude/worktrees/feat+<scope>   # switch in the existing shell
-
-Or to bypass for an emergency hotfix, set EDIT_ON_MAIN_OK=1 in the shell
-that launched Claude Code (the hook reads its environment, so per-edit
-prefix syntax cannot work — Claude Code cannot inject env vars into a
-hook process). Example:
-
-    EDIT_ON_MAIN_OK=1 claude
-
-The bypass lasts for the entire Claude Code session (it's session-sticky,
-not per-edit). Restart Claude without the env var to re-enable the guard.
-
-Or, if this is a single-writer repo you always commit to main directly
-(a personal vault / state repo), opt it out locally:
-
-    touch "/abs/path/.single-writer"
-
-(Local + gitignored — never committed, so it cannot weaken a shared clone.)
-
-Or temporarily comment out the hook stanza in .claude/settings.json.
 ```
 
-This is a **PreToolUse hook** (`scripts/hooks/block-edit-on-main.sh`) that
-fires on every Edit/Write/MultiEdit tool call. It exits 2 so Claude sees
-the error and the edit never happens. The message tells you exactly what
-to do: create a worktree first.
-
-**The bypass** (`EDIT_ON_MAIN_OK=1`) must be set in the shell that
-launched `claude`, because a per-command prefix cannot reach the hook
-process. The bypass is session-sticky on purpose, so you cannot toggle it
-per-edit by accident. The per-repo alternative is the
-gitignored `.single-writer` marker shown above.
+The full message goes on to list the bypasses
+([below](#bypassing-the-main-guard)). It comes from a **PreToolUse hook**
+(`scripts/hooks/block-edit-on-main.sh`) that fires on every
+Edit/Write/MultiEdit tool call and exits 2, so Claude sees the error and the
+edit is dropped. Read it as the workflow naming where to work: one change, one
+branch, one worktree, so the primary checkout stays on a known-good main. The
+next step does exactly what the message says.
 
 ---
 
@@ -131,6 +157,19 @@ well-formed docs change.
 > the change and watch it pass. The review in step 6 runs every suite that
 > references a file you touched (`scripts/cr/impacted-suites.sh`), so a
 > change that breaks a neighbour shows up before the PR opens.
+
+### Bypassing the main guard
+
+Some work belongs on main: an emergency hotfix, or a personal vault or state
+repo you always commit to directly. Two switches cover them, and neither is
+for a feature change.
+
+- **Per session:** `EDIT_ON_MAIN_OK=1 claude`. It must be set in the shell that
+  launched Claude Code, because a per-command prefix cannot reach the hook
+  process. It is session-sticky on purpose, so you cannot toggle it per edit by
+  accident; restart Claude without it to turn the guard back on.
+- **Per repo:** `touch "<repo>/.single-writer"`. Local and gitignored, so it is
+  never committed and cannot weaken a shared clone.
 
 ---
 

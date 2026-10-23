@@ -24,6 +24,9 @@ CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 
 refuse() { echo "claude-api: refused: $*" >&2; exit 2; }
 
+# only the auto route below may relax the credit-reading requirement; a caller's value never does
+unset HIMMEL_API_SNAPSHOT_OPTIONAL
+
 # --- lane opt-in and credentials (presence checks only) ---
 [ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
 case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A or B (or auto)" ;; esac
@@ -89,6 +92,15 @@ case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h"
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET")"
   case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
+  # an absent or old credit reading never blocks an auto route: the per-call budget bounds each call, our own estimate
+  # only orders the accounts, Anthropic's own credit answer decides the rest, and a credit-exhausted answer rotates (see below)
+  export HIMMEL_API_SNAPSHOT_OPTIONAL=1
+  case "$PICK" in *'"snapshot_stale":true'*)
+    echo "claude-api: WARN: no fresh credit reading; routing on our own spend estimate, the per-call budget bounds this call and Anthropic's credit answer decides" >&2 ;;
+  esac
+  case "$PICK" in *'"over_estimate":true'*)
+    echo "claude-api: WARN: our own spend estimate has no room left on either account; the call goes on and the API's credit answer decides" >&2 ;;
+  esac
   HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | sed -n 's/.*"account":"\([AB]\)".*/\1/p')"
   [ -n "$HIMMEL_API_ACCOUNT" ] || refuse "auto routing returned no account"
 fi
@@ -244,7 +256,7 @@ trap on_signal TERM INT HUP
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
-  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
+  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
   -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
@@ -277,6 +289,15 @@ elif [ "$RC" -ne 0 ]; then
   settle_dead "$COST"; OUTCOME=failed
 else
   state unknown --id "$JOB_ID" >/dev/null; OUTCOME=unknown
+fi
+
+# --- a credit-exhausted answer marks the account; later auto picks rotate to the other one ---
+if [ "$RC" -ne 0 ] && grep -qi 'credit balance is too low' "$OUT" 2>/dev/null; then
+  if state exhausted >/dev/null 2>&1; then
+    echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted; auto routing rotates to the other account" >&2
+  else
+    echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted, but the marker was not saved; the next auto call may pick it again" >&2
+  fi
 fi
 
 # --- secret-free launch record (no key, no prompt) ---

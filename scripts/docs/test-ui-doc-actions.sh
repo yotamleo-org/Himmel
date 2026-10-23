@@ -45,5 +45,28 @@ for p in README.md docs/why-himmel.md docs/getting-started.md docs/setup/install
   esac
 done
 
+# Passthrough guide pages are copied raw, so a relative .md link only resolves on the site when
+# that page is allowlisted; anything else must be a GitHub URL.
+for g in "$ROOT/docs/guide/installer-journey.html" "$ROOT/docs/guide/loops-and-graphs.html"; do
+  while IFS= read -r href; do
+    if grep -qxF "$href" "$ROOT/site/allowlist.txt"; then ok; else bad "$(basename "$g") links ../$href, which the site does not build (not in site/allowlist.txt)"; fi
+  done < <(grep -oE 'href="\.\./[^"#]+\.md(#[^"]*)?"' "$g" | sed -E 's/^href="\.\.\///; s/(#[^"]*)?"$//')
+done
+
+# A nested fence closed early leaves the rest of the page inside a code block, so the site loses
+# every later heading anchor; the schema page must end outside any fence.
+SCHEMA="$ROOT/docs/luna/end-session-wiki-schema.md"
+fence_state=$(python3 -c '
+import re,sys
+fence=0
+for line in open(sys.argv[1], encoding="utf-8"):
+    m=re.match(r"^(`{3,})(.*)$", line.rstrip("\n"))
+    if not m: continue
+    if not fence: fence=len(m.group(1))
+    elif len(m.group(1))>=fence and not m.group(2).strip(): fence=0
+print("open" if fence else "closed")
+' "$SCHEMA")
+if [ "$fence_state" = closed ]; then ok; else bad "docs/luna/end-session-wiki-schema.md ends inside a code fence (nested fence closed early)"; fi
+
 echo "test-ui-doc-actions: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

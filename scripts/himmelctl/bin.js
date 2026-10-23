@@ -1760,6 +1760,10 @@ async function askVm(ask, existing) {
 // --with-codex/--with-hermes. `devOverlay` is never a
 // question — it is set only by the --contribute CLI flag, threaded straight
 // into buildAnswers() below.
+// Every `await ask*(` call here ends in `// step: <id>`, the id of the
+// docs/guide/installer-journey.html step it belongs to (follow-ups reuse their
+// step's id); scripts/docs/test-site-guides.sh derives the guide's steps from
+// those markers, so a question added without one fails that suite.
 async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
   const ask = makeAsk(rl);
@@ -1769,31 +1773,31 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   // which preset is picked (see PROFILE_PRESETS' own comment).
   // operator is the maintainer machine's own seed: offered only with --contribute
   const profileOpts = devOverlay ? ['starter', 'luna', 'operator', 'custom'] : ['starter', 'luna', 'custom'];
-  const profile = await askNumberedEnum(ask, 'profile', profileOpts, 'starter', PROFILE_HELP);
+  const profile = await askNumberedEnum(ask, 'profile', profileOpts, 'starter', PROFILE_HELP); // step: profile
   const preset = PROFILE_PRESETS[profile];
 
   // 2. scope — universal now (the old adopter-only gate died with role).
   const scopeDefault = defaultScope || 'project';
-  const scope = await askNumberedEnum(ask, 'scope', ['project', 'user'], scopeDefault, SCOPE_HELP);
+  const scope = await askNumberedEnum(ask, 'scope', ['project', 'user'], scopeDefault, SCOPE_HELP); // step: scope
 
   // 3. vault. T2 collects mode+path only (non-luna->luna conversion is O1,
   //    deferred out of P1).
-  const vaultMode = await askNumberedEnum(ask, 'vault', ['none', 'default-template', 'existing'], preset.vaultMode, VAULT_HELP);
+  const vaultMode = await askNumberedEnum(ask, 'vault', ['none', 'default-template', 'existing'], preset.vaultMode, VAULT_HELP); // step: vault
   let vaultPath = '';
   if (vaultMode !== 'none') {
-    vaultPath = await askPath(ask, '? vault path (default: ~/Documents/luna)\n> ', '~/Documents/luna');
+    vaultPath = await askPath(ask, '? vault path (default: ~/Documents/luna)\n> ', '~/Documents/luna'); // step: vault
   }
 
   // 4. handover. T2 collects only; the write is T4.5.
-  const handoverMode = await askNumberedEnum(ask, 'handover', ['inline', 'external'], preset.handoverMode, HANDOVER_HELP);
+  const handoverMode = await askNumberedEnum(ask, 'handover', ['inline', 'external'], preset.handoverMode, HANDOVER_HELP); // step: handover
   let handoverPath = '';
   let handoverRegister = '';
   if (handoverMode === 'external') {
     const hd = process.env.HANDOVER_DIR || '~/.claude/handover-state';
-    handoverPath = await askPath(ask, `? handover path (default: ${hd})\n> `, hd);
+    handoverPath = await askPath(ask, `? handover path (default: ${hd})\n> `, hd); // step: handover
     // Ask-first: only when the registry has no entry for this repo yet.
     if (!handoverRegistered()) {
-      handoverRegister = await askNumberedEnum(ask, 'handover register', ['yes', 'no'], 'yes', HANDOVER_REGISTER_HELP);
+      handoverRegister = await askNumberedEnum(ask, 'handover register', ['yes', 'no'], 'yes', HANDOVER_REGISTER_HELP); // step: handover
     }
   }
 
@@ -1806,11 +1810,11 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   // 6. lanes. --lanes already answered it; otherwise prompt.
   const base = opts.lanes !== null && opts.lanes !== undefined
     ? opts.lanes
-    : await askLanes(ask, adopterProfileLib.DEFAULT_LANE_IDS);
+    : await askLanes(ask, adopterProfileLib.DEFAULT_LANE_IDS); // step: lanes
   const lanes = adopterProfileLib.applyOptIns(base, opts);
   // 7. alwaysOn. Decides checklist-vs-pointer only — NOTHING is executed
   //    either way (rescope: hardening is printed, never run).
-  const ao = await askNumberedEnum(ask, 'always-on machine (unattended/scheduled runs)', ['yes', 'no'], preset.alwaysOn, ALWAYS_ON_HELP);
+  const ao = await askNumberedEnum(ask, 'always-on machine (unattended/scheduled runs)', ['yes', 'no'], preset.alwaysOn, ALWAYS_ON_HELP); // step: always
   const alwaysOn = ao === 'yes';
 
   // 8 (installer v1 fix, spec deviation): cadences is PER-ROW
@@ -1840,9 +1844,9 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // keeps its question sequence.
     if (offeredRows.some((r) => r.vm_proof)) {
       try { existingDoc = lunaConfigLib.inspect().doc; } catch (_e) { existingDoc = undefined; }
-      vm = await askVm(ask, existingDoc && existingDoc.vm);
+      vm = await askVm(ask, existingDoc && existingDoc.vm); // step: vm
     }
-    cadences = await askCadences(ask, lanes, vaultMode, preset.cadenceIds, vm, existingDoc, hideCadenceIds);
+    cadences = await askCadences(ask, lanes, vaultMode, preset.cadenceIds, vm, existingDoc, hideCadenceIds); // step: cadences
     // RETASK stage1-build-6d2e an earlier fix (extended to
     // every declined UNIT, not just pipeline): declining a unit writes its
     // disposition as 'off' but does NOT, by itself, disarm anything already
@@ -1862,7 +1866,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
       // (same as installPersistence below) — deliberately NOT
       // askNumberedEnum(); it keeps its full explicit yes/no wording, no
       // bare number-only accept.
-      const disarmAns = await askEnum(ask, `? disarm any existing cadence jobs now for: ${declinedIds.join(', ')} (each unit's own disarm subcommand; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no');
+      const disarmAns = await askEnum(ask, `? disarm any existing cadence jobs now for: ${declinedIds.join(', ')} (each unit's own disarm subcommand; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no'); // step: cadences
       disarmCadence = disarmAns === 'yes';
     }
   }
@@ -1881,7 +1885,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     for (const line of adopterProfileLib.phiChecklistLines()) console.log(line);
     // PHI declaration — deliberately NOT askNumberedEnum;
     // a trust/consent declaration keeps its explicit yes/no wording.
-    const phiAns = await askEnum(ask, '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)\n> ', ['yes', 'no'], 'no');
+    const phiAns = await askEnum(ask, '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)\n> ', ['yes', 'no'], 'no'); // step: privacy
 
     // a SEPARATE declaration — the vault being installed above
     // may itself carry no PHI, but the operator can still keep an unrelated
@@ -1899,13 +1903,13 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // JSON.stringify drops it, so a declined/never-reached answer never
     // fabricates an empty path on disk (same discipline as phiDeclared next
     // to it).
-    const phiVaultAns = await askEnum(ask, "? do you keep a personal/medical vault this machine's agents must never send to cloud backends? [yes|no] (default: no)\n> ", ['yes', 'no'], 'no');
+    const phiVaultAns = await askEnum(ask, "? do you keep a personal/medical vault this machine's agents must never send to cloud backends? [yes|no] (default: no)\n> ", ['yes', 'no'], 'no'); // step: privacy
     let phiVaultPath;
     let createSalusMarker;
     if (phiVaultAns === 'yes') {
       let p;
       for (;;) {
-        p = await askPath(ask, '? personal/medical vault path\n> ', '');
+        p = await askPath(ask, '? personal/medical vault path\n> ', ''); // step: privacy
         if (p.trim() === '' || isValidPhiVaultPathAnswer(p)) break;
         // re-prompt with a reason rather than abort
         // same retry-loop convention askLanes() already uses above (loop +
@@ -1931,7 +1935,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
         // himmelctl's OWN config dir, not the vault, so recording the
         // declaration there needs no separate consent (same posture as
         // phiDeclared -> ~/.himmel/config.json just below).
-        const salusAns = await askEnum(ask, `? create the .salus marker at ${p} now (marks this vault PHI to every local guard that checks it; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no');
+        const salusAns = await askEnum(ask, `? create the .salus marker at ${p} now (marks this vault PHI to every local guard that checks it; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no'); // step: privacy
         createSalusMarker = salusAns === 'yes';
       }
     }
@@ -1944,20 +1948,20 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // was always asked on this path.
     luna = { cadenceEnabled: cadences.pipeline === 'armed', phiDeclared: phiAns === 'yes', disarmCadence: disarmCadence, phiVaultPath: phiVaultPath, createSalusMarker: createSalusMarker };
 
-    const bridgeAns = await askNumberedEnum(ask, 'configure the telegram bridge (voice/text ingestion)?', ['off', 'on'], preset.bridge, BRIDGE_HELP);
+    const bridgeAns = await askNumberedEnum(ask, 'configure the telegram bridge (voice/text ingestion)?', ['off', 'on'], preset.bridge, BRIDGE_HELP); // step: bridge
     if (bridgeAns === 'on') {
       const bd = defaultBridgeSectionAnswer();
-      const envPath = await askPath(ask, `? bridge .env path (default: ${bd.envPath})\n> `, bd.envPath);
-      const whisperCli = await askPath(ask, `? whisper CLI path (blank = autodetect) (default: ${bd.whisperCli || '(autodetect)'})\n> `, bd.whisperCli);
+      const envPath = await askPath(ask, `? bridge .env path (default: ${bd.envPath})\n> `, bd.envPath); // step: bridge
+      const whisperCli = await askPath(ask, `? whisper CLI path (blank = autodetect) (default: ${bd.whisperCli || '(autodetect)'})\n> `, bd.whisperCli); // step: bridge
       // whisperModel used to be free text with a
       // default the operator had no way to evaluate ("what is the big one?"
       // — the exact complaint this ticket fixes). Numbered enum of the
       // standard ggml models (preset.whisperModel — always defined,
       // PROFILE_PRESETS above — seeds the marked default), 'custom' falls
       // through to the original free-text ask for any other filename.
-      const whisperModelKey = await askNumberedEnum(ask, 'whisper model', Object.keys(WHISPER_MODEL_FILENAMES).concat(['custom']), whisperModelKeyFor(preset.whisperModel), WHISPER_MODEL_HELP);
+      const whisperModelKey = await askNumberedEnum(ask, 'whisper model', Object.keys(WHISPER_MODEL_FILENAMES).concat(['custom']), whisperModelKeyFor(preset.whisperModel), WHISPER_MODEL_HELP); // step: bridge
       const whisperModel = whisperModelKey === 'custom'
-        ? await askPath(ask, `? whisper model filename (default: ${preset.whisperModel})\n> `, preset.whisperModel)
+        ? await askPath(ask, `? whisper model filename (default: ${preset.whisperModel})\n> `, preset.whisperModel) // step: bridge
         : WHISPER_MODEL_FILENAMES[whisperModelKey];
       // RETASK stage1-build-6d2e — CR finding treated as more than a
       // Suggestion: this is the CONSENT prompt for a machine-state
@@ -1974,7 +1978,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
       if (persistArtifact) {
         // CONSENT prompt for a machine-state mutation
         // deliberately NOT askNumberedEnum(); keeps explicit wording.
-        const persistAns = await askEnum(ask, `? install bridge persistence now (${persistArtifact}; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no');
+        const persistAns = await askEnum(ask, `? install bridge persistence now (${persistArtifact}; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no'); // step: bridge
         installPersistence = persistAns === 'yes';
       } else {
         console.log(`himmelctl: bridge persistence has no installer for platform '${process.platform}' — skipping the consent prompt; install/enable it manually (see docs/setup)`);
@@ -1998,11 +2002,11 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
 
   // Secrets (all profiles): the gate, then keep/set/skip per secret the picked
   // features cover. Runs after the bridge answer so the scoping sees it.
-  secretsWalk = await askNumberedEnum(ask, 'walk through secrets now (status, then keep/set/skip per secret with a masked prompt; the answers file records status only)', ['run', 'skip'], 'skip', SECRETS_WALK_HELP);
+  secretsWalk = await askNumberedEnum(ask, 'walk through secrets now (status, then keep/set/skip per secret with a masked prompt; the answers file records status only)', ['run', 'skip'], 'skip', SECRETS_WALK_HELP); // step: secrets
 
   // Commit rules (all profiles, last so vault-gated sections keep their order):
   // tracker + ticket ID rules -> ~/.himmel/himmel.conf
-  const commitRules = await askCommitRules(ask);
+  const commitRules = await askCommitRules(ask); // step: commit
 
   const answers = buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handoverMode, handoverPath, pluginSet, lanes, alwaysOn, luna, secretsWalk, bridge, cadences, vm);
   if (secretsWalk === 'run' && !dryRun) {

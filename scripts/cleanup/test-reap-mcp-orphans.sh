@@ -16,7 +16,7 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 
 WORK=$(mktemp -d) || exit 1
-trap 'rm -rf "$WORK"; kill "${P1:-0}" "${P2:-0}" 2>/dev/null' EXIT
+trap 'rm -rf "$WORK"; [ -z "${P1:-}" ] || kill "$P1" 2>/dev/null; [ -z "${P2:-}" ] || kill "$P2" 2>/dev/null' EXIT
 FIX="$WORK/procs.txt"
 LOG="$WORK/reap.log"
 
@@ -84,6 +84,13 @@ out=$(REAP_ORPHANS_INPUT="$FIX" REAP_ORPHANS_LOG="/proc/no-such-dir/x.log" bash 
 # Kill path: two real processes, both listed as orphans. P1 matches its table
 # row and must die; P2 is listed with a different command line (a recycled
 # PID) and must survive.
+# The identity re-check reads /proc, and with no /proc the reaper refuses to
+# signal anything (by design), so there is no kill path to exercise on macOS.
+if [ ! -r /proc/self/stat ]; then
+    echo "  SKIP  kill path: no /proc on this host, the reaper never signals an unverifiable process"
+    [ "$failures" -eq 0 ] && { echo "all passed"; exit 0; }
+    echo "$failures failed"; exit 1
+fi
 cp "$(command -v sleep)" "$WORK/context7-mcp"
 "$WORK/context7-mcp" 300 & P1=$!
 "$WORK/context7-mcp" 301 & P2=$!
