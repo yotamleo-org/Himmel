@@ -180,7 +180,11 @@ function buildEntry(item, ctx, diagnosticState) {
       // install-plugins.sh stays the tested, parameterized orchestrator
       // (scope/--template/lean-floor reconcile) — this engine
       // never re-implements or collapses it.
-      return { cmd: 'bash', args: [path.join(scriptsDir, 'machine-setup', 'install-plugins.sh'), '--scope', ctx.scope] };
+      return {
+        cmd: 'bash',
+        args: [path.join(scriptsDir, 'machine-setup', 'install-plugins.sh'), '--scope', ctx.scope],
+        ...(ctx.scope === 'user' ? { watchEnabledPlugins: userEnabledPluginsWatch(ctx.env) } : {}),
+      };
     case 'qmd': {
       // the resolver path is passed as a bash POSITIONAL arg ($1),
       // never interpolated into the -c script text — a checkout path
@@ -707,6 +711,47 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
   return { ok: true };
 }
 
+// User-scope enabledPlugins writes are logged with their writer, so a plugin
+// that flips on and off names whoever flipped it. The watch spec travels on
+// the plan entry; runInstall diffs the file around the spawn.
+function userEnabledPluginsWatch(env) {
+  const home = (env && env.HOME) || os.homedir();
+  return {
+    file: path.join(home, '.claude', 'settings.json'),
+    log: path.join(home, '.himmel', 'state', 'enabled-plugins-writes.log'),
+  };
+}
+
+function readEnabledPlugins(file) {
+  try {
+    const ep = JSON.parse(fs.readFileSync(file, 'utf8')).enabledPlugins;
+    return ep && typeof ep === 'object' && !Array.isArray(ep) ? ep : {};
+  } catch (_e) {
+    return {};
+  }
+}
+
+function logEnabledPluginsWrites(entry, before) {
+  const after = readEnabledPlugins(entry.watchEnabledPlugins.file);
+  const show = (v) => (v === undefined ? 'unset' : JSON.stringify(v));
+  const lines = [];
+  for (const key of [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()) {
+    if (before[key] !== after[key]) {
+      lines.push(`user-scope enabledPlugins write by ${entry.id} (${entry.type}): ${key} ${show(before[key])} -> ${show(after[key])}`);
+    }
+  }
+  for (const line of lines) console.log(`himmelctl: ${line}`);
+  if (lines.length === 0) return;
+  // best-effort: a log that cannot be written must never fail the install
+  try {
+    fs.mkdirSync(path.dirname(entry.watchEnabledPlugins.log), { recursive: true });
+    const stamp = new Date().toISOString();
+    fs.appendFileSync(entry.watchEnabledPlugins.log, lines.map((l) => `${stamp} ${l}\n`).join(''));
+  } catch (_e) {
+    // see above
+  }
+}
+
 // runInstall(plan, {dryRun}) -> {ran:[{id,type}], failed:[{id,type,reason}]}
 // dryRun:true returns BEFORE any spawnSync — a --dry-run plan is provably
 // zero-exec. A plan entry that couldn't be built into a runnable command
@@ -741,7 +786,9 @@ function runInstall(plan, { dryRun } = {}) {
       failed.push({ id: entry.id, type: entry.type, reason: entry.unrunnable });
       continue;
     }
+    const enabledBefore = entry.watchEnabledPlugins ? readEnabledPlugins(entry.watchEnabledPlugins.file) : null;
     const result = runHardenedSpawn(entry);
+    if (enabledBefore) logEnabledPluginsWrites(entry, enabledBefore);
     if (result.ok) {
       ran.push({ id: entry.id, type: entry.type });
     } else {

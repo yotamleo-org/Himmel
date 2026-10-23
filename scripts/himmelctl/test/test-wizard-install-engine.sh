@@ -767,4 +767,39 @@ echo "$outY" | jq -e '.spawned == 0' >/dev/null \
   || fail "case y: the entry must be REFUSED before any spawn — spawning the bare 'bash' is exactly the WSL-stub launch this resolution exists to prevent (got: $outY)"
 echo "ok: case y — a cmd:'bash' entry with no resolvable bash is refused before any spawn, naming the missing bash (HIMMEL-2289)"
 
+# ── case z: a user-scope `plugins` install that changes
+# enabledPlugins names its writer — one stdout line AND one state-log line per
+# changed key, so the next on/off flip of a plugin is attributable. The stub
+# install-plugins.sh flips obsidian-second-brain@himmel false -> true the way
+# `claude plugin install` does as a side effect.
+repoZ="$work/repoZ"; mkdir -p "$repoZ/scripts/machine-setup"
+cat > "$repoZ/scripts/machine-setup/install-plugins.sh" <<'STUB'
+#!/usr/bin/env bash
+f="$HOME/.claude/settings.json"
+jq '.enabledPlugins["obsidian-second-brain@himmel"] = true' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+STUB
+homeZ="$work/homeZ"; mkdir -p "$homeZ/.claude"
+printf '{"enabledPlugins":{"obsidian-second-brain@himmel":false,"himmel-ops@himmel":true}}\n' > "$homeZ/.claude/settings.json"
+REPO_Z="$(winpath "$repoZ")"
+HOME_Z="$(winpath "$homeZ")"
+export REPO_Z HOME_Z
+outZ=$("$node_bin" -e "
+const { planInstall, runInstall } = require(process.env.INSTALL_ENGINE_LIB);
+const env = Object.assign({}, process.env, { HOME: process.env.HOME_Z });
+process.env.HOME = process.env.HOME_Z;
+const items = [ { id: 'plugins-z', deps: [], install: { type: 'plugins' } } ];
+const ctx = { repoRoot: process.env.REPO_Z, scope: 'user', profile: 'luna', targetPath: process.env.REPO_Z, platform: 'linux', env };
+const result = runInstall(planInstall(items, ctx), { dryRun: false });
+console.log('RESULT ' + JSON.stringify(result));
+" 2>&1)
+echo "$outZ" | grep -q '^RESULT .*"ran":\[{"id":"plugins-z"' || fail "case z: the stub plugins install should run (got: $outZ)"
+grepq "$outZ" 'enabledPlugins.*plugins-z.*obsidian-second-brain@himmel.*false.*true' \
+  || fail "case z: the converge must print one line naming the writer item and the flipped key (got: $outZ)"
+! grepq "$outZ" 'himmel-ops@himmel.*->' || fail "case z: an unchanged key must not be logged (got: $outZ)"
+logZ="$homeZ/.himmel/state/enabled-plugins-writes.log"
+[ -f "$logZ" ] || fail "case z: the write must also land in $logZ"
+grep -q 'plugins-z.*obsidian-second-brain@himmel.*false.*true' "$logZ" \
+  || fail "case z: the state log must name the writer and the flipped key (got: $(cat "$logZ"))"
+echo "ok: case z — a user-scope plugins install logs each enabledPlugins change with its writer (stdout + state log)"
+
 echo "PASS"
