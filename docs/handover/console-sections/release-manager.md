@@ -10,7 +10,7 @@ release is declared (`jira release state <R>` prints a status other than
   `jira release request <R> --verb INTAKE|REVERSION|DISCHARGE --key <KEY> --from <v|backlog> --to <v|backlog> --why "<one line>"`
   prints `REQ <id>`; a duplicate of an open request returns the open one. Then
   `jira release rm-run <R>` rules every pending request and exits. It takes
-  the lease, applies any older intent, claims, makes one bounded model call
+  the lease, finishes any older ruling, claims, makes one bounded model call
   (bank-preflight, then `claude -p` with no tools, one turn, JSON out), rules
   and applies each request through the engine, releases the lease, and prints
   one line per request. An empty queue prints `RM-RUN <R>: nothing pending`
@@ -23,7 +23,7 @@ release is declared (`jira release state <R>` prints a status other than
 - **A RULING is a `RULING <id> <req> …` line printed by `rm-run`** for a
   request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request
   stays claimed, so fix the cause (a missing sector, an uncovered authority)
-  and run `rm-run` again. `PENDING <id>` is an intent Jira did not take; the
+  and run `rm-run` again. `PENDING <id>` is a ruling Jira did not fully take; the
   next run resolves it by readback. A run that dies (bank-preflight not
   `PROCEED`, a failed model call) rules nothing and releases the lease.
 - **Disputes go to the operator, not back to the RM.** Relay both reasons;

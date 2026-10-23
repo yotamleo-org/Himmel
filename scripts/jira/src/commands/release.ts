@@ -111,7 +111,9 @@ export function parseDecisions(stdout: string): Decision[] {
   if (env.is_error || typeof env.result !== 'string') throw new Error('rm-run: the judge call failed; nothing ruled');
   const text = env.result;
   const got: unknown = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
-  if (!Array.isArray(got)) throw new Error('rm-run: the judge did not return a JSON array; nothing ruled');
+  if (!Array.isArray(got) || !got.every((d) => typeof (d as Decision | null)?.req === 'string')) {
+    throw new Error('rm-run: the judge did not return an array of decisions; nothing ruled');
+  }
   return got as Decision[];
 }
 

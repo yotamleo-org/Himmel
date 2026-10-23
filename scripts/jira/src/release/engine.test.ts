@@ -581,4 +581,14 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
   });
+
+  it('a ruling Jira did not take is PENDING, and the next run applies it', async () => {
+    declared();
+    ask('K-2');
+    const post = jira.addComment;
+    jira.addComment = async () => { throw new Error('jira down'); };
+    expect(await rmRun(ctx(), admitAll)).toEqual(['PENDING R-R1-0001: jira down']);
+    jira.addComment = post;
+    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+  });
 });

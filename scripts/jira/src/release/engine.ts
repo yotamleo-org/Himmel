@@ -651,26 +651,26 @@ export interface JudgeInput {
 
 export type Judge = (input: JudgeInput) => Promise<Decision[]>;
 
-function unresolvedIntents(rulings: Chain<RulingRow>): string[] {
+function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
   const last = new Map<string, RulingRow>();
   for (const r of rulings.verified) last.set(r.id, r);
-  return [...last.values()].filter((r) => r.phase === 'intent').map((r) => r.id);
+  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
 }
 
-// Takes the lease, applies older intents, claims, asks the judge once, rules and
+// Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
 // applies through the engine, and releases the lease. Decisions come only from
 // the judge, never from the caller.
 export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?: string } = {}): Promise<string[]> {
   const l = loadOrThrow(ctx);
   const pending = [...latestRequests(l.requests).values()].filter((r) => r.state === 'open' || r.state.startsWith('claimed:'));
-  if (!pending.length && !unresolvedIntents(l.rulings).length) return [`RM-RUN ${ctx.release}: nothing pending`];
+  if (!pending.length && !unfinishedRulings(l.rulings).length) return [`RM-RUN ${ctx.release}: nothing pending`];
 
   const doc = o.doc ?? join(ctx.dir, 'rm-runs', `run-${ts(ctx).replace(/[:.]/g, '-')}.md`);
   const rctx: Ctx = { ...ctx, env: { ...ctx.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: ctx.release } };
   const lease = leaseAcquire(rctx, { expectEpoch: readLease(ctx, l.k).epoch, doc, session: o.session ?? 'rm-run' });
   const lines: string[] = [];
   try {
-    for (const id of unresolvedIntents(loadOrThrow(ctx).rulings)) {
+    for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       try {
         lines.push((await apply(rctx, id)).line);
       } catch (e) {
@@ -691,17 +691,23 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
         issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
       });
       for (const q of claimed) {
-        const d = decisions.find((x) => x.req === q.req);
+        let id: string;
         try {
+          const d = decisions.find((x) => x?.req === q.req);
           if (!d) throw new Error('the judge returned no decision');
-          const r = rule(rctx, {
+          id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
             ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
             authority: { kind: d.authority ?? 'rm', ref: d.ref ?? null },
-          });
-          lines.push((await apply(rctx, r.id)).line);
+          }).id;
         } catch (e) {
           lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
+          continue;
+        }
+        try {
+          lines.push((await apply(rctx, id)).line);
+        } catch (e) {
+          lines.push(`PENDING ${id}: ${(e as Error).message}`);
         }
       }
     }
