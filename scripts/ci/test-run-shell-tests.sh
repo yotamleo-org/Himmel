@@ -2361,15 +2361,15 @@ rm -rf "$sb24"
 fi
 
 # --------------------------------------------------------------------------
-# Case 25 — SKIP_LIST_NON_LINUX: scripts/test-adopt.sh runs on
-#   Linux and stays [SKIP]ped off-Linux. The real table entry is driven with a
+# Case 25 — SKIP_LIST: scripts/test-adopt.sh is quarantined and
+#   [SKIP]ped on every platform. The real table entry is driven with a
 #   sentinel-writing stub at scripts/test-adopt.sh; `uname` is stubbed on PATH
-#   so every host exercises the Darwin / MINGW branches deterministically.
-#     a. uname -s = Linux   -> [PASS] scripts/test-adopt.sh, stub ran
-#     b. uname -s = Darwin  -> [SKIP] with the off-Linux reason, stub never ran
+#   so every host exercises the Linux / Darwin / MINGW branches deterministically.
+#     a. uname -s = Linux   -> [SKIP] with the quarantine reason, stub never ran
+#     b. uname -s = Darwin  -> same skip
 #     c. uname -s = MINGW64_NT-10.0 -> same skip
 # --------------------------------------------------------------------------
-echo "== Case 25 (HIMMEL-3203): test-adopt.sh runs on Linux, skipped off-Linux =="
+echo "== Case 25 (HIMMEL-7300): test-adopt.sh quarantined on every platform =="
 sb25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25.XXXXXX") || { fail "25: mktemp failed"; sb25=""; }
 fakebin25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25-fakebin.XXXXXX") || { fail "25: fakebin mktemp failed"; fakebin25=""; }
 [ -n "$sb25" ] && [ -z "$fakebin25" ] && { rm -rf "$sb25"; sb25=""; }
@@ -2392,19 +2392,11 @@ SHEOF
   chmod +x "$fakebin25/uname"
   rm -f "$sentinel25"
   out25=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$fakebin25:$PATH" bash "$RUNNER" "$sb25/scripts" 2>&1); rc25=$?
-  if [ "$os25" = "Linux" ]; then
-    if [ -f "$sentinel25" ] && grepq "$out25" -F '[PASS] ' && grepq "$out25" -F 'test-adopt.sh' && ! grepq "$out25" -F '[SKIP]'; then
-      pass "25a: uname=Linux -> scripts/test-adopt.sh RUNS and passes"
-    else
-      fail "25a: uname=Linux -> expected test-adopt.sh to run; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
-    fi
+  # rc is 1 by design: the only suite in the sandbox is skipped, so nothing ran.
+  if [ ! -f "$sentinel25" ] && grepq "$out25" -F '[SKIP] ' && grepq "$out25" -F 'HIMMEL-7300: quarantined'; then
+    pass "25: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-7300 reason, not run"
   else
-    # rc is 1 by design: the only suite in the sandbox is skipped, so nothing ran.
-    if [ ! -f "$sentinel25" ] && grepq "$out25" -F '[SKIP] ' && grepq "$out25" -F 'HIMMEL-3203'; then
-      pass "25b: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-3203 reason, not run"
-    else
-      fail "25b: uname=$os25 -> expected loud HIMMEL-3203 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
-    fi
+    fail "25: uname=$os25 -> expected loud HIMMEL-7300 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
   fi
 done
 rm -rf "$sb25" "$fakebin25"
@@ -2417,7 +2409,8 @@ fi
 # drifted to a 2800s slowest shard against a 2304s floor. The
 # fixture below is copied from the real CI log of green main run 39180908042
 # (shell-unit-shard 1..8): every suite that ran >= 10s, with its measured
-# seconds. The sandbox holds a stub for each, the runner packs them with the
+# seconds, minus scripts/test-adopt.sh while SKIP_LIST quarantines it.
+# The sandbox holds a stub for each, the runner packs them with the
 # committed ledger, and the measured seconds of each shard are summed.
 # The slowest shard cannot beat the heaviest single suite, so the bound is that
 # floor plus 5%.
@@ -2563,7 +2556,6 @@ scripts/qmd/test-ensure-qmd-daemon.sh	49
 scripts/qmd/test-qmd-jina-gate.sh	13
 scripts/telegram/test-dispatch-lane.sh	36
 scripts/telegram/test-restart-bridge.sh	64
-scripts/test-adopt.sh	692
 scripts/test-check-ci-cache.sh	14
 scripts/test-check-ci-run.sh	12
 scripts/test-check-plugin-drift.sh	46

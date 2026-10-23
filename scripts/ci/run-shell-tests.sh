@@ -789,17 +789,16 @@ scripts/testing/test-mock-consult-sandbox.sh  # HIMMEL-4412: needs the pinned cl
 scripts/testing/test-mock-hook-smoke.sh  # HIMMEL-4412: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/testing/test-mock-hook-live-turn.sh  # HIMMEL-5228: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
+scripts/test-adopt.sh                # HIMMEL-7300: quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it gets its own CI job
 "
 
 # Off-Linux skips: same format as SKIP_LIST, but appended to it
 # only when `uname -s` is not Linux (macOS "Darwin", Git-Bash "MINGW*"), so a
 # suite that is fine on the Linux CI runner is not blanket-quarantined
-# everywhere. test-adopt.sh measured ~61-62s on Linux (twice, 2026-09-19)
-# against the 600s per-suite cap; while it sat in SKIP_LIST CI never ran it,
-# which is how a fixture drift (rc=123) went unnoticed. The
-# non-Linux reason is unchanged from its SKIP_LIST days.
+# everywhere. When the test-adopt.sh quarantine above lifts, the suite comes
+# back here, not to an unconditional run: its off-Linux skip (the Windows cap
+# exceedance, never re-measured) still holds.
 SKIP_LIST_NON_LINUX="
-scripts/test-adopt.sh                # HIMMEL-3203: skipped off-Linux only — timing-heavy full adoption matrix exceeds the hermetic runner's per-suite cap on Windows (600s default since HIMMEL-2233; the exceedance was last measured against the older 180s cap and STILL has not been re-measured, HIMMEL-3580 — do not reinstate on Windows without one); runs on Linux CI (~62s uncontended, 2026-09-19; re-verified PASS at 197s under concurrent multi-lane load, 2026-09-24 — still well inside the 600s cap either way); runnable individually, no VM e2e coverage
 scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
