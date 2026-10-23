@@ -136,28 +136,50 @@ function decisionFault(x: unknown): string | null {
   return null;
 }
 
-// The reply may wrap its array in prose holding brackets, so try each '[' (object-leading ones first)
-// against each ']' until a slice parses as an array.
-function extractArray(text: string): unknown[] | undefined {
+const MAX_ARRAY_STARTS = 200;
+
+// Index of the ']' closing the '[' at i, skipping JSON strings; -1 when it never closes.
+function balancedEnd(text: string, i: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let k = i; k < text.length; k++) {
+    const c = text[k];
+    if (inStr) {
+      if (c === '\\') k++;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === '[') depth++;
+    else if (c === ']' && --depth === 0) return k;
+  }
+  return -1;
+}
+
+// The reply may wrap its arrays in prose holding brackets. Candidates are the whole reply when it is an
+// array, else each balanced '[' ... ']' slice that parses as a non-empty array (object-leading starts first,
+// at most MAX_ARRAY_STARTS tried); a start inside an array already taken is its own element, not a candidate.
+function arrayCandidates(text: string): unknown[][] {
   try {
     const whole: unknown = JSON.parse(text);
-    if (Array.isArray(whole)) return whole;
-  } catch { /* wrapped in prose or a fence, scan for the array */ }
+    if (Array.isArray(whole)) return [whole];
+  } catch { /* wrapped in prose or a fence, scan for the arrays */ }
   const opens = [...text.matchAll(/\[/g)].map((m) => m.index as number);
-  const closes = [...text.matchAll(/\]/g)].map((m) => m.index as number).reverse();
   const objectLeading = (i: number) => /^\[\s*[{[]/.test(text.slice(i, i + 64));
-  for (const starts of [opens.filter(objectLeading), opens]) {
-    for (const i of starts) {
-      for (const end of closes) {
-        if (end <= i) break;
-        try {
-          const got: unknown = JSON.parse(text.slice(i, end + 1));
-          if (Array.isArray(got)) return got;
-        } catch { /* not an array slice, try the next end */ }
+  const starts = [...opens.filter(objectLeading), ...opens.filter((i) => !objectLeading(i))].slice(0, MAX_ARRAY_STARTS);
+  const spans: Array<[number, number]> = [];
+  const found: unknown[][] = [];
+  for (const i of starts) {
+    if (spans.some(([s, e]) => i > s && i < e)) continue;
+    const end = balancedEnd(text, i);
+    if (end < 0) continue;
+    try {
+      const got: unknown = JSON.parse(text.slice(i, end + 1));
+      if (Array.isArray(got) && got.length) {
+        found.push(got);
+        spans.push([i, end]);
       }
-    }
+    } catch { /* not JSON, try the next start */ }
   }
-  return undefined;
+  return found;
 }
 
 // stdout of `claude -p --output-format json`: the envelope, whose result holds the array.
@@ -170,13 +192,15 @@ export function parseDecisions(stdout: string): Decision[] {
   }
   if (env === null || typeof env !== 'object' || env.is_error || typeof env.result !== 'string') throw new JudgeReplyError('rm-run: the judge call failed; nothing ruled', stdout);
   const text = env.result;
-  const got = extractArray(text);
-  if (!got) throw new JudgeReplyError('rm-run: the judge reply holds no JSON array of decisions; nothing ruled', text);
-  for (const [i, d] of got.entries()) {
-    const field = decisionFault(d);
-    if (field) throw new JudgeReplyError(`rm-run: the judge returned a malformed decision (decision ${i} field ${field}); nothing ruled`, text);
+  const candidates = arrayCandidates(text);
+  if (!candidates.length) throw new JudgeReplyError('rm-run: the judge reply holds no JSON array of decisions; nothing ruled', text);
+  let firstFault = '';
+  for (const got of candidates) {
+    const bad = got.findIndex((d) => decisionFault(d));
+    if (bad < 0) return got as Decision[];
+    firstFault ||= `decision ${bad} field ${decisionFault(got[bad])}`;
   }
-  return got as Decision[];
+  throw new JudgeReplyError(`rm-run: the judge returned a malformed decision (${firstFault}); nothing ruled`, text);
 }
 
 // A call launched from inside a session inherits its markers, which make the child identify as that session

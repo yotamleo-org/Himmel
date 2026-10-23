@@ -148,6 +148,20 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(parseDecisions(JSON.stringify({ is_error: false, result: `Ruling []:\n${JSON.stringify([d])}` }))).toEqual([d]);
   });
 
+  it('skips a prose example that is not a decision array and takes the later valid one', () => {
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    const result = `Example: [{"note":"sample"}]\nRuling:\n${JSON.stringify([d])}`;
+    expect(parseDecisions(JSON.stringify({ is_error: false, result }))).toEqual([d]);
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result: 'Example: [{"note":"sample"}]' }))).toThrow(/decision 0 field req/);
+  });
+
+  it('gives up on a bracket-heavy reply quickly instead of trying every slice', () => {
+    const result = '['.repeat(4000) + 'not-json' + ']'.repeat(4000);
+    const t0 = Date.now();
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result }))).toThrow(/nothing ruled/);
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+
   it('keeps the raw stdout when it is not a JSON envelope', () => {
     let err: unknown;
     try { parseDecisions('Error: overloaded'); } catch (e) { err = e; }
