@@ -90,6 +90,7 @@ describe('jira release (HIMMEL-6796)', () => {
     expect(out).toEqual(['REOPEN K-1 ← v1']);
     await expect(run('fold', 'R1', '--to', 'v1', '--key', 'K-1', '--mirror-root', mir)).rejects.toThrow(/--key with --pr, or --file/);
     await expect(run('fold', 'R1', '--to', 'v1', '--file', join(root, 'batch.txt'), '--pr', '1', '--mirror-root', mir)).rejects.toThrow(/--key with --pr, or --file/);
+    await expect(run('fold', 'R1', '--to', 'v1', '--key', 'K-1', '--pr', '0x10', '--mirror-root', mir)).rejects.toThrow(/decimal PR number/);
   });
 
   it('refuses an operator act from a console-spawned leg', async () => {

@@ -161,6 +161,7 @@ export function registerRelease(program: Command): void {
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
     .action((release: string, o: { to: string; key?: string; pr?: string; file?: string; mirrorRoot?: string }) => {
       if (!o.file === !o.key || (o.key && !o.pr) || (o.file && o.pr)) throw new Error('release fold: give --key with --pr, or --file');
+      if (o.pr !== undefined && !/^\d+$/.test(o.pr)) throw new Error('release fold: --pr needs a decimal PR number');
       const items = o.file ? parseFoldFile(readBodyFile(o.file, '--file')) : [{ key: o.key as string, pr: Number(o.pr) }];
       const out = fold(ctxFor(release, o.mirrorRoot), { to: o.to, items });
       for (const e of out.folded) console.log(`FOLD ${e.key} → ${o.to} (PR ${e.pr})`);
