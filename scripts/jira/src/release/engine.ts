@@ -693,13 +693,18 @@ function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
 }
 
 // The mirror row when it names a sector; else the live snapshot (a ticket filed since the last mirror sync),
-// else whatever the mirror holds. A Jira that cannot answer leaves the mirror's view.
+// else whatever the mirror holds. A Jira that cannot answer, or not within LIVE_LOOKUP_MS, leaves the mirror's view.
+export const LIVE_LOOKUP_MS = 15_000;
 async function issueFor(ctx: Ctx, key: string, mirrored: IssueSnap | undefined): Promise<IssueSnap | undefined> {
   if (mirrored?.sector || !ctx.jira.issue) return mirrored;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return (await ctx.jira.issue(key)) ?? mirrored;
+    const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), LIVE_LOOKUP_MS); });
+    return (await Promise.race([ctx.jira.issue(key), deadline])) ?? mirrored;
   } catch {
     return mirrored;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

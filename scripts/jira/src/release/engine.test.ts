@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
-  JudgeReplyError, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
+  JudgeReplyError, LIVE_LOOKUP_MS, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import type { IssueSnap } from './types.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
@@ -654,6 +654,23 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     let seen: unknown;
     await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
     expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop' })]);
+  });
+
+  it('a live lookup that never answers falls back to the mirror row once its deadline passes', async () => {
+    vi.useFakeTimers();
+    try {
+      declared();
+      mirror([{ key: 'K-2', fixVersions: [] }]);
+      ask('K-2');
+      jira.issue = () => new Promise<IssueSnap | null>(() => {});
+      let seen: unknown;
+      const run = rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+      await vi.advanceTimersByTimeAsync(LIVE_LOOKUP_MS);
+      await run;
+      expect(seen).toEqual([expect.objectContaining({ key: 'K-2' })]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a mirror row with a sector is not re-read from Jira', async () => {
