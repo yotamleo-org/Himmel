@@ -131,29 +131,23 @@ guide_steps() {
   python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); print(" ".join(m.group(1) for m in re.finditer(r"\{ id: \x27([a-z]+)\x27[^\n]*?kind: \x27ask\x27", t)))' "$1"
 }
 
-# Prints the guide ids of the questions askQuestions() asks, in call order.
+# Prints the guide ids of the questions askQuestions() asks, in call order: the
+# `// step: <id>` marker of every `await ask*(` call, a repeat folded into the
+# one before it, and `?` for a call with no marker.
 wizard_steps() {
-  python3 -I - "$BIN" <<'PY'
+  python3 -I - "${1:-$BIN}" <<'PY'
 import re, sys
 t = open(sys.argv[1], encoding="utf-8").read()
 a = t.index("async function askQuestions(")
 body = t[a:t.index("// All-default answers", a)]
-calls = [
-    ("profile", r"askNumberedEnum\(ask, 'profile'"),
-    ("scope", r"askNumberedEnum\(ask, 'scope'"),
-    ("vault", r"askNumberedEnum\(ask, 'vault'"),
-    ("handover", r"askNumberedEnum\(ask, 'handover'"),
-    ("lanes", r"askLanes\(ask"),
-    ("always", r"askNumberedEnum\(ask, 'always-on machine"),
-    ("vm", r"askVm\(ask"),
-    ("cadences", r"askCadences\(ask"),
-    ("privacy", r"Protected Health Information"),
-    ("bridge", r"askNumberedEnum\(ask, 'configure the telegram bridge"),
-    ("secrets", r"askNumberedEnum\(ask, 'walk through secrets"),
-    ("commit", r"askCommitRules\(ask"),
-]
-found = sorted((m.start(), k) for k, r in calls for m in [re.search(r, body)] if m)
-print(" ".join(k for _, k in found))
+ids = []
+for line in body.split("\n"):
+    if re.search(r"\bawait ask[A-Z]\w*\(", line):
+        m = re.search(r"// step: ([a-z]+)\s*$", line)
+        i = m.group(1) if m else "?"
+        if not ids or ids[-1] != i:
+            ids.append(i)
+print(" ".join(ids))
 PY
 }
 
@@ -275,6 +269,20 @@ if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
   else
     bad "control: the STEPS check accepted a guide with a renamed step"
   fi
+fi
+
+# --- CONTROL: the STEPS check must fail on a wizard with one more question ------
+# One fixture adds a question that names its guide step, one adds a question that
+# names none; neither may leave the wizard's steps equal to the guide's.
+if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
+  for want in "step: extra" ""; do
+    python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); q="  await askEnum(ask, \x27? one more question [yes|no]\x27, [\x27yes\x27, \x27no\x27], \x27no\x27);" + (" // " + sys.argv[2] if sys.argv[2] else ""); print(re.sub(r"(\n  const scope = await askNumberedEnum[^\n]*\n)", lambda m: m.group(1) + q + "\n", t, count=1), end="")' "$BIN" "$want" > "$tmp/bin.js"
+    if [ "$(wizard_steps "$tmp/bin.js")" != "$(guide_steps "$ROOT/docs/guide/installer-journey.html")" ]; then
+      ok "control: a wizard with one more question (${want:-no step named}) differs from the guide"
+    else
+      bad "control: the STEPS check accepted a wizard with one more question (${want:-no step named})"
+    fi
+  done
 fi
 
 # --- CONTROL: the NOJS check must fail on a guide with its first static block removed

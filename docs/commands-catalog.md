@@ -1,6 +1,50 @@
 # Slash Commands Catalog
 
-Audience: contributor (these commands live in a himmel checkout; not every one is available in an adopted repo). Owner of the rewrite: HIMMEL-7213.
+Audience: contributor, and an adopter looking for the command that does a job; the first two sections below say which commands reach an adopted repo. Owner of the rewrite: HIMMEL-7213.
+
+## Find a command by task
+
+**Reach** says where the command exists. **Checkout** means a clone of himmel
+itself. **Adopted repo** means a repo the installer wired (a `starter` install
+with the `lean` plugin set, see [setup/install.md](setup/install.md)).
+
+| Task | Command | Reach |
+|---|---|---|
+| Start a branch in its own worktree | `/worktree` | Checkout. Adopted repo: `bash scripts/worktree.sh new <branch>` |
+| Remove worktrees whose PR merged | `/clean` | Checkout. Adopted repo: `bash scripts/clean.sh` |
+| Review a branch before opening its PR | `/pr-check` | Checkout only |
+| Wait for CI and review threads on a PR | `/check-ci` | Checkout. Adopted repo: `bash scripts/check-ci.sh <pr>` |
+| See how each reviewer is scoring, and tune them | `/cr-scores`, `/cr-tune`, `/cr-learnings-refresh` | Adopted repo (copied in by the install) and checkout |
+| Say where cross-session notes live | `/handover-setup` | Plugin `handover`, in the `lean` set |
+| Save or resume a session | `/handover-resume`, `/handover-resume-armed`, `/handover-flush` | Checkout only; in an adopted repo ask for the `handover` skill of the `handover` plugin |
+| Run a supervisor session that dispatches workers | `/chief` | Plugin `himmel-ops`, in the `lean` set |
+| Check the harness for known problems | `/himmel-doctor` | Plugin `himmel-ops`, in the `lean` set |
+| Update himmel and its vault | `/himmel-update`, `/himmel-update-all` | Plugin `himmel-ops`, in the `lean` set |
+| Turn an idea into a reviewed spec and plan | `/minerva` | Plugin `himmel-ops`, in the `lean` set |
+| Hand N work items to the right model lane | `/fanout`, `/cloud-route` | Plugin `himmel-ops`, in the `lean` set |
+| Run unattended multi-ticket shifts | `/afk-shift` | Checkout only |
+| Work with the luna vault and its clip pipeline | `/luna-*`, `/harvest-clips` and the other clip stages | Checkout only; the clip stages come from the `obsidian-triage` plugin, which is not in the base plugin set |
+
+## Which commands reach an adopted repo
+
+An adopted repo gets three kinds of command, and everything else in this
+catalog needs a checkout.
+
+1. **Copied in by the install:** `/cr-scores`, `/cr-tune` and
+   `/cr-learnings-refresh` (the `.claude/commands/` files listed in
+   `PORTABLE_FILES` in [`scripts/adopt.sh`](../scripts/adopt.sh)).
+2. **Scripts with no slash command:** `scripts/worktree.sh`,
+   `scripts/clean.sh` and `scripts/check-ci.sh` come with the install, but
+   `/worktree`, `/clean` and `/check-ci` do not. The daily loop's
+   [adopter route](daily-loop.md#adopter-route-your-own-repo) types the scripts.
+3. **Plugin commands:** the plugins in the base set (`handover`, `himmel-ops`,
+   `qmd`, `lean-skills`, `i-have-adhd`, per `scripts/lanes/plugin-profiles.json`)
+   carry their own commands. `/handover-setup` comes from `handover`;
+   `/chief`, `/console`, `/supervisor-session`, `/cloud-route`, `/fanout`,
+   `/himmel-doctor`, `/himmel-update`, `/himmel-update-all`,
+   `/memory-compound` and `/minerva` come from `himmel-ops`. Some of them act
+   on the himmel download rather than on your project: `/himmel-update`
+   updates that download.
 
 Project-local slash commands in `.claude/commands/` (auto-discovered by
 Claude Code). Each row's **Description** column is machine-generated from the
