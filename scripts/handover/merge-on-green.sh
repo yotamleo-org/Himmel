@@ -931,7 +931,15 @@ if [ "$solo_set" = 1 ]; then
         exit 17
     }
     [ "$solo_cfg" = solo ] || solo_refuse solo-invalid-mode "git config himmel.mergeMode is '$solo_cfg' (only 'solo' is a mode)"
-    [ -z "${HIMMEL_CONSOLE_LEG:-}" ] || solo_refuse solo-console-leg "a console leg merges only on its console's GO"
+    if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
+        # The anchor's console_leg reads the marker, as the console-GO gate below does.
+        unset -f go_gate _go_gate_verify console_leg go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
+        # shellcheck source=scripts/lib/go-gate.sh
+        # shellcheck disable=SC1091
+        { . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null && declare -F console_leg >/dev/null 2>&1; } \
+            || solo_refuse solo-console-leg "the console-leg marker cannot be read"
+        ! console_leg || solo_refuse solo-console-leg "a console leg merges only on its console's GO"
+    fi
     [ ! -e "$himmel_repo/scripts/handover/console-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
     SOLO_TAG=" mode=solo"
 fi

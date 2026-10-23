@@ -4673,10 +4673,16 @@ assert_gh_lacks "7001-b: no merge attempted" "pr merge"
 
 # 7001-c — a console-spawned leg is never solo: the GO is the rule even when the
 # project config says solo.
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001c" \
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001c" \
     run_mog 17 "7001-c: solo config under a console leg → exit 17"
 assert_audit_has "7001-c: audited as a solo refusal" "phase=solo-console-leg"
 no_merge_call "7001-c: no merge call"
+
+# 7001-c2 — an explicitly falsy marker is no leg: solo reads it the way the
+# console-GO gate does.
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001i" \
+    run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"
+assert_audit_has "7001-c2: audited as solo" "mode=solo"
 
 # 7001-d — never in the himmel clone: an anchor carrying console-kit/go.sh
 # refuses the config rather than ignoring it.
@@ -4704,7 +4710,7 @@ assert_audit_lacks "7001-f: not audited as solo" "mode=solo"
 
 # 7001-g — the himmel path still needs its GO: a leg with no solo config and no
 # GO file is refused.
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 STUB_SHA="solo7001g" \
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 STUB_SHA="solo7001g" \
     run_mog 17 "7001-g: console leg, no solo config, no GO → exit 17"
 assert_audit_has "7001-g: still the console-GO refusal" "phase=console-go"
 
