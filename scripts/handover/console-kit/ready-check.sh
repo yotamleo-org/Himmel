@@ -787,7 +787,11 @@ $wf_files
 EOF
     fi
     if [ -z "$wf_err" ]; then
-        echo "[PASS] 10. every changed workflow has a successful workflow_dispatch run at head (or is exempt/removed)${wf_ids:+ — runs:$wf_ids}${wf_notes}"
+        if [ -n "$wf_notes" ]; then
+            echo "[PASS] 10. every changed workflow has a workflow_dispatch run at head that is green or red only where main already is (or is exempt/removed)${wf_ids:+ — runs:$wf_ids}${wf_notes}"
+        else
+            echo "[PASS] 10. every changed workflow has a successful workflow_dispatch run at head (or is exempt/removed)${wf_ids:+ — runs:$wf_ids}"
+        fi
     else
         echo "[FAIL] 10. workflow dispatch:${wf_err#;}"
         mark_fail
