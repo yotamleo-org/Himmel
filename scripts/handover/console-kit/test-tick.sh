@@ -2536,6 +2536,14 @@ contains 'a tick on another --repo still prints the leaks ACTION line (HIMMEL-71
 lk_cli_of() { printf '%s\n' "$1" | sed -n 's/^ACTION leaks=[0-9]*: JIRA_PROJECT_KEY=[^ ]* node \([^ ]*\) release leaks .*/\1/p'; }
 lk_cli_three="$(lk_cli_of "$lk_three")"
 if [ -n "$lk_cli_three" ] && [ "$(lk_cli_of "$lk_other")" = "$lk_cli_three" ] && [ -e "${lk_cli_three%/scripts/jira/dist/index.js}/.git" ]; then pass 'the leaks ACTION line names the same primary-checkout CLI whatever --repo is (HIMMEL-7153)'; else fail "the leaks ACTION CLI is '$(lk_cli_of "$lk_other")' under --repo vs '$lk_cli_three' by default, want one primary checkout (HIMMEL-7153)"; fi
+lk_fix="$W/lk-fix"; mkdir -p "$lk_fix/scripts/handover/console-kit" "$lk_fix/scripts/lanes"
+env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$lk_fix"
+cp "$SUT" "$lk_fix/scripts/handover/console-kit/tick.sh"
+cp -R "$HERE/../../lib" "$lk_fix/scripts/lib"
+cp -R "$HERE/../../lanes/lib" "$lk_fix/scripts/lanes/lib"
+lk_nodist="$(env -u TICK_LEAKS_PROBE NEXT_DISPATCH_MIRROR="$lk_m" TOKEN='' bash "$lk_fix/scripts/handover/console-kit/tick.sh" --doc "$d4670" 2>/dev/null)"
+contains 'a tick whose primary checkout has no built Jira CLI reads leaks=? (HIMMEL-7153)' "$lk_nodist" ' leaks=?'
+not_contains 'a tick with no built Jira CLI prints no leaks ACTION line (HIMMEL-7153)' "$lk_nodist" 'ACTION leaks'
 lk_zero="$(lk_tick "$W/lk-probe-0.sh")"
 not_contains 'a clean version hides leaks (HIMMEL-7153)' "$lk_zero" 'leaks='
 lk_unfrozen="$(lk_tick "$W/lk-probe-unfrozen.sh")"
