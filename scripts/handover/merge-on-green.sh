@@ -143,7 +143,9 @@
 #       refused (an unauditable merge must not proceed)
 #   17  policy-refused by the console-GO gate: HIMMEL_CONSOLE_LEG
 #       is truthy and the console's GO file for this PR at the certified head is
-#       missing, stale or unresolvable — checked after check-ci, before any merge
+#       missing, stale or unresolvable, or --go is absent or names a different
+#       file than that GO (another PR or head, or a missing file) — checked after
+#       check-ci, before any merge
 #       call, on --dry-run too (see the console-GO gate below). Before
 #       this code also carried the GitHub-blocked refusals now reported as 18.
 #   18  GitHub-blocked — refused once, alerted once, never retried:

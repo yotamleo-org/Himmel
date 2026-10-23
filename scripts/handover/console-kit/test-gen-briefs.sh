@@ -313,6 +313,10 @@ has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-gre
 has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the no Ship step names the relative merge spelling" "$ship_no" '`bash scripts/handover/merge-on-green.sh`'
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the yes Ship step ends the merge with the --go GO file" "$ship_yes" 'then `--go <the GO file'
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the no Ship step ends the merge with the --go GO file" "$ship_no" 'then `--go <the GO file'
 # A claudex leg's classifier refuses merge-path actions, so its Ship step ends at READY: no
 # merge command anywhere in the brief, the console is named as the merger, and the leg waits
 # for MERGED. A native leg of the same scope keeps the merge step (asserted above).
