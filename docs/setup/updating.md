@@ -1,5 +1,7 @@
 # Updating himmel
 
+Audience: newcomer, after the first install. Owner of the rewrite: HIMMEL-7212.
+
 **TL;DR: `git pull` your himmel checkout. Marketplace `autoUpdate` does NOT
 deliver himmel updates on its own.** Run `/himmel-update` (or `bash
 scripts/himmel-update.sh`) to do the pull + marketplace re-sync in one step.
