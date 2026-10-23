@@ -3,11 +3,16 @@
 # runner calls. A failed leg must never be silent: the 2026-10-03
 # harvest did nothing and logged rc=0, and nobody found out until morning.
 #
-#   cadence-alert.sh fail <leg> <reason> <log-path>
+#   cadence-alert.sh fail <leg> <reason> <log-path> [<cause> [<do>]]
 #   cadence-alert.sh clear <leg>
 #
+# <reason> is the plain result in words; <cause> one line on why; <do> the one
+# step to take, or "nothing". The Telegram message is always
+#   <leg>: <reason>. Cause: <cause>. Do: <do>. Log: <log-path>
+# with `Cause: unknown, see log` and `Do: read the log` for a caller that gave none.
+#
 # `fail` ALWAYS appends one line `<UTC iso-ts> <leg> <reason> <log-path>` to the
-# console-readable alert file, then sends the same event to the operator's
+# console-readable alert file, then sends the plain message to the operator's
 # Telegram ONCE through the existing sender (vault-stall-alert.sh, i.e. the
 # merge-block-alert.sh -> console-route.ts bridge path). A repeat of the same
 # leg+reason appends again but does not re-send until `clear` — a completed
@@ -44,6 +49,7 @@ send_then_mark() { # <sentinel> <message>
 case "${1:-}" in
     fail)
         leg="${2:-unknown}" reason="${3:-unknown}" log="${4:-}"
+        cause="${5:-unknown, see log}" todo="${6:-read the log}"
         mkdir -p "$(dirname "$alert_file")" "$dedupe_dir" 2>/dev/null
         printf '%s %s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" "$log" >> "$alert_file" \
             || echo "cadence-alert: could not append to $alert_file" >&2
@@ -53,7 +59,7 @@ case "${1:-}" in
         # next alert. Two concurrent failures of one leg could both send; one
         # runner per leg per night makes that a harmless double DM at worst.
         if [ ! -e "$sentinel" ]; then
-            send_then_mark "$sentinel" "cadence leg failed: $leg $reason (log: $log)" \
+            send_then_mark "$sentinel" "$leg: $reason. Cause: $cause. Do: $todo. Log: $log" \
                 || echo "cadence-alert: Telegram send failed for $leg $reason" >&2
         fi
         ;;

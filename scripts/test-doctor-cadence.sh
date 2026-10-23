@@ -151,6 +151,33 @@ run_cad
 check "crashed doctor sends one alert" 1 "$(sent_n)"
 check "crashed doctor leaves the counts file alone" "$before" "$(cat "$STATE/counts")"
 
+# 8a. the alert is plain: each new finding carries its check's text, a WARN that follows from a failing
+# graph cadence says so, and the message ends in the next step and the log. The WARN lines are the doctor's own.
+rm -rf "$STATE" "$HOME/.himmel/state/cadence-alert-sent"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad
+mkdir -p "$HOME/.himmel/state/cadence-alert-sent"; : > "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
+cat > "$STUB_OUT" <<'OUT'
+himmel-doctor — Linux
+
+WARN C15-plugins: 3 plugin(s) enabled beyond the lean floor (context cost at session start): a, b, c
+       → trim enabledPlugins to the lean set   # or run /profile
+WARN C23-unlanded: 2 aged unlanded local branch(es) (of 5 unlanded, 121 landed-elsewhere, 32 stale) — work committed but never opened as a PR, sitting past the age threshold
+       → bash scripts/unlanded-work.sh   # review, then open PRs or drop
+WARN C33-graph-stale: graph stale: 12 commits behind main / last cadence run 5h ago FAILED
+       → bash scripts/graphify/graph-cadence.sh
+OK   C99-fine: fine
+
+Summary: 0 FAIL  3 WARN  0 INFO
+OUT
+run_cad
+plain="$(tail -1 "$SENT")"
+case "$plain" in "himmel-doctor: 3 new findings: "*) pass "doctor alert opens with the plain count" ;; *) fail "doctor alert opens with the plain count (got: $plain)" ;; esac
+case "$plain" in *"WARN C23-unlanded: 2 aged unlanded local branch(es)"*) pass "doctor alert carries the check's text" ;; *) fail "doctor alert carries the check's text (got: $plain)" ;; esac
+case "$plain" in *"WARN C15-plugins: 3 plugin(s) enabled beyond the lean floor"*) pass "doctor alert carries every new WARN's text" ;; *) fail "doctor alert carries every new WARN's text (got: $plain)" ;; esac
+case "$plain" in *"Cause: C33-graph-stale follows from the failing graph cadence"*) pass "doctor alert names the knock-on cause" ;; *) fail "doctor alert names the knock-on cause (got: $plain)" ;; esac
+case "$plain" in *". Do: trim enabledPlugins to the lean set. Log: $STATE/last-run.log") pass "doctor alert ends in the next step and the log" ;; *) fail "doctor alert ends in the next step and the log (got: $plain)" ;; esac
+rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
+
 # 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).
 cat > "$W/jira" <<'SH'

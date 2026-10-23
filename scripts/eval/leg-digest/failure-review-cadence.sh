@@ -53,7 +53,8 @@ cmd_run() {
     fi
     python3 "$SCRIPT_DIR/failure_review.py" "$@"; rc=$?
     if [ "$rc" -ne 0 ]; then
-        bash "$ROOT/scripts/luna/cadence-alert.sh" fail failure-review "rc=$rc" "$RUNNER_DIR/failure-review-cadence.log"
+        bash "$ROOT/scripts/luna/cadence-alert.sh" fail failure-review "the daily failure review failed (exit $rc)" "$RUNNER_DIR/failure-review-cadence.log" \
+            "the review or its ticket router stopped part-way, so today's digest may be missing" "read the log for the error, then rerun the cadence runner by hand"
     else
         bash "$ROOT/scripts/luna/cadence-alert.sh" clear failure-review
     fi

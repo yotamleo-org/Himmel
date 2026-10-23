@@ -113,7 +113,8 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() (
-    local root out keys new="" k sev lock_rc
+    local root out keys new="" k sev lock_rc id detail="" new_n=0 knock_on=0 todo="" cause=""
+    local sent_dir="${CADENCE_ALERT_DEDUPE_DIR:-${HOME:-}/.himmel/state/cadence-alert-sent}"
     root="$(resolve_primary)" || { echo "doctor-cadence: cannot resolve the primary checkout" >&2; return 2; }
     mkdir -p "$STATE_DIR" || return 2
     # Hold through doctor, alerts and Jira filing. Keep the lock file's inode:
@@ -135,7 +136,8 @@ cmd_run() (
     out="$STATE_DIR/last-run.log"
     (cd "$root" && bash "$root/scripts/himmel-doctor.sh" --no-color </dev/null) > "$out" 2>&1
     if ! grep -q '^Summary: ' "$out"; then
-        bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor no-summary "$out"
+        bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor "the doctor crashed before printing its Summary line" "$out" \
+            "himmel-doctor.sh stopped part-way, so no finding could be read" "run bash scripts/himmel-doctor.sh by hand and read where it stops"
         return 1
     fi
     keys="$(sed -n -E 's/^(FAIL|WARN) +([A-Za-z0-9_-]+):.*/\1 \2/p' "$out" | sort -u)"
@@ -153,12 +155,23 @@ cmd_run() (
         sev="${k%% *}"
         [ "$first" -eq 1 ] && [ "$sev" != FAIL ] && continue
         new="${new:+$new, }$k"
+        new_n=$((new_n + 1))
+        id="${k#* }"
+        detail="${detail:+$detail; }$k: $(sed -n -E "s/^$sev +$id: *//p" "$out" | head -n 1 | cut -c1-200)"
+        if [ "$id" = C33-graph-stale ] && compgen -G "$sent_dir/graph-*" >/dev/null; then
+            knock_on=1
+            continue
+        fi
+        [ -n "$todo" ] || todo="$(grep -A1 -E "^$sev +$id:" "$out" | sed -n -E '2s/^ *→ *//p' | sed -E 's/ +#.*//')"
     done <<< "$keys"
     if [ -n "$new" ]; then
+        [ "$knock_on" -eq 1 ] && cause="C33-graph-stale follows from the failing graph cadence and clears when that runs clean"
         # clear first: the sender's per-reason dedupe must not mute a key that
         # went away and came back; THIS script's prev-diff is the dedupe.
         bash "$root/scripts/luna/cadence-alert.sh" clear himmel-doctor
-        bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor "new: $new" "$out"
+        bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor "$new_n new finding$([ "$new_n" -eq 1 ] || echo s): $detail" "$out" \
+            "${cause:-a doctor check reports a problem it did not at the previous run}" \
+            "${todo:-run bash scripts/himmel-doctor.sh and read the lines for the ids above}"
     fi
     # alerted.tsv is still the PREVIOUS run here: a WARN in both is persisting.
     [ "$first" -eq 0 ] && file_persisting_warns "$root" "$keys" "$out"
