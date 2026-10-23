@@ -716,8 +716,9 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
 // the plan entry; runInstall diffs the file around the spawn.
 function userEnabledPluginsWatch(env) {
   const home = (env && env.HOME) || os.homedir();
+  const configDir = (env && env.CLAUDE_CONFIG_DIR) || path.join(home, '.claude');
   return {
-    file: path.join(home, '.claude', 'settings.json'),
+    file: path.join(configDir, 'settings.json'),
     log: path.join(home, '.himmel', 'state', 'enabled-plugins-writes.log'),
   };
 }

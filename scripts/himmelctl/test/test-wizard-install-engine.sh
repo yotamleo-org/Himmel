@@ -775,7 +775,8 @@ echo "ok: case y — a cmd:'bash' entry with no resolvable bash is refused befor
 repoZ="$work/repoZ"; mkdir -p "$repoZ/scripts/machine-setup"
 cat > "$repoZ/scripts/machine-setup/install-plugins.sh" <<'STUB'
 #!/usr/bin/env bash
-f="$HOME/.claude/settings.json"
+case " $* " in *" --scope user "*) ;; *) echo "stub: wrong scope: $*" >&2; exit 3 ;; esac
+f="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 jq '.enabledPlugins["obsidian-second-brain@himmel"] = true' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 STUB
 homeZ="$work/homeZ"; mkdir -p "$homeZ/.claude"
@@ -801,5 +802,25 @@ logZ="$homeZ/.himmel/state/enabled-plugins-writes.log"
 grep -q 'plugins-z.*obsidian-second-brain@himmel.*false.*true' "$logZ" \
   || fail "case z: the state log must name the writer and the flipped key (got: $(cat "$logZ"))"
 echo "ok: case z — a user-scope plugins install logs each enabledPlugins change with its writer (stdout + state log)"
+
+# ── case z2: with CLAUDE_CONFIG_DIR set, the watch follows the install script
+# to that dir's settings.json instead of $HOME/.claude.
+cfgZ2="$work/cfgZ2"; mkdir -p "$cfgZ2"
+printf '{"enabledPlugins":{"obsidian-second-brain@himmel":false}}\n' > "$cfgZ2/settings.json"
+printf '{"enabledPlugins":{"obsidian-second-brain@himmel":false}}\n' > "$homeZ/.claude/settings.json"
+CFG_Z2="$(winpath "$cfgZ2")"
+export CFG_Z2
+outZ2=$("$node_bin" -e "
+const { planInstall, runInstall } = require(process.env.INSTALL_ENGINE_LIB);
+const env = Object.assign({}, process.env, { HOME: process.env.HOME_Z, CLAUDE_CONFIG_DIR: process.env.CFG_Z2 });
+process.env.HOME = process.env.HOME_Z;
+process.env.CLAUDE_CONFIG_DIR = process.env.CFG_Z2;
+const items = [ { id: 'plugins-z2', deps: [], install: { type: 'plugins' } } ];
+const ctx = { repoRoot: process.env.REPO_Z, scope: 'user', profile: 'luna', targetPath: process.env.REPO_Z, platform: 'linux', env };
+runInstall(planInstall(items, ctx), { dryRun: false });
+" 2>&1)
+grepq "$outZ2" 'enabledPlugins.*plugins-z2.*obsidian-second-brain@himmel.*false.*true' \
+  || fail "case z2: a CLAUDE_CONFIG_DIR write must be logged with its writer (got: $outZ2)"
+echo "ok: case z2 — the enabledPlugins watch follows CLAUDE_CONFIG_DIR"
 
 echo "PASS"
