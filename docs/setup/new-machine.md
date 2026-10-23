@@ -1428,6 +1428,18 @@ into three tiers; its own `_enabledPluginsComment` / `_onDemandPluginsComment` /
   two-tier profile; the table in the next subsection covers this tier, and re-enabling
   one there still means `claude plugin install`, not just `enable`.
 
+**Design profile: log in to `context7` and `agent-native-dispatch` once per
+machine.** Both stay on for design work: `context7` serves current library
+docs, and `agent-native-dispatch` is the hosted Builder.io MCP server
+(`https://dispatch.agent-native.com/mcp`) that `builder-visual@himmel`
+registers when the `design` profile enables it. Until each is authenticated, a
+design worker session cannot answer the OAuth prompt and looks hung. To log in,
+make sure the plugin is enabled, start an interactive `claude` session, run
+`/mcp`, pick each server and choose Authenticate. `himmel-doctor` check
+`C72-design-mcp-auth` warns when either login is missing (it reads the local
+MCP OAuth store, no network call, and stays silent where that store is a
+keychain). Never use `agent-native-dispatch` on salus/PHI work.
+
 #### Toggling the on-demand tier — `plugin-profile.sh` / `/profile`
 
 `scripts/machine-setup/plugin-profile.sh` is the **only**

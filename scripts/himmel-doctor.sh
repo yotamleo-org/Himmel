@@ -3334,7 +3334,7 @@ check_c72_design_mcp_auth() {
         grep -qx "$s" <<< "$have" || missing="${missing:+$missing, }$s"
     done
     if [ -n "$missing" ]; then
-        emit WARN C72-design-mcp-auth "design profile MCP login missing: $missing (a design worker session hangs on the OAuth prompt)" "claude, then /mcp and Authenticate each; see docs/handover/running-a-console.md"
+        emit WARN C72-design-mcp-auth "design profile MCP login missing: $missing (a design worker session hangs on the OAuth prompt)" "claude, then /mcp and Authenticate each; see docs/setup/new-machine.md (design profile login)"
     else
         emit OK C72-design-mcp-auth "context7 and agent-native-dispatch are logged in"
     fi
