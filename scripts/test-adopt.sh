@@ -1541,7 +1541,7 @@ for f in scripts/handover/merge-on-green.sh scripts/lib/check-pr-title.sh script
   [ -f "$cittarget/$f" ] || fail "HIMMEL-7001: $f was not copied into the project"
 done
 set +e
-out=$(cd "$cittarget" && HOME="$cithome" bash scripts/handover/merge-on-green.sh --help 2>&1); rc=$?
+out=$(cd "$cittarget" && HOME="$cithome" HIMMEL_REPO="$cittarget" bash "$cittarget/scripts/handover/merge-on-green.sh" --help 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "HIMMEL-7001: the project's merge-on-green.sh --help failed (rc=$rc): $out"
 grepq "$out" "Usage: merge-on-green.sh" \
