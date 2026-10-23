@@ -412,7 +412,7 @@ _crf_main() {
         [ -n "$nwo" ] || nwo=$(_cmg_local_nwo 2>/dev/null || true)
         case "$nwo" in */*/*) nwo=${nwo#*/} ;; esac
         cr_first_switch_on "$nwo" || return 0
-        info=$(gh pr view ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) \
+        info=$(gh pr view ${pr:+"$pr"} ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) \
             || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
         [ -n "$pr" ] || pr=${info%% *}
         [ -n "$head" ] || head=${info#* }

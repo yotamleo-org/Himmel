@@ -48,6 +48,7 @@ case "$A" in
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
   "api repos/o/r/commits/"*) f commit.json '{}'; exit 0 ;;
+  "pr view"*) echo "42 0000000000000000000000000000000000000000"; exit 0 ;;
 esac
 echo '{}'
 EOF
@@ -446,6 +447,9 @@ else
 fi
 reset; RC=0; bash "$SCRIPT_DIR/cr-first-release.sh" --repo o/r --pr 42 --head "$HEAD1" >"$TMP/out-arg" 2>&1 || RC=$?
 has "$TMP/out-arg" '^CR-FIRST RELEASE ' "CLI: --repo o/r --pr --head runs against the named repository"
+# a named PR with no head reads that PR's head, not the current branch's PR.
+reset; echo on > "$S/var"; RC=0; bash "$SCRIPT_DIR/cr-first-release.sh" --repo o/r --pr 42 >"$TMP/out-arg" 2>&1 || RC=$?
+has "$S/calls.log" '^pr view 42 --repo o/r ' "CLI: --pr N with no head reads the head of PR N"
 
 # ── the ledger CLI ───────────────────────────────────────────────────────────
 LCLI="$SCRIPT_DIR/../cr/cr-trigger-ledger.sh"

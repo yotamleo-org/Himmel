@@ -326,7 +326,18 @@ rc=0; out="$(run)" || rc=$?
 check "nongating-plus-unlisted-red: exit 1" "$rc" "1"
 contains "nongating-plus-unlisted-red: check 2 fails" "$out" "[FAIL] 2."
 contains "nongating-plus-unlisted-red: names the unlisted offender" "$out" "build=COMPLETED/FAILURE"
-notcontains "nongating-plus-unlisted-red: the listed context is not an offender" "$out" "not-green — security/snyk"
+fail2="$(printf '%s\n' "$out" | grep -F '[FAIL] 2.' || true)"
+contains "nongating-plus-unlisted-red: the check 2 line was extracted" "$fail2" "[FAIL] 2."
+notcontains "nongating-plus-unlisted-red: the listed context is not an offender" "$fail2" "security/snyk"
+
+# A CheckRun that shares the listed name is a different check and still gates --
+SNYK_CHECKRUN='{"name":"security/snyk (yotamleo)","status":"COMPLETED","conclusion":"FAILURE"}'
+reset_stubs
+STUB_ROLLUP="[$BUILD_OK,$SNYK_CHECKRUN]"
+rc=0; out="$(run)" || rc=$?
+check "nongating-checkrun-same-name: exit 1" "$rc" "1"
+contains "nongating-checkrun-same-name: check 2 fails" "$out" "[FAIL] 2."
+contains "nongating-checkrun-same-name: names the check run" "$out" "security/snyk (yotamleo)=COMPLETED/FAILURE"
 
 # UNSTABLE with an unlisted failure fails row 1 ------------------------------
 reset_stubs

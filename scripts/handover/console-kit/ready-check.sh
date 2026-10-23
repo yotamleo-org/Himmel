@@ -265,7 +265,7 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
         | map(.sort_key = [(.ts == null), (.ts // .idx)])
         | group_by(.key)
         | map(max_by(.sort_key))
-        | map(.listed = (.name != null and (.name as $n | $ng | index($n)) != null))
+        | map(.listed = (.is_checkrun | not) and (.name != null and (.name as $n | $ng | index($n)) != null))
         | {total: length,
            gated: (map(select(.listed | not)) | length),
            bad: (map(select((.ok | not) and (.listed | not))) | map("\(.name // "?")=\(.detail)") | join(", ")),

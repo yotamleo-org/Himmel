@@ -294,6 +294,7 @@ describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github 
     expect(c[1]).toContain('threadId=PRRT_x');
     expect(c[2]).toMatch(/resolve-thread\.gql/);
     // After the resolve, the ci:go release check reads the PR head; nothing else.
+    expect(c.length).toBeGreaterThanOrEqual(4);
     expect(c.slice(3).every((l) => /^pr view 9 --repo o\/r --json headRefOid/.test(l))).toBe(true);
   });
 
