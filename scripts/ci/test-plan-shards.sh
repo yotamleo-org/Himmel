@@ -20,7 +20,7 @@
 #   PS11 a --list with nothing selected -> shards=[] , total 1
 #   PS12 a --list that fails or lacks its footer -> the probes at n (fail closed)
 #   PS13 the --list gets the runner args after -- and the root
-#   PS14 ci.yml sizes home-canary from the plan, one leg on an empty selection
+#   PS14 ci.yml runs the shards through home-canary.sh; no home-canary matrix
 #   PS15 an empty or missing ledger -> the probes at n
 #   PS16 a root omitted before -- defaults to .
 #   PS20 n above the 64 cap is clamped to 64 with a message naming CI_MAX_SHARDS,
@@ -111,7 +111,7 @@ else
   fail "PS8 ci.yml does not wire plan-shards.sh into the shard matrix"
 fi
 total_expr="\${{ needs.plan.outputs.shard_total || 8 }}"
-if grep -qF "run-shell-tests.sh --shard \${{ matrix.shard }}/$total_expr ." "$CI" \
+if grep -qF "home-canary.sh --shard \${{ matrix.shard }}/$total_expr ." "$CI" \
    && grep -qF "SHARD_TOTAL: $total_expr" "$CI" \
    && grep -qF -- "--shards \"\$SHARD_TOTAL\"" "$CI" \
    && grep -qF "shard_total: \${{ steps.shards.outputs.shard_total }}" "$CI"; then
@@ -120,16 +120,35 @@ else
   fail "PS8 ci.yml does not feed shard_total to the shard run and the aggregator verify"
 fi
 
-# PS14: home-canary is sized the same way, off its own --impacted selection, and
-# keeps one leg on an empty one (the host-file sink check runs in every leg).
-if grep -qF -- "plan-shards.sh \"\${CI_MAX_SHARDS:-16}\" . -- --impacted \"\$PR_BASE_SHA..HEAD\"" "$CI" \
-   && grep -qF "canary_shards: \${{ steps.canary.outputs.canary_shards }}" "$CI" \
-   && grep -qF "canary_total: \${{ steps.canary.outputs.canary_total }}" "$CI" \
-   && grep -qF "shard: \${{ fromJSON(needs.plan.outputs.canary_shards == '[]' && '[1]' || needs.plan.outputs.canary_shards || '[1,2,3,4,5,6,7,8]') }}" "$CI" \
-   && grep -qF -- "--shard \"\${{ matrix.shard }}/\${{ needs.plan.outputs.canary_total || 8 }}\"" "$CI"; then
-  pass "PS14 home-canary takes its shard list and total from the plan, one leg when empty"
+# PS14: the honeytoken-HOME leak check runs inside the shell-unit shards, so it
+# is sized by the one shard plan: the shard run goes through home-canary.sh with
+# the plan's shard total, no second matrix, no canary plan step, and the shard
+# does not downgrade suite failures.
+if grep -qF -- "run: bash scripts/ci/home-canary.sh --shard \${{ matrix.shard }}/\${{ needs.plan.outputs.shard_total || 8 }} ." "$CI" \
+   && ! grep -qE '^  (fail-fast-)?home-canary:' "$CI" \
+   && ! grep -qF "canary_shards" "$CI" \
+   && ! grep -qF "canary_total" "$CI" \
+   && ! grep -qF "HOME_CANARY_RUNNER_FAIL_OK" "$CI"; then
+  pass "PS14 the shell-unit shards run through home-canary.sh on the plan's shard total, no second matrix"
 else
-  fail "PS14 ci.yml does not size home-canary from the plan"
+  fail "PS14 ci.yml does not run the shards through home-canary.sh (or still has the home-canary matrix)"
+fi
+
+# PS14b: the host-file read-sink scan moved to ci-quick, a step of the
+# unchecked-mktemp-range group (both scan the PR range for added code).
+quick_block="$(awk '/^  ci-quick:/ { j = 1; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI")"
+sink_step="$(printf '%s\n' "$quick_block" | awk '/^      - id: unchecked-mktemp-range__read-sinks[ ]*$/ { s = 1; print; next } s && /^      - / { exit } s { print }')"
+group_out="$(printf '%s\n' "$quick_block" | grep -F "steps.unchecked-mktemp-range__read-sinks.outcome")"
+ps14b_ok=0
+case "$sink_step" in
+  *"continue-on-error"*) ;;
+  *"if: \${{ !cancelled() && github.event_name == 'pull_request' }}"*"check-host-file-read-sinks.sh --range --merge-ref"*)
+    [ -n "$group_out" ] && ps14b_ok=1 ;;
+esac
+if [ "$ps14b_ok" = 1 ]; then
+  pass "PS14b check-host-file-read-sinks.sh gates through the unchecked-mktemp-range group in ci-quick"
+else
+  fail "PS14b check-host-file-read-sinks.sh is not a gating ci-quick step of the unchecked-mktemp-range group"
 fi
 
 # PS9: the committed ledger is per-suite timings from real main CI runs.
@@ -239,11 +258,8 @@ PY
   cat "$step_dir/args.log"
   return "$step_rc"
 }
-for sid in shards canary; do
-  case "$sid" in shards) tail_args="." ;; canary) tail_args=". -- --impacted abc..HEAD" ;; esac
-  if got=$(run_plan_step "$sid" "") && [ "$got" = "16 $tail_args" ]; then pass "PS18 $sid: variable empty plans at 16"; else fail "PS18 $sid empty: got [$got]"; fi
-  if got=$(run_plan_step "$sid" 8) && [ "$got" = "8 $tail_args" ]; then pass "PS18 $sid: variable 8 plans at 8"; else fail "PS18 $sid 8: got [$got]"; fi
-done
+if got=$(run_plan_step shards "") && [ "$got" = "16 ." ]; then pass "PS18 shards: variable empty plans at 16"; else fail "PS18 shards empty: got [$got]"; fi
+if got=$(run_plan_step shards 8) && [ "$got" = "8 ." ]; then pass "PS18 shards: variable 8 plans at 8"; else fail "PS18 shards 8: got [$got]"; fi
 
 # PS19: a plan at 16 lists at most 16 shards and shard_total is 16.
 check "PS19 a 16-shard plan lists all 16" "1=true 2=true 3=true 4=true 5=true 6=true 7=true 8=true 9=true 10=true 11=true 12=true 13=true 14=true 15=true 16=true" 16 "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]" ""

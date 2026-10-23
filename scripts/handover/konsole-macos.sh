@@ -244,7 +244,41 @@ if [ -n "$TABTITLE" ]; then
     mv "$_tmp" "$CMDFILE"
 fi
 
-if ! open -a "$TERM_APP" "$CMDFILE"; then
+# Open the leg in the arming session's own iTerm window (#3602). `open -a`
+# names no window, so iTerm puts the tab in whichever window is frontmost -
+# often one the operator is working in, not the console's. When the arming
+# shell runs inside iTerm, $ITERM_SESSION_ID (w<n>t<n>p<n>:<uuid>) names its
+# session; create the tab in the window that holds it. Fail open: osascript
+# failing (Automation permission denied, session gone) means no tab was
+# created, so falling back to `open -a` cannot launch the body twice.
+_launched=0
+if [ "$TERM_APP" = "iTerm" ] && [ -n "${ITERM_SESSION_ID:-}" ]; then
+    if osascript - "${ITERM_SESSION_ID#*:}" "$CMDFILE" >/dev/null <<'APPLESCRIPT'
+on run argv
+	set sid to item 1 of argv
+	set cmdfile to item 2 of argv
+	tell application "iTerm"
+		repeat with w in windows
+			repeat with t in tabs of w
+				repeat with s in sessions of t
+					if (unique id of s) is sid then
+						tell w to create tab with default profile command "/bin/sh " & quoted form of cmdfile
+						return "ok"
+					end if
+				end repeat
+			end repeat
+		end repeat
+	end tell
+	error "iTerm session " & sid & " not found"
+end run
+APPLESCRIPT
+    then
+        _launched=1
+    else
+        echo "WARN konsole-macos: could not open a tab in the arming iTerm window; falling back to open -a" >&2
+    fi
+fi
+if [ "$_launched" -ne 1 ] && ! open -a "$TERM_APP" "$CMDFILE"; then
     echo "konsole-macos: open -a $TERM_APP failed - no session was launched" >&2
     exit 3
 fi

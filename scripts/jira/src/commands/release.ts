@@ -9,11 +9,14 @@ import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
-import { setFixVersion } from './versions.js';
+import { fetchVersions, setFixVersion } from './versions.js';
+import { readAdmissions } from './admissions-ledger.js';
+import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, declare, fold, freeze, leaseAcquire, leaseRelease, operatorDecision, reopen, request as releaseRequest, rmRun, rule, state, takeover,
+  apply, claim, declare, fold, freeze, leaseAcquire, leaseRelease, operatorDecision, readMirror, reopen, request as releaseRequest, rmRun, rule, state, takeover,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
+import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
 import type { Authority, Op, Verb } from '../release/types.js';
 
@@ -73,13 +76,18 @@ export function parseFoldFile(text: string): FoldItem[] {
   });
 }
 
-export function renderState(s: StateOut): string {
+export function renderState(s: StateOut, budgets: Record<string, number> = {}): string {
   const out = [`release ${s.release}: ${s.status}${s.mode ? ` (${s.mode})` : ''}`];
   out.push(`inputs: ${Object.entries(s.inputs).map(([k, v]) => `${k}=${v}`).join(' ')}`);
   if (s.lease) out.push(`lease: epoch ${s.lease.epoch} ${s.lease.released ? 'released' : `held by ${s.lease.owner_doc}`}`);
   for (const [v, b] of Object.entries(s.burndown)) {
     out.push(`${v}: baseline ${b.baseline} (open ${b.baseline_open}), admitted open ${b.admitted_open}, emergency open ${b.emergency_open}, deferred out ${b.deferred_out}`);
   }
+  const today = Object.entries(s.admissions_today).map(([v, n]) => {
+    const budget = budgets[v];
+    return `${v} ${n}${budget === undefined ? '' : ` of ${budget}${n > budget ? ' OVER BUDGET' : ''}`}`;
+  });
+  if (today.length) out.push(`operator admissions today: ${today.join(', ')}`);
   out.push(`leaks: unauthorized ${s.leaks.unauthorized.join(', ') || 'none'}; ruled-in non-member ${s.leaks.ruled_in_non_member.join(', ') || 'none'}`);
   out.push(`requests: open ${s.requests.open.join(', ') || 'none'}; claimed ${s.requests.claimed.join(', ') || 'none'}`);
   for (const i of s.integrity) out.push(`integrity: ${i}`);
@@ -167,6 +175,20 @@ export const liveJudge: Judge = async (input) => {
   }
 };
 
+// The budget lives on the Jira version; an unreachable Jira shows the count alone.
+async function admissionBudgets(versions: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const project = projectKey();
+  try {
+    const known = await fetchVersions(project);
+    for (const v of versions) {
+      const budget = admissionBudget(known.find((k) => k.name === v)?.description);
+      if (budget !== undefined) out[v] = budget;
+    }
+  } catch { /* count only */ }
+  return out;
+}
+
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
 
@@ -174,10 +196,28 @@ export function registerRelease(program: Command): void {
     .description('Effective release state from the one reducer (never a clean result on unknown input)')
     .option('--json', 'Print the full state as JSON')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action((release: string, o: { json?: boolean; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { json?: boolean; mirrorRoot?: string }) => {
       const s = state(ctxFor(release, o.mirrorRoot));
-      console.log(o.json ? JSON.stringify(s, null, 2) : renderState(s));
+      const budgets = s.status === 'OK' ? await admissionBudgets(s.versions) : {};
+      console.log(o.json ? JSON.stringify({ ...s, admission_budget: budgets }, null, 2) : renderState(s, budgets));
       if (s.status !== 'OK') process.exitCode = 3;
+    });
+
+  rel.command('leaks <version>')
+    .description('Open tickets in a frozen version that are in neither its frozen set nor the admissions ledger')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .option('--comment', 'Post one comment on each leak (a leak already commented is skipped)')
+    .action(async (version: string, o: { mirrorRoot?: string; comment?: boolean }) => {
+      const found = (await fetchVersions(projectKey())).find((v) => v.name === version);
+      if (!found) throw new Error(`release leaks: no version named "${version}"`);
+      const frozen = parseFrozen(found.description);
+      if (!frozen) throw new Error(`release leaks: ${version} is not frozen (no frozen: and frozen-keys: lines in its description)`);
+      const mirror = readMirror(o.mirrorRoot ?? defaultRoot(projectKey()));
+      if (!mirror.issues) throw new Error('release leaks: the Jira mirror is missing or unreadable, so no leak result');
+      const leaks = leakDiff(version, frozen.keys, mirror.issues, readAdmissions(version));
+      if (leaks.length === 0) console.log(`leaks ${version}: none (mirror synced ${mirror.sync})`);
+      for (const key of leaks) console.log(leakLine(key, version, frozen.date));
+      if (o.comment) await commentLeaks(liveJira, leaks, version, frozen.date);
     });
 
   rel.command('request <release>')

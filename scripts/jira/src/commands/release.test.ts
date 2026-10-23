@@ -4,10 +4,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
+vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
-import { judgeEnv, parseDecisions, registerRelease } from './release.js';
+import { projectKey, request } from '../client.js';
+import { admissionBudget } from '../release/leaks.js';
+import { judgeEnv, parseDecisions, registerRelease, renderState } from './release.js';
 
 let out: string[];
 let root: string;
@@ -126,5 +128,114 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
       HIMMEL_CONSOLE_LEG: '1', HIMMEL_CONSOLE_DOC: '/d.md', HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: '/r.md', HIMMEL_LEG_ID: 'N1', // old-term-ok: a sample of the env prefix judgeEnv drops
       ANTHROPIC_API_KEY: 'k', anthropic_base_url: 'u', CLAUDE_CODE_USE_BEDROCK: '1', HIMMEL_RELEASE_STATE_DIR: '/s',
     })).toEqual({ PATH: '/bin', HOME: '/h', HIMMEL_RELEASE_STATE_DIR: '/s' });
+  });
+});
+
+const FROZEN_DESC = 'frozen: 2026-10-20\nfrozen-keys: K-1';
+
+function writeMirror(...issues: Array<{ key: string; fixVersions: string[]; status?: string }>): string {
+  const dir = join(root, 'mirror');
+  mkdirSync(dir);
+  writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T00:00:00Z' }));
+  for (const i of issues) {
+    writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: ${JSON.stringify(i.status ?? 'In Progress')}\n` +
+      `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n---\n`);
+  }
+  return dir;
+}
+
+function jiraAnswers(versions: Array<{ name: string; description?: string }>, comments: unknown[] = []) {
+  vi.mocked(request).mockImplementation((async (method: string, path: string) => {
+    if (path.endsWith('/versions')) return versions;
+    if (path.includes('/comment') && method === 'GET') return { comments, total: comments.length };
+    if (method === 'POST') return { id: 'c-1' };
+    return undefined;
+  }) as never);
+}
+
+describe('jira release leaks (HIMMEL-7153)', () => {
+  beforeEach(() => {
+    vi.mocked(request).mockReset();
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'ledger.jsonl'));
+    writeFileSync(join(root, 'ledger.jsonl'), JSON.stringify({
+      ts: '2026-10-23T00:00:00.000Z', version: 'v1', key: 'K-3', kind: 'override', actor: 'console',
+    }) + '\n');
+  });
+
+  it('prints one line per open ticket outside the frozen set and the ledger', async () => {
+    jiraAnswers([{ name: 'v1', description: FROZEN_DESC }]);
+    const mirror = writeMirror(
+      { key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'] },
+      { key: 'K-4', fixVersions: ['v1'], status: 'Done' }, { key: 'K-5', fixVersions: ['v2'] },
+    );
+    await run('leaks', 'v1', '--mirror-root', mirror);
+    expect(out).toEqual(['LEAK K-2@v1 — carries v1 (frozen 2026-10-20) with no frozen-set membership and no admissions-ledger row']);
+    expect(vi.mocked(request).mock.calls.some(([m]) => m === 'POST')).toBe(false);
+  });
+
+  it('says none when the version has no leak', async () => {
+    jiraAnswers([{ name: 'v1', description: FROZEN_DESC }]);
+    await run('leaks', 'v1', '--mirror-root', writeMirror({ key: 'K-1', fixVersions: ['v1'] }));
+    expect(out).toEqual(['leaks v1: none (mirror synced 2026-10-23T00:00:00Z)']);
+  });
+
+  it('--comment posts one comment on a leak and skips one already commented', async () => {
+    jiraAnswers([{ name: 'v1', description: FROZEN_DESC }]);
+    const mirror = writeMirror({ key: 'K-2', fixVersions: ['v1'] });
+    await run('leaks', 'v1', '--mirror-root', mirror, '--comment');
+    const posts = vi.mocked(request).mock.calls.filter(([m]) => m === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0][1]).toBe('/issue/K-2/comment');
+
+    vi.mocked(request).mockClear();
+    jiraAnswers([{ name: 'v1', description: FROZEN_DESC }], [{ id: 'c-9', body: 'x [intake-leak v1] y' }]);
+    await run('leaks', 'v1', '--mirror-root', mirror, '--comment');
+    expect(vi.mocked(request).mock.calls.some(([m]) => m === 'POST')).toBe(false);
+  });
+
+  it('refuses an unfrozen version and a missing mirror instead of reporting clean', async () => {
+    jiraAnswers([{ name: 'v1', description: 'no freeze lines' }, { name: 'v2', description: FROZEN_DESC }]);
+    await expect(run('leaks', 'v1', '--mirror-root', writeMirror())).rejects.toThrow(/not frozen/);
+    await expect(run('leaks', 'v3', '--mirror-root', join(root, 'mirror'))).rejects.toThrow(/no version named "v3"/);
+    await expect(run('leaks', 'v2', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(/mirror is missing or unreadable/);
+  });
+});
+
+describe('jira release state admissions budget (HIMMEL-7153)', () => {
+  const stateOut = (n: number) => ({
+    release: 'R1', status: 'OK', mode: 'observe', inputs: {}, burndown: {}, admissions_today: { v1: n },
+    leaks: { unauthorized: [], ruled_in_non_member: [] }, requests: { open: [], claimed: [] }, integrity: [],
+  }) as never;
+
+  it('shows the count alone without a budget, and the budget with an over-budget marker', () => {
+    expect(renderState(stateOut(3))).toContain('operator admissions today: v1 3');
+    expect(renderState(stateOut(3))).not.toContain('of ');
+    expect(renderState(stateOut(3), { v1: 5 })).toContain('operator admissions today: v1 3 of 5');
+    expect(renderState(stateOut(3), { v1: 5 })).not.toContain('OVER BUDGET');
+    expect(renderState(stateOut(6), { v1: 5 })).toContain('operator admissions today: v1 6 of 5 OVER BUDGET');
+  });
+
+  it('reads admission-budget:N from the version description into the JSON state', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
+    vi.mocked(request).mockReset();
+    jiraAnswers([{ name: 'v1', description: 'notes\nadmission-budget: 4\n' }]);
+    out = [];
+    await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
+    expect(JSON.parse(out[0]).admission_budget).toEqual({ v1: 4 });
+  });
+
+  it('keeps the required-project-key error instead of printing the count alone', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
+    vi.mocked(projectKey).mockImplementationOnce(() => { throw new Error('JIRA_PROJECT_KEY is required'); });
+    await expect(run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(/JIRA_PROJECT_KEY is required/);
+  });
+
+  it('parses only a whole admission-budget line', () => {
+    expect(admissionBudget('a\nadmission-budget: 12\nb')).toBe(12);
+    expect(admissionBudget('admission-budget:x')).toBeUndefined();
+    expect(admissionBudget('see admission-budget: 3 here')).toBeUndefined();
+    expect(admissionBudget(undefined)).toBeUndefined();
   });
 });

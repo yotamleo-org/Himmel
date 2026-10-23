@@ -51,6 +51,8 @@ case "$1" in
         [ "${STUB_AUTH:-1}" = 1 ] || { echo "Authentication failed" >&2; exit 2; }
         echo "stub-user"; exit 0 ;;
     test)
+        # a fork checkout carries its own canned result (snyk-stub.json + snyk-stub.rc)
+        if [ -f "$PWD/snyk-stub.json" ]; then cat "$PWD/snyk-stub.json"; exit "$(cat "$PWD/snyk-stub.rc")"; fi
         cat "$STUB_OS"; exit "${STUB_OS_RC:-0}" ;;
     code)
         if [ "$STUB_CODE" = off ]; then
@@ -62,6 +64,31 @@ esac
 exit 2
 SH
 chmod +x "$BIN/snyk"
+# Stub uv (the uv.lock export) and curl (osv.dev). The fixtures are real: uv-export.txt is
+# `uv export --format requirements-txt` output, osv-*.json the api.osv.dev replies for requests 2.19.0.
+cat > "$BIN/uv" <<'SH'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$PWD" "$*" >> "$STUB_DIR/uv.log"
+cat "$STUB_FIX/uv-export.txt"
+SH
+cat > "$BIN/curl" <<'SH'
+#!/usr/bin/env bash
+url="${*: -1}"
+printf '%s\n' "$url" >> "$STUB_DIR/curl.log"
+prev=""
+for a in "$@"; do
+    [ "$prev" = -d ] && jq -c . "${a#@}" > "$STUB_DIR/osv-body.json"
+    prev="$a"
+done
+[ "${STUB_OSV_FAIL:-0}" = 1 ] && { echo "curl: (22) The requested URL returned error: 500" >&2; exit 22; }
+case "$url" in
+    */v1/querybatch) if [ -n "${STUB_OSV_BODY:-}" ]; then printf '%s\n' "$STUB_OSV_BODY"; else cat "$STUB_FIX/osv-querybatch.json"; fi ;;
+    */v1/vulns/*) f="$STUB_FIX/osv-vuln-${url##*/}.json"; if [ -n "${STUB_VULN_BODY:-}" ]; then printf '%s\n' "$STUB_VULN_BODY"; else [ -f "$f" ] && cat "$f" || exit 22; fi ;;
+    *) exit 22 ;;
+esac
+SH
+chmod +x "$BIN/uv" "$BIN/curl"
+export STUB_FIX="$FIX" SNYK_SCAN_OSV_URL="http://osv.stub"
 export STUB_DIR="$W"
 # keep the real PATH for jq/git/awk but put the stub first
 export PATH="$BIN:$PATH"
@@ -227,6 +254,109 @@ check "no scan ran with a read-only ledger" 0 "$(grep -c '^[^|]*|test' "$W/calls
 rm -rf "$SNYK_SCAN_STATE_DIR"
 bash "$SCAN" --repo "$R" --out-dir "$W/out-usage" --date 2026-10-23 > "$W/usage.log" 2>&1
 check "usage ledger counts one Open Source test per project" 1 "$(awk -F'\t' '$2=="open_source"{s+=$3} END{print s+0}' "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv")"
+
+# --- forks mode: --forks ---------------------------------------------------------
+# Each fork is a local git repo whose snyk-stub.json is the canned `snyk test` result for it.
+mkfork() { # <name> <snyk fixture> <snyk rc> [with-uv-lock]
+    local d="$W/forks/$1"; mkdir -p "$d"; git init -q -b main "$d"
+    cp "$2" "$d/snyk-stub.json"; echo "$3" > "$d/snyk-stub.rc"; printf '{}\n' > "$d/package.json"
+    [ -z "${4:-}" ] || : > "$d/uv.lock"
+    git -C "$d" add -A; git -C "$d" -c user.name=t -c user.email=t@t commit -q -m fork
+}
+mkfork vulnfork "$FIX/snyk-os-high.json" 1 uv
+mkfork cleanfork "$FIX/snyk-os-clean.json" 0
+mkfork uvfork "$FIX/snyk-os-clean.json" 0 uv
+mkfork fixedfork "$FIX/snyk-os-high.json" 1
+git -C "$W/forks/fixedfork" tag pinned
+cp "$FIX/snyk-os-clean.json" "$W/forks/fixedfork/snyk-stub.json"; echo 0 > "$W/forks/fixedfork/snyk-stub.rc"
+git -C "$W/forks/fixedfork" -c user.name=t -c user.email=t@t commit -q -am "upstream fixed it"
+U="file://$W/forks"
+export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up
+cleanfork|$U/cleanfork|main|-
+fixedfork|$U/fixedfork|pinned|up"
+export STUB_OS="$FIX/snyk-os-clean.json" STUB_OS_RC=0 STUB_CODE=off
+: > "$W/uv.log"; : > "$W/curl.log"
+run forks --forks
+FJ="$OUTDIR/2026-10-23.forks.json"; FS="$OUTDIR/2026-10-23.forks.summary.md"
+check "a High finding in any fork exits 1" 1 "$RC"
+[ -s "$FJ" ] && [ -s "$FS" ] && pass "forks JSON and summary written" || fail "forks JSON and summary written"
+for f in vulnfork cleanfork fixedfork; do has "summary has a section for $f" "## $f" "$FS"; done
+check "vulnfork lists the planted Open Source High" 1 "$(jq '[.[] | select(.name=="vulnfork") | .findings[] | select(.id=="SNYK-JS-LODASH-6139239")] | length' "$FJ")"
+check "uv.lock findings come from osv.dev (High + the alias-merged Moderate)" "GHSA-9hjg-9r4m-mvj7 GHSA-x84v-xcm2-53pg" \
+    "$(jq -r '[.[] | select(.name=="vulnfork") | .findings[] | select(.target=="uv.lock") | .id] | sort | join(" ")' "$FJ")"
+check "the osv.dev High keeps its severity" high "$(jq -r '.[] | select(.name=="vulnfork") | .findings[] | select(.id=="GHSA-x84v-xcm2-53pg") | .severity' "$FJ")"
+hasnt "a PYSEC alias of a listed GHSA is not a second row" PYSEC-2026-1872 "$FS"
+has "uv.lock is exported with uv, frozen" "export --frozen" "$W/uv.log"
+has "osv.dev is queried in one batch" "/v1/querybatch" "$W/curl.log"
+has "the batch asks for the PyPI ecosystem" '"ecosystem":"PyPI"' "$W/osv-body.json"
+has "the batch carries the exported version" '"version":"2.19.0"' "$W/osv-body.json"
+check "0-row control: the clean fork has no findings" 0 "$(jq '.[] | select(.name=="cleanfork") | .findings | length' "$FJ")"
+check "0-row control: the clean fork scanned ok" ok "$(jq -r '.[] | select(.name=="cleanfork") | .status' "$FJ")"
+check "a fork carrying its own delta is not compared with upstream" none "$(jq -r '.[] | select(.name=="cleanfork") | .upstream' "$FJ")"
+check "a finding still on upstream HEAD is not fixed upstream" no "$(jq -r '.[] | select(.name=="vulnfork") | .findings[] | select(.id=="SNYK-JS-LODASH-6139239") | .fixed_upstream' "$FJ")"
+check "a finding gone from upstream HEAD is fixed upstream" yes "$(jq -r '.[] | select(.name=="fixedfork") | .findings[] | select(.id=="SNYK-JS-LODASH-6139239") | .fixed_upstream' "$FJ")"
+check "the pinned ref, not HEAD, is what is scanned" "pinned" "$(jq -r '.[] | select(.name=="fixedfork") | .ref' "$FJ")"
+check "usage ledger counts one Open Source test per scanned project, upstream scans included" "$(grep -c '^[^|]*|test' "$W/calls.log")" \
+    "$(awk -F'\t' '$2=="open_source"{s+=$3} END{print s+0}' "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv")"
+cat "$OUT" "$FJ" "$FS" > "$W/forks-out.txt"
+hasnt "SNYK_TOKEN value never reaches the forks output" "$SNYK_TOKEN" "$W/forks-out.txt"
+
+export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|-"
+run forksclean --forks
+check "a fork set with no High or Critical exits 0" 0 "$RC"
+has "clean forks summary reports high: 0" "high: 0" "$OUTDIR/2026-10-23.forks.summary.md"
+
+export SNYK_SCAN_FORKS="badref|$U/cleanfork|nosuchref|-
+cleanfork|$U/cleanfork|main|-"
+run forksbadref --forks
+check "a ref that cannot be fetched exits 2" 2 "$RC"
+check "the bad fork is recorded as error" error "$(jq -r '.[] | select(.name=="badref") | .status' "$OUTDIR/2026-10-23.forks.json")"
+check "the other forks are still scanned" ok "$(jq -r '.[] | select(.name=="cleanfork") | .status' "$OUTDIR/2026-10-23.forks.json")"
+
+export SNYK_SCAN_FORKS="uvfork|$U/uvfork|main|-"
+SNYK_SCAN_UV="$W/no-uv" run forksnouv --forks
+check "a uv.lock with no uv exits 2, not a clean fork" 2 "$RC"
+has "the missing uv is named" "uv not found" "$OUTDIR/2026-10-23.forks.summary.md"
+STUB_OSV_FAIL=1 run forksosvfail --forks
+check "an osv.dev failure exits 2, not a clean fork" 2 "$RC"
+STUB_OSV_BODY='{"results":[]}' run forksosvshort --forks
+check "an osv.dev reply with fewer results than queries exits 2, not a clean fork" 2 "$RC"
+has "the short osv.dev reply is named" "osv.dev" "$OUTDIR/2026-10-23.forks.summary.md"
+STUB_OSV_BODY='{"results":[{"vulns":[{"id":"GHSA-x84v-xcm2-53pg"}],"next_page_token":"abc"},{}]}' run forksosvpaged --forks
+check "an osv.dev reply with a next page exits 2, not a partial answer" 2 "$RC"
+STUB_OSV_BODY='{"results":[null,{}]}' run forksosvnull --forks
+check "an osv.dev reply with a null result exits 2, not a clean fork" 2 "$RC"
+STUB_OSV_BODY='{"results":[{"vulns":false},{}]}' run forksosvbadvulns --forks
+check "an osv.dev result whose vulns is not an array exits 2, not a clean fork" 2 "$RC"
+STUB_VULN_BODY='{"id":"GHSA-other"}' run forksosvbadadv --forks
+check "an osv.dev advisory with no matching id exits 2, not a default-medium finding" 2 "$RC"
+# a ledger that passes the preflight but fails on append (disk full) stops the run before any further scan, upstream included
+export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|up
+uvfork|$U/uvfork|main|-"
+rm -rf "$SNYK_SCAN_STATE_DIR" "$W/out-forksfull"; mkdir -p "$SNYK_SCAN_STATE_DIR"; : > "$W/calls.log"
+ln -s /dev/full "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv"
+bash "$SCAN" --forks --repo "$R" --out-dir "$W/out-forksfull" --date 2026-10-23 > "$W/forksfull.log" 2>&1
+check "a ledger write that fails mid-run exits 2" 2 "$?"
+check "no fork is scanned after the ledger write failed" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+rm -f "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv"
+export SNYK_SCAN_FORKS="uvfork|$U/uvfork|main|-"
+SNYK_SCAN_OS_CAP=0 run forksquota --forks
+check "the quota cap refuses a forks run" 2 "$RC"
+has "quota refusal names the cap" "monthly quota" "$OUT"
+check "no fork was scanned past the cap" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# a quota refusal on a later fork still writes the report for the forks already scanned
+export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|-
+uvfork|$U/uvfork|main|-"
+rm -f "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv" "$OUTDIR/2026-10-23.forks.json" "$OUTDIR/2026-10-23.forks.summary.md"
+SNYK_SCAN_OS_CAP=1 run forksquotalate --forks
+check "a quota refusal on a later fork exits 2" 2 "$RC"
+has "the report is still written when the quota stops a later fork" "monthly quota" "$OUTDIR/2026-10-23.forks.summary.md"
+has "the fork scanned before the quota stop is in the report" "cleanfork" "$OUTDIR/2026-10-23.forks.summary.md"
+
+unset SNYK_SCAN_FORKS
+run forksnopins --forks
+check "a checkout without the pin files exits 2" 2 "$RC"
+has "the missing pin is named" "qmd" "$OUT"
 
 # --- weekly cadence: snyk-scan-cadence.sh ---------------------------------------
 CAD="$DIR/snyk-scan-cadence.sh"

@@ -1,0 +1,11 @@
+{
+  "id": "GHSA-x84v-xcm2-53pg",
+  "aliases": [
+    "CVE-2018-18074",
+    "PYSEC-2018-28"
+  ],
+  "summary": "Insufficiently Protected Credentials in Requests",
+  "database_specific": {
+    "severity": "HIGH"
+  }
+}

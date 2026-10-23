@@ -22,8 +22,10 @@ node scripts/mcp/build-mcp-profiles.mjs          # writes local.<name>.json
 node scripts/mcp/build-mcp-profiles.mjs --list   # show profile → servers
 ```
 
-The generator reads your live `~/.claude.json` for the real (absolute-path,
-secret-bearing) server specs and writes `local.<name>.json` here. **Those are
+The generator reads your live `~/.claude.json`, then the on-demand registry
+`~/.config/himmel/mcp-on-demand.json` (override `HIMMEL_MCP_ONDEMAND_FILE`, same
+`{"mcpServers":{...}}` shape), for the real (absolute-path, secret-bearing)
+server specs and writes `local.<name>.json` here. **Those are
 gitignored** — they carry `C:\Users\…` paths, which must never hit git. Only the
 generator + `profiles.json` manifest + this README are committed.
 
@@ -38,14 +40,21 @@ generator after changing a key.
 `minimal` resolves to **context7-remote** — it is a key in this generator's
 own `PLUGIN_SERVERS` map (above), so it resolves with no machine state, no
 registration, and no installer step, on a fresh clone with nothing installed.
-`graphify` is NOT a safe baseline pick, even though it's the one remaining
-optional MCP server himmel ships a CLI/skill for: `graphify-mcp` (and its
-`graphify` dep) is `offboard: advise` with no `install` descriptor in
-`scripts/install/manifest.json` — nothing provisions it, a `mcp-registered`
-probe only *detects* an existing registration, it doesn't create one. A
-profile can list `graphify` only once it has a real provisioning source.
+`graphify` is NOT a safe baseline pick: it resolves only from the on-demand
+registry (see below), which `setup.sh --with-graphify` / `adopt.sh
+--with-graphify` populate, so it is listed only in the opt-in `graph` profile.
 (tokensave used to fill the `minimal` role; it was dropped, HIMMEL-2581, and
 its installer provisioning removed, HIMMEL-2634 — this table reflects that.)
+
+## On-demand servers (HIMMEL-7176, HIMMEL-7177)
+
+`~/.claude.json` `mcpServers` loads into **every** session, so a server kept
+there costs its tool schemas everywhere. `obsidian-vault` (15 tools) and
+`graphify` (10 tools) had 0 calls in 14 days, so they live in the on-demand
+registry instead: a profile launches them, no default session does.
+`setup.sh`/`adopt.sh` register graphify there; move an existing `obsidian-vault`
+entry by hand (remove it from `~/.claude.json`, add the same spec to the
+registry file).
 
 ## Launch a lean session
 
@@ -60,7 +69,8 @@ Servers as currently listed in `profiles.json`:
 | `minimal` | context7-remote | Default coding / armed / overnight sessions |
 | `research` | context7 (remote HTTP) | Library-docs / API work |
 | `browser` | playwright, chrome-devtools | Browser automation / web debug |
-| `vault` | obsidian-vault | luna / salus vault sessions |
+| `vault` | obsidian-vault | luna / salus vault sessions (the one vault MCP) |
+| `graph` | graphify | graph tools (`mcp__graphify__*`); the graphify CLI is the default path |
 | `secrets` | onepassword | Sessions that need 1Password |
 
 Edit `profiles.json` to add/rebalance a profile, then re-run the generator.
@@ -103,6 +113,6 @@ block). Verify after: open a fresh session, confirm the expected tools still res
 T0 always-on (none currently — `minimal`'s sole member, context7-remote, is
 already a T1 singleton; see `minimal` above) · T1 shared HTTP singleton
 (context7 remote, atlassian,
-huggingface, vercel — 0 local procs) · T2 profile-scoped (browser, vault, secrets)
+huggingface, vercel — 0 local procs) · T2 profile-scoped (browser, vault, graph, secrets)
 · T3 env-gated opt-in (telegram-himmel, luna-correlate — HIMMEL-591, done) · TX
 CLI-first (jira over atlassian, gh over github, firecrawl).

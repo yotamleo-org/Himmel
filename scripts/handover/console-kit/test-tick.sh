@@ -2509,6 +2509,50 @@ contains 'an incomplete audit with no RESET row reads vmismatch=? (HIMMEL-6549)'
 printf '#!/bin/sh\nprintf "LATER-VERSION\\tHIMMEL-72\\tIn Progress\\tv1.0.2\\tnone\\tRESET\\nvmismatch=1\\n"\nexit 3\n' > "$W/vm-partial1.sh"
 vm_partial1="$(TICK_VMISMATCH_PROBE="$W/vm-partial1.sh" vm_tick)"
 contains 'an incomplete audit still reports the RESET rows it found (HIMMEL-6549)' "$vm_partial1" ' vmismatch=1'
+# --- leaks=<n|?|skip>: `jira release leaks` of the active version on the mirror.
+lk_dir="$W/lk"; lk_m="$lk_dir/HIMMEL"; mkdir -p "$lk_m"
+printf 'v1.0.0\ttrue\t2026-01-01\tfalse\nv1.0.10\tfalse\t\tfalse\nv1.0.2\tfalse\t\tfalse\nv0.9.0\tfalse\t\ttrue\nzz-parked\tfalse\t\tfalse\n' > "$lk_dir/HIMMEL.versions.tsv"
+# shellcheck disable=SC2016  # the stub's $1 must reach the stub unexpanded
+printf '#!/bin/sh\necho "$1 $2" > "%s/lk-asked"\nprintf "LEAK K-1@%%s carries it\\nLEAK K-2@%%s carries it\\nLEAK K-3@%%s carries it\\n" "$1" "$1" "$1"\n' "$W" > "$W/lk-probe-3.sh"
+# shellcheck disable=SC2016  # the stub's $1 must reach the stub unexpanded
+printf '#!/bin/sh\necho "leaks $1: none (mirror synced now)"\n' > "$W/lk-probe-0.sh"
+# shellcheck disable=SC2016  # the stub's $1 must reach the stub unexpanded
+printf '#!/bin/sh\necho "release leaks: $1 is not frozen (no frozen: and frozen-keys: lines in its description)" >&2\nexit 1\n' > "$W/lk-probe-unfrozen.sh"
+printf '#!/bin/sh\necho "release leaks: the Jira mirror is missing or unreadable, so no leak result" >&2\nexit 1\n' > "$W/lk-probe-err.sh"
+lk_tick() { NEXT_DISPATCH_MIRROR="$lk_m" TICK_LEAKS_PROBE="$1" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null; }
+lk_three="$(lk_tick "$W/lk-probe-3.sh")"
+contains 'leaked tickets of the frozen version read leaks=<n> (HIMMEL-7153)' "$lk_three" ' leaks=3'
+case "$(cat "$W/lk-asked" 2>/dev/null)" in "v1.0.2 $lk_m") pass 'the probe is asked for the earliest unreleased, unarchived, non-zz version of the tick mirror (HIMMEL-7153)' ;; *) fail "the probe was asked '$(cat "$W/lk-asked" 2>/dev/null)', want 'v1.0.2 $lk_m' (HIMMEL-7153)" ;; esac
+contains 'a non-zero leak count prints an ACTION line naming the comment run (HIMMEL-7153)' "$lk_three" 'ACTION leaks=3: JIRA_PROJECT_KEY=HIMMEL node '
+contains 'the leaks ACTION line never names the global jira shim (HIMMEL-7153)' "$lk_three" '/scripts/jira/dist/index.js release leaks '
+printf 'v1.0.2 beta\ttrue\t\tfalse\nv1.0.3 rc\tfalse\t\tfalse\n' > "$lk_dir/HIMMEL.versions.tsv"
+lk_space="$(lk_tick "$W/lk-probe-3.sh")"
+contains 'a version name with a space is escaped in the ACTION line (HIMMEL-7153)' "$lk_space" 'release leaks v1.0.3\ rc --mirror-root '
+contains 'the leaks ACTION line names the version, the tick mirror and --comment (HIMMEL-7153)' "$lk_three" "release leaks v1.0.2 --mirror-root $lk_m --comment"
+contains 'the leaks ACTION line keeps its explanation behind a shell comment (HIMMEL-7153)' "$lk_three" '--comment  # posts one comment per leak'
+lk_other="$(REPO="$W/repo-other" lk_tick "$W/lk-probe-3.sh")"
+not_contains 'the leaks ACTION line resolves the CLI from the tick checkout, not from --repo (HIMMEL-7153)' "$lk_other" "$W/repo-other/scripts/jira/dist/index.js"
+contains 'a tick on another --repo still prints the leaks ACTION line (HIMMEL-7153)' "$lk_other" '/scripts/jira/dist/index.js release leaks '
+lk_cli_of() { printf '%s\n' "$1" | sed -n 's/^ACTION leaks=[0-9]*: JIRA_PROJECT_KEY=[^ ]* node \([^ ]*\) release leaks .*/\1/p'; }
+lk_cli_three="$(lk_cli_of "$lk_three")"
+if [ -n "$lk_cli_three" ] && [ "$(lk_cli_of "$lk_other")" = "$lk_cli_three" ] && [ -e "${lk_cli_three%/scripts/jira/dist/index.js}/.git" ]; then pass 'the leaks ACTION line names the same primary-checkout CLI whatever --repo is (HIMMEL-7153)'; else fail "the leaks ACTION CLI is '$(lk_cli_of "$lk_other")' under --repo vs '$lk_cli_three' by default, want one primary checkout (HIMMEL-7153)"; fi
+lk_fix="$W/lk-fix"; mkdir -p "$lk_fix/scripts/handover/console-kit" "$lk_fix/scripts/lanes"
+if env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$lk_fix"; then pass 'the missing-CLI fixture checkout initialised (HIMMEL-7153)'; else fail 'the missing-CLI fixture checkout failed git init, so its leaks=? row proves nothing (HIMMEL-7153)'; fi
+cp "$SUT" "$lk_fix/scripts/handover/console-kit/tick.sh"
+cp -R "$HERE/../../lib" "$lk_fix/scripts/lib"
+cp -R "$HERE/../../lanes/lib" "$lk_fix/scripts/lanes/lib"
+lk_nodist="$(env -u TICK_LEAKS_PROBE NEXT_DISPATCH_MIRROR="$lk_m" TOKEN='' bash "$lk_fix/scripts/handover/console-kit/tick.sh" --doc "$d4670" 2>/dev/null)"
+contains 'a tick whose primary checkout has no built Jira CLI reads leaks=? (HIMMEL-7153)' "$lk_nodist" ' leaks=?'
+not_contains 'a tick with no built Jira CLI prints no leaks ACTION line (HIMMEL-7153)' "$lk_nodist" 'ACTION leaks'
+lk_zero="$(lk_tick "$W/lk-probe-0.sh")"
+not_contains 'a clean version hides leaks (HIMMEL-7153)' "$lk_zero" 'leaks='
+lk_unfrozen="$(lk_tick "$W/lk-probe-unfrozen.sh")"
+not_contains 'an unfrozen active version hides leaks, it is not an error (HIMMEL-7153)' "$lk_unfrozen" 'leaks='
+lk_err="$(lk_tick "$W/lk-probe-err.sh")"
+contains 'a failed leak read reads leaks=? (HIMMEL-7153)' "$lk_err" ' leaks=?'
+not_contains 'a failed leak read prints no ACTION line (HIMMEL-7153)' "$lk_err" 'ACTION leaks'
+lk_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_LEAKS_PROBE="$W/lk-probe-3.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+not_contains 'no mirror hides leaks (HIMMEL-7153)' "$lk_skip" 'leaks='
 case "$vd_zero" in *wt-orphans*|*wt-ceiling*) fail "no worktree.sh under REPO reads no wt-orphans field (out='$vd_zero')" ;; *) pass 'no worktree.sh under REPO reads no wt-orphans field (HIMMEL-6584)' ;; esac
 mkdir -p "$REPO"
 printf '#!/bin/sh\nprintf "ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\\nORPHAN /w/b branch=detached:0123456789ab dirty=1 ahead=0 idle=9h\\nCEILING 72/100 worktrees (alarm at 70)\\n"\nexit 1\n' > "$W/wto-probe-2.sh"

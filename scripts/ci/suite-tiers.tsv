@@ -104,7 +104,9 @@ scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
 scripts/ci/test-check-hardcoded-env-values.sh	pr	trust-path
 scripts/ci/test-check-hooks-on-pr-range.sh	pr	trust-path
 scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
+scripts/ci/test-check-lockfile-release-age.sh	pr	static-gate
 scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
+scripts/ci/test-check-manifest-coverage.sh	pr	static-gate
 scripts/ci/test-check-no-secrets.sh	pr	guard
 scripts/ci/test-check-run-timelines.sh	pr	trust-path
 scripts/ci/test-check-vacuous-path-assert.sh	pr	trust-path
@@ -975,6 +977,7 @@ scripts/telegram/test-break-glass.sh	local	behaviour suite, 0 catches in the 400
 scripts/telegram/test-dispatch-lane.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/telegram/test-phi-egress-guard-parity.sh	pr	static-gate
 scripts/telegram/test-restart-bridge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s

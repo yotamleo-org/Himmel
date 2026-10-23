@@ -79,6 +79,26 @@ afterEach(() => {
   else process.env.HIMMEL_ADMISSIONS_LEDGER = savedLedger;
 });
 
+describe('release state admissions_today (HIMMEL-7153)', () => {
+  const decide = (c: Ctx, decision: string, keys: string[], op: string, from_v: string | null, to_v: string | null) =>
+    operatorDecision(c, { decision, keys, op, from_v, to_v, verbatim: 'x' });
+
+  it('counts the keys of today\'s operator decisions that add or move into each version', async () => {
+    await setup();
+    expect(state(ctx()).admissions_today).toEqual({ v1: 0, v2: 0 });
+    decide({ ...ctx(), now: () => new Date('2026-10-20T10:00:00.000Z') }, '100', ['K-7'], 'add', null, 'v1');
+    decide(ctx(), '101', ['K-8', 'K-9'], 'add', null, 'v1');
+    decide(ctx(), '102', ['K-6'], 'move', 'v1', 'v2');
+    decide(ctx(), '103', ['K-5'], 'remove', 'v1', null);
+    decide(ctx(), '104', ['K-4'], 'keep', 'v1', 'v1');
+    expect(state(ctx()).admissions_today).toEqual({ v1: 2, v2: 1 });
+  });
+
+  it('is empty for a release that does not verify', () => {
+    expect(state(ctx()).admissions_today).toEqual({});
+  });
+});
+
 describe('release engine (HIMMEL-6796)', () => {
   it('runs request → claim → rule → apply to a receipted RULING line and an applied membership', async () => {
     await setup();

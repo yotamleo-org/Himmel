@@ -8,7 +8,6 @@
       "himmel-ops@himmel",
       "lean-skills@himmel",
       "i-have-adhd@himmel",
-      "obsidian-second-brain@himmel",
       "pstack@himmel",
       "qmd@himmel"
     ],
@@ -187,7 +186,6 @@
   },
   "lane-content": {
     "enabled": [
-      "claude-obsidian@himmel",
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",

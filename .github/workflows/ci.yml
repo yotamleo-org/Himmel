@@ -95,8 +95,6 @@ jobs:
       shards: ${{ steps.shards.outputs.shards }}
       absent_shards: ${{ steps.shards.outputs.absent_shards }}
       shard_total: ${{ steps.shards.outputs.shard_total }}
-      canary_shards: ${{ steps.canary.outputs.canary_shards }}
-      canary_total: ${{ steps.canary.outputs.canary_total }}
     steps:
       # Debounce. Every shell-unit shard needs this job, and a follow-up push
       # within ~3 min of the last one cancels a run whose shards already took
@@ -150,17 +148,6 @@ jobs:
           bash scripts/ci/plan-shards.sh "${CI_MAX_SHARDS:-16}" . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
-      # HIMMEL-5556: home-canary sized the same way, off the selection its own
-      # run step makes (--impacted, no SUITE_* env). Empty output = 8 legs.
-      - id: canary
-        name: How many home-canary shards?
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          CI_MAX_SHARDS: ${{ vars.CI_MAX_SHARDS }}
-        run: |
-          bash scripts/ci/plan-shards.sh "${CI_MAX_SHARDS:-16}" . -- --impacted "$PR_BASE_SHA..HEAD" > "$RUNNER_TEMP/canary.out" || : > "$RUNNER_TEMP/canary.out"
-          cat "$RUNNER_TEMP/canary.out"
-          sed -n -e 's/^shards=/canary_shards=/p' -e 's/^shard_total=/canary_total=/p' "$RUNNER_TEMP/canary.out" >> "$GITHUB_OUTPUT"
 
   # HIMMEL-6121 / HIMMEL-6494: matrix fail-fast only stops sibling legs of one
   # matrix; the other jobs keep their runners after the run is already red. Each
@@ -228,22 +215,6 @@ jobs:
   fail-fast-unchecked-mktemp-range:
     needs: unchecked-mktemp-range
     if: failure() && needs.unchecked-mktemp-range.result == 'failure' && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions:
-      actions: write
-    steps:
-      - name: Cancel the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          gh run cancel "$RUN_ID" || true
-
-  fail-fast-home-canary:
-    needs: home-canary
-    if: failure() && needs.home-canary.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -514,9 +485,8 @@ jobs:
   #
   # Not changed, on purpose:
   # - ci-quick waits behind the plan job (and its debounce sleep) because its
-  #   steps gate on plan's run_* outputs; home-canary sizes its matrix from
-  #   plan's canary_shards. Taking either out from behind plan drops that
-  #   gating or sizing, to save latency only.
+  #   steps gate on plan's run_* outputs. Taking it out from behind plan drops
+  #   that gating, to save latency only.
   # - The groups share one workspace, so a group that edits the tree could turn
   #   a later one red (a false red, never a false green). The one destructive
   #   group, doc-invariants, runs last (test-ci-quick.sh Q5); a separate
@@ -544,7 +514,7 @@ jobs:
     outputs:
       secret-scan: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.secret-scan.outcome) && 'pass' || 'fail' }}
       bwk-awk-mktemp-gate: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.bwk-awk-mktemp-gate.outcome) && 'pass' || 'fail' }}
-      unchecked-mktemp-range: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.unchecked-mktemp-range.outcome) && 'pass' || 'fail' }}
+      unchecked-mktemp-range: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.unchecked-mktemp-range.outcome) && contains(fromJSON('["success","skipped"]'), steps.unchecked-mktemp-range__read-sinks.outcome) && 'pass' || 'fail' }}
       commit-lint: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__platforms.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__security.outcome) && 'pass' || 'fail' }}
       jira-cli-smoke: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke__npm.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke.outcome) && 'pass' || 'fail' }}
       guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
@@ -589,6 +559,14 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         timeout-minutes: 10
         run: bash scripts/hooks/check-unchecked-mktemp.sh --range --merge-ref "${{ github.event.pull_request.base.sha }}"
+      # HIMMEL-6037 / HIMMEL-6621: newly added shell that reads an argv/env-named
+      # file with no allowlist (the PR 2878 class). The runtime half of the leak
+      # check, the honeytoken HOME, runs inside every shell-unit shard.
+      - id: unchecked-mktemp-range__read-sinks
+        name: No host-file read sink added without an allowlist
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        timeout-minutes: 10
+        run: bash scripts/ci/check-host-file-read-sinks.sh --range --merge-ref "${{ github.event.pull_request.base.sha }}"
       - id: commit-lint
         name: Lint commit messages in the PR range
         if: ${{ !cancelled() }}
@@ -912,67 +890,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - run: exit 1
-
-  # HIMMEL-6037: a suite that reads the real $HOME/.env (the PR 2883 shape) was
-  # caught only by a judge. This job reruns the impacted suites with HOME and
-  # USERPROFILE pointed at a sandbox holding a honeytoken .env and fails when
-  # the token reaches the output or the file is read (scripts/ci/home-canary.sh),
-  # and flags newly added code that reads an argv/env-named file with no
-  # allowlist (check-host-file-read-sinks.sh, the PR 2878 class). Always runs,
-  # no plan group. No secrets; the checkout does not persist the token.
-  home-canary:
-    # HIMMEL-5556: on a pull_request the plan sizes the legs off the duration
-    # ledger; an empty selection still runs one leg for the host-file sink
-    # check. A push (no plan) or a plan with no output runs all 8.
-    needs: plan
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 50 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 8 shards ~6-12m each, but loaded hosted runners took 25m+ and hit a 1500s bound twice; canary bound 2700s plus the log print; confirm p95 after first runs
-    strategy:
-      # Every shard reports its own leak; one red must not hide another.
-      fail-fast: false
-      matrix:
-        # The 8 fallbacks here and in the run step's /N are one number.
-        shard: ${{ fromJSON(needs.plan.outputs.canary_shards == '[]' && '[1]' || needs.plan.outputs.canary_shards || '[1,2,3,4,5,6,7,8]') }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: No host-file read sink added without an allowlist
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          if [ "$EVENT" = pull_request ]; then
-            bash scripts/ci/check-host-file-read-sinks.sh --range --merge-ref "$BASE_SHA"
-          elif [ "$EVENT" = push ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
-            bash scripts/ci/check-host-file-read-sinks.sh --range "$BEFORE_SHA"
-          else
-            bash scripts/ci/check-host-file-read-sinks.sh --range "origin/$DEFAULT_BRANCH"
-          fi
-      - name: Impacted suites under a honeytoken HOME
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          HOME_CANARY_REQUIRE_ATIME: "1"
-          # The shard job installs bun, bwrap, at and ffmpeg; this bare job does not,
-          # so suite results stay with the shards and only a leak, read or timeout fails here.
-          HOME_CANARY_RUNNER_FAIL_OK: "1"
-          HOME_CANARY_TIMEOUT: "2700"
-        run: |
-          if [ "$EVENT" = pull_request ]; then
-            range="$BASE_SHA..HEAD"
-          elif [ "$EVENT" = push ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
-            range="$BEFORE_SHA..HEAD"
-          else
-            range="origin/$DEFAULT_BRANCH..HEAD"
-          fi
-          bash scripts/ci/home-canary.sh --impacted "$range" --shard "${{ matrix.shard }}/${{ needs.plan.outputs.canary_total || 8 }}"
 
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
@@ -2069,8 +1986,15 @@ jobs:
       # contexts either way; a docs-only PR's shards exit 0 with nothing to run.
       # SUITE_MANIFEST: the selection this shard acted on and every suite's fate,
       # uploaded below and verified by the shell-unit aggregator.
-      - run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/${{ needs.plan.outputs.shard_total || 8 }} .
+      # HIMMEL-6037 / HIMMEL-6621: the shard runs through home-canary.sh, so HOME
+      # and USERPROFILE point at a sandbox holding a honeytoken .env and the shard
+      # fails when the token reaches the output or the file is read (the PR 2883
+      # shape). The shard has the tools, so a suite failure is a shard failure
+      # (the runner's exit is not downgraded). The bound sits under the job cap of 60.
+      - run: bash scripts/ci/home-canary.sh --shard ${{ matrix.shard }}/${{ needs.plan.outputs.shard_total || 8 }} .
         env:
+          HOME_CANARY_REQUIRE_ATIME: "1"
+          HOME_CANARY_TIMEOUT: "3300"
           FAIL_LOG_DIR: failed-suite-logs
           SUITE_TIER_MODE: ${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}
           SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
