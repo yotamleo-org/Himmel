@@ -298,6 +298,15 @@ done
 # a missing directory spelled through ".." reaches the worktree once created: the overlap test must not compare it as written
 sed "s|^ROWCONF=.*|ROWCONF=$TMP/nowhere/missing/../../root/wt|" "$TMP/row5183.env" >"$TMP/row5200-dots.env"
 check 'a row whose ROWCONF climbs back into the worktree through a missing .. is refused' 'grep -qxF "ROWCONF=$TMP/nowhere/missing/../../root/wt" "$TMP/row5200-dots.env" && ! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dots.env" >/dev/null 2>&1'
+# a dot component is only unresolvable in a not-yet-created tail: an existing directory spelled with one is
+# canonicalised and judged on where it lands
+mkdir -p "$TMP/dotroot/rc"
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/dotroot/./rc|" "$TMP/row5183.env" >"$TMP/row5200-dotok.env"
+check 'a row whose ROWCONF is an existing directory spelled with a dot component still builds its jail' 'grep -qxF "ROWCONF=$TMP/dotroot/./rc" "$TMP/row5200-dotok.env" && HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dotok.env" >/dev/null 2>&1'
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/root/./wt|" "$TMP/row5183.env" >"$TMP/row5200-dotwt.env"
+check 'a dot-spelled ROWCONF that is the worktree itself is refused' 'grep -qxF "ROWCONF=$TMP/root/./wt" "$TMP/row5200-dotwt.env" && ! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dotwt.env" >/dev/null 2>&1'
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/nowhere2/./x|" "$TMP/row5183.env" >"$TMP/row5200-dotmiss.env"
+check 'a missing ROWCONF tail with a dot component is still refused' 'grep -qxF "ROWCONF=$TMP/nowhere2/./x" "$TMP/row5200-dotmiss.env" && ! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dotmiss.env" >/dev/null 2>&1'
 check 'control, the unmodified row env still builds its jail' 'HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 if bwrap --ro-bind / / true 2>/dev/null; then
   jw() { "${R5[@]}" sh -c "$1" 2>/dev/null; }

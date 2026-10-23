@@ -171,10 +171,16 @@ else
   # wins. One that is, sits under, or contains the worktree (at either jail path) would put it
   # back writable or hide the read-only mount, so such a row is refused, never launched.
   # canon_path_partial keeps a not-yet-created tail as written, so a dot component there would dodge
-  # the comparison (realpath -m folded it): refuse it, and squeeze the slashes a tail can carry
+  # the comparison (realpath -m folded it): refuse it, and squeeze the slashes a tail can carry.
+  # An existing directory is canonicalised whole, so its own spelling cannot matter
   canon_rw() {
-    case "$1/" in */../*|*/./*) return 1 ;; esac
-    local c; c="$(canon_path_partial "$1")" || return 1
+    local c
+    if [ -d "$1" ]; then
+      c="$(canon_path_native "$1")" || return 1
+    else
+      case "$1/" in */../*|*/./*) return 1 ;; esac
+      c="$(canon_path_partial "$1")" || return 1
+    fi
     printf '%s\n' "$c" | tr -s /
   }
   for rw in "$(dirname "$DOC")" "$RUN" "$ROWCONF" "$TX" "$GITDIR" "$GITOBJ"; do

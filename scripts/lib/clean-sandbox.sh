@@ -44,6 +44,7 @@ node_bin=$(command -v node 2>/dev/null) || node_bin=""
 case "$node_bin" in
     /*)
         node_dir=${node_bin%/*}
+        [ -n "$node_dir" ] || node_dir=/
         case ":$SANDBOX_PATH:" in
             *":$node_dir:"*) ;;
             *) SANDBOX_PATH="$SANDBOX_PATH:$node_dir" ;;
