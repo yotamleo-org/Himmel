@@ -50,7 +50,13 @@ if [ -z "$unpinned" ] && has 'uses:'; then ok "every uses: is pinned by a 40-hex
 check     "CLI installed at an exact version"       'npm install -g snyk@[0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)'
 check     "token read from secrets.SNYK_TOKEN"      'SNYK_TOKEN: \$\{\{ secrets\.SNYK_TOKEN \}\}'
 check     "empty token skips with a notice"         '::notice.*SNYK_TOKEN'
-check     "install and scan steps gated on the token" "if: steps\.gate\.outputs\.enabled == 'true'"
+# every step that does work (checkout, install, scan, upload) carries the gate
+ungated="$(awk '
+  function flush() { if (blk ~ /(actions\/checkout@|npm install -g snyk@|bash scripts\/security\/snyk-scan\.sh|actions\/upload-artifact@)/ && blk !~ /if:[^\n]*steps\.gate\.outputs\.enabled == .true./) n++ }
+  /^[[:space:]]+- / { flush(); blk="" }
+  { blk = blk "\n" $0 }
+  END { flush(); print n+0 }' <<< "$s")"
+if [ "$ungated" = 0 ]; then ok "every working step is gated on the token"; else bad "every working step is gated on the token ($ungated ungated)"; fi
 check     "scan runs snyk-scan.sh"                  'bash scripts/security/snyk-scan\.sh'
 check     "scan writes to a known out-dir"          'snyk-scan\.sh.*--out-dir'
 check     "JSON uploaded as an artifact"            'actions/upload-artifact@'
