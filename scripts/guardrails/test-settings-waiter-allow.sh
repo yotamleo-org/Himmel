@@ -82,7 +82,9 @@ for c in \
   "bash \"$kit/console-wait.sh.evil\" /tmp/x" \
   "bash \"/srv/tester/other/console-wait.sh\" /tmp/x" \
   "bash \"/srv/tester/himmel/scripts/other/console-wait.sh\" /tmp/x" \
-  "sh \"$kit/console-wait.sh\" /tmp/x"; do
+  "sh \"$kit/console-wait.sh\" /tmp/x" \
+  "bash -c \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
+  "bash -x \"$kit/console-wait.sh\" /tmp/x"; do
   m=$(matching_rules "$c" | grep 'console-wait' || true)
   if [ -z "$m" ]; then
     ok "no waiter rule matches: $c"
