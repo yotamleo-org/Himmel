@@ -26,12 +26,12 @@ on:
   # concurrent job slots on 2026-09-29. It runs the ubuntu-only matrix.
   workflow_dispatch:
   schedule:
-    # Nightly, UTC: the only run with SUITE_TIER_MODE=all and
-    # guard-corpus-full. Every nightly-only gate below keys on THIS string via
-    # github.event.schedule, because the main-sweep cron is also a `schedule`
-    # event and must stay ubuntu-only / fast-tier.
+    # Nightly, UTC: the only run with guard-corpus-full. Every nightly-only gate
+    # below keys on THIS string via github.event.schedule, because the
+    # main-sweep cron is also a `schedule` event and must stay ubuntu-only.
+    # SUITE_TIER_MODE=all runs on every non-pull_request run (HIMMEL-6598).
     - cron: '17 7 * * *'
-    # Main sweep (HIMMEL-5113), UTC, ubuntu-only fast tier, the shape the
+    # Main sweep (HIMMEL-5113), UTC, ubuntu-only, SUITE_TIER_MODE=all (HIMMEL-6598), the shape the
     # per-merge push run had. Nominal cadence: 01:43, 08:43, 15:43 and 22:43,
     # i.e. gaps of 7 h, 7 h, 7 h and 3 h -- cron cannot express an exact 7 h
     # period because 24 is not a multiple of 7 (`*/7` fires at 00, 07, 14, 21 and
@@ -1967,10 +1967,10 @@ jobs:
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
       # artifact below — the inline tail is bounded, so without this the
       # failing assertion can be unrecoverable from Actions logs (HIMMEL-963).
-      # SUITE_TIER_MODE (HIMMEL-2166): fast on every per-PR/post-merge leg
-      # (pull_request, the main cron, or a plain workflow_dispatch). `all` stays
-      # the corpus on the nightly leg, matching the
-      # cadence/full-scan intent this ticket must not touch.
+      # SUITE_TIER_MODE (HIMMEL-2166 / HIMMEL-6598): fast on a pull_request, all
+      # on every other run (the nightly, the main-sweep cron, a workflow_dispatch).
+      # The all sweeps are the soak the PR shards' later flip to pr waits on.
+      # The aggregator below carries the same expression.
       # SUITE_CHANGED_SINCE: only on pull_request, where a base SHA exists —
       # a docs-only PR then skips the whole corpus (run-shell-tests.sh's own
       # docs-only fast lane); push/schedule/dispatch have no PR base to diff.
@@ -1996,7 +1996,7 @@ jobs:
           HOME_CANARY_REQUIRE_ATIME: "1"
           HOME_CANARY_TIMEOUT: "3300"
           FAIL_LOG_DIR: failed-suite-logs
-          SUITE_TIER_MODE: ${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}
+          SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'fast' || 'all' }}
           SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
           # HIMMEL-4912: the shards (60 min) always run the fast guard-corpus
           # subset; the full replay runs in the schedule-only guard-corpus-full job.
@@ -2135,7 +2135,7 @@ jobs:
       - name: Every shard ran exactly the selection
         env:
           IMPACTED_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.base.sha || '' }}
-          SUITE_TIER_MODE: ${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}
+          SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'fast' || 'all' }}
           SUITE_CHANGED_SINCE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
           # HIMMEL-5649: shards the plan left out because they had no suite. Empty
           # off a pull_request (every shard runs), where the plan job is skipped.

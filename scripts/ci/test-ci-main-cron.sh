@@ -7,7 +7,7 @@
 #   - two schedule crons: the nightly `17 7 * * *` and a main-sweep cron whose
 #     hours leave no gap above 7 h;
 #   - the cadence is documented next to the cron;
-#   - nightly-only behaviour (windows legs, tier=all, extended-tier issue,
+#   - nightly-only behaviour (windows legs, extended-tier issue,
 #     guard-corpus-full) is keyed on the nightly cron's github.event.schedule,
 #     never on a bare event_name == 'schedule' that the main cron would also hit;
 #   - the selector-miss ledger no longer keys on `push`;
@@ -79,8 +79,8 @@ bare="$(grep -c "github.event_name == 'schedule'" <<< "$stripped")"
 if [ "$bare" -eq 0 ]; then ok "no bare event_name == 'schedule' gate remains"
 else bad "$bare bare event_name == 'schedule' gate(s) remain (the main cron would hit them)"; fi
 nightly="$(grep -c "github.event.schedule == '17 7 \* \* \*'" <<< "$stripped")"
-if [ "$nightly" -ge 5 ]; then ok "nightly gates keyed on the nightly cron ($nightly sites)"
-else bad "only $nightly nightly-cron gates (expected >= 5)"; fi
+if [ "$nightly" -ge 3 ]; then ok "nightly gates keyed on the nightly cron ($nightly sites)"
+else bad "only $nightly nightly-cron gates (expected >= 3)"; fi
 
 # Nothing may still be gated on a push event.
 if grep -q "github.event_name == 'push'" <<< "$stripped"; then bad "a gate still keys on event_name == 'push'"
