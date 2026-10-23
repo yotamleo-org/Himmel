@@ -10,7 +10,7 @@
 # notice obligation here; it is a pin-review fact, not a compliance gate.
 # This resolver installs it from the himmel fork (yotamleo-org/graphify, branch
 # himmel-main) pinned to a commit sha via
-# `uv tool install --with mcp 'graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>'`.
+# `uv tool install --with 'mcp>=1.30.0,<3' 'graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>'`.
 # uv tool installs are already
 # self-isolating (their own venv + a shim in uv's tool bin dir), so — unlike
 # scripts/lib/qmd-bin.sh's bun-global junction — there is no separate PATH-provider
@@ -52,7 +52,7 @@
 # A pin bump is a reviewed change to the two lines below, paired with the `fork`
 # block in scripts/upstreams.json so the nightly fork-drift guard stays truthful.
 _graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.94+himmel.2}"; }
-_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-03b95c88d062bb58bd5ab760088fc4152a087ca6}"; }
+_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-2121b0960b1dde0962c578e98a69fa78ca70f6df}"; }
 _graphify_pypi_name() { printf '%s\n' "graphifyy"; }
 # _graphify_spec <extras> -- the requirement spec for the pin, e.g.
 # `graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>`. With
@@ -70,12 +70,16 @@ _graphify_spec() {
 # himmel has no Kimi backend. graphify_update preserves any
 # other recorded extras and adds ollama to them.
 _graphify_pinned_source() { _graphify_spec '[ollama]'; }
+# The mcp requirement every install passes as `--with`. The floor is the patched
+# mcp release (the fork's lock and extras carry the same bound); `--with` is what
+# binds it on an install, because [ollama] does not pull mcp in.
+_graphify_mcp_req() { printf '%s\n' 'mcp>=1.30.0,<3'; }
 _graphify_bin_name() { printf '%s\n' "graphify"; }
 
 # Prints the manual install recipe (best-effort documentation text embedded
 # in WARN messages -- NOT eval'd elsewhere; graphify_install() below runs the
 # equivalent command directly).
-# `--with mcp`: upstream's pyproject declares `mcp` only as an OPTIONAL
+# `--with mcp>=...`: upstream's pyproject declares `mcp` only as an OPTIONAL
 # extra ([project.optional-dependencies]), but the graphify-mcp entrypoint imports
 # it at startup -- without this the CLI works and the MCP server crashes on every
 # fresh install (hit on all 3 stations in the parity audit; re-confirmed
@@ -83,7 +87,7 @@ _graphify_bin_name() { printf '%s\n' "graphify"; }
 # promotes mcp to a core dependency. The spec is single-quoted because zsh
 # globs its brackets.
 graphify_install_hint() {
-  printf '%s\n' "uv tool install --with mcp '$(_graphify_pinned_source)'"
+  printf '%s\n' "uv tool install --with '$(_graphify_mcp_req)' '$(_graphify_pinned_source)'"
 }
 
 # Presence check ONLY -- does not invoke the binary, so a real runtime error
@@ -207,7 +211,7 @@ graphify_install() {
     echo "  uv not found -- cannot install graphify." >&2
     return 1
   fi
-  if ! uv tool install --with mcp "$(_graphify_pinned_source)"; then
+  if ! uv tool install --with "$(_graphify_mcp_req)" "$(_graphify_pinned_source)"; then
     echo "  ERROR: graphify install failed." >&2
     return 1
   fi
@@ -451,7 +455,7 @@ PY
 #   - not installed              -> graphify_install (fresh install at the pin).
 #   - uv graphifyy == pin         -> up to date, no-op.
 #   - uv graphifyy BEHIND pin     -> upgrade (force-reinstall at the pin),
-#                                    PRESERVING the recorded extras (e.g. [all]) + --with mcp.
+#                                    PRESERVING the recorded extras (e.g. [all]) + the --with mcp floor.
 #   - uv graphifyy ahead/equal/unparseable -> left as-is (never downgrade).
 #   - foreign NON-uv install (pip/pipx/brew) -> left untouched.
 #
@@ -831,7 +835,7 @@ _graphify_stage_install() {
   local spec="$1" pin="$2" s got reason=""
   s="$(mktemp -d "${TMPDIR:-/tmp}/graphify-stage.XXXXXX" 2>/dev/null)" || {
     printf 'cannot create a scratch dir\n'; return 1; }
-  if ! UV_TOOL_DIR="$s/tools" UV_TOOL_BIN_DIR="$s/bin" uv tool install --with mcp "$spec" >&2; then
+  if ! UV_TOOL_DIR="$s/tools" UV_TOOL_BIN_DIR="$s/bin" uv tool install --with "$(_graphify_mcp_req)" "$spec" >&2; then
     reason="uv could not install $spec (output above)"
   else
     got="$(GRAPHIFY_NO_AUTO_REFRESH=1 "$s/bin/graphify" --version 2>/dev/null \
@@ -1244,7 +1248,7 @@ _graphify_holder_gate() {
         fi
         echo "        To advance the pin: reconnect /mcp or quit the holders, then re-run"
         echo "        (each live Claude Code session spawns one). Or install by hand once clear:"
-        echo "            uv tool install --force --with mcp '$spec'"
+        echo "            uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
         for _plat in $(_graphify_present_platforms); do
           echo "            graphify install --platform $_plat"
         done
@@ -1314,7 +1318,7 @@ _graphify_holder_gate() {
         echo "        locked directory, leaving graphify broken (HIMMEL-1274/1293)."
         echo "        To advance the pin, either close the Claude Code sessions holding graphify-mcp"
         echo "        (each live session spawns one) and install by hand:"
-        echo "            uv tool install --force --with mcp '$spec'"
+        echo "            uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
         for _plat in $(_graphify_present_platforms); do
           echo "            graphify install --platform $_plat"
         done
@@ -1437,7 +1441,7 @@ graphify_update() {
     {
       echo "  WARNING: graphify update to $pin not attempted -- the staged install failed: $stage_err."
       echo "           The live install is untouched and still at v${installed:-?}. Retry, or by hand:"
-      echo "               uv tool install --force --with mcp '$spec'"
+      echo "               uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
     } >&2
     return 1
   fi
@@ -1450,13 +1454,13 @@ graphify_update() {
   fi
 
   echo "  graphify ${installed:-?} -> $pin (uv reinstall at pin, extras='${extras:-none}')..."
-  if uv tool install --force --with mcp "$spec"; then
+  if uv tool install --force --with "$(_graphify_mcp_req)" "$spec"; then
     # VERIFY AFTER: a zero exit is not proof the binary resolves.
     if ! _graphify_binary_ok; then
       {
         echo "  ERROR: uv reported success but 'graphify --version' does not run — the install is BROKEN."
         echo "         Repair once no graphify-mcp process is live:"
-        echo "             uv tool install --force --with mcp '$spec'"
+        echo "             uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
       } >&2
       return 1
     fi
@@ -1486,7 +1490,7 @@ graphify_update() {
       echo "         uv removes the old entry points before replacing the tool dir, so a mid-way failure"
       echo "         leaves no working graphify (HIMMEL-1274)."
       echo "         Repair: close every Claude Code session (each holds a graphify-mcp), then:"
-      echo "             uv tool install --force --with mcp '$spec'"
+      echo "             uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
     } >&2
   fi
   return 1
