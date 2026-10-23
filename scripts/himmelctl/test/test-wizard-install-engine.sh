@@ -792,7 +792,7 @@ const ctx = { repoRoot: process.env.REPO_Z, scope: 'user', profile: 'luna', targ
 const result = runInstall(planInstall(items, ctx), { dryRun: false });
 console.log('RESULT ' + JSON.stringify(result));
 " 2>&1)
-echo "$outZ" | grep -q '^RESULT .*"ran":\[{"id":"plugins-z"' || fail "case z: the stub plugins install should run (got: $outZ)"
+grepq "$outZ" '^RESULT .*"ran":\[{"id":"plugins-z"' || fail "case z: the stub plugins install should run (got: $outZ)"
 grepq "$outZ" 'enabledPlugins.*plugins-z.*obsidian-second-brain@himmel.*false.*true' \
   || fail "case z: the converge must print one line naming the writer item and the flipped key (got: $outZ)"
 ! grepq "$outZ" 'himmel-ops@himmel.*->' || fail "case z: an unchanged key must not be logged (got: $outZ)"
