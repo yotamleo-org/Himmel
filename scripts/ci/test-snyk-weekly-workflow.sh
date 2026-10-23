@@ -92,7 +92,8 @@ check     "curl is installed for the osv.dev lookup" 'apt-get install.* curl'
 check     "forks scan still runs when the main scan finds issues" 'if: \$\{\{ !cancelled\(\) && steps\.gate\.outputs\.enabled == .true. \}\}'
 check     "dispatch input probes a missing ref"     'missing_ref_probe:'
 forks_step="$(awk '/^      - name: Run the forks scan/ {f=1; print; next} f && /^      - / {exit} f {print}' <<< "$s")"
-if grep -q 'SNYK_SCAN_FORKS' <<< "$forks_step" && grep -q 'inputs.missing_ref_probe' <<< "$forks_step"; then ok "probe feeds one missing-ref fork row to the forks scan"; else bad "probe feeds one missing-ref fork row to the forks scan"; fi
+probe_guard="$(awk '/if \[ "\$MISSING_REF_PROBE" = "true" \]; then/ {f=1; next} f && /^[[:space:]]+fi$/ {exit} f {print}' <<< "$forks_step")"
+if grep -q 'inputs.missing_ref_probe' <<< "$forks_step" && grep -q 'export SNYK_SCAN_FORKS=' <<< "$probe_guard"; then ok "probe feeds one missing-ref fork row to the forks scan"; else bad "probe feeds one missing-ref fork row to the forks scan"; fi
 check     "JSON uploaded as an artifact"            'actions/upload-artifact@'
 check     "upload runs even when the scan finds issues" "if: always\(\) && steps\.gate\.outputs\.enabled == 'true'"
 
