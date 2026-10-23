@@ -1,6 +1,6 @@
 // three seeded digests exercise the real ledger writer and server rate math.
 import { test, expect, afterEach } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as sources from "../health-sources";
@@ -30,7 +30,8 @@ function seed() {
     const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/leg-digest/leg_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--leg", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
     expect(r.exitCode).toBe(0);
   }
-  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_LEG_FAILURES_LEDGER: failures };
+  const config = join(dir, "claude-config"); mkdirSync(config);
+  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_LEG_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
 }
 const read = (env: object, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"));
 
@@ -120,6 +121,21 @@ test("intraday since never presents whole-day calls as an exact shift denominato
   expect(data.daily_hooks[0].calls).toBeNull();
 });
 
+test("a very old since keeps the trend to a year and the window honest", () => {
+  const data = read(seed(), new URLSearchParams({ since: "1970-01-01T00:00:00Z" }));
+  const trend = data.tools.find((r: any) => r.tool === "Bash").trend;
+  expect(trend.length).toBe(366);
+  expect(trend[365].day).toBe("2026-10-07");
+  expect(data.window_days).toBeGreaterThan(20000);
+});
+
+test("the trend heading names the since window, not the days switch", async () => {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const html = renderToolHealth(read(seed(), new URLSearchParams({ since: "2026-09-27T00:00:00Z" })), "t");
+  expect(html).toContain("11-day trend");
+  expect(html).not.toContain("7-day trend");
+});
+
 test("v2 text-only subagent failures do not poison complete tool denominators", () => {
   const env = seed();
   const textFailure = { session: "48160000-0000-4000-8000-000000000000", agent: { ...agent, id: "child" }, class: "blocked/report", failure: "blocked", count: 1, recovered: null };
@@ -185,6 +201,86 @@ test("authenticated read-only route renders the seeded rates and session drilldo
     expect(escaped).not.toContain('<img');
     expect(escaped).toContain('&lt;img');
   } finally { s.stop(); }
+});
+
+function seedProfiles() {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows.forEach((r: any, i: number) => { if (i < 2) for (const h of r.meta.tool_health) h.profile = i === 0 ? "leg-impl" : "judge"; });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const listing = join(dirs[dirs.length - 1], "listing.json");
+  writeFileSync(listing, JSON.stringify({ "leg-impl": { Bash: 0, mcp__qmd__query: 900 }, judge: { Read: 0 } }));
+  return { ...env, HIMMEL_PROFILE_LISTING: listing };
+}
+
+test("the payload carries a per-profile table, listing cost and drop candidates; unlabelled sessions stay unknown", () => {
+  const data = read(seedProfiles());
+  expect(data.profiles.map((p: any) => p.profile)).toEqual(["judge", "leg-impl", "unknown"]);
+  expect(data.profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, listing_tokens: 0, verdict: "keep" });
+  expect(data.drop_candidates).toEqual([expect.objectContaining({ profile: "leg-impl", tool: "mcp__qmd__query", listing_tokens: 900, calls: 0, window_days: 7 })]);
+  expect(read(seed()).drop_candidates).toEqual([]);
+});
+
+test("the default path prices the Skill listing of the real leg-impl, console-judge and console profiles without a file or a claude run", async () => {
+  const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
+  const registry = loadRegistry(), profiles = ["leg-impl", "console-judge", "console"];
+  const env: any = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows.forEach((r: any, i: number) => { for (const h of r.meta.tool_health) h.profile = profiles[i]; });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const ids = new Set<string>();
+  for (const p of profiles) for (const [id, on] of Object.entries(resolveProfile(registry, p).enabledPlugins)) if (on) ids.add(id);
+  for (const id of ids) {
+    const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", id.split("@")[1], id.split("@")[0], "1.0.0", "skills", "one");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "SKILL.md"), `---\nname: one\ndescription: ${"x".repeat(400)}\n---\nbody\n`);
+  }
+  expect(env.HIMMEL_PROFILE_LISTING).toBeUndefined();
+  const data = read(env);
+  const skill = (p: string) => data.profiles.find((x: any) => x.profile === p).tools.find((t: any) => t.tool === "Skill");
+  for (const p of profiles) expect(skill(p).listing_tokens).toBeGreaterThan(0);
+  expect(skill("console-judge").listing_tokens).toBeLessThan(skill("console").listing_tokens);
+  expect(data.drop_candidates.map((d: any) => d.profile).sort()).toEqual([...profiles].sort());
+});
+
+test("a same-named plugin from another marketplace does not inflate the profile's Skill listing", async () => {
+  const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
+  const enabled = Object.entries(resolveProfile(loadRegistry(), "leg-impl").enabledPlugins).filter(([, on]) => on).map(([id]) => id);
+  const skillTokens = (decoy: boolean) => {
+    const env: any = seed();
+    const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+    rows.forEach((r: any) => { for (const h of r.meta.tool_health) h.profile = "leg-impl"; });
+    writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+    const put = (marketplace: string, plugin: string, chars: number) => {
+      const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", marketplace, plugin, "1.0.0", "skills", "one");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: one\ndescription: ${"x".repeat(chars)}\n---\nbody\n`);
+    };
+    for (const id of enabled) put(id.split("@")[1], id.split("@")[0], 400);
+    if (decoy) put("not-enabled-marketplace", enabled[0].split("@")[0], 4000);
+    return read(env).profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Skill").listing_tokens;
+  };
+  expect(skillTokens(true)).toBe(skillTokens(false));
+});
+
+test("the page shows the per-profile table in plain words and labels the unknown bucket", async () => {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const html = renderToolHealth(read(seedProfiles()), "t");
+  expect(html).toContain("Tools by launch profile");
+  expect(html).toContain("leg-impl");
+  expect(html).toContain("judge");
+  expect(html).toContain("unknown (launch profile not recorded)");
+  expect(html).toContain("mcp__qmd__query");
+  expect(html).toContain("Move to on-demand (drop from default)");
+  expect(html).toContain("Keep");
+  const noCost = renderToolHealth(read(seed()), "t");
+  expect(noCost).toContain("not measured");
+  expect(noCost).not.toContain("Move to on-demand");
+  const empty = renderToolHealth({ ...read(seed()), profiles: [] }, "t");
+  expect(empty).toContain("No per-profile data");
+  const evil = read(seedProfiles());
+  evil.profiles[0].profile = "<b>x</b>";
+  expect(renderToolHealth(evil, "t")).not.toContain("<b>x</b>");
 });
 
 test("Tool health navigation carries tokens only in fragments", () => {

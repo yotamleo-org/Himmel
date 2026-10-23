@@ -4,8 +4,11 @@
 # `pre-commit install -c .himmel/pre-commit-config.yaml`.
 #
 # Arms: a fake secret is refused, a commit with no ticket ID is refused, a
-# commit on the default branch is refused, a normal ticketed commit passes, and
-# a 64-hex digest (a sha256) is not mistaken for a secret.
+# commit on the default branch is refused, a normal ticketed commit passes, a
+# 64-hex digest (a sha256) and a bare 40-hex pin are not mistaken for a secret,
+# a secret merely containing a 40-hex run is still refused (allowlist anchors),
+# an exact 40-hex secret matching a named rule is still refused (allowlist
+# scoped to the generic rule), and only git-generated Merge/Revert subjects skip the ticket check.
 #
 # Skips (exit 0, loud) where pre-commit is absent; read the `== Summary ==`
 # block, not the rc. gitleaks needs no PATH binary: pre-commit builds it
@@ -121,6 +124,75 @@ if commit "chore(app): [HIMMEL-5978] pin digest"; then
   ok "64-hex digest passes the anchored allowlist"
 else
   bad "64-hex digest passes the anchored allowlist"; sed 's/^/  | /' "$WORK/out"
+fi
+
+# 7. a bare 40-hex pin (a git sha) passes; the same run inside a longer secret
+# is still refused (the allowlist is anchored ^...$ on the matched secret)
+PIN="a3f9c1d27b6e84f05d1c9a7e2b4f8063d5e1a9c7"
+printf 'sha_key = "%s"\n' "$PIN" > "$FORK/pin40.txt"
+git -C "$FORK" add pin40.txt
+if commit "chore(app): [HIMMEL-5978] pin sha"; then
+  ok "bare 40-hex pin passes the anchored allowlist"
+else
+  bad "bare 40-hex pin passes the anchored allowlist"; sed 's/^/  | /' "$WORK/out"
+fi
+
+printf 'api_key = "%szq9Xw"\n' "$PIN" > "$FORK/embedded.txt"
+git -C "$FORK" add embedded.txt
+if commit "fix(app): [HIMMEL-5978] add embedded secret"; then
+  bad "secret containing a 40-hex run is refused"
+else
+  ok "secret containing a 40-hex run is refused"
+fi
+git -C "$FORK" reset -q HEAD embedded.txt
+rm -f "$FORK/embedded.txt"
+
+# the exemption covers only the generic rule: a named rule (cloudflare-api-key)
+# matching an exact 40-hex secret is still refused
+printf 'cloudflare_api_key = "%s"\n' "$PIN" > "$FORK/cf.txt"
+git -C "$FORK" add cf.txt
+if commit "fix(app): [HIMMEL-5978] add cloudflare key"; then
+  bad "40-hex secret matching a named rule is refused"
+else
+  ok "40-hex secret matching a named rule is refused"
+fi
+git -C "$FORK" reset -q HEAD cf.txt
+rm -f "$FORK/cf.txt"
+
+# 8. only the subjects git itself generates skip the ticket check
+for subj in \
+  "Merge branch 'feature/x' into main" \
+  "Merge pull request #12 from org/feature-x" \
+  "Merge remote-tracking branch 'origin/main'" \
+  "Merge branch 'main' of https://example.invalid/r" \
+  'Revert "feat(app): [HIMMEL-5978] add thing"'; do
+  if commit "$subj"; then
+    ok "git-generated subject passes: $subj"
+  else
+    bad "git-generated subject passes: $subj"; sed 's/^/  | /' "$WORK/out"
+  fi
+done
+for subj in "Merge unrelated change" "Merge branches by hand" "Revert the thing" "Merge pull request without a number" \
+  "Merge pull request #garbage" "Merge branch '" "Merge remote-tracking branch ''" 'Revert "' \
+  "Merge branch 'x'garbage" "Merge branch 'x' garbage" \
+  "Merge remote-tracking branch 'o/x'garbage" "Merge remote-tracking branch 'o/x' garbage" \
+  'Revert "x"garbage'; do
+  if commit "$subj"; then
+    bad "lookalike subject is refused: $subj"
+  else
+    ok "lookalike subject is refused: $subj"
+  fi
+done
+# the closing quote must be on the subject line, not in the body
+if commit "Merge branch 'x" "y' z"; then
+  bad "unclosed subject quote closed only in the body is refused"
+else
+  ok "unclosed subject quote closed only in the body is refused"
+fi
+if commit "Merge pull request #12 from "; then
+  bad "pull request subject without a source is refused"
+else
+  ok "pull request subject without a source is refused"
 fi
 
 echo "== Summary =="

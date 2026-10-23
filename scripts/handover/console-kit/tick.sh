@@ -224,6 +224,14 @@ probe reads the last cached value, else ?. The value (a failure too) is cached
 TICK_STALL_TTL_MIN minutes (default 5, 0 = off) in TICK_STALL_CACHE. console-wait.sh wakes once
 per new conflict or no-ci token and keeps its saved set on ?.
 
+crfirst=#<pr>:<reason>:<age>[,...] is the non-fork PR heads whose heavy-CI `ci:go`
+label the reviewer gate has not released, with the hold reason, plus `#<pr>:manual-release` for
+a head labelled by hand. The tick calls scripts/lib/cr-first-release.sh once per unreleased head
+from the same `gh pr list` read as prs= (no second list); a head that passes is released right
+there. Absent when the CI_GO_GATE repository variable is off or unset, or nothing is held. A
+hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himmel's own repo
+only. console-wait.sh does not wake on it.
+
 denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] (HIMMEL-3724) is classifier
 denials seen by scripts/hooks/log-classifier-denial.sh in a trailing window
 (TICK_DENIALS_WINDOW_MIN minutes, default 30), grouped by the hook's own
@@ -1315,7 +1323,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no leg this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1345,12 +1353,14 @@ unowned_grace_min="${TICK_UNOWNED_GRACE_MIN:-10}"
 prs=""
 unowned_prs=""
 ext_prs=""
-while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red; do
+crfirst_rows=""
+while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red pr_head pr_labels; do
     case "$pr" in ''|*[!0-9]*) continue ;; esac
     prs="$(csv_add "$prs" "#$pr")"
     [ -n "$pr_branch" ] || continue
     if [ "$pr_fork" = true ]; then ext_prs="$(csv_add "$ext_prs" "#$pr")"; continue; fi
     [ "$pr_draft" = true ] && continue
+    [ -z "$pr_head" ] || crfirst_rows="$crfirst_rows$pr	$pr_head	$pr_labels"$'\n'
     pr_key="$(ticket_key "$pr_branch")"
     if [ -n "$pr_key" ]; then
         case "$owner_keys" in *" $pr_key "*) continue ;; esac
@@ -1867,6 +1877,21 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
         fi
     fi
     case "$stall_val" in ""|*[!0-9a-z:,?-]*) ;; *) stall_tail=" stall=$stall_val" ;; esac
+fi
+# crfirst=#<pr>:<reason>:<age>[,...]: non-fork heads whose `ci:go` the
+# reviewer gate has not released yet, with the reason it holds, and `#<pr>:manual-release`
+# for a head labelled by hand. This is event point 5 of the CI release: the tick calls
+# cr_first_release for every unreleased head from the ONE `gh pr list` above (no second
+# list). ABSENT when the CI_GO_GATE variable is off/unset, or every head is released; it
+# wakes nothing. Himmel's own repo only. A CR-FIRST ALERT becomes an ACTION line below.
+crfirst_tail=""
+crfirst_alerts=""
+if [ -n "$crfirst_rows" ] && [ -z "${pr_read_failed:-}" ] && [ "$pr_repo" = "$REPO" ] && [ -f "$HERE/../../lib/cr-first-release.sh" ]; then
+    # shellcheck disable=SC2016
+    cf_out="$(cd "$pr_repo" 2>/dev/null && printf '%s' "$crfirst_rows" | timeout -k 2 120 bash -c '. "$1" || exit 0; HIMMEL_CONSOLE_DOC=$2; export HIMMEL_CONSOLE_DOC; cr_first_sweep "$(_cmg_local_nwo)"' _ "$HERE/../../lib/cr-first-release.sh" "$console_doc" 2>/dev/null)" || cf_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed sweep leaves the tick line without crfirst=
+    cf_val="$(printf '%s\n' "$cf_out" | sed -n 's/^crfirst=//p' | head -n 1)"
+    case "$cf_val" in ""|*[!0-9A-Za-z:,._#-]*) ;; *) crfirst_tail=" crfirst=$cf_val" ;; esac
+    crfirst_alerts="$(printf '%s\n' "$cf_out" | sed -n 's/^ALERT //p')"
 fi
 # busedge=MISSING:<label>[,...]: a held leg (lock FRESH or STALE) none of whose
 # session names has a himmel-bus peer record naming this console (the console doc's stem),
@@ -2400,6 +2425,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'orphans-wip: %s\n' "$orphans_wip"
     printf 'pool-closed: %s\n' "$pool_closed"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
+    [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
@@ -2462,7 +2488,11 @@ else
     compact_field leaks "$leaks_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$spare_tail"
+    while IFS= read -r crfirst_line; do
+        [ -n "$crfirst_line" ] || continue
+        printf 'ACTION cr-first %s\n' "$crfirst_line"
+    done <<< "$crfirst_alerts"
     while IFS= read -r ciguard_line; do
         [ -n "$ciguard_line" ] || continue
         printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (console-sections/monitors.md)\n' "${ciguard_line#ALERT }"

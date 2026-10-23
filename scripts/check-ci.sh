@@ -596,18 +596,24 @@ _prune_cache_dir() {
 }
 if [ "$CACHE_ON" -eq 1 ]; then _prune_cache_dir "${CHECK_CI_CACHE_DIR:-${HOME:-/tmp}/.himmel/state/ci-cache}"; fi
 
+# shellcheck source=scripts/lib/non-gating-contexts.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/non-gating-contexts.sh"
+
 # pr_rows <ttl> — "<bucket>\t<name>" per check. Cached mode reads (or fetches once
 # for the whole fleet) a head-bound snapshot no older than <ttl> seconds; legacy
 # mode is the one direct gh call it always was. rc 1 = unreadable.
 pr_rows() {
     if [ "$CACHE_ON" -eq 1 ]; then
         _cic_get_bounded "$1" || return 1
-        [ -z "$CIC_ROWS" ] || printf '%s\n' "$CIC_ROWS"
+        [ -z "$CIC_ROWS" ] || printf '%s\n' "$CIC_ROWS" | ngc_drop_rows
         return 0
     fi
     pr_checks --json bucket,name --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null
 }
 
+# ponytail: the legacy gh --watch path cannot skip a listed context, so a red
+# that is only listed still exits 1 (fail closed), upgrade path = the cached path.
 # _fail_count — how many checks are in the fail bucket, from a decide-grade read
 # (a terminal verdict is never older than CHECK_CI_DECIDE_TTL seconds). Prints
 # nothing when unreadable (callers fail closed on a non-numeric answer).
@@ -716,6 +722,24 @@ _job_log_hint() {
     done <<< "$links"
 }
 
+# _cr_first_event — one CI-release event. With the CI_GO_GATE repository
+# variable on, the heavy jobs wait for the `ci:go` label that scripts/lib/cr-first-release.sh
+# adds once the reviewer gate passes at the head; this runs that lib's CLI at the head and
+# prints its CR-FIRST lines on stderr. Switch off or unset, a fork, a head already released,
+# a missing lib or a failed read: silent, rc 0. rc 1 = the head is HELD (CR-FIRST HOLD
+# printed); rc 2 = it was released just now. Best effort: it never fails check-ci.
+_cr_first_event() {
+    local lib out rc=0 h
+    lib="$(cd "$(dirname "$0")" && pwd)/lib/cr-first-release.sh"
+    h="${head0:-${initial_head:-}}"
+    [ -r "$lib" ] && [ -n "${num:-}" ] && [ -n "$h" ] || return 0
+    out=$(bash "$lib" --pr "$num" --head "$h" 2>/dev/null </dev/null) || rc=$?
+    [ -z "$out" ] || printf '%s\n' "$out" | sed 's/^/check-ci: /' >&2
+    case "$out" in *"CR-FIRST RELEASE "*) return 2 ;; esac
+    case "$rc" in 1) return 1 ;; esac
+    return 0
+}
+
 # required_gate <wait> — 1 = a missing required check may register within
 # --grace (the stated bound, the same one "no checks registered" already uses) and
 # is deferred to the watch while any check is still pending; 0 = it had its
@@ -723,6 +747,7 @@ _job_log_hint() {
 # the settle round.
 required_gate() {
     local wait_ok="$1" reqs rows prows="" st missing pending status_only failed req_start tries=0 max_tries
+    local cf_at=-100000 cf_held=0 cf_rc=0
     # Backstop beside the SECONDS bound: a no-op sleep seam (CHECK_CI_SLEEP_CMD=:)
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
@@ -756,6 +781,29 @@ required_gate() {
         missing=$(_join_by_status missing "$st")
         pending=$(_join_by_status pending "$st")
         if [ -z "$missing" ] && [ -z "$pending" ]; then return 0; fi
+        # CI_GO_GATE on and the head not released yet: the heavy jobs cannot
+        # report until the reviewer gate passes, so keep waiting on the hold (bounded by
+        # --max-wait) rather than burn --grace or hand the watch a head with no heavy run.
+        # The release lib is read at most every CR_FIRST_EVERY seconds; with the switch off
+        # or unset it is silent and everything below applies unchanged.
+        if [ "$wait_ok" -eq 1 ]; then
+            if [ $((SECONDS - cf_at)) -ge "${CR_FIRST_EVERY:-60}" ]; then
+                cf_at=$SECONDS; cf_held=0; cf_rc=0
+                _cr_first_event || cf_rc=$?
+                case "$cf_rc" in
+                    1) cf_held=1 ;;
+                    2) req_start=$SECONDS; tries=0 ;;   # released: the normal registration window starts now
+                esac
+            fi
+            if [ "$cf_held" -eq 1 ]; then
+                if [ "$MAX_WAIT" -gt 0 ] && [ "$(_budget_left)" -le 0 ]; then
+                    echo "check-ci: DEADLINE-PENDING — the ${MAX_WAIT}s --max-wait deadline passed while the reviewer gate still holds ci:go (CR-FIRST HOLD above); not an error, re-invoke" >&2
+                    _deadline_exit
+                fi
+                "$CHECK_CI_SLEEP_CMD" "$POLL"
+                continue
+            fi
+        fi
         # A required job held by `needs:` (an aggregator behind pending shards) is
         # not listed until its dependencies finish, so "missing" while another
         # check is still pending is not yet "never reported": leave it to the
@@ -1487,6 +1535,8 @@ cr_signal_gate() {
         *)
             echo "check-ci: NOTE — CodeRabbit $state on head $head0 of PR #$num: best effort (HIMMEL-3360), not gating; thread + body-findings gates still apply." >&2 ;;
     esac
+    # A CodeRabbit verdict was just read: one CI-release event, switch read first.
+    _cr_first_event || true
 }
 
 # cr_body_gate (see coderabbit-body-findings.sh header):
