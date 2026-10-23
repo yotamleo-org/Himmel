@@ -1000,9 +1000,16 @@ if [ "$SEMANTIC" -eq 1 ]; then
                 _sem_total=$(printf '%s\n' "$_sem_out" | sed -n 's|.*chunk [0-9]*/\([0-9]*\) failed:.*run spend cap reached.*|\1|p' | head -n 1)
                 _sem_spent=$(printf '%s\n' "$_sem_out" | sed -n 's|.*run spend cap reached (spent \([0-9.]*\) of \([0-9.]*\) USD).*|\1 of \2|p' | head -n 1)
                 _sem_spent=$(printf '%s' "$_sem_spent" | awk '{printf "%.2f of %s", $1, $3}')
-                _sem_result="$_sem_cap of $_sem_total chunks stopped by the run spend cap; next run retries"
+                _sem_all=$(printf '%s\n' "$_sem_out" | grep -c 'chunk [0-9]*/[0-9]* failed:')
                 _sem_cause="the claude-api run hit its spend cap (spent $_sem_spent USD)"
-                _sem_do="nothing"
+                if [ "$_sem_all" -gt "$_sem_cap" ]; then
+                    _sem_result="$_sem_all of $_sem_total chunks failed, $_sem_cap stopped by the run spend cap"
+                    _sem_cause="$_sem_cause; the other chunks failed for another reason"
+                    _sem_do="read the log for the other chunk failures"
+                else
+                    _sem_result="$_sem_cap of $_sem_total chunks stopped by the run spend cap; next run retries"
+                    _sem_do="nothing"
+                fi
             fi
             bash "$CADENCE_ALERT" fail "$_sem_leg" "$_sem_result" "$_run_log" "$_sem_cause" "$_sem_do"
             _fail "semantic-update.sh exited $_sem_rc: $(printf '%s' "$_sem_out" | tail -n 3 | tr '\n' ' ')"

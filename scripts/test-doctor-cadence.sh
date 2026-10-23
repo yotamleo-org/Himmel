@@ -177,6 +177,23 @@ case "$plain" in *"WARN C15-plugins: 3 plugin(s) enabled beyond the lean floor"*
 case "$plain" in *"Cause: C33-graph-stale follows from the failing graph cadence"*) pass "doctor alert names the knock-on cause" ;; *) fail "doctor alert names the knock-on cause (got: $plain)" ;; esac
 case "$plain" in *". Do: trim enabledPlugins to the lean set. Log: $STATE/last-run.log") pass "doctor alert ends in the next step and the log" ;; *) fail "doctor alert ends in the next step and the log (got: $plain)" ;; esac
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
+# a standing backoff alert alone does not explain a stale graph, so C33 keeps its own message.
+rm -rf "$STATE" "$HOME/.himmel/state/cadence-alert-sent"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad
+mkdir -p "$HOME/.himmel/state/cadence-alert-sent"; : > "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel-backoff.x"
+cat > "$STUB_OUT" <<'OUT'
+himmel-doctor — Linux
+
+WARN C33-graph-stale: graph stale: 12 commits behind main / last cadence run 5h ago
+       → bash scripts/graphify/graph-cadence.sh
+OK   C99-fine: fine
+
+Summary: 0 FAIL  1 WARN  0 INFO
+OUT
+run_cad
+plain="$(tail -1 "$SENT")"
+case "$plain" in *"follows from the failing graph cadence"*) fail "a backoff-only sentinel is not a knock-on cause (got: $plain)" ;; *"WARN C33-graph-stale: graph stale"*"Do: bash scripts/graphify/graph-cadence.sh"*) pass "a backoff-only sentinel is not a knock-on cause" ;; *) fail "a backoff-only sentinel keeps C33's own step (got: $plain)" ;; esac
+rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel-backoff.x"
 
 # 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).

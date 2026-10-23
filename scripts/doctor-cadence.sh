@@ -113,7 +113,7 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() (
-    local root out keys new="" k sev lock_rc id detail="" new_n=0 knock_on=0 todo="" cause=""
+    local root out keys new="" k sev lock_rc id detail="" new_n=0 knock_on=0 todo="" cause="" graph_alerts=""
     local sent_dir="${CADENCE_ALERT_DEDUPE_DIR:-${HOME:-}/.himmel/state/cadence-alert-sent}"
     root="$(resolve_primary)" || { echo "doctor-cadence: cannot resolve the primary checkout" >&2; return 2; }
     mkdir -p "$STATE_DIR" || return 2
@@ -158,9 +158,13 @@ cmd_run() (
         new_n=$((new_n + 1))
         id="${k#* }"
         detail="${detail:+$detail; }$k: $(sed -n -E "s/^$sev +$id: *//p" "$out" | head -n 1 | cut -c1-200)"
-        if [ "$id" = C33-graph-stale ] && compgen -G "$sent_dir/graph-*" >/dev/null; then
-            knock_on=1
-            continue
+        # a standing graph-*-backoff alert is a skipped file on a run that succeeded, so it does not explain a stale graph
+        if [ "$id" = C33-graph-stale ]; then
+            graph_alerts=$(compgen -G "$sent_dir/graph-*" | grep -v -- '-backoff[.]')
+            if [ -n "$graph_alerts" ]; then
+                knock_on=1
+                continue
+            fi
         fi
         [ -n "$todo" ] || todo="$(grep -A1 -E "^$sev +$id:" "$out" | sed -n -E '2s/^ *→ *//p' | sed -E 's/ +#.*//')"
     done <<< "$keys"

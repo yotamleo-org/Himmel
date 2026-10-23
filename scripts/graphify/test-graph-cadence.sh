@@ -1331,6 +1331,15 @@ assert_not_contains "spend-cap alert drops the internal code" "semantic-update-r
 seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20; rc=0
 FAKE_SEM_RC=2 run_sem "$tag" --semantic > "$TMP_ROOT/t9-$tag-run.log" 2>&1 || rc=$?
 assert_contains "other semantic failure keeps Cause: unknown, see log" "Cause: unknown, see log. Do: " "$(cat "$FAKE_SEND_LOG")"
+# a spend cap beside an unrelated chunk failure must not read as "nothing to do".
+: > "$FAKE_SEND_LOG"; tag=mix; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20; rc=0
+FAKE_SEM_RC=5 FAKE_SEM_OUT='[graphify] chunk 3/15 failed: claude -p exited 1: parse error in reply
+[graphify] chunk 15/15 failed: claude -p exited 3: claude-api shim: run spend cap reached (spent 5.054728 of 5.00 USD); call refused' \
+    run_sem "$tag" --semantic > "$TMP_ROOT/t9-$tag-run.log" 2>&1 || rc=$?
+mix_msg="$(cat "$FAKE_SEND_LOG")"
+assert_contains "mixed failure counts every failed chunk" "2 of 15 chunks failed, 1 stopped by the run spend cap" "$mix_msg"
+assert_not_contains "mixed failure does not say nothing to do" ". Do: nothing" "$mix_msg"
 # (e) rc 3 (bank at/over threshold) and rc 4 (promote lock
 # held) are benign skips -- the next fire retries -- so the run stays green and
 # raises no alert; a real failure (rc 2, above) still alerts.
