@@ -110,7 +110,7 @@ cmd_arm() {
 }
 
 cmd_status() {
-    cron_read || return 1
+    cron_read || return 4
     if [ -n "$(cron_entry)" ]; then echo "ARMED      $TASK_NAME ($(cron_entry | awk '{print $1, $2, $3, $4, $5}'))"
     else echo "not armed  $TASK_NAME"; fi
     [ -f "$RUNNER_DIR/librarian.log" ] && echo "  last run   $(date -r "$RUNNER_DIR/librarian.log" '+%Y-%m-%d %H:%M' 2>/dev/null)"  # swallow-ok: a display-only timestamp, the line just omits it

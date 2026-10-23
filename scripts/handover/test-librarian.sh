@@ -34,6 +34,7 @@ printf '# j\n' > "$B/HIMMEL-1-old-wrapped-2026-01-01-judge-J1.md"; age 60 "$B/HI
 printf 'log\n' > "$B/HIMMEL-1-old-wrapped-2026-01-01.launch.log"; age 60 "$B/HIMMEL-1-old-wrapped-2026-01-01.launch.log"
 leg HIMMEL-2-locked-2026-01-01.md WRAPPED 60
 mkdir -p "$R/.locks/queue/u__himmel__HIMMEL-2-locked-2026-01-01.lock"
+printf '# resume\n' > "$B/HIMMEL-2-locked-2026-01-01-RESUME.md"; age 60 "$B/HIMMEL-2-locked-2026-01-01-RESUME.md"
 leg HIMMEL-3-young-2026-10-20.md WRAPPED 3
 leg HIMMEL-4-done-no-wrapped-2026-01-01.md LIVE 60
 leg HIMMEL-5-open-no-wrapped-2026-01-01.md LIVE 60
@@ -53,7 +54,7 @@ printf '# live\n' > "$B/HIMMEL-9-live-2026-10-22.md"; age 1 "$B/HIMMEL-9-live-20
 # links: the old doc points at a live doc and at its own RESUME; a live doc points back at the old doc
 printf '# t\n\n- 10:05 WRAPPED — [live](HIMMEL-9-live-2026-10-22.md) [r](HIMMEL-1-old-wrapped-2026-01-01-RESUME.md) [web](https://x.test/a.md) [wiki]([[n]])\n' > "$B/HIMMEL-1-old-wrapped-2026-01-01.md"
 age 60 "$B/HIMMEL-1-old-wrapped-2026-01-01.md"
-printf '# live\n\nsee [old](HIMMEL-1-old-wrapped-2026-01-01.md)\n' > "$B/HIMMEL-9-live-2026-10-22.md"; age 1 "$B/HIMMEL-9-live-2026-10-22.md"
+printf '# live\n\nsee [old](HIMMEL-1-old-wrapped-2026-01-01.md) and [q](HIMMEL-1-old-wrapped-2026-01-01.md?plain=1#top)\n' > "$B/HIMMEL-9-live-2026-10-22.md"; age 1 "$B/HIMMEL-9-live-2026-10-22.md"
 
 git -C "$R" init -q . && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m seed
 git -C "$SES" init -q . && git -C "$SES" add -A && git -C "$SES" -c user.email=t@t -c user.name=t commit -q -m seed
@@ -85,6 +86,7 @@ check "side file (launch.log) travelled" yes "$(here "$A/HIMMEL-1-old-wrapped-20
 check "HALTED old doc moved" yes "$(here "$A/HIMMEL-8-halted-2026-01-01.md")"
 check "Done ticket without WRAPPED moved" yes "$(here "$A/HIMMEL-4-done-no-wrapped-2026-01-01.md")"
 check "locked doc stayed" yes "$(here "$B/HIMMEL-2-locked-2026-01-01.md")"
+check "an old RESUME of a locked doc stayed with its parent" yes "$(here "$B/HIMMEL-2-locked-2026-01-01-RESUME.md")"
 check "young doc stayed" yes "$(here "$B/HIMMEL-3-young-2026-10-20.md")"
 check "doc 20 days old stayed under the 30 day default" yes "$(here "$B/HIMMEL-7-mid-aged-2026-01-01.md")"
 check "open ticket without WRAPPED stayed" yes "$(here "$B/HIMMEL-5-open-no-wrapped-2026-01-01.md")"
@@ -116,6 +118,7 @@ check "moved doc's link to a live doc rewritten" yes "$(grep -q '](../../HIMMEL-
 check "moved doc's link to its moved sibling kept" yes "$(grep -q '](HIMMEL-1-old-wrapped-2026-01-01-RESUME.md)' "$A/HIMMEL-1-old-wrapped-2026-01-01.md" && echo yes || echo no)"
 check "web link left alone" yes "$(grep -q '](https://x.test/a.md)' "$A/HIMMEL-1-old-wrapped-2026-01-01.md" && echo yes || echo no)"
 check "live doc's link to the moved doc rewritten" yes "$(grep -q "](archive/$M60/HIMMEL-1-old-wrapped-2026-01-01.md)" "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
+check "a link with a query and fragment keeps both" yes "$(grep -q "](archive/$M60/HIMMEL-1-old-wrapped-2026-01-01.md?plain=1#top)" "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
 
 # --- idempotence --------------------------------------------------------------
 before="$(git -C "$R" status --porcelain | sort | tr '\n' ' ')"
@@ -129,6 +132,15 @@ leg HIMMEL-1-clash-2026-01-01.md WRAPPED 60; mkdir -p "$A"; printf 'keep\n' > "$
 git -C "$R" add -A; run --apply >/dev/null 2>&1
 check "clash: destination kept" keep "$(head -1 "$A/HIMMEL-1-clash-2026-01-01.md")"
 check "clash: source stayed" yes "$(here "$B/HIMMEL-1-clash-2026-01-01.md")"
+
+# --- a failed move leaves every link pointing where the doc still is ----------
+leg HIMMEL-1-failmv-2026-01-01.md WRAPPED 60
+printf 'see [f](HIMMEL-1-failmv-2026-01-01.md)\n' >> "$B/HIMMEL-9-live-2026-10-22.md"
+git -C "$R" add -A; chmod 555 "$A"
+run --apply >/dev/null 2>&1; check "failed move exits 1" 1 "$?"
+chmod 755 "$A"
+check "failed move: doc stayed" yes "$(here "$B/HIMMEL-1-failmv-2026-01-01.md")"
+check "failed move: referrer link untouched" yes "$(grep -q '](HIMMEL-1-failmv-2026-01-01.md)' "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
 
 # --- untracked doc is skipped, never plain-mv'd -------------------------------
 leg HIMMEL-1-untracked-2026-01-01.md WRAPPED 60

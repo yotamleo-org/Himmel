@@ -188,6 +188,9 @@ seen = set()
 for n in bucket_files:
     if not n.endswith(".md") or "console" in n.lower() or n in seen:
         continue
+    sub_m = re.match(r"(.+?)-(?:RESUME|HANDOFF|judge-)", n)
+    if sub_m and sub_m.group(1) + ".md" in bucket_files:
+        continue  # the parent doc decides for its whole group
     p = os.path.join(bucket, n)
     if locked(p):
         print("SKIP locked %s" % p)
@@ -256,17 +259,17 @@ def rewrite(text, old_dir, new_dir, target_new):
         if t[0] in "#/[" or "://" in t or t.startswith("mailto:"):
             return m.group(0)
         path, sep, frag = t.partition("#")
-        path = path.split("?")[0]
+        path, qsep, query = path.partition("?")
         if not path:
             return m.group(0)
         tgt = os.path.normpath(os.path.join(old_dir, path))
-        if not os.path.lexists(tgt):
+        if not (os.path.lexists(tgt) or target_new(tgt) != tgt):
             return m.group(0)
         new = os.path.relpath(target_new(tgt), new_dir)
         old_rel = os.path.relpath(tgt, old_dir)
         if new == old_rel:
             return m.group(0)
-        return m.group(1) + new + (sep + frag if sep else "") + m.group(3)
+        return m.group(1) + new + (qsep + query if qsep else "") + (sep + frag if sep else "") + m.group(3)
     return LINK.sub(sub, text)
 
 
@@ -280,33 +283,11 @@ def write(p, s):
         fh.write(s)
 
 
-tgt_new = lambda t: moved_map.get(t, t)
+done_map = {}
+tgt_new = lambda t: done_map.get(t, t)
 refs = 0
 if apply:
-    # 1. rewrite links in the moved docs (before the move, while old paths resolve)
-    for src, dst, _, _, _ in moves:
-        if src.endswith(".md"):
-            s = read(src)
-            n = rewrite(s, os.path.dirname(src), dst, tgt_new)
-            if n != s:
-                write(src, n)
-    # 2. rewrite links in the bucket-root docs that point at a moved doc
-    moved_old = set(moved_map)
-    for n in bucket_files:
-        p = os.path.join(bucket, n)
-        if not n.endswith(".md") or p in moved_map:
-            continue
-        s = read(p)
-        if "](" not in s:
-            continue
-        r = rewrite(s, bucket, bucket, lambda t: moved_map.get(t, t))
-        if r != s:
-            if locked(p):
-                print("SKIP referrer-locked %s" % p)
-            else:
-                write(p, r)
-                refs += 1
-    # 3. move, then index
+    # 1. move; a failed move leaves no link pointing at it
     for src, dst, reason, ticket, tr in moves:
         os.makedirs(dst, exist_ok=True)
         top = os.path.dirname(src)
@@ -316,21 +297,48 @@ if apply:
             print("FAIL git mv %s: %s" % (src, r.stderr.strip()), file=sys.stderr)
             failed += 1
             continue
+        done_map[src] = moved_map[src]
         idx = os.path.join(dst, "_index.md")
         index_rows.setdefault(idx, []).append(
             "- %s | %s | %s | %s | from %s" % (os.path.basename(src), ticket, date(moved_map[src]), reason,
                                                  os.path.relpath(top, root)))
+    # 2. rewrite links in the moved docs, now at their new place
+    for src, dst, _, _, _ in moves:
+        if src in done_map and src.endswith(".md"):
+            s = read(done_map[src])
+            n = rewrite(s, os.path.dirname(src), dst, tgt_new)
+            if n != s:
+                write(done_map[src], n)
+    # 3. rewrite links in the bucket-root docs that point at a moved doc
+    for n in bucket_files:
+        p = os.path.join(bucket, n)
+        if not n.endswith(".md") or p in moved_map:
+            continue
+        s = read(p)
+        if "](" not in s:
+            continue
+        r = rewrite(s, bucket, bucket, tgt_new)
+        if r != s:
+            if locked(p):
+                print("SKIP referrer-locked %s" % p)
+            else:
+                write(p, r)
+                refs += 1
+    # 4. index
     for idx, rows in index_rows.items():
         new = not os.path.exists(idx)
         with open(idx, "a", encoding="utf-8") as fh:
             if new:
                 fh.write("# Archive %s\n\n" % os.path.basename(os.path.dirname(idx)))
             fh.write("\n".join(rows) + "\n")
-        subprocess.run(["git", "-C", os.path.dirname(idx), "add", "--", idx], capture_output=True)
+        r = subprocess.run(["git", "-C", os.path.dirname(idx), "add", "--", idx], capture_output=True, text=True)
+        if r.returncode != 0:
+            print("FAIL git add %s: %s" % (idx, r.stderr.strip()), file=sys.stderr)
+            failed += 1
 
 mode = "apply" if apply else "dry-run"
 verb = "moved" if apply else "would-move"
-n_moved = len(moves) - failed
+n_moved = len(done_map) if apply else len(moves)
 print("librarian: %s %s=%d skipped(locked=%d young=%d unfinished=%d untracked=%d clash=%d) referrers-rewritten=%d failed=%d"
       % (mode, verb, n_moved, counts["locked"], counts["young"], counts["unfinished"], counts["untracked"],
          counts["clash"], refs, failed))
