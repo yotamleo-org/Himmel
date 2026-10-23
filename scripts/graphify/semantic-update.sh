@@ -81,7 +81,7 @@
 # run it once on a corpus whose graph already carries a semantic pass, or the
 # first run treats every file as changed.
 #
-# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, graphify or merge failure;
+# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
 # 3 bank at/over threshold (nothing touched); 4 promote lock held.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
