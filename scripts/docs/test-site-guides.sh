@@ -264,7 +264,7 @@ fi
 # --- CONTROL: the STEPS check must fail on a renamed step ----------------------
 if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
   sed "s/{ id: 'bridge'/{ id: 'dropped'/" "$ROOT/docs/guide/installer-journey.html" > "$tmp/installer-journey.html"
-  if [ -n "$(wizard_steps)" ] && [ "$(wizard_steps)" != "$(guide_steps "$tmp/installer-journey.html")" ]; then
+  if [ -n "$(wizard_steps)" ] && [ -n "$(guide_steps "$tmp/installer-journey.html")" ] && [ "$(wizard_steps)" != "$(guide_steps "$tmp/installer-journey.html")" ]; then
     ok "control: a guide with a renamed step differs from the wizard"
   else
     bad "control: the STEPS check accepted a guide with a renamed step"
@@ -276,8 +276,12 @@ fi
 # names none; neither may leave the wizard's steps equal to the guide's.
 if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
   for want in "step: extra" ""; do
+    rm -f "$tmp/bin.js"
     python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); q="  await askEnum(ask, \x27? one more question [yes|no]\x27, [\x27yes\x27, \x27no\x27], \x27no\x27);" + (" // " + sys.argv[2] if sys.argv[2] else ""); print(re.sub(r"(\n  const scope = await askNumberedEnum[^\n]*\n)", lambda m: m.group(1) + q + "\n", t, count=1), end="")' "$BIN" "$want" > "$tmp/bin.js"
-    if [ "$(wizard_steps "$tmp/bin.js")" != "$(guide_steps "$ROOT/docs/guide/installer-journey.html")" ]; then
+    steps=$(wizard_steps "$tmp/bin.js" 2>/dev/null)
+    if [ -z "$steps" ]; then
+      bad "control: no wizard steps came out of the fixture (${want:-no step named}); the control proved nothing"
+    elif [ "$steps" != "$(guide_steps "$ROOT/docs/guide/installer-journey.html")" ]; then
       ok "control: a wizard with one more question (${want:-no step named}) differs from the guide"
     else
       bad "control: the STEPS check accepted a wizard with one more question (${want:-no step named})"
