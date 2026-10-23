@@ -77,7 +77,7 @@ handshake() {
   # a project .mcp.json waits for interactive approval, so register at user scope on the VM and remove after
   claude mcp remove probe -s user > /dev/null 2>&1
   claude mcp add probe -s user -e "MCP_PROBE_LOG=$dir/server.log" -- node "$HERE/server.mjs" > "$dir/client.out" 2>&1
-  timeout 60 claude mcp list >> "$dir/client.out" 2>&1
+  timeout 60 claude mcp list >> "$dir/client.out" 2>&1 # gnu-ok: handshake and run execute on the Linux test VM only
   claude mcp remove probe -s user >> "$dir/client.out" 2>&1
   summarize "$dir/server.log" handshake
 }

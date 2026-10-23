@@ -10,6 +10,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SERVER="$HERE/server.mjs"
 PROBE="$HERE/probe.sh"
 FIX="$HERE/fixtures"
+. "$HERE/../../lib/timeout-bin.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/mcp-tasks-probe-test.XXXXXX")" || { echo "test-probe: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 
@@ -32,7 +33,7 @@ call_line() { # <id> <tool> [task json]
 }
 # run_server <name> <timeout ms> : stdin = client lines; log in $TMP/<name>.log, wire out in $TMP/<name>.out
 run_server() {
-  MCP_PROBE_LOG="$TMP/$1.log" MCP_PROBE_ELICIT_TIMEOUT_MS="$2" timeout 20 node "$SERVER" > "$TMP/$1.out" 2>/dev/null
+  MCP_PROBE_LOG="$TMP/$1.log" MCP_PROBE_ELICIT_TIMEOUT_MS="$2" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} node "$SERVER" > "$TMP/$1.out" 2>/dev/null
 }
 row() { bash "$PROBE" summarize "$TMP/$1.log" 2>&1; }
 
