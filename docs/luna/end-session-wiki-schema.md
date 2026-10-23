@@ -169,7 +169,7 @@ Fenced ` ```bash ` block listing the last N notable shell commands executed duri
 
 **Keep:** anything that mutated state (git, npm, pytest, file edits via CLI, gh, etc.) and any command with a non-zero exit code (for failure archaeology).
 
-```markdown
+````markdown
 ## Commands
 
 ```bash
@@ -177,7 +177,7 @@ git fetch origin spike/end-session-stop-hook
 git -C <worktree> commit -m "feat(epic-7): #25 session-note schema + canonical example"
 gh pr create --title "feat(epic-7): #25 session-note schema"
 ```
-```
+````
 
 If no commands: empty bash fence (` ```bash\n``` `).
 
