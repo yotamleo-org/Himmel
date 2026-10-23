@@ -125,7 +125,8 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     out = [HEADING, "",
            "- window: %s to %s (24 h), mode: %s" % (failure_router.iso(since), failure_router.iso(a.now), mode)]
     fails = {c: r for c, r in rows.items() if c not in EXCLUDED}
-    new = sorted(c for c in fails if not c.startswith("traj/") and c not in seen_before)
+    new = sorted(c for c, rs in fails.items() if not c.startswith("traj/") and c not in seen_before
+                 and (not c.startswith("suite/") or any(failure_router.keep(r, "final_red") for r in rs)))
     n = sum(len(r) for r in fails.values())
     if not n:
         out.append("- no failures in the last 24 h")
