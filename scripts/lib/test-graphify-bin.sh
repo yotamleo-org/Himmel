@@ -1888,16 +1888,37 @@ assert "on-demand registration keeps other registry entries" \
 # shellcheck disable=SC2016
 assert "on-demand re-registration keeps operator args and env, refreshes the command" \
   bash -c 'printf "{\"mcpServers\":{\"graphify\":{\"type\":\"stdio\",\"command\":\"old\",\"args\":[\"--x\"],\"env\":{\"K\":\"1\"}}}}" > "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "const s=JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).mcpServers.graphify; process.exit(s.args[0]===\"--x\"&&s.env.K===\"1\"&&s.command!==\"old\"?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
-# shellcheck disable=SC2016
-assert "on-demand registry stays private: a new file is 0600 and an existing 0600 file stays 0600" \
-  bash -c 'rm -f "$1"; umask 022; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand; chmod 600 \"\$HIMMEL_MCP_ONDEMAND_FILE\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "process.exit((require(\"fs\").statSync(process.argv[1]).mode&0o777)===0o600?0:1)" "$1"; rc=$?; rm -f "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; [ "$rc" -eq 0 ] && node -e "process.exit((require(\"fs\").statSync(process.argv[1]).mode&0o777)===0o600?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
+od_register() {
+  PATH="$od_dir/stub:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c '. "$1/graphify-bin.sh"; graphify_register_mcp_on_demand' _ "$SCRIPT_DIR" >/dev/null 2>&1
+}
+od_mode_is_600() { [ "$(node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode&0o777).toString(8))' "$1")" = "600" ]; }
+od_priv="$od_dir/priv/mcp-on-demand.json"
+mkdir -p "$od_dir/priv"
+(umask 022; od_register "$od_priv")
+assert "on-demand registry stays private: a new file is 0600 under umask 022" od_mode_is_600 "$od_priv"
+chmod 644 "$od_priv"
+assert "on-demand re-registration succeeds over a permissive existing file" od_register "$od_priv"
+assert "on-demand re-registration clamps a permissive existing file back to 0600" od_mode_is_600 "$od_priv"
 rm -rf "$od_dir"
 # shellcheck disable=SC2016
 assert "setup.sh registers graphify on demand, not at user scope" \
   bash -c 'grep -q "graphify_register_mcp_on_demand" "$1" && ! grep -q "graphify_register_mcp user" "$1"' _ "$repo_root/scripts/setup.sh"
+# The two registrars must sit in their own branches of adopt.sh's scope switch:
+# project keeps the committed .mcp.json entry, every other scope goes on demand.
+adopt_branch() {
+  awk -v want="$1" '
+    /^  if \[\[ "\$SCOPE" == "project" \]\]; then$/ { inside = 1; branch = "project"; next }
+    inside && /^  else$/ { branch = "other"; next }
+    inside && /^  fi$/ { inside = 0 }
+    inside && branch == want { print }
+  ' "$repo_root/scripts/adopt.sh"
+}
 # shellcheck disable=SC2016
-assert "adopt.sh registers on demand for non-project scopes" \
-  bash -c 'grep -q "graphify_register_mcp_on_demand" "$1"' _ "$repo_root/scripts/adopt.sh"
+assert "adopt.sh project branch registers graphify_register_mcp, not on demand" \
+  bash -c 'printf "%s" "$1" | grep -q "graphify_register_mcp \"\$SCOPE\"" && ! printf "%s" "$1" | grep -q "graphify_register_mcp_on_demand"' _ "$(adopt_branch project)"
+# shellcheck disable=SC2016
+assert "adopt.sh non-project branch registers on demand, not claude mcp add" \
+  bash -c 'printf "%s" "$1" | grep -q "graphify_register_mcp_on_demand" && ! printf "%s" "$1" | grep -qE "graphify_register_mcp( |$)"' _ "$(adopt_branch other)"
 
 # ─── graphify_price_hooks ──────────────────────────────────────
 # node checker: reads a fixture's .claude/settings.json + .codex/hooks.json

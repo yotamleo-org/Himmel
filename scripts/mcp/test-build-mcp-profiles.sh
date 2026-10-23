@@ -55,23 +55,28 @@ if [ ! -e "$S" ]; then ok "stale secret file removed when the last secret is dro
 # On-demand servers: a server registered ONLY in the on-demand registry (never in
 # ~/.claude.json, so no default session loads it) still resolves into its profile.
 # Fixture shape copied from `claude mcp get graphify` on the station.
+VAULT='"obsidian-vault":{"type":"stdio","command":"node","args":["-e","0"],"env":{"OBSIDIAN_HOST":"127.0.0.1"}}'
+OP='"onepassword":{"type":"stdio","command":"node","args":["-e","0"],"env":{}}'
 cat >"$T/home/.claude.json" <<EOF
-{"mcpServers":{}}
+{"mcpServers":{$VAULT,$OP}}
 EOF
 OD="$T/home/.config/himmel/mcp-on-demand.json"
 mkdir -p "$(dirname "$OD")"
 cat >"$OD" <<EOF
 {"mcpServers":{"graphify":{"type":"stdio","command":"/opt/uv/bin/graphify-mcp","args":[],"env":{}}}}
 EOF
-node "$HERE/build-mcp-profiles.mjs" >"$T/gen3.log" 2>&1
+node "$HERE/build-mcp-profiles.mjs" >"$T/gen3.log" 2>&1; rc3=$?
 G="$T/out/local.graph.json"
-if [ -f "$G" ] && grep -q '"graphify"' "$G" && grep -q 'graphify-mcp' "$G"; then ok "graph profile resolves graphify from the on-demand registry"; else bad "graph profile missing or graphify unresolved ($(tr '\n' ' ' <"$T/gen3.log"))"; fi
+if [ "$rc3" -eq 0 ] && [ -f "$G" ] && grep -q '"graphify"' "$G" && grep -q 'graphify-mcp' "$G"; then ok "graph profile resolves graphify from the on-demand registry"; else bad "generator rc=$rc3 or graph profile missing or graphify unresolved ($(tr '\n' ' ' <"$T/gen3.log"))"; fi
 if lacks '"graphify"' "$T/home/.claude.json"; then ok "on-demand server stays out of ~/.claude.json"; else bad "on-demand server leaked into ~/.claude.json"; fi
 
 # With no ~/.claude.json at all, the registry alone is enough.
 rm -f "$T/home/.claude.json" "$G"
-node "$HERE/build-mcp-profiles.mjs" >"$T/gen4.log" 2>&1
-if [ -f "$G" ]; then ok "registry resolves without a ~/.claude.json"; else bad "generator needs ~/.claude.json even with a registry ($(tr '\n' ' ' <"$T/gen4.log"))"; fi
+cat >"$OD" <<EOF
+{"mcpServers":{"graphify":{"type":"stdio","command":"/opt/uv/bin/graphify-mcp","args":[],"env":{}},$VAULT,$OP}}
+EOF
+node "$HERE/build-mcp-profiles.mjs" >"$T/gen4.log" 2>&1; rc4=$?
+if [ "$rc4" -eq 0 ] && [ -f "$G" ]; then ok "registry resolves without a ~/.claude.json"; else bad "generator rc=$rc4 needs ~/.claude.json even with a registry ($(tr '\n' ' ' <"$T/gen4.log"))"; fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
