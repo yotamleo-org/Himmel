@@ -159,6 +159,22 @@ describe('release engine (HIMMEL-6796)', () => {
     ]);
   });
 
+  it('a REVERSION MOVE into a frozen version appends the destination rm-admit and the source rm-remove, and its replay adds none (HIMMEL-7059)', async () => {
+    await setup();
+    const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    jira.fv.set('K-2', ['v2']);
+    const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v2', to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v2', to_v: 'v1' } });
+    await apply(ctx(rmEnv), r.id);
+    await apply(ctx(rmEnv), r.id);
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    expect(rows().map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([
+      ['rm-admit', 'K-2', 'v1', r.id],
+      ['rm-remove', 'K-2', 'v2', r.id],
+    ]);
+  });
+
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });

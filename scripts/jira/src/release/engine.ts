@@ -556,7 +556,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       const phaseOf = new Map(rows.verified.map((r) => [r.id, r.phase]));
       const superseded = rows.verified.some((s) => s.supersedes.includes(id) && ['applied', 'receipted'].includes(phaseOf.get(s.id) ?? ''));
       // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
-      if (!superseded && last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
+      // A REVERSION move into a frozen version is an admission there too, so version-ready reads it as ruled.
+      const admitted = last.verb === 'INTAKE' && last.outcome === 'ADMIT'
+        || last.verb === 'REVERSION' && last.op.kind === 'move' && l.baselines.some((b) => b.version === last.op.to_v);
+      if (!superseded && admitted && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
         if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
