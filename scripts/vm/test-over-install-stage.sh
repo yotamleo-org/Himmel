@@ -155,12 +155,24 @@ expect_rc "driver refuses an unresolvable base ref" 2 "$rc"
 if [ ! -s "$WORK/net.log" ]; then pass "...before any ssh"; else fail_case "...before any ssh"; fi
 
 # --- opt-in wiring in the symmetry entry point -----------------------------------
-SYMM_CODE="$(grep -v '^[[:space:]]*#' "$SYMM")"
-if grep -Fq '[ "${HIMMEL_VM_E2E_OVERINSTALL:-0}" = "1" ]' <<<"$SYMM_CODE" && grep -Fq 'bash "$REPO/scripts/vm/over-install-e2e.sh"' <<<"$SYMM_CODE"; then
-  pass "symmetry entry point runs the stage behind HIMMEL_VM_E2E_OVERINSTALL"
-else
-  fail_case "symmetry entry point runs the stage behind HIMMEL_VM_E2E_OVERINSTALL"
-fi
+# Run the gate block itself against a stub driver: the stage must run only when the symmetry
+# pass was green AND the opt-in is set, and its exit status must become the script's.
+sed -n '/^if \[ "\$rc" -eq 0 \] && \[ "\${HIMMEL_VM_E2E_OVERINSTALL/,/^fi$/p' "$SYMM" > "$WORK/gate.sh"
+mkdir -p "$WORK/fakerepo/scripts/vm"
+printf '%s\n' '#!/usr/bin/env bash' 'echo ran >> "$STUB_LOG"' 'exit "${STUB_RC:-0}"' > "$WORK/fakerepo/scripts/vm/over-install-e2e.sh"
+run_gate() { # <label> <incoming rc> <opt-in value or -> <stub rc> <want stage ran: 0|1> <want rc>
+  : > "$WORK/stub.log"
+  local optin=() got_ran got_rc
+  [ "$3" = - ] || optin=(HIMMEL_VM_E2E_OVERINSTALL="$3")
+  got_rc="$(env -i PATH="$PATH" REPO="$WORK/fakerepo" HOSTSPEC=h PORT=1 IDENT=k STUB_LOG="$WORK/stub.log" STUB_RC="$4" "${optin[@]}" \
+    RC0="$2" bash -c 'rc=$RC0; . "$1"; echo "$rc"' _ "$WORK/gate.sh" 2>/dev/null | tail -1)"
+  got_ran="$(wc -l < "$WORK/stub.log" | tr -d ' ')"
+  if [ "$got_ran" = "$5" ] && [ "$got_rc" = "$6" ]; then pass "opt-in gate: $1"; else fail_case "opt-in gate: $1 (stage ran $got_ran, want $5; rc $got_rc, want $6)"; fi
+}
+run_gate "off by default, the stage does not run" 0 - 0 0 0
+run_gate "opt-in set but the symmetry pass failed: the stage does not run" 1 1 0 0 1
+run_gate "opt-in set after a green pass: the stage runs" 0 1 0 1 0
+run_gate "the stage's failure becomes the exit status" 0 1 7 1 7
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASSED"; else echo "$FAILED FAILED"; fi
