@@ -160,6 +160,7 @@ scripts/ci/test-shard-manifest-verify.sh	pr	static-gate
 scripts/ci/test-shell-extended-nightly-issue.sh	pr	trust-path
 scripts/ci/test-shell-unit-dispatch-name.sh	pr	trust-path
 scripts/ci/test-shellcheck-pr-range.sh	pr	trust-path
+scripts/ci/test-site-sidebar-slugs.sh	pr	trust-path
 scripts/ci/test-suite-concurrency.sh	pr	trust-path
 scripts/ci/test-suite-ledger.sh	pr	trust-path
 scripts/ci/test-suite-lock-brand-gap.sh	pr	trust-path
