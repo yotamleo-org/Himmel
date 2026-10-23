@@ -325,7 +325,8 @@ _graphify_mcp_entrypoint() {
 # that scripts/mcp/build-mcp-profiles.mjs reads for the `graph` profile. Unlike
 # graphify_register_mcp it never touches ~/.claude.json, so no default session
 # loads the 10 graphify tool schemas; the CLI is the supported default path.
-# Idempotent (rewrites the one entry) and WARN-not-fail.
+# Idempotent (refreshes the command, keeps any args/env already set) and
+# WARN-not-fail.
 graphify_register_mcp_on_demand() {
   local file="${HIMMEL_MCP_ONDEMAND_FILE:-$HOME/.config/himmel/mcp-on-demand.json}" mcp_arg
   mcp_arg="$(_graphify_mcp_entrypoint)"
@@ -342,7 +343,8 @@ graphify_register_mcp_on_demand() {
     const [file, cmd] = process.argv.slice(1);
     let doc = { mcpServers: {} };
     if (fs.existsSync(file)) doc = JSON.parse(fs.readFileSync(file, "utf8"));
-    doc.mcpServers = { ...doc.mcpServers, graphify: { type: "stdio", command: cmd, args: [], env: {} } };
+    const servers = doc.mcpServers || {};
+    doc.mcpServers = { ...servers, graphify: { args: [], env: {}, ...servers.graphify, type: "stdio", command: cmd } };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
   ' "$file" "$mcp_arg"; then

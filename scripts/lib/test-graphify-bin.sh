@@ -1885,6 +1885,9 @@ assert "on-demand registration never calls claude mcp add" test ! -e "$od_dir/cl
 # shellcheck disable=SC2016
 assert "on-demand registration keeps other registry entries" \
   bash -c 'printf "{\"mcpServers\":{\"other\":{\"type\":\"stdio\",\"command\":\"x\"}}}" > "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "const m=JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).mcpServers; process.exit(m.other&&m.graphify?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
+# shellcheck disable=SC2016
+assert "on-demand re-registration keeps operator args and env, refreshes the command" \
+  bash -c 'printf "{\"mcpServers\":{\"graphify\":{\"type\":\"stdio\",\"command\":\"old\",\"args\":[\"--x\"],\"env\":{\"K\":\"1\"}}}}" > "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "const s=JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).mcpServers.graphify; process.exit(s.args[0]===\"--x\"&&s.env.K===\"1\"&&s.command!==\"old\"?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
 rm -rf "$od_dir"
 # shellcheck disable=SC2016
 assert "setup.sh registers graphify on demand, not at user scope" \
