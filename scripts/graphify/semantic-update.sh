@@ -335,6 +335,7 @@ export HIMMEL_API_TOOLS=""
 # The lane's result goes to stdout, where graphify never shows it on a failed call; echo its tail to stderr
 # so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
 out="$here/lane-out.$$"
+err="$here/lane-err.$$"
 # Per-run spend cap: refuse the call once the verified cost of the calls so far reaches it.
 spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEND_FILE" "$GRAPHIFY_SEMANTIC_RESERVE_FILE")"
 if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= c + 0) }'; then
@@ -342,14 +343,17 @@ if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= 
   exit 3
 fi
 { cat; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } | "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
-  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out"
+  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out" 2> "$err"
 rc=${PIPESTATUS[1]}
+cat "$err" >&2
 # A call without a verified cost (a failure) may still have been billed: reserve its per-call budget against the
-# cap, but keep it out of the spend file so the run row reports only verified cost.
+# cap, but keep it out of the spend file so the run row reports only verified cost. A call the lane refused
+# before any API request (exit 2, nothing on stdout, its own refusal line) was never billed: it counts for nothing.
 cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
-if [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
+if [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
+elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
-cat "$out"; rm -f "$out"
+cat "$out"; rm -f "$out" "$err"
 exit "$rc"
 SHIM
     chmod +x "$WORK/bin/claude"
@@ -397,7 +401,10 @@ PY
   if [ "$rc" -ne 0 ]; then
     # Calls made before the failure were billed: leave a row so the spend is not lost.
     "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc "$rc" || true
-    echo "semantic-update: graphify extract exited $rc -- graph and manifest untouched" >&2; exit 2
+    # The first lane refusal (its reason, else its text) rides the closing line, which is what the cadence ledger keeps.
+    REFUSED="$(sed -n 's/.*claude-api: refused: //p' "$WORK/extract.log" | head -n 1)"
+    case "$REFUSED" in *'"reason":"'*) REFUSED="$(printf '%s' "$REFUSED" | sed 's/.*"reason":"\([^"]*\)".*/\1/')" ;; esac
+    echo "semantic-update: graphify extract exited $rc${REFUSED:+ (refused: ${REFUSED:0:80})} -- graph and manifest untouched" >&2; exit 2
   fi
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"

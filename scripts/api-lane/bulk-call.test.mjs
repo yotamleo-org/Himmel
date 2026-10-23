@@ -241,6 +241,25 @@ test('--cancel stops a running call: CANCELLED, the stub is gone, the reservatio
   assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env, encoding: 'utf8' }).status, 3);
 });
 
+test('--cancel waits for a slow settle: a loaded box does not lose the reservation to the KILL', async () => {
+  const f = fixture();
+  const slow = join(f.dir, 'slow-bin');
+  mkdirSync(slow);
+  writeFileSync(join(slow, 'node'), `#!/bin/bash\nfor a in "$@"; do [ "$a" != settle ] || sleep 3; done\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
+  const env = { ...f.env, PATH: `${slow}:${f.env.PATH}`, STUB_HOLD: f.p.hold };
+  writeFileSync(f.p.hold, '');
+  const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  const closed = new Promise((res) => child.on('close', (code) => res(code)));
+  for (let i = 0; i < 100 && !existsSync(f.p.log); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(existsSync(f.p.log), 'the call never started');
+  assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env, encoding: 'utf8' }).status, 0);
+  assert.equal(await closed, 3);
+  assert.equal(f.read(out.trim()).status, 'CANCELLED');
+  assert.equal(Object.values(f.ledger().accounts.A.jobs)[0].status, 'settled');
+});
+
 test('the same task id cannot run twice at once', async () => {
   const f = fixture();
   writeFileSync(f.p.hold, '');

@@ -455,6 +455,21 @@ test('pull reads the key from a dotenv file, and spend over the grant leaves not
   assert.equal(f.call().verdict, 'SKIPPED-BANK');
 });
 
+test('HIMMEL-7264: a failed pull names the HTTP status or the network failure, never the key', async () => {
+  const f = fixture();
+  const { pullSnapshot } = await import('./api-credit-state.mjs');
+  const env = { ...f.env, ANTHROPIC_ORG_A_KEY: FIXTURE_KEY };
+  const denied = await pullSnapshot(env, 'A', { fetchImpl: costStub([null]) });
+  assert.equal(denied.reason, 'cost-report-unavailable');
+  assert.equal(denied.detail, 'http-401');
+  const forbidden = await pullSnapshot(env, 'A', { fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({}) }) });
+  assert.match(forbidden.detail, /^http-403: .*Admin API key.*individual Console accounts/);
+  const down = await pullSnapshot(env, 'A', { fetchImpl: async () => { throw new Error(`boom ${FIXTURE_KEY}`); } });
+  assert.equal(down.reason, 'cost-report-unavailable');
+  assert.equal(down.detail, 'network');
+  assert.equal(JSON.stringify([denied, forbidden, down]).includes(FIXTURE_KEY), false);
+});
+
 test('pull failures leave the snapshot untouched and never echo the key', async () => {
   const f = fixture();
   const { pullSnapshot } = await import('./api-credit-state.mjs');
@@ -607,28 +622,93 @@ test('HIMMEL-7111: an unknown or pre-timestamp reservation is released once past
   assert.equal(f.call('reserve', ['--id', 'next', '--usd', '1.00']).verdict, 'PROCEED');
 });
 
-test('HIMMEL-7111: auto routing refuses a snapshot older than 24 h, and a fresh account still wins', () => {
+test('HIMMEL-7264: auto routing proceeds on an operator snapshot older than 24 h while it shows headroom, and a fresh account still wins', () => {
   const f = fixture();
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
   const pick = () => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01'], { env: f.env, encoding: 'utf8' }).stdout);
   const stale = pick();
-  assert.equal(stale.verdict, 'SKIPPED-BANK');
-  assert.equal(stale.reason, 'stale-snapshot');
+  assert.equal(stale.verdict, 'PROCEED');
+  assert.equal(stale.snapshot_stale, true);
+  assert.equal(stale.account, 'A');
   f.snapshot.accounts.B.observed_at = f.now - 3600;
   f.save();
-  assert.equal(pick().account, 'B');
+  const fresh = pick();
+  assert.equal(fresh.account, 'B');
+  assert.notEqual(fresh.snapshot_stale, true);
 });
 
-test('HIMMEL-7111: auto routing reports stale-snapshot when an automatic snapshot has aged out of its window', () => {
+const pickUsd = (f, usd, env = f.env) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', usd], { env, encoding: 'utf8' }).stdout);
+
+test('HIMMEL-7264: a stale reading never blocks the auto route; the caps and a fresh empty reading still do', () => {
   const f = fixture();
   for (const a of ['A', 'B']) {
-    Object.assign(f.snapshot.accounts[a], { source: 'automatic-snapshot', starts_at: f.now - 7200, observed_at: f.now - 3600 });
+    Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000, remaining_usd: '0.00' });
   }
   f.save();
-  const r = JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01'], { env: f.env, encoding: 'utf8' }).stdout);
-  assert.equal(r.verdict, 'SKIPPED-BANK');
-  assert.equal(r.reason, 'stale-snapshot');
+  const stale = pickUsd(f, '0.01');
+  assert.equal(stale.verdict, 'PROCEED');
+  assert.equal(stale.snapshot_unknown, true);
+  assert.equal(stale.account, 'A');
+  assert.equal(pickUsd(f, '1.50').account, 'B');  // A's cap is 1.00 whatever the old reading says
+  assert.equal(pickUsd(f, '2.50').verdict, 'SKIPPED-BANK');  // no cap has room
+  for (const a of ['A', 'B']) f.snapshot.accounts[a].observed_at = f.now;
+  f.save();
+  assert.equal(pickUsd(f, '0.01').verdict, 'SKIPPED-BANK');  // a fresh reading with nothing left is a known fact
+});
+
+test('HIMMEL-7264: a missing snapshot, a missing row, an expired grant and an aged-out automatic snapshot all route on the ledger', () => {
+  const cases = {
+    'file missing': (f) => rmSync(f.paths.snapshot),
+    'row missing': (f) => { f.snapshot.accounts = {}; f.save(); },
+    'expired grant': (f) => { for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 4000, expires_at: f.now - 10 }); f.save(); },
+    'aged-out automatic': (f) => { for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { source: 'automatic-snapshot', starts_at: f.now - 7200, observed_at: f.now - 3600 }); f.save(); },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const f = fixture();
+    mutate(f);
+    const r = pickUsd(f, '0.01');
+    assert.equal(r.verdict, 'PROCEED', `${name}: ${JSON.stringify(r)}`);
+    assert.equal(r.snapshot_unknown, true, name);
+  }
+});
+
+test('HIMMEL-7264: the optional-snapshot flag lets reserve run with no snapshot; an explicit call still refuses', () => {
+  const f = fixture();
+  rmSync(f.paths.snapshot);
+  const run = (env) => JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', 'j1', '--usd', '0.50'], { env, encoding: 'utf8' }).stdout);
+  assert.notEqual(run(f.env).verdict, 'PROCEED');
+  const r = run({ ...f.env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' });
+  assert.equal(r.verdict, 'PROCEED');
+  assert.equal(r.source, 'ledger-only');
+  assert.equal(r.reserved_usd, '0.500000');
+});
+
+test('HIMMEL-7264: an account marked exhausted is skipped, returns after an hour or a newer reading, and still serves when it is the only one', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) f.snapshot.accounts[a].observed_at = f.now - 200;
+  f.save();
+  const mark = (account) => JSON.parse(spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' }).stdout);
+  const setAt = (account, at) => {
+    const ledger = JSON.parse(readFileSync(f.paths.state, 'utf8'));
+    ledger.accounts[account].exhausted_at = at;
+    writeFileSync(f.paths.state, JSON.stringify(ledger));
+  };
+  assert.equal(pickUsd(f, '0.01').account, 'A');
+  assert.equal(mark('A').verdict, 'PROCEED');
+  assert.equal(pickUsd(f, '0.01').account, 'B');  // A is skipped
+  assert.equal(mark('B').verdict, 'PROCEED');
+  setAt('A', f.now - 100); setAt('B', f.now - 50);
+  assert.equal(pickUsd(f, '0.01').account, 'A');  // both exhausted: the one exhausted longest ago serves, never a refusal
+  setAt('A', f.now - 50); setAt('B', f.now - 100);
+  assert.equal(pickUsd(f, '0.01').account, 'B');
+  setAt('A', f.now - 4000); setAt('B', f.now - 50);
+  assert.equal(pickUsd(f, '0.01').account, 'A');  // A's hour has passed
+  f.snapshot.accounts.B.observed_at = f.now - 10;  // a reading newer than the exhaustion clears it
+  f.save();
+  setAt('A', f.now - 50);
+  assert.equal(pickUsd(f, '0.01').account, 'B');
+  assert.equal(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.discrepancy, false);
 });
 
 test('HIMMEL-7111: the bank line shows the snapshot age and flags one past 24 h', () => {

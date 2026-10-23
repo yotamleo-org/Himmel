@@ -1558,6 +1558,15 @@ reset_alerts
 CADENCE_ALERT_SEND_CMD=false bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
 bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
 assert_rc "a failed send leaves no sentinel, so the next failure retries" 1 "$(count_lines "$ALERT_SENDS")"
+# a failed send leaves a marker the doctor turns into a WARN; a delivered send clears it.
+reset_alerts
+export CADENCE_ALERT_SEND_FAILED_MARK="$TMP_ROOT/send-failed-mark"
+rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
+CADENCE_ALERT_SEND_CMD=false bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log 2>/dev/null
+assert_contains "a failed send writes the doctor marker naming leg and reason" "pipeline-harvest rc-1" "$(cat "$CADENCE_ALERT_SEND_FAILED_MARK" 2>/dev/null)"
+bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
+assert_rc "a delivered send clears the doctor marker" 0 "$([ -e "$CADENCE_ALERT_SEND_FAILED_MARK" ] && echo 1 || echo 0)"
+unset CADENCE_ALERT_SEND_FAILED_MARK
 # Clearing leg `a` must not re-arm leg `a.b`: `.` is the leg/reason delimiter.
 reset_alerts
 bash "$SCRIPT_DIR/cadence-alert.sh" fail a.b rc-1 /x.log

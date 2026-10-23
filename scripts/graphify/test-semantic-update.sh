@@ -39,6 +39,10 @@ cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
 echo "lane \$* | stdin=\$(cat | tr '\\n' ' ') | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+if [ -n "\${LANE_STUB_REFUSE:-}" ]; then
+  echo 'claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})' >&2
+  exit 2
+fi
 if [ -n "\${LANE_STUB_FAIL:-}" ]; then
   echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
   echo "lane-stub-stderr-banner" >&2
@@ -73,6 +77,10 @@ fi
 [ "\$1" = extract ] && ls "\$2/graphify-out/cache/semantic" > "$WS/seeded.log" 2>&1
 [ "\$1" = extract ] || exit 0
 if [ -n "\${GRAPHIFY_OUT:-}" ]; then echo "stub: GRAPHIFY_OUT=\$GRAPHIFY_OUT reached extract, which would read and write that live out-root instead of the scratch copy" >&2; exit 97; fi
+if [ -n "\${GRAPHIFY_STUB_REFUSEDLOG:-}" ]; then
+  # FIXTURE: the chunk-failed line of the 10-23 14:35 cadence run (graphmap-publish-himmel.log.prev), verbatim
+  echo '[graphify] chunk 2/14 failed: claude -p exited 2: claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})'
+fi
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 # GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
 # 0.25 USD per-call cap (himmel batch 1, 2026-10-16); the run still wrote a graph and exited 0.
@@ -558,6 +566,18 @@ C54="$WS/c54"; new_corpus "$C54"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t54 --corpus-root "$C54" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && pass "T54 three unpriced calls ran, the fourth was refused" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
 [ "$(lastrun "$C54" cost_usd)" = "0.0" ] && pass "T54 the reservation is not reported as cost" || fail "T54 row: $(tail -1 "$C54/graphify-out/semantic-runs.jsonl")"
+
+echo "T65: a call the lane refused before any API request adds nothing to the run cap"
+C65="$WS/c65"; new_corpus "$C65"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_REFUSE=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t65 --corpus-root "$C65" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 5 ] && pass "T65 all five refused calls reached the lane" || fail "T65 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'run spend cap' "$WS/claude.out" && fail "T65 refused calls tripped the run cap: $(cat "$WS/claude.out")" || pass "T65 no run-cap message"
+grep -q 'claude-api: refused: auto routing' "$WS/claude.out" && pass "T65 the refusal text still reaches stderr" || fail "T65 refusal text lost: $(cat "$WS/claude.out")"
+
+echo "T66: a failed extract names the first lane refusal in its closing line"
+C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"
+out=$(GRAPHIFY_STUB_REFUSEDLOG=1 GRAPHIFY_STUB_RC=1 run_api --name t66 --corpus-root "$C66" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[[ "$out" == *"graphify extract exited 1 (refused: stale-snapshot) --"* ]] && pass "T66 the closing line carries the refusal reason" || fail "T66 (rc=$rc): $(printf '%s' "$out" | tail -3)"
 
 echo "T55: a merge that fails after billed lane calls still leaves a run row with the cost"
 C55="$WS/c55"; new_corpus "$C55"; : > "$WS/calls.log"; : > "$WS/claude.out"
