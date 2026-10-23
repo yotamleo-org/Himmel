@@ -13,11 +13,16 @@ name: "CI (os:macos cadence)"
 # seen within ~3-4 days instead of the next morning, at ~2/7ths of the nightly's
 # 10x-billed macOS runner cost (and off the nightly's 07:17 slot).
 #
-# NOT on pull_request/push, ever: that would put the paid macOS legs back on
-# every PR (HIMMEL-3853). Dispatch (needs this file on main):
+# The macOS legs run never on an unlabelled PR and never on push: that would put
+# them back on every PR (HIMMEL-3853). A PR opts in with the `ci:macos` label
+# (HIMMEL-7276): the run starts when the label is added and on each later push,
+# and both jobs are skipped for any PR without it. A PR run never records
+# breakages (the record belongs to main). Dispatch (needs this file on main):
 #   gh workflow run macos-cadence.yml --ref main
 on:
   workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
   schedule:
     - cron: '43 5 * * 2,5'   # Tue + Fri, UTC
 
@@ -33,6 +38,7 @@ concurrency:
 jobs:
   shell:
     name: macos-cadence / shell (${{ matrix.os }}, ${{ matrix.shard }})
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'ci:macos') && (github.event.action != 'labeled' || github.event.label.name == 'ci:macos'))
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +111,7 @@ jobs:
   summary:
     name: macos-cadence / summary
     needs: shell
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'ci:macos') && (github.event.action != 'labeled' || github.event.label.name == 'ci:macos')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,6 +119,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Record breakages against the previous cadence run
+        if: github.event_name != 'pull_request'
         # shell: bash = `bash -e -o pipefail`: without it the step's status is
         # tee's and a die inside `record` (rc 2) would go green.
         shell: bash
@@ -143,7 +150,7 @@ jobs:
             --shards-expected 8 --failed-dir failed-artifacts $prev \
             --out record.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload breakage record
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-breakage-record
