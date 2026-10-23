@@ -965,14 +965,17 @@ if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
         go_root=$(go_resolve_root "$himmel_repo" 2>/dev/null) || go_root=""
     fi
     go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$sha"
-    if ! declare -F go_gate >/dev/null 2>&1 || ! declare -F go_mac >/dev/null 2>&1; then
+    if ! declare -F go_gate >/dev/null 2>&1 || ! declare -F _go_gate_verify >/dev/null 2>&1 || ! declare -F go_mac >/dev/null 2>&1; then
         echo "merge-on-green: scripts/lib/go-gate.sh sourced but go_gate is not defined (truncated file?) — refusing (a console-spawned leg's GO gate must fail closed, not silently no-op)" >&2
         audit "REFUSED reason=policy-refused phase=console-go-symbol-missing repo=$nwo pr=#$pr_num sha=$sha"
         exit 17
     fi
     go_reason=""
     go_rc=0
-    go_reason=$(go_gate "$pr_num" "$sha" "$go_root" "$nwo") || go_rc=$?
+    # _go_gate_verify is go_gate's body: a refusal prints its reason, a pass
+    # prints the trust id from the one read it MAC-verified, so the evidence
+    # line below never re-reads a file that could have changed since.
+    go_reason=$(_go_gate_verify "$pr_num" "$sha" "$go_root" "$nwo") || go_rc=$?
     if [ "$go_rc" -ne 0 ]; then
         if [ -z "$go_reason" ]; then
             go_reason="go_gate for PR #$pr_num at $sha returned an unexpected exit code ($go_rc) — this is a console-spawned leg; send READY to your console and wait for GO"
@@ -1008,7 +1011,7 @@ if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
         audit "REFUSED reason=policy-refused phase=console-go-flag repo=$nwo pr=#$pr_num sha=$sha go=$go_file flag=${GO_FLAG:-<none>}"
         exit 17
     fi
-    go_trust=$(sed -n 's/^trust-reviewed=//p' "$go_file" | head -n 1)
+    go_trust="$go_reason"
     echo "merge-on-green: GO evidence: file=$go_file pr=$pr_num head=$sha trust=${go_trust:-none} mac=verified" >&2
 fi
 
