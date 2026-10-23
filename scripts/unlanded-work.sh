@@ -345,7 +345,7 @@ while IFS= read -r branch; do
 
     # lane-quality backups (claude/backup-<ticket>-lq-<run id>-...) carry a
     # pinned fake commit date and are never meant to land.
-    if [ -z "$class" ] && printf '%s' "$branch" | grep -qE '(^|[/-])lq-[0-9]{8}T[0-9]{6}Z-'; then
+    if [ -z "$class" ] && [[ $branch =~ (^|[/-])lq-[0-9]{8}T[0-9]{6}Z- ]]; then
         class="FIXTURE"; evidence="lane-quality fixture branch, never meant to land"
     fi
 
