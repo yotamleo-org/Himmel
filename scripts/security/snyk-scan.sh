@@ -213,8 +213,8 @@ if [ "$forks" -eq 1 ]; then
             || { SCAN_MSG="cannot read the uv export of $lock"; return 1; }
         jq -e '.queries | length > 0' "$w/q.json" >/dev/null || return 0
         if ! { curl -fsS -m 120 -X POST -H 'Content-Type: application/json' -d @"$w/q.json" "$OSV_URL/v1/querybatch" > "$w/batch.json" 2> "$w/curl.err" \
-            && jq -e '.results | type == "array"' "$w/batch.json" >/dev/null 2>&1; }; then
-            SCAN_MSG="osv.dev querybatch failed for $lock: $(head -c 200 "$w/curl.err")"
+            && jq -e --slurpfile q "$w/q.json" '(.results | type == "array") and (.results | length) == ($q[0].queries | length)' "$w/batch.json" >/dev/null 2>&1; }; then
+            SCAN_MSG="osv.dev querybatch failed or answered fewer packages than asked for $lock: $(head -c 200 "$w/curl.err")"
             return 1
         fi
         jq -r --slurpfile q "$w/q.json" '.results | to_entries[] | .key as $i | (.value.vulns // [])[] | [.id, $q[0].queries[$i].package.name, $q[0].queries[$i].version] | @tsv' "$w/batch.json" > "$w/pairs.tsv"
@@ -280,6 +280,7 @@ if [ "$forks" -eq 1 ]; then
     f_gate=0 f_err=0 f_n=0
     while IFS='|' read -r -u 3 name url ref up; do
         [ -n "$name" ] || continue
+        if [ "$usage_failed" -ne 0 ]; then err "usage ledger write failed; not scanning $name or the forks after it unmetered"; break; fi
         f_n=$((f_n + 1))
         status=ok msg="" projects=0 locks=0 upstream=none up_sha=""
         : > "$tmp/rows.$name"; : > "$tmp/uprows.$name"

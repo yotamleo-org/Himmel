@@ -77,7 +77,7 @@ url="${*: -1}"
 printf '%s\n' "$url" >> "$STUB_DIR/curl.log"
 [ "${STUB_OSV_FAIL:-0}" = 1 ] && { echo "curl: (22) The requested URL returned error: 500" >&2; exit 22; }
 case "$url" in
-    */v1/querybatch) cat "$STUB_FIX/osv-querybatch.json" ;;
+    */v1/querybatch) if [ "${STUB_OSV_SHORT:-0}" = 1 ]; then echo '{"results":[]}'; else cat "$STUB_FIX/osv-querybatch.json"; fi ;;
     */v1/vulns/*) f="$STUB_FIX/osv-vuln-${url##*/}.json"; [ -f "$f" ] && cat "$f" || exit 22 ;;
     *) exit 22 ;;
 esac
@@ -312,6 +312,19 @@ check "a uv.lock with no uv exits 2, not a clean fork" 2 "$RC"
 has "the missing uv is named" "uv not found" "$OUTDIR/2026-10-23.forks.summary.md"
 STUB_OSV_FAIL=1 run forksosvfail --forks
 check "an osv.dev failure exits 2, not a clean fork" 2 "$RC"
+STUB_OSV_SHORT=1 run forksosvshort --forks
+check "an osv.dev reply with fewer results than queries exits 2, not a clean fork" 2 "$RC"
+has "the short osv.dev reply is named" "osv.dev" "$OUTDIR/2026-10-23.forks.summary.md"
+# a ledger that passes the preflight but fails on append (disk full) stops the run before the next fork
+export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|-
+uvfork|$U/uvfork|main|-"
+rm -rf "$SNYK_SCAN_STATE_DIR" "$W/out-forksfull"; mkdir -p "$SNYK_SCAN_STATE_DIR"; : > "$W/calls.log"
+ln -s /dev/full "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv"
+bash "$SCAN" --forks --repo "$R" --out-dir "$W/out-forksfull" --date 2026-10-23 > "$W/forksfull.log" 2>&1
+check "a ledger write that fails mid-run exits 2" 2 "$?"
+check "no fork is scanned after the ledger write failed" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+rm -f "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv"
+export SNYK_SCAN_FORKS="uvfork|$U/uvfork|main|-"
 SNYK_SCAN_OS_CAP=0 run forksquota --forks
 check "the quota cap refuses a forks run" 2 "$RC"
 has "quota refusal names the cap" "monthly quota" "$OUT"
