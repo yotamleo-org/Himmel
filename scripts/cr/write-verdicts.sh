@@ -268,5 +268,7 @@ fi
 # gate may now pass at the head. Best effort; the lib reads the CI_GO_GATE switch
 # first and prints nothing when it is off.
 if [ -n "${_sw_dir:-}" ] && [ -f "$_sw_dir/../lib/cr-first-release.sh" ]; then
-  timeout 60 bash "$_sw_dir/../lib/cr-first-release.sh" >&2 || true
+  # shellcheck source=../lib/timeout-bin.sh
+  . "$_sw_dir/../lib/timeout-bin.sh" 2>/dev/null
+  ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 60} bash "$_sw_dir/../lib/cr-first-release.sh" >&2 || true
 fi
