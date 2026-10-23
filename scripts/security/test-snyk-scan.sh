@@ -139,6 +139,31 @@ check "a null snyk test result exits 2, not one clean project" 2 "$RC"
 printf '"ok"\n' > "$W/scalar.json"
 STUB_OS="$W/scalar.json" STUB_OS_RC=0 run scalaros
 check "a scalar snyk test result exits 2" 2 "$RC"
+# arrays holding a non-object, and project entries that are not scan results, never read as clean
+printf '[1]\n' > "$W/arr-scalar.json"
+STUB_OS="$W/arr-scalar.json" STUB_OS_RC=0 run arrscalar
+check "an array holding a scalar exits 2" 2 "$RC"
+printf '[null]\n' > "$W/arr-null.json"
+STUB_OS="$W/arr-null.json" STUB_OS_RC=0 run arrnull
+check "an array holding null exits 2" 2 "$RC"
+jq -c '[., 1]' "$FIX/snyk-os-clean.json" > "$W/arr-mixed.json"
+STUB_OS="$W/arr-mixed.json" STUB_OS_RC=0 run arrmixed
+check "a project array with a non-object element exits 2" 2 "$RC"
+printf '{"ok":false,"error":"Could not detect supported target files","path":"/example/proj"}\n' > "$W/proj-error.json"
+STUB_OS="$W/proj-error.json" STUB_OS_RC=0 run projerror
+check "a per-project error entry exits 2, not a clean project" 2 "$RC"
+jq -c '[., {"ok":false,"error":"Could not detect supported target files","path":"/x"}]' "$FIX/snyk-os-clean.json" > "$W/arr-error.json"
+STUB_OS="$W/arr-error.json" STUB_OS_RC=0 run arrerror
+check "an error entry beside a clean project exits 2" 2 "$RC"
+printf '{"ok":true,"path":"/example/proj"}\n' > "$W/proj-novulns.json"
+STUB_OS="$W/proj-novulns.json" STUB_OS_RC=0 run projnovulns
+check "a project without a vulnerabilities array exits 2" 2 "$RC"
+printf '[{"ok":true,"path":"/x","vulnerabilities":[1]}]\n' > "$W/proj-badvuln.json"
+STUB_OS="$W/proj-badvuln.json" STUB_OS_RC=0 run projbadvuln
+check "a jq error reading the Open Source findings exits 2" 2 "$RC"
+printf '{"runs":[{"results":[1]}]}\n' > "$W/code-badrow.json"
+STUB_OS="$FIX/snyk-os-clean.json" STUB_OS_RC=0 STUB_CODE="$W/code-badrow.json" STUB_CODE_RC=0 run codebadrow
+check "a jq error reading the Code findings exits 2" 2 "$RC"
 
 # --- quota guard ------------------------------------------------------------
 OUTDIR="$W/out-quota"; rm -rf "$OUTDIR" "$SNYK_SCAN_STATE_DIR"; mkdir -p "$SNYK_SCAN_STATE_DIR"

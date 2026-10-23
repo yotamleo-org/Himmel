@@ -17,6 +17,8 @@
 #
 # Open Source runs `snyk test --all-projects --json --severity-threshold=medium`
 # (Low is noise at this scale); the High/Critical gate is this script's own count.
+# A result that is not a project object (vulnerabilities array, no error key) exits 2.
+# ponytail: no --fail-fast, because snyk then aborts on any manifest without installed dependencies (the baseline on main trips on marketplace/plugins/luna-correlate) and every weekly run would go red; a manifest snyk skips is counted in the project total only, upgrade path: compare the project count with the manifest estimate.
 # Code runs `snyk code test --json` (SARIF; level error = High, warning = Medium).
 # An org without Snyk Code reports `SKIPPED not-enabled` and does not fail the run.
 #
@@ -139,8 +141,10 @@ case "$os_rc" in
     3) printf '[]\n' > "$tmp/os.raw" ;;
     *) err "snyk test failed (rc $os_rc): $(head -c 300 "$tmp/os.err")$(head -c 300 "$tmp/os.raw")"; exit 2 ;;
 esac
-jq -e 'if type=="array" then (if all(.[]; type=="object") then . else empty end) elif type=="object" then [.] else empty end' "$tmp/os.raw" > "$tmp/os.json" 2>/dev/null \
-    || { err "snyk test printed no JSON (rc $os_rc)"; exit 2; }
+# a project result is an object with a vulnerabilities array and no error key; a per-project error entry or any other shape is a failed scan, never a clean one
+jq -e 'def proj: type=="object" and ((.vulnerabilities | type) == "array") and (has("error") | not);
+    if type=="array" then (if all(.[]; proj) then . else empty end) elif proj then [.] else empty end' "$tmp/os.raw" > "$tmp/os.json" 2>/dev/null \
+    || { err "snyk test printed no usable project results (rc $os_rc)"; exit 2; }
 os_projects="$(jq 'length' "$tmp/os.json")"
 record_usage open_source "$os_projects"
 
@@ -175,9 +179,11 @@ jq -n --arg date "$date" --arg repo "$repo" --arg head "$head_sha" --arg code_st
 # one row per distinct (project, vulnerability id, package@version)
 os_rows="$(jq -r '.[] | (.displayTargetFile // .path) as $t | (.vulnerabilities // [])
     | unique_by(.id + "@" + (.packageName // "") + "@" + (.version // ""))[]
-    | [.severity, .id, ((.packageName // "?") + "@" + (.version // "?")), .title, $t] | @tsv' "$tmp/os.json")"
+    | [.severity, .id, ((.packageName // "?") + "@" + (.version // "?")), .title, $t] | @tsv' "$tmp/os.json")" \
+    || { err "cannot read the Open Source findings from $tmp/os.json"; exit 2; }
 code_rows="$(jq -r '(.runs // [])[]? | .results[]? | select(.level == "error" or .level == "warning")
-    | [(if .level == "error" then "high" else "medium" end), .ruleId, (.locations[0].physicalLocation.artifactLocation.uri // "?") + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring), (.message.text // "")] | @tsv' "$tmp/code.json" 2>/dev/null)"
+    | [(if .level == "error" then "high" else "medium" end), .ruleId, (.locations[0].physicalLocation.artifactLocation.uri // "?") + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring), (.message.text // "")] | @tsv' "$tmp/code.json")" \
+    || { err "cannot read the Code findings from $tmp/code.json"; exit 2; }
 
 count() { # <rows> <severity>
     printf '%s\n' "$1" | awk -F'\t' -v s="$2" '$1==s {n++} END {print n+0}'
