@@ -236,5 +236,11 @@ const r = { eval: \"leg-trajectory\", run_id: \"s1\", status: \"ok\", lane: \"na
 const o = rollupToolHealth([r], [], new URLSearchParams(), Date.parse(\"2026-10-22T12:00:00Z\"));
 process.exit(o.profiles.length === 1 && o.profiles[0].profile === \"unknown\" && o.profiles[0].tools[0].calls === 3 ? 0 : 1);"'
 
+echo "13. drop-candidate window_days follows the since range (HIMMEL-7050)"
+PROLL "since=2026-10-12" >"$TMP/prof-s.json" 2>"$TMP/prof-s.err" || bad "the since roll-up runs: $(head -c 300 "$TMP/prof-s.err")"
+check "with since set, window_days is the days from since through today (2026-10-12..2026-10-22 = 11)" '[ "$(jq -c "[.drop_candidates[].window_days] | unique" "$TMP/prof-s.json")" = "[11]" ]'
+check "with since set, the per-day trend has one entry per day of that range" '[ "$(jq -c "[.tools[].trend | length] | unique" "$TMP/prof-s.json")" = "[11]" ]'
+check "without since, window_days and the trend stay at the days switch (7)" '[ "$(jq -c "[.drop_candidates[].window_days] | unique" "$TMP/prof.json")" = "[7]" ] && [ "$(jq -c "[.tools[].trend | length] | unique" "$TMP/prof.json")" = "[7]" ]'
+
 echo "test-leg-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

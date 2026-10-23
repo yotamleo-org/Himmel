@@ -26,6 +26,9 @@
 #      CheckRun name + workflowName when present, else StatusContext
 #      context. Read via --json, never `gh pr checks` text (a green check
 #      whose name contains a space mislabels under naive text parsing).
+#      With the CI_GO_GATE repository variable on, a FAIL here also prints
+#      the `CR-FIRST HOLD <reason> <age>` lines of scripts/lib/cr-first-release.sh
+#      (read-only: no label written); variable off or unset: nothing is added.
 #   3. GraphQL unresolved review threads == 0. The snapshot follows every
 #      page with cursor/hasNextPage guards and the same 50-page ceiling as
 #      check-ci.sh; a >100-thread PR cannot silently short-circuit to PASS.
@@ -170,6 +173,21 @@ repo="${nwo#*/}"
 
 RESULT=0
 mark_fail() { RESULT=1; }
+# crf_hold_note — with the CI_GO_GATE switch on, say why the heavy CI has not run at
+# this head: the CR-FIRST HOLD lines of the release lib, read-only (no
+# label, no ledger line). Switch off or unset: prints nothing, check 2 is unchanged.
+crf_hold_note() {
+    local lib; lib="$(cd "$(dirname "$0")/../../lib" && pwd)/cr-first-release.sh"
+    [ -r "$lib" ] || return 0
+    (
+        # shellcheck source=../../lib/cr-first-release.sh
+        . "$lib" 2>/dev/null || exit 0
+        cr_first_switch_on "$nwo" || exit 0
+        CR_FIRST_READONLY=1
+        export CR_FIRST_READONLY
+        cr_first_release "$PR" "$SHA" "$nwo" 2>/dev/null </dev/null | sed 's/^/       /'
+    ) || true
+}
 SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
 snapshot=""
 if [ "$ONLY7" -eq 0 ]; then
@@ -193,22 +211,19 @@ while [ "$attempt" -lt 5 ]; do
         snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
     fi
 done
-if [ -z "$pv" ]; then
-    echo "[FAIL] 1. gh pr view #$PR --repo $nwo failed — cannot read headRefOid/mergeStateStatus"
-    mark_fail
-elif [ "$head_now" = "$SHA" ] && [ "$mss" = "CLEAN" ]; then
-    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=CLEAN"
-else
-    echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
-    mark_fail
+# The rollup is judged before row 1: UNSTABLE is accepted there only when
+# every non-green entry is a listed non-gating context (lib/non-gating-contexts.txt).
+# shellcheck source=../../lib/non-gating-contexts.sh
+ng_json='[]'
+if . "$(cd "$(dirname "$0")/../../lib" && pwd)/non-gating-contexts.sh" 2>/dev/null; then
+    ng_json=$(ngc_json)
 fi
-
-# ── 2. statusCheckRollup ─────────────────────────────────────────────────────
 rollup=$(printf '%s' "$snapshot" | jq -c '.[0].statusCheckRollup' 2>/dev/null)
-if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then
-    echo "[FAIL] 2. statusCheckRollup unreadable (gh pr view --json statusCheckRollup failed)"
-    mark_fail
-else
+total=0
+gated=0
+bad=""
+skipped=""
+if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
     # Judge each check IDENTITY by its LATEST run, not any matching row — a
     # superseded CANCELLED run must not fail a check whose later run at the
     # same head is green (evidence: PR #1317's pr-title-lint
@@ -222,7 +237,7 @@ else
     # run for that identity — so it always outranks them, never the reverse.
     # An entry with no identifiable name is judged alone — it never merges
     # into another group (fail closed).
-    grouped=$(printf '%s' "$rollup" | jq -c '
+    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" '
         def key_of(e):
             if e.name == null then "unk:\(e.idx)"
             elif e.is_checkrun then "cr:\(e.name)\u0001\(e.workflow)"
@@ -250,18 +265,50 @@ else
         | map(.sort_key = [(.ts == null), (.ts // .idx)])
         | group_by(.key)
         | map(max_by(.sort_key))
-        | {total: length, bad: (map(select(.ok | not)) | map("\(.name // "?")=\(.detail)") | join(", "))}
+        | map(.listed = (.is_checkrun | not) and (.name != null and (.name as $n | $ng | index($n)) != null))
+        | {total: length,
+           gated: (map(select(.listed | not)) | length),
+           bad: (map(select((.ok | not) and (.listed | not))) | map("\(.name // "?")=\(.detail)") | join(", ")),
+           skipped: (map(select((.ok | not) and .listed)) | map("\(.name)=\(.detail)") | join(", "))}
     ' 2>/dev/null)
     total=$(printf '%s' "$grouped" | jq -r '.total // 0' 2>/dev/null)
+    gated=$(printf '%s' "$grouped" | jq -r '.gated // 0' 2>/dev/null) # swallow-ok: an unreadable count reads 0, which fails row 2 as no gating checks
     bad=$(printf '%s' "$grouped" | jq -r '.bad // empty' 2>/dev/null)
+    skipped=$(printf '%s' "$grouped" | jq -r '.skipped // empty' 2>/dev/null) # swallow-ok: an unreadable list is empty, so nothing is reported as skipped
     case "$total" in ''|*[!0-9]*) total=0 ;; esac
-    if [ "$total" -eq 0 ]; then
+    case "$gated" in ''|*[!0-9]*) gated=0 ;; esac
+fi
+
+if [ -z "$pv" ]; then
+    echo "[FAIL] 1. gh pr view #$PR --repo $nwo failed — cannot read headRefOid/mergeStateStatus"
+    mark_fail
+elif [ "$head_now" = "$SHA" ] && [ "$mss" = "CLEAN" ]; then
+    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=CLEAN"
+elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && [ -n "$skipped" ]; then
+    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green ($skipped)"
+else
+    echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
+    mark_fail
+fi
+
+# ── 2. statusCheckRollup ─────────────────────────────────────────────────────
+if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then
+    echo "[FAIL] 2. statusCheckRollup unreadable (gh pr view --json statusCheckRollup failed)"
+    mark_fail
+else
+    # A listed non-gating context is skipped; with nothing else reported there
+    # is no real check to pass on, so it counts as no checks.
+    if [ "$gated" -eq 0 ]; then
         echo "[FAIL] 2. statusCheckRollup: no checks reported yet (0 entries — CI may not have registered)"
+        crf_hold_note
         mark_fail
+    elif [ -z "$bad" ] && [ -n "$skipped" ]; then
+        echo "[PASS] 2. statusCheckRollup: $gated/$gated gating checks completed SUCCESS/SKIPPED/NEUTRAL; non-gating skipped: $skipped"
     elif [ -z "$bad" ]; then
         echo "[PASS] 2. statusCheckRollup: $total/$total checks completed SUCCESS/SKIPPED/NEUTRAL"
     else
         echo "[FAIL] 2. statusCheckRollup: not-green — $bad"
+        crf_hold_note
         mark_fail
     fi
 fi

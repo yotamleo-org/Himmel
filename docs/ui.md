@@ -41,7 +41,7 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 
 The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
 secret store only and is never shown, logged or returned), and a save is refused while the page runs
-as the always-on service. Each secret form shows an example value under it (a shape, never a working value).
+as the always-on service (open `himmelctl ui` instead). Each secret form shows an example value under it (a shape, never a working value).
 
 The Setup page also has a CodeRabbit step. It says what CodeRabbit is, that it is an optional add-on (himmel
 works without it), and the steps to install the GitHub App on the repo and arm the gates
@@ -75,9 +75,17 @@ node scripts/himmelctl/bin.js ui --agui latest   # URL of the newest session's r
 node scripts/himmelctl/bin.js ui --agui <session-id>
 ```
 
-- **The first install is owned by the terminal.** Run `himmelctl install` there
-  first ([install.md](setup/install.md)); the Setup page only reads and edits an
-  install that exists, and does not replace the wizard.
+- **Install hands off to the Setup page.** Run `himmelctl install` in your terminal
+  first ([install.md](setup/install.md)); when it finishes it prints
+  `Finish setup in the UI: http://127.0.0.1:<port>/#t=<token>&page=setup`. It reuses the always-on
+  UI or an earlier install's UI when one is running, and otherwise starts a token-bound one that
+  stops after 30 minutes idle and can save secrets. The Setup page edits an install that exists;
+  it does not run one. With no browser (an SSH session, or Linux with no display) install asks for
+  the secrets in the terminal instead.
+- **Link forms.** `himmelctl config` prints the Configure link, `http://127.0.0.1:47391/#t=<token>&page=config`,
+  when the always-on service is installed (47391 is the service's default port; `--port N` changes it),
+  and otherwise says how to start the UI; it never opens a browser. An ad-hoc `himmelctl ui` picks a free
+  port, so its link changes each launch. Every link carries `#t=<token>`; without it the page is refused.
 - **Run it yourself, from a terminal outside Claude.** It refuses to start
   inside a Claude session; an agent cannot open it for you. The server runs in
   the foreground and exits on Ctrl-C or after 30 minutes idle.
@@ -98,8 +106,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   items, doctor checks, scheduled jobs, lanes, flags and secrets by presence;
   Roadmap and Kanban only appear when the UI can read a tracker), `#/setup`
   (which secrets are set, never their values; a file-stored secret can be saved or
-  removed here, though typing it in the terminal with `himmelctl install` is the
-  safest path; plus the commit rules, tracker and ticket-id-required, each with a
+  removed here; the always-on service refuses a save until the UI login ships, so use an
+  ad-hoc `himmelctl ui` for secrets; plus the commit rules, tracker and ticket-id-required, each with a
   dry-run before it changes), `#/health` (one verdict:
   All clear / Needs a look / Act now), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and

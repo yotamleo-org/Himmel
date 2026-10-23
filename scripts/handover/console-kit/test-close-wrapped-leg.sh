@@ -976,6 +976,16 @@ check "digest-b/no-session: rc 0" "$rc" "0"
 contains "digest-b/no-session: skipped" "$out_v" "digest=skipped:no-session"
 check "digest-b/no-session: nothing written" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER")" "0"
 
+# 32b: the step hands the doc's stem to the recorder as the launch name, so a
+# row carries the profile the launcher recorded for that session
+dg_ledgers launch
+DG_STEM=$(basename "$DOC" .md)
+mkdir -p "$W/dg-launch/cache/launch-logs"
+printf 'headed-arm-leg: profile=leg-impl lane=native model=m role=leg session=%s launched=2026-10-23T00:00:00Z\n' "$DG_STEM" > "$W/dg-launch/cache/launch-logs/$DG_STEM.log"
+out_l=$(HIMMELCTL_CACHE_DIR="$W/dg-launch/cache" bash "$STEP" --session "$DG_SID" --doc "$DOC" --projects "$DG_PROJ" 2>&1)
+contains "digest-launch: the row is written" "$out_l" "digest=ok"
+check "digest-launch: the row carries the launched profile" "$(jq -r .meta.profile "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "leg-impl"
+
 # 33 (e): a concurrent double run ends with exactly one set of rows
 dg_ledgers e-race
 bash "$STEP" --session "$DG_SID" --doc "$DOC" --projects "$DG_PROJ" > "$W/race1.out" 2>&1 &

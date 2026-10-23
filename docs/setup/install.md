@@ -33,9 +33,13 @@ answers (`--scope` loads one, `--from-profile <file>` loads another); the
 and the exact values are in
 [What `profile` means](#what-profile-means-three-unrelated-things).
 
-The first install is always run from a terminal. The local UI's Setup page (see
-[ui.md](../ui.md)) only works on an install that already exists; it cannot do the
-first one.
+The install itself always runs in a terminal. When it finishes it prints a link
+to the local UI's Setup page (see [ui.md](../ui.md)), where you save secrets and
+set the commit rules: `Finish setup in the UI: http://127.0.0.1:<port>/#t=<token>&page=setup`.
+Open the printed link as is; the `#t=` part is the token. Run the install again
+while that UI is running and it prints the same link. On a machine with no
+browser (an SSH session, or Linux with no display) it asks for the secrets in
+the terminal instead.
 
 No `node` on the machine yet? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh`
 first; it installs Node, then re-run the install.

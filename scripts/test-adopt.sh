@@ -1514,6 +1514,10 @@ out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
   || fail "HIMMEL-6977: adopt failed: $out"
 [ -f "$cittarget/scripts/check-ci.sh" ] \
   || fail "HIMMEL-6977: check-ci.sh was not copied into the project"
+for cit_lib in non-gating-contexts.sh non-gating-contexts.txt; do
+  [ -f "$cittarget/scripts/lib/$cit_lib" ] \
+    || fail "HIMMEL-7239: check-ci.sh sources lib/$cit_lib but it was not copied into the project"
+done
 set +e
 out=$(cd "$cittarget" && PATH="$citbin:$PATH" HOME="$cithome" CIT_GH_LOG="$work/checkci-6977.log" \
       CHECK_CI_POLL_INTERVAL=0 CHECK_CI_SETTLE=0 CHECK_CI_CACHE=0 LEG_JIRA_STATUS=0 \
@@ -2697,8 +2701,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "79" ] \
-  || fail "HIMMEL-3332 S4: expected 79 file rows (78 portable entries plus the trust policy seed)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "81" ] \
+  || fail "HIMMEL-3332 S4: expected 81 file rows (80 portable entries plus the trust policy seed)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

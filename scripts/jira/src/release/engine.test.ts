@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
-  rmRun, type Ctx, type JiraPort, type Judge,
+  JudgeReplyError, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
 
@@ -590,6 +590,25 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(state(ctx()).lease).toMatchObject({ epoch: 1, released: true });
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
     expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+  });
+
+  it('a judge reply the check refused is kept in the run doc with the failing field', async () => {
+    declared();
+    ask('K-2');
+    const doc = join(ctx().dir, 'rm-runs', 'refused.md');
+    await expect(rmRun(ctx(), async () => { throw new JudgeReplyError('decision 0 field sector', '[{"req":"x"}]'); }, { doc }))
+      .rejects.toThrow(/decision 0 field sector/);
+    const text = readFileSync(doc, 'utf8');
+    expect(text).toMatch(/decision 0 field sector/);
+    expect(text).toContain('[{"req":"x"}]');
+  });
+
+  it('the judge sees the sector the mirror holds for a ticket', () => {
+    const mirror = join(root, 'mirror-sector');
+    mkdirSync(mirror, { recursive: true });
+    writeFileSync(join(mirror, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T15:00:55.697Z' }));
+    writeFileSync(join(mirror, 'K-9.md'), '---\nkey: "K-9"\ntype: "Task"\nstatus: "To Do"\npriority: "Medium"\nfixVersions: []\nresolution: null\nsector: "Ship loop"\n---\n');
+    expect(readMirror(mirror).issues?.get('K-9')?.sector).toBe('Ship loop');
   });
 
   it('a decision the engine refuses is reported and its request stays claimed', async () => {

@@ -196,6 +196,8 @@ PORTABLE_FILES=(
   scripts/ci/ticket-id-internal-authors.txt
   scripts/chokepoints.json
   scripts/lib/check-ci-watch.sh
+  scripts/lib/non-gating-contexts.sh
+  scripts/lib/non-gating-contexts.txt
   scripts/lib/coderabbit-body-findings.sh
   scripts/lib/coderabbit-signal.sh
   scripts/lib/gh-ci-cache.sh

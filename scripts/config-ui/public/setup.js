@@ -54,7 +54,7 @@ export function renderSetup(setup, plans, msgs) {
   const head = `<h2>Setup</h2>`;
   if (!setup) return `${head}<p class="sub">loading…</p>`;
   if (setup.error) return `${head}<div class="nodata" role="alert">${esc(setup.error)}</div>`;
-  return `${head}<p class="sub">Typing a secret in the terminal (<code>himmelctl install</code>) is the safest path: it never passes through a browser. This page shows only whether each secret is set, never its value.</p>
+  return `${head}<p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
     ${coderabbit(setup.coderabbit)}
     ${commitRules(setup.commit, plans)}`;
