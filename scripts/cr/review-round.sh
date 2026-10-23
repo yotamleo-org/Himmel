@@ -43,11 +43,11 @@
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
-# Classify the real commit trees, never refs/replace substitutes.
-export GIT_NO_REPLACE_OBJECTS=1
 # A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
+# Classify the real commit trees, never refs/replace substitutes.
+export GIT_NO_REPLACE_OBJECTS=1
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
