@@ -287,12 +287,14 @@ describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github 
     expect(res.status).toBe(0);
     expect(res.stdout).toMatch(/resolved: ok/);
     const c = calls();
-    expect(c).toHaveLength(3);
+    expect(c.length).toBeGreaterThanOrEqual(3);
     expect(c[0]).toMatch(/thread-pr\.gql/);
     expect(c[1]).toMatch(/reply-thread\.gql/);
     expect(c[1]).toContain(`body=${body}`);
     expect(c[1]).toContain('threadId=PRRT_x');
     expect(c[2]).toMatch(/resolve-thread\.gql/);
+    // After the resolve, the ci:go release check reads the PR head; nothing else.
+    expect(c.slice(3).every((l) => /^pr view 9 --repo o\/r --json headRefOid/.test(l))).toBe(true);
   });
 
   it('does not resolve when the reply fails', () => {
