@@ -362,8 +362,19 @@ git -C "$W/forks/utffork" add -A; git -C "$W/forks/utffork" -c user.name=t -c us
 export SNYK_SCAN_FORKS="utffork|$U/utffork|pinned|up"
 : > "$W/calls.log"
 run forksutf --forks
+check "the non-ASCII scan exits successfully" 0 "$RC"
 check "a build file under a non-ASCII dir still skips the upstream scan" skipped "$(jq -r '.[] | select(.name=="utffork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
 check "the non-ASCII upstream was not scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# a newline inside one filename must not split it into a fake build-file name
+mkfork nlfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/nlfork" tag pinned
+: > "$W/forks/nlfork/$(printf 'notes\npom.xml')"
+git -C "$W/forks/nlfork" add -A; git -C "$W/forks/nlfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a newline filename"
+export SNYK_SCAN_FORKS="nlfork|$U/nlfork|pinned|up"
+: > "$W/calls.log"
+run forksnl --forks
+check "the newline-name scan exits successfully" 0 "$RC"
+check "a newline in one filename does not fake a build file" scanned "$(jq -r '.[] | select(.name=="nlfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
 export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up"
 : > "$W/calls.log"
 run forksnoup --forks --no-upstream
