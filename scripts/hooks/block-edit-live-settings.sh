@@ -1060,14 +1060,20 @@ _ilb_body() {
 # ponytail: an open() whose first argument holds a top-level comma or a string
 # literal with a paren is denied, and a library that writes through a path
 # alone (logging.FileHandler, zipfile, sqlite3, tempfile) is a listed word;
-# upgrade path: read the body with a real python parser.
+# upgrade path: read the body with a real python parser. An exotic stdlib
+# writer reached by name alone (`cProfile.run(code, path)`) is a residual.
 python_heredoc_readonly() {
-    local LC_ALL=C nl=$'\n' c=$1 first rest last body delim bl b
+    local LC_ALL=C nl=$'\n' c=$1 first rest last body delim bl b ralias
     local rfirst='^(python[0-9.]*)([[:space:]]+-[IBuEsSOq]+)*([[:space:]]+-)?[[:space:]]*<<[[:space:]]*(\x27([A-Za-z_][A-Za-z0-9_]*)\x27|"([A-Za-z_][A-Za-z0-9_]*)")[[:space:]]*$' \
-        rextra='filehandler|zipfile|tarfile|sqlite3|shelve|dbm|fileinput|mmap|logging|tempfile' \
+        rextra='filehandler|zipfile|tarfile|sqlite3|shelve|dbm|fileinput|mmap|logging|tempfile|builtins|operator|functools|contextlib|globals|locals|vars|__dict__|__class__|__subclasses__|__getattribute__|__getitem__|modules|methodcaller|attrgetter|redirect_|shutil|fileio|gzip|bz2|lzma|urlretrieve|dump[[:space:]]*\(|stream[[:space:]]*=|std(out|err)[[:space:]]*=([^=]|$)' \
+        rfrom='(^|[;[:space:]])from[[:space:]]+[a-z0-9_.]+[[:space:]]+import' \
+        rbareos='(^|[^a-z0-9_.])os([^a-z0-9_]|$)' \
+        rbarefile='(^|[^a-z0-9_])file[[:space:]]*=([^=]|$)' \
+        rbareopen='(^|[^a-z0-9_])open($|[^a-z0-9_])' \
         ropen='open[[:space:]]*\([^(),]*(\([^()]*\)[^(),]*)*(,[[:space:]]*[\x27"][rbt]+[\x27"][[:space:]]*)?(,[[:space:]]*encoding[[:space:]]*=[[:space:]]*[\x27"][a-z0-9_-]+[\x27"][[:space:]]*)?\)'
     rfirst=${rfirst//\\x27/\'}
     ropen=${ropen//\\x27/\'}
+    ralias="(^|[;[:space:]])import[[:space:]][^;$nl]*[[:space:]]as[[:space:]]"
     [ "$tool_name" = Bash ] || return 1
     while [ "${c: -1}" = "$nl" ]; do c=${c%"$nl"}; done
     case "$c" in *"$nl"*) ;; *) return 1 ;; esac
@@ -1084,9 +1090,22 @@ python_heredoc_readonly() {
     interp_write_api "$bl" && return 1
     interp_dyn_api "$bl" && return 1
     [[ $bl =~ $rextra ]] && return 1
-    b=$bl
+    [[ $bl =~ $ralias ]] && return 1
+    # Names the regexes above match are defeated by an alias or an indirection
+    # (`from os import remove as r`, `o = os; o.remove(p)`, `f = open; f(p, 'w')`),
+    # so the body may name `os` only through a few read attributes, import only
+    # from a short list of modules, and use `open` only as the validated call.
+    b=$(printf '%s\n' "$bl" | sed -E \
+        -e '/^[[:space:]]*import[[:space:]]+[a-z0-9_., ]+$/d' \
+        -e 's/(^|[;[:space:]])from[[:space:]]+(pathlib|json|collections|itertools|datetime|re|sys|os\.path)[[:space:]]+import[[:space:]]+[a-z0-9_, ]+/ /g' \
+        -e 's/file[[:space:]]*=[[:space:]]*sys\.std(out|err)/ /g' \
+        -e 's/os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)/ /g')
+    [[ $b =~ $rfrom ]] && return 1
+    [[ $b =~ $rbareos ]] && return 1
+    [[ $b =~ $rbarefile ]] && return 1
     while [[ $b =~ $ropen ]]; do b=${b/"${BASH_REMATCH[0]}"/ }; done
     [[ $b =~ open[[:space:]]*\( ]] && return 1
+    [[ $b =~ $rbareopen ]] && return 1
     return 0
 }
 

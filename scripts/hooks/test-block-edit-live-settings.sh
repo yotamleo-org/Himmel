@@ -3612,6 +3612,16 @@ python3 - <<'PY' | tee ~/.claude/settings.json\nprint('{}')\nPY
 python3 - <<PY\nimport os\nprint(open(os.path.expanduser('~/.claude/settings.json')).read(), '$(cp /tmp/x ~/.claude/settings.json)')\nPY
 python3 -c "import os; print(open(os.path.expanduser('~/.claude/settings.json')).read())" > ~/.claude/settings.json
 ROWS
+rows_both 7040 2 "python heredoc aliasing or indirecting a write API still denies" <<'ROWS'
+python3 - <<'PY'\nfrom builtins import open as f\nprint('{}', file=f('@H@/.claude/settings.json', 'w'))\nPY
+python3 - <<'PY'\nimport os as o\no.remove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nimport os\no = os\no.remove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nfrom os import remove\nremove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nf = open\nf('@H@/.claude/settings.json', 'w').write('{}')\nPY
+python3 - <<'PY'\nimport os\nprint('{}', file=open(os.path.expanduser('~/.claude/settings.json'), 'w'))\nPY
+python3 - <<'PY'\nimport pathlib\nprint('{}', file=pathlib.Path('@H@/.claude/settings.json').open(mode='w'))\nPY
+python3 - <<'PY'\nimport shutil\ns = shutil\ns.copy('/tmp/x', '@H@/.claude/settings.json')\nPY
+ROWS
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
