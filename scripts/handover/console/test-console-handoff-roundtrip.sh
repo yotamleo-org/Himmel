@@ -45,7 +45,9 @@ priority
 versions
 tracker-plan
 release
-rm"
+rm
+focus-version
+focus-plan"
 seeded_fields="legs
 queue
 last GO
@@ -108,6 +110,8 @@ versions: v1.1.3, v1.1.4
 tracker-plan: /fixture/plan/HIMMEL-3882
 release: v1.1.3-4
 rm: HIMMEL-rm-fixture /fixture/rm/doc.md epoch=2
+focus-version: v1.1.3
+focus-plan: /fixture/plan/focus-plan.md
 '
 awk -v live="$fixture_live" '
     $0 == "## Live state" { f = 1; print; next }
@@ -116,7 +120,7 @@ awk -v live="$fixture_live" '
     skip { next }
     { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"
 check "2 fixture doc carries every field" \
-    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(legs\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\):')" "13"
+    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(legs\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\|focus-version\|focus-plan\):')" "15"
 
 rc=0
 console next --bucket rtdst --doc "$docA" >/dev/null 2>&1 || rc=$?
