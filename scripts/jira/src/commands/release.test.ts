@@ -9,7 +9,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { judgeEnv, parseDecisions, registerRelease, renderState } from './release.js';
+import { judgeEnv, judgePrompt, parseDecisions, registerRelease, renderState } from './release.js';
 
 let out: string[];
 let root: string;
@@ -120,6 +120,31 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     }
     expect(parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ ...d, authority: 'operator', ref: 'O-1', supersedes: ['R-1'] }]) })))
       .toHaveLength(1);
+  });
+
+  it('names the decision index and field a refused reply fails on, and keeps the raw reply', () => {
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    const result = JSON.stringify([d, { ...d, req: 'Q-R1-0002', sector: 3 }]);
+    let err: unknown;
+    try { parseDecisions(JSON.stringify({ is_error: false, result })); } catch (e) { err = e; }
+    expect((err as Error).message).toMatch(/decision 1 field sector/);
+    expect((err as { raw?: string }).raw).toBe(result);
+  });
+
+  it('accepts a null sector so the engine refuses that one request, not the whole batch', () => {
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: null, ground: 'g', reason: 'r' };
+    expect(parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([d]) }))).toEqual([d]);
+  });
+
+  it('tells the judge to take the sector from the issue snapshot first', () => {
+    const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+    expect(judgePrompt(input, 'skill')).toContain('issues[].sector');
+  });
+
+  it('parses a valid array wrapped in prose that holds brackets', () => {
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    const result = `Ruling [see skill] for Q-R1-0001:\n${JSON.stringify([d])}\nDone [1].`;
+    expect(parseDecisions(JSON.stringify({ is_error: false, result }))).toEqual([d]);
   });
 
   it('the judge call does not inherit the calling session markers', () => {
