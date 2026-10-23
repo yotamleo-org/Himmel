@@ -869,5 +869,14 @@ wait "$t76_b"; rc=$?
   && grep -q 'still in progress' "$WS/t76-b.out" \
   && pass "T76 one submit in total, the waiting run polled the first run's batch" || fail "T76 (rc=$rc): $(cat "$WS/batch.log") / A: $(cat "$WS/t76-a.out") / B: $(cat "$WS/t76-b.out")"
 
+echo "T77: GRAPHIFY_API_BATCH=0 refuses to extract synchronously while a batch is pending (exit 2, graph untouched)"
+C77="$WS/c77"; new_corpus "$C77"; batch_reset; before=$(ids "$C77")
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --corpus-root "$C77" --corpus-class himmel-code --backend claude-api >/dev/null
+: > "$WS/calls.log"
+out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --corpus-root "$C77" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"a batch is pending"* ]] && [ "$(ids "$C77")" = "$before" ] && [ -f "$C77/graphify-out/semantic-batch/batch.json" ] \
+  && ! grep -q '^graphify extract' "$WS/calls.log" \
+  && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

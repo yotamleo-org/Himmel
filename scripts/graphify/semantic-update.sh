@@ -135,6 +135,9 @@ API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 BATCH_MODE=0 RESUME=0 PENDING="$OUT_DIR/semantic-batch"
 if [ "$BACKEND" = "claude-api" ] && [ "${GRAPHIFY_API_BATCH:-1}" != 0 ]; then BATCH_MODE=1; fi
 if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi
+if [ "$BACKEND" = "claude-api" ] && [ "$BATCH_MODE" -eq 0 ] && [ -f "$PENDING/batch.json" ]; then
+  echo "semantic-update: refusing a synchronous claude-api run: a batch is pending in $PENDING; finish it (run without GRAPHIFY_API_BATCH=0) or remove that directory -- nothing extracted" >&2; exit 2
+fi
 if [ "$BACKEND" = "claude-api" ]; then
   case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
   case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
