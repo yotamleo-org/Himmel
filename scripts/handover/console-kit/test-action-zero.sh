@@ -107,9 +107,11 @@ rm -f "${LCON%.md}.fleet.json"
 printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
 # shellcheck disable=SC2016  # the backticks are literal span markers
 printf '# console\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\n\n## Results\n' > "$LCON"
-env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LCON" >/dev/null 2>&1
+legs_before="$(grep '^legs: ' "$LCON")"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LCON" >/dev/null 2>&1; acq12=$?
+check "lock held: the fixture lock was acquired" "0" "$acq12"
 out12="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"; rc12=$?
-check "lock held: the legs: line is left unchanged" "1" "$(grep -c 'stale-token' "$LCON")"
+check "lock held: the legs: line is left unchanged" "$legs_before" "$(grep '^legs: ' "$LCON")"
 check "lock held: LEGS says unavailable" "1" "$(printf '%s\n' "$out12" | sed -n '/^== LEGS/,/^== DOC/p' | grep -c '^unavailable')"
 check "lock held: the run exits nonzero" "1" "$rc12"
 rm -f "${LCON%.md}.fleet.json"
