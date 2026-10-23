@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseStreamJsonLines, findInitEvent, findResultEvent, firstTurnTokens,
   pluginSourceDiff, namespaceExtras, evaluateProfile, formatNote, roleCoverageProblems, countLoadedSkills,
-  parseProbeArgs, resolveLedgerTarget, buildLedgerRow,
+  parseProbeArgs, resolveLedgerTarget, buildLedgerRow, rankToolBytes, pickMainRequest, untrimmedSettings, formatToolBytes, trimmedProfileNames,
   findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
 } from '../profile-context-probe.mjs';
 
@@ -145,14 +145,14 @@ test('formatNote: missing measured/baseline renders n/a rather than throwing', (
 // ── Ledger safe-default + --profile ───────────────────────────────────────
 
 test('parseProbeArgs: no flags -> all defaults', () => {
-  assert.deepEqual(parseProbeArgs([]), { profile: null, ledgerFlag: undefined, noLedger: false });
+  assert.deepEqual(parseProbeArgs([]), { profile: null, ledgerFlag: undefined, noLedger: false, toolBytes: false, untrimmed: false });
 });
 
 test('parseProbeArgs: --profile, --ledger, --no-ledger parse correctly', () => {
-  assert.deepEqual(parseProbeArgs(['--profile', 'bare']), { profile: 'bare', ledgerFlag: undefined, noLedger: false });
-  assert.deepEqual(parseProbeArgs(['--ledger', 'live']), { profile: null, ledgerFlag: 'live', noLedger: false });
-  assert.deepEqual(parseProbeArgs(['--ledger', '/tmp/x.jsonl']), { profile: null, ledgerFlag: '/tmp/x.jsonl', noLedger: false });
-  assert.deepEqual(parseProbeArgs(['--no-ledger']), { profile: null, ledgerFlag: undefined, noLedger: true });
+  assert.deepEqual(parseProbeArgs(['--profile', 'bare']), { profile: 'bare', ledgerFlag: undefined, noLedger: false, toolBytes: false, untrimmed: false });
+  assert.deepEqual(parseProbeArgs(['--ledger', 'live']), { profile: null, ledgerFlag: 'live', noLedger: false, toolBytes: false, untrimmed: false });
+  assert.deepEqual(parseProbeArgs(['--ledger', '/tmp/x.jsonl']), { profile: null, ledgerFlag: '/tmp/x.jsonl', noLedger: false, toolBytes: false, untrimmed: false });
+  assert.deepEqual(parseProbeArgs(['--no-ledger']), { profile: null, ledgerFlag: undefined, noLedger: true, toolBytes: false, untrimmed: false });
 });
 
 test('parseProbeArgs: malformed/unknown/conflicting flags throw', () => {
@@ -544,4 +544,52 @@ test('listingTokensByPlugin sums the Skill listing and splits it by plugin; empt
   const usage = JSON.parse(readFileSync(join(HERE, '..', '..', 'eval', 'leg-digest', 'fixtures', 'profiles', 'probe-context-usage.json'), 'utf8'));
   assert.deepEqual(listingTokensByPlugin(usage), { skill: 260, plugins: { 'lean-skills': 200, qmd: 60 } });
   assert.deepEqual(listingTokensByPlugin(null), { skill: 0, plugins: {} });
+});
+
+// ── per-tool byte ranking ─────────────────────────────────────────────────
+
+const REQ = (names) => ({ model: 'm', tools: names.map(([name, pad]) => ({ name, description: 'x'.repeat(pad) })) });
+
+test('rankToolBytes ranks tools by serialized bytes, largest first, with a total', () => {
+  const r = rankToolBytes(REQ([['Read', 10], ['Workflow', 500], ['Bash', 100]]));
+  assert.deepEqual(r.tools.map((t) => t.name), ['Workflow', 'Bash', 'Read']);
+  assert.equal(r.tools[0].bytes, JSON.stringify(REQ([['Workflow', 500]]).tools[0]).length);
+  assert.equal(r.total, r.tools.reduce((n, t) => n + t.bytes, 0));
+  assert.deepEqual(rankToolBytes({}), { total: 0, tools: [] });
+});
+
+test('pickMainRequest takes the captured request carrying the most tools', () => {
+  const small = { url: '/v1/messages', body: REQ([['Read', 1]]) };
+  const big = { url: '/v1/messages', body: REQ([['Read', 1], ['Bash', 1]]) };
+  assert.equal(pickMainRequest([small, big]), big.body);
+  assert.equal(pickMainRequest([]), null);
+});
+
+test('untrimmedSettings strips the profile denyTools and disableWorkflows, keeping every other deny', () => {
+  const s = { permissions: { allow: ['Bash'], deny: ['NotebookEdit', 'ScheduleWakeup', 'EnterWorktree'] }, disableWorkflows: true, enabledPlugins: {} };
+  const u = untrimmedSettings(s, ['NotebookEdit', 'ScheduleWakeup']);
+  assert.deepEqual(u.permissions.deny, ['EnterWorktree']);
+  assert.equal('disableWorkflows' in u, false);
+  assert.deepEqual(u.permissions.allow, ['Bash']);
+  assert.deepEqual(s.permissions.deny, ['NotebookEdit', 'ScheduleWakeup', 'EnterWorktree']); // input untouched
+});
+
+test('parseProbeArgs: --tool-bytes and --untrimmed parse; --untrimmed alone throws', () => {
+  assert.deepEqual(parseProbeArgs(['--tool-bytes', '--untrimmed', '--profile', 'leg-impl']), { profile: 'leg-impl', ledgerFlag: undefined, noLedger: false, toolBytes: true, untrimmed: true });
+  assert.equal(parseProbeArgs(['--tool-bytes']).toolBytes, true);
+  assert.throws(() => parseProbeArgs(['--untrimmed']), /--untrimmed requires --tool-bytes/);
+});
+
+test('formatToolBytes renders a total line plus the top N tools', () => {
+  const out = formatToolBytes('leg-impl', rankToolBytes(REQ([['Read', 10], ['Workflow', 500]])), 1);
+  const lines = out.split('\n');
+  assert.match(lines[0], /^leg-impl tools=2 bytes=\d+$/);
+  assert.match(lines[1], /^  Workflow \d+$/);
+  assert.equal(lines.length, 2);
+});
+
+test('trimmedProfileNames skips null registry entries and keeps only profiles that carry a trim', () => {
+  const reg = { profiles: { operator: null, 'leg-impl': { denyTools: ['NotebookEdit'] }, user: {} } };
+  assert.deepEqual(trimmedProfileNames(reg), ['leg-impl']);
+  assert.deepEqual(trimmedProfileNames({}), []);
 });

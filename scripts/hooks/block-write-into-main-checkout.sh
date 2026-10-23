@@ -3301,6 +3301,10 @@ fi
 # shell-tokenize precedent). test-block-write-into-main-checkout.sh fails
 # when the copy drifts; regenerate it with
 # `bash scripts/hooks/lib/bash-ast-replay-bwimc.sh --sync`.
+# ponytail: the default stays regex because the ast engine changes the verdict
+# of dozens of rows the shards pin (the cd left of a pipe, the cd behind ||, a
+# coproc, heredoc and comment forms), upgrade path: reconcile each row with a
+# ruling on which reading is right, then flip the default here.
 _bwimc_engine="${BWIMC_ENGINE:-regex}"
 case "$_bwimc_engine" in
     regex|ast|both) ;;

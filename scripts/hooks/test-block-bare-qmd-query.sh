@@ -1223,6 +1223,14 @@ allow "timeout 5 printf '%s %s\n' qmd query"
 allow "nice -n 5 printf '%s %s\n' qmd query"
 deny 'nice -n 5 qmd query x'
 deny 'env FOO=bar qmd query x'
+# env NAME=value operands reach the position's assigns; the env position still denies
+deny 'env FOO=1 qmd search x'
+deny 'env -i FOO=1 qmd query x'
+deny 'FOO=1 qmd query x'
+deny 'FOO=1 env BAR=2 qmd query x'
+allow 'env FOO=1 qmd status'
+deny 'env FOO=1 qmd que{ry,} x'
+deny 'env -i FOO=1 qmd {query,status} x'
 deny 'timeout -k 5 10 qmd query x'
 deny 'sudo -u bob qmd query x'
 allow 'qmd status; qmd collection list'

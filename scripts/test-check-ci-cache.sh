@@ -447,6 +447,25 @@ kept=""; for f in pr-3.rows pr-4.rows pr-4.rows.99.wait other.txt pr-6.rows.lock
 if [ -z "$kept" ]; then pass "12b fresh row, live-waiter row, non-matching name and subdirectory survive"; else fail "12b survivors" "removed:$kept"; fi
 if [ -L "$C/pr-5.rows" ] && [ "$(cat "$OUT")" = keep ]; then pass "12c a symlink is neither followed nor removed"; else fail "12c symlink" "link or target lost"; fi
 
+# 13 — a status context on the non-gating list neither fails nor blocks the gate;
+# any other name (including lookalikes) still does.
+new_case
+printf 'fail\tsecurity/snyk (yotamleo)\npass\tunit-tests\n' > "$CASE_DIR/rows"
+run_ci "$CASE_DIR/n1" 42 --max-wait 900
+if [ "$(cat "$CASE_DIR/n1.rc")" -eq 0 ]; then pass "13 only the listed Snyk context red -> rc 0"; else fail "13 listed red" "rc=$(cat "$CASE_DIR/n1.rc") err=$(cat "$CASE_DIR/n1.err")"; fi
+new_case
+printf 'fail\tsecurity/snyk (yotamleo)\npass\tunit-tests\nfail\tlint\n' > "$CASE_DIR/rows"
+run_ci "$CASE_DIR/n2" 42 --max-wait 900
+if [ "$(cat "$CASE_DIR/n2.rc")" -eq 1 ]; then pass "13b listed red plus an unlisted red -> rc 1"; else fail "13b unlisted red" "rc=$(cat "$CASE_DIR/n2.rc") err=$(cat "$CASE_DIR/n2.err")"; fi
+new_case
+printf 'fail\tsecurity/snyk (yotamleo) extra\npass\tunit-tests\n' > "$CASE_DIR/rows"
+run_ci "$CASE_DIR/n3" 42 --max-wait 900
+if [ "$(cat "$CASE_DIR/n3.rc")" -eq 1 ]; then pass "13c lookalike context name still fails -> rc 1"; else fail "13c lookalike" "rc=$(cat "$CASE_DIR/n3.rc") err=$(cat "$CASE_DIR/n3.err")"; fi
+new_case
+printf 'pending\tsecurity/snyk (yotamleo)\npass\tunit-tests\n' > "$CASE_DIR/rows"
+run_ci "$CASE_DIR/n4" 42 --max-wait 900
+if [ "$(cat "$CASE_DIR/n4.rc")" -eq 0 ]; then pass "13d a pending listed context does not block -> rc 0"; else fail "13d listed pending" "rc=$(cat "$CASE_DIR/n4.rc") err=$(cat "$CASE_DIR/n4.err")"; fi
+
 echo
 echo "check-ci-cache: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

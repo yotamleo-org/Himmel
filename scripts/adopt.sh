@@ -191,6 +191,8 @@ PORTABLE_FILES=(
   scripts/lib/git-clean.sh
   scripts/check-ci.sh
   scripts/lib/check-ci-watch.sh
+  scripts/lib/non-gating-contexts.sh
+  scripts/lib/non-gating-contexts.txt
   scripts/lib/coderabbit-body-findings.sh
   scripts/lib/coderabbit-signal.sh
   scripts/lib/gh-ci-cache.sh
