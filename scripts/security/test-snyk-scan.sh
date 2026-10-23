@@ -370,6 +370,10 @@ mkfork nlfork "$FIX/snyk-os-clean.json" 0
 git -C "$W/forks/nlfork" tag pinned
 : > "$W/forks/nlfork/$(printf 'notes\npom.xml')"
 git -C "$W/forks/nlfork" add -A; git -C "$W/forks/nlfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a newline filename"
+nlname="$(printf 'notes\npom.xml')"
+nlhead="$(git -C "$W/forks/nlfork" ls-tree -r --name-only -z HEAD | tr '\0' '|')"
+case "$nlhead" in *"$nlname|"*) nlin=1 ;; *) nlin=0 ;; esac
+check "the newline filename is committed at HEAD" 1 "$nlin"
 export SNYK_SCAN_FORKS="nlfork|$U/nlfork|pinned|up"
 : > "$W/calls.log"
 run forksnl --forks
