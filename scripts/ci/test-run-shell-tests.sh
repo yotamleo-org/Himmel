@@ -1252,9 +1252,9 @@ else
   check_timeout_2267 "scripts/himmelctl/test/test-wizard-probes.sh" "1200"
   check_timeout_2267 "/repo/scripts/himmelctl/test/test-wizard-probes.sh" "1200"
 
-  # macOS cadence run 39962582438 passed these two suites with every assertion
-  # green but past the table's cap: tier-replay 495s (default 600), pr-check-rounds
-  # 1700s (arm 1200). Linux measures far lower, so the raise is a Darwin-only arm;
+  # macOS cadence runs passed these two suites with every assertion green but past
+  # the table's cap: tier-replay 495s then 874s (run 39986815551; default 600),
+  # pr-check-rounds 1700s (arm 1200). Linux measures far lower, so the raise is a Darwin-only arm;
   # the Linux caps stay put. uname is stubbed so the rows hold on every runner OS.
   check_os_timeout_2267() {  # $1=uname -s answer; $2=suite path; $3=expected timeout
     local got os_2267=$1
@@ -1270,15 +1270,15 @@ else
   check_os_timeout_2267 Linux "/repo/scripts/ci/test-tier-replay.sh" "600"
   check_os_timeout_2267 Linux "scripts/cr/test-pr-check-rounds.sh" "1200"
   check_os_timeout_2267 Linux "/repo/scripts/cr/test-pr-check-rounds.sh" "1200"
-  check_os_timeout_2267 Darwin "scripts/ci/test-tier-replay.sh" "1000"
-  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-tier-replay.sh" "1000"
+  check_os_timeout_2267 Darwin "scripts/ci/test-tier-replay.sh" "1800"
+  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-tier-replay.sh" "1800"
   check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds.sh" "3400"
   check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds.sh" "3400"
   # A suite in no Darwin arm keeps its table value on macOS.
   check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"
   # Headroom: the Darwin cap clears the measured macOS duration by the loaded x2 rule.
-  for m2267 in "scripts/ci/test-tier-replay.sh 495" "scripts/cr/test-pr-check-rounds.sh 1700"; do
+  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700"; do
     s2267=${m2267% *}; d2267=${m2267#* }
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
     cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")
