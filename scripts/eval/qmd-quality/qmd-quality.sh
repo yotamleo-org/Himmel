@@ -80,7 +80,7 @@ done
 [ -n "$INDEX" ] || { echo "qmd-quality: --index <index.sqlite> is required (no default: name the index explicitly)" >&2; exit 64; }
 [ -n "$OUT" ] || { echo "qmd-quality: --out <dir> is required" >&2; exit 64; }
 [ -f "$INDEX" ] || { echo "qmd-quality: no index at '$INDEX'" >&2; exit 64; }
-[ -n "$GOLDEN" ] || { echo "qmd-quality: name the golden set with --golden <golden.jsonl> or QMD_QUALITY_GOLDEN (it is kept outside the repo; there is no default)" >&2; exit 64; }
+[ -n "$GOLDEN" ] || { echo "qmd-quality: name the golden set with --golden <golden.jsonl> or QMD_QUALITY_GOLDEN (there is no default; the shipped set is golden/himmel.jsonl)" >&2; exit 64; }
 [ -f "$GOLDEN" ] || { echo "qmd-quality: no golden set at '$GOLDEN'" >&2; exit 64; }
 MIN_QUERIES="${QMD_QUALITY_MIN_QUERIES:-150}"
 case "$MIN_QUERIES" in
