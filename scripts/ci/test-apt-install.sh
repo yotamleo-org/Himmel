@@ -143,19 +143,22 @@ run_case c8 STUB_HANG=1 STUB_HANG_SECS=8 APT_T_PLAIN=1
   && ok "hung install is killed by the timeout (not waited out)" || bad "timeout (rc=$rc elapsed=${SECONDS}s survived=$([ -e "$TMP/c8/log.survived" ] && echo yes || echo no))"
 
 # 9. BSD sed (the macos-cadence runner) reads `sed -i EXPR file` as suffix EXPR and
-#    script FILE: 'extra characters at the end of h command'. The rewrite must use
-#    the attached-suffix form, which both seds take.
-mkdir -p "$TMP/bsdsed"
+#    script FILE: 'extra characters at the end of h command'. The rewrite must not
+#    edit in place at all (the -i argument shape differs, and a fixed suffix would
+#    clobber an operator's own .bak), so the shim rejects every -i form.
+mkdir -p "$TMP/bsdsed" "$TMP/c9"
 REAL_SED="$(command -v sed)"
 cat > "$TMP/bsdsed/sed" <<STUB
 #!/bin/sh
-[ "\$1" = -i ] && { echo "sed: 1: \"\$3\": extra characters at the end of h command" >&2; exit 1; }
+case "\$1" in -i*) echo "sed: 1: \"\$3\": extra characters at the end of h command" >&2; exit 1 ;; esac
 exec "$REAL_SED" "\$@"
 STUB
 chmod +x "$TMP/bsdsed/sed"
+echo operator-backup > "$TMP/c9/ubuntu.sources.bak"
 run_case c9 PATH="$TMP/bsdsed:$PATH"
-[ "$rc" -eq 0 ] && grep -q alt.example <<<"$src" && ! grep -q 'extra characters' <<<"$out" && [ ! -e "$TMP/c9/ubuntu.sources.bak" ] \
-  && ok "mirror rewrite works under BSD sed and leaves no .bak behind" || bad "BSD sed rewrite (rc=$rc src=$src out=$out)"
+[ "$rc" -eq 0 ] && grep -q alt.example <<<"$src" && ! grep -q 'extra characters' <<<"$out" \
+  && [ "$(cat "$TMP/c9/ubuntu.sources.bak" 2>/dev/null)" = operator-backup ] \
+  && ok "mirror rewrite avoids in-place sed and leaves an existing .bak untouched" || bad "BSD sed rewrite (rc=$rc src=$src out=$out)"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2

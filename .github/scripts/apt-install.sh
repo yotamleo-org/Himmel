@@ -80,8 +80,11 @@ if [ -n "$mlist" ] && [ -f "$mlist" ]; then
 fi
 for f in $SOURCES; do
   [ -f "$f" ] || continue
-  $SUDO sed -i.bak "/^[[:space:]]*#/! s#//${primary//./\\.}#//$ALT#g" "$f"
-  $SUDO rm -f "$f.bak"
+  # no `sed -i`: its argument shape differs between GNU and BSD, and a fixed backup suffix
+  # would overwrite then delete an operator's own $f.bak
+  new="$(mktemp "${TMPDIR:-/tmp}/apt-sources.XXXXXX")" || { echo "apt-install: FAILED mirrors=$primary,$ALT packages=$* (temp file)" >&2; exit 1; }
+  sed "/^[[:space:]]*#/! s#//${primary//./\\.}#//$ALT#g" "$f" > "$new" && $SUDO cp "$new" "$f"
+  rm -f "$new"
 done
 if apt "$T_ALT" update -o Acquire::Retries=1 -o DPkg::Lock::Timeout=60 \
    && apt "$T_ALT" install "${opts[@]}" "$@"; then
