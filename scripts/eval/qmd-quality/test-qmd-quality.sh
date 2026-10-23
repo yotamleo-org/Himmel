@@ -101,7 +101,7 @@ for bad in 0 -5 abc; do
   out=$(XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/o7" --candidate-limit "$bad" 2>&1); rc=$?
   eq "wrapper: --candidate-limit $bad is a usage error" "$rc" "64"
 done
-# The real golden set lives outside the repo, so there is no default path.
+# A set naming private docs lives outside the repo, so there is no default path.
 out=$(env -u QMD_QUALITY_GOLDEN XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --index "$TMP/idx.sqlite" --out "$TMP/o8" 2>&1); rc=$?
 eq "wrapper: no golden set named is a usage error" "$rc" "64"
 has "wrapper: the refusal names --golden" "$out" "--golden"
