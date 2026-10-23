@@ -23,7 +23,7 @@ const sha = (s) => createHash('sha256').update(s).digest('hex');
 
 // the stub: what the endpoint received, and what it answers next
 const seen = { posts: [], gets: [], keys: new Set() };
-const stub = { create: 'ok', status: 'in_progress', errored: new Set() };
+const stub = { create: 'ok', status: 'in_progress', errored: new Set(), realLine: null };
 let server, base;
 
 before(async () => {
@@ -46,6 +46,7 @@ before(async () => {
       }
       if (req.method === 'GET' && req.url === '/v1/messages/batches/msgbatch_stub1/results') {
         const ids = seen.posts.at(-1).requests.map((r) => r.custom_id);
+        if (stub.realLine) return reply(200, JSON.stringify({ ...stub.realLine, custom_id: ids[0] }));
         return reply(200, ids.map((id) => JSON.stringify({ custom_id: id, result: stub.errored.has(id)
           ? { type: 'errored', error: { type: 'error', error: { type: 'api_error', message: 'boom' } } }
           : { type: 'succeeded', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', stop_reason: 'end_turn',
@@ -78,7 +79,7 @@ function fixture() {
   const submit = (extra = [], model = 'sonnet') => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', model, '--effort', 'high', ...extra);
   return { dir, env, prompts, prompt, batch, client, submit };
 }
-const reset = () => { seen.posts.length = 0; seen.gets.length = 0; seen.keys.clear(); stub.create = 'ok'; stub.status = 'in_progress'; stub.errored.clear(); };
+const reset = () => { seen.posts.length = 0; seen.gets.length = 0; seen.keys.clear(); stub.create = 'ok'; stub.status = 'in_progress'; stub.errored.clear(); stub.realLine = null; };
 
 test('submit, poll, results: one request per prompt at the batch rate, results keyed by prompt hash', async () => {
   reset();
@@ -111,6 +112,29 @@ test('submit, poll, results: one request per prompt at the batch rate, results k
   assert.equal(env.is_error, false);
   assert.match(env.result, /"nodes"/);
   assert.equal(JSON.parse(readFileSync(join(f.batch, 'batch.json'), 'utf8')).cost_usd, '0.003500');
+});
+
+// fixtures/batch-result-line.json is the first line the live Batches API returned for a 5-request sample batch
+// (msgbatch_01HoHw8Kj1H9NupjQ3v4PvqC, 2026-10-23), unedited except the answer text cut to 160 characters. Its custom_id
+// is a hash of a prompt this suite does not have, so the stub re-keys it to the submitted prompt.
+test('a real results line: the answer text is kept and the cost comes from its real usage at the batch rate', async () => {
+  reset();
+  const real = JSON.parse(readFileSync(join(HERE, 'fixtures', 'batch-result-line.json'), 'utf8'));
+  assert.ok(real.result.message.content.some((c) => c.type === 'thinking'), 'the fixture must keep the thinking block the real API sends');
+  stub.realLine = real;
+  const f = fixture();
+  assert.equal((await f.submit()).code, 0);
+  stub.status = 'ended';
+  assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
+  const r = await f.client('results', '--dir', f.batch, '--out', join(f.dir, 'res'));
+  assert.equal(r.code, 0, r.stderr);
+  // 49263 in x $1/M + 20454 out x $5/M (thinking tokens are inside output_tokens)
+  assert.deepEqual(JSON.parse(r.stdout), { batch_id: 'msgbatch_stub1', succeeded: 1, missing: 1, cost_usd: '0.151533' });
+  const [file] = readdirSync(join(f.dir, 'res'));
+  assert.equal(file, `${seen.posts[0].requests[0].custom_id}.json`);
+  const env = JSON.parse(readFileSync(join(f.dir, 'res', file), 'utf8'));
+  assert.equal(env.result, real.result.message.content.find((c) => c.type === 'text').text);
+  assert.equal(env.is_error, false);
 });
 
 test('a pending batch is resumed, never resubmitted', async () => {

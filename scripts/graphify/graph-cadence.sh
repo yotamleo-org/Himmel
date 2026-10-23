@@ -49,7 +49,10 @@
 #      no CodeRabbit review -- this cadence must not wait for one; it doesn't.
 #   8. One ledger row (this script's own JSONL, see LEDGER below) plus the
 #      standard flow-run-ledger start/end pair every other cadence writes,
-#      so cadence-audit/staleness tooling is not blind to this leg.
+#      so cadence-audit/staleness tooling is not blind to this leg. Under
+#      --semantic with GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api the row also carries batch_id,
+#      batch_state (submitted|pending|merged), batch_requests and batch_cost_usd,
+#      read from the `semantic-update: BATCH …` line; null on a run with no batch.
 #
 # WHY A DEDICATED WORKTREE, NOT THE PRIMARY CHECKOUT: graph-publish.sh runs
 # `git checkout -B chore/graph-publish-<corpus> ...` in whatever repo it is
@@ -521,6 +524,12 @@ PR_REF=""
 GRAPH_HEAD=""
 MERGES_BEHIND=""
 FINAL_RC=0
+# The Message Batches API batch the semantic step submitted or merged this run (from its
+# `semantic-update: BATCH id=… state=… requests=… cost_usd=…` line); empty when the run used no batch.
+BATCH_ID=""
+BATCH_STATE=""
+BATCH_REQUESTS=""
+BATCH_COST=""
 
 # _write_ledger — one JSONL line to LEDGER_FILE (this script's own ledger)
 # PLUS the standard flow-run-ledger end row every sibling cadence writes.
@@ -532,7 +541,9 @@ _write_ledger() {
     end_ts=$(date -u +%s)
     dur=$(( end_ts - START_TS ))
     local line
-    line=$(printf '{"ts":%s,"head":%s,"graph_head":%s,"merges_behind":%s,"action":%s,"pr":%s,"duration_s":%s,"error":%s}' \
+    local batch_cost_json=null
+    case "$BATCH_COST" in '' | *[!0-9.]* | *.*.*) ;; *) batch_cost_json=$BATCH_COST ;; esac
+    line=$(printf '{"ts":%s,"head":%s,"graph_head":%s,"merges_behind":%s,"action":%s,"pr":%s,"duration_s":%s,"error":%s,"batch_id":%s,"batch_state":%s,"batch_requests":%s,"batch_cost_usd":%s}' \
         "$(_fr_json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" \
         "$(_fr_json_null_str "$head_sha")" \
         "$(_fr_json_null_str "$GRAPH_HEAD")" \
@@ -540,7 +551,11 @@ _write_ledger() {
         "$(_fr_json_str "$ACTION")" \
         "$(_fr_json_null_str "$PR_REF")" \
         "$(_fr_json_int "$dur")" \
-        "$(_fr_json_null_str "$ERROR")")
+        "$(_fr_json_null_str "$ERROR")" \
+        "$(_fr_json_null_str "$BATCH_ID")" \
+        "$(_fr_json_null_str "$BATCH_STATE")" \
+        "$(_fr_json_int "$BATCH_REQUESTS")" \
+        "$batch_cost_json")
     local _ledger_append_rc=0
     printf '%s\n' "$line" >> "$LEDGER_FILE" || _ledger_append_rc=$?
 
@@ -973,6 +988,15 @@ if [ "$SEMANTIC" -eq 1 ]; then
         --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
     _sem_rc=$?
     printf '%s\n' "$_sem_out"
+    _batch_line=$(printf '%s\n' "$_sem_out" | grep '^semantic-update: BATCH ' | tail -n 1)
+    for _tok in $_batch_line; do
+        case "$_tok" in
+            id=*) BATCH_ID=${_tok#id=} ;;
+            state=*) BATCH_STATE=${_tok#state=} ;;
+            requests=*) case "${_tok#requests=}" in '' | *[!0-9]*) ;; *) BATCH_REQUESTS=${_tok#requests=} ;; esac ;;
+            cost_usd=*) BATCH_COST=${_tok#cost_usd=} ;;
+        esac
+    done
     # A file the merge backed off is not retried until it changes: say so once, on its own leg, whatever the
     # exit (the merge prints it before the steps that can still fail). A clean run with no new back-off
     # re-arms that leg, so the next back-off alerts again.
