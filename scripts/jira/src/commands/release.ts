@@ -108,13 +108,28 @@ export function judgePrompt(input: JudgeInput, skill: string): string {
   ].join('\n');
 }
 
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isStrOrNull = (v: unknown) => v === null || isStr(v);
+
+// The engine checks a decision's meaning, not its field types, so a malformed one is refused here.
+function isDecision(x: unknown): x is Decision {
+  if (x === null || typeof x !== 'object' || Array.isArray(x)) return false;
+  const d = x as Record<string, unknown>;
+  return [d.req, d.outcome, d.sector, d.ground, d.reason].every(isStr)
+    && ['add', 'remove', 'move', 'keep', 'discharge', 'none'].includes(d.op as string)
+    && isStrOrNull(d.from) && isStrOrNull(d.to)
+    && (d.ref === undefined || isStrOrNull(d.ref))
+    && (d.supersedes === undefined || (Array.isArray(d.supersedes) && d.supersedes.every(isStr)))
+    && (d.authority === undefined || ['rm', 'operator', 'import'].includes(d.authority as string));
+}
+
 // stdout of `claude -p --output-format json`: the envelope, whose result holds the array.
 export function parseDecisions(stdout: string): Decision[] {
   const env = JSON.parse(stdout) as { is_error?: boolean; result?: string };
   if (env.is_error || typeof env.result !== 'string') throw new Error('rm-run: the judge call failed; nothing ruled');
   const text = env.result;
   const got: unknown = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
-  if (!Array.isArray(got) || !got.every((d) => typeof (d as Decision | null)?.req === 'string')) {
+  if (!Array.isArray(got) || !got.every(isDecision)) {
     throw new Error('rm-run: the judge did not return an array of decisions; nothing ruled');
   }
   return got as Decision[];

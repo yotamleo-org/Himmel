@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
@@ -712,9 +712,18 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
       }
     }
   } finally {
-    leaseRelease(rctx);
-    mkdirSync(join(ctx.dir, 'rm-runs'), { recursive: true });
-    writeFileSync(doc, `# rm-run ${ctx.release} epoch ${lease.epoch}\n\n${lines.map((x) => `- ${x}`).join('\n')}\n`);
+    // Cleanup never hides the rulings already made or the error that ended the run.
+    try {
+      leaseRelease(rctx);
+    } catch (e) {
+      lines.push(`PENDING lease: ${(e as Error).message}`);
+    }
+    try {
+      mkdirSync(dirname(doc), { recursive: true });
+      writeFileSync(doc, `# rm-run ${ctx.release} epoch ${lease.epoch}\n\n${lines.map((x) => `- ${x}`).join('\n')}\n`);
+    } catch (e) {
+      lines.push(`PENDING run record: ${(e as Error).message}`);
+    }
   }
   return lines;
 }

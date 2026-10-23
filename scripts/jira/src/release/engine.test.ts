@@ -591,4 +591,12 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     jira.addComment = post;
     expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
   });
+
+  it('writes the run record under a --doc parent that does not exist yet', async () => {
+    declared();
+    ask('K-2');
+    const doc = join(ctx().dir, 'elsewhere', 'run.md');
+    expect(await rmRun(ctx(), admitAll, { doc })).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 /));
+    expect(readFileSync(doc, 'utf8')).toMatch(/^- RULING R-R1-0001 /m);
+  });
 });
