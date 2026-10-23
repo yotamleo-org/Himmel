@@ -18,16 +18,17 @@ ok() { pass=$((pass + 1)); }
 bad() { echo "FAIL: $*" >&2; fail=$((fail + 1)); }
 
 # The POST routes are the paths the 404 guard lets through (the one `path !== ... return 404` line).
-routes=$(grep -E 'return new Response\("not found", \{ status: 404 \}\)' "$SERVER" | grep -oE '"/api/[a-z/-]+"' | tr -d '"' | sort -u)
+routes=$(grep -E 'return new Response\("not found", \{ status: 404 \}\)' "$SERVER" | grep -oE '"/api/[^"]+"' | tr -d '"' | sort -u)
 if [ -z "$routes" ]; then
   bad "no POST routes found in scripts/config-ui/server.ts (the guard line moved?)"
 fi
 
 for r in $routes; do
-  if grep -qF "\`$r\`" "$DOC"; then ok; else bad "docs/ui.md does not name the write route $r"; fi
+  # a table row of the action-to-handler map, not any prose mention
+  if grep -E '^\|' "$DOC" | grep -qF "\`$r\`"; then ok; else bad "docs/ui.md action table has no row for the write route $r"; fi
 done
 
-if grep -qiE 'every page is read-only|read-only except' "$DOC"; then
+if grep -qiE 'every page is read-only|read-only except|only the settings switches' "$DOC"; then
   bad "docs/ui.md still carries a blanket read-only claim"
 else
   ok
