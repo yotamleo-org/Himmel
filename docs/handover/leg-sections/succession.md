@@ -44,8 +44,12 @@ runs `bus adopt <new console>` for you, so the new chief has an edge to you
 (without it `bus send` to you is refused: `no edge to <you>`). Its printed line
 (`adopted: …`) or refusal text (`identity unbound`, or
 `old console … is not gone and sent no relay naming …`)
-lands as a `bus-adopt:` bullet just above. A refusal is a recorded fact, not a
-reason to park: once the old chief is gone,
+lands as a `bus-adopt:` bullet just above. The outgoing chief stamps its
+successor on the bus (`chief.sh next` runs `bus succeed <successor>`), and
+`bus adopt` accepts a stamped hop while that chief is still live, so no
+per-leg relay record is needed. A refusal is a recorded fact, not a
+reason to park: it means the chief never stamped (an unstamped live chief
+is still refused); once the old chief is gone,
 run `bus adopt <new console>` as the leg yourself. <!-- old-term-ok: the phrase test-bus-idle-waker.sh asserts --> Write
 `- SUCCESSION accepted: <new console session> replaces <old>` under
 `## Results` (names and grammar only, no token), with **nothing after it on that

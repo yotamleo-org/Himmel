@@ -206,6 +206,13 @@ out=$(as legA adopt con2 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA console con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
 out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the leg"; else fail "post-adopt send (rc=$rc): $out"; fi
+"$BUS" register con3 --role console --predecessor con2 >/dev/null 2>&1
+out=$(as legA succeed con3 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'legA is not a console' <<< "$out"; then pass "succeed from a leg is refused (HIMMEL-7262)"; else fail "leg succeed (rc=$rc): $out"; fi
+out=$(as con succeed con3 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'con3 does not succeed con' <<< "$out"; then pass "succeed names only the caller's own successor"; else fail "wrong-predecessor succeed (rc=$rc): $out"; fi
+out=$(as con2 succeed con3 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "stamped: con2 successor con3" ]; then pass "a console stamps its registered successor"; else fail "succeed (rc=$rc): $out"; fi
 out=$(as legA peers 2>&1)
 if grep -q '^con2\b' <<< "$out" && ! grep -q '^con\b' <<< "$out"; then pass "the leg's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
 if grep -qx 'con2 (gone)' <<< "$out"; then pass "peers marks a peer whose process is gone"; else fail "gone peer not marked: $out"; fi
