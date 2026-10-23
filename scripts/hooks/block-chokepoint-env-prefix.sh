@@ -298,35 +298,51 @@ fi
 # after --evidence-file (so it is never run or sourced). Anything else keeps
 # its full scan. Result in REPLY.
 strip_evidence_heredocs() {
-    local text="$1" line tag path i=0 j n=0 out='' open_re rest
+    local text="$1" line tag path i=0 j n=0 out='' open_re wv_re rest stripped=0 bad=0
     local -a lines=()
     REPLY=$text
     case "$text" in *"<<'"*) ;; *) return 0 ;; esac
     case "$text" in */tmp/claude-*) ;; *) return 0 ;; esac
     open_re="^cat[[:blank:]]+>[[:blank:]]*(/tmp/claude-[0-9]+/[A-Za-z0-9_./+-]+\\.(md|txt))[[:blank:]]+<<[[:blank:]]*'([A-Za-z0-9_]+)'[[:blank:]]*\$"
+    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[^][:blank:];&|<>\`\\\\()]*write-verdict\\.sh([[:blank:]][^;&|<>\`\\\\]*)?\$"
     while IFS= read -r line || [ -n "$line" ]; do
         lines[n]=$line; n=$((n + 1))
     done <<<"$text"
     while [ "$i" -lt "$n" ]; do
         line=${lines[$i]}
-        out+=$line$'\n'
         i=$((i + 1))
-        [[ $line =~ $open_re ]] || continue
-        path=${BASH_REMATCH[1]}
-        tag=${BASH_REMATCH[3]}
-        case "$path" in *..*) continue ;; esac
-        j=$i
-        while [ "$j" -lt "$n" ] && [ "${lines[$j]}" != "$tag" ]; do j=$((j + 1)); done
-        [ "$j" -lt "$n" ] || continue
-        # Every later mention of the file must be a --evidence-file operand.
-        rest=$text
-        rest=${rest//"cat > $path "/}
-        rest=${rest//"cat >$path "/}
-        rest=${rest//"--evidence-file $path"/}
-        case "$rest" in *"$path"*) continue ;; esac
-        i=$j
+        if [[ $line =~ $open_re ]]; then
+            path=${BASH_REMATCH[1]}
+            tag=${BASH_REMATCH[3]}
+            j=$i
+            while [ "$j" -lt "$n" ] && [ "${lines[$j]}" != "$tag" ]; do j=$((j + 1)); done
+            rest=$text
+            rest=${rest//"cat > $path "/}
+            rest=${rest//"cat >$path "/}
+            rest=${rest//"--evidence-file $path"/}
+            # Every later mention of the file must be a --evidence-file operand.
+            case "$path" in *..*) j=$n ;; esac
+            case "$rest" in *"$path"*) j=$n ;; esac
+            if [ "$j" -lt "$n" ]; then
+                out+=$line$'\n'
+                stripped=1
+                i=$((j + 1))
+                continue
+            fi
+        elif [ -n "${line//[[:blank:]]/}" ]; then
+            # Outside a stripped body only a write-verdict.sh call may run,
+            # so the stripped file cannot be run under another spelling.
+            if [[ $line =~ $wv_re ]]; then
+                case "$line" in *\$\(*) bad=1 ;; esac
+            else
+                bad=1
+            fi
+        fi
+        out+=$line$'\n'
     done
-    REPLY=${out%$'\n'}
+    if [ "$stripped" -eq 1 ] && [ "$bad" -eq 0 ]; then
+        REPLY=${out%$'\n'}
+    fi
 }
 strip_evidence_heredocs "$cmd"
 cmd=$REPLY
