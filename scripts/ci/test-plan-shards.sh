@@ -137,7 +137,8 @@ fi
 # PS14b: the host-file read-sink scan moved to ci-quick, a step of the
 # unchecked-mktemp-range group (both scan the PR range for added code).
 quick_block="$(awk '/^  ci-quick:/ { j = 1; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI")"
-if printf '%s\n' "$quick_block" | grep -qF "check-host-file-read-sinks.sh --range --merge-ref"; then
+sink_step="$(printf '%s\n' "$quick_block" | grep -F "check-host-file-read-sinks.sh --range --merge-ref")"
+if [ -n "$sink_step" ]; then
   pass "PS14b check-host-file-read-sinks.sh runs in ci-quick"
 else
   fail "PS14b check-host-file-read-sinks.sh is not a ci-quick step"
