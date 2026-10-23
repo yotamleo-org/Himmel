@@ -855,6 +855,19 @@ out=$(ACCT=A BATCH_STUB_EXHAUSTED=A,B GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --na
 [ "$rc" -eq 2 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && [ ! -e "$C75/graphify-out/semantic-batch" ] && [[ "$out" == *"nothing submitted"* ]] \
   && pass "T75 one attempt, exit 2, no pending batch" || fail "T75 (rc=$rc): $out / $(cat "$WS/batch.log")"
 
+echo "T76: a run that waited out another run's submit resumes that batch instead of resubmitting"
+C76="$WS/c76"; new_corpus "$C76"; batch_reset
+mkdir -p "$C76/graphify-out/.promote.lock"
+GRAPHIFY_SEMANTIC_LOCK_WAIT=60 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t76 --corpus-root "$C76" --corpus-class himmel-code --backend claude-api > "$WS/t76-b.out" &
+t76_b=$!
+for _ in $(seq 1 50); do grep -q 'chunk: call-cap' "$WS/t76-b.out" && break; sleep 0.2; done
+sleep 1
+rmdir "$C76/graphify-out/.promote.lock"
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t76 --corpus-root "$C76" --corpus-class himmel-code --backend claude-api > "$WS/t76-a.out"
+wait "$t76_b"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && [ -f "$C76/graphify-out/semantic-batch/batch.json" ] \
+  && grep -q 'still in progress' "$WS/t76-b.out" \
+  && pass "T76 one submit in total, the waiting run polled the first run's batch" || fail "T76 (rc=$rc): $(cat "$WS/batch.log") / A: $(cat "$WS/t76-a.out") / B: $(cat "$WS/t76-b.out")"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

@@ -301,6 +301,9 @@ fi
 acquire_promote_lock
 # Re-plan under the lock: another run may have promoted (or the corpus moved)
 # while we waited, and the pre-lock plan would re-extract a stale batch.
+# A run that waited may also find the batch the lock holder submitted (or no batch any more).
+RESUME=0
+if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi
 plan_or_noop
 
 TOKENS_IN=0 TOKENS_OUT=0 FAILED_CHUNKS="" START="$(date +%s)"
