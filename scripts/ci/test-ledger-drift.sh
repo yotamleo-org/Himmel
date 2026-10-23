@@ -79,9 +79,9 @@ else
 fi
 
 echo "== LD5: only shell-unit-shard lines count =="
-mkdir -p "$SUITE_LOCK_SANDBOX/mixed"
-cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/"
-printf 'lanes-and-trust-suites\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [PASS] scripts/ci/test-not-a-shard-job.sh (9000s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log"
+mkdir -p "$SUITE_LOCK_SANDBOX/mixed" || fail "LD5: cannot create the mixed log dir"
+cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/" || fail "LD5: cannot copy the fixture logs"
+printf 'lanes-and-trust-suites\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [PASS] scripts/ci/test-not-a-shard-job.sh (9000s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log" || fail "LD5: cannot append the other-job line"
 out_m=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/mixed" --ledger "$FX/matching-ledger.tsv" 2>&1); rc_m=$?
 out_c=$(bash "$LD" --logs "$FX" --ledger "$FX/matching-ledger.tsv" 2>&1)
 if [ "$rc_m" -eq 0 ] && [ "$out_m" = "$out_c" ]; then
@@ -91,8 +91,8 @@ else
 fi
 
 echo "== LD5b: a non-Linux shard's lines are not counted =="
-cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/"
-printf 'shell-unit-shard (macos-latest, 1)\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [PASS] scripts/ci/test-not-linux.sh (9000s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log"
+cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/" || fail "LD5b: cannot copy the fixture logs"
+printf 'shell-unit-shard (macos-latest, 1)\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [PASS] scripts/ci/test-not-linux.sh (9000s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log" || fail "LD5b: cannot append the macos line"
 out_o=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/mixed" --ledger "$FX/matching-ledger.tsv" 2>&1); rc_o=$?
 if [ "$rc_o" -eq 0 ] && [ "$out_o" = "$out_c" ]; then
   pass "LD5b: a 9000s macos shard line changes nothing"
@@ -104,7 +104,7 @@ echo "== LD5c: no awk integer constant past 2^31 (mawk clamps %d there) =="
 big_constants() {
   grep -nE '(^|[^0-9.])[0-9]{10,}([^0-9]|$)' "$1" | grep -vE '^[0-9]+:[[:space:]]*#' | awk -F: '{ n = $0; sub(/^[0-9]+:/, "", n); while (match(n, /[0-9]{10,}/)) { if (substr(n, RSTART, RLENGTH) + 0 > 2147483647) print $1 ": " substr(n, RSTART, RLENGTH); n = substr(n, RSTART + RLENGTH) } }'
 }
-printf 'key = sprintf("%%012d", 999999999999 - c)\nok = 1000000000 - c\n' > "$SUITE_LOCK_SANDBOX/planted.sh"
+printf 'key = sprintf("%%012d", 999999999999 - c)\nok = 1000000000 - c\n' > "$SUITE_LOCK_SANDBOX/planted.sh" || fail "LD5c: cannot write the planted file"
 planted=$(big_constants "$SUITE_LOCK_SANDBOX/planted.sh")
 big=$(big_constants "$LD")
 if [ -z "$planted" ]; then
@@ -116,8 +116,8 @@ else
 fi
 
 echo "== LD5d: a suite that passed on retry ([FLAKE]) is counted =="
-cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/"
-printf 'shell-unit-shard (ubuntu-latest, 1)\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [FLAKE] scripts/ci/test-flaky-fixture.sh (first run rc=1, passed on retry, 90s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log"
+cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/" || fail "LD5d: cannot copy the fixture logs"
+printf 'shell-unit-shard (ubuntu-latest, 1)\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [FLAKE] scripts/ci/test-flaky-fixture.sh (first run rc=1, passed on retry, 90s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log" || fail "LD5d: cannot append the FLAKE line"
 out_f=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/mixed" --ledger "$FX/matching-ledger.tsv" 2>&1)
 n_c=$(sed -n 's/.* suites=\([0-9]*\) .*/\1/p' <<< "$out_c")
 n_f=$(sed -n 's/.* suites=\([0-9]*\) .*/\1/p' <<< "$out_f")
@@ -137,8 +137,8 @@ wf_ok() {
     && grep -qE 'bash scripts/ci/ledger-drift\.sh' <<< "$body"
 }
 mkdir -p "$SUITE_LOCK_SANDBOX/wf" || fail "LD6: cannot create the workflow mutant dir"
-sed 's/^  schedule:/    pull_request:\n  schedule:/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml"
-sed 's/bash scripts\/ci\/ledger-drift\.sh/true # bash scripts\/ci\/ledger-drift.sh/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml"
+sed 's/^  schedule:/    pull_request:\n  schedule:/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml" || fail "LD6: cannot write the pr-indented mutant"
+sed 's/bash scripts\/ci\/ledger-drift\.sh/true # bash scripts\/ci\/ledger-drift.sh/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml" || fail "LD6: cannot write the path-in-comment mutant"
 if [ -f "$WF" ] && wf_ok "$WF" && ! wf_ok "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml" && ! wf_ok "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml"; then
   pass "LD6: ledger-drift.yml has schedule + workflow_dispatch, no pull_request/push, runs ledger-drift.sh; both mutants rejected"
 else
