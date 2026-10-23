@@ -2509,6 +2509,7 @@ assert_deny "7009 control: a registered chokepoint env prefix beside the evidenc
 assert_deny "7009 control: a verb line AFTER the heredoc closes still denies" "$(j "$EVH"$'\n'"prose"$'\n'"EOF2"$'\n'"read scripts/hooks/*.sh")"
 assert_deny "7009 control: an evidence file that is then run still denies" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash $EV")"
 EVB="HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN"
+assert_allow "7009 evidence heredoc with a wide-spaced opener, chokepoint prefix in the prose body" "$(j "cat >   $EV <<'EOF2'"$'\n'"$EVB"$'\n'"EOF2"$'\n'"$WV")"
 assert_deny "7009 control: a payload body run through a dot-segment spelling still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/./evidence.md")"
 assert_deny "7009 control: a payload body run through a glob spelling still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/evid*.md")"
 assert_deny "7009 control: a payload body run by relative name after cd still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"cd /tmp/claude-1000/j3611"$'\n'"bash evidence.md")"

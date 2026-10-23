@@ -317,8 +317,7 @@ strip_evidence_heredocs() {
             j=$i
             while [ "$j" -lt "$n" ] && [ "${lines[$j]}" != "$tag" ]; do j=$((j + 1)); done
             rest=$text
-            rest=${rest//"cat > $path "/}
-            rest=${rest//"cat >$path "/}
+            rest=${rest//"$line"/}
             rest=${rest//"--evidence-file $path"/}
             # Every later mention of the file must be a --evidence-file operand.
             case "$path" in *..*) j=$n ;; esac
