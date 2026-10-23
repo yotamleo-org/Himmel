@@ -93,7 +93,7 @@ check     "forks scan still runs when the main scan finds issues" 'if: \$\{\{ !c
 check     "dispatch input probes a missing ref"     'missing_ref_probe:'
 forks_step="$(awk '/^      - name: Run the forks scan/ {f=1; print; next} f && /^      - / {exit} f {print}' <<< "$s")"
 probe_guard="$(awk '/if \[ "\$MISSING_REF_PROBE" = "true" \]; then/ {f=1; next} f && /^[[:space:]]+fi$/ {exit} f {print}' <<< "$forks_step")"
-if grep -q 'inputs.missing_ref_probe' <<< "$forks_step" && grep -q 'export SNYK_SCAN_FORKS=' <<< "$probe_guard"; then ok "probe feeds one missing-ref fork row to the forks scan"; else bad "probe feeds one missing-ref fork row to the forks scan"; fi
+if grep -q 'inputs.missing_ref_probe' <<< "$forks_step" && grep -q "export SNYK_SCAN_FORKS='[^']*|0\{40\}|" <<< "$probe_guard"; then ok "probe feeds one missing-ref fork row to the forks scan"; else bad "probe feeds one missing-ref fork row to the forks scan"; fi
 check     "JSON uploaded as an artifact"            'actions/upload-artifact@'
 check     "upload runs even when the scan finds issues" "if: always\(\) && steps\.gate\.outputs\.enabled == 'true'"
 
