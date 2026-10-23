@@ -27,6 +27,9 @@ COHORT="$HERE/cohort.tsv"
 
 die() { echo "pilot: $*" >&2; exit 1; }
 
+# shellcheck source=../../../lib/canon-path.sh
+. "$HERE/../../../lib/canon-path.sh" || die "cannot source lib/canon-path.sh"
+
 REPO="${PILOT_REPO:-$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")}"
 BASE_SHA="${PILOT_BASE_SHA:-$(cat "$LQ/BASE_SHA")}"
 ROOT="${PILOT_ROOT:-$HOME/.himmel/eval/lane-quality/pilot-4869}"
@@ -243,7 +246,9 @@ cmd_prepare() {
 in_dir() { # $1 path, $2 dir -> 0 when $1 is a regular file, not a symlink, that resolves under $2
   local p d
   { [ -f "$1" ] && [ ! -L "$1" ]; } || return 1
-  p="$(realpath -e -- "$1")" && d="$(realpath -e -- "$2")" || return 1
+  p="$(canon_path "$(dirname -- "$1")")" || return 1
+  p="$p/$(basename -- "$1")"
+  d="$(canon_path "$2")" || return 1
   case "$p" in "$d"/*) return 0 ;; esac
   return 1
 }

@@ -35,6 +35,7 @@ SHA_A=0123456789abcdef0123456789abcdef01234567
 SHA_B=89abcdef0123456789abcdef0123456789abcdef
 SHA_F=fedcba9876543210fedcba9876543210fedcba98   # a head that is not a commit of the target repo
 NOW=1792540800   # 2026-10-21T00:00:00Z
+OLD_TS=$(date -d "30 days ago" +%Y%m%d%H%M 2>/dev/null || date -v-30d +%Y%m%d%H%M)   # touch -t: GNU and BSD touch -d differ
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/verdict-retention-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 scratch="/tmp/claude-$(id -u)"
@@ -163,13 +164,13 @@ mkdir -p "$tmp/outside" "$cache/young1"
 for q in old1 qopen qscratch qlookup qforeign qclosed; do
     mkdir -p "$cache/$q/scratch"
     echo big > "$cache/$q/scratch/f"
-    touch -d '30 days ago' "$cache/$q/scratch/f" "$cache/$q/scratch" "$cache/$q"
+    touch -t "$OLD_TS" "$cache/$q/scratch/f" "$cache/$q/scratch" "$cache/$q"
 done
 echo keep > "$tmp/outside/keepme"
 ln -s "$tmp/outside" "$cache/oldlink"
 echo '{}' > "$cache/admissions-ledger.jsonl"
-touch -d '30 days ago' "$cache/admissions-ledger.jsonl"
-touch -h -d '30 days ago' "$cache/oldlink"
+touch -t "$OLD_TS" "$cache/admissions-ledger.jsonl"
+touch -h -t "$OLD_TS" "$cache/oldlink"
 rc=0; out=$(ret prune 2>&1) || rc=$?
 check "6: prune dry run rc 0" "$rc" 0
 contains "6: dry run lists the closed-PR dir" "$out" "PRUNE qscratch"
@@ -194,14 +195,14 @@ check "6: symlink kept" "$([ -L "$cache/oldlink" ] && echo yes)" yes
 check "6: symlink target untouched" "$([ -f "$tmp/outside/keepme" ] && echo yes)" yes
 check "6: vault verdicts untouched" "$([ -f "$vdir/qopen/judge.md" ] && echo yes)" yes
 mkdir -p "$root/$scope/verdicts/inroot"
-touch -d '30 days ago' "$root/$scope/verdicts/inroot"
+touch -t "$OLD_TS" "$root/$scope/verdicts/inroot"
 rc=0; out=$(ret prune --apply --cache "$root/$scope/verdicts" 2>&1) || rc=$?
 check "6: a cache inside the handover root is refused" "$rc" 2
 check "6: the in-root dir survives" "$([ -d "$root/$scope/verdicts/inroot" ] && echo yes)" yes
 
 # --- 7. --unproven-older-than: opt-in, never an open or foreign PR -----------------
 mkdir -p "$cache/qnopr/scratch"
-touch -d '30 days ago' "$cache/qnopr/scratch" "$cache/qnopr"
+touch -t "$OLD_TS" "$cache/qnopr/scratch" "$cache/qnopr"
 rc=0; out=$(ret prune --unproven-older-than 40 2>&1) || rc=$?
 check "7: a cutoff older than the dirs takes nothing" "$(printf '%s\n' "$out" | grep -c '^PRUNE')" 0
 rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
@@ -226,7 +227,7 @@ check "7: the flag is refused on archive" "$rc" 2
 # --- 8. ledger-backed scratch re-checks its PR; no ancestor cache; every file counts ------
 for q in qled qled2 qmix; do
     mkdir -p "$cache/$q/scratch"
-    touch -d '30 days ago' "$cache/$q/scratch" "$cache/$q"
+    touch -t "$OLD_TS" "$cache/$q/scratch" "$cache/$q"
 done
 printf '{"qid":"qled","pr":501,"head":"%s","verdict":"GO"}\n{"qid":"qled2","pr":502,"head":"%s","verdict":"GO"}\n' "$SHA_A" "$SHA_B" >> "$vdir/_ledger.jsonl"
 rc=0; out=$(ret prune 2>&1) || rc=$?
@@ -257,7 +258,7 @@ contains "8: a malformed file beside an open-PR file keeps the scratch" "$out" "
 rc=0; ret prune --apply --unproven-older-than 20 >/dev/null 2>&1 || rc=$?
 check "8: the mixed dir survives apply" "$([ -d "$cache/qmix" ] && echo yes)" yes
 mkdir -p "$vdir/qmix2" "$cache/qmix2/scratch"
-touch -d '30 days ago' "$cache/qmix2/scratch" "$cache/qmix2"
+touch -t "$OLD_TS" "$cache/qmix2/scratch" "$cache/qmix2"
 printf '# VERDICT qmix2 - judge\n\n## Verdict\n\n**GO** for head `short`\n\npr: 501\n' > "$vdir/qmix2/bad.md"
 rc=0; out=$(ret prune --unproven-older-than 20 2>&1) || rc=$?
 contains "8: a readable pr: line beside a malformed verdict line still counts" "$out" "KEEP qmix2 PR 501 is open"

@@ -280,7 +280,8 @@ bash "$HERE/backfill-ledger.sh" "$TMP/bf" --golden "$TMP/g8.jsonl" --modes hybri
 eq "backfill: a matching stored dir appends a row" "$rc" "0"
 eq "backfill: the row is marked backfill and keeps --candidate-limit" \
   "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["meta"]["backfill"], r["config"]["candidate_limit"])' "$BL")" "HIMMEL-4650 25"
-sed -i 's/\t[0-9.]*\t0$/\t0.123\t0/' "$TMP/bf/scores.tsv"
+tab=$(printf '\t')
+sed "s/${tab}[0-9.]*${tab}0\$/${tab}0.123${tab}0/" "$TMP/bf/scores.tsv" >"$TMP/bf/scores.new" && mv "$TMP/bf/scores.new" "$TMP/bf/scores.tsv"
 bash "$HERE/backfill-ledger.sh" "$TMP/bf" --golden "$TMP/g8.jsonl" --modes hybrid --embed-model E1 --ledger "$TMP/bf-ledger2.jsonl" >/dev/null 2>&1; rc=$?
 eq "backfill: scores.tsv that disagrees with the golden set is refused" "$rc" "2"
 eq "backfill: a refused run writes no row" "$([ -s "$TMP/bf-ledger2.jsonl" ] && echo row || echo none)" "none"

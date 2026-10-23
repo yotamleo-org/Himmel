@@ -80,7 +80,8 @@ if [ -n "$mlist" ] && [ -f "$mlist" ]; then
 fi
 for f in $SOURCES; do
   [ -f "$f" ] || continue
-  $SUDO sed -i "/^[[:space:]]*#/! s#//${primary//./\\.}#//$ALT#g" "$f"
+  $SUDO sed -i.bak "/^[[:space:]]*#/! s#//${primary//./\\.}#//$ALT#g" "$f"
+  $SUDO rm -f "$f.bak"
 done
 if apt "$T_ALT" update -o Acquire::Retries=1 -o DPkg::Lock::Timeout=60 \
    && apt "$T_ALT" install "${opts[@]}" "$@"; then

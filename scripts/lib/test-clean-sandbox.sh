@@ -200,6 +200,14 @@ printf '%s\n' '#!/bin/sh' 'exit 1' > "$TMP/shasum-bin/shasum"
 h_broken=$(PATH="$TMP/shasum-bin"; prov_state "$TMP/fixture-prov")
 assert_eq "T12b a hasher that fails on a present file is UNHASHABLE" UNHASHABLE "$h_broken"
 
+# T13: node lives off the system dirs on a macOS runner (setup-node toolcache),
+# so `#!/usr/bin/env node` died with 'env: node: No such file or directory'.
+mkdir -p "$TMP/node-bin"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$TMP/node-bin/node"
+chmod +x "$TMP/node-bin/node"
+out13=$(env "PATH=$TMP/node-bin:/usr/bin:/bin" bash "$SB" --scratch "$TMP/s13" -- printenv PATH 2>/dev/null)
+assert_eq "T13 the caller's node dir is appended to the sandbox PATH" "/usr/local/bin:/usr/bin:/bin:$TMP/node-bin" "$out13"
+
 echo "----"
 echo "clean-sandbox: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

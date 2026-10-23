@@ -35,6 +35,8 @@
 set -u
 die() { echo "pilot-sandbox: $*" >&2; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../lib/canon-path.sh
+. "$HERE/../../../lib/canon-path.sh" || die "cannot source lib/canon-path.sh"
 
 mode="${1:-}"; envf="${2:-}"
 { [ -n "$mode" ] && [ -r "$envf" ]; } || die "usage: sandbox.sh argv|run|check|launch <row-env> [args...]"
@@ -169,8 +171,8 @@ else
   # wins. One that is, sits under, or contains the worktree (at either jail path) would put it
   # back writable or hide the read-only mount, so such a row is refused, never launched.
   for rw in "$(dirname "$DOC")" "$RUN" "$ROWCONF" "$TX" "$GITDIR" "$GITOBJ"; do
-    rwp="$(realpath -m -- "$rw")" || die "cannot resolve $rw"
-    for wp in "$(realpath -m -- "$WT")" "$(realpath -m -- "$JWT")"; do
+    rwp="$(canon_path_partial "$rw")" || die "cannot resolve $rw"
+    for wp in "$(canon_path_partial "$WT")" "$(canon_path_partial "$JWT")"; do
       case "$rwp/" in "$wp"/*) die "$rw sits at or under the worktree $wp (its writable bind would undo the read-only worktree)" ;; esac
       case "$wp/" in "$rwp"/*) die "$rw contains the worktree $wp (its bind would hide the read-only worktree)" ;; esac
     done

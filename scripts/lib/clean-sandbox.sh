@@ -14,7 +14,8 @@
 # Launcher-owned (cannot be --keep'd), all under the scratch dir:
 #   HOME=<scratch>/home  HIMMEL_PROVENANCE_DIR=<scratch>/prov
 #   HIMMELCTL_CACHE_DIR=<scratch>/cache  TMPDIR=<scratch>/tmp
-#   PATH=/usr/local/bin:/usr/bin:/bin
+#   PATH=/usr/local/bin:/usr/bin:/bin plus the directory of the caller's node
+#     when it lives elsewhere
 # --keep VAR copies VAR from the caller's env when it is set there, byte-exact
 #   (trailing newlines included; an unset one is reported and not passed). --keep HANDOVER_DIR needs --allow-handover-dir.
 # --scratch DIR uses DIR (created if missing, made absolute); without it a fresh mktemp dir under
@@ -23,9 +24,9 @@
 # The printed env masks the value of any name matching TOKEN|KEY|SECRET|PASS
 #   (case-insensitive) as ***; the child still receives the real value.
 #
-# ponytail: the PATH is fixed at the common Linux/macOS system dirs, so a tool
-# installed elsewhere (Homebrew under /opt/homebrew, nvm, ~/.local/bin) is NOT
-# found in the sandbox; pass a full path to it, or --keep PATH is refused on
+# ponytail: the PATH is fixed at the common Linux/macOS system dirs plus node's
+# directory, so any other tool installed elsewhere (Homebrew under /opt/homebrew,
+# nvm, ~/.local/bin) is NOT found in the sandbox; pass a full path to it, or --keep PATH is refused on
 # purpose (the point is not to inherit the operator's PATH).
 #
 # Platform guard (linux/macos-only): POSIX bash 3.2+ (no associative arrays, no
@@ -37,6 +38,18 @@
 set -uo pipefail
 
 SANDBOX_PATH="/usr/local/bin:/usr/bin:/bin"
+# node off the system dirs (macOS setup-node toolcache, Homebrew) must still
+# resolve, or `#!/usr/bin/env node` fixtures die with 'env: node: No such file'.
+node_bin=$(command -v node 2>/dev/null) || node_bin=""
+case "$node_bin" in
+    /*)
+        node_dir=${node_bin%/*}
+        case ":$SANDBOX_PATH:" in
+            *":$node_dir:"*) ;;
+            *) SANDBOX_PATH="$SANDBOX_PATH:$node_dir" ;;
+        esac
+        ;;
+esac
 
 die() { echo "clean-sandbox: $*" >&2; exit 2; }
 

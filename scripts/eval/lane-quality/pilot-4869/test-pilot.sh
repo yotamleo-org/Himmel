@@ -72,7 +72,8 @@ echo "1. frozen hashes"
 check 'verify passes on the committed tree' 'bash "$P" verify >/dev/null 2>&1'
 # A copy keeps the scripts/ layout: FROZEN.sha256 also hashes the bench T4 fixture.
 C="$TMP/copy/scripts"
-mkdir -p "$C/eval" "$C/lanes/bench/fixtures"
+mkdir -p "$C/eval" "$C/lanes/bench/fixtures" "$C/lib"
+cp "$LQ/../../lib/canon-path.sh" "$C/lib/canon-path.sh"
 cp -R "$LQ" "$C/eval/lane-quality"; cp -R "$LQ/../../lanes/bench/fixtures/T4" "$C/lanes/bench/fixtures/T4"
 check 'verify passes on an unchanged copy (control)' 'bash "$C/eval/lane-quality/pilot-4869/pilot.sh" verify >/dev/null 2>&1'
 echo drift >>"$C/eval/lane-quality/tasks/shell-red-green/prompt.md"
@@ -134,6 +135,13 @@ echo '{"model":"x","enabledPlugins":{"qmd@himmel":true},"mcpServers":{"q":{}},"e
 hargv="$(HOME="$TMP/home" bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" 2>&1)"
 check 'the jail user settings carry no plugin or MCP server' 'jq -e "keys == [\"model\"]" "$TMP/root/run/p01/user-settings.json" >/dev/null && printf "%s\n" "$hargv" | grep -A2 -x -- --ro-bind | grep -qxF "$TMP/home/.claude/settings.json"'
 check 'the jail binds the seeded plugin files, never plugins/data' 'printf "%s\n" "$hargv" | grep -qxF "$TMP/home/.claude/plugins/marketplaces" && ! printf "%s\n" "$hargv" | grep -qE "^$TMP/home/.claude/plugins(/data.*)?$"'
+# macOS realpath (macos-cadence run 39954171036): only -q, 'usage: realpath [-q] [path ...]'
+mkdir -p "$TMP/bsdbin"
+printf '%s\n' '#!/bin/sh' \
+  'case "${1:-}" in -?*) [ "$1" = -- ] || { echo "realpath: illegal option -- ${1#-}" >&2; echo "usage: realpath [-q] [path ...]" >&2; exit 1; } ;; esac' \
+  'exec /usr/bin/realpath "$@"' >"$TMP/bsdbin/realpath"
+chmod +x "$TMP/bsdbin/realpath"
+check 'sandbox argv resolves its binds with a realpath that has no -e or -m' 'PATH="$TMP/bsdbin:$PATH" HOME="$TMP/home" bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" >"$TMP/bsd-argv" 2>&1 && ! grep -q "illegal option" "$TMP/bsd-argv"'
 argv="$(LEAK_TOKEN=leak LEAK_PLAIN=x DEEPSEEK_API_KEY=k bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" 2>&1)"
 after() { printf '%s\n' "$argv" | grep -A"$2" -x -- "$1"; } # $1 flag, $2 operand count
 check 'sandbox drops a credential and an unlisted variable, keeps PATH and the lane key' 'after --unsetenv 1 | grep -qx LEAK_TOKEN && after --unsetenv 1 | grep -qx LEAK_PLAIN && ! after --unsetenv 1 | grep -qxE "PATH|DEEPSEEK_API_KEY"'
@@ -541,7 +549,7 @@ echo "6. a native row scores only the sessions its launcher recorded"
 wt2="$(. "$TMP/root/rows/p02.env"; echo "$WT")"; doc2="$(. "$TMP/root/rows/p02.env"; echo "$DOC")"
 slug2="$(printf %s "$wt2" | sed 's#[^A-Za-z0-9]#-#g')"
 sid1=11111111-1111-4111-8111-111111111111; sid2=22222222-2222-4222-8222-222222222222
-sed -i "2i session_ids: $sid1,$sid2" "$doc2"
+awk -v l="session_ids: $sid1,$sid2" 'NR==2{print l}1' "$doc2" >"$doc2.new" && mv "$doc2.new" "$doc2"
 mkdir -p "$TMP/transcripts/$slug2"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"n1","name":"Read","input":{}}]}}\n' >"$TMP/transcripts/$slug2/$sid1.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"n2","name":"Read","input":{"file_path":"/home/x/Documents/salus/x"}}]}}\n' >"$TMP/transcripts/$slug2/$sid2.jsonl"
