@@ -437,7 +437,7 @@ test('opts.installed widens the deny-by-default baseline beyond the static catal
 });
 
 test('opts.installed cannot disable the floor or an enabled profile plugin', () => {
-  const { enabledPlugins: p } = resolveProfile(REG, 'lane-content', { installed: [...FLOOR, 'claude-obsidian@himmel'] });
+  const { enabledPlugins: p } = resolveProfile(REG, 'lane-content', { installed: [...FLOOR, 'obsidian-triage@himmel'] });
   for (const id of FLOOR) assert.equal(p[id], true);
   assert.equal(p['obsidian-triage@himmel'], true); // profile enable beats the baseline
 });
@@ -615,9 +615,10 @@ test('design profile enables the full design pack (HIMMEL-4012)', () => {
 
 // obsidian-second-brain was a user-scope skill that loaded in every
 // session. As a plugin it is catalogued (so every other profile resolves it
-// false) and enabled only where the vault is worked: the operator's interactive
-// `user` profile, vault-writing `lane-content` legs and the `telegram` bridge
-// (run.ts files attachments with it). Lean legs and the console never load it.
+// false) and enabled only where the vault is worked: vault-writing
+// `lane-content` legs and the `telegram` bridge (run.ts files attachments with
+// it). The `user` profile, lean legs and the console never load it; it can be
+// enabled on demand.
 const OSB_PROFILES = ['lane-content', 'telegram'];
 test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIMMEL-4018)', () => {
   const id = 'obsidian-second-brain@himmel';
