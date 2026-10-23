@@ -4003,7 +4003,7 @@ else
 fi
 rm -f "$t/home/.himmel/state/cadence-alert-send-failed"
 out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
-if printf '%s' "$out" | grep -q 'C33-alert-delivery'; then
+if grep -q 'C33-alert-delivery' <<< "$out"; then
     fail "C33 alert delivery reported with no failed-send marker"
 else
     pass "C33 alert delivery is silent without the marker"
