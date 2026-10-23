@@ -596,18 +596,24 @@ _prune_cache_dir() {
 }
 if [ "$CACHE_ON" -eq 1 ]; then _prune_cache_dir "${CHECK_CI_CACHE_DIR:-${HOME:-/tmp}/.himmel/state/ci-cache}"; fi
 
+# shellcheck source=scripts/lib/non-gating-contexts.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/non-gating-contexts.sh"
+
 # pr_rows <ttl> — "<bucket>\t<name>" per check. Cached mode reads (or fetches once
 # for the whole fleet) a head-bound snapshot no older than <ttl> seconds; legacy
 # mode is the one direct gh call it always was. rc 1 = unreadable.
 pr_rows() {
     if [ "$CACHE_ON" -eq 1 ]; then
         _cic_get_bounded "$1" || return 1
-        [ -z "$CIC_ROWS" ] || printf '%s\n' "$CIC_ROWS"
+        [ -z "$CIC_ROWS" ] || printf '%s\n' "$CIC_ROWS" | ngc_drop_rows
         return 0
     fi
     pr_checks --json bucket,name --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null
 }
 
+# ponytail: the legacy gh --watch path cannot skip a listed context, so a red
+# that is only listed still exits 1 (fail closed), upgrade path = the cached path.
 # _fail_count — how many checks are in the fail bucket, from a decide-grade read
 # (a terminal verdict is never older than CHECK_CI_DECIDE_TTL seconds). Prints
 # nothing when unreadable (callers fail closed on a non-numeric answer).

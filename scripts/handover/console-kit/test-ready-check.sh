@@ -298,6 +298,70 @@ check "two-names-one-failure: exit 1" "$rc" "1"
 contains "two-names-one-failure: check 2 fails" "$out" "[FAIL] 2."
 contains "two-names-one-failure: names only the failing check" "$out" "lint=COMPLETED/FAILURE"
 
+# --- 2f. non-gating contexts: the exact-match list in scripts/lib/non-gating-contexts.txt.
+# Only the listed status context in ERROR: row 2 passes and names it ----------
+SNYK_ERR='{"context":"security/snyk (yotamleo)","state":"ERROR","createdAt":"2026-01-01T08:10:00Z"}'
+BUILD_OK='{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}'
+BUILD_RED='{"name":"build","status":"COMPLETED","conclusion":"FAILURE"}'
+reset_stubs
+STUB_ROLLUP="[$BUILD_OK,$SNYK_ERR]"
+rc=0; out="$(run)" || rc=$?
+check "nongating-error-only: exit 0" "$rc" "0"
+contains "nongating-error-only: check 2 passes" "$out" "[PASS] 2."
+contains "nongating-error-only: check 2 names the skipped context" "$out" "security/snyk (yotamleo)=ERROR"
+
+# UNSTABLE with only the listed context failing: row 1 passes ----------------
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$BUILD_OK,$SNYK_ERR]"
+rc=0; out="$(run)" || rc=$?
+check "nongating-unstable: exit 0" "$rc" "0"
+contains "nongating-unstable: check 1 passes" "$out" "[PASS] 1."
+contains "nongating-unstable: check 1 names the context" "$out" "security/snyk (yotamleo)"
+
+# An unlisted failure still fails, with or without the listed one ------------
+reset_stubs
+STUB_ROLLUP="[$BUILD_RED,$SNYK_ERR]"
+rc=0; out="$(run)" || rc=$?
+check "nongating-plus-unlisted-red: exit 1" "$rc" "1"
+contains "nongating-plus-unlisted-red: check 2 fails" "$out" "[FAIL] 2."
+contains "nongating-plus-unlisted-red: names the unlisted offender" "$out" "build=COMPLETED/FAILURE"
+notcontains "nongating-plus-unlisted-red: the listed context is not an offender" "$out" "not-green — security/snyk"
+
+# UNSTABLE with an unlisted failure fails row 1 ------------------------------
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$BUILD_RED,$SNYK_ERR]"
+rc=0; out="$(run)" || rc=$?
+check "unstable-unlisted-red: exit 1" "$rc" "1"
+contains "unstable-unlisted-red: check 1 fails" "$out" "[FAIL] 1."
+
+# UNSTABLE with nothing non-green to explain it fails row 1 ------------------
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$BUILD_OK]"
+rc=0; out="$(run)" || rc=$?
+check "unstable-all-green: exit 1" "$rc" "1"
+contains "unstable-all-green: check 1 fails" "$out" "[FAIL] 1."
+
+# Exact match only: a longer or shorter name is a normal check ---------------
+for ctx in 'security/snyk (yotamleo) extra' 'security/snyk' 'x security/snyk (yotamleo)'; do
+    reset_stubs
+    STUB_MSS=UNSTABLE
+    STUB_ROLLUP="[$BUILD_OK,{\"context\":\"$ctx\",\"state\":\"ERROR\"}]"
+    rc=0; out="$(run)" || rc=$?
+    check "lookalike [$ctx]: exit 1" "$rc" "1"
+    contains "lookalike [$ctx]: check 1 fails" "$out" "[FAIL] 1."
+    contains "lookalike [$ctx]: check 2 fails" "$out" "[FAIL] 2."
+done
+
+# The listed context alone proves nothing: no real check, no pass ------------
+reset_stubs
+STUB_ROLLUP="[$SNYK_ERR]"
+rc=0; out="$(run)" || rc=$?
+check "nongating-only-rollup: exit 1" "$rc" "1"
+contains "nongating-only-rollup: check 2 fails" "$out" "[FAIL] 2."
+
 # --- 2f. control: same name in two different workflows, one FAILURE — a
 # different workflowName means a different identity, so the earlier failing
 # workflow's run must not be superseded by the other workflow's later
