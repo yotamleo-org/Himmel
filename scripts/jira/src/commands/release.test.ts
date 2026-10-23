@@ -7,7 +7,7 @@ import { join } from 'node:path';
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
-import { parseDecisions, registerRelease } from './release.js';
+import { judgeEnv, parseDecisions, registerRelease } from './release.js';
 
 let out: string[];
 let root: string;
@@ -113,5 +113,9 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(() => parseDecisions(JSON.stringify({ is_error: true, result: 'overloaded' }))).toThrow(/nothing ruled/);
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: '{"req":"x"}' }))).toThrow();
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: '[null]' }))).toThrow(/nothing ruled/);
+  });
+
+  it('the judge call does not inherit the calling session markers', () => {
+    expect(judgeEnv({ PATH: '/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', AI_AGENT: 'x', HOME: '/h' })).toEqual({ PATH: '/bin', HOME: '/h' });
   });
 });

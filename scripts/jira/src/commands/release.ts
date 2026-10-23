@@ -117,6 +117,12 @@ export function parseDecisions(stdout: string): Decision[] {
   return got as Decision[];
 }
 
+// A call launched from inside a session inherits its markers, which make the child identify as that session.
+export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([k]) =>
+    !['CLAUDECODE', 'AI_AGENT', 'CLAUDE_PID', 'CLAUDE_EFFORT'].includes(k) && !k.startsWith('CLAUDE_CODE_')));
+}
+
 // One bounded model call per batch: preflight first, no tools, one turn, JSON envelope.
 export const liveJudge: Judge = async (input) => {
   const verdict = execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'bank-preflight.sh')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
@@ -126,7 +132,7 @@ export const liveJudge: Judge = async (input) => {
   const out = execFileSync('claude', [
     '-p', '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
     '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-  ], { input: judgePrompt(input, skill), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
+  ], { input: judgePrompt(input, skill), env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
   return parseDecisions(out);
 };
 
