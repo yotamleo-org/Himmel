@@ -43,6 +43,12 @@ _crl_alerts() {
     printf '%s/cr-first-release-alerts\n' "$c"
 }
 
+# _crl_clear <alerts file> <slug> — drop every `<slug>|...` key.
+_crl_clear() {
+    grep -v -- "^$2|" "$1" > "$1.tmp.$$" 2>/dev/null
+    mv "$1.tmp.$$" "$1"
+}
+
 cmd="${1:-}"; [ "$#" -gt 0 ] && shift
 case "$cmd" in
     append)
@@ -91,8 +97,15 @@ case "$cmd" in
         [ "$#" -eq 1 ] || { echo "usage: cr-trigger-ledger.sh alert-clear <slug>" >&2; exit 2; }
         f=$(_crl_alerts) || exit 2
         [ -f "$f" ] || exit 0
-        grep -v -- "^$1|" "$f" > "$f.tmp.$$" 2>/dev/null
-        mv "$f.tmp.$$" "$f"
+        # Same lock as alert-once: an unlocked rewrite drops a key appended meanwhile.
+        if command -v flock >/dev/null 2>&1; then
+            (
+                flock -w 30 9 || exit 3  # prim-ok: guarded by command -v flock with an unlocked fallback below
+                _crl_clear "$f" "$1"
+            ) 9>>"$f.lock"
+        else
+            _crl_clear "$f" "$1"
+        fi
         ;;
     *)
         echo "usage: cr-trigger-ledger.sh append|has|list|alert-once|alert-clear" >&2

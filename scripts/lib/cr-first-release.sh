@@ -188,8 +188,11 @@ _crf_do_release() {
 }
 
 _crf_release_locked() {
-    local repo="$1" pr="$2" head="$3" reason="$4" state="$5" settled="$6" cdate events reviewers
-    cdate=$(gh api "repos/$repo/commits/$head" </dev/null 2>/dev/null | jq -r '.commit.committer.date // empty' 2>/dev/null)
+    local repo="$1" pr="$2" head="$3" reason="$4" state="$5" settled="$6" cdate="${_CRF_FLOOR:-}" events reviewers cur
+    # The gate took a while to evaluate: a push since then means this approval is for a head that is gone.
+    cur=$(gh api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null | jq -r '[.state // "", .head.sha // ""] | @tsv' 2>/dev/null) \
+        || { echo "CR-FIRST HOLD degraded (cannot re-read PR #$pr)"; return 3; }
+    [ "$cur" = "$(printf 'open\t%s' "$head")" ] || return 0
     events=$(_crf_list "repos/$repo/issues/$pr/events?per_page=100") || { echo "CR-FIRST HOLD degraded (cannot re-read PR #$pr events)"; return 3; }
     if [ -n "$cdate" ] && printf '%s' "$events" | jq -e --arg d "$cdate" \
         '[.[] | select(.event == "labeled" and .label.name == "ci:go" and .created_at >= $d)] | length > 0' >/dev/null 2>&1; then
@@ -258,12 +261,18 @@ cr_first_release() {
     # A heavy job that really ran at this head is a release already (a pull_request
     # run before ci:go gating, or a hand label picked up by CI).
     if printf '%s' "$checks" | jq -e --arg re "${CR_FIRST_HEAVY_RE:-^(bun-suites|node-suites|shell-unit-shard|shell-unit|lanes-and-trust-suites)}" \
-        '[.check_runs[] | select(.name | test($re)) | select((.conclusion // "") != "skipped")] | length > 0' >/dev/null 2>&1; then
+        '[.check_runs[] | select(.name | test($re))
+          | select(.status == "in_progress" or (.status == "completed" and (.conclusion // "") != "skipped"))] | length > 0' >/dev/null 2>&1; then
         return 0
     fi
+    # A `ci:go` event only belongs to this head if it is newer than the head's own
+    # first check: the committer date alone misses an old commit pushed after a release.
+    _CRF_FLOOR=$(printf '%s' "$checks" | jq -r --arg d "$cdate" \
+        '([.check_runs[] | .started_at // empty] | min // "") as $s | if $s > $d then $s else $d end' 2>/dev/null) || _CRF_FLOOR=""
+    [ -n "$_CRF_FLOOR" ] || _CRF_FLOOR=$cdate
     events=$(_crf_list "repos/$repo/issues/$pr/events?per_page=100") \
         || { echo "CR-FIRST HOLD degraded (cannot read PR #$pr events) $age"; return 3; }
-    if printf '%s' "$events" | jq -e --arg d "$cdate" \
+    if printf '%s' "$events" | jq -e --arg d "$_CRF_FLOOR" \
         '[.[] | select(.event == "labeled" and .label.name == "ci:go" and .created_at >= $d)] | length > 0' >/dev/null 2>&1; then
         if ! bash "$_CRF_LEDGER_CLI" has "$pr" "$head" 2>/dev/null; then
             bash "$_CRF_LEDGER_CLI" alert-once "manual|$repo#$pr|$head" "CR-FIRST MANUAL-RELEASE PR #$pr head $head: ci:go set with no release-ledger line" || true
@@ -273,7 +282,7 @@ cr_first_release() {
 
     cheap=$(printf '%s' "$checks" | jq -r --arg re "${CR_FIRST_CHEAP_RE:-^(ci-quick|secret-scan|bwk-awk-mktemp-gate|unchecked-mktemp-range|leak-classes|git-env-scrub|commit-lint|plugin-version-bump|lint)\$}" '
         [.check_runs[] | select(.name | test($re))] as $c
-        | (if any($c[]; .status == "completed" and ((.conclusion // "") | IN("failure", "cancelled", "timed_out", "action_required"))) then "red"
+        | (if any($c[]; .status == "completed" and ((.conclusion // "") | IN("failure", "cancelled", "timed_out", "action_required", "startup_failure"))) then "red"
            elif (any($c[]; .name == "ci-quick") | not) or any($c[]; .status != "completed") then "pending"
            else "green" end),
           ([$c[] | .completed_at // empty] | max // "")' 2>/dev/null) \
@@ -344,7 +353,8 @@ cr_first_release() {
 # cr_first_sweep <owner/name> — the console tick's event (point 5). Reads
 # `<pr><TAB><head><TAB><labels csv>` rows on stdin (the tick's one `gh pr list`
 # pass: non-fork, non-draft PRs), reads the switch once, calls cr_first_release
-# for every head without a `ci:go` label, and prints
+# for every head not already released by this station (a `ci:go` label plus a
+# release-ledger line for that head), and prints
 #   crfirst=#<pr>:<reason>:<age>[,...]   the held heads (+ #<pr>:manual-release)
 #   ALERT <text>                         each CR-FIRST ALERT line, once per outage
 # Nothing at all when the switch is off or unset, or no head is held.
@@ -354,7 +364,8 @@ cr_first_sweep() {
     while IFS=$'\t' read -r pr head labels; do
         case "$pr" in ''|*[!0-9]*) continue ;; esac
         [ -n "$head" ] || continue
-        case ",$labels," in *,ci:go,*) continue ;; esac
+        # A label alone proves nothing: it survives a push. Skip only a head this station released.
+        case ",$labels," in *,ci:go,*) bash "$_CRF_LEDGER_CLI" has "$pr" "$head" 2>/dev/null && continue ;; esac
         out=$(cr_first_release "$pr" "$head" "$repo" </dev/null 2>/dev/null) || true
         tok=""
         while IFS= read -r line; do

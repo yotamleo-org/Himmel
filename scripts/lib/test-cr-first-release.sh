@@ -41,11 +41,11 @@ case "$A" in
     echo '[{"name":"ci:go"}]'; exit 0 ;;
   "api repos/o/r/labels/ci:go"*) [ -f "$S/label-missing" ] && { echo '{"message":"Not Found"}' >&2; exit 1; }; echo '{"name":"ci:go"}'; exit 0 ;;
   "api repos/o/r/pulls/"*"/reviews"*) f reviews.json; exit 0 ;;
-  "api repos/o/r/pulls/"*) f pull.json '{}'; exit 0 ;;
+  "api repos/o/r/pulls/"*) [ -f "$S/pull-after.json" ] && [ -f "$S/gate-began" ] && { cat "$S/pull-after.json"; exit 0; }; f pull.json '{}'; exit 0 ;;
   "api repos/o/r/issues/"*"/events"*) f events.json; exit 0 ;;
   "api repos/o/r/issues/"*"/comments"*) [ -f "$S/comments-fail" ] && exit 1; f comments.json; exit 0 ;;
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
-  "api repos/o/r/commits/"*"/statuses"*) f statuses.json; exit 0 ;;
+  "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
   "api repos/o/r/commits/"*) f commit.json '{}'; exit 0 ;;
 esac
 echo '{}'
@@ -82,7 +82,10 @@ pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "ok   $1"; }
 bad() { fail=$((fail+1)); echo "FAIL $1"; }
 has() { if grep -qE -- "$2" "$1" 2>/dev/null; then ok "$3"; else bad "$3 (no /$2/ in $(basename "$1"))"; fi; }
-hasnt() { if grep -qE -- "$2" "$1" 2>/dev/null; then bad "$3 (/$2/ in $(basename "$1"))"; else ok "$3"; fi; }
+hasnt() { # grep rc 1 = no match (pass); rc 0 = matched, rc 2 = unreadable file or bad regex (both fail)
+  local rc=0; grep -qE -- "$2" "$1" 2>/dev/null || rc=$?
+  case "$rc" in 1) ok "$3" ;; 0) bad "$3 (/$2/ in $(basename "$1"))" ;; *) bad "$3 (grep rc=$rc on $(basename "$1"))" ;; esac
+}
 eq() { if [ "$1" = "$2" ]; then ok "$3"; else bad "$3 (got [$1] want [$2])"; fi; }
 posts() { grep -c -- '-X POST' "$S/calls.log" 2>/dev/null || true; }
 deletes() { grep -c -- '-X DELETE' "$S/calls.log" 2>/dev/null || true; }
@@ -190,6 +193,23 @@ eq "$(deletes)/$(posts)" 0/0 "heavy job already ran at the head: no pair"
 # ...a SKIPPED heavy job is not a release.
 reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","completed_at":"2026-10-23T10:01:00Z"}]'; run heavy-skipped-not-released
 eq "$(deletes)/$(posts)" 1/1 "skipped heavy job is not a release: one pair"
+# ...a QUEUED heavy job (no conclusion yet) is not proof the head ran.
+reset; checks success '[{"name":"bun-suites","status":"queued","conclusion":null,"completed_at":null}]'; run heavy-queued-not-released
+eq "$(deletes)/$(posts)" 1/1 "queued heavy job is not a release: one pair"
+# ...an in-progress one is.
+reset; checks success '[{"name":"bun-suites","status":"in_progress","conclusion":null,"completed_at":null}]'; run heavy-running-released
+eq "$(deletes)/$(posts)" 0/0 "in-progress heavy job already ran at the head: no pair"
+# a label event older than the head's own checks belongs to an earlier life of the commit.
+reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T10:05:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"
+checks success '[{"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-23T10:08:00Z","completed_at":"2026-10-23T10:08:30Z"}]'; run old-label-before-head-checks
+eq "$(deletes)/$(posts)" 1/1 "a ci:go event before the head's first check started does not release the head"
+# the head moves between the first PR read and the label write: nothing is written.
+reset; jq -c '.head.sha = "feedface00000000000000000000000000000000"' "$S/pull.json" > "$S/pull-after.json"; run head-moves-mid-release
+eq "$(deletes)/$(posts)/$(ledger_lines)" 0/0/0 "head moved during evaluation: no label write, no ledger line"
+# a failed-to-start cheap job is red.
+reset; checks startup_failure; run cheap-startup-failure
+has "$TMP/out-cheap-startup-failure" 'CR-FIRST HOLD cheap-red' "ci-quick startup_failure holds as cheap-red"
+eq "$(deletes)/$(posts)" 0/0 "ci-quick startup_failure: no label write"
 # RL2 — H1's release does not carry over to H2.
 reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T09:00:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"
 led; run RL2-old-release
@@ -368,8 +388,11 @@ reset; echo off > "$S/var"; sweep "42\t$HEAD1\t\n"
 eq "$(wc -c < "$TMP/out-sweep" | tr -d ' ')/$(grep -c 'pulls\|check-runs' "$S/calls.log")" 0/0 "sweep switch off: no output and no PR read"
 reset; checks pending; sweep "42\t$HEAD1\t\n"
 has "$TMP/out-sweep" '^crfirst=#42:cheap-pending:[0-9]+[smhd]$' "sweep: a held head is listed with reason and age"
-reset; sweep "42\t$HEAD1\tci:go,bug\n"
-eq "$(grep -c 'pulls\|check-runs' "$S/calls.log")" 0 "sweep: a head already labelled ci:go is not read"
+reset; printf '{"pr":42,"head":"%s","reviewers":[]}\n' "$HEAD1" | bash "$SCRIPT_DIR/../cr/cr-trigger-ledger.sh" append; sweep "42\t$HEAD1\tci:go,bug\n"
+eq "$(grep -c 'pulls\|check-runs' "$S/calls.log")" 0 "sweep: a head this station released (ci:go + ledger line) is not read"
+# a label that survived a push belongs to an older head: the new head still needs its own pair.
+reset; echo '[{"event":"labeled","label":{"name":"ci:go"},"created_at":"2026-10-23T09:00:00Z"}]' > "$S/events.json"; sweep "42\t$HEAD1\tci:go\n"
+eq "$(deletes)/$(posts)" 1/1 "sweep: a ci:go left over from an older head does not skip the new head"
 reset; sweep "42\t$HEAD1\tbug\n"
 eq "$(deletes)/$(posts)/$(wc -c < "$TMP/out-sweep" | tr -d ' ')" 1/1/0 "sweep: an unreleased head with a passing gate is released, nothing listed"
 reset; echo '[{"event":"labeled","label":{"name":"ci:go"},"created_at":"2026-10-23T10:05:00Z"}]' > "$S/events.json"; sweep "42\t$HEAD1\t\n"
