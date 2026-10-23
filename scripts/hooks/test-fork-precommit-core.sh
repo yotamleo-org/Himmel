@@ -7,7 +7,8 @@
 # commit on the default branch is refused, a normal ticketed commit passes, a
 # 64-hex digest (a sha256) and a bare 40-hex pin are not mistaken for a secret,
 # a secret merely containing a 40-hex run is still refused (allowlist anchors),
-# and only git-generated Merge/Revert subjects skip the ticket check.
+# an exact 40-hex secret matching a named rule is still refused (allowlist
+# scoped to the generic rule), and only git-generated Merge/Revert subjects skip the ticket check.
 #
 # Skips (exit 0, loud) where pre-commit is absent; read the `== Summary ==`
 # block, not the rc. gitleaks needs no PATH binary: pre-commit builds it
@@ -128,7 +129,7 @@ fi
 # 7. a bare 40-hex pin (a git sha) passes; the same run inside a longer secret
 # is still refused (the allowlist is anchored ^...$ on the matched secret)
 PIN="a3f9c1d27b6e84f05d1c9a7e2b4f8063d5e1a9c7"
-printf 'api_key = "%s"\n' "$PIN" > "$FORK/pin40.txt"
+printf 'sha_key = "%s"\n' "$PIN" > "$FORK/pin40.txt"
 git -C "$FORK" add pin40.txt
 if commit "chore(app): [HIMMEL-5978] pin sha"; then
   ok "bare 40-hex pin passes the anchored allowlist"
@@ -145,6 +146,18 @@ else
 fi
 git -C "$FORK" reset -q HEAD embedded.txt
 rm -f "$FORK/embedded.txt"
+
+# the exemption covers only the generic rule: a named rule (cloudflare-api-key)
+# matching an exact 40-hex secret is still refused
+printf 'cloudflare_api_key = "%s"\n' "$PIN" > "$FORK/cf.txt"
+git -C "$FORK" add cf.txt
+if commit "fix(app): [HIMMEL-5978] add cloudflare key"; then
+  bad "40-hex secret matching a named rule is refused"
+else
+  ok "40-hex secret matching a named rule is refused"
+fi
+git -C "$FORK" reset -q HEAD cf.txt
+rm -f "$FORK/cf.txt"
 
 # 8. only the subjects git itself generates skip the ticket check
 for subj in \

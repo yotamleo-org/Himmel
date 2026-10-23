@@ -1,11 +1,14 @@
 # himmel fork-adapter gitleaks config (HIMMEL-5978): the full built-in ruleset
 # plus an ANCHORED allowlist (^...$ on the matched secret), so a SHA pin is not
-# flagged but a secret merely containing one still is.
+# flagged but a secret merely containing one still is. The allowlist is scoped
+# to the generic rule: a named rule (cloudflare-api-key, ...) matching an exact
+# 40 or 64 hex secret is still flagged.
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "git SHA-1 and sha256 digests, exact match only"
+targetRules = ["generic-api-key"]
 regexes = [
   '''^[0-9a-f]{40}$''',
   '''^[0-9a-f]{64}$''',

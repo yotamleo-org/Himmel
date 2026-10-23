@@ -12,9 +12,9 @@ lint or style on upstream code; a fork's own linters win.
 
 | Hook | What it enforces | Source |
 |---|---|---|
-| `gitleaks` | no secret in a staged diff; anchored `^...$` allowlist for 40-hex and 64-hex SHAs | `gitleaks/gitleaks` `v8.30.1`, config `.himmel/gitleaks.toml` |
+| `gitleaks` | no secret in a staged diff; anchored `^...$` allowlist for 40-hex and 64-hex SHAs, scoped to the `generic-api-key` rule so a named rule (for example `cloudflare-api-key`) still flags an exact 40-hex secret | `gitleaks/gitleaks` `v8.30.1`, config `.himmel/gitleaks.toml` |
 | `no-commit-to-branch` | no direct commit on the fork's default branch | `pre-commit/pre-commit-hooks` `v6.0.0` |
-| `himmel-ticket-id` | commit subject is conventional and carries `HIMMEL-<n>` (only git-generated `Merge branch '…'`, `Merge pull request #…`, `Merge remote-tracking branch '…'` and `Revert "…"` subjects pass without one) | local `pygrep` hook, no script |
+| `himmel-ticket-id` | commit subject is conventional and carries `HIMMEL-<n>` (only git-generated `Merge branch '…'`, `Merge pull request #…`, `Merge remote-tracking branch '…'` and `Revert "…"` subjects pass without one; other real git subjects such as `Merge tag`, octopus `Merge branches`, `Merge commit` and `Reapply` fail closed and need a ticket typed by hand) | local `pygrep` hook, no script |
 
 The pins match himmel's own `.pre-commit-config.yaml`, so the hook cache is
 shared on a station and `pin-scan.py` sees one version of each.
