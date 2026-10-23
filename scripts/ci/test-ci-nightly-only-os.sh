@@ -69,13 +69,18 @@ for job in shell-unit-shard bun-suites; do
   fi
 done
 
-# 4. SUITE_TIER_MODE=all (the full corpus) only on the nightly.
+# 4. SUITE_TIER_MODE=all (the full corpus) on every run that is not a
+# pull_request (the nightly, the main-sweep cron, a manual dispatch), fast on
+# a PR. The aggregator recomputes the shards' tier, so both carry one expression.
 tier="$(job_block shell-unit-shard | sed -n 's/^[[:space:]]*SUITE_TIER_MODE:[[:space:]]*//p')"
+agg_tier="$(job_block shell-unit | sed -n 's/^[[:space:]]*SUITE_TIER_MODE:[[:space:]]*//p')"
 case "$tier" in
-  "\${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}")
-    ok "SUITE_TIER_MODE is 'all' on the nightly cron only, 'fast' otherwise" ;;
-  *) bad "SUITE_TIER_MODE expression is not schedule-only; got '$tier'" ;;
+  "\${{ github.event_name == 'pull_request' && 'fast' || 'all' }}")
+    ok "SUITE_TIER_MODE is 'fast' on a pull_request, 'all' on every other run" ;;
+  *) bad "SUITE_TIER_MODE expression is not 'fast' on a PR and 'all' elsewhere; got '$tier'" ;;
 esac
+if [ "$agg_tier" = "$tier" ]; then ok "the aggregator's SUITE_TIER_MODE matches the shards'"
+else bad "the aggregator's SUITE_TIER_MODE '$agg_tier' differs from the shards' '$tier'"; fi
 
 # 5. The aggregator's nightly-only steps are keyed on schedule alone.
 agg="$(job_block shell-unit)"
