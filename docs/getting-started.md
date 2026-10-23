@@ -168,7 +168,9 @@ change, make a new worktree, `cd` into the path it prints and relaunch `claude`
 there before you edit. The hooks below only fire inside an active session. The
 throwaway project from step 1 has no remote, so the push and PR lines need a
 GitHub remote first (`git remote add origin <url>`); without one, stop after
-the commit. The day-to-day loop is:
+the commit. Once `origin` exists, later worktrees are cut from `origin/main`,
+which lacks the install commit until you push `chore/install-himmel` and merge
+it there through a PR. The day-to-day loop is:
 
 ```bash
 bash scripts/worktree.sh feat/my-thing
