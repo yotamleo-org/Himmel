@@ -147,16 +147,6 @@ if [ "$rc" -eq 0 ]; then pass "over-install exits 0"; else fail "over-install ex
 
 SETTINGS="$PROJ/.claude/settings.json"
 
-# The hook set a fresh candidate install writes, for the "same hooks" assertion below.
-PROJ2="$WORK/proj-fresh"
-mkdir -p "$PROJ2"
-git -C "$PROJ2" init -q -b main
-git -C "$PROJ2" -c user.email=ovr@example.invalid -c user.name=ovr commit -q --allow-empty -m init
-( cd "$PROJ2" && env -i HOME="$HOME" PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" \
-    HIMMELCTL_CACHE_DIR="$CACHE" node "$TREE/scripts/himmelctl/bin.js" install --scope project ) > "$WORK/install-fresh.log" 2>&1; rc=$?
-if [ "$rc" -eq 0 ]; then pass "fresh candidate install exits 0"; else fail "fresh candidate install exits 0 (rc=$rc)"; tail -20 "$WORK/install-fresh.log"; fi
-FRESH_SETTINGS="$PROJ2/.claude/settings.json"
-
 if [ "$RED" = "dup-hook" ]; then
   # RED control: duplicate the first hook entry of the first event, as a broken
   # merge would; the "hooks appear once each" assertion below must catch it.
@@ -198,20 +188,39 @@ else
   dups="$(settings_dup_hooks "$SETTINGS")"
   if [ "$n_hooks" -gt 0 ] && [ -z "$dups" ]; then pass "settings hooks appear once each ($n_hooks hook commands)"
   else fail "settings hooks appear once each ($n_hooks hook commands; duplicated: ${dups:-none, but no hooks found})"; fi
-  hook_diff="$(settings_hook_set_diff "$FRESH_SETTINGS" "$SETTINGS")"
-  if [ -s "$FRESH_SETTINGS" ] && [ -z "$hook_diff" ]; then pass "settings hooks match a fresh candidate install"
-  else fail "settings hooks match a fresh candidate install (diff vs fresh: ${hook_diff:-no fresh settings})"; fi
+  cp "$SETTINGS" "$WORK/settings.over"
 fi
 
 # no-op: snapshot the user-visible state, install again, compare. The provenance ledger
 # and its per-run backup/uninstall bookkeeping change on every install by design.
 snap() { ( cd "$WORK" && find proj/.claude proj/scripts hm/.env "$HOME/.claude.json" "$HOME/.claude/settings.json" "$HOME/.himmel/himmel.conf" \
-    -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum ); }
+    -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum
+    # symlinks: path and target  # gnu-ok: the guest is Linux
+    find proj/.claude proj/scripts "$HOME/.claude" -type l -printf '%p -> %l\n' 2>/dev/null | sort ); }
 snap > "$WORK/snap-a.txt"
 ctl install --scope project > "$WORK/install-again.log" 2>&1; rc=$?
 snap > "$WORK/snap-b.txt"
 if [ "$rc" -ne 0 ]; then fail "second install exits 0 (rc=$rc)"
 elif diff "$WORK/snap-a.txt" "$WORK/snap-b.txt" > "$WORK/snap.diff"; then pass "second install is a no-op ($(wc -l < "$WORK/snap-a.txt") files unchanged)"
 else fail "second install is a no-op"; head -10 "$WORK/snap.diff"; fi
+
+# Last, because a fresh install shares HOME and the cache with the upgrade under test and
+# could repair state the assertions above must see as the over-install left it: install the
+# candidate fresh into a second project and require the same hook registrations.
+PROJ2="$WORK/proj-fresh"
+mkdir -p "$PROJ2"
+git -C "$PROJ2" init -q -b main
+git -C "$PROJ2" -c user.email=ovr@example.invalid -c user.name=ovr commit -q --allow-empty -m init
+( cd "$PROJ2" && env -i HOME="$HOME" PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" \
+    HIMMELCTL_CACHE_DIR="$CACHE" node "$TREE/scripts/himmelctl/bin.js" install --scope project ) > "$WORK/install-fresh.log" 2>&1; rc=$?
+if [ "$rc" -eq 0 ]; then pass "fresh candidate install exits 0"; else fail "fresh candidate install exits 0 (rc=$rc)"; tail -20 "$WORK/install-fresh.log"; fi
+FRESH_SETTINGS="$PROJ2/.claude/settings.json"
+if [ -s "$FRESH_SETTINGS" ] && [ -s "$WORK/settings.over" ]; then
+  hook_diff="$(settings_hook_set_diff "$FRESH_SETTINGS" "$WORK/settings.over")"
+  if [ -z "$hook_diff" ]; then pass "settings hooks match a fresh candidate install"
+  else fail "settings hooks match a fresh candidate install (diff vs fresh: $hook_diff)"; fi
+else
+  fail "settings hooks match a fresh candidate install (no fresh or over-install settings)"
+fi
 
 verdict
