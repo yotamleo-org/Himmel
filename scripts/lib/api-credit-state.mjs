@@ -184,6 +184,12 @@ function ledgerRow(config, a, account) {
     observed_at: null, exhausted_at: a?.exhausted_at ?? null,
   };
 }
+// A reading the operator or collector marked unverified or discrepant is a refusal, never merely unusable:
+// it stays one even when another field of the same row is malformed.
+function snapshotFlagged(snapshot, account) {
+  const s = object(snapshot) && object(snapshot.accounts) ? snapshot.accounts[account] : null;
+  return object(s) && (s.discrepancy === true || s.exclusive_org === false || (own(s, 'source') && !SOURCES.includes(s.source)));
+}
 function row(config, snapshot, a, account, now, optional = false, need = 0n) {
   try {
     const r = snapshotRow(config, snapshot, a, account, now);
@@ -191,7 +197,7 @@ function row(config, snapshot, a, account, now, optional = false, need = 0n) {
     if (optional && r.snapshot_stale && money(r.available_est_usd) < (need > 0n ? need : 1n)) return ledgerRow(config, a, account);
     return r;
   } catch (e) {
-    if (optional && SNAPSHOT_UNUSABLE.has(e.message)) return ledgerRow(config, a, account);
+    if (optional && SNAPSHOT_UNUSABLE.has(e.message) && !snapshotFlagged(snapshot, account)) return ledgerRow(config, a, account);
     throw e;
   }
 }

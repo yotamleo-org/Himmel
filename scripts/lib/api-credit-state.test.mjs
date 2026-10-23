@@ -716,6 +716,18 @@ test('HIMMEL-7264: a missing snapshot, a missing row, an expired grant and an ag
   }
 });
 
+test('HIMMEL-7264: a snapshot flagged unverified or discrepant never routes on the ledger, whatever else is malformed in it', () => {
+  const flags = { discrepancy: { discrepancy: true }, 'not exclusive': { exclusive_org: false }, 'unknown source': { source: 'hand-edited' } };
+  for (const [name, flag] of Object.entries(flags)) {
+    const f = fixture();
+    Object.assign(f.snapshot.accounts.A, flag, { remaining_usd: 'abc' });
+    Object.assign(f.snapshot.accounts.B, flag, { remaining_usd: 'abc' });
+    f.save();
+    const r = pickUsd(f, '0.01');
+    assert.notEqual(r.verdict, 'PROCEED', `${name}: ${JSON.stringify(r)}`);
+  }
+});
+
 test('HIMMEL-7264: the optional-snapshot flag lets reserve run with no snapshot; an explicit call still refuses', () => {
   const f = fixture();
   rmSync(f.paths.snapshot);
