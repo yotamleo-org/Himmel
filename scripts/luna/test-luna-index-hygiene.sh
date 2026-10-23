@@ -91,6 +91,13 @@ cp "$CFG" "$W/c1.once"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 check "a second apply is a no-op" 0 "$(cmp -s "$CFG" "$W/c1.once" && echo 0 || echo 1)"
 
+# --- the archive collection joins the collections block, whatever follows it --
+V="$W/v1b"; make_vault "$V"; CFG="$W/c1b.yml"; write_cfg "$CFG" "$V"
+awk '/^models:/{print "settings:"; print "  keep: 1"} {print}' "$CFG" > "$CFG.n" && mv "$CFG.n" "$CFG"
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
+check "luna-archive sits inside collections, before the next section" "collections:|luna-archive:|settings:|models:" \
+  "$(grep -E '^collections:$|^  luna-archive:$|^models:$|^settings:$' "$CFG" | tr -d ' ' | paste -sd'|')"
+
 # --- a pre-existing luna ignore list is merged, not replaced ------------------
 V="$W/v2"; make_vault "$V"; CFG="$W/c2.yml"; write_cfg "$CFG" "$V"
 awk '{print} /^  luna:/{f=1} f&&/pattern:/{print "    ignore:"; print "      - \"Clippings/_raw/**\""; f=0}' "$CFG" > "$CFG.n" && mv "$CFG.n" "$CFG"

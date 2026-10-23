@@ -124,7 +124,7 @@ rc=$?
 [ "$rc" -eq 0 ] || exit "$rc"
 
 # --- 1b. the cold archive collection -----------------------------------------
-# ponytail: same line-based edit as step 1, inserted before `models:`; upgrade
+# ponytail: same line-based edit as step 1, appended to the `collections:` block; upgrade
 # path is a qmd `collection add --pattern` call.
 python3 -I - "$CFG" "$ARCHIVE_COLLECTION" "$VAULT" "$ARCHIVE_PATTERN" "$APPLY" <<'PY'
 import os, sys
@@ -133,11 +133,15 @@ lines = open(cfg).read().split("\n")
 if ("  %s:" % name) in lines:
     print("luna-index-hygiene: qmd collection %s already present" % name)
     sys.exit(0)
-end = next((i for i, l in enumerate(lines) if l.startswith("models:")), None)
-if end is None:
-    end = len(lines)
-    while end > 0 and lines[end - 1].strip() == "":
-        end -= 1
+top = next((i for i, l in enumerate(lines) if l.startswith("collections:")), None)
+if top is None:
+    print("luna-index-hygiene: no top-level collections: block in %s" % cfg, file=sys.stderr)
+    sys.exit(3)
+end = top + 1
+while end < len(lines) and (lines[end].strip() == "" or lines[end][0] in " #"):
+    end += 1
+while end > top + 1 and lines[end - 1].strip() == "":
+    end -= 1
 print("luna-index-hygiene: qmd collection +%s" % name)
 if apply == "1":
     lines[end:end] = ["  %s:" % name, "    path: %s" % vault, '    pattern: "%s"' % pattern]
