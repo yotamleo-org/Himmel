@@ -1093,10 +1093,10 @@ python_heredoc_readonly() {
     [[ $bl =~ $rdotopen ]] && return 1
     # A name list is defeated by an alias or an indirection, so the body may
     # use only the identifiers of a short read-only list (checked below).
-    # Allowed imports are plain `import a, b` lines and a from-import of a
-    # listed module; a few `os.<read attribute>` forms are dropped first.
+    # Allowed imports are plain `import a, b` lines and a from-import over the
+    # same short module list (an import of any other module runs its code); a few `os.<read attribute>` forms are dropped first.
     b=$(printf '%s\n' "$bl" | sed -E \
-        -e '/^[[:space:]]*import[[:space:]]+[a-z0-9_., ]+$/d' \
+        -e '/^[[:space:]]*import[[:space:]]+(json|os|sys|re|pathlib|collections|itertools|datetime)([[:space:]]*,[[:space:]]*(json|os|sys|re|pathlib|collections|itertools|datetime))*[[:space:]]*$/d' \
         -e 's/(^|[;[:space:]])from[[:space:]]+(pathlib|json|collections|itertools|datetime|re|sys|os\.path)[[:space:]]+import[[:space:]]+[a-z0-9_, ]+/ /g' \
         -e 's/(^|[^a-z0-9_.])os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)([^a-z0-9_]|$)/\1 \3/g' \
         -e 's/(^|[^a-z0-9_.])os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)([^a-z0-9_]|$)/\1 \3/g')

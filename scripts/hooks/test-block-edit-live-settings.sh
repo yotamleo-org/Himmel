@@ -3625,6 +3625,8 @@ python3 - <<'PY'\nargs = ('@H@/.claude/settings.json', 'w')\nopen(*args).close()
 python3 - <<'PY'\nimport os\no = os.path.os\no.remove('@H@/.claude/settings.json')\nPY
 python3 - <<'PY'\nimport pathlib\npathlib.Path('@H@/.claude/settings.json').open('w').close()\nPY
 python3 - <<'PY'\nimport json\nprint(f"{open('@H@/.claude/settings.json', 'w')}")\nPY
+python3 - <<'PY'\nimport payload\nprint(open('@H@/.claude/settings.json').read())\nPY
+python3 - <<'PY'\nimport json, payload\nprint(json.load(open('@H@/.claude/settings.json')))\nPY
 ROWS
 
 # Clean up worktree registrations before removing the sandbox (avoids
