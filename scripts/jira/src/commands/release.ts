@@ -139,6 +139,10 @@ function decisionFault(x: unknown): string | null {
 // The reply may wrap its array in prose holding brackets, so try each '[' (object-leading ones first)
 // against each ']' until a slice parses as an array.
 function extractArray(text: string): unknown[] | undefined {
+  try {
+    const whole: unknown = JSON.parse(text);
+    if (Array.isArray(whole)) return whole;
+  } catch { /* wrapped in prose or a fence, scan for the array */ }
   const opens = [...text.matchAll(/\[/g)].map((m) => m.index as number);
   const closes = [...text.matchAll(/\]/g)].map((m) => m.index as number).reverse();
   const objectLeading = (i: number) => /^\[\s*\{/.test(text.slice(i, i + 64));
@@ -164,7 +168,7 @@ export function parseDecisions(stdout: string): Decision[] {
   } catch {
     throw new JudgeReplyError('rm-run: the judge stdout is not a JSON envelope; nothing ruled', stdout);
   }
-  if (env.is_error || typeof env.result !== 'string') throw new JudgeReplyError('rm-run: the judge call failed; nothing ruled', stdout);
+  if (env === null || typeof env !== 'object' || env.is_error || typeof env.result !== 'string') throw new JudgeReplyError('rm-run: the judge call failed; nothing ruled', stdout);
   const text = env.result;
   const got = extractArray(text);
   if (!got) throw new JudgeReplyError('rm-run: the judge reply holds no JSON array of decisions; nothing ruled', text);
