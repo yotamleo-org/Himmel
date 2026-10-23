@@ -98,7 +98,7 @@ export function secretWrite(b: Record<string, unknown>, o: SetupOpts & { service
   const set = b.op === "set";
   if (set && typeof b.value !== "string") return fail(400, "value required");
   if (!set && b.value !== undefined) return fail(400, "remove takes no value");
-  if (set && o.serviceMode) return fail(403, "service mode: set the secret in the terminal (himmelctl install) until the UI login ships");
+  if (set && o.serviceMode) return fail(403, "service mode: the always-on UI cannot save a secret until the UI login ships; run `himmelctl ui` for a window that can");
   const action = set ? "secret.set" : "secret.remove";
   if (set) {
     const v = store.validate(e.name, b.value);

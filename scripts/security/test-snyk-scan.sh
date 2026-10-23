@@ -330,6 +330,83 @@ STUB_OSV_BODY='{"results":[{"vulns":false},{}]}' run forksosvbadvulns --forks
 check "an osv.dev result whose vulns is not an array exits 2, not a clean fork" 2 "$RC"
 STUB_VULN_BODY='{"id":"GHSA-other"}' run forksosvbadadv --forks
 check "an osv.dev advisory with no matching id exits 2, not a default-medium finding" 2 "$RC"
+# an unpinned upstream HEAD that holds a build tool file is not scanned (snyk would run it); --no-upstream scans pinned refs only
+mkfork buildfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/buildfork" tag pinned
+: > "$W/forks/buildfork/build.gradle"
+git -C "$W/forks/buildfork" add -A; git -C "$W/forks/buildfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a build"
+export SNYK_SCAN_FORKS="buildfork|$U/buildfork|pinned|up"
+: > "$W/calls.log"
+run forksbuild --forks
+check "an upstream HEAD with a build file is skipped, not scanned" skipped "$(jq -r '.[] | select(.name=="buildfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "a skipped upstream does not fail a clean pinned fork" 0 "$RC"
+has "the skip names the build file" "build.gradle" "$OUTDIR/2026-10-23.forks.summary.md"
+check "only the pinned ref was scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# a long file list after the match must not let grep -m1 close the pipe early and fall through to a scan
+mkfork bigfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/bigfork" tag pinned
+: > "$W/forks/bigfork/Package.swift"
+for i in $(seq 1 1500); do : > "$W/forks/bigfork/z$(printf '%0200d' "$i")"; done
+git -C "$W/forks/bigfork" add -A; git -C "$W/forks/bigfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a build and many files"
+export SNYK_SCAN_FORKS="bigfork|$U/bigfork|pinned|up"
+: > "$W/calls.log"
+run forksbig --forks
+check "the long-list scan exits successfully" 0 "$RC"
+check "a build file before a long file list still skips the upstream scan" skipped "$(jq -r '.[] | select(.name=="bigfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "the long-list upstream was not scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# git quotes a non-ASCII path in plain ls-files output, which must not hide a build file from the skip
+mkfork utffork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/utffork" tag pinned
+mkdir "$W/forks/utffork/café"; : > "$W/forks/utffork/café/pom.xml"
+git -C "$W/forks/utffork" add -A; git -C "$W/forks/utffork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a non-ASCII build dir"
+export SNYK_SCAN_FORKS="utffork|$U/utffork|pinned|up"
+: > "$W/calls.log"
+run forksutf --forks
+check "the non-ASCII scan exits successfully" 0 "$RC"
+check "a build file under a non-ASCII dir still skips the upstream scan" skipped "$(jq -r '.[] | select(.name=="utffork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "the non-ASCII upstream was not scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# a newline inside one filename must not split it into a fake build-file name
+mkfork nlfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/nlfork" tag pinned
+: > "$W/forks/nlfork/$(printf 'notes\npom.xml')"
+git -C "$W/forks/nlfork" add -A; git -C "$W/forks/nlfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a newline filename"
+nlname="$(printf 'notes\npom.xml')"
+nlhead="$(git -C "$W/forks/nlfork" ls-tree -r --name-only -z HEAD | tr '\0' '|')"
+case "$nlhead" in *"$nlname|"*) nlin=1 ;; *) nlin=0 ;; esac
+check "the newline filename is committed at HEAD" 1 "$nlin"
+export SNYK_SCAN_FORKS="nlfork|$U/nlfork|pinned|up"
+: > "$W/calls.log"
+run forksnl --forks
+check "the newline-name scan exits successfully" 0 "$RC"
+check "a newline in one filename does not fake a build file" scanned "$(jq -r '.[] | select(.name=="nlfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+# a pinned tree with a build file is third-party code too: snyk must not run on it
+mkfork pinbuild "$FIX/snyk-os-high.json" 1
+: > "$W/forks/pinbuild/build.gradle"
+git -C "$W/forks/pinbuild" add -A; git -C "$W/forks/pinbuild" -c user.name=t -c user.email=t@t commit -q -m "pinned tree holds a build"
+git -C "$W/forks/pinbuild" tag pinned
+export SNYK_SCAN_FORKS="pinbuild|$U/pinbuild|pinned|-"
+: > "$W/calls.log"
+run forkspin --forks
+check "a pinned tree with a build file exits successfully" 0 "$RC"
+check "snyk never runs on a pinned tree with a build file" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+check "the pinned skip keeps the fork status ok" ok "$(jq -r '.[] | select(.name=="pinbuild") | .status' "$OUTDIR/2026-10-23.forks.json")"
+has "the pinned skip names the build file" "build.gradle" "$OUTDIR/2026-10-23.forks.summary.md"
+# an Elixir mix.exs is a build file too
+mkfork mixfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/mixfork" tag pinned
+: > "$W/forks/mixfork/mix.exs"
+git -C "$W/forks/mixfork" add -A; git -C "$W/forks/mixfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds mix.exs"
+export SNYK_SCAN_FORKS="mixfork|$U/mixfork|pinned|up"
+: > "$W/calls.log"
+run forksmix --forks
+check "an upstream HEAD with a mix.exs is skipped" skipped "$(jq -r '.[] | select(.name=="mixfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up"
+: > "$W/calls.log"
+run forksnoup --forks --no-upstream
+check "--no-upstream still gates on the pinned ref" 1 "$RC"
+check "--no-upstream does not scan upstream HEAD" off "$(jq -r '.[] | select(.name=="vulnfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "--no-upstream leaves the fixed-upstream column unknown" unknown "$(jq -r '[.[] | select(.name=="vulnfork") | .findings[].fixed_upstream] | unique | join(",")' "$OUTDIR/2026-10-23.forks.json")"
+check "--no-upstream runs one snyk test for the fork" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
 # a ledger that passes the preflight but fails on append (disk full) stops the run before any further scan, upstream included
 export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|up
 uvfork|$U/uvfork|main|-"

@@ -8,7 +8,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { which } = require('./helpers.js');
 
 const UNIT_NAME = 'himmel-ui.service';
@@ -82,6 +82,60 @@ function url(page) {
   return { ok: true, lines: [page ? `http://127.0.0.1:${port}/#t=${t}&page=${page}` : `http://127.0.0.1:${port}/agui/#t=${t}`] };
 }
 
+// The ad-hoc UI that `himmelctl install` starts is token-bound and idles out like `himmelctl ui`; unlike the service it
+// may save a secret. Its port and token live in a mode-600 file so a second install reuses it instead of starting another.
+const adhocPath = () => path.join(process.env.HOME || os.homedir(), '.himmel', 'state', 'ui-adhoc.json');
+const LAUNCH_URL = /^http:\/\/127\.0\.0\.1:(\d+)\/(?:agui\/)?#t=([0-9a-f]{16,})\s*$/m;
+const setupLink = (port, token) => `http://127.0.0.1:${port}/#t=${token}&page=setup`;
+
+function portOpen(port) {
+  return new Promise((resolve) => {
+    const s = require('net').connect({ port, host: '127.0.0.1' });
+    const done = (ok) => { s.destroy(); resolve(ok); };
+    s.setTimeout(1000, () => done(false));
+    s.once('connect', () => done(true));
+    s.once('error', () => done(false));
+  });
+}
+
+// ponytail: liveness is a connect to the recorded port, so another process that took a dead UI's port would pass; upgrade path is a token-checked /api probe.
+async function adhocLink() {
+  let s;
+  try { s = JSON.parse(fs.readFileSync(adhocPath(), 'utf8')); } catch (_e) { return null; }
+  if (!s || !Number.isInteger(s.port) || typeof s.token !== 'string' || !(await portOpen(s.port))) return null;
+  return setupLink(s.port, s.token);
+}
+
+// Start `bun scripts/config-ui/server.ts` detached and read the URL it prints; the server exits on its own after 30 minutes idle.
+async function startAdhoc({ repoRoot, timeoutMs = 20000 }) {
+  const bun = which('bun');
+  if (!bun) return { ok: false, lines: ['bun is required (https://bun.sh)'] };
+  const server = path.join(repoRoot, 'scripts', 'config-ui', 'server.ts');
+  if (!fs.existsSync(server)) return { ok: false, lines: [`${server} not found (needs a himmel checkout)`] };
+  const dir = path.dirname(adhocPath());
+  const outFile = path.join(dir, `ui-adhoc.${process.pid}.out`);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const fd = fs.openSync(outFile, 'w', 0o600);
+  const child = spawn(bun, [server, '--port', '0'], { detached: true, stdio: ['ignore', fd, 'ignore'] });
+  fs.closeSync(fd);
+  let gone = null;
+  child.once('error', (e) => { gone = e.message; });
+  child.once('exit', (code) => { gone = `exited with code ${code}`; });
+  child.unref();
+  try {
+    for (const deadline = Date.now() + timeoutMs; Date.now() < deadline && gone === null;) {
+      const m = LAUNCH_URL.exec(fs.readFileSync(outFile, 'utf8'));
+      if (m) {
+        fs.writeFileSync(adhocPath(), `${JSON.stringify({ pid: child.pid, port: Number(m[1]), token: m[2] })}\n`, { mode: 0o600 });
+        return { ok: true, lines: [setupLink(m[1], m[2])] };
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  } finally { fs.rmSync(outFile, { force: true }); }
+  if (gone === null) { try { process.kill(-child.pid); } catch (_e) { /* already gone */ } }
+  return { ok: false, lines: [`the UI server ${gone === null ? 'did not print its link in time' : gone}`] };
+}
+
 function install({ repoRoot, port, dryRun }) {
   const bun = which('bun');
   if (!bun) return { ok: false, lines: ['bun is required (https://bun.sh)'] };
@@ -126,4 +180,4 @@ function status() {
   return { ok: state === 'active', lines: [`${UNIT_NAME}: ${state} (${enabled})`, installedPort() === null ? 'not installed' : `port ${installedPort()}`] };
 }
 
-module.exports = { UNIT_NAME, DEFAULT_PORT, renderUnit, install, uninstall, status, url };
+module.exports = { UNIT_NAME, DEFAULT_PORT, renderUnit, install, uninstall, status, url, adhocLink, startAdhoc };

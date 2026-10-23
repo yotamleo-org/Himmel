@@ -129,4 +129,5 @@ export interface IssueSnap {
   priority: string;
   fixVersions: string[];
   resolution: string | null;
+  sector?: string | null;
 }
