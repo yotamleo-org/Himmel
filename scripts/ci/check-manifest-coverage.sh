@@ -24,7 +24,7 @@
 #   2 — the scan itself failed (no .github/dependabot.yml under the root)
 set -uo pipefail
 
-ROOT="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
+ROOT="$(cd "${1:-$(dirname "$0")/../..}" 2>/dev/null && pwd -P)" # swallow-ok: a missing root falls through to the dependabot.yml error below
 DEP="$ROOT/.github/dependabot.yml"
 [ -f "$DEP" ] || { printf 'ERROR: no .github/dependabot.yml under %s\n' "$ROOT" >&2; exit 2; }
 

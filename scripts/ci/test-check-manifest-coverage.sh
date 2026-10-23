@@ -37,17 +37,21 @@ says() { # <label> <fixed string the last run must have printed>
 
 subst() { sed "$1" "$2" > "$2.new" && mv "$2.new" "$2"; } # <sed script> <file>: edit a file in place
 
-# live <name>: a fresh copy of every manifest and buffer file the lint reads.
+# live <name>: a fresh copy of every manifest and buffer file the lint reads; sets LIVE
+# (not a subshell, so a failed copy stops the test instead of handing back an empty root).
 live() {
-  local d="$tmp/$1"
-  mkdir -p "$d" || exit 1
-  (cd "$REPO_ROOT" && git ls-files | grep -E '(^|/)(package\.json|requirements[^/]*\.txt|Dockerfile|bun\.lockb?|package-lock\.json|bunfig\.toml|\.npmrc|uv\.toml|dependabot\.yml)$' \
-    | xargs -I{} cp --parents {} "$d") || exit 1
-  printf '%s\n' "$d"
+  local d="$tmp/$1" f
+  LIVE=$d
+  mkdir -p "$d" || return 1
+  while IFS= read -r f; do
+    mkdir -p "$d/$(dirname "$f")" && cp "$REPO_ROOT/$f" "$d/$f" || return 1
+  done < <(cd "$REPO_ROOT" && git ls-files | grep -E '(^|/)(package\.json|requirements[^/]*\.txt|Dockerfile|bun\.lockb?|package-lock\.json|bunfig\.toml|\.npmrc|uv\.toml|dependabot\.yml)$')
+  [ -f "$d/.github/dependabot.yml" ] || return 1
 }
 
 echo "== pre-fix dependabot.yml (verbatim fixture) =="
-pf=$(live prefix)
+live prefix || { echo "live copy failed"; exit 1; }
+pf=$LIVE
 cp "$FIX/dependabot.pre-7173.yml" "$pf/.github/dependabot.yml"
 expect "pre-fix config is refused" 1 "$pf"
 says "himmel-bus is named" "marketplace/plugins/himmel-bus/package.json: no npm entry"
@@ -62,42 +66,50 @@ echo "== scan failure =="
 expect "an unreadable root is a scan failure, not a clean scan" 2 "$tmp/no-such-root"
 
 echo "== live tree =="
-lv=$(live ok)
+live ok || { echo "live copy failed"; exit 1; }
+lv=$LIVE
 expect "live tree is covered and buffered" 0 "$lv"
 says "summary line is printed" "0 violation(s)"
 
 echo "== mutations =="
-m=$(live nobun)
+live nobun || { echo "live copy failed"; exit 1; }
+m=$LIVE
 subst '/minimumReleaseAge/d' "$m/scripts/luna-vitals/bunfig.toml"
 expect "bunfig without minimumReleaseAge is refused" 1 "$m"
 says "the bunfig is named" "scripts/luna-vitals/bunfig.toml: no [install] minimumReleaseAge"
 
-m=$(live shortbun)
+live shortbun || { echo "live copy failed"; exit 1; }
+m=$LIVE
 subst 's/259200/86400/' "$m/marketplace/plugins/telegram-himmel/bunfig.toml"
 expect "a 1-day minimumReleaseAge is refused" 1 "$m"
 says "the short bun buffer is named" "minimumReleaseAge 86400 is below 259200"
 
-m=$(live nonpmrc)
+live nonpmrc || { echo "live copy failed"; exit 1; }
+m=$LIVE
 rm "$m/scripts/jira/.npmrc"
 expect "a package-lock.json without .npmrc is refused" 1 "$m"
 says "the .npmrc is named" "scripts/jira/.npmrc: no min-release-age"
 
-m=$(live shortnpm)
+live shortnpm || { echo "live copy failed"; exit 1; }
+m=$LIVE
 subst 's/min-release-age=3/min-release-age=1/' "$m/site/.npmrc"
 expect "a 1-day min-release-age is refused" 1 "$m"
 says "the short npm buffer is named" "site/.npmrc: min-release-age 1 is below 3 days"
 
-m=$(live nouv)
+live nouv || { echo "live copy failed"; exit 1; }
+m=$LIVE
 rm "$m/.github/ci-image/uv.toml"
 expect "pip requirements without uv.toml are refused" 1 "$m"
 says "the uv.toml is named" ".github/ci-image/uv.toml: no exclude-newer"
 
-m=$(live dropdir)
+live dropdir || { echo "live copy failed"; exit 1; }
+m=$LIVE
 subst '/"\/site"/d' "$m/.github/dependabot.yml"
 expect "a dropped npm directory is refused" 1 "$m"
 says "the dropped directory is named" "site/package.json: no npm entry for /site"
 
-m=$(live newmanifest)
+live newmanifest || { echo "live copy failed"; exit 1; }
+m=$LIVE
 mkdir -p "$m/tools/newpkg" && printf '{}\n' > "$m/tools/newpkg/package.json"
 expect "a new unlisted manifest is refused" 1 "$m"
 says "the new manifest is named" "tools/newpkg/package.json: no npm entry for /tools/newpkg"

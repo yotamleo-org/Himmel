@@ -86,9 +86,17 @@ function parse(file, text) {
 
 function readAllow(file) {
   if (!existsSync(file)) return new Set();
-  return new Set(readFileSync(file, 'utf8').split('\n')
-    .map((l) => l.replace(/#.*$/, '').trim().split(/\s+/)[0])
-    .filter(Boolean));
+  const entries = [];
+  for (const raw of readFileSync(file, 'utf8').split('\n')) {
+    const fields = raw.replace(/#.*$/, '').trim().split(/\s+/).filter(Boolean);
+    if (fields.length === 0) continue;
+    if (fields.length < 2) {
+      console.error(`ERROR: ${file}: allowlist entry needs a reason: ${fields[0]}`);
+      process.exit(2);
+    }
+    entries.push(fields[0]);
+  }
+  return new Set(entries);
 }
 
 async function registryTimes(names) {

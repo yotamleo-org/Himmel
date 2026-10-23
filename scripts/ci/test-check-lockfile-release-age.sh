@@ -78,6 +78,10 @@ says "summary counts it as allowlisted" "1 allowlisted"
 printf '%s\n' "other-pkg@9.9.9  some other fix" > "$tmp/allow-other.txt"
 run "an allowlist for another entry does not help" 1 --times "$tmp/planted.json" --allow "$tmp/allow-other.txt" "$NPM_LOCK" "$BUN_LOCK"
 
+printf '%s\n' "$victim" > "$tmp/allow-noreason.txt"
+run "an allowlist line without a reason is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-noreason.txt" "$NPM_LOCK" "$BUN_LOCK"
+says "the reasonless line is named" "needs a reason"
+
 echo "== young plus unknown =="
 sed 's|,"@types/node@[^"]*":"[^"]*"||; s|"@types/node@[^"]*":"[^"]*",||' "$tmp/planted.json" > "$tmp/partial.json"
 run "a young entry wins over an unknown one" 1 --times "$tmp/partial.json" --allow "$tmp/noallow.txt" "$NPM_LOCK" "$BUN_LOCK"
