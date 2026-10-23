@@ -170,9 +170,16 @@ else
   # HIMMEL-5200: every bind below comes AFTER the worktree's read-only bind, and a later bind
   # wins. One that is, sits under, or contains the worktree (at either jail path) would put it
   # back writable or hide the read-only mount, so such a row is refused, never launched.
+  # canon_path_partial keeps a not-yet-created tail as written, so a dot component there would dodge
+  # the comparison (realpath -m folded it): refuse it, and squeeze the slashes a tail can carry
+  canon_rw() {
+    case "$1/" in */../*|*/./*) return 1 ;; esac
+    local c; c="$(canon_path_partial "$1")" || return 1
+    printf '%s\n' "$c" | tr -s /
+  }
   for rw in "$(dirname "$DOC")" "$RUN" "$ROWCONF" "$TX" "$GITDIR" "$GITOBJ"; do
-    rwp="$(canon_path_partial "$rw")" || die "cannot resolve $rw"
-    for wp in "$(canon_path_partial "$WT")" "$(canon_path_partial "$JWT")"; do
+    rwp="$(canon_rw "$rw")" || die "cannot resolve $rw"
+    for wp in "$(canon_rw "$WT")" "$(canon_rw "$JWT")"; do
       case "$rwp/" in "$wp"/*) die "$rw sits at or under the worktree $wp (its writable bind would undo the read-only worktree)" ;; esac
       case "$wp/" in "$rwp"/*) die "$rw contains the worktree $wp (its bind would hide the read-only worktree)" ;; esac
     done

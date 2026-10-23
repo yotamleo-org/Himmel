@@ -295,6 +295,9 @@ for v in DOC TX ROWCONF; do
     check "a row whose $v is $val is refused (its writable bind would undo or hide the read-only worktree)" '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-$v.env" >/dev/null 2>&1'
   done
 done
+# a missing directory spelled through ".." reaches the worktree once created: the overlap test must not compare it as written
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/nowhere/missing/../../root/wt|" "$TMP/row5183.env" >"$TMP/row5200-dots.env"
+check 'a row whose ROWCONF climbs back into the worktree through a missing .. is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dots.env" >/dev/null 2>&1'
 check 'control, the unmodified row env still builds its jail' 'HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 if bwrap --ro-bind / / true 2>/dev/null; then
   jw() { "${R5[@]}" sh -c "$1" 2>/dev/null; }
