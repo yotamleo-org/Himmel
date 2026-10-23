@@ -209,7 +209,7 @@ esac
 exit 0
 EOF
 rm -f "$GF/qmd"
-for t in dirname sleep mktemp rm; do ln -s "$(command -v "$t")" "$GF/$t"; done
+for t in dirname sleep mktemp rm cat head grep pkill; do ln -s "$(command -v "$t")" "$GF/$t"; done  # timeout shim (macOS: no GNU timeout) needs mktemp cat rm sleep pkill; setup-env needs head grep
 OUT="$(env -i PATH="$GF" HOME="$TMP/home" HIMMEL_CLOUD_ROOT="$FAKE" TMPDIR="$TMP" "$BASH_BIN" "$SETUP" 2>&1)"; RC=$?
 if [ -f "$TMP/qmd-registered" ] && [ "$(cat "$TMP/qmd-registered")" = "$FAKE" ]; then ok "off-PATH installed qmd registers only the repo"; else bad "off-PATH qmd never registers himmel: $OUT"; fi
 : > "$TMP/qmd-no-register"
@@ -305,7 +305,7 @@ mkdir -p "$HOST/scripts/jira" "$HOST/scripts/lib" "$HOST/marketplace/plugins/obs
 : > "$HOST/scripts/jira/package.json"
 cp "$FAKE/scripts/lib/"* "$HOST/scripts/lib/"
 HB="$TMP/hostile"; mkdir -p "$HB"; cp "$HAVE"/* "$HB/"
-for t in timeout sh tail mkdir bash dirname pwd; do ln -s "$(command -v "$t")" "$HB/$t"; done
+for t in timeout sh tail mkdir bash dirname pwd mktemp cat rm sleep pkill head grep; do ln -s "$(command -v "$t")" "$HB/$t"; done
 # shellcheck disable=SC2016  # stub script text, expanded when the stub runs
 printf '#!/bin/sh\necho "jira:$(pwd)" >> "$HIMMEL_PWD_LOG"\nexit 0\n' > "$HB/npm"
 # shellcheck disable=SC2016

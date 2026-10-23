@@ -225,6 +225,19 @@ for iv in .5 2s 1m 0; do
     PATH="$d7" "$BASH_BIN" -c '. "$1"; timeout "$2" sh -c "exit 0"' _ "$PORTF" "$iv" >/dev/null 2>&1 || rc=$?
     eq "T7 a valid interval [$iv] runs the command (rc 0)" "$rc" "0"
 done
+# The tool list is the stub bin of scripts/lib/test-prim.sh (plus env for the shebang): no awk.
+d7n="$(stub_dir t7n env bash cat mktemp mv rm sleep sh dirname)"
+for iv in 2 .5 1s 1m 1.5m 0; do
+    rc=0
+    # shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1/$2
+    PATH="$d7n" "$BASH_BIN" -c '. "$1"; timeout "$2" sh -c "exit 0"' _ "$PORTF" "$iv" >/dev/null 2>&1 || rc=$?
+    eq "T7 without awk on PATH a valid interval [$iv] runs the command (rc 0)" "$rc" "0"
+done
+rc=0; t0=$SECONDS
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7n" "$BASH_BIN" -c '. "$1"; timeout 1 sleep 30' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 without awk on PATH a sleeper is killed by the bound (rc 124)" "$rc" "124"
+if [ $((SECONDS - t0)) -lt 10 ]; then ok "T7 without awk on PATH the bound fired in time"; else bad "T7 without awk on PATH the bound took $((SECONDS - t0))s"; fi
 
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
