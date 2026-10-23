@@ -92,6 +92,11 @@ the auto-mode confirmation dialog, which its fresh lock heartbeat hides. Names o
 wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
+tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
+TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
+(default 80) or more. Read-only, never reaps, and not in console-wait's action
+key, so it wakes nothing. Env seams: TICK_TMP_DIR, TICK_TMP_WARN, TICK_DF.
+
 spare=<pct>@<h>h (HIMMEL-4421) is the very last field and is ABSENT unless the
 weekly quota the current burn leaves unspent at the reset (usage-monitor.sh
 --spare) is >= TICK_SPARE_MIN percent (default 10) and the reset is <=
@@ -1741,6 +1746,19 @@ if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
     spare_tail=" spare=$(awk -v p="$spare_pct" 'BEGIN { printf "%d", p }')@$(awk -v h="$spare_in" 'BEGIN { printf "%d", h }')h"
 fi
 
+# tmp=<pct>[!] -- how full the tmp filesystem is (read-only df on TICK_TMP_DIR,
+# default /tmp), with a trailing ! at TICK_TMP_WARN percent (default 80) or more.
+# Absent when df cannot be read. Advisory only: console-wait's action key is a
+# field whitelist that does not name tmp=, so a change never wakes the waiter.
+tmp_warn="${TICK_TMP_WARN:-80}"
+case "$tmp_warn" in ''|*[!0-9]*) tmp_warn=80 ;; esac
+tmp_tail=""
+tmp_pct="$(${TICK_DF:-df} -P "${TICK_TMP_DIR:-/tmp}" 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); if ($5 ~ /^[0-9]+$/) print $5 }')"  # swallow-ok: an unreadable df leaves tmp= absent
+if [ -n "$tmp_pct" ]; then
+    tmp_tail=" tmp=$tmp_pct"
+    [ "$tmp_pct" -lt "$tmp_warn" ] || tmp_tail="$tmp_tail!"
+fi
+
 # fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
 # leg-failures ledger rows (ts >= the console lock's `started`): <n> rows, <legs>
 # distinct legs, the class with the most distinct legs (then events, then name),
@@ -2427,6 +2445,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
+    [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
     # Keep reader inputs even at their defaults: console-wait.sh rejects
@@ -2488,7 +2507,7 @@ else
     compact_field leaks "$leaks_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"

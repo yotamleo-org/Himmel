@@ -35,6 +35,9 @@ skip() { printf 'skip - %s\n' "$1"; }
 # shellcheck source=../../lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh"
 
+# tmp= reads df on a tmp dir; a path that does not exist keeps the host's own /tmp out of every line.
+export TICK_TMP_DIR="$W/no-such-tmp"
+
 mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/himmel-shell-suite-test.lock"
 
 # mkcmdline <pid> <argv...> - a real NUL-separated cmdline file for a fake
@@ -3009,6 +3012,24 @@ if [ "$ef_rc2" -eq 0 ]; then pass 'the re-run effort fixture tick exits 0'; else
 contains 'the re-run effort fixture tick prints its TICK line' "$ef_out2" 'TICK '
 not_contains 'only the newest LIVE bullet decides the effort (HIMMEL-6588)' "$ef_out2" 'effort=MISMATCH'
 rm -f "$ef_doc" "$ef_ok" "$ef_none" "$W/handover/launch-N77.sh" "$W/handover/launch-N78.sh" "$W/handover/launch-N79.sh" "$fm"
+
+# --- tmp=<pct>[!] -----------------------------------------------------
+# A read-only df on TICK_TMP_DIR (default /tmp); stubbed through TICK_DF.
+cat > "$W/df-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'tmpfs 1000 %s %s %s%% /tmp\n' "$STUB_TMP_PCT" "$((1000 - STUB_TMP_PCT))" "$STUB_TMP_PCT"
+STUB
+chmod +x "$W/df-stub.sh"
+tmp_run() { STUB_TMP_PCT="$1" TICK_TMP_DIR="$W" TICK_DF="$W/df-stub.sh" bash "$SUT" "${@:2}"; }
+contains 'tmp= shows the /tmp percentage below the warn level (HIMMEL-4316)' "$(tmp_run 42)" ' tmp=42'
+not_contains 'tmp= has no ! below 80 (HIMMEL-4316)' "$(tmp_run 79)" ' tmp=79!'
+contains 'tmp= carries ! at 80 (HIMMEL-4316)' "$(tmp_run 80)" ' tmp=80!'
+contains 'tmp= carries ! above 80 (HIMMEL-4316)' "$(tmp_run 97)" ' tmp=97!'
+contains 'verbose labels tmp (HIMMEL-4316)' "$(tmp_run 42 --verbose)" 'tmp: 42'
+not_contains 'tmp= is absent when the dir is unreadable (HIMMEL-4316)' "$(bash "$SUT")" ' tmp='
+cw_keys="$(grep -m1 'for f in legs livestate' "$HERE/console-wait.sh")"
+not_contains "tmp= is not in console-wait's wake key (HIMMEL-4316)" "$cw_keys" ' tmp'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
