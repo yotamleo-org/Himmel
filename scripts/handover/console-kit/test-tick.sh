@@ -3029,6 +3029,7 @@ contains 'tmp= carries ! above 80 (HIMMEL-4316)' "$(tmp_run 97)" ' tmp=97!'
 contains 'verbose labels tmp (HIMMEL-4316)' "$(tmp_run 42 --verbose)" 'tmp: 42'
 not_contains 'tmp= is absent when the dir is unreadable (HIMMEL-4316)' "$(bash "$SUT")" ' tmp='
 cw_keys="$(grep -m1 'for f in legs livestate' "$HERE/console-wait.sh")"
+contains "console-wait's wake key list was found" "$cw_keys" ' vmrun '
 not_contains "tmp= is not in console-wait's wake key (HIMMEL-4316)" "$cw_keys" ' tmp'
 
 if [ "$fails" -eq 0 ]; then
