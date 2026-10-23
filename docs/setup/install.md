@@ -12,8 +12,9 @@ Developing himmel *itself* is a different path:
 ## Install
 
 ```bash
-git clone https://github.com/yotamleo-org/Himmel himmel
-node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
+git clone https://github.com/yotamleo-org/Himmel ~/himmel   # outside your project, once
+cd <your-project>                                           # the install acts on this folder
+node ~/himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 ```
 
 `--scope` is the non-interactive path: it loads a shipped, runnable preset
@@ -22,12 +23,15 @@ or the `adopter-user` twin) and installs without asking anything. Drop the flag
 to get the wizard instead; it asks a handful of questions and lets you confirm
 each default. `--dry-run` prints the plan and writes nothing.
 
-No `node` on the machine yet? Run `bash himmel/scripts/himmelctl/bootstrap.sh`
+No `node` on the machine yet? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh`
 first; it installs Node, then re-run the install.
 
-Run it from the root of a git repository, and preview first:
-`node himmel/scripts/himmelctl/bin.js install --scope project --dry-run` prints
-the plan and writes nothing.
+Run it from the root of a git repository, and preview first. Both commands
+write nothing:
+`node ~/himmel/scripts/himmelctl/bin.js install --scope project --dry-run`
+prints a summary of the install, and
+`bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run`
+prints one `DRY:` line for each file and setting it would write.
 
 ### After the install: commit it before you branch
 
@@ -56,7 +60,13 @@ ticket reference. When
 above. On a repository with no ticket convention, switch the requirement off with
 `TICKET_ID_REQUIRED=0 git commit …` (or set it in the repo's `.env`). On a repository with a branch-protected
 default branch, push the branch and merge it through a PR instead of the
-fast-forward.
+fast-forward. The commands say `main`; use your default branch's name if it
+differs.
+
+`.claude/settings.json` carries the path of your himmel download (the status
+line and `HIMMEL_REPO` point at it), so this commit puts this machine's path
+into the project. In a repository you share, a teammate whose download sits
+elsewhere needs those two values changed to their own path.
 
 **Prerequisites**, checked by the installer, which fails fast with install
 hints: `git`, `bash` 3.2+, `node`, `jq`, `python3`, and the Claude Code CLI on

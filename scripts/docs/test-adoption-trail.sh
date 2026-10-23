@@ -324,12 +324,13 @@ fi
 line_of() { grep -n -E -m1 -e "$1" "$2" | cut -d: -f1; }
 for pg in "$GS" "$PAGE"; do
   name="$(basename "$pg")"
+  k="$(line_of 'git commit -m "chore: install himmel' "$pg")"
   c="$(line_of 'git merge --ff-only' "$pg")"
   w="$(line_of 'scripts/worktree\.sh feat/try-himmel' "$pg")"
-  if [ -n "$c" ] && [ -n "$w" ] && [ "$c" -lt "$w" ]; then
+  if [ -n "$k" ] && [ -n "$c" ] && [ -n "$w" ] && [ "$k" -lt "$c" ] && [ "$c" -lt "$w" ]; then
     ok "$name commits and merges the install before it creates the worktree"
   else
-    bad "$name must commit and merge the install before the worktree step (merge line '${c:-none}', worktree line '${w:-none}')"
+    bad "$name must commit, merge, then create the worktree (commit line '${k:-none}', merge line '${c:-none}', worktree line '${w:-none}')"
   fi
 done
 

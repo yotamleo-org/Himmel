@@ -1,6 +1,6 @@
 # Getting Started
 
-New to himmel? This is the path from clone to your first PR-gated loop. It is
+New to himmel? This is the path from clone to your first protected project. It is
 eight numbered steps, in an order that was run end to end on a clean Linux
 virtual machine (install, commit, worktree, undo; the editor refusal was
 checked by calling the edit hook directly, not in a live session), and you stay
@@ -44,9 +44,11 @@ repository instead if you prefer, but it needs at least one commit and a clean
 
 ```bash
 node ~/himmel/scripts/himmelctl/bin.js install --scope project --dry-run
+bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run
 ```
 
-It prints every file and setting the install would write and changes nothing.
+Both change nothing. The first prints a summary of what the install would run;
+the second prints one `DRY:` line for each file and setting it would write.
 Node-less machine? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first.
 
 ### 3. Install
@@ -91,7 +93,14 @@ every message (`COMMIT REJECTED: no ticket reference matched`). With no
 `JIRA_PROJECT_KEY` set, `#<number>` satisfies it (as above); for a repo with
 no ticket convention, `TICKET_ID_REQUIRED=0 git commit …` switches the
 requirement off. On a repo whose `main` is branch-protected, push the branch and
-merge it through a PR instead.
+merge it through a PR instead; if your default branch has another name, use it
+in place of `main`.
+
+`.claude/settings.json` carries the path of your himmel download (the status
+line and `HIMMEL_REPO` point at `~/himmel`), so the commit above bakes this
+machine's path into the project. That is fine for a throwaway; in a repo you
+share, a teammate whose download sits elsewhere needs those two values changed
+to their own path.
 
 ### 6. Create the worktree, then relaunch inside it
 
@@ -113,7 +122,11 @@ loop below once.
 
 ### 8. Preview the undo, then undo
 
+Run these from the project folder you installed into (`~/try-himmel`), not from
+the worktree: the uninstaller acts on the folder you run it from.
+
 ```bash
+cd ~/try-himmel
 node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run   # lists what stays and what goes
 node ~/himmel/scripts/himmelctl/bin.js uninstall --yes       # --yes is required without a terminal
 ```
@@ -156,11 +169,12 @@ GitHub remote first (`git remote add origin <url>`); without one, stop after
 the commit. The day-to-day loop is:
 
 ```bash
-/worktree feat/my-thing      # isolated branch + worktree. Branch must be type/slug —
+bash scripts/worktree.sh feat/my-thing
+                             # isolated branch + worktree. Branch must be type/slug —
                              #   type in feat|fix|chore|docs|refactor|test. Never edit main.
-                             #   (a starter install copies `scripts/worktree.sh`, not this slash
-                             #   command: from a shell run `bash scripts/worktree.sh feat/my-thing`,
-                             #   then cd into the printed path and relaunch `claude` there)
+                             #   Then cd into the printed path and relaunch `claude` there.
+                             #   (A full himmel checkout also has the `/worktree` slash
+                             #   command; a starter install copies only `scripts/worktree.sh`.)
 #   … make a small change with Claude …
 git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-thing
                              # conventional-commit gate fires at commit (the #2 is the ticket
