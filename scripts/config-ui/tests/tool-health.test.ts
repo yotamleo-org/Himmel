@@ -121,6 +121,21 @@ test("intraday since never presents whole-day calls as an exact shift denominato
   expect(data.daily_hooks[0].calls).toBeNull();
 });
 
+test("a very old since keeps the trend to a year and the window honest", () => {
+  const data = read(seed(), new URLSearchParams({ since: "1970-01-01T00:00:00Z" }));
+  const trend = data.tools.find((r: any) => r.tool === "Bash").trend;
+  expect(trend.length).toBe(366);
+  expect(trend[365].day).toBe("2026-10-07");
+  expect(data.window_days).toBeGreaterThan(20000);
+});
+
+test("the trend heading names the since window, not the days switch", async () => {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const html = renderToolHealth(read(seed(), new URLSearchParams({ since: "2026-09-27T00:00:00Z" })), "t");
+  expect(html).toContain("11-day trend");
+  expect(html).not.toContain("7-day trend");
+});
+
 test("v2 text-only subagent failures do not poison complete tool denominators", () => {
   const env = seed();
   const textFailure = { session: "48160000-0000-4000-8000-000000000000", agent: { ...agent, id: "child" }, class: "blocked/report", failure: "blocked", count: 1, recovered: null };

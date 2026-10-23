@@ -39,6 +39,8 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
   // Effective window: since..today when given (inclusive, like the days switch), else the days switch itself.
   const windowDays = firstDay && firstDay <= lastDay ? (Date.parse(lastDay) - Date.parse(firstDay)) / 86400000 + 1 : days;
+  // The per-day trend never spans more than a year, so an old since cannot size the arrays.
+  const trendDays = Math.min(windowDays, 366), trendFirst = windowDays > trendDays ? dayOf(Date.parse(lastDay) - (trendDays - 1) * 86400000) : firstDay;
   const selected = { model: query.get('model') || '', lane: query.get('lane') || '', role: query.get('role') || '', profile: query.get('profile') || '', days };
   const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane);
   const sessions = new Map();
@@ -156,11 +158,11 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const class_counts = Object.create(null);
   for (const s of filtered) for (const f of s.failures) class_counts[f.class] = (class_counts[f.class] || 0) + f.count;
   for (const t of result.tools) {
-    t.trend = Array.from({ length: windowDays }, (_, i) => {
-      const day = dayOf(Date.parse(firstDay) + i * 86400000), rows = result.daily.filter((d) => d.tool === t.tool && d.day === day);
+    t.trend = Array.from({ length: trendDays }, (_, i) => {
+      const day = dayOf(Date.parse(trendFirst) + i * 86400000), rows = result.daily.filter((d) => d.tool === t.tool && d.day === day);
       const calls = rows.length ? rows.reduce((n, d) => sumCalls(n, d.calls), 0) : null;
       const value = rate(rows.reduce((n, d) => n + d.failures, 0), calls);
-      return { day, calls, failures: rows.reduce((n, d) => n + d.failures, 0), rate: value, x: i * 118 / windowDays, height: value === null ? null : Math.min(26, value * 26) };
+      return { day, calls, failures: rows.reduce((n, d) => n + d.failures, 0), rate: value, x: i * 118 / trendDays, height: value === null ? null : Math.min(26, value * 26) };
     });
   }
   const comparison = new Map();
