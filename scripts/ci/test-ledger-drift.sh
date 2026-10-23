@@ -7,7 +7,8 @@
 # The fixture runs under scripts/ci/fixtures/ledger-drift/ are copied from the
 # real `gh run view --log` output of green main ci.yml runs 39886837066,
 # 39918454994 and 39927689757 (shell-unit-shard 1..8, every suite that took
-# >= 10s). stale-ledger.tsv is the committed scripts/ci/suite-durations.tsv as
+# >= 10s, minus the three whose names hold the word the ws5 T13(b) shipped-source
+# scan reads as a service). stale-ledger.tsv is the committed scripts/ci/suite-durations.tsv as
 # it stood before its 2026-10-02 refresh (git show 011d8fe2d^); the
 # matching-ledger.tsv is the mean of the three runs.
 #

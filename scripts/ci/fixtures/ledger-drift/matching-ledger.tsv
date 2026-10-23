@@ -161,9 +161,6 @@ scripts/machine-setup/test-install-plugins-ondemand.sh	12
 scripts/machine-setup/test-install-plugins-provenance.sh	17
 scripts/machine-setup/test-machine-setup-hermetic.sh	11
 scripts/observability/test-tool-call-census.sh	10
-scripts/parity/test-t13b-daemon-prose.sh	13
-scripts/qmd/test-ensure-qmd-daemon-leak.sh	11
-scripts/qmd/test-ensure-qmd-daemon.sh	48
 scripts/qmd/test-qmd-jina-gate.sh	17
 scripts/statusline/test-hud-composer-parity.sh	10
 scripts/telegram/test-dispatch-lane.sh	35

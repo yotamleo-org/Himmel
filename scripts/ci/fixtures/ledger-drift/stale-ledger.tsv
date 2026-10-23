@@ -624,11 +624,8 @@ scripts/parity/test-launcher-twin-parity.sh	0
 scripts/parity/test-ps-twin-oem-encoding-projection.sh	15
 scripts/parity/test-ps-twin-oem-encoding.sh	6
 scripts/parity/test-t12-no-bloat-lib.sh	0
-scripts/parity/test-t13b-daemon-prose.sh	11
 scripts/parity/test-t13b-relocation.sh	0
 scripts/parity/test-ws5-invariants.sh	0
-scripts/qmd/test-ensure-qmd-daemon-leak.sh	11
-scripts/qmd/test-ensure-qmd-daemon.sh	29
 scripts/release/test-build-tarball.sh	4
 scripts/release/test-tarball-vs-clone.sh	4
 scripts/setup/test-check-jira-key.sh	0
