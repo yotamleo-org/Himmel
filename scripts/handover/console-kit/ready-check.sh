@@ -74,7 +74,11 @@
 #      head sha (`gh run list --workflow <wf> --event workflow_dispatch
 #      --commit <head>`), since ci.yml has no push trigger and the mode main
 #      runs is otherwise never tested pre-merge. The FAIL line prints the exact
-#      `gh workflow run` command. A changed workflow with no workflow_dispatch
+#      `gh workflow run` command. A dispatch run that FAILED at the head still
+#      passes, as a PRE-EXISTING line, when every one of its failed jobs also
+#      failed in the default branch's latest completed scheduled/push run of the
+#      same workflow; a job red only on the PR still FAILs and is named. The
+#      PASS line carries the dispatch run ids. A changed workflow with no workflow_dispatch
 #      trigger FAILs unless listed in WF_DISPATCH_EXEMPT below. Non-workflow
 #      PRs are unaffected.
 #  11. Added-but-unwired: every file the PR ADDS (status A only, so existing debt
@@ -713,7 +717,33 @@ if [ -z "$files_json" ]; then
 elif [ -z "$wf_files" ]; then
     echo "[PASS] 10. no workflow files touched — workflow_dispatch run not applicable"
 else
-    wf_err=""
+    wf_err=""; wf_ids=""; wf_notes=""; wf_note=""; wf_why=""
+    # wf_failed_jobs <run id>: the run's failed job names (a matrix shard is one job), sorted,
+    # one per line; rc 1 when the run cannot be read.
+    wf_failed_jobs() {
+        local body
+        body=$("$GH" run view "$1" --repo "$nwo" --json jobs 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller reads it as not pre-existing
+        printf '%s' "$body" | jq -r '.jobs[]? | select(.conclusion == "failure") | .name' 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
+    }
+    # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when every failed
+    # job of that run also failed in the default branch's latest completed scheduled/push run
+    # of the same workflow. Otherwise rc 1 and wf_why says why (empty when main is not red).
+    wf_preexisting() {
+        local main_runs main_row main_id main_event pr_jobs main_jobs new
+        wf_why=""
+        main_runs=$("$GH" run list --repo "$nwo" --workflow "$1" --branch "${tp_branch:-main}" --json databaseId,status,conclusion,event --limit 20 2>/dev/null) || { wf_why="cannot read main's runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
+        main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
+        [ -n "$main_row" ] || return 1
+        main_id="${main_row%% *}"; main_event="${main_row#* }"
+        pr_jobs=$(wf_failed_jobs "$2") && [ -n "$pr_jobs" ] || { wf_why="cannot read the failed jobs of run $2"; return 1; }
+        main_jobs=$(wf_failed_jobs "$main_id") && [ -n "$main_jobs" ] || { wf_why="cannot read the failed jobs of main run $main_id"; return 1; }
+        new=$(printf '%s\n' "$pr_jobs" | grep -vxFf <(printf '%s\n' "$main_jobs"))
+        if [ -n "$new" ]; then
+            wf_why="run $2 failed on suites not red on main run $main_id: $(printf '%s' "$new" | paste -sd, - | sed 's/,/, /g')"
+            return 1
+        fi
+        wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
+    }
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
     wf_undispatchable_ok=1
     wf_undispatchable=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "removed" or .status == "added" or .status == "renamed") | .filename' 2>/dev/null) || wf_undispatchable_ok=0
@@ -737,15 +767,26 @@ else
                 wf_err="$wf_err; $wf run list failed"
                 continue
             fi
-            if ! printf '%s' "$wf_runs" | jq -e --arg h "$SHA" 'any(.[]; .headSha == $h and .status == "completed" and .conclusion == "success")' >/dev/null 2>&1; then
-                wf_err="$wf_err; $wf has no completed successful workflow_dispatch run at $SHA — run: gh workflow run $wf_base --ref ${wf_branch:-<branch>} --repo $nwo"
+            wf_ok_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "success")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no green run, the failure path then judges it
+            if [ -n "$wf_ok_id" ]; then
+                wf_ids="$wf_ids ${wf_base}=$wf_ok_id"
+                continue
+            fi
+            wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
+            wf_why=""
+            if [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
+                wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
+                wf_notes="$wf_notes
+       $wf_note"
+            else
+                wf_err="$wf_err; $wf has no completed successful workflow_dispatch run at $SHA${wf_why:+ ($wf_why)} — run: gh workflow run $wf_base --ref ${wf_branch:-<branch>} --repo $nwo"
             fi
         done <<EOF
 $wf_files
 EOF
     fi
     if [ -z "$wf_err" ]; then
-        echo "[PASS] 10. every changed workflow has a successful workflow_dispatch run at head (or is exempt/removed)"
+        echo "[PASS] 10. every changed workflow has a successful workflow_dispatch run at head (or is exempt/removed)${wf_ids:+ — runs:$wf_ids}${wf_notes}"
     else
         echo "[FAIL] 10. workflow dispatch:${wf_err#;}"
         mark_fail
