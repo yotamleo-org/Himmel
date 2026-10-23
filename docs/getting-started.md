@@ -146,18 +146,21 @@ did the work. Skip straight to the loop.
 
 ## Your first loop
 
-Work from the worktree you opened in step 6 (or make another with
-`bash scripts/worktree.sh feat/my-thing`), with `claude` running inside it. The
-hooks below only fire inside an active session. The throwaway project from
-step 1 has no remote, so the push and PR lines need a GitHub remote first
-(`git remote add origin <url>`); without one, stop after the commit. The
-day-to-day loop is:
+The first time, skip the first line below: you are already in the worktree you
+opened in step 6, on `feat/try-himmel` with `claude` running inside it, so make
+your change there and use that branch name in the push line. For every later
+change, make a new worktree, `cd` into the path it prints and relaunch `claude`
+there before you edit. The hooks below only fire inside an active session. The
+throwaway project from step 1 has no remote, so the push and PR lines need a
+GitHub remote first (`git remote add origin <url>`); without one, stop after
+the commit. The day-to-day loop is:
 
 ```bash
 /worktree feat/my-thing      # isolated branch + worktree. Branch must be type/slug —
                              #   type in feat|fix|chore|docs|refactor|test. Never edit main.
                              #   (a starter install copies `scripts/worktree.sh`, not this slash
-                             #   command: from a shell run `bash scripts/worktree.sh feat/my-thing`)
+                             #   command: from a shell run `bash scripts/worktree.sh feat/my-thing`,
+                             #   then cd into the printed path and relaunch `claude` there)
 #   … make a small change with Claude …
 git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-thing
                              # conventional-commit gate fires at commit (the #2 is the ticket
