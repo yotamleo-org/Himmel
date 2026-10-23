@@ -1,6 +1,7 @@
 # MCP server and client inventory
 
-Repository snapshot: 2026-10-07, slice 1 of the v2 migration. The migration target is
+Repository snapshot: 2026-10-07, slice 1 of the v2 migration; the tasks and
+elicitation section was added 2026-10-24. The migration target is
 protocol revision **2025-11-25** and the split TypeScript SDK at exact stable
 **2.3.1**. The parent ticket's alpha warning is stale: the npm registry lists
 stable 2.0.0 through 2.3.1. Protocol revision and SDK major are independent;
@@ -40,7 +41,33 @@ production implementations have source-derived counts instead.
 | `claude_ai_Google_Drive` | Policy registry | Hosted SDK **unknown** | Connector transport not recorded | **11** policy entries | Provider-owned; sharing/deleting policy unchanged. |
 | `claude-in-chrome` | Policy registry | External SDK **unknown** | Browser integration; transport not pinned here | **11** policy entries | Operator browser and arbitrary-JS surface; no local source migration. |
 | `plugin_builder-visual_agent-native-dispatch` | Policy registry | Hosted Builder.io SDK **unknown** | Hosted transport not recorded | **Unknown**, unenumerated | Provider-owned; egress guard remains authoritative. |
-| Planned `himmel-bus` server | Design only; not implemented at this snapshot | Planned split server/client **2.3.1** | Planned stdio | **2** planned (`send`, `read`) | New-on-v2, not a remaining v1 migration. No edits in this slice. |
+| `himmel-bus` server | Implemented: `marketplace/plugins/himmel-bus/server/index.mjs` | Split server/client **2.3.1** (exact pin) | stdio, Node | **2** (`send`, `read`) | New-on-v2, not a remaining v1 migration. |
+
+## Tasks and elicitation (protocol 2026-07-28)
+
+Target row: protocol revision **2026-07-28** adds tasks and elicitation. Tasks
+need a connection that negotiated 2026-07-28 and a Claude Code client of
+**2.1.304** or later (this station runs 2.1.310). The 2025-11-25 migration
+target above is unchanged; 2026-07-28 is the next target, not yet adopted.
+Nothing here is a live probe: a cell is **unverified** unless a source file is
+named, and none of these servers registers an Elicitation hook.
+
+| Server | Tasks | Elicitation | Evidence |
+|---|---|---|---|
+| `qmd` (fork) | Possible: SDK 2.3.1 bundles 2026-07-28 code; not yet returned from a query | Unverified | A query returning a task is not yet verified |
+| `himmel-bus` | No: `send` and `read` are plain calls | No | `marketplace/plugins/himmel-bus/server/index.mjs`, SDK 2.3.1 |
+| `jira` MCP | No: 13 plain tool calls | No | `scripts/jira/src/mcp.ts`, SDK 2.3.1; not registered on this station |
+| `luna-correlate` | No: 5 plain tool calls | No | `marketplace/plugins/luna-correlate/server.ts`, SDK 2.3.1 |
+| `graphify` MCP | Unverified | Unverified | External Python server, SDK unknown |
+| `obsidian-vault` | Unverified; pins mcp 1.28.1 (v1), so unlikely | Unverified | External `mcp-obsidian` |
+| `context7` | Unverified | Unverified | Hosted service |
+| Atlassian | Unverified | Unverified | Hosted connector or plugin; prefer the Jira CLI |
+
+### Blockers
+
+- A subagent's MCP calls never become tasks.
+- `claude -p` without `--output-format stream-json` gets no tasks.
+- `claude --bg` and third-party-provider sessions are pending the probe in HIMMEL-7304.
 
 ## Pilot migration
 
