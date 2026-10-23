@@ -73,6 +73,20 @@ case $? in
   *) fail "site/package-lock.json lookup failed: unreadable or no postcss-selector-parser entry" ;;
 esac
 
+# every LGPL package the site lockfile pulls must be recorded in the license audit
+lgpl_pkgs=$(node -e 'const l = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); for (const [k, v] of Object.entries(l.packages)) if (/LGPL/.test(v.license || "")) console.log(k.replace(/^.*node_modules\//, ""))' "$REPO_ROOT/site/package-lock.json" | sed -E 's#^(@img/sharp(-libvips)?)-.*#\1#' | sort -u)
+missing=""
+for p in $lgpl_pkgs; do
+  grep -qF "\`$p" "$REPO_ROOT/docs/third-party-licenses.md" || missing="$missing $p"
+done
+if [ -z "$lgpl_pkgs" ]; then
+  pass "site/package-lock.json carries no LGPL package"
+elif [ -z "$missing" ]; then
+  pass "every LGPL family in site/package-lock.json is recorded in docs/third-party-licenses.md"
+else
+  fail "LGPL packages in site/package-lock.json missing from docs/third-party-licenses.md:$missing"
+fi
+
 if [ "$failures" -eq 0 ]; then
   echo "all cases passed"
   exit 0
