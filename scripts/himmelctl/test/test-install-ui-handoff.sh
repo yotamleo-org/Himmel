@@ -22,6 +22,8 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 repo_root=$(git rev-parse --show-toplevel)
 . "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$repo_root/scripts/lib/timeout-bin.sh"
 wizard="$repo_root/scripts/himmelctl/bin.js"
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required" >&2; exit 1; }
@@ -78,7 +80,7 @@ run_install() {
     HIMMELCTL_CACHE_DIR="$(winpath "$c/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$c/cache/luna-config.json")" \
     HIMMELCTL_REPO_ROOT="$(winpath "$c/fx")" HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$c/units" \
     HIMMELCTL_INTERACTIVE=0 HIMMELCTL_UI_HANDOFF=1 "${envs[@]}" \
-    timeout 120 "$node_bin" "$wizard" install --from-profile "$(winpath "$c/profile.json")" "$@" < "$in" 2>&1) || rc=$?
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 120} "$node_bin" "$wizard" install --from-profile "$(winpath "$c/profile.json")" "$@" < "$in" 2>&1) || rc=$?
 }
 
 setup_link_re='http://127\.0\.0\.1:[0-9]+/#t=[0-9a-f]{64}&page=setup'
@@ -106,7 +108,7 @@ printf 'ExecStart="/usr/bin/bun" "/x/scripts/config-ui/server.ts" --service --po
 mkdir -p "$c/home/.himmel/state"; tokC=$(printf 'c%.0s' $(seq 1 64)); printf '%s\n' "$tokC" > "$c/home/.himmel/state/ui-token"; chmod 600 "$c/home/.himmel/state/ui-token"
 run_install /dev/null DISPLAY=:0 --
 [ "$rc" -eq 0 ] || fail "C: install rc=$rc: $out"
-printf '%s\n' "$out" | grep -qF "http://127.0.0.1:47391/#t=$tokC&page=setup" || fail "C: the always-on UI's Setup link is missing: $out"
+grep -qF "http://127.0.0.1:47391/#t=$tokC&page=setup" <<< "$out" || fail "C: the always-on UI's Setup link is missing: $out"
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "C: a server was started next to the always-on unit"
 echo "ok: C always-on unit running -> its Setup link, no second server"
 
@@ -115,7 +117,7 @@ new_case D
 printf 'skip\n' > "$c/in-probe"
 run_install "$c/in-probe" --
 [ "$rc" -eq 0 ] || fail "D: install rc=$rc: $out"
-printf '%s\n' "$out" | grep -qE "$setup_link_re" && fail "D: a Setup link was printed with no browser reachable"
+grep -qE "$setup_link_re" <<< "$out" && fail "D: a Setup link was printed with no browser reachable"
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "D: a server was started with no browser reachable"
 first=$(printf '%s\n' "$out" | sed -n 's/^? \([A-Z0-9_]*\) \[.*/\1/p' | head -1)
 [ -n "$first" ] || fail "D: no terminal secret prompt in the output: $out"
@@ -125,14 +127,14 @@ printf 'set\n%s\n' "$canary" > "$c/in-set"
 run_install "$c/in-set" --
 [ "$rc" -eq 0 ] || fail "D2: install rc=$rc: $out"
 grep -qxF "$first=$canary" "$c/fx/.env" || fail "D2: the secret typed in the terminal was not stored for $first"
-printf '%s\n' "$out" | grep -qF "$canary" && fail "D2: the typed secret was echoed"
+grep -qF "$canary" <<< "$out" && fail "D2: the typed secret was echoed"
 echo "ok: D no browser -> no server, secret typed in the terminal is stored"
 
 # ── E: --dry-run starts nothing and prints no link ─────────────────────────
 new_case E
 run_install /dev/null DISPLAY=:0 -- --dry-run
 [ "$rc" -eq 0 ] || fail "E: dry-run rc=$rc: $out"
-printf '%s\n' "$out" | grep -qE "$setup_link_re" && fail "E: dry-run printed a Setup link"
+grep -qE "$setup_link_re" <<< "$out" && fail "E: dry-run printed a Setup link"
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "E: dry-run started a server"
 echo "ok: E --dry-run starts nothing"
 
