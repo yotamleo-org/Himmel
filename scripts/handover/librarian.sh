@@ -87,6 +87,7 @@ done > "$TAILS"
 
 python3 -I - "$ROOT" "$BUCKET" "$SESSIONS" "$MIRROR" "$APPLY" "$DAYS" "$SDAYS" "$ADAYS" "$TAILS" <<'PY'
 import os, re, subprocess, sys, time
+from urllib.parse import quote, unquote
 
 root, bucket, sessions, mirror, apply, days, sdays, adays, tails_file = sys.argv[1:10]
 apply = apply == "1"
@@ -191,6 +192,9 @@ for n in bucket_files:
     sub_m = re.match(r"(.+?)-(?:RESUME|HANDOFF|judge-)", n)
     if sub_m and sub_m.group(1) + ".md" in bucket_files:
         continue  # the parent doc decides for its whole group
+    dot_stem = n.split(".", 1)[0]
+    if dot_stem + ".md" in bucket_files and dot_stem + ".md" != n:
+        continue  # a <stem>.<ext>.md sibling follows its <stem>.md the same way
     p = os.path.join(bucket, n)
     if locked(p):
         print("SKIP locked %s" % p)
@@ -266,13 +270,16 @@ def rewrite(text, old_dir, new_dir, target_new):
         path, qsep, query = path.partition("?")
         if not path:
             return m.group(0)
-        tgt = os.path.normpath(os.path.join(old_dir, path))
+        encoded = "%" in path
+        tgt = os.path.normpath(os.path.join(old_dir, unquote(path)))
         if not (os.path.lexists(tgt) or target_new(tgt) != tgt):
             return m.group(0)
         new = os.path.relpath(target_new(tgt), new_dir)
         old_rel = os.path.relpath(tgt, old_dir)
         if new == old_rel:
             return m.group(0)
+        if encoded:
+            new = quote(new, safe="/")
         return m.group(1) + new + (qsep + query if qsep else "") + (sep + frag if sep else "") + m.group(3)
     return LINK.sub(sub, text)
 
@@ -293,8 +300,14 @@ refs = 0
 if apply:
     # 1. move a group whole: one failed git mv puts the group's earlier members back
     bad_groups, group_done = set(), {}
+    # ponytail: a queue lock taken between planning and this recheck is caught, one taken mid-move is not; upgrade path = hold queue-lock.sh around each group move
     for src, dst, reason, ticket, grp in moves:
         if grp in bad_groups:
+            continue
+        if grp not in group_done and any(g == grp and s.endswith(".md") and locked(s) for s, _, _, _, g in moves):
+            print("SKIP locked %s" % src)
+            counts["locked"] += 1
+            bad_groups.add(grp)
             continue
         os.makedirs(dst, exist_ok=True)
         top = os.path.dirname(src)
@@ -330,7 +343,7 @@ if apply:
     # 3. rewrite links in the bucket-root docs that point at a moved doc
     for n in bucket_files:
         p = os.path.join(bucket, n)
-        if not n.endswith(".md") or p in done_map:
+        if not n.endswith(".md") or p in done_map or "console" in n.lower():
             continue
         s = read(p)
         if "](" not in s:

@@ -176,6 +176,29 @@ check "its sibling in the writable month moved" yes "$(here "$A/HIMMEL-1-lnkB-20
 check "and the stayer now links to the moved doc's new place" yes \
   "$(grep -q "](archive/$M60/HIMMEL-1-lnkB-2026-01-01.md)" "$B/HIMMEL-1-lnkA-2026-01-01.md" && echo yes || echo no)"
 
+# --- a dot-suffixed sibling follows its parent group; console docs and encoded links ---
+leg HIMMEL-2-locked-2026-01-01.extra.md WRAPPED 60
+leg HIMMEL-1-cref-2026-01-01.md WRAPPED 60
+printf 'see [c](HIMMEL-1-cref-2026-01-01.md)\n' >> "$B/HIMMEL-nextleg-2026-01-01-console.md"; age 60 "$B/HIMMEL-nextleg-2026-01-01-console.md"
+leg "HIMMEL-1-sp ace-2026-01-01.md" WRAPPED 60
+printf 'see [s](HIMMEL-1-sp%%20ace-2026-01-01.md)\n' >> "$B/HIMMEL-9-live-2026-10-22.md"
+git -C "$R" add -A; run --apply >/dev/null 2>&1
+check "a sibling of a locked parent stayed" yes "$(here "$B/HIMMEL-2-locked-2026-01-01.extra.md")"
+check "a console doc's links are not rewritten" yes "$(grep -q '](HIMMEL-1-cref-2026-01-01.md)' "$B/HIMMEL-nextleg-2026-01-01-console.md" && echo yes || echo no)"
+check "the doc moved" yes "$(here "$A/HIMMEL-1-cref-2026-01-01.md")"
+check "a percent-encoded link to a moved doc is rewritten, encoding kept" yes \
+  "$(grep -q "](archive/$M60/HIMMEL-1-sp%20ace-2026-01-01.md)" "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
+
+# --- a lock taken after planning is honoured at move time ----------------------
+leg HIMMEL-1-race1-2026-01-01.md WRAPPED 60
+leg HIMMEL-1-race2-2026-01-01.md WRAPPED 60
+git -C "$R" add -A
+# shellcheck disable=SC2016  # the stub keeps its $rc literal
+printf '#!/usr/bin/env bash\n%q "$@"; rc=$?\ncase "$*" in *"mv -- HIMMEL-1-race1-2026-01-01.md "*) mkdir -p "%s/u__himmel__HIMMEL-1-race2-2026-01-01.lock" ;; esac\nexit $rc\n' "$REAL_GIT" "$R/.locks/queue" > "$W/stubbin/git"
+PATH="$W/stubbin:$PATH" run --apply >/dev/null 2>&1; check "a late lock is a skip, not a failure (exit 0)" 0 "$?"
+check "the doc planned first moved" yes "$(here "$A/HIMMEL-1-race1-2026-01-01.md")"
+check "the doc locked after planning stayed" yes "$(here "$B/HIMMEL-1-race2-2026-01-01.md")"
+
 # --- untracked doc is skipped, never plain-mv'd -------------------------------
 leg HIMMEL-1-untracked-2026-01-01.md WRAPPED 60
 out4="$(run --apply 2>&1)"
