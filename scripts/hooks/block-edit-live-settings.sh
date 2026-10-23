@@ -1085,6 +1085,10 @@ python_heredoc_readonly() {
     case "$rest" in *"$nl"*) body=${rest%"$nl$last"} ;; *) body='' ;; esac
     [ "${#body}" -le 20000 ] || return 1
     case "$nl$body$nl" in *"$nl$delim$nl"*) return 1 ;; esac
+    # Python folds non-ASCII compatibility letters in an identifier (NFKC) to
+    # plain ASCII, so a spelled-out builtin would pass the byte-wise word split.
+    local rnonascii=$'[^\t\n -~]'
+    [[ $body =~ $rnonascii ]] && return 1
     bl=$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]')
     interp_write_api "$bl" && return 1
     interp_dyn_api "$bl" && return 1
