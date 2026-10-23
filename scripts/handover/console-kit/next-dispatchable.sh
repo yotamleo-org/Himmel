@@ -35,8 +35,9 @@
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
 # line of its own (security, data loss or a broken operator flow only), or the
 # admissions ledger (HIMMEL_ADMISSIONS_LEDGER, else <handover root>/admissions-ledger.jsonl)
-# admitted it into the earliest unreleased version: its latest row there is not a
-# deferral. No label means depth 0.
+# admitted it into the earliest unreleased version: its latest row there is an
+# `rm-admit` or `override` row (any other kind, or none, admits nothing). No label
+# means depth 0.
 #
 # IN CI tickets: one nobody holds (no leg, no open PR) that a merged PR cites prints a
 # `MERGED-NOT-CLOSED` row (same columns as RESUME, nothing to dispatch: it needs closing);
@@ -478,7 +479,7 @@ except (OSError, subprocess.SubprocessError):
 # One bounded search per candidate key (a merged-PR list capped at N would miss an older merge).
 merged_unknown = False
 merged_keys = set()
-inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Story', 'Sub-task')
+inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
              and i['key'] not in leg_keys and i['key'] not in pr_keys]
 if inci_keys and not (pr_unknown or legs_unknown):
     def merged_cites(key):

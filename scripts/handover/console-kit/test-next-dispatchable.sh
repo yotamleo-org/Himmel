@@ -33,6 +33,9 @@ mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json
     printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: %s\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n' \
         "$1" "$2" "$3" "$4" "$5" "$6" "$1" "$7" "$8" > "$M/$1.md"
 }
+retype() { # <fixture file> <type>: portable in-place edit (no sed -i: BSD and GNU differ)
+    sed "s/^type: \"Task\"/type: \"$2\"/" "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
 mk HIMMEL-1 "To Do" Medium '[]' '["v1.0.2"]' '[]' "free later version" "Edit scripts/lib/alpha.sh only."
 mk HIMMEL-2 "To Do" Medium '[]' '["v1.0.1"]' '[]' "free earlier version" "Edit scripts/lib/beta.sh only."
 mk HIMMEL-3 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with an open PR" "Edit scripts/lib/pr-held.sh please."
@@ -191,7 +194,7 @@ mk HIMMEL-51 "In Review" Low '[]' '[]' '[]' "orphan in review" "Edit scripts/lib
 mk HIMMEL-52 "In Progress" High '[]' '[]' '[]' "has an open PR" "Edit scripts/lib/r3.sh."
 mk HIMMEL-53 "In Progress" High '[]' '[]' '[]' "has a live leg" "Edit scripts/lib/r4.sh."
 mk HIMMEL-54 "In Progress" High '[]' '[]' '[]' "an epic" "Edit scripts/lib/r5.sh."
-sed -i 's/^type: "Task"/type: "Epic"/' "$M5/HIMMEL-54.md"  # gnu-ok: Linux-only kit
+retype "$M5/HIMMEL-54.md" Epic
 mk HIMMEL-55 "In Progress" High '["parked"]' '[]' '[]' "parked" "Edit scripts/lib/r6.sh."
 mk HIMMEL-56 "To Do" Highest '[]' '[]' '[]' "plain to do" "Edit scripts/lib/r7.sh."
 mk HIMMEL-57 "In Progress" High '["blocked"]' '[]' '[]' "blocked label" "Edit scripts/lib/r8.sh."
@@ -235,10 +238,12 @@ mk HIMMEL-71 "IN CI" Medium '[]' '[]' '[]' "in ci open pr" "Edit scripts/lib/c2.
 mk HIMMEL-72 "IN CI" Medium '[]' '[]' '[]' "in ci no pr" "Edit scripts/lib/c3.sh."
 mk HIMMEL-73 "IN CI" Medium '[]' '[]' '[]' "in ci merged pr live leg" "Edit scripts/lib/c4.sh."
 mk HIMMEL-74 "IN CI" Medium '[]' '[]' '[]' "in ci lookalike merged key only" "Edit scripts/lib/c5.sh."
+mk HIMMEL-75 "IN CI" Medium '[]' '[]' '[]' "in ci story with a merged pr" "Edit scripts/lib/c6.sh."
+retype "$M6/HIMMEL-75.md" Story
 M="$M_SAVE"
 LEG6="$WORK/HIMMEL-73-N9-live.md"; printf '# live\n' > "$LEG6"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N9"}]}\n' "$LEG6" > "$WORK/fleet6.json"
-printf '4300\tfix(x): [HIMMEL-70] merged\tfix/himmel-70-m\n4301\tfix(x): [HIMMEL-73] merged\tfix/himmel-73-m\n4302\tfix(x): [HIMMEL-71] earlier\tfix/himmel-71-e\n4303\tfix(x): [HIMMEL-740] lookalike\tfix/himmel-740-l\n' > "$MERGED_TSV"
+printf '4300\tfix(x): [HIMMEL-70] merged\tfix/himmel-70-m\n4301\tfix(x): [HIMMEL-73] merged\tfix/himmel-73-m\n4302\tfix(x): [HIMMEL-71] earlier\tfix/himmel-71-e\n4303\tfix(x): [HIMMEL-740] lookalike\tfix/himmel-740-l\n4304\tfix(x): [HIMMEL-75] story merged\tfix/himmel-75-m\n' > "$MERGED_TSV"
 printf '4310\tfix(x): [HIMMEL-71] open\tfix/himmel-71-o\n' > "$PRS_TSV"
 rc6() { NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --legs-from "$WORK/fleet6.json" 2>/dev/null; }
 : > "$GH_ARGS"
@@ -253,6 +258,8 @@ lacks "an IN CI ticket with an open PR is not listed (even with an earlier merge
 has "an IN CI ticket with no PR is a RESUME row" "$r6" "RESUME	HIMMEL-72"
 lacks "an IN CI ticket with a live leg is not listed" "$r6" "HIMMEL-73	"
 has "a merged PR citing a lookalike key does not close the ticket" "$r6" "RESUME	HIMMEL-74"
+has "an IN CI Story with a merged PR is a MERGED-NOT-CLOSED row" "$r6" "MERGED-NOT-CLOSED	HIMMEL-75"
+lacks "an IN CI Story with a merged PR is not a RESUME row" "$r6" "RESUME	HIMMEL-75"
 : > "$MERGED_FAIL"
 r6f="$(rc6)"
 rm -f "$MERGED_FAIL"
@@ -331,9 +338,9 @@ mk HIMMEL-140 "To Do" Medium '[]' '["v1.0.1"]' '[]' "tier4 early version" "Edit 
 mk HIMMEL-141 "To Do" Highest '[]' '["v1.0.2"]' '[]' "tier4 later version" "Edit scripts/lib/q2.sh only."
 mk HIMMEL-130 "To Do" Medium '["security"]' '["v1.0.1"]' '[]' "tier3 security label" "Edit scripts/lib/q3.sh only."
 mk HIMMEL-131 "To Do" High '[]' '["v1.0.1"]' '[]' "tier3 high bug" "Edit scripts/lib/q4.sh only."
-sed -i 's/^type: "Task"/type: "Bug"/' "$M7/HIMMEL-131.md"  # gnu-ok: Linux-only kit
+retype "$M7/HIMMEL-131.md" Bug
 mk HIMMEL-132 "To Do" Medium '[]' '[]' '[]' "medium bug is not tier3" "Edit scripts/lib/q5.sh only."
-sed -i 's/^type: "Task"/type: "Bug"/' "$M7/HIMMEL-132.md"  # gnu-ok: Linux-only kit
+retype "$M7/HIMMEL-132.md" Bug
 mk HIMMEL-120 "To Do" Low '["operator-directed"]' '["v1.0.1"]' '[]' "tier2 operator directed" "Edit scripts/lib/q6.sh only."
 mk HIMMEL-110 "To Do" Low '["must-v1.1.3"]' '[]' '[]' "tier1 by label" "Edit scripts/lib/q7.sh only."
 mk HIMMEL-111 "To Do" Low '[]' '[]' '[]' "tier1 second on the line" "Edit scripts/lib/q8.sh only."
@@ -605,7 +612,7 @@ lacks "fix5: a ticket naming an existing file draws none" "$f5" "# warn: HIMMEL-
 M30="$WORK/jira-mirror30/HIMMEL"; mkdir -p "$M30"
 M_SAVE="$M"; M="$M30"
 mk HIMMEL-801 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a story with no blocker" "Edit scripts/lib/story.sh only."
-sed -i 's/^type: "Task"/type: "Story"/' "$M30/HIMMEL-801.md"  # gnu-ok: Linux-only kit
+retype "$M30/HIMMEL-801.md" Story
 mk HIMMEL-802 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the RM kept" "Edit scripts/lib/kept.sh only."
 mk HIMMEL-803 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the RM deferred" "Edit scripts/lib/deferred.sh only."
 mk HIMMEL-808 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with an unknown ledger kind" "Edit scripts/lib/typo.sh only."
@@ -615,7 +622,7 @@ mk HIMMEL-804 "To Do" Medium '[]' '["v1.0.1"]' '[]' "mentions trees a leg and a 
 mk HIMMEL-805 "To Do" Medium '[]' '["v1.0.1"]' '[]' "first of two naming a tree" "See docs/guide/ then edit scripts/lib/d1.sh."
 mk HIMMEL-806 "To Do" Medium '[]' '["v1.0.1"]' '[]' "second of two naming a tree" "See docs/guide/ then edit scripts/lib/d2.sh."
 mk HIMMEL-807 "To Do" Medium '[]' '["v1.0.1"]' '[]' "an epic" "Edit scripts/lib/epic.sh."
-sed -i 's/^type: "Task"/type: "Epic"/' "$M30/HIMMEL-807.md"  # gnu-ok: Linux-only kit
+retype "$M30/HIMMEL-807.md" Epic
 mk HIMMEL-3 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with an open PR" "Edit scripts/lib/pr-held.sh please."
 mk HIMMEL-4 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with a live leg" "Edit scripts/handover/console-kit/live-file.sh please."
 mk HIMMEL-5 "To Do" High '["operator-decision"]' '["v1.0.1"]' '[]' "decision pending" "Edit scripts/lib/gamma.sh."
@@ -659,10 +666,10 @@ M_SAVE="$M"; M="$M30"; mk HIMMEL-811 "To Do" Medium '["residual-depth-1"]' '["v1
 has "version: a residual with an override row is offered" "$(run30)" "HIMMEL-811	"
 
 # HANDOVER_DIR only in .env (the cache-dir .env load_dotenv reads first): the ledger under it is read
-HD7064="$WORK/hd7064"; CD7064="$WORK/cache7064"; mkdir -p "$HD7064" "$CD7064"
+HD7064="$WORK/hd7064"; CD7064="$WORK/cache7064"; mkdir -p "$HD7064" "$CD7064" "$WORK/home7064"
 printf 'HANDOVER_DIR=%s\n' "$HD7064" > "$CD7064/.env"
 printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-802","kind":"rm-admit","actor":"rm"}\n' > "$HD7064/admissions-ledger.jsonl"
-denv="$(env -u HANDOVER_DIR -u HIMMEL_ADMISSIONS_LEDGER HIMMELCTL_CACHE_DIR="$CD7064" NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --legs-from "$WORK/fleet.json" 2>/dev/null)"
+denv="$(env -u HANDOVER_DIR -u HIMMEL_ADMISSIONS_LEDGER HOME="$WORK/home7064" HIMMELCTL_CACHE_DIR="$CD7064" NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --legs-from "$WORK/fleet.json" 2>/dev/null)"
 has "env: a ledger under a HANDOVER_DIR set only in .env admits its residual" "$denv" "HIMMEL-802	"
 
 # a wrapped To Do Story with a resume brief is a RESUME row; an Epic still is not
@@ -670,9 +677,9 @@ WS="$WORK/ts-story/workers"; mkdir -p "$WS"
 MS="$WORK/mstory/HIMMEL"; mkdir -p "$MS"
 M_SAVE="$M"; M="$MS"
 mk HIMMEL-66 "To Do" Medium '[]' '[]' '[]' "wrapped story with a brief" "Edit scripts/lib/w6.sh."
-sed -i 's/^type: "Task"/type: "Story"/' "$MS/HIMMEL-66.md"  # gnu-ok: Linux-only kit
+retype "$MS/HIMMEL-66.md" Story
 mk HIMMEL-67 "To Do" Medium '[]' '[]' '[]' "wrapped epic with a brief" "Edit scripts/lib/w7.sh."
-sed -i 's/^type: "Task"/type: "Epic"/' "$MS/HIMMEL-67.md"  # gnu-ok: Linux-only kit
+retype "$MS/HIMMEL-67.md" Epic
 M="$M_SAVE"
 printf '{"key":"HIMMEL-66","state":"wrapped","resume_brief":"/x/HIMMEL-66-RESUME.md"}\n' > "$WS/HIMMEL-66.json"
 printf '{"key":"HIMMEL-67","state":"wrapped","resume_brief":"/x/HIMMEL-67-RESUME.md"}\n' > "$WS/HIMMEL-67.json"
