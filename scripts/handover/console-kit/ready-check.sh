@@ -78,7 +78,12 @@
 #      passes, as a PRE-EXISTING line, when every one of its failed jobs also
 #      failed in the default branch's latest completed scheduled/push run of the
 #      same workflow; a job red only on the PR still FAILs and is named. The
-#      PASS line carries the dispatch run ids. A changed workflow with no workflow_dispatch
+#      PASS line carries the dispatch run ids. macos-cadence.yml also passes on a
+#      dispatch run at the head that names its suites (run-name `macos-cadence
+#      suites: <paths>`, the workflow's `suites` input) when the run's log shows
+#      `[PASS] <suite>` for EVERY named suite, however red the rest of the run is;
+#      the PASS line prints each suite. A named suite that failed or never ran
+#      FAILs and is named. A changed workflow with no workflow_dispatch
 #      trigger FAILs unless listed in WF_DISPATCH_EXEMPT below. Non-workflow
 #      PRs are unaffected.
 #  11. Added-but-unwired: every file the PR ADDS (status A only, so existing debt
@@ -751,6 +756,33 @@ else
         fi
         wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
     }
+    # wf_suites_proof <workflow file> <dispatch runs json>: macos-cadence only. rc 0 and wf_note set when a
+    # completed dispatch run at the head named its suites (displayTitle `macos-cadence suites: <paths>`)
+    # and its log carries `[PASS] <suite> (` for every one. rc 1: no such run (the caller falls through to the
+    # whole-run rules). rc 2: such a run exists but is not proven; wf_why says why and the verdict is final,
+    # because the job-level PRE-EXISTING comparison says nothing about which named suite failed.
+    wf_suites_proof() {
+        local wf_name="$1" row id title names s log pass="" bad=""
+        wf_why=""
+        wf_sp_id=""
+        [ "$1" = macos-cadence.yml ] || return 1
+        row=$(printf '%s' "$2" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and (.displayTitle // "" | startswith("macos-cadence suites:")))][0] | select(. != null) | "\(.databaseId) \(.displayTitle)"' 2>/dev/null)  # swallow-ok: unparsable runs read as no suites run, the caller fails closed
+        [ -n "$row" ] || return 1
+        id="${row%% *}"; title="${row#* }"; names="${title#macos-cadence suites:}"
+        # shellcheck disable=SC2086  # word-splitting the named paths IS the point (repo paths carry no whitespace)
+        set -- $names
+        if [ "$#" -eq 0 ]; then wf_why="run $id names no suites"; return 2; fi
+        log=$("$GH" run view "$id" --repo "$nwo" --log 2>/dev/null) || { wf_why="cannot read the log of run $id"; return 2; }  # swallow-ok: a failed read sets wf_why and returns 2, which the caller reports as a failure
+        for s in "$@"; do
+            if printf '%s\n' "$log" | grep -qF "[PASS] $s ("; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi
+        done
+        if [ -n "$bad" ]; then
+            wf_why="suites run $id: named suite(s) with no [PASS] line (failed or never ran): ${bad#, }"
+            return 2
+        fi
+        wf_sp_id="$id"
+        wf_note="PER-SUITE: $wf_name dispatch run $id, red or green overall, named $# suite(s) and every one passed: ${pass#, }"
+    }
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
     wf_undispatchable_ok=1
     wf_undispatchable=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "removed" or .status == "added" or .status == "renamed") | .filename' 2>/dev/null) || wf_undispatchable_ok=0
@@ -770,7 +802,7 @@ else
                 wf_err="$wf_err; $wf has no workflow_dispatch trigger — add one, or list it in WF_DISPATCH_EXEMPT in ready-check.sh"
                 continue
             fi
-            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json databaseId,status,conclusion,headSha --limit 20 2>/dev/null); then
+            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json databaseId,status,conclusion,headSha,displayTitle --limit 20 2>/dev/null); then
                 wf_err="$wf_err; $wf run list failed"
                 continue
             fi
@@ -780,8 +812,13 @@ else
                 continue
             fi
             wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
-            wf_why=""
-            if [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
+            wf_why=""; wf_sp_rc=0
+            wf_suites_proof "$wf_base" "$wf_runs" || wf_sp_rc=$?
+            if [ "$wf_sp_rc" -eq 0 ]; then
+                wf_ids="$wf_ids ${wf_base}=$wf_sp_id"
+                wf_notes="$wf_notes
+       $wf_note"
+            elif [ "$wf_sp_rc" -eq 1 ] && [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
                 wf_notes="$wf_notes
        $wf_note"

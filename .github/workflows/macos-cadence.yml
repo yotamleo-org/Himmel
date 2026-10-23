@@ -16,8 +16,24 @@ name: "CI (os:macos cadence)"
 # NOT on pull_request/push, ever: that would put the paid macOS legs back on
 # every PR (HIMMEL-3853). Dispatch (needs this file on main):
 #   gh workflow run macos-cadence.yml --ref main
+#
+# A fix PR proves only ITS suites. Dispatch with `suites` set (space-
+# separated repo-relative test-*.sh paths) and ONE runner runs just those via
+# run-shell-tests.sh --only-list, in minutes instead of the 8-shard hour-plus run:
+#   gh workflow run macos-cadence.yml --ref <branch> -f suites="<path> <path>"
+# The run-name carries the list, and ready-check.sh item 10 accepts the run when
+# the log shows [PASS] for every named suite (however red the rest). Empty
+# `suites` = the unchanged full cadence. A filtered run records no breakage
+# metric: its partial suite set would read the unlisted suites as fixed.
+run-name: "${{ inputs.suites != '' && format('macos-cadence suites: {0}', inputs.suites) || 'CI (os:macos cadence)' }}"
 on:
   workflow_dispatch:
+    inputs:
+      suites:
+        description: 'Space-separated repo-relative suite paths; set = run only these on one runner'
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '43 5 * * 2,5'   # Tue + Fri, UTC
 
@@ -41,7 +57,8 @@ jobs:
         # `/8` in the run step and `--shards-expected 8` in `summary` are three
         # spellings of one number and must agree (pinned by
         # test-macos-cadence-workflow.sh).
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        # A `suites` dispatch needs one runner, not eight.
+        shard: ${{ fromJSON(inputs.suites == '' && '[1, 2, 3, 4, 5, 6, 7, 8]' || '[1]') }}
     runs-on: ${{ matrix.os }}
     # No continue-on-error: a red macOS shard reddens THIS run and nothing else.
     # The cap only bounds a hung suite.
@@ -59,11 +76,26 @@ jobs:
         run: python -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
       # SUITE_TIER_MODE=all: the whole corpus, extended tier included -- the
       # coverage the nightly's macOS legs had.
+      # A `suites` dispatch: the input reaches the shell through SUITES (never
+      # interpolated into the script), each word is checked to be a plain
+      # repo-relative path, and --only-list runs just those suites.
       - id: tests
-        run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
+        run: |
+          if [ -n "$SUITES" ]; then
+            set -f
+            printf '%s\n' $SUITES > macos-suites.txt
+            if grep -qvE '^[A-Za-z0-9_./-]+$' macos-suites.txt || grep -q '\.\.' macos-suites.txt; then
+              echo "::error::suites must be plain repo-relative paths"
+              exit 2
+            fi
+            bash scripts/ci/run-shell-tests.sh --only-list macos-suites.txt .
+          else
+            bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
+          fi
         env:
           FAIL_LOG_DIR: failed-suite-logs
           SUITE_TIER_MODE: all
+          SUITES: ${{ inputs.suites }}
       # Even when the run step above went red: this is the per-shard input to
       # the breakage metric. Skipped when setup died before the tests ran, so
       # `summary` sees a missing report (infra_suspect), not an empty one.
@@ -113,6 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Record breakages against the previous cadence run
+        if: inputs.suites == ''
         # shell: bash = `bash -e -o pipefail`: without it the step's status is
         # tee's and a die inside `record` (rc 2) would go green.
         shell: bash
@@ -143,7 +176,7 @@ jobs:
             --shards-expected 8 --failed-dir failed-artifacts $prev \
             --out record.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload breakage record
-        if: always()
+        if: always() && inputs.suites == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-breakage-record

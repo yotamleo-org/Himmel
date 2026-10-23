@@ -55,7 +55,7 @@ if grep -q "SUITE_TIER_MODE: all" <<< "$s"; then ok "SUITE_TIER_MODE is all (the
 else bad "SUITE_TIER_MODE is not all"; fi
 
 # 6. shard count spelled three ways must agree, and match ci.yml's partition.
-list="$(sed -n 's/^[[:space:]]*shard: \[\(.*\)\]$/\1/p' <<< "$s" | tr -d ' ')"
+list="$(sed -n "s/^[[:space:]]*shard: .*== '' && '\[\([0-9, ]*\)\]'.*\$/\1/p" <<< "$s" | tr -d ' ')"
 n_list="$(tr ',' '\n' <<< "$list" | grep -c .)"
 n_run="$(sed -n 's/.*--shard \${{ matrix.shard }}\/\([0-9]*\) .*/\1/p' <<< "$s" | head -1)"
 n_exp="$(sed -n 's/.*--shards-expected \([0-9]*\).*/\1/p' <<< "$s" | head -1)"
@@ -105,6 +105,34 @@ ne_ln="$(grep -n '"\$rc" != 0' <<< "$lst" | head -1 | cut -d: -f1)"
 if [ -n "$ne_ln" ] && [ -n "$rm_ln" ] && [ -n "$exit_ln" ] && [ "$ne_ln" -lt "$rm_ln" ] && [ "$rm_ln" -lt "$exit_ln" ]; then
   ok "any nonzero suites-from-logs status removes failed.txt before the step exits"
 else bad "a nonzero suites-from-logs status other than 3 exits without removing failed.txt"; fi
+
+# 11. a `suites` dispatch runs only the named suites on one runner;
+# an empty input leaves the full 8-shard cadence and its breakage record alone.
+inputs_block="$(awk '/^on:/ {f=1; next} f && /^[a-z]/ {f=0} f' <<< "$s" | awk '/^    inputs:/ {g=1; next} g && /^  [a-z]/ {g=0} g')"
+if grep -q '^      suites:$' <<< "$inputs_block" && grep -q "^        type: string$" <<< "$inputs_block" && grep -q "^        default: ''$" <<< "$inputs_block"; then
+  ok "workflow_dispatch has a string input 'suites' defaulting to empty"
+else bad "workflow_dispatch has no 'suites' string input defaulting to ''"; fi
+# shellcheck disable=SC2016 # literal workflow text
+if grep -q "^run-name: .*inputs.suites != ''.*macos-cadence suites: {0}.*|| 'CI (os:macos cadence)'" <<< "$s"; then
+  ok "run-name carries the named suites (ready-check item 10 reads it); an unfiltered run keeps the workflow name"
+else bad "run-name does not carry 'macos-cadence suites: <list>' for a filtered run"; fi
+# shellcheck disable=SC2016 # literal workflow text
+if grep -qF "shard: \${{ fromJSON(inputs.suites == '' && '[1, 2, 3, 4, 5, 6, 7, 8]' || '[1]') }}" <<< "$s"; then
+  ok "a suites dispatch is one runner, an unfiltered run is the eight shards"
+else bad "the shard matrix does not shrink to one runner for a suites dispatch"; fi
+tests_step="$(awk '/^      - id: tests$/ {f=1; next} f && /^      - / {f=0} f' <<< "$s")"
+# shellcheck disable=SC2016 # literal workflow text
+if grep -q 'SUITES: \${{ inputs.suites }}' <<< "$tests_step" && grep -q -- '--only-list macos-suites.txt' <<< "$tests_step" \
+   && ! grep -q 'run-shell-tests.sh.*inputs.suites' <<< "$tests_step"; then
+  ok "the tests step passes the input through env SUITES and runs --only-list; it is never interpolated into the script"
+else bad "the tests step does not take the input through env SUITES into --only-list"; fi
+# shellcheck disable=SC2016 # literal workflow text
+if grep -q -- '--shard \${{ matrix.shard }}/8 \.' <<< "$tests_step"; then ok "an empty input still runs the unchanged --shard i/8 partition"
+else bad "the unfiltered --shard i/8 run is gone from the tests step"; fi
+rec="$(step_of "Record breakages")"; upl="$(step_of "Upload breakage record")"
+if grep -q "^        if: inputs.suites == ''$" <<< "$rec" && grep -q "^        if: always() && inputs.suites == ''$" <<< "$upl"; then
+  ok "a suites dispatch records no breakage metric (a partial run would read unlisted suites as fixed)"
+else bad "the breakage record/upload steps are not skipped for a suites dispatch"; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
