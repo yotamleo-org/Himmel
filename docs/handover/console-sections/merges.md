@@ -35,7 +35,19 @@ wording, as the leg's own Ship step does); the `--leg-doc` line binds it either 
 Then send the leg `MERGED #<pr> → <sha>` by SendMessage quoting its token; <!-- old-term-ok: console runbook wording -->
 the leg `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits <!-- old-term-ok: console runbook wording -->
 non-zero is not `MERGED`: send the leg the exit and reason instead, and it <!-- old-term-ok: console runbook wording -->
-stays held. Native legs are unchanged: they merge themselves on your GO. <!-- old-term-ok: console runbook wording -->
+stays held. Native legs merge themselves on your GO. <!-- old-term-ok: console runbook wording -->
+
+**Native legs: the GO message names the GO file.** `console-kit/verdict-go.sh` <!-- old-term-ok: console runbook wording -->
+prints the leg message as `GO <pr> <head> - merge with: bash <merge script> <!-- old-term-ok: console runbook wording -->
+--jira-transition --go <GO file>`; send it as printed (with your token). After
+a bare GO run, give the leg the path it printed as its `--go` argument. A console leg's <!-- old-term-ok: console runbook wording -->
+`merge-on-green.sh` exits 17 without `--go`, or with the file of another PR or
+head, and prints the verified GO evidence, so the merge command shows the
+review it relies on (HIMMEL-7165: a merge with no visible review was denied as
+Merge Without Review, intermittently). If the classifier still denies a
+reviewed merge, the leg sends `BLOCKED`; do not run the denied merge for it <!-- old-term-ok: console runbook wording -->
+(that launders the denial) and do not loosen any rule. The fallback is the
+claudex path above, tracked as a follow-up.
 
 **Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite

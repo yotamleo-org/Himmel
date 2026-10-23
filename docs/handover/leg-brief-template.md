@@ -158,7 +158,11 @@ template_version: 3
 >    ticket spans further PRs, sibling slices, or work owed outside any PR) →
 >    it omits the flag. The merge is typed exactly
 >    `bash scripts/handover/merge-on-green.sh [--jira-transition]` from the
->    worktree root, even on a branch behind main: the `$HIMMEL_REPO` spelling's
+>    worktree root, followed by `--go <GO file>`: the console's `GO` message
+>    names the file (`<handover root>/.locks/go/<pr>.<head>`), a console leg's
+>    merge is refused (exit 17) without it or with the file of another PR or
+>    head, and the verified GO evidence is printed so the merge command shows
+>    the review it relies on (HIMMEL-7165). Even on a branch behind main: the `$HIMMEL_REPO` spelling's
 >    rule carries an expansion the matcher does not resolve and the absolute
 >    spelling matches no rule, so both are left to the auto-mode classifier,
 >    which allows and denies them run to run. **A `lane: claudex` leg never

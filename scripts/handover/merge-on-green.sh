@@ -54,7 +54,7 @@
 # by design: this wrapper IS the sanctioned gated path and embeds the same
 # (stronger, because it WATCHES) predicates via check-ci.sh.
 #
-# Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--leg-doc PATH]
+# Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--leg-doc PATH] [--go GOFILE]
 #   selector           optional PR number / branch / url; defaults to the
 #                      current branch
 #   --dry-run          run every gate, print the intended merge, then STOP
@@ -64,6 +64,12 @@
 #                      below; default is a PARTIAL merge: the ticket status is
 #                      left unchanged, and the PR body's `Remaining:` line is
 #                      posted to it as a comment, never Done)
+#   --go GOFILE        the console's GO file, <handover root>/.locks/go/<pr>.<head>.
+#                      A console leg MUST pass it, so the merge command itself names
+#                      the review it relies on; it must be the file for THIS PR at
+#                      the certified head (else exit 17), and the verified evidence
+#                      (file, pr, head, trust id) is printed. Any other caller may
+#                      pass it, and then it is checked the same way.
 #   --leg-doc PATH     the leg's brief doc (else $HIMMEL_LEG_DOC); its
 #                      `> **Completes ticket:** yes|no` line above `## Results`
 #                      (any no wins; lines below Results are ignored) binds the merge:
@@ -320,12 +326,16 @@ HIMMEL_PUBLIC_ORIGIN_NWO="yotamleo-org/Himmel"
 selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
+GO_FLAG=""
 # ponytail: the leg doc is supplied by the caller (--leg-doc, else HIMMEL_LEG_DOC); the console must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
 LEG_DOC="${HIMMEL_LEG_DOC:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --jira-transition) JIRA_TRANSITION_OPT_IN=1; shift ;;
+        --go)
+            if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --go needs the path of the console's GO file" >&2; exit 10; fi
+            GO_FLAG="$2"; shift 2 ;;
         --leg-doc)
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --leg-doc needs a path" >&2; exit 10; fi
             LEG_DOC="$2"; shift 2 ;;
@@ -922,7 +932,7 @@ fi
 # already callable") before sourcing, so only the file's own definitions can
 # satisfy the declare -F checks that follow.
 is_leg=1
-if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
+if [ -n "${HIMMEL_CONSOLE_LEG:-}" ] || [ -n "$GO_FLAG" ]; then
     unset -f go_gate _go_gate_verify console_leg go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
     # From the anchor, never this script's own worktree sibling —
     # a malicious go-gate.sh here (e.g. console_leg() always returning false)
@@ -938,7 +948,7 @@ if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
 else
     is_leg=0
 fi
-if [ "$is_leg" -eq 1 ]; then
+if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
     go_root=""
     # From the anchor — a malicious handover-path.sh in the
     # worktree could otherwise forge go_root onto an attacker-writable,
@@ -968,6 +978,35 @@ if [ "$is_leg" -eq 1 ]; then
         audit "REFUSED reason=policy-refused phase=console-go repo=$nwo pr=#$pr_num sha=$sha go=$go_file"
         exit 17
     fi
+    # The merge command must name the GO it relies on: a console leg always, any
+    # other caller when it passed --go. Same directory (physically) and the exact
+    # basename go_gate just verified, else a GO for another PR or head would pass.
+    go_flag_ok=0
+    if [ -n "$GO_FLAG" ]; then
+        go_flag_dir=""
+        go_want_dir=""
+        if [ -d "$(dirname "$GO_FLAG")" ]; then
+            go_flag_dir=$(cd "$(dirname "$GO_FLAG")" && pwd -P)
+        fi
+        if [ -d "$(dirname "$go_file")" ]; then
+            go_want_dir=$(cd "$(dirname "$go_file")" && pwd -P)
+        fi
+        if [ -n "$go_flag_dir" ] && [ "$go_flag_dir" = "$go_want_dir" ] \
+            && [ "$(basename "$GO_FLAG")" = "$(basename "$go_file")" ]; then
+            go_flag_ok=1
+        fi
+    fi
+    if [ "$go_flag_ok" -ne 1 ]; then
+        if [ -n "$GO_FLAG" ]; then
+            echo "merge-on-green: --go $GO_FLAG is not the GO for PR #$pr_num at $sha — pass --go $go_file" >&2
+        else
+            echo "merge-on-green: a console leg's merge needs --go $go_file (the GO file for PR #$pr_num at $sha); add it so the merge command names the review it relies on" >&2
+        fi
+        audit "REFUSED reason=policy-refused phase=console-go-flag repo=$nwo pr=#$pr_num sha=$sha go=$go_file flag=${GO_FLAG:-<none>}"
+        exit 17
+    fi
+    go_trust=$(sed -n 's/^trust-reviewed=//p' "$go_file" | head -n 1)
+    echo "merge-on-green: GO evidence: file=$go_file pr=$pr_num head=$sha trust=${go_trust:-none} mac=verified" >&2
 fi
 
 # Trust-path gate. PR CI runs

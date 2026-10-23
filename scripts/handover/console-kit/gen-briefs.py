@@ -270,10 +270,10 @@ def ship_completes(scope, lane='native'):
     found = COMPLETES_RE.findall(scope)
     if found and found[-1].lower() == 'no':
         ct = 'completes-ticket: no (leave the ticket In Progress after MERGED)'
-        cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root)'
+        cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root, then `--go <the GO file the console\'s GO message names>`)'
     else:
         ct = 'completes-ticket: yes (if the PR title carries a second key, say so after MERGED so the console closes it)'
-        cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root)'
+        cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root, then `--go <the GO file the console\'s GO message names>`)'
     if lane == 'claudex':
         return ct, MERGE_AT_READY_LINE
     return ct, 'Merge only on GO with %s. MERGED, `cd` out, WRAPPED, release the lock,' % cmd

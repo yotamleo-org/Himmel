@@ -3082,10 +3082,46 @@ no_merge_call "2919-a3: no merge call"
 # head: proceeds exactly like the unmarked happy path (2919-d's gh log).
 go_write "$GO_ROOT" 77 "$GO_SHA"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 0 "2919-b: console leg with a GO for the certified head → merged"
+    run_mog 0 "2919-b: console leg with a GO for the certified head → merged" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
 assert_merge_has "2919-b: merge pins the certified head" "--match-head-commit $GO_SHA"
 assert_audit_has "2919-b: MERGED recorded" "MERGED repo="
+assert_err_has "2919-b: the verified GO evidence is printed" "GO evidence: file=$GO_ROOT/.locks/go/77.$GO_SHA pr=77 head=$GO_SHA"
 GO_B_GHLOG=$(cat "$LAST_GH_LOG")
+
+# 7165-a — a valid GO file exists but the leg's merge line carries no --go:
+# refused before any merge call, so a merge command always shows its evidence.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7165-a: console leg without --go (valid GO on disk) → exit 17"
+assert_err_has "7165-a: stderr says --go is required" "needs --go $GO_ROOT/.locks/go/77.$GO_SHA"
+assert_audit_has "7165-a: audited as a policy refusal" "REFUSED reason=policy-refused phase=console-go-flag"
+no_merge_call "7165-a: no merge call"
+
+# 7165-b — --go names the GO of another head (written, valid, but not this head's).
+go_write "$GO_ROOT" 77 "$GO_OLD"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7165-b: --go for another head → exit 17" -- --go "$GO_ROOT/.locks/go/77.$GO_OLD"
+assert_err_has "7165-b: stderr names the expected GO path" "$GO_ROOT/.locks/go/77.$GO_SHA"
+no_merge_call "7165-b: no merge call"
+rm -f "$GO_ROOT/.locks/go/77.$GO_OLD"
+
+# 7165-c — --go names a valid GO of another PR number at the same head.
+go_write "$GO_ROOT" 78 "$GO_SHA"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7165-c: --go for another PR number → exit 17" -- --go "$GO_ROOT/.locks/go/78.$GO_SHA"
+assert_err_has "7165-c: stderr names the expected GO path" "$GO_ROOT/.locks/go/77.$GO_SHA"
+no_merge_call "7165-c: no merge call"
+rm -f "$GO_ROOT/.locks/go/78.$GO_SHA"
+
+# 7165-d — --go naming a file that does not exist: refused.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7165-d: --go for a missing file → exit 17" -- --go "$GO_ROOT/.locks/go/77.nonexistent"
+no_merge_call "7165-d: no merge call"
+
+# 7165-e — the operator path needs no --go, but one that names the wrong GO is
+# refused all the same (a flag that lies is never ignored).
+HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7165-e: operator path with a wrong --go → exit 17" -- --go "$GO_ROOT/.locks/go/78.$GO_SHA"
+no_merge_call "7165-e: no merge call"
 
 # 2919-c — only a STALE GO (an older head) exists: refused.
 rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
@@ -3172,14 +3208,14 @@ tp_mint 77 "$GO_SHA"
 # runs under its claude session, so these rows run under a fake one.
 # shellcheck disable=SC2317,SC2329  # _as_claude is invoked indirectly, through MOG_WRAP
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
-MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 21 "3895-a3: console leg with an ordinary GO on a trust-path PR → exit 21"
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 21 "3895-a3: console leg with an ordinary GO on a trust-path PR → exit 21" -- --go "$TP_GO/77.$GO_SHA"
 assert_err_has "3895-a3: stderr asks for a trust-reviewed GO" "trust-reviewed"
 no_merge_call "3895-a3: no merge call"
 
 # 3895-b — a trust-reviewed GO minted by go.sh for this PR at this head merges,
 # for a console leg and for the operator path alike.
 tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
-MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 0 "3895-b: console leg with a trust-reviewed GO → merged"
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 0 "3895-b: console leg with a trust-reviewed GO → merged" -- --go "$TP_GO/77.$GO_SHA"
 assert_merge_has "3895-b: merge pins the certified head" "--match-head-commit $GO_SHA"
 assert_audit_has "3895-b: the trust review rides the audit" "trust=judge-N9"
 tp_run 0 "3895-b2: operator path with a trust-reviewed GO → merged"

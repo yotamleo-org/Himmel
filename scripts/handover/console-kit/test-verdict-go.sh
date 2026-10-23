@@ -41,7 +41,7 @@ for a in "\$@"; do printf ' [%s]' "\$a" >> "$LOG"; done
 printf '\n' >> "$LOG"
 case "$s" in
     write-verdict) exit "\${WV_RC:-0}" ;;
-    go) echo "/fake/root/.locks/go/\$*"; exit "\${GO_RC:-0}" ;;
+    go) echo "\${GO_PATH_OUT:-/fake/root/.locks/go/\$*}"; exit "\${GO_RC:-0}" ;;
     *) exit "\${AR_RC:-0}" ;;
 esac
 EOF
@@ -75,6 +75,12 @@ contains "1: board is --changed on the doc" "$log" "board [--doc] [$DOC] [--chan
 contains "1: leg message names the merge command" "$out" "merge-on-green.sh --jira-transition"
 contains "1: leg message names the leg" "$out" "N2033"
 contains "1: leg message carries GO pr head" "$out" "GO 77 $HEAD40"
+
+# --- 1b. the leg message names the GO file go.sh wrote ------------------------
+GO_PATH_OUT="/r/.locks/go/77.$HEAD40" run q1b GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+contains "1b: leg message carries --go with the GO file" "$out" "merge-on-green.sh --jira-transition --go /r/.locks/go/77.$HEAD40"
+run q1c GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+lacks "1c: no --go when go.sh named no GO file for this head" "$out" "--go "
 
 # --- 2. NO-GO ---------------------------------------------------------------
 run q2 NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"

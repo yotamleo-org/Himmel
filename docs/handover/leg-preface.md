@@ -145,7 +145,7 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
 - **Closing the ticket at merge.** The merge is
   `bash <anchor>/scripts/handover/merge-on-green.sh`, `<anchor>` the primary
   checkout's absolute path (`git rev-parse
-  --path-format=absolute --git-common-dir`, minus `/.git`), typed as ONE bare command. The Jira transition is opt-in
+  --path-format=absolute --git-common-dir`, minus `/.git`), typed as ONE command ending `--go <GO file>` from the GO message. The Jira transition is opt-in
   (`--jira-transition`), so a bare run leaves a finished ticket open. Read the
   `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:

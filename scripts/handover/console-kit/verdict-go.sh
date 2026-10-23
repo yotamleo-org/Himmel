@@ -94,12 +94,18 @@ bash "$HERE/write-verdict.sh" "$QID" "$ANSWER" "$HEAD_SHA" --pr "$PR" --evidence
     ${PRIOR:+--prior "$PRIOR"} ${RESIDUAL_OF:+--residual-of "$RESIDUAL_OF"} \
     ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} || step_fail write-verdict.sh $?
 
+GO_FILE=""
 if [ "$ANSWER" = "GO" ]; then
+    # go.sh prints the GO file it wrote as its last stdout line; the leg's merge
+    # names that file with --go.
     if [ "$TRUST" -eq 1 ]; then
-        bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA" || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA") || step_fail go.sh $?
     else
-        bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} "$PR" "$HEAD_SHA" || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
     fi
+    [ -z "$GO_OUT" ] || printf '%s\n' "$GO_OUT"
+    GO_LAST=${GO_OUT##*$'\n'}
+    case "$GO_LAST" in */.locks/go/"$PR.$HEAD_SHA") GO_FILE="$GO_LAST" ;; esac
 fi
 
 if [ -n "$DOC" ]; then
@@ -119,6 +125,7 @@ if [ "$ANSWER" = "GO" ]; then
     [ -n "$ANCHOR" ] || ANCHOR="$(cd "$HERE/../../.." && pwd)"
     echo
     echo "--- leg message (send to ${LEG:-the leg}; add its token) ---"
-    printf 'GO %s %s - merge with: bash %q --jira-transition\n' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh"
+    printf 'GO %s %s - merge with: bash %q --jira-transition' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh"
+    if [ -n "$GO_FILE" ]; then printf ' --go %q\n' "$GO_FILE"; else printf '\n'; fi
 fi
 exit 0
