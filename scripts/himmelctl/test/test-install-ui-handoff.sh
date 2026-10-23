@@ -82,7 +82,7 @@ run_install() {
     HIMMELCTL_CACHE_DIR="$(winpath "$c/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$c/cache/luna-config.json")" \
     HIMMELCTL_REPO_ROOT="$(winpath "$c/fx")" HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$c/units" \
     HIMMELCTL_INTERACTIVE=0 HIMMELCTL_UI_HANDOFF=1 ${envs[@]+"${envs[@]}"} \
-    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 120} "$node_bin" "$wizard" install --from-profile "$(winpath "$c/profile.json")" "$@" < "$in" 2>&1) || rc=$?
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 120} "$node_bin" "$wizard" install --from-profile "$(winpath "$c/profile.json")" "$@" < "$in" 2>&1) || rc=$?  # read-sink-ok: $in is a fixed /dev/null or a fixture path this suite writes
 }
 
 setup_link_re='http://127\.0\.0\.1:[0-9]+/#t=[0-9a-f]{64}&page=setup'
