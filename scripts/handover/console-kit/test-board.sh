@@ -981,6 +981,9 @@ contains 'cloud: a session with no branch or PR reads no-branch (HIMMEL-5163)' "
 html="$(cloud_html cloud-gh-down)"
 contains 'cloud: an unreadable forge says so, never fatal (HIMMEL-5163)' "$html" 'data-cloud-panel="unavailable"'
 rm -f "$M/cloud-sessions.tsv"
+# a ticket is matched literally: 'HIMMEL.1' must not claim the branch 'himmelx1-foo' (RED control: the dot matched it, state 'branch')
+cstate="$(node --input-type=module -e "import { evaluate } from '$HERE/cloud-liveness.mjs'; const now = Date.parse('2026-10-10T16:30:00Z'); console.log(evaluate({ sessions: [{ ticket: 'HIMMEL.1', session: 's', launched: now - 600 * 60000 }], prs: [], heads: ['himmelx1-foo'], now })[0].state);")"
+contains 'cloud: a ticket is matched literally, never as a pattern (HIMMEL-7167)' "$cstate" 'no-branch'
 
 # --- the published board shows live work only; WRAPPED/MERGED legs and
 # merged PRs go to a local, never-published, grep-friendly archive beside it.

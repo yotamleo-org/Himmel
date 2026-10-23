@@ -298,6 +298,13 @@ for v in firstlinesecret secondlinesecret danglingquote; do
   case "$o" in *"$v"*) fail "h2 multiline/unbalanced-quote value leaked ($v): $o";; esac
 done
 pass "h2 multiline and unbalanced-quote .env values scrubbed"
+# h2c: a secret value is matched literally, never as a pattern (regex metacharacters, a nested quantifier)
+# shellcheck disable=SC2016  # the node source and the secret value are literal, the $ is not a shell expansion
+o=$(rj 'const l=r.envValues("DB_PASSWORD=ab.d+(x)\nAPI_TOKEN=(a+)+$z\n",p.parseDotEnv);process.stdout.write(r.redact("one ab.d+(x) two abxd+(x) three (a+)+$z four aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!",{literals:l}))') || fail "h2c node redaction run failed"
+# shellcheck disable=SC2016  # the secret value is literal
+case "$o" in *"ab.d+(x)"*|*'(a+)+$z'*) fail "h2c a metacharacter secret value leaked: $o";; esac
+case "$o" in *"abxd+(x)"*) :;; *) fail "h2c a value was matched as a pattern (abxd+(x) was scrubbed): $o";; esac
+pass "h2c secret values are matched literally"
 # h2b: an escaped quote on the first line does not close a multiline value
 o=$(rj 'const raw="API_SECRET=\"say \\\"hi\nescapedtailsecret\"\n";const l=r.envValues(raw,p.parseDotEnv);process.stdout.write(r.redact("x escapedtailsecret y",{literals:l}))') || fail "h2b node redaction run failed"
 case "$o" in *escapedtailsecret*) fail "h2b escaped-quote multiline value leaked its tail: $o";; esac

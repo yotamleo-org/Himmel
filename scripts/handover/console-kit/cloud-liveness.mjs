@@ -53,8 +53,9 @@ export function parseSessions(text) {
 }
 
 const LIMIT = 100;
-const keyRe = (key) => new RegExp(`(?<![\\w-])${key}(?!\\d)`);
+const keyRe = (key) => new RegExp(`(?<![\\w-])${literal(key)}(?!\\d)`);
 const slugOf = (key) => key.toLowerCase();
+const literal = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const DONE = /^\s*CLOUD-(DONE|BLOCKED)\b/;
 
 // Which PRs are this session's: the brief's `cloud-pilot: <KEY>` body line, a CLOUD-DONE /
@@ -64,9 +65,9 @@ function attributed(pr, s) {
   const made = Date.parse(pr.createdAt ?? '');
   if (!Number.isNaN(made) && made < s.launched) return false;
   const body = pr.body ?? '';
-  if (new RegExp(`cloud-pilot:\\s*${s.ticket}(?!\\d)`).test(body)) return true;
+  if (new RegExp(`cloud-pilot:\\s*${literal(s.ticket)}(?!\\d)`).test(body)) return true;
   if ((pr.comments ?? []).some((c) => DONE.test(c.body ?? '') && s.session && (c.body ?? '').includes(s.session))) return true;
-  return /^claude\//.test(pr.headRefName ?? '') && new RegExp(`${slugOf(s.ticket)}(?!\\d)`, 'i').test(pr.headRefName);
+  return /^claude\//.test(pr.headRefName ?? '') && new RegExp(`${literal(slugOf(s.ticket))}(?!\\d)`, 'i').test(pr.headRefName);
 }
 
 // evaluate({sessions, prs, heads, legDocs, now, cfg}) -> [{ticket, session, launched, state, stall, pr?, detail}]
@@ -84,7 +85,7 @@ export function evaluate({ sessions, prs, heads, legDocs = [], now, cfg = defaul
     if (!open) {
       const closed = mine.find((p) => p.state === 'CLOSED');
       if (closed) { row('closed', false, { pr: closed.number }); continue; }
-      const hasBranch = (heads ?? []).some((h) => new RegExp(`${slugOf(s.ticket)}(?!\\d)`, 'i').test(h));
+      const hasBranch = (heads ?? []).some((h) => new RegExp(`${literal(slugOf(s.ticket))}(?!\\d)`, 'i').test(h));
       if (hasBranch) row('branch', false, { detail: 'a branch exists, no PR yet' });
       else if (heads === null) row('pending', false, { detail: 'branches unreadable' });
       else if (age >= cfg.branchMin) row('no-branch', true, { detail: `no branch or PR ${Math.round(age)} min after launch` });
@@ -93,7 +94,7 @@ export function evaluate({ sessions, prs, heads, legDocs = [], now, cfg = defaul
     }
     const done = (open.comments ?? []).filter((c) => DONE.test(c.body ?? '')).map((c) => Date.parse(c.createdAt)).filter((t) => !Number.isNaN(t)).sort((a, b) => b - a)[0];
     if (done !== undefined) {
-      const named = legDocs.some((d) => !d.wrapped && new RegExp(`(?:#|PR\\s*#?|pull/)${open.number}(?!\\d)`, 'i').test(d.text));
+      const named = legDocs.some((d) => !d.wrapped && new RegExp(`(?:#|PR\\s*#?|pull/)${literal(open.number)}(?!\\d)`, 'i').test(d.text));
       if (named) row('shepherded', false, { pr: open.number });
       else if ((now - done) / MIN >= cfg.doneMin) row('unshepherded', true, { pr: open.number, detail: `CLOUD-DONE ${Math.round((now - done) / MIN)} min ago, no live leg doc names PR ${open.number}` });
       else row('done-pending', false, { pr: open.number });
