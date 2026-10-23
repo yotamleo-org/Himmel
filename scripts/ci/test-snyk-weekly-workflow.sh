@@ -139,7 +139,7 @@ if [ -n "$stub_root" ]; then
   # the forks scan runs on the first Monday of the month for a schedule (day of month 1-7) and on any dispatch
   mkdir -p "$stub_root/bin"
   # shellcheck disable=SC2016  # the stub body expands STUB_DAY when it runs, not here
-  printf '#!/usr/bin/env bash\necho "${STUB_DAY:-15}"\n' > "$stub_root/bin/date"
+  printf '#!/usr/bin/env bash\n[ "$*" = "-u +%%d" ] || exit 64\necho "${STUB_DAY:-15}"\n' > "$stub_root/bin/date"
   chmod +x "$stub_root/bin/date"
   fbody="$(run_body "$forks_step")"
   for want in "schedule|15|0" "schedule|03|1" "schedule|07|1" "schedule|08|0" "workflow_dispatch|15|1"; do
