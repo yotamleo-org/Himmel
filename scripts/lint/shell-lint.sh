@@ -291,7 +291,7 @@ _octal_arith_hits() {
 _kill_after_hits() {
     awk '
     function hard(l) { return l ~ /(^|[;&|[:space:]])kill[[:space:]]+-(9|KILL|s[[:space:]]+KILL)([^A-Za-z0-9]|$)/ }
-    function soft(l) { return l ~ /(^|[;&|[:space:]])kill([[:space:]]+-(TERM|15|INT|HUP|s[[:space:]]+(TERM|INT|HUP)))?[[:space:]]+["$0-9-]/ && l !~ /kill[[:space:]]+-(0|l)([^A-Za-z0-9]|$)/ }
+    function soft(l) { return l ~ /(^|[;&|[:space:]])kill[[:space:]]+(-?["$]|[0-9])/ || l ~ /(^|[;&|[:space:]])kill[[:space:]]+-(TERM|15|INT|HUP|s[[:space:]]+(TERM|INT|HUP))[[:space:]]+["$0-9-]/ }
     function fixed(l) { return l ~ /(^|[;&|[:space:]])sleep[[:space:]]+[0-9.]+[[:space:]]*(;|$|#)/ }
     FNR == 1 { st = 0 }
     /^[[:space:]]*(#|$)/ { next }
@@ -299,7 +299,9 @@ _kill_after_hits() {
         l = $0
         if (soft(l) && fixed(l) && hard(l)) { if (l !~ /kill-after-ok/) print FNR ":" l; st = 0; next }
         if (st == 2 && hard(l)) { if (l !~ /kill-after-ok/ && sl !~ /kill-after-ok/) print sn ":" sl; st = 0; next }
+        if (st == 1 && fixed(l) && hard(l)) { if (l !~ /kill-after-ok/) print FNR ":" l; st = 0; next }
         if (st == 1 && l ~ /^[[:space:]]*sleep[[:space:]]+[0-9.]+[[:space:]]*(;|$|#)/) { st = 2; sn = FNR; sl = l; next }
+        if (soft(l) && fixed(l) && !hard(l)) { st = 2; sn = FNR; sl = l; next }
         st = (soft(l) && !hard(l)) ? 1 : 0
     }' "$1"
 }

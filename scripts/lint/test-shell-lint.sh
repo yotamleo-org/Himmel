@@ -185,7 +185,8 @@ kill_tree() {
   for p in $pids; do kill -KILL "$p" 2>/dev/null; done
 }
 EOF
-    out="$(bash "$LINT" "$good" 2>&1)"
+    out="$(bash "$LINT" "$good" 2>&1)"; ec=$?
+    if [ "$ec" -eq 0 ]; then pass "23b exit 0 on the bounded poll"; else fail "23b expected exit 0, got $ec" "$out"; fi
     assert_not_contains "23b bounded kill -0 poll before KILL is clean" "[kill-after]" "$out"
     cat > "$ok" <<'EOF'
 #!/usr/bin/env bash
@@ -194,7 +195,8 @@ kill "$1" 2>/dev/null
 sleep 1 # kill-after-ok: the stub ignores TERM by design
 kill -9 "$1" 2>/dev/null
 EOF
-    out="$(bash "$LINT" "$ok" 2>&1)"
+    out="$(bash "$LINT" "$ok" 2>&1)"; ec=$?
+    if [ "$ec" -eq 0 ]; then pass "23c exit 0 on the exempted sequence"; else fail "23c expected exit 0, got $ec" "$out"; fi
     assert_not_contains "23c # kill-after-ok exempts" "[kill-after]" "$out"
     cat > "$one" <<'EOF'
 #!/usr/bin/env bash
@@ -203,10 +205,20 @@ kill "$1"; sleep 1; kill -9 "$1"
 kill -s TERM "$1"
 sleep 3
 kill -s KILL "$1"
+kill -0 "$1" && kill -TERM "$1"
+sleep 2
+kill -KILL "$1"
+kill "$1"; sleep 2
+kill -9 "$1"
+kill "$1"
+sleep 2; kill -9 "$1"
 EOF
     out="$(bash "$LINT" "$one" 2>&1)"
     assert_contains "23d one-line form flagged" "[kill-after] line 3" "$out"
     assert_contains "23d kill -s TERM / -s KILL form flagged" "[kill-after] line 5" "$out"
+    assert_contains "23d a kill -0 probe beside the TERM does not hide it" "[kill-after] line 8" "$out"
+    assert_contains "23d soft kill and sleep on one line, KILL on the next" "[kill-after] line 10" "$out"
+    assert_contains "23d soft kill, then sleep and KILL on one line" "[kill-after] line 13" "$out"
     out="$(bash "$LINT" --help 2>&1)"
     assert_contains "23e --help documents [kill-after]" "[kill-after]" "$out"
 }

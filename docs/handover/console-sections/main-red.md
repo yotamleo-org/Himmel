@@ -19,9 +19,10 @@ case, the pass/fail counts, and whether its own retry passed.
 red sha (`git worktree add --detach <scratch>/red <sha>`) and run that one
 suite there with `bash scripts/quiet-run.sh suite -- bash <suite>`. Never
 reproduce from the primary checkout inside a Claude session. That copy is the
-anchor, and on the anchor `chokepoint-seam-guard.sh` checks every
-fixture-set seam against the claude ancestor's launch environment and refuses
-with exit 96. On 10-23, `scripts/api-lane/test-claude-api.sh` run from the
+anchor, and on the anchor `chokepoint-seam-guard.sh` compares each
+registered non-internal seam a fixture sets with the claude ancestor's launch
+environment; if one differs, it refuses with exit 96. An exit 96 with no seam
+difference has another cause and needs its own diagnosis. On 10-23, `scripts/api-lane/test-claude-api.sh` run from the
 primary checkout failed 57 of 87 cases with BANK-UNKNOWN, while CI had failed
 exactly one (the bulk-call `--cancel` race). The 57 came from the chief's own
 environment, not from the code.

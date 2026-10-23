@@ -698,6 +698,7 @@ scripts/lanes/bench/scorecard/leg-relaunch.sh	gnu-flag	1
 scripts/lanes/bench/scorecard/merged-count.sh	prim-tmpdir	1
 scripts/lanes/bench/scorecard/tool-usage.sh	gnu-flag	1
 scripts/lanes/bench/scorecard/tool-usage.sh	prim-tmpdir	1
+scripts/lanes/lane-canary.sh	kill-after	1
 scripts/lanes/leg-pr-open.sh	errexit	1
 scripts/lanes/srt-poc/render-settings.sh	errexit	1
 scripts/lanes/srt-poc/test-recorded-run.sh	mktemp	2

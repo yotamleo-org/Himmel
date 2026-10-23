@@ -262,15 +262,16 @@ HIMMEL_CI_RUNNER_IMAGE HIMMEL_CONSOLE_WORKDIR HIMMEL_INBOX_DIR HIMMEL_RUNTIME_PR
 
 echo "== Case 9: scrub_session_env clears a leg's session env and keeps the CI/runner names =="
 out9=$(
-  for v in $SESSION_LEAKED $SESSION_KEPT; do export "$v=1"; done
+  for v in $SESSION_LEAKED; do export "$v=1"; done
+  for v in $SESSION_KEPT; do export "$v=kept-$v"; done
   scrub_session_env
   left="" lost=""
   for v in $SESSION_LEAKED; do [ -n "${!v-}" ] && left="$left $v"; done
-  for v in $SESSION_KEPT; do [ -n "${!v-}" ] || lost="$lost $v"; done
+  for v in $SESSION_KEPT; do [ "${!v-}" = "kept-$v" ] || lost="$lost $v"; done
   printf 'left=[%s] lost=[%s]\n' "$left" "$lost"
 )
 if [ "$out9" = "left=[] lost=[]" ]; then
-  pass "every leaked session name unset, every CI/runner name kept"
+  pass "every leaked session name unset, every CI/runner name kept with its value"
 else
   fail "scrub_session_env wrong: $out9"
 fi
