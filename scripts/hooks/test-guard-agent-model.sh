@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Smoke suite for scripts/hooks/guard-agent-model.sh: an Agent
 # dispatch that overrides model to Fable without an `ESCALATION: <reason>` prompt
-# line is denied, and so is a console-judge model override off its frontmatter
+# line is denied, and so is a judge model override off its frontmatter
 # tier (opus) without the marker.
 # Covers: fable / claude-fable-5-1 -> deny; same WITH marker -> allow; empty marker
-# -> deny; opus/sonnet/haiku and no model -> allow; console-judge sonnet -> deny,
+# -> deny; opus/sonnet/haiku and no model -> allow; judge sonnet -> deny,
 # opus -> allow, no model -> allow, marked sonnet -> allow; other tool -> allow;
 # malformed/empty stdin -> allow (fail-open); allow path prints nothing. A
 # placeholder / too-short ESCALATION reason -> deny; a marked override echoes its
@@ -18,7 +18,7 @@ set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/guard-agent-model.sh"
-JUDGE="$HOOKS/../../.claude/agents/console-judge.md"
+JUDGE="$HOOKS/../../.claude/agents/judge.md"
 [ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
@@ -86,33 +86,33 @@ check "no model -> allow" allow "$(agent general-purpose '' 'x')"
 silent "model sonnet -> no output" "$(agent general-purpose sonnet 'x')"
 silent "no model -> no output" "$(agent general-purpose '' 'x')"
 
-echo "== console-judge override off its frontmatter tier (opus) =="
+echo "== judge override off its frontmatter tier (opus) =="
 if grep -q '^model: opus$' "$JUDGE"; then
-    ok "console-judge frontmatter is still model: opus"
+    ok "judge frontmatter is still model: opus"
 else
-    bad "console-judge frontmatter no longer model: opus - update the hook's tier"
+    bad "judge frontmatter no longer model: opus - update the hook's tier"
 fi
-check "console-judge + sonnet -> deny" block "$(agent console-judge sonnet 'x')"
-check "console-judge + haiku -> deny" block "$(agent console-judge haiku 'x')"
-check "console-judge + fable -> deny" block "$(agent console-judge fable 'x')"
-check "console-judge + opus -> allow" allow "$(agent console-judge opus 'x')"
-check "console-judge + claude-opus-5-5 -> allow" allow "$(agent console-judge claude-opus-5-5 'x')"
-check "console-judge + opus[1m] (suffixed alias) -> allow" allow "$(agent console-judge 'opus[1m]' 'x')"
-check "console-judge + claude-opus-4-1-20250805 -> allow" allow "$(agent console-judge claude-opus-4-1-20250805 'x')"
-check "console-judge + opus-sonnet (opus-prefixed, not Opus) -> deny" block "$(agent console-judge opus-sonnet 'x')"
-check "console-judge + opusfake -> deny" block "$(agent console-judge opusfake 'x')"
-check "console-judge + no model -> allow" allow "$(agent console-judge '' 'x')"
-check "console-judge + sonnet + marker -> allow" allow "$(agent console-judge sonnet "$MARK")"
-check "plugin-namespaced console-judge + sonnet -> deny" block "$(agent himmel-ops:console-judge sonnet 'x')"
-check "console-judge-ro + sonnet -> deny" block "$(agent console-judge-ro sonnet 'x')"
-check "console-judge-ro + haiku -> deny" block "$(agent console-judge-ro haiku 'x')"
-check "console-judge-ro + opus -> allow" allow "$(agent console-judge-ro opus 'x')"
-check "console-judge-ro + claude-opus-5-5 -> allow" allow "$(agent console-judge-ro claude-opus-5-5 'x')"
-check "console-judge-ro + no model -> allow" allow "$(agent console-judge-ro '' 'x')"
-check "console-judge-ro + sonnet + marker -> allow" allow "$(agent console-judge-ro sonnet "$MARK")"
-check "plugin-namespaced console-judge-ro + sonnet -> deny" block "$(agent himmel-ops:console-judge-ro sonnet 'x')"
-check "console-judge-<future> + sonnet -> deny (any console-judge-* agent)" block "$(agent console-judge-future sonnet 'x')"
-check "console-judgement + sonnet -> allow (not a judge agent)" allow "$(agent console-judgement sonnet 'x')"
+check "judge + sonnet -> deny" block "$(agent judge sonnet 'x')"
+check "judge + haiku -> deny" block "$(agent judge haiku 'x')"
+check "judge + fable -> deny" block "$(agent judge fable 'x')"
+check "judge + opus -> allow" allow "$(agent judge opus 'x')"
+check "judge + claude-opus-5-5 -> allow" allow "$(agent judge claude-opus-5-5 'x')"
+check "judge + opus[1m] (suffixed alias) -> allow" allow "$(agent judge 'opus[1m]' 'x')"
+check "judge + claude-opus-4-1-20250805 -> allow" allow "$(agent judge claude-opus-4-1-20250805 'x')"
+check "judge + opus-sonnet (opus-prefixed, not Opus) -> deny" block "$(agent judge opus-sonnet 'x')"
+check "judge + opusfake -> deny" block "$(agent judge opusfake 'x')"
+check "judge + no model -> allow" allow "$(agent judge '' 'x')"
+check "judge + sonnet + marker -> allow" allow "$(agent judge sonnet "$MARK")"
+check "plugin-namespaced judge + sonnet -> deny" block "$(agent himmel-ops:judge sonnet 'x')"
+check "judge-ro + sonnet -> deny" block "$(agent judge-ro sonnet 'x')"
+check "judge-ro + haiku -> deny" block "$(agent judge-ro haiku 'x')"
+check "judge-ro + opus -> allow" allow "$(agent judge-ro opus 'x')"
+check "judge-ro + claude-opus-5-5 -> allow" allow "$(agent judge-ro claude-opus-5-5 'x')"
+check "judge-ro + no model -> allow" allow "$(agent judge-ro '' 'x')"
+check "judge-ro + sonnet + marker -> allow" allow "$(agent judge-ro sonnet "$MARK")"
+check "plugin-namespaced judge-ro + sonnet -> deny" block "$(agent himmel-ops:judge-ro sonnet 'x')"
+check "judge-<future> + sonnet -> deny (any judge-* agent)" block "$(agent judge-future sonnet 'x')"
+check "judgement + sonnet -> allow (not a judge agent)" allow "$(agent judgement sonnet 'x')"
 if grep -q '^model: opus$' "$HOOKS/../../.claude/agents/judge.md"; then
     ok "judge frontmatter is still model: opus"
 else
@@ -147,8 +147,8 @@ check "reason 'hard call' (9 chars, under min) -> deny" block "$(reasoned 'hard 
 check "reason 'hard call!' (10 chars) -> allow" allow "$(reasoned 'hard call!')"
 check "weak line then a real line -> allow" allow \
     "$(agent general-purpose fable $'x\nESCALATION: test\nESCALATION: needs taste on one verdict')"
-check "console-judge + sonnet + placeholder reason -> deny" block \
-    "$(agent console-judge sonnet $'x\nESCALATION: n/a')"
+check "judge + sonnet + placeholder reason -> deny" block \
+    "$(agent judge sonnet $'x\nESCALATION: n/a')"
 out="$(reasoned 'test' | bash "$HOOK" 2>&1 >/dev/null)"
 case "$out" in
     *placeholder*min_reason_chars*) ok "weak-reason deny explains the rule" ;;

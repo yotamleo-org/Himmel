@@ -233,12 +233,6 @@ assert_empty "console one-family mention is silent" "$(combined_output console-o
 RC7=$(run_hook console-explore "$(payload Explore 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "console + subagent_type Explore + ship-flow markers allowed" 0 "$RC7"
 
-RC7B=$(run_hook console-judge-ro "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
-assert_rc "HIMMEL-5180: console + subagent_type console-judge-ro (read-only judge, tools Read/Grep/Glob/Bash) + ship-flow markers allowed" 0 "$RC7B"
-
-RC7C=$(run_hook console-judge-still-denied "$(payload console-judge 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
-assert_rc "HIMMEL-5180: console-judge (not -ro) + ship-flow markers still denied" 2 "$RC7C"
-
 RC7D=$(run_hook judge-ro "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "console + subagent_type judge-ro (new id, tools Read/Grep/Glob/Bash) + ship-flow markers allowed" 0 "$RC7D"
 
@@ -264,10 +258,6 @@ assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash allowed" 0 "$RC7G"
 agent_md judge-ro 'Read, Grep, Glob, Bash, Write'
 RC7H=$(run_tree tree-judge-ro-write "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "judge-ro whose agent file declares Write gets no read-only carve-out" 2 "$RC7H"
-
-agent_md console-judge-ro 'Read, Write, Grep, Glob, Bash'
-RC7I=$(run_tree tree-console-judge-ro-write "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
-assert_rc "console-judge-ro whose agent file declares Write gets no read-only carve-out" 2 "$RC7I"
 
 rm -f "$FT/.claude/agents/judge-ro.md"
 RC7J=$(run_tree tree-judge-ro-missing "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
