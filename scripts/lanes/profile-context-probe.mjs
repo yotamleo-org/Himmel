@@ -561,7 +561,8 @@ async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
         res.writeHead(ur.statusCode, ur.headers);
         ur.pipe(res);
       });
-      up.on('error', (e) => { res.writeHead(502); res.end(String(e)); });
+      up.on('error', (e) => { if (!res.headersSent) res.writeHead(502); res.end(String(e)); });
+      res.on('close', () => up.destroy());
       up.end(body);
     });
   });
