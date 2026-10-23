@@ -86,7 +86,6 @@ scripts/_new-worktree.sh	prim-lock	1
 scripts/adopt.sh	errexit	1
 scripts/adopt.sh	mktemp	1
 scripts/agents-md/test-generate.sh	mktemp	1
-scripts/api-lane/bulk-call.sh	kill-after	1
 scripts/api-lane/bulk-call.sh	prim-lock	2
 scripts/api-lane/measure-credit.sh	prim-tmpdir	1
 scripts/check-ci.sh	mktemp	1

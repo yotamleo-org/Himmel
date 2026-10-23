@@ -250,7 +250,7 @@ REPORT_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/git-test-env.sh"
 
-# The guard-override list + scrub_override_env. A console leg's
+# The guard-override list + scrub_override_env / scrub_session_env. A console leg's
 # shell exports INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK
 # and friends; without the scrub below they reach every suite and turn "override
 # UNSET, guard must fire" cases red (or vacuously green). Sourced only — the
@@ -4448,6 +4448,8 @@ while IFS= read -r suite <&3; do
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
+    # Nor the caller's Claude session / harness env: a suite sees what CI sees.
+    scrub_session_env
     _live_env "$suite"
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
   suite_pid=$!

@@ -51,6 +51,8 @@
 #   22. --shard <i>/<n> partitions the run list.
 #   27. SUITE_TIER_MODE=pr reads suite-tiers.tsv: a local suite runs only when
 #       impacted, an unlisted suite runs, a quarantine failure does not fail the run.
+#   28. A session env leaked from the caller (LEG_*, HIMMEL_WORKER_*) never
+#       reaches a suite; the runner-set HIMMEL_TEST_FIXTURE still does.
 #
 # Usage: bash scripts/ci/test-run-shell-tests.sh
 #
@@ -2861,6 +2863,35 @@ else
   fail "27i: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
 fi
 rm -rf "$sb27"
+fi
+
+echo "== Case 28: a leaked session env never reaches a suite =="
+sb28=$(mktemp -d -t himmel-suite-envleak.XXXXXX) || { fail "28: mktemp failed"; sb28=""; }
+if [ -n "$sb28" ]; then
+mkdir -p "$sb28/scripts"
+cat > "$sb28/scripts/test-envleak.sh" <<'SHEOF'
+#!/usr/bin/env bash
+printf 'leg=%s profile=%s fixture=%s\n' "${LEG_SESSION_ID-unset}" \
+  "${HIMMEL_WORKER_SESSION_PROFILE-unset}" "${HIMMEL_TEST_FIXTURE-unset}" > "$ENVLEAK_LOG"
+exit 0
+SHEOF
+chmod +x "$sb28/scripts/test-envleak.sh"
+
+# Control: the leak does reach the suite when the runner is not in the way.
+LEG_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/direct.log" \
+  env -u HIMMEL_TEST_FIXTURE bash "$sb28/scripts/test-envleak.sh"
+LEG_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/runner.log" \
+  env -u SUITE_TIER_MODE bash "$RUNNER" "$sb28/scripts" >/dev/null 2>&1
+rc28=$?
+direct28=$(cat "$sb28/direct.log" 2>/dev/null)
+runner28=$(cat "$sb28/runner.log" 2>/dev/null)
+if [ "$direct28" = "leg=leaked-28 profile=leaked-28 fixture=unset" ] \
+   && [ "$rc28" -eq 0 ] && [ "$runner28" = "leg=unset profile=unset fixture=1" ]; then
+  pass "28: the runner scrubs the leaked session env and keeps HIMMEL_TEST_FIXTURE"
+else
+  fail "28: rc=$rc28 direct=[$direct28] runner=[$runner28] (want 0, the leak in direct only, fixture=1 via the runner)"
+fi
+rm -rf "$sb28"
 fi
 
 rst_tally
