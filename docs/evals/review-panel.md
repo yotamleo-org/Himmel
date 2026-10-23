@@ -233,7 +233,7 @@ python3 scripts/eval/judge-accuracy/judge_accuracy.py queue
 ```
 
 `queue` lists the escape candidates no caused-by line settles. The chief rules
-each one once with a console-judge-ro call (opus, high; about 15 a week) and
+each one once with a judge-ro call (opus, high; about 15 a week) and
 records it with `judge_accuracy.py rule <id> S|P|N --evidence <text>`. A row stays
 `partial` until every candidate in its window is ruled. Then
 `python3 scripts/eval/lib/eval_feedback.py run` raises at most one change per critic

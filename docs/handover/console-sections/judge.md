@@ -31,7 +31,7 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   and depth >= 2 files to ICE with no fixVersion. Pass `--residual-of <PR ticket key>`
   (to `write-verdict.sh` or `verdict-go.sh`) on EVERY verdict whose residual lines
   cite tickets; an unlabelled parent is depth 0, so its residuals stamp depth 1.
-- **Dispatch a judge call as `console-judge-ro`, not the built-in Explore**: same read-only tool list, passes the ruling-20 console
+- **Dispatch the judge as `judge-ro`, not the built-in Explore**: same read-only tool list, passes the ruling-20 console <!-- old-term-ok: existing dispatch-fence wording, HIMMEL-7306 only renames the agent id -->
   dispatch fence, and its body carries the judge contract. A judge reads and
   reasons; it never runs suites or polls CI (the leg's scripts do that), so it
   stays on the 5-minute cache TTL (prediction table:

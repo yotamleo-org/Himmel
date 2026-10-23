@@ -60,16 +60,14 @@ eq "unwritable ledger exits non-zero" "$([ "$lrc" -ne 0 ] && echo yes || echo no
 
 # Frontmatter of the two judge agents: no cacheTtl (5m measured to win for
 # every judge pattern once judges stop waiting on CI/tests), ro tools pinned.
-for f in judge judge-ro console-judge console-judge-ro; do
+for f in judge judge-ro; do
     p="$REPO/.claude/agents/$f.md"
     eq "$f agent file is readable" "$([ -r "$p" ] && echo yes || echo no)" "yes"
     eq "$f carries no cacheTtl frontmatter" \
        "$(awk '/^---$/{n++} n==1' "$p" | tr -d '\r' | grep -c 'cacheTtl')" "0"
 done
-for f in judge-ro console-judge-ro; do
-    eq "$f tools pinned read-only" \
-       "$(grep -m1 '^tools:' "$REPO/.claude/agents/$f.md")" "tools: Read, Grep, Glob, Bash"
-done
+eq "judge-ro tools pinned read-only" \
+   "$(grep -m1 '^tools:' "$REPO/.claude/agents/judge-ro.md")" "tools: Read, Grep, Glob, Bash"
 
 printf 'test-judge-cache-row: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
