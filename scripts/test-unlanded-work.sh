@@ -640,6 +640,16 @@ else
 fi
 rm -rf "$t"
 
+echo "== an ordinary branch that merely contains an lq-<run id>- segment is NOT a FIXTURE =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b feat/lq-20261009T001656Z-fix
+commit_dated "$t/repo" 0 real.md "real work"
+git -C "$t/repo" checkout -q main
+out="$(cd "$t/repo" && bash "$SCRIPT" --no-forge --base main --tsv 2>&1)"
+row="$(tsv_row "$out" feat/lq-20261009T001656Z-fix)"
+if grepq "$row" -P '^UNLANDED-LIVE\t'; then pass "lookalike lq- segment -> UNLANDED-LIVE"; else fail "lookalike -> $row"; fi
+rm -rf "$t"
+
 echo "== human report: SUPERSEDED and FIXTURE get their own sections and no drop command; counts show them =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
 git -C "$t/repo" checkout -q -b docs/himmel-6645-prose-terms-d1

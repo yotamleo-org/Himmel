@@ -343,9 +343,11 @@ while IFS= read -r branch; do
         CLOSED*) closed_pr="${forge_row#CLOSED$'\t'}" ;;
     esac
 
-    # lane-quality backups (claude/backup-<ticket>-lq-<run id>-...) carry a
-    # pinned fake commit date and are never meant to land.
-    if [ -z "$class" ] && [[ $branch =~ (^|[/-])lq-[0-9]{8}T[0-9]{6}Z- ]]; then
+    # lane-quality backups (claude/backup-<ticket>-lq-<run id>-..., the backup ref
+    # of an lq-<run id>-<task> eval worktree) carry a pinned fake commit date and
+    # are never meant to land. Anchored to that shape so an ordinary branch that
+    # merely contains such a segment is still judged on its content.
+    if [ -z "$class" ] && [[ $branch =~ ^claude/backup-[0-9]+-lq-[0-9]{8}T[0-9]{6}Z- ]]; then
         class="FIXTURE"; evidence="lane-quality fixture branch, never meant to land"
     fi
 
