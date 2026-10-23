@@ -23,7 +23,7 @@ const verdictWords = (t) => t.verdict === "drop-candidate" ? "Move to on-demand 
 function profileTable(data) {
   const rows = (data.profiles || []).flatMap((p) => (p.tools || []).map((t) => `<tr><td>${esc(profileName(p.profile))}</td><td>${esc(t.tool)}</td><td>${count(t.calls)}</td><td>${pct(t.rate)}</td><td>${t.listing_tokens === null || t.listing_tokens === undefined ? "not measured" : count(t.listing_tokens)}</td><td>${esc(verdictWords(t))}</td></tr>`));
   const days = data.window_days ?? data.selected?.days;
-  const body = rows.length ? table(["Profile", "Tool", "Calls", "Failure rate", "Listing cost (tokens)", "Suggestion"], rows) : '<p class="nodata">No per-profile data: no sessions in this period</p>';
+  const body = rows.length ? table(["Profile", "Tool", "Calls", "Failure rate", "Listing cost, tokens (estimate: Skill listing only, MCP schemas not measured)", "Suggestion"], rows) : '<p class="nodata">No per-profile data: no sessions in this period</p>';
   return `<h3>Tools by launch profile</h3><p class="sub">Per launch profile: how often each tool was called and failed, what listing it costs every session, and whether it earns its place in that profile's default. A tool that costs listing tokens and was never called in the window is suggested for on-demand (the console adds it when needed). Suggestions only: nothing changes until an operator applies it. Window: ${esc(String(days))} days. Sessions recorded before the launch profile was kept read as unknown.</p>${body}`;
 }
 export function renderToolHealth(data, token = "") {

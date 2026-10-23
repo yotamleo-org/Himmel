@@ -1,6 +1,6 @@
 // three seeded digests exercise the real ledger writer and server rate math.
 import { test, expect, afterEach } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as sources from "../health-sources";
@@ -30,7 +30,8 @@ function seed() {
     const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/leg-digest/leg_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--leg", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
     expect(r.exitCode).toBe(0);
   }
-  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_LEG_FAILURES_LEDGER: failures };
+  const config = join(dir, "claude-config"); mkdirSync(config);
+  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_LEG_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
 }
 const read = (env: object, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"));
 
@@ -203,6 +204,28 @@ test("the payload carries a per-profile table, listing cost and drop candidates;
   expect(data.profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, listing_tokens: 0, verdict: "keep" });
   expect(data.drop_candidates).toEqual([expect.objectContaining({ profile: "leg-impl", tool: "mcp__qmd__query", listing_tokens: 900, calls: 0, window_days: 7 })]);
   expect(read(seed()).drop_candidates).toEqual([]);
+});
+
+test("the default path prices the Skill listing of the real leg-impl, console-judge and console profiles without a file or a claude run", async () => {
+  const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
+  const registry = loadRegistry(), profiles = ["leg-impl", "console-judge", "console"];
+  const env: any = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows.forEach((r: any, i: number) => { for (const h of r.meta.tool_health) h.profile = profiles[i]; });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const ids = new Set<string>();
+  for (const p of profiles) for (const [id, on] of Object.entries(resolveProfile(registry, p).enabledPlugins)) if (on) ids.add(id);
+  for (const id of ids) {
+    const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", "himmel", id.split("@")[0], "1.0.0", "skills", "one");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "SKILL.md"), `---\nname: one\ndescription: ${"x".repeat(400)}\n---\nbody\n`);
+  }
+  expect(env.HIMMEL_PROFILE_LISTING).toBeUndefined();
+  const data = read(env);
+  const skill = (p: string) => data.profiles.find((x: any) => x.profile === p).tools.find((t: any) => t.tool === "Skill");
+  for (const p of profiles) expect(skill(p).listing_tokens).toBeGreaterThan(0);
+  expect(skill("console-judge").listing_tokens).toBeLessThan(skill("console").listing_tokens);
+  expect(data.drop_candidates.map((d: any) => d.profile).sort()).toEqual([...profiles].sort());
 });
 
 test("the page shows the per-profile table in plain words and labels the unknown bucket", async () => {

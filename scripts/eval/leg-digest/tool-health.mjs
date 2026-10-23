@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { estimateProfileListing } from './profile-listing.mjs';
 
 export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -13,22 +14,25 @@ function readRows(path) {
   try { return readFileSync(path, 'utf8').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r && typeof r === 'object' ? [r] : []; } catch { return []; } }); }
   catch { return []; }
 }
-// Measured listing cost per profile, {profile: {tool: tokens}}, written by an operator-run probe; absent or unreadable = none.
+// Test override for the listing cost, {profile: {tool: tokens}}; absent or unreadable = none.
 function readListing(path) {
   try { const j = JSON.parse(readFileSync(path, 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; }
   catch { return {}; }
 }
-export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now()) {
+// estimateListing: price each profile's Skill listing from the installed plugins (unbilled scan, cached in memory);
+// callers that only want failure rates (the console board) leave it off and skip the scan.
+export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false } = {}) {
   const home = env.HOME || homedir();
+  const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
+    : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now,
-    readListing(env.HIMMEL_PROFILE_LISTING || join(home, '.himmel', 'profile-listing.json')));
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing);
 }
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const profileOf = (...candidates) => candidates.find((c) => typeof c === 'string' && PROFILE.test(c)) || 'unknown';
 
-// listing: {profile: {tool: listing tokens}} from profile-context-probe; absent = no drop candidates.
+// listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
 export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}) {
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');

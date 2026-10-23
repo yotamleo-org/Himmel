@@ -19,11 +19,11 @@ How to read tool usage per launch profile and decide which tool to drop from a p
 
 ## Where listing cost comes from
 
-The evals page and `readToolHealth` read the `{profile: {tool: tokens}}` map from `~/.himmel/profile-listing.json` (override `HIMMEL_PROFILE_LISTING`); an operator writes it from a probe run. Absent, every cost reads "not measured" and no tool is flagged.
+The evals page computes the `{profile: {tool: tokens}}` map in its route (`estimateProfileListing` in `scripts/eval/leg-digest/profile-listing.mjs`) and caches it in memory for ten minutes. `HIMMEL_PROFILE_LISTING` names a JSON file that replaces it, for tests. Without plugins to scan, every cost reads "not measured" and no tool is flagged.
 
-- Measured: `listingTokensByPlugin(contextUsage)` in `scripts/lanes/profile-context-probe.mjs` turns a `/context` reply into the `Skill` tool's listing tokens and the per-plugin split. The probe bills real usage, so it runs on request only.
-- Unbilled estimate: `scripts/lanes/skill-cost.mjs` scan, characters over 4, summed over the plugins a profile enables (uncapped; the live listing is capped by the listing budget).
-- MCP tool schema cost has no source yet, so MCP tools carry no cost and cannot be flagged.
+- Unbilled estimate (what the page shows): the `scripts/lanes/skill-cost.mjs` scan, characters over 4, summed over the plugins each profile enables in `plugin-profiles.json` (uncapped; the live listing is capped by the listing budget). It prices the `Skill` tool only and never spawns `claude`.
+- Measured, on request: `listingTokensByPlugin(contextUsage)` in `scripts/lanes/profile-context-probe.mjs` turns a `/context` reply into the `Skill` listing tokens and the per-plugin split. The probe bills real usage, so the page does not call it.
+- MCP tool schema cost has no source yet, so MCP tools carry no cost and cannot be flagged (follow-up: measured MCP-schema cost).
 
 ## Reading a drop candidate
 
