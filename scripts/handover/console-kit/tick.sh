@@ -2472,7 +2472,7 @@ else
     esac
     case "$leaks_summary" in
         ''|0|skip|'?') ;;
-        *) printf 'ACTION leaks=%s: node %q release leaks %s --comment posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${lk_cli:-jira}" "$leaks_version" ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --comment posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "${lk_cli:-$REPO/scripts/jira/dist/index.js}" "$leaks_version" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \

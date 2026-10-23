@@ -2523,7 +2523,11 @@ lk_tick() { NEXT_DISPATCH_MIRROR="$lk_m" TICK_LEAKS_PROBE="$1" TOKEN='' bash "$S
 lk_three="$(lk_tick "$W/lk-probe-3.sh")"
 contains 'leaked tickets of the frozen version read leaks=<n> (HIMMEL-7153)' "$lk_three" ' leaks=3'
 case "$(cat "$W/lk-asked" 2>/dev/null)" in v1.0.2) pass 'the probe is asked for the earliest unreleased, unarchived, non-zz version (HIMMEL-7153)' ;; *) fail "the probe was asked for '$(cat "$W/lk-asked" 2>/dev/null)', want v1.0.2 (HIMMEL-7153)" ;; esac
-contains 'a non-zero leak count prints an ACTION line naming the comment run (HIMMEL-7153)' "$lk_three" 'ACTION leaks=3: node '
+contains 'a non-zero leak count prints an ACTION line naming the comment run (HIMMEL-7153)' "$lk_three" 'ACTION leaks=3: JIRA_PROJECT_KEY=HIMMEL node '
+contains 'the leaks ACTION line never names the global jira shim (HIMMEL-7153)' "$lk_three" '/scripts/jira/dist/index.js release leaks '
+printf 'v1.0.2 beta\ttrue\t\tfalse\nv1.0.3 rc\tfalse\t\tfalse\n' > "$lk_dir/HIMMEL.versions.tsv"
+lk_space="$(lk_tick "$W/lk-probe-3.sh")"
+contains 'a version name with a space is escaped in the ACTION line (HIMMEL-7153)' "$lk_space" 'release leaks v1.0.3\ rc --comment'
 contains 'the leaks ACTION line names the version and --comment (HIMMEL-7153)' "$lk_three" 'release leaks v1.0.2 --comment'
 lk_zero="$(lk_tick "$W/lk-probe-0.sh")"
 not_contains 'a clean version hides leaks (HIMMEL-7153)' "$lk_zero" 'leaks='
