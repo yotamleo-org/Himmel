@@ -125,7 +125,9 @@ who_args() {
     esac
     printf '%s\n' --doc "$doc_rel"
     # a leg's session name is its doc's stem; the launcher's record is filed under it
-    printf '%s' "$stem" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$' && printf '%s\n' --launch-name "$stem"
+    if [[ "$stem" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$ ]]; then
+        printf '%s\n' --launch-name "$stem"
+    fi
 }
 
 # ---------- settle: pid gone and the session's files unchanged for QUIET s
