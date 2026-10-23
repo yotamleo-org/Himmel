@@ -160,6 +160,7 @@ scripts/ci/test-home-canary.sh	32
 scripts/ci/test-impacted-selection.sh	10
 scripts/ci/test-jira-cli-smoke.sh	0
 scripts/ci/test-knockout-gate.sh	8
+scripts/ci/test-ledger-drift.sh	0
 scripts/ci/test-lockfile-advisory-floor.sh	0
 scripts/ci/test-macos-breakage.sh	0
 scripts/ci/test-macos-cadence-workflow.sh	0
