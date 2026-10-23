@@ -102,7 +102,7 @@ for a Linux PR.
 
 Report them side by side, never merged into one word:
 
-```
+```text
 main-linux=<run> <sha8> <conclusion>   main-macos=<run> <sha8> <conclusion>
 ```
 
