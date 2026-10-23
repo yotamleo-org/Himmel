@@ -272,7 +272,7 @@ positive value only; the console resets each row (version-status-audit.sh prints
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
-read (TICK_LEAKS_PROBE gets the version as its argument; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
+read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
 (then an `ACTION leaks=<n>: …` line names `--comment`), or ? when the read failed; hidden when there is no mirror,
 or the active version is not frozen. Read-only, and not part of console-wait's wake key.
@@ -1523,13 +1523,13 @@ fi
 if [ -n "$leaks_version" ]; then
     lk_rc=0
     if [ -n "${TICK_LEAKS_PROBE:-}" ]; then
-        lk_out="$(timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" bash "$TICK_LEAKS_PROBE" "$leaks_version" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+        lk_out="$(timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
     else
         # shellcheck source=../../lib/git-clean.sh
         lk_anchor="$(cd "$REPO" && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || lk_anchor=""  # swallow-ok: no anchor reads skip below
         lk_cli="${lk_anchor%/.git}/scripts/jira/dist/index.js"
         if [ -n "$lk_anchor" ] && [ -f "$lk_cli" ]; then
-            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" node "$lk_cli" release leaks "$leaks_version" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
         else
             lk_rc=-1
         fi
@@ -2472,7 +2472,7 @@ else
     esac
     case "$leaks_summary" in
         ''|0|skip|'?') ;;
-        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --comment posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "${lk_cli:-$REPO/scripts/jira/dist/index.js}" "$leaks_version" ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "${lk_cli:-$REPO/scripts/jira/dist/index.js}" "$leaks_version" "$nd_mirror" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \

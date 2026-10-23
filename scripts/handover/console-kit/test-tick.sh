@@ -2513,7 +2513,7 @@ contains 'an incomplete audit still reports the RESET rows it found (HIMMEL-6549
 lk_dir="$W/lk"; lk_m="$lk_dir/HIMMEL"; mkdir -p "$lk_m"
 printf 'v1.0.0\ttrue\t2026-01-01\tfalse\nv1.0.10\tfalse\t\tfalse\nv1.0.2\tfalse\t\tfalse\nv0.9.0\tfalse\t\ttrue\nzz-parked\tfalse\t\tfalse\n' > "$lk_dir/HIMMEL.versions.tsv"
 # shellcheck disable=SC2016  # the stub's $1 must reach the stub unexpanded
-printf '#!/bin/sh\necho "$1" > "%s/lk-asked"\nprintf "LEAK K-1@%%s carries it\\nLEAK K-2@%%s carries it\\nLEAK K-3@%%s carries it\\n" "$1" "$1" "$1"\n' "$W" > "$W/lk-probe-3.sh"
+printf '#!/bin/sh\necho "$1 $2" > "%s/lk-asked"\nprintf "LEAK K-1@%%s carries it\\nLEAK K-2@%%s carries it\\nLEAK K-3@%%s carries it\\n" "$1" "$1" "$1"\n' "$W" > "$W/lk-probe-3.sh"
 # shellcheck disable=SC2016  # the stub's $1 must reach the stub unexpanded
 printf '#!/bin/sh\necho "leaks $1: none (mirror synced now)"\n' > "$W/lk-probe-0.sh"
 # shellcheck disable=SC2016  # the stub's $1 must reach the stub unexpanded
@@ -2522,13 +2522,14 @@ printf '#!/bin/sh\necho "release leaks: the Jira mirror is missing or unreadable
 lk_tick() { NEXT_DISPATCH_MIRROR="$lk_m" TICK_LEAKS_PROBE="$1" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null; }
 lk_three="$(lk_tick "$W/lk-probe-3.sh")"
 contains 'leaked tickets of the frozen version read leaks=<n> (HIMMEL-7153)' "$lk_three" ' leaks=3'
-case "$(cat "$W/lk-asked" 2>/dev/null)" in v1.0.2) pass 'the probe is asked for the earliest unreleased, unarchived, non-zz version (HIMMEL-7153)' ;; *) fail "the probe was asked for '$(cat "$W/lk-asked" 2>/dev/null)', want v1.0.2 (HIMMEL-7153)" ;; esac
+case "$(cat "$W/lk-asked" 2>/dev/null)" in "v1.0.2 $lk_m") pass 'the probe is asked for the earliest unreleased, unarchived, non-zz version of the tick mirror (HIMMEL-7153)' ;; *) fail "the probe was asked '$(cat "$W/lk-asked" 2>/dev/null)', want 'v1.0.2 $lk_m' (HIMMEL-7153)" ;; esac
 contains 'a non-zero leak count prints an ACTION line naming the comment run (HIMMEL-7153)' "$lk_three" 'ACTION leaks=3: JIRA_PROJECT_KEY=HIMMEL node '
 contains 'the leaks ACTION line never names the global jira shim (HIMMEL-7153)' "$lk_three" '/scripts/jira/dist/index.js release leaks '
 printf 'v1.0.2 beta\ttrue\t\tfalse\nv1.0.3 rc\tfalse\t\tfalse\n' > "$lk_dir/HIMMEL.versions.tsv"
 lk_space="$(lk_tick "$W/lk-probe-3.sh")"
-contains 'a version name with a space is escaped in the ACTION line (HIMMEL-7153)' "$lk_space" 'release leaks v1.0.3\ rc --comment'
-contains 'the leaks ACTION line names the version and --comment (HIMMEL-7153)' "$lk_three" 'release leaks v1.0.2 --comment'
+contains 'a version name with a space is escaped in the ACTION line (HIMMEL-7153)' "$lk_space" 'release leaks v1.0.3\ rc --mirror-root '
+contains 'the leaks ACTION line names the version, the tick mirror and --comment (HIMMEL-7153)' "$lk_three" "release leaks v1.0.2 --mirror-root $lk_m --comment"
+contains 'the leaks ACTION line keeps its explanation behind a shell comment (HIMMEL-7153)' "$lk_three" '--comment  # posts one comment per leak'
 lk_zero="$(lk_tick "$W/lk-probe-0.sh")"
 not_contains 'a clean version hides leaks (HIMMEL-7153)' "$lk_zero" 'leaks='
 lk_unfrozen="$(lk_tick "$W/lk-probe-unfrozen.sh")"
