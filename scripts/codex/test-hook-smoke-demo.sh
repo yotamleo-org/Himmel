@@ -10,6 +10,11 @@
 # same time (its main use is smoking an unmerged worktree).
 set -euo pipefail
 
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP - the timeout shim's --version call hangs on macOS; tracked by HIMMEL-7253"
+    exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SMOKE="$SCRIPT_DIR/hook-smoke-demo.sh"
 [ -r "$SMOKE" ] || { echo "FAIL: $SMOKE not found" >&2; exit 1; }

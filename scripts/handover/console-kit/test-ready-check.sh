@@ -96,7 +96,13 @@ case "$args" in
     "run list"*)
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         w="${args#*--workflow }"; w="${w%% *}"
-        if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then cat "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
+        case "$args" in *"--branch main "*) w="$w.main" ;; *"--branch "*) w="$w.other-branch" ;; esac
+        f="${args#*--json }"; f="${f%% *}"
+        if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then jq -c --arg f "$f" '($f | split(",")) as $k | map(with_entries(select(.key as $n | $k | index($n))))' "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
+    "run view "*)
+        [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
+        id="${args#run view }"; id="${id%% *}"
+        if [ -f "${STUB_RUNS_DIR:-/nonexistent}/jobs-$id.json" ]; then cat "$STUB_RUNS_DIR/jobs-$id.json"; else exit 1; fi ;;
     *"api --paginate"*"/files"*"filename"*)
         [ -n "${STUB_FILES_FAIL:-}" ] && exit 1
         printf '%s\n' "${STUB_FILES:-README.md}" ;;
@@ -1221,6 +1227,95 @@ real_run completed failure "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"
 check "workflow PR, failed dispatch at head: exit 1" "$rc" "1"
 contains "workflow PR, failed dispatch at head: check 10 fails" "$out" "[FAIL] 10."
+
+# A failed dispatch run passes as PRE-EXISTING only when every failed job of it
+# also failed in main's latest scheduled/push run of the same workflow.
+jobs_json() {  # <failed job name>... -> a `gh run view --json jobs` body
+    local j
+    printf '{"jobs":['
+    for j in "$@"; do
+        printf '{"name":"%s","conclusion":"failure"},' "$j"
+    done
+    printf '{"name":"lint","conclusion":"success"}]}'
+}
+main_run() {  # <event> <conclusion> <id>
+    printf '[{"conclusion":"%s","databaseId":%s,"event":"%s","headSha":"deadbeef","status":"completed"}]' "$2" "$3" "$1"
+}
+printf '[{"conclusion":"failure","databaseId":111,"event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$SHA" > "$RUNDIR/ci.yml.json"
+jobs_json "shell-unit (4/8)" "shell-unit (5/8)" > "$RUNDIR/jobs-111.json"
+main_run schedule failure 222 > "$RUNDIR/ci.yml.main.json"
+jobs_json "shell-unit (3/8)" "shell-unit (4/8)" "shell-unit (5/8)" > "$RUNDIR/jobs-222.json"
+wf_run ".github/workflows/ci.yml"
+check "dispatch fails only on suites already red on main: exit 0" "$rc" "0"
+contains "dispatch fails only on suites already red on main: check 10 passes" "$out" "[PASS] 10."
+contains "dispatch fails only on suites already red on main: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "dispatch fails only on suites already red on main: names the suites" "$out" "shell-unit (4/8), shell-unit (5/8)"
+contains "dispatch fails only on suites already red on main: names both runs" "$out" "run 111"
+
+jobs_json "shell-unit (4/8)" "shell-unit (6/8)" > "$RUNDIR/jobs-111.json"
+wf_run ".github/workflows/ci.yml"
+check "dispatch adds a new failing suite: exit 1" "$rc" "1"
+contains "dispatch adds a new failing suite: check 10 fails" "$out" "[FAIL] 10."
+contains "dispatch adds a new failing suite: names the new suite" "$out" "shell-unit (6/8)"
+notcontains "dispatch adds a new failing suite: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+printf '{"jobs":[{"name":"shell-unit (4/8)","conclusion":"failure"},{"name":"os-verify","conclusion":"timed_out"}]}' > "$RUNDIR/jobs-111.json"
+wf_run ".github/workflows/ci.yml"
+check "dispatch adds a new timed-out job: exit 1" "$rc" "1"
+contains "dispatch adds a new timed-out job: names it" "$out" "os-verify"
+
+jobs_json "shell-unit (4/8)" > "$RUNDIR/jobs-111.json"
+main_run push success 222 > "$RUNDIR/ci.yml.main.json"
+wf_run ".github/workflows/ci.yml"
+check "main's latest run is green: failed dispatch still fails: exit 1" "$rc" "1"
+rm -f "$RUNDIR/ci.yml.main.json"
+wf_run ".github/workflows/ci.yml"
+check "no main run to compare: failed dispatch still fails: exit 1" "$rc" "1"
+main_run pull_request failure 222 > "$RUNDIR/ci.yml.main.json"
+wf_run ".github/workflows/ci.yml"
+check "main's only run is not scheduled/push: failed dispatch still fails: exit 1" "$rc" "1"
+# Main's baseline counts only failure/timed_out jobs: a job main cancelled (a sibling red) never ran, so
+# it must not excuse the same job failing on the PR.
+printf '[{"conclusion":"failure","databaseId":111,"event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$SHA" > "$RUNDIR/ci.yml.json"
+main_run schedule failure 222 > "$RUNDIR/ci.yml.main.json"
+jobs_json "shell-unit (4/8)" "shell-unit (5/8)" > "$RUNDIR/jobs-111.json"
+printf '{"jobs":[{"name":"shell-unit (4/8)","conclusion":"failure"},{"name":"shell-unit (5/8)","conclusion":"cancelled"}]}' > "$RUNDIR/jobs-222.json"
+wf_run ".github/workflows/ci.yml"
+check "main job cancelled, same job failed on the PR: exit 1" "$rc" "1"
+contains "main job cancelled, same job failed on the PR: names the job" "$out" "shell-unit (5/8)"
+notcontains "main job cancelled, same job failed on the PR: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+printf '{"jobs":[{"name":"shell-unit (4/8)","conclusion":"timed_out"},{"name":"shell-unit (5/8)","conclusion":"failure"}]}' > "$RUNDIR/jobs-222.json"
+wf_run ".github/workflows/ci.yml"
+check "main job timed_out counts as red on main: exit 0" "$rc" "0"
+contains "main job timed_out counts as red on main: PRE-EXISTING line" "$out" "PRE-EXISTING"
+
+jobs_json "shell-unit (4/8)" > "$RUNDIR/jobs-222.json"
+printf '{"jobs":[]}' > "$RUNDIR/jobs-111.json"
+wf_run ".github/workflows/ci.yml"
+check "PR run has no failed jobs in the read: exit 1" "$rc" "1"
+printf 'not json' > "$RUNDIR/jobs-111.json"
+wf_run ".github/workflows/ci.yml"
+check "PR jobs read is unparsable: exit 1" "$rc" "1"
+rm -f "$RUNDIR/jobs-111.json"
+wf_run ".github/workflows/ci.yml"
+check "PR jobs read fails: exit 1" "$rc" "1"
+jobs_json "shell-unit (4/8)" > "$RUNDIR/jobs-111.json"
+rm -f "$RUNDIR/jobs-222.json"
+wf_run ".github/workflows/ci.yml"
+check "main jobs read fails: exit 1" "$rc" "1"
+contains "main jobs read fails: says so" "$out" "cannot read the failed jobs of main run 222"
+
+jobs_json "shell-unit (4/8)" > "$RUNDIR/jobs-222.json"
+main_run schedule timed_out 222 > "$RUNDIR/ci.yml.main.json"
+wf_run ".github/workflows/ci.yml"
+check "main's latest run timed out on the same suite: exit 0" "$rc" "0"
+contains "main's latest run timed out on the same suite: PRE-EXISTING line" "$out" "PRE-EXISTING"
+main_run schedule failure 222 > "$RUNDIR/ci.yml.main.json"
+printf '[{"conclusion":"success","databaseId":333,"event":"push","headSha":"deadbeef","status":"completed"},{"conclusion":"failure","databaseId":222,"event":"schedule","headSha":"deadbeef","status":"completed"}]' > "$RUNDIR/ci.yml.main.json"
+wf_run ".github/workflows/ci.yml"
+check "main's newest run is green, an older one red: exit 1" "$rc" "1"
+notcontains "main's newest run is green, an older one red: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR/ci.yml.main.json" "$RUNDIR"/jobs-*.json
 
 real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"

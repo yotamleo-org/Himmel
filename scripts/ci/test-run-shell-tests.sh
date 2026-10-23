@@ -1251,6 +1251,43 @@ else
   # table's established convention (test-suite-concurrency.sh). 799 * 1.5 = 1198.5, rounded up to 1200.
   check_timeout_2267 "scripts/himmelctl/test/test-wizard-probes.sh" "1200"
   check_timeout_2267 "/repo/scripts/himmelctl/test/test-wizard-probes.sh" "1200"
+
+  # macOS cadence runs passed these two suites with every assertion green but past
+  # the table's cap: tier-replay 495s then 874s (run 39986815551; default 600),
+  # pr-check-rounds 1700s (arm 1200). Linux measures far lower, so the raise is a Darwin-only arm;
+  # the Linux caps stay put. uname is stubbed so the rows hold on every runner OS.
+  check_os_timeout_2267() {  # $1=uname -s answer; $2=suite path; $3=expected timeout
+    local got os_2267=$1
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
+    got=$(eval "$fn2267"; uname() { printf '%s\n' "$os_2267"; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$2")
+    if [ "$got" = "$3" ]; then
+      pass "2267: _suite_timeout_for '$2' on $1 -> ${3}s"
+    else
+      fail "2267: _suite_timeout_for '$2' on $1 expected ${3}s got '$got'"
+    fi
+  }
+  check_os_timeout_2267 Linux "scripts/ci/test-tier-replay.sh" "600"
+  check_os_timeout_2267 Linux "/repo/scripts/ci/test-tier-replay.sh" "600"
+  check_os_timeout_2267 Linux "scripts/cr/test-pr-check-rounds.sh" "1200"
+  check_os_timeout_2267 Linux "/repo/scripts/cr/test-pr-check-rounds.sh" "1200"
+  check_os_timeout_2267 Darwin "scripts/ci/test-tier-replay.sh" "1800"
+  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-tier-replay.sh" "1800"
+  check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds.sh" "3400"
+  check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds.sh" "3400"
+  # A suite in no Darwin arm keeps its table value on macOS.
+  check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
+  check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"
+  # Headroom: the Darwin cap clears the measured macOS duration by the loaded x2 rule.
+  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700"; do
+    s2267=${m2267% *}; d2267=${m2267#* }
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
+    cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")
+    if [ "$cap2267" -ge $((d2267 * 2)) ] 2>/dev/null; then
+      pass "2267: Darwin cap ${cap2267}s for '$s2267' is at least 2x its measured ${d2267}s"
+    else
+      fail "2267: Darwin cap '${cap2267}' for '$s2267' is under 2x its measured ${d2267}s"
+    fi
+  done
 fi
 
 # --------------------------------------------------------------------------
