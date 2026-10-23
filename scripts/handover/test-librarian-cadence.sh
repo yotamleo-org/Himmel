@@ -53,6 +53,8 @@ run arm --force --every-days 3 --apply >/dev/null; check "arm --force --every-da
 check "every 3 days is */3 on day-of-month" 1 "$(grep -c '^23 4 \*/3 \* \* ' "$TAB")"
 check "still exactly one librarian entry" 1 "$(grep -c '# HIMMEL-Librarian$' "$TAB")"
 check "--apply is baked into the runner" 1 "$(grep -c -- 'librarian.sh.* --apply' "$R")"
+check "the dry-run preview names the mode plainly" 1 "$(run arm --force --apply --dry-run | grep -c ' (apply) and install')"
+check "and the dry-run mode reads dry-run" 1 "$(run arm --force --dry-run | grep -c ' (dry-run) and install')"
 for bad in 0 29 abc ""; do
   run arm --force --every-days "$bad" >/dev/null
   check "--every-days '$bad' is refused (exit 1)" 1 "$?"
@@ -60,8 +62,13 @@ done
 
 # --- the runner: a flow-run row, an alert on failure, a clear on success ------
 export USER_SLUG=u
-H="$W/handovers"; mkdir -p "$H/u/himmel" "$W/sessions"; git -C "$H" init -q 2>/dev/null
-printf '# d\n' > "$H/u/himmel/HIMMEL-9-x-2026-01-01.md"
+mk_bucket() {  # mk_bucket <root> : a committed, 60-day-old doc that ends WRAPPED, so an --apply fire would move it
+  mkdir -p "$1/u/himmel" "$W/sessions"; git -C "$1" init -q 2>/dev/null
+  printf '# d\n\n- 10:05 WRAPPED — done\n' > "$1/u/himmel/HIMMEL-9-x-2026-01-01.md"
+  python3 -I -c 'import os, sys, time; t = time.time() - 60 * 86400; os.utime(sys.argv[1], (t, t))' "$1/u/himmel/HIMMEL-9-x-2026-01-01.md"
+  git -C "$1" add -A && git -C "$1" -c user.email=t@t -c user.name=t commit -q -m seed
+}
+H="$W/handovers"; mk_bucket "$H"
 run arm --force >/dev/null
 HANDOVER_DIR="$H" bash "$R" >/dev/null 2>&1
 check "a good fire logs the summary line" 1 "$(grep -c '^librarian: dry-run' "$LIBRARIAN_RUNNER_DIR/librarian.log")"
@@ -76,6 +83,18 @@ check "and sends one Telegram message" 1 "$(grep -c 'cadence leg failed: librari
 check "and an error flow-run row" 1 "$(grep -c '"outcome":"error"' "$HIMMEL_FLOW_RUNS_LEDGER" 2>/dev/null)"
 HANDOVER_DIR="$H" bash "$R" >/dev/null 2>&1
 check "a later good fire clears the alert dedupe" 0 "$(find "$W/alert-sent" -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+# --- cron has no HANDOVER_DIR: the runner carries the arm-time root ------------
+HANDOVER_DIR="$H" run arm --force >/dev/null
+check "the runner pins the arm-time handover root" 1 "$(grep -c 'HANDOVER_DIR=' "$R")"
+env -u HANDOVER_DIR bash "$R" >/dev/null 2>&1
+check "and a fire with no HANDOVER_DIR still resolves it" 0 "$(tail -n 3 "$LIBRARIAN_RUNNER_DIR/librarian.log" | grep -c '^\[exit rc=[1-9]')"
+
+# --- positive control: an --apply fire does move the doc the dry run left ------
+H2="$W/handovers2"; mk_bucket "$H2"
+run arm --force --apply >/dev/null
+HANDOVER_DIR="$H2" bash "$R" >/dev/null 2>&1
+check "an --apply fire moves the finished doc" no "$([ -e "$H2/u/himmel/HIMMEL-9-x-2026-01-01.md" ] && echo yes || echo no)"
 
 # --- disarm -------------------------------------------------------------------
 run disarm >/dev/null; check "disarm exits 0" 0 "$?"
