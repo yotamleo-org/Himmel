@@ -1,7 +1,8 @@
 # The himmel UI surfaces
 
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
-command you run yourself. Only the Settings switches and the Setup page of the first one change anything. If a user asks "the himmel UI",
+command you run yourself. Only the config UI can change anything on your machine, and
+every change asks first (a dry-run and a confirm, or a typed value you save); the other two only display. If a user asks "the himmel UI",
 they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
@@ -13,9 +14,10 @@ they almost always mean the first one.
 ## The config console (`himmelctl ui`)
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
-same data as `himmelctl report --json`. Every page is read-only except the
-switches on Settings and the Setup page, and each switch shows its dry-run before anything changes.
-A confirmed switch runs the `himmelctl` command printed under it, and writes:
+same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
+inventory only display. What can change something is on Settings, Setup and the Roadmap and
+Kanban boards; the table after the switches maps every action to its route. A switch shows its
+dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:
 
 | Switch | What it writes | Takes effect |
 |---|---|---|
@@ -24,6 +26,8 @@ A confirmed switch runs the `himmelctl` command printed under it, and writes:
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
+| Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a value set in the launching shell wins until that shell restarts | the next worker launch |
+| VM mode (Settings) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
 | Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
 The Review gate card lists the reviewers in the order they run, says in plain words what `hard` and `best-effort`
@@ -42,8 +46,24 @@ works without it), and the steps to install the GitHub App on the repo and arm t
 for a `CodeRabbit` check: seen is `installed`; not seen is `not detected` (a new install, a repo with no PRs or skipped
 reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both of those show a manual confirm. The check only reads; it never installs or arms anything.
 
+The Roadmap and Kanban boards also write to Jira: dragging a card to another column
+transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
+through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
+
 Session switches and Your install answers are shown, never written:
 session switches are set when you start Claude.
+
+Every write is a `POST` behind the per-launch token, a same-origin check and a JSON-only body.
+This is the full set, each mapped to the code that handles it:
+
+| Action | Route | Handled in |
+|---|---|---|
+| Dry-run a switch, then run it after confirm | `/api/preview`, `/api/run` | `previewRoute` and `runRoute` in `scripts/config-ui/server.ts` |
+| Save or remove a file-stored secret | `/api/setup/secret` | `setupSecretRoute` in `scripts/config-ui/server.ts` |
+| Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
+| Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
+| VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
+| Kanban move, card theme | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` |
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token

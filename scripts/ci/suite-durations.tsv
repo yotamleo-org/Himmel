@@ -1076,3 +1076,4 @@ templates/luna-second-brain/scripts/test-upgrade-pyresolve.sh	0
 templates/luna-second-brain/scripts/test-upgrade.sh	56
 templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	4
 templates/luna-second-brain/scripts/test-vault-git.sh	69
+scripts/docs/test-ui-doc-actions.sh	1
