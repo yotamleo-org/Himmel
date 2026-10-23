@@ -130,6 +130,7 @@ check "the digest says what was filed" 'digest "$C3" | grep -q "filed denied/gua
 check "the digest names the mode live" 'digest "$C3" | grep -q "mode: live"'
 check "one Telegram line, naming the routing" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 ticket filed"'
 check "the line is one line" '[ "$(tail -n 1 "$STUB/notify.log" | wc -l)" = 1 ]'
+check "a class the router just filed is triaged, not filed again" 'tail -n 1 "$STUB/notify.log" | grep -q "Do: open the digest and triage what the router filed" && ! tail -n 1 "$STUB/notify.log" | grep -q "file a ticket"'
 review "$C3" --live >/dev/null 2>&1
 check "a rerun routes nothing new: no second ticket, routed none" '[ "$(calls create)" = 1 ] && digest "$C3" | grep -q "routed: none"'
 
@@ -150,6 +151,11 @@ printf '{"v":1,"classes":{},"created":{"day":"%s","n":3}}\n' "$DAY" >"$C4b/state
 review "$C4b" >/dev/null 2>&1
 check "dry-run: the digest says capped too" 'digest "$C4b" | grep -q "capped: the daily create cap was hit"'
 check "an uncapped day says none capped" 'digest "$C2" | grep -q "capped: none"'
+# a class that already has a ticket would be commented on, not filed: the "would be" count is tickets only.
+C4c="$TMP/c4c"; mkdir -p "$C4c"; cp "$C2/ledger.jsonl" "$C4c/ledger.jsonl"
+printf '{"v":1,"classes":{"denied/guard-pr-check-literal":{"ticket":"HIMMEL-9100"}},"created":{}}\n' >"$C4c/state.json"
+review "$C4c" >/dev/null 2>&1
+check "a would-comment decision is not counted as a ticket that would be filed" 'digest "$C4c" | grep -q "would-comment denied/guard-pr-check-literal" && tail -n 1 "$STUB/notify.log" | grep -q "dry run, nothing filed (0 would be)"'
 
 echo "5. the two unreliable trajectory signals never reach the digest"
 C5="$TMP/c5"; mkdir -p "$C5"
@@ -270,6 +276,12 @@ FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" H
   HIMMEL_FAILURE_ROUTES_STATE="$C8/state.json" timeout "$BOUND" bash "$CAD" run >"$C8/run2.out" 2>&1; rc=$?
 hung "$rc" "cadence run (proceed)"
 check "a PROCEED preflight runs the review dry-run" '[ "$rc" = 0 ] && ls "$C8/out"/failure-review-*.md >/dev/null 2>&1 && [ ! -e "$C8/state.json" ]'
+# a failed Telegram send (rc 3) leaves the digest written: the alert says only the send failed.
+C8n="$TMP/c8n"; mkdir -p "$C8n"; row "$C8n/ledger.jsonl" N900 error/Notify 0 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/notify-fail" HIMMEL_FAILURE_REVIEW_DIR="$C8n/out" HIMMEL_LEG_FAILURES_LEDGER="$C8n/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8n/state.json" timeout "$BOUND" bash "$CAD" run >"$C8n/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (send fails)"
+check "a failed Telegram send is its own alert: digest written, only the send failed" '[ "$rc" = 3 ] && ls "$C8n/out"/failure-review-*.md >/dev/null 2>&1 && tail -n 1 "$STUB/notify.log" | grep -q "Telegram message was not delivered (exit 3)\. Cause: the digest is written; only the send failed\. Do: nothing, the undelivered line is sent again at the next run"'
 
 echo "9. delivery is persisted: a failed line is retried, a delivered one is not repeated (HIMMEL-4790)"
 C9="$TMP/c9"; mkdir -p "$C9"

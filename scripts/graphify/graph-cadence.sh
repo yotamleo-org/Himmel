@@ -970,6 +970,7 @@ ACTION="refreshed"
 if [ "$SEMANTIC" -eq 1 ]; then
     # The file this run's output lands in (the cadence runner redirects it); LOG_FILE only when stdout is no file.
     _run_log=$(readlink "/proc/$$/fd/1" 2>/dev/null)
+    [ -f "$_run_log" ] || _run_log=$(lsof -a -p "$$" -d 1 -Fn 2>/dev/null | sed -n 's/^n//p')
     [ -f "$_run_log" ] || _run_log="$LOG_FILE"
     _sem_leg="graph-semantic-$CORPUS_SLUG"
     _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \

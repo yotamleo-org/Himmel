@@ -158,15 +158,12 @@ cmd_run() (
         new_n=$((new_n + 1))
         id="${k#* }"
         detail="${detail:+$detail; }$k: $(sed -n -E "s/^$sev +$id: *//p" "$out" | head -n 1 | cut -c1-200)"
+        [ -n "$todo" ] || todo="$(grep -A1 -E "^$sev +$id:" "$out" | sed -n -E '2s/^ *→ *//p' | sed -E 's/ +#.*//')"
         # a standing graph-*-backoff alert is a skipped file on a run that succeeded, so it does not explain a stale graph
         if [ "$id" = C33-graph-stale ]; then
             graph_alerts=$(compgen -G "$sent_dir/graph-*" | grep -v -- '-backoff[.]')
-            if [ -n "$graph_alerts" ]; then
-                knock_on=1
-                continue
-            fi
+            [ -z "$graph_alerts" ] || knock_on=1
         fi
-        [ -n "$todo" ] || todo="$(grep -A1 -E "^$sev +$id:" "$out" | sed -n -E '2s/^ *→ *//p' | sed -E 's/ +#.*//')"
     done <<< "$keys"
     if [ -n "$new" ]; then
         [ "$knock_on" -eq 1 ] && cause="C33-graph-stale follows from the failing graph cadence and clears when that runs clean"

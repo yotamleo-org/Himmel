@@ -194,6 +194,23 @@ run_cad
 plain="$(tail -1 "$SENT")"
 case "$plain" in *"follows from the failing graph cadence"*) fail "a backoff-only sentinel is not a knock-on cause (got: $plain)" ;; *"WARN C33-graph-stale: graph stale"*"Do: bash scripts/graphify/graph-cadence.sh"*) pass "a backoff-only sentinel is not a knock-on cause" ;; *) fail "a backoff-only sentinel keeps C33's own step (got: $plain)" ;; esac
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel-backoff.x"
+# C33 alone, with a failing graph cadence: the knock-on cause shows and the step is still C33's own remedy.
+rm -rf "$STATE" "$HOME/.himmel/state/cadence-alert-sent"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad
+mkdir -p "$HOME/.himmel/state/cadence-alert-sent"; : > "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
+cat > "$STUB_OUT" <<'OUT'
+himmel-doctor — Linux
+
+WARN C33-graph-stale: graph stale: 12 commits behind main / last cadence run 5h ago FAILED
+       → bash scripts/graphify/graph-cadence.sh
+OK   C99-fine: fine
+
+Summary: 0 FAIL  1 WARN  0 INFO
+OUT
+run_cad
+plain="$(tail -1 "$SENT")"
+case "$plain" in *"Cause: C33-graph-stale follows from the failing graph cadence"*". Do: bash scripts/graphify/graph-cadence.sh. Log: "*) pass "a knock-on C33 alone still gives C33's own step" ;; *) fail "a knock-on C33 alone still gives C33's own step (got: $plain)" ;; esac
+rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
 
 # 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).

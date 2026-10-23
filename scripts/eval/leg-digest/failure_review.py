@@ -196,7 +196,8 @@ def plain_line(day, live, n, k, filed, pending, fresh, rows, done, digest):
             count(len(fresh), "new class", "new classes"),
             ", ".join("%s (%s)" % (c, count(len(rows.get(c, [])), "failure", "failures")) for c in top),
             " and %d more" % (len(fresh) - len(top)) if len(fresh) > len(top) else "")
-        step = "open the digest and file a ticket for any class that matters, else nothing"
+        step = ("open the digest and triage what the router filed" if done else
+                "open the digest and file a ticket for any class that matters, else nothing")
     elif done:
         cause = "recurring classes reached the filing threshold"
         step = "triage the new tickets named in the digest" if live else "nothing"
@@ -385,7 +386,7 @@ def main(argv=None):
         pending = [p for p in ns["pending"] if p not in done and p not in ["new %s" % c for c in fresh]]
         line = None
         if done or fresh or pending:
-            line = plain_line(day, a.live, n, k, len(routed) if a.live else len([d for d in decisions if d["decision"] in ROUTED]),
+            line = plain_line(day, a.live, n, k, len([d for d in decisions if d["decision"] in ("filed", "would-file")]),
                               pending, fresh, rows, bool(done), os.path.join(a.out_dir, "failure-review-%s.md" % day))
             # Saved as soon as the router returns: a run that dies before or during the send leaves its line.
             ns["pending"] = pending + done + ["new %s" % c for c in fresh]
