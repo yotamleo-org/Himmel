@@ -875,8 +875,12 @@ run_ng -- --plugins-check
 assert_eq "non-git --plugins-check: still exits 0 (no git needed)" "0" "$rc"
 
 echo "Test 30: himmel-update.sh carries no Jira id outside a ponytail: line"
-ids=$(grep -nE 'HIMMEL-[0-9]+' "$SCRIPT" | grep -v 'ponytail:' || true)
-if [ -z "$ids" ]; then assert_pass "no Jira id in himmel-update.sh"; else assert_fail "Jira id left in himmel-update.sh: $ids"; fi
+scan_rc=0
+hits=$(grep -nE 'HIMMEL-[0-9]+' "$SCRIPT") || scan_rc=$?
+ids=$(printf '%s\n' "$hits" | grep -v 'ponytail:' || true)
+if [ "$scan_rc" -gt 1 ]; then assert_fail "Jira id scan could not read himmel-update.sh (grep rc=$scan_rc)"
+elif [ -z "$ids" ]; then assert_pass "no Jira id in himmel-update.sh"
+else assert_fail "Jira id left in himmel-update.sh: $ids"; fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
