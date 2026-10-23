@@ -893,6 +893,30 @@ done
 if [ -z "$h16_bad" ]; then pass=$((pass+1)); echo "ok   H16 merge GO implies release GO"; else fail=$((fail+1)); echo "FAIL H16 merge GO but release not GO:$h16_bad"; fi
 led "$CRIT_OK"
 
+# G1-G3 — `--release` changes exactly one cell: a best-effort CodeRabbit row in
+# state in-progress (status pending) holds at release; the merge gate keeps it
+# relaxed (H11).
+rgr() { # rgr <name> <expected-rc> — like rg, with --release
+  local name="$1" want="$2" rc=0
+  export GH_STUB_LOG="$TMP/calls-$name.log"; : > "$GH_STUB_LOG"
+  cr_reviewer_gate 42 abc123 o/r --release >"$TMP/out-$name" 2>"$TMP/err-$name" || rc=$?
+  if [ "$rc" = "$want" ]; then pass=$((pass+1)); echo "ok   $name"
+  else fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want)"; sed 's/^/  out: /' "$TMP/out-$name"; sed 's/^/  err: /' "$TMP/err-$name"; fi
+}
+GH_STUB_MODE=inflight rgr G1-release-coderabbit-in-progress-holds 1
+has "$TMP/out-G1-release-coderabbit-in-progress-holds" '^HOLD: CodeRabbit .*in progress' "G1 HOLD names the in-progress review"
+GH_STUB_MODE=inflight rg G2-merge-mode-in-progress-relaxed 0
+has "$TMP/out-G2-merge-mode-in-progress-relaxed" '^NOTE: CodeRabbit pending' "G2 merge mode keeps the NOTE"
+GH_STUB_MODE=cr-ratelimited rgr G3-release-rate-limited-relaxed 0
+GH_STUB_MODE=clean rgr G3b-release-clean-go 0
+GH_STUB_MODE=cr-absent rgr G3c-release-absent-relaxed 0
+# G4 — the release flag is scoped to the call: after a --release gate, whether it
+# ran through the evaluation or returned early, the shell holds no flag for the
+# merge gate to read.
+if [ "${_CRG_RELEASE:-unset}" = unset ]; then pass=$((pass+1)); echo "ok   G4 a full --release call leaves no flag behind"; else fail=$((fail+1)); echo "FAIL G4 _CRG_RELEASE=$_CRG_RELEASE survives a --release call"; fi
+cr_reviewer_gate "" "" "" --release >/dev/null 2>&1 || true
+if [ "${_CRG_RELEASE:-unset}" = unset ]; then pass=$((pass+1)); echo "ok   G4b an early --release return leaves no flag behind"; else fail=$((fail+1)); echo "FAIL G4b _CRG_RELEASE=$_CRG_RELEASE survives an early --release return"; fi
+
 # hermeticity guard — prove the startup scrub holds. Re-run this
 # whole suite in a subprocess EXPORTING the exact armed bypass env an
 # --automerge-armed shell carries; the reinvoked copy's own startup unset must

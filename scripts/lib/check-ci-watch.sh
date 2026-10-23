@@ -17,6 +17,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/gh-ci-cache.sh
 # shellcheck disable=SC1091
 . "$HERE/gh-ci-cache.sh"
+# shellcheck source=scripts/lib/non-gating-contexts.sh
+# shellcheck disable=SC1091
+. "$HERE/non-gating-contexts.sh"
 
 _num() { case "$2" in ''|*[!0-9]*|0) echo "$3" ;; *) echo "$2" ;; esac; }
 FLOOR=$(_num floor "${CHECK_CI_WATCH_INTERVAL:-30}" 30)
@@ -78,6 +81,7 @@ fi
 # workflow has already completed (then the selector cannot be evaluated).
 _classify() {
     ROWS="$CIC_ROWS"
+    if [ "$RUN_MODE" = 0 ]; then ROWS=$(printf '%s\n' "$CIC_ROWS" | ngc_drop_rows); fi
     if [ "$RUN_MODE" = 1 ] && [ -n "$JOB_NAME" ]; then
         ROWS=$(printf '%s\n' "$CIC_ROWS" | CHECK_CI_JOB_NAME="$JOB_NAME" awk -F'\t' '$3 == "job" && $2 == ENVIRON["CHECK_CI_JOB_NAME"]')
         if printf '%s\n' "$ROWS" | awk -F'\t' '$1 == "skipping" { found=1 } END { exit !found }'; then
@@ -90,6 +94,7 @@ _classify() {
             ROWS=$'pending\tjob not registered'
         fi
     fi
+    if [ "$RUN_MODE" = 0 ] && [ -z "$ROWS" ] && [ -n "$CIC_ROWS" ]; then ROWS=$'pending\tgating checks not reported'; fi
     FAILS=$(printf '%s\n' "$ROWS" | awk -F'\t' '$1 == "fail" { c++ } END { print c + 0 }')
     PENDING=$(printf '%s\n' "$ROWS" | awk -F'\t' '$1 != "pass" && $1 != "skipping" && $1 != "fail" && $1 != "cancel" { c++ } END { print c + 0 }')
 }

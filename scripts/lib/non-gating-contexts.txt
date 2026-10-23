@@ -1,0 +1,9 @@
+# Status contexts the ship loop does not gate on. One context name per line,
+# matched EXACTLY and in full (no prefix, no glob). Blank lines and lines
+# starting with # are ignored. Every line is reviewed under scripts/lib/
+# trust-path review.
+#
+# The free-plan Snyk PR check posts ERROR once the monthly private-test quota
+# is spent. That is a quota limit, not a code finding; the weekly Snyk
+# workflow stays the real scan.
+security/snyk (yotamleo)

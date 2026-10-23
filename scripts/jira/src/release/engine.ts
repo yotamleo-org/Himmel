@@ -146,6 +146,7 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
       type: String(fm.type ?? ''), priority: String(fm.priority ?? ''),
       fixVersions: Array.isArray(fm.fixVersions) ? fm.fixVersions.map(String) : [],
       resolution: typeof fm.resolution === 'string' ? fm.resolution : null,
+      sector: typeof fm.sector === 'string' && fm.sector ? fm.sector : null,
     });
   }
   return { issues, sync };
@@ -642,7 +643,7 @@ export interface Decision {
   op: Op['kind'];
   from: string | null;
   to: string | null;
-  sector: string;
+  sector: string | null;
   ground: string;
   reason: string;
   supersedes?: string[];
@@ -664,6 +665,14 @@ export interface JudgeInput {
 
 export type Judge = (input: JudgeInput) => Promise<Decision[]>;
 
+// A judge reply the decision check refused; raw is kept so the run doc can show what the model said.
+export class JudgeReplyError extends Error {
+  constructor(message: string, readonly raw: string) {
+    super(message);
+    this.name = 'JudgeReplyError';
+  }
+}
+
 function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
   const last = new Map<string, RulingRow>();
   for (const r of rulings.verified) last.set(r.id, r);
@@ -682,6 +691,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
   const rctx: Ctx = { ...ctx, env: { ...ctx.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: ctx.release } };
   const lease = leaseAcquire(rctx, { expectEpoch: readLease(ctx, l.k).epoch, doc, session: o.session ?? 'rm-run' });
   const lines: string[] = [];
+  let refused: JudgeReplyError | undefined;
   try {
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       try {
@@ -696,13 +706,22 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
       const keys = new Set(claimed.map((r) => r.key));
       const mirror = readMirror(ctx.mirrorRoot);
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
-      const decisions = await judge({
-        release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: claimed,
-        records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
-        operator: now.operator.verified,
-        rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
-        issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
-      });
+      let decisions: Decision[];
+      try {
+        decisions = await judge({
+          release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: claimed,
+          records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
+          operator: now.operator.verified,
+          rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
+          issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
+        });
+      } catch (e) {
+        if (e instanceof JudgeReplyError) {
+          refused = e;
+          lines.push(`JUDGE-REFUSED: ${e.message}`);
+        }
+        throw e;
+      }
       for (const q of claimed) {
         let id: string;
         try {
@@ -733,7 +752,8 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
     }
     try {
       mkdirSync(dirname(doc), { recursive: true });
-      writeFileSync(doc, `# rm-run ${ctx.release} epoch ${lease.epoch}\n\n${lines.map((x) => `- ${x}`).join('\n')}\n`);
+      const raw = refused ? `\n## Raw judge reply\n\n~~~~\n${refused.raw}\n~~~~\n` : '';
+      writeFileSync(doc, `# rm-run ${ctx.release} epoch ${lease.epoch}\n\n${lines.map((x) => `- ${x}`).join('\n')}\n${raw}`);
     } catch (e) {
       lines.push(`PENDING run record: ${(e as Error).message}`);
     }
