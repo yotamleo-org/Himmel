@@ -346,7 +346,9 @@ graphify_register_mcp_on_demand() {
     const servers = doc.mcpServers || {};
     doc.mcpServers = { ...servers, graphify: { args: [], env: {}, ...servers.graphify, type: "stdio", command: cmd } };
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+    const tmp = file + "." + process.pid + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n");
+    fs.renameSync(tmp, file);
   ' "$file" "$mcp_arg"; then
     echo "  graphify MCP: registered on demand ($file) -- launch with the graph profile (.claude/mcp-profiles/README.md); the graphify CLI is the default path."
   else
