@@ -12,6 +12,10 @@
 # the librarian move anything by itself. Arming at all is an operator act; the
 # first live --apply needs the luna auto-committer and the Obsidian sync paused.
 #
+# Exit: 0 ok; 1 bad argument or usage; 2 cron unavailable (no crontab binary,
+# or Windows); 3 already armed (arm without --force); 4 crontab read, write or
+# runner-file failure.
+#
 # Seams (tests): LIBRARIAN_CRONTAB, LIBRARIAN_RUNNER_DIR, HIMMEL_OBSERVABILITY_CONFIG,
 # plus cadence-alert.sh's own.
 # ponytail: cron only (Windows is parked) and day-of-month `*/N` restarts each

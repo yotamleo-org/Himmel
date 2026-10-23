@@ -67,9 +67,9 @@ M60="$(ym 60)"; M30="$(ym 30)"; A="$B/archive/$M60"
 
 # --- dry run is the default and changes nothing -------------------------------
 out="$(run 2>&1)"; check "default run exits 0" 0 "$?"
-check "default run is a dry run" yes "$(printf '%s' "$out" | grep -q 'dry-run' && echo yes || echo no)"
-check "dry run lists the wrapped doc as a move" yes "$(printf '%s' "$out" | grep -q '^MOVE .*HIMMEL-1-old-wrapped' && echo yes || echo no)"
-check "dry run names the locked doc as skipped" yes "$(printf '%s' "$out" | grep -q '^SKIP locked .*HIMMEL-2-locked' && echo yes || echo no)"
+check "default run is a dry run" yes "$(grep -q 'dry-run' <<< "$out" && echo yes || echo no)"
+check "dry run lists the wrapped doc as a move" yes "$(grep -q '^MOVE .*HIMMEL-1-old-wrapped' <<< "$out" && echo yes || echo no)"
+check "dry run names the locked doc as skipped" yes "$(grep -q '^SKIP locked .*HIMMEL-2-locked' <<< "$out" && echo yes || echo no)"
 check "dry run moves nothing" "$HEAD0" "$(git -C "$R" rev-parse HEAD)"
 check "dry run leaves the tree clean" "" "$(git -C "$R" status --porcelain)"
 check "dry run creates no archive dir" no "$(here "$B/archive")"
@@ -122,7 +122,7 @@ before="$(git -C "$R" status --porcelain | sort | tr '\n' ' ')"
 out3="$(run --apply 2>&1)"; check "second apply exits 0" 0 "$?"
 check "second apply moves nothing" "$before" "$(git -C "$R" status --porcelain | sort | tr '\n' ' ')"
 check "second apply adds no index line" 7 "$(grep -c '^- ' "$IDX")"
-check "second apply reports zero moves" yes "$(printf '%s' "$out3" | grep -q 'moved=0' && echo yes || echo no)"
+check "second apply reports zero moves" yes "$(grep -q 'moved=0' <<< "$out3" && echo yes || echo no)"
 
 # --- an existing destination is never overwritten -----------------------------
 leg HIMMEL-1-clash-2026-01-01.md WRAPPED 60; mkdir -p "$A"; printf 'keep\n' > "$A/HIMMEL-1-clash-2026-01-01.md"
@@ -134,7 +134,7 @@ check "clash: source stayed" yes "$(here "$B/HIMMEL-1-clash-2026-01-01.md")"
 leg HIMMEL-1-untracked-2026-01-01.md WRAPPED 60
 out4="$(run --apply 2>&1)"
 check "untracked doc stayed" yes "$(here "$B/HIMMEL-1-untracked-2026-01-01.md")"
-check "untracked doc reported" yes "$(printf '%s' "$out4" | grep -q '^SKIP untracked .*HIMMEL-1-untracked' && echo yes || echo no)"
+check "untracked doc reported" yes "$(grep -q '^SKIP untracked .*HIMMEL-1-untracked' <<< "$out4" && echo yes || echo no)"
 
 # --- usage --------------------------------------------------------------------
 bash "$SUT" --root "$W/nope" --bucket "$B" >/dev/null 2>&1; check "missing root exits 2" 2 "$?"

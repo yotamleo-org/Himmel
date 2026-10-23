@@ -32,7 +32,7 @@ run() { bash "$SUT" "$@" 2>&1; }
 # --- not armed, dry-run arm installs nothing ----------------------------------
 check "status before arming" "not armed  HIMMEL-Librarian" "$(run status | head -1)"
 out="$(run arm --dry-run)"
-check "arm --dry-run names the daily entry" 0 "$(printf '%s' "$out" | grep -q '23 4 \* \* \* ' && echo 0 || echo 1)"
+check "arm --dry-run names the daily entry" 0 "$(grep -q '23 4 \* \* \* ' <<< "$out" && echo 0 || echo 1)"
 check "arm --dry-run writes no crontab" no "$([ -e "$TAB" ] && echo yes || echo no)"
 
 # --- arm: daily, dry-run runner, other cron lines kept ------------------------
