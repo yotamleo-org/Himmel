@@ -44,6 +44,7 @@
 # would be passed, or the usage ledger cannot be written; exit 0 otherwise. The other forks still run.
 # Snyk (1.1308.2) cannot read uv.lock ("Could not detect package manager"), and its pip scan needs
 # the packages installed; a uv.lock is exported with `uv export` and looked up on osv.dev instead.
+# The export leaves out dev groups (--no-dev), as snyk test does by default: build and test tooling is not scanned.
 # ponytail: osv.dev findings carry the advisory's own severity (GHSA database_specific, unrated = medium) and no reachability, upgrade path: osv-scanner or a Snyk uv.lock parser once released.
 #
 # Seams (tests): SNYK_BIN, SNYK_SCAN_STATE_DIR, SNYK_SCAN_OUT_DIR, SNYK_SCAN_OS_CAP, SNYK_SCAN_CODE_CAP,
