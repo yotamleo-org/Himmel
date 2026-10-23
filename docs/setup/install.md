@@ -2,20 +2,61 @@
 
 Audience: newcomer. Owner of the rewrite: HIMMEL-7212.
 
+**The task:** protect one git project with himmel, so that a Claude Code
+session refuses to edit your default branch and works in a worktree instead.
+Five steps get you there: preview, install, persist, verify, undo. Read the
+choices, the adapting notes and the recovery path once the first install
+works.
+
 himmel is a harness *for* [Claude Code](https://claude.com/claude-code): hooks,
 git gates and guardrails that enforce a PR-gated workflow at the tool-call layer
 instead of asking the model to remember prose, plus handover files that carry
-context across sessions. This page is the whole adopter path: install it,
-choose what lands, and adapt the parts that assume himmel's own conventions.
+context across sessions.
 
 Developing himmel *itself* is a different path:
 [new-machine.md](new-machine.md#4-himmel-repo).
 
-## Install
+## Before you start
+
+You need two folders: the **himmel download**, cloned once outside your project,
+and **your project**, a git repository you run every install command from.
 
 ```bash
 git clone https://github.com/yotamleo-org/Himmel ~/himmel   # outside your project, once
 cd <your-project>                                           # the install acts on this folder
+```
+
+**Prerequisites**, checked by the installer, which fails fast with install
+hints: `git`, `bash` 3.2+, `node`, `jq`, `python3`, and the Claude Code CLI on
+your `PATH`. `gh` is optional for the install but used by the PR and
+worktree-prune steps; `bun` is needed only for the optional extras (companion
+vault tooling, qmd search, the Telegram bridge, armed resume). No `node` on the
+machine yet? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first; it
+installs Node.
+
+> **Windows is EXPERIMENTAL in v1.** The installer, the git gates and the
+> worktree commands are exercised on Linux and macOS. On Windows they run under
+> **Git Bash** (`bash` 3.2+), and the PowerShell twins exist but are not part of
+> the v1 support claim. Treat a Windows install as opt-in and self-supported:
+> the Git Bash path is the one to prefer. Expect quoting and `PATH` differences
+> from a Linux shell, and open an issue for whatever breaks. That is how the
+> v1 support claim grows.
+
+## Preview
+
+Run from the root of your project. Both commands write nothing:
+
+```bash
+node ~/himmel/scripts/himmelctl/bin.js install --scope project --dry-run
+bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run
+```
+
+The first prints a summary of the install; the second prints one `DRY:` line
+for each file and setting it would write. A preview leaves nothing to undo.
+
+## Install
+
+```bash
 node ~/himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 ```
 
@@ -23,7 +64,7 @@ node ~/himmel/scripts/himmelctl/bin.js install --scope project   # or --scope us
 ([`docs/setup/profiles/adopter-project.install-profile.json`](profiles/adopter-project.install-profile.json)
 or the `adopter-user` twin) and installs without asking anything. Drop the flag
 to get the wizard instead; it asks a handful of questions and lets you confirm
-each default. `--dry-run` prints the plan and writes nothing.
+each default.
 
 Three words name three different choices, and the installer asks for them
 separately: the **preset** is the shipped install-profile file that supplies
@@ -41,17 +82,7 @@ while that UI is running and it prints the same link. On a machine with no
 browser (an SSH session, or Linux with no display) it asks for the secrets in
 the terminal instead.
 
-No `node` on the machine yet? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh`
-first; it installs Node, then re-run the install.
-
-Run it from the root of a git repository, and preview first. Both commands
-write nothing:
-`node ~/himmel/scripts/himmelctl/bin.js install --scope project --dry-run`
-prints a summary of the install, and
-`bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run`
-prints one `DRY:` line for each file and setting it would write.
-
-### After the install: commit it before you branch
+## Persist: commit it before you branch
 
 A project-scope install writes `.claude/`, `scripts/` and `.gitignore` into the
 working tree and leaves them **untracked**. A worktree is cut from committed
@@ -90,24 +121,98 @@ line and `HIMMEL_REPO` point at it), so this commit puts this machine's path
 into the project. In a repository you share, a teammate whose download sits
 elsewhere needs those two values changed to their own path.
 
-**Prerequisites**, checked by the installer, which fails fast with install
-hints: `git`, `bash` 3.2+, `node`, `jq`, `python3`, and the Claude Code CLI on
-your `PATH`. `gh` is optional for the install but used by the PR and
-worktree-prune steps; `bun` is needed only for the optional extras (companion
-vault tooling, qmd search, the Telegram bridge, armed resume).
+A project-scope install also copies and wires the unresolved-review merge gate
+and its libraries. The install commit adds `scripts/ci/ci-trust-paths.txt`,
+seeded only when absent; your existing trust list is never overwritten. Until
+that list is on your default branch, the gate refuses every merge from a
+session that loads the new settings, including the adoption PR. The operator
+must merge that first adoption PR outside Claude, using the forge web UI or
+their own terminal; no agent session merges it. Afterward, any PR touching a
+listed trust path requires a trust-reviewed GO.
 
-> **Windows is EXPERIMENTAL in v1.** The installer, the git gates and the
-> worktree commands are exercised on Linux and macOS. On Windows they run under
-> **Git Bash** (`bash` 3.2+), and the PowerShell twins exist but are not part of
-> the v1 support claim. Treat a Windows install as opt-in and self-supported:
-> the Git Bash path is the one to prefer. Expect quoting and `PATH` differences
-> from a Linux shell, and open an issue for whatever breaks. That is how the
-> v1 support claim grows.
+## Verify
 
-## What `profile` means: three unrelated things
+Open a Claude Code session at the repo root (`claude`); hooks only fire inside
+a session. The install must already be committed on the default branch (see
+[Persist](#persist-commit-it-before-you-branch)). Then:
+
+1. Try to edit a file while on the default branch. `block-edit-on-main` should
+   refuse and point you at a worktree. That refusal *is* the success signal.
+2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
+   the worktree path (a `feat+try-himmel` folder under your repo's worktrees
+   directory) and does not move a running session; quit and run `claude` again inside that path. Check that
+   `.claude/settings.json`, `scripts/hooks/block-edit-on-main.sh` and
+   `scripts/worktree.sh` exist there. If they do not, the install was not
+   committed first. Edits on the worktree branch then proceed normally.
+3. Try `cat .env` (if you have one). `block-read-secrets` should refuse.
+4. Run `node ~/himmel/scripts/himmelctl/bin.js status` for a severity-grouped diff of
+   what is installed versus what the manifest wants.
+
+Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
+
+## Undo
+
+A preview wrote nothing. An install is undone by the uninstaller, which also
+previews first.
+
+### Uninstalling
+
+`himmelctl uninstall` is the inverse of install. Preview first: `--dry-run`
+lists every path, plugin, hook and settings key it would touch and changes
+nothing:
+
+```bash
+node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run   # preview; touches nothing
+node ~/himmel/scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring (asks first)
+node ~/himmel/scripts/himmelctl/bin.js uninstall --yes       # same, no prompt; needed without a terminal
+node ~/himmel/scripts/himmelctl/bin.js uninstall --purge-state   # ...and your operator STATE too
+```
+
+Without a terminal, a run without `--yes` aborts (`non-interactive run without
+--yes — aborting (fail-closed)`) and removes nothing.
+
+It splits what himmel installed into two classes, and the default is the
+conservative one:
+
+- **Code** (removed by default): the Claude plugins and marketplaces himmel
+  added, the repo's git hooks, the himmel keys in `~/.claude/settings.json`
+  (hooks and `env`), the `HIMMEL:working-principles` block install appended to
+  `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` (only that block is stripped;
+  a file left empty by it is removed), the claude-hud config himmel wrote, the
+  `HIMMEL-Resume-*` scheduled jobs, the Telegram bridge process and the
+  himmelctl cache.
+- **State** (kept unless you pass `--purge-state`): your Telegram pairing
+  (`~/.claude/channels/telegram`) and the bridge state directory. A purge is
+  refused (non-zero exit) rather than run while the bridge is still running,
+  so state can remain after a guarded purge; stop the bridge and re-run.
+- **Never touched**: the himmel clone, your `.env`, worktrees, handover state,
+  and any `settings.json` key himmel did not add, and files of yours that were
+  never part of the install. Files the install recorded in its ledger are
+  removed from your repo's `scripts/` (git then shows them as deleted, so
+  commit or discard that); a copy the ledger does not recognize is kept and
+  named in the footprint, as is Claude Code's workspace-trust entry in
+  `~/.claude.json` when the ledger does not say himmel added it. Deleting the
+  himmel clone removes none of this; drop what is left with git.
+
+Every change is printed with its exact path and line (`removing hook
+PreToolUse: …`). After the settings step it re-reads the file and prints
+`verified: no himmel wiring left in <file>`, a check of the file (hooks,
+statusLine and the himmel `env` keys), not of a return code; if any of it is
+still wired the run stops with a non-zero exit. The full path list lives in
+[`scripts/install/uninstall-manifest.tsv`](../../scripts/install/uninstall-manifest.tsv),
+which the uninstaller reads; `--dry-run` prints it as a `KEEP`/`REMOVE`
+footprint. Flags and exit codes: [updating.md](updating.md#uninstalling--offboarding).
+
+## After the first success
+
+Everything below is for when the five steps above have worked once: what the
+choices mean, what to configure, and how to fit himmel to a repo with its own
+conventions.
+
+### What `profile` means: three unrelated things
 
 This is the single biggest comprehension trap in himmel's surface, so it gets
-named once, up front, and every later mention in this guide is qualified.
+named once, and every later mention in this guide is qualified.
 
 | Sense | Values | Where it lives | What it decides |
 |---|---|---|---|
@@ -127,7 +232,7 @@ The plugin profile toggles with `/profile`; its registry is
 `domain-modeling@himmel` per dispatch, `user` enables the opt-in `pstack@himmel`,
 and `humanizer@himmel` is in no plugin profile.
 
-## What you are opting into
+### What you are opting into
 
 Four independent axes; pick one value from each. Nothing here is a package
 deal, and every guard has an off switch (see
@@ -161,16 +266,7 @@ written tracks the tip.
 > particular (`cadence-armed`, the arming legs) use `schtasks` there and are the
 > least exercised.
 
-A project-scope install copies and wires the unresolved-review merge gate and
-its libraries. The install commit adds `scripts/ci/ci-trust-paths.txt`, seeded
-only when absent; your existing trust list is never overwritten. Until that
-list is on your default branch, the gate refuses every merge from a session
-that loads the new settings, including the adoption PR. The operator must
-merge that first adoption PR outside Claude, using the forge web UI or their
-own terminal; no agent session merges it. Afterward, any PR touching a listed
-trust path requires a trust-reviewed GO.
-
-## Minimal config
+### Minimal config
 
 - **`USER_SLUG`:** your kebab-case handle. Skip it and himmel derives one from
   `git config user.name`. That is the whole required configuration.
@@ -184,7 +280,7 @@ trust path requires a trust-reviewed GO.
   `handover_root` fails closed with a diagnostic (`scripts/lib/handover-path.sh`),
   it does not crash, and nothing silently writes to the wrong place.
 
-## Adapting himmel to a repo that is not himmel
+### Adapting himmel to a repo that is not himmel
 
 himmel's gates encode himmel's own conventions. Six of them will not fit your
 repo unchanged. Each is *what it assumes → how to change it → how to turn it
@@ -255,26 +351,6 @@ worktree workflow.
 | graphify (`scripts/graphify/`) | Knowledge-graph retrieval over a corpus | Optional; its data egress is fenced by [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json) |
 | AFK (unattended) mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
 
-## Verify
-
-Open a Claude Code session at the repo root (`claude`); hooks only fire inside
-a session. The install must already be committed on the default branch (see
-[After the install](#after-the-install-commit-it-before-you-branch)). Then:
-
-1. Try to edit a file while on the default branch. `block-edit-on-main` should
-   refuse and point you at a worktree. That refusal *is* the success signal.
-2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
-   the worktree path (a `feat+try-himmel` folder under your repo's worktrees
-   directory) and does not move a running session; quit and run `claude` again inside that path. Check that
-   `.claude/settings.json`, `scripts/hooks/block-edit-on-main.sh` and
-   `scripts/worktree.sh` exist there. If they do not, the install was not
-   committed first. Edits on the worktree branch then proceed normally.
-3. Try `cat .env` (if you have one). `block-read-secrets` should refuse.
-4. Run `node ~/himmel/scripts/himmelctl/bin.js status` for a severity-grouped diff of
-   what is installed versus what the manifest wants.
-
-Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
-
 ## Lifecycle
 
 | You want to… | Run |
@@ -289,54 +365,6 @@ Then walk one real loop: [getting-started.md](../getting-started.md#your-first-l
 
 Detail for all of these: [updating.md](updating.md). Coming from an older
 himmel install rather than a fresh one: [migrating.md](migrating.md).
-
-### Uninstalling
-
-`himmelctl uninstall` is the inverse of install. Preview first: `--dry-run`
-lists every path, plugin, hook and settings key it would touch and changes
-nothing:
-
-```bash
-node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run   # preview; touches nothing
-node ~/himmel/scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring (asks first)
-node ~/himmel/scripts/himmelctl/bin.js uninstall --yes       # same, no prompt; needed without a terminal
-node ~/himmel/scripts/himmelctl/bin.js uninstall --purge-state   # ...and your operator STATE too
-```
-
-Without a terminal, a run without `--yes` aborts (`non-interactive run without
---yes — aborting (fail-closed)`) and removes nothing.
-
-It splits what himmel installed into two classes, and the default is the
-conservative one:
-
-- **Code** (removed by default): the Claude plugins and marketplaces himmel
-  added, the repo's git hooks, the himmel keys in `~/.claude/settings.json`
-  (hooks and `env`), the `HIMMEL:working-principles` block install appended to
-  `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` (only that block is stripped;
-  a file left empty by it is removed), the claude-hud config himmel wrote, the
-  `HIMMEL-Resume-*` scheduled jobs, the Telegram bridge process and the
-  himmelctl cache.
-- **State** (kept unless you pass `--purge-state`): your Telegram pairing
-  (`~/.claude/channels/telegram`) and the bridge state directory. A purge is
-  refused (non-zero exit) rather than run while the bridge is still running,
-  so state can remain after a guarded purge; stop the bridge and re-run.
-- **Never touched**: the himmel clone, your `.env`, worktrees, handover state,
-  and any `settings.json` key himmel did not add, and files of yours that were
-  never part of the install. Files the install recorded in its ledger are
-  removed from your repo's `scripts/` (git then shows them as deleted, so
-  commit or discard that); a copy the ledger does not recognize is kept and
-  named in the footprint, as is Claude Code's workspace-trust entry in
-  `~/.claude.json` when the ledger does not say himmel added it. Deleting the
-  himmel clone removes none of this; drop what is left with git.
-
-Every change is printed with its exact path and line (`removing hook
-PreToolUse: …`). After the settings step it re-reads the file and prints
-`verified: no himmel wiring left in <file>`, a check of the file (hooks,
-statusLine and the himmel `env` keys), not of a return code; if any of it is
-still wired the run stops with a non-zero exit. The full path list lives in
-[`scripts/install/uninstall-manifest.tsv`](../../scripts/install/uninstall-manifest.tsv),
-which the uninstaller reads; `--dry-run` prints it as a `KEEP`/`REMOVE`
-footprint. Flags and exit codes: [updating.md](updating.md#uninstalling--offboarding).
 
 ## Appendix — manual install (recovery only)
 
