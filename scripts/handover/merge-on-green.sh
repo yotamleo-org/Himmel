@@ -920,10 +920,11 @@ fi
 # closed, so the config can never quietly stand in for a GO.
 SOLO_TAG=""
 solo_cfg=""
+solo_set=0
 if git -C "$himmel_repo" rev-parse --git-dir >/dev/null 2>&1; then
-    solo_cfg=$(git -C "$himmel_repo" config --local --get himmel.mergeMode) || solo_cfg=""
+    solo_cfg=$(git -C "$himmel_repo" config --local --get himmel.mergeMode) && solo_set=1
 fi
-if [ -n "$solo_cfg" ]; then
+if [ "$solo_set" = 1 ]; then
     solo_refuse() {
         echo "merge-on-green: solo mode: $2 — not merging." >&2
         audit "REFUSED reason=policy-refused phase=$1 repo=$nwo pr=#$pr_num sha=$sha"

@@ -4652,7 +4652,7 @@ no_merge_call "5208-b: no merge call"
 # --- 7001. Solo mode — an adopted project whose git config says
 # himmel.mergeMode=solo merges a green PR with resolved threads and no GO file;
 # the mode relaxes no gate and is refused wherever a GO is the rule. -----------
-solo_cfg_setup() { git -C "$1" config --local himmel.mergeMode "${SOLO_CFG:-solo}"; }
+solo_cfg_setup() { git -C "$1" config --local himmel.mergeMode "${SOLO_CFG-solo}"; }
 solo_clone_setup() {
     solo_cfg_setup "$1" && mkdir -p "$1/scripts/handover/console-kit" \
         && : > "$1/scripts/handover/console-kit/go.sh"
@@ -4690,6 +4690,12 @@ SOLO_CFG=team MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo700
     run_mog 17 "7001-e: himmel.mergeMode=team → exit 17"
 assert_audit_has "7001-e: audited as a solo refusal" "phase=solo-invalid-mode"
 no_merge_call "7001-e: no merge call"
+
+# 7001-e2 — a key that is present but empty is a value too, not an absent key.
+SOLO_CFG='' MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001h" \
+    run_mog 17 "7001-e2: himmel.mergeMode set to empty → exit 17"
+assert_audit_has "7001-e2: audited as a solo refusal" "phase=solo-invalid-mode"
+no_merge_call "7001-e2: no merge call"
 
 # 7001-f — no config: the default path is unchanged, merged and not labelled solo.
 MOG_ANCHOR_GIT=1 STUB_SHA="solo7001f" \
