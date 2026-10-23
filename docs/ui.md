@@ -1,8 +1,11 @@
 # The himmel UI surfaces
 
+Audience: newcomer who has installed himmel, and contributor. Owner: HIMMEL-6836 (this page).
+
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
-command you run yourself. Only the config UI can change anything on your machine, and
-every change asks first (a dry-run and a confirm, or a typed value you save); the other two only display. If a user asks "the himmel UI",
+command you run yourself. Only the config UI can change anything on your machine. Settings switches show a dry-run and ask
+for a confirm, and a typed value is saved on request. A Kanban drop and a theme select on the Roadmap
+write to Jira at once, with no confirm. The other two surfaces only display. If a user asks "the himmel UI",
 they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
@@ -72,6 +75,9 @@ node scripts/himmelctl/bin.js ui --agui latest   # URL of the newest session's r
 node scripts/himmelctl/bin.js ui --agui <session-id>
 ```
 
+- **The first install is owned by the terminal.** Run `himmelctl install` there
+  first ([install.md](setup/install.md)); the Setup page only reads and edits an
+  install that exists, and does not replace the wizard.
 - **Run it yourself, from a terminal outside Claude.** It refuses to start
   inside a Claude session; an agent cannot open it for you. The server runs in
   the foreground and exits on Ctrl-C or after 30 minutes idle.
@@ -142,6 +148,25 @@ artifacts; neither runs a server.
 
 Both are Linux-only supervisor session tooling; an install without a supervisor session does not
 have them in use.
+
+## Entry pages: audience and owner
+
+Each of the ten user entry pages names who it is for and who owns its rewrite. The evidence is the
+HIMMEL-6743 design review, section "Ten user-page recommendations" (the cited line range is the part
+of the page the review read).
+
+| Page | Audience | Owner | Evidence in the review |
+|---|---|---|---|
+| `README.md` | newcomer | HIMMEL-7211 | `README.md:5-19,33-62,75-89` |
+| `docs/why-himmel.md` | newcomer | HIMMEL-7211 | `docs/why-himmel.md:15-48` |
+| `docs/getting-started.md` | newcomer | HIMMEL-7211 | `docs/getting-started.md:27-73` |
+| `docs/setup/install.md` | newcomer | HIMMEL-7212 | `docs/setup/install.md:1-89,227-232` |
+| `docs/adoption-trail.html` | newcomer | HIMMEL-6290 | `docs/adoption-trail.html`, frames F2 to F8 |
+| `docs/daily-loop.md` | contributor | HIMMEL-7213 | `docs/daily-loop.md:3-28,32-97` |
+| `docs/configuration.md` | contributor | HIMMEL-7212 | `docs/configuration.md:9-79` |
+| `docs/commands-catalog.md` | contributor | HIMMEL-7213 | `docs/commands-catalog.md:3-70,80-105` |
+| `docs/setup/updating.md` | newcomer | HIMMEL-7212 | `docs/setup/updating.md:3-25,27-100` |
+| `docs/ui.md` | newcomer and contributor | HIMMEL-6836 | `docs/ui.md:3-16,25-45` |
 
 ## Keeping this page current
 

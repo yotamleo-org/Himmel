@@ -1,5 +1,7 @@
 # Getting Started
 
+Audience: newcomer. Owner of the rewrite: HIMMEL-7211.
+
 New to himmel? This is the path from clone to your first PR-gated loop. It
 takes about **15 minutes**, most of it watching the installer run. The core
 install is three commands, and you stay in control the whole way. The
