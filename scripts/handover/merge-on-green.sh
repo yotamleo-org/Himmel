@@ -908,6 +908,31 @@ if [ "$ci_rc" -ne 0 ]; then
     exit 14
 fi
 
+# Solo mode. An adopted project with one person and no console selects it with
+# the project's own git config, `git config himmel.mergeMode solo`, read from the
+# anchor's local config only. It relaxes NO gate: the green gate above, the trust
+# path, main-red and privacy gates all still run, and no GO file is asked for
+# because only a console leg or an explicit --go is ever bound to one. What it
+# adds is a refusal wherever a GO is the rule — a console leg, or the himmel
+# clone (the anchor carries console-kit/go.sh) — and an unknown value fails
+# closed, so the config can never quietly stand in for a GO.
+SOLO_TAG=""
+solo_cfg=""
+if git -C "$himmel_repo" rev-parse --git-dir >/dev/null 2>&1; then
+    solo_cfg=$(git -C "$himmel_repo" config --local --get himmel.mergeMode) || solo_cfg=""
+fi
+if [ -n "$solo_cfg" ]; then
+    solo_refuse() {
+        echo "merge-on-green: solo mode: $2 — not merging." >&2
+        audit "REFUSED reason=policy-refused phase=$1 repo=$nwo pr=#$pr_num sha=$sha"
+        exit 17
+    }
+    [ "$solo_cfg" = solo ] || solo_refuse solo-invalid-mode "git config himmel.mergeMode is '$solo_cfg' (only 'solo' is a mode)"
+    [ -z "${HIMMEL_CONSOLE_LEG:-}" ] || solo_refuse solo-console-leg "a console leg merges only on its console's GO"
+    [ ! -e "$himmel_repo/scripts/handover/console-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
+    SOLO_TAG=" mode=solo"
+fi
+
 # Console-GO gate. A console-spawned leg (headed-arm-leg.sh
 # exports HIMMEL_CONSOLE_LEG=1) merges ONLY on its console's GO: a file the
 # console writes with console-kit/go.sh under the handover root, bound to THIS
@@ -1615,7 +1640,7 @@ fi
 # (concurrent push) since the gate, so the only outcomes are "merge the certified
 # green SHA" or "benign abort → re-run" — never a merge of an ungated SHA.
 if [ "$DRY_RUN" -eq 1 ]; then
-    audit "DRYRUN would-merge repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 cr=$CR_STATE"
+    audit "DRYRUN would-merge repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 cr=$CR_STATE$SOLO_TAG"
     echo "merge-on-green: [dry-run] gates passed — would squash-merge PR #$pr_num @ $sha (repo $nwo). Not merging."
     exit 0
 fi
@@ -1626,7 +1651,7 @@ fi
 # preflight above proves the sink was writable a moment ago, but a sink that
 # fails right here (disk full, removed underneath us) must abort the merge —
 # the durable intent record is a precondition, not a courtesy.
-if ! audit "MERGING repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 cr=$CR_STATE"; then
+if ! audit "MERGING repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 cr=$CR_STATE$SOLO_TAG"; then
     echo "merge-on-green: could not record the MERGING audit record at $(_audit_sink) — refusing (an unauditable merge must not proceed)." >&2
     exit 16
 fi
@@ -2367,7 +2392,7 @@ if [ "$merge_rc" -ne 0 ]; then
         prune_merged_worktree "$head_branch" "$sha"
         record_after_report_pending_marker "$head_branch" "$pr_num" "$sha"
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         exit 0
     fi
@@ -2441,7 +2466,7 @@ if [ "$merge_rc" -eq 0 ]; then
         prune_merged_worktree "$head_branch" "$sha"
         record_after_report_pending_marker "$head_branch" "$pr_num" "$sha"
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         exit 0
     fi

@@ -1535,6 +1535,19 @@ IFS= read -r -d '' cit_after < "$cittarget/scripts/check-ci.sh" || true
   || fail "HIMMEL-6977: re-adopt changed the project's check-ci.sh"
 echo "ok: HIMMEL-6977 the adopted check-ci.sh reaches a green verdict for the project's own repo; re-adopt is idempotent"
 
+# An adopted project carries the merge-on-green gate and the anchor files it
+# needs, and the copied script loads in the project.
+for f in scripts/handover/merge-on-green.sh scripts/lib/check-pr-title.sh scripts/lib/ticket-id-internal.sh scripts/chokepoints.json; do
+  [ -f "$cittarget/$f" ] || fail "HIMMEL-7001: $f was not copied into the project"
+done
+set +e
+out=$(cd "$cittarget" && HOME="$cithome" bash scripts/handover/merge-on-green.sh --help 2>&1); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "HIMMEL-7001: the project's merge-on-green.sh --help failed (rc=$rc): $out"
+grepq "$out" "Usage: merge-on-green.sh" \
+  || fail "HIMMEL-7001: the project's merge-on-green.sh printed no usage: $out"
+echo "ok: HIMMEL-7001 an adopted project carries merge-on-green.sh and its anchor files"
+
 # The adopted project's own copy of the usage preflight (and its old-name
 # forwarder) reads the usage cache and account identity the project's session
 # sees and prints a verdict, never a himmel-checkout path. The cache shape is the
@@ -2683,8 +2696,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "74" ] \
-  || fail "HIMMEL-3332 S4: expected 74 file rows (73 portable entries plus the trust policy seed)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "78" ] \
+  || fail "HIMMEL-3332 S4: expected 78 file rows (77 portable entries plus the trust policy seed)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups
