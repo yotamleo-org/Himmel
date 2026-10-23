@@ -427,7 +427,8 @@ cov_linked() {
     printf '%s\n' "$cov_links_out" | awk -F'\t' -v t="$2" '{ for (i = 1; i <= NF; i++) if ($i == "inward=" t || $i == "outward=" t) f = 1 } END { exit !f }'
 }
 
-# cov_ledger_keys <ledger> <head>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
+# cov_ledger_keys <ledger> <head> <pr-branch>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
+# Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head.
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
 # Its effective row is its own row with every amend written after it against that original head merged over it, in file
 # order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head). The
@@ -436,13 +437,13 @@ cov_linked() {
 # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
 cov_ledger_keys() {
     [ -f "$1" ] || return 0
-    cov_led_out=$(jq -R -n -r --arg h "$2" '
+    cov_led_out=$(jq -R -n -r --arg h "$2" --arg pb "${3:-}" '
         def hm($x; $y): ($x | type == "string") and ($y | type == "string") and ($x | length >= 7) and ($y | length >= 7) and (($x | ascii_downcase) as $a | ($y | ascii_downcase) as $b | ($a | startswith($b)) or ($b | startswith($a)));
         def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
         [inputs | fromjson? | select(type == "object")] | to_entries | map(.value + {_ln: .key}) as $rows
         | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
-        [$rows[] | select(.kind == "avail" and (.branch | type == "string") and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
+        [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
             | {branch, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
         | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
@@ -535,7 +536,12 @@ EOF
     else
         cov_common=$(git rev-parse --git-common-dir 2>/dev/null) || cov_common="" # swallow-ok: no repo reads as no ledger, so a body deferral fails below
         cov_h12=$(printf '%.12s' "$cov_head")
-        if cov_led_out=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head"); then
+        if [ "$ONLY7" -eq 1 ]; then
+            cov_pr_branch=$("$GH" pr view "$PR" --repo "$nwo" --json headRefName --jq '.headRefName' 2>/dev/null | tr -d '\r') || cov_pr_branch="" # swallow-ok: an unreadable branch follows no trivial-descendant row, so a reviewed-head deferral fails below
+        else
+            cov_pr_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || cov_pr_branch="" # swallow-ok: same fallback as above
+        fi
+        if cov_led_out=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head" "$cov_pr_branch"); then
             cov_led_keys=$(printf '%s\n' "$cov_led_out" | tr '\n' ' ')
             for cov_k in $cov_led_keys; do
                 case " $cov_body_keys " in

@@ -174,7 +174,7 @@ seed_ledger_missing() {
 
 # seed_deferral <KEY> [head]: a CR finding at head (default $SHA) deferred to KEY, the row check 7 matches against the body
 seed_deferral() {
-    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"b","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
+    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${SEED_BRANCH:-b}" "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
 }
 
 run() {
@@ -796,9 +796,10 @@ check "ledger: an abbreviated head spelling matches: exit 0" "$rc" "0"
 
 # seed_descendant <reviewed head> [branch]: the avail row clear-review-marker writes for a tip it cleared as a trivial descendant of a reviewed head
 seed_descendant() {
-    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "${2:-b}" "$SHA" "$1" >> "$LEDGER"
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "${2:-${SEED_BRANCH:-b}}" "$SHA" "$1" >> "$LEDGER"
 }
 REVHEAD=cafebabecafebabecafebabecafebabecafebabe
+SEED_BRANCH=feat/himmel-100-thing
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
@@ -822,6 +823,12 @@ check "descendant: a descendant row of another branch does not reach the deferra
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+SEED_BRANCH=b seed_deferral HIMMEL-50 "$REVHEAD"; SEED_BRANCH=b seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: a descendant row of a branch other than the PR's does not count, though the finding shares it: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50 deadbeefdeadbeefdeadbeefdeadbeefdeadbeef; seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: a deferral at a head the descendant row does not name does not count: exit 1" "$rc" "1"
@@ -835,10 +842,11 @@ contains "descendant: no row: names the key" "$out" "HIMMEL-50 is deferred in th
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
-printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$REVHEAD" "$REVHEAD" >> "$LEDGER"
+printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"%s","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SEED_BRANCH" "$REVHEAD" "$SEED_BRANCH" "$REVHEAD" >> "$LEDGER"
 seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
+unset SEED_BRANCH
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
