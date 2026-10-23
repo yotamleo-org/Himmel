@@ -50,23 +50,32 @@ write_config() { # <dir> : MCP config naming the probe server and its log
     '{mcpServers: {probe: {command: "node", args: [$s], env: {MCP_PROBE_LOG: $l, MCP_PROBE_ELICIT_TIMEOUT_MS: "30000"}}}}' > "$1/mcp.json"
 }
 
+stop_bg() { # a --bg session outlives the launcher: stop every background session started from this directory
+  claude agents --json 2>/dev/null | jq -r --arg d "$PWD" '.[] | select(.cwd == $d) | .id' | while IFS= read -r id; do
+    claude stop "$id" > /dev/null 2>&1
+  done
+}
+
 run_mode() {
   local mode="$1" dir="$2" tmo="$3" model="$4"
   mkdir -p "$dir" || return 2
   : > "$dir/server.log"
   write_config "$dir"
   local base=(--mcp-config "$dir/mcp.json" --strict-mcp-config --allowedTools 'mcp__probe__*' --model "$model")
+  local rc=0 cmd
   case "$mode" in
-    headed)     script -qec "timeout $tmo claude ${base[*]} '$PROMPT'" /dev/null > "$dir/client.out" 2>&1 < /dev/null ;;
-    bg)         timeout "$tmo" claude --bg "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1 ; sleep "$tmo" ;;
-    p)          timeout "$tmo" claude -p "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1 ;;
-    p-stream)   timeout "$tmo" claude -p --output-format stream-json --verbose "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1 ;;
+    headed)     cmd=$(printf '%q ' timeout "$tmo" claude "${base[@]}" "$PROMPT")
+                script -qec "$cmd" /dev/null > "$dir/client.out" 2>&1 < /dev/null; rc=$? ;;
+    bg)         timeout "$tmo" claude --bg "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$?
+                sleep "$tmo"; stop_bg ;;
+    p)          timeout "$tmo" claude -p "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$? ;;
+    p-stream)   timeout "$tmo" claude -p --output-format stream-json --verbose "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$? ;;
     openrouter) [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "probe.sh: OPENROUTER_API_KEY not set" >&2; return 2; }
                 ANTHROPIC_BASE_URL=https://openrouter.ai/api ANTHROPIC_AUTH_TOKEN="$OPENROUTER_API_KEY" ANTHROPIC_API_KEY='' \
-                  timeout "$tmo" claude -p "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1 ;;
+                  timeout "$tmo" claude -p "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$? ;;
     *) echo "probe.sh: unknown mode '$mode'" >&2; return 2 ;;
   esac
-  echo "client_rc=$?" >> "$dir/client.out"
+  echo "client_rc=$rc" >> "$dir/client.out"
   summarize "$dir/server.log" "$mode"
 }
 
@@ -75,10 +84,10 @@ handshake() {
   mkdir -p "$dir" || return 2
   : > "$dir/server.log"
   # a project .mcp.json waits for interactive approval, so register at user scope on the VM and remove after
-  claude mcp remove probe -s user > /dev/null 2>&1
-  claude mcp add probe -s user -e "MCP_PROBE_LOG=$dir/server.log" -- node "$HERE/server.mjs" > "$dir/client.out" 2>&1
+  claude mcp remove himmel-mcp-probe -s user > /dev/null 2>&1
+  claude mcp add himmel-mcp-probe -s user -e "MCP_PROBE_LOG=$dir/server.log" -- node "$HERE/server.mjs" > "$dir/client.out" 2>&1
   timeout 60 claude mcp list >> "$dir/client.out" 2>&1 # gnu-ok: handshake and run execute on the Linux test VM only
-  claude mcp remove probe -s user >> "$dir/client.out" 2>&1
+  claude mcp remove himmel-mcp-probe -s user >> "$dir/client.out" 2>&1
   summarize "$dir/server.log" handshake
 }
 
@@ -92,8 +101,8 @@ case "$cmd" in
        while [ $# -gt 0 ]; do
          case "$1" in
            --billed) billed=1; shift ;;
-           --timeout) tmo="${2:-120}"; shift 2 ;;
-           --model) model="${2:-haiku}"; shift 2 ;;
+           --timeout|--model) [ $# -ge 2 ] || { echo "probe.sh: $1 needs a value" >&2; exit 2; }
+                              if [ "$1" = "--timeout" ]; then tmo="$2"; else model="$2"; fi; shift 2 ;;
            *) echo "probe.sh: unknown flag '$1'" >&2; exit 2 ;;
          esac
        done

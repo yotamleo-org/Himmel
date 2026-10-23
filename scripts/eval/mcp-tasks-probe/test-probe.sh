@@ -106,5 +106,28 @@ eq "run without --billed: refused" "$rc" "2"
 has "run without --billed: says billed" "$out" "billed"
 eq "run without --billed: no client started" "$([ -e "$TMP/billed/server.log" ] && echo started || echo none)" "none"
 
+# 7. an option missing its value is refused, not an endless parse loop (needs a bound: the failure mode is a hang)
+if [ -n "$_TIMEOUT_BIN" ]; then
+  for opt in --timeout --model; do
+    "$_TIMEOUT_BIN" 5 bash "$PROBE" run p "$TMP/opt" --billed "$opt" > /dev/null 2>&1; rc=$?
+    eq "run $opt without a value: refused" "$rc" "2"
+  done
+fi
+
+# 8. a --bg run stops the background sessions it started (and only those from its own directory)
+mkdir -p "$TMP/bin" "$TMP/bgwd"
+cat > "$TMP/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  agents) printf '[{"id":"mine","cwd":"%s"},{"id":"other","cwd":"/elsewhere"}]\n' "$PWD" ;;
+  stop) echo "$2" >> "$STOPLOG" ;;
+esac
+exit 0
+STUB
+chmod +x "$TMP/bin/claude"
+: > "$TMP/stoplog"
+(cd "$TMP/bgwd" && PATH="$TMP/bin:$PATH" STOPLOG="$TMP/stoplog" bash "$PROBE" run bg "$TMP/bgrun" --billed --timeout 1 > /dev/null 2>&1)
+eq "bg run: stops its own session only" "$(cat "$TMP/stoplog")" "mine"
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]
