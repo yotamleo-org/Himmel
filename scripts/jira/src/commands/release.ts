@@ -120,23 +120,30 @@ export function parseDecisions(stdout: string): Decision[] {
   return got as Decision[];
 }
 
-// A call launched from inside a session inherits its markers, which make the child identify as that session.
+// A call launched from inside a session inherits its markers, which make the child identify as that session
+// or a console leg. The auth and provider vars go too, so the child bills the native subscription bank the
+// preflight checked, never an API key or a cloud provider.
 export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) =>
-    !['CLAUDECODE', 'AI_AGENT', 'CLAUDE_PID', 'CLAUDE_EFFORT'].includes(k) && !k.startsWith('CLAUDE_CODE_')));
+    !['CLAUDECODE', 'AI_AGENT', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE_PROJECT_DIR', 'HIMMEL_RELEASE_MANAGER'].includes(k)
+    && !['HIMMEL_CONSOLE_', 'HIMMEL_RM_', 'HIMMEL_LEG_'].some((p) => k.startsWith(p))
+    && !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p))));
 }
 
-// One bounded model call per batch: preflight first, no tools, one turn, JSON envelope.
+// One bounded model call per batch: preflight first, the bare plugin profile, no tools, one turn, JSON envelope.
 export const liveJudge: Judge = async (input) => {
   const verdict = execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'bank-preflight.sh')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
     .trim().split('\n').pop();
   if (verdict !== 'PROCEED') throw new Error(`rm-run: bank-preflight says ${verdict}; nothing ruled`);
   const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
+  // execFileSync throws on the resolver's fail-closed rc 2.
+  const settings = execFileSync('bash', [join(repoRoot, 'scripts', 'lanes', 'profile-settings.sh'), 'bare'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
+  if (!settings) throw new Error('rm-run: profile-settings.sh bare printed no settings path; nothing ruled');
   // An empty cwd, so no project instructions load beside the skill.
   const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
   try {
     const out = execFileSync('claude', [
-      '-p', '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
+      '-p', '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
       '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
     return parseDecisions(out);
