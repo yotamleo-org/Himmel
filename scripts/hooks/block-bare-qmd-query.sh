@@ -1922,8 +1922,8 @@ qmd_check() {
 # runs. qa_verdict is `deny` when a position runs qmd with a search verb (a verb
 # brace expansion splits out included), `allow` when no position names qmd except
 # a wrapper that runs another program, and `legacy` for everything else: a position
-# carrying an assignment or an `env NAME=value` operand (the model does not expose
-# its value), an opaque position,
+# carrying an assignment (the model does not expose its value; an `env` position
+# is read first, so `env NAME=value` operands keep the denial), an opaque position,
 # an interpreter with no literal body, any other position whose arguments or
 # heredoc name qmd, a pipe consumer beside a mention, a dynamic word after qmd. No
 # program is exempt. `legacy` leaves the verdict to qmd_check below, so the model
