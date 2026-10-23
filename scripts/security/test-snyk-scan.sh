@@ -330,6 +330,25 @@ STUB_OSV_BODY='{"results":[{"vulns":false},{}]}' run forksosvbadvulns --forks
 check "an osv.dev result whose vulns is not an array exits 2, not a clean fork" 2 "$RC"
 STUB_VULN_BODY='{"id":"GHSA-other"}' run forksosvbadadv --forks
 check "an osv.dev advisory with no matching id exits 2, not a default-medium finding" 2 "$RC"
+# an unpinned upstream HEAD that holds a build tool file is not scanned (snyk would run it); --no-upstream scans pinned refs only
+mkfork buildfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/buildfork" tag pinned
+: > "$W/forks/buildfork/build.gradle"
+git -C "$W/forks/buildfork" add -A; git -C "$W/forks/buildfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a build"
+export SNYK_SCAN_FORKS="buildfork|$U/buildfork|pinned|up"
+: > "$W/calls.log"
+run forksbuild --forks
+check "an upstream HEAD with a build file is skipped, not scanned" skipped "$(jq -r '.[] | select(.name=="buildfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "a skipped upstream does not fail a clean pinned fork" 0 "$RC"
+has "the skip names the build file" "build.gradle" "$OUTDIR/2026-10-23.forks.summary.md"
+check "only the pinned ref was scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up"
+: > "$W/calls.log"
+run forksnoup --forks --no-upstream
+check "--no-upstream still gates on the pinned ref" 1 "$RC"
+check "--no-upstream does not scan upstream HEAD" off "$(jq -r '.[] | select(.name=="vulnfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "--no-upstream leaves the fixed-upstream column unknown" unknown "$(jq -r '[.[] | select(.name=="vulnfork") | .findings[].fixed_upstream] | unique | join(",")' "$OUTDIR/2026-10-23.forks.json")"
+check "--no-upstream runs one snyk test for the fork" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
 # a ledger that passes the preflight but fails on append (disk full) stops the run before any further scan, upstream included
 export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|up
 uvfork|$U/uvfork|main|-"

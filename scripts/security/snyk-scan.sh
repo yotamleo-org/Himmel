@@ -42,6 +42,9 @@
 # marked fixed upstream or not. Exit 1 on any High or Critical; exit 2 when a pin cannot be read, a
 # fork cannot be fetched or scanned (snyk failed, uv missing, osv.dev unreachable), the monthly quota
 # would be passed, or the usage ledger cannot be written; exit 0 otherwise. The other forks still run.
+# An upstream HEAD tree is unpinned third-party code, so one that holds a gradlew, mvnw, build.gradle*,
+# pom.xml, build.sbt or Package.swift is not scanned (snyk would run that build tool with the token in
+# env); the summary reports the skip. --no-upstream skips every upstream scan (the CI workflow's mode).
 # Snyk (1.1308.2) cannot read uv.lock ("Could not detect package manager"), and its pip scan needs
 # the packages installed; a uv.lock is exported with `uv export` and looked up on osv.dev instead.
 # The export leaves out dev groups (--no-dev), as snyk test does by default: build and test tooling is not scanned.
@@ -60,10 +63,12 @@ OS_CAP="${SNYK_SCAN_OS_CAP:-200}"
 CODE_CAP="${SNYK_SCAN_CODE_CAP:-50}"
 # directory names snyk must not walk: dependencies, test fixtures, other worktrees, generated graphs
 EXCLUDES="node_modules,fixtures,worktrees,graphify-out,.venv"
+# build files snyk --all-projects would run a tool for; an unpinned upstream tree that has one is not scanned
+BUILD_RE='(^|/)(gradlew|mvnw|build\.gradle[^/]*|pom\.xml|build\.sbt|Package\.swift)$'
 
 err() { printf 'ERR snyk-scan: %s\n' "$*" >&2; }
 
-repo="" out_dir="${SNYK_SCAN_OUT_DIR:-}" date_arg="" check=0 forks=0
+repo="" out_dir="${SNYK_SCAN_OUT_DIR:-}" date_arg="" check=0 forks=0 no_up=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo|--out-dir|--date)
@@ -72,6 +77,7 @@ while [ $# -gt 0 ]; do
             shift 2 ;;
         --check) check=1; shift ;;
         --forks) forks=1; shift ;;
+        --no-upstream) no_up=1; shift ;;
         *) err "unknown arg: $1"; exit 2 ;;
     esac
 done
@@ -273,12 +279,12 @@ if [ "$forks" -eq 1 ]; then
         return 0
     }
 
-    # <rows> <upstream rows> <none|scanned|error>: add a fixed-upstream column (yes, no, n/a, unknown)
+    # <rows> <upstream rows> <none|scanned|error|skipped|off>: add a fixed-upstream column (yes, no, n/a, unknown)
     mark_fixed() {
         awk -F'\t' -v OFS='\t' -v st="$3" '
             FILENAME == ARGV[1] { p = $3; sub(/@[^@]*$/, "", p); up[$2 "\t" p] = 1; next }
             { p = $3; sub(/@[^@]*$/, "", p)
-              print $0, (st == "none" ? "n/a" : (st == "error" ? "unknown" : (($2 "\t" p) in up ? "no" : "yes"))) }' "$2" "$1"
+              print $0, (st == "none" ? "n/a" : ((st == "error" || st == "skipped" || st == "off") ? "unknown" : (($2 "\t" p) in up ? "no" : "yes"))) }' "$2" "$1"
     }
 
     if [ -n "${SNYK_SCAN_FORKS:-}" ]; then table="$SNYK_SCAN_FORKS"; else table="$(fork_table)" || exit 2; fi
@@ -287,7 +293,7 @@ if [ "$forks" -eq 1 ]; then
     while IFS='|' read -r -u 3 name url ref up; do
         [ -n "$name" ] || continue
         f_n=$((f_n + 1))
-        status=ok msg="" projects=0 locks=0 upstream=none up_sha=""
+        status=ok msg="" projects=0 locks=0 upstream=none up_sha="" up_skip=""
         : > "$tmp/rows.$name"; : > "$tmp/uprows.$name"
         if ! fetch_tree "$url" "$ref" "$tmp/fork-$name"; then
             status=error msg="$SCAN_MSG"
@@ -299,17 +305,23 @@ if [ "$forks" -eq 1 ]; then
                 3) err "$SCAN_MSG"; status=error msg="$SCAN_MSG" f_stop=1 ;;
                 *) status=error msg="$SCAN_MSG" ;;
             esac
-            if [ "$status" = ok ] && [ "$up" = up ]; then
+            if [ "$status" = ok ] && [ "$up" = up ] && [ "$no_up" -eq 1 ]; then
+                upstream=off
+            elif [ "$status" = ok ] && [ "$up" = up ]; then
                 upstream=error
-                if fetch_tree "$url" HEAD "$tmp/up-$name"; then
+                if ! fetch_tree "$url" HEAD "$tmp/up-$name"; then
+                    msg="upstream fetch failed: $SCAN_MSG"
+                elif up_skip="$(git -C "$tmp/up-$name" ls-files 2>/dev/null | grep -Em1 "$BUILD_RE")"; then
+                    upstream=skipped
+                else
                     scan_tree "$tmp/up-$name" "$tmp/uprows.$name"; rc=$?
                     case "$rc" in
                         0) upstream=scanned; up_sha="$(git -C "$tmp/up-$name" rev-parse HEAD 2>/dev/null)" ;;
                         3) err "$SCAN_MSG"; msg="upstream scan failed: $SCAN_MSG" f_stop=1 ;;
                         *) msg="upstream scan failed: $SCAN_MSG" ;;
                     esac
-                else msg="upstream fetch failed: $SCAN_MSG"; fi
-                [ "$upstream" = scanned ] || status=error
+                fi
+                case "$upstream" in scanned|skipped) ;; *) status=error ;; esac
             fi
         fi
         [ "$status" = ok ] || f_err=$((f_err + 1))
@@ -328,6 +340,8 @@ if [ "$forks" -eq 1 ]; then
             case "$upstream" in
                 scanned) printf -- '- upstream default branch scanned at %s\n' "$up_sha" ;;
                 error) printf -- '- upstream default branch: scan failed, fixed-upstream column unknown\n' ;;
+                skipped) printf -- '- upstream default branch: not scanned, it holds %s and snyk would run that build tool (fixed-upstream column unknown)\n' "$up_skip" ;;
+                off) printf -- '- upstream default branch: not scanned (--no-upstream, fixed-upstream column unknown)\n' ;;
                 *) printf -- '- upstream: not compared (this fork carries the delta)\n' ;;
             esac
             printf -- '- critical: %s\n- high: %s\n- medium: %s\n\n' "$crit" "$high" "$med"

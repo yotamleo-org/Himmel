@@ -8,11 +8,15 @@ name: snyk-weekly
 # The scan exits 1 on any High or Critical finding, so a red run means findings.
 # The forks scan (snyk-scan.sh --forks) runs after it, even when the main scan is red, and writes
 # <date>.forks.json and <date>.forks.summary.md beside the main report; exit 1 is a High or
-# Critical finding, exit 2 a fork that failed or the quota. About 16 + 48 Open Source tests per
-# run. The dispatch input missing_ref_probe replaces the forks with one at a missing ref, to prove
-# exit 2 names the fork; it skips the main scan. The dispatch input report_only runs both scans
-# in full, writes the findings to the job summary and exits 0; the schedule and a default
-# dispatch still fail on findings.
+# Critical finding, exit 2 a fork that failed or the quota. The forks are scanned at their pinned
+# refs only (--no-upstream): an unpinned upstream HEAD is third-party code that snyk could build
+# with the token in env, so the upstream comparison is a station run. About 16 + 48 Open Source
+# tests per run, so a Monday run costs about 64 of the free plan's 400 a month (the usage ledger
+# starts empty on every runner, so it does not bound CI; the weekly cadence does). The dispatch input
+# missing_ref_probe replaces the forks with one at a missing ref, to prove exit 2 names the fork; it
+# skips the main scan. The dispatch input report_only runs both scans in full, writes the findings
+# to the job summary and exits 0 for exit codes 1 and 2 alike (a failed scan is reported, not
+# failed); the schedule and a default dispatch still fail on findings.
 on:
   schedule:
     - cron: '23 5 * * 1'   # weekly, Monday UTC (offset from ci.yml's 17 7 and fork-drift's 41 6)
@@ -61,12 +65,9 @@ jobs:
         # install-scripts-ok: the snyk postinstall downloads the native CLI binary
         run: npm install -g snyk@1.1308.2
 
-      - name: Install uv and curl for the forks scan
+      - name: Install uv for the forks scan
         if: steps.gate.outputs.enabled == 'true'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq curl
-          pipx install uv==0.13.5
+        run: pipx install uv==0.13.5
 
       - name: Run the Snyk scan
         if: steps.gate.outputs.enabled == 'true' && inputs.missing_ref_probe != true
@@ -76,8 +77,8 @@ jobs:
         run: |
           rc=0
           bash scripts/security/snyk-scan.sh --repo "$GITHUB_WORKSPACE" --out-dir "$RUNNER_TEMP/snyk" || rc=$?
+          cat "$RUNNER_TEMP"/snyk/*.summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           if [ "$REPORT_ONLY" = "true" ]; then
-            cat "$RUNNER_TEMP"/snyk/*.summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
             echo "::notice title=report_only::main scan exit code $rc reported, not failed"
             exit 0
           fi
@@ -94,7 +95,7 @@ jobs:
             export SNYK_SCAN_FORKS='claude-hud|https://github.com/jarrodwatts/claude-hud|0000000000000000000000000000000000000000|-'
           fi
           rc=0
-          bash scripts/security/snyk-scan.sh --forks --out-dir "$RUNNER_TEMP/snyk" || rc=$?
+          bash scripts/security/snyk-scan.sh --forks --no-upstream --out-dir "$RUNNER_TEMP/snyk" || rc=$?
           for f in "$RUNNER_TEMP"/snyk/*.forks.summary.md; do
             [ -f "$f" ] || continue
             cat "$f" >> "$GITHUB_STEP_SUMMARY"

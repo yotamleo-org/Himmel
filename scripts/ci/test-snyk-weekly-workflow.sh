@@ -86,9 +86,9 @@ check     "checkout does not persist credentials"   'persist-credentials: false'
 check     "scan runs snyk-scan.sh"                 'bash scripts/security/snyk-scan\.sh'
 check     "scan writes to a known out-dir"          'snyk-scan\.sh.*--out-dir'
 # shellcheck disable=SC2016  # regex: a literal $RUNNER_TEMP
-check     "forks scan runs snyk-scan.sh --forks"   'bash scripts/security/snyk-scan\.sh --forks --out-dir "\$RUNNER_TEMP/snyk"'
+check     "forks scan runs snyk-scan.sh --forks, pinned refs only" 'bash scripts/security/snyk-scan\.sh --forks --no-upstream --out-dir "\$RUNNER_TEMP/snyk"'
 check     "uv installed at an exact version"        'pipx install uv==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)'
-check     "curl is installed for the osv.dev lookup" 'apt-get install.* curl'
+check_not "no apt-get step (the runner image has curl)" 'apt-get'
 check     "forks scan still runs when the main scan finds issues" 'if: \$\{\{ !cancelled\(\) && steps\.gate\.outputs\.enabled == .true. \}\}'
 check     "dispatch input probes a missing ref"     'missing_ref_probe:'
 forks_step="$(awk '/^      - name: Run the forks scan/ {f=1; print; next} f && /^      - / {exit} f {print}' <<< "$s")"
@@ -108,6 +108,39 @@ for pair in "main:$main_step" "forks:$forks_step"; do
   ro_guard="$(awk '/if \[ "\$REPORT_ONLY" = "true" \]; then/ {f=1; next} f && /^[[:space:]]+fi$/ {exit} f {print}' <<< "$blk")"
   if grep -q 'exit 0' <<< "$ro_guard"; then ok "$nm scan: report_only exits 0 inside the true branch"; else bad "$nm scan: report_only exits 0 inside the true branch"; fi
 done
+check_not "no step swallows a failure with continue-on-error" 'continue-on-error:'
+inputs_blk="$(awk '/^    inputs:/ {f=1; next} f && /^[^[:space:]]|^  [a-z]/ {exit} f {print}' <<< "$s")"
+for inp in missing_ref_probe report_only; do
+  dflt="$(awk -v n="      $inp:" '$0 == n {f=1; next} f && /^      [a-z_]+:/ {exit} f && /^        default:/ {print $2}' <<< "$inputs_blk")"
+  if [ "$dflt" = "false" ]; then ok "dispatch input $inp defaults to false"; else bad "dispatch input $inp defaults to false (got '$dflt')"; fi
+done
+# the main step writes its summary to the job summary on every path, before the report_only branch
+# shellcheck disable=SC2016  # regex: literal $RUNNER_TEMP and $GITHUB_STEP_SUMMARY
+if awk '/if \[ "\$REPORT_ONLY" = "true" \]; then/ {exit} {print}' <<< "$main_step" | grep -Eq 'summary\.md >> "\$GITHUB_STEP_SUMMARY"'; then ok "main scan: summary is written to the job summary on every path"; else bad "main scan: summary is written to the job summary on every path"; fi
+
+# run each scan step's own script under a stub snyk-scan.sh that exits 1: report_only '' and false keep the exit code, true reports it and exits 0
+run_body() { # <step block>
+  awk '/^        run: \|/ {r=1; next} r {sub(/^          /, ""); print}' <<< "$1"
+}
+stub_root="$(mktemp -d "${TMPDIR:-/tmp}/snyk-weekly-run.XXXXXX")" || stub_root=""
+if [ -n "$stub_root" ]; then
+  mkdir -p "$stub_root/scripts/security" "$stub_root/tmp/snyk"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$stub_root/scripts/security/snyk-scan.sh"
+  : > "$stub_root/summary.out"
+  for pair in "main:$main_step" "forks:$forks_step"; do
+    nm="${pair%%:*}"; body="$(run_body "${pair#*:}")"
+    for want in "|1" "false|1" "true|0"; do
+      ro="${want%%|*}"; wrc="${want##*|}"
+      (cd "$stub_root" && REPORT_ONLY="$ro" MISSING_REF_PROBE=false RUNNER_TEMP="$stub_root/tmp" GITHUB_WORKSPACE="$stub_root" GITHUB_STEP_SUMMARY="$stub_root/summary.out" SNYK_TOKEN=x bash -c "$body" > /dev/null 2>&1)
+      got=$?
+      if [ "$got" = "$wrc" ]; then ok "$nm scan under a failing snyk-scan.sh: report_only='$ro' exits $wrc"; else bad "$nm scan under a failing snyk-scan.sh: report_only='$ro' exits $wrc (got $got)"; fi
+    done
+  done
+  rm -f "$stub_root/scripts/security/snyk-scan.sh" "$stub_root/summary.out"
+  rmdir "$stub_root/scripts/security" "$stub_root/scripts" "$stub_root/tmp/snyk" "$stub_root/tmp" "$stub_root" 2>/dev/null || true
+else
+  bad "mktemp for the step runs failed"
+fi
 check     "JSON uploaded as an artifact"           'actions/upload-artifact@'
 check     "upload runs even when the scan finds issues" "if: always\(\) && steps\.gate\.outputs\.enabled == 'true'"
 
