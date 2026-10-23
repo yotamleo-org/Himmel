@@ -99,7 +99,8 @@ exclusion from a bundle, correct usage does.
 `@img/sharp-libvips-*` 1.3.4 (LGPL-3.0-or-later, the libvips build) and
 `@img/sharp-{wasm32,win32-*}` 0.35.5 (Apache-2.0 AND LGPL-3.0-or-later). The
 site does not use `astro:assets` image processing; `sharp` is only astro's
-default image service, so it is a dev-time install artifact:
+default image service, so it is a dev-time install artifact. The two LGPL
+families are `@img/sharp-libvips` and `@img/sharp`:
 
 - Nothing from these packages is copied into `site/dist/` (the deployed
   Pages artifact is static HTML/CSS/JS), and himmel does not redistribute the

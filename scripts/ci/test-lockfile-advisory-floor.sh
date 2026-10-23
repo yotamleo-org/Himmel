@@ -84,7 +84,7 @@ lgpl_rc=$?
 lgpl_pkgs=$(printf '%s\n' "$lgpl_raw" | sed -E 's#^(@img/sharp(-libvips)?)-.*#\1#' | sort -u)
 missing=""
 for p in $lgpl_pkgs; do
-  grep -qF "\`$p" "$REPO_ROOT/docs/third-party-licenses.md" || missing="$missing $p"
+  grep -qF "\`$p\`" "$REPO_ROOT/docs/third-party-licenses.md" || missing="$missing $p"
 done
 if [ "$lgpl_rc" -ne 0 ]; then
   fail "site/package-lock.json LGPL enumeration failed: unreadable or malformed lockfile"
