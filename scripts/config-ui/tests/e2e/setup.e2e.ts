@@ -49,7 +49,7 @@ test("J5. Setup sits after Settings in the rail and recommends the terminal", as
   await open(page);
   const rail = await page.locator("nav.pages a").allTextContents();
   expect(rail.indexOf("Setup")).toBe(rail.indexOf("Settings") + 1);
-  await expect(page.locator("#main")).toContainText("Typing a secret in the terminal");
+  await expect(page.locator("#main")).toContainText("A secret you save here goes to this machine over a loopback connection");
   const field = page.locator(`input[data-secret="${NAME}"]`);
   await expect(field).toHaveAttribute("type", "password");
   await expect(field).toHaveAttribute("autocomplete", "new-password");

@@ -1107,4 +1107,5 @@ templates/luna-second-brain/scripts/test-vault-git.sh	local	behaviour suite, 0 c
 scripts/docs/test-ui-doc-actions.sh	pr	static-gate
 scripts/ci/test-snyk-weekly-workflow.sh	pr	trust-path
 scripts/lib/test-cr-first-release.sh	pr	trust-path
+scripts/himmelctl/test/test-install-ui-handoff.sh	pr	guard
 scripts/guardrails/test-settings-waiter-allow.sh	pr	guard
