@@ -57,6 +57,9 @@ says "site is named" "site/package.json: no npm entry"
 says "obsidian-triage pip requirements are named" "requirements-whisper.txt: no pip entry"
 if grep -q 'claude-hud' "$tmp/out"; then fail "vendored claude-hud must stay exempt"; else pass "vendored claude-hud stays exempt"; fi
 
+echo "== scan failure =="
+expect "an unreadable root is a scan failure, not a clean scan" 2 "$tmp/no-such-root"
+
 echo "== live tree =="
 lv=$(live ok)
 expect "live tree is covered and buffered" 0 "$lv"

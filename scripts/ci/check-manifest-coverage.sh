@@ -53,9 +53,9 @@ watched=$(sed 's/^[[:space:]]*#.*$//' "$DEP" | awk '
 
 # Tracked files when the root is a git checkout, else every file (test trees).
 if [ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" = "$ROOT" ]; then # swallow-ok: not a git root means fall back to find
-  files=$(git -C "$ROOT" ls-files)
+  files=$(git -C "$ROOT" ls-files) || { echo "manifest-coverage: git ls-files failed in $ROOT" >&2; exit 2; }
 else
-  files=$(cd "$ROOT" && find . -type f -not -path '*/node_modules/*' -not -path './.git/*' | sed 's|^\./||')
+  files=$(cd "$ROOT" && find . -type f -not -path '*/node_modules/*' -not -path './.git/*' | sed 's|^\./||') || { echo "manifest-coverage: file discovery failed in $ROOT" >&2; exit 2; }
 fi
 
 exempt_reason() { # <path> -> reason on stdout, rc 0 when exempt

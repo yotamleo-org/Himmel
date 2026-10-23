@@ -139,6 +139,25 @@ mkdir -p "$repo/other" && cp "$BUN_LOCK" "$repo/other/bun.lock"
 run "a lockfile new since the base is checked whole" 2 --root "$repo" --base "$base" --times "$tmp/aged.json" --allow "$tmp/noallow.txt" "$repo/other/bun.lock"
 says "its entries are examined" "UNKNOWN: other/bun.lock: "
 
+echo "== lockfile shapes =="
+# A registry entry without `resolved` (omit-lockfile-registry-resolved) is still checked.
+nores="$tmp/nores"; mkdir -p "$nores"
+printf '{"lockfileVersion":3,"packages":{"":{},"node_modules/noresolved":{"version":"2.0.0"},"node_modules/gitdep":{"version":"1.0.0","resolved":"git+ssh://git@github.com/x/y.git#abc"},"node_modules/bundled":{"version":"3.0.0","inBundle":true}}}\n' > "$nores/package-lock.json"
+printf '{"noresolved@2.0.0":"2026-10-22T12:00:00Z"}\n' > "$tmp/nores-times.json"
+run "an entry without resolved is checked" 1 --times "$tmp/nores-times.json" --allow "$tmp/noallow.txt" "$nores/package-lock.json"
+says "only the registry entry is examined" "1 unique entry in 1 lockfile(s)"
+
+# A version-1 lockfile (entries under `dependencies`) is refused, not read as empty.
+v1="$tmp/v1"; mkdir -p "$v1"
+printf '{"lockfileVersion":1,"dependencies":{"foo":{"version":"1.0.0"}}}\n' > "$v1/package-lock.json"
+run "a version-1 lockfile is a usage error" 2 --times "$tmp/empty.json" --allow "$tmp/noallow.txt" "$v1/package-lock.json"
+says "the version is named" "lockfileVersion 1 has no \"packages\" map"
+
+bunempty="$tmp/bunempty"; mkdir -p "$bunempty"
+printf '{"lockfileVersion":1,"workspaces":{}}\n' > "$bunempty/bun.lock"
+run "a bun.lock without packages is a usage error" 2 --times "$tmp/empty.json" --allow "$tmp/noallow.txt" "$bunempty/bun.lock"
+says "bun.lock is named" 'bun.lock has no "packages" map'
+
 echo "== usage errors =="
 run "a bad --days is a usage error" 2 --days 0 --times "$tmp/empty.json" "$NPM_LOCK"
 

@@ -59,16 +59,22 @@ function trackedLockfiles(root) {
 function parse(file, text) {
   const found = [];
   if (file.endsWith('package-lock.json')) {
-    for (const [key, v] of Object.entries(JSON.parse(text).packages ?? {})) {
+    const lock = JSON.parse(text);
+    // A version-1 lockfile keeps its entries under `dependencies`; reading it as empty would pass.
+    if (!lock.packages) throw new Error(`lockfileVersion ${lock.lockfileVersion} has no "packages" map`);
+    for (const [key, v] of Object.entries(lock.packages)) {
       const at = key.lastIndexOf('node_modules/');
-      if (at < 0 || !v.version || v.link || !/^https?:/.test(v.resolved ?? '')) continue;
+      // A registry entry may omit `resolved` (npm's omit-lockfile-registry-resolved); a git, file or
+      // tarball URL is not a registry release, and a bundled dependency ships inside its parent.
+      if (at < 0 || !v.version || v.link || v.inBundle || (v.resolved && !/^https?:/.test(v.resolved))) continue;
       // An npm alias (`compat@npm:actual@1`) is installed under one name and published under v.name.
       found.push(`${v.name ?? key.slice(at + 'node_modules/'.length)}@${v.version}`);
     }
   } else {
     // bun.lock is JSONC: trailing commas only.
     const lock = JSON.parse(text.replace(/,(\s*[}\]])/g, '$1'));
-    for (const v of Object.values(lock.packages ?? {})) {
+    if (!lock.packages) throw new Error('bun.lock has no "packages" map');
+    for (const v of Object.values(lock.packages)) {
       const id = Array.isArray(v) ? v[0] : '';
       const at = id.lastIndexOf('@');
       if (at > 0 && /^\d+\.\d+\.\d+/.test(id.slice(at + 1))) found.push(id);
@@ -118,7 +124,8 @@ function baseIds(file) {
 }
 
 const perFile = lockfiles.map((f) => {
-  const ids = parse(f, readFileSync(f, 'utf8'));
+  let ids;
+  try { ids = parse(f, readFileSync(f, 'utf8')); } catch (e) { console.error(`ERROR: ${rel(f)}: ${e.message}`); process.exit(2); }
   if (!opts.base) return { file: f, ids };
   const before = baseIds(f);
   return { file: f, ids: ids.filter((id) => !before.has(id)) };
