@@ -479,7 +479,7 @@ restart_hermes_gateways() {
 update_codex() {
     local mode="$1"   # check | apply
     echo ""
-    echo "==> codex plugin re-sync + hooks.json sanitize (HIMMEL-742)"
+    echo "==> codex plugin re-sync + hooks.json sanitize"
     # codex CLI present? CODEX_BIN override mirrors install-himmel-codex.sh's
     # resolve_codex (explicit-but-unusable -> skip, no silent PATH fallback).
     if [ -n "${CODEX_BIN:-}" ]; then
@@ -793,7 +793,7 @@ _sync_claude_cli() {
 sync_agent_clis() {
     local mode="$1" rc=0   # check | apply
     echo ""
-    echo "==> codex / claude CLI (HIMMEL-5383)"
+    echo "==> codex / claude CLI"
     _sync_codex_cli "$mode"
     _sync_claude_cli "$mode" || rc=1
     return "$rc"
@@ -934,7 +934,7 @@ report_drift() {
     local mode="${1:-apply}" json rows id sev detail
     DRIFT_LINES=""
     echo ""
-    echo "==> installer drift (HIMMEL-4246)"
+    echo "==> installer drift"
     if ! command -v node >/dev/null 2>&1; then
         echo "    skip: node not on PATH."; return 0
     fi
@@ -1059,7 +1059,7 @@ rewire_statusline() {
     local cur lib="$ROOT/scripts/lib/wire-statusline.sh"
 
     echo ""
-    echo "==> statusLine re-wire (hud migration, HIMMEL-718)"
+    echo "==> statusLine re-wire (hud migration)"
     if ! command -v jq >/dev/null 2>&1; then
         echo "    skip: jq not on PATH (cannot inspect statusLine)."
         return 0
@@ -1119,7 +1119,7 @@ reconcile_plugins() {
     local script="$ROOT/scripts/machine-setup/reconcile-enabled-plugins.sh"
     local settings="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
     echo ""
-    echo "==> lean plugin-set reconcile (HIMMEL-1032)"
+    echo "==> lean plugin-set reconcile"
     if [ ! -f "$script" ]; then
         echo "    skip: reconcile-enabled-plugins.sh not found ($script)."
         return 0
@@ -1544,7 +1544,7 @@ qmd_daemon_serving() {
 report_qmd_daemon_restart() {
     [ "${QMD_DAEMON_RESTART_PENDING:-0}" = "1" ] || return 0
     echo ""
-    echo "==> qmd daemon restart REQUIRED (HIMMEL-2134)"
+    echo "==> qmd daemon restart REQUIRED"
     echo "    A new qmd build was installed, but the daemon on ${QMD_MCP_URL:-http://localhost:8181/mcp}"
     echo "    is still serving the OLD code from memory. Stopping it is process"
     echo "    termination, which an agent may not do — run this yourself:"
@@ -1613,7 +1613,7 @@ report_session_restart_required() {
 report_qmd_bun_missing() {
     [ "${QMD_FORK_BUN_MISSING:-0}" = "1" ] || return 0
     echo ""
-    echo "==> qmd fork update DISABLED (HIMMEL-3068)"
+    echo "==> qmd fork update DISABLED"
     echo "    WARNING: ${QMD_FORK_MISSING_TOOLS:-git or bun} not on PATH — qmd will NEVER update"
     echo "    on this machine until that is fixed. The status table below reports this as"
     echo "    'skipped', which looks like routine no-op — it is not."
@@ -2022,7 +2022,7 @@ sync_probe_tools() {
     guard="$ROOT/scripts/check-plugin-drift.sh"
     upgrader="$ROOT/scripts/upstreams/apply-tool-upgrade.sh"
     echo ""
-    echo "==> probe-mode station tools (HIMMEL-4088)"
+    echo "==> probe-mode station tools"
     if [ ! -f "$registry" ] || [ ! -f "$guard" ] || [ ! -f "$upgrader" ] || ! command -v python3 >/dev/null 2>&1; then
         echo "    skip: registry, drift guard, apply-tool-upgrade.sh or python3 not available."
         return 0
@@ -2121,7 +2121,7 @@ _probe_tool_row() { PROBE_TOOL_ROWS="${PROBE_TOOL_ROWS}$1|$2|${3//|//}"$'\n'; }
 # inside graphify_update (fresh install / never clobber). Never aborts the script.
 sync_graphify() {
     local lib="$ROOT/scripts/lib/graphify-bin.sh"
-    echo "==> graphify pin sync (HIMMEL-1048)"
+    echo "==> graphify pin sync"
     # this step skips while a live Claude session
     # holds graphify-mcp, on every platform (Windows: the uv tool dir is locked;
     # Linux/macOS: a live swap mixes versions in the holder). Name the way out.
@@ -2301,7 +2301,7 @@ sync_cli_proxy() {
     local mode="${1:-apply}"   # check | apply
     local lane="$ROOT/scripts/setup/cli-proxy-lane.sh"
     local pin stamp_file installed cmp_rc
-    echo "==> cli-proxy-api host roll (HIMMEL-2134)"
+    echo "==> cli-proxy-api host roll"
     # Linux only: the lane script ships a linux_amd64 asset + a systemd user
     # unit, so a macOS host keeps the skip.
     if [ "$(uname -s 2>/dev/null)" != "Linux" ]; then
@@ -2411,7 +2411,7 @@ sync_cli_proxy() {
 sync_marketplaces() {
     local mode="${1:-apply}"   # check | apply
     local helper="$ROOT/scripts/upstreams/update-marketplaces.sh"
-    echo "==> installed marketplaces catch-up (HIMMEL-2134)"
+    echo "==> installed marketplaces catch-up"
     if [ ! -f "$helper" ]; then
         echo "    skip: update-marketplaces.sh not found ($helper)."
         return 0
@@ -2441,7 +2441,7 @@ install_missing_himmel_plugins() {
     local settings="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
     local manifest="${HIMMEL_MARKETPLACE_JSON:-$ROOT/marketplace/.claude-plugin/marketplace.json}"
     local installed="${HIMMEL_INSTALLED_PLUGINS_JSON:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json}"
-    echo "==> enabled @himmel plugins not yet installed (HIMMEL-5294)"
+    echo "==> enabled @himmel plugins not yet installed"
     if ! command -v jq >/dev/null 2>&1; then
         echo "    skip: jq not on PATH."
         return 0
@@ -2516,7 +2516,7 @@ update_installed_plugins() {
     local mode="${1:-apply}"   # check | apply
     local claude_bin="${HIMMEL_UPDATE_CLAUDE_BIN:-claude}"
     local settings="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
-    echo "==> installed plugin version catch-up (HIMMEL-3551)"
+    echo "==> installed plugin version catch-up"
     if ! command -v "$claude_bin" >/dev/null 2>&1; then
         echo "    skip: claude CLI not on PATH."
         return 0
@@ -2667,7 +2667,7 @@ report_toolchain() {
     local mode="$1"   # check | apply — node, npm and bun are all report-only;
                        # apply only adds the bun status-table row.
     echo ""
-    echo "==> node/npm/bun toolchain (HIMMEL-3068)"
+    echo "==> node/npm/bun toolchain"
     warn_bun_versions
     if [ "$mode" = "apply" ] && ! _vm_proof_gate toolchain; then
         _probe_tool_row bun skipped "HELD by the VM-first gate"
@@ -3099,7 +3099,7 @@ Modes:
                       luna_template graphify cli_proxy marketplaces toolchain tools
                       drift drift-check (installer-drift pass; -check is read-only)
   --graphify-only     alias for --only graphify: clear a graphify pin-sync skip
-                      from a slot with no live Claude session (HIMMEL-4380)
+                      from a slot with no live Claude session
   --plugins-check     just the plugin install-state report; no git, no network
   -h, --help          this text
 
@@ -3471,7 +3471,7 @@ fi
 report_dependency_readiness() {
     local lib="$ROOT/scripts/lib/dependency-readiness.sh"
     echo ""
-    echo "==> dependency readiness (HIMMEL-1393)"
+    echo "==> dependency readiness"
     if [ ! -f "$lib" ]; then echo "    skip: dependency-readiness.sh not found."; return 0; fi
     # shellcheck source=scripts/lib/dependency-readiness.sh
     # shellcheck disable=SC1091
@@ -3501,7 +3501,7 @@ backfill_user_claude_md() {
     local template="$ROOT/docs/setup/user-scope-claude-md-template.md"
 
     echo ""
-    echo "==> working-principles backfill (HIMMEL-2038)"
+    echo "==> working-principles backfill"
     if [ ! -f "$lib" ]; then echo "    skip: user-claude-md.sh not found."; return 0; fi
     if [ ! -f "$template" ]; then echo "    skip: user-scope-claude-md-template.md not found."; return 0; fi
     # shellcheck source=scripts/lib/user-claude-md.sh

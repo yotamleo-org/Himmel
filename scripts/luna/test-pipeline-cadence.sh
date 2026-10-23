@@ -184,6 +184,7 @@ export HIMMEL_FLOW_RUNS_LEDGER="$TMP_ROOT/flow-runs.jsonl"
 # ~/.himmel/state or reaches the real bridge.
 export CADENCE_ALERT_FILE="$TMP_ROOT/cadence-alerts.log"
 export CADENCE_ALERT_DEDUPE_DIR="$TMP_ROOT/cadence-alert-sent"
+export CADENCE_ALERT_SEND_FAILED_MARK="$TMP_ROOT/send-failed-mark"
 ALERT_SENDS="$TMP_ROOT/alert-sends.log"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\n' "$ALERT_SENDS" > "$TMP_ROOT/alert-send-rec"
 chmod +x "$TMP_ROOT/alert-send-rec"
@@ -1422,7 +1423,7 @@ for _leg in harvest synthesize health; do
         fail "$_leg: alert line has no ISO timestamp" "$(cat "$CADENCE_ALERT_FILE")"
     fi
     assert_rc "$_leg: exactly one Telegram send" 1 "$(count_lines "$ALERT_SENDS")"
-    assert_contains "$_leg: the send names leg and reason" "pipeline-$_leg no-completion-marker" "$(cat "$ALERT_SENDS")"
+    assert_contains "$_leg: the send names leg and reason" "pipeline-$_leg: no-completion-marker." "$(cat "$ALERT_SENDS")"
 done
 # Dedupe and clear, on the harvest runner.
 reset_alerts
@@ -1558,6 +1559,13 @@ reset_alerts
 CADENCE_ALERT_SEND_CMD=false bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
 bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
 assert_rc "a failed send leaves no sentinel, so the next failure retries" 1 "$(count_lines "$ALERT_SENDS")"
+# a failed send leaves a marker the doctor turns into a WARN; a delivered send clears it.
+reset_alerts
+rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
+CADENCE_ALERT_SEND_CMD=false bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log 2>/dev/null
+assert_contains "a failed send writes the doctor marker naming leg and reason" "pipeline-harvest rc-1" "$(cat "$CADENCE_ALERT_SEND_FAILED_MARK" 2>/dev/null)"
+bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
+assert_rc "a delivered send clears the doctor marker" 0 "$([ -e "$CADENCE_ALERT_SEND_FAILED_MARK" ] && echo 1 || echo 0)"
 # Clearing leg `a` must not re-arm leg `a.b`: `.` is the leg/reason delimiter.
 reset_alerts
 bash "$SCRIPT_DIR/cadence-alert.sh" fail a.b rc-1 /x.log

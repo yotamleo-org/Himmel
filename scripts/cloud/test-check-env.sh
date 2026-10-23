@@ -35,7 +35,7 @@ run() { # run [VAR=val ...] -- args... -> $OUT, $RC
   local envs=()
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift
-  OUT="$(env -i PATH="$PATH" HIMMEL_CLOUD_ROOT="$FAKE" HIMMEL_CLOUD_MARKER="$MARK" "${envs[@]}" "$BASH_BIN" "$CHECK" "$@" 2>&1)"
+  OUT="$(env -i PATH="$PATH" HIMMEL_CLOUD_ROOT="$FAKE" HIMMEL_CLOUD_MARKER="$MARK" ${envs[@]+"${envs[@]}"} "$BASH_BIN" "$CHECK" "$@" 2>&1)"
   RC=$?
 }
 GOODENV=(JIRA_PROJECT_KEY=HIMMEL BASH_DEFAULT_TIMEOUT_MS=600000)

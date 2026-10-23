@@ -41,7 +41,9 @@ atomic_write() (
 # backends (the lock is not reentrant), so bound such calls with timeout.
 with_lock() (
     [ "$#" -ge 2 ] && [ -n "$1" ] || exit 2
-    local prim_lock="$1" prim_pid prim_owner prim_probe prim_current
+    # prim_lock is not local: bash 3.2 runs the EXIT trap after the local frame is gone.
+    local prim_pid prim_owner prim_probe prim_current
+    prim_lock="$1"
     shift
     case "$prim_lock" in /*) ;; *) prim_lock="$(pwd -P)/$prim_lock" || exit 1 ;; esac
     if command -v flock >/dev/null 2>&1; then

@@ -333,6 +333,20 @@ _suite_timeout_for() {
     return 0
   fi
 
+  if [ "$(uname -s)" = Darwin ]; then
+    case "${1#./}" in
+      scripts/ci/test-tier-replay.sh|*/scripts/ci/test-tier-replay.sh)
+        # macOS cadence runs: PASS at 495s, then 874s (run 39986815551), against
+        # the 600s default. 1800s is the slower figure x2 (the loaded-budget
+        # rule); Linux keeps the default.
+        printf '1800'; return 0 ;;
+      scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
+        # Same run: PASS at 1700s against the 1200s Linux arm below. 3400s is
+        # that x2; the Linux arm is untouched.
+        printf '3400'; return 0 ;;
+    esac
+  fi
+
   case "${1#./}" in
     scripts/eval/guard-corpus/test-guard-corpus.sh|*/scripts/eval/guard-corpus/test-guard-corpus.sh)
       # Runtime IPC masking scans before every fresh hook sandbox.

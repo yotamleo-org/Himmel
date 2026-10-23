@@ -18,8 +18,18 @@ const MAX_AGE = 600;
 // Operator decision 185: both grants reset on one date, whatever expiry a snapshot row carries.
 // A config account may override it with reset_at for the next cycle.
 export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
-// Auto routing refuses a snapshot older than this: the ledger cannot see spend billed outside it.
+// Auto routing prefers a snapshot younger than this: the ledger cannot see spend billed outside it.
+// An older operator snapshot still routes (flagged snapshot_stale) while its estimate has headroom.
 const ROUTE_MAX_AGE = 86400;
+// An account whose last call came back credit-exhausted is skipped by auto routing this long (a newer
+// snapshot reading clears it sooner); it still serves when no other account has room.
+const EXHAUSTED_TTL = 3600;
+// A ledger-only row has no grant date: it sorts after every account with a real expiry.
+const NO_EXPIRY = 4102444800;
+// Reasons a snapshot gives no usable reading; with HIMMEL_API_SNAPSHOT_OPTIONAL=1 (auto routing) the ledger and
+// the account cap decide instead. Identity mismatch and the discrepancy flag stay refusals.
+const SNAPSHOT_UNUSABLE = new Set(['missing-snapshot', 'invalid-snapshot', 'unreconciled-amounts', 'invalid-timestamp',
+  'invalid-grant-interval', 'expired-grant', 'stale-snapshot', 'invalid-money']);
 // A call past this has died or been killed: its reservation is released, never held for good.
 const CALL_TIMEOUT = 3600;
 // The launcher stops a call at its timeout and kills what ignored TERM this many seconds later.
@@ -61,8 +71,8 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (v, k) => Object.hasOwn(v, k);
 
-function refuse(reason, verdict = 'BANK-UNKNOWN') {
-  const e = new Error(reason); e.verdict = verdict; throw e;
+function refuse(reason, verdict = 'BANK-UNKNOWN', detail) {
+  const e = new Error(reason); e.verdict = verdict; if (detail) e.detail = detail; throw e;
 }
 function money(value) {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,12})(\.[0-9]{1,6})?$/.test(value)) refuse('invalid-money');
@@ -122,7 +132,7 @@ function totals(a) {
   }
   return { spent, reserved };
 }
-function row(config, snapshot, a, account, now) {
+function snapshotRow(config, snapshot, a, account, now) {
   if (!object(snapshot) || snapshot.version !== 1 || !object(snapshot.accounts) || !own(snapshot.accounts, account)) refuse('missing-snapshot');
   const s = snapshot.accounts[account];
   if (!object(s)) refuse('invalid-snapshot');
@@ -155,7 +165,41 @@ function row(config, snapshot, a, account, now) {
     grant_usd: usd(grant), cap_usd: usd(cap), spent_est_usd: usd(consumed),
     reserved_usd: usd(reserved), available_est_usd: usd(available > 0n ? available : 0n),
     expires_at: expires, age_seconds: age, source: s.source, snapshot_stale: age > ROUTE_MAX_AGE,
+    observed_at: s.observed_at, exhausted_at: a?.exhausted_at ?? null,
   };
+}
+// No usable credit reading: what the local ledger and the account cap still allow. Anthropic's own limits
+// decide the rest (a credit-exhausted answer marks the account, see 'exhausted').
+function ledgerRow(config, a, account) {
+  const cap = money(config.cap_usd);
+  const { spent, reserved } = totals(a);
+  if (a?.discrepancy) refuse('unverified-or-discrepant');
+  const available = cap - spent - reserved;
+  return {
+    verdict: available > 0n ? 'PROCEED' : 'SKIPPED-BANK', account,
+    organization_id: config.organization_id, cycle_id: config.cycle_id,
+    grant_usd: usd(cap), cap_usd: usd(cap), spent_est_usd: usd(spent),
+    reserved_usd: usd(reserved), available_est_usd: usd(available > 0n ? available : 0n),
+    expires_at: NO_EXPIRY, age_seconds: null, source: 'ledger-only', snapshot_stale: true, snapshot_unknown: true,
+    observed_at: null, exhausted_at: a?.exhausted_at ?? null,
+  };
+}
+// A reading the operator or collector marked unverified or discrepant is a refusal, never merely unusable:
+// it stays one even when another field of the same row is malformed.
+function snapshotFlagged(snapshot, account) {
+  const s = object(snapshot) && object(snapshot.accounts) ? snapshot.accounts[account] : null;
+  return object(s) && !(s.exclusive_org === true && s.discrepancy === false && SOURCES.includes(s.source));
+}
+function row(config, snapshot, a, account, now, optional = false, need = 0n) {
+  try {
+    const r = snapshotRow(config, snapshot, a, account, now);
+    // an old reading with too little left is a guess, not a fact: under optional routing the cap decides
+    if (optional && r.snapshot_stale && money(r.available_est_usd) < (need > 0n ? need : 1n)) return ledgerRow(config, a, account);
+    return r;
+  } catch (e) {
+    if (optional && SNAPSHOT_UNUSABLE.has(e.message) && !snapshotFlagged(snapshot, account)) return ledgerRow(config, a, account);
+    throw e;
+  }
 }
 // Release every reservation past the call timeout (or without a timestamp, from before it was
 // recorded): the call is dead, so it settles at zero rather than holding credit for good.
@@ -218,7 +262,8 @@ export function creditState(command, options = {}, env = process.env) {
   try {
     const account = env.HIMMEL_API_ACCOUNT;
     if (!['A', 'B'].includes(account)) refuse('account-required');
-    if (!['status', 'reserve', 'unknown', 'settle'].includes(command)) refuse('invalid-command');
+    if (!['status', 'reserve', 'unknown', 'settle', 'exhausted'].includes(command)) refuse('invalid-command');
+    const optional = env.HIMMEL_API_SNAPSHOT_OPTIONAL === '1';
     const configPath = configPathFor(env);
     const config = read(configPath);
     configs(config);
@@ -261,14 +306,23 @@ export function creditState(command, options = {}, env = process.env) {
     if (command === 'status' || command === 'reserve') {
       const now = Math.floor(Date.now() / 1000);
       if (sweep(a, now, callTimeout(env))) save(statePath, state, lock, sentinels);
-      const snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(root, 'snapshot.json'));
-      const result = row(c, snapshot, a, account, now);
-      if (command === 'status') return result;
+      let snapshot = null;
+      try { snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(root, 'snapshot.json')); } catch (e) { if (!optional) throw e; }
+      const result = row(c, snapshot, a, account, now, optional, options.usd ? money(options.usd) : 0n);
+      // under optional routing an old or absent reading with no room in our own estimate still proceeds
+      // (the pick marks it over_estimate); a fresh reading with nothing left, or a discrepancy, still refuses
+      if (command === 'status') {
+        return optional && result.snapshot_stale && result.verdict === 'SKIPPED-BANK'
+          ? { ...result, verdict: 'PROCEED', over_estimate: true } : result;
+      }
       id(options.id);
       const maximum = money(options.usd);
       if (maximum === 0n) refuse('positive-maximum-required');
       if (a && own(a.jobs, options.id)) refuse('duplicate-job');
-      if (maximum > money(result.available_est_usd)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
+      // our own estimate (the cap and the ledger) never refuses a start while the credit reading is old or absent:
+      // only a fresh reading with too little left does, and the API's own credit-too-low answer is the hard stop
+      const overEstimate = maximum > money(result.available_est_usd);
+      if (overEstimate && !(optional && result.snapshot_stale)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
       if (!a) {
         a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };
         state.accounts[account] = a;
@@ -277,8 +331,18 @@ export function creditState(command, options = {}, env = process.env) {
       save(statePath, state, lock, sentinels);
       // Report the committed admission, not a second clock-dependent verdict.
       return { ...result, verdict: 'PROCEED', job_id: options.id,
+        ...(overEstimate ? { over_estimate: true } : {}),
         reserved_usd: usd(money(result.reserved_usd) + maximum),
-        available_est_usd: usd(money(result.available_est_usd) - maximum) };
+        available_est_usd: usd(overEstimate ? 0n : money(result.available_est_usd) - maximum) };
+    }
+    if (command === 'exhausted') {
+      if (!a) {
+        a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };
+        state.accounts[account] = a;
+      }
+      a.exhausted_at = Math.floor(Date.now() / 1000);
+      save(statePath, state, lock, sentinels);
+      return { verdict: 'PROCEED', account, exhausted_at: a.exhausted_at };
     }
     id(options.id);
     if (!a || !own(a.jobs, options.id)) refuse('missing-job');
@@ -306,24 +370,45 @@ export function creditState(command, options = {}, env = process.env) {
   }
 }
 
-// routing for HIMMEL_API_ACCOUNT=auto. Of the configured accounts
-// whose own row has room for the whole budget (each under its own cap), spend
-// the grant that expires first; a tie goes to A. The reservation re-checks headroom, so a race
-// with another launch can only refuse, never overspend.
+// routing for HIMMEL_API_ACCOUNT=auto. Of the configured accounts whose row has room for the whole
+// budget (each under its own cap), spend the grant that expires first; a tie goes to A. An absent, stale
+// or unusable snapshot never refuses a route: the ledger estimate only orders the accounts, each call is
+// bounded by its own budget, and Anthropic's credit answer decides the rest (the pick carries snapshot_stale / snapshot_unknown). A reading
+// fresher than 24 h wins over an older one. An account marked exhausted within the last hour is skipped
+// unless a newer reading exists; when every account with room is marked, the one marked longest ago
+// serves, so a pick is never refused for that. An account with an old or no reading whose own estimate has no
+// room still serves (over_estimate): the estimate never refuses a start, only the API's credit answer does.
+// A fresh reading with too little left still refuses.
 export function pickAccount(budget, env = process.env) {
   try {
     const need = money(budget);
     const config = read(configPathFor(env));
     configs(config);
+    const pickEnv = { ...env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
+    const now = Math.floor(Date.now() / 1000);
     const all = Object.keys(config.accounts).sort()
-      .map((account) => creditState('status', {}, { ...env, HIMMEL_API_ACCOUNT: account }));
+      .map((account) => creditState('status', { usd: budget }, { ...pickEnv, HIMMEL_API_ACCOUNT: account }));
     const roomy = all.filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
-    const rows = roomy.filter((r) => !r.snapshot_stale).sort((x, y) => x.expires_at - y.expires_at);
-    if (rows.length === 0) {
-      const stale = roomy.length > 0 || all.some((r) => r.reason === 'stale-snapshot');
-      return { verdict: 'SKIPPED-BANK', reason: stale ? 'stale-snapshot' : 'no-account-with-headroom' };
-    }
-    return { verdict: 'PROCEED', account: rows[0].account, expires_at: rows[0].expires_at };
+    const marked = (r) => Number.isInteger(r.exhausted_at) && now - r.exhausted_at < EXHAUSTED_TTL
+      && !(Number.isInteger(r.observed_at) && r.observed_at > r.exhausted_at);
+    const byExpiry = (x, y) => x.expires_at - y.expires_at;
+    const open = roomy.filter((r) => !marked(r));
+    const fresh = open.filter((r) => !r.snapshot_stale).sort(byExpiry);
+    // a row with an old or no reading whose own estimate has no room still serves: only a real credit-exhausted
+    // answer stops it, so it ranks after every row with room, an unmarked one before a marked one
+    const over = all.filter((r) => r.snapshot_stale && !roomy.includes(r));
+    const byRoom = (x, y) => Number(money(y.available_est_usd) - money(x.available_est_usd));
+    const rows = fresh.length > 0 ? fresh
+      : open.length > 0 ? open.sort(byExpiry)
+        : [...over.filter((r) => !marked(r)).sort(byRoom), ...roomy.sort((x, y) => x.exhausted_at - y.exhausted_at),
+          ...over.filter(marked).sort(byRoom)];
+    if (rows.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' };
+    const r = rows[0];
+    return { verdict: 'PROCEED', account: r.account, expires_at: r.expires_at,
+      ...(over.includes(r) ? { over_estimate: true } : {}),
+      ...(r.snapshot_unknown ? { snapshot_unknown: true } : {}),
+      ...(r.snapshot_stale ? { snapshot_stale: true, age_seconds: r.age_seconds } : {}),
+      ...(marked(r) ? { exhausted_at: r.exhausted_at } : {}) };
   } catch (e) {
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
   }
@@ -468,13 +553,19 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
       url.searchParams.set('bucket_width', '1d');
       url.searchParams.set('limit', '31');
       if (page) url.searchParams.set('page', page);
-      let body;
+      let body, detail = 'network';
       try {
         const res = await fetchImpl(url, { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
           redirect: 'error', signal: AbortSignal.timeout(15000) });
-        if (!res.ok) throw new Error('http');
+        if (!res.ok) {
+          detail = res.status === 403
+            ? 'http-403: the cost report needs an Admin API key, which individual Console accounts do not have'
+            : `http-${res.status}`;
+          throw new Error('http');
+        }
+        detail = 'invalid-json';
         body = await res.json();
-      } catch { refuse('cost-report-unavailable'); }
+      } catch { refuse('cost-report-unavailable', 'BANK-UNKNOWN', detail); }
       if (!object(body) || !Array.isArray(body.data)) refuse('invalid-cost-report');
       for (const b of body.data) {
         if (!object(b) || !Array.isArray(b.results)) refuse('invalid-cost-report');
@@ -495,7 +586,7 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
       expect: { grant_usd: row.grant_usd, starts_at: row.starts_at, expires_at: row.expires_at, cycle_id: row.cycle_id,
         remaining_usd: row.remaining_usd, observed_at: row.observed_at, reconciled_spent_usd: row.reconciled_spent_usd } });
   } catch (e) {
-    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure', ...(e.detail ? { detail: e.detail } : {}) };
   }
 }
 
@@ -517,7 +608,7 @@ function main() {
   const result = creditState(command, options);
   if (process.env.HIMMEL_API_CREDIT_FORMAT === 'bank') {
     if (result.account && result.grant_usd) {
-      console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing refuses, refresh with grant-snapshot.mjs)' : ''}`);
+      console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing goes on our own estimate and the credit answer from the API is the hard stop)' : ''}`);
     } else console.error(`api credit-state: ${result.reason}`);
     console.log(result.verdict);
   } else console.log(JSON.stringify(result));

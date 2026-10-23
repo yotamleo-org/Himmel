@@ -17,7 +17,10 @@
 # merge-block-alert.sh -> console-route.ts bridge path). A repeat of the same
 # leg+reason appends again but does not re-send until `clear` — a completed
 # run of that leg — re-arms it. The dedupe sentinel is written only after a
-# delivered send, so a failed send means the next failure retries the DM.
+# delivered send, so a failed send means the next failure retries the DM. A
+# failed send also writes CADENCE_ALERT_SEND_FAILED_MARK (default
+# ~/.himmel/state/cadence-alert-send-failed), which himmel-doctor C33 reports
+# as a WARN until a later send is delivered.
 #
 # Seams: CADENCE_ALERT_FILE (default ~/.himmel/state/cadence-alerts.log),
 # CADENCE_ALERT_DEDUPE_DIR (default ~/.himmel/state/cadence-alert-sent),
@@ -32,6 +35,7 @@ state="${HOME:-}/.himmel/state"
 alert_file="${CADENCE_ALERT_FILE:-$state/cadence-alerts.log}"
 dedupe_dir="${CADENCE_ALERT_DEDUPE_DIR:-$state/cadence-alert-sent}"
 send_cmd="${CADENCE_ALERT_SEND_CMD:-$_here/vault-stall-alert.sh}"
+send_failed_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-$state/cadence-alert-send-failed}"
 
 # A leg or reason becomes part of a sentinel filename: keep it to safe bytes.
 # No `.` survives, so `<leg>.<reason>` splits unambiguously and `clear a`
@@ -59,8 +63,14 @@ case "${1:-}" in
         # next alert. Two concurrent failures of one leg could both send; one
         # runner per leg per night makes that a harmless double DM at worst.
         if [ ! -e "$sentinel" ]; then
-            send_then_mark "$sentinel" "$leg: $reason. Cause: $cause. Do: $todo. Log: $log" \
-                || echo "cadence-alert: Telegram send failed for $leg $reason" >&2
+            if send_then_mark "$sentinel" "$leg: $reason. Cause: $cause. Do: $todo. Log: $log"; then
+                rm -f "$send_failed_mark" 2>/dev/null
+            else
+                echo "cadence-alert: Telegram send failed for $leg $reason" >&2
+                mkdir -p "$(dirname "$send_failed_mark")" 2>/dev/null
+                printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" > "$send_failed_mark" 2>/dev/null \
+                    || echo "cadence-alert: could not write the send-failed marker $send_failed_mark" >&2
+            fi
         fi
         ;;
     clear)

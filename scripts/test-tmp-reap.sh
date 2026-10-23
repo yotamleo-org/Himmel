@@ -24,6 +24,10 @@
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
+# tmp-reap.sh proves a dir dead from /proc (its --apply refuses without it) and every section
+# builds on that census, so a host with no procfs (macOS) has nothing to assert.
+[ -r /proc/self/stat ] || { echo "SKIP - no /proc on this host: tmp-reap.sh is Linux-only by design (liveness is read from /proc)"; exit 0; }
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 . "$HERE/lib/portable-timeout.sh"

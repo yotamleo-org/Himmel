@@ -4051,21 +4051,22 @@ if [ "$LEDGER_OK" -eq 1 ]; then
         # NUL inside a variable is undocumented and version-dependent (this
         # project must stay bash-3.2-safe), so a NUL separator is not a safe
         # foundation for a substring-match key on every supported shell.
-        # a "kept" op with reason `user-modified` or bare
-        # `already-absent` is deliberately excluded here -- those two are
-        # still HELD (§5.1), and folding them into "handled" let them skip
-        # the unrestored scan below entirely and lose their only backup
-        # Every OTHER "kept" reason (`class-keep`,
-        # `preexisted`, `no-backup`, `no-systemctl`, `linger-preexisted`,
+        # a "kept" op with reason `user-modified`, bare
+        # `already-absent` or `no-systemctl` is deliberately excluded here --
+        # those are still HELD (§5.1), and folding them into "handled" let
+        # them skip the unrestored scan below entirely and lose their only
+        # backup (`no-systemctl`: the bridge unit was never restored, so its
+        # backup is the operator's only copy). Every OTHER "kept" reason
+        # (`class-keep`, `preexisted`, `no-backup`, `linger-preexisted`,
         # etc.) is a policy exemption the ledger recorded deliberately and
         # was never meant to hold a backup for (e.g. the qmd plugin-cache
         # stub, an earlier change's "never gates a removal" console ruling) --
         # excluding those too would refuse --purge-state on backups nothing
-        # is actually waiting to resolve. `user-modified`/`already-absent`
-        # units are re-checked by prov_read_unit_resolved instead, which is
-        # what accepts the new resolved reasons.
+        # is actually waiting to resolve. The excluded units are re-checked
+        # by prov_read_unit_resolved instead, which is what accepts the new
+        # resolved reasons.
         _prov_handled_keys="$(jq -c --arg iid "$_prov_session_iid" \
-          'select(.iid==$iid and (.op=="restored" or .op=="removed" or (.op=="kept" and (.reason != "user-modified" and .reason != "already-absent")))) | [(.path // ""), (.unit // "")]' \
+          'select(.iid==$iid and (.op=="restored" or .op=="removed" or (.op=="kept" and (.reason != "user-modified" and .reason != "already-absent" and .reason != "no-systemctl")))) | [(.path // ""), (.unit // "")]' \
           "$_prov_scan_ledger")"
       fi
       _prov_handled_keys="
