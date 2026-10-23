@@ -7072,6 +7072,10 @@ echo "== C72-design-mcp-auth: an entry with no accessToken counts as missing =="
 printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"},"plugin:builder-skills:agent-native-dispatch|y":{"serverName":"agent-native-dispatch"}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'WARN C72-design-mcp-auth' && grepq "$out" -F 'agent-native-dispatch'; then pass "C72 tokenless entry -> WARN"; else fail "C72 tokenless -> $(printf '%s' "$out" | grep -A1 C72)"; fi
+echo "== C72-design-mcp-auth: an empty accessToken counts as missing =="
+printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"},"plugin:builder-skills:agent-native-dispatch|y":{"serverName":"agent-native-dispatch","accessToken":""}}}' > "$c72_t/claude/.credentials.json"
+out="$(c72_run)"
+if grepq "$out" 'WARN C72-design-mcp-auth' && grepq "$out" -F 'agent-native-dispatch'; then pass "C72 empty accessToken -> WARN"; else fail "C72 empty token -> $(printf '%s' "$out" | grep -A1 C72)"; fi
 echo "== C72-design-mcp-auth: both logged in -> OK, silent about warnings =="
 printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"},"plugin:builder-skills:agent-native-dispatch|y":{"serverName":"agent-native-dispatch","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
