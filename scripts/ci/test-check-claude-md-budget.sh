@@ -116,6 +116,17 @@ else
     fail "repo CLAUDE.md -> expected 0 got $rc"
 fi
 
+# Case G2: the always-loaded subagent rule keeps the independent-review
+# exception (reviewing a diff you did not author is not self-verification).
+# Without it the condensed rule forbids the fresh-context verifier the rule
+# exists to allow.
+echo "== Case G2: subagent rule keeps the independent-review exception =="
+if awk '/^### Subagent policy/ { on = 1; next } /^### / { on = 0 } on' "$REPO_ROOT/CLAUDE.md" | grep -q 'did not author'; then
+    pass "subagent policy keeps the independent-review exception"
+else
+    fail "subagent policy lost the independent-review exception"
+fi
+
 # Case H (venv-gated): the REAL installer over the committed file changes no
 # himmel-owned byte (everything outside the upstream-owned `## graphify`
 # section) and is idempotent. The section's own wording moves with the graphify
