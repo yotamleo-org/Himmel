@@ -347,12 +347,17 @@ for pg in "$GS" "$INST" "$PAGE"; do
   fi
 done
 
-promised="$(grep -n -E '≈ ?[0-9]+ ?min|about \*\*15 minutes|~15 minutes|in about 15 minutes|15-minute walkthrough|First 5 minutes|first 5 minutes' \
-  "$GS" "$PAGE" | cut -c1-110)"
-if [ -z "$promised" ]; then
-  ok "no first-run page promises an unmeasured elapsed time"
+time_re='≈ ?[0-9]+ ?min|about \*\*15 minutes|~15 minutes|in about 15 minutes|15-minute walkthrough|First 5 minutes|first 5 minutes'
+if ! printf 'about **15 minutes\n' | grep -q -E "$time_re"; then
+  bad "the time-promise matcher no longer matches its own positive control"
+fi
+promised="$(grep -n -E "$time_re" "$GS" "$PAGE")" && grep_rc=0 || grep_rc=$?
+if [ "$grep_rc" -gt 1 ]; then
+  bad "grep failed (rc=$grep_rc) while scanning for time promises"
+elif [ "$grep_rc" -eq 0 ]; then
+  bad "unmeasured time promises on first-run pages" "$(printf '%s\n' "$promised" | cut -c1-110)"
 else
-  bad "unmeasured time promises on first-run pages" "$promised"
+  ok "no first-run page promises an unmeasured elapsed time"
 fi
 
 echo

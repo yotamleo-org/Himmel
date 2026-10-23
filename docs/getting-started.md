@@ -159,8 +159,9 @@ day-to-day loop is:
                              #   (a starter install copies `scripts/worktree.sh`, not this slash
                              #   command: from a shell run `bash scripts/worktree.sh feat/my-thing`)
 #   … make a small change with Claude …
-git add -A && git commit -m "feat: my change" && git push -u origin feat/my-thing
-                             # conventional-commit gate fires at commit; the pre-push
+git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-thing
+                             # conventional-commit gate fires at commit (the #2 is the ticket
+                             #   reference it wants, see step 5); the pre-push
                              #   gates run and record that a review is owed
 /pr-check                    # multi-agent review; clears the merge gate when clean
 #   gh pr create / gh pr merge --squash
