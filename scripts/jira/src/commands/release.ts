@@ -145,7 +145,7 @@ function extractArray(text: string): unknown[] | undefined {
   } catch { /* wrapped in prose or a fence, scan for the array */ }
   const opens = [...text.matchAll(/\[/g)].map((m) => m.index as number);
   const closes = [...text.matchAll(/\]/g)].map((m) => m.index as number).reverse();
-  const objectLeading = (i: number) => /^\[\s*\{/.test(text.slice(i, i + 64));
+  const objectLeading = (i: number) => /^\[\s*[{[]/.test(text.slice(i, i + 64));
   for (const starts of [opens.filter(objectLeading), opens]) {
     for (const i of starts) {
       for (const end of closes) {

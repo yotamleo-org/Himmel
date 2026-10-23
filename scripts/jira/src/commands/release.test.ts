@@ -153,6 +153,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     try { parseDecisions('Error: overloaded'); } catch (e) { err = e; }
     expect((err as { raw?: string }).raw).toBe('Error: overloaded');
     expect(() => parseDecisions('null')).toThrow(/nothing ruled/);
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result: `Ruling:\n${JSON.stringify([[{ req: 'x' }]])}` }))).toThrow(/decision 0/);
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([[{ req: 'x' }]]) }))).toThrow(/decision 0/);
   });
 
