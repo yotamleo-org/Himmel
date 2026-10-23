@@ -94,7 +94,21 @@ check     "dispatch input probes a missing ref"     'missing_ref_probe:'
 forks_step="$(awk '/^      - name: Run the forks scan/ {f=1; print; next} f && /^      - / {exit} f {print}' <<< "$s")"
 probe_guard="$(awk '/if \[ "\$MISSING_REF_PROBE" = "true" \]; then/ {f=1; next} f && /^[[:space:]]+fi$/ {exit} f {print}' <<< "$forks_step")"
 if grep -q 'inputs.missing_ref_probe' <<< "$forks_step" && grep -q "export SNYK_SCAN_FORKS='[^']*|0\{40\}|" <<< "$probe_guard"; then ok "probe feeds one missing-ref fork row to the forks scan"; else bad "probe feeds one missing-ref fork row to the forks scan"; fi
-check     "JSON uploaded as an artifact"            'actions/upload-artifact@'
+check     "dispatch input report_only exists"       'report_only:'
+main_step="$(awk '/^      - name: Run the Snyk scan/ {f=1; print; next} f && /^      - / {exit} f {print}' <<< "$s")"
+for pair in "main:$main_step" "forks:$forks_step"; do
+  nm="${pair%%:*}"; blk="${pair#*:}"
+  # shellcheck disable=SC2016  # regex: literal $REPORT_ONLY and $rc
+  if grep -q 'REPORT_ONLY: \${{ inputs.report_only }}' <<< "$blk" \
+     && grep -Eq 'rc=\$\?' <<< "$blk" \
+     && grep -Eq 'if \[ "\$REPORT_ONLY" = "true" \]; then' <<< "$blk" \
+     && grep -Eq 'exit "\$rc"' <<< "$blk"; then
+    ok "$nm scan: report_only captures the exit code and defers exit \"\$rc\" to the default path"
+  else bad "$nm scan: report_only captures the exit code and defers exit \"\$rc\" to the default path"; fi
+  ro_guard="$(awk '/if \[ "\$REPORT_ONLY" = "true" \]; then/ {f=1; next} f && /^[[:space:]]+fi$/ {exit} f {print}' <<< "$blk")"
+  if grep -q 'exit 0' <<< "$ro_guard"; then ok "$nm scan: report_only exits 0 inside the true branch"; else bad "$nm scan: report_only exits 0 inside the true branch"; fi
+done
+check     "JSON uploaded as an artifact"           'actions/upload-artifact@'
 check     "upload runs even when the scan finds issues" "if: always\(\) && steps\.gate\.outputs\.enabled == 'true'"
 
 if [ "$fails" -gt 0 ]; then echo "$fails check(s) failed." >&2; exit 1; fi

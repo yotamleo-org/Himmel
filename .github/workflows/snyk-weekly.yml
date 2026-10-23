@@ -10,7 +10,9 @@ name: snyk-weekly
 # <date>.forks.json and <date>.forks.summary.md beside the main report; exit 1 is a High or
 # Critical finding, exit 2 a fork that failed or the quota. About 16 + 48 Open Source tests per
 # run. The dispatch input missing_ref_probe replaces the forks with one at a missing ref, to prove
-# exit 2 names the fork; it skips the main scan.
+# exit 2 names the fork; it skips the main scan. The dispatch input report_only runs both scans
+# in full, writes the findings to the job summary and exits 0; the schedule and a default
+# dispatch still fail on findings.
 on:
   schedule:
     - cron: '23 5 * * 1'   # weekly, Monday UTC (offset from ci.yml's 17 7 and fork-drift's 41 6)
@@ -18,6 +20,10 @@ on:
     inputs:
       missing_ref_probe:
         description: Scan one fork at a missing ref instead of the real scan, to prove exit 2 names the fork
+        type: boolean
+        default: false
+      report_only:
+        description: Run the full main and forks scans, write the findings to the job summary and exit 0
         type: boolean
         default: false
 
@@ -66,13 +72,23 @@ jobs:
         if: steps.gate.outputs.enabled == 'true' && inputs.missing_ref_probe != true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: bash scripts/security/snyk-scan.sh --repo "$GITHUB_WORKSPACE" --out-dir "$RUNNER_TEMP/snyk"
+          REPORT_ONLY: ${{ inputs.report_only }}
+        run: |
+          rc=0
+          bash scripts/security/snyk-scan.sh --repo "$GITHUB_WORKSPACE" --out-dir "$RUNNER_TEMP/snyk" || rc=$?
+          if [ "$REPORT_ONLY" = "true" ]; then
+            cat "$RUNNER_TEMP"/snyk/*.summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            echo "::notice title=report_only::main scan exit code $rc reported, not failed"
+            exit 0
+          fi
+          exit "$rc"
 
       - name: Run the forks scan
         if: ${{ !cancelled() && steps.gate.outputs.enabled == 'true' }}
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
           MISSING_REF_PROBE: ${{ inputs.missing_ref_probe }}
+          REPORT_ONLY: ${{ inputs.report_only }}
         run: |
           if [ "$MISSING_REF_PROBE" = "true" ]; then
             export SNYK_SCAN_FORKS='claude-hud|https://github.com/jarrodwatts/claude-hud|0000000000000000000000000000000000000000|-'
@@ -84,6 +100,10 @@ jobs:
             cat "$f" >> "$GITHUB_STEP_SUMMARY"
             awk '/^## /{n=substr($0,4)} /^- status: error/{print "::error title=snyk fork scan failed::" n ": " substr($0,10)}' "$f"
           done
+          if [ "$REPORT_ONLY" = "true" ]; then
+            echo "::notice title=report_only::forks scan exit code $rc reported, not failed"
+            exit 0
+          fi
           exit "$rc"
 
       - name: Upload the scan result
