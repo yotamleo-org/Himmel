@@ -304,7 +304,7 @@ strip_evidence_heredocs() {
     case "$text" in *"<<'"*) ;; *) return 0 ;; esac
     case "$text" in */tmp/claude-*) ;; *) return 0 ;; esac
     open_re="^cat[[:blank:]]+>[[:blank:]]*(/tmp/claude-[0-9]+/[A-Za-z0-9_./+-]+\\.(md|txt))[[:blank:]]+<<[[:blank:]]*'([A-Za-z0-9_]+)'[[:blank:]]*\$"
-    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[^][:blank:];&|<>\`\\\\()]*write-verdict\\.sh([[:blank:]][^;&|<>\`\\\\]*)?\$"
+    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[A-Za-z0-9_./+-]*scripts/handover/console-kit/write-verdict\\.sh([[:blank:]]+[A-Za-z0-9_./=:+-]+)*[[:blank:]]*\$"
     while IFS= read -r line || [ -n "$line" ]; do
         lines[n]=$line; n=$((n + 1))
     done <<<"$text"
@@ -331,11 +331,7 @@ strip_evidence_heredocs() {
         elif [ -n "${line//[[:blank:]]/}" ]; then
             # Outside a stripped body only a write-verdict.sh call may run,
             # so the stripped file cannot be run under another spelling.
-            if [[ $line =~ $wv_re ]]; then
-                case "$line" in *\$\(*) bad=1 ;; esac
-            else
-                bad=1
-            fi
+            [[ $line =~ $wv_re ]] || bad=1
         fi
         out+=$line$'\n'
     done
@@ -343,12 +339,14 @@ strip_evidence_heredocs() {
         REPLY=${out%$'\n'}
     fi
 }
+# The untouched command, newlines included, for the
+# parse-independent backstop (raw_mention) that runs before scan_text. It is
+# taken before the strip, so the backstop still reads an evidence body; only
+# raw_obfuscated, the verb-beside-a-glob layer, reads the stripped text.
+raw_cmd=$cmd
 strip_evidence_heredocs "$cmd"
 cmd=$REPLY
-
-# The untouched command, newlines included, for the
-# parse-independent backstop (raw_mention) that runs before scan_text.
-raw_cmd=$cmd
+raw_stripped=$cmd
 
 # Backslash-newline is a line CONTINUATION -- join it BEFORE the newline
 # fold below, or the continuation's two halves land in different segments
@@ -3298,7 +3296,7 @@ fi
 # so a nounset abort or a hook timeout inside the parser cannot skip it
 # (console X ruling at 64bc44b1); where both would deny, the backstop's
 # message now fires instead of the parser's more specific one.
-raw_obfuscated "$raw_cmd"
+raw_obfuscated "$raw_stripped"
 raw_mention "$raw_cmd" 0
 scan_text "$cmd_flat" "" 0
 
