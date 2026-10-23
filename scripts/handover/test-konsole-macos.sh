@@ -80,8 +80,30 @@ STUB
     chmod +x "$bindir/open"
 }
 
+# A stub `osascript` standing in for iTerm's AppleScript tab creation: it
+# records its argv (`- <uuid> <cmdfile>`), then runs the .command like the
+# `open` stub does, or fails as an Automation denial would.
+mk_osascript_stub() { # mk_osascript_stub <bindir> <argv-log> [mode]
+    local bindir="$1" log="$2" mode="${3:-run}"
+    mkdir -p "$bindir"
+    cat > "$bindir/osascript" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$log"
+case "$mode" in
+    fail) exit 1 ;;
+    run)  env -i "\$3" >/dev/null 2>&1 & exit 0 ;;
+esac
+STUB
+    chmod +x "$bindir/osascript"
+}
+
 # An app-dir fixture so resolution never depends on what is installed here.
 appdirs="$tmp/apps"; mkdir -p "$appdirs/iTerm.app" "$appdirs/Terminal.app"
+
+# Cases 1-8 cover the `open -a` path. Run inside iTerm, the shim would
+# otherwise take the AppleScript path below and open a real tab; section 9
+# sets this explicitly.
+unset ITERM_SESSION_ID
 
 run_shim() { # run_shim <bindir> -- <args...>  (stdout+stderr merged, rc echoed last)
     local bindir="$1"; shift; [ "$1" = "--" ] && shift
@@ -255,6 +277,35 @@ not_contains "7b an unrelated launching-shell var still does not" "$envout" "KON
 # shellcheck disable=SC2317,SC2329  # grep() is invoked indirectly, through grepq
 nc8=$( grep() { return 2; }; not_contains "8 probe" "x" "y" )
 check "8 not_contains reports a grep error as a failure, not as absence" "$nc8" "FAIL - 8 probe: grep itself failed (rc 2)"
+
+# --- 9. the leg opens in the arming session's own iTerm window (#3602) -----
+# `open -a` lands the tab in whichever iTerm window is frontmost. With
+# $ITERM_SESSION_ID set, the shim targets that session's window instead.
+b13="$tmp/b13"; mk_open_stub "$b13" "$tmp/open13.log"; mk_osascript_stub "$b13" "$tmp/osa13.log"
+rm -f "$tmp/ran13"
+out="$(ITERM_SESSION_ID="w2t0p0:ABC-123" ARM_TERMINAL_APP=iTerm run_shim "$b13" -- --separate --workdir "$wd" -e touch "$tmp/ran13")"; rc=$?
+check "9a iTerm session known: exit 0" "$rc" "0"
+check "9a iTerm session known: the command ran" "$([ -e "$tmp/ran13" ] && echo ran)" "ran"
+contains "9b osascript is handed the session uuid without the w/t/p prefix" "$(cat "$tmp/osa13.log" 2>/dev/null)" "- ABC-123 "
+contains "9b osascript is handed the .command file" "$(cat "$tmp/osa13.log" 2>/dev/null)" ".command"
+check "9c open -a is not used" "$([ -e "$tmp/open13.log" ] && echo called)" ""
+
+# osascript failing (Automation denied, session gone) falls back to open -a,
+# and the command runs exactly once.
+b14="$tmp/b14"; mk_open_stub "$b14" "$tmp/open14.log"; mk_osascript_stub "$b14" "$tmp/osa14.log" fail
+cnt="$tmp/count14"; rm -f "$cnt"
+out="$(ITERM_SESSION_ID="w2t0p0:ABC-123" ARM_TERMINAL_APP=iTerm run_shim "$b14" -- --separate --workdir "$wd" -e /bin/sh -c "echo x >> '$cnt'")"; rc=$?
+check "9d osascript fails: exit 0 via the open -a fallback" "$rc" "0"
+contains "9d osascript fails: WARNs about the fallback" "$out" "falling back to open -a"
+contains "9d osascript fails: open -a was used" "$(cat "$tmp/open14.log" 2>/dev/null)" "-a iTerm"
+check "9d osascript fails: the command ran exactly once" "$(wc -l < "$cnt" 2>/dev/null | tr -d ' ')" "1"
+
+# Terminal.app has no iTerm session to target: open -a as before.
+b15="$tmp/b15"; mk_open_stub "$b15" "$tmp/open15.log"; mk_osascript_stub "$b15" "$tmp/osa15.log"
+out="$(ITERM_SESSION_ID="w2t0p0:ABC-123" ARM_TERMINAL_APP=Terminal run_shim "$b15" -- --separate --workdir "$wd" -e true)"; rc=$?
+check "9e Terminal.app: exit 0" "$rc" "0"
+check "9e Terminal.app: osascript is not used" "$([ -e "$tmp/osa15.log" ] && echo called)" ""
+contains "9e Terminal.app: open -a is used" "$(cat "$tmp/open15.log" 2>/dev/null)" "-a Terminal"
 
 echo
 [ "$fails" -eq 0 ] && { echo "All konsole-macos.sh cases passed."; exit 0; }

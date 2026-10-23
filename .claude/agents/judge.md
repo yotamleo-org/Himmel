@@ -112,6 +112,15 @@ forbids a literal home path here) and use the dir it prints; it
 writes the holder file `scripts/tmp-reap.sh` needs to tell your dir from a dead
 judge's (HIMMEL-4325). Never `mkdir` such a dir yourself.
 
+Pin every read of the PR under review to its head sha, never to a moving ref.
+In a shared checkout `FETCH_HEAD` is one file that every parallel judge's
+`git fetch` overwrites, so a read through it can land on another judge's PR
+(HIMMEL-7062). Read by the full sha only: check
+`gh pr view <N> --json headRefOid` equals the head you were given, check
+`git cat-file -t <sha>` prints `commit` (run a bare `git fetch origin` if it
+does not; never a refspec fetch, which the primary-checkout guard refuses),
+then `git diff origin/main...<sha>` and `git show <sha>:<path>`, never FETCH_HEAD.
+
 Scratch copies follow the same rule the brief template states (HIMMEL-5165,
 HIMMEL-5173): never `rsync`/`cp -a` the whole repo into `/tmp` (about 6 GB,
 tmpfs). Copy only `scripts/` plus the PR's changed files that still exist at

@@ -132,7 +132,9 @@ scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
+scripts/ci/test-check-lockfile-release-age.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
+scripts/ci/test-check-manifest-coverage.sh	1
 scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1
@@ -158,6 +160,7 @@ scripts/ci/test-home-canary.sh	32
 scripts/ci/test-impacted-selection.sh	10
 scripts/ci/test-jira-cli-smoke.sh	0
 scripts/ci/test-knockout-gate.sh	8
+scripts/ci/test-lockfile-advisory-floor.sh	0
 scripts/ci/test-macos-breakage.sh	0
 scripts/ci/test-macos-cadence-workflow.sh	0
 scripts/ci/test-main-sweep-red-issue.sh	2
@@ -185,6 +188,7 @@ scripts/ci/test-shard-manifest-verify.sh	1
 scripts/ci/test-shell-extended-nightly-issue.sh	0
 scripts/ci/test-shell-unit-dispatch-name.sh	0
 scripts/ci/test-shellcheck-pr-range.sh	2
+scripts/ci/test-site-sidebar-slugs.sh	1
 scripts/ci/test-suite-concurrency.sh	117
 scripts/ci/test-suite-ledger.sh	2
 scripts/ci/test-suite-lock-brand-gap.sh	70
@@ -364,6 +368,7 @@ scripts/handover/console-kit/test-gh-read.sh	1
 scripts/handover/console-kit/test-go.sh	13
 scripts/handover/console-kit/test-grant-round.sh	7
 scripts/handover/console-kit/test-handoff-facts.sh	0
+scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh	2
 scripts/handover/console-kit/test-headed-arm-leg.sh	117
 scripts/handover/console-kit/test-himmel-gate.sh	0
 scripts/handover/console-kit/test-hook-copy-reaper.sh	0
@@ -559,7 +564,7 @@ scripts/hooks/test-block-graphify-egress.sh	2
 scripts/hooks/test-block-himmel-config-writes.sh	5
 scripts/hooks/test-block-infra-destroy.sh	4
 scripts/hooks/test-block-jira-compound-write.sh	16
-scripts/hooks/test-block-leg-askuserquestion.sh	0
+scripts/hooks/test-block-worker-askuserquestion.sh	0
 scripts/hooks/test-block-lesson-enforcement-writes.sh	0
 scripts/hooks/test-block-mcp-when-plugin-exists.sh	3
 scripts/hooks/test-block-merged-pr-commit.sh	3
@@ -652,7 +657,7 @@ scripts/hooks/test-guard-identical-denied-retry.sh	1
 scripts/hooks/test-guard-implementor-dispatch.sh	237
 scripts/hooks/test-guard-judge-writes.sh	1
 scripts/hooks/test-guard-leg-context-handoff.sh	18
-scripts/hooks/test-guard-leg-wakeup.sh	0
+scripts/hooks/test-guard-worker-wakeup.sh	0
 scripts/hooks/test-guard-memory-capture.sh	1
 scripts/hooks/test-guard-pr-check-literal.sh	32
 scripts/hooks/test-guard-relay-writes.sh	5
@@ -938,6 +943,7 @@ scripts/release/test-gen-release-notes.sh	0
 scripts/release/test-tarball-vs-clone.sh	3
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	2
+scripts/security/test-snyk-scan.sh	1
 scripts/setup/test-check-jira-key.sh	0
 scripts/setup/test-check-user-slug.sh	0
 scripts/setup/test-choose-mode.sh	0
@@ -961,6 +967,8 @@ scripts/telegram/test-break-glass.sh	3
 scripts/telegram/test-dispatch-lane.sh	37
 scripts/telegram/test-phi-egress-guard-parity.sh	0
 scripts/telegram/test-restart-bridge.sh	64
+# Merge-gate estimate: focused install row measured 41s; hook behavior pending VM timing.
+scripts/test-adopt-merge-gate.sh	120
 scripts/test-adopt-only-hooks.sh	1
 scripts/test-adopt-portable-libs.sh	0
 scripts/test-adopt-user-claude-md.sh	0
@@ -1054,6 +1062,7 @@ scripts/vm/test-guest-exec.sh	1
 scripts/vm/test-inventory.sh	1
 scripts/vm/test-launch-guest.sh	1
 scripts/vm/test-model-replay.sh	0
+scripts/vm/test-over-install-stage.sh	1
 scripts/vm/test-provenance-roundtrip-dry.sh	39
 scripts/vm/test-upgrade-path-stage.sh	4
 scripts/vm/test-vm-clone-lib.sh	0
@@ -1072,3 +1081,4 @@ templates/luna-second-brain/scripts/test-upgrade-pyresolve.sh	0
 templates/luna-second-brain/scripts/test-upgrade.sh	56
 templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	4
 templates/luna-second-brain/scripts/test-vault-git.sh	69
+scripts/ci/test-snyk-weekly-workflow.sh	0

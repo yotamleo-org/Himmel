@@ -148,10 +148,9 @@
   "profiles": {
     "operator": null,
     "user": {
-      "_comment": "HIMMEL-3064: lean-skills@himmel replaces superpowers@claude-plugins-official + mattpocock-skills@claude-plugins-official (restated here for audit-clarity though base already carries it). plannotator-effective-html@himmel moved OUT to the new design profile -- its 6 skills cost ~630 tok every session for 1 invocation in 1628 transcripts, so design/UI work now opts in via --profile design instead of every session paying for it. HIMMEL-4018: obsidian-second-brain@himmel (~2.2k tok listing) is enabled here, in lane-content and in telegram — the vault-working profiles — and stays off in every lean leg and console profile.",
+      "_comment": "HIMMEL-3064: lean-skills@himmel replaces superpowers@claude-plugins-official + mattpocock-skills@claude-plugins-official (restated here for audit-clarity though base already carries it). plannotator-effective-html@himmel moved OUT to the new design profile -- its 6 skills cost ~630 tok every session for 1 invocation in 1628 transcripts, so design/UI work now opts in via --profile design instead of every session paying for it. HIMMEL-4018: obsidian-second-brain@himmel (~2.2k tok listing) is enabled in lane-content and telegram — the vault-filing profiles — and stays off here (HIMMEL-7178: 1 osb command in 14 days, /youtube, which obsidian-triage /watch-youtube covers) and in every lean leg and console profile; enable on demand with plugin-profile.sh enable obsidian-second-brain.",
       "enable": [
         "lean-skills@himmel",
-        "obsidian-second-brain@himmel",
         "find-docs@himmel",
         "graphify@himmel",
         "pstack@himmel",
@@ -364,7 +363,6 @@
     "lane-content": {
       "gateAllow": true,
       "enable": [
-        "claude-obsidian@himmel",
         "obsidian-triage@himmel",
         "obsidian-second-brain@himmel"
       ],

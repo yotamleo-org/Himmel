@@ -439,16 +439,6 @@
       "offboard": "advise"
     },
     {
-      "id": "gemini-cli",
-      "kind": "dep",
-      "scopes": ["user"],
-      "profiles": ["core", "all"],
-      "deps": [],
-      "probe": { "type": "dep", "cmd": "gemini" },
-      "removable": "full-offboard-only",
-      "offboard": "advise"
-    },
-    {
       "id": "cadence-armed",
       "kind": "scheduler",
       "scopes": ["user"],

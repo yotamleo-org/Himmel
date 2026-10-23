@@ -23,7 +23,9 @@
 #           from the fleet manifest through live-state.sh (lock tokens from the
 #           held locks, nonces kept) instead of a hand edit, bounded by
 #           ACTION_ZERO_LEGS_TIMEOUT (default 60s); `unavailable` and exit 1 when
-#           it cannot render (no manifest next to the doc, a failure or a timeout).
+#           it cannot render (no manifest next to the doc, a failure or a timeout) and
+#           when this document's lock is held (by this or another session): the legs: line is not
+#           rewritten. A console already holding its lock re-renders with live-state.sh.
 #
 # --lock-only runs the LOCK section alone: the successor's one call once
 # `console.sh next` has pre-computed the other sections into its doc.
@@ -121,7 +123,10 @@ if [ "$lockonly" -eq 0 ]; then
 
     if [ "$render" -eq 1 ]; then
         echo "== LEGS"
-        if [ -f "${doc%.md}.fleet.json" ]; then
+        pre_state="$(env HANDOVER_DIR="$root" bash "$ql" status "$doc" 2>&1)"; pre_rc=$?
+        if [ "$pre_rc" -ne 0 ] || [ "$pre_state" != free ]; then
+            render_rc=1; echo "unavailable (this document's lock is not free: held by this or another session, legs: left unchanged)"
+        elif [ -f "${doc%.md}.fleet.json" ]; then
             if bounded legs "$legs_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
         else
             render_rc=1; echo "unavailable (no fleet manifest next to the doc)"

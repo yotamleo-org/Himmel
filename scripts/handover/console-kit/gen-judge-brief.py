@@ -127,8 +127,11 @@ def evidence_text(s):
         out.append('%d. %s' % (n, text))
     if s.get('pr'):
         item('PR %s at head `%s`: the change under review. Read the diff at that head, not main '
-             '(`git archive %s` for a tree; `gh pr diff %s` reads the PR\'s CURRENT head, so check '
-             '`gh pr view %s --json headRefOid` equals the head first).' % (s['pr'], s['head'], s['head'], s['pr'], s['pr']))
+             '(check `gh pr view %s --json headRefOid` equals the head and `git cat-file -t %s` prints `commit`, '
+             'a bare `git fetch origin` if not, never a refspec fetch; then `git diff origin/main...%s`, '
+             '`git show %s:<path>` or `git archive %s` for a tree; '
+             'never FETCH_HEAD, which a parallel judge\'s fetch overwrites).'
+             % (s['pr'], s['head'], s['pr'], s['head'], s['head'], s['head'], s['head']))
     for k in [s['ticket']] + [t for t in (s.get('tickets') or []) if t != s['ticket']]:
         item('Ticket %s: the ask(s) the change claims to meet '
              '(`JIRA_PROJECT_KEY=%s node <primary checkout>/scripts/jira/dist/index.js get %s`, comments included).'

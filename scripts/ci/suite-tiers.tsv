@@ -104,7 +104,9 @@ scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
 scripts/ci/test-check-hardcoded-env-values.sh	pr	trust-path
 scripts/ci/test-check-hooks-on-pr-range.sh	pr	trust-path
 scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
+scripts/ci/test-check-lockfile-release-age.sh	pr	static-gate
 scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
+scripts/ci/test-check-manifest-coverage.sh	pr	static-gate
 scripts/ci/test-check-no-secrets.sh	pr	guard
 scripts/ci/test-check-run-timelines.sh	pr	trust-path
 scripts/ci/test-check-vacuous-path-assert.sh	pr	trust-path
@@ -131,6 +133,7 @@ scripts/ci/test-home-canary.sh	pr	trust-path
 scripts/ci/test-impacted-selection.sh	pr	trust-path
 scripts/ci/test-jira-cli-smoke.sh	pr	trust-path
 scripts/ci/test-knockout-gate.sh	pr	trust-path
+scripts/ci/test-lockfile-advisory-floor.sh	pr	trust-path
 scripts/ci/test-macos-breakage.sh	pr	trust-path
 scripts/ci/test-macos-cadence-workflow.sh	pr	trust-path
 scripts/ci/test-main-sweep-red-issue.sh	pr	trust-path
@@ -159,6 +162,7 @@ scripts/ci/test-shard-manifest-verify.sh	pr	static-gate
 scripts/ci/test-shell-extended-nightly-issue.sh	pr	trust-path
 scripts/ci/test-shell-unit-dispatch-name.sh	pr	trust-path
 scripts/ci/test-shellcheck-pr-range.sh	pr	trust-path
+scripts/ci/test-site-sidebar-slugs.sh	pr	trust-path
 scripts/ci/test-suite-concurrency.sh	pr	trust-path
 scripts/ci/test-suite-ledger.sh	pr	trust-path
 scripts/ci/test-suite-lock-brand-gap.sh	pr	trust-path
@@ -290,7 +294,6 @@ scripts/eval/test-session-retro.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/gemini/test-invoke.sh	local	new since the audit, behaviour suite
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/glm/test-append-outbox.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -359,6 +362,7 @@ scripts/handover/console-kit/test-grant-round.sh	pr	trust-path
 scripts/handover/console-kit/test-handoff-facts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-handover-token-grammar.sh	local	new since the audit, behaviour suite
 scripts/handover/console-kit/test-headed-arm-leg.sh	pr	trust-path
+scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh	pr	trust-path
 scripts/handover/console-kit/test-himmel-gate.sh	pr	trust-path
 scripts/handover/console-kit/test-hook-copy-reaper.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-ice-followups.sh	local	new since the audit, behaviour suite
@@ -564,7 +568,7 @@ scripts/hooks/test-block-graphify-egress.sh	pr	guard
 scripts/hooks/test-block-himmel-config-writes.sh	pr	guard
 scripts/hooks/test-block-infra-destroy.sh	pr	guard
 scripts/hooks/test-block-jira-compound-write.sh	pr	guard
-scripts/hooks/test-block-leg-askuserquestion.sh	pr	guard
+scripts/hooks/test-block-worker-askuserquestion.sh	pr	guard
 scripts/hooks/test-block-lesson-enforcement-writes.sh	pr	guard
 scripts/hooks/test-block-mcp-when-plugin-exists.sh	pr	guard
 scripts/hooks/test-block-merged-pr-commit.sh	pr	guard
@@ -657,7 +661,7 @@ scripts/hooks/test-guard-implementor-dispatch.sh	pr	guard
 scripts/hooks/test-guard-judge-writes.sh	pr	guard
 scripts/hooks/test-guard-leg-cache-ttl.sh	pr	guard
 scripts/hooks/test-guard-leg-context-handoff.sh	pr	guard
-scripts/hooks/test-guard-leg-wakeup.sh	pr	guard
+scripts/hooks/test-guard-worker-wakeup.sh	pr	guard
 scripts/hooks/test-guard-memory-capture.sh	pr	guard
 scripts/hooks/test-guard-pr-check-literal.sh	pr	guard
 scripts/hooks/test-guard-relay-writes.sh	pr	guard
@@ -683,7 +687,7 @@ scripts/hooks/test-memory-bash-line-check.sh	local	behaviour suite, 0 catches in
 scripts/hooks/test-notify-console-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-orchestrator-inline-guard.sh	pr	trust-path
 scripts/hooks/test-permission-allow-gate-shapes.sh	pr	trust-path
-scripts/hooks/test-plugin-hook-bash-wiring.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/hooks/test-plugin-hook-bash-wiring.sh	pr	trust-path
 scripts/hooks/test-qmd-staleness-notice.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-quota-gauge-claude-writer.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-quota-gauge-ledger.sh	pr	static-gate
@@ -948,6 +952,7 @@ scripts/release/test-gen-release-notes.sh	local	behaviour suite, 0 catches in th
 scripts/release/test-tarball-vs-clone.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/roadmap/test-plan-graph.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/roadmap/test-plan-index.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/security/test-snyk-scan.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/setup/test-check-jira-key.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/setup/test-check-user-slug.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/setup/test-choose-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -972,6 +977,7 @@ scripts/telegram/test-break-glass.sh	local	behaviour suite, 0 catches in the 400
 scripts/telegram/test-dispatch-lane.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/telegram/test-phi-egress-guard-parity.sh	pr	static-gate
 scripts/telegram/test-restart-bridge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
@@ -1079,6 +1085,7 @@ scripts/vm/test-guest-exec.sh	local	behaviour suite, 0 catches in the 400-PR aud
 scripts/vm/test-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-launch-guest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-model-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/vm/test-over-install-stage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-provenance-roundtrip-dry.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-upgrade-path-stage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-vm-clone-lib.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1097,3 +1104,4 @@ templates/luna-second-brain/scripts/test-upgrade-pyresolve.sh	local	behaviour su
 templates/luna-second-brain/scripts/test-upgrade.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 templates/luna-second-brain/scripts/test-vault-git.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/ci/test-snyk-weekly-workflow.sh	pr	trust-path

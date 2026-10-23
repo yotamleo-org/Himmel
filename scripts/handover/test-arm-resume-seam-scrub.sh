@@ -74,15 +74,20 @@ BODY=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu bash "$ARM" --time "$(futur
       | awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}')
 case "$BODY" in *"cd "*) echo "PASS S0 dry-run yields an at body" ;; *) echo "FAIL S0 no at body"; FAILED=$((FAILED + 1)) ;; esac
 
-SEAM="LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_CLAUDE_BIN HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV"
-KEEP="HIMMEL_CONSOLE_LEG HANDOVER_DIR"
+SEAM="LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_CLAUDE_BIN HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV
+      WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG
+      WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_CLAUDE_BIN"
+KEEP="HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_WORKER"
 REC="$TMP/rec"
 # The env atd replays: the consult's seam plus a leg identity that must survive.
 # No pty (HIMMEL_PTY_SCRIPT_CMD points nowhere): the bare fallback runs the stub directly.
 env PATH="$STUB_BIN:$PATH" CLAUDE_REC="$REC" WATCH="$SEAM $KEEP" HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" \
     LEG_PROFILE_SETTINGS=/x/s.json LEG_PROFILE_PREFACE=/x/p.md LEG_PROFILE_MCP_CONFIG=/x/m.json \
     LEG_PROFILE_NO_SETTING_SOURCES=1 LEG_CLAUDE_BIN=/x/claude HEADED_ARM_LAUNCHER=/x/shim.sh \
-    HEADED_ARM_LAUNCHER_ENV=A=1 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$HANDOVER_DIR" \
+    HEADED_ARM_LAUNCHER_ENV=A=1 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$HANDOVER_DIR" HIMMEL_WORKER=1 \
+    WORKER_SESSION_PROFILE_SETTINGS=/x/s.json WORKER_SESSION_PROFILE_PREFACE=/x/p.md \
+    WORKER_SESSION_PROFILE_MCP_CONFIG=/x/m.json WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
+    WORKER_SESSION_CLAUDE_BIN=/x/claude \
     sh -c "$BODY" </dev/null >"$TMP/job.out" 2>&1
 R=$(cat "$REC" 2>/dev/null)
 for v in $SEAM; do
@@ -107,6 +112,12 @@ rc=0
 env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu LEG_PROFILE_NO_SETTING_SOURCES= bash "$ARM" --time "$(future_time)" \
     --handover "$HANDOVER" --dry-run >/dev/null 2>&1 || rc=$?
 assert_eq "S3 an empty LEG_PROFILE_NO_SETTING_SOURCES still arms (exit 0)" "0" "$rc"
+# The new name confines exactly as the old one does.
+rc=0
+OUT3N=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 bash "$ARM" --time "$(future_time)" \
+        --handover "$HANDOVER" --dry-run 2>&1) || rc=$?
+assert_eq "S3 WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 refuses (exit 2)" "2" "$rc"
+case "$OUT3N" in *"would at -t"*) echo "FAIL S3 new name: an at body was still produced"; FAILED=$((FAILED + 1)) ;; *) echo "PASS S3 new name: no at body" ;; esac
 
 # the read-only --list-temp-arms sweep arms nothing, so a consult may run it,
 # but ONLY as the sole argument; every other mode, or the flag beside one, still refuses.

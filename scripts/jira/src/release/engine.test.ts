@@ -3,8 +3,8 @@ import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, read
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  apply, claim, declare, freeze, leaseAcquire, leaseRelease, operatorDecision, request, rule, state, takeover,
-  type Ctx, type JiraPort,
+  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
+  rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
 
@@ -41,14 +41,16 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
   };
 }
 
-function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
+function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
   const dir = join(root, 'mirror');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync, total: issues.length }));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), [
-      '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`, 'priority: "Medium"',
-      `fixVersions: ${JSON.stringify(i.fixVersions)}`, 'resolution: null', '---', '', `# ${i.key}`, '',
+      '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`,
+      ...(i.category ? [`statusCategory: "${i.category}"`] : []), 'priority: "Medium"',
+      `fixVersions: ${JSON.stringify(i.fixVersions)}`, `resolution: ${i.resolution ? JSON.stringify(i.resolution) : 'null'}`,
+      '---', '', `# ${i.key}`, '',
     ].join('\n'));
   }
 }
@@ -75,6 +77,26 @@ beforeEach(() => {
 afterEach(() => {
   if (savedLedger === undefined) delete process.env.HIMMEL_ADMISSIONS_LEDGER;
   else process.env.HIMMEL_ADMISSIONS_LEDGER = savedLedger;
+});
+
+describe('release state admissions_today (HIMMEL-7153)', () => {
+  const decide = (c: Ctx, decision: string, keys: string[], op: string, from_v: string | null, to_v: string | null) =>
+    operatorDecision(c, { decision, keys, op, from_v, to_v, verbatim: 'x' });
+
+  it('counts the keys of today\'s operator decisions that add or move into each version', async () => {
+    await setup();
+    expect(state(ctx()).admissions_today).toEqual({ v1: 0, v2: 0 });
+    decide({ ...ctx(), now: () => new Date('2026-10-20T10:00:00.000Z') }, '100', ['K-7'], 'add', null, 'v1');
+    decide(ctx(), '101', ['K-8', 'K-9'], 'add', null, 'v1');
+    decide(ctx(), '102', ['K-6'], 'move', 'v1', 'v2');
+    decide(ctx(), '103', ['K-5'], 'remove', 'v1', null);
+    decide(ctx(), '104', ['K-4'], 'keep', 'v1', 'v1');
+    expect(state(ctx()).admissions_today).toEqual({ v1: 2, v2: 1 });
+  });
+
+  it('is empty for a release that does not verify', () => {
+    expect(state(ctx()).admissions_today).toEqual({});
+  });
 });
 
 describe('release engine (HIMMEL-6796)', () => {
@@ -430,5 +452,171 @@ describe('release engine (HIMMEL-6796)', () => {
     const p = join(root, 'release', 'R1', 'baseline-v1-g1.json');
     writeFileSync(p, readFileSync(p, 'utf8').replace('"K-1"', '"K-8"'));
     expect(state(ctx()).status).toBe('UNKNOWN');
+  });
+});
+
+describe('release fold (HIMMEL-7158)', () => {
+  const events = () => readFileSync(join(root, 'release', 'R1', 'events.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const closedDone = { status: 'Closed', category: 'Done', resolution: 'Done' };
+  const resync = '2026-10-21T11:00:00.000Z';
+
+  it('reads a Closed key as terminal Done, so it leaves the open burn-down', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'], ...closedDone }], resync);
+    const s = state(ctx());
+    expect(s.records.find((x) => x.key === 'K-1')).toMatchObject({ terminal: 'Done' });
+    expect(s.burndown.v1.baseline_open).toBe(0);
+  });
+
+  it('writes one verifying events row per key, and a folded Closed key is bookkeeping, not a leak', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
+    expect(state(ctx()).leaks.unauthorized).toEqual(['K-3@v1']);
+    const out = fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    expect(out.skipped).toEqual([]);
+    expect(events()).toMatchObject([{ kind: 'fold', key: 'K-3', from: null, to: 'v1', pr: 12 }]);
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'], ...closedDone }], resync);
+    const s = state(ctx());
+    expect(s.inputs.events).toBe('FRESH');
+    expect(s.records.find((x) => x.key === 'K-3')).toMatchObject({ terminal: 'Done', bookkeeping: 'fold:12' });
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('skips a key that cannot fold and names its terminal and resolution; it stays a leak', async () => {
+    await setup();
+    const all = [
+      { key: 'K-3', fixVersions: ['v1'], ...closedDone },
+      { key: 'K-4', fixVersions: ['v1'], status: 'Closed', category: 'Done', resolution: "Won't Do" },
+      { key: 'K-5', fixVersions: ['v1'], status: 'Closed', category: 'Done', resolution: 'Cannot Reproduce' },
+      { key: 'K-6', fixVersions: ['v1'] },
+    ];
+    mirror(all);
+    const out = fold(ctx(), { to: 'v1', items: ['K-3', 'K-4', 'K-5', 'K-6', 'K-9'].map((key) => ({ key, pr: 7 })) });
+    expect(out.folded.map((e) => e.key)).toEqual(['K-3']);
+    expect(out.skipped).toEqual([
+      { key: 'K-4', terminal: "Won't Do", resolution: "Won't Do" },
+      { key: 'K-5', terminal: 'Other', resolution: 'Cannot Reproduce' },
+      { key: 'K-6', terminal: 'open', resolution: 'none' },
+      { key: 'K-9', terminal: 'not-in-mirror', resolution: 'none' },
+    ]);
+    expect(events().map((e) => e.key)).toEqual(['K-3']);
+    mirror(all, resync);
+    expect(state(ctx()).leaks.unauthorized).toEqual(['K-4@v1', 'K-5@v1', 'K-6@v1']);
+  });
+
+  it('a re-run folds nothing twice', async () => {
+    await setup();
+    mirror([{ key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
+    fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    const again = fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    expect(again).toMatchObject({ folded: [], already: ['K-3'], skipped: [] });
+    expect(events()).toHaveLength(1);
+  });
+
+  it('reopen reverses a fold and refuses a key with no fold to reverse', async () => {
+    await setup();
+    const all = [{ key: 'K-3', fixVersions: ['v1'], ...closedDone }];
+    mirror(all);
+    expect(() => reopen(ctx(), { key: 'K-3', from: 'v1' })).toThrow(/no fold into v1/);
+    fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    expect(reopen(ctx(), { key: 'K-3', from: 'v1' })).toMatchObject({ kind: 'reopen', key: 'K-3', from: 'v1', to: null });
+    mirror(all, resync);
+    const s = state(ctx());
+    expect(s.inputs.events).toBe('FRESH');
+    expect(s.leaks.unauthorized).toEqual(['K-3@v1']);
+  });
+
+  it('is a console act on a declared version with a real PR number', async () => {
+    await setup();
+    mirror([{ key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
+    expect(() => fold(ctx(rmEnv), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/console act/);
+    expect(() => fold(ctx(), { to: 'v9', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/not a version/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 0 }] })).toThrow(/positive PR/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 2 ** 60 }] })).toThrow(/positive PR/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'bad key', pr: 1 }] })).toThrow(/not an issue key/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).not.toThrow();
+  });
+});
+
+describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
+  const declared = () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  };
+  const ask = (k: string) => request(ctx(), { verb: 'INTAKE', key: k, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+  const admitAll: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+  const snapshot = (dir: string): Record<string, string> => Object.fromEntries(
+    readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile())
+      .map((e) => { const p = join(e.parentPath, e.name); return [p, readFileSync(p, 'utf8')]; }),
+  );
+
+  it('rules a pending request with no standing session and releases the lease', async () => {
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), admitAll);
+    expect(lines).toContain('RULING R-R1-0001 Q-R1-0001 INTAKE K-2 add backlog→v1 ADMIT current sector=Ship loop — regression: breaks the console');
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    const s = state(ctx());
+    expect(s.lease).toMatchObject({ epoch: 1, released: true });
+    expect(s.requests).toEqual({ open: [], claimed: [] });
+  });
+
+  it('refuses a concurrent batch by the lease and rules nothing in it', async () => {
+    declared();
+    ask('K-2');
+    let inner: unknown;
+    await rmRun(ctx(), async (input) => {
+      inner = await rmRun(ctx(), admitAll).catch((e: Error) => e);
+      return admitAll(input);
+    });
+    expect(String(inner)).toMatch(/release lease: held by/);
+    expect(readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8').match(/"phase":"intent"/g)).toHaveLength(1);
+  });
+
+  it('exits on an empty queue with nothing written and no judge call', async () => {
+    declared();
+    const before = snapshot(ctx().dir);
+    let called = false;
+    expect(await rmRun(ctx(), async () => { called = true; return []; })).toEqual(['RM-RUN R1: nothing pending']);
+    expect(called).toBe(false);
+    expect(snapshot(ctx().dir)).toEqual(before);
+  });
+
+  it('a failed judge rules nothing, releases the lease, and the next run reclaims', async () => {
+    declared();
+    ask('K-2');
+    await expect(rmRun(ctx(), async () => { throw new Error('HOLD'); })).rejects.toThrow(/HOLD/);
+    expect(state(ctx()).lease).toMatchObject({ epoch: 1, released: true });
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+  });
+
+  it('a decision the engine refuses is reported and its request stays claimed', async () => {
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: '', ground: 'regression', reason: 'x',
+    })));
+    expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+  });
+
+  it('a ruling Jira did not take is PENDING, and the next run applies it', async () => {
+    declared();
+    ask('K-2');
+    const post = jira.addComment;
+    jira.addComment = async () => { throw new Error('jira down'); };
+    expect(await rmRun(ctx(), admitAll)).toEqual(['PENDING R-R1-0001: jira down']);
+    jira.addComment = post;
+    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+  });
+
+  it('writes the run record under a --doc parent that does not exist yet', async () => {
+    declared();
+    ask('K-2');
+    const doc = join(ctx().dir, 'elsewhere', 'run.md');
+    expect(await rmRun(ctx(), admitAll, { doc })).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 /));
+    expect(readFileSync(doc, 'utf8')).toMatch(/^- RULING R-R1-0001 /m);
   });
 });

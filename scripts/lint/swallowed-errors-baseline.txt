@@ -192,7 +192,6 @@ scripts/hooks/block-himmel-config-writes.sh	cmdsub-devnull	10
 scripts/hooks/block-infra-destroy.sh	cmdsub-devnull	4
 scripts/hooks/block-jira-compound-write.sh	cmdsub-devnull	3
 scripts/hooks/block-jira-compound-write.sh	true-after-read	1
-scripts/hooks/block-leg-askuserquestion.sh	cmdsub-devnull	2
 scripts/hooks/block-lesson-enforcement-writes.sh	cmdsub-devnull	1
 scripts/hooks/block-lesson-enforcement-writes.sh	true-after-read	1
 scripts/hooks/block-merged-pr-commit.sh	cmdsub-devnull	4
@@ -210,6 +209,7 @@ scripts/hooks/block-terminal-write-fence.sh	cmdsub-devnull	2
 scripts/hooks/block-terminal-write-fence.sh	true-after-read	3
 scripts/hooks/block-unresolved-cr-merge.sh	cmdsub-devnull	22
 scripts/hooks/block-unresolved-cr-merge.sh	true-after-read	8
+scripts/hooks/block-worker-askuserquestion.sh	cmdsub-devnull	2
 scripts/hooks/block-write-into-main-checkout.sh	cmdsub-devnull	19
 scripts/hooks/block-write-into-main-checkout.sh	true-after-read	3
 scripts/hooks/bus-deliver-hook.sh	cmdsub-devnull	2
@@ -293,7 +293,6 @@ scripts/hooks/guard-implementor-dispatch.sh	true-after-read	9
 scripts/hooks/guard-judge-writes.sh	cmdsub-devnull	10
 scripts/hooks/guard-judge-writes.sh	true-after-read	1
 scripts/hooks/guard-leg-context-handoff.sh	cmdsub-devnull	17
-scripts/hooks/guard-leg-wakeup.sh	cmdsub-devnull	2
 scripts/hooks/guard-memory-capture.sh	cmdsub-devnull	2
 scripts/hooks/guard-pr-check-literal.sh	cmdsub-devnull	9
 scripts/hooks/guard-pr-check-literal.sh	true-after-read	1
@@ -301,6 +300,7 @@ scripts/hooks/guard-relay-writes.sh	cmdsub-devnull	21
 scripts/hooks/guard-relay-writes.sh	true-after-read	1
 scripts/hooks/guard-subagent-model.sh	cmdsub-devnull	8
 scripts/hooks/guard-subagent-model.sh	true-after-read	1
+scripts/hooks/guard-worker-wakeup.sh	cmdsub-devnull	2
 scripts/hooks/hook-integrity-lock.sh	cmdsub-devnull	2
 scripts/hooks/inject-doc-freshness.sh	cmdsub-devnull	3
 scripts/hooks/inject-doc-freshness.sh	true-after-read	2

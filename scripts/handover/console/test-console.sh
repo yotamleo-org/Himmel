@@ -1618,6 +1618,17 @@ check "60b successor doc's tracker: line carries the predecessor's tracker URL" 
     "$(grep -Fxc "tracker: $trackerurl60b" "$doc60bB" 2>/dev/null)" "1"
 check "60b no unrendered {{TRACKER_URL}} left in the successor doc" \
     "$(grep -Fc '{{TRACKER_URL}}' "$doc60bB" 2>/dev/null)" "0"
+# focus-version: and focus-plan: opt the FOCUS refresh in; a succession must keep them.
+focusplan60b='/fixture/plans/focus-plan-60b.md'
+awk -v plan="$focusplan60b" '{ print } /^tracker: / { print "focus-version: v9.9.9"; print "focus-plan: " plan }' "$doc60bA" >"$doc60bA.new" && mv "$doc60bA.new" "$doc60bA"
+rm -f "$doc60bB"
+rc60bf=0
+console next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1 || rc60bf=$?
+check "60b next succeeds against a doc with focus-version: and focus-plan:" "$rc60bf" "0"
+check "60b successor doc carries the predecessor's focus-version: line" \
+    "$(grep -Fxc 'focus-version: v9.9.9' "$doc60bB" 2>/dev/null)" "1"
+check "60b successor doc carries the predecessor's focus-plan: line" \
+    "$(grep -Fxc "focus-plan: $focusplan60b" "$doc60bB" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 
 # --- 61: the console parent defaults to Opus, not Fable
@@ -1904,6 +1915,32 @@ propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console
 strip_list67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_leg_env_unset_names ) | sort -u)"
 missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_list67"))"
 check "67 every leg_propagate_env name in headed-arm-leg.sh is in the strip list" "$missing67" ""
+# leg_propagate_env also sets each name's worker-session twin, so every twin
+# must be stripped too, and a launch-seam name's twin must be seam as well.
+twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
+check "67 headed-arm-leg.sh has a twin table" "$([ -n "$twins67" ] && echo found)" "found"
+want67='HIMMEL_LEAN_LEG HIMMEL_LEAN_WORKER_SESSION
+HIMMEL_LEG_AUTOCOMPACT HIMMEL_WORKER_SESSION_AUTOCOMPACT
+HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
+HIMMEL_LEG_PROFILE HIMMEL_WORKER_SESSION_PROFILE
+LEG_CLAUDE_BIN WORKER_SESSION_CLAUDE_BIN
+LEG_LANE WORKER_SESSION_LANE
+LEG_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_MCP_CONFIG
+LEG_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_PROFILE_NO_SETTING_SOURCES
+LEG_PROFILE_PREFACE WORKER_SESSION_PROFILE_PREFACE
+LEG_PROFILE_SETTINGS WORKER_SESSION_PROFILE_SETTINGS
+LEG_SESSION_ID WORKER_SESSION_ID
+'
+check "67 the twin table maps every required leg name to its worker-session twin" "$(comm -13 <(printf '%s\n' "$twins67" | sort -u) <(printf '%s' "$want67" | sort -u))" ""
+missing67t="$(comm -23 <(printf '%s\n' "$twins67" | awk '{print $2}' | sort -u) <(printf '%s\n' "$strip_list67"))"
+check "67 every worker-session twin in headed-arm-leg.sh is in the strip list" "$missing67t" ""
+seam67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_launch_seam_env_names ) | sort -u)"
+seam_missing67=""
+while read -r old67 new67; do
+    grep -qx "$old67" <<< "$seam67" || continue
+    grep -qx "$new67" <<< "$seam67" || seam_missing67="$seam_missing67 $new67"
+done <<< "$twins67"
+check "67 every launch-seam name's worker-session twin is launch seam too" "$seam_missing67" ""
 check "67 armed child's own environment strips LEG_LANE" \
     "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips OPENROUTER_MODEL" \

@@ -417,9 +417,7 @@ window by hardcoding a larger one unless a live request proves the larger window
 is accepted on that exact backend.
 
 Routing policy per the ticket: free routes first, fail-open down the
-chain with a visible note. The gemini-cli / Google-OAuth subscription
-route was **VOIDED by the operator**:
-API-key routes only.
+chain with a visible note. API-key routes only.
 
 The live `config.yaml` block:
 
@@ -434,18 +432,10 @@ fallback_providers:
   model: nvidia/nemotron-3-ultra-550b-a55b:free
 ```
 
-> **2026-06-19: gemini route removed.** The AI Studio API project behind
-> `GEMINI_API_KEY`/`GOOGLE_API_KEY` was suspended by Google (Gemini API ToS /
-> Prohibited Use Policy). The `gemini`/`gemini-flash-latest` fallback was
-> dropped from the live config; chain is now NIM primary → OpenRouter only.
-> Re-add only with a fresh, working Gemini API key (paid project; the free
-> tier is unavailable in the EEA).
-
 | # | Route | Provider name | Model | Key (env name in hermes `.env`) | Why this position |
 |---|-------|---------------|-------|--------------------------------|-------------------|
 | 1 (primary) | NVIDIA NIM | `nvidia` (built-in; aliases `nim`, `nemotron`) | `nvidia/nemotron-3-ultra-550b-a55b` | `NVIDIA_API_KEY` | Free NIM credits; current Nemotron Ultra flagship. NIM model ids ARE vendor-prefixed; `hermes doctor`'s "vendor-prefixed slug" warning is a false-positive heuristic here. |
 | 2 | OpenRouter | `openrouter` (built-in) | `nvidia/nemotron-3-ultra-550b-a55b:free` | `OPENROUTER_API_KEY` | Same model via a different aggregator, so the NIM quota/outage fallback keeps behavior comparable. |
-| ~~3~~ | ~~Gemini API~~ | `gemini` (built-in; reads `GOOGLE_API_KEY` or `GEMINI_API_KEY`) | `gemini-flash-latest` (rolling alias) | `GOOGLE_API_KEY` | **REMOVED 2026-06-19**: AI Studio project suspended (see note above). Was deliberately last (scarce key, 429s). |
 
 Not wired, with reasons (recorded so a rebuild doesn't "fix" them):
 
@@ -454,8 +444,6 @@ Not wired, with reasons (recorded so a rebuild doesn't "fix" them):
 - **Ollama local:** Ollama is not installed on this machine (PATH stub
   only). If installed later: provider `custom` with
   `base_url: http://localhost:11434/v1`, no key.
-- **gemini-cli / OAuth routes:** VOIDED by operator;
-  do not re-add.
 
 `providers: {}` stays empty on purpose: both routes are built-in
 provider names, so endpoint + key-env resolution comes from hermes's
@@ -589,5 +577,5 @@ hermes gateway restart                   # restart the gateway to load the chang
 ```
 
 Wiring verified 2026-06-12: all connectivity probes green (3 routes at the
-time; gemini route removed 2026-06-19, see note above, now 2);
+time, now 2);
 config backup at `config.yaml.bak.20260612_overnight`.

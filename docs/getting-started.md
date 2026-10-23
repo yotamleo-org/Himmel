@@ -201,7 +201,7 @@ guard is yours to lift:
   [`stuck-playbook`](internals/stuck-playbook.md) has the recovery flow for
   each guard.
 - **No surprise network or spend, with three named exceptions.** Optional
-  integrations are opt-in; headless Claude/Gemini calls are gated; the local
+  integrations are opt-in; headless Claude calls are gated; the local
   Jira CLI talks only to your own Atlassian site. Each exception has a switch:
   a throttled session-start update check (a plain `git fetch` of your own
   himmel clone's remote, no data sent; `UPDATE_CHECK_DISABLE=1`); the

@@ -34,7 +34,7 @@ CADENCE_BANK_MAX_PCT|CADENCE_USAGE_MAX_PCT|env|cap|V1|X
 CONSOLE_FG_OK|CHIEF_FG_OK|env|permit|V5|X
 CONSOLE_DISPATCH_OK|CHIEF_DISPATCH_OK|env|permit|V5|X
 CONSOLE_DISPATCH_DISABLE|CHIEF_DISPATCH_DISABLE|env|permit|V5|X
-LEG_CONTEXT_HANDOFF_OK|WORKER_SESSION_CONTEXT_HANDOFF_OK|env|permit|V4a|pending-N2892
+LEG_CONTEXT_HANDOFF_OK|WORKER_SESSION_CONTEXT_HANDOFF_OK|env|permit|V4a|X
 HIMMEL_LEAN_LEG|HIMMEL_LEAN_WORKER_SESSION|env|value|V4a|pending-N2892
 PARKED-BANK|PARKED-USAGE|marker|old-to-new|V1|never
 OVERNIGHT_|AFK_|env-prefix|value|V3|X
@@ -423,6 +423,30 @@ while IFS= read -r want; do
   check "V5b-2 row '$old'" "$tabbed" "$got"
 done <<EOF
 $V5B2_ROWS
+EOF
+
+# --- slice V4a-1: the worker-session env names the launcher and its named readers
+# take, each old name still read ---
+V4A1_ROWS='HIMMEL_LEG_AUTOCOMPACT|HIMMEL_WORKER_SESSION_AUTOCOMPACT|identifier|old-to-new|V4a|X
+HIMMEL_LEG_CONTEXT_MODE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|identifier|old-to-new|V4a|X
+HIMMEL_LEG_CONTEXT_SHARE|HIMMEL_WORKER_SESSION_CONTEXT_SHARE|identifier|old-to-new|V4a|X
+HIMMEL_LEG_FAILURES_LEDGER|HIMMEL_WORKER_SESSION_FAILURES_LEDGER|identifier|old-to-new|V4a|X
+HIMMEL_LEG_PROFILE|HIMMEL_WORKER_SESSION_PROFILE|identifier|old-to-new|V4a|X
+LEG_CLAUDE_BIN|WORKER_SESSION_CLAUDE_BIN|identifier|old-to-new|V4a|X
+LEG_EFFORT|WORKER_SESSION_EFFORT|identifier|old-to-new|V4a|X
+LEG_LANE|WORKER_SESSION_LANE|identifier|old-to-new|V4a|X
+LEG_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_MCP_CONFIG|identifier|old-to-new|V4a|X
+LEG_PROFILE_NO_SETTING_SOURCES|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|identifier|old-to-new|V4a|X
+LEG_PROFILE_PREFACE|WORKER_SESSION_PROFILE_PREFACE|identifier|old-to-new|V4a|X
+LEG_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_SETTINGS|identifier|old-to-new|V4a|X
+LEG_SESSION_ID|WORKER_SESSION_ID|identifier|old-to-new|V4a|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V4a-1 row '$old'" "$tabbed" "$got"
+done <<EOF
+$V4A1_ROWS
 EOF
 
 # --- slice V5d: the judge agent ids, each old id still dispatchable ---

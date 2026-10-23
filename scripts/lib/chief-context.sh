@@ -216,23 +216,35 @@ console_context_leg_env_unset_names() {
         HIMMEL_RM_DOC \
         HIMMEL_RM_RELEASE \
         HIMMEL_LEG_CONTEXT_MODE \
+        HIMMEL_WORKER_SESSION_CONTEXT_MODE \
         HIMMEL_LEG_AUTOCOMPACT \
+        HIMMEL_WORKER_SESSION_AUTOCOMPACT \
         CLAUDE_CODE_EFFORT_LEVEL \
         CLAUDEX_LANE_OK \
         LEG_LANE \
+        WORKER_SESSION_LANE \
         CADENCE_BANK_LANE \
         CADENCE_USAGE_LANE \
         OPENROUTER_MODEL \
         CODEX_MODEL \
         LEG_PROFILE_SETTINGS \
+        WORKER_SESSION_PROFILE_SETTINGS \
         LEG_PROFILE_PREFACE \
+        WORKER_SESSION_PROFILE_PREFACE \
         LEG_PROFILE_MCP_CONFIG \
+        WORKER_SESSION_PROFILE_MCP_CONFIG \
         LEG_PROFILE_NO_SETTING_SOURCES \
+        WORKER_SESSION_PROFILE_NO_SETTING_SOURCES \
         LEG_SESSION_ID \
+        WORKER_SESSION_ID \
         HIMMEL_LEG_PROFILE \
+        HIMMEL_WORKER_SESSION_PROFILE \
         LEG_CLAUDE_BIN \
+        WORKER_SESSION_CLAUDE_BIN \
         HIMMEL_LEAN_LEG \
+        HIMMEL_LEAN_WORKER_SESSION \
         LEG_EFFORT \
+        WORKER_SESSION_EFFORT \
         HEADED_ARM_UNAME \
         HEADED_ARM_REQUIRED_AUTOCOMPACT \
         HEADED_ARM_LAUNCHER \
@@ -246,17 +258,24 @@ console_context_leg_env_unset_names() {
 # session is or which guards it runs under. arm-resume.sh clears exactly these
 # in its `at` job body (F2): `at` snapshots the submitter's env, so
 # an arm made from inside a consult would otherwise hand the resumed session
-# LEG_PROFILE_NO_SETTING_SOURCES and friends. The rest of the list stays live
+# WORKER_SESSION_PROFILE_NO_SETTING_SOURCES (old name LEG_PROFILE_NO_SETTING_SOURCES)
+# and friends. Each worker-session name sits beside its old name in both lists. The rest of the list stays live
 # there on purpose: HIMMEL_CONSOLE_LEG turns leg-only guard hooks ON and
 # HANDOVER_DIR names the root, so clearing them would widen, not narrow.
 console_context_launch_seam_env_names() {
     printf '%s\n' \
         LEG_PROFILE_SETTINGS \
+        WORKER_SESSION_PROFILE_SETTINGS \
         LEG_PROFILE_PREFACE \
+        WORKER_SESSION_PROFILE_PREFACE \
         LEG_PROFILE_MCP_CONFIG \
+        WORKER_SESSION_PROFILE_MCP_CONFIG \
         LEG_PROFILE_NO_SETTING_SOURCES \
+        WORKER_SESSION_PROFILE_NO_SETTING_SOURCES \
         LEG_SESSION_ID \
+        WORKER_SESSION_ID \
         LEG_CLAUDE_BIN \
+        WORKER_SESSION_CLAUDE_BIN \
         HEADED_ARM_LAUNCHER \
         HEADED_ARM_LAUNCHER_ENV
 }

@@ -764,7 +764,6 @@ packaging/aur/test-pkgbuild.sh       # ponytail: not run in CI (needs an Arch co
 scripts/test-himmel-update.sh        # HIMMEL-3450: one case needs this station's real marketplace registration (--only marketplace vs. a throwaway HOME); the rest is hermetic and runs in scripts/test-himmel-update-check.sh
 scripts/test-himmel-update-hermes.sh  # needs the hermes runtime
 scripts/hermes/test-invoke.sh        # needs the hermes runtime
-scripts/gemini/test-invoke.sh        # needs the gemini-cli binary
 scripts/cr/test-hermes-critic.sh     # integration: needs the hermes runtime (no keys on CI) — VM e2e covers it
 scripts/handover/test-hop.sh         # integration: needs a live 'claude' (--print relaunch) — VM e2e covers it
 scripts/handover/test-arm-resume.sh  # HIMMEL-3132: superseded by its two --only wrappers below, not a VM-coverage gap — per-section timing (2026-09-18) found the 2775s runtime (637/0/1, HIMMEL-2254) concentrated almost entirely in one section (real wall-clock wait loops); the other 91 sections (~200s) run per-PR via test-arm-resume-fast.sh and the slow section runs nightly via test-arm-resume-1879.sh (SUITE_TIER_DEFAULT extended below). This monolith stays skipped only so a bare run doesn't duplicate both wrappers' coverage; runnable individually
@@ -4117,7 +4116,7 @@ fi
 # that, so the class was invisible there. Every suite gets sentinels instead:
 # the console-doc files even where the caller had none, so CI sees that escape
 # too, and a dir sentinel wherever the caller has that value (an unset one
-# stays unset, as on main; CI's home-canary job covers the $HOME fallback). A
+# stays unset, as on main; CI's shards run under home-canary.sh, which covers the $HOME fallback). A
 # recording shim heads PATH for the scheduler commands. A
 # sentinel file must keep its seed, a sentinel dir must stay empty, the shim log
 # must stay empty; whatever a suite dirtied is named and reset before the next

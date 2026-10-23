@@ -92,6 +92,26 @@ from the entry point (rather than being told to include them explicitly)
 would not pull them in; being a devDependency doesn't by itself guarantee
 exclusion from a bundle, correct usage does.
 
+## Docs-site transitive: `sharp` prebuilt binaries (LGPL-3.0-or-later, accepted)
+
+`site/package-lock.json` resolves `sharp` 0.35.5 (Apache-2.0) as an
+**optional** dependency of `astro`, which pulls its prebuilt platform packages
+`@img/sharp-libvips-*` 1.3.4 (LGPL-3.0-or-later, the libvips build) and
+`@img/sharp-{wasm32,win32-*}` 0.35.5 (Apache-2.0 AND LGPL-3.0-or-later). The
+site does not use `astro:assets` image processing; `sharp` is only astro's
+default image service, so it is a dev-time install artifact. The two LGPL
+families are `@img/sharp-libvips` and `@img/sharp`:
+
+- Nothing from these packages is copied into `site/dist/` (the deployed
+  Pages artifact is static HTML/CSS/JS), and himmel does not redistribute the
+  binaries: each contributor or CI run downloads them from npm unmodified.
+- The LGPL obligations (notice, relinking) attach to whoever distributes the
+  library; himmel neither modifies nor distributes it, so no obligation is
+  triggered. Dropping it is not worth a lockfile override, since astro lists
+  it as its own optional dependency.
+- **Accepted** on 2026-10-23 (HIMMEL-7169). Revisit if the site starts
+  shipping processed images or a bundled `node_modules`.
+
 ## Vendored skill: `unslop` (MIT, Lauren Tan)
 
 Added 2026-09-17 (re-synced to the pin below in HIMMEL-5812), the first single-file skill vendored outside

@@ -242,7 +242,13 @@ prompts work unchanged). Fold into the brief when it is more than one step:
 - Give today's date if the task searches; do not write blanket "always search".
 - Never put user text inside a tool result; thinking counts toward `max_tokens`;
   no prefill and no non-default `temperature`/`top_p`/`top_k` on the API.
-- Changing the top-level effort between requests invalidates the prompt cache.
+- Effort and the cache (<https://code.claude.com/docs/en/prompt-caching#changing-effort-level>):
+  on Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 with an API key or a Claude
+  subscription, changing effort mid-session keeps the cache (Fable 5.1 needs
+  Claude Code v2.1.260+). On other models, and on Bedrock, Vertex, a Claude apps
+  gateway, with `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` set or a HIPAA
+  configuration, a change recomputes the whole request. The claudex lane routes
+  through a gateway, so assume a change throws the cache away there.
 
 **Known stale rows.** The `[1m]` suffix table below was measured on Haiku 4.5;
 Haiku 5.5 is natively 1M and takes no suffix, and its rows are unmeasured. The

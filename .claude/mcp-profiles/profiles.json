@@ -5,6 +5,7 @@
     "research": ["context7-remote"],
     "browser": ["playwright", "chrome-devtools"],
     "vault": ["obsidian-vault"],
+    "graph": ["graphify"],
     "secrets": ["onepassword"]
   }
 }

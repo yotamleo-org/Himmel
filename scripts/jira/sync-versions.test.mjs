@@ -57,6 +57,11 @@ describe('extractKeys', () => {
   it('returns nothing for a title with no key', () => {
     expect(extractKeys('chore: bump', 'HIMMEL')).toEqual([]);
   });
+
+  it('reads the project literally, never as a pattern', () => {
+    expect(extractKeys('[AB-1] x [A.-2]', 'A.')).toEqual(['A.-2']);
+    expect(extractKeys('[AAAAAAAAAAAAAAAAAAAAAAAA!-1]', '(A+)+$')).toEqual([]);
+  });
 });
 
 describe('versionSpec', () => {

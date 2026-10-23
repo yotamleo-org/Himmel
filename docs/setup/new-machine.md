@@ -67,6 +67,7 @@ value that isn't backed by one of these links.
 | `uv` (or `pipx` for pre-commit only) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` (recommended). PEP 668 blocks system pip. `pipx` can install pre-commit, but **graphify is uv-managed** — without `uv`, `himmel-update` skips graphify (status row `graphify skipped uv missing`) and it never installs. |
 | `npm` | **Not bundled.** Debian/Ubuntu's `nodejs` package ships without npm, so a box with a working `node` can still fail the install preflight (`ERROR: missing required tools: npm`). `sudo apt-get install -y npm`, or install Node + npm together from [NodeSource](https://github.com/nodesource/distributions). **And apt's npm is too old to push with** — 9.2.0's bundled registry key expired 2025-01-29, so the pre-push `npm audit signatures` gate refuses every push with `EEXPIREDSIGNATUREKEY`. Follow up with `sudo npm install -g npm@11` (npm 12 requires node ^22.22.2; apt ships 22.22.1). |
 | `sudo` | The toolchain steps that use `apt-get` need root. `himmelctl deps ensure` does **not** elevate — run the apt lines yourself (see the clean-install walkthrough below). |
+| `snyk` CLI (optional) | Version on the station: **1.1308.2** (`/usr/local/bin/snyk`, free plan). Install from the [Snyk CLI docs](https://docs.snyk.io/developer-tools/snyk-cli/install-or-update-the-snyk-cli), then `snyk auth` once by hand; the token stays in snyk's own config and himmel never reads it. `bash scripts/security/snyk-scan.sh --check` prints `OK` or a `WARN` and always exits 0. Used by the weekly `scripts/security/snyk-scan-cadence.sh` (see [cadences](../cadences.md)); without it the scan reports `WARN snyk` and the rest of himmel is unaffected. Snyk Code additionally needs enabling in the Snyk org settings. |
 | claudex lane (optional) | `bash scripts/setup/cli-proxy-lane.sh` (`--install` → `--login` → `--register`) brings up the codex-proxied `cc-codex` lane on this host — needs `systemctl --user` + `ss` (iproute2), both stock on Ubuntu/Debian/Arch/Fedora. See [cli-proxy-lane.md](cli-proxy-lane.md#where-it-runs-read-this-first). |
 
 **macOS:**
@@ -543,7 +544,6 @@ code change.
 | `HIMMEL_INITIATIVE` | Drive-to-ship auto-ship steps (opt-in, default OFF). | Uncomment one line in `.env` (auto-ship step grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
 | `PERPLEXITY_API_KEY` | Perplexity Sonar — `/research`, `/research-deep`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | Perplexity API settings. Optional (blank = feature off). |
 | `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. |
-| `GEMINI_API_KEY` | Gemini — `scripts/gemini/invoke.sh`. | Google AI Studio API key. Optional. |
 
 ### OLLAMA_NO_CLOUD (optional — ollama zero-egress defense-in-depth pin)
 
@@ -1428,6 +1428,18 @@ into three tiers; its own `_enabledPluginsComment` / `_onDemandPluginsComment` /
   two-tier profile; the table in the next subsection covers this tier, and re-enabling
   one there still means `claude plugin install`, not just `enable`.
 
+**Design profile: log in to `context7` and `agent-native-dispatch` once per
+machine.** Both stay on for design work: `context7` serves current library
+docs, and `agent-native-dispatch` is the hosted Builder.io MCP server
+(`https://dispatch.agent-native.com/mcp`) that `builder-visual@himmel`
+registers when the `design` profile enables it. Until each is authenticated, a
+design worker session cannot answer the OAuth prompt and looks hung. To log in,
+make sure the plugin is enabled, start an interactive `claude` session, run
+`/mcp`, pick each server and choose Authenticate. `himmel-doctor` check
+`C72-design-mcp-auth` warns when either login is missing (it reads the local
+MCP OAuth store, no network call, and stays silent where that store is a
+keychain). Never use `agent-native-dispatch` on salus/PHI work.
+
 #### Toggling the on-demand tier — `plugin-profile.sh` / `/profile`
 
 `scripts/machine-setup/plugin-profile.sh` is the **only**
@@ -1764,29 +1776,24 @@ an existing foreign graphify install is adopted as-is, never reinstalled;
 see `scripts/lib/graphify-bin.sh`.)
 
 The install exposes two binaries: `graphify` (the CLI) and `graphify-mcp`
-(the MCP server). **`setup.sh --with-graphify` (and `adopt.sh --with-graphify`)
-now register the MCP server automatically** (`setup.sh` at
-`user` scope, `adopt.sh` at its `--scope`), so the install delivers the
-`mcp__graphify__*` tools, not just the CLI. Registration is idempotent (skips
-when graphify is already registered). The entry point is **scope-dependent**:
-`user`/`local` (a personal config) registers the **absolute** path, robust in
-the MCP launch context, and the form `/himmel-doctor` expects (it flags
-PATH-fragile bare entries); `project` (a committed `.mcp.json`) registers the
-**bare** name so the path stays portable across teammates' machines.
+(the MCP server). The CLI (`graphify query|explain|path`, `leg-graph.sh`) is the
+supported path and what agents use. **The MCP server is on demand, not
+default** (HIMMEL-7177): `setup.sh --with-graphify` (and `adopt.sh
+--with-graphify` at `user`/`local` scope) write the absolute `graphify-mcp` path
+into the on-demand registry `~/.config/himmel/mcp-on-demand.json` (override
+`HIMMEL_MCP_ONDEMAND_FILE`) and never into `~/.claude.json`, so a normal
+session does not load its 10 tool schemas. To use `mcp__graphify__*`, generate
+the profile and launch with it (`node scripts/mcp/build-mcp-profiles.mjs`, then
+`claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.graph.json`).
+`adopt.sh --scope project` still registers the **bare** name in the committed
+`.mcp.json` (a project adopter's explicit choice, portable across machines).
 
-To register (or re-register) manually (the shared implementation, same as the
-installers call), pass the scope explicitly (`user` or `project`, not both;
-`[user|project]` below is a placeholder):
-`bash scripts/lib/graphify-bin.sh register-mcp user`. For `user`/`local` it
-resolves the entry point from the directory `uv tool dir --bin` reports
-(usually `~/.local/bin` on Linux/macOS). The raw equivalent (user scope):
+To (re-)register on demand by hand:
+`bash scripts/lib/graphify-bin.sh register-mcp-on-demand`. A machine that
+registered graphify at user scope before this change keeps loading it by default
+until you run `claude mcp remove graphify -s user` and then the command above.
 
-```bash
-claude mcp add --scope user graphify -- "$(uv tool dir --bin)/graphify-mcp"
-```
-
-Claude Code is the only agent graphify needs; the MCP registration above is
-the whole integration (no codex/other-CLI prerequisite).
+Claude Code is the only agent graphify needs (no codex/other-CLI prerequisite).
 
 **Windows + WSL on one machine share ONE graph store.** Graph extraction is
 LLM-backed (real spend), so the WSL side must not regenerate what the Windows
@@ -1808,7 +1815,7 @@ graphify section in `CLAUDE.md`.
 
 Configure in Claude Code settings (`~/.claude/settings.json`):
 
-- **obsidian-vault**: `uvx mcp-obsidian` pointing to Luna vault path
+- **obsidian-vault** (on demand, HIMMEL-7176): `uvx mcp-obsidian` pointing to the Luna vault path. Put its spec in `~/.config/himmel/mcp-on-demand.json` (`{"mcpServers":{"obsidian-vault":{...}}}`, same shape as `~/.claude.json`), **not** in `~/.claude.json`, which every session loads. Launch with `node scripts/mcp/build-mcp-profiles.mjs`, then `claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.vault.json`. The Obsidian Local REST API plugin stays installed either way: the end-session-wiki hook writes session notes through it.
 - **atlassian**: Jira/Confluence MCP (requires token)
 
 ---
@@ -1907,7 +1914,7 @@ its backup copies). Not touched: the himmel clone + `.env`, your non-himmel
 ### OPTIONAL — per integration
 
 **graphify:**
-- [ ] `graphify --version` works and a fresh session lists the `graphify` MCP server as connected
+- [ ] `graphify --version` works; a fresh session does NOT list the `graphify` MCP server (on demand), and `~/.config/himmel/mcp-on-demand.json` holds its entry, which a `graph`-profile session connects
 
 **Jira / HIMMEL project:**
 - [ ] `node scripts/jira/dist/index.js list` returns HIMMEL issues

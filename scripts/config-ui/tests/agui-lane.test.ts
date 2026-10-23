@@ -13,9 +13,11 @@ const cache = (pct: number, at = NOW, resetsAt = NOW / 1000 + 86400) =>
     { limitId: "codex/secondary", usedPercent: 90, windowDurationMins: 300, resetsAt },
   ] });
 
-test("lane precedence: LEG_LANE, then the launcher's record, then the config dir, then the leg doc, else native", () => {
+test("lane precedence: WORKER_SESSION_LANE, then LEG_LANE, then the launcher's record, then the config dir, then the leg doc, else native", () => {
   expect(laneOf({ LEG_LANE: "openrouter", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" });
   expect(laneOf({ LEG_LANE: "bogus", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "claudex", laneFrom: "launcher" });
+  expect(laneOf({ WORKER_SESSION_LANE: "claudex", LEG_LANE: "openrouter" }, "")).toEqual({ lane: "claudex", laneFrom: "WORKER_SESSION_LANE" });
+  expect(laneOf({ WORKER_SESSION_LANE: "bogus", LEG_LANE: "openrouter" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" });
   expect(laneOf({ CLAUDE_CONFIG_DIR: "/h/.claude-codex" }, "")).toEqual({ lane: "claudex", laneFrom: "config-dir" });
   expect(laneOf({ CLAUDE_CONFIG_DIR: "/h/.claude-openrouter/" }, "")).toEqual({ lane: "openrouter", laneFrom: "config-dir" });
   expect(laneOf({}, "---\nlane: claudex\n---\n# leg")).toEqual({ lane: "claudex", laneFrom: "doc" });

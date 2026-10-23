@@ -2229,7 +2229,7 @@ fi
 ci23="$repo23/.github/workflows/ci.yml"
 dep_ln=$(grep -n 'run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh' "$ci23" | cut -d: -f1)
 # shellcheck disable=SC2016 # the ${{ }} is literal workflow text, not a shell expansion
-shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/\${{ needs.plan.outputs.shard_total || 8 }} \.$' "$ci23" | cut -d: -f1)
+shard_ln=$(grep -n 'run: bash scripts/ci/home-canary.sh --shard \${{ matrix.shard }}/\${{ needs.plan.outputs.shard_total || 8 }} \.$' "$ci23" | cut -d: -f1)
 if [ -n "$dep_ln" ] && [ -n "$shard_ln" ] && [ "$dep_ln" -lt "$shard_ln" ]; then
   pass "23f: ci.yml installs the tool deps before the shard run, and the shard run passes root ."
 else
@@ -2291,7 +2291,7 @@ exit 0
 SHEOF
 cat > "$sb24/test-skip-space.sh" <<'SHEOF'
 #!/usr/bin/env bash
-echo "SKIP no gemini on PATH" >&2
+echo "SKIP no hermes on PATH" >&2
 exit 0
 SHEOF
 chmod +x "$sb24"/test-*.sh
@@ -2631,7 +2631,7 @@ fi
 ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
 stop_line26="          SUITE_STOP_ON_FAIL: \${{ github.event_name == 'pull_request' && '1' || '' }}"
 shard_step26() {
-  awk '/^      - run: bash scripts\/ci\/run-shell-tests\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1"
+  awk '/^      - run: bash scripts\/ci\/home-canary\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1"
 }
 stop_on_fail_set26() { shard_step26 "$1" | grep -qxF "$stop_line26"; }
 if stop_on_fail_set26 "$ci_yml26"; then

@@ -449,6 +449,14 @@
       ],
       "bypasses": "Skips the \"check unchecked mktemp\" guard (scripts/hooks/check-unchecked-mktemp.sh).",
       "remedy": "UNCHECKED_MKTEMP_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
+      "name": "WORKER_SESSION_CONTEXT_HANDOFF_OK",
+      "hooks": [
+        "scripts/hooks/guard-leg-context-handoff.sh"
+      ],
+      "bypasses": "Lets a console-spawned worker session launched with the context guard on keep working past its threshold (75 % of its autocompact ceiling) without a CHECKPOINT or RESUME doc first. Old name: LEG_CONTEXT_HANDOFF_OK.",
+      "remedy": "WORKER_SESSION_CONTEXT_HANDOFF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     }
   ]
 }

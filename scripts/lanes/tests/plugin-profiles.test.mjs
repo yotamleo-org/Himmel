@@ -132,8 +132,6 @@ for (const name of ['operator', 'user', 'bare']) {
       // i-have-adhd@himmel rides base beside lean-skills.
       'i-have-adhd@himmel',
       // pstack@himmel and himmel-guard@himmel are user-only and added below.
-      // The operator's interactive profile works the vault.
-      'obsidian-second-brain@himmel',
       // find-docs was a user-scope skill; the user profile carries it.
       'find-docs@himmel',
       // graphify was a user-scope skill written by himmel-update; same.
@@ -345,9 +343,9 @@ test('lane-impl keeps its base surface (now including lean-skills) and disables 
   assert.ok(!('mattpocock-skills@claude-plugins-official' in p), 'HIMMEL-3064: mattpocock-skills dropped from catalog entirely');
 });
 
-test('lane-content adds obsidian on top of the impl floor', () => {
+test('lane-content adds obsidian-triage on top of the impl floor, without claude-obsidian (HIMMEL-7178)', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'lane-content');
-  assert.equal(p['claude-obsidian@himmel'], true);
+  assert.equal(p['claude-obsidian@himmel'], false);
   assert.equal(p['obsidian-triage@himmel'], true);
   // still lean on dev-authoring
   assert.equal(p['skill-creator@claude-plugins-official'], false);
@@ -439,9 +437,9 @@ test('opts.installed widens the deny-by-default baseline beyond the static catal
 });
 
 test('opts.installed cannot disable the floor or an enabled profile plugin', () => {
-  const { enabledPlugins: p } = resolveProfile(REG, 'lane-content', { installed: [...FLOOR, 'claude-obsidian@himmel'] });
+  const { enabledPlugins: p } = resolveProfile(REG, 'lane-content', { installed: [...FLOOR, 'obsidian-triage@himmel'] });
   for (const id of FLOOR) assert.equal(p[id], true);
-  assert.equal(p['claude-obsidian@himmel'], true); // profile enable beats the baseline
+  assert.equal(p['obsidian-triage@himmel'], true); // profile enable beats the baseline
 });
 
 // NOTE: the cwd walk goes to the FILESYSTEM ROOT (matching Claude Code / the
@@ -617,10 +615,11 @@ test('design profile enables the full design pack (HIMMEL-4012)', () => {
 
 // obsidian-second-brain was a user-scope skill that loaded in every
 // session. As a plugin it is catalogued (so every other profile resolves it
-// false) and enabled only where the vault is worked: the operator's interactive
-// `user` profile, vault-writing `lane-content` legs and the `telegram` bridge
-// (run.ts files attachments with it). Lean legs and the console never load it.
-const OSB_PROFILES = ['user', 'lane-content', 'telegram'];
+// false) and enabled only where the vault is worked: vault-writing
+// `lane-content` legs and the `telegram` bridge (run.ts files attachments with
+// it). The `user` profile, lean legs and the console never load it; it can be
+// enabled on demand.
+const OSB_PROFILES = ['lane-content', 'telegram'];
 test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIMMEL-4018)', () => {
   const id = 'obsidian-second-brain@himmel';
   assert.ok(REG.catalog.includes(id));
@@ -888,6 +887,23 @@ test('CLI: node plugin-profiles.mjs bare prints exactly the three shipped floor 
   const p = JSON.parse(run.stdout).enabledPlugins;
   const trueKeys = Object.keys(p).filter((k) => p[k]).sort();
   assert.deepEqual(trueKeys, [...FLOOR].sort());
+});
+
+test('worker-* profile ids resolve exactly like their leg-* names', () => {
+  for (const id of ['impl', 'bus', 'vm', 'e2e']) {
+    assert.equal(PP.canonicalProfileName(`worker-${id}`), `leg-${id}`);
+    assert.deepEqual(resolveProfile(REG, `worker-${id}`), resolveProfile(REG, `leg-${id}`));
+    assert.deepEqual(mcpServersForProfile(REG, `worker-${id}`), mcpServersForProfile(REG, `leg-${id}`));
+    assert.deepEqual(PP.contextForProfile(REG, `worker-${id}`), PP.contextForProfile(REG, `leg-${id}`));
+  }
+  assert.equal(PP.canonicalProfileName('worker-impl,lane-review'), 'leg-impl,lane-review');
+  assert.equal(PP.canonicalProfileName('constructor'), 'constructor');
+  assert.throws(() => resolveProfile(REG, 'worker-bogus'), /unknown profile "worker-bogus"/);
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const run = (name) => spawnSync(process.execPath, [cli, name, '--mcp-servers'], { encoding: 'utf8' });
+  const worker = run('worker-vm'), leg = run('leg-vm');
+  assert.equal(worker.status, 0, worker.stderr);
+  assert.equal(worker.stdout, leg.stdout);
 });
 
 test('CLI: --list includes bare', () => {

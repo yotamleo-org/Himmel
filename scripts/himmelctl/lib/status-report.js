@@ -427,17 +427,6 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (claude plugin install obsidian-second-brain@himmel; update: claude plugin update obsidian-second-brain@himmel)`;
       }
-      // gemini-cli is an optional second-opinion
-      // lane (gemini-subagent, /x-read family), not core tooling every
-      // operator needs — unlike codex-cli/hermes-checkout, which stay
-      // red-if-absent because they ARE core lanes here. profiles:["core",
-      // "all"] makes this desired:true broadly, so a non-Gemini operator
-      // would otherwise carry a permanent false red — exactly the noise
-      // exist to kill.
-      if (item.id === 'gemini-cli') {
-        severity = 'n/a';
-        detail = `${probe.detail} — opt-in (npm install -g @google/gemini-cli)`;
-      }
       // three items a clean STARTER install left red although
       // nothing was wrong. Each is downgraded ONLY on a probe-flagged clean
       // absence (or, for bitbucket-cli-build, a plain absence: its probe is a

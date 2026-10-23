@@ -1658,7 +1658,7 @@ report_handoff_placeholders() {
 # successor doc; `epics:` and `decisions:` fall back to `none`.
 carried_live_state() {
     local live="$1" field line
-    for field in epics decisions priority versions tracker-plan release rm; do
+    for field in epics decisions priority versions tracker-plan release rm focus-version focus-plan; do
         line="$(printf '%s\n' "$live" | grep -m 1 "^$field:")" || line=""
         case "$field" in epics|decisions) [ -n "$line" ] || line="$field: none" ;; esac
         [ -z "$line" ] || printf '%s\n' "$line"

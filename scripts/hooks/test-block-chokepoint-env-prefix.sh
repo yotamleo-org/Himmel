@@ -2495,6 +2495,50 @@ assert_deny "6015 control: a globbed printf format can carry %n" "$(j "printf %[
 assert_allow "6015 printf %%n prints a literal %n and keeps the relief" "$(j "printf '%%n' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 assert_allow "6015 printf with no %n conversion keeps the relief" "$(j "printf '%s\n' x; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 
+# 7009: a judge writes its reasoning to a scratch .md with a quoted heredoc and
+# hands it to write-verdict.sh. A body line opening with a verb word beside a
+# glob path under scripts/ is prose, not a seam write.
+EV=/tmp/claude-1000/j3611/evidence.md
+WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high"
+EVH="cat > $EV <<'EOF2'"
+assert_allow "7009 evidence heredoc, line-start read beside a glob scripts/ path" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh before judging; all unchanged."$'\n'"EOF2")"
+assert_allow "7009 evidence heredoc, verb line after a glob mention" "$(j "$EVH"$'\n'"- checked scripts/hooks/*.sh"$'\n'"export the notes."$'\n'"EOF2")"
+assert_allow "7009 evidence heredoc then the literal write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"$WV")"
+assert_allow "7009 the literal write-verdict.sh call alone" "$(j "$WV")"
+assert_deny "7009 control: a registered chokepoint env prefix beside the evidence heredoc" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN")"
+assert_deny "7009 control: a verb line AFTER the heredoc closes still denies" "$(j "$EVH"$'\n'"prose"$'\n'"EOF2"$'\n'"read scripts/hooks/*.sh")"
+assert_deny "7009 control: an evidence file that is then run still denies" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash $EV")"
+EVR="HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN"
+EVB="HIMMEL_REPO=/tmp bash ${MERGE_ON_GREEN%n.sh}?.sh"
+assert_allow "7009 evidence heredoc with a wide-spaced opener" "$(j "cat >   $EV <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"$WV")"
+WVQ="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2"
+assert_deny "7009 control: a chokepoint env prefix in the evidence body is seen by the raw backstop" "$(j "$EVH"$'\n'"$EVR"$'\n'"EOF2"$'\n'"$WV")"
+assert_deny "7009 control: a double quote opened on the write-verdict line swallows the opener" "$(j "$WVQ \""$'\n'"$EVH"$'\n'"\"; $EVB; echo \""$'\n'"EOF2"$'\n'"$WVQ \"")"
+assert_deny "7009 control: a single quote opened on the write-verdict line swallows the opener" "$(j "$WVQ '"$'\n'"$EVH"$'\n'"'; $EVB; echo '"$'\n'"EOF2"$'\n'"$WVQ '")"
+assert_deny "7009 control: a function named write-verdict.sh runs the evidence file" "$(j "write-verdict.sh () ( bash \"\$2\" )"$'\n'"$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"write-verdict.sh --evidence-file $EV")"
+assert_deny "7009 control: a payload body run through a dot-segment spelling still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/./evidence.md")"
+assert_deny "7009 control: a payload body run through a glob spelling still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/evid*.md")"
+assert_deny "7009 control: a payload body run by relative name after cd still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"cd /tmp/claude-1000/j3611"$'\n'"bash evidence.md")"
+assert_deny "7009 control: a payload body run through a variable path still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"D=/tmp/claude-1000/j3611"$'\n'"bash \$D/evidence.md")"
+assert_deny "7009 control: a cat function that runs the evidence heredoc still denies" "$(j "cat() { bash -s; }"$'\n'"$EVH"$'\n'"$EVB"$'\n'"EOF2")"
+assert_deny "7009 control: a cat alias that runs the evidence heredoc still denies" "$(j "alias cat='bash -s #'"$'\n'"$EVH"$'\n'"$EVB"$'\n'"EOF2")"
+assert_deny "7009 control: a write-verdict call chained with another command keeps the scan" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"$WV; bash /tmp/claude-1000/j3611/./evidence.md")"
+assert_deny "7009 control: an unquoted evidence heredoc keeps its scan" "$(j "cat > $EV <<EOF2"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
+assert_deny "7009 control: a heredoc to a non-scratch path keeps its scan" "$(j "cat > /tmp/hookprobe.md <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
+assert_deny "7009 control: a heredoc to a scratch .sh keeps its scan" "$(j "cat > /tmp/claude-1000/j3611/p.sh <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
+assert_deny "7009 control: an unterminated evidence heredoc keeps its scan" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh")"
+# A U+3000 after the tag is part of bash's delimiter word, so bash closes the
+# body at `EOF2<U+3000>` while a UTF-8 [[:blank:]] lets the strip close it at the
+# later plain `EOF2`; the payload line between them would run unseen.
+if [ -n "$U8" ]; then
+    SP3=$(printf '\343\200\200')
+    export LC_ALL="$U8"
+    assert_deny "7009 control: a U+3000 after the heredoc tag does not move the body end" "$(j "$EVH$SP3"$'\n'"prose"$'\n'"EOF2$SP3"$'\n'"$EVB"$'\n'"EOF2"$'\n'"$WV")"
+    unset LC_ALL
+else
+    echo "SKIP 7009 U+3000 heredoc-tag row: no UTF-8 locale installed"
+fi
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"

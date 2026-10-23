@@ -16,7 +16,7 @@ function readRows(path) {
 export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now()) {
   const home = env.HOME || homedir();
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now);
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now);
 }
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;

@@ -139,7 +139,7 @@ assert_contains "typed deny names the type" "Explore" "$(cat "$TMP/err-explore-n
 RC1F=$(run_hook judge-ro-no-model "$(payload console-judge-ro '')")
 assert_rc "typed agent (console-judge-ro) with no model is DENIED (rc=2)" 2 "$RC1F"
 
-RC1G=$(run_hook plugin-agent-no-model "$(payload_no_model_field pr-review-toolkit-himmel:code-reviewer)")
+RC1G=$(run_hook plugin-agent-no-model "$(payload_no_model_field example-plugin:reviewer)")
 assert_rc "plugin-namespaced agent with no model is DENIED (rc=2)" 2 "$RC1G"
 
 # an explicit JSON null model is the same as an omitted one.

@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
-import { baselineId, effectOn, reduce, recordOf, scopeOk, unknownState, type ReleaseState } from './reducer.js';
+import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -142,7 +142,8 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
     const fm = frontmatter(readFileSync(join(root, name), 'utf8'));
     if (typeof fm.key !== 'string') continue;
     issues.set(fm.key, {
-      key: fm.key, status: String(fm.status ?? ''), type: String(fm.type ?? ''), priority: String(fm.priority ?? ''),
+      key: fm.key, status: String(fm.status ?? ''), statusCategory: typeof fm.statusCategory === 'string' ? fm.statusCategory : null,
+      type: String(fm.type ?? ''), priority: String(fm.priority ?? ''),
       fixVersions: Array.isArray(fm.fixVersions) ? fm.fixVersions.map(String) : [],
       resolution: typeof fm.resolution === 'string' ? fm.resolution : null,
     });
@@ -235,6 +236,71 @@ export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorR
   operatorFence(ctx);
   if (!isAbsolute(o.doc)) throw new Error('release operator takeover: the successor doc must be an absolute path');
   return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'takeover', decision: null, epoch: o.epoch, doc: o.doc }));
+}
+
+// --- fold: a finished ticket recorded as delivered in a version (the console) ---------
+
+export interface FoldItem { key: string; pr: number }
+export interface FoldSkip { key: string; terminal: string; resolution: string }
+export interface FoldOut { folded: EventRow[]; already: string[]; skipped: FoldSkip[] }
+
+const ISSUE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+
+const lastBookkeeping = (events: EventRow[], key: string) =>
+  [...events].reverse().find((e) => e.key === key && (e.kind === 'fold' || e.kind === 'reopen'));
+
+function foldVersion(ctx: Ctx, l: Loaded, v: string): void {
+  if (!l.decl.versions.includes(v)) throw new Error(`release: ${v} is not a version of ${ctx.release}`);
+  if (l.events.bad.length) throw new Error(`release: events.jsonl does not verify (${l.events.bad[0]})`);
+}
+
+// One signed events row per key. Only a key the mirror reads as terminal Done folds;
+// every other key is returned in `skipped` with its terminal and resolution, and stays
+// a leak until a ruling moves it out of the version. A key already folded to this
+// version under this PR is skipped silently, so a batch can be re-run.
+export function fold(ctx: Ctx, o: { to: string; items: FoldItem[] }): FoldOut {
+  operatorFence(ctx);
+  for (const it of o.items) {
+    if (!ISSUE_KEY.test(it.key)) throw new Error(`release fold: '${it.key}' is not an issue key`);
+    if (!Number.isSafeInteger(it.pr) || it.pr <= 0) throw new Error(`release fold: ${it.key} needs a positive PR number`);
+  }
+  return locked(ctx, (l) => {
+    foldVersion(ctx, l, o.to);
+    const { issues } = readMirror(ctx.mirrorRoot);
+    if (!issues) throw new Error('release fold: the Jira mirror is unreadable; sync it first');
+    const eventsPath = f(ctx, 'events.jsonl');
+    const seen = [...l.events.verified];
+    const out: FoldOut = { folded: [], already: [], skipped: [] };
+    for (const { key: k, pr } of o.items) {
+      const issue = issues.get(k);
+      const terminal = terminalOf(issue);
+      if (terminal !== 'Done') {
+        out.skipped.push({ key: k, terminal: terminal ?? (issue ? 'open' : 'not-in-mirror'), resolution: issue?.resolution ?? 'none' });
+        continue;
+      }
+      const last = lastBookkeeping(seen, k);
+      if (last?.kind === 'fold' && last.to === o.to && last.pr === pr) {
+        out.already.push(k);
+        continue;
+      }
+      const row = appendChain<EventRow>(eventsPath, l.k, { ts: ts(ctx), kind: 'fold', key: k, from: null, to: o.to, pr });
+      seen.push(row);
+      out.folded.push(row);
+    }
+    return out;
+  });
+}
+
+// The twin of fold: the newest bookkeeping row of the key must be a fold into `from`.
+export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
+  operatorFence(ctx);
+  if (!ISSUE_KEY.test(o.key)) throw new Error(`release reopen: '${o.key}' is not an issue key`);
+  return locked(ctx, (l) => {
+    foldVersion(ctx, l, o.from);
+    const last = lastBookkeeping(l.events.verified, o.key);
+    if (last?.kind !== 'fold' || last.to !== o.from) throw new Error(`release reopen: ${o.key} has no fold into ${o.from} to reverse`);
+    return appendChain<EventRow>(f(ctx, 'events.jsonl'), l.k, { ts: ts(ctx), kind: 'reopen', key: o.key, from: o.from, to: null });
+  });
 }
 
 // --- the request queue (the console writes, the RM claims) ---------------------
@@ -515,14 +581,26 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 // --- state ---------------------------------------------------------------------------
 
 export interface StateOut extends ReleaseState {
+  /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
+  admissions_today: Record<string, number>;
   lease: Omit<Lease, 'mac'> | null;
   requests: { open: string[]; claimed: string[] };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
 }
 
+function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
+  const today = ts(ctx).slice(0, 10);
+  const counts: Record<string, number> = Object.fromEntries(l.decl.versions.map((v) => [v, 0]));
+  for (const o of l.operator.verified) {
+    if (o.kind !== 'decision' || (o.op !== 'add' && o.op !== 'move') || !o.to_v || !(o.to_v in counts) || !o.ts.startsWith(today)) continue;
+    counts[o.to_v] += o.keys?.length ?? 0;
+  }
+  return counts;
+}
+
 export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
-  const empty = { lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
+  const empty = { admissions_today: {}, lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
   const s = reduceLoaded(l, mirror);
@@ -543,6 +621,7 @@ export function state(ctx: Ctx): StateOut {
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
+    admissions_today: admissionsToday(ctx, l),
     lease: lease ? leaseOut : null,
     requests: { open, claimed },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
@@ -553,4 +632,111 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
   const m = new Map<string, RequestRow>();
   for (const r of requests.verified) m.set(r.req, r);
   return m;
+}
+
+// --- rm-run: the release manager as one on-demand batch -------------------------------
+
+export interface Decision {
+  req: string;
+  outcome: string;
+  op: Op['kind'];
+  from: string | null;
+  to: string | null;
+  sector: string;
+  ground: string;
+  reason: string;
+  supersedes?: string[];
+  authority?: Authority['kind'];
+  ref?: string | null;
+}
+
+// Everything a ruling weighs, read from disk: a standing session kept nothing else that counts.
+export interface JudgeInput {
+  release: string;
+  current: string;
+  versions: string[];
+  requests: RequestRow[];
+  records: ReleaseState['records'];
+  operator: OperatorRow[];
+  rulings: RulingRow[];
+  issues: IssueSnap[];
+}
+
+export type Judge = (input: JudgeInput) => Promise<Decision[]>;
+
+function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
+  const last = new Map<string, RulingRow>();
+  for (const r of rulings.verified) last.set(r.id, r);
+  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
+}
+
+// Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
+// applies through the engine, and releases the lease. Decisions come only from
+// the judge, never from the caller.
+export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?: string } = {}): Promise<string[]> {
+  const l = loadOrThrow(ctx);
+  const pending = [...latestRequests(l.requests).values()].filter((r) => r.state === 'open' || r.state.startsWith('claimed:'));
+  if (!pending.length && !unfinishedRulings(l.rulings).length) return [`RM-RUN ${ctx.release}: nothing pending`];
+
+  const doc = o.doc ?? join(ctx.dir, 'rm-runs', `run-${ts(ctx).replace(/[:.]/g, '-')}.md`);
+  const rctx: Ctx = { ...ctx, env: { ...ctx.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: ctx.release } };
+  const lease = leaseAcquire(rctx, { expectEpoch: readLease(ctx, l.k).epoch, doc, session: o.session ?? 'rm-run' });
+  const lines: string[] = [];
+  try {
+    for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
+      try {
+        lines.push((await apply(rctx, id)).line);
+      } catch (e) {
+        lines.push(`PENDING ${id}: ${(e as Error).message}`);
+      }
+    }
+    const claimed = claim(rctx);
+    if (claimed.length) {
+      const now = loadOrThrow(ctx);
+      const keys = new Set(claimed.map((r) => r.key));
+      const mirror = readMirror(ctx.mirrorRoot);
+      const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
+      const decisions = await judge({
+        release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: claimed,
+        records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
+        operator: now.operator.verified,
+        rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
+        issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
+      });
+      for (const q of claimed) {
+        let id: string;
+        try {
+          const d = decisions.find((x) => x?.req === q.req);
+          if (!d) throw new Error('the judge returned no decision');
+          id = rule(rctx, {
+            req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
+            ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
+            authority: { kind: d.authority ?? 'rm', ref: d.ref ?? null },
+          }).id;
+        } catch (e) {
+          lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
+          continue;
+        }
+        try {
+          lines.push((await apply(rctx, id)).line);
+        } catch (e) {
+          lines.push(`PENDING ${id}: ${(e as Error).message}`);
+        }
+      }
+    }
+  } finally {
+    // Cleanup never hides the rulings already made or the error that ended the run.
+    try {
+      leaseRelease(rctx);
+    } catch (e) {
+      lines.push(`PENDING lease: ${(e as Error).message}`);
+    }
+    try {
+      mkdirSync(dirname(doc), { recursive: true });
+      writeFileSync(doc, `# rm-run ${ctx.release} epoch ${lease.epoch}\n\n${lines.map((x) => `- ${x}`).join('\n')}\n`);
+    } catch (e) {
+      lines.push(`PENDING run record: ${(e as Error).message}`);
+    }
+  }
+  return lines;
 }

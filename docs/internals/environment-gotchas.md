@@ -159,18 +159,16 @@ way" is wrong:
   *non-blocking*, so the only symptom is a repeated `PreToolUse hook error …
   command not found` line and the graph-context injection silently never firing.
   **This is the breakage you actually observe.**
-- **codex and gemini run hook commands through cmd.exe**, not bash — codex via its
+- **codex runs hook commands through cmd.exe**, not bash — via its
   `.codex/run-hook.cmd` cmd wrapper (whose own comments note "bare `bash` via
-  cmd.exe hits the WSL System32 stub"), gemini-cli via Node's default Windows
-  shell. cmd.exe does **not** eat backslashes, so `C:\Users\…\graphify.EXE …` runs
-  there unchanged — the codex/gemini graphify hooks are **not** broken by the
-  backslash path. Do **not** "fix" them by copying Claude's MSYS `/c/…` form: see
+  cmd.exe hits the WSL System32 stub"). cmd.exe does **not** eat backslashes, so
+  `C:\Users\…\graphify.EXE …` runs there unchanged — the codex graphify hooks
+  are **not** broken by the backslash path. Do **not** "fix" them by copying Claude's MSYS `/c/…` form: see
   the verification below.
 
 Root cause is upstream: `graphify/install.py::_resolve_graphify_exe()` returns
 `shutil.which("graphify")` (a backslash path) and the hook builders interpolate it
-**unquoted** (`f"{exe} hook-guard search"`; the gemini builder quotes only when the
-path contains a space). The in-code "#522 fix" comment ("parses under sh, cmd.exe
+**unquoted** (`f"{exe} hook-guard search"`). The in-code "#522 fix" comment ("parses under sh, cmd.exe
 and PowerShell alike") does not hold for Windows + a POSIX hook shell.
 
 **Fix — use the forward-slash Windows path, the one form that works in every
@@ -178,8 +176,8 @@ executor:** `C:/Users/<you>/.local/bin/graphify.exe hook-guard search`. Verified
 this host: in **bash** both `/c/Users/…` (MSYS) and `C:/Users/…` run; in **cmd.exe**
 only `C:/Users/…` runs — the MSYS `/c/…` form returns "the system cannot find the
 path specified". So the MSYS `/c/…` form fixes Claude but **breaks** a cmd.exe
-harness (codex/gemini); the forward-slash `C:/…` form is universal. Affected
-configs: `.claude/settings.json`, `.codex/hooks.json`, `.gemini/settings.json`
+harness (codex); the forward-slash `C:/…` form is universal. Affected
+configs: `.claude/settings.json`, `.codex/hooks.json`
 (and `~/.claude/settings.json` if installed globally).
 
 **Quote the exe if its path contains a space.** Removing backslashes is not enough
@@ -192,8 +190,8 @@ graphify to a space-free path.
 
 Re-install caveat: 0.9.18 `graphify install` (claude) no longer writes
 settings.json hooks (skill + CLAUDE.md + version-stamp refresh only), so a fixed
-Claude hook survives re-install — but `graphify codex install` / `graphify gemini
-install` still re-emit the backslash path (harmless under cmd.exe, but re-normalize
+Claude hook survives re-install — but `graphify codex install`
+still re-emits the backslash path (harmless under cmd.exe, but re-normalize
 to the `C:/…` form for consistency + space-safety). A durable himmel-owned
 post-install path-normalizer is a known gap.
 

@@ -1,0 +1,47 @@
+name: Lockfile Release Age
+
+# HIMMEL-7173: a lockfile entry a PR adds must have been public for 3 days
+# (scripts/ci/check-lockfile-release-age.mjs), unless it is on the security-fix
+# allowlist scripts/ci/release-age-allow.txt. A hijacked release is usually pulled
+# within hours, so CI never reaches a fresh minor or patch release.
+#
+# Runs on EVERY pull_request, Dependabot's included, with no `paths:` filter: a
+# required check behind a path filter never reports on a PR that skips it. A PR
+# that changes no lockfile adds no entry, so the script reads nothing from the
+# network and passes in seconds.
+#
+# Nothing here installs the dependencies it checks: the script only parses
+# lockfiles as text and asks the registry for publish times. The base is the merge
+# commit's first parent (HEAD^1), the base-branch tip this PR is merged onto, so an
+# entry another PR merged meanwhile is not charged to this one.
+#
+# Fail-closed: a publish time that cannot be read (registry unreachable after 3
+# tries) fails the job; re-run it. The script and allowlist under scripts/ci/ are
+# trust paths, so a PR that edits them needs a trust-reviewed console GO.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lockfile-release-age-${{ github.event.pull_request.number }}
+  # Never cancel a RUNNING check (a CANCELLED context on a required check).
+  cancel-in-progress: false
+
+jobs:
+  lockfile-release-age:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its first parent (the base tip).
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.4'
+      - name: Refuse a lockfile entry younger than 3 days
+        run: node scripts/ci/check-lockfile-release-age.mjs --base HEAD^1

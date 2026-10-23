@@ -438,7 +438,16 @@ export function validateRegistry(registry) {
 // can drop it (design Rule 1). "bare" is name-recognized (like operator) and
 // skips step 1: it resolves to floor-only-plus-overlay so a dispatch can
 // compose a one-off surface purely from --add-plugins with no registry entry.
+// worker-* profile ids are the new names of the leg-* registry keys; each
+// member of a comma list maps to its leg-* key before any lookup.
+export const PROFILE_ALIASES = { 'worker-impl': 'leg-impl', 'worker-bus': 'leg-bus', 'worker-vm': 'leg-vm', 'worker-e2e': 'leg-e2e' };
+
+export function canonicalProfileName(name) {
+  return String(name).split(',').map((m) => (Object.hasOwn(PROFILE_ALIASES, m) ? PROFILE_ALIASES[m] : m)).join(',');
+}
+
 export function resolveProfile(registry, name, opts = {}) {
+  name = canonicalProfileName(name);
   if (String(name).includes(',')) return composeProfiles(registry, name, opts);
   const profiles = registry.profiles ?? {};
   // Own-property test, NOT `name in profiles` — `in` walks the prototype chain,
@@ -521,6 +530,7 @@ export function resolveProfile(registry, name, opts = {}) {
 // Sibling output, never extra Claude settings keys. Resolve the
 // names through the same composition gate, then take the largest declared cap.
 export function contextForProfile(registry, name) {
+  name = canonicalProfileName(name);
   const errors = validateRegistry(registry);
   if (errors.length) throw new Error(`plugin-profiles: registry invalid:\n  - ${errors.join('\n  - ')}`);
   resolveProfile(registry, name);
@@ -706,6 +716,7 @@ export function resolveProfileByName(name, opts = {}, path = REGISTRY) {
 // distinct from an explicit [], which means "strip everything"). Mirrors
 // resolveProfile's own-property fail-closed check on an unknown name.
 export function mcpServersForProfile(registry, name) {
+  name = canonicalProfileName(name);
   if (String(name).includes(',')) {
     const members = name.split(',');
     if (members.some((m) => !/^[A-Za-z0-9._-]+$/.test(m)) || new Set(members).size !== members.length) {
@@ -838,7 +849,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
       process.stdout.write('plugin-profiles: registry valid\n');
       process.exit(0);
     }
-    const name = argv[0];
+    const name = argv[0] && canonicalProfileName(argv[0]);
     if (!name) die(2, 'usage: plugin-profiles.mjs <profile> [--add-plugins a@m,b@m] | --mcp-servers | --mcp-config | --list | --validate');
     if (argv[1] === '--context') {
       if (argv.length > 2) die(2, `plugin-profiles: unknown argument "${argv[2]}"`);

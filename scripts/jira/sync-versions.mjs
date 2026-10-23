@@ -89,7 +89,8 @@ export function parseArgs(argv) {
 // mentions are prose, not the ticket-ID convention the commit gate enforces.
 export function extractKeys(title, project) {
   const seen = new Set();
-  for (const m of title.matchAll(new RegExp(`\\[(${project}-\\d+)\\]`, 'g'))) seen.add(m[1]);
+  const literal = project.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const m of title.matchAll(new RegExp(`\\[(${literal}-\\d+)\\]`, 'g'))) seen.add(m[1]);
   return [...seen];
 }
 

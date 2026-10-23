@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 vi.mock('../client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client.js')>();
@@ -127,7 +130,8 @@ describe('version commands + fix-version', () => {
   });
 
   it('fix-version --add: PUT update.fixVersions add, breadcrumb, line', async () => {
-    mockRequest.mockResolvedValue({ fields: { fixVersions: [{ name: 'v2' }] } });
+    mockRequest.mockImplementation(async (_m: string, path: string) =>
+      path.endsWith('/versions') ? VERSIONS : { fields: { fixVersions: [{ name: 'v2' }] } });
     await run(['fix-version', 'HIM-9', '--add', 'v2']);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIM-9', { update: { fixVersions: [{ add: { name: 'v2' } }] } });
     expect(writeJiraBreadcrumb).toHaveBeenCalledWith('HIM-9');
@@ -144,6 +148,86 @@ describe('version commands + fix-version', () => {
   it('fix-version needs exactly one of --add/--remove', async () => {
     await expect(run(['fix-version', 'HIM-9'])).rejects.toThrow(/exactly one of --add/);
     await expect(run(['fix-version', 'HIM-9', '--add', 'a', '--remove', 'b'])).rejects.toThrow(/exactly one of --add/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe('fix-version --add into a frozen version (HIMMEL-7153)', () => {
+  const FROZEN = [{ id: '300', name: 'v1.1.3', description: 'frozen: 2026-10-20\nfrozen-keys: HIM-1' }, ...VERSIONS];
+  const saved = { key: process.env.JIRA_PROJECT_KEY, ledger: process.env.HIMMEL_ADMISSIONS_LEDGER, console: process.env.HIMMEL_CONSOLE };
+  let dir: string;
+  let ledger: string;
+  const puts = () => mockRequest.mock.calls.filter((c) => c[0] === 'PUT');
+  const rows = () => readFileSync(ledger, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, string>);
+  const readBack = (names: string[]) => async (_m: string, path: string) =>
+    path.endsWith('/versions') ? FROZEN : { fields: { fixVersions: names.map((name) => ({ name })) } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    dir = mkdtempSync(join(tmpdir(), 'fixver-gate-'));
+    ledger = join(dir, 'admissions-ledger.jsonl');
+    process.env.JIRA_PROJECT_KEY = 'HIM';
+    process.env.HIMMEL_ADMISSIONS_LEDGER = ledger;
+    delete process.env.HIMMEL_CONSOLE;
+    mockRequest.mockImplementation(readBack(['v1.1.3']));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    for (const [k, v] of [['JIRA_PROJECT_KEY', saved.key], ['HIMMEL_ADMISSIONS_LEDGER', saved.ledger], ['HIMMEL_CONSOLE', saved.console]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('refuses without a gate or override and writes nothing', async () => {
+    await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3'])).rejects.toThrow(/v1\.1\.3 is frozen \(2026-10-20\)/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('--gate critical adds the version and records the admission row', async () => {
+    await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--gate', 'critical']);
+    expect(puts()).toHaveLength(1);
+    expect(rows()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIM-9', gate: 'critical' })]);
+  });
+
+  it('a bad --gate value refuses before any request', async () => {
+    await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--gate', 'because'])).rejects.toThrow(/--gate must be one of/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('--console-override needs the console marker', async () => {
+    await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled'])).rejects.toThrow(/HIMMEL_CONSOLE=1 is not set/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('--console-override with the marker adds the version and records an override row', async () => {
+    process.env.HIMMEL_CONSOLE = '1';
+    await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled']);
+    expect(puts()).toHaveLength(1);
+    expect(rows()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIM-9', kind: 'override', reason: 'operator ruled' })]);
+  });
+
+  it('writes no ledger row when the read-back shows the version did not land', async () => {
+    mockRequest.mockImplementation(readBack([]));
+    await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--gate', 'critical'])).rejects.toThrow(/was not changed/);
+    expect(readFileSync(ledger, 'utf8')).toBe('');
+  });
+
+  it('an unfrozen version stays ungated', async () => {
+    mockRequest.mockImplementation(readBack(['v2']));
+    await run(['fix-version', 'HIM-9', '--add', 'v2']);
+    expect(puts()).toHaveLength(1);
+  });
+
+  it('--remove stays ungated', async () => {
+    mockRequest.mockImplementation(readBack([]));
+    await run(['fix-version', 'HIM-9', '--remove', 'v1.1.3']);
+    expect(puts()).toHaveLength(1);
+  });
+
+  it('--gate with --remove refuses before any request', async () => {
+    await expect(run(['fix-version', 'HIM-9', '--remove', 'v1.1.3', '--gate', 'critical'])).rejects.toThrow(/--add/);
     expect(mockRequest).not.toHaveBeenCalled();
   });
 });

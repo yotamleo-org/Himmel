@@ -56,12 +56,23 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.3" \
-  test "$default_ref" = "5490d8947d3d8c9edbb6c1288174005d35f44e81"
+assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.4" \
+  test "$default_ref" = "ac626e4ce1e4ca1f32ca02c9f7ebab2d2fb12d8b"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment names the tag and HIMMEL-5952" \
-  bash -c 'grep -q "v2.8.3-himmel.3" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+  bash -c 'grep -q "v2.8.3-himmel.4" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+# The pinned fork commit must carry the fixed MCP server (2.3.0+ clears the HTTP
+# transport advisories). The fixture is the real bun.lock lines of the fork at the
+# pinned commit, copied from the fork, headed by the commit it came from.
+mcp_fixture="$SCRIPT_DIR/fixtures/qmd-fork-mcp-server-lock.txt"
+assert "the MCP server lock fixture was taken at the pinned fork commit" \
+  test "$(sed -n '1s/^fork-sha //p' "$mcp_fixture")" = "$default_ref"
+mcp_server_ver="$(sed -n 's/.*"@modelcontextprotocol\/server": \["@modelcontextprotocol\/server@\([0-9.]*\)".*/\1/p' "$mcp_fixture")"
+# shellcheck disable=SC2016
+# Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
+assert "the pinned fork resolves @modelcontextprotocol/server 2.3.0 or newer" \
+  bash -c 'printf "2.3.0\n%s\n" "$1" | sort -V -C' _ "$mcp_server_ver"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment no longer calls the pin the pin-http-auth tip" \

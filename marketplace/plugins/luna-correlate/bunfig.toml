@@ -1,2 +1,6 @@
+# HIMMEL-7173: refuse a release younger than 3 days (seconds); a hijacked release is usually pulled within hours.
+[install]
+minimumReleaseAge = 259200
+
 [test]
 preload = ["./tests/setup.ts"]
