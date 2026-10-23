@@ -30,6 +30,8 @@ _secs() {
     case "$num" in *.*) frac="${num#*.}" ;; esac
     frac="${frac}000000"; frac="${frac:0:6}"
     micro=$(( (10#${int:-0} * 1000000 + 10#$frac) * mult ))
+    # a nonzero interval finer than a microsecond is still a bound, not "no bound"
+    case "$num" in *[1-9]*) [ "$micro" -gt 0 ] || micro=1 ;; esac
     if [ $((micro % 1000000)) -eq 0 ]; then
         printf '%s' "$((micro / 1000000))"
     else

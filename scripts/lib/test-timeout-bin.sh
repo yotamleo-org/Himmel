@@ -239,5 +239,12 @@ PATH="$d7n" "$BASH_BIN" -c '. "$1"; timeout 1 sleep 30' _ "$PORTF" >/dev/null 2>
 eq "T7 without awk on PATH a sleeper is killed by the bound (rc 124)" "$rc" "124"
 if [ $((SECONDS - t0)) -lt 10 ]; then ok "T7 without awk on PATH the bound fired in time"; else bad "T7 without awk on PATH the bound took $((SECONDS - t0))s"; fi
 
+# a positive interval too small for microsecond precision must still bound, not turn into 0 (no bound)
+rc=0; t0=$SECONDS
+# shellcheck disable=SC2016 # single quotes intentional: the child shell expands $1
+PATH="$d7n" "$BASH_BIN" -c '. "$1"; timeout 0.0000009d sleep 5' _ "$PORTF" >/dev/null 2>&1 || rc=$?
+eq "T7 a positive interval below one microsecond still bounds (rc 124)" "$rc" "124"
+if [ $((SECONDS - t0)) -lt 4 ]; then ok "T7 the sub-microsecond bound fired in time"; else bad "T7 the sub-microsecond bound took $((SECONDS - t0))s"; fi
+
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
