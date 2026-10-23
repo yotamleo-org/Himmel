@@ -1,7 +1,11 @@
 # The himmel UI surfaces
 
+Audience: newcomer who has installed himmel, and contributor. Owner: HIMMEL-6836 (this page).
+
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
-command you run yourself. Only the Settings switches and the Setup page of the first one change anything. If a user asks "the himmel UI",
+command you run yourself. Only the config UI can change anything on your machine. Settings switches show a dry-run and ask
+for a confirm, and a typed value is saved on request. A Kanban drop and a theme select on the Roadmap
+write to Jira at once, with no confirm. The other two surfaces only display. If a user asks "the himmel UI",
 they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
@@ -13,9 +17,10 @@ they almost always mean the first one.
 ## The config console (`himmelctl ui`)
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
-same data as `himmelctl report --json`. Every page is read-only except the
-switches on Settings and the Setup page, and each switch shows its dry-run before anything changes.
-A confirmed switch runs the `himmelctl` command printed under it, and writes:
+same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
+inventory only display. What can change something is on Settings, Setup and the Roadmap and
+Kanban boards; the table after the switches maps every action to its route. A switch shows its
+dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:
 
 | Switch | What it writes | Takes effect |
 |---|---|---|
@@ -24,6 +29,8 @@ A confirmed switch runs the `himmelctl` command printed under it, and writes:
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
+| Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a value set in the launching shell wins until that shell restarts | the next worker launch |
+| VM mode (Settings) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
 | Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
 The Review gate card lists the reviewers in the order they run, says in plain words what `hard` and `best-effort`
@@ -42,8 +49,24 @@ works without it), and the steps to install the GitHub App on the repo and arm t
 for a `CodeRabbit` check: seen is `installed`; not seen is `not detected` (a new install, a repo with no PRs or skipped
 reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both of those show a manual confirm. The check only reads; it never installs or arms anything.
 
+The Roadmap and Kanban boards also write to Jira: dragging a card to another column
+transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
+through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
+
 Session switches and Your install answers are shown, never written:
 session switches are set when you start Claude.
+
+Every write is a `POST` behind the per-launch token, a same-origin check and a JSON-only body.
+This is the full set, each mapped to the code that handles it:
+
+| Action | Route | Handled in |
+|---|---|---|
+| Dry-run a switch, then run it after confirm | `/api/preview`, `/api/run` | `previewRoute` and `runRoute` in `scripts/config-ui/server.ts` |
+| Save or remove a file-stored secret | `/api/setup/secret` | `setupSecretRoute` in `scripts/config-ui/server.ts` |
+| Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
+| Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
+| VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
+| Kanban move, card theme | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` |
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token
@@ -52,6 +75,9 @@ node scripts/himmelctl/bin.js ui --agui latest   # URL of the newest session's r
 node scripts/himmelctl/bin.js ui --agui <session-id>
 ```
 
+- **The first install is owned by the terminal.** Run `himmelctl install` there
+  first ([install.md](setup/install.md)); the Setup page only reads and edits an
+  install that exists, and does not replace the wizard.
 - **Run it yourself, from a terminal outside Claude.** It refuses to start
   inside a Claude session; an agent cannot open it for you. The server runs in
   the foreground and exits on Ctrl-C or after 30 minutes idle.
@@ -122,6 +148,25 @@ artifacts; neither runs a server.
 
 Both are Linux-only supervisor session tooling; an install without a supervisor session does not
 have them in use.
+
+## Entry pages: audience and owner
+
+Each of the ten user entry pages names who it is for and who owns its rewrite. The evidence is the
+HIMMEL-6743 design review, section "Ten user-page recommendations" (the cited line range is the part
+of the page the review read).
+
+| Page | Audience | Owner | Evidence in the review |
+|---|---|---|---|
+| `README.md` | newcomer | HIMMEL-7211 | `README.md:5-19,33-62,75-89` |
+| `docs/why-himmel.md` | newcomer | HIMMEL-7211 | `docs/why-himmel.md:15-48` |
+| `docs/getting-started.md` | newcomer | HIMMEL-7211 | `docs/getting-started.md:27-73` |
+| `docs/setup/install.md` | newcomer | HIMMEL-7212 | `docs/setup/install.md:1-89,227-232` |
+| `docs/adoption-trail.html` | newcomer | HIMMEL-6290 | `docs/adoption-trail.html`, frames F2 to F8 |
+| `docs/daily-loop.md` | contributor | HIMMEL-7213 | `docs/daily-loop.md:3-28,32-97` |
+| `docs/configuration.md` | contributor | HIMMEL-7212 | `docs/configuration.md:9-79` |
+| `docs/commands-catalog.md` | contributor | HIMMEL-7213 | `docs/commands-catalog.md:3-70,80-105` |
+| `docs/setup/updating.md` | newcomer | HIMMEL-7212 | `docs/setup/updating.md:3-25,27-100` |
+| `docs/ui.md` | newcomer and contributor | HIMMEL-6836 | `docs/ui.md:3-16,25-45` |
 
 ## Keeping this page current
 

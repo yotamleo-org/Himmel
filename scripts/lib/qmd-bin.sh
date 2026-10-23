@@ -87,13 +87,19 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # merge of fork PR #29 into fork main, tagged v2.8.3-himmel.1: the fork
 # resynced to tobi/qmd 86d2365 (2.8.3) with the carried commits replayed.
 # The pin was 2d8589c6, the squash merge of fork PR #30 into fork main (the
-# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2. The pin is now
+# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2. The pin was
 # 5490d894, the squash merge of fork PR #34 into fork main (QMD_RERANK=off starts
 # the daemon without the reranker, a hung rerank restarts it at most once an
-# hour), tagged v2.8.3-himmel.3.
-# ponytail: pinned by SHA, the tag v2.8.3-himmel.3 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
+# hour), tagged v2.8.3-himmel.3. The pin was ac626e4c, the squash merge of
+# fork PR #38 into fork main (@modelcontextprotocol/server 2.0.0 to 2.3.1, which
+# clears the HTTP transport advisories in `qmd mcp --http`), tagged v2.8.3-himmel.4.
+# The pin is now 6930b5b1, the squash merge of fork PR #40 into fork main
+# (pillow 13.0.0, certifi, aiohttp, transformers 5, starlette and fsspec bumps
+# in finetune/uv.lock and zod 4.6.7, which clear the Critical and High lockfile
+# advisories; braces and picomatch have no upstream fix).
+# ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-5490d8947d3d8c9edbb6c1288174005d35f44e81}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-6930b5b1e6a6def4f19794f465541958702cfca1}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or

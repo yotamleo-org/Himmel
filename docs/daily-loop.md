@@ -1,5 +1,7 @@
 # Daily loop walkthrough
 
+Audience: contributor (the full PR loop of a himmel checkout). An adopter route is still to come. Owner of the rewrite: HIMMEL-7213.
+
 > **Prerequisites:**
 > 1. himmel installed and configured on your machine: see
 >    [docs/setup/new-machine.md](setup/new-machine.md) (or

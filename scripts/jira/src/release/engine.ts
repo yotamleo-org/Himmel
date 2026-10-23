@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
@@ -581,14 +581,26 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 // --- state ---------------------------------------------------------------------------
 
 export interface StateOut extends ReleaseState {
+  /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
+  admissions_today: Record<string, number>;
   lease: Omit<Lease, 'mac'> | null;
   requests: { open: string[]; claimed: string[] };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
 }
 
+function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
+  const today = ts(ctx).slice(0, 10);
+  const counts: Record<string, number> = Object.fromEntries(l.decl.versions.map((v) => [v, 0]));
+  for (const o of l.operator.verified) {
+    if (o.kind !== 'decision' || (o.op !== 'add' && o.op !== 'move') || !o.to_v || !(o.to_v in counts) || !o.ts.startsWith(today)) continue;
+    counts[o.to_v] += o.keys?.length ?? 0;
+  }
+  return counts;
+}
+
 export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
-  const empty = { lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
+  const empty = { admissions_today: {}, lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
   const s = reduceLoaded(l, mirror);
@@ -609,6 +621,7 @@ export function state(ctx: Ctx): StateOut {
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
+    admissions_today: admissionsToday(ctx, l),
     lease: lease ? leaseOut : null,
     requests: { open, claimed },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
@@ -619,4 +632,111 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
   const m = new Map<string, RequestRow>();
   for (const r of requests.verified) m.set(r.req, r);
   return m;
+}
+
+// --- rm-run: the release manager as one on-demand batch -------------------------------
+
+export interface Decision {
+  req: string;
+  outcome: string;
+  op: Op['kind'];
+  from: string | null;
+  to: string | null;
+  sector: string;
+  ground: string;
+  reason: string;
+  supersedes?: string[];
+  authority?: Authority['kind'];
+  ref?: string | null;
+}
+
+// Everything a ruling weighs, read from disk: a standing session kept nothing else that counts.
+export interface JudgeInput {
+  release: string;
+  current: string;
+  versions: string[];
+  requests: RequestRow[];
+  records: ReleaseState['records'];
+  operator: OperatorRow[];
+  rulings: RulingRow[];
+  issues: IssueSnap[];
+}
+
+export type Judge = (input: JudgeInput) => Promise<Decision[]>;
+
+function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
+  const last = new Map<string, RulingRow>();
+  for (const r of rulings.verified) last.set(r.id, r);
+  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
+}
+
+// Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
+// applies through the engine, and releases the lease. Decisions come only from
+// the judge, never from the caller.
+export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?: string } = {}): Promise<string[]> {
+  const l = loadOrThrow(ctx);
+  const pending = [...latestRequests(l.requests).values()].filter((r) => r.state === 'open' || r.state.startsWith('claimed:'));
+  if (!pending.length && !unfinishedRulings(l.rulings).length) return [`RM-RUN ${ctx.release}: nothing pending`];
+
+  const doc = o.doc ?? join(ctx.dir, 'rm-runs', `run-${ts(ctx).replace(/[:.]/g, '-')}.md`);
+  const rctx: Ctx = { ...ctx, env: { ...ctx.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: ctx.release } };
+  const lease = leaseAcquire(rctx, { expectEpoch: readLease(ctx, l.k).epoch, doc, session: o.session ?? 'rm-run' });
+  const lines: string[] = [];
+  try {
+    for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
+      try {
+        lines.push((await apply(rctx, id)).line);
+      } catch (e) {
+        lines.push(`PENDING ${id}: ${(e as Error).message}`);
+      }
+    }
+    const claimed = claim(rctx);
+    if (claimed.length) {
+      const now = loadOrThrow(ctx);
+      const keys = new Set(claimed.map((r) => r.key));
+      const mirror = readMirror(ctx.mirrorRoot);
+      const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
+      const decisions = await judge({
+        release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: claimed,
+        records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
+        operator: now.operator.verified,
+        rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
+        issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
+      });
+      for (const q of claimed) {
+        let id: string;
+        try {
+          const d = decisions.find((x) => x?.req === q.req);
+          if (!d) throw new Error('the judge returned no decision');
+          id = rule(rctx, {
+            req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
+            ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
+            authority: { kind: d.authority ?? 'rm', ref: d.ref ?? null },
+          }).id;
+        } catch (e) {
+          lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
+          continue;
+        }
+        try {
+          lines.push((await apply(rctx, id)).line);
+        } catch (e) {
+          lines.push(`PENDING ${id}: ${(e as Error).message}`);
+        }
+      }
+    }
+  } finally {
+    // Cleanup never hides the rulings already made or the error that ended the run.
+    try {
+      leaseRelease(rctx);
+    } catch (e) {
+      lines.push(`PENDING lease: ${(e as Error).message}`);
+    }
+    try {
+      mkdirSync(dirname(doc), { recursive: true });
+      writeFileSync(doc, `# rm-run ${ctx.release} epoch ${lease.epoch}\n\n${lines.map((x) => `- ${x}`).join('\n')}\n`);
+    } catch (e) {
+      lines.push(`PENDING run record: ${(e as Error).message}`);
+    }
+  }
+  return lines;
 }

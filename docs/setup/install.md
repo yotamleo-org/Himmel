@@ -1,5 +1,7 @@
 # Installing himmel on your project
 
+Audience: newcomer. Owner of the rewrite: HIMMEL-7212.
+
 himmel is a harness *for* [Claude Code](https://claude.com/claude-code): hooks,
 git gates and guardrails that enforce a PR-gated workflow at the tool-call layer
 instead of asking the model to remember prose, plus handover files that carry
@@ -21,6 +23,18 @@ node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 or the `adopter-user` twin) and installs without asking anything. Drop the flag
 to get the wizard instead; it asks a handful of questions and lets you confirm
 each default. `--dry-run` prints the plan and writes nothing.
+
+Three words name three different choices, and the installer asks for them
+separately: the **preset** is the shipped install-profile file that supplies
+answers (`--scope` loads one, `--from-profile <file>` loads another); the
+**installation scope** is where the harness is wired (`project` or `user`); the
+**plugin profile** is which marketplace plugins are on (`lean` or `full`). Detail
+and the exact values are in
+[What `profile` means](#what-profile-means-three-unrelated-things).
+
+The first install is always run from a terminal. The local UI's Setup page (see
+[ui.md](../ui.md)) only works on an install that already exists; it cannot do the
+first one.
 
 No `node` on the machine yet? Run `bash himmel/scripts/himmelctl/bootstrap.sh`
 first; it installs Node, then re-run the install.
@@ -95,6 +109,15 @@ written tracks the tip.
 > them is covered by the v1 support claim. The scheduler-backed items in
 > particular (`cadence-armed`, the arming legs) use `schtasks` there and are the
 > least exercised.
+
+A project-scope install copies and wires the unresolved-review merge gate and
+its libraries. The install commit adds `scripts/ci/ci-trust-paths.txt`, seeded
+only when absent; your existing trust list is never overwritten. Until that
+list is on your default branch, the gate refuses every merge from a session
+that loads the new settings, including the adoption PR. The operator must
+merge that first adoption PR outside Claude, using the forge web UI or their
+own terminal; no agent session merges it. Afterward, any PR touching a listed
+trust path requires a trust-reviewed GO.
 
 ## Minimal config
 

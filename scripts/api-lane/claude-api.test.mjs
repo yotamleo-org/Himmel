@@ -28,10 +28,14 @@ echo called >> "$STUB_LOG"
   echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"; echo "cache_ttl=\${CLAUDE_CODE_PROMPT_CACHE_TTL:-}"
   echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
-  echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
+  echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV"
+[ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
+[ -z "\${STUB_CHILD:-}" ] || { sleep 300 & echo "child_pid=$!" >> "$STUB_ENV"; }
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
+[ -z "\${STUB_DIE:-}" ] || kill -9 $$
+exit "\${STUB_RC:-0}"
 `;
 
 // A call carrying Claude Code session markers runs under a parent whose argv[0] is `claude`, as it does
@@ -44,8 +48,8 @@ function fixture() {
   const now = Math.floor(Date.now() / 1000);
   const state = join(dir, 'ledger.json');
   const config = { version: 1, ledger_path: state, accounts: {
-    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', key_id: 'key-a' },
-    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', key_id: 'key-b' },
+    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', key_id: 'key-a', reset_at: '2099-01-01T00:00:00Z' },
+    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', key_id: 'key-b', reset_at: '2099-01-01T00:00:00Z' },
   } };
   const snapshot = { version: 1, accounts: Object.fromEntries(['A', 'B'].map((account) => [account, {
     organization_id: config.accounts[account].organization_id, cycle_id: config.accounts[account].cycle_id,
@@ -683,4 +687,61 @@ test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL fro
   assert.equal(out['bulk | m | o'].recommended_ttl, '1h');
   assert.equal(out['eval | m | other-org'].runs, 1, 'a run in another organization is its own group');
   assert.equal(out['__proto__ | m | o'].runs, 1, 'a kind named like an Object property still groups');
+});
+
+// a dead call must not hold its reservation (killed calls on account B kept 20.10 USD reserved).
+test('HIMMEL-7111: a call that exits non-zero settles its reservation instead of leaving it open', () => {
+  const f = fixture();
+  const r = f.run(f.good, { STUB_RC: '3', STUB_OUT: 'boom' });
+  assert.equal(r.status, 3);
+  assert.equal(f.status().reserved_usd, '0.000000');
+  const rec = JSON.parse(f.record().trim());
+  assert.equal(rec.outcome, 'failed');
+  assert.equal(rec.cost_usd, '0.000000');
+});
+
+test('HIMMEL-7111: a call killed by a signal settles its reservation too', () => {
+  const f = fixture();
+  const r = f.run(f.good, { STUB_DIE: '1' });
+  assert.equal(r.status, 137);
+  assert.equal(f.status().reserved_usd, '0.000000');
+});
+
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+test('HIMMEL-7111: a launcher terminated mid-call stops the call and settles its reservation', async () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  const first = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, STUB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise((resolve) => first.on('close', resolve));
+  let stub = 0;
+  try {
+    const until = Date.now() + 15000;
+    const ready = () => existsSync(f.paths.env) && /^resv_pid=\d+$/m.test(readFileSync(f.paths.env, 'utf8'));
+    while (!ready() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(f.status().reserved_usd, '0.100000');
+    stub = Number(/^stub_pid=(\d+)$/m.exec(readFileSync(f.paths.env, 'utf8'))[1]);
+    first.kill('SIGTERM');
+    // The hold file stays: only the launcher forwarding the signal can end the call.
+    await Promise.race([done, new Promise((r) => setTimeout(r, 10000))]);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.equal(f.status().reserved_usd, '0.000000');
+  } finally { rmSync(hold, { force: true }); if (stub && alive(stub)) process.kill(stub, 'SIGKILL'); }
+});
+
+test('HIMMEL-7111: a call that outruns the call timeout is stopped, even one ignoring TERM, and settles', () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  try {
+    const r = f.run(f.good, { STUB_HOLD: hold, STUB_IGNORE_TERM: '1', STUB_CHILD: '1', HIMMEL_API_CALL_TIMEOUT_S: '1' });
+    assert.notEqual(r.status, 0);
+    assert.equal(f.status().reserved_usd, '0.000000');
+    const seen = readFileSync(f.paths.env, 'utf8');
+    const stub = Number(/^stub_pid=(\d+)$/m.exec(seen)[1]);
+    const child = Number(/^child_pid=(\d+)$/m.exec(seen)[1]);
+    try {
+      assert.equal(alive(stub), false, 'the call outlived the call timeout');
+      assert.equal(alive(child), false, 'a subprocess of the call outlived the call timeout');
+    } finally { if (alive(child)) process.kill(child, 'SIGKILL'); }
+  } finally { rmSync(hold, { force: true }); }
 });

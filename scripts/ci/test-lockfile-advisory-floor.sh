@@ -78,6 +78,24 @@ case $? in
   *) fail "site/package-lock.json lookup failed: unreadable or no postcss-selector-parser entry" ;;
 esac
 
+# every LGPL package the site lockfile pulls must be recorded in the license audit
+lgpl_raw=$(node -e 'const l = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); for (const [k, v] of Object.entries(l.packages)) if (/LGPL/.test(v.license || "")) console.log(k.replace(/^.*node_modules\//, ""))' "$REPO_ROOT/site/package-lock.json")
+lgpl_rc=$?
+lgpl_pkgs=$(printf '%s\n' "$lgpl_raw" | sed -E 's#^(@img/sharp(-libvips)?)-.*#\1#' | sort -u)
+missing=""
+for p in $lgpl_pkgs; do
+  grep -qF "\`$p\`" "$REPO_ROOT/docs/third-party-licenses.md" || missing="$missing $p"
+done
+if [ "$lgpl_rc" -ne 0 ]; then
+  fail "site/package-lock.json LGPL enumeration failed: unreadable or malformed lockfile"
+elif [ -z "$lgpl_pkgs" ]; then
+  pass "site/package-lock.json carries no LGPL package"
+elif [ -z "$missing" ]; then
+  pass "every LGPL family in site/package-lock.json is recorded in docs/third-party-licenses.md"
+else
+  fail "LGPL packages in site/package-lock.json missing from docs/third-party-licenses.md:$missing"
+fi
+
 # floor_rows <pre-fix fixture> <real lockfile> <package> <floor> <advisory>
 floor_rows() {
   meets_floor "$FIX/$1" "$3" "$4"

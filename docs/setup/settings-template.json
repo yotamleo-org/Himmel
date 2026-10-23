@@ -99,7 +99,7 @@
     "handover@himmel": true,
     "himmel-ops@himmel": true,
     "claude-obsidian@himmel": false,
-    "obsidian-second-brain@himmel": true,
+    "obsidian-second-brain@himmel": false,
     "find-docs@himmel": true,
     "graphify@himmel": true,
     "luna-correlate@himmel": false,

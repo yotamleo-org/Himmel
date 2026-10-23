@@ -299,8 +299,9 @@ median. It packs the suites longest-first and picks the fewest shards (at most 8
 slowest shard stays under max(600 s, the 8-shard makespan). The shard total
 reaches the run step's `--shard i/N` and the aggregator's `--shards`. Push and
 nightly have no plan and keep 8 shards. If the `--list` fails, the plan falls
-back to the per-shard `shard-has-work.sh` probes at 8. `home-canary` is sized
-the same way over its `--impacted` selection.
+back to the per-shard `shard-has-work.sh` probes at 8. Each shard runs through
+`scripts/ci/home-canary.sh`, so the honeytoken-HOME leak check shares the shard
+plan and needs no matrix of its own.
 
 ## A failed suite is retried once; a pass on retry is a FLAKE
 

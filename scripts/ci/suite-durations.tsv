@@ -132,7 +132,9 @@ scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
+scripts/ci/test-check-lockfile-release-age.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
+scripts/ci/test-check-manifest-coverage.sh	1
 scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1
@@ -186,6 +188,7 @@ scripts/ci/test-shard-manifest-verify.sh	1
 scripts/ci/test-shell-extended-nightly-issue.sh	0
 scripts/ci/test-shell-unit-dispatch-name.sh	0
 scripts/ci/test-shellcheck-pr-range.sh	2
+scripts/ci/test-site-sidebar-slugs.sh	1
 scripts/ci/test-suite-concurrency.sh	117
 scripts/ci/test-suite-ledger.sh	2
 scripts/ci/test-suite-lock-brand-gap.sh	70
@@ -964,6 +967,8 @@ scripts/telegram/test-break-glass.sh	3
 scripts/telegram/test-dispatch-lane.sh	37
 scripts/telegram/test-phi-egress-guard-parity.sh	0
 scripts/telegram/test-restart-bridge.sh	64
+# Merge-gate estimate: focused install row measured 41s; hook behavior pending VM timing.
+scripts/test-adopt-merge-gate.sh	120
 scripts/test-adopt-only-hooks.sh	1
 scripts/test-adopt-portable-libs.sh	0
 scripts/test-adopt-user-claude-md.sh	0
@@ -1076,3 +1081,5 @@ templates/luna-second-brain/scripts/test-upgrade-pyresolve.sh	0
 templates/luna-second-brain/scripts/test-upgrade.sh	56
 templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	4
 templates/luna-second-brain/scripts/test-vault-git.sh	69
+scripts/docs/test-ui-doc-actions.sh	1
+scripts/ci/test-snyk-weekly-workflow.sh	0

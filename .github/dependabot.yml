@@ -16,8 +16,20 @@
 # proposed until it has been public for 3 days, so a hijacked release that is pulled
 # within hours never reaches a PR. Dependabot security updates ignore the cooldown.
 # Not watched here on purpose: bun (.bun-version is a version file Dependabot's
-# bun ecosystem does not read; bun.lock is covered by the npm entries) and the
-# claude CLI lock (.github/claude-cli: bumped by hand together with CLAUDE_CLI_VERSION).
+# bun ecosystem does not read; bun.lock is covered by the npm entries), the
+# claude CLI lock (.github/claude-cli: bumped by hand together with CLAUDE_CLI_VERSION),
+# the vendored marketplace/plugins/claude-hud (its VENDORED.md) and the benchmark
+# fixtures under scripts/lanes/bench/fixtures. scripts/ci/check-manifest-coverage.sh
+# fails on any other tracked manifest without an entry (HIMMEL-7173).
+#
+# Release-age buffer (HIMMEL-7173): beside the 3-day cooldown, installs and
+# lockfile refreshes refuse a release younger than 3 days: bunfig.toml
+# minimumReleaseAge (bun), .npmrc min-release-age (npm), uv.toml exclude-newer
+# (uv pip compile). CAVEAT: npm reads min-release-age from 11.10 on; CI runs node
+# 22 (npm 10), which ignores it, so .npmrc protects local installs only. The CI-side
+# guard is the per-PR check .github/workflows/lockfile-release-age.yml, which runs
+# scripts/ci/check-lockfile-release-age.mjs on every lockfile entry a PR adds; a
+# security fix younger than 3 days goes in scripts/ci/release-age-allow.txt.
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -31,6 +43,11 @@ updates:
       - "/marketplace/plugins/telegram-himmel"
       - "/plugins/himmel-gh"
       - "/plugins/himmel-jira"
+      - "/marketplace/plugins/himmel-bus"
+      - "/scripts/ci-orchestrator"
+      - "/scripts/config-ui/agui-web"
+      - "/scripts/config-ui/tests/e2e"
+      - "/site"
     schedule:
       interval: "weekly"
     cooldown:
@@ -69,6 +86,15 @@ updates:
   # .pre-commit-config.yaml rev (check-ci-install-locks.sh fails until it does).
   - package-ecosystem: "pip"
     directory: "/.github/ci-image"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+
+  # The obsidian-triage tools' hashed requirements (requirements-scrapling.txt,
+  # requirements-whisper.txt), installed outside CI by the operator's venv / `uv run`.
+  - package-ecosystem: "pip"
+    directory: "/marketplace/plugins/obsidian-triage/tools"
     schedule:
       interval: "weekly"
     cooldown:

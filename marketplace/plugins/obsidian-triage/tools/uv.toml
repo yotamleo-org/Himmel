@@ -1,0 +1,2 @@
+# HIMMEL-7173: refuse a release younger than 3 days when (re)compiling the hashed requirements.
+exclude-newer = "3 days"

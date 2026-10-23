@@ -56,12 +56,44 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.3" \
-  test "$default_ref" = "5490d8947d3d8c9edbb6c1288174005d35f44e81"
+assert "default QMD_FORK_REF is the fork main merge commit of fork PR #40" \
+  test "$default_ref" = "6930b5b1e6a6def4f19794f465541958702cfca1"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
-assert "the pin comment names the tag and HIMMEL-5952" \
-  bash -c 'grep -q "v2.8.3-himmel.3" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+assert "the pin comment names fork PR #40 and HIMMEL-5952" \
+  bash -c 'grep -q "fork PR #40" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+# The pinned fork commit must carry the fixed MCP server (2.3.0+ clears the HTTP
+# transport advisories). The fixture is the real bun.lock lines of the fork at the
+# pinned commit, copied from the fork, headed by the commit it came from.
+mcp_fixture="$SCRIPT_DIR/fixtures/qmd-fork-mcp-server-lock.txt"
+assert "the MCP server lock fixture was taken at the pinned fork commit" \
+  test "$(sed -n '1s/^fork-sha //p' "$mcp_fixture")" = "$default_ref"
+mcp_server_ver="$(sed -n 's/.*"@modelcontextprotocol\/server": \["@modelcontextprotocol\/server@\([0-9.]*\)".*/\1/p' "$mcp_fixture")"
+# shellcheck disable=SC2016
+# Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
+assert "the pinned fork resolves @modelcontextprotocol/server 2.3.0 or newer" \
+  bash -c 'printf "2.3.0\n%s\n" "$1" | sort -V -C' _ "$mcp_server_ver"
+# The pinned fork commit must also carry the patched lockfiles: the
+# fixture holds the real finetune/uv.lock name/version pairs and the bun.lock zod
+# line of the fork at the pinned commit. Floors are the first fixed releases.
+adv_fixture="$SCRIPT_DIR/fixtures/qmd-fork-advisory-lock.txt"
+assert "the advisory lock fixture was taken at the pinned fork commit" \
+  test "$(sed -n '1s/^fork-sha //p' "$adv_fixture")" = "$default_ref"
+adv_ver() { sed -n "/^name = \"$1\"\$/{n;s/^version = \"\\(.*\\)\"\$/\\1/p;}" "$adv_fixture"; }
+# shellcheck disable=SC2016
+# Single quotes intentional -- $1/$2 expand inside the spawned bash -c subshell.
+adv_floor() { bash -c 'printf "%s\n%s\n" "$1" "$2" | sort -V -C' _ "$2" "$(adv_ver "$1")"; }
+assert "the pinned fork locks pillow 13.0.0 or newer" adv_floor pillow 13.0.0
+assert "the pinned fork locks certifi 2026.10.19 or newer" adv_floor certifi 2026.10.19
+assert "the pinned fork locks aiohttp 3.14.5 or newer" adv_floor aiohttp 3.14.5
+assert "the pinned fork locks starlette 1.9.0 or newer" adv_floor starlette 1.9.0
+assert "the pinned fork locks fsspec 2026.7.0 or newer" adv_floor fsspec 2026.7.0
+assert "the pinned fork locks transformers 5.20.2 or newer" adv_floor transformers 5.20.2
+zod_ver="$(sed -n 's/.*"zod": \["zod@\([0-9.]*\)".*/\1/p' "$adv_fixture")"
+# shellcheck disable=SC2016
+# Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
+assert "the pinned fork locks zod 4.6.6 or newer" \
+  bash -c 'printf "4.6.6\n%s\n" "$1" | sort -V -C' _ "$zod_ver"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment no longer calls the pin the pin-http-auth tip" \

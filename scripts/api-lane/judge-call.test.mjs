@@ -43,8 +43,8 @@ function fixture() {
   const now = Math.floor(Date.now() / 1000);
   const state = join(dir, 'ledger.json');
   const config = { version: 1, ledger_path: state, accounts: {
-    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', key_id: 'key-a' },
-    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', key_id: 'key-b' },
+    A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', key_id: 'key-a', reset_at: '2099-01-01T00:00:00Z' },
+    B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', key_id: 'key-b', reset_at: '2099-01-01T00:00:00Z' },
   } };
   const snapshot = { version: 1, accounts: Object.fromEntries(['A', 'B'].map((account) => [account, {
     organization_id: config.accounts[account].organization_id, cycle_id: config.accounts[account].cycle_id,
@@ -225,7 +225,7 @@ test('a refused launch is final: REFUSED, claude never called, no subscription f
   assert.equal(r.art.verdict_path, null);
 });
 
-test('a timed-out call is TIMEOUT and its reservation stays held in the ledger', () => {
+test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {
   const f = fixture();
   writeFileSync(f.p.hold, '');
   const r = f.run([...f.args, '--timeout', '2'], { STUB_HOLD: f.p.hold, QMD_KILL_GRACE_SECS: '1' });
@@ -234,7 +234,8 @@ test('a timed-out call is TIMEOUT and its reservation stays held in the ledger',
   assert.equal(r.art.verdict_path, null);
   const jobs = Object.values(f.ledger().accounts.A.jobs);
   assert.equal(jobs.length, 1);
-  assert.notEqual(jobs[0].status, 'settled');
+  assert.equal(jobs[0].status, 'settled');
+  assert.equal(jobs[0].actual_usd, '0.000000');
 });
 
 test('the parent artifact excerpt is bounded however long the recorded evidence is', () => {

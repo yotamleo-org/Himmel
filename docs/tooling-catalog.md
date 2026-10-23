@@ -68,7 +68,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.5.2` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `user`, `lane-content` and `telegram` profiles (plus the operator profile); off in lean worker sessions and the supervisor session; catalog id `obsidian-second-brain@himmel` |
+| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `lane-content` and `telegram` profiles (plus the operator profile); off in lean worker sessions and the supervisor session; catalog id `obsidian-second-brain@himmel` |
 | `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `2dc35112ef1bea5d61f31b802b5764c931984508` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
@@ -334,7 +334,7 @@ README's fork-delta section).
 
 **Repo:** `eugeniughelbur/obsidian-second-brain`
 **Install:** `claude plugin install obsidian-second-brain@himmel` (himmel marketplace, pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e`, tag `v0.17.0`)
-**Enable:** the `user`, `lane-content` and `telegram` profiles (plus the operator profile, once installed); off in every other named profile
+**Enable:** the `lane-content` and `telegram` profiles (plus the operator profile, once installed); off in every other named profile
 **Commands:** 47 slash commands from the plugin (5 research-toolkit
 commands are NOT adopted — see Research toolkit line below)
 **Update:** bump the `sha` pin in `marketplace/.claude-plugin/marketplace.json` to the new upstream commit, then `claude plugin marketplace update himmel` and `claude plugin update obsidian-second-brain@himmel` (it is url-sourced, so the marketplace refresh alone leaves the installed copy on the old commit)
@@ -848,7 +848,7 @@ changing which config dir loads, so hooks are unaffected).
 - `profiles` — `operator` (`null` sentinel: full `~/.claude`, never injected),
   `user` (adopter set), `lane-impl` (impl workers: floor +
   `lean-skills`), `lane-review` (automated review-only, same lean set),
-  `lane-content` (impl + `claude-obsidian` + `obsidian-triage`), `telegram`
+  `lane-content` (impl + `obsidian-triage` + `obsidian-second-brain`), `telegram`
   (the Telegram bridge's lean set + `mcpServers: ["qmd"]`
   allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-operator-console)).
 
@@ -1396,7 +1396,7 @@ profile→server map.
 | Tier | Meaning | Members |
 |---|---|---|
 | T1 shared HTTP | remote/daemon singleton, 0–1 local procs total | context7 (remote), atlassian, huggingface, vercel |
-| T2 profile-scoped | in a `--mcp-config` profile, launched per lane | playwright, chrome-devtools, obsidian-vault, onepassword |
+| T2 profile-scoped | in a `--mcp-config` profile, launched per lane | playwright, chrome-devtools, obsidian-vault, graphify, onepassword |
 | T3 env-gated | default-OFF `mcp-gate.sh`, activated by launch env var | telegram-himmel, luna-correlate |
 | TX CLI-first | no server; a CLI + skill (enforced by `block-backend-tier`) | jira (over atlassian), gh (over github), firecrawl |
 

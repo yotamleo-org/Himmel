@@ -1,5 +1,7 @@
 # Why himmel
 
+Audience: newcomer. Owner of the rewrite: HIMMEL-7211.
+
 [`README.md`](../README.md) says what himmel is and
 [`getting-started.md`](getting-started.md) gets it running. This page argues
 the case: the failure modes that show up once you run Claude Code seriously,

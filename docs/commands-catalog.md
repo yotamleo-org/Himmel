@@ -1,5 +1,7 @@
 # Slash Commands Catalog
 
+Audience: contributor (these commands live in a himmel checkout; not every one is available in an adopted repo). Owner of the rewrite: HIMMEL-7213.
+
 Project-local slash commands in `.claude/commands/` (auto-discovered by
 Claude Code). Each row's **Description** column is machine-generated from the
 **verbatim** `description:` frontmatter of that command file; the **Notes**

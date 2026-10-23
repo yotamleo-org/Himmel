@@ -1329,8 +1329,25 @@ function registeredCommandCheck(command, ctx) {
   }
 }
 
+// On-demand servers (graphify, obsidian-vault) live in a himmel-owned registry,
+// not ~/.claude.json, so they are never loaded by default; user/local scope
+// reads it as a fallback. Same override as build-mcp-profiles.mjs.
+function onDemandRegistryPath(ctx) {
+  const env = ctx.env || {};
+  if (env.HIMMEL_MCP_ONDEMAND_FILE) return env.HIMMEL_MCP_ONDEMAND_FILE;
+  return path.join(env.HOME || os.homedir(), '.config', 'himmel', 'mcp-on-demand.json');
+}
+
 function probeMcpRegistered(item, ctx) {
-  const filePath = mcpConfigPath(ctx);
+  const primary = probeMcpConfigFile(item, ctx, mcpConfigPath(ctx));
+  if (ctx.scope === 'project' || primary.actual !== 'absent' || primary.configError) return primary;
+  const registryPath = onDemandRegistryPath(ctx);
+  if (!fs.existsSync(registryPath)) return primary;
+  const fromRegistry = probeMcpConfigFile(item, ctx, registryPath);
+  return fromRegistry.actual === 'absent' ? primary : fromRegistry;
+}
+
+function probeMcpConfigFile(item, ctx, filePath) {
   let data;
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
