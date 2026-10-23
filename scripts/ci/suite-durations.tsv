@@ -132,7 +132,9 @@ scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
+scripts/ci/test-check-lockfile-release-age.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
+scripts/ci/test-check-manifest-coverage.sh	1
 scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1

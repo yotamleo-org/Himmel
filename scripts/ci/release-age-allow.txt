@@ -1,0 +1,4 @@
+# release-age-allow.txt — HIMMEL-7173. One `name@version  reason` per line: a lockfile
+# entry younger than 3 days that check-lockfile-release-age.mjs accepts because it is
+# a security fix (name the advisory). Remove the line once the release is 3 days old.
+# Blank lines and # comments are ignored.
