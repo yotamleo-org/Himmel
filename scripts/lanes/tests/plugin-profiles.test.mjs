@@ -890,6 +890,23 @@ test('CLI: node plugin-profiles.mjs bare prints exactly the three shipped floor 
   assert.deepEqual(trueKeys, [...FLOOR].sort());
 });
 
+test('worker-* profile ids resolve exactly like their leg-* names', () => {
+  for (const id of ['impl', 'bus', 'vm', 'e2e']) {
+    assert.equal(PP.canonicalProfileName(`worker-${id}`), `leg-${id}`);
+    assert.deepEqual(resolveProfile(REG, `worker-${id}`), resolveProfile(REG, `leg-${id}`));
+    assert.deepEqual(mcpServersForProfile(REG, `worker-${id}`), mcpServersForProfile(REG, `leg-${id}`));
+    assert.deepEqual(PP.contextForProfile(REG, `worker-${id}`), PP.contextForProfile(REG, `leg-${id}`));
+  }
+  assert.equal(PP.canonicalProfileName('worker-impl,lane-review'), 'leg-impl,lane-review');
+  assert.equal(PP.canonicalProfileName('constructor'), 'constructor');
+  assert.throws(() => resolveProfile(REG, 'worker-bogus'), /unknown profile "worker-bogus"/);
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const run = (name) => spawnSync(process.execPath, [cli, name, '--mcp-servers'], { encoding: 'utf8' });
+  const worker = run('worker-vm'), leg = run('leg-vm');
+  assert.equal(worker.status, 0, worker.stderr);
+  assert.equal(worker.stdout, leg.stdout);
+});
+
 test('CLI: --list includes bare', () => {
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const run = spawnSync(process.execPath, [cli, '--list'], { encoding: 'utf8' });

@@ -543,7 +543,6 @@ code change.
 | `HIMMEL_INITIATIVE` | Drive-to-ship auto-ship steps (opt-in, default OFF). | Uncomment one line in `.env` (auto-ship step grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
 | `PERPLEXITY_API_KEY` | Perplexity Sonar — `/research`, `/research-deep`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | Perplexity API settings. Optional (blank = feature off). |
 | `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. |
-| `GEMINI_API_KEY` | Gemini — `scripts/gemini/invoke.sh`. | Google AI Studio API key. Optional. |
 
 ### OLLAMA_NO_CLOUD (optional — ollama zero-egress defense-in-depth pin)
 

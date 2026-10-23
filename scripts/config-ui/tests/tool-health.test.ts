@@ -152,6 +152,12 @@ test("out-of-range numeric timestamps skip malformed rows instead of throwing", 
   expect(read(env).tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: 40, failures: 5 });
 });
 
+test("the worker-session failures ledger name wins over the old one", () => {
+  const env = seed();
+  const worker = { HIMMEL_EVAL_RUNS_LEDGER: env.HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: env.HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_LEG_FAILURES_LEDGER: "/no/failures" };
+  expect(read(worker)).toEqual(read(env));
+});
+
 test("missing ledgers degrade to no data", () => {
   expect(read({ HIMMEL_EVAL_RUNS_LEDGER: "/no/evals", HIMMEL_LEG_FAILURES_LEDGER: "/no/failures" })).toMatchObject({ state: "absent", tools: [] });
 });

@@ -3,7 +3,8 @@
 
 Read-only, deterministic, no model call. Counts the leg-failures ledger that
 scripts/handover/console-kit/leg-digest-step.sh feeds (writer: leg_ledger.py;
-path: $HIMMEL_LEG_FAILURES_LEDGER, else ~/.himmel/leg-failures.jsonl).
+path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else the old $HIMMEL_LEG_FAILURES_LEDGER,
+else ~/.himmel/leg-failures.jsonl).
 
   session-retro.py [--ledger P] [--days 7] [--now ISO8601] [--top 5] [--include-traj]
 
@@ -25,7 +26,8 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-LEDGER_ENV = "HIMMEL_LEG_FAILURES_LEDGER"
+LEDGER_ENV = "HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
+LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"
 EXAMPLES = 3
 
 
@@ -57,7 +59,8 @@ def main(argv=None):
     ap.add_argument("--include-traj", action="store_true")
     a = ap.parse_args(argv)
 
-    path = a.ledger or os.environ.get(LEDGER_ENV) or os.path.expanduser("~/.himmel/leg-failures.jsonl")
+    path = (a.ledger or os.environ.get(LEDGER_ENV) or os.environ.get(LEDGER_ENV_OLD)
+            or os.path.expanduser("~/.himmel/leg-failures.jsonl"))
     now = (a.now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     cutoff = now - timedelta(days=a.days)
 

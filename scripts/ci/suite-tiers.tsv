@@ -131,6 +131,7 @@ scripts/ci/test-home-canary.sh	pr	trust-path
 scripts/ci/test-impacted-selection.sh	pr	trust-path
 scripts/ci/test-jira-cli-smoke.sh	pr	trust-path
 scripts/ci/test-knockout-gate.sh	pr	trust-path
+scripts/ci/test-lockfile-advisory-floor.sh	pr	trust-path
 scripts/ci/test-macos-breakage.sh	pr	trust-path
 scripts/ci/test-macos-cadence-workflow.sh	pr	trust-path
 scripts/ci/test-main-sweep-red-issue.sh	pr	trust-path
@@ -290,7 +291,6 @@ scripts/eval/test-session-retro.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/gemini/test-invoke.sh	local	new since the audit, behaviour suite
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/glm/test-append-outbox.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -359,6 +359,7 @@ scripts/handover/console-kit/test-grant-round.sh	pr	trust-path
 scripts/handover/console-kit/test-handoff-facts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-handover-token-grammar.sh	local	new since the audit, behaviour suite
 scripts/handover/console-kit/test-headed-arm-leg.sh	pr	trust-path
+scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh	pr	trust-path
 scripts/handover/console-kit/test-himmel-gate.sh	pr	trust-path
 scripts/handover/console-kit/test-hook-copy-reaper.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-ice-followups.sh	local	new since the audit, behaviour suite
@@ -564,7 +565,7 @@ scripts/hooks/test-block-graphify-egress.sh	pr	guard
 scripts/hooks/test-block-himmel-config-writes.sh	pr	guard
 scripts/hooks/test-block-infra-destroy.sh	pr	guard
 scripts/hooks/test-block-jira-compound-write.sh	pr	guard
-scripts/hooks/test-block-leg-askuserquestion.sh	pr	guard
+scripts/hooks/test-block-worker-askuserquestion.sh	pr	guard
 scripts/hooks/test-block-lesson-enforcement-writes.sh	pr	guard
 scripts/hooks/test-block-mcp-when-plugin-exists.sh	pr	guard
 scripts/hooks/test-block-merged-pr-commit.sh	pr	guard
@@ -657,7 +658,7 @@ scripts/hooks/test-guard-implementor-dispatch.sh	pr	guard
 scripts/hooks/test-guard-judge-writes.sh	pr	guard
 scripts/hooks/test-guard-leg-cache-ttl.sh	pr	guard
 scripts/hooks/test-guard-leg-context-handoff.sh	pr	guard
-scripts/hooks/test-guard-leg-wakeup.sh	pr	guard
+scripts/hooks/test-guard-worker-wakeup.sh	pr	guard
 scripts/hooks/test-guard-memory-capture.sh	pr	guard
 scripts/hooks/test-guard-pr-check-literal.sh	pr	guard
 scripts/hooks/test-guard-relay-writes.sh	pr	guard

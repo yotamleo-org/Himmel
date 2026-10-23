@@ -736,7 +736,7 @@ const failuresSection = (() => {
         const start = (/"started":"([0-9TZ:-]+)"/.exec(lock) || [])[1];
         if (!start) return unavailable;
         const home = process.env.HOME || '';
-        const rows = jsonRows(process.env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl'), start);
+        const rows = jsonRows(process.env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || process.env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl'), start);
         const routes = jsonRows(process.env.HIMMEL_FAILURE_ROUTES_LOG || join(home, '.himmel', 'state', 'failure-routes.log.jsonl'), start);
         const byClass = new Map();
         for (const r of rows) {

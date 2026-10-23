@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/hermes/invoke.sh — single chokepoint for shelling out to hermes-agent.
 #
-# Mirror of scripts/gemini/invoke.sh: all himmel entrypoints that
-# need a hermes one-shot funnel through here so interpreter/model/toolset
-# resolution lives in one place. Story 1 of the hermes critic pipeline.
+# All himmel entrypoints that need a hermes one-shot funnel through here so
+# interpreter/model/toolset resolution lives in one place. Story 1 of the hermes critic pipeline.
 #
 # Why not the `hermes` console script: the hermes.exe setuptools wrapper is
 # unreliable under non-TTY shells on Windows (spike 2026-06-12 — wrapper runs
@@ -11,7 +10,7 @@
 # the venv python directly and enter via hermes_cli.main.
 #
 # Why a prompt FILE (not argv, not stdin): argv hits the Windows spawn
-# length limit on large diffs (same issue for gemini), and
+# length limit on large diffs, and
 # hermes one-shot runs hung in the spike when stdin was consumed/closed.
 # The prompt travels via a temp file read inside the python snippet.
 #
