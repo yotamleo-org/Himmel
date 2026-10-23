@@ -76,6 +76,7 @@ sr_setup() {
         IFS=' ' read -r -a absent <<< "$SR_ABSENT"
         for f in "${absent[@]}"; do rm -f "$a/$f"; done
     fi
+    [ -z "${SR_DANGLE:-}" ] || { rm -f "$a/$SR_DANGLE" && ln -s /nonexistent-target "$a/$SR_DANGLE" || return 1; }
     # check-commit-msg.sh is the hook mog_build_fixture already lays down.
     for f in bus-deliver-hook.sh bus-deliver-sessionstart.sh bus-deliver-run.js wired-hook.sh check-commit-msg.sh; do
         [ -e "$a/scripts/hooks/$f" ] || : > "$a/scripts/hooks/$f"
@@ -179,6 +180,9 @@ no_merge_call "R13s-b: no merge call"
 SR_ABSENT="scripts/ci/check-host-file-read-sinks.sh" SR_PR=clean-b sr_run 24 "R13s-c: not solo, one check absent → exit 24"
 assert_err_has "R13s-c: stderr names the missing check" "missing from the merge result"
 no_merge_call "R13s-c: no merge call"
+SR_DANGLE="scripts/ci/check-host-file-read-sinks.sh" SR_PR=clean-b sr_solo_run 24 "R13s-d: solo, a dangling symlink at the script path is present, not absent → exit 24"
+assert_err_has "R13s-d: stderr names the missing check" "missing from the merge result"
+no_merge_call "R13s-d: no merge call"
 
 # R14 — a dry run reports the refusal and mutates nothing.
 SR_SIB=wire SR_PR=allow sr_run 24 "R14: --dry-run reports the refusal" --dry-run

@@ -1366,7 +1366,7 @@ sr_failed=""
 sr_run() {
     local name="$1" script="$2" rc=0
     shift 2
-    if [ ! -f "$sr_tmp/work/$script" ] && [ -n "$SOLO_TAG" ]; then
+    if [ ! -e "$sr_tmp/work/$script" ] && [ ! -L "$sr_tmp/work/$script" ] && [ -n "$SOLO_TAG" ]; then
         echo "merge-on-green: static re-check: $name SKIPPED — $script is absent from the merge result (solo mode)." >&2
         audit "STATIC-RECHECK skipped check=$name reason=solo-absent repo=$nwo pr=#$pr_num sha=$sha"
         return 0
