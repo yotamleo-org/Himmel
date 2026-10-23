@@ -888,6 +888,26 @@ change .claude/commands/x.html
 out="$(run_is "$range")"
 if grepq "$out" "^${TERM}\$"; then pass "a .claude/commands/x.html -> test-check-cr-terminology.sh"; else fail "commands html row missed: $out"; fi
 
+# --- 33b. WS5 T13(b) scans every shipped (non-test) shell or JS source the diff
+# adds and names none of them: a one-file change to a scanned source selects it
+# (RED control: PR 2217 changed scripts/telegram/break-glass.sh and the suite
+# never ran), and the files its own scan skips do not. -------------------------
+WS5=scripts/parity/test-ws5-invariants\\.sh
+mkf scripts/parity/test-ws5-invariants.sh 'echo ws5'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: ws5 fixture"
+mkdir -p "$FX/scripts/telegram" "$FX/tools/ws5"
+for ws5_src in scripts/telegram/break-glass.sh tools/ws5/a.mjs tools/ws5/b.ts tools/ws5/c.js tools/ws5/d.cjs tools/ws5/e.bash; do
+  change "$ws5_src"
+  out="$(run_is "$range")"
+  if grepq "$out" "^${WS5}\$"; then pass "a one-file change to $ws5_src selects test-ws5-invariants.sh"; else fail "WS5 not selected for $ws5_src: $out"; fi
+done
+for ws5_skip in scripts/telegram/test-break-glass.sh tools/ws5/data.tsv tools/ws5/f.test.ts tools/ws5/g.test.mjs tools/ws5/h.test.js tools/ws5/i.test.cjs; do
+  change "$ws5_skip"
+  out="$(run_is "$range")"
+  if ! grepq "$out" "^${WS5}\$"; then pass "$ws5_skip (skipped by WS5's own scan) does not select test-ws5-invariants.sh"; else fail "WS5 over-selected for $ws5_skip: $out"; fi
+done
+
 # --- 34. A change to the CR guarded closure selects
 # test-cr-guarded-closure.sh (#1851: leg-jira-status.sh, reached from the
 # guarded scripts/lanes/leg-pr-open.sh, was added without selecting it). --------
@@ -1138,7 +1158,9 @@ elif ! git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh
     fail "old-selector control setup: $OLD_IS_SHA is present but its selector could not be read"
 else
     old_out="$( cd "$FX" && bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
-    if [ "$old_out" = "$out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
+    # The WS5 scan_roots rows postdate that selector, so its row is not compared.
+    cmp_out="$(grep -vxF scripts/parity/test-ws5-invariants.sh <<< "$out")"
+    if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
