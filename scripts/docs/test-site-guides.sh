@@ -142,7 +142,7 @@ a = t.index("async function askQuestions(")
 body = t[a:t.index("// All-default answers", a)]
 ids = []
 for line in body.split("\n"):
-    if re.search(r"\bawait ask(?:[A-Z]\w*)?\(", line):
+    if re.search(r"\bawait ask(?:[A-Z]\w*)?\s*\(", line):
         m = re.search(r"// step: ([a-z]+)\s*$", line)
         i = m.group(1) if m else "?"
         if not ids or ids[-1] != i:
@@ -273,12 +273,13 @@ fi
 
 # --- CONTROL: the STEPS check must fail on a wizard with one more question ------
 # One fixture adds a question that names its guide step, one adds a question that
-# names none, one adds an unmarked direct ask() call; none may leave the wizard's
+# names none, one adds an unmarked direct ask() call, one an unmarked call with a space before
+# the parenthesis; none may leave the wizard's
 # steps equal to the guide's.
 if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
-  for want in "step: extra" "" "direct"; do
+  for want in "step: extra" "" "direct" "spaced"; do
     rm -f "$tmp/bin.js"
-    python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); q="  await ask(\x27? one more question\x27);" if sys.argv[2] == "direct" else "  await askEnum(ask, \x27? one more question [yes|no]\x27, [\x27yes\x27, \x27no\x27], \x27no\x27);" + (" // " + sys.argv[2] if sys.argv[2] else ""); print(re.sub(r"(\n  const scope = await askNumberedEnum[^\n]*\n)", lambda m: m.group(1) + q + "\n", t, count=1), end="")' "$BIN" "$want" > "$tmp/bin.js"
+    python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); q="  await ask(\x27? one more question\x27);" if sys.argv[2] == "direct" else "  await askPath (ask, \x27? one more question\x27, \x27x\x27);" if sys.argv[2] == "spaced" else "  await askEnum(ask, \x27? one more question [yes|no]\x27, [\x27yes\x27, \x27no\x27], \x27no\x27);" + (" // " + sys.argv[2] if sys.argv[2] else ""); print(re.sub(r"(\n  const scope = await askNumberedEnum[^\n]*\n)", lambda m: m.group(1) + q + "\n", t, count=1), end="")' "$BIN" "$want" > "$tmp/bin.js"
     steps=$(wizard_steps "$tmp/bin.js" 2>/dev/null)
     if [ -z "$steps" ]; then
       bad "control: no wizard steps came out of the fixture (${want:-no step named}); the control proved nothing"
