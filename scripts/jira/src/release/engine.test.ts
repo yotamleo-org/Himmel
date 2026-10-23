@@ -3,7 +3,7 @@ import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, read
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  apply, claim, declare, freeze, leaseAcquire, leaseRelease, operatorDecision, request, rule, state, takeover,
+  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
   type Ctx, type JiraPort,
 } from './engine.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
@@ -41,14 +41,16 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
   };
 }
 
-function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
+function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
   const dir = join(root, 'mirror');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync, total: issues.length }));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), [
-      '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`, 'priority: "Medium"',
-      `fixVersions: ${JSON.stringify(i.fixVersions)}`, 'resolution: null', '---', '', `# ${i.key}`, '',
+      '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`,
+      ...(i.category ? [`statusCategory: "${i.category}"`] : []), 'priority: "Medium"',
+      `fixVersions: ${JSON.stringify(i.fixVersions)}`, `resolution: ${i.resolution ? JSON.stringify(i.resolution) : 'null'}`,
+      '---', '', `# ${i.key}`, '',
     ].join('\n'));
   }
 }
@@ -450,5 +452,88 @@ describe('release engine (HIMMEL-6796)', () => {
     const p = join(root, 'release', 'R1', 'baseline-v1-g1.json');
     writeFileSync(p, readFileSync(p, 'utf8').replace('"K-1"', '"K-8"'));
     expect(state(ctx()).status).toBe('UNKNOWN');
+  });
+});
+
+describe('release fold (HIMMEL-7158)', () => {
+  const events = () => readFileSync(join(root, 'release', 'R1', 'events.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const closedDone = { status: 'Closed', category: 'Done', resolution: 'Done' };
+  const resync = '2026-10-21T11:00:00.000Z';
+
+  it('reads a Closed key as terminal Done, so it leaves the open burn-down', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'], ...closedDone }], resync);
+    const s = state(ctx());
+    expect(s.records.find((x) => x.key === 'K-1')).toMatchObject({ terminal: 'Done' });
+    expect(s.burndown.v1.baseline_open).toBe(0);
+  });
+
+  it('writes one verifying events row per key, and a folded Closed key is bookkeeping, not a leak', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
+    expect(state(ctx()).leaks.unauthorized).toEqual(['K-3@v1']);
+    const out = fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    expect(out.skipped).toEqual([]);
+    expect(events()).toMatchObject([{ kind: 'fold', key: 'K-3', from: null, to: 'v1', pr: 12 }]);
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'], ...closedDone }], resync);
+    const s = state(ctx());
+    expect(s.inputs.events).toBe('FRESH');
+    expect(s.records.find((x) => x.key === 'K-3')).toMatchObject({ terminal: 'Done', bookkeeping: 'fold:12' });
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('skips a key that cannot fold and names its terminal and resolution; it stays a leak', async () => {
+    await setup();
+    const all = [
+      { key: 'K-3', fixVersions: ['v1'], ...closedDone },
+      { key: 'K-4', fixVersions: ['v1'], status: 'Closed', category: 'Done', resolution: "Won't Do" },
+      { key: 'K-5', fixVersions: ['v1'], status: 'Closed', category: 'Done', resolution: 'Cannot Reproduce' },
+      { key: 'K-6', fixVersions: ['v1'] },
+    ];
+    mirror(all);
+    const out = fold(ctx(), { to: 'v1', items: ['K-3', 'K-4', 'K-5', 'K-6', 'K-9'].map((key) => ({ key, pr: 7 })) });
+    expect(out.folded.map((e) => e.key)).toEqual(['K-3']);
+    expect(out.skipped).toEqual([
+      { key: 'K-4', terminal: "Won't Do", resolution: "Won't Do" },
+      { key: 'K-5', terminal: 'Other', resolution: 'Cannot Reproduce' },
+      { key: 'K-6', terminal: 'open', resolution: 'none' },
+      { key: 'K-9', terminal: 'not-in-mirror', resolution: 'none' },
+    ]);
+    expect(events().map((e) => e.key)).toEqual(['K-3']);
+    mirror(all, resync);
+    expect(state(ctx()).leaks.unauthorized).toEqual(['K-4@v1', 'K-5@v1', 'K-6@v1']);
+  });
+
+  it('a re-run folds nothing twice', async () => {
+    await setup();
+    mirror([{ key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
+    fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    const again = fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    expect(again).toMatchObject({ folded: [], already: ['K-3'], skipped: [] });
+    expect(events()).toHaveLength(1);
+  });
+
+  it('reopen reverses a fold and refuses a key with no fold to reverse', async () => {
+    await setup();
+    const all = [{ key: 'K-3', fixVersions: ['v1'], ...closedDone }];
+    mirror(all);
+    expect(() => reopen(ctx(), { key: 'K-3', from: 'v1' })).toThrow(/no fold into v1/);
+    fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] });
+    expect(reopen(ctx(), { key: 'K-3', from: 'v1' })).toMatchObject({ kind: 'reopen', key: 'K-3', from: 'v1', to: null });
+    mirror(all, resync);
+    const s = state(ctx());
+    expect(s.inputs.events).toBe('FRESH');
+    expect(s.leaks.unauthorized).toEqual(['K-3@v1']);
+  });
+
+  it('is a console act on a declared version with a real PR number', async () => {
+    await setup();
+    mirror([{ key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
+    expect(() => fold(ctx(rmEnv), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/console act/);
+    expect(() => fold(ctx(), { to: 'v9', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/not a version/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 0 }] })).toThrow(/positive PR/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 2 ** 60 }] })).toThrow(/positive PR/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'bad key', pr: 1 }] })).toThrow(/not an issue key/);
+    expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).not.toThrow();
   });
 });

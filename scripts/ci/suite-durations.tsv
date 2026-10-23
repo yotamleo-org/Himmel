@@ -940,6 +940,7 @@ scripts/release/test-gen-release-notes.sh	0
 scripts/release/test-tarball-vs-clone.sh	3
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	2
+scripts/security/test-snyk-scan.sh	1
 scripts/setup/test-check-jira-key.sh	0
 scripts/setup/test-check-user-slug.sh	0
 scripts/setup/test-choose-mode.sh	0
@@ -1056,6 +1057,7 @@ scripts/vm/test-guest-exec.sh	1
 scripts/vm/test-inventory.sh	1
 scripts/vm/test-launch-guest.sh	1
 scripts/vm/test-model-replay.sh	0
+scripts/vm/test-over-install-stage.sh	1
 scripts/vm/test-provenance-roundtrip-dry.sh	39
 scripts/vm/test-upgrade-path-stage.sh	4
 scripts/vm/test-vm-clone-lib.sh	0

@@ -125,7 +125,7 @@ test("4. each agent is named with its role and model, its work under its name, a
   await expect(agents.nth(0)).toContainText("HIMMEL-1957-N1290-check-ci-cap");
   await expect(agents.nth(0)).toContainText("worker session · opus 5.5");
   await expect(agents.nth(1)).toContainText("correctness critic");
-  await expect(agents.nth(1)).toContainText("critic · code-reviewer · sonnet 5.5");
+  await expect(agents.nth(1)).toContainText("judge · sonnet 5.5");
   // the critic's Read sits in a block headed by the critic, one step in; the leg's calls do not
   const critic = page.locator(".block.sub", { hasText: "correctness critic" });
   await critic.locator(".fold-head").click();
@@ -200,7 +200,7 @@ test("8. a running subagent shows running with its current call, then flips to d
   await page.goto(h.url);
   const sub = { sub: "b4d2f1", model: "claude-sonnet-5-5" };
   h.append(J.prompt("Check the diff with a critic."));
-  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", prompt: "Read check-ci.sh" }));
+  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "judge", prompt: "Read check-ci.sh" }));
   h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
   h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
   // by its name: the leg's own row also names the critic, in the Agent call it is running
@@ -227,7 +227,7 @@ test("8b. a running subagent is listed in the Now panel; once finished its block
   await page.goto(h.url);
   const sub = { sub: "b4d2f1", model: "claude-sonnet-5-5" };
   h.append(J.prompt("Check the diff with a critic."));
-  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", prompt: "Read check-ci.sh" }));
+  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "judge", prompt: "Read check-ci.sh" }));
   h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
   h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
   const row = page.locator(".now li", { has: page.locator(".agent-name", { hasText: "diff critic" }) });

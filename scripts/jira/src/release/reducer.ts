@@ -19,7 +19,7 @@ export interface KeyRecord {
   bookkeeping: string | null;
   emergency: boolean;
   discharged: boolean;
-  terminal: 'Done' | "Won't Do" | 'Duplicate' | null;
+  terminal: 'Done' | "Won't Do" | 'Duplicate' | 'Other' | null;
 }
 
 export interface Burndown {
@@ -67,12 +67,17 @@ export function effectOn(op: RulingRow['op'], v: string): 'in' | 'out' | null {
   }
 }
 
+// Resolutions of a Done-category ticket that count as delivered work; any other
+// (Cannot Reproduce, Obsolete, one not seen yet) is terminal but never folds.
+const DELIVERED = new Set(['', 'done', 'fixed']);
+
 export function terminalOf(i: IssueSnap | undefined): KeyRecord['terminal'] {
   if (!i) return null;
   const s = `${i.status} ${i.resolution ?? ''}`;
   if (/won'?t do/i.test(s)) return "Won't Do";
   if (/duplicate/i.test(s)) return 'Duplicate';
-  return i.status === 'Done' ? 'Done' : null;
+  if (i.status !== 'Done' && i.statusCategory !== 'Done') return null;
+  return DELIVERED.has((i.resolution ?? '').trim().toLowerCase()) ? 'Done' : 'Other';
 }
 
 const core = (r: RulingRow) => canonical({ key: r.key, verb: r.verb, outcome: r.outcome, op: r.op, supersedes: r.supersedes, authority: r.authority });

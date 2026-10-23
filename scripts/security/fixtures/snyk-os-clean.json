@@ -1,0 +1,55 @@
+{
+  "dependencyCount": 1,
+  "displayTargetFile": "package-lock.json",
+  "filesystemPolicy": false,
+  "filtered": {
+    "ignore": [],
+    "patch": []
+  },
+  "hasUnknownVersions": false,
+  "ignoreSettings": {
+    "adminOnly": false,
+    "autoApproveIgnores": false,
+    "disregardFilesystemIgnores": false,
+    "reasonRequired": false
+  },
+  "isPrivate": true,
+  "licensesPolicy": {
+    "orgLicenseRules": null,
+    "severities": null
+  },
+  "ok": true,
+  "org": "example-org",
+  "packageManager": "npm",
+  "path": "/example/proj",
+  "policy": "",
+  "projectName": "shape",
+  "remediation": {
+    "ignore": null,
+    "pin": {},
+    "unresolved": [],
+    "upgrade": {
+      "lodash@4.17.15": {
+        "upgradeTo": "lodash@4.18.1",
+        "upgrades": [
+          "lodash@4.17.15",
+          "lodash@4.17.15",
+          "lodash@4.17.15",
+          "lodash@4.17.15",
+          "lodash@4.17.15"
+        ],
+        "vulns": [
+          "SNYK-JS-LODASH-1040724",
+          "SNYK-JS-LODASH-15869625",
+          "SNYK-JS-LODASH-567746",
+          "SNYK-JS-LODASH-608086",
+          "SNYK-JS-LODASH-6139239"
+        ]
+      }
+    }
+  },
+  "summary": "No known vulnerabilities",
+  "targetFile": "",
+  "uniqueCount": 0,
+  "vulnerabilities": []
+}

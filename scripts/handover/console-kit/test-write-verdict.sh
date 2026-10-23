@@ -264,9 +264,13 @@ heredoc="cat > $scope_dir/j1979/verdict.md <<'EOF'
 EOF"
 abs_call="bash $REPO/scripts/handover/console-kit/write-verdict.sh j1979-never-denies NO-GO $SHA_A --pr 501 --evidence-file /tmp/claude-1000/j1979/evidence.md --judge HIMMEL-4689-judge-j1979"
 for h in block-chokepoint-env-prefix guard-pr-check-literal block-edit-live-settings block-write-into-main-checkout guard-relay-writes; do
-    rc=0; guard_rc "$h" "$call" || rc=$?
-    check "9: $h passes the writer call" "$rc" 0
-    check "9: $h emits no stdout deny for the writer call" "$(denied_out)" none
+    # guard-pr-check-literal holds a relative writer call to the anchor byte
+    # compare; test-guard-pr-check-literal.sh covers both outcomes.
+    if [ "$h" != guard-pr-check-literal ]; then
+        rc=0; guard_rc "$h" "$call" || rc=$?
+        check "9: $h passes the writer call" "$rc" 0
+        check "9: $h emits no stdout deny for the writer call" "$(denied_out)" none
+    fi
     rc=0; guard_rc "$h" "$abs_call" || rc=$?
     check "9: $h passes the absolute writer call" "$rc" 0
     check "9: $h emits no stdout deny for the absolute call" "$(denied_out)" none

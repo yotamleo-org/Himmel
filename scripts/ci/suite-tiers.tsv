@@ -949,6 +949,7 @@ scripts/release/test-gen-release-notes.sh	local	behaviour suite, 0 catches in th
 scripts/release/test-tarball-vs-clone.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/roadmap/test-plan-graph.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/roadmap/test-plan-index.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/security/test-snyk-scan.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/setup/test-check-jira-key.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/setup/test-check-user-slug.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/setup/test-choose-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1080,6 +1081,7 @@ scripts/vm/test-guest-exec.sh	local	behaviour suite, 0 catches in the 400-PR aud
 scripts/vm/test-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-launch-guest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-model-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/vm/test-over-install-stage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-provenance-roundtrip-dry.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-upgrade-path-stage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-vm-clone-lib.sh	local	behaviour suite, 0 catches in the 400-PR audit window

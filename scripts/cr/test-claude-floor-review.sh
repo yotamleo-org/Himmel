@@ -105,7 +105,7 @@ if head -c "$(wc -c < "$W/agent-body.md")" "$REC/system.md" | cmp -s - "$W/agent
     ok "1 system prompt starts with the reviewer agent body verbatim"; else bad "1 system prompt starts with the reviewer agent body verbatim"; fi
 hasnt "1 system prompt carries no agent frontmatter" '^name: code-reviewer' "$REC/system.md"
 has "1 script loads its prompt from scripts/cr/floor-reviewer.md" "scripts/cr/floor-reviewer.md" "$SUT"
-hasnt "1 script no longer names the dropped plugin" "pr-review-toolkit-himmel" "$SUT"
+hasnt "1 script no longer names the dropped plugin" "pr-review-""toolkit-himmel" "$SUT"
 # -- provenance + ledger --
 ART="$R/.git/cr-floor/$HEAD_SHA.json"
 check "1 artifact head" "$HEAD_SHA" "$(jq -r .head "$ART" 2>/dev/null)"
@@ -451,6 +451,25 @@ HANDOVER_DIR="$R" HIMMEL_CLAUDE_LANE=claudex run_sut
 check "30 handover-state repo under claudex -> exit 3" 3 "$RC"
 check "30 claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 has "30 names the corpus" 'corpus "handover-state"' "$W/out"
+
+# 31. An unreadable prompt refuses before any headless call. Use a private
+# script copy so the fixture never changes the checkout's reviewer permissions.
+mk_repo 31; row codex unavailable quota
+PROMPT_REPO="$W/unreadable-prompt"
+mkdir -p "$PROMPT_REPO/scripts/cr" "$PROMPT_REPO/scripts/lib"
+cp "$SUT" "$PROMPT_REPO/scripts/cr/claude-floor-review.sh"
+cp "$REPO/scripts/lib/review-default-base.sh" "$PROMPT_REPO/scripts/lib/"
+cp "$AGENT_MD" "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
+chmod 000 "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
+if [ -r "$PROMPT_REPO/scripts/cr/floor-reviewer.md" ]; then
+    bad "31 fixture prompt must be unreadable"
+else
+    SUT="$PROMPT_REPO/scripts/cr/claude-floor-review.sh" run_sut
+    check "31 unreadable prompt -> exit 2" 2 "$RC"
+    has "31 refusal names the unreadable prompt" "reviewer agent definition not readable: $PROMPT_REPO/scripts/cr/floor-reviewer.md" "$W/out"
+    check "31 claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+fi
+chmod 600 "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
 
 echo "claude-floor-review: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

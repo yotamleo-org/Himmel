@@ -299,6 +299,12 @@ ERR1=$(cat "$TMP/err-impl-claudex")
 assert_contains "claudex refusal names dispatcher" "bun scripts/telegram/spawn-claudex.ts '<prompt>' --name <slug> --timeout-mins <n> --effort high" "$ERR1"
 assert_rc "claudex refusal is one line" 1 "$(wc -l < "$TMP/err-impl-claudex" | tr -d ' ')"
 
+# The retired plugin name must not exempt a newly supplied implementation agent.
+RETIRED_REVIEWER="pr-review-""toolkit-himmel:code-reviewer"
+RC_RETIRED=$(run_hook retired-reviewer "$REG_CLAUDEX" "$(payload "$RETIRED_REVIEWER" sonnet 'Implement the fix' 'Write the guard and commit the changes.')")
+assert_rc "retired reviewer name does not bypass implementation routing" 2 "$RC_RETIRED"
+assert_contains "retired reviewer refusal names the claudex dispatcher" "bun scripts/telegram/spawn-claudex.ts" "$(combined_output retired-reviewer)"
+
 RC1JR=$(run_hook impl-judge-ro "$REG_CLAUDEX" "$(payload console-judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
 assert_rc "HIMMEL-5180: console-judge-ro (tools Read/Grep/Glob/Bash only) is lane-exempt like Explore even on an implementation-shaped brief" 0 "$RC1JR"
 

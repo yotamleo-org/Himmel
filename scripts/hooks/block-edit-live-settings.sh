@@ -905,6 +905,14 @@ mentions_primary_or_home() {
     return 1
 }
 
+# interp_write_api CMD_LC — 0 when the text names a file-write or file-mutating API
+# (the write half of interp_home_write, shared with python_heredoc_readonly).
+interp_write_api() {
+    local LC_ALL=C
+    local rw='write_text|write_bytes|\.[[:space:]]*write(r|v|lines)?([[:space:]]*\(|[[:space:]])|writefile|appendfile|createwritestream|copyfile|cpsync|renamesync|symlink|hardlink|syswrite|json[[:space:]]*\.[[:space:]]*dump[[:space:]]*\(|shutil[[:space:]]*\.|fileutils[[:space:]]*\.|io[[:space:]]*\.[[:space:]]*write|os[[:space:]]*\.[[:space:]]*(replace|rename|link)|\.[[:space:]]*rename([[:space:]]*\(|[[:space:]])|\.[[:space:]]*touch[[:space:]]*\(|o_(wronly|rdwr|creat|trunc|append)|(open|fileio|fdopen|new|zipfile)(sync)?[[:space:]]*\((.*,)?[[:space:]]*(mode[[:space:]]*=[[:space:]]*)?['\''"][rbt]*[wax+][rbt+]*['\''"]|open[[:space:]]*\(?[^;]*['\''"](\+?>|\+<)|os[[:space:]]*\.[[:space:]]*(f?truncate|remove|unlink|rmdir|[lf]?chmod|l?chown|mkdir|makedirs|mknod|mkfifo)|\.[[:space:]]*(unlink|rmdir|[lf]?chmod|l?chown|mkdir|makedirs|f?truncate|rm|cp|link|mknod)(sync)?[[:space:]]*\(|\.[[:space:]]*replace[[:space:]]*\(([^,()]|\(([^()]|\(([^()]|\([^()]*\))*\))*\))*\)|(file|dir|pathname)[[:space:]]*\.[[:space:]]*(delete|unlink|truncate|l?chmod|l?chown|rename|mkfifo|mkdir|rmdir)|(f?truncate|unlink|rm|rmdir|link|[lf]?chmod|l?chown|mkdir|cp|write|writev)sync|(^|[^a-z0-9_.])(unlink|f?truncate|rename|chmod|chown|rmdir|mkdir|rm|cp|link|symlink|copy|move|rmtree|remove_tree|make_path|mkpath)[[:space:]]*\(|(^|[^a-z0-9_.])(unlink|f?truncate|rename)[[:space:]]+[$'\''"]|(^|[^a-z0-9_.])chmod[[:space:]]+[0-7]+[[:space:]]*,|file[[:space:]]*\.[[:space:]]*(open|new)[[:space:]]+[^;]*,[[:space:]]*['\''"][rbt]*[wax+]|inplace[[:space:]]*=[[:space:]]*(true|1)|\$\^i[[:space:]]*=|copy_stream|binwrite|::(wronly|rdwr|creat|trunc|append)|deno[[:space:]]*\.[[:space:]]*(write[a-z]*|remove|f?truncate|rename|copyfile|create|symlink|link|chmod|chown|mkdir)'
+    [[ $1 =~ $rw ]]
+}
+
 # interp_home_write CMD_LC — 0 when the command runs an interpreter (python,
 # node, perl, ruby, their versioned names, bun, deno) and its text names both
 # a home-directory API (`expanduser`, `homedir()`, `Path.home()`, `Dir.home`,
@@ -933,8 +941,7 @@ interp_home_write() {
     local LC_ALL=C
     # shellcheck disable=SC2016 # literal `$` text in the home-API pattern
     local ri='(^|[^a-z0-9_.-])(python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl[0-9.]*|ruby[0-9.]*)([^a-z0-9_.-]|$)' \
-        rh='expanduser[[:space:]]*\(|expandvars[[:space:]]*\(|expand_path[[:space:]]*\(|homedir[[:space:]]*\(|(path|dir)[[:space:]]*\.[[:space:]]*home([^a-z0-9_]|$)|env[[:space:]]*\.[[:space:]]*home([^a-z0-9_]|$)|(environ|env|getenv)([[:space:]]*\.[[:space:]]*(get|fetch))?[[:space:]]*[[({][[:space:]]*['\''"]?home['\''"]?[[:space:]]*[])},]' \
-        rw='write_text|write_bytes|\.[[:space:]]*write(r|v|lines)?([[:space:]]*\(|[[:space:]])|writefile|appendfile|createwritestream|copyfile|cpsync|renamesync|symlink|hardlink|syswrite|json[[:space:]]*\.[[:space:]]*dump[[:space:]]*\(|shutil[[:space:]]*\.|fileutils[[:space:]]*\.|io[[:space:]]*\.[[:space:]]*write|os[[:space:]]*\.[[:space:]]*(replace|rename|link)|\.[[:space:]]*rename([[:space:]]*\(|[[:space:]])|\.[[:space:]]*touch[[:space:]]*\(|o_(wronly|rdwr|creat|trunc|append)|(open|fileio|fdopen|new|zipfile)(sync)?[[:space:]]*\((.*,)?[[:space:]]*(mode[[:space:]]*=[[:space:]]*)?['\''"][rbt]*[wax+][rbt+]*['\''"]|open[[:space:]]*\(?[^;]*['\''"](\+?>|\+<)|os[[:space:]]*\.[[:space:]]*(f?truncate|remove|unlink|rmdir|[lf]?chmod|l?chown|mkdir|makedirs|mknod|mkfifo)|\.[[:space:]]*(unlink|rmdir|[lf]?chmod|l?chown|mkdir|makedirs|f?truncate|rm|cp|link|mknod)(sync)?[[:space:]]*\(|\.[[:space:]]*replace[[:space:]]*\(([^,()]|\(([^()]|\(([^()]|\([^()]*\))*\))*\))*\)|(file|dir|pathname)[[:space:]]*\.[[:space:]]*(delete|unlink|truncate|l?chmod|l?chown|rename|mkfifo|mkdir|rmdir)|(f?truncate|unlink|rm|rmdir|link|[lf]?chmod|l?chown|mkdir|cp|write|writev)sync|(^|[^a-z0-9_.])(unlink|f?truncate|rename|chmod|chown|rmdir|mkdir|rm|cp|link|symlink|copy|move|rmtree|remove_tree|make_path|mkpath)[[:space:]]*\(|(^|[^a-z0-9_.])(unlink|f?truncate|rename)[[:space:]]+[$'\''"]|(^|[^a-z0-9_.])chmod[[:space:]]+[0-7]+[[:space:]]*,|file[[:space:]]*\.[[:space:]]*(open|new)[[:space:]]+[^;]*,[[:space:]]*['\''"][rbt]*[wax+]|inplace[[:space:]]*=[[:space:]]*(true|1)|\$\^i[[:space:]]*=|copy_stream|binwrite|::(wronly|rdwr|creat|trunc|append)|deno[[:space:]]*\.[[:space:]]*(write[a-z]*|remove|f?truncate|rename|copyfile|create|symlink|link|chmod|chown|mkdir)'
+        rh='expanduser[[:space:]]*\(|expandvars[[:space:]]*\(|expand_path[[:space:]]*\(|homedir[[:space:]]*\(|(path|dir)[[:space:]]*\.[[:space:]]*home([^a-z0-9_]|$)|env[[:space:]]*\.[[:space:]]*home([^a-z0-9_]|$)|(environ|env|getenv)([[:space:]]*\.[[:space:]]*(get|fetch))?[[:space:]]*[[({][[:space:]]*['\''"]?home['\''"]?[[:space:]]*[])},]'
     # A backslash line continuation (LF or CRLF) splits nothing in the
     # interpreter's own parse, so it is folded away before matching.
     local t bc=$'\\\r\n' bn=$'\\\n'
@@ -942,13 +949,21 @@ interp_home_write() {
     t=${t//"$bn"/}
     [[ $t =~ $ri ]] || return 1
     [[ $t =~ $rh ]] || return 1
-    [[ $t =~ $rw ]] || return 1
+    interp_write_api "$t" || return 1
     # HIMMEL-4348: a home API named only inside a string literal is data
     # (`write('call Path.home() to get it')`), so the pair is judged again on
     # the text with literal contents blanked; any unsure reading keeps the
     # raw-text deny above.
     interp_literal_blank "$t" || return 0
     [[ $_ILB_T =~ $rh ]]
+}
+
+# interp_dyn_api CMD_LC — 0 when the text holds a dynamic-dispatch or spawn word that can
+# turn a literal into code (shared by interp_literal_blank and python_heredoc_readonly).
+interp_dyn_api() {
+    local LC_ALL=C
+    local dyn='eval|exec|compile|getattr|setattr|__import__|importlib|__builtins__|function[[:space:]]*\(|require[[:space:]]*\(|import[[:space:]]*\(|subprocess|system|popen|spawn|child_process|fork|runpy|pickle|marshal|ctypes|runin'
+    [[ $1 =~ $dyn ]]
 }
 
 # interp_literal_blank CMD_LC — set _ILB_T to the Bash command's words (ST_LW)
@@ -975,10 +990,9 @@ interp_home_write() {
 # HIMMEL-4317.
 interp_literal_blank() {
     local LC_ALL=C k=0 w b out=''
-    local dyn='eval|exec|compile|getattr|setattr|__import__|importlib|__builtins__|function[[:space:]]*\(|require[[:space:]]*\(|import[[:space:]]*\(|subprocess|system|popen|spawn|child_process|fork|runpy|pickle|marshal|ctypes|runin' \
-        rint='^(python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl[0-9.]*|ruby[0-9.]*)$'
+    local rint='^(python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl[0-9.]*|ruby[0-9.]*)$'
     [ "$TOK" = 1 ] || return 1
-    [[ $1 =~ $dyn ]] && return 1
+    interp_dyn_api "$1" && return 1
     while [ "$k" -lt "$ST_N" ]; do
         w=${ST_LW[k]}
         if [[ ${w##*/} =~ $rint ]]; then
@@ -1034,6 +1048,83 @@ _ilb_body() {
     done
     [ -z "$q" ] || return 1
     _ILB_B=$o
+}
+
+# python_heredoc_readonly CMD — 0 when CMD is exactly one `python3 [-] <<'DELIM'`
+# statement (a quoted delimiter, no redirect, pipe or later command) whose body
+# can only read: no write or file-mutating API, no dynamic-dispatch or spawn
+# word, and every `open(` takes a single path (plus an optional `r`-family
+# mode and encoding). Such a heredoc that merely names a live settings file
+# reads it; the quoted delimiter keeps the shell from expanding
+# the body.
+# ponytail: the body may use only the identifiers of a short read-only list
+# (anything else, a comment, a backslash, an f-string or a triple quote denies),
+# so an alias or an indirection cannot reach a write API; a legitimate reader
+# that needs another name falls back to the deny. Upgrade path: read the body
+# with a real python parser.
+python_heredoc_readonly() {
+    local LC_ALL=C nl=$'\n' c=$1 first rest last body delim bl b b2 lit words w ralias
+    local rfirst='^(python[0-9.]*)([[:space:]]+-[IBuEsSOq]+)*([[:space:]]+-)?[[:space:]]*<<[[:space:]]*(\x27([A-Za-z_][A-Za-z0-9_]*)\x27|"([A-Za-z_][A-Za-z0-9_]*)")[[:space:]]*$' \
+        rextra='filehandler|zipfile|tarfile|sqlite3|shelve|dbm|fileinput|mmap|logging|tempfile|builtins|operator|functools|contextlib|globals|locals|vars|__dict__|__class__|__subclasses__|__getattribute__|__getitem__|modules|methodcaller|attrgetter|redirect_|shutil|fileio|gzip|bz2|lzma|urlretrieve|dump[[:space:]]*\(|stream[[:space:]]*=|std(out|err)[[:space:]]*=([^=]|$)' \
+        rfrom='(^|[;[:space:]])from[[:space:]]+[a-z0-9_.]+[[:space:]]+import' \
+        rbareopen='(^|[^a-z0-9_])open($|[^a-z0-9_])' \
+        rdotopen='\.[[:space:]]*open' \
+        ropen='open[[:space:]]*\([^(),*]*(\([^()]*\)[^(),]*)*(,[[:space:]]*[\x27"][rbt]+[\x27"][[:space:]]*)?(,[[:space:]]*encoding[[:space:]]*=[[:space:]]*[\x27"][a-z0-9_-]+[\x27"][[:space:]]*)?\)'
+    rfirst=${rfirst//\\x27/\'}
+    ropen=${ropen//\\x27/\'}
+    ralias="(^|[;[:space:]])import[[:space:]][^;$nl]*[[:space:]]as[[:space:]]"
+    [ "$tool_name" = Bash ] || return 1
+    while [ "${c: -1}" = "$nl" ]; do c=${c%"$nl"}; done
+    case "$c" in *"$nl"*) ;; *) return 1 ;; esac
+    first=${c%%"$nl"*}
+    rest=${c#*"$nl"}
+    [[ $first =~ $rfirst ]] || return 1
+    delim=${BASH_REMATCH[5]}${BASH_REMATCH[6]}
+    last=${rest##*"$nl"}
+    [ "$last" = "$delim" ] || return 1
+    case "$rest" in *"$nl"*) body=${rest%"$nl$last"} ;; *) body='' ;; esac
+    [ "${#body}" -le 20000 ] || return 1
+    case "$nl$body$nl" in *"$nl$delim$nl"*) return 1 ;; esac
+    # Python folds non-ASCII compatibility letters in an identifier (NFKC) to
+    # plain ASCII, so a spelled-out builtin would pass the byte-wise word split.
+    local rnonascii=$'[^\t\n -~]'
+    [[ $body =~ $rnonascii ]] && return 1
+    bl=$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]')
+    interp_write_api "$bl" && return 1
+    interp_dyn_api "$bl" && return 1
+    [[ $bl =~ $rextra ]] && return 1
+    [[ $bl =~ $ralias ]] && return 1
+    [[ $bl =~ $rdotopen ]] && return 1
+    # A name list is defeated by an alias or an indirection, so the body may
+    # use only the identifiers of a short read-only list (checked below).
+    # Allowed imports are plain `import a, b` lines and a from-import over the
+    # same short module list (an import of any other module runs its code); a few `os.<read attribute>` forms are dropped first.
+    b=$(printf '%s\n' "$bl" | sed -E \
+        -e '/^[[:space:]]*import[[:space:]]+(json|os|sys|re|pathlib|collections|itertools|datetime)([[:space:]]*,[[:space:]]*(json|os|sys|re|pathlib|collections|itertools|datetime))*[[:space:]]*$/d' \
+        -e 's/(^|[;[:space:]])from[[:space:]]+(pathlib|json|collections|itertools|datetime|re|sys|os\.path)[[:space:]]+import[[:space:]]+[a-z0-9_, ]+/ /g' \
+        -e 's/(^|[^a-z0-9_.])os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)([^a-z0-9_]|$)/\1 \3/g' \
+        -e 's/(^|[^a-z0-9_.])os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)([^a-z0-9_]|$)/\1 \3/g')
+    [[ $b =~ $rfrom ]] && return 1
+    b2=$b
+    while [[ $b2 =~ $ropen ]]; do b2=${b2/"${BASH_REMATCH[0]}"/ }; done
+    [[ $b2 =~ open[[:space:]]*\( ]] && return 1
+    [[ $b2 =~ $rbareopen ]] && return 1
+    case "$b" in *\\* | *'#'* | *"'''"* | *'"""'* | *'`'*) return 1 ;; esac
+    lit=$(printf '%s\n' "$b" | sed -E -e "s/'[^']*'|\"[^\"]*\"/0/g")
+    case "$lit" in *\'* | *\"*) return 1 ;; esac
+    words=$(printf '%s' "$lit" | tr -c 'a-z0-9_' '\n')
+    while IFS= read -r w; do
+        case "$w" in '' | [0-9]*) continue ;; esac
+        case "$w" in
+            import | as | with | for | in | if | else | elif | not | and | or | is | none | true | false | try | except | finally | pass) ;;
+            print | len | sorted | sum | min | max | any | all | list | dict | set | tuple | str | int | float | bool | range | enumerate | zip | reversed | isinstance | open) ;;
+            json | pathlib | collections | itertools | datetime | path | load | loads | dumps | get | keys | values | items | read | read_text | readlines | splitlines) ;;
+            strip | split | join | startswith | endswith | lower | upper | expanduser | home | joinpath | exists | isfile | isdir | basename | dirname | format | append | sort | index | count) ;;
+            d | data | f | k | v | x | i | j | n | e | s | t | p | h | cfg | conf | config | settings | hooks | line | lines | text | name | names | key | val | value | result | item) ;;
+            *) return 1 ;;
+        esac
+    done <<< "$words"
+    return 0
 }
 
 # is_readonly_allowlisted CMD_LC — the rule 1 exception: a short list of
@@ -4422,6 +4513,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         elif is_readonly_allowlisted "$cmd_lc"; then
             exit 0
         fi
+        python_heredoc_readonly "$cmd" && exit 0
     fi
 
     if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then

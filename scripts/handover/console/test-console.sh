@@ -1618,6 +1618,17 @@ check "60b successor doc's tracker: line carries the predecessor's tracker URL" 
     "$(grep -Fxc "tracker: $trackerurl60b" "$doc60bB" 2>/dev/null)" "1"
 check "60b no unrendered {{TRACKER_URL}} left in the successor doc" \
     "$(grep -Fc '{{TRACKER_URL}}' "$doc60bB" 2>/dev/null)" "0"
+# focus-version: and focus-plan: opt the FOCUS refresh in; a succession must keep them.
+focusplan60b='/fixture/plans/focus-plan-60b.md'
+awk -v plan="$focusplan60b" '{ print } /^tracker: / { print "focus-version: v9.9.9"; print "focus-plan: " plan }' "$doc60bA" >"$doc60bA.new" && mv "$doc60bA.new" "$doc60bA"
+rm -f "$doc60bB"
+rc60bf=0
+console next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1 || rc60bf=$?
+check "60b next succeeds against a doc with focus-version: and focus-plan:" "$rc60bf" "0"
+check "60b successor doc carries the predecessor's focus-version: line" \
+    "$(grep -Fxc 'focus-version: v9.9.9' "$doc60bB" 2>/dev/null)" "1"
+check "60b successor doc carries the predecessor's focus-plan: line" \
+    "$(grep -Fxc "focus-plan: $focusplan60b" "$doc60bB" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 
 # --- 61: the console parent defaults to Opus, not Fable

@@ -3592,6 +3592,45 @@ assert_rc "6927s3u printf with a dynamic-precision %.*n conversion denies" 2 \
 assert_rc "6927s3r printf %s with a newline and home settings stays allowed" 0 \
     "$(bash_rc_of "$PRIMARY" 'printf '"'"'%s\n'"'"' ~/.claude/settings.json' HOME="$FAKEHOME")"
 
+# 7019: a python heredoc that only READS the live settings file is a read;
+# the same heredoc with any write, a dynamic dispatch, an unquoted delimiter
+# or anything outside the one statement keeps the deny.
+rows_both 7019 0 "read-only python heredoc over live settings allows" <<'ROWS'
+python3 - <<'PY'\nimport json, os\nd = json.load(open(os.path.expanduser('~/.claude/settings.json')))\nprint(sorted(d.keys()))\nPY
+python3 - <<'PY'\nimport json\nd = json.load(open('@H@/.claude/settings.json'))\nprint(d.get('hooks'))\nPY
+python3 <<'PY'\nfrom pathlib import Path\nprint(Path.home().joinpath('.claude', 'settings.json').read_text())\nPY
+python3 -I - <<"PY"\nimport os\nwith open(os.path.expanduser('~/.claude/settings.json'), 'r') as f:\n    print(len(f.read()))\nPY
+ROWS
+rows_both 7030 2 "python heredoc over live settings that can write denies" <<'ROWS'
+python3 - <<'PY'\nimport os\nopen(os.path.expanduser('~/.claude/settings.json'), 'w').write('{}')\nPY
+python3 - <<'PY'\nimport os\nm = 'w'\nopen(os.path.expanduser('~/.claude/settings.json'), m).write('{}')\nPY
+python3 - <<'PY'\nimport os\ngetattr(open(os.path.expanduser('~/.claude/settings.json')), 'wr' + 'ite')('x')\nPY
+python3 - <<'PY'\nimport os\nos.system('cp /tmp/x ' + os.path.expanduser('~/.claude/settings.json'))\nPY
+python3 - <<'PY'\nimport json, os\nprint(json.load(open(os.path.expanduser('~/.claude/settings.json'))))\nPY\ncp /tmp/x ~/.claude/settings.json
+python3 - <<'PY' > ~/.claude/settings.json\nprint('{}')\nPY
+python3 - <<'PY' | tee ~/.claude/settings.json\nprint('{}')\nPY
+python3 - <<PY\nimport os\nprint(open(os.path.expanduser('~/.claude/settings.json')).read(), '$(cp /tmp/x ~/.claude/settings.json)')\nPY
+python3 -c "import os; print(open(os.path.expanduser('~/.claude/settings.json')).read())" > ~/.claude/settings.json
+ROWS
+rows_both 7040 2 "python heredoc aliasing or indirecting a write API still denies" <<'ROWS'
+python3 - <<'PY'\nfrom builtins import open as f\nprint('{}', file=f('@H@/.claude/settings.json', 'w'))\nPY
+python3 - <<'PY'\nimport os as o\no.remove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nimport os\no = os\no.remove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nfrom os import remove\nremove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nf = open\nf('@H@/.claude/settings.json', 'w').write('{}')\nPY
+python3 - <<'PY'\nimport os\nprint('{}', file=open(os.path.expanduser('~/.claude/settings.json'), 'w'))\nPY
+python3 - <<'PY'\nimport pathlib\nprint('{}', file=pathlib.Path('@H@/.claude/settings.json').open(mode='w'))\nPY
+python3 - <<'PY'\nimport shutil\ns = shutil\ns.copy('/tmp/x', '@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nargs = ('@H@/.claude/settings.json', 'w')\nopen(*args).close()\nPY
+python3 - <<'PY'\nimport os\no = os.path.os\no.remove('@H@/.claude/settings.json')\nPY
+python3 - <<'PY'\nimport pathlib\npathlib.Path('@H@/.claude/settings.json').open('w').close()\nPY
+python3 - <<'PY'\nimport json\nprint(f"{open('@H@/.claude/settings.json', 'w')}")\nPY
+python3 - <<'PY'\nimport payload\nprint(open('@H@/.claude/settings.json').read())\nPY
+python3 - <<'PY'\nimport json, payload\nprint(json.load(open('@H@/.claude/settings.json')))\nPY
+python3 - <<'PY'\nimport os\nvars(os)['un'+'link'](os.path.expanduser('~/.claude/settings.json'))\nPY
+python3 - <<'PY'\nwith ｏｐｅｎ('@H@/.claude/settings.json', 'w') as f:\n    f.ｗｒｉｔｅ('x')\nPY
+ROWS
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true

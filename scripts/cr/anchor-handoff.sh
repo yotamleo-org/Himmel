@@ -43,23 +43,22 @@
 # script at the same root-relative path, exits 2 rather than letting the
 # branch's copy decide. One hop only: a hand-off that lands on a copy which is
 # still not the anchor refuses instead of looping.
-# ponytail: (HIMMEL-3437) this file and the one line sourcing it are branch bytes. For the
-# nine original scripts/cr/ writers, guard-pr-check-literal.sh
-# denies a relative run unless the entry script and this file equal the
-# anchor's byte for byte, so a branch that deletes either is refused before it
-# runs. guard-pr-check-literal's TARGETS list covers scripts/cr only
-# - it does NOT yet extend that same byte-compare
-# to scripts/handover/merge-on-green.sh or console-kit/go.sh, so for those two
-# this file's hand-off is defence in depth, not yet undeletable on its own;
-# closing that gap is a scripts/hooks/ edit tracked as a follow-up.
+# ponytail: (HIMMEL-3437) this file and the one line sourcing it are branch bytes. For every
+# gate-allowed scripts/cr/ writer (its TARGETS) and for merge-on-green.sh,
+# console-kit/go.sh, himmel-gate.sh, write-verdict.sh and console-wait.sh (its HTARGETS),
+# guard-pr-check-literal.sh denies a relative run unless the entry script and
+# this file equal the anchor's byte for byte, so a branch that deletes either
+# is refused before it runs.
 # HIMMEL_REPO is still read from the environment, so whoever sets it picks the
 # anchor (a residual the hook shares, where the hook applies). The absolute
 # door is left open on purpose: `bash /abs/worktree/scripts/cr/<writer>.sh`
 # runs the branch's copy, because no allow rule matches that spelling, so the
 # classifier or the operator sees it. "Relative" is decided on the entry path
 # AS INVOKED (`./scripts/cr/x.sh` counts), never on a resolved path. The
-# structural control is the narrowed allow list: no prefix rule
-# reaches scripts/cr/, and none reaches scripts/handover/ either.
+# structural control is the narrowed allow list: no prefix rule reaches
+# scripts/cr/, but per-script `:*` prefix rules do reach scripts/handover/.
+# The gate writers among them are the hook's HTARGETS above; cut-tag,
+# close-wrapped-leg, launch-cloud, vm-runner and gcp-runners have no hand-off yet.
 
 _ah_self="${BASH_SOURCE[1]:-$0}"
 case "$_ah_self" in

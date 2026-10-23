@@ -37,6 +37,12 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   stays on the 5-minute cache TTL (prediction table:
   `docs/internals/prompt-cache.md`). After each judge, append its ledger row:
   `bash scripts/eval/judge-cache-row.sh --ledger <ledger> <agent-*.jsonl>`.
+- **A judge reads the PR at its head sha, never FETCH_HEAD** (HIMMEL-7062): parallel
+  judges share one checkout and each `git fetch` overwrites `FETCH_HEAD`. Tell the
+  judge to check `gh pr view <N> --json headRefOid` equals the dispatched head,
+  check `git cat-file -t <sha>` prints `commit` (a bare `git fetch origin` if not,
+  never a refspec fetch: the primary-checkout guard refuses it), then read with
+  `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
 - **Convene at the cheapest tier that can rule** (HIMMEL-1864): start a judge call at
   Sonnet or Opus and escalate only when it returns above-my-tier
   (`bash scripts/handover/console-kit/judge-ladder.sh next-tier <tier>`; Fable's next

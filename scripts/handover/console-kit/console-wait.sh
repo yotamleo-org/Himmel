@@ -184,7 +184,7 @@
 #                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
-# 2 = usage; 3 = another waiter is already live on this inbox (its pid is named).
+# 2 = usage or an inbox outside the */consoles/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
 #
 # Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
 # CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_TICK_TIMEOUT
@@ -208,6 +208,8 @@
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
 # bash 3.2-safe.
 set -u
+case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
+. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
@@ -243,6 +245,32 @@ if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     exit 2
 fi
 inbox="$1"; shift
+# The inbox's lines are printed to stdout, so only the bridge's inbox layout
+# is read: its canonical path (symlinks resolved) must be
+# */consoles/<name>.md, and an existing inbox a regular file with one link.
+# A secret (the GO key, .env) never sits at that shape. Checked at start and
+# again before each drain, so an inbox swapped for a link mid-wait is refused.
+# ponytail: a swap between the check and inbox-follow.sh's open still reads
+# the new target; upgrade path is handing inbox-follow.sh the checked fd.
+inbox_fence() {
+    local canon name
+    # prim-ok: canon_path resolves a directory only; the inbox is a file that may be a symlink or not exist yet
+    canon="$(realpath -m -- "$inbox")" || canon=""  # gnu-ok: Linux-only kit (PLATFORM GUARD)
+    name="${canon##*/}"
+    case "$canon" in
+        */consoles/*.md) ;;
+        *) name="" ;;
+    esac
+    case "${name%.md}" in
+        "" | *[!A-Za-z0-9._-]*) name="" ;;
+    esac
+    if [ -z "$name" ] || [ "${canon%/consoles/*}/consoles/$name" != "$canon" ] \
+        || { [ -e "$inbox" ] && { [ ! -f "$canon" ] || [ "$(stat -c %h -- "$canon")" != 1 ]; }; }; then  # gnu-ok: Linux-only kit
+        echo "console-wait: refusing inbox '$inbox' - it must be a */consoles/<name>.md bridge inbox (a regular file with one link, no symlink out of the layout)" >&2
+        return 1
+    fi
+}
+inbox_fence || exit 2
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
 if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
@@ -887,6 +915,7 @@ while :; do
     # Telegram first: it is the cheap check and the operator's line. Peek, print
     # the header, then let --once stream the lines: each line is on stdout
     # before its cursor moves, so a kill mid-wake replays, never drops.
+    inbox_fence || { exit_reason='inbox-error'; exit 1; }
     bash "$HERE/inbox-follow.sh" --peek "$inbox" 9>&-; rc=$?
     if [ "$rc" -eq 0 ]; then
         printf 'WAKE telegram\n'
