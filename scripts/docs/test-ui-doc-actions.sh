@@ -28,7 +28,7 @@ for r in $routes; do
   if grep -E '^\|' "$DOC" | grep -qF "\`$r\`"; then ok; else bad "docs/ui.md action table has no row for the write route $r"; fi
 done
 
-if grep -qiE 'every page is read-only|read-only except|only the settings switches' "$DOC"; then
+if grep -qiE 'every page is read-only|read-only except|only the settings switches|(console|ui|interface) is (entirely |fully |completely )?read-only' "$DOC"; then
   bad "docs/ui.md still carries a blanket read-only claim"
 else
   ok
@@ -38,6 +38,7 @@ fi
 for p in README.md docs/why-himmel.md docs/getting-started.md docs/setup/install.md docs/adoption-trail.html \
          docs/daily-loop.md docs/configuration.md docs/commands-catalog.md docs/setup/updating.md docs/ui.md; do
   if grep -E '^\|' "$DOC" | grep -F "\`$p\`" | grep -qE 'HIMMEL-[0-9]+'; then ok; else bad "docs/ui.md owner table has no owner row for $p"; fi
+  if grep -E '^\|' "$DOC" | grep -F "\`$p\`" | grep -qE '\| (newcomer|contributor)( and (newcomer|contributor))? \|'; then ok; else bad "docs/ui.md owner table has no audience for $p"; fi
   case "$p" in
     *.html) ;;
     *) if grep -qE '^Audience: (newcomer|contributor)' "$ROOT/$p"; then ok; else bad "$p has no Audience: newcomer|contributor line"; fi ;;
