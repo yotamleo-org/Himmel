@@ -75,7 +75,15 @@ ungated="$(awk '
   { blk = blk "\n" $0 }
   END { flush(); print n+0 }' <<< "$s")"
 if [ "$ungated" = 0 ]; then ok "every working step is gated on the token"; else bad "every working step is gated on the token ($ungated ungated)"; fi
-check     "scan runs snyk-scan.sh"                  'bash scripts/security/snyk-scan\.sh'
+check_not "token is not exposed at job level"       '^    env:'
+tok_steps="$(awk '
+  function flush() { if (blk ~ /secrets\.SNYK_TOKEN/) { if (blk ~ /id: gate/) g++; else if (blk ~ /bash scripts\/security\/snyk-scan\.sh/) sc++; else other++ } }
+  /^[[:space:]]+- / { flush(); blk="" }
+  { blk = blk "\n" $0 }
+  END { flush(); print g+0, sc+0, other+0 }' <<< "$s")"
+if [ "$tok_steps" = "1 1 0" ]; then ok "token reaches only the gate and scan steps"; else bad "token reaches only the gate and scan steps (gate/scan/other: $tok_steps)"; fi
+check     "checkout does not persist credentials"   'persist-credentials: false'
+check     "scan runs snyk-scan.sh"                 'bash scripts/security/snyk-scan\.sh'
 check     "scan writes to a known out-dir"          'snyk-scan\.sh.*--out-dir'
 check     "JSON uploaded as an artifact"            'actions/upload-artifact@'
 check     "upload runs even when the scan finds issues" "if: always\(\) && steps\.gate\.outputs\.enabled == 'true'"

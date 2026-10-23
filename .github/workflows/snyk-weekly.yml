@@ -22,11 +22,11 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
       - name: Gate on the token
         id: gate
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           if [ -z "$SNYK_TOKEN" ]; then
             echo "::notice title=snyk-weekly skipped::SNYK_TOKEN is not set; the operator adds it with: gh secret set SNYK_TOKEN --repo ${{ github.repository }}"
@@ -37,6 +37,8 @@ jobs:
 
       - if: steps.gate.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install the Snyk CLI
         if: steps.gate.outputs.enabled == 'true'
@@ -44,6 +46,8 @@ jobs:
 
       - name: Run the Snyk scan
         if: steps.gate.outputs.enabled == 'true'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: bash scripts/security/snyk-scan.sh --repo "$GITHUB_WORKSPACE" --out-dir "$RUNNER_TEMP/snyk"
 
       - name: Upload the scan result
