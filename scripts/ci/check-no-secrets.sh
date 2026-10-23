@@ -39,11 +39,15 @@ allowed_text='SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}'
 kept=""
 while IFS= read -r m; do
   [ -n "$m" ] || continue
-  if [[ "$m" =~ ^(.*/)?([^/:]+):[0-9]+:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] \
-    && [ "${BASH_REMATCH[2]}" = "$allowed_file" ] \
-    && [ "${BASH_REMATCH[3]}" = "$allowed_text" ]; then
-    continue
-  fi
+  case "$m" in
+    "${scan%/}/$allowed_file:"*)
+      rest="${m#"${scan%/}/$allowed_file:"}"
+      if [[ "$rest" =~ ^[0-9]+:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] \
+        && [ "${BASH_REMATCH[1]}" = "$allowed_text" ]; then
+        continue
+      fi
+      ;;
+  esac
   kept+="$m"$'\n'
 done <<< "$matches"
 matches="${kept%$'\n'}"

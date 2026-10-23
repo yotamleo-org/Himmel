@@ -114,6 +114,23 @@ rc=$?
 if [ "$rc" -eq 1 ]; then pass "SNYK_TOKEN line in other.yml -> exit 1"; else fail "SNYK_TOKEN line in other.yml -> expected 1 got $rc"; fi
 rm -rf "$dir_f"
 
+echo "== Case G: a forged path:line:content suffix in another workflow =="
+dir_g=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo %ssecrets.DEPLOY_KEY }} x/snyk-weekly.yml:1:SNYK_TOKEN: %ssecrets.SNYK_TOKEN }}\n' "$piece1" "$piece1" > "$dir_g/other.yml"
+bash "$GUARD" "$dir_g" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "forged snyk-weekly.yml suffix in other.yml -> exit 1"; else fail "forged snyk-weekly.yml suffix in other.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_g"
+
+echo "== Case H: snyk-weekly.yml in a subdirectory =="
+dir_h=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+mkdir "$dir_h/subdir"
+cp "$REAL_SNYK" "$dir_h/subdir/snyk-weekly.yml"
+bash "$GUARD" "$dir_h" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "subdir/snyk-weekly.yml -> exit 1"; else fail "subdir/snyk-weekly.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_h"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
