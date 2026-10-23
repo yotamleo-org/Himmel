@@ -1258,6 +1258,11 @@ contains "dispatch adds a new failing suite: check 10 fails" "$out" "[FAIL] 10."
 contains "dispatch adds a new failing suite: names the new suite" "$out" "shell-unit (6/8)"
 notcontains "dispatch adds a new failing suite: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 
+printf '{"jobs":[{"name":"shell-unit (4/8)","conclusion":"failure"},{"name":"os-verify","conclusion":"timed_out"}]}' > "$RUNDIR/jobs-111.json"
+wf_run ".github/workflows/ci.yml"
+check "dispatch adds a new timed-out job: exit 1" "$rc" "1"
+contains "dispatch adds a new timed-out job: names it" "$out" "os-verify"
+
 jobs_json "shell-unit (4/8)" > "$RUNDIR/jobs-111.json"
 main_run push success 222 > "$RUNDIR/ci.yml.main.json"
 wf_run ".github/workflows/ci.yml"

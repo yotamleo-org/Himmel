@@ -718,12 +718,13 @@ elif [ -z "$wf_files" ]; then
     echo "[PASS] 10. no workflow files touched — workflow_dispatch run not applicable"
 else
     wf_err=""; wf_ids=""; wf_notes=""; wf_note=""; wf_why=""
-    # wf_failed_jobs <run id>: the run's failed job names (a matrix shard is one job), sorted,
+    # wf_failed_jobs <run id>: the run's unsuccessful job names (failure, timed_out, cancelled, ...;
+    # a matrix shard is one job), sorted,
     # one per line; rc 1 when the run cannot be read.
     wf_failed_jobs() {
         local body
         body=$("$GH" run view "$1" --repo "$nwo" --json jobs 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller reads it as not pre-existing
-        printf '%s' "$body" | jq -r '.jobs[]? | select(.conclusion == "failure") | .name' 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
+        printf '%s' "$body" | jq -r '.jobs[]? | select(.conclusion != null and (.conclusion | IN("success", "skipped", "neutral") | not)) | .name' 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
     }
     # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when every failed
     # job of that run also failed in the default branch's latest completed scheduled/push run
