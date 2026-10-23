@@ -223,8 +223,8 @@ a session. The install must already be committed on the default branch (see
 1. Try to edit a file while on the default branch. `block-edit-on-main` should
    refuse and point you at a worktree. That refusal *is* the success signal.
 2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
-   the worktree path (`.claude/worktrees/feat+try-himmel`) and does not move a
-   running session; quit and run `claude` again inside that path. Check that
+   the worktree path (a `feat+try-himmel` folder under your repo's worktrees
+   directory) and does not move a running session; quit and run `claude` again inside that path. Check that
    `.claude/settings.json`, `scripts/hooks/block-edit-on-main.sh` and
    `scripts/worktree.sh` exist there. If they do not, the install was not
    committed first. Edits on the worktree branch then proceed normally.
