@@ -151,6 +151,7 @@ for subj in \
   "Merge branch 'feature/x' into main" \
   "Merge pull request #12 from org/feature-x" \
   "Merge remote-tracking branch 'origin/main'" \
+  "Merge branch 'main' of https://example.invalid/r" \
   'Revert "feat(app): [HIMMEL-5978] add thing"'; do
   if commit "$subj"; then
     ok "git-generated subject passes: $subj"
@@ -160,7 +161,9 @@ for subj in \
 done
 for subj in "Merge unrelated change" "Merge branches by hand" "Revert the thing" "Merge pull request without a number" \
   "Merge pull request #garbage" "Merge branch '" "Merge remote-tracking branch ''" 'Revert "' \
-  "Merge branch 'x'garbage" "Merge remote-tracking branch 'o/x'garbage" 'Revert "x"garbage'; do
+  "Merge branch 'x'garbage" "Merge branch 'x' garbage" \
+  "Merge remote-tracking branch 'o/x'garbage" "Merge remote-tracking branch 'o/x' garbage" \
+  'Revert "x"garbage'; do
   if commit "$subj"; then
     bad "lookalike subject is refused: $subj"
   else
