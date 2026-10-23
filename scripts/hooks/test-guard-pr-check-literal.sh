@@ -2562,6 +2562,16 @@ run "6548 a cd right of a pipe can still reach the run -> deny" 2 \
     "$(payload "echo x | cd /tmp; bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
 run "6548 a cd behind || can still reach the run -> deny" 2 \
     "$(payload "false || cd /tmp; bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
+# An env NAME=value operand is a value, but its text can hold the guarded run:
+# the legacy reader denies every spelling from a root that fails the conditions.
+run "6548 env NAME='x; literal' prog from a wrong root -> deny" 2 \
+    "$(payload "env NAME='x; bash scripts/cr/pr-check-context.sh' prog" "$OTHER")" "$HR"
+run "6548 env -i NAME='x; literal' prog from a wrong root -> deny" 2 \
+    "$(payload "env -i NAME='x; bash scripts/cr/pr-check-context.sh' prog" "$OTHER")" "$HR"
+run "6548 command env NAME='x; literal' prog from a wrong root -> deny" 2 \
+    "$(payload "command env NAME='x; bash scripts/cr/pr-check-context.sh' prog" "$OTHER")" "$HR"
+run "6548 env NAME=1 then the literal from a wrong root -> deny" 2 \
+    "$(payload "env NAME=1 bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

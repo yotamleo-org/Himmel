@@ -133,6 +133,12 @@ row "sudo, xargs and find -exec are opaque" \
 row "a shell reading stdin is opaque" \
     "bash <<'EOF'${nl}cat x${nl}EOF" \
     '.[0].opaque | test("stdin")'
+row "env NAME=value operands reach assigns, through a nested env too" \
+    "env FOO=1 echo x; env A=1 env -u Z B=2 echo y; FOO=1 env BAR='x; cat .env' echo z; env -i echo w" \
+    '(.[0] | .prog == "echo" and .via == ["env"] and .assigns == ["FOO"])
+     and (.[1] | .assigns == ["A", "B"])
+     and (.[2] | .assigns == ["FOO", "BAR"])
+     and (.[3] | .assigns == [])'
 row "a glob arg keeps its live-glob flag and raw text" \
     'cat .en* ".en"*' \
     '(.[0].argv[1] | .v == ".en*" and .g and .raw == ".en*") and (.[0].argv[2] | .g and .raw == "\".en\"*")'
