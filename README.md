@@ -2,6 +2,8 @@
 
 > **A harness for Claude Code.**
 
+Audience: newcomer.
+
 > 🚀 **New here? → [Getting Started](docs/getting-started.md)**: from clone to
 > your first PR-gated loop in about 15 minutes.
 >

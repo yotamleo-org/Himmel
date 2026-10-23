@@ -30,8 +30,8 @@
 #      page with cursor/hasNextPage guards and the same 50-page ceiling as
 #      check-ci.sh; a >100-thread PR cannot silently short-circuit to PASS.
 #   4. CR ledger: <git-common-dir>/cr-critic-scores.jsonl has >=1 row for
-#      <head-sha> with status "ok" (the shape `scripts/cr/cr-scores.sh` and
-#      friends read — {"kind":"avail","head":...,"status":"ok"}).
+#      <head-sha> with status "ok": a critic avail row (not claude,
+#      claude-floor or codex-adv), or an evidence/judge-go row for this PR branch.
 #   5. The PR's first commit carries the attestation trailers the pre-push
 #      gates require, for the file classes that trip them: `Platforms
 #      tested:` when the diff touches scripts/**, *.sh/.bash/.zsh/.ps1/.psm1/
@@ -296,11 +296,17 @@ else
         # `jq -R 'fromjson?'` parses one JSON value per line and skips a
         # malformed line rather than aborting the whole read (a plain `jq -s`
         # slurp would die on the first bad line in a 7000+ line ledger).
-        n=$(jq -R -r --arg h "$SHA" 'fromjson? | select(.head == $h and .status == "ok") | .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
+        ledger_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
+        n=$(jq -R -r --arg h "$SHA" --arg b "$ledger_branch" '
+            fromjson? | select(.head == $h and .status == "ok") |
+            select((.kind == "avail" and (.model | type) == "string" and .model != ""
+                    and .model != "claude" and .model != "claude-floor" and .model != "codex-adv")
+                or ((.kind == "evidence" or .kind == "judge-go") and $b != "" and .branch == $b)) |
+            .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
         if [ "${n:-0}" -ge 1 ]; then
             echo "[PASS] 4. CR ledger: $n row(s) for $SHA with status=ok"
         else
-            echo "[FAIL] 4. CR ledger: no row for $SHA with status=ok ($ledger)"
+            echo "[FAIL] 4. CR ledger: no critic avail or branch-bound evidence/judge-go row for $SHA with status=ok ($ledger)"
             mark_fail
         fi
     fi

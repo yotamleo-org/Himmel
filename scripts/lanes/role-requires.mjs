@@ -31,7 +31,7 @@ export const ROLE_REQUIRES = {
   'leg-e2e': ['himmel-ops@himmel'],
   'leg-vm': ['himmel-ops@himmel'],
   'lane-review': ['lean-skills@himmel'],
-  'lane-content': ['claude-obsidian@himmel', 'obsidian-triage@himmel'],
+  'lane-content': ['obsidian-triage@himmel'],
   telegram: ['obsidian-triage@himmel'],
   console: ['lean-skills@himmel'],
   bare: [], 'console-relay': ['himmel-ops@himmel'], 'console-judge': ['himmel-ops@himmel'],

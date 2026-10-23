@@ -287,9 +287,72 @@ if [ "$kind" = "x" ]; then
 fi
 
 [ -n "$cmd" ] || exit 0
+
+# A judge records its reasoning with `cat > /tmp/claude-<uid>/.../x.md
+# <<'TAG'` and hands that file to write-verdict.sh. The prose body is data,
+# yet a body line that opens with a verb word (read, export, printf) beside a
+# glob path under scripts/ reads as a seam write to the text layers. Such a
+# body is dropped from the scanned text when the opener is the whole line (a
+# quoted tag, so nothing in the body expands), the file is a .md/.txt under
+# the scratch root, the tag closes, and the file is named nowhere else except
+# after --evidence-file (so it is never run or sourced). Anything else keeps
+# its full scan. Result in REPLY.
+strip_evidence_heredocs() {
+    # C locale: bash ends a heredoc at its own delimiter word, so a UTF-8
+    # [[:blank:]] (U+3000) must not make an opener or closer look plain here.
+    local LC_ALL=C
+    local text="$1" line tag path i=0 j n=0 out='' open_re wv_re rest stripped=0 bad=0
+    local -a lines=()
+    REPLY=$text
+    case "$text" in *"<<'"*) ;; *) return 0 ;; esac
+    case "$text" in */tmp/claude-*) ;; *) return 0 ;; esac
+    open_re="^cat[[:blank:]]+>[[:blank:]]*(/tmp/claude-[0-9]+/[A-Za-z0-9_./+-]+\\.(md|txt))[[:blank:]]+<<[[:blank:]]*'([A-Za-z0-9_]+)'[[:blank:]]*\$"
+    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[A-Za-z0-9_./+-]*scripts/handover/console-kit/write-verdict\\.sh([[:blank:]]+[A-Za-z0-9_./=:+-]+)*[[:blank:]]*\$"
+    while IFS= read -r line || [ -n "$line" ]; do
+        lines[n]=$line; n=$((n + 1))
+    done <<<"$text"
+    while [ "$i" -lt "$n" ]; do
+        line=${lines[$i]}
+        i=$((i + 1))
+        if [[ $line =~ $open_re ]]; then
+            path=${BASH_REMATCH[1]}
+            tag=${BASH_REMATCH[3]}
+            j=$i
+            while [ "$j" -lt "$n" ] && [ "${lines[$j]}" != "$tag" ]; do j=$((j + 1)); done
+            rest=$text
+            rest=${rest//"$line"/}
+            rest=${rest//"--evidence-file $path"/}
+            # Every later mention of the file must be a --evidence-file operand.
+            case "$path" in *..*) j=$n ;; esac
+            case "$rest" in *"$path"*) j=$n ;; esac
+            if [ "$j" -lt "$n" ]; then
+                out+=$line$'\n'
+                stripped=1
+                i=$((j + 1))
+                continue
+            fi
+        elif [ -n "${line//[[:blank:]]/}" ]; then
+            # Outside a stripped body only a write-verdict.sh call may run,
+            # so the stripped file cannot be run under another spelling.
+            [[ $line =~ $wv_re ]] || bad=1
+        fi
+        # A non-ASCII byte outside a stripped body (opener, write-verdict line)
+        # means bash may parse the line differently: keep the full scan.
+        case "$line" in *[!\ -~$'\t']*) bad=1 ;; esac
+        out+=$line$'\n'
+    done
+    if [ "$stripped" -eq 1 ] && [ "$bad" -eq 0 ]; then
+        REPLY=${out%$'\n'}
+    fi
+}
 # The untouched command, newlines included, for the
-# parse-independent backstop (raw_mention) that runs before scan_text.
+# parse-independent backstop (raw_mention) that runs before scan_text. It is
+# taken before the strip, so the backstop still reads an evidence body; only
+# raw_obfuscated, the verb-beside-a-glob layer, reads the stripped text.
 raw_cmd=$cmd
+strip_evidence_heredocs "$cmd"
+cmd=$REPLY
+raw_stripped=$cmd
 
 # Backslash-newline is a line CONTINUATION -- join it BEFORE the newline
 # fold below, or the continuation's two halves land in different segments
@@ -3239,7 +3302,7 @@ fi
 # so a nounset abort or a hook timeout inside the parser cannot skip it
 # (console X ruling at 64bc44b1); where both would deny, the backstop's
 # message now fires instead of the parser's more specific one.
-raw_obfuscated "$raw_cmd"
+raw_obfuscated "$raw_stripped"
 raw_mention "$raw_cmd" 0
 scan_text "$cmd_flat" "" 0
 

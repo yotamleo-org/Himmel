@@ -1,5 +1,7 @@
 # Getting Started
 
+Audience: newcomer. Owner of the rewrite: HIMMEL-7211.
+
 New to himmel? This is the path from clone to your first protected project. It is
 eight numbered steps, in an order that was run end to end on a clean Linux
 virtual machine (install, commit, worktree, undo; the editor refusal was

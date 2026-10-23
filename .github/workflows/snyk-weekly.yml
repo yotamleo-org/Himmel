@@ -1,0 +1,61 @@
+name: snyk-weekly
+
+# Weekly Snyk scan. Runs
+# scripts/security/snyk-scan.sh (Open Source + Code) and uploads the raw JSON and
+# summary as an artifact. Schedule and manual dispatch only, never per PR: the
+# free plan caps the tests per month and Open Source counts one per manifest.
+# With no SNYK_TOKEN repo secret the job skips with a notice instead of failing.
+# The scan exits 1 on any High or Critical finding, so a red run means findings.
+on:
+  schedule:
+    - cron: '23 5 * * 1'   # weekly, Monday UTC (offset from ci.yml's 17 7 and fork-drift's 41 6)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snyk-weekly-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Gate on the token
+        id: gate
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "::notice title=snyk-weekly skipped::SNYK_TOKEN is not set; the operator adds it with: gh secret set SNYK_TOKEN --repo ${{ github.repository }}"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the Snyk CLI
+        if: steps.gate.outputs.enabled == 'true'
+        # install-scripts-ok: the snyk postinstall downloads the native CLI binary
+        run: npm install -g snyk@1.1308.2
+
+      - name: Run the Snyk scan
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: bash scripts/security/snyk-scan.sh --repo "$GITHUB_WORKSPACE" --out-dir "$RUNNER_TEMP/snyk"
+
+      - name: Upload the scan result
+        if: always() && steps.gate.outputs.enabled == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snyk-scan
+          path: ${{ runner.temp }}/snyk/
+          if-no-files-found: error
+          retention-days: 90

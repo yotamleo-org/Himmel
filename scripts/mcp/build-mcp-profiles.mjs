@@ -13,6 +13,10 @@
 // This is why the profiles are generated, not committed: it keeps the operator's
 // OBSIDIAN_API_KEY and C:\Users\... paths out of git while staying runnable.
 //
+// Server specs resolve from ~/.claude.json, then the on-demand registry
+// (~/.config/himmel/mcp-on-demand.json, same {"mcpServers":{...}} shape), then
+// PLUGIN_SERVERS below.
+//
 // Usage:  node scripts/mcp/build-mcp-profiles.mjs [--list]
 // Cross-platform: pure node, no shell — no .ps1 twin needed.
 
@@ -27,6 +31,9 @@ const manifestPath = path.join(manifestDir, "profiles.json");
 // Test seam: generated profiles land here (default: beside the manifest).
 const outDir = process.env.HIMMEL_MCP_PROFILES_OUT || manifestDir;
 const claudeJson = path.join(os.homedir(), ".claude.json");
+// On-demand registry: servers a profile can launch but no default session loads.
+// Lives outside ~/.claude.json, which Claude Code reads for EVERY session.
+const onDemandJson = process.env.HIMMEL_MCP_ONDEMAND_FILE || path.join(os.homedir(), ".config", "himmel", "mcp-on-demand.json");
 
 // Portable plugin-server specs (npx-based, no absolute path). Kept here rather
 // than read from plugin caches so the generated browser/research profiles work
@@ -93,8 +100,9 @@ if (process.argv.includes("--list")) {
   process.exit(0);
 }
 
-if (!fs.existsSync(claudeJson)) die(`~/.claude.json not found — cannot resolve machine server specs`);
-const globalServers = (JSON.parse(fs.readFileSync(claudeJson, "utf8")).mcpServers) || {};
+if (!fs.existsSync(claudeJson) && !fs.existsSync(onDemandJson)) die(`neither ~/.claude.json nor ${onDemandJson} found — cannot resolve machine server specs`);
+const readServers = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")).mcpServers : null) || {};
+const globalServers = { ...readServers(onDemandJson), ...readServers(claudeJson) };
 
 fs.mkdirSync(outDir, { recursive: true });
 

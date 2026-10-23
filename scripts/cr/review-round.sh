@@ -46,6 +46,8 @@ set -uo pipefail
 # A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
+# Classify the real commit trees, never refs/replace substitutes.
+export GIT_NO_REPLACE_OBJECTS=1
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -55,7 +57,7 @@ usage() {
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>]" >&2
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
-    echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests/comments-only head after a reviewed head; spends no round)" >&2
+    echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
@@ -1225,10 +1227,10 @@ if [ "$verb" = "judge-go" ]; then
     exit 0
 fi
 
-# evidence: a ledger row for a head that only adds tests or comments to the
+# evidence: a ledger row for a head that only changes test paths after the
 # critic-reviewed head, so ready-check's CR row exists without spending a round.
 # Exit 0 = recorded (or already there); 8 = refused (not a descendant of a
-# reviewed head, or the diff is more than tests/comments).
+# reviewed head, or the diff changes non-test paths).
 if [ "$verb" = "evidence" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! ev_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ev_head" ]; then

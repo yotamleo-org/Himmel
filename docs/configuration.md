@@ -1,5 +1,7 @@
 # Configuration & workflow chains
 
+Audience: contributor, and an adopter who has finished getting started. Owner of the rewrite: HIMMEL-7212.
+
 The canonical map of **what himmel does, in what order, and what you can
 control**. Every claim here is traceable to code or config in this repo — the
 file that enforces or reads each knob is named inline. Per-subsystem depth

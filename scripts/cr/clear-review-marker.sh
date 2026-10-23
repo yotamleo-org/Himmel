@@ -507,7 +507,7 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
         && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vF '"kind":"evidence"' "$ledger" 2>/dev/null) 2>/dev/null \
         && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant --tests-only "$_rr_head" "$tip" >/dev/null 2>&1; then
         review_head="$_rr_head"
-        echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths or comments since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
+        echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
         audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
     fi
     # A signed judge GO at the tip stands in for the panel on a post-cap delta

@@ -137,7 +137,9 @@ assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, si
 fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
 assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
 assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
-  grep -q -- '--with mcp' <<<"$hint"
+  grep -q -- '--with ' <<<"$hint"
+assert "hint binds the patched mcp floor, single-quoted (the extras do not pull mcp in)" \
+  grep -qF -- "--with 'mcp>=1.30.0,<3' '" <<<"$hint"
 
 echo "[test-graphify-bin] pin policy (HIMMEL-1048): the configured version IS a semver, not a movable ref"
 # `latest`/a branch/a bare tag would be non-reproducible; a published PyPI version
@@ -150,6 +152,17 @@ assert "default GRAPHIFY_VERSION is a semver (X.Y.Z...)" \
 # shellcheck disable=SC2016
 assert "default pin is a fork build stamp (X.Y.Z+himmel.N)" \
   bash -c 'printf "%s" "$1" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\+himmel\.[0-9]+$"' _ "$pinned_ver"
+
+# The 0.9.94+himmel.2 fork build is the first whose pyproject extras and uv.lock
+# carry the patched floors; 0.9.94+himmel.4 is the first whose uv.lock also has no
+# Critical or High advisory (pillow 13, cryptography 50, pypdf 6.19+, soupsieve
+# 2.8.4+). What a `uv tool install` of the default spec binds:
+# anyio and certifi through the [ollama] extra, and mcp through the `--with`
+# requirement. pillow, pyjwt, urllib3 and fsspec are floored only in the fork's
+# uv.lock and its other extras, which this install path does not request.
+# shellcheck disable=SC2016
+assert "default pin is at or past the advisory-free lock fork build 0.9.94+himmel.4" \
+  bash -c '. "$1/graphify-bin.sh"; ! _graphify_version_lt "$2" "0.9.94+himmel.4"' _ "$SCRIPT_DIR" "$pinned_ver"
 
 echo "[test-graphify-bin] GRAPHIFY_VERSION override"
 override_hint="$(GRAPHIFY_VERSION=9.9.9 graphify_install_hint)"
@@ -277,7 +290,7 @@ out=$(HOME="$fresh_home" GRAPHIFY_PLUGIN_DIR="$fresh_home/gplug" PATH="$fresh_pa
 assert "missing: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "missing: exactly one uv tool install call" test "$(grep -c 'UV tool install' "$fresh_log")" -eq 1
 assert "missing: install argv carries --with mcp + graphifyy[ollama] from the fork git ref (no [kimi] extra)" \
-  grep -qE 'UV tool install --with mcp graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$fresh_log"
+  grep -qE 'UV tool install --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$fresh_log"
 assert "missing: the installed version reads back as the pin (graphify_source=himmel-pin)" \
   grep -qx "graphifyy v$pinned_ver" "$fresh_list"
 assert "missing: graphify shim landed on PATH" test -x "$fresh_bin/graphify"
@@ -812,7 +825,7 @@ out=$(HOME="$gud_home" GRAPHIFY_PLUGIN_DIR="$gud_home/gplug" PATH="$gud_bin:$stu
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update diff-ver: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "update diff-ver: force-reinstalls at pin preserving [all] extras plus [ollama] (HIMMEL-4513)" \
-  grep -qE 'tool install --force --with mcp graphifyy\[all,ollama\] @ git\+' "$gud_log"
+  grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[all,ollama\] @ git\+' "$gud_log"
 
 echo "[test-graphify-bin] graphify_update: the upstream base 0.9.93 is behind its +himmel.1 fork build -> reinstall from the fork (HIMMEL-6056)"
 gub_home="$tmpdir/gup-upbase"; mkdir -p "$gub_home"
@@ -828,7 +841,7 @@ out=$(HOME="$gub_home" GRAPHIFY_PLUGIN_DIR="$gub_home/gplug" PATH="$gub_bin:$stu
       bash -c 'unset GRAPHIFY_VERSION; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update upstream-base: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "update upstream-base: reinstalls from the fork git ref" \
-  grep -qE 'tool install --force --with mcp graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$gub_log"
+  grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$gub_log"
 assert "update upstream-base: the uv list now shows the fork build" grep -qx "graphifyy v$pinned_ver" "$gub_list"
 
 echo "[test-graphify-bin] _graphify_installed_extras: a recorded [kimi]-only extra is dropped (HIMMEL-2481)"
@@ -879,14 +892,14 @@ assert "held: rc 0 (a skip is not a failure)" grep -q '^RC=0$' <<<"$out"
 assert "held: says SKIP with the holder count" grep -q 'SKIP: 3 graphify-mcp process' <<<"$out"
 assert "held: states graphify KEEPS WORKING" grep -q 'KEEPS WORKING' <<<"$out"
 assert "held: says the pin did NOT advance" grep -q 'has NOT advanced' <<<"$out"
-assert "held: gives the manual repair command" grep -q "uv tool install --force --with mcp 'graphifyy" <<<"$out"
+assert "held: gives the manual repair command" grep -q "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy" <<<"$out"
 # The repair line is a COPY-PASTE instruction, and this fixture records extras
 # ["all"], so the spec reads graphifyy[all]==<pin>. Unquoted, zsh — the macOS
 # default shell — globs the brackets and the paste dies with "no matches found"
 # instead of installing (public-PR CR). Assert the WHOLE spec is single-quoted:
 # matching only the opening quote would still pass if the closing one were lost.
 assert "held: the repair command single-quotes the [all] spec (zsh globs it otherwise)" \
-  grep -qE "uv tool install --force --with mcp 'graphifyy\[all,ollama\] @ git\+[^']*'" <<<"$out"
+  grep -qE "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy\[all,ollama\] @ git\+[^']*'" <<<"$out"
 # THE POINT: no uv install was attempted, so the entry points were never removed.
 # shellcheck disable=SC2016
 assert "held: NO uv install attempted (this is what keeps graphify working)" \
@@ -1271,9 +1284,9 @@ out=$(HOME="$gb_home" GRAPHIFY_PLUGIN_DIR="$gb_home/gplug" PATH="$gb_bin:$stub_d
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "broken-after-install: rc 1 (presence is not proof it runs)" grep -q '^RC=1$' <<<"$out"
 assert "empty recorded extras: upgrade spec is just [ollama] (no [kimi] extra, HIMMEL-2481/4513)" \
-  grep -qE 'tool install --force --with mcp graphifyy\[ollama\] @ git\+' "$gb_log"
+  grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+' "$gb_log"
 assert "broken-after-install: names it BROKEN" grep -q 'BROKEN' <<<"$out"
-assert "broken-after-install: gives the repair command" grep -q "uv tool install --force --with mcp 'graphifyy" <<<"$out"
+assert "broken-after-install: gives the repair command" grep -q "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy" <<<"$out"
 # Assert BOTH quotes, like the held scenario above. Matching
 # only the opening quote + package prefix leaves this site able to lose its
 # CLOSING quote and still pass — an asymmetry between two assertions that exist
@@ -1284,7 +1297,7 @@ assert "broken-after-install: gives the repair command" grep -q "uv tool install
 # [ollama] (no [kimi] default). The two
 # scenarios pin quoting for both the operator-preserved and the default shape.
 assert "broken-after-install: the repair command single-quotes the whole spec" \
-  grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\] @ git\+[^']*'" <<<"$out"
+  grep -qE "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy\[ollama\] @ git\+[^']*'" <<<"$out"
 
 # The fourth corner of the state matrix (public-PR CR): install FAILED but the
 # binary SURVIVED. The other three are covered above and below; without this one
@@ -1313,7 +1326,7 @@ assert "install-failed-binary-survives: says the install still RUNS" grep -q 'st
 assert "install-failed-binary-survives: says the pin was not advanced" grep -q 'pin not advanced' <<<"$out"
 gs_broken=$(grep -c 'BROKEN' <<<"$out" || true)   # counted, not negated in a subshell — no nested `bash -c`
 assert "install-failed-binary-survives: does NOT cry BROKEN" [ "$gs_broken" = 0 ]
-assert "install-failed-binary-survives: the install was actually attempted" grep -qE 'tool install --force --with mcp graphifyy' "$gs_log"
+assert "install-failed-binary-survives: the install was actually attempted" grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy' "$gs_log"
 
 # --- an UNPROBEABLE host must fail CLOSED ----------------------
 # The probe returns rc 1 for "this platform offers no probe" — NOT for "the
@@ -1348,7 +1361,7 @@ assert "unprobeable: NO uv install attempted (this is the whole fix)" \
 # operator is told exactly how to get unstuck. A silent decline would recreate
 # the permanent-staleness failure of the Windows self-match bug.
 assert "unprobeable: gives the manual install command" \
-  grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\] @ git\+[^']*'" <<<"$out"
+  grep -qE "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy\[ollama\] @ git\+[^']*'" <<<"$out"
 assert "unprobeable: names the GRAPHIFY_UNPROBED_OK override" grep -q 'GRAPHIFY_UNPROBED_OK=1' <<<"$out"
 
 # CodeRabbit PR #792 finding (PRRT_kwDOS8WKNM6jZ-8T): the unprobeable branch
@@ -1391,7 +1404,7 @@ out=$(HOME="$gpo_home" GRAPHIFY_PLUGIN_DIR="$gpo_home/gplug" PATH="$gpo_bin:$stu
       UV_BIN_DIR="$gpo_bin" UV_LOG="$gpo_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=unavailable GRAPHIFY_UNPROBED_OK=1 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "unprobeable+override: rc 0" grep -q '^RC=0$' <<<"$out"
-assert "unprobeable+override: performs the install" grep -qE 'tool install --force --with mcp graphifyy' "$gpo_log"
+assert "unprobeable+override: performs the install" grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy' "$gpo_log"
 # The override must not be silent — the operator opted into a real risk.
 assert "unprobeable+override: still warns the install can leave graphify BROKEN" \
   grep -q 'can leave graphify BROKEN' <<<"$out"
@@ -1518,7 +1531,7 @@ if [ "$lf_posix" -eq 1 ]; then
   assert "posix holders=3: names the holders (details seam)" grep -q 'pid 4242 (session: ppid 4200 claude, cwd /work/a)' <<<"$out"
   assert "posix holders=3: gives the remedy" grep -q 'reconnect /mcp or quit the holders, then re-run' <<<"$out"
   assert "posix holders=3: explains the mixed-version risk" grep -q 'mix' <<<"$out"
-  assert "posix holders=3: keeps the manual repair command" grep -q "uv tool install --force --with mcp 'graphifyy" <<<"$out"
+  assert "posix holders=3: keeps the manual repair command" grep -q "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy" <<<"$out"
   # shellcheck disable=SC2016
   assert "posix holders=3: NO --force swap attempted" bash -c '! grep -q -- "--force" "$1"' _ "$lf_log"
   # shellcheck disable=SC2016
@@ -1562,7 +1575,7 @@ if [ "$lf_posix" -eq 1 ]; then
   out=$(lf_run GRAPHIFY_MCP_HOLDERS=0)
   assert "posix holders=0: rc 0" grep -q '^RC=0$' <<<"$out"
   assert "posix holders=0: staged into a scoped scratch tool dir first" grep -q 'scoped=1' "$lf_log"
-  assert "posix holders=0: then swapped the live install" grep -qE 'tool install --force --with mcp graphifyy\[ollama\] @ git\+' "$lf_log"
+  assert "posix holders=0: then swapped the live install" grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+' "$lf_log"
   assert "posix holders=0: the stage ran BEFORE the swap" \
     test "$(grep -n 'scoped=1' "$lf_log" | head -1 | cut -d: -f1)" -lt "$(grep -n -- '--force' "$lf_log" | head -1 | cut -d: -f1)"
   # shellcheck disable=SC2016
@@ -1633,7 +1646,7 @@ if [ "$lf_posix" -eq 1 ]; then
   printf 'requirements = [{ name = "graphifyy", extras = ["all", "ollama"] }]\n' > "$lf_tools/graphifyy/uv-receipt.toml"
   out=$(lf_run GRAPHIFY_MCP_HOLDERS=0)
   assert "dedup: rc 0" grep -q '^RC=0$' <<<"$out"
-  assert "dedup: spec is exactly graphifyy[all,ollama]" grep -qE -- '--force --with mcp graphifyy\[all,ollama\] @ git\+' "$lf_log"
+  assert "dedup: spec is exactly graphifyy[all,ollama]" grep -qE -- '--force --with mcp>=1\.30\.0,<3 graphifyy\[all,ollama\] @ git\+' "$lf_log"
 
   echo "[test-graphify-bin] graphify_update (POSIX): AT the pin but the [ollama] extra is missing -> upgraded in place"
   lf_setup atpin-noollama "$pinned_ver"
@@ -1644,7 +1657,7 @@ if [ "$lf_posix" -eq 1 ]; then
   assert "at-pin no-ollama: rc 0" grep -q '^RC=0$' <<<"$out"
   assert "at-pin no-ollama: says why" grep -q 'lacks the \[ollama\] extra' <<<"$out"
   assert "at-pin no-ollama: reinstalls graphifyy[ollama] at the SAME pin" \
-    grep -qE -- "--force --with mcp graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}\$" "$lf_log"
+    grep -qE -- "--force --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}\$" "$lf_log"
 
   echo "[test-graphify-bin] graphify_update (POSIX): AT the pin WITH the [ollama] extra -> up to date, no install"
   lf_setup atpin-ollama "$pinned_ver"
@@ -1834,9 +1847,8 @@ assert "adopt.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/
 # setup at user scope) and delegated to by the pwsh mirrors.
 assert "graphify-bin.sh defines graphify_register_mcp" grep -q 'graphify_register_mcp()' "$SCRIPT_DIR/graphify-bin.sh"
 assert "graphify-bin.sh CLI exposes register-mcp" grep -q 'register-mcp) graphify_register_mcp' "$SCRIPT_DIR/graphify-bin.sh"
-# Scope forwarding: setup.sh pins user scope; adopt.sh forwards
-# its own $SCOPE (project|user) — not a hardcoded scope.
-assert "setup.sh registers at user scope" grep -q 'graphify_register_mcp user' "$repo_root/scripts/setup.sh"
+# Scope forwarding: adopt.sh forwards its own $SCOPE to the project registration;
+# user/local installs register on demand (asserted below).
 # The grep pattern intentionally matches the LITERAL string graphify_register_mcp "$SCOPE"
 # in adopt.sh (\$ = a literal $ in the BRE); it is not meant to expand here.
 # shellcheck disable=SC2016
@@ -1867,6 +1879,59 @@ assert "set -e caller: nonzero mcp add (already-exists) does not abort" \
 assert "already-exists rc!=0 handled as idempotent skip" \
   bash -c 'printf "%s" "$1" | grep -qi "already registered at project scope"' _ "$se_out"
 rm -rf "$se_stub"
+
+# On-demand registration: a user-scope install writes the graph profile's server
+# into the on-demand registry and never calls `claude mcp add` (which would make
+# every session load the 10 graphify tool schemas).
+od_dir="$(mktemp -d -t graphify-bin-od.XXXXXX)" || exit 1
+mkdir -p "$od_dir/stub" "$od_dir/uvbin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$od_dir/uvbin/graphify-mcp"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nif [ "$1 $2" = "tool dir" ]; then echo "%s"; fi\n' "$od_dir/uvbin" > "$od_dir/stub/uv"
+printf '#!/usr/bin/env bash\necho called >> "%s/claude-called"\nexit 0\n' "$od_dir" > "$od_dir/stub/claude"
+chmod +x "$od_dir/uvbin/graphify-mcp" "$od_dir/stub/uv" "$od_dir/stub/claude"
+od_file="$od_dir/home/.config/himmel/mcp-on-demand.json"
+PATH="$od_dir/stub:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$od_file" bash -c 'set -euo pipefail; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_register_mcp_on_demand; graphify_register_mcp_on_demand' >"$od_dir/out" 2>&1 || true
+assert "on-demand registration writes the graphify entry with the absolute entrypoint" \
+  node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mcpServers.graphify; process.exit(s.type==="stdio"&&s.command===process.argv[2]?0:1)' "$od_file" "$od_dir/uvbin/graphify-mcp"
+assert "on-demand registration never calls claude mcp add" test ! -e "$od_dir/claude-called"
+# shellcheck disable=SC2016
+assert "on-demand registration keeps other registry entries" \
+  bash -c 'printf "{\"mcpServers\":{\"other\":{\"type\":\"stdio\",\"command\":\"x\"}}}" > "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "const m=JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).mcpServers; process.exit(m.other&&m.graphify?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
+# shellcheck disable=SC2016
+assert "on-demand re-registration keeps operator args and env, refreshes the command" \
+  bash -c 'printf "{\"mcpServers\":{\"graphify\":{\"type\":\"stdio\",\"command\":\"old\",\"args\":[\"--x\"],\"env\":{\"K\":\"1\"}}}}" > "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "const s=JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).mcpServers.graphify; process.exit(s.args[0]===\"--x\"&&s.env.K===\"1\"&&s.command!==\"old\"?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
+od_register() {
+  PATH="$od_dir/stub:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c '. "$1/graphify-bin.sh"; graphify_register_mcp_on_demand' _ "$SCRIPT_DIR" >/dev/null 2>&1
+}
+od_mode_is_600() { [ "$(node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode&0o777).toString(8))' "$1")" = "600" ]; }
+od_priv="$od_dir/priv/mcp-on-demand.json"
+mkdir -p "$od_dir/priv"
+(umask 022; od_register "$od_priv")
+assert "on-demand registry stays private: a new file is 0600 under umask 022" od_mode_is_600 "$od_priv"
+chmod 644 "$od_priv"
+assert "on-demand re-registration succeeds over a permissive existing file" od_register "$od_priv"
+assert "on-demand re-registration clamps a permissive existing file back to 0600" od_mode_is_600 "$od_priv"
+rm -rf "$od_dir"
+# shellcheck disable=SC2016
+assert "setup.sh registers graphify on demand, not at user scope" \
+  bash -c 'grep -q "graphify_register_mcp_on_demand" "$1" && ! grep -q "graphify_register_mcp user" "$1"' _ "$repo_root/scripts/setup.sh"
+# The two registrars must sit in their own branches of adopt.sh's scope switch:
+# project keeps the committed .mcp.json entry, every other scope goes on demand.
+adopt_branch() {
+  awk -v want="$1" '
+    /^  if \[\[ "\$SCOPE" == "project" \]\]; then$/ { inside = 1; branch = "project"; next }
+    inside && /^  else$/ { branch = "other"; next }
+    inside && /^  fi$/ { inside = 0 }
+    inside && branch == want { print }
+  ' "$repo_root/scripts/adopt.sh"
+}
+# shellcheck disable=SC2016
+assert "adopt.sh project branch registers graphify_register_mcp, not on demand" \
+  bash -c 'printf "%s" "$1" | grep -q "graphify_register_mcp \"\$SCOPE\"" && ! printf "%s" "$1" | grep -q "graphify_register_mcp_on_demand"' _ "$(adopt_branch project)"
+# shellcheck disable=SC2016
+assert "adopt.sh non-project branch registers on demand, not claude mcp add" \
+  bash -c 'printf "%s" "$1" | grep -q "graphify_register_mcp_on_demand" && ! printf "%s" "$1" | grep -qE "graphify_register_mcp( |$)"' _ "$(adopt_branch other)"
 
 # ─── graphify_price_hooks ──────────────────────────────────────
 # node checker: reads a fixture's .claude/settings.json + .codex/hooks.json

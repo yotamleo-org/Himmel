@@ -37,11 +37,6 @@
       "conclusion": "success"
     },
     {
-      "name": "home-canary (8)",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
       "name": "shell-unit-shard (ubuntu-latest, 4)",
       "status": "completed",
       "conclusion": "success"
@@ -72,17 +67,7 @@
       "conclusion": "success"
     },
     {
-      "name": "home-canary (5)",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
       "name": "node-suites (bitbucket)",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
-      "name": "home-canary (7)",
       "status": "completed",
       "conclusion": "success"
     },
@@ -98,11 +83,6 @@
     },
     {
       "name": "node-suites (himmel-jira, plugins/himmel-jira)",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
-      "name": "home-canary (4)",
       "status": "completed",
       "conclusion": "success"
     },
@@ -167,24 +147,9 @@
       "conclusion": "success"
     },
     {
-      "name": "home-canary (2)",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
       "name": "guard-corpus-full",
       "status": "completed",
       "conclusion": "skipped"
-    },
-    {
-      "name": "home-canary (3)",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
-      "name": "home-canary (1)",
-      "status": "completed",
-      "conclusion": "success"
     },
     {
       "name": "lint",
@@ -193,11 +158,6 @@
     },
     {
       "name": "doc-invariants",
-      "status": "completed",
-      "conclusion": "success"
-    },
-    {
-      "name": "home-canary (6)",
       "status": "completed",
       "conclusion": "success"
     },
