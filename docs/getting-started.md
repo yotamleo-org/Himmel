@@ -96,7 +96,9 @@ every message (`COMMIT REJECTED: no ticket reference matched`). With no
 no ticket convention, `TICKET_ID_REQUIRED=0 git commit …` switches the
 requirement off. On a repo whose `main` is branch-protected, push the branch and
 merge it through a PR instead; if your default branch has another name, use it
-in place of `main`.
+in place of `main`. If the repo has an `origin`, push `chore/install-himmel`
+and merge it through a PR before step 6, because the worktree is cut from
+`origin/main`.
 
 `.claude/settings.json` carries the path of your himmel download (the status
 line and `HIMMEL_REPO` point at `~/himmel`), so the commit above bakes this
@@ -168,7 +170,7 @@ change, make a new worktree, `cd` into the path it prints and relaunch `claude`
 there before you edit. The hooks below only fire inside an active session. The
 throwaway project from step 1 has no remote, so the push and PR lines need a
 GitHub remote first (`git remote add origin <url>`); without one, stop after
-the commit. Once `origin` exists, later worktrees are cut from `origin/main`,
+the commit. Once `origin` exists, worktrees, including the first one, are cut from `origin/main`,
 which lacks the install commit until you push `chore/install-himmel` and merge
 it there through a PR. The day-to-day loop is:
 
