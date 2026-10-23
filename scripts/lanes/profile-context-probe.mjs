@@ -10,6 +10,12 @@
 // checked-in fixture — no live spawn there.
 //
 // node scripts/lanes/profile-context-probe.mjs [--profile <name>] [--ledger live|<path>] [--no-ledger]
+// node scripts/lanes/profile-context-probe.mjs --tool-bytes [--untrimmed] [--profile <name>]
+//
+// --tool-bytes: per-tool byte ranking. Routes one turn per profile through a local
+// logging proxy (ANTHROPIC_BASE_URL) and ranks the tool schemas in the request that
+// actually went to the API. --untrimmed strips the profile's denyTools and
+// disableWorkflows first, giving the "before" numbers. Prints only; no verdict, no ledger.
 //
 // Exit codes: 0 all profiles pass, 1 any profile fails, 3 bank-preflight skip.
 //
@@ -28,7 +34,9 @@
 //                       return.mjs's ledgerPath() override; also honored with
 //                       no CLI flag at all.
 //   (nothing set)        no ledger write — the safe default.
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
 import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -414,14 +422,41 @@ function appendLedger(profileName, note, exitCode, targetPath) {
   }
 }
 
+// Tool schemas in a captured /v1/messages body, ranked by serialized bytes.
+export function rankToolBytes(body) {
+  const tools = (body?.tools ?? []).map((t) => ({ name: t.name, bytes: JSON.stringify(t).length })).sort((a, b) => b.bytes - a.bytes);
+  return { total: tools.reduce((n, t) => n + t.bytes, 0), tools };
+}
+
+// A turn can fire side requests (title, summary) with few or no tools; the main
+// request is the one carrying the most.
+export function pickMainRequest(captured) {
+  let best = null;
+  for (const c of captured) if (!best || (c.body?.tools?.length ?? 0) > (best.tools?.length ?? 0)) best = c.body;
+  return best;
+}
+
+// The profile's settings minus its tool trim, for the "before" run.
+export function untrimmedSettings(settings, denyTools = []) {
+  const { disableWorkflows: _drop, ...rest } = settings;
+  const deny = (settings.permissions?.deny ?? []).filter((d) => !denyTools.includes(d));
+  return { ...rest, permissions: { ...settings.permissions, deny } };
+}
+
+export function formatToolBytes(name, ranking, top = 12) {
+  return [`${name} tools=${ranking.tools.length} bytes=${ranking.total}`, ...ranking.tools.slice(0, top).map((t) => `  ${t.name} ${t.bytes}`)].join('\n');
+}
+
 // CLI arg parsing, pure so it's unit-testable without touching argv/env
 // globals. Throws on an unknown/malformed flag (fail loud, not silently
 // ignored — same reasoning as plugin-profiles.mjs's CLI parse).
 export function parseProbeArgs(argv) {
-  let profile = null, ledgerFlag, noLedger = false;
+  let profile = null, ledgerFlag, noLedger = false, toolBytes = false, untrimmed = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--no-ledger') { noLedger = true; continue; }
+    if (a === '--tool-bytes') { toolBytes = true; continue; }
+    if (a === '--untrimmed') { untrimmed = true; continue; }
     if (a === '--ledger') {
       ledgerFlag = argv[++i];
       if (!ledgerFlag) throw new Error('--ledger requires a value ("live" or a path)');
@@ -435,7 +470,8 @@ export function parseProbeArgs(argv) {
     throw new Error(`unknown argument "${a}"`);
   }
   if (noLedger && ledgerFlag) throw new Error('--no-ledger and --ledger are mutually exclusive');
-  return { profile, ledgerFlag, noLedger };
+  if (untrimmed && !toolBytes) throw new Error('--untrimmed requires --tool-bytes');
+  return { profile, ledgerFlag, noLedger, toolBytes, untrimmed };
 }
 
 // The safe-default resolution described in the file header above. `env` is
@@ -495,6 +531,67 @@ function runClaude(extraArgs, prompt = BASELINE_PROMPT, retriesLeft = 1) {
   }
   const resultEvent = findResultEvent(events);
   return { initEvent: findInitEvent(events), resultEvent, measured: firstTurnTokens(resultEvent), contextUsage: findContextUsage(events) };
+}
+
+// One turn through a logging proxy; resolves the captured /v1/messages requests.
+// Async because the proxy must serve while the child runs (spawnSync would block it).
+async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
+  const captured = [];
+  const srv = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks);
+      if (req.method === 'POST' && req.url.startsWith('/v1/messages')) {
+        try { captured.push({ url: req.url, body: JSON.parse(body.toString('utf8')) }); } catch { /* not json */ }
+      }
+      const up = https.request({ host: 'api.anthropic.com', path: req.url, method: req.method, headers: { ...req.headers, host: 'api.anthropic.com' } }, (ur) => {
+        res.writeHead(ur.statusCode, ur.headers);
+        ur.pipe(res);
+      });
+      up.on('error', (e) => { res.writeHead(502); res.end(String(e)); });
+      up.end(body);
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const args = ['-p', '--model', 'haiku', '--max-turns', '1', '--permission-mode', 'dontAsk', ...extraArgs, prompt];
+  // launch-profile-ok: the probe passes the profile under test via extraArgs (--settings per run)
+  const child = spawn('claude', args, { cwd: REPO_ROOT, env: { ...process.env, MSYS_NO_PATHCONV: '1', ANTHROPIC_BASE_URL: `http://127.0.0.1:${srv.address().port}` }, stdio: 'ignore' });
+  const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);
+  await new Promise((r) => { child.on('close', r); child.on('error', r); });
+  clearTimeout(timer);
+  srv.close();
+  return captured;
+}
+
+async function toolBytesMain(opts) {
+  let registry, installed;
+  try {
+    registry = loadRegistry();
+    installed = readEnabledPluginIds(homedir(), REPO_ROOT, process.env.CLAUDE_CONFIG_DIR);
+  } catch (e) { process.stderr.write(`profile-context-probe: ${e.message}\n`); process.exitCode = 2; return; }
+  const names = opts.profile ? [opts.profile] : Object.keys(registry.profiles ?? {}).filter((n) => registry.profiles[n].denyTools);
+  const unknown = names.find((n) => !registry.profiles?.[n]);
+  if (unknown) { process.stderr.write(`profile-context-probe: unknown profile "${unknown}"\n`); process.exitCode = 2; return; }
+  const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const skillEntries = scanSkillCosts({ cwd: REPO_ROOT, configDir }).entries;
+  const settingsDir = mkdtempSync(join(tmpdir(), 'profile-tool-bytes-'));
+  try {
+    for (const name of names) {
+      let settings;
+      try { settings = resolveProfileByName(name, { installed, skillEntries, configDir, cwd: REPO_ROOT }); }
+      catch (e) { process.stderr.write(`profile-context-probe: ${e.message}\n`); process.exitCode = 2; return; }
+      if (opts.untrimmed) settings = untrimmedSettings(settings, registry.profiles[name].denyTools ?? []);
+      const settingsPath = join(settingsDir, `${name}.json`).replace(/\\/g, '/');
+      writeFileSync(settingsPath, JSON.stringify(settings));
+      const main = pickMainRequest(await captureRequests(['--settings', settingsPath]));
+      const label = opts.untrimmed ? `${name} (untrimmed)` : name;
+      process.stdout.write(main ? `${formatToolBytes(label, rankToolBytes(main))}\n` : `${label}: no /v1/messages request captured\n`);
+      if (!main) process.exitCode = 1;
+    }
+  } finally {
+    try { rmSync(settingsDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+  }
 }
 
 function main() {
@@ -603,5 +700,7 @@ function main() {
 
 if (isMain(import.meta.url)) {
   await loadListingLib();
-  main();
+  const toolBytesOpts = (() => { try { return parseProbeArgs(process.argv.slice(2)); } catch { return null; } })();
+  if (toolBytesOpts?.toolBytes) await toolBytesMain(toolBytesOpts);
+  else main();
 }

@@ -78,6 +78,12 @@ const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/p
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
 const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
 
+// A bare tool name in permissions.deny removes the tool's definition from the
+// request payload; a scoped rule (Bash(rm *)) only blocks calls. denyTools is
+// therefore bare names only, and never a tool a leg works through.
+const TOOL_TRIM_PROTECTED = new Set(['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent', 'Task']);
+const BARE_TOOL_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
+
 // The one rule only leg-vm adds: the sanctioned guest-launch script, relative,
 // with a tail for its args. Never ssh, claude, an absolute path or another script.
 const VM_LAUNCH_RULE_RE = /^Bash\(bash scripts\/vm\/launch-guest\.sh:\*\)$/;
@@ -209,6 +215,24 @@ function checkNoDuplicates(errors, ids, message) {
   if (ids.length !== new Set(ids).size) errors.push(message);
 }
 
+// denyTools (bare names) and disableWorkflows shrink the prompt of a leg-shaped
+// profile; every other profile keeps the full tool set.
+function validateToolTrim(errors, name, spec) {
+  if (spec.denyTools === undefined && spec.disableWorkflows === undefined) return;
+  if (name !== 'bare' && !LEG_PROFILES.has(name)) {
+    if (spec.denyTools !== undefined) errors.push(`profile "${name}" denyTools is restricted to leg-shaped profiles`);
+    if (spec.disableWorkflows !== undefined) errors.push(`profile "${name}" disableWorkflows is restricted to leg-shaped profiles`);
+  }
+  if (spec.denyTools !== undefined) {
+    if (!Array.isArray(spec.denyTools) || !spec.denyTools.every((t) => typeof t === 'string' && BARE_TOOL_RE.test(t))) {
+      errors.push(`profile "${name}" denyTools must be an array of bare tool names (a scoped rule leaves the definition in the payload)`);
+    } else {
+      for (const t of spec.denyTools) if (TOOL_TRIM_PROTECTED.has(t)) errors.push(`profile "${name}" denyTools names ${t}, a tool a leg works through`);
+    }
+  }
+  if (spec.disableWorkflows !== undefined && typeof spec.disableWorkflows !== 'boolean') errors.push(`profile "${name}" disableWorkflows must be a boolean`);
+}
+
 // One profile entry's validation (enable/drop/disallowedTools + the "bare"
 // floor-only invariant). Pulled out of validateRegistry's profiles loop for
 // the same reason as validateIdList above: this body repeats once per
@@ -232,7 +256,9 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     if (spec.enable.length !== 0) errors.push('profile "bare" enable must be empty — bare is floor-only by construction; add plugins per-dispatch via --add-plugins, never persistently in the registry');
     if (spec.drop !== undefined) errors.push('profile "bare" must not declare drop — bare already resolves to floor-only, a drop list is meaningless there');
     if (spec.disallowedTools !== undefined) errors.push('profile "bare" must not declare disallowedTools — bare has no base capability to restrict');
+    if (spec.denyTools !== undefined) errors.push('profile "bare" must not declare denyTools — bare has no base capability to restrict');
   }
+  validateToolTrim(errors, name, spec);
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {
     errors.push(`profile "${name}" gateAllow must be a boolean`);
   }
@@ -522,10 +548,14 @@ export function resolveProfile(registry, name, opts = {}) {
       }
     }
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
-    return { enabledPlugins, permissions: { allow }, ...forkTrustSettings(opts.forkNwos), ...listingSettings(registry, [name], enabledPlugins, opts) };
+    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...forkTrustSettings(opts.forkNwos), ...listingSettings(registry, [name], enabledPlugins, opts) };
   }
-  return { enabledPlugins, ...(mcpAllow.length ? { permissions: { allow: mcpAllow } } : {}), ...listingSettings(registry, [name], enabledPlugins, opts) };
+  const permissions = { ...(mcpAllow.length ? { allow: mcpAllow } : {}), ...denyOf(spec) };
+  return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...disableOf(spec), ...listingSettings(registry, [name], enabledPlugins, opts) };
 }
+
+const denyOf = (spec) => (Array.isArray(spec?.denyTools) && spec.denyTools.length ? { deny: [...spec.denyTools] } : {});
+const disableOf = (spec) => (spec?.disableWorkflows === true ? { disableWorkflows: true } : {});
 
 // Sibling output, never extra Claude settings keys. Resolve the
 // names through the same composition gate, then take the largest declared cap.
@@ -565,8 +595,11 @@ function composeProfiles(registry, list, opts) {
   const enabledPlugins = {};
   for (const r of resolved) for (const [id, on] of Object.entries(r.enabledPlugins)) enabledPlugins[id] = enabledPlugins[id] || on;
   const allow = [...new Set(resolved.flatMap((r) => r.permissions?.allow ?? []))];
+  // A capability union: a tool stays denied only when EVERY member denies it.
+  const deny = (resolved[0].permissions?.deny ?? []).filter((t) => resolved.every((r) => r.permissions?.deny?.includes(t)));
+  const permissions = { ...(allow.length ? { allow } : {}), ...(deny.length ? { deny } : {}) };
   const environment = [...new Set(resolved.flatMap((r) => r.autoMode?.environment ?? []))];
-  return { enabledPlugins, ...(allow.length ? { permissions: { allow } } : {}), ...(environment.length ? { autoMode: { environment } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
+  return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...(resolved.every((r) => r.disableWorkflows) ? { disableWorkflows: true } : {}), ...(environment.length ? { autoMode: { environment } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
 }
 
 // opts.skillEntries (a scanSkillCosts().entries scan) opts a caller
