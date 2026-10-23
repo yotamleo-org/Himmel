@@ -54,6 +54,7 @@ case "${1:-}" in
     fail)
         leg="${2:-unknown}" reason="${3:-unknown}" log="${4:-}"
         cause="${5:-unknown, see log}" todo="${6:-read the log}"
+        cause="${cause//$'\n'/ }" todo="${todo//$'\n'/ }"
         mkdir -p "$(dirname "$alert_file")" "$dedupe_dir" 2>/dev/null
         printf '%s %s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" "$log" >> "$alert_file" \
             || echo "cadence-alert: could not append to $alert_file" >&2
