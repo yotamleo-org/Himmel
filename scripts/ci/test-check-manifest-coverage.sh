@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # Test for scripts/ci/check-manifest-coverage.sh.
 #
 # The pre-fix row runs the lint on dependabot.yml as it stood at 2082a0923
