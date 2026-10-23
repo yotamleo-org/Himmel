@@ -30,9 +30,13 @@ chmod +x "$work/bin/claude" || exit 1
 for _tool in bash git jq python3 grep sed cat cp mv rm ln mkdir chmod diff wc tr head tail basename dirname mktemp dd sort cut xargs date stat uname id awk cmp find; do
   link_hermetic_tool "$_tool" || exit 1
 done
-if command -v sha256sum >/dev/null 2>&1; then link_hermetic_tool sha256sum; else link_hermetic_tool shasum; fi
-real_python3=$(command -v python3)
-rm -f "$work/bin/python3"
+if command -v sha256sum >/dev/null 2>&1; then
+  link_hermetic_tool sha256sum || exit 1
+else
+  link_hermetic_tool shasum || exit 1
+fi
+real_python3=$(command -v python3) || exit 1
+rm -f "$work/bin/python3" || exit 1
 cat > "$work/bin/python3" <<STUB || exit 1
 #!/usr/bin/env bash
 if [ "\$1" = "-m" ] && [ "\$2" = "pip" ]; then
@@ -41,8 +45,8 @@ if [ "\$1" = "-m" ] && [ "\$2" = "pip" ]; then
 fi
 exec "$real_python3" "\$@"
 STUB
-chmod +x "$work/bin/python3"
-qmd_free_path=$(scrub_path "$PATH" qmd bun npm node uv pipx)
+chmod +x "$work/bin/python3" || exit 1
+qmd_free_path=$(scrub_path "$PATH" qmd bun npm node uv pipx) || exit 1
 export PATH="$work/bin:$qmd_free_path"
 
 # A missing portable gate or helper must not silently drop the merge refusal.
@@ -90,12 +94,11 @@ test_adopt_merge_gate() (
   HOME="$home" git -C "$target" remote add origin https://github.com/adopter/project.git || exit 1
   HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt || exit 1
   HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: install merge trust policy' || exit 1
-  if [ "${1:-}" != --merge-gate-only ]; then
-    printf '%s\n' \
-      '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"codex","status":"ok"}' \
-      '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"claude","status":"ok"}' \
-      > "$target/.git/cr-critic-scores.jsonl"
-    cat > "$work/merge-gate-bin/gh" <<'STUB' || exit 1
+  printf '%s\n' \
+    '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"codex","status":"ok"}' \
+    '{"kind":"avail","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"claude","status":"ok"}' \
+    > "$target/.git/cr-critic-scores.jsonl"
+  cat > "$work/merge-gate-bin/gh" <<'STUB' || exit 1
 #!/usr/bin/env bash
 case "$1 $2" in
   'pr view') printf '%s\n' '{"number":42,"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","url":"https://github.com/adopter/project/pull/42"}' ;;
@@ -116,12 +119,18 @@ case "$1 $2" in
     git show refs/heads/main:scripts/ci/ci-trust-paths.txt 2>/dev/null || { echo 'HTTP 404' >&2; exit 1; } ;;
   'api repos/adopter/project/pulls/42') echo 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|1' ;;
   'api repos/adopter/project/pulls/42/files'*) printf 'README.md\t\n' ;;
-  'api repos/adopter/project/commits/'*'/check-runs'*) echo '{"total_count":1,"check_runs":[{"name":"tests","status":"completed","conclusion":"success"}]}' ;;
-  'api repos/adopter/project/commits/'*'/statuses'*) echo '[{"context":"ci","state":"success","creator":{"id":1}}]' ;;
+  'api repos/adopter/project/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs'*) echo '{"total_count":1,"check_runs":[{"name":"tests","status":"completed","conclusion":"success"}]}' ;;
+  'api repos/adopter/project/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/statuses'*) echo '[{"context":"ci","state":"success","creator":{"id":1}}]' ;;
   *) printf 'unexpected gh fixture request: %s\n' "$*" >&2; exit 1 ;;
 esac
 STUB
-    chmod +x "$work/merge-gate-bin/gh" || exit 1
+  chmod +x "$work/merge-gate-bin/gh" || exit 1
+  for f in check-runs statuses; do
+    rc=0; out=$("$work/merge-gate-bin/gh" api "repos/adopter/project/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/$f" 2>&1) || rc=$?
+    [ "$rc" -ne 0 ] || fail "HIMMEL-7000: wrong-SHA $f query received green fixture data: $out"
+  done
+  echo "ok: HIMMEL-7000 gh fixture refuses check-runs and statuses for the wrong head"
+  if [ "${1:-}" != --merge-gate-only ]; then
     jq -n --arg cwd "$target" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:"gh pr merge 42 --squash --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}' > "$work/merge-gate-payload.json"
     merge_gate_run() (
       cd "$target" || exit 1
