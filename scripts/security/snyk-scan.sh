@@ -213,11 +213,13 @@ if [ "$forks" -eq 1 ]; then
             || { SCAN_MSG="cannot read the uv export of $lock"; return 1; }
         jq -e '.queries | length > 0' "$w/q.json" >/dev/null || return 0
         if ! { curl -fsS -m 120 -X POST -H 'Content-Type: application/json' -d @"$w/q.json" "$OSV_URL/v1/querybatch" > "$w/batch.json" 2> "$w/curl.err" \
-            && jq -e --slurpfile q "$w/q.json" '(.results | type == "array") and (.results | length) == ($q[0].queries | length)' "$w/batch.json" >/dev/null 2>&1; }; then
-            SCAN_MSG="osv.dev querybatch failed or answered fewer packages than asked for $lock: $(head -c 200 "$w/curl.err")"
+            && jq -e --slurpfile q "$w/q.json" '(.results | type == "array") and (.results | length) == ($q[0].queries | length)
+                and all(.results[]; type == "object" and (has("next_page_token") | not))' "$w/batch.json" >/dev/null 2>&1; }; then
+            SCAN_MSG="osv.dev querybatch failed, was paged or incomplete for $lock: $(head -c 200 "$w/curl.err")"
             return 1
         fi
-        jq -r --slurpfile q "$w/q.json" '.results | to_entries[] | .key as $i | (.value.vulns // [])[] | [.id, $q[0].queries[$i].package.name, $q[0].queries[$i].version] | @tsv' "$w/batch.json" > "$w/pairs.tsv"
+        jq -r --slurpfile q "$w/q.json" '.results | to_entries[] | .key as $i | (.value.vulns // [])[] | [.id, $q[0].queries[$i].package.name, $q[0].queries[$i].version] | @tsv' "$w/batch.json" > "$w/pairs.tsv" \
+            || { SCAN_MSG="cannot read the osv.dev answer for $lock"; return 1; }
         [ -s "$w/pairs.tsv" ] || return 0
         cut -f1 "$w/pairs.tsv" | sort -u > "$w/ids.txt"
         while IFS= read -r id; do
@@ -239,7 +241,7 @@ if [ "$forks" -eq 1 ]; then
             | group_by(.[1] + "|" + .[2]) | map(max_by(.[0] | rank))[] | @tsv'
     }
 
-    # Open Source scan of one checkout; rows to <rows file>. rc 1 = scan failed (SCAN_MSG), 3 = quota
+    # Open Source scan of one checkout; rows to <rows file>. rc 1 = scan failed (SCAN_MSG), 3 = quota or unwritable ledger, stops the run
     scan_tree() { # <dir> <rows file>
         local d="$1" rows="$2" rc est lock
         : > "$rows"; SCAN_MSG=""; SCAN_PROJECTS=0; SCAN_LOCKS=0
@@ -258,6 +260,7 @@ if [ "$forks" -eq 1 ]; then
         jq -e "$PROJ_JQ" "$tmp/ft.raw" > "$tmp/ft.json" 2>/dev/null || { SCAN_MSG="snyk test printed no usable project results (rc $rc)"; return 1; }
         SCAN_PROJECTS="$(jq 'length' "$tmp/ft.json")"
         record_usage open_source "$SCAN_PROJECTS"
+        [ "$usage_failed" -eq 0 ] || { SCAN_MSG="usage ledger write failed; not scanning on unmetered"; return 3; }
         jq -r "$ROWS_JQ" "$tmp/ft.json" >> "$rows" || { SCAN_MSG="cannot read the Open Source findings"; return 1; }
         while IFS= read -r lock; do
             [ -n "$lock" ] || continue
@@ -280,7 +283,6 @@ if [ "$forks" -eq 1 ]; then
     f_gate=0 f_err=0 f_n=0
     while IFS='|' read -r -u 3 name url ref up; do
         [ -n "$name" ] || continue
-        if [ "$usage_failed" -ne 0 ]; then err "usage ledger write failed; not scanning $name or the forks after it unmetered"; break; fi
         f_n=$((f_n + 1))
         status=ok msg="" projects=0 locks=0 upstream=none up_sha=""
         : > "$tmp/rows.$name"; : > "$tmp/uprows.$name"
