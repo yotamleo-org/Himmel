@@ -4,6 +4,8 @@
 #
 # Greps .github/workflows/ (or $1) for ${{ secrets.* }} patterns.
 # If any match is found, prints the offending lines and exits 1.
+# One line is allowed: `SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}` in the file named
+# snyk-weekly.yml (the scheduled Snyk scan). Every other match still fails.
 # If the scan directory does not exist, exits 0 (nothing to leak).
 #
 # Usage:
@@ -28,6 +30,23 @@ fi
 matches=$(grep -rnE '\$\{\{[^}]*secrets\.' \
   --include='*.yml' --include='*.yaml' \
   "$scan" 2>/dev/null || true)
+
+# The one allowed interpolation: the SNYK_TOKEN line of snyk-weekly.yml. Any other
+# secret in that file, or that line in any other file, still fails.
+allowed_file='snyk-weekly.yml'
+# shellcheck disable=SC2016  # single quotes intentional: a literal interpolation
+allowed_text='SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}'
+kept=""
+while IFS= read -r m; do
+  [ -n "$m" ] || continue
+  if [[ "$m" =~ ^(.*/)?([^/:]+):[0-9]+:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] \
+    && [ "${BASH_REMATCH[2]}" = "$allowed_file" ] \
+    && [ "${BASH_REMATCH[3]}" = "$allowed_text" ]; then
+    continue
+  fi
+  kept+="$m"$'\n'
+done <<< "$matches"
+matches="${kept%$'\n'}"
 
 if [ -n "$matches" ]; then
   printf 'ERROR: secret interpolation found in workflow files:\n'
