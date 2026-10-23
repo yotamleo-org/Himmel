@@ -159,9 +159,9 @@ STUB
   HOME="$home" HIMMEL_PROVENANCE_DIR="$ledger" bash "$adopt" --profile core --scope project --target "$fresh" >/dev/null || exit 1
   jq -se '[.[] | select(.kind == "json-elem" and .unit == "/hooks/PreToolUse" and .op == "insert")] | length == 4 and all(.[]; .container_created == true)' "$ledger/provenance.jsonl" >/dev/null \
     || fail "HIMMEL-7000: every inserted hook must record ownership of the newly created PreToolUse container"
-  jq -se '[.[] | select(.kind == "file" and .manifest_row == "adopter-scripts")] | length == 78' "$ledger/provenance.jsonl" >/dev/null \
-    || fail "HIMMEL-7000: expected 77 portable file rows plus the trust policy seed"
-  echo "ok: HIMMEL-7000 all four hooks record fresh-container ownership for uninstall; all 78 file rows recorded"
+  jq -se '[.[] | select(.kind == "file" and .manifest_row == "adopter-scripts")] | length == 79' "$ledger/provenance.jsonl" >/dev/null \
+    || fail "HIMMEL-7000: expected 78 portable file rows plus the trust policy seed"
+  echo "ok: HIMMEL-7000 all four hooks record fresh-container ownership for uninstall; all 79 file rows recorded"
 )
 
 mkdir -p "$work/merge-gate-foreign-worktree"

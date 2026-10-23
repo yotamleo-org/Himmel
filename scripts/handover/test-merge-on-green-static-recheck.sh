@@ -71,6 +71,11 @@ sr_setup() {
     : > "$a/docs/.keep"
     printf '#!/usr/bin/env bash\n[ "$#" -eq 0 ] || { echo "FAIL: ledgers stub got arguments: $*"; exit 1; }\n[ ! -e docs/.fail-ledgers ] || { echo "FAIL: ledgers stub"; exit 1; }\necho "PASS ledgers stub"\n' > "$a/scripts/observability/test-ledgers-registry.sh"
     [ "${SR_NOCHK:-0}" != 1 ] || rm -f "$a/scripts/observability/test-ledgers-registry.sh"
+    if [ -n "${SR_ABSENT:-}" ]; then
+        local -a absent
+        IFS=' ' read -r -a absent <<< "$SR_ABSENT"
+        for f in "${absent[@]}"; do rm -f "$a/$f"; done
+    fi
     # check-commit-msg.sh is the hook mog_build_fixture already lays down.
     for f in bus-deliver-hook.sh bus-deliver-sessionstart.sh bus-deliver-run.js wired-hook.sh check-commit-msg.sh; do
         [ -e "$a/scripts/hooks/$f" ] || : > "$a/scripts/hooks/$f"
@@ -154,6 +159,26 @@ SR_MOVED=1 sr_run 24 "R11: fetched head differs from the certified head → exit
 assert_audit_has "R11: audited as a head move" "phase=head-moved"
 SR_NOCHK=1 sr_run 24 "R13: a missing check script fails closed → exit 24"
 assert_err_has "R13: stderr names the missing check" "missing from the merge result"
+
+# R13s — solo mode (an adopted project carries none of the harness's registries):
+# a check whose script is ABSENT from the merge result is skipped and audited per
+# check; one that is present still runs and still fails closed; outside solo a
+# missing script is still exit 24.
+SR_ALL3="scripts/testing/test-unwired-hooks.sh scripts/observability/test-ledgers-registry.sh scripts/ci/check-host-file-read-sinks.sh"
+sr_solo_setup() { git -C "$1" config --local himmel.mergeMode solo && sr_setup "$1"; }
+sr_solo_run() { MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=sr_solo_setup run_mog "$@"; }
+SR_ABSENT="$SR_ALL3" SR_PR=clean-b sr_solo_run 0 "R13s-a: solo, all three checks absent → merged"
+assert_audit_has "R13s-a: unwired-hooks skip audited" "STATIC-RECHECK skipped check=test-unwired-hooks reason=solo-absent"
+assert_audit_has "R13s-a: ledgers skip audited" "STATIC-RECHECK skipped check=test-ledgers-registry reason=solo-absent"
+assert_audit_has "R13s-a: host-file-read-sinks skip audited" "STATIC-RECHECK skipped check=check-host-file-read-sinks reason=solo-absent"
+assert_audit_has "R13s-a: the merge is audited as solo" "mode=solo"
+SR_ABSENT="scripts/observability/test-ledgers-registry.sh scripts/ci/check-host-file-read-sinks.sh" SR_SIB=wire SR_PR=allow \
+    sr_solo_run 24 "R13s-b: solo, one check present and failing → exit 24"
+assert_audit_has "R13s-b: the present check still fails closed" "failed=test-unwired-hooks"
+no_merge_call "R13s-b: no merge call"
+SR_ABSENT="scripts/ci/check-host-file-read-sinks.sh" SR_PR=clean-b sr_run 24 "R13s-c: not solo, one check absent → exit 24"
+assert_err_has "R13s-c: stderr names the missing check" "missing from the merge result"
+no_merge_call "R13s-c: no merge call"
 
 # R14 — a dry run reports the refusal and mutates nothing.
 SR_SIB=wire SR_PR=allow sr_run 24 "R14: --dry-run reports the refusal" --dry-run

@@ -912,8 +912,10 @@ fi
 
 # Solo mode. An adopted project with one person and no console selects it with
 # the project's own git config, `git config himmel.mergeMode solo`, read from the
-# anchor's local config only. It relaxes NO gate: the green gate above, the trust
-# path, main-red and privacy gates all still run, and no GO file is asked for
+# anchor's local config only. It relaxes no gate that can run in an adopted
+# project: the green gate above, the trust path, main-red and privacy gates all
+# still run; the one skip is a static re-check whose script the merge result does
+# not carry, audited per check (see the static re-check gate). No GO file is asked for
 # because only a console leg or an explicit --go is ever bound to one. What it
 # adds is a refusal wherever a GO is the rule — a console leg, or the himmel
 # clone (the anchor carries console-kit/go.sh) — and an unknown value fails
@@ -1326,8 +1328,11 @@ fi
 # not this gate's to judge: it defers (audited, skipped) to the existing
 # behind-main path, where GitHub's mergeStateStatus refuses. shell-lint is
 # skipped, loudly and audited, when the shellcheck on PATH is not the version
-# .pre-commit-config.yaml pins. MERGE_STATIC_RECHECK=0 turns the gate off;
-# nothing else does. The wall cost is printed on stderr and on the audit line.
+# .pre-commit-config.yaml pins. In solo mode (an adopted project carries none of
+# the harness's registries) a check whose script is absent from the merge result
+# is skipped and audited per check (reason=solo-absent); a present one still runs
+# and still fails closed. MERGE_STATIC_RECHECK=0 turns the gate off; nothing else
+# does. The wall cost is printed on stderr and on the audit line.
 # Fetch targets are private refs under refs/himmel-mog-static/ in the anchor,
 # deleted again. Placed after the plugin-bump gate and before the marker clear /
 # DRY_RUN, so a refusal mutates nothing and a dry run reports it.
@@ -1361,6 +1366,11 @@ sr_failed=""
 sr_run() {
     local name="$1" script="$2" rc=0
     shift 2
+    if [ ! -f "$sr_tmp/work/$script" ] && [ -n "$SOLO_TAG" ]; then
+        echo "merge-on-green: static re-check: $name SKIPPED — $script is absent from the merge result (solo mode)." >&2
+        audit "STATIC-RECHECK skipped check=$name reason=solo-absent repo=$nwo pr=#$pr_num sha=$sha"
+        return 0
+    fi
     if [ ! -f "$sr_tmp/work/$script" ]; then
         printf '%s is missing from the merge result\n' "$script" > "$sr_tmp/$name.out"
         sr_failed="${sr_failed:+$sr_failed,}$name"

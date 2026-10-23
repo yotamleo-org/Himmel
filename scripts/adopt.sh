@@ -193,6 +193,7 @@ PORTABLE_FILES=(
   scripts/handover/merge-on-green.sh
   scripts/lib/check-pr-title.sh
   scripts/lib/ticket-id-internal.sh
+  scripts/ci/ticket-id-internal-authors.txt
   scripts/chokepoints.json
   scripts/lib/check-ci-watch.sh
   scripts/lib/coderabbit-body-findings.sh
