@@ -1514,6 +1514,10 @@ out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
   || fail "HIMMEL-6977: adopt failed: $out"
 [ -f "$cittarget/scripts/check-ci.sh" ] \
   || fail "HIMMEL-6977: check-ci.sh was not copied into the project"
+for cit_lib in non-gating-contexts.sh non-gating-contexts.txt; do
+  [ -f "$cittarget/scripts/lib/$cit_lib" ] \
+    || fail "HIMMEL-7239: check-ci.sh sources lib/$cit_lib but it was not copied into the project"
+done
 set +e
 out=$(cd "$cittarget" && PATH="$citbin:$PATH" HOME="$cithome" CIT_GH_LOG="$work/checkci-6977.log" \
       CHECK_CI_POLL_INTERVAL=0 CHECK_CI_SETTLE=0 CHECK_CI_CACHE=0 LEG_JIRA_STATUS=0 \
