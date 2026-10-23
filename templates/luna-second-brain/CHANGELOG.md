@@ -8,6 +8,13 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.89] — 2026-10-23
+
+### Changed
+- `_CLAUDE.md` "Tooling and provenance": the session-capture bullet now
+  states that the hook can write to another vault when the target key is
+  rejected, and that the minimum session length is configurable.
+
 ## [0.4.88] — 2026-10-23
 
 ### Changed

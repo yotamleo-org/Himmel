@@ -79,8 +79,11 @@ the failure mode:
   not assume one is there. obsidian-second-brain stays installed and can be
   enabled on demand (`plugin-profile.sh enable obsidian-second-brain`).
 - **Session capture:** a `SessionEnd` hook (`scripts/hooks/end-session-wiki.sh`)
-  writes one note per session to `sessions/YYYY/MM/` of the target vault,
-  skipping sessions under 60s. It is on by default; opt out by setting the
+  writes eligible session notes under `sessions/YYYY/MM/` in the resolved
+  target vault. If the target key is rejected because another vault owns the
+  Local REST API port, the hook retries keys from other vaults, so the note
+  can land in the vault whose key succeeds. Sessions shorter than the
+  configured minimum are skipped (60s by default). It is on by default; opt out by setting the
   `CLAUDE_END_SESSION_WIKI` env var to `0`, or `"enabled": false` in
   `.claude/end-session-wiki.json`. Targeting, schema and every option:
   `docs/luna/end-session-wiki.md` in the himmel repo.
