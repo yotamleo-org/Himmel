@@ -2631,7 +2631,7 @@ fi
 ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
 stop_line26="          SUITE_STOP_ON_FAIL: \${{ github.event_name == 'pull_request' && '1' || '' }}"
 shard_step26() {
-  awk '/^      - run: bash scripts\/ci\/run-shell-tests\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1"
+  awk '/^      - run: bash scripts\/ci\/home-canary\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1"
 }
 stop_on_fail_set26() { shard_step26 "$1" | grep -qxF "$stop_line26"; }
 if stop_on_fail_set26 "$ci_yml26"; then
