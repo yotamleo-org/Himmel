@@ -784,6 +784,7 @@ printf '{"enabledPlugins":{"obsidian-second-brain@himmel":false,"himmel-ops@himm
 REPO_Z="$(winpath "$repoZ")"
 HOME_Z="$(winpath "$homeZ")"
 export REPO_Z HOME_Z
+unset CLAUDE_CONFIG_DIR
 outZ=$("$node_bin" -e "
 const { planInstall, runInstall } = require(process.env.INSTALL_ENGINE_LIB);
 const env = Object.assign({}, process.env, { HOME: process.env.HOME_Z });
