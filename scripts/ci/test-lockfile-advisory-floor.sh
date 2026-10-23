@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Test that the docs-site lockfile resolves postcss-selector-parser at or above the
-# release that fixes GHSA-rj75-hqrm-r3gf.
+# Test that shipped lockfiles resolve a package at or above the release that fixes an
+# advisory: postcss-selector-parser in the docs site (GHSA-rj75-hqrm-r3gf) and zod under
+# the MCP server and AG-UI client lockfiles (SNYK-JS-ZOD-20510278, CVE-2023-54404).
 #
-# The fixture under test-lockfile-advisory-floor-fixtures/ is the verbatim pre-fix
-# node_modules entries of site/package-lock.json (as of b5e4ac4a2), so the floor
-# check is proven against what the real lockfile held, not a hand-written look-alike.
+# The fixtures under test-lockfile-advisory-floor-fixtures/ are the verbatim pre-fix
+# entries of the real lockfiles (site/package-lock.json as of b5e4ac4a2; the zod ones as
+# of b158d60a1), so each floor check is proven against what the real lockfile held, not
+# a hand-written look-alike.
 #
 # Usage: bash scripts/ci/test-lockfile-advisory-floor.sh
 #
@@ -25,6 +27,9 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 # nested, one per line. Exits non-zero when the lockfile cannot be read or parsed, or
 # when a matching entry carries no version (a link entry), so it cannot be checked.
 lock_versions() {
+  case "$1" in
+    *.lock) grep -oE "\[\"$2@[^\"]+\"" "$1" | sed -E 's/^.*@//; s/"$//' ; return ;;
+  esac
   node -e 'const l = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = "node_modules/" + process.argv[2]; for (const [k, v] of Object.entries(l.packages)) if (k === n || k.endsWith("/" + n)) { if (!v.version) process.exit(1); console.log(v.version) }' "$1" "$2"
 }
 
@@ -90,6 +95,33 @@ elif [ -z "$missing" ]; then
 else
   fail "LGPL packages in site/package-lock.json missing from docs/third-party-licenses.md:$missing"
 fi
+
+# floor_rows <pre-fix fixture> <real lockfile> <package> <floor> <advisory>
+floor_rows() {
+  meets_floor "$FIX/$1" "$3" "$4"
+  case $? in
+    1) pass "$1 is flagged below the $4 floor" ;;
+    0) fail "$1 is not flagged: it resolves $3 at or above $4" ;;
+    *) fail "$1 lookup failed: missing, malformed or no $3 entry" ;;
+  esac
+  meets_floor "$REPO_ROOT/$2" "$3" "$4"
+  case $? in
+    0) pass "$2 resolves $3 >= $4 ($5)" ;;
+    1) fail "$2 resolves $3 $(lock_versions "$REPO_ROOT/$2" "$3" | tr '\n' ' ')below $4 ($5)" ;;
+    *) fail "$2 lookup failed: unreadable or no $3 entry" ;;
+  esac
+}
+
+zod_adv=SNYK-JS-ZOD-20510278
+floor_rows jira-package-lock.pre-fix.json scripts/jira/package-lock.json zod 4.6.6 "$zod_adv"
+floor_rows luna-correlate-bun.pre-fix.lock marketplace/plugins/luna-correlate/bun.lock zod 4.6.6 "$zod_adv"
+floor_rows telegram-himmel-bun.pre-fix.lock marketplace/plugins/telegram-himmel/bun.lock zod 4.6.6 "$zod_adv"
+floor_rows agui-web-bun.pre-fix.lock scripts/config-ui/agui-web/bun.lock zod 4.6.6 "$zod_adv"
+meets_floor "$REPO_ROOT/marketplace/plugins/himmel-bus/package-lock.json" zod 4.6.6
+case $? in
+  0) pass "marketplace/plugins/himmel-bus/package-lock.json resolves zod >= 4.6.6 ($zod_adv)" ;;
+  *) fail "marketplace/plugins/himmel-bus/package-lock.json is below the zod 4.6.6 floor or unreadable ($zod_adv)" ;;
+esac
 
 if [ "$failures" -eq 0 ]; then
   echo "all cases passed"

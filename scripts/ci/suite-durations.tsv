@@ -1057,6 +1057,7 @@ scripts/vm/test-guest-exec.sh	1
 scripts/vm/test-inventory.sh	1
 scripts/vm/test-launch-guest.sh	1
 scripts/vm/test-model-replay.sh	0
+scripts/vm/test-over-install-stage.sh	1
 scripts/vm/test-provenance-roundtrip-dry.sh	39
 scripts/vm/test-upgrade-path-stage.sh	4
 scripts/vm/test-vm-clone-lib.sh	0

@@ -204,4 +204,16 @@ if [ "$rc" -eq 0 ] && [ "${HIMMEL_VM_E2E_UPGRADE:-0}" = "1" ]; then
   bash "$REPO/scripts/vm/upgrade-path-e2e.sh" "$HOSTSPEC" "$PORT" "$IDENT"
   rc=$?
 fi
+
+# 4. opt-in over-install stage: HIMMEL_VM_E2E_OVERINSTALL=1 runs
+#    scripts/vm/over-install-e2e.sh after a green symmetry pass (and a green upgrade
+#    stage when that is on). It installs the previous release then the candidate over
+#    it in the guest HOME, so use a disposable clone and restore it afterwards.
+#    Refs: OVERINSTALL_BASE_REF (default v1.1.2), OVERINSTALL_CAND_REF (default HEAD).
+#    Off by default: an unset var changes nothing above.
+if [ "$rc" -eq 0 ] && [ "${HIMMEL_VM_E2E_OVERINSTALL:-0}" = "1" ]; then
+  echo "==> over-install stage (HIMMEL_VM_E2E_OVERINSTALL=1)"
+  bash "$REPO/scripts/vm/over-install-e2e.sh" "$HOSTSPEC" "$PORT" "$IDENT"
+  rc=$?
+fi
 exit "$rc"

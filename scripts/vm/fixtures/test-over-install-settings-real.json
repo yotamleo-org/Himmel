@@ -1,0 +1,121 @@
+{
+  "env": {
+    "CLAUDE_HUD_ALLOW_EXTRA_CMD": "1",
+    "HIMMEL_REPO": "/guest/home/over-install/hm"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/hooks/auto-approve-safe-bash.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/auto-approve-safe-bash.sh\"; else echo \"himmel: hook script missing ($CLAUDE_PROJECT_DIR/scripts/hooks/auto-approve-safe-bash.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh\"; else echo \"himmel: hook script missing ($CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-read-secrets.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-read-secrets.sh\"; else echo \"himmel: hook script missing ($CLAUDE_PROJECT_DIR/scripts/hooks/block-read-secrets.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"/guest/home/over-install/hm/scripts/hooks/inject-initiative.sh\" ]; then bash \"/guest/home/over-install/hm/scripts/hooks/inject-initiative.sh\"; else echo \"himmel: hook script missing (/guest/home/over-install/hm/scripts/hooks/inject-initiative.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "[ -f \"/guest/home/over-install/hm/marketplace/plugins/claude-hud/dist/index.js\" ] && exec node \"/guest/home/over-install/hm/marketplace/plugins/claude-hud/dist/index.js\" || true"
+  },
+  "enabledPlugins": {
+    "ai-image-prompts@himmel": false,
+    "animejs-skills@himmel": false,
+    "anthropic-design-skills@himmel": false,
+    "anydesign@himmel": false,
+    "builder-visual@himmel": false,
+    "claude-obsidian@himmel": false,
+    "codex@openai-codex": false,
+    "context7@claude-plugins-official": false,
+    "design-dna@himmel": false,
+    "diagram-design@himmel": false,
+    "emilkowalski-skills@himmel": false,
+    "frontend-slides@himmel": false,
+    "gsap-skills@himmel": false,
+    "hallmark@himmel": false,
+    "handover@himmel": true,
+    "himmel-ops@himmel": true,
+    "i-have-adhd@himmel": true,
+    "impeccable@himmel": false,
+    "lean-skills@himmel": true,
+    "lottie-motion-design@himmel": false,
+    "luna-correlate@himmel": false,
+    "motion-lexicon@himmel": false,
+    "obsidian-second-brain@himmel": true,
+    "obsidian-triage@himmel": false,
+    "plannotator-effective-html@himmel": false,
+    "platform-design-skills@himmel": false,
+    "playwright@claude-plugins-official": false,
+    "pr-review-toolkit-himmel@himmel": true,
+    "qmd@himmel": true,
+    "shadcn-mcp@himmel": false,
+    "taste-skill-core@himmel": false,
+    "telegram-himmel@himmel": false,
+    "threejs-skills@himmel": false,
+    "typescript-lsp@claude-plugins-official": false,
+    "ui-ux-pro-max@himmel": false,
+    "domain-modeling@himmel": false,
+    "find-docs@himmel": true,
+    "graphify@himmel": true,
+    "himmel-bus@himmel": false,
+    "himmel-guard@himmel": true,
+    "humanizer@himmel": false,
+    "pstack@himmel": true
+  },
+  "extraKnownMarketplaces": {
+    "obsidian-skills": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/kepano/obsidian-skills.git"
+      }
+    },
+    "himmel": {
+      "source": {
+        "source": "directory",
+        "path": "/guest/home/over-install/hm/marketplace"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "openai-codex": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/openai/codex-plugin-cc.git"
+      }
+    }
+  }
+}
