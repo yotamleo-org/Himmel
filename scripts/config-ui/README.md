@@ -69,6 +69,12 @@ The tool table includes daily trends, top failure classes and links to the
 session view with tool-call ids. Deny-hook rates use Bash calls as their
 explicit denominator. The comparison table shows calls per 100 calls,
 error/denial/recovery rates per lane and deltas relative to native.
+A "Tools by launch profile" table lists, per profile, each tool's calls,
+failure rate, listing cost and a keep or move-to-on-demand suggestion
+(`docs/tool-adoption/per-profile-tool-evals.md`). Listing cost is read from
+`~/.himmel/profile-listing.json` (`{profile: {tool: tokens}}`, override
+`HIMMEL_PROFILE_LISTING`); without it the cost reads "not measured" and no
+tool is suggested for removal. Sessions with no launch record read as unknown.
 
 No ledger means **No data**. Old digest rows without per-tool counts show
 **—**, not 0 %, including summaries that mix old and new rows. Partial or

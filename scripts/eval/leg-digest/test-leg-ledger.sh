@@ -186,5 +186,24 @@ check "a doc title naming WORKER_SESSION_LANE gives the lane" '[ "$(python3 -c "
 printf '# HIMMEL-1-N9 worker (LEG_LANE=native, WORKER_SESSION_LANE=claudex)\n' >"$TMP/blane.md"
 check "a doc title naming both lane names gives the WORKER_SESSION_LANE one" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import leg_ledger; print(leg_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/blane.md")" = claudex ]'
 
+echo "11. the recorder stamps the launch profile on tool_health (HIMMEL-7048)"
+LP=4670c1a5-0000-4000-8000-0000000000f1; LQ=4670c1a5-0000-4000-8000-0000000000f2; LR=4670c1a5-0000-4000-8000-0000000000f3
+LF="$TMP/lp-fail.jsonl"; LE="$TMP/lp-eval.jsonl"; LS="$TMP/lp-state"
+lrec() { HIMMELCTL_CACHE_DIR="$TMP/cache" python3 "$LL" record --failures-ledger "$LF" --eval-ledger "$LE" --state-dir "$LS" "$@"; }
+mkdir -p "$TMP/cache/launch-logs"
+printf 'headed-arm-leg: profile=leg-impl lane=native model=m role=leg session=lp-leg launched=2026-10-23T00:00:00Z\n' >"$TMP/cache/launch-logs/lp-leg.log"
+{ printf 'headed-arm-leg: profile=leg-impl lane=native model=m role=leg session=lp-two launched=2026-10-23T00:00:00Z\n'; printf 'headed-arm-leg: profile=judge lane=native model=m role=judge session=lp-two launched=2026-10-23T00:05:00Z\n'; } >"$TMP/cache/launch-logs/lp-two.log"
+for s in "$LP" "$LQ" "$LR"; do jq -c --arg s "$s" '.session = $s' "$TMP/digest.json" >"$TMP/lp-$s.json"; done
+check "the digest under test carries tool_health" '[ "$(jq ".tool_health | length" "$TMP/digest.json")" -gt 0 ]'
+lrec --digest "$TMP/lp-$LP.json" --launch-name lp-leg >/dev/null 2>&1
+lrec --digest "$TMP/lp-$LQ.json" >/dev/null 2>&1
+lrec --digest "$TMP/lp-$LR.json" --launch-name lp-two >/dev/null 2>&1
+check "a launch record gives every tool_health row the launched profile" 'jq -e "select(.run_id == \"$LP\") | (.meta.tool_health | length > 0) and all(.meta.tool_health[]; .profile == \"leg-impl\") and .meta.profile == \"leg-impl\"" "$LE" >/dev/null'
+check "no launch name reads unknown" 'jq -e "select(.run_id == \"$LQ\") | all(.meta.tool_health[]; .profile == \"unknown\")" "$LE" >/dev/null'
+check "two launch lines that disagree read unknown" 'jq -e "select(.run_id == \"$LR\") | all(.meta.tool_health[]; .profile == \"unknown\")" "$LE" >/dev/null'
+check "the saved digest marker carries the stamped profile too" 'jq -e "all(.tool_health[]; .profile == \"leg-impl\")" "$LS/$LP.json" >/dev/null'
+lrec --digest "$TMP/lp-$LP.json" --launch-name ../../etc/passwd >/dev/null 2>&1; rcp=$?
+check "a launch name with a path separator is refused" '[ "$rcp" != 0 ]'
+
 echo "test-leg-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

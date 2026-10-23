@@ -13,10 +13,16 @@ function readRows(path) {
   try { return readFileSync(path, 'utf8').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r && typeof r === 'object' ? [r] : []; } catch { return []; } }); }
   catch { return []; }
 }
+// Measured listing cost per profile, {profile: {tool: tokens}}, written by an operator-run probe; absent or unreadable = none.
+function readListing(path) {
+  try { const j = JSON.parse(readFileSync(path, 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; }
+  catch { return {}; }
+}
 export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now()) {
   const home = env.HOME || homedir();
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now);
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now,
+    readListing(env.HIMMEL_PROFILE_LISTING || join(home, '.himmel', 'profile-listing.json')));
 }
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
@@ -27,6 +33,8 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
+  // Effective window: since..today when given (inclusive, like the days switch), else the days switch itself.
+  const windowDays = firstDay && firstDay <= lastDay ? (Date.parse(lastDay) - Date.parse(firstDay)) / 86400000 + 1 : days;
   const selected = { model: query.get('model') || '', lane: query.get('lane') || '', role: query.get('role') || '', profile: query.get('profile') || '', days };
   const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane);
   const sessions = new Map();
@@ -144,11 +152,11 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const class_counts = Object.create(null);
   for (const s of filtered) for (const f of s.failures) class_counts[f.class] = (class_counts[f.class] || 0) + f.count;
   for (const t of result.tools) {
-    t.trend = Array.from({ length: days }, (_, i) => {
+    t.trend = Array.from({ length: windowDays }, (_, i) => {
       const day = dayOf(Date.parse(firstDay) + i * 86400000), rows = result.daily.filter((d) => d.tool === t.tool && d.day === day);
       const calls = rows.length ? rows.reduce((n, d) => sumCalls(n, d.calls), 0) : null;
       const value = rate(rows.reduce((n, d) => n + d.failures, 0), calls);
-      return { day, calls, failures: rows.reduce((n, d) => n + d.failures, 0), rate: value, x: i * 118 / days, height: value === null ? null : Math.min(26, value * 26) };
+      return { day, calls, failures: rows.reduce((n, d) => n + d.failures, 0), rate: value, x: i * 118 / windowDays, height: value === null ? null : Math.min(26, value * 26) };
     });
   }
   const comparison = new Map();
@@ -190,6 +198,6 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     return { profile, sessions: new Set(list.map((s) => s.session)).size, tools };
   });
   const drop_candidates = byProfile.flatMap((p) => p.tools.filter((t) => t.verdict === 'drop-candidate')
-    .map((t) => ({ profile: p.profile, tool: t.tool, listing_tokens: t.listing_tokens, calls: t.calls, window_days: days, sessions: p.sessions })));
-  return { state: slots.size ? 'ok' : 'absent', ...result, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort() }, selected };
+    .map((t) => ({ profile: p.profile, tool: t.tool, listing_tokens: t.listing_tokens, calls: t.calls, window_days: windowDays, sessions: p.sessions })));
+  return { state: slots.size ? 'ok' : 'absent', ...result, window_days: windowDays, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort() }, selected };
 }

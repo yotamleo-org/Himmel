@@ -187,6 +187,44 @@ test("authenticated read-only route renders the seeded rates and session drilldo
   } finally { s.stop(); }
 });
 
+function seedProfiles() {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows.forEach((r: any, i: number) => { if (i < 2) for (const h of r.meta.tool_health) h.profile = i === 0 ? "leg-impl" : "judge"; });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const listing = join(dirs[dirs.length - 1], "listing.json");
+  writeFileSync(listing, JSON.stringify({ "leg-impl": { Bash: 0, mcp__qmd__query: 900 }, judge: { Read: 0 } }));
+  return { ...env, HIMMEL_PROFILE_LISTING: listing };
+}
+
+test("the payload carries a per-profile table, listing cost and drop candidates; unlabelled sessions stay unknown", () => {
+  const data = read(seedProfiles());
+  expect(data.profiles.map((p: any) => p.profile)).toEqual(["judge", "leg-impl", "unknown"]);
+  expect(data.profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, listing_tokens: 0, verdict: "keep" });
+  expect(data.drop_candidates).toEqual([expect.objectContaining({ profile: "leg-impl", tool: "mcp__qmd__query", listing_tokens: 900, calls: 0, window_days: 7 })]);
+  expect(read(seed()).drop_candidates).toEqual([]);
+});
+
+test("the page shows the per-profile table in plain words and labels the unknown bucket", async () => {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const html = renderToolHealth(read(seedProfiles()), "t");
+  expect(html).toContain("Tools by launch profile");
+  expect(html).toContain("leg-impl");
+  expect(html).toContain("judge");
+  expect(html).toContain("unknown (launch profile not recorded)");
+  expect(html).toContain("mcp__qmd__query");
+  expect(html).toContain("Move to on-demand (drop from default)");
+  expect(html).toContain("Keep");
+  const noCost = renderToolHealth(read(seed()), "t");
+  expect(noCost).toContain("not measured");
+  expect(noCost).not.toContain("Move to on-demand");
+  const empty = renderToolHealth({ ...read(seed()), profiles: [] }, "t");
+  expect(empty).toContain("No per-profile data");
+  const evil = read(seedProfiles());
+  evil.profiles[0].profile = "<b>x</b>";
+  expect(renderToolHealth(evil, "t")).not.toContain("<b>x</b>");
+});
+
 test("Tool health navigation carries tokens only in fragments", () => {
   const token = "a".repeat(64);
   const link = navLinks({ here: "agui", token, current: "fleet" }).find((r: any) => r.id === "toolhealth");

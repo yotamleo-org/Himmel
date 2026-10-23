@@ -298,6 +298,29 @@ def launch_lane(digest, who):
     return raw if raw in lanes else "unknown"
 
 
+PROFILE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
+LAUNCH_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+LAUNCH_LINE = re.compile(r"^headed-arm-leg: profile=(\S+) ")
+
+
+def launch_profile(who):
+    """The profile a session was launched under, from the launcher's per-session launch record, else None.
+    Never the recorder's own env: that describes the recorder, not the digested session.
+    Launch lines that disagree (a refused duplicate of a live name) leave the session unattributed."""
+    name = who.get("launch_name")
+    if not name:
+        return None
+    if not LAUNCH_NAME.match(name):
+        raise ValueError("launch name %r is not a session name" % name)
+    cache = os.environ.get("HIMMELCTL_CACHE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "himmel")
+    try:
+        with open(os.path.join(cache, "launch-logs", name + ".log"), encoding="utf-8", errors="replace") as fh:
+            seen = {m.group(1) for m in map(LAUNCH_LINE.match, fh) if m}
+    except OSError:
+        return None
+    return next(iter(seen)) if len(seen) == 1 and PROFILE.match(next(iter(seen))) else None
+
+
 def build_rows(digest, who):
     """(leg-failures rows, eval-runs row) for one digest; raises ValueError."""
     session = digest.get("session")
@@ -334,9 +357,14 @@ def build_rows(digest, who):
     # Launch metadata is authoritative; model names never determine the lane.
     lane = launch_lane(digest, who)
     config["lane"] = lane
+    # The launch record is authoritative for the profile, as it is for the lane.
+    profile = launch_profile(who)
+    if profile:
+        meta["profile"] = profile
     health = digest.get("tool_health")
     if isinstance(health, list):
-        meta["tool_health"] = [dict(r, lane=lane) for r in health if isinstance(r, dict)]
+        stamp = {"lane": lane, **({"profile": profile} if profile else {})}
+        meta["tool_health"] = [dict(r, **stamp) for r in health if isinstance(r, dict)]
         meta["started_ts"] = digest.get("started_ts")
     m = _metrics(digest)
     erow = eval_runs.make_row(EVAL_ID, SOURCE, config, m, n=m["turns"] if _int(m["turns"], 0) else None,
@@ -510,7 +538,8 @@ def backfill(a):
             live += 1
             continue
         who = {"leg": m.group(2), "ticket": m.group(1), "console": None, "pr": None, "doc": None,
-               "lane": None, "state_dir": a.state_dir, "backfill": True}
+               "lane": None, "state_dir": a.state_dir, "backfill": True,
+               "launch_name": title if LAUNCH_NAME.match(title) else None}
         try:
             f, e = record(run_digest(j, session, a.denials_ledger), who, a.failures_ledger, a.eval_ledger)
         except ValueError as err:
@@ -533,7 +562,7 @@ def main(argv=None):
         s.add_argument("--state-dir", default=default_state_dir())
     r = sub.choices["record"]
     r.add_argument("--digest", required=True)
-    for k in ("leg", "ticket", "console", "doc", "lane"):
+    for k in ("leg", "ticket", "console", "doc", "lane", "launch-name"):
         r.add_argument("--" + k)
     r.add_argument("--pr", type=int)
     r.add_argument("--digest-error", choices=DIGEST_ERRORS)
@@ -559,7 +588,8 @@ def main(argv=None):
         with open(a.digest, encoding="utf-8") as fh:
             digest = json.load(fh)
         who = {"leg": a.leg, "ticket": a.ticket, "console": a.console, "pr": a.pr, "doc": a.doc,
-               "lane": a.lane, "state_dir": a.state_dir, "digest_error": a.digest_error}
+               "lane": a.lane, "state_dir": a.state_dir, "digest_error": a.digest_error,
+               "launch_name": a.launch_name}
         f, e = record(digest, who, a.failures_ledger, a.eval_ledger)
     except (OSError, ValueError) as err:
         print("leg-ledger: %s" % err, file=sys.stderr)
