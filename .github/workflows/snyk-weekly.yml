@@ -77,7 +77,14 @@ jobs:
           if [ "$MISSING_REF_PROBE" = "true" ]; then
             export SNYK_SCAN_FORKS='claude-hud|https://github.com/jarrodwatts/claude-hud|0000000000000000000000000000000000000000|-'
           fi
-          bash scripts/security/snyk-scan.sh --forks --out-dir "$RUNNER_TEMP/snyk"
+          rc=0
+          bash scripts/security/snyk-scan.sh --forks --out-dir "$RUNNER_TEMP/snyk" || rc=$?
+          for f in "$RUNNER_TEMP"/snyk/*.forks.summary.md; do
+            [ -f "$f" ] || continue
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            awk '/^## /{n=substr($0,4)} /^- status: error/{print "::error title=snyk fork scan failed::" n ": " substr($0,10)}' "$f"
+          done
+          exit "$rc"
 
       - name: Upload the scan result
         if: always() && steps.gate.outputs.enabled == 'true'
