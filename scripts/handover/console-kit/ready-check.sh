@@ -764,7 +764,7 @@ else
                 wf_err="$wf_err; $wf has no workflow_dispatch trigger — add one, or list it in WF_DISPATCH_EXEMPT in ready-check.sh"
                 continue
             fi
-            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json status,conclusion,headSha --limit 20 2>/dev/null); then
+            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json databaseId,status,conclusion,headSha --limit 20 2>/dev/null); then
                 wf_err="$wf_err; $wf run list failed"
                 continue
             fi

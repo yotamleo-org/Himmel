@@ -97,7 +97,8 @@ case "$args" in
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         w="${args#*--workflow }"; w="${w%% *}"
         case "$args" in *"--branch "*) w="$w.main" ;; esac
-        if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then cat "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
+        f="${args#*--json }"; f="${f%% *}"
+        if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then jq -c --arg f "$f" '($f | split(",")) as $k | map(with_entries(select(.key as $n | $k | index($n))))' "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
     "run view "*)
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         id="${args#run view }"; id="${id%% *}"
