@@ -283,7 +283,7 @@ if [ "$forks" -eq 1 ]; then
 
     if [ -n "${SNYK_SCAN_FORKS:-}" ]; then table="$SNYK_SCAN_FORKS"; else table="$(fork_table)" || exit 2; fi
     : > "$tmp/forks.jsonl"; : > "$tmp/forks.md"
-    f_gate=0 f_err=0 f_n=0
+    f_gate=0 f_err=0 f_n=0 f_stop=0
     while IFS='|' read -r -u 3 name url ref up; do
         [ -n "$name" ] || continue
         f_n=$((f_n + 1))
@@ -296,7 +296,7 @@ if [ "$forks" -eq 1 ]; then
             projects=$SCAN_PROJECTS locks=$SCAN_LOCKS
             case "$rc" in
                 0) ;;
-                3) err "$SCAN_MSG"; exit 2 ;;
+                3) err "$SCAN_MSG"; status=error msg="$SCAN_MSG" f_stop=1 ;;
                 *) status=error msg="$SCAN_MSG" ;;
             esac
             if [ "$status" = ok ] && [ "$up" = up ]; then
@@ -305,7 +305,7 @@ if [ "$forks" -eq 1 ]; then
                     scan_tree "$tmp/up-$name" "$tmp/uprows.$name"; rc=$?
                     case "$rc" in
                         0) upstream=scanned; up_sha="$(git -C "$tmp/up-$name" rev-parse HEAD 2>/dev/null)" ;;
-                        3) err "$SCAN_MSG"; exit 2 ;;
+                        3) err "$SCAN_MSG"; msg="upstream scan failed: $SCAN_MSG" f_stop=1 ;;
                         *) msg="upstream scan failed: $SCAN_MSG" ;;
                     esac
                 else msg="upstream fetch failed: $SCAN_MSG"; fi
@@ -337,6 +337,7 @@ if [ "$forks" -eq 1 ]; then
                 printf '\n'
             fi
         } >> "$tmp/forks.md"
+        [ "$f_stop" -eq 0 ] || break
     done 3<<< "$table"
 
     mkdir -p "$out_dir" || { err "cannot create $out_dir"; exit 2; }

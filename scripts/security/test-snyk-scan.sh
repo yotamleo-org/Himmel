@@ -75,6 +75,11 @@ cat > "$BIN/curl" <<'SH'
 #!/usr/bin/env bash
 url="${*: -1}"
 printf '%s\n' "$url" >> "$STUB_DIR/curl.log"
+prev=""
+for a in "$@"; do
+    [ "$prev" = -d ] && jq -c . "${a#@}" > "$STUB_DIR/osv-body.json"
+    prev="$a"
+done
 [ "${STUB_OSV_FAIL:-0}" = 1 ] && { echo "curl: (22) The requested URL returned error: 500" >&2; exit 22; }
 case "$url" in
     */v1/querybatch) if [ -n "${STUB_OSV_BODY:-}" ]; then printf '%s\n' "$STUB_OSV_BODY"; else cat "$STUB_FIX/osv-querybatch.json"; fi ;;
@@ -283,6 +288,8 @@ check "the osv.dev High keeps its severity" high "$(jq -r '.[] | select(.name=="
 hasnt "a PYSEC alias of a listed GHSA is not a second row" PYSEC-2026-1872 "$FS"
 has "uv.lock is exported with uv, frozen" "export --frozen" "$W/uv.log"
 has "osv.dev is queried in one batch" "/v1/querybatch" "$W/curl.log"
+has "the batch asks for the PyPI ecosystem" '"ecosystem":"PyPI"' "$W/osv-body.json"
+has "the batch carries the exported version" '"version":"2.19.0"' "$W/osv-body.json"
 check "0-row control: the clean fork has no findings" 0 "$(jq '.[] | select(.name=="cleanfork") | .findings | length' "$FJ")"
 check "0-row control: the clean fork scanned ok" ok "$(jq -r '.[] | select(.name=="cleanfork") | .status' "$FJ")"
 check "a fork carrying its own delta is not compared with upstream" none "$(jq -r '.[] | select(.name=="cleanfork") | .upstream' "$FJ")"
@@ -337,6 +344,14 @@ SNYK_SCAN_OS_CAP=0 run forksquota --forks
 check "the quota cap refuses a forks run" 2 "$RC"
 has "quota refusal names the cap" "monthly quota" "$OUT"
 check "no fork was scanned past the cap" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# a quota refusal on a later fork still writes the report for the forks already scanned
+export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|-
+uvfork|$U/uvfork|main|-"
+rm -f "$SNYK_SCAN_STATE_DIR/usage-2026-10.tsv" "$OUTDIR/2026-10-23.forks.json" "$OUTDIR/2026-10-23.forks.summary.md"
+SNYK_SCAN_OS_CAP=1 run forksquotalate --forks
+check "a quota refusal on a later fork exits 2" 2 "$RC"
+has "the report is still written when the quota stops a later fork" "monthly quota" "$OUTDIR/2026-10-23.forks.summary.md"
+has "the fork scanned before the quota stop is in the report" "cleanfork" "$OUTDIR/2026-10-23.forks.summary.md"
 
 unset SNYK_SCAN_FORKS
 run forksnopins --forks
