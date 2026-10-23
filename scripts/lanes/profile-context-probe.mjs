@@ -424,7 +424,7 @@ function appendLedger(profileName, note, exitCode, targetPath) {
 
 // Tool schemas in a captured /v1/messages body, ranked by serialized bytes.
 export function rankToolBytes(body) {
-  const tools = (body?.tools ?? []).map((t) => ({ name: t.name, bytes: JSON.stringify(t).length })).sort((a, b) => b.bytes - a.bytes);
+  const tools = (body?.tools ?? []).map((t) => ({ name: t.name, bytes: Buffer.byteLength(JSON.stringify(t), 'utf8') })).sort((a, b) => b.bytes - a.bytes);
   return { total: tools.reduce((n, t) => n + t.bytes, 0), tools };
 }
 
@@ -533,6 +533,18 @@ function runClaude(extraArgs, prompt = BASELINE_PROMPT, retriesLeft = 1) {
   return { initEvent: findInitEvent(events), resultEvent, measured: firstTurnTokens(resultEvent), contextUsage: findContextUsage(events) };
 }
 
+// Why this run must not spend, or null to proceed. 30s timeout, mirroring the
+// claude spawn's own CLAUDE_TIMEOUT_MS bound: a hung/slow preflight must degrade
+// to a skip (exit 3), never hang or crash this probe.
+function bankPreflightSkip() {
+  const bash = resolveBash();
+  if (!bash) return 'no usable bash found to run bank-preflight';
+  const preflight = spawnSync(bash, ['scripts/lib/usage-preflight.sh'], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 30_000 });
+  if (preflight.error) return `bank-preflight failed to run (${preflight.error.message})`;
+  const token = (preflight.stdout ?? '').trim();
+  return token === 'PROCEED' ? null : `bank-preflight verdict ${token || '(none)'}`;
+}
+
 // One turn through a logging proxy; resolves the captured /v1/messages requests.
 // Async because the proxy must serve while the child runs (spawnSync would block it).
 async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
@@ -558,13 +570,15 @@ async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
   // launch-profile-ok: the probe passes the profile under test via extraArgs (--settings per run)
   const child = spawn('claude', args, { cwd: REPO_ROOT, env: { ...process.env, MSYS_NO_PATHCONV: '1', ANTHROPIC_BASE_URL: `http://127.0.0.1:${srv.address().port}` }, stdio: 'ignore' });
   const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);
-  await new Promise((r) => { child.on('close', r); child.on('error', r); });
+  const code = await new Promise((r) => { child.on('close', r); child.on('error', () => r(-1)); });
   clearTimeout(timer);
   srv.close();
-  return captured;
+  return code === 0 ? captured : [];
 }
 
 async function toolBytesMain(opts) {
+  const skip = bankPreflightSkip();
+  if (skip) { process.stdout.write(`profile-context-probe: skipped — ${skip}\n`); process.exitCode = 3; return; }
   let registry, installed;
   try {
     registry = loadRegistry();
@@ -600,27 +614,8 @@ function main() {
   catch (e) { process.stderr.write(`profile-context-probe: ${e.message}\n`); process.exitCode = 2; return; }
   const ledgerTarget = resolveLedgerTarget(opts, process.env);
 
-  // 30s timeout, mirroring the claude spawn's own CLAUDE_TIMEOUT_MS bound: a
-  // hung/slow preflight must degrade to a skip (exit 3), never hang or crash
-  // this probe.
-  const bash = resolveBash();
-  if (!bash) {
-    process.stdout.write(`profile-context-probe: skipped — no usable bash found to run bank-preflight\n`);
-    process.exitCode = 3;
-    return;
-  }
-  const preflight = spawnSync(bash, ['scripts/lib/usage-preflight.sh'], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 30_000 });
-  if (preflight.error) {
-    process.stdout.write(`profile-context-probe: skipped — bank-preflight failed to run (${preflight.error.message})\n`);
-    process.exitCode = 3;
-    return;
-  }
-  const token = (preflight.stdout ?? '').trim();
-  if (token !== 'PROCEED') {
-    process.stdout.write(`profile-context-probe: skipped — bank-preflight verdict ${token || '(none)'}\n`);
-    process.exitCode = 3;
-    return;
-  }
+  const skip = bankPreflightSkip();
+  if (skip) { process.stdout.write(`profile-context-probe: skipped — ${skip}\n`); process.exitCode = 3; return; }
 
   process.stdout.write('profile-context-probe: measuring baseline (no --settings)…\n');
   const baselineRun = runClaude([]);
