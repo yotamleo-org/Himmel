@@ -75,8 +75,8 @@ uncovered() {
 
 # Wired commands that run no shell hook script this sweep can resolve (a node/bun
 # entry point, a PATH tool, an inline node). A command is skipped only when it
-# starts with one of these prefixes; any other command that yields no script
-# path fails the enumeration.
+# starts with one of these prefixes and names no .sh/.js script; any other
+# command that yields no script path fails the enumeration.
 # shellcheck disable=SC2016  # the commands keep a literal $CLAUDE_PROJECT_DIR
 WIRED_ALLOW='node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs"
 bun "$CLAUDE_PROJECT_DIR/scripts/observability/session-run-hook.ts"
@@ -92,7 +92,8 @@ wired_scripts() {
     const fs = require("fs"), path = require("path");
     const root = process.argv[1], out = new Set(), unparsed = [];
     const allow = process.env.WIRED_ALLOW.split("\n").filter(Boolean);
-    const found = (f, c, n) => { if (n === 0 && !allow.some((a) => c.startsWith(a))) unparsed.push(f + ": " + c); };
+    // an allowlisted prefix never exempts a command that also names a .sh/.js script
+    const found = (f, c, n) => { if (n === 0 && !(allow.some((a) => c.startsWith(a)) && !/\.(sh|js)\b/.test(c))) unparsed.push(f + ": " + c); };
     const cmds = (f) => {
       const p = path.join(root, f);
       if (!fs.existsSync(p)) { console.error("missing wiring file: " + f); process.exit(3); }
@@ -187,6 +188,10 @@ case "$ux_out" in *'scripts/hooks/x.sh'*) ok "the failure names the unparsed com
 # shellcheck disable=SC2016
 wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre' ""
 if ux_out="$(wired_scripts "$UX" 2>&1)"; then ok "an allowlisted non-shell command does not fail the enumeration"; else bad "an allowlisted command failed the enumeration: $ux_out"; fi
+# an allowlisted prefix must not exempt a hook script chained after it
+# shellcheck disable=SC2016
+wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre; bash /opt/hooks/x.sh' ""
+if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an allowlisted prefix hid a chained shell hook (rc 0): $ux_out"; else ok "an allowlisted prefix does not exempt a chained shell hook"; fi
 
 echo "== every wired hook script resolves"
 N=0
