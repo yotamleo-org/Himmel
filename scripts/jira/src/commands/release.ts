@@ -141,7 +141,7 @@ function decisionFault(x: unknown): string | null {
 function extractArray(text: string): unknown[] | undefined {
   const opens = [...text.matchAll(/\[/g)].map((m) => m.index as number);
   const closes = [...text.matchAll(/\]/g)].map((m) => m.index as number).reverse();
-  const objectLeading = (i: number) => /^\[\s*[{\]]/.test(text.slice(i, i + 64));
+  const objectLeading = (i: number) => /^\[\s*\{/.test(text.slice(i, i + 64));
   for (const starts of [opens.filter(objectLeading), opens]) {
     for (const i of starts) {
       for (const end of closes) {
@@ -158,7 +158,12 @@ function extractArray(text: string): unknown[] | undefined {
 
 // stdout of `claude -p --output-format json`: the envelope, whose result holds the array.
 export function parseDecisions(stdout: string): Decision[] {
-  const env = JSON.parse(stdout) as { is_error?: boolean; result?: string };
+  let env: { is_error?: boolean; result?: string };
+  try {
+    env = JSON.parse(stdout) as { is_error?: boolean; result?: string };
+  } catch {
+    throw new JudgeReplyError('rm-run: the judge stdout is not a JSON envelope; nothing ruled', stdout);
+  }
   if (env.is_error || typeof env.result !== 'string') throw new JudgeReplyError('rm-run: the judge call failed; nothing ruled', stdout);
   const text = env.result;
   const got = extractArray(text);

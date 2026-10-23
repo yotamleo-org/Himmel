@@ -145,6 +145,13 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
     const result = `Ruling [see skill] for Q-R1-0001:\n${JSON.stringify([d])}\nDone [1].`;
     expect(parseDecisions(JSON.stringify({ is_error: false, result }))).toEqual([d]);
+    expect(parseDecisions(JSON.stringify({ is_error: false, result: `Ruling []:\n${JSON.stringify([d])}` }))).toEqual([d]);
+  });
+
+  it('keeps the raw stdout when it is not a JSON envelope', () => {
+    let err: unknown;
+    try { parseDecisions('Error: overloaded'); } catch (e) { err = e; }
+    expect((err as { raw?: string }).raw).toBe('Error: overloaded');
   });
 
   it('the judge call does not inherit the calling session markers', () => {
