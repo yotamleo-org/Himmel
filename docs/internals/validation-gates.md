@@ -170,7 +170,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    (exit 14) until a panel critic responds.
 
    The caveat that survives: the panel's non-Claude rows can share a provider.
-   An OpenAI-side outage or an exhausted usage takes the `codex` row out, and
+   An OpenAI-side outage or a usage budget that has run out takes the `codex` row out, and
    then nothing can satisfy gate 3b. That single point of failure is what
    was re-introduced when the `glm` row was retired, and it is a known
    limitation.
@@ -179,7 +179,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    failed …)") ⇒ Claude-only fail-open. `CR_PROFILE=none` is the explicit
    operator opt-out onto the same path; an empty diff skips the panel outright.
 
-Operator-relevant consequence: cases 1 and 2 both SPEND the OpenAI usage on the
+Operator-relevant consequence: cases 1 and 2 both draw on the OpenAI usage budget for the
 paid anchor (paid usage is user-enabled by design). Do not read "the panel was
 unavailable" as "nothing was billed" — only 3 and 4 reach zero panel members.
 
