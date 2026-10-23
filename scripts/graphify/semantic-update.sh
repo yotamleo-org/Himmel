@@ -241,6 +241,8 @@ plan_or_noop
 if [ "$BACKEND" = "claude-api" ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
+  # each cut re-plans, so the estimate is recomputed on the files that remain (a prefix of large files can still be over)
+  for _sizing_pass in 1 2 3 4 5 6; do
   FIT_FILES="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY'
 import json, os, sys
 plan, root, model, budget, chunk, cap = sys.argv[1:7]
@@ -262,11 +264,11 @@ fit_chunks = int(float(cap) / chunk_usd)
 print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // chunks))
 PY
 )"
-  if [ "$FIT_FILES" -lt "$N_BATCH" ]; then
-    echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
-    MAX_FILES="$FIT_FILES"
-    plan_or_noop
-  fi
+  [ "$FIT_FILES" -lt "$N_BATCH" ] || break
+  echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
+  MAX_FILES="$FIT_FILES"
+  plan_or_noop
+  done
 fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
