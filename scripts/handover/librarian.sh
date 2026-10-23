@@ -181,7 +181,7 @@ def plan_group(primary, reason, ticket):
             counts["clash"] += 1
             return
     for n in members:
-        moves.append((os.path.join(bucket, n), dst, reason, ticket, bucket_tracked))
+        moves.append((os.path.join(bucket, n), dst, reason, ticket, primary))
 
 
 seen = set()
@@ -226,6 +226,10 @@ def plan_flat(d, days_n, dst_root, reason, pat):
     for e in sorted(os.scandir(d), key=lambda e: e.name):
         if not e.is_file(follow_symlinks=False) or not pat(e.name):
             continue
+        if locked(e.path):
+            print("SKIP locked %s" % e.path)
+            counts["locked"] += 1
+            continue
         if age_days(e.path) <= int(days_n):
             counts["young"] += 1
             continue
@@ -237,7 +241,7 @@ def plan_flat(d, days_n, dst_root, reason, pat):
             print("SKIP clash %s" % e.path)
             counts["clash"] += 1
         else:
-            moves.append((e.path, dst, reason, "-", tr))
+            moves.append((e.path, dst, reason, "-", e.path))
 
 
 plan_flat(sessions, sdays, os.path.join(sessions, "_archive") if sessions else "", "session-aged",
@@ -287,21 +291,35 @@ done_map = {}
 tgt_new = lambda t: done_map.get(t, t)
 refs = 0
 if apply:
-    # 1. move; a failed move leaves no link pointing at it
-    for src, dst, reason, ticket, tr in moves:
+    # 1. move a group whole: one failed git mv puts the group's earlier members back
+    bad_groups, group_done = set(), {}
+    for src, dst, reason, ticket, grp in moves:
+        if grp in bad_groups:
+            continue
         os.makedirs(dst, exist_ok=True)
         top = os.path.dirname(src)
         r = subprocess.run(["git", "-C", top, "mv", "--", os.path.basename(src), os.path.join(dst, os.path.basename(src))],
                            capture_output=True, text=True)
-        if r.returncode != 0:
-            print("FAIL git mv %s: %s" % (src, r.stderr.strip()), file=sys.stderr)
-            failed += 1
+        if r.returncode == 0:
+            done_map[src] = moved_map[src]
+            group_done.setdefault(grp, []).append(src)
             continue
-        done_map[src] = moved_map[src]
-        idx = os.path.join(dst, "_index.md")
-        index_rows.setdefault(idx, []).append(
-            "- %s | %s | %s | %s | from %s" % (os.path.basename(src), ticket, date(moved_map[src]), reason,
-                                                 os.path.relpath(top, root)))
+        print("FAIL git mv %s: %s" % (src, r.stderr.strip()), file=sys.stderr)
+        failed += 1
+        bad_groups.add(grp)
+        for prev in group_done.get(grp, []):
+            b = subprocess.run(["git", "-C", os.path.dirname(prev), "mv", "--", os.path.relpath(done_map[prev], os.path.dirname(prev)),
+                                os.path.basename(prev)], capture_output=True, text=True)
+            if b.returncode == 0:
+                del done_map[prev]
+            else:
+                print("FAIL git mv back %s: %s" % (prev, b.stderr.strip()), file=sys.stderr)
+                failed += 1
+    for src, dst, reason, ticket, _ in moves:
+        if src in done_map:
+            index_rows.setdefault(os.path.join(dst, "_index.md"), []).append(
+                "- %s | %s | %s | %s | from %s" % (os.path.basename(src), ticket, date(moved_map[src]), reason,
+                                                     os.path.relpath(os.path.dirname(src), root)))
     # 2. rewrite links in the moved docs, now at their new place
     for src, dst, _, _, _ in moves:
         if src in done_map and src.endswith(".md"):
@@ -312,7 +330,7 @@ if apply:
     # 3. rewrite links in the bucket-root docs that point at a moved doc
     for n in bucket_files:
         p = os.path.join(bucket, n)
-        if not n.endswith(".md") or p in moved_map:
+        if not n.endswith(".md") or p in done_map:
             continue
         s = read(p)
         if "](" not in s:

@@ -142,6 +142,40 @@ chmod 755 "$A"
 check "failed move: doc stayed" yes "$(here "$B/HIMMEL-1-failmv-2026-01-01.md")"
 check "failed move: referrer link untouched" yes "$(grep -q '](HIMMEL-1-failmv-2026-01-01.md)' "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
 
+# --- a held lock also protects an aged auto-arm-status note --------------------
+printf '# s\n' > "$R/auto-arm-status-held.md"; age 30 "$R/auto-arm-status-held.md"
+mkdir -p "$R/.locks/queue/auto-arm-status-held.lock"; git -C "$R" add -A
+out5="$(run --apply 2>&1)"
+check "a locked auto-arm-status note stayed" yes "$(here "$R/auto-arm-status-held.md")"
+check "and was reported as locked" yes "$(grep -q '^SKIP locked .*auto-arm-status-held' <<< "$out5" && echo yes || echo no)"
+
+# --- a failed move of one member puts the group's earlier members back ---------
+leg HIMMEL-1-grp-2026-01-01.md WRAPPED 60
+printf '# r\n' > "$B/HIMMEL-1-grp-2026-01-01-RESUME.md"; age 60 "$B/HIMMEL-1-grp-2026-01-01-RESUME.md"
+git -C "$R" add -A
+mkdir -p "$W/stubbin"; REAL_GIT="$(command -v git)"
+printf '#!/usr/bin/env bash\ncase "$*" in *"mv -- HIMMEL-1-grp-2026-01-01.md "*) echo "stub: refused" >&2; exit 1 ;; esac\nexec %q "$@"\n' "$REAL_GIT" > "$W/stubbin/git"
+chmod +x "$W/stubbin/git"
+PATH="$W/stubbin:$PATH" run --apply >/dev/null 2>&1; check "a failed group member exits 1" 1 "$?"
+check "the group's primary stayed" yes "$(here "$B/HIMMEL-1-grp-2026-01-01.md")"
+check "its already-moved RESUME is back in the bucket" yes "$(here "$B/HIMMEL-1-grp-2026-01-01-RESUME.md")"
+check "nothing of the group sits in the archive or the index" 0 "$(grep -rc 'HIMMEL-1-grp' "$A" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')"
+check "and git shows no rename for the group" 0 "$(git -C "$R" status --porcelain | grep -c 'grp.*->')"
+run --apply >/dev/null 2>&1; check "the next clean run moves the group whole" 2 "$(find "$A" -name 'HIMMEL-1-grp*' | wc -l | tr -d ' ')"
+
+# --- a doc whose own move failed still has its links to moved docs rewritten ---
+A100="$B/archive/$(ym 100)"; mkdir -p "$A100"
+leg HIMMEL-1-lnkB-2026-01-01.md WRAPPED 60
+leg HIMMEL-1-lnkA-2026-01-01.md WRAPPED 100
+printf 'see [b](HIMMEL-1-lnkB-2026-01-01.md)\n' >> "$B/HIMMEL-1-lnkA-2026-01-01.md"; age 100 "$B/HIMMEL-1-lnkA-2026-01-01.md"
+git -C "$R" add -A; chmod 555 "$A100"
+run --apply >/dev/null 2>&1; check "a split batch exits 1" 1 "$?"
+chmod 755 "$A100"
+check "the failed doc stayed" yes "$(here "$B/HIMMEL-1-lnkA-2026-01-01.md")"
+check "its sibling in the writable month moved" yes "$(here "$A/HIMMEL-1-lnkB-2026-01-01.md")"
+check "and the stayer now links to the moved doc's new place" yes \
+  "$(grep -q "](archive/$M60/HIMMEL-1-lnkB-2026-01-01.md)" "$B/HIMMEL-1-lnkA-2026-01-01.md" && echo yes || echo no)"
+
 # --- untracked doc is skipped, never plain-mv'd -------------------------------
 leg HIMMEL-1-untracked-2026-01-01.md WRAPPED 60
 out4="$(run --apply 2>&1)"
