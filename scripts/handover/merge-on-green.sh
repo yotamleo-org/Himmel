@@ -141,7 +141,7 @@
 #       an unproven outcome is reported as pending-unconfirmed, never REFUSED)
 #   16  audit sink not writable, or the MERGING record could not be written —
 #       refused (an unauditable merge must not proceed)
-#   17  policy-refused, in three cases: (1) HIMMEL_CONSOLE_LEG
+#   17  policy-refused by the console-GO gate, in three cases: (1) HIMMEL_CONSOLE_LEG
 #       is truthy and the console's GO file for this PR at the certified head is
 #       missing, stale or unresolvable, or --go is absent or names a different
 #       file than that GO (another PR or head, or a missing file); (2) any caller
