@@ -2537,7 +2537,7 @@ lk_cli_of() { printf '%s\n' "$1" | sed -n 's/^ACTION leaks=[0-9]*: JIRA_PROJECT_
 lk_cli_three="$(lk_cli_of "$lk_three")"
 if [ -n "$lk_cli_three" ] && [ "$(lk_cli_of "$lk_other")" = "$lk_cli_three" ] && [ -e "${lk_cli_three%/scripts/jira/dist/index.js}/.git" ]; then pass 'the leaks ACTION line names the same primary-checkout CLI whatever --repo is (HIMMEL-7153)'; else fail "the leaks ACTION CLI is '$(lk_cli_of "$lk_other")' under --repo vs '$lk_cli_three' by default, want one primary checkout (HIMMEL-7153)"; fi
 lk_fix="$W/lk-fix"; mkdir -p "$lk_fix/scripts/handover/console-kit" "$lk_fix/scripts/lanes"
-env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$lk_fix"
+if env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$lk_fix"; then pass 'the missing-CLI fixture checkout initialised (HIMMEL-7153)'; else fail 'the missing-CLI fixture checkout failed git init, so its leaks=? row proves nothing (HIMMEL-7153)'; fi
 cp "$SUT" "$lk_fix/scripts/handover/console-kit/tick.sh"
 cp -R "$HERE/../../lib" "$lk_fix/scripts/lib"
 cp -R "$HERE/../../lanes/lib" "$lk_fix/scripts/lanes/lib"
