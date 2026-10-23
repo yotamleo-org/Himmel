@@ -231,16 +231,18 @@ if grep -qx 'legA (gone)' <<< "$out"; then pass "the successor's peers lists the
 if grep -qx legL <<< "$out"; then pass "peers prints a live peer bare"; else fail "live peer: $out"; fi
 "$BUS" register legU --role leg --console con2 >/dev/null 2>&1
 if grep -qx 'legU (unbound)' <<< "$(as con2 peers 2>&1)"; then pass "peers marks a registered, never-bound peer"; else fail "unbound peer not marked"; fi
+else skip_section "status --unacked, wait, succession adopt"; fi
 "$BUS" register idler --role leg --console con >/dev/null 2>&1
+if [ "$HAVE_PROC" = 1 ]; then
 as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread is read-only"; else fail "unread consumed"; fi
+else skip_section "unread of undelivered records"; fi
 # A corrupt cursor must still reach the delivery hook's read(), which persists the halt and its notice.
 curdir=$(find "$XDG_STATE_HOME" -type d -name cur | head -1)
 printf 'not json' > "$curdir/idler"; chmod 600 "$curdir/idler"
 out=$("$BUS" unread idler 2>&1)
 if [ "$out" = 1 ] && [ "$(cat "$curdir/idler")" = 'not json' ]; then pass "unread leaves a corrupt cursor for the hook to halt with its notice"; else fail "unread on a corrupt cursor: $out / $(cat "$curdir/idler")"; fi
-else skip_section "status --unacked, wait, succession adopt, unread"; fi
 
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"
