@@ -196,7 +196,7 @@ def plain_line(day, live, n, k, filed, pending, fresh, rows, done, digest):
             count(len(fresh), "new class", "new classes"),
             ", ".join("%s (%s)" % (c, count(len(rows.get(c, [])), "failure", "failures")) for c in top),
             " and %d more" % (len(fresh) - len(top)) if len(fresh) > len(top) else "")
-        step = ("open the digest and triage what the router filed" if done else
+        step = ("open the digest and triage what the router filed" if live and filed else
                 "open the digest and file a ticket for any class that matters, else nothing")
     elif done:
         cause = "recurring classes reached the filing threshold"

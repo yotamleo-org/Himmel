@@ -60,7 +60,7 @@ d="$(dirname "$0")"
 printf '%s\n' "$*" >>"$d/calls.log"
 op="$1"; shift
 case "$op" in
-  list) exit 0 ;;
+  list) cat "$d/list.out" 2>/dev/null; exit 0 ;;
   create) n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) echo "Comment added to $1" ;;
   *) exit 9 ;;
@@ -156,6 +156,15 @@ C4c="$TMP/c4c"; mkdir -p "$C4c"; cp "$C2/ledger.jsonl" "$C4c/ledger.jsonl"
 printf '{"v":1,"classes":{"denied/guard-pr-check-literal":{"ticket":"HIMMEL-9100"}},"created":{}}\n' >"$C4c/state.json"
 review "$C4c" >/dev/null 2>&1
 check "a would-comment decision is not counted as a ticket that would be filed" 'digest "$C4c" | grep -q "would-comment denied/guard-pr-check-literal" && tail -n 1 "$STUB/notify.log" | grep -q "dry run, nothing filed (0 would be)"'
+# live, but the class already has a ticket: the router comments, files nothing, and the step is not "triage what it filed".
+C4d="$TMP/c4d"; mkdir -p "$C4d"; cp "$C2/ledger.jsonl" "$C4d/ledger.jsonl"
+cp "$C4c/state.json" "$C4d/state.json"
+s4="$(sends)"
+printf 'HIMMEL-9100\tTask\tOpen\tsome summary\n' >"$STUB/list.out"
+review "$C4d" --live >"$C4d/run.out" 2>&1 || bad "live comment-only review exits 0: $(head -c 300 "$C4d/run.out")"
+rm -f "$STUB/list.out"
+check "a live run on a class that has a ticket comments on it" 'digest "$C4d" | grep -q "commented denied/guard-pr-check-literal"'
+check "a live run that only commented does not tell the operator to triage what the router filed" '[ "$(sends)" = "$((s4 + 1))" ] && ! tail -n 1 "$STUB/notify.log" | grep -q "triage what the router filed"'
 
 echo "5. the two unreliable trajectory signals never reach the digest"
 C5="$TMP/c5"; mkdir -p "$C5"

@@ -64,6 +64,8 @@ doctor_out() { # <fail-ids> <warn-ids>  (space separated)
       echo; echo "Summary: $nf FAIL  $nw WARN  0 INFO"; } > "$STUB_OUT"
 }
 run_cad() { bash "${1:-$P}/scripts/doctor-cadence.sh" run >/dev/null 2>&1; }
+# run_cad_ok <what>: one run that must exit 0, so a sent alert is not read off a run that then failed.
+run_cad_ok() { run_cad; check "$1 exits 0" 0 "$?"; }
 kill_cad() { # Kill only an isolated fixture group, then await descriptor closure.
     local pid pgid rc i=0 live
     : > "$STUB_WHERE"
@@ -154,7 +156,7 @@ check "crashed doctor leaves the counts file alone" "$before" "$(cat "$STATE/cou
 # 8a. the alert is plain: each new finding carries its check's text, a WARN that follows from a failing
 # graph cadence says so, and the message ends in the next step and the log. The WARN lines are the doctor's own.
 rm -rf "$STATE" "$HOME/.himmel/state/cadence-alert-sent"; : > "$SENT"
-doctor_out "" "C99-base"; run_cad
+doctor_out "" "C99-base"; run_cad_ok "the 3-WARN baseline run"
 mkdir -p "$HOME/.himmel/state/cadence-alert-sent"; : > "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
 cat > "$STUB_OUT" <<'OUT'
 himmel-doctor — Linux
@@ -169,7 +171,7 @@ OK   C99-fine: fine
 
 Summary: 0 FAIL  3 WARN  0 INFO
 OUT
-run_cad
+run_cad_ok "the 3-WARN run"
 plain="$(tail -1 "$SENT")"
 case "$plain" in "himmel-doctor: 3 new findings: "*) pass "doctor alert opens with the plain count" ;; *) fail "doctor alert opens with the plain count (got: $plain)" ;; esac
 case "$plain" in *"WARN C23-unlanded: 2 aged unlanded local branch(es)"*) pass "doctor alert carries the check's text" ;; *) fail "doctor alert carries the check's text (got: $plain)" ;; esac
@@ -179,7 +181,7 @@ case "$plain" in *". Do: trim enabledPlugins to the lean set. Log: $STATE/last-r
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
 # a standing backoff alert alone does not explain a stale graph, so C33 keeps its own message.
 rm -rf "$STATE" "$HOME/.himmel/state/cadence-alert-sent"; : > "$SENT"
-doctor_out "" "C99-base"; run_cad
+doctor_out "" "C99-base"; run_cad_ok "the backoff baseline run"
 mkdir -p "$HOME/.himmel/state/cadence-alert-sent"; : > "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel-backoff.x"
 cat > "$STUB_OUT" <<'OUT'
 himmel-doctor — Linux
@@ -190,13 +192,13 @@ OK   C99-fine: fine
 
 Summary: 0 FAIL  1 WARN  0 INFO
 OUT
-run_cad
+run_cad_ok "the backoff-only run"
 plain="$(tail -1 "$SENT")"
 case "$plain" in *"follows from the failing graph cadence"*) fail "a backoff-only sentinel is not a knock-on cause (got: $plain)" ;; *"WARN C33-graph-stale: graph stale"*"Do: bash scripts/graphify/graph-cadence.sh"*) pass "a backoff-only sentinel is not a knock-on cause" ;; *) fail "a backoff-only sentinel keeps C33's own step (got: $plain)" ;; esac
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel-backoff.x"
 # C33 alone, with a failing graph cadence: the knock-on cause shows and the step is still C33's own remedy.
 rm -rf "$STATE" "$HOME/.himmel/state/cadence-alert-sent"; : > "$SENT"
-doctor_out "" "C99-base"; run_cad
+doctor_out "" "C99-base"; run_cad_ok "the knock-on baseline run"
 mkdir -p "$HOME/.himmel/state/cadence-alert-sent"; : > "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
 cat > "$STUB_OUT" <<'OUT'
 himmel-doctor — Linux
@@ -207,7 +209,7 @@ OK   C99-fine: fine
 
 Summary: 0 FAIL  1 WARN  0 INFO
 OUT
-run_cad
+run_cad_ok "the knock-on run"
 plain="$(tail -1 "$SENT")"
 case "$plain" in *"Cause: C33-graph-stale follows from the failing graph cadence"*". Do: bash scripts/graphify/graph-cadence.sh. Log: "*) pass "a knock-on C33 alone still gives C33's own step" ;; *) fail "a knock-on C33 alone still gives C33's own step (got: $plain)" ;; esac
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
