@@ -33,9 +33,13 @@ node_bin=$(command -v node)
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/install-ui-handoff.XXXXXX") || exit 1
 cleanup() {
-  local f
+  local f p
   for f in "$work"/*/home/.himmel/state/ui-adhoc.json; do
-    [ -f "$f" ] && kill "$(jq -r '.pid' "$f")" 2>/dev/null || true
+    [ -f "$f" ] || continue
+    p=$(jq -r '.pid' "$f" 2>/dev/null)
+    # never signal pid 0 (the process group) or 1 (the CI container's init)
+    case "$p" in ''|*[!0-9]*|0|1) continue ;; esac
+    kill "$p" 2>/dev/null || true
   done
   rm -rf "$work"
 }
@@ -153,7 +157,7 @@ echo "ok: E --dry-run starts nothing"
 
 # ── G: a handoff that throws never fails a successful install ──────────────
 new_case G
-mkdir -p "$c/home/.himmel/state"; printf '{"pid":1,"port":99999,"token":"x"}\n' > "$c/home/.himmel/state/ui-adhoc.json"
+mkdir -p "$c/home/.himmel/state"; printf '{"pid":2147483646,"port":99999,"token":"x"}\n' > "$c/home/.himmel/state/ui-adhoc.json"
 run_install /dev/null DISPLAY=:0 --
 [ "$rc" -eq 0 ] || fail "G: a failing handoff turned a good install into rc=$rc: $out"
 grep -qF 'UI handoff failed' <<< "$out" || fail "G: no warning that the handoff failed: $out"
