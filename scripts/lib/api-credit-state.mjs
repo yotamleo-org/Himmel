@@ -188,7 +188,7 @@ function ledgerRow(config, a, account) {
 // it stays one even when another field of the same row is malformed.
 function snapshotFlagged(snapshot, account) {
   const s = object(snapshot) && object(snapshot.accounts) ? snapshot.accounts[account] : null;
-  return object(s) && (s.discrepancy === true || s.exclusive_org === false || (own(s, 'source') && !SOURCES.includes(s.source)));
+  return object(s) && !(s.exclusive_org === true && s.discrepancy === false && SOURCES.includes(s.source));
 }
 function row(config, snapshot, a, account, now, optional = false, need = 0n) {
   try {
