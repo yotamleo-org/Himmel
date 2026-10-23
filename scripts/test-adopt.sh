@@ -1539,6 +1539,7 @@ echo "ok: HIMMEL-6977 the adopted check-ci.sh reaches a green verdict for the pr
 # needs, and the copied script loads in the project.
 for f in scripts/handover/merge-on-green.sh scripts/lib/check-pr-title.sh scripts/lib/ticket-id-internal.sh scripts/ci/ticket-id-internal-authors.txt scripts/chokepoints.json; do
   [ -f "$cittarget/$f" ] || fail "HIMMEL-7001: $f was not copied into the project"
+  cmp -s "$repo_root/$f" "$cittarget/$f" || fail "HIMMEL-7001: the project's $f differs from himmel's"
 done
 set +e
 out=$(cd "$cittarget" && HOME="$cithome" HIMMEL_REPO="$cittarget" bash "$cittarget/scripts/handover/merge-on-green.sh" --help 2>&1); rc=$?
