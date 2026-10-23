@@ -100,7 +100,7 @@ for pair in "main:$main_step" "forks:$forks_step"; do
   nm="${pair%%:*}"; blk="${pair#*:}"
   # shellcheck disable=SC2016  # regex: literal $REPORT_ONLY and $rc
   if grep -q 'REPORT_ONLY: \${{ inputs.report_only }}' <<< "$blk" \
-     && grep -Eq 'rc=\$\?' <<< "$blk" \
+     && grep -Eq 'snyk-scan\.sh .*\|\| rc=\$\?' <<< "$blk" \
      && grep -Eq 'if \[ "\$REPORT_ONLY" = "true" \]; then' <<< "$blk" \
      && grep -Eq 'exit "\$rc"' <<< "$blk"; then
     ok "$nm scan: report_only captures the exit code and defers exit \"\$rc\" to the default path"
