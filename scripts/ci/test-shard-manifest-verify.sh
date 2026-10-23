@@ -34,6 +34,9 @@
 #   MV28  --absent-ok with a non-numeric list                   -> rc 2
 #   MV29  REAL manifests (PR 2617 run 38607773672), all 8       -> rc 0
 #   MV30  the same, shards 2 and 3 dropped and called absent   -> rc 1
+#   MV33  pr, impacted: the floor ran beside the selection      -> rc 0; under fast -> rc 1
+#   MV34  pr, impacted: a floor suite listed RUN never ran      -> rc 1
+#   MV35  pr, impacted: a shard `skip`s a selected local suite  -> rc 1
 #
 # Platform guard: bash-only, no .ps1 twin; the aggregator runs on Linux.
 #
@@ -77,16 +80,22 @@ manifest() {
 
 # disc <dir> <RUN|SKIP> <path> [<RUN|SKIP> <path>...] — the aggregator's
 # `run-shell-tests.sh --list .` output, in the runner's own line format.
+# LOCAL is a SKIP carrying the runner's pr-mode local-tier reason.
 disc() {
   local d="$1"; shift
   : > "$d/disc.txt"
   while [ "$#" -ge 2 ]; do
-    if [ "$1" = RUN ]; then printf '[RUN ] %s\n' "$2"; else printf '[SKIP] %s — tier\n' "$2"; fi >> "$d/disc.txt"
+    case "$1" in
+      RUN) printf '[RUN ] %s\n' "$2" ;;
+      LOCAL) printf '[SKIP] %s — tier: local (SUITE_TIER_MODE=pr runs a local suite only when impacted)\n' "$2" ;;
+      *) printf '[SKIP] %s — tier\n' "$2" ;;
+    esac >> "$d/disc.txt"
     shift 2
   done
 }
 
-verify() { bash "$VERIFY" --dir "$1/m" --shards "$2" --selection "$1/sel.txt" --discovered "$1/disc.txt" 2>&1; }
+# MV_TIER is the aggregator step's SUITE_TIER_MODE.
+verify() { SUITE_TIER_MODE="${MV_TIER:-}" bash "$VERIFY" --dir "$1/m" --shards "$2" --selection "$1/sel.txt" --discovered "$1/disc.txt" 2>&1; }
 
 # expect <label> <want-rc> <dir> <n> [<grep-ERE the output must match>]
 expect() {
@@ -353,5 +362,24 @@ sed -n 's/^ran [0-9]* \(.*\)$/[RUN ] \1/p' "$d"/m/manifest-shard*.txt > "$d/disc
 expect "MV29: real manifests of a green PR run verify" 0 "$d" 8 '^OK'
 rm -f "$d/m/manifest-shard2.txt" "$d/m/manifest-shard3.txt"
 expect_absent "MV30: real shards 2 and 3 called absent, their suites never ran" 1 "$d" 8 "2 3" 'never ran'
+
+# --- MV33-35: SUITE_TIER_MODE=pr, where the shards run the tier floor beside the
+# selection and the aggregator's --list (no impacted filter) is that floor.
+d=$(case_dir mv33); header impacted scripts/test-a.sh scripts/test-l.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh RUN scripts/test-f.sh LOCAL scripts/test-l.sh LOCAL scripts/test-m.sh
+manifest "$d" 1 2 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'ran 0 scripts/test-l.sh' 'skip scripts/test-m.sh'
+manifest "$d" 2 2 "$d/sel.txt" 'ran 0 scripts/test-f.sh' 'skip scripts/test-m.sh'
+MV_TIER="pr" expect "MV33: pr, the floor ran beside the selection" 0 "$d" 2 '^OK'
+MV_TIER=fast expect "MV33: fast, the same floor run is outside the selection" 1 "$d" 2 'scripts/test-f\.sh.*not selected'
+
+d=$(case_dir mv34); header impacted scripts/test-a.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh RUN scripts/test-f.sh
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-f.sh'
+MV_TIER="pr" expect "MV34: pr, a floor suite no shard ran is refused" 1 "$d" 1 'scripts/test-f\.sh.*never ran'
+
+d=$(case_dir mv35); header impacted scripts/test-l.sh > "$d/sel.txt"
+disc "$d" LOCAL scripts/test-l.sh
+manifest "$d" 1 1 "$d/sel.txt" 'skip scripts/test-l.sh'
+MV_TIER="pr" expect "MV35: pr, a shard that skips a selected local suite is refused" 1 "$d" 1 'scripts/test-l\.sh'
 
 rst_tally

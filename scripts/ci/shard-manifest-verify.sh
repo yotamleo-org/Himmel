@@ -30,6 +30,11 @@
 # filtering it or by claiming it never saw it. Prints OK and exits 0 otherwise;
 # rc 2 on usage errors, including a missing, unreadable or empty <list>.
 #
+# SUITE_TIER_MODE=pr (env, the aggregator step's): the shards run the
+# suite-tiers.tsv floor beside an impacted selection, and <list> is that floor.
+# In impacted mode every suite <list> names to RUN may run and must run, as in
+# full mode, and a selected suite <list> skips only for its local tier must run.
+#
 # --absent-ok "<k> ...": shards the plan job left out because they had no suite
 # Only THEIR missing manifests are excused (one that exists is
 # still verified). Nothing else is relaxed: the accounting below still demands
@@ -66,7 +71,7 @@ if [ ! -r "$selection" ] || ! grep -qE '^mode (full|impacted)$' "$selection"; th
   exit 2
 fi
 disc_lines=""
-[ -r "$discovered" ] && disc_lines=$(sed -n -e 's/^\[RUN \] \([^ ]*\).*/drun \1/p' -e 's/^\[SKIP\] \([^ ]*\).*/dskip \1/p' "$discovered")
+[ -r "$discovered" ] && disc_lines=$(sed -n -e 's/^\[RUN \] \([^ ]*\).*/drun \1/p' -e 's/^\[SKIP\] \([^ ]*\) — tier: local .*/dlocal \1/p' -e 's/^\[SKIP\] \([^ ]*\).*/dskip \1/p' "$discovered")
 if [ -z "$disc_lines" ]; then
   echo "shard-manifest-verify: discovered list '$discovered' is unreadable or names no suite" >&2
   exit 2
@@ -142,13 +147,14 @@ while [ "$k" -le "$shards" ]; do
   k=$((k + 1))
 done
 
-# Accounting across every shard. Input: "sel <path>", "drun <path>" and
-# "dskip <path>" lines, then "<k> <body>".
+# Accounting across every shard. Input: "sel <path>", "drun <path>", "dlocal
+# <path>" and "dskip <path>" lines, then "<k> <body>".
 acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
           printf '%s\n' "$disc_lines"
-          printf '%s' "$bodies"; } | awk -v mode="$mode" '
+          printf '%s' "$bodies"; } | awk -v mode="$mode" -v tier="${SUITE_TIER_MODE:-}" '
   $1 == "sel"   { sel[$2] = 1; order[++nsel] = $2; next }
   $1 == "drun"  { drun[$2] = 1; dorder[++ndisc] = $2; next }
+  $1 == "dlocal" { if (tier == "pr") dlocal[$2] = 1; else dskip[$2] = 1; next }
   $1 == "dskip" { dskip[$2] = 1; next }
   NF < 3 { next }
   $2 == "ran"      { runs[$4]++; if ($3 != "0") printf "FAIL: %s ran on shard%s with rc %s\n", $4, $1, $3; else nran++; next }
@@ -158,18 +164,20 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
   END {
     for (p in runs) {
       if (runs[p] > 1) printf "FAIL: %s ran %d times across shards\n", p, runs[p]
-      if (mode == "impacted" && !(p in sel)) printf "FAIL: %s ran but was not selected\n", p
+      if (mode == "impacted" && !(p in sel) && !(tier == "pr" && (p in drun))) printf "FAIL: %s ran but was not selected\n", p
     }
-    if (mode != "impacted") {
+    if (mode != "impacted" || tier == "pr") {
       for (i = 1; i <= ndisc; i++)
         if (!(dorder[i] in runs)) printf "FAIL: %s never ran on any shard, though discovery lists it to run here\n", dorder[i]
-    } else for (i = 1; i <= nsel; i++) {
+    }
+    if (mode == "impacted") for (i = 1; i <= nsel; i++) {
       p = order[i]
       if (p in runs) continue
-      if (p in drun)                       printf "FAIL: selected %s never ran on any shard, though discovery lists it to run here\n", p
-      else if ((p in missing) && (p in dskip)) printf "FAIL: selected %s was recorded notfound, but discovery finds it here\n", p
+      if (p in drun) { if (tier != "pr") printf "FAIL: selected %s never ran on any shard, though discovery lists it to run here\n", p }
+      else if ((p in missing) && ((p in dskip) || (p in dlocal))) printf "FAIL: selected %s was recorded notfound, but discovery finds it here\n", p
       else if (p in missing)               printf "NOTE: selected %s was not discovered by the runner or the discovered list\n", p
       else if ((p in skipped) && (p in dskip)) printf "NOTE: selected %s was skipped by a standing filter (discovery skips it too)\n", p
+      else if (p in dlocal)                printf "FAIL: selected %s never ran; its local tier does not exempt an impacted suite\n", p
       else if (p in skipped)               printf "FAIL: selected %s was skipped by a shard, but discovery does not list it\n", p
       else                                 printf "FAIL: selected %s never ran on any shard\n", p
     }
