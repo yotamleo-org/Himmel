@@ -49,8 +49,25 @@ if [ -z "$unpinned" ] && has 'uses:'; then ok "every uses: is pinned by a 40-hex
 
 check     "CLI installed at an exact version"       'npm install -g snyk@[0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)'
 check     "token read from secrets.SNYK_TOKEN"      'SNYK_TOKEN: \$\{\{ secrets\.SNYK_TOKEN \}\}'
-check     "empty token skips with a notice"         '::notice.*SNYK_TOKEN'
-check     "token present enables the scan"          'echo "enabled=true" >> "[$]GITHUB_OUTPUT"'
+
+# run the gate step's own script with an empty and a set token
+gate="$(awk '
+  /^      - name: Gate on the token/ { g=1; next }
+  g && /^      - / { exit }
+  g && /^        run: \|/ { r=1; next }
+  g && r { sub(/^          /, ""); print }' <<< "$s" | sed 's/\${{ github.repository }}/o\/r/g')"
+out="$(mktemp "${TMPDIR:-/tmp}/snyk-gate.XXXXXX")" || { bad "mktemp for the gate run failed"; out=""; }
+if [ -n "$gate" ] && [ -n "$out" ]; then
+  : > "$out"
+  msg_empty="$(SNYK_TOKEN='' GITHUB_OUTPUT="$out" bash -c "$gate")"
+  if [ "$(cat "$out")" = "enabled=false" ] && grep -q '^::notice.*SNYK_TOKEN' <<< "$msg_empty"; then ok "empty token: enabled=false and a notice"; else bad "empty token: enabled=false and a notice"; fi
+  : > "$out"
+  msg_set="$(SNYK_TOKEN='x' GITHUB_OUTPUT="$out" bash -c "$gate")"
+  if [ "$(cat "$out")" = "enabled=true" ] && [ -z "$msg_set" ]; then ok "set token: enabled=true and no notice"; else bad "set token: enabled=true and no notice"; fi
+else
+  bad "gate step script not found in the workflow"
+fi
+[ -z "$out" ] || rm -f "$out"
 # every step that does work (checkout, install, scan, upload) carries the gate
 ungated="$(awk '
   function flush() { if (blk ~ /(actions\/checkout@|npm install -g snyk@|bash scripts\/security\/snyk-scan\.sh|actions\/upload-artifact@)/ && blk !~ /if:[^\n]*steps\.gate\.outputs\.enabled == .true./) n++ }
