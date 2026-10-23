@@ -12,6 +12,7 @@
 #   A. no UI running      -> one server started, the Setup link printed
 #   B. second install     -> the same link, no second server
 #   C. always-on unit up  -> its link on port 47391, no server started
+#   C2. always-on unit up, no browser -> no link, the terminal secret prompt instead
 #   D. no browser         -> no server, no link; a secret typed in the terminal is stored
 #   E. --dry-run          -> nothing started, no link
 #   F. page and server copy never name #page=configure, port 37931, a link without #t=, or
@@ -112,10 +113,21 @@ grep -qF "http://127.0.0.1:47391/#t=$tokC&page=setup" <<< "$out" || fail "C: the
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "C: a server was started next to the always-on unit"
 echo "ok: C always-on unit running -> its Setup link, no second server"
 
+# ── C2: the always-on unit is up but no browser is reachable -> terminal prompt, no link ──
+new_case C2 active
+printf 'ExecStart="/usr/bin/bun" "/x/scripts/config-ui/server.ts" --service --port 47391\n' > "$c/units/himmel-ui.service"
+mkdir -p "$c/home/.himmel/state"; printf '%s\n' "$tokC" > "$c/home/.himmel/state/ui-token"; chmod 600 "$c/home/.himmel/state/ui-token"
+printf 'skip\n' > "$c/in-skip"
+run_install "$c/in-skip" SSH_CONNECTION=1 --
+[ "$rc" -eq 0 ] || fail "C2: install rc=$rc: $out"
+grep -qF "47391" <<< "$out" && fail "C2: a link to the always-on UI was printed with no browser reachable: $out"
+grep -qE '^\? [A-Z0-9_]+ \[' <<< "$out" || fail "C2: no terminal secret prompt in the output: $out"
+echo "ok: C2 always-on unit up but no browser -> terminal prompt, no link"
+
 # ── D: no browser -> terminal secret prompt, no server ─────────────────────
 new_case D
 printf 'skip\n' > "$c/in-probe"
-run_install "$c/in-probe" --
+run_install "$c/in-probe" SSH_CONNECTION=1 --
 [ "$rc" -eq 0 ] || fail "D: install rc=$rc: $out"
 grep -qE "$setup_link_re" <<< "$out" && fail "D: a Setup link was printed with no browser reachable"
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "D: a server was started with no browser reachable"
@@ -124,7 +136,7 @@ first=$(printf '%s\n' "$out" | sed -n 's/^? \([A-Z0-9_]*\) \[.*/\1/p' | head -1)
 canary="canary$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 new_case D2
 printf 'set\n%s\n' "$canary" > "$c/in-set"
-run_install "$c/in-set" --
+run_install "$c/in-set" SSH_CONNECTION=1 --
 [ "$rc" -eq 0 ] || fail "D2: install rc=$rc: $out"
 grep -qxF "$first=$canary" "$c/fx/.env" || fail "D2: the secret typed in the terminal was not stored for $first"
 grep -qF "$canary" <<< "$out" && fail "D2: the typed secret was echoed"

@@ -4852,7 +4852,8 @@ async function installUiHandoff(answers) {
     console.log(`${label}: run \`himmelctl ui\` from your own terminal; it prints the Setup link.`);
     return;
   }
-  if (uiServiceLib.status().ok) {
+  const browser = browserReachable();
+  if (browser && uiServiceLib.status().ok) {
     const svc = uiServiceLib.url('setup');
     if (svc.ok) {
       console.log(`${label}: ${svc.lines[0]}`);
@@ -4860,12 +4861,12 @@ async function installUiHandoff(answers) {
       return;
     }
   }
-  const running = await uiServiceLib.adhocLink();
+  const running = browser ? await uiServiceLib.adhocLink() : null;
   if (running) {
     console.log(`${label}: ${running}`);
     return;
   }
-  if (browserReachable() && which('bun')) {
+  if (browser && which('bun')) {
     const r = await uiServiceLib.startAdhoc({ repoRoot: repoRoot() });
     if (r.ok) {
       console.log(`${label}: ${r.lines[0]}`);
