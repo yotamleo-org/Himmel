@@ -247,7 +247,6 @@ rm -f "$cfg.leg-pretrust.owner"
 # The node write must not follow it: victim byte-identical, every trial.
 # A swap is counted by the swapper's own marker, not by the symlink surviving: the write's final
 # rename may replace the swapped-in link with the real file, which is the safe outcome.
-swapped=0
 # the swapper's mv is a BSD mv: it rejects -T with the macOS runner's own text (macos-cadence run 39875027388)
 bsdmv="$tmp/bsd-mv"; mkdir -p "$bsdmv"; realmv="$(command -v mv)"
 printf '%s\n' '#!/bin/sh' 'for a in "$@"; do [ "$a" = "-T" ] && { echo "mv: illegal option -- T" >&2; echo "usage: mv [-f | -i | -n] [-hv] source target" >&2; exit 1; }; done' "exec $realmv \"\$@\"" > "$bsdmv/mv"
@@ -256,18 +255,18 @@ for t in 1 2 3 4 5; do
   rm -rf "$jc" "$vic"; mkdir -p "$jc" "$vic"; rm -f "$tmp/swapmark"
   printf '%s' '{"keep":"me"}' > "$vic/v.json"; printf 'precious\n' > "$vic/v.txt"; want="$(vsum)"
   printf '%s' '{}' > "$jc/.claude.json"
-  ( PATH="$bsdmv:$PATH"; n=0; while [ "$n" -lt 400 ]; do
+  # the poll forks nothing: a slow runner must not let the whole write finish between two polls
+  ( PATH="$bsdmv:$PATH"; SECONDS=0; while [ "$SECONDS" -lt 20 ]; do
       if [ -e "$jc/.claude.json.leg-pretrust.owner" ]; then
         ln -s "$vic/v.json" "$jc/.swap" && mv -f "$jc/.swap" "$jc/.claude.json" && : > "$tmp/swapmark"; exit 0
       fi
-      n=$((n + 1)); sleep 0.01
     done ) & apid=$!
   rc=0; LEG_PRETRUST_CONFIG="$jc/.claude.json" LEG_PRETRUST_KEY="$jkey" bash "$SCRIPT" deepseek "$ewt" >/dev/null 2>&1 || rc=$?
   wait "$apid" 2>/dev/null
-  [ -e "$tmp/swapmark" ] && swapped=$((swapped + 1))
+  [ -e "$tmp/swapmark" ] && swapped=yes || swapped=no
   check "11i trial $t victim untouched" "$(vsum)" "$want"
+  check "11i trial $t the swap really happened (write rc=$rc)" "$swapped" "yes"
 done
-check "11i the swap really happened in every trial" "$swapped" "5"
 # 11j continuous flip: the config flips between a file and a symlink the whole
 # time after the sidecar appears, so a second lstat/realpath in the node write can land on the
 # link. A single swap (11i) cannot see that; the victim must stay byte-identical in every trial.
