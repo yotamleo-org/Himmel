@@ -237,6 +237,11 @@ describe('release reducer (HIMMEL-6796)', () => {
     }
   });
 
+  it('a Done-status key resolved outside empty, Done and Fixed is terminal Other, never Done (HIMMEL-7158)', () => {
+    const s = reduce(input({ issueList: [issue('K-1', ['v1']), issue('K-5', ['v1'], 'Done', { resolution: 'Cannot Reproduce' })] }));
+    expect(recordOf(s, 'K-5', 'v1')?.terminal).toBe('Other');
+  });
+
   it('a Closed key resolved Won\'t Do or Duplicate keeps its own terminal and never folds (HIMMEL-7158)', () => {
     const issueList = [issue('K-1', ['v1']), closed('K-5', ['v1'], "Won't Do"), closed('K-6', ['v1'], 'Duplicate')];
     const s = reduce(input({ issueList }));

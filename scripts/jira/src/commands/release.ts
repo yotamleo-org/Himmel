@@ -59,10 +59,12 @@ export function op(kind: string, from?: string, to?: string): Op {
 }
 
 export function parseFoldFile(text: string): FoldItem[] {
-  return text.split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean).map((l, i) => {
+  return text.split('\n').flatMap((raw, i) => {
+    const l = raw.replace(/#.*/, '').trim();
+    if (!l) return [];
     const m = /^(\S+)\s+(\d+)$/.exec(l);
     if (!m) throw new Error(`release fold: --file line ${i + 1} is not "<key> <pr>": ${l}`);
-    return { key: m[1], pr: Number(m[2]) };
+    return [{ key: m[1], pr: Number(m[2]) }];
   });
 }
 

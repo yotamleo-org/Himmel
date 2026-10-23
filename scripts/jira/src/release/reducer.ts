@@ -76,8 +76,7 @@ export function terminalOf(i: IssueSnap | undefined): KeyRecord['terminal'] {
   const s = `${i.status} ${i.resolution ?? ''}`;
   if (/won'?t do/i.test(s)) return "Won't Do";
   if (/duplicate/i.test(s)) return 'Duplicate';
-  if (i.status === 'Done') return 'Done';
-  if (i.statusCategory !== 'Done') return null;
+  if (i.status !== 'Done' && i.statusCategory !== 'Done') return null;
   return DELIVERED.has((i.resolution ?? '').trim().toLowerCase()) ? 'Done' : 'Other';
 }
 
