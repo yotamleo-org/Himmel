@@ -45,6 +45,16 @@ bad sha and passes only when the stage fails on the checksum. Run it on a
 disposable `himmel-ar-N` clone and restore `suite-ready-v4` + power off after.
 Not covered: `himmel-update pull` (needs a credentialed clone) and the live lane
 canaries, which stay a host step after the station roll.
+**Over-install stage (opt-in).** `HIMMEL_VM_E2E_OVERINSTALL=1` makes that validator
+run `scripts/vm/over-install-e2e.sh` after a green symmetry pass (also runnable alone).
+It installs the previous release tag (`OVERINSTALL_BASE_REF`, default `v1.1.2`) with
+its own installer, configures a project, a secret and a commit rule, installs the
+candidate (`OVERINSTALL_CAND_REF`, default `HEAD`) over it, and asserts: `himmelctl
+status` has no red row, the secret is still set and its file is mode 0600, the commit
+rule and project scope are kept, every settings hook appears once, and a second
+install changes nothing. `--expect-red` duplicates a hook entry and passes only when
+the stage fails on that assertion. Run it on a disposable `himmel-ar-N` clone and
+restore `suite-ready-v4` + power off after.
 **Record-once model check (opt-in).** `scripts/vm/replay-poc-check.sh` runs the
 trivial headless `claude -p` dispatch through `scripts/vm/lib/model-replay.sh`:
 the first run records the model's artifact (one call), later runs with the same
