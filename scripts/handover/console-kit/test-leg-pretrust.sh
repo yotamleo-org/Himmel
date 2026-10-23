@@ -245,24 +245,26 @@ rm -f "$cfg.leg-pretrust.owner"
 # 11i swap-after-check: a writer of the row dir waits for the owner sidecar (the
 # bash checks have passed and the lock is held), then atomically swaps .claude.json for a symlink.
 # The node write must not follow it: victim byte-identical, every trial.
+# A swap is counted by the swapper's own marker, not by the symlink surviving: the write's final
+# rename may replace the swapped-in link with the real file, which is the safe outcome.
 swapped=0
 # the swapper's mv is a BSD mv: it rejects -T with the macOS runner's own text (macos-cadence run 39875027388)
 bsdmv="$tmp/bsd-mv"; mkdir -p "$bsdmv"; realmv="$(command -v mv)"
 printf '%s\n' '#!/bin/sh' 'for a in "$@"; do [ "$a" = "-T" ] && { echo "mv: illegal option -- T" >&2; echo "usage: mv [-f | -i | -n] [-hv] source target" >&2; exit 1; }; done' "exec $realmv \"\$@\"" > "$bsdmv/mv"
 chmod +x "$bsdmv/mv"
 for t in 1 2 3 4 5; do
-  rm -rf "$jc" "$vic"; mkdir -p "$jc" "$vic"
+  rm -rf "$jc" "$vic"; mkdir -p "$jc" "$vic"; rm -f "$tmp/swapmark"
   printf '%s' '{"keep":"me"}' > "$vic/v.json"; printf 'precious\n' > "$vic/v.txt"; want="$(vsum)"
   printf '%s' '{}' > "$jc/.claude.json"
   ( PATH="$bsdmv:$PATH"; n=0; while [ "$n" -lt 400 ]; do
       if [ -e "$jc/.claude.json.leg-pretrust.owner" ]; then
-        ln -s "$vic/v.json" "$jc/.swap" && mv -f "$jc/.swap" "$jc/.claude.json"; exit 0
+        ln -s "$vic/v.json" "$jc/.swap" && mv -f "$jc/.swap" "$jc/.claude.json" && : > "$tmp/swapmark"; exit 0
       fi
       n=$((n + 1)); sleep 0.01
     done ) & apid=$!
   rc=0; LEG_PRETRUST_CONFIG="$jc/.claude.json" LEG_PRETRUST_KEY="$jkey" bash "$SCRIPT" deepseek "$ewt" >/dev/null 2>&1 || rc=$?
   wait "$apid" 2>/dev/null
-  [ -L "$jc/.claude.json" ] && swapped=$((swapped + 1))
+  [ -e "$tmp/swapmark" ] && swapped=$((swapped + 1))
   check "11i trial $t victim untouched" "$(vsum)" "$want"
 done
 check "11i the swap really happened in every trial" "$swapped" "5"
