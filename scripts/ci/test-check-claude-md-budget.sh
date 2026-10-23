@@ -121,7 +121,8 @@ fi
 # Without it the condensed rule forbids the fresh-context verifier the rule
 # exists to allow.
 echo "== Case G2: subagent rule keeps the independent-review exception =="
-if awk '/^### Subagent policy/ { on = 1; next } /^### / { on = 0 } on' "$REPO_ROOT/CLAUDE.md" | grep -q 'did not author'; then
+subagent_rule=$(awk '/^### Subagent policy/ { on = 1; next } /^### / { on = 0 } on' "$REPO_ROOT/CLAUDE.md")
+if grep -q 'did not author' <<< "$subagent_rule"; then
     pass "subagent policy keeps the independent-review exception"
 else
     fail "subagent policy lost the independent-review exception"
