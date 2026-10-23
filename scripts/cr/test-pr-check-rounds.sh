@@ -2394,8 +2394,10 @@ mfs_build() {
             && GIT_INDEX_FILE="$tmp/$mfs_b.idx" git -C "$repo" update-index --add --cacheinfo "100644,$mfs_blob,$mfs_b-edit.txt" \
             && GIT_INDEX_FILE="$tmp/$mfs_b.idx" git -C "$repo" write-tree)" || fail "$mfs_b resolved tree"
     fi
-    mfs_head="$(git -C "$repo" commit-tree "$mfs_tree" -p "$mfs_p1" -p "$mfs_p2" -m "$mfs_b merge")"
-    git -C "$repo" reset -q --hard "$mfs_head"
+    mfs_head="$(git -C "$repo" commit-tree "$mfs_tree" -p "$mfs_p1" -p "$mfs_p2" -m "$mfs_b merge")" \
+        || { fail "$mfs_b merge commit"; return 1; }
+    git -C "$repo" reset -q --hard "$mfs_head" \
+        || { fail "$mfs_b reset to merge"; return 1; }
 }
 for mfs_case in swap stale fork; do
     for mfs_delta in spent fresh; do
