@@ -270,6 +270,7 @@ scripts/eval/leg-digest/test-failure-review.sh	local	behaviour suite, 0 catches 
 scripts/eval/leg-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/leg-digest/test-leg-digest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/leg-digest/test-leg-ledger.sh	pr	static-gate
+scripts/eval/mcp-tasks-probe/test-probe.sh	local	behaviour suite, new HIMMEL-7304; the probe it covers is on-demand and billed
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window

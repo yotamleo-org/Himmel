@@ -287,6 +287,7 @@ scripts/eval/leg-digest/test-failure-review.sh	3
 scripts/eval/leg-digest/test-failure-router.sh	3
 scripts/eval/leg-digest/test-leg-digest.sh	4
 scripts/eval/leg-digest/test-leg-ledger.sh	3
+scripts/eval/mcp-tasks-probe/test-probe.sh	6
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	0
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
