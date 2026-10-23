@@ -431,7 +431,8 @@ cov_linked() {
 # Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head.
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
 # Its effective row is its own row with every amend written after it against that original head merged over it, in file
-# order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head). The
+# order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); a finding
+# whose own head is not <head> takes only amends of its branch or without a branch. The
 # finding counts at <head> when its effective head matches, and only an effective verdict of deferred counts.
 # A head matches when either spelling is a prefix of the other.
 # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
@@ -448,7 +449,7 @@ cov_ledger_keys() {
         | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
-            (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head))) as $a ($f; . + $a.set)) as $e
+            (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
             | .[ak($f; $f.head)] = (if at_head($f; $e) then vd($e) else {} end))
         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
         | .deferred_to | ascii_upcase' "$1") || return 1

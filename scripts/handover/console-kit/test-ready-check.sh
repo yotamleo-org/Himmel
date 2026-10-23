@@ -846,6 +846,13 @@ printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","fi
 seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"other","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SEED_BRANCH" "$REVHEAD" "$REVHEAD" >> "$LEDGER"
+seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: an amend of another branch does not defer a finding at the reviewed head: exit 1" "$rc" "1"
 unset SEED_BRANCH
 
 reset_stubs
