@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # the console event waiter launch (ACTION ZERO step 10 in console-template.md)
-# spells the kit by ABSOLUTE quoted path; the tracked allow list must carry a
-# valid Bash(...) rule that matches it, widens to no other script, and every
-# allow entry must load (no bare-wildcard tool name).
+# spells the kit by its RELATIVE path, run from the primary checkout root; the
+# tracked allow list must carry a valid Bash(...) rule that matches it, widens
+# to no other script, and every allow entry must load (no bare-wildcard tool
+# name).
 #
-# The matcher below mirrors Claude Code's Bash wildcard rule: each `*` becomes
-# `.*`, every other regex metacharacter is escaped, a lone trailing ` *` makes
-# the arguments optional, and the whole command must match.
+# The matcher below mirrors Claude Code's Bash rule matching: a `:*` rule is a
+# prefix match on the command word boundary, otherwise each `*` becomes `.*`,
+# every other regex metacharacter is escaped, a lone trailing ` *` makes the
+# arguments optional, and the whole command must match. The harness refuses a
+# command containing a $VAR expansion before it reads the allow list, so a rule
+# or a command containing `$` never counts as a match here.
 #
 # Usage: bash scripts/guardrails/test-settings-waiter-allow.sh
 set -uo pipefail
@@ -29,9 +33,10 @@ matching_rules() {
     node -e '
       const rules = JSON.parse(require("fs").readFileSync(0, "utf8"));
       const cmd = process.argv[1];
+      if (cmd.includes("$")) process.exit(0);
       for (const rule of rules) {
         const body = rule.slice(5, -1);
-        let re;
+        if (body.includes("$")) continue;
         if (body.endsWith(":*")) {
           const p = body.slice(0, -2);
           if (cmd === p || cmd.startsWith(p + " ")) console.log(rule);
@@ -56,10 +61,8 @@ else
 fi
 
 # 2. The exact step-10 command, rendered from the template line a console prints.
-# The template prints the literal $HIMMEL_REPO spelling (the primary checkout's
-# copy of the waiter), so no glob is needed before the path.
-# shellcheck disable=SC2016 # literal backticks and $HIMMEL_REPO in the doc line
-line=$(grep -m1 'bash "\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh"' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
+# shellcheck disable=SC2016 # literal backticks in the doc line
+line=$(grep -m1 'bash scripts/handover/console-kit/console-wait.sh' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
 if [ -z "$line" ]; then
   bad "console-template.md has no step-10 console-wait.sh command"
   exit 1
@@ -70,8 +73,7 @@ cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
 cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
   -e 's#{{SESSION_NAME}}#x-console#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
 
-# shellcheck disable=SC2016 # $HIMMEL_REPO is the literal spelling under test
-waiter_rule='Bash(bash "$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh" *)'
+waiter_rule='Bash(bash scripts/handover/console-kit/console-wait.sh:*)'
 if [ "$(jq --arg r "$waiter_rule" '[.permissions.allow[] | select(. == $r)] | length' "$SETTINGS")" = 1 ]; then
   ok "the specific waiter rule is in the allow list exactly once"
 else
@@ -86,18 +88,25 @@ for c in "$cmd" "$cmd_succ"; do
   fi
 done
 
-# 3. The rule widens to no other script or path.
+case "$cmd$cmd_succ" in
+  *'$'*) bad "the step-10 command carries a \$ expansion, which the harness refuses before the allow list" ;;
+  *) ok "the step-10 command has no \$ expansion" ;;
+esac
+
+# 3. The rule widens to no other script or path. Every command is checked
+# against ALL Bash allow rules.
 # shellcheck disable=SC2016 # $HIMMEL_REPO is the literal spelling under test
 for c in \
-  "bash \"\$HIMMEL_REPO/scripts/handover/console-kit/go.sh\" --pr 1" \
-  "bash \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh.evil\" /tmp/x" \
-  "bash \"\$HIMMEL_REPO/scripts/other/console-wait.sh\" /tmp/x" \
-  "sh \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
-  "bash -x \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
+  "bash scripts/handover/console-kit/leg-event.sh --fleet" \
+  "bash scripts/handover/console-kit/console-wait.sh.evil /tmp/x" \
+  "bash scripts/other/console-wait.sh /tmp/x" \
+  "sh scripts/handover/console-kit/console-wait.sh /tmp/x" \
+  "bash -x scripts/handover/console-kit/console-wait.sh /tmp/x" \
   "bash \"$kit/console-wait.sh\" /tmp/x" \
   "bash -c \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
+  "bash \"-c\" \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
   "bash \"-c\" \"id\" \"$kit/console-wait.sh\" /tmp/x" \
-  "bash \"-c\" \"id\" \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x"; do
+  "bash \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x"; do
   m=$(matching_rules "$c")
   if [ -z "$m" ]; then
     ok "no allow rule matches: $c"
@@ -106,21 +115,19 @@ for c in \
   fi
 done
 
+# The waiter has one tracked rule and it carries no $ expansion (a dead rule
+# would look allowed but never match).
 n=$(jq '[.permissions.allow[] | select(test("console-wait\\.sh"))] | length' "$SETTINGS")
-if [ "$n" -le 2 ]; then
-  ok "allow list carries $n console-wait rules (relative + \$HIMMEL_REPO)"
+if [ "$n" = 1 ]; then
+  ok "allow list carries exactly one console-wait rule"
 else
-  bad "allow list carries $n console-wait rules, expected at most 2"
+  bad "allow list carries $n console-wait rules, expected exactly 1"
 fi
-
-# A glob before the path can span quotes (bash "-c" "id" "<path>"): the only `*`
-# a console-wait rule may carry is the trailing arguments wildcard.
-globbed=$(jq -r '.permissions.allow[] | select(test("console-wait\\.sh")) | select(
-    sub(" \\*\\)$"; ")") | sub(":\\*\\)$"; ")") | test("\\*"))' "$SETTINGS")
-if [ -z "$globbed" ]; then
-  ok "no console-wait rule globs inside the path"
+dollar=$(jq -r '.permissions.allow[] | select(test("console-wait\\.sh")) | select(test("\\$"))' "$SETTINGS")
+if [ -z "$dollar" ]; then
+  ok "no console-wait rule carries a \$ expansion"
 else
-  bad "console-wait rule with a glob before the path: $globbed"
+  bad "console-wait rule with a \$ expansion the harness would refuse: $dollar"
 fi
 
 exit "$fail"
