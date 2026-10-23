@@ -829,6 +829,12 @@ check "descendant: a descendant row of a branch other than the PR's does not cou
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+SEED_BRANCH=other seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "descendant: a finding of another branch at the reviewed head does not count through the PR branch's row: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50 deadbeefdeadbeefdeadbeefdeadbeefdeadbeef; seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: a deferral at a head the descendant row does not name does not count: exit 1" "$rc" "1"

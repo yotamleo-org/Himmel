@@ -432,8 +432,8 @@ cov_linked() {
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
 # Its effective row is its own row with every amend written after it against that original head merged over it, in file
 # order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); a finding
-# whose own head is not <head> takes only amends of its branch or without a branch. The
-# finding counts at <head> when its effective head matches, and only an effective verdict of deferred counts.
+# whose own head is not <head> takes only amends of its branch or without a branch (fail-closed; review-ledger-evidence.sh
+# merges every matching amend). The finding counts at <head> when its effective head matches, and only an effective verdict of deferred counts.
 # A head matches when either spelling is a prefix of the other.
 # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
 cov_ledger_keys() {
