@@ -131,6 +131,7 @@ scripts/ci/test-home-canary.sh	pr	trust-path
 scripts/ci/test-impacted-selection.sh	pr	trust-path
 scripts/ci/test-jira-cli-smoke.sh	pr	trust-path
 scripts/ci/test-knockout-gate.sh	pr	trust-path
+scripts/ci/test-lockfile-advisory-floor.sh	pr	trust-path
 scripts/ci/test-macos-breakage.sh	pr	trust-path
 scripts/ci/test-macos-cadence-workflow.sh	pr	trust-path
 scripts/ci/test-main-sweep-red-issue.sh	pr	trust-path
