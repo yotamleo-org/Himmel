@@ -182,6 +182,8 @@ row "$C6d/ledger.jsonl" N400 suite/test-green-again.sh
 row "$C6d/ledger.jsonl" N400 suite/test-left-red.sh
 jq -c 'if .class == "suite/test-left-red.sh" then . + {final_red:true} else . + {final_red:false} end' "$C6d/ledger.jsonl" >"$C6d/l2" && mv "$C6d/l2" "$C6d/ledger.jsonl"
 review "$C6d" >/dev/null 2>&1
+rc=$?
+check "the suite fixture review exits 0" '[ "$rc" -eq 0 ]'
 check "a suite class that went red then green is not new" 'digest "$C6d" | grep -q "suite/test-green-again.sh: 1 rows, legs N400 (recurring)"'
 check "a suite class left red at wrap is new" 'digest "$C6d" | grep -q "suite/test-left-red.sh: 1 rows, legs N400 (new)"'
 check "only the ended-red class is named in the new: line" 'tail -n 1 "$STUB/notify.log" | grep -q "new: suite/test-left-red.sh$"'
