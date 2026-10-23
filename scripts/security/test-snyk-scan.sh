@@ -342,6 +342,17 @@ check "an upstream HEAD with a build file is skipped, not scanned" skipped "$(jq
 check "a skipped upstream does not fail a clean pinned fork" 0 "$RC"
 has "the skip names the build file" "build.gradle" "$OUTDIR/2026-10-23.forks.summary.md"
 check "only the pinned ref was scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# a long file list after the match must not let grep -m1 close the pipe early and fall through to a scan
+mkfork bigfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/bigfork" tag pinned
+: > "$W/forks/bigfork/Package.swift"
+for i in $(seq 1 1500); do : > "$W/forks/bigfork/z$(printf '%0200d' "$i")"; done
+git -C "$W/forks/bigfork" add -A; git -C "$W/forks/bigfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a build and many files"
+export SNYK_SCAN_FORKS="bigfork|$U/bigfork|pinned|up"
+: > "$W/calls.log"
+run forksbig --forks
+check "a build file before a long file list still skips the upstream scan" skipped "$(jq -r '.[] | select(.name=="bigfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "the long-list upstream was not scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
 export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up"
 : > "$W/calls.log"
 run forksnoup --forks --no-upstream

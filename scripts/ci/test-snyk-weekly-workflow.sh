@@ -131,7 +131,7 @@ if [ -n "$stub_root" ]; then
     nm="${pair%%:*}"; body="$(run_body "${pair#*:}")"
     for want in "|1" "false|1" "true|0"; do
       ro="${want%%|*}"; wrc="${want##*|}"
-      (cd "$stub_root" && REPORT_ONLY="$ro" MISSING_REF_PROBE=false RUNNER_TEMP="$stub_root/tmp" GITHUB_WORKSPACE="$stub_root" GITHUB_STEP_SUMMARY="$stub_root/summary.out" SNYK_TOKEN=x bash -c "$body" > /dev/null 2>&1)
+      (cd "$stub_root" && REPORT_ONLY="$ro" MISSING_REF_PROBE=false RUNNER_TEMP="$stub_root/tmp" GITHUB_WORKSPACE="$stub_root" GITHUB_STEP_SUMMARY="$stub_root/summary.out" SNYK_TOKEN=x bash -e -o pipefail -c "$body" > /dev/null 2>&1)
       got=$?
       if [ "$got" = "$wrc" ]; then ok "$nm scan under a failing snyk-scan.sh: report_only='$ro' exits $wrc"; else bad "$nm scan under a failing snyk-scan.sh: report_only='$ro' exits $wrc (got $got)"; fi
     done

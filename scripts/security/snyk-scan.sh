@@ -311,7 +311,9 @@ if [ "$forks" -eq 1 ]; then
                 upstream=error
                 if ! fetch_tree "$url" HEAD "$tmp/up-$name"; then
                     msg="upstream fetch failed: $SCAN_MSG"
-                elif up_skip="$(git -C "$tmp/up-$name" ls-files 2>/dev/null | grep -Em1 "$BUILD_RE")"; then
+                elif ! up_files="$(git -C "$tmp/up-$name" ls-files 2>/dev/null)"; then
+                    msg="upstream file list failed"
+                elif up_skip="$(grep -Em1 "$BUILD_RE" <<< "$up_files")"; then
                     upstream=skipped
                 else
                     scan_tree "$tmp/up-$name" "$tmp/uprows.$name"; rc=$?
