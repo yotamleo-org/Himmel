@@ -290,8 +290,11 @@ fi
 
 # --- a credit-exhausted answer marks the account; later auto picks rotate to the other one ---
 if [ "$RC" -ne 0 ] && grep -qi 'credit balance is too low' "$OUT" 2>/dev/null; then
-  state exhausted >/dev/null 2>&1
-  echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted; auto routing rotates to the other account" >&2
+  if state exhausted >/dev/null 2>&1; then
+    echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted; auto routing rotates to the other account" >&2
+  else
+    echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted, but the marker was not saved; the next auto call may pick it again" >&2
+  fi
 fi
 
 # --- secret-free launch record (no key, no prompt) ---

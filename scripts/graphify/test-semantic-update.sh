@@ -581,13 +581,18 @@ C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"
 out=$(GRAPHIFY_STUB_REFUSEDLOG=1 GRAPHIFY_STUB_RC=1 run_api --name t66 --corpus-root "$C66" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [[ "$out" == *"graphify extract exited 1 (refused: stale-snapshot) --"* ]] && pass "T66 the closing line carries the refusal reason" || fail "T66 (rc=$rc): $(printf '%s' "$out" | tail -3)"
 
+echo "T66b: an exit-zero extract with failed chunks names the first lane refusal in its FAILED line"
+C66B="$WS/c66b"; new_corpus "$C66B"; : > "$WS/calls.log"
+out=$(GRAPHIFY_STUB_REFUSEDLOG=1 GRAPHIFY_STUB_CHUNKFAIL=1 run_api --name t66b --corpus-root "$C66B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[ "$rc" -eq 5 ] && [[ "$out" == *"FAILED: 8/9 semantic chunks failed (refused: stale-snapshot) --"* ]] && pass "T66b the FAILED line carries the refusal reason, exit 5" || fail "T66b (rc=$rc): $(printf '%s' "$out" | tail -3)"
+
 echo "T67: the run cap sizes the batch so its estimated chunks fit"
 C67="$WS/c67"; new_corpus "$C67"
 for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C67/f$i.md"; done
 out=$(run_api --name t67 --corpus-root "$C67" --corpus-class himmel-code --backend claude-api --max-run-usd 0.50 --dry-run); rc=$?
-[[ "$out" == *"sized: batch of "* ]] && [[ "$out" == *"to fit the run cap of 0.50 USD"* ]] && pass "T67 an oversized batch is cut to fit the cap" || fail "T67 (rc=$rc): $out"
+[ "$rc" -eq 0 ] && [[ "$out" == *"sized: batch of "* ]] && [[ "$out" == *"to fit the run cap of 0.50 USD"* ]] && pass "T67 an oversized batch is cut to fit the cap" || fail "T67 (rc=$rc): $out"
 out=$(run_api --name t67b --corpus-root "$C67" --corpus-class himmel-code --backend claude-api --max-run-usd 15.00 --dry-run); rc=$?
-[[ "$out" != *"sized:"* ]] && pass "T67 a batch inside the cap is not cut" || fail "T67b (rc=$rc): $out"
+[ "$rc" -eq 0 ] && [[ "$out" != *"sized:"* ]] && pass "T67 a batch inside the cap is not cut" || fail "T67b (rc=$rc): $out"
 
 echo "T55: a merge that fails after billed lane calls still leaves a run row with the cost"
 C55="$WS/c55"; new_corpus "$C55"; : > "$WS/calls.log"; : > "$WS/claude.out"

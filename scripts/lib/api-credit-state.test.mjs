@@ -682,17 +682,22 @@ test('HIMMEL-7264: an over-estimate pick prefers the unmarked account over one m
   const f = fixture();
   for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000 });
   f.save();
-  spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'A' }, encoding: 'utf8' });
+  // B has more estimated room than A, so only the exhaustion marker can make the pick choose A
+  const marked = spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'B' }, encoding: 'utf8' });
+  assert.equal(marked.status, 0, marked.stderr);
   const r = pickUsd(f, '2.50');
   assert.equal(r.verdict, 'PROCEED');
-  assert.equal(r.account, 'B');
+  assert.equal(r.account, 'A');
   assert.equal(r.over_estimate, true);
 });
 
 test('HIMMEL-7264: a fresh reading with too little left still refuses a start', () => {
   const f = fixture();
-  const r = pickUsd(f, '2.50');
-  assert.equal(r.verdict, 'SKIPPED-BANK');
+  for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { observed_at: f.now, remaining_usd: '0.20' });
+  f.save();
+  // 0.50 fits both account caps, so only the fresh reading can refuse it
+  assert.equal(pickUsd(f, '0.50').verdict, 'SKIPPED-BANK');
+  assert.equal(pickUsd(f, '0.10').verdict, 'PROCEED');
 });
 
 test('HIMMEL-7264: a missing snapshot, a missing row, an expired grant and an aged-out automatic snapshot all route on the ledger', () => {

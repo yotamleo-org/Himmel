@@ -61,7 +61,9 @@ case "${1:-}" in
                 rm -f "$send_failed_mark" 2>/dev/null
             else
                 echo "cadence-alert: Telegram send failed for $leg $reason" >&2
-                printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" > "$send_failed_mark" 2>/dev/null
+                mkdir -p "$(dirname "$send_failed_mark")" 2>/dev/null
+                printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" > "$send_failed_mark" 2>/dev/null \
+                    || echo "cadence-alert: could not write the send-failed marker $send_failed_mark" >&2
             fi
         fi
         ;;

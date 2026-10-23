@@ -243,7 +243,7 @@ if [ "$BACKEND" = "claude-api" ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
   # each cut re-plans, so the estimate is recomputed on the files that remain (a prefix of large files can still be over)
-  for _sizing_pass in 1 2 3 4 5 6; do
+  while :; do
   FIT_FILES="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY'
 import json, os, sys
 plan, root, model, budget, chunk, cap = sys.argv[1:7]
@@ -413,12 +413,12 @@ PY
   set -e
   cat "$WORK/extract.log" >&2
   FAILED_CHUNKS="$(sed -n 's|.*WARNING: \([0-9]*/[0-9]*\) semantic chunk(s) failed.*|\1|p' "$WORK/extract.log" | tail -1)"
+  # The first lane refusal (its reason, else its text) rides the closing line, which is what the cadence ledger keeps.
+  REFUSED="$(sed -n 's/.*claude-api: refused: //p' "$WORK/extract.log" | head -n 1)"
+  case "$REFUSED" in *'"reason":"'*) REFUSED="$(printf '%s' "$REFUSED" | sed 's/.*"reason":"\([^"]*\)".*/\1/')" ;; esac
   if [ "$rc" -ne 0 ]; then
     # Calls made before the failure were billed: leave a row so the spend is not lost.
     "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc "$rc" || true
-    # The first lane refusal (its reason, else its text) rides the closing line, which is what the cadence ledger keeps.
-    REFUSED="$(sed -n 's/.*claude-api: refused: //p' "$WORK/extract.log" | head -n 1)"
-    case "$REFUSED" in *'"reason":"'*) REFUSED="$(printf '%s' "$REFUSED" | sed 's/.*"reason":"\([^"]*\)".*/\1/')" ;; esac
     echo "semantic-update: graphify extract exited $rc${REFUSED:+ (refused: ${REFUSED:0:80})} -- graph and manifest untouched" >&2; exit 2
   fi
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
@@ -445,6 +445,6 @@ python3 "$HERE/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
 # The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a
 # loop on the exit code stops instead of re-billing the same failure.
 if [ -n "$FAILED_CHUNKS" ]; then
-  echo "semantic-update: FAILED: $FAILED_CHUNKS semantic chunks failed -- the good chunks merged, the failed files stay unstamped; do not rerun until the cause is fixed" >&2
+  echo "semantic-update: FAILED: $FAILED_CHUNKS semantic chunks failed${REFUSED:+ (refused: ${REFUSED:0:80})} -- the good chunks merged, the failed files stay unstamped; do not rerun until the cause is fixed" >&2
   exit 5
 fi
