@@ -348,7 +348,7 @@ for pg in "$GS" "$INST" "$PAGE"; do
   fi
 done
 
-time_re='≈ ?[0-9]+ ?min|about \*\*15 minutes|~15 minutes|in about 15 minutes|15-minute walkthrough|First 5 minutes|first 5 minutes'
+time_re='≈ ?[0-9]+ ?min|about \*\*15 minutes|~15 minutes|in about 15 minutes|15-minute walkthrough|First 5 minutes|first 5 minutes|[Ff]ive-minute'
 if ! printf 'about **15 minutes\n' | grep -q -E "$time_re"; then
   bad "the time-promise matcher no longer matches its own positive control"
 fi

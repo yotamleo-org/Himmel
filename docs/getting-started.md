@@ -202,8 +202,9 @@ or `/worktree`). That message means the guardrail works; it is not an error.
 
 **You're done when:** `/pr-check` reports clean, the PR merges, `/clean` removes
 the worktree, and `/handover` confirms a saved snapshot. To verify, run
-`git checkout main && git pull && git log --oneline -3` and look for your
-change on `main`.
+`cd ~/try-himmel && git checkout main && git pull && git log --oneline -3` and
+look for your change on `main`. (Run it from the project folder: `main` is
+checked out there, so `git checkout main` fails inside a linked worktree.)
 
 Want every hook and gate explained at the moment it fires, on a real toy
 change? The optional **[daily-loop walkthrough](daily-loop.md)** runs the real

@@ -74,7 +74,10 @@ ticket reference. When
 above. On a repository with no ticket convention, switch the requirement off with
 `TICKET_ID_REQUIRED=0 git commit …` (or set it in the repo's `.env`). On a repository with a branch-protected
 default branch, push the branch and merge it through a PR instead of the
-fast-forward. The commands say `main`; use your default branch's name if it
+fast-forward. If the project has an `origin`, the worktree helper cuts new
+worktrees from `origin/main`, so the install commit must reach it first
+(`git push origin main`, or the merged PR) before you create a worktree; a
+project with no `origin` branches from the local `main`. The commands say `main`; use your default branch's name if it
 differs.
 
 `.claude/settings.json` carries the path of your himmel download (the status
