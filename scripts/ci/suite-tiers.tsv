@@ -1099,3 +1099,4 @@ templates/luna-second-brain/scripts/test-upgrade-pyresolve.sh	local	behaviour su
 templates/luna-second-brain/scripts/test-upgrade.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 templates/luna-second-brain/scripts/test-vault-git.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/ci/test-snyk-weekly-workflow.sh	pr	trust-path
