@@ -43,6 +43,7 @@ case "$A" in
   "api repos/o/r/pulls/"*"/reviews"*) f reviews.json; exit 0 ;;
   "api repos/o/r/pulls/"*) [ -f "$S/pull-after.json" ] && [ -f "$S/gate-began" ] && { cat "$S/pull-after.json"; exit 0; }; f pull.json '{}'; exit 0 ;;
   "api repos/o/r/issues/"*"/events"*) f events.json; exit 0 ;;
+  "api repos/o/r/issues/"*"/labels"*) f labels.json; exit 0 ;;
   "api repos/o/r/issues/"*"/comments"*) [ -f "$S/comments-fail" ] && exit 1; f comments.json; exit 0 ;;
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
@@ -309,6 +310,24 @@ rm -f "$S/add-fail"; run RL12-retry
 eq "$(deletes)/$(posts)" 2/2 "RL12 next call redoes the pair (head was left unreleased)"
 eq "$(ledger_lines)" 1 "RL12 ledger line only after the add returned 2xx"
 
+# A DELETE that fails while ci:go is still on the PR would let the add pass with no
+# fresh `labeled` event: nothing written, nothing recorded, loud error.
+reset; touch "$S/delete-fail"; echo '[{"name":"ci:go"}]' > "$S/labels.json"; run RL12-delete-fails-label-stays
+eq "$(posts)/$(ledger_lines)/$RC" 0/0/2 "RL12 delete fails, label still on: no add, no ledger line, rc 2"
+has "$TMP/out-RL12-delete-fails-label-stays" '^CR-FIRST ERROR could not remove label ci:go' "RL12 delete fails: the error says the remove failed"
+# ...but a DELETE that fails because the label was never on the PR is fine.
+reset; touch "$S/delete-fail"; echo '[]' > "$S/labels.json"; run RL12-delete-fails-label-absent
+eq "$(posts)/$(ledger_lines)" 1/1 "RL12 delete fails, label already absent: the pair completes"
+
+# An unexpected reviewer-gate status (not 0, 1, 2, 3) is a hold, never a release.
+reset
+# shellcheck disable=SC2329 # invoked by cr_first_release through its name
+cr_reviewer_gate() { echo "cr-reviewer-gate: boom"; return 4; }
+run gate-rc4
+unset -f cr_reviewer_gate; . "$SCRIPT_DIR/cr-first-release.sh"
+eq "$(posts)/$(ledger_lines)/$RC" 0/0/3 "gate rc 4: no label, no ledger line, a degraded hold (rc 3)"
+has "$TMP/out-gate-rc4" '^CR-FIRST HOLD degraded \(reviewer gate rc=4\)' "gate rc 4: HOLD degraded names the status"
+
 # ── RL13 / M3': a hard reviewer down ─────────────────────────────────────────
 CONSOLE="$TMP/x-console.md"; printf '# console\n\n## Results (newest at the bottom)\n' > "$CONSOLE"
 reset; led "$(av "$HEAD1" codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av "$HEAD1" claude ok)"
@@ -397,6 +416,21 @@ reset; sweep "42\t$HEAD1\tbug\n"
 eq "$(deletes)/$(posts)/$(wc -c < "$TMP/out-sweep" | tr -d ' ')" 1/1/0 "sweep: an unreleased head with a passing gate is released, nothing listed"
 reset; echo '[{"event":"labeled","label":{"name":"ci:go"},"created_at":"2026-10-23T10:05:00Z"}]' > "$S/events.json"; sweep "42\t$HEAD1\t\n"
 has "$TMP/out-sweep" '^crfirst=#42:manual-release$' "sweep: a manual release is listed"
+
+# ── the CLI arguments ────────────────────────────────────────────────────────
+# a trailing --pr / --head with no value must end, not spin; --repo names the repository.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/timeout-bin.sh" 2>/dev/null
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
+  for flag in --pr --head --repo; do
+    reset; RC=0; "$_TIMEOUT_BIN" 5 bash "$SCRIPT_DIR/cr-first-release.sh" "$flag" >"$TMP/out-arg" 2>&1 || RC=$?
+    eq "$RC" 2 "CLI: a trailing $flag with no value is a usage error, not a hang"
+  done
+else
+  echo "skip CLI trailing-flag rows: no timeout binary"
+fi
+reset; RC=0; bash "$SCRIPT_DIR/cr-first-release.sh" --repo o/r --pr 42 --head "$HEAD1" >"$TMP/out-arg" 2>&1 || RC=$?
+has "$TMP/out-arg" '^CR-FIRST RELEASE ' "CLI: --repo o/r --pr --head runs against the named repository"
 
 # ── the ledger CLI ───────────────────────────────────────────────────────────
 LCLI="$SCRIPT_DIR/../cr/cr-trigger-ledger.sh"

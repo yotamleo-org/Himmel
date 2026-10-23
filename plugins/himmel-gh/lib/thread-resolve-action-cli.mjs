@@ -182,7 +182,7 @@ if (forge !== 'bitbucket') {
     const sha = head.stdout.trim();
     if (head.exitCode === 0 && /^[0-9a-f]{40}$/.test(sha) && existsSync(lib)) {
       await new Promise((resolve) => {
-        const p = spawn('bash', [lib, '--pr', String(number), '--head', sha], { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60000 });
+        const p = spawn('bash', [lib, '--pr', String(number), '--head', sha, '--repo', `${owner}/${repo}`], { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60000 });
         p.on('error', resolve);
         p.on('close', resolve);
       });

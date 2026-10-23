@@ -46,7 +46,7 @@
 # HIMMEL_CONSOLE_DOC (extra alert sink: a console doc named *-console.md).
 #
 # Sourceable (cr_first_release) and executable:
-#   bash scripts/lib/cr-first-release.sh [--pr N] [--head SHA]
+#   bash scripts/lib/cr-first-release.sh [--pr N] [--head SHA] [--repo OWNER/NAME]
 # bash 3.2-safe; does not toggle set -e.
 
 _CRF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -188,7 +188,7 @@ _crf_do_release() {
 }
 
 _crf_release_locked() {
-    local repo="$1" pr="$2" head="$3" reason="$4" state="$5" settled="$6" cdate="${_CRF_FLOOR:-}" events reviewers cur
+    local repo="$1" pr="$2" head="$3" reason="$4" state="$5" settled="$6" cdate="${_CRF_FLOOR:-}" events reviewers cur labels
     # The gate took a while to evaluate: a push since then means this approval is for a head that is gone.
     cur=$(gh api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null | jq -r '[.state // "", .head.sha // ""] | @tsv' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot re-read PR #$pr)"; return 3; }
@@ -202,7 +202,15 @@ _crf_release_locked() {
         echo "CR-FIRST ERROR label ci:go does not exist in $repo — create it once (a label write would auto-create it with no colour or description); nothing written"
         return 2
     fi
-    gh api -X DELETE "repos/$repo/issues/$pr/labels/ci:go" </dev/null >/dev/null 2>&1 || true
+    if ! gh api -X DELETE "repos/$repo/issues/$pr/labels/ci:go" </dev/null >/dev/null 2>&1; then
+        # A failed remove is fine only when the label was never on the PR: an add over a label
+        # that stays on gives no fresh `labeled` event, so the head would read released and never run.
+        labels=$(_crf_list "repos/$repo/issues/$pr/labels?per_page=100") || labels=""
+        if [ -z "$labels" ] || printf '%s' "$labels" | jq -e 'any(.[]; .name == "ci:go")' >/dev/null 2>&1; then
+            echo "CR-FIRST ERROR could not remove label ci:go from PR #$pr — head $head stays unreleased; the next call retries"
+            return 2
+        fi
+    fi
     if ! gh api -X POST "repos/$repo/issues/$pr/labels" -f 'labels[]=ci:go' </dev/null >/dev/null 2>&1; then
         echo "CR-FIRST ERROR could not add label ci:go to PR #$pr — head $head stays unreleased; the next call retries"
         return 2
@@ -340,6 +348,8 @@ cr_first_release() {
                 esac
             done <<<"$holds"
             return 1 ;;
+        0) ;;
+        *) echo "CR-FIRST HOLD degraded (reviewer gate rc=$grc) $age"; return 3 ;;
     esac
     # rc 0: the reviewer gate passed.
     case "$out" in
@@ -385,26 +395,27 @@ cr_first_sweep() {
 }
 
 _crf_main() {
-    local pr="" head="" info
+    local pr="" head="" nwo="" info
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --pr) pr="${2:-}"; shift 2 ;;
-            --head) head="${2:-}"; shift 2 ;;
-            *) echo "usage: cr-first-release.sh [--pr N] [--head SHA]" >&2; return 2 ;;
+            --pr|--head|--repo)
+                [ "$#" -ge 2 ] || { echo "usage: cr-first-release.sh [--pr N] [--head SHA] [--repo OWNER/NAME]" >&2; return 2; }
+                case "$1" in --pr) pr="$2" ;; --head) head="$2" ;; *) nwo="$2" ;; esac
+                shift 2 ;;
+            *) echo "usage: cr-first-release.sh [--pr N] [--head SHA] [--repo OWNER/NAME]" >&2; return 2 ;;
         esac
     done
     if [ -z "$pr" ] || [ -z "$head" ]; then
         # Switch first: with the gate off, a caller that names no PR gets no read and no output.
-        local nwo
-        nwo=$(_cmg_local_nwo 2>/dev/null || true)
+        [ -n "$nwo" ] || nwo=$(_cmg_local_nwo 2>/dev/null || true)
         case "$nwo" in */*/*) nwo=${nwo#*/} ;; esac
         cr_first_switch_on "$nwo" || return 0
-        info=$(gh pr view --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) \
+        info=$(gh pr view ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) \
             || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
         [ -n "$pr" ] || pr=${info%% *}
         [ -n "$head" ] || head=${info#* }
     fi
-    cr_first_release "$pr" "$head"
+    cr_first_release "$pr" "$head" "$nwo"
 }
 
 if ! (return 0 2>/dev/null); then
