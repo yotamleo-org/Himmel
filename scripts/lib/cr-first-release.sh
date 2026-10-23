@@ -291,7 +291,7 @@ cr_first_release() {
     cheap=$(printf '%s' "$checks" | jq -r --arg re "${CR_FIRST_CHEAP_RE:-^(ci-quick|secret-scan|bwk-awk-mktemp-gate|unchecked-mktemp-range|leak-classes|git-env-scrub|commit-lint|plugin-version-bump|lint)\$}" '
         [.check_runs[] | select(.name | test($re))] as $c
         | (if any($c[]; .status == "completed" and ((.conclusion // "") | IN("failure", "cancelled", "timed_out", "action_required", "startup_failure"))) then "red"
-           elif (any($c[]; .name == "ci-quick") | not) or any($c[]; .status != "completed") then "pending"
+           elif (any($c[]; .name == "ci-quick" and .status == "completed" and .conclusion == "success") | not) or any($c[]; .status != "completed") then "pending"
            else "green" end),
           ([$c[] | .completed_at // empty] | max // "")' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot classify check-runs at $head) $age"; return 3; }

@@ -227,6 +227,9 @@ has "$TMP/out-RL11-cheap-green" '^CR-FIRST RELEASE ' "RL11 ci-quick green: relea
 eq "$(deletes)/$(posts)" 1/1 "RL11 ci-quick green: one pair"
 reset; checks none; run R2-cheap-not-reported
 has "$TMP/out-R2-cheap-not-reported" '^CR-FIRST HOLD cheap-pending ' "R2 ci-quick not reported yet: HOLD cheap-pending"
+reset; checks skipped; run R2-cheap-skipped
+has "$TMP/out-R2-cheap-skipped" '^CR-FIRST HOLD cheap-pending ' "R2 ci-quick skipped is not a pass: HOLD cheap-pending"
+eq "$(deletes)/$(posts)" 0/0 "R2 ci-quick skipped: no label"
 reset; checks failure; run R3-cheap-red
 has "$TMP/out-R3-cheap-red" '^CR-FIRST HOLD cheap-red ' "R3 cheap side red: HOLD cheap-red"
 eq "$(deletes)/$(posts)" 0/0 "R3 cheap side red: no label"
