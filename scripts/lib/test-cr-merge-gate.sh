@@ -910,6 +910,12 @@ has "$TMP/out-G2-merge-mode-in-progress-relaxed" '^NOTE: CodeRabbit pending' "G2
 GH_STUB_MODE=cr-ratelimited rgr G3-release-rate-limited-relaxed 0
 GH_STUB_MODE=clean rgr G3b-release-clean-go 0
 GH_STUB_MODE=cr-absent rgr G3c-release-absent-relaxed 0
+# G4 — the release flag is scoped to the call: after a --release gate, whether it
+# ran through the evaluation or returned early, the shell holds no flag for the
+# merge gate to read.
+if [ "${_CRG_RELEASE:-unset}" = unset ]; then pass=$((pass+1)); echo "ok   G4 a full --release call leaves no flag behind"; else fail=$((fail+1)); echo "FAIL G4 _CRG_RELEASE=$_CRG_RELEASE survives a --release call"; fi
+cr_reviewer_gate "" "" "" --release >/dev/null 2>&1 || true
+if [ "${_CRG_RELEASE:-unset}" = unset ]; then pass=$((pass+1)); echo "ok   G4b an early --release return leaves no flag behind"; else fail=$((fail+1)); echo "FAIL G4b _CRG_RELEASE=$_CRG_RELEASE survives an early --release return"; fi
 
 # hermeticity guard — prove the startup scrub holds. Re-run this
 # whole suite in a subprocess EXPORTING the exact armed bypass env an

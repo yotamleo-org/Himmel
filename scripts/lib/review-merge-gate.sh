@@ -500,8 +500,7 @@ _crg_eval() {
 #   pending) holds instead of relaxing. The merge gate omits it (H11): a merge
 #   also needs green heavy CI at the head.
 cr_reviewer_gate() {
-    local num="${1:-}" head="${2:-}" repo="${3:-}" cfg rc=0 owner name
-    _CRG_RELEASE=0
+    local num="${1:-}" head="${2:-}" repo="${3:-}" cfg rc=0 owner name _CRG_RELEASE=0
     case "$repo" in --release) _CRG_RELEASE=1; repo="" ;; esac
     [ "${4:-}" = --release ] && _CRG_RELEASE=1
     if [ -z "$num" ] || [ -z "$head" ]; then

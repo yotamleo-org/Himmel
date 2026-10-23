@@ -94,7 +94,9 @@ ledger_lines() { [ -f "$CR_FIRST_LEDGER" ] && wc -l < "$CR_FIRST_LEDGER" | tr -d
 
 HEAD1=a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0
 T0=2026-10-23T10:00:00Z
-NOW0=$(date -u -d "$T0" +%s)
+iso_to_epoch() { jq -rn --arg t "$1" '$t | fromdateiso8601'; }
+epoch_to_iso() { jq -rn --argjson e "$1" '$e | todate'; }
+NOW0=$(iso_to_epoch "$T0")
 CR_STATUS_HEAD=5e6893ec097a8e67872f9d1670e26c108c9778e0   # PR 3222's real head in the bundle
 
 # real_statuses <skip-newest-n> — the real CodeRabbit statuses of one bundle
@@ -238,7 +240,7 @@ eq "$(grep -c '^CR-FIRST HOLD' "$TMP/out-R3-cheap-red")" 1 "R3 cheap side red: n
 # ── the reviewer gate at release (R-3595a-d, R1, R4-R8, RL1, RL3, RL6) ───────
 # The real PR 3222 "Review in progress" status is the newest once the two later
 # statuses are dropped; the clock sits two minutes after it, inside the stuck bound.
-PEND_AT=$(date -u -d "$(real_statuses 2 | jq -r '.[0].created_at')" +%s)
+PEND_AT=$(iso_to_epoch "$(real_statuses 2 | jq -r '.[0].created_at')")
 stuck_reset() { reset; real_statuses 2 >"$S/statuses.json"; jq -nc --arg h "$HEAD1" '{sha:$h,commit:{committer:{date:"2026-10-19T18:00:00Z"}}}' > "$S/commit.json"; echo '[]' > "$S/comments.json"; }
 # R-3595a — the real "Review in progress" capture, codex pass, cheap green: HOLD (rev 6 gave GO).
 stuck_reset; export CR_FIRST_NOW=$((PEND_AT + 120)); run R-3595a-in-progress
@@ -273,10 +275,13 @@ p1 RL1
 # RL3 — each PR is judged on its own head.
 reset; run RL3-first; jq -c '.head.sha = "bbbb'"${HEAD1:4}"'"' "$S/pull.json" > "$S/p.tmp" && mv "$S/p.tmp" "$S/pull.json"
 HEADB=bbbb${HEAD1:4}; led "$(av "$HEAD1" codex ok)" "$(av "$HEAD1" claude ok)" "$(av "$HEADB" codex ok)" "$(av "$HEADB" claude ok)"
-echo '[]' > "$S/statuses.json"; cp "$RL_COMMENTS" "$S/comments.json"
+echo '[]' > "$S/statuses.json"; echo '[]' > "$S/events.json"; cp "$RL_COMMENTS" "$S/comments.json"
 jq -nc --arg h "$HEADB" '{sha:$h,commit:{committer:{date:"2026-10-19T19:30:00Z"}}}' > "$S/commit.json"
 RC=0; cr_first_release 43 "$HEADB" o/r >"$TMP/out-RL3-second" 2>&1 || RC=$?
 has "$TMP/out-RL3-first" '^CR-FIRST RELEASE ' "RL3 PR A released on its own head"
+has "$TMP/out-RL3-second" '^CR-FIRST RELEASE ' "RL3 PR B released on its own head"
+jq -es --arg h "$HEADB" 'any(.[]; .pr == 43 and .head == $h)' "$CR_FIRST_LEDGER" >/dev/null 2>&1 \
+  && ok "RL3 the release ledger records PR B at its own head" || bad "RL3 no ledger line for PR 43 at $HEADB"
 # R6/R7 — no codex row at the head (3595's real ledger state, or a merge of main with no carry row): HOLD.
 reset; led; run R6-codex-not-yet-run
 has "$TMP/out-R6-codex-not-yet-run" '^CR-FIRST HOLD codex not-yet-run ' "R6/R7 no codex row at the head: HOLD codex not-yet-run"
@@ -368,7 +373,7 @@ export CR_FIRST_NOW=$((PEND_AT + 2000)); run S2-rate-limit
 has "$TMP/out-S2-rate-limit" '^CR-FIRST RELEASE coderabbit-stuck .*rate.?limit' "S2 past the bound + rate-limit comment: loud release"
 eq "$(deletes)/$(posts)" 1/1 "S2 one pair"
 # S3 — past the bound, CodeRabbit is still active (a comment edited a minute ago), service ok: keep holding.
-stuck_reset; jq -nc --arg t "$(date -u -d "@$((PEND_AT + 1950))" +%Y-%m-%dT%H:%M:%SZ)" '[{user:{id:136622811,login:"coderabbitai[bot]",type:"Bot"},created_at:"2026-10-19T18:16:00Z",updated_at:$t,body:"Walkthrough in progress"}]' > "$S/comments.json"
+stuck_reset; jq -nc --arg t "$(epoch_to_iso $((PEND_AT + 1950)))" '[{user:{id:136622811,login:"coderabbitai[bot]",type:"Bot"},created_at:"2026-10-19T18:16:00Z",updated_at:$t,body:"Walkthrough in progress"}]' > "$S/comments.json"
 export CR_FIRST_NOW=$((PEND_AT + 2000)); run S3-progressing
 has "$TMP/out-S3-progressing" '^CR-FIRST HOLD coderabbit in-progress ' "S3 still progressing: keep holding"
 eq "$(deletes)/$(posts)" 0/0 "S3 still progressing: no label"
@@ -403,6 +408,13 @@ has "$TMP/out-readonly-pass" '^CR-FIRST PENDING-RELEASE ' "read-only: a passing 
 eq "$(deletes)/$(posts)/$(ledger_lines)" 0/0/0 "read-only: no label write, no ledger line"
 reset; checks pending; CR_FIRST_READONLY=1 run readonly-hold
 has "$TMP/out-readonly-hold" '^CR-FIRST HOLD cheap-pending ' "read-only: a hold still prints"
+# a hard lane that is down raises no alert in read-only mode: the once-per-outage
+# key stays for the tick sweep and the console doc is not written.
+RO_CONSOLE="$TMP/ro-console.md"; printf '# console\n\n## Results (newest at the bottom)\n' > "$RO_CONSOLE"
+reset; led "$(av "$HEAD1" codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av "$HEAD1" claude ok)"
+HIMMEL_CONSOLE_DOC="$RO_CONSOLE" CR_FIRST_READONLY=1 run readonly-hard-down
+has "$TMP/out-readonly-hard-down" '^CR-FIRST HOLD hard-unavailable codex ' "read-only hard lane down: the hold still prints"
+eq "$(grep -c 'CR-FIRST ALERT' "$RO_CONSOLE")/$([ -s "$CR_FIRST_ALERTS" ] && echo alerts || echo none)" 0/none "read-only hard lane down: no console bullet, no alert key consumed"
 
 # ── the console tick's sweep (event point 5) ─────────────────────────────────
 sweep() { printf '%b' "$1" | cr_first_sweep o/r >"$TMP/out-sweep" 2>/dev/null; }

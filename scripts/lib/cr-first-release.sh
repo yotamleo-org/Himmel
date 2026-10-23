@@ -42,7 +42,7 @@
 # CR_FIRST_STATUS_URL (statuspage JSON), CR_FIRST_NOW (epoch seam for tests),
 # CR_FIRST_LEDGER / CR_FIRST_ALERTS (see cr-trigger-ledger.sh),
 # CR_FIRST_READONLY=1 (a passing gate prints `CR-FIRST PENDING-RELEASE ...` and
-# writes no label and no ledger line: ready-check.sh is a read-only script),
+# writes no label, no ledger line and no alert: ready-check.sh is a read-only script),
 # HIMMEL_CONSOLE_DOC (extra alert sink: a console doc named *-console.md).
 #
 # Sourceable (cr_first_release) and executable:
@@ -80,10 +80,11 @@ _crf_list() {
 _crf_reviewers_json() {
     local line="$1" head="$2" common scores
     common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || true)
-    scores=$(cat "$common/cr-critic-scores.jsonl" 2>/dev/null || true)
+    scores="$common/cr-critic-scores.jsonl"
+    [ -f "$scores" ] || scores=/dev/null
     [ -n "$line" ] || { echo '[]'; return 0; }
     line=$(printf '%s' "$line" | sed -E 's/^cr-reviewer-gate: PR #[0-9]+ head [^:]+: //')
-    jq -nc --arg line "$line" --arg scores "$scores" --arg head "$head" '
+    jq -nc --arg line "$line" --rawfile scores "$scores" --arg head "$head" '
       ($scores | split("\n") | map(fromjson? // empty)
         | map(. as $o | select($o.head != null and (($o.head | tostring | length) >= 7)
                               and ($head | startswith($o.head | tostring))))) as $rows
@@ -103,6 +104,7 @@ _crf_reviewers_json() {
 # _crf_alert <slug> <reason> <head> — one console alert per (slug, reason).
 _crf_alert() {
     local slug="$1" reason="$2" text
+    [ "${CR_FIRST_READONLY:-0}" = 1 ] && return 0
     text="CR-FIRST ALERT hard reviewer $slug is unavailable ($reason): ci:go is held fleet-wide until it can review. Levers in order: restore the $slug lane; with operator ruling a critics.local.json overlay {\"slug\":\"$slug\",\"mode\":\"best-effort\"} or {\"slug\":\"$slug\",\"drop\":true}; a manual ci:go only if the head will be reviewed before merge."
     bash "$_CRF_LEDGER_CLI" alert-once "$slug|$reason" "$text" || return 0
     if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -f "$HIMMEL_CONSOLE_DOC" ]; then
@@ -282,7 +284,7 @@ cr_first_release() {
         || { echo "CR-FIRST HOLD degraded (cannot read PR #$pr events) $age"; return 3; }
     if printf '%s' "$events" | jq -e --arg d "$_CRF_FLOOR" \
         '[.[] | select(.event == "labeled" and .label.name == "ci:go" and .created_at >= $d)] | length > 0' >/dev/null 2>&1; then
-        if ! bash "$_CRF_LEDGER_CLI" has "$pr" "$head" 2>/dev/null; then
+        if [ "${CR_FIRST_READONLY:-0}" != 1 ] && ! bash "$_CRF_LEDGER_CLI" has "$pr" "$head" 2>/dev/null; then
             bash "$_CRF_LEDGER_CLI" alert-once "manual|$repo#$pr|$head" "CR-FIRST MANUAL-RELEASE PR #$pr head $head: ci:go set with no release-ledger line" || true
         fi
         return 0
@@ -307,7 +309,7 @@ cr_first_release() {
     out=$(cr_reviewer_gate "$pr" "$head" "$repo" --release 2>&1 </dev/null) || grc=$?
     state_line=$(printf '%s\n' "$out" | grep -m1 '^cr-reviewer-gate: PR #' || true)
     # A hard reviewer that passes again ends its outage alert.
-    if [ -n "$state_line" ]; then
+    if [ -n "$state_line" ] && [ "${CR_FIRST_READONLY:-0}" != 1 ]; then
         while IFS= read -r slug; do
             [ -n "$slug" ] && bash "$_CRF_LEDGER_CLI" alert-clear "$slug" >/dev/null 2>&1
         done < <(printf '%s' "${state_line#*head *: }" | jq -Rr 'split(" · ")[] | capture("^(?<s>[^ ]+) hard pass")? | .s')
