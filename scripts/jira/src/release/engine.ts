@@ -262,7 +262,7 @@ export function fold(ctx: Ctx, o: { to: string; items: FoldItem[] }): FoldOut {
   operatorFence(ctx);
   for (const it of o.items) {
     if (!ISSUE_KEY.test(it.key)) throw new Error(`release fold: '${it.key}' is not an issue key`);
-    if (!Number.isInteger(it.pr) || it.pr <= 0) throw new Error(`release fold: ${it.key} needs a positive PR number`);
+    if (!Number.isSafeInteger(it.pr) || it.pr <= 0) throw new Error(`release fold: ${it.key} needs a positive PR number`);
   }
   return locked(ctx, (l) => {
     foldVersion(ctx, l, o.to);
