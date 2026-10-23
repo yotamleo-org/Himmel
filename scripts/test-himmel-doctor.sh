@@ -7055,31 +7055,36 @@ if grepq "$out" -F 'OK   C71-verdict-scratch' && grepq "$out" -F 'no judge scrat
 rm -rf "$c71_t"
 
 # --- C72-design-mcp-auth: design profile MCP logins ---------------
-# Reads $CLAUDE_DIR/.credentials.json mcpOAuth (key names only, never token
-# values); silent when the file is absent (keychain platforms).
+# Reads $CLAUDE_DIR/.credentials.json mcpOAuth (server names only, never token
+# values); silent when the file is absent (keychain platforms). A plugin's server
+# is stored as plugin:<plugin>:<server>, with serverName equal to the key prefix.
 c72_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c72.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c72_t/home" "$c72_t/claude"
 c72_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c72_t/claude" HOME="$c72_t/home" bash "$DOC" --no-color 2>&1; }
 echo "== C72-design-mcp-auth: credentials file without either login -> WARN naming both =="
-printf '{"mcpOAuth":{"plugin:atlassian:atlassian|x":{"serverName":"atlassian","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
+printf '{"mcpOAuth":{"plugin:atlassian:atlassian|x":{"serverName":"plugin:atlassian:atlassian","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'WARN C72-design-mcp-auth' && grepq "$out" -F 'context7' && grepq "$out" -F 'agent-native-dispatch' && grepq "$out" -F '/mcp'; then pass "C72 neither login -> WARN naming both and /mcp"; else fail "C72 none -> $(printf '%s' "$out" | grep -A1 C72)"; fi
 echo "== C72-design-mcp-auth: only context7 logged in -> WARN names agent-native-dispatch only =="
-printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
+printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"plugin:context7:context7","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'WARN C72-design-mcp-auth' && grepq "$out" -F 'agent-native-dispatch' && ! grepq "$out" -F 'missing: context7'; then pass "C72 partial -> WARN for the missing one only"; else fail "C72 partial -> $(printf '%s' "$out" | grep -A1 C72)"; fi
 echo "== C72-design-mcp-auth: an entry with no accessToken counts as missing =="
-printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"},"plugin:builder-skills:agent-native-dispatch|y":{"serverName":"agent-native-dispatch"}}}' > "$c72_t/claude/.credentials.json"
+printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"plugin:context7:context7","accessToken":"t"},"plugin:builder-visual:agent-native-dispatch|y":{"serverName":"plugin:builder-visual:agent-native-dispatch"}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'WARN C72-design-mcp-auth' && grepq "$out" -F 'agent-native-dispatch'; then pass "C72 tokenless entry -> WARN"; else fail "C72 tokenless -> $(printf '%s' "$out" | grep -A1 C72)"; fi
 echo "== C72-design-mcp-auth: an empty accessToken counts as missing =="
-printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"},"plugin:builder-skills:agent-native-dispatch|y":{"serverName":"agent-native-dispatch","accessToken":""}}}' > "$c72_t/claude/.credentials.json"
+printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"plugin:context7:context7","accessToken":"t"},"plugin:builder-visual:agent-native-dispatch|y":{"serverName":"plugin:builder-visual:agent-native-dispatch","accessToken":""}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'WARN C72-design-mcp-auth' && grepq "$out" -F 'agent-native-dispatch'; then pass "C72 empty accessToken -> WARN"; else fail "C72 empty token -> $(printf '%s' "$out" | grep -A1 C72)"; fi
-echo "== C72-design-mcp-auth: both logged in -> OK, silent about warnings =="
-printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"context7","accessToken":"t"},"plugin:builder-skills:agent-native-dispatch|y":{"serverName":"agent-native-dispatch","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
+echo "== C72-design-mcp-auth: both logged in under plugin-scoped names -> OK, no warning =="
+printf '{"mcpOAuth":{"plugin:context7:context7|x":{"serverName":"plugin:context7:context7","accessToken":"t"},"plugin:builder-visual:agent-native-dispatch|y":{"serverName":"plugin:builder-visual:agent-native-dispatch","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'OK   C72-design-mcp-auth' && ! grepq "$out" 'WARN C72'; then pass "C72 both -> OK"; else fail "C72 both -> $(printf '%s' "$out" | grep -A1 C72)"; fi
+echo "== C72-design-mcp-auth: bare (user-level) server names also count -> OK =="
+printf '{"mcpOAuth":{"context7|x":{"serverName":"context7","accessToken":"t"},"agent-native-dispatch|y":{"serverName":"agent-native-dispatch","accessToken":"t"}}}' > "$c72_t/claude/.credentials.json"
+out="$(c72_run)"
+if grepq "$out" 'OK   C72-design-mcp-auth' && ! grepq "$out" 'WARN C72'; then pass "C72 bare names -> OK"; else fail "C72 bare -> $(printf '%s' "$out" | grep -A1 C72)"; fi
 echo "== C72-design-mcp-auth: no credentials file -> silent =="
 rm -f "$c72_t/claude/.credentials.json"
 out="$(c72_run)"

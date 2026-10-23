@@ -3323,13 +3323,14 @@ check_c56_qmd_orphans() {
 # The design profile needs context7 and builder-visual's agent-native-dispatch
 # logged in once per machine; a worker session cannot answer the OAuth prompt, so
 # a missing login looks like a hang. Claude Code keeps the grants under
-# mcpOAuth in $CLAUDE_DIR/.credentials.json; read key names only, never the
-# token values, and make no network call. Silent where that file is absent
+# mcpOAuth in $CLAUDE_DIR/.credentials.json. A plugin's server is stored as
+# plugin:<plugin>:<server>, so match the last segment of serverName; read server
+# names only, never the token values, and make no network call. Silent where that file is absent
 # (keychain platforms), since the state cannot be read there.
 check_c72_design_mcp_auth() {
     local cred="$CLAUDE_DIR_R/.credentials.json" have missing="" s
     [ -f "$cred" ] || return 0
-    have="$(jq -r '(.mcpOAuth // {}) | to_entries[] | select((.value.accessToken // "") != "") | .value.serverName' "$cred" 2>/dev/null)" || return 0
+    have="$(jq -r '(.mcpOAuth // {}) | to_entries[] | select((.value.accessToken // "") != "") | (.value.serverName // "") | split(":") | last' "$cred" 2>/dev/null)" || return 0
     for s in context7 agent-native-dispatch; do
         grep -qx "$s" <<< "$have" || missing="${missing:+$missing, }$s"
     done
