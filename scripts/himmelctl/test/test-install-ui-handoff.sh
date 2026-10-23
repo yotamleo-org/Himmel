@@ -15,6 +15,7 @@
 #   C2. always-on unit up, no browser -> no link, the terminal secret prompt instead
 #   D. no browser         -> no server, no link; a secret typed in the terminal is stored
 #   E. --dry-run          -> nothing started, no link
+#   G. a handoff that throws -> a warning, the install rc stays 0
 #   F. page and server copy never name #page=configure, port 37931, a link without #t=, or
 #      send a secret to `himmelctl install`
 set -uo pipefail
@@ -80,7 +81,7 @@ run_install() {
   out=$(env "${scrub[@]}" PATH="$c/stub:$PATH" HOME="$c/home" USERPROFILE="$(winpath "$c/home")" \
     HIMMELCTL_CACHE_DIR="$(winpath "$c/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$c/cache/luna-config.json")" \
     HIMMELCTL_REPO_ROOT="$(winpath "$c/fx")" HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$c/units" \
-    HIMMELCTL_INTERACTIVE=0 HIMMELCTL_UI_HANDOFF=1 "${envs[@]}" \
+    HIMMELCTL_INTERACTIVE=0 HIMMELCTL_UI_HANDOFF=1 ${envs[@]+"${envs[@]}"} \
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 120} "$node_bin" "$wizard" install --from-profile "$(winpath "$c/profile.json")" "$@" < "$in" 2>&1) || rc=$?
 }
 
@@ -149,6 +150,14 @@ run_install /dev/null DISPLAY=:0 -- --dry-run
 grep -qE "$setup_link_re" <<< "$out" && fail "E: dry-run printed a Setup link"
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "E: dry-run started a server"
 echo "ok: E --dry-run starts nothing"
+
+# ── G: a handoff that throws never fails a successful install ──────────────
+new_case G
+mkdir -p "$c/home/.himmel/state"; printf '{"pid":1,"port":99999,"token":"x"}\n' > "$c/home/.himmel/state/ui-adhoc.json"
+run_install /dev/null DISPLAY=:0 --
+[ "$rc" -eq 0 ] || fail "G: a failing handoff turned a good install into rc=$rc: $out"
+grep -qF 'UI handoff failed' <<< "$out" || fail "G: no warning that the handoff failed: $out"
+echo "ok: G a throwing handoff warns and leaves the install rc untouched"
 
 # ── F: copy never names the retired link forms ─────────────────────────────
 files=(docs/ui.md docs/setup/install.md scripts/config-ui/public scripts/config-ui/setup.ts)

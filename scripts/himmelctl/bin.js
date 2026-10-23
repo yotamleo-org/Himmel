@@ -5069,7 +5069,13 @@ async function cmdInstall(args) {
   if (rc === 0 && !args.dryRun && shouldPrompt(args)) {
     await offerSaveProfile(answers);
   }
-  if (rc === 0 && !args.dryRun && !args.declined && uiHandoffEnabled()) await installUiHandoff(answers);
+  if (rc === 0 && !args.dryRun && !args.declined && uiHandoffEnabled()) {
+    try {
+      await installUiHandoff(answers);
+    } catch (e) {
+      console.error(`himmelctl: WARN: UI handoff failed (${e && e.message ? e.message : e}); the install is unaffected. Run \`himmelctl ui\` to open the Setup page.`);
+    }
+  }
   return rc;
 }
 
