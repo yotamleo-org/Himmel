@@ -16,7 +16,9 @@ with the `lean` plugin set, see [setup/install.md](setup/install.md)).
 | Wait for CI and review threads on a PR | `/check-ci` | Checkout. Adopted repo: `bash scripts/check-ci.sh <pr>` |
 | See how each reviewer is scoring, and tune them | `/cr-scores`, `/cr-tune`, `/cr-learnings-refresh` | Adopted repo (copied in by the install) and checkout |
 | Say where cross-session notes live | `/handover-setup` | Plugin `handover`, in the `lean` set |
-| Save or resume a session | `/handover-resume`, `/handover-resume-armed`, `/handover-flush` | Checkout only; in an adopted repo ask for the `handover` skill of the `handover` plugin |
+| Resume a tracked handover item | `/handover-resume` | Checkout. Adopted repo: ask for the `handover` skill of the `handover` plugin to resume it |
+| Recover an armed session | `/handover-resume-armed` | Checkout only |
+| Run the session-end consolidation sweep | `/handover-flush` | Checkout only |
 | Run a supervisor session that dispatches workers | `/chief` | Plugin `himmel-ops`, in the `lean` set |
 | Check the harness for known problems | `/himmel-doctor` | Plugin `himmel-ops`, in the `lean` set |
 | Update himmel and its vault | `/himmel-update`, `/himmel-update-all` | Plugin `himmel-ops`, in the `lean` set |

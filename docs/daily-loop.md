@@ -28,8 +28,9 @@ in [the development graph](guide/dev-graph.html).
 ## Adopter route: your own repo
 
 The install ([setup/install.md](setup/install.md)) is committed on your
-default branch, and you opened `claude` at the repo root; the hooks fire only
-inside a session. The loop is the git you already use with a few guards
+default branch, and you opened `claude` at the repo root; the edit guard fires
+only inside a session, while the `commit-msg` and `pre-push` git hooks run for
+every commit and push. The loop is the git you already use with a few guards
 around it, and you run scripts rather than slash commands.
 
 1. **Cut a worktree.** An edit on the default branch is refused by the
