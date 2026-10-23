@@ -8,7 +8,7 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     session only to re-arm it. Instead, run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`** — both
     are required: the default background limit (30 min) killed a waiter once. The harness re-invokes you when the command exits:
-    `bash "<kit>/console-wait.sh" "<inbox>" --doc "<this file>" --token <your token> --legs "<absolute leg docs>"`
+    `bash scripts/handover/console-kit/console-wait.sh "<inbox>" --doc "<this file>" --token <your token> --legs "<absolute leg docs>"`
     (everything after the inbox path is passed to `tick.sh` unchanged). It is
     silent while nothing happens and **exits on the first real event**,
     printing one block: `WAKE telegram` plus the operator's line(s), or
@@ -111,3 +111,18 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     when the relay absorbed anything (labels and PR numbers only), and the
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
+
+    **Permission.** The tracked `.claude/settings.json` allows exactly the
+    step-10 launch shape `bash scripts/handover/console-kit/console-wait.sh …`
+    (`Bash(bash scripts/handover/console-kit/console-wait.sh:*)`) and nothing
+    wider: no glob before the path, because a glob can span quotes and would let
+    `bash "-c" "<cmd>" "…/console-wait.sh"` match. The harness refuses any
+    command containing a `$VAR` expansion before it reads the allow list, so the
+    command is spelled relative, never with `$HIMMEL_REPO`. The chief runs it with
+    its cwd at the primary checkout root (a separate `cd` call first, never a
+    `cd … &&` prefix), so it runs the primary's copy of the waiter. The
+    operator's local Bash-wrapped absolute rule (`Bash(bash "<abs kit>/console-wait.sh" *)`,
+    added through `/permissions`; a bare path with a wildcard is skipped as
+    invalid) stays as the fallback for an absolute spelling. The chief never
+    re-spells the command to dodge a refusal: it sends the operator the exact
+    line and holds.
