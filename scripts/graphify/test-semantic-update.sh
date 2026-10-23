@@ -555,16 +555,18 @@ for rel in documents explains rationale_for; do
   case "$REAL_SCHEMA_RELATIONS" in *"$rel"*) fail "T47 fixture already lists $rel" ;; *) pass "T47 real schema lacks $rel, so the addendum is needed" ;; esac
 done
 
-echo "T48: --max-run-usd stops further lane calls once the summed cost reaches it"
+echo "T48: --max-run-usd is a planning input; a planned run goes past it with a WARN and no refusal"
 C48="$WS/c48"; new_corpus "$C48"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_CALL_N=4 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48 --corpus-root "$C48" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T48 two calls ran, the third was refused" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
-grep -q 'run spend cap' "$WS/claude.out" && pass "T48 shim states the cap" || fail "T48 no cap message: $(cat "$WS/claude.out")"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 4 ] && pass "T48 all four calls ran, none refused at the cap" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'past the planned cap' "$WS/claude.out" && pass "T48 shim logs the overshoot as a WARN" || fail "T48 no overshoot WARN: $(cat "$WS/claude.out")"
+grep -q 'run spend cap reached' "$WS/claude.out" && fail "T48 a call was refused at the cap: $(cat "$WS/claude.out")" || pass "T48 no cap refusal"
 
-echo "T54: a lane call with no verified cost is reserved at the per-call budget against the run cap"
+echo "T54: unpriced failing calls all run past the cap; the failure is not reported as cost"
 C54="$WS/c54"; new_corpus "$C54"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t54 --corpus-root "$C54" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && pass "T54 three unpriced calls ran, the fourth was refused" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 5 ] && pass "T54 all five unpriced calls ran" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'past the planned cap' "$WS/claude.out" && pass "T54 the overshoot is a WARN" || fail "T54 no overshoot WARN: $(cat "$WS/claude.out")"
 [ "$(lastrun "$C54" cost_usd)" = "0.0" ] && pass "T54 the reservation is not reported as cost" || fail "T54 row: $(tail -1 "$C54/graphify-out/semantic-runs.jsonl")"
 
 echo "T65: a call the lane refused before any API request adds nothing to the run cap"
@@ -579,14 +581,22 @@ C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"
 out=$(GRAPHIFY_STUB_REFUSEDLOG=1 GRAPHIFY_STUB_RC=1 run_api --name t66 --corpus-root "$C66" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [[ "$out" == *"graphify extract exited 1 (refused: stale-snapshot) --"* ]] && pass "T66 the closing line carries the refusal reason" || fail "T66 (rc=$rc): $(printf '%s' "$out" | tail -3)"
 
+echo "T67: the run cap sizes the batch so its estimated chunks fit"
+C67="$WS/c67"; new_corpus "$C67"
+for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C67/f$i.md"; done
+out=$(run_api --name t67 --corpus-root "$C67" --corpus-class himmel-code --backend claude-api --max-run-usd 0.50 --dry-run); rc=$?
+[[ "$out" == *"sized: batch of "* ]] && [[ "$out" == *"to fit the run cap of 0.50 USD"* ]] && pass "T67 an oversized batch is cut to fit the cap" || fail "T67 (rc=$rc): $out"
+out=$(run_api --name t67b --corpus-root "$C67" --corpus-class himmel-code --backend claude-api --max-run-usd 15.00 --dry-run); rc=$?
+[[ "$out" != *"sized:"* ]] && pass "T67 a batch inside the cap is not cut" || fail "T67b (rc=$rc): $out"
+
 echo "T55: a merge that fails after billed lane calls still leaves a run row with the cost"
 C55="$WS/c55"; new_corpus "$C55"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(GRAPHIFY_STUB_LEAK=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t55 --corpus-root "$C55" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 2 ] && [ "$(lastrun "$C55" cost_usd)" = "0.5" ] && pass "T55 failed merge row carries cost 0.5" || fail "T55 (rc=$rc): $(tail -1 "$C55/graphify-out/semantic-runs.jsonl" 2>&1)"
 
 echo "T49: the run row carries the summed lane cost, the backend and the cap"
-[ "$(lastrun "$C48" cost_usd)" = "1.2" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
-  && pass "T49 cost_usd 1.2, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C48" cost_usd)" = "2.4" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
+  && pass "T49 cost_usd 2.4, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
 [ "$(lastrun "$C46" cost_usd)" = "0.0" ] && pass "T49 a non-api run row has cost_usd 0.0" || fail "T49b row: $(tail -1 "$C46/graphify-out/semantic-runs.jsonl")"
 
 echo "T50: rationale and documents/explains/rationale_for edges survive the merge"

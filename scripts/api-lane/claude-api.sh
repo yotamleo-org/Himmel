@@ -95,6 +95,9 @@ if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   case "$PICK" in *'"snapshot_stale":true'*)
     echo "claude-api: WARN: no fresh credit reading; routing inside the account cap and reserve, Anthropic's limits decide" >&2 ;;
   esac
+  case "$PICK" in *'"over_estimate":true'*)
+    echo "claude-api: WARN: our own spend estimate has no room left on either account; the call goes on and the API's credit answer decides" >&2 ;;
+  esac
   HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | sed -n 's/.*"account":"\([AB]\)".*/\1/p')"
   [ -n "$HIMMEL_API_ACCOUNT" ] || refuse "auto routing returned no account"
 fi

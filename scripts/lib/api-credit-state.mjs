@@ -308,7 +308,10 @@ export function creditState(command, options = {}, env = process.env) {
       const maximum = money(options.usd);
       if (maximum === 0n) refuse('positive-maximum-required');
       if (a && own(a.jobs, options.id)) refuse('duplicate-job');
-      if (maximum > money(result.available_est_usd)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
+      // our own estimate (the cap and the ledger) never refuses a start while the credit reading is old or absent:
+      // only a fresh reading with too little left does, and the API's own credit-too-low answer is the hard stop
+      const overEstimate = maximum > money(result.available_est_usd);
+      if (overEstimate && !(optional && result.snapshot_stale)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
       if (!a) {
         a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };
         state.accounts[account] = a;
@@ -317,8 +320,9 @@ export function creditState(command, options = {}, env = process.env) {
       save(statePath, state, lock, sentinels);
       // Report the committed admission, not a second clock-dependent verdict.
       return { ...result, verdict: 'PROCEED', job_id: options.id,
+        ...(overEstimate ? { over_estimate: true } : {}),
         reserved_usd: usd(money(result.reserved_usd) + maximum),
-        available_est_usd: usd(money(result.available_est_usd) - maximum) };
+        available_est_usd: usd(overEstimate ? 0n : money(result.available_est_usd) - maximum) };
     }
     if (command === 'exhausted') {
       if (!a) {
@@ -361,8 +365,9 @@ export function creditState(command, options = {}, env = process.env) {
 // Anthropic's own limits decide the rest (the pick carries snapshot_stale / snapshot_unknown). A reading
 // fresher than 24 h wins over an older one. An account marked exhausted within the last hour is skipped
 // unless a newer reading exists; when every account with room is marked, the one marked longest ago
-// serves, so a pick is never refused for that. The reservation re-checks headroom, so a race with another
-// launch can only refuse, never overspend.
+// serves, so a pick is never refused for that. An account with an old or no reading whose own estimate has no
+// room still serves (over_estimate): the estimate never refuses a start, only the API's credit answer does.
+// A fresh reading with too little left still refuses.
 export function pickAccount(budget, env = process.env) {
   try {
     const need = money(budget);
@@ -378,12 +383,18 @@ export function pickAccount(budget, env = process.env) {
     const byExpiry = (x, y) => x.expires_at - y.expires_at;
     const open = roomy.filter((r) => !marked(r));
     const fresh = open.filter((r) => !r.snapshot_stale).sort(byExpiry);
+    // a row with an old or no reading whose own estimate has no room still serves: only a real credit-exhausted
+    // answer stops it, so it ranks after every row with room, an unmarked one before a marked one
+    const over = all.filter((r) => r.snapshot_stale && !roomy.includes(r));
+    const byRoom = (x, y) => Number(money(y.available_est_usd) - money(x.available_est_usd));
     const rows = fresh.length > 0 ? fresh
       : open.length > 0 ? open.sort(byExpiry)
-        : roomy.sort((x, y) => x.exhausted_at - y.exhausted_at);
+        : [...over.filter((r) => !marked(r)).sort(byRoom), ...roomy.sort((x, y) => x.exhausted_at - y.exhausted_at),
+          ...over.filter(marked).sort(byRoom)];
     if (rows.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' };
     const r = rows[0];
     return { verdict: 'PROCEED', account: r.account, expires_at: r.expires_at,
+      ...(over.includes(r) ? { over_estimate: true } : {}),
       ...(r.snapshot_unknown ? { snapshot_unknown: true } : {}),
       ...(r.snapshot_stale ? { snapshot_stale: true, age_seconds: r.age_seconds } : {}),
       ...(marked(r) ? { exhausted_at: r.exhausted_at } : {}) };

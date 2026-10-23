@@ -651,10 +651,48 @@ test('HIMMEL-7264: a stale reading never blocks the auto route; the caps and a f
   assert.equal(stale.snapshot_unknown, true);
   assert.equal(stale.account, 'A');
   assert.equal(pickUsd(f, '1.50').account, 'B');  // A's cap is 1.00 whatever the old reading says
-  assert.equal(pickUsd(f, '2.50').verdict, 'SKIPPED-BANK');  // no cap has room
   for (const a of ['A', 'B']) f.snapshot.accounts[a].observed_at = f.now;
   f.save();
   assert.equal(pickUsd(f, '0.01').verdict, 'SKIPPED-BANK');  // a fresh reading with nothing left is a known fact
+});
+
+test('HIMMEL-7264: with an old reading no estimate refuses a start; the pick and the reserve carry over_estimate', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000 });
+  f.save();
+  const roomy = pickUsd(f, '0.01');
+  assert.notEqual(roomy.over_estimate, true);
+  const big = pickUsd(f, '2.50');  // beyond both account caps
+  assert.equal(big.verdict, 'PROCEED');
+  assert.equal(big.over_estimate, true);
+  assert.equal(big.snapshot_stale, true);
+  // the ledger holds more reserved than either cap allows, and the next start still goes
+  const reserveEnv = { ...f.env, HIMMEL_API_ACCOUNT: big.account, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
+  const reserve = (id) => JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', id, '--usd', '2.50'], { env: reserveEnv, encoding: 'utf8' }).stdout);
+  assert.equal(reserve('r1').verdict, 'PROCEED');
+  const second = reserve('r2');
+  assert.equal(second.verdict, 'PROCEED');
+  assert.equal(second.over_estimate, true);
+  // without the optional flag (an explicit account) the headroom check still refuses
+  const explicit = JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', 'r3', '--usd', '2.50'], { env: { ...f.env, HIMMEL_API_ACCOUNT: big.account }, encoding: 'utf8' }).stdout);
+  assert.notEqual(explicit.verdict, 'PROCEED');
+});
+
+test('HIMMEL-7264: an over-estimate pick prefers the unmarked account over one marked credit-exhausted', () => {
+  const f = fixture();
+  for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000 });
+  f.save();
+  spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'A' }, encoding: 'utf8' });
+  const r = pickUsd(f, '2.50');
+  assert.equal(r.verdict, 'PROCEED');
+  assert.equal(r.account, 'B');
+  assert.equal(r.over_estimate, true);
+});
+
+test('HIMMEL-7264: a fresh reading with too little left still refuses a start', () => {
+  const f = fixture();
+  const r = pickUsd(f, '2.50');
+  assert.equal(r.verdict, 'SKIPPED-BANK');
 });
 
 test('HIMMEL-7264: a missing snapshot, a missing row, an expired grant and an aged-out automatic snapshot all route on the ledger', () => {

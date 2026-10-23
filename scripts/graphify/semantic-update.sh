@@ -50,15 +50,15 @@
 # chunk prompt (through the shim): a `rationale` on every non-code node, and
 # doc-to-code edges of relation `documents`, `explains` or `rationale_for`. Its
 # extraction cache is kept apart (cache/semantic-r1), so a chunk cached under the
-# old prompt is never replayed without them. A per-run spend cap (--max-run-usd,
-# default 5.00; GRAPHIFY_API_RUN_BUDGET_USD) sums each lane call's verified cost and
-# refuses further calls once it is reached; chunks in flight may overshoot it by up
-# to one per-call budget each. The run row carries the summed cost (`cost_usd`), the
-# backend and the cap.
+# old prompt is never replayed without them. The per-run spend cap (--max-run-usd,
+# default 15.00; GRAPHIFY_API_RUN_BUDGET_USD) is a planning input: the batch is sized so its estimated chunks fit
+# it, and a run planned inside it is never stopped by it. Spend past the cap is logged as a WARN and the calls
+# go on; only the API refusing for lack of credit stops a chunk, and the finished chunks still merge. The run
+# row carries the summed cost (`cost_usd`), the backend and the cap.
 #
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
-#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--max-run-usd 5.00] [--seed-manifest] [--dry-run]
+#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
 #
 # --backend ollama runs the local model (OLLAMA_MODEL, default qwen3.6:27b) at
 # --max-concurrency 1 and skips bank-preflight (no subscription draw). It
@@ -77,7 +77,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
-NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-cli" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-5.00}"
+NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-cli" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
 usage() { sed -n '/^# Usage:/,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -241,7 +241,7 @@ plan_or_noop
 if [ "$BACKEND" = "claude-api" ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
-  python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY' >&2
+  FIT_FILES="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY'
 import json, os, sys
 plan, root, model, budget, chunk, cap = sys.argv[1:7]
 files = json.load(open(plan))["batch"]
@@ -249,12 +249,24 @@ size = sum(os.path.getsize(os.path.join(root, f)) for f in files)
 tin = size // 4 + 2000 * len(files)
 tout = tin // 4
 usd = (tin * 3 + tout * 15) / 1e6
-print("semantic-update: estimate: files=%d bytes=%d ~tokens_in=%d ~tokens_out=%d ~usd=%.2f model=%s per-call-budget-usd=%s"
-      % (len(files), size, tin, tout, usd, model, budget))
+log = lambda m: print(m, file=sys.stderr)
+log("semantic-update: estimate: files=%d bytes=%d ~tokens_in=%d ~tokens_out=%d ~usd=%.2f model=%s per-call-budget-usd=%s"
+    % (len(files), size, tin, tout, usd, model, budget))
 ct = int(chunk)
-print("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f chunks~%d run-cap-usd=%s"
-      % (budget, ct, (ct * 3 + ct // 4 * 15) / 1e6, -(-tin // ct), cap))
+chunk_usd = (ct * 3 + ct // 4 * 15) / 1e6
+chunks = -(-tin // ct)
+log("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f chunks~%d run-cap-usd=%s"
+    % (budget, ct, chunk_usd, chunks, cap))
+# the run cap sizes the batch: keep the share of files whose chunks fit it; the rest stay unstamped for the next run
+fit_chunks = int(float(cap) / chunk_usd)
+print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // chunks))
 PY
+)"
+  if [ "$FIT_FILES" -lt "$N_BATCH" ]; then
+    echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
+    MAX_FILES="$FIT_FILES"
+    plan_or_noop
+  fi
 fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
@@ -336,11 +348,10 @@ export HIMMEL_API_TOOLS=""
 # so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
 out="$here/lane-out.$$"
 err="$here/lane-err.$$"
-# Per-run spend cap: refuse the call once the verified cost of the calls so far reaches it.
+# The run cap sized the plan; spend past it is a warning, never a refusal.
 spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEND_FILE" "$GRAPHIFY_SEMANTIC_RESERVE_FILE")"
 if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= c + 0) }'; then
-  echo "claude-api shim: run spend cap reached (spent $spent of $GRAPHIFY_SEMANTIC_RUN_CAP USD); call refused" >&2
-  exit 3
+  echo "claude-api shim: WARN: run spend $spent is past the planned cap $GRAPHIFY_SEMANTIC_RUN_CAP USD; the call goes on" >&2
 fi
 { cat; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } | "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
   --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out" 2> "$err"
