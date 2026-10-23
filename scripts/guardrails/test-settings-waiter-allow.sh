@@ -70,11 +70,19 @@ cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
 cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
   -e 's#{{SESSION_NAME}}#x-console#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
 
+# shellcheck disable=SC2016 # $HIMMEL_REPO is the literal spelling under test
+waiter_rule='Bash(bash "$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh" *)'
+if [ "$(jq --arg r "$waiter_rule" '[.permissions.allow[] | select(. == $r)] | length' "$SETTINGS")" = 1 ]; then
+  ok "the specific waiter rule is in the allow list exactly once"
+else
+  bad "the allow list lacks exactly one $waiter_rule"
+fi
+
 for c in "$cmd" "$cmd_succ"; do
-  if [ -n "$(matching_rules "$c")" ]; then
-    ok "an allow rule matches: $c"
+  if matching_rules "$c" | grep -qxF -- "$waiter_rule"; then
+    ok "the waiter rule matches: $c"
   else
-    bad "no allow rule matches the step-10 command: $c"
+    bad "the waiter rule does not match the step-10 command: $c"
   fi
 done
 
@@ -90,11 +98,11 @@ for c in \
   "bash -c \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
   "bash \"-c\" \"id\" \"$kit/console-wait.sh\" /tmp/x" \
   "bash \"-c\" \"id\" \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x"; do
-  m=$(matching_rules "$c" | grep 'console-wait' || true)
+  m=$(matching_rules "$c")
   if [ -z "$m" ]; then
-    ok "no waiter rule matches: $c"
+    ok "no allow rule matches: $c"
   else
-    bad "a waiter rule widens to: $c ($m)"
+    bad "an allow rule widens to: $c ($m)"
   fi
 done
 
