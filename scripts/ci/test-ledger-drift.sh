@@ -16,6 +16,7 @@
 #   LD3  --threshold moves the verdict on the same data (RED control for LD2)
 #   LD4  a log dir with no [PASS] lines, or a missing ledger -> exit 2
 #   LD5  lines from other jobs in a log are not counted
+#   LD5d a [FLAKE] line counts like a [PASS] line
 #   LD6  the workflow runs it on a schedule, never on pull_request or push
 #
 # Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
@@ -66,8 +67,9 @@ else
 fi
 
 echo "== LD4: no usable input is an error, not a pass =="
-mkdir -p "$SUITE_LOCK_SANDBOX/empty"
-printf 'lint\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z nothing here\n' > "$SUITE_LOCK_SANDBOX/empty/run-1.log"
+mkdir -p "$SUITE_LOCK_SANDBOX/empty" || fail "LD4: cannot create the empty log dir"
+printf 'lint\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z nothing here\n' > "$SUITE_LOCK_SANDBOX/empty/run-1.log" || fail "LD4: cannot write the no-timings log"
+[ -s "$SUITE_LOCK_SANDBOX/empty/run-1.log" ] || fail "LD4: the no-timings log is empty, so exit 2 would prove nothing"
 bash "$LD" --logs "$SUITE_LOCK_SANDBOX/empty" --ledger "$FX/matching-ledger.tsv" > /dev/null 2>&1; rc_a=$?
 bash "$LD" --logs "$FX" --ledger "$SUITE_LOCK_SANDBOX/no-such-ledger.tsv" > /dev/null 2>&1; rc_b=$?
 if [ "$rc_a" -eq 2 ] && [ "$rc_b" -eq 2 ]; then
@@ -113,14 +115,34 @@ else
   fail "LD5c: constants past 2^31 in ledger-drift.sh: $big"
 fi
 
-echo "== LD6: the workflow is scheduled and never runs on a PR or a push =="
-if [ -f "$WF" ] \
-   && grep -qE '^  schedule:' "$WF" && grep -qE '^  workflow_dispatch:' "$WF" \
-   && ! grep -qE '^  (pull_request|pull_request_target|push):' "$WF" \
-   && grep -qF 'scripts/ci/ledger-drift.sh' "$WF"; then
-  pass "LD6: ledger-drift.yml has schedule + workflow_dispatch, no pull_request/push, runs ledger-drift.sh"
+echo "== LD5d: a suite that passed on retry ([FLAKE]) is counted =="
+cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/"
+printf 'shell-unit-shard (ubuntu-latest, 1)\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [FLAKE] scripts/ci/test-flaky-fixture.sh (first run rc=1, passed on retry, 90s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log"
+out_f=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/mixed" --ledger "$FX/matching-ledger.tsv" 2>&1)
+n_c=$(sed -n 's/.* suites=\([0-9]*\) .*/\1/p' <<< "$out_c")
+n_f=$(sed -n 's/.* suites=\([0-9]*\) .*/\1/p' <<< "$out_f")
+if [ -n "$n_c" ] && [ -n "$n_f" ] && [ "$n_f" -eq $((n_c + 1)) ]; then
+  pass "LD5d: a [FLAKE] line adds its suite ($n_c -> $n_f)"
 else
-  fail "LD6: .github/workflows/ledger-drift.yml missing, or not schedule/dispatch-only, or does not run ledger-drift.sh"
+  fail "LD5d: expected one more suite from a [FLAKE] line; clean=$n_c with-flake=$n_f"
+fi
+
+echo "== LD6: the workflow is scheduled and never runs on a PR or a push =="
+# comments dropped, so a trigger or the script path named only in one never counts
+wf_ok() {
+  local body
+  body=$(grep -vE '^[[:space:]]*#' "$1" | sed 's/[[:space:]]#.*$//') || return 1
+  grep -qE '^[[:space:]]*schedule:' <<< "$body" && grep -qE '^[[:space:]]*workflow_dispatch:' <<< "$body" \
+    && ! grep -qE '^[[:space:]]*(pull_request|pull_request_target|push):' <<< "$body" \
+    && grep -qE 'bash scripts/ci/ledger-drift\.sh' <<< "$body"
+}
+mkdir -p "$SUITE_LOCK_SANDBOX/wf" || fail "LD6: cannot create the workflow mutant dir"
+sed 's/^  schedule:/    pull_request:\n  schedule:/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml"
+sed 's/bash scripts\/ci\/ledger-drift\.sh/true # bash scripts\/ci\/ledger-drift.sh/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml"
+if [ -f "$WF" ] && wf_ok "$WF" && ! wf_ok "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml" && ! wf_ok "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml"; then
+  pass "LD6: ledger-drift.yml has schedule + workflow_dispatch, no pull_request/push, runs ledger-drift.sh; both mutants rejected"
+else
+  fail "LD6: .github/workflows/ledger-drift.yml missing, not schedule/dispatch-only, does not run ledger-drift.sh, or a mutant (indented pull_request, path only in a comment) passed"
 fi
 
 rst_tally

@@ -62,16 +62,17 @@ if [ -z "$logs" ]; then
   mkdir -p "$logs"
   repo_args=()
   [ -n "${GITHUB_REPOSITORY:-}" ] && repo_args=(-R "$GITHUB_REPOSITORY")
-  ids=$(gh run list "${repo_args[@]}" --workflow ci.yml --branch main --status success \
+  ids=$(gh run list ${repo_args[@]+"${repo_args[@]}"} --workflow ci.yml --branch main --status success \
     --limit "$runs" --json databaseId --jq '.[].databaseId') || { echo "ledger-drift: gh run list failed" >&2; exit 2; }
   for id in $ids; do
-    gh run view "${repo_args[@]}" "$id" --log > "$logs/run-$id.log" || { echo "ledger-drift: gh run view $id failed" >&2; exit 2; }
+    gh run view ${repo_args[@]+"${repo_args[@]}"} "$id" --log > "$logs/run-$id.log" || { echo "ledger-drift: gh run view $id failed" >&2; exit 2; }
   done
 fi
 
 # Per log, a suite's seconds (the last line wins, a rerun overwrites); across
 # logs, the mean — what the ledger's own refresh does. Only the shell-unit-shard
-# job's lines count: the same log carries other jobs' output.
+# job's lines count: the same log carries other jobs' output. A suite that passed
+# on retry prints [FLAKE] instead of [PASS] and is counted the same.
 LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$ledger" '
   BEGIN {
     while ((getline line < ledger) > 0) {
@@ -85,11 +86,11 @@ LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$le
     if (med < 1) med = 1
   }
   FNR == 1 { nlogs++ }
-  $1 ~ /^shell-unit-shard \(ubuntu-latest, / && match($0, /\[(PASS|FAIL)\] [^ ]+ \([0-9]+s\)/) {
+  $1 ~ /^shell-unit-shard \(ubuntu-latest, / && (match($0, /\[(PASS|FAIL)\] [^ ]+ \([0-9]+s\)/) || match($0, /\[FLAKE\] [^ ]+ \(first run rc=[0-9]+, passed on retry, [0-9]+s\)/)) {
     s = substr($0, RSTART, RLENGTH)
-    sub(/^\[(PASS|FAIL)\] /, "", s)
+    sub(/^\[(PASS|FAIL|FLAKE)\] /, "", s)
     path = s; sub(/ \(.*$/, "", path)
-    sec = s; sub(/^.* \(/, "", sec); sub(/s\)$/, "", sec)
+    sec = s; sub(/^.*[ (]/, "", sec); sub(/s\)$/, "", sec)
     seen[FILENAME SUBSEP path] = sec + 0
     if (!(path in known)) { known[path] = 1; order[++m] = path }
     logsof[path] = 1
