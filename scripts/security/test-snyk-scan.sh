@@ -78,7 +78,7 @@ printf '%s\n' "$url" >> "$STUB_DIR/curl.log"
 [ "${STUB_OSV_FAIL:-0}" = 1 ] && { echo "curl: (22) The requested URL returned error: 500" >&2; exit 22; }
 case "$url" in
     */v1/querybatch) if [ -n "${STUB_OSV_BODY:-}" ]; then printf '%s\n' "$STUB_OSV_BODY"; else cat "$STUB_FIX/osv-querybatch.json"; fi ;;
-    */v1/vulns/*) f="$STUB_FIX/osv-vuln-${url##*/}.json"; [ -f "$f" ] && cat "$f" || exit 22 ;;
+    */v1/vulns/*) f="$STUB_FIX/osv-vuln-${url##*/}.json"; if [ -n "${STUB_VULN_BODY:-}" ]; then printf '%s\n' "$STUB_VULN_BODY"; else [ -f "$f" ] && cat "$f" || exit 22; fi ;;
     *) exit 22 ;;
 esac
 SH
@@ -319,6 +319,10 @@ STUB_OSV_BODY='{"results":[{"vulns":[{"id":"GHSA-x84v-xcm2-53pg"}],"next_page_to
 check "an osv.dev reply with a next page exits 2, not a partial answer" 2 "$RC"
 STUB_OSV_BODY='{"results":[null,{}]}' run forksosvnull --forks
 check "an osv.dev reply with a null result exits 2, not a clean fork" 2 "$RC"
+STUB_OSV_BODY='{"results":[{"vulns":false},{}]}' run forksosvbadvulns --forks
+check "an osv.dev result whose vulns is not an array exits 2, not a clean fork" 2 "$RC"
+STUB_VULN_BODY='{"id":"GHSA-other"}' run forksosvbadadv --forks
+check "an osv.dev advisory with no matching id exits 2, not a default-medium finding" 2 "$RC"
 # a ledger that passes the preflight but fails on append (disk full) stops the run before any further scan, upstream included
 export SNYK_SCAN_FORKS="cleanfork|$U/cleanfork|main|up
 uvfork|$U/uvfork|main|-"

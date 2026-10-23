@@ -214,7 +214,7 @@ if [ "$forks" -eq 1 ]; then
         jq -e '.queries | length > 0' "$w/q.json" >/dev/null || return 0
         if ! { curl -fsS -m 120 -X POST -H 'Content-Type: application/json' -d @"$w/q.json" "$OSV_URL/v1/querybatch" > "$w/batch.json" 2> "$w/curl.err" \
             && jq -e --slurpfile q "$w/q.json" '(.results | type == "array") and (.results | length) == ($q[0].queries | length)
-                and all(.results[]; type == "object" and (has("next_page_token") | not))' "$w/batch.json" >/dev/null 2>&1; }; then
+                and all(.results[]; type == "object" and (has("next_page_token") | not) and ((has("vulns") | not) or (.vulns | type == "array")))' "$w/batch.json" >/dev/null 2>&1; }; then
             SCAN_MSG="osv.dev querybatch failed, was paged or incomplete for $lock: $(head -c 200 "$w/curl.err")"
             return 1
         fi
@@ -226,6 +226,8 @@ if [ "$forks" -eq 1 ]; then
             [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || { SCAN_MSG="osv.dev returned an unusable advisory id for $lock"; return 1; }
             curl -fsS -m 60 "$OSV_URL/v1/vulns/$id" > "$w/v-$id.json" 2> "$w/curl.err" \
                 || { SCAN_MSG="osv.dev advisory $id failed: $(head -c 200 "$w/curl.err")"; return 1; }
+            jq -e --arg id "$id" 'type == "object" and .id == $id' "$w/v-$id.json" >/dev/null 2>&1 \
+                || { SCAN_MSG="osv.dev advisory $id came back malformed or for another id"; return 1; }
         done < "$w/ids.txt"
         jq -s '.' "$w"/v-*.json > "$w/vulns.json" || { SCAN_MSG="cannot read the osv.dev advisories for $lock"; return 1; }
         # prefer the GHSA id of an advisory group, keep its highest severity, drop Low like the snyk run does
