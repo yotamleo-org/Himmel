@@ -50,6 +50,19 @@ has "task client: tasks capability yes" "$r" "client_tasks=yes"
 has "task client: task returned" "$r" "task=yes"
 has "task client: CreateTaskResult on the wire" "$(cat "$TMP/task.out")" '"taskId"'
 
+# 2b. a client that declares the tasks extension (no params.task on the call) gets the extension's CreateTaskResult
+{ init_line '{"extensions":{"io.modelcontextprotocol/tasks":{}}}'; call_line 2 probe_task
+  printf '{"jsonrpc":"2.0","id":3,"method":"tasks/get","params":{"taskId":"probe-task-1"}}\n'; sleep 1
+  printf '{"jsonrpc":"2.0","id":4,"method":"tasks/get","params":{"taskId":"probe-task-1"}}\n'; } | run_server ext 1000
+r=$(row ext)
+has "extension client: tasks capability yes" "$r" "client_tasks=yes"
+has "extension client: task returned" "$r" "task=yes"
+has "extension client: polled the task" "$r" "polled=yes"
+has "plain client: never polled" "$(row plain)" "polled=no"
+has "extension client: resultType task on the wire" "$(cat "$TMP/ext.out")" '"resultType":"task"'
+has "extension client: completed task carries the result" "$(cat "$TMP/ext.out")" '"status":"completed"'
+has "extension server capability declared" "$(head -1 "$TMP/ext.out")" '"io.modelcontextprotocol/tasks"'
+
 # 3. elicitation answered with each action, and left unanswered
 for act in accept decline cancel; do
   { init_line '{"elicitation":{}}'; call_line 2 probe_elicit; sleep 1

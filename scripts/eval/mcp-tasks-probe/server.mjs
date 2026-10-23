@@ -30,10 +30,13 @@ let elicitSeq = 0;
 const text = (t) => ({ content: [{ type: 'text', text: t }] });
 const maybeExit = () => { if (stdinClosed && pending === 0) process.exit(0); };
 
-function createTask(ttl) {
+const TASKS_EXT = 'io.modelcontextprotocol/tasks';
+const hasTasksExt = (caps) => caps?.extensions?.[TASKS_EXT] !== undefined;
+
+function createTask(ttl, ext) {
   const taskId = `probe-task-${tasks.size + 1}`;
   const now = new Date().toISOString();
-  const task = { taskId, status: 'working', createdAt: now, lastUpdatedAt: now, ttl: ttl ?? 60000, pollInterval: 200 };
+  const task = { taskId, status: 'working', createdAt: now, lastUpdatedAt: now, ttl: ttl ?? 60000, pollInterval: 200, ext: ext || undefined };
   tasks.set(taskId, task);
   pending++;
   setTimeout(() => { task.status = 'completed'; task.lastUpdatedAt = new Date().toISOString(); pending--; maybeExit(); }, 200);
@@ -63,7 +66,7 @@ async function handle(m) {
     log('initialize', { client: m.params?.clientInfo, protocol: m.params?.protocolVersion, caps: clientCaps });
     return send({ id: m.id, result: {
       protocolVersion: m.params?.protocolVersion ?? '2025-11-25',
-      capabilities: { tools: {}, tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } } },
+      capabilities: { tools: {}, tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } }, extensions: { [TASKS_EXT]: {} } },
       serverInfo: { name: 'probe', version: '0.0.1' },
     } });
   }
@@ -71,9 +74,14 @@ async function handle(m) {
   if (m.method === 'tools/call') {
     const name = m.params?.name;
     const augmented = m.params?.task !== undefined;
-    log('call', { tool: name, task: augmented });
+    const ext = hasTasksExt(clientCaps) || hasTasksExt(m.params?._meta?.['io.modelcontextprotocol/clientCapabilities']);
+    log('call', { tool: name, task: augmented || ext, shape: augmented ? 'core' : ext ? 'extension' : 'none' });
     if (name === 'probe_task') {
-      if (augmented) return send({ id: m.id, result: { task: createTask(m.params.task.ttl) } });
+      if (augmented) return send({ id: m.id, result: { task: createTask(m.params.task.ttl, false) } });
+      if (ext) {
+        const t = createTask(undefined, true);
+        return send({ id: m.id, result: { resultType: 'task', taskId: t.taskId, status: t.status, createdAt: t.createdAt, lastUpdatedAt: t.lastUpdatedAt, ttlMs: t.ttl, pollIntervalMs: t.pollInterval } });
+      }
       return send({ id: m.id, result: text('task=no') });
     }
     if (name === 'probe_elicit') return send({ id: m.id, result: await elicit() });
@@ -83,6 +91,10 @@ async function handle(m) {
     log(m.method.replace('/', '_'), { taskId: m.params?.taskId });
     const task = tasks.get(m.params?.taskId);
     if (!task) return send({ id: m.id, error: { code: -32602, message: 'Failed to retrieve task: Task not found' } });
+    if (task.ext && m.method === 'tasks/get') {
+      const base = { resultType: 'complete', taskId: task.taskId, status: task.status, createdAt: task.createdAt, lastUpdatedAt: task.lastUpdatedAt, ttlMs: task.ttl, pollIntervalMs: task.pollInterval };
+      return send({ id: m.id, result: task.status === 'completed' ? { ...base, result: text('task=yes') } : base });
+    }
     if (m.method === 'tasks/result') return send({ id: m.id, result: { ...text('task=yes'), _meta: { 'io.modelcontextprotocol/related-task': { taskId: task.taskId } } } });
     if (m.method === 'tasks/cancel') { task.status = 'cancelled'; task.lastUpdatedAt = new Date().toISOString(); }
     return send({ id: m.id, result: task });

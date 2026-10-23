@@ -19,7 +19,7 @@
 #   headed/bg/p/p-stream use whatever auth the claude client already has (or ANTHROPIC_API_KEY);
 #   openrouter needs OPENROUTER_API_KEY and sets ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN itself.
 # Row format: mode=<m> client=<name/version> client_tasks=yes|no client_elicit=yes|no
-#             task=yes|no|not-called elicit=accept|decline|cancel|parked|not-offered|not-called
+#             task=yes|no|not-called polled=yes|no elicit=accept|decline|cancel|parked|not-offered|not-called
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -36,6 +36,7 @@ summarize() {
       + " client_tasks=\(if ($i.caps.tasks or $i.caps.extensions["io.modelcontextprotocol/tasks"]) then "yes" else "no" end)"
       + " client_elicit=\(if $i.caps.elicitation then "yes" else "no" end)"
       + " task=\(if $t == null then "not-called" elif $t.task then "yes" else "no" end)"
+      + " polled=\(if (map(select(.ev == "tasks_get" or .ev == "tasks_result")) | length) > 0 then "yes" else "no" end)"
       + " elicit=\(
           if ($e | map(select(.ev == "elicit_result")) | length) > 0 then ($e | map(select(.ev == "elicit_result")) | last | .action)
           elif ($e | map(select(.ev == "elicit_timeout")) | length) > 0 then "parked"

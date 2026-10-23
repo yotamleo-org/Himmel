@@ -22,4 +22,7 @@ billed)" in `docs/internals/testing.md`). It is never wired into CI, a cadence o
 (risky-commands rule), through `scripts/vm/guest-exec.sh`, with credentials passed
 in the call's environment and never written to the guest disk.
 
-Row format: `mode= client= client_tasks= client_elicit= task= elicit=`.
+Row format: `mode= client= client_tasks= client_elicit= task= polled= elicit=`.
+`task=yes` means the server handed the client a task; `polled=yes` means the client then
+called `tasks/get` or `tasks/result` on it. A client that declares the tasks extension
+(2.1.310 and later) gets the extension's `CreateTaskResult` without sending `params.task`.
