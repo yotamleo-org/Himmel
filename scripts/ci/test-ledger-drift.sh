@@ -99,9 +99,16 @@ else
 fi
 
 echo "== LD5c: no awk integer constant past 2^31 (mawk clamps %d there) =="
-big=$(grep -nE '(^|[^0-9.])[0-9]{10,}([^0-9]|$)' "$LD" | grep -vE '^[0-9]+:[[:space:]]*#' | awk -F: '{ n = $0; sub(/^[0-9]+:/, "", n); while (match(n, /[0-9]{10,}/)) { if (substr(n, RSTART, RLENGTH) + 0 > 2147483647) print $1 ": " substr(n, RSTART, RLENGTH); n = substr(n, RSTART + RLENGTH) } }')
-if [ -z "$big" ]; then
-  pass "LD5c: ledger-drift.sh holds no integer constant above 2147483647"
+big_constants() {
+  grep -nE '(^|[^0-9.])[0-9]{10,}([^0-9]|$)' "$1" | grep -vE '^[0-9]+:[[:space:]]*#' | awk -F: '{ n = $0; sub(/^[0-9]+:/, "", n); while (match(n, /[0-9]{10,}/)) { if (substr(n, RSTART, RLENGTH) + 0 > 2147483647) print $1 ": " substr(n, RSTART, RLENGTH); n = substr(n, RSTART + RLENGTH) } }'
+}
+printf 'key = sprintf("%%012d", 999999999999 - c)\nok = 1000000000 - c\n' > "$SUITE_LOCK_SANDBOX/planted.sh"
+planted=$(big_constants "$SUITE_LOCK_SANDBOX/planted.sh")
+big=$(big_constants "$LD")
+if [ -z "$planted" ]; then
+  fail "LD5c: the scan missed a planted 999999999999, so it proves nothing"
+elif [ -z "$big" ]; then
+  pass "LD5c: the scan flags a planted 999999999999; ledger-drift.sh holds no integer constant above 2147483647"
 else
   fail "LD5c: constants past 2^31 in ledger-drift.sh: $big"
 fi
