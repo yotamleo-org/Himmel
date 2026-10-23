@@ -1147,7 +1147,7 @@
       "sources": [
         {
           "file": "scripts/handover/console-kit/verdict-go.sh",
-          "anchor": "--trust-reviewed \"$QID\" \"$PR\" \"$HEAD_SHA\" || step_fail"
+          "anchor": "--trust-reviewed \"$QID\" \"$PR\" \"$HEAD_SHA\") || step_fail"
         }
       ],
       "path": {
