@@ -11,7 +11,7 @@ A packaged write-up (method, fresh results, limits) is in [`docs/evals/prompt-ca
 
 - The cached prefix is tools → system → messages. A change invalidates its own
   level and everything after it. Default TTL is 5 minutes and refreshes on each
-  use; a 1-hour tier exists (write 2× base, 5-minute write 1.25×, read 0.05× to 0.1× by model, see
+  use; a 1-hour tier exists (write 2× base, 5-minute write 1.25×, read 0.025× to 0.1× by model, see
   the per-model price under Judge subagent TTL).
   Official: <https://platform.claude.com/docs/en/build-with-claude/prompt-caching>.
 - Preserved thinking (reported from
@@ -95,8 +95,10 @@ in one line.
 Multipliers (API pricing page, <https://platform.claude.com/docs/en/build-with-claude/prompt-caching#pricing>):
 5-minute write 1.25×, 1-hour write 2×; the read price depends on the model:
 0.05× of base input on Opus 5.5 and Sonnet 5.5, 0.025× on Fable 5.1, 0.1× on
-Haiku 5.5. On a Claude subscription the main session's cache lasts an hour and
-a helper's five minutes; on an API key both last five minutes unless you set
+Haiku 5.5. Within included plan usage, a Claude subscription gives the main
+session an hour and most helpers five minutes (some server-controlled helper
+requests also get an hour); once usage credits begin, the main session drops to
+five minutes. On an API key both default to five minutes unless you set
 `promptCacheTtl` (main) or `subagentPromptCacheTtl` (helpers).
 
 **What decides it is the idle gap, not the wall time.** Every request that
