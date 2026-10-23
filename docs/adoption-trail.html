@@ -166,7 +166,7 @@
   .pclose:hover { border-color: var(--path); color: var(--ink); }
   .pclose:focus-visible { outline: 2px solid var(--path); outline-offset: 2px; }
 
-  /* plain-language front matter: three answers, first 5 minutes, platforms, glossary */
+  /* plain-language front matter: three answers, first protected project, platforms, glossary */
   nav.jump { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px;
     margin: 18px 0 0; font-size: 14.5px; }
   dfn { font-style: normal; font-weight: 600; color: var(--ink);
@@ -267,7 +267,7 @@
     <nav class="jump" aria-label="On this page">
       <a href="#before">Before you install</a>
       <a href="#start">The three questions</a>
-      <a href="#first-5">First 5 minutes</a>
+      <a href="#first-project">First protected project</a>
       <a href="#full-trail">The full trail</a>
       <a href="#glossary">Glossary</a>
     </nav>
@@ -289,7 +289,7 @@
         is enough, so check <a href="https://code.claude.com/docs/en/authentication">Anthropic's
         sign-in page</a> before you start. The first time you run
         <span class="mono">claude</span> it opens a browser to sign in. Step 1
-        of the first 5 minutes ends by asking you to do that, so a sign-in
+        of the first protected project ends by asking you to do that, so a sign-in
         problem shows up before himmel is involved.</p>
       </div>
 
@@ -622,7 +622,7 @@ claude --version</pre>
         If a step cannot finish it says so and exits non-zero instead of
         claiming success. The commands assume himmel is downloaded to
         <span class="mono">~/himmel</span>, which is what step 3 of the
-        first-5-minutes path below does.</p>
+        first-protected-project path below does.</p>
         <p><b>Undo first, then delete the download.</b> The uninstaller
         lives in the himmel download, so deleting
         <span class="mono">~/himmel</span> first leaves you without it.
@@ -723,7 +723,7 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
         <p>Now that you know what the install changes and how to undo it,
         here is the preview command <a href="#what-it-does">question 2</a>
         mentioned (from the project folder, with himmel downloaded to
-        <span class="mono">~/himmel</span> as in the first 5 minutes): it
+        <span class="mono">~/himmel</span> as in the first protected project): it
         writes nothing and lists every file and setting the starter install
         would touch.</p>
         <pre class="cmd">bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run</pre>
@@ -731,8 +731,8 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall</pre>
     </div>
   </section>
 
-  <section class="doc" id="first-5">
-    <h2>First 5 minutes</h2>
+  <section class="doc" id="first-project">
+    <h2>First protected project</h2>
     <p class="sub">The shortest safe path: a throwaway project, one install,
     one refusal to watch. The install downloads plugins, so how long it
     takes depends on your connection. Every command below assumes only what
@@ -879,24 +879,60 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run</pre>
         refusal is the success signal. The refusal message contains
         <span class="mono">block-edit-on-main: refusing to edit</span> (we
         captured that by running the hook directly, not inside a live Claude
-        Code session). A starter install does not ship a
+        Code session). Leave with <span class="mono">/exit</span>.</p>
+      </li>
+
+      <li>
+        <p><b>Commit the install, then merge it.</b> The install left
+        <span class="mono">.claude/</span>, <span class="mono">scripts/</span>
+        and <span class="mono">.gitignore</span> in the project as untracked
+        files (run <span class="mono">git status --short</span> to see them).
+        A worktree is cut from committed history, so one made now would have
+        none of them: no hooks and no edit guard. We reproduced that on a clean
+        Linux machine, so commit the install first, on a branch (a
+        machine without the <span class="mono">pre-commit</span> tool gets
+        plain git hooks that refuse a commit on
+        <span class="mono">main</span>), then fast-forward
+        <span class="mono">main</span>:</p>
+        <pre class="cmd">cd ~/himmel-trial
+git switch -c chore/install-himmel
+git add -A
+git commit -m "chore: install himmel #1"
+git switch main
+git merge --ff-only chore/install-himmel</pre>
+        <p>Those same plain hooks also reject a message with no ticket
+        reference (<span class="mono">COMMIT REJECTED: no ticket reference
+        matched</span>), which is why the message ends in
+        <span class="mono">#1</span>; in a project with no ticket convention,
+        <span class="mono">TICKET_ID_REQUIRED=0 git commit …</span> switches
+        the requirement off. Expected: the commit lists the installed files,
+        and the merge reports a fast-forward.</p>
+      </li>
+
+      <li>
+        <p><b>Create the worktree and relaunch inside it.</b> A starter
+        install does not ship a
         <span class="mono">/worktree</span> <em>slash command</em> (a command
         you type inside a Claude Code session, starting with
         <span class="mono">/</span>), only the script it wraps. So
-        instead ask it to run
-        <span class="mono">bash scripts/worktree.sh feat/try-himmel</span>.
+        from the terminal run
+        <span class="mono">bash scripts/worktree.sh feat/try-himmel</span>
+        (or start <span class="mono">claude</span> and ask it to run that).
         On success it prints a line beginning
         <span class="mono">OK new-worktree: feat/try-himmel &rarr; &lt;path&gt;</span>
         where the path ends in
         <span class="mono">.claude/worktrees/feat+try-himmel</span>. The
-        script does not move the running session into that folder, so asking
-        again from the same session is still refused. Leave with
-        <span class="mono">/exit</span>, then relaunch inside the printed
+        script does not move a running session into that folder, so a session
+        started before it ran is still refused. Relaunch inside the printed
         path:</p>
         <pre class="cmd">cd &lt;path&gt;
 claude</pre>
-        <p>Ask again for <span class="mono">hello.txt</span>; the edit now
-        goes through in the new worktree. Leave with
+        <p>In that folder, <span class="mono">.claude/settings.json</span>,
+        <span class="mono">scripts/hooks/block-edit-on-main.sh</span> and
+        <span class="mono">scripts/worktree.sh</span> are present (we checked
+        all three after the commit step; they are missing when the install is
+        not committed first). Ask for <span class="mono">hello.txt</span>
+        again; the edit now goes through in the new worktree. Leave with
         <span class="mono">/exit</span>.</p>
       </li>
 
@@ -912,15 +948,18 @@ claude</pre>
         <a href="#before">Before you install</a>). We have no
         expected result to give you for this command. For one
         real working loop after this, see
-        <a href="getting-started.md#3-your-first-loop-5-minutes">getting-started.md</a>.
+        <a href="getting-started.md#your-first-loop">getting-started.md</a>.
         The full install reference is
         <a href="setup/install.md">setup/install.md</a>.</p>
       </li>
 
       <li>
         <p><b>Undo it whenever you like</b> with the two commands under
-        <a href="#undo">question 3</a>. The throwaway project and the
-        download are yours to delete.</p>
+        <a href="#undo">question 3</a>: preview with
+        <span class="mono">uninstall --dry-run</span>, then
+        <span class="mono">uninstall --yes</span> (the form that works without
+        a terminal). The throwaway project and the download are yours to
+        delete.</p>
       </li>
     </ol>
   </section>
@@ -949,7 +988,7 @@ claude</pre>
       <div class="card">
         <span class="lvl-tag">LEVEL 0</span>
         <h2>Install &amp; stay current</h2>
-        <p>This is what the <a href="#first-5">first 5 minutes</a> already
+        <p>This is what the <a href="#first-project">first protected project</a> already
         did: clone <span class="mono">github.com/yotamleo-org/Himmel</span> once,
         then run its installer <em>from the project you want to adopt</em>,
         not from inside the clone, with
@@ -969,7 +1008,7 @@ claude</pre>
         the whole install: dependencies, wiring, schedulers, lanes,
         plugins, vault and hooks.</p>
         <p class="note">Tools to have first: the per-system boxes in the
-        first 5 minutes list them. The installer hard-stops on the ones it
+        first protected project list them. The installer hard-stops on the ones it
         cannot work without (bash, git, jq, python3, and npm or bun) and
         lists the rest in its plan; <span class="mono">gh</span> and
         <span class="mono">pre-commit</span> are recommended rather than

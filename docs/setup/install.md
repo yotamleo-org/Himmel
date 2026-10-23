@@ -25,6 +25,39 @@ each default. `--dry-run` prints the plan and writes nothing.
 No `node` on the machine yet? Run `bash himmel/scripts/himmelctl/bootstrap.sh`
 first; it installs Node, then re-run the install.
 
+Run it from the root of a git repository, and preview first:
+`node himmel/scripts/himmelctl/bin.js install --scope project --dry-run` prints
+the plan and writes nothing.
+
+### After the install: commit it before you branch
+
+A project-scope install writes `.claude/`, `scripts/` and `.gitignore` into the
+working tree and leaves them **untracked**. A worktree is cut from committed
+history, so one created before the install is committed has none of those
+files: no `.claude/settings.json`, no `scripts/hooks/block-edit-on-main.sh`,
+no `scripts/worktree.sh`, and nothing protects an edit there. Commit the
+install first. Without the `pre-commit` tool the installer places plain git
+hooks, and the commit hook refuses a commit on the default branch (with
+`pre-commit` present the hooks run only what your `.pre-commit-config.yaml`
+lists, which a starter install does not write). Use a branch and fast-forward
+either way:
+
+```bash
+git switch -c chore/install-himmel
+git add -A
+git commit -m "chore: install himmel #1"      # the commit-msg gate wants a ticket reference
+git switch main
+git merge --ff-only chore/install-himmel
+```
+
+Where those plain hooks run, the commit-msg gate rejects a message with no
+ticket reference. When
+`JIRA_PROJECT_KEY` is unset it accepts `#<number>` (or `LOCAL-<number>`), as
+above. On a repository with no ticket convention, switch the requirement off with
+`TICKET_ID_REQUIRED=0 git commit …` (or set it in the repo's `.env`). On a repository with a branch-protected
+default branch, push the branch and merge it through a PR instead of the
+fast-forward.
+
 **Prerequisites**, checked by the installer, which fails fast with install
 hints: `git`, `bash` 3.2+, `node`, `jq`, `python3`, and the Claude Code CLI on
 your `PATH`. `gh` is optional for the install but used by the PR and
@@ -72,9 +105,9 @@ deal, and every guard has an off switch (see
 |---|---|---|---|---|
 | **Scope** | `project` | The harness is wired in **this repo's** `.claude/settings.json` | Nothing extra | Everyone who clones the repo inherits it — commit the file deliberately |
 | | `user` | The harness is wired in **`~/.claude/settings.json`** | Nothing extra | Applies to *every* project you open on this machine, including ones you did not mean to gate |
-| **Install profile** | `starter` → `core` | 37 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
+| **Install profile** | `starter` → `core` | 38 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
 | | `luna` | `core` plus the second-brain surface: vault scaffold, qmd index, graphify MCP, the clip cadences | `bun`, plus disk for the qmd index | A vault you now have to maintain; the cadences run on a schedule |
-| | `operator` / `custom` | `all` (46 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
+| | `operator` / `custom` | `all` (48 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
 | **Release channel** | unset (no recorded channel) | `git pull --ff-only` on your branch | Nothing | You track the tip, including work in progress — this is the *fallback*, not what a fresh install records |
 | | `stable` | The highest `vX.Y.Z` tag | Nothing | You update only when a release is cut |
 | | `pre` | The highest tag including `-pre.N` | Nothing | Prereleases, so earlier fixes and earlier breakage |
@@ -184,17 +217,22 @@ worktree workflow.
 ## Verify
 
 Open a Claude Code session at the repo root (`claude`); hooks only fire inside
-a session. Then:
+a session. The install must already be committed on the default branch (see
+[After the install](#after-the-install-commit-it-before-you-branch)). Then:
 
 1. Try to edit a file while on the default branch. `block-edit-on-main` should
-   refuse and point you at `/worktree`. That refusal *is* the success signal.
-2. Run `/worktree feat/try-himmel`. Edits on the worktree branch proceed
-   normally.
+   refuse and point you at a worktree. That refusal *is* the success signal.
+2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
+   the worktree path (`.claude/worktrees/feat+try-himmel`) and does not move a
+   running session; quit and run `claude` again inside that path. Check that
+   `.claude/settings.json`, `scripts/hooks/block-edit-on-main.sh` and
+   `scripts/worktree.sh` exist there. If they do not, the install was not
+   committed first. Edits on the worktree branch then proceed normally.
 3. Try `cat .env` (if you have one). `block-read-secrets` should refuse.
 4. Run `node scripts/himmelctl/bin.js status` for a severity-grouped diff of
    what is installed versus what the manifest wants.
 
-Then walk one real loop: [getting-started.md](../getting-started.md#3-your-first-loop-5-minutes).
+Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
 
 ## Lifecycle
 
@@ -206,7 +244,7 @@ Then walk one real loop: [getting-started.md](../getting-started.md#3-your-first
 | Update the harness | `/himmel-update` (Claude Code's own `autoUpdate` does **not** deliver himmel) |
 | Diagnose a sick install | `/himmel-doctor` (`--fix` repairs the node wiring) |
 | Preview an offboard | `node scripts/himmelctl/bin.js uninstall --dry-run` (or `-n`) |
-| Offboard | `node scripts/himmelctl/bin.js uninstall` |
+| Offboard | `node scripts/himmelctl/bin.js uninstall` (add `--yes` when there is no terminal to confirm) |
 
 Detail for all of these: [updating.md](updating.md). Coming from an older
 himmel install rather than a fresh one: [migrating.md](migrating.md).
@@ -219,9 +257,13 @@ nothing:
 
 ```bash
 node scripts/himmelctl/bin.js uninstall --dry-run   # preview; touches nothing
-node scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring
+node scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring (asks first)
+node scripts/himmelctl/bin.js uninstall --yes       # same, no prompt; needed without a terminal
 node scripts/himmelctl/bin.js uninstall --purge-state   # ...and your operator STATE too
 ```
+
+Without a terminal, a run without `--yes` aborts (`non-interactive run without
+--yes — aborting (fail-closed)`) and removes nothing.
 
 It splits what himmel installed into two classes, and the default is the
 conservative one:
@@ -238,11 +280,13 @@ conservative one:
   refused (non-zero exit) rather than run while the bridge is still running,
   so state can remain after a guarded purge; stop the bridge and re-run.
 - **Never touched**: the himmel clone, your `.env`, worktrees, handover state,
-  and any `settings.json` key himmel did not add. Also left in place, and named
-  in the footprint: Claude Code's workspace-trust entry in `~/.claude.json`, and
-  the himmel scripts a project-scope install copied into your repo's `scripts/`.
-  Deleting the himmel clone does not remove them; drop them with git if you
-  no longer want them.
+  and any `settings.json` key himmel did not add, and files of yours that were
+  never part of the install. Files the install recorded in its ledger are
+  removed from your repo's `scripts/` (git then shows them as deleted, so
+  commit or discard that); a copy the ledger does not recognize is kept and
+  named in the footprint, as is Claude Code's workspace-trust entry in
+  `~/.claude.json` when the ledger does not say himmel added it. Deleting the
+  himmel clone removes none of this; drop what is left with git.
 
 Every change is printed with its exact path and line (`removing hook
 PreToolUse: …`). After the settings step it re-reads the file and prints
