@@ -1057,20 +1057,19 @@ _ilb_body() {
 # mode and encoding). Such a heredoc that merely names a live settings file
 # reads it; the quoted delimiter keeps the shell from expanding
 # the body.
-# ponytail: an open() whose first argument holds a top-level comma or a string
-# literal with a paren is denied, and a library that writes through a path
-# alone (logging.FileHandler, zipfile, sqlite3, tempfile) is a listed word;
-# upgrade path: read the body with a real python parser. An exotic stdlib
-# writer reached by name alone (`cProfile.run(code, path)`) is a residual.
+# ponytail: the body may use only the identifiers of a short read-only list
+# (anything else, a comment, a backslash, an f-string or a triple quote denies),
+# so an alias or an indirection cannot reach a write API; a legitimate reader
+# that needs another name falls back to the deny. Upgrade path: read the body
+# with a real python parser.
 python_heredoc_readonly() {
-    local LC_ALL=C nl=$'\n' c=$1 first rest last body delim bl b ralias
+    local LC_ALL=C nl=$'\n' c=$1 first rest last body delim bl b b2 lit words w ralias
     local rfirst='^(python[0-9.]*)([[:space:]]+-[IBuEsSOq]+)*([[:space:]]+-)?[[:space:]]*<<[[:space:]]*(\x27([A-Za-z_][A-Za-z0-9_]*)\x27|"([A-Za-z_][A-Za-z0-9_]*)")[[:space:]]*$' \
         rextra='filehandler|zipfile|tarfile|sqlite3|shelve|dbm|fileinput|mmap|logging|tempfile|builtins|operator|functools|contextlib|globals|locals|vars|__dict__|__class__|__subclasses__|__getattribute__|__getitem__|modules|methodcaller|attrgetter|redirect_|shutil|fileio|gzip|bz2|lzma|urlretrieve|dump[[:space:]]*\(|stream[[:space:]]*=|std(out|err)[[:space:]]*=([^=]|$)' \
         rfrom='(^|[;[:space:]])from[[:space:]]+[a-z0-9_.]+[[:space:]]+import' \
-        rbareos='(^|[^a-z0-9_.])os([^a-z0-9_]|$)' \
-        rbarefile='(^|[^a-z0-9_])file[[:space:]]*=([^=]|$)' \
         rbareopen='(^|[^a-z0-9_])open($|[^a-z0-9_])' \
-        ropen='open[[:space:]]*\([^(),]*(\([^()]*\)[^(),]*)*(,[[:space:]]*[\x27"][rbt]+[\x27"][[:space:]]*)?(,[[:space:]]*encoding[[:space:]]*=[[:space:]]*[\x27"][a-z0-9_-]+[\x27"][[:space:]]*)?\)'
+        rdotopen='\.[[:space:]]*open' \
+        ropen='open[[:space:]]*\([^(),*]*(\([^()]*\)[^(),]*)*(,[[:space:]]*[\x27"][rbt]+[\x27"][[:space:]]*)?(,[[:space:]]*encoding[[:space:]]*=[[:space:]]*[\x27"][a-z0-9_-]+[\x27"][[:space:]]*)?\)'
     rfirst=${rfirst//\\x27/\'}
     ropen=${ropen//\\x27/\'}
     ralias="(^|[;[:space:]])import[[:space:]][^;$nl]*[[:space:]]as[[:space:]]"
@@ -1091,21 +1090,36 @@ python_heredoc_readonly() {
     interp_dyn_api "$bl" && return 1
     [[ $bl =~ $rextra ]] && return 1
     [[ $bl =~ $ralias ]] && return 1
-    # Names the regexes above match are defeated by an alias or an indirection
-    # (`from os import remove as r`, `o = os; o.remove(p)`, `f = open; f(p, 'w')`),
-    # so the body may name `os` only through a few read attributes, import only
-    # from a short list of modules, and use `open` only as the validated call.
+    [[ $bl =~ $rdotopen ]] && return 1
+    # A name list is defeated by an alias or an indirection, so the body may
+    # use only the identifiers of a short read-only list (checked below).
+    # Allowed imports are plain `import a, b` lines and a from-import of a
+    # listed module; a few `os.<read attribute>` forms are dropped first.
     b=$(printf '%s\n' "$bl" | sed -E \
         -e '/^[[:space:]]*import[[:space:]]+[a-z0-9_., ]+$/d' \
         -e 's/(^|[;[:space:]])from[[:space:]]+(pathlib|json|collections|itertools|datetime|re|sys|os\.path)[[:space:]]+import[[:space:]]+[a-z0-9_, ]+/ /g' \
-        -e 's/file[[:space:]]*=[[:space:]]*sys\.std(out|err)/ /g' \
-        -e 's/os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)/ /g')
+        -e 's/(^|[^a-z0-9_.])os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)([^a-z0-9_]|$)/\1 \3/g' \
+        -e 's/(^|[^a-z0-9_.])os\.(path|environ|getenv|getcwd|listdir|stat|sep|walk|scandir|fspath)([^a-z0-9_]|$)/\1 \3/g')
     [[ $b =~ $rfrom ]] && return 1
-    [[ $b =~ $rbareos ]] && return 1
-    [[ $b =~ $rbarefile ]] && return 1
-    while [[ $b =~ $ropen ]]; do b=${b/"${BASH_REMATCH[0]}"/ }; done
-    [[ $b =~ open[[:space:]]*\( ]] && return 1
-    [[ $b =~ $rbareopen ]] && return 1
+    b2=$b
+    while [[ $b2 =~ $ropen ]]; do b2=${b2/"${BASH_REMATCH[0]}"/ }; done
+    [[ $b2 =~ open[[:space:]]*\( ]] && return 1
+    [[ $b2 =~ $rbareopen ]] && return 1
+    case "$b" in *\\* | *'#'* | *"'''"* | *'"""'* | *'`'*) return 1 ;; esac
+    lit=$(printf '%s\n' "$b" | sed -E -e "s/'[^']*'|\"[^\"]*\"/0/g")
+    case "$lit" in *\'* | *\"*) return 1 ;; esac
+    words=$(printf '%s' "$lit" | tr -c 'a-z0-9_' '\n')
+    while IFS= read -r w; do
+        case "$w" in '' | [0-9]*) continue ;; esac
+        case "$w" in
+            import | as | with | for | in | if | else | elif | not | and | or | is | none | true | false | try | except | finally | pass) ;;
+            print | len | sorted | sum | min | max | any | all | list | dict | set | tuple | str | int | float | bool | range | enumerate | zip | reversed | isinstance | open) ;;
+            json | pathlib | collections | itertools | datetime | path | load | loads | dumps | get | keys | values | items | read | read_text | readlines | splitlines) ;;
+            strip | split | join | startswith | endswith | lower | upper | expanduser | home | joinpath | exists | isfile | isdir | basename | dirname | format | append | sort | index | count) ;;
+            d | data | f | k | v | x | i | j | n | e | s | t | p | h | cfg | conf | config | settings | hooks | line | lines | text | name | names | key | val | value | result | item) ;;
+            *) return 1 ;;
+        esac
+    done <<< "$words"
     return 0
 }
 
