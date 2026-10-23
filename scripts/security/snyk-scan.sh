@@ -194,7 +194,7 @@ if [ "$forks" -eq 1 ]; then
         printf 'qmd|%s|%s|-\n' "$qurl" "$qref"
         printf 'graphify|https://github.com/yotamleo-org/graphify|%s|-\n' "$gref" # env-literal-ok: the fork's own identity, scan target
         printf 'claude-hud|https://github.com/jarrodwatts/claude-hud|%s|up\n' "$href"
-        printf 'obsidian-second-brain|https://github.com/eugeniughelbur/obsidian-second-brain|%s|up\n' "$sref"
+        printf 'obsidian-second-brain|https://github.com/yotamleo-org/obsidian-second-brain|%s|-\n' "$sref" # env-literal-ok: the fork's own identity, scan target
         printf 'claude-obsidian|https://github.com/AgriciDaniel/claude-obsidian|%s|up\n' "$cref"
     }
 

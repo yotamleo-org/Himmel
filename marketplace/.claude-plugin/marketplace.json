@@ -515,10 +515,10 @@
       "name": "obsidian-second-brain",
       "source": {
         "source": "url",
-        "url": "https://github.com/eugeniughelbur/obsidian-second-brain.git",
-        "sha": "6eccc4d0a2e546be3f62d8881f72208bf43ad2b4"
+        "url": "https://github.com/yotamleo-org/obsidian-second-brain.git",
+        "sha": "e42dac7976cdf1466f4a6d90f2de96f92e41c1f4"
       },
-      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution only, no carried delta] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to upstream commit 6eccc4d0a2e546be3f62d8881f72208bf43ad2b4 (release tag v0.18.0, carries upstream #338 -fps_mode for ffmpeg 9) per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
+      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution, himmel fork carrying lockfile advisory bumps and a no-auto-open test guard over upstream v0.18.1] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to the himmel fork commit e42dac7976cdf1466f4a6d90f2de96f92e41c1f4, which patches the uv.lock Critical and High advisories upstream has not fixed (HIMMEL-7226), stops the test run from launching the real Obsidian app (HIMMEL-7240) and carries upstream #338 -fps_mode for ffmpeg 9, per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
       "strict": true,
       "author": {
         "name": "Eugeniu Ghelbur",
