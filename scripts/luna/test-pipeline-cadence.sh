@@ -1423,7 +1423,7 @@ for _leg in harvest synthesize health; do
         fail "$_leg: alert line has no ISO timestamp" "$(cat "$CADENCE_ALERT_FILE")"
     fi
     assert_rc "$_leg: exactly one Telegram send" 1 "$(count_lines "$ALERT_SENDS")"
-    assert_contains "$_leg: the send names leg and reason" "pipeline-$_leg no-completion-marker" "$(cat "$ALERT_SENDS")"
+    assert_contains "$_leg: the send names leg and reason" "pipeline-$_leg: no-completion-marker." "$(cat "$ALERT_SENDS")"
 done
 # Dedupe and clear, on the harvest runner.
 reset_alerts

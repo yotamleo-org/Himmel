@@ -12,7 +12,9 @@
 # delta was used. Consumed records are kept in <branch>.verdicts.
 # A CLEAN merge of the base (conflict-free, the PR's own diff
 # unchanged), or one whose only resolution is a plugin.json version bump above
-# both parents, is admitted past the cap without spending the one delta round.
+# both parents, is admitted past the cap without spending the one delta round,
+# only while the round count is below free_round_cap, and only when each merge
+# has the reviewed head as first parent and a newer point on the base second.
 # Any other conflict-resolving merge needs a judge GO carrying `delta-scope:
 # merge-resolution` and `delta-from:`, bound like the scope records.
 # Every verdict record read here (NO-GO delta, layer-decision,
@@ -229,6 +231,9 @@ verdict_state="$git_dir/cr-review-rounds/$branch.verdicts"
 head_state="$git_dir/cr-review-rounds/$branch.head"
 # "<from> <to> <failing check names>" once the CI-red unlock was used.
 cired_state="$git_dir/cr-review-rounds/$branch.cired"
+# Clean and version-only merge-forwards are admitted free of the delta round
+# only below this round count.
+free_round_cap=8
 state_dir="$(dirname "$state")"
 mkdir -p "$state_dir" || {
     echo "review-round: cannot create state directory $state_dir" >&2
@@ -648,17 +653,27 @@ EOF_SNAP
 
 # merge_forward_shape <from> <to> succeeds when <to> merges the
 # captured base into <from> and nothing else: at least one merge, every
-# non-merge commit it brought already on the base. Sets mf_merged_base.
+# non-merge commit it brought already on the base, and every merge a plain
+# two-parent merge whose first parent descends from <from> (not on the base)
+# and whose second parent is a point on the base newer than the base point
+# <from> had. Sets mf_merged_base.
 merge_forward_shape() {
     [ -n "$base_sha" ] || return 1
-    [ -n "$(git rev-list --merges "$1..$2" 2>/dev/null)" ] || return 1
+    [ -n "$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
     [ -z "$(git rev-list --no-merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
-    for _mf_m in $(git rev-list --merges "$1..$2" 2>/dev/null); do
-        _mf_ok=0
-        for _mf_p in $(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-); do
-            ! git merge-base --is-ancestor "$_mf_p" "$base_sha" 2>/dev/null || _mf_ok=1
-        done
-        [ "$_mf_ok" = 1 ] || return 1
+    _mf_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
+    [ -n "$_mf_old" ] || return 1
+    for _mf_m in $(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null); do
+        _mf_p1="" _mf_p2="" _mf_p3=""
+        read -r _mf_p1 _mf_p2 _mf_p3 <<EOF
+$(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-)
+EOF
+        [ -n "$_mf_p2" ] && [ -z "$_mf_p3" ] || return 1
+        git merge-base --is-ancestor "$1" "$_mf_p1" 2>/dev/null || return 1
+        ! git merge-base --is-ancestor "$_mf_p1" "$base_sha" 2>/dev/null || return 1
+        git merge-base --is-ancestor "$_mf_p2" "$base_sha" 2>/dev/null || return 1
+        [ "$_mf_p2" != "$_mf_old" ] || return 1
+        git merge-base --is-ancestor "$_mf_old" "$_mf_p2" 2>/dev/null || return 1
     done
     mf_merged_base="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
     [ -n "$mf_merged_base" ]
@@ -1077,16 +1092,27 @@ EOF
     # Clean and version-only merge-forwards are admitted without spending the
     # one delta round, whether or not it was already used. Check before the
     # fix trigger: neither carries a fix, so neither must spend the round.
-    if clean_merge_forward "$delta_from" "$delta_to"; then
-        delta_trigger="clean-merge"
-        delta_free=1
-        return 0
-    fi
-    if merge_forward_shape "$delta_from" "$delta_to" \
-        && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
-        delta_trigger="version-merge"
-        delta_free=1
-        return 0
+    # The round count still grows by one per free round, so the free
+    # admissions stop at free_round_cap; a merge past it needs the delta round
+    # or a judge record.
+    # ponytail: the cap is one flat count of all rounds, not of free ones only,
+    # upgrade path is a separate free-round counter in the round state.
+    if [ "$round" -ge "$free_round_cap" ]; then
+        if merge_forward_shape "$delta_from" "$delta_to"; then
+            echo "review-round: $branch is at round $round, the free merge-forward cap ($free_round_cap) - a clean or version-only merge no longer buys a free round" >&2
+        fi
+    else
+        if clean_merge_forward "$delta_from" "$delta_to"; then
+            delta_trigger="clean-merge"
+            delta_free=1
+            return 0
+        fi
+        if merge_forward_shape "$delta_from" "$delta_to" \
+            && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
+            delta_trigger="version-merge"
+            delta_free=1
+            return 0
+        fi
     fi
     if [ -z "$delta_used" ]; then
         if [ "$(ledger_query finding "$delta_from")" = "finding" ]; then
@@ -1100,11 +1126,8 @@ EOF
         # new head's tree is exactly a clean merge of the reviewed head with the
         # base point it merged - so a merge carrying its own edits or conflict
         # resolutions is new work, not a merge-forward.
-        if [ -n "$base_sha" ] \
-            && [ -n "$(git rev-list --merges "$delta_from..$delta_to" 2>/dev/null)" ] \
-            && [ -z "$(git rev-list --no-merges "$delta_from..$delta_to" "^$base_sha" 2>/dev/null)" ] \
-            && merged_base="$(git merge-base "$delta_to" "$base_sha" 2>/dev/null)"; then
-            if clean_tree="$(git merge-tree --write-tree "$delta_from" "$merged_base" 2>/dev/null)" \
+        if merge_forward_shape "$delta_from" "$delta_to"; then
+            if clean_tree="$(git merge-tree --write-tree "$delta_from" "$mf_merged_base" 2>/dev/null)" \
                 && [ "$clean_tree" = "$(git rev-parse "$delta_to^{tree}" 2>/dev/null)" ]; then
                 delta_trigger="merge-forward"
                 return 0

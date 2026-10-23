@@ -1,15 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
-  JudgeReplyError, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
+  JudgeReplyError, LIVE_LOOKUP_MS, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
+import type { IssueSnap } from './types.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
   fv = new Map<string, string[]>();
+  live = new Map<string, IssueSnap>();
+  async issue(key: string) { return this.live.get(key) ?? null; }
   comments = new Map<string, Array<{ id: string; body: string }>>();
   posted = 0;
   async fixVersions(key: string) { return [...(this.fv.get(key) ?? [])]; }
@@ -41,7 +44,7 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
   };
 }
 
-function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
+function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
   const dir = join(root, 'mirror');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync, total: issues.length }));
@@ -49,6 +52,7 @@ function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: str
     writeFileSync(join(dir, `${i.key}.md`), [
       '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`,
       ...(i.category ? [`statusCategory: "${i.category}"`] : []), 'priority: "Medium"',
+      ...(i.sector ? [`sector: "${i.sector}"`] : []),
       `fixVersions: ${JSON.stringify(i.fixVersions)}`, `resolution: ${i.resolution ? JSON.stringify(i.resolution) : 'null'}`,
       '---', '', `# ${i.key}`, '',
     ].join('\n'));
@@ -619,6 +623,64 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+  });
+
+  it('a HOLD decision is reported as HELD, rules nothing and leaves the request claimed', async () => {
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'HOLD', reason: 'no sector for K-2',
+    })));
+    expect(lines).toEqual(['HELD Q-R1-0001: no sector for K-2']);
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(existsSync(join(ctx().dir, 'rulings.jsonl'))).toBe(false);
+  });
+
+  it('offers the judge the live Jira snapshot of a claimed key the mirror lacks', async () => {
+    declared();
+    mirror([{ key: 'K-9', fixVersions: [] }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop' })]);
+  });
+
+  it('a mirror row without a sector is replaced by the live Jira snapshot', async () => {
+    declared();
+    mirror([{ key: 'K-2', fixVersions: [] }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop' })]);
+  });
+
+  it('a live lookup that never answers falls back to the mirror row once its deadline passes', async () => {
+    vi.useFakeTimers();
+    try {
+      declared();
+      mirror([{ key: 'K-2', fixVersions: [] }]);
+      ask('K-2');
+      jira.issue = () => new Promise<IssueSnap | null>(() => {});
+      let seen: unknown;
+      const run = rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+      await vi.advanceTimersByTimeAsync(LIVE_LOOKUP_MS);
+      await run;
+      expect(seen).toEqual([expect.objectContaining({ key: 'K-2' })]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a mirror row with a sector is not re-read from Jira', async () => {
+    declared();
+    mirror([{ key: 'K-2', fixVersions: [], sector: 'Visibility' }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Visibility' })]);
   });
 
   it('a ruling Jira did not take is PENDING, and the next run applies it', async () => {

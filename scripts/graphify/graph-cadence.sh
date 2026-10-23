@@ -968,6 +968,10 @@ ACTION="refreshed"
 
 # --- 6 (cont). semantic step (--semantic only) -----------------
 if [ "$SEMANTIC" -eq 1 ]; then
+    # The file this run's output lands in (the cadence runner redirects it); LOG_FILE only when stdout is no file.
+    _run_log=$(readlink "/proc/$$/fd/1" 2>/dev/null)
+    [ -f "$_run_log" ] || _run_log=$(lsof -a -p "$$" -d 1 -Fn 2>/dev/null | sed -n 's/^n//p')
+    [ -f "$_run_log" ] || _run_log="$LOG_FILE"
     _sem_leg="graph-semantic-$CORPUS_SLUG"
     _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
         --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
@@ -978,7 +982,9 @@ if [ "$SEMANTIC" -eq 1 ]; then
     # re-arms that leg, so the next back-off alerts again.
     _sem_backoff=0
     case "$_sem_out" in *'BACKED OFF'*) _sem_backoff=1 ;; esac
-    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
+    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" \
+        "a file was skipped after repeated semantic failures; it is retried when it changes" "$_run_log" \
+        "its semantic extraction failed on every attempt" "nothing, unless it stays skipped after an edit"
     case "$_sem_rc" in
         0)
             bash "$CADENCE_ALERT" clear "$_sem_leg"
@@ -989,7 +995,24 @@ if [ "$SEMANTIC" -eq 1 ]; then
         # run. An existing alert is left standing: a skip is not a recovery.
         3|4) echo "graph-cadence: semantic step skipped (rc=$_sem_rc, benign: next fire retries)" ;;
         *)
-            bash "$CADENCE_ALERT" fail "$_sem_leg" "semantic-update-rc-$_sem_rc" "$LOG_FILE"
+            _sem_result="the semantic update failed (exit $_sem_rc)" _sem_cause="" _sem_do=""
+            _sem_cap=$(printf '%s\n' "$_sem_out" | grep -c 'chunk [0-9]*/[0-9]* failed:.*run spend cap reached')
+            if [ "$_sem_cap" -gt 0 ]; then
+                _sem_total=$(printf '%s\n' "$_sem_out" | sed -n 's|.*chunk [0-9]*/\([0-9]*\) failed:.*run spend cap reached.*|\1|p' | head -n 1)
+                _sem_spent=$(printf '%s\n' "$_sem_out" | sed -n 's|.*run spend cap reached (spent \([0-9.]*\) of \([0-9.]*\) USD).*|\1 of \2|p' | head -n 1)
+                _sem_spent=$(printf '%s' "$_sem_spent" | awk '{printf "%.2f of %s", $1, $3}')
+                _sem_all=$(printf '%s\n' "$_sem_out" | grep -c 'chunk [0-9]*/[0-9]* failed:')
+                _sem_cause="the claude-api run hit its spend cap (spent $_sem_spent USD)"
+                if [ "$_sem_all" -gt "$_sem_cap" ]; then
+                    _sem_result="$_sem_all of $_sem_total chunks failed, $_sem_cap stopped by the run spend cap"
+                    _sem_cause="$_sem_cause; the other chunks failed for another reason"
+                    _sem_do="read the log for the other chunk failures"
+                else
+                    _sem_result="$_sem_cap of $_sem_total chunks stopped by the run spend cap; next run retries"
+                    _sem_do="nothing"
+                fi
+            fi
+            bash "$CADENCE_ALERT" fail "$_sem_leg" "$_sem_result" "$_run_log" "$_sem_cause" "$_sem_do"
             _fail "semantic-update.sh exited $_sem_rc: $(printf '%s' "$_sem_out" | tail -n 3 | tr '\n' ' ')"
             ;;
     esac
