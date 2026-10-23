@@ -52,9 +52,13 @@ Node-less machine? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first.
 ### 3. Install
 
 ```bash
-node ~/himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
+node ~/himmel/scripts/himmelctl/bin.js install --scope project
 git status --short
 ```
+
+These steps were run with project scope only. A `--scope user` install wires the
+harness for every project on the machine instead (see
+[setup/install.md](setup/install.md)); steps 5 to 7 are not written for it.
 
 `git status` now lists `.claude/`, `scripts/` and `.gitignore` as **untracked**.
 The install is on disk but not yet in your project's history. That matters in
@@ -144,7 +148,10 @@ did the work. Skip straight to the loop.
 
 Work from the worktree you opened in step 6 (or make another with
 `bash scripts/worktree.sh feat/my-thing`), with `claude` running inside it. The
-hooks below only fire inside an active session. Then the day-to-day loop is:
+hooks below only fire inside an active session. The throwaway project from
+step 1 has no remote, so the push and PR lines need a GitHub remote first
+(`git remote add origin <url>`); without one, stop after the commit. The
+day-to-day loop is:
 
 ```bash
 /worktree feat/my-thing      # isolated branch + worktree. Branch must be type/slug —
