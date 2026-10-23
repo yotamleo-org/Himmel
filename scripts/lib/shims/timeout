@@ -28,8 +28,9 @@ _secs() {
     # pure bash: a test fixture's stub PATH may hold no awk. Microsecond integers, bash 3.2-safe.
     int="${num%%.*}"; frac=""
     case "$num" in *.*) frac="${num#*.}" ;; esac
-    frac="${frac}000000"; frac="${frac:0:6}"
-    micro=$(( (10#${int:-0} * 1000000 + 10#$frac) * mult ))
+    frac="${frac}000000000000"; frac="${frac:0:12}"
+    # whole units scale first; the fraction keeps 12 digits so a d/h/m multiplier cannot amplify the cut
+    micro=$(( 10#${int:-0} * mult * 1000000 + 10#$frac * mult / 1000000 ))
     # a nonzero interval finer than a microsecond is still a bound, not "no bound"
     case "$num" in *[1-9]*) [ "$micro" -gt 0 ] || micro=1 ;; esac
     if [ $((micro % 1000000)) -eq 0 ]; then

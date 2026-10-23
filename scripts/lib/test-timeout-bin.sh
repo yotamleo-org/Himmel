@@ -246,5 +246,11 @@ PATH="$d7n" "$BASH_BIN" -c '. "$1"; timeout 0.0000009d sleep 5' _ "$PORTF" >/dev
 eq "T7 a positive interval below one microsecond still bounds (rc 124)" "$rc" "124"
 if [ $((SECONDS - t0)) -lt 4 ]; then ok "T7 the sub-microsecond bound fired in time"; else bad "T7 the sub-microsecond bound took $((SECONDS - t0))s"; fi
 
+# the unit multiplier applies before the precision cut: 0.0000009d is 0.07776s, not the 1us clamp
+eval "$(sed -n '/^_secs() {/,/^}/p' "$SCRIPT_DIR/shims/timeout")"
+eq "T7 _secs keeps a day fraction finer than a microsecond (0.0000009d)" "$(_secs 0.0000009d)" "0.077760"
+eq "T7 _secs 1.5m is 90" "$(_secs 1.5m)" "90"
+eq "T7 _secs .5 is 0.500000" "$(_secs .5)" "0.500000"
+
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
