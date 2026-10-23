@@ -137,11 +137,18 @@ fi
 # PS14b: the host-file read-sink scan moved to ci-quick, a step of the
 # unchecked-mktemp-range group (both scan the PR range for added code).
 quick_block="$(awk '/^  ci-quick:/ { j = 1; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI")"
-sink_step="$(printf '%s\n' "$quick_block" | grep -F "check-host-file-read-sinks.sh --range --merge-ref")"
-if [ -n "$sink_step" ]; then
-  pass "PS14b check-host-file-read-sinks.sh runs in ci-quick"
+sink_step="$(printf '%s\n' "$quick_block" | awk '/^      - id: unchecked-mktemp-range__read-sinks[ ]*$/ { s = 1; print; next } s && /^      - / { exit } s { print }')"
+group_out="$(printf '%s\n' "$quick_block" | grep -F "steps.unchecked-mktemp-range__read-sinks.outcome")"
+ps14b_ok=0
+case "$sink_step" in
+  *"continue-on-error"*) ;;
+  *"if: \${{ !cancelled() && github.event_name == 'pull_request' }}"*"check-host-file-read-sinks.sh --range --merge-ref"*)
+    [ -n "$group_out" ] && ps14b_ok=1 ;;
+esac
+if [ "$ps14b_ok" = 1 ]; then
+  pass "PS14b check-host-file-read-sinks.sh gates through the unchecked-mktemp-range group in ci-quick"
 else
-  fail "PS14b check-host-file-read-sinks.sh is not a ci-quick step"
+  fail "PS14b check-host-file-read-sinks.sh is not a gating ci-quick step of the unchecked-mktemp-range group"
 fi
 
 # PS9: the committed ledger is per-suite timings from real main CI runs.

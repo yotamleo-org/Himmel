@@ -266,7 +266,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/crlf-boundary.XXXXXX")" || { echo "FATAL: mkte
 # under $TMP above would be silently ALLOWED regardless of branch, which is
 # not the thing under test there.
 BWIMC_BASE="${HOME:?}"
-case "$BWIMC_BASE" in /tmp/*|*/tmp/*|*/temp/*) BWIMC_BASE="$(cd "$(dirname "$0")/../.." && pwd)" ;; esac
+case "$BWIMC_BASE" in /tmp|/temp|/tmp/*|*/tmp/*|*/temp/*)BWIMC_BASE="$(cd "$(dirname "$0")/../.." && pwd)" ;; esac
 BWIMC_FIX="$(mktemp -d "$BWIMC_BASE/.himmel-crlf-bwimc.XXXXXX")" || { echo "FATAL: mktemp -d (HOME) failed" >&2; exit 1; }
 [ -n "$BWIMC_FIX" ] || { echo "FATAL: mktemp -d (HOME) returned empty" >&2; exit 1; }
 
