@@ -23,6 +23,8 @@ check() { # check <label> <command...>
 }
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/bus-cli.XXXXXX") || exit 1
+# The store refuses a symlinked path component, and macOS /tmp is a symlink.
+tmp=$(cd -P "$tmp" && pwd -P) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export XDG_STATE_HOME="$tmp/state"
 mkdir -m 700 "$XDG_STATE_HOME"
