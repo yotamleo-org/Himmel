@@ -309,15 +309,20 @@ if apply:
             counts["locked"] += 1
             bad_groups.add(grp)
             continue
-        os.makedirs(dst, exist_ok=True)
-        top = os.path.dirname(src)
-        r = subprocess.run(["git", "-C", top, "mv", "--", os.path.basename(src), os.path.join(dst, os.path.basename(src))],
-                           capture_output=True, text=True)
-        if r.returncode == 0:
-            done_map[src] = moved_map[src]
-            group_done.setdefault(grp, []).append(src)
-            continue
-        print("FAIL git mv %s: %s" % (src, r.stderr.strip()), file=sys.stderr)
+        try:
+            os.makedirs(dst, exist_ok=True)
+            err = ""
+        except OSError as exc:
+            err = "mkdir %s: %s" % (dst, exc)
+        if not err:
+            r = subprocess.run(["git", "-C", os.path.dirname(src), "mv", "--", os.path.basename(src), os.path.join(dst, os.path.basename(src))],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                done_map[src] = moved_map[src]
+                group_done.setdefault(grp, []).append(src)
+                continue
+            err = "git mv %s: %s" % (src, r.stderr.strip())
+        print("FAIL " + err, file=sys.stderr)
         failed += 1
         bad_groups.add(grp)
         for prev in group_done.get(grp, []):

@@ -134,6 +134,8 @@ check "clash: destination kept" keep "$(head -1 "$A/HIMMEL-1-clash-2026-01-01.md
 check "clash: source stayed" yes "$(here "$B/HIMMEL-1-clash-2026-01-01.md")"
 
 # --- a failed move leaves every link pointing where the doc still is ----------
+NOROOT=0; [ "$(id -u)" -ne 0 ] && NOROOT=1   # root ignores directory permission bits, so the chmod cases need a normal user
+if [ "$NOROOT" = 1 ]; then
 leg HIMMEL-1-failmv-2026-01-01.md WRAPPED 60
 printf 'see [f](HIMMEL-1-failmv-2026-01-01.md)\n' >> "$B/HIMMEL-9-live-2026-10-22.md"
 git -C "$R" add -A; chmod 555 "$A"
@@ -141,6 +143,7 @@ run --apply >/dev/null 2>&1; check "failed move exits 1" 1 "$?"
 chmod 755 "$A"
 check "failed move: doc stayed" yes "$(here "$B/HIMMEL-1-failmv-2026-01-01.md")"
 check "failed move: referrer link untouched" yes "$(grep -q '](HIMMEL-1-failmv-2026-01-01.md)' "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
+fi
 
 # --- a held lock also protects an aged auto-arm-status note --------------------
 printf '# s\n' > "$R/auto-arm-status-held.md"; age 30 "$R/auto-arm-status-held.md"
@@ -164,13 +167,15 @@ check "and git shows no rename for the group" 0 "$(git -C "$R" status --porcelai
 run --apply >/dev/null 2>&1; check "the next clean run moves the group whole" 2 "$(find "$A" -name 'HIMMEL-1-grp*' | wc -l | tr -d ' ')"
 
 # --- a doc whose own move failed still has its links to moved docs rewritten ---
-A100="$B/archive/$(ym 100)"; mkdir -p "$A100"
+A100="$B/archive/$(ym 100)"; printf 'not a dir\n' > "$A100"   # a file where the month directory belongs: mkdir fails for any user
 leg HIMMEL-1-lnkB-2026-01-01.md WRAPPED 60
 leg HIMMEL-1-lnkA-2026-01-01.md WRAPPED 100
 printf 'see [b](HIMMEL-1-lnkB-2026-01-01.md)\n' >> "$B/HIMMEL-1-lnkA-2026-01-01.md"; age 100 "$B/HIMMEL-1-lnkA-2026-01-01.md"
-git -C "$R" add -A; chmod 555 "$A100"
-run --apply >/dev/null 2>&1; check "a split batch exits 1" 1 "$?"
-chmod 755 "$A100"
+git -C "$R" add -A
+out6="$(run --apply 2>&1)"; check "a split batch exits 1" 1 "$?"
+check "a failed mkdir is reported, not a traceback" 0 "$(grep -c 'Traceback' <<< "$out6")"
+check "and named as a mkdir failure" yes "$(grep -q '^FAIL mkdir ' <<< "$out6" && echo yes || echo no)"
+rm -f "$A100"
 check "the failed doc stayed" yes "$(here "$B/HIMMEL-1-lnkA-2026-01-01.md")"
 check "its sibling in the writable month moved" yes "$(here "$A/HIMMEL-1-lnkB-2026-01-01.md")"
 check "and the stayer now links to the moved doc's new place" yes \
