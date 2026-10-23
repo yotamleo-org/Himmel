@@ -1513,7 +1513,7 @@ fi
 # leaks=<n|?|skip>: LEAK lines of one `jira release leaks <active version>` read on the Jira
 # mirror (open tickets in a frozen version with no frozen-set membership and no admissions-ledger
 # row). skip = no mirror or versions file, no active version, or the active version is not frozen;
-# ? = the read failed. Read-only: the ACTION line names the --comment run, the tick never writes. Not in console-wait's wake key.
+# ? = the read failed or the built Jira CLI is missing. Read-only: the ACTION line names the --comment run, the tick never writes. Not in console-wait's wake key.
 leaks_summary=skip
 leaks_version=""
 lk_vf="$nd_mirror.versions.tsv"
@@ -1536,7 +1536,7 @@ if [ -n "$leaks_version" ]; then
         fi
     fi
     if [ "$lk_rc" -eq -1 ]; then
-        :
+        leaks_summary='?'  # lk_rc stays -1 so the count branch below never overwrites it
     elif [ "$lk_rc" -eq 0 ]; then
         leaks_summary="$(printf '%s\n' "$lk_out" | grep -c '^LEAK ')" || true  # swallow-ok: grep -c exits 1 and prints 0 on no match
     elif printf '%s\n' "$lk_out" | grep -q 'is not frozen'; then

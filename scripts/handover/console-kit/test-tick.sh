@@ -2533,6 +2533,9 @@ contains 'the leaks ACTION line keeps its explanation behind a shell comment (HI
 lk_other="$(REPO="$W/repo-other" lk_tick "$W/lk-probe-3.sh")"
 not_contains 'the leaks ACTION line resolves the CLI from the tick checkout, not from --repo (HIMMEL-7153)' "$lk_other" "$W/repo-other/scripts/jira/dist/index.js"
 contains 'a tick on another --repo still prints the leaks ACTION line (HIMMEL-7153)' "$lk_other" '/scripts/jira/dist/index.js release leaks '
+lk_cli_of() { printf '%s\n' "$1" | sed -n 's/^ACTION leaks=[0-9]*: JIRA_PROJECT_KEY=[^ ]* node \([^ ]*\) release leaks .*/\1/p'; }
+lk_cli_three="$(lk_cli_of "$lk_three")"
+if [ -n "$lk_cli_three" ] && [ "$(lk_cli_of "$lk_other")" = "$lk_cli_three" ] && [ -e "${lk_cli_three%/scripts/jira/dist/index.js}/.git" ]; then pass 'the leaks ACTION line names the same primary-checkout CLI whatever --repo is (HIMMEL-7153)'; else fail "the leaks ACTION CLI is '$(lk_cli_of "$lk_other")' under --repo vs '$lk_cli_three' by default, want one primary checkout (HIMMEL-7153)"; fi
 lk_zero="$(lk_tick "$W/lk-probe-0.sh")"
 not_contains 'a clean version hides leaks (HIMMEL-7153)' "$lk_zero" 'leaks='
 lk_unfrozen="$(lk_tick "$W/lk-probe-unfrozen.sh")"

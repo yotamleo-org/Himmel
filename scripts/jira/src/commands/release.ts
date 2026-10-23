@@ -92,8 +92,9 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
 // The budget lives on the Jira version; an unreachable Jira shows the count alone.
 async function admissionBudgets(versions: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
+  const project = projectKey();
   try {
-    const known = await fetchVersions(projectKey());
+    const known = await fetchVersions(project);
     for (const v of versions) {
       const budget = admissionBudget(known.find((k) => k.name === v)?.description);
       if (budget !== undefined) out[v] = budget;

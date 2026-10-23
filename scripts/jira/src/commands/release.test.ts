@@ -4,10 +4,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
+vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
-import { request } from '../client.js';
+import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
 import { registerRelease, renderState } from './release.js';
 
@@ -194,6 +194,13 @@ describe('jira release state admissions budget (HIMMEL-7153)', () => {
     out = [];
     await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
     expect(JSON.parse(out[0]).admission_budget).toEqual({ v1: 4 });
+  });
+
+  it('keeps the required-project-key error instead of printing the count alone', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
+    vi.mocked(projectKey).mockImplementationOnce(() => { throw new Error('JIRA_PROJECT_KEY is required'); });
+    await expect(run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(/JIRA_PROJECT_KEY is required/);
   });
 
   it('parses only a whole admission-budget line', () => {
