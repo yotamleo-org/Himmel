@@ -1053,10 +1053,12 @@ done < "$work/changed"
 # A `!<glob> <suite>` row vetoes a file the suite's walk skips; a
 # glob with no `/` matches the basename. Mirror the suite's own skip rule
 # exactly, never wider: a veto that over-reaches is an under-selection.
-# The WS5 rows mirror its diff scan (any shipped shell or JS source, extension
-# case-insensitive as WS5 classifies it; test-*, *.tsv and *.test.<js|ts|mjs|cjs>
-# skipped); a VENDORED.md tree it also skips is not
-# mirrored, so a vendored file over-selects a 0 s suite.
+# The WS5 rows cover its shell and JS/TS sources (.sh .bash .js .mjs .cjs .ts,
+# extension case-insensitive as WS5 classifies it; test-*, *.tsv and
+# *.test.<js|ts|mjs|cjs> skipped). WS5's diff scan also reads other non-md files
+# (.py, .mts, .tsx, .json, extensionless) that no row selects it for; upgrade
+# path: a row here once a --selector-miss ledger row names one. A VENDORED.md
+# tree it skips is not mirrored, so a vendored file over-selects a 0 s suite.
 # ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
 # and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a
 # `*` row would run 554s+19s on every PR);

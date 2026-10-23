@@ -81,7 +81,7 @@ uncovered() {
 WIRED_ALLOW='node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs"
 bun "$CLAUDE_PROJECT_DIR/scripts/observability/session-run-hook.ts"
 node "$CLAUDE_PROJECT_DIR/scripts/hooks/stop-queue.mjs" enqueue
-command -v graphify >/dev/null 2>&1 && exec graphify hook-guard search
+command -v graphify >/dev/null 2>&1 && exec graphify hook-guard search; exit 0
 node -e "(async()=>{const root=process.env.CLAUDE_PLUGIN_ROOT||process.env.PLUGIN_ROOT;if(root)await import(require('"'"'node:url'"'"').pathToFileURL(require('"'"'node:path'"'"').join(root,'"'"'hooks'"'"','"'"'always-on.mjs'"'"')).href)})().catch(()=>{})"'
 
 # wired_scripts <root> -> repo-relative hook script paths, one per line, deduped;
@@ -92,8 +92,11 @@ wired_scripts() {
     const fs = require("fs"), path = require("path");
     const root = process.argv[1], out = new Set(), unparsed = [];
     const allow = process.env.WIRED_ALLOW.split("\n").filter(Boolean);
-    // an allowlisted prefix never exempts a command that also names a .sh/.js script
-    const found = (f, c, n) => { if (n === 0 && !(allow.some((a) => c.startsWith(a)) && !/\.(sh|js)\b/.test(c))) unparsed.push(f + ": " + c); };
+    // an allowlisted prefix exempts only a command whose remainder chains nothing (no control
+    // operator, redirect, backtick, newline or $( ), however a chained hook is spelled, and
+    // names no .sh/.js script
+    const allowed = (c) => allow.some((a) => c.startsWith(a) && !/[;&|<>`\n]|\$\(|\.(sh|js)\b/.test(c.slice(a.length)));
+    const found = (f, c, n) => { if (n === 0 && !allowed(c)) unparsed.push(f + ": " + c); };
     const cmds = (f) => {
       const p = path.join(root, f);
       if (!fs.existsSync(p)) { console.error("missing wiring file: " + f); process.exit(3); }
@@ -165,11 +168,10 @@ if [ "$(uncovered "$ROOT" "$FX/ppaths")" = "marketplace/plugins/p/weird/x.sh" ];
 # hook drops out of the sweep and an uncovered source passes), unless it is on
 # the explicit allowlist in wired_scripts. The fx8 spellings: the quote closing
 # before the slash, and an absolute path.
-wire_fixture() { # <dir> <settings.json command|""> <plugin hooks.json command|"">
+wire_fixture() { # <dir> <settings.json command|""> <plugin hooks.json command|""> [codex hooks.json command]
   rm -rf "$1"; mkdir -p "$1/.claude" "$1/.codex" "$1/marketplace/plugins/p/hooks"
-  printf '{"hooks":{}}\n' > "$1/.codex/hooks.json"
   local f c
-  for f in ".claude/settings.json:$2" "marketplace/plugins/p/hooks/hooks.json:$3"; do
+  for f in ".claude/settings.json:$2" "marketplace/plugins/p/hooks/hooks.json:$3" ".codex/hooks.json:${4:-}"; do
     c="${f#*:}"; f="${f%%:*}"
     if [ -z "$c" ]; then printf '{"hooks":{}}\n' > "$1/$f"; continue; fi
     node -e 'console.log(JSON.stringify({hooks:{PreToolUse:[{hooks:[{type:"command",command:process.argv[1]}]}]}}))' "$c" > "$1/$f"
@@ -192,6 +194,17 @@ if ux_out="$(wired_scripts "$UX" 2>&1)"; then ok "an allowlisted non-shell comma
 # shellcheck disable=SC2016
 wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre; bash /opt/hooks/x.sh' ""
 if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an allowlisted prefix hid a chained shell hook (rc 0): $ux_out"; else ok "an allowlisted prefix does not exempt a chained shell hook"; fi
+# any control operator after the prefix refuses it, whatever the chained hook is
+# spelled (.bash, uppercase .SH, extensionless)
+for chain in '&& bash /opt/hooks/x.bash' '| /opt/hooks/hook' '; /opt/hooks/X.SH'; do
+  # shellcheck disable=SC2016
+  wire_fixture "$UX" "node \"\$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs\" pre $chain" ""
+  if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an allowlisted prefix hid a chained hook '$chain' (rc 0): $ux_out"; else ok "an allowlisted prefix does not exempt a chained hook '$chain'"; fi
+done
+# the codex hooks.json commands are held to the same resolution rule
+wire_fixture "$UX" "" "" 'bash /opt/hooks/unparsable.sh'
+if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an unparsable codex hooks.json command was silently dropped (rc 0): $ux_out"; else ok "an unparsable codex hooks.json command fails the enumeration"; fi
+case "$ux_out" in *'.codex/hooks.json: bash /opt/hooks/unparsable.sh'*) ok "the failure names the codex file and command" ;; *) bad "the failure does not name the codex command: $ux_out" ;; esac
 
 echo "== every wired hook script resolves"
 N=0

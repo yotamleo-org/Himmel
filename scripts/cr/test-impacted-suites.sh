@@ -661,9 +661,12 @@ if [ "$rc" -eq 1 ] && grepq "$out" 'without a verdict'; then pass "--from-file e
 # impacted set is clean (rc0) — the case the runbook's own zero-candidate
 # instruction relies on. ------------------------------------------------------
 mkdir -p "$FX/docs/bar"
-change docs/bar/other-26.md
-out="$( cd "$FX" && bash "$IS" --check "$range" --from-file "$FX/empty-25.txt" 2>&1 )"; rc=$?
-if [ "$rc" -eq 0 ] && grepq "$out" '0 impacted'; then pass "--from-file empty path with an empty impacted set -> rc0 '0 impacted'"; else fail "--from-file empty path against no impacted suites: rc=$rc out=$out"; fi
+if change docs/bar/other-26.md; then
+    out="$( cd "$FX" && bash "$IS" --check "$range" --from-file "$FX/empty-25.txt" 2>&1 )"; rc=$?
+    if [ "$rc" -eq 0 ] && grepq "$out" '0 impacted'; then pass "--from-file empty path with an empty impacted set -> rc0 '0 impacted'"; else fail "--from-file empty path against no impacted suites: rc=$rc out=$out"; fi
+else
+    fail "fixture setup failed for section 26 (docs/bar/other-26.md)"
+fi
 
 # --- 27. Source closure. A suite that names only mid.sh must be
 # listed when far.sh (two source hops behind mid.sh) changes. -----------------
@@ -908,6 +911,13 @@ for ws5_skip in scripts/telegram/test-break-glass.sh tools/ws5/data.tsv tools/ws
   out="$(run_is "$range")"
   if ! grepq "$out" "^${WS5}\$"; then pass "$ws5_skip (skipped by WS5's own scan) does not select test-ws5-invariants.sh"; else fail "WS5 over-selected for $ws5_skip: $out"; fi
 done
+# the !test-* veto must not stop WS5 selecting itself when its own file changes
+if change scripts/parity/test-ws5-invariants.sh; then
+  out="$(run_is "$range")"
+  if grepq "$out" "^${WS5}\$"; then pass "a change to test-ws5-invariants.sh itself selects it (the test-* veto does not hide it)"; else fail "WS5 self-change not selected: $out"; fi
+else
+  fail "fixture setup failed for the WS5 self-change"
+fi
 
 # --- 34. A change to the CR guarded closure selects
 # test-cr-guarded-closure.sh (#1851: leg-jira-status.sh, reached from the
