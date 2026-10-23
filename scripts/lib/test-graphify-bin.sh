@@ -154,13 +154,15 @@ assert "default pin is a fork build stamp (X.Y.Z+himmel.N)" \
   bash -c 'printf "%s" "$1" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\+himmel\.[0-9]+$"' _ "$pinned_ver"
 
 # The 0.9.94+himmel.2 fork build is the first whose pyproject extras and uv.lock
-# carry the patched floors. What a `uv tool install` of the default spec binds:
+# carry the patched floors; 0.9.94+himmel.4 is the first whose uv.lock also has no
+# Critical or High advisory (pillow 13, cryptography 50, pypdf 6.19+, soupsieve
+# 2.8.4+). What a `uv tool install` of the default spec binds:
 # anyio and certifi through the [ollama] extra, and mcp through the `--with`
 # requirement. pillow, pyjwt, urllib3 and fsspec are floored only in the fork's
 # uv.lock and its other extras, which this install path does not request.
 # shellcheck disable=SC2016
-assert "default pin is at or past the patched-floors fork build 0.9.94+himmel.2" \
-  bash -c '. "$1/graphify-bin.sh"; ! _graphify_version_lt "$2" "0.9.94+himmel.2"' _ "$SCRIPT_DIR" "$pinned_ver"
+assert "default pin is at or past the advisory-free lock fork build 0.9.94+himmel.4" \
+  bash -c '. "$1/graphify-bin.sh"; ! _graphify_version_lt "$2" "0.9.94+himmel.4"' _ "$SCRIPT_DIR" "$pinned_ver"
 
 echo "[test-graphify-bin] GRAPHIFY_VERSION override"
 override_hint="$(GRAPHIFY_VERSION=9.9.9 graphify_install_hint)"
