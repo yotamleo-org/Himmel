@@ -97,6 +97,7 @@ FAILC="$TMP/failclaude"; mkdir -p "$FAILC"
 cp "$HAVE"/* "$FAILC/"
 printf '#!/bin/sh\necho "$@" >> "%s/claude.log"\nexit 1\n' "$TMP" > "$FAILC/claude"; chmod +x "$FAILC/claude"
 ln -s "$(command -v timeout)" "$FAILC/timeout"
+for t in env bash mktemp cat rm sleep pkill; do ln -s "$(command -v "$t")" "$FAILC/$t"; done   # the macOS timeout shim (env bash shebang) needs these
 OUT="$(env -i PATH="$FAILC" HIMMEL_CLOUD_ROOT="$FAKE" "$BASH_BIN" "$SETUP" --with-plugins 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ]; then ok "failing plugin install keeps rc 0"; else bad "failing plugin install rc=$RC: $OUT"; fi
 if grep -q 'install lean-skills@himmel' "$TMP/claude.log" 2>/dev/null; then ok "one failed install does not stop the next"; else bad "lean-skills install not attempted: $(cat "$TMP/claude.log" 2>/dev/null)"; fi
@@ -113,7 +114,7 @@ case "$order" in *"plugin:lean-skills "*"jira-dist "*"obsidian-deps "*) ok "plug
 # reason, the npm stderr tail, and the next step still runs.
 NPMF="$TMP/npmfail"; mkdir -p "$NPMF"
 cp "$HAVE"/* "$NPMF/"
-for t in timeout sh tail mkdir bash; do ln -s "$(command -v "$t")" "$NPMF/$t"; done
+for t in timeout sh tail mkdir bash mktemp cat rm sleep pkill; do ln -s "$(command -v "$t")" "$NPMF/$t"; done   # mktemp cat rm sleep pkill: the macOS timeout shim
 printf '#!/bin/sh\necho "npm ERR! registry hang" >&2\nexit 124\n' > "$NPMF/npm"; chmod +x "$NPMF/npm"
 printf '#!/bin/sh\necho ensure-deps-ran\nexit 0\n' > "$FAKE/marketplace/plugins/obsidian-triage/tools/ensure-deps.sh"
 OUT="$(env -i PATH="$NPMF" HIMMEL_CLOUD_ROOT="$FAKE" TMPDIR="$TMP" "$BASH_BIN" "$SETUP" 2>&1)"; RC=$?
@@ -148,6 +149,7 @@ case "$order" in *"graphify graphify-graph "*"qmd qmd-index "*) ok "graph build 
 GQ="$TMP/gq"; mkdir -p "$GQ"; cp "$HAVE"/* "$GQ/"
 ln -s "$(command -v timeout)" "$GQ/timeout"   # the collection probe is timeout-bounded
 ln -s "$(command -v dirname)" "$GQ/dirname"
+for t in env bash mktemp cat rm sleep pkill; do ln -s "$(command -v "$t")" "$GQ/$t"; done   # the macOS timeout shim (env bash shebang) needs these
 printf '#!/bin/sh\nexit 0\n' > "$GQ/graphify"
 # shellcheck disable=SC2016  # $1/$2 belong to the stub script
 printf '#!/bin/sh\n[ "$1 $2" = "collection list" ] && echo "himmel (qmd://himmel/)"\nexit 0\n' > "$GQ/qmd"
@@ -209,7 +211,7 @@ esac
 exit 0
 EOF
 rm -f "$GF/qmd"
-for t in dirname sleep mktemp rm; do ln -s "$(command -v "$t")" "$GF/$t"; done
+for t in dirname sleep mktemp rm cat head grep pkill; do ln -s "$(command -v "$t")" "$GF/$t"; done  # timeout shim (macOS: no GNU timeout) needs mktemp cat rm sleep pkill; setup-env needs head grep
 OUT="$(env -i PATH="$GF" HOME="$TMP/home" HIMMEL_CLOUD_ROOT="$FAKE" TMPDIR="$TMP" "$BASH_BIN" "$SETUP" 2>&1)"; RC=$?
 if [ -f "$TMP/qmd-registered" ] && [ "$(cat "$TMP/qmd-registered")" = "$FAKE" ]; then ok "off-PATH installed qmd registers only the repo"; else bad "off-PATH qmd never registers himmel: $OUT"; fi
 : > "$TMP/qmd-no-register"
@@ -305,7 +307,7 @@ mkdir -p "$HOST/scripts/jira" "$HOST/scripts/lib" "$HOST/marketplace/plugins/obs
 : > "$HOST/scripts/jira/package.json"
 cp "$FAKE/scripts/lib/"* "$HOST/scripts/lib/"
 HB="$TMP/hostile"; mkdir -p "$HB"; cp "$HAVE"/* "$HB/"
-for t in timeout sh tail mkdir bash dirname pwd; do ln -s "$(command -v "$t")" "$HB/$t"; done
+for t in timeout sh tail mkdir bash dirname pwd mktemp cat rm sleep pkill head grep; do ln -s "$(command -v "$t")" "$HB/$t"; done
 # shellcheck disable=SC2016  # stub script text, expanded when the stub runs
 printf '#!/bin/sh\necho "jira:$(pwd)" >> "$HIMMEL_PWD_LOG"\nexit 0\n' > "$HB/npm"
 # shellcheck disable=SC2016

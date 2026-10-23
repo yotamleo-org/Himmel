@@ -38,7 +38,7 @@ export FAILURE_REVIEW_NOTIFY_CMD="$TMP/stub/notify"
 export FAILURE_REVIEW_FRICTION_CMD=""
 # The router fails closed without a project key; the suite names one, the no-key cases unset it.
 export JIRA_PROJECT_KEY=HIMMEL
-export CADENCE_ALERT_FILE="$TMP/cadence-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify"
+export CADENCE_ALERT_FILE="$TMP/cadence-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/alert-send-failed"
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }

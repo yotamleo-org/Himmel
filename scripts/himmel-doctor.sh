@@ -2675,8 +2675,18 @@ _c33_age_human() {
     else printf '%dm' $((s / 60)); fi
 }
 
+# A cadence alert whose Telegram send failed leaves a marker (cadence-alert.sh);
+# a failed leg nobody was told about is its own WARN, not a silent log line.
+_c33_alert_delivery() {
+    local mark="${HOME:-}/.himmel/state/cadence-alert-send-failed" what
+    [ -s "$mark" ] || return 0
+    what="$(tail -n 1 "$mark" 2>/dev/null | tr -d '\r')"
+    emit WARN C33-alert-delivery "a cadence failure alert could not be delivered to Telegram (last: $what) -- a failed leg may have gone unannounced" "check the Telegram sender (scripts/luna/vault-stall-alert.sh), then rm $mark"
+}
+
 check_c33_graph_stale() {
     local root ledger
+    _c33_alert_delivery
     # PURE resolver (never handover_root_ensure) -- himmel-doctor is
     # read-only and must not create the handover dir as a side effect of a
     # diagnostic pass.
@@ -2742,7 +2752,10 @@ check_c33_graph_stale() {
     fi
     remedy="bash scripts/graphify/graph-cadence.sh   # or check scripts/luna/graphmap-cadence.sh status for the armed task"
     if [ "$action" = "failed" ]; then
-        emit WARN C33-graph-stale "graph stale: $behind commits behind main / last cadence run $age_human ago FAILED" "$remedy"
+        local why
+        why="$(printf '%s' "$last_line" | jq -r '.error // empty' 2>/dev/null | sed -n 's/.*(refused: \([^)]*\)).*/\1/p' | head -n 1)"
+        [ -n "$why" ] && why=" (refused: $why)"
+        emit WARN C33-graph-stale "graph stale: $behind commits behind main / last cadence run $age_human ago FAILED$why" "$remedy"
         return
     fi
     if [ "$stale_on_age" -eq 1 ]; then

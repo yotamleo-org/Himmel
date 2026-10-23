@@ -1,6 +1,6 @@
 ---
 name: minerva
-description: Grill / stress-test / brainstorm an idea, or design/build a feature, into a critic-hardened spec + plan. /minerva
+description: Use to interrogate an idea and develop a critic-reviewed specification and implementation plan.
 ---
 
 # minerva — grill → brainstorm → critic → spec → critic → plan (HIMMEL-428)

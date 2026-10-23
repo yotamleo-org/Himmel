@@ -434,7 +434,7 @@
       "scopes": ["user"],
       "profiles": ["luna", "all"],
       "deps": [],
-      "probe": { "type": "settings-key", "file": ".claude/settings.json", "key": "enabledPlugins.obsidian-second-brain@himmel", "expect": true },
+      "probe": { "type": "settings-key", "file": ".claude/settings.json", "key": "enabledPlugins.obsidian-second-brain@himmel", "expect": false },
       "removable": "full-offboard-only",
       "offboard": "advise"
     },

@@ -20,10 +20,24 @@ usage() { echo "timeout: $1" >&2; exit 125; }
 
 _secs() {
     # digits with at most one dot, then one optional s/m/h/d suffix
-    case "${1%[smhd]}" in
+    local num="${1%[smhd]}" mult=1 int frac micro
+    case "$num" in
         ''|*[!0-9.]*|*.*.*|.) return 1 ;;
     esac
-    awk -v d="$1" 'BEGIN { n = d + 0; u = substr(d, length(d)); if (u == "m") n *= 60; else if (u == "h") n *= 3600; else if (u == "d") n *= 86400; printf "%s", n }'
+    case "$1" in *m) mult=60 ;; *h) mult=3600 ;; *d) mult=86400 ;; esac
+    # pure bash: a test fixture's stub PATH may hold no awk. Microsecond integers, bash 3.2-safe.
+    int="${num%%.*}"; frac=""
+    case "$num" in *.*) frac="${num#*.}" ;; esac
+    frac="${frac}000000000000"; frac="${frac:0:12}"
+    # whole units scale first; the fraction keeps 12 digits so a d/h/m multiplier cannot amplify the cut
+    micro=$(( 10#${int:-0} * mult * 1000000 + 10#$frac * mult / 1000000 ))
+    # a nonzero interval finer than a microsecond is still a bound, not "no bound"
+    case "$num" in *[1-9]*) [ "$micro" -gt 0 ] || micro=1 ;; esac
+    if [ $((micro % 1000000)) -eq 0 ]; then
+        printf '%s' "$((micro / 1000000))"
+    else
+        printf '%d.%06d' "$((micro / 1000000))" "$((micro % 1000000))"
+    fi
 }
 
 kill_after=0

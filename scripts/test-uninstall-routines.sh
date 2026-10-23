@@ -128,7 +128,7 @@ run_uninstall() {
     FAKE_CRON_FILE="$CRON" FAKE_CRON_LOG="$CRON_LOG" \
     FAKE_SYSTEMCTL_LOG="$SYSTEMCTL_LOG" FAKE_LOGINCTL_LOG="$LOGINCTL_LOG" \
     FAKE_AT_DIR="$CASE_DIR/at" FAKE_AT_LOG="$AT_LOG" \
-    PATH="$SUITE_TMP/bin:$PATH" USER=tester \
+    PATH="${RUN_PATH:-$SUITE_TMP/bin:$PATH}" USER=tester \
     bash "$repo_root/scripts/uninstall.sh" "$@" </dev/null 2>&1 )
 }
 # flags that isolate the step under test
@@ -335,6 +335,27 @@ check "B6 unit still there" "$([ -f "$UNIT" ] && echo present || echo gone)" "pr
 check "B6 no systemctl call" "$(grep -c . "$SYSTEMCTL_LOG")" "0"
 check "B6 no loginctl call" "$(grep -c . "$LOGINCTL_LOG")" "0"
 has "B6 DRY line for disable" "DRY: systemctl --user disable --now telegram-bridge.service" "$out"
+
+echo "==== B10: no systemctl on PATH -- --purge-state holds the backup of the unit it could not restore ===="
+# A PATH of symlinks to every tool the run needs except systemctl: the unit is
+# kept `no-systemctl`, its original never comes back, and the backup is the
+# only copy of the operator's unit.
+NOSYS_BIN="$SUITE_TMP/nosys-bin"; mkdir -p "$NOSYS_BIN"
+for _t in "$SUITE_TMP"/bin/*; do ln -sf "$_t" "$NOSYS_BIN/$(basename "$_t")"; done
+for _t in bash env jq git grep sed awk date mkdir rm mv cp cat find head tail tr sort uniq dirname basename readlink realpath ls chmod touch mktemp id uname wc cut sleep stat sha256sum shasum od dd tee xargs ln printf test hostname whoami ps rmdir diff cmp expr tty; do
+  _p=$(command -v "$_t" 2>/dev/null) && [ -x "$_p" ] && ln -sf "$_p" "$NOSYS_BIN/$_t"
+done
+rm -f "$NOSYS_BIN/systemctl"
+new_case b10
+seed_unit true replace
+RUN_PATH="$NOSYS_BIN"
+out=$(run_uninstall --yes --skip-plugins --skip-hooks --skip-settings --purge-state); rc=$?
+RUN_PATH=
+has "B10 unit kept for lack of systemctl" "systemctl not on PATH" "$out"
+check "B10 purge refused (nonzero rc)" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+has "B10 names the held backup" "refusing --purge-state" "$out"
+check "B10 provenance ledger kept" "$([ -f "$CASE_DIR/prov/provenance.jsonl" ] && echo present || echo gone)" "present"
+check "B10 operator's unit backup survives" "$(grep -rl operators-own "$CASE_DIR/prov/provenance-backups" 2>/dev/null | wc -l | tr -d ' ')" "1"
 
 # ---- C: recorded project targets other than $PWD ----------------------------
 seed_project() { # <dir>: wire himmel hooks into <dir>/.claude/settings.json under this case's ledger

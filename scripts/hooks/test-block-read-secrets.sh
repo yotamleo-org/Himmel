@@ -127,6 +127,14 @@ assert_rc "Bash env bash -c 'cat .env'"      2 "$(run_case "$(j_bash "env bash -
 assert_rc "Bash zsh -c 'grep X .env'"        2 "$(run_case "$(j_bash "zsh -c 'grep X .env'")")"
 # Regression (already green via the <-redirect path, must stay green).
 assert_rc "Bash bash -c 'read x <.env'"      2 "$(run_case "$(j_bash "bash -c 'read x <.env'")")"
+# An env NAME=value operand is a value, but its text can hold a guarded command:
+# the verdict stays a deny under the model, which unwraps env.
+assert_rc "env NAME='x; cat .env' prog"         2 "$(run_case "$(j_bash "env NAME='x; cat .env' prog")")"
+assert_rc "env -i NAME='x; cat .env' prog"      2 "$(run_case "$(j_bash "env -i NAME='x; cat .env' prog")")"
+assert_rc "command env NAME='x; cat .env' prog" 2 "$(run_case "$(j_bash "command env NAME='x; cat .env' prog")")"
+assert_rc "timeout env NAME='x; cat .env' prog" 2 "$(run_case "$(j_bash "timeout 5 env NAME='x; cat .env' prog")")"
+assert_rc "env NAME=1 cat .env still denies"    2 "$(run_case "$(j_bash 'env NAME=1 cat .env')")"
+assert_rc "env NAME='cat .env' prog (one word)" 0 "$(run_case "$(j_bash "env NAME='cat .env' prog")")"
 # PRESERVED ALLOW: -c body with no secret-read, and no -c at all.
 assert_rc "Bash bash -c 'echo hi'"           0 "$(run_case "$(j_bash "bash -c 'echo hi'")")"
 assert_rc "Bash sh -c 'ls -la'"              0 "$(run_case "$(j_bash "sh -c 'ls -la'")")"

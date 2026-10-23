@@ -55,6 +55,14 @@ if command -v qmd >/dev/null 2>&1; then
   bash "$SUT" --vault "$V" --qmd-config "$C/index.yml" --apply >/dev/null 2>&1
   QMD_CONFIG_DIR="$C" XDG_CACHE_HOME="$C/cache" qmd update >/dev/null 2>&1
   check "after apply + qmd update only the note stays indexed" "notes/n.md " "$(indexed "$C")"
+  # an archived doc leaves `luna` and is found through `luna-archive`
+  mkdir -p "$V/handovers/u/archive/2026-01" "$V/sessions/_archive/2026-01"
+  echo "# a" > "$V/handovers/u/archive/2026-01/a.md"
+  echo "# s" > "$V/sessions/_archive/2026-01/s.md"
+  QMD_CONFIG_DIR="$C" XDG_CACHE_HOME="$C/cache" qmd update >/dev/null 2>&1
+  check "an archived doc is not in luna" "notes/n.md " "$(indexed "$C")"
+  arch="$(QMD_CONFIG_DIR="$C" XDG_CACHE_HOME="$C/cache" qmd ls luna-archive 2>/dev/null | sed 's|.*qmd://luna-archive/||' | sort | tr '\n' ' ')"
+  check "and luna-archive finds it" "handovers/u/archive/2026-01/a.md sessions/_archive/2026-01/s.md " "$arch"
 else
   SKIP=$((SKIP+1)); echo "skip - qmd not installed: qmd-backed rows"
 fi
@@ -69,14 +77,26 @@ check "dry-run adds no .graphifyignore" 0 "$([ ! -e "$V/.graphifyignore" ] && ec
 
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 luna_ign="$(awk '/^  luna:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^      - /{print $2}' "$CFG" | tr '\n' ' ')"
-check "luna gains the three ignore entries" \
-  '"graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" ' "$luna_ign"
+check "luna gains the five ignore entries" \
+  '"graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" "handovers/**/archive/**" "sessions/_archive/**" ' "$luna_ign"
+check "the luna-archive collection is added over the same vault" \
+  "    path: $V|    pattern: \"{handovers/**/archive/**/*.md,sessions/_archive/**/*.md}\"" \
+  "$(awk '/^  luna-archive:/{f=1;next} f&&/^  [^ ]|^[^ ]/{f=0} f{print}' "$CFG" | paste -sd'|')"
 him_ign="$(awk '/^  himmel:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^      - /{print $2}' "$CFG" | tr '\n' ' ')"
 check "himmel's own ignore list is untouched" '"graphify-out/**" "**/fixtures/**" ' "$him_ign"
 check "other collections and models survive" 3 "$(grep -c -E '^  (ggs-local|himmel):$|^models:$' "$CFG")"
+check "luna-archive sits before models" "luna-archive:|models:" \
+  "$(grep -E '^  luna-archive:$|^models:$' "$CFG" | tr -d ' ' | paste -sd'|')"
 cp "$CFG" "$W/c1.once"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 check "a second apply is a no-op" 0 "$(cmp -s "$CFG" "$W/c1.once" && echo 0 || echo 1)"
+
+# --- the archive collection joins the collections block, whatever follows it --
+V="$W/v1b"; make_vault "$V"; CFG="$W/c1b.yml"; write_cfg "$CFG" "$V"
+awk '/^models:/{print "settings:"; print "  keep: 1"} {print}' "$CFG" > "$CFG.n" && mv "$CFG.n" "$CFG"
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
+check "luna-archive sits inside collections, before the next section" "collections:|luna-archive:|settings:|models:" \
+  "$(grep -E '^collections:$|^  luna-archive:$|^models:$|^settings:$' "$CFG" | tr -d ' ' | paste -sd'|')"
 
 # --- a pre-existing luna ignore list is merged, not replaced ------------------
 V="$W/v2"; make_vault "$V"; CFG="$W/c2.yml"; write_cfg "$CFG" "$V"
@@ -84,7 +104,7 @@ awk '{print} /^  luna:/{f=1} f&&/pattern:/{print "    ignore:"; print "      - \
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 luna_ign="$(awk '/^  luna:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^      - /{print $2}' "$CFG" | tr '\n' ' ')"
 check "existing luna ignore entry kept, new ones appended" \
-  '"Clippings/_raw/**" "graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" ' "$luna_ign"
+  '"Clippings/_raw/**" "graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" "handovers/**/archive/**" "sessions/_archive/**" ' "$luna_ign"
 
 # --- a config without the collection is refused -------------------------------
 printf 'collections:\n  other:\n    path: /x\n' > "$W/c3.yml"
@@ -95,8 +115,8 @@ check "missing collection exits nonzero" 3 "$?"
 V="$W/v4"; make_vault "$V"; CFG="$W/c4.yml"; write_cfg "$CFG" "$V"
 printf '# keep me\nsessions/\n' > "$V/.graphifyignore"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
-check ".graphifyignore keeps its lines and gains the two exclusions" \
-  "# keep me|sessions/|60-Maps/graph/|graphify-out/" "$(paste -sd'|' "$V/.graphifyignore")"
+check ".graphifyignore keeps its lines and gains the four exclusions" \
+  "# keep me|sessions/|60-Maps/graph/|graphify-out/|handovers/**/archive/|sessions/_archive/" "$(paste -sd'|' "$V/.graphifyignore")"
 cp "$V/.graphifyignore" "$W/gi.once"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 check ".graphifyignore second apply is a no-op" 0 "$(cmp -s "$V/.graphifyignore" "$W/gi.once" && echo 0 || echo 1)"
@@ -139,7 +159,7 @@ awk '{print} /^  luna:/{f=1} f&&/pattern:/{print "    ignore:"; print "      # k
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 luna_ign="$(awk '/^  luna:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^      - /{print $2}' "$CFG" | tr '\n' ' ')"
 check "a comment inside a six-space list: no duplicate, new entries after the last item" \
-  '"Clippings/_raw/**" "graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" ' "$luna_ign"
+  '"Clippings/_raw/**" "graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" "handovers/**/archive/**" "sessions/_archive/**" ' "$luna_ign"
 
 # --- failure paths: a missing value, an unwritable ignore file, an unreadable tree
 if command -v timeout >/dev/null 2>&1; then
