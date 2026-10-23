@@ -158,7 +158,8 @@ for subj in \
     bad "git-generated subject passes: $subj"; sed 's/^/  | /' "$WORK/out"
   fi
 done
-for subj in "Merge unrelated change" "Merge branches by hand" "Revert the thing" "Merge pull request without a number"; do
+for subj in "Merge unrelated change" "Merge branches by hand" "Revert the thing" "Merge pull request without a number" \
+  "Merge pull request #garbage" "Merge branch '" "Merge remote-tracking branch ''" 'Revert "'; do
   if commit "$subj"; then
     bad "lookalike subject is refused: $subj"
   else
