@@ -1963,8 +1963,8 @@ def inpipe: any((.in // [])[]; . == "pipe");
 def viaenv: (.via // []) | any(. == "env");
 def posv($men):
   runq as $q
-  | if ((.assigns // []) | length) > 0 then "legacy"
-    elif viaenv then (if $q != null then qverdict($q) else "legacy" end | if . == "deny" then "deny" else "legacy" end)
+  | if viaenv then (if $q != null then qverdict($q) else "legacy" end | if . == "deny" then "deny" else "legacy" end)
+    elif ((.assigns // []) | length) > 0 then "legacy"
     elif $q != null then qverdict($q)
     elif (.opaque != null) or (interp and (.body == null)) then "legacy"
     elif mention then "legacy"
