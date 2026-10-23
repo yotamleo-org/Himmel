@@ -141,11 +141,12 @@
 #       an unproven outcome is reported as pending-unconfirmed, never REFUSED)
 #   16  audit sink not writable, or the MERGING record could not be written —
 #       refused (an unauditable merge must not proceed)
-#   17  policy-refused by the console-GO gate: HIMMEL_CONSOLE_LEG
+#   17  policy-refused by the console-GO gate, in two cases: (1) HIMMEL_CONSOLE_LEG
 #       is truthy and the console's GO file for this PR at the certified head is
 #       missing, stale or unresolvable, or --go is absent or names a different
-#       file than that GO (another PR or head, or a missing file) — checked after
-#       check-ci, before any merge
+#       file than that GO (another PR or head, or a missing file); (2) any caller
+#       passed --go and it fails the same checks — checked after check-ci, before
+#       any merge
 #       call, on --dry-run too (see the console-GO gate below). Before
 #       this code also carried the GitHub-blocked refusals now reported as 18.
 #   18  GitHub-blocked — refused once, alerted once, never retried:
