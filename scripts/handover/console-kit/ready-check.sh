@@ -735,7 +735,7 @@ else
         local main_runs main_row main_id main_event pr_jobs main_jobs new rc
         wf_why=""
         main_runs=$("$GH" run list --repo "$nwo" --workflow "$1" --branch "${tp_branch:-main}" --json databaseId,status,conclusion,event --limit 20 2>/dev/null) || { wf_why="cannot read main's runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
-        main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
+        main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
         [ -n "$main_row" ] || return 1
         main_id="${main_row%% *}"; main_event="${main_row#* }"
         pr_jobs=$(wf_failed_jobs "$2") && [ -n "$pr_jobs" ] || { wf_why="cannot read the failed jobs of run $2"; return 1; }

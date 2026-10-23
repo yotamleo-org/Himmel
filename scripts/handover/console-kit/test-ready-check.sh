@@ -96,7 +96,7 @@ case "$args" in
     "run list"*)
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         w="${args#*--workflow }"; w="${w%% *}"
-        case "$args" in *"--branch "*) w="$w.main" ;; esac
+        case "$args" in *"--branch main "*) w="$w.main" ;; *"--branch "*) w="$w.other-branch" ;; esac
         f="${args#*--json }"; f="${f%% *}"
         if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then jq -c --arg f "$f" '($f | split(",")) as $k | map(with_entries(select(.key as $n | $k | index($n))))' "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
     "run view "*)
@@ -1306,6 +1306,11 @@ check "main jobs read fails: exit 1" "$rc" "1"
 contains "main jobs read fails: says so" "$out" "cannot read the failed jobs of main run 222"
 
 jobs_json "shell-unit (4/8)" > "$RUNDIR/jobs-222.json"
+main_run schedule timed_out 222 > "$RUNDIR/ci.yml.main.json"
+wf_run ".github/workflows/ci.yml"
+check "main's latest run timed out on the same suite: exit 0" "$rc" "0"
+contains "main's latest run timed out on the same suite: PRE-EXISTING line" "$out" "PRE-EXISTING"
+main_run schedule failure 222 > "$RUNDIR/ci.yml.main.json"
 printf '[{"conclusion":"success","databaseId":333,"event":"push","headSha":"deadbeef","status":"completed"},{"conclusion":"failure","databaseId":222,"event":"schedule","headSha":"deadbeef","status":"completed"}]' > "$RUNDIR/ci.yml.main.json"
 wf_run ".github/workflows/ci.yml"
 check "main's newest run is green, an older one red: exit 1" "$rc" "1"
