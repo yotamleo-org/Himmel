@@ -193,7 +193,9 @@ lrec() { HIMMELCTL_CACHE_DIR="$TMP/cache" python3 "$LL" record --failures-ledger
 mkdir -p "$TMP/cache/launch-logs"
 printf 'headed-arm-leg: profile=leg-impl lane=native model=m role=leg session=lp-leg launched=2026-10-23T00:00:00Z\n' >"$TMP/cache/launch-logs/lp-leg.log"
 { printf 'headed-arm-leg: profile=leg-impl lane=native model=m role=leg session=lp-two launched=2026-10-23T00:00:00Z\n'; printf 'headed-arm-leg: profile=judge lane=native model=m role=judge session=lp-two launched=2026-10-23T00:05:00Z\n'; } >"$TMP/cache/launch-logs/lp-two.log"
-for s in "$LP" "$LQ" "$LR"; do jq -c --arg s "$s" '.session = $s' "$TMP/digest.json" >"$TMP/lp-$s.json"; done
+printf 'headed-arm-leg: profile=none lane=native model=m role=leg session=lp-none launched=2026-10-23T00:00:00Z\n' >"$TMP/cache/launch-logs/lp-none.log"
+LN=4670c1a5-0000-4000-8000-0000000000f4
+for s in "$LP" "$LQ" "$LR" "$LN"; do jq -c --arg s "$s" '.session = $s' "$TMP/digest.json" >"$TMP/lp-$s.json"; done
 check "the digest under test carries tool_health" '[ "$(jq ".tool_health | length" "$TMP/digest.json")" -gt 0 ]'
 lrec --digest "$TMP/lp-$LP.json" --launch-name lp-leg >/dev/null 2>&1
 lrec --digest "$TMP/lp-$LQ.json" >/dev/null 2>&1
@@ -201,6 +203,8 @@ lrec --digest "$TMP/lp-$LR.json" --launch-name lp-two >/dev/null 2>&1
 check "a launch record gives every tool_health row the launched profile" 'jq -e "select(.run_id == \"$LP\") | (.meta.tool_health | length > 0) and all(.meta.tool_health[]; .profile == \"leg-impl\") and .meta.profile == \"leg-impl\"" "$LE" >/dev/null'
 check "no launch name reads unknown" 'jq -e "select(.run_id == \"$LQ\") | all(.meta.tool_health[]; .profile == \"unknown\")" "$LE" >/dev/null'
 check "two launch lines that disagree read unknown" 'jq -e "select(.run_id == \"$LR\") | all(.meta.tool_health[]; .profile == \"unknown\")" "$LE" >/dev/null'
+lrec --digest "$TMP/lp-$LN.json" --launch-name lp-none >/dev/null 2>&1
+check "a launch with no profile (profile=none) reads unknown, never the literal none" 'jq -e "select(.run_id == \"$LN\") | .meta.profile == null and all(.meta.tool_health[]; .profile == \"unknown\")" "$LE" >/dev/null'
 check "the saved digest marker carries the stamped profile too" 'jq -e "all(.tool_health[]; .profile == \"leg-impl\")" "$LS/$LP.json" >/dev/null'
 lrec --digest "$TMP/lp-$LP.json" --launch-name ../../etc/passwd >/dev/null 2>&1; rcp=$?
 check "a launch name with a path separator is refused" '[ "$rcp" != 0 ]'

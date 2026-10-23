@@ -231,7 +231,7 @@ test("the default path prices the Skill listing of the real leg-impl, console-ju
   const ids = new Set<string>();
   for (const p of profiles) for (const [id, on] of Object.entries(resolveProfile(registry, p).enabledPlugins)) if (on) ids.add(id);
   for (const id of ids) {
-    const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", "himmel", id.split("@")[0], "1.0.0", "skills", "one");
+    const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", id.split("@")[1], id.split("@")[0], "1.0.0", "skills", "one");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "SKILL.md"), `---\nname: one\ndescription: ${"x".repeat(400)}\n---\nbody\n`);
   }
@@ -241,6 +241,26 @@ test("the default path prices the Skill listing of the real leg-impl, console-ju
   for (const p of profiles) expect(skill(p).listing_tokens).toBeGreaterThan(0);
   expect(skill("console-judge").listing_tokens).toBeLessThan(skill("console").listing_tokens);
   expect(data.drop_candidates.map((d: any) => d.profile).sort()).toEqual([...profiles].sort());
+});
+
+test("a same-named plugin from another marketplace does not inflate the profile's Skill listing", async () => {
+  const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
+  const enabled = Object.entries(resolveProfile(loadRegistry(), "leg-impl").enabledPlugins).filter(([, on]) => on).map(([id]) => id);
+  const skillTokens = (decoy: boolean) => {
+    const env: any = seed();
+    const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+    rows.forEach((r: any) => { for (const h of r.meta.tool_health) h.profile = "leg-impl"; });
+    writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+    const put = (marketplace: string, plugin: string, chars: number) => {
+      const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", marketplace, plugin, "1.0.0", "skills", "one");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: one\ndescription: ${"x".repeat(chars)}\n---\nbody\n`);
+    };
+    for (const id of enabled) put(id.split("@")[1], id.split("@")[0], 400);
+    if (decoy) put("not-enabled-marketplace", enabled[0].split("@")[0], 4000);
+    return read(env).profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Skill").listing_tokens;
+  };
+  expect(skillTokens(true)).toBe(skillTokens(false));
 });
 
 test("the page shows the per-profile table in plain words and labels the unknown bucket", async () => {

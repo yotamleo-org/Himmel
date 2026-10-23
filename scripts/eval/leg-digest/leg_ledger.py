@@ -318,7 +318,8 @@ def launch_profile(who):
             seen = {m.group(1) for m in map(LAUNCH_LINE.match, fh) if m}
     except OSError:
         return None
-    return next(iter(seen)) if len(seen) == 1 and PROFILE.match(next(iter(seen))) else None
+    # the launcher writes profile=none when no profile was set: that is no attribution
+    return next(iter(seen)) if len(seen) == 1 and PROFILE.match(next(iter(seen))) and next(iter(seen)) != "none" else None
 
 
 def build_rows(digest, who):
