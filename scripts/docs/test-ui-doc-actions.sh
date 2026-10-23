@@ -50,7 +50,7 @@ done
 for g in "$ROOT/docs/guide/installer-journey.html" "$ROOT/docs/guide/loops-and-graphs.html"; do
   while IFS= read -r href; do
     if grep -qxF "$href" "$ROOT/site/allowlist.txt"; then ok; else bad "$(basename "$g") links ../$href, which the site does not build (not in site/allowlist.txt)"; fi
-  done < <(grep -oE 'href="\.\./[^"#]+\.md"' "$g" | sed -E 's/^href="\.\.\///; s/"$//')
+  done < <(grep -oE 'href="\.\./[^"#]+\.md(#[^"]*)?"' "$g" | sed -E 's/^href="\.\.\///; s/(#[^"]*)?"$//')
 done
 
 # A nested fence closed early leaves the rest of the page inside a code block, so the site loses
