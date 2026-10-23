@@ -111,3 +111,11 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     when the relay absorbed anything (labels and PR numbers only), and the
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
+
+    **Permission.** The tracked `.claude/settings.json` allows the step-10
+    launch shape `bash "<kit>/console-wait.sh" …` (absolute quoted path) and
+    nothing wider. If the classifier still refuses the waiter, the operator adds
+    the rule through `/permissions` (a rule must be tool-scoped:
+    `Bash(bash "<kit>/console-wait.sh" *)`; a bare path with a wildcard is
+    skipped as invalid). The chief never re-spells the command to dodge the
+    refusal: it sends the operator the exact line and holds.
