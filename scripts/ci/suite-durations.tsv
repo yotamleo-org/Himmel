@@ -1083,3 +1083,4 @@ templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	4
 templates/luna-second-brain/scripts/test-vault-git.sh	69
 scripts/docs/test-ui-doc-actions.sh	1
 scripts/ci/test-snyk-weekly-workflow.sh	0
+scripts/lib/test-cr-first-release.sh	7

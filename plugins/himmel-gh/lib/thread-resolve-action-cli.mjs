@@ -13,6 +13,7 @@
 // kept for back-compat.)
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { expandPrefix } from './thread-prefix.mjs';
@@ -169,3 +170,24 @@ if (forge === 'bitbucket') {
 }
 
 process.stdout.write('resolved: ok\n');
+
+// Event point 4 of the ci:go release: a resolved thread may clear the reviewer
+// gate at the head. Best effort and GitHub only; the lib reads the CI_GO_GATE
+// switch first and prints nothing when it is off, and a failure here never
+// changes this command's result.
+if (forge !== 'bitbucket') {
+  try {
+    const lib = join(__dirname, '..', '..', '..', 'scripts', 'lib', 'cr-first-release.sh');
+    const head = await execGh(['pr', 'view', String(number), '--repo', `${owner}/${repo}`, '--json', 'headRefOid', '-q', '.headRefOid']);
+    const sha = head.stdout.trim();
+    if (head.exitCode === 0 && /^[0-9a-f]{40}$/.test(sha) && existsSync(lib)) {
+      await new Promise((resolve) => {
+        const p = spawn('bash', [lib, '--pr', String(number), '--head', sha], { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60000 });
+        p.on('error', resolve);
+        p.on('close', resolve);
+      });
+    }
+  } catch {
+    // best effort
+  }
+}

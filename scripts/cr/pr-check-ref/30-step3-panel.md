@@ -54,3 +54,5 @@
    CANDIDATES under the adjudication rules below. Panel Suggestions are NOT
    forwarded to agents — append them directly to the aggregate
    `## Suggestions` section in step 3's output (step 7 files them).
+
+   **End of the panel = a ci:go release event (HIMMEL-6581).** Once the panel's findings are in hand, run `bash "<himmel_dir>/scripts/lib/cr-first-release.sh" --pr <pr> --head <head> || true`. It reads the `CI_GO_GATE` switch first and prints nothing when it is off; when on, it releases `ci:go` at this head if the reviewer gate already passes, or prints why it holds. Best effort: a failure here never blocks the review.

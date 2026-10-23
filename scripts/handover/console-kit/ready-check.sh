@@ -26,6 +26,9 @@
 #      CheckRun name + workflowName when present, else StatusContext
 #      context. Read via --json, never `gh pr checks` text (a green check
 #      whose name contains a space mislabels under naive text parsing).
+#      With the CI_GO_GATE repository variable on, a FAIL here also prints
+#      the `CR-FIRST HOLD <reason> <age>` lines of scripts/lib/cr-first-release.sh
+#      (read-only: no label written); variable off or unset: nothing is added.
 #   3. GraphQL unresolved review threads == 0. The snapshot follows every
 #      page with cursor/hasNextPage guards and the same 50-page ceiling as
 #      check-ci.sh; a >100-thread PR cannot silently short-circuit to PASS.
@@ -170,6 +173,21 @@ repo="${nwo#*/}"
 
 RESULT=0
 mark_fail() { RESULT=1; }
+# crf_hold_note — with the CI_GO_GATE switch on, say why the heavy CI has not run at
+# this head: the CR-FIRST HOLD lines of the release lib, read-only (no
+# label, no ledger line). Switch off or unset: prints nothing, check 2 is unchanged.
+crf_hold_note() {
+    local lib; lib="$(cd "$(dirname "$0")/../../lib" && pwd)/cr-first-release.sh"
+    [ -r "$lib" ] || return 0
+    (
+        # shellcheck source=../../lib/cr-first-release.sh
+        . "$lib" 2>/dev/null || exit 0
+        cr_first_switch_on "$nwo" || exit 0
+        CR_FIRST_READONLY=1
+        export CR_FIRST_READONLY
+        cr_first_release "$PR" "$SHA" "$nwo" 2>/dev/null </dev/null | sed 's/^/       /'
+    ) || true
+}
 SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
 snapshot=""
 if [ "$ONLY7" -eq 0 ]; then
@@ -257,11 +275,13 @@ else
     case "$total" in ''|*[!0-9]*) total=0 ;; esac
     if [ "$total" -eq 0 ]; then
         echo "[FAIL] 2. statusCheckRollup: no checks reported yet (0 entries — CI may not have registered)"
+        crf_hold_note
         mark_fail
     elif [ -z "$bad" ]; then
         echo "[PASS] 2. statusCheckRollup: $total/$total checks completed SUCCESS/SKIPPED/NEUTRAL"
     else
         echo "[FAIL] 2. statusCheckRollup: not-green — $bad"
+        crf_hold_note
         mark_fail
     fi
 fi

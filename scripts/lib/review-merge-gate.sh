@@ -454,6 +454,8 @@ _crg_eval() {
                 if [ "$mode" = hard ]; then
                     hold="${hold}HOLD: $slug (hard) is $disp at head $head of PR #$num — a hard reviewer must pass at the head; re-run it, or change its mode in critics.local.json (docs/configuration.md)."$'\n'
                     [ "$state" = unavailable ] && _crg_alert "$slug" "$head" "$slug (hard) is $disp at head $head of PR #$num — it cannot review, so the PR holds until it can or its mode changes."
+                elif [ "${_CRG_RELEASE:-0}" = 1 ] && [ "$prov" = github-app ] && [ "$state" = in-progress ]; then
+                    hold="${hold}HOLD: CodeRabbit review is in progress at head $head of PR #$num (status $_CRG_CR_RAW) — the CI release waits for its verdict; it ends when the status settles or a stuck-review probe finds the cause."$'\n'
                 else
                     disp="relaxed(${detail:-$state})"
                     if [ "$prov" = github-app ]; then
@@ -473,7 +475,7 @@ _crg_eval() {
     return 0
 }
 
-# cr_reviewer_gate <pr> <head> [<owner/name>]
+# cr_reviewer_gate <pr> <head> [<owner/name>] [--release]
 #   The reviewer predicate the merge gate and the release check share: does
 #   every reviewer in the effective set (critics_config_resolve) let <head> of
 #   PR <pr> through? <owner/name> defaults to this clone's origin.
@@ -493,8 +495,15 @@ _crg_eval() {
 #   otherwise relaxed(<state>). No hard row left in the set is a config error,
 #   unless the config says "review": "no_code_review" (or CR_PROFILE=none):
 #   then GO with a NOTE and no gh call.
+#   --release (the CI release check, cr-first-release.sh) changes exactly one
+#   cell: a best-effort github-app row in state in-progress (CodeRabbit status
+#   pending) holds instead of relaxing. The merge gate omits it (H11): a merge
+#   also needs green heavy CI at the head.
 cr_reviewer_gate() {
     local num="${1:-}" head="${2:-}" repo="${3:-}" cfg rc=0 owner name
+    _CRG_RELEASE=0
+    case "$repo" in --release) _CRG_RELEASE=1; repo="" ;; esac
+    [ "${4:-}" = --release ] && _CRG_RELEASE=1
     if [ -z "$num" ] || [ -z "$head" ]; then
         echo "cr-reviewer-gate: degraded (usage: cr_reviewer_gate <pr> <head> [<owner/name>])" >&2; return 3
     fi
