@@ -451,10 +451,10 @@ fi
 
 if [ "$_install_graphify" = "1" ]; then
   if graphify_install; then
-    # Register the MCP server so the install delivers the mcp__graphify__* tools,
-    # not just the CLI. user scope — setup.sh provisions this
-    # machine's own environment. WARN-not-fail; idempotent.
-    graphify_register_mcp user
+    # Register the MCP server on demand (the `graph` mcp-profile), never in
+    # ~/.claude.json: no default session loads its tool schemas, the CLI is the
+    # supported path. WARN-not-fail; idempotent.
+    graphify_register_mcp_on_demand
     graphify_price_hooks
   else
     echo "  WARNING: graphify install failed; setup continues." >&2

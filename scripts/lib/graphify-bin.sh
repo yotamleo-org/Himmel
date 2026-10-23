@@ -303,6 +303,55 @@ graphify_wsl_share_store() {
   return 0
 }
 
+# _graphify_mcp_entrypoint -- print the absolute graphify-mcp path (uv's tool bin
+# dir, then PATH), or nothing. `|| true`: a plain `bin_dir=$(...)` assignment
+# propagates the substitution's exit status, so under a caller's `set -e`
+# (adopt.sh is `set -euo pipefail`) a missing/failing uv would ABORT the adopt
+# instead of warn-not-failing.
+_graphify_mcp_entrypoint() {
+  local bin_dir
+  bin_dir="$(uv tool dir --bin 2>/dev/null || true)"
+  if [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp.exe" ]; then
+    printf '%s\n' "$bin_dir/graphify-mcp.exe"
+  elif [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp" ]; then
+    printf '%s\n' "$bin_dir/graphify-mcp"
+  else
+    command -v graphify-mcp 2>/dev/null || true
+  fi
+}
+
+# graphify_register_mcp_on_demand -- add the graphify MCP server to the on-demand
+# registry (~/.config/himmel/mcp-on-demand.json, override HIMMEL_MCP_ONDEMAND_FILE)
+# that scripts/mcp/build-mcp-profiles.mjs reads for the `graph` profile. Unlike
+# graphify_register_mcp it never touches ~/.claude.json, so no default session
+# loads the 10 graphify tool schemas; the CLI is the supported default path.
+# Idempotent (rewrites the one entry) and WARN-not-fail.
+graphify_register_mcp_on_demand() {
+  local file="${HIMMEL_MCP_ONDEMAND_FILE:-$HOME/.config/himmel/mcp-on-demand.json}" mcp_arg
+  mcp_arg="$(_graphify_mcp_entrypoint)"
+  if [ -z "$mcp_arg" ]; then
+    echo "  graphify MCP: 'graphify-mcp' entrypoint not found -- skipping on-demand registration (check the uv tool bin dir)." >&2
+    return 0
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  graphify MCP: node not found -- skipping on-demand registration." >&2
+    return 0
+  fi
+  if node -e '
+    const fs = require("fs"), path = require("path");
+    const [file, cmd] = process.argv.slice(1);
+    let doc = { mcpServers: {} };
+    if (fs.existsSync(file)) doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    doc.mcpServers = { ...doc.mcpServers, graphify: { type: "stdio", command: cmd, args: [], env: {} } };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  ' "$file" "$mcp_arg"; then
+    echo "  graphify MCP: registered on demand ($file) -- launch with the graph profile (.claude/mcp-profiles/README.md); the graphify CLI is the default path."
+  else
+    echo "  WARNING: graphify on-demand registration failed -- CLI works; see $file" >&2
+  fi
+}
+
 # graphify_register_mcp <scope> -- register the graphify MCP server (the
 # mcp__graphify__* tools) with Claude Code at <scope> (local|user|project;
 # default user), so an install actually delivers the MCP tools and not just the
@@ -320,7 +369,7 @@ graphify_wsl_share_store() {
 # WARN-not-fail by contract: a missing claude/entrypoint or an add hiccup prints
 # the manual command and returns 0, never aborting the caller.
 graphify_register_mcp() {
-  local scope="${1:-user}" bin_dir mcp_arg="" hint
+  local scope="${1:-user}" mcp_arg="" hint
   # Scope-appropriate manual hint: project = the portable bare name; user/local =
   # the absolute path. Used by every "register later / manually" message below so
   # a project adopter is never told to commit a machine-specific path.
@@ -339,17 +388,7 @@ graphify_register_mcp() {
     # resolved from PATH per machine (setup/adopt put uv's bin dir on PATH).
     mcp_arg="graphify-mcp"
   else
-    # `|| true`: a plain `bin_dir=$(...)` assignment propagates the substitution's
-    # exit status, so under a caller's `set -e` (adopt.sh is `set -euo pipefail`) a
-    # missing/failing uv would ABORT the adopt instead of warn-not-failing.
-    bin_dir="$(uv tool dir --bin 2>/dev/null || true)"
-    if [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp.exe" ]; then
-      mcp_arg="$bin_dir/graphify-mcp.exe"
-    elif [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp" ]; then
-      mcp_arg="$bin_dir/graphify-mcp"
-    else
-      mcp_arg="$(command -v graphify-mcp 2>/dev/null || true)"
-    fi
+    mcp_arg="$(_graphify_mcp_entrypoint)"
     if [ -z "$mcp_arg" ]; then
       echo "  graphify MCP: 'graphify-mcp' entrypoint not found -- skipping (check the uv tool bin dir)." >&2
       echo "  Register later: $hint" >&2
@@ -2087,7 +2126,8 @@ if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
     source)  graphify_source ;;
     share-store) graphify_wsl_share_store ;;
     register-mcp) graphify_register_mcp "${2:-user}" ;;
+    register-mcp-on-demand) graphify_register_mcp_on_demand ;;
     price-hooks) graphify_price_hooks "${2:-}" ;;
-    *) echo "Usage: bash scripts/lib/graphify-bin.sh install|update|source|share-store|register-mcp [scope]|price-hooks [project-dir]" >&2; exit 2 ;;
+    *) echo "Usage: bash scripts/lib/graphify-bin.sh install|update|source|share-store|register-mcp [scope]|register-mcp-on-demand|price-hooks [project-dir]" >&2; exit 2 ;;
   esac
 fi

@@ -1764,29 +1764,24 @@ an existing foreign graphify install is adopted as-is, never reinstalled;
 see `scripts/lib/graphify-bin.sh`.)
 
 The install exposes two binaries: `graphify` (the CLI) and `graphify-mcp`
-(the MCP server). **`setup.sh --with-graphify` (and `adopt.sh --with-graphify`)
-now register the MCP server automatically** (`setup.sh` at
-`user` scope, `adopt.sh` at its `--scope`), so the install delivers the
-`mcp__graphify__*` tools, not just the CLI. Registration is idempotent (skips
-when graphify is already registered). The entry point is **scope-dependent**:
-`user`/`local` (a personal config) registers the **absolute** path, robust in
-the MCP launch context, and the form `/himmel-doctor` expects (it flags
-PATH-fragile bare entries); `project` (a committed `.mcp.json`) registers the
-**bare** name so the path stays portable across teammates' machines.
+(the MCP server). The CLI (`graphify query|explain|path`, `leg-graph.sh`) is the
+supported path and what agents use. **The MCP server is on demand, not
+default** (HIMMEL-7177): `setup.sh --with-graphify` (and `adopt.sh
+--with-graphify` at `user`/`local` scope) write the absolute `graphify-mcp` path
+into the on-demand registry `~/.config/himmel/mcp-on-demand.json` (override
+`HIMMEL_MCP_ONDEMAND_FILE`) and never into `~/.claude.json`, so a normal
+session does not load its 10 tool schemas. To use `mcp__graphify__*`, generate
+the profile and launch with it (`node scripts/mcp/build-mcp-profiles.mjs`, then
+`claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.graph.json`).
+`adopt.sh --scope project` still registers the **bare** name in the committed
+`.mcp.json` (a project adopter's explicit choice, portable across machines).
 
-To register (or re-register) manually (the shared implementation, same as the
-installers call), pass the scope explicitly (`user` or `project`, not both;
-`[user|project]` below is a placeholder):
-`bash scripts/lib/graphify-bin.sh register-mcp user`. For `user`/`local` it
-resolves the entry point from the directory `uv tool dir --bin` reports
-(usually `~/.local/bin` on Linux/macOS). The raw equivalent (user scope):
+To (re-)register on demand by hand:
+`bash scripts/lib/graphify-bin.sh register-mcp-on-demand`. A machine that
+registered graphify at user scope before this change keeps loading it by default
+until you run `claude mcp remove graphify -s user` and then the command above.
 
-```bash
-claude mcp add --scope user graphify -- "$(uv tool dir --bin)/graphify-mcp"
-```
-
-Claude Code is the only agent graphify needs; the MCP registration above is
-the whole integration (no codex/other-CLI prerequisite).
+Claude Code is the only agent graphify needs (no codex/other-CLI prerequisite).
 
 **Windows + WSL on one machine share ONE graph store.** Graph extraction is
 LLM-backed (real spend), so the WSL side must not regenerate what the Windows
@@ -1808,7 +1803,7 @@ graphify section in `CLAUDE.md`.
 
 Configure in Claude Code settings (`~/.claude/settings.json`):
 
-- **obsidian-vault**: `uvx mcp-obsidian` pointing to Luna vault path
+- **obsidian-vault** (on demand, HIMMEL-7176): `uvx mcp-obsidian` pointing to the Luna vault path. Put its spec in `~/.config/himmel/mcp-on-demand.json` (`{"mcpServers":{"obsidian-vault":{...}}}`, same shape as `~/.claude.json`), **not** in `~/.claude.json`, which every session loads. Launch with `node scripts/mcp/build-mcp-profiles.mjs`, then `claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.vault.json`. The Obsidian Local REST API plugin stays installed either way: the end-session-wiki hook writes session notes through it.
 - **atlassian**: Jira/Confluence MCP (requires token)
 
 ---
@@ -1907,7 +1902,7 @@ its backup copies). Not touched: the himmel clone + `.env`, your non-himmel
 ### OPTIONAL — per integration
 
 **graphify:**
-- [ ] `graphify --version` works and a fresh session lists the `graphify` MCP server as connected
+- [ ] `graphify --version` works; a fresh session does NOT list the `graphify` MCP server (on demand), and `~/.config/himmel/mcp-on-demand.json` holds its entry, which a `graph`-profile session connects
 
 **Jira / HIMMEL project:**
 - [ ] `node scripts/jira/dist/index.js list` returns HIMMEL issues

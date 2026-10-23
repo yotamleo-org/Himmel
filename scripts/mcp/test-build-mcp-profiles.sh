@@ -52,5 +52,26 @@ EOF
 node "$HERE/build-mcp-profiles.mjs" >"$T/gen2.log" 2>&1
 if [ ! -e "$S" ]; then ok "stale secret file removed when the last secret is dropped"; else bad "stale secret file survived"; fi
 
+# On-demand servers: a server registered ONLY in the on-demand registry (never in
+# ~/.claude.json, so no default session loads it) still resolves into its profile.
+# Fixture shape copied from `claude mcp get graphify` on the station.
+cat >"$T/home/.claude.json" <<EOF
+{"mcpServers":{}}
+EOF
+OD="$T/home/.config/himmel/mcp-on-demand.json"
+mkdir -p "$(dirname "$OD")"
+cat >"$OD" <<EOF
+{"mcpServers":{"graphify":{"type":"stdio","command":"/opt/uv/bin/graphify-mcp","args":[],"env":{}}}}
+EOF
+node "$HERE/build-mcp-profiles.mjs" >"$T/gen3.log" 2>&1
+G="$T/out/local.graph.json"
+if [ -f "$G" ] && grep -q '"graphify"' "$G" && grep -q 'graphify-mcp' "$G"; then ok "graph profile resolves graphify from the on-demand registry"; else bad "graph profile missing or graphify unresolved ($(tr '\n' ' ' <"$T/gen3.log"))"; fi
+if lacks '"graphify"' "$T/home/.claude.json"; then ok "on-demand server stays out of ~/.claude.json"; else bad "on-demand server leaked into ~/.claude.json"; fi
+
+# With no ~/.claude.json at all, the registry alone is enough.
+rm -f "$T/home/.claude.json" "$G"
+node "$HERE/build-mcp-profiles.mjs" >"$T/gen4.log" 2>&1
+if [ -f "$G" ]; then ok "registry resolves without a ~/.claude.json"; else bad "generator needs ~/.claude.json even with a registry ($(tr '\n' ' ' <"$T/gen4.log"))"; fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

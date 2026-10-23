@@ -1834,9 +1834,8 @@ assert "adopt.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/
 # setup at user scope) and delegated to by the pwsh mirrors.
 assert "graphify-bin.sh defines graphify_register_mcp" grep -q 'graphify_register_mcp()' "$SCRIPT_DIR/graphify-bin.sh"
 assert "graphify-bin.sh CLI exposes register-mcp" grep -q 'register-mcp) graphify_register_mcp' "$SCRIPT_DIR/graphify-bin.sh"
-# Scope forwarding: setup.sh pins user scope; adopt.sh forwards
-# its own $SCOPE (project|user) — not a hardcoded scope.
-assert "setup.sh registers at user scope" grep -q 'graphify_register_mcp user' "$repo_root/scripts/setup.sh"
+# Scope forwarding: adopt.sh forwards its own $SCOPE to the project registration;
+# user/local installs register on demand (asserted below).
 # The grep pattern intentionally matches the LITERAL string graphify_register_mcp "$SCOPE"
 # in adopt.sh (\$ = a literal $ in the BRE); it is not meant to expand here.
 # shellcheck disable=SC2016
@@ -1867,6 +1866,32 @@ assert "set -e caller: nonzero mcp add (already-exists) does not abort" \
 assert "already-exists rc!=0 handled as idempotent skip" \
   bash -c 'printf "%s" "$1" | grep -qi "already registered at project scope"' _ "$se_out"
 rm -rf "$se_stub"
+
+# On-demand registration: a user-scope install writes the graph profile's server
+# into the on-demand registry and never calls `claude mcp add` (which would make
+# every session load the 10 graphify tool schemas).
+od_dir="$(mktemp -d -t graphify-bin-od.XXXXXX)" || exit 1
+mkdir -p "$od_dir/stub" "$od_dir/uvbin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$od_dir/uvbin/graphify-mcp"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nif [ "$1 $2" = "tool dir" ]; then echo "%s"; fi\n' "$od_dir/uvbin" > "$od_dir/stub/uv"
+printf '#!/usr/bin/env bash\necho called >> "%s/claude-called"\nexit 0\n' "$od_dir" > "$od_dir/stub/claude"
+chmod +x "$od_dir/uvbin/graphify-mcp" "$od_dir/stub/uv" "$od_dir/stub/claude"
+od_file="$od_dir/home/.config/himmel/mcp-on-demand.json"
+PATH="$od_dir/stub:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$od_file" bash -c 'set -euo pipefail; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_register_mcp_on_demand; graphify_register_mcp_on_demand' >"$od_dir/out" 2>&1 || true
+assert "on-demand registration writes the graphify entry with the absolute entrypoint" \
+  node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mcpServers.graphify; process.exit(s.type==="stdio"&&s.command===process.argv[2]?0:1)' "$od_file" "$od_dir/uvbin/graphify-mcp"
+assert "on-demand registration never calls claude mcp add" test ! -e "$od_dir/claude-called"
+# shellcheck disable=SC2016
+assert "on-demand registration keeps other registry entries" \
+  bash -c 'printf "{\"mcpServers\":{\"other\":{\"type\":\"stdio\",\"command\":\"x\"}}}" > "$1"; PATH="$2:$PATH" HIMMEL_MCP_ONDEMAND_FILE="$1" bash -c ". \"$3/graphify-bin.sh\"; graphify_register_mcp_on_demand" >/dev/null 2>&1; node -e "const m=JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).mcpServers; process.exit(m.other&&m.graphify?0:1)" "$1"' _ "$od_file" "$od_dir/stub" "$SCRIPT_DIR"
+rm -rf "$od_dir"
+# shellcheck disable=SC2016
+assert "setup.sh registers graphify on demand, not at user scope" \
+  bash -c 'grep -q "graphify_register_mcp_on_demand" "$1" && ! grep -q "graphify_register_mcp user" "$1"' _ "$repo_root/scripts/setup.sh"
+# shellcheck disable=SC2016
+assert "adopt.sh registers on demand for non-project scopes" \
+  bash -c 'grep -q "graphify_register_mcp_on_demand" "$1"' _ "$repo_root/scripts/adopt.sh"
 
 # ─── graphify_price_hooks ──────────────────────────────────────
 # node checker: reads a fixture's .claude/settings.json + .codex/hooks.json

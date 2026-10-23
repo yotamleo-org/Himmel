@@ -1396,7 +1396,7 @@ profile→server map.
 | Tier | Meaning | Members |
 |---|---|---|
 | T1 shared HTTP | remote/daemon singleton, 0–1 local procs total | context7 (remote), atlassian, huggingface, vercel |
-| T2 profile-scoped | in a `--mcp-config` profile, launched per lane | playwright, chrome-devtools, obsidian-vault, onepassword |
+| T2 profile-scoped | in a `--mcp-config` profile, launched per lane | playwright, chrome-devtools, obsidian-vault, graphify, onepassword |
 | T3 env-gated | default-OFF `mcp-gate.sh`, activated by launch env var | telegram-himmel, luna-correlate |
 | TX CLI-first | no server; a CLI + skill (enforced by `block-backend-tier`) | jira (over atlassian), gh (over github), firecrawl |
 

@@ -735,7 +735,11 @@ wire_graphify_core() {
   echo "──── Wiring graphify (opt-in, --with-graphify) ────"
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "DRY: graphify_install"
-    echo "DRY: claude mcp add -s $SCOPE graphify -- <graphify-mcp: absolute path for user/local, bare name for project>"
+    if [[ "$SCOPE" == "project" ]]; then
+      echo "DRY: claude mcp add -s project graphify -- graphify-mcp"
+    else
+      echo "DRY: register graphify MCP on demand (graph mcp-profile), not in ~/.claude.json"
+    fi
     echo "DRY: graphify_price_hooks \"$TARGET\""
     return 0
   fi
@@ -749,7 +753,9 @@ wire_graphify_core() {
     # install_plugins) — run from $TARGET so it lands in the adopted repo.
     ( cd "$TARGET" && graphify_register_mcp "$SCOPE" )
   else
-    graphify_register_mcp "$SCOPE"
+    # user/local: a personal config, so register on demand (the `graph`
+    # mcp-profile) instead of loading the server into every session.
+    graphify_register_mcp_on_demand
   fi
   # price the hooks in the ADOPTED repo, not himmel's own — adopt
   # targets $TARGET, so the root must be passed explicitly.

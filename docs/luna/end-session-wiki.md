@@ -229,7 +229,7 @@ The degradation marker (`<project-slug>.degraded`) lives alongside the log in th
 
 Notes live under `<luna-vault>/sessions/YYYY/MM/`. Default vault root: `$HOME/Documents/luna`, overridable per-repo with `vault_path` or `vault` in `.claude/end-session-wiki.json`, or globally with `LUNA_VAULT_PATH` (see [Choosing the target vault](#choosing-the-target-vault)).
 
-Search across captured sessions via the Obsidian MCP:
+Search across captured sessions via the Obsidian MCP (on demand: launch with the `vault` mcp-profile, see `.claude/mcp-profiles/README.md`; the capture hook itself uses the REST API, not this MCP):
 
 ```
 mcp__obsidian-vault__obsidian_simple_search query:"end-session-wiki"

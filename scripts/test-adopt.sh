@@ -910,8 +910,9 @@ grepq "$out" 'DRY: wire env.HANDOVER_DIR' || fail "dry-run missing HANDOVER_DIR 
 grepq "$out" 'Wiring graphify (opt-in' || fail "dry-run --with-graphify missing the graphify wiring banner"
 grepq "$out" 'DRY: graphify_install'   || fail "dry-run --with-graphify missing graphify_install DRY line"
 # --with-graphify also registers the MCP server at the adopt scope
-# (here --scope user), so the dry-run must emit the mcp-add DRY line.
-grepq "$out" 'DRY: claude mcp add -s user graphify' || fail "dry-run --with-graphify missing the graphify MCP registration DRY line"
+# (here --scope user: on demand, never in ~/.claude.json), so the dry-run must
+# emit the on-demand registration DRY line.
+grepq "$out" 'DRY: register graphify MCP on demand' || fail "dry-run --with-graphify missing the graphify MCP registration DRY line"
 # gap 3: build_jira_cli runs after install_plugins; with npm scrubbed
 # suite-wide and bun stubbed present, it picks bun and emits its DRY build line.
 grepq "$out" 'DRY:.*(cd scripts/jira && bun install && bun run build)' || fail "dry-run missing build_jira_cli DRY line"
