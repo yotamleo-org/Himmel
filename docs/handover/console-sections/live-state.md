@@ -48,8 +48,10 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > reads as absent (`DRIFT`) rather than `MALFORMED`.
 >
 > **Write the `legs:` line by script, not by hand:** `action-zero.sh --render-legs`
-> (or `live-state.sh <this doc>`) rebuilds it from the fleet manifest, with lock
-> tokens read from the held locks and the nonces kept.
+> renders only before the chief takes its own lock (ACTION ZERO); a chief that
+> already holds its lock re-renders with `live-state.sh <this doc>`. Either rebuilds
+> it from the fleet manifest, with lock tokens read from the held locks and the
+> nonces kept.
 >
 > **The `legs:` block may wrap**. The tick reads the whole block:
 > every line that starts with `legs:`, plus the lines wrapped directly under it,
