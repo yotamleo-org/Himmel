@@ -186,7 +186,8 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string): {
     if (!ticketBranch.test(branch)) continue;
     const head = headGroup(record.head);
     if (!head) continue;
-    const cycle = cycles.get(head) ?? { head, order, responded: false, blocking: false };
+    const cycleKey = branch + SEP + head;
+    const cycle = cycles.get(cycleKey) ?? { head, order, responded: false, blocking: false };
     if (record.kind === "avail") {
       if (record.status === "ok") cycle.responded = true;
     } else {
@@ -198,7 +199,7 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string): {
         cycle.blocking = true;
       }
     }
-    cycles.set(head, cycle);
+    cycles.set(cycleKey, cycle);
   }
 
   const reviewed = [...cycles.values()].filter((cycle) => cycle.responded).sort((a, b) => a.order - b.order);
