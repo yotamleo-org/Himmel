@@ -351,8 +351,19 @@ git -C "$W/forks/bigfork" add -A; git -C "$W/forks/bigfork" -c user.name=t -c us
 export SNYK_SCAN_FORKS="bigfork|$U/bigfork|pinned|up"
 : > "$W/calls.log"
 run forksbig --forks
+check "the long-list scan exits successfully" 0 "$RC"
 check "a build file before a long file list still skips the upstream scan" skipped "$(jq -r '.[] | select(.name=="bigfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
 check "the long-list upstream was not scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# git quotes a non-ASCII path in plain ls-files output, which must not hide a build file from the skip
+mkfork utffork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/utffork" tag pinned
+mkdir "$W/forks/utffork/café"; : > "$W/forks/utffork/café/pom.xml"
+git -C "$W/forks/utffork" add -A; git -C "$W/forks/utffork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds a non-ASCII build dir"
+export SNYK_SCAN_FORKS="utffork|$U/utffork|pinned|up"
+: > "$W/calls.log"
+run forksutf --forks
+check "a build file under a non-ASCII dir still skips the upstream scan" skipped "$(jq -r '.[] | select(.name=="utffork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+check "the non-ASCII upstream was not scanned" 1 "$(grep -c '^[^|]*|test' "$W/calls.log")"
 export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up"
 : > "$W/calls.log"
 run forksnoup --forks --no-upstream
