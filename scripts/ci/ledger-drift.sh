@@ -85,7 +85,7 @@ LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$le
     if (med < 1) med = 1
   }
   FNR == 1 { nlogs++ }
-  $1 ~ /^shell-unit-shard \(/ && match($0, /\[(PASS|FAIL)\] [^ ]+ \([0-9]+s\)/) {
+  $1 ~ /^shell-unit-shard \(ubuntu-latest, / && match($0, /\[(PASS|FAIL)\] [^ ]+ \([0-9]+s\)/) {
     s = substr($0, RSTART, RLENGTH)
     sub(/^\[(PASS|FAIL)\] /, "", s)
     path = s; sub(/ \(.*$/, "", path)
@@ -103,7 +103,7 @@ LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$le
       path = order[i]
       c = (path in cost) ? cost[path] : med
       if (c < 1) c = 1
-      key[++n] = sprintf("%012d\t%s", 999999999999 - c, path)
+      key[++n] = sprintf("%010d\t%s", 1000000000 - c, path)
     }
     # insertion sort: ~1000 rows, and no gawk-only asort
     for (i = 2; i <= n; i++) { v = key[i]; j = i - 1; while (j >= 1 && key[j] > v) { key[j + 1] = key[j]; j-- }; key[j + 1] = v }
@@ -112,7 +112,7 @@ LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$le
     for (i = 1; i <= n; i++) {
       split(key[i], kf, "\t")
       path = kf[2]
-      c = 999999999999 - (kf[1] + 0)
+      c = 1000000000 - (kf[1] + 0)
       best = 0
       for (b = 1; b < shards; b++) if (plan[b] < plan[best]) best = b
       plan[best] += c

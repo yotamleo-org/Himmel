@@ -88,6 +88,24 @@ else
   fail "LD5: another job's line moved the result; rc=$rc_m out: $out_m"
 fi
 
+echo "== LD5b: a non-Linux shard's lines are not counted =="
+cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/mixed/"
+printf 'shell-unit-shard (macos-latest, 1)\tUNKNOWN STEP\t2026-10-23T09:31:30.0000000Z [PASS] scripts/ci/test-not-linux.sh (9000s)\n' >> "$SUITE_LOCK_SANDBOX/mixed/run-39927689757.log"
+out_o=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/mixed" --ledger "$FX/matching-ledger.tsv" 2>&1); rc_o=$?
+if [ "$rc_o" -eq 0 ] && [ "$out_o" = "$out_c" ]; then
+  pass "LD5b: a 9000s macos shard line changes nothing"
+else
+  fail "LD5b: a macos shard line moved the result; rc=$rc_o out: $out_o"
+fi
+
+echo "== LD5c: no awk integer constant past 2^31 (mawk clamps %d there) =="
+big=$(grep -nE '(^|[^0-9.])[0-9]{10,}([^0-9]|$)' "$LD" | grep -vE '^[0-9]+:[[:space:]]*#' | awk -F: '{ n = $0; sub(/^[0-9]+:/, "", n); while (match(n, /[0-9]{10,}/)) { if (substr(n, RSTART, RLENGTH) + 0 > 2147483647) print $1 ": " substr(n, RSTART, RLENGTH); n = substr(n, RSTART + RLENGTH) } }')
+if [ -z "$big" ]; then
+  pass "LD5c: ledger-drift.sh holds no integer constant above 2147483647"
+else
+  fail "LD5c: constants past 2^31 in ledger-drift.sh: $big"
+fi
+
 echo "== LD6: the workflow is scheduled and never runs on a PR or a push =="
 if [ -f "$WF" ] \
    && grep -qE '^  schedule:' "$WF" && grep -qE '^  workflow_dispatch:' "$WF" \
