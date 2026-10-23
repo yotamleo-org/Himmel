@@ -262,7 +262,7 @@ a session. The install must already be committed on the default branch (see
    `scripts/worktree.sh` exist there. If they do not, the install was not
    committed first. Edits on the worktree branch then proceed normally.
 3. Try `cat .env` (if you have one). `block-read-secrets` should refuse.
-4. Run `node scripts/himmelctl/bin.js status` for a severity-grouped diff of
+4. Run `node ~/himmel/scripts/himmelctl/bin.js status` for a severity-grouped diff of
    what is installed versus what the manifest wants.
 
 Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
@@ -271,13 +271,13 @@ Then walk one real loop: [getting-started.md](../getting-started.md#your-first-l
 
 | You want to… | Run |
 |---|---|
-| See what drifted | `node scripts/himmelctl/bin.js status` |
-| Fix what drifted | `node scripts/himmelctl/bin.js ensure` |
-| Change scope after the fact | `node scripts/himmelctl/bin.js scope set <project\|user>` |
+| See what drifted | `node ~/himmel/scripts/himmelctl/bin.js status` |
+| Fix what drifted | `node ~/himmel/scripts/himmelctl/bin.js ensure` |
+| Change scope after the fact | `node ~/himmel/scripts/himmelctl/bin.js scope set <project\|user>` |
 | Update the harness | `/himmel-update` (Claude Code's own `autoUpdate` does **not** deliver himmel) |
 | Diagnose a sick install | `/himmel-doctor` (`--fix` repairs the node wiring) |
-| Preview an offboard | `node scripts/himmelctl/bin.js uninstall --dry-run` (or `-n`) |
-| Offboard | `node scripts/himmelctl/bin.js uninstall` (add `--yes` when there is no terminal to confirm) |
+| Preview an offboard | `node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run` (or `-n`) |
+| Offboard | `node ~/himmel/scripts/himmelctl/bin.js uninstall` (add `--yes` when there is no terminal to confirm) |
 
 Detail for all of these: [updating.md](updating.md). Coming from an older
 himmel install rather than a fresh one: [migrating.md](migrating.md).
@@ -289,10 +289,10 @@ lists every path, plugin, hook and settings key it would touch and changes
 nothing:
 
 ```bash
-node scripts/himmelctl/bin.js uninstall --dry-run   # preview; touches nothing
-node scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring (asks first)
-node scripts/himmelctl/bin.js uninstall --yes       # same, no prompt; needed without a terminal
-node scripts/himmelctl/bin.js uninstall --purge-state   # ...and your operator STATE too
+node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run   # preview; touches nothing
+node ~/himmel/scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring (asks first)
+node ~/himmel/scripts/himmelctl/bin.js uninstall --yes       # same, no prompt; needed without a terminal
+node ~/himmel/scripts/himmelctl/bin.js uninstall --purge-state   # ...and your operator STATE too
 ```
 
 Without a terminal, a run without `--yes` aborts (`non-interactive run without
@@ -376,7 +376,7 @@ Make them executable, then wire the three hooks into your repo's
 `CLAUDE_PROJECT_DIR` is set by Claude Code to the directory holding
 `.claude/settings.json`, so that directory must be your repo root. Verify with
 the four steps under [Verify](#verify) above, then run
-`node scripts/himmelctl/bin.js status` as soon as the installer works again. It
+`node ~/himmel/scripts/himmelctl/bin.js status` as soon as the installer works again. It
 will tell you what the manual copy missed.
 
 ## Where to go next

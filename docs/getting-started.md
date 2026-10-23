@@ -342,7 +342,7 @@ guard is yours to lift:
 | Adopt the core in another repo | [setup/install.md](setup/install.md) |
 | Full machine setup + gotchas | [setup/new-machine.md](setup/new-machine.md) |
 | Update the harness + upgrade the vault | [setup/updating.md](setup/updating.md) |
-| Uninstall / offboard himmel | `node scripts/himmelctl/bin.js uninstall` (execs [`scripts/uninstall.sh`](../scripts/uninstall.sh); see [updating.md](setup/updating.md#uninstalling--offboarding)) |
+| Uninstall / offboard himmel | `node ~/himmel/scripts/himmelctl/bin.js uninstall` (execs [`scripts/uninstall.sh`](../scripts/uninstall.sh); see [updating.md](setup/updating.md#uninstalling--offboarding)) |
 
 Working as an LLM in this repo? Start from [`llms.txt`](../llms.txt) — the
 machine-readable map.
