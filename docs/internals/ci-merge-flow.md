@@ -44,7 +44,10 @@ First classify the red, then act:
 Before acting on a red, check what it actually is:
 
 - Read the newest `ci.yml` run on main **and its head sha**. A scheduled run at an older
-  head says nothing about the current head; `gh workflow run ci.yml --ref main` settles it.
+  head says nothing about the current head. `gh workflow run ci.yml --ref main` only
+  queues a run: wait until that run completes, then check its `headSha` and `conclusion`
+  before classifying main. The merge gate ignores incomplete runs, so the earlier
+  scheduled result is not the answer in the meantime.
 - A PR that merged **while its own CI was red** is a different and more serious incident
   (the gate let it through): find out why before anything else.
 - A worker that finds a general red it did not cause sends the chief one
