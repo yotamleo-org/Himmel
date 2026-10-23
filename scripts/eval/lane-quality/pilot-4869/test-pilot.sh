@@ -17,6 +17,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 P="$HERE/pilot.sh"
 LQ="$(cd "$HERE/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/pilot-4869-test.XXXXXX")" || { echo "test-pilot: mktemp -d failed" >&2; exit 1; }
+TMP="$(cd "$TMP" && pwd -P)" || exit 1
 trap 'git -C "$TMP/repo" worktree prune >/dev/null 2>&1; rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }

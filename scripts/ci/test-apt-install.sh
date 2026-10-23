@@ -160,6 +160,28 @@ run_case c9 PATH="$TMP/bsdsed:$PATH"
   && [ "$(cat "$TMP/c9/ubuntu.sources.bak" 2>/dev/null)" = operator-backup ] \
   && ok "mirror rewrite avoids in-place sed and leaves an existing .bak untouched" || bad "BSD sed rewrite (rc=$rc src=$src out=$out)"
 
+# 10. BSD sed takes `\?` literally (a GNU BRE extension), so a host parse written with
+#     it keeps `http://` on the host and the rewrite never matches (macos-cadence log:
+#     'http://primary.example failed or stalled'). The shim turns `\?` into a literal `?`.
+mkdir -p "$TMP/bsdre" "$TMP/c10"
+{
+  echo '#!/bin/sh'
+  echo "REAL_SED='$REAL_SED'"
+  cat <<'STUB'
+n=$#
+while [ "$n" -gt 0 ]; do
+  a="$1"; shift
+  case "$a" in *'\?'*) a="$(printf '%s' "$a" | "$REAL_SED" 's/\\?/?/g')" ;; esac
+  set -- "$@" "$a"; n=$((n - 1))
+done
+exec "$REAL_SED" "$@"
+STUB
+} > "$TMP/bsdre/sed"
+chmod +x "$TMP/bsdre/sed"
+run_case c10 PATH="$TMP/bsdre:$PATH"
+[ "$rc" -eq 0 ] && grep -q alt.example <<<"$src" && ! grep -q 'http://primary' <<<"$out" \
+  && ok "host parse works without GNU-only sed regex (BSD literal \\?)" || bad "BSD sed regex (rc=$rc src=$src out=$out)"
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1

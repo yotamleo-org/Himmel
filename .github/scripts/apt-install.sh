@@ -39,7 +39,7 @@ opts=(-y --no-install-recommends -o DPkg::Lock::Timeout=60 -o "Dir::Cache::archi
 # ubuntu-24.04 runners point URIs: at `mirror+file:<list>`, so the host is the
 # first live URL in that list and the fallback must rewrite the list itself.
 live() { grep -Ev '^[[:space:]]*#' "$1"; }
-host_of() { grep -Eo 'https?://[^/[:space:]]+' | head -n 1 | sed 's#^https\?://##'; }
+host_of() { grep -Eo 'https?://[^/[:space:]]+' | head -n 1 | sed -E 's#^https?://##'; }
 primary=""; mlist=""
 for f in $SOURCES; do
   [ -f "$f" ] || continue
