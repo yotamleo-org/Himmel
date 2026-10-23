@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
-  type Ctx, type JiraPort,
+  rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
 
@@ -515,5 +515,70 @@ describe('release fold (HIMMEL-7158)', () => {
     expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 2 ** 60 }] })).toThrow(/positive PR/);
     expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'bad key', pr: 1 }] })).toThrow(/not an issue key/);
     expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).not.toThrow();
+  });
+});
+
+describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
+  const declared = () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  };
+  const ask = (k: string) => request(ctx(), { verb: 'INTAKE', key: k, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+  const admitAll: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+  const snapshot = (dir: string): Record<string, string> => Object.fromEntries(
+    readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile())
+      .map((e) => { const p = join(e.parentPath, e.name); return [p, readFileSync(p, 'utf8')]; }),
+  );
+
+  it('rules a pending request with no standing session and releases the lease', async () => {
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), admitAll);
+    expect(lines).toContain('RULING R-R1-0001 Q-R1-0001 INTAKE K-2 add backlog→v1 ADMIT current sector=Ship loop — regression: breaks the console');
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    const s = state(ctx());
+    expect(s.lease).toMatchObject({ epoch: 1, released: true });
+    expect(s.requests).toEqual({ open: [], claimed: [] });
+  });
+
+  it('refuses a concurrent batch by the lease and rules nothing in it', async () => {
+    declared();
+    ask('K-2');
+    let inner: unknown;
+    await rmRun(ctx(), async (input) => {
+      inner = await rmRun(ctx(), admitAll).catch((e: Error) => e);
+      return admitAll(input);
+    });
+    expect(String(inner)).toMatch(/release lease: held by/);
+    expect(readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8').match(/"phase":"intent"/g)).toHaveLength(1);
+  });
+
+  it('exits on an empty queue with nothing written and no judge call', async () => {
+    declared();
+    const before = snapshot(ctx().dir);
+    let called = false;
+    expect(await rmRun(ctx(), async () => { called = true; return []; })).toEqual(['RM-RUN R1: nothing pending']);
+    expect(called).toBe(false);
+    expect(snapshot(ctx().dir)).toEqual(before);
+  });
+
+  it('a failed judge rules nothing, releases the lease, and the next run reclaims', async () => {
+    declared();
+    ask('K-2');
+    await expect(rmRun(ctx(), async () => { throw new Error('HOLD'); })).rejects.toThrow(/HOLD/);
+    expect(state(ctx()).lease).toMatchObject({ epoch: 1, released: true });
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+  });
+
+  it('a decision the engine refuses is reported and its request stays claimed', async () => {
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: '', ground: 'regression', reason: 'x',
+    })));
+    expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
   });
 });

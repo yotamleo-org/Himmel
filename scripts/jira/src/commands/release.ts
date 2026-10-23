@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
 import { projectKey, request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
@@ -6,8 +10,8 @@ import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { setFixVersion } from './versions.js';
 import {
-  apply, claim, declare, fold, freeze, leaseAcquire, leaseRelease, operatorDecision, reopen, request as releaseRequest, rule, state, takeover,
-  type Ctx, type FoldItem, type JiraPort, type StateOut,
+  apply, claim, declare, fold, freeze, leaseAcquire, leaseRelease, operatorDecision, reopen, request as releaseRequest, rmRun, rule, state, takeover,
+  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
 import type { Authority, Op, Verb } from '../release/types.js';
@@ -81,6 +85,49 @@ export function renderState(s: StateOut): string {
   return out.join('\n');
 }
 
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+export function judgePrompt(input: JudgeInput, skill: string): string {
+  return [
+    'You are the release manager for one batch. Rule every request below by the skill that follows.',
+    'Use only the input given here. Reply with ONLY a JSON array, one object per request:',
+    '{"req","outcome","op","from","to","sector","ground","reason","supersedes":[],"authority":"rm|operator|import","ref"}',
+    'from/to are a version name or null for backlog. supersedes names the ruling or baseline in effect',
+    'for the key and version (see records[].ruling) when the op changes membership. Cite an O- record as',
+    'authority only when its keys, op and versions cover the request exactly; otherwise authority is rm.',
+    'The sector is the ticket\'s sector; take it from prior rulings of the same key or chain when known.',
+    '',
+    '## Skill',
+    skill,
+    '',
+    '## Input',
+    JSON.stringify(input),
+  ].join('\n');
+}
+
+// stdout of `claude -p --output-format json`: the envelope, whose result holds the array.
+export function parseDecisions(stdout: string): Decision[] {
+  const env = JSON.parse(stdout) as { is_error?: boolean; result?: string };
+  if (env.is_error || typeof env.result !== 'string') throw new Error('rm-run: the judge call failed; nothing ruled');
+  const text = env.result;
+  const got: unknown = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
+  if (!Array.isArray(got)) throw new Error('rm-run: the judge did not return a JSON array; nothing ruled');
+  return got as Decision[];
+}
+
+// One bounded model call per batch: preflight first, no tools, one turn, JSON envelope.
+export const liveJudge: Judge = async (input) => {
+  const verdict = execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'bank-preflight.sh')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
+    .trim().split('\n').pop();
+  if (verdict !== 'PROCEED') throw new Error(`rm-run: bank-preflight says ${verdict}; nothing ruled`);
+  const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
+  const out = execFileSync('claude', [
+    '-p', '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
+    '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+  ], { input: judgePrompt(input, skill), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
+  return parseDecisions(out);
+};
+
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
 
@@ -111,6 +158,16 @@ export function registerRelease(program: Command): void {
         evidence: evidence as Record<string, unknown>, from: 'console',
       });
       console.log(`REQ ${r.req}`);
+    });
+
+  rel.command('rm-run <release>')
+    .description('Rule every pending request in one on-demand batch: lease, claim, one judge call, rule, apply, release (the console)')
+    .option('--doc <path>', 'Absolute run doc to take the lease as (after an operator takeover of a crashed run)')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action(async (release: string, o: { doc?: string; mirrorRoot?: string }) => {
+      const lines = await rmRun(ctxFor(release, o.mirrorRoot), liveJudge, { doc: o.doc, session: `rm-run-${process.pid}` });
+      for (const l of lines) console.log(l);
+      if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;
     });
 
   rel.command('claim <release>')

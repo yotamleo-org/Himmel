@@ -5,8 +5,10 @@ description: The release manager's verbs: rule INTAKE/REVERSION/DISCHARGE reques
 
 # release-manager — every placement into a release is a reasoned ruling (HIMMEL-6796)
 
-For the release-manager session only (`HIMMEL_RELEASE_MANAGER=1`, armed from
-`docs/handover/rm-brief-template.md`). Every verb is a thin procedure over
+For the release manager only (`HIMMEL_RELEASE_MANAGER=1`). Requests are ruled
+by the on-demand batch `jira release rm-run <R>`, which reads this skill as its
+judge's instructions; STATUS, BURN-DOWN and READY run in an on-demand session
+armed from `docs/handover/rm-brief-template.md`. Every verb is a thin procedure over
 `jira release`; the engine holds the formulas, the signatures and the checks,
 so the board, the tick and this skill count the same way. Run the CLI by its
 absolute path from the primary checkout:
@@ -97,14 +99,16 @@ stability; a FAIL row is overridden only by an operator record naming it.
 
 ## Lease and hand-off
 
-- Start: `release lease acquire <R> --expect-epoch <n> --doc <your doc>
-  --session <name>` (the brief names `n`), then `release claim <R>`, then
-  `release apply` every older-epoch intent it lists in the state (a successor
-  resolves them by readback; one Jira never saw is voided and its request
-  reopened).
-- Hand-off (45 % context or HALT): apply or void every intent, `release lease
-  release <R>`, write `<doc stem>-RM-HANDOFF.md` (release, epoch, chain heads,
-  last STATUS path), append `WRAPPED — handoff <path>` and send the chief
-  `WRAPPED <path>`.
+- No release manager stands by between requests. `rm-run` takes the lease,
+  applies every older-epoch intent, claims, rules and applies each request,
+  releases the lease and exits; a held lease refuses a second batch.
+- Session start: `release lease acquire <R> --expect-epoch <n> --doc <your doc>
+  --session <name>` (the brief names `n`), then `release apply` every
+  older-epoch intent it lists in the state (resolved by readback; one Jira
+  never saw is voided and its request reopened), then the armed verb.
+- Hand-off (after the verb, 45 % context or HALT): apply or void every intent,
+  `release lease release <R>`, write `<doc stem>-RM-HANDOFF.md` (release,
+  epoch, chain heads, last STATUS path), append `WRAPPED — handoff <path>` and
+  send the chief `WRAPPED <path>`.
 - You never run `release operator`, `release request`, `create` or
   `transition`; the engine refuses them for you anyway.
