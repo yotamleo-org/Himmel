@@ -14,7 +14,7 @@ lint or style on upstream code; a fork's own linters win.
 |---|---|---|
 | `gitleaks` | no secret in a staged diff; anchored `^...$` allowlist for 40-hex and 64-hex SHAs | `gitleaks/gitleaks` `v8.30.1`, config `.himmel/gitleaks.toml` |
 | `no-commit-to-branch` | no direct commit on the fork's default branch | `pre-commit/pre-commit-hooks` `v6.0.0` |
-| `himmel-ticket-id` | commit subject is conventional and carries `HIMMEL-<n>` (merge and revert pass) | local `pygrep` hook, no script |
+| `himmel-ticket-id` | commit subject is conventional and carries `HIMMEL-<n>` (only git-generated `Merge branch '…'`, `Merge pull request #…`, `Merge remote-tracking branch '…'` and `Revert "…"` subjects pass without one) | local `pygrep` hook, no script |
 
 The pins match himmel's own `.pre-commit-config.yaml`, so the hook cache is
 shared on a station and `pin-scan.py` sees one version of each.
@@ -66,7 +66,7 @@ fork's himmel branch plus the one `install` line, run once per clone.
 
 ## Fork inventory (2026-10-16)
 
-From `gh repo list yotamleo --fork`; the HIMMEL-5900 registry
+From `gh repo list yotamleo-org --fork`; the HIMMEL-5900 registry
 (`scripts/guardrails/himmel-adapters.json`) lists every fork (standard:
 `docs/internals/fork-adapters.md`).
 
@@ -106,6 +106,6 @@ and re-do the merge when upstream changes its config.
 
 ## Pilot
 
-`yotamleo/qmd` on branch `himmel/fork-precommit-core`:
-[PR 24](https://github.com/yotamleo/qmd/pull/24). qmd has no hook setup of its own and uses oxlint, so the core adds
+`yotamleo-org/qmd` on branch `himmel/fork-precommit-core`:
+[PR 24](https://github.com/yotamleo-org/qmd/pull/24). qmd has no hook setup of its own and uses oxlint, so the core adds
 no overlap.

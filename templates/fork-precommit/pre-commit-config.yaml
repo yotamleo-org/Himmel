@@ -21,14 +21,16 @@ repos:
 
   - repo: local
     hooks:
-      # commit-msg: conventional subject carrying a HIMMEL-<n> ticket; merge and
-      # revert messages pass. --multiline matches the whole message, so \A pins
-      # the check to the subject (a ticketed body line cannot satisfy it);
+      # commit-msg: conventional subject carrying a HIMMEL-<n> ticket; only the
+      # subjects git itself generates (Merge branch '..', Merge pull request #..,
+      # Merge remote-tracking branch '..', Revert "..") skip the ticket, so a
+      # hand-typed "Merge x" needs one. --multiline matches the whole message, so
+      # \A pins the check to the subject (a ticketed body line cannot satisfy it);
       # --negate fails when there is no match.
       - id: himmel-ticket-id
         name: conventional commit subject with a HIMMEL-<n> ticket ID
         language: pygrep
-        entry: '\A((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)\n]+\))?!?: [^\n]*HIMMEL-[0-9]+|(Merge|Revert) )'
+        entry: '\A((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)\n]+\))?!?: [^\n]*HIMMEL-[0-9]+|Merge branch ''|Merge pull request #|Merge remote-tracking branch ''|Revert ")'
         args: [--negate, --multiline]
         always_run: true
         stages: [commit-msg]
