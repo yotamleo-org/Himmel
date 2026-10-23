@@ -1521,13 +1521,14 @@ if [ -d "$nd_mirror" ] && [ -f "$lk_vf" ]; then
     leaks_version="$(awk -F'\t' '$2 == "false" && $4 != "true" && $1 !~ /^zz-/ { print $1 }' "$lk_vf" | sort -V | head -n 1)" || leaks_version=""  # gnu-ok: console kit is Linux-only (sort -V); swallow-ok: no readable version reads skip
 fi
 if [ -n "$leaks_version" ]; then
+    # The CLI lives in the himmel primary checkout that holds this script, whatever --repo names.
+    # shellcheck source=../../lib/git-clean.sh
+    lk_anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || lk_anchor=""  # swallow-ok: no anchor reads skip below
+    lk_cli="${lk_anchor%/.git}/scripts/jira/dist/index.js"
     lk_rc=0
     if [ -n "${TICK_LEAKS_PROBE:-}" ]; then
         lk_out="$(timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
     else
-        # shellcheck source=../../lib/git-clean.sh
-        lk_anchor="$(cd "$REPO" && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || lk_anchor=""  # swallow-ok: no anchor reads skip below
-        lk_cli="${lk_anchor%/.git}/scripts/jira/dist/index.js"
         if [ -n "$lk_anchor" ] && [ -f "$lk_cli" ]; then
             lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
         else
@@ -2472,7 +2473,7 @@ else
     esac
     case "$leaks_summary" in
         ''|0|skip|'?') ;;
-        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "${lk_cli:-$REPO/scripts/jira/dist/index.js}" "$leaks_version" "$nd_mirror" ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \

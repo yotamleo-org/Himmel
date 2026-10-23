@@ -2530,6 +2530,9 @@ lk_space="$(lk_tick "$W/lk-probe-3.sh")"
 contains 'a version name with a space is escaped in the ACTION line (HIMMEL-7153)' "$lk_space" 'release leaks v1.0.3\ rc --mirror-root '
 contains 'the leaks ACTION line names the version, the tick mirror and --comment (HIMMEL-7153)' "$lk_three" "release leaks v1.0.2 --mirror-root $lk_m --comment"
 contains 'the leaks ACTION line keeps its explanation behind a shell comment (HIMMEL-7153)' "$lk_three" '--comment  # posts one comment per leak'
+lk_other="$(REPO="$W/repo-other" lk_tick "$W/lk-probe-3.sh")"
+not_contains 'the leaks ACTION line resolves the CLI from the tick checkout, not from --repo (HIMMEL-7153)' "$lk_other" "$W/repo-other/scripts/jira/dist/index.js"
+contains 'a tick on another --repo still prints the leaks ACTION line (HIMMEL-7153)' "$lk_other" '/scripts/jira/dist/index.js release leaks '
 lk_zero="$(lk_tick "$W/lk-probe-0.sh")"
 not_contains 'a clean version hides leaks (HIMMEL-7153)' "$lk_zero" 'leaks='
 lk_unfrozen="$(lk_tick "$W/lk-probe-unfrozen.sh")"
