@@ -578,6 +578,87 @@ out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --health 2
 if [ "$rc" -eq 1 ] && grepq "$out" -E '^SWEEP-ERROR \(forge\) '; then pass "forge outage -> SWEEP-ERROR (forge), rc1"; else fail "forge outage --health -> rc=$rc out=$out"; fi
 rm -rf "$t"
 
+# ── SUPERSEDED (closed-PR head) and FIXTURE (lane-quality lq- backup) ────────
+echo "== CLOSED PR whose head is the branch tip -> SUPERSEDED with the PR number, never aged =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b docs/himmel-6645-prose-terms-d1
+commit_dated "$t/repo" 7000 recut.md "left out of the recut"
+tip6645="$(git -C "$t/repo" rev-parse HEAD)"
+git -C "$t/repo" checkout -q main
+make_gh_stub "$t/stub" "docs/himmel-6645-prose-terms-d1:CLOSED:3494:$tip6645"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
+row="$(tsv_row "$out" docs/himmel-6645-prose-terms-d1)"
+if grepq "$row" -P '^SUPERSEDED\t' && grepq "$row" -F 'PR #3494' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
+    pass "closed-PR head at the tip -> SUPERSEDED, PR #3494, aged=0"
+else
+    fail "closed-PR head -> $row"
+fi
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --class UNLANDED-LIVE --tsv 2>&1)"
+if [ -z "$out" ]; then pass "the SUPERSEDED branch is out of UNLANDED-LIVE"; else fail "still UNLANDED-LIVE: $out"; fi
+rm -rf "$t"
+
+echo "== CLOSED PR but the branch moved on after it (tip is not the PR head) -> stays UNLANDED-LIVE =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b feat/himmel-9301-closed-then-more
+commit_dated "$t/repo" 0 first.md "closed with this"
+closedhead="$(git -C "$t/repo" rev-parse HEAD)"
+commit_dated "$t/repo" 0 second.md "work after the PR closed"
+git -C "$t/repo" checkout -q main
+make_gh_stub "$t/stub" "feat/himmel-9301-closed-then-more:CLOSED:301:$closedhead"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
+row="$(tsv_row "$out" feat/himmel-9301-closed-then-more)"
+if grepq "$row" -P '^UNLANDED-LIVE\t'; then pass "commits past the closed head -> UNLANDED-LIVE (fail-loud)"; else fail "closed + later commits -> $row"; fi
+rm -rf "$t"
+
+echo "== CLOSED PR head whose content is already on main -> stays LANDED-ELSEWHERE (keeps its drop command) =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b feat/himmel-9302-closed-landed
+commit_dated "$t/repo" 0 extra.md "landed another way"
+closedlanded="$(git -C "$t/repo" rev-parse HEAD)"
+git -C "$t/repo" checkout -q main
+commit_dated "$t/repo" 0 extra.md "landed another way" "landed on main: extra.md"
+make_gh_stub "$t/stub" "feat/himmel-9302-closed-landed:CLOSED:302:$closedlanded"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
+row="$(tsv_row "$out" feat/himmel-9302-closed-landed)"
+if grepq "$row" -P '^LANDED-ELSEWHERE\t'; then pass "closed head + content on main -> LANDED-ELSEWHERE"; else fail "closed head, landed -> $row"; fi
+rm -rf "$t"
+
+echo "== lane-quality lq- backup branch with a pinned 2026-01-01 commit date -> FIXTURE, never aged =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+lqbranch="claude/backup-6584-lq-20261009T001656Z-api-claude-sonnet-5-5-doc-plus-code"
+git -C "$t/repo" checkout -q -b "$lqbranch"
+ts=1767225600   # 2026-01-01T00:00:00Z
+printf 'fixture\n' > "$t/repo/lq-work.md"; git -C "$t/repo" add lq-work.md
+GIT_AUTHOR_DATE="@$ts +0000" GIT_COMMITTER_DATE="@$ts +0000" git -C "$t/repo" commit -q -m "lane-quality fixture: doc-plus-code"
+git -C "$t/repo" checkout -q main
+out="$(cd "$t/repo" && bash "$SCRIPT" --no-forge --base main --tsv 2>&1)"
+row="$(tsv_row "$out" "$lqbranch")"
+if grepq "$row" -P '^FIXTURE\t' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
+    pass "lq- backup branch -> FIXTURE, aged=0"
+else
+    fail "lq- fixture -> $row"
+fi
+rm -rf "$t"
+
+echo "== human report: SUPERSEDED and FIXTURE get their own sections and no drop command; counts show them =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b docs/himmel-6645-prose-terms-d1
+commit_dated "$t/repo" 0 recut.md "left out of the recut"
+tipsup="$(git -C "$t/repo" rev-parse HEAD)"
+git -C "$t/repo" checkout -q main
+git -C "$t/repo" branch "$lqbranch" "$tipsup"
+make_gh_stub "$t/stub" "docs/himmel-6645-prose-terms-d1:CLOSED:3494:$tipsup"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main 2>&1)"
+if grepq "$out" -F 'SUPERSEDED=1' && grepq "$out" -F 'FIXTURE=1' && grepq "$out" -F 'UNLANDED-LIVE=0 (aged=0)' \
+   && grepq "$out" -F '== SUPERSEDED' && grepq "$out" -F '== FIXTURE' && ! grepq "$out" -F 'git branch -D'; then
+    pass "report: both classes counted, sectioned, no drop commands"
+else
+    fail "report -> $out"
+fi
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --class SUPERSEDED --tsv 2>&1)"
+if grepq "$out" -P '^SUPERSEDED\tdocs/himmel-6645-prose-terms-d1\t'; then pass "--class SUPERSEDED filters the TSV"; else fail "--class SUPERSEDED -> $out"; fi
+rm -rf "$t"
+
 echo "== --health cannot combine with --tsv/--class =="
 bash "$SCRIPT" --health --tsv >/dev/null 2>&1; rc=$?
 if [ "$rc" -eq 2 ]; then pass "--health --tsv -> rc2"; else fail "--health --tsv -> rc=$rc"; fi

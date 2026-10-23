@@ -12,7 +12,11 @@
 #                                  [--class CLASS] [--base REF] [--health]
 #                                  [-h|--help]
 #
-# CLASS is one of ACTIVE | LANDED-ELSEWHERE | STALE | UNLANDED-LIVE.
+# CLASS is one of ACTIVE | LANDED-ELSEWHERE | STALE | SUPERSEDED | FIXTURE |
+# UNLANDED-LIVE. SUPERSEDED = the branch tip IS the head of a CLOSED (unmerged)
+# PR, so the work was opened as a PR and ruled on; FIXTURE = a lane-quality
+# lq- backup branch (a test fixture, never meant to land). Neither is ever AGED,
+# and only UNLANDED-LIVE feeds the doctor's C23 and the morning report.
 #
 # FAIL-LOUD INVARIANT: when a signal is unavailable or ambiguous, a branch
 # must land in the LOUDER class — UNLANDED-LIVE > STALE > LANDED-ELSEWHERE —
@@ -53,7 +57,7 @@ Usage: unlanded-work.sh [--tsv] [--age-hours N] [--no-forge] [--class CLASS] [--
   --age-hours N    Age threshold in hours for the AGED flag (default 24).
   --no-forge       Skip the gh PR lookup (rules 1/2 never fire; classification
                     falls through to the git-only rules).
-  --class CLASS    Only report this class: ACTIVE | LANDED-ELSEWHERE | STALE | UNLANDED-LIVE.
+  --class CLASS    Only report this class: ACTIVE | LANDED-ELSEWHERE | STALE | SUPERSEDED | FIXTURE | UNLANDED-LIVE.
   --base REF       Compare against REF instead of origin/main.
   --health         Print only alarm lines (LOST-COMMITS / SWEEP-ERROR); empty =
                     healthy. Exit 1 when any alarm was printed. Excludes --tsv
@@ -78,8 +82,8 @@ while [ $# -gt 0 ]; do
         --class)
             [ $# -ge 2 ] || { echo "unlanded-work: --class requires a value" >&2; exit 2; }
             case "$2" in
-                ACTIVE|LANDED-ELSEWHERE|STALE|UNLANDED-LIVE) CLASS_FILTER="$2" ;;
-                *) echo "unlanded-work: --class must be one of ACTIVE|LANDED-ELSEWHERE|STALE|UNLANDED-LIVE, got '$2'" >&2; exit 2 ;;
+                ACTIVE|LANDED-ELSEWHERE|STALE|SUPERSEDED|FIXTURE|UNLANDED-LIVE) CLASS_FILTER="$2" ;;
+                *) echo "unlanded-work: --class must be one of ACTIVE|LANDED-ELSEWHERE|STALE|SUPERSEDED|FIXTURE|UNLANDED-LIVE, got '$2'" >&2; exit 2 ;;
             esac
             shift 2 ;;
         --base)
@@ -238,7 +242,8 @@ forge_tip_lookup() {
 }
 
 # forge_lookup <branch> <tip-sha> -> "OPEN\t<n>" or "MERGED\t<n>" (by name) or
-# "TIPMERGED\t<n>" (by tip, name-agnostic) or empty (open wins). MERGED requires BOTH the PR's recorded headRefOid to equal the
+# "TIPMERGED\t<n>" (by tip, name-agnostic) or "CLOSED\t<n>" (a closed, unmerged
+# PR whose recorded head IS the branch's current tip) or empty (open wins). MERGED requires BOTH the PR's recorded headRefOid to equal the
 # branch's CURRENT tip AND its baseRefName to equal BASE_BARE:
 #   - tip match: a branch name can be reused/rewound after its PR merged (a
 #     mere "this branch name once had a merged PR" is not evidence the
@@ -261,7 +266,13 @@ forge_lookup() {
           elif $m then "MERGED\t\($m)"
           else empty end' 2>/dev/null)"
     if [ -n "$row" ]; then printf '%s\n' "$row"; return 0; fi
-    forge_tip_lookup "$2"
+    row="$(forge_tip_lookup "$2")"
+    if [ -n "$row" ]; then printf '%s\n' "$row"; return 0; fi
+    # A CLOSED PR counts only at the tip it was closed with: commits made after
+    # it closed are work no PR has seen, and fall through to the git rules.
+    printf '%s' "$FORGE_CACHE" | jq -r --arg b "$1" --arg tip "$2" '
+        [.[] | select(.headRefName==$b and .state=="CLOSED" and .headRefOid==$tip)]
+        | if length > 0 then "CLOSED\t\(map(.number) | max)" else empty end' 2>/dev/null
 }
 
 # diff_failure_cause <branch> <rc> -- a readable cause for a failed delta, never
@@ -315,7 +326,7 @@ while IFS= read -r branch; do
         key_sha="$(git log "$BASE" --grep="\[$key\]" -E --format=%h -1 2>/dev/null)"
     fi
 
-    class=""; evidence=""; aged=0
+    class=""; evidence=""; aged=0; closed_pr=""; delta_rc=0
 
     forge_row="$(forge_lookup "$branch" "$tip")"
     case "$forge_row" in
@@ -329,7 +340,14 @@ while IFS= read -r branch; do
         OPEN*)   class="ACTIVE";           evidence="open PR #${forge_row#OPEN$'\t'}" ;;
         MERGED*) class="LANDED-ELSEWHERE"; evidence="merged PR #${forge_row#MERGED$'\t'}" ;;
         TIPMERGED*) class="LANDED-ELSEWHERE"; evidence="merged PR #${forge_row#TIPMERGED$'\t'} (ref tip is at or behind the PR head)" ;;
+        CLOSED*) closed_pr="${forge_row#CLOSED$'\t'}" ;;
     esac
+
+    # lane-quality backups (claude/backup-<ticket>-lq-<run id>-...) carry a
+    # pinned fake commit date and are never meant to land.
+    if [ -z "$class" ] && printf '%s' "$branch" | grep -qE '(^|[/-])lq-[0-9]{8}T[0-9]{6}Z-'; then
+        class="FIXTURE"; evidence="lane-quality fixture branch, never meant to land"
+    fi
 
     if [ -z "$class" ]; then
         # Capture the exit code: a FAILED
@@ -338,7 +356,6 @@ while IFS= read -r branch; do
         # delta -- that would silently misclassify a branch whose delta
         # simply could not be computed as safe-to-drop. A failure routes to
         # the loudest class instead.
-        delta_rc=0
         # --binary: a plain `git diff` on a
         # binary file emits only a "Binary files ... differ" placeholder, not
         # the actual patch data, so `git apply --check` on it fails both
@@ -383,6 +400,14 @@ while IFS= read -r branch; do
                 evidence="delta conflicts with main; no ${key:-ticket} commit on main"
             fi
         fi
+    fi
+
+    # A branch whose tip is the head of a closed PR was opened and ruled on:
+    # not "never opened as a PR". Content already on main keeps its quieter
+    # LANDED-ELSEWHERE; a delta that could not be computed stays loud.
+    if [ -n "$closed_pr" ] && [ "$delta_rc" -eq 0 ] && { [ "$class" = "UNLANDED-LIVE" ] || [ "$class" = "STALE" ]; }; then
+        class="SUPERSEDED"; aged=0
+        evidence="head of closed PR #${closed_pr}, never merged"
     fi
 
     wt="$(worktree_for_branch "$branch")"
@@ -501,11 +526,13 @@ fi
 n_active=$(awk -F'\t' '$1=="ACTIVE"' "$rows_file" | grep -c . || true)
 n_landed=$(awk -F'\t' '$1=="LANDED-ELSEWHERE"' "$rows_file" | grep -c . || true)
 n_stale=$(awk -F'\t' '$1=="STALE"' "$rows_file" | grep -c . || true)
+n_super=$(awk -F'\t' '$1=="SUPERSEDED"' "$rows_file" | grep -c . || true)
+n_fixture=$(awk -F'\t' '$1=="FIXTURE"' "$rows_file" | grep -c . || true)
 n_unlanded=$(awk -F'\t' '$1=="UNLANDED-LIVE"' "$rows_file" | grep -c . || true)
 n_aged=$(awk -F'\t' '$1=="UNLANDED-LIVE" && $5=="1"' "$rows_file" | grep -c . || true)
 
 echo "unlanded-work: local branches ahead of $BASE"
-echo "  ACTIVE=$n_active  LANDED-ELSEWHERE=$n_landed  STALE=$n_stale  UNLANDED-LIVE=$n_unlanded (aged=$n_aged)"
+echo "  ACTIVE=$n_active  LANDED-ELSEWHERE=$n_landed  STALE=$n_stale  SUPERSEDED=$n_super  FIXTURE=$n_fixture  UNLANDED-LIVE=$n_unlanded (aged=$n_aged)"
 echo
 
 print_class() {
@@ -561,6 +588,9 @@ if [ -z "$CLASS_FILTER" ] || [ "$CLASS_FILTER" = "STALE" ]; then
         echo
     fi
 fi
+
+print_class "SUPERSEDED" "SUPERSEDED — head of a closed PR, review before dropping"
+print_class "FIXTURE" "FIXTURE — lane-quality test branch, never meant to land"
 
 print_class "UNLANDED-LIVE" "UNLANDED-LIVE — active work, never opened as a PR"
 
