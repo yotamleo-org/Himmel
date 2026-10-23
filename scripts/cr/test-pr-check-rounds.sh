@@ -641,6 +641,8 @@ printf 'code\n' >> "$repo/evidreplace.txt"
 git -C "$repo" commit -q -am "real code delta"
 replace_tip="$(git -C "$repo" rev-parse HEAD)"
 git -C "$repo" replace "$replace_tip" "$replace_decoy"
+assert_eq "$?" 0 "replacement fixture installs successfully"
+assert_eq "$(git -C "$repo" cat-file commit "$replace_tip")" "$(git -C "$repo" cat-file commit "$replace_decoy")" "replacement fixture makes Git read the decoy commit"
 replace_rc=0
 (cd "$repo" && bash "$RR" evidence --branch evidreplace --head "$replace_tip" >/dev/null 2>&1) || replace_rc=$?
 assert_eq "$replace_rc" 8 "replacement objects cannot disguise a code delta as evidence"
