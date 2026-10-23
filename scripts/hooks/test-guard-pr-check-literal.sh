@@ -62,6 +62,8 @@ done
 echo 'echo mog' >"$ORIGIN/scripts/handover/merge-on-green.sh"
 echo 'echo go' >"$ORIGIN/scripts/handover/console-kit/go.sh"
 echo 'echo gate' >"$ORIGIN/scripts/handover/console-kit/himmel-gate.sh"
+echo 'echo verdict' >"$ORIGIN/scripts/handover/console-kit/write-verdict.sh"
+echo 'echo wait' >"$ORIGIN/scripts/handover/console-kit/console-wait.sh"
 echo ': go-gate' >"$ORIGIN/scripts/lib/go-gate.sh"
 echo ': handover-path' >"$ORIGIN/scripts/lib/handover-path.sh"
 echo 'doc' >"$ORIGIN/docs/a.md"
@@ -297,6 +299,24 @@ rm "$WT/scripts/handover/console-kit"
 mv "$WT/scripts/handover/console-kit-real" "$WT/scripts/handover/console-kit"
 run "handover writers restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 run "handover writers restored, go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
+# console-kit/write-verdict.sh mints a GO-key-signed verdict, so a relative
+# run is held to the same entry + hand-off byte-compare as go.sh. RED control
+# (the guard before this change): the tampered copy is allowed.
+WV='bash scripts/handover/console-kit/write-verdict.sh'
+run "clean tree, bash scripts/handover/console-kit/write-verdict.sh -> allow" 0 "$(payload "$WV" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/console-kit/write-verdict.sh"
+run "tampered worktree write-verdict.sh -> deny" 2 "$(payload "$WV" "$WT")" "$HR"
+need_in_err "deny names write-verdict.sh" "scripts/handover/console-kit/write-verdict.sh"
+g -C "$WT" checkout -q -- scripts/handover/console-kit/write-verdict.sh
+# console-kit/console-wait.sh runs under a :* allow rule too, so a relative
+# run gets the same byte-compare. RED control (the guard before this change):
+# the tampered copy is allowed.
+CW='bash scripts/handover/console-kit/console-wait.sh'
+run "clean tree, bash scripts/handover/console-kit/console-wait.sh -> allow" 0 "$(payload "$CW" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/console-kit/console-wait.sh"
+run "tampered worktree console-wait.sh -> deny" 2 "$(payload "$CW" "$WT")" "$HR"
+need_in_err "deny names console-wait.sh" "scripts/handover/console-kit/console-wait.sh"
+g -C "$WT" checkout -q -- scripts/handover/console-kit/console-wait.sh
 
 # ---- console-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
 # The documented anchored spelling for merge-on-green.sh, gate-

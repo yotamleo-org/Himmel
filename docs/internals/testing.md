@@ -194,8 +194,23 @@ shell ones; `--impacted` is refused (rc 2) on a range that does not resolve, and
 a suite outside the scan root is named, not silently dropped. `/pr-check` step
 3.6 requires one `PASS` / `SKIP <reason>` / `BLOCKED <denial>` verdict per listed
 suite (`impacted-suites.sh --check`); a missing one (rc 1) or a `BLOCKED` one (rc 3 — accounted for, but the suite did not run) leaves the row NOT clean.
-References are direct and textual only — a suite that reaches the file only
-through another script it calls is not listed.
+References include conservative basename matching through shell sources and
+repo JS/Python imports; generic intermediate shell execute/read chains are not
+followed.
+
+For operator-run dependency measurements, run
+`python3 -I scripts/cr/suite-file-resolver.py --repo . --ref HEAD` to emit the
+independent committed-tree oracle (exact edges, directory probes and unresolved
+roots). It does not read selector maps and remains a lexical, incomplete oracle;
+in particular, it does not resolve Python import/from statements transitively.
+Run `bash scripts/cr/test-suite-file-selection.sh --property` explicitly when
+measuring the full selector/oracle superset property. This expensive diagnostic
+is not the default or a CI gate; timeouts and missing queries remain failures,
+not a complete green result. To compare every completed query from a saved
+measurement against pinned main, run
+`bash scripts/cr/test-suite-file-selection.sh --monotonic <measurement-log>`.
+The bare suite command runs fast fixture controls only. Full-property completion,
+residual investigation and nightly disposition are deferred to HIMMEL-7096.
 
 A `*.test.mjs`/`.js`/`.ts` suite's own runner is not "whatever's installed" —
 `impacted-suites.sh --runner <path>` prints the exact CI-equivalent command,
@@ -284,8 +299,9 @@ median. It packs the suites longest-first and picks the fewest shards (at most 8
 slowest shard stays under max(600 s, the 8-shard makespan). The shard total
 reaches the run step's `--shard i/N` and the aggregator's `--shards`. Push and
 nightly have no plan and keep 8 shards. If the `--list` fails, the plan falls
-back to the per-shard `shard-has-work.sh` probes at 8. `home-canary` is sized
-the same way over its `--impacted` selection.
+back to the per-shard `shard-has-work.sh` probes at 8. Each shard runs through
+`scripts/ci/home-canary.sh`, so the honeytoken-HOME leak check shares the shard
+plan and needs no matrix of its own.
 
 ## A failed suite is retried once; a pass on retry is a FLAKE
 

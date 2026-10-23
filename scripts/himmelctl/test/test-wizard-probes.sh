@@ -126,7 +126,6 @@
 #                  output) OR a PARTIAL v2 set FAILS CLOSED — degraded, never
 #                  the v1 'present' (a fail-OPEN back-compat would re-open
 #                  the downgrade path the attestation exists to close).
-#   dep gemini-cli — present/absent via stub PATH.
 #   cmd:hermes_checkout hermes-checkout
 #                  pure fs, no git spawn: resolves update_hermes()'s OWN
 #                  root/src, reads .git/config directly for the origin
@@ -1404,6 +1403,30 @@ echo "$outScope" | jq -e '.userMiss.actual == "absent"' >/dev/null \
   || fail "mcp-registered user-scope probe for graphify should NOT see the project-scope .mcp.json registration (got: $outScope)"
 echo "ok: mcp-registered is scope-aware — project scope resolves .mcp.json, user scope resolves ~/.claude.json, never cross-bleeding"
 
+# ── mcp-registered: the on-demand registry counts at user scope ─
+# graphify registers into ~/.config/himmel/mcp-on-demand.json (override
+# HIMMEL_MCP_ONDEMAND_FILE), never ~/.claude.json, so a user-scope probe must
+# read it too; a project-scope probe must not.
+mcp_od_home="$work/mcp-od-home"; mkdir -p "$mcp_od_home/.config/himmel"
+: > "$mcp_od_home/graphify-mcp-stub"
+chmod +x "$mcp_od_home/graphify-mcp-stub"
+printf '{"mcpServers":{}}' > "$mcp_od_home/.claude.json"
+printf '{"mcpServers":{"graphify":{"command":"%s"}}}' "$(winpath "$mcp_od_home/graphify-mcp-stub")" > "$mcp_od_home/.config/himmel/mcp-on-demand.json"
+outOD=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const graphifyItem = { id: 'graphify-mcp', probe: { type: 'mcp-registered', server: 'graphify' } };
+const env = Object.assign({}, process.env, { HOME: '$(winpath "$mcp_od_home")' });
+delete env.HIMMEL_MCP_ONDEMAND_FILE;
+const userHit = runProbe(graphifyItem, { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', env });
+const projectMiss = runProbe(graphifyItem, { repoRoot: '$repo_root_w', targetPath: '$(winpath "$mcp_od_home")', scope: 'project', env });
+console.log(JSON.stringify({ userHit, projectMiss }));
+")
+echo "$outOD" | jq -e '.userHit.actual == "present"' >/dev/null \
+  || fail "mcp-registered user-scope probe should read a server registered only in the on-demand registry (got: $outOD)"
+echo "$outOD" | jq -e '.projectMiss.actual == "absent"' >/dev/null \
+  || fail "mcp-registered project-scope probe must NOT read the on-demand registry (got: $outOD)"
+echo "ok: mcp-registered user scope also reads the on-demand registry, project scope never does"
+
 # ── mcp-registered: deepening (bin + initMarker) ───────────────
 # Registration alone used to read 'present' even when the wrapped binary is
 # gone or the consuming project was never initialized — a registered-but-
@@ -1724,7 +1747,7 @@ git -C "$hd4403_primary" init -q -b main
 git -C "$hd4403_primary" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$hd4403_primary" worktree add -q "$work/hd4403-wt" -b hd4403-wt
 printf 'HANDOVER_DIR=%s\n' "$work/hd4403-real-root" > "$hd4403_primary/.env"
-hd4403_real=$(cd "$work/hd4403-real-root" && pwd)
+hd4403_real=$(cd "$work/hd4403-real-root" && pwd -P)
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_real" '.actual == "present" and .detail == $d' >/dev/null \
@@ -1732,7 +1755,7 @@ for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
 done
 # no .env value: a worktree falls back to the PRIMARY's inline dir, not <worktree>/handovers
 rm -f "$hd4403_primary/.env"
-hd4403_inline=$(cd "$hd4403_primary/handovers" && pwd)
+hd4403_inline=$(cd "$hd4403_primary/handovers" && pwd -P)
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_inline" '.actual == "present" and .detail == $d' >/dev/null \
@@ -4193,34 +4216,12 @@ echo "ok: cmd:guardrail_block_status (guardrail-block-global) absent/degraded (r
 # is not artificially forced — per the CR-established "comment + skip note,
 # not a fake test" standard.
 
-# ── dep (gemini-cli) — ──────────────────────────────────────────
-gem_present_stub="$work/gem-present-bin"; mkdir -p "$gem_present_stub"
-pathGemPresent=$(build_path "$gem_present_stub" bash git jq -- gemini)
-cat > "$gem_present_stub/gemini" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$gem_present_stub/gemini"
-outGemP=$(PATH="$pathGemPresent" "$node_bin" -e "
-const { runProbe } = require('$probes_lib_w');
+# ── gemini-cli is not on the adoption trail ──────────────────────
+"$node_bin" -e "
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'gemini-cli');
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', env: process.env };
-console.log(JSON.stringify(runProbe(item, ctx)));
-")
-echo "$outGemP" | jq -e '.actual == "present"' >/dev/null || fail "dep (gemini-cli) present: (got: $outGemP)"
-
-gem_absent_stub="$work/gem-absent-bin"; mkdir -p "$gem_absent_stub"
-pathGemAbsent=$(build_path "$gem_absent_stub" bash git jq -- gemini)
-outGemA=$(PATH="$pathGemAbsent" "$node_bin" -e "
-const { runProbe } = require('$probes_lib_w');
-const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'gemini-cli');
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', env: process.env };
-console.log(JSON.stringify(runProbe(item, ctx)));
-")
-echo "$outGemA" | jq -e '.actual == "absent"' >/dev/null || fail "dep (gemini-cli) absent: (got: $outGemA)"
-echo "ok: dep (gemini-cli) present/absent"
+process.exit(manifest.items.some((i) => i.id === 'gemini-cli') ? 1 : 0);
+" || fail "manifest still lists the gemini-cli dep"
+echo "ok: gemini-cli absent from the manifest"
 
 # ── cmd:hermes_checkout (hermes-checkout)
 # hermes-checkout no longer reuses cmd:has_hermes (that proves a usable venv

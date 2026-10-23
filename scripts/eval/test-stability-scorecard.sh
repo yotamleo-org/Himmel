@@ -28,8 +28,9 @@ printf '%s\n' '#!/usr/bin/env bash' 'case "$*" in *deferred-escape*) echo "HIMME
 printf '%s\n' '#!/usr/bin/env bash' 'printf "HIMMEL-2\nHIMMEL-3\nHIMMEL-77\n"' >"$td/mainkeys.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 3' >"$td/fail.sh"
 now=$(date -u +%s)
+iso_of() { date -u -d "@$1" +%FT%TZ 2>/dev/null || date -u -r "$1" +%FT%TZ; }
 printf '{"ts":"%s"}\n{"ts":"%s"}\n{"ts":"2020-01-01T00:00:00Z"}\n' \
-  "$(date -u -d "@$((now-3600))" +%FT%TZ)" "$(date -u -d "@$((now-7200))" +%FT%TZ)" >"$td/den.jsonl"
+  "$(iso_of $((now-3600)))" "$(iso_of $((now-7200)))" >"$td/den.jsonl"
 
 export SCORECARD_FIX="$td" SCORECARD_CI_METRICS_CMD="bash $td/ci.sh" SCORECARD_RED_MAIN_CMD="bash $td/redmain.sh" \
   SCORECARD_JIRA_CMD="bash $td/jira.sh" SCORECARD_MAIN_KEYS_CMD="bash $td/mainkeys.sh" SCORECARD_DENIALS_FILE="$td/den.jsonl" SCORECARD_TSV="$td/s.tsv"

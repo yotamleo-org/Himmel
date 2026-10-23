@@ -1262,7 +1262,6 @@ claude</pre>
             fill</button></li>
             <li><button class="chip" data-detail="rtk">rtk output
             trimming</button></li>
-            <li><button class="chip" data-detail="gemini-cli">gemini-cli</button></li>
           </ul></div>
         <div class="chipgroup"><span class="glabel">coming</span>
           <ul class="chips">
@@ -1632,9 +1631,6 @@ claude</pre>
       '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the subscription usage budget cannot afford. Anything that dispatches a batch of work checks it first. The installer copies the preflight into your project&rsquo;s <span class="mono">scripts/lib/</span>, and it reads the usage cache your own status line writes.</p>' },
     'fill': { t: 'Self-read context fill', s: 'ship', h:
       '<p>A session can read its <b>own</b> context-window fill as a number instead of guessing. It also distinguishes a stale or unknown reading: rather than serving a frozen snapshot as though it were current, it refuses and says so, so that a decision to wrap up is never made on a number that quietly stopped updating.</p>' },
-    'gemini-cli': { t: 'gemini-cli', s: 'ship', h:
-      '<p>Google’s gemini-cli, installed as a dependency and dispatched through a single sanctioned script. Its win is a large context window for big-input reads and parallel triage.</p>' +
-      '<p>A <b>context</b> tool, not a spend control, and not a review or implementation lane.</p>' },
     'rtk': { t: 'rtk output trimming', s: 'ship', h:
       '<p>A token-optimizing command proxy in the stack: it trims verbose command output before it reaches the model, cutting cost on chatty tools.</p>' },
     'rm-headless': { t: 'Headless runs with budget guard', s: 'road', h:

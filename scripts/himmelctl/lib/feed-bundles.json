@@ -61,8 +61,8 @@
       "id": "lanes",
       "title": "Lanes & models",
       "rows": [
-        "lane:*", "hermes-checkout", "hermes-lanes", "codex-cli", "gemini-cli", "codex-sweep-cadence",
-        "plugin:codex@openai-codex", "doctor:C11-glm-seed", "doctor:C12-codex", "doctor:C21-hermes-profile",
+        "lane:*", "hermes-checkout", "hermes-lanes", "codex-cli", "codex-sweep-cadence",
+        "plugin:codex@openai-codex", "doctor:C12-codex", "doctor:C21-hermes-profile",
         "doctor:C31-tokensave-dropped", "doctor:C59-codex-bank-cache",
         "doctor:C60-hermes-origin", "doctor:C61-codex-cli", "doctor:C63-claude-cli",
         "doctor:C66-hermes-cron-hooks", "doctor:C67-hermes-fail-open"
@@ -85,7 +85,7 @@
         "plugin:humanizer@himmel", "plugin:domain-modeling@himmel",
         "doctor:C2-obsidian", "doctor:C6-mcp", "doctor:C15-plugins", "doctor:C15-plugins-ondemand",
         "doctor:C17-dep-readiness", "doctor:C37-vendored-skill-dupes",
-        "doctor:C46-plugin-enabled-missing"
+        "doctor:C46-plugin-enabled-missing", "doctor:C72-design-mcp-auth"
       ]
     },
     {

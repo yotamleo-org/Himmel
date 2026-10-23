@@ -16,6 +16,7 @@ trap 'rm -rf "$TMP"' EXIT
 fails=0
 ok()  { echo "ok - $1"; }
 bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
+epoch() { date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s; }  # GNU date -d, BSD date -j -f
 is()  { if [ "$3" = "$2" ]; then ok "$1"; else bad "$1: want '$2' got '$3'"; fi; }
 has() { if grep -qxF -- "$3" "$2"; then ok "$1"; else bad "$1: no line '$3'"; fi; }
 
@@ -100,7 +101,7 @@ report --since 2026-10-15 --out "$TMP/r4.md"
 want="$(
   for id in $(jq -r '.[]|select(.conclusion=="cancelled")|.databaseId' "$REAL/runs.json"); do
     jq -r '.jobs[]|select(.conclusion!="skipped" and .startedAt!=null and .completedAt!=null)|[.startedAt,.completedAt]|@tsv' "$REAL/jobs-$id.json"
-  done | while IFS=$'\t' read -r a b; do echo "$(date -u -d "$a" +%s) $(date -u -d "$b" +%s)"; done \
+  done | while IFS=$'\t' read -r a b; do echo "$(epoch "$a") $(epoch "$b")"; done \
     | awk '{ if ($2 > $1) s += $2 - $1 } END { printf "%.1f", s / 60 }'
 )"
 if [ "$want" != "0.0" ]; then ok "recorded cancelled runs hold real runner time ($want min)"; else bad "fixture has no cancelled runner time"; fi

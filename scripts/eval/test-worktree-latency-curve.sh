@@ -8,6 +8,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/../lib/portable-timeout.sh"
 SUT="$SCRIPT_DIR/worktree-latency-curve.sh"
 
 PASS=0

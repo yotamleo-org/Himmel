@@ -18,6 +18,8 @@
 # shellcheck disable=SC2016,SC2034  # check() evals single-quoted asserts that read these vars
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../../lib/portable-timeout.sh"
 FRV="$HERE/failure_review.py"
 CAD="$HERE/failure-review-cadence.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/failure-review-test.XXXXXX")" || { echo "test-failure-review: mktemp -d failed" >&2; exit 1; }
@@ -174,6 +176,17 @@ row "$C6/ledger.jsonl" N300 blocked/merge-hold
 review "$C6" >/dev/null 2>&1
 check "a class first seen today is new" 'digest "$C6" | grep -q "blocked/merge-hold: 1 rows, legs N300 (new)"'
 check "a new class sends one line naming it" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "new: blocked/merge-hold"'
+# suite rows carry final_red: false = red inside the leg then green, true = left red at wrap.
+C6d="$TMP/c6d"; mkdir -p "$C6d"
+row "$C6d/ledger.jsonl" N400 suite/test-green-again.sh
+row "$C6d/ledger.jsonl" N400 suite/test-left-red.sh
+jq -c 'if .class == "suite/test-left-red.sh" then . + {final_red:true} else . + {final_red:false} end' "$C6d/ledger.jsonl" >"$C6d/l2" && mv "$C6d/l2" "$C6d/ledger.jsonl"
+review "$C6d" >/dev/null 2>&1
+rc=$?
+check "the suite fixture review exits 0" '[ "$rc" -eq 0 ]'
+check "a suite class that went red then green is not new" 'digest "$C6d" | grep -q "suite/test-green-again.sh: 1 rows, legs N400 (recurring)"'
+check "a suite class left red at wrap is new" 'digest "$C6d" | grep -q "suite/test-left-red.sh: 1 rows, legs N400 (new)"'
+check "only the ended-red class is named in the new: line" 'tail -n 1 "$STUB/notify.log" | grep -q "new: suite/test-left-red.sh$"'
 C6c="$TMP/c6c"; mkdir -p "$C6c"
 row "$C6c/ledger.jsonl" N100 error/Read 0 2026-10-06T11:59:59.500000Z
 row "$C6c/ledger.jsonl" N200 error/Read

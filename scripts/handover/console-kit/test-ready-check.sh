@@ -76,7 +76,7 @@ case "$args" in
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
             --arg body "$(printf '%b' "${STUB_BODY:-}")" '
-            {data:{repository:{p77:{number:77,headRefOid:$h,mergeStateStatus:$m,reviewDecision:null,body:$body,
+            {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,mergeStateStatus:$m,reviewDecision:null,body:$body,
                 commits:{nodes:[$commits[] | . as $commit | {commit:(. + {oid:(.oid // $h),parents:{totalCount:(if (($merges|split("\n")) | index($commit.oid // "")) != null then 2 else 1 end)}})}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[range($u)|{isResolved:false}],pageInfo:{hasNextPage:false,endCursor:null}},
                 statusCheckRollup:{contexts:{nodes:[$rollup[] | . + {__typename:(if has("conclusion") then "CheckRun" else "StatusContext" end)} | if has("workflowName") then . + {checkSuite:{workflowRun:{workflow:{name:.workflowName}}}} else . end],pageInfo:{hasNextPage:false,endCursor:null}}}
@@ -178,8 +178,8 @@ seed_deferral() {
 }
 
 run() {
-    local cache
-    cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
+    local cache="${RUN_CACHE:-}"
+    [ -n "$cache" ] || cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
         JIRA_PROJECT_KEY=HIMMEL \
         STUB_NWO="$NWO" \
@@ -337,6 +337,28 @@ rc=0; out="$(run)" || rc=$?
 check "unresolved-threads: exit 1" "$rc" "1"
 contains "unresolved-threads: check 3 fails" "$out" "[FAIL] 3. unresolved review threads = 2"
 
+# --- 3 fresh. the decision reads the PR live, never a same-head cached snapshot ---
+reset_stubs
+RUN_CACHE=$(mktemp -d "$tmp/cache.XXXXXX") || exit 1
+STUB_UNRESOLVED=1
+rc=0; run >/dev/null 2>&1 || rc=$?
+check "stale-cache-thread-resolved: warm-up exit 1" "$rc" "1"
+check "stale-cache-thread-resolved: warm-up cached 1 thread" "$(jq -s -r '.[0].value.reviewThreads.nodes | length' "$RUN_CACHE"/*-"$PR".json 2>/dev/null)" "1"
+STUB_UNRESOLVED=0
+rc=0; out="$(run)" || rc=$?
+check "stale-cache-thread-resolved: exit 0" "$rc" "0"
+contains "stale-cache-thread-resolved: check 3 passes" "$out" "[PASS] 3."
+reset_stubs
+RUN_CACHE=$(mktemp -d "$tmp/cache.XXXXXX") || exit 1
+rc=0; run >/dev/null 2>&1 || rc=$?
+check "stale-cache-thread-opened: warm-up exit 0" "$rc" "0"
+check "stale-cache-thread-opened: warm-up cached 0 threads" "$(jq -s -r '.[0].value.reviewThreads.nodes | length' "$RUN_CACHE"/*-"$PR".json 2>/dev/null)" "0"
+STUB_UNRESOLVED=1
+rc=0; out="$(run)" || rc=$?
+check "stale-cache-thread-opened: exit 1" "$rc" "1"
+contains "stale-cache-thread-opened: check 3 fails" "$out" "[FAIL] 3. unresolved review threads = 1"
+RUN_CACHE=
+
 # --- 4. check 4 fails: no ledger row for this head ----------------------
 reset_stubs
 seed_ledger_missing
@@ -345,10 +367,51 @@ check "no-ledger-row: exit 1" "$rc" "1"
 contains "no-ledger-row: check 4 fails" "$out" "[FAIL] 4."
 seed_ledger_ok
 
+# A session-authored ok row is not evidence that a critic reviewed the head.
+reset_stubs
+saved_sha="$SHA"
+SHA=$(git -C "$REPO" rev-parse HEAD)
+for model in claude claude-floor codex-adv; do
+    : > "$LEDGER"
+    (cd "$REPO" && CR_LEDGER="$LEDGER" bash "$HERE/../../cr/ledger-append.sh" avail \
+        --branch b --head "$SHA" --model "$model" --status ok) || exit 1
+    rc=0; out="$(run)" || rc=$?
+    check "$model session-avail: exit 1" "$rc" "1"
+    contains "$model session-avail: check 4 fails" "$out" "[FAIL] 4."
+done
+SHA="$saved_sha"
+
+for kind in finding score usage; do
+    printf '{"kind":"%s","head":"%s","model":"codex","status":"ok"}\n' "$kind" "$SHA" > "$LEDGER"
+    rc=0; out="$(run)" || rc=$?
+    check "$kind-ok: exit 1" "$rc" "1"
+    contains "$kind-ok: check 4 fails" "$out" "[FAIL] 4."
+done
+
+for kind in evidence judge-go; do
+    for row_branch in feat/himmel-100-thing other-branch ''; do
+        printf '{"kind":"%s","branch":"%s","head":"%s","status":"ok"}\n' "$kind" "$row_branch" "$SHA" > "$LEDGER"
+        rc=0; out="$(run)" || rc=$?
+        if [ "$row_branch" = feat/himmel-100-thing ]; then
+            check "$kind own-branch: exit 0" "$rc" "0"
+            contains "$kind own-branch: check 4 passes" "$out" "[PASS] 4."
+        else
+            check "$kind wrong-or-missing-branch: exit 1" "$rc" "1"
+            contains "$kind wrong-or-missing-branch: check 4 fails" "$out" "[FAIL] 4."
+        fi
+    done
+    printf '{"kind":"%s","branch":"feat/himmel-100-thing","head":"%s","status":"ok"}\n' "$kind" "$SHA" > "$LEDGER"
+    STUB_PR_BRANCH=''
+    rc=0; out="$(run)" || rc=$?
+    check "$kind unreadable-branch: exit 1" "$rc" "1"
+    contains "$kind unreadable-branch: check 4 fails" "$out" "[FAIL] 4."
+    unset STUB_PR_BRANCH
+done
+
 # --- 4b. check 4 takes the audit row a signed judge GO leaves:
 # kind=judge-go, status ok, source=judge:<qid>/<name>, at the exact head.
 reset_stubs
-printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","status":"ok","source":"judge:q1/judge"}\n' "$SHA" > "$LEDGER"
+printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"feat/himmel-100-thing","head":"%s","status":"ok","source":"judge:q1/judge"}\n' "$SHA" > "$LEDGER"
 rc=0; out="$(run)" || rc=$?
 check "judge-go-row: exit 0" "$rc" "0"
 contains "judge-go-row: check 4 passes" "$out" "[PASS] 4. CR ledger: 1 row(s) for $SHA with status=ok"
@@ -1428,6 +1491,22 @@ reset_stubs
 STUB_FILES="scripts/handover/console-kit/cr-disposition.sh"
 rc=0; out="$(run)" || rc=$?
 contains "trust: cr-disposition.sh (go.sh signs and decides exit 9 through it) prints yes" "$out" "TRUST-PATH: yes"
+
+for hook_suite in scripts/hooks/test-block-read-secrets.sh scripts/hooks/test-guard-pr-check-literal.sh \
+    scripts/hooks/test-cadence-deny-background.sh scripts/hooks/test-auto-approve-safe-bash.sh \
+    scripts/hooks/test-check-commit-msg.sh scripts/hooks/test-check-security-reviewed.sh; do
+    reset_stubs
+    STUB_FILES="$hook_suite"
+    rc=0; out="$(run)" || rc=$?
+    check "trust: $hook_suite exit 0" "$rc" "0"
+    contains "trust: $hook_suite requires judge" "$out" "TRUST-PATH: yes"
+done
+for nontrust_suite in scripts/guardrails/test-lib.sh scripts/hooks/test-auto-arm-on-cap.sh; do
+    reset_stubs
+    STUB_FILES="$nontrust_suite"
+    rc=0; out="$(run)" || rc=$?
+    contains "trust: $nontrust_suite stays outside policy" "$out" "TRUST-PATH: no"
+done
 
 reset_stubs
 STUB_TRUST_LIST_FAIL=1

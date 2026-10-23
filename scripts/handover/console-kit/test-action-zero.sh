@@ -8,6 +8,8 @@
 # Run: bash scripts/handover/console-kit/test-action-zero.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../../lib/portable-timeout.sh"
 AZ="${ACTION_ZERO:-$HERE/action-zero.sh}"
 
 fails=0
@@ -100,6 +102,20 @@ check "no fleet manifest: the run exits nonzero" "1" "$rc10"
 printf 'not json\n' > "${LCON%.md}.fleet.json"
 bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs >/dev/null 2>&1; rc11=$?
 check "a render that fails exits nonzero" "1" "$rc11"
+rm -f "${LCON%.md}.fleet.json"
+# a console doc whose lock another session holds keeps its legs: line
+printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
+# shellcheck disable=SC2016  # the backticks are literal span markers
+printf '# console\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\n\n## Results\n' > "$LCON"
+legs_before="$(grep '^legs: ' "$LCON")"
+check "lock held: the fixture has a legs: line" "1" "$([ -n "$legs_before" ] && echo 1 || echo 0)"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LCON" >/dev/null 2>&1; acq12=$?
+check "lock held: the fixture lock was acquired" "0" "$acq12"
+out12="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"; rc12=$?
+check "lock held: the legs: line is left unchanged" "$legs_before" "$(grep '^legs: ' "$LCON")"
+check "lock held: LEGS says unavailable" "1" "$(printf '%s\n' "$out12" | sed -n '/^== LEGS/,/^== DOC/p' | grep -c '^unavailable')"
+check "lock held: the run exits nonzero" "1" "$rc12"
+check "lock held: the wording does not claim another session" "0" "$(printf '%s\n' "$out12" | grep -c 'another session holds')"
 rm -f "${LCON%.md}.fleet.json"
 
 # DOC is a digest of the supplied doc, not its instructions or result history.

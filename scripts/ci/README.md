@@ -34,7 +34,8 @@ push/PR triggers once it is green.
 | `node-suites` | `npm ci && npm test` matrix across `scripts/jira`, `scripts/bitbucket`, `scripts/himmel-run`. |
 | `bun-suites` | `bun install --frozen-lockfile && bun test` in `scripts/luna-vitals`. |
 | `shell-unit` | `scripts/ci/run-shell-tests.sh` — discovers and runs all hermetic `test-*.sh` suites under `scripts/`, skipping the SKIP_LIST entries (see below). |
-| `home-canary` | `scripts/ci/home-canary.sh` — reruns the impacted shell suites with `HOME`/`USERPROFILE` pointed at a temp dir holding a honeytoken `.env`; fails if the token reaches the output or the file's access time moves (a suite read `$HOME/.env`). Also runs `scripts/ci/check-host-file-read-sinks.sh`, which flags newly added shell that reads an argv/env-named file with no allowlist (escape: `# read-sink-ok: <why>`). Ceiling: a hard-coded real-home path is not seen. |
+| `shell-unit` (honeytoken HOME) | Each shard runs through `scripts/ci/home-canary.sh`: `HOME`/`USERPROFILE` point at a temp dir holding a honeytoken `.env`, and the shard fails if the token reaches the output or the file's access time moves (a suite read `$HOME/.env`). Ceiling: a hard-coded real-home path is not seen. |
+| `unchecked-mktemp-range` (read sinks) | The `ci-quick` group also runs `scripts/ci/check-host-file-read-sinks.sh`, which flags newly added shell that reads an argv/env-named file with no allowlist (escape: `# read-sink-ok: <why>`). |
 
 ---
 

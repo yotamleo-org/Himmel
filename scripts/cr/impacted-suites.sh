@@ -24,11 +24,17 @@
 #       test-*.sh (what run-shell-tests.sh can run); the *.test.mjs / .js / .ts
 #       suites are listed without it and are run by their own runner — see
 #       --runner below for which one.
-#       The union is widened over the SOURCE CLOSURE: a suite that
-#       reaches a changed file only through helpers it `source`s / `.`s (suite ->
-#       A.sh -> changed B.sh, any depth) is listed too. A file that sets the
+#       The union is widened over shell SOURCE and repo IMPORT CLOSURES: a
+#       suite reaching a changed file through sourced helpers or JS/Python
+#       module imports (any depth) is listed too. A file that sets the
 #       fence-lifting HIMMEL_UNINSTALL_REAL_HOME variable also lists the
 #       path-scanning callers suite that never names it.
+#   impacted-suites.sh --paths-file <path> <base>..<head> [--shell]
+#       Query each newline-delimited path against the same head snapshot. Print
+#       TSV path/suite rows, or path plus an empty field when none are selected.
+#       An absent path is an add probe; an existing path is a content modify.
+#       Uses the same selection function as a normal diff, with per-head setup
+#       shared across queries. Refuses verdict/runner modes and symlink inputs.
 #   impacted-suites.sh --selector-miss <base>..<head> --red-file <path>
 #       Selector-miss evidence. <path> lists suites (one per line)
 #       that went red on a main-push full sweep. For each red suite the PR's
@@ -92,8 +98,8 @@
 # (or searched) is an ERROR, never an empty list: an empty impacted set reads
 # as "nothing to run". --run otherwise exits with the suite's own exit code.
 #
-# ponytail: the closure follows `source`/`.` edges between shell files only, by
-# basename. A suite that reaches a changed file through a script
+# ponytail: source edges and JS/Python imports are followed by basename.
+# A suite that reaches a changed file through an intermediate shell script
 # it EXECUTES (bash a.sh, no source line), or builds the path at runtime
 # ("$dir/uninstall-$kind.sh"), is still not found — the union under-
 # approximates there; the --selector-miss ledger is how such a gap surfaces, and
@@ -355,6 +361,7 @@ run_path=""
 from_file=""
 selector_miss=0
 red_file=""
+paths_file=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --check) check=1; shift ;;
@@ -367,6 +374,9 @@ while [ "$#" -gt 0 ]; do
             runner_path="$2"; shift 2 ;;
         --runner-check) runner_check_mode=1; shift ;;
         --selector-miss) selector_miss=1; shift ;;
+        --paths-file)
+            [ "$#" -ge 2 ] || { echo "impacted-suites.sh: --paths-file requires a path" >&2; exit 2; }
+            paths_file="$2"; shift 2 ;;
         --red-file)
             [ "$#" -ge 2 ] || { echo "impacted-suites.sh: --red-file requires a path" >&2; exit 2; }
             red_file="$2"; shift 2 ;;
@@ -382,6 +392,16 @@ while [ "$#" -gt 0 ]; do
             range="$1"; shift ;;
     esac
 done
+
+if [ -n "$paths_file" ]; then
+    if [ "$check" -eq 1 ] || [ "$selector_miss" -eq 1 ] || [ -n "$runner_path" ] || [ "$runner_check_mode" -eq 1 ] || [ -n "$run_path" ]; then
+        echo "impacted-suites.sh: --paths-file cannot be combined with verdict or runner modes" >&2; exit 2
+    fi
+    if [ -L "$paths_file" ] || [ ! -f "$paths_file" ] || [ ! -r "$paths_file" ]; then
+        echo "impacted-suites.sh: --paths-file is not a readable regular file (symlinks refused): $paths_file" >&2; exit 2
+    fi
+    case "$paths_file" in /*) ;; *) paths_file="$PWD/$paths_file" ;; esac
+fi
 
 if [ -n "$from_file" ] && [ "$check" -eq 0 ]; then
     echo "impacted-suites.sh: --from-file requires --check" >&2; exit 2
@@ -625,47 +645,6 @@ bare_source_ere() {
     { printf 'shellcheck[[:space:]]+source=([^[:space:]]*/)?'; needle_tail_ere "$name"; printf '\n'; } || return 1
 }
 
-seen="$work/seen"     # every file already in the source closure (visited set)
-front="$work/front"   # the files whose sourcers the next round looks for
-: > "$seen"
-: > "$front"
-
-while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    if [[ $f =~ $suite_re ]]; then
-        # A changed suite is impacted by itself (unless the PR deleted it) —
-        # and falls through so its basename is also a needle: a wrapper that
-        # invokes it (test-arm-resume-fast.sh -> test-arm-resume.sh) is reached.
-        if grep -Fxq -- "$f" "$suites"; then printf '%s\n' "$f" >> "$found" || io_fail "recording a changed suite"; fi
-    fi
-    name="${f##*/}"
-    add_needle "$(file_literal "$f")"
-    add_stem_needle "$f"
-    bare_source_ere "$f" "$lits" >> "$pats" || io_fail "writing a bare source needle"
-    printf '%s\n' "$f" >> "$seen" || io_fail "seeding the source closure"
-    printf '%s\n' "$f" >> "$front" || io_fail "seeding the source closure"
-    case "$f" in
-        .claude/commands/*.md|marketplace/plugins/*/commands/*.md)
-            add_needle "/${name%.md}" ;;
-        */skills/*/SKILL.md)
-            skill="${f%/SKILL.md}"; add_needle "/${skill##*/}" ;;
-    esac
-done < "$work/changed"
-
-# Source closure: a shell file joins the closure as a sourcer when
-# (a) a `source`/`.` line names a file already in the closure, (b) it assigns a
-# name containing one (`_LIB="$DIR/x.sh"`, `libs=(x.sh y.sh)`) AND has a
-# `source`/`.` line whose operand is a `$var` — the repo idiom, `. "$_lib"` —
-# or (c) it carries a `# shellcheck source=<path>` directive for it. Its own
-# name then becomes a needle, so a suite that names only the outermost helper is
-# still reached. Fail-wide: a variable-sourcing file that assigns the helper's
-# name joins even if the variable is not the one sourced. Naming the helper
-# anywhere plus any source line was tried and cascades to every suite (557 of
-# 557 on a 2-file diff), so (b) is deliberately the narrower idiom.
-# The visited set ($seen) makes a source cycle terminate; each round is a few greps.
-# ponytail: non-.sh sourcers, `exec` edges, JS imports, a name built at run time
-# (`"$dir/$name"`) and a backslash-continued `source \` are not followed —
-# upgrade path is a real dataflow pass if a T6 selector-miss row shows one.
 varsrc="$work/varsrc"   # every .sh file that sources a "$variable"
 # The start of a source-edge match. The keyword is preceded by the
 # line start / an indent, or by a separator after a first character that is not
@@ -682,112 +661,7 @@ if [ "$grep_rc" -gt 1 ]; then
     exit 2
 fi
 tr '\0' '\n' < "$work/varsrc.raw" | sed "s/^${head_sha}://" > "$varsrc" || io_fail "listing variable-sourcing files"
-# grep_narrowed <patfile> <litfile> <outfile> <what> <pathspec>... — write to
-# <outfile>, one path per line, the files at head under <pathspec>... holding a
-# line that matches any ERE in <patfile>. The answer of
-# `git grep -z -l -E -f <patfile> <head> -- <pathspec>...`, without its cost: that
-# runs EVERY pattern over EVERY line, which on a 321-file vendored diff (~1.2k
-# patterns, ~1.7k files, 26 rounds) was 3184 CPU-seconds and a cancelled CI job.
-# Every pattern holds one literal of <litfile> as a required substring, so a file
-# or a line with none of them cannot match: one fixed-string pass keeps those
-# files, a second keeps those lines, and the unchanged ERE runs over what is left.
-# ponytail: a path holding a newline splits in two, as with the -z lists above;
-# upgrade path is NUL-reading consumers if one ever appears.
-grep_narrowed() {
-    local pf="$1" lf="$2" out="$3" what="$4" cand p narrow="$work/narrow.d"
-    shift 4
-    case "$pf" in /* | [A-Za-z]:[\\/]*) ;; *) pf="$PWD/$pf" ;; esac   # the ERE pass runs from $narrow
-    : > "$out" || io_fail "creating the ${what} hit list"   # a failed open is rc 1 below
-    : > "$work/narrow.cand" || io_fail "creating the ${what} candidate list"
-    grep_rc=0
-    git grep -z -l -F -f "$lf" "$head_sha" -- "$@" > "$work/narrow.cand" || grep_rc=$?
-    if [ "$grep_rc" -gt 1 ]; then
-        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
-        exit 2
-    fi
-    [ -s "$work/narrow.cand" ] || return 0
-    rm -rf "$narrow"
-    mkdir "$narrow" || io_fail "creating the ${what} scratch tree"
-    while IFS= read -r -d '' cand; do
-        p="${cand#"${head_sha}:"}"
-        case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
-        git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
-        # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
-        # A redirect that cannot open its target is rc 1, the code for "no match":
-        # create the scratch copy in a checked step first or the suite is dropped.
-        : > "$narrow/$p" || io_fail "creating the ${what} scratch copy of ${p}"
-        grep_rc=0
-        LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
-        [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
-    done < "$work/narrow.cand"
-    : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
-    grep_rc=0
-    ( cd "$narrow" || exit 3
-      git grep --no-index --no-exclude-standard --threads=1 -z -l -E -f "$pf" ) > "$work/narrow.hits" || grep_rc=$?
-    if [ "$grep_rc" -gt 1 ]; then
-        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
-        exit 2
-    fi
-    tr '\0' '\n' < "$work/narrow.hits" > "$out" || io_fail "reading ${what}"
-}
-# closure_grep <patfile> <outfile> <what> — the .sh files at head matching any pattern.
-closure_grep() {
-    grep_narrowed "$1" "$work/srclits" "$2" "$3" ':(glob)**/*.sh'
-}
-while [ -s "$front" ]; do
-    : > "$work/srcpats"
-    : > "$work/asgpats"
-    : > "$work/dirpats"
-    : > "$work/srclits"
-    while IFS= read -r f; do
-        lit=$(file_literal "$f" src)
-        printf '%s\n' "$lit" >> "$work/srclits" || io_fail "writing a source-edge literal"
-        # A `/name` needle brings its own boundary: let the prefix reach right up to it.
-        case "$lit" in
-            /*) src_pre='[^#]*'; dir_pre='[^[:space:]]*' ;;
-            *) src_pre='([^#]*[^A-Za-z0-9_.-])?'; dir_pre='([^[:space:]]*/)?' ;;
-        esac
-        { printf '%s(source|\\.)[[:space:]]%s' "$src_lead" "$src_pre"; needle_tail_ere "$lit"; printf '\n'; } >> "$work/srcpats" || io_fail "writing a source-edge pattern"
-        { printf '^[[:space:]]*(export[[:space:]]+|local[[:space:]]+|readonly[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*\\+?=.*'; needle_ere "$lit"; printf '\n'; } >> "$work/asgpats" || io_fail "writing an assignment pattern"
-        { printf 'shellcheck[[:space:]]+source=%s' "$dir_pre"; needle_tail_ere "$lit"; printf '\n'; } >> "$work/dirpats" || io_fail "writing a directive pattern"
-        bare_source_ere "$f" "$work/srclits" >> "$work/srcpats" || io_fail "writing a bare source-edge pattern"
-    done < "$front"
-    closure_grep "$work/srcpats" "$work/hit.src" "walking the source closure"
-    closure_grep "$work/dirpats" "$work/hit.dir" "reading shellcheck source directives"
-    closure_grep "$work/asgpats" "$work/hit.asg" "reading variable assignments"
-    cat "$work/hit.src" "$work/hit.dir" > "$work/src.out" || io_fail "merging source-closure hits"
-    if [ -s "$work/hit.asg" ] && [ -s "$varsrc" ]; then
-        grep_rc=0
-        grep -Fx -f "$varsrc" "$work/hit.asg" >> "$work/src.out" || grep_rc=$?
-        [ "$grep_rc" -le 1 ] || io_fail "intersecting variable sourcers"
-    fi
-    : > "$work/next"
-    while IFS= read -r hit; do
-        [ -n "$hit" ] || continue
-        if grep -Fxq -- "$hit" "$seen"; then continue; fi
-        printf '%s\n' "$hit" >> "$seen" || io_fail "growing the source closure"
-        printf '%s\n' "$hit" >> "$work/next" || io_fail "growing the source closure"
-        # The closure hit is the SOURCER, not the sourced file, and a
-        # suite may invoke it by its stem alone (`guard_rc <hook>`, the hook sourcing
-        # a changed lib), so it gets the stem needle too.
-        add_needle "$(file_literal "$hit")"
-        add_stem_needle "$hit"
-    done < "$work/src.out"
-    cp "$work/next" "$front" || io_fail "advancing the source closure"
-done
 
-# content_rules — one `ERE|suite` row per path-scanning suite that never names
-# the files it guards: a changed file whose text (at the base or
-# the head) matches the ERE lists the suite. Add a row, not a new mechanism.
-# The row splits on its first `|`, so an ERE never spells one: an alternation is
-# one row per branch (the two ledger rows, mirror the registry
-# lint's own ~/.himmel ledger pattern, .jsonl and .log).
-# ponytail: whole-file, not added-lines — any edit to a file that already spells
-# a ledger path runs the registry lint (0s); upgrade path: diff-hunk matching if
-# a --selector-miss or cost review shows the widening matters.
-# Rows match case-insensitively (the uninstall rule's suite reads
-# the name in any case); the ledger rows widen with it, which only over-selects
-# a 0 s suite.
 content_rules() {
     cat <<'EOF'
 HIMMEL_UNINSTALL_[^A-Za-z]{0,3}REAL_HOME|scripts/test-uninstall-real-home-callers.sh
@@ -797,56 +671,11 @@ EOF
 }
 # A process substitution's rc is lost: write the rows to a checked file first.
 content_rules > "$work/content-rules" || io_fail "writing the content rules"
-while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    # A side that does not exist (file added or deleted) is skipped; a side that
-    # exists but cannot be read fails closed rather than dropping the suite.
-    : > "$work/content" || io_fail "resetting the content-rule scratch file"
-    for rev in "$head_sha" "$mb"; do
-        git ls-tree --name-only "$rev" -- "$f" > "$work/lstree" || io_fail "probing ${f} at ${rev} for the content rules"
-        if [ -s "$work/lstree" ]; then
-            git show "${rev}:${f}" >> "$work/content" || io_fail "reading ${f} at ${rev} for the content rules"
-        fi
-    done
-    # Also match the text as the shell sees it, continuations
-    # joined and every quote and backslash deleted, so a name split by quotes or
-    # a continuation (`HIMMEL""_UNINSTALL_...`) still reaches its row. This is
-    # the normalisation test-uninstall-real-home-callers.sh's sets_var applies.
-    sed -e ':a' -e '/\\$/N' -e 's/\\\n//' -e 'ta' "$work/content" \
-        | sed -e "s/\\\$\\([\"']\\)/\\1/g" -e "s/[\"'\\\\]//g" > "$work/content.norm" \
-        || io_fail "normalising ${f} for the content rules"
-    cat "$work/content.norm" >> "$work/content" || io_fail "appending the normalised text of ${f}"
-    while IFS='|' read -r re rule_suite; do
-        [ -n "$re" ] || continue
-        cgrep_rc=0
-        grep -Eiq -- "$re" "$work/content" || cgrep_rc=$?
-        if [ "$cgrep_rc" -gt 1 ]; then
-            echo "impacted-suites: content-rule grep failed (rc=$cgrep_rc) on ${f} — cannot tell which suites are impacted" >&2
-            exit 2
-        fi
-        if [ "$cgrep_rc" -eq 0 ] && grep -Fxq -- "$rule_suite" "$suites"; then
-            printf '%s\n' "$rule_suite" >> "$found" || io_fail "recording a content-rule suite"
-        fi
-    done < "$work/content-rules"
-done < "$work/changed"
 
-# scan_roots — one `<glob> <suite>` row per suite that WALKS a repo tree —
-# a file added, changed or deleted under the tree changes the
-# suite's result though no suite names it (PR 1734 added
-# scripts/lanes/lib/leg-cost-row.sh; lint-fail-open scans scripts/lanes/ and
-# main went red). <glob> is a `case` pattern on the repo-relative
-# path, and its `*` crosses `/`. Add a row, not a new mechanism.
-# A `!<glob> <suite>` row vetoes a file the suite's walk skips; a
-# glob with no `/` matches the basename. Mirror the suite's own skip rule
-# exactly, never wider: a veto that over-reaches is an under-selection.
-# ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
-# and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a
-# `*` row would run 554s+19s on every PR);
-# scripts/ci/test-run-shell-tests.sh 23c only reacts to a NEW top-level tree;
-# scripts/lib/test-vm-guest-excludes.sh only to a secret-named file. Upgrade
-# path: a row here once a --selector-miss ledger row names one of them.
 scan_roots() {
     cat <<'EOF'
+.github/*.yml scripts/ci/test-check-actions-pinned.sh
+.github/*.yaml scripts/ci/test-check-actions-pinned.sh
 scripts/guardrails/*.sh scripts/guardrails/test-lint-fail-open.sh
 scripts/hooks/*.sh scripts/guardrails/test-lint-fail-open.sh
 scripts/lanes/*.sh scripts/guardrails/test-lint-fail-open.sh
@@ -948,6 +777,277 @@ templates/luna-second-brain/Welcome.md templates/luna-second-brain/scripts/test-
 EOF
 }
 scan_roots > "$work/scan-roots" || io_fail "writing the scan-roots map"
+
+cg_rc=0
+git show "${head_sha}:scripts/cr/pr-check-context.sh" > "$work/ctx" 2>/dev/null || cg_rc=$?
+: > "$work/guarded"
+if [ "$cg_rc" -eq 0 ]; then
+    sed -n '/^cr_guarded="/,/"$/p' "$work/ctx" | sed 's/^cr_guarded="//; s/"$//' | tr ' ' '\n' | sed '/^$/d' > "$work/guarded" || io_fail "reading cr_guarded"
+fi
+
+# Imports are a reverse dependency index at this head, shared by batch queries.
+# ponytail: module basenames deliberately over-select same-named repo modules;
+# runtime-computed imports need a selector-miss row before adding a new parser.
+: > "$work/importers" || io_fail "creating the importer list"
+: > "$work/import-edges" || io_fail "creating the import index"
+grep_rc=0
+git grep -z -l -E '(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)' "$head_sha" -- \
+    ':(glob)**/*.js' ':(glob)**/*.mjs' ':(glob)**/*.cjs' ':(glob)**/*.ts' ':(glob)**/*.py' > "$work/importers" || grep_rc=$?
+[ "$grep_rc" -le 1 ] || io_fail "listing importers"
+while IFS= read -r -d '' importer; do
+    importer="${importer#"${head_sha}:"}"
+    git show "${head_sha}:${importer}" > "$work/import.blob" || io_fail "reading an importer"
+    awk -v importer="$importer" '
+        function emit(module, n, parts) {
+            n = split(module, parts, "/")
+            module = parts[n]
+            if (module ~ /^[A-Za-z0-9_.-]+$/ && module != "." && module != "..")
+                print module "|" importer
+        }
+        /^[[:space:]]*(#|\/\/|\/\*|\*)/ { next }
+        importer ~ /\.py$/ {
+            if ($0 !~ /^[[:space:]]*(from|import)[[:space:]]/) next
+            sub(/#.*/, "")
+            gsub(/[^A-Za-z0-9_.]/, " ")
+            for (i = 1; i <= NF; i++) {
+                if ($i == "from" || $i == "import" || $i == "as") continue
+                n = split($i, parts, ".")
+                emit(parts[n])
+            }
+            next
+        }
+        /(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)/ {
+            text = $0
+            while (match(text, /["\047][^"\047]+["\047]/)) {
+                module = substr(text, RSTART + 1, RLENGTH - 2)
+                if (module ~ /\//) emit(module)
+                text = substr(text, RSTART + RLENGTH)
+            }
+        }
+    ' "$work/import.blob" >> "$work/import-edges" || io_fail "indexing imports"
+done < "$work/importers"
+
+select_changed() {
+    cp "$1" "$work/changed" || io_fail "reading the queried paths"
+    # Normal mode starts with fresh files; only batch calls reuse them.
+    if [ -n "$paths_file" ]; then
+        : > "$pats" || io_fail "resetting patterns"
+        : > "$lits" || io_fail "resetting literals"
+        : > "$found" || io_fail "resetting selected suites"
+    fi
+seen="$work/seen"     # every file already in the source closure (visited set)
+front="$work/front"   # the files whose sourcers the next round looks for
+: > "$seen"
+: > "$front"
+
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if [[ $f =~ $suite_re ]]; then
+        # A changed suite is impacted by itself (unless the PR deleted it) —
+        # and falls through so its basename is also a needle: a wrapper that
+        # invokes it (test-arm-resume-fast.sh -> test-arm-resume.sh) is reached.
+        if grep -Fxq -- "$f" "$suites"; then printf '%s\n' "$f" >> "$found" || io_fail "recording a changed suite"; fi
+    fi
+    name="${f##*/}"
+    add_needle "$(file_literal "$f")"
+    add_stem_needle "$f"
+    bare_source_ere "$f" "$lits" >> "$pats" || io_fail "writing a bare source needle"
+    printf '%s\n' "$f" >> "$seen" || io_fail "seeding the source closure"
+    printf '%s\n' "$f" >> "$front" || io_fail "seeding the source closure"
+    case "$f" in
+        .claude/commands/*.md|marketplace/plugins/*/commands/*.md)
+            add_needle "/${name%.md}" ;;
+        */skills/*/SKILL.md)
+            skill="${f%/SKILL.md}"; add_needle "/${skill##*/}" ;;
+    esac
+done < "$work/changed"
+
+# Source closure: a shell file joins the closure as a sourcer when
+# (a) a `source`/`.` line names a file already in the closure, (b) it assigns a
+# name containing one (`_LIB="$DIR/x.sh"`, `libs=(x.sh y.sh)`) AND has a
+# `source`/`.` line whose operand is a `$var` — the repo idiom, `. "$_lib"` —
+# or (c) it carries a `# shellcheck source=<path>` directive for it. Its own
+# name then becomes a needle, so a suite that names only the outermost helper is
+# still reached. Fail-wide: a variable-sourcing file that assigns the helper's
+# name joins even if the variable is not the one sourced. Naming the helper
+# anywhere plus any source line was tried and cascades to every suite (557 of
+# 557 on a 2-file diff), so (b) is deliberately the narrower idiom.
+# The visited set ($seen) makes a source cycle terminate; each round is a few greps.
+# ponytail: non-.sh sourcers, `exec` edges, a name built at run time
+# (`"$dir/$name"`) and a backslash-continued `source \` are not followed —
+# upgrade path is a real dataflow pass if a T6 selector-miss row shows one.
+
+# grep_narrowed <patfile> <litfile> <outfile> <what> <pathspec>... — write to
+# <outfile>, one path per line, the files at head under <pathspec>... holding a
+# line that matches any ERE in <patfile>. The answer of
+# `git grep -z -l -E -f <patfile> <head> -- <pathspec>...`, without its cost: that
+# runs EVERY pattern over EVERY line, which on a 321-file vendored diff (~1.2k
+# patterns, ~1.7k files, 26 rounds) was 3184 CPU-seconds and a cancelled CI job.
+# Every pattern holds one literal of <litfile> as a required substring, so a file
+# or a line with none of them cannot match: one fixed-string pass keeps those
+# files, a second keeps those lines, and the unchanged ERE runs over what is left.
+# ponytail: a path holding a newline splits in two, as with the -z lists above;
+# upgrade path is NUL-reading consumers if one ever appears.
+grep_narrowed() {
+    local pf="$1" lf="$2" out="$3" what="$4" cand p narrow="$work/narrow.d"
+    shift 4
+    case "$pf" in /* | [A-Za-z]:[\\/]*) ;; *) pf="$PWD/$pf" ;; esac   # the ERE pass runs from $narrow
+    : > "$out" || io_fail "creating the ${what} hit list"   # a failed open is rc 1 below
+    : > "$work/narrow.cand" || io_fail "creating the ${what} candidate list"
+    grep_rc=0
+    git grep -z -l -F -f "$lf" "$head_sha" -- "$@" > "$work/narrow.cand" || grep_rc=$?
+    if [ "$grep_rc" -gt 1 ]; then
+        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
+        exit 2
+    fi
+    [ -s "$work/narrow.cand" ] || return 0
+    rm -rf "$narrow"
+    mkdir "$narrow" || io_fail "creating the ${what} scratch tree"
+    while IFS= read -r -d '' cand; do
+        p="${cand#"${head_sha}:"}"
+        case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
+        git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
+        # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
+        # A redirect that cannot open its target is rc 1, the code for "no match":
+        # create the scratch copy in a checked step first or the suite is dropped.
+        : > "$narrow/$p" || io_fail "creating the ${what} scratch copy of ${p}"
+        grep_rc=0
+        LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
+        [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
+    done < "$work/narrow.cand"
+    : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
+    grep_rc=0
+    ( cd "$narrow" || exit 3
+      git grep --no-index --no-exclude-standard --threads=1 -z -l -E -f "$pf" ) > "$work/narrow.hits" || grep_rc=$?
+    if [ "$grep_rc" -gt 1 ]; then
+        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
+        exit 2
+    fi
+    tr '\0' '\n' < "$work/narrow.hits" > "$out" || io_fail "reading ${what}"
+}
+# closure_grep <patfile> <outfile> <what> — the .sh files at head matching any pattern.
+closure_grep() {
+    grep_narrowed "$1" "$work/srclits" "$2" "$3" ':(glob)**/*.sh'
+}
+while [ -s "$front" ]; do
+    : > "$work/srcpats"
+    : > "$work/asgpats"
+    : > "$work/dirpats"
+    : > "$work/srclits"
+    : > "$work/importkeys" || io_fail "resetting import keys"
+    while IFS= read -r f; do
+        name="${f##*/}"
+        printf '%s\n' "$name" >> "$work/importkeys" || io_fail "writing an import key"
+        case "$name" in
+            *.py|*.js|*.mjs|*.cjs|*.ts) printf '%s\n' "${name%.*}" >> "$work/importkeys" || io_fail "writing an extensionless import key" ;;
+        esac
+        if [ "$name" = __init__.py ]; then
+            parent="${f%/*}"
+            printf '%s\n' "${parent##*/}" >> "$work/importkeys" || io_fail "writing a package import key"
+        fi
+        lit=$(file_literal "$f" src)
+        printf '%s\n' "$lit" >> "$work/srclits" || io_fail "writing a source-edge literal"
+        # A `/name` needle brings its own boundary: let the prefix reach right up to it.
+        case "$lit" in
+            /*) src_pre='[^#]*'; dir_pre='[^[:space:]]*' ;;
+            *) src_pre='([^#]*[^A-Za-z0-9_.-])?'; dir_pre='([^[:space:]]*/)?' ;;
+        esac
+        { printf '%s(source|\\.)[[:space:]]%s' "$src_lead" "$src_pre"; needle_tail_ere "$lit"; printf '\n'; } >> "$work/srcpats" || io_fail "writing a source-edge pattern"
+        { printf '^[[:space:]]*(export[[:space:]]+|local[[:space:]]+|readonly[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*\\+?=.*'; needle_ere "$lit"; printf '\n'; } >> "$work/asgpats" || io_fail "writing an assignment pattern"
+        { printf 'shellcheck[[:space:]]+source=%s' "$dir_pre"; needle_tail_ere "$lit"; printf '\n'; } >> "$work/dirpats" || io_fail "writing a directive pattern"
+        bare_source_ere "$f" "$work/srclits" >> "$work/srcpats" || io_fail "writing a bare source-edge pattern"
+    done < "$front"
+    closure_grep "$work/srcpats" "$work/hit.src" "walking the source closure"
+    closure_grep "$work/dirpats" "$work/hit.dir" "reading shellcheck source directives"
+    closure_grep "$work/asgpats" "$work/hit.asg" "reading variable assignments"
+    awk -F '|' 'NR == FNR { keys[$0] = 1; next } $1 in keys { sub(/^[^|]*\|/, ""); print }' \
+        "$work/importkeys" "$work/import-edges" > "$work/hit.import" || io_fail "walking the import closure"
+    grep_rc=0
+    grep -Fx -f "$suites" "$work/hit.import" >> "$found" || grep_rc=$?
+    [ "$grep_rc" -le 1 ] || io_fail "selecting importing suites"
+    cat "$work/hit.src" "$work/hit.dir" "$work/hit.import" > "$work/src.out" || io_fail "merging source-closure hits"
+    if [ -s "$work/hit.asg" ] && [ -s "$varsrc" ]; then
+        grep_rc=0
+        grep -Fx -f "$varsrc" "$work/hit.asg" >> "$work/src.out" || grep_rc=$?
+        [ "$grep_rc" -le 1 ] || io_fail "intersecting variable sourcers"
+    fi
+    : > "$work/next"
+    while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        if grep -Fxq -- "$hit" "$seen"; then continue; fi
+        printf '%s\n' "$hit" >> "$seen" || io_fail "growing the source closure"
+        printf '%s\n' "$hit" >> "$work/next" || io_fail "growing the source closure"
+        # The closure hit is the SOURCER, not the sourced file, and a
+        # suite may invoke it by its stem alone (`guard_rc <hook>`, the hook sourcing
+        # a changed lib), so it gets the stem needle too.
+        add_needle "$(file_literal "$hit")"
+        add_stem_needle "$hit"
+    done < "$work/src.out"
+    cp "$work/next" "$front" || io_fail "advancing the source closure"
+done
+
+# content_rules — one `ERE|suite` row per path-scanning suite that never names
+# the files it guards: a changed file whose text (at the base or
+# the head) matches the ERE lists the suite. Add a row, not a new mechanism.
+# The row splits on its first `|`, so an ERE never spells one: an alternation is
+# one row per branch (the two ledger rows, mirror the registry
+# lint's own ~/.himmel ledger pattern, .jsonl and .log).
+# ponytail: whole-file, not added-lines — any edit to a file that already spells
+# a ledger path runs the registry lint (0s); upgrade path: diff-hunk matching if
+# a --selector-miss or cost review shows the widening matters.
+# Rows match case-insensitively (the uninstall rule's suite reads
+# the name in any case); the ledger rows widen with it, which only over-selects
+# a 0 s suite.
+
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    # A side that does not exist (file added or deleted) is skipped; a side that
+    # exists but cannot be read fails closed rather than dropping the suite.
+    : > "$work/content" || io_fail "resetting the content-rule scratch file"
+    for rev in "$head_sha" "$mb"; do
+        git ls-tree --name-only "$rev" -- "$f" > "$work/lstree" || io_fail "probing ${f} at ${rev} for the content rules"
+        if [ -s "$work/lstree" ]; then
+            git show "${rev}:${f}" >> "$work/content" || io_fail "reading ${f} at ${rev} for the content rules"
+        fi
+    done
+    # Also match the text as the shell sees it, continuations
+    # joined and every quote and backslash deleted, so a name split by quotes or
+    # a continuation (`HIMMEL""_UNINSTALL_...`) still reaches its row. This is
+    # the normalisation test-uninstall-real-home-callers.sh's sets_var applies.
+    sed -e ':a' -e '/\\$/N' -e 's/\\\n//' -e 'ta' "$work/content" \
+        | sed -e "s/\\\$\\([\"']\\)/\\1/g" -e "s/[\"'\\\\]//g" > "$work/content.norm" \
+        || io_fail "normalising ${f} for the content rules"
+    cat "$work/content.norm" >> "$work/content" || io_fail "appending the normalised text of ${f}"
+    while IFS='|' read -r re rule_suite; do
+        [ -n "$re" ] || continue
+        cgrep_rc=0
+        grep -Eiq -- "$re" "$work/content" || cgrep_rc=$?
+        if [ "$cgrep_rc" -gt 1 ]; then
+            echo "impacted-suites: content-rule grep failed (rc=$cgrep_rc) on ${f} — cannot tell which suites are impacted" >&2
+            exit 2
+        fi
+        if [ "$cgrep_rc" -eq 0 ] && grep -Fxq -- "$rule_suite" "$suites"; then
+            printf '%s\n' "$rule_suite" >> "$found" || io_fail "recording a content-rule suite"
+        fi
+    done < "$work/content-rules"
+done < "$work/changed"
+
+# scan_roots — one `<glob> <suite>` row per suite that WALKS a repo tree —
+# a file added, changed or deleted under the tree changes the
+# suite's result though no suite names it (PR 1734 added
+# scripts/lanes/lib/leg-cost-row.sh; lint-fail-open scans scripts/lanes/ and
+# main went red). <glob> is a `case` pattern on the repo-relative
+# path, and its `*` crosses `/`. Add a row, not a new mechanism.
+# A `!<glob> <suite>` row vetoes a file the suite's walk skips; a
+# glob with no `/` matches the basename. Mirror the suite's own skip rule
+# exactly, never wider: a veto that over-reaches is an under-selection.
+# ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
+# and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a
+# `*` row would run 554s+19s on every PR);
+# scripts/ci/test-run-shell-tests.sh 23c only reacts to a NEW top-level tree;
+# scripts/lib/test-vm-guest-excludes.sh only to a secret-named file. Upgrade
+# path: a row here once a --selector-miss ledger row names one of them.
+
 while IFS= read -r f; do
     [ -n "$f" ] || continue
     # A `!<glob> <suite>` row vetoes that suite for a file the suite's walk
@@ -995,12 +1095,6 @@ closure_suite="${closure_suite}.sh"
 if grep -Fxq -- "$closure_suite" "$suites"; then
     # A head whose cr_guarded set cannot be read or parses empty is not proof the
     # closure is untouched: select the suite, which fails loudly on its own.
-    cg_rc=0
-    git show "${head_sha}:scripts/cr/pr-check-context.sh" > "$work/ctx" 2>/dev/null || cg_rc=$?
-    : > "$work/guarded"
-    if [ "$cg_rc" -eq 0 ]; then
-        sed -n '/^cr_guarded="/,/"$/p' "$work/ctx" | sed 's/^cr_guarded="//; s/"$//' | tr ' ' '\n' | sed '/^$/d' > "$work/guarded" || io_fail "reading cr_guarded"
-    fi
     if [ ! -s "$work/guarded" ]; then
         printf '%s\n' "$closure_suite" >> "$found" || io_fail "recording the closure suite"
     else
@@ -1056,10 +1150,7 @@ fi
 # the head tree is dropped. ponytail: a content-only edit to a scanned file does
 # not trigger it (the cost would be every PR), upgrade path is "always" if a
 # modify-only break is ever recorded.
-if ! tree_shape=$(git diff -z --diff-filter=ADT --name-only --no-renames "$mb" "$head_sha" | tr '\0' '\n'); then
-    echo "impacted-suites.sh: git diff ${mb}..${head_sha} failed" >&2; exit 2
-fi
-if [ -n "$tree_shape" ]; then
+if [ -s "$2" ]; then
     for ts_rev in "$mb" "$head_sha"; do
         : > "$work/treescan.out" || io_fail "creating the tree-scan list"   # a failed open is rc 1 below
         ts_rc=0
@@ -1087,6 +1178,37 @@ if [ "$shell_only" -eq 1 ]; then
 else
     sort -u "$found" > "$impacted" || io_fail "sorting the impacted list"
 fi
+
+}
+
+if [ -n "$paths_file" ]; then
+    while IFS= read -r query || [ -n "$query" ]; do
+        [ -n "$query" ] || continue
+        case "$query" in *$'\t'*) echo "impacted-suites.sh: batch paths cannot contain tabs" >&2; exit 2 ;; esac
+        printf '%s\n' "$query" > "$work/query" || io_fail "writing a batch query"
+        : > "$work/query.shape" || io_fail "resetting a batch shape"
+        if ! grep -Fxq -- "$query" "$work/tree"; then
+            printf '%s\n' "$query" > "$work/query.shape" || io_fail "writing a batch shape"
+        fi
+        select_changed "$work/query" "$work/query.shape"
+        if [ -s "$impacted" ]; then
+            while IFS= read -r suite; do
+                printf '%s\t%s\n' "$query" "$suite" || io_fail "writing batch results"
+            done < "$impacted"
+        else
+            printf '%s\t\n' "$query" || io_fail "writing an empty batch result"
+        fi
+    done < "$paths_file" # read-sink-ok: explicit operator-selected query input; regular/readable/non-symlink checked, parsed only as literal paths
+    exit 0
+fi
+
+if ! tree_shape=$(git diff -z --diff-filter=ADT --name-only --no-renames "$mb" "$head_sha" | tr '\0' '\n'); then
+    echo "impacted-suites.sh: git diff ${mb}..${head_sha} failed" >&2; exit 2
+fi
+printf '%s' "$tree_shape" > "$work/diff.shape" || io_fail "writing the tree-shape list"
+# Keep the diff input separate: select_changed resets work/changed.
+printf '%s\n' "$changed" > "$work/diff.changed" || io_fail "writing the diff list"
+select_changed "$work/diff.changed" "$work/diff.shape"
 
 if [ "$selector_miss" -eq 1 ]; then
     miss=0

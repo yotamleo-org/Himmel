@@ -1,7 +1,0 @@
-{
-  "name": "himmel-gemini",
-  "version": "0.1.0",
-  "description": "Claude Code plugin wrapping gemini-cli via scripts/gemini/invoke.sh. /gemini runs gemini synchronously. Thin wrapper — auth/model/flags resolved in the shared chokepoint.",
-  "author": "yotamleo",
-  "homepage": "https://github.com/yotamleo/himmel"
-}

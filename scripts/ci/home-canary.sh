@@ -58,7 +58,7 @@ printf 'HIMMEL_HONEYTOKEN=%s\n' "$TOKEN" > "$FAKE_HOME/.env"
 chmod 600 "$FAKE_HOME/.env"
 
 atime_of() { stat -c %X "$1" 2>/dev/null || stat -f %a "$1"; }
-age() { touch -m -d @1000 "$1" && touch -a -d @0 "$1"; }
+age() { TZ=UTC touch -m -t 197001010016.40 "$1" && TZ=UTC touch -a -t 197001010000.00 "$1"; }
 
 age "$FAKE_HOME/.env" || { echo "home-canary: cannot age the honeytoken .env" >&2; exit 2; }
 

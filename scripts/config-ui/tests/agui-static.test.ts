@@ -72,6 +72,14 @@ test("traversal, a symlink out of dist, a directory and a missing file are 404",
   }
 });
 
+test("/dev-graph/ traversal, an empty path and a bad escape are 404", async () => {
+  const base = boot(dist().dir);
+  for (const p of ["..%2f..%2fREADME.md", "%2e%2e%2f%2e%2e%2fCLAUDE.md", "..%2f..%2f..%2fscripts%2fconfig-ui%2fserver.ts", "..%2f..%2f..%2fpackage.json", "", "%E0%A4%A"]) {
+    const r = await fetch(`${base}/dev-graph/${p}`);
+    expect([p, r.status]).toEqual([p, 404]);
+  }
+});
+
 test("a missing dist answers 404 with the build steps", async () => {
   const base = boot(join(tmp("agui-nodist-"), "dist"));
   const r = await fetch(`${base}/agui/`);

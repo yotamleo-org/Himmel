@@ -117,4 +117,4 @@ deps_audit      ^scripts/hooks/check-(lockfile-integrity|uv-lock|npm-audit|npm-l
 # above ONLY because the job that reads them always runs (leak-classes,
 # doc-invariants, commit-lint): scripts that are not shell/ts and live in a
 # tree no gated job reads.
-benign          ^scripts/(statusline|luna|gemini|hermes|himmelctl|install)/.*\.(ps1|json|txt|yml|yaml)$
+benign          ^scripts/(statusline|luna|hermes|himmelctl|install)/.*\.(ps1|json|txt|yml|yaml)$

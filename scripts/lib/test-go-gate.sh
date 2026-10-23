@@ -601,7 +601,7 @@ for tp in scripts/hooks/block-x.sh scripts/hooks/read-clamp.sh scripts/hooks/che
     [ "$got" = "0:hit $tp" ] || fail "11: $tp is not a trust-path hit: $got"
 done
 lg -C "$TL" checkout -q -b feat/tpmiss main
-printf 'x\n' > "$TL/docs-unlisted.md"; mkdir -p "$TL/scripts/hooks"; printf 'x\n' > "$TL/scripts/hooks/test-block-x.sh"
+printf 'x\n' > "$TL/docs-unlisted.md"; mkdir -p "$TL/scripts/hooks"; printf 'x\n' > "$TL/scripts/hooks/test-auto-arm-on-cap.sh"
 lg -C "$TL" add -A && lg -C "$TL" commit -q -m miss
 got=$(tpc "$TLID" br-feat-tpmiss "$(lg -C "$TL" rev-parse HEAD)" "$TL")
 [ "$got" = "0:none" ] || fail "11: unlisted files are not none: $got"

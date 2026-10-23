@@ -8,9 +8,13 @@
 #                  [--modes lex,vec,hybrid,hybrid-rerank]
 #                  [--scope all|golden] [--candidate-limit N] [--no-snapshot]
 #
-# The golden set names private docs, so it is not in the repo: pass --golden
-# or set QMD_QUALITY_GOLDEN. Rows are {id, query, lex?, collections, expect};
-# the suite's fixtures/golden.jsonl shows the shape.
+# The repo-safe golden set is golden/himmel.jsonl (public himmel docs only). A
+# set that names private vault docs stays outside the repo: pass --golden or set
+# QMD_QUALITY_GOLDEN (no default). Rows are {id, query, lex?, collections,
+# expect}; the suite's fixtures/golden.jsonl shows the shape.
+#
+# A golden set under 150 queries is refused (exit 64): QMD_QUALITY_MIN_QUERIES
+# changes the minimum, for a small scratch set only. Blank lines do not count.
 #
 # Read-only on the index you name: it is first copied to <out>/index.sqlite
 # with sqlite3's online backup (opened -readonly), and the eval runs on the
@@ -34,7 +38,9 @@
 # --b B/runs.jsonl`.
 # QMD_EVAL_TIMEOUT_SECS bounds each mode (default 1800 s; the whole process group
 # is killed, as scripts/lib/qmd-bounded.sh does for qmd itself).
-# Exit: 0 scored, 2 eval failed or timed out, 3 a model is not cached, 64 usage error.
+# Exit: 0 scored, 2 eval failed or timed out, 3 a model is not cached, 64 usage
+# error (a missing or bad argument, no golden set, or a golden set under the
+# minimum size: the message names which).
 # Needs bash 3.2+, bun and sqlite3.
 set -u
 
@@ -74,8 +80,19 @@ done
 [ -n "$INDEX" ] || { echo "qmd-quality: --index <index.sqlite> is required (no default: name the index explicitly)" >&2; exit 64; }
 [ -n "$OUT" ] || { echo "qmd-quality: --out <dir> is required" >&2; exit 64; }
 [ -f "$INDEX" ] || { echo "qmd-quality: no index at '$INDEX'" >&2; exit 64; }
-[ -n "$GOLDEN" ] || { echo "qmd-quality: name the golden set with --golden <golden.jsonl> or QMD_QUALITY_GOLDEN (it is kept outside the repo; there is no default)" >&2; exit 64; }
+[ -n "$GOLDEN" ] || { echo "qmd-quality: name the golden set with --golden <golden.jsonl> or QMD_QUALITY_GOLDEN (there is no default; the shipped set is golden/himmel.jsonl)" >&2; exit 64; }
 [ -f "$GOLDEN" ] || { echo "qmd-quality: no golden set at '$GOLDEN'" >&2; exit 64; }
+MIN_QUERIES="${QMD_QUALITY_MIN_QUERIES:-150}"
+case "$MIN_QUERIES" in
+  '' | *[!0-9]* | 0*) echo "qmd-quality: QMD_QUALITY_MIN_QUERIES must be a positive integer, got '$MIN_QUERIES'" >&2; exit 64 ;;
+esac
+# More than 9 digits is past any real golden set and can overflow the shell's integer test.
+[ "${#MIN_QUERIES}" -le 9 ] || { echo "qmd-quality: QMD_QUALITY_MIN_QUERIES must have at most 9 digits, got '$MIN_QUERIES'" >&2; exit 64; }
+n_queries="$(grep -c '[^[:space:]]' "$GOLDEN")"
+if [ "$n_queries" -lt "$MIN_QUERIES" ]; then
+  echo "qmd-quality: golden set '$GOLDEN' has $n_queries queries; the minimum is $MIN_QUERIES (a few queries cannot tell a retrieval regression from noise)" >&2
+  exit 64
+fi
 [ -n "$MODES" ] || { echo "qmd-quality: --modes is empty; nothing would be evaluated" >&2; exit 64; }
 case "$CAND" in
   '' | *[!0-9]* | 0*) echo "qmd-quality: --candidate-limit must be a positive integer, got '$CAND'" >&2; exit 64 ;;

@@ -23,15 +23,34 @@ if [ ! -f "$UPSTREAM_JSON" ]; then
 fi
 
 CO="$HOME/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian"
+INSTALLED_VERSION=""
+INSTALLED_PLUGINS="$HOME/.claude/plugins/installed_plugins.json"
+if [ -f "$INSTALLED_PLUGINS" ]; then
+  INSTALLED_VERSION="$(python -c "
+import json, sys
+rows = json.load(open(sys.argv[1])).get('plugins', {}).get('claude-obsidian@himmel', [])
+record = next((r for r in rows if r.get('scope') == 'user'), rows[0] if rows else {})
+print(record.get('version', ''))
+" "$INSTALLED_PLUGINS")"
+fi
+HIMMEL_CACHE="$HOME/.claude/plugins/cache/himmel/claude-obsidian"
+if [ -n "$INSTALLED_VERSION" ] && [ -d "$HIMMEL_CACHE/$INSTALLED_VERSION" ]; then
+  CO="$HIMMEL_CACHE"
+else
+  INSTALLED_VERSION=""
+fi
 if [ ! -d "$CO" ]; then
   echo "vault-lint drift-check: upstream cache not installed locally ($CO) — skipping" >&2
   exit 0
 fi
 
-# Use the highest version dir (last in sorted glob order) containing the expected files.
+# Use the installed himmel version, or the last legacy version in glob order.
 SKILL_PATH=""
 AGENT_PATH=""
 for vdir in "$CO"/*/; do
+  if [ -n "$INSTALLED_VERSION" ] && [ "${vdir%/}" != "$CO/$INSTALLED_VERSION" ]; then
+    continue
+  fi
   if [ -f "${vdir}skills/wiki-lint/SKILL.md" ]; then
     SKILL_PATH="${vdir}skills/wiki-lint/SKILL.md"
   fi

@@ -5,9 +5,13 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../../lib/portable-timeout.sh"
 FIX="$HERE/fixtures"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/qmd-quality-test.XXXXXX")" || { echo "test-qmd-quality: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+# The fixtures below are 3 rows; the size-check rows name their own minimum.
+QMD_QUALITY_MIN_QUERIES=1; export QMD_QUALITY_MIN_QUERIES
 
 PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
@@ -97,13 +101,51 @@ for bad in 0 -5 abc; do
   out=$(XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/o7" --candidate-limit "$bad" 2>&1); rc=$?
   eq "wrapper: --candidate-limit $bad is a usage error" "$rc" "64"
 done
-# The real golden set lives outside the repo, so there is no default path.
+# A set naming private docs lives outside the repo, so there is no default path.
 out=$(env -u QMD_QUALITY_GOLDEN XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --index "$TMP/idx.sqlite" --out "$TMP/o8" 2>&1); rc=$?
 eq "wrapper: no golden set named is a usage error" "$rc" "64"
 has "wrapper: the refusal names --golden" "$out" "--golden"
 has "wrapper: the refusal names QMD_QUALITY_GOLDEN" "$out" "QMD_QUALITY_GOLDEN"
 out=$(QMD_QUALITY_GOLDEN="$FIX/golden.jsonl" XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --index "$TMP/idx.sqlite" --out "$TMP/o9" 2>&1); rc=$?
 eq "wrapper: QMD_QUALITY_GOLDEN names the golden set (reaches the model check)" "$rc" "3"
+
+# --- a golden set under the minimum size is refused -------------------------------
+# The rows above use the 3-row fixture, so the suite lowers the minimum; the rows
+# below name it (or unset it) themselves.
+out=$(env -u QMD_QUALITY_MIN_QUERIES XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s1" 2>&1); rc=$?
+eq "size: the 3-query fixture is refused under the default minimum" "$rc" "64"
+has "size: the refusal names the count" "$out" "3 queries"
+has "size: the refusal names the minimum" "$out" "minimum is 150"
+seq_golden() { awk -v n="$1" 'BEGIN { for (i = 1; i <= n; i++) printf "{\"id\":\"s%d\",\"query\":\"q\",\"collections\":[\"a\"],\"expect\":[\"a/x.md\"]}\n", i }'; }
+seq_golden 149 >"$TMP/g149.jsonl"
+seq_golden 150 >"$TMP/g150.jsonl"
+out=$(env -u QMD_QUALITY_MIN_QUERIES XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$TMP/g149.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s2" 2>&1); rc=$?
+eq "size: 149 queries are refused" "$rc" "64"
+out=$(env -u QMD_QUALITY_MIN_QUERIES XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$TMP/g150.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s3" 2>&1); rc=$?
+eq "size: 150 queries pass the size check (reach the model check)" "$rc" "3"
+printf '\n  \n' >>"$TMP/g149.jsonl"
+out=$(env -u QMD_QUALITY_MIN_QUERIES XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$TMP/g149.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s4" 2>&1); rc=$?
+eq "size: blank lines do not count as queries" "$rc" "64"
+out=$(QMD_QUALITY_MIN_QUERIES=3 XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s5" 2>&1); rc=$?
+eq "size: QMD_QUALITY_MIN_QUERIES lowers the minimum" "$rc" "3"
+out=$(QMD_QUALITY_MIN_QUERIES=abc XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s6" 2>&1); rc=$?
+eq "size: a non-numeric minimum is a usage error" "$rc" "64"
+out=$(QMD_QUALITY_MIN_QUERIES=9223372036854775808 XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$TMP/idx.sqlite" --out "$TMP/s6b" 2>&1); rc=$?
+eq "size: a minimum past the shell's integer range is a usage error" "$rc" "64"
+
+# --- the shipped himmel golden set is large enough and every label is a real file -
+REPO="$(cd "$HERE/../../.." && pwd)"
+SHIPPED="$HERE/golden/himmel.jsonl"
+out=$(env -u QMD_QUALITY_MIN_QUERIES XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --golden "$SHIPPED" --index "$TMP/idx.sqlite" --out "$TMP/s7" 2>&1); rc=$?
+eq "shipped: the himmel golden set passes the size check (reaches the model check)" "$rc" "3"
+out=$(cd "$HERE" && bun -e 'import { readJsonl, validateGolden } from "./score.ts"; const g = readJsonl(process.argv[1]); console.log(validateGolden(g) ?? "valid", g.length)' "$SHIPPED" 2>&1); rc=$?
+eq "shipped: the validation command succeeds" "$rc" "0"
+eq "shipped: 200 rows validate (unique ids, an expect doc and a collection each)" "$out" "valid 200"
+missing=""
+for p in $(sed -n 's/.*"expect":\[\(.*\)\].*/\1/p' "$SHIPPED" | tr ',' '\n' | tr -d '"' | sort -u); do
+  [ -f "$REPO/${p#himmel/}" ] || missing="$missing $p"
+done
+eq "shipped: every expected doc exists in the repo" "$missing" ""
 
 # --- the eval uses the index's embed model, or names the mismatch -
 QWEN='hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf'

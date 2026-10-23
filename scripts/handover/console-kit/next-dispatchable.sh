@@ -35,8 +35,9 @@
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
 # line of its own (security, data loss or a broken operator flow only), or the
 # admissions ledger (HIMMEL_ADMISSIONS_LEDGER, else <handover root>/admissions-ledger.jsonl)
-# admitted it into the earliest unreleased version: its latest row there is not a
-# deferral. No label means depth 0.
+# admitted it into the earliest unreleased version: its latest row there is an
+# `rm-admit` or `override` row (any other kind, or none, admits nothing). No label
+# means depth 0.
 #
 # IN CI tickets: one nobody holds (no leg, no open PR) that a merged PR cites prints a
 # `MERGED-NOT-CLOSED` row (same columns as RESUME, nothing to dispatch: it needs closing);
@@ -109,6 +110,7 @@ case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive n
 ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
+if [ -z "$ledger" ] && . "$REPO/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi  # swallow-ok: handover_root reads only the live env, so feed it the .env value first; no .env means the inline default
 if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
@@ -288,8 +290,8 @@ def read_residual_must(path):
 residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
 
 def read_admitted(path, ver):
-    # the admissions ledger: a key whose latest row for the version is a plain admission (no kind),
-    # an override or an rm-admit was admitted into it; a deferral or an unknown kind was not
+    # the admissions ledger: a key whose latest row for the version is an override or an rm-admit
+    # was admitted into it; a deferral, an unknown kind or a kind-less intake row was not
     last = {}
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
@@ -301,7 +303,7 @@ def read_admitted(path, ver):
                 last[str(r['key']).upper()] = r.get('kind')
     except OSError:
         pass
-    return {k for k, kind in last.items() if kind in (None, 'override', 'rm-admit')}
+    return {k for k, kind in last.items() if kind in ('override', 'rm-admit')}
 
 admitted = read_admitted(os.environ.get('ND_LEDGER', ''), first_ver) if first_ver else set()
 
@@ -477,7 +479,7 @@ except (OSError, subprocess.SubprocessError):
 # One bounded search per candidate key (a merged-PR list capped at N would miss an older merge).
 merged_unknown = False
 merged_keys = set()
-inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Story', 'Sub-task')
+inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
              and i['key'] not in leg_keys and i['key'] not in pr_keys]
 if inci_keys and not (pr_unknown or legs_unknown):
     def merged_cites(key):
@@ -497,7 +499,7 @@ for i in issues.values():
     if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
         continue
     wrapped = i['status'] == 'To Do' and i['key'] in briefs
-    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Story', 'Sub-task'):
+    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
         continue
     if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
         continue

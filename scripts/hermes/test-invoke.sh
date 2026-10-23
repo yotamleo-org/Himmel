@@ -2,9 +2,8 @@
 # scripts/hermes/test-invoke.sh — stub-based tests for invoke.sh.
 #
 # No live hermes calls: a fake interpreter is injected via HERMES_PY (the
-# repo pattern from scripts/gemini/test-invoke.sh, adapted — gemini stubs via
-# PATH, but invoke.sh resolves an absolute interpreter, so the override env
-# var is the stub seam). Runs anywhere, including machines without hermes.
+# invoke.sh resolves an absolute interpreter, so the override env var is the
+# stub seam). Runs anywhere, including machines without hermes.
 #
 # Set HERMES_LIVE_TEST=1 to additionally run one real one-shot through the
 # installed hermes (costs one NIM free-tier call).

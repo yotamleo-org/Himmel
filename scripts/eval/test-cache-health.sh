@@ -81,7 +81,7 @@ m=json.load(open(sys.argv[1]))
 l=m["roles"]["leg"]
 ok = m["schema"]==1 and set(m["roles"])=={"console","leg","subagent","bridge","other"} and l["sessions"]==1 and l["tokens"]==6000012 and l["hit_pct"]==98.0 and l["baseline_hit_pct"]==98.0 and l["compactions"]==1
 sys.exit(0 if ok else 1)' "$STATE/metrics.json" && pass "metrics schema + deduped per-role numbers" || fail "metrics.json content wrong"
-[ "$(wc -l < "$STATE/history.jsonl")" = 1 ] && pass "history has one row" || fail "history rows"
+[ "$(( $(wc -l < "$STATE/history.jsonl") ))" = 1 ] && pass "history has one row" || fail "history rows"
 
 # ---- 2. crossing: legs fall to 90 % -> exactly one alert ---------------------
 rm -f "$W/sent"
@@ -217,7 +217,7 @@ check "cadence run exits 0" 0 $?
 has "Telegram got the alert" "cache-health ALERT" "$W/tg"
 has "newest live console inbox got the alert line" "[cache-health] cache-health ALERT" "$BR/consoles/live-console.md"
 [ ! -e "$BR/consoles/old-console.md" ] && pass "inbox is never created for another console" || fail "created a stray inbox"
-check "inbox got one line" 1 "$(wc -l < "$BR/consoles/live-console.md")"
+check "inbox got one line" 1 "$(( $(wc -l < "$BR/consoles/live-console.md") ))"
 rm -f "$W/tg"
 # a dry run never touches the shared failure alert, even when the check fails
 CACHE_HEALTH_ROOT="$W/no-such-root" bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" --dry-run >"$W/cadd.out" 2>&1

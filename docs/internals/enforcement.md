@@ -3986,7 +3986,10 @@ checkout workers branch from having pulled the merge. Spec:
 > arm (settings-chain entries are `Bash`/`PowerShell`-only), and a `--chain`
 > member cannot carry `--fail-closed-when`.
 
-### `block-leg-askuserquestion.sh` — console-spawned-leg AskUserQuestion deny (HIMMEL-2923)
+### `block-worker-askuserquestion.sh` — console-spawned-leg AskUserQuestion deny (HIMMEL-2923)
+
+The old path `block-leg-askuserquestion.sh` sources this file, so settings that
+still name it run the same hook.
 
 Fires on `AskUserQuestion`, keyed on `HIMMEL_CONSOLE_LEG=1` (set by the
 supervisor session's launcher, `scripts/handover/console-kit/headed-arm-leg.sh`,
@@ -4002,10 +4005,13 @@ marker feeds only `guard-judge-writes.sh`, below) — and
 correctly so: a judge is read-only and evidence-gathering, so it has no one
 to ask either.
 
-### `guard-leg-wakeup.sh` — console-spawned-leg ScheduleWakeup deny (HIMMEL-3034)
+### `guard-worker-wakeup.sh` — console-spawned-leg ScheduleWakeup deny (HIMMEL-3034)
+
+The old path `guard-leg-wakeup.sh` sources this file, so settings that still
+name it run the same hook.
 
 Fires on `ScheduleWakeup`, keyed on `HIMMEL_CONSOLE_LEG=1` (same gate and
-launcher export as `block-leg-askuserquestion.sh`). A worker session waits with ONE
+launcher export as `block-worker-askuserquestion.sh`). A worker session waits with ONE
 foreground blocking command (`docs/handover/leg-preface.md`); a self-scheduled
 polling wake re-reads the worker session's full context just to find "not yet" — cost
 program HIMMEL-2763. Denies with a `leg wakeup-deny: …` reason naming
@@ -4015,7 +4021,7 @@ supervisor session as the replacement. Not a worker session (marker unset or not
 supervisor session zero context. Workflow nudge, not a security fence: fails open
 on missing `jq`, malformed, or empty stdin. Claude lane only —
 `ScheduleWakeup` is a Claude Code tool, so `.codex/hooks.json` carries no twin.
-Suite: `scripts/hooks/test-guard-leg-wakeup.sh`.
+Suite: `scripts/hooks/test-guard-worker-wakeup.sh`.
 
 ### `redirect-webfetch-walled-hosts.sh` — WebFetch redirect for walled hosts (HIMMEL-4908)
 
@@ -4039,8 +4045,8 @@ non-empty string `agent_id`), which inherit the worker session's env and transcr
 Reads fill with `scripts/context-fill.sh --percent` on the hook's
 `transcript_path`, and the window from the same claude-hud snapshot.
 
-**Off by default (HIMMEL-4710).** With no `HIMMEL_LEG_CONTEXT_MODE` (or
-`none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
+**Off by default (HIMMEL-4710).** With no `HIMMEL_WORKER_SESSION_CONTEXT_MODE`
+or old `HIMMEL_LEG_CONTEXT_MODE` (or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
 fill; `headed-arm-leg.sh --context-guard compact|handoff` turns it on. One
 reference: [`leg-context-guard.md`](leg-context-guard.md).
 
@@ -4056,7 +4062,7 @@ observed from 157k of 200k (HIMMEL-4089), so 75 % leaves 7k tokens for the
 checkpoint; 85 % would let a compaction fire first, and HIMMEL-4569's 65 %
 stopped every opus worker session at 13 %. No window in the snapshot → 75 % of the fill.
 
-**Two modes, `HIMMEL_LEG_CONTEXT_MODE`,** set by the supervisor session at launch
+**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name `HIMMEL_LEG_CONTEXT_MODE`),** set by the supervisor session at launch
 (`headed-arm-leg.sh --context-guard`, which validates it and propagates it only
 when set) and read only from the hook process's env, so a worker session cannot flip it
 in-session.
@@ -4092,7 +4098,8 @@ auto-compaction is undocumented (`ponytail:` in the header). Codex has no
 PreCompact event. Fails open with one stderr line when fill
 is UNKNOWN/STALE, the transcript or worker session doc cannot be found, or the input does
 not parse — a false block strands a worker session nobody watches (`ponytail:` in the
-header). Bypass: `LEG_CONTEXT_HANDOFF_OK=1` in the launching shell. Wired in
+header). Bypass: `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` (old name
+`LEG_CONTEXT_HANDOFF_OK=1`) in the launching shell. Wired in
 `.claude/settings.json` (PreToolUse and PreCompact) and `.codex/hooks.json`
 (PreToolUse only; Codex transcripts carry no claude-hud snapshot, so there it
 fails open).

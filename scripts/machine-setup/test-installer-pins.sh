@@ -26,7 +26,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/installer-pins.XXXXXX") || exit 1; trap 'rm -r
 
 # ── Upstream fixtures (real) ────────────────────────────────────────────────
 FIXTURE_BUN_SHASUMS='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip'
-FIXTURE_UV_SHA256='2b428396f12572d4429cf210ca234dd599a33b3af0958a4d5ed569d63e3f344f  uv-x86_64-unknown-linux-gnu.tar.gz'
+FIXTURE_UV_SHA256='f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f  uv-x86_64-unknown-linux-gnu.tar.gz'
 FIXTURE_RTK_CHECKSUMS='b7f7ed3ce136aa842f56599b5ca88b956bd788a111ec7bd085909f9aeb0d1bc4  rtk_1.0.1-1_amd64.deb'
 FIXTURE_NODE_TARBALL='6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6  node-v24.22.1-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb  node-v24.22.1-linux-x64/bin/node'
@@ -58,7 +58,7 @@ if [ -f "$pins" ]; then
   # shellcheck disable=SC1090
   . "$pins"
   check "uv sha256"            test "${UV_SHA256:-}  uv-x86_64-unknown-linux-gnu.tar.gz" = "$FIXTURE_UV_SHA256"
-  check "uv version 0.13.4"    test "${UV_VERSION:-}" = "0.13.4"
+  check "uv version 0.13.5"    test "${UV_VERSION:-}" = "0.13.5"
   check "bun sha256 (1.4.4)"   test "$(bun_sha256 1.4.4 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
   check "rtk deb sha256"       test "${RTK_DEB_SHA256:-}  rtk_${RTK_VERSION:-}-1_amd64.deb" = "$FIXTURE_RTK_CHECKSUMS"
   check "node tarball sha256"  test "${NODE_TARBALL_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64.tar.xz" = "$FIXTURE_NODE_TARBALL"

@@ -271,6 +271,11 @@ when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
+leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
+read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
+in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
+(then an `ACTION leaks=<n>: …` line names `--comment`), or ? when the read failed; hidden when there is no mirror,
+or the active version is not frozen. Read-only, and not part of console-wait's wake key.
 
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
@@ -1505,6 +1510,42 @@ if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
     fi
 fi
 
+# leaks=<n|?|skip>: LEAK lines of one `jira release leaks <active version>` read on the Jira
+# mirror (open tickets in a frozen version with no frozen-set membership and no admissions-ledger
+# row). skip = no mirror or versions file, no active version, or the active version is not frozen;
+# ? = the read failed or the built Jira CLI is missing. Read-only: the ACTION line names the --comment run, the tick never writes. Not in console-wait's wake key.
+leaks_summary=skip
+leaks_version=""
+lk_vf="$nd_mirror.versions.tsv"
+if [ -d "$nd_mirror" ] && [ -f "$lk_vf" ]; then
+    leaks_version="$(awk -F'\t' '$2 == "false" && $4 != "true" && $1 !~ /^zz-/ { print $1 }' "$lk_vf" | sort -V | head -n 1)" || leaks_version=""  # gnu-ok: console kit is Linux-only (sort -V); swallow-ok: no readable version reads skip
+fi
+if [ -n "$leaks_version" ]; then
+    # The CLI lives in the himmel primary checkout that holds this script, whatever --repo names.
+    # shellcheck source=../../lib/git-clean.sh
+    lk_anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || lk_anchor=""  # swallow-ok: no anchor reads skip below
+    lk_cli="${lk_anchor%/.git}/scripts/jira/dist/index.js"
+    lk_rc=0
+    if [ -n "${TICK_LEAKS_PROBE:-}" ]; then
+        lk_out="$(timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+    else
+        if [ -n "$lk_anchor" ] && [ -f "$lk_cli" ]; then
+            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+        else
+            lk_rc=-1
+        fi
+    fi
+    if [ "$lk_rc" -eq -1 ]; then
+        leaks_summary='?'  # lk_rc stays -1 so the count branch below never overwrites it
+    elif [ "$lk_rc" -eq 0 ]; then
+        leaks_summary="$(printf '%s\n' "$lk_out" | grep -c '^LEAK ')" || true  # swallow-ok: grep -c exits 1 and prints 0 on no match
+    elif printf '%s\n' "$lk_out" | grep -q 'is not frozen'; then
+        :
+    else
+        leaks_summary='?'
+    fi
+fi
+
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
 # the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in console-wait's wake key.
 pool_closed=skip
@@ -1705,7 +1746,7 @@ fails_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fails_summary='?'
     fails_start="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$console_doc" 2>/dev/null | sed -n 's/.*"started":"\([0-9][0-9TZ:-]*\)".*/\1/p' | head -n 1)"
-    fl_ledger="${HIMMEL_LEG_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}"
+    fl_ledger="${HIMMEL_WORKER_SESSION_FAILURES_LEDGER:-${HIMMEL_LEG_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}}"
     fl_evals="${HIMMEL_EVAL_RUNS_LEDGER:-$HOME/.himmel/eval-runs.jsonl}"
     fl_routes="${HIMMEL_FAILURE_ROUTES_LOG:-$HOME/.himmel/state/failure-routes.log.jsonl}"
     # Readable-or-absent: an absent file is an empty one, anything else unreadable is ?.
@@ -2344,6 +2385,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vm runner: %s\n' "$vmrun_summary"
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'version mismatch: %s\n' "$vmismatch_summary"
+    printf 'version leaks: %s\n' "$leaks_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
@@ -2369,7 +2411,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -2417,6 +2459,7 @@ else
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
     compact_field vmismatch "$vmismatch_summary"
+    compact_field leaks "$leaks_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"
@@ -2427,6 +2470,10 @@ else
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;
+    esac
+    case "$leaks_summary" in
+        ''|0|skip|'?') ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \

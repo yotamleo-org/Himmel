@@ -68,6 +68,8 @@
       "Bash(bash scripts/handover/console/console.sh:*)",
       "Bash(bash scripts/handover/console/chief.sh:*)",
       "Bash(bash scripts/handover/console-kit/go.sh:*)",
+      "Bash(bash scripts/handover/console-kit/write-verdict.sh:*)",
+      "Bash(bash scripts/handover/console-kit/console-wait.sh:*)",
       "Bash(bash scripts/handover/console-kit/ready-check.sh:*)",
       "Bash(bash scripts/handover/console-kit/tick.sh:*)",
       "Bash(bash scripts/handover/console-kit/headed-arm-leg.sh:*)",

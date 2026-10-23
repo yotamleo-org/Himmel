@@ -157,6 +157,13 @@ gathering, per the rule below.>
 > `git archive <head> scripts/ <changed files> | tar -x -C <scratch dir>`
 > (list only changed files that still exist at `<head>`; `git archive` rejects a deleted path)
 > (run in a checkout that has the head fetched).
+>
+> **Read the head by its full sha, never FETCH_HEAD.** Parallel judges share
+> a checkout and each `git fetch` overwrites `FETCH_HEAD`. Run
+> Check `gh pr view <N> --json headRefOid` equals your head, check
+> `git cat-file -t <sha>` prints `commit` (a bare `git fetch origin` if not,
+> never a refspec fetch: the primary-checkout guard refuses it), then read with
+> `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
 
 > **Per-child scratch subdirectory.** If this question needs bulk
 > evidence-gathering and you spawn subagents to do it, give each one its own

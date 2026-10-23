@@ -5,6 +5,8 @@
 # shellcheck disable=SC2016  # the heredoc report fixture is literal on purpose (no expansion wanted)
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../lib/portable-timeout.sh"
 SCRIPT="$HERE/refresh-graph-map.sh"
 FAILS=0
 SKIPS=0

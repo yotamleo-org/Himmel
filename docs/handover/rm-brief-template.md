@@ -1,7 +1,11 @@
 # Release-manager brief template
 
-The document the chief writes to arm a **release-manager (RM) session** for
-one release. The `release-manager` launch profile is not shipped yet, so arm
+The document the chief writes to arm an **on-demand release-manager (RM)
+session** for one release, only to run STATUS, BURN-DOWN or READY. Requests
+are never ruled by a session: `jira release rm-run <R>` rules them in one
+batch (`console-sections/release-manager.md`, HIMMEL-7201). The session does
+the verb it was armed for, reports, releases the lease and wraps; it never
+holds for a `REQ`. The `release-manager` launch profile is not shipped yet, so arm
 the RM with plain `headed-arm-leg.sh` from a shell that exports
 `HIMMEL_RELEASE_MANAGER=1`. The session inherits it, and `release lease
 acquire` refuses without it. File it in
@@ -46,11 +50,12 @@ template_version: 1
 > `<n>` = 0 for the first RM of a release.
 
 > **Start:** load the `himmel-ops:release-manager` skill; `release lease
-> acquire`; `release claim`; apply every older-epoch intent the state lists;
-> send the console `LIVE <doc>`; then STATUS. After draining the queue, end
-> your turn: the console's `REQ <id>` wakes you (the only permitted hold).
+> acquire`; apply every older-epoch intent the state lists; send the console
+> `LIVE <doc>`; then run the verb the console armed you for (STATUS,
+> BURN-DOWN or READY) and send its line. Requests are ruled by `jira release
+> rm-run`, never by you. Then hand off and wrap: there is no standby hold.
 
-> **Hand-off:** at 45 % context or on HALT, per the skill's hand-off steps.
+> **Hand-off:** after the verb, at 45 % context or on HALT, per the skill's hand-off steps.
 > Your handoff file is `<doc stem>-RM-HANDOFF.md`.
 
 > **Scope / do not:** no code, no PRs, no merges, no status transitions, no

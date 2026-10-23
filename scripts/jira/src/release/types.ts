@@ -124,6 +124,7 @@ export interface Lease {
 export interface IssueSnap {
   key: string;
   status: string;
+  statusCategory?: string | null;
   type: string;
   priority: string;
   fixVersions: string[];

@@ -8,7 +8,7 @@
 # NOT covered here; keep both in lockstep when changing either.
 #
 # Covers:
-#   1. core/project — copies the portable files, wires 3 PreToolUse hooks
+#   1. core/project — copies the portable files, wires 4 PreToolUse hooks
 #      ($CLAUDE_PROJECT_DIR prefix), idempotent on re-run.
 #   2. merge — pre-existing settings.json keys + hooks are preserved.
 #   3. core/user — wires ~/.claude/settings.json to the himmel abs path,
@@ -291,10 +291,10 @@ done
 [ -f "$proj/scripts/lib/project-mode.sh" ] || fail "core/project did not copy scripts/lib/project-mode.sh"
 s="$proj/.claude/settings.json"
 [ -f "$s" ] || fail "core/project did not write $s"
-[ "$(jq '.hooks.PreToolUse | length' "$s")" = "3" ] || fail "expected 3 PreToolUse hooks"
+[ "$(jq '.hooks.PreToolUse | length' "$s")" = "4" ] || fail "expected 4 PreToolUse hooks"
 jq -e '.hooks.PreToolUse[].hooks[].command | select(contains("$CLAUDE_PROJECT_DIR"))' "$s" >/dev/null \
   || fail "project-scope hooks must use \$CLAUDE_PROJECT_DIR"
-echo "ok: core/project copies portable files + wires 3 \$CLAUDE_PROJECT_DIR hooks"
+echo "ok: core/project copies portable files + wires 4 \$CLAUDE_PROJECT_DIR hooks"
 
 # idempotency
 cp "$s" "$work/before.json"
@@ -634,7 +634,7 @@ proj2="$work/proj2"; mkdir -p "$proj2/.claude"
 printf '%s' '{"permissions":{"allow":["Bash(ls)"]},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash /pre/existing.sh"}]}]}}' > "$proj2/.claude/settings.json"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$proj2" >/dev/null
 [ "$(jq -r '.permissions.allow[0]' "$proj2/.claude/settings.json")" = "Bash(ls)" ] || fail "merge dropped existing permissions"
-[ "$(jq '.hooks.PreToolUse | length' "$proj2/.claude/settings.json")" = "4" ] || fail "merge expected 4 PreToolUse hooks (1 existing + 3)"
+[ "$(jq '.hooks.PreToolUse | length' "$proj2/.claude/settings.json")" = "5" ] || fail "merge expected 5 PreToolUse hooks (1 existing + 4)"
 echo "ok: merge preserves existing keys + hooks"
 
 # ── 3. core/user (fake HOME) ─────────────────────────────────────────────────
@@ -910,8 +910,9 @@ grepq "$out" 'DRY: wire env.HANDOVER_DIR' || fail "dry-run missing HANDOVER_DIR 
 grepq "$out" 'Wiring graphify (opt-in' || fail "dry-run --with-graphify missing the graphify wiring banner"
 grepq "$out" 'DRY: graphify_install'   || fail "dry-run --with-graphify missing graphify_install DRY line"
 # --with-graphify also registers the MCP server at the adopt scope
-# (here --scope user), so the dry-run must emit the mcp-add DRY line.
-grepq "$out" 'DRY: claude mcp add -s user graphify' || fail "dry-run --with-graphify missing the graphify MCP registration DRY line"
+# (here --scope user: on demand, never in ~/.claude.json), so the dry-run must
+# emit the on-demand registration DRY line.
+grepq "$out" 'DRY: register graphify MCP on demand' || fail "dry-run --with-graphify missing the graphify MCP registration DRY line"
 # gap 3: build_jira_cli runs after install_plugins; with npm scrubbed
 # suite-wide and bun stubbed present, it picks bun and emits its DRY build line.
 grepq "$out" 'DRY:.*(cd scripts/jira && bun install && bun run build)' || fail "dry-run missing build_jira_cli DRY line"
@@ -2644,11 +2645,11 @@ esac
 
 # (d) exactly ONE block-edit-on-main entry (merged in place, not appended
 #     alongside the existing one), and the two hooks that were genuinely ABSENT
-#     are appended as fresh stanzas -> 2 seeded + 2 appended = 4.
+#     and the merge gate are appended as fresh stanzas -> 2 seeded + 3 appended = 5.
 [ "$(jq -r '[.hooks.PreToolUse[].hooks[].command | select(test("block-edit-on-main"))] | length' "$s2892")" = "1" ] \
   || fail "HIMMEL-2892 (d): expected exactly one block-edit-on-main entry after the merge"
-[ "$(jq '.hooks.PreToolUse | length' "$s2892")" = "4" ] \
-  || fail "HIMMEL-2892 (d): expected 4 PreToolUse stanzas (2 seeded + the 2 genuinely-absent himmel hooks appended), got $(jq '.hooks.PreToolUse | length' "$s2892")"
+[ "$(jq '.hooks.PreToolUse | length' "$s2892")" = "5" ] \
+  || fail "HIMMEL-2892 (d): expected 5 PreToolUse stanzas (2 seeded + the 3 genuinely-absent himmel hooks appended), got $(jq '.hooks.PreToolUse | length' "$s2892")"
 echo "ok: HIMMEL-2892 the hook block merges into an existing settings.json (foreign matcher + co-located entry + adopter matcher/timeout preserved; himmel command repointed in place)"
 
 # ── 19x. copy_portable + the user-scope gate copies record what
@@ -2682,8 +2683,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "62" ] \
-  || fail "HIMMEL-3332 S4: expected 62 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "74" ] \
+  || fail "HIMMEL-3332 S4: expected 74 file rows (73 portable entries plus the trust policy seed)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

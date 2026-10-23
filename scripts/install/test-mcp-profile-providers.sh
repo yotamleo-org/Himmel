@@ -172,10 +172,14 @@ const fs = require('fs');
 // himmel provisions neither, so they are exempt from the provider check by
 // deliberate, reviewed decision rather than by omission.
 // `graphify` is DELIBERATELY NOT on this list: it is not operator-provided
-// either, it is simply unprovisioned (graphify-mcp/graphify carry no
-// `install` descriptor) — the console was explicit that this must fail
-// loudly (RED control #3), never be laundered onto this allow-list.
+// either, and it must fail loudly in a baseline profile (RED control #3);
+// it is admitted only in the `graph` profile via ON_DEMAND_PROVIDED below.
 const OPERATOR_PROVIDED = ['obsidian-vault', 'onepassword'];
+// Opt-in servers himmel's own installer registers in the on-demand registry
+// (graphify_register_mcp_on_demand), allowed ONLY in the named profiles. A
+// baseline profile such as `minimal` must still never list one: a fresh
+// machine has not opted in, so it would resolve to nothing.
+const ON_DEMAND_PROVIDED = { graphify: ['graph'] };
 // argv[3] (the manifest path) is still passed by callers but deliberately
 // unread — the manifest is not a provider source.
 const [, , profilesPath, , pluginServerKeysCsv] = process.argv;
@@ -194,6 +198,7 @@ for (const [profile, members] of Object.entries(profiles)) {
   }
   for (const member of members) {
     if (OPERATOR_PROVIDED.includes(member)) continue;
+    if ((ON_DEMAND_PROVIDED[member] || []).includes(profile)) continue;
     if (pluginServers.has(member)) continue;
     failures.push(`${profile}: "${member}" has no provider (not in PLUGIN_SERVERS, not OPERATOR_PROVIDED)`);
   }

@@ -84,6 +84,53 @@ rc=$?
 if [ "$rc" -eq 0 ]; then pass "comment-only secrets -> exit 0 (no FP)"; else fail "comment-only secrets -> expected 0 got $rc"; fi
 rm -rf "$dir_c"
 
+# Cases D-F: the one allowed interpolation. snyk-weekly.yml may carry exactly
+# the SNYK_TOKEN line; any other secret there, or that line elsewhere, fails.
+REAL_SNYK="$(cd "$(dirname "$0")/../.." && pwd)/.github/workflows/snyk-weekly.yml"
+allowed_line="      SNYK_TOKEN: ${piece1}secrets.SNYK_TOKEN }}"
+
+echo "== Case D: the real snyk-weekly.yml =="
+dir_d=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SNYK" "$dir_d/snyk-weekly.yml"
+bash "$GUARD" "$dir_d" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "snyk-weekly.yml SNYK_TOKEN line -> exit 0"; else fail "snyk-weekly.yml SNYK_TOKEN line -> expected 0 got $rc"; fi
+rm -rf "$dir_d"
+
+echo "== Case E: a second secret in snyk-weekly.yml =="
+dir_e=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SNYK" "$dir_e/snyk-weekly.yml"
+printf '      OTHER: %ssecrets.OTHER }}\n' "$piece1" >> "$dir_e/snyk-weekly.yml"
+bash "$GUARD" "$dir_e" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "second secret in snyk-weekly.yml -> exit 1"; else fail "second secret in snyk-weekly.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_e"
+
+echo "== Case F: the same line in another workflow =="
+dir_f=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s\n' "$allowed_line" > "$dir_f/other.yml"
+bash "$GUARD" "$dir_f" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "SNYK_TOKEN line in other.yml -> exit 1"; else fail "SNYK_TOKEN line in other.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_f"
+
+echo "== Case G: a forged path:line:content suffix in another workflow =="
+dir_g=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo %ssecrets.DEPLOY_KEY }} x/snyk-weekly.yml:1:SNYK_TOKEN: %ssecrets.SNYK_TOKEN }}\n' "$piece1" "$piece1" > "$dir_g/other.yml"
+bash "$GUARD" "$dir_g" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "forged snyk-weekly.yml suffix in other.yml -> exit 1"; else fail "forged snyk-weekly.yml suffix in other.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_g"
+
+echo "== Case H: snyk-weekly.yml in a subdirectory =="
+dir_h=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+mkdir "$dir_h/subdir"
+cp "$REAL_SNYK" "$dir_h/subdir/snyk-weekly.yml"
+bash "$GUARD" "$dir_h" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "subdir/snyk-weekly.yml -> exit 1"; else fail "subdir/snyk-weekly.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_h"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"

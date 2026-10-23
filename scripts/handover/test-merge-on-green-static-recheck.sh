@@ -11,6 +11,8 @@ set -uo pipefail
 MOG_LIB_ONLY=1
 # shellcheck source=scripts/handover/test-merge-on-green.sh
 . "$(dirname "${BASH_SOURCE[0]}")/test-merge-on-green.sh"
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/portable-timeout.sh"
 export MERGE_STATIC_RECHECK=1 ARMAUTOMERGE=1
 
 SR_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"

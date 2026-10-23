@@ -76,6 +76,9 @@ export ACTION_ZERO_SCRIPT="$tmp/az-stub.sh"
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
+# A hand-made outgoing doc: `next` refuses one with no real `## Current direction` block.
+stub_doc() { printf '%s\n' "$1" '' '## Current direction' '' 'In work: the fixture.'; }
+
 fixture_repo="$tmp/repo"
 mkdir -p "$fixture_repo"
 git init -q "$fixture_repo"
@@ -561,7 +564,7 @@ mkdir -p "$root_sp/tester/spacerepo"
 yesterday_epoch=$(( $(date +%s) - 86400 ))
 yesterday="$(date -u -d "@$yesterday_epoch" +%F 2>/dev/null || date -u -r "$yesterday_epoch" +%F 2>/dev/null)"
 predoc15="$root_sp/tester/spacerepo/DEMO-nextleg-${yesterday}A-console.md"
-: > "$predoc15"
+stub_doc predecessor > "$predoc15"
 console_root "$root_sp" next --bucket spacerepo >/dev/null 2>&1
 doc15B="$root_sp/tester/spacerepo/DEMO-nextleg-${today}B-console.md"
 check "15 fallback discovery survives a space in the handover root" "$([ -f "$doc15B" ] && echo yes)" "yes"
@@ -782,7 +785,7 @@ printf '{{BROKEN_PLACEHOLDER}}\n' > "$render_tpl_dir/console-handoff-template.md
 doc25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-console.md"
 doc25bB="$root/tester/renderdst/DEMO-nextleg-${today}B-console.md"
 handoff25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
-printf 'predecessor\n' > "$doc25bA"
+stub_doc predecessor > "$doc25bA"
 rc25c=0
 out25c="$(CHIEF_TEMPLATE_DIR="$render_tpl_dir" console next --bucket renderdst --doc "$doc25bA" 2>&1)" || rc25c=$?
 check "25b step1: render aborts with exit 1" "$rc25c" "1"
@@ -1297,14 +1300,14 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc43A" "$token43a" >/dev/null 2>&1
 # own date, always resets the chain to A instead -- see case 48).
 mkdir -p "$root/tester/rollz"
 docZ44="$root/tester/rollz/DEMO-nextleg-${today}Z-console.md"
-printf 'stub\n' > "$docZ44"
+stub_doc stub > "$docZ44"
 out44="$(console next --bucket rollz --dry-run --doc "$docZ44")"
 check "44 next --dry-run rolls Z to AA" "$(printf '%s\n' "$out44" | grep -c "^would-doc: .*${today}AA-console.md$")" "1"
 
 # --- 45: same-day rollover AZ -> BA ---------------------------------------
 mkdir -p "$root/tester/rollaz"
 docAZ45="$root/tester/rollaz/DEMO-nextleg-${today}AZ-console.md"
-printf 'stub\n' > "$docAZ45"
+stub_doc stub > "$docAZ45"
 out45="$(console next --bucket rollaz --dry-run --doc "$docAZ45")"
 check "45 next --dry-run rolls AZ to BA" "$(printf '%s\n' "$out45" | grep -c "^would-doc: .*${today}BA-console.md$")" "1"
 
@@ -1314,7 +1317,7 @@ check "45 next --dry-run rolls AZ to BA" "$(printf '%s\n' "$out45" | grep -c "^w
 # was [A-Z] only), and bump AA -> AB.
 mkdir -p "$root/tester/rollname"
 docAA46="$root/tester/rollname/DEMO-nextleg-${today}AA-mychain-console.md"
-printf 'stub\n' > "$docAA46"
+stub_doc stub > "$docAA46"
 console next --bucket rollname --doc "$docAA46" >/dev/null
 docAB46="$root/tester/rollname/DEMO-nextleg-${today}AB-mychain-console.md"
 check "46 next --doc <two-letter> derives name and bumps to AB" "$([ -f "$docAB46" ] && echo yes)" "yes"
@@ -1338,7 +1341,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$docAA47" "$token47" >/dev/null 2>&1
 # the letter resets rather than continuing the bijective sequence.
 mkdir -p "$root/tester/rolldate"
 docZ48="$root/tester/rolldate/DEMO-nextleg-${today}Z-console.md"
-printf 'stub\n' > "$docZ48"
+stub_doc stub > "$docZ48"
 tomorrow48="2026-09-14"
 out48="$(console next --bucket rolldate --dry-run --date "$tomorrow48" --doc "$docZ48")"
 check "48 --date mints tomorrow's A, not a same-day AA rollover" "$(printf '%s\n' "$out48" | grep -c "^would-doc: .*${tomorrow48}A-console.md$")" "1"
@@ -1355,7 +1358,7 @@ check "49 --date malformed prints a usage line" "$(printf '%s\n' "$out49" | grep
 # discovery (no --doc) must pick AA over B as today's predecessor.
 mkdir -p "$root/tester/rollorder"
 printf 'stub\n' > "$root/tester/rollorder/DEMO-nextleg-${today}B-console.md"
-printf 'stub\n' > "$root/tester/rollorder/DEMO-nextleg-${today}AA-console.md"
+stub_doc stub > "$root/tester/rollorder/DEMO-nextleg-${today}AA-console.md"
 out50="$(console next --bucket rollorder --dry-run)"
 check "50 auto-discovery treats AA as newer than B (numeric, not lexical)" "$(printf '%s\n' "$out50" | grep -c "^would-doc: .*${today}AB-console.md$")" "1"
 
@@ -1366,7 +1369,7 @@ check "50 auto-discovery treats AA as newer than B (numeric, not lexical)" "$(pr
 # predecessor found".
 mkdir -p "$root/tester/dateval"
 docZval="$root/tester/dateval/DEMO-nextleg-${today}Z-console.md"
-printf 'stub\n' > "$docZval"
+stub_doc stub > "$docZval"
 
 rc51=0
 out51="$(console next --bucket dateval --dry-run --date 2026-99-99 --doc "$docZval" 2>&1)" || rc51=$?
@@ -1615,6 +1618,17 @@ check "60b successor doc's tracker: line carries the predecessor's tracker URL" 
     "$(grep -Fxc "tracker: $trackerurl60b" "$doc60bB" 2>/dev/null)" "1"
 check "60b no unrendered {{TRACKER_URL}} left in the successor doc" \
     "$(grep -Fc '{{TRACKER_URL}}' "$doc60bB" 2>/dev/null)" "0"
+# focus-version: and focus-plan: opt the FOCUS refresh in; a succession must keep them.
+focusplan60b='/fixture/plans/focus-plan-60b.md'
+awk -v plan="$focusplan60b" '{ print } /^tracker: / { print "focus-version: v9.9.9"; print "focus-plan: " plan }' "$doc60bA" >"$doc60bA.new" && mv "$doc60bA.new" "$doc60bA"
+rm -f "$doc60bB"
+rc60bf=0
+console next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1 || rc60bf=$?
+check "60b next succeeds against a doc with focus-version: and focus-plan:" "$rc60bf" "0"
+check "60b successor doc carries the predecessor's focus-version: line" \
+    "$(grep -Fxc 'focus-version: v9.9.9' "$doc60bB" 2>/dev/null)" "1"
+check "60b successor doc carries the predecessor's focus-plan: line" \
+    "$(grep -Fxc "focus-plan: $focusplan60b" "$doc60bB" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 
 # --- 61: the console parent defaults to Opus, not Fable
@@ -1901,6 +1915,32 @@ propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console
 strip_list67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_leg_env_unset_names ) | sort -u)"
 missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_list67"))"
 check "67 every leg_propagate_env name in headed-arm-leg.sh is in the strip list" "$missing67" ""
+# leg_propagate_env also sets each name's worker-session twin, so every twin
+# must be stripped too, and a launch-seam name's twin must be seam as well.
+twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
+check "67 headed-arm-leg.sh has a twin table" "$([ -n "$twins67" ] && echo found)" "found"
+want67='HIMMEL_LEAN_LEG HIMMEL_LEAN_WORKER_SESSION
+HIMMEL_LEG_AUTOCOMPACT HIMMEL_WORKER_SESSION_AUTOCOMPACT
+HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
+HIMMEL_LEG_PROFILE HIMMEL_WORKER_SESSION_PROFILE
+LEG_CLAUDE_BIN WORKER_SESSION_CLAUDE_BIN
+LEG_LANE WORKER_SESSION_LANE
+LEG_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_MCP_CONFIG
+LEG_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_PROFILE_NO_SETTING_SOURCES
+LEG_PROFILE_PREFACE WORKER_SESSION_PROFILE_PREFACE
+LEG_PROFILE_SETTINGS WORKER_SESSION_PROFILE_SETTINGS
+LEG_SESSION_ID WORKER_SESSION_ID
+'
+check "67 the twin table maps every required leg name to its worker-session twin" "$(comm -13 <(printf '%s\n' "$twins67" | sort -u) <(printf '%s' "$want67" | sort -u))" ""
+missing67t="$(comm -23 <(printf '%s\n' "$twins67" | awk '{print $2}' | sort -u) <(printf '%s\n' "$strip_list67"))"
+check "67 every worker-session twin in headed-arm-leg.sh is in the strip list" "$missing67t" ""
+seam67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_launch_seam_env_names ) | sort -u)"
+seam_missing67=""
+while read -r old67 new67; do
+    grep -qx "$old67" <<< "$seam67" || continue
+    grep -qx "$new67" <<< "$seam67" || seam_missing67="$seam_missing67 $new67"
+done <<< "$twins67"
+check "67 every launch-seam name's worker-session twin is launch seam too" "$seam_missing67" ""
 check "67 armed child's own environment strips LEG_LANE" \
     "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips OPENROUTER_MODEL" \
@@ -2489,7 +2529,7 @@ mk81() {
     {
         printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\n' "$today"
         [ "$od" = "-" ] || printf 'decisions: %s\n' "$od"
-        printf '\n## Results\n'
+        printf '\n## Current direction\n\nIn work: the fixture.\n\n## Results\n'
         [ -z "$extra" ] || printf '%s\n' "$extra"
     } > "$d/DEMO-nextleg-${today}B-console.md"
 }
@@ -2634,14 +2674,14 @@ check "86 successor doc has no unrendered {{...}} slot" \
 mkdir -p "$root/tester/pri86"
 printf '# A — CONSOLE — successor to none (fill signal 70 %%)\n\n## Live state\n%s\n' "$pri86" \
     > "$root/tester/pri86/DEMO-nextleg-${today}A-console.md"
-printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\nepics: none\n\n## Results\n' "$today" \
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\nepics: none\n\n## Current direction\n\nIn work: the fixture.\n\n## Results\n' "$today" \
     > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
 rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc86=$?
 check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc86" "1"
 check "86 refusal quotes the predecessor's priority line" \
     "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
 # A prune that closed every key leaves `priority: none`; a PRIORITY-PRUNE bullet accepts it.
-printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Current direction\n\nIn work: the fixture.\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
     > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
 rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
 check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
@@ -2811,5 +2851,75 @@ if [ -n "$_TIMEOUT_BIN" ]; then
 else
     echo "ok - SKIPPED: 90 hung action-zero: no timeout or gtimeout on this host"
 fi
+
+# --- 91. next refuses a succession that drops an operator ruling or the direction
+# A Results bullet `OPERATOR ... (verbatim): "<quote>"` must have its quote on the
+# outgoing `decisions:` line or in a decisions file that line names (exit 6); the
+# doc's `## Current direction` block must be real (exit 7). A placeholder left in
+# the HANDOFF facts header is reported. The bullet is shaped like a real one from
+# the AB console doc; the header lines are the DF HANDOFF's own.
+q91='move the 1.1.4 in progress to todo, as versions that aren'"'"'t released are never not in todo.'
+b91="- 23:37 AB 00:5x: DECISION (46) OPERATOR 10-19 AB (verbatim): '$q91' Apply: only the active version holds started."
+dir91='Chain order: 0 CI blocker, then 1 audit tickets. In work: N3296. Waits on the operator: the v1.1.3 tag.'
+# mk91 <bucket> <decisions line> <Results bullet|-> <direction body|ABSENT>
+mk91() {
+    local d="$root/tester/$1"
+    mkdir -p "$d"
+    {
+        printf '# B — CONSOLE — successor to none (fill signal 70 %%)\n\n## Live state\ndecisions: %s\n\n' "$2"
+        [ "$4" = ABSENT ] || printf '## Current direction\n\n%s\n\n' "$4"
+        printf '## Results\n'
+        [ "$3" = "-" ] || printf '%s\n' "$3"
+    } > "$d/DEMO-nextleg-${today}B-console.md"
+}
+run91() { rc91=0; out91="$(console next --bucket "$1" --doc "$root/tester/$1/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc91=$?; }
+mk91 rul91a "(46) other ruling" "$b91" "$dir91"; run91 rul91a
+check "91 a verbatim OPERATOR quote missing from decisions: refuses (exit 6)" "$rc91" "6"
+check "91 refusal names the missing ruling" "$(printf '%s\n' "$out91" | grep -cF "$q91")" "1"
+check "91 refusal writes no HANDOFF" "$([ -f "$root/tester/rul91a/DEMO-nextleg-${today}B-console-HANDOFF.md" ] && echo yes || echo no)" "no"
+mk91 rul91b "(46) $q91" "$b91" "$dir91"; run91 rul91b
+check "91 the quote on the decisions: line passes" "$rc91" "0"
+mk91 rul91c "specs/decisions/console-decisions-2026-10-19.md holds #46" "$b91" "$dir91"
+mkdir -p "$root/tester/rul91c/specs/decisions"; printf '(46) %s\n' "$q91" > "$root/tester/rul91c/specs/decisions/console-decisions-2026-10-19.md"; run91 rul91c
+check "91 the quote in a named decisions file passes" "$rc91" "0"
+mk91 rul91d "(46) other ruling" "- 10:00 OPERATOR ran the post-3203 steps: himmel-update (no quoted ruling)" "$dir91"; run91 rul91d
+check "91 a bullet with no (verbatim) quote is not a ruling" "$rc91" "0"
+mk91 dir91a "(46) other ruling" "-" ""; run91 dir91a
+check "91 an empty Current direction block refuses (exit 7)" "$rc91" "7"
+check "91 refusal names the block" "$(printf '%s\n' "$out91" | grep -cF 'Current direction')" "1"
+mk91 dir91b "(46) other ruling" "-" "<chain order; what is in work; what waits on the operator>"; run91 dir91b
+check "91 a placeholder Current direction block refuses (exit 7)" "$rc91" "7"
+mk91 dir91c "(46) other ruling" "-" ABSENT; run91 dir91c
+check "91 a doc with no Current direction block refuses (exit 7)" "$rc91" "7"
+mk91 dir91d "(46) other ruling" "-" "$dir91"; printf '[{"name":"0 — CI blocker","steps":[]},{"name":"1 — audit tickets","steps":[]}]\n' > "$root/tester/dir91d/focus-chains.json"; run91 dir91d
+h91="$root/tester/dir91d/DEMO-nextleg-${today}B-console-HANDOFF.md"
+check "91 a real block passes" "$rc91" "0"
+check "91 the HANDOFF carries the outgoing direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF "$dir91")" "1"
+check "91 the HANDOFF direction block lists the chain order from focus-chains.json" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF 'Chain order (focus-chains.json): 0 — CI blocker; 1 — audit tickets')" "1"
+check "91 the successor doc carries the direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/dir91d/DEMO-nextleg-${today}C-console.md" | grep -cF "$dir91")" "1"
+check "91 a fresh HANDOFF reports its facts-header placeholders" "$(printf '%s\n' "$out91" | grep -c 'HANDOFF still has template placeholders')" "1"
+mk91 hdr91 "(46) other ruling" "-" "$dir91"
+cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-console-HANDOFF.md" <<'HDR'
+# DF → DG handoff state
+
+> **This file wins over the DF Results tail**; use that tail
+> only where a section here is empty.
+
+**Head:** `e40b42b195b58c7ec4c0c06a676ed29e0115f7cb` on `main` at `/example/himmel`, remote `https://github.com/example/himmel.git`.
+**Bank at write:** unavailable — run usage-preflight.sh
+**Operator:** `<at the station / away / asleep>`.
+
+## How DG starts
+
+Run ACTION ZERO from `HIMMEL-nextleg-2026-10-22DG-roadmap-console.md` unchanged; expect at the root sweep
+`<the locks the successor should find>`. Kit: `/example/himmel/scripts/handover/console-kit`.
+HDR
+run91 hdr91
+check "91 an existing HANDOFF with a placeholder Operator line is reported" "$(printf '%s\n' "$out91" | grep -cF '**Operator:** `<at the station')" "1"
+# shellcheck disable=SC2016  # the backticks are literal markdown code spans
+check "91 an existing HANDOFF with a placeholder root-sweep line is reported" "$(printf '%s\n' "$out91" | grep -cF '`<the locks the successor should find>`')" "1"
+mk91 hdr91b "(46) other ruling" "-" "$dir91"
+printf '%s\n' '**Operator:** at the station.' > "$root/tester/hdr91b/DEMO-nextleg-${today}B-console-HANDOFF.md"; run91 hdr91b
+check "91 a filled existing HANDOFF is not reported" "$(printf '%s\n' "$out91" | grep -c 'template placeholders')" "0"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

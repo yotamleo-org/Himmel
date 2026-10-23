@@ -598,6 +598,64 @@ printf 'not-a-sha\n' > "$git_dir/cr-review-rounds/evidh.head"
 (cd "$repo" && bash "$RR" evidence --branch evidh --head "$evidh_head" >/dev/null 2>&1); evidh_rc=$?
 assert_eq "$evidh_rc" "8" "5233 evidence refuses a .head that is not a full hex sha"
 
+# Resolvable refs and abbreviations are still mutable sidecars, not full SHAs.
+git -C "$repo" update-ref refs/heads/reviewed-evidh "$cap_r3_head"
+for sidecar in reviewed-evidh "${cap_r3_head:0:12}"; do
+    printf '%s\n' "$sidecar" > "$git_dir/cr-review-rounds/evidh.head"
+    evidh_rc=0
+    (cd "$repo" && bash "$RR" evidence --branch evidh --head "$evidh_head" >/dev/null 2>&1) || evidh_rc=$?
+    assert_eq "$evidh_rc" 8 "evidence refuses resolvable sidecar $sidecar"
+done
+printf '%s\n' "$cap_r3_head" > "$tmp/evidh-reviewed-head"
+rm -f "$git_dir/cr-review-rounds/evidh.head"
+ln -s "$tmp/evidh-reviewed-head" "$git_dir/cr-review-rounds/evidh.head"
+evidh_rc=0
+(cd "$repo" && bash "$RR" evidence --branch evidh --head "$evidh_head" >/dev/null 2>&1) || evidh_rc=$?
+assert_eq "$evidh_rc" 8 "evidence refuses a symlinked full-SHA sidecar"
+rm -f "$git_dir/cr-review-rounds/evidh.head"
+printf '%s\n' "$cap_r3_head" > "$git_dir/cr-review-rounds/evidh.head"
+
+# An evidence-only tip still needs the marker gate to fall back to its critic.
+three_rounds evidfallback clean
+printf 'echo t\n' > "$repo/test-evidfallback.sh"
+git -C "$repo" add test-evidfallback.sh
+git -C "$repo" commit -q -m "evidence fallback test-only"
+evidfallback_head="$(git -C "$repo" rev-parse HEAD)"
+(cd "$repo" && bash "$RR" evidence --branch evidfallback --head "$evidfallback_head" >/dev/null 2>&1) || fail "evidence fallback fixture records evidence"
+git -C "$repo" push -q -u origin evidfallback
+write_real_marker evidfallback "$evidfallback_head"
+evidfallback_rc=0
+evidfallback_out="$(cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" evidfallback 2>&1)" || evidfallback_rc=$?
+assert_eq "$evidfallback_rc" 0 "an evidence-only tip clears through the reviewed-head fallback ($evidfallback_out)"
+assert_has "$evidfallback_out" "gating on the reviewed head" "an evidence-only tip uses its critic-reviewed ancestor"
+if [ -e "$git_dir/cr-pending/evidfallback" ]; then fail "evidence-only fallback removes the marker"; else pass "evidence-only fallback removes the marker"; fi
+
+# Replacement objects must not turn a code delta into tests-only evidence.
+three_rounds evidreplace clean
+replace_from="$cap_r3_head"
+printf 'echo t\n' > "$repo/test-evidreplace.sh"
+git -C "$repo" add test-evidreplace.sh
+git -C "$repo" commit -q -m "replacement test-only decoy"
+replace_decoy="$(git -C "$repo" rev-parse HEAD)"
+printf 'code\n' >> "$repo/evidreplace.txt"
+git -C "$repo" commit -q -am "real code delta"
+replace_tip="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" replace "$replace_tip" "$replace_decoy"
+assert_eq "$?" 0 "replacement fixture installs successfully"
+assert_eq "$(git -C "$repo" cat-file commit "$replace_tip")" "$(git -C "$repo" cat-file commit "$replace_decoy")" "replacement fixture makes Git read the decoy commit"
+replace_rc=0
+(cd "$repo" && bash "$RR" evidence --branch evidreplace --head "$replace_tip" >/dev/null 2>&1) || replace_rc=$?
+assert_eq "$replace_rc" 8 "replacement objects cannot disguise a code delta as evidence"
+replace_rc=0
+(cd "$repo" && bash "$RR" trivial-descendant --tests-only "$replace_from" "$replace_tip" >/dev/null 2>&1) || replace_rc=$?
+assert_eq "$replace_rc" 1 "trivial-descendant ignores replacement objects"
+git -C "$repo" replace -d "$replace_tip" >/dev/null
+if [ "${1:-}" = --ledger-hardening-only ]; then
+    printf 'ledger hardening: %s failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]
+    exit $?
+fi
+
 # A reviewed head whose critic finding is still open passes nothing on: its
 # test-only descendant gets no evidence row.
 three_rounds evidf suggestion
