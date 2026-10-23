@@ -379,6 +379,27 @@ export SNYK_SCAN_FORKS="nlfork|$U/nlfork|pinned|up"
 run forksnl --forks
 check "the newline-name scan exits successfully" 0 "$RC"
 check "a newline in one filename does not fake a build file" scanned "$(jq -r '.[] | select(.name=="nlfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
+# a pinned tree with a build file is third-party code too: snyk must not run on it
+mkfork pinbuild "$FIX/snyk-os-high.json" 1
+: > "$W/forks/pinbuild/build.gradle"
+git -C "$W/forks/pinbuild" add -A; git -C "$W/forks/pinbuild" -c user.name=t -c user.email=t@t commit -q -m "pinned tree holds a build"
+git -C "$W/forks/pinbuild" tag pinned
+export SNYK_SCAN_FORKS="pinbuild|$U/pinbuild|pinned|-"
+: > "$W/calls.log"
+run forkspin --forks
+check "a pinned tree with a build file exits successfully" 0 "$RC"
+check "snyk never runs on a pinned tree with a build file" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+check "the pinned skip keeps the fork status ok" ok "$(jq -r '.[] | select(.name=="pinbuild") | .status' "$OUTDIR/2026-10-23.forks.json")"
+has "the pinned skip names the build file" "build.gradle" "$OUTDIR/2026-10-23.forks.summary.md"
+# an Elixir mix.exs is a build file too
+mkfork mixfork "$FIX/snyk-os-clean.json" 0
+git -C "$W/forks/mixfork" tag pinned
+: > "$W/forks/mixfork/mix.exs"
+git -C "$W/forks/mixfork" add -A; git -C "$W/forks/mixfork" -c user.name=t -c user.email=t@t commit -q -m "upstream adds mix.exs"
+export SNYK_SCAN_FORKS="mixfork|$U/mixfork|pinned|up"
+: > "$W/calls.log"
+run forksmix --forks
+check "an upstream HEAD with a mix.exs is skipped" skipped "$(jq -r '.[] | select(.name=="mixfork") | .upstream' "$OUTDIR/2026-10-23.forks.json")"
 export SNYK_SCAN_FORKS="vulnfork|$U/vulnfork|main|up"
 : > "$W/calls.log"
 run forksnoup --forks --no-upstream

@@ -63,8 +63,8 @@ OS_CAP="${SNYK_SCAN_OS_CAP:-200}"
 CODE_CAP="${SNYK_SCAN_CODE_CAP:-50}"
 # directory names snyk must not walk: dependencies, test fixtures, other worktrees, generated graphs
 EXCLUDES="node_modules,fixtures,worktrees,graphify-out,.venv"
-# build files snyk --all-projects would run a tool for; an unpinned upstream tree that has one is not scanned
-BUILD_RE='(^|/)(gradlew|mvnw|build\.gradle[^/]*|pom\.xml|build\.sbt|Package\.swift)$'
+# build files snyk --all-projects would run a tool for; a third-party tree (pinned fork or upstream HEAD) that has one is not scanned
+BUILD_RE='(^|/)(gradlew|mvnw|build\.gradle[^/]*|pom\.xml|build\.sbt|Package\.swift|mix\.exs)$'
 
 err() { printf 'ERR snyk-scan: %s\n' "$*" >&2; }
 
@@ -279,6 +279,16 @@ if [ "$forks" -eq 1 ]; then
         return 0
     }
 
+    # <dir>: print the first build file in the tree and return 0; 1 when there is none; 2 when the listing fails
+    tree_build_file() {
+        local d="$1" f
+        git -C "$d" ls-files -z > "$tmp/bf.list" 2>/dev/null || return 2
+        while IFS= read -r -d '' f; do
+            if [[ $f =~ $BUILD_RE ]]; then printf '%s' "$f"; return 0; fi
+        done < "$tmp/bf.list"
+        return 1
+    }
+
     # <rows> <upstream rows> <none|scanned|error|skipped|off>: add a fixed-upstream column (yes, no, n/a, unknown)
     mark_fixed() {
         awk -F'\t' -v OFS='\t' -v st="$3" '
@@ -298,8 +308,17 @@ if [ "$forks" -eq 1 ]; then
         if ! fetch_tree "$url" "$ref" "$tmp/fork-$name"; then
             status=error msg="$SCAN_MSG"
         else
-            scan_tree "$tmp/fork-$name" "$tmp/rows.$name"; rc=$?
-            projects=$SCAN_PROJECTS locks=$SCAN_LOCKS
+            pin_skip="$(tree_build_file "$tmp/fork-$name")"; pin_rc=$?
+            if [ "$pin_rc" -eq 0 ]; then
+                msg="pinned tree not scanned: it holds $pin_skip and snyk would run that build tool"
+                rc=0
+            elif [ "$pin_rc" -ne 1 ]; then
+                SCAN_MSG="pinned file list failed"
+                rc=1
+            else
+                scan_tree "$tmp/fork-$name" "$tmp/rows.$name"; rc=$?
+                projects=$SCAN_PROJECTS locks=$SCAN_LOCKS
+            fi
             case "$rc" in
                 0) ;;
                 3) err "$SCAN_MSG"; status=error msg="$SCAN_MSG" f_stop=1 ;;
@@ -311,11 +330,9 @@ if [ "$forks" -eq 1 ]; then
                 upstream=error
                 if ! fetch_tree "$url" HEAD "$tmp/up-$name"; then
                     msg="upstream fetch failed: $SCAN_MSG"
-                elif ! git -C "$tmp/up-$name" ls-files -z > "$tmp/upfiles.$name" 2>/dev/null; then
+                elif up_skip="$(tree_build_file "$tmp/up-$name")"; up_rc=$?; [ "$up_rc" -eq 2 ]; then
                     msg="upstream file list failed"
-                elif up_skip=""; while IFS= read -r -d '' up_f; do
-                        if [[ $up_f =~ $BUILD_RE ]]; then up_skip="$up_f"; break; fi
-                    done < "$tmp/upfiles.$name"; [ -n "$up_skip" ]; then
+                elif [ "$up_rc" -eq 0 ]; then
                     upstream=skipped
                 else
                     scan_tree "$tmp/up-$name" "$tmp/uprows.$name"; rc=$?

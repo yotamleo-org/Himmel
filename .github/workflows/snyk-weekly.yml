@@ -10,9 +10,10 @@ name: snyk-weekly
 # <date>.forks.json and <date>.forks.summary.md beside the main report; exit 1 is a High or
 # Critical finding, exit 2 a fork that failed or the quota. The forks are scanned at their pinned
 # refs only (--no-upstream): an unpinned upstream HEAD is third-party code that snyk could build
-# with the token in env, so the upstream comparison is a station run. About 16 + 48 Open Source
-# tests per run, so a Monday run costs about 64 of the free plan's 400 a month (the usage ledger
-# starts empty on every runner, so it does not bound CI; the weekly cadence does). The dispatch input
+# with the token in env, so the upstream comparison is a station run. The scheduled run scans the
+# forks on the first Monday of the month only (a dispatch always does): about 16 Open Source tests
+# every Monday plus about 48 for the forks once, so 112 to 128 of the free plan's 400 a month (the
+# usage ledger starts empty on every runner, so it does not bound CI; the cadence does). The dispatch input
 # missing_ref_probe replaces the forks with one at a missing ref, to prove exit 2 names the fork; it
 # skips the main scan. The dispatch input report_only runs both scans in full, writes the findings
 # to the job summary and exits 0 for exit codes 1 and 2 alike (a failed scan is reported, not
@@ -90,7 +91,12 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
           MISSING_REF_PROBE: ${{ inputs.missing_ref_probe }}
           REPORT_ONLY: ${{ inputs.report_only }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$(date -u +%d)" -gt 7 ]; then
+            echo "::notice title=forks scan::skipped, the scheduled run scans the forks on the first Monday of the month only"
+            exit 0
+          fi
           if [ "$MISSING_REF_PROBE" = "true" ]; then
             export SNYK_SCAN_FORKS='claude-hud|https://github.com/jarrodwatts/claude-hud|0000000000000000000000000000000000000000|-'
           fi

@@ -136,6 +136,19 @@ if [ -n "$stub_root" ]; then
       if [ "$got" = "$wrc" ]; then ok "$nm scan under a failing snyk-scan.sh: report_only='$ro' exits $wrc"; else bad "$nm scan under a failing snyk-scan.sh: report_only='$ro' exits $wrc (got $got)"; fi
     done
   done
+  # the forks scan runs on the first Monday of the month for a schedule (day of month 1-7) and on any dispatch
+  mkdir -p "$stub_root/bin"
+  # shellcheck disable=SC2016  # the stub body expands STUB_DAY when it runs, not here
+  printf '#!/usr/bin/env bash\necho "${STUB_DAY:-15}"\n' > "$stub_root/bin/date"
+  chmod +x "$stub_root/bin/date"
+  fbody="$(run_body "$forks_step")"
+  for want in "schedule|15|0" "schedule|03|1" "schedule|07|1" "schedule|08|0" "workflow_dispatch|15|1"; do
+    ev="${want%%|*}"; rest="${want#*|}"; day="${rest%%|*}"; wrc="${rest##*|}"
+    (cd "$stub_root" && PATH="$stub_root/bin:$PATH" STUB_DAY="$day" EVENT_NAME="$ev" REPORT_ONLY=false MISSING_REF_PROBE=false RUNNER_TEMP="$stub_root/tmp" GITHUB_WORKSPACE="$stub_root" GITHUB_STEP_SUMMARY="$stub_root/summary.out" SNYK_TOKEN=x bash -e -o pipefail -c "$fbody" > /dev/null 2>&1)
+    got=$?
+    if [ "$got" = "$wrc" ]; then ok "forks scan: $ev on day $day exits $wrc (1 = the scan ran)"; else bad "forks scan: $ev on day $day exits $wrc (got $got)"; fi
+  done
+  rm -f "$stub_root/bin/date"; rmdir "$stub_root/bin" 2>/dev/null || true
   rm -f "$stub_root/scripts/security/snyk-scan.sh" "$stub_root/summary.out"
   rmdir "$stub_root/scripts/security" "$stub_root/scripts" "$stub_root/tmp/snyk" "$stub_root/tmp" "$stub_root" 2>/dev/null || true
 else
