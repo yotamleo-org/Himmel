@@ -361,8 +361,8 @@ export function creditState(command, options = {}, env = process.env) {
 
 // routing for HIMMEL_API_ACCOUNT=auto. Of the configured accounts whose row has room for the whole
 // budget (each under its own cap), spend the grant that expires first; a tie goes to A. An absent, stale
-// or unusable snapshot never refuses a route: the ledger and the account cap bound the spend and
-// Anthropic's own limits decide the rest (the pick carries snapshot_stale / snapshot_unknown). A reading
+// or unusable snapshot never refuses a route: the ledger estimate only orders the accounts, each call is
+// bounded by its own budget, and Anthropic's credit answer decides the rest (the pick carries snapshot_stale / snapshot_unknown). A reading
 // fresher than 24 h wins over an older one. An account marked exhausted within the last hour is skipped
 // unless a newer reading exists; when every account with room is marked, the one marked longest ago
 // serves, so a pick is never refused for that. An account with an old or no reading whose own estimate has no
@@ -597,7 +597,7 @@ function main() {
   const result = creditState(command, options);
   if (process.env.HIMMEL_API_CREDIT_FORMAT === 'bank') {
     if (result.account && result.grant_usd) {
-      console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing bounds the spend by the cap and reserve)' : ''}`);
+      console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing goes on our own estimate and the credit answer from the API is the hard stop)' : ''}`);
     } else console.error(`api credit-state: ${result.reason}`);
     console.log(result.verdict);
   } else console.log(JSON.stringify(result));

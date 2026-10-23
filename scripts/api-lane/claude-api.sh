@@ -89,11 +89,11 @@ case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h"
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET")"
   case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
-  # an absent or old credit reading never blocks an auto route: the account cap, the reserve and the per-call cap
-  # bound the spend, Anthropic's own limits decide the rest, and a credit-exhausted answer rotates (see below)
+  # an absent or old credit reading never blocks an auto route: the per-call budget bounds each call, our own estimate
+  # only orders the accounts, Anthropic's own credit answer decides the rest, and a credit-exhausted answer rotates (see below)
   export HIMMEL_API_SNAPSHOT_OPTIONAL=1
   case "$PICK" in *'"snapshot_stale":true'*)
-    echo "claude-api: WARN: no fresh credit reading; routing inside the account cap and reserve, Anthropic's limits decide" >&2 ;;
+    echo "claude-api: WARN: no fresh credit reading; routing on our own spend estimate, the per-call budget bounds this call and Anthropic's credit answer decides" >&2 ;;
   esac
   case "$PICK" in *'"over_estimate":true'*)
     echo "claude-api: WARN: our own spend estimate has no room left on either account; the call goes on and the API's credit answer decides" >&2 ;;

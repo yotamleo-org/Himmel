@@ -35,8 +35,9 @@
 # refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise: it
 # never falls back to the subscription claude-cli. Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
-# 1.00) and the account cap the lane enforces; the plan's estimate line prints
-# before any call, and --dry-run stops right after it.
+# 1.00) and the batch is sized to the run cap; the lane's own credit answer is the
+# hard stop. The plan's estimate line prints before any call, and --dry-run stops
+# right after it.
 #
 # claude-api runs the extraction at GRAPHIFY_API_EFFORT (default high; low,
 # medium, high, xhigh or max, what `claude --effort` accepts). A/B 2026-10-16:
@@ -265,6 +266,7 @@ print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // 
 PY
 )"
   [ "$FIT_FILES" -lt "$N_BATCH" ] || break
+  # the floor is one file, so a cap that cannot fund one chunk still runs that file; the shim WARNs on the overshoot
   echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
   MAX_FILES="$FIT_FILES"
   plan_or_noop

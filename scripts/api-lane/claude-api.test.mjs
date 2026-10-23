@@ -501,7 +501,7 @@ test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant fi
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns, still inside the cap', () => {
+test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns', () => {
   const f = fixture();
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
