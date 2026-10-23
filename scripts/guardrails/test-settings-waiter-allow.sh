@@ -56,16 +56,18 @@ else
 fi
 
 # 2. The exact step-10 command, rendered from the template line a console prints.
-# shellcheck disable=SC2016 # literal backticks delimit the command in the doc
-line=$(grep -m1 'bash "{{KIT}}/console-wait.sh"' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
+# The template prints the literal $HIMMEL_REPO spelling (the primary checkout's
+# copy of the waiter), so no glob is needed before the path.
+# shellcheck disable=SC2016 # literal backticks and $HIMMEL_REPO in the doc line
+line=$(grep -m1 'bash "\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh"' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
 if [ -z "$line" ]; then
   bad "console-template.md has no step-10 console-wait.sh command"
   exit 1
 fi
 kit="/srv/tester/himmel/scripts/handover/console-kit"
-cmd=$(printf '%s' "$line" | sed -e "s#{{KIT}}#$kit#g" -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
+cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
   -e 's#{{SESSION_NAME}}#x-console#g' -e 's# \[--succession [^]]*\]##')
-cmd_succ=$(printf '%s' "$line" | sed -e "s#{{KIT}}#$kit#g" -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
+cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
   -e 's#{{SESSION_NAME}}#x-console#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
 
 for c in "$cmd" "$cmd_succ"; do
@@ -77,14 +79,17 @@ for c in "$cmd" "$cmd_succ"; do
 done
 
 # 3. The rule widens to no other script or path.
+# shellcheck disable=SC2016 # $HIMMEL_REPO is the literal spelling under test
 for c in \
-  "bash \"$kit/go.sh\" --pr 1" \
-  "bash \"$kit/console-wait.sh.evil\" /tmp/x" \
-  "bash \"/srv/tester/other/console-wait.sh\" /tmp/x" \
-  "bash \"/srv/tester/himmel/scripts/other/console-wait.sh\" /tmp/x" \
-  "sh \"$kit/console-wait.sh\" /tmp/x" \
+  "bash \"\$HIMMEL_REPO/scripts/handover/console-kit/go.sh\" --pr 1" \
+  "bash \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh.evil\" /tmp/x" \
+  "bash \"\$HIMMEL_REPO/scripts/other/console-wait.sh\" /tmp/x" \
+  "sh \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
+  "bash -x \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
+  "bash \"$kit/console-wait.sh\" /tmp/x" \
   "bash -c \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
-  "bash -x \"$kit/console-wait.sh\" /tmp/x"; do
+  "bash \"-c\" \"id\" \"$kit/console-wait.sh\" /tmp/x" \
+  "bash \"-c\" \"id\" \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x"; do
   m=$(matching_rules "$c" | grep 'console-wait' || true)
   if [ -z "$m" ]; then
     ok "no waiter rule matches: $c"
@@ -95,9 +100,19 @@ done
 
 n=$(jq '[.permissions.allow[] | select(test("console-wait\\.sh"))] | length' "$SETTINGS")
 if [ "$n" -le 2 ]; then
-  ok "allow list carries $n console-wait rules (relative + absolute)"
+  ok "allow list carries $n console-wait rules (relative + \$HIMMEL_REPO)"
 else
   bad "allow list carries $n console-wait rules, expected at most 2"
+fi
+
+# A glob before the path can span quotes (bash "-c" "id" "<path>"): the only `*`
+# a console-wait rule may carry is the trailing arguments wildcard.
+globbed=$(jq -r '.permissions.allow[] | select(test("console-wait\\.sh")) | select(
+    sub(" \\*\\)$"; ")") | sub(":\\*\\)$"; ")") | test("\\*"))' "$SETTINGS")
+if [ -z "$globbed" ]; then
+  ok "no console-wait rule globs inside the path"
+else
+  bad "console-wait rule with a glob before the path: $globbed"
 fi
 
 exit "$fail"

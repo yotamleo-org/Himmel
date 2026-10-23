@@ -72,7 +72,7 @@ Run these, in order, and write the result as the first bullet under
 10. **Start the event waiter now.** Run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
     re-invokes you when it exits (never a `Monitor` arm, capped at 30 min):
-    `bash "{{KIT}}/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>" [--succession {{SESSION_NAME}}]`
+    `bash "$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>" [--succession {{SESSION_NAME}}]`
     It exits on the first real event (`WAKE telegram | tick | underfilled |
     tick-fail`), so an idle console takes **zero** turns. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
