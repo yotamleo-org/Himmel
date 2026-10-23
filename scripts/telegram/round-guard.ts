@@ -190,12 +190,12 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string): {
     const cycle = cycles.get(cycleKey) ?? { head, order, responded: false, blocking: false };
     if (record.kind === "avail") {
       if (record.status === "ok") {
+        if (!cycle.responded) cycle.order = order;
         cycle.responded = true;
-        cycle.order = order;
       }
     } else {
+      if (!cycle.responded) cycle.order = order;
       cycle.responded = true;
-      cycle.order = order;
       const ticket = typeof record.deferred_to === "string" ? record.deferred_to.trim() : "";
       const why = typeof record.reason === "string" ? record.reason.trim() : "";
       const deferred = record.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && why;

@@ -91,6 +91,18 @@ test("rounds: interleaved branches are ordered by their response, not their firs
   expect(countReviewedRounds(lines, "HIMMEL-1540")).toEqual({ rounds: 1, heads: ["1111111"] });
 });
 
+test("rounds: a late clean row at an older head does not move that cycle past the trailing blocking run", () => {
+  const branch = "fix/himmel-1876-a";
+  const lines = [
+    avail(branch, "0000000abc"),
+    finding(branch, "1111111abc"),
+    finding(branch, "2222222abc"),
+    finding(branch, "3333333abc"),
+    avail(branch, "0000000abc"),
+  ];
+  expect(countReviewedRounds(lines, "HIMMEL-1876")).toEqual({ rounds: 3, heads: ["1111111", "2222222", "3333333"] });
+});
+
 test("rounds: another ticket's branches never count toward this one", () => {
   const lines = [finding("fix/himmel-1541-a", "1111111abc"), finding("fix/himmel-1541-b", "2222222abc")];
   expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(0);
