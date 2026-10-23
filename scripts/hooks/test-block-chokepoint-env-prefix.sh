@@ -2513,6 +2513,8 @@ assert_deny "7009 control: a payload body run through a dot-segment spelling sti
 assert_deny "7009 control: a payload body run through a glob spelling still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/evid*.md")"
 assert_deny "7009 control: a payload body run by relative name after cd still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"cd /tmp/claude-1000/j3611"$'\n'"bash evidence.md")"
 assert_deny "7009 control: a payload body run through a variable path still denies" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"D=/tmp/claude-1000/j3611"$'\n'"bash \$D/evidence.md")"
+assert_deny "7009 control: a cat function that runs the evidence heredoc still denies" "$(j "cat() { bash -s; }"$'\n'"$EVH"$'\n'"$EVB"$'\n'"EOF2")"
+assert_deny "7009 control: a cat alias that runs the evidence heredoc still denies" "$(j "alias cat='bash -s #'"$'\n'"$EVH"$'\n'"$EVB"$'\n'"EOF2")"
 assert_deny "7009 control: a write-verdict call chained with another command keeps the scan" "$(j "$EVH"$'\n'"$EVB"$'\n'"EOF2"$'\n'"$WV; bash /tmp/claude-1000/j3611/./evidence.md")"
 assert_deny "7009 control: an unquoted evidence heredoc keeps its scan" "$(j "cat > $EV <<EOF2"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
 assert_deny "7009 control: a heredoc to a non-scratch path keeps its scan" "$(j "cat > /tmp/hookprobe.md <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
