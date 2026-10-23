@@ -91,7 +91,7 @@ esac
 EOS
 cat >"$tmp/lock-stub.sh" <<'EOS'
 #!/usr/bin/env bash
-rc=$(cat "$FX/lock.rc" 2>/dev/null || echo 0)
+rc=$(cat "$FX/lock.rc.${2##*/}" 2>/dev/null || cat "$FX/lock.rc" 2>/dev/null || echo 0)
 [ "$rc" = 0 ] && { echo free; exit 0; }
 age=$(cat "$FX/lock.age" 2>/dev/null || echo 0)
 now=$(date -u +%s)
@@ -268,6 +268,19 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D6: WRAPPED, no PR -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
+DOC2="$tmp/$K-N2-slug-2026-10-21.md"
+reset "In Progress"; owned LIVE 11 0
+fn "$K" --event live --doc "$DOC"
+mkdoc "$DOC2" WRAPPED; echo 0 > "$FX/lock.rc.${DOC2##*/}"
+fn "$K" --event wrapped --doc "$DOC2"
+check "no D6: one leg wraps with no PR while another holds a live lock" "$(ntrans)" 0
+check "no D6: the live leg keeps rule D5" "$(row rule)" D5
+check "no D6: the record follows the live leg" "$(jq -r '.doc + " " + .leg + " " + .state' "$REC")" "$DOC N1 live"
+reset "In Progress"; owned WRAPPED 0
+fn "$K" --event live --doc "$DOC"
+mkdoc "$DOC2" WRAPPED; echo 0 > "$FX/lock.rc.${DOC2##*/}"
+fn "$K" --event wrapped --doc "$DOC2"
+check "D6: every recorded leg ended -> To Do" "$(moved)" "transition $K To Do"
 reset "In Progress"
 fn "$K" --event sweep
 check "D7: never owned -> no write" "$(ntrans)" 0
