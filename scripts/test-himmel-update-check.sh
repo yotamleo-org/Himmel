@@ -874,6 +874,10 @@ make_nongit_install "0.3.0"
 run_ng -- --plugins-check
 assert_eq "non-git --plugins-check: still exits 0 (no git needed)" "0" "$rc"
 
+echo "Test 30: himmel-update.sh carries no Jira id outside a ponytail: line"
+ids=$(grep -nE 'HIMMEL-[0-9]+' "$SCRIPT" | grep -v 'ponytail:' || true)
+if [ -z "$ids" ]; then assert_pass "no Jira id in himmel-update.sh"; else assert_fail "Jira id left in himmel-update.sh: $ids"; fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"
