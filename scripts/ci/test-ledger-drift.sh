@@ -137,7 +137,7 @@ wf_ok() {
     && grep -qE 'bash scripts/ci/ledger-drift\.sh' <<< "$body"
 }
 mkdir -p "$SUITE_LOCK_SANDBOX/wf" || fail "LD6: cannot create the workflow mutant dir"
-sed 's/^  schedule:/    pull_request:\n  schedule:/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml" || fail "LD6: cannot write the pr-indented mutant"
+awk '/^  schedule:/ { print "    pull_request:" } { print }' "$WF" > "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml" || fail "LD6: cannot write the pr-indented mutant"
 sed 's/bash scripts\/ci\/ledger-drift\.sh/true # bash scripts\/ci\/ledger-drift.sh/' "$WF" > "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml" || fail "LD6: cannot write the path-in-comment mutant"
 if [ -f "$WF" ] && wf_ok "$WF" && ! wf_ok "$SUITE_LOCK_SANDBOX/wf/pr-indented.yml" && ! wf_ok "$SUITE_LOCK_SANDBOX/wf/path-in-comment.yml"; then
   pass "LD6: ledger-drift.yml has schedule + workflow_dispatch, no pull_request/push, runs ledger-drift.sh; both mutants rejected"
