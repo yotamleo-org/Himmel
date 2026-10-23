@@ -4671,6 +4671,7 @@ async function runPlan(answers, args) {
     const ans = await askConfirmSafe('Proceed? [Y/n] ');
     if (/^\s*n/i.test(ans)) {
       console.log('himmelctl: declined; nothing run.');
+      args.declined = true;
       return 0;
     }
   }
@@ -4826,6 +4827,60 @@ function holdSignalsDuringInstall() {
 
 // `install` subcommand handler. T1: the preflight-first gate runs BEFORE any
 // question (the question engine is T2).
+// The UI's Setup page is the one place to finish setup (secrets, commit rules). A real install on a terminal hands off to
+// it; HIMMELCTL_UI_HANDOFF=1/0 forces a side for CI and hermetic tests whose stdout is not a TTY.
+function uiHandoffEnabled() {
+  const v = process.env.HIMMELCTL_UI_HANDOFF;
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return Boolean(process.stdout.isTTY);
+}
+
+// ponytail: a browser counts as reachable unless this is an SSH session or a Linux box with no display, upgrade path is asking the operator.
+function browserReachable() {
+  if (process.env.SSH_CONNECTION || process.env.SSH_TTY) return false;
+  return process.platform !== 'linux' || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+
+// Reuse the always-on UI, else a UI an earlier install started, else start a token-bound one, and print the Setup link.
+// The always-on UI refuses a secret write until the UI login ships, so it only gets the link plus how to reach one that can.
+// No reachable browser (or no bun) types the secrets in the terminal instead, unless the wizard's own walk already did.
+async function installUiHandoff(answers) {
+  const label = 'Finish setup in the UI';
+  const inClaude = Object.keys(process.env).some((k) => (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) && process.env[k]);
+  if (inClaude) {
+    console.log(`${label}: run \`himmelctl ui\` from your own terminal; it prints the Setup link.`);
+    return;
+  }
+  if (uiServiceLib.status().ok) {
+    const svc = uiServiceLib.url('setup');
+    if (svc.ok) {
+      console.log(`${label}: ${svc.lines[0]}`);
+      console.log('That always-on UI cannot save a secret yet; `himmelctl ui` opens one that can.');
+      return;
+    }
+  }
+  const running = await uiServiceLib.adhocLink();
+  if (running) {
+    console.log(`${label}: ${running}`);
+    return;
+  }
+  if (browserReachable() && which('bun')) {
+    const r = await uiServiceLib.startAdhoc({ repoRoot: repoRoot() });
+    if (r.ok) {
+      console.log(`${label}: ${r.lines[0]}`);
+      console.log('Open it in your browser. It stops after 30 minutes idle; `himmelctl install` prints the same link while it runs.');
+      return;
+    }
+    console.error(`himmelctl: could not start the UI (${r.lines[0]}); entering secrets in the terminal instead.`);
+  } else {
+    console.log('No browser reachable from here (or bun is missing); entering secrets in the terminal instead. Later, `himmelctl ui` opens the Setup page.');
+  }
+  if (answers.secretsWalk === 'run') return;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+  try { await collectSecrets(makeAsk(rl), answers); } finally { rl.close(); }
+}
+
 async function cmdInstall(args) {
   // 0. --from-profile: load + validate the FULL schema BEFORE any side
   //    effect (CR r6) — previously the missing-tool install offer (step 3,
@@ -5013,6 +5068,7 @@ async function cmdInstall(args) {
   if (rc === 0 && !args.dryRun && shouldPrompt(args)) {
     await offerSaveProfile(answers);
   }
+  if (rc === 0 && !args.dryRun && !args.declined && uiHandoffEnabled()) await installUiHandoff(answers);
   return rc;
 }
 
@@ -8618,4 +8674,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { augmentPathForRun, gitGateHooksState, userSlugState, applyWorkspaceTrust, offeredCadenceRows, askCadences, askVm, applyVmAnswer, sameFsEntry };
+module.exports = { installUiHandoff, augmentPathForRun, gitGateHooksState, userSlugState, applyWorkspaceTrust, offeredCadenceRows, askCadences, askVm, applyVmAnswer, sameFsEntry };
