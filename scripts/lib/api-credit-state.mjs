@@ -303,7 +303,12 @@ export function creditState(command, options = {}, env = process.env) {
       let snapshot = null;
       try { snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(root, 'snapshot.json')); } catch (e) { if (!optional) throw e; }
       const result = row(c, snapshot, a, account, now, optional, options.usd ? money(options.usd) : 0n);
-      if (command === 'status') return result;
+      // under optional routing an old or absent reading with no room in our own estimate still proceeds
+      // (the pick marks it over_estimate); a fresh reading with nothing left, or a discrepancy, still refuses
+      if (command === 'status') {
+        return optional && result.snapshot_stale && result.verdict === 'SKIPPED-BANK'
+          ? { ...result, verdict: 'PROCEED', over_estimate: true } : result;
+      }
       id(options.id);
       const maximum = money(options.usd);
       if (maximum === 0n) refuse('positive-maximum-required');

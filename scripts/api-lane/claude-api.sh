@@ -24,6 +24,9 @@ CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 
 refuse() { echo "claude-api: refused: $*" >&2; exit 2; }
 
+# only the auto route below may relax the credit-reading requirement; a caller's value never does
+unset HIMMEL_API_SNAPSHOT_OPTIONAL
+
 # --- lane opt-in and credentials (presence checks only) ---
 [ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
 case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A or B (or auto)" ;; esac
