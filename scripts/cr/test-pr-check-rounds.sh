@@ -650,6 +650,54 @@ replace_rc=0
 (cd "$repo" && bash "$RR" trivial-descendant --tests-only "$replace_from" "$replace_tip" >/dev/null 2>&1) || replace_rc=$?
 assert_eq "$replace_rc" 1 "trivial-descendant ignores replacement objects"
 git -C "$repo" replace -d "$replace_tip" >/dev/null
+
+# 7266: a hook-forced plugin version bump beside test files keeps a delta
+# tests-only; any other plugin.json change, a non-test file, or a bump alone
+# does not.
+write_plugin() {
+    mkdir -p "$repo/marketplace/plugins/$1/.claude-plugin"
+    # plugin_nested=1 nests the only version key under "meta".
+    if [ -n "${plugin_nested:-}" ]; then
+        printf '{\n  "name": "%s",\n  "meta": {\n    "version": "%s"\n  },\n  "description": "%s"\n}\n' \
+            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
+    else
+        printf '{\n  "name": "%s",\n  "version": "%s",\n  "description": "%s"\n}\n' \
+            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
+    fi
+    git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
+}
+three_rounds tvb clean 0.1.0
+tvb_from="$cap_r3_head"
+tvb_commit() { # tvb_commit <branch> <plugin version> <description> [file...]
+    tvb_branch="$1"
+    git -C "$repo" checkout -q -b "$tvb_branch" "$tvb_from"
+    write_plugin tvb "$2" "$3"
+    shift 3
+    for f in "$@"; do printf '%s\n' "$f" > "$repo/$f"; git -C "$repo" add "$f"; done
+    git -C "$repo" commit -q -m "$tvb_branch delta"
+    tvb_to="$(git -C "$repo" rev-parse HEAD)"
+}
+tvb_rc() { # tvb_rc <expected rc> <label>
+    tvb_got=0
+    (cd "$repo" && bash "$RR" trivial-descendant --tests-only "$tvb_from" "$tvb_to" >/dev/null 2>&1) || tvb_got=$?
+    assert_eq "$tvb_got" "$1" "$2"
+}
+tvb_commit tvb-ok 0.1.1 fixture test-tvb.sh
+tvb_rc 0 "7266 a test file plus a version-only plugin.json bump is tests-only"
+git -C "$repo" checkout -q tvb
+git -C "$repo" merge -q --ff-only tvb-ok
+tvb_ev_rc=0
+(cd "$repo" && bash "$RR" evidence --branch tvb --head "$tvb_to" >/dev/null 2>&1) || tvb_ev_rc=$?
+assert_eq "$tvb_ev_rc" 0 "7266 evidence accepts a test file plus a version-only bump"
+assert_has "$(cat "$git_dir/cr-critic-scores.jsonl")" "\"branch\":\"tvb\",\"head\":\"$tvb_to\",\"status\":\"ok\",\"source\":\"evidence\"" "7266 evidence records its ledger row"
+tvb_commit tvb-field 0.1.1 other test-tvb.sh
+tvb_rc 1 "7266 a plugin.json change beyond the version stays refused"
+tvb_commit tvb-code 0.1.1 fixture test-tvb.sh tvb-code.txt
+tvb_rc 1 "7266 a version bump beside a non-test file stays refused"
+tvb_commit tvb-alone 0.1.1 fixture
+tvb_rc 1 "7266 a version bump alone stays refused"
+tvb_commit tvb-down 0.0.9 fixture test-tvb.sh
+tvb_rc 1 "7266 a version downgrade stays refused"
 if [ "${1:-}" = --ledger-hardening-only ]; then
     printf 'ledger hardening: %s failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]
@@ -910,18 +958,6 @@ assert_eq "$(cat "$git_dir/cr-review-rounds/evilmerge.round")" "3" "a refused ev
 # plugin-version-bump-required makes a plugin PR bump its
 # plugin.json version inside the merge of main, so that merge never equals a
 # clean merge tree. Only a version-only resolution above both parents passes.
-write_plugin() {
-    mkdir -p "$repo/marketplace/plugins/$1/.claude-plugin"
-    # plugin_nested=1 nests the only version key under "meta".
-    if [ -n "${plugin_nested:-}" ]; then
-        printf '{\n  "name": "%s",\n  "meta": {\n    "version": "%s"\n  },\n  "description": "%s"\n}\n' \
-            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
-    else
-        printf '{\n  "name": "%s",\n  "version": "%s",\n  "description": "%s"\n}\n' \
-            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
-    fi
-    git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
-}
 # plugin_case <branch> <main version> <branch version> [main-bumps [file [spent]]]:
 # plugin.json at 0.1.0 on main, three rounds on a branch at <branch version>,
 # optionally spending the delta round on a fix before main moves (a plugin
