@@ -6,8 +6,8 @@
 # It pins what keeps the scan inside the free quota and the secret out of reach:
 # schedule + workflow_dispatch only (never per PR), read-only permissions, every
 # `uses:` pinned by a 40-hex sha, the CLI installed at an exact version, the
-# token gated so an empty SNYK_TOKEN skips with a notice, the scan run through
-# scripts/security/snyk-scan.sh, and the JSON uploaded as an artifact.
+# token gated so an empty SNYK_TOKEN skips with a notice, the scan and the forks
+# scan run through scripts/security/snyk-scan.sh, and the JSON uploaded as an artifact.
 #
 # ponytail: line-oriented text checks, not a YAML parse, upgrade to a real parser
 # if the repo ever vendors one for workflows (as test-main-sweep-red-workflow.sh).
@@ -81,10 +81,18 @@ tok_steps="$(awk '
   /^[[:space:]]+- / { flush(); blk="" }
   { blk = blk "\n" $0 }
   END { flush(); print g+0, sc+0, other+0 }' <<< "$s")"
-if [ "$tok_steps" = "1 1 0" ]; then ok "token reaches only the gate and scan steps"; else bad "token reaches only the gate and scan steps (gate/scan/other: $tok_steps)"; fi
+if [ "$tok_steps" = "1 2 0" ]; then ok "token reaches only the gate, scan and forks steps"; else bad "token reaches only the gate, scan and forks steps (gate/scan/other: $tok_steps)"; fi
 check     "checkout does not persist credentials"   'persist-credentials: false'
 check     "scan runs snyk-scan.sh"                 'bash scripts/security/snyk-scan\.sh'
 check     "scan writes to a known out-dir"          'snyk-scan\.sh.*--out-dir'
+# shellcheck disable=SC2016  # regex: a literal $RUNNER_TEMP
+check     "forks scan runs snyk-scan.sh --forks"   'bash scripts/security/snyk-scan\.sh --forks --out-dir "\$RUNNER_TEMP/snyk"'
+check     "uv installed at an exact version"        'pipx install uv==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)'
+check     "curl is installed for the osv.dev lookup" 'apt-get install.* curl'
+check     "forks scan still runs when the main scan finds issues" 'if: \$\{\{ !cancelled\(\) && steps\.gate\.outputs\.enabled == .true. \}\}'
+check     "dispatch input probes a missing ref"     'missing_ref_probe:'
+forks_step="$(awk '/^      - name: Run the forks scan/ {f=1; print; next} f && /^      - / {exit} f {print}' <<< "$s")"
+if grep -q 'SNYK_SCAN_FORKS' <<< "$forks_step" && grep -q 'inputs.missing_ref_probe' <<< "$forks_step"; then ok "probe feeds one missing-ref fork row to the forks scan"; else bad "probe feeds one missing-ref fork row to the forks scan"; fi
 check     "JSON uploaded as an artifact"            'actions/upload-artifact@'
 check     "upload runs even when the scan finds issues" "if: always\(\) && steps\.gate\.outputs\.enabled == 'true'"
 
