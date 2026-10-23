@@ -33,7 +33,7 @@ summarize() {
     | (map(select(.ev == "call" and .tool == "probe_task")) | last) as $t
     | ([.[] | select(.ev == "elicit_unavailable" or .ev == "elicit_sent" or .ev == "elicit_result" or .ev == "elicit_timeout")]) as $e
     | "mode=\($mode) client=\(($i.client.name // "?") + "/" + ($i.client.version // "?"))"
-      + " client_tasks=\(if $i.caps.tasks then "yes" else "no" end)"
+      + " client_tasks=\(if ($i.caps.tasks or $i.caps.extensions["io.modelcontextprotocol/tasks"]) then "yes" else "no" end)"
       + " client_elicit=\(if $i.caps.elicitation then "yes" else "no" end)"
       + " task=\(if $t == null then "not-called" elif $t.task then "yes" else "no" end)"
       + " elicit=\(

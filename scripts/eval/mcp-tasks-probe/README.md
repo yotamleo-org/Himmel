@@ -10,7 +10,8 @@ Spec: MCP 2025-11-25 (tasks are experimental).
 | `server.mjs` | zero-dep stdio MCP server: `probe_task` (taskSupport optional), `probe_elicit`; logs JSONL to `MCP_PROBE_LOG` |
 | `probe.sh` | `summarize` a log into one row, `handshake` a no-model `claude mcp list`, `run` one billed mode |
 | `test-probe.sh` | the suite: scripted clients plus the real handshake fixture, no model call |
-| `fixtures/claude-initialize.json` | the `initialize` request Claude Code 2.1.309 sent on the test VM |
+| `fixtures/claude-initialize.json` | the `initialize` request Claude Code 2.1.309 sent on the test VM (no tasks capability) |
+| `fixtures/claude-initialize-2.1.310.json` | the same from 2.1.310, which declares tasks as the `io.modelcontextprotocol/tasks` extension |
 
 ## Tier: paid, on-demand only
 

@@ -70,6 +70,17 @@ else
   fail "real handshake fixture missing"
 fi
 
+# 4b. Claude Code 2.1.310 declares tasks as the io.modelcontextprotocol/tasks extension, not a top-level capability
+if [ -s "$FIX/claude-initialize-2.1.310.json" ]; then
+  { cat "$FIX/claude-initialize-2.1.310.json"; printf '\n'; } | run_server real310 1000
+  r=$(row real310)
+  has "2.1.310 handshake: client named" "$r" "client=claude-code/2.1.310"
+  has "2.1.310 handshake: tasks extension seen" "$r" "client_tasks=yes"
+  has "2.1.310 handshake: elicitation capability" "$r" "client_elicit=yes"
+else
+  fail "2.1.310 handshake fixture missing"
+fi
+
 # 5. summarize on an empty log is a refusal, not a vacuous pass
 : > "$TMP/empty.log"
 bash "$PROBE" summarize "$TMP/empty.log" > /dev/null 2>&1; rc=$?
