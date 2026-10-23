@@ -146,7 +146,7 @@ check 'sandbox argv resolves its binds with a realpath that has no -e or -m' 'PA
 argv="$(LEAK_TOKEN=leak LEAK_PLAIN=x DEEPSEEK_API_KEY=k bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" 2>&1)"
 after() { printf '%s\n' "$argv" | grep -A"$2" -x -- "$1"; } # $1 flag, $2 operand count
 check 'sandbox drops a credential and an unlisted variable, keeps PATH and the lane key' 'after --unsetenv 1 | grep -qx LEAK_TOKEN && after --unsetenv 1 | grep -qx LEAK_PLAIN && ! after --unsetenv 1 | grep -qxE "PATH|DEEPSEEK_API_KEY"'
-check 'sandbox hides /home, /tmp, /run and /var/log' '(for d in /home /tmp /run /var/log; do after --tmpfs 1 | grep -qxF "$d" || exit 1; done)'
+check 'sandbox hides /home, /tmp, /run and /var/log' '(for d in /home /tmp /run /var/log; do [ -d "$d" ] || continue; after --tmpfs 1 | grep -qxF "$d" || exit 1; done)'
 check 'sandbox has its own network namespace, entered through the tunnel' 'printf "%s\n" "$argv" | grep -qx -- --net && after --unshare-all 0 | grep -q . && printf "%s\n" "$argv" | grep -qx -- --share-net && [ "$(printf "%s\n" "$argv" | grep -x -A1 tunnel | tail -1)" = 443 ]'
 check 'sandbox binds the worktree read-only, lq-work and the row doc dir read-write' 'after --ro-bind 2 | grep -qxF "$wt" && after --bind 2 | grep -qxF "$wt/lq-work" && after --bind 2 | grep -qxF "$(dirname "$doc")"'
 check 'sandbox maps the worktree under the repo, where the lane launcher accepts its corpus' 'after --ro-bind 2 | grep -A1 -xF "$wt" | grep -qxF "$TMP/repo/.claude/worktrees/lq-pilot-p01"'

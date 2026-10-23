@@ -263,9 +263,12 @@ restore_git() {
   # The pointer is written beside the worktree (no jail binds it) and renamed
   # in: rename replaces whatever the lane put back in the gap and never follows
   # it, where a redirect follows a symlink to a FIFO or device even under noclobber.
+  # mv without -T (BSD has none) would move INTO a directory or a symlink to one,
+  # so such a target is removed first and the result is checked.
   local tmp
   tmp="$(mktemp "$(dirname "$WT")/.gitptr.XXXXXX")" || die "cannot stage the git pointer of $WT"
-  if ! { printf 'gitdir: %s\n' "$GITDIR" >"$tmp" && mv -T -- "$tmp" "$WT/.git"; }; then # gnu-ok: Linux-only kit
+  if ! { printf 'gitdir: %s\n' "$GITDIR" >"$tmp" && { [ ! -d "$WT/.git" ] || rm -rf -- "$WT/.git"; } \
+      && mv -f -- "$tmp" "$WT/.git" && [ -f "$WT/.git" ] && [ ! -L "$WT/.git" ]; }; then
     rm -f -- "$tmp"; die "cannot restore the git pointers of $WT"
   fi
 }
