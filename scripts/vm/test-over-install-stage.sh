@@ -60,15 +60,17 @@ if [ -n "$OUT" ]; then pass "a command repeated across events is detected"; else
 # The over-install hook set must equal a fresh install's: a dropped or an extra hook shows up.
 OUT="$(settings_hook_set_diff "$REAL" "$REAL")"
 if [ -z "$OUT" ]; then pass "identical hook sets have no diff"; else fail_case "identical hook sets have no diff ($OUT)"; fi
-jq '.hooks[(.hooks | keys[0])] |= .[1:]' "$REAL" > "$WORK/drop.json"
+if jq '.hooks[(.hooks | keys[0])] |= .[1:]' "$REAL" > "$WORK/drop.json" && [ -s "$WORK/drop.json" ]; then pass "drop fixture built"; else fail_case "drop fixture built"; fi
 OUT="$(settings_hook_set_diff "$REAL" "$WORK/drop.json")"
 if [ -n "$OUT" ]; then pass "RED control: a dropped hook entry is detected"; else fail_case "RED control: a dropped hook entry is detected"; fi
 expect_has "...as an expected-only line" "< " "$OUT"
-jq '(.hooks | keys) as $k | .hooks[$k[1]] += .hooks[$k[0]] | .hooks[$k[0]] = []' "$REAL" > "$WORK/moved.json"
+if jq '(.hooks | keys) as $k | .hooks[$k[1]] += .hooks[$k[0]] | .hooks[$k[0]] = []' "$REAL" > "$WORK/moved.json" && [ -s "$WORK/moved.json" ]; then pass "moved fixture built"; else fail_case "moved fixture built"; fi
 OUT="$(settings_hook_set_diff "$REAL" "$WORK/moved.json")"
 if [ -n "$OUT" ]; then pass "RED control: a hook moved to another event is detected"; else fail_case "RED control: a hook moved to another event is detected"; fi
-OUT="$(settings_hook_set_diff "$WORK/dup.json" "$REAL")"
-expect_has "a duplicated entry shows as an extra line" "< " "$OUT"
+expect_has "...with its old registration as an expected-only line" "< " "$OUT"
+expect_has "...and its new registration as an actual-only line" "> " "$OUT"
+OUT="$(settings_hook_set_diff "$REAL" "$WORK/dup.json")"
+expect_has "a duplicated entry shows as an actual-only line" "> " "$OUT"
 
 # --- status summary line -----------------------------------------------------------
 if [ "$(status_red_count $'7 green\n0 red, 1 degraded, 7 green, 40 n/a')" = 0 ]; then rc=0; else rc=1; fi
@@ -123,6 +125,15 @@ run_driver() { # <fake-rc> <fake-out> args...
 run_driver 0 'RESULT: 0 failure(s)' user@localhost 2299 "$WORK/key"
 expect_rc "driver passes when the guest stage passes" 0 "$DRV_RC"
 expect_has "driver runs the plain stage (no RED control)" "OVERINSTALL_RED=''" "$(cat "$WORK/net.log")"
+for up in base.tgz cand.tgz over-install-guest.sh; do
+  expect_has "driver uploads $up" "cat > /tmp/himmel-over-install-vm/$up" "$(cat "$WORK/net.log")"
+done
+
+# An identity path with a space reaches ssh as one argument.
+mkdir -p "$WORK/key dir"
+run_driver 0 'RESULT: 0 failure(s)' user@localhost 2299 "$WORK/key dir/id"
+expect_rc "driver passes with a space in the identity path" 0 "$DRV_RC"
+if grep -qxF "$WORK/key dir/id" "$WORK/net.log"; then pass "...the identity path stays one ssh argument"; else fail_case "...the identity path stays one ssh argument"; fi
 
 run_driver 1 'RESULT: 1 failure(s)' user@localhost 2299 "$WORK/key"
 expect_rc "driver fails when the guest stage fails" 1 "$DRV_RC"
@@ -144,7 +155,8 @@ expect_rc "driver refuses an unresolvable base ref" 2 "$rc"
 if [ ! -s "$WORK/net.log" ]; then pass "...before any ssh"; else fail_case "...before any ssh"; fi
 
 # --- opt-in wiring in the symmetry entry point -----------------------------------
-if grep -q 'HIMMEL_VM_E2E_OVERINSTALL' "$SYMM" && grep -q 'over-install-e2e.sh' "$SYMM"; then
+SYMM_CODE="$(grep -v '^[[:space:]]*#' "$SYMM")"
+if grep -Fq '[ "${HIMMEL_VM_E2E_OVERINSTALL:-0}" = "1" ]' <<<"$SYMM_CODE" && grep -Fq 'bash "$REPO/scripts/vm/over-install-e2e.sh"' <<<"$SYMM_CODE"; then
   pass "symmetry entry point runs the stage behind HIMMEL_VM_E2E_OVERINSTALL"
 else
   fail_case "symmetry entry point runs the stage behind HIMMEL_VM_E2E_OVERINSTALL"

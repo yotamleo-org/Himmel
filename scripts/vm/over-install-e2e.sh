@@ -38,7 +38,7 @@ vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
 IDENT="${3:-$VM_MODE_IDENT}"
-SSH_OPTS="-p $PORT -i $IDENT -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
+SSH_OPTS=(-p "$PORT" -i "$IDENT" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 REMOTE_DIR="/tmp/himmel-over-install-vm"
 BASE_REF="${OVERINSTALL_BASE_REF:-v1.1.2}"
 CAND_REF="${OVERINSTALL_CAND_REF:-HEAD}"
@@ -49,8 +49,8 @@ for ref in "$BASE_REF" "$CAND_REF"; do
   fi
 done
 
-# shellcheck disable=SC2086,SC2029  # $SSH_OPTS word-splits into flags; vars expand host-side on purpose
-ssh_vm() { ssh $SSH_OPTS "$HOSTSPEC" "$@"; }
+# shellcheck disable=SC2029  # vars expand host-side on purpose
+ssh_vm() { ssh "${SSH_OPTS[@]}" "$HOSTSPEC" "$@"; }
 
 echo "==> over-install stage: $HOSTSPEC:$PORT (base $BASE_REF, candidate $CAND_REF)$([ "$EXPECT_RED" -eq 1 ] && echo ' [RED control: duplicated hook entry]')"
 if ! ssh_vm 'echo connected' >/dev/null 2>&1; then
