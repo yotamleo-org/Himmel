@@ -11,10 +11,11 @@
 // REFUSE, rather than adding more handover prose.
 //
 // Mechanism: the CR ledger (<git-common-dir>/cr-critic-scores.jsonl) already
-// records review evidence per branch. The counter follows the ACTIVE branch's
-// trailing sequence of heads with blocking critic findings; a clean response
-// resets that sequence, and historical/parallel branches are separate change
-// lifecycles. Two-stage escalation (see the threshold constants below for the
+// records review evidence per branch. The counter follows the TICKET's
+// trailing sequence of heads with blocking critic findings across every branch
+// that carries the ticket key; a clean response resets that sequence. The
+// budget is keyed on the ticket, not the branch or the panel, so a respawned
+// panel on a fresh branch (or an anonymous dispatch) cannot reset it. Two-stage escalation (see the threshold constants below for the
 // operator decision + evidence): at ROUND_WARN_THRESHOLD consecutive blocking
 // reviews the dispatch is refused unless the brief carries a substantive
 // `INVARIANT:` section — the property every prior round's defect violated,
@@ -82,10 +83,10 @@ export function extractTicketKey(branch: string | undefined, name: string | unde
   return m ? m[1].toUpperCase() : undefined;
 }
 
-// Count the trailing sequence of BLOCKING review cycles on the active branch.
-// A clean review ends the sequence and starts a new change lifecycle; reviews
-// on historical/parallel branches never enter it. This reset is not a cheap
-// evasion: producing a clean critic response means the failed loop has ended,
+// Count the trailing sequence of BLOCKING review cycles on the ticket, over
+// every ledger branch that carries its key. A clean review ends the sequence
+// and starts a new change lifecycle; reviews of other tickets never enter it.
+// This reset is not a cheap evasion: producing a clean critic response means the failed loop has ended,
 // and subsequent edits are a new lifecycle. Missing signals (failed, timed-out,
 // rate-limited attempts) neither count nor reset anything.
 //
@@ -94,7 +95,7 @@ export function extractTicketKey(branch: string | undefined, name: string | unde
 // records, matching the clearance gate's verdict semantics. Malformed lines are
 // skipped: this is a round COUNTER feeding a refusal-only workflow guard, not the
 // clearance gate (clear-review-marker.sh keeps the fail-closed ledger read).
-export function countReviewedRounds(ledgerLines: string[], ticketKey: string, activeBranch: string): { rounds: number; heads: string[] } {
+export function countReviewedRounds(ledgerLines: string[], ticketKey: string): { rounds: number; heads: string[] } {
   type LedgerRecord = {
     kind?: string; branch?: unknown; head?: unknown; target_head?: unknown;
     status?: unknown; finding_id?: unknown; severity?: unknown; verdict?: unknown;
@@ -182,7 +183,7 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string, ac
       }
     }
     const branch = String(record.branch ?? "");
-    if (branch !== activeBranch || !ticketBranch.test(branch)) continue;
+    if (!ticketBranch.test(branch)) continue;
     const head = headGroup(record.head);
     if (!head) continue;
     const cycle = cycles.get(head) ?? { head, order, responded: false, blocking: false };
@@ -254,7 +255,7 @@ export function readCrLedgerLines(cwd: string): string[] {
 // (caller prints — the transcript should show the guard evaluated a hot
 // ticket), or nothing.
 //
-// Decision table (rounds = trailing blocking reviews on the active branch):
+// Decision table (rounds = trailing blocking reviews on the ticket):
 //   < 2                       silent pass
 //   >= 2, valid override      pass, loud note recording the override reason
 //   2, INVARIANT present      pass with note
@@ -268,19 +269,7 @@ export function checkRoundGuard(
 ): { refusal?: string; note?: string } {
   const ticket = extractTicketKey(args.branch, args.name, args.task);
   if (!ticket) return {};
-  // Shared mode names the active branch directly. Own mode has a stable branch
-  // only when the caller supplied --name; an anonymous timestamped dispatch is
-  // a new lifecycle with no prior branch to count, so this refusal-only guard
-  // fails open rather than borrowing unrelated ticket history.
-  const prefix = lane === "spawn-glm" ? "glm" : lane === "spawn-claudex" ? "claudex" : undefined;
-  // A whitespace-only --name is truthy but sanitises to "", which would derive
-  // the malformed branch `glm/` and count rounds against a ref no dispatch can
-  // ever have used. Treat blank exactly as absent (anonymous dispatch), which
-  // is the fail-open path this refusal-only guard already intends.
-  const nameSlug = (args.name ?? "").trim().replace(/[^a-zA-Z0-9-]/g, "-");
-  const activeBranch = args.branch ?? (nameSlug && prefix ? `${prefix}/${nameSlug}` : undefined);
-  if (!activeBranch) return {};
-  const { rounds, heads } = countReviewedRounds(readLedger(args.cwd), ticket, activeBranch);
+  const { rounds, heads } = countReviewedRounds(readLedger(args.cwd), ticket);
   if (rounds < ROUND_WARN_THRESHOLD) return {};
   const override = (args.roundsOverride ?? "").trim();
   if (override.length >= ROUNDS_OVERRIDE_MIN_CHARS) {
@@ -305,7 +294,7 @@ export function checkRoundGuard(
         ];
     return {
       refusal: [
-        `${lane}: REFUSED (round guard, HIMMEL-1553): ${ticket} already has ${rounds} consecutive blocking reviews on the active branch (heads: ${heads.join(", ")}) — buying another cheap-lane round is the failure mode itself, not a fix for it.`,
+        `${lane}: REFUSED (round guard, HIMMEL-1553): ${ticket} already has ${rounds} consecutive blocking reviews on the ticket (heads: ${heads.join(", ")}) — buying another cheap-lane round is the failure mode itself, not a fix for it.`,
         `Evidence class (HIMMEL-1540): four rounds of competent workers with increasingly detailed briefs each fixed the symptom and exposed the next seam; what broke the loop was a JUDGMENT-TIER pass given the abstraction as the task. At this round the thing that must change is the model, not the brief.`,
         ...permittedPaths,
       ].join("\n"),
@@ -316,7 +305,7 @@ export function checkRoundGuard(
   }
   return {
     refusal: [
-      `${lane}: REFUSED (round guard, HIMMEL-1553): ${ticket} already has ${rounds} consecutive blocking reviews on the active branch (heads: ${heads.join(", ")}) and this brief names no invariant.`,
+      `${lane}: REFUSED (round guard, HIMMEL-1553): ${ticket} already has ${rounds} consecutive blocking reviews on the ticket (heads: ${heads.join(", ")}) and this brief names no invariant.`,
       `A second failed review is the second drift (CLAUDE.md: escalate to structural on the second): each round's brief so far describes the previous defect, the worker fixes exactly that, and the next seam surfaces. Do NOT re-describe the newest defect.`,
       `Re-dispatch with a line-delimited section in the brief:`,
       `INVARIANT:`,
@@ -348,13 +337,10 @@ export function checkRoundGuard(
 // checkRoundGuard, and surfaced here as an ordinary exit 0).
 //
 // The branch defaults to --cwd's own git branch: an Agent-tool dispatch runs
-// IN the caller's existing worktree, unlike spawn-glm/spawn-claudex's
-// anonymous own-mode dispatches, which mint a fresh branch and so derive
-// theirs from --name instead (see the `prefix`/`nameSlug` logic above, which
-// this lane id deliberately does not match). A --cwd that is not a git repo,
-// or a detached HEAD, leaves the branch undetermined — checkRoundGuard then
-// fails open (no activeBranch, same as an anonymous spawn-glm/spawn-claudex
-// dispatch), not a CLI error.
+// IN the caller's existing worktree, and the branch only supplies the ticket
+// key. A --cwd that is not a git repo, or a detached HEAD, leaves the key to
+// the task text — checkRoundGuard fails open when neither names a ticket, not
+// a CLI error.
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   if (argv[0] !== "check") {

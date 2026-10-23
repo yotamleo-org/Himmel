@@ -46,7 +46,7 @@ test("ticket key: none anywhere -> undefined (guard fails open)", () => {
 
 test("ticket key: HIMMEL-154 does not truncate out of HIMMEL-1540", () => {
   expect(extractTicketKey("fix/himmel-1540-x", undefined, "t")).toBe("HIMMEL-1540");
-  const rounds = countReviewedRounds([avail("fix/himmel-1540-x", "aaaaaaa1")], "HIMMEL-154", "fix/himmel-1540-x");
+  const rounds = countReviewedRounds([avail("fix/himmel-1540-x", "aaaaaaa1")], "HIMMEL-154");
   expect(rounds.rounds).toBe(0);
 });
 
@@ -55,25 +55,32 @@ test("ticket boundary: a letter suffix is NOT the ticket (codex-2 — himmel-154
   expect(extractTicketKey("fix/himmel-1540abc", undefined, "t")).toBeUndefined();
   expect(extractTicketKey(undefined, undefined, "see HIMMEL-1540abc")).toBeUndefined();
   // counting: a himmel-1540abc branch contributes NO rounds for the key
-  expect(countReviewedRounds([avail("fix/himmel-1540abc", "aaaaaaa1")], "HIMMEL-1540", "fix/himmel-1540abc").rounds).toBe(0);
+  expect(countReviewedRounds([avail("fix/himmel-1540abc", "aaaaaaa1")], "HIMMEL-1540").rounds).toBe(0);
   // a hyphen still bounds — the normal slug shape keeps matching
-  expect(countReviewedRounds([finding("fix/himmel-1540-x", "aaaaaaa1")], "HIMMEL-1540", "fix/himmel-1540-x").rounds).toBe(1);
+  expect(countReviewedRounds([finding("fix/himmel-1540-x", "aaaaaaa1")], "HIMMEL-1540").rounds).toBe(1);
 });
 
 // ── countReviewedRounds ──────────────────────────────────────────────────────
 test("rounds: short and full forms of the same blocking head count once", () => {
   const full = "a5e73acb0ce202da8722567753debf091258090d";
   const lines = [avail("fix/himmel-1540-x", full), finding("fix/himmel-1540-x", full.slice(0, 8))];
-  expect(countReviewedRounds(lines, "HIMMEL-1540", "fix/himmel-1540-x").rounds).toBe(1);
+  expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(1);
 });
 
-test("rounds: clean and parallel branches do not escalate the active branch", () => {
+test("rounds: a fresh branch for the same ticket continues the count, a clean sibling review ends it", () => {
   const lines = [
     finding("fix/himmel-1540-a", "1111111abc"),
     finding("glm/himmel-1540-b", "2222222abc"),
-    avail("claudex/himmel-1540-c", "3333333abc"),
   ];
-  expect(countReviewedRounds(lines, "HIMMEL-1540", "feat/himmel-1540-active").rounds).toBe(0);
+  // the respawned panel's branch has no ledger rows of its own: still counted
+  expect(countReviewedRounds(lines, "HIMMEL-1540")).toEqual({ rounds: 2, heads: ["1111111", "2222222"] });
+  // a clean review on any branch of the ticket ends the failed loop
+  expect(countReviewedRounds([...lines, avail("claudex/himmel-1540-c", "3333333abc")], "HIMMEL-1540").rounds).toBe(0);
+});
+
+test("rounds: another ticket's branches never count toward this one", () => {
+  const lines = [finding("fix/himmel-1541-a", "1111111abc"), finding("fix/himmel-1541-b", "2222222abc")];
+  expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(0);
 });
 
 test("rounds: a clean review resets the active branch's consecutive blocking sequence", () => {
@@ -84,16 +91,16 @@ test("rounds: a clean review resets the active branch's consecutive blocking seq
     avail(branch, "3333333abc"),
     finding(branch, "4444444abc"),
   ];
-  expect(countReviewedRounds(lines, "HIMMEL-1540", branch)).toEqual({ rounds: 1, heads: ["4444444"] });
+  expect(countReviewedRounds(lines, "HIMMEL-1540")).toEqual({ rounds: 1, heads: ["4444444"] });
 });
 
 test("rounds: a FAILED critic attempt is not a round; a blocking finding row is (adversarial r3)", () => {
   const branch = "fix/himmel-1540-x";
   const availBad = JSON.stringify({ kind: "avail", branch, head: "aaaaaaa1", model: "codex", status: "unavailable" });
   // unavailable-only head -> zero rounds (a missing signal, not a review)
-  expect(countReviewedRounds([availBad], "HIMMEL-1540", branch).rounds).toBe(0);
+  expect(countReviewedRounds([availBad], "HIMMEL-1540").rounds).toBe(0);
   // a finding at the same head IS evidence a critic responded and blocked
-  expect(countReviewedRounds([availBad, finding(branch, "aaaaaaa1")], "HIMMEL-1540", branch).rounds).toBe(1);
+  expect(countReviewedRounds([availBad, finding(branch, "aaaaaaa1")], "HIMMEL-1540").rounds).toBe(1);
 });
 
 test("rounds: non-blocking findings are clean reviews, not failed cycles", () => {
@@ -103,7 +110,7 @@ test("rounds: non-blocking findings are clean reviews, not failed cycles", () =>
     finding(branch, "2222222abc", "sug"),
     finding(branch, "3333333abc", "crit", "disproved"),
   ];
-  expect(countReviewedRounds(lines, "HIMMEL-1540", branch).rounds).toBe(0);
+  expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(0);
 });
 
 test("rounds: other tickets, malformed lines, empty heads, non-review kinds are ignored", () => {
@@ -115,7 +122,7 @@ test("rounds: other tickets, malformed lines, empty heads, non-review kinds are 
     JSON.stringify({ kind: "usage", branch, head: "5555555abc" }),
     JSON.stringify({ kind: "amend", branch, target_head: "6666666abc" }),
   ];
-  expect(countReviewedRounds(lines, "HIMMEL-1540", branch).rounds).toBe(0);
+  expect(countReviewedRounds(lines, "HIMMEL-1540").rounds).toBe(0);
 });
 
 // ── hasSubstantiveInvariant ──────────────────────────────────────────────────
@@ -141,7 +148,7 @@ test("rounds: a chained amend (re-key, then disprove) is applied, as the audit d
     JSON.stringify({ kind: "amend", branch, target_head: "bbbbbbb2", finding_id: "codex-1", set: { verdict: "disproved" } }),
   ];
   // Pre-merge kept verdict "agreed" here and returned 1.
-  expect(countReviewedRounds(ledger, "HIMMEL-1540", branch).rounds).toBe(0);
+  expect(countReviewedRounds(ledger, "HIMMEL-1540").rounds).toBe(0);
 });
 
 // the amend scan was findings x amends (5.6k x 6.3k on the live
@@ -159,7 +166,7 @@ test("rounds: a live-sized ledger (5.6k findings, 6.3k amends) counts in under 1
   for (let i = 0; i < 5600; i++) ledger.push(finding("fix/other", hex(i), "imp", "agreed", `codex-${(i % 10 < 6 ? 0 : 1 + (i % 3))}`));
   ledger.push(finding(branch, "aaaaaaa1"), avail(branch, "bbbbbbb2"), finding(branch, "ccccccc3"));
   const t0 = performance.now();
-  const r = countReviewedRounds(ledger, "HIMMEL-4611", branch);
+  const r = countReviewedRounds(ledger, "HIMMEL-4611");
   const ms = performance.now() - t0;
   expect(r.rounds).toBe(1);
   expect(ms).toBeLessThan(1000);
@@ -178,7 +185,7 @@ test("rounds: a chain of 40k amends in one bucket is applied in linear time", ()
     ledger.push(JSON.stringify({ kind: "amend", branch, target_head: hex(i), finding_id: "codex-1", set }));
   }
   const t0 = performance.now();
-  const r = countReviewedRounds(ledger, "HIMMEL-4615", branch);
+  const r = countReviewedRounds(ledger, "HIMMEL-4615");
   const ms = performance.now() - t0;
   expect(r.rounds).toBe(0);
   expect(ms).toBeLessThan(300);
@@ -359,4 +366,20 @@ test("CLI: `check` without --cwd/--task-file exits 2 naming both as required", (
   const r = Bun.spawnSync(["bun", CLI_PATH, "check"], { stdout: "pipe", stderr: "pipe" });
   expect(r.exitCode).toBe(2);
   expect(r.stderr.toString()).toContain("round-guard.ts check: --cwd and --task-file are required");
+});
+
+// ── a fresh panel cannot reset the round budget ──────────────────────────────
+test("fresh panel on a new branch of the same ticket after the cap is refused; a new ticket is not", () => {
+  const spent = Array.from({ length: ROUND_ESCALATE_THRESHOLD }, (_, i) =>
+    finding(`glm/himmel-1540-r${i}`, `${i}`.repeat(7) + "abc", "imp", "agreed", `codex-${i}`));
+  const fresh = checkRoundGuard("spawn-glm", { task: "apply CR round fixes", branch: "glm/himmel-1540-r9", cwd: "." }, () => spent);
+  expect(fresh.refusal).toContain("HIMMEL-1540");
+  const other = checkRoundGuard("spawn-glm", { task: "apply CR round fixes", branch: "glm/himmel-1541-r0", cwd: "." }, () => spent);
+  expect(other.refusal).toBeUndefined();
+});
+
+test("anonymous dispatch naming the ticket in its task is counted, not waved through", () => {
+  const spent = mkLedger(ROUND_ESCALATE_THRESHOLD);
+  const r = checkRoundGuard("spawn-claudex", { task: "fix HIMMEL-1540", cwd: "." }, () => spent);
+  expect(r.refusal).toContain("HIMMEL-1540");
 });
