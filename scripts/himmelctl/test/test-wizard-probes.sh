@@ -1722,8 +1722,9 @@ hd4403_primary="$work/hd4403-primary"; mkdir -p "$hd4403_primary/handovers" "$wo
 git -C "$hd4403_primary" init -q -b main
 git -C "$hd4403_primary" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$hd4403_primary" worktree add -q "$work/hd4403-wt" -b hd4403-wt
-printf 'HANDOVER_DIR=%s\n' "$work/hd4403-real-root" > "$hd4403_primary/.env"
-hd4403_real=$(cd "$work/hd4403-real-root" && pwd -P)
+ln -s "$work/hd4403-real-root" "$work/hd4403-link"  # macOS: $TMPDIR is /var/folders/..., a symlink into /private/var
+printf 'HANDOVER_DIR=%s\n' "$work/hd4403-link" > "$hd4403_primary/.env"
+hd4403_real="$work/hd4403-link"  # the probe reports the .env value as written, unresolved
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_real" '.actual == "present" and .detail == $d' >/dev/null \

@@ -233,6 +233,8 @@ row('h9 directory mode: group-write passes only for the user\'s private group; w
     fs.writeFileSync(gf, me + ':x:' + g + ':' + members.join(',') + '\n');
     fs.writeFileSync(pf, primaries.map((u) => u + ':x:1:' + g + '::/:/bin/sh').join('\n') + '\n');
     ctx.accountFiles = { group: gf, passwd: pf };
+    // BSD/macOS (and a setgid parent) give a new dir its parent's group, not the user's
+    fs.chownSync(ctx.himmelRoot, -1, g);
   };
   const refused = (ctx, why) => {
     let msg = ''; try { store.write('JIRA_EMAIL', 'a@example.com', ctx); } catch (e) { msg = e.message; }
