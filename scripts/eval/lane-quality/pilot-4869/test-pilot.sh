@@ -619,6 +619,26 @@ LANE_FIFO="$TMP/lane.fifo" PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish
 check 'finish never follows a .git symlink put back in the gap' '[ -e "$TMP/lane.fifo.done" ] && [ "$rc" != 124 ]'
 check 'finish creates no file at a planted symlink target' '[ -z "$(ls -A "$V" | grep -vx dir)" ] && [ -z "$(ls -A "$V/dir")" ]'
 check 'finish still scores the row' '[ -f "$TMP/root/results/p03.json" ]'
+# The gap that matters is between the last look at .git and the rename itself:
+# an mv shim plays the lane putting a directory, or a symlink to one, at .git
+# right before the real mv runs. A rename that follows it moves the pointer INTO
+# that directory; the no-follow rename replaces the symlink and refuses the directory.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'for a; do case "$a" in */.git) [ -e "$LANE_DONE" ] || { : >"$LANE_DONE"; case "$LANE_PLANT" in' \
+  '  dir) mkdir "$a" && : >"$a/keep" ;; dirlink) ln -s "$LANE_DIR" "$a" ;; esac; } ;; esac; done' \
+  'command -p mv "$@"' >"$TMP/lanebin/mv"
+chmod +x "$TMP/lanebin/mv"
+bash "$P" prepare p05 >/dev/null 2>&1
+bash "$P" prepare p11 >/dev/null 2>&1
+WT11="$(. "$TMP/root/rows/p11.env"; echo "$WT")"
+mkdir -p "$TMP/linkdest"
+LANE_DONE="$TMP/lane.done5" LANE_PLANT=dirlink LANE_DIR="$TMP/linkdest" PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish p05 >/dev/null 2>&1; rc=$? # gnu-ok: Linux-only kit
+check 'finish plants the gap symlink-to-directory case' '[ -e "$TMP/lane.done5" ] && [ "$rc" != 124 ]'
+check 'finish never renames the pointer into a symlinked directory' '[ -z "$(ls -A "$TMP/linkdest")" ]'
+check 'finish replaces a symlink-to-directory at .git and scores the row' '[ "$rc" = 0 ] && [ -f "$TMP/root/results/p05.json" ]'
+LANE_DONE="$TMP/lane.done11" LANE_PLANT=dir PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish p11 >/dev/null 2>&1; rc=$? # gnu-ok: Linux-only kit
+check 'finish plants the gap directory case' '[ -e "$TMP/lane.done11" ] && [ "$rc" != 124 ]'
+check 'finish never renames the pointer into a directory put at .git' '[ "$(ls -A "$WT11/.git")" = keep ]'
 
 echo
 echo "test-pilot: $PASS passed, $FAIL failed"
