@@ -1753,7 +1753,7 @@ fi
 tmp_warn="${TICK_TMP_WARN:-80}"
 case "$tmp_warn" in ''|*[!0-9]*) tmp_warn=80 ;; esac
 tmp_tail=""
-tmp_pct="$(${TICK_DF:-df} -P "${TICK_TMP_DIR:-/tmp}" 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); if ($5 ~ /^[0-9]+$/) print $5 }')"  # swallow-ok: an unreadable df leaves tmp= absent
+tmp_pct="$("${TICK_DF:-df}" -P "${TICK_TMP_DIR:-/tmp}" 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); if ($5 ~ /^[0-9]+$/) print $5 }')"  # swallow-ok: an unreadable df leaves tmp= absent
 if [ -n "$tmp_pct" ]; then
     tmp_tail=" tmp=$tmp_pct"
     [ "$tmp_pct" -lt "$tmp_warn" ] || tmp_tail="$tmp_tail!"

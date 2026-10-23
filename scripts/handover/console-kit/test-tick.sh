@@ -3017,6 +3017,7 @@ rm -f "$ef_doc" "$ef_ok" "$ef_none" "$W/handover/launch-N77.sh" "$W/handover/lau
 # A read-only df on TICK_TMP_DIR (default /tmp); stubbed through TICK_DF.
 cat > "$W/df-stub.sh" <<'STUB'
 #!/usr/bin/env bash
+[ "$1" = -P ] && [ "$2" = "$TICK_TMP_DIR" ] || exit 1
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
 printf 'tmpfs 1000 %s %s %s%% /tmp\n' "$STUB_TMP_PCT" "$((1000 - STUB_TMP_PCT))" "$STUB_TMP_PCT"
 STUB
