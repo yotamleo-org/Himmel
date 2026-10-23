@@ -244,4 +244,68 @@ else
   fail "bypass-flags.json has no BWIMC_ENGINE entry naming block-write-into-main-checkout.sh"
 fi
 
+# Names a console-spawned leg's shell exports (compgen -e in a live leg, 10-23).
+# None is set on a CI runner, which is why a suite that reads one passes in CI
+# and behaves differently from a leg or console shell.
+SESSION_LEAKED="CLAUDECODE CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH
+CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_SESSION_ID CLAUDE_EFFORT
+CLAUDE_HUD_ALLOW_EXTRA_CMD CLAUDE_PID CODEX_GITHUB_PERSONAL_ACCESS_TOKEN GITHUB_PERSONAL_ACCESS_TOKEN
+HEADED_ARM_LAUNCHER HIMMEL_BUS_NAME HIMMEL_DEEPSEEK_INFERENCE_OK HIMMEL_INITIATIVE HIMMEL_LEAN_LEG
+HIMMEL_LEG_AUTOCOMPACT HIMMEL_LEG_PROFILE HIMMEL_RECONCILE_PLUGINS HIMMEL_REPO HIMMEL_STATUSLINE_ECON
+HIMMEL_WHERE_ARE_WE HIMMEL_WORKER_SESSION_PROFILE LEG_EFFORT LEG_PROFILE_PREFACE LEG_SESSION_ID
+LUNA_VAULT_PATH USER_SLUG WORKER_SESSION_ID ANTHROPIC_API_KEY ANTHROPIC_BASE_URL OPENROUTER_API_KEY
+CADENCE_BANK_MAX_PCT CLAUDEX_LANE"
+# Set by CI workflows or by the runner itself; the scrub must leave them alone.
+SESSION_KEPT="JIRA_PROJECT_KEY CLAUDE_CLI_VERSION CLAUDE_CONFIG_DIR HIMMEL_SUITE_LOCK_HELD
+HIMMEL_TEST_FIXTURE HIMMEL_GIT_TEST_ENV_PERF HIMMEL_REQUIRE_SHFMT HIMMEL_VM_RUNNER
+HIMMEL_CI_RUNNER_IMAGE HIMMEL_CONSOLE_WORKDIR HIMMEL_INBOX_DIR HIMMEL_RUNTIME_PREFLIGHT SUITE_SHARD"
+
+echo "== Case 9: scrub_session_env clears a leg's session env and keeps the CI/runner names =="
+out9=$(
+  for v in $SESSION_LEAKED $SESSION_KEPT; do export "$v=1"; done
+  scrub_session_env
+  left="" lost=""
+  for v in $SESSION_LEAKED; do [ -n "${!v-}" ] && left="$left $v"; done
+  for v in $SESSION_KEPT; do [ -n "${!v-}" ] || lost="$lost $v"; done
+  printf 'left=[%s] lost=[%s]\n' "$left" "$lost"
+)
+if [ "$out9" = "left=[] lost=[]" ]; then
+  pass "every leaked session name unset, every CI/runner name kept"
+else
+  fail "scrub_session_env wrong: $out9"
+fi
+
+echo "== Case 10: a suite run with a leaked session env sees what a clean one sees =="
+sb10=$(mktemp -d "${TMPDIR:-/tmp}/override-env-c10.XXXXXX") || sb10=""
+if [ -z "$sb10" ]; then
+  fail "10: mktemp failed"
+else
+  # The suite prints every harness-namespace name it inherits, less the ones CI
+  # or the runner set (kept by the scrub, and present in whichever shell runs this).
+  cat > "$sb10/test-env-view.sh" <<'SHEOF'
+#!/usr/bin/env bash
+compgen -e | grep -E '^(CLAUDE|HIMMEL|LEG|WORKER_SESSION|HEADED_ARM|LUNA|USER_SLUG|ANTHROPIC|OPENROUTER|CADENCE|CLAUDEX)|_PERSONAL_ACCESS_TOKEN$|_API_KEY$' \
+  | grep -v -E '^(CLAUDE_CLI_VERSION|CLAUDE_CONFIG_DIR|HIMMEL_(SUITE_|TEST_FIXTURE|GIT_TEST_ENV|REQUIRE_|VM_|CI_RUNNER_|CONSOLE_|INBOX|RUNTIME_PREFLIGHT))' \
+  | sort | tr '\n' ' '
+SHEOF
+  clean10=$(env -i PATH="$PATH" HOME="$sb10" bash "$sb10/test-env-view.sh")
+  leaked10=$(
+    for v in $SESSION_LEAKED; do export "$v=1"; done
+    bash "$sb10/test-env-view.sh"
+  )
+  scrubbed10=$(
+    for v in $SESSION_LEAKED; do export "$v=1"; done
+    scrub_session_env
+    bash "$sb10/test-env-view.sh"
+  )
+  if [ "$leaked10" = "$clean10" ]; then
+    fail "10: the leaked env did not reach the suite -- the control is vacuous"
+  elif [ "$scrubbed10" = "$clean10" ]; then
+    pass "leaked suite view [$leaked10] differs; after the scrub it equals the clean view [$clean10]"
+  else
+    fail "after the scrub the suite still sees [$scrubbed10], clean sees [$clean10]"
+  fi
+  rm -rf "$sb10"
+fi
+
 rst_tally

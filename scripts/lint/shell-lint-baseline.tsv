@@ -86,6 +86,7 @@ scripts/_new-worktree.sh	prim-lock	1
 scripts/adopt.sh	errexit	1
 scripts/adopt.sh	mktemp	1
 scripts/agents-md/test-generate.sh	mktemp	1
+scripts/api-lane/bulk-call.sh	kill-after	1
 scripts/api-lane/bulk-call.sh	prim-lock	2
 scripts/api-lane/measure-credit.sh	prim-tmpdir	1
 scripts/check-ci.sh	mktemp	1
@@ -331,6 +332,7 @@ scripts/handover/console-kit/wrap-merged.sh	prim-atomic	1
 scripts/handover/console-kit/write-verdict.sh	prim-atomic	1
 scripts/handover/console-kit/write-verdict.sh	prim-lock	1
 scripts/handover/console/chief.sh	errexit	1
+scripts/handover/console/console-bus-exec.sh	kill-after	1
 scripts/handover/console/test-console.sh	gnu-flag	2
 scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
@@ -592,6 +594,7 @@ scripts/hooks/test-block-read-secrets.sh	mktemp	2
 scripts/hooks/test-block-rogue-codex-exec.sh	mktemp	1
 scripts/hooks/test-block-tail-pipe-on-gates.sh	bash32	4
 scripts/hooks/test-block-tail-pipe-on-gates.sh	mktemp	1
+scripts/hooks/test-block-unresolved-cr-merge.sh	kill-after	1
 scripts/hooks/test-block-unresolved-cr-merge.sh	mktemp	1
 scripts/hooks/test-block-write-into-main-checkout-forms.sh	gnu-flag	16
 scripts/hooks/test-block-write-into-main-checkout-heredoc.sh	gnu-flag	5
@@ -723,6 +726,7 @@ scripts/lib/handover-path.sh	prim-tmpdir	1
 scripts/lib/host-caps.sh	prim-tmpdir	1
 scripts/lib/observability-registry.sh	prim-atomic	1
 scripts/lib/observability-registry.sh	prim-lock	1
+scripts/lib/orphan-branches.sh	kill-after	1
 scripts/lib/pty-run.sh	prim-tmpdir	1
 scripts/lib/py-armor.sh	gnu-flag	1
 scripts/lib/qmd-bin.sh	gnu-flag	1
@@ -800,6 +804,7 @@ scripts/lib/unwire-pretooluse-hooks.sh	errexit	1
 scripts/lib/unwire-statusline.sh	errexit	1
 scripts/lib/unwire-user-claude-md.sh	errexit	1
 scripts/lib/usage-lift.sh	prim-atomic	1
+scripts/lib/watch-loop.sh	kill-after	1
 scripts/lib/wire-handover-dir.sh	errexit	1
 scripts/lib/wire-himmel-repo.sh	errexit	1
 scripts/lib/wire-luna-vault.sh	errexit	1
@@ -941,6 +946,7 @@ scripts/sync/repo-sync-cadence.sh	prim-atomic	2
 scripts/sync/repo-sync-runner.sh	errexit	1
 scripts/sync/test-repo-sync-cadence.sh	errexit	1
 scripts/telegram/auto-action.sh	prim-canon	4
+scripts/telegram/dispatch-lane.sh	kill-after	1
 scripts/telegram/dispatch-lane.sh	prim-tmpdir	1
 scripts/telegram/restart-bridge.sh	errexit	1
 scripts/telegram/restart-bridge.sh	gnu-flag	1
