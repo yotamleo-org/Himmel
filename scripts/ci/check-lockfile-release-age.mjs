@@ -62,7 +62,8 @@ function parse(file, text) {
     for (const [key, v] of Object.entries(JSON.parse(text).packages ?? {})) {
       const at = key.lastIndexOf('node_modules/');
       if (at < 0 || !v.version || v.link || !/^https?:/.test(v.resolved ?? '')) continue;
-      found.push(`${key.slice(at + 'node_modules/'.length)}@${v.version}`);
+      // An npm alias (`compat@npm:actual@1`) is installed under one name and published under v.name.
+      found.push(`${v.name ?? key.slice(at + 'node_modules/'.length)}@${v.version}`);
     }
   } else {
     // bun.lock is JSONC: trailing commas only.

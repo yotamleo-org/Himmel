@@ -123,6 +123,17 @@ run "a new allowlisted security fix passes" 0 --root "$repo" --base "$base" --ti
 printf '{"freshpkg@9.9.9":"2026-10-01T00:00:00Z","%s":"2026-10-22T12:00:00Z"}\n' "$oldid" > "$tmp/base-young.json"
 run "an entry already on the base is not checked" 0 --root "$repo" --base "$base" --times "$tmp/base-young.json" --allow "$tmp/noallow.txt"
 
+# An npm alias is looked up under the package it installs, not its install name.
+node -e '
+  const fs = require("fs"); const f = process.argv[1];
+  const lock = JSON.parse(fs.readFileSync(f, "utf8"));
+  lock.packages["node_modules/compat"] = { name: "actualpkg", version: "1.2.3", resolved: "https://registry.npmjs.org/actualpkg/-/actualpkg-1.2.3.tgz", integrity: "sha512-x" };
+  fs.writeFileSync(f, JSON.stringify(lock, null, 2) + "\n");
+' "$repo/pkg/package-lock.json"
+printf '{"freshpkg@9.9.9":"2026-10-01T00:00:00Z","actualpkg@1.2.3":"2026-10-22T12:00:00Z"}\n' > "$tmp/alias.json"
+run "an aliased entry is checked under its real package name" 1 --root "$repo" --base "$base" --times "$tmp/alias.json" --allow "$tmp/noallow.txt"
+says "the real name is reported" "actualpkg@1.2.3 published 2026-10-22T12:00:00Z"
+
 # A lockfile the base does not have: every entry is new.
 mkdir -p "$repo/other" && cp "$BUN_LOCK" "$repo/other/bun.lock"
 run "a lockfile new since the base is checked whole" 2 --root "$repo" --base "$base" --times "$tmp/aged.json" --allow "$tmp/noallow.txt" "$repo/other/bun.lock"
