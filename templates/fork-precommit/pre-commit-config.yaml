@@ -30,7 +30,7 @@ repos:
       - id: himmel-ticket-id
         name: conventional commit subject with a HIMMEL-<n> ticket ID
         language: pygrep
-        entry: '\A((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)\n]+\))?!?: [^\n]*HIMMEL-[0-9]+|Merge branch ''[^''\n]+''|Merge pull request #[0-9]+ from \S|Merge remote-tracking branch ''[^''\n]+''|Revert "[^"\n]+")'
+        entry: '\A((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)\n]+\))?!?: [^\n]*HIMMEL-[0-9]+|Merge branch ''[^''\n]+''(?: |\n|\Z)|Merge pull request #[0-9]+ from \S+(?:\n|\Z)|Merge remote-tracking branch ''[^''\n]+''(?: |\n|\Z)|Revert "[^\n]+"(?:\n|\Z))'
         args: [--negate, --multiline]
         always_run: true
         stages: [commit-msg]
