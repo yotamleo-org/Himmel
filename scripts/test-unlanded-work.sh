@@ -588,7 +588,7 @@ git -C "$t/repo" checkout -q main
 make_gh_stub "$t/stub" "docs/himmel-6645-prose-terms-d1:CLOSED:3494:$tip6645"
 out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
 row="$(tsv_row "$out" docs/himmel-6645-prose-terms-d1)"
-if grepq "$row" -P '^SUPERSEDED\t' && grepq "$row" -F 'PR #3494' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
+if grepq "$row" -E "^SUPERSEDED"$'\t' && grepq "$row" -F 'PR #3494' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
     pass "closed-PR head at the tip -> SUPERSEDED, PR #3494, aged=0"
 else
     fail "closed-PR head -> $row"
@@ -607,7 +607,7 @@ git -C "$t/repo" checkout -q main
 make_gh_stub "$t/stub" "feat/himmel-9301-closed-then-more:CLOSED:301:$closedhead"
 out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
 row="$(tsv_row "$out" feat/himmel-9301-closed-then-more)"
-if grepq "$row" -P '^UNLANDED-LIVE\t'; then pass "commits past the closed head -> UNLANDED-LIVE (fail-loud)"; else fail "closed + later commits -> $row"; fi
+if grepq "$row" -E "^UNLANDED-LIVE"$'\t'; then pass "commits past the closed head -> UNLANDED-LIVE (fail-loud)"; else fail "closed + later commits -> $row"; fi
 rm -rf "$t"
 
 echo "== CLOSED PR head whose content is already on main -> stays LANDED-ELSEWHERE (keeps its drop command) =="
@@ -620,7 +620,7 @@ commit_dated "$t/repo" 0 extra.md "landed another way" "landed on main: extra.md
 make_gh_stub "$t/stub" "feat/himmel-9302-closed-landed:CLOSED:302:$closedlanded"
 out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
 row="$(tsv_row "$out" feat/himmel-9302-closed-landed)"
-if grepq "$row" -P '^LANDED-ELSEWHERE\t'; then pass "closed head + content on main -> LANDED-ELSEWHERE"; else fail "closed head, landed -> $row"; fi
+if grepq "$row" -E "^LANDED-ELSEWHERE"$'\t'; then pass "closed head + content on main -> LANDED-ELSEWHERE"; else fail "closed head, landed -> $row"; fi
 rm -rf "$t"
 
 echo "== lane-quality lq- backup branch with a pinned 2026-01-01 commit date -> FIXTURE, never aged =="
@@ -633,7 +633,7 @@ GIT_AUTHOR_DATE="@$ts +0000" GIT_COMMITTER_DATE="@$ts +0000" git -C "$t/repo" co
 git -C "$t/repo" checkout -q main
 out="$(cd "$t/repo" && bash "$SCRIPT" --no-forge --base main --tsv 2>&1)"
 row="$(tsv_row "$out" "$lqbranch")"
-if grepq "$row" -P '^FIXTURE\t' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
+if grepq "$row" -E "^FIXTURE"$'\t' &&[ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
     pass "lq- backup branch -> FIXTURE, aged=0"
 else
     fail "lq- fixture -> $row"
@@ -647,7 +647,7 @@ commit_dated "$t/repo" 0 real.md "real work"
 git -C "$t/repo" checkout -q main
 out="$(cd "$t/repo" && bash "$SCRIPT" --no-forge --base main --tsv 2>&1)"
 row="$(tsv_row "$out" feat/lq-20261009T001656Z-fix)"
-if grepq "$row" -P '^UNLANDED-LIVE\t'; then pass "lookalike lq- segment -> UNLANDED-LIVE"; else fail "lookalike -> $row"; fi
+if grepq "$row" -E "^UNLANDED-LIVE"$'\t'; then pass "lookalike lq- segment -> UNLANDED-LIVE"; else fail "lookalike -> $row"; fi
 rm -rf "$t"
 
 echo "== human report: SUPERSEDED and FIXTURE get their own sections and no drop command; counts show them =="
@@ -666,7 +666,7 @@ else
     fail "report -> $out"
 fi
 out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --class SUPERSEDED --tsv 2>&1)"
-if grepq "$out" -P '^SUPERSEDED\tdocs/himmel-6645-prose-terms-d1\t'; then pass "--class SUPERSEDED filters the TSV"; else fail "--class SUPERSEDED -> $out"; fi
+if [ "$(printf '%s\n' "$out" | wc -l)" -eq 1 ] && grepq "$out" -E "^SUPERSEDED"$'\t'"docs/himmel-6645-prose-terms-d1"$'\t' && ! grepq "$out" -F 'FIXTURE'; then pass "--class SUPERSEDED filters the TSV"; else fail "--class SUPERSEDED -> $out"; fi
 rm -rf "$t"
 
 echo "== --health cannot combine with --tsv/--class =="
