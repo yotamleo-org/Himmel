@@ -2527,6 +2527,17 @@ assert_deny "7009 control: an unquoted evidence heredoc keeps its scan" "$(j "ca
 assert_deny "7009 control: a heredoc to a non-scratch path keeps its scan" "$(j "cat > /tmp/hookprobe.md <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
 assert_deny "7009 control: a heredoc to a scratch .sh keeps its scan" "$(j "cat > /tmp/claude-1000/j3611/p.sh <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2")"
 assert_deny "7009 control: an unterminated evidence heredoc keeps its scan" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh")"
+# A U+3000 after the tag is part of bash's delimiter word, so bash closes the
+# body at `EOF2<U+3000>` while a UTF-8 [[:blank:]] lets the strip close it at the
+# later plain `EOF2`; the payload line between them would run unseen.
+if [ -n "$U8" ]; then
+    SP3=$(printf '\343\200\200')
+    export LC_ALL="$U8"
+    assert_deny "7009 control: a U+3000 after the heredoc tag does not move the body end" "$(j "$EVH$SP3"$'\n'"prose"$'\n'"EOF2$SP3"$'\n'"$EVB"$'\n'"EOF2"$'\n'"$WV")"
+    unset LC_ALL
+else
+    echo "SKIP 7009 U+3000 heredoc-tag row: no UTF-8 locale installed"
+fi
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then

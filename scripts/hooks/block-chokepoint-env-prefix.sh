@@ -298,6 +298,9 @@ fi
 # after --evidence-file (so it is never run or sourced). Anything else keeps
 # its full scan. Result in REPLY.
 strip_evidence_heredocs() {
+    # C locale: bash ends a heredoc at its own delimiter word, so a UTF-8
+    # [[:blank:]] (U+3000) must not make an opener or closer look plain here.
+    local LC_ALL=C
     local text="$1" line tag path i=0 j n=0 out='' open_re wv_re rest stripped=0 bad=0
     local -a lines=()
     REPLY=$text
@@ -333,6 +336,9 @@ strip_evidence_heredocs() {
             # so the stripped file cannot be run under another spelling.
             [[ $line =~ $wv_re ]] || bad=1
         fi
+        # A non-ASCII byte outside a stripped body (opener, write-verdict line)
+        # means bash may parse the line differently: keep the full scan.
+        case "$line" in *[!\ -~$'\t']*) bad=1 ;; esac
         out+=$line$'\n'
     done
     if [ "$stripped" -eq 1 ] && [ "$bad" -eq 0 ]; then
