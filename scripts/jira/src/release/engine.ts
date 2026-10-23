@@ -17,6 +17,8 @@ export interface JiraPort {
   setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
+  // The live snapshot of one issue, for a claimed key the mirror lacks or holds without a sector.
+  issue?(key: string): Promise<IssueSnap | null>;
 }
 
 export interface Ctx {
@@ -637,6 +639,8 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- rm-run: the release manager as one on-demand batch -------------------------------
 
+// outcome HOLD says the judge cannot rule the request: only req and reason count, nothing is ruled and
+// the request stays claimed.
 export interface Decision {
   req: string;
   outcome: string;
@@ -679,6 +683,17 @@ function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
   return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
 }
 
+// The mirror row when it names a sector; else the live snapshot (a ticket filed since the last mirror sync),
+// else whatever the mirror holds. A Jira that cannot answer leaves the mirror's view.
+async function issueFor(ctx: Ctx, key: string, mirrored: IssueSnap | undefined): Promise<IssueSnap | undefined> {
+  if (mirrored?.sector || !ctx.jira.issue) return mirrored;
+  try {
+    return (await ctx.jira.issue(key)) ?? mirrored;
+  } catch {
+    return mirrored;
+  }
+}
+
 // Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
 // applies through the engine, and releases the lease. Decisions come only from
 // the judge, never from the caller.
@@ -713,7 +728,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: now.operator.verified,
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
-          issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
+          issues: (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []),
         });
       } catch (e) {
         if (e instanceof JudgeReplyError) {
@@ -727,6 +742,10 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
         try {
           const d = decisions.find((x) => x?.req === q.req);
           if (!d) throw new Error('the judge returned no decision');
+          if (d.outcome === 'HOLD') {
+            lines.push(`HELD ${q.req}: ${d.reason}`);
+            continue;
+          }
           id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
             ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
