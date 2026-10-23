@@ -151,10 +151,17 @@ STUB_OS="$W/arr-mixed.json" STUB_OS_RC=0 run arrmixed
 check "a project array with a non-object element exits 2" 2 "$RC"
 printf '{"ok":false,"error":"Could not detect supported target files","path":"/example/proj"}\n' > "$W/proj-error.json"
 STUB_OS="$W/proj-error.json" STUB_OS_RC=0 run projerror
-check "a per-project error entry exits 2, not a clean project" 2 "$RC"
+check "an error entry without a vulnerabilities array exits 2, not a clean project" 2 "$RC"
 jq -c '[., {"ok":false,"error":"Could not detect supported target files","path":"/x"}]' "$FIX/snyk-os-clean.json" > "$W/arr-error.json"
 STUB_OS="$W/arr-error.json" STUB_OS_RC=0 run arrerror
-check "an error entry beside a clean project exits 2" 2 "$RC"
+check "an error entry without a vulnerabilities array beside a clean project exits 2" 2 "$RC"
+# the error key alone must reject: this entry still carries a vulnerabilities array
+printf '{"ok":false,"error":"Could not detect supported target files","path":"/example/proj","vulnerabilities":[]}\n' > "$W/proj-errvulns.json"
+STUB_OS="$W/proj-errvulns.json" STUB_OS_RC=0 run projerrvulns
+check "an error entry that also has a vulnerabilities array exits 2" 2 "$RC"
+jq -c '[., {"ok":false,"error":"Could not detect supported target files","path":"/x","vulnerabilities":[]}]' "$FIX/snyk-os-clean.json" > "$W/arr-errvulns.json"
+STUB_OS="$W/arr-errvulns.json" STUB_OS_RC=0 run arrerrvulns
+check "an error entry with a vulnerabilities array beside a clean project exits 2" 2 "$RC"
 printf '{"ok":true,"path":"/example/proj"}\n' > "$W/proj-novulns.json"
 STUB_OS="$W/proj-novulns.json" STUB_OS_RC=0 run projnovulns
 check "a project without a vulnerabilities array exits 2" 2 "$RC"
