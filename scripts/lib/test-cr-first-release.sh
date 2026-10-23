@@ -37,6 +37,7 @@ case "$A" in
   *"-X DELETE "*"/labels/ci:go"*) [ -f "$S/delete-fail" ] && exit 1; exit 0 ;;
   *"-X POST "*"/issues/"*"/labels"*)
     [ -f "$S/add-fail" ] && { echo "HTTP 502" >&2; exit 1; }
+    [ -f "$S/add-fail-once" ] && { rm -f "$S/add-fail-once"; echo "HTTP 502" >&2; exit 1; }
     jq -c --arg t "${GH_STUB_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" '. + [{event:"labeled",label:{name:"ci:go"},created_at:$t}]' "$S/events.json" > "$S/events.tmp" && mv "$S/events.tmp" "$S/events.json"
     echo '[{"name":"ci:go"}]'; exit 0 ;;
   "api repos/o/r/labels/ci:go"*) [ -f "$S/label-missing" ] && { echo '{"message":"Not Found"}' >&2; exit 1; }; echo '{"name":"ci:go"}'; exit 0 ;;
@@ -316,8 +317,11 @@ reset; touch "$S/add-fail"; run RL12-add-fails
 eq "$(ledger_lines)" 0 "RL12 add fails: no ledger line"
 eq "$RC" 2 "RL12 add fails: loud failure rc"
 rm -f "$S/add-fail"; run RL12-retry
-eq "$(deletes)/$(posts)" 2/2 "RL12 next call redoes the pair (head was left unreleased)"
+eq "$(deletes)/$(posts)" 2/3 "RL12 next call redoes the pair (head was left unreleased; the failed add was tried twice)"
 eq "$(ledger_lines)" 1 "RL12 ledger line only after the add returned 2xx"
+# One transient add failure after the remove succeeded is retried once in the same call.
+reset; touch "$S/add-fail-once"; run RL12-add-fails-once
+eq "$(posts)/$(ledger_lines)/$RC" 2/1/0 "RL12 one transient add failure: the add is retried once, the release is recorded"
 
 # A DELETE that fails while ci:go is still on the PR would let the add pass with no
 # fresh `labeled` event: nothing written, nothing recorded, loud error.

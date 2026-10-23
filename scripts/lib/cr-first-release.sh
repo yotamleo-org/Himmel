@@ -213,7 +213,8 @@ _crf_release_locked() {
             return 2
         fi
     fi
-    if ! gh api -X POST "repos/$repo/issues/$pr/labels" -f 'labels[]=ci:go' </dev/null >/dev/null 2>&1; then
+    if ! gh api -X POST "repos/$repo/issues/$pr/labels" -f 'labels[]=ci:go' </dev/null >/dev/null 2>&1 \
+        && ! gh api -X POST "repos/$repo/issues/$pr/labels" -f 'labels[]=ci:go' </dev/null >/dev/null 2>&1; then
         echo "CR-FIRST ERROR could not add label ci:go to PR #$pr — head $head stays unreleased; the next call retries"
         return 2
     fi

@@ -736,7 +736,7 @@ _cr_first_event() {
     out=$(bash "$lib" --pr "$num" --head "$h" 2>/dev/null </dev/null) || rc=$?
     [ -z "$out" ] || printf '%s\n' "$out" | sed 's/^/check-ci: /' >&2
     case "$out" in *"CR-FIRST RELEASE "*) return 2 ;; esac
-    case "$rc" in 1|3) return 1 ;; esac
+    case "$rc" in 1) return 1 ;; esac
     return 0
 }
 
