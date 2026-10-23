@@ -573,6 +573,7 @@ async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
   const code = await new Promise((r) => { child.on('close', r); child.on('error', () => r(-1)); });
   clearTimeout(timer);
   srv.close();
+  srv.closeAllConnections();
   return code === 0 ? captured : [];
 }
 
