@@ -173,38 +173,37 @@ wire_fixture() { # <dir> <settings.json command|""> <plugin hooks.json command|"
   local f c
   for f in ".claude/settings.json:$2" "marketplace/plugins/p/hooks/hooks.json:$3" ".codex/hooks.json:${4:-}"; do
     c="${f#*:}"; f="${f%%:*}"
-    if [ -z "$c" ]; then printf '{"hooks":{}}\n' > "$1/$f"; continue; fi
-    node -e 'console.log(JSON.stringify({hooks:{PreToolUse:[{hooks:[{type:"command",command:process.argv[1]}]}]}}))' "$c" > "$1/$f"
+    if [ -z "$c" ]; then printf '{"hooks":{}}\n' > "$1/$f" || return 1; continue; fi
+    node -e 'console.log(JSON.stringify({hooks:{PreToolUse:[{hooks:[{type:"command",command:process.argv[1]}]}]}}))' "$c" > "$1/$f" || return 1
   done
 }
 UX="$FX/unparsed"
+# expect_unparsed <label> <needle> <settings cmd|""> <plugin cmd|""> [codex cmd]: the fixture
+# must write, and the enumeration must exit 4 (the unparsed-command refusal, not any
+# crash) with <needle> in its diagnostic
+expect_unparsed() {
+  local label="$1" needle="$2" rc=0
+  if ! wire_fixture "$UX" "$3" "$4" "${5:-}"; then bad "$label: fixture setup failed"; return; fi
+  ux_out="$(wired_scripts "$UX" 2>&1)" || rc=$?
+  if [ "$rc" -ne 4 ]; then bad "$label: expected rc 4, got rc $rc: $ux_out"; return; fi
+  case "$ux_out" in *"$needle"*) ok "$label" ;; *) bad "$label: the diagnostic does not name '$needle': $ux_out" ;; esac
+}
 # shellcheck disable=SC2016
-wire_fixture "$UX" "" 'bash "${CLAUDE_PLUGIN_ROOT}"/hooks/x.sh'
-if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "a plugin command with the quote closing before the slash was silently dropped (rc 0): $ux_out"; else ok "a plugin command with the quote closing before the slash fails the enumeration"; fi
-wire_fixture "$UX" "" 'bash /opt/plug/hooks/x.sh'
-if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an absolute-path plugin command was silently dropped (rc 0): $ux_out"; else ok "an absolute-path plugin command fails the enumeration"; fi
+expect_unparsed "a plugin command with the quote closing before the slash fails the enumeration" 'hooks/x.sh' "" 'bash "${CLAUDE_PLUGIN_ROOT}"/hooks/x.sh'
+expect_unparsed "an absolute-path plugin command fails the enumeration" '/opt/plug/hooks/x.sh' "" 'bash /opt/plug/hooks/x.sh'
 # shellcheck disable=SC2016
-wire_fixture "$UX" 'bash "$CLAUDE_PROJECT_DIR"/scripts/hooks/x.sh' ""
-if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "a settings.json command with the quote closing before the slash was silently dropped (rc 0): $ux_out"; else ok "a settings.json command with the quote closing before the slash fails the enumeration"; fi
-case "$ux_out" in *'scripts/hooks/x.sh'*) ok "the failure names the unparsed command" ;; *) bad "the failure does not name the unparsed command: $ux_out" ;; esac
+expect_unparsed "a settings.json command with the quote closing before the slash fails the enumeration, naming it" 'scripts/hooks/x.sh' 'bash "$CLAUDE_PROJECT_DIR"/scripts/hooks/x.sh' ""
 # shellcheck disable=SC2016
-wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre' ""
+wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre' "" || bad "fixture setup failed for the allowlisted command"
 if ux_out="$(wired_scripts "$UX" 2>&1)"; then ok "an allowlisted non-shell command does not fail the enumeration"; else bad "an allowlisted command failed the enumeration: $ux_out"; fi
-# an allowlisted prefix must not exempt a hook script chained after it
-# shellcheck disable=SC2016
-wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre; bash /opt/hooks/x.sh' ""
-if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an allowlisted prefix hid a chained shell hook (rc 0): $ux_out"; else ok "an allowlisted prefix does not exempt a chained shell hook"; fi
-# any control operator after the prefix refuses it, whatever the chained hook is
-# spelled (.bash, uppercase .SH, extensionless)
-for chain in '&& bash /opt/hooks/x.bash' '| /opt/hooks/hook' '; /opt/hooks/X.SH'; do
+# an allowlisted prefix must not exempt a hook script chained after it, whatever the
+# chained hook is spelled (.sh, .bash, uppercase .SH, extensionless)
+for chain in '; bash /opt/hooks/x.sh' '&& bash /opt/hooks/x.bash' '| /opt/hooks/hook' '; /opt/hooks/X.SH'; do
   # shellcheck disable=SC2016
-  wire_fixture "$UX" "node \"\$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs\" pre $chain" ""
-  if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an allowlisted prefix hid a chained hook '$chain' (rc 0): $ux_out"; else ok "an allowlisted prefix does not exempt a chained hook '$chain'"; fi
+  expect_unparsed "an allowlisted prefix does not exempt a chained hook '$chain'" "$chain" "node \"\$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs\" pre $chain" ""
 done
 # the codex hooks.json commands are held to the same resolution rule
-wire_fixture "$UX" "" "" 'bash /opt/hooks/unparsable.sh'
-if ux_out="$(wired_scripts "$UX" 2>&1)"; then bad "an unparsable codex hooks.json command was silently dropped (rc 0): $ux_out"; else ok "an unparsable codex hooks.json command fails the enumeration"; fi
-case "$ux_out" in *'.codex/hooks.json: bash /opt/hooks/unparsable.sh'*) ok "the failure names the codex file and command" ;; *) bad "the failure does not name the codex command: $ux_out" ;; esac
+expect_unparsed "an unparsable codex hooks.json command fails the enumeration, naming the file and command" '.codex/hooks.json: bash /opt/hooks/unparsable.sh' "" "" 'bash /opt/hooks/unparsable.sh'
 
 echo "== every wired hook script resolves"
 N=0
