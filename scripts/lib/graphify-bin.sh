@@ -51,8 +51,8 @@
 # reports (`uv tool list`, importlib.metadata); installed-vs-pinned compares use it.
 # A pin bump is a reviewed change to the two lines below, paired with the `fork`
 # block in scripts/upstreams.json so the nightly fork-drift guard stays truthful.
-_graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.94+himmel.1}"; }
-_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-b49a55f894afc1fba82a6ac6f8413d9e2ae5dc5a}"; }
+_graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.94+himmel.2}"; }
+_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-03b95c88d062bb58bd5ab760088fc4152a087ca6}"; }
 _graphify_pypi_name() { printf '%s\n' "graphifyy"; }
 # _graphify_spec <extras> -- the requirement spec for the pin, e.g.
 # `graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>`. With

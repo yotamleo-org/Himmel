@@ -151,11 +151,12 @@ assert "default GRAPHIFY_VERSION is a semver (X.Y.Z...)" \
 assert "default pin is a fork build stamp (X.Y.Z+himmel.N)" \
   bash -c 'printf "%s" "$1" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\+himmel\.[0-9]+$"' _ "$pinned_ver"
 
-# The 0.9.94+himmel.1 fork build is the first whose uv.lock carries the patched
-# pillow, pyjwt, anyio, certifi, urllib3, fsspec and mcp floors.
+# The 0.9.94+himmel.2 fork build is the first whose pyproject extras and uv.lock
+# both carry the patched pillow, pyjwt, anyio, certifi, urllib3, fsspec and mcp
+# floors, so a fresh resolve cannot pick a vulnerable version.
 # shellcheck disable=SC2016
-assert "default pin is at or past the patched-floors fork build 0.9.94+himmel.1" \
-  bash -c '. "$1/graphify-bin.sh"; ! _graphify_version_lt "$2" "0.9.94+himmel.1"' _ "$SCRIPT_DIR" "$pinned_ver"
+assert "default pin is at or past the patched-floors fork build 0.9.94+himmel.2" \
+  bash -c '. "$1/graphify-bin.sh"; ! _graphify_version_lt "$2" "0.9.94+himmel.2"' _ "$SCRIPT_DIR" "$pinned_ver"
 
 echo "[test-graphify-bin] GRAPHIFY_VERSION override"
 override_hint="$(GRAPHIFY_VERSION=9.9.9 graphify_install_hint)"
