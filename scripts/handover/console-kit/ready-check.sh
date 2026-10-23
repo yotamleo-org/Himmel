@@ -718,27 +718,33 @@ elif [ -z "$wf_files" ]; then
     echo "[PASS] 10. no workflow files touched — workflow_dispatch run not applicable"
 else
     wf_err=""; wf_ids=""; wf_notes=""; wf_note=""; wf_why=""
-    # wf_failed_jobs <run id>: the run's unsuccessful job names (failure, timed_out, cancelled, ...;
-    # a matrix shard is one job), sorted,
-    # one per line; rc 1 when the run cannot be read.
+    # wf_failed_jobs <run id> [main]: the run's failed job names, sorted, one per line (a matrix shard
+    # is one job); rc 1 when the run cannot be read. The PR's run counts every unsuccessful conclusion
+    # (failure, timed_out, cancelled, ...); with `main` only failure and timed_out count, because a job
+    # main cancelled never ran and so is no evidence it is red there. gh pages the jobs itself.
     wf_failed_jobs() {
-        local body
+        local body sel='.conclusion != null and (.conclusion | IN("success", "skipped", "neutral") | not)'
+        [ "${2:-}" != main ] || sel='.conclusion | IN("failure", "timed_out")'
         body=$("$GH" run view "$1" --repo "$nwo" --json jobs 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller reads it as not pre-existing
-        printf '%s' "$body" | jq -r '.jobs[]? | select(.conclusion != null and (.conclusion | IN("success", "skipped", "neutral") | not)) | .name' 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
+        printf '%s' "$body" | jq -r ".jobs[]? | select($sel) | .name" 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
     }
     # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when every failed
     # job of that run also failed in the default branch's latest completed scheduled/push run
     # of the same workflow. Otherwise rc 1 and wf_why says why (empty when main is not red).
     wf_preexisting() {
-        local main_runs main_row main_id main_event pr_jobs main_jobs new
+        local main_runs main_row main_id main_event pr_jobs main_jobs new rc
         wf_why=""
         main_runs=$("$GH" run list --repo "$nwo" --workflow "$1" --branch "${tp_branch:-main}" --json databaseId,status,conclusion,event --limit 20 2>/dev/null) || { wf_why="cannot read main's runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
         main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
         [ -n "$main_row" ] || return 1
         main_id="${main_row%% *}"; main_event="${main_row#* }"
         pr_jobs=$(wf_failed_jobs "$2") && [ -n "$pr_jobs" ] || { wf_why="cannot read the failed jobs of run $2"; return 1; }
-        main_jobs=$(wf_failed_jobs "$main_id") && [ -n "$main_jobs" ] || { wf_why="cannot read the failed jobs of main run $main_id"; return 1; }
-        new=$(printf '%s\n' "$pr_jobs" | grep -vxFf <(printf '%s\n' "$main_jobs"))
+        main_jobs=$(wf_failed_jobs "$main_id" main) && [ -n "$main_jobs" ] || { wf_why="cannot read the failed jobs of main run $main_id"; return 1; }
+        new=$(printf '%s\n' "$pr_jobs" | grep -vxFf <(printf '%s\n' "$main_jobs")) && rc=0 || rc=$?
+        if [ "$rc" -gt 1 ]; then
+            wf_why="cannot compare the failed jobs of run $2 with main run $main_id"
+            return 1
+        fi
         if [ -n "$new" ]; then
             wf_why="run $2 failed on suites not red on main run $main_id: $(printf '%s' "$new" | paste -sd, - | sed 's/,/, /g')"
             return 1
