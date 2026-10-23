@@ -166,6 +166,17 @@ for subj in "Merge unrelated change" "Merge branches by hand" "Revert the thing"
     ok "lookalike subject is refused: $subj"
   fi
 done
+# the closing quote must be on the subject line, not in the body
+if commit "Merge branch 'x" "y' z"; then
+  bad "unclosed subject quote closed only in the body is refused"
+else
+  ok "unclosed subject quote closed only in the body is refused"
+fi
+if commit "Merge pull request #12 from "; then
+  bad "pull request subject without a source is refused"
+else
+  ok "pull request subject without a source is refused"
+fi
 
 echo "== Summary =="
 echo "$PASS passed, $FAIL failed"
