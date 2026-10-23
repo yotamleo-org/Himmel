@@ -139,7 +139,7 @@ case "$os_rc" in
     3) printf '[]\n' > "$tmp/os.raw" ;;
     *) err "snyk test failed (rc $os_rc): $(head -c 300 "$tmp/os.err")$(head -c 300 "$tmp/os.raw")"; exit 2 ;;
 esac
-jq -e 'if type=="array" then . else [.] end' "$tmp/os.raw" > "$tmp/os.json" 2>/dev/null \
+jq -e 'if type=="array" then (if all(.[]; type=="object") then . else empty end) elif type=="object" then [.] else empty end' "$tmp/os.raw" > "$tmp/os.json" 2>/dev/null \
     || { err "snyk test printed no JSON (rc $os_rc)"; exit 2; }
 os_projects="$(jq 'length' "$tmp/os.json")"
 record_usage open_source "$os_projects"

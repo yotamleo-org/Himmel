@@ -133,6 +133,12 @@ has "--check on missing snyk prints WARN" "WARN snyk" "$W/nosnyk-check.log"
 : > "$W/empty.json"
 STUB_OS="$W/empty.json" STUB_OS_RC=0 run emptyos
 check "empty snyk test output exits 2, not a clean scan" 2 "$RC"
+printf 'null\n' > "$W/null.json"
+STUB_OS="$W/null.json" STUB_OS_RC=0 run nullos
+check "a null snyk test result exits 2, not one clean project" 2 "$RC"
+printf '"ok"\n' > "$W/scalar.json"
+STUB_OS="$W/scalar.json" STUB_OS_RC=0 run scalaros
+check "a scalar snyk test result exits 2" 2 "$RC"
 
 # --- quota guard ------------------------------------------------------------
 OUTDIR="$W/out-quota"; rm -rf "$OUTDIR" "$SNYK_SCAN_STATE_DIR"; mkdir -p "$SNYK_SCAN_STATE_DIR"
@@ -231,8 +237,10 @@ bash "$CAD" arm > "$W/arm.log" 2>&1
 check "arm exits 0" 0 "$?"
 has "arm installs one weekly entry (Monday 06:30)" "30 06 * * 1 " "$W/crontab.txt"
 has "arm tags the entry" "# HIMMEL-SnykScan" "$W/crontab.txt"
-has "the runner starts in the primary checkout" "cd " "$W/runner/snyk-scan-cadence.sh"
-has "the runner carries the arm-time handover dir" "HANDOVER_DIR=$W/ho" "$W/runner/snyk-scan-cadence.sh"
+PRIMARY="$(dirname "$(git -C "$DIR" rev-parse --path-format=absolute --git-common-dir)")"
+has "the runner starts in the primary checkout" "$(printf 'cd %q || exit 2' "$PRIMARY")" "$W/runner/snyk-scan-cadence.sh"
+has "the runner carries the arm-time handover dir" "$(printf 'HANDOVER_DIR=%q' "$W/ho")" "$W/runner/snyk-scan-cadence.sh"
+has "the runner exports the handover dir" "export HANDOVER_DIR" "$W/runner/snyk-scan-cadence.sh"
 bash "$CAD" arm > "$W/arm2.log" 2>&1
 check "a second arm refuses without --force" 3 "$?"
 bash "$CAD" status > "$W/status.log" 2>&1
