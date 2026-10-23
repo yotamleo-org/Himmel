@@ -186,14 +186,19 @@ Three pre-launch checks that each cost a supervisor session a dead worker sessio
   hyphen in place of the em-dash, `headed-arm-leg.sh` refuses: no launch log,
   nothing in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
   `refusing` in its output.
-- **Design-profile worker sessions need a one-time interactive OAuth login.** The `design`
-  profile enables `builder-visual@himmel`, whose `.mcp.json` registers the hosted
-  `agent-native-dispatch` MCP server (`https://dispatch.agent-native.com/mcp`,
-  OAuth). Until the operator has logged in once (`/mcp`, pick
-  `agent-native-dispatch`), the server needs auth and a worker session cannot answer the
-  prompt, which looks like a hung worker session. Tool arguments go to Builder.io servers:
-  never use it on salus/PHI work. `block-agent-native-egress.sh`
-  refuses the call from a salus session or when the payload names salus. `context7` needs no login. Do not arm a
+- **Design-profile worker sessions need a one-time interactive OAuth login to two MCP
+  servers: `context7` and `agent-native-dispatch`.** Both stay on for design work:
+  `context7` serves current library docs, and `agent-native-dispatch` is the hosted
+  Builder.io server (`https://dispatch.agent-native.com/mcp`) that
+  `builder-visual@himmel`'s `.mcp.json` registers when the `design` profile enables it.
+  Until the operator has logged in to each once per machine, the server needs auth and a
+  worker session cannot answer the prompt, which looks like a hung worker session. To log
+  in: make sure the plugin is enabled, start an interactive `claude` session, run `/mcp`,
+  pick each server and choose Authenticate. `himmel-doctor` check `C72-design-mcp-auth`
+  warns when either login is missing (it reads the local MCP OAuth store, no network
+  call, and stays silent where that store is a keychain). Tool arguments go to Builder.io
+  servers: never use it on salus/PHI work. `block-agent-native-egress.sh`
+  refuses the call from a salus session or when the payload names salus. Do not arm a
   design-profile worker session unattended (`--arm`, at-jobs, overnight) until a fresh
   session has been checked to keep the token.
 

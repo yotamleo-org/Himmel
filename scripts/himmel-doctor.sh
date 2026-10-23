@@ -3319,6 +3319,27 @@ check_c56_qmd_orphans() {
     fi
 }
 
+# --- C72-design-mcp-auth: design profile MCP logins ---
+# The design profile needs context7 and builder-visual's agent-native-dispatch
+# logged in once per machine; a worker session cannot answer the OAuth prompt, so
+# a missing login looks like a hang. Claude Code keeps the grants under
+# mcpOAuth in $CLAUDE_DIR/.credentials.json; read key names only, never the
+# token values, and make no network call. Silent where that file is absent
+# (keychain platforms), since the state cannot be read there.
+check_c72_design_mcp_auth() {
+    local cred="$CLAUDE_DIR_R/.credentials.json" have missing="" s
+    [ -f "$cred" ] || return 0
+    have="$(jq -r '(.mcpOAuth // {}) | to_entries[] | select(.value.accessToken) | .value.serverName' "$cred" 2>/dev/null)" || return 0
+    for s in context7 agent-native-dispatch; do
+        grep -qx "$s" <<< "$have" || missing="${missing:+$missing, }$s"
+    done
+    if [ -n "$missing" ]; then
+        emit WARN C72-design-mcp-auth "design profile MCP login missing: $missing (a design worker session hangs on the OAuth prompt)" "claude, then /mcp and Authenticate each; see docs/handover/running-a-console.md"
+    else
+        emit OK C72-design-mcp-auth "context7 and agent-native-dispatch are logged in"
+    fi
+}
+
 # --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs the pin ---
 # `himmelctl update` once rolled the station's qmd fork back to the pin with
 # nothing reporting it. Three values must agree: the fork clone's build-success
@@ -4602,6 +4623,7 @@ run_check C68 check_c68_konsole_dbus
 run_check C69 check_c69_qmd_cli_key
 run_check C70 check_c70_graph_semantic
 run_heavy C71 check_c71_verdict_scratch C71-verdict-scratch
+run_check C72 check_c72_design_mcp_auth
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
