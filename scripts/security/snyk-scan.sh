@@ -39,13 +39,16 @@
 # claude-obsidian from marketplace.json) into a scratch dir, runs the Open Source scan on it and
 # writes <date>.forks.json plus <date>.forks.summary.md with one section per fork. A fork that
 # tracks its upstream also gets a scan of the upstream default branch, and each finding is
-# marked fixed upstream or not. Exit 1 on any High or Critical, 2 on any scan failure.
+# marked fixed upstream or not. Exit 1 on any High or Critical; exit 2 when a pin cannot be read, a
+# fork cannot be fetched or scanned (snyk failed, uv missing, osv.dev unreachable), the monthly quota
+# would be passed, or the usage ledger cannot be written; exit 0 otherwise. The other forks still run.
 # Snyk (1.1308.2) cannot read uv.lock ("Could not detect package manager"), and its pip scan needs
 # the packages installed; a uv.lock is exported with `uv export` and looked up on osv.dev instead.
 # ponytail: osv.dev findings carry the advisory's own severity (GHSA database_specific, unrated = medium) and no reachability, upgrade path: osv-scanner or a Snyk uv.lock parser once released.
 #
 # Seams (tests): SNYK_BIN, SNYK_SCAN_STATE_DIR, SNYK_SCAN_OUT_DIR, SNYK_SCAN_OS_CAP, SNYK_SCAN_CODE_CAP,
-# SNYK_SCAN_FORKS (rows `name|repo-url|ref|up-or-dash` replacing the pin table), SNYK_SCAN_OSV_URL.
+# SNYK_SCAN_FORKS (rows `name|repo-url|ref|up-or-dash` replacing the pin table), SNYK_SCAN_OSV_URL,
+# SNYK_SCAN_UV (the uv binary).
 # Platform: Linux station (needs jq).
 set -uo pipefail
 
