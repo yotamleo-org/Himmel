@@ -745,12 +745,12 @@ scripts/*.js scripts/lanes/test-launch-site-profiles.sh
 !*/node_modules/* scripts/lanes/test-launch-site-profiles.sh
 !*/dist/* scripts/lanes/test-launch-site-profiles.sh
 !*/fixtures/* scripts/lanes/test-launch-site-profiles.sh
-*.sh scripts/parity/test-ws5-invariants.sh
-*.bash scripts/parity/test-ws5-invariants.sh
-*.js scripts/parity/test-ws5-invariants.sh
-*.mjs scripts/parity/test-ws5-invariants.sh
-*.cjs scripts/parity/test-ws5-invariants.sh
-*.ts scripts/parity/test-ws5-invariants.sh
+*.[sS][hH] scripts/parity/test-ws5-invariants.sh
+*.[bB][aA][sS][hH] scripts/parity/test-ws5-invariants.sh
+*.[jJ][sS] scripts/parity/test-ws5-invariants.sh
+*.[mM][jJ][sS] scripts/parity/test-ws5-invariants.sh
+*.[cC][jJ][sS] scripts/parity/test-ws5-invariants.sh
+*.[tT][sS] scripts/parity/test-ws5-invariants.sh
 !test-* scripts/parity/test-ws5-invariants.sh
 !*.tsv scripts/parity/test-ws5-invariants.sh
 !*.test.ts scripts/parity/test-ws5-invariants.sh
@@ -1053,8 +1053,9 @@ done < "$work/changed"
 # A `!<glob> <suite>` row vetoes a file the suite's walk skips; a
 # glob with no `/` matches the basename. Mirror the suite's own skip rule
 # exactly, never wider: a veto that over-reaches is an under-selection.
-# The WS5 rows mirror its diff scan (any shipped shell or JS source; test-*, *.tsv
-# and *.test.<js|ts|mjs|cjs> skipped); a VENDORED.md tree it also skips is not
+# The WS5 rows mirror its diff scan (any shipped shell or JS source, extension
+# case-insensitive as WS5 classifies it; test-*, *.tsv and *.test.<js|ts|mjs|cjs>
+# skipped); a VENDORED.md tree it also skips is not
 # mirrored, so a vendored file over-selects a 0 s suite.
 # ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
 # and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a

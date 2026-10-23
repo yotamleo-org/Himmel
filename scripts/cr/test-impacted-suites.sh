@@ -102,9 +102,9 @@ git -C "$FX" commit -q -m "chore: base"
 
 # change <file> — append a line to <file>, commit, set $range to that commit.
 change() {
-    printf '# changed\n' >> "$FX/$1"
-    git -C "$FX" add -A
-    git -C "$FX" commit -q -m "fix: change $1"
+    printf '# changed\n' >> "$FX/$1" || return 1
+    git -C "$FX" add -A || return 1
+    git -C "$FX" commit -q -m "fix: change $1" || return 1
     range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
 }
 run_is() { ( cd "$FX" && bash "$IS" "$@" 2>/dev/null ); }
@@ -660,6 +660,7 @@ if [ "$rc" -eq 1 ] && grepq "$out" 'without a verdict'; then pass "--from-file e
 # --- 26. --from-file naming a genuinely empty file against a genuinely empty
 # impacted set is clean (rc0) — the case the runbook's own zero-candidate
 # instruction relies on. ------------------------------------------------------
+mkdir -p "$FX/docs/bar"
 change docs/bar/other-26.md
 out="$( cd "$FX" && bash "$IS" --check "$range" --from-file "$FX/empty-25.txt" 2>&1 )"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" '0 impacted'; then pass "--from-file empty path with an empty impacted set -> rc0 '0 impacted'"; else fail "--from-file empty path against no impacted suites: rc=$rc out=$out"; fi
@@ -897,13 +898,13 @@ mkf scripts/parity/test-ws5-invariants.sh 'echo ws5'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: ws5 fixture"
 mkdir -p "$FX/scripts/telegram" "$FX/tools/ws5"
-for ws5_src in scripts/telegram/break-glass.sh tools/ws5/a.mjs tools/ws5/b.ts tools/ws5/c.js tools/ws5/d.cjs tools/ws5/e.bash; do
-  change "$ws5_src"
+for ws5_src in scripts/telegram/break-glass.sh tools/ws5/a.mjs tools/ws5/b.ts tools/ws5/c.js tools/ws5/d.cjs tools/ws5/e.bash tools/ws5/j.JS tools/ws5/k.SH; do
+  change "$ws5_src" || { fail "fixture setup failed for $ws5_src"; continue; }
   out="$(run_is "$range")"
   if grepq "$out" "^${WS5}\$"; then pass "a one-file change to $ws5_src selects test-ws5-invariants.sh"; else fail "WS5 not selected for $ws5_src: $out"; fi
 done
 for ws5_skip in scripts/telegram/test-break-glass.sh tools/ws5/data.tsv tools/ws5/f.test.ts tools/ws5/g.test.mjs tools/ws5/h.test.js tools/ws5/i.test.cjs; do
-  change "$ws5_skip"
+  change "$ws5_skip" || { fail "fixture setup failed for $ws5_skip"; continue; }
   out="$(run_is "$range")"
   if ! grepq "$out" "^${WS5}\$"; then pass "$ws5_skip (skipped by WS5's own scan) does not select test-ws5-invariants.sh"; else fail "WS5 over-selected for $ws5_skip: $out"; fi
 done
