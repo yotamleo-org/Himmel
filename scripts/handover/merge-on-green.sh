@@ -182,7 +182,8 @@
 #       the gate cannot prove the PR touches no trust path: the list unreadable,
 #       empty, invalid, or missing on the anchor's own repo; the file listing
 #       unreadable or short of changed_files; the head moving while listed; or,
-#       for a trust-path PR, the anchor behind origin. Checked after the
+#       for a trust-path PR, the anchor behind origin and unable to
+#       fast-forward to it (an anchor that can is pulled and the gate re-runs). Checked after the
 #       console-GO gate, before any mutation, on --dry-run too.
 #   22  main-red gate: the newest COMPLETED, non-cancelled run
 #       of the CI workflow on the default branch is red and the PR is not its
@@ -330,6 +331,7 @@ GH="gh"
 # this constant staying its own fixed literal is that decision holding.
 HIMMEL_PUBLIC_ORIGIN_NWO="yotamleo-org/Himmel"
 
+_mog_argv=("$@")
 selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
@@ -1111,6 +1113,22 @@ if ! . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_p
 fi
 trust_rc=0
 trust_out=$(trust_path_check "$nwo" "$pr_num" "$sha" "$default_branch" "$himmel_repo") || trust_rc=$?
+# An anchor merely behind origin catches up (fast-forward only) and the whole
+# gate re-runs from the fresh bytes: every helper above was sourced from the
+# stale anchor, and this file itself may have just changed on disk. A moved
+# HEAD is the only re-exec trigger, so the second pass cannot loop. A diverged
+# anchor, a dirty tree or an unreadable origin cannot move, so it still refuses.
+if [ "$trust_rc" -ne 0 ] && [ "${trust_out%% *}" = "anchor" ]; then
+    ff_before=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_before=""
+    ff_msg=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_TERMINAL_PROMPT=0 \
+        git -C "$himmel_repo" -c core.hooksPath=/dev/null pull -q --ff-only origin HEAD 2>&1) \
+        || echo "merge-on-green: anchor fast-forward failed: ${ff_msg:0:300}" >&2
+    ff_after=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_after=""
+    if [ -n "$ff_after" ] && [ "$ff_after" != "$ff_before" ]; then
+        audit "ANCHOR fast-forwarded repo=$nwo pr=#$pr_num from=${ff_before:0:12} to=${ff_after:0:12}"
+        exec bash "${BASH_SOURCE[0]}" ${_mog_argv[@]+"${_mog_argv[@]}"}
+    fi
+fi
 if [ "$trust_rc" -ne 0 ]; then
     [ -n "$trust_out" ] || trust_out="check trust_path_check exited $trust_rc with no reason"
     trust_refuse "${trust_out%% *}" "${trust_out#* }"
