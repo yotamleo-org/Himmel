@@ -270,13 +270,29 @@ console_metadata() {
 CHIEF_BUS_PREDECESSOR=""
 
 # console_bus_opted_in -- the console profile lists himmel-bus in its MCP servers.
+# Returns 0 opted in, 1 not opted in, 2 the profile probe itself failed (its
+# output is left in bus_probe_out): a broken probe is not an opt-out.
+bus_probe_out=""
 console_bus_opted_in() {
     local bus_names
-    bus_names="$(node "${CHIEF_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || return 1
+    bus_probe_out=""
+    bus_names="$(node "${CHIEF_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>&1)" || { bus_probe_out="$bus_names"; return 2; }
     case "$bus_names" in
         *'"himmel-bus"'*) return 0 ;;
     esac
     return 1
+}
+
+# bus_warn <log> <text> -- a bus-chain problem goes to stderr AND the launch log,
+# which is the only place the operator looks after the console has detached.
+bus_warn() {
+    echo "chief.sh: WARN $2" >&2
+    printf '%s WARN: %s\n' "$(date +%F_%T)" "$(printf '%s' "$2" | tr '\n' ' ')" >> "$1"
+}
+
+# bus_note <log> <text> -- a bus-chain step that worked, in the launch log.
+bus_note() {
+    printf '%s bus: %s\n' "$(date +%F_%T)" "$2" >> "$1"
 }
 
 # do_arm <session> <doc> <fill-signal> <log> -- launch (or foreground-run,
@@ -318,18 +334,27 @@ do_arm() {
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
     bus_cli="${CHIEF_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-    if console_bus_opted_in; then
+    local bus_opt=0 bus_stamp=""
+    console_bus_opted_in || bus_opt=$?
+    if [ "$bus_opt" -eq 2 ]; then
+        bus_warn "$log" "bus profile probe failed for $session - launching unbound: $bus_probe_out"
+    elif [ "$bus_opt" -eq 0 ]; then
         bus_args=(register "$session" --role console)
         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
             # Still the outgoing console here (identity is process ancestry):
             # stamp the successor so each leg's adopt passes while this one is live.
-            if [ -n "$CHIEF_BUS_PREDECESSOR" ] && ! bus_out="$("$bus_cli" succeed "$session" 2>&1)"; then
-                echo "chief.sh: WARN bus succeed failed for $session - legs adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out" >&2
+            if [ -n "$CHIEF_BUS_PREDECESSOR" ]; then
+                if bus_out="$("$bus_cli" succeed "$session" 2>&1)"; then
+                    bus_stamp=", stamped successor of $CHIEF_BUS_PREDECESSOR"
+                else
+                    bus_warn "$log" "bus succeed failed for $session - legs adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out"
+                fi
             fi
+            bus_note "$log" "registered $session as console$bus_stamp"
         else
-            echo "chief.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
+            bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
         fi
     fi
     # plugin /console from any repo: a
