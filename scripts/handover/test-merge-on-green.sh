@@ -3303,7 +3303,7 @@ assert_audit_has "3895-g: not-adopted is audited" "trust=not-adopted"
 assert_audit_has "3895-g: the static re-check is skipped for another repo" "STATIC-RECHECK skipped reason=other-repo"
 # The anchor has no core file; not-adopted still rests on the repo's settings
 # read (404 here), never on the anchor.
-assert_gh_has "3895-g: the repo's settings are read" "contents/.claude/settings.json"
+assert_gh_has "3895-g: the repo's settings are read" "api repos/other/repo/contents/.claude/settings.json?ref=main"
 # 3895-h — an origin that does not positively name another github.com repo (an
 # SSH host alias) cannot prove the 404 is off the harness's own repo: refuse.
 MOG_ANCHOR_URL=git@gh-alias:owner/repo.git STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
