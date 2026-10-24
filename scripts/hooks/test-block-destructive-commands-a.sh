@@ -185,49 +185,15 @@ assert_rc "env -u path printenv benign" 0 "$(run_case "$(j_bash 'env -u path pri
 assert_rc "non-terminal tool"          0 "$(run_case '{"tool_name":"Read","tool_input":{"file_path":"README.md"}}')"
 assert_rc "empty payload"              0 "$(run_case '{}')"
 
-# --- cli-proxy sanctioned carve-out ---
-# The proxy bounce needs process termination (taskkill / schtasks /end), all
-# refused at command position below. The SAFE path is the cli-proxy-lane.ps1
-# -Restart/-Stop verb, which terminates internally (never inspected here). The
-# sanctioned shapes PASS; the dangerous primitives and an appended kill (proving
-# the carve-out is anchored to the WHOLE command, not a prefix) still BLOCK.
-assert_rc "sanctioned -Restart (pwsh5)"  0 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Restart')")"
-assert_rc "sanctioned -Stop (pwsh5)"     0 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Stop')")"
-assert_rc "sanctioned -Restart -Force"   0 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Restart -Force')")"
-assert_rc "sanctioned -Stop -Force (pwsh7)" 0 "$(run_case "$(j_bash 'pwsh -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Stop -Force')")"
-# Close the 4-of-8 standalone coverage gap -- exercise the
-# other shell for every verb-shape so all 8 carve-out patterns are hit, not 4.
-assert_rc "sanctioned -Stop -Force (pwsh5)"    0 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Stop -Force')")"
-assert_rc "sanctioned -Restart (pwsh7)"        0 "$(run_case "$(j_bash 'pwsh -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Restart')")"
-assert_rc "sanctioned -Restart -Force (pwsh7)" 0 "$(run_case "$(j_bash 'pwsh -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Restart -Force')")"
-assert_rc "sanctioned -Stop (pwsh7)"           0 "$(run_case "$(j_bash 'pwsh -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Stop')")"
-# The combined -Install -Restart [-Force] one-shot
-# pin-roll (.EXAMPLE) is now an enumerated sanctioned shape (rc=0 on both shells).
-assert_rc "sanctioned -Install -Restart (pwsh5)"       0 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Install -Restart')")"
-assert_rc "sanctioned -Install -Restart -Force (pwsh7)" 0 "$(run_case "$(j_bash 'pwsh -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Install -Restart -Force')")"
-# Close the remaining 2-of-4 combined coverage gap. The cases above cover
-# "8 standalone + 2 combined"; the carve-out (block-destructive-commands.sh)
-# enumerates all 4 combined shapes (powershell/pwsh x -Install -Restart[-Force]),
-# so exercise the other two shells here too -> 4-of-4 combined, 12-of-12 total.
-assert_rc "sanctioned -Install -Restart -Force (pwsh5)" 0 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Install -Restart -Force')")"
-assert_rc "sanctioned -Install -Restart (pwsh7)"        0 "$(run_case "$(j_bash 'pwsh -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Install -Restart')")"
-# NO negative "out-of-root relative invocation -> DENIED" case
-# here. The premise (that this carve-out GATES the relative path) is disproved:
-# the floor INDEPENDENTLY allows `powershell/pwsh -NoProfile -File <relative>`
-# (no deny rule matches -- `-File` is not the armed `-c` wrapper the CMDPOS
-# grammar arms), so an impostor/escaped path returns rc=0 regardless of this
-# carve-out. That residual is a floor-level gap (script-internals-unseen, the
-# documented no-general-parser residual), not a hole this
-# carve-out opens or can close -- see the comment at the carve-out above.
-# Asserting rc=0 for an impostor shape here would read as blessing it, so the
-# documenting probe is not part of the suite.
-# Near-miss: the direct primitive an operator might reach for instead of the
-# script still hits the deny floor (the carve-out did NOT widen it).
+# --- process-termination near-misses (cli-proxy proxy bounce) ---
+# The proxy bounce needs process termination (taskkill / schtasks /end); both
+# primitives are refused at command position. No exemption names a script.
 assert_rc "direct taskkill proxy"        2 "$(run_case "$(j_bash 'taskkill /F /IM cli-proxy-api.exe')")"
 assert_rc "direct schtasks /end proxy"   2 "$(run_case "$(j_bash 'schtasks /end /tn cli-proxy-api')")"
-# Near-miss: the sanctioned PREFIX does not whitelist an appended kill -- the
-# case match is on the whole command, so the trailing taskkill still blocks.
-assert_rc "sanctioned prefix + appended kill" 2 "$(run_case "$(j_bash 'powershell -NoProfile -File scripts/setup/cli-proxy-lane.ps1 -Restart; taskkill /F /IM x')")"
+# Structural: the guard must not name the deleted cli-proxy-lane.ps1 carve-out.
+# Before the removal this reads 2 (the name is present); after, 0.
+if grep -q 'cli-proxy-lane[.]ps1' "$HOOK"; then _cp_named=2; else _cp_named=0; fi
+assert_rc "guard names no deleted cli-proxy-lane.ps1" 0 "$_cp_named"
 
 # --- per-rule equivalence corpus ---
 # contains() moved from `printf | grep -Eq` (a fork pair per call, ~667 ms on
