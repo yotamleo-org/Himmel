@@ -239,10 +239,10 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
 4. **Re-brief every live worker before you release, never by hand.** On
    `WAKE relay-on-live` (set by `next` for a bus chief) or by running
    `relay-batch.sh <this doc> --successor <it>`: a bus record relays each native
-   worker, an inbox relay each claudex one. A failed or absent record prints
-   `SENDMESSAGE` (successor, worker's token) for a Live-state worker,
-   `NOT-IN-LIVE-STATE` for one not in it: relay each from **your own session**.
-   Never re-run it (a retry resends inbox relays). It carries no fresh token:
+   worker, an inbox relay plus a bus notice each claudex one. A failed or absent
+   record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
+   worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
+   Never re-run it (it resends inbox relays). It carries no fresh token:
    native and claudex workers are not rotated on a bus succession. Wait for each
    quote-back.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
