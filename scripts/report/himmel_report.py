@@ -15,6 +15,7 @@ Exit: 0 ok, 2 bad input, 3 the redacted draft still trips gitleaks, 4 send witho
 """
 import argparse
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -72,11 +73,10 @@ def redact(text):
 
 
 def leak_check(text):
-    """True when gitleaks (the repo's gate) finds nothing in text. No gitleaks binary: warn, pass."""
-    gl = os.environ.get('HIMMEL_REPORT_GITLEAKS') or shutil.which('gitleaks')
+    """True when gitleaks (the repo's gate) finds nothing in text, False on a hit, None when gitleaks is missing."""
+    gl = shutil.which(os.environ.get('HIMMEL_REPORT_GITLEAKS') or 'gitleaks')
     if not gl:
-        print('himmel-report: gitleaks not found; redaction is pattern-only, read the draft before sending.', file=sys.stderr)
-        return True
+        return None
     with tempfile.TemporaryDirectory(prefix='himmel-report-') as d:
         with open(os.path.join(d, 'draft.md'), 'w') as f:
             f.write(text)
@@ -171,23 +171,32 @@ def cmd_draft(a):
     note = redact(a.note or '').strip()
     draft = build_draft(rid, kind, source, cls, auto_verdict, text, note)
     path = os.path.join(reports_dir(), rid + '.md')
-    if not leak_check(draft):
+    clean = leak_check(draft)
+    if clean is False:
         print('himmel-report: gitleaks flagged the redacted draft; nothing was written. Remove the secret and retry.',
               file=sys.stderr)
         return 3
-    print('report-id: %s' % rid)
-    print(draft)
-    if os.path.exists(path):
-        print('already reported: %s; nothing new was written.' % rid)
-    else:
-        write_atomic(path, draft)
-        add_lesson(kind, source, cls, evidence, text)
-        row = {'ts': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'id': rid, 'kind': kind,
-               'source': source, 'class': cls, 'verdict': 'user-over-deny', 'auto_verdict': auto_verdict}
-        os.makedirs(os.path.dirname(state_file()), exist_ok=True)
-        with open(state_file(), 'a') as f:
-            f.write(json.dumps(row) + '\n')
-        print('local lesson: %s (load with KNOWN_FINDINGS_FILE=%s)' % ('user-' + cls, lessons_file()))
+    if clean is None:
+        print('himmel-report: gitleaks not found; redaction is pattern-only and send will refuse until it is installed.',
+              file=sys.stderr)
+    os.makedirs(os.path.dirname(state_file()), exist_ok=True)
+    os.makedirs(os.path.join(home(), '.himmel'), exist_ok=True)
+    with open(os.path.join(home(), '.himmel', '.report.lock'), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if os.path.exists(path):
+            print('report-id: %s' % rid)
+            print(open(path).read())
+            print('already reported: %s; nothing new was written.' % rid)
+        else:
+            write_atomic(path, draft)
+            add_lesson(kind, source, cls, evidence, text)
+            row = {'ts': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'id': rid, 'kind': kind,
+                   'source': source, 'class': cls, 'verdict': 'user-over-deny', 'auto_verdict': auto_verdict}
+            with open(state_file(), 'a') as f:
+                f.write(json.dumps(row) + '\n')
+            print('report-id: %s' % rid)
+            print(draft)
+            print('local lesson: %s (load with KNOWN_FINDINGS_FILE=%s)' % ('user-' + cls, lessons_file()))
     if source.startswith('hook:'):
         print('guard-override suggestion (not applied): %s fired on this shape. If it is wrong for your setup, set that '
               "hook's off switch as a session env var in the launching shell; docs/internals/enforcement.md lists the "
@@ -207,7 +216,7 @@ def cmd_send(a):
         return 4
     body = open(path).read()
     if not leak_check(body):
-        print('himmel-report: gitleaks flagged the draft; not sent.', file=sys.stderr)
+        print('himmel-report: gitleaks flagged the draft or is not installed; not sent.', file=sys.stderr)
         return 3
     title = body.splitlines()[0].lstrip('# ').strip()
     gh = os.environ.get('HIMMEL_REPORT_GH') or 'gh'

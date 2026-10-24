@@ -23,6 +23,10 @@ nfiles() { find "$1" -type f | wc -l | tr -d ' '; }
 export HOME="$TMP/home"; mkdir -p "$HOME"
 unset HIMMEL_USER_REPORTS HIMMEL_REPORT_GH HIMMEL_REPORT_GITLEAKS 2>/dev/null || true
 
+# a scanner that finds nothing, so the suite does not depend on gitleaks being installed
+CLEAN="$TMP/gitleaks-clean"; printf '#!/usr/bin/env bash\nexit 0\n' >"$CLEAN"; chmod +x "$CLEAN"
+export HIMMEL_REPORT_GITLEAKS="$CLEAN"
+
 # a stub gh that records its argv and the body file it was handed
 GH="$TMP/gh-stub"
 cat >"$GH" <<'EOF'
@@ -76,6 +80,8 @@ has "guard-override suggestion points at the launching shell" "$OUT" "launching 
 # repeating the same report does not double-count or double-write
 OUT2="$(python3 -I "$REPORT" draft --text-file "$REFUSAL" 2>&1)"
 has "second identical report is recognised" "$OUT2" "already reported"
+OUT2B="$(python3 -I "$REPORT" draft --text-file "$REFUSAL" --note 'a later note that was never saved' 2>&1)"
+hasnt "a repeat prints the saved draft, not the new note" "$OUT2B" "a later note that was never saved"
 eq "lesson file still has one class" "$(python3 -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["classes"]))' "$LESSONS")" "1"
 eq "report ledger has one row" "$(wc -l <"$HOME/.himmel/state/user-reports.jsonl" | tr -d ' ')" "1"
 
@@ -90,6 +96,10 @@ eq "send --yes calls gh once" "$(wc -l <"$GH_CALLS" | tr -d ' ')" "1"
 has "send --yes targets the himmel repo" "$(cat "$GH_CALLS")" "issue create -R yotamleo-org/Himmel"
 hasnt "sent body: no AWS key" "$(cat "$GH_BODY")" "$AKIA"
 has "send --yes prints the issue url" "$(cat "$TMP/send1.out")" "issues/1"
+: >"$GH_CALLS"
+HIMMEL_REPORT_GITLEAKS="$TMP/no-such-gitleaks" HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$ID" --yes >"$TMP/send2.out" 2>&1
+eq "send --yes with gitleaks missing exits 3" "$?" "3"
+eq "send --yes with gitleaks missing never calls gh" "$(wc -c <"$GH_CALLS" | tr -d ' ')" "0"
 HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "nosuchid" --yes >/dev/null 2>&1
 eq "send of an unknown id exits 2" "$?" "2"
 
@@ -111,6 +121,13 @@ eq "friction --record carries user_reported_over_deny" \
   "$(python3 -I -c 'import json,sys; m=json.loads(open(sys.argv[1]).readline())["metrics"]; print(m["user_reported_over_deny"], m["user_over_deny:hook:guard-pr-check-literal/text-mentions-gate-path"])' "$TMP/runs.jsonl")" "1 1"
 python3 -I "$FRICTION" --repo "$REPO" --now 2026-01-01T00:00:00Z --days 7 --projects "$TMP/noproj" --docs "$TMP/nodocs" \
   --reports "$HOME/.himmel/state/user-reports.jsonl" --json "$TMP/old.json" --md "$TMP/old.md" >/dev/null 2>&1
+BAD="$TMP/bad-reports.jsonl"
+printf '%s\n' '{"ts":"2026-10-24T00:00:00Z","source":{"a":1},"class":"x","verdict":"user-over-deny"}' \
+  '{"ts":"2026-10-24T00:00:00Z","source":"hook:h","class":["y"],"verdict":"user-over-deny"}' >"$BAD"
+python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-25T00:00:00Z --days 7 --projects "$TMP/noproj" --docs "$TMP/nodocs" \
+  --reports "$BAD" --json "$TMP/bad.json" --md "$TMP/bad.md" >/dev/null 2>&1
+eq "a report row with a non-string source or class is skipped" \
+  "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["meta"]["user_reports"])' "$TMP/bad.json")" "0"
 eq "a report outside the window is not counted" \
   "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["meta"]["user_reports"])' "$TMP/old.json")" "0"
 

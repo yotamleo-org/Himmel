@@ -466,7 +466,7 @@ def scan_reports(path, since, until=None):
             src, cls = r['source'], r['class']
         except (ValueError, KeyError, TypeError):
             continue
-        if ts is None or r.get('verdict') != 'user-over-deny':
+        if ts is None or r.get('verdict') != 'user-over-deny' or not isinstance(src, str) or not isinstance(cls, str):
             continue
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=dt.timezone.utc)
