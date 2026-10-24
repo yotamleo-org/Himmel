@@ -356,5 +356,16 @@ wait_exit "$WPID"
 check "(rv-retired) a retired BLOCKED resolve does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# a BLOCKED resolve followed by a MERGED bullet is retired too
+reset_stub
+fleet rvm
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:30 MERGED #3628 abc1234 — merged\n' >> "$L"
+start "$I" "$WORK/rvm.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-merged) no baseline heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(rv-merged) a BLOCKED resolve before a MERGED bullet does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

@@ -886,7 +886,7 @@ resolve_wake() {
     [ -n "$legs_from" ] || return 1
     while IFS=$'\t' read -r label ldoc; do
         [ -n "$label" ] && [ -f "$ldoc" ] || continue
-        bullet="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)([^A-Za-z]|$)' "$ldoc" | tail -n 1)"
+        bullet="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED|MERGED)([^A-Za-z]|$)' "$ldoc" | tail -n 1)"
         rest="$(printf '%s\n' "${bullet#*:}" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
         [[ $rest =~ ^BLOCKED\ resolve\ ([0-9]+)\ (PRRT_[A-Za-z0-9_-]+([\ ,]+PRRT_[A-Za-z0-9_-]+)*) ]] || continue
         pr="${BASH_REMATCH[1]}"
