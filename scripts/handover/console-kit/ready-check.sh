@@ -821,7 +821,7 @@ else
             changed=""
             while IFS= read -r f; do
                 [ -n "$f" ] || continue
-                if ! a_ent=$(git ls-tree "$anc" -- "$f" 2>/dev/null) || ! h_ent=$(git ls-tree "$SHA" -- "$f" 2>/dev/null); then  # swallow-ok: rc checked, an unreadable tree skips the run
+                if ! a_ent=$(git --literal-pathspecs ls-tree "$anc" -- "$f" 2>/dev/null) || ! h_ent=$(git --literal-pathspecs ls-tree "$SHA" -- "$f" 2>/dev/null); then  # swallow-ok: rc checked, an unreadable tree skips the run
                     changed="$f (unreadable)"
                     break
                 fi
