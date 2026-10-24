@@ -2699,6 +2699,9 @@ if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep'; then pass;
 if grepq "$LAST_CLEAR_OUT" -F "r1@$_r1" && grepq "$LAST_CLEAR_OUT" -F "r2@${_tip:0:8}"; then pass; else
     fail "8g must name every finding missing a sweep as <id>@<head>: $LAST_CLEAR_OUT"; fi
 if marker_exists "$tmp"; then pass; else fail "8g: marker must REMAIN"; fi
+# 7372: the refusal explains the reason tag after an id and the allowed single-site search options.
+if grepq "$LAST_CLEAR_OUT" -F 'names why that record failed' && grepq "$LAST_CLEAR_OUT" -F 'sites= form'; then pass; else
+    fail "8g must teach the reason tag and the sites= fallback: $LAST_CLEAR_OUT"; fi
 # 8h. --dry-run refuses the same way (gate 4d is read-only).
 run_clear "$tmp" 14 "8h --dry-run also refuses a missing variant-sweep record" --dry-run
 rm -rf "$tmp"

@@ -556,6 +556,13 @@ assert_rc "4970 allow: pgrep -x exact match cannot self-match" 0 "$RC"
 run_case "$(j_bash "for x in a b; do :; done")"
 assert_rc "4970 allow: finite for do :" 0 "$RC"
 
+# 7370. The refusal teaches what to do instead of appending a redirect/pipe to
+# see the RED/FAIL line: quiet-run prints the log path, Read that file.
+run_case "$(j_bash 'bash scripts/hooks/test-x.sh > red.log 2>&1; echo rc=$?')"
+assert_rc "7370 deny: redirect + echo rc appended" 2 "$RC"
+assert_contains "7370 names the no-append rule" "Append nothing to it" "$ERR"
+assert_contains "7370 names the log-path Read" "Read the log path" "$ERR"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All require-quiet-run.sh cases passed."

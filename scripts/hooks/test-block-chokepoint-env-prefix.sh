@@ -2616,6 +2616,17 @@ else
     CASES=$((CASES - 1))
 fi
 
+# 7371: the text-layer deny names the allowed replacement for a leg that was
+# only editing or searching a file that mentions a seam, unset or -u.
+run "$(j "unset HIMMEL_CONSOLE_LEG; setsid -f bash $GOK/g*.sh")"
+CASES=$((CASES + 1))
+if [ "$RC" = "2" ] && grep -qF "Edit tool" <<<"$ERR" && grep -qF "python3 -I <file>" <<<"$ERR"; then
+    echo "PASS 7371 text-layer deny names the Edit-tool / python3 -I <file> replacement"
+else
+    echo "FAIL 7371 text-layer deny lacks the Edit-tool / python3 -I <file> replacement (rc=$RC): $ERR"
+    FAILED=$((FAILED + 1))
+fi
+
 if [ "$FAILED" -eq 0 ]; then
     echo "OK: all $CASES cases passed"
     exit 0

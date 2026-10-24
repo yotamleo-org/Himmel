@@ -1434,6 +1434,7 @@ case "$missing_sweep" in
         echo "    SWEEP [<id>@<head>] class=<the class> :: single-site search=git grep [-n -i -w -E -F -e <pat>] <pat> [-- <paths>]" >&2
         echo "  Each site is a repo path that exists at the tip (or the finding head), and the sites include the finding's own file." >&2
         echo "  A single-site search is a plain git grep the gate re-runs at the tip; it may hit only the finding's own file." >&2
+        echo "  A tag after an id (e.g. search-option-refused:-A) names why that record failed; a search takes only -n -i -w -E -F -G -P -I -l -e, so otherwise list the files in the sites= form." >&2
         echo "  Write those lines to a file, then: bash scripts/cr/write-verdicts.sh sweep --branch '$branch' --from-file <path>" >&2
         audit "REFUSED reason=missing-variant-sweep branch=$branch sha=$tip findings=${missing_sweep#ok }"
         exit 14 ;;

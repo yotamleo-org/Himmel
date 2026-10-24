@@ -145,7 +145,12 @@ template_version: 3
 > 3. **Tests:** <the suite to write and the specific RED assertion to show
 >    first; the impacted suites you already know about, by name.> Suites run
 >    as `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>` — the
->    literal label `suite` is the only one auto-allowed.
+>    literal label `suite` is the only one auto-allowed. Append nothing (no
+>    `>`, `2>&1`, `| tail`, `; echo rc`, `timeout`/`env` prefix): to show a RED
+>    row, run it that way and Read the log path the ERR line prints.
+>    Edit files with the Edit tool; a script that must name a seam variable,
+>    `unset` or `-u` goes in a file run as `python3 -I <file>`, never a
+>    heredoc or `perl -pi` on the command line (`block-chokepoint-env-prefix`).
 > 4. **Ship:** `<type>(<scope>): [<TICKET>] <subject>`, then the standing ship
 >    sequence. Trailers go in the FIRST commit, token first after the colon:
 >    `Platforms tested: <os>` and `Security reviewed: manual — <what you
@@ -180,7 +185,12 @@ template_version: 3
 >    section, an unmarked line, or a deferral to a nonexistent or Done/Closed
 >    ticket, so file the follow-up before you write the line. The marker is
 >    LAST with nothing after it; lint it yourself before READY with
->    `ready-check.sh --only 7 <pr>`. **A PR that changes `.github/workflows/`
+>    `ready-check.sh --only 7 <pr>`. **The moment /pr-check marks a finding
+>    agreed or fixed, write its sweep record**: `SWEEP [<id>@<head>] class=…
+>    :: sites=<path>[:<line>], …` (or `single-site search=git grep …`) to a
+>    file, then `bash scripts/cr/write-verdicts.sh sweep --branch <branch>
+>    --from-file <file>`; `clear-cr-marker.sh` refuses with exit 14 until
+>    every agreed or fixed finding has one. **A PR that changes `.github/workflows/`
 >    needs a green `workflow_dispatch` run at its head before READY**
 >    (`gh workflow run <wf> --ref <branch>`; `ready-check.sh` item 10 FAILs
 >    without one, and prints the command; a deleted, added or renamed
