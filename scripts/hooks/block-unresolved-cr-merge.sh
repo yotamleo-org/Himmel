@@ -26,6 +26,10 @@
 #      trust-reviewed console GO (go.sh --trust-reviewed) and a merge pinned
 #      to its head — merge-on-green.sh's rule, asked through the
 #      same trust_path_check in scripts/lib/go-gate.sh. Fails closed.
+# Gates 3 and 4 anchor at the harness repo: HIMMEL_REPO when this copy runs
+# from an adopted repo (HIMMEL_REPO names another checkout), else this copy's
+# own repo. So an adopter's hook reads the GO root, the core trust list and the
+# origin the harness's go.sh and merge-on-green.sh use.
 # Sibling of check-cr-marker-on-pr-create.sh / block-merged-pr-commit.sh.
 #
 # Exit: 0 allow (incl. every fail-open path), 2 block (stderr shown to model).
@@ -38,6 +42,17 @@ set -uo pipefail
 # NOT set -e: fail-open hook, must never abort on a sub-call's rc 1.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# gate_anchor - the harness checkout gates 3 and 4 read (see the header). Needs
+# _go_in_harness (scripts/lib/go-gate.sh) in scope.
+gate_anchor() {
+    if [ -n "${HIMMEL_REPO:-}" ] && [ -d "$HIMMEL_REPO/scripts/lib" ] \
+            && ! _go_in_harness "$SCRIPT_DIR" "$HIMMEL_REPO"; then
+        (cd "$HIMMEL_REPO" 2>/dev/null && pwd -P)
+    else
+        (cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd -P)
+    fi
+}
 
 # The CR-gate bypasses (CR_MERGE_GATE_OK=1 / CR_PROFILE=none) are handled
 # INSIDE cr_merge_gate (self-bypass → rc 0), NOT with an early exit here — an
@@ -532,8 +547,9 @@ if [ "$is_leg" -eq 1 ]; then
     # valid console GO was actually written under — a plain handover_root()
     # here fell back to the harness repo's inline stub instead and falsely
     # refused a valid GO.
-    if . "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null && declare -F go_resolve_root >/dev/null 2>&1; then
-        go_root=$(go_resolve_root "$SCRIPT_DIR/../.." 2>/dev/null) || go_root=""
+    if . "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null && declare -F go_resolve_root >/dev/null 2>&1 \
+            && declare -F _go_in_harness >/dev/null 2>&1; then
+        go_root=$(go_resolve_root "$(gate_anchor)" 2>/dev/null) || go_root=""
     fi
     # go-gate.sh is already sourced above (console_leg check) — only confirm
     # go_gate and go_mac are defined (a truncated file could define
@@ -593,10 +609,11 @@ unset -f trust_path_check go_trust_gate go_trust_id_ok go_gate _go_gate_verify c
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$SCRIPT_DIR/../lib/go-gate.sh" ] && . "$SCRIPT_DIR/../lib/go-gate.sh"; } 2>/dev/null \
-        || ! declare -F trust_path_check >/dev/null 2>&1 || ! declare -F go_trust_gate >/dev/null 2>&1; then
+        || ! declare -F trust_path_check >/dev/null 2>&1 || ! declare -F go_trust_gate >/dev/null 2>&1 \
+        || ! declare -F _go_in_harness >/dev/null 2>&1; then
     gate4_refuse "cannot load trust_path_check and go_trust_gate from scripts/lib/go-gate.sh — refusing (the CI trust-path gate must fail closed, not silently no-op)"
 fi
-trust_anchor=$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd -P) || trust_anchor=""
+trust_anchor=$(gate_anchor) || trust_anchor=""
 [ -n "$trust_anchor" ] || gate4_refuse "cannot resolve the harness anchor for the CI trust-path check of PR #$go_num — refusing"
 trust_tmp=$(mktemp "${TMPDIR:-/tmp}/block-unresolved-cr-merge-trust.XXXXXX" 2>/dev/null) \
     || gate4_refuse "cannot create a temp file for the CI trust-path check of PR #$go_num — refusing"
@@ -628,7 +645,7 @@ case "$trust_out" in
         # shellcheck source=scripts/lib/handover-path.sh
         # shellcheck disable=SC1091
         if . "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null && declare -F go_resolve_root >/dev/null 2>&1; then
-            trust_root=$(go_resolve_root "$SCRIPT_DIR/../.." 2>/dev/null) || trust_root=""
+            trust_root=$(go_resolve_root "$trust_anchor" 2>/dev/null) || trust_root=""
         fi
         trust_id=$(go_trust_gate "$go_num" "$go_sha" "$trust_root" "$go_nwo") \
             || gate4_refuse "PR #$go_num touches CI trust path $trust_hit and needs a trust-reviewed GO: ${trust_id:-go_trust_gate refused with no reason}"

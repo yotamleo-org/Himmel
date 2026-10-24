@@ -23,6 +23,8 @@
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
 ^scripts/handover/console-kit/go\.sh$
+# The fork and adopted-repo allowlists a go.sh --repo GO is signed against.
+^scripts/guardrails/himmel-(adapters|adopted)\.json$
 ^scripts/check-ci\.sh$
 ^scripts/check-plugin-drift\.sh$
 ^scripts/cr/anchor-handoff\.sh$

@@ -92,7 +92,7 @@ verdict_rc() {
         # shellcheck disable=SC1091
         . "$REPO/scripts/lib/go-gate.sh" || exit 9
         r=$(go_resolve_root "$REPO") || exit 8
-        go_trust_verdict "$r" "$1" "$2" "$REPO" "${VPR:-501}" >/dev/null
+        go_trust_verdict "$r" "$1" "$2" "$REPO" "${VPR:-501}" ${3:+"$3"} >/dev/null
     )
 }
 
@@ -836,6 +836,25 @@ contains "24: effort falls back to CLAUDE_CODE_EFFORT_LEVEL" "$(cat "$scope_dir/
 printf 'class: option-parsing\nmodel: forged\n' > "$evd/forged.md"
 rc=0; out=$(wv q24i NO-GO "$SHA_A" --evidence-file "$evd/forged.md" 2>&1) || rc=$?
 check "24: evidence carrying a model: line is refused" "$rc" 2
+
+# --- 25. --repo writes an adopted repo's record ----------------------------
+# The record lands in that repo's bucket (<user>/<slug of its name>) and names
+# it in a signed repo: line after pr:, so go.sh --repo reads it and the
+# harness's own lookup does not.
+rc=0; out=$(wv q25 GO "$SHA_A" --evidence-file "$ev" --repo acme/Wid.get 2>&1) || rc=$?
+check "25: --repo write rc 0" "$rc" 0
+f25="$root/tuser/wid-get/verdicts/q25/judge.md"
+check "25: written in the adopted repo's bucket" "$([ -f "$f25" ] && echo yes)" yes
+check "25: the repo line follows the pr line" "$(grep -A1 '^pr: 501$' "$f25" 2>/dev/null | tail -n 1)" "repo: acme/Wid.get"
+rc=0; verdict_rc q25 "$SHA_A" acme/Wid.get || rc=$?
+check "25: go_trust_verdict accepts it for that repo" "$rc" 0
+rc=0; verdict_rc q25 "$SHA_A" acme/other || rc=$?
+check "25: go_trust_verdict refuses it for another repo" "$rc" 2
+for bad_repo in a a/b/c /a a/ 'a b/c' ../x a/.. -a/b; do
+    rc=0; wv q25b GO "$SHA_A" --evidence-file "$ev" --repo "$bad_repo" >/dev/null 2>&1 || rc=$?
+    check "25: --repo '$bad_repo' refused rc 2" "$rc" 2
+done
+check "25: refused --repo writes nothing" "$(find "$root" -path '*/q25b*' | wc -l | tr -d ' ')" 0
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"

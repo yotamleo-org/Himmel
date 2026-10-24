@@ -178,12 +178,13 @@ go_fixred_gate() {
     fi
 }
 
-# go_verdict_scope <anchor>. The `<user>/<bucket>` a trust verdict
+# go_verdict_scope <anchor> [<owner/name>]. The `<user>/<bucket>` a trust verdict
 # for the repo at <anchor> may live under: <user> = user_slug (USER_SLUG from the
 # env, else the anchor's .env, else the forge login), <bucket> = the slugified
 # basename of the anchor's PRIMARY checkout (the parent of its git-common-dir, so
 # a linked worktree names its repo, not its own directory) — the same bucket
-# convention console.sh derives. Both must be a plain path segment
+# convention console.sh derives. Given <owner/name> (an adopted repo, which has
+# no checkout under the anchor), <bucket> is the slugified <name> instead. Both must be a plain path segment
 # ([A-Za-z0-9][A-Za-z0-9._-]*, no `..`); anything unresolved prints nothing and
 # returns 1 (fail closed — never a glob over every bucket). Read-only.
 go_verdict_scope() (
@@ -202,8 +203,12 @@ go_verdict_scope() (
     # way console.sh does; the forge/git fallback runs with the anchor as cwd.
     load_dotenv --root "$(_load_dotenv_primary_for "$1" 2>/dev/null)" USER_SLUG >/dev/null 2>&1 || true
     slug=$(cd "$1" 2>/dev/null && user_slug 2>/dev/null) || exit 1
-    common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
-    reponame=$(basename "$(dirname "$common")")
+    if [ -n "${2:-}" ]; then
+        case "$2" in */*/*|*/) exit 1 ;; ?*/?*) reponame=${2#*/} ;; *) exit 1 ;; esac
+    else
+        common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
+        reponame=$(basename "$(dirname "$common")")
+    fi
     bucket=$(printf '%s' "$reponame" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
     for seg in "$slug" "$bucket"; do
         case "$seg" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*|*..*) exit 1 ;; esac
@@ -211,7 +216,7 @@ go_verdict_scope() (
     printf '%s/%s' "$slug" "$bucket"
 )
 
-# go_trust_verdict <go-root> <qid> <head-sha> <anchor> <pr>. Before
+# go_trust_verdict <go-root> <qid> <head-sha> <anchor> <pr> [<owner/name>]. Before
 # go.sh signs a trust-reviewed GO, the judge it names must have ruled GO on that
 # exact head. The verdict line is the first non-blank line under the `## Verdict`
 # heading (docs/handover/verdict-template.md), and it parses only as exactly
@@ -232,11 +237,16 @@ go_verdict_scope() (
 # head are told apart, and a verdict file with no pr: line (written before this
 # field existed) refuses, to be rewritten with write-verdict.sh --pr. A NO-GO
 # vetoes whatever PR it names (it only narrows). An empty <pr> refuses.
+# <owner/name> names an adopted repo: the scope is go_verdict_scope's for that
+# repo, and a GO counts only when its header (the lines from pr: to the next
+# blank line) carries `repo: <owner/name>`, which write-verdict.sh --repo writes.
+# Without it a GO naming any repo refuses, so a record written for an adopted
+# repo whose bucket matches the harness's never counts as the harness's.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_trust_verdict() {
     # bracket ranges and case mapping must not follow the caller's locale
     local LC_ALL=C
-    local root="$1" qid="$2" sha="$3" anchor="${4:-}" pr="${5:-}" f line word head go=0 scope vpr name snap
+    local root="$1" qid="$2" sha="$3" anchor="${4:-}" pr="${5:-}" nwo="${6:-}" f line word head go=0 scope vpr vrepo name snap
     case "$qid" in
         [A-Za-z0-9]*) ;;
         *) qid="" ;;
@@ -246,7 +256,7 @@ go_trust_verdict() {
         printf 'the trust id '"'"'%s'"'"' is not a judge qid ([A-Za-z0-9][A-Za-z0-9._-]*), so it names no verdicts/<qid>/ directory — pass the qid of the judge that ruled GO on this head.\n' "$2"
         return 2
     fi
-    if [ -z "$anchor" ] || ! scope=$(go_verdict_scope "$anchor"); then
+    if [ -z "$anchor" ] || ! scope=$(go_verdict_scope "$anchor" "$nwo"); then
         printf 'cannot resolve this repo'"'"'s <user>/<bucket> verdict scope (USER_SLUG, or the primary checkout of '"'"'%s'"'"') — refusing rather than read every bucket'"'"'s verdicts/%s/.\n' "$anchor" "$qid"
         return 2
     fi
@@ -297,6 +307,11 @@ go_trust_verdict() {
         fi
         if [ "$vpr" != "$pr" ]; then
             printf 'the verdict in %s names PR #%s, not PR #%s.\n' "$f" "$vpr" "$pr"
+            return 2
+        fi
+        vrepo=$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n { if (!NF) exit; if (sub(/^repo: /, "")) { print; exit } }')
+        if [ "$vrepo" != "$nwo" ]; then
+            printf 'the verdict in %s is for repo '"'"'%s'"'"', not '"'"'%s'"'"' (empty: the harness repo itself) - the judge writes it with write-verdict.sh --repo <owner/name> for an adopted repo, without it otherwise.\n' "$f" "$vrepo" "$nwo"
             return 2
         fi
         go=1
@@ -799,6 +814,23 @@ parse_ready_line() {
 }
 
 # --- himmel adapters: the forks the console may merge ----------------------
+# _go_harness_ref <anchor>. rc 0 prints `<nwo> <default branch>` of the harness
+# repo the anchor's origin remote names (never gh's default-repo setting); rc 1
+# when either cannot be read. gh is ${GH:-gh}. Read-only.
+_go_harness_ref() {
+    local LC_ALL=C
+    local url nwo dbranch=""
+    url=$(git -C "$1" remote get-url origin 2>/dev/null) || url=""
+    nwo=$(printf '%s' "$url" | sed -nE 's#^(https?://([^/@]+@)?[^/]+/|ssh://([^/@]+@)?[^/]+/|[^/@:]+@[^/:]+:)([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$#\4#p')
+    nwo=${nwo%.git}
+    case "$nwo" in
+        ''|*[!A-Za-z0-9._/-]*|*/*/*) return 1 ;;
+    esac
+    dbranch=$("${GH:-gh}" repo view "$nwo" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || dbranch=""
+    case "$dbranch" in ''|*[[:space:]]*) return 1 ;; esac
+    printf '%s %s\n' "$nwo" "$dbranch"
+}
+
 # go_adapter_entry <anchor> <target-nwo>. rc 0 prints the one branch a console
 # merge into <target-nwo> may land on (its himmel_branch); rc 2 prints the
 # reason. The allowlist scripts/guardrails/himmel-adapters.json is read from the
@@ -811,7 +843,7 @@ parse_ready_line() {
 go_adapter_entry() {
     # bracket ranges and case mapping must not follow the caller's locale
     local LC_ALL=C
-    local anchor="$1" target="$2" gh_bin=${GH:-gh} url nwo dbranch raw br
+    local anchor="$1" target="$2" gh_bin=${GH:-gh} ref nwo dbranch raw br
     case "$target" in
         */*/*|/*|*/|*[!A-Za-z0-9._/-]*|'') target="" ;;
         */*) ;;
@@ -821,19 +853,11 @@ go_adapter_entry() {
         printf 'the repo '"'"'%s'"'"' is not an owner/name.\n' "$2"
         return 2
     fi
-    url=$(git -C "$anchor" remote get-url origin 2>/dev/null) || url=""
-    nwo=$(printf '%s' "$url" | sed -nE 's#^(https?://([^/@]+@)?[^/]+/|ssh://([^/@]+@)?[^/]+/|[^/@:]+@[^/:]+:)([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$#\4#p')
-    nwo=${nwo%.git}
-    case "$nwo" in
-        ''|*[!A-Za-z0-9._/-]*|*/*/*) nwo="" ;;
-    esac
-    if [ -n "$nwo" ]; then
-        dbranch=$("$gh_bin" repo view "$nwo" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || dbranch=""
-    fi
-    if [ -z "$nwo" ] || [ -z "$dbranch" ]; then
+    if ! ref=$(_go_harness_ref "$anchor"); then
         printf 'cannot resolve the harness repo from the origin remote of %s and its default branch, so the himmel-adapters allowlist cannot be read.\n' "$anchor"
         return 2
     fi
+    nwo=${ref%% *} dbranch=${ref#* }
     if [ "$(printf '%s' "$target" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]; then
         printf '%s is the harness repo itself, not a fork - its PRs go through go.sh and merge-on-green.sh.\n' "$target"
         return 2
@@ -848,6 +872,53 @@ go_adapter_entry() {
             return 2 ;;
     esac
     printf '%s\n' "$br"
+}
+
+# go_adopted_entry <anchor> <target-nwo>. rc 0 prints <target-nwo>'s default
+# branch, the only base an adopted repo's console GO may land on; rc 2 prints
+# the reason. The allowlist scripts/guardrails/himmel-adopted.json, an array of
+# {"nwo": "<owner/name>", "merge_allowed": true}, is read as go_adapter_entry
+# reads himmel-adapters.json: from the harness repo's default branch through the
+# API, never a worktree, a PR head or a local ref. A missing, unreadable or
+# non-array file, a repo listed twice, merge_allowed other than true, the harness
+# repo itself or an unreadable default branch refuses. gh is ${GH:-gh}. Read-only.
+go_adopted_entry() {
+    # bracket ranges and case mapping must not follow the caller's locale
+    local LC_ALL=C
+    local anchor="$1" target="$2" gh_bin=${GH:-gh} ref nwo dbranch raw ok tbranch
+    case "$target" in
+        */*/*|/*|*/|*[!A-Za-z0-9._/-]*|'') target="" ;;
+        */*) ;;
+        *) target="" ;;
+    esac
+    if [ -z "$target" ]; then
+        printf 'the repo '"'"'%s'"'"' is not an owner/name.\n' "$2"
+        return 2
+    fi
+    if ! ref=$(_go_harness_ref "$anchor"); then
+        printf 'cannot resolve the harness repo from the origin remote of %s and its default branch, so the himmel-adopted allowlist cannot be read.\n' "$anchor"
+        return 2
+    fi
+    nwo=${ref%% *} dbranch=${ref#* }
+    if [ "$(printf '%s' "$target" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]; then
+        printf '%s is the harness repo itself, not an adopted repo - its PRs go through go.sh and merge-on-green.sh.\n' "$target"
+        return 2
+    fi
+    raw=$("$gh_bin" api "repos/$nwo/contents/scripts/guardrails/himmel-adopted.json?ref=$dbranch" \
+        -H 'Accept: application/vnd.github.raw' 2>/dev/null) || raw=""
+    ok=$(printf '%s' "$raw" | jq -r --arg n "$target" \
+        'if type == "array" then ([.[] | select(type == "object" and .nwo == $n)] | if length == 1 and .[0].merge_allowed == true then "yes" else "" end) else "" end' 2>/dev/null) || ok=""
+    if [ "$ok" != yes ]; then
+        printf '%s is not an adopted repo with merge_allowed true in scripts/guardrails/himmel-adopted.json on %s@%s (missing, unreadable, not an array, or the repo is listed twice) - the console signs only allowlisted repos.\n' "$target" "$nwo" "$dbranch"
+        return 2
+    fi
+    tbranch=$("$gh_bin" repo view "$target" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || tbranch=""
+    case "$tbranch" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*..*)
+            printf 'cannot read the default branch of %s, the only base its GO may land on.\n' "$target"
+            return 2 ;;
+    esac
+    printf '%s\n' "$tbranch"
 }
 
 # go_fork_ready <target-nwo> <pr-number>. rc 0 iff the fork PR is ready to

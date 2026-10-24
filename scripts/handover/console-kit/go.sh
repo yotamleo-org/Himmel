@@ -49,6 +49,11 @@
 # --trust-reviewed names a judge whose write-verdict.sh record rules GO on
 # <head> for this PR - required, because that judge IS the review of a fork that
 # has no reviewer or CI gate of its own.
+# --repo also takes an operator-adopted repo (listed with merge_allowed true in
+# scripts/guardrails/himmel-adopted.json, read the same way, go-gate.sh's
+# go_adopted_entry): the PR must be based on that repo's default branch, and the
+# judge's record must be written with write-verdict.sh --repo <owner/name>, so it
+# lives under that repo's bucket and names that repo.
 #
 # every himmel GO, trust-reviewed or not, first runs this directory's
 # ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
@@ -71,8 +76,9 @@
 #   3  refused: run from a console relay - only the console writes a GO
 #   4  refused: ready-check.sh did not PASS for <pr> at <head>
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
-#   6  refused: --repo names no himmel adapter with merge_allowed true
-#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch,
+#   6  refused: --repo names no himmel adapter and no adopted repo with merge_allowed true
+#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch
+#      (an adopted repo: its default branch),
 #      or is not CLEAN (checks green) with every review thread resolved
 #   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
@@ -210,14 +216,15 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # gate against, so it must use their exact rule, not a hand-rolled copy of it.
 # Fail closed: this write is sensitive enough that a broken/missing shared lib
 # must never be read as "not a leg".
-unset -f go_adapter_entry console_leg go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file go_fork_ready 2>/dev/null || true
+unset -f go_adapter_entry go_adopted_entry _go_harness_ref console_leg go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file go_fork_ready 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
         || ! declare -F go_mac >/dev/null 2>&1 || ! declare -F go_resolve_root >/dev/null 2>&1 \
         || ! declare -F go_trust_id_ok >/dev/null 2>&1 || ! declare -F go_trust_verdict >/dev/null 2>&1 \
         || ! declare -F go_verdict_scope >/dev/null 2>&1 || ! declare -F go_fixred_file >/dev/null 2>&1 \
-        || ! declare -F go_adapter_entry >/dev/null 2>&1 || ! declare -F go_fork_ready >/dev/null 2>&1; then
+        || ! declare -F go_adapter_entry >/dev/null 2>&1 || ! declare -F go_fork_ready >/dev/null 2>&1 \
+        || ! declare -F go_adopted_entry >/dev/null 2>&1; then
     echo "go: cannot load scripts/lib/go-gate.sh - refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
     exit 1
 fi
@@ -267,12 +274,17 @@ if _go_in_harness "$ROOT" "$ANCHOR"; then
     echo "go: note - writing the GO under the harness repo's inline handovers/ ($ROOT): no external HANDOVER_DIR is configured, so this is Mode A" >&2
 fi
 
-# a fork GO only for an allowlisted adapter, and only for a PR
-# that is OPEN at this head, MERGEABLE and based on the adapter's himmel_branch.
+# a fork GO only for an allowlisted adapter or adopted repo, and only for a PR
+# that is OPEN at this head, MERGEABLE and based on the adapter's himmel_branch
+# (an adopted repo's default branch).
+VREPO=""
 if [ "$FORK_SET" -eq 1 ]; then
     if ! HBRANCH=$(go_adapter_entry "$ANCHOR" "$FORK"); then
-        echo "go: refusing the fork GO for $FORK PR #$PR - $HBRANCH No GO written." >&2
-        exit 6
+        if ! ABRANCH=$(go_adopted_entry "$ANCHOR" "$FORK"); then
+            echo "go: refusing the fork GO for $FORK PR #$PR - $HBRANCH $ABRANCH No GO written." >&2
+            exit 6
+        fi
+        HBRANCH=$ABRANCH VREPO=$FORK
     fi
     FVIEW=$("$GH_READ" pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
     FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
@@ -288,8 +300,9 @@ fi
 
 # a trust-reviewed GO only on the named judge's GO verdict for
 # this exact head (go_trust_verdict parses it, failing closed). and
-# for this PR - a verdict that names another PR, or none, refuses.
-if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA" "$ANCHOR" "$PR"); then
+# for this PR - a verdict that names another PR, or none, refuses. An adopted
+# repo's verdict must also name that repo.
+if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA" "$ANCHOR" "$PR" "$VREPO"); then
     echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - $REASON No GO written." >&2
     exit 5
 fi
@@ -331,15 +344,10 @@ fi
 # at the same sha. Resolve nwo from the HARNESS ANCHOR (not the PR's own
 # repo), the same way merge-on-green.sh's own cwd_nwo does, so a worktree
 # copy cannot forge it.
-# ponytail: a GO always signs the harness's own nwo, so a cross-repo
-# adopter/upstream PR (whose repo differs from the harness anchor's) can
-# never mint a mac that repo's own verifier would match -- this fails
-# CLOSED (the merge is refused, never allowed), so it does not block this
-# PR, but the case is unhandled -- upgrade: HIMMEL-3582 resolves nwo
-# per-target-repo instead of always from ANCHOR.
 NWO=$(cd "$ANCHOR" && "$GH_READ" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
-# A fork GO signs the fork's nwo (already allowlisted above): it validates for
-# that repo's PR only, never for a himmel PR of the same number and sha.
+# A --repo GO signs that repo's nwo (an adapter or adopted repo, allowlisted
+# above): it validates for that repo's PR only, never for a himmel PR of the
+# same number and sha.
 [ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"
 if [ -z "$NWO" ]; then
     echo "go: cannot resolve this repo's owner/name (gh repo view failed) - no GO written; the mac binds the repo (HIMMEL-3578)" >&2
@@ -429,7 +437,7 @@ if [ "$FIX_SET" -eq 0 ]; then
     if [ -n "$GO_EVD" ] \
        && printf 'console GO for %s PR #%s\nby: %s\nat: %s\ntrust-reviewed: %s\n' "$NWO" "$PR" "$BY" "$AT" "${TRUST:-none}" > "$GO_EVD/evidence.md" \
        && GO_WV=$(bash "$HERE/write-verdict.sh" "go-pr-$PR" GO "$SHA" --pr "$PR" --judge "console-go-$SHA" \
-            --evidence-file "$GO_EVD/evidence.md" --model "$GO_MODEL" --effort "$GO_EFFORT" 2>&1); then
+            ${VREPO:+--repo "$VREPO"} --evidence-file "$GO_EVD/evidence.md" --model "$GO_MODEL" --effort "$GO_EFFORT" 2>&1); then
         :
     else
         echo "go: warning - the GO is written but its verdict record was not persisted: ${GO_WV:-could not stage the evidence under $GO_SCRATCH}" >&2
