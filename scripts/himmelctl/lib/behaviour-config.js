@@ -68,8 +68,11 @@ function writeTarget(key) {
 // append the missing ones, drop every dropKeys entry not in entries, leave every
 // other line untouched. A line counts as the key's when the reader would read
 // it as that key (leading whitespace allowed). Creates the file and its
-// directory when absent; the write goes through a temp file and a rename.
-function upsertConfEntries(file, entries, dropKeys) {
+// directory when absent; the write goes through a temp file and a rename. A
+// linked file (the luna --vault layout) is written at its target, so the link
+// survives.
+function upsertConfEntries(link, entries, dropKeys) {
+  const file = linkTarget(link);
   const isKey = (l, k) => l.trimStart().startsWith(`${k}=`);
   let lines = [];
   try { lines = fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -95,6 +98,14 @@ function upsertConfEntries(file, entries, dropKeys) {
     try { fs.unlinkSync(tmp); } catch (_) { /* tmp never created */ }
     throw e;
   }
+}
+
+// The path a write to FILE must replace: FILE's resolved target when it is a
+// link (dangling included), else FILE itself.
+function linkTarget(file) {
+  try { return fs.realpathSync(file); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  try { return path.resolve(path.dirname(file), fs.readlinkSync(file)); } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'EINVAL') throw e; }
+  return file;
 }
 
 module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, writeTarget, upsertConfEntries };

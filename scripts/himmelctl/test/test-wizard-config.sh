@@ -44,6 +44,7 @@
 #      path: jira|local|none and on|off, written to ~/.himmel/himmel.conf by the
 #      wizard's own writer; none drops the ticket-id keys; the pattern is never
 #      settable here; --dry-run and every refusal write nothing.
+#      Q3: a himmel.conf linked into a luna vault stays a link after a write.
 #   P. `himmelctl profile` is a SEPARATE argv[0] special-case
 #      (same mechanism as `config`'s, added right after it in main()) that
 #      dispatches to plugin-profile.sh — proves it parses to subcommand
@@ -685,6 +686,27 @@ CFG_RC=$?
 set -e
 [ "$CFG_RC" -eq 0 ] || fail "caseQ2: a tracker set only in the legacy .env must count (got rc=$CFG_RC): $CFG_OUT"
 grep -qE '^TRACKER=jira$' "$_hQ2/.himmel/himmel.conf" || fail "caseQ2: himmel.conf should carry TRACKER=jira (got: $(cat "$_hQ2/.himmel/himmel.conf" 2>&1))"
+grep -qE '^TICKET_ID_REQUIRED=1$' "$_hQ2/.himmel/himmel.conf" || fail "caseQ2: himmel.conf should carry TICKET_ID_REQUIRED=1 (got: $(cat "$_hQ2/.himmel/himmel.conf" 2>&1))"
 echo "ok: caseQ2 commit-rule reads keep the legacy .env fallback"
+
+# Q3: a luna install's himmel.conf is a link into the vault (made by the real
+# migrate-env-config.sh --vault); a commit-rules write lands in the vault file
+# and the link survives.
+fxQ3="$work/fixtureQ3"; build_fixture "$fxQ3"
+_hQ3="$work/home-Q3-$$-$RANDOM"; _vQ3="$work/vault-Q3-$$-$RANDOM"; mkdir -p "$_hQ3" "$_vQ3"
+printf 'TRACKER=jira\n' > "$work/envQ3"
+HOME="$_hQ3" bash "$repo_root/scripts/setup/migrate-env-config.sh" --env "$work/envQ3" --vault "$_vQ3" >/dev/null 2>&1 \
+  || fail "caseQ3: migrate-env-config.sh --vault should build the linked layout"
+[ -L "$_hQ3/.himmel/himmel.conf" ] || fail "caseQ3: the fixture himmel.conf should start as a link"
+set +e
+CFG_OUT=$(HOME="$_hQ3" USERPROFILE="$(winpath "$_hQ3")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ3.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ3.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ3")" JIRA_PROJECT_KEY='' \
+  "$node_bin" "$wizard" config set commit.ticketIdRequired on 2>&1)
+CFG_RC=$?
+set -e
+[ "$CFG_RC" -eq 0 ] || fail "caseQ3: set commit.ticketIdRequired on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+[ -L "$_hQ3/.himmel/himmel.conf" ] || fail "caseQ3: the write must keep ~/.himmel/himmel.conf a link into the vault"
+grep -qE '^TICKET_ID_REQUIRED=1$' "$_vQ3/.himmel/himmel.conf" || fail "caseQ3: the vault file should carry TICKET_ID_REQUIRED=1 (got: $(cat "$_vQ3/.himmel/himmel.conf" 2>&1))"
+grep -qE '^TRACKER=jira$' "$_vQ3/.himmel/himmel.conf" || fail "caseQ3: the vault file should keep TRACKER=jira (got: $(cat "$_vQ3/.himmel/himmel.conf" 2>&1))"
+echo "ok: caseQ3 a commit-rules write goes through the vault link"
 
 echo "PASS"
