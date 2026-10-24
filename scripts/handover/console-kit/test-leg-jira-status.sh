@@ -453,9 +453,10 @@ wait "$p2"; r2=$?
 check "no-flock: both concurrent events exit 0" "$r1:$r2" "0:0"
 check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
 
-# One event releases its lease when it exits.
+# One event releases its lease when it exits, and it moved the status.
 reset "To Do"; owned
-PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1
+rc=0; PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 || rc=$?
+check "no-flock: a single event exits 0 and moves the status once" "$rc:$(ntrans)" "0:1"
 check "no-flock: a finished event releases its lease" "$([ -d "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" ] && printf held || printf free)" free
 
 # A lease left by a dead run (older than 300s) is reclaimed once, so one event moves the status.
