@@ -154,11 +154,29 @@ export async function rebind(root, name, pid, { proc = '/proc' } = {}) {
 
 const MAX_HOPS = 64;
 
+// Console X stamps its successor: `next` must be a registered
+// console whose predecessor is X. Stamped once; the same stamp again is a no-op.
+// The caller's identity (X) is proven by the CLI's process ancestry, not here.
+export async function succeed(root, name, next) {
+  checkName(next);
+  const target = await readPeer(root, next);
+  if (!target) throw new Error(`unknown session: ${next}`);
+  if (target.role !== 'console') throw new Error(`${next} is not a console`);
+  return update(root, name, peer => {
+    if (peer.role !== 'console') throw new Error(`${name} is not a console`);
+    if (target.predecessor !== name) throw new Error(`${next} does not succeed ${name}`);
+    if (peer.successor === next) return peer;
+    if (peer.successor) throw new Error(`${name} already stamped ${peer.successor}`);
+    return { ...peer, successor: next };
+  });
+}
+
 // Console succession (spec §8.6): `name` follows `next` only if its old console
-// is gone, or the old console itself sent a record naming `next`. A leg that
-// missed a succession walks `next`'s predecessor records back to its old
-// console: every console on that chain must be gone or have sent the leg a
-// record naming its own successor, and none but `next` may be live.
+// stamped `next` as its successor (`succeed`), is gone, or sent a record naming
+// `next`. A leg that missed a succession walks `next`'s predecessor records back
+// to its old console: every console on that chain must have stamped its own
+// successor, or be gone or have sent the leg a record naming it; no unstamped
+// console but `next` may be live.
 export async function adopt(root, name, next, { proc = '/proc' } = {}) {
   checkName(next);
   return update(root, name, async peer => {
@@ -184,6 +202,7 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
       return records.some(r => r.f === from && typeof r.b === 'string' && names.test(r.b));
     };
     for (const { from, to } of hops) {
+      if ((await readPeer(root, from))?.successor === to) continue;
       const state = await status(root, from, { proc });
       if (hops.length > 1 && state === 'live') throw new Error(`console ${from} on the chain to ${next} is still live`);
       if (state !== 'gone' && !relayed(from, to)) throw new Error(`${from === old ? 'old ' : ''}console ${from} is not gone and sent no relay naming ${to}`);
