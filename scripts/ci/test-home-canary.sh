@@ -195,7 +195,7 @@ if command -v python3 >/dev/null 2>&1; then
   chmod +x "$INSTALL_HOME/.local/bin/stub-tool"
   mkfx usersite '"'"$INSTALL_HOME"'/.local/bin/stub-tool" || exit 7; exit 0'
   OUT="$(HOME="$OTHER_HOME" PYTHONUSERBASE='' bash "$SCRATCH/fx/usersite.sh" 2>&1)"; RC=$?
-  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q 'ModuleNotFoundError'; then
+  if [ "$RC" -ne 0 ] && grep -q 'ModuleNotFoundError' <<< "$OUT"; then
     ok "the --user launcher fixture dies under a different HOME (the fork-runner condition)"
   else
     bad "the --user launcher fixture does not reproduce the HOME-bound failure (rc=$RC): $OUT"
