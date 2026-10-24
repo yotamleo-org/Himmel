@@ -167,6 +167,7 @@ printf '# t\n\n## Results\n\n- 10:00 WRAPPED — locked primary\n' > "$GB/HIMMEL
 printf '# t\n\n## Results\n\n- 10:00 WRAPPED — unlocked side\n' > "$GB/HIMMEL-13-p-2026-10-22.notes.md"
 mkdir -p "$G/.locks/queue/u__himmel__HIMMEL-13-p-2026-10-22.lock"
 bash "$SUT" --root "$G" --bucket "$GB" --mirror "$MIR" --since-days 0 > "$W/g.jsonl" 2>/dev/null
+check "the dotted-name fixture extracts with exit 0" 0 "$?"
 check "a locked HIMMEL-11 v1 doc does not hold the v2 doc of the same key" "HIMMEL-11-api.v2-2026-10-22.md" "$(rec "$W/g.jsonl" HIMMEL-11 '" ".join(r["docs"])')"
 check "a locked dot sibling holds its primary: HIMMEL-12 is not extracted" 0 "$(grep -c '"key": "HIMMEL-12"' "$W/g.jsonl")"
 check "a locked primary holds its unlocked dot sibling: HIMMEL-13 is not extracted" 0 "$(grep -c '"key": "HIMMEL-13"' "$W/g.jsonl")"
