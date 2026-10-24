@@ -70,10 +70,13 @@ EOF
 printf '# t\n\n## Results\n\n- 10:00 LIVE — still going\n' > "$B/HIMMEL-4-unfinished-2026-10-22.md"
 printf '# t\n\n## Results\n\n- 10:00 WRAPPED — but locked\n' > "$B/HIMMEL-5-locked-2026-10-22.md"
 mkdir -p "$R/.locks/queue/u__himmel__HIMMEL-5-locked-2026-10-22.lock"
+printf '# t\n\n## Results\n\n- 10:00 LIVE — still going\n' > "$B/HIMMEL-7-grp-2026-10-22.md"
+printf '# t\n\n## Results\n\n- 10:00 WRAPPED — a side file of a locked group\n' > "$B/HIMMEL-7-grp-2026-10-22-RESUME.md"
+mkdir -p "$R/.locks/queue/u__himmel__HIMMEL-7-grp-2026-10-22.lock"
 printf '# t\n\n## Results\n\n- 10:00 WRAPPED — console\n' > "$B/HIMMEL-nextleg-2026-10-22-console.md"
 printf '# t\n\n## Results\n\n- 10:00 WRAPPED — old\n' > "$B/HIMMEL-6-old-2026-10-01.md"
 age 20 "$B/HIMMEL-6-old-2026-10-01.md"
-age 2 "$B"/HIMMEL-1-*.md "$B"/HIMMEL-2-*.md "$B"/HIMMEL-3-*.md "$B"/HIMMEL-4-*.md "$B"/HIMMEL-5-*.md
+age 2 "$B"/HIMMEL-1-*.md "$B"/HIMMEL-2-*.md "$B"/HIMMEL-3-*.md "$B"/HIMMEL-4-*.md "$B"/HIMMEL-5-*.md "$B"/HIMMEL-7-*.md
 age 1 "$B/HIMMEL-3-third-2026-10-22-b.md"   # the newer leg of the third key
 mkdir -p "$B/specs/plans"; printf '# plan\n\n- 10:00 WRAPPED — a spec\n' > "$B/specs/plans/p.md"
 
@@ -111,7 +114,7 @@ run() { bash "$SUT" --root "$R" --bucket "$B" --mirror "$MIR" "$@"; }
 [ -f "$SUT" ] || { check "RED: compound-extract.sh exists" yes no; echo "pass=$PASS fail=$FAIL"; exit 1; }
 
 run > "$OUT" 2> "$W/err"; check "default run exits 0" 0 "$?"
-check "one record per ticket key (HIMMEL-1, 2, 3; not 4 unfinished, 5 locked, 6 old, console)" \
+check "one record per ticket key (HIMMEL-1, 2, 3; not 4 unfinished, 5 locked, 6 old, 7 an unlocked side file of a locked group, console)" \
   "HIMMEL-1 HIMMEL-2 HIMMEL-3" "$(python3 -I -c 'import json,sys; print(" ".join(json.loads(l)["key"] for l in open(sys.argv[1])))' "$OUT")"
 check "every line is one JSON object" 3 "$(python3 -I -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if isinstance(json.loads(l), dict)))' "$OUT")"
 

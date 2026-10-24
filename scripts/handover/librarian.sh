@@ -162,8 +162,9 @@ if cited_dir:
     key_re = re.compile(r"(?<![A-Za-z0-9_-])[A-Z][A-Z0-9]*-[0-9]+(?![A-Za-z0-9_])")
     for dp, _, fns in os.walk(cited_dir):
         for fn in fns:
-            if fn.endswith(".md"):
-                with open(os.path.join(dp, fn), encoding="utf-8", errors="replace") as fh:
+            path = os.path.join(dp, fn)
+            if fn.endswith(".md") and os.path.isfile(path) and not os.path.islink(path):
+                with open(path, encoding="utf-8", errors="replace") as fh:
                     cited_keys.update(key_re.findall(fh.read()))
 
 bucket_tracked = tracked_set(bucket)

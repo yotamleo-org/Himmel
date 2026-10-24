@@ -122,6 +122,16 @@ def comments(text):
     return out
 
 
+def group_locked(name):
+    m = re.match(r"(.+?)-(?:RESUME|HANDOFF|judge-)", name)
+    stem = m.group(1) if m else name.split(".", 1)[0]
+    for f in os.listdir(bucket):
+        if f.endswith(".md") and (f.startswith((stem + "-RESUME", stem + "-HANDOFF", stem + "-judge-", stem + "."))):
+            if locked(os.path.join(bucket, f)):
+                return True
+    return False
+
+
 recs = {}
 cands = []
 for e in os.scandir(bucket):
@@ -134,7 +144,7 @@ for e in os.scandir(bucket):
     age = (now - e.stat().st_mtime) / 86400.0
     if since and age > since:
         continue
-    if locked(e.path):
+    if locked(e.path) or group_locked(n):
         continue
     key = m.group(1)
     if tails.get(n, "") not in ("WRAPPED", "HALTED") and not ticket_done(mirror_text(key)):

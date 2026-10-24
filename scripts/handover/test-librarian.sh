@@ -216,8 +216,10 @@ leg HIMMEL-32-uncited-2026-01-01.md WRAPPED 60
 leg HIMMEL-33-nearmiss-2026-01-01.md WRAPPED 60
 leg HIMMEL-34-suffixed-2026-01-01.md WRAPPED 60
 leg HIMMEL-35-prefixed-2026-01-01.md WRAPPED 60
+leg HIMMEL-36-linked-2026-01-01.md WRAPPED 60
 CIT="$W/compounded"; mkdir -p "$CIT/themes"
 printf '# week\n\n## HIMMEL-31\n- outcome: merged\n\nalso HIMMEL-331 and HIMMEL-3 and HIMMEL-34suffix and foo_HIMMEL-35\n' > "$CIT/2026-W43.md"
+printf 'cites HIMMEL-36\n' > "$W/outside-cite.md"; ln -s "$W/outside-cite.md" "$CIT/linked.md"
 git -C "$R" add -A
 out7="$(run 2>&1)"
 check "gate off by default: an uncited doc is a move" yes "$(grep -q '^MOVE .*HIMMEL-32-uncited' <<< "$out7" && echo yes || echo no)"
@@ -227,6 +229,7 @@ check "gated: an uncited key's doc is skipped and named" yes "$(grep -q '^SKIP u
 check "gated: a key that is only a prefix of a cited one (HIMMEL-33 vs HIMMEL-331) is uncited" yes "$(grep -q '^SKIP uncited .*HIMMEL-33-nearmiss' <<< "$out8" && echo yes || echo no)"
 check "gated: a key followed by letters (HIMMEL-34suffix) is not a citation of HIMMEL-34" yes "$(grep -q '^SKIP uncited .*HIMMEL-34-suffixed' <<< "$out8" && echo yes || echo no)"
 check "gated: a key after an underscore (foo_HIMMEL-35) is not a citation of HIMMEL-35" yes "$(grep -q '^SKIP uncited .*HIMMEL-35-prefixed' <<< "$out8" && echo yes || echo no)"
+check "gated: a note that is a symlink out of the dir cites nothing" yes "$(grep -q '^SKIP uncited .*HIMMEL-36-linked' <<< "$out8" && echo yes || echo no)"
 check "gated: the summary counts the uncited docs it skipped" yes "$(grep -q "uncited=$(grep -c '^SKIP uncited' <<< "$out8")[) ]" <<< "$out8" && echo yes || echo no)"
 check "gated: the summary has no uncited field when the gate is off" no "$(grep -q 'uncited=' <<< "$out7" && echo yes || echo no)"
 run --apply --require-cited "$CIT" >/dev/null 2>&1; check "gated apply exits 0" 0 "$?"
