@@ -1315,6 +1315,19 @@ assert_rc "7366 ctl a function keyword shadows a reader"    2 "$(run_case "$(j_b
 assert_rc "7366 ctl an alias shadows a reader"              2 "$(run_case "$(j_bash "alias head='set -o'; head xtrace")")"
 assert_rc "7366 ctl eval defines a function shadowing a reader" 2 "$(run_case "$(j_bash "eval 'tail() { set -o \"\$1\"; }'; tail xtrace")")"
 assert_rc "7366 grep for the word alias in a file named with the word" 0 "$(run_case "$(j_bash 'grep -n alias docs/xtrace.md')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with an if body shadows a reader" 2 "$(run_case "$(j_bash 'cat() if set -o "$1"; then :; fi; cat xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a for body shadows a reader" 2 "$(run_case "$(j_bash 'cat() for o in "$1"; do set -o "$o"; done; cat xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a while body shadows a reader" 2 "$(run_case "$(j_bash 'head() while set -o "$1"; do break; done; head xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a case body shadows a reader" 2 "$(run_case "$(j_bash 'tail() case $1 in *) set -o "$1";; esac; tail xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a subshell body shadows a reader" 2 "$(run_case "$(j_bash 'wc() ( set -o "$1"; : ); wc xtrace')")"
+assert_rc "7366 ctl a dot-loaded file can define a reader"     2 "$(run_case "$(j_bash '. ./defs.sh; cat xtrace')")"
+assert_rc "7366 ctl a sourced file can define a reader"        2 "$(run_case "$(j_bash 'source defs.sh; grep xtrace')")"
+assert_rc "7366 a reader in a subshell keeps its data reading" 0 "$(run_case "$(j_bash '(grep -n alias docs/xtrace.md)')")"
 
 # --- an env NAME=value operand the shfmt model unwraps past still reaches the
 # regex reader: the model only proves a shifted-cwd glob safe, never allows

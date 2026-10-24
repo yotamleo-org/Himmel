@@ -871,19 +871,22 @@ g4_clause() {
 
 g4_segments() {
     local s=0 k n g4raw=0 g4shadow=0
-    local -a idx g4w g4g g4k g4hs hs
-    hs=()
+    local -a idx g4w g4g g4k g4hs hs nw
+    hs=() nw=()
     # here-string targets (`<<< "$TOKEN"`) are redirect targets, so
     # guard_unwrap's segment words leave them out; collect the live-`$` ones.
-    # A command that defines a function or alias (or evals text that may) can
-    # give a reader's name to code, so no reader's operands are data
-    # (g4shadow). The same word as a reader's own operand defines nothing.
+    # A command that defines a function or alias (or evals or sources text
+    # that may) can give a reader's name to code, so no reader's operands are
+    # data (g4shadow). The same word as a reader's own operand defines nothing.
+    # `name()` tokenizes as a segment ending `(` then an empty one ending `)`,
+    # whatever body follows.
     k=0
     while [ "$k" -lt "${ST_N:-0}" ]; do
+        nw[ST_S[k]]=1
         case "${ST_RO[k]:-}" in *'<<<') if [ "${ST_X[k]:-0}" = 1 ]; then hs[${#hs[@]}]=$k; fi ;; esac
         if [ "${ST_Q[k]:-1}" = 0 ]; then
             case "${ST_W[k]}" in
-                alias | function | eval | '{' | '}' | *'()'*)
+                alias | function | eval | . | source)
                     read -r -a idx <<<"${GU_SW[ST_S[k]]:-}"
                     n=${idx[0]:-$k}
                     case "$n:${ST_Q[n]}${ST_W[n]}" in
@@ -892,6 +895,13 @@ g4_segments() {
                         *) g4shadow=1 ;;
                     esac ;;
             esac
+        fi
+        k=$((k + 1))
+    done
+    k=0
+    while [ "$((k + 1))" -lt "${ST_NSEG:-0}" ]; do
+        if [ "${ST_SEP[k]}${ST_SEP[k + 1]}" = '()' ] && [ -n "${nw[k]:-}" ] && [ -z "${nw[k + 1]:-}" ]; then
+            g4shadow=1
         fi
         k=$((k + 1))
     done

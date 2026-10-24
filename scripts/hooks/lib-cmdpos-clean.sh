@@ -500,13 +500,15 @@ cmdpos_clean_for() { # cmdpos_clean_for <names-fn> <command>
                         w=$((w + 1))
                     done ;;
                 sed)
-                    # GNU sed reads options anywhere, so a glob a planted file
-                    # name turns into -i, -f or `-e e`, or a brace word that
-                    # expands to one, before `--` is not clean.
+                    # GNU sed reads options anywhere, so an expanded word that
+                    # can begin with `-` (a glob a planted file name turns into
+                    # -i, -f or `-e e`, a brace word, an unset parameter before
+                    # the option text) before `--` is not clean; same class as
+                    # git_mentions_only.
                     w=$((cw + 1))
                     while [ "$w" -lt "$ek" ] && [ "${ST_W[w]}${ST_Q[w]}" != --0 ]; do
-                        if [ -z "${ST_RO[w]}" ] && [ "${ST_G[w]}" = 1 ]; then
-                            case "${ST_W[w]}" in [-*?[\{]*) rc=1 ;; esac
+                        if [ -z "${ST_RO[w]}" ] && [ "${ST_X[w]}${ST_G[w]}" != 00 ]; then
+                            case "${ST_W[w]}" in -* | '{'* | '$'* | '*'* | '?'* | '['* | '~'* | *'$'*) rc=1 ;; esac
                         fi
                         w=$((w + 1))
                     done ;;
