@@ -102,7 +102,11 @@ The himmel *plugins* depend on **how the marketplace was registered**:
   **github** source. There `autoUpdate` pulls a separate Claude-managed clone from
   GitHub, so *plugin* updates arrive without pulling your working checkout, but
   the core hooks and commands still run from your checkout and **still need a
-  pull**.
+  pull**. Plugin versions change only in a release cut, and Claude Code
+  replaces its cached copy only when the version differs, so a plugin change
+  on `main` reaches this install with the next release. A fresh install
+  between releases gets `main`'s content under the last release's version;
+  pin the marketplace source to a release tag to get exactly a release.
 
 Either way: **a `git pull` is required for the full update; `autoUpdate` never
 covers the core hooks.**
