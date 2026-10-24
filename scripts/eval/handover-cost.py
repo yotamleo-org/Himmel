@@ -53,7 +53,7 @@ W_CC = float(os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25"))
 W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
 DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
 LEG_TURN_CAP = 4
-NEXT_RE = re.compile(r"(?:console|chief)\.sh\\?\"?\s+next\b")
+NEXT_RE = re.compile(r'(?:console|chief)\.sh(?:\\"|")?\s+next\b')
 MARKER_RE = re.compile(r"\bbash\s+\S*append-results\.sh")
 MECH_RE = re.compile(
     r"(?:console|chief)\.sh|action-zero|console-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
