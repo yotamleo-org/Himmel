@@ -517,7 +517,9 @@ jobs:
   # its own steps succeeded or were skipped by a gate; anything else, a
   # cancelled or timed-out job included, leaves it 'fail' or empty. Each old job
   # name below stays as a sentinel carrying its required context: skipped
-  # (green) on 'pass', `exit 1` otherwise. A sentinel also skips when the run
+  # (green) on 'pass', `exit 1` otherwise. A sentinel that carries a rename-rule
+  # name runs instead and fails in a step, since a skipped job reports its raw
+  # name expression and never writes the required context. A sentinel also skips when the run
   # was cancelled (`!cancelled()`, not `always()`): the run is already dead, so
   # eight runners would only paint it red. It tests the run, not ci-quick's own
   # result, so a ci-quick that timed out, whichever result a timeout reports,
@@ -888,13 +890,15 @@ jobs:
   secret-scan:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'secret-scan' || 'secret-scan (deferred)' }}
     # Runs as the secret-scan step group of ci-quick; this job only carries the
-    # required context: skipped (green) when the group passed, red otherwise.
+    # required context: it runs so the literal name is written, green when the
+    # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.secret-scan != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - if: ${{ needs.ci-quick.outputs.secret-scan != 'pass' }}
+        run: exit 1
 
   # HIMMEL-3653: HIMMEL-3624 fixed a bracket-expression bug in
   # scripts/lib/unchecked-mktemp.sh that only failed under a real BWK
@@ -925,13 +929,15 @@ jobs:
   unchecked-mktemp-range:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'unchecked-mktemp-range' || 'unchecked-mktemp-range (deferred)' }}
     # Runs as the unchecked-mktemp-range step group of ci-quick; this job only carries the
-    # required context: skipped (green) when the group passed, red otherwise.
+    # required context: it runs so the literal name is written, green when the
+    # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - if: ${{ needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
+        run: exit 1
 
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
@@ -1043,13 +1049,15 @@ jobs:
   commit-lint:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'commit-lint' || 'commit-lint (deferred)' }}
     # Runs as the commit-lint step group of ci-quick; this job only carries the
-    # required context: skipped (green) when the group passed, red otherwise.
+    # required context: it runs so the literal name is written, green when the
+    # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.commit-lint != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - if: ${{ needs.ci-quick.outputs.commit-lint != 'pass' }}
+        run: exit 1
 
   # Plugin-version-bump governance (HIMMEL-3551): mirrors the local
   # plugin-version-bump-required pre-commit hook (--bump-required), which only
@@ -1389,13 +1397,15 @@ jobs:
   claude-startup:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)' }}
     # Runs as the claude-startup step group of ci-quick; this job only carries the
-    # required context: skipped (green) when the group passed, red otherwise.
+    # required context: it runs so the literal name is written, green when the
+    # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.claude-startup != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - if: ${{ needs.ci-quick.outputs.claude-startup != 'pass' }}
+        run: exit 1
 
   lanes-and-trust-suites:
     name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'lanes-and-trust-suites' || 'lanes-and-trust-suites (deferred)' }}
@@ -1486,13 +1496,15 @@ jobs:
   guardrail-matrices:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)' }}
     # Runs as the guardrail-matrices step group of ci-quick; this job only carries the
-    # required context: skipped (green) when the group passed, red otherwise.
+    # required context: it runs so the literal name is written, green when the
+    # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - if: ${{ needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
+        run: exit 1
 
   # Single-entry os matrix, not a bare job (HIMMEL-1109): the matrix is what
   # names the required check-run context `bun-suites (ubuntu-latest)`. This
@@ -1628,13 +1640,15 @@ jobs:
   doc-invariants:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'doc-invariants' || 'doc-invariants (deferred)' }}
     # Runs as the doc-invariants step group of ci-quick; this job only carries the
-    # required context: skipped (green) when the group passed, red otherwise.
+    # required context: it runs so the literal name is written, green when the
+    # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.doc-invariants != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - if: ${{ needs.ci-quick.outputs.doc-invariants != 'pass' }}
+        run: exit 1
 
   # Security / dependency scanning lane (HIMMEL-510): mirrors the local
   # pre-commit/pre-push security gates (.pre-commit-config.yaml) by invoking the

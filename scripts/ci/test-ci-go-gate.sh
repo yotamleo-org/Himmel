@@ -20,6 +20,9 @@
 #   G8  the go run shares the PR's concurrency group, an unrelated label gets its own
 #   G9  every job is classified cheap or heavy (a new job forces a decision)
 #   G10 the five security invariants are in the ci.yml header comment
+#   G11 on a plain push every required cheap job runs when ci-quick passed every
+#       group (a skipped job reports its raw name expression, never the
+#       required context, so a skipped sentinel leaves that context missing)
 #
 # The required-context list is a copy of the live ruleset
 # (gh api repos/yotamleo-org/Himmel/rules/branches/main).
@@ -288,6 +291,24 @@ else:
         ok("G8 the go run shares ci-pr-<N>, an unrelated label has its own group, cron keeps ci-<run_id>")
     else:
         bad("G8 groups: push=%r go=%r other-label=%r schedule=%r" % (g_push, g_go, g_other, g_sched))
+
+# ---- G11 ----
+class AllPass:
+    def __getattr__(self, k): return self
+    def __eq__(self, o): return o == "pass"
+    def __ne__(self, o): return o != "pass"
+    def __str__(self): return "pass"
+bad11 = []
+for gate in ("on", "off", ""):
+    for a in ("opened", "synchronize", "reopened"):
+        ctx = dict(event("pull_request", a, "", gate), needs=AllPass())
+        for j in sorted(CHEAP & required & set(jobs)):
+            if not runs(j, ctx):
+                bad11.append("%s is skipped on %s with the gate %r while ci-quick passed" % (j, a, gate))
+if bad11:
+    bad("G11 " + "; ".join(sorted(set(bad11))))
+else:
+    ok("G11 every required cheap job runs on a plain push when ci-quick passed every group")
 
 # ---- G10 ----
 head = "\n".join(lines[:lines.index("jobs:")])
