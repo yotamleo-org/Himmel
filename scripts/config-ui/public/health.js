@@ -143,6 +143,24 @@ function trendsHtml(health) {
   return r.cards.map(trendCard).join("");
 }
 
+// The review page text from GET /api/reviewers, as sent: only its Markdown headings, bullets and paragraphs are shaped here.
+function reviewersHtml(health) {
+  const r = health && health.reviewers;
+  if (!r || r.state !== "ok") return nodata(r && r.reason ? r.reason : "no review page yet");
+  const out = [];
+  let list = false;
+  for (const line of String(r.text).split("\n")) {
+    const li = /^- (.*)$/.exec(line);
+    if (list && !li) { out.push("</ul>"); list = false; }
+    if (li) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${esc(li[1])}</li>`); continue; }
+    const h = /^#{1,3} (.*)$/.exec(line);
+    if (h) out.push(line.startsWith("# ") ? "" : `<h4>${esc(h[1])}</h4>`);
+    else if (line.trim()) out.push(`<p>${esc(line)}</p>`);
+  }
+  if (list) out.push("</ul>");
+  return `<div class="card" id="reviewers-page">${out.join("")}<p class="sub">Written ${esc(String(r.writtenAt).slice(0, 10))}</p></div>`;
+}
+
 function searchHtml(feed) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter((r) => r.bundle === "search");
@@ -157,6 +175,7 @@ export function renderHealth(feed, health) {
     section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),
     section("legs-bank", "Worker sessions and the subscription usage budget", "Read-only: the newest bank-preflight ledger row and each worker session's last marker.", bankHtml(health) + quotaHtml(health) + legsHtml(health)),
     section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health)),
+    section("reviewers", "How good are our reviewers?", "The critics on planted bugs and the judges on merged PRs, from the weekly review page; read-only.", reviewersHtml(health)),
     section("search", "Search and graph freshness", "From the doctor's search rows.", searchHtml(feed)),
   ].join("\n");
 }

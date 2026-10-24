@@ -264,6 +264,7 @@ scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 4
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
 scripts/eval/guard-corpus/test-guard-corpus.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new HIMMEL-6943
+scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	local	behaviour suite, new HIMMEL-7385
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window

@@ -48,6 +48,12 @@ stored week and version deltas and one sentence) or `{state: absent, reason}` wh
 file is missing. The deltas are the writer's; nothing is recomputed. The Fleet page's
 Trends tab shows the same cards.
 
+The **How good are our reviewers?** section (HIMMEL-7385) is fed by `GET /api/reviewers` (token-gated, GET
+only), which returns `{state: ok, markdown}` from `~/.himmel/state/review-page/review-page.md`
+(`REVIEW_PAGE_FILE` overrides) as rendered by `scripts/eval/review-page.py` (the weekly
+`judge-accuracy-cadence.sh` writes it) or `{state: absent, reason}` when the file is missing. The browser
+shows the text as is.
+
 The **Usage windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
 probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,
