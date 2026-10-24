@@ -37,7 +37,7 @@ new name), `docs`, `config`.
 | N09 | F3 | `CODEX_BANK_*` | `CODEX_USAGE_*` | env var | HIMMEL-6639 | 120 / 21 | `CODEX_BANK_[A-Z0-9_]*` |  |
 | N10 | F3 | `CLAUDEX_BANK_*` | `CLAUDEX_USAGE_*` | env var | HIMMEL-6639 | 36 / 8 | `CLAUDEX_BANK_[A-Z0-9_]*` |  |
 | N11 | F3 | `PARKED-BANK` | `PARKED-USAGE` | id (marker token) | HIMMEL-6639 | 61 / 29 | `PARKED-BANK` | marker token the tick parses; written handover docs also carry it |
-| N12 | F4 | `bank-preflight.sh, bank-lift.sh (+ bank-lift.json), bank-monitor.sh, bank-attribution.sh, bank-status` | `usage-preflight.sh, usage-lift.sh, usage-monitor.sh, usage-attribution.sh, usage-status` | script/file name, command | HIMMEL-6639 | 768 / 222 | `bank-(preflight\|lift\|monitor\|attribution\|status)` |  |
+| N12 | F4 | `bank-preflight.sh, bank-lift.sh (+ bank-lift.json), bank-monitor.sh, bank-attribution.sh, bank-status` | `usage-preflight.sh, usage-lift.sh (+ usage-lift.json), usage-monitor.sh, usage-attribution.sh, usage-status` | script/file name, command | HIMMEL-6639 | 768 / 222 | `bank-(preflight\|lift\|monitor\|attribution\|status)` |  |
 | N13 | F5 | `clear-cr-marker.sh and cr-*.sh` | `clear-review-marker.sh, review-*.sh (CodeRabbit scripts: coderabbit-*)` | script/file name | HIMMEL-6640 | 474 / 128 | `(?<![A-Za-z0-9-])(clear-)?cr-[a-z0-9-]+\.sh` | AMBIGUOUS: the pattern can catch a third-party cr-*.sh; read each hit when renaming |
 | N14 | F5 | `CR_MARKER*` | `REVIEW_MARKER*` | env var | HIMMEL-6640 | 17 / 7 | `CR_MARKER[A-Z0-9_]*` | the <git-dir>/cr-pending/ dir keeps its name (OD-3), so it is not inventoried |
 | N15 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | script/file name | HIMMEL-6643 | 357 / 140 | `headed-arm-leg\.sh` |  |
@@ -569,7 +569,7 @@ Family F3; id (marker token); owner HIMMEL-6639; 61 lines in 29 files. marker to
 | `scripts/lib/test-status_marker.py` | test | 67, 69, 73 |
 | `scripts/lib/ticket-status.sh` | code | 265 |
 
-### N12 `bank-preflight.sh, bank-lift.sh (+ bank-lift.json), bank-monitor.sh, bank-attribution.sh, bank-status` to `usage-preflight.sh, usage-lift.sh, usage-monitor.sh, usage-attribution.sh, usage-status`
+### N12 `bank-preflight.sh, bank-lift.sh (+ bank-lift.json), bank-monitor.sh, bank-attribution.sh, bank-status` to `usage-preflight.sh, usage-lift.sh (+ usage-lift.json), usage-monitor.sh, usage-attribution.sh, usage-status`
 
 Family F4; script/file name, command; owner HIMMEL-6639; 768 lines in 222 files.
 

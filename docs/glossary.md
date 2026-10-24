@@ -87,8 +87,8 @@ exists. **This migration is a known breaking change** (operator ruling 2026-10-2
 working after its slice merges, so there is no read-both env alias, no wrapper at the old path, no redirect
 stub and no alias-pin test. Every old name, its new name and each place the code uses it are listed in
 [Renamed identifiers](migration/renamed-identifiers.md). That side doc is temporary: it is deleted once
-`git grep` finds no old name outside it and the changelog (HIMMEL-6647), and the release changelog
-(HIMMEL-7006) names the breaking change.
+`git grep` finds no old name outside it, the changelog and the handover records, which keep the spelling they
+were written with (HIMMEL-6647), and the release changelog (HIMMEL-7006) names the breaking change.
 
 | Family | Old name | New name | Slice |
 |---|---|---|---|
@@ -97,7 +97,7 @@ stub and no alias-pin test. Every old name, its new name and each place the code
 | F1c | operator-typed `CONSOLE_*` (`CONSOLE_FG_OK`, `CONSOLE_DISPATCH_OK`, `CONSOLE_DISPATCH_DISABLE`, `CONSOLE_CONTEXT`, …) | `CHIEF_*` | V5 |
 | F2 | `HIMMEL_LEG_*`, `HIMMEL_LEAN_LEG`, `LEG_*`, `HEADED_ARM_LEG_*` | `HIMMEL_WORKER_SESSION_*`, `HIMMEL_LEAN_WORKER_SESSION`, `WORKER_SESSION_*`, `HEADED_ARM_WORKER_*` (never `HIMMEL_WORKER_*`) | V4a |
 | F3 | `CADENCE_BANK_*`, `BANK_LIFT_*`, `CODEX_BANK_*`, `CLAUDEX_BANK_*`, `PARKED-BANK` | `CADENCE_USAGE_*`, `USAGE_LIFT_*`, `CODEX_USAGE_*`, `CLAUDEX_USAGE_*`, `PARKED-USAGE` (usage, not budget) | V1 |
-| F4 | `bank-preflight.sh`, `bank-lift.sh` (+ `bank-lift.json`), `bank-monitor.sh`, `bank-attribution.sh`, `bank-status` | `usage-*` | V1 |
+| F4 | `bank-preflight.sh`, `bank-lift.sh` (+ `bank-lift.json`), `bank-monitor.sh`, `bank-attribution.sh`, `bank-status` | `usage-preflight.sh`, `usage-lift.sh` (+ `usage-lift.json`), `usage-monitor.sh`, `usage-attribution.sh`, `usage-status` | V1 |
 | F5 | `clear-cr-marker.sh`, `cr-*.sh`, `CR_MARKER*` | `clear-review-marker.sh`, `review-*.sh` (the CodeRabbit scripts to `coderabbit-*`), `REVIEW_MARKER*`; the `<git-dir>/cr-pending/` dir keeps its name (OD-3) | V2 |
 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | V4b |
 | F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
