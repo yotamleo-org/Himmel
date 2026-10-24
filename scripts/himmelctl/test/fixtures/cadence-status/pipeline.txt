@@ -1,0 +1,21 @@
+pipeline-cadence status:
+ARMED      HIMMEL-Pipeline-FetchHealth (cron: 30 01 * * *) -> clip-source fetch probes [no LLM]
+  run log    ~/.claude/pipeline-cadence/pipeline-fetch-health.log (last write: 2026-10-24 20:43)
+             last line: [exit rc=0]
+  prev log   ~/.claude/pipeline-cadence/pipeline-fetch-health.log.prev (last write: 2026-10-24 01:31)
+             last line: [exit rc=0]
+ARMED      HIMMEL-Pipeline-Harvest (cron: 00 02 * * *) -> /harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich [model: claude-sonnet-5-5]
+  run log    ~/.claude/pipeline-cadence/pipeline-harvest.log (last write: 2026-10-24 02:21)
+             last line: daily-timeline.mjs: 50-Journal/Daily/2026-10-24.md — captured 0, reviewed 15, promoted 0, densified 0; report: sources 15, actions 4, carried 100
+  prev log   ~/.claude/pipeline-cadence/pipeline-harvest.log.prev (last write: 2026-10-23 02:13)
+             last line: daily-timeline.mjs: 50-Journal/Daily/2026-10-23.md — captured 0, reviewed 16, promoted 0, densified 0; report: sources 16, actions 7, carried 93
+ARMED      HIMMEL-Pipeline-Synthesize (cron: 00 03 * * *) [model: claude-sonnet-5-5]
+  run log    ~/.claude/pipeline-cadence/pipeline-synthesize.log (last write: 2026-10-24 03:00)
+             last line: daily-timeline.mjs: 50-Journal/Daily/2026-10-24.md — captured 3, reviewed 15, promoted 0, densified 0; report: sources 15, actions 4, carried 100
+  prev log   ~/.claude/pipeline-cadence/pipeline-synthesize.log.prev (last write: 2026-10-23 03:01)
+             last line: daily-timeline.mjs: 50-Journal/Daily/2026-10-23.md — captured 2, reviewed 16, promoted 0, densified 0; report: sources 16, actions 7, carried 93
+ARMED      HIMMEL-Pipeline-Health (cron: 00 04 * * 0) [model: haiku]
+  run log    ~/.claude/pipeline-cadence/pipeline-health.log (last write: 2026-10-24 20:42)
+             last line: [exit rc=0]
+  prev log   ~/.claude/pipeline-cadence/pipeline-health.log.prev (last write: 2026-10-18 04:00)
+             last line: [exit rc=0]

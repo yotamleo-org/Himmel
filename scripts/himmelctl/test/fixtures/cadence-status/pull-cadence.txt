@@ -1,0 +1,5 @@
+pull-cadence status:
+ARMED      HIMMEL-LunaVitalsPull (cron: 15 7 * * *)
+  runner     ~/.claude/pull-cadence/pull-cadence.sh
+  run log    ~/.claude/pull-cadence/pull-cadence.log (last write: 2026-10-24 07:15)
+             last line: [exit rc=0]

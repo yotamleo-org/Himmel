@@ -1,0 +1,3 @@
+ARMED      HIMMEL-VaultStall (*/15 * * * *)
+  run log    ~/.claude/vault-stall-cadence/vault-stall-cadence.log (last write: 2026-10-24 22:15)
+             last line: [exit rc=0]

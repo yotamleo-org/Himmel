@@ -475,6 +475,10 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/luna/pipeline-cadence.sh arm, or set luna.cadence.enabled in ~/.himmel/config.json)`;
       }
+      if (item.probe && item.probe.type === 'cadence-runs' && probe.cleanAbsence) {
+        severity = 'n/a';
+        detail = `${probe.detail} — opt-in (arm it with bash ${item.probe.script} arm)`;
+      }
       if (item.id === 'engine-allowlist' && probe.cleanAbsence) {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (no luna cadence legs armed yet; run scripts/luna/pipeline-cadence.sh arm)`;

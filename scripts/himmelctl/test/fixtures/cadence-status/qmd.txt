@@ -1,0 +1,6 @@
+qmd-cadence status:
+ARMED      HIMMEL-Qmd-Reindex (cron: 00 1-23/2 * * *) -> qmd-reindex (update + embed, all collections, daily)
+  run log    ~/.claude/qmd-cadence/qmd-reindex.log (last write: 2026-10-24 21:05)
+             last line: [exit rc=0]
+  prev log   ~/.claude/qmd-cadence/qmd-reindex.log.prev (last write: 2026-10-24 19:01)
+             last line: [exit rc=0]

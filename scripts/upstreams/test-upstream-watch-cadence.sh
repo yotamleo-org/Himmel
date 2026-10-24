@@ -376,6 +376,12 @@ echo "== test: POSIX status (armed) + dedup =="
 out=$(run_cadence_posix "$pstate" status 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "posix status: rc=0"; else fail "posix status: expected rc=0 got rc=$rc"; fi
 assert_has "$out" "ARMED" "posix status: reports ARMED"
+case "$out" in *DUPLICATE*) fail "posix status: single entry flagged duplicate" ;; *) pass "posix status: single entry not flagged" ;; esac
+cp "$pstate/tab" "$pstate/tab.single"
+head -1 "$pstate/tab.single" >>"$pstate/tab"
+out=$(run_cadence_posix "$pstate" status 2>&1)
+assert_has "$out" "[DUPLICATE: 2 cron entries]" "posix status: flags a doubled entry with its count"
+cp "$pstate/tab.single" "$pstate/tab"
 assert_rc 3 "posix dedup: re-arm without --force" run_cadence_posix "$pstate" arm
 
 echo "== test: POSIX arm publish-before-install ordering (round-3 fix) =="

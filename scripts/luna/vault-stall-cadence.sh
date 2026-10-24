@@ -517,6 +517,7 @@ cmd_arm() {
         printf 'log=%q\n' "$RUNNER_DIR/vault-stall-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
         printf '%q %q run --vault %q >> "$log" 2>&1\n' "$bash_bin" "$root/scripts/luna/vault-stall-cadence.sh" "$vault"
+        printf '_rc=$?\necho "[exit rc=$_rc]" >> "$log"\nexit "$_rc"\n'
     } > "$runner" || { echo "ERR vault-stall: cannot write the runner $runner" >&2; return 4; }
     chmod +x "$runner" || { echo "ERR vault-stall: cannot chmod the runner $runner" >&2; return 4; }
     { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
@@ -525,9 +526,29 @@ cmd_arm() {
     echo "vault-stall ARMED: every 15 min — $runner (status: bash scripts/luna/vault-stall-cadence.sh status)"
 }
 
+status_log() { # <log>: the run log's last write and last line, in the shape every cadence prints
+    local log="$1" mtime last
+    if [ -f "$log" ]; then
+        mtime=$(date -r "$log" '+%Y-%m-%d %H:%M' 2>/dev/null \
+            || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log" 2>/dev/null \
+            || echo '?')
+        last=$(tail -n 1 "$log" 2>/dev/null | tr -d '\r' || true)
+        echo "  run log    $log (last write: $mtime)"
+        [ -z "$last" ] || echo "             last line: $last"
+    else
+        echo "  run log    $log (absent — task has not fired yet)"
+    fi
+}
+
 cmd_status() {
+    local entry n_entries dup=""
     cron_read || return 1
-    if [ -n "$(cron_entry)" ]; then echo "ARMED      $TASK_NAME ($(cron_entry | awk '{print $1, $2, $3, $4, $5}'))"
+    entry="$(cron_entry | head -1)"
+    if [ -n "$entry" ]; then
+        n_entries="$(cron_entry | grep -c . || true)"
+        [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+        echo "ARMED      $TASK_NAME ($(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}'))$dup"
+        status_log "$RUNNER_DIR/vault-stall-cadence.log"
     else echo "not armed  $TASK_NAME"; fi
     [ -f "$STATE_DIR/last-run.log" ] && echo "  last stall $(date -r "$STATE_DIR/last-run.log" '+%Y-%m-%d %H:%M' 2>/dev/null)"
     return 0
