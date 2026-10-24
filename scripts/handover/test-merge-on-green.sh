@@ -4736,6 +4736,70 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=
     run_mog 17 "7001-g: console leg, no solo config, no GO → exit 17"
 assert_audit_has "7001-g: still the console-GO refusal" "phase=console-go"
 
+# --- 7390. Solo mode in an adopted project: the anchor is the himmel clone
+# (it carries console-kit/go.sh) and the merge runs from the adopted repo, which
+# holds the config. The mode is read from, and the clone test made on, the PR's
+# repo. -------------------------------------------------------------------------
+SOLO_ADOPTED=$(mktemp -d "${TMPDIR:-/tmp}/mog-solo-adopted.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+if ! git init -q "$SOLO_ADOPTED" || ! git -C "$SOLO_ADOPTED" config --local himmel.mergeMode solo; then
+    echo "FAIL: cannot build the adopted-repo fixture" >&2; exit 1
+fi
+himmel_clone_setup() {
+    mkdir -p "$1/scripts/handover/console-kit" && : > "$1/scripts/handover/console-kit/go.sh"
+}
+SOLO_HANDOVER=$(mktemp -d "${TMPDIR:-/tmp}/mog-solo-ho.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+# The himmel clone's origin names the harness repo, not the PR's.
+SOLO_HIMMEL_URL=https://github.com/himmel-org/himmel.git
+
+# 7390-R6 (RED) — mergeMode=solo in the adopted repo and, as the docs said, in
+# the anchor: refused as the himmel clone before; merges solo now.
+MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHOR_URL="$SOLO_HIMMEL_URL" MOG_ANCHOR_SETUP=solo_clone_setup STUB_SHA="solo7390r6" \
+    run_mog 0 "7390-R6: solo in an adopted repo, himmel-clone anchor, no GO → merged"
+assert_audit_has "7390-R6: the merge is audited as solo" "mode=solo"
+assert_audit_lacks "7390-R6: not refused as the himmel clone" "phase=solo-himmel-clone"
+
+# 7390-R6b (RED) — the config only in the adopted repo is what selects the mode.
+MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHOR_URL="$SOLO_HIMMEL_URL" MOG_ANCHOR_SETUP=himmel_clone_setup STUB_SHA="solo7390r6b" \
+    run_mog 0 "7390-R6b: solo set only in the adopted repo → merged"
+assert_audit_has "7390-R6b: the merge is audited as solo" "mode=solo"
+
+# 7390-R7 (RED) — a solo trust-path PR with no trust review stops for that
+# reason (exit 21), not as the himmel clone (exit 17).
+MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHOR_URL="$SOLO_HIMMEL_URL" MOG_ANCHOR_SETUP=solo_clone_setup STUB_SHA="solo7390r7" \
+    STUB_PR_FILES_JSON='[{"filename":".github/workflows/ci.yml"}]' \
+    run_mog 21 "7390-R7: solo trust-path PR with no trust review → exit 21"
+assert_audit_has "7390-R7: audited as a trust-path refusal" "REFUSED reason=trust-path"
+no_merge_call "7390-R7: no merge call"
+
+# 7390-c — a checkout posing as the PR's repo does not make the himmel clone
+# solo: an anchor carrying go.sh whose origin names the PR's own repo refuses.
+MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=himmel_clone_setup STUB_SHA="solo7390c" \
+    run_mog 17 "7390-c: solo cwd, himmel-clone anchor whose origin is the PR's repo → exit 17"
+assert_audit_has "7390-c: audited as the himmel clone" "phase=solo-himmel-clone"
+no_merge_call "7390-c: no merge call"
+
+# 7390-d / 7390-e — the anchor's origin is read from its own config only: a
+# global remote.origin.url naming another repo stands in for a missing one
+# neither for solo nor for the static re-check's other-repo skip.
+# The global origin is written after the anchor is built, whose own
+# `remote add origin` it would otherwise collide with.
+SOLO_GLOBAL_CFG=$(mktemp "${TMPDIR:-/tmp}/mog-solo-gitconfig.XXXXXX") || { echo "FAIL: mktemp failed" >&2; exit 1; }
+anchor_noorigin_setup() {
+    git -C "$1" remote remove origin \
+        && printf '[remote "origin"]\n\turl = %s\n' "$SOLO_HIMMEL_URL" > "$SOLO_GLOBAL_CFG"
+}
+himmel_clone_noorigin_setup() { himmel_clone_setup "$1" && anchor_noorigin_setup "$1"; }
+: > "$SOLO_GLOBAL_CFG"
+GIT_CONFIG_GLOBAL="$SOLO_GLOBAL_CFG" MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=himmel_clone_noorigin_setup STUB_SHA="solo7390d" \
+    run_mog 17 "7390-d: solo cwd, himmel-clone anchor with no origin of its own, global origin names another repo → exit 17"
+assert_audit_has "7390-d: audited as the himmel clone" "phase=solo-himmel-clone"
+no_merge_call "7390-d: no merge call"
+: > "$SOLO_GLOBAL_CFG"
+MERGE_STATIC_RECHECK=1 GIT_CONFIG_GLOBAL="$SOLO_GLOBAL_CFG" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=anchor_noorigin_setup STUB_SHA="solo7390e" \
+    run_mog 24 "7390-e: anchor with no origin of its own, global origin names another repo → re-check runs, refuses (exit 24)"
+assert_audit_lacks "7390-e: the static re-check is not skipped as another repo" "STATIC-RECHECK skipped reason=other-repo"
+rm -rf "$SOLO_ADOPTED" "$SOLO_HANDOVER" "$SOLO_GLOBAL_CFG"
+
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

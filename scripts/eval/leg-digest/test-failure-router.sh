@@ -452,6 +452,17 @@ check "HIMMEL-7004: the 1500-leg class files, not skipped:jira-error" '[ "$(decs
 b18="$(ls -t "$STUB"/body.create.* | head -n 1)"
 check "HIMMEL-7004: the body counts all 1500 legs and lists exactly 500 of them" 'grep -q "distinct legs (14 d): 1500" "$b18" && [ "$(grep "^- legs: " "$b18" | tr -cd N | wc -c)" -eq 500 ] && python3 "$FR" check-body "$b18" >/dev/null'
 
+echo "HIMMEL-7420: a class whose ticket and PR lists are long still files, with the cut counted"
+F19="$TMP/f19"; mkdir -p "$F19"
+jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z", host:"h", source:"scripts/eval/leg-digest/leg_ledger.py", kind:"leg-failure",
+  session:("4670c1a5-0000-4000-8000-" + ($i | tostring | ("000000000000" + .)[-12:])), leg:("N" + ($i | tostring)), console:$c, ticket:("HIMMEL-" + (10000 + $i | tostring)), pr:(1000 + $i),
+  agent:{id:"main", role:"leg", kind:$c, model:"claude-opus-5-5"}, class:"error/Bash", failure:"error", count:2, identical_retry:1,
+  recovered:false, first_ts:1, last_ts:2, tool_call_ids:[$c]}' >"$F19/l.jsonl"
+python3 "$FR" route --ledger "$F19/l.jsonl" --state "$F19/s.json" --log "$F19/log" --inbox "$F19/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F19/out" 2>&1
+check "HIMMEL-7420: the class with 1500 tickets and PRs files, not skipped:jira-error" '[ "$(decs "$F19/log" | jq -r "select(.class == \"error/Bash\") | .decision")" = filed ]'
+b19="$(ls -t "$STUB"/body.create.* | head -n 1)"
+check "HIMMEL-7420: the body lists 200 tickets and 200 PRs, counts the rest, and passes the alphabet" '[ "$(grep "^- tickets: " "$b19" | tr -cd H | wc -c)" -eq 200 ] && [ "$(grep "^- PRs: " "$b19" | tr -cd "#" | wc -c)" -eq 200 ] && grep -q "^- not listed: 2600 more tickets or PRs, see the digest$" "$b19" && python3 "$FR" check-body "$b19" >/dev/null'
+
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
 check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'

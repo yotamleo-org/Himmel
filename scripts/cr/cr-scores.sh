@@ -162,7 +162,7 @@ if (!branches.length) {
   } else if (totalUnadjudicated) {
     console.log("no branch-attributed review spend recorded yet");
     console.log("");
-    console.log("Unadjudicated at latest head (HIMMEL-2067): " + totalUnadjudicated
+    console.log("Unadjudicated at latest head: " + totalUnadjudicated
                 + " finding(s) across " + allUnadjBranches.length + " branch(es).");
   } else {
     console.log("no branch-attributed review spend recorded yet");
@@ -171,7 +171,7 @@ if (!branches.length) {
 }
 const W = [34, 16, 7, 7, 8, 11];
 const row = cells => cells.map((c,i)=>String(c).padEnd(W[i])).join("  ");
-console.log("=== Review spend per branch (HIMMEL-1299) ===");
+console.log("=== Review spend per branch ===");
 console.log("A call is one avail record = one (head, model) pair. Rounds are distinct heads.");
 console.log("");
 console.log(row(["branch","model","calls","failed","rounds","est_tokens"]));
@@ -202,7 +202,7 @@ if (!only && worst) {
 }
 if (!only) {
   console.log("");
-  console.log("Unadjudicated at latest head (HIMMEL-2067): " + totalUnadjudicated
+  console.log("Unadjudicated at latest head: " + totalUnadjudicated
               + " finding(s) across " + allUnadjBranches.length + " branch(es).");
 }
 '

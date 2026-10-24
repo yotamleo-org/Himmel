@@ -223,7 +223,7 @@ function sign(file, rowFile) {
 function verify(file) {
     const a = readArtifact(file);
     const s = a.stamp;
-    if (!s || s.alg !== "ed25519" || typeof s.sig !== "string") die("floor artifact carries no ed25519 stamp (hand-written, or from before HIMMEL-3220)");
+    if (!s || s.alg !== "ed25519" || typeof s.sig !== "string") die("floor artifact carries no ed25519 stamp (hand-written, or from before stamping existed)");
     if (a.schema !== SCHEMA) die(`floor artifact schema ${a.schema} is not ${SCHEMA}`);
     if (typeof a.dispatch_id !== "string" || a.dispatch_id.trim() === "") die("floor artifact carries no dispatch id");
     const pub = loadKey("signing.pub");

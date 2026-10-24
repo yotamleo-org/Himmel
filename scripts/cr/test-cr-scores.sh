@@ -295,10 +295,10 @@ LU="$tmp/by-branch-unadjudicated.jsonl"
 lu_out="$(CR_LEDGER="$LU" bash "$CS" --by-branch 2>&1)"
 contains "unadjudicated count for feat/wedge (1 at latest head; old-head and amended findings excluded)" "$lu_out" "1 unadjudicated at latest head"
 contains "unadjudicated count for feat/clean (0, fully adjudicated)" "$lu_out" "0 unadjudicated at latest head"
-contains "repo-wide unadjudicated total across both branches" "$lu_out" "Unadjudicated at latest head (HIMMEL-2067): 1 finding(s) across 2 branch(es)."
+contains "repo-wide unadjudicated total across both branches" "$lu_out" "Unadjudicated at latest head: 1 finding(s) across 2 branch(es)."
 lu_one="$(CR_LEDGER="$LU" bash "$CS" --by-branch feat/wedge 2>&1)"
 contains "branch-filtered report still shows the per-branch unadjudicated count" "$lu_one" "1 unadjudicated at latest head"
-not_contains "branch filter drops the repo-wide unadjudicated total" "$lu_one" "Unadjudicated at latest head (HIMMEL-2067)"
+not_contains "branch filter drops the repo-wide unadjudicated total" "$lu_one" "Unadjudicated at latest head"
 
 # ── scoring pass tallies the amend-MERGED verdict ──────────────
 # A finding row is always written with an EMPTY verdict; the

@@ -60,7 +60,7 @@ set -uo pipefail
 #                     panel's own doing and its phase lines below localise it.
 #
 # Unbuffered by construction: one printf to stderr, no pipeline, no subshell.
-printf 'critic-panel.sh: START pid=%s (HIMMEL-1280 liveness beacon)\n' "$$" >&2
+printf 'critic-panel.sh: START pid=%s (liveness beacon)\n' "$$" >&2
 
 # Start the total-panel clock HERE, next to the beacon — not down at the
 # timeout-config block. Everything between the two (registry read, local-overlay
@@ -111,7 +111,7 @@ usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--b
   --base-sha <sha>         pin the DIFF BASE to the caller's captured base SHA
                            (7-64 hex chars): exit 7 unless <base> still resolves
                            to it, so a base branch that moved between capture and
-                           review cannot change the reviewed diff (HIMMEL-1984)
+                           review cannot change the reviewed diff
   --check [--all-tiers]    probe registry health without reviewing a diff
 exit 2: usage error, or mktemp temp-file failure - check free space in TMPDIR
 exit 3: --worktree path is not a git worktree
@@ -608,27 +608,27 @@ _verify_head_pin() {
     # $1 = resolved repository root ("" when there is none), $2 = resolved head
     if [ -n "$BRANCH_PIN" ]; then
         if [ -z "$1" ]; then
-            echo "critic-panel.sh: REFUSING --branch $BRANCH_PIN — no git worktree here to verify the pin against (HIMMEL-1175)" >&2
+            echo "critic-panel.sh: REFUSING --branch $BRANCH_PIN — no git worktree here to verify the pin against" >&2
             exit 7
         fi
         _live_branch="$(git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null)" || _live_branch=""
         if [ "$_live_branch" != "$BRANCH_PIN" ]; then
-            echo "critic-panel.sh: REFUSING — $1 is on branch ${_live_branch:-<unresolvable>} but the review was pinned to $BRANCH_PIN; a switch to another branch (even one sitting at the same commit) means this review would be stamped for a branch it did not come from (HIMMEL-1175). Re-run /pr-check from step 1." >&2
+            echo "critic-panel.sh: REFUSING — $1 is on branch ${_live_branch:-<unresolvable>} but the review was pinned to $BRANCH_PIN; a switch to another branch (even one sitting at the same commit) means this review would be stamped for a branch it did not come from. Re-run /pr-check from step 1." >&2
             exit 7
         fi
     fi
     [ -n "$HEAD_PIN" ] || return 0
     if [ -z "$1" ]; then
-        echo "critic-panel.sh: REFUSING --head $HEAD_PIN — no git worktree here to verify the pin against (HIMMEL-1175)" >&2
+        echo "critic-panel.sh: REFUSING --head $HEAD_PIN — no git worktree here to verify the pin against" >&2
         exit 7
     fi
     _pin="$(git -C "$1" rev-parse --verify --quiet "$HEAD_PIN^{commit}" 2>/dev/null)" || _pin=""
     if [ -z "$_pin" ]; then
-        echo "critic-panel.sh: REFUSING --head $HEAD_PIN — not a commit in $1 (HIMMEL-1175)" >&2
+        echo "critic-panel.sh: REFUSING --head $HEAD_PIN — not a commit in $1" >&2
         exit 7
     fi
     if [ "$_pin" != "$2" ]; then
-        echo "critic-panel.sh: REFUSING — $1 is at ${2:-<unresolvable>} but the review was pinned to $_pin; the checkout moved since the caller captured its inputs, so this review would be stamped against a SHA it never covered (HIMMEL-1175). Re-run /pr-check from step 1." >&2
+        echo "critic-panel.sh: REFUSING — $1 is at ${2:-<unresolvable>} but the review was pinned to $_pin; the checkout moved since the caller captured its inputs, so this review would be stamped against a SHA it never covered. Re-run /pr-check from step 1." >&2
         exit 7
     fi
 }
@@ -661,18 +661,18 @@ _resolve_base_ref() {
 _verify_base_pin() {
     [ -n "$BASE_PIN" ] || return 0
     if [ -z "$1" ]; then
-        echo "critic-panel.sh: REFUSING --base-sha $BASE_PIN — no git worktree here to verify the pin against (HIMMEL-1984)" >&2
+        echo "critic-panel.sh: REFUSING --base-sha $BASE_PIN — no git worktree here to verify the pin against" >&2
         exit 7
     fi
     _bpin="$(git -C "$1" rev-parse --verify --quiet "$BASE_PIN^{commit}" 2>/dev/null)" || _bpin=""
     if [ -z "$_bpin" ]; then
-        echo "critic-panel.sh: REFUSING --base-sha $BASE_PIN — not a commit in $1 (HIMMEL-1984)" >&2
+        echo "critic-panel.sh: REFUSING --base-sha $BASE_PIN — not a commit in $1" >&2
         exit 7
     fi
     _base_ref="$(_resolve_base_ref "$1")"
     _blive="$(git -C "$1" rev-parse --verify --quiet "$_base_ref^{commit}" 2>/dev/null)" || _blive=""
     if [ "$_blive" != "$_bpin" ]; then
-        echo "critic-panel.sh: REFUSING — base $_base_ref is at ${_blive:-<unresolvable>} but the review was pinned to base $_bpin; the base branch moved since the caller captured its inputs, so the reviewed diff is not the one the caller computed (HIMMEL-1984). Re-run /pr-check from step 1." >&2
+        echo "critic-panel.sh: REFUSING — base $_base_ref is at ${_blive:-<unresolvable>} but the review was pinned to base $_bpin; the base branch moved since the caller captured its inputs, so the reviewed diff is not the one the caller computed. Re-run /pr-check from step 1." >&2
         exit 7
     fi
 }
@@ -863,7 +863,7 @@ case ",$TIER_FILTER," in
                 # weakened. A gate that saves a call by making the branch
                 # unshippable saves nothing.
                 _tg_keep_one=1
-                echo "critic-panel.sh: triviality-gate verdict=trivial ($_tg_reason) would have stripped the ONLY requested tier (paid), and a claude-only run leaves clear-cr-marker no responder row - keeping exactly ONE external critic so a trivial diff stays shippable (HIMMEL-1950, HIMMEL-6262). One cheap call by design; CR_TRIVIALITY_OVERRIDE=full runs the whole panel." >&2
+                echo "critic-panel.sh: triviality-gate verdict=trivial ($_tg_reason) would have stripped the ONLY requested tier (paid), and a claude-only run leaves clear-cr-marker no responder row - keeping exactly ONE external critic so a trivial diff stays shippable. One cheap call by design; CR_TRIVIALITY_OVERRIDE=full runs the whole panel." >&2
             else
                 TIER_FILTER="$_new_filter"
                 echo "critic-panel.sh: triviality-gate verdict=trivial ($_tg_reason) - paid tier skipped (CR_TRIVIALITY_OVERRIDE=full to force)" >&2
@@ -1114,7 +1114,7 @@ if [ -n "${_keepone_dropped_raw:-}" ]; then
     printf '%s\n' "$_keepone_dropped_raw" | while IFS=$'\t' read -r _ko_slug _ko_rest; do
         [ -n "$_ko_slug" ] || continue
         echo "panel-availability: $_ko_slug unavailable (trivial-diff keep-one cap) reason=keep-one-skipped" >&2
-        _queue_avail "$_ko_slug" unavailable "" keep-one-skipped "cheapest external critic kept instead (HIMMEL-1950)"
+        _queue_avail "$_ko_slug" unavailable "" keep-one-skipped "cheapest external critic kept instead"
     done
 fi
 

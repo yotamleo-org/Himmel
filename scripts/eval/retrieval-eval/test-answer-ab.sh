@@ -65,6 +65,18 @@ chmod +x "$W/graph" "$W/qmd" "$W/claude" "$W/pf-ok" "$W/pf-no"
 export RETRIEVAL_EVAL_GRAPH_CMD="$W/graph" RETRIEVAL_EVAL_QMD_CMD="$W/qmd" CLAUDE_BIN="$W/claude" STUB_DIR="$W"
 export BANK_PREFLIGHT="$W/pf-ok"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/ledger.jsonl"
+# A stub rtk on PATH: `rtk rewrite "<cmd>"` answers `rtk <cmd>`, `rtk grep ...` runs grep; every call is logged.
+mkdir -p "$W/bin"
+cat > "$W/bin/rtk" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$RTK_LOG"
+case "$1" in
+rewrite) printf 'rtk %s' "$2" ;;
+grep) shift; exec grep "$@" ;;
+esac
+STUB
+chmod +x "$W/bin/rtk"
+export RTK_LOG="$W/rtk.log" PATH="$W/bin:$PATH"
 
 # 1. the screen keeps only the questions the closed-book answerer fails.
 python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out" > "$W/run.txt" 2>&1
@@ -86,7 +98,13 @@ eq "grep tokens_per_correct is tokens_total over correct" "$((tot / 2))" "$(t gr
 if [ "$(t grep tokens_total)" -gt "$(t none tokens_total)" ]; then pass "retrieval context adds session tokens over the baseline"; else fail "retrieval context adds session tokens over the baseline"; fi
 
 # 4. the six arms are all in the table.
-eq "table lists every arm" "fused graphify grep none pathident" "$(awk -F'\t' 'NR>1{print $1}' "$W/out/table.tsv" | sort | tr '\n' ' ' | sed 's/ $//')"
+eq "table lists every arm" "fused graphify grep grep-rtk none pathident" "$(awk -F'\t' 'NR>1{print $1}' "$W/out/table.tsv" | sort | tr '\n' ' ' | sed 's/ $//')"
+eq "grep-rtk arm answers both" "2" "$(t grep-rtk correct)"
+eq "grep-rtk retrieval went through rtk" "yes" "$(grep -q '^rewrite grep ' "$RTK_LOG" && grep -q '^grep -n -I -H -i -F' "$RTK_LOG" && echo yes || echo no)"
+mkdir -p "$W/nortk"
+for tool in git bash sh grep python3 env; do ln -sf "$(command -v "$tool")" "$W/nortk/$tool"; done
+PATH="$W/nortk" python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-nortk" --arms grep,grep-rtk > "$W/nortk.txt" 2>&1
+eq "without rtk the grep-rtk arm is skipped with its reason" "1 grep" "$(grep -c 'skipping grep-rtk: rtk is not on PATH' "$W/nortk.txt") $(awk -F'\t' 'NR>1{print $1}' "$W/out-nortk/table.tsv" | tr '\n' ' ' | sed 's/ $//')"
 
 # 5. billing rules: explicit permission mode, json output, never bypassPermissions, no tools.
 if grep -q -- '--permission-mode dontAsk' "$W/argv.log" && grep -q -- '--output-format json' "$W/argv.log"; then pass "claude runs with dontAsk and json output"; else fail "claude runs with dontAsk and json output"; fi

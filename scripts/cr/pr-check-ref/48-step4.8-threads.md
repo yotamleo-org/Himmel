@@ -10,7 +10,7 @@
    if [ "$pr_rc" -ne 0 ]; then
        echo "4.8: gh pr list failed ($pr_lookup) — thread state UNKNOWN, treat as BLOCKING" >&2
    elif [ -z "$pr_lookup" ]; then
-       echo "4.8: no PR yet — thread gate NOT RUN (it cannot be: there are no threads before a PR exists). This run says NOTHING about review threads. The CodeRabbit App reviews only AFTER gh pr create, so its findings appear after this gate has already cleared the marker — /check-ci is what enforces them, at merge time (HIMMEL-1125)."
+       echo "4.8: no PR yet — thread gate NOT RUN (it cannot be: there are no threads before a PR exists). This run says NOTHING about review threads. The CodeRabbit App reviews only AFTER gh pr create, so its findings appear after this gate has already cleared the marker — /check-ci is what enforces them, at merge time."
        threads_rc=0
    else
        threads_rc=0

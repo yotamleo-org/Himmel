@@ -262,7 +262,7 @@ fi
 # panel row to scripts/cr/critics.json.
 gate_infra_touched="$(printf '%s\n' "$changed_files" | grep -E '^(scripts/cr/|scripts/glm/ship-branch\.sh|scripts/hooks/|scripts/handover/merge-on-green\.sh|scripts/check-ci\.sh|\.claude/commands/pr-check\.md|\.agents/skills/pr-check/SKILL\.md)' || true)"
 if [ -n "$gate_infra_touched" ]; then
-    echo "pr-check-external: NOT CLEAN - gate-infrastructure diff requires a quorum of two responding cross-model reviewers, and this path has only one (codex). CodeRabbit is the GitHub App only since HIMMEL-2704, so there is no local CodeRabbit seat to fill the second, and scripts/cr/critics.json's panel carries no other non-Claude row. A change to the gate itself must not clear on a single reviewer: use the interactive /pr-check (Claude backstop), or add a second non-Claude panel row to critics.json. Gate files touched:" >&2
+    echo "pr-check-external: NOT CLEAN - gate-infrastructure diff requires a quorum of two responding cross-model reviewers, and this path has only one (codex). CodeRabbit is the GitHub App only, so there is no local CodeRabbit seat to fill the second, and scripts/cr/critics.json's panel carries no other non-Claude row. A change to the gate itself must not clear on a single reviewer: use the interactive /pr-check (Claude backstop), or add a second non-Claude panel row to critics.json. Gate files touched:" >&2
     printf '%s\n' "$gate_infra_touched" | sed 's/^/  - /' >&2
     exit 1
 fi

@@ -500,7 +500,7 @@ branch=$(git branch --show-current)
 case "$branch" in
     *[!A-Za-z0-9._/+-]*)
         offending=$(printf '%s' "$branch" | tr -d 'A-Za-z0-9._/+-')
-        echo "pr-check-context: branch name '$branch' contains character(s) outside the safe alphabet [A-Za-z0-9._/+-] ('$offending') that could break out of a substituted-literal /pr-check fence (HIMMEL-2226) - rename the branch and re-run" >&2
+        echo "pr-check-context: branch name '$branch' contains character(s) outside the safe alphabet [A-Za-z0-9._/+-] ('$offending') that could break out of a substituted-literal /pr-check fence - rename the branch and re-run" >&2
         exit 3
         ;;
 esac
