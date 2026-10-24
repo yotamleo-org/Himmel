@@ -2822,8 +2822,9 @@ if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
 else
   fail "27c-fast: rc=$rc27 (want 0 with a [QUARANTINE] line): $out27"
 fi
+: > "$T27_LOG"
 out27=$(SUITE_TIERS_TSV="$sb27/missing.tsv" SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
-if [ "$rc27" -eq 1 ] && ! grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
+if [ "$rc27" -eq 1 ] && grep -qx 'quar' "$T27_LOG" && ! grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
   pass "27c-unreadable: an unreadable non-pr tiers override quarantines nothing, so the failing suite fails the run"
 else
   fail "27c-unreadable: rc=$rc27 (want 1 without a [QUARANTINE] line): $out27"
