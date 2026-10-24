@@ -3,16 +3,24 @@
 # runner calls. A failed leg must never be silent: the 2026-10-03
 # harvest did nothing and logged rc=0, and nobody found out until morning.
 #
-#   cadence-alert.sh fail <leg> <reason> <log-path>
+#   cadence-alert.sh fail <leg> <reason> <log-path> [<cause> [<do>]]
 #   cadence-alert.sh clear <leg>
 #
+# <reason> is the plain result in words; <cause> one line on why; <do> the one
+# step to take, or "nothing". The Telegram message is always
+#   <leg>: <reason>. Cause: <cause>. Do: <do>. Log: <log-path>
+# with `Cause: unknown, see log` and `Do: read the log` for a caller that gave none.
+#
 # `fail` ALWAYS appends one line `<UTC iso-ts> <leg> <reason> <log-path>` to the
-# console-readable alert file, then sends the same event to the operator's
+# console-readable alert file, then sends the plain message to the operator's
 # Telegram ONCE through the existing sender (vault-stall-alert.sh, i.e. the
 # merge-block-alert.sh -> console-route.ts bridge path). A repeat of the same
 # leg+reason appends again but does not re-send until `clear` — a completed
 # run of that leg — re-arms it. The dedupe sentinel is written only after a
-# delivered send, so a failed send means the next failure retries the DM.
+# delivered send, so a failed send means the next failure retries the DM. A
+# failed send also writes CADENCE_ALERT_SEND_FAILED_MARK (default
+# ~/.himmel/state/cadence-alert-send-failed), which himmel-doctor C33 reports
+# as a WARN until a later send is delivered.
 #
 # Seams: CADENCE_ALERT_FILE (default ~/.himmel/state/cadence-alerts.log),
 # CADENCE_ALERT_DEDUPE_DIR (default ~/.himmel/state/cadence-alert-sent),
@@ -27,6 +35,7 @@ state="${HOME:-}/.himmel/state"
 alert_file="${CADENCE_ALERT_FILE:-$state/cadence-alerts.log}"
 dedupe_dir="${CADENCE_ALERT_DEDUPE_DIR:-$state/cadence-alert-sent}"
 send_cmd="${CADENCE_ALERT_SEND_CMD:-$_here/vault-stall-alert.sh}"
+send_failed_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-$state/cadence-alert-send-failed}"
 
 # A leg or reason becomes part of a sentinel filename: keep it to safe bytes.
 # No `.` survives, so `<leg>.<reason>` splits unambiguously and `clear a`
@@ -44,6 +53,8 @@ send_then_mark() { # <sentinel> <message>
 case "${1:-}" in
     fail)
         leg="${2:-unknown}" reason="${3:-unknown}" log="${4:-}"
+        cause="${5:-unknown, see log}" todo="${6:-read the log}"
+        cause="${cause//$'\n'/ }" todo="${todo//$'\n'/ }"
         mkdir -p "$(dirname "$alert_file")" "$dedupe_dir" 2>/dev/null
         printf '%s %s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" "$log" >> "$alert_file" \
             || echo "cadence-alert: could not append to $alert_file" >&2
@@ -53,8 +64,14 @@ case "${1:-}" in
         # next alert. Two concurrent failures of one leg could both send; one
         # runner per leg per night makes that a harmless double DM at worst.
         if [ ! -e "$sentinel" ]; then
-            send_then_mark "$sentinel" "cadence leg failed: $leg $reason (log: $log)" \
-                || echo "cadence-alert: Telegram send failed for $leg $reason" >&2
+            if send_then_mark "$sentinel" "$leg: $reason. Cause: $cause. Do: $todo. Log: $log"; then
+                rm -f "$send_failed_mark" 2>/dev/null
+            else
+                echo "cadence-alert: Telegram send failed for $leg $reason" >&2
+                mkdir -p "$(dirname "$send_failed_mark")" 2>/dev/null
+                printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" > "$send_failed_mark" 2>/dev/null \
+                    || echo "cadence-alert: could not write the send-failed marker $send_failed_mark" >&2
+            fi
         fi
         ;;
     clear)
@@ -62,7 +79,7 @@ case "${1:-}" in
         [ -n "$leg" ] && rm -f "$dedupe_dir/$(_slug "$leg")".*
         ;;
     *)
-        echo "usage: cadence-alert.sh fail <leg> <reason> <log> | clear <leg>" >&2
+        echo "usage: cadence-alert.sh fail <leg> <reason> <log> [<cause> [<do>]] | clear <leg>" >&2
         ;;
 esac
 exit 0

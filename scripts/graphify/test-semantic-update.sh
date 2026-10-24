@@ -19,7 +19,7 @@ mkdir -p "$REPO/scripts/graphify" "$REPO/scripts/lib" "$REPO/scripts/api-lane" "
 # Other tools share TMPDIR (handover-path.sh's arm-resume-cache.* in CI): the
 # scratch checks look only for this script's own graphify-semantic-* dirs.
 mkdir "$WS/tmp/arm-resume-cache.foreign"
-for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json; do
+for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs; do
   cp "$HERE/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true
 done
 ln -s "$REAL_REPO/scripts/guardrails" "$REPO/scripts/guardrails"
@@ -39,6 +39,10 @@ cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
 echo "lane \$* | stdin=\$(cat | tr '\\n' ' ') | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+if [ -n "\${LANE_STUB_REFUSE:-}" ]; then
+  echo 'claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})' >&2
+  exit 2
+fi
 if [ -n "\${LANE_STUB_FAIL:-}" ]; then
   echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
   echo "lane-stub-stderr-banner" >&2
@@ -73,6 +77,10 @@ fi
 [ "\$1" = extract ] && ls "\$2/graphify-out/cache/semantic" > "$WS/seeded.log" 2>&1
 [ "\$1" = extract ] || exit 0
 if [ -n "\${GRAPHIFY_OUT:-}" ]; then echo "stub: GRAPHIFY_OUT=\$GRAPHIFY_OUT reached extract, which would read and write that live out-root instead of the scratch copy" >&2; exit 97; fi
+if [ -n "\${GRAPHIFY_STUB_REFUSEDLOG:-}" ]; then
+  # FIXTURE: the chunk-failed line of the 10-23 14:35 cadence run (graphmap-publish-himmel.log.prev), verbatim
+  echo '[graphify] chunk 2/14 failed: claude -p exited 2: claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})'
+fi
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 # GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
 # 0.25 USD per-call cap (himmel batch 1, 2026-10-16); the run still wrote a graph and exited 0.
@@ -85,7 +93,7 @@ import json, os, sys
 root = sys.argv[1]
 nodes, links = [], []
 for dp, dn, fn in os.walk(root):
-    if "graphify-out" in dp:
+    if "graphify-out" in os.path.relpath(dp, root).split(os.sep):
         continue
     for f in fn:
         if not f.endswith(".md"):
@@ -395,7 +403,8 @@ out=$(unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$WS/bin:$PATH" bash "$SCRIPT" --name
   || fail "T31 (rc=$rc): $(cat "$WS/env.log") $out"
 
 # --- --backend claude-api through the API lane -----------------
-LANE_ENV=(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A)
+# GRAPHIFY_API_BATCH=0: these rows exercise the synchronous lane path; the batch path has its own rows (T70+).
+LANE_ENV=(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_API_BATCH=0)
 run_api() { env "${LANE_ENV[@]}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
 
 echo "T32: claude-api with the lane OFF fails closed: exit 2, nothing copied, no claude-cli fallback"
@@ -547,17 +556,44 @@ for rel in documents explains rationale_for; do
   case "$REAL_SCHEMA_RELATIONS" in *"$rel"*) fail "T47 fixture already lists $rel" ;; *) pass "T47 real schema lacks $rel, so the addendum is needed" ;; esac
 done
 
-echo "T48: --max-run-usd stops further lane calls once the summed cost reaches it"
+echo "T48: --max-run-usd is a planning input; a planned run goes past it with a WARN and no refusal"
 C48="$WS/c48"; new_corpus "$C48"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_CALL_N=4 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48 --corpus-root "$C48" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T48 two calls ran, the third was refused" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
-grep -q 'run spend cap' "$WS/claude.out" && pass "T48 shim states the cap" || fail "T48 no cap message: $(cat "$WS/claude.out")"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 4 ] && pass "T48 all four calls ran, none refused at the cap" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'past the planned cap' "$WS/claude.out" && pass "T48 shim logs the overshoot as a WARN" || fail "T48 no overshoot WARN: $(cat "$WS/claude.out")"
+grep -q 'run spend cap reached' "$WS/claude.out" && fail "T48 a call was refused at the cap: $(cat "$WS/claude.out")" || pass "T48 no cap refusal"
 
-echo "T54: a lane call with no verified cost is reserved at the per-call budget against the run cap"
+echo "T54: unpriced failing calls all run past the cap; the failure is not reported as cost"
 C54="$WS/c54"; new_corpus "$C54"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t54 --corpus-root "$C54" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && pass "T54 three unpriced calls ran, the fourth was refused" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 5 ] && pass "T54 all five unpriced calls ran" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'past the planned cap' "$WS/claude.out" && pass "T54 the overshoot is a WARN" || fail "T54 no overshoot WARN: $(cat "$WS/claude.out")"
 [ "$(lastrun "$C54" cost_usd)" = "0.0" ] && pass "T54 the reservation is not reported as cost" || fail "T54 row: $(tail -1 "$C54/graphify-out/semantic-runs.jsonl")"
+
+echo "T65: a call the lane refused before any API request adds nothing to the run cap"
+C65="$WS/c65"; new_corpus "$C65"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_REFUSE=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t65 --corpus-root "$C65" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 5 ] && pass "T65 all five refused calls reached the lane" || fail "T65 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'run spend cap' "$WS/claude.out" && fail "T65 refused calls tripped the run cap: $(cat "$WS/claude.out")" || pass "T65 no run-cap message"
+grep -q 'claude-api: refused: auto routing' "$WS/claude.out" && pass "T65 the refusal text still reaches stderr" || fail "T65 refusal text lost: $(cat "$WS/claude.out")"
+
+echo "T66: a failed extract names the first lane refusal in its closing line"
+C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"
+out=$(GRAPHIFY_STUB_REFUSEDLOG=1 GRAPHIFY_STUB_RC=1 run_api --name t66 --corpus-root "$C66" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[[ "$out" == *"graphify extract exited 1 (refused: stale-snapshot) --"* ]] && pass "T66 the closing line carries the refusal reason" || fail "T66 (rc=$rc): $(printf '%s' "$out" | tail -3)"
+
+echo "T66b: an exit-zero extract with failed chunks names the first lane refusal in its FAILED line"
+C66B="$WS/c66b"; new_corpus "$C66B"; : > "$WS/calls.log"
+out=$(GRAPHIFY_STUB_REFUSEDLOG=1 GRAPHIFY_STUB_CHUNKFAIL=1 run_api --name t66b --corpus-root "$C66B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[ "$rc" -eq 5 ] && [[ "$out" == *"FAILED: 8/9 semantic chunks failed (refused: stale-snapshot) --"* ]] && pass "T66b the FAILED line carries the refusal reason, exit 5" || fail "T66b (rc=$rc): $(printf '%s' "$out" | tail -3)"
+
+echo "T67: the run cap sizes the batch so its estimated chunks fit"
+C67="$WS/c67"; new_corpus "$C67"
+for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C67/f$i.md"; done
+out=$(run_api --name t67 --corpus-root "$C67" --corpus-class himmel-code --backend claude-api --max-run-usd 0.50 --dry-run); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"sized: batch of "* ]] && [[ "$out" == *"to fit the run cap of 0.50 USD"* ]] && pass "T67 an oversized batch is cut to fit the cap" || fail "T67 (rc=$rc): $out"
+out=$(run_api --name t67b --corpus-root "$C67" --corpus-class himmel-code --backend claude-api --max-run-usd 15.00 --dry-run); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" != *"sized:"* ]] && pass "T67 a batch inside the cap is not cut" || fail "T67b (rc=$rc): $out"
 
 echo "T55: a merge that fails after billed lane calls still leaves a run row with the cost"
 C55="$WS/c55"; new_corpus "$C55"; : > "$WS/calls.log"; : > "$WS/claude.out"
@@ -565,8 +601,8 @@ out=$(GRAPHIFY_STUB_LEAK=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_CALL_CLAUDE=1 ru
 [ "$rc" -eq 2 ] && [ "$(lastrun "$C55" cost_usd)" = "0.5" ] && pass "T55 failed merge row carries cost 0.5" || fail "T55 (rc=$rc): $(tail -1 "$C55/graphify-out/semantic-runs.jsonl" 2>&1)"
 
 echo "T49: the run row carries the summed lane cost, the backend and the cap"
-[ "$(lastrun "$C48" cost_usd)" = "1.2" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
-  && pass "T49 cost_usd 1.2, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C48" cost_usd)" = "2.4" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
+  && pass "T49 cost_usd 2.4, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
 [ "$(lastrun "$C46" cost_usd)" = "0.0" ] && pass "T49 a non-api run row has cost_usd 0.0" || fail "T49b row: $(tail -1 "$C46/graphify-out/semantic-runs.jsonl")"
 
 echo "T50: rationale and documents/explains/rationale_for edges survive the merge"
@@ -703,6 +739,144 @@ C64="$WS/c64"; new_corpus "$C64"; mv "$C64/graphify-out" "$WS/real64"; ln -s "$W
 out=$(GRAPHIFY_OUT="$WS/link64" run --name t64 --corpus-root "$C64" --corpus-class himmel-code); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"SYMLINK"* ]] && [ ! -e "$WS/real64/semantic-manifest.json" ] \
   && pass "T64 symlinked override refused, nothing written through it" || fail "T64 (rc=$rc): $out"
+
+# --- --backend claude-api through the Message Batches API (the default) -----
+# The real client (semantic-batch.mjs) is covered by semantic-batch.test.mjs against a loopback stub of the endpoint;
+# here a stand-in client and credit-state with the same command line prove the wiring around them.
+cat > "$REPO/scripts/graphify/semantic-batch.mjs" <<'EOF'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const [cmd, ...a] = process.argv.slice(2);
+const o = {}; for (let i = 0; i < a.length; i += 2) o[a[i].slice(2)] = a[i + 1];
+const ws = process.env.BATCH_STUB_WS;
+const log = (m) => appendFileSync(join(ws, 'batch.log'), `${m}\n`);
+const sp = join(o.dir, 'batch.json');
+const state = () => JSON.parse(readFileSync(sp, 'utf8'));
+if (cmd === 'submit') {
+  if (existsSync(sp)) { console.error('a pending batch is resumed, never resubmitted'); process.exit(2); }
+  const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
+  log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
+  if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
+  mkdirSync(o.dir, { recursive: true });
+  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, status: 'in_progress' }));
+  console.log(JSON.stringify({ batch_id: 'msgbatch_stub', request_count: ids.length, status: 'in_progress' }));
+} else if (cmd === 'poll') {
+  const st = state();
+  st.status = existsSync(join(ws, 'batch-status')) ? readFileSync(join(ws, 'batch-status'), 'utf8').trim() : 'in_progress';
+  log(`poll ${st.status}`);
+  writeFileSync(sp, JSON.stringify(st));
+  console.log(JSON.stringify({ batch_id: st.batch_id, status: st.status }));
+} else if (cmd === 'results') {
+  const st = state();
+  log('results');
+  mkdirSync(o.out, { recursive: true });
+  for (const id of st.custom_ids) {
+    if (process.env.BATCH_STUB_DROP) continue;
+    writeFileSync(join(o.out, `${id}.json`), JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '{}', usage: {}, total_cost_usd: 0.0035 }));
+  }
+  st.cost_usd = '0.003500';
+  writeFileSync(sp, JSON.stringify(st));
+  console.log(JSON.stringify({ batch_id: st.batch_id, succeeded: process.env.BATCH_STUB_DROP ? 0 : st.custom_ids.length, cost_usd: st.cost_usd }));
+} else process.exit(2);
+EOF
+cat > "$REPO/scripts/lib/api-credit-state.mjs" <<'EOF'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+const ws = process.env.BATCH_STUB_WS;
+const f = join(ws, 'exhausted.log');
+if (process.argv[2] === 'pick') {
+  const marked = existsSync(f) ? readFileSync(f, 'utf8') : '';
+  console.log(JSON.stringify({ verdict: 'PROCEED', account: marked.includes('A') ? 'B' : 'A', snapshot_stale: false }));
+} else if (process.argv[2] === 'exhausted') {
+  appendFileSync(f, `${process.env.HIMMEL_API_ACCOUNT}\n`);
+  console.log('{}');
+}
+EOF
+chmod +x "$REPO/scripts/graphify/semantic-batch-shim.mjs"
+export BATCH_STUB_WS="$WS"
+run_batch() { env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="${ACCT:-A}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
+batch_reset() { : > "$WS/batch.log"; : > "$WS/calls.log"; rm -f "$WS/batch-status" "$WS/exhausted.log"; }
+
+echo "T70: claude-api submits ONE batch of the recorded chunk prompts and leaves the graph, manifest and cache untouched"
+C70="$WS/c70"; new_corpus "$C70"; batch_reset; before=$(ids "$C70")
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --corpus-class himmel-code --backend claude-api); rc=$?
+P70="$C70/graphify-out/semantic-batch"
+[ "$rc" -eq 0 ] && [ "$(ids "$C70")" = "$before" ] && [ ! -e "$C70/graphify-out/semantic-manifest.json" ] \
+  && pass "T70 exit 0, graph and manifest untouched" || fail "T70 (rc=$rc): $out"
+[ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && grep -q '^submit account=A prompts=1 model=sonnet effort=high$' "$WS/batch.log" \
+  && pass "T70 one submit: account A, one recorded prompt, sonnet at high effort" || fail "T70 batch.log: $(cat "$WS/batch.log")"
+[ -f "$P70/batch.json" ] && [ -f "$P70/plan.json" ] && [ -f "$P70/corpus/a.md" ] \
+  && pass "T70 batch.json, plan and the frozen corpus are persisted" || fail "T70 pending dir: $(ls -R "$P70" 2>&1)"
+[ ! -e "$P70/corpus/graphify-out/cache/semantic/new.json" ] \
+  && pass "T70 the record run's placeholder cache is not in the frozen corpus" || fail "T70 placeholder cache leaked into the frozen corpus"
+[[ "$out" == *"BATCH id=msgbatch_stub state=submitted requests=1 cost_usd=-"* ]] \
+  && pass "T70 the BATCH line names id, state and request count" || fail "T70 BATCH line: $out"
+grep -q '^lane ' "$WS/calls.log" && fail "T70 the synchronous lane was called" || pass "T70 no synchronous lane call"
+
+echo "T71: a batch still in progress is polled, not resubmitted; the graph stays untouched"
+: > "$WS/calls.log"
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && grep -q '^poll in_progress$' "$WS/batch.log" \
+  && [ "$(ids "$C70")" = "$before" ] && [[ "$out" == *"still in progress"* ]] && [[ "$out" == *"state=pending"* ]] \
+  && pass "T71 polled, one submit in total, graph untouched" || fail "T71 (rc=$rc): $out / $(cat "$WS/batch.log")"
+grep -q '^graphify extract' "$WS/calls.log" && fail "T71 graphify ran on a pending batch" || pass "T71 no extraction while pending"
+
+echo "T72: an ended batch is replayed through graphify, merged with batch id, request count and cost on the run row"
+: > "$WS/calls.log"; echo ended > "$WS/batch-status"
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [[ "$(ids "$C70")" == *sem_a.md_alpha* ]] && [[ "$(ids "$C70")" != *stale_a* ]] \
+  && pass "T72 exit 0, results merged into the graph" || fail "T72 (rc=$rc): $out / $(ids "$C70")"
+[ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && [ ! -e "$P70" ] \
+  && pass "T72 still one submit in total, the pending dir is gone" || fail "T72 submits/pending: $(cat "$WS/batch.log") / $(ls "$P70" 2>&1)"
+[ "$(lastrun "$C70" batch_id)" = "msgbatch_stub" ] && [ "$(lastrun "$C70" batch_requests)" = "1" ] \
+  && [ "$(lastrun "$C70" cost_usd)" = "0.0035" ] && [ "$(lastrun "$C70" backend)" = "claude-api" ] \
+  && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
+[[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
+grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
+
+echo "T73: a prompt the batch did not answer fails that chunk call (exit 1), so its files stay unstamped"
+C73="$WS/c73"; new_corpus "$C73"; batch_reset
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t73 --corpus-root "$C73" --corpus-class himmel-code --backend claude-api >/dev/null
+echo ended > "$WS/batch-status"
+out=$(BATCH_STUB_DROP=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t73 --corpus-root "$C73" --corpus-class himmel-code --backend claude-api); rc=$?
+grep -q 'claude-shim-rc=1' "$WS/calls.log" && pass "T73 the replay shim exited 1 on the unanswered prompt" || fail "T73 (rc=$rc): $(cat "$WS/calls.log")"
+
+echo "T74: auto routing rotates to the other account on a credit-exhausted answer (decision 229)"
+C74="$WS/c74"; new_corpus "$C74"; batch_reset
+out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t74 --corpus-root "$C74" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 2 ] && [ "$(sed -n 1p "$WS/batch.log" | cut -d' ' -f2)" = "account=A" ] \
+  && [ "$(sed -n 2p "$WS/batch.log" | cut -d' ' -f2)" = "account=B" ] && [ "$(cat "$WS/exhausted.log")" = "A" ] \
+  && [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["account"])' "$C74/graphify-out/semantic-batch/batch.json")" = "B" ] \
+  && pass "T74 A exhausted and marked, the batch went to B" || fail "T74 (rc=$rc): $out / $(cat "$WS/batch.log") / $(cat "$WS/exhausted.log" 2>&1)"
+
+echo "T75: a pinned account is marked exhausted but never rotated; nothing is submitted, exit 2"
+C75="$WS/c75"; new_corpus "$C75"; batch_reset
+out=$(ACCT=A BATCH_STUB_EXHAUSTED=A,B GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t75 --corpus-root "$C75" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && [ ! -e "$C75/graphify-out/semantic-batch" ] && [[ "$out" == *"nothing submitted"* ]] \
+  && pass "T75 one attempt, exit 2, no pending batch" || fail "T75 (rc=$rc): $out / $(cat "$WS/batch.log")"
+
+echo "T76: a run that waited out another run's submit resumes that batch instead of resubmitting"
+C76="$WS/c76"; new_corpus "$C76"; batch_reset
+mkdir -p "$C76/graphify-out/.promote.lock"
+GRAPHIFY_SEMANTIC_LOCK_WAIT=60 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t76 --corpus-root "$C76" --corpus-class himmel-code --backend claude-api > "$WS/t76-b.out" &
+t76_b=$!
+for _ in $(seq 1 50); do grep -q 'chunk: call-cap' "$WS/t76-b.out" && break; sleep 0.2; done
+sleep 1
+rmdir "$C76/graphify-out/.promote.lock"
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t76 --corpus-root "$C76" --corpus-class himmel-code --backend claude-api > "$WS/t76-a.out"
+wait "$t76_b"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && [ -f "$C76/graphify-out/semantic-batch/batch.json" ] \
+  && grep -q 'still in progress' "$WS/t76-b.out" \
+  && pass "T76 one submit in total, the waiting run polled the first run's batch" || fail "T76 (rc=$rc): $(cat "$WS/batch.log") / A: $(cat "$WS/t76-a.out") / B: $(cat "$WS/t76-b.out")"
+
+echo "T77: GRAPHIFY_API_BATCH=0 refuses to extract synchronously while a batch is pending (exit 2, graph untouched)"
+C77="$WS/c77"; new_corpus "$C77"; batch_reset; before=$(ids "$C77")
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --corpus-root "$C77" --corpus-class himmel-code --backend claude-api >/dev/null
+: > "$WS/calls.log"
+out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --corpus-root "$C77" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"a batch is pending"* ]] && [ "$(ids "$C77")" = "$before" ] && [ -f "$C77/graphify-out/semantic-batch/batch.json" ] \
+  && ! grep -q '^graphify extract' "$WS/calls.log" \
+  && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

@@ -318,6 +318,7 @@ scripts/graphify/test-refresh-graph-map-scratch.sh	pr	guard
 scripts/graphify/test-refresh-graph-map.sh	pr	guard
 scripts/graphify/test-repo-map.sh	pr	guard
 scripts/graphify/test-seed-claude-config.sh	pr	guard
+scripts/graphify/test-semantic-batch.sh	pr	guard
 scripts/graphify/test-semantic-seeds.sh	local	new since the audit, behaviour suite
 scripts/graphify/test-semantic-update.sh	pr	guard
 scripts/guardrails/test-check-git-env-scrub.sh	pr	guard
@@ -448,6 +449,8 @@ scripts/handover/test-leg-handoff-threshold-docs.sh	local	behaviour suite, 0 cat
 scripts/handover/test-leg-resume-brief.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-leg-timeline.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-lessons-sweep.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard

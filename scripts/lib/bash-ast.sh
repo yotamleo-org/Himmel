@@ -414,7 +414,7 @@ def _opts_env:
     elif ($o | startswith("--chdir=")) then .ec = [$o[8:]] | .a |= .[1:] | _opts_env
     elif ($o | startswith("-")) then .opaque = "an env option this model does not read"
     elif ($o | test("^[A-Za-z_][A-Za-z0-9_]*=")) then
-      (if ($o | split("=")[0] | test(_names)) then .taint = true else . end) | .a |= .[1:] | _opts_env
+      (if ($o | split("=")[0] | test(_names)) then .taint = true else . end) | .ea += [$o | split("=")[0]] | .a |= .[1:] | _opts_env
     else . end;
 
 def _unwrap:
@@ -522,11 +522,11 @@ def _w($S; $tags; $env):
        elif $c.k == "call" then
          ([$c.argv[], $c.assigns[].w, $c.assigns[].arr[]] | subs($S; $tg)) as $sp
          | ($c.assigns | map(.name)) as $an
-         | ({a: [$c.argv[] | _args], via: [], cdx: [], opaque: null, lookup: false, body: null,
+         | ({a: [$c.argv[] | _args], via: [], cdx: [], ea: [], opaque: null, lookup: false, body: null,
              taint: any($an[]; test(_names))} | _unwrap | _classify) as $u
          | (reduce $u.cdx[] as $d ($S; _cdto(.; $d))) as $pc
          | ($u | _nav($S; $env)) as $nv
-         | {ok: $nv.ok, fail: $nv.fail, pos: ($sp + [$u | _pos($st; $pc; $tg; $env) | .assigns = $an | .ecwd = $S])}
+         | {ok: $nv.ok, fail: $nv.fail, pos: ($sp + [$u | _pos($st; $pc; $tg; $env) | .assigns = ($an + $u.ea) | .ecwd = $S])}
        elif $c.k == "and" then
          ($c.x | _w($S; $tg; $env)) as $x | ($c.y | _w($x.ok; $tg; $env)) as $y
          | {ok: $y.ok, fail: _u($x.fail; $y.fail), pos: ($x.pos + $y.pos)}

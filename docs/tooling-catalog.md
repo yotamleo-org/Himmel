@@ -1721,6 +1721,25 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   `bash scripts/luna/luna-index-hygiene.sh --vault <vault> --qmd-config <index.yml> --apply`
   (`--collection` defaults to `luna`), then `qmd update`. The `60-Maps/graph/` export itself
   is never touched. Hermetic test `test-luna-index-hygiene.sh` (real qmd on a scratch index).
+  It also ignores the librarian's cold trees (`handovers/**/archive/**`, `sessions/_archive/**`)
+  in `luna` and adds the `luna-archive` qmd collection over them, so `qmd -c luna-archive`
+  still finds an archived doc.
+- `scripts/handover/librarian.sh` — archives finished handover docs, old session notes and
+  one-shot `auto-arm-status-*.md` notes. A bucket-root doc is finished when no queue lock
+  covers it or its siblings, its newest marker is WRAPPED or HALTED (or its ticket is Done
+  in the Jira mirror) and the group is older than `--days` (30). The doc, its `-RESUME*`,
+  `-HANDOFF*`, `-judge-*` and `<stem>.*` siblings `git mv` into `<bucket>/archive/YYYY-MM/`
+  with one `_index.md` line each; relative links are rewritten in the same pass. Chief
+  docs, the `specs/` tree and the ledgers are never read. Sessions older than 30 days go to
+  `sessions/_archive/YYYY-MM/`, auto-arm notes older than 7 days to
+  `<root>/archive/auto-arm-status/YYYY-MM/`. Moves only, never a delete or an overwrite; an
+  untracked file or an existing destination is skipped with a `SKIP` line. Dry run unless
+  `--apply`: `bash scripts/handover/librarian.sh` prints the move list. The first live
+  `--apply` needs the luna auto-committer and Obsidian sync paused. Test `test-librarian.sh`.
+- `scripts/handover/librarian-cadence.sh arm|status|disarm` — the cron schedule around the
+  librarian (daily 04:23; `--every-days N` to change it), with a flow-run row per fire and a
+  cadence alert on failure. The runner is a dry run unless armed with `--apply`. Arming is an
+  operator act. Test `test-librarian-cadence.sh`.
 - `scripts/eval/qmd-quality/qmd-quality-cadence.sh run|arm|status|disarm`
   — the weekly retrieval-quality drift check. `run` scores the
   golden set with `qmd-quality.sh --scope golden` (read-only snapshot of

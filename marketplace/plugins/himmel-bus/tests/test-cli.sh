@@ -23,6 +23,8 @@ check() { # check <label> <command...>
 }
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/bus-cli.XXXXXX") || exit 1
+# The store refuses a symlinked path component, and macOS /tmp is a symlink.
+tmp=$(cd -P "$tmp" && pwd -P) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export XDG_STATE_HOME="$tmp/state"
 mkdir -m 700 "$XDG_STATE_HOME"
@@ -58,6 +60,19 @@ node "$REPOINT" "$name" "$$" "$start" || exit 1
 EOF
 as() { REPOINT="$tmp/repoint.mjs" BUS_CLI="$BUS" "$tmp/claude" "$tmp/as.sh" "$@"; }
 
+# A bound identity is read from /proc (identity.mjs procStat), so a host with no
+# procfs (macOS) cannot bind one: the sections that act as a bound peer are
+# skipped there and the store-level ones still run. An append takes the chain
+# lock through the flock binary (bus.ts withChainLock), which macOS lacks, so the
+# sections that append through the store skip there too.
+HAVE_PROC=1; [ -r /proc/self/stat ] || HAVE_PROC=0
+HAVE_FLOCK=1; command -v flock >/dev/null 2>&1 || HAVE_FLOCK=0
+NOPROC_WHY='no /proc on this host, identity binding is Linux-only'
+NOFLOCK_WHY='no flock binary on this host, the chain lock is Linux-only'
+skip_section() { printf '  SKIP  %s: %s\n' "$1" "$2"; }
+# ago <days>: a touch -t stamp <days> back (GNU or BSD date).
+ago() { local s=$(( $(date +%s) - $1 * 86400 )); date -d "@$s" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$s" +%Y%m%d%H%M.%S; }
+
 "$BUS" register con --role console
 "$BUS" register legA --role leg --console con
 "$BUS" register legB --role leg --console con
@@ -70,6 +85,7 @@ out=$("$BUS" send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'identity unbound'; then pass "send from an unbound process is refused"; else fail "send from an unbound process (rc=$rc: $out)"; fi
 check "unbound send wrote nothing" test ! -e "$XDG_STATE_HOME/himmel/bus/log/legA.jsonl"
 
+if [ "$HAVE_PROC" = 1 ]; then
 out=$(as con send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "sent #1 to legA" ]; then pass "console sends to its leg"; else fail "console send (rc=$rc: $out)"; fi
 rec=$(lib "console.log(JSON.stringify((await store.scan(root, 'legA'))[0]))")
@@ -108,7 +124,9 @@ n0=$(lib "console.log((await store.scan(root, 'legA')).length)")
 out=$(as con send legA "$tmp/body" --doc "$tmp/no-such-doc.md" 2>&1); rc=$?
 n=$(lib "console.log((await store.scan(root, 'legA')).length)")
 if [ "$rc" -ne 0 ] && [ "$n" = "$n0" ]; then pass "a missing --doc refuses before anything is sent"; else fail "missing --doc (rc=$rc, legA log=$n): $out"; fi
+else skip_section "send as a bound peer, --re acks, --doc mirror" "$NOPROC_WHY"; fi
 
+if [ "$HAVE_FLOCK" = 1 ]; then
 echo "== gc =="
 # Rotate legB's log into segments 0 and 1 (each record ~1.4 KB).
 lib "
@@ -117,22 +135,22 @@ lib "
 "
 seg0=$(find "$XDG_STATE_HOME/himmel/bus/log" -name 'legB.0.jsonl.*' | head -1)
 if [ -n "$seg0" ]; then pass "setup: legB log rotated into a closed segment"; else fail "setup: no closed segment"; fi
-touch -d '31 days ago' "$XDG_STATE_HOME"/himmel/bus/log/legB.*.jsonl.*
+touch -t "$(ago 31)" "$XDG_STATE_HOME"/himmel/bus/log/legB.*.jsonl.*
 out=$("$BUS" gc 2>&1)
 if [ -e "$seg0" ] && printf '%s' "$out" | grep -q 'kept legB.0 (undelivered)'; then pass "gc keeps an aged segment the cursor has not passed"; else fail "gc undelivered: $out"; fi
 # Deliver past segment 0.
 lib "const r = await store.read(root, 'legB'); await store.commit(root, 'legB', r.next);"
-touch -d '29 days ago' "$seg0"
+touch -t "$(ago 29)" "$seg0"
 out=$("$BUS" gc 2>&1)
 if [ -e "$seg0" ] && ! printf '%s' "$out" | grep -q 'would remove legB.0'; then pass "gc keeps a delivered segment younger than 30 days"; else fail "gc removed a 29-day segment: $out"; fi
-touch -d '31 days ago' "$seg0"
+touch -t "$(ago 31)" "$seg0"
 out=$("$BUS" gc 2>&1)
 if [ -e "$seg0" ] && printf '%s' "$out" | grep -q 'would remove legB.0' && printf '%s' "$out" | grep -q 'HIMMEL-5072'; then pass "gc is report-only: names a delivered 31-day segment and the follow-up, deletes nothing"; else fail "gc delivered: $out"; fi
 # Halted logs are kept and reported.
 lib "
   for (let i = 0; i < 400; i++) await store.append(root, 'otherLeg', { i: 'h' + i, t: Date.now(), f: 'other', r: 'otherLeg', b: 'z'.repeat(1400) });
 "
-touch -d '31 days ago' "$XDG_STATE_HOME"/himmel/bus/log/otherLeg.*.jsonl.*
+touch -t "$(ago 31)" "$XDG_STATE_HOME"/himmel/bus/log/otherLeg.*.jsonl.*
 printf '{"k":1,"off":0,"n":99,"h":"%064d","halted":5}\n' 0 > "$XDG_STATE_HOME/himmel/bus/cur/otherLeg"
 out=$("$BUS" gc 2>&1)
 if printf '%s' "$out" | grep -q 'kept otherLeg.0 (halted)' && ls "$XDG_STATE_HOME"/himmel/bus/log/otherLeg.0.jsonl.* >/dev/null 2>&1; then pass "gc keeps and reports a halted log"; else fail "gc halted: $out"; fi
@@ -143,7 +161,9 @@ before=$(lib "console.log((await store.scan(root, 'legB')).length)")
 rm -f "$seg0"
 after=$(lib "console.log((await store.scan(root, 'legB')).length)")
 if [ "$before" -gt 0 ] && [ "$after" = 0 ]; then pass "known break: scan of a log with a removed segment is empty ($before to $after), so gc stays report-only"; else fail "scan break not reproduced (before=$before after=$after)"; fi
+else skip_section "gc and the removed-segment scan break" "$NOFLOCK_WHY"; fi
 
+if [ "$HAVE_PROC" = 1 ]; then
 echo "== status --unacked =="
 lib "
   const t = Date.now();
@@ -206,6 +226,13 @@ out=$(as legA adopt con2 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA console con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
 out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the leg"; else fail "post-adopt send (rc=$rc): $out"; fi
+"$BUS" register con3 --role console --predecessor con2 >/dev/null 2>&1
+out=$(as legA succeed con3 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'legA is not a console' <<< "$out"; then pass "succeed from a leg is refused (HIMMEL-7262)"; else fail "leg succeed (rc=$rc): $out"; fi
+out=$(as con succeed con3 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'con3 does not succeed con' <<< "$out"; then pass "succeed names only the caller's own successor"; else fail "wrong-predecessor succeed (rc=$rc): $out"; fi
+out=$(as con2 succeed con3 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "stamped: con2 successor con3" ]; then pass "a console stamps its registered successor"; else fail "succeed (rc=$rc): $out"; fi
 out=$(as legA peers 2>&1)
 if grep -q '^con2\b' <<< "$out" && ! grep -q '^con\b' <<< "$out"; then pass "the leg's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
 if grep -qx 'con2 (gone)' <<< "$out"; then pass "peers marks a peer whose process is gone"; else fail "gone peer not marked: $out"; fi
@@ -218,15 +245,20 @@ if grep -qx 'legA (gone)' <<< "$out"; then pass "the successor's peers lists the
 if grep -qx legL <<< "$out"; then pass "peers prints a live peer bare"; else fail "live peer: $out"; fi
 "$BUS" register legU --role leg --console con2 >/dev/null 2>&1
 if grep -qx 'legU (unbound)' <<< "$(as con2 peers 2>&1)"; then pass "peers marks a registered, never-bound peer"; else fail "unbound peer not marked"; fi
+else skip_section "status --unacked, wait, succession adopt" "$NOPROC_WHY"; fi
 "$BUS" register idler --role leg --console con >/dev/null 2>&1
+if [ "$HAVE_PROC" = 1 ]; then
 as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread is read-only"; else fail "unread consumed"; fi
+else skip_section "unread of undelivered records" "$NOPROC_WHY"; fi
 # A corrupt cursor must still reach the delivery hook's read(), which persists the halt and its notice.
+if [ "$HAVE_FLOCK" = 1 ]; then
 curdir=$(find "$XDG_STATE_HOME" -type d -name cur | head -1)
 printf 'not json' > "$curdir/idler"; chmod 600 "$curdir/idler"
 out=$("$BUS" unread idler 2>&1)
 if [ "$out" = 1 ] && [ "$(cat "$curdir/idler")" = 'not json' ]; then pass "unread leaves a corrupt cursor for the hook to halt with its notice"; else fail "unread on a corrupt cursor: $out / $(cat "$curdir/idler")"; fi
+else skip_section "unread on a corrupt cursor" "$NOFLOCK_WHY"; fi
 
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"

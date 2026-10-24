@@ -2,13 +2,17 @@
 # luna-index-hygiene.sh — keep generated graph output out of the luna qmd
 # collection and out of the graphify AST corpus.
 #
-# Three idempotent steps, dry-run by default, --apply to write:
-#   1. qmd: add the generated-output ignore entries to the named collection's
-#      `ignore:` list in the qmd config (index.yml); existing entries and every
-#      other collection are left as they are.
+# Idempotent steps, dry-run by default, --apply to write:
+#   1. qmd: add the generated-output and archive ignore entries to the named
+#      collection's `ignore:` list in the qmd config (index.yml); existing
+#      entries and every other collection are left as they are. The archive
+#      entries are the librarian's cold trees (scripts/handover/librarian.sh).
+#   1b. qmd: add the `luna-archive` collection (same vault, a pattern that
+#      matches only those cold trees) when the config has none, so
+#      `qmd -c luna-archive` still finds an archived doc.
 #   2. graphify: add the same trees to <vault>/.graphifyignore, which
 #      `graphify update` reads at the corpus root, so the hourly AST run stops
-#      ingesting graphify's own Obsidian export.
+#      ingesting graphify's own Obsidian export and the archive.
 #   3. offload (only with --offload-root): MOVE <vault>/graphify-out to
 #      <offload-root>/graphify-snapshots/. Never rm. Refused while a promote
 #      lock is held or any file in it changed in the last 24 h, because either
@@ -49,8 +53,10 @@ print("yes" if root == src or root.startswith(src + os.sep) else "no")' "$VAULT"
   [ "$nested" = no ] || { echo "luna-index-hygiene: --offload-root must not be inside $VAULT/graphify-out" >&2; exit 2; }
 fi
 
-QMD_IGNORE=('graphify-out/**' '60-Maps/graph/**' 'handovers/**/verdicts/*/scratch/**')
-GRAPHIFY_IGNORE=('60-Maps/graph/' 'graphify-out/')
+QMD_IGNORE=('graphify-out/**' '60-Maps/graph/**' 'handovers/**/verdicts/*/scratch/**' 'handovers/**/archive/**' 'sessions/_archive/**')
+GRAPHIFY_IGNORE=('60-Maps/graph/' 'graphify-out/' 'handovers/**/archive/' 'sessions/_archive/')
+ARCHIVE_COLLECTION="luna-archive"
+ARCHIVE_PATTERN='{handovers/**/archive/**/*.md,sessions/_archive/**/*.md}'
 
 mode=$([ "$APPLY" -eq 1 ] && echo apply || echo dry-run)
 echo "luna-index-hygiene: $mode vault=$VAULT collection=$COLLECTION"
@@ -109,6 +115,36 @@ print("luna-index-hygiene: qmd ignore +%s" % ", ".join(missing))
 if apply:
     block[insert_at:insert_at] = new
     lines[start + 1:end] = block
+    tmp = cfg + ".hygiene.tmp"
+    with open(tmp, "w") as fh:
+        fh.write("\n".join(lines))
+    os.replace(tmp, cfg)
+PY
+rc=$?
+[ "$rc" -eq 0 ] || exit "$rc"
+
+# --- 1b. the cold archive collection -----------------------------------------
+# ponytail: same line-based edit as step 1, appended to the `collections:` block; upgrade
+# path is a qmd `collection add --pattern` call.
+python3 -I - "$CFG" "$ARCHIVE_COLLECTION" "$VAULT" "$ARCHIVE_PATTERN" "$APPLY" <<'PY'
+import os, sys
+cfg, name, vault, pattern, apply = sys.argv[1:6]
+lines = open(cfg).read().split("\n")
+if ("  %s:" % name) in lines:
+    print("luna-index-hygiene: qmd collection %s already present" % name)
+    sys.exit(0)
+top = next((i for i, l in enumerate(lines) if l.startswith("collections:")), None)
+if top is None:
+    print("luna-index-hygiene: no top-level collections: block in %s" % cfg, file=sys.stderr)
+    sys.exit(3)
+end = top + 1
+while end < len(lines) and (lines[end].strip() == "" or lines[end][0] in " #"):
+    end += 1
+while end > top + 1 and lines[end - 1].strip() == "":
+    end -= 1
+print("luna-index-hygiene: qmd collection +%s" % name)
+if apply == "1":
+    lines[end:end] = ["  %s:" % name, "    path: %s" % vault, '    pattern: "%s"' % pattern]
     tmp = cfg + ".hygiene.tmp"
     with open(tmp, "w") as fh:
         fh.write("\n".join(lines))

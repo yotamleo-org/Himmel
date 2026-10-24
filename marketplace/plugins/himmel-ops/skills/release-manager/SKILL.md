@@ -61,7 +61,9 @@ The chief writes the request and sends `REQ <id>`. Then:
 
 A refusal is a fact to act on, not to route around: UNKNOWN state, a pending
 intent, a missing supersedes, an uncovered authority. Report a refusal you
-cannot resolve to the chief as a `FINDING`.
+cannot resolve to the chief as a `FINDING`. The `rm-run` judge reports a request it
+cannot rule (no sector, missing input) as `{"req","outcome":"HOLD","reason"}`: no
+ruling is written and the request stays claimed for the next batch.
 
 ## STATUS
 

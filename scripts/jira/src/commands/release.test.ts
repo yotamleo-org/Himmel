@@ -136,6 +136,27 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([d]) }))).toEqual([d]);
   });
 
+  it('accepts a HOLD decision that carries no ground, op or sector (HIMMEL-6796)', () => {
+    const hold = { req: 'Q-R1-0001', outcome: 'HOLD', ground: null, reason: 'no sector for K-2' };
+    expect(parseDecisions(JSON.stringify({ is_error: false, result: '```json\n' + JSON.stringify([hold]) + '\n```' }))).toEqual([hold]);
+    expect(parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: 'r' }]) }))).toHaveLength(1);
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD' }]) }))).toThrow(/field reason/);
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ ...hold, outcome: 'REFUSED' }]) }))).toThrow(/field ground/);
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: '  ' }]) }))).toThrow(/field reason/);
+  });
+
+  it('tells the judge to answer HOLD, never a refused outcome or a null ground, when it cannot rule', () => {
+    const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+    expect(judgePrompt(input, 'skill')).toMatch(/"outcome":"HOLD"/);
+  });
+
+  it('never tells the judge to refuse a request with no sector, and ties the ground rule to rulings', () => {
+    const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+    const prompt = judgePrompt(input, 'skill');
+    expect(prompt).not.toContain('refused alone');
+    expect(prompt).toContain('its ground is always a non-empty string');
+  });
+
   it('tells the judge to take the sector from the issue snapshot first', () => {
     const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
     expect(judgePrompt(input, 'skill')).toContain('issues[].sector');

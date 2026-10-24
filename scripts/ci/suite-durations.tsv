@@ -333,6 +333,7 @@ scripts/graphify/test-refresh-graph-map-scratch.sh	1
 scripts/graphify/test-refresh-graph-map.sh	44
 scripts/graphify/test-repo-map.sh	0
 scripts/graphify/test-seed-claude-config.sh	5
+scripts/graphify/test-semantic-batch.sh	2
 scripts/graphify/test-semantic-update.sh	26
 scripts/guardrails/test-check-git-env-scrub.sh	13
 scripts/guardrails/test-gitleaks-retired-org.sh	2
@@ -447,6 +448,8 @@ scripts/handover/test-leg-handoff-threshold-docs.sh	0
 scripts/handover/test-leg-resume-brief.sh	1
 scripts/handover/test-leg-timeline.sh	5
 scripts/handover/test-lessons-sweep.sh	1
+scripts/handover/test-librarian-cadence.sh	1
+scripts/handover/test-librarian.sh	1
 scripts/handover/test-merge-fork-pr.sh	6
 scripts/handover/test-merge-forward-check.sh	5
 scripts/handover/test-merge-on-green-static-recheck.sh	9

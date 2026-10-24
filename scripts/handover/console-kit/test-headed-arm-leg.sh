@@ -116,6 +116,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/headed-arm-leg.sh"
+# The bare tool names leg-impl denies from the registry, ahead of the launcher's own deny rules.
+TRIM_DENY="$(jq -c '.profiles["leg-impl"].denyTools' "$HERE/../../lanes/plugin-profiles.json")"
 HEADED_ARM="$HERE/../headed-arm.sh"
 export HEADED_ARM_LEG_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
 export PLUGIN_PROFILES_ADAPTERS="$HERE/../../guardrails/himmel-adapters.json"
@@ -1756,7 +1758,7 @@ check "full launch --profile: additionalDirectories never contains the handover 
 # are dead, so seeding them protects nothing.
 check "full launch --profile: seeded settings deny Edit on .locks/**, naming the resolved handover root" \
   "$(jq -c '.permissions.deny' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
-  "$(jq -cn --arg d "$HANDOVER_DIR" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
+  "$(jq -cn --arg d "$HANDOVER_DIR" --argjson t "$TRIM_DENY" '$t + ["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 check "full launch --profile: seeded settings deny NOTHING for Write/MultiEdit/NotebookEdit on .locks/** (dead rules dropped)" \
   "$(jq -c '(.permissions.deny // []) | map(select(startswith("Write(") or startswith("MultiEdit(") or startswith("NotebookEdit(")))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
   "[]"
@@ -1813,7 +1815,7 @@ check "full launch --profile (space in handover root): additionalDirectories nev
   "false"
 check "full launch --profile (space in handover root): .locks deny resolves with the space intact" \
   "$(jq -c '.permissions.deny' "$d17s/HIMMEL-3333-space.leg-settings.json" 2>/dev/null)" \
-  "$(jq -cn --arg d "$space_root" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
+  "$(jq -cn --arg d "$space_root" --argjson t "$TRIM_DENY" '$t + ["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 
 # A doc placed directly AT the handover root (dirname(doc) ==
 # HANDOVER_DIR) must never collapse the grant to the whole root - rather than
@@ -1927,7 +1929,7 @@ HANDOVER_DIR="$slash_root" \
 check "full launch --profile (trailing slash on HANDOVER_DIR, doc under it): exit 0" "$rc" "0"
 check "full launch --profile (trailing slash on HANDOVER_DIR): .locks deny normalizes, no double slash" \
   "$(jq -c '.permissions.deny' "$d17slash2/HIMMEL-3333-slash2.leg-settings.json" 2>/dev/null)" \
-  "$(jq -cn --arg d "$HANDOVER_DIR" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
+  "$(jq -cn --arg d "$HANDOVER_DIR" --argjson t "$TRIM_DENY" '$t + ["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 
 # when HANDOVER_DIR cannot be resolved at
 # all, the root/ancestor comparison has nothing to compare against - an

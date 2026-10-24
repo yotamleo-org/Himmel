@@ -38,7 +38,7 @@ export FAILURE_REVIEW_NOTIFY_CMD="$TMP/stub/notify"
 export FAILURE_REVIEW_FRICTION_CMD=""
 # The router fails closed without a project key; the suite names one, the no-key cases unset it.
 export JIRA_PROJECT_KEY=HIMMEL
-export CADENCE_ALERT_FILE="$TMP/cadence-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify"
+export CADENCE_ALERT_FILE="$TMP/cadence-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/alert-send-failed"
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
@@ -60,7 +60,7 @@ d="$(dirname "$0")"
 printf '%s\n' "$*" >>"$d/calls.log"
 op="$1"; shift
 case "$op" in
-  list) exit 0 ;;
+  list) cat "$d/list.out" 2>/dev/null; exit 0 ;;
   create) n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) echo "Comment added to $1" ;;
   *) exit 9 ;;
@@ -128,8 +128,9 @@ review "$C3" --live >"$C3/run.out" 2>&1 || bad "live review exits 0: $(head -c 3
 check "exactly one create through the stub" '[ "$(calls create)" = 1 ]'
 check "the digest says what was filed" 'digest "$C3" | grep -q "filed denied/guard-pr-check-literal HIMMEL-9001"'
 check "the digest names the mode live" 'digest "$C3" | grep -q "mode: live"'
-check "one Telegram line, naming the routing" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "routed 1"'
+check "one Telegram line, naming the routing" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 ticket filed"'
 check "the line is one line" '[ "$(tail -n 1 "$STUB/notify.log" | wc -l)" = 1 ]'
+check "a class the router just filed is triaged, not filed again" 'tail -n 1 "$STUB/notify.log" | grep -q "Do: open the digest and triage what the router filed" && ! tail -n 1 "$STUB/notify.log" | grep -q "file a ticket"'
 review "$C3" --live >/dev/null 2>&1
 check "a rerun routes nothing new: no second ticket, routed none" '[ "$(calls create)" = 1 ] && digest "$C3" | grep -q "routed: none"'
 
@@ -150,6 +151,20 @@ printf '{"v":1,"classes":{},"created":{"day":"%s","n":3}}\n' "$DAY" >"$C4b/state
 review "$C4b" >/dev/null 2>&1
 check "dry-run: the digest says capped too" 'digest "$C4b" | grep -q "capped: the daily create cap was hit"'
 check "an uncapped day says none capped" 'digest "$C2" | grep -q "capped: none"'
+# a class that already has a ticket would be commented on, not filed: the "would be" count is tickets only.
+C4c="$TMP/c4c"; mkdir -p "$C4c"; cp "$C2/ledger.jsonl" "$C4c/ledger.jsonl"
+printf '{"v":1,"classes":{"denied/guard-pr-check-literal":{"ticket":"HIMMEL-9100"}},"created":{}}\n' >"$C4c/state.json"
+review "$C4c" >/dev/null 2>&1
+check "a would-comment decision is not counted as a ticket that would be filed" 'digest "$C4c" | grep -q "would-comment denied/guard-pr-check-literal" && tail -n 1 "$STUB/notify.log" | grep -q "dry run, nothing filed (0 would be)"'
+# live, but the class already has a ticket: the router comments, files nothing, and the step is not "triage what it filed".
+C4d="$TMP/c4d"; mkdir -p "$C4d"; cp "$C2/ledger.jsonl" "$C4d/ledger.jsonl"
+cp "$C4c/state.json" "$C4d/state.json"
+s4="$(sends)"
+printf 'HIMMEL-9100\tTask\tOpen\tsome summary\n' >"$STUB/list.out"
+review "$C4d" --live >"$C4d/run.out" 2>&1 || bad "live comment-only review exits 0: $(head -c 300 "$C4d/run.out")"
+rm -f "$STUB/list.out"
+check "a live run on a class that has a ticket comments on it" 'digest "$C4d" | grep -q "commented denied/guard-pr-check-literal"'
+check "a live run that only commented does not tell the operator to triage what the router filed" '[ "$(sends)" = "$((s4 + 1))" ] && ! tail -n 1 "$STUB/notify.log" | grep -q "triage what the router filed"'
 
 echo "5. the two unreliable trajectory signals never reach the digest"
 C5="$TMP/c5"; mkdir -p "$C5"
@@ -175,7 +190,18 @@ check "a quiet day (no new class, nothing routed) sends nothing" '[ "$(sends)" =
 row "$C6/ledger.jsonl" N300 blocked/merge-hold
 review "$C6" >/dev/null 2>&1
 check "a class first seen today is new" 'digest "$C6" | grep -q "blocked/merge-hold: 1 rows, legs N300 (new)"'
-check "a new class sends one line naming it" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "new: blocked/merge-hold"'
+check "a new class sends one line naming it" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 new class first seen today .*: blocked/merge-hold (1 failure)"'
+# the line is the plain shape; four new classes show the top three with counts and "1 more".
+C6p="$TMP/c6p"; mkdir -p "$C6p"
+for i in 1 2 3 4 5; do row "$C6p/ledger.jsonl" "N5$i" error/Bash:usage:check-old-terms; done
+for i in 1 2 3 4; do row "$C6p/ledger.jsonl" "N6$i" error/Edit; done
+for i in 1 2 3; do row "$C6p/ledger.jsonl" "N7$i" blocked/merge-hold; done
+row "$C6p/ledger.jsonl" N81 error/Read
+review "$C6p" >/dev/null 2>&1
+plain="$(tail -n 1 "$STUB/notify.log")"
+check "the line is the plain shape" 'printf "%s\n" "$plain" | grep -qE "^failure review $DAY \(dry-run\): 13 failures in 4 classes over 24 h; dry run, nothing filed \([0-9]+ would be\)\. Cause: .* Do: .* Log: $C6p/out/failure-review-$DAY\.md$"'
+check "the top three new classes carry their counts" 'printf "%s\n" "$plain" | grep -q "error/Bash:usage:check-old-terms (5 failures), error/Edit (4 failures), blocked/merge-hold (3 failures) and 1 more"'
+check "the line gives a next step and drops the word routed" 'printf "%s\n" "$plain" | grep -q "Do: open the digest and file a ticket" && ! printf "%s\n" "$plain" | grep -qi "routed"'
 # suite rows carry final_red: false = red inside the leg then green, true = left red at wrap.
 C6d="$TMP/c6d"; mkdir -p "$C6d"
 row "$C6d/ledger.jsonl" N400 suite/test-green-again.sh
@@ -186,7 +212,7 @@ rc=$?
 check "the suite fixture review exits 0" '[ "$rc" -eq 0 ]'
 check "a suite class that went red then green is not new" 'digest "$C6d" | grep -q "suite/test-green-again.sh: 1 rows, legs N400 (recurring)"'
 check "a suite class left red at wrap is new" 'digest "$C6d" | grep -q "suite/test-left-red.sh: 1 rows, legs N400 (new)"'
-check "only the ended-red class is named in the new: line" 'tail -n 1 "$STUB/notify.log" | grep -q "new: suite/test-left-red.sh$"'
+check "only the ended-red class is named as new" 'tail -n 1 "$STUB/notify.log" | grep -q "1 new class first seen today .*: suite/test-left-red.sh (1 failure)\. Do: " && ! tail -n 1 "$STUB/notify.log" | grep -q test-green-again'
 C6c="$TMP/c6c"; mkdir -p "$C6c"
 row "$C6c/ledger.jsonl" N100 error/Read 0 2026-10-06T11:59:59.500000Z
 row "$C6c/ledger.jsonl" N200 error/Read
@@ -259,6 +285,12 @@ FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" H
   HIMMEL_FAILURE_ROUTES_STATE="$C8/state.json" timeout "$BOUND" bash "$CAD" run >"$C8/run2.out" 2>&1; rc=$?
 hung "$rc" "cadence run (proceed)"
 check "a PROCEED preflight runs the review dry-run" '[ "$rc" = 0 ] && ls "$C8/out"/failure-review-*.md >/dev/null 2>&1 && [ ! -e "$C8/state.json" ]'
+# a failed Telegram send (rc 3) leaves the digest written: the alert says only the send failed.
+C8n="$TMP/c8n"; mkdir -p "$C8n"; row "$C8n/ledger.jsonl" N900 error/Notify 0 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/notify-fail" HIMMEL_FAILURE_REVIEW_DIR="$C8n/out" HIMMEL_LEG_FAILURES_LEDGER="$C8n/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8n/state.json" timeout "$BOUND" bash "$CAD" run >"$C8n/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (send fails)"
+check "a failed Telegram send is its own alert: digest written, only the send failed" '[ "$rc" = 3 ] && ls "$C8n/out"/failure-review-*.md >/dev/null 2>&1 && tail -n 1 "$STUB/notify.log" | grep -q "Telegram message was not delivered (exit 3)\. Cause: the digest is written; only the send failed\. Do: nothing, the undelivered line is sent again at the next run"'
 
 echo "9. delivery is persisted: a failed line is retried, a delivered one is not repeated (HIMMEL-4790)"
 C9="$TMP/c9"; mkdir -p "$C9"
@@ -280,10 +312,10 @@ review "$C9b" >/dev/null 2>&1
 check "a new class delivered once is not repeated by a rerun in the window" '[ "$(sends)" = "$((s0 + 1))" ]'
 row "$C9b/ledger.jsonl" N500 error/Grep
 review "$C9b" >/dev/null 2>&1
-check "a second new class still sends, naming only itself" '[ "$(sends)" = "$((s0 + 2))" ] && tail -n 1 "$STUB/notify.log" | grep -q "new: error/Grep$"'
+check "a second new class still sends, naming only itself" '[ "$(sends)" = "$((s0 + 2))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 new class first seen today .*: error/Grep (1 failure)\. Do: "'
 s0="$(sends)"
 review "$C6b" >"$C6b/run2.out" 2>&1; rc=$?
-check "a new class whose send failed is retried by the next run" '[ "$rc" = 0 ] && [ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "new: error/Bash"'
+check "a new class whose send failed is retried by the next run" '[ "$rc" = 0 ] && [ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "error/Bash (1 failure)"'
 C9c="$TMP/c9c"; mkdir -p "$C9c"
 row "$C9c/ledger.jsonl" N600 error/Edit
 echo 'not json' >"$C9c/state.json.notify.json"
@@ -291,7 +323,7 @@ review "$C9c" --notify-cmd "$STUB/notify-fail" >"$C9c/run1.out" 2>&1; rc=$?
 check "an unreadable notify state is kept aside, never overwritten" '[ "$rc" = 3 ] && [ "$(cat "$C9c"/state.json.notify.json.unreadable.*)" = "not json" ]'
 s0="$(sends)"
 review "$C9c" >/dev/null 2>&1; rc=$?
-check "a failed send over an unreadable state is still retried" '[ "$rc" = 0 ] && [ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "new: error/Edit"'
+check "a failed send over an unreadable state is still retried" '[ "$rc" = 0 ] && [ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "error/Edit (1 failure)"'
 C9d="$TMP/c9d"; mkdir -p "$C9d"
 row "$C9d/ledger.jsonl" N700 error/Write
 echo '{"v":1,"pending":[1],"sent":{}}' >"$C9d/state.json.notify.json"
