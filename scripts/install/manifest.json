@@ -454,7 +454,7 @@
       "scopes": ["user"],
       "profiles": ["luna", "all"],
       "deps": [],
-      "probe": {"type": "cadence-runs", "script": "scripts/luna/pipeline-cadence.sh", "tasks": [{"task": "HIMMEL-Pipeline-FetchHealth", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Harvest", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Synthesize", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Health", "intervalHours": 168}]},
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/pipeline-cadence.sh", "tasks": [{"task": "HIMMEL-Pipeline-FetchHealth", "scheduleKey": "fetchHealth", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Harvest", "scheduleKey": "harvest", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Synthesize", "scheduleKey": "synthesize", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Health", "scheduleKey": "health", "intervalHours": 168}]},
       "removable": "full-offboard-only",
       "offboard": "advise"
     },

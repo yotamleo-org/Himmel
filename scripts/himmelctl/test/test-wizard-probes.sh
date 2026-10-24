@@ -7149,11 +7149,12 @@ const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'cadence-runs-$1');
 if (!item) { console.log(JSON.stringify({ actual: 'degraded', detail: 'no manifest item cadence-runs-$1' })); process.exit(0); }
-const ctx = { repoRoot: '$(winpath "$cr_root")', targetPath: '$(winpath "$cr_root")', scope: 'user', env: process.env };
+const ctx = { repoRoot: '$(winpath "$cr_root")', targetPath: '$(winpath "$cr_root")', scope: 'user', env: { ...process.env, HIMMEL_LUNA_CONFIG_PATH: '$(winpath "$cr_luna_cfg")' } };
 console.log(JSON.stringify(runProbe(item, ctx)));
 "
 }
 
+cr_luna_cfg="$work/cr-luna-config.json"   # absent = the defaults; never the real ~/.himmel/config.json
 cr_ids=$(jq -r '.cadences[].id' "$cr_reg")
 for cr_id in $cr_ids; do
   cr_script=$(jq -r --arg id "$cr_id" '.cadences[] | select(.id == $id) | .script' "$cr_reg")
@@ -7226,5 +7227,18 @@ outCRu=$(run_cr doctor)
 echo "$outCRu" | jq -e '.actual == "present" and (.detail | contains("no run log yet"))' >/dev/null \
   || fail "cadence-runs-doctor: an armed task with no run log must read present without claiming a clean run (got: $outCRu)"
 echo "ok: cadence-runs-doctor — an armed task with no run log is not called clean"
+
+# a pipeline schedule the operator made weekly (a `day` in luna.cadence.schedules) is judged on a 7-day interval, not the daily default.
+cr_3d=$("$node_bin" -e "const d=new Date(Date.now()-72*3600000);const p=(n)=>String(n).padStart(2,'0');console.log(d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()))")
+cr_variant "$cr_fix/pipeline.txt" healthy | sed -E "s/(pipeline-harvest\.log \(last write: )[0-9-]+ [0-9:]+\)/\1$cr_3d)/" > "$cr_cur"
+outCRd=$(run_cr pipeline)
+echo "$outCRd" | jq -e '.actual == "degraded" and (.detail | contains("HIMMEL-Pipeline-Harvest"))' >/dev/null \
+  || fail "cadence-runs-pipeline: a 3-day-old daily run must read stale (got: $outCRd)"
+printf '{"luna":{"cadence":{"enabled":true,"schedules":{"harvest":{"time":"02:00","day":"MON"}}}}}' > "$cr_luna_cfg"
+outCRw=$(run_cr pipeline)
+rm -f "$cr_luna_cfg"
+echo "$outCRw" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-pipeline: a schedule configured weekly must be judged on 7 days, so a 3-day-old run is healthy (got: $outCRw)"
+echo "ok: cadence-runs-pipeline — the interval follows the operator's own schedule"
 
 echo "PASS"

@@ -3084,7 +3084,7 @@ function probeCadenceCoherence(item, ctx) {
 
 // One item per cadence-registry.json row: runs the row's own `status` and
 // judges every ARMED task it lists (descriptor `tasks`: { task, intervalHours,
-// okRcs? }) with the shared reader above — one scheduler entry, a run log
+// okRcs?, scheduleKey? }) with the shared reader above — one scheduler entry, a run log
 // written within twice the interval, a last run that exited with a success
 // code. A task that is not armed is not judged; a row with none armed is the
 // ordinary "never turned on" absence (cleanAbsence). `platform` marks a
@@ -3109,7 +3109,23 @@ function probeCadenceRuns(item, ctx) {
   if (!d.tasks.some((t) => parsed[t.task])) {
     return { actual: 'degraded', detail: `${name} status named none of the expected tasks (${d.tasks.map((t) => t.task).join(', ')}) — its output shape changed or it printed nothing` };
   }
-  const armed = d.tasks.filter((t) => parsed[t.task] && parsed[t.task].armed).map((t) => ({ ...t, label: t.task }));
+  // A task with a `scheduleKey` runs on the operator's own luna.cadence
+  // schedule (weekly when it carries a `day`, daily otherwise), so its interval
+  // is read from that config, never the manifest's default.
+  let schedules = {};
+  if (d.tasks.some((t) => t.scheduleKey)) {
+    try {
+      const config = scopeConfigPathToCtx(ctx, () => lunaConfig.load());
+      schedules = (config.luna && config.luna.cadence && config.luna.cadence.schedules) || {};
+    } catch (e) {
+      return { actual: 'degraded', detail: `cannot read luna config: ${e.message}` };
+    }
+  }
+  const armed = d.tasks.filter((t) => parsed[t.task] && parsed[t.task].armed).map((t) => ({
+    ...t,
+    label: t.task,
+    intervalHours: t.scheduleKey && schedules[t.scheduleKey] ? (schedules[t.scheduleKey].day ? 168 : 24) : t.intervalHours,
+  }));
   if (armed.length === 0) {
     return { actual: 'absent', detail: `no scheduler task is armed for ${name}`, cleanAbsence: true };
   }
