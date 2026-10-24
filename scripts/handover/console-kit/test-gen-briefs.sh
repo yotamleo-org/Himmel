@@ -514,6 +514,40 @@ lacks "a brief that names no VM work does not carry the guest-exec line" "$VMB2"
 bash "$HERE/brief-lint.sh" "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/vmlint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the VM brief passes brief-lint.sh" || fail "vm brief brief-lint rc=$rc: $(cat "$WORK/vmlint.err")"
 
+# --- a grants list renders a Pre-granted follow-ups block; a grant reaching a forbidden path or a bypass is refused ---
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["grants"]=[{"text":"add the RED row to the harness suite","paths":["scripts/handover/console-kit/test-gen-briefs.sh"]},{"text":"mirror the change in the twin","paths":["scripts/a.sh","scripts/b.sh"]}]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/gr.json"
+python3 "$SUT" "$WORK/gr.json" --base 4ccb59d --console BZ --bucket "$WORK/gr" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/gr.err"; rc=$?
+[ "$rc" = 0 ] && pass "a leg with grants generates (rc 0)" || fail "grants rc=$rc: $(cat "$WORK/gr.err")"
+GR="$(cat "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+has "a brief with grants carries the Pre-granted follow-ups block" "$GR" "> **Pre-granted follow-ups** (HIMMEL-7091)"
+# shellcheck disable=SC2016 # literal backticks in the sed pattern
+GR_NONCE="$(sed -n 's/^> \*\*RETASK:\*\* your nonce is `\([^`]*\)`.*/\1/p' "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md)"
+if [ -n "$GR_NONCE" ]; then has "the grants block binds the ruling to the leg's own nonce" "$GR" "\`RULING $GR_NONCE grant=<Gn> :: <action>\`"; else fail "no RETASK nonce in the grants brief"; fi
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "G1 names its text and backticked path" "$GR" '> - G1 add the RED row to the harness suite: `scripts/handover/console-kit/test-gen-briefs.sh`'
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "G2 lists every path it names" "$GR" '> - G2 mirror the change in the twin: `scripts/a.sh`, `scripts/b.sh`'
+has "an off-grant ruling gets a needs-rebrief FINDING" "$GR" "FINDING needs-rebrief <Gn>"
+bash "$HERE/brief-lint.sh" "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/grlint.err"; rc=$?
+[ "$rc" = 0 ] && pass "the grants brief passes brief-lint.sh" || fail "grants brief brief-lint rc=$rc: $(cat "$WORK/grlint.err")"
+lacks "a leg without grants carries no grants block" "$ct_no" "Pre-granted follow-ups"
+grbad() { # <name> <python edit of the grant g> <stderr fragment>
+    rm -rf "$WORK/grbad"
+    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); g={'text':'fix the twin','paths':['scripts/a.sh']}; $2; l[0]['grants']=[g]; json.dump(l[:1],open(sys.argv[2],'w'))" "$WORK/legs.json" "$WORK/grbad.json"
+    python3 "$SUT" "$WORK/grbad.json" --base 4ccb59d --console BZ --bucket "$WORK/grbad" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/grbad.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q -- "$3" "$WORK/grbad.err" && ! ls "$WORK/grbad"/* >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$rc, err: $(cat "$WORK/grbad.err"))"; fi
+}
+grbad "a grant with no paths is refused" 'g["paths"]=[]' "must name its paths"
+grbad "a grant naming a settings file is refused" 'g["paths"]=[".claude/settings.json"]' "settings, CI-workflow or trust path"
+grbad "a grant naming a CI workflow is refused" 'g["paths"]=[".github/workflows/ci.yml"]' "settings, CI-workflow or trust path"
+grbad "a grant naming a ci-trust-paths file is refused" 'g["paths"]=["scripts/handover/console-kit/brief-lint.sh"]' "settings, CI-workflow or trust path"
+grbad "a grant whose text names a bypass is refused" 'g["text"]="skip review with SKIP_CR"' "never carries a bypass"
+grbad "a grant whose text names an amend is refused" 'g["text"]="amend the first commit"' "never carries a bypass"
+grbad "a grant with a glob path is refused" 'g["paths"]=["scripts/*.sh"]' "literal repo-relative file path"
+grbad "a grant with a parent-relative path is refused" 'g["paths"]=["../x.sh"]' "literal repo-relative file path"
+grbad "a grant with a placeholder in its text is refused" 'g["text"]="edit <file>"' "no <placeholder>"
+grbad "a grant with an extra key is refused" 'g["why"]="x"' "exactly {text, paths}"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 
