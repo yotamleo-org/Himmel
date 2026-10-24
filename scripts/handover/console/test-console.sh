@@ -2793,6 +2793,11 @@ check "87b an unnumbered spilled line is kept through the pointer" "$rc81" "0"
 mk81 dec87w "${ptr87u#decisions: }" "${ptr87u#decisions: }"
 mkdir -p "$root/tester/dec87w/specs/decisions"; cp "$spill87u" "$root/tester/dec87w/specs/decisions/"; run81 dec87w
 check "87b a pointer carried unchanged keeps an unnumbered spilled line" "$rc81" "0"
+# The match is found while far more decisions text still follows it.
+mk81 dec87x "${big87u#decisions: }" "${ptr87u#decisions: }"
+mkdir -p "$root/tester/dec87x/specs/decisions"; cp "$spill87u" "$root/tester/dec87x/specs/decisions/"
+seq 1 40000 | sed 's/^/decisions: filler line /' >> "$root/tester/dec87x/specs/decisions/$(basename "$spill87u")"; run81 dec87x
+check "87b a spilled line found before more decisions text is kept" "$rc81" "0"
 
 # --- 88: the pasted launch line binds the console on the bus, as the armed
 # path does: the console profile's opt-in registers the session as a console

@@ -1538,7 +1538,7 @@ decisions_kept_verbatim() {
     # A spilled line, numbered or not, is kept whole in a file the outgoing line
     # names, or by the pointer to it carried unchanged.
     [ "$prev" != "$out" ] || return 0
-    printf '%s\n' "$have" | sed -n 's/^decisions:[[:space:]]*//p' | grep -Fxq -e "$prev" && return 0
+    printf '%s\n' "$have" | sed -n 's/^decisions:[[:space:]]*//p' | grep -Fx -e "$prev" >/dev/null && return 0
     need="$prev"
     case "$prev" in
         *specs/decisions/console-decisions-*)
