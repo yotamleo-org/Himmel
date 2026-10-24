@@ -431,7 +431,7 @@ wrap_subtree_gate() {
     fi
     for pid in $kills; do
         # a recycled pid must not be TERMed: only a live console-wait.sh process is
-        if ps -ww -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
+        if { ps -ww -o args= -p "$pid" 2>/dev/null || ps -o args= -p "$pid" 2>/dev/null; } | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
             # its whole subtree first, deepest-first, each pid confirmed gone, so
             # no descendant outlives it as an orphan the re-check below can no
             # longer see
@@ -439,7 +439,7 @@ wrap_subtree_gate() {
                 # a gone pid is skipped; a live one whose argv no longer matches its
                 # snapshot row (reused pid, or an exec) is never signalled, and the
                 # wrap is refused with the waiter left running
-                now=$(ps -ww -o args= -p "$sp" 2>/dev/null) || now=""
+                now=$(ps -ww -o args= -p "$sp" 2>/dev/null || ps -o args= -p "$sp" 2>/dev/null) || now=""
                 [ -n "$now" ] || continue
                 # an empty snapshot cmd would match any live process at that pid
                 case "$now" in "$cmd"*) [ -n "$cmd" ] || { err "wrap refused: descendant $sp of the console-wait waiter has no recorded command - waiter left running, re-run"; exit 5; } ;; *)
