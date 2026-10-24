@@ -165,7 +165,12 @@ mkdir "$sweep_ctl/links-pct/my page" && echo ok >"$sweep_ctl/links-pct/my page/i
 mk_site "$sweep_ctl/links-data" '<a data-href="/Himmel/no-such/" href="/Himmel/page/">x</a>' "" || exit 1
 mk_site "$sweep_ctl/links-sd" "" '<a href="../../links-sd-extra/x/">x</a>' || exit 1
 mkdir -p "$sweep_ctl/links-sd-extra/x" && echo ok >"$sweep_ctl/links-sd-extra/x/index.html" || exit 1
+mk_site "$sweep_ctl/links-ent" '<a href="/Himmel/page/#a&amp;b">x</a> <a href="#a%26b">y</a>' "" || exit 1
+printf '<h2 id="a&amp;b">E</h2>\n' >>"$sweep_ctl/links-ent/page/index.html" || exit 1
+mkdir "$sweep_ctl/links-empty" || exit 1
+built_rc2() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 2 ]; }
 check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
+check "built links: an entity-escaped fragment and its percent-encoded form resolve" built_ok "$sweep_ctl/links-ent"
 check "built links: a percent-encoded link to a spaced directory resolves" built_ok "$sweep_ctl/links-pct"
 check "built links: a data-href attribute is not a link" built_ok "$sweep_ctl/links-data"
 check "control: built links fails a relative link into a sibling directory sharing the dist prefix" fails built_ok "$sweep_ctl/links-sd"
@@ -174,7 +179,7 @@ check "control: built links fails a dead generated-page fragment" fails built_ok
 check "control: built links fails a dead route in a passthrough page" fails built_ok "$sweep_ctl/links-raw-route"
 check "control: built links fails a dead fragment in a passthrough page" fails built_ok "$sweep_ctl/links-raw-frag"
 check "control: built links fails a root link outside the site base" fails built_ok "$sweep_ctl/links-escape"
-check "control: built links fails on a dist with no pages" fails built_ok "$sweep_ctl/no-such-dist"
+check "control: built links exits 2 on a dist with no pages" built_rc2 "$sweep_ctl/links-empty"
 
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
