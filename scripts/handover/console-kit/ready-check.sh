@@ -748,6 +748,12 @@ if [ "$ONLY7" -eq 0 ]; then
 # trigger fires only on .github/ci-image/** paths, so a change to ci-image.yml
 # alone gets no push run: its proof is the weekly cron or a workflow_dispatch on
 # main. A listed workflow is skipped either way.
+# macos-cadence.yml also takes a per-suite proof: a dispatch run at the head whose title names suites
+# (`macos-cadence suites: <paths>`) passes when its log shows [PASS] for every named suite, however red
+# the rest of the run. That route replaces the whole-run proof only when the named suites cover every
+# test-*.sh the PR changes and the PR's macos-cadence.yml diff is the suites wiring alone; any other
+# workflow edit, or a changed suite left unnamed, still needs an unfiltered dispatch at the head (green,
+# or red only where main already is), and a suites run is never judged by the PRE-EXISTING comparison.
 # A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
 # to is not on the default branch, which GitHub requires to dispatch a workflow,
 # so neither can be dispatched before merge and both are skipped. A PR touching no workflow
@@ -800,14 +806,52 @@ else
         fi
         wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
     }
+    # wf_wiring_only <workflow path>: rc 0 when the PR's diff of that file is the macos-cadence `suites`
+    # wiring and nothing else. Every added line must be blank, a comment, mention a suite or --only-list,
+    # or be one of the if/else and input-block lines that wiring needs; every removed line must be one of
+    # the two lines the wiring rewrites or be paired with its added twin that only gained the
+    # ` && inputs.suites == ''` clause. rc 1 with wf_why naming the first other line, or the diff unreadable.
+    # ponytail: a line-shape allowlist, not a YAML semantic diff; a hostile line that mentions "suite" passes it, upgrade path: compare the parsed workflow with the wiring stripped.
+    wf_wiring_only() {
+        local patch bad
+        patch=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq ".[] | select(.filename == \"$1\") | .patch // empty" 2>/dev/null) || { wf_why="cannot read the diff of $1"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
+        [ -n "$patch" ] || { wf_why="the diff of $1 is not available"; return 1; }
+        bad=$(printf '%s\n' "$patch" | awk -v frag=" && inputs.suites == ''" '
+            function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+            function strip(s,   i) { while ((i = index(s, frag)) > 0) s = substr(s, 1, i - 1) substr(s, i + length(frag)); return s }
+            function wiring(l) { return l == "" || l ~ /^#/ || l ~ /[Ss][Uu][Ii][Tt][Ee]|only-list/ || (l in fixed) }
+            BEGIN {
+                n = split("inputs:\nrequired: false\ndefault: '"''"'\ntype: string\nrun: |\nelse\nfi\nset -f\nexit 2\nbash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .", w, "\n")
+                for (i = 1; i <= n; i++) fixed[w[i]] = 1
+                old["shard: [1, 2, 3, 4, 5, 6, 7, 8]"] = 1
+                old["run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 ."] = 1
+            }
+            /^@@/ { next }
+            /^\+/ { added[++na] = trim(substr($0, 2)); next }
+            /^-/ { removed[++nr] = trim(substr($0, 2)); next }
+            END {
+                for (i = 1; i <= na; i++) {
+                    if (!wiring(added[i])) { print "+" added[i]; exit }
+                    twin[strip(added[i])] = 1
+                }
+                for (i = 1; i <= nr; i++)
+                    if (!wiring(removed[i]) && !(removed[i] in old) && !(removed[i] in twin)) { print "-" removed[i]; exit }
+            }') || { wf_why="cannot judge the diff of $1"; return 1; }  # swallow-ok: a failed awk sets wf_why and returns 1
+        if [ -n "$bad" ]; then
+            wf_why="$1 changes more than the suites wiring (${bad}), so an unfiltered dispatch at the head is required"
+            return 1
+        fi
+    }
     # wf_suites_proof <workflow file> <dispatch runs json>: macos-cadence only. rc 0 and wf_note set when a
-    # completed dispatch run at the head named its suites (displayTitle `macos-cadence suites: <paths>`)
-    # and its log carries the runner's own `[PASS] <suite> (` for every one: the text right after the log's
-    # tab-separated timestamp field, so a failed suite's indented forwarded output cannot echo one. rc 1: no such run (the caller falls through to the
-    # whole-run rules). rc 2: such a run exists but is not proven; wf_why says why and the verdict is final,
-    # because the job-level PRE-EXISTING comparison says nothing about which named suite failed.
+    # completed dispatch run at the head named its suites (displayTitle `macos-cadence suites: <paths>`),
+    # the named suites cover every test-*.sh the PR changes, the PR's macos-cadence.yml diff is the suites
+    # wiring only, and the run's log carries the runner's own `[PASS] <suite> (` for every named suite: the
+    # text right after the log's tab-separated timestamp field, so a failed suite's indented forwarded output
+    # cannot echo one. rc 1: no such run (the caller falls through to the whole-run rules). rc 2: such a run
+    # exists but is not proven; wf_why says why and the verdict is final, because the job-level PRE-EXISTING
+    # comparison says nothing about which named suite failed, and a run that proves too little stays refused.
     wf_suites_proof() {
-        local wf_name="$1" row id title names s log pass="" bad=""
+        local wf_name="$1" row id title names s f log changed_suites pass="" bad="" uncovered=""
         wf_why=""
         wf_sp_id=""
         [ "$1" = macos-cadence.yml ] || return 1
@@ -817,6 +861,18 @@ else
         # shellcheck disable=SC2086  # word-splitting the named paths IS the point (repo paths carry no whitespace)
         set -- $names
         if [ "$#" -eq 0 ]; then wf_why="run $id names no suites"; return 2; fi
+        wf_wiring_only ".github/workflows/$wf_name" || return 2
+        changed_suites=$(printf '%s\n' "$files_json" | grep -E '(^|/)test-[^/]*\.sh$' || true)  # swallow-ok: no changed suite is grep rc 1, and an empty set is the answer
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case " $* " in *" $f "*) ;; *) uncovered="$uncovered, $f" ;; esac
+        done <<EOF
+$changed_suites
+EOF
+        if [ -n "$uncovered" ]; then
+            wf_why="suites run $id does not name the suite(s) the PR changes: ${uncovered#, }"
+            return 2
+        fi
         log=$("$GH" run view "$id" --repo "$nwo" --log 2>/dev/null) || { wf_why="cannot read the log of run $id"; return 2; }  # swallow-ok: a failed read sets wf_why and returns 2, which the caller reports as a failure
         for s in "$@"; do
             if printf '%s\n' "$log" | awk -F'\t' -v want="[PASS] $s (" 'NF >= 3 && $3 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z / { if (index(substr($3, index($3, " ") + 1), want) == 1) f = 1 } END { exit !f }'; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi

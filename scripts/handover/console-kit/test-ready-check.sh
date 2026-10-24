@@ -111,6 +111,10 @@ case "$args" in
         # STUB_RENAMES lines "new old": run the script's own --jq filter over a files array
         printf '%s\n' "${STUB_RENAMES:-}" | jq -R -n '[inputs | select(length > 0) | split(" ") | {filename: .[0], previous_filename: .[1]}]' \
             | jq -r "${args#*--jq }" ;;
+    *"api --paginate"*"/files"*".patch"*)
+        # the diff of one file: STUB_WF_PATCH_FILE is its `patch` field, absent = unavailable
+        [ -f "${STUB_WF_PATCH_FILE:-/nonexistent}" ] || exit 1
+        cat "$STUB_WF_PATCH_FILE" ;;
     *"api --paginate"*"/files"*"filename"*)
         [ -n "${STUB_FILES_FAIL:-}" ] && exit 1
         printf '%s\n' "${STUB_FILES:-README.md}"
@@ -208,7 +212,7 @@ run() {
         STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" STUB_FILES_PARTIAL="${STUB_FILES_PARTIAL:-}" \
         STUB_RENAMES="${STUB_RENAMES:-}" STUB_RENAMES_FAIL="${STUB_RENAMES_FAIL:-}" \
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
-        STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
+        STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" STUB_WF_PATCH_FILE="${STUB_WF_PATCH_FILE:-}" \
         STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
@@ -221,7 +225,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
     seed_ledger_ok
 }
 
@@ -1525,7 +1529,96 @@ LOG
 mac_run() {  # <conclusion> <displayTitle> <headSha> [id]
     printf '[{"conclusion":"%s","databaseId":%s,"displayTitle":"%s","event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$1" "${4:-501}" "$2" "$3"
 }
-mac_wf_run() { wf_run ".github/workflows/macos-cadence.yml"; }
+mac_wf_run() {  # [extra changed files, newline-separated] [the workflow's patch file] -> rc/out
+    reset_stubs
+    STUB_FILES=".github/workflows/macos-cadence.yml${1:+
+$1}"; STUB_FILE_STATUS=""; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"; STUB_WF_PATCH_FILE="${2:-$RUNDIR/wiring.patch}"
+    rc=0; out="$(run)" || rc=$?
+}
+# the `patch` field of the real macos-cadence.yml diff this PR makes: the suites wiring and nothing else
+cat > "$RUNDIR/wiring.patch" <<'PATCH'
+@@ -19,8 +19,24 @@ name: "CI (os:macos cadence)"
+ # and both jobs are skipped for any PR without it. A PR run never records
+ # breakages (the record belongs to main). Dispatch (needs this file on main):
+ #   gh workflow run macos-cadence.yml --ref main
++#
++# A fix PR proves only ITS suites. Dispatch with `suites` set (space-
++# separated repo-relative test-*.sh paths) and ONE runner runs just those via
++# run-shell-tests.sh --only-list, in minutes instead of the 8-shard hour-plus run:
++#   gh workflow run macos-cadence.yml --ref <branch> -f suites="<path> <path>"
++# The run-name carries the list, and ready-check.sh item 10 accepts the run when
++# the log shows [PASS] for every named suite (however red the rest). Empty
++# `suites` = the unchanged full cadence. A filtered run records no breakage
++# metric: its partial suite set would read the unlisted suites as fixed.
++run-name: "${{ inputs.suites != '' && format('macos-cadence suites: {0}', inputs.suites) || 'CI (os:macos cadence)' }}"
+ on:
+   workflow_dispatch:
++    inputs:
++      suites:
++        description: 'Space-separated repo-relative suite paths; set = run only these on one runner'
++        required: false
++        default: ''
++        type: string
+   pull_request:
+     types: [labeled, synchronize]
+   schedule:
+@@ -47,7 +63,8 @@ jobs:
+         # `/8` in the run step and `--shards-expected 8` in `summary` are three
+         # spellings of one number and must agree (pinned by
+         # test-macos-cadence-workflow.sh).
+-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
++        # A `suites` dispatch needs one runner, not eight.
++        shard: ${{ fromJSON(inputs.suites == '' && '[1, 2, 3, 4, 5, 6, 7, 8]' || '[1]') }}
+     runs-on: ${{ matrix.os }}
+     # No continue-on-error: a red macOS shard reddens THIS run and nothing else.
+     # The cap only bounds a hung suite.
+@@ -65,11 +82,26 @@ jobs:
+         run: python -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
+       # SUITE_TIER_MODE=all: the whole corpus, extended tier included -- the
+       # coverage the nightly's macOS legs had.
++      # A `suites` dispatch: the input reaches the shell through SUITES (never
++      # interpolated into the script), each word is checked to be a plain
++      # repo-relative path, and --only-list runs just those suites.
+       - id: tests
+-        run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
++        run: |
++          if [ -n "$SUITES" ]; then
++            set -f
++            printf '%s\n' $SUITES > macos-suites.txt
++            if grep -qvE '^[A-Za-z0-9_./-]+$' macos-suites.txt || grep -q '\.\.' macos-suites.txt; then
++              echo "::error::suites must be plain repo-relative paths"
++              exit 2
++            fi
++            bash scripts/ci/run-shell-tests.sh --only-list macos-suites.txt .
++          else
++            bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
++          fi
+         env:
+           FAIL_LOG_DIR: failed-suite-logs
+           SUITE_TIER_MODE: all
++          SUITES: ${{ inputs.suites }}
+       # Even when the run step above went red: this is the per-shard input to
+       # the breakage metric. Skipped when setup died before the tests ran, so
+       # `summary` sees a missing report (infra_suspect), not an empty one.
+@@ -119,7 +151,7 @@ jobs:
+     steps:
+       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+       - name: Record breakages against the previous cadence run
+-        if: github.event_name != 'pull_request'
++        if: github.event_name != 'pull_request' && inputs.suites == ''
+         # shell: bash = `bash -e -o pipefail`: without it the step's status is
+         # tee's and a die inside `record` (rc 2) would go green.
+         shell: bash
+@@ -150,7 +182,7 @@ jobs:
+             --shards-expected 8 --failed-dir failed-artifacts $prev \
+             --out record.json | tee -a "$GITHUB_STEP_SUMMARY"
+       - name: Upload breakage record
+-        if: always() && github.event_name != 'pull_request'
++        if: always() && github.event_name != 'pull_request' && inputs.suites == ''
+         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+         with:
+           name: macos-breakage-record
+PATCH
 
 mac_run failure "macos-cadence suites: $MAC_A $MAC_B" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
 mac_wf_run
@@ -1593,10 +1686,64 @@ mac_wf_run
 check "macos-cadence GREEN suites run, every named suite PASS: exit 0" "$rc" "0"
 contains "macos-cadence GREEN suites run: prints per-suite evidence" "$out" "PASS $MAC_A"
 
+# A named suite must be a whole `[PASS] <suite> (` line, not the front of a longer logged name.
+cat > "$RUNDIR/log-506.txt" <<LOG
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:00.9019890Z [PASS] ${MAC_A}x (1s)
+LOG
+mac_run failure "macos-cadence suites: $MAC_A" "$SHA" 506 > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, the log only has a longer name that starts with the named one: exit 1" "$rc" "1"
+
+# The named suites must cover every suite the PR changes: one unrelated green suite proves nothing
+# about a changed suite that never ran.
+mac_run failure "macos-cadence suites: $MAC_A $MAC_B" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run "scripts/ci/test-unnamed-suite.sh"
+check "macos-cadence suites run does not name a suite the PR changes: exit 1" "$rc" "1"
+contains "macos-cadence suites run, changed suite not named: check 10 fails" "$out" "[FAIL] 10."
+contains "macos-cadence suites run, changed suite not named: names it" "$out" "test-unnamed-suite.sh"
+cat > "$RUNDIR/log-507.txt" <<LOG
+macos-cadence / shell (macos-latest, 1)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:00.9019890Z [PASS] scripts/ci/test-unnamed-suite.sh (1s)
+LOG
+mac_run failure "macos-cadence suites: $MAC_A scripts/ci/test-unnamed-suite.sh" "$SHA" 507 > "$RUNDIR/macos-cadence.yml.json"
+cat "$RUNDIR/log-501.txt" >> "$RUNDIR/log-507.txt"
+mac_wf_run "scripts/ci/test-unnamed-suite.sh"
+check "macos-cadence suites run names the suite the PR changes: exit 0" "$rc" "0"
+mac_run failure "macos-cadence suites: $MAC_A $MAC_B" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run "docs/internals/testing.md"
+check "macos-cadence suites run, the PR changes a file that is no suite: exit 0" "$rc" "0"
+
+# The route is only for a workflow diff that is the suites wiring: any other edit needs an unfiltered dispatch.
+{ cat "$RUNDIR/wiring.patch"; printf '+  permissions: write-all\n'; } > "$RUNDIR/broad-added.patch"
+{ cat "$RUNDIR/wiring.patch"; printf -- '-    timeout-minutes: 120\n'; } > "$RUNDIR/broad-removed.patch"
+sed -e "s/^+        if: github.event_name != 'pull_request' && inputs.suites == ''/+        if: true \&\& inputs.suites == ''/" "$RUNDIR/wiring.patch" > "$RUNDIR/broad-changed.patch"
+mac_wf_run "" "$RUNDIR/broad-added.patch"
+check "macos-cadence suites run, workflow diff adds a line beyond the wiring: exit 1" "$rc" "1"
+contains "macos-cadence suites run, workflow diff beyond the wiring: check 10 fails" "$out" "[FAIL] 10."
+contains "macos-cadence suites run, workflow diff beyond the wiring: names the line" "$out" "permissions: write-all"
+mac_wf_run "" "$RUNDIR/broad-removed.patch"
+check "macos-cadence suites run, workflow diff removes a line beyond the wiring: exit 1" "$rc" "1"
+contains "macos-cadence suites run, workflow diff removes a line: names it" "$out" "timeout-minutes: 120"
+mac_wf_run "" "$RUNDIR/broad-changed.patch"
+check "macos-cadence suites run, an if: line rewritten beyond the suites clause: exit 1" "$rc" "1"
+mac_wf_run "" "$RUNDIR/nonexistent.patch"
+check "macos-cadence suites run, the workflow diff cannot be read: exit 1 (fail closed)" "$rc" "1"
+: > "$RUNDIR/empty.patch"
+mac_wf_run "" "$RUNDIR/empty.patch"
+check "macos-cadence suites run, the workflow diff is empty (too large for the API): exit 1" "$rc" "1"
+# the refusal is final: main's red shard 1 does not make a suites run PRE-EXISTING
+main_run schedule failure 222 > "$RUNDIR/macos-cadence.yml.main.json"
+jobs_json "macos-cadence / shell (macos-latest, 1)" > "$RUNDIR/jobs-222.json"
+jobs_json "macos-cadence / shell (macos-latest, 1)" > "$RUNDIR/jobs-501.json"
+mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run "" "$RUNDIR/broad-added.patch"
+check "macos-cadence suites run refused for its workflow diff, main red on shard 1: exit 1" "$rc" "1"
+notcontains "macos-cadence suites run refused for its workflow diff: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR"/jobs-*.json
+
 mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"
 check "a suites-titled red run of ANOTHER workflow gets no per-suite pass: exit 1" "$rc" "1"
-rm -f "$RUNDIR/macos-cadence.yml.json" "$RUNDIR"/log-*.txt "$RUNDIR/ci.yml.json"
+rm -f "$RUNDIR/macos-cadence.yml.json" "$RUNDIR"/log-*.txt "$RUNDIR/ci.yml.json" "$RUNDIR"/*.patch
 
 : > "$GH_LOG"
 wf_run "scripts/handover/console-kit/ready-check.sh"
