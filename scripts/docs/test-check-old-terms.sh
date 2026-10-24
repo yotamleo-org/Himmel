@@ -48,8 +48,8 @@ run_case() {
 }
 
 echo "== an unregistered old-term identifier is refused =="
-run_case "LEG_TURN_CAP added to a script" 1 scripts/cap.sh 'LEG_TURN_CAP=40'
-case "$LAST_OUT" in *scripts/cap.sh*LEG_TURN_CAP*) pass "finding names file and token" ;; *) fail "finding names file and token: $LAST_OUT" ;; esac
+run_case "LEG_PROBE_UNREGISTERED added to a script" 1 scripts/cap.sh 'LEG_PROBE_UNREGISTERED=40'
+case "$LAST_OUT" in *scripts/cap.sh*LEG_PROBE_UNREGISTERED*) pass "finding names file and token" ;; *) fail "finding names file and token: $LAST_OUT" ;; esac
 run_case "BANK token" 1 scripts/bk.sh 'echo "$NEW_BANK_THING"'
 run_case "OVERNIGHT token" 1 scripts/ov.sh 'export OVERNIGHT_FOO=1'
 run_case "token with LEG_ in the middle" 1 scripts/mid.sh 'HEADED_ARM_LEG_BRAND_NEW=1'
@@ -83,7 +83,7 @@ run_case "non-ASCII path is read" 1 'docs/é.md' 'the console arms a leg'
 run_case "path git quotes cannot be read: refused, not skipped" 2 'docs/a"b.md' 'the console arms a leg'
 
 echo "== the exemption marker passes =="
-run_case "identifier with marker" 0 scripts/cap2.sh 'LEG_TURN_CAP=40 # old-term-ok: mirrors the upstream name'
+run_case "identifier with marker" 0 scripts/cap2.sh 'LEG_PROBE_UNREGISTERED=40 # old-term-ok: mirrors the upstream name'
 run_case "prose with marker" 0 docs/page2.md 'the console arms a leg old-term-ok: quoting the old text'
 run_case "marker without a reason is refused" 1 docs/page3.md 'the console arms a leg old-term-ok:'
 
@@ -104,10 +104,10 @@ echo "== prose rules apply to markdown only =="
 run_case "old word in a shell comment" 0 scripts/cmt.sh '# the console arms a leg'
 
 echo "== exempted paths and senses pass =="
-run_case "identifier under fixtures" 0 scripts/fixtures/x.sh 'LEG_TURN_CAP=40'
+run_case "identifier under fixtures" 0 scripts/fixtures/x.sh 'LEG_PROBE_UNREGISTERED=40'
 run_case "prose under fixtures" 0 docs/fixtures/p.md 'the console arms a leg'
 run_case "glossary alias table" 0 docs/glossary.md '| **worker** | leg | The dispatched session. |'
-run_case "the registry itself" 0 scripts/lib/rename-aliases.tsv 'LEG_TURN_CAP	pending-N2892	env	old-to-new	R0	pending-N2892'
+run_case "the registry itself" 0 scripts/lib/rename-aliases.tsv 'LEG_PROBE_UNREGISTERED	pending-N2892	env	old-to-new	R0	pending-N2892'
 run_case "CI-matrix leg in testing.md" 0 docs/internals/testing.md 'Each leg of the matrix runs one shard.'
 run_case "CI-matrix leg in ci-image.md" 0 docs/internals/ci-image.md 'Each leg pulls the image.'
 run_case "leg in another doc is still refused" 1 docs/internals/other.md 'Each leg pulls the image.'
@@ -132,7 +132,7 @@ if [ "$rc" -eq 0 ]; then pass "no diff (rc=$rc)"; else fail "no diff: want rc=0 
 
 echo "== --staged reads the index =="
 git -C "$repo" checkout -q -B staged "$base"
-printf 'LEG_TURN_CAP=40\n' > "$repo/scripts/st.sh"
+printf 'LEG_PROBE_UNREGISTERED=40\n' > "$repo/scripts/st.sh"
 git -C "$repo" add scripts/st.sh
 out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "staged old-term identifier (rc=$rc)"; else fail "staged old-term identifier: want rc=1 got rc=$rc: $out"; fi
@@ -146,7 +146,7 @@ if [ "$rc" -eq 0 ]; then pass "nothing staged (rc=$rc)"; else fail "nothing stag
 echo "== --auto with PRE_COMMIT_TO_REF reads the range =="
 git -C "$repo" branch -f main "$base"
 git -C "$repo" checkout -q -B autorange "$base"
-printf 'LEG_TURN_CAP=40\n' > "$repo/scripts/ar.sh"
+printf 'LEG_PROBE_UNREGISTERED=40\n' > "$repo/scripts/ar.sh"
 git -C "$repo" add scripts/ar.sh
 git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "case autorange"
 arhead=$(git -C "$repo" rev-parse HEAD)
@@ -155,7 +155,7 @@ if [ "$rc" -eq 1 ]; then pass "--auto with PRE_COMMIT_TO_REF runs the range (rc=
 
 echo "== a merge in progress is not linted at commit =="
 git -C "$repo" checkout -q -B mergewip "$base"
-printf 'LEG_TURN_CAP=40\n' > "$repo/scripts/mg.sh"
+printf 'LEG_PROBE_UNREGISTERED=40\n' > "$repo/scripts/mg.sh"
 git -C "$repo" add scripts/mg.sh
 printf '%s\n' "$base" > "$repo/.git/MERGE_HEAD"
 out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
