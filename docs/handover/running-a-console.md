@@ -491,9 +491,12 @@ chief with a bus identity a `WAKE relay-on-live` (or run `console-kit/relay-batc
 the successor (the bus proves you sent it, so the record carries no token), and each claudex
 worker session its inbox relay plus the bus record its `bus adopt` needs. A native record that
 fails, or a chief with no bus identity, prints a `SENDMESSAGE` line quoting the worker session's
-token for a worker session in Live state: send it from your own session. A worker session in the
-fleet manifest but missing from Live state whose record fails prints `NOT-IN-LIVE-STATE`: relay
-it by hand if it is live. `BUS-RELAY <label> ok` means the bus stored the record, not that the
+token for a worker session in Live state: send it from your own session. A failed claudex
+notice record prints only `BUS-RELAY-FAIL`: that worker session already has its inbox relay. A
+worker session in the fleet manifest but missing from Live state prints `NOT-IN-LIVE-STATE` when
+its record fails, when the chief has no bus identity, when it is a claudex worker session, or
+when its session does not resolve: relay it by hand if it is live. `SKIPPED`, `UNRESOLVED` and
+`UNRESOLVED-LANE` lines sent nothing: each needs a relay by hand. `BUS-RELAY <label> ok` means the bus stored the record, not that the
 worker session saw it: delivery needs the worker session's `HIMMEL_BUS_NAME` hooks, so the
 successor's `WAKE succession partial` is the backstop for one that never quotes back. The worker
 session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc (the successor's

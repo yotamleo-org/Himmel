@@ -294,6 +294,10 @@ contains 'running-a-console Handing over: a bus record relays each native worker
 contains 'running-a-console Handing over: BUS-RELAY ok does not prove delivery' "$(flat "$running")" 'not that the worker session saw it'
 contains 'running-a-console Handing over: WAKE succession partial is the backstop' "$(flat "$running")" 'is the backstop for one that never quotes back'
 contains 'running-a-console Handing over: native and claudex workers are not rotated on a bus succession' "$(flat "$running")" 'native and claudex worker sessions are not rotated'
+contains 'running-a-console Handing over: a failed claudex notice prints only BUS-RELAY-FAIL' "$(flat "$running")" 'claudex notice record prints only'
+contains 'running-a-console Handing over: a claudex worker with a failed notice already has its inbox relay' "$(flat "$running")" 'already has its inbox relay'
+contains 'running-a-console Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" 'when the chief has no bus identity, when it is a claudex worker session, or when its session does not resolve'
+contains 'running-a-console Handing over: SKIPPED, UNRESOLVED and UNRESOLVED-LANE need a hand relay' "$(flat "$running")" 'sent nothing: each needs a relay by hand'
 
 absent 'handoff "How starts" does not tell the successor to rotate nonces' "$starts" "$stale_rotate"
 contains 'handoff "How starts": a relay MAY keep the leg token' "$(flat "$starts")" 'MAY keep'
