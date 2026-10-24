@@ -79,7 +79,8 @@ check "a leg with no manifest row is skipped, not guessed" "1" "$(printf '%s\n' 
 check "no token other than the held ones appears (nothing minted)" "0" "$(printf '%s\n' "$out" | grep -o '`[^`]*`' | grep -vc 'tok-seven\|tok-eight')"
 check "the relay never sends LIVE" "0" "$(printf '%s\n' "$out" | grep -c ' LIVE')"
 : > "$WORK/bus.body"
-bash "$RB" "$DOC" --successor "$WORK/DEMO-nextleg-2026-10-08B-console.md" --claudex N8 >/dev/null 2>&1
+bash "$RB" "$DOC" --successor "$WORK/DEMO-nextleg-2026-10-08B-console.md" --claudex N8 >/dev/null 2>&1; rcp=$?
+check "a successor given as its doc path exits 0" "0" "$rcp"
 check "a successor given as its doc path is relayed as its session name" "1" "$(grep -c 'SUCCESSION accepted: DEMO-nextleg-2026-10-08B-console replaces DEMO-nextleg-2026-10-08A-console$' "$WORK/bus.body")"
 check "usage without --successor exits 2" "2" "$(bash "$RB" "$DOC" >/dev/null 2>&1; echo $?)"
 # shellcheck disable=SC2016  # $2 expands in the stub, not here
@@ -307,7 +308,8 @@ check "an off-Live-state leg with no live session is left for a hand relay" "1" 
 check "the tally counts both bus relays" "1" "$(printf '%s\n' "$out17" | grep -c '^RELAYED 2 of 3$')"
 # shellcheck disable=SC2016  # $2 expands in the stub, not here
 printf '#!/usr/bin/env bash\necho "bus: no edge to $2" >&2; exit 1\n' > "$BUS"
-out18="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"
+out18="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"; rc18=$?
+check "a relay with refused bus records exits 0" "0" "$rc18"
 check "a refused bus record falls back to the SendMessage for a Live-state leg" "1" "$(printf '%s\n' "$out18" | grep -c '^SENDMESSAGE to=DEMO-15-N60-in-2026-10-24 :: .*tok-sixty')"
 check "a refused bus record leaves an off-Live-state leg for a hand relay" "1" "$(printf '%s\n' "$out18" | grep -c '^NOT-IN-LIVE-STATE N61 ')"
 check "an off-Live-state leg is never printed a token-less SendMessage" "0" "$(printf '%s\n' "$out18" | grep -c '^SENDMESSAGE to=DEMO-16-')"
@@ -315,7 +317,8 @@ check "the fallback tally counts only the printed relay" "1" "$(printf '%s\n' "$
 # a manifest row with no lane keeps its doc in the doc field (tab-separated empty fields do not collapse)
 LEGL="$WORK/DEMO-18-N63-nolane-2026-10-24.md"; : > "$LEGL"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N63"}]}\n' "$LEGA" "$LEGL" > "${DOC10%.md}.fleet.json"
-out19="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"
+out19="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"; rc19=$?
+check "a relay with a lane-less manifest leg exits 0" "0" "$rc19"
 check "a lane-less off-Live-state leg is reported with its own doc" "1" "$(printf '%s\n' "$out19" | grep -cF "NOT-IN-LIVE-STATE N63 ($LEGL)")"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

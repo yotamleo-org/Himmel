@@ -2780,6 +2780,19 @@ check "87b the pointer is one short line" "$([ -n "$ptr87" ] && [ "${#ptr87}" -l
 mk81 dec87t "${big87#decisions: }" "${ptr87#decisions: }"
 mkdir -p "$root/tester/dec87t/specs/decisions"; cp "$spill87" "$root/tester/dec87t/specs/decisions/"; run81 dec87t
 check "87b the successor's handover keeps every ruling through the pointer" "$rc81" "0"
+# An unnumbered oversize line is kept the same way: through the pointer, then with the pointer carried unchanged.
+big87u='decisions: OPERATOR 10-17 (BINDING) —'
+for i87 in $(seq 1 60); do big87u="$big87u ruling $i87 keeps the fleet at its cap and fills free slots from the priority pool;"; done
+mk81 dec87u "${big87u#decisions: }" "${big87u#decisions: }"; run81 dec87u
+check "87b next with an unnumbered oversize decisions: line succeeds" "$rc81" "0"
+spill87u="$(ls "$root/tester/dec87u/specs/decisions/"console-decisions-*.md 2>/dev/null)"
+ptr87u="$(grep -m 1 '^decisions:' "$root/tester/dec87u/DEMO-nextleg-${today}C-console.md" 2>/dev/null)"
+mk81 dec87v "${big87u#decisions: }" "${ptr87u#decisions: }"
+mkdir -p "$root/tester/dec87v/specs/decisions"; cp "$spill87u" "$root/tester/dec87v/specs/decisions/"; run81 dec87v
+check "87b an unnumbered spilled line is kept through the pointer" "$rc81" "0"
+mk81 dec87w "${ptr87u#decisions: }" "${ptr87u#decisions: }"
+mkdir -p "$root/tester/dec87w/specs/decisions"; cp "$spill87u" "$root/tester/dec87w/specs/decisions/"; run81 dec87w
+check "87b a pointer carried unchanged keeps an unnumbered spilled line" "$rc81" "0"
 
 # --- 88: the pasted launch line binds the console on the bus, as the armed
 # path does: the console profile's opt-in registers the session as a console
