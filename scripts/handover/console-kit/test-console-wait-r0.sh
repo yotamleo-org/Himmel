@@ -18,6 +18,8 @@
 #   (r0g) two legs: N1's wrap and N2's change in one sample, then the manifest
 #         move N1's wrap made: N2's change still wakes
 #   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
+#   (hd)  holds=: a leg entering the set wakes once; ageing, a leg leaving and the set
+#         emptying do not wake
 #
 # tick.sh, the bank verdict and leg-event.sh are stubbed (CHIEF_WAIT_TICK,
 # CHIEF_WAIT_USAGE, CHIEF_WAIT_WORKER_EVENT): nothing closes a window here.
@@ -262,6 +264,47 @@ tick_line "N1:WRAPPED,N2:LIVE"; printf '%s closable=1\n' "$(cat "$STUB/tick.line
 wait_exit "$WPID"
 check "(r0i) the closable rise wakes (rc 0)" "0" "$rc"
 check "(r0i) as a tick wake on closable" "WAKE tick changed=closable bank=PROCEED" "$(head -n 1 "$WORK/r0i.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (hd) holds= wakes when a leg ENTERS the set, once per hold --------------
+# The age grows every tick, a hold that is still there does not re-wake, and a
+# leg leaving the set (or the field going away) wakes nothing.
+holds_line() { # <holds value, empty = field absent>
+    tick_line "N1:BLOCKED"
+    if [ -n "$1" ]; then
+        printf '%s holds=%s\n' "$(cat "$STUB/tick.line")" "$1" > "$STUB/tick.line.new" && mv "$STUB/tick.line.new" "$STUB/tick.line"
+    fi
+}
+reset_stub
+holds_line ""
+fleet hd
+start "$I" "$WORK/hd.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(hd) no baseline heartbeat"
+holds_line "N1:25m"
+wait_exit "$WPID"
+check "(hd) a leg entering the holds set ends the wait" "0" "$rc"
+check "(hd) the wake names holds" "WAKE tick changed=holds bank=PROCEED" "$(head -n 1 "$WORK/hd.out")"
+
+# a re-arm with the hold standing, the age growing: no second wake
+start "$I" "$WORK/hd2.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(hd2) no re-arm heartbeat"
+holds_line "N1:31m"
+wait_exit "$WPID"
+check "(hd2) the same hold ageing does not wake again" "running" "$rc"
+holds_line "N1:31m,N2:22m"
+wait_exit "$WPID"
+check "(hd3) a second leg entering wakes" "0" "$rc"
+check "(hd3) the wake names holds" "WAKE tick changed=holds bank=PROCEED" "$(head -n 1 "$WORK/hd2.out")"
+
+# a leg leaving the set (N2 stays) wakes nothing; neither does the set emptying
+start "$I" "$WORK/hd4.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(hd4) no re-arm heartbeat"
+holds_line "N2:24m"
+wait_exit "$WPID"
+check "(hd4) a leg leaving the holds set does not wake" "running" "$rc"
+holds_line ""
+wait_exit "$WPID"
+check "(hd5) the set emptying does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 echo

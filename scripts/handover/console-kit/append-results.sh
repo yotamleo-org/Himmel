@@ -95,7 +95,10 @@ bullet="- ${stamp} ${TEXT}"
 # non-status bullet above it, so the acknowledgement stays the newest line; a
 # refusal never blocks the acknowledgement. Only a leg with a bus identity
 # (HIMMEL_BUS_NAME) adopts. APPEND_RESULTS_BUS replaces the CLI;
-# APPEND_RESULTS_BUS_TIMEOUT bounds the adopt (seconds, default 15).
+# APPEND_RESULTS_BUS_TIMEOUT bounds the adopt (seconds, default 15). Without an
+# override the adopt runs the anchor checkout's bus, falling back to this
+# worktree's own copy: a leg cut before a bus fix would otherwise run the stale
+# adopt. The bullet ends `[via anchor]` or `[via worktree]` to say which ran.
 # Every later marker bullet re-runs the adopt for the doc's newest accepted
 # successor, so a leg whose adopt was refused while its old console was still
 # live heals once that console is gone. adopt is idempotent: an unchanged
@@ -114,7 +117,20 @@ if [ "$is_leg" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ]; then
     fi
 fi
 if [ -n "$adopt_to" ]; then
-    bus="${APPEND_RESULTS_BUS:-$(dirname "${BASH_SOURCE[0]}")/../../../marketplace/plugins/himmel-bus/bin/bus}"
+    via=""
+    if [ -n "${APPEND_RESULTS_BUS:-}" ]; then
+        bus="$APPEND_RESULTS_BUS"
+    else
+        kit="$(dirname "${BASH_SOURCE[0]}")"
+        bus="$kit/../../../marketplace/plugins/himmel-bus/bin/bus"; via="worktree"
+        common=""
+        if . "$kit/../../lib/git-clean.sh" 2>/dev/null; then
+            common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no git, or an old git, keeps the worktree copy
+        fi
+        if [ "${common##*/}" = ".git" ] && [ -x "${common%/.git}/marketplace/plugins/himmel-bus/bin/bus" ]; then
+            bus="${common%/.git}/marketplace/plugins/himmel-bus/bin/bus"; via="anchor"
+        fi
+    fi
     limit="${APPEND_RESULTS_BUS_TIMEOUT:-15}"
     wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
     if adopted="$($wait_for "$bus" adopt "$adopt_to" 2>&1)"; then
@@ -126,7 +142,7 @@ if [ -n "$adopt_to" ]; then
         adopted="refused (${adopted%%$'\n'*})"
         [ "$readopt" -eq 1 ] && adopted=""
     fi
-    [ -z "$adopted" ] || bullet="- ${stamp} bus-adopt: ${adopted//->/→}"$'\n'"$bullet"
+    [ -z "$adopted" ] || bullet="- ${stamp} bus-adopt: ${adopted//->/→}${via:+ [via $via]}"$'\n'"$bullet"
 fi
 
 # the vault's pre-commit gitleaks would refuse the doc and stall the autosync

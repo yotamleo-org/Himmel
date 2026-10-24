@@ -105,6 +105,9 @@
 # parked= (the legs sitting on an unanswered permission prompt, names only so the
 # growing age never re-wakes; absent from the tick line when none is parked, never
 # a failure; a leg joining or leaving the set wakes),
+# holds= (tick.sh: `<leg>:<age>m,...`, BLOCKED legs past TICK_HOLD_MIN; names only, so the
+# age never re-wakes) wakes when a leg ENTERS the set, once per hold: a leg leaving or the
+# set emptying wakes nothing; absent when no leg holds, never a failure),
 # stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
@@ -399,12 +402,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails acts legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
+    for f in legs livestate prs tails acts holds legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
@@ -420,6 +423,8 @@ sample() {
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
         [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
+        # holds= keeps the leg names only, sorted: the age grows every tick and must not re-wake.
+        [ "$f" = holds ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
         # stall= keeps the actionable tokens (conflict, no-ci) only, sorted: ci-slow and idle are
         # report-only. A set with none is left out of the key altogether. stall=? (a probe
         # outage) keeps the saved set, so the same conflict returning is not a new one.
@@ -480,6 +485,22 @@ drop_board_ok() {
         if [ "$f" = vmrun ]; then
             case "$vmrun_new" in DEAD|STUCK|DISAGREE) ;; *) continue ;; esac
         fi
+        printf '%s\n' "$f"
+    done | paste -sd, -
+}
+
+# drop_holds_left: <changed csv> <old key> <new key> — strips holds from a changed= list
+# unless a leg joined the set: a hold that ends (the leg answered) is not an event, and
+# the set emptying never shows in changed= at all (the field is simply absent).
+drop_holds_left() {
+    local old new n joined=""
+    old=",$(key_field holds "$2"),"; new="$(key_field holds "$3")"
+    for n in $(printf '%s' "$new" | tr ',' ' '); do
+        case "$old" in *",$n,"*) ;; *) joined=1 ;; esac
+    done
+    if [ -n "$joined" ]; then printf '%s\n' "$1"; return; fi
+    printf '%s\n' "$1" | tr ',' '\n' | while read -r f; do
+        [ "$f" = holds ] && continue
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -1052,6 +1073,7 @@ while :; do
                 # it never appears in changed=; the key still saves.
                 real_changed="$(drop_board_ok "$(changed_fields "$saved" "$key")" "$key")"
                 real_changed="$(drop_denials_expiry "$real_changed" "$saved" "$key")"
+                real_changed="$(drop_holds_left "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
                 if [ -z "$real_changed" ]; then
                     saved="$key"; save_key "$key"; pending=""

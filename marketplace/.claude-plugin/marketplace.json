@@ -467,6 +467,63 @@
       "homepage": "https://github.com/uxKero/anydesign"
     },
     {
+      "name": "popular-web-designs",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/NousResearch/hermes-agent.git",
+        "path": "skills/creative/popular-web-designs",
+        "ref": "v2026.9.24"
+      },
+      "description": "[NousResearch/hermes-agent, MIT, vendor + attribution only, no carried delta] Hermes-bundled design skill popular-web-designs: 54 brand design systems (Stripe, Linear, Vercel, ...) as HTML/CSS, templates sourced from VoltAgent/awesome-design-md (MIT). The upstream repo is the whole Hermes agent, so the entry is a git-subdir source on skills/creative/popular-web-designs (that dir is a root skill, SKILL.md at its top, hence strict:false with the root-skill list ./; no other creative skill is cached into this plugin). Explicit HTTPS git url (HIMMEL-549 / HIMMEL-2837), pinned to the immutable release tag v2026.9.24 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-reference profile (HIMMEL-4016).",
+      "strict": false,
+      "skills": [
+        "./"
+      ],
+      "author": {
+        "name": "Nous Research",
+        "url": "https://github.com/NousResearch"
+      },
+      "homepage": "https://github.com/NousResearch/hermes-agent"
+    },
+    {
+      "name": "design-md",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/NousResearch/hermes-agent.git",
+        "path": "skills/creative/design-md",
+        "ref": "v2026.9.24"
+      },
+      "description": "[NousResearch/hermes-agent, MIT, vendor + attribution only, no carried delta] Hermes-bundled design skill design-md: author, lint and export Google's DESIGN.md token spec (the spec is Apache-2.0, google-labs-code/design.md; the skill is Hermes-authored MIT). The upstream repo is the whole Hermes agent, so the entry is a git-subdir source on skills/creative/design-md (that dir is a root skill, SKILL.md at its top, hence strict:false with the root-skill list ./; no other creative skill is cached into this plugin). Explicit HTTPS git url (HIMMEL-549 / HIMMEL-2837), pinned to the immutable release tag v2026.9.24 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-reference profile (HIMMEL-4016).",
+      "strict": false,
+      "skills": [
+        "./"
+      ],
+      "author": {
+        "name": "Nous Research",
+        "url": "https://github.com/NousResearch"
+      },
+      "homepage": "https://github.com/NousResearch/hermes-agent"
+    },
+    {
+      "name": "hermes-artifact-design",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/NousResearch/hermes-agent.git",
+        "path": "skills/creative/claude-design",
+        "ref": "v2026.9.24"
+      },
+      "description": "[NousResearch/hermes-agent, MIT, vendor + attribution only, no carried delta] Hermes-bundled design skill claude-design: one-off HTML design artifacts (landing, deck, prototype) in CLI/API mode, by BadTechBandit. The upstream repo is the whole Hermes agent, so the entry is a git-subdir source on skills/creative/claude-design (that dir is a root skill, SKILL.md at its top, hence strict:false with the root-skill list ./; no other creative skill is cached into this plugin). Explicit HTTPS git url (HIMMEL-549 / HIMMEL-2837), pinned to the immutable release tag v2026.9.24 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-reference profile (HIMMEL-4016).",
+      "strict": false,
+      "skills": [
+        "./"
+      ],
+      "author": {
+        "name": "Nous Research",
+        "url": "https://github.com/NousResearch"
+      },
+      "homepage": "https://github.com/NousResearch/hermes-agent"
+    },
+    {
       "name": "anthropic-design-skills",
       "source": {
         "source": "url",

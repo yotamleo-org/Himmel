@@ -23,6 +23,7 @@ vendoring records name the upstream pins and carried deviations.
 | builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 20ff8a101fe8300e44cb3b2d570cb93c7580e1b9 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
+| design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f2f4d49ea8d632f17cf196ba26599277a93f767b |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
 | emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 2d228630ba1446365f614a108cb8252f1feda202 |
@@ -32,6 +33,7 @@ vendoring records name the upstream pins and carried deviations.
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
 | hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 13ac0ec7e148655948100b6396439e481361d690 |
 | handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | yotamleo | MIT | In-tree |
+| hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | himmel-bus | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-bus | yotamleo | MIT | In-tree |
 | himmel-guard | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-guard | yotamleo | MIT | In-tree |
 | himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | yotamleo | MIT | In-tree |
@@ -46,6 +48,7 @@ vendoring records name the upstream pins and carried deviations.
 | obsidian-triage | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/obsidian-triage | yotamleo | MIT | In-tree |
 | plannotator-effective-html | https://github.com/plannotator/effective-html | plannotator | MIT | 975b047f6da6874e176db54f048c0c31c30e9f65 |
 | platform-design-skills | https://github.com/ehmo/platform-design-skills | ehmo | MIT | dc2be825d8b439caea78e9eaa8fb3ac23b0ff3e9 |
+| popular-web-designs | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | pstack | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/pstack/VENDORED.md) |
 | qmd | https://github.com/tobi/qmd | tobi (upstream) / yotamleo (fork) | MIT | [Fork pin](../scripts/lib/qmd-bin.sh) |
 | shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | MIT | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |

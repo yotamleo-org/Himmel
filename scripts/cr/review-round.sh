@@ -76,9 +76,73 @@ test_path_p() {
     return 1
 }
 
+# plugin_json_path <path>: a marketplace plugin's manifest. plugin_version,
+# semver_gt and version_bump_only sit up here because the trivial-descendant
+# verb below runs before the rest of the file is defined.
+plugin_json_path() {
+    case "$1" in
+        marketplace/plugins/*/.claude-plugin/plugin.json) ;;
+        *) return 1 ;;
+    esac
+    _pj_name="${1#marketplace/plugins/}"
+    _pj_name="${_pj_name%/.claude-plugin/plugin.json}"
+    case "$_pj_name" in ''|*/*) return 1 ;; esac
+    return 0
+}
+# plugin_version <file>: prints the one "version" value, which must sit alone
+# on its line as plain X.Y.Z; fails on any other shape or a second version key.
+# The key must also be the file's top-level one, not nested.
+# shellcheck disable=SC2016  # JavaScript source is literal here
+plugin_version() {
+    [ "$(awk '/"version"[[:space:]]*:/ { n++ } END { print n + 0 }' "$1")" = "1" ] || return 1
+    _pv_v="$(sed -n -E 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9})"[[:space:]]*,?[[:space:]]*$/\1/p' "$1")"
+    [ -n "$_pv_v" ] || return 1
+    PV_FILE="$1" PV_WANT="$_pv_v" node -e '
+const fs = require("fs"), e = process.env;
+const o = JSON.parse(fs.readFileSync(e.PV_FILE, "utf8"));
+process.exit(o && typeof o === "object" && !Array.isArray(o) && o.version === e.PV_WANT ? 0 : 1);
+' 2>/dev/null || return 1
+    printf '%s\n' "$_pv_v"
+}
+# semver_gt <a> <b>: a > b for two plain X.Y.Z values.
+semver_gt() {
+    _sg_a="$1"; _sg_b="$2"
+    for _sg_i in 1 2 3; do
+        _sg_x="${_sg_a%%.*}"; _sg_y="${_sg_b%%.*}"
+        _sg_a="${_sg_a#*.}"; _sg_b="${_sg_b#*.}"
+        [ "$((10#$_sg_x))" -gt "$((10#$_sg_y))" ] && return 0
+        [ "$((10#$_sg_x))" -lt "$((10#$_sg_y))" ] && return 1
+    done
+    return 1
+}
+# version_bump_only <from> <to> <path> succeeds when <path> is a plain-file
+# plugin.json in both commits whose only difference is a strictly higher
+# "version" value: the bump plugin-version-bump-required forces on a plugin PR.
+version_bump_only() {
+    _vb_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1  # prim-ok: the same idiom version_only_merge uses; this script does not source prim.sh
+    _vb_ok=1
+    for _vb_side in "$1:old" "$2:new"; do
+        _vb_c="${_vb_side%:*}"; _vb_n="${_vb_side##*:}"
+        if [ "$(git ls-tree "$_vb_c" -- "$3" 2>/dev/null | cut -c1-6)" != "100644" ] \
+            || ! git cat-file blob "$_vb_c:$3" > "$_vb_tmp/$_vb_n" 2>/dev/null \
+            || ! plugin_version "$_vb_tmp/$_vb_n" > "$_vb_tmp/$_vb_n.v" \
+            || ! sed -E 's/^([[:space:]]*"version"[[:space:]]*:[[:space:]]*")[0-9.]*"/\1"/' \
+                "$_vb_tmp/$_vb_n" > "$_vb_tmp/$_vb_n.n"; then
+            _vb_ok=0; break
+        fi
+    done
+    if [ "$_vb_ok" -eq 1 ]; then
+        semver_gt "$(cat "$_vb_tmp/new.v")" "$(cat "$_vb_tmp/old.v")" \
+            && cmp -s "$_vb_tmp/old.n" "$_vb_tmp/new.n" || _vb_ok=0
+    fi
+    rm -rf "$_vb_tmp"
+    [ "$_vb_ok" -eq 1 ]
+}
+
 # trivial_descendant <from> <to> succeeds when <to> is a strict
 # descendant of <from> and <from>..<to> changes only test paths (the
-# judge_scope_record rule) or only comment lines. A judge often reviews a head
+# judge_scope_record rule, plus a version-only plugin.json bump beside at
+# least one test path) or only comment lines. A judge often reviews a head
 # after such a commit, which never got its own panel round. Also the one
 # classifier console-kit/write-verdict.sh --bind-reviewed asks, through the
 # `trivial-descendant` verb below, so the writer and the gate cannot disagree.
@@ -95,12 +159,21 @@ trivial_descendant() {
     _td_paths="$(git -c core.quotepath=off diff --no-renames --name-only "$1" "$2" 2>/dev/null)" || return 1
     [ -n "$_td_paths" ] || return 1
     _td_ok=1
+    _td_tests=0
     while IFS= read -r _td_p; do
-        test_path_p "$_td_p" || { _td_ok=0; break; }
+        if plugin_json_path "$_td_p"; then
+            # A manifest is never a test path, even under a plugin named tests.
+            version_bump_only "$1" "$2" "$_td_p" || { _td_ok=0; break; }
+        elif test_path_p "$_td_p"; then
+            _td_tests=1
+        else
+            _td_ok=0; break
+        fi
     done <<EOF
 $_td_paths
 EOF
-    [ "$_td_ok" -eq 0 ] || return 0
+    # A hook-forced plugin version bump rides along with tests, never alone.
+    [ "$_td_ok" -eq 0 ] || [ "$_td_tests" -eq 0 ] || return 0
     # --tests-only drops the comment branch for the clear-cr-marker
     # fallback, which clears with no critic review of from..to.
     [ "${_td_tests_only:-0}" -eq 0 ] || return 1
@@ -309,42 +382,6 @@ else if ([...verdicts].some(([id, v]) => !settled.has(id) && (v === "" || v === 
 # is strictly above the version in both <ours> and <theirs>, and whose other
 # bytes are exactly the clean three-way merge once the version values are set
 # aside. Anything else fails, so the caller keeps refusing it.
-plugin_json_path() {
-    case "$1" in
-        marketplace/plugins/*/.claude-plugin/plugin.json) ;;
-        *) return 1 ;;
-    esac
-    _pj_name="${1#marketplace/plugins/}"
-    _pj_name="${_pj_name%/.claude-plugin/plugin.json}"
-    case "$_pj_name" in ''|*/*) return 1 ;; esac
-    return 0
-}
-# plugin_version <file>: prints the one "version" value, which must sit alone
-# on its line as plain X.Y.Z; fails on any other shape or a second version key.
-# The key must also be the file's top-level one, not nested.
-# shellcheck disable=SC2016  # JavaScript source is literal here
-plugin_version() {
-    [ "$(awk '/"version"[[:space:]]*:/ { n++ } END { print n + 0 }' "$1")" = "1" ] || return 1
-    _pv_v="$(sed -n -E 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9})"[[:space:]]*,?[[:space:]]*$/\1/p' "$1")"
-    [ -n "$_pv_v" ] || return 1
-    PV_FILE="$1" PV_WANT="$_pv_v" node -e '
-const fs = require("fs"), e = process.env;
-const o = JSON.parse(fs.readFileSync(e.PV_FILE, "utf8"));
-process.exit(o && typeof o === "object" && !Array.isArray(o) && o.version === e.PV_WANT ? 0 : 1);
-' 2>/dev/null || return 1
-    printf '%s\n' "$_pv_v"
-}
-# semver_gt <a> <b>: a > b for two plain X.Y.Z values.
-semver_gt() {
-    _sg_a="$1"; _sg_b="$2"
-    for _sg_i in 1 2 3; do
-        _sg_x="${_sg_a%%.*}"; _sg_y="${_sg_b%%.*}"
-        _sg_a="${_sg_a#*.}"; _sg_b="${_sg_b#*.}"
-        [ "$((10#$_sg_x))" -gt "$((10#$_sg_y))" ] && return 0
-        [ "$((10#$_sg_x))" -lt "$((10#$_sg_y))" ] && return 1
-    done
-    return 1
-}
 version_only_merge() {
     _vo_out="$(git merge-tree --write-tree --name-only --no-messages "$1" "$2" 2>/dev/null)"
     _vo_rc=$?

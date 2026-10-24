@@ -2311,6 +2311,7 @@ HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbb/bus" run_headed_arm "$dbb" "$REPO" "HI
 wait_record "$dbb" || true
 check "bba bind: launch exit 0" "$rcbb" "0"
 check "bbb bind: bus bind <name> <confirmed pid> called exactly once" "$(cat "$dbb/bus-calls" 2>/dev/null)" "bind HIMMEL-busbb 9001"
+contains "bbg bind: a successful bind is recorded in the arm log" "$(cat "$dbb/log" 2>/dev/null)" "bus: bound HIMMEL-busbb to pid 9001"
 dbbb="$tmp/cbbb"; mk_stub "$dbbb" 1 alive "HIMMEL-busbbb"
 cp "$dbb/bus" "$dbbb/bus"
 rcbbb=0
@@ -2325,6 +2326,20 @@ BUS_STUB_FAIL=1 HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbbc/bus" run_headed_arm "
 wait_record "$dbbc" || true
 check "bbe failed bind: launch still exits 0" "$rcbbc" "0"
 contains "bbf failed bind: warned into the arm log" "$(cat "$dbbc/log" 2>/dev/null)" "bus bind of HIMMEL-busbbc to pid 9001 failed"
+# a launch that is never confirmed never binds: the arm log says the console stays unbound
+dbbd="$tmp/cbbd"; mk_stub "$dbbd" 1 alive "HIMMEL-busbbd"
+cp "$dbb/bus" "$dbbd/bus"
+cat > "$dbbd/pgrep" <<'PGREP_EOF'
+#!/usr/bin/env bash
+exit 1
+PGREP_EOF
+chmod 755 "$dbbd/pgrep"
+rcbbd=0
+HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbbd/bus" KONSOLE_CMD="$dbbd/konsole" PGREP_CMD="$dbbd/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$dbbd/locks" \
+  bash "$SCRIPT" "HIMMEL-busbbd" "docbb.md" "$dbbd/signal-never" "$PAST" "$dbbd/log" >/dev/null 2>&1 || rcbbd=$?
+check "bbh unconfirmed launch: exit 7" "$rcbbd" "7"
+check "bbi unconfirmed launch: bus bind is never called" "$([ -e "$dbbd/bus-calls" ] && echo called || echo none)" "none"
+contains "bbj unconfirmed launch: the arm log says the bind was skipped" "$(cat "$dbbd/log" 2>/dev/null)" "WARN: bus bind of HIMMEL-busbbd skipped - no session confirmed"
 
 # --- bg: a bind that hangs (a stuck registry lock: flock -x with no
 # -w) is bounded by HEADED_ARM_BUS_BIND_SECS; the launch result is unchanged and
