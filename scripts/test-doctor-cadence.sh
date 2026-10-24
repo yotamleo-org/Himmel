@@ -230,13 +230,14 @@ long_out 20; run_cad_ok "the 20-finding run"
 check "20 new findings send one message" 1 "$(sent_n)"
 big="$(tail -1 "$SENT")"
 [ "${#big}" -lt 4096 ] && pass "20 new findings fit one Telegram message (${#big} chars)" || fail "20 new findings fit one Telegram message (${#big} chars)"
+case "$big" in *"; +3 more, see $STATE/last-run.log"*) pass "20 findings name the 3 omitted" ;; *) fail "20 findings name the 3 omitted (got: ${big: -200})" ;; esac
 rm -rf "$STATE"; : > "$SENT"
 doctor_out "" "C99-base"; run_cad_ok "the 60-finding baseline run"
 long_out 60; run_cad_ok "the 60-finding run"
 check "60 new findings send one message" 1 "$(sent_n)"
 big="$(tail -1 "$SENT")"
 [ "${#big}" -lt 4096 ] && pass "60 new findings fit one Telegram message (${#big} chars)" || fail "60 new findings fit one Telegram message (${#big} chars)"
-case "$big" in *"more, see $STATE/last-run.log"*) pass "the overflow is a '+N more, see <log>' tail" ;; *) fail "the overflow is a '+N more, see <log>' tail (got: ${big: -200})" ;; esac
+case "$big" in *"; +43 more, see $STATE/last-run.log"*) pass "the overflow is a '+N more, see <log>' tail" ;; *) fail "the overflow is a '+N more, see <log>' tail (got: ${big: -200})" ;; esac
 
 # 8d. a 300-character reason writes its dedupe sentinel without error, and still dedupes.
 reason300="$(printf 'r%.0s' $(seq 1 300))"
@@ -253,6 +254,7 @@ doctor_out "" "C99-base"; run_cad_ok "the failed-send baseline run"
 before="$(cat "$STATE/alerted.tsv")"
 doctor_out "C55-new" "C99-base"
 CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" run_cad
+check "a failed send makes the run exit 1" 1 "$?"
 check "a failed send leaves the alert baseline unchanged" "$before" "$(cat "$STATE/alerted.tsv")"
 run_cad_ok "the retry run"
 check "the next run retries the undelivered alert" 1 "$(sent_n)"
