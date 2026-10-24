@@ -166,8 +166,8 @@ entries="$(awk '
 ' "$doc" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`')"
 if [ -z "$entries" ]; then
     echo "relay-batch: no leg entries in $doc ## Live state" >&2
-    # a console watching only lockless rows still reports them below.
-    if [ -f "$manifest" ] && jq -e '[.legs[] | select(.lockless == true)] | length > 0' "$manifest" >/dev/null 2>&1; then :; else exit 0; fi
+    # manifest legs missing from Live state are still relayed or reported below.
+    if [ -f "$manifest" ] && jq -e '.legs | length > 0' "$manifest" >/dev/null 2>&1; then :; else exit 0; fi
 fi
 
 # the claudex set comes from the manifest's per-leg lane. --claudex, when

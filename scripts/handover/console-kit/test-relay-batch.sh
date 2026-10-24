@@ -329,5 +329,15 @@ out20="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --
 check "a relay with an off-Live-state claudex leg exits 0" "0" "$rc20"
 check "an off-Live-state claudex leg is sent no bus relay" "0" "$(grep -c 'DEMO-19-N64' "$WORK/bus.log")"
 check "an off-Live-state claudex leg is left for a hand relay" "1" "$(printf '%s\n' "$out20" | grep -c '^NOT-IN-LIVE-STATE N64 ')"
+# a Live state that lists no leg still relays the manifest's locked legs
+DOC11="$WORK/DEMO-nextleg-2026-10-24C-console.md"
+printf '# console\n\n## Live state\n\nlegs: none\nqueue: none\n\n## Results\n' > "$DOC11"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N61","lane":"native"}]}\n' "$LEGB" > "${DOC11%.md}.fleet.json"
+census DEMO-16-N61-off-2026-10-24
+: > "$WORK/bus.log"
+out21="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24C-console bash "$RB" "$DOC11" --successor DEMO-nextleg-2026-10-24D-console 2>&1)"; rc21=$?
+check "a relay with an empty Live state exits 0" "0" "$rc21"
+check "an empty Live state still bus-relays a manifest leg" "1" "$(grep -cx 'send DEMO-16-N61-off-2026-10-24' "$WORK/bus.log")"
+check "an empty Live state tallies the manifest leg" "1" "$(printf '%s\n' "$out21" | grep -c '^RELAYED 1 of 1$')"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
