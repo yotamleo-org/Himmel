@@ -82,17 +82,20 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
 Strict is off, so a branch merges main in only for a reason. Each reason below is a
 deliberate merge commit, never a rebase and never a force-push.
 
-1. **The plugin-version-bump race.** The `plugin-version-bump` job in `ci.yml` requires
-   every changed `marketplace/plugins/<p>/` file to bump that plugin's `plugin.json`
-   version above the **main tip** it fetches at run time. When a sibling PR merges a bump
-   for the same plugin first, your bump is no longer above the tip and the job goes red
-   until you merge main in and re-bump.
-2. **Real conflicts.** Git cannot merge the branch cleanly.
-3. **A needed fix on main.** Your PR is red from a break it inherited and main has since
+1. **Real conflicts.** Git cannot merge the branch cleanly.
+2. **A needed fix on main.** Your PR is red from a break it inherited and main has since
    fixed it. Merge-forward cures **only** an inherited red, never one your own change
    introduced (rule and proof script: `docs/handover/leg-sections/ci-red.md`).
-4. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
+3. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
    gate or e2e proof pinned to a sha) is re-taken after the merge.
+
+A sibling's plugin bump is not a reason. Plugin versions change only in the release cut,
+the PR that changes the root `VERSION` file; a feature PR never changes a `plugin.json`
+version, so two PRs editing one plugin from the same base both pass
+`plugin-version-bump` and neither needs a merge of main. The merge-on-green recheck runs
+the base-tip checker against the live base. It refuses a plugin version change outside a
+release cut, and a release cut that leaves a plugin it changes at or below the base's
+version, so two release cuts never ship different contents under one version.
 
 Each merge-in costs a full round: a fresh CI run (PR median about 22 min, p90 about 36),
 a CodeRabbit delta on the new range, a fresh `READY` and a fresh `GO` at the new head.

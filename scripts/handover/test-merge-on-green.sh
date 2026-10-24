@@ -4528,8 +4528,9 @@ STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG4" \
 rm -f "$MOG_RUN_LOG4"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
-# Two PRs that each bump a plugin to the same version both go green in CI; only
-# the merge gate sees the live base. The fixture manifest is copied from the
+# Plugin versions change only in a release cut (a change to the root VERSION
+# file). Two cuts that raise a plugin to the same version both go green in CI;
+# only the merge gate sees the live base. The fixture manifest is copied from the
 # real himmel-ops plugin.json at this checkout, never invented.
 BP_REAL_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 BP_MAN="marketplace/plugins/himmel-ops/.claude-plugin/plugin.json"
@@ -4539,8 +4540,9 @@ BP_V1="$(bp_plus "$BP_BASE_VER" 1)"
 BP_V2="$(bp_plus "$BP_BASE_VER" 2)"
 # bp_setup <anchor> — base B0 (real checker + manifest) on origin main, the PR
 # head at refs/pull/77/head, then a sibling landing on main AFTER the PR
-# branched. MOG_BUMP_SIB / MOG_BUMP_PR set the two bumped versions;
-# MOG_BUMP_NOPULL=1 leaves the PR ref off origin; MOG_BUMP_EVIL=1 plants a
+# branched. MOG_BUMP_SIB / MOG_BUMP_PR set the two plugin versions (default:
+# unchanged); a sibling that changes it is a release cut, and MOG_BUMP_REL=1
+# makes the PR one too; MOG_BUMP_NOPULL=1 leaves the PR ref off origin; MOG_BUMP_EVIL=1 plants a
 # permissive checker in the PR head; MOG_BUMP_MOVED=1 advances the PR ref past
 # the certified head.
 bp_setup() {
@@ -4551,6 +4553,7 @@ bp_setup() {
     cp "$BP_REAL_ROOT/scripts/lib/vm-mode.sh" "$a/scripts/lib/vm-mode.sh" || return 1
     cp "$BP_REAL_ROOT/$BP_MAN" "$a/$BP_MAN" || return 1
     printf 'base\n' > "$a/marketplace/plugins/himmel-ops/a.txt"
+    printf '1.0.0\n' > "$a/VERSION"
     # MOG_BUMP_EMPTY=<blob> commits that checker blob EMPTY at the
     # base tip; MOG_BUMP_MISSING=<blob> leaves it out of the base tip entirely.
     local bp_b; local -a bp_add=()
@@ -4566,14 +4569,15 @@ bp_setup() {
         fi
         if [ "${MOG_BUMP_MISSING:-}" = "$bp_b" ]; then rm -f "$a/$bp_b"; else bp_add+=("$bp_b"); fi
     done
-    $g -C "$a" add "${bp_add[@]}" marketplace && $g -C "$a" commit -qm base && $g -C "$a" push -q origin HEAD:main || return 1
+    $g -C "$a" add "${bp_add[@]}" marketplace VERSION && $g -C "$a" commit -qm base && $g -C "$a" push -q origin HEAD:main || return 1
     b0="$($g -C "$a" rev-parse HEAD)"
     printf 'pr\n' > "$a/marketplace/plugins/himmel-ops/a.txt"
-    jq --arg v "${MOG_BUMP_PR:-$BP_V1}" '.version=$v' "$a/$BP_MAN" > "$a/m.tmp" && mv "$a/m.tmp" "$a/$BP_MAN" || return 1
+    jq --arg v "${MOG_BUMP_PR:-$BP_BASE_VER}" '.version=$v' "$a/$BP_MAN" > "$a/m.tmp" && mv "$a/m.tmp" "$a/$BP_MAN" || return 1
+    [ "${MOG_BUMP_REL:-0}" != 1 ] || printf '1.0.1\n' > "$a/VERSION"
     if [ "${MOG_BUMP_EVIL:-0}" = 1 ]; then printf '#!/usr/bin/env bash\nexit 0\n' > "$a/scripts/check-plugin-drift.sh"; fi
     # (the PR commit stages only the paths it changed; a blob left out of the
     # base tip stays out because the PR never re-adds it)
-    $g -C "$a" add marketplace && { [ ! -f "$a/scripts/check-plugin-drift.sh" ] || $g -C "$a" add scripts/check-plugin-drift.sh; } \
+    $g -C "$a" add marketplace VERSION && { [ ! -f "$a/scripts/check-plugin-drift.sh" ] || $g -C "$a" add scripts/check-plugin-drift.sh; } \
         && $g -C "$a" commit -qm pr || return 1
     MOG_SETUP_SHA="$($g -C "$a" rev-parse HEAD)"
     if [ "${MOG_BUMP_NOPULL:-0}" != 1 ]; then $g -C "$a" push -q origin HEAD:refs/pull/77/head || return 1; fi
@@ -4582,33 +4586,44 @@ bp_setup() {
     fi
     $g -C "$a" checkout -q -b sibling "$b0" || return 1
     printf 'sibling\n' > "$a/marketplace/plugins/himmel-ops/b.txt"
-    jq --arg v "${MOG_BUMP_SIB:-$BP_V1}" '.version=$v' "$a/$BP_MAN" > "$a/m.tmp" && mv "$a/m.tmp" "$a/$BP_MAN" || return 1
-    $g -C "$a" add marketplace && $g -C "$a" commit -qm sibling && $g -C "$a" push -q origin HEAD:main || return 1
+    jq --arg v "${MOG_BUMP_SIB:-$BP_BASE_VER}" '.version=$v' "$a/$BP_MAN" > "$a/m.tmp" && mv "$a/m.tmp" "$a/$BP_MAN" || return 1
+    [ "${MOG_BUMP_SIB:-$BP_BASE_VER}" = "$BP_BASE_VER" ] || printf '1.0.1\n' > "$a/VERSION"
+    $g -C "$a" add marketplace VERSION && $g -C "$a" commit -qm sibling && $g -C "$a" push -q origin HEAD:main || return 1
     return 0
 }
 BP_FILES='[{"filename":"marketplace/plugins/himmel-ops/a.txt"},{"filename":"marketplace/plugins/himmel-ops/.claude-plugin/plugin.json"}]'
 bp_run() {
     MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=bp_setup STUB_PR_FILES_JSON="${STUB_PR_FILES_JSON-$BP_FILES}" run_mog "$@"
 }
-# 5188-a (RED) — the sibling merged the SAME version after this PR's CI went
-# green: no longer a bump against the live base → refused before any merge call.
-MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
-    bp_run 23 "5188-a: sibling bumped to the same version → exit 23"
+# 7310-a (RED) — the sibling edited the same plugin from the same base and
+# merged first; neither touched the version, so the PR merges with no merge of main.
+bp_run 0 "7310-a: two plugin edits from one base, no version change → merged"
+# 7310-b — a PR that is not a release cut changes a plugin version: refused.
+MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "7310-b: a version change outside a release cut → exit 23"
+assert_err_has "7310-b: stderr says outside a release cut" "outside a release cut"
+no_merge_call "7310-b: no merge call"
+# 5188-a (RED) — a sibling release cut landed the SAME version after this cut's
+# CI went green: two contents under one version → refused before any merge call.
+MOG_BUMP_REL=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5188-a: sibling cut landed the same version → exit 23"
 assert_audit_has "5188-a: audited as a plugin-bump refusal" "REFUSED reason=plugin-bump"
 assert_err_has "5188-a: stderr names the plugin" "himmel-ops"
 assert_clear_not_invoked "5188-a: nothing mutated before the refusal"
 no_merge_call "5188-a: no merge call"
-# 5188-b — the PR bumps past the sibling's version: merged.
-MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
-    bp_run 0 "5188-b: PR bumps past the sibling → merged"
+# 5188-b — the cut goes past the sibling's version: merged.
+MOG_BUMP_REL=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
+    bp_run 0 "5188-b: cut goes past the sibling → merged"
 # 5188-c — the PR's own checker is permissive; the base tip's copy decides.
-MOG_BUMP_EVIL=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+MOG_BUMP_EVIL=1 MOG_BUMP_REL=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 23 "5188-c: a PR-side permissive checker does not decide → exit 23"
 # 5188-d — fail closed: the PR ref cannot be fetched.
 MOG_BUMP_NOPULL=1 bp_run 23 "5188-d: PR head unfetchable → exit 23"
 # 5188-e — fail closed: the fetched head is not the certified head.
-MOG_BUMP_MOVED=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
+MOG_BUMP_MOVED=1 MOG_BUMP_REL=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
     bp_run 23 "5188-e: fetched PR head differs from the certified head → exit 23"
+assert_audit_has "5188-e: audited as a plugin-bump refusal" "REFUSED reason=plugin-bump"
+assert_audit_has "5188-e: audited as a head-moved refusal" "phase=head-moved"
 # 5188-f — a PR that touches no plugin file never reaches git (unchanged).
 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 0 "5188-f: no plugin file in the PR → merged, gate skipped"

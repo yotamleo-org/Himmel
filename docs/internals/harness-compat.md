@@ -827,7 +827,8 @@ on every SessionEnd entry, and every SessionEnd hook full-body detaches
 so the parent returns well inside the clamp — gate:
 `scripts/hooks/test-session-end-timeout-budget.sh`. The plugin cache is
 version-keyed, so a `hooks.json` change to SessionEnd needs a
-`.claude-plugin/plugin.json` version bump to reach an installed codex, plus the
+`.claude-plugin/plugin.json` version bump to reach an installed codex (plugin
+versions change only in the release cut, so it arrives with the next release), plus the
 one-time hook re-trust the Trap above already describes.
 
 ### 2. Instruction file — CLAUDE.md is invisible; AGENTS.md must carry the rules
