@@ -93,8 +93,9 @@ alias, no wrapper at the old path, no redirect stub and no alias-pin test. Every
 each place the code uses it are listed in [Renamed identifiers](migration/renamed-identifiers.md), with
 the order of the rename PRs and the file names the table below does not name, which need a ruling. That
 side doc is temporary: HIMMEL-6647 deletes it once `git grep` finds no old name outside it, this glossary
-(whose family map and do-not-rename list keep the old names on purpose), the changelog and the
-handover records (`handovers/`, which keep the spelling they were written with). The release
+(whose family map and do-not-rename list keep the old names on purpose), the changelog, the frozen
+fixtures (`*/fixtures/**`) and the handover records (`handovers/`, which keep the spelling they were
+written with). The release
 changelog (HIMMEL-7006) names the breaking change.
 
 | Family | Old name | New name | Slice |
