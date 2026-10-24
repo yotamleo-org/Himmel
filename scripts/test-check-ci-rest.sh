@@ -27,9 +27,20 @@ case " $* " in
     *' rate_limit '*) printf '%s 1000003600 %s 1000003600\n' "${CORE:-5000}" "${GQL:-5000}"; exit 0 ;;
     *'/check-runs?'*) body='{"total_count":1,"check_runs":[{"id":1,"name":"unit","status":"completed","conclusion":"success"}]}' ;;
     *'/status?'*) body='{"total_count":1,"statuses":[{"context":"lint","state":"success"}]}' ;;
+    *'/actions/runs?'*) body='{"total_count":3,"workflow_runs":[{"id":901,"check_suite_id":10,"event":"pull_request"},{"id":902,"check_suite_id":20,"event":"workflow_dispatch"},{"id":903,"check_suite_id":30,"event":"pull_request"}]}' ;;
     *) echo 'unexpected API call' >&2; exit 1 ;;
 esac
 [ "${REST_ERROR:-0}" = 0 ] || { echo 'REST unavailable' >&2; exit 1; }
+if [ "${RUNS_ERROR:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then echo 'runs unavailable' >&2; exit 1; fi
+if [ "${RUNS_PAGED:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":101,"workflow_runs":[]}'; fi
+# Same check name, two suites: suite 10 is a pull_request run, suite 20 a workflow_dispatch run (ids rise with creation).
+if [ "${XEVENT:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":10},"status":"completed","conclusion":"failure"},{"id":2,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":20},"status":"completed","conclusion":"skipped"}]}'; fi
+# Both suites are pull_request runs (a rerun / edited-event run): the newer success supersedes the older failure.
+if [ "${XSAME:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":10},"status":"completed","conclusion":"failure"},{"id":2,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":30},"status":"completed","conclusion":"success"}]}'; fi
+# An older success followed by a newer failure of the same name and event keeps the failure.
+if [ "${XFAIL:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":30},"status":"completed","conclusion":"success"},{"id":2,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":10},"status":"completed","conclusion":"failure"}]}'; fi
+# Same name from two different apps: neither supersedes the other.
+if [ "${XAPP:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"scan","app":{"id":111},"check_suite":{"id":10},"status":"completed","conclusion":"failure"},{"id":2,"name":"scan","app":{"id":222},"check_suite":{"id":20},"status":"completed","conclusion":"success"}]}'; fi
 if [ "${MALFORMED:-0}" = 1 ]; then body='{"total_count":1,"check_runs":[]}'; fi
 if [ "${PAGED:-0}" = 1 ]; then body='{"total_count":101,"check_runs":[]}'; fi
 if [ "${BIG:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body=$(jq -nc '{total_count:100,check_runs:[range(100)|{id:.,name:"unit\(.)",status:"completed",conclusion:"success",pad:("x"*2500)}]}'); fi
@@ -55,7 +66,7 @@ new_case() {
     : > "$CASE/calls"; : > "$CASE/responses"; : > "$CASE/sleeps"
     printf '1000000000\n' > "$CASE/clock"
     export CIC_CLOCK_FILE="$CASE/clock" CHECK_CI_CACHE_DIR="$CASE/cache"
-    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ ACTUAL_GQL
+    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP RUNS_ERROR RUNS_PAGED ACTUAL_GQL
     cic_init 42 sha1 || exit 1
 }
 count() { grep -c -- "$1" "$CASE/calls" || true; }
@@ -144,6 +155,40 @@ new_case
 export STALEQ=1
 cic_get 60; rc=$?
 if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'pass\tunit\npass\tlint' ]; then ok 'an older queued run does not outrank a newer completed run of its name'; else bad "stale queued run kept: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XEVENT=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'fail\tcommit-lint\nskipping\tcommit-lint\npass\tlint' ]; then ok 'a newer workflow_dispatch run of a name does not supersede a pull_request-event failure'; else bad "cross-event failure lost: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XSAME=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'pass\tcommit-lint\npass\tlint' ]; then ok 'a newer run of the same name and event in another suite supersedes the older failure'; else bad "same-event rerun kept the stale failure: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XFAIL=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'fail\tcommit-lint\npass\tlint' ]; then ok 'an older success followed by a newer failure of the same name and event keeps the failure'; else bad "newer failure lost: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XAPP=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'fail\tscan\npass\tscan\npass\tlint' ]; then ok 'a newer run of the same name from another app does not supersede a failure'; else bad "cross-app failure lost: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XEVENT=1 RUNS_ERROR=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ] && [ "$CIC_ROWS" = $'pass\tunit' ]; then ok 'an unreadable workflow-run list falls back to GraphQL instead of deduping by name alone'; else bad "unreadable runs list: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XEVENT=1 RUNS_PAGED=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ] && [ "$CIC_ROWS" = $'pass\tunit' ]; then ok 'a truncated workflow-run list falls back to GraphQL instead of deduping by name alone'; else bad "truncated runs list: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$(count '/actions/runs?')" = 0 ]; then ok 'no same-name collision across suites reads no workflow-run list'; else bad "unneeded workflow-run read: rc=$rc runs-calls=$(count '/actions/runs?')"; fi
 
 # Startup snapshot: an EMPTY reviewDecision (no review yet) must not collapse the
 # tab-separated read and shift head/base out of their fields.

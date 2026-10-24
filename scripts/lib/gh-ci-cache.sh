@@ -311,14 +311,24 @@ _cic_rest_endpoint() {
 }
 
 _cic_fetch_rest() {
-    local data rows
+    local data rows need
     CIC_REST_DATA='{}'
     if [ -f "$CIC_FILE.rest" ]; then
         data=$(jq -ce --arg head "$CIC_HEAD" --arg repo "$CIC_PR_REPO" 'select(.head == $head and .repo == $repo) | .payload' "$CIC_FILE.rest" 2>/dev/null) && CIC_REST_DATA="$data"
     fi
     _cic_rest_endpoint checks "repos/$CIC_PR_REPO/commits/$CIC_HEAD/check-runs?per_page=100&filter=latest" || return 1
     _cic_rest_endpoint status "repos/$CIC_PR_REPO/commits/$CIC_HEAD/status?per_page=100" || return 1
-    rows=$(printf '%s\n' "$CIC_REST_DATA" | jq -er '
+    # filter=latest is per check suite, so the newest run of a name is only a
+    # rerun when it shares the event of the older one: a workflow_dispatch run at
+    # the same sha skips the PR-only gates and must not supersede their failure.
+    # The suite-to-event map is read only when one name+app spans several suites.
+    need=$(printf '%s\n' "$CIC_REST_DATA" | jq -r '
+        [.checks.body.check_runs | group_by([.name, (.app.id // "" | tostring)])[] |
+            select(([.[].check_suite.id // "" | tostring] | unique | length) > 1)] | if length > 0 then "1" else "0" end' 2>/dev/null) || need=0
+    if [ "$need" = 1 ]; then
+        _cic_rest_endpoint runs "repos/$CIC_PR_REPO/actions/runs?head_sha=$CIC_HEAD&per_page=100" || return 1
+    fi
+    rows=$(printf '%s\n' "$CIC_REST_DATA" | jq -er --arg need "$need" '
         def name_ok: type == "string" and length > 0 and (test("[\\t\\r\\n]") | not);
         def count_ok($items): (.total_count | type == "number" and . >= 0 and . <= 100) and (.total_count == ($items | length));
         def run_key: .id;
@@ -333,9 +343,12 @@ _cic_fetch_rest() {
             (.checks.body | count_ok(.check_runs)) and all(.checks.body.check_runs[]; check_valid) and
             (.status.body.statuses | type == "array") and (.status.body | count_ok(.statuses)) and
             all(.status.body.statuses[]; (.context | name_ok) and
-                (.state == "success" or .state == "pending" or .state == "failure" or .state == "error"))
-        then [(.checks.body.check_runs as $runs | $runs[] |
-                select(. as $c | all($runs[]; .name != $c.name or run_key <= ($c | run_key))) |
+                (.state == "success" or .state == "pending" or .state == "failure" or .state == "error")) and
+            ($need != "1" or ((.runs.body.workflow_runs | type == "array") and (.runs.body | count_ok(.workflow_runs))))
+        then (if $need == "1" then [.runs.body.workflow_runs[] | {key: (.check_suite_id | tostring), value: .event}] | from_entries else {} end) as $ev |
+            def gk: [.name, (.app.id // "" | tostring), ($ev[(.check_suite.id // "" | tostring)] // "")];
+            [(.checks.body.check_runs as $runs | $runs[] |
+                select(. as $c | all($runs[]; gk != ($c | gk) or run_key <= ($c | run_key))) |
                 [(if .status != "completed" then "pending" elif .conclusion == "success" then "pass"
                   elif .conclusion == "skipped" or .conclusion == "neutral" then "skipping"
                   elif .conclusion == "cancelled" then "cancel" else "fail" end), .name] | join("\t")),
