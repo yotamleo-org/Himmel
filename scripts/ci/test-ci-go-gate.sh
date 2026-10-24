@@ -68,7 +68,7 @@ for ln in lines:
     m = re.match(r"^  ([A-Za-z0-9_-]+):\s*(#.*)?$", ln)
     if m:
         cur = m.group(1)
-        jobs[cur] = {"if": None, "name": None, "matrix": False, "mvals": set()}
+        jobs[cur] = {"if": None, "name": None, "matrix": False, "mvals": {}}
         mat = False
         continue
     if cur is None:
@@ -85,9 +85,10 @@ for ln in lines:
         if body.strip() and len(body) - len(body.lstrip()) <= 6:
             mat = False
         else:
-            kv = re.match(r"^\s*(?:-\s*)?[A-Za-z0-9_-]+:\s*(.+)$", body)
+            kv = re.match(r"^\s*(?:-\s*)?([A-Za-z0-9_-]+):\s*(.+)$", body)
             if kv:
-                jobs[cur]["mvals"].update(v.strip() for v in kv.group(1).strip("[] ").split(","))
+                jobs[cur]["mvals"].setdefault(kv.group(1), set()).update(
+                    v.strip() for v in kv.group(2).strip("[] ").split(","))
 for j in jobs:
     if j.startswith("fail-fast-"):
         EXEMPT.add(j)
@@ -219,8 +220,17 @@ for g in (go, go_custom):
         if jobs.get(job, {}).get("matrix"):
             if not runs(job, g):
                 bad4.append("%r: matrix job %s does not run on the go run" % (ctx, job))
-            elif ctx[len(job) + 2:-1] not in jobs[job]["mvals"]:
-                bad4.append("%r: no %r entry in the %s matrix" % (ctx, ctx[len(job) + 2:-1], job))
+            else:
+                entry = ctx[len(job) + 2:-1]
+                keys = [k for k, v in jobs[job]["mvals"].items() if entry in v]
+                if not keys:
+                    bad4.append("%r: no %r entry in the %s matrix" % (ctx, entry, job))
+                else:
+                    mctx = dict(g, matrix=N({keys[0]: entry}))
+                    nm = jobs[job]["name"]
+                    got = "%s (%s)" % (job, entry) if nm is None else ev_text(nm, mctx)
+                    if got != ctx:
+                        bad4.append("%r: the %s matrix entry %r is named %r on the go run" % (ctx, job, entry, got))
             continue
         if names.get(ctx) != [ctx]:
             bad4.append("%r is written by %r on the go run" % (ctx, names.get(ctx)))
