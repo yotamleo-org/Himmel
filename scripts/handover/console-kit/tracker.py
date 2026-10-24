@@ -1319,11 +1319,12 @@ def ci_column(jira, prs):
 def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
-    Columns are the Jira status names of the version's open tickets, each split into the plan's priority blocks; a card
+    Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
+    split into the plan's priority blocks; a card
     carries its open PRs with CI state (a started card with none is flagged), its blockers, its FAST-TRACK chain step and
     its sector. Each column ends its header with a parity line against a live JQL count. A card whose ticket has a
     worker record in `workers` carries a worker line. The fingerprint covers what a reader acts on (tickets, priority
-    blocks, chain steps, worker owner, state and open-PR heads), never a CI badge, an age or a timestamp."""
+    blocks, chain steps, worker owner, state and open-PR heads, and the column a PR's CI puts a card in), never a CI badge on its own, an age or a timestamp."""
     def step_state(st):
         k = st.get('key', '')
         if not KEY_RE.fullmatch(k):
