@@ -16,22 +16,22 @@ vendoring records name the upstream pins and carried deviations.
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | b985686f4d6b90c708ae56deed03355cef3c8e87 |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | b5f54b132f3e69d20e153d78f6f0b9378861e896 |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | dbd4588f9e1033efb41dad4bef2f7947c8993d44 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
-| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 20ff8a101fe8300e44cb3b2d570cb93c7580e1b9 |
+| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | fecf1ffac18165d165bef520b5c6bd49553c7968 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
-| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f2f4d49ea8d632f17cf196ba26599277a93f767b |
+| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | 0b9b10cab3dbf695642fa1a6c4b4f60df9083689 |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
 | emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 2d228630ba1446365f614a108cb8252f1feda202 |
-| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 2dc35112ef1bea5d61f31b802b5764c931984508 |
+| find-docs | https://github.com/upstash/context7 | Upstash | MIT | b5e81de845092694ba1bfc5af15400f319c89b6d |
 | frontend-slides | https://github.com/zarazhangrui/frontend-slides | zarazhangrui | MIT | v2.1.0 |
 | graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | Apache-2.0 | [Package pin](../scripts/lib/graphify-bin.sh) |
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
-| hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 13ac0ec7e148655948100b6396439e481361d690 |
+| hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 7ec868225c6caa040558c321ee0fefa0e73f83a8 |
 | handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | yotamleo | MIT | In-tree |
 | hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | himmel-bus | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-bus | yotamleo | MIT | In-tree |
@@ -39,7 +39,7 @@ vendoring records name the upstream pins and carried deviations.
 | himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | yotamleo | MIT | In-tree |
 | humanizer | https://github.com/blader/humanizer | Siqi Chen (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/humanizer/VENDORED.md) |
 | i-have-adhd | https://github.com/ayghri/i-have-adhd | Ayoub G. (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/i-have-adhd/VENDORED.md) |
-| impeccable | https://github.com/pbakaus/impeccable | Paul Bakaus | Apache-2.0 | skill-v4.6.0 |
+| impeccable | https://github.com/pbakaus/impeccable | Paul Bakaus | Apache-2.0 | skill-v4.7.0 |
 | lean-skills | https://github.com/obra/superpowers , https://github.com/mattpocock/skills | Jesse Vincent / Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Per-family pins](../marketplace/plugins/lean-skills/VENDORED.md) |
 | lottie-motion-design | https://github.com/lottiefiles/motion-design-skill | lottiefiles | MIT | f9a8a041b85185ee4881b3471d3415e939aac772 |
 | luna-correlate | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/luna-correlate | yotamleo | MIT | In-tree |

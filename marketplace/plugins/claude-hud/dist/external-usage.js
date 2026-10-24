@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createDebug } from './debug.js';
 import { sanitizeDisplayText } from './utils/sanitize.js';
+import { truncateString } from './utils/truncate.js';
 const debug = createDebug('external-usage');
 export const EXTERNAL_USAGE_WRITE_THROTTLE_MS = 30_000;
 const MAX_BALANCE_LABEL_LENGTH = 50;
@@ -15,7 +16,7 @@ function parseBalanceLabel(value) {
     const label = typeof value === 'string' ? sanitizeDisplayText(value).trim() : '';
     if (!label)
         return null;
-    return label.length <= MAX_BALANCE_LABEL_LENGTH ? label : `${label.slice(0, MAX_BALANCE_LABEL_LENGTH - 3)}...`;
+    return truncateString(label, MAX_BALANCE_LABEL_LENGTH);
 }
 // Epoch seconds or milliseconds, or an ISO-8601 string.
 function parseDate(value) {

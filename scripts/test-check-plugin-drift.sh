@@ -1351,6 +1351,24 @@ jobs:
       - run: python -m pip install pypi-fresh==2.0.0
 YML
 printf 'pypi-stale=1.2.0\npypi-fresh=2.0.0\npypi-second=3.0.0\n' > "$W12/state/pypi"
+# The two real ci.yml steps (gitleaks, then shfmt): the shfmt ver= line must not read as gitleaks.
+cat > "$W12/root/.github/workflows/g.yml" <<'YML'
+jobs:
+  a:
+    steps:
+      - name: Put pinned gitleaks on PATH (Linux — retired-org suite)
+        run: |
+          ver=8.30.1
+          sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" -o "$RUNNER_TEMP/gitleaks.tgz"
+          echo "${sha}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+      - name: Put pinned shfmt on PATH (Linux — bash-ast model rows)
+        run: |
+          ver=3.14.1
+          sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt-bin/shfmt"
+YML
+printf 'gitleaks/gitleaks=v8.30.1\n' >> "$W12/state/rel"
 printf '#!/usr/bin/env bash\nOXLINT_VERSION=1.0.0\n' > "$W12/root/scripts/hooks/h.sh"
 # A vendored upstream tree (VENDORED.md marker): its pins follow upstream, not npm-latest.
 mkdir -p "$W12/root/vend"; printf 'vend-pkg=9.0.0\n' >> "$W12/state/npm"
@@ -1381,6 +1399,7 @@ if grepq "$pin_sec" '^  pypi:pypi-fresh 2\.0\.0 .*: CURRENT'; then ok "pin-scan:
 if grepq "$pin_sec" '^  pypi:pypi-second 3\.0\.0 .*: CURRENT'; then ok "pin-scan: second == pin on one pip install line is also scanned"; else bad "pypi-second not discovered"; fi
 if grepq "$pin_sec" 'pypi:pypi-dev'; then bad "a .dev version suffix was truncated and reported"; else ok "pin-scan: a pip pin with a version suffix is not misreported"; fi
 if grepq "$pin_sec" '^  npm:vend-pkg 1\.0\.0 (vend): VENDORED'; then ok "pin-scan: pin inside a VENDORED.md tree -> VENDORED, not BEHIND npm-latest"; else bad "vend-pkg not VENDORED; $(printf '%s' "$pin_sec" | grep vend-pkg)"; fi
+if grepq "$pin_sec" '^  gh:gitleaks/gitleaks v8\.30\.1 .*: CURRENT' && ! grepq "$pin_sec" 'gitleaks.* v3\.14\.1'; then ok "pin-scan: a shfmt ver= line in the same workflow does not read as gitleaks"; else bad "shfmt ver= misread as gitleaks; $(printf '%s' "$pin_sec" | grep gitleaks)"; fi
 if [ "$pin_rc" -eq 2 ]; then ok "pin-scan drift run exits 2"; else bad "pin-scan drift run rc=$pin_rc; expected 2"; fi
 # A vm-proof hold on a pin names the route vm.mode resolves; none keeps it HELD.
 printf '{"holds":[{"eco":"gh","key":"owner/heldrepo","current":"v1.0.0","latest_reviewed":"v2.0.0","release":"vm-proof","reason":"fixture vm hold"}]}\n' > "$W12/holds-vm.json"

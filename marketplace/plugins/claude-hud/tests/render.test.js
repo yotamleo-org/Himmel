@@ -325,6 +325,29 @@ test('todos show the task in progress, or completion once every item is done', (
   assert.equal(lines(ctx({ transcript: { todos: [todos[1]] }, config }))[2], '✓ All todos complete (1/1)');
 });
 
+test('todo truncation does not leave half an emoji in the rendered line', () => {
+  const prefix = 'a'.repeat(46);
+  const transcript = { todos: [{ content: `${prefix}😀tail`, status: 'in_progress' }] };
+  const config = { display: { showTodos: true } };
+  assert.equal(lines(ctx({ transcript, config }))[2], `▸ ${prefix}... (0/1)`);
+});
+
+test('agent description truncation keeps joined emoji whole', () => {
+  const prefix = 'a'.repeat(34);
+  const transcript = { agents: [{ id: 'a', type: 'review', description: `${prefix}👩‍💻tail`, status: 'running', startTime: ago(SECOND) }] };
+  const config = { display: { showAgents: true } };
+  assert.equal(lines(ctx({ transcript, config }))[2], `◐ review: ${prefix}... (1s)`);
+});
+
+test('tool target and name truncation keep emoji whole', () => {
+  const tools = [
+    { id: '1', name: 'Edit', status: 'running', target: `${'a'.repeat(16)}😀.ts`, startTime: ago(SECOND) },
+    { id: '2', name: 'mcp__x__abc😀def', status: 'running', startTime: ago(SECOND) },
+  ];
+  const config = { display: { showTools: true, toolNameMaxLength: 5 } };
+  assert.equal(lines(ctx({ transcript: { tools }, config }))[2], `◐ Edit: ${'a'.repeat(16)}... | ◐ abc…`);
+});
+
 test('the environment line names failing MCP servers and respects environmentThreshold', () => {
   const counts = { claudeMdCount: 2, rulesCount: 3, mcpCount: 4, hooksCount: 1 };
   const transcript = { mcpErrors: ['github', 'linear', 'slack', 'notion'] };
@@ -369,6 +392,20 @@ test('the session token summary keeps its last line until elementOrder places it
   const placed = { display: show, elementOrder: ['sessionTokens', 'project'] };
   assert.equal(lines(ctx({ transcript, config: placed }))[0], tokens);
   assert.deepEqual(lines(ctx({ transcript, config: { ...placed, display: {} } })).length, 1, 'placed but turned off draws nothing');
+});
+
+test('cost keeps its first-line spot until elementOrder places it', () => {
+  const stdin = { cost: { total_cost_usd: 1.2345 } };
+  const show = { showCost: true };
+  assert.match(lines(ctx({ stdin, config: { display: show } }))[0], /│ Cost \$1\.23$/, 'the default order keeps it on the first line');
+  assert.match(lines(ctx({ stdin, config: { display: show, elementOrder: ['project', 'context'] } }))[0], /│ Cost \$1\.23$/, 'so does an older custom order');
+
+  const placed = { display: show, elementOrder: ['project', 'cost', 'context'] };
+  const [first, cost, context] = lines(ctx({ stdin, config: placed }));
+  assert.doesNotMatch(first, /Cost/);
+  assert.equal(cost, 'Cost $1.23');
+  assert.match(context, /^Context/);
+  assert.deepEqual(lines(ctx({ stdin, config: { ...placed, display: {} } })).length, 2, 'placed but turned off draws nothing');
 });
 
 test('wrap width: columns, then maxWidth, and forceMaxWidth overrides columns', () => {
