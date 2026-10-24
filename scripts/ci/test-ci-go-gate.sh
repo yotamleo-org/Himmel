@@ -13,7 +13,7 @@
 #       skipped name differs from its required context
 #   G4  on the go run every required non-matrix context is written by exactly one
 #       job under its literal name
-#   G5  schedule, merge_group, workflow_dispatch and push each run every heavy job
+#   G5  schedule, merge_group and workflow_dispatch each run every heavy job
 #   G6  on a go run no required name resolves for two jobs
 #   G7  gate off: a push runs every job as today and a label event runs none
 #   G8  the go run shares the PR's concurrency group, an unrelated label gets its own
@@ -202,9 +202,9 @@ for g in (go, go_custom):
     for ctx in sorted(required):
         if ctx.startswith(("codeowner-review-gate", "pr-title-lint")):
             continue
-        if "(" in ctx:
-            job = ctx.split(" (")[0]
-            if job not in jobs or not runs(job, g):
+        job = ctx.split(" (")[0]
+        if jobs.get(job, {}).get("matrix"):
+            if not runs(job, g):
                 bad4.append("%r: matrix job %s does not run on the go run" % (ctx, job))
             continue
         if names.get(ctx) != [ctx]:
@@ -220,7 +220,7 @@ else:
 
 # ---- G5 ----
 bad5 = []
-for evn in ("schedule", "merge_group", "workflow_dispatch", "push"):
+for evn in ("schedule", "merge_group", "workflow_dispatch"):
     for gate in ("on", "off", ""):
         ctx = event(evn, "", "", gate)
         for j in sorted(HEAVY & set(jobs)):
@@ -229,7 +229,7 @@ for evn in ("schedule", "merge_group", "workflow_dispatch", "push"):
 if bad5:
     bad("G5 " + "; ".join(sorted(set(bad5))))
 else:
-    ok("G5 schedule, merge_group, workflow_dispatch and push run every heavy job")
+    ok("G5 schedule, merge_group and workflow_dispatch run every heavy job")
 
 # ---- G7 ----
 bad7 = []

@@ -11,13 +11,13 @@ on:
   # `shell-unit` itself (HIMMEL-2872) is the aggregating gate over that
   # matrix — see its own comment block below.
   #
-  # The ci:go label gate. With vars.CI_GO_GATE == 'on' a push runs
-  # only the cheap jobs (plan, ci-quick and its sentinels, lint, plugin-version-bump);
+  # The ci:go label gate. With vars.CI_GO_GATE == 'on' a pull request's opened,
+  # synchronize or reopened event runs only the cheap jobs (plan, ci-quick and its sentinels, lint, plugin-version-bump);
   # the heavy jobs (leak-classes, git-env-scrub, lanes-and-trust-suites, bun-suites,
   # node-suites, security-scan, shell-unit and its shards) run on the `labeled`
   # event whose label is vars.CI_GO_LABEL (default ci:go), the "go run", which also
   # re-runs the cheap jobs so every required context reports at the head. Any other
-  # label event runs nothing. push, schedule, workflow_dispatch and merge_group run
+  # label event runs nothing. schedule, workflow_dispatch and merge_group run
   # every job, and vars.CI_GO_GATE off (the default) restores that for a PR too.
   # `unlabeled` is deliberately NOT in `types`: the release's label-remove step must
   # not start a run.
