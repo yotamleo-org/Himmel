@@ -2560,6 +2560,10 @@ assert_deny "7130 control: an uppercase assignment ahead of git beside a glob pa
 assert_deny "7130 control: python dynamic import builds a spawn beside a glob path" "$(j "python3 -c '__import__(\"os\").__dict__[\"sys\"+\"tem\"](\"env -i bash scripts/hooks/x*.sh\")'")"
 assert_deny "7130 control: node dynamic require beside a glob path" "$(j "node -e 'require(\"child\"+\"_process\")[\"exec\"+\"Sync\"](\"env -i bash scripts/hooks/x*.sh\")'")"
 assert_deny "7130 control: python getattr spawn beside a glob path" "$(j "python3 -c 'import os; getattr(os, \"sys\"+\"tem\")(\"env -i sh scripts/hooks/x*.sh\")'")"
+assert_deny "7130 control: find -exec runs a nested env clear beside a glob path" "$(j "find . -maxdepth 0 -exec env -i bash scripts/hooks/x*.sh \\;")"
+assert_deny "7130 control: find -okdir runs a nested env clear beside a glob path" "$(j "find . -maxdepth 0 -okdir env -i bash scripts/hooks/x*.sh \\;")"
+assert_deny "7130 control: sort --compress-program runs a nested program beside a glob path" "$(j "sort --compress-program=env -i scripts/hooks/x*.sh")"
+assert_deny "7130 control: a gh alias runs a nested shell beside a glob path" "$(j "gh alias set x '!env -i bash scripts/hooks/x*.sh' --shell")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then

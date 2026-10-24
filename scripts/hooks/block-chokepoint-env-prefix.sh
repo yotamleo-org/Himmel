@@ -1873,7 +1873,11 @@ pobf_relief() {
 # Every position must be readable (no opaque runner, no glob or expansion as
 # the program word, no env or exec wrapper), assign only lowercase or
 # one- and two-letter names (an uppercase one can be PAGER or EDITOR), and
-# run a program from a fixed set: data tools; git without -c, a pager or an
+# run a program from a fixed set: data tools that run no nested program
+# (sort without --compress-program, gh only through a fixed list of
+# subcommands, never an alias or extension; the model already marks
+# find -exec opaque); git
+# without -c, a pager or an
 # exec option; inline python or node code (-c, -e or a heredoc, never a
 # script file) that names no process spawn, no environment and no dynamic
 # lookup a spawn name could be built through (getattr, __dict__, globals,
@@ -1915,6 +1919,11 @@ def inline: (.argv[1:] | map(select(lit) | wv)) as $w
 def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
 def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
   and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
+def runs_none:
+  if .prog == "sort" then (.argv[1:] | all(.[]; lit and ((wv | test("^--compress")) | not)))
+  elif .prog == "gh" then ((.argv[1] // {t: "lit", v: ""}) | lit
+    and (wv | isin(["pr", "issue", "run", "api", "repo", "release", "workflow", "search", "label", "status", "cache"])))
+  else true end;
 def git_ok:
   .argv as $a
   | ({i: 1} | until(($a[.i] == null) or (($a[.i] | wv) | startswith("-") | not);
@@ -1935,7 +1944,7 @@ def pos_ok($vr):
        elif .prog | isin(["python3", "python"]) then inline and code_ok(pyspawn)
        elif .prog == "node" then inline and code_ok(jsspawn)
        elif .prog | isin(["sed", "awk", "gawk", "perl", "ruby"]) then code_ok($vr)
-       elif .prog | isin(data) then true
+       elif .prog | isin(data) then runs_none
        elif (.prog | isin(shells)) or (.prog | endswith(".sh")) then (.argv[1:] | all(.[]; (lit | not) or ((wv | isin(verbs)) | not)))
        else false end);
 def shellish: (.prog // "") as $p | ($p | isin(shells)) or ($p | endswith(".sh"));
