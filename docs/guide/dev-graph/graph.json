@@ -709,8 +709,8 @@
       "id": "l.close",
       "lane": "leg",
       "phase": "merge",
-      "label": "Close ticket",
-      "summary": "merge-on-green.sh --jira-transition closes the PR title's first ticket when the brief says completes-ticket: yes; the leg re-reads the ticket and posts the PR and merge sha on it",
+      "label": "Close ticket (if done)",
+      "summary": "Conditional: only when the brief says completes-ticket: yes does merge-on-green.sh --jira-transition close the PR title's first ticket. Otherwise the flag stays off and the ticket keeps its status. Either way the leg re-reads the ticket and posts the PR and merge sha on it",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
@@ -1838,7 +1838,7 @@
         },
         {
           "at": "l.close",
-          "caption": "Ticket closed"
+          "caption": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
@@ -1942,7 +1942,7 @@
         },
         {
           "at": "l.close",
-          "caption": "Ticket closed"
+          "caption": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
@@ -2066,7 +2066,7 @@
         },
         {
           "at": "l.close",
-          "caption": "Ticket closed"
+          "caption": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
