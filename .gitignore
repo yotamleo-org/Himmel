@@ -1,5 +1,6 @@
 /.claude/worktrees
 .env
+.env.migrate.*
 scripts/jira/dist/
 # where-are-we ledger L2 (HIMMEL-516): regenerated-from-live-sources cache, not
 # source of truth — never commit it.
