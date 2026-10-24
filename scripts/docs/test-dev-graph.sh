@@ -5,7 +5,8 @@
 # J-DG0 rows, each on a fixture root with a one-script graph (no real repo
 # state is touched):
 #   (a) a removed, duplicated or unresolvable anchor fails, naming node + file;
-#   (b) a new exit code / WAKE kind / check / marker with no graph decision fails;
+#   (b) a new exit code / WAKE kind / check / marker / CR-FIRST outcome with no
+#       graph decision fails;
 #   (c) a reshaped table header (parser finds fewer codes than its floor) fails;
 #   integrity (dangling edge, duplicate id, missing pos, unjoined walkthrough);
 #   selection (a source basename the suite does not name fails);
@@ -21,6 +22,7 @@
 #   write-verdict.sh verdict-go.sh go.sh merge-on-green.sh
 #   block-unresolved-cr-merge.sh wrap-subtree-check.sh leg-event.sh
 #   residual-lines.sh wrap-merged.sh close-wrapped-leg.sh succession-tracker.sh
+#   leg-jira-status.sh coderabbit-signal.sh review-merge-gate.sh cr-first-release.sh
 #
 # Platform guard (gitbash-only): bash 3.2+, jq, awk, grep.
 # Usage: bash scripts/docs/test-dev-graph.sh
@@ -42,6 +44,7 @@ command -v jq >/dev/null 2>&1 || { echo "not ok - jq not installed (the checker 
 
 # --- fixture ---------------------------------------------------------------
 # fx <dir>: a root holding tool.sh (exit table), wake.sh (WAKE kinds),
+# release.sh (CR-FIRST outcomes),
 # gate.sh (numbered checks), preface.md (status markers), a suite naming them
 # all, and a graph that covers every one of them.
 fx() {
@@ -75,8 +78,13 @@ bullet not
 starting with `LIVE` / `READY` /
 `WRAPPED`, invisible.
 EOF
+  cat > "$d/bin/release.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "CR-FIRST HOLD $reason $age"
+echo "CR-FIRST RELEASE $reason"
+EOF
   cat > "$d/suite.txt" <<'EOF'
-tool.sh wake.sh gate.sh preface.md
+tool.sh wake.sh gate.sh release.sh preface.md
 EOF
   cat > "$d/graph.json" <<'EOF'
 {
@@ -102,6 +110,7 @@ EOF
     "bin/tool.sh": {"table": "exit", "floor": 3, "mapped": {"10": "e.ab"}, "unmapped": {"0": "success", "11": "operational"}},
     "bin/wake.sh": {"table": "wake", "floor": 3, "mapped": {"alpha": "e.ab"}, "unmapped": {"beta": "x", "gamma complete": "x"}},
     "bin/gate.sh": {"table": "checks", "floor": 2, "mapped": {"1": "e.ab", "10": "e.ab"}, "unmapped": {}},
+    "bin/release.sh": {"table": "release", "floor": 2, "mapped": {"RELEASE": "e.ab"}, "unmapped": {"HOLD": "x"}},
     "preface.md": {"table": "markers", "floor": 3, "mapped": {"LIVE": "n.a", "WRAPPED": "n.b"}, "unmapped": {"READY": "x"}}
   }
 }
@@ -183,6 +192,11 @@ D=$TMP/b4; fx "$D"
 sed -i.bak 's/^`WRAPPED`, invisible./`WRAPPED` \/ `HALTED`, invisible./' "$D/preface.md"
 run "$D"
 expect_fail "(b) new status marker fails" "preface.md" "HALTED"
+
+D=$TMP/b8; fx "$D"
+printf 'echo "CR-FIRST SKIP-ALL x"\n' >> "$D/bin/release.sh"
+run "$D"
+expect_fail "(b) new CR-FIRST outcome fails" "bin/release.sh" "SKIP-ALL" "no graph decision"
 
 D=$TMP/b5; fx "$D"
 sed -i.bak '/^#   11  other thing/d' "$D/bin/tool.sh"
@@ -346,6 +360,13 @@ if [ -f "$ROOT/docs/guide/dev-graph/graph.json" ]; then
 else
   bad "real graph docs/guide/dev-graph/graph.json is missing"
 fi
+
+# the ship-loop steps docs/daily-loop.md walks (ticket, CodeRabbit, review gate,
+# CI release, close) are drawn on the graph too
+missing=$(jq -r '[.nodes[].id, .edges[].id] as $ids
+  | ["l.ticket", "g.coderabbit", "g.reviewgate", "g.release", "l.close", "e.release.go", "e.release.hold"]
+  | map(select(IN($ids[]) | not)) | join(" ")' "$ROOT/docs/guide/dev-graph/graph.json" 2>&1)
+if [ -z "$missing" ]; then ok "ship loop: ticket, CodeRabbit, review gate, CI release and close are on the graph"; else bad "ship loop: missing from the graph: $missing"; fi
 
 # every basename the header comment promises is really named in this file
 for b in chief.sh console-wait.sh tick.sh merge-on-green.sh go.sh check-ci.sh ready-check.sh; do
