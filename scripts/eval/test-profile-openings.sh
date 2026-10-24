@@ -62,6 +62,8 @@ transcript $U9 leg-i 5 5 5;  launch leg-i leg-impl $OUT
 transcript aaaaaaaa-0000-4000-8000-00000000000a leg-j 5 5 5; launch leg-j leg-impl $IN; launch leg-j judge $IN
 # a launch with no transcript
 launch leg-k leg-impl $IN
+# a launch that recorded a session_id whose transcript is missing, beside an older same-name transcript: not borrowed
+transcript aaaaaaaa-0000-4000-8000-00000000000b leg-l 999999 0 0; launch leg-l leg-impl $IN aaaaaaaa-0000-4000-8000-0000000000ff
 
 J="$TMP/out.json"
 python3 -I "$RD" --launch-logs "$LOGS" --projects "$TMP/projects" --now $NOW --json >"$J" 2>"$TMP/err" || bad "the reader exits 0: $(head -c 300 "$TMP/err")"
@@ -69,6 +71,7 @@ python3 -I "$RD" --launch-logs "$LOGS" --projects "$TMP/projects" --now $NOW --j
 echo "1. the join and the opening size"
 check "leg-impl has n 3: by id, by name, by name" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .n" "$J")" = 3 ]'
 check "the opening is input + creation + read of the first request, not the later one" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .min" "$J")" = 50010 ]'
+check "a recorded session_id with no transcript does not fall back to a same-name transcript" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .n" "$J")" = 3 ] && [ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .max" "$J")" != 999999 ]'
 check "a synthetic and a sidechain row are skipped" '[ "$(jq -r ".[] | select(.profile==\"lane-impl\") | .median" "$J")" = 40000 ]'
 
 echo "2. what is left out"

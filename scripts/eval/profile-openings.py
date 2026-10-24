@@ -113,7 +113,7 @@ def opening_size(path):
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for _, line in zip(range(SCAN_LINES), fh):
-                if '"type":"assistant"' not in line or '"usage"' not in line:
+                if '"assistant"' not in line or '"usage"' not in line:
                     continue
                 try:
                     o = json.loads(line)
@@ -141,7 +141,8 @@ def collect(logs_dir, projects, since, lane):
     by_title, by_sid = index_transcripts(projects, since_epoch)
     prof, claimed = {}, set()
     for name, rec in sorted(launches.items()):
-        paths = [by_sid[s] for s in sorted(rec["sids"]) if s in by_sid] or by_title.get(name, [])
+        paths = ([by_sid[s] for s in sorted(rec["sids"]) if s in by_sid] if rec["sids"]
+                 else by_title.get(name, []))
         for path in paths:
             if path in claimed:
                 continue
@@ -149,7 +150,10 @@ def collect(logs_dir, projects, since, lane):
             if size is None:
                 continue
             claimed.add(path)
-            prof.setdefault(rec["profile"], {"sizes": [], "lane": rec["lane"]})["sizes"].append(size)
+            entry = prof.setdefault(rec["profile"], {"sizes": [], "lane": rec["lane"]})
+            entry["sizes"].append(size)
+            if entry["lane"] != rec["lane"]:
+                entry["lane"] = "mixed"
     return prof
 
 
