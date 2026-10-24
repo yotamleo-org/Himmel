@@ -575,9 +575,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
           event('mismatch');
           throw new Error(`release apply: ${id} is partly applied in Jira; ${last.key} needs a hand fix before it is re-ruled`);
         }
+        const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
-        const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-        const req = latest.get(last.req);
         if (req) {
           const { prev: _p, mac: _m, ...rest } = req;
           appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });

@@ -353,6 +353,22 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(claim(ctx(next)).map((x) => x.req)).toEqual([q.req]);
   });
 
+  it('a requests chain that does not verify leaves no void row', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    leaseRelease(ctx(rmEnv));
+    const next = { ...rmEnv, HIMMEL_RM_DOC: '/abs/b.md' };
+    leaseAcquire(ctx(next), { expectEpoch: 1, doc: '/abs/b.md', session: 'b' });
+    const reqs = join(ctx().dir, 'requests.jsonl');
+    writeFileSync(reqs, readFileSync(reqs, 'utf8').replaceAll('"why":"w"', '"why":"x"'));
+    const rulings = join(ctx().dir, 'rulings.jsonl');
+    const before = readFileSync(rulings, 'utf8');
+    await expect(apply(ctx(next), r.id)).rejects.toThrow(/requests.jsonl does not verify/);
+    expect(readFileSync(rulings, 'utf8')).toBe(before);
+  });
+
   it('a tampered declaration makes the state UNKNOWN and refuses rulings', async () => {
     await setup();
     const p = join(root, 'release', 'R1', 'release.json');
