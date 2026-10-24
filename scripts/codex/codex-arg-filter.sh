@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: text-only argument filter; never calls codex itself
 # scripts/codex/codex-arg-filter.sh - the codex-exec passthrough-args filter,
 # extracted from dispatch-codex-exec.sh so the exec and any sibling
 # dispatchers share ONE decision source (never two prose-synced

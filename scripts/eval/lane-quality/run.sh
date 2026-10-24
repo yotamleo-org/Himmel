@@ -98,6 +98,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 TASKS="$HERE/tasks"
 die() { echo "lane-quality: $*" >&2; exit 64; }
 usage() { sed -n '2,67p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+# billed-opt-in: HIMMEL_BILLED_OK
+need_billed() { [ "${HIMMEL_BILLED_OK:-}" = 1 ] || die "$1 makes real, billed model calls; set HIMMEL_BILLED_OK=1 (on-demand only)"; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] && basename "$d"; done; }
@@ -728,10 +730,10 @@ cmd_verdict() {
 case "$1" in
   verdict) shift; cmd_verdict "$@" ;;
   list) all_tasks ;;
-  run) shift; cmd_run "$@" ;;
+  run) shift; case " $* " in *" --dry-run "*) ;; *) need_billed "run" ;; esac; cmd_run "$@" ;;
   table) shift; cmd_table "$@" ;;
   pair) shift; cmd_pair "$@" ;;
-  calibration) shift; cmd_calibration "$@" ;;
+  calibration) shift; case " $* " in *" --judge2-model "*) need_billed "calibration --judge2-model" ;; esac; cmd_calibration "$@" ;;
   materialize) shift; [ $# -ge 2 ] || die "materialize <task> <dir> [--reference]"; materialize "$@" ;;
   -h|--help) usage ;;
   *) die "unknown command '$1' (list|run|table|pair|calibration|materialize)" ;;

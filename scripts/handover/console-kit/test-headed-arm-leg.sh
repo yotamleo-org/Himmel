@@ -4337,7 +4337,7 @@ rc=0; out="$(CLAUDE_CONFIG_DIR="$cfgj41" CONSULT_SETTINGS_HOME="$h41" CONSULT_MA
 check "41j CLAUDE_CONFIG_DIR/.claude.json env scrub refuses (exit 2)" "$rc" "2"
 # Darwin branch: the macOS managed path is scanned (a text pin: the path cannot be planted in a test).
 check "41j the launcher scans the macOS managed path" "$(grep -c '/Library/Application Support/ClaudeCode/managed-settings.json' "$SCRIPT")" "1"
-# (d) the live smoke test is skipped unless CONSULT_SMOKE=1.
+# (d) the live smoke test is skipped unless HIMMEL_BILLED_OK=1.
 rc=0; out="$(bash "$HERE/smoke-consult-sandbox.sh" 2>&1)" || rc=$?
 check "41i smoke test skips by default (exit 0)" "$rc" "0"
 contains "41i smoke test says SKIP" "$out" "SKIP"

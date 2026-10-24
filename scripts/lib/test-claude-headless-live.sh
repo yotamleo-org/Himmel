@@ -8,7 +8,12 @@
 # failing when the bank is not available, per the plan's explicit
 # instruction not to let an unattended bank refusal look like a bug.
 # shellcheck disable=SC2012  # registry ids are UUIDs; ls-over-glob is fine here
+# billed-opt-in: HIMMEL_BILLED_OK
 set -uo pipefail
+if [ "${HIMMEL_BILLED_OK:-}" != 1 ]; then
+  echo "test-claude-headless-live: SKIP - makes a real, billed claude -p call; set HIMMEL_BILLED_OK=1 to run it (on-demand only)"
+  exit 0
+fi
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/lib/claude-headless.sh"
 

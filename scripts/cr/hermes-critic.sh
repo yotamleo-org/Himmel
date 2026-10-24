@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: a /pr-check stage the PR leg runs deliberately; bank-preflight gated
 # scripts/cr/hermes-critic.sh — Orchestrator-Critic reviewer over a branch diff
 # Claude implements, a fresh model family reviews: this script
 # assembles the final code changes (NEVER the orchestrator's plans/reasoning —

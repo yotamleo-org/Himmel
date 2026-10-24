@@ -109,6 +109,8 @@ case "$REPLAY_TIMEOUT" in ''|*[!0-9]*) REPLAY_TIMEOUT=0 ;; esac
 [ "$RUN_CODEX$RUN_CLAUDE" = "00" ] && { echo "hook-smoke-demo: --codex-only and --claude-only are mutually exclusive" >&2; exit 2; }
 [ -n "$FROM" ] || { echo "hook-smoke-demo: --from needs a path" >&2; exit 2; }
 [ -d "$FROM" ] || { echo "hook-smoke-demo: --from '$FROM' is not a directory" >&2; exit 2; }
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "hook-smoke-demo: runs real, billed codex exec and claude -p legs; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # A worktree has .git as a FILE (a gitdir pointer); both shapes clone fine.
 [ -e "$FROM/.git" ] || { echo "hook-smoke-demo: --from '$FROM' is not a git checkout" >&2; exit 2; }
 

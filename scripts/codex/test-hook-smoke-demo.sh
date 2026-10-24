@@ -9,6 +9,7 @@
 # The clone source is a minimal fixture repo, which exercises --from at the
 # same time (its main use is smoking an unmerged worktree).
 set -euo pipefail
+export HIMMEL_BILLED_OK=1   # stubbed claude/codex only; the guarded script refuses a bare run
 
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP - the timeout shim's --version call hangs on macOS; tracked by HIMMEL-7253"
