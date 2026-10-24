@@ -241,5 +241,19 @@ has "sent body: a hand-added @name is wrapped" "$(cat "$GH_BODY")" "${BT}@editor
 python3 -I "$REPORT" draft --text-file "$TMP/empty.txt" >/dev/null 2>&1
 eq "empty input exits 2" "$?" "2"
 
+# two concurrent sends of one draft file one issue
+GH_SLOW="$TMP/gh-slow"
+printf '#!/usr/bin/env bash\nsleep 1\nexec "%s" "$@"\n' "$GH" >"$GH_SLOW"
+chmod +x "$GH_SLOW"
+printf 'The guard refused a harmless read of a changelog file.\n' >"$TMP/race.txt"
+RACE_ID="$(python3 -I "$REPORT" draft --text-file "$TMP/race.txt" --kind refusal --class race-class | sed -n 's/^report-id: //p')"
+: >"$GH_CALLS"
+HIMMEL_REPORT_GH="$GH_SLOW" python3 -I "$REPORT" send "$RACE_ID" --yes >/dev/null 2>&1 &
+RACE_A=$!
+HIMMEL_REPORT_GH="$GH_SLOW" python3 -I "$REPORT" send "$RACE_ID" --yes >/dev/null 2>&1 &
+RACE_B=$!
+wait "$RACE_A" "$RACE_B"
+eq "two concurrent send --yes file one issue" "$(wc -l <"$GH_CALLS" | tr -d ' ')" "1"
+
 echo "himmel-report: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

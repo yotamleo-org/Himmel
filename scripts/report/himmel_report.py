@@ -229,6 +229,13 @@ def cmd_send(a):
     if not a.yes:
         print('not sent: send needs an explicit yes from the user (re-run with --yes).')
         return 4
+    os.makedirs(os.path.join(home(), '.himmel'), exist_ok=True)
+    with open(os.path.join(home(), '.himmel', '.report.lock'), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return send_locked(a, path)
+
+
+def send_locked(a, path):
     sent = path + '.sent'
     if os.path.exists(sent):
         print('himmel-report: draft %s was already sent; not sending again.' % a.id)
