@@ -44,6 +44,8 @@
 #      path: jira|local|none and on|off, written to ~/.himmel/himmel.conf by the
 #      wizard's own writer; none drops the ticket-id keys; the pattern is never
 #      settable here; --dry-run and every refusal write nothing.
+#      Q3: a himmel.conf linked into a luna vault stays a link after a write.
+#      Q4: so does every link of a dangling chain.
 #   P. `himmelctl profile` is a SEPARATE argv[0] special-case
 #      (same mechanism as `config`'s, added right after it in main()) that
 #      dispatches to plugin-profile.sh — proves it parses to subcommand
@@ -685,6 +687,44 @@ CFG_RC=$?
 set -e
 [ "$CFG_RC" -eq 0 ] || fail "caseQ2: a tracker set only in the legacy .env must count (got rc=$CFG_RC): $CFG_OUT"
 grep -qE '^TRACKER=jira$' "$_hQ2/.himmel/himmel.conf" || fail "caseQ2: himmel.conf should carry TRACKER=jira (got: $(cat "$_hQ2/.himmel/himmel.conf" 2>&1))"
+grep -qE '^TICKET_ID_REQUIRED=1$' "$_hQ2/.himmel/himmel.conf" || fail "caseQ2: himmel.conf should carry TICKET_ID_REQUIRED=1 (got: $(cat "$_hQ2/.himmel/himmel.conf" 2>&1))"
 echo "ok: caseQ2 commit-rule reads keep the legacy .env fallback"
+
+# Q3: a luna install's himmel.conf is a link into the vault (made by the real
+# migrate-env-config.sh --vault); a commit-rules write lands in the vault file
+# and the link survives.
+fxQ3="$work/fixtureQ3"; build_fixture "$fxQ3"
+_hQ3="$work/home-Q3-$$-$RANDOM"; _vQ3="$work/vault-Q3-$$-$RANDOM"; mkdir -p "$_hQ3" "$_vQ3"
+printf 'TRACKER=jira\n' > "$work/envQ3"
+HOME="$_hQ3" bash "$repo_root/scripts/setup/migrate-env-config.sh" --env "$work/envQ3" --vault "$_vQ3" >/dev/null 2>&1 \
+  || fail "caseQ3: migrate-env-config.sh --vault should build the linked layout"
+[ -L "$_hQ3/.himmel/himmel.conf" ] || fail "caseQ3: the fixture himmel.conf should start as a link"
+set +e
+CFG_OUT=$(HOME="$_hQ3" USERPROFILE="$(winpath "$_hQ3")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ3.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ3.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ3")" JIRA_PROJECT_KEY='' \
+  "$node_bin" "$wizard" config set commit.ticketIdRequired on 2>&1)
+CFG_RC=$?
+set -e
+[ "$CFG_RC" -eq 0 ] || fail "caseQ3: set commit.ticketIdRequired on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+[ -L "$_hQ3/.himmel/himmel.conf" ] || fail "caseQ3: the write must keep ~/.himmel/himmel.conf a link into the vault"
+grep -qE '^TICKET_ID_REQUIRED=1$' "$_vQ3/.himmel/himmel.conf" || fail "caseQ3: the vault file should carry TICKET_ID_REQUIRED=1 (got: $(cat "$_vQ3/.himmel/himmel.conf" 2>&1))"
+grep -qE '^TRACKER=jira$' "$_vQ3/.himmel/himmel.conf" || fail "caseQ3: the vault file should keep TRACKER=jira (got: $(cat "$_vQ3/.himmel/himmel.conf" 2>&1))"
+echo "ok: caseQ3 a commit-rules write goes through the vault link"
+
+# Q4: a dangling two-hop chain (himmel.conf to a link to a missing file) keeps
+# both links; the write creates the file at the end of the chain.
+fxQ4="$work/fixtureQ4"; build_fixture "$fxQ4"
+_hQ4="$work/home-Q4-$$-$RANDOM"; _vQ4="$work/vault-Q4-$$-$RANDOM"; mkdir -p "$_hQ4/.himmel" "$_vQ4"
+ln -s "$_vQ4/.himmel/himmel.conf" "$work/hopQ4"
+ln -s "$work/hopQ4" "$_hQ4/.himmel/himmel.conf"
+set +e
+CFG_OUT=$(HOME="$_hQ4" USERPROFILE="$(winpath "$_hQ4")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ4.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ4.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ4")" JIRA_PROJECT_KEY='' \
+  "$node_bin" "$wizard" config set commit.tracker jira 2>&1)
+CFG_RC=$?
+set -e
+[ "$CFG_RC" -eq 0 ] || fail "caseQ4: set commit.tracker jira should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+[ -L "$_hQ4/.himmel/himmel.conf" ] || fail "caseQ4: ~/.himmel/himmel.conf must stay a link"
+[ -L "$work/hopQ4" ] || fail "caseQ4: the middle hop must stay a link"
+grep -qE '^TRACKER=jira$' "$_vQ4/.himmel/himmel.conf" || fail "caseQ4: the chain's end file should carry TRACKER=jira"
+echo "ok: caseQ4 a write through a dangling two-hop chain keeps both links"
 
 echo "PASS"
