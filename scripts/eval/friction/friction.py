@@ -33,8 +33,8 @@ DEFAULT_DOCS = os.environ.get('HANDOVER_DIR', HOME + '/Documents/luna/handovers'
 RECOVERY_CAP_S = 1800
 
 # git run as a command (line start or after a separator, past VAR= and wrapper words), not git as a search term
-GIT_INVOCATION = (r'(?:^|[;&|(`]|\b(?:then|do|else|if|while))\s*(?:\w+=\S*\s+)*'
-                  r'(?:(?:env|time|timeout\s+\d+|xargs|sudo|rtk|command|exec|nice)\s+)*git\b')
+GIT_INVOCATION = (r'(?:^|[;&|(`]|\b(?:then|do|else|if|while))\s*'
+                  r'(?:(?:env|time|timeout\s+\d+[smhd]?|xargs|sudo|rtk|command|exec|nice)\s+|\w+=\S*\s+)*git\b')
 
 # (regex on reason text, class slug, verdict, evidence) per hook; first match wins.
 HOOK_CLASSES = {
