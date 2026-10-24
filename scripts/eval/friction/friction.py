@@ -45,8 +45,21 @@ HOOK_CLASSES = {
          'output redirect beside a guarded script'),
         (r'changes directory, so the relative path', 'cd-before-relative-gate-path', 'true-positive',
          'leg cd-ed before a relative gate path; the preface forbids cd && (run the literal relative shape)'),
-        (r'git execution/config options or ambiguous option-value', 'git-option-beside-gate-mention', 'over-deny',
+        (r'(?s)^(?:(?!\bgit\b|\(HIMMEL-).)*\(HIMMEL-[^)]*\): git execution/config options or ambiguous option-value',
+         'git-option-beside-gate-mention', 'over-deny',
          'read-only grep/sed/loop that names a gate script; the guard cannot prove the mention is a pathspec'),
+        (r'(?s)^(?!(?:(?!\(HIMMEL-).)*(?:--output|\s-c\s|\bhook\b|\barchive\b|--open-files-in-pager|--ext-diff|'
+         r'--textconv|--exec|--config-env|\bGIT_\w+=))(?=(?:(?!\(HIMMEL-).)*\bgit\b(?:\s+-C\s+\S+)?\s+'
+         r'(?:grep|log|show|blame|ls-files|cat-file|rev-parse|diff|status)\b).*?\(HIMMEL-[^)]*\): git execution/config',
+         'git-read-command-beside-gate-mention', 'over-deny',
+         'a read-only git grep/log/show/diff that names a gate script and carries no exec option'),
+        (r'(?s)^(?=(?:(?!\(HIMMEL-).)*--output=\S*(?:/scratchpad|/tmp/))(?!(?:(?!\(HIMMEL-).)*\bhook\b).*?\(HIMMEL-[^)]*\): '
+         r'git execution/config', 'git-output-to-scratch', 'over-deny',
+         'git diff/archive --output into the session scratchpad; the output option is the only thing the guard saw'),
+        (r'(?s)^(?:(?!\(HIMMEL-).)*\bgit\b(?:\s+-C\s+\S+)?\s+hook\s+run\b.*?\(HIMMEL-[^)]*\): git execution/config',
+         'git-hook-run', 'true-positive', 'git hook run executes the repo hook; the guard blocks program-running git options'),
+        (r'git execution/config options or ambiguous option-value', 'git-exec-option-beside-gate-script', 'unclear',
+         'a git command whose option can run a program beside a gate script; harmless or hostile by option'),
         (r'(?s)^(?!(?:(?!a value git).)*(?:\bGIT_\w+=|\b(?:EDITOR|VISUAL|PAGER)=|\s-c\s|\sconfig\s|'
          r'--(?:exec|config-env|upload-pack))).*?-m (["\'])[^"\']*[$`*?\[{\\][^"\']*\1.*?a value git or the shell',
          'git-message-value-with-bracket',
@@ -94,8 +107,8 @@ HOOK_CLASSES = {
         (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
          r'cherry-pick|remote|config|tag|reset|stash)\b', 'git-rewrite-in-primary', 'true-positive',
          'a git subcommand that rewrites the primary tree, index, HEAD, refs or config'),
-        (r'(?s)on main/master\..*\(git subcommand: (clone|archive|init|merge-tree|patch-id|hash-object|commit-tree|'
-         r'grep|hook|show|log|diff)\b', 'git-object-only-command-flagged-as-write', 'over-deny',
+        (r'(?s)on main/master\..*\(git subcommand: (clone|init|merge-tree|patch-id|hash-object|commit-tree|'
+         r'grep|show|log|diff)\b', 'git-object-only-command-flagged-as-write', 'over-deny',
          'clone/archive/init/merge-tree/hash-object: object-database or new-directory work, the primary tree is untouched'),
         (r'(?s)on main/master\..*\(git subcommand: ', 'git-subcommand-in-primary', 'unclear',
          'git fetch (refs only) against the primary; true for a leg, over-deny for the console'),
@@ -114,8 +127,8 @@ HOOK_CLASSES = {
     'block-jira-compound-write': [(r'.', 'jira-compound-write', 'true-positive', 'compound Jira write')],
     'block-bank-lift-writes': [(r'.', 'bank-lift-write', 'true-positive', 'write to bank-lift state')],
     'block-destructive-commands': [
-        (r'refused \(recursive (rm|delete)', 'recursive-delete', 'unclear',
-         'rm -r / find -delete: harmless on scratch, destructive elsewhere; the reason carries no path'),
+        (r'refused \(recursive (rm|delete)', 'recursive-delete', 'true-positive',
+         'rm -r / find -delete is the hook\'s named verb; the reason carries no path, so a scratch delete is not separable here'),
         (r'refused \(git branch -D', 'git-branch-force-delete', 'true-positive', 'unmerged-branch delete'),
         (r'refused \(disk/boot mutation', 'disk-boot-mutation', 'true-positive', 'dd/mkfs/bootloader write'),
         (r'refused \(remote exec pipe', 'remote-exec-pipe', 'true-positive', 'curl | sh style remote execution'),
@@ -128,12 +141,17 @@ HOOK_CLASSES = {
     ],
     'block-bare-qmd-query': [(r'.', 'bare-qmd-query', 'true-positive', 'qmd query without -c scope')],
     'block-edit-live-settings': [
-        (r'(?s)^(?:(?!settings(?:\.local)?\.json).)*<<', 'settings-mention-in-heredoc', 'over-deny',
-         'a heredoc whose text merely mentions settings.json (the guard names this case itself)'),
-        (r'names a live settings', 'live-settings-named', 'true-positive',
-         'a command naming the primary checkout or HOME settings file'),
         (r"targets the primary checkout's \.claude/", 'primary-claude-dir-write', 'true-positive',
          "a cp/mv/tee/tar aimed at the primary checkout's .claude/ directory"),
+        (r'an interpreter \(python/node/perl/ruby\) both reads the home directory', 'interpreter-reads-home-and-writes',
+         'unclear', 'an interpreter that expands HOME and writes a file; harmless or builds ~/.claude/settings.json'),
+        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*?\bcat\b[^<|;&]*<<',
+         'settings-mention-in-heredoc', 'over-deny',
+         'a cat heredoc written to a file whose body merely mentions settings.json (the guard names this case itself)'),
+        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*<<', 'settings-in-executed-heredoc',
+         'unclear', 'a heredoc fed to an interpreter that may or may not write settings.json'),
+        (r'names a live settings', 'live-settings-named', 'true-positive',
+         'a command naming the primary checkout or HOME settings file'),
         (r'.', 'edit-live-settings', 'unclear', 'live settings path in command or text'),
     ],
     'store-deny': [
