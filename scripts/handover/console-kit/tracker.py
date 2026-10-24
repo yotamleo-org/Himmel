@@ -1479,7 +1479,8 @@ a{{color:var(--acc);text-decoration:none}}
 .b0{{--c:var(--p0)}}.b1{{--c:var(--p1)}}.b2{{--c:var(--p2)}}.b3{{--c:var(--p3)}}.b4{{--c:var(--p4)}}.b5{{--c:var(--p5)}}.b6{{--c:var(--p6)}}.b7{{--c:var(--p7)}}
 </style></head><body>
 <h1>{v} tracker</h1>
-<div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, each split into the
+<div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, except that a card with an open PR follows
+that PR's CI (red In Progress, running or green IN CI) and says so; each column is split into the
 approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
 state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}</div>
 {chains}
