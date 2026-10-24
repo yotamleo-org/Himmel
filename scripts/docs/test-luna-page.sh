@@ -49,7 +49,8 @@ trap 'rm -rf "$TMP"' EXIT
 QMD_HELP="$TMP/qmd-help.txt"
 : >"$QMD_HELP"
 if command -v qmd >/dev/null 2>&1; then
-  qmd --help >"$QMD_HELP" 2>&1
+  qmd --help >"$QMD_HELP" 2>&1 || { echo "FAIL: qmd is installed but qmd --help failed" >&2; exit 1; }
+  [ -s "$QMD_HELP" ] || { echo "FAIL: qmd is installed but qmd --help printed nothing" >&2; exit 1; }
 fi
 
 # check <case> <page>: prints one violation per line; empty output = clean.
@@ -190,9 +191,12 @@ run_case "IMAGE: star map with alt text, title, description and caption; no vaul
 # --- controls: each fixture carries one defect its case must catch
 cp "$PAGE" "$TMP/README.md"
 control() { # control <label> <case> <line to append above For maintainers>
-  python3 -I -c 'import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],"w").write(t.replace("\n## For maintainers", "\n" + sys.argv[3] + "\n\n## For maintainers", 1))' \
-    "$TMP/README.md" "$TMP/control-page.md" "$3"
   local out
+  rm -f "$TMP/control-page.md"
+  if ! python3 -I -c 'import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],"w").write(t.replace("\n## For maintainers", "\n" + sys.argv[3] + "\n\n## For maintainers", 1))' \
+    "$TMP/README.md" "$TMP/control-page.md" "$3"; then
+    bad "$1" "could not write the fixture page"; return
+  fi
   if ! out="$(check "$2" "$TMP/control-page.md")"; then bad "$1" "the checker itself failed"; return; fi
   if [ -n "$out" ]; then ok "$1"; else bad "$1" "the defect was not caught"; fi
 }
