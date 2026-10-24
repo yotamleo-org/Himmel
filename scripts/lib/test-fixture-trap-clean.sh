@@ -44,6 +44,11 @@ try {
   ['scripts/handover/test-merge-on-green.sh','mog-'],
   ['scripts/test-lane-mirror-seed.sh','clean-sandbox.']
  ])test(suite+' EXIT removes every '+prefix+' fixture',()=>{
+  // test-lane-mirror-seed.sh opens its own clean-sandbox, which resets PATH, so a node outside the fixed sandbox dirs is out of its reach.
+  if(suite==='scripts/test-lane-mirror-seed.sh'&&cp.spawnSync('env',['-i','PATH=/usr/local/bin:/usr/bin:/bin','sh','-c','command -v node'],{stdio:'ignore'}).status!==0){
+   console.log('skip: '+suite+' needs node on the fixed sandbox PATH, and this host keeps node elsewhere');
+   return;
+  }
   // Keep Unix socket fixture paths below sockaddr_un's pathname limit: the root is under /tmp,
   // not os.tmpdir() (CI's TMPDIR is already /tmp/himmel-suite.XXXXXX deep).
   const scratch=path.join(root,String(passed+failed));
