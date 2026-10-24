@@ -453,10 +453,16 @@ wait "$p2"; r2=$?
 check "no-flock: both concurrent events exit 0" "$r1:$r2" "0:0"
 check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
 
+# One event releases its lease when it exits.
+reset "To Do"; owned
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1
+check "no-flock: a finished event releases its lease" "$([ -d "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" ] && printf held || printf free)" free
+
 # A lease left by a dead run (older than 300s) is reclaimed once, so one event moves the status.
 reset "To Do"; owned; echo 1 > "$FX/get.sleep"
 mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d"
-touch -d '10 minutes ago' "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d"
+old=$(date -d '10 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || date -v-10M +%Y%m%d%H%M.%S)
+check "no-flock: the stale lease is backdated" "$(touch -t "$old" "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" && printf ok)" ok
 PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
 PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
 wait "$p1"; r1=$?

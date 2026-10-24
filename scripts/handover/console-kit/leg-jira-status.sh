@@ -119,8 +119,10 @@ lockdir="$(ts_state_dir)/status-locks"
 mkdir -p "$lockdir" 2>/dev/null || warn "cannot create $lockdir"
 # ponytail: no flock binary (stock macOS) takes a mkdir lease for the key; it
 # expires after 300s even for a live owner; upgrade path = a heartbeat.
+# lease is script-level, not local: the EXIT trap runs after take_key_lease has returned.
+lease="$lockdir/$KEY.lease.d"
 take_key_lease() {
-    local limit="${TICKET_STATUS_LOCK_WAIT:-10}" waited=0 stamp got=0 lease="$lockdir/$KEY.lease.d" reclaim="$lockdir/$KEY.reclaim.d"
+    local limit="${TICKET_STATUS_LOCK_WAIT:-10}" waited=0 stamp got=0 reclaim="$lockdir/$KEY.reclaim.d"
     # ponytail: the reclaim mutex is a mkdir held for microseconds; a process killed inside it leaves
     # it behind for good. upgrade path = the owner-token lease of pr-stall.sh.
     while [ "$got" = 0 ]; do
