@@ -608,8 +608,7 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ':!scripts/hooks/test-guard-leg-context-handoff.sh' \
     ':!scripts/handover/console-kit/fixtures/*' \
     ':!scripts/lib/chief-context.sh' ':!scripts/lib/override-env.sh' ':!scripts/lib/test-override-env.sh' \
-    ':!scripts/himmelctl/lib/bypass-flags.json' \
-    ':!scripts/handover/console/test-console.sh' 2>/dev/null | awk -F'\t' -v map="$V4A_MAP" '
+    ':!scripts/himmelctl/lib/bypass-flags.json' 2>/dev/null | awk -F'\t' -v map="$V4A_MAP" '
     BEGIN { while ((getline l < map) > 0) { split(l, p, "\t"); nw[p[1]] = p[2] } }
     {
       i = index($0, ":"); path = substr($0, 1, i - 1); rest = substr($0, i + 1)

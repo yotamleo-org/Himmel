@@ -1851,10 +1851,13 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
 # a text-scan of argv/output cannot tell "unset" from "set to a value that
 # happens not to print".
 {
-    printf 'LEG_PROFILE_SETTINGS=%s\n' "\${LEG_PROFILE_SETTINGS+set}"
-    printf 'HIMMEL_LEG_PROFILE=%s\n' "\${HIMMEL_LEG_PROFILE+set}"
+    printf 'WORKER_SESSION_PROFILE_SETTINGS=%s\n' "\${WORKER_SESSION_PROFILE_SETTINGS+set}"
+    printf 'LEG_PROFILE_SETTINGS=%s\n' "\${LEG_PROFILE_SETTINGS+set}" # old name, read both ways
+    printf 'HIMMEL_WORKER_SESSION_PROFILE=%s\n' "\${HIMMEL_WORKER_SESSION_PROFILE+set}"
+    printf 'HIMMEL_LEG_PROFILE=%s\n' "\${HIMMEL_LEG_PROFILE+set}" # old name, read both ways
     printf 'HIMMEL_CONSOLE_LEG=%s\n' "\${HIMMEL_CONSOLE_LEG+set}"
-    printf 'LEG_LANE=%s\n' "\${LEG_LANE+set}"
+    printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
+    printf 'LEG_LANE=%s\n' "\${LEG_LANE+set}" # old name, read both ways
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
 } > "$tmp/child-env-66.txt"
@@ -1873,17 +1876,19 @@ KONSOLE_STUB
 chmod +x "$tmp/konsole-66"
 
 out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    HIMMEL_LEG_PROFILE=leg-impl \
-    LEG_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_PREFACE=/leaked-66/preface.md \
-    LEG_PROFILE_MCP_CONFIG=/leaked-66/mcp.json LEG_CLAUDE_BIN=/leaked-66/claude \
+    HIMMEL_WORKER_SESSION_PROFILE=leg-impl HIMMEL_LEG_PROFILE=leg-impl \
+    WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_SETTINGS=/leaked-66/settings.json \
+    WORKER_SESSION_PROFILE_PREFACE=/leaked-66/preface.md LEG_PROFILE_PREFACE=/leaked-66/preface.md \
+    WORKER_SESSION_PROFILE_MCP_CONFIG=/leaked-66/mcp.json LEG_PROFILE_MCP_CONFIG=/leaked-66/mcp.json \
+    WORKER_SESSION_CLAUDE_BIN=/leaked-66/claude LEG_CLAUDE_BIN=/leaked-66/claude \
     HIMMEL_LEAN_LEG=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=leaked-console-66 \
     WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
-    LEG_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
+    WORKER_SESSION_LANE=openrouter LEG_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
     CR_TRIGGER_SUPPRESS=1 IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HIMMEL_READ_CLAMP_LINES=4000 \
     HIMMEL_CONSOLE_RELAY=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/leg-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
-    HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 LEG_PROFILE_SETTINGS=/leaked-66/settings.json" \
+    HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_SETTINGS=/leaked-66/settings.json" \
     HEADED_ARM_UNAME=Darwin \
     CHIEF_CONTEXT=1m \
     KONSOLE_CMD="$tmp/konsole-66" \
@@ -1897,8 +1902,9 @@ check "66 dry-run resolves the real launcher, not the leaked shim; recorder not 
     "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: launcher=claude recorder=0 ')" "1"
 check "66 no leaked leg-profile value reaches the armed console's argv/env" \
     "$(printf '%s\n' "$out66b" | grep -c 'leaked-66')" "0"
-check "66 armed child's OWN environment still lacks LEG_PROFILE_SETTINGS (not just unprinted)" \
-    "$(grep -c '^LEG_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks WORKER_SESSION_PROFILE_SETTINGS (not just unprinted)" \
+    "$(grep -c '^WORKER_SESSION_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks the old name LEG_PROFILE_SETTINGS (read both ways)" "$(grep -c '^LEG_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just unprinted)" \
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \
@@ -1941,12 +1947,14 @@ while read -r old67 new67; do
     grep -qx "$new67" <<< "$seam67" || seam_missing67="$seam_missing67 $new67"
 done <<< "$twins67"
 check "67 every launch-seam name's worker-session twin is launch seam too" "$seam_missing67" ""
-check "67 armed child's own environment strips LEG_LANE" \
-    "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips WORKER_SESSION_LANE" \
+    "$(grep -c '^WORKER_SESSION_LANE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips the old name LEG_LANE (read both ways)" "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips OPENROUTER_MODEL" \
     "$(grep -c '^OPENROUTER_MODEL=set$' "$tmp/child-env-66.txt")" "0"
-check "67 armed child's own environment strips HIMMEL_LEG_PROFILE" \
-    "$(grep -c '^HIMMEL_LEG_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips HIMMEL_WORKER_SESSION_PROFILE" \
+    "$(grep -c '^HIMMEL_WORKER_SESSION_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips the old name HIMMEL_LEG_PROFILE (read both ways)" "$(grep -c '^HIMMEL_LEG_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
 
 # --- 68: --project <dir> -- a console for a repo that is NOT this himmel
 # checkout (the himmel-ops plugin's /console, run from e.g. ~/Websites). The
