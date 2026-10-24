@@ -305,8 +305,8 @@ if got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-le
 
 # PS23: the plan sizes the selection the shards run, so its --list carries their PR tier.
 : > "$PS/tier.log"
-STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" RST_TIER_LOG="$PS/tier.log" run_real_step "" >/dev/null
-if [ "$(sort -u "$PS/tier.log")" = pr ]; then pass "PS23 the plan step lists under SUITE_TIER_MODE=pr"; else fail "PS23 plan step tier: got [$(cat "$PS/tier.log")]"; fi
+if STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" RST_TIER_LOG="$PS/tier.log" run_real_step "" >/dev/null \
+   && [ "$(sort -u "$PS/tier.log")" = pr ]; then pass "PS23 the plan step lists under SUITE_TIER_MODE=pr"; else fail "PS23 plan step failed or tier: got [$(cat "$PS/tier.log")] rc $(cat "$real_dir/step.rc")"; fi
 
 # PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
 # step swallows the refusal into an empty output, which the shard job reads as 8 legs.
