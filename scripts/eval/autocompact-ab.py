@@ -20,7 +20,7 @@
 # Per leg: arm, compactions (count + the token level at each, `preTokens` of the
 # compact_boundary row), handoffs (RESUME docs beside the leg doc), input tokens
 # split cache_read / cache_create / uncached, price-weighted cost (the same
-# weights as scripts/lanes/lib/burn-weights.sh, same LEG_BURN_W_* overrides),
+# weights as scripts/lanes/lib/burn-weights.sh, same WORKER_SESSION_BURN_W_* overrides),
 # wall-clock (first to last row timestamp), PR outcome and mean output tokens
 # per assistant turn. Assistant rows are deduped by message id: a transcript
 # writes one row per content block.
@@ -32,10 +32,10 @@
 import argparse, glob, json, os, re, subprocess, sys
 from datetime import datetime
 
-W_CR = float(os.environ.get("LEG_BURN_W_CACHE_READ", "0.1"))
-W_CC = float(os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25"))
-W_IN = float(os.environ.get("LEG_BURN_W_INPUT", "1"))
-W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
+W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1")))
+W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25")))
+W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1")))
+W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5")))
 
 BULLET = re.compile(r"^- (?:\d{2}:\d{2} )?([A-Z][A-Z-]*)\b")
 ARM_LINE = re.compile(r"^> \*\*Context:\*\* ab-(200k|400k) ")
@@ -146,7 +146,7 @@ def parse_transcripts(paths):
             "mean_out_per_turn": round(out / len(calls), 1) if calls else 0}
 
 
-LEG_IDENTITY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+WORKER_SESSION_IDENTITY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "..", "lib", "leg-identity.sh")
 
 
@@ -164,7 +164,7 @@ def identity(doc):
     res, why = None, None
     try:
         p = subprocess.run(
-            ["bash", "-c", 'source "$1"; leg_identity "$2"; leg_base "$2"', "_", LEG_IDENTITY, doc],
+            ["bash", "-c", 'source "$1"; leg_identity "$2"; leg_base "$2"', "_", WORKER_SESSION_IDENTITY, doc],
             capture_output=True, text=True, timeout=30)
         out = p.stdout.split("\n")
         label, _, names = out[0].partition("\t")

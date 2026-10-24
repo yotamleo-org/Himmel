@@ -30,7 +30,7 @@
 #                                          config, no key, no network, the eval kit read-only
 #   sandbox.sh launch <row-env> <args...>  run the lane launcher in the jail with its tunnel
 # The row's <row>.sandbox wrapper (written by `pilot.sh prepare`) calls
-# `launch`; headed-arm-leg.sh reaches it through HEADED_ARM_LEG_<LANE>_BIN.
+# `launch`; headed-arm-leg.sh reaches it through HEADED_ARM_WORKER_<LANE>_BIN.
 # Test seam: PILOT_SANDBOX_TUNNEL_TARGET replaces the host side of the tunnel.
 set -u
 die() { echo "pilot-sandbox: $*" >&2; exit 1; }
@@ -276,7 +276,7 @@ case "$mode" in
     mkdir -p "$ROWCONF" "$TX" || die "cannot create $ROWCONF or $TX"
     # The jailed claude runs at $JWT with $ROWCONF as its lane config, so the folder-trust
     # flag (HIMMEL-5068) must be seeded there, under that exact key; non-fatal like the caller's.
-    LEG_PRETRUST_CONFIG="$ROWCONF/.claude.json" LEG_PRETRUST_KEY="$JWT" \
+    WORKER_SESSION_PRETRUST_CONFIG="$ROWCONF/.claude.json" WORKER_SESSION_PRETRUST_KEY="$JWT" \
       bash "$REPO/scripts/handover/console-kit/leg-pretrust.sh" "$LANE" "$WT" \
       || echo "pilot-sandbox: warning: could not pre-trust $JWT in $ROWCONF" >&2
     if [ -z "${!KEY:-}" ]; then

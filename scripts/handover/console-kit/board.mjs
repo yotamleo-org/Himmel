@@ -133,12 +133,12 @@ const liveField = (key) => {
 // field, or a list-marker / `>` / `#` line (a detail bullet may quote a span
 // freely). An entry is a backtick span of exactly four non-empty colon fields
 // `<label>:<nonce>:<lock-token>:<pid>`, no whitespace, the label all
-// LEG_LABEL_CLASS (scripts/lib/leg-identity.sh: letters, digits, `_`, `.`, `-`),
+// WORKER_SESSION_LABEL_CLASS (scripts/lib/leg-identity.sh: letters, digits, `_`, `.`, `-`),
 // so a leg doc stem parses too. Only the label and the nonce are kept: the nonce
 // picks the leg's doc among docs sharing a label, and is never rendered.
 // ponytail: a malformed span (tick reports it MALFORMED by label) is not an entry
 // here, so a leg named only by one is missing from the board's Live-state set.
-const LEG_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
+const WORKER_SESSION_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
 const liveEntries = [];
 {
     let inBlock = false;
@@ -148,7 +148,7 @@ const liveEntries = [];
         if (!inBlock) continue;
         for (const m of l.matchAll(/`([^`]*)`/g)) {
             const f = m[1].split(':');
-            if (/\s/.test(m[1]) || f.length !== 4 || f.some((x) => !x) || !LEG_LABEL_CLASS.test(f[0])) continue;
+            if (/\s/.test(m[1]) || f.length !== 4 || f.some((x) => !x) || !WORKER_SESSION_LABEL_CLASS.test(f[0])) continue;
             liveEntries.push({ stem: f[0], nonce: f[1] });
         }
     }
@@ -352,7 +352,7 @@ const primaryRoot = () => {
 };
 const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length || releaseDeclared ?join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
 // the legs' Jira ladder, in the order a Release panel shows it.
-const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
+const WORKER_SESSION_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
 const DONE_STATUS = /^(done|resolved)$/i;
 // Closed and won't do are out of every count, as the tracker has it.
 const OUT_STATUS = /^(closed|wont do|won't do|wont fix|won't fix)$/i;
@@ -371,7 +371,7 @@ const releaseOf = (version) => {
     if (rows.length !== lines.length) return { version, unavailable: true };
     const counted = rows.filter((r) => !OUT_STATUS.test(r.status));
     const open = counted.filter((r) => !DONE_STATUS.test(r.status));
-    const byStatus = Object.fromEntries(LEG_STATUSES.map((st) => [st, rows.filter((r) => r.status === st).length]));
+    const byStatus = Object.fromEntries(WORKER_SESSION_STATUSES.map((st) => [st, rows.filter((r) => r.status === st).length]));
     return { version, done: counted.length - open.length, total: counted.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
 };
 const releases = versionsDeclared.map(releaseOf);
@@ -396,7 +396,7 @@ const rmState = (() => {
 })();
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
 const releaseSig = releases.map((r) => (r.unavailable ? `${r.version}=unavailable`
-    : `${r.version}=${r.done}/${r.total}:${LEG_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
+    : `${r.version}=${r.done}/${r.total}:${WORKER_SESSION_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
     .concat(rmState ? [`rm:${rmState.unavailable ? 'unavailable' : JSON.stringify([rmState.status, rmState.burndown, rmState.leaks, rmState.trend])}`] : []).join(',');
 const ciOf = (pr) => {
     const rollup = (pr && pr.statusCheckRollup) || [];
@@ -550,7 +550,7 @@ const epicRows = epics.map((e) => {
 const releasePanel = (r) => {
     if (r.unavailable) return `<section data-release="${esc(r.version)}" data-unavailable="1"><h2>Release ${safe(r.version)}</h2><p class="none">unavailable</p></section>`;
     const pct = Math.round((r.done / Math.max(1, r.total)) * 100);
-    const breakdown = LEG_STATUSES.map((st) => `<span data-status="${esc(st)}" data-count="${r.byStatus[st]}">${esc(st)} ${r.byStatus[st]}</span>`).join(' · ');
+    const breakdown = WORKER_SESSION_STATUSES.map((st) => `<span data-status="${esc(st)}" data-count="${r.byStatus[st]}">${esc(st)} ${r.byStatus[st]}</span>`).join(' · ');
     const blockers = r.blockers.map((b) => `<li data-blocker="${esc(b.key)}"><b>${esc(b.key)}</b> ${safe(b.title, 90)} <span class="pr">${safe(b.status)}</span></li>`).join('\n');
     return `<section data-release="${esc(r.version)}" data-done="${r.done}" data-total="${r.total}"><h2>Release ${safe(r.version)}</h2><b>${r.done}/${r.total}</b><div class="bar"><i style="width:${pct}%"></i></div><p class="status">${breakdown}</p>${blockers ? `<ul>${blockers}</ul>` : '<p class="none">no open v1-blocker tickets</p>'}</section>`;
 };
@@ -634,12 +634,12 @@ const trend = { cost: null, exploration: null, failures: null };
 const archiveTables = [];
 
 // Cost today: one line from the leg cost ledger close-wrapped-leg.sh
-// appends to (LEG_COST_LEDGER, else $HANDOVER_DIR/.ledger/leg-cost.jsonl). An absent
+// appends to (WORKER_SESSION_COST_LEDGER, else $HANDOVER_DIR/.ledger/leg-cost.jsonl). An absent
 // or unreadable ledger, or no usable row dated today, renders nothing and never fails
 // the render. Not part of the fingerprint: --changed does not move on a new ledger row.
 const costSection = (() => {
     try {
-        const ledger = process.env.LEG_COST_LEDGER
+        const ledger = (process.env.WORKER_SESSION_COST_LEDGER || process.env.LEG_COST_LEDGER)
             || (process.env.HANDOVER_DIR ? join(process.env.HANDOVER_DIR, '.ledger', 'leg-cost.jsonl') : '');
         if (!ledger) return '';
         const d = new Date();
@@ -666,17 +666,17 @@ const costSection = (() => {
 
 // Exploration cost: the weighted tokens each session spent before its first
 // edit or commit, read from the digest markers leg_ledger.py leaves in
-// LEG_DIGEST_STATE_DIR (else ~/.himmel/state/leg-digest) -- the digest's own `exploration`
+// WORKER_SESSION_DIGEST_STATE_DIR (else ~/.himmel/state/leg-digest) -- the digest's own `exploration`
 // field, not tick data. Sessions that started in the last BOARD_EXPLORATION_HOURS (24) and
 // were cut by an edit or commit: fleet median, worst 5, and a FLAG on any session over
-// LEG_EXPLORATION_FLAG_TOKENS (100000). No such session, or an unreadable dir, renders
+// WORKER_SESSION_EXPLORATION_FLAG_TOKENS (100000). No such session, or an unreadable dir, renders
 // nothing and never fails the render; not part of the fingerprint.
 const explorationSection = (() => {
     try {
-        const dir = process.env.LEG_DIGEST_STATE_DIR || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
+        const dir = (process.env.WORKER_SESSION_DIGEST_STATE_DIR || process.env.LEG_DIGEST_STATE_DIR) || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
         const hours = Number.parseInt(process.env.BOARD_EXPLORATION_HOURS || '', 10);
         const since = Date.now() - (hours > 0 ? hours : 24) * 3600 * 1000;
-        const limit = Number.parseInt(process.env.LEG_EXPLORATION_FLAG_TOKENS || '', 10);
+        const limit = Number.parseInt((process.env.WORKER_SESSION_EXPLORATION_FLAG_TOKENS || process.env.LEG_EXPLORATION_FLAG_TOKENS) || '', 10);
         const flagAt = limit > 0 ? limit : 100000;
         const rows = [];
         for (const name of readdirSync(dir)) {

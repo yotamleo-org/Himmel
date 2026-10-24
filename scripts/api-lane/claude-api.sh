@@ -137,13 +137,13 @@ fi
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
-LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_LEG: it could escape the api cap
+WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_LEG: it could escape the api cap
 # the reservation is owned by THIS shell, which waits on claude below, so it
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
-  CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 LEG_LANE=api \
-  CADENCE_USAGE_LEG="$LEG_NAME" CADENCE_USAGE_CALLER_PID="$$" \
+  CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
+  CADENCE_USAGE_LEG="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
@@ -189,7 +189,7 @@ release_slot() {
   # shellcheck source=scripts/lib/fleet-reservation-key.sh
   . "$REPO/scripts/lib/fleet-reservation-key.sh" 2>/dev/null || return 0
   local slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}" key dir
-  for key in "$(fleet_reservation_key "$LEG_NAME")" "$(fleet_hash_key "$LEG_NAME")"; do
+  for key in "$(fleet_reservation_key "$WORKER_SESSION_NAME")" "$(fleet_hash_key "$WORKER_SESSION_NAME")"; do
     dir="$slots/$key"
     [ "$(cat "$dir/pid" 2>/dev/null)" = "$$" ] && rm -rf "$dir"
   done

@@ -377,10 +377,10 @@ test("HIMMEL-4817: a claudex leg renders lane, backend model, codex-bank cost ro
   cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));
   const s = boot({ CODEX_BANK_CACHE: bank });
   writeFileSync(bank, JSON.stringify({ capturedAt: new Date(now).toISOString(), limits: [{ limitId: "codex/primary", usedPercent: 46, windowDurationMins: 10080, resetsAt: now / 1000 + 86400 }] }));
-  writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `LEG_LANE=claudex\0HIMMEL_SESSION_MODEL=gpt-6.1-sol\0HIMMEL_CODEX_BANK_START=40@${now - 3600_000}\0`);
+  writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `WORKER_SESSION_LANE=claudex\0HIMMEL_SESSION_MODEL=gpt-6.1-sol\0HIMMEL_CODEX_BANK_START=40@${now - 3600_000}\0`);
   const b = await (await fleet(s.port)).json();
   const leg = b.sessions.find((r: any) => r.pid === FLEET.leg.pid);
-  expect(leg).toMatchObject({ lane: "claudex", laneFrom: "LEG_LANE", backendModel: "gpt-6.1-sol", usage: { costEq: null, calls: 3 } });
+  expect(leg).toMatchObject({ lane: "claudex", laneFrom: "WORKER_SESSION_LANE", backendModel: "gpt-6.1-sol", usage: { costEq: null, calls: 3 } });
   expect(leg.cost).toMatchObject({ lane: "claudex", bank: "codex", priced_by: "codex-bank", cost_eq: null, calls: 3, codex_used_pct_delta: 6 });
   expect(leg.eval).toMatchObject({ lane: "claudex", denials: 1, denials_recovered: 0 });
   expect(b.banks.codex).toMatchObject({ weeklyPct: 46 });

@@ -325,10 +325,10 @@ try {
 }
 
 seed_after_mirror() {
-  [ "${LEG_LANE:-}" != openrouter ] || seed_leg_trust
+  [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" != openrouter ] || seed_leg_trust
 }
 
-if [ "${LEG_LANE:-}" = openrouter ] || [ ! -f "$CONFIG_DIR/.seeded" ] || [ "$RESEED" -eq 1 ] || config_seed_stale; then
+if [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" = openrouter ] || [ ! -f "$CONFIG_DIR/.seeded" ] || [ "$RESEED" -eq 1 ] || config_seed_stale; then
   seed_with_lock
 fi
 
@@ -416,7 +416,7 @@ export ANTHROPIC_BASE_URL="$OPENROUTER_ANTHROPIC_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$OPENROUTER_API_KEY"
 export ANTHROPIC_API_KEY=""
 export ANTHROPIC_MODEL="$OPENROUTER_MODEL"
-if [ "${LEG_LANE:-}" = openrouter ]; then
+if [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" = openrouter ]; then
   # Use an alias only when it resolves to the exact session pin.
   case "$OPENROUTER_MODEL" in
     anthropic/claude-sonnet-*) [ "$OPENROUTER_MODEL" != "$OPENROUTER_SONNET" ] || export ANTHROPIC_MODEL=sonnet ;;
@@ -455,7 +455,7 @@ export CLAUDE_CODE_AUTO_MODE_SERVER=0
 if [ -z "${CLAUDE_CODE_EXTRA_BODY:-}" ]; then
   export CLAUDE_CODE_EXTRA_BODY='{"thinking":{"type":"enabled","budget_tokens":2048}}'
 fi
-if [ "${LEG_LANE:-}" = openrouter ]; then
+if [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" = openrouter ]; then
   echo "claude-openrouter: lane=openrouter slug=$OPENROUTER_MODEL alias=$ANTHROPIC_MODEL labels=$or_label" >&2
 fi
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$OPENROUTER_CONTEXT_WINDOW"

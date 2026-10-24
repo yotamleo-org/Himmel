@@ -23,7 +23,7 @@
 # TICKET_STATUS_BUDGET seconds (default 20), and a run cut off logs
 # miss stage=timeout.
 #
-# Env: LEG_JIRA_STATUS=0 opts out (a disabled row). TICKET_STATUS_LOCK_WAIT
+# Env: WORKER_SESSION_JIRA_STATUS=0 opts out (a disabled row). TICKET_STATUS_LOCK_WAIT
 # (default 10) bounds the flock wait. The rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
@@ -82,7 +82,7 @@ row() {
     status_event event="$EVENT" key="$KEY" ${PR:+"pr=$PR"} ${HEAD:+"head=$HEAD"} "$@"
 }
 
-if [ "${LEG_JIRA_STATUS:-1}" = 0 ]; then
+if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" = 0 ]; then
     row result=disabled
     exit 0
 fi

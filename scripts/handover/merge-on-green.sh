@@ -70,7 +70,7 @@
 #                      the certified head (else exit 17), and the verified evidence
 #                      (file, pr, head, trust id) is printed. Any other caller may
 #                      pass it, and then it is checked the same way.
-#   --leg-doc PATH     the leg's brief doc (else $HIMMEL_LEG_DOC); its
+#   --leg-doc PATH     the leg's brief doc (else $HIMMEL_WORKER_SESSION_DOC); its
 #                      `> **Completes ticket:** yes|no` line above `## Results`
 #                      (any no wins; lines below Results are ignored) binds the merge:
 #                      no ignores --jira-transition with a warning, yes without
@@ -333,8 +333,8 @@ selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
 GO_FLAG=""
-# ponytail: the leg doc is supplied by the caller (--leg-doc, else HIMMEL_LEG_DOC); the console must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
-LEG_DOC="${HIMMEL_LEG_DOC:-}"
+# ponytail: the leg doc is supplied by the caller (--leg-doc, else HIMMEL_WORKER_SESSION_DOC); the console must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
+WORKER_SESSION_DOC="${HIMMEL_WORKER_SESSION_DOC:-${HIMMEL_LEG_DOC:-}}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
@@ -344,7 +344,7 @@ while [ $# -gt 0 ]; do
             GO_FLAG="$2"; shift 2 ;;
         --leg-doc)
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --leg-doc needs a path" >&2; exit 10; fi
-            LEG_DOC="$2"; shift 2 ;;
+            WORKER_SESSION_DOC="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,/^set -uo pipefail/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'
             exit 0 ;;
@@ -2190,13 +2190,13 @@ _jira_close_on_merge() {
     # The brief's `Completes ticket` line binds the merge: a leg cannot widen what the
     # console scoped. The doc is read only when the caller names it; it never adds a transition.
     local opt_in="$JIRA_TRANSITION_OPT_IN" brief_completes=""
-    if [ -n "$LEG_DOC" ]; then
-        if [ -r "$LEG_DOC" ]; then
+    if [ -n "$WORKER_SESSION_DOC" ]; then
+        if [ -r "$WORKER_SESSION_DOC" ]; then
             # Only the console's region above `## Results` binds, and any `no` there wins (sort puts
             # `no` first): a leg appending its own line below Results cannot widen what the console scoped.
-            brief_completes=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$LEG_DOC" | sort | head -n 1)
+            brief_completes=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
         else
-            echo "merge-on-green: cannot read leg doc '$LEG_DOC'; the brief's completes-ticket line is not applied" >&2
+            echo "merge-on-green: cannot read leg doc '$WORKER_SESSION_DOC'; the brief's completes-ticket line is not applied" >&2
         fi
     fi
     if [ "$brief_completes" = "no" ] && _truthy "$opt_in"; then

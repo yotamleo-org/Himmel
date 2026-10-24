@@ -9,7 +9,7 @@
 # opens, and every later tool call writes another, so a session whose LAST row
 # is a prompt and is older than the floor is parked on it.
 #
-# usage: parked-on-prompt.sh [--min MINUTES] [--ledger FILE] LEG_DOC...
+# usage: parked-on-prompt.sh [--min MINUTES] [--ledger FILE] WORKER_SESSION_DOC...
 # output (one line): parked=none | parked=<leg>:<age>m[,<leg>:<age>m...]
 # <leg> is the doc's basename without .md. A leg is matched by the session ids
 # in its doc's frontmatter (`session_ids:`); a doc without any is skipped.

@@ -42,7 +42,7 @@ fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2'"; fi; }
 has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; }
 
-unset HIMMEL_LEG_PROFILE 2>/dev/null || true
+unset HIMMEL_WORKER_SESSION_PROFILE 2>/dev/null || true
 
 # --- the whole line, pinned -------------------------------------------------
 out=$(bash "$BURN" "$FIXTURE"); rc=$?
@@ -62,7 +62,7 @@ has "compaction-rewarm" "$out" "compaction-rewarm=650"
 # env override: cache-read weight 0.1 -> 1 moves cost-eq from 1.6k to 4.8k
 # (4 + 3600*1 + 312.5 + 925 = 4841.5 -> 4.8k) - pins that the weight is
 # actually read from env, not hardcoded.
-out_override=$(LEG_BURN_W_CACHE_READ=1 bash "$BURN" "$FIXTURE")
+out_override=$(WORKER_SESSION_BURN_W_CACHE_READ=1 bash "$BURN" "$FIXTURE")
 has "cache-read weight override changes cost-eq" "$out_override" "cost-eq=4.8k"
 
 # --- --raw prints exact integers, default line untouched ---------------------
@@ -75,13 +75,13 @@ eq "--raw: same line except the four counters are exact integers" "$out_raw" \
 eq "default output matches --raw except the four k-rounded counters" "$out" \
    "leg-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650"
 
-out_raw_env=$(LEG_BURN_RAW=1 bash "$BURN" "$FIXTURE")
-eq "LEG_BURN_RAW=1 env is equivalent to --raw" "$out_raw_env" "$out_raw"
+out_raw_env=$(WORKER_SESSION_BURN_RAW=1 bash "$BURN" "$FIXTURE")
+eq "WORKER_SESSION_BURN_RAW=1 env is equivalent to --raw" "$out_raw_env" "$out_raw"
 
 # --- profile is optional, validated, and always the last field ---------------
-profile_out=$(HIMMEL_LEG_PROFILE=leg-impl bash "$BURN" "$FIXTURE")
+profile_out=$(HIMMEL_WORKER_SESSION_PROFILE=leg-impl bash "$BURN" "$FIXTURE")
 eq "env profile appends only the last field" "$profile_out" "$out profile=leg-impl"
-profile_out=$(HIMMEL_LEG_PROFILE=leg-impl bash "$BURN" --profile design,design-motion "$FIXTURE")
+profile_out=$(HIMMEL_WORKER_SESSION_PROFILE=leg-impl bash "$BURN" --profile design,design-motion "$FIXTURE")
 eq "explicit profile overrides env and accepts a profile list" "$profile_out" "$out profile=design,design-motion"
 profile_out=$(bash "$BURN" --raw --profile leg-impl "$FIXTURE")
 eq "--raw before --profile preserves exact integers" "$profile_out" "$out_raw profile=leg-impl"
@@ -93,11 +93,11 @@ for bad_profile in 'bad profile' 'bad/profile' 'bad=profile' 'bad;profile' ''; d
     bash "$BURN" --profile "$bad_profile" "$FIXTURE" >/dev/null 2>&1; profile_rc=$?
     eq "invalid explicit profile '$bad_profile' exits 2" "$profile_rc" "2"
 done
-HIMMEL_LEG_PROFILE='bad profile' bash "$BURN" "$FIXTURE" >/dev/null 2>&1; profile_rc=$?
+HIMMEL_WORKER_SESSION_PROFILE='bad profile' bash "$BURN" "$FIXTURE" >/dev/null 2>&1; profile_rc=$?
 eq "invalid env profile exits 2" "$profile_rc" "2"
 bash "$BURN" --profile >/dev/null 2>&1; profile_rc=$?
 eq "missing profile value exits 2" "$profile_rc" "2"
-profile_out=$(HIMMEL_LEG_PROFILE='' bash "$BURN" "$FIXTURE")
+profile_out=$(HIMMEL_WORKER_SESSION_PROFILE='' bash "$BURN" "$FIXTURE")
 eq "empty env profile leaves output byte-identical" "$profile_out" "$out"
 
 # --- the dedupe is the point ------------------------------------------------
@@ -114,11 +114,11 @@ has "first-turn is the first call's context" "$out" "first-turn=1.2k"
 # --- session-name resolution ------------------------------------------------
 mkdir -p "$TMP/projects/-some-repo"
 cp "$FIXTURE" "$TMP/projects/-some-repo/fixture-0000.jsonl"
-out2=$(LEG_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" leg-burn-fixture-legN000); rc2=$?
+out2=$(WORKER_SESSION_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" leg-burn-fixture-legN000); rc2=$?
 eq "a bare session name resolves via the custom-title row" "$rc2" "0"
 has "resolved transcript reports the same numbers" "$out2" "calls=4 avg-ctx=963"
 
-out3=$(LEG_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" no-such-leg 2>&1); rc3=$?
+out3=$(WORKER_SESSION_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" no-such-leg 2>&1); rc3=$?
 eq "an unknown session name exits 2" "$rc3" "2"
 has "and says what it searched" "$out3" "no transcript found for session name"
 

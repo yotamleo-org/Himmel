@@ -23,7 +23,7 @@
 # (the RED replay at a fix's parent); default is this checkout.
 set -uo pipefail
 
-unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_CONSOLE_LEG HIMMEL_LEG_DOC HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME HIMMEL_REPO LEG_JIRA_CLI
+unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_CONSOLE_LEG HIMMEL_WORKER_SESSION_DOC HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME HIMMEL_REPO WORKER_SESSION_JIRA_CLI
 export JIRA_PROJECT_KEY=HIMMEL CHECK_CI_CACHE=0
 # The pre-merge static re-check fetches from the anchor's origin; this suite's fixture anchor is not a git repo.
 export MERGE_STATIC_RECHECK=0
@@ -274,7 +274,7 @@ PATH="$CC_DIR:$PATH" GH_STUB_MODE=cr-completed GH_STUB_ARGS="$CC_DIR/args" GH_ST
     GH_BUDGET_PREFLIGHT=0 GH_BUDGET_JITTER_MAX=0 \
     MERGE_BLOCK_ALERT_DIR="$CC_DIR/alert-sentinels" MERGE_BLOCK_ALERT_CMD=true TELEGRAM_ACCESS_PATH="$CC_DIR/access.json" \
     MERGE_WATCH_ALERT_BRIDGE_ROOT="$CC_DIR/bridge" \
-    LEG_JIRA_STATUS=1 LEG_JIRA_CLI="$TMP/jira-stub" JIRA_STATE="$TMP/state" TICKET_STATUS_STATE_DIR="$TMP/ts" \
+    WORKER_SESSION_JIRA_STATUS=1 WORKER_SESSION_JIRA_CLI="$TMP/jira-stub" JIRA_STATE="$TMP/state" TICKET_STATUS_STATE_DIR="$TMP/ts" \
     "$_TIMEOUT_BIN" -k 5 120 bash "$CHECK_CI" --grace 30 >"$CC_DIR/out" 2>"$CC_DIR/err"
 cc_rc=$?
 if [ "$cc_rc" -eq 0 ]; then pass; else fail "4 check-ci exit 0 expected, got $cc_rc (err: $(head -c 600 "$CC_DIR/err"))"; fi

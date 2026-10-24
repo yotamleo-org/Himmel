@@ -337,7 +337,7 @@ ledger's `meta.tool_health`, with the session's first timestamp in
 `meta.started_ts`. No new ledger or writer is introduced. The recorder stamps
 the persisted digest and its tool rows with launch provenance: explicit
 `--lane`, else the assigned leg's title in the leg doc, else the extractor's
-`LEG_LANE`; missing provenance is `unknown`. Canonical environment lanes are
+`WORKER_SESSION_LANE`; missing provenance is `unknown`. Canonical environment lanes are
 native, claudex, openrouter, cloud and unknown; the recorder normalizes the
 historical codex label in explicit recorder input or document titles to claudex.
 Backfill never borrows its own launcher's lane or guesses from a model.
@@ -359,14 +359,14 @@ The config-ui Tool health page and console board share this reader. The
 page shows 7/30-day trends, top classes and session/tool-call-id drill-down,
 plus per-lane comparisons and deltas relative to native. All rate math stays
 on the server; the page is read-only. Overrides are
-`HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_LEG_FAILURES_LEDGER`.
+`HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
 ## leg_ledger: digests into the leg ledgers
 
 `leg-digest/leg_ledger.py` writes one digest as:
 
 1. one `leg-failures` row per digest failures row
-   (`$HIMMEL_LEG_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
+   (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
    row carries closed-list categories only; unknown keys are refused, so no
    journal text can ride in;
 2. one eval-runs row, `eval: leg-trajectory`, `run_id` = the session uuid,

@@ -215,10 +215,10 @@ export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
 # fails= ~<k> reads the digest step's skips.jsonl under this dir.
-export LEG_DIGEST_STATE_DIR="$W/leg-digest"
+export WORKER_SESSION_DIGEST_STATE_DIR="$W/leg-digest"
 printf '#!/bin/sh\necho off\n' > "$W/vmrun-probe.sh"
 export HIMMEL_VMRUN_PROBE="$W/vmrun-probe.sh"
-mkdir -p "$LEG_DIGEST_STATE_DIR"
+mkdir -p "$WORKER_SESSION_DIGEST_STATE_DIR"
 # flakes= reads the suite-flake ledger for this repo id; never the real ~/.himmel one.
 export SUITE_FLAKE_LEDGER="$W/suite-flake.jsonl"
 export SUITE_FLAKE_REPO_ID=tick-test-repo
@@ -2282,7 +2282,7 @@ contains 'verbose labels metered balance' \
 contains 'OpenRouter tick bank is the lane verdict, not subscription usage' \
   "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' bank=openrouter:SKIPPED-BANK '
 contains 'OpenRouter leg marker selects lane verdict' \
-  "$(CADENCE_BANK_LANE='' LEG_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' bank=openrouter:BANK-UNKNOWN '
+  "$(CADENCE_BANK_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' bank=openrouter:BANK-UNKNOWN '
 contains 'OpenRouter funded verdict surfaces without changing raw balance' \
   "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' bank=openrouter:PROCEED '
 
@@ -2604,13 +2604,13 @@ same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(f
     printf '%s\n' '{"ts":"2026-10-07T03:11:00Z","doc":"A.md","reason":"no-chain"}'
     printf '%s\n' '{"ts":"2026-10-07T03:12:00Z","doc":"B.md","reason":"no-resume-cwd"}'
     printf '%s\n' '{"ts":"2026-10-07T02:00:00Z","doc":"C.md","reason":"no-chain"}'
-} > "$LEG_DIGEST_STATE_DIR/skips.jsonl"
+} > "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"
 same 'fails= ~<k> counts docs whose digest was skipped this shift (HIMMEL-4786)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1~2'
 rm -f "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'fails=none~<k> when skips are the only signal (HIMMEL-4786)' "$(fails_of "$d4670")" 'none~2'
-rm -f "$LEG_DIGEST_STATE_DIR/skips.jsonl"; mkdir -p "$LEG_DIGEST_STATE_DIR/skips.jsonl"
+rm -f "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"; mkdir -p "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"
 same 'fails=? when the skips log is unreadable (HIMMEL-4786)' "$(fails_of "$d4670")" '?'
-rmdir "$LEG_DIGEST_STATE_DIR/skips.jsonl"
+rmdir "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"
 rm -f "$HIMMEL_LEG_FAILURES_LEDGER" "$HIMMEL_EVAL_RUNS_LEDGER" "$HIMMEL_FAILURE_ROUTES_LOG"
 
 # --- flakes=<rows>/<suites>@<top-suite>*<k> ---------------------------
@@ -2969,7 +2969,7 @@ rm -rf "$RMD" "$W/rm-gh.calls" "$W/rm-gh.pwd"
 # its decisions: line over DECISIONS_BUDGET_BYTES, prints an ACTION line.
 # The decisions: text and the HANDOFF note are copied from live console docs.
 d6603="$W/handover/HIMMEL-6603-console.md"
-printf '%s\n' '# console' '' '## Live state' 'decisions: OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.' > "$d6603"
+printf '%s\n' '# console' '' '## Live state' 'decisions: OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; WORKER_SESSION_EFFORT high on claudex legs.' > "$d6603"
 printf '%s\n' '> HANDOFF over budget: 46253 bytes (limit 12000); Live state 41637 bytes, wrapped-PR list 198 bytes — tighten the Live state' > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
 hb_small="$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)"
 not_contains 'a HANDOFF and decisions: line under their budgets print no ACTION (HIMMEL-6603)' "$hb_small" 'over-budget'
@@ -2989,7 +2989,7 @@ contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECI
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"
 
 # --- effort=MISMATCH:<leg> ----------------------------------------------------
-# The asked effort is the LEG_EFFORT line in the launch-<label>.sh the console
+# The asked effort is the WORKER_SESSION_EFFORT line in the launch-<label>.sh the console
 # wrote beside the leg doc; the live effort is the effort= token on the leg's
 # newest LIVE bullet. A leg asked for high that reports medium is the 09-23 to
 # 10-20 incident this field exists to show.
@@ -2999,7 +2999,7 @@ ef_none="$W/handover/HIMMEL-6588-N79-effort.md"
 printf '%s\n' '# leg' '- 09:00 LIVE — started effort=medium model=claude-sonnet-5-5' > "$ef_doc"
 printf '%s\n' '# leg' '- 09:00 LIVE — started effort=high model=claude-sonnet-5-5' > "$ef_ok"
 printf '%s\n' '# leg' '- 09:00 LIVE — started, no effort token' > "$ef_none"
-for ef_l in N77 N78 N79; do printf '%s\n' '#!/usr/bin/env bash' 'export LEG_EFFORT=high' > "$W/handover/launch-$ef_l.sh"; done
+for ef_l in N77 N78 N79; do printf '%s\n' '#!/usr/bin/env bash' 'export WORKER_SESSION_EFFORT=high' > "$W/handover/launch-$ef_l.sh"; done
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N77","lockless":true},{"doc":"%s","label":"N78","lockless":true},{"doc":"%s","label":"N79","lockless":true}]}\n' "$ef_doc" "$ef_ok" "$ef_none" > "$fm"
 ef_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc=$?
 if [ "$ef_rc" -eq 0 ]; then pass 'the effort fixture tick exits 0'; else fail "the effort fixture tick exits 0 (rc=$ef_rc)"; fi

@@ -40,9 +40,9 @@ W="$(mktemp -d "${TMPDIR:-/tmp}/cwl-test.XXXXXX")" || { echo "FAIL: mktemp -d fa
 trap 'rm -rf "$W"' EXIT
 # the digest step writes ledgers - never the live ~/.himmel
 # ones, never the live ~/.claude/sessions, and never a 15 s settle wait.
-export HIMMEL_LEG_FAILURES_LEDGER="$W/never-leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/never-eval-runs.jsonl"
-export LEG_DIGEST_STATE_DIR="$W/never-digest-state" CLOSE_WRAPPED_LEG_SESSIONS_DIR="$W/sessions"
-export LEG_DIGEST_SETTLE_MAX=0 LEG_DIGEST_SETTLE_QUIET=0
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/never-leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/never-eval-runs.jsonl"
+export WORKER_SESSION_DIGEST_STATE_DIR="$W/never-digest-state" CLOSE_WRAPPED_LEG_SESSIONS_DIR="$W/sessions"
+export WORKER_SESSION_DIGEST_SETTLE_MAX=0 WORKER_SESSION_DIGEST_SETTLE_QUIET=0
 fails=0
 check()    { if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); fi; }
 contains() { if grep -q -F -e "$3" <<< "$2"; then echo "ok - $1"; else echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); fi; }
@@ -799,14 +799,14 @@ check "ledger-class: profile unknown without front matter" "$(jq -r .profile "$L
 LC_BAD="$W/bin/leg-burn-broken.sh"
 printf '#!/usr/bin/env bash\necho boom >&2\nexit 2\n' > "$LC_BAD"; chmod +x "$LC_BAD"
 rm -f "$LC_LEDGER"; reset_calls
-rc=0; out=$(LEG_BURN_BIN="$LC_BAD" CWL_PROJECTS_DIR="$LC_PROJ" run "$DOC" 2>&1) || rc=$?
+rc=0; out=$(WORKER_SESSION_BURN_BIN="$LC_BAD" CWL_PROJECTS_DIR="$LC_PROJ" run "$DOC" 2>&1) || rc=$?
 check "ledger-fail: close still rc 0 when leg-burn fails" "$rc" "0"
 contains "ledger-fail: WARNs" "$out" "WARN"
 exact_count "ledger-fail: TERM still sent" "$(cat "$CALLS")" "kill -TERM 210" "1"
 check "ledger-fail: no row written" "$([ -e "$LC_LEDGER" ] && { wc -l < "$LC_LEDGER" | tr -d ' '; } || echo 0)" "0"
 # an unwritable ledger location also only WARNs
 reset_calls
-rc=0; out=$(LEG_COST_LEDGER="/proc/no-such-dir/x.jsonl" CWL_PROJECTS_DIR="$LC_PROJ" run "$DOC" 2>&1) || rc=$?
+rc=0; out=$(WORKER_SESSION_COST_LEDGER="/proc/no-such-dir/x.jsonl" CWL_PROJECTS_DIR="$LC_PROJ" run "$DOC" 2>&1) || rc=$?
 check "ledger-unwritable: close still rc 0" "$rc" "0"
 contains "ledger-unwritable: WARNs" "$out" "WARN"
 SESSION_NAME="$SESSION_SAVE"; DOC="$DOC_SAVE"
@@ -909,7 +909,7 @@ DG_PROJ="$W/dg-projects"; mkdir -p "$DG_PROJ/-w" "$W/sessions"
   sed "s#\"sessionId\"#\"cwd\": \"$W/dg-cwd\", \"sessionId\"#" "$LD/fixtures/classes.jsonl"; } > "$DG_PROJ/-w/$DG_SID.jsonl"
 DG_N=$(bun "$LD/leg-digest.ts" --transcript "$DG_PROJ/-w/$DG_SID.jsonl" 2>/dev/null | jq '.failures | length')
 dg_ledgers() { # dg_ledgers <tag> - point the step at a fresh set of scratch ledgers
-    export HIMMEL_LEG_FAILURES_LEDGER="$W/dg-$1/fail.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/dg-$1/eval.jsonl" LEG_DIGEST_STATE_DIR="$W/dg-$1/state"
+    export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/dg-$1/fail.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/dg-$1/eval.jsonl" WORKER_SESSION_DIGEST_STATE_DIR="$W/dg-$1/state"
     mkdir -p "$W/dg-$1"
 }
 dg_rows() { if [ -f "$1" ]; then grep -c . "$1"; else echo 0; fi; }
@@ -917,7 +917,7 @@ dg_close() { # dg_close <sessions-file sid> - one close of pid 210, its proc ent
     rm -rf "$W/proc"; mkdir -p "$W/proc"; mkcmdline 210 claude -n "$SESSION_NAME" work; pgrep_x_stub 210
     printf '{"pid":210,"sessionId":"%s"}\n' "$1" > "$W/sessions/210.json"
     reset_calls
-    CWL_KILL_REMOVES_PROC=1 LEG_COST_LEDGER="$W/dg-cost.jsonl" CWL_PROJECTS_DIR="$DG_PROJ" run "$DOC" 2>&1
+    CWL_KILL_REMOVES_PROC=1 WORKER_SESSION_COST_LEDGER="$W/dg-cost.jsonl" CWL_PROJECTS_DIR="$DG_PROJ" run "$DOC" 2>&1
 }
 mkdoc "- 10:00 WRAPPED - done" "- 09:50 READY - PR 4321 abc GREEN"
 check "digest setup: the fixture digest has failure rows" "$([ "${DG_N:-0}" -gt 5 ] && echo yes)" "yes"
@@ -929,7 +929,7 @@ rc=0; out_a=$(dg_close "$DG_SID") || rc=$?
 check "digest-a: close rc 0" "$rc" "0"
 contains "digest-a: one digest=ok line" "$out_a" "digest=ok fails="
 check "digest-a: one leg-trajectory eval-runs row for the session" "$(jq -r 'select(.eval == "leg-trajectory") | .run_id' "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "$DG_SID"
-check "digest-a: one leg-failures row per digest class" "$(dg_rows "$HIMMEL_LEG_FAILURES_LEDGER")" "$DG_N"
+check "digest-a: one leg-failures row per digest class" "$(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "$DG_N"
 check "digest-a: the row names the leg, ticket and PR from the doc" "$(jq -r '"\(.meta.leg) \(.meta.ticket) \(.meta.pr)"' "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "N1 HIMMEL-9 4321"
 check "digest-d: the leg doc is byte-identical" "$(cksum < "$DOC")" "$doc_sum"
 check "digest-d: its tail is still WRAPPED" "$(. "$HERE/../../lib/leg-tail-status.sh"; leg_tail_status "$DOC")" "WRAPPED"
@@ -938,10 +938,10 @@ check "digest-d: its tail is still WRAPPED" "$(. "$HERE/../../lib/leg-tail-statu
 rc=0; out_c=$(dg_close "$DG_SID") || rc=$?
 contains "digest-c: the second close still reports digest=ok" "$out_c" "digest=ok fails="
 check "digest-c: the second close adds no eval-runs row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER")" "1"
-check "digest-c: the second close adds no leg-failures row" "$(dg_rows "$HIMMEL_LEG_FAILURES_LEDGER")" "$DG_N"
-bf_out=$(python3 "$LD/leg_ledger.py" backfill --since 2026-10-01 --projects "$DG_PROJ" --state-dir "$LEG_DIGEST_STATE_DIR" 2>&1)
+check "digest-c: the second close adds no leg-failures row" "$(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "$DG_N"
+bf_out=$(python3 "$LD/leg_ledger.py" backfill --since 2026-10-01 --projects "$DG_PROJ" --state-dir "$WORKER_SESSION_DIGEST_STATE_DIR" 2>&1)
 contains "digest-c: backfill sees the closed session as already done" "$bf_out" "already=1 failures+=0 eval+=0"
-check "digest-c: backfill adds no row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER") $(dg_rows "$HIMMEL_LEG_FAILURES_LEDGER")" "1 $DG_N"
+check "digest-c: backfill adds no row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER") $(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "1 $DG_N"
 
 # 32 (b) + (f): a digest crash, timeout or missing journal changes only the
 # digest= line - the rc and every other line match a good close in the same
@@ -957,7 +957,7 @@ for v in crash:"$DG_CRASH" timeout:"$DG_HANG" bad-json:"$DG_JUNK" no-journal:; d
     reason="${v%%:*}"; bin="${v#*:}"; sid="$DG_SID"
     [ "$reason" = no-journal ] && sid="$DG_MISSING"
     dg_ledgers "b-$reason"
-    rc=0; out_v=$(LEG_DIGEST_BIN="$bin" LEG_DIGEST_TIMEOUT=1 dg_close "$sid") || rc=$?
+    rc=0; out_v=$(WORKER_SESSION_DIGEST_BIN="$bin" WORKER_SESSION_DIGEST_TIMEOUT=1 dg_close "$sid") || rc=$?
     check "digest-b/$reason: close rc unchanged" "$rc" "$rc_good"
     check "digest-b/$reason: every other output line byte-identical" "$(grep -v '^digest=' <<< "$out_v" | sed -e "s/$sid/SID/g" -e "s/$DG_SID/SID/g")" "$(grep -v '^digest=' <<< "$out_good" | sed "s/$DG_SID/SID/g")"
     exact_count "digest-b/$reason: the digest= line says why" "$out_v" "digest=failed:$reason" "1"
@@ -965,7 +965,7 @@ for v in crash:"$DG_CRASH" timeout:"$DG_HANG" bad-json:"$DG_JUNK" no-journal:; d
 done
 # a step that cannot run at all still costs only its own line
 dg_ledgers b-step
-rc=0; out_v=$(LEG_DIGEST_STEP_BIN="$W/no-such-step.sh" dg_close "$DG_SID") || rc=$?
+rc=0; out_v=$(WORKER_SESSION_DIGEST_STEP_BIN="$W/no-such-step.sh" dg_close "$DG_SID") || rc=$?
 check "digest-b/step: close rc unchanged" "$rc" "$rc_good"
 check "digest-b/step: every other output line byte-identical" "$(grep -v '^digest=' <<< "$out_v")" "$(grep -v '^digest=' <<< "$out_good")"
 contains "digest-b/step: reported" "$out_v" "digest=failed:step"
@@ -994,27 +994,27 @@ bash "$STEP" --session "$DG_SID" --doc "$DOC" --projects "$DG_PROJ" > "$W/race2.
 p2=$!
 wait "$p1" "$p2"
 check "digest-e/race: one eval-runs row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER")" "1"
-check "digest-e/race: one set of leg-failures rows" "$(dg_rows "$HIMMEL_LEG_FAILURES_LEDGER")" "$DG_N"
-cp "$HIMMEL_LEG_FAILURES_LEDGER" "$W/ref-fail.jsonl"; cp "$HIMMEL_EVAL_RUNS_LEDGER" "$W/ref-eval.jsonl"
+check "digest-e/race: one set of leg-failures rows" "$(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "$DG_N"
+cp "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$W/ref-fail.jsonl"; cp "$HIMMEL_EVAL_RUNS_LEDGER" "$W/ref-eval.jsonl"
 # a crash between each pair of writes (failures | eval row | marker) heals to one set
 for cut in mid-failures after-failures after-eval; do
     dg_ledgers "e-$cut"
     case "$cut" in
-        mid-failures) head -n 3 "$W/ref-fail.jsonl" > "$HIMMEL_LEG_FAILURES_LEDGER" ;;
-        after-failures) cp "$W/ref-fail.jsonl" "$HIMMEL_LEG_FAILURES_LEDGER" ;;
-        after-eval) cp "$W/ref-fail.jsonl" "$HIMMEL_LEG_FAILURES_LEDGER"; cp "$W/ref-eval.jsonl" "$HIMMEL_EVAL_RUNS_LEDGER" ;;
+        mid-failures) head -n 3 "$W/ref-fail.jsonl" > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" ;;
+        after-failures) cp "$W/ref-fail.jsonl" "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" ;;
+        after-eval) cp "$W/ref-fail.jsonl" "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"; cp "$W/ref-eval.jsonl" "$HIMMEL_EVAL_RUNS_LEDGER" ;;
     esac
     out_e=$(bash "$STEP" --session "$DG_SID" --doc "$DOC" --projects "$DG_PROJ" 2>&1)
     contains "digest-e/$cut: the re-run reports ok" "$out_e" "digest=ok"
     check "digest-e/$cut: one eval-runs row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER")" "1"
-    check "digest-e/$cut: one set of leg-failures rows" "$(jq -r '"\(.agent.id) \(.class)"' "$HIMMEL_LEG_FAILURES_LEDGER" | sort -u | grep -c .) $(dg_rows "$HIMMEL_LEG_FAILURES_LEDGER")" "$DG_N $DG_N"
-    check "digest-e/$cut: the marker is written" "$([ -f "$LEG_DIGEST_STATE_DIR/$DG_SID.json" ] && echo yes)" "yes"
+    check "digest-e/$cut: one set of leg-failures rows" "$(jq -r '"\(.agent.id) \(.class)"' "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" | sort -u | grep -c .) $(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "$DG_N $DG_N"
+    check "digest-e/$cut: the marker is written" "$([ -f "$WORKER_SESSION_DIGEST_STATE_DIR/$DG_SID.json" ] && echo yes)" "yes"
 done
 
 # 34: a session that never settles is recorded partial, never ok
 dg_ledgers partial
 mkdir -p "$W/proc/999"
-out_p=$(CLAUDE_SESSIONS_PROC="$W/proc" LEG_DIGEST_SETTLE_MAX=0 bash "$STEP" --session "$DG_SID" --doc "$DOC" --projects "$DG_PROJ" --pid 999 2>&1)
+out_p=$(CLAUDE_SESSIONS_PROC="$W/proc" WORKER_SESSION_DIGEST_SETTLE_MAX=0 bash "$STEP" --session "$DG_SID" --doc "$DOC" --projects "$DG_PROJ" --pid 999 2>&1)
 contains "digest-partial: the line says partial" "$out_p" "digest=partial fails="
 check "digest-partial: the row is partial" "$(jq -r .status "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "partial"
 rm -rf "$W/proc/999"
@@ -1080,7 +1080,7 @@ out_id=$(bash "$STEP" --doc "$ID_DOC" --projects "$DG_PROJ" 2>&1)
 contains "digest-ids: a recorded id is digested with no resume_cwd and no name match" "$out_id" "$DG_SID digest=ok"
 contains "digest-ids: a recorded id with no journal says so" "$out_id" "$DG_MISSING digest=skipped:no-journal"
 check "digest-ids: one eval-runs row, for the recorded id" "$(jq -r .run_id "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "$DG_SID"
-check "digest-ids: a digested leg logs no skip" "$(dg_rows "$LEG_DIGEST_STATE_DIR/skips.jsonl")" "0"
+check "digest-ids: a digested leg logs no skip" "$(dg_rows "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl")" "0"
 # a doc launched before the ids existed and relaunched
 # after records only the relaunch - its earlier chain is still searched, and a
 # session both ways is digested once.
@@ -1102,8 +1102,8 @@ NOFM_DOC="$W/HIMMEL-9-N2-nofm-2026-10-06.md"
 printf -- '# leg\n## Results\n- 11:00 WRAPPED - done\n' > "$NOFM_DOC"
 out_id=$(bash "$STEP" --doc "$NOFM_DOC" --projects "$DG_PROJ" 2>&1)
 contains "digest-skips: no ids and no resume_cwd" "$out_id" "digest=skipped:no-resume-cwd"
-check "digest-skips: each skip is logged with its doc and reason" "$(jq -r '"\(.doc) \(.reason)"' "$LEG_DIGEST_STATE_DIR/skips.jsonl" 2>/dev/null | tr '\n' ';')" "$(basename "$ID_DOC") no-journal;$(basename "$NOFM_DOC") no-resume-cwd;"
-check "digest-skips: rows carry a UTC ts" "$(jq -r .ts "$LEG_DIGEST_STATE_DIR/skips.jsonl" 2>/dev/null | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "2"
+check "digest-skips: each skip is logged with its doc and reason" "$(jq -r '"\(.doc) \(.reason)"' "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl" 2>/dev/null | tr '\n' ';')" "$(basename "$ID_DOC") no-journal;$(basename "$NOFM_DOC") no-resume-cwd;"
+check "digest-skips: rows carry a UTC ts" "$(jq -r .ts "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl" 2>/dev/null | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "2"
 check "digest: the step spawns no model CLI" "$(grep -cE '(^|[^-])\b(claude|codex|gemini) +(-p|--print|--bg|exec)' "$STEP")" "0"
 
 # --- 25. --console: close a wrapped PREDECESSOR console --------
@@ -1179,7 +1179,7 @@ mkcmdline 240 claude -n "$SESSION_NAME" work
 pgrep_x_stub 230 231 240
 lsa_run() {
     CWL_LIVE_SUBAGENTS_BIN="$HERE/live-subagents.sh" CWL_PROJECTS_DIR="$LSA_PROJ" \
-        LEG_DIGEST_STEP_BIN="$W/no-such-digest-step.sh" run "$@"
+        WORKER_SESSION_DIGEST_STEP_BIN="$W/no-such-digest-step.sh" run "$@"
 }
 
 reset_calls
@@ -1237,7 +1237,7 @@ printf 'HOME=%s\0CLAUDE_CONFIG_DIR=%s\0' "$CX_HOME" "$CX_CFG" > "$W/proc/240/env
 mkdoc "- 10:00 WRAPPED - done"
 reset_calls
 rc=0; out=$(HOME="$CX_HOME" CLOSE_WRAPPED_LEG_SESSIONS_DIR="" CWL_PROJECTS_DIR="" \
-    CWL_LIVE_SUBAGENTS_BIN="$HERE/live-subagents.sh" LEG_DIGEST_STEP_BIN="$W/no-such-digest-step.sh" run "$DOC" 2>&1) || rc=$?
+    CWL_LIVE_SUBAGENTS_BIN="$HERE/live-subagents.sh" WORKER_SESSION_DIGEST_STEP_BIN="$W/no-such-digest-step.sh" run "$DOC" 2>&1) || rc=$?
 check "claudex: session id + projects read from the leg's own CLAUDE_CONFIG_DIR -> rc 0" "$rc" "0"
 exact_count "claudex: TERM sent" "$(cat "$CALLS")" "kill -TERM 240" "1"
 not_contains "claudex: no 'no usable session id'" "$out" "no usable session id"

@@ -340,7 +340,7 @@ for supplied_profile in leg-impl design,design-motion '' 'bad profile' 'bad/prof
     (
         cd "$REPO" || exit 99
         unset CLAUDE_PID
-        HIMMEL_LEG_PROFILE="$supplied_profile" CLAUDE_CODE_SESSION_ID="$FAKE_SID" CLAUDE_CONFIG_DIR="$FAKE_CLAUDE_HOME" \
+        HIMMEL_WORKER_SESSION_PROFILE="$supplied_profile" CLAUDE_CODE_SESSION_ID="$FAKE_SID" CLAUDE_CONFIG_DIR="$FAKE_CLAUDE_HOME" \
             FORGE=github CR_APP=0 GH_CMD="$GH_STUB" ARGV_LOG="$ARGV_LOG" \
             HEAD_SHA_STUB="$HEAD_SHA" JIRA_PROJECT_KEY=HIMMEL \
             bash "$SUT" "$TITLE_FILE" "$NO_BURN_BODY"
@@ -396,8 +396,8 @@ assert_eq "jira-wired open keeps the one-line success contract" \
 assert_eq "PR open fires a pr-open event for the title's ticket" \
     "HIMMEL-3031 --event pr-open --pr 9 --head $(git -C "$REPO" rev-parse HEAD)" "$(cat "$JIRA_LOG")"
 : > "$JIRA_LOG"
-LEG_JIRA_STATUS=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null
-assert_eq "LEG_JIRA_STATUS=0 makes no Jira call" "0" "$(wc -c < "$JIRA_LOG" | tr -d ' ')"
+WORKER_SESSION_JIRA_STATUS=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null
+assert_eq "WORKER_SESSION_JIRA_STATUS=0 makes no Jira call" "0" "$(wc -c < "$JIRA_LOG" | tr -d ' ')"
 
 echo
 echo "===================================="

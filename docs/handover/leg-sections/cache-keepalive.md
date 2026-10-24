@@ -13,7 +13,7 @@ about 20x the cost of a warm turn. So before you end a turn while you still hold
 the lock, do ONE of these:
 
 1. **The wait is bounded: arm a wait that returns within 50 minutes**
-   (`HIMMEL_LEG_CACHE_KEEPALIVE_SECS`, default 3000), with Bash
+   (`HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS`, default 3000), with Bash
    `run_in_background`, and re-arm it on each wake until the wait ends:
    - CI: `bash scripts/check-ci.sh <pr> --max-wait 3000`
    - a condition: `timeout 3000 bash -c 'until <condition>; do sleep 60; done'`

@@ -28,7 +28,7 @@ const MINI = {
 
 // Removing an opt-in/rule loses a deterministic gate permission;
 // widening a rule must fail registry load before any settings reach a child.
-const LEG_PROFILES = ['lane-impl', 'leg-impl', 'leg-bus', 'lane-review', 'lane-content', 'console-relay'];
+const WORKER_SESSION_PROFILES = ['lane-impl', 'leg-impl', 'leg-bus', 'lane-review', 'lane-content', 'console-relay'];
 const GATE_RULES = [
   'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)',
   // Step 0's own invocation of pr-check-context.sh, the
@@ -101,7 +101,7 @@ const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-
 const busAllow = (name) => (BUS_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
 const expectedAllow = (name) => [...REG.gateAllow, ...busAllow(name)];
 
-for (const name of LEG_PROFILES) {
+for (const name of WORKER_SESSION_PROFILES) {
   test(`${name} emits every registry gateAllow rule`, () => {
     const settings = resolveProfile(REG, name);
     assert.ok(Array.isArray(settings.permissions?.allow), 'missing permissions.allow');
@@ -112,7 +112,7 @@ for (const name of LEG_PROFILES) {
 }
 for (const rule of [...GATE_RULES, ...SUITE_RULES]) {
   test(`each leg emits the literal gate rule: ${rule}`, () => {
-    for (const name of LEG_PROFILES) {
+    for (const name of WORKER_SESSION_PROFILES) {
       assert.ok(resolveProfile(REG, name).permissions?.allow.includes(rule), `${name}: missing ${rule}`);
     }
   });
@@ -149,7 +149,7 @@ for (const name of ['operator', 'user', 'bare']) {
 test('leg settings leave pushes on the classifier path', () => {
   // A trailing wildcard also covers options such as --no-verify; rejecting
   // that token in a rule string does not constrain the matched command.
-  for (const name of LEG_PROFILES) {
+  for (const name of WORKER_SESSION_PROFILES) {
     assert.ok(!resolveProfile(REG, name).permissions.allow.some((rule) => rule.startsWith('Bash(git push')));
   }
 });
@@ -1283,7 +1283,7 @@ test('golden baseline — resolveProfile output for shipped profiles is pinned (
   const actual = {};
   for (const name of GOLDEN_PROFILES) {
     actual[name] = resolveProfile(registry, name, { installed: [] });
-    if (LEG_PROFILES.includes(name)) {
+    if (WORKER_SESSION_PROFILES.includes(name)) {
       // The leg profiles deliberately add this field. Pin its exact rule set
       // separately, keeping the historical plugin/output fixture unchanged.
       assert.deepEqual(actual[name].permissions, { allow: actual[name].permissions.allow });
@@ -1318,7 +1318,7 @@ test('console-relay resolves via resolveProfileByName/resolveProfile to the floo
 
 // ── console-judge ─────────────────────────────────────────────
 // Plugin-less profile for a judge session ("the judge is a leg", design
-// §3.2), launched via headed-arm-leg.sh --judge. Not in LEG_PROFILES: unlike
+// §3.2), launched via headed-arm-leg.sh --judge. Not in WORKER_SESSION_PROFILES: unlike
 // console-relay it carries no gateAllow — a judge's gate-shaped calls take
 // the ordinary classifier path — so it emits no permissions.allow at all.
 test('console-judge resolves via resolveProfileByName/resolveProfile to the floor plus qmd, no gateAllow', () => {
@@ -1495,7 +1495,7 @@ const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/lanes/leg-pr-open.sh:*)',
 ];
 
-for (const name of LEG_PROFILES) {
+for (const name of WORKER_SESSION_PROFILES) {
   test(`HIMMEL-3783: ${name} with an anchor adds exactly every ship-step anchor twin, nothing more`, () => {
     const { permissions } = resolveProfile(REG, name, { anchor: ANCHOR, installed: [] });
     assert.deepEqual(permissions.allow, [...REG.gateAllow, ...SHIP_STEP_ANCHOR_RULES, ...busAllow(name)]);

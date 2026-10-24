@@ -79,7 +79,7 @@ LAUNCH_INTENT="${CADENCE_USAGE_LAUNCH:-}"
 # codex weekly bank instead (scripts/lanes/usage-status.ts's "claudex" row) —
 # a claudex leg must never be refused by the Claude subscription bank, a
 # different bucket entirely.
-LANE="${CADENCE_USAGE_LANE:-${LEG_LANE:-native}}"
+LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}"
 
 is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) return 0 ;; *) return 1 ;; esac; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
@@ -200,7 +200,7 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 _fleet_lane_of() {
   if tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -x 'CLAUDEX_LANE_OK=1' >/dev/null; then
     echo claudex
-  elif tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -x 'LEG_LANE=openrouter' >/dev/null; then
+  elif tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -xE 'WORKER_SESSION_LANE=openrouter|LEG_LANE=openrouter' >/dev/null; then
     echo openrouter
   else
     echo native

@@ -13,15 +13,15 @@
 # headed-arm.sh's own --context handling, which this wrapper reuses rather
 # than forking). What was missing was a fail-closed PIN: the resolved leg argv
 # must carry the cost-driving `--autocompact 200000`, not merely lack a [1m]
-# model suffix. LEG_CONTEXT=1m therefore refuses with an actionable exit 2.
+# model suffix. WORKER_SESSION_CONTEXT=1m therefore refuses with an actionable exit 2.
 # The raw model string is still headed-arm.sh's concern: a caller handing this
 # wrapper an already-[1m]-suffixed model gets it forwarded unchanged, and
 # headed-arm.sh strips it under standard mode (test-headed-arm-leg.sh asserts
 # this end-to-end).
 #
 # Folds the two prior ad-hoc kit-local copies (headed-arm-leg.sh,
-# headed-arm-leg-cwd.sh - identical except an LEG_REPO override) into ONE
-# versioned script: LEG_REPO now maps onto headed-arm.sh's own
+# headed-arm-leg-cwd.sh - identical except an WORKER_SESSION_REPO override) into ONE
+# versioned script: WORKER_SESSION_REPO now maps onto headed-arm.sh's own
 # HEADED_ARM_REPO seam instead of a second, parallel repo-root variable.
 #
 # Usage: headed-arm-leg.sh [--dry-run] [--fleet <manifest>] <session-name> <handover-doc> \
@@ -47,7 +47,7 @@
 # a REPEAT, or an unreadable record launches. Exit 14 joins 2 usage, 10 fleet
 # cap, 11 bank exhausted, 12 macOS whitespace.
 #
-# --headless (or LEG_HEADLESS=1 in the launching shell, the flag
+# --headless (or WORKER_SESSION_HEADLESS=1 in the launching shell, the flag
 # wins): the same launch with no konsole - the leg runs as a Claude Code
 # background session (headed-arm.sh adds --bg), and its env goes into the
 # per-leg settings file because the session inherits the claude daemon's env,
@@ -63,9 +63,9 @@
 # itself (konsole is Linux/KDE-only) - no .ps1 twin; the Windows station
 # arms through arm-resume.sh's schtasks backend instead.
 #
-# Seams: HEADED_ARM_LEG_TARGET overrides the headed-arm.sh path this wrapper
+# Seams: HEADED_ARM_WORKER_TARGET overrides the headed-arm.sh path this wrapper
 # execs (default: ../headed-arm.sh next to this script) so a suite can point
-# it at a fixture without touching PATH. HEADED_ARM_LEG_PREFLIGHT overrides
+# it at a fixture without touching PATH. HEADED_ARM_WORKER_PREFLIGHT overrides
 # the scripts/lib/bank-preflight.sh path the fleet-size cap below calls
 # (default: ../../lib/bank-preflight.sh next to this script), same reason.
 # HEADED_ARM_UNAME overrides the platform leg_propagate_env's whitespace
@@ -90,7 +90,7 @@
 #
 # --lane: native (default), claudex,
 # openrouter or deepseek (see lane_registry below; glm refuses).
-# OpenRouter uses HEADED_ARM_LEG_OPENROUTER_BIN (default ../../claude-openrouter),
+# OpenRouter uses HEADED_ARM_WORKER_OPENROUTER_BIN (default ../../claude-openrouter),
 # the same recorder/profile shim, a pinned Sonnet 5.5 slug and LEG_LANE=openrouter.
 # Its backend credit floor replaces subscription-bank admission, not fleet admission.
 # --lane claudex (or
@@ -98,7 +98,7 @@
 # given) routes the leg through scripts/claude-codex on the codex weekly
 # bank instead of the Claude subscription bank: it routes headed-arm.sh's
 # HEADED_ARM_LAUNCHER through the preface shim to the claudex binary (seam:
-# HEADED_ARM_LEG_CLAUDEX_BIN, default ../../claude-codex), turns on the `script`
+# HEADED_ARM_WORKER_CLAUDEX_BIN, default ../../claude-codex), turns on the `script`
 # tty recorder (HEADED_ARM_RECORDER=1 - load-bearing: konsole -e output is
 # otherwise lost and a silent claudex death is undiagnosable), and exports
 # CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${LEG_EFFORT:-medium} into the
@@ -114,15 +114,15 @@
 # --profile: applies a named plugin profile
 # from scripts/lanes/plugin-profiles.json to the launched leg, plus the leg
 # preface (docs/handover/leg-preface.md) and the lean-SessionStart switch. Also
-# settable as LEG_PROFILE in the launching shell; the flag wins if both are
+# settable as WORKER_SESSION_PROFILE in the launching shell; the flag wins if both are
 # given, same precedence as --lane. A launch that supplies NO profile (no
-# --profile, no LEG_PROFILE, and neither --relay nor --judge, which force one)
+# --profile, no WORKER_SESSION_PROFILE, and neither --relay nor --judge, which force one)
 # is REFUSED with exit 2 unless --no-profile is passed: an
 # unprofiled leg silently runs without the standing preface and without the
 # lean plugin set, its launch log indistinguishable from a profiled one, and
 # it cannot know what it was not given. --no-profile is the explicit opt-out
 # for a brief that carries the preface pasted in itself; it conflicts (exit 2)
-# with any resolved profile (--profile, LEG_PROFILE, --relay, --judge) rather
+# with any resolved profile (--profile, WORKER_SESSION_PROFILE, --relay, --judge) rather
 # than silently dropping one, and the real launch records it in the launch
 # log. Under --no-profile NOTHING else changes: no settings file is written,
 # no env is exported, and the argv handed to headed-arm.sh is byte-identical
@@ -170,8 +170,8 @@
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via LEG_CLAUDE_BIN. The
 # backend and its guarded argument screen remain in the launch path.
-# Seams: HEADED_ARM_LEG_PROFILES overrides the plugin-profiles.mjs resolver
-# path, HEADED_ARM_LEG_PREFACE the preface file, HEADED_ARM_LEG_SHIM the
+# Seams: HEADED_ARM_WORKER_PROFILES overrides the plugin-profiles.mjs resolver
+# path, HEADED_ARM_WORKER_PREFACE the preface file, HEADED_ARM_WORKER_SHIM the
 # launcher shim - all script-relative by default, all so the suite can drive
 # the real code against fixtures.
 #
@@ -195,14 +195,14 @@
 # a raised HIMMEL_READ_CLAMP_LINES (independent reading is the job), and the
 # judge preface instead of the leg preface.
 #
-# LEG_SUPPRESS_CR_TRIGGER: set in the launching shell to
+# WORKER_SESSION_SUPPRESS_CR_TRIGGER: set in the launching shell to
 # suppress the CodeRabbit auto-trigger for this one leg - see the
-# LEG_REPO-style fold below for the mechanism. CodeRabbit is best effort
+# WORKER_SESSION_REPO-style fold below for the mechanism. CodeRabbit is best effort
 # the knob exists so a console can skip the review on a PR
 # that will never get one (machine-generated class), never to ration or
 # sequence it. Opt-out, default ON: unset changes nothing.
 #
-# LEG_API_LANE=on: set in the launching shell to give this leg HIMMEL_API_LANE=on
+# WORKER_SESSION_API_LANE=on: set in the launching shell to give this leg HIMMEL_API_LANE=on
 # and HIMMEL_API_ACCOUNT=auto, so the PR critic runs on API credit. Opt-in,
 # default OFF: unset changes nothing.
 set -u
@@ -240,7 +240,7 @@ usage() {
 # headed-arm.sh's own `env ... NAME=VALUE ...` command line does: it is baked
 # into the launched .command file's argv (`%q`-quoted), not inherited, so it
 # survives the boundary a plain export does not. Every leg-process var this
-# wrapper sets (IMPL_GUARD_OK, LEG_PROFILE_*, HIMMEL_CONSOLE_LEG, ...) must go
+# wrapper sets (IMPL_GUARD_OK, WORKER_SESSION_PROFILE_*, HIMMEL_CONSOLE_LEG, ...) must go
 # through this function instead of a bare `export`. Vars headed-arm.sh itself
 # consumes in THIS SAME process tree (HEADED_ARM_REPO, HEADED_ARM_LAUNCHER,
 # HEADED_ARM_RECORDER, HEADED_ARM_REQUIRED_AUTOCOMPACT, ...) never cross that
@@ -376,16 +376,16 @@ NO_PROFILE=0
 IGNORE_DENIALS=0
 NO_PRIOR_ART_CHECK=0
 HEADLESS=0
-[ "${LEG_HEADLESS:-}" = "1" ] && HEADLESS=1
+[ "${WORKER_SESSION_HEADLESS:-${LEG_HEADLESS:-}}" = "1" ] && HEADLESS=1
 LANE="${WORKER_SESSION_LANE:-${LEG_LANE:-native}}"
 # WORKER_SESSION_EFFORT is the new name of LEG_EFFORT and wins when set.
 [ -n "${WORKER_SESSION_EFFORT:-}" ] && LEG_EFFORT="$WORKER_SESSION_EFFORT"
-PROFILE="${LEG_PROFILE:-}"
+PROFILE="${WORKER_SESSION_PROFILE:-${LEG_PROFILE:-}}"
 CHIEF_FLAG=""
 # the leg context guard is off unless the caller asks, by
 # --context-guard or a HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name
 # HIMMEL_LEG_CONTEXT_MODE) in the launching env (the flag wins).
-CONTEXT_GUARD="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-}"
+CONTEXT_GUARD="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-${HIMMEL_LEG_CONTEXT_MODE:-}}"
 case "$CONTEXT_GUARD" in ''|none) CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-$CONTEXT_GUARD}" ;; esac
 FLEET_MANIFEST=""
 while :; do
@@ -450,7 +450,7 @@ while :; do
 done
 
 # --relay: forces the console-relay plugin profile - a relay is
-# plugin-less by design, so any other --profile (flag or LEG_PROFILE) is a
+# plugin-less by design, so any other --profile (flag or WORKER_SESSION_PROFILE) is a
 # real conflict, not a preference to silently override.
 if [ "$RELAY" -eq 1 ]; then
     if [ -n "$PROFILE" ] && [ "$PROFILE" != "console-relay" ]; then
@@ -477,11 +477,11 @@ fi
 
 # --consult: a short read-only session that borrows the plugin set
 # of the REQUESTED profile list (--profile design,design-motion). Unlike --judge
-# it forces nothing, so the profile must be explicit (flag or LEG_PROFILE, never
+# it forces nothing, so the profile must be explicit (flag or WORKER_SESSION_PROFILE, never
 # the brief's `profile:` line), and it refuses every non-additive profile even as
 # a single name: operator/bare inject nothing, and the console/relay/judge role
 # profiles carry guard semantics a consult must not inherit. It also refuses a
-# leg-worktree cwd (an explicit LEG_REPO/HEADED_ARM_REPO under .claude/worktrees/):
+# leg-worktree cwd (an explicit WORKER_SESSION_REPO/HEADED_ARM_REPO under .claude/worktrees/):
 # a consult reads, it never runs inside a leg's checkout.
 if [ "$CONSULT" -eq 1 ]; then
     if [ "$JUDGE" -eq 1 ] || [ "$RELAY" -eq 1 ] || [ "$NO_PROFILE" -eq 1 ]; then
@@ -510,11 +510,11 @@ if [ "$CONSULT" -eq 1 ]; then
         echo "headed-arm-leg: --consult refuses --lane $LANE: the read-only envelope is native-lane only (claudex settings-deny parity is unverified, so it fails closed)" >&2
         exit 2
     fi
-    # The EFFECTIVE repo, derived the way headed-arm.sh derives it (LEG_REPO folds
+    # The EFFECTIVE repo, derived the way headed-arm.sh derives it (WORKER_SESSION_REPO folds
     # onto HEADED_ARM_REPO; neither set = the checkout this script lives in), then
     # canonicalised so a relative or symlinked path cannot dodge the glob. An
     # unresolvable repo fails closed.
-    _consult_raw="${LEG_REPO:-${HEADED_ARM_REPO:-$(dirname "$0")/../../..}}"
+    _consult_raw="${WORKER_SESSION_REPO:-${LEG_REPO:-${HEADED_ARM_REPO:-$(dirname "$0")/../../..}}}"
     if ! _consult_repo="$(cd -P "$_consult_raw" 2>/dev/null && pwd -P)"; then
         usage
         echo "headed-arm-leg: --consult cannot resolve its repo ($_consult_raw): refusing" >&2
@@ -541,23 +541,25 @@ if [ "$CONSULT" -eq 1 ]; then
     CONSULT_REPO_CANON="$_consult_repo"
     unset -v _consult_raw _consult_repo
     # Same class as F1's shim refusal below: a caller-chosen seam
-    # can launch the consult unconfined. HEADED_ARM_LEG_CLAUDE_BIN has no in-repo
+    # can launch the consult unconfined. HEADED_ARM_WORKER_CLAUDE_BIN has no in-repo
     # value (the shim would exec it with `--setting-sources ""`, which a foreign
     # binary can ignore), so it refuses outright. TARGET and PROFILES must resolve
     # to the in-repo file, and are then pinned to that CANONICAL path so a
     # symlinked directory cannot be retargeted between this check and their use.
-    if [ -n "${HEADED_ARM_LEG_CLAUDE_BIN:-}" ]; then
-        echo "headed-arm-leg: --consult refuses HEADED_ARM_LEG_CLAUDE_BIN=$HEADED_ARM_LEG_CLAUDE_BIN: a consult runs the PATH claude, which honours its --setting-sources confinement" >&2
+    if [ -n "${HEADED_ARM_WORKER_CLAUDE_BIN:-${HEADED_ARM_LEG_CLAUDE_BIN:-}}" ]; then
+        echo "headed-arm-leg: --consult refuses HEADED_ARM_WORKER_CLAUDE_BIN=${HEADED_ARM_WORKER_CLAUDE_BIN:-$HEADED_ARM_LEG_CLAUDE_BIN}: a consult runs the PATH claude, which honours its --setting-sources confinement" >&2
         exit 2
     fi
-    if [ -n "${HEADED_ARM_LEG_SYSTEMD_RUN:-}" ]; then
-        echo "headed-arm-leg: --consult refuses HEADED_ARM_LEG_SYSTEMD_RUN=$HEADED_ARM_LEG_SYSTEMD_RUN: a consult only runs the system /usr/bin/systemd-run" >&2
+    if [ -n "${HEADED_ARM_WORKER_SYSTEMD_RUN:-${HEADED_ARM_LEG_SYSTEMD_RUN:-}}" ]; then
+        echo "headed-arm-leg: --consult refuses HEADED_ARM_WORKER_SYSTEMD_RUN=${HEADED_ARM_WORKER_SYSTEMD_RUN:-$HEADED_ARM_LEG_SYSTEMD_RUN}: a consult only runs the system /usr/bin/systemd-run" >&2
         exit 2
     fi
     _consult_kit="$(cd -P "$(dirname "$0")" && pwd -P)"
-    for _consult_pair in "HEADED_ARM_LEG_TARGET ../headed-arm.sh" "HEADED_ARM_LEG_PROFILES ../../lanes/plugin-profiles.mjs"; do
+    for _consult_pair in "HEADED_ARM_WORKER_TARGET ../headed-arm.sh" "HEADED_ARM_WORKER_PROFILES ../../lanes/plugin-profiles.mjs"; do
         _consult_var="${_consult_pair%% *}"; _consult_rel="${_consult_pair#* }"
         _consult_val="${!_consult_var:-}"
+        _consult_old="HEADED_ARM_LEG_${_consult_var#HEADED_ARM_WORKER_}"
+        [ -n "$_consult_val" ] || _consult_val="${!_consult_old:-}"
         _consult_want="$(cd -P "$_consult_kit/$(dirname "$_consult_rel")" && pwd -P)/$(basename "$_consult_rel")"
         # Unset = the in-repo default, pinned to the same canonical
         # path: the default spelling is built from $0, which a symlink can reach.
@@ -569,7 +571,7 @@ if [ "$CONSULT" -eq 1 ]; then
         fi
         printf -v "$_consult_var" '%s' "$_consult_want"
     done
-    unset -v _consult_kit _consult_pair _consult_var _consult_rel _consult_val _consult_got _consult_want
+    unset -v _consult_kit _consult_pair _consult_var _consult_old _consult_rel _consult_val _consult_got _consult_want
     # A PATH token reaches the shim's environment and would pick
     # which claude it runs; the shim pins its own PATH under a consult, and the
     # token refuses here too rather than ride along. A bash startup token (the
@@ -619,11 +621,11 @@ fi
 [ "$JUDGE" -eq 1 ] || [ "$CONSULT" -eq 1 ] && READONLY_ROLE=1
 
 # --no-profile is the deliberate opt-out; a profile from ANY
-# source (flag, LEG_PROFILE, or the one --relay/--judge just forced) is a real
+# source (flag, WORKER_SESSION_PROFILE, or the one --relay/--judge just forced) is a real
 # conflict, not one to resolve by silently dropping either side.
 if [ "$NO_PROFILE" -eq 1 ] && [ -n "$PROFILE" ]; then
     usage
-    echo "headed-arm-leg: --no-profile conflicts with the profile requested via --profile, LEG_PROFILE, --relay or --judge (got: $PROFILE)" >&2
+    echo "headed-arm-leg: --no-profile conflicts with the profile requested via --profile, WORKER_SESSION_PROFILE, --relay or --judge (got: $PROFILE)" >&2
     exit 2
 fi
 
@@ -644,13 +646,13 @@ lane_registry() {
     case "$1" in
         native) ;;
         claudex)
-            LANE_BIN_NAME=claude-codex; LANE_BIN_OVERRIDE="${HEADED_ARM_LEG_CLAUDEX_BIN:-}"
+            LANE_BIN_NAME=claude-codex; LANE_BIN_OVERRIDE="${HEADED_ARM_WORKER_CLAUDEX_BIN:-${HEADED_ARM_LEG_CLAUDEX_BIN:-}}"
             LANE_CHANNEL="file"; LANE_PREFACE=claudex ;;
         openrouter)
-            LANE_BIN_NAME=claude-openrouter; LANE_BIN_OVERRIDE="${HEADED_ARM_LEG_OPENROUTER_BIN:-}"
+            LANE_BIN_NAME=claude-openrouter; LANE_BIN_OVERRIDE="${HEADED_ARM_WORKER_OPENROUTER_BIN:-${HEADED_ARM_LEG_OPENROUTER_BIN:-}}"
             LANE_CHANNEL="file"; LANE_PREFACE=openrouter ;;
         deepseek)
-            LANE_BIN_NAME=claude-deepseek; LANE_BIN_OVERRIDE="${HEADED_ARM_LEG_DEEPSEEK_BIN:-}"
+            LANE_BIN_NAME=claude-deepseek; LANE_BIN_OVERRIDE="${HEADED_ARM_WORKER_DEEPSEEK_BIN:-${HEADED_ARM_LEG_DEEPSEEK_BIN:-}}"
             LANE_CHANNEL="file"; LANE_PREFACE=claudex; LANE_BANK_GATE=openrouter ;;
         glm) LANE_REFUSE="glm has no launcher contract yet (the GLM slice of HIMMEL-4084 has not landed)" ;;
         *) return 1 ;;
@@ -717,7 +719,7 @@ fi
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-}"
 
 # role-to-profile rule: a `profile: <name>` line in the brief's first
-# 60 lines selects the leg's profile when neither --profile nor LEG_PROFILE did
+# 60 lines selects the leg's profile when neither --profile nor WORKER_SESSION_PROFILE did
 # (an explicit flag/env is the override and always wins; --no-profile opts out
 # and is left alone). Only the explicit field is honoured here - inferring a
 # profile from the doc would silently end the unprofiled-launch refusal below.
@@ -777,7 +779,7 @@ fi
 # --dry-run exit so a dry-run exercises the very decision it is predicting.
 if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ]; then
     usage
-    echo "headed-arm-leg: refusing an unprofiled launch: pass --profile <name> (or set LEG_PROFILE; names: \`node scripts/lanes/plugin-profiles.mjs --list\`) so the leg gets docs/handover/leg-preface.md and the lean plugin set. Pass --no-profile only when the brief itself carries the preface pasted in." >&2
+    echo "headed-arm-leg: refusing an unprofiled launch: pass --profile <name> (or set WORKER_SESSION_PROFILE; names: \`node scripts/lanes/plugin-profiles.mjs --list\`) so the leg gets docs/handover/leg-preface.md and the lean plugin set. Pass --no-profile only when the brief itself carries the preface pasted in." >&2
     exit 2
 fi
 
@@ -794,7 +796,7 @@ const text = fs.readFileSync(doc, "utf8");
 const named = Object.entries(reg).some(([vm, e]) => e.os === "ubuntu" && e.kind !== "station"
     && new RegExp("(^|[^A-Za-z0-9_-])" + vm + "($|[^A-Za-z0-9_-])").test(text));
 process.exit(named ? 0 : 1);
-' "${HEADED_ARM_LEG_VMS_JSON:-$(dirname "$0")/../../lib/vms.json}" "$DOC" 2>/dev/null; then
+' "${HEADED_ARM_WORKER_VMS_JSON:-${HEADED_ARM_LEG_VMS_JSON:-$(dirname "$0")/../../lib/vms.json}}" "$DOC" 2>/dev/null; then
             echo "headed-arm-leg: refusing a leg-vm launch: $DOC names no registered test VM (a key of scripts/lib/vms.json that is an ubuntu guest and not a station, e.g. ubuntu_new). Name the VM in the brief." >&2
             exit 2
         fi
@@ -897,7 +899,7 @@ fi
 ASKED_MODEL="$MODEL"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-HEADED_ARM="${HEADED_ARM_LEG_TARGET:-$HERE/../headed-arm.sh}"
+HEADED_ARM="${HEADED_ARM_WORKER_TARGET:-${HEADED_ARM_LEG_TARGET:-$HERE/../headed-arm.sh}}"
 
 # refuse to re-dispatch a leg whose worktree slug (from the
 # handover doc's resume_cwd) or session name has an un-acked SHIP-STEP /
@@ -1073,9 +1075,9 @@ unset -v _leg_rcwd _leg_rcwd_phys _leg_vroot _leg_vroot_phys _leg_wt_top _leg_wt
 #
 # the `design` profile (and only it) resolves 1m by itself - an
 # operator ruling (2026-10-01) that early compaction hurts design work, so no
-# LEG_CONTEXT or brief Context line is needed; every other profile keeps the
-# 200000 ceiling and a bare LEG_CONTEXT=1m is still refused below.
-PROFILES_MJS="${HEADED_ARM_LEG_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}"
+# WORKER_SESSION_CONTEXT or brief Context line is needed; every other profile keeps the
+# 200000 ceiling and a bare WORKER_SESSION_CONTEXT=1m is still refused below.
+PROFILES_MJS="${HEADED_ARM_WORKER_PROFILES:-${HEADED_ARM_LEG_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}}"
 CONTEXT="standard"
 RESOLVED_AUTOCOMPACT="200000"
 DESIGN_CONTEXT_REASON=""
@@ -1098,7 +1100,7 @@ fi
 # Only the immediate headed-arm renderer reads these; never child launcher-env.
 export HEADED_ARM_CONTEXT_PROFILE="$PROFILE"
 _CONTEXT_BRIEF_REASON="$(grep -m1 -E '^> \*\*Context:\*\* 1m — operator-ruling: ' "$DOC" 2>/dev/null | sed -E 's/^> \*\*Context:\*\* 1m — operator-ruling: //; s/^[[:space:]]+//; s/[[:space:]]+$//')"
-if [ "${LEG_CONTEXT:-}" = "1m" ]; then
+if [ "${WORKER_SESSION_CONTEXT:-${LEG_CONTEXT:-}}" = "1m" ]; then
     CONTEXT="1m"
     RESOLVED_AUTOCOMPACT="auto"
     # An env override needs its own brief ruling, even on a design profile.
@@ -1106,15 +1108,16 @@ if [ "${LEG_CONTEXT:-}" = "1m" ]; then
     DESIGN_CONTEXT_REASON="$_CONTEXT_BRIEF_REASON"
 fi
 
-# the audited autocompact A/B arm. LEG_AUTOCOMPACT_AB is launch
+# the audited autocompact A/B arm. WORKER_SESSION_AUTOCOMPACT_AB is launch
 # input (200000 = control, 400000 = treatment; nothing else). The 400000 arm is
 # opened by a brief ruling line, same shape as the 1m ruling above, and is
 # refused alongside any 1m context. The value never leaks onward: both names are
 # unset here and the marker headed-arm.sh reads is exported only at the exec.
 AB_ARM=""
 AB_REASON=""
-_ab_in="${LEG_AUTOCOMPACT_AB:-}"
-unset -v LEG_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT
+_ab_in="${WORKER_SESSION_AUTOCOMPACT_AB:-${LEG_AUTOCOMPACT_AB:-}}"
+unset -v WORKER_SESSION_AUTOCOMPACT_AB LEG_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT
+leg_env_drop_token WORKER_SESSION_AUTOCOMPACT_AB
 leg_env_drop_token LEG_AUTOCOMPACT_AB
 leg_env_drop_token HEADED_ARM_AB_AUTOCOMPACT
 case "$_ab_in" in
@@ -1122,19 +1125,19 @@ case "$_ab_in" in
     200000) AB_ARM="200k" ;;
     400000) AB_ARM="400k" ;;
     *)
-        echo "headed-arm-leg: LEG_AUTOCOMPACT_AB must be 200000 or 400000, got: $_ab_in" >&2
+        echo "headed-arm-leg: WORKER_SESSION_AUTOCOMPACT_AB must be 200000 or 400000, got: $_ab_in" >&2
         exit 2 ;;
 esac
 if [ -n "$AB_ARM" ] && { [ "$CONTEXT" != "standard" ] || [ "$RESOLVED_AUTOCOMPACT" != "200000" ]; }; then
     # The control arm is checked too: a 1m leg recorded as the 200k control
     # would contaminate the comparison.
-    echo "headed-arm-leg: refusing leg launch: LEG_AUTOCOMPACT_AB=$_ab_in needs the standard 200000 context (got context=$CONTEXT autocompact=$RESOLVED_AUTOCOMPACT); the A/B arm never combines with a 1m opt-in" >&2
+    echo "headed-arm-leg: refusing leg launch: WORKER_SESSION_AUTOCOMPACT_AB=$_ab_in needs the standard 200000 context (got context=$CONTEXT autocompact=$RESOLVED_AUTOCOMPACT); the A/B arm never combines with a 1m opt-in" >&2
     exit 2
 fi
 if [ "$AB_ARM" = "400k" ]; then
     AB_REASON="$(grep -m1 -E '^> \*\*Context:\*\* ab-400k — operator-ruling: ' "$DOC" 2>/dev/null | sed -E 's/^> \*\*Context:\*\* ab-400k — operator-ruling: //; s/^[[:space:]]+//; s/[[:space:]]+$//')"
     if [ -z "$AB_REASON" ]; then
-        echo "headed-arm-leg: refusing leg launch: LEG_AUTOCOMPACT_AB=400000 needs '> **Context:** ab-400k — operator-ruling: <reason>' in $DOC" >&2
+        echo "headed-arm-leg: refusing leg launch: WORKER_SESSION_AUTOCOMPACT_AB=400000 needs '> **Context:** ab-400k — operator-ruling: <reason>' in $DOC" >&2
         exit 2
     fi
     RESOLVED_AUTOCOMPACT="400000"
@@ -1146,7 +1149,7 @@ unset -v _ab_in
 # headed-arm.sh (whose env -u list only clears the three
 # session-identity vars, not this one). CHIEF_CONTEXT is read by
 # headed-arm.sh to pick a CONSOLE's --autocompact ceiling; a leg's ceiling is
-# already pinned above via LEG_CONTEXT/RESOLVED_AUTOCOMPACT, which never
+# already pinned above via WORKER_SESSION_CONTEXT/RESOLVED_AUTOCOMPACT, which never
 # consults CHIEF_CONTEXT, so unsetting it here loses nothing. A console
 # armed with CHIEF_CONTEXT=1m in its own environ (the same leak, one hop
 # earlier - out of scope here, see the ticket) would otherwise forward it to
@@ -1163,7 +1166,7 @@ unset -v _ab_in
 # it, so it is scrubbed too.
 #
 # HIMMEL_CONSOLE_JUDGE_EFFORT is the same class of hazard as
-# CHIEF_CONTEXT, not the LEG_PROFILE_* class further down - it is consumed
+# CHIEF_CONTEXT, not the WORKER_SESSION_PROFILE_* class further down - it is consumed
 # above (line ~469) for THIS invocation only, and a judge's own persisting
 # shell must not keep it exported: an armed judge that itself later arms a
 # nested judge would otherwise have its ambient (inherited, not deliberate)
@@ -1171,8 +1174,8 @@ unset -v _ab_in
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
 # The release-manager marker, binding and effort override are the same class:
 # a release manager arming a leg must not hand that leg its mode-2 fence.
-LEG_ENV_SCRUB="CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
-for _leg_env_scrub in $LEG_ENV_SCRUB; do
+WORKER_SESSION_ENV_SCRUB="CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
+for _leg_env_scrub in $WORKER_SESSION_ENV_SCRUB; do
     unset "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"
 done
@@ -1205,7 +1208,7 @@ done
 unset -v _leg_env_scrub
 
 # same "this wrapper's own process may itself BE a leg" hazard as
-# the LEG_PROFILE_* scrub above, but for the rest of the names a leg sets on
+# the WORKER_SESSION_PROFILE_* scrub above, but for the rest of the names a leg sets on
 # itself while arming a SIBLING (most often a judge). A judge deliberately
 # never gets IMPL_GUARD_OK/INLINE_IMPL_OK re-set below (a judge doesn't
 # implement) - without this scrub, an inherited value from the calling leg's
@@ -1219,13 +1222,13 @@ unset -v _leg_env_scrub
 # HIMMEL_CONSOLE_LEG has a pinned caller-preset-wins override test, case 31b),
 # so scrubbing those here would destroy the exact feature they exist for -
 # they are excluded by name, not by re-deriving a second list. The three
-# LEG_PROFILE_* names are excluded because the loop above already scrubbed
+# WORKER_SESSION_PROFILE_* names are excluded because the loop above already scrubbed
 # them; HEADED_ARM_LAUNCHER_ENV is excluded because it is the container being
 # cleaned, not a name inside it. LEG_CLAUDE_BIN is NOT excluded:
 # unlike the six
 # names above, this wrapper never reads LEG_CLAUDE_BIN back as deliberate
 # input on this native lane - only the claudex branch and the
-# HEADED_ARM_LEG_CLAUDE_BIN test seam below ever set it again, both via a
+# HEADED_ARM_WORKER_CLAUDE_BIN test seam below ever set it again, both via a
 # fresh `leg_propagate_env` call after this point. Scrubbing var+token here
 # closes the leak: a claudex leg's own `LEG_CLAUDE_BIN=<claude-codex>`
 # inherited into a native --judge/--profile launch would otherwise reach
@@ -1278,13 +1281,14 @@ fi
 # The seam name itself is unset right after use (var + any launcher-env
 # token) for the same reason HIMMEL_CONSOLE_JUDGE_EFFORT is scrubbed above:
 # an armed leg that itself later arms a nested leg/judge must not have an
-# ambient HEADED_ARM_LEG_CLAUDE_BIN, inherited from its own launch, silently
+# ambient HEADED_ARM_WORKER_CLAUDE_BIN, inherited from its own launch, silently
 # satisfy this seam again - only the immediate caller of THIS invocation may
 # set it.
-if [ "$LANE" = "native" ] && [ -n "${HEADED_ARM_LEG_CLAUDE_BIN:-}" ]; then
-    leg_propagate_env LEG_CLAUDE_BIN "$HEADED_ARM_LEG_CLAUDE_BIN"
+if [ "$LANE" = "native" ] && [ -n "${HEADED_ARM_WORKER_CLAUDE_BIN:-${HEADED_ARM_LEG_CLAUDE_BIN:-}}" ]; then
+    leg_propagate_env LEG_CLAUDE_BIN "${HEADED_ARM_WORKER_CLAUDE_BIN:-$HEADED_ARM_LEG_CLAUDE_BIN}"
 fi
-unset -v HEADED_ARM_LEG_CLAUDE_BIN
+unset -v HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_LEG_CLAUDE_BIN
+leg_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
 leg_env_drop_token HEADED_ARM_LEG_CLAUDE_BIN
 
 # a leg's ceiling is the resolved CLI pair, not the absence of a
@@ -1302,7 +1306,7 @@ if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ]; then
     CONTEXT_REASON="$DESIGN_CONTEXT_REASON"
     CONTEXT_REASON="$(printf '%s' "$CONTEXT_REASON" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     if [ -z "$CONTEXT_REASON" ]; then
-        echo "headed-arm-leg: refusing leg launch: resolved argv lacks the required --autocompact 200000 ceiling (got --autocompact $RESOLVED_AUTOCOMPACT). unset LEG_CONTEXT and retry, or add '> **Context:** 1m — operator-ruling: <reason>' to $DOC for a sanctioned opt-in; use a console arm, not a leg, for unsanctioned 1m context." >&2
+        echo "headed-arm-leg: refusing leg launch: resolved argv lacks the required --autocompact 200000 ceiling (got --autocompact $RESOLVED_AUTOCOMPACT). unset WORKER_SESSION_CONTEXT and retry, or add '> **Context:** 1m — operator-ruling: <reason>' to $DOC for a sanctioned opt-in; use a console arm, not a leg, for unsanctioned 1m context." >&2
         exit 2
     fi
     # headed-arm.sh's own 1m gate (unedited by this ticket) requires
@@ -1395,36 +1399,36 @@ if [ -n "$EFFORT_REC" ]; then
     [ -z "$EFFORT_WHY" ] || echo "headed-arm-leg: advisory: unavailable ($EFFORT_WHY)" >&2
 fi
 
-# LEG_REPO folds onto headed-arm.sh's own HEADED_ARM_REPO override seam -
+# WORKER_SESSION_REPO folds onto headed-arm.sh's own HEADED_ARM_REPO override seam -
 # the one thing the two prior kit-local copies differed on.
-if [ -n "${LEG_REPO:-}" ]; then
-    HEADED_ARM_REPO="$LEG_REPO"
+if [ -n "${WORKER_SESSION_REPO:-${LEG_REPO:-}}" ]; then
+    HEADED_ARM_REPO="${WORKER_SESSION_REPO:-$LEG_REPO}"
     export HEADED_ARM_REPO
 fi
 
-# LEG_SUPPRESS_CR_TRIGGER: opt-out-by-console seam for the
+# WORKER_SESSION_SUPPRESS_CR_TRIGGER: opt-out-by-console seam for the
 # CodeRabbit auto-trigger hooks (trigger-cr-on-pr-create.sh,
 # trigger-cr-on-push.sh - both route their post through
 # cr_trigger_post_review in scripts/lib/coderabbit-trigger-ledger.sh, so this ONE
 # knob covers both; see that function for why). Set in the LAUNCHING shell
-# (e.g. `LEG_SUPPRESS_CR_TRIGGER=1 bash headed-arm-leg.sh ...`), same
-# pattern as LEG_REPO above, and folded here into CR_TRIGGER_SUPPRESS, the
+# (e.g. `WORKER_SESSION_SUPPRESS_CR_TRIGGER=1 bash headed-arm-leg.sh ...`), same
+# pattern as WORKER_SESSION_REPO above, and folded here into CR_TRIGGER_SUPPRESS, the
 # name the hooks/ledger actually read - never a flag, since this is a
 # per-launch console decision, not part of the leg's identity. Opt-out
 # ONLY: leaving it unset changes nothing, which is the ticket's explicit
 # requirement (the auto-trigger hook exists because manual triggering was
 # left to discretion once already and every open PR went unreviewed)
 # so a default-off seam here would recreate that exact failure.
-if [ -n "${LEG_SUPPRESS_CR_TRIGGER:-}" ]; then
+if [ -n "${WORKER_SESSION_SUPPRESS_CR_TRIGGER:-${LEG_SUPPRESS_CR_TRIGGER:-}}" ]; then
     leg_propagate_env CR_TRIGGER_SUPPRESS 1
 fi
 
-# LEG_API_LANE=on: opt-in seam, set in the LAUNCHING shell, that
+# WORKER_SESSION_API_LANE=on: opt-in seam, set in the LAUNCHING shell, that
 # carries the API-lane switch into the leg so the PR critic bills API credit
 # (claude-api.sh refuses rc 5 without HIMMEL_API_LANE=on). Account is "auto";
 # the credit guard and per-call routing stay in claude-api.sh. Default OFF:
 # unset or any other value changes nothing.
-if [ "${LEG_API_LANE:-}" = "on" ]; then
+if [ "${WORKER_SESSION_API_LANE:-${LEG_API_LANE:-}}" = "on" ]; then
     leg_propagate_env HIMMEL_API_LANE on
     leg_propagate_env HIMMEL_API_ACCOUNT auto
 fi
@@ -1620,7 +1624,7 @@ if [ "$LANE" = "native" ]; then
         esac
     fi
     if [ -z "$EFFORT_SOURCE" ]; then
-        LANES_JSON="${HEADED_ARM_LEG_LANES_JSON:-$HERE/../../lanes/lanes.json}"
+        LANES_JSON="${HEADED_ARM_WORKER_LANES_JSON:-${HEADED_ARM_LEG_LANES_JSON:-$HERE/../../lanes/lanes.json}}"
         if [ -f "$LANES_JSON" ]; then
             NATIVE_EFFORT="$(jq -r --arg model "$MODEL" '
                 [ .lanes[]? | select(.class == "claude-tier") | . as $lane
@@ -1738,35 +1742,35 @@ fi
 # --dry-run (so a typo'd profile name fails the same way either way); only the
 # settings FILE is withheld until we know we are really launching.
 if [ -n "$PROFILE" ]; then
-    PROFILES_MJS="${HEADED_ARM_LEG_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}"
-    LEG_SHIM="${HEADED_ARM_LEG_SHIM:-$HERE/../../lanes/leg-claude-launcher.sh}"
+    PROFILES_MJS="${HEADED_ARM_WORKER_PROFILES:-${HEADED_ARM_LEG_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}}"
+    WORKER_SESSION_SHIM="${HEADED_ARM_WORKER_SHIM:-${HEADED_ARM_LEG_SHIM:-$HERE/../../lanes/leg-claude-launcher.sh}}"
     # A consult is confined only by the shim mapping
     # LEG_PROFILE_NO_SETTING_SOURCES=1 to `--setting-sources ""`, so a shim
     # override pointing anywhere else would load the scopes unconfined: refuse it.
     # What is exported as the launcher is the CANONICAL path, not
     # the caller's spelling, which a symlinked directory could retarget after this.
     if [ "$CONSULT" -eq 1 ]; then
-        _consult_shim="$(cd -P "$(dirname "$LEG_SHIM")" 2>/dev/null && pwd -P)/$(basename "$LEG_SHIM")"
+        _consult_shim="$(cd -P "$(dirname "$WORKER_SESSION_SHIM")" 2>/dev/null && pwd -P)/$(basename "$WORKER_SESSION_SHIM")"
         _consult_shim_want="$(cd -P "$HERE/../../lanes" && pwd -P)/leg-claude-launcher.sh"
         if [ "$_consult_shim" != "$_consult_shim_want" ]; then
-            echo "headed-arm-leg: --consult refuses HEADED_ARM_LEG_SHIM=${HEADED_ARM_LEG_SHIM:-}: only $_consult_shim_want applies the consult's --setting-sources confinement" >&2
+            echo "headed-arm-leg: --consult refuses HEADED_ARM_WORKER_SHIM=${HEADED_ARM_WORKER_SHIM:-${HEADED_ARM_LEG_SHIM:-}}: only $_consult_shim_want applies the consult's --setting-sources confinement" >&2
             exit 2
         fi
-        LEG_SHIM="$_consult_shim"
+        WORKER_SESSION_SHIM="$_consult_shim"
         unset -v _consult_shim _consult_shim_want
     fi
     # --judge: the leg preface tells a read-only judge to
-    # implement and ship, which is wrong for the role. HEADED_ARM_LEG_PREFACE
+    # implement and ship, which is wrong for the role. HEADED_ARM_WORKER_PREFACE
     # stays the higher-precedence test seam either branch honors - only the
     # DEFAULT changes.
     if [ "$JUDGE" -eq 1 ]; then
-        LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/judge-preface.md}"
+        WORKER_SESSION_PREFACE="${HEADED_ARM_WORKER_PREFACE:-${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/judge-preface.md}}"
     elif [ "$CONSULT" -eq 1 ]; then
-        LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/consult-preface.md}"
+        WORKER_SESSION_PREFACE="${HEADED_ARM_WORKER_PREFACE:-${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/consult-preface.md}}"
     elif [ "$RM" -eq 1 ]; then
-        LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/rm-preface.md}"
+        WORKER_SESSION_PREFACE="${HEADED_ARM_WORKER_PREFACE:-${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/rm-preface.md}}"
     else
-        LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/leg-preface.md}"
+        WORKER_SESSION_PREFACE="${HEADED_ARM_WORKER_PREFACE:-${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/leg-preface.md}}"
     fi
     # Next to the launch log, i.e. inside the per-uid console work dir the
     # console already owns and cleans - never /tmp world-readable, never the
@@ -1783,7 +1787,7 @@ if [ -n "$PROFILE" ]; then
         exit 2
     }
     PROFILE_CONTRACT="$_leg_log_dir/$NAME.leg-contract.md"
-    for _leg_need in "$PROFILES_MJS" "$LEG_SHIM" "$LEG_PREFACE"; do
+    for _leg_need in "$PROFILES_MJS" "$WORKER_SESSION_SHIM" "$WORKER_SESSION_PREFACE"; do
         if [ ! -f "$_leg_need" ]; then
             echo "headed-arm-leg: --profile $PROFILE: required file missing: $_leg_need" >&2
             exit 2
@@ -2158,13 +2162,13 @@ EOF_CS_FILES
     # The consult loads no user/project/local scope: the shim turns this into
     # `--setting-sources ""`, which only narrows. Its hooks, deny/ask and env were carried above.
     [ "$CONSULT" -eq 1 ] && leg_propagate_env LEG_PROFILE_NO_SETTING_SOURCES 1
-    export HEADED_ARM_LAUNCHER="$LEG_SHIM"
+    export HEADED_ARM_LAUNCHER="$WORKER_SESSION_SHIM"
     # A consult's launcher is the entry beside the canonical shim:
     # an absolute `#!/bin/bash -p` that strips the bash startup variables and
     # exported functions, then runs the shim on the pinned PATH. headed-arm.sh
     # execs its launcher through `env`, where the shim's `#!/usr/bin/env bash`
     # would let PATH pick the interpreter.
-    [ "$CONSULT" -eq 1 ] && export HEADED_ARM_LAUNCHER="${LEG_SHIM%/*}/leg-claude-launcher-consult.sh"
+    [ "$CONSULT" -eq 1 ] && export HEADED_ARM_LAUNCHER="${WORKER_SESSION_SHIM%/*}/leg-claude-launcher-consult.sh"
     # Lean SessionStart: the three advisory hooks go quiet. Only
     # the exact value 1 leans - the hooks are fail-open by construction.
     leg_propagate_env HIMMEL_LEAN_LEG 1
@@ -2192,7 +2196,7 @@ fi
 # profiled leg gets its own concatenation, with the lane override last.
 if [ "$LANE_CHANNEL" = "file" ]; then
     CLAUDEX_PREFACE="$HERE/../../../docs/handover/leg-preface-$LANE_PREFACE.md"
-    export HEADED_ARM_LAUNCHER="${HEADED_ARM_LEG_SHIM:-$HERE/../../lanes/leg-claude-launcher.sh}"
+    export HEADED_ARM_LAUNCHER="${HEADED_ARM_WORKER_SHIM:-${HEADED_ARM_LEG_SHIM:-$HERE/../../lanes/leg-claude-launcher.sh}}"
     leg_propagate_env LEG_CLAUDE_BIN "$LANE_BIN"
     for _leg_need in "$CLAUDEX_PREFACE" "$HEADED_ARM_LAUNCHER"; do
         if [ ! -f "$_leg_need" ]; then
@@ -2212,36 +2216,36 @@ fi
 # Per-leg memory cap: the konsole tab and everything under it run in their own
 # systemd user scope, so a runaway test is OOM-killed inside the scope instead of
 # systemd-oomd picking a victim among the station's legs and the console.
-# HIMMEL_LEG_MEMORY_MAX is a systemd size (256M, 12G, infinity); swap gets the
+# HIMMEL_WORKER_SESSION_MEMORY_MAX is a systemd size (256M, 12G, infinity); swap gets the
 # same ceiling so the cap is not defeated by paging out. No systemd-run (macOS,
 # a non-systemd host) or no working user manager launches uncapped, with a WARN.
 # A consult resolves only the absolute system systemd-run, never the caller's PATH.
-LEG_MEMORY_MAX="${HIMMEL_LEG_MEMORY_MAX:-12G}"
-case "$LEG_MEMORY_MAX" in
+WORKER_SESSION_MEMORY_MAX="${HIMMEL_WORKER_SESSION_MEMORY_MAX:-${HIMMEL_LEG_MEMORY_MAX:-12G}}"
+case "$WORKER_SESSION_MEMORY_MAX" in
     infinity) ;;
     *)
-        if ! [[ "$LEG_MEMORY_MAX" =~ ^[1-9][0-9]*[KMGT]?$ ]]; then
-            echo "headed-arm-leg: HIMMEL_LEG_MEMORY_MAX must be a systemd size (e.g. 12G, 256M, infinity), got: $LEG_MEMORY_MAX" >&2
+        if ! [[ "$WORKER_SESSION_MEMORY_MAX" =~ ^[1-9][0-9]*[KMGT]?$ ]]; then
+            echo "headed-arm-leg: HIMMEL_WORKER_SESSION_MEMORY_MAX must be a systemd size (e.g. 12G, 256M, infinity), got: $WORKER_SESSION_MEMORY_MAX" >&2
             exit 2
         fi ;;
 esac
-LEG_SCOPE=()
-LEG_SCOPE_WARN=""
-LEG_SYSTEMD_RUN=""
+WORKER_SESSION_SCOPE=()
+WORKER_SESSION_SCOPE_WARN=""
+WORKER_SESSION_SYSTEMD_RUN=""
 if [ "$CONSULT" -eq 1 ]; then
-    [ -x /usr/bin/systemd-run ] && LEG_SYSTEMD_RUN=/usr/bin/systemd-run
+    [ -x /usr/bin/systemd-run ] && WORKER_SESSION_SYSTEMD_RUN=/usr/bin/systemd-run
 else
-    LEG_SYSTEMD_RUN="${HEADED_ARM_LEG_SYSTEMD_RUN:-}"
-    [ -n "$LEG_SYSTEMD_RUN" ] || LEG_SYSTEMD_RUN="$(command -v systemd-run)" || LEG_SYSTEMD_RUN=""
+    WORKER_SESSION_SYSTEMD_RUN="${HEADED_ARM_WORKER_SYSTEMD_RUN:-${HEADED_ARM_LEG_SYSTEMD_RUN:-}}"
+    [ -n "$WORKER_SESSION_SYSTEMD_RUN" ] || WORKER_SESSION_SYSTEMD_RUN="$(command -v systemd-run)" || WORKER_SESSION_SYSTEMD_RUN=""
 fi
 if [ "$HEADED_ARM_UNAME" != "Linux" ]; then
-    LEG_SCOPE_WARN="not Linux ($HEADED_ARM_UNAME)"
-elif [ -z "$LEG_SYSTEMD_RUN" ]; then
-    LEG_SCOPE_WARN="no systemd-run found"
-elif ! "$LEG_SYSTEMD_RUN" --user --scope --quiet -- true >/dev/null 2>&1; then
-    LEG_SCOPE_WARN="systemd-run cannot start a user scope"
+    WORKER_SESSION_SCOPE_WARN="not Linux ($HEADED_ARM_UNAME)"
+elif [ -z "$WORKER_SESSION_SYSTEMD_RUN" ]; then
+    WORKER_SESSION_SCOPE_WARN="no systemd-run found"
+elif ! "$WORKER_SESSION_SYSTEMD_RUN" --user --scope --quiet -- true >/dev/null 2>&1; then
+    WORKER_SESSION_SCOPE_WARN="systemd-run cannot start a user scope"
 else
-    LEG_SCOPE=("$LEG_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$LEG_MEMORY_MAX" -p "MemorySwapMax=$LEG_MEMORY_MAX" --)
+    WORKER_SESSION_SCOPE=("$WORKER_SESSION_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$WORKER_SESSION_MEMORY_MAX" -p "MemorySwapMax=$WORKER_SESSION_MEMORY_MAX" --)
 fi
 
 if [ "$LANE" = "native" ] && [ -n "$ASKED_MODEL" ] && [ "$MODEL" != "$ASKED_MODEL" ]; then
@@ -2264,16 +2268,16 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # has both set to 1, so this stays byte-identical to before for every
     # existing caller.
     # CR_TRIGGER_SUPPRESS folded in the same way, for the same
-    # reason - proves LEG_SUPPRESS_CR_TRIGGER->CR_TRIGGER_SUPPRESS ran in
+    # reason - proves WORKER_SESSION_SUPPRESS_CR_TRIGGER->CR_TRIGGER_SUPPRESS ran in
     # THIS wrapper's own process, and stays <unset> (the default-ON case)
-    # for every caller that never sets LEG_SUPPRESS_CR_TRIGGER.
+    # for every caller that never sets WORKER_SESSION_SUPPRESS_CR_TRIGGER.
     # HIMMEL_CONSOLE_NAME folded in the same way - proves the
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the leg's context guard reads.
     printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
-        "$LEG_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
+        "$WORKER_SESSION_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
         "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
         "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
@@ -2290,20 +2294,20 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # directly observable in --dry-run).
     if [ "$JUDGE" -eq 1 ]; then
         printf 'headed-arm-leg: judge=%s read-clamp-lines=%s preface-source=%s\n' \
-            "$JUDGE" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
+            "$JUDGE" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$WORKER_SESSION_PREFACE"
     fi
     if [ "$CONSULT" -eq 1 ]; then
         printf 'headed-arm-leg: consult=%s read-clamp-lines=%s preface-source=%s\n' \
-            "$CONSULT" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
+            "$CONSULT" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$WORKER_SESSION_PREFACE"
     fi
     if [ "$RM" -eq 1 ]; then
         printf 'headed-arm-leg: release-manager=%s readonly-role=%s HIMMEL_RELEASE_MANAGER=%s HIMMEL_RM_DOC=%s HIMMEL_RM_RELEASE=%s read-clamp-lines=%s preface-source=%s\n' \
             "$RM" "$READONLY_ROLE" "$HIMMEL_RELEASE_MANAGER" "${HIMMEL_RM_DOC:-<unset>}" "$HIMMEL_RM_RELEASE" \
-            "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
+            "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$WORKER_SESSION_PREFACE"
     fi
     printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s memory-max=%s scope=%s' \
         "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}" \
-        "$LEG_MEMORY_MAX" "$([ "${#LEG_SCOPE[@]}" -gt 0 ] && echo yes || echo no)"
+        "$WORKER_SESSION_MEMORY_MAX" "$([ "${#WORKER_SESSION_SCOPE[@]}" -gt 0 ] && echo yes || echo no)"
     if [ "$LANE_CHANNEL" = "file" ]; then
         printf ' exec-target=%s preface=%s recorder=%s' "$LEG_CLAUDE_BIN" "$LEG_PROFILE_PREFACE" "$HEADED_ARM_RECORDER"
     fi
@@ -2346,7 +2350,7 @@ if [ -n "$PROFILE" ]; then
     fi
     chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     if [ "$LANE_CHANNEL" = "file" ]; then
-        if ! cat "$LEG_PREFACE" "$CLAUDEX_PREFACE" > "$LEG_PROFILE_PREFACE"; then
+        if ! cat "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$LEG_PROFILE_PREFACE"; then
             echo "headed-arm-leg: --lane $LANE: cannot write preface to $LEG_PROFILE_PREFACE" >&2
             exit 2
         fi
@@ -2359,7 +2363,7 @@ if [ -n "$PROFILE" ]; then
         # in the preface. awk stops at the Results tail (or never, printing
         # the whole file) rather than mapfile, for bash 3.2 (macOS ships 3.2;
         # see the Platform guard above).
-        if ! cat "$LEG_PREFACE" > "$LEG_PROFILE_PREFACE"; then
+        if ! cat "$WORKER_SESSION_PREFACE" > "$LEG_PROFILE_PREFACE"; then
             echo "headed-arm-leg: --profile $PROFILE: cannot write preface to $LEG_PROFILE_PREFACE" >&2
             exit 2
         fi
@@ -2370,26 +2374,26 @@ if [ -n "$PROFILE" ]; then
         fi
         chmod 600 "$PROFILE_CONTRACT" 2>/dev/null || true
     fi
-    # LEG_REPO_MAP=1 (launching shell, default off): put a token-capped
+    # WORKER_SESSION_REPO_MAP=1 (launching shell, default off): put a token-capped
     # PageRank repo map of the leg's repo (its primary checkout's
     # graphify-out/graph.json) at the HEAD of the preface, so the preface's
-    # turn-ending section stays last. LEG_REPO_MAP_TOKENS sets the cap (default
+    # turn-ending section stays last. WORKER_SESSION_REPO_MAP_TOKENS sets the cap (default
     # 2000). Advisory: no graph, a generator failure or a generator still
-    # running after LEG_REPO_MAP_TIMEOUT seconds (default 30) launches without
+    # running after WORKER_SESSION_REPO_MAP_TIMEOUT seconds (default 30) launches without
     # it; so does a host with no GNU timeout, since the generator never runs unbounded.
-    if [ "${LEG_REPO_MAP:-0}" = 1 ]; then
-        REPO_MAP_CMD="${HEADED_ARM_LEG_REPO_MAP:-$HERE/../../graphify/repo-map.py}"
-        _rm_timeout="${LEG_REPO_MAP_TIMEOUT:-30}"
+    if [ "${WORKER_SESSION_REPO_MAP:-${LEG_REPO_MAP:-0}}" = 1 ]; then
+        REPO_MAP_CMD="${HEADED_ARM_WORKER_REPO_MAP:-${HEADED_ARM_LEG_REPO_MAP:-$HERE/../../graphify/repo-map.py}}"
+        _rm_timeout="${WORKER_SESSION_REPO_MAP_TIMEOUT:-${LEG_REPO_MAP_TIMEOUT:-30}}"
         # shellcheck source=scripts/lib/timeout-bin.sh
         . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
         _rm_graph="<no git repo>"
         if [ -n "${_TIMEOUT_BIN:-}" ] \
             && _rm_common="$(git -C "${HEADED_ARM_REPO:-$HERE/../../..}" rev-parse --path-format=absolute --git-common-dir)" \
             && _rm_graph="$(dirname "$_rm_common")/graphify-out/graph.json" \
-            && _rm_map="$("$_TIMEOUT_BIN" -k 5 "$_rm_timeout" "$REPO_MAP_CMD" --graph "$_rm_graph" --max-tokens "${LEG_REPO_MAP_TOKENS:-2000}")" \
+            && _rm_map="$("$_TIMEOUT_BIN" -k 5 "$_rm_timeout" "$REPO_MAP_CMD" --graph "$_rm_graph" --max-tokens "${WORKER_SESSION_REPO_MAP_TOKENS:-${LEG_REPO_MAP_TOKENS:-2000}}")" \
             && { printf '%s\n\n' "$_rm_map"; cat "$LEG_PROFILE_PREFACE"; } > "$LEG_PROFILE_PREFACE.map" \
             && mv "$LEG_PROFILE_PREFACE.map" "$LEG_PROFILE_PREFACE"; then
-            echo "$(date +%F_%T) headed-arm-leg: repo-map=on graph=$_rm_graph tokens=${LEG_REPO_MAP_TOKENS:-2000}" >> "$LOG"
+            echo "$(date +%F_%T) headed-arm-leg: repo-map=on graph=$_rm_graph tokens=${WORKER_SESSION_REPO_MAP_TOKENS:-${LEG_REPO_MAP_TOKENS:-2000}}" >> "$LOG"
         else
             _rm_rc=$?
             _rm_why="rc=$_rm_rc"
@@ -2418,7 +2422,7 @@ fi
 # this wrapper has no separate bank-aware scheduling path to fall back on,
 # so ignoring SKIPPED-BANK would let a launch through against an exhausted
 # bank. Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through.
-BANK_PREFLIGHT="${HEADED_ARM_LEG_PREFLIGHT:-$HERE/../../lib/bank-preflight.sh}"
+BANK_PREFLIGHT="${HEADED_ARM_WORKER_PREFLIGHT:-${HEADED_ARM_LEG_PREFLIGHT:-$HERE/../../lib/bank-preflight.sh}}"
 if [ -f "$BANK_PREFLIGHT" ]; then
     # TTL from OUR OWN deadline plus a fixed grace period,
     # floored at 60s — a reservation must not outlive the arm attempt it
@@ -2562,7 +2566,7 @@ fi
 # park a headed leg at a prompt nobody answers. leg-pretrust.sh refuses any cwd
 # that is not a console worktree or an eval clone. Non-fatal by design: a failure
 # only costs the prompt this used to cost. A consult never runs in a leg cwd.
-# With no LEG_REPO the leg runs in the primary checkout, which never qualifies.
+# With no WORKER_SESSION_REPO the leg runs in the primary checkout, which never qualifies.
 if [ "$CONSULT" -ne 1 ] && [ -n "${HEADED_ARM_REPO:-}" ]; then
     bash "$HERE/leg-pretrust.sh" "$LANE" "$HEADED_ARM_REPO" \
         || echo "headed-arm-leg: WARN trust pre-accept not applied (see above); the leg may stop at the folder-trust prompt" >&2
@@ -2592,8 +2596,8 @@ case "${MCP_NAMES_JSON:-}" in
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
             [ "$CONSULT" -eq 1 ] && BUS_ROLE=consult
             BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --console "$BUS_CONSOLE")
-            # LEG_BUS_PAIR: the leg a judge or consult was launched for (spec 3c).
-            [ "$BUS_ROLE" != leg ] && [ -n "${LEG_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$LEG_BUS_PAIR")
+            # WORKER_SESSION_BUS_PAIR: the leg a judge or consult was launched for (spec 3c).
+            [ "$BUS_ROLE" != leg ] && [ -n "${WORKER_SESSION_BUS_PAIR:-${LEG_BUS_PAIR:-}}" ] && BUS_ARGS+=(--pair "${WORKER_SESSION_BUS_PAIR:-$LEG_BUS_PAIR}")
             if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
                 leg_propagate_env HIMMEL_BUS_NAME "$NAME"
                 # The CLI that registered is the CLI that binds.
@@ -2613,18 +2617,18 @@ case "${MCP_NAMES_JSON:-}" in
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CONSOLE LEG_BUS_PAIR
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CONSOLE WORKER_SESSION_BUS_PAIR LEG_BUS_PAIR
 
 # Every headed leg gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless leg has no konsole and
 # a consult is a throwaway, so neither is armed; an ambient value never rides in.
 unset -v HEADED_ARM_WAKER
 if [ "$HEADLESS" -ne 1 ] && [ "$CONSULT" -ne 1 ]; then
-    export HEADED_ARM_WAKER="${HEADED_ARM_LEG_WAKER:-$HERE/../bus-idle-waker.sh}"
+    export HEADED_ARM_WAKER="${HEADED_ARM_WORKER_WAKER:-${HEADED_ARM_LEG_WAKER:-$HERE/../bus-idle-waker.sh}}"
 fi
 
 # Paired with this exec's PID: headed-arm.sh ignores stale ambient values.
-export HEADED_ARM_CONTEXT_PID="$$" HEADED_ARM_LEG_PROFILES="$PROFILES_MJS"
+export HEADED_ARM_CONTEXT_PID="$$" HEADED_ARM_WORKER_PROFILES="$PROFILES_MJS"
 # A consult runs headed-arm.sh on the pinned runtime: an absolute
 # `bash -p` (no PATH lookup of its `#!/usr/bin/env bash`, no startup file, no
 # exported function), the bash startup variables stripped, and the pinned PATH
@@ -2634,8 +2638,8 @@ HA_RUN=("$HEADED_ARM")
 HA_SH=(bash)
 if [ "$CONSULT" -eq 1 ]; then
     # shellcheck source=../../lanes/consult-env.sh
-    if ! . "${LEG_SHIM%/*}/consult-env.sh"; then
-        echo "headed-arm-leg: --consult cannot load ${LEG_SHIM%/*}/consult-env.sh: refusing" >&2
+    if ! . "${WORKER_SESSION_SHIM%/*}/consult-env.sh"; then
+        echo "headed-arm-leg: --consult cannot load ${WORKER_SESSION_SHIM%/*}/consult-env.sh: refusing" >&2
         exit 2
     fi
     if ! _consult_bash="$(consult_pin_bash)"; then
@@ -2647,15 +2651,15 @@ if [ "$CONSULT" -eq 1 ]; then
     # The --fleet hand-off below starts its own bash first: same absolute -p one.
     HA_SH=("$_consult_bash" -p)
 fi
-if [ -n "$LEG_SCOPE_WARN" ] && [ "$DRY_RUN" -eq 0 ]; then
+if [ -n "$WORKER_SESSION_SCOPE_WARN" ] && [ "$DRY_RUN" -eq 0 ]; then
     # An uncapped leg is said on stdout, in the log and as a memcap=FAIL: bullet in
     # the leg doc (lowercase lead: the tick tail ignores it, a grep finds it).
-    echo "$(date +%F_%T) headed-arm-leg: WARN memory cap NOT applied for $NAME ($LEG_SCOPE_WARN) - launching uncapped" >> "$LOG"
-    echo "headed-arm-leg: WARN memory cap NOT applied for $NAME - launching uncapped (memcap=FAIL:$LEG_SCOPE_WARN)"
-    bash "$HERE/append-results.sh" "$DOC" "memcap=FAIL:$LEG_SCOPE_WARN" >/dev/null 2>&1 || true
+    echo "$(date +%F_%T) headed-arm-leg: WARN memory cap NOT applied for $NAME ($WORKER_SESSION_SCOPE_WARN) - launching uncapped" >> "$LOG"
+    echo "headed-arm-leg: WARN memory cap NOT applied for $NAME - launching uncapped (memcap=FAIL:$WORKER_SESSION_SCOPE_WARN)"
+    bash "$HERE/append-results.sh" "$DOC" "memcap=FAIL:$WORKER_SESSION_SCOPE_WARN" >/dev/null 2>&1 || true
 fi
-if [ "${#LEG_SCOPE[@]}" -gt 0 ]; then
-    HA_RUN=("${LEG_SCOPE[@]}" "${HA_RUN[@]}")
+if [ "${#WORKER_SESSION_SCOPE[@]}" -gt 0 ]; then
+    HA_RUN=("${WORKER_SESSION_SCOPE[@]}" "${HA_RUN[@]}")
 fi
 if [ -n "$FLEET_MANIFEST" ]; then
     # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.

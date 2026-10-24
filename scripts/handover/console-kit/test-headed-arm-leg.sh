@@ -2,13 +2,13 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains()/ends_with()/not_contains(), as in scripts/handover/test-headed-arm.sh
 # scripts/handover/console-kit/test-headed-arm-leg.sh - suite for
 # headed-arm-leg.sh: the versioned LEG launcher that
-# pins the standard --autocompact 200000 ceiling. LEG_CONTEXT=1m is refused:
+# pins the standard --autocompact 200000 ceiling. WORKER_SESSION_CONTEXT=1m is refused:
 # absence of a [1m] suffix is not proof of the ceiling, because autocompact is
 # the cost-driving argv lever.
 #
 # Asserts:
 #   1-2. usage/arg-shape: too few args -> exit 2, with and without --dry-run.
-#   3-6. --dry-run argv: default standard succeeds; LEG_CONTEXT=1m is refused
+#   3-6. --dry-run argv: default standard succeeds; WORKER_SESSION_CONTEXT=1m is refused
 #        for ordinary and Fable-family models; off-values (e.g. "standard" or
 #        a typo) stay on the cheaper, already-correct standard ceiling.
 #   6c. --judge forces --profile console-judge,
@@ -18,15 +18,15 @@
 #       docs/handover/judge-preface.md; conflicts with a mismatched --profile
 #       or with --relay the same way --relay itself does. An explicit
 #       claude-fable-5-1 model still hits the tier gate unchanged.
-#   7. --dry-run reports LEG_REPO folded into HEADED_ARM_REPO.
+#   7. --dry-run reports WORKER_SESSION_REPO folded into HEADED_ARM_REPO.
 #   8-9. full (non-dry) launch via the same KONSOLE_CMD/PGREP_CMD/
 #        HEADED_ARM_PROC seams headed-arm.sh's own suite uses (the wrapper
 #        execs the real headed-arm.sh, so this proves the non-dry path carries
-#        --autocompact 200000); LEG_CONTEXT=1m refuses before headed-arm runs.
+#        --autocompact 200000); WORKER_SESSION_CONTEXT=1m refuses before headed-arm runs.
 #   10. IMPL_GUARD_OK=1, INLINE_IMPL_OK=1 and HIMMEL_CONSOLE_LEG=1 (#       the marker merge-on-green's console-GO gate keys on) reach konsole's
 #       own process environment (the leg-only env headed-arm.sh's child-env
 #       block does not set).
-#   11. LEG_REPO reaches headed-arm.sh's --workdir.
+#   11. WORKER_SESSION_REPO reaches headed-arm.sh's --workdir.
 #   3b/10b: CHIEF_CONTEXT is a console-only knob (the
 #       CHIEF_CONTEXT=1m 1M-context opt-in, console.sh:382) that must never
 #       reach a leg - --dry-run reports the enumerated scrub set and the
@@ -61,7 +61,7 @@
 #       to <himmelctl-cache>/launch-logs/<session>.log - profile / lane /
 #       model / role / session / launched, no env values - and a write failure
 #       or an unresolvable cache dir never blocks the launch.
-#   29. every leg-process var this wrapper sets (LEG_PROFILE_*,
+#   29. every leg-process var this wrapper sets (WORKER_SESSION_PROFILE_*,
 #       HIMMEL_CONSOLE_LEG, IMPL_GUARD_OK, INLINE_IMPL_OK, HIMMEL_LEAN_LEG, ...)
 #       also lands in HEADED_ARM_LAUNCHER_ENV's token list - the only channel
 #       that survives macOS `open -a`'s fresh-environment boundary, since a
@@ -119,7 +119,7 @@ SCRIPT="$HERE/headed-arm-leg.sh"
 # The bare tool names leg-impl denies from the registry, ahead of the launcher's own deny rules.
 TRIM_DENY="$(jq -c '.profiles["leg-impl"].denyTools' "$HERE/../../lanes/plugin-profiles.json")"
 HEADED_ARM="$HERE/../headed-arm.sh"
-export HEADED_ARM_LEG_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
+export HEADED_ARM_WORKER_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
 export PLUGIN_PROFILES_ADAPTERS="$HERE/../../guardrails/himmel-adapters.json"
 unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 # shellcheck source=scripts/lib/timeout-bin.sh
@@ -127,7 +127,7 @@ unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 . "$HERE/../../lib/timeout-bin.sh"
 # The suite owns every launcher input; an ambient leg shell must not silently
 # turn default-native cases into claudex cases.
-unset CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER LEG_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT 2>/dev/null || true
+unset CADENCE_BANK_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_REPO_MAP WORKER_SESSION_REPO_MAP_TOKENS WORKER_SESSION_REPO_MAP_TIMEOUT WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID WORKER_SESSION_HEADLESS WORKER_SESSION_SUPPRESS_CR_TRIGGER WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-leg-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The launcher resolves every path it writes physically; macOS's TMPDIR sits
@@ -170,8 +170,8 @@ export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 export HIMMEL_DENIAL_ACK_DIR="$tmp/pinned-denial-acks"
 # a real launch pre-trusts its cwd in the lane config under this home;
 # pinned so no case here writes the operator's real ~/.claude.json.
-export LEG_PRETRUST_HOME="$tmp/pinned-pretrust-home"
-mkdir -p "$HANDOVER_DIR" "$HIMMEL_FLEET_SLOTS" "$XDG_RUNTIME_DIR" "$LEG_PRETRUST_HOME"
+export WORKER_SESSION_PRETRUST_HOME="$tmp/pinned-pretrust-home"
+mkdir -p "$HANDOVER_DIR" "$HIMMEL_FLEET_SLOTS" "$XDG_RUNTIME_DIR" "$WORKER_SESSION_PRETRUST_HOME"
 fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # the arming gate runs brief-lint on every brief, so a fixture brief carries
@@ -209,7 +209,7 @@ cat > "$waker_stub" <<'WAKER_EOF'
 printf '%s\n' "$*" >> "${WAKER_CALLS:-/dev/null}"
 WAKER_EOF
 chmod 755 "$waker_stub"
-export HEADED_ARM_LEG_WAKER="$waker_stub"
+export HEADED_ARM_WORKER_WAKER="$waker_stub"
 
 # mk_launch_stubs <dir> <name> - konsole/pgrep/proc stubs, same shape
 # headed-arm.sh's own suite (test-headed-arm.sh) uses: konsole records its
@@ -231,7 +231,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|WORKER_SESSION_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -261,16 +261,16 @@ wait_record() {
 
 # run_leg <stubdir> <repo> <name> [model] - invokes the wrapper for real
 # (non-dry), wired at the SAME seams headed-arm.sh's own suite exposes -
-# HEADED_ARM_LEG_TARGET is our own wrapper's only seam; everything else
+# HEADED_ARM_WORKER_TARGET is our own wrapper's only seam; everything else
 # flows through to the real headed-arm.sh because the wrapper execs it.
-# <repo> is passed as LEG_REPO (the wrapper's OWN contract), never as
+# <repo> is passed as WORKER_SESSION_REPO (the wrapper's OWN contract), never as
 # HEADED_ARM_REPO directly - codex-1 review finding: setting
 # HEADED_ARM_REPO here would exercise headed-arm.sh's seam without ever
-# proving the wrapper's own LEG_REPO->HEADED_ARM_REPO fold runs on the real
+# proving the wrapper's own WORKER_SESSION_REPO->HEADED_ARM_REPO fold runs on the real
 # (non-dry) path, which --dry-run's own report string (case 7) cannot prove
 # on its own.
 # PROCEED_PREFLIGHT / SKIPPED_FLEET_PREFLIGHT: stub
-# scripts/lib/bank-preflight.sh invocations for HEADED_ARM_LEG_PREFLIGHT.
+# scripts/lib/bank-preflight.sh invocations for HEADED_ARM_WORKER_PREFLIGHT.
 # Without this, every full-launch case below would call the REAL
 # bank-preflight.sh against THIS machine's own ambient process table -
 # spuriously refusing on a host that genuinely has >= HIMMEL_FLEET_CAP
@@ -314,8 +314,8 @@ exit "${FLEET_TEST_RC:-0}"
 FLEET_TARGET
 chmod +x "$fleet_target"
 fleet_launch() {
-  FLEET_TEST_MANIFEST="$fleet_manifest" HEADED_ARM_LEG_TARGET="$fleet_target" \
-    HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" \
+  FLEET_TEST_MANIFEST="$fleet_manifest" HEADED_ARM_WORKER_TARGET="$fleet_target" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" \
     --no-profile --fleet "$fleet_manifest" "$@" \
     HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5
 }
@@ -341,14 +341,14 @@ printf '%s\n' '#!/usr/bin/env bash' \
 chmod 755 "$REC_PREFLIGHT"
 rc=0; out="$(CADENCE_USAGE_LANE=claudex CADENCE_USAGE_LEG=stale-leg CADENCE_USAGE_LAUNCH='' \
   REC_PREFLIGHT_OUT="$tmp/rec-preflight.env" FLEET_TEST_MANIFEST="$fleet_manifest" \
-  HEADED_ARM_LEG_TARGET="$fleet_target" HEADED_ARM_LEG_PREFLIGHT="$REC_PREFLIGHT" bash "$SCRIPT" \
+  HEADED_ARM_WORKER_TARGET="$fleet_target" HEADED_ARM_WORKER_PREFLIGHT="$REC_PREFLIGHT" bash "$SCRIPT" \
   --no-profile HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
 check 'usage names: launch with inherited CADENCE_USAGE_* exits 0' 0 "$rc"
 check 'usage names: the launch preflight sees this launch, not the inherited lane and leg' \
   "$(printf '%s\n' CADENCE_USAGE_LANE=native CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_LEG=HIMMEL-3748-N7-fleet)" \
   "$(cat "$tmp/rec-preflight.env" 2>/dev/null)"
-rc=0; out="$(HEADED_ARM_LEG_PREFLIGHT="$SKIPPED_FLEET_PREFLIGHT" \
-  HEADED_ARM_LEG_TARGET="$fleet_target" bash "$SCRIPT" --no-profile --fleet "$fleet_manifest" \
+rc=0; out="$(HEADED_ARM_WORKER_PREFLIGHT="$SKIPPED_FLEET_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$fleet_target" bash "$SCRIPT" --no-profile --fleet "$fleet_manifest" \
   HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
 check 'fleet: admission refusal preserves status' 10 "$rc"
 check 'fleet: admission refusal leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
@@ -377,10 +377,10 @@ run_leg() {
   # because the wrapper's own `export IMPL_GUARD_OK=1` ran - not because the
   # value was already there. HIMMEL_CONSOLE_LEG likewise.
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-  HEADED_ARM_LEG_PREFLIGHT="$preflight" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+  HEADED_ARM_WORKER_PREFLIGHT="$preflight" \
   KONSOLE_CMD="$stubdir/konsole" PGREP_CMD="$stubdir/pgrep" \
-  LEG_REPO="$repo" HEADED_ARM_LOCK_DIR="$stubdir/locks" HEADED_ARM_PROC="$stubdir/proc" \
+  WORKER_SESSION_REPO="$repo" HEADED_ARM_LOCK_DIR="$stubdir/locks" HEADED_ARM_PROC="$stubdir/proc" \
     ${RUN_LEG_WRAP-} bash "$SCRIPT" ${RUN_LEG_ARGS-$RUN_LEG_DEFAULT_ARGS} "$@" "$name" "$some_doc" "$stubdir/signal-never" "$PAST" "$stubdir/log" "$model"
 }
 
@@ -405,12 +405,12 @@ fi
 
 # --- 3-6. --dry-run argv -----------------------------------------------------
 # review finding: default-context cases must not inherit an
-# operator's own LEG_CONTEXT/LEG_REPO from the launching shell - explicitly
+# operator's own WORKER_SESSION_CONTEXT/WORKER_SESSION_REPO from the launching shell - explicitly
 # clear both (empty is equivalent to unset for this wrapper's own checks)
 # rather than relying on ambient env happening to be clean.
-rc=0; out="$(LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run default: exit 0" "$rc" "0"
-ends_with "dry-run default: context=standard, no LEG_CONTEXT" "$out" "standard"
+ends_with "dry-run default: context=standard, no WORKER_SESSION_CONTEXT" "$out" "standard"
 not_contains "dry-run default: no [1m] suffix in the would-exec line" "$out" "[1m]"
 contains "dry-run default: reports IMPL_GUARD_OK=1" "$out" "IMPL_GUARD_OK=1"
 contains "dry-run default: reports INLINE_IMPL_OK=1" "$out" "INLINE_IMPL_OK=1"
@@ -422,44 +422,44 @@ contains "dry-run default: no console-name source -> HIMMEL_CONSOLE_NAME absent"
 # launch env - the 200000 pin by default, the console's mode when set, and a
 # junk mode refuses the launch rather than reaching the leg. the
 # guard is OFF by default - no mode reaches the leg unless the caller asks.
-contains "dry-run default: no context mode (the guard is off)" "$out" "HIMMEL_LEG_CONTEXT_MODE=<unset>"
-contains "dry-run default: the guard's ceiling is the 200000 pin" "$out" "HIMMEL_LEG_AUTOCOMPACT=200000"
-rc=0; out="$(LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard compact HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "dry-run default: no context mode (the guard is off)" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
+contains "dry-run default: the guard's ceiling is the 200000 pin" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard compact HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --context-guard compact: exit 0" "$rc" "0"
-contains "dry-run --context-guard compact: propagated" "$out" "HIMMEL_LEG_CONTEXT_MODE=compact"
-rc=0; out="$(LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard handoff HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-contains "dry-run --context-guard handoff: propagated" "$out" "HIMMEL_LEG_CONTEXT_MODE=handoff"
-rc=0; out="$(HIMMEL_LEG_CONTEXT_MODE=compact LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard none HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "dry-run --context-guard compact: propagated" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard handoff HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "dry-run --context-guard handoff: propagated" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard none HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --context-guard none over an env mode: exit 0" "$rc" "0"
-contains "dry-run --context-guard none: the flag wins, no mode reaches the leg" "$out" "HIMMEL_LEG_CONTEXT_MODE=<unset>"
-rc=0; out="$(LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard bogus HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "dry-run --context-guard none: the flag wins, no mode reaches the leg" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard bogus HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --context-guard bogus: refused" "$rc" "2"
-rc=0; out="$(LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard 2>&1)" || rc=$?
 check "dry-run --context-guard with no value: refused" "$rc" "2"
 contains "usage names --context-guard and its reference doc" "$out" "docs/internals/leg-context-guard.md"
-rc=0; out="$(HIMMEL_LEG_CONTEXT_MODE=handoff LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run HIMMEL_LEG_CONTEXT_MODE=handoff: exit 0" "$rc" "0"
-contains "dry-run HIMMEL_LEG_CONTEXT_MODE=handoff: propagated" "$out" "HIMMEL_LEG_CONTEXT_MODE=handoff"
-rc=0; out="$(HIMMEL_LEG_CONTEXT_MODE=bogus LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: refused" "$rc" "2"
-contains "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: names the allowed modes" "$out" "compact or handoff"
+rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff: exit 0" "$rc" "0"
+contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff: propagated" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: refused" "$rc" "2"
+contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: names the allowed modes" "$out" "compact or handoff"
 
 # a console armed with CHIEF_CONTEXT=1m in its own environ (the
 # mandatory opt-in for a 1M successor, console.sh:382) must not forward that
 # console-only knob into a leg it arms. Ambient CHIEF_CONTEXT=1m in THIS
 # suite's own launching shell must not silently satisfy the assertion either -
 # not_contains on a value the wrapper never receives proves nothing - so this
-# sets it explicitly on the invocation, same shape as the LEG_CONTEXT=1m case
+# sets it explicitly on the invocation, same shape as the WORKER_SESSION_CONTEXT=1m case
 # below. Enumerates the expected scrub set explicitly (not merely "non-empty")
 # so a future console-only knob added without a matching scrub here fails
 # this exact assertion, not a vaguer one.
-rc=0; out="$(CHIEF_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
 contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> CONSOLE_CONTEXT=<unset>"
 not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
 # The old name CONSOLE_CONTEXT is scrubbed the same way: headed-arm.sh still
 # reads it.
-rc=0; out="$(CONSOLE_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(CONSOLE_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CONSOLE_CONTEXT=1m: exit 0" "$rc" "0"
 contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset>" "$out" "CONSOLE_CONTEXT=<unset>"
 not_contains "dry-run, ambient CONSOLE_CONTEXT=1m: never reported as still set" "$out" "CONSOLE_CONTEXT=1m"
@@ -569,14 +569,14 @@ contains "preset HIMMEL_CONSOLE_NAME token, no source: sibling token kept" "$len
 nc_probe=$( grep() { return 2; }; not_contains "probe" "x" "y" )
 check "not_contains reports a grep error as a failure, not as absence" "$nc_probe" "FAIL - probe: grep itself failed (rc 2)"
 
-rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run LEG_CONTEXT=1m: refused with exit 2" "$rc" "2"
-contains "dry-run LEG_CONTEXT=1m: refusal names the required ceiling" "$out" "--autocompact 200000"
-contains "dry-run LEG_CONTEXT=1m: refusal points to the standard leg setting" "$out" "unset LEG_CONTEXT"
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
+contains "dry-run WORKER_SESSION_CONTEXT=1m: refusal names the required ceiling" "$out" "--autocompact 200000"
+contains "dry-run WORKER_SESSION_CONTEXT=1m: refusal points to the standard leg setting" "$out" "unset WORKER_SESSION_CONTEXT"
 
-rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-fable-5-1 2>&1)" || rc=$?
-check "dry-run LEG_CONTEXT=1m, Fable model: refused with exit 2" "$rc" "2"
-contains "dry-run LEG_CONTEXT=1m, Fable model: still checks autocompact, not the model suffix" "$out" "--autocompact 200000"
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-fable-5-1 2>&1)" || rc=$?
+check "dry-run WORKER_SESSION_CONTEXT=1m, Fable model: refused with exit 2" "$rc" "2"
+contains "dry-run WORKER_SESSION_CONTEXT=1m, Fable model: still checks autocompact, not the model suffix" "$out" "--autocompact 200000"
 
 # --- 36. Sanctioned operator-ruled 1m Context-line opt-in ------
 # some/doc.md (nonexistent) already covers the "no line" negative above -
@@ -601,18 +601,18 @@ doc_context_ok="$tmp/context-doc-ok.md"
 fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: HIMMEL-3581 sanctioned 1m leg test' > "$doc_context_ok"
 
 for d in "$doc_context_none" "$doc_context_empty" "$doc_context_bad_dash" "$doc_context_bad_mode" "$doc_context_no_marker"; do
-    rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-    check "dry-run LEG_CONTEXT=1m, $(basename "$d"): still refused with exit 2" "$rc" "2"
-    contains "dry-run LEG_CONTEXT=1m, $(basename "$d"): refusal names the required ceiling" "$out" "--autocompact 200000"
+    rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+    check "dry-run WORKER_SESSION_CONTEXT=1m, $(basename "$d"): still refused with exit 2" "$rc" "2"
+    contains "dry-run WORKER_SESSION_CONTEXT=1m, $(basename "$d"): refusal names the required ceiling" "$out" "--autocompact 200000"
 done
 
-rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run LEG_CONTEXT=1m, sanctioned Context line: accepted (exit 0)" "$rc" "0"
-contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: reports context=1m (operator-ruling)" "$out" "context=1m (operator-ruling)"
-contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: reports the reason" "$out" "HIMMEL-3581 sanctioned 1m leg test"
-contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: exports CHIEF_CONTEXT=1m before the exec" "$out" "CHIEF_CONTEXT=1m"
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: accepted (exit 0)" "$rc" "0"
+contains "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: reports context=1m (operator-ruling)" "$out" "context=1m (operator-ruling)"
+contains "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: reports the reason" "$out" "HIMMEL-3581 sanctioned 1m leg test"
+contains "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: exports CHIEF_CONTEXT=1m before the exec" "$out" "CHIEF_CONTEXT=1m"
 
-# --- the audited autocompact A/B arm (LEG_AUTOCOMPACT_AB) -----
+# --- the audited autocompact A/B arm (WORKER_SESSION_AUTOCOMPACT_AB) -----
 # 400000 needs the brief ruling line, standard context and a valid value; 200000
 # is the control arm; the default (unset) stays 200000 for everyone not opted in.
 doc_ab_none="$tmp/ab-doc-none.md"
@@ -623,28 +623,28 @@ doc_ab_ok="$tmp/ab-doc-ok.md"
 fx_brief '# fixture brief' '> **Context:** ab-400k — operator-ruling: HIMMEL-5193' > "$doc_ab_ok"
 
 for d in "$doc_ab_none" "$doc_ab_empty"; do
-    rc=0; out="$(LEG_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+    rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
     check "ab arm 400000, $(basename "$d"): refused with exit 2" "$rc" "2"
     not_contains "ab arm 400000, $(basename "$d"): no 400000 arm reported" "$out" "ab-arm=400k"
 done
-rc=0; out="$(LEG_AUTOCOMPACT_AB=300000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=300000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 300000 (not 200000/400000): refused with exit 2" "$rc" "2"
-rc=0; out="$(LEG_CONTEXT=1m LEG_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "ab arm 400000 with LEG_CONTEXT=1m: refused with exit 2" "$rc" "2"
-rc=0; out="$(LEG_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "ab arm 400000 with WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 400000, ruling line: accepted (exit 0)" "$rc" "0"
 contains "ab arm 400000, ruling line: reports ab-arm=400k autocompact=400000" "$out" "ab-arm=400k autocompact=400000"
-contains "ab arm 400000, ruling line: exports HIMMEL_LEG_AUTOCOMPACT=400000" "$out" "HIMMEL_LEG_AUTOCOMPACT=400000"
-rc=0; out="$(LEG_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_none" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "ab arm 400000, ruling line: exports HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000"
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_none" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 200000 (control), no ruling line: accepted (exit 0)" "$rc" "0"
 contains "ab arm 200000 (control): reports ab-arm=200k autocompact=200000" "$out" "ab-arm=200k autocompact=200000"
-rc=0; out="$(LEG_CONTEXT=1m LEG_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_none" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "ab arm 200000 (control) with LEG_CONTEXT=1m: refused with exit 2" "$rc" "2"
-not_contains "ab arm 200000 with LEG_CONTEXT=1m: no control arm recorded" "$out" "ab-arm=200k"
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_none" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "ab arm 200000 (control) with WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
+not_contains "ab arm 200000 with WORKER_SESSION_CONTEXT=1m: no control arm recorded" "$out" "ab-arm=200k"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "no LEG_AUTOCOMPACT_AB, ruling line present: default unchanged (exit 0)" "$rc" "0"
-not_contains "no LEG_AUTOCOMPACT_AB: no ab arm reported" "$out" "ab-arm="
-not_contains "no LEG_AUTOCOMPACT_AB: no 400000 ceiling" "$out" "autocompact=400000"
+check "no WORKER_SESSION_AUTOCOMPACT_AB, ruling line present: default unchanged (exit 0)" "$rc" "0"
+not_contains "no WORKER_SESSION_AUTOCOMPACT_AB: no ab arm reported" "$out" "ab-arm="
+not_contains "no WORKER_SESSION_AUTOCOMPACT_AB: no 400000 ceiling" "$out" "autocompact=400000"
 rc=0; out="$(HEADED_ARM_AB_AUTOCOMPACT=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "ambient HEADED_ARM_AB_AUTOCOMPACT is not honoured" "$out" "ab-arm=400k"
 
@@ -668,44 +668,44 @@ contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries --auto
 contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries the [1m] model suffix" "$out" "claude-sonnet-4-6[1m]"
 
 for off in "standard" "yes" "true" "1M" ""; do
-  rc=0; out="$(LEG_CONTEXT="$off" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-  ends_with "dry-run LEG_CONTEXT=[$off]: stays on standard (fail toward the cheaper default)" "$out" "standard"
+  rc=0; out="$(WORKER_SESSION_CONTEXT="$off" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  ends_with "dry-run WORKER_SESSION_CONTEXT=[$off]: stays on standard (fail toward the cheaper default)" "$out" "standard"
 done
 
 # --- only `--profile design` resolves the 1m context with no
 # env var or brief line; every other profile keeps the 200000 ceiling.
-rc=0; out="$(LEG_CONTEXT='' bash "$SCRIPT" --dry-run --profile design HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile design HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --profile design: exit 0" "$rc" "0"
 contains "dry-run --profile design: names the profile source" "$out" "context=1m (profile design contextMode 1m)"
 ends_with "dry-run --profile design: context=1m" "$out" "1m"
-rc=0; out="$(LEG_CONTEXT='' bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --profile leg-impl: exit 0" "$rc" "0"
 ends_with "dry-run --profile leg-impl: stays standard" "$out" "standard"
 not_contains "dry-run --profile leg-impl: no operator-ruling context" "$out" "operator-ruling"
-rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run --profile leg-impl + LEG_CONTEXT=1m: still refused" "$rc" "2"
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run --profile leg-impl + WORKER_SESSION_CONTEXT=1m: still refused" "$rc" "2"
 
 # --- role-to-profile rule: a brief `profile:` line selects the
-# profile when no --profile / LEG_PROFILE is given; the flag overrides it; a
+# profile when no --profile / WORKER_SESSION_PROFILE is given; the flag overrides it; a
 # brief with no field still hits the unprofiled-launch refusal.
 rule_doc="$tmp/rule-brief-design.md"
 fx_brief '# fixture brief' '> profile: design' > "$rule_doc"
-rc=0; out="$(LEG_PROFILE='' LEG_CONTEXT='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE='' WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "brief profile: design line selects design: exit 0" "$rc" "0"
 contains "brief profile: design line names the profile source" "$out" "context=1m (profile design contextMode 1m)"
-rc=0; out="$(LEG_PROFILE='' LEG_CONTEXT='' bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE='' WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "explicit --profile overrides the brief line: exit 0" "$rc" "0"
 not_contains "explicit --profile leg-impl overrides the brief's design" "$out" "context=1m"
 rule_doc2="$tmp/rule-brief-none.md"
 fx_brief '# fixture brief' 'no profile field here' > "$rule_doc2"
-rc=0; out="$(LEG_PROFILE='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc2" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc2" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "brief with no profile field still refused" "$rc" "2"
 contains "brief with no profile field: refusal text" "$out" "refusing an unprofiled launch"
 
 # --- 6b. --relay: forces the console-relay profile + the
 # HIMMEL_CONSOLE_RELAY env marker Guard C (inbox-send.sh) and the Task 26
 # write-deny hook key off. No value; defaults MODEL to claude-sonnet-5-5 when
-# omitted; an explicit --profile (flag or LEG_PROFILE) other than
+# omitted; an explicit --profile (flag or WORKER_SESSION_PROFILE) other than
 # console-relay conflicts and refuses.
 rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "dry-run --relay: exit 0" "$rc" "0"
@@ -718,9 +718,9 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --relay --profile leg-impl HIMMEL-9999-leg
 check "dry-run --relay --profile leg-impl: refused with exit 2" "$rc" "2"
 contains "dry-run --relay --profile leg-impl: refusal names console-relay" "$out" "console-relay"
 
-rc=0; out="$(LEG_PROFILE=leg-impl bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-check "dry-run --relay, LEG_PROFILE=leg-impl: refused with exit 2" "$rc" "2"
-contains "dry-run --relay, LEG_PROFILE=leg-impl: refusal names console-relay" "$out" "console-relay"
+rc=0; out="$(WORKER_SESSION_PROFILE=leg-impl bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "dry-run --relay, WORKER_SESSION_PROFILE=leg-impl: refused with exit 2" "$rc" "2"
+contains "dry-run --relay, WORKER_SESSION_PROFILE=leg-impl: refusal names console-relay" "$out" "console-relay"
 
 # --relay with an explicit model: explicit wins over the sonnet default. The
 # existing Opus tier gate then applies exactly as today; some/doc.md carries
@@ -758,21 +758,21 @@ contains "dry-run --judge: preface source is judge-preface.md" "$out" "docs/hand
 
 # a persisting leg shell that itself calls headed-arm-leg.sh to
 # arm a judge keeps its OWN leg-only env (IMPL_GUARD_OK, INLINE_IMPL_OK,
-# CLAUDEX_LANE_OK, LEG_CLAUDE_BIN, a stale HEADED_ARM_LAUNCHER pointer, and the
+# CLAUDEX_LANE_OK, WORKER_SESSION_CLAUDE_BIN, a stale HEADED_ARM_LAUNCHER pointer, and the
 # HEADED_ARM_LAUNCHER_ENV token list carrying them) exported ambiently for its
 # whole session. A judge never implements, so an inherited IMPL_GUARD_OK=1
 # reaching it silently is the live symptom this ticket fixes - the wrapper
 # must scrub all of it before arming, not just skip re-setting IMPL_GUARD_OK.
 rc=0; out="$(IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HEADED_ARM_LAUNCHER=/tmp/stale-launcher \
-  LEG_CLAUDE_BIN=/tmp/stale-claude-bin HIMMEL_LEAN_LEG=1 CLAUDEX_LANE_OK=1 \
-  HEADED_ARM_LAUNCHER_ENV='IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 CLAUDEX_LANE_OK=1 HEADED_ARM_LAUNCHER=/tmp/stale-launcher LEG_CLAUDE_BIN=/tmp/stale-claude-bin' \
+  WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-bin HIMMEL_LEAN_LEG=1 CLAUDEX_LANE_OK=1 \
+  HEADED_ARM_LAUNCHER_ENV='IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 CLAUDEX_LANE_OK=1 HEADED_ARM_LAUNCHER=/tmp/stale-launcher WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-bin' \
   bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "dry-run --judge, ambient leg-only env: exit 0" "$rc" "0"
 contains "dry-run --judge, ambient leg-only env: still withholds IMPL_GUARD_OK" "$out" "IMPL_GUARD_OK=<unset>"
 contains "dry-run --judge, ambient leg-only env: still withholds INLINE_IMPL_OK" "$out" "INLINE_IMPL_OK=<unset>"
 not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the inherited IMPL_GUARD_OK token" "$out" "IMPL_GUARD_OK=1"
 not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the inherited CLAUDEX_LANE_OK token" "$out" "CLAUDEX_LANE_OK=1"
-not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the stale LEG_CLAUDE_BIN token" "$out" "/tmp/stale-claude-bin"
+not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the stale WORKER_SESSION_CLAUDE_BIN token" "$out" "/tmp/stale-claude-bin"
 not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the stale HEADED_ARM_LAUNCHER token" "$out" "/tmp/stale-launcher"
 
 # The Opus default is not an
@@ -866,38 +866,38 @@ rm_refuses "--lane claudex" "native" --lane claudex --profile release-manager --
 rm_refuses "--rm-release with a slash" "--rm-release" --profile release-manager --rm-release ../x
 rm_refuses "--rm-release on another profile" "--rm-release" --profile leg-impl --rm-release v1.1.3
 
-# --- 7. LEG_REPO folded into HEADED_ARM_REPO --------------------------------
-rc=0; out="$(LEG_REPO=/some/other/repo bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-contains "dry-run: LEG_REPO folded into HEADED_ARM_REPO" "$out" "HEADED_ARM_REPO=/some/other/repo"
+# --- 7. WORKER_SESSION_REPO folded into HEADED_ARM_REPO --------------------------------
+rc=0; out="$(WORKER_SESSION_REPO=/some/other/repo bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "dry-run: WORKER_SESSION_REPO folded into HEADED_ARM_REPO" "$out" "HEADED_ARM_REPO=/some/other/repo"
 
-# --- 7b. LEG_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS
-rc=0; out="$(LEG_SUPPRESS_CR_TRIGGER=1 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-contains "dry-run: LEG_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS" "$out" "CR_TRIGGER_SUPPRESS=1"
+# --- 7b. WORKER_SESSION_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS
+rc=0; out="$(WORKER_SESSION_SUPPRESS_CR_TRIGGER=1 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "dry-run: WORKER_SESSION_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS" "$out" "CR_TRIGGER_SUPPRESS=1"
 
-# --- 7c. unset LEG_SUPPRESS_CR_TRIGGER -> stays <unset> (default ON)
+# --- 7c. unset WORKER_SESSION_SUPPRESS_CR_TRIGGER -> stays <unset> (default ON)
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-contains "dry-run: unset LEG_SUPPRESS_CR_TRIGGER leaves CR_TRIGGER_SUPPRESS unset (default ON)" "$out" "CR_TRIGGER_SUPPRESS=<unset>"
+contains "dry-run: unset WORKER_SESSION_SUPPRESS_CR_TRIGGER leaves CR_TRIGGER_SUPPRESS unset (default ON)" "$out" "CR_TRIGGER_SUPPRESS=<unset>"
 
-# --- 7d. LEG_API_LANE=on carries HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=auto; otherwise neither
-rc=0; out="$(LEG_API_LANE=on bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run: LEG_API_LANE=on exits 0" "$rc" "0"
-contains "dry-run: LEG_API_LANE=on carries both API-lane vars" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto"
+# --- 7d. WORKER_SESSION_API_LANE=on carries HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=auto; otherwise neither
+rc=0; out="$(WORKER_SESSION_API_LANE=on bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: WORKER_SESSION_API_LANE=on exits 0" "$rc" "0"
+contains "dry-run: WORKER_SESSION_API_LANE=on carries both API-lane vars" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run: unset LEG_API_LANE exits 0" "$rc" "0"
-contains "dry-run: no LEG_API_LANE leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
-rc=0; out="$(LEG_API_LANE=off bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run: LEG_API_LANE=off exits 0" "$rc" "0"
-contains "dry-run: LEG_API_LANE=off leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+check "dry-run: unset WORKER_SESSION_API_LANE exits 0" "$rc" "0"
+contains "dry-run: no WORKER_SESSION_API_LANE leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+rc=0; out="$(WORKER_SESSION_API_LANE=off bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: WORKER_SESSION_API_LANE=off exits 0" "$rc" "0"
+contains "dry-run: WORKER_SESSION_API_LANE=off leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 rc=0; out="$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run: ambient API-lane vars exit 0" "$rc" "0"
-contains "dry-run: ambient API-lane vars without LEG_API_LANE are scrubbed" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+contains "dry-run: ambient API-lane vars without WORKER_SESSION_API_LANE are scrubbed" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 
 # --- 8-9, 11. full (non-dry) launch: proves the non-dry path builds the SAME
 # argv --dry-run predicted, via the real headed-arm.sh and its own KONSOLE_CMD
 # seam. ----------------------------------------------------------------------
 d8="$tmp/c8"; mk_launch_stubs "$d8" "HIMMEL-9999-leg"; mkdir -p "$tmp/repo8"
 rc=0
-LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d8" "$tmp/repo8" "HIMMEL-9999-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d8" "$tmp/repo8" "HIMMEL-9999-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d8" || true
 rec8="$(cat "$d8/record" 2>/dev/null || true)"
 check "full launch, default context: exit 0" "$rc" "0"
@@ -907,10 +907,10 @@ not_contains "full launch, default context: no [1m] suffix on the model" "$rec8"
 # directly, no script(1) tty wrapper.
 contains "full launch, native lane (default): execs claude directly" "$rec8" "claude --model"
 not_contains "full launch, native lane (default): no script(1) tty wrapper" "$rec8" "script -q -a -f"
-# /codex-2: run_leg sets LEG_REPO (never HEADED_ARM_REPO directly), so
-# this now genuinely exercises the wrapper's own LEG_REPO->HEADED_ARM_REPO
+# /codex-2: run_leg sets WORKER_SESSION_REPO (never HEADED_ARM_REPO directly), so
+# this now genuinely exercises the wrapper's own WORKER_SESSION_REPO->HEADED_ARM_REPO
 # fold on the real (non-dry) path, not just headed-arm.sh's own seam.
-contains "full launch: LEG_REPO folds into HEADED_ARM_REPO, reaches --workdir" "$rec8" "--workdir $tmp/repo8"
+contains "full launch: WORKER_SESSION_REPO folds into HEADED_ARM_REPO, reaches --workdir" "$rec8" "--workdir $tmp/repo8"
 
 # full renderer reads a non-default numeric 1m ceiling from a
 # fake registry, not the old design-name / auto branch. Konsole only records.
@@ -921,7 +921,7 @@ CEILING_EOF
 d8profile="$tmp/c8profile"; mk_launch_stubs "$d8profile" "HIMMEL-4021-ceiling"; mkdir -p "$tmp/repo8profile"
 rc=0
 mkdir -p "$tmp/profile fleet"
-PLUGIN_PROFILES_REGISTRY="$ceiling_reg" LEG_CONTEXT='' RUN_LEG_ARGS='--profile design' \
+PLUGIN_PROFILES_REGISTRY="$ceiling_reg" WORKER_SESSION_CONTEXT='' RUN_LEG_ARGS='--profile design' \
   run_leg "$d8profile" "$tmp/repo8profile" "HIMMEL-4021-ceiling" "claude-sonnet-4-6" \
   "$PROCEED_PREFLIGHT" "$tmp/profile fleet/manifest.json" >/dev/null 2>&1 || rc=$?
 check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.legs[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
@@ -945,7 +945,7 @@ not_contains "profile numeric ceiling: not an operator ruling" "$log8profile" "o
 # suite.
 d8b="$tmp/c8b"; mk_launch_stubs "$d8b" "HIMMEL-7777-leg"; mkdir -p "$tmp/repo8b"
 rc=0
-LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d8b" "$tmp/repo8b" "HIMMEL-7777-leg" "claude-sonnet-5[1m]" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d8b" "$tmp/repo8b" "HIMMEL-7777-leg" "claude-sonnet-5[1m]" >/dev/null 2>&1 || rc=$?
 wait_record "$d8b" || true
 rec8b="$(cat "$d8b/record" 2>/dev/null || true)"
 check "full launch, default context, pre-suffixed model: exit 0" "$rc" "0"
@@ -954,10 +954,10 @@ not_contains "full launch, default context, pre-suffixed model: suffix stripped 
 
 d9="$tmp/c9"; mk_launch_stubs "$d9" "HIMMEL-8888-leg"; mkdir -p "$tmp/repo9"
 rc=0
-LEG_CONTEXT=1m RUN_LEG_ARGS=--no-profile run_leg "$d9" "$tmp/repo9" "HIMMEL-8888-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_CONTEXT=1m RUN_LEG_ARGS=--no-profile run_leg "$d9" "$tmp/repo9" "HIMMEL-8888-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 rec9="$(cat "$d9/record" 2>/dev/null || true)"
-check "full launch, LEG_CONTEXT=1m: refused with exit 2" "$rc" "2"
-check "full launch, LEG_CONTEXT=1m: headed-arm was never invoked" "$rec9" ""
+check "full launch, WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
+check "full launch, WORKER_SESSION_CONTEXT=1m: headed-arm was never invoked" "$rec9" ""
 
 # --- 36 continued. full (non-dry) launch, sanctioned Context-line opt-in ----
 # Inlined rather than run_leg (which is hardwired to $some_doc): the brief
@@ -965,11 +965,11 @@ check "full launch, LEG_CONTEXT=1m: headed-arm was never invoked" "$rec9" ""
 d9c="$tmp/c9c"; mk_launch_stubs "$d9c" "HIMMEL-6666-leg"; mkdir -p "$tmp/repo9c"
 rc=0
 IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d9c/konsole" PGREP_CMD="$d9c/pgrep" \
-LEG_REPO="$tmp/repo9c" HEADED_ARM_LOCK_DIR="$d9c/locks" HEADED_ARM_PROC="$d9c/proc" \
-LEG_CONTEXT=1m \
+WORKER_SESSION_REPO="$tmp/repo9c" HEADED_ARM_LOCK_DIR="$d9c/locks" HEADED_ARM_PROC="$d9c/proc" \
+WORKER_SESSION_CONTEXT=1m \
   bash "$SCRIPT" --no-profile "HIMMEL-6666-leg" "$doc_context_ok" "$d9c/signal-never" "$PAST" "$d9c/log" "claude-sonnet-4-6" >/dev/null 2>&1 || rc=$?
 wait_record "$d9c" || true
 rec9c="$(cat "$d9c/record" 2>/dev/null || true)"
@@ -984,7 +984,7 @@ contains "full launch, sanctioned Context line: arm log records context=1m (oper
 
 # --- 10. IMPL_GUARD_OK reaches the konsole invocation's own environment ----
 env8="$(cat "$d8/env-record" 2>/dev/null || true)"
-not_contains "full launch, native: no added lane env" "$env8" "LEG_LANE="
+not_contains "full launch, native: no added lane env" "$env8" "WORKER_SESSION_LANE="
 not_contains "full launch, native: no added bank lane env" "$env8" "CADENCE_BANK_LANE="
 contains "full launch: IMPL_GUARD_OK=1 in the konsole invocation's env" "$env8" "IMPL_GUARD_OK=1"
 contains "full launch: INLINE_IMPL_OK=1 in the konsole invocation's env" "$env8" "INLINE_IMPL_OK=1"
@@ -1001,7 +1001,7 @@ not_contains "full launch: internal autocompact requirement does not leak into t
 # own suite already trusts, not a live /proc read.
 d10b="$tmp/c10b"; mk_launch_stubs "$d10b" "HIMMEL-3139-leg"; mkdir -p "$tmp/repo10b"
 rc=0
-CHIEF_CONTEXT=1m LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10b" "$tmp/repo10b" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10b" "$tmp/repo10b" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d10b" || true
 env10b="$(cat "$d10b/env-record" 2>/dev/null || true)"
 check "full launch, ambient CHIEF_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
@@ -1009,7 +1009,7 @@ not_contains "full launch, ambient CHIEF_CONTEXT=1m: absent from the konsole inv
 # The old name CONSOLE_CONTEXT is kept out on the real path the same way.
 d10c="$tmp/c10c"; mk_launch_stubs "$d10c" "HIMMEL-3139-leg"; mkdir -p "$tmp/repo10c"
 rc=0
-CONSOLE_CONTEXT=1m LEG_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10c" "$tmp/repo10c" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+CONSOLE_CONTEXT=1m WORKER_SESSION_CONTEXT='' RUN_LEG_ARGS=--no-profile run_leg "$d10c" "$tmp/repo10c" "HIMMEL-3139-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d10c" || true
 env10c="$(cat "$d10c/env-record" 2>/dev/null || true)"
 check "full launch, ambient CONSOLE_CONTEXT=1m: exit 0" "$rc" "0"
@@ -1030,8 +1030,8 @@ cp "$HERE/../../lib/claude-version.sh" "$mutantdir/scripts/lib/claude-version.sh
 chmod 755 "$mutant"
 d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-leg"; mkdir -p "$tmp/repo12"
 mrc=0
-mout="$(IMPL_GUARD_OK='' HEADED_ARM_LEG_TARGET="$mutant" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
-  KONSOLE_CMD="$d12/konsole" PGREP_CMD="$d12/pgrep" LEG_REPO="$tmp/repo12" \
+mout="$(IMPL_GUARD_OK='' HEADED_ARM_WORKER_TARGET="$mutant" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  KONSOLE_CMD="$d12/konsole" PGREP_CMD="$d12/pgrep" WORKER_SESSION_REPO="$tmp/repo12" \
   HEADED_ARM_LOCK_DIR="$d12/locks" HEADED_ARM_PROC="$d12/proc" \
   bash "$SCRIPT" --no-profile "HIMMEL-4444-leg" "some/doc.md" "$d12/signal-never" "$PAST" "$d12/log" "claude-sonnet-5" 2>&1)" || mrc=$?
 check "RED control: renderer without --autocompact is refused on full launch path" "$mrc" "2"
@@ -1039,7 +1039,7 @@ contains "RED control: refusal names the missing resolved argv pair" "$mout" "re
 check "RED control: konsole was never invoked" "$(cat "$d12/record" 2>/dev/null || true)" ""
 
 # --- 13. SKIPPED-FLEET refuses the launch --------------------
-# Points HEADED_ARM_LEG_PREFLIGHT at the SKIPPED-FLEET stub instead of the
+# Points HEADED_ARM_WORKER_PREFLIGHT at the SKIPPED-FLEET stub instead of the
 # PROCEED default every other full-launch case above uses. headed-arm.sh
 # must never be invoked - no record file, no confirmable marker - so this
 # does NOT use wait_record (which would poll out its full budget waiting for
@@ -1064,7 +1064,7 @@ contains "SKIPPED-FLEET: log names the fleet cap and the bypass" \
   "$(cat "$d13/log" 2>/dev/null || true)" "FLEET_CAP_OK=1"
 
 # --- 13b: SKIPPED-BANK refuses the launch ----
-# Same shape as case 13, but points HEADED_ARM_LEG_PREFLIGHT at the
+# Same shape as case 13, but points HEADED_ARM_WORKER_PREFLIGHT at the
 # SKIPPED-BANK stub. Before the fix, headed-arm-leg.sh discarded every
 # preflight_token other than SKIPPED-FLEET, so a bank-exhausted lane would
 # fall through and launch anyway.
@@ -1092,35 +1092,35 @@ rc=0; out="$(bash "$SCRIPT" --lane bogus HIMMEL-x some/doc.md /tmp/nosig 9999999
 check "unknown lane: exit 2" "$rc" "2"
 contains "unknown lane: names the bad value" "$out" "unknown lane: bogus"
 
-rc=0; out="$(LEG_LANE=bogus bash "$SCRIPT" HIMMEL-x some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-check "unknown lane via LEG_LANE: exit 2" "$rc" "2"
+rc=0; out="$(WORKER_SESSION_LANE=bogus bash "$SCRIPT" HIMMEL-x some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "unknown lane via WORKER_SESSION_LANE: exit 2" "$rc" "2"
 
 # --- 15. --dry-run --lane claudex: resolved launcher + env,
-# default model gpt-6.1-sol, --lane wins over LEG_LANE. -----------------------
-rc=0; out="$(LEG_LANE=native LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-check "dry-run --lane claudex: exit 0 (flag wins over LEG_LANE=native)" "$rc" "0"
+# default model gpt-6.1-sol, --lane wins over WORKER_SESSION_LANE. -----------------------
+rc=0; out="$(WORKER_SESSION_LANE=native WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "dry-run --lane claudex: exit 0 (flag wins over WORKER_SESSION_LANE=native)" "$rc" "0"
 contains "dry-run --lane claudex: reports lane=claudex" "$out" "lane=claudex"
 contains "dry-run --lane claudex: resolved launcher names claude-codex" "$out" "claude-codex"
 contains "dry-run --lane claudex: env carries CLAUDEX_LANE_OK=1" "$out" "CLAUDEX_LANE_OK=1"
-contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "LEG_LANE=claudex"
+contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "WORKER_SESSION_LANE=claudex"
 contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_BANK_LANE=claudex"
 not_contains "dry-run --lane claudex: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
 contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
-rc=0; out="$(CADENCE_BANK_LANE=native HEADED_ARM_LAUNCHER_ENV='LEG_LANE=native CADENCE_BANK_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CADENCE_BANK_LANE=native HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_LANE=native CADENCE_BANK_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "claudex: stale caller lane tokens do not refuse launch" "$rc" "0"
-contains "claudex: resolved lane replaces stale launcher token" "$out" "LEG_LANE=claudex"
+contains "claudex: resolved lane replaces stale launcher token" "$out" "WORKER_SESSION_LANE=claudex"
 contains "claudex: resolved bank replaces stale launcher token" "$out" "CADENCE_BANK_LANE=claudex"
-not_contains "claudex: stale lane token is absent" "$out" "LEG_LANE=native"
+not_contains "claudex: stale lane token is absent" "$out" "WORKER_SESSION_LANE=native"
 not_contains "claudex: stale bank token is absent" "$out" "CADENCE_BANK_LANE=native"
 rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "claudex: a stale CADENCE_USAGE_LANE token does not refuse launch" "$rc" "0"
 contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_BANK_LANE=claudex"
 not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE="
 
-rc=0; out="$(LEG_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-contains "dry-run --lane claudex: LEG_EFFORT overrides the medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
+rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run --lane claudex: an explicit model is NOT overridden" "$out" "claude-sonnet-5"
@@ -1140,7 +1140,7 @@ not_contains "dry-run, native lane: CODEX_MODEL is never set" "$out" "CODEX_MODE
 
 # A claudex leg-impl leg gets the native leg's knowledge access: the same profile
 # settings, MCP allowlist (qmd), lean switch and handover root.
-_access_env() { printf '%s\n' "$1" | tr ' ' '\n' | grep -E '^(LEG_PROFILE_SETTINGS|LEG_PROFILE_MCP_CONFIG|HIMMEL_LEAN_LEG|HANDOVER_DIR)=' | sort; }
+_access_env() { printf '%s\n' "$1" | tr ' ' '\n' | grep -E '^(WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_MCP_CONFIG|HIMMEL_LEAN_LEG|HANDOVER_DIR)=' | sort; }
 rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 rc_x=0; out_x="$(bash "$SCRIPT" --dry-run --profile leg-impl --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc_x=$?
 check "dry-run --profile leg-impl: native and claudex both exit 0" "$rc/$rc_x" "0/0"
@@ -1150,13 +1150,13 @@ check "dry-run --profile leg-impl: claudex access env equals native" "$(_access_
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run, no --lane: reports lane=native" "$out" "lane=native"
 not_contains "dry-run, no --lane: no claude-codex launcher" "$out" "claude-codex"
-not_contains "dry-run, native: no added lane env" "$out" "LEG_LANE="
+not_contains "dry-run, native: no added lane env" "$out" "WORKER_SESSION_LANE="
 not_contains "dry-run, native: no added bank lane env" "$out" "CADENCE_BANK_LANE="
 not_contains "dry-run, native: no added usage lane env" "$out" "CADENCE_USAGE_LANE="
 
 # a lane typo, missing model mapping or dropped backend must
 # never silently start a native/subscription session. Dry runs make no calls.
-rc=0; out="$(LEG_LANE=native bash "$SCRIPT" --dry-run --no-profile --lane openrouter HIMMEL-9999-or "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/or.log" 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_LANE=native bash "$SCRIPT" --dry-run --no-profile --lane openrouter HIMMEL-9999-or "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/or.log" 2>&1)" || rc=$?
 check "openrouter: flag selects lane" "$rc" "0"
 contains "openrouter: lane reported" "$out" "lane=openrouter"
 contains "openrouter: bank lane remains openrouter" "$out" "CADENCE_BANK_LANE=openrouter"
@@ -1165,10 +1165,10 @@ contains "openrouter: default Sonnet slug pinned" "$out" "OPENROUTER_MODEL=anthr
 contains "openrouter: backend is claude-openrouter" "$out" "claude-openrouter"
 contains "openrouter: alias route uses sonnet" "$out" " sonnet "
 contains "openrouter: recorder enabled" "$out" "recorder=1"
-rc=0; out="$(LEG_LANE=openrouter bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-or "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/or.log" claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_LANE=openrouter bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-or "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/or.log" claude-sonnet-5-5 2>&1)" || rc=$?
 check "openrouter: ambient lane composes with profile" "$rc" "0"
 contains "openrouter: Claude id mapped" "$out" "OPENROUTER_MODEL=anthropic/claude-sonnet-5.5"
-contains "openrouter: profile retains backend" "$out" "LEG_CLAUDE_BIN="
+contains "openrouter: profile retains backend" "$out" "WORKER_SESSION_CLAUDE_BIN="
 for bad_or_model in claude-haiku-4-5 gpt-6.1-sol claude-sonnet-99-9 anthropic/claude-haiku-4.5; do
   rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane openrouter HIMMEL-9999-or "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/or.log" "$bad_or_model" 2>&1)" || rc=$?
   check "openrouter: refuses unsupported $bad_or_model" "$rc" "2"
@@ -1176,34 +1176,34 @@ for bad_or_model in claude-haiku-4-5 gpt-6.1-sol claude-sonnet-99-9 anthropic/cl
 done
 
 # lane registry. deepseek is admitted with its own
-# launcher, the launcher's own default model and LEG_LANE=deepseek; glm is a
+# launcher, the launcher's own default model and WORKER_SESSION_LANE=deepseek; glm is a
 # registry row that refuses until it has a launcher contract; unknown stays 2.
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
 check "deepseek: registry admits the lane" "$rc" "0"
 contains "deepseek: lane reported" "$out" "lane=deepseek"
 contains "deepseek: launcher is claude-deepseek" "$out" "claude-deepseek"
-contains "deepseek: LEG_LANE exported" "$out" "LEG_LANE=deepseek"
+contains "deepseek: WORKER_SESSION_LANE exported" "$out" "WORKER_SESSION_LANE=deepseek"
 contains "deepseek: bank lane keeps openrouter mapping" "$out" "CADENCE_BANK_LANE=openrouter"
 contains "deepseek: recorder enabled" "$out" "recorder=1"
 not_contains "deepseek: no codex env" "$out" "CLAUDEX_LANE_OK"
 ds_stub="$tmp/ds-stub"; printf "#!/bin/sh\nexport ANTHROPIC_MODEL='stub-model'\nexit 0\n" > "$ds_stub"; chmod +x "$ds_stub"
-rc=0; out="$(HEADED_ARM_LEG_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
 check "deepseek: launcher seam honoured" "$rc" "0"
 contains "deepseek: seam path is the exec target" "$out" "exec-target=$ds_stub"
 contains "deepseek: seam launcher's model is the default" "$out" " stub-model "
 printf '#!/bin/sh\nexport ANTHROPIC_MODEL=bare-model\nexit 0\n' > "$ds_stub"
-rc=0; out="$(HEADED_ARM_LEG_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
 check "deepseek: bare export is read" "$rc" "0"
 contains "deepseek: bare export value is the default" "$out" " bare-model "
 printf '#!/bin/sh\nexport ANTHROPIC_MODEL="dq-model[1m]"\nexit 0\n' > "$ds_stub"
-rc=0; out="$(HEADED_ARM_LEG_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
 check "deepseek: double-quoted export is read" "$rc" "0"
 contains "deepseek: double-quoted value is the default, quotes stripped" "$out" " dq-model[1m] "
 printf '#!/bin/sh\nexit 0\n' > "$ds_stub"
-rc=0; out="$(HEADED_ARM_LEG_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_DEEPSEEK_BIN="$ds_stub" bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
 check "deepseek: launcher without a model export fails closed" "$rc" "2"
 contains "deepseek: fail-closed names the missing export" "$out" "no default model"
-rc=0; out="$(LEG_LANE=deepseek bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_LANE=deepseek bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
 check "deepseek: ambient lane composes with profile" "$rc" "0"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane glm HIMMEL-9999-glm "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/glm.log" 2>&1)" || rc=$?
 check "glm: refused until it has a launcher" "$rc" "2"
@@ -1236,11 +1236,11 @@ chmod 755 "$or_bin/claude" "$or_bin/curl"
 # These fixtures check defaults, not ambient operator overrides.
 unset OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS
 printf '%s' '{"providers":{"openrouter":{}},"rules":[{"corpus":"*","provider":"openrouter","purpose":"inference","verdict":"allow"}]}' > "$tmp/or-matrix.json"
-rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 OPENROUTER_HAIKU=wrong CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
+rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" WORKER_SESSION_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 OPENROUTER_HAIKU=wrong CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
 check "openrouter backend: invalid tier refuses" "$rc" "2"
 contains "openrouter backend: invalid tier diagnostic" "$out" "unknown or malformed OPENROUTER_HAIKU"
 not_contains "openrouter backend: invalid tier never executes Claude" "$out" 'ANTHROPIC_MODEL=sonnet'
-rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
+rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" WORKER_SESSION_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
 check "openrouter backend: launches stub" "$rc" "0"
 contains "openrouter backend: model alias Sonnet" "$out" "ANTHROPIC_MODEL=sonnet"
 contains "openrouter backend: HAIKU model independent" "$out" "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5"
@@ -1259,10 +1259,10 @@ check "openrouter onboarding: primary root trusted" "$(jq -r --arg root "$or_pri
 check "openrouter onboarding: unrelated top-level data preserved" "$(jq -r '.keep' "$or_home/.claude-openrouter/.claude.json")" "preserved"
 check "openrouter onboarding: unrelated trust preserved" "$(jq -r '.projects["/other"].hasTrustDialogAccepted' "$or_home/.claude-openrouter/.claude.json")" "false"
 or_mtime="$(node -e 'console.log(require("fs").statSync(process.argv[1]).mtimeMs)' "$or_home/.claude-openrouter/.claude.json")"
-rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
+rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" WORKER_SESSION_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
 check "openrouter onboarding: second launch succeeds" "$rc" "0"
 check "openrouter onboarding: second launch does not rewrite config" "$(node -e 'console.log(require("fs").statSync(process.argv[1]).mtimeMs)' "$or_home/.claude-openrouter/.claude.json")" "$or_mtime"
-rc=0; out="$(GIT_DIR="$tmp/not-a-git-dir" GIT_COMMON_DIR="$tmp/not-a-git-common-dir" HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
+rc=0; out="$(GIT_DIR="$tmp/not-a-git-dir" GIT_COMMON_DIR="$tmp/not-a-git-common-dir" HOME="$or_home" PATH="$or_bin:$PATH" WORKER_SESSION_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
 check "openrouter onboarding: poisoned Git env cannot steer trust lookup" "$rc" "0"
 
 # The real backend child boundary must refuse before executing Claude,
@@ -1276,7 +1276,7 @@ for or_case in low-credit exhausted-key unknown-credit unknown-cap; do
         unknown-credit) or_credit_body='not-json' ;;
         unknown-cap) or_key_body='not-json' ;;
     esac
-    rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter \
+    rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" WORKER_SESSION_LANE=openrouter \
       OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
       OR_CREDIT_BODY="$or_credit_body" OR_KEY_BODY="$or_key_body" \
       CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" \
@@ -1286,7 +1286,7 @@ for or_case in low-credit exhausted-key unknown-credit unknown-cap; do
 done
 or_valid_config="$(cat "$or_home/.claude-openrouter/.claude.json")"
 printf '%s' 'not-json' > "$or_home/.claude-openrouter/.claude.json"
-rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter \
+rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" WORKER_SESSION_LANE=openrouter \
   OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
   CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" \
   bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
@@ -1306,8 +1306,8 @@ done
 d_or="$tmp/or-arm"; mk_launch_stubs "$d_or" "HIMMEL-9999-or-arm"
 mkdir -p "$tmp/or-repo"
 rc=0
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_OPENROUTER_BIN="$HERE/../../claude-openrouter" \
-KONSOLE_CMD="$d_or/konsole" PGREP_CMD="$d_or/pgrep" LEG_REPO="$tmp/or-repo" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_OPENROUTER_BIN="$HERE/../../claude-openrouter" \
+KONSOLE_CMD="$d_or/konsole" PGREP_CMD="$d_or/pgrep" WORKER_SESSION_REPO="$tmp/or-repo" \
 HEADED_ARM_LOCK_DIR="$d_or/locks" HEADED_ARM_PROC="$d_or/proc" \
   bash "$SCRIPT" --lane openrouter --profile leg-impl HIMMEL-9999-or-arm "$some_doc" "$d_or/no-signal" "$PAST" "$d_or/log" >/dev/null 2>&1 || rc=$?
 wait_record "$d_or" || true
@@ -1316,13 +1316,13 @@ rec_or="$(cat "$d_or/record" 2>/dev/null || true)"
 contains "openrouter arm: recorder uses log" "$rec_or" "script -q -a -f $d_or/log -c"
 contains "openrouter arm: alias argv" "$rec_or" "--model sonnet"
 contains "openrouter arm: pinned slug reaches child" "$rec_or" "OPENROUTER_MODEL=anthropic/claude-sonnet-5.5"
-contains "openrouter arm: backend retained" "$(cat "$d_or/env-record" 2>/dev/null || true)" "LEG_CLAUDE_BIN=$HERE/../../claude-openrouter"
+contains "openrouter arm: backend retained" "$(cat "$d_or/env-record" 2>/dev/null || true)" "WORKER_SESSION_CLAUDE_BIN=$HERE/../../claude-openrouter"
 contains "openrouter arm: namespace channel appended" "$(cat "$d_or/HIMMEL-9999-or-arm.leg-preface.md" 2>/dev/null || true)" "# OpenRouter coordination"
 
 # --- 16. full (non-dry) launch, --lane claudex: proves the
 # non-dry path builds the argv --dry-run predicted, via headed-arm.sh's real
 # HEADED_ARM_LAUNCHER/HEADED_ARM_LAUNCHER_ENV/HEADED_ARM_RECORDER seams. A
-# stub claude-codex binary on the HEADED_ARM_LEG_CLAUDEX_BIN seam stands in
+# stub claude-codex binary on the HEADED_ARM_WORKER_CLAUDEX_BIN seam stands in
 # for the real scripts/claude-codex (the konsole stub never actually execs
 # the recorded command, so the stub need not run - only its path needs to
 # reach the recorded argv, same reasoning as headed-arm.sh's own suite).
@@ -1334,11 +1334,11 @@ chmod 755 "$claudex_stub"
 d16="$tmp/c16"; mk_launch_stubs "$d16" "HIMMEL-5555-leg"; mkdir -p "$tmp/repo16"
 rc=0
 IMPL_GUARD_OK='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
-HEADED_ARM_LEG_CLAUDEX_BIN="$claudex_stub" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_CLAUDEX_BIN="$claudex_stub" \
 KONSOLE_CMD="$d16/konsole" PGREP_CMD="$d16/pgrep" \
-LEG_REPO="$tmp/repo16" HEADED_ARM_LOCK_DIR="$d16/locks" HEADED_ARM_PROC="$d16/proc" \
+WORKER_SESSION_REPO="$tmp/repo16" HEADED_ARM_LOCK_DIR="$d16/locks" HEADED_ARM_PROC="$d16/proc" \
   bash "$SCRIPT" --lane claudex --no-profile "HIMMEL-5555-leg" "some/doc.md" "$d16/signal-never" "$PAST" "$d16/log" >/dev/null 2>&1 || rc=$?
 wait_record "$d16" || true
 rec16="$(cat "$d16/record" 2>/dev/null || true)"
@@ -1346,15 +1346,15 @@ check "full launch, --lane claudex: exit 0" "$rc" "0"
 contains "full launch, --lane claudex: wrapped in script(1) with the SAME log path, appending (-a)" "$rec16" "script -q -a -f $d16/log -c"
 contains "full launch, --lane claudex: the preface shim reaches the recorded argv" "$rec16" "leg-claude-launcher.sh"
 contains "full launch, --lane claudex: the shim retains the claudex backend" \
-  "$(cat "$d16/env-record" 2>/dev/null || true)" "LEG_CLAUDE_BIN=$claudex_stub"
+  "$(cat "$d16/env-record" 2>/dev/null || true)" "WORKER_SESSION_CLAUDE_BIN=$claudex_stub"
 not_contains "full launch, --lane claudex: launcher not force-wrapped in bash (execs via its own shebang)" "$rec16" "bash $claudex_stub"
 contains "full launch, --lane claudex: --model defaults to gpt-6.1-sol" "$rec16" "--model gpt-6.1-sol"
 contains "full launch, --lane claudex: --autocompact 200000 (standard context ceiling)" "$rec16" "--autocompact 200000"
 contains "full launch, --lane claudex: CLAUDEX_LANE_OK=1 reaches the konsole argv" "$rec16" "CLAUDEX_LANE_OK=1"
-contains "full launch, --lane claudex: lane reaches launcher argv" "$rec16" "LEG_LANE=claudex"
+contains "full launch, --lane claudex: lane reaches launcher argv" "$rec16" "WORKER_SESSION_LANE=claudex"
 contains "full launch, --lane claudex: bank lane reaches launcher argv" "$rec16" "CADENCE_BANK_LANE=claudex"
 env16="$(cat "$d16/env-record" 2>/dev/null || true)"
-contains "full launch, --lane claudex: lane reaches child env" "$env16" "LEG_LANE=claudex"
+contains "full launch, --lane claudex: lane reaches child env" "$env16" "WORKER_SESSION_LANE=claudex"
 contains "full launch, --lane claudex: bank lane reaches child env" "$env16" "CADENCE_BANK_LANE=claudex"
 contains "full launch, --lane claudex: CLAUDE_CODE_EFFORT_LEVEL=medium reaches the konsole argv" "$rec16" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 contains "full launch, --lane claudex: CODEX_MODEL=gpt-6.1-sol reaches the konsole argv" "$rec16" "CODEX_MODEL=gpt-6.1-sol"
@@ -1381,7 +1381,7 @@ chmod 755 "$shim_rec"
 : > "$tmp/settings.json"
 : > "$tmp/preface.md"
 rc=0
-LEG_CLAUDE_BIN="$shim_rec" LEG_PROFILE_SETTINGS="$tmp/settings.json" LEG_PROFILE_PREFACE="$tmp/preface.md" \
+WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS="$tmp/settings.json" WORKER_SESSION_PROFILE_PREFACE="$tmp/preface.md" \
   bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
 shimout="$(cat "$tmp/shim-record" 2>/dev/null || true)"
 check "shim: exit 0" "$rc" "0"
@@ -1394,7 +1394,7 @@ check "shim: prepends both flags and preserves the rest of argv in order" "$shim
 # exists to enforce.
 rm -f "$tmp/shim-record"
 rc=0
-LEG_CLAUDE_BIN="$shim_rec" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' \
+WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' \
   bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
 check "shim: no profile env -> argv byte-identical (transparent exec)" \
   "$(cat "$tmp/shim-record" 2>/dev/null || true)" \
@@ -1403,7 +1403,7 @@ check "shim: no profile env -> argv byte-identical (transparent exec)" \
 # Fail closed: a settings path that does not exist must refuse, not launch a
 # leg with the full plugin roster while the log says it was profiled.
 rc=0
-out="$(LEG_CLAUDE_BIN="$shim_rec" LEG_PROFILE_SETTINGS="$tmp/no-such-settings.json" bash "$SHIM" --model x 2>&1)" || rc=$?
+out="$(WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS="$tmp/no-such-settings.json" bash "$SHIM" --model x 2>&1)" || rc=$?
 check "shim: a missing settings file refuses with exit 2" "$rc" "2"
 contains "shim: refusal names the missing file" "$out" "$tmp/no-such-settings.json"
 
@@ -1414,10 +1414,10 @@ contains "shim: refusal names the missing file" "$out" "$tmp/no-such-settings.js
 d17="$tmp/c17"; mk_launch_stubs "$d17" "HIMMEL-3333-leg"; mkdir -p "$tmp/repo17"
 rc=0
 IMPL_GUARD_OK='' HIMMEL_LEAN_LEG='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17/konsole" PGREP_CMD="$d17/pgrep" \
-LEG_REPO="$tmp/repo17" HEADED_ARM_LOCK_DIR="$d17/locks" HEADED_ARM_PROC="$d17/proc" \
+WORKER_SESSION_REPO="$tmp/repo17" HEADED_ARM_LOCK_DIR="$d17/locks" HEADED_ARM_PROC="$d17/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-leg" "$some_doc" "$d17/signal-never" "$PAST" "$d17/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17" || true
 rec17="$(cat "$d17/record" 2>/dev/null || true)"
@@ -1426,7 +1426,7 @@ check "full launch --profile: exit 0" "$rc" "0"
 contains "full launch --profile: the launcher is the profile shim" "$rec17" "leg-claude-launcher.sh"
 contains "full launch --profile: the ceiling guard still holds" "$rec17" "--autocompact 200000"
 contains "full launch --profile: HIMMEL_LEAN_LEG=1 reaches the launched environment" "$env17" "HIMMEL_LEAN_LEG=1"
-contains "full launch --profile: the shim is told where the settings live" "$env17" "LEG_PROFILE_SETTINGS=$d17/HIMMEL-3333-leg.leg-settings.json"
+contains "full launch --profile: the shim is told where the settings live" "$env17" "WORKER_SESSION_PROFILE_SETTINGS=$d17/HIMMEL-3333-leg.leg-settings.json"
 if [ -s "$d17/HIMMEL-3333-leg.leg-settings.json" ]; then
   echo "ok - full launch --profile: settings JSON written next to the launch log"
 else
@@ -1456,10 +1456,10 @@ cat > "$fixture17b" <<'FIXTURE_EOF'
 - 00:00 this bullet must never reach the system-prompt preface.
 FIXTURE_EOF
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17b/konsole" PGREP_CMD="$d17b/pgrep" \
-LEG_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_PROC="$d17b/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_PROC="$d17b/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-red" "$fixture17b" "$d17b/signal-never" "$PAST" "$d17b/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17b" || true
 check "brief-preface: full launch exit 0" "$rc" "0"
@@ -1500,10 +1500,10 @@ not_contains "brief-preface: does NOT carry the Results tail" "$prefacecontent17
 # as 17b.
 d17b3="$tmp/c17b3"; mk_launch_stubs "$d17b3" "HIMMEL-9999-hook"; mkdir -p "$tmp/repo17b3"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17b3/konsole" PGREP_CMD="$d17b3/pgrep" \
-LEG_REPO="$tmp/repo17b3" HEADED_ARM_LOCK_DIR="$d17b3/locks" HEADED_ARM_PROC="$d17b3/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b3" HEADED_ARM_LOCK_DIR="$d17b3/locks" HEADED_ARM_PROC="$d17b3/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-hook" "$fixture17b" "$d17b3/signal-never" "$PAST" "$d17b3/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17b3" || true
 check "compact-hook: full launch exit 0" "$rc" "0"
@@ -1558,10 +1558,10 @@ check "cache-ttl: settings JSON carries a Stop hook running guard-leg-cache-ttl.
 # command with an unescaped path would misparse rather than `cat` the file.
 d17b4="$tmp/c17b4\"q"; mk_launch_stubs "$d17b4" "HIMMEL-9999-hookq"; mkdir -p "$tmp/repo17b4"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17b4/konsole" PGREP_CMD="$d17b4/pgrep" \
-LEG_REPO="$tmp/repo17b4" HEADED_ARM_LOCK_DIR="$d17b4/locks" HEADED_ARM_PROC="$d17b4/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b4" HEADED_ARM_LOCK_DIR="$d17b4/locks" HEADED_ARM_PROC="$d17b4/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-hookq" "$fixture17b" "$d17b4/signal-never" "$PAST" "$d17b4/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17b4" || true
 check "compact-hook exec: full launch exit 0 (log dir has a shell-special quote)" "$rc" "0"
@@ -1580,9 +1580,9 @@ process.stdout.write(hit?.hooks?.[0]?.command ?? "");
 exec17b4="$(bash -c "$cmd17b4" 2>/dev/null || true)"
 check "compact-hook exec: executing the generated command outputs the real contract content" "$exec17b4" "$contractcontent17b4"
 
-# --- 17b-5. LEG_REPO_MAP=1 puts the repo map at the HEAD of the per-leg
+# --- 17b-5. WORKER_SESSION_REPO_MAP=1 puts the repo map at the HEAD of the per-leg
 # preface (the turn-ending section stays last), built from the leg repo's
-# primary graphify-out/graph.json with the LEG_REPO_MAP_TOKENS cap; a failing
+# primary graphify-out/graph.json with the WORKER_SESSION_REPO_MAP_TOKENS cap; a failing
 # generator launches without it and says so in the launch log. Off by default:
 # 17b's preface starts with the leg-preface heading.
 check "repo-map off by default: the preface starts with the leg-preface heading" \
@@ -1595,11 +1595,11 @@ echo "# Repo map STUB"
 STUB_EOF
 chmod +x "$d17b5/repo-map"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" \
-LEG_REPO_MAP=1 LEG_REPO_MAP_TOKENS=777 \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_REPO_MAP="$d17b5/repo-map" \
+WORKER_SESSION_REPO_MAP=1 WORKER_SESSION_REPO_MAP_TOKENS=777 \
 KONSOLE_CMD="$d17b5/konsole" PGREP_CMD="$d17b5/pgrep" \
-LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b5/locks" HEADED_ARM_PROC="$d17b5/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b5/locks" HEADED_ARM_PROC="$d17b5/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-map" "$fixture17b" "$d17b5/signal-never" "$PAST" "$d17b5/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17b5" || true
 check "repo-map: full launch exit 0" "$rc" "0"
@@ -1607,32 +1607,32 @@ preface17b5="$d17b5/HIMMEL-9999-map.leg-preface.md"
 check "repo-map: the map is the preface's first line" "$(head -1 "$preface17b5" 2>/dev/null)" "# Repo map STUB"
 check "repo-map: the turn-ending section stays last" \
   "$(grep '^## ' "$preface17b5" 2>/dev/null | tail -1)" "## How your turns end"
-check "repo-map: built from the leg repo's graph with the LEG_REPO_MAP_TOKENS cap" \
+check "repo-map: built from the leg repo's graph with the WORKER_SESSION_REPO_MAP_TOKENS cap" \
   "$(cat "$d17b5/map-args" 2>/dev/null)" "--graph $tmp/repo17b5/graphify-out/graph.json --max-tokens 777"
 printf '#!/bin/sh\necho "repo-map: no graph" >&2\nexit 2\n' > "$d17b5/repo-map"
 d17b6="$tmp/c17b6"; mk_launch_stubs "$d17b6" "HIMMEL-9999-nomap"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" LEG_REPO_MAP=1 \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_REPO_MAP="$d17b5/repo-map" WORKER_SESSION_REPO_MAP=1 \
 KONSOLE_CMD="$d17b6/konsole" PGREP_CMD="$d17b6/pgrep" \
-LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b6/locks" HEADED_ARM_PROC="$d17b6/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b6/locks" HEADED_ARM_PROC="$d17b6/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-nomap" "$fixture17b" "$d17b6/signal-never" "$PAST" "$d17b6/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17b6" || true
 check "repo-map: a failing generator still launches" "$rc" "0"
 check "repo-map: a failing generator leaves the preface unchanged" \
   "$(head -1 "$d17b6/HIMMEL-9999-nomap.leg-preface.md" 2>/dev/null)" "$(head -1 "$HERE/../../../docs/handover/leg-preface.md")"
 contains "repo-map: a failing generator is named in the launch log" "$(cat "$d17b6/log" 2>/dev/null)" "WARN repo-map not injected"
-# A generator that hangs past LEG_REPO_MAP_TIMEOUT is killed and the leg
+# A generator that hangs past WORKER_SESSION_REPO_MAP_TIMEOUT is killed and the leg
 # launches without the map. Hang-guard: with no GNU timeout the row SKIPs.
 if [ -n "$_TIMEOUT_BIN" ]; then
     printf '#!/bin/sh\nsleep 60\necho "# Repo map LATE"\n' > "$d17b5/repo-map"
     d17b7="$tmp/c17b7"; mk_launch_stubs "$d17b7" "HIMMEL-9999-slowmap"
     rc=0
-    HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-    HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" \
-    LEG_REPO_MAP=1 LEG_REPO_MAP_TIMEOUT=2 \
+    HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_REPO_MAP="$d17b5/repo-map" \
+    WORKER_SESSION_REPO_MAP=1 WORKER_SESSION_REPO_MAP_TIMEOUT=2 \
     KONSOLE_CMD="$d17b7/konsole" PGREP_CMD="$d17b7/pgrep" \
-    LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b7/locks" HEADED_ARM_PROC="$d17b7/proc" \
+    WORKER_SESSION_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b7/locks" HEADED_ARM_PROC="$d17b7/proc" \
       "$_TIMEOUT_BIN" 25 bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-slowmap" "$fixture17b" "$d17b7/signal-never" "$PAST" "$d17b7/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
     wait_record "$d17b7" || true
     check "repo-map: a hung generator still launches" "$rc" "0"
@@ -1642,21 +1642,21 @@ if [ -n "$_TIMEOUT_BIN" ]; then
 else
     echo "SKIP - repo-map: hung generator (hang-guard row needs GNU timeout/gtimeout)"
 fi
-# Off by default: with LEG_REPO_MAP unset the generator never runs.
+# Off by default: with WORKER_SESSION_REPO_MAP unset the generator never runs.
 printf '#!/bin/sh\n: > "%s"\necho "# Repo map OFF"\n' "$tmp/c17b8-ran" > "$d17b5/repo-map"
 d17b8="$tmp/c17b8"; mk_launch_stubs "$d17b8" "HIMMEL-9999-offmap"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_REPO_MAP="$d17b5/repo-map" \
 KONSOLE_CMD="$d17b8/konsole" PGREP_CMD="$d17b8/pgrep" \
-LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b8/locks" HEADED_ARM_PROC="$d17b8/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b8/locks" HEADED_ARM_PROC="$d17b8/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-offmap" "$fixture17b" "$d17b8/signal-never" "$PAST" "$d17b8/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17b8" || true
 check "repo-map off by default: full launch exit 0" "$rc" "0"
 if [ -e "$tmp/c17b8-ran" ]; then
-  echo "FAIL - repo-map off by default: the generator ran with LEG_REPO_MAP unset"; fails=$((fails+1))
+  echo "FAIL - repo-map off by default: the generator ran with WORKER_SESSION_REPO_MAP unset"; fails=$((fails+1))
 else
-  echo "ok - repo-map off by default: the generator never runs with LEG_REPO_MAP unset"
+  echo "ok - repo-map off by default: the generator never runs with WORKER_SESSION_REPO_MAP unset"
 fi
 
 # 17c. Omitting --profile changes nothing: no shim, no lean flag, and a
@@ -1666,11 +1666,11 @@ env8b="$(cat "$d8/env-record" 2>/dev/null || true)"
 not_contains "no --profile: launcher is unchanged (no shim)" "$rec8" "leg-claude-launcher.sh"
 not_contains "no --profile: no HIMMEL_LEAN_LEG in the launched environment" "$env8b" "HIMMEL_LEAN_LEG=1"
 
-noprof="$(LEG_PROFILE='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
+noprof="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
 noprof_lines="$(printf '%s\n' "$noprof" | wc -l | tr -d '[:space:]')"
 check "no --profile: dry-run report is still exactly four lines (effort line + three)" "$noprof_lines" "4"
 not_contains "no --profile: dry-run report has no profile line" "$noprof" "profile="
-not_contains "--no-profile: no profile name is propagated" "$noprof" "HIMMEL_LEG_PROFILE="
+not_contains "--no-profile: no profile name is propagated" "$noprof" "HIMMEL_WORKER_SESSION_PROFILE="
 
 prof="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/leg.log" claude-sonnet-5 2>&1)"
 prof_lines="$(printf '%s\n' "$prof" | wc -l | tr -d '[:space:]')"
@@ -1678,7 +1678,7 @@ check "--profile: dry-run report adds exactly one line" "$prof_lines" "5"
 contains "--profile: dry-run names the profile, the settings path and the lean flag" "$prof" \
   "profile=leg-impl settings=$tmp/HIMMEL-9999-leg.leg-settings.json"
 contains "--profile: dry-run reports lean=1" "$prof" "lean=1"
-contains "--profile: resolved profile name is propagated" "$prof" "HIMMEL_LEG_PROFILE=leg-impl"
+contains "--profile: resolved profile name is propagated" "$prof" "HIMMEL_WORKER_SESSION_PROFILE=leg-impl"
 if [ -e "$tmp/HIMMEL-9999-leg.leg-settings.json" ]; then
   echo "FAIL - --profile: --dry-run wrote the settings file (it must only report)"; fails=$((fails+1))
 else
@@ -1798,10 +1798,10 @@ mkdir -p "$space_doc_dir"
 space_doc="$space_doc_dir/HIMMEL-3333-space.md"
 fx_brief '# fixture doc' > "$space_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17s/konsole" PGREP_CMD="$d17s/pgrep" \
-LEG_REPO="$tmp/repo17s" HEADED_ARM_LOCK_DIR="$d17s/locks" HEADED_ARM_PROC="$d17s/proc" \
+WORKER_SESSION_REPO="$tmp/repo17s" HEADED_ARM_LOCK_DIR="$d17s/locks" HEADED_ARM_PROC="$d17s/proc" \
 HANDOVER_DIR="$space_root" \
 HEADED_ARM_UNAME=Linux \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-space" "$space_doc" "$d17s/signal-never" "$PAST" "$d17s/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
@@ -1826,10 +1826,10 @@ d17root="$tmp/c17root"; mk_launch_stubs "$d17root" "HIMMEL-3333-atroot"; mkdir -
 root_doc="$HANDOVER_DIR/HIMMEL-3333-atroot.md"
 fx_brief '# fixture doc at the handover root' > "$root_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17root/konsole" PGREP_CMD="$d17root/pgrep" \
-LEG_REPO="$tmp/repo17root" HEADED_ARM_LOCK_DIR="$d17root/locks" HEADED_ARM_PROC="$d17root/proc" \
+WORKER_SESSION_REPO="$tmp/repo17root" HEADED_ARM_LOCK_DIR="$d17root/locks" HEADED_ARM_PROC="$d17root/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-atroot" "$root_doc" "$d17root/signal-never" "$PAST" "$d17root/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17root" || true
 check "full launch --profile (doc directly at handover root): exit 0, no longer refused" "$rc" "0"
@@ -1844,10 +1844,10 @@ d17parent="$tmp/c17parent"; mk_launch_stubs "$d17parent" "HIMMEL-3333-parent"; m
 parent_doc="$tmp/HIMMEL-3333-parent.md"
 fx_brief '# fixture doc in a directory that is an ancestor of the handover root' > "$parent_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17parent/konsole" PGREP_CMD="$d17parent/pgrep" \
-LEG_REPO="$tmp/repo17parent" HEADED_ARM_LOCK_DIR="$d17parent/locks" HEADED_ARM_PROC="$d17parent/proc" \
+WORKER_SESSION_REPO="$tmp/repo17parent" HEADED_ARM_LOCK_DIR="$d17parent/locks" HEADED_ARM_PROC="$d17parent/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-parent" "$parent_doc" "$d17parent/signal-never" "$PAST" "$d17parent/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17parent" || true
 check "full launch --profile (doc directory is an ancestor of the handover root): exit 0" "$rc" "0"
@@ -1864,10 +1864,10 @@ mkdir -p "$lookalike_doc_dir"
 lookalike_doc="$lookalike_doc_dir/HIMMEL-3333-lookalike.md"
 fx_brief '# fixture doc whose directory textually prefixes the handover root name' > "$lookalike_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17lookalike/konsole" PGREP_CMD="$d17lookalike/pgrep" \
-LEG_REPO="$tmp/repo17lookalike" HEADED_ARM_LOCK_DIR="$d17lookalike/locks" HEADED_ARM_PROC="$d17lookalike/proc" \
+WORKER_SESSION_REPO="$tmp/repo17lookalike" HEADED_ARM_LOCK_DIR="$d17lookalike/locks" HEADED_ARM_PROC="$d17lookalike/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-lookalike" "$lookalike_doc" "$d17lookalike/signal-never" "$PAST" "$d17lookalike/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17lookalike" || true
 check "full launch --profile (doc directory is a prefix-lookalike, not an ancestor): exit 0" "$rc" "0"
@@ -1885,10 +1885,10 @@ ln -s "$HANDOVER_DIR" "$symlink_alias"
 symlink_doc="$symlink_alias/HIMMEL-3333-symlink.md"
 fx_brief '# fixture doc reached through a symlink alias of the handover root' > "$symlink_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17symlink/konsole" PGREP_CMD="$d17symlink/pgrep" \
-LEG_REPO="$tmp/repo17symlink" HEADED_ARM_LOCK_DIR="$d17symlink/locks" HEADED_ARM_PROC="$d17symlink/proc" \
+WORKER_SESSION_REPO="$tmp/repo17symlink" HEADED_ARM_LOCK_DIR="$d17symlink/locks" HEADED_ARM_PROC="$d17symlink/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-symlink" "$symlink_doc" "$d17symlink/signal-never" "$PAST" "$d17symlink/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17symlink" || true
 check "full launch --profile (doc directory is a symlink alias of the handover root): exit 0" "$rc" "0"
@@ -1903,10 +1903,10 @@ slash_root="$HANDOVER_DIR/"
 slash_doc="$slash_root/HIMMEL-3333-slash.md"
 fx_brief '# fixture doc at a trailing-slash handover root' > "$slash_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17slash/konsole" PGREP_CMD="$d17slash/pgrep" \
-LEG_REPO="$tmp/repo17slash" HEADED_ARM_LOCK_DIR="$d17slash/locks" HEADED_ARM_PROC="$d17slash/proc" \
+WORKER_SESSION_REPO="$tmp/repo17slash" HEADED_ARM_LOCK_DIR="$d17slash/locks" HEADED_ARM_PROC="$d17slash/proc" \
 HANDOVER_DIR="$slash_root" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-slash" "$slash_doc" "$d17slash/signal-never" "$PAST" "$d17slash/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17slash" || true
@@ -1920,10 +1920,10 @@ mkdir -p "$slash2_doc_dir"
 slash2_doc="$slash2_doc_dir/HIMMEL-3333-slash2.md"
 fx_brief '# fixture doc under a trailing-slash handover root' > "$slash2_doc"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17slash2/konsole" PGREP_CMD="$d17slash2/pgrep" \
-LEG_REPO="$tmp/repo17slash2" HEADED_ARM_LOCK_DIR="$d17slash2/locks" HEADED_ARM_PROC="$d17slash2/proc" \
+WORKER_SESSION_REPO="$tmp/repo17slash2" HEADED_ARM_LOCK_DIR="$d17slash2/locks" HEADED_ARM_PROC="$d17slash2/proc" \
 HANDOVER_DIR="$slash_root" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-slash2" "$slash2_doc" "$d17slash2/signal-never" "$PAST" "$d17slash2/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 check "full launch --profile (trailing slash on HANDOVER_DIR, doc under it): exit 0" "$rc" "0"
@@ -1944,10 +1944,10 @@ rc=0
 # empty .env in the cache dir load_dotenv reads first - not the operator's.
 mkdir -p "$tmp/nohandover-cwd" "$tmp/nohandover-cache"; : > "$tmp/nohandover-cache/.env"
 ( cd "$tmp/nohandover-cwd" && \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17nohandover/konsole" PGREP_CMD="$d17nohandover/pgrep" \
-LEG_REPO="$tmp/repo17nohandover" HEADED_ARM_LOCK_DIR="$d17nohandover/locks" HEADED_ARM_PROC="$d17nohandover/proc" \
+WORKER_SESSION_REPO="$tmp/repo17nohandover" HEADED_ARM_LOCK_DIR="$d17nohandover/locks" HEADED_ARM_PROC="$d17nohandover/proc" \
 HIMMELCTL_CACHE_DIR="$tmp/nohandover-cache" \
   env -u HANDOVER_DIR bash "$SCRIPT" --profile leg-impl "HIMMEL-3333-nohandover" "$nohandover_doc" "$d17nohandover/signal-never" "$PAST" "$d17nohandover/log" "claude-sonnet-5" ) >/dev/null 2>&1 || rc=$?
 wait_record "$d17nohandover" || true
@@ -1959,10 +1959,10 @@ check "full launch --profile (HANDOVER_DIR unset): additionalDirectories not gra
 # its settings get no deny.
 d17r="$tmp/c17r"; mk_launch_stubs "$d17r" "HIMMEL-9999-relay"; mkdir -p "$tmp/repo17r"
 rc=0
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17r/konsole" PGREP_CMD="$d17r/pgrep" \
-LEG_REPO="$tmp/repo17r" HEADED_ARM_LOCK_DIR="$d17r/locks" HEADED_ARM_PROC="$d17r/proc" \
+WORKER_SESSION_REPO="$tmp/repo17r" HEADED_ARM_LOCK_DIR="$d17r/locks" HEADED_ARM_PROC="$d17r/proc" \
   bash "$SCRIPT" --relay "HIMMEL-9999-relay" "$fixture17b" "$d17r/signal-never" "$PAST" "$d17r/log" >/dev/null 2>&1 || rc=$?
 wait_record "$d17r" || true
 check "full launch --relay: exit 0" "$rc" "0"
@@ -1988,9 +1988,9 @@ rc=0
 node -e 'const j=require(process.argv[1]); if (Object.hasOwn(j,"permissions")) process.exit(1)' "$tmp/resolved-bare.json" || rc=$?
 check "--dry-run bare: resolved settings have no permissions" "$rc" "0"
 
-# LEG_PROFILE is the env equivalent, and the flag wins over it.
-envprof="$(LEG_PROFILE=leg-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/leg.log" claude-sonnet-5 2>&1)"
-contains "LEG_PROFILE=leg-impl is honoured like the flag" "$envprof" "profile=leg-impl"
+# WORKER_SESSION_PROFILE is the env equivalent, and the flag wins over it.
+envprof="$(WORKER_SESSION_PROFILE=leg-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/leg.log" claude-sonnet-5 2>&1)"
+contains "WORKER_SESSION_PROFILE=leg-impl is honoured like the flag" "$envprof" "profile=leg-impl"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile no-such-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/leg.log" claude-sonnet-5 2>&1)" || rc=$?
 check "an unknown profile name is refused with exit 2" "$rc" "2"
@@ -2009,7 +2009,7 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --profile leg-impl HIMMEL-9
 check "--profile with --lane claudex: exit 0" "$rc" "0"
 contains "composed dry-run: profile settings reported" "$out" "profile=leg-impl settings="
 contains "composed dry-run: claudex lane retained" "$out" "lane=claudex"
-rc=0; out="$(LEG_LANE=claudex LEG_PROFILE=leg-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_LANE=claudex WORKER_SESSION_PROFILE=leg-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "composition via the env equivalents: exit 0" "$rc" "0"
 
 composed="$tmp/composed-launch"; mkdir -p "$composed"
@@ -2033,8 +2033,8 @@ switch (process.argv[3]) {
 PROFILE_EOF
 chmod 755 "$composed/headed" "$composed/claude-codex"
 rc=0
-HEADED_ARM_LEG_TARGET="$composed/headed" HEADED_ARM_LEG_CLAUDEX_BIN="$composed/claude-codex" \
-HEADED_ARM_LEG_PROFILES="$composed/profiles.mjs" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" LEG_EFFORT=high \
+HEADED_ARM_WORKER_TARGET="$composed/headed" HEADED_ARM_WORKER_CLAUDEX_BIN="$composed/claude-codex" \
+HEADED_ARM_WORKER_PROFILES="$composed/profiles.mjs" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" WORKER_SESSION_EFFORT=high \
   bash "$SCRIPT" --lane claudex --profile leg-impl HIMMEL-composed "some/doc.md" "$composed/signal" "$PAST" "$composed/log" >/dev/null 2>&1 || rc=$?
 check "composition: real wrapper + shim reaches claudex" "$rc" "0"
 check "composition: lane env reaches the backend" "$(cat "$composed/lane-env" 2>/dev/null || true)" "$(printf '1\nhigh')"
@@ -2070,8 +2070,8 @@ check "composition: both prefaces, all profile flags, argv order and gate settin
 
 # Without a profile, claudex gains exactly the coordination preface pair.
 rc=0
-HEADED_ARM_LEG_TARGET="$composed/headed" HEADED_ARM_LEG_CLAUDEX_BIN="$composed/claude-codex" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$composed/headed" HEADED_ARM_WORKER_CLAUDEX_BIN="$composed/claude-codex" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   bash "$SCRIPT" --lane claudex --no-profile HIMMEL-unprofiled "some/doc.md" "$composed/signal" "$PAST" "$composed/log" >/dev/null 2>&1 || rc=$?
 check "unprofiled claudex: launcher succeeds" "$rc" "0"
 rc=0
@@ -2095,7 +2095,7 @@ check "unprofiled claudex: exactly one added preface pair, other argv unchanged"
 # headed-arm-leg.sh's own full-launch path is where the file gets resolved
 # and written (or refused), proven via the written artifact, not the argv.
 
-# 18-shim. The shim, driven directly: LEG_PROFILE_MCP_CONFIG set + file
+# 18-shim. The shim, driven directly: WORKER_SESSION_PROFILE_MCP_CONFIG set + file
 # present -> both flags prepended, ahead of the rest of argv; unset -> no
 # change; set but missing -> fail closed (the same shape as the settings/
 # preface cases in 17a, now pinned for the third env var).
@@ -2103,7 +2103,7 @@ mcpfile="$tmp/leg-mcp.json"
 printf '{"mcpServers":{"qmd":{"type":"http","url":"http://localhost:8181/mcp"}}}' > "$mcpfile"
 rm -f "$tmp/shim-record"
 rc=0
-LEG_CLAUDE_BIN="$shim_rec" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG="$mcpfile" \
+WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG="$mcpfile" \
   bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
 check "shim: mcp-config exit 0" "$rc" "0"
 check "shim: prepends --mcp-config + --strict-mcp-config, rest of argv preserved" \
@@ -2112,18 +2112,18 @@ check "shim: prepends --mcp-config + --strict-mcp-config, rest of argv preserved
 
 rm -f "$tmp/shim-record"
 rc=0
-LEG_CLAUDE_BIN="$shim_rec" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' \
+WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
   bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
-check "shim: no LEG_PROFILE_MCP_CONFIG -> argv byte-identical (no mcp flags)" \
+check "shim: no WORKER_SESSION_PROFILE_MCP_CONFIG -> argv byte-identical (no mcp flags)" \
   "$(cat "$tmp/shim-record" 2>/dev/null || true)" \
   "--model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg load doc"
 
 rc=0
-out="$(LEG_CLAUDE_BIN="$shim_rec" LEG_PROFILE_MCP_CONFIG="$tmp/no-such-mcp.json" bash "$SHIM" --model x 2>&1)" || rc=$?
+out="$(WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_MCP_CONFIG="$tmp/no-such-mcp.json" bash "$SHIM" --model x 2>&1)" || rc=$?
 check "shim: a missing mcp-config file refuses with exit 2" "$rc" "2"
 contains "shim: refusal names the missing mcp file" "$out" "$tmp/no-such-mcp.json"
 
-# 18-nss. LEG_PROFILE_NO_SETTING_SOURCES=1 prepends `--setting-sources ""`
+# 18-nss. WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 prepends `--setting-sources ""`
 # (an EMPTY argv element: no user/project/local scope loads, so none of their write roots
 # reach the consult's sandbox). The recorder brackets each argv element so the empty one
 # is visible; unset or any other value adds nothing.
@@ -2133,37 +2133,37 @@ printf '%s\n' '#!/usr/bin/env bash' 'printf "[%s]" "$@" >> "$(dirname "$0")/shim
 chmod 755 "$shim_argv"
 rm -f "$tmp/shim-argv"
 rc=0
-LEG_CLAUDE_BIN="$shim_argv" LEG_PROFILE_SETTINGS="$tmp/settings.json" LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES=1 \
+WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS="$tmp/settings.json" WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
   bash "$SHIM" --model claude-sonnet-5 -n HIMMEL-9999-leg "load doc" || rc=$?
 check "shim: no-setting-sources exit 0" "$rc" "0"
-check "shim: LEG_PROFILE_NO_SETTING_SOURCES=1 prepends --setting-sources with an EMPTY value" \
+check "shim: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 prepends --setting-sources with an EMPTY value" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" \
   "[--settings][$tmp/settings.json][--setting-sources][][--model][claude-sonnet-5][-n][HIMMEL-9999-leg][load doc]"
 for nss in '' 0 yes; do
   rm -f "$tmp/shim-argv"
-  LEG_CLAUDE_BIN="$shim_argv" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES="$nss" \
+  WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="$nss" \
     bash "$SHIM" --model claude-sonnet-5 "load doc" || true
-  check "shim: LEG_PROFILE_NO_SETTING_SOURCES='$nss' adds no --setting-sources" \
+  check "shim: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES='$nss' adds no --setting-sources" \
     "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc]"
 done
 rm -f "$tmp/shim-argv"
-(unset LEG_PROFILE_NO_SETTING_SOURCES; LEG_CLAUDE_BIN="$shim_argv" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' \
+(unset WORKER_SESSION_PROFILE_NO_SETTING_SOURCES; WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
   bash "$SHIM" --model claude-sonnet-5 "load doc") || true
-check "shim: LEG_PROFILE_NO_SETTING_SOURCES unset adds no --setting-sources" \
+check "shim: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES unset adds no --setting-sources" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc]"
 # under =1 the final argv must keep the empty list. A caller argv that names
 # --setting-sources again (last wins) would re-load the scopes, so the shim refuses, execs nothing.
 for over in '--setting-sources user,project' '--setting-sources=user'; do
   rm -f "$tmp/shim-argv"; rc=0
   # shellcheck disable=SC2086 # $over splits into the flag and its value on purpose
-  LEG_CLAUDE_BIN="$shim_argv" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES=1 \
+  WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
     bash "$SHIM" --model claude-sonnet-5 $over "load doc" 2>/dev/null || rc=$?
   check "shim: =1 with a caller '$over' refuses (exit 2)" "$rc" "2"
   check "shim: =1 with a caller '$over' execs nothing" "$(cat "$tmp/shim-argv" 2>/dev/null || true)" ""
 done
 # Counter-example: without the consult marker a caller --setting-sources passes through untouched.
 rm -f "$tmp/shim-argv"
-LEG_CLAUDE_BIN="$shim_argv" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES='' \
+WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES='' \
   bash "$SHIM" --setting-sources user "load doc" || true
 check "shim: no marker, a caller --setting-sources passes through" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--setting-sources][user][load doc]"
@@ -2176,7 +2176,7 @@ printf '%s\n' '#!/usr/bin/env bash' ': > "$(dirname "$0")/ran"' > "$fake4152/bin
 cp "$fake4152/bin/claude" "$fake4152/home/.local/bin/claude"
 chmod 755 "$fake4152/bin/claude" "$fake4152/home/.local/bin/claude"
 rm -f "$fake4152/bin/ran" "$fake4152/home/.local/bin/ran"
-rc=0; out="$(unset LEG_CLAUDE_BIN; PATH="$fake4152/bin:$PATH" HOME="$fake4152/home" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES=1 \
+rc=0; out="$(unset WORKER_SESSION_CLAUDE_BIN; PATH="$fake4152/bin:$PATH" HOME="$fake4152/home" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
   bash "$SHIM" --version 2>&1)" || rc=$?
 # a broken launcher also runs no fake, so assert the outcome too: the pinned
 # claude's own rc 0, or the specific no-pinned-claude refusal (rc 2), nothing else.
@@ -2186,7 +2186,7 @@ check "shim 4152: =1 never execs a claude placed early on the caller's PATH" "$(
 check "shim 4152: =1 never execs a claude in the caller's \$HOME/.local/bin" "$([ -e "$fake4152/home/.local/bin/ran" ] && echo ran || echo not-run)" "not-run"
 # Counter-example: without the consult marker the caller's PATH claude still runs, unchanged.
 rm -f "$fake4152/bin/ran"
-rc=0; (unset LEG_CLAUDE_BIN; PATH="$fake4152/bin:$PATH" LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES='' \
+rc=0; (unset WORKER_SESSION_CLAUDE_BIN; PATH="$fake4152/bin:$PATH" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES='' \
   bash "$SHIM" --version) >/dev/null 2>&1 || rc=$?
 check "shim 4152: no marker, the shim exits with the PATH claude's rc 0" "$rc" "0"
 check "shim 4152: no marker, the caller's PATH claude still runs" "$([ -e "$fake4152/bin/ran" ] && echo ran || echo not-run)" "ran"
@@ -2220,9 +2220,9 @@ full_launch_mcp() {
   local d="$tmp/c18$suf"; mk_launch_stubs "$d" "$name"; mkdir -p "$tmp/repo18$suf"
   rc=0
   PLUGIN_PROFILES_REGISTRY="$mcpreg" HOME="$homedir" \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" \
-  LEG_REPO="$tmp/repo18$suf" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
+  WORKER_SESSION_REPO="$tmp/repo18$suf" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
     bash "$SCRIPT" --profile "$prof" "$name" "$some_doc" "$d/signal-never" "$PAST" "$d/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
   wait_record "$d" || true
 }
@@ -2234,7 +2234,7 @@ check "mcpServers=[]: full launch exit 0" "$rc" "0"
 check "mcpServers=[]: mcp config file is exactly {\"mcpServers\":{}}" \
   "$(cat "$tmp/c18a/HIMMEL-4441-leg.leg-mcp.json" 2>/dev/null || true)" '{"mcpServers":{}}'
 env18a="$(cat "$tmp/c18a/env-record" 2>/dev/null || true)"
-contains "mcpServers=[]: LEG_PROFILE_MCP_CONFIG reaches the launched environment" "$env18a" "LEG_PROFILE_MCP_CONFIG=$tmp/c18a/HIMMEL-4441-leg.leg-mcp.json"
+contains "mcpServers=[]: WORKER_SESSION_PROFILE_MCP_CONFIG reaches the launched environment" "$env18a" "WORKER_SESSION_PROFILE_MCP_CONFIG=$tmp/c18a/HIMMEL-4441-leg.leg-mcp.json"
 
 # (b) mcpServers: ["qmd"] against a fixture home carrying qmd+graphify+
 # context7 -> the written file holds ONLY qmd's definition, byte-copied
@@ -2258,7 +2258,7 @@ else
 fi
 
 # (d) no mcpServers field -> byte-identical to the earlier behaviour: no file, no
-# LEG_PROFILE_MCP_CONFIG in the launched environment.
+# WORKER_SESSION_PROFILE_MCP_CONFIG in the launched environment.
 full_launch_mcp d "HIMMEL-4444-leg" mcp-none
 check "no mcpServers field: full launch exit 0" "$rc" "0"
 if [ -e "$tmp/c18d/HIMMEL-4444-leg.leg-mcp.json" ]; then
@@ -2267,7 +2267,7 @@ else
   echo "ok - no mcpServers field: no config file written"
 fi
 env18d="$(cat "$tmp/c18d/env-record" 2>/dev/null || true)"
-not_contains "no mcpServers field: no LEG_PROFILE_MCP_CONFIG in the launched environment" "$env18d" "LEG_PROFILE_MCP_CONFIG="
+not_contains "no mcpServers field: no WORKER_SESSION_PROFILE_MCP_CONFIG in the launched environment" "$env18d" "WORKER_SESSION_PROFILE_MCP_CONFIG="
 
 # dry-run mirrors the same four shapes without writing anything, and an
 # unresolvable name is refused the same way under --dry-run too (typo'd
@@ -2428,9 +2428,9 @@ touch "$d24a/signal-now"
 ttl_out24a="$tmp/ttl24a-seen"
 rc=0
 TTL_RECORD_OUT="$ttl_out24a" IMPL_GUARD_OK='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$TTL_RECORD_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$TTL_RECORD_PREFLIGHT" \
 KONSOLE_CMD="$d24a/konsole" PGREP_CMD="$d24a/pgrep" \
-LEG_REPO="$tmp/repo24a" HEADED_ARM_LOCK_DIR="$d24a/locks" HEADED_ARM_PROC="$d24a/proc" \
+WORKER_SESSION_REPO="$tmp/repo24a" HEADED_ARM_LOCK_DIR="$d24a/locks" HEADED_ARM_PROC="$d24a/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-1111-ttl" "$some_doc" "$d24a/signal-now" "$future24" "$d24a/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d24a" || true
 ttl_seen24a="$(cat "$ttl_out24a" 2>/dev/null || echo NONE)"
@@ -2450,9 +2450,9 @@ d24b="$tmp/c24b"; mk_launch_stubs "$d24b" "HIMMEL-2222-ttlfloor"; mkdir -p "$tmp
 ttl_out24b="$tmp/ttl24b-seen"
 rc=0
 TTL_RECORD_OUT="$ttl_out24b" IMPL_GUARD_OK='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$TTL_RECORD_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$TTL_RECORD_PREFLIGHT" \
 KONSOLE_CMD="$d24b/konsole" PGREP_CMD="$d24b/pgrep" \
-LEG_REPO="$tmp/repo24b" HEADED_ARM_LOCK_DIR="$d24b/locks" HEADED_ARM_PROC="$d24b/proc" \
+WORKER_SESSION_REPO="$tmp/repo24b" HEADED_ARM_LOCK_DIR="$d24b/locks" HEADED_ARM_PROC="$d24b/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-2222-ttlfloor" "$some_doc" "$d24b/signal-never" "$PAST" "$d24b/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d24b" || true
 check "TTL export: past deadline floors to 60" "$(cat "$ttl_out24b" 2>/dev/null || echo NONE)" "60"
@@ -2500,9 +2500,9 @@ d26="$tmp/c26"; mk_launch_stubs "$d26" "HIMMEL-3155-leg"; mkdir -p "$tmp/repo26"
 rc=0
 ( cd "$primary26" && \
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HANDOVER_DIR='' \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d26/konsole" PGREP_CMD="$d26/pgrep" \
-  LEG_REPO="$tmp/repo26" HEADED_ARM_LOCK_DIR="$d26/locks" HEADED_ARM_PROC="$d26/proc" \
+  WORKER_SESSION_REPO="$tmp/repo26" HEADED_ARM_LOCK_DIR="$d26/locks" HEADED_ARM_PROC="$d26/proc" \
     bash "$SCRIPT" --profile leg-impl "HIMMEL-3155-leg" "$some_doc" "$d26/signal-never" "$PAST" "$d26/log" "claude-sonnet-5" \
 ) >/dev/null 2>&1 || rc=$?
 wait_record "$d26" || true
@@ -2525,9 +2525,9 @@ for variant26b in dotenv explicit; do
   rc=0
   ( cd "$mode_b26/repo" && \
     IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HANDOVER_DIR="$launch_env26b" \
-    HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     KONSOLE_CMD="$d26b/konsole" PGREP_CMD="$d26b/pgrep" \
-    LEG_REPO="$tmp/repo26" HEADED_ARM_LOCK_DIR="$d26b/locks" HEADED_ARM_PROC="$d26b/proc" \
+    WORKER_SESSION_REPO="$tmp/repo26" HEADED_ARM_LOCK_DIR="$d26b/locks" HEADED_ARM_PROC="$d26b/proc" \
       bash "$SCRIPT" --profile leg-impl "HIMMEL-4416-$variant26b" "$some_doc" "$d26b/signal-never" "$PAST" "$d26b/log" "claude-sonnet-5" \
   ) >/dev/null 2>&1 || rc=$?
   wait_record "$d26b" || true
@@ -2614,7 +2614,7 @@ check "HANDOVER_DIR e2e: go_gate resolved from a linked worktree (HANDOVER_DIR o
 # preface-less. Both the dry-run seam AND the real (non-dry) stubbed path are
 # driven: the refusal sits before the --dry-run exit, so the dry-run cases
 # exercise the decision itself, and the real-path case proves nothing reaches
-# konsole. Every shape that supplies a profile (flag, LEG_PROFILE, --relay,
+# konsole. Every shape that supplies a profile (flag, WORKER_SESSION_PROFILE, --relay,
 # --judge) or opts out (--no-profile) must still launch.
 args27=(HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5)
 rc=0; out="$(bash "$SCRIPT" --dry-run "${args27[@]}" 2>&1)" || rc=$?
@@ -2649,8 +2649,8 @@ not_contains "27d --no-profile: no preface flag reached claude" "$(cat "$d27c/re
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --profile leg-impl "${args27[@]}" 2>&1)" || rc=$?
 check "27e --no-profile with --profile: refused with exit 2" "$rc" "2"
 # shellcheck disable=SC2086
-rc=0; out="$(LEG_PROFILE=leg-impl bash "$SCRIPT" --dry-run --no-profile "${args27[@]}" 2>&1)" || rc=$?
-check "27e --no-profile with LEG_PROFILE: refused with exit 2" "$rc" "2"
+rc=0; out="$(WORKER_SESSION_PROFILE=leg-impl bash "$SCRIPT" --dry-run --no-profile "${args27[@]}" 2>&1)" || rc=$?
+check "27e --no-profile with WORKER_SESSION_PROFILE: refused with exit 2" "$rc" "2"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "27e --no-profile with --relay: refused with exit 2" "$rc" "2"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
@@ -2662,12 +2662,12 @@ contains "27e --no-profile with --judge: the refusal names --no-profile (not the
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl "${args27[@]}" 2>&1)" || rc=$?
 check "27f --profile leg-impl: launches" "$rc" "0"
 # shellcheck disable=SC2086
-rc=0; out="$(LEG_PROFILE=leg-impl bash "$SCRIPT" --dry-run "${args27[@]}" 2>&1)" || rc=$?
-check "27f LEG_PROFILE=leg-impl (env seam, no flag): launches" "$rc" "0"
-contains "27f LEG_PROFILE=leg-impl: profile applied" "$out" "profile=leg-impl"
+rc=0; out="$(WORKER_SESSION_PROFILE=leg-impl bash "$SCRIPT" --dry-run "${args27[@]}" 2>&1)" || rc=$?
+check "27f WORKER_SESSION_PROFILE=leg-impl (env seam, no flag): launches" "$rc" "0"
+contains "27f WORKER_SESSION_PROFILE=leg-impl: profile applied" "$out" "profile=leg-impl"
 # shellcheck disable=SC2086
-rc=0; out="$(LEG_PROFILE=leg-impl bash "$SCRIPT" --dry-run --profile bare "${args27[@]}" 2>&1)" || rc=$?
-contains "27f flag wins over LEG_PROFILE" "$out" "profile=bare"
+rc=0; out="$(WORKER_SESSION_PROFILE=leg-impl bash "$SCRIPT" --dry-run --profile bare "${args27[@]}" 2>&1)" || rc=$?
+contains "27f flag wins over WORKER_SESSION_PROFILE" "$out" "profile=bare"
 rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "27f --relay alone (forces console-relay): launches" "$rc" "0"
 contains "27f --relay: forced profile applied" "$out" "profile=console-relay"
@@ -2677,8 +2677,8 @@ contains "27f --judge: forced profile applied" "$out" "profile=console-judge"
 
 # Empty values are not a profile.
 # shellcheck disable=SC2086
-rc=0; out="$(LEG_PROFILE='' bash "$SCRIPT" --dry-run "${args27[@]}" 2>&1)" || rc=$?
-check "27g empty LEG_PROFILE is not a profile: refused with exit 2" "$rc" "2"
+rc=0; out="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run "${args27[@]}" 2>&1)" || rc=$?
+check "27g empty WORKER_SESSION_PROFILE is not a profile: refused with exit 2" "$rc" "2"
 # shellcheck disable=SC2086
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile '' "${args27[@]}" 2>&1)" || rc=$?
 check "27g --profile '' is not a profile: refused with exit 2" "$rc" "2"
@@ -2752,21 +2752,21 @@ contains "28f --judge launch is recorded role=judge" "$rec28d" " role=judge "
 # process. These full launches route through the real headed-arm.sh and its
 # konsole stub, which records every name in its allowlist (mk_launch_stubs
 # above) from ITS OWN process env - the only way to prove the plain
-# LEG_CLAUDE_BIN/CLAUDE_CODE_EFFORT_LEVEL a leg's shell inherited from ITS OWN
+# WORKER_SESSION_CLAUDE_BIN/CLAUDE_CODE_EFFORT_LEVEL a leg's shell inherited from ITS OWN
 # launch never survives the exec chain into an armed judge/leg. ------------
 
-# Finding 1: a claudex leg's own ambient LEG_CLAUDE_BIN=<claude-codex>, still
+# Finding 1: a claudex leg's own ambient WORKER_SESSION_CLAUDE_BIN=<claude-codex>, still
 # exported in that leg's shell, must not reach a native judge it arms.
 d28e="$tmp/c28e"; mk_launch_stubs "$d28e" "HIMMEL-3795-N1-binleak"; mkdir -p "$tmp/repo28e"
 rc=0
 HIMMEL_CONSOLE_JUDGE_QID=ambient-sibling HIMMEL_CONSOLE_JUDGE_DOC=/tmp/ambient-sibling-judge-1.md \
-LEG_CLAUDE_BIN=/tmp/stale-claude-codex-bin \
+WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin \
   RUN_LEG_ARGS='--judge' run_leg "$d28e" "$tmp/repo28e" "HIMMEL-3795-N1-binleak" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28e" || true
 env28e="$(cat "$d28e/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --judge launch, ambient LEG_CLAUDE_BIN: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --judge launch, ambient LEG_CLAUDE_BIN: env-record was actually produced (judge still gets its high default)" "$env28e" "CLAUDE_CODE_EFFORT_LEVEL=high"
-not_contains "HIMMEL-3795: full --judge launch, ambient LEG_CLAUDE_BIN: does not reach the armed process env" "$env28e" "LEG_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
+check "HIMMEL-3795: full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: exit 0" "$rc" "0"
+contains "HIMMEL-3795: full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: env-record was actually produced (judge still gets its high default)" "$env28e" "CLAUDE_CODE_EFFORT_LEVEL=high"
+not_contains "HIMMEL-3795: full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: does not reach the armed process env" "$env28e" "WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
 contains "HIMMEL-4564: full --judge launch exports HIMMEL_CONSOLE_JUDGE=1 (guard-judge-writes.sh marker)" "$env28e" "HIMMEL_CONSOLE_JUDGE=1"
 # the judge guard is bound to THIS judge's doc and qid. A doc
 # whose resume_cwd is ~/.cache/himmel/verdicts/<qid>/scratch yields both; a
@@ -2790,13 +2790,13 @@ not_contains "HIMMEL-4608: an ambient sibling doc never reaches the armed judge"
 # named case).
 d28f="$tmp/c28f"; mk_launch_stubs "$d28f" "HIMMEL-3795-N2-binleak-profile"; mkdir -p "$tmp/repo28f"
 rc=0
-LEG_CLAUDE_BIN=/tmp/stale-claude-codex-bin \
+WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin \
   RUN_LEG_ARGS='--profile leg-impl' run_leg "$d28f" "$tmp/repo28f" "HIMMEL-3795-N2-binleak-profile" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28f" || true
 env28f="$(cat "$d28f/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --profile leg-impl launch, ambient LEG_CLAUDE_BIN: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --profile leg-impl launch, ambient LEG_CLAUDE_BIN: env-record was actually produced (LEG_PROFILE_SETTINGS still resolved)" "$env28f" "LEG_PROFILE_SETTINGS="
-not_contains "HIMMEL-3795: full --profile leg-impl launch, ambient LEG_CLAUDE_BIN: does not reach the armed process env" "$env28f" "LEG_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
+check "HIMMEL-3795: full --profile leg-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: exit 0" "$rc" "0"
+contains "HIMMEL-3795: full --profile leg-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: env-record was actually produced (WORKER_SESSION_PROFILE_SETTINGS still resolved)" "$env28f" "WORKER_SESSION_PROFILE_SETTINGS="
+not_contains "HIMMEL-3795: full --profile leg-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: does not reach the armed process env" "$env28f" "WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
 
 # Finding 2: a leg's own ambient CLAUDE_CODE_EFFORT_LEVEL=low (inherited from
 # ITS OWN low-effort launch) must not override a judge it arms - the judge
@@ -2809,7 +2809,7 @@ not_contains "HIMMEL-3795: full --profile leg-impl launch, ambient LEG_CLAUDE_BI
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 d28g="$tmp/c28g"; mk_launch_stubs "$d28g" "HIMMEL-3795-N3-effortleak"; mkdir -p "$tmp/repo28g"
 rc=0
-CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   RUN_LEG_ARGS='--judge' RUN_LEG_WRAP=_as_claude run_leg "$d28g" "$tmp/repo28g" "HIMMEL-3795-N3-effortleak" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28g" || true
 env28g="$(cat "$d28g/env-record" 2>/dev/null || true)"
@@ -2843,21 +2843,21 @@ contains "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: env-record was
 not_contains "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: the console marker never reaches the leg" "$env28j" "HIMMEL_CONSOLE=1"
 
 # Control (console ruling): the two new seam names themselves
-# (HEADED_ARM_LEG_CLAUDE_BIN, HIMMEL_CONSOLE_JUDGE_EFFORT) must not reach the
+# (HEADED_ARM_WORKER_CLAUDE_BIN, HIMMEL_CONSOLE_JUDGE_EFFORT) must not reach the
 # armed process's own env - otherwise a leg armed with either one ambiently
 # set could push it into a judge IT arms, moving the leak one level rather
 # than closing it. Both seams are exercised together so a single launch
 # proves both are consumed-then-scrubbed, not merely consumed.
 d28i="$tmp/c28i"; mk_launch_stubs "$d28i" "HIMMEL-3795-N5-seamscrub"; mkdir -p "$tmp/repo28i"
 rc=0
-HEADED_ARM_LEG_CLAUDE_BIN=/tmp/test-claude-stub HIMMEL_CONSOLE_JUDGE_EFFORT=medium \
+HEADED_ARM_WORKER_CLAUDE_BIN=/tmp/test-claude-stub HIMMEL_CONSOLE_JUDGE_EFFORT=medium \
   RUN_LEG_ARGS='--judge' run_leg "$d28i" "$tmp/repo28i" "HIMMEL-3795-N5-seamscrub" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28i" || true
 env28i="$(cat "$d28i/env-record" 2>/dev/null || true)"
 check "HIMMEL-3795: full --judge launch, both seams set: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --judge launch, both seams set: LEG_CLAUDE_BIN takes the seam's value" "$env28i" "LEG_CLAUDE_BIN=/tmp/test-claude-stub"
+contains "HIMMEL-3795: full --judge launch, both seams set: WORKER_SESSION_CLAUDE_BIN takes the seam's value" "$env28i" "WORKER_SESSION_CLAUDE_BIN=/tmp/test-claude-stub"
 contains "HIMMEL-3795: full --judge launch, both seams set: effort override applied" "$env28i" "CLAUDE_CODE_EFFORT_LEVEL=medium"
-not_contains "HIMMEL-3795: full --judge launch, both seams set: HEADED_ARM_LEG_CLAUDE_BIN itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HEADED_ARM_LEG_CLAUDE_BIN="
+not_contains "HIMMEL-3795: full --judge launch, both seams set: HEADED_ARM_WORKER_CLAUDE_BIN itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HEADED_ARM_WORKER_CLAUDE_BIN="
 not_contains "HIMMEL-3795: full --judge launch, both seams set: HIMMEL_CONSOLE_JUDGE_EFFORT itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HIMMEL_CONSOLE_JUDGE_EFFORT="
 
 # a judge does not implement (design 3.2) and never needs to
@@ -2876,10 +2876,10 @@ d17b_doc="$tmp/sibling-doc.md"
 fx_brief '# sibling fixture doc' > "$d17b_doc"
 d17b="$tmp/c17b"; mk_launch_stubs "$d17b" "HIMMEL-3334-leg"; mkdir -p "$tmp/repo17b"
 IMPL_GUARD_OK='' HIMMEL_LEAN_LEG='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17b/konsole" PGREP_CMD="$d17b/pgrep" \
-LEG_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_PROC="$d17b/proc" \
+WORKER_SESSION_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_PROC="$d17b/proc" \
   bash "$SCRIPT" --profile leg-impl "HIMMEL-3334-leg" "$d17b_doc" "$d17b/signal-never" "$PAST" "$d17b/log" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d17b" || true
 d17b_doc_canon="$(cd -P "$(dirname "$d17b_doc")" && pwd -P)/$(basename "$d17b_doc")"
@@ -2920,8 +2920,8 @@ check "28i no resolvable cache dir: nothing written under /tmp/.claude" "$([ -e 
 
 # --- 29. --headless: the leg runs as a Claude Code background
 # session instead of in a konsole window. Stubs: the claude binary the shim
-# execs (HEADED_ARM_LEG_CLAUDE_BIN, converted into LEG_CLAUDE_BIN
-# by the wrapper itself - an ambient LEG_CLAUDE_BIN is scrubbed unconditionally
+# execs (HEADED_ARM_WORKER_CLAUDE_BIN, converted into WORKER_SESSION_CLAUDE_BIN
+# by the wrapper itself - an ambient WORKER_SESSION_CLAUDE_BIN is scrubbed unconditionally
 # now) doubles as the CLI headed-arm.sh asks for the
 # session census (HEADED_ARM_CLAUDE_CLI). Its launch call writes its argv to
 # `record`, touches `confirmable` and prints the backgrounded line. After that,
@@ -2967,16 +2967,16 @@ KONSOLE_EOF
   echo claude > "$dir/proc/7777/comm"
   printf 'claude\0daemon\0run\0--origin\0transient\0' > "$dir/proc/7777/cmdline"
   printf '%s\0' HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HIMMEL_CONSOLE_DOC=/stale/console.md \
-    LEG_STALE_MARK=stale HIMMEL_STALE_TOKEN=s3cret CHIEF_CONTEXT=1m CONSOLE_CONTEXT=1m PATH=/usr/bin > "$dir/proc/7777/environ"
+    WORKER_SESSION_STALE_MARK=stale HIMMEL_STALE_TOKEN=s3cret CHIEF_CONTEXT=1m CONSOLE_CONTEXT=1m PATH=/usr/bin > "$dir/proc/7777/environ"
 }
 run_headless() {
   local stubdir="$1" repo="$2" name="$3"; shift 3
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
-  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$stubdir/konsole" PGREP_CMD="$stubdir/pgrep" \
-  HEADED_ARM_LEG_CLAUDE_BIN="$stubdir/claude" HEADED_ARM_CLAUDE_CLI="$stubdir/claude" \
-  LEG_REPO="$repo" HEADED_ARM_LOCK_DIR="$stubdir/locks" HEADED_ARM_PROC="$stubdir/proc" \
+  HEADED_ARM_WORKER_CLAUDE_BIN="$stubdir/claude" HEADED_ARM_CLAUDE_CLI="$stubdir/claude" \
+  WORKER_SESSION_REPO="$repo" HEADED_ARM_LOCK_DIR="$stubdir/locks" HEADED_ARM_PROC="$stubdir/proc" \
     bash "$SCRIPT" "$@" "$name" "$some_doc" "$stubdir/signal-never" "$PAST" "$stubdir/log" claude-sonnet-5
 }
 
@@ -3009,7 +3009,7 @@ check "29p settings env: HANDOVER_DIR mirrored" "$(env29 HANDOVER_DIR)" "$HANDOV
 check "29q settings env: HIMMEL_INITIATIVE set" "$(env29 HIMMEL_INITIATIVE)" "execute,prcheck,pr,ticket,merge,public,handover"
 check "29r settings env: daemon-injected hook-integrity bypass blanked" "$(env29 HIMMEL_HOOK_INTEGRITY_BYPASS_OK)" ""
 check "29s settings env: stale console doc from the daemon blanked" "$(env29 HIMMEL_CONSOLE_DOC)" ""
-check "29t settings env: stale LEG_* from the daemon blanked" "$(env29 LEG_STALE_MARK)" ""
+check "29t settings env: stale LEG_* from the daemon blanked" "$(env29 WORKER_SESSION_STALE_MARK)" ""
 check "29t2 settings env: daemon CHIEF_CONTEXT=1m blanked" "$(env29 CHIEF_CONTEXT)" ""
 check "29t3 settings env: daemon CONSOLE_CONTEXT=1m blanked (old name)" "$(env29 CONSOLE_CONTEXT)" ""
 check "29u settings env: secret-named daemon var blanked, never copied" "$(env29 HIMMEL_STALE_TOKEN)" ""
@@ -3034,12 +3034,12 @@ HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 run_headless "$d29z" "$tmp/repo29z" "HIMMEL-34
 check "29z bypass-launched headless: exit 0" "$rc" "0"
 check "29z bypass-launched headless: bypass written as 1" "$(jq -r '.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK' "$tmp/c29z/HIMMEL-3403-hlz.leg-settings.json" 2>/dev/null)" "1"
 
-# 29-env: LEG_HEADLESS=1 in the launching shell does the same as the flag.
+# 29-env: WORKER_SESSION_HEADLESS=1 in the launching shell does the same as the flag.
 d29e="$tmp/c29e"; mk_headless_stubs "$d29e" "HIMMEL-3403-hle"; mkdir -p "$tmp/repo29e"
 rc=0
-LEG_HEADLESS=1 run_headless "$d29e" "$tmp/repo29e" "HIMMEL-3403-hle" --profile leg-impl >/dev/null 2>&1 || rc=$?
-check "29-env LEG_HEADLESS=1: exit 0" "$rc" "0"
-contains "29-env LEG_HEADLESS=1: argv carries --bg" "$(cat "$d29e/record" 2>/dev/null)" "--bg"
+WORKER_SESSION_HEADLESS=1 run_headless "$d29e" "$tmp/repo29e" "HIMMEL-3403-hle" --profile leg-impl >/dev/null 2>&1 || rc=$?
+check "29-env WORKER_SESSION_HEADLESS=1: exit 0" "$rc" "0"
+contains "29-env WORKER_SESSION_HEADLESS=1: argv carries --bg" "$(cat "$d29e/record" 2>/dev/null)" "--bg"
 
 # 29-dedup: a background session with this name is already listed, so the
 # launcher does not start a second one.
@@ -3085,7 +3085,7 @@ check "29-noqual no qualifying service pid: nothing launched" "$([ -e "$d29n/rec
 d29r="$tmp/c29r"; mk_headless_stubs "$d29r" "HIMMEL-3403-hlr"; mkdir -p "$tmp/repo29r" "$d29r/chain"
 echo '{"permissions":{}}' > "$d29r/settings.json"
 rc=0
-HIMMEL_CONSOLE_RELAY=1 HEADED_ARM_HEADLESS=1 LEG_PROFILE_SETTINGS="$d29r/settings.json" \
+HIMMEL_CONSOLE_RELAY=1 HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS="$d29r/settings.json" \
   HEADED_ARM_LAUNCHER="$d29r/claude" HEADED_ARM_CLAUDE_CLI="$d29r/claude" \
   PGREP_CMD="$d29r/pgrep" KONSOLE_CMD="$d29r/konsole" HEADED_ARM_PROC="$d29r/proc" \
   HEADED_ARM_LOCK_DIR="$d29r/locks" HEADED_ARM_REPO="$tmp/repo29r" \
@@ -3103,11 +3103,11 @@ check "29-refuse --headless --lane claudex: exit 2" "$rc" "2"
 
 # 29-dry: a --headless dry-run says so. The no-flag dry-run never mentions it
 # (the headed report is unchanged).
-rc=0; out="$(LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --headless --profile leg-impl HIMMEL-3403-x "$some_doc" /tmp/nosig 99999999999 "$tmp/dry29.log" claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --headless --profile leg-impl HIMMEL-3403-x "$some_doc" /tmp/nosig 99999999999 "$tmp/dry29.log" claude-sonnet-5 2>&1)" || rc=$?
 check "29-dry --headless: exit 0" "$rc" "0"
 contains "29-dry --headless: reports headless=1" "$out" "headless=1"
 contains "29-dry --headless: would-exec argv carries --bg" "$out" "--bg"
-rc=0; out="$(LEG_HEADLESS='' LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-3403-x "$some_doc" /tmp/nosig 99999999999 "$tmp/dry29b.log" claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_HEADLESS='' WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-3403-x "$some_doc" /tmp/nosig 99999999999 "$tmp/dry29b.log" claude-sonnet-5 2>&1)" || rc=$?
 not_contains "29-dry no flag: headed report never mentions headless=" "$out" "headless="
 not_contains "29-dry no flag: headed argv has no --bg" "$out" "--bg"
 
@@ -3184,15 +3184,15 @@ contains "29-once: launch log carries the real short id from the confirming cens
 # the caller-preset-wins contract, and the whitespace refusal.
 
 # 31a. --profile leg-impl: launcher-env= carries every leg-process var this
-# profile launch sets - the shim's own contract vars (LEG_PROFILE_SETTINGS,
-# LEG_PROFILE_PREFACE, and LEG_PROFILE_MCP_CONFIG since leg-impl declares
+# profile launch sets - the shim's own contract vars (WORKER_SESSION_PROFILE_SETTINGS,
+# WORKER_SESSION_PROFILE_PREFACE, and WORKER_SESSION_PROFILE_MCP_CONFIG since leg-impl declares
 # mcpServers) plus the always-on leg markers (HIMMEL_CONSOLE_LEG,
 # IMPL_GUARD_OK, INLINE_IMPL_OK, HIMMEL_LEAN_LEG).
 out31a="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-31a some/doc.md /tmp/nosig 99999999999 "$tmp/leg31a.log" claude-sonnet-5 2>&1)"
 lenv29a="$(printf '%s\n' "$out31a" | grep '^headed-arm-leg: lane=')"
-contains "31a launcher-env carries LEG_PROFILE_SETTINGS=" "$lenv29a" "LEG_PROFILE_SETTINGS=$tmp/HIMMEL-9999-leg-31a.leg-settings.json"
-contains "31a launcher-env carries LEG_PROFILE_PREFACE=" "$lenv29a" "LEG_PROFILE_PREFACE=$tmp/HIMMEL-9999-leg-31a.leg-preface.md"
-contains "31a launcher-env carries LEG_PROFILE_MCP_CONFIG=" "$lenv29a" "LEG_PROFILE_MCP_CONFIG=$tmp/HIMMEL-9999-leg-31a.leg-mcp.json"
+contains "31a launcher-env carries WORKER_SESSION_PROFILE_SETTINGS=" "$lenv29a" "WORKER_SESSION_PROFILE_SETTINGS=$tmp/HIMMEL-9999-leg-31a.leg-settings.json"
+contains "31a launcher-env carries WORKER_SESSION_PROFILE_PREFACE=" "$lenv29a" "WORKER_SESSION_PROFILE_PREFACE=$tmp/HIMMEL-9999-leg-31a.leg-preface.md"
+contains "31a launcher-env carries WORKER_SESSION_PROFILE_MCP_CONFIG=" "$lenv29a" "WORKER_SESSION_PROFILE_MCP_CONFIG=$tmp/HIMMEL-9999-leg-31a.leg-mcp.json"
 contains "31a launcher-env carries HIMMEL_CONSOLE_LEG=1" "$lenv29a" "HIMMEL_CONSOLE_LEG=1"
 contains "31a launcher-env carries IMPL_GUARD_OK=1" "$lenv29a" "IMPL_GUARD_OK=1"
 contains "31a launcher-env carries INLINE_IMPL_OK=1" "$lenv29a" "INLINE_IMPL_OK=1"
@@ -3219,7 +3219,7 @@ mkdir -p "$tmp/space dir"
 rc=0
 err29c="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-31c some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg.log" claude-sonnet-5 2>&1)" || rc=$?
 check "31c a whitespace-carrying leg-process value is refused with exit 12" "$rc" "12"
-contains "31c the refusal names the offending var" "$err29c" "LEG_PROFILE_SETTINGS"
+contains "31c the refusal names the offending var" "$err29c" "WORKER_SESSION_PROFILE_SETTINGS"
 contains "31c the refusal explains why (HEADED_ARM_LAUNCHER_ENV cannot carry a spacey value)" "$err29c" "cannot carry"
 
 # 32a. (GAP): a caller-preset HANDOVER_DIR - the normal
@@ -3236,7 +3236,7 @@ contains "32a a caller-preset HANDOVER_DIR reaches launcher-env=" "$lenv30a" "HA
 rc=0
 err30b="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-32b some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg32b.log" claude-sonnet-5 2>&1)" || rc=$?
 check "32b Darwin still refuses a whitespace-carrying value with exit 12" "$rc" "12"
-contains "32b the refusal still names the offending var" "$err30b" "LEG_PROFILE_SETTINGS"
+contains "32b the refusal still names the offending var" "$err30b" "WORKER_SESSION_PROFILE_SETTINGS"
 
 # 32c. (REGRESSION RISK): on any platform other than
 # Darwin, plain-export inheritance already carried a whitespace-carrying
@@ -3248,7 +3248,7 @@ rc=0
 out32c="$(HEADED_ARM_UNAME=Linux bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-32c some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg32c.log" claude-sonnet-5 2>&1)" || rc=$?
 check "32c non-Darwin: a whitespace-carrying value still launches (dry-run exit 0)" "$rc" "0"
 lenv30c="$(printf '%s\n' "$out32c" | grep '^headed-arm-leg: lane=')"
-not_contains "32c non-Darwin: no LEG_PROFILE_SETTINGS token is added" "$lenv30c" "LEG_PROFILE_SETTINGS="
+not_contains "32c non-Darwin: no WORKER_SESSION_PROFILE_SETTINGS token is added" "$lenv30c" "WORKER_SESSION_PROFILE_SETTINGS="
 contains "32c non-Darwin: the wrapper still appends its other, non-spacey vars" "$lenv30c" "HIMMEL_CONSOLE_LEG=1"
 contains "32c non-Darwin: a stderr warning explains the value was left to inheritance" "$out32c" "leaving it to plain-export inheritance"
 contains "32c non-Darwin: the warning names the platform" "$out32c" "harmless on Linux"
@@ -3277,8 +3277,8 @@ contains "33b launcher-env carries HIMMEL_CONSOLE_NAME=ambient-console (inherite
 # 34. lanes.json's claude-tier effort reaches the native lane's
 # CLAUDE_CODE_EFFORT_LEVEL, mirroring the native-Telegram-dispatch
 # match rule (exact model id, or "claude-<tier-id>-" prefix). Own fixture
-# registry via HEADED_ARM_LEG_LANES_JSON (same seam shape as
-# HEADED_ARM_LEG_PROFILES above), never the real scripts/lanes/lanes.json -
+# registry via HEADED_ARM_WORKER_LANES_JSON (same seam shape as
+# HEADED_ARM_WORKER_PROFILES above), never the real scripts/lanes/lanes.json -
 # a registry edit elsewhere must not flip these rows out from under the suite.
 lanes_fixture="$tmp/lanes-fixture.json"
 cat > "$lanes_fixture" <<'LANES_JSON_EOF'
@@ -3286,29 +3286,29 @@ cat > "$lanes_fixture" <<'LANES_JSON_EOF'
 LANES_JSON_EOF
 
 # 34a. A model matching a claude-tier row exports the registry's effort.
-out34a="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34a some/doc.md /tmp/nosig 99999999999 "$tmp/leg34a.log" claude-sonnet-5 2>&1)"
+out34a="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34a some/doc.md /tmp/nosig 99999999999 "$tmp/leg34a.log" claude-sonnet-5 2>&1)"
 lenv34a="$(printf '%s\n' "$out34a" | grep '^headed-arm-leg: lane=')"
 contains "34a a model with a tier row exports CLAUDE_CODE_EFFORT_LEVEL=medium" "$lenv34a" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 # 34b. A model matching no claude-tier row leaves it unset.
-out34b="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34b some/doc.md /tmp/nosig 99999999999 "$tmp/leg34b.log" gpt-6.1-sol 2>&1)"
+out34b="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34b some/doc.md /tmp/nosig 99999999999 "$tmp/leg34b.log" gpt-6.1-sol 2>&1)"
 lenv34b="$(printf '%s\n' "$out34b" | grep '^headed-arm-leg: lane=')"
 not_contains "34b a model with no tier row leaves CLAUDE_CODE_EFFORT_LEVEL unset" "$lenv34b" "CLAUDE_CODE_EFFORT_LEVEL"
 
 # 34c. An explicit CLAUDE_CODE_EFFORT_LEVEL already set in the launching
 # shell wins over the registry lookup - never silently overwritten.
-out34c="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
+out34c="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
 lenv34c="$(printf '%s\n' "$out34c" | grep '^headed-arm-leg: lane=')"
 contains "34c an ambient CLAUDE_CODE_EFFORT_LEVEL=xhigh survives the registry lookup" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 not_contains "34c the registry's medium never overwrites the ambient value" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 # 34d. --lane claudex is untouched by this resolver: it keeps its own
-# LEG_EFFORT-sourced default, never lanes.json's per-model row.
-out34d="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg-34d some/doc.md /tmp/nosig 99999999999 "$tmp/leg34d.log" 2>&1)"
+# WORKER_SESSION_EFFORT-sourced default, never lanes.json's per-model row.
+out34d="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg-34d some/doc.md /tmp/nosig 99999999999 "$tmp/leg34d.log" 2>&1)"
 lenv34d="$(printf '%s\n' "$out34d" | grep '^headed-arm-leg: lane=')"
-contains "34d claudex lane still exports its own LEG_EFFORT-default effort" "$lenv34d" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+contains "34d claudex lane still exports its own WORKER_SESSION_EFFORT-default effort" "$lenv34d" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
-# 34e-34h. On the native lane LEG_EFFORT sits between an explicit
+# 34e-34h. On the native lane WORKER_SESSION_EFFORT sits between an explicit
 # CLAUDE_CODE_EFFORT_LEVEL and the registry default. A registry whose opus row
 # is medium keeps 34e from passing on the registry value alone.
 lanes_fixture_med="$tmp/lanes-fixture-med.json"
@@ -3317,58 +3317,58 @@ cat > "$lanes_fixture_med" <<'LANES_JSON_EOF'
 LANES_JSON_EOF
 
 rc34e=0
-out34e="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34e "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34e.log" claude-opus-5-5 2>&1)" || rc34e=$?
+out34e="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34e "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34e.log" claude-opus-5-5 2>&1)" || rc34e=$?
 lenv34e="$(printf '%s\n' "$out34e" | grep '^headed-arm-leg: lane=')"
 check "34e dry run exits 0" "$rc34e" "0"
-contains "34e native LEG_EFFORT=high beats the registry's medium" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=high"
+contains "34e native WORKER_SESSION_EFFORT=high beats the registry's medium" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=high"
 not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc34f=0
-out34f="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
+out34f="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
 lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-leg: lane=')"
 check "34f dry run exits 0" "$rc34f" "0"
-contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats LEG_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
-not_contains "34f LEG_EFFORT does not displace the explicit value" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=high"
+contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats WORKER_SESSION_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
+not_contains "34f WORKER_SESSION_EFFORT does not displace the explicit value" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
 rc34g=0
-out34g="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=bogus CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g.log" claude-opus-5-5 2>&1)" || rc34g=$?
+out34g="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=bogus CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g.log" claude-opus-5-5 2>&1)" || rc34g=$?
 lenv34g="$(printf '%s\n' "$out34g" | grep '^headed-arm-leg: lane=')"
 check "34g dry run exits 0" "$rc34g" "0"
-contains "34g an unrecognised LEG_EFFORT falls through to the registry" "$lenv34g" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+contains "34g an unrecognised WORKER_SESSION_EFFORT falls through to the registry" "$lenv34g" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 # 34g1. An omitted model resolves the registry effort for the default model headed-arm.sh launches.
 lanes_fixture_opus_high="$tmp/lanes-fixture-opus-high.json"
 printf '%s\n' '{"lanes":[{"id":"opus","class":"claude-tier","effort":"high"}]}' > "$lanes_fixture_opus_high"
 rc34g1=0
-out34g1="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_opus_high" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g1 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g1.log" 2>&1)" || rc34g1=$?
+out34g1="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_opus_high" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g1 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g1.log" 2>&1)" || rc34g1=$?
 check "34g1 dry run exits 0" "$rc34g1" "0"
 contains "34g1 an omitted model takes the default model's registry effort" "$out34g1" "headed-arm-leg: effort=high source=lanes.json"
 
 # 34g2. A caller-preset launcher token wins on a name clash; the effort line reports it.
 rc34g2=0
-out34g2="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g2 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g2.log" claude-opus-5-5 2>&1)" || rc34g2=$?
+out34g2="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g2 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g2.log" claude-opus-5-5 2>&1)" || rc34g2=$?
 check "34g2 dry run exits 0" "$rc34g2" "0"
 contains "34g2 the effort line reports the launcher token's value and source" "$out34g2" "headed-arm-leg: effort=low source=HEADED_ARM_LAUNCHER_ENV"
-not_contains "34g2 the effort line does not claim LEG_EFFORT won" "$out34g2" "source=LEG_EFFORT"
+not_contains "34g2 the effort line does not claim WORKER_SESSION_EFFORT won" "$out34g2" "source=WORKER_SESSION_EFFORT"
 
-contains "34h the launch states the effective effort and its source" "$out34e" "headed-arm-leg: effort=high source=LEG_EFFORT"
+contains "34h the launch states the effective effort and its source" "$out34e" "headed-arm-leg: effort=high source=WORKER_SESSION_EFFORT"
 contains "34h an explicit value is reported as its own source" "$out34f" "headed-arm-leg: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
 contains "34h a registry value is reported as the lane default" "$out34a" "headed-arm-leg: effort=medium source=lanes.json"
-check "34h the effort line is the first line of the launch output" "$(printf '%s\n' "$out34e" | head -1)" "headed-arm-leg: effort=high source=LEG_EFFORT"
+check "34h the effort line is the first line of the launch output" "$(printf '%s\n' "$out34e" | head -1)" "headed-arm-leg: effort=high source=WORKER_SESSION_EFFORT"
 
-# 34i. A full native launch with LEG_EFFORT=high puts high into the armed process env.
+# 34i. A full native launch with WORKER_SESSION_EFFORT=high puts high into the armed process env.
 d34i="$tmp/c34i"; mk_launch_stubs "$d34i" "HIMMEL-9999-leg-34i"; mkdir -p "$tmp/repo34i"
 rc=0
-LEG_EFFORT=high run_leg "$d34i" "$tmp/repo34i" "HIMMEL-9999-leg-34i" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_EFFORT=high run_leg "$d34i" "$tmp/repo34i" "HIMMEL-9999-leg-34i" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d34i" || true
 env34i="$(cat "$d34i/env-record" 2>/dev/null || true)"
-check "34i full native launch, LEG_EFFORT=high: exit 0" "$rc" "0"
-contains "34i full native launch, LEG_EFFORT=high: the armed process env carries high" "$env34i" "CLAUDE_CODE_EFFORT_LEVEL=high"
+check "34i full native launch, WORKER_SESSION_EFFORT=high: exit 0" "$rc" "0"
+contains "34i full native launch, WORKER_SESSION_EFFORT=high: the armed process env carries high" "$env34i" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
 # 34j. A caller-preset EMPTY launcher token is still the launcher token: the
-# effort line reports its (empty) value and source, never LEG_EFFORT's.
+# effort line reports its (empty) value and source, never WORKER_SESSION_EFFORT's.
 rc34j=0
-out34j="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34j "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34j.log" claude-opus-5-5 2>&1)" || rc34j=$?
+out34j="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34j "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34j.log" claude-opus-5-5 2>&1)" || rc34j=$?
 check "34j dry run exits 0" "$rc34j" "0"
 contains "34j an empty launcher token is reported with its own empty value and source" "$out34j" "headed-arm-leg: effort= source=HEADED_ARM_LAUNCHER_ENV"
 not_contains "34j the effort line does not claim effort=high" "$out34j" "effort=high"
@@ -3392,22 +3392,22 @@ mutate_launcher() {
   sed "$@" "$f" > "$f.new" && mv "$f.new" "$f" && chmod 755 "$f"
 }
 
-# 34k. The effort resolver fix reverted (LEG_EFFORT no longer reaches the resolver,
+# 34k. The effort resolver fix reverted (WORKER_SESSION_EFFORT no longer reaches the resolver,
 # so the registry's medium wins): the launch is refused, naming both values.
 mut6507="$tmp/revert-6507"; mk_launcher_tree "$mut6507"
 # shellcheck disable=SC2016  # the sed patterns hold a literal $.
-mutate_launcher "$mut6507" -e 's|^\( *\)EFFORT_SOURCE="LEG_EFFORT"$|\1:|' -e 's|^\( *\)leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "\$LEG_EFFORT"$|\1:|'
+mutate_launcher "$mut6507" -e 's|^\( *\)EFFORT_SOURCE="WORKER_SESSION_EFFORT"$|\1:|' -e 's|^\( *\)leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "\$WORKER_SESSION_EFFORT"$|\1:|'
 mut6507_script="$mut6507/scripts/handover/console-kit/headed-arm-leg.sh"
 check "34k control: the reverted launcher differs from the real one in exactly the two resolver lines" "$(diff "$SCRIPT" "$mut6507_script" | grep -c '^>')" "2"
 rc34k=0
-out34k="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$mut6507_script" --dry-run --no-profile HIMMEL-9999-leg-34k "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34k.log" claude-opus-5-5 2>&1)" || rc34k=$?
-check "34k a LEG_EFFORT=high launch that would resolve to medium is refused (exit 2)" "$rc34k" "2"
+out34k="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$mut6507_script" --dry-run --no-profile HIMMEL-9999-leg-34k "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34k.log" claude-opus-5-5 2>&1)" || rc34k=$?
+check "34k a WORKER_SESSION_EFFORT=high launch that would resolve to medium is refused (exit 2)" "$rc34k" "2"
 contains "34k the refusal names the asked effort" "$out34k" "asked effort=high"
 contains "34k the refusal names the effective effort" "$out34k" "would run effort=medium"
 
 # 34l. An explicit override names its own reason, so asked != effective is not refused.
-contains "34l an explicit CLAUDE_CODE_EFFORT_LEVEL over LEG_EFFORT still launches (34f)" "$out34f" "headed-arm-leg: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
-check "34l a preset launcher token over LEG_EFFORT still launches (34g2)" "$rc34g2" "0"
+contains "34l an explicit CLAUDE_CODE_EFFORT_LEVEL over WORKER_SESSION_EFFORT still launches (34f)" "$out34f" "headed-arm-leg: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
+check "34l a preset launcher token over WORKER_SESSION_EFFORT still launches (34g2)" "$rc34g2" "0"
 
 # 34m. A model that is not the asked model at the claude exec is refused.
 mutmodel="$tmp/mutate-model"; mk_launcher_tree "$mutmodel"
@@ -3416,12 +3416,12 @@ mutate_launcher "$mutmodel" -e 's|^export HEADED_ARM_REQUIRED_AUTOCOMPACT="\$RES
 mutmodel_script="$mutmodel/scripts/handover/console-kit/headed-arm-leg.sh"
 check "34m control: the mutated launcher differs from the real one in exactly one line" "$(diff "$SCRIPT" "$mutmodel_script" | grep -c '^>')" "1"
 rc34m=0
-out34m="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$mutmodel_script" --dry-run --no-profile HIMMEL-9999-leg-34m some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m.log" claude-sonnet-5-5 2>&1)" || rc34m=$?
+out34m="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$mutmodel_script" --dry-run --no-profile HIMMEL-9999-leg-34m some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m.log" claude-sonnet-5-5 2>&1)" || rc34m=$?
 check "34m a launch whose --model would differ from the asked model is refused (exit 2)" "$rc34m" "2"
 contains "34m the refusal names both models" "$out34m" "asked model=claude-sonnet-5-5"
 contains "34m the refusal names the model claude would get" "$out34m" "--model claude-haiku-5-5"
 rc34m2=0
-HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34m2 some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m2.log" claude-sonnet-5-5 >/dev/null 2>&1 || rc34m2=$?
+HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34m2 some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m2.log" claude-sonnet-5-5 >/dev/null 2>&1 || rc34m2=$?
 check "34m2 an unmutated launch with the same model is not refused" "$rc34m2" "0"
 
 # 34n. End to end through the real headed-arm-leg.sh and the real headed-arm.sh,
@@ -3452,8 +3452,8 @@ e2e_leg() {
   local script="$1" d="$2" name="$3" model="${4:-claude-sonnet-5-5}"
   mkdir -p "$d/repo"
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' PATH="$d:$PATH" HEADED_ARM_CLAUDE_CLI="$d/claude" \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
-  KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" LEG_REPO="$d/repo" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" WORKER_SESSION_REPO="$d/repo" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
     bash "$script" --no-profile "$name" "$some_doc" "$d/signal-never" "$PAST" "$d/log" "$model" >"$d/leg-out" 2>&1
 }
 # e2e_seen <stubdir> <file> [ticks] - the stub claude's record, or <no launch> after a bounded wait (ticks of 50ms, default 300).
@@ -3470,10 +3470,10 @@ e2e_effort() { e2e_seen "$1" claude-env "${2:-300}" | sed -n -e 's/^CLAUDE_CODE_
 
 d34n="$tmp/c34n-leg"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-leg"
 rc34n=0
-LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1 || rc34n=$?
-check "34n LEG_EFFORT=high: the launcher exits 0" "$rc34n" "0"
-check "34n LEG_EFFORT=high: the claude process gets high" "$(e2e_effort "$d34n")" "high"
-contains "34n LEG_EFFORT=high: claude is passed the asked model" "$(e2e_seen "$d34n" claude-argv)" "--model claude-sonnet-5-5 "
+WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1 || rc34n=$?
+check "34n WORKER_SESSION_EFFORT=high: the launcher exits 0" "$rc34n" "0"
+check "34n WORKER_SESSION_EFFORT=high: the claude process gets high" "$(e2e_effort "$d34n")" "high"
+contains "34n WORKER_SESSION_EFFORT=high: claude is passed the asked model" "$(e2e_seen "$d34n" claude-argv)" "--model claude-sonnet-5-5 "
 
 # An exported CLAUDE_CODE_EFFORT_LEVEL is a Claude Code marker: on the anchor copy
 # with no claude ancestor the seam guard refuses the stubbed launch, so this row
@@ -3485,34 +3485,34 @@ for e34n in "$HERE"/../../lib/*; do ln -s "$(cd "$(dirname "$e34n")" && pwd)/$(b
 rm "$tree34n/scripts/lib/chokepoint-seam-guard.sh"; cp "$HERE/../../lib/chokepoint-seam-guard.sh" "$tree34n/scripts/lib/chokepoint-seam-guard.sh"
 d34n="$tmp/c34n-explicit"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-explicit"
 rc34n=0
-CLAUDE_CODE_EFFORT_LEVEL=xhigh LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
+CLAUDE_CODE_EFFORT_LEVEL=xhigh WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the launcher exits 0" "$rc34n" "0"
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the claude process gets xhigh" "$(e2e_effort "$d34n")" "xhigh"
 
 d34n="$tmp/c34n-token"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-token"
 rc34n=0
-HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-token" >/dev/null 2>&1 || rc34n=$?
+HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-token" >/dev/null 2>&1 || rc34n=$?
 check "34n launcher token: the launcher exits 0" "$rc34n" "0"
 check "34n launcher token CLAUDE_CODE_EFFORT_LEVEL=low: the claude process gets low" "$(e2e_effort "$d34n")" "low"
 
 d34n="$tmp/c34n-empty"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-empty"
 rc34n=0
-HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-empty" >/dev/null 2>&1 || rc34n=$?
+HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-empty" >/dev/null 2>&1 || rc34n=$?
 check "34n empty launcher token: the launcher exits 0" "$rc34n" "0"
 check "34n empty launcher token: the claude process gets the empty value the line reports" "$(e2e_seen "$d34n" claude-env)" "CLAUDE_CODE_EFFORT_LEVEL="
 
 d34n="$tmp/c34n-none"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-none"
 rc34n=0
-HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-none" >/dev/null 2>&1 || rc34n=$?
+HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-none" >/dev/null 2>&1 || rc34n=$?
 check "34n no asking channel: the launcher exits 0" "$rc34n" "0"
 check "34n no asking channel: the claude process gets the lane default" "$(e2e_effort "$d34n")" "medium"
 
-# 34o. RED control: the same LEG_EFFORT=high launch through the launcher with
+# 34o. RED control: the same WORKER_SESSION_EFFORT=high launch through the launcher with
 # the effort resolver fix reverted must NOT hand claude high (it is refused).
 d34o="$tmp/c34o"; mk_exec_stubs "$d34o" "HIMMEL-9999-leg-34o"
 rc34o=0
-LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$mut6507_script" "$d34o" "HIMMEL-9999-leg-34o" >/dev/null 2>&1 || rc34o=$?
-check "34o RED control: with the 6507 fix reverted the 34n LEG_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o" 40)" = high ] && echo holds || echo broken)" "broken"
+WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$mut6507_script" "$d34o" "HIMMEL-9999-leg-34o" >/dev/null 2>&1 || rc34o=$?
+check "34o RED control: with the 6507 fix reverted the 34n WORKER_SESSION_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o" 40)" = high ] && echo holds || echo broken)" "broken"
 check "34o RED control: the reverted launcher refuses instead of running at medium (exit 2)" "$rc34o" "2"
 
 # --- 35. HANDOVER_DIR unset, but a root IS
@@ -3534,9 +3534,9 @@ fx_brief '# fixture doc outside the self-resolved root' > "$doc35"
 rc=0
 ( cd "$primary35" && \
   HANDOVER_DIR='' \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d35/konsole" PGREP_CMD="$d35/pgrep" \
-  LEG_REPO="$tmp/repo35" HEADED_ARM_LOCK_DIR="$d35/locks" HEADED_ARM_PROC="$d35/proc" \
+  WORKER_SESSION_REPO="$tmp/repo35" HEADED_ARM_LOCK_DIR="$d35/locks" HEADED_ARM_PROC="$d35/proc" \
     bash "$SCRIPT" --profile leg-impl "HIMMEL-3545-leg" "$doc35" "$d35/signal-never" "$PAST" "$d35/log" "claude-sonnet-5" \
 ) >/dev/null 2>&1 || rc=$?
 wait_record "$d35" || true
@@ -3556,8 +3556,8 @@ check "self-resolved root, doc outside it: grant is never the repo root" \
 # is correct for a generic passthrough knob, but wrong for the per-leg
 # settings/preface/MCP triplet: this wrapper's own process may itself BE a
 # leg that is now arming a SIBLING leg (console.sh's do_arm() comment: "this
-# process itself may BE a leg"), so leg-1's own LEG_PROFILE_SETTINGS/
-# LEG_PROFILE_PREFACE/LEG_PROFILE_MCP_CONFIG - both the plain env var and the
+# process itself may BE a leg"), so leg-1's own WORKER_SESSION_PROFILE_SETTINGS/
+# WORKER_SESSION_PROFILE_PREFACE/WORKER_SESSION_PROFILE_MCP_CONFIG - both the plain env var and the
 # HEADED_ARM_LAUNCHER_ENV token leg-1's own launch added - are still live in
 # that shell when it arms leg-2. Before the fix, leg-2's launcher-env kept
 # leg-1's stale triplet forever, since a real leg never collides with its OWN
@@ -3570,26 +3570,26 @@ leg1_mcp37="$tmp/leg-1.leg-mcp.json"
 leg2_settings37="$tmp/HIMMEL-9999-leg-2.leg-settings.json"
 leg2_preface37="$tmp/HIMMEL-9999-leg-2.leg-preface.md"
 leg2_mcp37="$tmp/HIMMEL-9999-leg-2.leg-mcp.json"
-out37="$(LEG_PROFILE_SETTINGS="$leg1_settings37" LEG_PROFILE_PREFACE="$leg1_preface37" LEG_PROFILE_MCP_CONFIG="$leg1_mcp37" \
-  HEADED_ARM_LAUNCHER_ENV="LEG_PROFILE_SETTINGS=$leg1_settings37 LEG_PROFILE_PREFACE=$leg1_preface37 LEG_PROFILE_MCP_CONFIG=$leg1_mcp37 KEEP_ME=1" \
+out37="$(WORKER_SESSION_PROFILE_SETTINGS="$leg1_settings37" WORKER_SESSION_PROFILE_PREFACE="$leg1_preface37" WORKER_SESSION_PROFILE_MCP_CONFIG="$leg1_mcp37" \
+  HEADED_ARM_LAUNCHER_ENV="WORKER_SESSION_PROFILE_SETTINGS=$leg1_settings37 WORKER_SESSION_PROFILE_PREFACE=$leg1_preface37 WORKER_SESSION_PROFILE_MCP_CONFIG=$leg1_mcp37 KEEP_ME=1" \
   bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-2 some/doc.md /tmp/nosig 99999999999 "$tmp/HIMMEL-9999-leg-2.log" claude-sonnet-5 2>&1)"
 lenv37="$(printf '%s\n' "$out37" | grep '^headed-arm-leg: lane=')"
-contains "37 leg 2's launcher-env names its OWN settings file" "$lenv37" "LEG_PROFILE_SETTINGS=$leg2_settings37"
-not_contains "37 leg 2's launcher-env does not keep leg 1's stale settings file" "$lenv37" "LEG_PROFILE_SETTINGS=$leg1_settings37"
-contains "37 leg 2's launcher-env names its OWN preface file" "$lenv37" "LEG_PROFILE_PREFACE=$leg2_preface37"
-not_contains "37 leg 2's launcher-env does not keep leg 1's stale preface file" "$lenv37" "LEG_PROFILE_PREFACE=$leg1_preface37"
-contains "37 leg 2's launcher-env names its OWN mcp-config file" "$lenv37" "LEG_PROFILE_MCP_CONFIG=$leg2_mcp37"
-not_contains "37 leg 2's launcher-env does not keep leg 1's stale mcp-config file" "$lenv37" "LEG_PROFILE_MCP_CONFIG=$leg1_mcp37"
+contains "37 leg 2's launcher-env names its OWN settings file" "$lenv37" "WORKER_SESSION_PROFILE_SETTINGS=$leg2_settings37"
+not_contains "37 leg 2's launcher-env does not keep leg 1's stale settings file" "$lenv37" "WORKER_SESSION_PROFILE_SETTINGS=$leg1_settings37"
+contains "37 leg 2's launcher-env names its OWN preface file" "$lenv37" "WORKER_SESSION_PROFILE_PREFACE=$leg2_preface37"
+not_contains "37 leg 2's launcher-env does not keep leg 1's stale preface file" "$lenv37" "WORKER_SESSION_PROFILE_PREFACE=$leg1_preface37"
+contains "37 leg 2's launcher-env names its OWN mcp-config file" "$lenv37" "WORKER_SESSION_PROFILE_MCP_CONFIG=$leg2_mcp37"
+not_contains "37 leg 2's launcher-env does not keep leg 1's stale mcp-config file" "$lenv37" "WORKER_SESSION_PROFILE_MCP_CONFIG=$leg1_mcp37"
 contains "37 an unrelated sibling launcher-env token still survives" "$lenv37" "KEEP_ME=1"
 
 # --- 37b (#1334 CR follow-up). Case 37 above covers a leg-2 whose OWN profile
 # re-propagates all three names. A leg-2 whose profile does NOT touch a given
 # name this run - here, "mcp-none" (registered above, case 18d's own fixture:
-# no mcpServers field) - never calls leg_propagate_env LEG_PROFILE_MCP_CONFIG
+# no mcpServers field) - never calls leg_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG
 # at all, so a per-site leg_env_drop_token alone (only reachable INSIDE the
 # `mcpServers != null` branch) would leave leg-1's stale plain var AND token
 # live. Worse than a stale value: the real-launch write-if-set block further
-# down reads the stale plain LEG_PROFILE_MCP_CONFIG as "this leg has an mcp
+# down reads the stale plain WORKER_SESSION_PROFILE_MCP_CONFIG as "this leg has an mcp
 # config" and then references $MCP_CONFIG_JSON, which THIS leg's run never
 # assigned (mcp-none never entered that resolution branch) - an unbound
 # variable under `set -u`, i.e. the wrapper crashes instead of launching.
@@ -3601,15 +3601,15 @@ leg1_mcp37b="$tmp/leg-1-37b.leg-mcp.json"
 printf '%s' '{"mcpServers":{"SENTINEL_LEG1":{}}}' > "$leg1_mcp37b"
 rc=0
 PLUGIN_PROFILES_REGISTRY="$mcpreg" \
-LEG_PROFILE_SETTINGS="$leg1_settings37b" LEG_PROFILE_PREFACE="$leg1_preface37b" LEG_PROFILE_MCP_CONFIG="$leg1_mcp37b" \
-HEADED_ARM_LAUNCHER_ENV="LEG_PROFILE_SETTINGS=$leg1_settings37b LEG_PROFILE_PREFACE=$leg1_preface37b LEG_PROFILE_MCP_CONFIG=$leg1_mcp37b KEEP_ME=1" \
+WORKER_SESSION_PROFILE_SETTINGS="$leg1_settings37b" WORKER_SESSION_PROFILE_PREFACE="$leg1_preface37b" WORKER_SESSION_PROFILE_MCP_CONFIG="$leg1_mcp37b" \
+HEADED_ARM_LAUNCHER_ENV="WORKER_SESSION_PROFILE_SETTINGS=$leg1_settings37b WORKER_SESSION_PROFILE_PREFACE=$leg1_preface37b WORKER_SESSION_PROFILE_MCP_CONFIG=$leg1_mcp37b KEEP_ME=1" \
 RUN_LEG_ARGS='--profile mcp-none' run_leg "$d37b" "$tmp/repo37b" "HIMMEL-9999-leg2b" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d37b" || true
 check "37b leg 2 (mcp-none profile) still launches (no unbound-variable crash)" "$rc" "0"
 check "37b leg 1's own mcp file is untouched" \
   "$(cat "$leg1_mcp37b" 2>/dev/null || true)" '{"mcpServers":{"SENTINEL_LEG1":{}}}'
 env37b="$(cat "$d37b/env-record" 2>/dev/null || true)"
-not_contains "37b leg 2's launched env carries no LEG_PROFILE_MCP_CONFIG at all" "$env37b" "LEG_PROFILE_MCP_CONFIG="
+not_contains "37b leg 2's launched env carries no WORKER_SESSION_PROFILE_MCP_CONFIG at all" "$env37b" "WORKER_SESSION_PROFILE_MCP_CONFIG="
 if [ -e "$d37b/HIMMEL-9999-leg2b.leg-mcp.json" ]; then
   echo "FAIL - 37b leg 2 must not get its own mcp file (mcp-none has no mcpServers field)"; fails=$((fails+1))
 else
@@ -3760,12 +3760,12 @@ for variant in good missing bad none; do
     bad)     fx_brief "> **Effort-record:** $d40/bad.json" > "$doc40" ;;
     none)    fx_brief 'no record line here' > "$doc40" ;;
   esac
-  rc=0; out40="$(LEG_EFFORT=low bash "$SCRIPT" --dry-run --no-profile HIMMEL-40-leg "$doc40" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out40="$(WORKER_SESSION_EFFORT=low bash "$SCRIPT" --dry-run --no-profile HIMMEL-40-leg "$doc40" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
   check "40 $variant: dry-run still exits 0" "$rc" "0"
   contains "40 $variant: dry-run report still printed" "$out40" "headed-arm-leg: env IMPL_GUARD_OK="
   case "$variant" in
-    good)    contains "40 good: advisory names high effort + review and the launching effort" "$out40" "advisory: recommended LEG_EFFORT=high + independent review before GO"
-             contains "40 good: advisory shows the launching LEG_EFFORT" "$out40" "launching LEG_EFFORT=low" ;;
+    good)    contains "40 good: advisory names high effort + review and the launching effort" "$out40" "advisory: recommended WORKER_SESSION_EFFORT=high + independent review before GO"
+             contains "40 good: advisory shows the launching WORKER_SESSION_EFFORT" "$out40" "launching WORKER_SESSION_EFFORT=low" ;;
     missing) contains "40 missing: advisory unavailable" "$out40" "advisory: unavailable (record not readable" ;;
     bad)     contains "40 bad json: advisory unavailable" "$out40" "advisory: unavailable (effort-route failed" ;;
     none)    not_contains "40 none: no advisory line at all" "$out40" "advisory" ;;
@@ -3816,11 +3816,11 @@ for flags41 in "--judge --profile design-motion" "--relay --profile design-motio
   check "41c --consult ${flags41:-<no profile>}: exit 2" "$rc" "2"
 done
 mkdir -p "$tmp/.claude/worktrees/feat+x" "$tmp/repo41c"
-rc=0; out="$(LEG_REPO="$tmp/.claude/worktrees/feat+x" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/.claude/worktrees/feat+x" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41c --consult from a leg worktree cwd refuses (exit 2)" "$rc" "2"
 contains "41c worktree refusal says why" "$out" "worktree"
 
-rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41b dry-run --consult --profile design-motion: exit 0" "$rc" "0"
 contains "41b dry-run reports consult=1" "$out" "consult=1"
 contains "41b dry-run uses the consult preface" "$out" "docs/handover/consult-preface.md"
@@ -3830,9 +3830,9 @@ contains "41b dry-run withholds IMPL_GUARD_OK" "$out" "IMPL_GUARD_OK=<unset>"
 d41c="$tmp/c41c"; mk_launch_stubs "$d41c" "HIMMEL-4014-ask"; mkdir -p "$tmp/repo41c"
 rc=0
 IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d41c/konsole" PGREP_CMD="$d41c/pgrep" \
-LEG_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41c/locks" HEADED_ARM_PROC="$d41c/proc" \
+WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41c/locks" HEADED_ARM_PROC="$d41c/proc" \
   bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-ask "$some_doc" "$d41c/signal-never" "$PAST" "$d41c/log" >/dev/null 2>&1 || rc=$?
 wait_record "$d41c" || true
 check "41b real --consult launch: exit 0" "$rc" "0"
@@ -3876,9 +3876,9 @@ for k41 in consult plain; do
   if [ "$k41" = consult ]; then kf41="--consult --profile design-motion --console HIMMEL-4014-console"; else kf41="--profile design-motion"; fi
   # shellcheck disable=SC2086  # $kf41 is a deliberate multi-word flag set
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d41k/konsole" PGREP_CMD="$d41k/pgrep" \
-  LEG_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41k/locks" HEADED_ARM_PROC="$d41k/proc" \
+  WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41k/locks" HEADED_ARM_PROC="$d41k/proc" \
     bash "$SCRIPT" $kf41 "HIMMEL-4061-$k41" "$b41/consult41.md" "$d41k/signal-never" "$PAST" "$d41k/log" >/dev/null 2>&1 || true
   wait_record "$d41k" || true
 done
@@ -3888,15 +3888,15 @@ check "41h consult: the doc's bucket dir is NOT in additionalDirectories (it is 
 check "41h consult: additionalDirectories is absent or empty" "$(printf '%s' "$k41set_consult" | jq '(.permissions.additionalDirectories // []) | length' 2>/dev/null)" "0"
 check "41h consult (bucket subdir doc): allowWrite is still only the doc file" "$(printf '%s' "$k41set_consult" | jq -c '.sandbox.filesystem.allowWrite' 2>/dev/null)" "[\"$b41c/consult41.md\"]"
 check "41h non-consult launch keeps the doc-dir additionalDirectories grant" "$(printf '%s' "$k41set_plain" | jq --arg d "$b41c" '(.permissions.additionalDirectories // []) | map(select(. == $d)) | length' 2>/dev/null)" "1"
-rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4061-l "$b41/consult41-link.md" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4061-l "$b41/consult41-link.md" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41h a symlink consult doc refuses (exit 2)" "$rc" "2"
 contains "41h symlink refusal says symlink" "$out" "symlink"
 if [ "$(uname -s)" = "Linux" ]; then
-  rc=0; out="$(CONSULT_BWRAP_BIN=bwrap-missing-4061 LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4061-m "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(CONSULT_BWRAP_BIN=bwrap-missing-4061 WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4061-m "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41h missing bwrap refuses the consult (exit 2)" "$rc" "2"
   contains "41h missing-bwrap refusal names bwrap" "$out" "bwrap"
   contains "41h missing-bwrap refusal names socat" "$out" "socat"
-  rc=0; out="$(CONSULT_SOCAT_BIN=socat-missing-4061 LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4061-m "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(CONSULT_SOCAT_BIN=socat-missing-4061 WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4061-m "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41h missing socat refuses the consult (exit 2)" "$rc" "2"
   contains "41h missing-socat refusal names bwrap" "$out" "bwrap"
   contains "41h missing-socat refusal names socat" "$out" "socat"
@@ -3904,7 +3904,7 @@ fi
 # NO-GO round: a gateAllow member must not hand the consult its ship-step allows,
 # single or composed; the allow list is exactly the one append rule.
 for gp41 in lane-content design,lane-content; do
-  rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile "$gp41" HIMMEL-4014-g "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile "$gp41" HIMMEL-4014-g "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41g --consult --profile $gp41 dry-run: exit 0" "$rc" "0"
   dg41="$tmp/c41g-${gp41//,/_}"; mk_launch_stubs "$dg41" "HIMMEL-4014-g"
   RUN_LEG_ARGS="--consult --profile $gp41" run_leg "$dg41" "$tmp/repo41c" "HIMMEL-4014-g" "claude-sonnet-5-5" >/dev/null 2>&1 || true
@@ -3914,9 +3914,9 @@ for gp41 in lane-content design,lane-content; do
   check "41g $gp41: that rule is the append-results one" "$(printf '%s' "$gset41" | jq -r '.permissions.allow[0] | startswith("Bash(bash scripts/handover/console-kit/append-results.sh ")' 2>/dev/null)" "true"
   check "41g $gp41: Edit/Write/NotebookEdit/EnterWorktree all denied" "$(printf '%s' "$gset41" | jq -c '[.permissions.deny[] | select(. == "Edit" or . == "Write" or . == "NotebookEdit" or . == "EnterWorktree")] | sort' 2>/dev/null)" '["Edit","EnterWorktree","NotebookEdit","Write"]'
 done
-# claudex lane fails closed; a derived (unset LEG_REPO) worktree path and a relative
+# claudex lane fails closed; a derived (unset WORKER_SESSION_REPO) worktree path and a relative
 # or symlinked path into a worktree all refuse.
-rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --lane claudex --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --lane claudex --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41g --consult --lane claudex refuses (exit 2)" "$rc" "2"
 rc=0; out="$(bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 # A worktree checkout refuses on the worktree rule. The primary checkout passes even though
@@ -3926,53 +3926,53 @@ case "$HERE" in */.claude/worktrees/*) exp41g=2; want41g=".claude/worktrees" ;; 
 check "41g derived repo: a worktree refuses, the primary checkout passes" "$rc" "$exp41g"
 [ -z "$want41g" ] || contains "41g derived repo refusal names its cause" "$out" "$want41g"
 mkdir -p "$tmp/real41/.claude/worktrees/feat+y"; ln -s "$tmp/real41/.claude/worktrees/feat+y" "$tmp/link41"
-rc=0; out="$(LEG_REPO="$tmp/link41" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/link41" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41g a symlink into a worktree refuses (exit 2)" "$rc" "2"
-rc=0; out="$(LEG_REPO="$tmp/real41/.claude/worktrees/../worktrees/feat+y/." bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/real41/.claude/worktrees/../worktrees/feat+y/." bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41g a dot-dot path into a worktree refuses (exit 2)" "$rc" "2"
-rc=0; out="$(LEG_REPO="$tmp/nonexistent41" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/nonexistent41" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41g an unresolvable repo fails closed (exit 2)" "$rc" "2"
 
 # (a): a consult doc INSIDE the repo is always write-denied (the repo is in
 # denyWrite), so arm time refuses it instead of launching a window that cannot answer.
 mkdir -p "$tmp/repo41c/docs"; : > "$tmp/repo41c/docs/in-repo-consult.md"
-rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-a "$tmp/repo41c/docs/in-repo-consult.md" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-a "$tmp/repo41c/docs/in-repo-consult.md" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a consult doc inside the repo refuses (exit 2)" "$rc" "2"
 contains "41i in-repo refusal says why" "$out" "inside the repo"
-rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-a "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-a "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a consult doc outside the repo still passes (exit 0)" "$rc" "0"
-# the consult is confined only by the in-repo shim, so a HEADED_ARM_LEG_SHIM
+# the consult is confined only by the in-repo shim, so a HEADED_ARM_WORKER_SHIM
 # pointing anywhere else (here: a stub that would exec claude without --setting-sources) refuses.
 printf '%s\n' '#!/usr/bin/env bash' 'exec claude "$@"' > "$tmp/other-shim41.sh"
-rc=0; out="$(HEADED_ARM_LEG_SHIM="$tmp/other-shim41.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-check "41i-4118 a consult with a foreign HEADED_ARM_LEG_SHIM refuses (exit 2)" "$rc" "2"
-contains "41i-4118 the foreign-shim refusal names the seam" "$out" "refuses HEADED_ARM_LEG_SHIM"
+rc=0; out="$(HEADED_ARM_WORKER_SHIM="$tmp/other-shim41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "41i-4118 a consult with a foreign HEADED_ARM_WORKER_SHIM refuses (exit 2)" "$rc" "2"
+contains "41i-4118 the foreign-shim refusal names the seam" "$out" "refuses HEADED_ARM_WORKER_SHIM"
 # Counter-examples: the override naming the real shim (via a non-canonical spelling) still
 # passes, and a NON-consult profiled launch keeps honouring a foreign shim (test seam).
-rc=0; out="$(HEADED_ARM_LEG_SHIM="$HERE/../console-kit/../../lanes/leg-claude-launcher.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_SHIM="$HERE/../console-kit/../../lanes/leg-claude-launcher.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4118 a consult whose shim override resolves to the real shim passes (exit 0)" "$rc" "0"
-rc=0; out="$(HEADED_ARM_LEG_SHIM="$tmp/other-shim41.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-not_contains "41i-4118 a non-consult launch does not refuse a foreign shim" "$out" "refuses HEADED_ARM_LEG_SHIM"
+rc=0; out="$(HEADED_ARM_WORKER_SHIM="$tmp/other-shim41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+not_contains "41i-4118 a non-consult launch does not refuse a foreign shim" "$out" "refuses HEADED_ARM_WORKER_SHIM"
 # the other caller-chosen seams are the same class as F1's shim. A consult
-# refuses HEADED_ARM_LEG_CLAUDE_BIN outright (the shim would exec it with the confining argv,
+# refuses HEADED_ARM_WORKER_CLAUDE_BIN outright (the shim would exec it with the confining argv,
 # which a foreign binary can ignore) and a TARGET/PROFILES that is not the in-repo file.
-rc=0; out="$(HEADED_ARM_LEG_CLAUDE_BIN="$tmp/other-claude41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-check "41i-4142 a consult with HEADED_ARM_LEG_CLAUDE_BIN refuses (exit 2)" "$rc" "2"
-contains "41i-4142 the CLAUDE_BIN refusal names the seam" "$out" "refuses HEADED_ARM_LEG_CLAUDE_BIN"
+rc=0; out="$(HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/other-claude41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "41i-4142 a consult with HEADED_ARM_WORKER_CLAUDE_BIN refuses (exit 2)" "$rc" "2"
+contains "41i-4142 the CLAUDE_BIN refusal names the seam" "$out" "refuses HEADED_ARM_WORKER_CLAUDE_BIN"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$tmp/other-target41.sh"
 printf '%s\n' 'console.log("{}")' > "$tmp/other-profiles41.mjs"
-for sv41 in "HEADED_ARM_LEG_TARGET $tmp/other-target41.sh" "HEADED_ARM_LEG_PROFILES $tmp/other-profiles41.mjs"; do
+for sv41 in "HEADED_ARM_WORKER_TARGET $tmp/other-target41.sh" "HEADED_ARM_WORKER_PROFILES $tmp/other-profiles41.mjs"; do
   sn41="${sv41%% *}"; sp41="${sv41#* }"
-  rc=0; out="$(env "$sn41=$sp41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(env "$sn41=$sp41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i-4142 a consult with a foreign $sn41 refuses (exit 2)" "$rc" "2"
   contains "41i-4142 the foreign $sn41 refusal names the seam" "$out" "refuses $sn41"
 done
 # Counter-examples: a non-consult launch keeps honouring every seam, and a consult whose
 # TARGET/PROFILES override resolves to the in-repo file (non-canonical spelling) passes.
-rc=0; out="$(HEADED_ARM_LEG_CLAUDE_BIN="$tmp/other-claude41" HEADED_ARM_LEG_TARGET="$tmp/other-target41.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/other-claude41" HEADED_ARM_WORKER_TARGET="$tmp/other-target41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4142 a non-consult launch with foreign CLAUDE_BIN/TARGET still passes (exit 0)" "$rc" "0"
 not_contains "41i-4142 a non-consult launch refuses no seam" "$out" "--consult refuses"
-rc=0; out="$(HEADED_ARM_LEG_TARGET="$HERE/../console-kit/../headed-arm.sh" HEADED_ARM_LEG_PROFILES="$HERE/../console-kit/../../lanes/plugin-profiles.mjs" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_TARGET="$HERE/../console-kit/../headed-arm.sh" HEADED_ARM_WORKER_PROFILES="$HERE/../console-kit/../../lanes/plugin-profiles.mjs" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4142 a consult whose TARGET/PROFILES resolve to the in-repo files passes (exit 0)" "$rc" "0"
 # TOCTOU: an override reached through a symlinked directory passes the
 # canonical check, so what runs must be the CANONICAL path, never the retargetable spelling.
@@ -3980,32 +3980,32 @@ ln -sfn "$(cd -P "$HERE/../../lanes" && pwd -P)" "$tmp/lanes-link41"
 ln -sfn "$(cd -P "$HERE/.." && pwd -P)" "$tmp/handover-link41"
 shim_canon41="$(cd -P "$HERE/../../lanes" && pwd -P)/leg-claude-launcher.sh"
 target_canon41="$(cd -P "$HERE/.." && pwd -P)/headed-arm.sh"
-rc=0; out="$(HEADED_ARM_LEG_SHIM="$tmp/lanes-link41/leg-claude-launcher.sh" HEADED_ARM_LEG_TARGET="$tmp/handover-link41/headed-arm.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s2 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_SHIM="$tmp/lanes-link41/leg-claude-launcher.sh" HEADED_ARM_WORKER_TARGET="$tmp/handover-link41/headed-arm.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s2 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4142 a consult with symlinked-dir overrides naming the real files passes (exit 0)" "$rc" "0"
 contains "41i-4142 the exported launcher is the canonical consult entry beside the shim" "$out" "launcher=${shim_canon41%/*}/leg-claude-launcher-consult.sh "
 not_contains "41i-4142 the exported launcher is not the symlinked spelling" "$out" "launcher=$tmp/lanes-link41"
 contains "41i-4142 the exec target is the canonical headed-arm.sh" "$out" "would exec: $target_canon41 "
 # a PATH token in the launcher env would pick which claude the shim runs, so a
 # consult refuses it; a non-consult launch keeps passing it through (unchanged).
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a consult with a PATH token in HEADED_ARM_LAUNCHER_ENV refuses (exit 2)" "$rc" "2"
 contains "41i-4152 the PATH-token refusal names it" "$out" "refuses a PATH token"
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a non-consult launch with a PATH token still passes (exit 0)" "$rc" "0"
-# with HEADED_ARM_LEG_TARGET unset, a consult's default target is canonicalised
+# with HEADED_ARM_WORKER_TARGET unset, a consult's default target is canonicalised
 # too, so a script reached through a symlinked kit directory still execs the real headed-arm.sh.
 ln -sfn "$(cd -P "$HERE" && pwd -P)" "$tmp/kit-link4152"
-rc=0; out="$(unset HEADED_ARM_LEG_TARGET; LEG_REPO="$tmp/repo41c" bash "$tmp/kit-link4152/headed-arm-leg.sh" --dry-run --consult --profile design-motion HIMMEL-4152-t "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(unset HEADED_ARM_WORKER_TARGET; WORKER_SESSION_REPO="$tmp/repo41c" bash "$tmp/kit-link4152/headed-arm-leg.sh" --dry-run --consult --profile design-motion HIMMEL-4152-t "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a consult via a symlinked kit dir passes (exit 0)" "$rc" "0"
 contains "41i-4152 the default exec target is the canonical headed-arm.sh" "$out" "would exec: $target_canon41 "
 # bash startup tokens in the launcher env would run caller code before
 # the shim, so a consult refuses each; a non-consult launch passes them through (unchanged).
 for tok4152 in "BASH_ENV=$tmp/x.sh" "ENV=$tmp/x.sh" "BASH_FUNC_command%%=() { :; }" "SHELLOPTS=xtrace" "BASHOPTS=extglob"; do
-  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4152" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4152" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i-4152 a consult with a '${tok4152%%=*}' token in HEADED_ARM_LAUNCHER_ENV refuses (exit 2)" "$rc" "2"
   contains "41i-4152 the '${tok4152%%=*}' refusal names a startup token" "$out" "refuses a bash startup token"
 done
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 BASH_ENV=$tmp/x.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 BASH_ENV=$tmp/x.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a non-consult launch with a startup token still passes (exit 0)" "$rc" "0"
 # a real consult launch with a hostile caller runtime: a fake bash first
 # on PATH, a BASH_ENV file defining command(), an exported command function and ENV. None of
@@ -4055,9 +4055,9 @@ for m4152 in startup fn; do
   (
     atk4152_env "$m4152"
     IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-    HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     KONSOLE_CMD="$d4152/konsole" PGREP_CMD="$d4152/pgrep" \
-    LEG_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4152/locks" HEADED_ARM_PROC="$d4152/proc" \
+    WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4152/locks" HEADED_ARM_PROC="$d4152/proc" \
       /usr/bin/bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4152-$m4152" "$some_doc" "$d4152/signal-never" "$PAST" "$d4152/log" >/dev/null 2>&1
   ) || rc=$?
   wait_record "$d4152" || true
@@ -4079,8 +4079,8 @@ for m4152 in startup fn; do
   rc=0
   out="$(
     atk4152_env "$m4152"
-    unset LEG_CLAUDE_BIN
-    LEG_PROFILE_SETTINGS='' LEG_PROFILE_PREFACE='' LEG_PROFILE_MCP_CONFIG='' LEG_PROFILE_NO_SETTING_SOURCES=1 \
+    unset WORKER_SESSION_CLAUDE_BIN
+    WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
       /usr/bin/env "$launcher4152" --version 2>&1
   )" || rc=$?
   check "41k-4152 [$m4152] direct entry: no hook ran in the launcher" "$(cat "$atk4152"/*-log 2>/dev/null || true)" ""
@@ -4094,20 +4094,20 @@ done
 # code inside the consult's process tree, so a consult refuses each; a non-consult launch
 # passes them through (unchanged).
 for tok4159 in "LD_PRELOAD=$tmp/x.so" "LD_LIBRARY_PATH=$tmp" "LD_AUDIT=$tmp/x.so" "NODE_OPTIONS=--require=$tmp/x.js"; do
-  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i-4159 a consult with a '${tok4159%%=*}' token in HEADED_ARM_LAUNCHER_ENV refuses (exit 2)" "$rc" "2"
   contains "41i-4159 the '${tok4159%%=*}' refusal names a preload token" "$out" "refuses a loader or node preload token"
-  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i-4159 a non-consult launch with a '${tok4159%%=*}' token still passes (exit 0)" "$rc" "0"
 done
 # a token that is not NAME=VALUE becomes `env`'s command operand at the
 # launch site, so a consult refuses it; a non-consult dry run is unchanged.
 for tok4159 in "$tmp/evil4159" "1X=1" "FOO-BAR=1" "=1" "-i"; do
-  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tok4159" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tok4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i-4159 a consult with the non-NAME=VALUE token '$tok4159' refuses (exit 2)" "$rc" "2"
   contains "41i-4159 the '$tok4159' refusal names the token shape" "$out" "refuses a token that is not NAME=VALUE"
 done
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tmp/evil4159" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tmp/evil4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4159 a non-consult dry run with a non-NAME=VALUE token still passes (exit 0)" "$rc" "0"
 # a real consult launch (stub konsole) with a no-`=` token naming a fake binary
 # refuses before anything runs: no konsole, and the fake binary never runs.
@@ -4119,9 +4119,9 @@ d4159="$tmp/c4159-shape"; mk_launch_stubs "$d4159" "HIMMEL-4159-shape"
 rc=0
 (
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HEADED_ARM_LAUNCHER_ENV="X=1 $atk4159/evil" \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d4159/konsole" PGREP_CMD="$d4159/pgrep" \
-  LEG_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4159/locks" HEADED_ARM_PROC="$d4159/proc" \
+  WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4159/locks" HEADED_ARM_PROC="$d4159/proc" \
     /usr/bin/bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4159-shape" "$some_doc" "$d4159/signal-never" "$PAST" "$d4159/log" >/dev/null 2>&1
 ) || rc=$?
 wait_record "$d4159" || true
@@ -4148,9 +4148,9 @@ rc=0
   # shellcheck disable=SC2030 # the hostile runtime is subshell-local by design
   export ATK4159="$atk4159" NODE_OPTIONS="--require=$atk4159/marker.js" LD_PRELOAD=libc.so.6 LD_LIBRARY_PATH="$atk4159"
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d4159/konsole" PGREP_CMD="$d4159/pgrep" \
-  LEG_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4159/locks" HEADED_ARM_PROC="$d4159/proc" \
+  WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4159/locks" HEADED_ARM_PROC="$d4159/proc" \
     /usr/bin/bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4159-ld" "$some_doc" "$d4159/signal-never" "$PAST" "$d4159/log" >/dev/null 2>&1
 ) || rc=$?
 wait_record "$d4159" || true
@@ -4188,7 +4188,7 @@ for sc41 in user project local managed; do
       local) printf '%s' "$j41" > "$tmp/repo41c/.claude/settings.local.json" ;;
       managed) printf '%s' "$j41" > "$h41/managed.json"; cm41="$h41/managed.json" ;;
     esac
-    rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$cm41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+    rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$cm41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
     if [ "$sc41" = managed ]; then
       check "41i managed scope carrying $k41 refuses (exit 2)" "$rc" "2"
       contains "41i managed/$k41 refusal names the key" "$out" "$k41"
@@ -4200,7 +4200,7 @@ done
 rm -f "$tmp/repo41c/.claude/settings.json" "$tmp/repo41c/.claude/settings.local.json"
 # the scopes the consult no longer loads still contribute their hooks,
 # deny/ask rules and env (and nothing else) to the consult's own settings, and the launch
-# hands the shim LEG_PROFILE_NO_SETTING_SOURCES=1 (-> `--setting-sources ""`).
+# hands the shim WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 (-> `--setting-sources ""`).
 h41="$tmp/home41-carry"; rm -rf "$h41"; mkdir -p "$h41/.claude" "$tmp/repo41c/.claude"
 printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"user-hook"}]}]},"permissions":{"deny":["Bash(user-deny)"],"allow":["Edit(//u/**)"],"additionalDirectories":["/u"]},"env":{"U41":"u","CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"1"},"sandbox":{"filesystem":{"allowWrite":["/u"]}}}' > "$h41/.claude/settings.json"
 printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"project-hook"}]}],"Stop":[{"hooks":[{"type":"command","command":"project-stop"}]}]},"permissions":{"deny":["Bash(project-deny)"],"ask":["Bash(project-ask)"],"additionalDirectories":["~/Documents/luna"]},"env":{"P41":"p"}}' > "$tmp/repo41c/.claude/settings.json"
@@ -4208,9 +4208,9 @@ printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command
 d41cy="$tmp/c41cy"; mk_launch_stubs "$d41cy" "HIMMEL-4069-carry"
 CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" \
 IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
-HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d41cy/konsole" PGREP_CMD="$d41cy/pgrep" \
-LEG_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41cy/locks" HEADED_ARM_PROC="$d41cy/proc" \
+WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41cy/locks" HEADED_ARM_PROC="$d41cy/proc" \
   bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4069-carry "$b41/consult41.md" "$d41cy/signal-never" "$PAST" "$d41cy/log" >/dev/null 2>&1 || true
 wait_record "$d41cy" || true
 cy41="$(cat "$d41cy/HIMMEL-4069-carry.leg-settings.json" 2>/dev/null || true)"
@@ -4224,31 +4224,31 @@ check "41k carry: a carried CLAUDE_* env key (configures Claude Code itself) is 
 check "41k carry: no carried additionalDirectories" "$(printf '%s' "$cy41" | jq '(.permissions.additionalDirectories // []) | length' 2>/dev/null)" "0"
 check "41k carry: no carried Edit allow (allow is exactly the one append rule)" "$(printf '%s' "$cy41" | jq -c '.permissions.allow | length' 2>/dev/null)" "1"
 check "41k carry: no carried sandbox key (allowWrite is exactly the doc file)" "$(printf '%s' "$cy41" | jq -c '.sandbox.filesystem.allowWrite' 2>/dev/null)" "[\"$b41c/consult41.md\"]"
-contains "41k the consult launch hands the shim LEG_PROFILE_NO_SETTING_SOURCES=1" "$(cat "$d41cy/env-record" 2>/dev/null)" "LEG_PROFILE_NO_SETTING_SOURCES=1"
-not_contains "41k a NON-consult profiled launch does not set LEG_PROFILE_NO_SETTING_SOURCES" "$(cat "$d41n/env-record" 2>/dev/null)" "LEG_PROFILE_NO_SETTING_SOURCES"
+contains "41k the consult launch hands the shim WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1" "$(cat "$d41cy/env-record" 2>/dev/null)" "WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1"
+not_contains "41k a NON-consult profiled launch does not set WORKER_SESSION_PROFILE_NO_SETTING_SOURCES" "$(cat "$d41n/env-record" 2>/dev/null)" "WORKER_SESSION_PROFILE_NO_SETTING_SOURCES"
 # A carried scope the launcher cannot parse cannot have its guard hooks carried: refuse.
 printf '%s' 'not json' > "$tmp/repo41c/.claude/settings.local.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4069-carry "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4069-carry "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41k a malformed project/local settings file refuses (exit 2)" "$rc" "2"
 contains "41k malformed refusal names the file" "$out" "$tmp/repo41c/.claude/settings.local.json"
 rm -f "$tmp/repo41c/.claude/settings.json" "$tmp/repo41c/.claude/settings.local.json"
 h41="$tmp/home41-ad"; rm -rf "$h41"; mkdir -p "$h41/.claude" "$tmp/repo41c/.claude"; rm -f "$tmp/repo41c/.claude/settings.json" "$tmp/repo41c/.claude/settings.local.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a clean consult (no outer-scope widening) passes (exit 0)" "$rc" "0"
 # A malformed outer settings file fails closed: refuse, naming the file.
 printf '%s' 'not json' > "$h41/.claude/settings.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a malformed outer settings file refuses (exit 2)" "$rc" "2"
 contains "41i malformed refusal names the file" "$out" "$h41/.claude/settings.json"
 # Managed drop-ins, the cached server policy, and local settings at the git root / main checkout.
 wj41='{"permissions":{"additionalDirectories":["/x"]}}'
 h41="$tmp/home41-dropin"; rm -rf "$h41"; mkdir -p "$h41/.claude" "$h41/managed-settings.d"
 printf '%s' "$wj41" > "$h41/managed-settings.d/50-x.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a managed-settings.d drop-in carrying additionalDirectories refuses (exit 2)" "$rc" "2"
 h41="$tmp/home41-remote"; rm -rf "$h41"; mkdir -p "$h41/.claude"
 printf '%s' "$wj41" > "$h41/.claude/remote-settings.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a remote-settings.json carrying additionalDirectories refuses (exit 2)" "$rc" "2"
 # Allowlist scan (managed scopes only): an Edit allow rule, excludedCommands,
 # allowUnixSockets and any unknown sandbox key refuse in a MANAGED scope; the same keys in the
@@ -4257,32 +4257,32 @@ for kv41 in 'Edit allow|{"permissions":{"allow":["Edit(//x/**)"]}}|permissions.a
   n41="${kv41%%|*}"; r41="${kv41#*|}"; j41="${r41%%|*}"; w41="${r41#*|}"
   h41="$tmp/home41-allow"; rm -rf "$h41"; mkdir -p "$h41/.claude"
   printf '%s' "$j41" > "$h41/managed.json"
-  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i allowlist: managed $n41 refuses (exit 2)" "$rc" "2"
   contains "41i allowlist: managed $n41 refusal names the key" "$out" "$w41"
   contains "41i allowlist: managed $n41 refusal names the file" "$out" "$h41/managed.json"
   rm -f "$h41/managed.json"; printf '%s' "$j41" > "$h41/.claude/settings.json"
-  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i allowlist: user-scope $n41 is not loaded, so it passes (exit 0)" "$rc" "0"
 done
 h41="$tmp/home41-safe"; rm -rf "$h41"; mkdir -p "$h41/.claude"
 printf '%s' '{"sandbox":{"enabled":true,"failIfUnavailable":true},"permissions":{"allow":["Bash(ls:*)"]}}' > "$h41/.claude/settings.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i allowlist: the safe set passes (exit 0)" "$rc" "0"
 g41="$tmp/g41"; rm -rf "$g41"; mkdir -p "$g41/sub" "$g41/.claude"
 git -C "$g41" init -q
 printf '%s' "$wj41" > "$g41/.claude/settings.local.json"
 h41="$tmp/home41-git"; rm -rf "$h41"; mkdir -p "$h41/.claude"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$g41/sub" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
-check "41i widening local settings at the git toplevel (LEG_REPO a subdir) are not loaded, so the consult passes (exit 0)" "$rc" "0"
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$g41/sub" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "41i widening local settings at the git toplevel (WORKER_SESSION_REPO a subdir) are not loaded, so the consult passes (exit 0)" "$rc" "0"
 # A custom CLAUDE_CONFIG_DIR is a user scope too.
 cfg41="$tmp/cfg41"; rm -rf "$cfg41"; mkdir -p "$cfg41"
 printf '%s' '{"sandbox":{"filesystem":{"allowWrite":["/x"]}}}' > "$cfg41/settings.json"
 printf '%s' '{}' > "$h41/.claude/settings.json"
-rc=0; out="$(CLAUDE_CONFIG_DIR="$cfg41" CONSULT_SETTINGS_HOME="$h41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_CONFIG_DIR="$cfg41" CONSULT_SETTINGS_HOME="$h41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a widening CLAUDE_CONFIG_DIR settings file is not loaded, so the consult passes (exit 0)" "$rc" "0"
 printf '%s' 'not json' > "$cfg41/settings.json"
-rc=0; out="$(CLAUDE_CONFIG_DIR="$cfg41" CONSULT_SETTINGS_HOME="$h41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_CONFIG_DIR="$cfg41" CONSULT_SETTINGS_HOME="$h41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a malformed CLAUDE_CONFIG_DIR settings file (the carried user scope) refuses (exit 2)" "$rc" "2"
 contains "41i malformed CLAUDE_CONFIG_DIR refusal names the file" "$out" "$cfg41/settings.json"
 # Managed Write/NotebookEdit allows refuse (user-scope ones are not loaded); managed scopes cannot be overridden by
@@ -4292,11 +4292,11 @@ for kv41 in 'Write allow|{"permissions":{"allow":["Write(//x/**)"]}}|permissions
   n41="${kv41%%|*}"; r41="${kv41#*|}"; j41="${r41%%|*}"; w41="${r41#*|}"
   h41="$tmp/home41-wn"; rm -rf "$h41"; mkdir -p "$h41/.claude"
   printf '%s' "$j41" > "$h41/managed.json"
-  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41j managed $n41 refuses (exit 2)" "$rc" "2"
   contains "41j managed $n41 refusal names the key" "$out" "$w41"
   rm -f "$h41/managed.json"; printf '%s' "$j41" > "$h41/.claude/settings.json"
-  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+  rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41j user-scope $n41 is not loaded, so it passes (exit 0)" "$rc" "0"
 done
 for kv41 in 'managed scrub=1|{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"1"}}|CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' 'managed scrub=true number|{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":1}}|CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' 'managed bypassPermissions|{"permissions":{"defaultMode":"bypassPermissions"}}|bypassPermissions' 'managed acceptEdits|{"permissions":{"defaultMode":"acceptEdits"}}|acceptEdits' 'managed policyHelper|{"policyHelper":{"command":"x"}}|policyHelper' 'managed policyHelpers nested|{"permissions":{"policyHelpers":[]}}|policyHelpers'; do
@@ -4309,7 +4309,7 @@ for kv41 in 'managed scrub=1|{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"1"}}|CL
       dropin) printf '%s' "$j41" > "$h41/managed-settings.d/50-x.json" ;;
       remote) printf '%s' "$j41" > "$h41/.claude/remote-settings.json" ;;
     esac
-    rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$cm41" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+    rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$cm41" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
     check "41j $n41 ($where41) refuses (exit 2)" "$rc" "2"
     contains "41j $n41 ($where41) refusal names the key" "$out" "$w41"
   done
@@ -4317,23 +4317,23 @@ done
 # Controls: a managed scrub=0 passes; the same keys at USER scope do not refuse (pinned instead).
 h41="$tmp/home41-mgok"; rm -rf "$h41"; mkdir -p "$h41/.claude"
 printf '%s' '{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"0"},"permissions":{"defaultMode":"default"}}' > "$h41/managed.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41j managed scrub=0 + defaultMode default passes (exit 0)" "$rc" "0"
 printf '%s' '{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"1"},"permissions":{"defaultMode":"bypassPermissions"}}' > "$h41/.claude/settings.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41j user-scope scrub=1 + bypassPermissions passes (overridden by the pins, exit 0)" "$rc" "0"
 # ~/.claude.json top-level env scrub refuses (home and CLAUDE_CONFIG_DIR).
 h41="$tmp/home41-cj"; rm -rf "$h41"; mkdir -p "$h41/.claude"
 printf '%s' '{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"1"}}' > "$h41/.claude.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41j ~/.claude.json env scrub=1 refuses (exit 2)" "$rc" "2"
 contains "41j ~/.claude.json refusal names the file" "$out" "$h41/.claude.json"
 printf '%s' '{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"0"}}' > "$h41/.claude.json"
-rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41j ~/.claude.json env scrub=0 passes (exit 0)" "$rc" "0"
 cfgj41="$tmp/cfgj41"; rm -rf "$cfgj41"; mkdir -p "$cfgj41"
 printf '%s' '{"env":{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":"true"}}' > "$cfgj41/.claude.json"
-rc=0; out="$(CLAUDE_CONFIG_DIR="$cfgj41" CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_CONFIG_DIR="$cfgj41" CONSULT_SETTINGS_HOME="$h41" CONSULT_MANAGED_SETTINGS="$h41/managed-none.json" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41j CLAUDE_CONFIG_DIR/.claude.json env scrub refuses (exit 2)" "$rc" "2"
 # Darwin branch: the macOS managed path is scanned (a text pin: the path cannot be planted in a test).
 check "41j the launcher scans the macOS managed path" "$(grep -c '/Library/Application Support/ClaudeCode/managed-settings.json' "$SCRIPT")" "1"
@@ -4483,11 +4483,11 @@ not_contains "43e a doc without front matter gets no id, and an inherited one is
 check "43f a doc without front matter is left byte-identical" "$(cat "$nodoc43")" "$nodoc43_body"
 shim43="$tmp/shim43-claude"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@"\n' > "$shim43"; chmod 755 "$shim43"
-check "43g the shim passes LEG_SESSION_ID as --session-id" \
-  "$(LEG_CLAUDE_BIN="$shim43" LEG_SESSION_ID=22222222-2222-2222-2222-222222222222 bash "$HERE/../../lanes/leg-claude-launcher.sh" -n x | head -n 2 | tr '\n' ' ')" \
+check "43g the shim passes WORKER_SESSION_ID as --session-id" \
+  "$(WORKER_SESSION_CLAUDE_BIN="$shim43" WORKER_SESSION_ID=22222222-2222-2222-2222-222222222222 bash "$HERE/../../lanes/leg-claude-launcher.sh" -n x | head -n 2 | tr '\n' ' ')" \
   "--session-id 22222222-2222-2222-2222-222222222222 "
-check "43h the shim adds nothing without LEG_SESSION_ID" \
-  "$(env -u LEG_SESSION_ID LEG_CLAUDE_BIN="$shim43" bash "$HERE/../../lanes/leg-claude-launcher.sh" -n x | tr '\n' ' ')" "-n x "
+check "43h the shim adds nothing without a session id" \
+  "$(env -u WORKER_SESSION_ID -u LEG_SESSION_ID WORKER_SESSION_CLAUDE_BIN="$shim43" bash "$HERE/../../lanes/leg-claude-launcher.sh" -n x | tr '\n' ' ')" "-n x "
 # A symlinked doc is never replaced by the temp file's mv (the link would
 # become a plain copy): no id is recorded and the link survives.
 lnk43t="$tmp/HIMMEL-43-N45-target.md"
@@ -4521,19 +4521,19 @@ pt_key() { jq -r --arg k "$2" '.projects[$k].hasTrustDialogAccepted // "absent"'
 d44="$tmp/c44"; mk_launch_stubs "$d44" "HIMMEL-44-pretrust"
 check "44a before launch: no trust entry" "$(pt_key "$pt_home/.claude.json" "$pt_primary/.claude/worktrees/pt-wt")" "nofile"
 rc=0
-LEG_PRETRUST_HOME="$pt_home" RUN_LEG_ARGS=--no-profile run_leg "$d44" "$pt_primary/.claude/worktrees/pt-wt" "HIMMEL-44-pretrust" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_PRETRUST_HOME="$pt_home" RUN_LEG_ARGS=--no-profile run_leg "$d44" "$pt_primary/.claude/worktrees/pt-wt" "HIMMEL-44-pretrust" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d44" || true
 check "44b worktree launch: exit 0" "$rc" "0"
 check "44c worktree launch: trust accepted after" "$(pt_key "$pt_home/.claude.json" "$pt_primary/.claude/worktrees/pt-wt")" "true"
 d44b="$tmp/c44b"; mk_launch_stubs "$d44b" "HIMMEL-44-nopretrust"; mkdir -p "$tmp/repo44b"
 rc=0
-LEG_PRETRUST_HOME="$pt_home" RUN_LEG_ARGS=--no-profile run_leg "$d44b" "$tmp/repo44b" "HIMMEL-44-nopretrust" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_PRETRUST_HOME="$pt_home" RUN_LEG_ARGS=--no-profile run_leg "$d44b" "$tmp/repo44b" "HIMMEL-44-nopretrust" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d44b" || true
 check "44d out-of-allowlist cwd: launch still exits 0" "$rc" "0"
 check "44e out-of-allowlist cwd: not trusted" "$([ "$(pt_key "$pt_home/.claude.json" "$tmp/repo44b")" = true ] && echo trusted || echo untrusted)" "untrusted"
 # --dry-run never writes
 rm -f "$pt_home/.claude.json"
-LEG_PRETRUST_HOME="$pt_home" LEG_REPO="$pt_primary/.claude/worktrees/pt-wt" bash "$SCRIPT" --dry-run --no-profile HIMMEL-44-dry "$some_doc" "$tmp/sig44" "$PAST" "$tmp/log44" claude-sonnet-5 >/dev/null 2>&1 || true
+WORKER_SESSION_PRETRUST_HOME="$pt_home" WORKER_SESSION_REPO="$pt_primary/.claude/worktrees/pt-wt" bash "$SCRIPT" --dry-run --no-profile HIMMEL-44-dry "$some_doc" "$tmp/sig44" "$PAST" "$tmp/log44" claude-sonnet-5 >/dev/null 2>&1 || true
 check "44f --dry-run writes no config" "$([ -e "$pt_home/.claude.json" ] && echo yes || echo no)" "no"
 
 # --- 45. himmel-bus register + env scrub --------------------------
@@ -4570,8 +4570,8 @@ run45() {
   rm -f "$bus45/seen"
   XDG_STATE_HOME="$bus45/state" HIMMEL_BUS_NAME=ambient-name \
   HEADED_ARM_LAUNCHER_ENV="HIMMEL_BUS_NAME=preset-name HIMMEL_BUS_EXTRA=1" \
-  HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-$1.mjs" \
-  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-$1.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     bash "$SCRIPT" --profile leg-impl --console "${3:-HIMMEL-console-45}" "$2" "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1
 }
 mkdir -p "$bus45/state" && chmod 700 "$bus45/state"
@@ -4618,8 +4618,8 @@ check "45q refused register: headed-arm.sh is not told to bind" "$(sed -n 's/^BU
 bus45_doc="$bus45/leg-doc.md"; fx_brief '# fixture doc' > "$bus45_doc"
 printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$bus45_doc"
 bus45_out="$(XDG_STATE_HOME="$bus45/state" \
-  HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-in.mjs" \
-  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45-other2 HIMMEL-45-in "$bus45_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>/dev/null || true)"
 check "45w failed register: bus=FAIL: on the launcher stdout" "$(printf '%s\n' "$bus45_out" | grep -c 'bus=FAIL:')" "1"
 check "45x failed register: bus=FAIL: bullet in the leg doc" "$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc")" "1"
@@ -4631,8 +4631,8 @@ printf '#!/usr/bin/env bash\necho "register failed: WRAPPED state"\nexit 1\n' > 
 bus45_doc2="$bus45/leg-doc2.md"; fx_brief '# fixture doc' > "$bus45_doc2"
 printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$bus45_doc2"
 HEADED_ARM_BUS_CLI="$bus45_stub" XDG_STATE_HOME="$bus45/state" \
-  HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-in.mjs" \
-  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45-other3 HIMMEL-45-in3 "$bus45_doc2" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || true
 check "45z failed register naming WRAPPED: bullet written, word stripped" "$(grep -c '^- [0-9:]* bus=FAIL:.*WRAPPED' "$bus45_doc2"):$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc2")" "0:1"
 check "45z2 failed register naming WRAPPED: tail status stays LIVE" "$(. "$HERE/../../lib/leg-tail-status.sh"; leg_tail_status "$bus45_doc2")" "LIVE"
@@ -4641,8 +4641,8 @@ check "45z2 failed register naming WRAPPED: tail status stays LIVE" "$(. "$HERE/
 rm -f "$bus45/seen"
 rc=0
 XDG_STATE_HOME="$bus45/state" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI=/nonexistent-bus HIMMEL_BUS_EXTRA=ambient \
-HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-out.mjs" \
-HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-out.mjs" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45 HIMMEL-45-out2 "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
 check "45r opted-out with ambient bind flag: launch exits 0" "$rc" "0"
 check "45s opted-out: HEADED_ARM_BUS is absent from the target env" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
@@ -4657,13 +4657,13 @@ vm_ok="$tmp/vm-brief-ok.md"; fx_brief '# fixture brief' 'Live proof on ubuntu_ne
 vm_station="$tmp/vm-brief-station.md"; fx_brief '# fixture brief' 'Run it on win2.' > "$vm_station"
 vm_sub="$tmp/vm-brief-sub.md"; fx_brief '# fixture brief' 'Run it on my_ubuntu_new_x.' > "$vm_sub"
 for pair in "none:$vm_novm" "station:$vm_station" "substring:$vm_sub"; do
-  rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-vm HIMMEL-9999-leg "${pair#*:}" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-vm HIMMEL-9999-leg "${pair#*:}" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
   check "leg-vm brief naming ${pair%%:*} test VM: refused" "$rc" "2"
   contains "leg-vm brief naming ${pair%%:*} test VM: refusal text" "$out" "names no registered test VM"
 done
-rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-vm HIMMEL-9999-leg "$vm_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-vm HIMMEL-9999-leg "$vm_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "leg-vm brief naming ubuntu_new: accepted" "$rc" "0"
-rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "leg-impl is not subject to the VM-name check" "$rc" "0"
 
 # --- 46. one bus-idle-waker per headed leg, with that leg's --name, --service
@@ -4694,22 +4694,22 @@ not_contains "46d the waker path never reaches the leg's env" "$(cat "$d46/env-r
 # is killed alone instead of taking the station and every other leg with it.
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "memcap: dry-run reports the default 12G cap" "$out" "memory-max=12G"
-rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=256M bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_WORKER_SESSION_MEMORY_MAX=256M bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "memcap: dry-run reports an env-set cap" "$out" "memory-max=256M"
-rc=0; out="$(HIMMEL_LEG_MEMORY_MAX='1G --evil' bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_WORKER_SESSION_MEMORY_MAX='1G --evil' bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "memcap: a malformed cap is refused" "$rc" "2"
 rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "memcap: off Linux the launch is uncapped" "$out" "scope=no"
 rc=0; out="$(HEADED_ARM_UNAME=Linux bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "memcap: on Linux the launch is scoped" "$out" "scope=yes"
-rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=12GG bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_WORKER_SESSION_MEMORY_MAX=12GG bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "memcap: a misplaced size suffix is refused" "$rc" "2"
 printf '#!%s\nexit 1\n' "$(command -v bash)" > "$tmp/systemd-run-nobus"; chmod 755 "$tmp/systemd-run-nobus"
-rc=0; out="$(HEADED_ARM_UNAME=Linux HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_UNAME=Linux HEADED_ARM_WORKER_SYSTEMD_RUN="$tmp/systemd-run-nobus" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "memcap: a systemd-run that cannot start a user scope falls back to uncapped" "$out" "scope=no"
 d6119="$tmp/c6119"; mk_launch_stubs "$d6119" "HIMMEL-6119-leg"; mkdir -p "$tmp/repo6119"
 rc=0
-HEADED_ARM_UNAME=Linux SYSD_RECORD="$d6119/sysd" HIMMEL_LEG_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+HEADED_ARM_UNAME=Linux SYSD_RECORD="$d6119/sysd" HIMMEL_WORKER_SESSION_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d6119" || true
 sysd6119="$(grep MemoryMax "$d6119/sysd" 2>/dev/null || true)"
 check "memcap: full launch exit 0" "$rc" "0"
@@ -4718,7 +4718,7 @@ contains "memcap: launch carries MemoryMax" "$sysd6119" "MemoryMax=256M"
 contains "memcap: launch carries MemorySwapMax" "$sysd6119" "MemorySwapMax=256M"
 contains "memcap: konsole still launched inside the scope" "$(cat "$d6119/record" 2>/dev/null || true)" "--workdir $tmp/repo6119"
 for badcap in 12g 0 00 01 1k; do
-  rc=0; out="$(HIMMEL_LEG_MEMORY_MAX="$badcap" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out="$(HIMMEL_WORKER_SESSION_MEMORY_MAX="$badcap" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
   check "memcap: cap '$badcap' is refused" "$rc" "2"
 done
 # The uncapped fallback is visible: stdout, the launch log and a leg-doc bullet.
@@ -4726,7 +4726,7 @@ d6119w="$tmp/c6119w"; mk_launch_stubs "$d6119w" "HIMMEL-6119-warn"; mkdir -p "$t
 some_doc_6119="$some_doc"; some_doc="$tmp/memcap-doc.md"; cp "$some_doc_6119" "$some_doc"
 printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$some_doc"
 rc=0
-HEADED_ARM_UNAME=Linux HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" RUN_LEG_ARGS=--no-profile run_leg "$d6119w" "$tmp/repo6119w" "HIMMEL-6119-warn" "claude-sonnet-5" >"$d6119w/stdout" 2>&1 || rc=$?
+HEADED_ARM_UNAME=Linux HEADED_ARM_WORKER_SYSTEMD_RUN="$tmp/systemd-run-nobus" RUN_LEG_ARGS=--no-profile run_leg "$d6119w" "$tmp/repo6119w" "HIMMEL-6119-warn" "claude-sonnet-5" >"$d6119w/stdout" 2>&1 || rc=$?
 wait_record "$d6119w" || true
 check "memcap: fallback launch exit 0" "$rc" "0"
 contains "memcap: fallback WARN on stdout" "$(cat "$d6119w/stdout")" "WARN memory cap NOT applied"
@@ -4738,12 +4738,12 @@ contains "memcap: fallback still launches the konsole" "$(cat "$d6119w/record" 2
 rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "memcap: a dry-run writes no WARN" "$out" "WARN memory cap"
 # --consult never honours the systemd-run seam and never execs a PATH systemd-run.
-rc=0; out="$(HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_SYSTEMD_RUN="$tmp/systemd-run-nobus" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "memcap: --consult with the systemd-run seam set refuses" "$rc" "2"
-contains "memcap: --consult seam refusal says why" "$out" "--consult refuses HEADED_ARM_LEG_SYSTEMD_RUN"
+contains "memcap: --consult seam refusal says why" "$out" "--consult refuses HEADED_ARM_WORKER_SYSTEMD_RUN"
 mkdir -p "$tmp/shadow6119"
 printf '#!%s\n: > "%s/shadow-ran"\nexit 0\n' "$(command -v bash)" "$tmp/shadow6119" > "$tmp/shadow6119/systemd-run"; chmod 755 "$tmp/shadow6119/systemd-run"
-rc=0; out="$(PATH="$tmp/shadow6119:$PATH" HEADED_ARM_UNAME=Linux LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(PATH="$tmp/shadow6119:$PATH" HEADED_ARM_UNAME=Linux WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "memcap: --consult with a PATH-shadowed systemd-run still launches" "$rc" "0"
 check "memcap: --consult never execs a PATH-shadowed systemd-run" "$([ -e "$tmp/shadow6119/shadow-ran" ] && echo ran || echo not-run)" "not-run"
 # Real environment: the argv the wrapper built, run against the real

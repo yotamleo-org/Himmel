@@ -118,13 +118,13 @@ check 'brief names no vault or operator path' '! grep -qiE "luna|salus|Documents
 L1="$TMP/root/rows/p01.launch"
 check 'the launch line runs only the row wrapper' '[ "$line" = "setsid nohup bash $L1 >/dev/null 2>&1 &" ] && [ -x "$L1" ]'
 check 'the wrapper is the deepseek lane, empty-MCP profile' 'grep -q -- "--lane deepseek --profile console-relay --console c1-console" "$L1"'
-check 'the wrapper carries the opt-in and the pilot handover root' 'grep -q "^HIMMEL_DEEPSEEK_INFERENCE_OK=1 .*HANDOVER_DIR=$TMP/root/handovers LEG_REPO=$wt exec bash " "$L1"'
+check 'the wrapper carries the opt-in and the pilot handover root' 'grep -q "^HIMMEL_DEEPSEEK_INFERENCE_OK=1 .*HANDOVER_DIR=$TMP/root/handovers WORKER_SESSION_REPO=$wt exec bash " "$L1"'
 check 'a second deepseek row waits for p01 to finish' '! bash "$P" prepare p06 >/dev/null 2>&1'
 line2="$(bash "$P" prepare p02 2>/dev/null)"
 check 'a native row may run beside it' '[ -n "$line2" ]'
 check 'a failed fixture commit stops prepare' '! GIT_AUTHOR_NAME= bash "$P" prepare p04 >/dev/null 2>&1 && [ ! -e "$TMP/root/rows/p04.env" ]'
 SB="$TMP/root/rows/p01.sandbox"
-check 'the deepseek wrapper goes through the row sandbox' 'grep -qF "HEADED_ARM_LEG_DEEPSEEK_BIN=$SB " "$L1" && [ -x "$SB" ]'
+check 'the deepseek wrapper goes through the row sandbox' 'grep -qF "HEADED_ARM_WORKER_DEEPSEEK_BIN=$SB " "$L1" && [ -x "$SB" ]'
 check 'a native launch is not sandboxed' '! grep -q "_BIN=" "$TMP/root/rows/p02.launch"'
 G="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$wt/.claude/settings.local.json" 2>/dev/null)"
 check 'the deepseek worktree refuses every tool and prompt outside the jail' '[ "$(jq -r ".hooks.PreToolUse[0].matcher" "$wt/.claude/settings.local.json")" = "*" ] && [ "$(jq -r ".hooks.UserPromptSubmit[0].hooks[0].command" "$wt/.claude/settings.local.json")" = "$G" ] && { bash -c "$G" 2>/dev/null; [ $? = 2 ]; }'

@@ -702,25 +702,25 @@ TODAY="$(date +%F)"
     lcrow 2020-01-01 shepherd 99999999
     printf 'not json\n'
 } > "$LC"
-LEG_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
+WORKER_SESSION_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
 same 'cost line: render still succeeds, rc 0' "$rc" "0"
 costhtml="$(cat "$M/board.html")"
 contains 'cost line: counts only today legs (3, not the 2020 row)' "$costhtml" 'data-cost-legs="3"'
 contains 'cost line: total cost-eq' "$costhtml" '2.4M cost-eq'
 contains 'cost line: median per class (even n is the mean of the middle two)' "$costhtml" 'shepherd 200k'
 contains 'cost line: second class' "$costhtml" 'impl 2.0M'
-LEG_COST_LEDGER="$W/no-such-ledger.jsonl" mrun >/dev/null; rc=$?
+WORKER_SESSION_COST_LEDGER="$W/no-such-ledger.jsonl" mrun >/dev/null; rc=$?
 same 'cost line: absent ledger, rc 0' "$rc" "0"
 lacks 'cost line: absent ledger renders nothing' "$(cat "$M/board.html")" 'data-cost-legs'
 mkdir -p "$W/ledger-is-a-dir.jsonl"
-LEG_COST_LEDGER="$W/ledger-is-a-dir.jsonl" mrun >/dev/null; rc=$?
+WORKER_SESSION_COST_LEDGER="$W/ledger-is-a-dir.jsonl" mrun >/dev/null; rc=$?
 same 'cost line: unreadable ledger, rc 0' "$rc" "0"
 lacks 'cost line: unreadable ledger renders nothing' "$(cat "$M/board.html")" 'data-cost-legs'
 { lcrow "$TODAY" constructor 5000; lcrow "$TODAY" __proto__ 7000; } > "$LC"
-LEG_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
+WORKER_SESSION_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
 contains 'cost line: class names like constructor/__proto__ do not suppress the line' "$(cat "$M/board.html")" 'data-cost-legs="2"'
 printf 'not json\n' > "$LC"
-LEG_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
+WORKER_SESSION_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
 lacks 'cost line: a ledger with no usable row today renders nothing' "$(cat "$M/board.html")" 'data-cost-legs'
 
 # --- exploration cost: digest markers, median / worst 5 / flag, threshold by env
@@ -738,7 +738,7 @@ xrow aaaaaaa5 70000 edit "$NOWMS"
 xrow aaaaaaa6 150000 edit "$NOWMS"
 xrow bbbbbbb1 900000 none "$NOWMS"
 xrow ccccccc1 800000 edit 1000
-LEG_DIGEST_STATE_DIR="$XD" mrun >/dev/null; rc=$?
+WORKER_SESSION_DIGEST_STATE_DIR="$XD" mrun >/dev/null; rc=$?
 same 'exploration: render still succeeds, rc 0' "$rc" "0"
 xhtml="$(cat "$M/board.html")"
 contains 'exploration: six cut sessions (not the cut-none one, not the old one)' "$xhtml" 'data-exploration="6"'
@@ -747,9 +747,9 @@ contains 'exploration: one session over the 100000 default' "$xhtml" 'data-explo
 contains 'exploration: the worst session leads the table' "$xhtml" 'data-session="aaaaaaa6"'
 lacks 'exploration: the table holds only the worst 5' "$xhtml" 'data-session="aaaaaaa1"'
 lacks 'exploration: a session with no edit is not in the panel' "$xhtml" 'bbbbbbb1'
-LEG_EXPLORATION_FLAG_TOKENS=55000 LEG_DIGEST_STATE_DIR="$XD" mrun >/dev/null; rc=$?
+WORKER_SESSION_EXPLORATION_FLAG_TOKENS=55000 WORKER_SESSION_DIGEST_STATE_DIR="$XD" mrun >/dev/null; rc=$?
 contains 'exploration: the env threshold moves the flag (3 over 55000)' "$(cat "$M/board.html")" 'data-exploration-over="3"'
-LEG_DIGEST_STATE_DIR="$W/no-such-dir" mrun >/dev/null; rc=$?
+WORKER_SESSION_DIGEST_STATE_DIR="$W/no-such-dir" mrun >/dev/null; rc=$?
 same 'exploration: absent state dir, rc 0' "$rc" "0"
 lacks 'exploration: absent state dir renders nothing' "$(cat "$M/board.html")" 'data-exploration'
 

@@ -55,7 +55,7 @@ directly — one invocation site to audit instead of many
 
 ## `claude --bg`
 
-Added as `headed-arm-leg.sh --headless` (or `LEG_HEADLESS=1`
+Added as `headed-arm-leg.sh --headless` (or `WORKER_SESSION_HEADLESS=1`
 in the launching shell; the flag wins) — same profile injection, model and
 `--autocompact 200000` pin as a headed worker, but no konsole
 (`headed-arm-leg.sh:40-45` docstring).

@@ -23,7 +23,8 @@ import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
 const { spawnSync } = Bun;
 const DIGEST_SCHEMA = 2;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
-const lane = LANES.has(process.env.LEG_LANE ?? "") ? process.env.LEG_LANE! : "unknown";
+const laneEnv = process.env.WORKER_SESSION_LANE || process.env.LEG_LANE || "";
+const lane = LANES.has(laneEnv) ? laneEnv : "unknown";
 // Only conventional lowercase MCP identifiers, never result/argument text.
 const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";
 const REPO = resolve(import.meta.dir, "../../..");

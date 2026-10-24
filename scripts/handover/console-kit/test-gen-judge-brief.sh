@@ -74,7 +74,7 @@ lacks "the console's own conclusion field never appears" "$b" "conclusion"
 # the launcher's own Tier gate: a copy arms through headed-arm-leg.sh --dry-run
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm" "$WORK/handovers" "$WORK/verdicts/j2599a/scratch"
-rc=0; arm_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-leg.sh" --dry-run --judge --console "$CONSOLE" HIMMEL-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
+rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-leg.sh" --dry-run --judge --console "$CONSOLE" HIMMEL-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
 if [ "$rc" = 0 ] && case "$arm_out" in *"headed-arm-leg: would exec:"*) true ;; *) false ;; esac; then
     pass "headed-arm-leg --judge's Tier and prior-art gates accept the generated brief (dry-run completed, rc 0)"
 else
