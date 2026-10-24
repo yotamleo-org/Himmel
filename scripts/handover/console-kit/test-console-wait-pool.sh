@@ -45,6 +45,8 @@ export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 # the re-probe cadence is seconds here; the default is 30 minutes
 export CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1
+# a re-probe is cut after a second here; the default is two minutes
+export CHIEF_WAIT_REPOOL_TIMEOUT=1
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
 export CHIEF_WAIT_PAGE_CMD="$STUB/off.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
@@ -59,6 +61,7 @@ case " $* " in
     *" --priority-pool-only "*)
         echo x >> "$STUB/calls"
         [ -f "$STUB/pool.fail" ] && exit 1
+        [ -f "$STUB/pool.slow" ] && exec sleep 30
         [ -f "$STUB/pool.partial" ] && { printf 'LOCAL\tHIMMEL-9099\tMedium\tv1\tcut short\tfiles=z.sh\n'; exit 124; }
         if [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi ;;
@@ -107,6 +110,12 @@ rm -f "$STUB/pool.fail"
 arm "$I" "$WORK/rp6b.out" 4
 check "(rp) a timed-out probe's partial rows never wake (rc 124)" "124" "$rc"
 rm -f "$STUB/pool.partial"
+: > "$STUB/pool.slow"
+c0="$(calls)"
+arm "$I" "$WORK/rp6c.out" 10
+check "(rp) a stalled probe never wakes (rc 124)" "124" "$rc"
+check "(rp) a stalled probe is cut at CHIEF_WAIT_REPOOL_TIMEOUT, so the next probe still starts" "yes" "$([ "$(( $(calls) - c0 ))" -ge 2 ] && echo yes)"
+rm -f "$STUB/pool.slow"
 arm "$I" "$WORK/rp7.out" 4
 check "(rp) a failed probe leaves the saved pool alone: the same pool stays quiet (rc 124)" "124" "$rc"
 
@@ -149,6 +158,17 @@ check "(rp-real) the real dispatcher's pool wakes the waiter (rc 0)" "0" "$rc"
 check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d' "$WORK/rpreal.out")"
 check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-real) the wake block carries the drop summary" "1" "$(grep -c '^# dropped from v1.0.1: 1 of 2 To Do (tier 1)' "$WORK/rpreal.out")"
+
+# --- (rp-legs) a live leg's ticket stays out of the pool: --legs-from reaches the dispatcher ---
+mk HIMMEL-3 '["ps3-blocker"]' "second pool head" "Edit scripts/lib/gamma.sh only."
+printf '# leg\n' > "$WORK/HIMMEL-1-held-leg.md"
+printf '{"schema":1,"legs":[{"label":"held","doc":"%s"}]}\n' "$WORK/HIMMEL-1-held-leg.md" > "$WORK/fleet-held.json"
+hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$WORK/console.md" --legs-from "$WORK/fleet-held.json" </dev/null 2>/dev/null)"
+I="$(new_inbox rplegs)"
+timeout 20 bash "$WAIT" "$I" --doc "$WORK/console.md" --legs-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(rp-legs) the hand run keeps the held leg's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
+check "(rp-legs) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
+check "(rp-legs) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d' "$WORK/rplegs.out")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

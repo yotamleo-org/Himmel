@@ -362,7 +362,7 @@ scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1
 scripts/handover/console-kit/test-console-kit-e2e.sh	14
 scripts/handover/console-kit/test-console-wait-b.sh	265
-scripts/handover/console-kit/test-console-wait-pool.sh	26
+scripts/handover/console-kit/test-console-wait-pool.sh	39
 scripts/handover/console-kit/test-console-wait-r0.sh	26
 scripts/handover/console-kit/test-console-wait.sh	283
 scripts/handover/console-kit/test-cut-tag.sh	2

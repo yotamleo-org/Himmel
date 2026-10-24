@@ -634,13 +634,14 @@ underfill_file="$inbox.wait.underfill"
 unowned_file="$inbox.wait.unowned"
 unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
-pool_probe() { # sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
+pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
+    local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}"
     pool_lf=(); pool_out=""; pool_sig=""
     [ -r "$dispatch_cmd" ] || return 0
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || pool_lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    pool_out="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
+    pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
     pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
 }
 underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
@@ -653,13 +654,16 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
 # and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
-# never counts; every due probe restarts the cadence clock.
+# never counts; every due probe restarts the cadence clock. The probe blocks the Telegram path
+# and the heartbeat like a tick does, so it gets CHIEF_WAIT_REPOOL_TIMEOUT (default 120), well
+# inside the five-minute stale-heartbeat window.
 underfill_repool() {
     local age saved_sig
     age=$(( $(date +%s) - $(stat -c %Y "$underfill_file" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: a failed stat reads epoch 0, so the probe is simply due
     [ "$age" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ] || return 1
     saved_sig="$(sed -n 1p "$underfill_file" 2>/dev/null)"  # swallow-ok: an unreadable marker reads no saved set, so a non-empty pool wakes
-    pool_probe
+    heartbeat sampling
+    pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
     if [ -n "$pool_out" ] && [ "$pool_sig" != "$saved_sig" ]; then
         printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
         [ -n "$pool_sig" ] && return 0
