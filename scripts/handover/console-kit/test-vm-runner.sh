@@ -287,8 +287,8 @@ reset
 STUB="$TMP/stub" PATH="$TMP/bin:$PATH" HOME="$TMP/home" HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
     HIMMEL_VM_RUNNER_UNIT_DIR="$TMP/units" HIMMEL_VM_RUNNER_STATE_DIR="$TMP/state" HIMMEL_VM_RUNNER_SETTLE=0 \
     HIMMEL_VM_RUNNER_VM_LIB="$TMP/vmlib.sh" VBOXMANAGE_PATH="$TMP/bin/VBoxManage" \
-    env -u HIMMEL_CI_RUNNER_REPO bash "$SUT" doctor >"$TMP/out" 2>&1
-if grep -q 'fork-pr-contributor-approval' "$TMP/stub/gh.argv" && grep -q 'repos/yotamleo-org/Himmel/actions' "$TMP/stub/gh.argv" && ! grep -q 'repos/yotamleo/Himmel/' "$TMP/stub/gh.argv"; then ok "default slug reads yotamleo-org/Himmel"; else bad "default slug: $(cat "$TMP/stub/gh.argv")"; fi
+    env -u HIMMEL_CI_RUNNER_REPO bash "$SUT" doctor >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'repos/yotamleo-org/Himmel/actions/permissions/fork-pr-contributor-approval' "$TMP/stub/gh.argv" && ! grep -q 'repos/yotamleo/Himmel/' "$TMP/stub/gh.argv"; then ok "default slug reads yotamleo-org/Himmel"; else bad "default slug: rc=$rc $(cat "$TMP/stub/gh.argv")"; fi
 
 echo "T10 review fixes (HIMMEL-5037 round 1)"
 reset

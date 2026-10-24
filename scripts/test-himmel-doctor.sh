@@ -7075,6 +7075,10 @@ out="$(c70_div)"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi
 out="$(c70_div HIMMEL_DOCTOR_CADENCE_OUT="$c70_t/no-such-cadence")"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 no cadence graph -> no divergence row"; else fail "C70 no cadence -> $(printf '%s' "$out" | head -4)"; fi
+printf '{"name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_out/semantic-runs.jsonl"
+printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
+out="$(c70_div LC_ALL=C)"
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 cadence last batch without a ts -> no divergence row"; else fail "C70 no ts -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="

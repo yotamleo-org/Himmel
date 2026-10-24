@@ -4267,7 +4267,7 @@ check_c70_graph_semantic() {
     [ "$cadence_out" != "$out" ] && [ -f "$cadence_out/semantic-runs.jsonl" ] && [ -f "$out/semantic-runs.jsonl" ] || return 0
     station_last="$(bash "$check" --out "$out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
     cadence_last="$(bash "$check" --out "$cadence_out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
-    if [ -n "$station_last" ] && [ -n "$cadence_last" ] && [[ "$cadence_last" > "$station_last" ]]; then
+    if [ -n "$station_last" ] && [ -n "$cadence_last" ] && [ "$station_last" != "?" ] && [ "$cadence_last" != "?" ] && [[ "$cadence_last" > "$station_last" ]]; then
         emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so legs read a frozen semantic layer (HIMMEL-7357)" \
             "nothing to run here: the promote step is tracked in HIMMEL-7357; until it lands the station graph only gets structural (AST) refreshes"
     fi
