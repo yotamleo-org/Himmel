@@ -64,7 +64,7 @@ norm() { jq -rn --arg v "$1" '$v'; }
 
 work=$(mktemp -d) || exit 1 # prim-ok: test fixture shared by the adopt suites, cleaned by the trap below
 # adopt.sh records what it installs; keep every run out of the real
-# ~/.himmel/provenance.jsonl (individual cases below pin their own ledger).
+# provenance ledger under ~/.himmel (individual cases below pin their own ledger).
 export HIMMEL_PROVENANCE_DIR="$work/prov"
 
 # scripts/jira/dist + scripts/jira/node_modules are
