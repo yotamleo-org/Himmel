@@ -1355,7 +1355,8 @@ mkcmdline 283 claude -n HIMMEL-9-N44-old-2026-01-01 work
 pgrep_x_stub 280 281 282 283
 bash "$HERE/fleet-manifest.sh" add "$W/bucket/console-old.fleet.json" "$MS_OLD"
 age_file "$W/bucket/console-old.fleet.json" 2
-out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run --check "$W/bucket/console-old.fleet.json" 2>&1)
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run --check "$W/bucket/console-old.fleet.json" 2>&1) || rc=$?
+check "legs setup: the aged manifest sweep succeeds" "$rc" "0"
 contains "legs setup: the aged manifest's leg would close when named" "$out" "sweep: would close $MS_OLD"
 reset_calls
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" HIMMEL_BUCKET_DIR="$W/bucket" run --check 2>&1) || rc=$?
