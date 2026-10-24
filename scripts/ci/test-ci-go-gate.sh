@@ -6,14 +6,14 @@
 # concurrency expressions over sample events, no network.
 #
 #   G1  `labeled` is in the pull_request types, `unlabeled` is not
-#   G2  a non-go labeled event runs nothing, and no skipped job's resolved name
-#       is a required context (a skipped job under a required name would satisfy
-#       that check)
+#   G2  a non-go labeled event runs nothing, and no skipped job reports a name
+#       that any job writes when it runs (a skipped check-run under a real name
+#       replaces an earlier failure under the latest-per-name rule)
 #   G3  every heavy job is skipped on a plain push with the gate on, and its
 #       skipped name differs from its required context
 #   G4  on the go run every required non-matrix context is written by exactly one
 #       job under its literal name
-#   G5  schedule, merge_group and workflow_dispatch each run every heavy and cheap job
+#   G5  schedule and workflow_dispatch each run every heavy and cheap job
 #       (plan and plugin-version-bump are pull_request-only before this gate)
 #   G6  on a go run no required name resolves for two jobs
 #   G7  gate off: a push runs every job as today and a label event runs none
@@ -23,9 +23,13 @@
 #   G11 on a plain push every required cheap job runs when ci-quick passed every
 #       group (a skipped job reports its raw name expression, never the
 #       required context, so a skipped sentinel leaves that context missing)
+#   G12 against the real check-runs of scratch PR 3792: no job that is skipped on
+#       a pull_request event reports a name the cheap or go run wrote as a real
+#       result (live defect: ci-quick=failure then a label run's ci-quick=skipped)
 #
 # The required-context list is a copy of the live ruleset
-# (gh api repos/yotamleo-org/Himmel/rules/branches/main).
+# (gh api repos/yotamleo-org/Himmel/rules/branches/main). The PR 3792 check-runs
+# are a copy of gh api repos/yotamleo-org/Himmel/commits/<sha>/check-runs.
 #
 # Usage: bash scripts/ci/test-ci-go-gate.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -34,12 +38,14 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CI_YML="${CI_YML:-$ROOT/.github/workflows/ci.yml}"
 REQUIRED="${REQUIRED_CONTEXTS_FILE:-$ROOT/scripts/ci/fixtures/ci-go-gate-required-contexts.txt}"
+CHECKS="${PR_CHECKS_FILE:-$ROOT/scripts/ci/fixtures/ci-go-gate-pr3792-checks.tsv}"
 
-python3 -I - "$CI_YML" "$REQUIRED" <<'PY'
+python3 -I - "$CI_YML" "$REQUIRED" "$CHECKS" <<'PY'
 import re, sys
 
-ci_yml, required_file = sys.argv[1], sys.argv[2]
+ci_yml, required_file, checks_file = sys.argv[1], sys.argv[2], sys.argv[3]
 required = {l.strip() for l in open(required_file) if l.strip()}
+checks = [l.rstrip("\n").split("\t") for l in open(checks_file) if l.strip() and not l.startswith("#")]
 lines = open(ci_yml).read().split("\n")
 
 CHEAP = {"plan", "ci-quick", "secret-scan", "bwk-awk-mktemp-gate", "unchecked-mktemp-range",
@@ -177,17 +183,37 @@ else:
 # ---- G2 ----
 nongo = [event("pull_request", "labeled", "bug", g) for g in ("on", "off", "")]
 nongo += [event("pull_request", "labeled", "ci:go", "off"), event("pull_request", "labeled", "ci:go", "")]
+go = event("pull_request", "labeled", "ci:go", "on")
+go_custom = event("pull_request", "labeled", "release-me", "on", "release-me")
+pr_events = [event("pull_request", a, "", g) for a in ("opened", "synchronize", "reopened") for g in ("on", "off", "")]
+pr_events += [go, go_custom] + nongo
+
+def skipped_name(j):  # a skipped job reports its raw name template, or its id when it has none
+    n = jobs[j]["name"]
+    return j if n is None else n
+
+# a matrix job's unexpanded id is only ever posted by a skip or a cancel; its results carry the expanded name
+UNEXPANDED = {j for j in jobs if jobs[j]["matrix"] and jobs[j]["name"] is None}
+SCHEDULE_ONLY = {"guard-corpus-full"}  # never runs on a pull_request event, so it replaces nothing there
+written = set(required)  # every name a job writes when it runs on a pull_request event
+for ctx in pr_events:
+    for j in jobs:
+        # a fail-fast job runs on a failure, which the evaluator cannot model: take its name as if it ran
+        if (runs(j, ctx) or j.startswith("fail-fast-")) and not jobs[j]["matrix"]:
+            written.add(name_of(j, ctx))
+written -= UNEXPANDED
+
 bad2 = []
 for ctx in nongo:
     for j in sorted(jobs):
         if runs(j, ctx):
             bad2.append("%s runs on a non-go label event" % j)
-        elif name_of(j, ctx) in required:
-            bad2.append("%s is skipped under the required name %r" % (j, name_of(j, ctx)))
+        elif j not in SCHEDULE_ONLY and skipped_name(j) in written:
+            bad2.append("%s is skipped under the real name %r" % (j, skipped_name(j)))
 if bad2:
     bad("G2 " + "; ".join(sorted(set(bad2))))
 else:
-    ok("G2 a non-go label event runs nothing and skips no job under a required name")
+    ok("G2 a non-go label event runs nothing and skips no job under a name any job writes")
 
 # ---- G3 ----
 push = [event("pull_request", a, "", "on") for a in ("opened", "synchronize", "reopened")]
@@ -208,8 +234,6 @@ else:
     ok("G3 a push with the gate on runs the cheap jobs and defers every heavy job under a non-required name")
 
 # ---- G4 / G6 ----
-go = event("pull_request", "labeled", "ci:go", "on")
-go_custom = event("pull_request", "labeled", "release-me", "on", "release-me")
 bad4 = []
 for g in (go, go_custom):
     names = {}
@@ -248,7 +272,7 @@ else:
 
 # ---- G5 ----
 bad5 = []
-for evn in ("schedule", "merge_group", "workflow_dispatch"):
+for evn in ("schedule", "workflow_dispatch"):
     for gate in ("on", "off", ""):
         ctx = event(evn, "", "", gate)
         for j in sorted((HEAVY | CHEAP) & set(jobs) - PR_ONLY):
@@ -257,7 +281,7 @@ for evn in ("schedule", "merge_group", "workflow_dispatch"):
 if bad5:
     bad("G5 " + "; ".join(sorted(set(bad5))))
 else:
-    ok("G5 schedule, merge_group and workflow_dispatch run every heavy and cheap job")
+    ok("G5 schedule and workflow_dispatch run every heavy and cheap job")
 
 # ---- G7 ----
 bad7 = []
@@ -313,6 +337,22 @@ if bad11:
     bad("G11 " + "; ".join(sorted(set(bad11))))
 else:
     ok("G11 every required cheap job runs on a plain push when ci-quick passed every group")
+
+# ---- G12 ----
+real = {n for k, n, c in checks if k in ("cheap", "go") and c != "skipped" and "&&" not in n and "${{" not in n}
+real -= UNEXPANDED
+recorded = {n: c for k, n, c in checks if k == "label"}
+bad12 = []
+if not ({"ci-quick", "plan", "plugin-version-bump"} <= real and recorded.get("ci-quick") == "skipped"):
+    bad12.append("the PR 3792 fixture no longer shows ci-quick written by the cheap run and skipped by the label run")
+for ctx in pr_events:
+    for j in sorted(jobs):
+        if not runs(j, ctx) and j not in SCHEDULE_ONLY and skipped_name(j) in real:
+            bad12.append("%s is skipped under %r, a name the PR 3792 cheap or go run wrote" % (j, skipped_name(j)))
+if bad12:
+    bad("G12 " + "; ".join(sorted(set(bad12))))
+else:
+    ok("G12 no job skipped on a pull_request event reports a name the PR 3792 cheap or go run wrote")
 
 # ---- G10 ----
 head = "\n".join(lines[:lines.index("jobs:")])

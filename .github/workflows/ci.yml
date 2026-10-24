@@ -17,18 +17,21 @@ on:
   # node-suites, security-scan, shell-unit and its shards) run on the `labeled`
   # event whose label is vars.CI_GO_LABEL (default ci:go), the "go run", which also
   # re-runs the cheap jobs so every required context reports at the head. Any other
-  # label event runs nothing. schedule, workflow_dispatch and merge_group run
+  # label event runs nothing. schedule and workflow_dispatch run
   # every job, and vars.CI_GO_GATE off (the default) restores that for a PR too.
   # `unlabeled` is deliberately NOT in `types`: the release's label-remove step must
   # not start a run.
   #
   # Rename rule: a skipped job reports `skipped` under its real name, which SATISFIES
-  # a required check and can turn a red one green. So every required non-matrix job
-  # carries `name: <expression>` that resolves to its literal required name only when
-  # the job runs and to `<name> (deferred)` otherwise; a skipped matrix job reports
-  # its unexpanded template, never a required name. The required context then stays
-  # missing, never skipped-green. Every later ci.yml writer keeps this rule for any
-  # required job it adds or renames. test-ci-go-gate.sh holds it.
+  # a required check and, because a check name's latest run wins, replaces an earlier
+  # failure under that name (a label run does this to a red PR). So every non-matrix
+  # job carries `name: <expression>` that resolves to its literal name only when the
+  # job runs and to `<name> (deferred)` otherwise; a skipped job reports the raw
+  # expression, never a real name, and a skipped matrix job reports its unexpanded
+  # id, which no result ever uses. A required context then stays missing, never
+  # skipped-green, and a failure stays the latest result. Every later ci.yml writer
+  # keeps this rule for any job it adds or renames. test-ci-go-gate.sh holds it
+  # (G2 for every job, G12 against the real check-runs of PR 3792).
   #
   # Security invariants:
   #   1. ci:go spends runner minutes; it never satisfies a gate. Merge still needs
@@ -117,6 +120,7 @@ jobs:
   # check; the matrix jobs (node-suites, bun-suites) stay started and skip their
   # STEPS, because a skipped matrix job leaves its required names pending.
   plan:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'plan' || 'plan (deferred)' }}
     if: ${{ github.event_name == 'pull_request' && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 13 # p95 ~70s (the 60 s debounce sleep + checkout + plan); kept 13 for sleep + slow-runner headroom
@@ -205,6 +209,7 @@ jobs:
   # reports success. The aggregator (shell-unit) and the schedule-only
   # guard-corpus-full have none.
   fail-fast-plan:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-plan' || 'fail-fast-plan (deferred)' }}
     needs: plan
     if: failure() && needs.plan.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -221,6 +226,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-secret-scan:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-secret-scan' || 'fail-fast-secret-scan (deferred)' }}
     needs: secret-scan
     if: failure() && needs.secret-scan.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -237,6 +243,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-bwk-awk-mktemp-gate:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-bwk-awk-mktemp-gate' || 'fail-fast-bwk-awk-mktemp-gate (deferred)' }}
     needs: bwk-awk-mktemp-gate
     if: failure() && needs.bwk-awk-mktemp-gate.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -253,6 +260,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-unchecked-mktemp-range:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-unchecked-mktemp-range' || 'fail-fast-unchecked-mktemp-range (deferred)' }}
     needs: unchecked-mktemp-range
     if: failure() && needs.unchecked-mktemp-range.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -269,6 +277,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-leak-classes:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-leak-classes' || 'fail-fast-leak-classes (deferred)' }}
     needs: leak-classes
     if: failure() && needs.leak-classes.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -285,6 +294,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-git-env-scrub:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-git-env-scrub' || 'fail-fast-git-env-scrub (deferred)' }}
     needs: git-env-scrub
     if: failure() && needs.git-env-scrub.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -301,6 +311,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-commit-lint:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-commit-lint' || 'fail-fast-commit-lint (deferred)' }}
     needs: commit-lint
     if: failure() && needs.commit-lint.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -317,6 +328,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-plugin-version-bump:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-plugin-version-bump' || 'fail-fast-plugin-version-bump (deferred)' }}
     needs: plugin-version-bump
     if: failure() && needs.plugin-version-bump.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -333,6 +345,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-lint:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-lint' || 'fail-fast-lint (deferred)' }}
     needs: lint
     if: failure() && needs.lint.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -349,6 +362,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-node-suites:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-node-suites' || 'fail-fast-node-suites (deferred)' }}
     needs: node-suites
     if: failure() && needs.node-suites.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -365,6 +379,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-jira-cli-smoke:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-jira-cli-smoke' || 'fail-fast-jira-cli-smoke (deferred)' }}
     needs: jira-cli-smoke
     if: failure() && needs.jira-cli-smoke.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -381,6 +396,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-claude-startup:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-claude-startup' || 'fail-fast-claude-startup (deferred)' }}
     needs: claude-startup
     if: failure() && needs.claude-startup.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -397,6 +413,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-lanes-and-trust-suites:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-lanes-and-trust-suites' || 'fail-fast-lanes-and-trust-suites (deferred)' }}
     needs: lanes-and-trust-suites
     if: failure() && needs.lanes-and-trust-suites.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -413,6 +430,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-guardrail-matrices:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-guardrail-matrices' || 'fail-fast-guardrail-matrices (deferred)' }}
     needs: guardrail-matrices
     if: failure() && needs.guardrail-matrices.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -429,6 +447,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-bun-suites:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-bun-suites' || 'fail-fast-bun-suites (deferred)' }}
     needs: bun-suites
     if: failure() && needs.bun-suites.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -445,6 +464,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-doc-invariants:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-doc-invariants' || 'fail-fast-doc-invariants (deferred)' }}
     needs: doc-invariants
     if: failure() && needs.doc-invariants.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -461,6 +481,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-security-scan:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-security-scan' || 'fail-fast-security-scan (deferred)' }}
     needs: security-scan
     if: failure() && needs.security-scan.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -477,6 +498,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-shell-unit-shard:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-shell-unit-shard' || 'fail-fast-shell-unit-shard (deferred)' }}
     needs: shell-unit-shard
     if: failure() && needs.shell-unit-shard.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -493,6 +515,7 @@ jobs:
           gh run cancel "$RUN_ID" || true
 
   fail-fast-ci-quick:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'fail-fast-ci-quick' || 'fail-fast-ci-quick (deferred)' }}
     needs: ci-quick
     if: failure() && needs.ci-quick.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -534,6 +557,7 @@ jobs:
   #   group, doc-invariants, runs last (test-ci-quick.sh Q5); a separate
   #   checkout per group would put back the setup cost this fold removed.
   ci-quick:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'ci-quick' || 'ci-quick (deferred)' }}
     needs: plan
     if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
@@ -910,6 +934,7 @@ jobs:
   # regression here previously reached main unnoticed. This job builds a pinned one-true-awk commit from source
   # (never a branch) and runs the gate's own suite under it, gating every PR.
   bwk-awk-mktemp-gate:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'bwk-awk-mktemp-gate' || 'bwk-awk-mktemp-gate (deferred)' }}
     # Runs as the bwk-awk-mktemp-gate step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
@@ -1068,6 +1093,7 @@ jobs:
   # Check the PR head, not a merge ref that may include a sibling's bump.
   # Only pull_request runs have a PR's changes to gate.
   plugin-version-bump:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'plugin-version-bump' || 'plugin-version-bump (deferred)' }}
     needs: plan
     if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && github.event_name == 'pull_request' && !(needs.plan.result == 'success' && needs.plan.outputs.run_plugin_version_bump == 'false') }}
     runs-on: ubuntu-latest
@@ -1372,6 +1398,7 @@ jobs:
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
   # green. Offline and secret-free (dummy JIRA_* values, a local mock server).
   jira-cli-smoke:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'jira-cli-smoke' || 'jira-cli-smoke (deferred)' }}
     # Runs as the jira-cli-smoke step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
