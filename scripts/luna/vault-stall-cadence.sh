@@ -532,7 +532,7 @@ status_log() { # <log>: the run log's last write and last line, in the shape eve
         mtime=$(date -r "$log" '+%Y-%m-%d %H:%M' 2>/dev/null \
             || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log" 2>/dev/null \
             || echo '?')
-        last=$(tail -n 1 "$log" 2>/dev/null | tr -d '\r' || true)
+        last=$(tail -n 1 "$log" 2>/dev/null | tr -d '\r' || true)  # read-sink-ok: $log is the cadence runner's own log path, never argv or env
         echo "  run log    $log (last write: $mtime)"
         [ -z "$last" ] || echo "             last line: $last"
     else
