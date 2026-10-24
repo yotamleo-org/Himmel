@@ -446,10 +446,23 @@ fi
 # --- no flock: two events for one key move the status once --------------------------
 # Both runs reach the Jira read together (get.sleep), so an unlocked run moves twice.
 reset "To Do"; owned; echo 1 > "$FX/get.sleep"
-PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 &
-PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 &
-wait
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock: both concurrent events exit 0" "$r1:$r2" "0:0"
 check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
+
+# A lease left by a dead run (older than 300s) is reclaimed once, so one event moves the status.
+reset "To Do"; owned; echo 1 > "$FX/get.sleep"
+mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d"
+touch -d '10 minutes ago' "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d"
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock: concurrent events reclaim a stale lease, exit 0" "$r1:$r2" "0:0"
+check "no-flock: a stale lease is reclaimed once, the status moves once" "$(ntrans)" 1
 
 # A lock dir the user cannot write makes mkdir fail and the lease stat fail, so the
 # lease must defer within the wait bound, not spin. Root writes anywhere: skip there.
