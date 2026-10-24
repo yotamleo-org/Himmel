@@ -1,5 +1,5 @@
 // scripts/lanes/effort-route.mjs
-// Turns an effort-assess record into an ADVISORY LEG_EFFORT recommendation
+// Turns an effort-assess record into an ADVISORY WORKER_SESSION_EFFORT recommendation
 // It never names a tier or model: raise
 // effort before tier, and Opus/Fable still pass headed-arm-leg.sh's Tier gate.
 //
@@ -36,7 +36,7 @@ export function recommend(record, cfg) {
 // one-line human form, shared by fanout and the arm-leg advisory
 export function describe(r) {
   if (r.action === 'plan-first') return `plan-first or split, no implementation leg (${r.reason}); a design slice may justify a Tier line, never written here`;
-  return `LEG_EFFORT=${r.effort}${r.review ? ' + independent review before GO' : ''} (${r.reason})`;
+  return `WORKER_SESSION_EFFORT=${r.effort}${r.review ? ' + independent review before GO' : ''} (${r.reason})`;
 }
 
 if (process.argv[1]?.endsWith('effort-route.mjs')) {

@@ -1272,13 +1272,13 @@ for _e in "$REAL_SCRIPTS"/handover/console-kit/*; do ln -s "$_e" "$LLD/scripts/h
 for _e in lib/chokepoint-seam-guard.sh handover/console-kit/headed-arm-leg.sh; do
     rm -f "$LLD/scripts/$_e"; cp "$REAL_SCRIPTS/$_e" "$LLD/scripts/$_e"
 done
-LEG_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
+WORKER_SESSION_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
 chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
 # the arming gate lints every brief (description + Prior art line).
 printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' > "$LLD/doc.md"
-HIMMEL_FLEET_SLOTS="$LLD/slots" HEADED_ARM_LEG_TARGET="$LLD/target.sh" HEADED_ARM_LEG_PREFLIGHT="$LLD/preflight.sh" \
-    HIMMELCTL_CACHE_DIR="$CACHE" bash "$LEG_SH" --no-profile HIMMEL-3270-u1 "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
+HIMMEL_FLEET_SLOTS="$LLD/slots" HEADED_ARM_WORKER_TARGET="$LLD/target.sh" HEADED_ARM_WORKER_PREFLIGHT="$LLD/preflight.sh" \
+    HIMMELCTL_CACHE_DIR="$CACHE" bash "$WORKER_SESSION_SH" --no-profile HIMMEL-3270-u1 "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
 if [ -f "$CACHE/launch-logs/HIMMEL-3270-u1.log" ]; then echo "PASS the launcher wrote its launch record into the himmelctl cache dir"
 else echo "FAIL the launcher did not write launch-logs/HIMMEL-3270-u1.log into \$HIMMELCTL_CACHE_DIR"; FAILED=$((FAILED + 1)); fi
 out=$(TELEGRAM_CHANNEL_DIR="$TMP/none11g" BRIDGE_ROOT="$TMP/none11h" \

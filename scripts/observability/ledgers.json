@@ -214,7 +214,7 @@
     {
       "id": "leg-failures",
       "default_path": "~/.himmel/leg-failures.jsonl",
-      "override_env": "HIMMEL_LEG_FAILURES_LEDGER",
+      "override_env": "HIMMEL_WORKER_SESSION_FAILURES_LEDGER",
       "writer": "scripts/eval/leg-digest/leg_ledger.py",
       "readers": ["scripts/eval/leg-digest/tool-health.mjs"],
       "format": "jsonl",

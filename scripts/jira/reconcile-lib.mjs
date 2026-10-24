@@ -41,11 +41,11 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 // merely a URL.
 const OUTCOME_ACCEPTANCE_RE =
   /curl\s+-\w*[iI]\b|gh api repos\/\S+\/pages|Settings\s*(?:→|->)\s*Pages|operator (?:flips|enables)|\brepo setting\b|publish the release/i;
-const LEG_OPERATOR_SPLIT_RE = /\bthe leg (?:prepares|scopes|verifies)\b[^.]*\bthe operator\b|\boperator-only\b/i;
+const WORKER_SESSION_OPERATOR_SPLIT_RE = /\bthe leg (?:prepares|scopes|verifies)\b[^.]*\bthe operator\b|\boperator-only\b/i;
 
 export function hasOutcomeAcceptance(descriptionText) {
   const text = descriptionText ?? '';
-  return OUTCOME_ACCEPTANCE_RE.test(text) || LEG_OPERATOR_SPLIT_RE.test(text);
+  return OUTCOME_ACCEPTANCE_RE.test(text) || WORKER_SESSION_OPERATOR_SPLIT_RE.test(text);
 }
 
 // The matched snippet (trimmed to one line of context), for naming the
@@ -53,7 +53,7 @@ export function hasOutcomeAcceptance(descriptionText) {
 // just citing the rule's name.
 export function describeOutcome(descriptionText) {
   const text = descriptionText ?? '';
-  const m = OUTCOME_ACCEPTANCE_RE.exec(text) ?? LEG_OPERATOR_SPLIT_RE.exec(text);
+  const m = OUTCOME_ACCEPTANCE_RE.exec(text) ?? WORKER_SESSION_OPERATOR_SPLIT_RE.exec(text);
   if (!m) return null;
   const lineStart = text.lastIndexOf('\n', m.index) + 1;
   const lineEnd = text.indexOf('\n', m.index);

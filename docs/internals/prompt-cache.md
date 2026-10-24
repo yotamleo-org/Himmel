@@ -207,7 +207,7 @@ The cost rule:
 Enforced by `scripts/hooks/guard-leg-cache-ttl.sh`, a Stop hook in the leg
 profile. It refuses, once per stop, the stop of a leg that holds its queue lock
 while no background task or Monitor is running. Bound:
-`HIMMEL_LEG_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule:
+`HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule: <!-- old-term-ok: only the env name changed, prose is pre-existing -->
 [`docs/handover/leg-sections/cache-keepalive.md`](../handover/leg-sections/cache-keepalive.md).
 Re-measure with the `idle-gap` command below over the leg transcripts of the
 24 h after it ships.

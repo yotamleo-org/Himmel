@@ -10,7 +10,7 @@ are read.
 Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-console$),
 ordered by first record; each consecutive pair is one handover P -> S. A turn is a de-duplicated
 assistant message id. Price table (input-equivalent tokens, mirrors scripts/lanes/lib/burn-weights.sh,
-same LEG_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
+same WORKER_SESSION_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
 
 Pieces per handover (turns/cost):
   prep   P's turns from its last `console.sh next` call up to S's first turn
@@ -47,12 +47,12 @@ import re
 import sys
 from datetime import datetime, timezone
 
-W_IN = float(os.environ.get("LEG_BURN_W_INPUT", "1"))
-W_CR = float(os.environ.get("LEG_BURN_W_CACHE_READ", "0.1"))
-W_CC = float(os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25"))
-W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
+W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1")))
+W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1")))
+W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25")))
+W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5")))
 DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
-LEG_TURN_CAP = 4
+WORKER_SESSION_TURN_CAP = 4
 NEXT_RE = re.compile(r'(?:console|chief)\.sh(?:\\"|")?\s+next\b')
 MARKER_RE = re.compile(r"\bbash\s+\S*append-results\.sh")
 MECH_RE = re.compile(
@@ -163,7 +163,7 @@ def handover(p, s, legs, legs_after):
             continue
         after = [t for t in lg["turns"] if t[0] > got[0]]
         taken = []
-        for t in after[:LEG_TURN_CAP]:
+        for t in after[:WORKER_SESSION_TURN_CAP]:
             taken.append(t)
             if t[4]:
                 break

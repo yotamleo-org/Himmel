@@ -29,7 +29,7 @@ done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LEG_BURN="$HERE/../../leg-burn.sh"
+WORKER_SESSION_BURN="$HERE/../../leg-burn.sh"
 # shellcheck source=lib/scorecard-lib.sh
 . "$HERE/lib/scorecard-lib.sh"
 sc_roots_check leg-over-by-day || exit 2
@@ -91,7 +91,7 @@ while IFS= read -r f; do
     [ "$last_epoch" -ge "$SINCE_EPOCH" ] || { sc_cov out-of-window; continue; }
     if [ -n "$UNTIL_EPOCH" ] && [ "$first_epoch" -ge "$UNTIL_EPOCH" ]; then sc_cov out-of-window; continue; fi
 
-    line=$(bash "$LEG_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
+    line=$(bash "$WORKER_SESSION_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
     sc_cov parsed
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)
     case "$avg" in

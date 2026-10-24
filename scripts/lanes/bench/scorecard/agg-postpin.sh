@@ -87,7 +87,7 @@ case "$CONTEXT_FILTER" in
 esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LEG_BURN="$HERE/../../leg-burn.sh"
+WORKER_SESSION_BURN="$HERE/../../leg-burn.sh"
 # shellcheck source=lib/scorecard-lib.sh
 . "$HERE/lib/scorecard-lib.sh"
 sc_roots_check agg-postpin || exit 2
@@ -184,7 +184,7 @@ while IFS= read -r f; do
     cohort_ok "$name" || { sc_cov "$COHORT_WHY"; continue; }
     context_ok "$name" || { sc_cov "$CONTEXT_WHY"; continue; }
 
-    line=$(bash "$LEG_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
+    line=$(bash "$WORKER_SESSION_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
     sc_cov parsed
     calls=$(printf '%s' "$line" | grep -o 'calls=[0-9]*' | cut -d= -f2)
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)

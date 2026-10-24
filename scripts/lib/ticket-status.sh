@@ -46,7 +46,7 @@
 #       and no other recorded leg holds its lock
 #   D7  no PR, never owned                       no-write
 #
-# Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), LEG_JIRA_CLI (the Jira
+# Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
 # CLI; an executable or a .js run under node), TICKET_STATUS_QUEUE_LOCK (an
 # executable standing in for queue-lock.sh), TICKET_STATUS_PR_LIMIT (default 50),
 # QUEUE_LOCK_IDLE_WARN_SECONDS (default 2700). Needs jq and gh.
@@ -98,7 +98,7 @@ status_event() {
 }
 
 ts_jira() {
-    local cli="${LEG_JIRA_CLI:-}" common
+    local cli="${WORKER_SESSION_JIRA_CLI:-${LEG_JIRA_CLI:-}}" common
     if [ -z "$cli" ]; then
         common="$(git -C "$_TS_LIB_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 127
         cli="$(dirname "$common")/scripts/jira/dist/index.js"

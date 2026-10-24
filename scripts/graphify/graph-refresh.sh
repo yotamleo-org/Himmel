@@ -717,10 +717,10 @@ for c in "${CORPORA[@]}"; do
     else
         RUNNER_CMD=("${RUNNER_ARGV[@]}")
     fi
-    LEG_LOG="$LOG_DIR/$c.log"
+    WORKER_SESSION_LOG="$LOG_DIR/$c.log"
     # tee keeps the live terminal output; the subshell+PIPESTATUS keeps the
     # runner's own rc (a bare pipe would report tee's).
-    if ( "${RUNNER_CMD[@]}" 2>&1 | tee "$LEG_LOG"; exit "${PIPESTATUS[0]}" ); then
+    if ( "${RUNNER_CMD[@]}" 2>&1 | tee "$WORKER_SESSION_LOG"; exit "${PIPESTATUS[0]}" ); then
         echo "graph-refresh: [$c] OK -- published $VAULT/60-Maps/$R_SLUG.md"
         # Himmel's graphify-out/ is TRACKED; the refresh regenerates
         # it on disk but does NOT ship it. The operator must publish it separately
@@ -736,10 +736,10 @@ for c in "${CORPORA[@]}"; do
             echo "graph-refresh: [$c] SKIPPED -- bank at/over threshold, extraction skipped for corpus '$c' (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
             SKIPPED=$((SKIPPED + 1))
         else
-            leg_reason="$(grep '^refresh-graph-map:' "$LEG_LOG" | tail -n 1 || true)"
-            echo "graph-refresh: [$c] FAIL -- ${leg_reason:-refresh-graph-map.sh exited $leg_rc} (log: $LEG_LOG)" >&2
+            leg_reason="$(grep '^refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
+            echo "graph-refresh: [$c] FAIL -- ${leg_reason:-refresh-graph-map.sh exited $leg_rc} (log: $WORKER_SESSION_LOG)" >&2
             FAILURES=$((FAILURES + 1))
-            FAILED_LEGS+=("$c $LEG_LOG")
+            FAILED_LEGS+=("$c $WORKER_SESSION_LOG")
         fi
     fi
 done

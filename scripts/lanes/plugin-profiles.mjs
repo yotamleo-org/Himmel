@@ -76,7 +76,7 @@ const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr
 // client-side classifier claudex runs denies it.
 const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")';
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
-const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
+const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
 
 // A bare tool name in permissions.deny removes the tool's definition from the
 // request payload; a scoped rule (Bash(rm *)) only blocks calls. denyTools is
@@ -219,7 +219,7 @@ function checkNoDuplicates(errors, ids, message) {
 // profile; every other profile keeps the full tool set.
 function validateToolTrim(errors, name, spec) {
   if (spec.denyTools === undefined && spec.disableWorkflows === undefined) return;
-  if (name !== 'bare' && !LEG_PROFILES.has(name)) {
+  if (name !== 'bare' && !WORKER_SESSION_PROFILES.has(name)) {
     if (spec.denyTools !== undefined) errors.push(`profile "${name}" denyTools is restricted to leg-shaped profiles`);
     if (spec.disableWorkflows !== undefined) errors.push(`profile "${name}" disableWorkflows is restricted to leg-shaped profiles`);
   }
@@ -266,7 +266,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
   if (spec.vmLaunch !== undefined && (typeof spec.vmLaunch !== 'boolean' || (spec.vmLaunch && (name !== 'leg-vm' || spec.gateAllow !== true)))) {
     errors.push(`profile "${name}" vmLaunch must be a boolean, true only on leg-vm with gateAllow`);
   }
-  if (spec.gateAllow === true && !LEG_PROFILES.has(name)) {
+  if (spec.gateAllow === true && !WORKER_SESSION_PROFILES.has(name)) {
     errors.push(`profile "${name}" gateAllow is restricted to leg-shaped profiles`);
   }
   validateIdList(errors, spec.enable, catalogSet, `profile "${name}" enable`);

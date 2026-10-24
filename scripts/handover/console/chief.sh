@@ -136,7 +136,7 @@ rolled over since.
 himmel's own repo basename/JIRA_PROJECT_KEY. The console session itself
 always stays in this himmel checkout -- --project is recorded as data in
 the console doc, and a worker session (leg) for the project is dispatched into it explicitly
-with LEG_REPO=<path> (codex-4, pr-check round 2, HIMMEL-3623).
+with WORKER_SESSION_REPO=<path> (codex-4, pr-check round 2, HIMMEL-3623).
 --bucket/--prefix still override it when given.
 USAGE
 }
@@ -364,7 +364,7 @@ do_arm() {
     # into the project. Himmel's own project-scoped hooks (the GO-file merge
     # gate, block-leg-askuserquestion) and the console-kit's relative paths
     # only load there. Legs for the project are dispatched into it
-    # explicitly with LEG_REPO=<project> (headed-arm-leg.sh), never by the
+    # explicitly with WORKER_SESSION_REPO=<project> (headed-arm-leg.sh), never by the
     # console inheriting a repo override.
     if [ "$CONTEXT_GIVEN" -eq 1 ]; then
         export CHIEF_CONTEXT="$CHIEF_CONTEXT_RESOLVED_MODE"
@@ -1981,7 +1981,7 @@ cmd_next() {
                 CURRENT_DIRECTION "$hf_direction" \
                 HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
                 BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
-                LEG_LIST "$hf_legs" \
+                WORKER_SESSION_LIST "$hf_legs" \
                 OPEN_PRS "$hf_prs" \
                 SHIFT_SUMMARY "$hf_summary" \
                 QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \

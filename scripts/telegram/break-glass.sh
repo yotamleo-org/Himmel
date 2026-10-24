@@ -387,7 +387,7 @@ op_launch_leg() {
     have_detach || return 23
     scrub_env
     [ "$bypass" = "bypass" ] && export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1
-    export LEG_REPO="$wt"
+    export WORKER_SESSION_REPO="$wt"
     # shellcheck disable=SC2086 # the seam is a command line by design
     setsid nohup $launcher --profile leg-impl --fleet "$fleet" --console "$(basename "${fleet%.fleet.json}")" \
         "$(basename "${doc%.md}")" "$doc" "$state/$label.signal" "$now" "$log" "$model" \

@@ -76,7 +76,7 @@ EOF
 cat > "$TMP/bin/record" <<'EOF'
 #!/usr/bin/env bash
 { echo "pwd=$PWD"; echo "args=$*"; echo "bypass=${HIMMEL_HOOK_INTEGRITY_BYPASS_OK:-unset}"
-  echo "other=${OTHER_GUARD_OK:-unset}"; echo "legrepo=${LEG_REPO:-unset}"; echo "token=${TELEGRAM_BOT_TOKEN:-unset}"; } > "$RECORD"
+  echo "other=${OTHER_GUARD_OK:-unset}"; echo "legrepo=${WORKER_SESSION_REPO:-${LEG_REPO:-unset}}"; echo "token=${TELEGRAM_BOT_TOKEN:-unset}"; } > "$RECORD"
 EOF
 chmod +x "$TMP/bin/"*
 export GH_LOG="$TMP/gh.log" BREAK_GLASS_GH="$TMP/bin/gh" BREAK_GLASS_SYSTEMCTL="$TMP/bin/systemctl"
