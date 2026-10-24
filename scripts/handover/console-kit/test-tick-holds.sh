@@ -84,13 +84,17 @@ young="$(mkleg 922-N922-young 5 '- 10:00 BLOCKED — need a ruling')"
 live="$(mkleg 923-N923-live 90 '- 10:00 BLOCKED — q' '- 10:40 RESOLVED — ruling received' '- 10:41 LIVE — working')"
 find_wait="$(mkleg 924-N924-findwait 30 '- 10:00 FINDING — awaiting the console ruling on the base')"
 find_info="$(mkleg 925-N925-findinfo 30 '- 10:00 FINDING — the suite has a stale row, noted')"
+find_ci="$(mkleg 927-N927-findci 30 '- 10:00 FINDING — waiting for CI, holding the push, no ruling owed')"
 wrapped="$(mkleg 926-N926-wrapped 90 '- 10:00 BLOCKED — q' '- 10:50 WRAPPED — done')"
 
-out="$(run_from "$(manifest "$old" "$young" "$live" "$find_wait" "$find_info" "$wrapped")")"
+out="$(run_from "$(manifest "$old" "$young" "$live" "$find_wait" "$find_info" "$find_ci" "$wrapped")")"
 check 'a BLOCKED leg past 20 min and an awaiting FINDING read holds=' 'N921:35m,N924:30m' "$(field holds "$out")"
 
-out="$(run_from "$(manifest "$young" "$live" "$find_info" "$wrapped")")"
-check 'under the threshold, later LIVE, informational FINDING, WRAPPED: no holds= field' '' "$(field holds "$out")"
+m="$(manifest "$young" "$live" "$find_info" "$find_ci" "$wrapped")"
+out="$(run_from "$m")"
+run_from "$m" > /dev/null; rc=$?
+check 'tick ran clean for the no-holds fleet' '0' "$rc"
+check 'under the threshold, later LIVE, informational FINDINGs (incl. waiting-on-CI), WRAPPED: no holds= field' '' "$(field holds "$out")"
 
 out="$(TICK_HOLD_MIN=3 run_from "$(manifest "$young")")"
 check 'TICK_HOLD_MIN=3 moves the threshold (5 min reads as a hold)' 'N922:5m' "$(field holds "$out")"

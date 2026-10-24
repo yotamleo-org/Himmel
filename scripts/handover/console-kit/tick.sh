@@ -93,8 +93,8 @@ wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
 holds=<leg>:<age>m[,...] (HIMMEL-4949) follows acts= and is ABSENT unless a leg's newest
-Results marker is BLOCKED (or a FINDING whose bullet says it awaits a ruling, a hold, or what
-the console owes) and its doc has not been written for TICK_HOLD_MIN minutes (default 20): a
+Results marker is BLOCKED (or a FINDING whose bullet says it awaits the console, needs a
+ruling, or what the console owes) and its doc has not been written for TICK_HOLD_MIN minutes (default 20): a
 leg parked on a ruling the console may not know it owes, which a repeated BLOCKED bullet never
 shows in tails=. console-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
@@ -766,7 +766,7 @@ for leg in $LEGS_SPLIT; do
         hold_age=""
         case "$tail_status" in
             BLOCKED) hold_age=1 ;;
-            FINDING) leg_actionable_bullet "$leg_doc" | grep -qiE 'awaiting|waiting|holding|ruling|console owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
+            FINDING) leg_actionable_bullet "$leg_doc" | grep -qiE 'awaiting (the |a )?(console|ruling)|needs? (a |the )?ruling|console owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
         esac
         if [ -n "$hold_age" ]; then
             hold_age=""
