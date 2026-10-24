@@ -68,8 +68,11 @@ cmd_run() {
     if [ "$rc" -eq 0 ]; then
         python3 "$ROOT/scripts/eval/decision-158-answers.py" --record; rc=$?
     fi
-    if [ "$rc" -eq 0 ]; then
-        mkdir -p "$(dirname "$PAGE")" && python3 "$ROOT/scripts/eval/review-page.py" --out "$PAGE.tmp" && mv -f "$PAGE.tmp" "$PAGE"; rc=$?
+    # exit 3 = a partial answer row was recorded: still render the page, keep the non-zero exit for the alert
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; then
+        local prc
+        mkdir -p "$(dirname "$PAGE")" && python3 "$ROOT/scripts/eval/review-page.py" --out "$PAGE.tmp" && mv -f "$PAGE.tmp" "$PAGE"; prc=$?
+        [ "$rc" -eq 0 ] && rc=$prc
     fi
     if [ "$rc" -ne 0 ]; then
         alert_fail "exit $rc"

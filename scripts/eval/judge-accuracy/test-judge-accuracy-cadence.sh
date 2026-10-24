@@ -36,7 +36,7 @@ chmod +x "$STUB/crontab"
 export JUDGEACC_CRONTAB="$STUB/crontab" JUDGEACC_RUNNER_DIR="$TMP/runner"
 
 # a verdict bucket with one judge GO on a PR that merged at its head, two days ago
-AT="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+AT="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 mkdir -p "$TMP/v/q1" "$TMP/mirror"
 printf '# VERDICT q1\n\nwritten-at: %s\npr: 201\nmodel: opus\neffort: high\n\n**GO** for head `aaa1`.\n\nclass: none\n' "$AT" >"$TMP/v/q1/judge.md"
 cat >"$STUB/gh" <<EOF
@@ -73,9 +73,10 @@ check "run: exit 0" '[ "$rc" = 0 ]'
 check "run: one judge-accuracy row in the ledger" '[ "$(grep -c "\"eval\":\"judge-accuracy\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: one decision-158 answer row in the ledger" '[ "$(grep -c "\"eval\":\"decision-158\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: the page is written and names the judges" 'grep -q "^## The judges" "$REVIEW_PAGE_FILE" && grep -q "A bug got past a GO on 0 of 1 merged PRs" "$REVIEW_PAGE_FILE"'
-timeout 5 bash "$CAD" run --verdicts >/dev/null 2>&1; rc=$?
+with_deadline() { python3 -c 'import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=5).returncode)' "$@"; }
+with_deadline bash "$CAD" run --verdicts >/dev/null 2>&1; rc=$?
 check "run: a trailing --verdicts is a usage error (rc 1), not a hang" '[ "$rc" = 1 ]'
-timeout 5 bash "$CAD" run --verdicts "$TMP/v" --mirror >/dev/null 2>&1; rc=$?
+with_deadline bash "$CAD" run --verdicts "$TMP/v" --mirror >/dev/null 2>&1; rc=$?
 check "run: a trailing --mirror is a usage error (rc 1), not a hang" '[ "$rc" = 1 ]'
 touch "$TMP/gh-fail"
 bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run2.out" 2>&1; rc=$?
@@ -85,8 +86,9 @@ check "run: a failing gh is a non-zero exit, no second row, an alert raised" '[ 
 # A step that fails after the judge row is a non-zero exit with an alert, never a clean run: a CodeRabbit
 # measurement that cannot be read and a page that cannot be written. Each runs on its own ledger.
 rm -rf "$CADENCE_ALERT_DEDUPE_DIR"; : >"$CADENCE_ALERT_FILE"
-HIMMEL_EVAL_RUNS_LEDGER="$TMP/runs-cr.jsonl" CR_LEDGER="$TMP/no-such-cr.jsonl" bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run3.out" 2>&1; rc=$?
+HIMMEL_EVAL_RUNS_LEDGER="$TMP/runs-cr.jsonl" CR_LEDGER="$TMP/no-such-cr.jsonl" REVIEW_PAGE_FILE="$TMP/page-partial.md" bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run3.out" 2>&1; rc=$?
 check "run: an unreadable CodeRabbit ledger is a non-zero exit with an alert" '[ "$rc" != 0 ] && grep -q "failed (exit" "$CADENCE_ALERT_FILE"'
+check "run: that partial run still renders the page" 'grep -q "^## The judges" "$TMP/page-partial.md"'
 check "run: that run records a partial answer row, not a complete one" '[ "$(grep -c "\"eval\":\"decision-158\"" "$TMP/runs-cr.jsonl")" = 1 ] && grep "\"eval\":\"decision-158\"" "$TMP/runs-cr.jsonl" | grep -q "\"status\":\"partial\""'
 rm -rf "$CADENCE_ALERT_DEDUPE_DIR"; : >"$CADENCE_ALERT_FILE"
 : >"$TMP/afile"
