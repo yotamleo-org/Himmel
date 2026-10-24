@@ -1917,8 +1917,10 @@ def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
 def pyspawn: "subprocess|environ|putenv|unsetenv|system|popen|fork|exec|spawn|Popen|commands\\.|__import__|__dict__|__builtins__|__getattribute__|__subclasses__|__globals__|__class__|__loader__|getattr|attrgetter|methodcaller|getmembers|modules|globals|locals|vars[[:space:]]*\\(|dir[[:space:]]*\\(|eval|compile|\\b(pty|ctypes|cffi|importlib|inspect|marshal|pickle|shelve|runpy|timeit|doctest|pdb|bdb|cProfile|profile|trace|code|codeop|webbrowser)\\b";
 def jsspawn: "child_process|exec|spawn|fork|process(?!\\.(argv|stdout|stderr|exitCode|exit|cwd)\\b)|Bun|Deno|eval|Function|constructor|__proto__|prototype|globalThis|Reflect|Proxy|import[[:space:]]*\\(|worker_threads|\\b(global|this|module|arguments|vm)\\b|require(?![[:space:]]*\\([[:space:]]*[\"'](node:)?(fs|path)[\"'][[:space:]]*\\))";
 def optw: lit and (wv | startswith("-") and . != "-" and . != "--");
-def hdin: (.redirs // []) | map(select(((.fd // "0") == "0") and (.hdoc or ((.op // "") | startswith("<")))))
-  | length > 0 and (last | .hdoc);
+def hdin: (.redirs // []) as $r
+  | ($r | all(.[]; ((.fd // "0") | test("^[0-9]+$")) and (((.op // "") | isin(["<&", ">&", "<>"])) | not)))
+  and ($r | map(select((((.fd // "0") | tonumber) == 0) and (.hdoc or ((.op // "") | startswith("<")))))
+    | length > 0 and (last | .hdoc));
 def inline: .argv[1:] as $a
   | first(range(0; ($a | length) + 1) as $i | select(($a[$i] == null) or (($a[$i] | optw) | not)) | $i) as $n
   | ($a[:$n] | map(wv)) as $o

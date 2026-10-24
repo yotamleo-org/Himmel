@@ -2599,6 +2599,10 @@ assert_allow "7130: python -I inline code reading the env clear text from a pipe
 assert_deny "7130 control: python interactive mode executes piped code beside a glob path" "$(j "echo 'import os; os.system(\"env -i bash scripts/hooks/x*.sh\")' | python3 -i -c 'print(1)'")"
 assert_deny "7130 control: a python stdin script reads piped code, beside a glob path" "$(j "echo 'import os; os.system(\"env -i bash scripts/hooks/x*.sh\")' | python3 -I -")"
 assert_deny "7130 control: a node stdin script reads piped code, beside a glob path" "$(j "echo 'require(\"child_process\").execSync(\"env -i bash scripts/hooks/x*.sh\")' | node -")"
+assert_deny "7130 control: a python stdin script whose stdin is duped back to the pipe after the heredoc" "$(j "echo 'import os; os.system(\"env -i bash scripts/hooks/x*.sh\")' | python3 - 3<&0 <<'EOF' 0>&3"$'\n'"print(1)"$'\n'"EOF")"
+assert_deny "7130 control: a node stdin script whose stdin is duped back to the pipe after the heredoc" "$(j "echo 'require(\"child_process\").execSync(\"env -i bash scripts/hooks/x*.sh\")' | node - 3<&0 <<'EOF' 0>&3"$'\n'"console.log(1)"$'\n'"EOF")"
+assert_deny "7130 control: a python stdin script whose stdin is duped through a zero-padded fd" "$(j "echo 'import os; os.system(\"env -i bash scripts/hooks/x*.sh\")' | python3 - 3<&0 <<'EOF' 00<&3"$'\n'"print(1)"$'\n'"EOF")"
+assert_deny "7130 control: a python stdin script read from a file through a zero-padded fd" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; python3 - <<'EOF' 00</tmp/p7130.py"$'\n'"print(1)"$'\n'"EOF")"
 assert_deny "7130 control: an expanded git argument can be an output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=--output=.git/hooks/x; git log \$o")"
 assert_deny "7130 control: a quoted expanded git argument can be a pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=-O/tmp/p7130; git grep \"\$o\" x")"
 
