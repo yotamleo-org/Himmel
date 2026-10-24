@@ -185,7 +185,7 @@ flowchart TD
     CON -->|"SendMessage / ListAgents"| P2["worker<br/>one ticket · one worktree · one PR"]
     CON -.->|"a parallel wave: started together,<br/>collision-checked, capped by HIMMEL_FLEET_CAP"| P2
 
-    P1 --> GD{"scripts/hooks/guard-implementor-dispatch.sh<br/>refuses native Agent dispatch when Claude usage<br/>is ≥80% (IMPL_GUARD_HARD; 5-hour and weekly windows)"}
+    P1 --> GD{"scripts/hooks/guard-implementor-dispatch.sh<br/>refuses native Agent dispatch when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD)"}
     GD --> NAT["native subagents — the default fleet<br/>haiku · sonnet · opus · fable<br/>every dispatch names its model"]
 
     P1 -.->|"registry, impl-dormant"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>No defaultImplLane by operator ruling —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
@@ -246,8 +246,10 @@ flowchart TD
 **The gate asks the CLI.** It keeps no hand-maintained list of blocked MCP
 tools; it asks the CLI what verbs it has. Adding a verb tightens the gate
 automatically; removing one loosens it. `block-backend-tier.sh` generalised the
-older Jira-only `block-mcp-when-plugin-exists.sh` to every service in
-`scripts/backends.json`; the older script is no longer wired as a hook.
+older Jira-only `block-mcp-when-plugin-exists.sh` to the services in
+`scripts/backends.json` that have an MCP prefix: Jira and Confluence. GitHub and
+Bitbucket are registered there with no MCP prefix, so this gate does not route
+them. The older script is no longer wired as a hook.
 
 Invocation shape (absolute path from the primary checkout, because `dist/` is
 an untracked build artifact and a worktree lacks it) and the full op ↔ MCP
