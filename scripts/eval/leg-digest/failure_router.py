@@ -72,6 +72,7 @@ NOTIFY = os.path.join(HERE, "failure-route-notify.sh")
 DONE = ("done", "closed", "resolved", "won't do", "cancelled", "canceled")
 JIRA_TIMEOUT = 60
 MAX_BODY_LEGS = 500  # Jira refuses a body past its text limit; the count line still names every leg
+MAX_BODY_REFS = 200  # the same cap for the ticket and PR lists; a "not listed" line counts the cut
 
 CLASS = re.compile(r"^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$")
 SUB = r"[A-Za-z0-9._:+-]{1,80}"
@@ -194,6 +195,7 @@ def check_body(text, table=None):
         label, val = (m.group(1), m.group(2)) if m else (None, None)
         good = {"class": lambda v: CLASS.match(v), "legs": lambda v: LEGS.match(v),
                 "tickets": lambda v: KEYS.match(v), "PRs": lambda v: PRS.match(v),
+                "not listed": lambda v: re.match(r"^\d+ more tickets or PRs, see the digest$", v),
                 "route": lambda v: v in rows, "playbook entry names the hook": lambda v: v in ("yes", "no")}
         if label and re.match(r"^distinct legs \(\d+ d\)$", label):
             ok = re.match(r"^\d+$", val)
@@ -217,8 +219,12 @@ def build_body(table, t, cls, legs, counted, update):
            "- distinct legs (%d d): %d" % (table["window_days"], len(legs)),
            "- legs: %s" % ", ".join(legs[:MAX_BODY_LEGS])]
     if not update:
+        cut = max(len(tickets) - MAX_BODY_REFS, 0) + max(len(prs) - MAX_BODY_REFS, 0)
+        tickets, prs = tickets[:MAX_BODY_REFS], prs[:MAX_BODY_REFS]
         out += ["- tickets: %s" % (", ".join(tickets) or "none"),
                 "- PRs: %s" % (", ".join("#%d" % n for n in prs) or "none")]
+        if cut:
+            out.append("- not listed: %d more tickets or PRs, see the digest" % cut)
         if t.get("playbook"):
             hook = cls.partition("/")[2]
             try:
