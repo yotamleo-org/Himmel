@@ -1427,7 +1427,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         'v': version,
         'done': done,
         'merged': merged,
-        'tickets': [[k, opn[k]['sn'], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
+        'tickets': [[k, opn[k]['sn'], ecol[k], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
                     for k in sorted(opn)],
         'chains': [[ch['name'], [[st.get('key', ''), st.get('label', ''), step_state(st), st.get('pr'), st.get('owner')]
                                  for st in ch['steps']]] for ch in chains],
@@ -1480,7 +1480,7 @@ a{{color:var(--acc);text-decoration:none}}
 </style></head><body>
 <h1>{v} tracker</h1>
 <div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, except that a card with an open PR follows
-that PR's CI (red In Progress, running or green IN CI) and says so; each column is split into the
+that PR's CI (red In Progress, running or green IN CI, except that green keeps a card Jira holds In Review) and says so; each column is split into the
 approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
 state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}</div>
 {chains}

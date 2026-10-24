@@ -1101,7 +1101,7 @@ vfp_is() {
 }
 sed 's/"conclusion":"SUCCESS"/"conclusion":"FAILURE"/' "$W/vp-prs.json" > "$W/vp-prs-red.json"
 V2PRS="$W/vp-prs-red.json" v2render >/dev/null
-vfp_is same 'a CI badge change leaves the focus fingerprint alone (HIMMEL-6829)'
+vfp_is differ 'a CI change that moves a card to another column moves the focus fingerprint (HIMMEL-6829)'
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","last_event_ts":"2026-01-01T00:00:00Z","prs":{"500":{"head":"abc1234def5678","ci":"green","red_latch":false,"open":true}}}\n' > "$wk/HIMMEL-401.json"
 v2render >/dev/null
 vfp_is same 'a worker CI or age change leaves the focus fingerprint alone (HIMMEL-6829)'
