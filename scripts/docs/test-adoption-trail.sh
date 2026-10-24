@@ -48,6 +48,8 @@ DATA="$ROOT/site/src/trail/levels.json"
 RENDER="$ROOT/site/src/trail/render.mjs"
 DOCS_README="$ROOT/docs/README.md"
 REGISTRY="$ROOT/scripts/himmelctl/lib/cadence-registry.json"
+# shellcheck source=../lib/timeout-bin.sh
+. "$ROOT/scripts/lib/timeout-bin.sh"
 CATALOG="$ROOT/scripts/lanes/plugin-profiles.json"
 MANIFEST="$ROOT/scripts/install/manifest.json"
 ALLOW="$ROOT/site/allowlist.txt"
@@ -389,8 +391,9 @@ fi
 # Only code may scroll sideways, inside its own box; the page must not hide a
 # too-wide document by clipping it either.
 css="$(perl -0777 -ne 'print $1 while /<style\b[^>]*>(.*?)<\/style>/gs' "$PAGE")"
-if printf '%s' "$css" | grep -q -E 'pre[^{]*\{[^}]*overflow-x:[[:space:]]*auto' \
-   && ! printf '%s' "$css" | grep -q -E '(^|[},])[[:space:]]*(html|body)[[:space:]]*(,[^{]*)?\{[^}]*overflow(-x)?:[[:space:]]*(hidden|clip)'; then
+pre_scroll="$(printf '%s' "$css" | grep -E 'pre[^{]*\{[^}]*overflow-x:[[:space:]]*auto')"
+doc_clip="$(printf '%s' "$css" | grep -E '(^|[},])[[:space:]]*(html|body)[[:space:]]*(,[^{]*)?\{[^}]*overflow(-x)?:[[:space:]]*(hidden|clip)')"
+if [ -n "$pre_scroll" ] && [ -z "$doc_clip" ]; then
   ok "the CSS scrolls code inside its box and does not clip the document"
 else
   bad "the CSS must give pre overflow-x:auto and must not set overflow hidden/clip on html or body"
@@ -415,7 +418,7 @@ else
     else
       cp "$PAGE" "$tmp/w.html"
     fi
-    sw="$(timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --user-data-dir="$tmp/chrome" --virtual-time-budget=3000 --dump-dom "file://$tmp/wrap.html" 2>/dev/null | grep -o -E 'data-sw="[0-9]+/[0-9]+"' | grep -o -E '[0-9]+/[0-9]+')"
+    sw="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 60} "$chrome" --headless --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --user-data-dir="$tmp/chrome" --virtual-time-budget=3000 --dump-dom "file://$tmp/wrap.html" 2>/dev/null | grep -o -E 'data-sw="[0-9]+/[0-9]+"' | grep -o -E '[0-9]+/[0-9]+')"
     if [ -z "$sw" ]; then
       bad "360 px ($mode): the headless measurement returned nothing"
     elif [ "${sw%/*}" -le "${sw#*/}" ]; then
