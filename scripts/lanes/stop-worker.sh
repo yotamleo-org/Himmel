@@ -141,6 +141,15 @@ else
     fi
     BRIDGE_ROOT_DIR="$HOME/.claude/handover/bridge"
 fi
+# claudex session roots (current + legacy fallback) come from the shared resolver
+if [ -n "${STOP_WORKER_BRIDGE_ROOT_OVERRIDE:-}" ]; then
+    resolver_args=(--bridge-root "$BRIDGE_ROOT_DIR")
+else
+    resolver_args=(--no-env)
+fi
+CLAUDEX_ROOTS=()
+while read -r d; do [ -n "$d" ] && CLAUDEX_ROOTS+=("$d"); done < <(node "$SCRIPT_DIR/claudex-session-root.mjs" all "${resolver_args[@]}")
+[ "${#CLAUDEX_ROOTS[@]}" -gt 0 ] || CLAUDEX_ROOTS=("$BRIDGE_ROOT_DIR/claudex-sessions")
 
 # meta_field <meta.json> <key> -- read one top-level scalar. node is already a
 # hard dependency of the lane stack (the spawners are TypeScript), so this
@@ -161,7 +170,7 @@ try {
 # registry knows about, across both lanes.
 each_session_meta() {
     local root d
-    for root in "$BRIDGE_ROOT_DIR/glm-sessions" "$BRIDGE_ROOT_DIR/claudex-sessions"; do
+    for root in "$BRIDGE_ROOT_DIR/glm-sessions" "${CLAUDEX_ROOTS[@]}"; do
         [ -d "$root" ] || continue
         for d in "$root"/*/; do
             [ -d "$d" ] || continue

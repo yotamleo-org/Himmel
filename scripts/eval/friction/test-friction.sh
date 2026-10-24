@@ -73,10 +73,11 @@ python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 \
 eq "the classes run exits 0" "$?" "0"
 eq "ci-wait stays out of the per-class table" "$(python3 -I -c 'import json,sys; print(sum(1 for c in json.load(open(sys.argv[1]))["by_class"] if c["source"]=="ci-wait"))' "$OUT3")" "0"
 field3() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$OUT3" "$1"; }
-while IFS="$(printf '\t')" read -r src cls verdict; do
-  eq "named class $src / $cls" \
-    "$(field3 '[sorted(c["verdicts"]) for c in d["by_class"] if c["source"]=="'"$src"'" and c["class"]=="'"$cls"'"]')" "[['$verdict']]"
-done <"$FIX/classes.tsv"
+sort "$FIX/classes.tsv" | uniq -c | sed 's/^ *\([0-9][0-9]*\) /\1	/' >"$TMP/classes.counts"
+while IFS="$(printf '\t')" read -r n src cls verdict; do
+  eq "named class $src / $cls x$n" \
+    "$(field3 '[[c["count"], c["verdicts"]] for c in d["by_class"] if c["source"]=="'"$src"'" and c["class"]=="'"$cls"'"]')" "[[$n, {'$verdict': $n}]]"
+done <"$TMP/classes.counts"
 NROWS="$(wc -l <"$FIX/classes.tsv" | tr -d ' ')"
 NUNC="$(grep -c "$(printf '\t')unclear\$" "$FIX/classes.tsv")"
 eq "no other-* catch-all class from the fixtures" \

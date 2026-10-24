@@ -1124,3 +1124,4 @@ scripts/lib/test-cr-first-release.sh	pr	trust-path
 scripts/himmelctl/test/test-install-ui-handoff.sh	pr	guard
 scripts/guardrails/test-settings-waiter-allow.sh	pr	guard
 scripts/ci/test-billed-optin.sh	pr	trust-path
+scripts/ci/test-ci-go-gate.sh	pr	trust-path

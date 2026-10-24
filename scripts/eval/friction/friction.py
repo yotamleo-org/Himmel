@@ -32,6 +32,14 @@ DEFAULT_PROJECTS = [HOME + '/.claude/projects', HOME + '/.claude-codex/projects'
 DEFAULT_DOCS = os.environ.get('HANDOVER_DIR', HOME + '/Documents/luna/handovers') + '/' + os.environ.get('USER_SLUG', 'yotamleo') + '/himmel'
 RECOVERY_CAP_S = 1800
 
+# git run as a command (line start or after a separator, past VAR= and wrapper words), not git as a search term
+GIT_INVOCATION = (r'(?:^|[;&|(`]|\b(?:then|do|else|if|while))\s*'
+                  r'(?:(?:env|time|timeout|xargs|sudo|rtk|command|exec|nice)(?:\s+-{1,2}\w[\w-]*(?:[= ]\w+)?)*'
+                  r'(?:\s+\d+(?:\.\d+)?[smhd]?)?\s+|\w+=\S*\s+)*git\b')
+
+# a heredoc opener not followed by a redirect to a settings file (cat <<EOF > settings.json writes it)
+HEREDOC_NOT_TO_SETTINGS = r"(?!-?\s*['\"]?\w+['\"]?\s*>{1,2}\s*\S*settings(?:\.local)?\.json)"
+
 # (regex on reason text, class slug, verdict, evidence) per hook; first match wins.
 HOOK_CLASSES = {
     'guard-pr-check-literal': [
@@ -45,7 +53,7 @@ HOOK_CLASSES = {
          'output redirect beside a guarded script'),
         (r'changes directory, so the relative path', 'cd-before-relative-gate-path', 'true-positive',
          'leg cd-ed before a relative gate path; the preface forbids cd && (run the literal relative shape)'),
-        (r'(?s)^(?:(?!\bgit\b|\(HIMMEL-).)*\(HIMMEL-[^)]*\): git execution/config options or ambiguous option-value',
+        (r'(?s)^(?:(?!' + GIT_INVOCATION + r'|\(HIMMEL-).)*\(HIMMEL-[^)]*\): git execution/config options or ambiguous option-value',
          'git-option-beside-gate-mention', 'over-deny',
          'read-only grep/sed/loop that names a gate script; the guard cannot prove the mention is a pathspec'),
         (r'(?s)^(?!(?:(?!\(HIMMEL-).)*(?:--output|\s-c\s|\bhook\b|\barchive\b|--open-files-in-pager|--ext-diff|'
@@ -102,7 +110,7 @@ HOOK_CLASSES = {
          'over-deny', 'the luna vault is committed on main by design; its handover docs are written in place'),
         (r'on main/master\.\s+\(command:\s+cd\s+\S*/\.claude/projects/', 'claude-projects-write-read-as-main',
          'over-deny', 'a write under ~/.claude/projects (memory, tool results) is no repo write'),
-        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*(?:[>;&]|\|(?!\s*(?:head|tail|wc|sort(?![^|(]*\s(?:-o|--output)\b)|uniq|cut|grep|rg|tr)\b)))|'
+        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*(?:[>;&]|\|(?!\s*(?:head|tail|wc|sort(?![^|(]*\s(?:-[A-Za-z]*o|--output\b))|uniq|cut|grep|rg|tr)\b)))|'
          r'timeout \d+ (?:bash|sh) -c .until)',
          'read-only-command-read-as-write', 'over-deny', 'grep/rg/printf/until-poll read as write-shaped'),
         (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
@@ -137,7 +145,9 @@ HOOK_CLASSES = {
         (r'refused \(process termination', 'process-termination', 'true-positive', 'kill/pkill of a process'),
         (r'refused \(git core\.hooksPath', 'git-hookspath-override', 'true-positive', 'bypasses the repo hooks'),
         (r'refused \(force push', 'force-push', 'true-positive', 'history rewrite on the remote'),
-        (r'refused \(([^)]+)', 'destructive-%s', 'true-positive', 'destructive verb the hook names; by design'),
+        (r'refused \(git filter-branch', 'destructive-git-filter-branch', 'true-positive', 'history rewrite'),
+        (r'refused \(([^)]+)', 'destructive-%s', 'unclear',
+         'a destructive verb this table has not classified yet; name it here once its intent is known'),
         (r'.', 'destructive-command', 'unclear', 'other rm/reset style command'),
     ],
     'block-bare-qmd-query': [(r'.', 'bare-qmd-query', 'true-positive', 'qmd query without -c scope')],
@@ -146,10 +156,12 @@ HOOK_CLASSES = {
          "a cp/mv/tee/tar aimed at the primary checkout's .claude/ directory"),
         (r'an interpreter \(python/node/perl/ruby\) both reads the home directory', 'interpreter-reads-home-and-writes',
          'unclear', 'an interpreter that expands HOME and writes a file; harmless or builds ~/.claude/settings.json'),
-        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*?\bcat\b[^<|;&]*<<',
+        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*?\bcat\b(?:(?!settings(?:\.local)?\.json)[^<|;&])*<<'
+         + HEREDOC_NOT_TO_SETTINGS,
          'settings-mention-in-heredoc', 'over-deny',
          'a cat heredoc written to a file whose body merely mentions settings.json (the guard names this case itself)'),
-        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*<<', 'settings-in-executed-heredoc',
+        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*<<' + HEREDOC_NOT_TO_SETTINGS,
+         'settings-in-executed-heredoc',
          'unclear', 'a heredoc fed to an interpreter that may or may not write settings.json'),
         (r'names a live settings', 'live-settings-named', 'true-positive',
          'a command naming the primary checkout or HOME settings file'),

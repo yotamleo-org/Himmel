@@ -1126,7 +1126,11 @@ resolves its key from). Own-branch mode mints `claudex/<slug>`
 shared-branch mode (reuses `scripts/lib/shared-branch-lock.sh` under the
 `"codex"` lane name, serializing writers onto an existing PR branch — the
 same iterative review-fix round pattern as GLM's shared mode). Sessions live
-under `<BRIDGE_ROOT>/claudex-sessions/` (a sibling of `glm-sessions/`);
+under `~/.himmel/bridge/claudex-sessions/` (mode 0700, outside any `.claude`
+directory because Claude Code denies a worker's Write there), or under
+`<BRIDGE_ROOT>/claudex-sessions/` when `BRIDGE_ROOT` is set; readers resolve it
+through `scripts/lanes/claudex-session-root.mjs` and still look in the old
+`~/.claude/handover/bridge/claudex-sessions/` for one release.
 `meta.json` records `lane: "codex"`.
 
 ```

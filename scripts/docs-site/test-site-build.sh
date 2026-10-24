@@ -290,7 +290,7 @@ for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
 
-# --- IA v4: sidebar groups equal the F1 list, hero Home with the F2 copy and CTA
+# --- IA: sidebar groups equal the F1 list and the v5 frame 1 tree, hero Home with the F2 copy and CTA
 groups=$(node --input-type=module -e "
 import fs from 'node:fs';
 const html = fs.readFileSync(process.argv[1], 'utf8');
@@ -303,6 +303,45 @@ for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/
 }
 process.stdout.write(out.join('|'));" "$(route_of getting-started.md)") || groups='<node failed>'
 check "IA: top-level sidebar groups equal the F1 list (got: $groups)" is "$groups" "Get started|Use it|Run many sessions|Reference|For contributors"
+# the built sidebar, one line per group and per entry in it: a group label starts the line, an entry is indented two spaces
+sidebar_of() { # sidebar_of <page.html> [<group label>]: with a group, that group's entries only, unindented
+  node --input-type=module -e "
+import fs from 'node:fs';
+const html = fs.readFileSync(process.argv[1], 'utf8');
+const want = process.argv[2];
+const text = (s) => s.replace(/&amp;/g, '&').replace(/&#39;/g, \"'\").replace(/&quot;/g, '\"');
+let depth = 0, group = '', inside = 0;
+const out = [];
+for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/?)ul\b|<span class=\"large[^\"]*\">([^<]*)<|<a href[^>]*><span[^>]*>([^<]*)</g)) {
+  const label = m[2] ?? m[3];
+  if (label === undefined) {
+    depth += m[1] ? -1 : 1;
+    if (inside && depth < inside) inside = 0;
+    if (depth === 0) break;
+    continue;
+  }
+  if (want === undefined) {
+    if (depth === 1) out.push(text(label));
+    else if (depth === 2) out.push('  ' + text(label));
+  } else if (inside && depth === inside) out.push(text(label));
+  else if (m[2] !== undefined && text(label) === want) inside = depth + 1;
+}
+process.stdout.write(out.join('\n') + '\n');" "$@"
+}
+frame1=$(grep -vE '^#|\[pending\]$' "$repo/scripts/docs-site/sidebar-v5-frame1.txt")
+got_nav=$(sidebar_of "$(route_of getting-started.md)") || got_nav='<node failed>'
+if [ "$got_nav" = "$frame1" ]; then ok "IA v5: the sidebar equals frame 1, pending pages left out"; else
+  ko "IA v5: the sidebar equals frame 1, pending pages left out"
+  diff <(printf '%s\n' "$frame1") <(printf '%s\n' "$got_nav") | sed 's/^/  /'
+fi
+check "control: sidebar_of read a sidebar" test "$(printf '%s\n' "$got_nav" | wc -l)" -gt 20
+check "control: the frame 1 fixture differs from a sidebar with one entry moved" fails is "$frame1" "$(printf '%s\n' "$frame1" | sed '2{h;d};3G')"
+check "IA v5: Plugins lists himmel-guard and handover only" is "$(sidebar_of "$(route_of getting-started.md)" Plugins | paste -sd'|')" "himmel-guard|handover"
+check "IA v5: Internals… is collapsed on a page outside it" grep -qE '<details class="[^"]*"><summary class="[^"]*"><span class="group-label[^"]*"><span class="large[^"]*">Internals…<' "$(route_of getting-started.md)"
+check "control: an open group does not match the collapsed pattern" fails grep -qE '<details class="[^"]*"><summary class="[^"]*"><span class="group-label[^"]*"><span class="large[^"]*">Get started<' "$(route_of getting-started.md)"
+for r in setup/new-machine launchers setup/codex setup/cli-proxy-lane hermes-runbook setup/cloud-environment jarvis-subsystems himmel-bus voice orchestration-patterns security/npm-policy security/python-policy tool-adoption/rubric tool-adoption/registry tool-adoption/telemetry tool-adoption/lane-adoption-playbook; do
+  check "IA v5: /$r/, moved under Internals…, still resolves at its old URL" test -f "$dist/$r/index.html"
+done
 home="$dist/index.html"
 check "IA: Home is the hero page, not the docs map" grep -q 'Let Claude Code work on its own' "$home"
 check "IA: Home carries the Try it on a throwaway project CTA" grep -q 'Try it on a throwaway project' "$home"

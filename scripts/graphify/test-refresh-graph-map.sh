@@ -4377,5 +4377,54 @@ out=$(mg_run mgs "$MGS" --merge-into-live); rc=$?
   && pass "T-merge a genuinely shrunken merge result still trips the shrink guard" \
   || fail "T-merge shrunk expected the shrink-guard refusal with the live graph kept (rc=$rc nodes=$(mg_count "$MGS/graphify-out/graph.json")): $out"
 
+# --- T-scope: a deliberate ignore-rule change (a stamp of the effective rules, kept in the out dir)
+# lets the shrink guard count only the prior nodes still in scope, once; the same drop with no rule
+# change, or a loss inside the scope, is still refused. Vault shape: the stub emits one node per md file. ---
+sc_stamp() { python3 -c 'import hashlib,sys; print(hashlib.sha256("\n".join(sorted(set(sys.argv[1:]))).encode("utf-8")).hexdigest())' "$@"; }
+sc_corpus() { # <dir> <notes md files> <prior notes nodes> — notes/ + 4 sessions/ files, prior graph = notes nodes + 4 sessions nodes
+  local d="$1" nf="$2" pn="$3" i
+  mkdir -p "$d/notes" "$d/sessions" "$d/graphify-out"
+  for i in $(seq 1 "$nf"); do printf '# n%s\n' "$i" > "$d/notes/n$i.md"; done
+  for i in 1 2 3 4; do printf '# s%s\n' "$i" > "$d/sessions/s$i.md"; done
+  printf 'sessions\n' > "$d/.graphify-corpus-ignore"
+  python3 - "$d/graphify-out/graph.json" "$pn" <<'PY'
+import json, sys
+pn = int(sys.argv[2])
+nodes = [{"id": "n%d" % i, "label": "n%d" % i, "source_file": "notes/n%d.md" % i} for i in range(1, pn + 1)]
+nodes += [{"id": "s%d" % i, "label": "s%d" % i, "source_file": "sessions/s%d.md" % i} for i in range(1, 5)]
+json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
+PY
+}
+SCP="$WS/sc-pos"; sc_corpus "$SCP" 6 6
+out=$(mg_run scp "$SCP"); rc=$?
+{ [ "$rc" -eq 0 ] && [ "$(mg_count "$SCP/graphify-out/graph.json")" = 6 ]; } \
+  && pass "T-scope a deliberate ignore addition that drops 40 percent promotes (10 -> 6 nodes)" \
+  || fail "T-scope positive expected rc 0 and 6 nodes (rc=$rc nodes=$(mg_count "$SCP/graphify-out/graph.json")): $out"
+grep -q "area sessions: nodes 4 -> 0" <<<"$out" \
+  && pass "T-scope the per-area drop is logged" || fail "T-scope per-area drop line missing: $out"
+[ "$(cat "$SCP/graphify-out/.graphify_scope_hash" 2>/dev/null)" = "$(sc_stamp sessions)" ] \
+  && pass "T-scope the promote stamps the hash of the effective ignore rules" || fail "T-scope scope hash stamp missing or wrong"
+
+# once: the stamp now matches, so a later drop inside the scope is refused again
+sc_corpus "$SCP" 6 12; sc_stamp sessions > "$SCP/graphify-out/.graphify_scope_hash"
+out=$(mg_run scp "$SCP"); rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$SCP/graphify-out/graph.json")" = 16 ]; } \
+  && pass "T-scope the in-scope relief is once: with the stamp current a 12 -> 6 loss is refused" \
+  || fail "T-scope once expected the shrink-guard refusal (rc=$rc): $out"
+
+# negative control: the same 40 percent drop with the rules unchanged since the last promote is refused
+SCN="$WS/sc-neg"; sc_corpus "$SCN" 6 6; sc_stamp sessions > "$SCN/graphify-out/.graphify_scope_hash"
+out=$(mg_run scn "$SCN"); rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$SCN/graphify-out/graph.json")" = 10 ]; } \
+  && pass "T-scope control: the same drop with no rule change is refused and the live graph kept" \
+  || fail "T-scope control expected the shrink-guard refusal (rc=$rc): $out"
+
+# a rule change does not excuse a loss inside the scope: notes/ lost 3 of 6 files too
+SCL="$WS/sc-loss"; sc_corpus "$SCL" 3 6
+out=$(mg_run scl "$SCL"); rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$SCL/graphify-out/graph.json")" = 10 ]; } \
+  && pass "T-scope control: a rule change still refuses a loss among the in-scope sources" \
+  || fail "T-scope in-scope loss expected the shrink-guard refusal (rc=$rc): $out"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 if [ "$SKIPS" -ne 0 ]; then echo "ALL PASS ($SKIPS skipped)"; else echo "ALL PASS"; fi
