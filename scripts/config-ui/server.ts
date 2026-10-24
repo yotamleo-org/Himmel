@@ -464,6 +464,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
       if (req.method === "GET" && path === "/api/feed") {
+        if (new URL(req.url).searchParams.get("refresh") === "1") feedLast = null; // the refresh button waits for a probe, never the cached report
         return feedRoute();
       }
       if (path === "/api/tool-health") {
@@ -477,7 +478,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/legs.sh"), env, opts.legsTimeoutMs),
           readMonitoring(env),
         ]);
-        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, env) }));
+        let raw = "";
+        try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
+        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...env }) })); // as the CLI: the checkout's .env, the process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {

@@ -151,3 +151,13 @@ test("a refresh started before an action never becomes the cached report after i
   const after = await untilFeed(port);
   expect(after.j.seq).toBeGreaterThan(actedAt());
 }, 20_000);
+
+test("?refresh=1 re-probes past the 30 s cache and answers the new report; a plain GET inside it still gets the cached one", async () => {
+  const { port, runs } = boot({}, { feedWaitMs: 5000 });
+  const get = async (q = "") => (await fetch(`http://127.0.0.1:${port}/api/feed${q}`, { headers: H })).json();
+  expect((await get()).stubRun).toBe(1);
+  expect((await get()).stubRun).toBe(1); // inside the cache window
+  expect((await get("?refresh=1")).stubRun).toBe(2);
+  expect(runs()).toBe(2);
+  expect((await get()).stubRun).toBe(2); // the forced report is now the cached one
+});
