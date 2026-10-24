@@ -23,5 +23,5 @@ links:
 
 Remove the stale exemption for a deleted proxy-lane script (pwsh -file -restart/-stop) from the destructive-command guard, its marketplace mirror and its test.
 1. Delete the .ps1 exemption rows in scripts/hooks/block-destructive-commands.sh and its marketplace/ mirror.
-2. Delete the matching rows in scripts/hooks/test-block-destructive-commands.sh.
-Files: scripts/hooks/block-destructive-commands.sh:246-257, its marketplace mirror, scripts/hooks/test-block-destructive-commands.sh:226-266, .gitleaks.toml. Hook edit: launch with the hook-integrity bypass flag. Trust path: yes (judge before GO). Merge after PR 3020.
+2. Delete the matching rows in scripts/hooks/test-block-destructive-commands-a.sh.
+Files: scripts/hooks/block-destructive-commands.sh:246-257, its marketplace mirror, scripts/hooks/test-block-destructive-commands-a.sh, .gitleaks.toml. Hook edit: launch with the hook-integrity bypass flag. Trust path: yes (judge before GO). Merge after PR 3020.
