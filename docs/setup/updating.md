@@ -357,11 +357,11 @@ The step is `scripts/setup/migrate-env.sh`;
 `bash ~/himmel/scripts/setup/migrate-env.sh --dry-run` prints the plan
 without the rest of the update. It prints key names only, never values.
 
-The update always runs the dry run first: it prints the plan and the backup
-path, then asks `Move these keys now (backup first)? [y/N]`. Only `y` moves
-anything; any other answer skips the step and prints the command to run
-later. With no terminal to answer at (piped input, a cron job) it moves
-nothing and prints that command.
+An apply, from the update or run by hand, always prints the plan and the
+backup path first, then asks `Move these keys now (backup first)? [y/N]`.
+Only `y` moves anything; any other answer, Enter included, skips the step and
+prints the command to run later. With no terminal to answer at (piped input,
+a cron job, a hook) it moves nothing, prints that command and exits 3.
 
 1. **Plan.** One line per `.env` key: a behaviour key goes to
    `~/.himmel/himmel.conf`, a gate-policy key to `~/.himmel/config.json`

@@ -49,7 +49,7 @@ has "a behaviour key goes to himmel.conf" "  HANDOVER_DIR → ~/.himmel/himmel.c
 has "a policy key goes to config.json" "  CR_REQUIRE_CROSS_MODEL → ~/.himmel/config.json .policy" "$out"
 has "a secret something reads stays" "  JIRA_API_TOKEN stays (read by " "$out"
 has "a key that is not himmel's stays" "  NOT_READ_BY_HIMMEL_ZZQ stays (not himmel's, left in place)" "$out"
-has "the dry run names the backup it will take" "backup: the apply first copies .env to $HOME/.himmel/env-backups/env." "$out"
+has "the dry run names the backup it will take" "backup: the apply first copies .env (mode 600) to $HOME/.himmel/env-backups/env." "$out"
 no_canary "the dry run prints no value" "$out"
 if cmp -s "$TMP/real/.env" "$TMP/real.orig" && [ ! -e "$HOME/.himmel" ] && [ ! -e "$HOME/.config" ]; then
     pass "the dry run writes nothing"
@@ -77,6 +77,21 @@ if ! node -e 'process.exit(typeof require("node:module").stripTypeScriptTypes ==
     [ "$FAILED" -eq 0 ] || { echo "test-migrate-env: $FAILED FAILED"; exit 1; }
     exit 0
 fi
+# The apply asks y/N at a terminal: util-linux script gives it one, and
+# timeout bounds a run that never gets its answer.
+if ! script -qec true /dev/null >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+    echo "SKIP apply rows: no util-linux script and timeout for a terminal"
+    [ "$FAILED" -eq 0 ] || { echo "test-migrate-env: $FAILED FAILED"; exit 1; }
+    exit 0
+fi
+at_tty() {  # <answer> <command>: run it at a terminal, typing <answer>; sets out and rc
+    printf '%s\n' "$1" | SHELL=$(command -v bash) timeout 120 script -qec "$2" /dev/null > "$TMP/tty.out" 2>&1
+    rc=$?
+    out=$(tr -d '\r' < "$TMP/tty.out")
+}
+apply_tty() {  # <answer> [<prefix>]: the apply on the station .env, at a terminal
+    at_tty "$1" "${2:-}bash $(printf '%q --env %q' "$SCRIPT" "$TMP/st/.env")"
+}
 if ! strip_ts "$REPO/scripts/jira/src/handover-root.ts" "$FX/scripts/jira/dist/handover-root.js" \
     || ! strip_ts "$REPO/scripts/jira/src/release/paths.ts" "$FX/scripts/jira/dist/release/paths.js"; then
     echo "FAIL the Jira reader sources no longer strip to JavaScript"
@@ -108,13 +123,38 @@ fixture_env() {  # a fresh station-shaped .env, mode 600, and no config files
     printf '# station-ops reads this one\nKEEP_ME\n' > "$HOME/.himmel/env-keep.txt"
 }
 
+# --- 2a. The apply moves nothing without a yes typed at a terminal ---
+fixture_env
+out=$(bash "$SCRIPT" --env "$TMP/st/.env" < /dev/null 2>&1)
+rc=$?
+if [ "$rc" = 3 ]; then pass "an apply with no terminal is refused (exit 3)"; else fail "an apply with no terminal exited $rc"; fi
+has "the no-terminal refusal says why" "no terminal to confirm the move at; nothing written." "$out"
+has "the no-terminal refusal names the operator command" "bash $SCRIPT --env $TMP/st/.env" "$out"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig" && [ ! -e "$HOME/.himmel/env-backups" ] && [ ! -e "$HOME/.himmel/himmel.conf" ]; then
+    pass "the no-terminal refusal leaves .env byte-identical and writes nothing"
+else
+    fail "the no-terminal refusal wrote something"
+fi
+for answer in n ""; do
+    fixture_env
+    apply_tty "$answer"
+    if [ "$rc" = 3 ]; then pass "the answer '$answer' declines (exit 3)"; else fail "the answer '$answer' exited $rc"; fi
+    has "the apply asks before it moves" "Move these keys now (backup first)? [y/N]" "$out"
+    has "a declined apply names the command for later" "skipped: nothing written." "$out"
+    if cmp -s "$TMP/st/.env" "$TMP/st.orig" && [ ! -e "$HOME/.himmel/env-backups" ]; then
+        pass "the answer '$answer' leaves .env byte-identical"
+    else
+        fail "the answer '$answer' changed something"
+    fi
+done
+
 # --- 2. A clean apply moves every key, backs up first, and verifies ---
 fixture_env
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
-rc=$?
+apply_tty y
 if [ "$rc" = 0 ]; then pass "apply exits 0"; else fail "apply exited $rc: $out"; fi
 no_canary "apply prints no value" "$out"
-backup=$(printf '%s\n' "$out" | sed -n 's/^backup: \(.*\) (mode 600)$/\1/p')
+# The prompt ends its line only when the answer is typed, so match mid-line.
+backup=$(printf '%s\n' "$out" | sed -n 's/.*backup: \(\/.*\) (mode 600)$/\1/p')
 if [ -n "$backup" ] && cmp -s "$backup" "$TMP/st.orig"; then pass "the backup holds the original .env"; else fail "no backup matching the original .env (path '$backup')"; fi
 if [ -n "$backup" ] && [ "$(mode_of "$backup")" = 600 ]; then pass "the backup is mode 600"; else fail "the backup mode is not 600"; fi
 case "$backup" in "$TMP/st/"*|"") fail "the backup is inside the checkout or missing" ;; *) pass "the backup is outside the checkout" ;; esac
@@ -150,7 +190,7 @@ has "the moved key still loads, without a deprecation notice" "[$TMP/handovers]"
 lacks "no deprecation notice after the move" "DEPRECATED" "$got"
 
 # A second run has nothing left to move and takes no new backup.
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+apply_tty y
 has "a second run moves nothing" "nothing to move" "$out"
 n=$(find "$HOME/.himmel/env-backups" -type f | wc -l | tr -d ' ')
 if [ "$n" = 1 ]; then pass "a second run takes no backup"; else fail "a second run left $n backups"; fi
@@ -159,7 +199,7 @@ if [ "$n" = 1 ]; then pass "a second run takes no backup"; else fail "a second r
 rm -rf "$HOME/.himmel" "$HOME/.config"
 printf 'HANDOVER_DIR=%s\n=orphan-line\n' "$TMP/handovers" > "$TMP/st/.env"
 chmod 600 "$TMP/st/.env"
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+apply_tty y
 envnow=$(cat "$TMP/st/.env")
 lacks "HANDOVER_DIR moves without USER_SLUG" "HANDOVER_DIR=" "$envnow"
 has "a move without USER_SLUG still checks the handover root" "verified: load_dotenv, load_policy, jira config reader, jira handover root, lanes resolve" "$out"
@@ -171,7 +211,7 @@ mkdir -p "$HOME/.himmel"
 printf 'HANDOVER_DIR\n' > "$HOME/.himmel/env-keep.txt"
 printf 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/handovers" "$(canary slug)" > "$TMP/st/.env"
 chmod 600 "$TMP/st/.env"
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+apply_tty y
 envnow=$(cat "$TMP/st/.env")
 lacks "a behaviour key on the keep-list still moves" "HANDOVER_DIR=" "$envnow"
 lacks "the keep-list does not split the behaviour keys" "MISMATCH" "$out"
@@ -182,7 +222,7 @@ printf 'HANDOVER_DIR=%s\nKEEP_LINE=1\n' "$TMP/handovers" > "$TMP/st/env.target"
 chmod 600 "$TMP/st/env.target"
 rm -f "$TMP/st/.env"
 ln -s "$TMP/st/env.target" "$TMP/st/.env"
-bash "$SCRIPT" --env "$TMP/st/.env" > /dev/null 2>&1
+apply_tty y
 if [ -L "$TMP/st/.env" ]; then pass "a symlinked .env stays a link"; else fail "the symlinked .env was replaced by a file"; fi
 lacks "the link's target lost the moved line" "HANDOVER_DIR=" "$(cat "$TMP/st/env.target")"
 n=$(find "$TMP/st" -name '.env.migrate.*' | wc -l | tr -d ' ')
@@ -204,8 +244,7 @@ export function handoverRoot(env = process.env, dotenvPath) {
   return behaviourKey('HANDOVER_DIR', env, dotenvPath) || '/nowhere/handovers';
 }
 EOF
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
-rc=$?
+apply_tty y
 if [ "$rc" != 0 ]; then pass "a .env-only reader fails the migration"; else fail "a .env-only reader passed verify"; fi
 has "the failing reader and key are named" "MISMATCH HANDOVER_DIR (jira handover root)" "$out"
 has "the user is told no line was removed" "no lines were removed from .env" "$out"
@@ -215,7 +254,7 @@ no_canary "the failed verify prints no value" "$out"
 fixture_env
 printf '%s\n' 'export function behaviourKey() { throw new Error("broken"); }' \
     'export function handoverRoot() { throw new Error("broken"); }' > "$FX/scripts/jira/dist/handover-root.js"
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+apply_tty y
 has "a reader that throws fails the migration" "MISMATCH HANDOVER_DIR (jira handover root, the reader threw)" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "a throwing reader leaves .env untouched"; else fail "a throwing reader changed .env"; fi
 cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
@@ -223,8 +262,7 @@ cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
 # --- 4. A policy value that would change aborts ---
 fixture_env
 printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
-rc=$?
+apply_tty y
 if [ "$rc" != 0 ]; then pass "a policy value that would change aborts"; else fail "a policy change from 1 to 0 passed"; fi
 has "the changed policy key is named" "MISMATCH CR_REQUIRE_CROSS_MODEL (load_policy)" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "the policy abort leaves .env untouched"; else fail "the policy abort changed .env"; fi
@@ -233,19 +271,18 @@ if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "the policy abort leaves .env
 fixture_env
 cp "$FX/scripts/lib/load-dotenv.sh" "$TMP/load-dotenv.good.sh"
 sed 's/out += key + "=" + s + "\\n";//' "$TMP/load-dotenv.good.sh" > "$FX/scripts/lib/load-dotenv.sh"
-out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
-rc=$?
+apply_tty y
 if [ "$rc" != 0 ]; then pass "a policy value missing after the move aborts"; else fail "a lost policy value passed"; fi
 has "the lost policy key is named" "MISMATCH CR_REQUIRE_CROSS_MODEL (load_policy)" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "the lost-policy abort leaves .env untouched"; else fail "the lost-policy abort changed .env"; fi
 cp "$TMP/load-dotenv.good.sh" "$FX/scripts/lib/load-dotenv.sh"
 
-# --- 6. Inside an agent session the apply refuses and names the command ---
+# --- 6. Inside an agent session the apply refuses, even at a terminal ---
 fixture_env
 rm -rf "$HOME/.himmel"
-out=$(CLAUDECODE=1 bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
-rc=$?
+apply_tty y "CLAUDECODE=1 "
 if [ "$rc" = 3 ]; then pass "an agent session cannot apply (exit 3)"; else fail "an agent session apply exited $rc"; fi
+has "the refusal names the agent session" "an agent session cannot write ~/.himmel/config.json" "$out"
 has "the refusal names the operator command" "bash $SCRIPT" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig" && [ ! -e "$HOME/.himmel" ]; then pass "the refusal writes nothing"; else fail "the refusal wrote something"; fi
 
@@ -264,21 +301,19 @@ has "the update prints the plan before it asks" "  HANDOVER_DIR → ~/.himmel/hi
 has "with no terminal the update does not apply" "rc=0 status=pending" "$out"
 has "with no terminal the update names the apply command" "bash $FX/scripts/setup/migrate-env.sh --env $FX/.env" "$out"
 if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "with no terminal the update writes nothing"; else fail "a run with no terminal changed .env"; fi
-out=$(printf 'y\n' | CLAUDECODE=1 bash "$TMP/update-step.sh" apply 2>&1)
-has "an agent session never applies" "rc=0 status=pending" "$out"
-# The yes path needs a terminal: util-linux script gives the step one.
-if script -qec true /dev/null >/dev/null 2>&1; then
-    out=$( (sleep 2; printf 'n\n') | script -qec "bash $TMP/update-step.sh apply" /dev/null 2>&1 | tr -d '\r')
-    has "a no at the prompt skips the move" "status=pending" "$out"
-    if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "a no at the prompt writes nothing"; else fail "a no at the prompt changed .env"; fi
-    out=$( (sleep 2; printf 'y\n') | script -qec "bash $TMP/update-step.sh apply" /dev/null 2>&1 | tr -d '\r')
-    has "the update asks before it moves" "Move these keys now (backup first)? [y/N]" "$out"
-    has "a yes at the prompt applies and reports" "rc=0 status=updated" "$out"
-    lacks "the confirmed apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
-    no_canary "the update step prints no value" "$out"
-else
-    echo "SKIP the confirmed-apply rows: no util-linux script for a terminal"
-fi
+step=$(printf 'bash %q apply' "$TMP/update-step.sh")
+at_tty y "CLAUDECODE=1 $step"
+has "an agent session at a terminal never applies" "rc=0 status=pending" "$out"
+has "the agent-session refusal is the one that fired" "an agent session cannot write ~/.himmel/config.json" "$out"
+if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "an agent session at a terminal writes nothing"; else fail "an agent session at a terminal changed .env"; fi
+at_tty n "$step"
+has "a no at the prompt skips the move" "rc=0 status=pending" "$out"
+if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "a no at the prompt writes nothing"; else fail "a no at the prompt changed .env"; fi
+at_tty y "$step"
+has "the update asks before it moves" "Move these keys now (backup first)? [y/N]" "$out"
+has "a yes at the prompt applies and reports" "rc=0 status=updated" "$out"
+lacks "the confirmed apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
+no_canary "the update step prints no value" "$out"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"

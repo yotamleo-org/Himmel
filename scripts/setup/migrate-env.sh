@@ -27,15 +27,17 @@
 # behaviour and policy keys always move. When the
 # reader search itself fails, every himmel secret stays.
 #
-# Values never reach stdout or stderr: only key names are printed. Inside an
-# agent session (CLAUDECODE set) it prints the plan and the command for the
-# operator, and writes nothing (exit 3), since an agent may not write
-# ~/.himmel/config.json.
+# Values never reach stdout or stderr: only key names are printed. The apply
+# prints the plan, then moves the keys only on a y typed at the terminal it
+# asks at ([y/N], any other answer declines). With no terminal on stdin, or
+# inside an agent session (CLAUDECODE set, since an agent may not write
+# ~/.himmel/config.json), it prints the plan and the command for the
+# operator, and writes nothing.
 #
 # Exit: 0 moved, nothing to move, no .env or a dry run; 1 a step failed: no
 # node, or the backup, copy or verify failed (no line removed from .env), or
 # the final rewrite of .env failed (restore it from the printed backup);
-# 2 usage; 3 an agent session, nothing written.
+# 2 usage; 3 nothing written: an agent session, no terminal, or not a y.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +53,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { echo "migrate-env: --env needs a value" >&2; exit 2; }
             envfile="$2"; shift 2 ;;
         --dry-run) dry=1; shift ;;
-        -h|--help) sed -n '2,38p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
         *) echo "migrate-env: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -136,22 +138,35 @@ if [ "$moving" -eq 0 ]; then
     exit 0
 fi
 bdir="$confdir/env-backups"
-if [ "$dry" -eq 1 ] || [ -n "${CLAUDECODE:-}" ]; then
-    echo "backup: the apply first copies .env to $bdir/env.<UTC time>.<pid> (mode 600)"
-fi
+echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
+apply_cmd=$(printf 'bash %q --env %q' "$HERE/migrate-env.sh" "$envfile")
 if [ -n "${CLAUDECODE:-}" ]; then
     echo "migrate-env: an agent session cannot write ~/.himmel/config.json; nothing written."
-    printf 'Run this at your own prompt:\n  bash %q --env %q\n' "$HERE/migrate-env.sh" "$envfile"
+    printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+    exit 3
+fi
+if [ ! -t 0 ]; then
+    echo "migrate-env: no terminal to confirm the move at; nothing written."
+    printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
     exit 3
 fi
 command -v node >/dev/null 2>&1 || { echo "migrate-env: node is needed to write and verify the config; nothing written." >&2; exit 1; }
+printf 'Move these keys now (backup first)? [y/N] '
+answer=""
+read -r answer || answer=""
+case "$answer" in
+    y|Y|yes|YES) ;;
+    *) printf 'skipped: nothing written. To apply later:\n  %s\n' "$apply_cmd"; exit 3 ;;
+esac
 
 umask 077
 # shellcheck source=../lib/prim.sh
 . "$ROOT/scripts/lib/prim.sh"
 work=$(tmpdir) || exit 1
-trap 'rm -rf "$work"' EXIT
+next=""
+trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"' EXIT
+trap 'exit 1' HUP INT TERM
 
 # --- backup ---
 backup="$bdir/env.$(date -u +%Y%m%dT%H%M%SZ).$$"
@@ -173,7 +188,7 @@ mkdir -p "$work/home"
 read_shell() {  # <home> <reader> KEY... — KEY=value lines, for comparing only
     # shellcheck disable=SC2016 # expanded by the child shell
     env -i HOME="$1" PATH="$PATH" bash -c '
-        . "$1"; reader=$2; shift 2
+        . "$1"; reader=$2; shift 2  # read-sink-ok: $1 is always the checkout load-dotenv.sh
         if [ "$reader" = load_policy ]; then load_policy --root "$PWD" "$@" || exit 1
         else load_dotenv --root "$PWD" "$@" || exit 1; fi
         for k; do printf "%s=%s\n" "$k" "${!k-}"; done' _ "$LIB" "$2" "${@:3}" 2>/dev/null
@@ -342,7 +357,6 @@ else
     cp -p "$envfile" "$next" && cat "$work/env.new" > "$next" && mv -f "$next" "$envfile" && rewrote=1
 fi
 if [ "$rewrote" -eq 0 ]; then
-    [ -L "$envfile" ] || rm -f "$next"
     echo "migrate-env: could not rewrite $envfile; check it, and restore it from the backup if it is not whole." >&2
     restore_hint
     exit 1
