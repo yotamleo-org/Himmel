@@ -234,7 +234,7 @@ if [ -z "$existing_pr" ]; then
     ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
     if ! [ -f "$ledger" ] || ! awk -v h="\"head\":\"$head_sha\"" \
         'index($0, "\"kind\":\"avail\"") && index($0, "\"status\":\"ok\"") && index($0, h) { found = 1; exit } END { exit !found }' "$ledger"; then
-        echo "ERR leg-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (commit, /pr-check, push, then open)" >&2
+        echo "ERR leg-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (order: commit, push the branch, /pr-check, then open)" >&2
         exit 1
     fi
     # Capture stdout (the PR URL) and stderr (diagnostics, plus the
