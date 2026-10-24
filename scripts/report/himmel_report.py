@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -204,8 +205,8 @@ def cmd_draft(a):
         else:
             write_atomic(path, draft)
             add_lesson(kind, source, cls, evidence, text)
-            row = {'ts': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'id': rid, 'kind': kind,
-                   'source': source, 'class': cls, 'verdict': 'user-over-deny', 'auto_verdict': auto_verdict}
+            row = {'v': 1, 'ts': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                   'host': socket.gethostname(), 'id': rid, 'kind': kind, 'source': source, 'class': cls, 'verdict': 'user-over-deny', 'auto_verdict': auto_verdict}
             with open(state_file(), 'a') as f:
                 f.write(json.dumps(row) + '\n')
             print('report-id: %s' % rid)
