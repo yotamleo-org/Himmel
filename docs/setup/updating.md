@@ -112,8 +112,9 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run   # prin
 2. Read the closing status table: each step reports `updated`, `up-to-date`,
    `skipped`, `failed` or `not-attempted`, and a **DRIFT** block names anything
    the installer could not converge, each with a remedy line.
-3. Read the `.env migration` block: it names where each `.env` key went, the
-   backup path and the restore command ([detail](#the-env-migration)).
+3. Read the `.env migration` block: it shows where each `.env` key would go
+   and asks `Move these keys now (backup first)? [y/N]`; after a move it names
+   the backup path and the restore command ([detail](#the-env-migration)).
 4. If the graphify pin sync skipped because a Claude session was live, run
    `bash ~/himmel/scripts/himmel-update.sh --graphify-only` once none is.
 5. **Project scope only:** from the project root, re-run the install without
@@ -345,18 +346,28 @@ the two manual commands and removes nothing).
 
 `.env` holds secrets only; behaviour and policy keys live in `~/.himmel`
 ([layer table](../internals/config-layers.md)). After a clean chain the update
-moves every `.env` item; an update `--check` previews it and
+moves himmel's own `.env` items: the keys `.env.example` names (commented or
+not) and the behaviour and gate-policy keys. Any other key belongs to another
+tool and stays where it is. An update `--check` previews the step and
 `--only env_migration` runs it alone.
 
 The step is `scripts/setup/migrate-env.sh`;
 `bash ~/himmel/scripts/setup/migrate-env.sh --dry-run` prints the plan
 without the rest of the update. It prints key names only, never values.
 
+The update always runs the dry run first: it prints the plan and the backup
+path, then asks `Move these keys now (backup first)? [y/N]`. Only `y` moves
+anything; any other answer skips the step and prints the command to run
+later. With no terminal to answer at (piped input, a cron job) it moves
+nothing and prints that command.
+
 1. **Plan.** One line per `.env` key: a behaviour key goes to
    `~/.himmel/himmel.conf`, a gate-policy key to `~/.himmel/config.json`
-   `.policy`, a secret nothing in himmel reads to
-   `~/.config/secrets/himmel.env` (mode 600). A secret a himmel file still
-   reads `stays (read by <file>)`.
+   `.policy`, a himmel secret nothing in himmel reads to
+   `~/.config/secrets/himmel.env` (mode 600). A himmel secret a himmel file
+   still reads `stays (read by <file>)`; if the readers cannot be searched,
+   every himmel secret stays. Any other key reads
+   `stays (not himmel's, left in place)`.
 2. **Backup.** `.env` is copied to `~/.himmel/env-backups/env.<UTC time>.<pid>`,
    mode 600, before anything else is written; the path is printed.
 3. **Copy.** Each key is copied to its new place. A key already set there is
@@ -365,15 +376,16 @@ without the rest of the update. It prints key names only, never values.
    and once with them only in their new place: the shell `load_dotenv` and
    `load_policy`, the Jira CLI's config, handover-root and release-state
    readers, and the lanes resolver. Every gate-policy key is compared, moved
-   or not. Any difference prints `MISMATCH <key> (<reader>)` and no line is
-   removed from `.env`.
+   or not. Any difference, or a reader that fails, prints
+   `MISMATCH <key> (<reader>)` (or a `verify:` line) and no line is removed
+   from `.env`.
 5. **Remove.** Only after the check passes are the moved lines removed from
    `.env`. Comments and the keys that stay are kept, and so is the file's mode.
 
 The report ends with the restore command (`cp <backup> <your .env>`) and an
 `rm` for the backup: remove it once you are happy, since it holds your secrets.
 
-- **Keep-list.** To keep a secret in `.env` for a reader outside this checkout
+- **Keep-list.** To keep a himmel secret in `.env` for a reader outside this checkout
   (a station script, another tool), put its name in `~/.himmel/env-keep.txt`,
   one per line; `#` starts a comment. Names only, never values.
 - **Inside Claude Code** (`/himmel-update`), an agent may not write

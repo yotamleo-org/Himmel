@@ -31,7 +31,7 @@ canary() { printf 'CANARY-%s-%s' "$1" "$(od -An -N4 -tx1 /dev/urandom | tr -d ' 
 
 # --- 1. The real .env.example key names, classified by the real checkout ---
 # Every key the template names, commented or not, as an operator's .env holds
-# them, plus one secret no himmel file reads.
+# them, plus one key that is not himmel's.
 mkdir -p "$TMP/real"
 names=$(sed -n 's/^#\{0,1\}[[:space:]]*\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$REPO/.env.example" | awk '!seen[$0]++')
 { for k in $names; do printf '%s=%s\n' "$k" "$(canary "$k")"; done
@@ -48,7 +48,8 @@ if [ -z "$missing" ]; then pass "the report lists every .env key"; else fail "th
 has "a behaviour key goes to himmel.conf" "  HANDOVER_DIR → ~/.himmel/himmel.conf" "$out"
 has "a policy key goes to config.json" "  CR_REQUIRE_CROSS_MODEL → ~/.himmel/config.json .policy" "$out"
 has "a secret something reads stays" "  JIRA_API_TOKEN stays (read by " "$out"
-has "a secret nothing reads goes to the secrets store" "  NOT_READ_BY_HIMMEL_ZZQ → ~/.config/secrets/himmel.env" "$out"
+has "a key that is not himmel's stays" "  NOT_READ_BY_HIMMEL_ZZQ stays (not himmel's, left in place)" "$out"
+has "the dry run names the backup it will take" "backup: the apply first copies .env to $HOME/.himmel/env-backups/env." "$out"
 no_canary "the dry run prints no value" "$out"
 if cmp -s "$TMP/real/.env" "$TMP/real.orig" && [ ! -e "$HOME/.himmel" ] && [ ! -e "$HOME/.config" ]; then
     pass "the dry run writes nothing"
@@ -65,6 +66,7 @@ cp "$REPO/scripts/lib/load-dotenv.sh" "$REPO/scripts/lib/prim.sh" "$FX/scripts/l
 cp "$REPO"/scripts/lanes/resolve.mjs "$REPO"/scripts/lanes/probe.mjs "$REPO"/scripts/lanes/bank-status-core.mjs \
     "$REPO"/scripts/lanes/profile-managed.cjs "$FX/scripts/lanes/"
 cp "$REPO/docs/setup/himmel-config.example.json" "$FX/docs/setup/"
+printf '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\n' > "$FX/.env.example"
 # The Jira CLI readers, from their real source with the types stripped.
 strip_ts() {
     node -e 'const m = require("node:module"); const fs = require("node:fs");
@@ -93,7 +95,8 @@ fixture_env() {  # a fresh station-shaped .env, mode 600, and no config files
       echo "CR_REQUIRE_CROSS_MODEL=1"
       echo "READ_SECRET=$(canary read)"
       echo "UNREAD_SECRET=$(canary unread)"
-      echo "KEEP_ME=$(canary keep)"; } > "$TMP/st/.env"
+      echo "KEEP_ME=$(canary keep)"
+      echo "OTHER_TOOL_TOKEN=$(canary other)"; } > "$TMP/st/.env"
     chmod 600 "$TMP/st/.env"
     cp -p "$TMP/st/.env" "$TMP/st.orig"
     mkdir -p "$HOME/.himmel"
@@ -132,6 +135,9 @@ has "a keep-list key stays in .env" "KEEP_ME=CANARY-keep-" "$envnow"
 has "comments stay in .env" "# station .env" "$envnow"
 if [ "$(mode_of "$TMP/st/.env")" = 600 ]; then pass ".env keeps its mode"; else fail ".env mode changed"; fi
 has "the report shows the keep-list reason" "  KEEP_ME stays (keep-list)" "$out"
+has "the report leaves a key that is not himmel's" "  OTHER_TOOL_TOKEN stays (not himmel's, left in place)" "$out"
+has "a key that is not himmel's stays in .env" "OTHER_TOOL_TOKEN=CANARY-other-" "$envnow"
+lacks "a key that is not himmel's is not copied to the store" "OTHER_TOOL_TOKEN" "$(cat "$store" 2>/dev/null)"
 has "the report names the verified readers" "verified: load_dotenv, load_policy, jira config reader, jira handover root, jira release state, lanes resolve" "$out"
 has "the report names the compared policy keys" "policy compared: ARMAUTOMERGE CR_FLOOR_FALLBACK CR_REQUIRE_CROSS_MODEL" "$out"
 got=$( (unset HANDOVER_DIR; cd "$FX" && . "$FX/scripts/lib/load-dotenv.sh" && load_dotenv --root "$TMP/st" HANDOVER_DIR; printf '[%s]' "${HANDOVER_DIR-}") 2>&1)
@@ -166,6 +172,13 @@ has "the failing reader and key are named" "MISMATCH HANDOVER_DIR (jira handover
 has "the user is told no line was removed" "no lines were removed from .env" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "the failed verify leaves .env untouched"; else fail "the failed verify changed .env"; fi
 no_canary "the failed verify prints no value" "$out"
+# A reader that throws both times proves nothing and aborts too.
+fixture_env
+printf '%s\n' 'export function behaviourKey() { throw new Error("broken"); }' \
+    'export function handoverRoot() { throw new Error("broken"); }' > "$FX/scripts/jira/dist/handover-root.js"
+out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+has "a reader that throws fails the migration" "MISMATCH HANDOVER_DIR (jira handover root, the reader threw)" "$out"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "a throwing reader leaves .env untouched"; else fail "a throwing reader changed .env"; fi
 cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
 
 # --- 4. A policy value that would change aborts ---
@@ -197,26 +210,36 @@ if [ "$rc" = 3 ]; then pass "an agent session cannot apply (exit 3)"; else fail 
 has "the refusal names the operator command" "bash $SCRIPT" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig" && [ ! -e "$HOME/.himmel" ]; then pass "the refusal writes nothing"; else fail "the refusal wrote something"; fi
 
-# --- 7. The update's step: --check previews, the apply moves and reports ---
+# --- 7. The update's step: a dry run first, then apply only on a typed yes ---
 fixture_env
 cp -p "$TMP/st/.env" "$FX/.env"
 awk '/^run_env_migration\(\) \{/,/^\}$/' "$REPO/scripts/himmel-update.sh" > "$TMP/run-env-migration.sh"
-update_step() {
-    # shellcheck disable=SC2034 # read by the sourced run_env_migration
-    (ROOT="$FX"
-     # shellcheck source=/dev/null
-     . "$TMP/run-env-migration.sh"
-     STATUS_env_migration=""
-     run_env_migration "$1"
-     echo "rc=$? status=$STATUS_env_migration") 2>&1
-}
-out=$(update_step check)
+# shellcheck disable=SC2016 # expanded by the driver shell
+printf 'ROOT=%q; . %q; STATUS_env_migration=""; run_env_migration "$1"; echo "rc=$? status=$STATUS_env_migration"\n' \
+    "$FX" "$TMP/run-env-migration.sh" > "$TMP/update-step.sh"
+out=$(bash "$TMP/update-step.sh" check 2>&1)
 has "the update check marks the migration pending" "rc=0 status=pending" "$out"
 if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "the update check writes nothing"; else fail "the update check changed .env"; fi
-out=$(update_step apply)
-has "the update apply reports the migration done" "rc=0 status=updated" "$out"
-lacks "the update apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
-no_canary "the update step prints no value" "$out"
+out=$(printf 'y\n' | bash "$TMP/update-step.sh" apply 2>&1)
+has "the update prints the plan before it asks" "  HANDOVER_DIR → ~/.himmel/himmel.conf" "$out"
+has "with no terminal the update does not apply" "rc=0 status=pending" "$out"
+has "with no terminal the update names the apply command" "bash $FX/scripts/setup/migrate-env.sh --env $FX/.env" "$out"
+if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "with no terminal the update writes nothing"; else fail "a run with no terminal changed .env"; fi
+out=$(printf 'y\n' | CLAUDECODE=1 bash "$TMP/update-step.sh" apply 2>&1)
+has "an agent session never applies" "rc=0 status=pending" "$out"
+# The yes path needs a terminal: util-linux script gives the step one.
+if script -qec true /dev/null >/dev/null 2>&1; then
+    out=$( (sleep 2; printf 'n\n') | script -qec "bash $TMP/update-step.sh apply" /dev/null 2>&1 | tr -d '\r')
+    has "a no at the prompt skips the move" "status=pending" "$out"
+    if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "a no at the prompt writes nothing"; else fail "a no at the prompt changed .env"; fi
+    out=$( (sleep 2; printf 'y\n') | script -qec "bash $TMP/update-step.sh apply" /dev/null 2>&1 | tr -d '\r')
+    has "the update asks before it moves" "Move these keys now (backup first)? [y/N]" "$out"
+    has "a yes at the prompt applies and reports" "rc=0 status=updated" "$out"
+    lacks "the confirmed apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
+    no_canary "the update step prints no value" "$out"
+else
+    echo "SKIP the confirmed-apply rows: no util-linux script for a terminal"
+fi
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"

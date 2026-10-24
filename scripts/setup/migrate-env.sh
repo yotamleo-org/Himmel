@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# migrate-env.sh — move every .env item to where it now lives, in one step:
-# behaviour keys to ~/.himmel/himmel.conf, gate-policy keys to
-# ~/.himmel/config.json .policy, secrets nothing in himmel reads to
-# ~/.config/secrets/himmel.env. Secrets something reads stay in .env.
-# Layer table: docs/internals/config-layers.md. The update runs this.
+# migrate-env.sh — move every himmel .env item to where it now lives, in one
+# step: behaviour keys to ~/.himmel/himmel.conf, gate-policy keys to
+# ~/.himmel/config.json .policy, himmel secrets nothing in himmel reads to
+# ~/.config/secrets/himmel.env. Secrets something reads stay in .env. A key
+# is himmel's when .env.example names it or the key-class registry lists it;
+# every other key stays in .env untouched.
+# Layer table: docs/internals/config-layers.md. The update runs this after a
+# dry run the user confirms.
 #
 #   bash scripts/setup/migrate-env.sh [--env <file>]
 #   bash scripts/setup/migrate-env.sh --dry-run [--env <file>]
@@ -20,7 +23,8 @@
 #
 # A secret "has a reader" when its name appears as a word in a tracked himmel
 # file other than docs and Markdown. Names in ~/.himmel/env-keep.txt (one per
-# line, # comments) always stay, for readers outside this checkout.
+# line, # comments) always stay, for readers outside this checkout. When the
+# reader search itself fails, every himmel secret stays.
 #
 # Values never reach stdout or stderr: only key names are printed. Inside an
 # agent session (CLAUDECODE set) it prints the plan and the command for the
@@ -46,7 +50,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { echo "migrate-env: --env needs a value" >&2; exit 2; }
             envfile="$2"; shift 2 ;;
         --dry-run) dry=1; shift ;;
-        -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,37p' "$0"; exit 0 ;;
         *) echo "migrate-env: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -75,28 +79,37 @@ keep=" "
 if [ -f "$confdir/env-keep.txt" ]; then
     keep=" $(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$confdir/env-keep.txt" | grep . | tr '\n' ' ')"
 fi
+# himmel's keys: every name .env.example sets, commented or not.
+owned=" $(sed -n 's/^#\{0,1\}[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$ROOT/.env.example" 2>/dev/null | tr '\n' ' ')"
+is_owned() {
+    case "$owned" in *" $1 "*) return 0 ;; esac
+    [ "$(_himmel_key_class "$1")" != secret ]
+}
 
 # Readers of each secret: the first tracked file naming it, docs excluded.
 secrets=""
 for key in $names; do
     case "$keep" in *" $key "*) continue ;; esac
+    is_owned "$key" || continue
     [ "$(_himmel_key_class "$key")" = secret ] && secrets="$secrets $key"
 done
 readers="" have_git=1
 if [ -n "$secrets" ]; then
-    if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-        pats=()
-        for key in $secrets; do pats[${#pats[@]}]="-e"; pats[${#pats[@]}]="$key"; done
-        readers=$(git -C "$ROOT" grep -I -w -F -o "${pats[@]}" -- . ':!*.md' ':!docs/' ':!.env.example' \
-            ':!scripts/setup/migrate-env*' ':!scripts/setup/test-migrate-env*' 2>/dev/null \
-            | awk -F: '!($NF in s) { s[$NF] = 1; print $NF, $1 }')
-    else
-        have_git=0
-    fi
+    pats=()
+    for key in $secrets; do pats[${#pats[@]}]="-e"; pats[${#pats[@]}]="$key"; done
+    # git grep exits 1 for no match; anything else means the search failed.
+    hits=$(git -C "$ROOT" grep -I -w -F -o "${pats[@]}" -- . ':!*.md' ':!docs/' ':!.env.example' \
+        ':!scripts/setup/migrate-env*' ':!scripts/setup/test-migrate-env*' 2>/dev/null)
+    case $? in
+        0) readers=$(printf '%s\n' "$hits" | awk -F: '!($NF in s) { s[$NF] = 1; print $NF, $1 }') ;;
+        1) ;;
+        *) have_git=0 ;;
+    esac
 fi
 
 config_keys=() policy_keys=() secret_keys=() plan=""
 for key in $names; do
+    if ! is_owned "$key"; then plan="$plan  $key stays (not himmel's, left in place)"$'\n'; continue; fi
     case "$keep" in *" $key "*) plan="$plan  $key stays (keep-list)"$'\n'; continue ;; esac
     case "$(_himmel_key_class "$key")" in
         config) config_keys[${#config_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/himmel.conf"$'\n' ;;
@@ -104,7 +117,7 @@ for key in $names; do
         *)
             reader=$(printf '%s\n' "$readers" | awk -v k="$key" '$1 == k { print $2; exit }')
             if [ "$have_git" -eq 0 ]; then
-                plan="$plan  $key stays (no git checkout to look for its readers)"$'\n'
+                plan="$plan  $key stays (its readers could not be searched)"$'\n'
             elif [ -n "$reader" ]; then
                 plan="$plan  $key stays (read by $reader)"$'\n'
             else
@@ -119,6 +132,10 @@ printf '%s' "$plan"
 if [ "$moving" -eq 0 ]; then
     echo "nothing to move: every key stays in .env."
     exit 0
+fi
+bdir="$confdir/env-backups"
+if [ "$dry" -eq 1 ] || [ -n "${CLAUDECODE:-}" ]; then
+    echo "backup: the apply first copies .env to $bdir/env.<UTC time>.<pid> (mode 600)"
 fi
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
 if [ -n "${CLAUDECODE:-}" ]; then
@@ -135,7 +152,6 @@ work=$(tmpdir) || exit 1
 trap 'rm -rf "$work"' EXIT
 
 # --- backup ---
-bdir="$confdir/env-backups"
 backup="$bdir/env.$(date -u +%Y%m%dT%H%M%SZ).$$"
 if ! { mkdir -p "$bdir" && chmod 700 "$bdir" && cp "$envfile" "$backup" && chmod 600 "$backup" \
     && cmp -s "$envfile" "$backup"; } 2>/dev/null; then
@@ -157,7 +173,7 @@ read_shell() {  # <home> <reader> KEY... — KEY=value lines, for comparing only
     env -i HOME="$1" PATH="$PATH" bash -c '
         . "$1"; reader=$2; shift 2
         if [ "$reader" = load_policy ]; then load_policy --root "$PWD" "$@" || exit 1
-        else load_dotenv --root "$PWD" "$@"; fi
+        else load_dotenv --root "$PWD" "$@" || exit 1; fi
         for k; do printf "%s=%s\n" "$k" "${!k-}"; done' _ "$LIB" "$2" "${@:3}" 2>/dev/null
 }
 value_of() {  # <lines> <key>, one dotenv quote pair dropped
@@ -253,12 +269,14 @@ fi
 bad="" verified="load_dotenv"
 cp "$envfile" "$work/repo/.env"
 if [ "${#config_keys[@]}" -gt 0 ]; then
-    before=$(cd "$work/repo" && read_shell "$work/home" load_dotenv "${config_keys[@]}")
+    before=$(cd "$work/repo" && read_shell "$work/home" load_dotenv "${config_keys[@]}") \
+        || bad="${bad}verify: load_dotenv failed reading .env before the move"$'\n'
 fi
 if [ -n "$policy_all" ]; then
     verified="$verified, load_policy"
     # shellcheck disable=SC2086 # word-split key names
-    policy_env=$(cd "$work/repo" && read_shell "$work/home" load_policy $policy_all)
+    policy_env=$(cd "$work/repo" && read_shell "$work/home" load_policy $policy_all) \
+        || bad="${bad}verify: load_policy failed reading .env before the move"$'\n'
 fi
 if [ "${#config_keys[@]}" -gt 0 ]; then
     if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$envfile" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
@@ -270,7 +288,8 @@ if [ "${#config_keys[@]}" -gt 0 ]; then
 fi
 : > "$work/repo/.env"
 if [ "${#config_keys[@]}" -gt 0 ]; then
-    after=$(cd "$work/repo" && read_shell "$HOME" load_dotenv "${config_keys[@]}")
+    after=$(cd "$work/repo" && read_shell "$HOME" load_dotenv "${config_keys[@]}") \
+        || bad="${bad}verify: load_dotenv failed reading ~/.himmel after the move"$'\n'
     for key in "${config_keys[@]}"; do
         [ "$(value_of "$before" "$key")" = "$(value_of "$after" "$key")" ] || bad="${bad}MISMATCH $key (load_dotenv)"$'\n'
     done
@@ -307,7 +326,11 @@ awk -v moved="$moved" '{ l = $0; sub(/\r$/, "", l) }
     l ~ /^[[:space:]]*#/ { print; next }
     { i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k) }
     i && index(moved, " " k " ") { next }
-    { print }' "$backup" > "$work/env.new"
+    { print }' "$backup" > "$work/env.new" || {
+    echo "migrate-env: could not build the new .env; no lines were removed from .env." >&2
+    restore_hint
+    exit 1
+}
 if ! cat "$work/env.new" > "$envfile"; then
     echo "migrate-env: could not rewrite $envfile; restore it from the backup." >&2
     restore_hint

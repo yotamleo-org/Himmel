@@ -6,7 +6,7 @@
 // Runs each node reader of the behaviour keys twice in the scratch checkout:
 // once with the keys only in .env (a copy in the scratch repo, HOME empty),
 // once with them only in their new place (HOME, an empty .env). Prints
-// `MISMATCH <key> (<reader>)` for every difference and exits 1; then
+// `MISMATCH <key> (<reader>)` for every difference or throw and exits 1; then
 // `readers: <names>`. Values are compared as digests and never printed.
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
@@ -15,10 +15,9 @@ import { pathToFileURL } from 'node:url';
 
 const [repo, dotenv, emptyHome, home, root, ...keys] = process.argv.slice(2);
 
+// A reader that throws proves nothing, so a throw never compares equal.
 const digest = (read) => {
-  let v;
-  try { v = `ok:${read() ?? ''}`; } catch (e) { v = `throw:${e.message}`; }
-  return createHash('sha256').update(v).digest('hex');
+  try { return `ok:${createHash('sha256').update(String(read() ?? '')).digest('hex')}`; } catch { return 'throw'; }
 };
 const load = async (path) => import(pathToFileURL(path).href);
 
@@ -66,9 +65,10 @@ const after = snapshot(home);
 
 let failed = false;
 for (const [id, d] of before) {
-  if (after.get(id) === d) continue;
+  const a = after.get(id);
+  if (a === d && d !== 'throw') continue;
   const [k, name] = id.split('\t');
-  console.log(`MISMATCH ${k} (${name})`);
+  console.log(`MISMATCH ${k} (${name}${d === 'throw' || a === 'throw' ? ', the reader threw' : ''})`);
   failed = true;
 }
 console.log(`readers: ${readers.map(([name]) => name).join(', ')}`);

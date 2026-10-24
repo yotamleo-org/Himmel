@@ -1232,33 +1232,50 @@ report_pending_migrations() {
     return 0
 }
 
-# run_env_migration check|apply — move every .env item to its config layer
-# (scripts/setup/migrate-env.sh: backup, copy, verify with the real readers,
-# then remove the moved lines). check previews the plan. The script prints key
-# names only, never values; inside an agent session it writes nothing and
-# names the command for the operator.
+# run_env_migration check|apply — move himmel's .env items to their config
+# layers (scripts/setup/migrate-env.sh: backup, copy, verify with the real
+# readers, then remove the moved lines). Both modes print the dry-run plan
+# first; apply then asks, and moves the keys only on a yes typed at a
+# terminal. A run with no terminal, or inside an agent session, never
+# applies: it prints the one command to apply. Key names only, never values.
 run_env_migration() {
-    local script="$ROOT/scripts/setup/migrate-env.sh" out rc=0
+    local script="$ROOT/scripts/setup/migrate-env.sh" envfile="$ROOT/.env" out rc=0 answer=""
     [ -f "$script" ] || return 0
     echo ""
     echo "==> .env migration"
-    if [ "$1" = check ]; then
-        out=$(bash "$script" --dry-run --env "$ROOT/.env" 2>&1) || rc=$?
-    else
-        out=$(bash "$script" --env "$ROOT/.env" 2>&1) || rc=$?
-    fi
+    out=$(bash "$script" --dry-run --env "$envfile" 2>&1) || rc=$?
     printf '%s\n' "$out" | sed 's/^/    /'
     case "$rc:$out" in
-        0:*"nothing to move"*) STATUS_env_migration="up-to-date" ;;
-        0:*"dry run: nothing written"*)
-            STATUS_env_migration="pending"; DETAIL_env_migration="the update moves these keys" ;;
-        0:*"moved "*)
-            STATUS_env_migration="updated"; DETAIL_env_migration="backup in ~/.himmel/env-backups; remove it once happy" ;;
-        0:*) ;;
-        3:*)
-            STATUS_env_migration="pending"; DETAIL_env_migration="run at your own prompt: bash scripts/setup/migrate-env.sh" ;;
+        0:*"nothing to move"*) STATUS_env_migration="up-to-date"; return 0 ;;
+        0:*"dry run: nothing written"*) ;;
+        0:*) return 0 ;;
         *)
             STATUS_env_migration="failed"; DETAIL_env_migration=".env unchanged; see the report above"
+            return 1 ;;
+    esac
+    STATUS_env_migration="pending"; DETAIL_env_migration="apply: bash scripts/setup/migrate-env.sh"
+    [ "$1" = apply ] || return 0
+    if [ -n "${CLAUDECODE:-}" ] || [ ! -t 0 ]; then
+        printf '    not applied: no terminal to confirm at. To apply, run at your own prompt:\n      bash %q --env %q\n' "$script" "$envfile"
+        return 0
+    fi
+    printf '    Move these keys now (backup first)? [y/N] '
+    read -r answer || answer=""
+    case "$answer" in
+        y|Y|yes|YES) ;;
+        *)
+            printf '    skipped. To apply later:\n      bash %q --env %q\n' "$script" "$envfile"
+            return 0 ;;
+    esac
+    rc=0
+    out=$(bash "$script" --env "$envfile" 2>&1) || rc=$?
+    printf '%s\n' "$out" | sed 's/^/    /'
+    case "$rc:$out" in
+        0:*"moved "*)
+            STATUS_env_migration="updated"; DETAIL_env_migration="backup in ~/.himmel/env-backups; remove it once happy" ;;
+        0:*) STATUS_env_migration="up-to-date"; DETAIL_env_migration="" ;;
+        *)
+            STATUS_env_migration="failed"; DETAIL_env_migration="see the report above for .env and its backup"
             return 1 ;;
     esac
     return 0

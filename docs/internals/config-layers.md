@@ -182,7 +182,8 @@ writes to it.
 
 ## Migrating an existing install
 
-The update runs the whole migration as one step: a backup, the copy, a check
+The update runs the whole migration as one step for himmel's own keys (other
+tools' keys stay in `.env`): a dry run you confirm, a backup, the copy, a check
 with the real readers, and only then the removal of the moved lines from
 `.env` ([updating.md](../setup/updating.md#the-env-migration)). Preview it with
 `bash scripts/setup/migrate-env.sh --dry-run`. The steps below are the manual
