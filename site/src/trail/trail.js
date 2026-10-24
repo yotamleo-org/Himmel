@@ -83,7 +83,7 @@
 
   function closePanel() {
     panel.hidden = true;
-    if (opener) { opener.setAttribute('aria-expanded', 'false'); opener.focus(); opener = null; }
+    if (opener) { opener.removeAttribute('aria-expanded'); opener.focus(); opener = null; }
   }
 
   document.querySelectorAll('details.comp > summary').forEach(function (s) {
@@ -91,7 +91,7 @@
       if (!wide.matches) return;
       e.preventDefault();
       if (opener === s) { closePanel(); return; }
-      if (opener) opener.setAttribute('aria-expanded', 'false');
+      if (opener) opener.removeAttribute('aria-expanded');
       opener = s;
       s.setAttribute('aria-expanded', 'true');
       panel.querySelector('strong').innerHTML = s.querySelector('.cn').innerHTML;
