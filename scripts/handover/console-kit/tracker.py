@@ -1231,10 +1231,10 @@ def open_prs(path, repo):
     out = {}
     for pr in prs:
         st = [(r.get('status'), r.get('conclusion') or r.get('state')) for r in pr.get('statusCheckRollup') or []]
-        if any(a in ('IN_PROGRESS', 'QUEUED', 'PENDING') or b in ('PENDING', 'EXPECTED') for a, b in st):
-            ci = 'running'
-        elif any(b in ('FAILURE', 'ERROR', 'TIMED_OUT') for _, b in st):
+        if any(b in ('FAILURE', 'ERROR', 'TIMED_OUT') for _, b in st):
             ci = 'red'
+        elif any(a in ('IN_PROGRESS', 'QUEUED', 'PENDING') or b in ('PENDING', 'EXPECTED') for a, b in st):
+            ci = 'running'
         elif any(b == 'CANCELLED' for _, b in st):
             ci = 'cancelled'
         elif not st:

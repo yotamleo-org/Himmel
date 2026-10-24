@@ -1168,6 +1168,9 @@ contains 'an IN CI card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$
 contains 'a To Do card with no PR stays in To Do (HIMMEL-7353)' "$(colof 407)" 'To Do'
 contains 'a card whose column differs from Jira names its Jira status (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-400"' "$v4out")" 'Jira To Do'
 not_contains 'a card whose column matches Jira has no Jira note (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-402"' "$v4out")" 'Jira In Review'
+jq '. + [{"number":506,"title":"feat: [HIMMEL-407] mixed","headRefName":"feat/mixed","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"},{"status":"IN_PROGRESS","conclusion":""}]}]' "$W/vp-prs.json" > "$W/vp-prs-mixed.json"
+V2PRS="$W/vp-prs-mixed.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
+contains 'a PR with a failed and a running check puts its card in In Progress (HIMMEL-7353)' "$(colof 407)" 'In Progress'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
