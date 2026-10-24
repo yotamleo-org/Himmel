@@ -53,7 +53,7 @@ A name the registry marks pending-N2892 has no ruled new name yet.
 | N10 | F3 | V1 | `CLAUDEX_BANK_*` | `CLAUDEX_USAGE_*` | env var | HIMMEL-6647 (V1 HIMMEL-6639 Done) | new name live 3/4 | 36 / 8 | `(?<![A-Za-z0-9_])CLAUDEX_BANK_[A-Z0-9_]*` |  |
 | N11 | F3 | V1 | `PARKED-BANK` | `PARKED-USAGE` | id (marker token) | HIMMEL-6647 (V1 HIMMEL-6639 Done) | new name live 1/1 | 61 / 29 | `PARKED-BANK` | marker token the tick parses; written handover docs also carry it |
 | N12 | F4 | V1 | `bank-preflight.sh, bank-lift.sh (+ bank-lift.json), bank-monitor.sh, bank-attribution.sh, bank-status*, codex-bank-probe.ts` | `usage-preflight.sh, usage-lift.sh (+ usage-lift.json), usage-monitor.sh, usage-attribution.sh, usage-status*, codex-usage-probe.ts` | script/file name, command | HIMMEL-6647 (V1 HIMMEL-6639 Done) | new name live 12/37; 32 without a ruled name | 794 / 230 | `(?<![A-Za-z0-9-])[a-z-]*bank-(?:preflight\|lift\|monitor\|attribution\|status\|probe)(?:[A-Za-z0-9-]\|\.(?=[A-Za-z0-9]))*` | a longer name that only contains one of these (`test-bank-preflight.sh`, `block-bank-lift-writes.sh`) has no ruled name unless its usage- twin exists |
-| N13 | F5 | V2 | `clear-cr-marker.sh and cr-*.sh` | `clear-review-marker.sh, review-*.sh, coderabbit-*.sh (per the registry)` | script/file name | HIMMEL-6647 (V2 HIMMEL-6640 Done) | new name live 9/9; 14 without a ruled name | 474 / 128 | `(?<![A-Za-z0-9-])(clear-)?cr-[a-z0-9-]+\.sh` | the registry names nine; every other cr-*.sh has no ruled name (see unruled file names). AMBIGUOUS: the pattern can catch a third-party cr-*.sh; read each hit |
+| N13 | F5 | V2 | `clear-cr-marker.sh and cr-*.sh` | `clear-review-marker.sh, review-*.sh, coderabbit-*.sh (per the registry)` | script/file name | HIMMEL-6647 (V2 HIMMEL-6640 Done) | new name live 9/9; 14 without a ruled name | 474 / 128 | `(?<![A-Za-z0-9-])(clear-)?cr-[a-z0-9-]+\.sh` | the registry names nine; every other cr-*.sh has no ruled name (see unruled file names). `scripts/cr/cr-trigger-ledger.sh` is the CI-release ledger, not the CodeRabbit one, so the registry's `cr-trigger-ledger.sh` row (the `scripts/lib/` alias) does not apply to it. AMBIGUOUS: the pattern can catch a third-party cr-*.sh; read each hit |
 | N14 | F5 | V2 | `CR_MARKER*, CLEAR_CR_MARKER_*, SETUP_CR_MARKER` | `REVIEW_MARKER*, CLEAR_REVIEW_MARKER_*, SETUP_REVIEW_MARKER` | env var | HIMMEL-6647 (V2 HIMMEL-6640 Done) | new name live 3/4 | 17 / 7 | `(?<![A-Za-z0-9_])[A-Z_]*CR_MARKER[A-Z0-9_]*` | SETUP_CR_MARKER is a test-local name; the <git-dir>/cr-pending/ dir keeps its name (OD-3) |
 | N15 | F6 | V4b | `headed-arm-leg.sh` | `headed-arm-worker.sh` | script/file name | HIMMEL-6643 | new name live 1/2; 2 without a ruled name | 360 / 140 | `(?<![A-Za-z0-9-])[a-z-]*headed-arm-leg[a-z-]*\.sh` |  |
 | N16 | F7 | V4b | `leg-identity, leg-doc-lock, leg-event, leg-jira-status, leg-pretrust, leg-transcripts, leg-graph (.sh)` | `worker-identity, worker-doc-lock, worker-event, worker-jira-status, worker-pretrust, worker-transcripts, worker-graph` | script/file name | HIMMEL-6643 | new name live 0/7; 7 without a ruled name | 268 / 107 | `(?<![A-Za-z0-9-])[a-z-]*leg-(?:identity\|doc-lock\|event\|jira-status\|pretrust\|transcripts\|graph)[a-z-]*\.sh` | only the seven helpers plan row 28-36 names; every other leg-*.sh is N42 |
@@ -159,7 +159,6 @@ last caller moves.
 | `docs/handover/overnight-mode.md` |
 | `marketplace/plugins/himmel-ops/commands/console.md` |
 | `scripts/cr/clear-cr-marker.sh` |
-| `scripts/cr/cr-trigger-ledger.sh` |
 | `scripts/handover/console/console.sh` |
 | `scripts/hooks/block-leg-askuserquestion.sh` |
 | `scripts/hooks/guard-leg-wakeup.sh` |
@@ -882,7 +881,7 @@ Distinct matched strings (69): `-bank-preflight` (no ruled name), `bank-attribut
 
 ### N13 `clear-cr-marker.sh and cr-*.sh` to `clear-review-marker.sh, review-*.sh, coderabbit-*.sh (per the registry)`
 
-Family F5, slice V2; script/file name; owner HIMMEL-6647 (V2 HIMMEL-6640 Done); 474 lines in 128 files; new name live 9/9; 14 without a ruled name. the registry names nine; every other cr-*.sh has no ruled name (see unruled file names). AMBIGUOUS: the pattern can catch a third-party cr-*.sh; read each hit.
+Family F5, slice V2; script/file name; owner HIMMEL-6647 (V2 HIMMEL-6640 Done); 474 lines in 128 files; new name live 9/9; 14 without a ruled name. the registry names nine; every other cr-*.sh has no ruled name (see unruled file names). `scripts/cr/cr-trigger-ledger.sh` is the CI-release ledger, not the CodeRabbit one, so the registry's `cr-trigger-ledger.sh` row (the `scripts/lib/` alias) does not apply to it. AMBIGUOUS: the pattern can catch a third-party cr-*.sh; read each hit.
 
 Distinct matched strings (23): `clear-cr-marker.sh` to `clear-review-marker.sh` (live), `cr-available.sh` to `coderabbit-available.sh` (live), `cr-body-findings.sh` to `coderabbit-body-findings.sh` (live), `cr-context.sh` (no ruled name), `cr-default-base.sh` to `review-default-base.sh` (live), `cr-disposition.sh` (no ruled name), `cr-first-measure.sh` (no ruled name), `cr-first-release.sh` (no ruled name), `cr-high-risk-diff.sh` to `review-high-risk-diff.sh` (live), `cr-ledger-evidence.sh` to `review-ledger-evidence.sh` (live), `cr-marker.sh` (no ruled name), `cr-merge-gate.sh` to `review-merge-gate.sh` (live), `cr-merge.sh` (no ruled name), `cr-pending-audit.sh` (no ruled name), `cr-reset.sh` (no ruled name), `cr-review-freshness.sh` (no ruled name), `cr-round-metrics.sh` (no ruled name), `cr-rounds.sh` (no ruled name), `cr-scores.sh` (no ruled name), `cr-signal.sh` to `coderabbit-signal.sh` (live), `cr-trigger-ledger.sh` to `coderabbit-trigger-ledger.sh` (live), `cr-tune.sh` (no ruled name), `cr-two.sh` (no ruled name)
 
@@ -3112,6 +3111,7 @@ the table.
 | `scripts/cr/cr-reset.sh` |
 | `scripts/cr/cr-round-metrics.sh` |
 | `scripts/cr/cr-scores.sh` |
+| `scripts/cr/cr-trigger-ledger.sh` |
 | `scripts/cr/cr-tune.sh` |
 | `scripts/eval/console-load-inventory.py` |
 | `scripts/eval/leg-digest/leg_ledger.py` |
