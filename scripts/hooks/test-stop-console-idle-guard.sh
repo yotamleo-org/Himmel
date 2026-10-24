@@ -413,6 +413,7 @@ cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
 "$FAKE_CLAUDE" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-7430 </dev/null >/dev/null 2>&1 &
 FAKE_PID=$!
 sleep 1
+kill -0 "$FAKE_PID" 2>/dev/null || bad "(x) fixture worker did not start; the count below would not prove the fix"
 out="$(run_guard "$CHIEF_PAYLOAD" COLUMNS=20)"
 kill "$FAKE_PID" 2>/dev/null
 rm -f "$FAKE_CLAUDE" 2>/dev/null
