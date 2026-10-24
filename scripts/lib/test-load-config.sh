@@ -156,12 +156,15 @@ conf_keys=$(sed -nE 's/^#?[[:space:]]*([A-Z][A-Z0-9_]*)=.*/\1/p' "$CONF_TEMPLATE
 policy_keys=$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(Object.keys(d.policy||{}).join("\n"))' "$POLICY_TEMPLATE" 2>/dev/null)
 bad=""
 for k in $conf_keys; do
-    [ "$(run "_himmel_key_class $k")" = config ] || bad="$bad $k"
+    [ "$(run '_himmel_key_class "$k"')" = config ] || bad="$bad $k"
 done
 assert_eq "(f) himmel.conf.example names only behaviour keys" "yes|" "$([ -n "$conf_keys" ] && echo yes)|$bad"
+registry_conf_keys=$(awk '/^_himmel_key_class\(\)/{f=1} f&&/printf .config./{exit} f' "$LIB" \
+    | sed -n '/HANDOVER_DIR/,$p' | tr -d ' \\)' | tr '|' '\n' | sed '/^$/d' | sort -u)
+assert_eq "(f) himmel.conf.example names every behaviour key" "$registry_conf_keys" "$conf_keys"
 bad=""
 for k in $policy_keys; do
-    [ "$(run "_himmel_key_class $k")" = policy ] || bad="$bad $k"
+    [ "$(run '_himmel_key_class "$k"')" = policy ] || bad="$bad $k"
 done
 assert_eq "(f) himmel-config.example.json .policy names only policy keys" "yes|" "$([ -n "$policy_keys" ] && echo yes)|$bad"
 

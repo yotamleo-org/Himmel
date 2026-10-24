@@ -27,6 +27,9 @@
 # HIMMEL_INITIATIVE=prcheck,pr,ticket,handover
 # HIMMEL_AFK=1
 # HIMMEL_INITIATIVE_AFK=all
+# Old names for the two above, read until the removal release:
+# HIMMEL_OVERNIGHT=1
+# HIMMEL_INITIATIVE_OVERNIGHT=all
 # HIMMEL_WHERE_ARE_WE=1
 # HIMMEL_WHERE_ARE_WE_STALE_HOURS=6
 # HIMMEL_DOC_FRESHNESS=all
