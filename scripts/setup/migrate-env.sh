@@ -22,8 +22,9 @@
 # Every gate-policy key is compared, moved or not.
 #
 # A secret "has a reader" when its name appears as a word in a tracked himmel
-# file other than docs and Markdown. Names in ~/.himmel/env-keep.txt (one per
-# line, # comments) always stay, for readers outside this checkout. When the
+# file other than docs and Markdown. Secrets named in ~/.himmel/env-keep.txt
+# (one per line, # comments) always stay, for readers outside this checkout;
+# behaviour and policy keys always move. When the
 # reader search itself fails, every himmel secret stays.
 #
 # Values never reach stdout or stderr: only key names are printed. Inside an
@@ -50,7 +51,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { echo "migrate-env: --env needs a value" >&2; exit 2; }
             envfile="$2"; shift 2 ;;
         --dry-run) dry=1; shift ;;
-        -h|--help) sed -n '2,37p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,38p' "$0"; exit 0 ;;
         *) echo "migrate-env: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -110,13 +111,14 @@ fi
 config_keys=() policy_keys=() secret_keys=() plan=""
 for key in $names; do
     if ! is_owned "$key"; then plan="$plan  $key stays (not himmel's, left in place)"$'\n'; continue; fi
-    case "$keep" in *" $key "*) plan="$plan  $key stays (keep-list)"$'\n'; continue ;; esac
     case "$(_himmel_key_class "$key")" in
         config) config_keys[${#config_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/himmel.conf"$'\n' ;;
         policy) policy_keys[${#policy_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/config.json .policy"$'\n' ;;
         *)
             reader=$(printf '%s\n' "$readers" | awk -v k="$key" '$1 == k { print $2; exit }')
-            if [ "$have_git" -eq 0 ]; then
+            if case "$keep" in *" $key "*) true ;; *) false ;; esac; then
+                plan="$plan  $key stays (keep-list)"$'\n'
+            elif [ "$have_git" -eq 0 ]; then
                 plan="$plan  $key stays (its readers could not be searched)"$'\n'
             elif [ -n "$reader" ]; then
                 plan="$plan  $key stays (read by $reader)"$'\n'

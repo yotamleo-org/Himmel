@@ -387,7 +387,8 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
 
 - **Keep-list.** To keep a himmel secret in `.env` for a reader outside this checkout
   (a station script, another tool), put its name in `~/.himmel/env-keep.txt`,
-  one per line; `#` starts a comment. Names only, never values.
+  one per line; `#` starts a comment. Names only, never values. Behaviour and
+  gate-policy keys always move.
 - **Inside Claude Code** (`/himmel-update`), an agent may not write
   `~/.himmel/config.json`, so the step prints the plan and the command to run
   at your own prompt, writes nothing, and its status row reads `pending`.

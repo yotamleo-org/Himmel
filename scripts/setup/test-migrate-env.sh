@@ -160,6 +160,17 @@ lacks "HANDOVER_DIR moves without USER_SLUG" "HANDOVER_DIR=" "$envnow"
 has "a move without USER_SLUG still checks the handover root" "verified: load_dotenv, load_policy, jira config reader, jira handover root, lanes resolve" "$out"
 has "a line with no key name stays in .env" "=orphan-line" "$envnow"
 
+# The keep-list holds secrets only: a behaviour key on it still moves.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+mkdir -p "$HOME/.himmel"
+printf 'HANDOVER_DIR\n' > "$HOME/.himmel/env-keep.txt"
+printf 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/handovers" "$(canary slug)" > "$TMP/st/.env"
+chmod 600 "$TMP/st/.env"
+out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+envnow=$(cat "$TMP/st/.env")
+lacks "a behaviour key on the keep-list still moves" "HANDOVER_DIR=" "$envnow"
+lacks "the keep-list does not split the behaviour keys" "MISMATCH" "$out"
+
 # --- 3. A reader that still reads .env only aborts ---
 fixture_env
 cp "$FX/scripts/jira/dist/handover-root.js" "$TMP/handover-root.good.js"
