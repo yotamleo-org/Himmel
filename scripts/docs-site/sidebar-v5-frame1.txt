@@ -18,7 +18,7 @@ Use it
   Settings & configuration
   Scheduled jobs
   The local dashboard
-  Review by a second model [pending]
+  Review by a second model
   Telegram bridge
   Second brain (notes vault)
   Plugins
