@@ -731,6 +731,16 @@ case "\$1" in
         fi
         if [ "\$2" = "release" ] && [ "\$3" = "request" ]; then
             [ "\${STUB_JIRA_REQUEST_FAIL:-0}" = "1" ] && { echo "release request: refused" >&2; exit 1; }
+            req_verb="" req_key="" req_why=""
+            while [ \$# -gt 0 ]; do
+                case "\$1" in
+                    --verb) req_verb="\$2" ;;
+                    --key) req_key="\$2" ;;
+                    --why) req_why="\$2" ;;
+                esac
+                shift
+            done
+            [ -n "\$req_verb" ] && [ -n "\$req_key" ] && [ -n "\$req_why" ] || { echo "release request: --verb, --key and --why are required" >&2; exit 1; }
             echo "REQ Q-v1.1.3-0099"
             exit 0
         fi
