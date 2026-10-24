@@ -70,7 +70,8 @@ $1 ~ /^#/ || $1 == "" { next }
     printf "%s%s=%s", (n++ ? "," : ""), $1, name
 }')"
 
-ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
+# -ww: a COLUMNS in the environment would otherwise cut every argv the wrapper match reads
+ps_out="$(ps -ww -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
 if [ -z "$ps_out" ]; then
     [ "$list" -eq 1 ] || printf 'orphans=?\n'
     exit 0

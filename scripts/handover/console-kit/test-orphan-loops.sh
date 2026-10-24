@@ -34,11 +34,16 @@ printf '#!/usr/bin/env bash\nif [ "$1" = "-x" ]; then printf "%%s\\n" 101; exit 
 # PS_FAIL=1 makes it fail. Anything else falls through to the real ps.
 cat > "$W/bin/ps" <<'STUB'
 #!/usr/bin/env bash
-if [ "$*" = "-eo pid=,ppid=,etime=,args=" ]; then
-  [ "${PS_FAIL:-0}" -eq 0 ] || exit 1
-  cat "$PS_FIXTURE"
-  exit 0
-fi
+# like a real ps, a COLUMNS in the environment cuts every row unless -ww is given
+case "$*" in
+  "-eo pid=,ppid=,etime=,args="|"-ww -eo pid=,ppid=,etime=,args=")
+    [ "${PS_FAIL:-0}" -eq 0 ] || exit 1
+    case "$1" in
+      -ww) cat "$PS_FIXTURE" ;;
+      *) if [ -n "${COLUMNS:-}" ]; then cut -c1-"$COLUMNS" "$PS_FIXTURE"; else cat "$PS_FIXTURE"; fi ;;
+    esac
+    exit 0 ;;
+esac
 exec /bin/ps "$@"
 STUB
 chmod +x "$W/bin/pgrep" "$W/bin/ps"
@@ -84,6 +89,10 @@ out="$(run)"; rc=$?
 eq 'default: exact one-line inventory joined to owner names (>=30m)' \
     'orphans=HIMMEL-111-N61:11/1560m,orphan:1/300m' "$out"
 eq 'default: rc 0' 0 "$rc"
+
+out="$(COLUMNS=60 run)"
+eq 'a COLUMNS in the environment does not truncate argv: same inventory' \
+    'orphans=HIMMEL-111-N61:11/1560m,orphan:1/300m' "$out"
 
 out="$(TICK_ORPHAN_MIN=200 run)"
 eq 'TICK_ORPHAN_MIN raises the age floor' 'orphans=orphan:1/300m,HIMMEL-111-N61:1/1560m' "$out"
