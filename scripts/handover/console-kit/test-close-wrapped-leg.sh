@@ -1375,6 +1375,9 @@ not_contains "legs: the held WRAPPED leg is never signaled" "$(cat "$CALLS")" "k
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$MS_HELD" "$token" >/dev/null 2>&1
 rc=0; CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run --bogus >/dev/null 2>&1 || rc=$?
 check "legs: an unknown flag -> rc 2" "$rc" "2"
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" HIMMEL_BUCKET_DIR="$W/bucket" CLOSE_WRAPPED_LEGS_MAX_AGE_MIN=abc run --check 2>&1) || rc=$?
+check "legs: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
+not_contains "legs: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
 
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent
