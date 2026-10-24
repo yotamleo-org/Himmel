@@ -19,32 +19,35 @@ const [repo, dotenv, emptyHome, home, root, ...keys] = process.argv.slice(2);
 const digest = (read) => {
   try { return `ok:${createHash('sha256').update(String(read() ?? '')).digest('hex')}`; } catch { return 'throw'; }
 };
-const load = async (path) => import(pathToFileURL(path).href);
+// A reader that is missing cannot be checked, so the move stops instead of skipping it.
+const load = async (path, missing) => {
+  if (!existsSync(path)) {
+    console.log(`verify: ${missing}`);
+    process.exit(1);
+  }
+  return import(pathToFileURL(path).href);
+};
 
 const readers = [];
 try {
   const jira = join(root, 'scripts/jira/dist');
-  if (existsSync(join(jira, 'handover-root.js'))) {
-    const { behaviourKey, handoverRoot } = await load(join(jira, 'handover-root.js'));
-    readers.push(['jira config reader', (env) => keys.map((k) => [k, digest(() => behaviourKey(k, env))])]);
-    if (keys.includes('HANDOVER_DIR')) {
-      readers.push(['jira handover root', (env) => [['HANDOVER_DIR', digest(() => handoverRoot(env))]]]);
-    }
-    // The release root is the handover root plus USER_SLUG and throws without
-    // the slug, so it checks USER_SLUG; HANDOVER_DIR is the handover root's.
-    if (keys.includes('USER_SLUG') && existsSync(join(jira, 'release/paths.js'))) {
-      const { releaseRoot } = await load(join(jira, 'release/paths.js'));
-      readers.push(['jira release state', (env) => [['USER_SLUG', digest(() => releaseRoot(env))]]]);
-    }
+  const unbuilt = 'the Jira CLI is not built (scripts/jira/dist); build it, then run the migration again';
+  const { behaviourKey, handoverRoot } = await load(join(jira, 'handover-root.js'), unbuilt);
+  readers.push(['jira config reader', (env) => keys.map((k) => [k, digest(() => behaviourKey(k, env))])]);
+  if (keys.includes('HANDOVER_DIR')) {
+    readers.push(['jira handover root', (env) => [['HANDOVER_DIR', digest(() => handoverRoot(env))]]]);
   }
-  const lanes = join(root, 'scripts/lanes/resolve.mjs');
-  if (existsSync(lanes)) {
-    const { buildCtx } = await load(lanes);
-    readers.push(['lanes resolve', (env) => {
-      const ctx = buildCtx(repo, env);
-      return keys.map((k) => [k, digest(() => ctx.env[k])]);
-    }]);
+  // The release root is the handover root plus USER_SLUG and throws without
+  // the slug, so it checks USER_SLUG; HANDOVER_DIR is the handover root's.
+  if (keys.includes('USER_SLUG')) {
+    const { releaseRoot } = await load(join(jira, 'release/paths.js'), unbuilt);
+    readers.push(['jira release state', (env) => [['USER_SLUG', digest(() => releaseRoot(env))]]]);
   }
+  const { buildCtx } = await load(join(root, 'scripts/lanes/resolve.mjs'), 'scripts/lanes/resolve.mjs is missing');
+  readers.push(['lanes resolve', (env) => {
+    const ctx = buildCtx(repo, env);
+    return keys.map((k) => [k, digest(() => ctx.env[k])]);
+  }]);
 } catch (e) {
   console.log(`verify: a node reader failed to load (${e.code || e.name})`);
   process.exit(1);

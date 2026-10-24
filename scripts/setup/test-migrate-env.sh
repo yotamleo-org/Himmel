@@ -257,6 +257,13 @@ printf '%s\n' 'export function behaviourKey() { throw new Error("broken"); }' \
 apply_tty y
 has "a reader that throws fails the migration" "MISMATCH HANDOVER_DIR (jira handover root, the reader threw)" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "a throwing reader leaves .env untouched"; else fail "a throwing reader changed .env"; fi
+# An unbuilt Jira CLI cannot be checked, so the move stops rather than skip it.
+fixture_env
+rm -f "$FX/scripts/jira/dist/handover-root.js"
+apply_tty y
+if [ "$rc" != 0 ]; then pass "an unbuilt Jira reader fails the migration"; else fail "an unbuilt Jira reader was skipped"; fi
+has "the missing reader is named" "verify: the Jira CLI is not built" "$out"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "an unbuilt Jira reader leaves .env untouched"; else fail "an unbuilt Jira reader changed .env"; fi
 cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
 
 # --- 4. A policy value that would change aborts ---
