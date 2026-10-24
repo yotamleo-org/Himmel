@@ -93,13 +93,19 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # hour), tagged v2.8.3-himmel.3. The pin was ac626e4c, the squash merge of
 # fork PR #38 into fork main (@modelcontextprotocol/server 2.0.0 to 2.3.1, which
 # clears the HTTP transport advisories in `qmd mcp --http`), tagged v2.8.3-himmel.4.
-# The pin is now 6930b5b1, the squash merge of fork PR #40 into fork main
+# The pin was 6930b5b1, the squash merge of fork PR #40 into fork main
 # (pillow 13.0.0, certifi, aiohttp, transformers 5, starlette and fsspec bumps
 # in finetune/uv.lock and zod 4.6.7, which clear the Critical and High lockfile
 # advisories; braces and picomatch have no upstream fix).
+# The pin is now ba4605fb, the squash merge of fork PR #42 into fork main
+# (the MCP `query` tool returns an MCP task, with tasks/get and tasks/cancel,
+# to a client that declares the io.modelcontextprotocol/tasks extension; other
+# clients get the unchanged synchronous result). It carries
+# fork PR #41 (vitest 4.1.12, setuptools 83.0.0) and PR #24 (fork pre-commit core),
+# tagged v2.8.3-himmel.5.
 # ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-6930b5b1e6a6def4f19794f465541958702cfca1}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-ba4605fb880c2e6d72b09a1ffe9a4d9c845358aa}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or
