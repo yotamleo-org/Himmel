@@ -405,6 +405,8 @@ for b in chromium chromium-browser google-chrome-stable google-chrome; do
 done
 if [ -z "$chrome" ]; then
   echo "SKIP 360 px measurement: no headless Chromium on PATH (the CSS assertion above still ran)"
+elif [ -z "$_TIMEOUT_BIN" ]; then
+  echo "SKIP 360 px measurement: no timeout or gtimeout to bound Chromium (the CSS assertion above still ran)"
 else
   # Chromium's headless window is never narrower than 500 px, so the page is
   # measured inside a 360 px iframe. Every <details> is opened first, so a
@@ -418,7 +420,7 @@ else
     else
       cp "$PAGE" "$tmp/w.html"
     fi
-    sw="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 60} "$chrome" --headless --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --user-data-dir="$tmp/chrome" --virtual-time-budget=3000 --dump-dom "file://$tmp/wrap.html" 2>/dev/null | grep -o -E 'data-sw="[0-9]+/[0-9]+"' | grep -o -E '[0-9]+/[0-9]+')"
+    sw="$("$_TIMEOUT_BIN" 60 "$chrome" --headless --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --user-data-dir="$tmp/chrome" --virtual-time-budget=3000 --dump-dom "file://$tmp/wrap.html" 2>/dev/null | grep -o -E 'data-sw="[0-9]+/[0-9]+"' | grep -o -E '[0-9]+/[0-9]+')"
     if [ -z "$sw" ]; then
       bad "360 px ($mode): the headless measurement returned nothing"
     elif [ "${sw%/*}" -le "${sw#*/}" ]; then

@@ -20,6 +20,7 @@
     var d = document.getElementById(id);
     if (!d || !d.classList.contains('lvl')) return;
     d.open = true;
+    store(d.id.slice(4));
     current(id);
     if (scroll) d.scrollIntoView({ behavior: reduce.matches ? 'auto' : 'smooth', block: 'start' });
   }
