@@ -48,7 +48,8 @@ def pct(x):
 
 def day(ts):
     try:
-        return datetime.strptime(ts[:10], "%Y-%m-%d").strftime("%-d %b %Y")
+        d = datetime.strptime(ts[:10], "%Y-%m-%d")
+        return "%d %s" % (d.day, d.strftime("%b %Y"))
     except (TypeError, ValueError):
         return "an unknown day"
 
