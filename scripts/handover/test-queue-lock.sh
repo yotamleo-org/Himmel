@@ -3049,7 +3049,8 @@ else
     fail "T98: an unprovable lock read STALE-DEAD (out=$out)"
 fi
 cout="$(COLUMNS=20 HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"
-if ! grepq "$cout" "slug=claude-leg .*STALE-DEAD" && ! grepq "$cout" "slug=wrapped-leg .*STALE-DEAD"; then
+if grepq "$cout" "slug=claude-leg " && grepq "$cout" "slug=wrapped-leg " \
+    && ! grepq "$cout" "slug=claude-leg .*STALE-DEAD" && ! grepq "$cout" "slug=wrapped-leg .*STALE-DEAD"; then
     pass "T98b: a COLUMNS in the environment does not hide a live session's doc name from the dead-owner proof"
 else
     fail "T98b: COLUMNS=20 made a live session's lock read STALE-DEAD (out=$cout)"
