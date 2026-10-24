@@ -1917,14 +1917,16 @@ def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
 def pyspawn: "subprocess|environ|putenv|unsetenv|system|popen|fork|exec|spawn|Popen|commands\\.|__import__|__dict__|__builtins__|__getattribute__|__subclasses__|__globals__|__class__|__loader__|getattr|attrgetter|methodcaller|getmembers|modules|globals|locals|vars[[:space:]]*\\(|dir[[:space:]]*\\(|eval|compile|\\b(pty|ctypes|cffi|importlib|inspect|marshal|pickle|shelve|runpy|timeit|doctest|pdb|bdb|cProfile|profile|trace|code|codeop|webbrowser)\\b";
 def jsspawn: "child_process|exec|spawn|fork|process(?!\\.(argv|stdout|stderr|exitCode|exit|cwd)\\b)|Bun|Deno|eval|Function|constructor|__proto__|prototype|globalThis|Reflect|Proxy|import[[:space:]]*\\(|worker_threads|\\b(global|this|module|arguments|vm)\\b|require(?![[:space:]]*\\([[:space:]]*[\"'](node:)?(fs|path)[\"'][[:space:]]*\\))";
 def optw: lit and (wv | startswith("-") and . != "-" and . != "--");
+def hdin: (.redirs // []) | map(select(((.fd // "0") == "0") and (.hdoc or ((.op // "") | startswith("<")))))
+  | length > 0 and (last | .hdoc);
 def inline: .argv[1:] as $a
   | first(range(0; ($a | length) + 1) as $i | select(($a[$i] == null) or (($a[$i] | optw) | not)) | $i) as $n
   | ($a[:$n] | map(wv)) as $o
   | if .prog == "node" then (($o | any(.[]; isin(["-e", "-p", "--eval", "--print"])))
       and ($o | all(.[]; isin(["-e", "-p", "--eval", "--print", "--no-warnings"]) or test("^--input-type=(module|commonjs)$"))))
-      or (($a | map(select(lit) | wv)) == ["-"])
-    else ($o | all(.[]; test("^-[bBdEhiIOPqsSuvRx]*c?$")))
-      and (($o | any(.[]; test("^-[bBdEhiIOPqsSuvRx]*c$"))) or (($a[$n] // null) | . != null and lit and wv == "-")) end;
+      or ((($a | map(select(lit) | wv)) == ["-"]) and hdin)
+    else ($o | all(.[]; test("^-[bBdEhIOPqsSuvRx]*c?$")))
+      and (($o | any(.[]; test("^-[bBdEhIOPqsSuvRx]*c$"))) or ((($a[$n] // null) | . != null and lit and wv == "-") and hdin)) end;
 def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
 def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
   and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
