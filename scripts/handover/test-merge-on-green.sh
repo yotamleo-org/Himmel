@@ -699,6 +699,16 @@ case "\$1" in
         if [ "\$2" = "comment" ] && [ "\$4" = "--comment-file" ] && [ -f "\$5" ]; then
             sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
         fi
+        # STUB_JIRA_TRANSITION_STAMPS=<v>: the transition stamps <v>, and every later get reads it back.
+        if [ "\$2" = "get" ] && [ -n "\${STUB_JIRA_TRANSITION_STAMPS:-}" ] && [ -e "\$JIRA_LOG.stamped" ]; then
+            printf '{"fields":{"issuetype":{"name":"Task"},"status":{"name":"Done"},"fixVersions":[{"name":"%s"}]}}\n' "\$STUB_JIRA_TRANSITION_STAMPS"
+            exit 0
+        fi
+        if [ "\$2" = "transition" ] && [ -n "\${STUB_JIRA_TRANSITION_STAMPS:-}" ]; then
+            : > "\$JIRA_LOG.stamped"
+            echo "\$3 fixVersion +\$STUB_JIRA_TRANSITION_STAMPS (earliest unreleased; --no-version opts out)"
+            exit 0
+        fi
         if [ "\$2" = "get" ] && [ "\${STUB_JIRA_NO_FIXVERSIONS:-0}" = "1" ]; then
             printf '{"fields":{"issuetype":{"name":"%s"},"status":{"name":"%s"}}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_STATUS-In Review}"
             exit 0
@@ -3881,6 +3891,15 @@ STUB_JIRA_BUILD=1 STUB_JIRA_FIX_FAIL=1 STUB_JIRA_REQUEST_FAIL=1 STUB_PR_TITLE="f
     run_mog 0 "jira: a Done-fold request that cannot be filed still lets the merge succeed" -- --jira-transition
 assert_err_has "jira: an unfiled Done-fold request is said on stderr" "Done-fold request into v1.1.3 was NOT filed"
 assert_audit_has "jira: an unfiled Done-fold request is on the audit line" "fold-request=failed"
+
+# The transition stamped the frozen current version, so the fold reads the ticket again and makes no edit
+# (STUB_JIRA_FIX_FAIL models the frozen intake gate refusing a second --fix-version).
+STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_STAMPS=v1.1.3 STUB_JIRA_FIX_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a ticket the transition stamped is not folded again" -- --jira-transition
+assert_audit_has "jira: a transition-stamped ticket records a clean move" "jira-transition=ok key=HIMMEL-374 status=Done"
+assert_audit_lacks "jira: a transition-stamped ticket is not recorded as unplaced" "fixversion=failed"
+assert_jira_log_lacks "jira: a transition-stamped ticket gets no fixVersion edit" "edit HIMMEL-374"
+assert_jira_log_lacks "jira: a transition-stamped ticket files no Done-fold request" "release request"
 
 # Transition exit 3: the ticket closed, but it was deferred out of the frozen version, so the merge does not stamp it.
 STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_RC3=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \

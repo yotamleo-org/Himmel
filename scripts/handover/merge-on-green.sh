@@ -2315,9 +2315,14 @@ $remaining")
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
         # An archived version is never current: `versions` prints archived as column 4.
-        local versions_out fold_to
+        local versions_out fold_to fold_json="$issue_type_json" fresh_json
+        # The transition may have stamped the current version itself, so the fold reads the ticket after it.
+        if [ "$transition_rc" -eq 0 ]; then
+            fresh_json=$(cd "$repo_root" && node scripts/jira/dist/index.js get "$key" --json 2>/dev/null) || fresh_json=""  # swallow-ok: an unread ticket keeps the pre-transition copy
+            [ -n "$fresh_json" ] && fold_json=$fresh_json
+        fi
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
-        fold_to=$(printf '%s' "$issue_type_json" | node -e '
+        fold_to=$(printf '%s' "$fold_json" | node -e '
             try {
                 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
                 const have = ((d.fields && d.fields.fixVersions) || []).map(v => v.name);
