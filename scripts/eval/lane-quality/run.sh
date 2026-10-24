@@ -462,6 +462,7 @@ cmd_run() {
     esac
   done
   [ -n "$MODEL" ] || die "--model is required"
+  [ "$DRY_RUN" -eq 1 ] || need_billed "run"
   case "$LANE" in
     native|openrouter) ;;
     api)
@@ -731,7 +732,7 @@ cmd_verdict() {
 case "$1" in
   verdict) shift; cmd_verdict "$@" ;;
   list) all_tasks ;;
-  run) shift; has_arg --dry-run "$@" || need_billed "run"; cmd_run "$@" ;;
+  run) shift; cmd_run "$@" ;;
   table) shift; cmd_table "$@" ;;
   pair) shift; cmd_pair "$@" ;;
   calibration) shift; ! has_arg --judge2-model "$@" || need_billed "calibration --judge2-model"; cmd_calibration "$@" ;;

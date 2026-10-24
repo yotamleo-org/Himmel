@@ -214,7 +214,7 @@ refuse scripts/probes/claude-p/05-cross-cwd-resume.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/probes/claude-p/07-dual-shell-allowlist.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/probes/claude-p/07-settings-overlay-hooks.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/eval/lane-quality/run.sh bash 64 "HIMMEL_BILLED_OK" run --lane native --model m
-refuse scripts/eval/lane-quality/run.sh bash 64 "HIMMEL_BILLED_OK" run --note "x --dry-run y" --lane native --model m
+refuse scripts/eval/lane-quality/run.sh bash 64 "HIMMEL_BILLED_OK" run --lane native --model m --judge-model --dry-run
 refuse scripts/eval/graphify-ab/run.sh bash 2 "HIMMEL_BILLED_OK" run
 refuse scripts/eval/retrieval-eval/answer-ab.py python3 64 "HIMMEL_BILLED_OK" run --questions q.jsonl --out o
 refuse scripts/eval/review-panel/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/rp"
