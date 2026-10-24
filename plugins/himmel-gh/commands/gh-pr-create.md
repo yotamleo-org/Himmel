@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash(himmel-run:*), Bash(gh:*), Bash(bash:*)
-description: Open a GitHub PR. Refuses if HEAD == main or branch is already merged; warns on dirty worktree. Returns the PR URL on success. Forwards args to `gh pr create`. Override flags consumed by the guard (not forwarded to gh): --allow-dirty, --allow-merged-base.
+description: "Open a GitHub PR. Refuses if HEAD == main or branch is already merged; warns on dirty worktree. Returns the PR URL on success. Forwards args to `gh pr create`. Override flags consumed by the guard (not forwarded to gh): --allow-dirty, --allow-merged-base."
 argument-hint: "--title \"...\" --body \"...\" [--base BRANCH] [--head BRANCH] [--allow-dirty] [--allow-merged-base]"
 ---
 
