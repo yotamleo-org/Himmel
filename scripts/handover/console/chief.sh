@@ -323,6 +323,11 @@ do_arm() {
         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
+            # Still the outgoing console here (identity is process ancestry):
+            # stamp the successor so each leg's adopt passes while this one is live.
+            if [ -n "$CHIEF_BUS_PREDECESSOR" ] && ! bus_out="$("$bus_cli" succeed "$session" 2>&1)"; then
+                echo "chief.sh: WARN bus succeed failed for $session - legs adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out" >&2
+            fi
         else
             echo "chief.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
         fi

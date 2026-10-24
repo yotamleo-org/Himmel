@@ -157,7 +157,7 @@ baseline (longest gap 144 s, longest wall 353 s, so 5m held every cache hit);
 the resumed judge is the one pattern that could still favour 1h and the
 baseline contains none (j2325a, about 70 minutes, is not in the sample), so it
 stays a prediction. **Decision: 5m matches every observed pattern, so
-`console-judge-ro` ships without `cacheTtl` and `console-judge` is reverted
+`judge-ro` ships without `cacheTtl` and `judge` is reverted
 to match.** What ships is the read-only agent (the guard carve-out), the
 "judges never wait on CI or tests" rule and this ledger recipe. Turn 1h on for
 one agent only when the ledger holds n ≥ 3 resumed-judge rows that beat the
@@ -174,7 +174,7 @@ bash scripts/eval/judge-cache-row.sh --header --ledger <ledger.tsv> \
 ```
 
 Drop `--header` after the first row. `agent` comes from the sibling
-`.meta.json`, so an Explore row and a `console-judge-ro` row land in one
+`.meta.json`, so an Explore row and a `judge-ro` row land in one
 ledger. Re-decide the TTL from the ledger: score each row against the break-even
 above (1.15 Σ`P`ᵢ over its 5m-expiring gaps vs 0.75 `W` ). `ponytail:` the row
 holds the longest gap and the count over 300 s, not each gap's context size,

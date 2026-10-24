@@ -3859,8 +3859,7 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 "open a/the PR", `gh pr edit`), `cr-gate` (`/pr-check`, "CR-clean",
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
-frictionless. `subagent_type: Explore` always allows, and `judge-ro` (old id
-`console-judge-ro`) allows while `.claude/agents/<id>.md` pins exactly
+frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
 `tools: Read, Grep, Glob, Bash`, the same structural read-only lane (HIMMEL-5180)
 — the ONLY carve-outs. `guard-implementor-dispatch.sh` exempts both ids the same
 way, on the same tools check.
@@ -4111,7 +4110,7 @@ Fires on `Agent`. Denies a `tool_input.model` matching a pattern in
 `scripts/guardrails/agent-model-policy.json` (`blocked_model_patterns`; today
 `fable` / `claude-fable-*`, matched case-insensitively), and a
 `judge` dispatch (`subagent_type` `judge`, `judge-ro` or another `judge-*` id,
-old ids `console-judge*`, plugin-namespaced or not) whose `model` is not Opus — its frontmatter tier — unless the prompt
+plugin-namespaced or not) whose `model` is not Opus — its frontmatter tier — unless the prompt
 carries a line of its own `ESCALATION: <reason>` (the CLAUDE.md
 "Fable is the escalation target for ONE hard call" lane; a mid-sentence mention
 does not count). The reason must be real: empty, shorter than `min_reason_chars`
@@ -4133,7 +4132,7 @@ marker and the measured reason. No `model` (that is
 `guard-subagent-model.sh`'s deny, below, not this hook's), any
 other model, another tool, or an unparseable payload → exit 0 with **no output**
 (workflow nudge, not a security fence: fails open, like `guard-leg-wakeup.sh`).
-The suite asserts `judge.md` and `console-judge.md` still say `model: opus`, so a tier change
+The suite asserts `judge.md` and `judge-ro.md` still say `model: opus`, so a tier change
 there fails it. Not covered: a `Workflow` script's `agent()` dispatches — no
 per-dispatch hook seam is known (they run inside the one `Workflow` tool call;
 `ponytail:` in the hook header, follow-up ticket in the PR body). Claude lane only — `.codex/hooks.json` has no PreToolUse `Agent`

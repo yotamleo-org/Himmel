@@ -2,17 +2,18 @@
 
 Audience: newcomer, after the first install. Owner of the rewrite: HIMMEL-7212.
 
-**TL;DR: `git pull` your himmel checkout. Marketplace `autoUpdate` does NOT
-deliver himmel updates on its own.** Run `/himmel-update` (or `bash
-scripts/himmel-update.sh`) to do the pull + marketplace re-sync in one step.
-From a shell, the command is `himmelctl update` (`himmel` is installed beside it
-as an alias, so `himmel update` works too). If the graphify pin sync keeps
-skipping because a Claude session is live, run `bash scripts/himmel-update.sh
---graphify-only` when none is.
+**The task:** bring one himmel install up to a newer version and confirm it
+landed. Six steps: choose your route, confirm the target, preview, update,
+verify, and recover if a step failed. The reference below the steps explains
+each part of the update in depth.
+
+Marketplace `autoUpdate` does **not** deliver himmel updates on its own: the
+hooks and commands run out of your himmel checkout, so only a pull changes them
+([why](#why-a-pull-is-required)).
 
 > This updates the himmel **harness**. A configured `LUNA_VAULT_PATH` is
-> already refreshed by `/himmel-update`'s own dependency chain (step 6,
-> below); reserve
+> already refreshed by `/himmel-update`'s own dependency chain (step 6 of
+> [the update chain](#the-update-chain)); reserve
 > [`/luna-upgrade`](../../marketplace/plugins/obsidian-triage/skills/luna-upgrade/SKILL.md)
 > for an **explicit**, Luna-only run, and `/himmel-update-all` for running
 > both the harness and the vault update together deliberately. To bring
@@ -26,7 +27,149 @@ skipping because a Claude session is live, run `bash scripts/himmel-update.sh
 > [migrating.md](migrating.md) has the four from-states, how to tell which one
 > you are in, and the converge path for each.
 
-## Updating multiple luna vaults
+## Choose your route
+
+Two facts about your install decide the commands: how himmel reached the
+machine, and where it is wired.
+
+**How it reached the machine:**
+
+| You installed from | The update | Detail |
+|---|---|---|
+| A git checkout (`git clone`), no release channel recorded | `git pull --ff-only` on the checked-out branch, then the rest of the chain | [The update chain](#the-update-chain) |
+| A git checkout with `channel: stable` or `pre` (what `himmelctl install` records on a new station) | Detaches onto the newest matching release tag; never downgrades | [Release channels](#release-channels) |
+| A release tarball with the versioned layout (`~/.local/share/himmel/<version>/`, `current` symlink) | `himmelctl update` downloads, verifies and swaps `current` | [Installs without a git checkout](#installs-without-a-git-checkout) |
+| A native package (for example under `/usr/share/himmel`) | Your package manager (Arch: `pacman -Syu himmel`) | [Installs without a git checkout](#installs-without-a-git-checkout) |
+
+**Where it is wired** (the installation scope you chose at install):
+
+- **User scope:** the hooks in `~/.claude/settings.json` run from the himmel
+  download, so updating the download is the whole update.
+- **Project scope:** the install copied the hooks and scripts into the
+  project's own `scripts/` and `.claude/`. Updating the download does **not**
+  refresh those copies; after the update, re-run the project install (step 4
+  under [Update](#update)) and commit the result.
+
+Not sure which scope you have? `node ~/himmel/scripts/himmelctl/bin.js scope get`
+prints it, and `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/install-profile.json`
+records it with your other install answers.
+
+## Confirm the target
+
+The update acts on the himmel checkout that holds the script you run, not on
+your current directory: `bash ~/himmel/scripts/himmel-update.sh` updates
+`~/himmel` wherever you run it from. On this page `~/himmel` stands for your
+himmel root: the checkout, or the install root of a tarball
+(`~/.local/share/himmel/current`) or native package (for example
+`/usr/share/himmel`). The tree, branch and fork checks below apply to a git
+checkout only. Before you update:
+
+- **Which version is it on?** `himmelctl --version` prints the `VERSION` file,
+  the `git describe` string and the commit ([detail](#is-this-station-up-to-date)).
+- **Is the tree clean?** An apply run refuses a checkout with uncommitted
+  changes. Commit or stash them first (`git -C ~/himmel status`), or read
+  [Recover](#recover) for the autostash opt-in.
+- **Which branch?** The pull lands on the checked-out branch's upstream. Keep
+  the download on its default branch; a feature branch takes the update the
+  way it takes any upstream change (merge or rebase).
+- **A fork?** A plain `git pull origin` only pulls your fork; add an `upstream`
+  remote ([Notes](#notes)).
+
+## Preview
+
+Neither command pulls, rebuilds, restarts or touches your working tree. Both
+fetch remote refs to compare against, which writes Git refs but never moves
+`HEAD`:
+
+```bash
+bash ~/himmel/scripts/himmel-update.sh --check      # what each update step would do
+bash ~/himmel/scripts/himmel-update.sh --versions   # installed vs available, one row per component
+```
+
+`--check` reports the chain without pulling (on a release channel the fetch
+includes tags). On a tarball or
+package install it compares the `VERSION` file with the latest release tag
+instead. For a project-scope install, also preview what re-running the install
+would change in the project:
+
+```bash
+cd <your-project>
+bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run   # prints "would replace <file>" per changed copy
+```
+
+## Update
+
+1. Run one of these; they are the same engine:
+
+   ```bash
+   /himmel-update                              # inside Claude Code
+   bash ~/himmel/scripts/himmel-update.sh      # from a shell
+   node ~/himmel/scripts/himmelctl/bin.js update   # or himmelctl update / himmel update
+   ```
+
+   `himmelctl update` on a tarball install with the versioned layout takes the
+   download-and-swap route instead of the chain.
+2. Read the closing status table: each step reports `updated`, `up-to-date`,
+   `skipped`, `failed` or `not-attempted`, and a **DRIFT** block names anything
+   the installer could not converge, each with a remedy line.
+3. If the graphify pin sync skipped because a Claude session was live, run
+   `bash ~/himmel/scripts/himmel-update.sh --graphify-only` once none is.
+4. **Project scope only:** from the project root, re-run the install without
+   `--dry-run`. Each copy it replaces is backed up under the install's
+   provenance directory (`provenance-backups/`). Commit the result through a
+   branch and PR, as you committed the install
+   ([install.md](install.md#persist-commit-it-before-you-branch)):
+
+   ```bash
+   bash ~/himmel/scripts/adopt.sh --profile core --scope project
+   ```
+
+5. Read the release notes for the version you landed on: a one-time
+   migration or a moved config field is carried there, not here.
+
+## Verify
+
+```bash
+bash ~/himmel/scripts/himmel-update.sh --versions
+```
+
+Exit code `0` means no component is behind or undetermined, `1` means at
+least one is still behind, and `3` means none is behind but one could not be
+determined (for example offline). A component that is not installed or has no
+release yet reads `n/a` and does not change the exit code. Then:
+
+- **Hooks** take effect on the next tool call; no restart is needed.
+- **Plugins, slash commands and skills** load at session start: restart any
+  running Claude session to pick them up ([detail](#when-changes-take-effect)).
+- `node ~/himmel/scripts/himmelctl/bin.js status` shows any install item that
+  still differs from the manifest; `node ~/himmel/scripts/himmelctl/bin.js ensure`
+  converges it.
+
+## Recover
+
+- **A step failed.** The first genuine failure aborts the chain: later steps
+  report `not-attempted` and the script exits non-zero. Steps that already
+  succeeded are **not** undone. Fix the cause the step printed, then re-run
+  that step alone, then each later step that reported `not-attempted`, for example
+  `bash ~/himmel/scripts/himmel-update.sh --only marketplace`
+  ([the step names](#machine-local-catch-up)).
+- **The pull refused a dirty tree.** Commit or stash, then re-run. To keep
+  local tracked diffs on purpose, autostash them for one run:
+  `HIMMEL_UPDATE_AUTOSTASH=1 bash ~/himmel/scripts/himmel-update.sh`. If the
+  reapply conflicts, your changes stay in `git stash list`. Autostash does not
+  apply on a release channel.
+- **The branch diverged from upstream.** `git pull --ff-only` fails loud;
+  reconcile the branch by hand, then re-run. On a release channel, a `HEAD`
+  that diverged from the tag fails the same way rather than guessing.
+- **A tarball update went wrong.** A failed download or verify leaves
+  `current` untouched. The previous version directory is kept, so
+  `ln -sfn <previous-version> ~/.local/share/himmel/current` rolls back.
+- **A project-scope re-install replaced a copy you had edited.** Restore it
+  from `provenance-backups/`, then commit.
+
+## Reference
+
+### Updating multiple luna vaults
 
 If you keep more than one luna-family vault (e.g. a personal vault plus a
 work vault), [`/luna-upgrade-all`](../../marketplace/plugins/obsidian-triage/skills/luna-upgrade-all/SKILL.md)
@@ -74,7 +217,7 @@ refreshed. Obsidian vaults without a luna stamp show as `unstamped` and are left
 alone (upgrade them deliberately, per vault, with `apply --force-unstamped`);
 directories that aren't Obsidian vaults are skipped entirely.
 
-## Why a pull is required
+### Why a pull is required
 
 himmel ships as two delivery layers, and only one of them is a "plugin":
 
@@ -111,15 +254,7 @@ The himmel *plugins* depend on **how the marketplace was registered**:
 Either way: **a `git pull` is required for the full update; `autoUpdate` never
 covers the core hooks.**
 
-## How to update
-
-```bash
-/himmel-update                              # inside Claude Code
-# or
-bash scripts/himmel-update.sh               # from a shell, in the himmel checkout
-# or, an equivalent entry point:
-node scripts/himmelctl/bin.js update        # thin wrapper, same engine
-```
+### The update chain
 
 Every update ends with an **installer-drift pass** (`--only drift`,
 read-only twin `--only drift-check`, also run by `--check`). It runs
@@ -193,7 +328,7 @@ response-compression plugin is absent; on a TTY it asks `Remove now? [Y/n]`
 with the default being remove; a non-interactive run prints the advisory and
 the two manual commands and removes nothing).
 
-## Release channels
+### Release channels
 
 By default, `scripts/himmel-update.sh`'s pull step is exactly what it has
 always been: `git pull --ff-only` on whatever branch you have checked out.
@@ -250,7 +385,7 @@ guarantee as the unset-channel path. It does fetch tags from `origin` first
 (writing Git objects/refs, same as any `git fetch`), but never switches,
 pulls, or otherwise changes what you're on.
 
-## Installs without a git checkout
+### Installs without a git checkout
 
 A release-tarball or native-package install (for example under
 `/usr/share/himmel`) has no `.git`, so there is no upstream to pull. himmel
@@ -291,7 +426,7 @@ The only thing the check fetches is the latest release tag, from a fixed HTTPS
 URL that no environment variable can redirect; nothing is downloaded or
 executed.
 
-## Is this station up to date?
+### Is this station up to date?
 
 ```bash
 himmelctl --version         # himmel 0.3.0 + git describe string + commit
@@ -314,7 +449,7 @@ as `info`. The report is **read-only** and runs the same probes as `--check`
 behind, `3` when none is behind but one could not be determined (for example
 offline), `0` otherwise.
 
-## After upgrading
+### After upgrading
 
 A pull that moves you to a new release, whether the plain branch pull or a
 channel detaching onto a new tag, is not the end of the update. Two things
@@ -329,7 +464,7 @@ still need doing:
   specific to that release (a one-time migration, a config field that moved,
   a dependency bump) is carried in that release's notes, not repeated here.
 
-## Machine-local catch-up
+### Machine-local catch-up
 
 A merged pin bump reaches this checkout's **repo**. It does not reach the
 **machine**. `git pull` updates `scripts/lib/graphify-bin.sh` and
@@ -392,7 +527,7 @@ machine that is on all day catches up without anyone asking.
 
 Plain `git pull` works too if you don't need the rest of the chain.
 
-## When changes take effect
+### When changes take effect
 
 - **Hooks**: immediately on the next tool call; PreToolUse/etc. re-read the
   script from disk each invocation. (This is why the hook fix needs
@@ -400,7 +535,7 @@ Plain `git pull` works too if you don't need the rest of the chain.
 - **Plugins / slash commands / skills**: loaded at session start; **restart**
   any running Claude session to pick them up.
 
-## Lean plugin set — keeping session-start context low
+### Lean plugin set — keeping session-start context low
 
 Every **enabled** plugin injects its agents + skills + commands into the
 context at session start, whether or not you use it. Ad-hoc `/plugin` installs
@@ -461,7 +596,7 @@ leanness is governed by what `install-himmel-codex.sh` provisions, not an
 `enabledPlugins` map, and himmelctl's full-set enable stays a deliberate opt-in
 that `settings.local.json` protects.)
 
-## Uninstalling / offboarding
+### Uninstalling / offboarding
 
 The inverse of install is the wizard's `uninstall` subcommand:
 
@@ -522,7 +657,7 @@ is not torn down**: it installs outside the repo (`%LOCALAPPDATA%\hermes` /
 `$HERMES_HOME`); stop its gateway and remove that directory by hand if you are
 decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
 
-## Notes
+### Notes
 
 - **On a feature branch?** A pull lands updates on the default branch; merge or
   rebase it into your branch as you would any upstream change. The hook files
