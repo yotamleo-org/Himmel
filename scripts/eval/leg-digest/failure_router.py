@@ -306,10 +306,10 @@ def append_inbox(path, line):
 
 def notify(a, *args):
     """Run the notifier (console <text> | intake <key> <why>); a failure is said on stderr, never fatal."""
-    cmd = shlex.split(a.notify_cmd) if a.notify_cmd else ["bash", NOTIFY]
     try:
+        cmd = shlex.split(a.notify_cmd) if a.notify_cmd else ["bash", NOTIFY]
         r = subprocess.run(cmd + list(args), capture_output=True, text=True, timeout=JIRA_TIMEOUT)
-    except (OSError, subprocess.SubprocessError) as e:
+    except (ValueError, OSError, subprocess.SubprocessError) as e:
         print("failure-router: notify %s failed: %s" % (args[0], excerpt(str(e))), file=sys.stderr)
         return
     if r.returncode != 0:

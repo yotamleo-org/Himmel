@@ -395,6 +395,14 @@ FAILURE_ROUTE_JIRA="$N1/jira" bash "$N" intake HIMMEL-6 "why" >/dev/null 2>&1; r
 check "a failed INTAKE request exits 1 and alerts with the cause" '[ "$rci" = 1 ] && grep -q "failure-review-route .*HIMMEL-6" "$N1/alerts.log"'
 rm -f "$N1/release.fail"
 
+echo "HIMMEL-7354: an unparseable notify command is said on stderr and never fails the run"
+F17="$TMP/f17"; mkdir -p "$F17"
+SAVE="$LED"; LED="$F17/l.jsonl"
+row N1 denied/guard-eleven 1; row N2 denied/guard-eleven 1
+LED="$SAVE"
+python3 "$FR" route --ledger "$F17/l.jsonl" --state "$F17/s.json" --log "$F17/log" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" --notify-cmd "'unterminated" >"$F17/out" 2>&1; rc17=$?
+check "a malformed --notify-cmd exits 0, still files, and names the failed notify" '[ "$rc17" = 0 ] && [ "$(decs "$F17/log" | jq -r "select(.class == \"denied/guard-eleven\") | .decision")" = filed ] && grep -q "notify intake failed" "$F17/out" && grep -q "notify console failed" "$F17/out"'
+
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
 check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'
