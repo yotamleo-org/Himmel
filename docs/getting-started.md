@@ -1,12 +1,20 @@
 # Getting Started
 
-Audience: newcomer. Owner of the rewrite: HIMMEL-7211.
+Audience: newcomer. This page is the first task: protect one spare project
+with himmel, see a guardrail refuse a risky edit, make one change in a
+worktree, then undo it all. If you want to run or develop himmel itself
+instead, that contributor path is in
+[setup/new-machine.md](setup/new-machine.md#4-himmel-repo).
 
-New to himmel? This is the path from clone to your first protected project. It is
-eight numbered steps, in an order that was run end to end on a clean Linux
-virtual machine (install, commit, worktree, undo; the editor refusal was
-checked by calling the edit hook directly, not in a live session), and you stay
-in control the whole way. The
+The ten steps below are the same sequence as the
+[adoption trail's practice climb](adoption-trail.html#first-project), and that
+sequence is the canonical one. On 2026-10-23 it was run end to end on a clean
+Linux virtual machine with a sandboxed home folder: install, commit, worktree
+and undo. The editor refusal in step 7 was checked by calling the edit hook
+directly, not in a live Claude Code session, and macOS was not part of that
+run. Each step says which folder to run it from and what you should see, and
+step 10 undoes the install. A different result means stop and read
+[setup/install.md](setup/install.md). The
 [daily-loop walkthrough](daily-loop.md), which narrates every hook, is
 *optional depth*; the steps below stand on their own.
 
@@ -16,44 +24,85 @@ in control the whole way. The
 > [README](../README.md) for the full pitch and the
 > [advantages](../README.md#what-you-get).
 
-> **Before you start:** himmel is a harness *for* Claude Code, so you need
-> [Claude Code](https://claude.com/claude-code) installed:
-> `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). The install wizard
-> checks for it and for the other prerequisites, and fails fast with install
-> hints (the node-less bootstrap step below installs Node itself).
+## The first protected project, in ten steps
 
-## The first protected project, in eight steps
+Do this on a throwaway or a small repo first. The paths below use
+`~/try-himmel` for the project and `~/himmel` for the himmel download; they
+are two separate folders, and the install writes into the project, not into
+the download.
 
-Do this on a throwaway or a small repo first. Every step says what you should
-see; a different result means stop and read
-[setup/install.md](setup/install.md).
+### 1. Install the tools
 
-### 1. Name the folder you are in
+You need git, node with npm, jq, python3 and Claude Code. The installer
+checks for them and stops with install hints if one is missing.
 
 ```bash
-git clone https://github.com/yotamleo-org/Himmel ~/himmel   # once; the installer lives here
+# Debian or Ubuntu (needs sudo); Ubuntu's nodejs package ships without npm
+sudo apt-get update
+sudo apt-get install -y nodejs npm git jq python3
+curl -fsSL https://claude.ai/install.sh | bash
+
+# macOS with Homebrew; the bash and python3 macOS ships are too old for some scripts
+brew install node git jq python bash uv
+curl -fsSL https://claude.ai/install.sh | bash
+uv tool install pre-commit
+```
+
+You should see: `claude` is found in a new terminal.
+
+### 2. Sign in to Claude Code
+
+Run `claude`, finish the sign-in in the browser it opens, and leave with
+`/exit`. An account problem then shows up before himmel is involved.
+
+```bash
+claude --version
+```
+
+You should see: a version number followed by `(Claude Code)`.
+
+### 3. Make a spare project and name the folder you are in
+
+```bash
 mkdir ~/try-himmel && cd ~/try-himmel && git init -b main
-git commit --allow-empty -m "chore: initial commit"
+git commit --allow-empty -m "chore: initial commit #1"
 pwd
 ```
 
-`pwd` prints the project you are about to protect. The installer acts on the
-folder you run it from, so a wrong folder here is a wrong install. Use your own
-repository instead if you prefer, but it needs at least one commit and a clean
-`git status`.
+You should see: `pwd` prints the full path of `~/try-himmel`, the project
+you are about to protect. The installer acts on the folder you run it from,
+so a wrong folder here is a wrong install. The commit is made before any himmel hook
+exists; it still carries a ticket reference (`#1`), as every later commit
+must. Use your own repository instead if you prefer, but it needs at least one
+commit and a clean `git status`. No remote is needed.
 
-### 2. Preview the footprint
+### 4. Download himmel next to your projects
+
+```bash
+git clone https://github.com/yotamleo-org/Himmel ~/himmel   # once; the installer lives here
+```
+
+You should see: git ends without an error. This folder is the download; you
+never work inside it.
+
+### 5. Preview the footprint
+
+Run from `~/try-himmel`:
 
 ```bash
 node ~/himmel/scripts/himmelctl/bin.js install --scope project --dry-run
 bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run
 ```
 
-Both change nothing. The first prints a summary of what the install would run;
-the second prints one `DRY:` line for each file and setting it would write.
-Node-less machine? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first.
+You should see: both change nothing. The first prints a summary of what the
+install would run, ending in `NOTHING below was executed`; the second prints
+one `DRY:` line for each file and setting it would write. `git status` is
+still clean. Node-less machine? Run
+`bash ~/himmel/scripts/himmelctl/bootstrap.sh` first.
 
-### 3. Install
+### 6. Install
+
+Run from `~/try-himmel`:
 
 ```bash
 node ~/himmel/scripts/himmelctl/bin.js install --scope project
@@ -62,24 +111,27 @@ git status --short
 
 These steps were run with project scope only. A `--scope user` install wires the
 harness for every project on the machine instead (see
-[setup/install.md](setup/install.md)); steps 5 to 7 are not written for it.
+[setup/install.md](setup/install.md)); steps 8 to 10 are not written for it.
 
-`git status` now lists `.claude/`, `scripts/` and `.gitignore` as **untracked**.
-The install is on disk but not yet in your project's history. That matters in
-step 6.
+You should see: `git status` lists `.claude/`, `scripts/` and `.gitignore` as
+**untracked**. The install is on disk but not yet in your project's history.
+That matters in step 9.
 
-### 4. See the harmless refusal
+### 7. See the harmless refusal
 
-Start `claude` in the project and ask it to create `hello.txt`. On `main` the
-edit is refused with `block-edit-on-main: refusing to edit …`. That refusal is
-the guardrail working, not an error.
+Start `claude` in `~/try-himmel` and ask it to create `hello.txt`.
 
-### 5. Commit and merge the install
+You should see: on `main` the edit is refused with
+`block-edit-on-main: refusing to edit …`, and `hello.txt` does not exist. That
+refusal is the guardrail working, not an error. Leave Claude with `/exit`.
 
-On a machine without the `pre-commit` tool the installer places plain git
-hooks, and the commit hook then refuses a commit made directly on `main`. (With
-`pre-commit` present the hooks run whatever your `.pre-commit-config.yaml` lists,
-and a starter install writes none, so nothing refuses.) Commit on a branch and
+### 8. Commit and merge the install
+
+Run from `~/try-himmel`. On a machine without the `pre-commit` tool the
+installer places plain git hooks, and the commit hook then refuses a commit
+made directly on `main`. (With `pre-commit` present the hooks run whatever
+your `.pre-commit-config.yaml` lists, and a starter install writes none, so
+nothing refuses.) Commit on a branch and
 fast-forward either way:
 
 ```bash
@@ -97,8 +149,13 @@ no ticket convention, `TICKET_ID_REQUIRED=0 git commit …` switches the
 requirement off. On a repo whose `main` is branch-protected, push the branch and
 merge it through a PR instead; if your default branch has another name, use it
 in place of `main`. If the repo has an `origin`, push `chore/install-himmel`
-and merge it through a PR before step 6, because the worktree is cut from
-`origin/main`.
+and merge it through a PR before step 9, because the worktree is cut from
+`origin/main`. (The trail's version of this step lets the installer make the
+one commit on `main` itself, with `adopt.sh --commit-install`; either way the
+install is in `main`'s history before step 9.)
+
+You should see: `git log --oneline -1` on `main` shows
+`chore: install himmel #1`, and `git status` is clean.
 
 `.claude/settings.json` carries the path of your himmel download (the status
 line and `HIMMEL_REPO` point at `~/himmel`), so the commit above bakes this
@@ -106,27 +163,31 @@ machine's path into the project. That is fine for a throwaway; in a repo you
 share, a teammate whose download sits elsewhere needs those two values changed
 to their own path.
 
-### 6. Create the worktree, then relaunch inside it
+### 9. Create the worktree, then relaunch inside it
+
+Run from `~/try-himmel`:
 
 ```bash
 bash scripts/worktree.sh feat/try-himmel
 ```
 
-It prints the path, `.claude/worktrees/feat+try-himmel`. It does not move a
-running Claude Code session: quit, then run `claude` from inside that path. A
-worktree is cut from committed history, so cutting it before step 5 gives you
-a folder **without** the hooks or the edit guard.
+You should see: it prints the path,
+`.claude/worktrees/feat+try-himmel`. With no remote it also warns that it is
+branching from local `main`; that is normal. It does not move a running Claude
+Code session: quit, then run `claude` from inside that path. A worktree is cut
+from committed history, so cutting it before step 8 gives you a folder
+**without** the hooks or the edit guard.
 
-### 7. Verify
+### 10. Verify, preview the undo, then undo
 
-In the worktree, `.claude/settings.json`, `scripts/hooks/block-edit-on-main.sh`
-and `scripts/worktree.sh` all exist, `claude` can create `hello.txt` there, and
+Verify from inside the worktree
+(`~/try-himmel/.claude/worktrees/feat+try-himmel`): `.claude/settings.json`,
+`scripts/hooks/block-edit-on-main.sh` and `scripts/worktree.sh` all exist,
+`claude` can create `hello.txt` there, and
 `node ~/himmel/scripts/himmelctl/bin.js status` shows no drift. Then run the
-loop below once.
+loop below once before you undo, or go straight to the undo.
 
-### 8. Preview the undo, then undo
-
-Run these from the project folder you installed into (`~/try-himmel`), not from
+Undo from the project folder you installed into (`~/try-himmel`), not from
 the worktree: the uninstaller acts on the folder you run it from.
 
 ```bash
@@ -135,10 +196,10 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run   # lists what stays 
 node ~/himmel/scripts/himmelctl/bin.js uninstall --yes       # --yes is required without a terminal
 ```
 
-It removes the files the install recorded (git shows them as deleted),
-keeps your own files and any copy it does not recognize, and prints `verified:
-no himmel wiring left in …`. Your Telegram pairing and bridge state stay unless
-you add `--purge-state`.
+You should see: it removes the files the install recorded (git shows them
+as deleted), keeps your own files and any copy it does not recognize, and
+prints `verified: no himmel wiring left in …`. Your Telegram pairing and
+bridge state stay unless you add `--purge-state`.
 
 That is the whole install for the common case. **The full guide is
 [setup/install.md](setup/install.md)**: prerequisites, what each scope and
@@ -164,11 +225,11 @@ did the work. Skip straight to the loop.
 ## Your first loop
 
 The first time, skip the first line below: you are already in the worktree you
-opened in step 6, on `feat/try-himmel` with `claude` running inside it, so make
+opened in step 9, on `feat/try-himmel` with `claude` running inside it, so make
 your change there and use that branch name in the push line. For every later
 change, make a new worktree, `cd` into the path it prints and relaunch `claude`
 there before you edit. The hooks below only fire inside an active session. The
-throwaway project from step 1 has no remote, so the push and PR lines need a
+throwaway project from step 3 has no remote, so the push and PR lines need a
 GitHub remote first (`git remote add origin <url>`); without one, stop after
 the commit. Once `origin` exists, worktrees, including the first one, are cut from `origin/main`,
 which lacks the install commit until you push `chore/install-himmel` and merge
@@ -184,7 +245,7 @@ bash scripts/worktree.sh feat/my-thing
 #   … make a small change with Claude …
 git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-thing
                              # conventional-commit gate fires at commit (the #2 is the ticket
-                             #   reference it wants, see step 5); the pre-push
+                             #   reference it wants, see step 8); the pre-push
                              #   gates run and record that a review is owed
 /pr-check                    # multi-agent review; clears the merge gate when clean
 #   gh pr create / gh pr merge --squash

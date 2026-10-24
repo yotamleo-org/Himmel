@@ -1,11 +1,12 @@
 # Why himmel
 
-Audience: newcomer. Owner of the rewrite: HIMMEL-7211.
-
-[`README.md`](../README.md) says what himmel is and
-[`getting-started.md`](getting-started.md) gets it running. This page argues
-the case: the failure modes that show up once you run Claude Code seriously,
-what himmel does about each, and the evidence for it.
+Audience: newcomer. Use this page to decide whether himmel is worth adding
+to your project. It walks the failure modes that show up once you run Claude
+Code seriously, what himmel does about each, where that protection stops, and
+what it costs you.
+[`README.md`](../README.md) says what himmel is, and
+[`getting-started.md`](getting-started.md) is the trial you can run on a spare
+project to see the first of these protections for yourself.
 
 If you are happy running Claude Code vanilla, you do not need any of this. It
 starts to pay for its complexity once you run more than one session at a
@@ -29,23 +30,32 @@ silent and you find it later.
 `block-edit-on-main.sh` runs before the Edit tool call, sees the branch, and
 refuses. Nobody has to remember the rule.
 
+**A bounded example.** In a project where himmel is installed, on `main`, you
+ask Claude to create `hello.txt`. The edit is refused with
+`block-edit-on-main: refusing to edit …`, and the file is not written. Step 7
+of [`getting-started.md`](getting-started.md) shows exactly this. The hook
+covers Claude Code's file-edit tools (Edit, Write, MultiEdit, NotebookEdit) in
+a session started where the hooks are installed. It does not inspect a file a
+shell command writes; for that, the git commit gate, where it is installed,
+refuses the commit on `main` instead (step 8 of the same page says when it
+runs).
+
 The escalation rule is written down as part of the design: *structural
 beats instructional — the first drift is signal; on the second, escalate to a
 hook, gate, or classifier, never to stronger prose.* Over time that policy
-produced these counts:
+produced layers of hooks and gates. Their number changes with almost every
+release, so this page gives no count; each layer's config file is the
+inventory, and you can count it yourself:
 
-| Layer | Count | Source of truth |
-|---|---:|---|
-| PreToolUse guardrail scripts (project scope) | 15 | `.claude/settings.json` |
-| PreToolUse guards (himmel-ops plugin) | 9 | `marketplace/plugins/himmel-ops/hooks/hooks.json` |
-| pre-commit gates | 37 | `.pre-commit-config.yaml` |
-| pre-push gates | 11 | `.pre-commit-config.yaml` |
-| commit-msg gates | 1 | `.pre-commit-config.yaml` |
-| CI jobs | 10 | `.github/workflows/ci.yml` |
+| Layer | Source of truth | Count it (from a himmel checkout) |
+|---|---|---|
+| PreToolUse hook entries (project scope; one entry can chain several scripts) | `.claude/settings.json` | `jq '[.hooks.PreToolUse[].hooks[]] \| length' .claude/settings.json` |
+| PreToolUse guards (himmel-ops plugin) | `marketplace/plugins/himmel-ops/hooks/hooks.json` | `jq '[.hooks.PreToolUse[].hooks[]] \| length' marketplace/plugins/himmel-ops/hooks/hooks.json` |
+| pre-commit, pre-push and commit-msg gates | `.pre-commit-config.yaml` | `grep -c -E '^[[:space:]]*- id:' .pre-commit-config.yaml` (gate ids, all stages) |
+| CI jobs | `.github/workflows/ci.yml` | the entries under `jobs:` |
 
-The config files are the inventory and a written list drifts, so re-derive
-these counts from them. Where each one fires, and how to get past it when it
-stops you for a good reason:
+Where each one fires, and how to get past it when it stops you for a good
+reason:
 [`internals/enforcement.md`](internals/enforcement.md) and
 [`internals/stuck-playbook.md`](internals/stuck-playbook.md).
 
@@ -127,9 +137,12 @@ whether its process is confirmed dead: `abandoned` (real hygiene information,
 but nothing is hung and nobody can act, so it must not page) versus `stalled`
 (everything else).
 
-The flap above produced 53 Telegram pages in one night. The fix came from
-measuring: the exporter's render takes ~6.6 s average and ~9.9 s peak,
-against a 10 s default timeout, so the scrape timeout went to 30 s. The reasoning is written into
+The flap above produced 53 Telegram pages in one night on the operator's
+machine. The fix came from measuring: over 24 hours of live scrapes, the
+exporter's render took ~6.6 s on average and ~9.9 s at peak, against a 10 s
+default timeout, so the scrape timeout went to 30 s. Those numbers describe
+that one machine at the time of the fix (in the tree since 2026-09-08 at the
+latest), not a current benchmark. The reasoning is written into
 `scripts/observability/prometheus.yml` next to the value it justifies.
 
 ---
@@ -145,19 +158,22 @@ against a 10 s default timeout, so the scrape timeout went to 30 s. The reasonin
   merge gate also requires CI green *and* zero unresolved threads.
 - **Small context by construction.** A local CLI instead of an always-loaded
   MCP server, an output-summarizing proxy for noisy commands, and a hard byte
-  budget on the always-on instruction file (6,144 bytes, enforced by a
-  pre-commit gate, because every call pays for an instruction file that grows
-  without limit).
-- **Cross-platform, including the awkward one.** Linux, macOS, and Windows Git
-  Bash, with the platform traps already handled and attested per change.
+  budget on the always-on instruction file, because every call pays for an
+  instruction file that grows without limit. The budget is the `MAX_BYTES`
+  default in `scripts/ci/check-claude-md-budget.sh`, which a pre-commit gate
+  runs.
+- **Linux and macOS.** Linux is checked on every PR and macOS on a scheduled
+  run, with each change attesting the platform it was tested on. Windows is
+  not supported; the README's
+  [support matrix](../README.md#support-matrix) has the detail.
 
 ---
 
 ## What it costs
 
-- **Gates fire on you too.** `.pre-commit-config.yaml` registers 49 gate ids
-  across the three git stages (37 pre-commit, 11 pre-push, 1 commit-msg), and
-  some of them will stop a change you believe is fine. That is the design
+- **Gates fire on you too.** `.pre-commit-config.yaml` registers dozens of
+  gate ids across the three git stages (count them with the command in the
+  table above), and some of them will stop a change you believe is fine. That is the design
   working, and the recovery path is documented, but you will hit that friction
   every day.
 - **Setup is not one command for the full stack.** The portable core adopts
@@ -173,9 +189,13 @@ against a 10 s default timeout, so the scrape timeout went to 30 s. The reasonin
 
 ## The provenance argument
 
-Every mechanism above is traceable. himmel's changelog carries 1,067 distinct
-ticket references and 1,752 distinct pull-request references, and the repo
-holds 399 shell test suites plus 10 CI jobs over them. Nearly every guardrail in the
+Every mechanism above is traceable. On 2026-10-24 (main at `4daf5c89f`),
+himmel's `CHANGELOG.md` carried 1,070 distinct ticket references
+(`grep -o -E 'HIMMEL-[0-9]+' CHANGELOG.md | sort -u | wc -l`) and 1,421
+distinct pull-request references (the same command with `'#[0-9]+'`), and
+`scripts/ci/suite-tiers.tsv` listed 1,112 test suites run by 40 CI jobs.
+These grow with every merge, so treat them as a dated snapshot and re-run the
+commands for today's numbers. Nearly every guardrail in the
 enforcement table was added *after* a specific failure, and the ticket that
 motivated it is in the script's header.
 
