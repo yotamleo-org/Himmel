@@ -7209,4 +7209,22 @@ echo "$outCRe" | jq -e '.actual == "degraded" and (.detail | contains("rc=1"))' 
   || fail "cadence-runs-qmd: a failing status must read degraded naming the rc (got: $outCRe)"
 echo "ok: cadence-runs-qmd — an unreadable status reads degraded"
 
+# an rc=0 status that names none of the row's tasks (empty, or an output shape the parser does not know) is degraded, not "nothing armed".
+# shellcheck disable=SC2016  # the stub's own $CR_STATUS_FILE must stay literal
+printf '#!/usr/bin/env bash\ncat "$CR_STATUS_FILE"\n' > "$cr_root/scripts/luna/qmd-cadence.sh"
+for cr_junk in '' 'something unexpected'; do
+  printf '%s' "$cr_junk" > "$cr_cur"
+  outCRj=$(run_cr qmd)
+  echo "$outCRj" | jq -e '.actual == "degraded" and (.detail | contains("none of the expected tasks"))' >/dev/null \
+    || fail "cadence-runs-qmd: an rc=0 status naming no task ('$cr_junk') must read degraded (got: $outCRj)"
+done
+echo "ok: cadence-runs-qmd — an rc=0 status that names no task reads degraded"
+
+# an armed task with no run log yet is present but never claims a recent clean run it cannot see.
+grep -v -E '^ +(run log|last line)' "$cr_fix/doctor.txt" > "$cr_cur"
+outCRu=$(run_cr doctor)
+echo "$outCRu" | jq -e '.actual == "present" and (.detail | contains("no run log yet"))' >/dev/null \
+  || fail "cadence-runs-doctor: an armed task with no run log must read present without claiming a clean run (got: $outCRu)"
+echo "ok: cadence-runs-doctor — an armed task with no run log is not called clean"
+
 echo "PASS"

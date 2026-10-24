@@ -3104,12 +3104,22 @@ function probeCadenceRuns(item, ctx) {
     return { actual: 'degraded', detail: `${name} status could not verify scheduler state (rc=${r.status}): ${(r.stderr || '').trim() || 'no stderr captured'}` };
   }
   const parsed = parseCadenceStatus(r.stdout || '');
+  // Not one expected task named in an rc=0 answer means the output is not the
+  // shape this reads, which must never pass for "nothing armed".
+  if (!d.tasks.some((t) => parsed[t.task])) {
+    return { actual: 'degraded', detail: `${name} status named none of the expected tasks (${d.tasks.map((t) => t.task).join(', ')}) — its output shape changed or it printed nothing` };
+  }
   const armed = d.tasks.filter((t) => parsed[t.task] && parsed[t.task].armed).map((t) => ({ ...t, label: t.task }));
   if (armed.length === 0) {
     return { actual: 'absent', detail: `no scheduler task is armed for ${name}`, cleanAbsence: true };
   }
-  const issues = describeRunProblems(cadenceRunProblems(parsed, armed, Date.now()));
+  const problems = cadenceRunProblems(parsed, armed, Date.now());
+  const issues = describeRunProblems(problems);
   if (issues.length > 0) return { actual: 'degraded', detail: issues.join('; ') };
+  const unrun = armed.filter((t) => !problems.clean.includes(t.label)).map((t) => t.label);
+  if (unrun.length > 0) {
+    return { actual: 'present', detail: `${armed.length}/${d.tasks.length} ${name} task(s) armed, ${armed.length - unrun.length} with a recent clean run; no run log yet for ${unrun.join(', ')}` };
+  }
   return { actual: 'present', detail: `${armed.length}/${d.tasks.length} ${name} task(s) armed, each with a recent clean run` };
 }
 
