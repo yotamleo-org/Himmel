@@ -102,6 +102,9 @@ case "$args" in
     "run view "*)
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         id="${args#run view }"; id="${id%% *}"
+        case "$args" in *" --log"*)
+            if [ -f "${STUB_RUNS_DIR:-/nonexistent}/log-$id.txt" ]; then cat "$STUB_RUNS_DIR/log-$id.txt"; exit 0; else exit 1; fi ;;
+        esac
         if [ -f "${STUB_RUNS_DIR:-/nonexistent}/jobs-$id.json" ]; then cat "$STUB_RUNS_DIR/jobs-$id.json"; else exit 1; fi ;;
     *"api --paginate"*"/files"*"previous_filename"*)
         [ -z "${STUB_RENAMES_FAIL:-}" ] || exit 1
@@ -1503,6 +1506,97 @@ reset_stubs; STUB_FILES=".github/workflows/ci.yml"; STUB_WF_DIR="$WFDIR"; STUB_R
 rc=0; out="$(run)" || rc=$?
 check "workflow PR, run list errors: exit 1 (fail closed)" "$rc" "1"
 contains "workflow PR, run list errors: check 10 fails" "$out" "[FAIL] 10."
+
+# --- 10b. macos-cadence: a dispatch run that names its suites (run-name
+# "macos-cadence suites: <paths>") passes on per-suite [PASS] lines even when the
+# whole run is red. Log lines are copied from the real macos-cadence dispatch
+# run 39993677203 (shard 4): `gh run view --log` prints
+# `<job>\t<step>\t<timestamp> [PASS] <suite> (<n>s)`.
+git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/macos-cadence.yml > "$WFDIR/macos-cadence.yml"
+MAC_A="marketplace/plugins/handover/scripts/test-skill-e2e.sh"
+MAC_B="marketplace/plugins/obsidian-triage/tests/test-dedup-sweep.sh"
+MAC_F="marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh"
+TAB="$(printf '\t')"
+cat > "$RUNDIR/log-501.txt" <<LOG
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:00.9019890Z [PASS] $MAC_A (1s)
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:10.4993560Z [FAIL] $MAC_F (rc=1, 2s)
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:14.6497350Z [PASS] $MAC_B (1s)
+LOG
+mac_run() {  # <conclusion> <displayTitle> <headSha> [id]
+    printf '[{"conclusion":"%s","databaseId":%s,"displayTitle":"%s","event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$1" "${4:-501}" "$2" "$3"
+}
+mac_wf_run() { wf_run ".github/workflows/macos-cadence.yml"; }
+
+mac_run failure "macos-cadence suites: $MAC_A $MAC_B" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, red overall, named suites PASS: exit 0" "$rc" "0"
+contains "macos-cadence suites run: check 10 passes" "$out" "[PASS] 10."
+contains "macos-cadence suites run: prints per-suite evidence for a" "$out" "PASS $MAC_A"
+contains "macos-cadence suites run: prints per-suite evidence for b" "$out" "PASS $MAC_B"
+contains "macos-cadence suites run: names the run" "$out" "501"
+
+mac_run failure "macos-cadence suites: $MAC_A $MAC_F" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, a named suite FAILED: exit 1" "$rc" "1"
+contains "macos-cadence suites run, named suite failed: check 10 fails" "$out" "[FAIL] 10."
+contains "macos-cadence suites run, named suite failed: names it" "$out" "$MAC_F"
+
+mac_run failure "macos-cadence suites: $MAC_A marketplace/plugins/x/test-absent.sh" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, a named suite MISSING from the log: exit 1" "$rc" "1"
+contains "macos-cadence suites run, named suite missing: names it" "$out" "test-absent.sh"
+
+mac_run failure "CI (os:macos cadence)" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence unfiltered red run: still exit 1" "$rc" "1"
+
+mac_run failure "macos-cadence suites: $MAC_A" 915c81d1b19ee5df69793f327037e912a944957e > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run at an OLDER sha: exit 1" "$rc" "1"
+
+mac_run failure "macos-cadence suites: $MAC_A" "$SHA" 502 > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, log unreadable: exit 1 (fail closed)" "$rc" "1"
+
+mac_run failure "macos-cadence suites: " "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run naming nothing: exit 1" "$rc" "1"
+
+mac_run failure "macos-cadence suites: ${MAC_A}x" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, name only a prefix of a logged suite: exit 1" "$rc" "1"
+
+# run-shell-tests.sh forwards the last 100 lines of a FAILED suite indented by four spaces, so a
+# failed suite can print a PASS line of its own; only the runner's unindented line is proof.
+cat > "$RUNDIR/log-503.txt" <<LOG
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:00.9019890Z [PASS] $MAC_A (1s)
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:10.4993560Z [FAIL] $MAC_F (rc=1, 2s)
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:10.4993570Z ----- last 100 lines -----
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:10.4993580Z     [PASS] $MAC_F (1s)
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:10.4993590Z     2026-10-23T19:04:00.0000000Z [PASS] $MAC_F (1s)
+LOG
+mac_run failure "macos-cadence suites: $MAC_A $MAC_F" "$SHA" 503 > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence suites run, a failed suite ECHOED a PASS line: exit 1" "$rc" "1"
+contains "macos-cadence suites run, echoed PASS line: names the failed suite" "$out" "$MAC_F"
+
+# A green run is judged per suite too: --only-list exits 0 when a named path matched no suite.
+cat > "$RUNDIR/log-504.txt" <<LOG
+macos-cadence / shell (macos-latest, 4)${TAB}UNKNOWN STEP${TAB}2026-10-23T19:04:00.9019890Z [PASS] $MAC_A (1s)
+LOG
+mac_run success "macos-cadence suites: $MAC_A marketplace/plugins/x/test-absent.sh" "$SHA" 504 > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence GREEN suites run, a named suite never ran: exit 1" "$rc" "1"
+contains "macos-cadence GREEN suites run, a named suite never ran: names it" "$out" "test-absent.sh"
+mac_run success "macos-cadence suites: $MAC_A" "$SHA" 504 > "$RUNDIR/macos-cadence.yml.json"
+mac_wf_run
+check "macos-cadence GREEN suites run, every named suite PASS: exit 0" "$rc" "0"
+contains "macos-cadence GREEN suites run: prints per-suite evidence" "$out" "PASS $MAC_A"
+
+mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/ci.yml.json"
+wf_run ".github/workflows/ci.yml"
+check "a suites-titled red run of ANOTHER workflow gets no per-suite pass: exit 1" "$rc" "1"
+rm -f "$RUNDIR/macos-cadence.yml.json" "$RUNDIR"/log-*.txt "$RUNDIR/ci.yml.json"
 
 : > "$GH_LOG"
 wf_run "scripts/handover/console-kit/ready-check.sh"
