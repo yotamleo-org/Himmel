@@ -252,7 +252,10 @@ HIMMEL_REPORT_GH="$GH_SLOW" python3 -I "$REPORT" send "$RACE_ID" --yes >/dev/nul
 RACE_A=$!
 HIMMEL_REPORT_GH="$GH_SLOW" python3 -I "$REPORT" send "$RACE_ID" --yes >/dev/null 2>&1 &
 RACE_B=$!
-wait "$RACE_A" "$RACE_B"
+wait "$RACE_A"
+eq "the first concurrent send exits 0" "$?" "0"
+wait "$RACE_B"
+eq "the second concurrent send exits 0" "$?" "0"
 eq "two concurrent send --yes file one issue" "$(wc -l <"$GH_CALLS" | tr -d ' ')" "1"
 
 echo "himmel-report: $PASS passed, $FAIL failed"
