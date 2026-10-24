@@ -1755,6 +1755,23 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   librarian (daily 04:23; `--every-days N` to change it), with a flow-run row per fire and a
   cadence alert on failure. The runner is a dry run unless armed with `--apply`. Arming is an
   operator act. Test `test-librarian-cadence.sh`.
+- `scripts/handover/librarian.sh --require-cited DIR` — the opt-in compounding gate (off by
+  default): a bucket doc moves only when its ticket key appears as a whole token in some
+  `*.md` under DIR (the weekly notes and themes `compound-distill.sh` writes); otherwise it
+  stays with a `SKIP uncited` line and the summary gains `uncited=N`.
+- `scripts/handover/compound-extract.sh` — the deterministic extract step of the weekly
+  compounding pass. Read-only, no LLM: one JSON line per ticket key for the finished
+  bucket-root docs modified within `--since-days` (7), holding only the FINDING, BLOCKED,
+  HALTED, WRAPPED, RESOLVED and READY bullets (capped), the newest PR number and sha, and the
+  last two mirror comments. Never a doc body. Test `test-compound-extract.sh`.
+- `scripts/handover/compound-distill.sh` — the distill step: ONE `claude -p` sonnet run
+  (`--output-format json`, `--permission-mode plan`, no tools) over the extract plus the
+  existing theme notes, validated against `compound-schema.json`. A billed run, so it needs
+  `--billed` or `HIMMEL_BILLED_OK=1`; the input is estimated and refused above `--max-tokens`
+  (250000), and a non-`PROCEED` usage-preflight is a quiet skip. The default dry run writes the
+  weekly note, up to 10 theme notes and a `proposals-<week>.md` under `--review-dir`; `--apply`
+  writes them under `--out-dir`. Never writes CLAUDE.md, MEMORY.md or `specs/lessons/`. Test
+  `test-compound-distill.sh` (stub claude, no paid run).
 - `scripts/eval/qmd-quality/qmd-quality-cadence.sh run|arm|status|disarm`
   — the weekly retrieval-quality drift check. `run` scores the
   golden set with `qmd-quality.sh --scope golden` (read-only snapshot of

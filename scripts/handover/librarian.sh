@@ -19,10 +19,14 @@
 # sessions/_archive/YYYY-MM/, and <root>/auto-arm-status-*.md older than
 # --auto-arm-days (7) to <root>/archive/auto-arm-status/YYYY-MM/.
 # An untracked file or an existing destination is skipped, with a SKIP line.
+# With --require-cited DIR (off by default) a bucket doc also needs its ticket key cited
+# in a compounded note: some *.md under DIR (the weekly notes and themes that
+# compound-distill.sh writes) must hold the key as a whole token, else the doc stays with
+# a `SKIP uncited` line. Sessions and auto-arm-status notes carry no key and are not gated.
 #
 # Usage: librarian.sh [--dry-run|--apply] [--root DIR] [--bucket DIR]
 #          [--sessions-dir DIR] [--mirror DIR] [--days N] [--sessions-days N]
-#          [--auto-arm-days N]
+#          [--auto-arm-days N] [--require-cited DIR]
 # Defaults: root = handover_root; bucket = <root>/<user_slug>/himmel; sessions-dir
 # = <root>/../sessions; mirror = $HIMMEL_JIRA_MIRROR, else
 # ~/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}.
@@ -39,10 +43,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/leg-tail-status.sh
 . "$HERE/../lib/leg-tail-status.sh"
 
-ROOT=""; BUCKET=""; SESSIONS=""; MIRROR=""; APPLY=0; DAYS=30; SDAYS=30; ADAYS=7
+ROOT=""; BUCKET=""; SESSIONS=""; MIRROR=""; APPLY=0; DAYS=30; SDAYS=30; ADAYS=7; CITED=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root|--bucket|--sessions-dir|--mirror|--days|--sessions-days|--auto-arm-days)
+    --root|--bucket|--sessions-dir|--mirror|--days|--sessions-days|--auto-arm-days|--require-cited)
       [ $# -ge 2 ] || { echo "librarian: $1 needs a value" >&2; exit 2; } ;;
   esac
   case "$1" in
@@ -53,6 +57,7 @@ while [ $# -gt 0 ]; do
     --days) DAYS="$2"; shift 2 ;;
     --sessions-days) SDAYS="$2"; shift 2 ;;
     --auto-arm-days) ADAYS="$2"; shift 2 ;;
+    --require-cited) CITED="$2"; shift 2 ;;
     --apply) APPLY=1; shift ;;
     --dry-run) APPLY=0; shift ;;
     *) echo "librarian: unknown argument '$1'" >&2; exit 2 ;;
@@ -73,6 +78,10 @@ if [ -z "$BUCKET" ]; then
 fi
 [ -d "$BUCKET" ] || { echo "librarian: --bucket '$BUCKET' is not a directory" >&2; exit 2; }
 BUCKET="$(cd "$BUCKET" && pwd -P)"
+if [ -n "$CITED" ]; then
+  [ -d "$CITED" ] || { echo "librarian: --require-cited '$CITED' is not a directory" >&2; exit 2; }
+  CITED="$(cd "$CITED" && pwd -P)"
+fi
 [ -n "$SESSIONS" ] || SESSIONS="$ROOT/../sessions"
 [ -d "$SESSIONS" ] && SESSIONS="$(cd "$SESSIONS" && pwd -P)" || SESSIONS=""
 [ -n "$MIRROR" ] || MIRROR="${HIMMEL_JIRA_MIRROR:-$HOME/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}"
@@ -85,11 +94,11 @@ for f in "$BUCKET"/*.md; do
   printf '%s\t%s\n' "${f##*/}" "$(leg_tail_status "$f")"
 done > "$TAILS"
 
-python3 -I - "$ROOT" "$BUCKET" "$SESSIONS" "$MIRROR" "$APPLY" "$DAYS" "$SDAYS" "$ADAYS" "$TAILS" <<'PY'
+python3 -I - "$ROOT" "$BUCKET" "$SESSIONS" "$MIRROR" "$APPLY" "$DAYS" "$SDAYS" "$ADAYS" "$TAILS" "$CITED" <<'PY'
 import os, re, subprocess, sys, time
 from urllib.parse import quote, unquote
 
-root, bucket, sessions, mirror, apply, days, sdays, adays, tails_file = sys.argv[1:10]
+root, bucket, sessions, mirror, apply, days, sdays, adays, tails_file, cited_dir = sys.argv[1:11]
 apply = apply == "1"
 now = time.time()
 tails = {}
@@ -97,7 +106,7 @@ for line in open(tails_file, encoding="utf-8", errors="replace"):
     name, _, tail = line.rstrip("\n").partition("\t")
     tails[name] = tail
 
-counts = {"locked": 0, "young": 0, "unfinished": 0, "untracked": 0, "clash": 0}
+counts = {"locked": 0, "young": 0, "unfinished": 0, "untracked": 0, "clash": 0, "uncited": 0}
 moved_map = {}      # old abs path -> new abs path
 index_rows = {}     # index file -> [lines]
 failed = 0
@@ -147,6 +156,16 @@ def ticket_done(name):
         pass
     return m.group(1), False
 
+
+cited_keys = set()
+if cited_dir:
+    key_re = re.compile(r"(?<![A-Za-z0-9_-])[A-Z][A-Z0-9]*-[0-9]+(?![A-Za-z0-9_])")
+    for dp, _, fns in os.walk(cited_dir):
+        for fn in fns:
+            path = os.path.join(dp, fn)
+            if fn.endswith(".md") and os.path.isfile(path) and not os.path.islink(path):
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    cited_keys.update(key_re.findall(fh.read()))
 
 bucket_tracked = tracked_set(bucket)
 bucket_files = sorted(e.name for e in os.scandir(bucket) if e.is_file(follow_symlinks=False))
@@ -211,6 +230,10 @@ for n in bucket_files:
         reason = "ticket-done"
     else:
         counts["unfinished"] += 1
+        continue
+    if cited_dir and (not tk or tk[0] not in cited_keys):
+        print("SKIP uncited %s" % p)
+        counts["uncited"] += 1
         continue
     plan_group(n, reason, tk[0] if tk else "-")
 
@@ -375,8 +398,8 @@ if apply:
 mode = "apply" if apply else "dry-run"
 verb = "moved" if apply else "would-move"
 n_moved = len(done_map) if apply else len(moves)
-print("librarian: %s %s=%d skipped(locked=%d young=%d unfinished=%d untracked=%d clash=%d) referrers-rewritten=%d failed=%d"
+print("librarian: %s %s=%d skipped(locked=%d young=%d unfinished=%d untracked=%d clash=%d%s) referrers-rewritten=%d failed=%d"
       % (mode, verb, n_moved, counts["locked"], counts["young"], counts["unfinished"], counts["untracked"],
-         counts["clash"], refs, failed))
+         counts["clash"], " uncited=%d" % counts["uncited"] if cited_dir else "", refs, failed))
 sys.exit(1 if failed else 0)
 PY

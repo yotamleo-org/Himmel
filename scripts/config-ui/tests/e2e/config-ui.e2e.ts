@@ -237,6 +237,14 @@ test("health: legs card shows the leg doc and its marker from the real parsers (
   await expect(legs.locator(".leg .mk")).toHaveText("BLOCKED");
 });
 
+test("health: refresh re-probes the doctor feed inside the server's 30 s cache and the verdict follows (HIMMEL-7350)", async ({ page }) => {
+  await openHealth(page, { clean: true });
+  await expect(verdictWord(page)).toHaveText("All clear");
+  h.writeFeed({});
+  await page.locator('[data-act="refresh-health"]').click();
+  await expect(verdictWord(page)).toHaveText("Act now");
+});
+
 test("health: with the feed pending the verdict is No data and bank and legs still render (D2)", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);

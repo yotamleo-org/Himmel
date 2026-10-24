@@ -67,6 +67,7 @@ EXCLUDED = {"traj/claim-unverified": "verify_before_claim", "traj/red-before-gre
 ROUTED = ("filed", "commented", "recurred-after-done", "would-file", "would-comment")
 CAPPED = ("capped", "would-cap")
 LIVE_LINE = re.compile(r"^failure-router: (\S+) legs=(\d+) (\S+)(?: (\S+))?$")
+REASON_LINE = re.compile(r"^failure-router: (\S+) reason: (.+)$")
 TOP = 10
 NOTIFIER = os.path.join(HERE, "..", "..", "luna", "vault-stall-alert.sh")
 
@@ -97,6 +98,9 @@ def run_router(a):
             if m:
                 decisions.append({"class": m.group(1), "legs": int(m.group(2)), "decision": m.group(3),
                                   "ticket": m.group(4)})
+            m = REASON_LINE.match(line)
+            if m and decisions and decisions[-1]["class"] == m.group(1):
+                decisions[-1]["reason"] = m.group(2)
             continue
         try:
             d = json.loads(line)
@@ -166,8 +170,16 @@ def build(a, rows, seen_before, rc, decisions, boxed):
         out.append("- capped: the daily create cap was hit; waiting: %s" % ", ".join(d["class"] for d in capped))
     else:
         out.append("- capped: none")
+    plain = [d for d in skipped if not d.get("reason")]
+    if plain:
+        out.append("- skipped: %s" % ", ".join("%s (%s)" % (d["class"], d["decision"][8:]) for d in plain))
     if skipped:
-        out.append("- skipped: %s" % ", ".join("%s (%s)" % (d["class"], d["decision"][8:]) for d in skipped))
+        # One shared cause (a broken CLI context) would otherwise repeat on every class.
+        why = {}
+        for d in skipped:
+            if d.get("reason"):
+                why.setdefault((d["decision"][8:], d["reason"]), []).append(d["class"])
+        out += ["- skipped, %s: %s: %s" % (k[0], k[1], ", ".join(v)) for k, v in why.items()]
 
     out += ["", "### Trajectory signals", ""]
     traj = sorted(c for c in fails if c.startswith("traj/"))

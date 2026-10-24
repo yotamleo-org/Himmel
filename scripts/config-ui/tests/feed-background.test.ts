@@ -151,3 +151,25 @@ test("a refresh started before an action never becomes the cached report after i
   const after = await untilFeed(port);
   expect(after.j.seq).toBeGreaterThan(actedAt());
 }, 20_000);
+
+test("?refresh=1 re-probes past the 30 s cache and answers the new report; a plain GET inside it still gets the cached one", async () => {
+  const { port, runs } = boot({}, { feedWaitMs: 5000 });
+  const get = async (q = "") => (await fetch(`http://127.0.0.1:${port}/api/feed${q}`, { headers: H })).json();
+  expect((await get()).stubRun).toBe(1);
+  expect((await get()).stubRun).toBe(1); // inside the cache window
+  expect((await get("?refresh=1")).stubRun).toBe(2);
+  expect(runs()).toBe(2);
+  expect((await get()).stubRun).toBe(2); // the forced report is now the cached one
+});
+
+test("?refresh=1 never joins a probe already in flight: it starts its own and the older run does not become the cached report", async () => {
+  const { port, runs } = boot({ STUB_FEED_SLEEP_FIRST: "2500", STUB_FEED_SLEEP: "100" }, { feedWaitMs: 200 });
+  const get = (q = "") => fetch(`http://127.0.0.1:${port}/api/feed${q}`, { headers: H });
+  expect((await get()).status).toBe(202); // run 1 in flight
+  const until = async (q: string) => { for (;;) { const r = await get(q); if (r.status !== 202) return r.json(); q = ""; } };
+  expect((await until("?refresh=1")).stubRun).toBe(2);
+  expect(runs()).toBe(2);
+  await sleep(2600); // run 1 lands after run 2: it must not overwrite the refreshed report
+  expect((await get()).status).toBe(200);
+  expect((await (await get()).json()).stubRun).toBe(2);
+}, 20_000);

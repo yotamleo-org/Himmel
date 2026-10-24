@@ -28,7 +28,8 @@ const out = () => process.stdout.write(JSON.stringify({
   ...(stubRun ? { stubRun } : {}),
 }) + "\n");
 // STUB_FEED_SLEEP (ms): answer late, like the real report (~2 min on the station).
-const wait = Number(process.env.STUB_FEED_SLEEP || 0);
+// STUB_FEED_SLEEP_FIRST (ms) overrides it for the first invocation, so an older run can land after a newer one.
+const wait = Number((stubRun === 1 && process.env.STUB_FEED_SLEEP_FIRST) || process.env.STUB_FEED_SLEEP || 0);
 // STUB_FEED_STEPS (n): n probe-progress lines on stderr, spread over the sleep, as
 // probe-progress.cjs writes them; STUB_FEED_JUNK=1 puts malformed ones before each.
 const steps = Number(process.env.STUB_FEED_STEPS || 0);

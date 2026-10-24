@@ -70,7 +70,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
    the release-token in backticks plus `effort=$CLAUDE_CODE_EFFORT_LEVEL`
    `model=<id>` read from your env; release it at WRAP.
 2. Paste `git log -1 --format=%H` and `git merge-base --is-ancestor <base sha> HEAD`.
-3. Run `bash scripts/lib/bank-preflight.sh`.
+3. Run `bash scripts/lib/usage-preflight.sh`.
 
 ## How you work
 

@@ -3,7 +3,7 @@
 # tier    pr | local | flow | quarantine
 # reason  pr: catch:<PR> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>; any other tier: free text
 # A trust-owned suite (its path, or a sibling of a file, under ci-trust-paths.txt) is never local.
-# No runner reads this file yet. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
+# scripts/ci/run-shell-tests.sh reads local rows in pr mode and quarantine rows in every mode. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
 # a suite with no row, a row with no suite (stale), a duplicate row, a malformed row (not three fields),
 # an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
@@ -440,6 +440,8 @@ scripts/handover/test-bugs-dashboard.sh	local	behaviour suite, 0 catches in the 
 scripts/handover/test-bus-idle-waker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-cache-health-line.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-cap-reset-time.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-compound-distill.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/test-compound-extract.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-flush.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-friction-gate-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-generate-morning-briefing.sh	local	behaviour suite, 0 catches in the 400-PR audit window

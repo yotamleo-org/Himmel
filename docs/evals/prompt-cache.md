@@ -138,7 +138,7 @@ recorded in the eval-runs ledger as eval `cache-probe`.
 Zero model calls. `cache-probe.sh` and both fixture suites read local files
 only; a probe over all 2,019 transcripts took roughly one to two minutes per mode on one
 core, and the fixture suites take under 10 s. Bank preflight
-(`bash scripts/lib/bank-preflight.sh`) printed `PROCEED` at 18 % of the 5-hour
+(`bash scripts/lib/usage-preflight.sh`) printed `PROCEED` at 18 % of the 5-hour
 and 45 % of the weekly bank before the runs, which only matters for the other
 evals in this directory that do call a model.
 

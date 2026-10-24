@@ -76,6 +76,7 @@ export const GH_ISSUES = [
 export type Harness = {
   url: string; home: string; argv: () => string[]; argvFile: string; stateFiles: () => string[]; stop: () => Promise<void>;
   ledgerLines: () => number; writeLedger: (rows: object[]) => void; setBullet: (bullet: string) => void; legDoc: string;
+  writeFeed: (v: Variant) => void;
 };
 
 const writeRows = (file: string, rows: object[]) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, rows.map((r) => JSON.stringify(r) + "\n").join("")); };
@@ -157,6 +158,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     stateFiles: () => (existsSync(state) ? readdirSync(state) : []),
     ledgerLines: () => (existsSync(ledger) ? readFileSync(ledger, "utf8").split("\n").filter(Boolean).length : 0),
     writeLedger: (rows) => writeRows(ledger, rows),
+    writeFeed: (nv) => writeFileSync(feed, JSON.stringify(buildFeed(nv))),
     setBullet,
     legDoc,
     stop: async () => {

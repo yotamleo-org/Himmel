@@ -50,7 +50,8 @@
 #       after-report to a PR, and does not post when it must not.
 #   22. --shard <i>/<n> partitions the run list.
 #   27. SUITE_TIER_MODE=pr reads suite-tiers.tsv: a local suite runs only when
-#       impacted, an unlisted suite runs, a quarantine failure does not fail the run.
+#       impacted, an unlisted suite runs, a quarantine failure does not fail the
+#       run, in pr mode and in all mode (and unset) alike.
 #   28. A session env leaked from the caller (LEG_*, HIMMEL_WORKER_*) never
 #       reaches a suite; the runner-set HIMMEL_TEST_FIXTURE still does.
 #
@@ -2809,11 +2810,30 @@ if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
 else
   fail "27c: rc=$rc27 (want 0 with a [QUARANTINE] line): $out27"
 fi
-SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script > /dev/null 2>&1; rc27=$?
-if [ "$rc27" -eq 1 ]; then
-  pass "27c-control: the same quarantine failure fails a SUITE_TIER_MODE=all run"
+out27=$(SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh' && grepq "$out27" 'QUARANTINE: 1 '; then
+  pass "27c-all: a failing quarantine suite is [QUARANTINE]d and counted, rc 0, under SUITE_TIER_MODE=all"
 else
-  fail "27c-control: SUITE_TIER_MODE=all with a failing quarantine suite gave rc=$rc27, want 1"
+  fail "27c-all: rc=$rc27 (want 0 with a [QUARANTINE] line and a quarantined count): $out27"
+fi
+out27=$(SUITE_TIER_MODE=fast bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
+  pass "27c-fast: a failing quarantine suite is [QUARANTINE]d, rc 0, under SUITE_TIER_MODE=fast"
+else
+  fail "27c-fast: rc=$rc27 (want 0 with a [QUARANTINE] line): $out27"
+fi
+: > "$T27_LOG"
+out27=$(SUITE_TIERS_TSV="$sb27/missing.tsv" SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 1 ] && grep -qx 'quar' "$T27_LOG" && ! grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
+  pass "27c-unreadable: an unreadable non-pr tiers override quarantines nothing, so the failing suite fails the run"
+else
+  fail "27c-unreadable: rc=$rc27 (want 1 without a [QUARANTINE] line): $out27"
+fi
+out27=$(env -u SUITE_TIER_MODE bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
+  pass "27c-unset: a failing quarantine suite is [QUARANTINE]d, rc 0, with SUITE_TIER_MODE unset"
+else
+  fail "27c-unset: rc=$rc27 (want 0 with a [QUARANTINE] line): $out27"
 fi
 
 : > "$T27_LOG"
@@ -2875,6 +2895,13 @@ if [ "$rc27" -eq 1 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh' \
   pass "27i: a failing pr-tier suite fails a pr-mode run; only the quarantine row is forgiven"
 else
   fail "27i: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
+fi
+out27=$(SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 1 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh' \
+   && ! grepq "$out27" '\[QUARANTINE\].*test-prfail\.sh'; then
+  pass "27j: a failing pr-tier suite fails an all-mode run; only the quarantine row is forgiven"
+else
+  fail "27j: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
 fi
 rm -rf "$sb27"
 fi

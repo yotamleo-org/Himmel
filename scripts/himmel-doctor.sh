@@ -4259,6 +4259,23 @@ check_c71_verdict_scratch() {
 check_c70_graph_semantic() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
+    local slug cadence_out station_last cadence_last
+    graph_semantic_station_verdict
+    # the semantic cadence merges into its own worktree graph, not the station graph
+    slug="$(printf '%s' "$(basename "$REPO_ROOT")" | tr -c 'A-Za-z0-9._-' '-')"
+    cadence_out="${HIMMEL_DOCTOR_CADENCE_OUT:-$HOME/.claude/graph-cadence/$slug/graphify-out}"
+    [ "$cadence_out" != "$out" ] && [ -f "$cadence_out/semantic-runs.jsonl" ] && [ -f "$out/semantic-runs.jsonl" ] || return 0
+    station_last="$(bash "$check" --out "$out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
+    cadence_last="$(bash "$check" --out "$cadence_out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
+    if [ -n "$station_last" ] && [ -n "$cadence_last" ] && [ "$station_last" != "?" ] && [ "$cadence_last" != "?" ] && [[ "$cadence_last" > "$station_last" ]]; then
+        emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so legs read a frozen semantic layer (HIMMEL-7357)" \
+            "nothing to run here: the promote step is tracked in HIMMEL-7357; until it lands the station graph only gets structural (AST) refreshes"
+    fi
+}
+
+graph_semantic_station_verdict() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
+    local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
     local res rc=0 line fail_line stuck_line
     if [ ! -d "$out" ]; then
         emit OK C70-graph-semantic "no graphify-out at $out -- semantic freshness check skipped"

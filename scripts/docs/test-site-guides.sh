@@ -22,9 +22,10 @@
 #                 order scripts/himmelctl/bin.js askQuestions() asks them; a
 #                 fixture page with a renamed step fails, so it cannot pass
 #                 vacuously.
-#   7. TRAIL   — docs/adoption-trail.html carries no claim for a dropped
-#                 platform or plugin (.ps1, WSL, Git Bash, superpowers, "the
-#                 eight"); a fixture with one fails.
+#   7. TRAIL   — docs/adoption-trail.html and its level data file
+#                 (site/src/trail/levels.json) carry no claim for a dropped
+#                 platform or plugin (.ps1, WSL, Git Bash, Windows, GLM,
+#                 superpowers, "the eight"); a fixture with one fails.
 #   8. NOJS     — with every <script> removed, each guide still carries the
 #                 text its script would render (installer-journey: step labels
 #                 and intros; loops-and-graphs: loop titles, step labels and
@@ -122,9 +123,10 @@ unknown_keys() {
 
 BIN="$ROOT/scripts/himmelctl/bin.js"
 TRAIL="$ROOT/docs/adoption-trail.html"
+TRAIL_DATA="$ROOT/site/src/trail/levels.json"
 KEYS_JOURNEY='short|intro'
 KEYS_LOOPS='tab|title|blurb|l|t|d'
-TRAIL_STALE='\.ps1|WSL|Git Bash|superpowers|the eight'
+TRAIL_STALE='\.ps1|WSL|Git Bash|Windows|GLM|superpowers|the eight'
 
 # Prints the guide's question ids (kind: 'ask'), in page order, space-joined.
 guide_steps() {
@@ -311,13 +313,16 @@ if [ -n "$(trail_stale "$tmp/trail.html")" ]; then
 else
   bad "control: the trail check accepted a stale claim"
 fi
-if [ ! -f "$TRAIL" ]; then
-  bad "docs/adoption-trail.html exists"
-elif [ -z "$(trail_stale "$TRAIL")" ]; then
-  ok "docs/adoption-trail.html carries no dropped-platform or dropped-plugin claim"
-else
-  bad "docs/adoption-trail.html carries stale claims" "$(trail_stale "$TRAIL" | sort -u | tr '\n' ' ')"
-fi
+for f in "$TRAIL" "$TRAIL_DATA"; do
+  rel="${f#"$ROOT"/}"
+  if [ ! -f "$f" ]; then
+    bad "$rel exists"
+  elif [ -z "$(trail_stale "$f")" ]; then
+    ok "$rel carries no dropped-platform or dropped-plugin claim"
+  else
+    bad "$rel carries stale claims" "$(trail_stale "$f" | sort -u | tr '\n' ' ')"
+  fi
+done
 
 # --- the pages ----------------------------------------------------------------
 if [ "$#" -gt 0 ]; then

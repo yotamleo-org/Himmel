@@ -72,7 +72,7 @@ console change without your token is ignored, not merely distrusted.
    release-token into your LIVE bullet **in backticks**. Release it at WRAP the
    same way, still with no prefix. A root other than the launcher's reaches you
    in your brief as a per-leg deviation; it is never yours to choose.
-2. Run `bash scripts/lib/bank-preflight.sh` — adjudication still draws the
+2. Run `bash scripts/lib/usage-preflight.sh` — adjudication still draws the
    same bank a leg does.
 
 ## How you work

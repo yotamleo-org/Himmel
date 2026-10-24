@@ -2541,8 +2541,8 @@ update_installed_plugins() {
         return 0
     }
     # The marketplace re-read does not move an installed checkout plugin off
-    # its cached OLD version: Claude Code keeps serving
-    # plugins/cache/himmel/<name>/<old-version> until `plugin update` runs.
+    # its recorded OLD version: installed_plugins.json keeps <old-version>
+    # until `plugin update` runs, though the plugin itself loads in place.
     # So a checkout plugin whose user-scope installed version differs from its
     # plugin.json version is updated too.
     local installed="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
