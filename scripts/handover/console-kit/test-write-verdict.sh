@@ -838,12 +838,12 @@ rc=0; out=$(wv q24i NO-GO "$SHA_A" --evidence-file "$evd/forged.md" 2>&1) || rc=
 check "24: evidence carrying a model: line is refused" "$rc" 2
 
 # --- 25. --repo writes an adopted repo's record ----------------------------
-# The record lands in that repo's bucket (<user>/<slug of its name>) and names
+# The record lands in that repo's bucket (<user>/<slug of owner/name>) and names
 # it in a signed repo: line after pr:, so go.sh --repo reads it and the
 # harness's own lookup does not.
 rc=0; out=$(wv q25 GO "$SHA_A" --evidence-file "$ev" --repo acme/Wid.get 2>&1) || rc=$?
 check "25: --repo write rc 0" "$rc" 0
-f25="$root/tuser/wid-get/verdicts/q25/judge.md"
+f25="$root/tuser/acme-wid-get/verdicts/q25/judge.md"
 check "25: written in the adopted repo's bucket" "$([ -f "$f25" ] && echo yes)" yes
 check "25: the repo line follows the pr line" "$(grep -A1 '^pr: 501$' "$f25" 2>/dev/null | tail -n 1)" "repo: acme/Wid.get"
 rc=0; verdict_rc q25 "$SHA_A" acme/Wid.get || rc=$?

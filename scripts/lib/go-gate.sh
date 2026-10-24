@@ -184,7 +184,9 @@ go_fixred_gate() {
 # basename of the anchor's PRIMARY checkout (the parent of its git-common-dir, so
 # a linked worktree names its repo, not its own directory) — the same bucket
 # convention console.sh derives. Given <owner/name> (an adopted repo, which has
-# no checkout under the anchor), <bucket> is the slugified <name> instead. Both must be a plain path segment
+# no checkout under the anchor), <bucket> is the slugified <owner/name> instead
+# (acme/widget gives acme-widget, so two owners' same-named repos never share
+# one). Both must be a plain path segment
 # ([A-Za-z0-9][A-Za-z0-9._-]*, no `..`); anything unresolved prints nothing and
 # returns 1 (fail closed — never a glob over every bucket). Read-only.
 go_verdict_scope() (
@@ -204,7 +206,7 @@ go_verdict_scope() (
     load_dotenv --root "$(_load_dotenv_primary_for "$1" 2>/dev/null)" USER_SLUG >/dev/null 2>&1 || true
     slug=$(cd "$1" 2>/dev/null && user_slug 2>/dev/null) || exit 1
     if [ -n "${2:-}" ]; then
-        case "$2" in */*/*|*/) exit 1 ;; ?*/?*) reponame=${2#*/} ;; *) exit 1 ;; esac
+        case "$2" in */*/*|*/) exit 1 ;; ?*/?*) reponame=$2 ;; *) exit 1 ;; esac
     else
         common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
         reponame=$(basename "$(dirname "$common")")
