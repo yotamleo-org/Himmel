@@ -497,7 +497,7 @@ export function createTools(): JiraTool[] {
           req: str('rule: request id'),
           outcome: str('rule: ADMIT | BACKLOG | AD-HOC | MOVE | KEEP | ACCEPT | REJECT'),
           op: str('rule: add | remove | move | keep | discharge | none'),
-          sector: str('rule: the ticket sector'),
+          sector: str('rule: the ticket sector (required only when a Sector field is configured)'),
           ground: str('rule: the ground of the ruling'),
           reason: str('rule: one-line reason'),
           supersedes: str('rule: comma-separated rulings this replaces'),
@@ -554,7 +554,7 @@ async function runRelease(args: Record<string, unknown>): Promise<string> {
       const authority = s('authority') ?? 'rm';
       if (!['rm', 'operator', 'import'].includes(authority)) throw new Error('release rule: authority is rm, operator or import');
       const r = rule(ctx, {
-        req: need('req'), outcome: need('outcome'), op: releaseOp(need('op'), s('from'), s('to')), sector: need('sector'),
+        req: need('req'), outcome: need('outcome'), op: releaseOp(need('op'), s('from'), s('to')), sector: s('sector') ?? '',
         ground: need('ground'), reason: s('reason') ?? '', supersedes: releaseList(s('supersedes')),
         authority: { kind: authority as Authority['kind'], ref: s('ref') ?? null },
       });

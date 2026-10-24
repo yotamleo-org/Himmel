@@ -244,7 +244,7 @@ run() { # run <doc> - runs the script under test with every stub wired
         END_SESSION_WIKI_BIN="${CWL_ESW_BIN:-/bin/true}" \
         CLOSE_WRAPPED_LEG_PROJECTS_DIR="${CWL_PROJECTS_DIR-$W/no-such-projects-dir}" \
         LIVE_SUBAGENTS_BIN="${CWL_LIVE_SUBAGENTS_BIN:-$LSA_STUB}" \
-        bash "$SCRIPT" "$@"
+        bash "${CWL_SCRIPT:-$SCRIPT}" "$@"
 }
 reset_calls() { : > "$CALLS"; : > "$CALLS.reap"; }
 unset CWL_PR_STATE CWL_CLEAN_MODE CWL_PR_VIEW_FAIL CWL_KILL_FAIL CWL_SUBTREE_MODE
@@ -1328,6 +1328,68 @@ check "sweep: held and live legs stay in the manifest" "$(printf '%s\n%s' "$SW_H
 # a sweep without a manifest is a usage error
 rc=0; run --sweep >/dev/null 2>&1 || rc=$?
 check "sweep: no --fleet manifest -> rc 2" "$rc" "2"
+
+# --- close-wrapped-legs.sh: one sweep per manifest ------------------------------
+rm -rf "$W/proc"; mkdir -p "$W/proc" "$W/bucket"
+MS_PRED="$W/HIMMEL-9-N41-pred-2026-01-01-RESUME.md"
+MS_CUR="$W/HIMMEL-9-N42-cur-2026-01-01-RESUME.md"
+MS_HELD="$W/HIMMEL-9-N43-held-2026-01-01-RESUME.md"
+for d in "$MS_PRED" "$MS_CUR" "$MS_HELD"; do printf '# leg\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$d"; done
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$MS_HELD" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+check "legs setup: held leg lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+mkcmdline 280 claude -n HIMMEL-9-N41-pred-2026-01-01 work
+mkcmdline 281 claude -n HIMMEL-9-N42-cur-2026-01-01 work
+mkcmdline 282 claude -n HIMMEL-9-N43-held-2026-01-01 work
+pgrep_x_stub 280 281 282
+MS_PRED_M="$W/bucket/console-A.fleet.json"
+MS_CUR_M="$W/bucket/console-B.fleet.json"
+rm -f "$MS_PRED_M" "$MS_CUR_M"
+bash "$HERE/fleet-manifest.sh" add "$MS_PRED_M" "$MS_PRED"
+MS_GONE="$W/HIMMEL-9-N45-gone-2026-01-01-RESUME.md"
+printf '# leg\n\n## Results (newest at the bottom)\n\n- 10:00 WRAPPED - done\n' > "$MS_GONE"
+bash "$HERE/fleet-manifest.sh" add "$MS_CUR_M" "$MS_HELD" "$MS_CUR" "$MS_GONE"
+MS_OLD="$W/HIMMEL-9-N44-old-2026-01-01-RESUME.md"
+printf '# leg\n\n## Results (newest at the bottom)\n\n- 10:00 WRAPPED - done\n' > "$MS_OLD"
+mkcmdline 283 claude -n HIMMEL-9-N44-old-2026-01-01 work
+pgrep_x_stub 280 281 282 283
+bash "$HERE/fleet-manifest.sh" add "$W/bucket/console-old.fleet.json" "$MS_OLD"
+age_file "$W/bucket/console-old.fleet.json" 2
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run --check "$W/bucket/console-old.fleet.json" 2>&1) || rc=$?
+check "legs setup: the aged manifest sweep succeeds" "$rc" "0"
+contains "legs setup: the aged manifest's leg would close when named" "$out" "sweep: would close $MS_OLD"
+reset_calls
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" HIMMEL_BUCKET_DIR="$W/bucket" run --check 2>&1) || rc=$?
+check "legs --check, no manifest: sweeps the bucket -> rc 0" "$rc" "0"
+contains "legs --check: the predecessor's leg would close" "$out" "sweep: would close $MS_PRED"
+contains "legs --check: the current console's leg would close" "$out" "sweep: would close $MS_CUR"
+contains "legs --check: both fresh bucket manifests swept" "$out" "sweeps: manifests=2 failed=0 gone=1"
+not_contains "legs --check: a leg whose window is already gone is counted, not printed" "$out" "$MS_GONE"
+not_contains "legs --check: a manifest older than the age window is not swept" "$out" "$MS_OLD"
+not_contains "legs --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
+reset_calls
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run "$MS_PRED_M" --check 2>&1) || rc=$?
+check "legs: --check after a manifest -> rc 0" "$rc" "0"
+contains "legs: --check after a manifest still checks the leg" "$out" "sweep: would close $MS_PRED"
+contains "legs: --check after a manifest is not swept as a manifest" "$out" "sweeps: manifests=1 failed=0"
+not_contains "legs: --check after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
+rc=0; CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run "$MS_PRED_M" --bogus >/dev/null 2>&1 || rc=$?
+check "legs: an unknown flag after a manifest -> rc 2" "$rc" "2"
+not_contains "legs: an unknown flag after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
+reset_calls
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run "$W/no-such.fleet.json" "$MS_PRED_M" "$MS_CUR_M" 2>&1) || rc=$?
+check "legs: a failed sweep is reported -> rc 1" "$rc" "1"
+contains "legs: a failed sweep does not stop the others" "$out" "sweeps: manifests=3 failed=1 gone=1"
+exact_count "legs: the predecessor manifest's WRAPPED leg is closed" "$(cat "$CALLS")" "kill -TERM 280" "1"
+exact_count "legs: the current manifest's WRAPPED leg is closed" "$(cat "$CALLS")" "kill -TERM 281" "1"
+check "legs: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")" "2"
+not_contains "legs: the held WRAPPED leg is never signaled" "$(cat "$CALLS")" "kill -TERM 282"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$MS_HELD" "$token" >/dev/null 2>&1
+rc=0; CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run --bogus >/dev/null 2>&1 || rc=$?
+check "legs: an unknown flag -> rc 2" "$rc" "2"
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" HIMMEL_BUCKET_DIR="$W/bucket" CLOSE_WRAPPED_LEGS_MAX_AGE_MIN=abc run --check 2>&1) || rc=$?
+check "legs: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
+not_contains "legs: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
 
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent

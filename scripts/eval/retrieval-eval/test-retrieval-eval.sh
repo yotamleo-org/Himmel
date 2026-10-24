@@ -18,6 +18,20 @@ py() { python3 -I "$@"; }
 EV="$HERE/retrieval-eval.py"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/ledger.jsonl"
 
+# A stub rtk on PATH: `rtk rewrite "<cmd>"` answers `rtk <cmd>` the way the hook does for grep, and
+# `rtk grep ...` runs grep. Every call is logged to $RTK_LOG so a row can assert the argv.
+mkdir -p "$W/bin"
+cat > "$W/bin/rtk" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$RTK_LOG"
+case "$1" in
+rewrite) printf 'rtk %s' "$2" ;;
+grep) shift; exec grep "$@" ;;
+esac
+STUB
+chmod +x "$W/bin/rtk"
+export RTK_LOG="$W/rtk.log" PATH="$W/bin:$PATH"
+
 # A one-second subprocess floor must not extend a sub-second arm budget.
 if py - "$EV" "$W" <<'PY'
 import json, os, pathlib, shutil, subprocess, sys
@@ -124,10 +138,10 @@ EOF
 chmod +x "$W/graph" "$W/qmd"
 export RETRIEVAL_EVAL_GRAPH_CMD="$W/graph" RETRIEVAL_EVAL_QMD_CMD="$W/qmd"
 
-# 1. a full run over the seven arms writes scores.tsv with one row per arm.
+# 1. a full run over the nine arms writes scores.tsv with one row per arm.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/out" --label t1 > "$W/run.txt" 2>&1
 eq "run exits 0" "0" "$?"
-eq "scores.tsv has a header and seven arm rows" "8" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
+eq "scores.tsv has a header and nine arm rows" "10" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
 eq "scores.tsv lists the path and ident-grep arms" "ident-grep path" "$(awk -F'\t' 'NR>1 && ($1=="path" || $1=="ident-grep"){print $1}' "$W/out/scores.tsv" | sort | tr '\n' ' ' | sed 's/ $//')"
 s() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==a{print $h[c]}' "$W/out/scores.tsv"; }
 
@@ -210,8 +224,8 @@ s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.uti
 print(len(m.fuse([["Docs/X.md"], ["docs/x.md"]], 5)))' "$EV")"
 
 # 6. per-case rows: one per question x arm, with tokens and ms.
-eq "results.jsonl has 14 rows" "14" "$(wc -l < "$W/out/results.jsonl" | tr -d ' ')"
-eq "every row carries tokens and ms" "14" "$(py -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if {"tokens","ms","files","hit","reason"} <= set(json.loads(l))))' "$W/out/results.jsonl")"
+eq "results.jsonl has 18 rows" "18" "$(wc -l < "$W/out/results.jsonl" | tr -d ' ')"
+eq "every row carries tokens and ms" "18" "$(py -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if {"tokens","ms","files","hit","reason"} <= set(json.loads(l))))' "$W/out/results.jsonl")"
 
 # 7. the eval-runs ledger row validates and is labelled.
 eq "ledger row validates" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$HIMMEL_EVAL_RUNS_LEDGER" > /dev/null 2>&1; echo $?)"
@@ -278,7 +292,7 @@ eq "norerank arm is accepted by --arms" "0" "$?"
 eq "norerank arm scores a hit" "1.00" "$(awk -F'\t' '$1=="qmd-hybrid-norerank"{print $3}' "$W/out8/scores.tsv")"
 eq "norerank sends lex+vec with rerank false" "lex,vec False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
 eq "qmd-hybrid sends lex+vec with rerank true" "lex,vec True" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
-eq "default arms are the seven" "8" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
+eq "default arms are the nine" "10" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
 
 # 9. usage errors.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/o9" --arms nosuch > /dev/null 2>&1
@@ -412,6 +426,30 @@ eq "census: qmd get and multi_get (either prefix) are counted" "6" "$(c3 qmd_cal
 eq "census: only an empty results envelope (any spacing) fails; a body with error: and is_error false does not" "2 0" "$(c3 qmd_failed) $(c3 graphify_failed)"
 eq "census: a README.md in another directory is not used; get is used by its input path, a glob multi_get by its result headers" "2" "$(c3 qmd_used)"
 eq "census: graphify answer with error: in the body is used when its file is read" "1" "$(c3 graphify_used)"
+
+# 14. the RTK arms: the same query goes through rtk the way the hook rewrites it (grep -> rtk grep), and the
+# row is scored on what rtk returns. Without rtk on PATH the arms are skipped with a recorded reason.
+: > "$RTK_LOG"
+printf '{"id":"r1","kind":"why","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":["mild DoS"]}\n{"id":"r2","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}\n' > "$W/qr.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-14.jsonl" py "$EV" run --repo "$R" --questions "$W/qr.jsonl" --out "$W/outr" --arms grep,grep-rtk,ident-grep,ident-grep-rtk > /dev/null 2>&1
+eq "RTK arms are accepted by --arms" "0" "$?"
+r() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==a{print $h[c]}' "$W/outr/scores.tsv"; }
+eq "grep-rtk scores the same hit@5 as grep" "$(r grep hit@5)" "$(r grep-rtk hit@5)"
+eq "ident-grep-rtk scores the same hit@5 as ident-grep" "$(r ident-grep hit@5)" "$(r ident-grep-rtk hit@5)"
+eq "grep-rtk carries the q1 reason" "1.00" "$(r grep-rtk reason_carried)"
+eq "the rtk argv rewrites a grep command" "grep -n -I" "$(grep -m1 '^rewrite ' "$RTK_LOG" | cut -d' ' -f2-4)"
+eq "the rewritten command runs as rtk grep" "yes" "$(grep -q '^grep -n -I -H -i -F' "$RTK_LOG" && echo yes || echo no)"
+eq "the ident arm runs rtk grep -w" "yes" "$(grep -q '^grep -n -I -H -w -F' "$RTK_LOG" && echo yes || echo no)"
+: > "$RTK_LOG"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-14b.jsonl" py "$EV" run --repo "$R" --questions "$W/qr.jsonl" --out "$W/outr2" --arms grep,ident-grep > /dev/null 2>&1
+eq "the raw arms never call rtk" "0" "$(wc -c < "$RTK_LOG" | tr -d ' ')"
+mkdir -p "$W/nortk"
+for t in git bash sh grep python3 env; do ln -sf "$(command -v "$t")" "$W/nortk/$t"; done
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-14c.jsonl" PATH="$W/nortk" python3 -I "$EV" run --repo "$R" --questions "$W/qr.jsonl" --out "$W/outr3" --arms grep,grep-rtk > "$W/outr3.txt" 2> "$W/outr3.err"
+eq "without rtk the run still exits 0" "0" "$?"
+eq "without rtk only the raw arm is scored" "grep" "$(awk -F'\t' 'NR>1{print $1}' "$W/outr3/scores.tsv" | tr '\n' ' ' | sed 's/ $//')"
+eq "without rtk the skip and its reason are printed" "1" "$(grep -c 'skipping grep-rtk: rtk is not on PATH' "$W/outr3.err")"
+eq "without rtk the ledger row records the skip" "rtk is not on PATH" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["config"]["skipped"]["grep-rtk"])' "$W/ledger-14c.jsonl")"
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"

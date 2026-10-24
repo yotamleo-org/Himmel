@@ -31,6 +31,29 @@ fallback, not the default: a measured console spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it (HIMMEL-5592).
 
 For a batch close, run `bash scripts/handover/console-kit/close-wrapped-leg.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
+To close every finished window across chiefs, run
+`bash scripts/handover/console-kit/close-wrapped-legs.sh [--check] [<manifest>...]`.
+It runs that sweep once per manifest and goes on after a failed one. With no
+manifest it sweeps every `*.fleet.json` in the bucket changed in the last 24 h
+(`CLOSE_WRAPPED_LEGS_MAX_AGE_MIN`), predecessor chiefs' manifests included.
+It ends with `sweeps: manifests=<n> failed=<n> gone=<n>`, where `gone` counts
+WRAPPED workers with no live session left to close.
+
+### One-line forms for operator commands
+
+When the operator has to run a command for you, hand them one literal line,
+never a chain or a `VAR=` prefix:
+
+| Instead of | Hand the operator |
+|---|---|
+| closing wrapped windows one by one | `! bash scripts/handover/console-kit/close-wrapped-legs.sh` |
+| `HANDOVER_DIR=… JIRA_PROJECT_KEY=… node …/dist/index.js <op> …` | `! node <primary>/scripts/jira/dist/index.js <op> …`, run from any himmel checkout: the CLI resolves both keys itself from the primary checkout's config (its `.env` today) |
+| `for id in …; do gh run cancel $id; done` | `! bash scripts/handover/console-kit/cancel-runs.sh --keep-pr <n> --live` (or `--all --live`; a dry run without `--live`) |
+| `cd <worktree> && bash scripts/<x>.sh …` | `! bash <worktree>/scripts/<x>.sh …` (the script finds its own checkout) |
+| a scratchpad prune script for merged worktrees | `! bash scripts/clean.sh` |
+
+A chain that skips a gate, such as a vault commit with `SKIP=gitleaks`, gets no
+wrapper: hand the operator the steps and the reason the gate refused.
 
 On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
 leg's window with `bash scripts/handover/console-kit/close-wrapped-leg.sh
