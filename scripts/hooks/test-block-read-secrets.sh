@@ -1157,6 +1157,10 @@ assert_rc "7366 ctl reader piped into python"         2 "$(run_case "$(j_bash "g
 assert_rc "7366 ctl reader writes a file python runs" 2 "$(run_case "$(j_bash "grep -h 'print(os.environ)' notes.md > x.py; python3 x.py")")"
 assert_rc "7366 ctl python dump beside a reader"      2 "$(run_case "$(j_bash "grep -n x f; python3 -c 'import os; print(os.environ)'")")"
 assert_rc "7366 ctl substitution feeds python"        2 "$(run_case "$(j_bash "python3 -c \"\$(grep -h 'print(os.environ)' notes.md)\"")")"
+assert_rc "7366 ctl git grep pager option runs python" 2 "$(run_case "$(j_bash "git grep --open-files-in-pager='python3 -c \"import os; print(os.environ)\"' x; python3 -c 1")")"
+assert_rc "7366 ctl git grep abbreviated pager option" 2 "$(run_case "$(j_bash "git grep --open='python3 -c \"import os; print(os.environ)\"' x; python3 -c 1")")"
+assert_rc "7366 ctl git grep glued -O in a cluster"    2 "$(run_case "$(j_bash "git grep -nO'python3 -c \"import os; print(os.environ)\"' x; python3 -c 1")")"
+assert_rc "7366 ctl git grep with an expanded option"  2 "$(run_case "$(j_bash "git grep \$P'import os; print(os.environ)' x; python3 -c 1")")"
 
 # shell tracing prints the inherited environment into the transcript.
 assert_rc "5484 bash -x script"                 2 "$(run_case "$(j_bash 'bash -x scripts/hooks/block-bank-lift-writes.sh < payload.json')")"

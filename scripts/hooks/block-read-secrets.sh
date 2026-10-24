@@ -1182,14 +1182,15 @@ interp_env_dump() {
 
 # rs_interp_text CMD: the text interp_env_dump reads, in REPLY. A pipeline of
 # plain readers (grep, cat, head, tail, wc, ls, cut, tr, nl, jq, an inert
-# sed, git grep/log/show/diff with no output option) that writes no file is
+# sed, git grep/log/show/diff with only literal words and no pager, exec or
+# output option, long, abbreviated or in a short cluster) that writes no file is
 # neither code an interpreter runs nor a file it can run later, so its words
 # are left out (`git grep -n 'os.environ' | head; python3 -c ...`). CMD itself
 # when the tokenizer did not read it, or it holds a heredoc, a substitution, a
 # group, a subshell or a compound word, where a reader's output can still
 # reach an interpreter.
 rs_interp_text() {
-    local s k c w t='' g0 keep
+    local s k c w n o t='' g0 keep
     local -a idx rd
     REPLY=$1
     [ "${GU_TOKENIZED:-0}" = 1 ] || return 0
@@ -1206,8 +1207,15 @@ rs_interp_text() {
                 grep | egrep | fgrep | cat | head | tail | wc | ls | cut | tr | nl | jq) rd[s]=1 ;;
                 sed) if st_sed_args "${idx[0]}" 0; then rd[s]=1; fi ;;
                 git) case "${ST_W[idx[1]]:-}" in grep | log | show | diff) rd[s]=1 ;; esac
-                    for k in "${idx[@]}"; do
-                        case "${ST_W[k]}" in --ou*) rd[s]=0 ;; esac
+                    for k in "${idx[@]:1}"; do
+                        [ "${ST_X[k]}${ST_G[k]}" = 00 ] || rd[s]=0
+                        case "${ST_W[k]}" in
+                            -O* | -[!-]*O* | -x) rd[s]=0 ;;
+                            --?*) n=${ST_W[k]#--}; n=${n%%=*}
+                                for o in open-files-in-pager exec extcmd output ext-diff textconv; do
+                                    case "$o" in "$n"*) rd[s]=0 ;; esac
+                                done ;;
+                        esac
                     done ;;
             esac
         fi
