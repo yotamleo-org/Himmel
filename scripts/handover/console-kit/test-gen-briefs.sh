@@ -67,10 +67,10 @@ has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never ru
 has "brief 1 limits local runs to the RED rows of the item built" "$B1" "Locally run only the RED rows of the item you build"
 
 # the three most-refused shapes are taught where the leg first meets them (7370, 7371, 7372)
-has "brief 1 teaches the quiet-run RED shape and the log-path Read" "$B1" "with nothing appended"
+has "brief 1 teaches the exact quiet-run RED command, nothing inside the backticks after the suite" "$B1" "run it as \`bash scripts/quiet-run.sh suite -- bash <test-*.sh>\` with nothing appended"
 has "brief 1 names the quiet-run log path to Read" "$B1" "Read the log path its ERR line prints"
 has "brief 1 teaches the Edit tool / python3 -I <file> shape" "$B1" "run as \`python3 -I <file>\`"
-has "brief 1 teaches the SWEEP record at the agreed/fixed mark" "$B1" "write its \`SWEEP [<id>@<head>]"
+has "brief 1 teaches the SWEEP record grammar and its write command" "$B1" "write its \`SWEEP [<id>@<head>] class=… :: sites=…\` line (a one-site finding: \`:: single-site search=git grep …\`) with \`write-verdicts.sh sweep --branch <b> --from-file <f>\`"
 has "brief 1 teaches the single-site search form for a one-site finding" "$B1" ":: single-site search=git grep"
 
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
