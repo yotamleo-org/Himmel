@@ -2325,3 +2325,13 @@ test("composeWorkerSettings: a POSIX session dir is granted as a `//`-rooted abs
   expect(allow).toContain(`Read(/${sessionDir}/*)`);
   expect(allow.some((r) => r.startsWith("Read(/srv/"))).toBe(false);
 });
+
+test("composeWorkerSettings: a Write allow covers exactly the worker's own context.md, nothing wider (HIMMEL-6426)", async () => {
+  const { composeWorkerSettings } = await import("./spawn-glm");
+  const sessionDir = "/srv/.claude/handover/bridge/claudex-sessions/claudex-t1";
+  const allow: string[] = JSON.parse(composeWorkerSettings(undefined, "/srv/repo/.claude/worktrees/claudex+t1", sessionDir)).permissions.allow;
+  expect(allow).toContain(`Write(/${sessionDir}/context.md)`);
+  // the grant is the one file: no Write rule for a sibling path, no wildcard
+  const writes = allow.filter((r) => r.startsWith("Write("));
+  expect(writes).toEqual([`Write(/${sessionDir}/context.md)`]);
+});
