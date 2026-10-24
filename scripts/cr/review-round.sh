@@ -264,11 +264,11 @@ if [ -n "$base_sha" ]; then
     # this check passed.
     case "$base_sha" in
         *[!0-9a-f]*|'')
-            echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused (HIMMEL-5268)" >&2
+            echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused" >&2
             exit 8 ;;
     esac
     if [ "${#base_sha}" -ne 40 ]; then
-        echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused (HIMMEL-5268)" >&2
+        echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused" >&2
         exit 8
     fi
     _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
@@ -277,14 +277,14 @@ if [ -n "$base_sha" ]; then
         ''|*[!A-Za-z0-9._/-]*) _vb_def="" ;;
     esac
     if [ -z "$_vb_got" ] || [ -z "$_vb_def" ] || ! git check-ref-format --branch "$_vb_def" >/dev/null 2>&1; then
-        echo "review-round: --base-sha '$base_sha' cannot be verified (unresolvable commit or unreadable remote default branch) - refused (HIMMEL-5268)" >&2
+        echo "review-round: --base-sha '$base_sha' cannot be verified (unresolvable commit or unreadable remote default branch) - refused" >&2
         exit 8
     fi
     _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
     case "$_vb_status" in
         identical|ahead) base_sha="$_vb_got" ;;
         *)
-            echo "review-round: --base-sha $_vb_got is not on the remote $_vb_def history (gh compare says '${_vb_status:-unreadable}') - refused (HIMMEL-5268)" >&2
+            echo "review-round: --base-sha $_vb_got is not on the remote $_vb_def history (gh compare says '${_vb_status:-unreadable}') - refused" >&2
             exit 8 ;;
     esac
 fi
@@ -774,13 +774,13 @@ judge_scope_record() (
         if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
         # A record that cannot be read whole may be a NO-GO: it vetoes, never skips.
         if ! go_verdict_snapshot "$nf"; then
-            echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused (HIMMEL-4984)" >&2
+            echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
             exit 8
         fi
         nl8=$(printf '%s' "$GO_VERDICT_SNAP" | sed -n '8p' | tr -d '\r')
         case "$nl8" in
             "**NO-GO** for head \`$want\`"|"**NO-GO** for head \`$want\`.")
-                echo "review-round: ${nf#"$dir"/} rules NO-GO for $want - the scope round is refused (HIMMEL-4984)" >&2
+                echo "review-round: ${nf#"$dir"/} rules NO-GO for $want - the scope round is refused" >&2
                 exit 8 ;;
         esac
     done
@@ -806,7 +806,7 @@ judge_scope_record() (
             case "$name" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) bad=1; break ;; esac
             # One read; the mac and every field come from this copy.
             if ! go_verdict_snapshot "$f"; then
-                echo "review-round: ${f#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused (HIMMEL-4984)" >&2
+                echo "review-round: ${f#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
                 exit 8
             fi
             snap=$GO_VERDICT_SNAP
@@ -825,7 +825,7 @@ EOF_SNAP
             # The same bytes the GO is judged on also veto, so a
             # NO-GO that lands after the veto scan above still blocks the round.
             if [ "$word" = "NO-GO $want" ]; then
-                echo "review-round: ${f#"$dir"/} rules NO-GO for $want - the scope round is refused (HIMMEL-4984)" >&2
+                echo "review-round: ${f#"$dir"/} rules NO-GO for $want - the scope round is refused" >&2
                 exit 8
             fi
             # Signed by write-verdict.sh, or the qid is disqualified.
@@ -851,7 +851,7 @@ EOF_SNAP
             while IFS= read -r changed; do
                 # filename patterns match the basename only: * crosses / in case
                 if ! test_path_p "$changed"; then
-                    echo "review-round: scope record ${hit%% *} is test-only but $from..$want changes non-test path $changed - delta round refused (HIMMEL-4952)" >&2
+                    echo "review-round: scope record ${hit%% *} is test-only but $from..$want changes non-test path $changed - delta round refused" >&2
                     exit 8
                 fi
             done <<EOF
@@ -859,7 +859,7 @@ $(git -c core.quotepath=off diff --no-renames --name-only "$from" "$want" 2>/dev
 EOF
         fi
         if [ "${hit#* }" = "merge-resolution" ] && ! merge_forward_shape "$from" "$want"; then
-            echo "review-round: scope record ${hit%% *} is merge-resolution but $want is not a merge of the base into $from - delta round refused (HIMMEL-4995)" >&2
+            echo "review-round: scope record ${hit%% *} is merge-resolution but $want is not a merge of the base into $from - delta round refused" >&2
             exit 8
         fi
         printf '%s\n' "$hit"
@@ -985,7 +985,7 @@ ci_red_unlock() {
     ci_red_names=""
     _cr_rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api --paginate "repos/{owner}/{repo}/commits/$1/check-runs" \
         --jq '.check_runs[] | [.status, (.conclusion // ""), .name] | @tsv' 2>/dev/null)" || {
-        echo "review-round: cannot read the check-runs of $1 (gh api) - no CI-red unlock (HIMMEL-5257)" >&2
+        echo "review-round: cannot read the check-runs of $1 (gh api) - no CI-red unlock" >&2
         return 1
     }
     _cr_pending=0
@@ -998,20 +998,20 @@ ci_red_unlock() {
 $_cr_rows
 EOF
     if [ "$_cr_pending" -eq 1 ]; then
-        echo "review-round: a check-run of $1 is still running - no CI-red unlock (HIMMEL-5257)" >&2
+        echo "review-round: a check-run of $1 is still running - no CI-red unlock" >&2
         return 1
     fi
     if [ -z "$ci_red_names" ]; then
-        echo "review-round: $1 has no completed failing check-run - no CI-red unlock (HIMMEL-5257)" >&2
+        echo "review-round: $1 has no completed failing check-run - no CI-red unlock" >&2
         return 1
     fi
     _cr_lines="$(ci_red_delta_lines "$1" "$2")" || _cr_lines=""
     case "$_cr_lines" in ''|*[!0-9]*)
-        echo "review-round: cannot measure $1..$2 - no CI-red unlock (HIMMEL-5257)" >&2
+        echo "review-round: cannot measure $1..$2 - no CI-red unlock" >&2
         return 1 ;;
     esac
     if [ "$_cr_lines" -gt "$ci_red_cap" ]; then
-        echo "review-round: $1..$2 changes $_cr_lines diff lines, over the $ci_red_cap-line CI-red cap - no CI-red unlock (HIMMEL-5257)" >&2
+        echo "review-round: $1..$2 changes $_cr_lines diff lines, over the $ci_red_cap-line CI-red cap - no CI-red unlock" >&2
         return 1
     fi
     return 0

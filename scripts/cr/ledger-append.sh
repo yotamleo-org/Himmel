@@ -185,7 +185,7 @@ fi
 # One definition, shared with clear-cr-marker gate 4.
 valid_ticket() { printf '%s' "$1" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; }
 if [ -n "$deferred_to" ] && ! valid_ticket "$deferred_to"; then
-  echo "ledger-append.sh: --deferred-to must be a ticket key like HIMMEL-1294 (got '$deferred_to')" >&2
+  echo "ledger-append.sh: --deferred-to must be a ticket key like PROJ-123 (got '$deferred_to')" >&2
   exit 2
 fi
 
@@ -203,7 +203,7 @@ if [ -n "$fu_class" ] && ! valid_fu_class "$fu_class"; then
   exit 2
 fi
 if [ "$kind" = "finding" ] && [ -z "$batch_file" ] && { [ -n "$deferred_to" ] || [ "$verdict" = "deferred" ]; } && [ -z "$fu_class" ]; then
-  echo "ledger-append.sh: a deferral needs --fu-class escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
+  echo "ledger-append.sh: a deferral needs --fu-class escape|hardening|polish (see docs/release/follow-up-triage.md) - NOTHING was written" >&2
   exit 2
 fi
 if [ -n "$fu_why" ] && ! valid_fu_why "$fu_why"; then
@@ -356,7 +356,7 @@ if [ "$kind" = "amend" ]; then
     case "$_pair" in
       deferred_to=*)
         if ! valid_ticket "${_pair#deferred_to=}"; then
-          echo "ledger-append.sh: --set deferred_to= must be a ticket key like HIMMEL-1294 (got '${_pair#deferred_to=}')" >&2
+          echo "ledger-append.sh: --set deferred_to= must be a ticket key like PROJ-123 (got '${_pair#deferred_to=}')" >&2
           exit 2
         fi ;;
       fu_class=*)
@@ -403,7 +403,7 @@ if [ "$kind" = "amend" ]; then
   done <<< "$set_pairs"
   # An amend that makes a finding a deferral must classify it.
   if printf '%s' "$set_pairs" | grep -qE '^(verdict=deferred|deferred_to=)' && ! printf '%s' "$set_pairs" | grep -q '^fu_class='; then
-    echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
+    echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (see docs/release/follow-up-triage.md) - NOTHING was written" >&2
     exit 2
   fi
   if grep -qx 'fu_class=hardening' <<< "$set_pairs" && ! grep -q '^fu_why=' <<< "$set_pairs"; then

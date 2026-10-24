@@ -312,7 +312,7 @@ run_claude_review() {
     # token at all, which must not block an adopter who does not ship one.
     bank="$(CADENCE_USAGE_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null)"
     if [ "$bank" = "SKIPPED-BANK" ]; then
-        echo "hermes-critic.sh: claude route refused — bank preflight returned $bank (HIMMEL-128); fall back to another review route" >&2
+        echo "hermes-critic.sh: claude route refused — bank preflight returned $bank; fall back to another review route" >&2
         return 1
     fi
     # Ambient proxy exports must not silently redirect this subscription launch
@@ -349,7 +349,7 @@ run_claude_review() {
     # the floor-only `bare` profile instead of the operator's full plugin set.
     local critic_settings
     if ! critic_settings="$(bash "$SCRIPT_DIR/../lanes/profile-settings.sh" bare)" || [ -z "$critic_settings" ]; then
-        echo "hermes-critic.sh: could not resolve the bare plugin profile — refusing the claude route (HIMMEL-4013)" >&2
+        echo "hermes-critic.sh: could not resolve the bare plugin profile — refusing the claude route" >&2
         rm -rf "$scratch_dir"
         return 1
     fi
