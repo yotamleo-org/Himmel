@@ -426,7 +426,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     if (!kinds) throw new Error(`release rule: ${req.verb} outcomes are ${Object.keys(OUTCOMES[req.verb]).join(', ')}`);
     if (!kinds.includes(o.op.kind)) throw new Error(`release rule: ${o.outcome} takes --op ${kinds.join('|')}`);
     checkOp(l.decl, o.op);
-    const sector = o.sector.trim() || (sectorField() ? '' : SECTOR_OPT_OUT);
+    const given = o.sector.trim();
+    const sector = sectorField() ? (given.toLowerCase() === SECTOR_OPT_OUT ? '' : given) : given || SECTOR_OPT_OUT;
     if (!sector) throw new Error('release rule: a ruling without a sector refuses; ask the console to set it');
     if (!o.ground.trim() || !o.reason.trim()) throw new Error('release rule: --ground and --reason are required');
 

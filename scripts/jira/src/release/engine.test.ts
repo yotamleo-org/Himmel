@@ -664,6 +664,17 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
   });
 
+  it('with a Sector field configured the opt-out value is not a sector and the ruling refuses', async () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10500');
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'none', ground: 'regression', reason: 'x',
+    })));
+    expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+  });
+
   it('with no Sector field configured a ruling without a sector carries sector=none and applies', async () => {
     vi.stubEnv('JIRA_SECTOR_FIELD', 'none');
     declared();

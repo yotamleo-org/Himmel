@@ -124,7 +124,8 @@ export function judgePrompt(input: JudgeInput, skill: string): string {
     ...(sectorField()
       ? [
         'The sector is the ticket\'s sector: take it from issues[].sector for the key, else from prior rulings of the',
-        'same key or chain; null only when none of them names one (that request is then a HOLD, below).',
+        'same key or chain (a sector of "none" is not one); null only when none of them names one',
+        '(that request is then a HOLD, below).',
       ]
       : [
         'No Sector field is configured: the sector is issues[].sector when the key has one, else null. A null sector',
