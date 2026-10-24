@@ -333,7 +333,8 @@ _cic_fetch_rest() {
             (.status.body.statuses | type == "array") and (.status.body | count_ok(.statuses)) and
             all(.status.body.statuses[]; (.context | name_ok) and
                 (.state == "success" or .state == "pending" or .state == "failure" or .state == "error"))
-        then [(.checks.body.check_runs[] |
+        then [(.checks.body.check_runs as $runs | $runs[] |
+                select(. as $c | all($runs[]; .name != $c.name or [(.started_at // .completed_at // ""), .id] <= [($c.started_at // $c.completed_at // ""), $c.id])) |
                 [(if .status != "completed" then "pending" elif .conclusion == "success" then "pass"
                   elif .conclusion == "skipped" or .conclusion == "neutral" then "skipping"
                   elif .conclusion == "cancelled" then "cancel" else "fail" end), .name] | join("\t")),
