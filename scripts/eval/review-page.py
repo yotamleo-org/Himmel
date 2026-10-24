@@ -168,8 +168,10 @@ def judge_lines(cur, prev):
 
 
 def change_lines(changes):
-    opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")]
-    done = {c["id"]: c for c in changes if c.get("status") == "measured"}
+    changes = [c for c in changes if isinstance(c, dict)]
+    opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
+              and isinstance(c.get("metric"), str)]
+    done = {c["id"]: c for c in changes if c.get("status") == "measured" and "id" in c}
     out = []
     for c in opened:
         owner = OWNER.get(c.get("critic"), "the %s eval's" % plain(c.get("eval", "")))
@@ -207,7 +209,8 @@ def change_lines(changes):
 
 def page(rows, changes):
     out = ["# How good are our reviewers?", "",
-           "Each number comes from the newest run. \"Likely between\" is a range: given how much "
+           "Each critic and judge number comes from the newest run, and a trend compares it with the run "
+           "before. Each change's result comes from the run that re-measured it. \"Likely between\" is a range: given how much "
            "a run measured, the true rate is likely inside it.", "",
            "## The critics on planted bugs", ""]
     cur, prev = latest(rows, "review-panel")

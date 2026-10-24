@@ -77,6 +77,7 @@ eq "page: exit 0" "$rc" "0"
 has "critics: the range level comes from the run" "$out" "Ranges are 95 % ranges."
 has "judges: the range level comes from the run" "$out" "Ranges are 90 % ranges."
 case "$out" in *"is the 95 % range"*) fail "no fixed range level in the header";; *) pass "no fixed range level in the header";; esac
+has "header: says a trend compares with the run before" "$out" "a trend compares it with the run before"
 has "critic: planted bugs caught, as a count and a percentage" "$out" "The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %)"
 has "critic: trend since the last run" "$out" "up 20 points since the last run (40 %)"
 has "critic: right N times in M" "$out" "The codex critic was right 7 times in 10"
@@ -111,7 +112,13 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-has "no ledger: says there is no run yet" "$out" "No run yet"
+eq "no ledger: both sections say there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "2"
+
+cp "$TMP/changes.jsonl" "$TMP/bad-changes.jsonl"
+printf '%s\n' '{"status":"measured"}' '{"status":"open","eval":"review-panel","metric":null}' '7' >> "$TMP/bad-changes.jsonl"
+out="$(python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/bad-changes.jsonl" 2>&1)"; rc=$?
+eq "malformed change records: exit 0" "$rc" "0"
+has "malformed change records: the good change still shows" "$out" "Changed the codex critic's prompt"
 
 python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/changes.jsonl" --out "$TMP/page.md" >/dev/null 2>&1
 eq "--out writes the page" "$(head -1 "$TMP/page.md" 2>/dev/null)" "# How good are our reviewers?"
