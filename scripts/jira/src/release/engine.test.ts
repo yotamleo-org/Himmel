@@ -1,15 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
-  JudgeReplyError, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
+  JudgeReplyError, LIVE_LOOKUP_MS, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
+import type { IssueSnap } from './types.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
   fv = new Map<string, string[]>();
+  live = new Map<string, IssueSnap>();
+  async issue(key: string) { return this.live.get(key) ?? null; }
   comments = new Map<string, Array<{ id: string; body: string }>>();
   posted = 0;
   async fixVersions(key: string) { return [...(this.fv.get(key) ?? [])]; }
@@ -41,7 +44,7 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
   };
 }
 
-function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
+function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
   const dir = join(root, 'mirror');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync, total: issues.length }));
@@ -49,6 +52,7 @@ function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: str
     writeFileSync(join(dir, `${i.key}.md`), [
       '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`,
       ...(i.category ? [`statusCategory: "${i.category}"`] : []), 'priority: "Medium"',
+      ...(i.sector ? [`sector: "${i.sector}"`] : []),
       `fixVersions: ${JSON.stringify(i.fixVersions)}`, `resolution: ${i.resolution ? JSON.stringify(i.resolution) : 'null'}`,
       '---', '', `# ${i.key}`, '',
     ].join('\n'));
@@ -65,6 +69,15 @@ const admit = (req: string, extra: Partial<Parameters<typeof rule>[1]> = {}) => 
   req, outcome: 'ADMIT', op: { kind: 'add', from_v: null, to_v: 'v1' }, sector: 'Planning & tracking',
   ground: 'regression', reason: 'breaks the console', supersedes: [], authority: { kind: 'rm', ref: null }, ...extra,
 });
+
+// Applies a ruling with Jira failing before the receipt, then replays it from the applied phase.
+async function applyThenReplay(id: string) {
+  const post = jira.addComment.bind(jira);
+  jira.addComment = async () => { throw new Error('jira down before the receipt'); };
+  await expect(apply(ctx(rmEnv), id)).rejects.toThrow('jira down');
+  jira.addComment = post;
+  return apply(ctx(rmEnv), id);
+}
 
 const savedLedger = process.env.HIMMEL_ADMISSIONS_LEDGER;
 
@@ -153,6 +166,34 @@ describe('release engine (HIMMEL-6796)', () => {
       ['rm-remove', 'K-2', 'v1', r2.id],
       ['rm-admit', 'K-2', 'v1', r3.id],
     ]);
+  });
+
+  it.each([
+    ['frozen', 'v2', 'v1'],
+    ['unfrozen', 'v1', 'v2'],
+  ])('a REVERSION MOVE into a %s version appends the destination rm-admit and the source rm-remove, and an applied-phase replay adds none (HIMMEL-7059)', async (_kind, from, to) => {
+    await setup();
+    const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    jira.fv.set('K-2', [from]);
+    const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: from, to_v: to, why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: from, to_v: to } });
+    expect((await applyThenReplay(r.id)).phase).toBe('receipted');
+    expect(jira.fv.get('K-2')).toEqual([to]);
+    expect(rows().map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([
+      ['rm-admit', 'K-2', to, r.id],
+      ['rm-remove', 'K-2', from, r.id],
+    ]);
+  });
+
+  it('an INTAKE ADMIT replayed from the applied phase appends no second rm-admit row (HIMMEL-7059)', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    expect((await applyThenReplay(r.id)).phase).toBe('receipted');
+    const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    expect(rows.map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([['rm-admit', 'K-2', 'v1', r.id]]);
   });
 
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {
@@ -619,6 +660,64 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+  });
+
+  it('a HOLD decision is reported as HELD, rules nothing and leaves the request claimed', async () => {
+    declared();
+    ask('K-2');
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'HOLD', reason: 'no sector for K-2',
+    })));
+    expect(lines).toEqual(['HELD Q-R1-0001: no sector for K-2']);
+    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(existsSync(join(ctx().dir, 'rulings.jsonl'))).toBe(false);
+  });
+
+  it('offers the judge the live Jira snapshot of a claimed key the mirror lacks', async () => {
+    declared();
+    mirror([{ key: 'K-9', fixVersions: [] }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop' })]);
+  });
+
+  it('a mirror row without a sector is replaced by the live Jira snapshot', async () => {
+    declared();
+    mirror([{ key: 'K-2', fixVersions: [] }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop' })]);
+  });
+
+  it('a live lookup that never answers falls back to the mirror row once its deadline passes', async () => {
+    vi.useFakeTimers();
+    try {
+      declared();
+      mirror([{ key: 'K-2', fixVersions: [] }]);
+      ask('K-2');
+      jira.issue = () => new Promise<IssueSnap | null>(() => {});
+      let seen: unknown;
+      const run = rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+      await vi.advanceTimersByTimeAsync(LIVE_LOOKUP_MS);
+      await run;
+      expect(seen).toEqual([expect.objectContaining({ key: 'K-2' })]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a mirror row with a sector is not re-read from Jira', async () => {
+    declared();
+    mirror([{ key: 'K-2', fixVersions: [], sector: 'Visibility' }]);
+    ask('K-2');
+    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    let seen: unknown;
+    await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Visibility' })]);
   });
 
   it('a ruling Jira did not take is PENDING, and the next run applies it', async () => {

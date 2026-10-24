@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// himmel-bus CLI: register | bind | rebind | adopt | status | peers | send | wait | unread | gc
+// himmel-bus CLI: register | bind | rebind | adopt | succeed | status | peers | send | wait | unread | gc
 import { parseArgs } from 'node:util';
 import { constants } from 'node:fs';
 import { readFile, readdir, lstat, mkdtemp, writeFile, rm, stat } from 'node:fs/promises';
@@ -15,7 +15,7 @@ import * as edges from '../lib/edges.mjs';
 import { formatRecord } from '../lib/deliver.mjs';
 
 const USAGE = `usage: bus register <name> --role leg|console|judge|consult [--console <c>] [--pair <leg>] [--predecessor <old>]
-       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | status <name> | peers
+       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | succeed <new-console> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
        bus unread <name>   (count of undelivered records; read-only, for the idle waker)
@@ -215,6 +215,14 @@ async function main() {
       // Read-only presence flag: store.read would persist a halt and swallow its notice, so use pending.
       console.log((await store.pending(root, need(name))) ? 1 : 0);
       return;
+    case 'succeed': {
+      // The caller is console X by process ancestry; the successor's registered predecessor must be X.
+      const me = await identity.resolveIdentity(root);
+      if (me.error) throw new Error(me.error);
+      await identity.succeed(root, me.name, need(name));
+      console.log(`stamped: ${me.name} successor ${name}`);
+      return;
+    }
     case 'adopt': case 'peers': {
       // Both act as the calling session: a descendant of a bound claude.
       const me = await identity.resolveIdentity(root);

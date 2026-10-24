@@ -1308,7 +1308,38 @@ out=$(FAKE_SEM_RC=2 run_sem bad --semantic) || rc=$?
 assert_eq "failing semantic step rc=3" "3" "$rc"
 assert_contains "failing semantic step ledgers action=failed" '"action":"failed"' "$(tail -n1 "$TMP_ROOT/t9-bad-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)"
 assert_contains "failing semantic step appends a cadence alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-bad-primary")" "$(cat "$TMP_ROOT/t9-bad-alerts.log" 2>/dev/null)"
-assert_contains "failing semantic step sends the alert" "sent: cadence leg failed: graph-semantic-" "$(cat "$FAKE_SEND_LOG")"
+assert_contains "failing semantic step sends the alert" "sent: graph-semantic-" "$(cat "$FAKE_SEND_LOG")"
+# (d2) the spend-cap refusal renders the plain shape and names the file the run wrote.
+# Fixture lines are copied from the 2026-10-23 graphmap-publish-himmel.log (rc 5, chunk 15/15 refused).
+tag=cap; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+: > "$FAKE_SEND_LOG"; rc=0; CAP_RUNLOG="$TMP_ROOT/t9-$tag-run.log"
+FAKE_SEM_RC=5 FAKE_SEM_OUT='[graphify extract] chunk 14/15 done
+[graphify] chunk 15/15 failed: claude -p exited 3: claude-api shim: run spend cap reached (spent 5.054728 of 5.00 USD); call refused
+semantic-update: FAILED: 1/15 semantic chunks failed -- the good chunks merged, the failed files stay unstamped; do not rerun until the cause is fixed' \
+    run_sem "$tag" --semantic > "$CAP_RUNLOG" 2>&1 || rc=$?
+assert_eq "spend-cap semantic failure rc=3" "3" "$rc"
+cap_msg="$(cat "$FAKE_SEND_LOG")"
+cap_slug="graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")"
+assert_contains "spend-cap alert states the plain result" "sent: $cap_slug: 1 of 15 chunks stopped by the run spend cap; next run retries. Cause: " "$cap_msg"
+assert_contains "spend-cap alert states the spend" "spent 5.05 of 5.00 USD" "$cap_msg"
+assert_contains "spend-cap alert states the next step" ". Do: nothing" "$cap_msg"
+assert_contains "spend-cap alert names the log the run wrote" ". Log: $CAP_RUNLOG" "$cap_msg"
+assert_not_contains "spend-cap alert drops the internal code" "semantic-update-rc" "$cap_msg"
+# a failure that is not a spend cap still renders the shape, with no invented cause.
+: > "$FAKE_SEND_LOG"; tag=nocap; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20; rc=0
+FAKE_SEM_RC=2 run_sem "$tag" --semantic > "$TMP_ROOT/t9-$tag-run.log" 2>&1 || rc=$?
+assert_contains "other semantic failure keeps Cause: unknown, see log" "Cause: unknown, see log. Do: " "$(cat "$FAKE_SEND_LOG")"
+# a spend cap beside an unrelated chunk failure must not read as "nothing to do".
+: > "$FAKE_SEND_LOG"; tag=mix; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20; rc=0
+FAKE_SEM_RC=5 FAKE_SEM_OUT='[graphify] chunk 3/15 failed: claude -p exited 1: parse error in reply
+[graphify] chunk 15/15 failed: claude -p exited 3: claude-api shim: run spend cap reached (spent 5.054728 of 5.00 USD); call refused' \
+    run_sem "$tag" --semantic > "$TMP_ROOT/t9-$tag-run.log" 2>&1 || rc=$?
+mix_msg="$(cat "$FAKE_SEND_LOG")"
+assert_contains "mixed failure counts every failed chunk" "2 of 15 chunks failed, 1 stopped by the run spend cap" "$mix_msg"
+assert_not_contains "mixed failure does not say nothing to do" ". Do: nothing" "$mix_msg"
 # (e) rc 3 (bank at/over threshold) and rc 4 (promote lock
 # held) are benign skips -- the next fire retries -- so the run stays green and
 # raises no alert; a real failure (rc 2, above) still alerts.
@@ -1330,7 +1361,7 @@ for _ in 1 2; do
     rc=0; out=$(FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
     assert_eq "a backed-off file keeps the run rc=0" "0" "$rc"
 done
-assert_contains "a backed-off file appends a back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff semantic-file-backed-off" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
+assert_contains "a backed-off file appends a back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff a file was skipped after repeated semantic failures" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
 assert_eq "a backed-off file sends one alert across two runs" "1" "$(grep -c backoff "$FAKE_SEND_LOG")"
 # A run with no new back-off re-arms the leg: the next back-off alerts again.
 rc=0; out=$(run_sem "$tag" --semantic) || rc=$?
@@ -1341,7 +1372,7 @@ tag=backoffrc; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
 seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 : > "$FAKE_SEND_LOG"; rc=0
 out=$(FAKE_SEM_RC=5 FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
-assert_contains "a back-off before a non-zero semantic exit still appends the back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff semantic-file-backed-off" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
+assert_contains "a back-off before a non-zero semantic exit still appends the back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff a file was skipped after repeated semantic failures" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
 # (f) the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
 # claude-cli; ollama is the opt-in; anything else refuses before any work.
 for tag in ollama bogus; do
