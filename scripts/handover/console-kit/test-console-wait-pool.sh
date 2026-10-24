@@ -59,6 +59,7 @@ case " $* " in
     *" --priority-pool-only "*)
         echo x >> "$STUB/calls"
         [ -f "$STUB/pool.fail" ] && exit 1
+        [ -f "$STUB/pool.partial" ] && { printf 'LOCAL\tHIMMEL-9099\tMedium\tv1\tcut short\tfiles=z.sh\n'; exit 124; }
         if [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi ;;
 esac
@@ -102,6 +103,10 @@ arm "$I" "$WORK/rp6.out" 4
 check "(rp) a failed probe never wakes (rc 124)" "124" "$rc"
 check "(rp) and the failed probe did run" "yes" "$([ "$(calls)" -gt "$c0" ] && echo yes)"
 rm -f "$STUB/pool.fail"
+: > "$STUB/pool.partial"
+arm "$I" "$WORK/rp6b.out" 4
+check "(rp) a timed-out probe's partial rows never wake (rc 124)" "124" "$rc"
+rm -f "$STUB/pool.partial"
 arm "$I" "$WORK/rp7.out" 4
 check "(rp) a failed probe leaves the saved pool alone: the same pool stays quiet (rc 124)" "124" "$rc"
 
