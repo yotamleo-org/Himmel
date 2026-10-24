@@ -50,8 +50,9 @@ function matches(l: Login, user: string, password: string): boolean {
 export type LoginResult = { status: 200; session: string } | { status: 401 | 404 | 500; error: string } | { status: 429; retryAfterS: number; error: string };
 
 // The server binds loopback only, so every client shares one address: the failure limit is global, not per IP.
+// A session is bound to the hash it logged in against, so setting the login again ends every session.
 export function createAuth(path: string, now: () => number) {
-  const sessions = new Map<string, number>();
+  const sessions = new Map<string, { exp: number; hash: string }>();
   let fails: number[] = [];
   return {
     login(user: unknown, password: unknown): LoginResult {
@@ -66,17 +67,20 @@ export function createAuth(path: string, now: () => number) {
         return { status: 401, error: "wrong user or password" };
       }
       fails = [];
+      for (const [k, s] of sessions) if (t >= s.exp) sessions.delete(k);
       const id = randomBytes(32).toString("hex");
-      sessions.set(id, t + SESSION_TTL_MS);
+      sessions.set(id, { exp: t + SESSION_TTL_MS, hash: l.hash });
       return { status: 200, session: id };
     },
     // the session id the Cookie header carries, when it names a live session; null otherwise.
     session(cookie: string | null): string | null {
       const id = sessionId(cookie);
       if (!id) return null;
-      const exp = sessions.get(id);
-      if (exp === undefined) return null;
-      if (now() >= exp) { sessions.delete(id); return null; }
+      const s = sessions.get(id);
+      if (s === undefined) return null;
+      let l: Login | null = null;
+      try { l = readLogin(path); } catch { /* an unreadable login ends the session */ }
+      if (now() >= s.exp || l?.hash !== s.hash) { sessions.delete(id); return null; }
       return id;
     },
     logout(cookie: string | null): void {

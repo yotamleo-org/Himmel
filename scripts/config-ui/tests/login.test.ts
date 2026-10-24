@@ -105,6 +105,13 @@ test("a session expires after its TTL", async () => {
   expect((await b.feed({ cookie: c })).status).toBe(401);
 });
 
+test("setting the login again ends the sessions opened under the old one", async () => {
+  const b = boot();
+  const c = cookieOf(await b.login(USER, b.password));
+  writeLogin(b.loginFile, USER, secret());
+  expect((await b.feed({ cookie: c })).status).toBe(401);
+});
+
 test("a login from a foreign origin is refused before the password is checked", async () => {
   const b = boot();
   expect((await b.post("/api/login", { user: USER, password: b.password }, { origin: "http://evil.test" })).status).toBe(403);
