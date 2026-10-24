@@ -83,7 +83,7 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 13 # p95 ~190s (the 180 s debounce sleep + checkout + plan); 2x = 6.3m, kept 13 for sleep + slow-runner headroom
+    timeout-minutes: 13 # p95 ~70s (the 60 s debounce sleep + checkout + plan); kept 13 for sleep + slow-runner headroom
     outputs:
       run_node_suites: ${{ steps.plan.outputs.run_node_suites }}
       run_jira_cli_smoke: ${{ steps.plan.outputs.run_jira_cli_smoke }}
@@ -97,11 +97,13 @@ jobs:
       shard_total: ${{ steps.shards.outputs.shard_total }}
     steps:
       # Debounce. Every shell-unit shard needs this job, and a follow-up push
-      # within ~3 min of the last one cancels a run whose shards already took
+      # within ~1 min of the last one cancels a run whose shards already took
       # runners. A newer push cancels this run while it sleeps here, so no shard
-      # starts. Cost: 3 runner-minutes and 3 minutes of latency per push.
-      # test-ci-push-concurrency.sh holds the 120-240 s window.
-      - run: sleep 180
+      # starts. A PR's first run (opened) has no earlier push to absorb, so it
+      # does not sleep. Cost: 1 runner-minute and 1 minute of latency per later push.
+      # test-ci-push-concurrency.sh holds the 45-90 s window and the opened skip.
+      - if: github.event.action != 'opened'
+        run: sleep 60
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

@@ -143,7 +143,7 @@ else
   echo "skip - PyYAML not importable; parsed-YAML assertion not run"
 fi
 
-# A follow-up push inside ~3 min of the previous one cancels a run whose
+# A follow-up push inside ~1 min of the previous one cancels a run whose
 # shell-unit shards already started. Every shard `needs` plan, so plan's FIRST
 # step is a PR-only debounce: a newer push cancels the run while it sleeps and no
 # shard ever takes a runner. The sleep is read from the real plan job text, so
@@ -152,10 +152,18 @@ fi
 plan_job="$(awk '/^  plan:/ {f=1; print; next} f && /^  [a-z0-9-]+:/ {f=0} f' "$CI_YML" | sed 's/[[:space:]][[:space:]]*#.*$//')"
 first_step="$(awk '/^    steps:/ {f=1; next} f && /^      - / {n++} f && n==1 {print} f && n==2 {exit}' <<< "$plan_job")"
 secs="$(sed -n 's/^[[:space:]]*\(-[[:space:]]\{1,\}\)\{0,1\}run:[[:space:]]*sleep[[:space:]]\{1,\}\([0-9]\{1,\}\)[[:space:]]*$/\2/p' <<< "$first_step")"
-if [ -n "$secs" ] && [ "$secs" -ge 120 ] && [ "$secs" -le 240 ]; then
-  ok "plan's first step is a ${secs}s debounce sleep (120-240 s)"
+if [ -n "$secs" ] && [ "$secs" -ge 45 ] && [ "$secs" -le 90 ]; then
+  ok "plan's first step is a ${secs}s debounce sleep (45-90 s)"
 else
-  bad "plan's first step is not a 120-240 s 'run: sleep N' debounce; first step: $(tr '\n' ' ' <<< "$first_step")"
+  bad "plan's first step is not a 45-90 s 'run: sleep N' debounce; first step: $(tr '\n' ' ' <<< "$first_step")"
+fi
+# A PR's first run (action `opened`) has no earlier push to absorb, so the sleep
+# is skipped there; `synchronize` and `reopened` still debounce.
+sleep_if="$(sed -n 's/^[[:space:]]*\(-[[:space:]]\{1,\}\)\{0,1\}if:[[:space:]]*//p' <<< "$first_step")"
+if [ "$sleep_if" = "github.event.action != 'opened'" ]; then
+  ok "debounce sleep is skipped on the opened action only"
+else
+  bad "debounce sleep is not guarded by \"github.event.action != 'opened'\"; if='$sleep_if'"
 fi
 case "$plan_job" in
   *"if: github.event_name == 'pull_request'"*) ok "plan job stays PR-only, so cron and dispatch runs never sleep" ;;
