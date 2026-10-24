@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """scripts/eval/retrieval-eval/retrieval-eval.py - retrieval eval + usage census (HIMMEL-6143).
 
-Asks the same questions of seven retrieval arms and scores each against a gold
+Asks the same questions of nine retrieval arms and scores each against a gold
 file set, then counts how sessions really use qmd and graphify.
 
   run     --questions Q --out DIR [--repo R] [--arms A,B] [--k 5] [--timeout 60]
@@ -12,12 +12,18 @@ file set, then counts how sessions really use qmd and graphify.
 Arms (all read-only):
   grep        git grep over the repo's tracked files for the question's words,
               files ranked by distinct words matched; shows <=8 lines per file
+  grep-rtk    the grep arm's files, read as a session reads them: the grep command goes
+              through `rtk rewrite`, as the hook does, and the rewritten command runs, so
+              the filter's truncation counts; files, tokens and reason come from rtk's
+              output, <=8 lines per file. Skipped, with the reason printed and recorded in
+              the ledger config, when rtk is not on PATH. The score a session gets from grep
   path        the tracked file paths, ranked by distinct question words in the path
               (a filename-only baseline)
   ident-grep  git grep -w for the question's identifier-shaped tokens (snake_case,
               kebab-case, camelCase, file.ext); files holding a definition line
               rank first
-  qmd-lex     qmd BM25 (lex search), rerank off
+  ident-grep-rtk  the ident-grep arm's files read through rtk, as grep-rtk reads grep's
+  qmd-lex    qmd BM25 (lex search), rerank off
   qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
               --arms, not in the default seven and not fused into combined
@@ -69,6 +75,7 @@ import math
 import os
 import re
 import shlex
+import shutil
 import signal
 import statistics
 import subprocess
@@ -81,7 +88,8 @@ sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
 
 SPLITS = ("insample", "heldout")
-ARMS = ["grep", "path", "ident-grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+ARMS = ["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+RTK_ARMS = ["grep-rtk", "ident-grep-rtk"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
 # The question set holds every question and reason phrase verbatim; vendored
@@ -234,6 +242,63 @@ def arm_ident_grep(q, repo, timeout, k):
     files = sorted(score, key=lambda f: (-score[f][0], -score[f][1], -score[f][2], f))[:k]
     text = [ln for f in files for ln in lines[f][:8]]
     return files, "\n".join(text), False, False
+
+
+RTK_LINE = re.compile(r"(.+?):\d+:")
+
+
+def rtk_view(flags, terms, files, repo, timeout):
+    """(files, text, timed_out, error) of what a session reads when it greps `files` for `terms`: the
+    command is handed to `rtk rewrite`, as the hook does, and the rewritten command is run. A file's lines
+    are capped at 8, as in the raw arms, so the difference is the filter alone."""
+    if not files:
+        return [], "", False, False
+    t0 = time.time()
+    cmd = ["grep", "-n", "-I", "-H"] + flags
+    for t in terms:
+        cmd += ["-e", t]
+    out, to, rc = run_cmd(["rtk", "rewrite", shlex.join(cmd + ["--"] + files)], timeout, cwd=repo)
+    if to:
+        return [], "", True, False
+    if rc != 0 or not out.startswith("rtk "):
+        return [], "", False, True
+    remaining = timeout - (time.time() - t0)
+    if remaining <= 0:
+        return [], "", True, False
+    out, to, rc = run_cmd(shlex.split(out), remaining, cwd=repo)
+    if to:
+        return [], "", True, False
+    if rc not in (0, 1):
+        return [], "", False, True
+    seen, count, text = [], {}, []
+    for line in out.splitlines():
+        m = RTK_LINE.match(line)
+        f = m.group(1) if m and m.group(1) in files else None
+        if f is None:
+            text.append(line)
+            continue
+        if f not in seen:
+            seen.append(f)
+        count[f] = count.get(f, 0) + 1
+        if count[f] <= 8:
+            text.append(line)
+    return seen, "\n".join(text), False, False
+
+
+def arm_grep_rtk(q, repo, timeout, k):
+    t0 = time.time()
+    files, _, to, err = arm_grep(q, repo, timeout, k)
+    if to or err:
+        return files, "", to, err
+    return rtk_view(["-i", "-F"], words(q), files, repo, timeout - (time.time() - t0))
+
+
+def arm_ident_grep_rtk(q, repo, timeout, k):
+    t0 = time.time()
+    files, _, to, err = arm_ident_grep(q, repo, timeout, k)
+    if to or err:
+        return files, "", to, err
+    return rtk_view(["-w", "-F"], idents(q), files, repo, timeout - (time.time() - t0))
 
 
 @functools.lru_cache(maxsize=None)
@@ -492,11 +557,24 @@ def cmd_check(a):
     return 1 if bad else 0
 
 
+def skip_rtk(arms):
+    """arm -> reason, for the RTK arms asked for when rtk is not installed."""
+    if shutil.which("rtk"):
+        return {}
+    return {x: "rtk is not on PATH" for x in arms if x in RTK_ARMS}
+
+
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
     for x in arms:
         if x not in ARMS + OPT_IN:
             raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS + OPT_IN)))
+    skipped = skip_rtk(arms)
+    for x, why in skipped.items():
+        print("retrieval-eval: skipping %s: %s" % (x, why), file=sys.stderr)
+    arms = [x for x in arms if x not in skipped]
+    if not arms:
+        raise Usage("no arm left to run")
     qs = load_questions(a.questions)
     for q in qs:
         if q.get("split", "insample") not in SPLITS:
@@ -520,10 +598,14 @@ def cmd_run(a):
                 t0 = time.time()
                 if arm == "grep":
                     files, text, to, err = arm_grep(q["q"], repo, a.timeout, a.k)
+                elif arm == "grep-rtk":
+                    files, text, to, err = arm_grep_rtk(q["q"], repo, a.timeout, a.k)
                 elif arm == "path":
                     files, text, to, err = arm_path(q["q"], repo, a.timeout, a.k)
                 elif arm == "ident-grep":
                     files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, a.k)
+                elif arm == "ident-grep-rtk":
+                    files, text, to, err = arm_ident_grep_rtk(q["q"], repo, a.timeout, a.k)
                 elif arm == "graphify":
                     files, text, to, err = arm_graphify(q["q"], repo, a.timeout, a.k)
                 else:
@@ -598,6 +680,8 @@ def cmd_run(a):
     with open(a.questions, "rb") as fh:
         qhash = hashlib.sha256(fh.read()).hexdigest()[:16]
     config = dict(arms=arms, k=a.k, timeout=a.timeout, collection=a.collection, questions=qhash)
+    if skipped:
+        config["skipped"] = skipped
     held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
     meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=graph_built(repo),
                 n_heldout=len(held),

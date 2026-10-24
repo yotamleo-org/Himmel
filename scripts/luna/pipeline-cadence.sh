@@ -1942,7 +1942,7 @@ emit_fetch_health_runner() {
 cron_status() {
     cron_read
     echo "pipeline-cadence status:"
-    local name log entry sched
+    local name log entry sched n_entries dup
     for name in "$TASK_FETCH_HEALTH" "$TASK_HARVEST" "$TASK_SYNTH" "$TASK_HEALTH"; do
         case "$name" in
             "$TASK_FETCH_HEALTH") log="$BAT_DIR/pipeline-fetch-health.log" ;;
@@ -1953,7 +1953,10 @@ cron_status() {
         entry=$(printf '%s\n' "$CRON_TAB" | grep -F "# $name" | head -1 || true)
         if [ -n "$entry" ]; then
             sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
-            echo "ARMED      $name (cron: $sched)$(task_summary "$name")$(model_suffix "$name")"
+            n_entries=$(printf '%s\n' "$CRON_TAB" | grep -cF "# $name" || true)
+            dup=""
+            [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+            echo "ARMED      $name (cron: $sched)$dup$(task_summary "$name")$(model_suffix "$name")"
         else
             echo "not armed  $name$(task_summary "$name")"
         fi
