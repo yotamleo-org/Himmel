@@ -502,6 +502,13 @@ describe('release tool (HIMMEL-6796)', () => {
     })).rejects.toThrow(/only the release-manager session/);
   });
 
+  it('rule without a sector reaches the engine fence when no Sector field is configured', async () => {
+    process.env.JIRA_SECTOR_FIELD = 'none';
+    await expect(run({
+      sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', ground: 'regression', reason: 'r',
+    })).rejects.toThrow(/only the release-manager session/);
+  });
+
   it('refuses a sub the twin does not expose', async () => {
     await expect(run({ sub: 'operator-declare' })).rejects.toThrow(/sub is one of/);
   });

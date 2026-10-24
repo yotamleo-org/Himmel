@@ -43,7 +43,43 @@ HOOK_CLASSES = {
          'a leg that edits a policy script cannot then run it relatively (HIMMEL-4916)'),
         (r'names a guarded script and can writ', 'redirect-beside-gate-script', 'true-positive',
          'output redirect beside a guarded script'),
+        (r'changes directory, so the relative path', 'cd-before-relative-gate-path', 'true-positive',
+         'leg cd-ed before a relative gate path; the preface forbids cd && (run the literal relative shape)'),
+        (r'(?s)^(?:(?!\bgit\b|\(HIMMEL-).)*\(HIMMEL-[^)]*\): git execution/config options or ambiguous option-value',
+         'git-option-beside-gate-mention', 'over-deny',
+         'read-only grep/sed/loop that names a gate script; the guard cannot prove the mention is a pathspec'),
+        (r'(?s)^(?!(?:(?!\(HIMMEL-).)*(?:--output|\s-c\s|\bhook\b|\barchive\b|--open-files-in-pager|--ext-diff|'
+         r'--textconv|--exec|--config-env|\bGIT_\w+=))(?=(?:(?!\(HIMMEL-).)*\bgit\b(?:\s+-C\s+\S+)?\s+'
+         r'(?:grep|log|show|blame|ls-files|cat-file|rev-parse|diff|status)\b).*?\(HIMMEL-[^)]*\): git execution/config',
+         'git-read-command-beside-gate-mention', 'over-deny',
+         'a read-only git grep/log/show/diff that names a gate script and carries no exec option'),
+        (r'(?s)^(?=(?:(?!\(HIMMEL-).)*--output=\S*(?:/scratchpad|/tmp/))(?!(?:(?!\(HIMMEL-).)*(?:\bhook\b|\barchive\b|\s-c\s|--open-files-in-pager|--ext-diff|'
+         r'--textconv|--exec|--config-env|\bGIT_\w+=)).*?\(HIMMEL-[^)]*\): '
+         r'git execution/config', 'git-output-to-scratch', 'over-deny',
+         'git diff --output into the session scratchpad with no exec option; the output option is the only thing the guard saw'),
+        (r'(?s)^(?:(?!\(HIMMEL-).)*\bgit\b(?:\s+-C\s+\S+)?\s+hook\s+run\b.*?\(HIMMEL-[^)]*\): git execution/config',
+         'git-hook-run', 'true-positive', 'git hook run executes the repo hook; the guard blocks program-running git options'),
+        (r'git execution/config options or ambiguous option-value', 'git-exec-option-beside-gate-script', 'unclear',
+         'a git command whose option can run a program beside a gate script; harmless or hostile by option'),
+        (r'(?s)^(?!(?:(?!a value git).)*(?:\bGIT_\w+=|\b(?:EDITOR|VISUAL|PAGER)=|\s-c\s|\sconfig\s|'
+         r'--(?:exec|config-env|upload-pack))).*?-m (["\'])[^"\']*[$`*?\[{\\][^"\']*\1.*?a value git or the shell',
+         'git-message-value-with-bracket',
+         'over-deny', 'a commit/merge message with [TICKET] reads as an executable git option value'),
+        (r'a value git or the shell it spawns will execute', 'git-exec-value-with-expansion-char', 'unclear',
+         'GIT_*/EDITOR/PAGER or -c value with a shell expansion character; harmless or hostile by value'),
+        (r'--from-file path .* is not a single literal token', 'from-file-path-not-single-token', 'true-positive',
+         'a ; or quote glued to the --from-file path (leg typo)'),
         (r'--from-file path', 'from-file-path-outside-scratch', 'unclear', 'scratch path rule for --from-file'),
+        (r'could not be tokenized', 'unparseable-line-with-expansion-char', 'unclear',
+         'a line the guard cannot tokenize that carries a shell expansion character (fail-closed)'),
+        (r'names a guarded script as an assignment value', 'gate-script-as-assignment-value', 'true-positive',
+         'a gate script held in a variable or option value; a second shell can build the path'),
+        (r'through a wrapper or a VAR= prefix', 'wrapper-or-var-prefix-on-gate', 'true-positive',
+         'BASH_ENV/PATH/VAR= prefix on a gate script (preface forbids it)'),
+        (r'cwd is not the worktree root', 'cwd-not-worktree-root', 'true-positive',
+         'the shell cwd sits below the worktree root, so the relative gate path is not himmel\'s copy'),
+        (r'a builtin sets GIT_|--config-env', 'git-env-config-executed', 'true-positive',
+         'GIT_*/EDITOR env or --config-env that git executes beside a gate script'),
         (r'.', 'gate-literal-other', 'unclear', 'other guard-pr-check-literal denial'),
     ],
     'block-chokepoint-env-prefix': [
@@ -54,6 +90,29 @@ HOOK_CLASSES = {
     'block-write-into-main-checkout': [
         (r'could not be resolved', 'unresolved-cd-target', 'over-deny',
          'cd into a $VAR or not-yet-created dir fails closed on every later write in the command'),
+        (r'executes DATA', 'executes-unreadable-data', 'unclear',
+         'eval/source/shell -c/heredoc whose text the fence cannot read; a write inside it cannot be classified'),
+        (r'PRIMARY checkout on a feature branch', 'primary-on-feature-branch', 'true-positive',
+         'the primary tree holds a feature branch; feature work belongs in a worktree'),
+        (r'on main/master\.\s+\(command:\s+cd\s+\S*/\.(claude/)?worktrees/', 'worktree-cd-write-read-as-main',
+         'over-deny', 'cd into a feature worktree then write; the fence resolves the repo to main'),
+        (r'on main/master\.\s+\(command:\s+cd\s+/tmp/claude-\S*/scratchpad', 'scratch-write-read-as-main', 'over-deny',
+         'write into the session scratchpad read as a write to main'),
+        (r'on main/master\.\s+\(command:\s+cd\s+\S*/Documents/luna[/\s;&]', 'luna-vault-write-read-as-main',
+         'over-deny', 'the luna vault is committed on main by design; its handover docs are written in place'),
+        (r'on main/master\.\s+\(command:\s+cd\s+\S*/\.claude/projects/', 'claude-projects-write-read-as-main',
+         'over-deny', 'a write under ~/.claude/projects (memory, tool results) is no repo write'),
+        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*(?:[>;&]|\|(?!\s*(?:head|tail|wc|sort(?![^|(]*\s(?:-o|--output)\b)|uniq|cut|grep|rg|tr)\b)))|'
+         r'timeout \d+ (?:bash|sh) -c .until)',
+         'read-only-command-read-as-write', 'over-deny', 'grep/rg/printf/until-poll read as write-shaped'),
+        (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
+         r'cherry-pick|remote|config|tag|reset|stash)(?![-\w])', 'git-rewrite-in-primary', 'true-positive',
+         'a git subcommand that rewrites the primary tree, index, HEAD, refs or config'),
+        (r'(?s)on main/master\..*\(git subcommand: (merge-tree|patch-id|hash-object|commit-tree|'
+         r'grep|show|log|diff)\b', 'git-object-only-command-flagged-as-write', 'over-deny',
+         'merge-tree/patch-id/hash-object/commit-tree and read-only git: object-database work, the primary tree is untouched'),
+        (r'(?s)on main/master\..*\(git subcommand: ', 'git-subcommand-in-primary', 'unclear',
+         'git fetch (refs only) against the primary; true for a leg, over-deny for the console'),
         (r'on main/master', 'write-shaped-command-on-main', 'unclear',
          'git merge/fetch against the primary; true for a leg, over-deny for the console'),
         (r'.', 'main-checkout-other', 'unclear', 'other main-checkout denial'),
@@ -68,9 +127,86 @@ HOOK_CLASSES = {
     'block-tail-pipe-on-gates': [(r'.', 'pipe-beside-gate', 'true-positive', 'pipe into/after a gate script')],
     'block-jira-compound-write': [(r'.', 'jira-compound-write', 'true-positive', 'compound Jira write')],
     'block-bank-lift-writes': [(r'.', 'bank-lift-write', 'true-positive', 'write to bank-lift state')],
-    'block-destructive-commands': [(r'.', 'destructive-command', 'unclear', 'rm/reset style command')],
+    'block-destructive-commands': [
+        (r'refused \(recursive (rm|delete)', 'recursive-delete', 'true-positive',
+         'rm -r / find -delete is the hook\'s named verb; the reason carries no path, so a scratch delete is not separable here'),
+        (r'refused \(git branch -D', 'git-branch-force-delete', 'true-positive', 'unmerged-branch delete'),
+        (r'refused \(disk/boot mutation', 'disk-boot-mutation', 'true-positive', 'dd/mkfs/bootloader write'),
+        (r'refused \(remote exec pipe', 'remote-exec-pipe', 'true-positive', 'curl | sh style remote execution'),
+        (r'refused \(git reset --hard', 'git-reset-hard', 'true-positive', 'discards local work'),
+        (r'refused \(process termination', 'process-termination', 'true-positive', 'kill/pkill of a process'),
+        (r'refused \(git core\.hooksPath', 'git-hookspath-override', 'true-positive', 'bypasses the repo hooks'),
+        (r'refused \(force push', 'force-push', 'true-positive', 'history rewrite on the remote'),
+        (r'refused \(([^)]+)', 'destructive-%s', 'true-positive', 'destructive verb the hook names; by design'),
+        (r'.', 'destructive-command', 'unclear', 'other rm/reset style command'),
+    ],
     'block-bare-qmd-query': [(r'.', 'bare-qmd-query', 'true-positive', 'qmd query without -c scope')],
-    'block-edit-live-settings': [(r'.', 'edit-live-settings', 'unclear', 'live settings path in command or text')],
+    'block-edit-live-settings': [
+        (r"targets the primary checkout's \.claude/", 'primary-claude-dir-write', 'true-positive',
+         "a cp/mv/tee/tar aimed at the primary checkout's .claude/ directory"),
+        (r'an interpreter \(python/node/perl/ruby\) both reads the home directory', 'interpreter-reads-home-and-writes',
+         'unclear', 'an interpreter that expands HOME and writes a file; harmless or builds ~/.claude/settings.json'),
+        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*?\bcat\b[^<|;&]*<<',
+         'settings-mention-in-heredoc', 'over-deny',
+         'a cat heredoc written to a file whose body merely mentions settings.json (the guard names this case itself)'),
+        (r'(?s)^(?=.*names a live settings)(?:(?!settings(?:\.local)?\.json).)*<<', 'settings-in-executed-heredoc',
+         'unclear', 'a heredoc fed to an interpreter that may or may not write settings.json'),
+        (r'names a live settings', 'live-settings-named', 'true-positive',
+         'a command naming the primary checkout or HOME settings file'),
+        (r'.', 'edit-live-settings', 'unclear', 'live settings path in command or text'),
+    ],
+    'store-deny': [
+        (r'through a glob or expansion that can spell the bus root', 'bus-root-via-glob-or-expansion', 'unclear',
+         'a glob/expansion under himmel/ the guard cannot prove is not the bus store (fail-closed speed bump)'),
+        (r'register\|bind\|rebind is the launcher', 'bus-register-is-launchers', 'true-positive',
+         "registration is the launcher's, not a session's"),
+        (r'does not set HIMMEL_BUS_', 'bus-env-set-by-session', 'true-positive', 'session sets a bus env name'),
+        (r'names the himmel-bus store|names the himmel state dir', 'bus-store-named', 'true-positive',
+         'tool call names the bus store (speed bump)'),
+        (r'.', 'store-deny-other', 'unclear', 'other bus-store denial'),
+    ],
+    'guard-empty-expansion': [
+        (r'holding a command substitution', 'expansion-holding-substitution', 'unclear',
+         'a ${...} with a substitution or unbalanced quote beside the guarded target; the scan cannot prove it'),
+        (r'.', 'empty-expansion-other', 'unclear', 'other empty-expansion denial'),
+    ],
+    'guard-unwrap': [(r'.', 'unreadable-quoting-nested-shell', 'unclear',
+                      'quoting the guard cannot read around a nested shell, eval or quoted command word')],
+    'auto-approve-safe-bash': [
+        (r'root-anchored find', 'root-find-without-maxdepth', 'true-positive', 'whole-disk find in an unattended session'),
+        (r'.', 'auto-approve-other', 'unclear', 'other auto-approve denial'),
+    ],
+    'block-himmel-config-writes': [
+        (r'character outside', 'config-json-metachar', 'unclear',
+         'config.json named with a quote/redirect/chain; a read or a write by shape'),
+        (r'not a listed plain reader', 'config-json-non-reader', 'true-positive', 'non-reader command on config.json'),
+        (r'.', 'config-json-other', 'unclear', 'other config.json denial'),
+    ],
+    'graphify-fence': [
+        (r'relative graphify target after an in-command cd', 'graphify-relative-target-after-cd', 'true-positive',
+         'leg cd-ed then used a relative graphify target; absolute paths are the rule'),
+        (r'unclassifiable path', 'graphify-unclassifiable-path', 'unclear',
+         'a graphify path the fence cannot classify (fail-closed)'),
+        (r'--backend explicitly', 'graphify-backend-undeclared', 'true-positive', 'no declared graphify backend'),
+        (r'.', 'graphify-fence-other', 'unclear', 'other graphify-fence denial'),
+    ],
+    'block-edit-on-main': [
+        (r'\(file: /tmp/claude-', 'edit-in-scratch-repo-on-main', 'over-deny',
+         'edit in a throwaway repo under the session scratchpad whose default branch is main'),
+        (r'PRIMARY checkout on a feature branch', 'edit-primary-on-feature-branch', 'true-positive',
+         'edit in the primary tree on a feature branch'),
+        (r'on main/master', 'edit-on-main', 'true-positive', 'edit on main; feature work belongs in a worktree'),
+        (r'.', 'edit-on-main-other', 'unclear', 'other edit-on-main denial'),
+    ],
+    'write-deny': [(r'.', 'release-manager-scope', 'true-positive',
+                    'a release manager writes only through the release CLI, its doc and scratch')],
+    'block-git-stash': [(r'.', 'git-stash-mutation', 'true-positive', 'refs/stash is shared by every worktree')],
+    'block-rogue-claude-schedule': [(r'.', 'raw-scheduler-arm', 'true-positive', 'hand-rolled scheduler job for claude')],
+    'block-rogue-codex-exec': [(r'.', 'raw-codex-exec', 'true-positive', 'raw codex dispatch outside the chokepoint')],
+    'block-infra-destroy': [(r'.', 'infra-destroy', 'true-positive', 'SQL/infra/docker destroy in one step')],
+    'block-docker-privesc': [(r'.', 'root-equivalent-container-access', 'true-positive',
+                              'docker run with root-equivalent access')],
+    'agent-model-deny': [(r'.', 'judge-model-override', 'true-positive', 'judge model off its frontmatter tier')],
 }
 
 # ordered rules over the whole tool_result text: (regex, source, class, verdict, evidence)
@@ -127,7 +263,10 @@ def classify(text, denial_kind=None):
         name, reason = m.group(1), m.group(2)
         for rx, cls, verdict, ev in HOOK_CLASSES.get(name, [(r'.', 'other-' + re.sub(r'[^a-z]+', '-', reason[:40].lower()).strip('-'),
                                                  'unclear', 'unmapped hook denial')]):
-            if re.search(rx, reason):
+            hit = re.search(rx, reason)
+            if hit:
+                if '%s' in cls:
+                    cls = cls % re.sub(r'[^a-z0-9]+', '-', hit.group(1).lower()).strip('-')
                 return 'hook:' + name, cls, verdict, ev
     if denial_kind in ('permission-rule', 'automode-blocked'):
         return 'permission-rule', 'unmapped-' + mask(text)[:40].lower().replace(' ', '-'), 'unclear', 'unmapped denial'
@@ -296,6 +435,16 @@ def scan_docs(docs_dir, since, names):
     return rows
 
 
+def refusal_totals(tx):
+    """ci-wait rows are CI re-polls, not refusals: they get their own count and stay out of every refusal total.
+    hook_unclear_share is the unclear share of hook refusals."""
+    refusals = [r for r in tx if r['source'] != 'ci-wait']
+    hooks = [r for r in refusals if r['source'].startswith('hook:')]
+    hook_unclear = sum(1 for r in hooks if r['verdict'] == 'unclear')
+    return {'refusals': len(refusals), 'ci_wait': len(tx) - len(refusals), 'hook_refusals': len(hooks),
+            'hook_unclear': hook_unclear, 'hook_unclear_share': round(hook_unclear / len(hooks), 4) if hooks else None}
+
+
 def _med(xs):
     return None if not xs else round(statistics.median(xs), 1)
 
@@ -358,7 +507,11 @@ def aggregate(tx_rows, doc_rows):
 
 def render_md(agg, meta):
     lines = ['# Friction measurement (last %s days)' % meta['days'], '',
-             '%d transcript refusals, %d leg-doc BLOCKED/FINDING bullets.' % (meta['tx_rows'], meta['doc_rows']), '',
+             '%d transcript refusals, %d leg-doc BLOCKED/FINDING bullets.' % (meta['refusals'], meta['doc_rows']),
+             'ci-wait: %d CI re-polls (not refusals, left out of the totals).' % meta['ci_wait'],
+             'hook unclear: %d of %d hook refusals (%s).' % (
+                 meta['hook_unclear'], meta['hook_refusals'],
+                 'n/a' if meta['hook_unclear_share'] is None else '%.1f %%' % (100 * meta['hook_unclear_share'])), '',
              '## A. Escalations to the console, by source (leg docs)', '',
              'score = total hold min + 5 x console turns + 15 x operator interrupts.', '',
              '| # | source | doc blocks | legs | median hold min | total hold min | console turns | operator | '
@@ -409,12 +562,15 @@ def render_section(tx, prior_tx, docs, days, top=5):
     """The digest subsection: top classes by refusals with the trend against the prior window, and the
     top escalations by hold. Docs carry only HH:MM stamps, so their window is the file mtime and they
     have no prior-window trend."""
-    prior = collections.Counter((r['source'], r['class']) for r in prior_tx)
-    now_n = collections.Counter((r['source'], r['class']) for r in tx)
+    totals = refusal_totals(tx)
+    prior = collections.Counter((r['source'], r['class']) for r in prior_tx if r['source'] != 'ci-wait')
+    now_n = collections.Counter((r['source'], r['class']) for r in tx if r['source'] != 'ci-wait')
     verdict = {(r['source'], r['class']): r['verdict'] for r in tx}
     out = ['### Friction (last %d days)' % days, '']
     if not now_n:
         out.append('- no refusals in the window')
+    if totals['ci_wait']:
+        out.append('- ci-wait: %d CI re-polls (not refusals, left out of the totals)' % totals['ci_wait'])
     for (src, cls), n in sorted(now_n.items(), key=lambda kv: (-kv[1], kv[0]))[:top]:
         p = prior.get((src, cls), 0)
         out.append('- %s / %s: %d refusals (%s, prior %d, %s)' % (
@@ -436,9 +592,13 @@ def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0
     """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class.
     An explicit --projects scope joins the config, so a run over other transcripts is its own series. A scan
     that could not open every transcript is "partial", never a baseline."""
+    totals = refusal_totals(tx)
+    tx = [r for r in tx if r['source'] != 'ci-wait']
     verdicts = collections.Counter(r['verdict'] for r in tx)
     metrics = {'refusals': len(tx), 'over_deny': verdicts['over-deny'], 'true_positive': verdicts['true-positive'],
-               'unclear': verdicts['unclear'], 'over_deny_share': None}
+               'unclear': verdicts['unclear'], 'over_deny_share': None, 'ci_wait': totals['ci_wait'],
+               'hook_refusals': totals['hook_refusals'], 'hook_unclear': totals['hook_unclear'],
+               'hook_unclear_share': totals['hook_unclear_share']}
     judged = verdicts['over-deny'] + verdicts['true-positive']
     if judged:
         metrics['over_deny_share'] = round(verdicts['over-deny'] / judged, 4)
@@ -484,8 +644,9 @@ def main(argv=None):
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))
         return 0
-    table = aggregate(tx, docs)
-    meta = {'days': a.days, 'since': since.isoformat(), 'tx_rows': len(tx), 'doc_rows': len(docs)}
+    table = aggregate([r for r in tx if r['source'] != 'ci-wait'], docs)
+    meta = {'days': a.days, 'since': since.isoformat(), 'tx_rows': len(tx), 'doc_rows': len(docs),
+            **refusal_totals(tx)}
     if a.json:
         with open(a.json, 'w') as f:
             json.dump({'meta': meta, **table}, f, indent=1)

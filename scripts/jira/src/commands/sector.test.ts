@@ -89,8 +89,32 @@ describe('Sector field (HIMMEL-5710)', () => {
         delete process.env.JIRA_SECTOR_FIELD;
         writeFileSync(cfg, JSON.stringify({ jira: { sectorField: 'none' } }));
         expect(sectorField()).toBeUndefined();
-        writeFileSync(cfg, '{not json');
+        writeFileSync(cfg, JSON.stringify({ jira: {} }));
         expect(sectorField()).toBeUndefined();
+        writeFileSync(cfg, JSON.stringify({}));
+        expect(sectorField()).toBeUndefined();
+      } finally {
+        rmSync(cfg, { force: true });
+      }
+    });
+
+    it('treats a missing config file as sectors off', async () => {
+      const { sectorField } = await import('./sector.js');
+      delete process.env.JIRA_SECTOR_FIELD;
+      expect(sectorField()).toBeUndefined();
+    });
+
+    it('throws a clear error on malformed config JSON or a non-string sectorField, not sectors off', async () => {
+      const { sectorField } = await import('./sector.js');
+      const home = process.env.HOME!;
+      mkdirSync(join(home, '.himmel'), { recursive: true });
+      const cfg = join(home, '.himmel', 'config.json');
+      try {
+        delete process.env.JIRA_SECTOR_FIELD;
+        writeFileSync(cfg, '{not json');
+        expect(() => sectorField()).toThrow(/config\.json.*not valid JSON/);
+        writeFileSync(cfg, JSON.stringify({ jira: { sectorField: 10212 } }));
+        expect(() => sectorField()).toThrow(/jira\.sectorField.*string/);
       } finally {
         rmSync(cfg, { force: true });
       }

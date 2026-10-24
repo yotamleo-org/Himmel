@@ -201,6 +201,8 @@ export TICK_TMPDIR="$W"
 export TICK_STALL_PROBE="$W/no-stall-probe" TICK_STALL_CACHE="$W/stall.cache"
 # station= reads this state file; never the real ~/.himmel one.
 export TICK_STATION_STATE="$W/station-sync.state"
+# alert-fail= reads this marker; never the real ~/.himmel one.
+export CADENCE_ALERT_SEND_FAILED_MARK="$W/cadence-alert-send-failed"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
@@ -2788,6 +2790,14 @@ printf 'BEHIND:luna_template,codex\n' > "$TICK_STATION_STATE"
 same 'station= names the behind components (HIMMEL-5945)' "$(station_of)" 'BEHIND:luna_template,codex'
 contains 'verbose labels the behind station (HIMMEL-5945)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'station: BEHIND:luna_template,codex'
 rm -f "$TICK_STATION_STATE"
+
+# --- alert-fail=<cadence>:<age>: cadence-alert.sh could not deliver a failure alert
+alertfail_of() { bash "$SUT" --legs 'HIMMEL-333-legN70' 2>/dev/null | sed -n -E 's/.* alert-fail=([^ ]*).*/\1/p'; }
+same 'alert-fail= is absent with no marker (HIMMEL-7419)' "$(alertfail_of)" ''
+printf '%s focus-refresh exit-1\n' "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)" > "$CADENCE_ALERT_SEND_FAILED_MARK"  # gnu-ok: console kit is Linux-only
+same 'alert-fail= names the cadence and its age (HIMMEL-7419)' "$(alertfail_of)" 'focus-refresh:3h'
+contains 'verbose labels the failed alert (HIMMEL-7419)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'alert-fail: focus-refresh:3h'
+rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
 
 # --- orphans-wip=: In Progress / In Review tickets with no leg and no open PR.
 OW="$W/ow-mirror/HIMMEL"; mkdir -p "$OW"

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -30,6 +30,10 @@ beforeEach(() => {
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
   out = [];
   vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('jira release (HIMMEL-6796)', () => {
@@ -155,6 +159,24 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     const prompt = judgePrompt(input, 'skill');
     expect(prompt).not.toContain('refused alone');
     expect(prompt).toContain('its ground is always a non-empty string');
+  });
+
+  it('with a Sector field configured a request with no sector is a HOLD', () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10500');
+    const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+    const prompt = judgePrompt(input, 'skill');
+    expect(prompt).toContain('that request is then a HOLD');
+    expect(prompt).toContain('(no sector, or the input is missing');
+  });
+
+  it('with no Sector field configured a request with no sector is ruled, not held', () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'none');
+    const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+    const prompt = judgePrompt(input, 'skill');
+    expect(prompt).not.toContain('that request is then a HOLD');
+    expect(prompt).not.toContain('(no sector, or');
+    expect(prompt).toContain('No Sector field is configured');
+    expect(prompt).toMatch(/"outcome":"HOLD"/);
   });
 
   it('tells the judge to take the sector from the issue snapshot first', () => {
