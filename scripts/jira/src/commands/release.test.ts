@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -30,6 +30,10 @@ beforeEach(() => {
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
   out = [];
   vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('jira release (HIMMEL-6796)', () => {

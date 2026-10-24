@@ -25,15 +25,24 @@ export const SECTORS = [
 export const SECTOR_OPT_OUT = 'none';
 
 function configSectorField(): string {
+  const path = join(homedir(), '.himmel', 'config.json');
+  let text: string;
   try {
-    const cfg = JSON.parse(readFileSync(join(homedir(), '.himmel', 'config.json'), 'utf8')) as {
-      jira?: { sectorField?: unknown };
-    };
-    const v = cfg.jira?.sectorField;
-    return typeof v === 'string' ? v : '';
-  } catch {
-    return ''; // missing or unreadable config: sectors are off
+    text = readFileSync(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return ''; // no config file: sectors are off
+    throw new Error(`${path} is unreadable: ${(e as Error).message}`);
   }
+  let cfg: { jira?: { sectorField?: unknown } } | null;
+  try {
+    cfg = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`${path} is not valid JSON, so jira.sectorField cannot be read: ${(e as Error).message}`);
+  }
+  const v = cfg?.jira?.sectorField;
+  if (v === undefined) return '';
+  if (typeof v !== 'string') throw new Error(`${path}: jira.sectorField must be a string (a custom field id or "none")`);
+  return v;
 }
 
 /** The configured custom field id, or undefined when sectors are not in use. */
