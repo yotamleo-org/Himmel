@@ -28,8 +28,11 @@
 #                               pool does not), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
-#                               the pool, then a second pass without it lists the
-#                               version backlog) (CHIEF_WAIT_DISPATCH
+#                               the pool); a LOW or empty pool adds a second pass
+#                               without it, its rows not already in the pool under
+#                               `# version backlog`, and the wake line then carries
+#                               dispatchable=<n>, the count of dispatchable To Do
+#                               rows (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
@@ -647,12 +650,21 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
 }
 underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
+    local back="" extra="" count=""
+    # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
+    # backlog (tier 4 included); its rows already in the pool are printed once, under their own heading
+    if printf '%s\n' "$pool_out" | grep -Eq '^(# pool=[0-9]+/[0-9]+,LOW|POOL-EMPTY)$'; then
+        heartbeat sampling
+        back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
+        extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" '
+            BEGIN { n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 } }
+            $0 == "" || seen[$2] { next }
+            { print }')"
+        count="$(printf '%s\n%s\n' "$pool_out" "$back" | awk -F'\t' '$1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { k[$2] = 1 } END { n = 0; for (i in k) n++; print n }')"
+    fi
+    printf 'WAKE underfilled capacity=%s%s\n%s\n' "$cap_val" "${count:+ dispatchable=$count}" "$tick_line"
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
-    # an empty pool leaves the slots idle: a second pass without --priority-pool-only lists the version backlog
-    case $'\n'"$pool_out"$'\n' in *$'\nPOOL-EMPTY\n'*)
-        timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
-    esac
+    [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
 # and the pool's non-empty key set differs from the saved one. A failed probe reads no output and

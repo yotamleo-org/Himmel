@@ -176,7 +176,7 @@ hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$W
 I="$(new_inbox rpreal)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/console.md" --legs-from "$WORK/fleet.json" > "$WORK/rpreal.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-real) the real dispatcher's pool wakes the waiter (rc 0)" "0" "$rc"
-check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d' "$WORK/rpreal.out")"
+check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d' "$WORK/rpreal.out")"
 check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-real) the wake block carries the drop summary" "1" "$(grep -c '^# dropped from v1.0.1: 1 of 2 To Do (tier 1)' "$WORK/rpreal.out")"
 
@@ -189,7 +189,23 @@ I="$(new_inbox rplegs)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/console.md" --legs-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-legs) the hand run keeps the held leg's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-legs) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
-check "(rp-legs) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d' "$WORK/rplegs.out")"
+check "(rp-legs) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d' "$WORK/rplegs.out")"
+
+# --- (lp) a LOW pool (2 of 7) still lists the plain current-version rows under their own heading ----
+M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"
+mk HIMMEL-1 '["ps3-blocker"]' "pool head one" "Edit scripts/lib/alpha.sh only."
+mk HIMMEL-3 '["ps3-blocker"]' "pool head two" "Edit scripts/lib/gamma.sh only."
+for n in 10 11 12 13 14; do mk "HIMMEL-$n" '[]' "plain task $n" "Edit scripts/lib/plain$n.sh only."; done
+printf 'v1.0.1\tfalse\t\n' > "$WORK/mirror-lp/HIMMEL.versions.tsv"
+export NEXT_DISPATCH_MIRROR="$M"
+I="$(new_inbox lp)"
+timeout 20 bash "$WAIT" "$I" --doc "$WORK/console.md" --legs-from "$WORK/fleet.json" > "$WORK/lp.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(lp) the LOW pool wakes the waiter (rc 0)" "0" "$rc"
+check "(lp) the pool rows are listed" "2" "$(grep -c '^LOCAL.HIMMEL-[13]	' "$WORK/lp.out")"
+check "(lp) every plain current-version To Do row is listed" "5" "$(grep -c '^LOCAL.HIMMEL-1[0-4]	' "$WORK/lp.out")"
+check "(lp) a pool row is not listed twice" "1" "$(grep -c '^LOCAL.HIMMEL-1	' "$WORK/lp.out")"
+check "(lp) the plain rows sit under their own heading" "1" "$(grep -c '^# version backlog' "$WORK/lp.out")"
+check "(lp) the wake line carries the one count of dispatchable rows" "WAKE underfilled capacity=UNDERFILLED:7 dispatchable=7" "$(head -n1 "$WORK/lp.out")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

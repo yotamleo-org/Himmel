@@ -2100,6 +2100,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # on the scratch copy -- by then the corpus has already been copied, so the
   # exclusion has to happen here to actually save the work.
   CORPUS_IGNORE_FILE="$CORPUS_ROOT/.graphify-corpus-ignore"
+  CORPUS_IGNORE_ENTRIES=()
   if [ -f "$CORPUS_IGNORE_FILE" ]; then
     if [ ! -r "$CORPUS_IGNORE_FILE" ]; then
       # Unreadable exists-but-can't-read is worse than absent: silently
@@ -2152,6 +2153,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       fi
       _ig_esc="$(_find_glob_escape "$_ig_line")"
       CORPUS_FIND_EXCLUDES+=(-not -path "./$_ig_esc/*")
+      CORPUS_IGNORE_ENTRIES+=("$_ig_line")
       echo "refresh-graph-map: corpus exclusion from .graphify-corpus-ignore: $_ig_line/" >&2
     done < "$CORPUS_IGNORE_FILE"
   fi
@@ -2914,6 +2916,22 @@ PYEOF
     _graphify_version="$("$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
   fi
   printf '%s\n' "$_graphify_version" > "$PROMOTE_STAGE/.graphify_promoted_version"
+  # Scope stamp: a hash of the effective ignore rules (the accepted
+  # .graphify-corpus-ignore entries) rides every promote like the version stamp.
+  # When it differs from the one the graph on disk was promoted under (or that
+  # graph has none), the shrink guard below counts only the prior nodes still in
+  # scope, once: the next promote finds the new stamp and compares the whole
+  # graph again. --promote-only never read the corpus rules, so it neither
+  # relaxes the guard nor rewrites the stamp.
+  _scope_changed=0
+  if [ -z "$PROMOTE_ONLY" ]; then
+    printf '%s\n' ${CORPUS_IGNORE_ENTRIES[@]+"${CORPUS_IGNORE_ENTRIES[@]}"} > "$PROMOTE_STAGE/.graphify_scope_entries"
+    python3 -c 'import hashlib,sys; print(hashlib.sha256("\n".join(sorted(set(sys.argv[1:]))).encode("utf-8")).hexdigest())' \
+      ${CORPUS_IGNORE_ENTRIES[@]+"${CORPUS_IGNORE_ENTRIES[@]}"} > "$PROMOTE_STAGE/.graphify_scope_hash"
+    if [ ! -f "$OUT_DIR/.graphify_scope_hash" ] || ! cmp -s "$PROMOTE_STAGE/.graphify_scope_hash" "$OUT_DIR/.graphify_scope_hash"; then
+      _scope_changed=1
+    fi
+  fi
   # --merge-into-live: fold the markdown-only extraction into the live graph
   # (semantic-merge.py merge, the step semantic-update.sh runs) so the AST
   # nodes survive and the guard below sees a merged graph. Runs on a copy in the
@@ -2997,6 +3015,12 @@ MERGEPLANEOF
 import json, sys
 staged_path, prior_path, pct_s = sys.argv[1], sys.argv[2], sys.argv[3]
 pct = int(pct_s)
+# Optional 4th arg: the ignore entries (one per line) of a scope change. Prior nodes and links
+# under them are out of scope and do not count toward the floor.
+entries = []
+if len(sys.argv) > 4 and sys.argv[4]:
+    with open(sys.argv[4], encoding="utf-8") as fh:
+        entries = [l for l in fh.read().split("\n") if l]
 
 def links_of(data):
     v = data.get("links")
@@ -3004,7 +3028,7 @@ def links_of(data):
         v = data.get("edges")
     return v if isinstance(v, list) else []
 
-def counts(path, require_nodes_list):
+def load(path, require_nodes_list):
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -3017,16 +3041,33 @@ def counts(path, require_nodes_list):
         return None
     if not isinstance(nodes, list):
         nodes = []
-    links = links_of(data)
     hyperedges = data.get("hyperedges")
     hyperedges = hyperedges if isinstance(hyperedges, list) else []
-    return (len(nodes), len(links), len(hyperedges))
+    return (nodes, links_of(data), hyperedges)
 
-staged = counts(staged_path, False)
-if staged is None:
+def rel(item):
+    p = (item.get("source_file") or "") if isinstance(item, dict) else ""
+    while p.startswith("./"):
+        p = p[2:]
+    return p
+
+def ignored(item):
+    p = rel(item)
+    return any(p == e or p.startswith(e + "/") for e in entries)
+
+def area_counts(nodes):
+    areas = {}
+    for n in nodes:
+        p = rel(n)
+        a = p.split("/", 1)[0] if "/" in p else "(root)"
+        areas[a] = areas.get(a, 0) + 1
+    return areas
+
+staged_data = load(staged_path, False)
+if staged_data is None:
     print("STAGED_UNPARSEABLE")
     sys.exit(2)
-staged_nodes, staged_links, staged_hyper = staged
+staged_nodes, staged_links, staged_hyper = len(staged_data[0]), len(staged_data[1]), len(staged_data[2])
 
 try:
     open(prior_path, encoding="utf-8").close()
@@ -3037,24 +3078,56 @@ if not has_prior:
     print("NO_PRIOR 0 0 0 %d %d %d" % (staged_nodes, staged_links, staged_hyper))
     sys.exit(0)
 
-prior = counts(prior_path, True)
-if prior is None:
+prior_data = load(prior_path, True)
+if prior_data is None:
     print("PRIOR_UNPARSEABLE 0 0 0 %d %d %d" % (staged_nodes, staged_links, staged_hyper))
     sys.exit(0)
-prior_nodes, prior_links, prior_hyper = prior
+prior_nodes, prior_links, prior_hyper = len(prior_data[0]), len(prior_data[1]), len(prior_data[2])
+
+# A scope change counts only the prior sources still in scope: a node under an ignored path is
+# out, and so is a link of one (by its own source_file or by an endpoint).
+gone_ids = set()
+cmp_nodes, cmp_links = prior_nodes, prior_links
+if entries:
+    gone_ids = {n.get("id") for n in prior_data[0] if ignored(n)}
+    cmp_nodes = prior_nodes - len(gone_ids)
+    kept = [l for l in prior_data[1]
+            if not ignored(l) and l.get("source") not in gone_ids and l.get("target") not in gone_ids]
+    cmp_links = len(kept)
 
 # Missing links/edges keys on either side fall back to an empty list above,
 # which floors prior_links at 0 -- link_floor is then 0 too, so a prior with
 # no readable edge data never gates (the spec's "no prior signal" case falls
 # out for free; it never needs special-casing here).
-node_floor = prior_nodes * pct // 100
-link_floor = prior_links * pct // 100
-if staged_nodes < node_floor or staged_links < link_floor:
-    print("SHRINK %d %d %d %d %d %d" % (prior_nodes, prior_links, prior_hyper, staged_nodes, staged_links, staged_hyper))
-    sys.exit(2)
-print("OK %d %d %d %d %d %d" % (prior_nodes, prior_links, prior_hyper, staged_nodes, staged_links, staged_hyper))
+node_floor = cmp_nodes * pct // 100
+link_floor = cmp_links * pct // 100
+shrunk = staged_nodes < node_floor or staged_links < link_floor
+print("%s %d %d %d %d %d %d" % ("SHRINK" if shrunk else "OK", prior_nodes, prior_links, prior_hyper, staged_nodes, staged_links, staged_hyper))
+if entries:
+    print("SCOPE %d %d" % (cmp_nodes, cmp_links))
+prior_areas, staged_areas = area_counts(prior_data[0]), area_counts(staged_data[0])
+for a in sorted(prior_areas):
+    if staged_areas.get(a, 0) < prior_areas[a]:
+        print("AREA %s %d %d" % (a, prior_areas[a], staged_areas.get(a, 0)))
+sys.exit(2 if shrunk else 0)
 PYEOF
-      _guard_out="$(python3 -c "$_guard_py" "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json" "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT")" || _rc=$?
+      _scope_entries_file=""
+      if [ "$_scope_changed" -eq 1 ]; then _scope_entries_file="$PROMOTE_STAGE/.graphify_scope_entries"; fi
+      _guard_out="$(python3 -c "$_guard_py" "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json" "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" "$_scope_entries_file")" || _rc=$?
+      # The per-area drop goes to the refresh log (stderr), refused or not.
+      while IFS= read -r _guard_line; do
+        case "$_guard_line" in
+          SCOPE\ *)
+            read -r _guard_tag _scope_n _scope_l <<< "$_guard_line"
+            echo "refresh-graph-map: ignore rules changed since the last promote -- retain check over in-scope sources only (prior in scope: nodes $_scope_n, links $_scope_l)" >&2
+            ;;
+          AREA\ *)
+            _guard_line="${_guard_line#AREA }"
+            _guard_rest="${_guard_line% *}"
+            echo "refresh-graph-map: area ${_guard_rest% *}: nodes ${_guard_rest##* } -> ${_guard_line##* }" >&2
+            ;;
+        esac
+      done <<< "$_guard_out"
       case "$_guard_out" in
         STAGED_UNPARSEABLE*)
           echo "refresh-graph-map: REFUSING to promote -- staged graph $PROMOTE_STAGE/graph.json is missing or unparseable JSON; refusing to promote something we cannot verify" >&2
@@ -3164,6 +3237,9 @@ PYEOF
   mv "$PROMOTE_STAGE/manifest.json" "$OUT_DIR/manifest.json"
   mv "$PROMOTE_STAGE/.graphify_root" "$OUT_DIR/.graphify_root"
   mv "$PROMOTE_STAGE/.graphify_promoted_version" "$OUT_DIR/.graphify_promoted_version"
+  if [ -f "$PROMOTE_STAGE/.graphify_scope_hash" ]; then
+    mv "$PROMOTE_STAGE/.graphify_scope_hash" "$OUT_DIR/.graphify_scope_hash"
+  fi
   rm -rf "$PROMOTE_STAGE"
   PROMOTE_STAGE=""
   # Do NOT release the lock here -- the publish step below

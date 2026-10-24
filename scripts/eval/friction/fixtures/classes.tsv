@@ -68,3 +68,14 @@ hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
 hook:block-write-into-main-checkout	write-shaped-command-on-main	unclear
 hook:block-write-into-main-checkout	write-shaped-command-on-main	unclear
 hook:agent-model-deny	judge-model-override	true-positive
+hook:guard-pr-check-literal	git-option-beside-gate-mention	over-deny
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:block-destructive-commands	destructive-scheduled-task-mutation	unclear
+hook:block-write-into-main-checkout	write-shaped-command-on-main	unclear
+hook:block-write-into-main-checkout	write-shaped-command-on-main	unclear
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:block-edit-live-settings	live-settings-named	true-positive
