@@ -807,22 +807,46 @@ else
         wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
     }
     # wf_wiring_only <workflow path>: rc 0 when the PR's diff of that file is the macos-cadence `suites`
-    # wiring and nothing else. Every added line must be blank, a comment, mention a suite or --only-list,
-    # or be one of the if/else and input-block lines that wiring needs; every removed line must be one of
-    # the two lines the wiring rewrites or be paired with its added twin that only gained the
-    # ` && inputs.suites == ''` clause. rc 1 with wf_why naming the first other line, or the diff unreadable.
-    # ponytail: a line-shape allowlist, not a YAML semantic diff; a hostile line that mentions "suite" passes it, upgrade path: compare the parsed workflow with the wiring stripped.
+    # wiring and nothing else. Every added line, trimmed, must be blank, a whole-line comment, or one of the
+    # exact lines the wiring consists of (the list below); an `if:` line may instead be an existing removed
+    # line plus a trailing ` && inputs.suites == ''`. Every removed line must be blank, a comment, one of the
+    # two lines the wiring rewrites, or the twin of such an `if:` line. Nothing is matched by substring, so a
+    # line that merely mentions "suites" is refused. rc 1 with wf_why naming the first other line, or the
+    # diff unreadable. A deliberate wiring edit updates this list in the same PR.
     wf_wiring_only() {
-        local patch bad
+        local patch bad wiring_lines
+        wiring_lines=$(cat <<'LINES'
+run-name: "${{ inputs.suites != '' && format('macos-cadence suites: {0}', inputs.suites) || 'CI (os:macos cadence)' }}"
+inputs:
+suites:
+description: 'Space-separated repo-relative suite paths; set = run only these on one runner'
+required: false
+default: ''
+type: string
+shard: ${{ fromJSON(inputs.suites == '' && '[1, 2, 3, 4, 5, 6, 7, 8]' || '[1]') }}
+run: |
+if [ -n "$SUITES" ]; then
+set -f
+printf '%s\n' $SUITES > macos-suites.txt
+if grep -qvE '^[A-Za-z0-9_./-]+$' macos-suites.txt || grep -q '\.\.' macos-suites.txt; then
+echo "::error::suites must be plain repo-relative paths"
+exit 2
+fi
+bash scripts/ci/run-shell-tests.sh --only-list macos-suites.txt .
+else
+bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
+SUITES: ${{ inputs.suites }}
+LINES
+)
         patch=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq ".[] | select(.filename == \"$1\") | .patch // empty" 2>/dev/null) || { wf_why="cannot read the diff of $1"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
         [ -n "$patch" ] || { wf_why="the diff of $1 is not available"; return 1; }
-        bad=$(printf '%s\n' "$patch" | awk -v frag=" && inputs.suites == ''" '
+        bad=$(printf '%s\n' "$patch" | WF_WIRING_LINES="$wiring_lines" awk -v frag=" && inputs.suites == ''" '
             function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-            function strip(s,   i) { while ((i = index(s, frag)) > 0) s = substr(s, 1, i - 1) substr(s, i + length(frag)); return s }
-            function wiring(l) { return l == "" || l ~ /^#/ || l ~ /[Ss][Uu][Ii][Tt][Ee]|only-list/ || (l in fixed) }
+            function gained(s) { return length(s) > length(frag) && substr(s, length(s) - length(frag) + 1) == frag }
+            function inert(l) { return l == "" || l ~ /^#/ }
             BEGIN {
-                n = split("inputs:\nrequired: false\ndefault: '"''"'\ntype: string\nrun: |\nelse\nfi\nset -f\nexit 2\nbash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .", w, "\n")
-                for (i = 1; i <= n; i++) fixed[w[i]] = 1
+                n = split(ENVIRON["WF_WIRING_LINES"], w, "\n")
+                for (i = 1; i <= n; i++) ok[w[i]] = 1
                 old["shard: [1, 2, 3, 4, 5, 6, 7, 8]"] = 1
                 old["run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 ."] = 1
             }
@@ -830,12 +854,14 @@ else
             /^\+/ { added[++na] = trim(substr($0, 2)); next }
             /^-/ { removed[++nr] = trim(substr($0, 2)); next }
             END {
+                for (i = 1; i <= nr; i++) gone[removed[i]] = 1
                 for (i = 1; i <= na; i++) {
-                    if (!wiring(added[i])) { print "+" added[i]; exit }
-                    twin[strip(added[i])] = 1
+                    l = added[i]
+                    if (gained(l) && substr(l, 1, length(l) - length(frag)) in gone) { twin[substr(l, 1, length(l) - length(frag))] = 1; continue }
+                    if (!inert(l) && !(l in ok)) { print "+" l; exit }
                 }
                 for (i = 1; i <= nr; i++)
-                    if (!wiring(removed[i]) && !(removed[i] in old) && !(removed[i] in twin)) { print "-" removed[i]; exit }
+                    if (!inert(removed[i]) && !(removed[i] in old) && !(removed[i] in twin)) { print "-" removed[i]; exit }
             }') || { wf_why="cannot judge the diff of $1"; return 1; }  # swallow-ok: a failed awk sets wf_why and returns 1
         if [ -n "$bad" ]; then
             wf_why="$1 changes more than the suites wiring (${bad}), so an unfiltered dispatch at the head is required"
