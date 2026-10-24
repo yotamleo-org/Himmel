@@ -350,7 +350,7 @@ _cic_fetch_rest() {
             ($need != "1" or ((.runs.body.workflow_runs | type == "array") and (.runs.body | count_ok(.workflow_runs)) and
                 all(.checks.body.check_runs[] | select(.app.id == 15368); (.check_suite.id // "" | tostring) as $s | any($mapped[]; . == $s))))
         then (if $need == "1" then [.runs.body.workflow_runs[] | select(wf_ok) | {key: (.check_suite_id | tostring), value: "\(.event)/\(.workflow_id)"}] | from_entries else {} end) as $ev |
-            def gk: [.name, (.app.id // "" | tostring), ($ev[(.check_suite.id // "" | tostring)] // "")];
+            def gk: [.name, (.app.id // "" | tostring), ($ev[(.check_suite.id // "" | tostring)] // "suite-\(.check_suite.id // "")")];
             [(.checks.body.check_runs as $runs | $runs[] |
                 select(. as $c | all($runs[]; gk != ($c | gk) or run_key <= ($c | run_key))) |
                 [(if .status != "completed" then "pending" elif .conclusion == "success" then "pass"

@@ -45,6 +45,8 @@ if [ "${XSAME:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total
 if [ "${XFAIL:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":30},"status":"completed","conclusion":"success"},{"id":2,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":10},"status":"completed","conclusion":"failure"}]}'; fi
 # Same name from two different apps: neither supersedes the other.
 if [ "${XAPP:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"scan","app":{"id":111},"check_suite":{"id":10},"status":"completed","conclusion":"failure"},{"id":2,"name":"scan","app":{"id":222},"check_suite":{"id":20},"status":"completed","conclusion":"success"}]}'; fi
+# One non-Actions app, two suites the runs list does not map: the older failure stays counted.
+if [ "${XUNMAPPED:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"scan","app":{"id":111},"check_suite":{"id":40},"status":"completed","conclusion":"failure"},{"id":2,"name":"scan","app":{"id":111},"check_suite":{"id":50},"status":"completed","conclusion":"success"}]}'; fi
 if [ "${MALFORMED:-0}" = 1 ]; then body='{"total_count":1,"check_runs":[]}'; fi
 if [ "${PAGED:-0}" = 1 ]; then body='{"total_count":101,"check_runs":[]}'; fi
 if [ "${BIG:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body=$(jq -nc '{total_count:100,check_runs:[range(100)|{id:.,name:"unit\(.)",status:"completed",conclusion:"success",pad:("x"*2500)}]}'); fi
@@ -70,7 +72,7 @@ new_case() {
     : > "$CASE/calls"; : > "$CASE/responses"; : > "$CASE/sleeps"
     printf '1000000000\n' > "$CASE/clock"
     export CIC_CLOCK_FILE="$CASE/clock" CHECK_CI_CACHE_DIR="$CASE/cache"
-    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP RUNS_ERROR RUNS_PAGED RUNS_EMPTY RUNS_OTHERWF RUNS_NOWF ACTUAL_GQL
+    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP XUNMAPPED RUNS_ERROR RUNS_PAGED RUNS_EMPTY RUNS_OTHERWF RUNS_NOWF ACTUAL_GQL
     cic_init 42 sha1 || exit 1
 }
 count() { grep -c -- "$1" "$CASE/calls" || true; }
@@ -179,6 +181,11 @@ new_case
 export XAPP=1
 cic_get 60; rc=$?
 if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'fail\tscan\npass\tscan\npass\tlint' ]; then ok 'a newer run of the same name from another app does not supersede a failure'; else bad "cross-app failure lost: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XUNMAPPED=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'fail\tscan\npass\tscan\npass\tlint' ]; then ok 'suites of a non-Actions app that the workflow-run list does not map stay separate'; else bad "unmapped suites merged: rc=$rc rows=$CIC_ROWS"; fi
 
 new_case
 export XEVENT=1 RUNS_ERROR=1
