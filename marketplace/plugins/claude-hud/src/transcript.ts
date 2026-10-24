@@ -6,6 +6,7 @@ import { getHudPluginDir } from './claude-config-dir.js';
 import { createDebug } from './debug.js';
 import type { AgentEntry, SessionTokenUsage, TodoItem, ToolEntry, TranscriptData } from './types.js';
 import { sanitizeDisplayText } from './utils/sanitize.js';
+import { truncateString } from './utils/truncate.js';
 import { sanitizeTranscriptModel } from './model-source.js';
 
 const debug = createDebug('transcript');
@@ -70,7 +71,7 @@ function name(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const text = sanitizeDisplayText(value).trim();
   if (!text) return undefined;
-  return text.length <= NAME_MAX_LEN ? text : `${text.slice(0, NAME_MAX_LEN - 1)}…`;
+  return truncateString(text, NAME_MAX_LEN, '…');
 }
 
 const mcpServer = (toolName: string): string | undefined => name(MCP_TOOL.exec(toolName)?.[1]);
@@ -94,7 +95,7 @@ function toolTarget(toolName: string, input: Record<string, unknown> | undefined
     case 'Bash': {
       const command = text(input.command)?.replace(/\s+/g, ' ').trim();
       if (!command) return undefined;
-      return command.length > 30 ? `${command.slice(0, 30).trimEnd()}...` : command;
+      return command.length > 30 ? `${truncateString(command, 30, '').trimEnd()}...` : command;
     }
   }
   return undefined;
@@ -132,7 +133,10 @@ class Parser {
   private mcpServers = new Set<string>();
   private mcpErrors = new Set<string>();
   private todos: TodoItem[] = [];
+  // Task id -> index in todos; -1 marks a task that was deleted or dropped by TodoWrite.
   private taskIndex = new Map<string, number>();
+  // Claude Code numbers TaskCreate tasks 1, 2, 3... and never reuses a number.
+  private nextTaskId = 1;
   private agentCompletions = new Map<string, Date>();
   // Some task-notifications omit <tool-use-id>, carrying only <task-id> (= the
   // launch toolUseResult's agentId). Map agentId -> toolUseId from the launch
@@ -196,7 +200,8 @@ class Parser {
       if (toolUseId && taskId && this.agents.has(toolUseId) && !(prev && prev <= at)) this.agentCompletions.set(toolUseId, at);
     }
 
-    if (Array.isArray(entry.message?.content)) {
+    // Only real turns carry activity; api-request-blob lines replay earlier messages' blocks.
+    if ((entry.type === 'assistant' || entry.type === 'user') && Array.isArray(entry.message?.content)) {
       for (const block of entry.message.content) {
         if (block?.type === 'tool_use' && block.id && block.name) this.toolUse(block, at ?? new Date());
         if (block?.type === 'tool_result' && block.tool_use_id) this.toolResult(block, entry, at ?? new Date());
@@ -277,11 +282,19 @@ class Parser {
     } else if (toolName === 'TaskCreate') {
       const content = text(input?.subject) ?? text(input?.description);
       this.todos.push({ content: content ?? 'Untitled task', status: taskStatus(input?.status) ?? 'pending' });
-      const taskId = typeof input?.taskId === 'string' || typeof input?.taskId === 'number' ? String(input.taskId) : block.id;
-      if (taskId) this.taskIndex.set(taskId, this.todos.length - 1);
+      const numbered = String(this.nextTaskId++);
+      const explicit = typeof input?.taskId === 'string' || typeof input?.taskId === 'number' ? String(input.taskId) : null;
+      for (const id of explicit ? [explicit] : [numbered, block.id]) if (id) this.taskIndex.set(id, this.todos.length - 1);
     } else if (toolName === 'TaskUpdate') {
-      const todo = this.todos[this.findTask(input?.taskId) ?? -1];
-      if (!todo) return;
+      const index = this.findTask(input?.taskId);
+      if (index === null) return;
+      const todo = this.todos[index];
+      if (input?.status === 'deleted') {
+        // Drop the task, retire its ids, and shift later tasks' ids up one.
+        this.todos.splice(index, 1);
+        this.moveTasks((i) => (i === index ? -1 : i > index ? i - 1 : i));
+        return;
+      }
       const status = taskStatus(input?.status);
       if (status) todo.status = status;
       const content = text(input?.subject) ?? text(input?.description);
@@ -329,29 +342,33 @@ class Parser {
     }
   }
 
-  // TodoWrite replaces the list; TaskCreate ids follow their todo by content, in order,
-  // so duplicate-content todos each keep their own id.
+  // TodoWrite replaces the list. Each todo takes over the ids of the first unclaimed old todo
+  // with the same content, so duplicate-content todos each keep their own; dropped todos' ids retire.
   private replaceTodos(next: TodoItem[]): void {
-    const idsByContent = new Map<string, string[]>();
-    for (const [taskId, index] of [...this.taskIndex].sort((a, b) => a[1] - b[1])) {
-      const content = this.todos[index]?.content;
-      if (content === undefined) continue;
-      idsByContent.set(content, [...(idsByContent.get(content) ?? []), taskId]);
-    }
-    this.todos = [...next];
-    this.taskIndex.clear();
-    this.todos.forEach((todo, index) => {
-      const taskId = idsByContent.get(todo.content)?.shift();
-      if (taskId) this.taskIndex.set(taskId, index);
+    const oldByContent = new Map<string, number[]>();
+    this.todos.forEach((todo, index) => oldByContent.set(todo.content, [...(oldByContent.get(todo.content) ?? []), index]));
+    const moved = new Map<number, number>();
+    next.forEach((todo, index) => {
+      const old = oldByContent.get(todo.content)?.shift();
+      if (old !== undefined) moved.set(old, index);
     });
+    this.todos = [...next];
+    this.moveTasks((index) => moved.get(index) ?? -1);
+  }
+
+  // Points each live task id at its todo's new index, or retires it with -1 so it can't
+  // fall back to whichever task now holds its old position.
+  private moveTasks(to: (index: number) => number): void {
+    for (const [id, index] of this.taskIndex) if (index >= 0) this.taskIndex.set(id, to(index));
   }
 
   // TaskUpdate names a task by the id TaskCreate returned, or by its 1-based position.
+  // A retired id finds nothing rather than falling back to a position.
   private findTask(taskId: unknown): number | null {
     if (typeof taskId !== 'string' && typeof taskId !== 'number') return null;
     const key = String(taskId);
     const mapped = this.taskIndex.get(key);
-    if (mapped !== undefined) return mapped;
+    if (mapped !== undefined) return mapped >= 0 ? mapped : null;
     const position = /^\d+$/.test(key) ? Number(key) - 1 : -1;
     return position >= 0 && position < this.todos.length ? position : null;
   }
@@ -366,6 +383,7 @@ class Parser {
       mcpErrors: [...this.mcpErrors],
       todos: this.todos,
       taskIndex: [...this.taskIndex],
+      nextTaskId: this.nextTaskId,
       agentCompletions: [...this.agentCompletions],
       agentIdToToolUseId: [...this.agentIdToToolUseId],
       usageById: [...this.usageById],
@@ -386,6 +404,7 @@ class Parser {
     parser.mcpErrors = new Set(s.mcpErrors);
     parser.todos = s.todos;
     parser.taskIndex = new Map(s.taskIndex);
+    parser.nextTaskId = s.nextTaskId;
     parser.agentCompletions = new Map(s.agentCompletions.map(([id, at]) => [id, new Date(at)]));
     parser.agentIdToToolUseId = new Map(s.agentIdToToolUseId);
     parser.usageById = new Map(s.usageById);

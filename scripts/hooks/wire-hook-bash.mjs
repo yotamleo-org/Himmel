@@ -96,6 +96,9 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // allow-listed `bash scripts/cr/pr-check-context.sh` is typed; no-op on any
   // other command.
   'guard-pr-check-literal.sh',
+  // Allows the one audited review-thread resolve call as a literal command, so
+  // the classifier never denies it; no decision on any other command.
+  'allow-thread-resolve.sh',
   // PreToolUse `PowerShell` chain.
   'block-read-secrets.sh',
   'block-destructive-commands.sh',

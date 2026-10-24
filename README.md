@@ -2,17 +2,34 @@
 
 > **A harness for Claude Code.**
 
-Audience: newcomer.
+Audience: newcomer. The page opens with the first task for someone new to
+himmel; the path for running or developing himmel itself is
+[its own part of the Quickstart](#quickstart).
 
-> 🚀 **New here? → [Getting Started](docs/getting-started.md)**: from clone to
-> your first PR-gated loop in about 15 minutes.
->
+## Start here: protect one project
+
+The first thing to do with himmel is protect one project you can throw away.
+You install it into a spare git repository, ask Claude Code to edit a file on
+`main` and see the edit refused, keep the install, make one change in its own
+worktree, and then undo everything.
+**[Getting Started](docs/getting-started.md) is that trial, step by step.**
+Each step names the folder to run it from and what you should see, and the
+last step removes the install again.
+
+That one protected project is a complete result. Everything else on this page
+is optional and comes later: a second-brain vault, unattended runs, a fleet of
+parallel sessions. The [adoption trail](docs/adoption-trail.html) lays these
+out as levels, and each level says what it gives you, what it costs and how to
+turn it off.
+
 > Deciding whether it is worth it? Read [**Why himmel**](docs/why-himmel.md),
 > the failure modes it exists for and what each one costs. Want the design
 > in one read? [**System design**](docs/system-design.md) explains the parts,
 > one ticket's flow, the trust model and the trade-offs. Want the wiring?
 > [**Architecture**](docs/architecture.md) draws the enforcement layers,
 > handover, fleet, Jira seam and observability chain.
+
+## What himmel is
 
 himmel is a development engine for a solo operator or a small team who works
 with Claude Code every day. It wraps Claude Code in hooks, guardrails, slash
@@ -25,14 +42,11 @@ commit, reviewing a PR, writing down where you stopped, restarting after a
 usage cap) becomes a tool or a gate. Safety comes from structure, not from
 Claude remembering a paragraph of instructions.
 
-> **Optional companion: a second brain.** himmel pairs well with an Obsidian
-> vault that Claude reads and writes directly. A ready-made template lives at
-> [`templates/luna-second-brain/`](templates/luna-second-brain/). Handover
-> state (where each piece of work stands) lives in your own repo or in a
-> separate handover repo; see the
-> [handover system](docs/internals/handover-system.md).
-
 ## What you get
+
+The trial above shows the first of these: the edit refused on `main`, the
+commit gate and the worktree. The rest arrive as you add them, and the
+[adoption trail](docs/adoption-trail.html) says which level brings each one.
 
 - **Work carries over between sessions.** Each session leaves a plain
   markdown handover doc behind. A fresh session reads it and resumes where the
@@ -138,16 +152,15 @@ install Claude Code first:
 
 There are two ways in:
 
-1. **Add himmel to an existing repo** (the usual case). This brings over the
-   portable core: hooks, guardrails, the worktree workflow and the marketplace
-   plugins and skills. Follow
-   [`docs/getting-started.md`](docs/getting-started.md), a 15-minute
-   walkthrough. The eight-level [adoption trail](docs/adoption-trail.html)
-   (also at
+1. **Add himmel to a project** (newcomer; the usual case). This brings over
+   the portable core: hooks, guardrails, the worktree workflow and the
+   marketplace plugins and skills. Do the trial in
+   [`docs/getting-started.md`](docs/getting-started.md) on a spare project
+   first. The [adoption trail](docs/adoption-trail.html) (also at
    [yotamleo-org.github.io/Himmel/adoption-trail.html](https://yotamleo-org.github.io/Himmel/adoption-trail.html))
-   shows what each stage of adoption changes.
-2. **Run or develop himmel itself.** The contributor path, with more
-   prerequisites. The rest of this section covers it.
+   shows what each later level of adoption changes.
+2. **Run or develop himmel itself** (contributor). This path has more
+   prerequisites, and the rest of this section covers it.
 
 **Prerequisites.** `bash`, `git`, `node`, `npm`, `bun`, `python3`, `jq`, `gh`
 and `mktemp`; `scripts/setup.sh` checks for them first and stops with install
@@ -246,7 +259,7 @@ are welcome, but nothing about Windows is claimed as working.
 |---|---|
 | Release tarball (`himmel-<version>-linux.tar.gz` + `.sha256`) | **Supported** on Linux: the recipe above. A fresh machine installing from it is tested end to end. |
 | `git clone` + `himmelctl install` | **Supported** on Linux and macOS. |
-| Plugin marketplace (`marketplace/plugins/*`, 12 plugins) | **Supported.** Installed, updated and removed by Claude Code itself (`claude plugin install/update/uninstall`), not by `himmelctl`. Includes [`himmel-ops`](marketplace/plugins/himmel-ops/README.md) (skills that load when a guardrail stops you and explain the way out), [`himmel-bus`](docs/himmel-bus.md) (a local message bus between sessions, early) and [`luna-correlate`](marketplace/plugins/luna-correlate/README.md) (an opt-in, offline health-factor correlation MCP). |
+| Plugin marketplace (`marketplace/plugins/*`, one directory per plugin) | **Supported.** Installed, updated and removed by Claude Code itself (`claude plugin install/update/uninstall`), not by `himmelctl`. Includes [`himmel-ops`](marketplace/plugins/himmel-ops/README.md) (skills that load when a guardrail stops you and explain the way out), [`himmel-bus`](docs/himmel-bus.md) (a local message bus between sessions, early) and [`luna-correlate`](marketplace/plugins/luna-correlate/README.md) (an opt-in, offline health-factor correlation MCP). |
 | AUR (`himmel`, recipe in [`packaging/aur/`](packaging/aur/)) | **Supported after the first AUR push** (Arch). `pacman` installs to `/opt/himmel`; each user then runs `himmelctl install --scope user`, and `himmelctl update` defers to `pacman -Syu`. To remove: `himmelctl uninstall` for each user, then `pacman -R himmel`. |
 | brew (Linux tap) | Not supported. Reconsidered if a tap shared with macOS becomes worthwhile. |
 | nix, deb, rpm | Not supported. Reconsidered when users ask for a given channel. |
@@ -285,7 +298,9 @@ What the memory is made of today, all plain files:
   then only the notes it needs.
 - **Handover state.** Each piece of work has a markdown handover doc in your
   handover state repo (`$HANDOVER_DIR`): what was done, what was decided, what
-  comes next. This is how work survives the end of a session.
+  comes next. This is how work survives the end of a session. The state can
+  live in your own repo or in a separate handover repo; see the
+  [handover system](docs/internals/handover-system.md).
 - **The luna vault (optional).** An Obsidian vault built from
   [`templates/luna-second-brain/`](templates/luna-second-brain/) holds notes,
   web clippings and daily entries that Claude reads and writes like any other

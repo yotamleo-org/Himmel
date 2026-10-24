@@ -28,8 +28,8 @@
 #     (total leg time + % waiting).
 #
 # Source paths are env-overridable (see test-leg-timeline.sh):
-#   LEG_TIMELINE_WORKER_GLM, LEG_TIMELINE_WORKER_CLAUDEX,
-#   LEG_TIMELINE_CR_LEDGER, LEG_TIMELINE_CHAIN_LEDGER.
+#   WORKER_SESSION_TIMELINE_WORKER_GLM, WORKER_SESSION_TIMELINE_WORKER_CLAUDEX,
+#   WORKER_SESSION_TIMELINE_CR_LEDGER, WORKER_SESSION_TIMELINE_CHAIN_LEDGER.
 #
 # Tooling: jq (JSONL field extraction) + node. node is the ONLY portable
 # ISO-8601-with-offset / sub-second / file-mtime reader across Git Bash (GNU
@@ -63,10 +63,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # bank-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
-glm_dir="${LEG_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}"
-claudex_dir="${LEG_TIMELINE_WORKER_CLAUDEX:-$HOME/.claude/handover/bridge/claudex-sessions}"
-if [ -n "${LEG_TIMELINE_CHAIN_LEDGER:-}" ]; then
-  chain_ledger="$LEG_TIMELINE_CHAIN_LEDGER"
+glm_dir="${WORKER_SESSION_TIMELINE_WORKER_GLM:-${LEG_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}}"
+claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-${LEG_TIMELINE_WORKER_CLAUDEX:-$HOME/.claude/handover/bridge/claudex-sessions}}"
+WORKER_SESSION_TIMELINE_CHAIN_LEDGER="${WORKER_SESSION_TIMELINE_CHAIN_LEDGER:-${LEG_TIMELINE_CHAIN_LEDGER:-}}"
+if [ -n "${WORKER_SESSION_TIMELINE_CHAIN_LEDGER:-}" ]; then
+  chain_ledger="$WORKER_SESSION_TIMELINE_CHAIN_LEDGER"
 elif handover_base=$(handover_root 2>/dev/null) && handover_slug=$(user_slug 2>/dev/null); then
   chain_ledger="$handover_base/$handover_slug/himmel/specs/plan/2026-07-28-chain-ledger.md"
 else
@@ -76,7 +77,8 @@ fi
 # The CR ledger lives under the PRIMARY checkout's .git, not the worktree's
 # (worktrees share the primary's .git via the common dir). An explicit env value
 # always wins.
-if [ -z "${LEG_TIMELINE_CR_LEDGER:-}" ]; then
+WORKER_SESSION_TIMELINE_CR_LEDGER="${WORKER_SESSION_TIMELINE_CR_LEDGER:-${LEG_TIMELINE_CR_LEDGER:-}}"
+if [ -z "${WORKER_SESSION_TIMELINE_CR_LEDGER:-}" ]; then
   common_dir=$(git rev-parse --git-common-dir 2>/dev/null || printf '.git')
   # Treat both POSIX-absolute (/c/...) and Windows-drive-absolute (C:/...) as
   # already absolute; git-common-dir returns the latter under Git for Windows.
@@ -86,7 +88,7 @@ if [ -z "${LEG_TIMELINE_CR_LEDGER:-}" ]; then
   esac
   cr_ledger="$common_dir/cr-critic-scores.jsonl"
 else
-  cr_ledger="$LEG_TIMELINE_CR_LEDGER"
+  cr_ledger="$WORKER_SESSION_TIMELINE_CR_LEDGER"
 fi
 
 # ---------------------------------------------------------------------------
@@ -100,8 +102,8 @@ Reconstruct a per-leg critical-path timeline (HIMMEL-1485).
   <since-ts>  ISO-8601 lower bound (UTC assumed when no offset), e.g.
               '2026-08-03T00:00'.
 
-Env overrides: LEG_TIMELINE_WORKER_GLM, LEG_TIMELINE_WORKER_CLAUDEX,
-               LEG_TIMELINE_CR_LEDGER, LEG_TIMELINE_CHAIN_LEDGER.
+Env overrides: WORKER_SESSION_TIMELINE_WORKER_GLM, WORKER_SESSION_TIMELINE_WORKER_CLAUDEX,
+               WORKER_SESSION_TIMELINE_CR_LEDGER, WORKER_SESSION_TIMELINE_CHAIN_LEDGER.
 EOF
 }
 

@@ -149,6 +149,66 @@ STUB
     [ "$rc" -eq 0 ] || fail "HIMMEL-7000: resolved finding must allow a clean adopted merge (rc=$rc): $out"
     echo "ok: HIMMEL-7000 adopted hook refuses unresolved finding and allows resolved finding with green CI"
   fi
+  core_lines=$(grep -Ev '^(#|$)' "$repo_root/scripts/ci/ci-trust-paths-core.txt") || fail "HIMMEL-7391: no core trust list"
+  while IFS= read -r f; do
+    grep -qxF -e "$f" "$trust" || fail "HIMMEL-7391: the seeded trust list lacks the core line $f"
+  done <<< "$core_lines"
+  echo "ok: HIMMEL-7391 the seeded trust list holds every core line"
+  # The adopted repo judged through merge-on-green's anchor: a himmel stand-in
+  # carrying the core list (any trust_path_check refusal there is exit 21).
+  local anchor="$work/core-anchor" sha
+  mkdir -p "$anchor/scripts/ci"
+  HOME="$home" git -C "$anchor" init -q || exit 1
+  HOME="$home" git -C "$anchor" remote add origin https://github.com/yotamleo-org/Himmel.git || exit 1
+  cp "$repo_root/scripts/ci/ci-trust-paths-core.txt" "$anchor/scripts/ci/" || exit 1
+  cat > "$work/core-gh" <<STUB || exit 1
+#!/usr/bin/env bash
+g() { git -C "$target" "\$@"; }
+case "\$2" in
+  repos/adopter/project/contents/*\?ref=main)
+    f=\${2#repos/adopter/project/contents/}; f=\${f%%\?ref=main}
+    g show "main:\$f" 2>/dev/null || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; } ;;
+  repos/adopter/project/pulls/7) printf '%s|%s\n' "\$(g rev-parse pr)" "\$(g diff --name-only main...pr | wc -l | tr -d ' ')" ;;
+  repos/adopter/project/pulls/7/files) g diff --name-only main...pr | sed 's/\$/\t/' ;;
+  *) printf 'unexpected gh fixture request: %s\n' "\$*" >&2; exit 1 ;;
+esac
+STUB
+  chmod +x "$work/core-gh" || exit 1
+  core_pr() {  # <file>: branch pr off main touching <file>, print its head
+    HOME="$home" git -C "$target" checkout -q -B pr main && printf 'pr\n' >> "$target/$1" \
+      && HOME="$home" git -C "$target" add "$1" && HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m pr \
+      && HOME="$home" git -C "$target" checkout -q main && git -C "$target" rev-parse pr
+  }
+  core_check() {  # <head>: trust_path_check for PR 7 at <head> through the stand-in anchor
+    GH="$work/core-gh" bash -c '. "$1"; shift; trust_path_check "$@"' _ "$repo_root/scripts/lib/go-gate.sh" adopter/project 7 "$1" main "$anchor" 2>&1
+  }
+  jq -e '.env.HIMMEL_REPO | type == "string" and length > 0' "$settings" >/dev/null \
+    || fail "HIMMEL-7391: core/project did not record env.HIMMEL_REPO"
+  HOME="$home" git -C "$target" add .claude/settings.json || exit 1
+  # R2: the list lacks the core line for .claude/settings.json.
+  grep -vxF '^[.]claude/settings[.]json$' "$trust" > "$work/core-trimmed" && cp "$work/core-trimmed" "$trust" || exit 1
+  HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt || exit 1
+  HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: trim the trust list' || exit 1
+  sha=$(core_pr .claude/settings.json) || exit 1
+  rc=0; out=$(core_check "$sha") || rc=$?
+  [ "$rc:$out" = '2:list core-missing ^[.]claude/settings[.]json$' ] \
+    || fail "HIMMEL-7391 R2: a trimmed adopter list let .claude/settings.json through (rc=$rc): $out"
+  # R5 (control): the trimmed list and an undeclared README.md.
+  printf 'readme\n' > "$target/README.md" && HOME="$home" git -C "$target" add README.md \
+    && HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m readme || exit 1
+  sha=$(core_pr README.md) || exit 1
+  rc=0; out=$(core_check "$sha") || rc=$?
+  [ "$rc:$out" = '0:none' ] || fail "HIMMEL-7391 R5: an undeclared README.md is not none (rc=$rc): $out"
+  # R1: the list is deleted on the default branch.
+  HOME="$home" git -C "$target" rm -q scripts/ci/ci-trust-paths.txt \
+    && HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: drop the trust list' || exit 1
+  sha=$(core_pr .claude/settings.json) || exit 1
+  rc=0; out=$(core_check "$sha") || rc=$?
+  case "$rc:$out" in
+    '2:list scripts/ci/ci-trust-paths.txt is missing on adopter/project@main'*adopted*) ;;
+    *) fail "HIMMEL-7391 R1: an adopted repo with its list deleted was not refused (rc=$rc): $out" ;;
+  esac
+  echo "ok: HIMMEL-7391 an adopted repo's deleted or trimmed list refuses; an undeclared path stays none"
   printf '# adopter-owned list\n^private-policy/\n' > "$trust"
   HOME="$home" bash "$adopt" --profile core --scope project --target "$target" >/dev/null || exit 1
   [ "$(cat "$trust")" = $'# adopter-owned list\n^private-policy/' ] \

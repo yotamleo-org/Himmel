@@ -36,5 +36,5 @@ fi
 _lcc_path="$(consult_pin_path)"
 consult_scrub_args
 
-exec /usr/bin/env "${CONSULT_SCRUB[@]}" PATH="$_lcc_path" LEG_PROFILE_NO_SETTING_SOURCES=1 \
+exec /usr/bin/env "${CONSULT_SCRUB[@]}" PATH="$_lcc_path" WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
     "$_lcc_bash" -p "$_lcc_dir/leg-claude-launcher.sh" "$@"

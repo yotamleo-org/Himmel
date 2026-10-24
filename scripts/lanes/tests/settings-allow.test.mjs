@@ -18,7 +18,7 @@ const SETTINGS = JSON.parse(readFileSync(join(REPO_ROOT, '.claude', 'settings.js
 const REG = JSON.parse(readFileSync(join(REPO_ROOT, 'scripts', 'lanes', 'plugin-profiles.json'), 'utf8'));
 const ALLOW = SETTINGS.permissions.allow.filter((r) => r.startsWith('Bash('));
 // What a leg-profile session sees: the project list plus the profile's gateAllow.
-const LEG_ALLOW = [...ALLOW, ...REG.gateAllow];
+const WORKER_SESSION_ALLOW = [...ALLOW, ...REG.gateAllow];
 
 const STEP0 = [
   'bash scripts/cr/pr-check-context.sh',
@@ -98,7 +98,7 @@ const TRUST_SPELLINGS = [
   // in the PR body), never in .claude/settings.json itself (TRUST_DIR forbids
   // a wildcard-tail trust-root rule there) — so a bare/space-tailed
   // invocation of any of the three is sanctioned for a LEG session only, see
-  // LEG_SANCTIONED below. These two prove the wildcard tail cannot be ridden
+  // WORKER_SESSION_SANCTIONED below. These two prove the wildcard tail cannot be ridden
   // past the granted script's own filename into a trust-root escape.
   'bash scripts/cr/impacted-suites.sh/../clear-cr-marker.sh',
   'bash scripts/cr/review-round.sh/../clear-cr-marker.sh',
@@ -131,7 +131,7 @@ for (const command of TRUST_SPELLINGS) {
 // spelling that is not their literal prefix must stay unmatched for a leg.
 for (const command of TRUST_SPELLINGS.filter((c) => !/^bash scripts\/cr\/(clear-cr-marker|write-verdicts|ledger-append|panel-first-pass|docs-audit-panel)\.sh( |$)/.test(c))) {
   test(`no leg-profile allow rule matches: ${command}`, () => {
-    assert.deepEqual(matching(LEG_ALLOW, command), []);
+    assert.deepEqual(matching(WORKER_SESSION_ALLOW, command), []);
   });
 }
 
@@ -159,7 +159,7 @@ for (const literal of [...STEP0, ...EXACT_LITERALS].filter((c) => c.startsWith('
   for (const rider of RIDERS) {
     const command = `${literal}${rider}`;
     test(`no allow rule matches a literal with a rider: ${JSON.stringify(command)}`, () => {
-      assert.deepEqual(matching(LEG_ALLOW, command), []);
+      assert.deepEqual(matching(WORKER_SESSION_ALLOW, command), []);
     });
   }
 }
@@ -192,15 +192,15 @@ for (const command of SANCTIONED) {
 
 for (const command of RETIRED_LITERALS) {
   test(`the retired relative merge-on-green rule matches no rule: ${command}`, () => {
-    assert.deepEqual(matching(LEG_ALLOW, command), []);
+    assert.deepEqual(matching(WORKER_SESSION_ALLOW, command), []);
   });
 }
 
 // These six are wildcard-tail trust-root grants that live ONLY in
 // plugin-profiles.json's gateAllow (TRUST_DIR forbids them in the project
-// .claude/settings.json), so a leg session sees them via LEG_ALLOW but a bare
+// .claude/settings.json), so a leg session sees them via WORKER_SESSION_ALLOW but a bare
 // console/user session does not.
-const LEG_SANCTIONED = [
+const WORKER_SESSION_SANCTIONED = [
   'bash scripts/cr/docs-audit-panel.sh --head abc1234 --branch fix/x',
   'bash scripts/cr/panel-first-pass.sh --head abc1234 --branch fix/x',
   'bash scripts/cr/write-verdicts.sh prior-blocking --branch fix/x',
@@ -212,9 +212,9 @@ const LEG_SANCTIONED = [
   'bash scripts/cr/review-round.sh start --branch fix/x',
 ];
 
-for (const command of LEG_SANCTIONED) {
+for (const command of WORKER_SESSION_SANCTIONED) {
   test(`a leg-profile allow rule matches: ${command}`, () => {
-    assert.ok(matching(LEG_ALLOW, command).length > 0, `no leg rule matches ${command}`);
+    assert.ok(matching(WORKER_SESSION_ALLOW, command).length > 0, `no leg rule matches ${command}`);
   });
 }
 

@@ -1,0 +1,22 @@
+# ci-trust-paths-core.txt — himmel's core trust paths for an adopted repo.
+#
+# The gate (trust_path_check in scripts/lib/go-gate.sh) reads this file from the
+# harness anchor, never from the adopted repo. An adopted repo's own
+# scripts/ci/ci-trust-paths.txt may add patterns but must hold every line below
+# verbatim; a list missing one refuses. adopt.sh seeds a new adopter's list from
+# this file. Same format as ci-trust-paths.txt: one grep -E pattern per line.
+
+# The merge gate and every library it sources.
+^scripts/hooks/block-unresolved-cr-merge[.]sh$
+^scripts/lib/(review-merge-gate|ci-green-gate|go-gate|coderabbit-signal|coderabbit-body-findings|coderabbit-available|review-ledger-evidence|nwo|critics-config|resolve-node|timeout-bin|handover-path|load-dotenv|user-slug|forge|forge-github|forge-bitbucket|forge-localgit|forge-none|coderabbit-trigger-ledger|project-mode)[.]sh$
+^scripts/cr/critics[.]json$
+^scripts/ci/ci-trust-paths[.]txt$
+^[.]claude/settings[.]json$
+
+# The shipped merge script, its CI check and its anchor hand-off.
+^scripts/handover/merge-on-green[.]sh$
+^scripts/check-ci[.]sh$
+^scripts/cr/anchor-handoff[.]sh$
+
+# The PreToolUse hooks adopt.sh wires.
+^scripts/hooks/(auto-approve-safe-bash|block-edit-on-main|block-read-secrets)[.]sh$

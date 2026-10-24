@@ -82,20 +82,20 @@ SCRIPT_COPY="$REPO/leg-resume-brief.sh"
 cp "$REAL_SCRIPT" "$SCRIPT_COPY"
 chmod +x "$SCRIPT_COPY"
 
-LEG_DOC="$FIX/leg-doc.md"
-cat > "$LEG_DOC" <<'EOF'
+WORKER_SESSION_DOC="$FIX/leg-doc.md"
+cat > "$WORKER_SESSION_DOC" <<'EOF'
 # Leg doc
 
 Working on `branch feat/himmel-2369-fixture` today.
 EOF
-LEG_DOC_BEFORE_DRYRUN=$(cat "$LEG_DOC")
+WORKER_SESSION_DOC_BEFORE_DRYRUN=$(cat "$WORKER_SESSION_DOC")
 
 # --- dry-run: doc must stay byte-identical ---
-dryrun_out=$(bash "$SCRIPT_COPY" "$LEG_DOC" --dry-run)
+dryrun_out=$(bash "$SCRIPT_COPY" "$WORKER_SESSION_DOC" --dry-run)
 dryrun_rc=$?
-LEG_DOC_AFTER_DRYRUN=$(cat "$LEG_DOC")
+WORKER_SESSION_DOC_AFTER_DRYRUN=$(cat "$WORKER_SESSION_DOC")
 if [ "$dryrun_rc" -eq 0 ]; then ok "--dry-run exits 0"; else ko "--dry-run exits 0 (got $dryrun_rc)"; fi
-if [ "$LEG_DOC_BEFORE_DRYRUN" = "$LEG_DOC_AFTER_DRYRUN" ]; then
+if [ "$WORKER_SESSION_DOC_BEFORE_DRYRUN" = "$WORKER_SESSION_DOC_AFTER_DRYRUN" ]; then
     ok "--dry-run leaves the doc byte-identical"
 else
     ko "--dry-run modified the doc"
@@ -106,9 +106,9 @@ case "$dryrun_out" in
 esac
 
 # --- real run: brief appended, with the recoverable facts present ---
-bash "$SCRIPT_COPY" "$LEG_DOC" >/dev/null 2>&1
+bash "$SCRIPT_COPY" "$WORKER_SESSION_DOC" >/dev/null 2>&1
 real_rc=$?
-doc_after=$(cat "$LEG_DOC")
+doc_after=$(cat "$WORKER_SESSION_DOC")
 if [ "$real_rc" -eq 0 ]; then ok "real run exits 0"; else ko "real run exits 0 (got $real_rc)"; fi
 
 case "$doc_after" in
@@ -208,8 +208,8 @@ case "$doc_after" in
 esac
 
 # second run appends a SECOND brief and notes the prior one existed
-bash "$SCRIPT_COPY" "$LEG_DOC" >/dev/null 2>&1
-doc_twice=$(cat "$LEG_DOC")
+bash "$SCRIPT_COPY" "$WORKER_SESSION_DOC" >/dev/null 2>&1
+doc_twice=$(cat "$WORKER_SESSION_DOC")
 heading_count=$(printf '%s\n' "$doc_twice" | grep -c '^## RESUME BRIEF')
 if [ "$heading_count" -eq 2 ]; then
     ok "a second run appends a NEW brief rather than editing in place (2 headings)"

@@ -36,7 +36,7 @@ why (`LIVE` first strands every worker not yet re-briefed). Then re-arm without
 
 **Workers** (fleet manifest, last Results marker of each):
 
-{{LEG_LIST}}
+{{WORKER_SESSION_LIST}}
 
 **Open PRs:**
 

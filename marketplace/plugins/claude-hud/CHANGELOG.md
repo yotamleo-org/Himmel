@@ -4,6 +4,20 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-24
+
+### Added
+- `cost` can now be placed in `elementOrder`. Listed there, the cost segment leaves the first line and becomes its own element, so a `display.mergeGroups` group can show it beside context and usage. Left out (the default), it stays on the first line as before (#827, #828).
+
+### Fixed
+- Tasks deleted with `TaskUpdate` no longer count toward todo progress (#826).
+
+## [0.12.1] - 2026-10-21
+
+### Fixed
+- Recent Claude Code versions log `api-request-blob` lines that repeat earlier tool calls. These no longer make finished tools show as running, count tasks twice, or reset agents to `(<1s)` (#820, #821).
+- Truncated labels (todos, agent descriptions, tool names, file paths, skill and MCP names, added dirs, `--extra-cmd` and external usage labels) no longer cut an emoji or accented letter in half (#822, #823).
+
 ## [0.12.0] - 2026-10-19
 
 ### Added

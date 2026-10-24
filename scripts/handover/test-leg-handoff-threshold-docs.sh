@@ -76,14 +76,14 @@ lacks "calibration drops the 45 % leg rule"  "$CALIB"   'Leg handover is whichev
 # needs, in one place.
 has   "guard doc: off by default"            "$GUARD"   'off by default'
 has   "guard doc: how to turn it on"         "$GUARD"   '--context-guard compact'
-has   "guard doc: the share override"        "$GUARD"   'HIMMEL_LEG_CONTEXT_SHARE'
+has   "guard doc: the share override"        "$GUARD"   'HIMMEL_WORKER_SESSION_CONTEXT_SHARE'
 has   "guard doc: the threshold arithmetic"  "$GUARD"   '157k'
 has   "guard doc: the pushed CHECKPOINT"     "$GUARD"   'CHECKPOINT <full sha of HEAD> pushed'
 has   "guard doc: the clean CHECKPOINT"      "$GUARD"   'CHECKPOINT <full sha of HEAD> clean'
 has   "guard doc: the RESUME unlock"         "$GUARD"   'RESUME.md'
 has   "guard doc: BLOCKED frees hand-off only" "$GUARD" 'hand-off calls and reads'
 has   "guard doc: the one-line commit form"  "$GUARD"   '--trailer'
-has   "guard doc: the bypass"                "$GUARD"   'LEG_CONTEXT_HANDOFF_OK=1'
+has   "guard doc: the bypass"                "$GUARD"   'WORKER_SESSION_CONTEXT_HANDOFF_OK=1'
 
 if [ "$fails" -gt 0 ]; then
     echo "test-leg-handoff-threshold-docs: $fails failure(s)"

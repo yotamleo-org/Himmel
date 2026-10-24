@@ -8,7 +8,7 @@
   "impeccable": {
     "upstream_repo": "pbakaus/impeccable",
     "track": "release",
-    "synced_base": "skill-v4.6.0",
+    "synced_base": "skill-v4.7.0",
     "tag_prefix": "skill-v"
   },
   "obsidian-second-brain": {
@@ -55,8 +55,8 @@
     "standalone": true,
     "upstream_repo": "obra/superpowers",
     "track": "release",
-    "synced_base": "v7.0.0",
-    "ref": "bb92a77741419a4ab5f06e711a283343f1ada0c3"
+    "synced_base": "v7.0.1",
+    "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"
   },
   "mattpocock-skills": {
     "standalone": true,

@@ -2,7 +2,7 @@
 // Scan scripts/ for every place that execs (or emits a command line
 // that execs) `claude`, and report the ones that apply no plugin profile.
 // A site is covered when, within WINDOW lines around it, there is a profile-
-// derived `--settings` (the literal flag, LEG_PROFILE_SETTINGS, or the
+// derived `--settings` (the literal flag, WORKER_SESSION_PROFILE_SETTINGS, or the
 // profile-settings.sh helper) or a `launch-profile-ok: <reason>` marker. A
 // file-level `launch-profile-ok-file: <reason>` covers every site in the file.
 // Usage: node launch-site-scan.mjs [repo-root]   -> prints "path:line: text" per UNCOVERED site.
@@ -16,7 +16,7 @@ const SITE = new RegExp(
     // emitted command lines: a resume prompt / cron entry built around a bare claude
     String.raw`|(?<![\w./-])claude\s+("\$|\$\{?q_)|\}claude\s`,
 );
-const COVER = /--settings|LEG_PROFILE_SETTINGS|profile-settings\.sh|launch-profile-ok:/;
+const COVER = /--settings|WORKER_SESSION_PROFILE_SETTINGS|profile-settings\.sh|launch-profile-ok:/;
 const FILE_OK = /launch-profile-ok-file:/;
 const SKIP_DIR = new Set(["node_modules", "dist", "fixtures", ".git"]);
 const EXT = /\.(sh|ts|mjs|js|ps1)$/;

@@ -1283,7 +1283,7 @@ for cit_lib in non-gating-contexts.sh non-gating-contexts.txt; do
 done
 set +e
 out=$(cd "$cittarget" && PATH="$citbin:$PATH" HOME="$cithome" CIT_GH_LOG="$work/checkci-6977.log" \
-      CHECK_CI_POLL_INTERVAL=0 CHECK_CI_SETTLE=0 CHECK_CI_CACHE=0 LEG_JIRA_STATUS=0 \
+      CHECK_CI_POLL_INTERVAL=0 CHECK_CI_SETTLE=0 CHECK_CI_CACHE=0 WORKER_SESSION_JIRA_STATUS=0 \
       bash scripts/check-ci.sh 7 --max-wait 30 --grace 0 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "HIMMEL-6977: the project's check-ci.sh did not reach a green verdict (rc=$rc): $out"

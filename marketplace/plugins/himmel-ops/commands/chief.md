@@ -16,7 +16,7 @@ the project-local `.claude/commands/chief.md`: a supervisor session started from
 from the handover registry (or its basename, unregistered) — never himmel's
 own `JIRA_PROJECT_KEY`. The supervisor session itself always runs in the himmel
 checkout: `--project` is recorded as data in the console doc, and a worker session for
-the project is dispatched into it explicitly with `LEG_REPO=<path>`.
+the project is dispatched into it explicitly with `WORKER_SESSION_REPO=<path>`.
 
 ```bash
 # Resolve the himmel checkout: $HIMMEL_REPO -> canonical paths -> error. Never

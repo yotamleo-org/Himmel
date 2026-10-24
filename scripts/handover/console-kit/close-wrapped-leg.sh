@@ -273,8 +273,8 @@ if [ -z "$leg_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] \
     && [ "$(jq -r --arg d "$DOC" '[.legs[]? | select(.doc == $d) | .lane // "unknown"] | first // empty' "$FLEET_MANIFEST" 2>/dev/null)" = claudex ]; then
     leg_cfg="$HOME/.claude-codex"
 fi
-LEG_CONFIG_DIR="${leg_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
-PROJECTS_DIR="${CLOSE_WRAPPED_LEG_PROJECTS_DIR:-$LEG_CONFIG_DIR/projects}"
+WORKER_SESSION_CONFIG_DIR="${leg_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+PROJECTS_DIR="${CLOSE_WRAPPED_LEG_PROJECTS_DIR:-$WORKER_SESSION_CONFIG_DIR/projects}"
 if [ "$CHECK_MODE" -eq 0 ] && [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
     # The two-pass customTitle search lives in leg-transcripts.sh,
     # shared with leg-digest-step.sh --doc: same "exactly one" semantics.
@@ -316,7 +316,7 @@ fi
 # not a UUID: the transcript resolved above supplies it. The subagent gate
 # below and the leg's digest step both use it.
 digest_sid=""
-sessions_json="${CLOSE_WRAPPED_LEG_SESSIONS_DIR:-$LEG_CONFIG_DIR/sessions}/$matched.json"
+sessions_json="${CLOSE_WRAPPED_LEG_SESSIONS_DIR:-$WORKER_SESSION_CONFIG_DIR/sessions}/$matched.json"
 digest_sid=$(jq -r '.sessionId // empty' "$sessions_json" 2>/dev/null)
 case "$digest_sid" in
     ????????-????-????-????-????????????) ;;
@@ -432,7 +432,7 @@ reap_leg_scratch || echo "close-wrapped-leg: WARN /tmp reap errored - close cont
 # its rc is ignored, and a hard outer timeout bounds it, so a digest crash,
 # hang or missing journal changes no other output and never the close's rc.
 # It never writes the leg's doc, so its tail stays WRAPPED.
-digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT:-120}" bash "${LEG_DIGEST_STEP_BIN:-$HERE/leg-digest-step.sh}" \
+digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT:-120}" bash "${WORKER_SESSION_DIGEST_STEP_BIN:-${LEG_DIGEST_STEP_BIN:-$HERE/leg-digest-step.sh}}" \
     --session "$digest_sid" --transcript "$TRANSCRIPT" --doc "$DOC" --pid "$matched" --projects "$PROJECTS_DIR" 2>/dev/null \
     | grep -m 1 '^digest=')
 echo "${digest_line:-digest=failed:step}"

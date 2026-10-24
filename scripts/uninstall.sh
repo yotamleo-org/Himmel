@@ -317,6 +317,22 @@ m_path() {
   printf '%s\n' "$_p"
 }
 
+# The preview names only what can exist on this host: the Windows logon task
+# needs schtasks, and the AUR payload needs /opt/himmel.
+if command -v schtasks >/dev/null 2>&1; then _LOGON_TASK_TXT=" (+ HimmelTelegramBridge logon task)"; _LOGON_TASK_TXT_BARE=", HimmelTelegramBridge"
+else _LOGON_TASK_TXT=""; _LOGON_TASK_TXT_BARE=""; fi
+# m_applies <i> — 1 for a row whose item cannot exist on this host.
+m_applies() {
+  [ "${M_ID[$1]}" = "aur-package" ] && [ ! -e "$(m_path "$1")" ] && return 1
+  return 0
+}
+# m_what <i> — the row's description, minus the logon task off Windows.
+m_what() {
+  local _w="${M_WHAT[$1]}"
+  [ -n "$_LOGON_TASK_TXT" ] || _w="${_w// + the HimmelTelegramBridge logon task/}"
+  printf '%s\n' "$_w"
+}
+
 load_manifest || exit 2
 _ix_channel=$(m_index telegram-channel) || exit 2
 _ix_bridge=$(m_index telegram-bridge) || exit 2
@@ -1681,7 +1697,7 @@ if [ "$SKIP_TASKS" -eq 1 ]; then
 elif ! class_removes "$_ix_jobs"; then
   echo "  3. keep scheduled jobs (manifest class ${M_CLASS[$_ix_jobs]})"
 else
-  echo "  3. remove HIMMEL-Resume-* scheduled jobs (+ HimmelTelegramBridge logon task)"
+  echo "  3. remove HIMMEL-Resume-* scheduled jobs${_LOGON_TASK_TXT}"
   if [ "$LEDGER_OK" -eq 1 ]; then
     echo "     and the cron/at jobs the ledger recorded a cadence arm adding (exact recorded names only)"
   fi
@@ -1761,6 +1777,7 @@ echo ""
 # switched off by a --skip-* flag, NEVER = not uninstall's to touch.
 echo "Footprint (scripts/install/uninstall-manifest.tsv):"
 for _mi in "${!M_ID[@]}"; do
+  m_applies "$_mi" || continue
   case "${M_CLASS[$_mi]}" in
     keep) _disp="NEVER " ;;
     *)
@@ -1776,7 +1793,7 @@ for _mi in "${!M_ID[@]}"; do
   # S12: himmel-clone reports CLONE_ROOT, which in bundle mode is
   # not this script's own directory and may no longer exist at all.
   [ "${M_ID[$_mi]}" = "himmel-clone" ] && [ ! -e "$_mp" ] && _mp="$_mp (not present)"
-  echo "  $_disp  $_mp — ${M_WHAT[$_mi]}"
+  echo "  $_disp  $_mp — $(m_what "$_mi")"
 done
 if ! state_removed; then
   echo "  (operator state is KEPT by default; --purge-state also removes the KEEP rows tagged state)"
@@ -2348,7 +2365,7 @@ echo ""
 # --- [3/8] remove scheduled jobs ---------------------------------------------
 # Mirrors scripts/handover/arm-resume.sh job discovery: schtasks task names
 # on Windows; at-job body marker / crontab line marker on Linux/macOS.
-echo "[3/8] Removing scheduled jobs (HIMMEL-Resume-*, HimmelTelegramBridge)..."
+echo "[3/8] Removing scheduled jobs (HIMMEL-Resume-*${_LOGON_TASK_TXT_BARE})..."
 if [ "$HALTED" -eq 1 ]; then
   echo "  skipped (halted after an earlier failure)"
   STEPS_INCOMPLETE+=("[3/8] scheduled jobs: skipped — halted after an earlier failure")
@@ -4346,13 +4363,14 @@ echo "Uninstall complete."
 echo ""
 echo "NOT touched (by design):"
 for _mi in "${!M_ID[@]}"; do
+  m_applies "$_mi" || continue
   case "${M_CLASS[$_mi]}" in
     keep)
       _mp=$(m_path "$_mi")
       [ "$_mp" = "-" ] && _mp="(${M_ID[$_mi]})"
       [ "${M_ID[$_mi]}" = "himmel-clone" ] && [ ! -e "$_mp" ] && _mp="$_mp (not present)"
-      echo "  - $_mp — ${M_WHAT[$_mi]}" ;;
-    state) state_removed || echo "  - $(m_path "$_mi") — ${M_WHAT[$_mi]} (operator state; --purge-state removes it)" ;;
+      echo "  - $_mp — $(m_what "$_mi")" ;;
+    state) state_removed || echo "  - $(m_path "$_mi") — $(m_what "$_mi") (operator state; --purge-state removes it)" ;;
   esac
 done
 if [ -n "$_kept_tools" ]; then printf '%s' "$_kept_tools"; fi

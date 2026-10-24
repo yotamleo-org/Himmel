@@ -20,7 +20,7 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # A console-spawned leg's shell carries HIMMEL_CONSOLE_LEG=1, which
 # arms the console-GO gate — ambient, it would refuse every merge case below.
 # Its own line: RC-2 below mutates the line above by exact match.
-unset HIMMEL_CONSOLE_LEG HIMMEL_LEG_DOC
+unset HIMMEL_CONSOLE_LEG HIMMEL_WORKER_SESSION_DOC HIMMEL_LEG_DOC
 # A bare merge appends a PARTIAL bullet to $HIMMEL_CONSOLE_DOC when it is set; a leg launched
 # from a console carries it, so every bare-merge row would write the live console doc.
 # The one row that wants a console doc sets its own temp file explicitly.
@@ -3596,7 +3596,7 @@ assert_audit_lacks "6094: audit never says would-transition" "would-transition"
 assert_audit_has "6094: audit says the status is unchanged" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
 
 # The brief's dedicated `Completes ticket` line binds the merge. The
-# leg doc is supplied by the caller (--leg-doc, else HIMMEL_LEG_DOC).
+# leg doc is supplied by the caller (--leg-doc, else HIMMEL_WORKER_SESSION_DOC).
 leg_no="$LAST_TMP/leg-no.md"; leg_yes="$LAST_TMP/leg-yes.md"
 printf '# leg\n\n> **Completes ticket:** no\n\n## Results\n' > "$leg_no"
 printf '# leg\n\n> **Completes ticket:** yes\n\n## Results\n' > "$leg_yes"
@@ -3607,11 +3607,11 @@ assert_err_has "5843: the ignored flag is announced" "merge-on-green: brief says
 assert_jira_log_lacks "5843: brief no never transitions to Done" "transition HIMMEL-374 Done"
 assert_jira_log_lacks "5843: brief no leaves the ticket status alone" "index.js transition"
 assert_jira_log_has "5843: brief no comments the Remaining line" "comment-body: Remaining: slice 2"
-STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_LEG_DOC="$leg_no" \
-    run_mog 0 "5843: brief no via HIMMEL_LEG_DOC" -- --jira-transition
-assert_jira_log_lacks "5843: HIMMEL_LEG_DOC binds the same way" "transition HIMMEL-374 Done"
-STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_LEG_DOC="$leg_no" \
-    run_mog 0 "5843: --leg-doc beats HIMMEL_LEG_DOC" -- --jira-transition --leg-doc "$leg_yes"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_WORKER_SESSION_DOC="$leg_no" \
+    run_mog 0 "5843: brief no via HIMMEL_WORKER_SESSION_DOC" -- --jira-transition
+assert_jira_log_lacks "5843: HIMMEL_WORKER_SESSION_DOC binds the same way" "transition HIMMEL-374 Done"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_WORKER_SESSION_DOC="$leg_no" \
+    run_mog 0 "5843: --leg-doc beats HIMMEL_WORKER_SESSION_DOC" -- --jira-transition --leg-doc "$leg_yes"
 assert_jira_log_has "5843: the flag value wins over the env var" "transition HIMMEL-374 Done"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "5843: brief yes, flag missing" -- --leg-doc "$leg_yes"

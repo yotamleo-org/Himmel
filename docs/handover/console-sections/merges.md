@@ -4,12 +4,18 @@ Read on demand from `console-template.md` `## Merges`. Moved verbatim from the t
 
 **Review threads a leg could not resolve.** A leg resolves each answered
 thread itself with
-`node plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "<reason>"`
-(`fixed <sha>` | `followup HIMMEL-<n>` | `rejected <why>`). When that call is
-denied the leg sends `BLOCKED resolve <pr> <thread ids>`. That is yours, never
-an operator item: for each thread, check the fix, ticket or rejection against
-the PR head, then run the same CLI with the matching reason, one literal call
-per thread. A thread you cannot verify goes back to the leg as a finding.
+`node <anchor>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "<reason>"`
+(`fixed <sha>` | `followup HIMMEL-<n>` | `rejected <why>`), `<anchor>` the
+primary checkout. `allow-thread-resolve.sh` auto-allows exactly that shape for
+`yotamleo-org/Himmel` as one literal command, so the classifier never sees it;
+any variation (chained, redirected, another repo, an extra flag, a branch copy of
+the CLI) gets no allow. When the call is denied anyway the leg sends <!-- old-term-ok: console runbook wording -->
+`BLOCKED resolve <pr> <thread ids>`, and the waiter wakes you with
+`WAKE resolve <leg> pr=<n> threads=<ids>`. **The operator is never asked to
+resolve a thread:** it is yours, never an operator item. For each thread, check the fix, ticket or
+rejection against the PR head, then run the same CLI with the matching reason,
+one literal call per thread. A thread you cannot verify goes back to the leg as <!-- old-term-ok: console runbook wording -->
+a finding.
 When YOUR OWN resolve call is classifier-denied, that is still not an
 operator item, and the playbook's defer-to-operator does not apply: write a
 `BLOCKED resolve <pr> <thread ids>` bullet with the denial text. Retry once

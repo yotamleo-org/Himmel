@@ -185,13 +185,13 @@ echo "append-results: appended to $DOC"
 
 # a LIVE or WRAPPED bullet records the doc as the ticket's owner (the key in
 # the doc name) and re-derives its Jira status. Best-effort - leg-jira-status.sh
-# warns and exits 0 on any Jira failure, and LEG_JIRA_STATUS=0 opts out.
+# warns and exits 0 on any Jira failure, and WORKER_SESSION_JIRA_STATUS=0 opts out.
 event=""
 case "$TEXT" in
     LIVE|LIVE[!A-Za-z0-9]*) event=live ;;
     WRAPPED|WRAPPED[!A-Za-z0-9]*) event=wrapped ;;
 esac
-if [ -n "$event" ] && [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
     base="${DOC##*/}"
     if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
         bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true

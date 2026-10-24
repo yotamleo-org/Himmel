@@ -3,7 +3,7 @@
 # context windows and price each with the burn-weights.
 # Local-only: reads ~/.claude/projects/*himmel*/*.jsonl, runs no inference,
 # sends nothing anywhere. Weights mirror scripts/lanes/lib/burn-weights.sh
-# (override with the same LEG_BURN_W_* env vars).
+# (override with the same WORKER_SESSION_BURN_W_* env vars).
 #
 # Model (ponytail: per-call growth replay, ignores 5m/1h TTL expiry and tool
 # result truncation, upgrade path = a real A/B on a held-out week):
@@ -16,10 +16,10 @@
 #   FLOOR + REBRIEF with HANDOVER_OUT of ceremony output.
 import argparse, glob, json, os, statistics, sys, time
 
-W_CR = float(os.environ.get("LEG_BURN_W_CACHE_READ", "0.1"))
-W_CC = float(os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25"))
-W_IN = float(os.environ.get("LEG_BURN_W_INPUT", "1"))
-W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
+W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1")))
+W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25")))
+W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1")))
+W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5")))
 
 SUMMARY_OUT = 10000   # tokens the summariser writes
 HANDOVER_OUT = 15000  # ceremony output of a hand-off

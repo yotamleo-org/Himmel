@@ -253,12 +253,16 @@ seed_merge_trust_paths() {
     return 0
   fi
   mkdir -p "$(dirname "$dest")"
-  (set -C; printf '%s\n' \
-    '^scripts/hooks/block-unresolved-cr-merge[.]sh$' \
-    '^scripts/lib/(review-merge-gate|ci-green-gate|go-gate|coderabbit-signal|coderabbit-body-findings|coderabbit-available|review-ledger-evidence|nwo|critics-config|resolve-node|timeout-bin|handover-path|load-dotenv|user-slug|forge|forge-github|forge-bitbucket|forge-localgit|forge-none|coderabbit-trigger-ledger|project-mode)[.]sh$' \
-    '^scripts/cr/critics[.]json$' \
-    '^scripts/ci/ci-trust-paths[.]txt$' \
-    '^[.]claude/settings[.]json$' > "$dest")
+  # The gate refuses an adopted list missing any core line, so seed them all.
+  local core="$HIMMEL_ROOT/scripts/ci/ci-trust-paths-core.txt" lines
+  lines=$(grep -Ev '^(#|$)' "$core") || {
+    echo "  error: cannot read the core trust list $core" >&2
+    return 1
+  }
+  (set -C; printf '%s\n' "$lines" > "$dest") || {
+    echo "  error: cannot seed $dest" >&2
+    return 1
+  }
   prov_record create file "$dest" --scope project --class code --row adopter-scripts \
     --writer adopt.sh --pre-absent --post-file "$dest" \
     || echo "  warning: provenance record failed for $dest (uninstall will keep it)" >&2

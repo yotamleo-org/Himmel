@@ -40,7 +40,7 @@ done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LEG_BURN="$HERE/../../leg-burn.sh"
+WORKER_SESSION_BURN="$HERE/../../leg-burn.sh"
 # shellcheck source=../../lib/burn-weights.sh
 . "$HERE/../../lib/burn-weights.sh"
 # shellcheck source=lib/scorecard-lib.sh
@@ -95,7 +95,7 @@ while IFS= read -r f; do
     [ "$last_epoch" -ge "$SINCE_EPOCH" ] || { sc_cov out-of-window; continue; }
     if [ -n "$UNTIL_EPOCH" ] && [ "$first_epoch" -ge "$UNTIL_EPOCH" ]; then sc_cov out-of-window; continue; fi
 
-    line=$(bash "$LEG_BURN" --raw "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
+    line=$(bash "$WORKER_SESSION_BURN" --raw "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
     sc_cov parsed
     calls=$(printf '%s' "$line" | grep -o 'calls=[0-9]*' | cut -d= -f2)
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)
@@ -140,7 +140,7 @@ END{
 # --raw prints (no per-session 0.1k rounding to compound); this awk sums the
 # raw counts and divides by 1000 ONCE for display, rather than summing
 # per-session kn() roundings.
-awk -F'\t' -v wi="$LEG_BURN_W_INPUT" -v wcr="$LEG_BURN_W_CACHE_READ" -v wcc="$LEG_BURN_W_CACHE_CREATE" -v wo="$LEG_BURN_W_OUTPUT" '
+awk -F'\t' -v wi="$WORKER_SESSION_BURN_W_INPUT" -v wcr="$WORKER_SESSION_BURN_W_CACHE_READ" -v wcc="$WORKER_SESSION_BURN_W_CACHE_CREATE" -v wo="$WORKER_SESSION_BURN_W_OUTPUT" '
 { out+=$9; cr+=$10; cc+=$11; inp+=$12 }
 END{
   costeq = inp*wi + cr*wcr + cc*wcc + out*wo

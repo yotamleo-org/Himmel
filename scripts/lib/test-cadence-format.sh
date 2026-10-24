@@ -327,13 +327,13 @@ echo "[test-cadence-format] cadence_posix_leg_* — alert + flow rows"
 _leg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/cadence-leg.XXXXXX") || { echo "FAIL: mktemp" >&2; exit 1; }
 cat > "$_leg_tmp/flow-lib.sh" <<'STUB'
 #!/bin/sh
-printf 'flow %s\n' "$*" >> "$LEG_CALLS"
+printf 'flow %s\n' "$*" >> "$WORKER_SESSION_CALLS"
 case "$1" in --append-start) echo RUN-1 ;; esac
 exit 0
 STUB
 cat > "$_leg_tmp/alert-lib.sh" <<'STUB'
 #!/bin/sh
-printf 'alert %s\n' "$*" >> "$LEG_CALLS"
+printf 'alert %s\n' "$*" >> "$WORKER_SESSION_CALLS"
 exit 0
 STUB
 chmod 755 "$_leg_tmp/flow-lib.sh" "$_leg_tmp/alert-lib.sh"
@@ -349,7 +349,7 @@ run_leg() {
     printf 'exit "$_rc"\n'
   } > "$_leg_tmp/leg.sh"
   : > "$_leg_tmp/calls"
-  LEG_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg.sh"
+  WORKER_SESSION_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg.sh"
   echo "$?" > "$_leg_tmp/rc"
   cat "$_leg_tmp/calls"
 }
@@ -410,7 +410,7 @@ printf '#!/bin/sh\nexit 0\n' > "$_leg_tmp/bunbin/bun"
 chmod 755 "$_leg_tmp/bunbin/bun"
 cat > "$_leg_tmp/alert-path.sh" <<'STUB'
 #!/bin/sh
-printf 'bun=%s\n' "$(command -v bun)" >> "$LEG_CALLS"
+printf 'bun=%s\n' "$(command -v bun)" >> "$WORKER_SESSION_CALLS"
 exit 0
 STUB
 chmod 755 "$_leg_tmp/alert-path.sh"
@@ -419,7 +419,7 @@ chmod 755 "$_leg_tmp/alert-path.sh"
   PATH="$_leg_tmp/bunbin:$PATH" cadence_posix_leg_end "$_leg_tmp/flow-lib.sh" "$_leg_tmp/alert-path.sh" demo-flow
 } > "$_leg_tmp/leg-path.sh"
 : > "$_leg_tmp/calls"
-env -i PATH=/usr/bin:/bin LEG_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg-path.sh"
+env -i PATH=/usr/bin:/bin WORKER_SESSION_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg-path.sh"
 case "$(cat "$_leg_tmp/calls")" in
   *"bun=$_leg_tmp/bunbin/bun"*) pass=$((pass + 1)); echo "  ok: the alert call resolves bun from the arm-time PATH under a minimal fire PATH" ;;
   *) fail=$((fail + 1)); echo "  FAIL: alert call did not see the arm-time PATH: $(cat "$_leg_tmp/calls")" ;;

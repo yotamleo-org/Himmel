@@ -25,7 +25,7 @@ is data.
 
 ### Metered OpenRouter legs
 
-`headed-arm-leg.sh --lane openrouter` (or `LEG_LANE=openrouter`) uses
+`headed-arm-leg.sh --lane openrouter` (or `WORKER_SESSION_LANE=openrouter`) uses
 `scripts/claude-openrouter` with a pinned Sonnet 5.5 default. A fresh session
 start measured about **0.17 USD**; even a short reply pays the initial prompt
 cost. Fleet admission still applies, but native Claude and codex subscription
@@ -33,7 +33,7 @@ usage budgets do not. The backend refuses unknown credit or key-limit readings a
 an effective balance below `OPENROUTER_MIN_CREDIT_USD` (default **3 USD**):
 the smaller of account credit and the key's `limit_remaining` is available.
 `bank-preflight.sh` selects this gate via `CADENCE_USAGE_LANE=openrouter`
-(or `LEG_LANE=openrouter`), reusing the balance helper and the same floor:
+(or `WORKER_SESSION_LANE=openrouter`), reusing the balance helper and the same floor:
 `PROCEED` at/above the floor, `SKIPPED-BANK` below it, `BANK-UNKNOWN` when
 unmeasurable. Tick's `bank=openrouter:<verdict>` reports that lane verdict;
 its separate `or=` reading remains informational. Native and claudex usage budget
@@ -158,7 +158,7 @@ exists to wire.
 SessionStart hooks (graphify freshness, qmd staleness, where-are-we) for that
 session only — a worker session has one ticket and a supervisor session to report to, and never acts
 on a warn-only hook. `--profile` composes with `--lane claudex` through
-`scripts/lanes/leg-claude-launcher.sh` and its `LEG_CLAUDE_BIN` exec target:
+`scripts/lanes/leg-claude-launcher.sh` and its `WORKER_SESSION_CLAUDE_BIN` exec target:
 settings, worker system prompt and optional strict MCP config reach `scripts/claude-codex`
 without changing native argv. Every `--lane claudex` launch also appends
 [`leg-preface-claudex.md`](../handover/leg-preface-claudex.md), concatenated
@@ -630,10 +630,10 @@ kit add-ons launched alone, remain `standard` / `200000`. Integer ceilings below
 standard profile cannot declare a ceiling above 200000. Child autocompact
 inheritance remains **UNMEASURED**: no real session was launched for this audit.
 
-`LEG_CONTEXT=1m` plus the sanctioned brief line
+`WORKER_SESSION_CONTEXT=1m` plus the sanctioned brief line
 `> **Context:** 1m — operator-ruling: <reason>` remains a per-worker-session override to
 `auto`, as does `CONSOLE_CONTEXT=1m` for a supervisor session. The brief line alone does
-not elevate a standard profile; a bare `LEG_CONTEXT=1m` without it refuses. Launch logs
+not elevate a standard profile; a bare `WORKER_SESSION_CONTEXT=1m` without it refuses. Launch logs
 record the resolved profile, ceiling and context source; argv must match the
 profile plus the sanctioned override. The older `arm-resume.sh` context API is
 unchanged; the profile defaults here apply to the two headed launchers.
@@ -753,7 +753,7 @@ measured** — do not assume a `standard` worker session makes its children comp
 | lane | default mode | override |
 |---|---|---|
 | supervisor session arm (`*-console.md`) | `standard` | `CONSOLE_CONTEXT=1m` |
-| headed worker session / worker arm | profile default (`design`: `1m` / 1000000; others: `standard` / 200000) | `LEG_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
+| headed worker session / worker arm | profile default (`design`: `1m` / 1000000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
 Given that, the supervisor-session-side mitigation is a lean parent (the
@@ -767,7 +767,7 @@ the table above — but the fact lived only in prose, one convention every
 ad-hoc console-kit copy of the worker session launcher had to remember correctly.
 `scripts/handover/console-kit/headed-arm-leg.sh` makes it structural: a thin
 wrapper around `headed-arm.sh` whose resolved worker session launch must carry the
-cost-driving `--autocompact 200000` pair. `LEG_CONTEXT=1m` now refuses with
+cost-driving `--autocompact 200000` pair. `WORKER_SESSION_CONTEXT=1m` now refuses with
 exit 2 instead of weakening the worker session ceiling; absence of a `[1m]` model suffix
 is not equivalent because Fable-family launches can strip that suffix while
 still receiving `--autocompact auto`. Scheduled worker sessions opt into the same
@@ -776,7 +776,7 @@ scheduler work. A caller that hands the headed wrapper an already-`[1m]`-
 suffixed model still gets it forwarded unchanged, and `headed-arm.sh` strips
 the literal suffix under standard mode (`scripts/handover/console-kit/
 test-headed-arm-leg.sh` asserts this end-to-end). The wrapper also adds the
-worker-session-only `IMPL_GUARD_OK=1` env and folds `LEG_REPO` onto `headed-arm.sh`'s own
+worker-session-only `IMPL_GUARD_OK=1` env and folds `WORKER_SESSION_REPO` onto `headed-arm.sh`'s own
 `HEADED_ARM_REPO` seam.
 
 **Sanctioned operator-ruled 1M opt-in.** The refusal above is not
@@ -867,7 +867,7 @@ to gate new arms, not reads.
 
 ## claudex leg — implementor-default operating model
 
-`headed-arm-leg.sh --lane claudex` (or `LEG_LANE=claudex`) routes a worker session arm
+`headed-arm-leg.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker session arm
 through `scripts/claude-codex` — the Claude Code harness running against
 GPT-6 Sol via the local CLIProxyAPI service — drawing on the **codex weekly
 usage budget** (`bank-preflight.sh` parks a claudex worker session on
@@ -883,12 +883,12 @@ above, is what scarcity looks like). Prefer `--lane claudex` for routine worker 
 implementation work; fall back to native only when the work needs something
 claudex structurally cannot provide (next section).
 
-**Effort ladder.** `LEG_EFFORT` maps onto `CLAUDE_CODE_EFFORT_LEVEL`, exported
+**Effort ladder.** `WORKER_SESSION_EFFORT` maps onto `CLAUDE_CODE_EFFORT_LEVEL`, exported
 into the launched process via `HEADED_ARM_LAUNCHER_ENV` — the same
 low/medium/high/xhigh scale as [Effort calibration](#effort-calibration)
 above, not a separate claudex-only scale:
 
-| `LEG_EFFORT` | When |
+| `WORKER_SESSION_EFFORT` | When |
 |---|---|
 | `medium` (default, unset) | routine single-worker session implementation briefs — the common case |
 | `high` | multi-file or long-running briefs — raise before reaching for a native tier |
@@ -955,7 +955,7 @@ fallback to the full set) and the profile is picked from the role:
 | `chief.sh` arm / `headed-arm.sh --role console` | `console` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
 | `arm-resume.sh`, `schedule-resume.sh` | from the resumed doc via `scripts/lanes/role-profile.sh`; `--profile <name>` overrides (arm-resume) |
 | `hop.sh` | `HOP_PROFILE`, else console / leg-impl from the caller's role env, else `user` |
-| worker session brief (`headed-arm-leg.sh`) | `--profile` / `LEG_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
+| worker session brief (`headed-arm-leg.sh`) | `--profile` / `WORKER_SESSION_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
 | `generate-morning-briefing.sh --llm`, `cr/hermes-critic.sh` | `bare` (floor plugins only) |
 
 `role-profile.sh` precedence: explicit `profile:` line, then supervisor session doc, then a
