@@ -73,7 +73,13 @@ check "run: exit 0" '[ "$rc" = 0 ]'
 check "run: one judge-accuracy row in the ledger" '[ "$(grep -c "\"eval\":\"judge-accuracy\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: one decision-158 answer row in the ledger" '[ "$(grep -c "\"eval\":\"decision-158\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: the page is written and names the judges" 'grep -q "^## The judges" "$REVIEW_PAGE_FILE" && grep -q "A bug got past a GO on 0 of 1 merged PRs" "$REVIEW_PAGE_FILE"'
-with_deadline() { python3 -c 'import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=5).returncode)' "$@"; }
+with_deadline() { python3 -c 'import os, subprocess, sys
+try:
+    sys.exit(subprocess.run(sys.argv[1:], timeout=float(os.environ.get("DEADLINE_SECS", "5"))).returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)' "$@"; }
+DEADLINE_SECS=0.3 with_deadline sleep 5 >/dev/null 2>&1; rc=$?
+check "the deadline wrapper reports a hang as 124, not as a usage error" '[ "$rc" = 124 ]'
 with_deadline bash "$CAD" run --verdicts >/dev/null 2>&1; rc=$?
 check "run: a trailing --verdicts is a usage error (rc 1), not a hang" '[ "$rc" = 1 ]'
 with_deadline bash "$CAD" run --verdicts "$TMP/v" --mirror >/dev/null 2>&1; rc=$?
