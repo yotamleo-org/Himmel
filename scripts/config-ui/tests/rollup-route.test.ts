@@ -61,6 +61,13 @@ test("rollup: a card with no comparison says so; an empty series says no data ye
   expect(r.cards[1]).toMatchObject({ state: "nodata", sentence: "no data yet", spark: [] });
 });
 
+test("rollup: a running week alone is shown but never compared", async () => {
+  const s = boot([week("2026-W44", { merges: 3, cost_eq_per_ticket: 10, red_main: 0 }, { merges: -15, cost_eq_per_ticket: -140, red_main: -1 }, true)]);
+  const r = await (await get(s.port)).json();
+  expect(r.cards[0].week).toMatchObject({ key: "2026-W44", value: 3, delta: null, partial: true });
+  expect(r.cards[0].sentence).toBe("No earlier week or version to compare with yet");
+});
+
 test("rollup: an absent file is state absent; the route is token-gated and read-only", async () => {
   const s = boot();
   expect(await (await get(s.port)).json()).toMatchObject({ state: "absent" });

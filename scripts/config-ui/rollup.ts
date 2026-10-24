@@ -44,7 +44,7 @@ function newest(rs: Row[], kind: string, series: string, finished: boolean): Com
   const row = (finished ? have.filter((r) => !r.partial) : have).at(-1) ?? have.at(-1);
   if (!row) return null;
   const d = row.delta?.[series];
-  return { key: row.key, value: row[series] as number, delta: isNum(d) ? d : null, partial: !!row.partial };
+  return { key: row.key, value: row[series] as number, delta: isNum(d) && !row.partial ? d : null, partial: !!row.partial };
 }
 
 function sentence(c: (typeof CARDS)[number], week: Compared | null, version: Compared | null): string {
