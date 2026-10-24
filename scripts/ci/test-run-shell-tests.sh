@@ -1188,6 +1188,9 @@ else
   # Adoption must not fall back to the 600s cap it hit in CI.
   check_timeout_2267 "scripts/test-adopt.sh" "1200"
   check_timeout_2267 "/repo/scripts/test-adopt.sh" "1200"
+  # The half split out of it (481s on Linux CI, 80% of the 600s default).
+  check_timeout_2267 "scripts/test-adopt-features.sh" "1200"
+  check_timeout_2267 "/repo/scripts/test-adopt-features.sh" "1200"
   check_timeout_2267 "scripts/ci/test-suite-concurrency.sh" "1500"
   check_timeout_2267 "/repo/scripts/ci/test-suite-concurrency.sh" "1500"
 

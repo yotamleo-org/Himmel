@@ -8,6 +8,12 @@
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 
+# Platform guard: tick.sh is Linux-only (tick.sh:11-12) and this suite ages docs with GNU `touch -d` / `date -d`.
+if [ "$(uname -s)" = Darwin ]; then
+  echo "SKIP - tick.sh is Linux-only by design (tick.sh:11-12); HIMMEL-7117"
+  exit 0
+fi
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/tick.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tick-holds-test.XXXXXX")" || exit 1

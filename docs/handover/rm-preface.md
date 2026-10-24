@@ -87,7 +87,7 @@ tool-permission envelope. A chief change without your token is ignored.
    backticks.
 2. `jira release lease acquire <R> --expect-epoch <n> --doc <abs doc> --session <name>`
    with the epoch your brief names. A refused acquire is a `BLOCKED`.
-3. `bash scripts/lib/bank-preflight.sh`.
+3. `bash scripts/lib/usage-preflight.sh`.
 
 ## What the guard allows
 

@@ -703,6 +703,7 @@ scripts/lanes/srt-poc/render-settings.sh	errexit	1
 scripts/lanes/srt-poc/test-recorded-run.sh	mktemp	2
 scripts/lanes/stop-worker.sh	gnu-flag	1
 scripts/lanes/stop-worker.sh	prim-tmpdir	1
+scripts/lib/adopt-test-fixture.sh	mktemp	1
 scripts/lib/usage-attribution.sh	errexit	1
 scripts/lib/usage-attribution.sh	prim-tmpdir	1
 scripts/lib/usage-monitor.sh	prim-atomic	2
@@ -953,9 +954,10 @@ scripts/telegram/restart-bridge.sh	gnu-flag	1
 scripts/telegram/restart-bridge.sh	prim-lock	1
 scripts/telegram/test-auto-action.sh	mktemp	1
 scripts/telegram/test-phi-egress-guard-parity.sh	mktemp	2
+scripts/test-adopt-features.sh	errexit	12
+scripts/test-adopt-features.sh	mktemp	1
 scripts/test-adopt-only-hooks.sh	errexit	1
-scripts/test-adopt.sh	errexit	1
-scripts/test-adopt.sh	mktemp	2
+scripts/test-adopt.sh	errexit	4
 scripts/test-check-ci.sh	mktemp	1
 scripts/test-check-marketplace-source-hermetic.sh	errexit	1
 scripts/test-check-plugin-drift.sh	mktemp	8
