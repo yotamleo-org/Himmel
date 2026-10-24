@@ -83,8 +83,9 @@
   var opener = null;
 
   function closePanel() {
+    if (opener) opener.parentElement.open = true;
     panel.hidden = true;
-    if (opener) { opener.parentElement.open = true; opener.removeAttribute('aria-expanded'); opener.focus(); opener = null; }
+    if (opener) { opener.removeAttribute('aria-expanded'); opener.focus(); opener = null; }
   }
 
   document.querySelectorAll('details.comp > summary').forEach(function (s) {
