@@ -1,6 +1,6 @@
 ---
 name: release-manager
-description: The release manager's verbs: rule INTAKE/REVERSION/DISCHARGE requests, report STATUS and BURN-DOWN, check READY.
+description: "The release manager's verbs: rule INTAKE/REVERSION/DISCHARGE requests, report STATUS and BURN-DOWN, check READY."
 ---
 
 # release-manager — every placement into a release is a reasoned ruling (HIMMEL-6796)

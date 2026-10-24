@@ -38,6 +38,8 @@
 #   MV34  pr, impacted: a floor suite listed RUN never ran      -> rc 1
 #   MV35  pr, impacted: a shard `skip`s a selected local suite  -> rc 1
 #   MV36  pr, full: a shard `skip`s a local suite               -> rc 1; ran -> rc 0
+#   MV38  pr, impacted: the list capability-skips a pr-tier suite the shard ran -> rc 0;
+#         a shard that did not run it -> rc 1; a local-tier suite or not pr mode -> rc 1
 #
 # Platform guard: bash-only, no .ps1 twin; the aggregator runs on Linux.
 #
@@ -96,7 +98,8 @@ disc() {
 }
 
 # MV_TIER is the aggregator step's SUITE_TIER_MODE.
-verify() { SUITE_TIER_MODE="${MV_TIER:-}" bash "$VERIFY" --dir "$1/m" --shards "$2" --selection "$1/sel.txt" --discovered "$1/disc.txt" 2>&1; }
+# MV_TSV is the suite-tiers.tsv the verifier reads for its pr rows.
+verify() { SUITE_TIER_MODE="${MV_TIER:-}" SUITE_TIERS_TSV="${MV_TSV:-}" bash "$VERIFY" --dir "$1/m" --shards "$2" --selection "$1/sel.txt" --discovered "$1/disc.txt" 2>&1; }
 
 # expect <label> <want-rc> <dir> <n> [<grep-ERE the output must match>]
 expect() {
@@ -389,5 +392,24 @@ manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-l.sh
 MV_TIER="pr" expect "MV36: pr, full: a shard that skips a local suite is refused" 1 "$d" 1 'scripts/test-l\.sh.*never ran'
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'ran 0 scripts/test-l.sh'
 MV_TIER="pr" expect "MV36: pr, full: the local suite ran on a shard" 0 "$d" 1 '^OK'
+
+# --- MV38: the aggregator lacks a tool the shards install ------------------------
+# The aggregator's own `--list .` capability-skips a pr-tier suite (no bun, no
+# gitleaks, ... on that runner) while the shards, which install them, ran it.
+# The `[SKIP] <suite> — capability: <tool> not on PATH — <reason>` line is the
+# runner's own format (run-shell-tests.sh, SUITE_REQUIRE_TOOL_DEFAULT row for the
+# PR 3662 suite scripts/telegram/test-phi-egress-guard-parity.sh).
+cap38='scripts/telegram/test-phi-egress-guard-parity.sh'
+d=$(case_dir mv38); header impacted scripts/test-a.sh > "$d/sel.txt"
+printf '[RUN ] scripts/test-a.sh\n[SKIP] %s — capability: bun not on PATH — cross-language parity check (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not\n' "$cap38" > "$d/disc.txt"
+printf '# fixture tiers\n%s\tpr\tstatic-gate\nscripts/test-a.sh\tpr\tx\n' "$cap38" > "$d/tiers.tsv"
+printf '# fixture tiers\n%s\tlocal\tx\nscripts/test-a.sh\tpr\tx\n' "$cap38" > "$d/tiers-local.tsv"
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "ran 0 $cap38"
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV38: pr, a pr-tier suite the list capability-skips ran on a shard" 0 "$d" 1 '^OK'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "skip $cap38"
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV38: pr, the same suite no shard ran is refused" 1 "$d" 1 'phi-egress-guard-parity.*never ran'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "ran 0 $cap38"
+MV_TSV="$d/tiers-local.tsv" MV_TIER="pr" expect "MV38: pr, a local-tier capability skip a shard ran is still refused" 1 "$d" 1 'phi-egress-guard-parity.*not selected'
+MV_TSV="$d/tiers.tsv" MV_TIER="fast" expect "MV38: not pr mode, the capability skip a shard ran is still refused" 1 "$d" 1 'phi-egress-guard-parity.*not selected'
 
 rst_tally
