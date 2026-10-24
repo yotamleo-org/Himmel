@@ -10,7 +10,43 @@ on:
   # macos-cadence.yml, so a macOS red can never turn this run -- or main -- red.
   # `shell-unit` itself (HIMMEL-2872) is the aggregating gate over that
   # matrix — see its own comment block below.
+  #
+  # The ci:go label gate. With vars.CI_GO_GATE == 'on' a push runs
+  # only the cheap jobs (plan, ci-quick and its sentinels, lint, plugin-version-bump);
+  # the heavy jobs (leak-classes, git-env-scrub, lanes-and-trust-suites, bun-suites,
+  # node-suites, security-scan, shell-unit and its shards) run on the `labeled`
+  # event whose label is vars.CI_GO_LABEL (default ci:go), the "go run", which also
+  # re-runs the cheap jobs so every required context reports at the head. Any other
+  # label event runs nothing. push, schedule, workflow_dispatch and merge_group run
+  # every job, and vars.CI_GO_GATE off (the default) restores that for a PR too.
+  # `unlabeled` is deliberately NOT in `types`: the release's label-remove step must
+  # not start a run.
+  #
+  # Rename rule: a skipped job reports `skipped` under its real name, which SATISFIES
+  # a required check and can turn a red one green. So every required non-matrix job
+  # carries `name: <expression>` that resolves to its literal required name only when
+  # the job runs and to `<name> (deferred)` otherwise; a skipped matrix job reports
+  # its unexpanded template, never a required name. The required context then stays
+  # missing, never skipped-green. Every later ci.yml writer keeps this rule for any
+  # required job it adds or renames. test-ci-go-gate.sh holds it.
+  #
+  # Security invariants:
+  #   1. ci:go spends runner minutes; it never satisfies a gate. Merge still needs
+  #      green required contexts at the final head and cr_merge_gate. Anyone able to
+  #      label can at most start heavy CI early: a cost, not a trust bypass.
+  #   2. Never pull_request_target for the label trigger: a label event on a fork PR
+  #      runs with the fork's read-only token and no secrets.
+  #   3. Fork PRs: a labeled run from a fork stays subject to "approve and run" for
+  #      outside contributors. A label on a fork PR does not bypass approval.
+  #   4. A PR that edits ci.yml runs its own copy of the workflow (the existing
+  #      trust-path risk, ^\.github/ in ci-trust-paths.txt, covered by the
+  #      trust-reviewed GO). The required-context names are literal on the go path;
+  #      test-ci-go-gate.sh asserts it.
+  #   5. The PAT-written label shows the operator as actor; the ledger and ready-check
+  #      flag a ci:go event with no ledger line as manual release. A GitHub App
+  #      makes the actor distinguishable.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   # HIMMEL-5113: there is NO `push` trigger. Main used to run this workflow on
   # every merge (~52 runs/day, about half cancelled as superseded, ~2,300 runner
   # hours on the green ones alone) and those runs competed with PR runs for the
@@ -63,7 +99,7 @@ permissions:
 # required checks (incl. the `shell-unit` aggregator) are evaluated on the PR's
 # current head, whose own run this never cancels.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  group: ci-${{ github.event_name == 'pull_request' && ((github.event.action != 'labeled' || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && format('pr-{0}', github.event.pull_request.number) || format('label-{0}', github.run_id)) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -81,7 +117,7 @@ jobs:
   # check; the matrix jobs (node-suites, bun-suites) stay started and skip their
   # STEPS, because a skipped matrix job leaves its required names pending.
   plan:
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 13 # p95 ~70s (the 60 s debounce sleep + checkout + plan); kept 13 for sleep + slow-runner headroom
     outputs:
@@ -497,7 +533,7 @@ jobs:
   #   checkout per group would put back the setup cost this fold removed.
   ci-quick:
     needs: plan
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-latest
     # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
     # dependabot[bot] run cannot pull the private package, so it gets '' (no
@@ -850,10 +886,11 @@ jobs:
         run: echo "ci-quick ran every group"
 
   secret-scan:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'secret-scan' || 'secret-scan (deferred)' }}
     # Runs as the secret-scan step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.secret-scan != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.secret-scan != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -872,7 +909,7 @@ jobs:
     # Runs as the bwk-awk-mktemp-gate step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.bwk-awk-mktemp-gate != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.bwk-awk-mktemp-gate != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -886,10 +923,11 @@ jobs:
   # refs/pull/N/merge has the CURRENT base tip as HEAD^1, so lines main gained
   # since the PR forked are never the PR's. fetch-depth: 0 → HEAD^1 reachable.
   unchecked-mktemp-range:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'unchecked-mktemp-range' || 'unchecked-mktemp-range (deferred)' }}
     # Runs as the unchecked-mktemp-range step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -903,6 +941,8 @@ jobs:
   # hostname class self-skips here (see leak-classes.sh header) — the other
   # 4 classes still run.
   leak-classes:
+    name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'leak-classes' || 'leak-classes (deferred)' }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25 # p95 672s (11m); 2x
     steps:
@@ -953,8 +993,9 @@ jobs:
   # Main and the crons scan every trust-path file; a PR scans the files it
   # changed (HIMMEL-3898).
   git-env-scrub:
+    name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'git-env-scrub' || 'git-env-scrub (deferred)' }}
     needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 207s; 2x = 7m, floor 10
     steps:
@@ -1000,10 +1041,11 @@ jobs:
   # commit-msg gate (scripts/hooks/check-commit-msg.sh) over the range so CI and
   # the author-time hook agree. fetch-depth: 0 → full history for the range walk.
   commit-lint:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'commit-lint' || 'commit-lint (deferred)' }}
     # Runs as the commit-lint step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.commit-lint != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.commit-lint != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1019,7 +1061,7 @@ jobs:
   # Only pull_request runs have a PR's changes to gate.
   plugin-version-bump:
     needs: plan
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && !(needs.plan.result == 'success' && needs.plan.outputs.run_plugin_version_bump == 'false') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && github.event_name == 'pull_request' && !(needs.plan.result == 'success' && needs.plan.outputs.run_plugin_version_bump == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 9s; floor 10
     steps:
@@ -1043,6 +1085,8 @@ jobs:
           bash "$checker/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/plugin-bump-base
 
   lint:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'lint' || 'lint (deferred)' }}
+    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') }}
     # Ungated (trust judge j2543g): main's --all-files shellcheck sweep reaches
     # executable files (scripts/eval/.../*.sh.ref) no gate line can enumerate, so it
     # runs on every PR like main.
@@ -1284,7 +1328,7 @@ jobs:
 
   node-suites:
     needs: plan
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 51s (matrix); floor 10
     strategy:
@@ -1323,7 +1367,7 @@ jobs:
     # Runs as the jira-cli-smoke step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.jira-cli-smoke != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.jira-cli-smoke != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1343,16 +1387,19 @@ jobs:
   # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
   # have no claude CLI; this job is where it runs.
   claude-startup:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)' }}
     # Runs as the claude-startup step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.claude-startup != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.claude-startup != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - run: exit 1
 
   lanes-and-trust-suites:
+    name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'lanes-and-trust-suites' || 'lanes-and-trust-suites (deferred)' }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on') }}
     # Ungated (trust judge j2543e): its suites glob-read files no gate group can
     # enumerate, so it runs on every PR like main.
     # HIMMEL-689: scripts/lanes is a zero-dependency ESM test package — no
@@ -1437,10 +1484,11 @@ jobs:
       - run: bash scripts/hooks/check-hook-lib-suites.sh
 
   guardrail-matrices:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)' }}
     # Runs as the guardrail-matrices step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1454,6 +1502,7 @@ jobs:
   #
   # `shell: bash` because the run lines below chain with `&&`.
   bun-suites:
+    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on') }}
     # Ungated (trust judge j2543g): `bun test scripts/telegram` globs suites that
     # run extensionless scripts (scripts/claude-codex), so it runs on every PR like main.
     permissions:
@@ -1577,10 +1626,11 @@ jobs:
   # harness. CI is a contributor context, so create the marker first, otherwise
   # every step below silently passes without checking anything.
   doc-invariants:
+    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'doc-invariants' || 'doc-invariants (deferred)' }}
     # Runs as the doc-invariants step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ !cancelled() && needs.ci-quick.outputs.doc-invariants != 'pass' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && needs.ci-quick.outputs.doc-invariants != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1596,8 +1646,9 @@ jobs:
   # needs a baseline #nosec triage of pre-existing VM/SSH tooling before it can
   # gate green) and better-npm-audit (redundant with the npm-audit gate below).
   security-scan:
+    name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'security-scan' || 'security-scan (deferred)' }}
     needs: plan
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
     runs-on: ubuntu-latest
     # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
     # dependabot[bot] run cannot pull the private package, so it gets '' (no
@@ -1731,7 +1782,7 @@ jobs:
     # Fail-open like every gated job: a plan that failed, was skipped (cron,
     # dispatch) or printed no list starts all 8.
     needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.shards != '[]' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && needs.plan.outputs.shards != '[]' }}
     strategy:
       # Every shard runs to the end, a PR's too, so one run reports every red
       # shard; the fail-fast-shell-unit-shard twin still cancels the rest of
@@ -2073,7 +2124,7 @@ jobs:
   #    steps that failure is silent even though the job itself goes red.
   shell-unit:
     needs: [shell-unit-shard, plan]
-    if: always()
+    if: ${{ always() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
     # HIMMEL-3788: a manual dispatch on an arbitrary branch/PR head must not
     # post a check-run literally named "shell-unit (ubuntu-latest)" --
     # identical to (and newer than) the PR's own required check -- or GitHub's

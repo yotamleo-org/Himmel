@@ -1103,3 +1103,4 @@ scripts/lib/test-cr-first-release.sh	7
 scripts/himmelctl/test/test-install-ui-handoff.sh	1
 scripts/guardrails/test-settings-waiter-allow.sh	1
 scripts/ci/test-billed-optin.sh	10
+scripts/ci/test-ci-go-gate.sh	1

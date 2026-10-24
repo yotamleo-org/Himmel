@@ -38,11 +38,14 @@ STRICT="checkout"
 
 job_block() { awk -v job="$1" '$0 == "  " job ":" { j = 1; print; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI_YML"; }
 
+# A sentinel also skips on a label event that is not the go run.
+CHEAP_ON="!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')"
+
 # Q1
 for g in $GROUPS_FOLDED; do
   b="$(job_block "$g")"
   if [ -z "$b" ]; then bad "Q1 $g: no sentinel job"; continue; fi
-  want_if="    if: \${{ !cancelled() && needs.ci-quick.outputs.$g != 'pass' }}"
+  want_if="    if: \${{ !cancelled() && ($CHEAP_ON) && needs.ci-quick.outputs.$g != 'pass' }}"
   if printf '%s\n' "$b" | grep -qxF "    needs: ci-quick" \
      && printf '%s\n' "$b" | grep -qxF "$want_if" \
      && printf '%s\n' "$b" | grep -qE '^      - run: exit 1$' \
