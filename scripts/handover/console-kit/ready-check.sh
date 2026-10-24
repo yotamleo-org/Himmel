@@ -802,8 +802,8 @@ else
     }
     # wf_suites_proof <workflow file> <dispatch runs json>: macos-cadence only. rc 0 and wf_note set when a
     # completed dispatch run at the head named its suites (displayTitle `macos-cadence suites: <paths>`)
-    # and its log carries the runner's own `<timestamp>Z [PASS] <suite> (` for every one (a failed suite's
-    # forwarded output is indented, so its echo of a PASS line does not match). rc 1: no such run (the caller falls through to the
+    # and its log carries the runner's own `[PASS] <suite> (` for every one: the text right after the log's
+    # tab-separated timestamp field, so a failed suite's indented forwarded output cannot echo one. rc 1: no such run (the caller falls through to the
     # whole-run rules). rc 2: such a run exists but is not proven; wf_why says why and the verdict is final,
     # because the job-level PRE-EXISTING comparison says nothing about which named suite failed.
     wf_suites_proof() {
@@ -819,7 +819,7 @@ else
         if [ "$#" -eq 0 ]; then wf_why="run $id names no suites"; return 2; fi
         log=$("$GH" run view "$id" --repo "$nwo" --log 2>/dev/null) || { wf_why="cannot read the log of run $id"; return 2; }  # swallow-ok: a failed read sets wf_why and returns 2, which the caller reports as a failure
         for s in "$@"; do
-            if printf '%s\n' "$log" | grep -qF "Z [PASS] $s ("; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi
+            if printf '%s\n' "$log" | awk -F'\t' -v want="[PASS] $s (" 'NF >= 3 && $3 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z / { if (index(substr($3, index($3, " ") + 1), want) == 1) f = 1 } END { exit !f }'; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi
         done
         if [ -n "$bad" ]; then
             wf_why="suites run $id: named suite(s) with no [PASS] line (failed or never ran): ${bad#, }"
