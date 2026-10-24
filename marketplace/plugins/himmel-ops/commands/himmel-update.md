@@ -71,7 +71,7 @@ pin — never the installed artifact, so the row reads `CURRENT` the instant the
 bump merges while the host still runs the old build.
 
 - **cli-proxy-api host roll** — compares the machine's version stamp against the
-  `$Version` pin in `scripts/setup/cli-proxy-lane.ps1` and runs
+  `$Version` pin in the cli-proxy-api lane script and runs
   `-Install -Restart` **only when the stamp is strictly OLDER than the pin**. A
   host at or ahead of the pin is left alone (himmel-update never downgrades), and
   a version that cannot be compared at all — no `python3`, or a stamp like
