@@ -43,13 +43,14 @@ export GH_CALLS="$TMP/gh-calls" GH_BODY="$TMP/gh-body"
 
 # fixture refusal: a real guard denial text carrying three secret shapes and a home path
 AKIA="AKIA$(printf 'ABCDEFGHIJKLMNOP')"
-BEARER="Bearer abcdefghijklmnopqrstuvwxyz012345"
+BEARER="Bearer abcdefghij0123456789"
 TG="123456789:$(printf 'ABCdefGHIjklMNOpqrSTUvwxYZ0123456789-')"
 FAKEHOME="/$(printf 'ho')me/someone"
+EMAIL="someone@example.com"
 REFUSAL="$TMP/refusal.txt"
 cat >"$REFUSAL" <<EOF
 PreToolUse:Bash hook error: [x]: guard-pr-check-literal: DENIED - \`cat <<EOF\` (HIMMEL-3383): 'r[0-9a-f]*' does not resolve to this root's scripts/cr/ or scripts/handover/ writer by its text alone.
-cwd $FAKEHOME/work key $AKIA auth: $BEARER bot $TG
+cwd $FAKEHOME/work key $AKIA auth: $BEARER bot $TG mail $EMAIL sandbox $HOME/work
 EOF
 
 # RED: the command exists and drafts without sending
@@ -57,8 +58,10 @@ OUT="$(python3 -I "$REPORT" draft --text-file "$REFUSAL" 2>"$TMP/err")"
 eq "draft exits 0" "$?" "0"
 has "draft says it is not sent" "$OUT" "NOT SENT"
 hasnt "draft output: no AWS key" "$OUT" "$AKIA"
-hasnt "draft output: no bearer token" "$OUT" "abcdefghijklmnopqrstuvwxyz012345"
+hasnt "draft output: no bearer token" "$OUT" "abcdefghij0123456789"
 hasnt "draft output: no telegram token" "$OUT" "ABCdefGHIjklMNOpqrSTUvwxYZ0123456789"
+hasnt "draft output: no telegram bot id" "$OUT" "123456789"
+hasnt "draft output: no email" "$OUT" "$EMAIL"
 hasnt "draft output: no home path" "$OUT" "$FAKEHOME"
 has "draft output: redaction marker" "$OUT" "[REDACTED]"
 has "draft output: classified like friction" "$OUT" "text-mentions-gate-path"
@@ -67,6 +70,40 @@ ok_if "draft prints a report id" "$([ -n "$ID" ] && echo yes)"
 DRAFT="$HOME/.himmel/reports/$ID.md"
 ok_if "draft file written under the sandbox HOME" "$([ -f "$DRAFT" ] && echo yes)"
 hasnt "draft file: no AWS key" "$(cat "$DRAFT" 2>/dev/null)" "$AKIA"
+hasnt "draft file: no sandbox path" "$(cat "$DRAFT" 2>/dev/null)" "$TMP"
+TILDE="$(printf '\176')"; BT="$(printf '\140')"
+has "draft file: sandbox HOME shown as ~" "$(cat "$DRAFT" 2>/dev/null)" "${TILDE}/work"
+
+# each redaction rule on its own: its fixture is short enough that no other rule masks it, so deleting
+# the rule leaks the fixture and its row goes RED
+RULES="$TMP/rules.py"
+cat >"$RULES" <<'EOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('hr', sys.argv[1])
+hr = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hr)
+CASES = {  # name: (index in SECRET_RES, fixture, the part only that rule removes)
+    'telegram': (0, '123456789' + ':' + 'ABCdefGHIjklMNOpqrSTUvwxYZ0123456789-', '123456789'),
+    'bearer': (1, 'Bearer abcdefghij0123456789', 'abcdefghij0123456789'),
+    'sk': (2, 'sk-abcdefghijkl0123456', 'sk-abcdefghijkl0123456'),
+    'akia': (3, 'AKIA' + 'ABCDEFGHIJKLMNOP', 'AKIA' + 'ABCDEFGHIJKLMNOP'),
+    'apikey': (4, 'api_' + 'key=' + 'x' * 14, 'x' * 14),
+    'longrun': (5, 'a' * 30, 'a' * 30),
+    'email': (6, 'someone@example.com', 'someone@example.com'),
+}
+mode, name = sys.argv[2], sys.argv[3]
+idx, fixture, part = CASES[name]
+if mode == 'catches':
+    print('yes' if part not in hr.redact(fixture) else 'no')
+else:
+    kept = hr.SECRET_RES[:idx] + hr.SECRET_RES[idx + 1:]
+    hr.SECRET_RES[:] = kept
+    print('yes' if part in hr.redact(fixture) else 'no')
+EOF
+for RULE in telegram bearer sk akia apikey longrun email; do
+  ok_if "rule $RULE redacts its fixture" "$([ "$(python3 -I "$RULES" "$REPORT" catches $RULE)" = yes ] && echo yes)"
+  ok_if "rule $RULE is the only one catching its fixture" "$([ "$(python3 -I "$RULES" "$REPORT" alone $RULE)" = yes ] && echo yes)"
+done
 
 # local lesson: known-findings schema, loadable by known-findings.sh
 LESSONS="$HOME/.himmel/known-findings.local.json"
@@ -174,6 +211,30 @@ printf '%sA\n' "$LONG" >"$TMP/long-a.txt"; printf '%sB\n' "$LONG" >"$TMP/long-b.
 IDA="$(python3 -I "$REPORT" draft --text-file "$TMP/long-a.txt" 2>&1 | sed -n 's/^report-id: //p')"
 IDB="$(python3 -I "$REPORT" draft --text-file "$TMP/long-b.txt" 2>&1 | sed -n 's/^report-id: //p')"
 ok_if "long reports with a shared prefix get different ids" "$([ -n "$IDA" ] && [ "$IDA" != "$IDB" ] && echo yes)"
+
+# a /Users path is shown as ~ (the other home-path rule, on its own)
+MACHOME="/$(printf 'Us')ers/alice"
+UOUT="$(printf 'at %s/proj done\n' "$MACHOME" | python3 -I "$REPORT" draft --text-file - 2>&1)"
+has "a mac home path is shown as ~" "$UOUT" "${TILDE}/proj"
+hasnt "a mac home path does not leak" "$UOUT" "$MACHOME"
+
+# a bare @name is wrapped in backticks, so the issue notifies nobody
+printf 'denied after @someuser and @org/team asked\n' >"$TMP/mention.txt"
+MOUT="$(python3 -I "$REPORT" draft --text-file "$TMP/mention.txt" 2>&1)"
+has "an @user is wrapped in backticks" "$MOUT" "${BT}@someuser${BT}"
+has "an @org/team is wrapped in backticks" "$MOUT" "${BT}@org/team${BT}"
+hasnt "no bare @user is left" "$MOUT" ' @someuser'
+hasnt "no bare @org/team is left" "$MOUT" ' @org/team'
+
+# send redacts again: a draft edited by hand cannot carry a path, an email or a mention out
+printf 'a refusal that will be hand edited\n' >"$TMP/edit.txt"
+EID="$(python3 -I "$REPORT" draft --text-file "$TMP/edit.txt" 2>&1 | sed -n 's/^report-id: //p')"
+printf 'edited by hand: %s/work %s ping @editor\n' "$FAKEHOME" "$EMAIL" >>"$HOME/.himmel/reports/$EID.md"
+HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$EID" --yes >/dev/null 2>&1
+eq "a hand-edited draft sends" "$?" "0"
+hasnt "sent body: a hand-added home path is redacted" "$(cat "$GH_BODY")" "$FAKEHOME"
+hasnt "sent body: a hand-added email is redacted" "$(cat "$GH_BODY")" "$EMAIL"
+has "sent body: a hand-added @name is wrapped" "$(cat "$GH_BODY")" "${BT}@editor${BT}"
 
 # empty input is refused
 : >"$TMP/empty.txt"

@@ -8,8 +8,9 @@ draft  redacts the text, writes ~/.himmel/reports/<id>.md (the issue draft), a l
        ~/.himmel/known-findings.local.json (KNOWN_FINDINGS_FILE accepts it), and one row in
        ~/.himmel/state/user-reports.jsonl (friction.py counts it as a user-reported over-deny).
        Nothing leaves the machine.
-send   files the draft on the himmel issue tracker with `gh issue create` and only with --yes;
-       without it exits 4 and sends nothing.
+send   redacts the stored draft again (a hand edit cannot carry a path or an email out), then files it on the
+       himmel issue tracker with `gh issue create` and only with --yes; without it exits 4 and sends nothing.
+       A bare @name in the text is wrapped in backticks, so the issue notifies nobody.
 
 Exit: 0 ok, 2 bad input, 3 the redacted draft still trips gitleaks (send also refuses when gitleaks is not
 installed), 4 send without --yes.
@@ -63,6 +64,9 @@ def lessons_file():
     return os.path.join(home(), '.himmel', 'known-findings.local.json')
 
 
+MENTION_RE = re.compile(r'(?<![\w`/@])@([A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9._-]+)?)')
+
+
 def redact(text):
     for rx, sub in SECRET_RES:
         text = rx.sub(sub, text)
@@ -70,7 +74,7 @@ def redact(text):
     if len(h) > 1:
         text = text.replace(h, '~')
     text = re.sub(r'/(?:home|Users)/[^/\s]+', '~', text)
-    return text
+    return MENTION_RE.sub(r'`@\1`', text)
 
 
 def leak_check(text):
@@ -228,13 +232,17 @@ def cmd_send(a):
     if os.path.exists(sent):
         print('himmel-report: draft %s was already sent; not sending again.' % a.id)
         return 0
-    body = open(path).read()
+    body = redact(open(path).read())
     if not leak_check(body):
         print('himmel-report: gitleaks flagged the draft or is not installed; not sent.', file=sys.stderr)
         return 3
     title = body.splitlines()[0].lstrip('# ').strip()
     gh = os.environ.get('HIMMEL_REPORT_GH') or 'gh'
-    rc = subprocess.run([gh, 'issue', 'create', '-R', ISSUE_REPO, '--title', title, '--body-file', path]).returncode
+    with tempfile.TemporaryDirectory(prefix='himmel-report-') as d:
+        out = os.path.join(d, 'body.md')
+        with open(out, 'w') as f:
+            f.write(body)
+        rc = subprocess.run([gh, 'issue', 'create', '-R', ISSUE_REPO, '--title', title, '--body-file', out]).returncode
     if rc == 0:
         write_atomic(sent, '')
     return rc
