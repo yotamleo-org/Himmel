@@ -160,6 +160,15 @@ check "a themes dir that is a symlink into specs/lessons: exit 1" 1 "$?"
 check "and nothing was written through it" 0 "$(find "$W/x/specs/lessons" -type f | wc -l | tr -d ' ')"
 check "and nothing else was written either" no "$([ -e "$W/out2/2026-W43.md" ] && echo yes || echo no)"
 
+# --- a doc name carrying a second key cannot cite that key ----------------------------------------------
+mkdir -p "$W/dn/u/himmel"
+printf '# HIMMEL-3\n\n## Results\n\n- 09:05 BLOCKED — x\n- 09:10 HALTED — y\n' > "$W/dn/u/himmel/HIMMEL-3.related.HIMMEL-99.2026-10-22.md"
+envelope "$W/env.json" '{"week":"2026-W43","entries":[{"key":"HIMMEL-3","outcome":"halted","decision":"","lesson":""}],"themes":[],"proposals":[]}'
+HIMMEL_BILLED_OK=1 COMPOUND_CLAUDE="$W/bin/claude-stub" COMPOUND_PREFLIGHT_CMD="$W/bin/pf-ok" bash "$SUT" --root "$W/dn" --bucket "$W/dn/u/himmel" --mirror "$MIR" --since-days 0 --week 2026-W43 --out-dir "$W/dn/out" --apply >/dev/null 2>&1
+check "a doc name with a second key: exit 0" 0 "$?"
+check "and the weekly note does not cite the second key" no "$(has "$W/dn/out/2026-W43.md" 'HIMMEL-99')"
+check "and the weekly note still cites the doc's own key" yes "$(has "$W/dn/out/2026-W43.md" 'HIMMEL-3')"
+
 # --- a fenced JSON result is accepted ---------------------------------------------------------------
 rm -rf "$REV"
 # shellcheck disable=SC2016  # the backticks are the literal fence

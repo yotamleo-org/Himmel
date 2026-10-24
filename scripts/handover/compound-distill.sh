@@ -272,7 +272,9 @@ for e in out["entries"]:
     pr, sha = r["pr"], r["sha"]
     if pr or sha:
         lines.append("- PR: %s sha: %s" % ("#" + pr.lstrip("#") if pr else "-", sha or "-"))
-    lines.append("- docs: %s" % ", ".join(r["docs"]))
+    own = r["key"]
+    docs = [KEY.sub(lambda m: m.group(0) if m.group(0) == own else "KEY-?", d) for d in r["docs"]]
+    lines.append("- docs: %s" % ", ".join(docs))
     lines.append("")
 with open(os.path.join(dest, week + ".md"), "w", encoding="utf-8") as fh:
     fh.write("\n".join(lines))
