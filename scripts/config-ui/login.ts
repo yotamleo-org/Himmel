@@ -1,8 +1,9 @@
 // The UI login: one operator user whose password is kept as a scrypt hash, sessions held in memory.
 // ponytail: the hash lives in a mode-600 file (~/.himmel/state/ui-login, the same rules as token-file.ts), upgrade path is the keyring vault backend, HIMMEL-7147.
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { readPrivateFile } from "./token-file";
 
 export const SESSION_COOKIE = "himmel_session";
 export const SESSION_TTL_MS = 60 * 60 * 1000;
@@ -30,12 +31,9 @@ export function writeLogin(path: string, user: string, password: string): void {
 
 // null when no login is set; throws on a file that could have been planted or read by others.
 export function readLogin(path: string): Login | null {
-  let st: ReturnType<typeof lstatSync>;
-  try { st = lstatSync(path); } catch { return null; }
-  if (st.isSymbolicLink()) throw new Error(`login file ${path} is a symlink; refusing it`);
-  if (!st.isFile()) throw new Error(`login file ${path} is not a regular file; refusing it`);
-  if ((st.mode & 0o777) !== 0o600) throw new Error(`login file ${path} must be mode 600 (is ${(st.mode & 0o777).toString(8)}); chmod 600 it or set the login again`);
-  const o = JSON.parse(readFileSync(path, "utf8"));
+  const raw = readPrivateFile(path, "login file", "set the login again");
+  if (raw === null) return null;
+  const o = JSON.parse(raw);
   if (typeof o?.user !== "string" || !HEX.test(o?.salt ?? "") || !HEX.test(o?.hash ?? "") || o.hash.length !== KEYLEN * 2) throw new Error(`login file ${path} is malformed; set the login again`);
   return { user: o.user, salt: o.salt, hash: o.hash };
 }

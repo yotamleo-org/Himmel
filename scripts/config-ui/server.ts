@@ -686,12 +686,14 @@ async function readPassword(): Promise<string> {
     for await (const line of console) return line;
     return "";
   };
-  if (tty) execFileSync("stty", ["-echo"], { stdio: "inherit" });
+  const echo = () => execFileSync("stty", ["echo"], { stdio: "inherit" });
+  const interrupted = () => { echo(); process.exit(130); }; // Ctrl-C at the prompt skips the finally below
+  if (tty) { execFileSync("stty", ["-echo"], { stdio: "inherit" }); process.once("SIGINT", interrupted); }
   try {
     const pw = await ask("password: ");
     if (tty) { process.stderr.write("\n"); if ((await ask("again: ")) !== pw) throw new Error("the two passwords differ"); process.stderr.write("\n"); }
     return pw;
-  } finally { if (tty) execFileSync("stty", ["echo"], { stdio: "inherit" }); }
+  } finally { if (tty) { process.off("SIGINT", interrupted); echo(); } }
 }
 
 if (import.meta.main && process.argv.includes("--set-login")) {
