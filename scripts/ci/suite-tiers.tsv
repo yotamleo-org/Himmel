@@ -349,6 +349,7 @@ scripts/handover/console-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/console-kit/test-console-budget.sh	pr	static-gate
 scripts/handover/console-kit/test-console-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-console-wait-b.sh	quarantine	cap-exceeded flakes, HIMMEL-6547; second half of test-console-wait.sh, HIMMEL-6742
+scripts/handover/console-kit/test-console-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in console-wait.sh, HIMMEL-7386
 scripts/handover/console-kit/test-console-wait-r0.sh	local	behaviour suite, the script relay (R0) of console-wait.sh, HIMMEL-6538
 scripts/handover/console-kit/test-console-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
 scripts/handover/console-kit/test-cr-disposition.sh	pr	trust-path
