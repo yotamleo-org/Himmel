@@ -464,7 +464,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
       if (req.method === "GET" && path === "/api/feed") {
-        if (new URL(req.url).searchParams.get("refresh") === "1") feedLast = null; // the refresh button waits for a probe, never the cached report
+        if (new URL(req.url).searchParams.get("refresh") === "1") { feedRun = null; feedLast = null; feedEpoch++; } // the refresh button waits for a probe it started: never the cached report, never a run already in flight
         return feedRoute();
       }
       if (path === "/api/tool-health") {
