@@ -7241,4 +7241,16 @@ echo "$outCRw" | jq -e '.actual == "present"' >/dev/null \
   || fail "cadence-runs-pipeline: a schedule configured weekly must be judged on 7 days, so a 3-day-old run is healthy (got: $outCRw)"
 echo "ok: cadence-runs-pipeline — the interval follows the operator's own schedule"
 
+# qmd armed daily (its default) and graphmap publish armed every 6h (its default) run less often than the manifest's fallback: the interval is read from the armed cron, so a 10h-old run is healthy for both.
+cr_10h=$("$node_bin" -e "const d=new Date(Date.now()-10*3600000);const p=(n)=>String(n).padStart(2,'0');console.log(d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()))")
+cr_variant "$cr_fix/qmd.txt" healthy | sed -E "s/\(cron: [^)]*\)/(cron: 00 05 * * *)/; s/(qmd-reindex\.log \(last write: )[0-9-]+ [0-9:]+\)/\1$cr_10h)/" > "$cr_cur"
+outCRq=$(run_cr qmd)
+echo "$outCRq" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-qmd: a daily-armed reindex last run 10h ago is healthy (got: $outCRq)"
+cr_variant "$cr_fix/graphmap.txt" healthy | sed -E "s|(HIMMEL-GraphPublish-Himmel \(cron: [0-9]+ )[^ ]+|\1*/6|; s/(graphmap-publish-himmel\.log \(last write: )[0-9-]+ [0-9:]+\)/\1$cr_10h)/" > "$cr_cur"
+outCRp=$(run_cr graphmap)
+echo "$outCRp" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-graphmap: a publish armed every 6h last run 10h ago is not stale (got: $outCRp)"
+echo "ok: cadence-runs — the interval follows the armed cron, not the manifest default"
+
 echo "PASS"

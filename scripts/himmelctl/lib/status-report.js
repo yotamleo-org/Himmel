@@ -477,7 +477,8 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       }
       if (item.probe && item.probe.type === 'cadence-runs' && probe.cleanAbsence) {
         severity = 'n/a';
-        detail = `${probe.detail} — opt-in (arm it with bash ${item.probe.script} arm)`;
+        // a Windows-only row off Windows has nothing to arm: its detail says so and offers no arm command
+        detail = probe.detail.includes('n/a on this platform') ? probe.detail : `${probe.detail} — opt-in (arm it with bash ${item.probe.script} arm)`;
       }
       if (item.id === 'engine-allowlist' && probe.cleanAbsence) {
         severity = 'n/a';

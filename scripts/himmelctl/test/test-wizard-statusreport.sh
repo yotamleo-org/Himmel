@@ -1246,4 +1246,42 @@ echo "$outN" | jq -e '[.items[].detail | contains("whole-run deadline")] | any' 
   || fail "case n: probes never reached must name the whole-run deadline (got: $outN)"
 echo "ok: case n — a sweep over hung probes ends near the whole-run deadline and reports every probe degraded"
 
+# ── case o: a cadence-runs row for a Windows-only script, read off Windows, is n/a and offers no arm command ──
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *)
+manifestO="$work/manifestO.json"
+cat > "$manifestO" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "cadence-runs-codex-sweep",
+      "kind": "scheduler",
+      "scopes": ["project"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "cadence-runs", "script": "scripts/cleanup/codex-sweep-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-CodexOrphanSweep", "intervalHours": 4}] }
+    }
+  ]
+}
+JSON
+MANIFEST_O_PATH="$(winpath "$manifestO")"
+export MANIFEST_O_PATH
+caseO_dir="$work/caseO-target"; mkdir -p "$caseO_dir"
+outO=$(cd "$caseO_dir" && HOME="$work/homeH" USERPROFILE="$(winpath "$work/homeH")" HIMMELCTL_CACHE_DIR="$(winpath "$work/cacheH")" "$node_bin" -e "
+const { statusReport } = require(process.env.STATUS_REPORT_LIB);
+const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_O_PATH, 'utf8'));
+const answers = {
+  role: 'adopter', tier: 'standard', scope: 'project',
+  vault: { mode: 'default-template', path: '' },
+  handover: { mode: 'none', path: '' },
+  pluginSet: 'lean', lanes: [], alwaysOn: false,
+};
+console.log(JSON.stringify(statusReport({ manifest, scope: 'project', targetPath: process.cwd(), answers })));
+")
+echo "$outO" | jq -e '.items[0].severity == "n/a" and (.items[0].detail | contains("n/a on this platform")) and ((.items[0].detail | contains("arm it with")) | not)' >/dev/null \
+  || fail "case o: a Windows-only cadence-runs row off Windows must read n/a without an arm instruction (got: $outO)"
+echo "ok: case o — a Windows-only cadence row off Windows is n/a and does not tell the operator to arm it"
+;; esac
+
 echo "PASS"

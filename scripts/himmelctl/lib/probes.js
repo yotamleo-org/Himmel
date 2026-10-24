@@ -2929,6 +2929,22 @@ function schedulerRegisteredSchedules(stdout) {
   return registered;
 }
 
+// How often a five-field cron expression fires, in hours, or undefined when
+// the text is not one. A weekday or day-of-month field makes it weekly or
+// monthly, a stepped or starred hour field fires every N hours (hourly for
+// "*"), anything else once a day, and a stepped minute field every N minutes.
+function cronIntervalHours(expr) {
+  const f = expr.trim().split(/\s+/);
+  if (f.length !== 5 || !f.every((x) => /^[\d*,/-]+$/.test(x))) return undefined;
+  const [min, hour, dom, , dow] = f;
+  if (dow !== '*') return 168;
+  if (dom !== '*') return 744;
+  const minStep = /^\*\/(\d+)$/.exec(min);
+  if (hour === '*') return minStep ? Number(minStep[1]) / 60 : 1;
+  const hourStep = /\/(\d+)$/.exec(hour);
+  return hourStep ? Number(hourStep[1]) : 24;
+}
+
 // The shared reader of the common cadence `status` shape (ARMED / run log /
 // last line), used by the pipeline probe above and by every cadence-runs item.
 // parseCadenceStatus keys each scheduler task by its name: whether it is
@@ -2942,6 +2958,8 @@ function parseCadenceStatus(stdout) {
     const head = /^(ARMED|UNHEALTHY|not armed)\s+(\S+)/.exec(line);
     if (head) {
       cur = tasks[head[2]] = { armed: head[1] !== 'not armed', duplicate: line.includes('[DUPLICATE:') };
+      const cron = /\((?:cron: )?([^()]+?)\)/.exec(line.slice(head[0].length));
+      if (cron) cur.intervalHours = cronIntervalHours(cron[1]);
       inPrev = false;
       continue;
     }
@@ -3111,7 +3129,9 @@ function probeCadenceRuns(item, ctx) {
   }
   // A task with a `scheduleKey` runs on the operator's own luna.cadence
   // schedule (weekly when it carries a `day`, daily otherwise), so its interval
-  // is read from that config, never the manifest's default.
+  // is read from that config; any other task is judged on the cron the status
+  // reports, and the manifest's `intervalHours` is only the fallback for a
+  // scheduler line that carries no cron.
   let schedules = {};
   if (d.tasks.some((t) => t.scheduleKey)) {
     try {
@@ -3124,7 +3144,9 @@ function probeCadenceRuns(item, ctx) {
   const armed = d.tasks.filter((t) => parsed[t.task] && parsed[t.task].armed).map((t) => ({
     ...t,
     label: t.task,
-    intervalHours: t.scheduleKey && schedules[t.scheduleKey] ? (schedules[t.scheduleKey].day ? 168 : 24) : t.intervalHours,
+    intervalHours: t.scheduleKey && schedules[t.scheduleKey]
+      ? (schedules[t.scheduleKey].day ? 168 : 24)
+      : parsed[t.task].intervalHours || t.intervalHours,
   }));
   if (armed.length === 0) {
     return { actual: 'absent', detail: `no scheduler task is armed for ${name}`, cleanAbsence: true };
