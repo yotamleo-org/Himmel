@@ -325,7 +325,7 @@ moved=" ${config_keys[*]-} ${policy_keys[*]-} ${secret_keys[*]-} "
 awk -v moved="$moved" '{ l = $0; sub(/\r$/, "", l) }
     l ~ /^[[:space:]]*#/ { print; next }
     { i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k) }
-    i && index(moved, " " k " ") { next }
+    i && k != "" && index(moved, " " k " ") { next }
     { print }' "$backup" > "$work/env.new" || {
     echo "migrate-env: could not build the new .env; no lines were removed from .env." >&2
     restore_hint

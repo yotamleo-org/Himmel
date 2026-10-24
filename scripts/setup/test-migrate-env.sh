@@ -150,6 +150,16 @@ has "a second run moves nothing" "nothing to move" "$out"
 n=$(find "$HOME/.himmel/env-backups" -type f | wc -l | tr -d ' ')
 if [ "$n" = 1 ]; then pass "a second run takes no backup"; else fail "a second run left $n backups"; fi
 
+# A line with no key name is never removed, even when a key class moves nothing.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+printf 'HANDOVER_DIR=%s\n=orphan-line\n' "$TMP/handovers" > "$TMP/st/.env"
+chmod 600 "$TMP/st/.env"
+out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
+envnow=$(cat "$TMP/st/.env")
+lacks "HANDOVER_DIR moves without USER_SLUG" "HANDOVER_DIR=" "$envnow"
+has "a move without USER_SLUG still checks the handover root" "verified: load_dotenv, load_policy, jira config reader, jira handover root, lanes resolve" "$out"
+has "a line with no key name stays in .env" "=orphan-line" "$envnow"
+
 # --- 3. A reader that still reads .env only aborts ---
 fixture_env
 cp "$FX/scripts/jira/dist/handover-root.js" "$TMP/handover-root.good.js"

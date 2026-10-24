@@ -30,10 +30,11 @@ try {
     if (keys.includes('HANDOVER_DIR')) {
       readers.push(['jira handover root', (env) => [['HANDOVER_DIR', digest(() => handoverRoot(env))]]]);
     }
-    const slugKey = ['USER_SLUG', 'HANDOVER_DIR'].find((k) => keys.includes(k));
-    if (slugKey && existsSync(join(jira, 'release/paths.js'))) {
+    // The release root is the handover root plus USER_SLUG and throws without
+    // the slug, so it checks USER_SLUG; HANDOVER_DIR is the handover root's.
+    if (keys.includes('USER_SLUG') && existsSync(join(jira, 'release/paths.js'))) {
       const { releaseRoot } = await load(join(jira, 'release/paths.js'));
-      readers.push(['jira release state', (env) => [[slugKey, digest(() => releaseRoot(env))]]]);
+      readers.push(['jira release state', (env) => [['USER_SLUG', digest(() => releaseRoot(env))]]]);
     }
   }
   const lanes = join(root, 'scripts/lanes/resolve.mjs');
