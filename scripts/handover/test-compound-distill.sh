@@ -140,6 +140,8 @@ bad "two entries for one key" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","
 rm -rf "$REV"
 envelope "$W/env.json" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","outcome":"m","decision":"","lesson":""},{"key":"HIMMEL-2","outcome":"h","decision":"","lesson":"","pr":"555","sha":"cafef00d"}],"themes":[],"proposals":[]}'
 HIMMEL_BILLED_OK=1 run --review-dir "$REV" >/dev/null 2>&1
+check "the provenance run exits 0" 0 "$?"
+check "and wrote the weekly note" yes "$([ -f "$REV/2026-W43.md" ] && echo yes || echo no)"
 check "a model-supplied PR for a key the extract has no PR for is dropped" no "$(has "$REV/2026-W43.md" '555')"
 check "and so is a model-supplied sha" no "$(has "$REV/2026-W43.md" 'cafef00d')"
 
@@ -168,7 +170,7 @@ envelope "$W/env.json" '{"week":"2026-W43","entries":[{"key":"HIMMEL-3","outcome
 HIMMEL_BILLED_OK=1 COMPOUND_CLAUDE="$W/bin/claude-stub" COMPOUND_PREFLIGHT_CMD="$W/bin/pf-ok" bash "$SUT" --root "$W/dn" --bucket "$W/dn/u/himmel" --mirror "$MIR" --since-days 0 --week 2026-W43 --out-dir "$W/dn/out" --apply >/dev/null 2>&1
 check "a doc name with a second key: exit 0" 0 "$?"
 check "and the weekly note does not cite the second key" no "$(has "$W/dn/out/2026-W43.md" 'HIMMEL-99')"
-check "and the weekly note still cites the doc's own key" yes "$(has "$W/dn/out/2026-W43.md" 'HIMMEL-3')"
+check "and the weekly note still cites the doc's own key on its docs line" yes "$(has "$W/dn/out/2026-W43.md" '^- docs:.*HIMMEL-3')"
 
 # --- a fenced JSON result is accepted ---------------------------------------------------------------
 rm -rf "$REV"
