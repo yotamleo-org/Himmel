@@ -12,7 +12,7 @@ import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
 import { fetchVersions, setFixVersion } from './versions.js';
-import { readAdmissions } from './admissions-ledger.js';
+import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
   apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, readMirror, reopen, request as releaseRequest, rmRun, rule, state, takeover, withdraw,
@@ -73,7 +73,7 @@ export function ctxFor(release: string, mirrorRoot?: string): Ctx {
   const keyPath = releaseKeyPath(release);
   // A test run never writes the operator's live release state.
   for (const p of process.env.VITEST ? [dir, keyPath] : []) {
-    if (!p.startsWith(tmpdir())) throw new Error(`release: ${p} is outside the temp dir under vitest; set HIMMEL_RELEASE_STATE_DIR and HIMMEL_RELEASE_KEY_DIR`);
+    if (!underTmp(p)) throw new Error(`release: ${p} is outside the temp dir under vitest; set HIMMEL_RELEASE_STATE_DIR and HIMMEL_RELEASE_KEY_DIR`);
   }
   return {
     release, dir, keyPath, env: process.env, now: () => new Date(),
@@ -82,6 +82,7 @@ export function ctxFor(release: string, mirrorRoot?: string): Ctx {
 }
 
 const PLACEHOLDER = /^(tbd|todo|test|testing|placeholder|wip|n\/?a|x+|w+|-+|\.+)$/i;
+const isPr = (pr: unknown): boolean => Number.isInteger(pr) && (pr as number) > 0;
 
 /**
  * Refuses a request the release manager could only reject: a placeholder why,
@@ -101,7 +102,7 @@ export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: st
   if (!snap || versions.length === 0) return;
   const held = snap.fixVersions.join(', ') || 'no version';
   const terminal = terminalOf(snap);
-  if (o.verb === 'INTAKE' && terminal !== null && !o.evidence?.['pr'] && snap.fixVersions.every((v) => !versions.includes(v))) {
+  if (o.verb === 'INTAKE' && terminal !== null && !isPr(o.evidence?.['pr']) && snap.fixVersions.every((v) => !versions.includes(v))) {
     throw new Error(`release request: ${o.key} is closed (${terminal}) in ${held}, outside ${ctx.release} (${versions.join(', ')}); a closed ticket outside the release takes an INTAKE only as a Done-fold naming its merged PR (--evidence '{"pr":N}')`);
   }
   if (o.verb !== 'INTAKE' && o.from_v !== null && !snap.fixVersions.includes(o.from_v)) {

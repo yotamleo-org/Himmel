@@ -354,6 +354,8 @@ describe('jira release request refuses junk (HIMMEL-7434)', () => {
       .rejects.toThrow(/K-77 is closed .*outside R1/);
     await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-1', '--to', 'v1', '--why', 'filed to the backlog: found work'))
       .rejects.toThrow(/K-1 is closed/);
+    await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-1', '--to', 'v1', '--why', 'merged in PR #12: Done folds into v1', '--evidence', '{"pr":true}'))
+      .rejects.toThrow(/K-1 is closed/);
     await ask(mir, '--verb', 'INTAKE', '--key', 'K-1', '--to', 'v1', '--why', 'merged in PR #12: Done folds into v1', '--evidence', '{"pr":12}');
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });

@@ -302,11 +302,14 @@ export async function versionReady(
 
 // The fixVersion moves first, each change read back, so a failed move throws
 // before the label or the ledger row claims a deferral that did not happen.
+// The target goes on before the source comes off, so a refused target leaves
+// the ticket where it was.
 export async function deferTicket(key: string, version: string, reason: string | undefined, to?: string): Promise<string> {
   if (!hasConsoleMarker()) throw new Error('version-defer needs the console marker: only the console defers a frozen ticket');
   if (!reason?.trim()) throw new Error('version-defer: --reason is mandatory');
-  await setFixVersion(key, 'remove', version);
+  if (to === version) throw new Error(`version-defer: --to ${to} is the version the ticket is deferred from`);
   if (to) await addFixVersionGated(key, to, {});
+  await setFixVersion(key, 'remove', version);
   await addLabel(key, 'deferred');
   appendAdmission({ version, key, kind: 'deferral', reason: reason.trim() });
   return `${key} deferred from ${version}${to ? ` to ${to}` : ''}: ${reason.trim()}`;

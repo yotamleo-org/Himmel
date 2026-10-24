@@ -31,6 +31,10 @@ describe('admissions ledger (HIMMEL-6776)', () => {
   it('refuses a ledger outside the temp dir under vitest (HIMMEL-7434)', () => {
     process.env['HIMMEL_ADMISSIONS_LEDGER'] = '/srv/handovers/admissions-ledger.jsonl';
     expect(() => appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' })).toThrow(/outside the temp dir/);
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = join(tmpdir(), '..', 'srv', 'admissions-ledger.jsonl');
+    expect(() => appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' })).toThrow(/outside the temp dir/);
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = tmpdir() + '-sibling/admissions-ledger.jsonl';
+    expect(() => appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' })).toThrow(/outside the temp dir/);
   });
 
   it('HIMMEL_ADMISSIONS_LEDGER overrides the path', () => {

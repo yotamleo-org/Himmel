@@ -1,6 +1,6 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { handoverRoot } from '../handover-root.js';
 
 // Append-only record of every ticket admitted into a version past the intake
@@ -21,10 +21,16 @@ export interface Admission {
 
 export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by' | 'ruling'>;
 
+/** True when `path` resolves strictly inside the OS temp dir. */
+export function underTmp(path: string): boolean {
+  const rel = relative(tmpdir(), resolve(path));
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
 function admissionsLedgerPath(): string {
   const path = process.env['HIMMEL_ADMISSIONS_LEDGER'] || join(handoverRoot(), 'admissions-ledger.jsonl');
   // A test run never writes the operator's live ledger.
-  if (process.env['VITEST'] && !path.startsWith(tmpdir())) {
+  if (process.env['VITEST'] && !underTmp(path)) {
     throw new Error(`admissions ledger: ${path} is outside the temp dir under vitest; set HIMMEL_ADMISSIONS_LEDGER`);
   }
   return path;

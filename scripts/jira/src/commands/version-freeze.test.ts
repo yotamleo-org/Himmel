@@ -461,6 +461,16 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(w.fixVersions['HIM-2']).toEqual(['v1.1.4']);
   });
 
+  it('version-defer --to a refused target leaves the source version on the ticket and writes no ledger row', async () => {
+    const w = { description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.4'] } };
+    world(w);
+    await expect(
+      run(['version-defer', 'HIM-2', '--version', 'v1.1.4', '--to', 'v1.1.3', '--reason', 'moves to v1.1.3']),
+    ).rejects.toThrow(/is frozen/);
+    expect(w.fixVersions['HIM-2']).toEqual(['v1.1.4']);
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
   it('version-defer fails loudly and writes no ledger row when the version stays on the ticket', async () => {
     world({ description: FROZEN_DESC });
     mockRequest.mockImplementation(async (method: string, path: string) =>
