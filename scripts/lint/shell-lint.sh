@@ -70,6 +70,12 @@
 #                 zero (08, 09) is octal there and errors. Normalize with
 #                 $((10#$var)). A single-bracket [ "$m" -gt 5 ] is decimal and
 #                 never flagged. Exempt via a same-line `# octal-ok: <reason>`.
+#   [kill-after]  a soft kill, then a bare fixed `sleep <n>`, then `kill -9`/`-KILL`
+#                 (on consecutive code lines, or all on one line). The grace is
+#                 wall-clock: on a loaded runner the process has not settled when
+#                 the KILL lands, so the cleanup it was trapping never runs. Poll
+#                 `kill -0` against a bounded deadline instead. Exempt via
+#                 `# kill-after-ok: <reason>` on the sleep or the KILL line.
 #
 # Baseline: rows of `path<TAB>tag<TAB>count`. A (file, tag) with at most `count`
 # findings is accepted; one above it reports every finding of that tag in the
@@ -275,6 +281,28 @@ _octal_arith_hits() {
             if (isdate) tracked[lhs] = 1; else delete tracked[lhs]
         }
         if (hit && line !~ /octal-ok/) print NR ":" line
+    }' "$1"
+}
+
+# Print "lineno:line" for the fixed sleep of every soft-kill / sleep / hard-kill
+# sequence (see [kill-after] above). Comment lines between the three are skipped;
+# any other line breaks the sequence, so a poll loop around the sleep is clean.
+# ponytail: consecutive-line state machine; a sleep behind a function call or variable is unseen
+_kill_after_hits() {
+    awk '
+    function hard(l) { return l ~ /(^|[;&|[:space:]])kill[[:space:]]+-(9|KILL|s[[:space:]]+KILL)([^A-Za-z0-9]|$)/ }
+    function soft(l) { return l ~ /(^|[;&|[:space:]])kill[[:space:]]+(-?["$]|[0-9])/ || l ~ /(^|[;&|[:space:]])kill[[:space:]]+-(TERM|15|INT|HUP|s[[:space:]]+(TERM|INT|HUP))[[:space:]]+["$0-9-]/ }
+    function fixed(l) { return l ~ /(^|[;&|[:space:]])sleep[[:space:]]+[0-9.]+[[:space:]]*(;|$|#)/ }
+    FNR == 1 { st = 0 }
+    /^[[:space:]]*(#|$)/ { next }
+    {
+        l = $0
+        if (soft(l) && fixed(l) && hard(l)) { if (l !~ /kill-after-ok/) print FNR ":" l; st = 0; next }
+        if (st == 2 && hard(l)) { if (l !~ /kill-after-ok/ && sl !~ /kill-after-ok/) print sn ":" sl; st = 0; next }
+        if (st == 1 && fixed(l) && hard(l)) { if (l !~ /kill-after-ok/) print FNR ":" l; st = 0; next }
+        if (st == 1 && l ~ /^[[:space:]]*sleep[[:space:]]+[0-9.]+[[:space:]]*(;|$|#)/) { st = 2; sn = FNR; sl = l; next }
+        if (soft(l) && fixed(l) && !hard(l)) { st = 2; sn = FNR; sl = l; next }
+        st = (soft(l) && !hard(l)) ? 1 : 0
     }' "$1"
 }
 
@@ -628,6 +656,11 @@ EOF
     _oa="$(_octal_arith_hits "$f")"
     _report_hits octal-arith "$_oa" \
         "leading-zero operand is octal in arithmetic (08/09 error); normalize with \$((10#\$var)) or '# octal-ok: <reason>'"
+
+    # [kill-after] — a fixed wall-clock grace between a soft kill and KILL.
+    _ka="$(_kill_after_hits "$f")"
+    _report_hits kill-after "$_ka" \
+        "fixed grace before KILL loses the race on a loaded runner; poll kill -0 against a bounded deadline, or '# kill-after-ok: <reason>'"
 
     # [gnu-flag] — GNU-only flags (sed -i no-suffix, date -d, readlink -f, grep
     # -P, stat -c). Lines that already pair the GNU form with its BSD alternative

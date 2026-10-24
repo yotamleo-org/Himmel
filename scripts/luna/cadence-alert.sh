@@ -79,7 +79,7 @@ case "${1:-}" in
         [ -n "$leg" ] && rm -f "$dedupe_dir/$(_slug "$leg")".*
         ;;
     *)
-        echo "usage: cadence-alert.sh fail <leg> <reason> <log> | clear <leg>" >&2
+        echo "usage: cadence-alert.sh fail <leg> <reason> <log> [<cause> [<do>]] | clear <leg>" >&2
         ;;
 esac
 exit 0
