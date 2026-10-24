@@ -64,6 +64,10 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
 - **Mechanism.** `SKIP_LIST` in `scripts/ci/run-shell-tests.sh` lists suites the runner
   does not run. A suite that fails only on a non-Linux host goes in `SKIP_LIST_NON_LINUX`
   instead, so Linux CI still runs it. One line per suite, full repo-relative path.
+- **Tier quarantine.** A `quarantine` row in `scripts/ci/suite-tiers.tsv` keeps the suite
+  running and reports a failure as `[QUARANTINE]` without failing the run, in every tier
+  mode: a PR, a main push, a schedule and a dispatch run alike. The shard-manifest
+  verifier records its `ran rc!=0` line as a NOTE, never as passed coverage.
 - **A ticket is required.** The entry's trailing comment carries the ticket ID and the
   reason. An entry without a ticket is a silent skip, which is not allowed.
 - **Never silently.** A quarantined suite is "uncovered", never "CI verifies": a PR or

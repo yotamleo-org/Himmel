@@ -875,7 +875,8 @@ esac
 # SUITE_TIER_MODE=pr reads scripts/ci/suite-tiers.tsv (path<TAB>tier<TAB>reason)
 # instead of the table above: a suite runs when it is impacted, when its tier is
 # pr, flow or quarantine, or when it has no row; a local suite runs only when
-# impacted. A quarantine suite that fails is reported and never fails the run.
+# impacted. A quarantine suite that fails is reported and never fails the run,
+# in every mode (the other modes read only its quarantine rows).
 # SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
 tiers_local_nl=""
 tiers_quarantine_nl=""
@@ -890,6 +891,17 @@ if [ "$SUITE_TIER_MODE" = "pr" ]; then
   tiers_local_nl="
 ${tiers_local_nl}
 "
+  tiers_quarantine_nl="
+${tiers_quarantine_nl}
+"
+elif [ -r "${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}" ]; then
+  # Every other mode forgives a quarantine failure too (a main push or a
+  # dispatch run is `all`); an unreadable file there quarantines nothing.
+  SUITE_TIERS_TSV="${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}"
+  if ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV"); then
+    printf 'ERROR: could not read %s.\n' "$SUITE_TIERS_TSV" >&2
+    exit 2
+  fi
   tiers_quarantine_nl="
 ${tiers_quarantine_nl}
 "
@@ -4539,7 +4551,7 @@ LIVEMSGS
   manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
-  if [ "$rc" -ne 0 ] && [ "$SUITE_TIER_MODE" = "pr" ]; then
+  if [ "$rc" -ne 0 ]; then
     case "$tiers_quarantine_nl" in
       *"
 ${suite_key#"$tier_repo_root"/}
