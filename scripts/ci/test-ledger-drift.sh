@@ -146,7 +146,7 @@ else
   fail "LD6: .github/workflows/ledger-drift.yml missing, not schedule/dispatch-only, does not run ledger-drift.sh, or a mutant (indented pull_request, path only in a comment) passed"
 fi
 
-echo "== LD7: no ledger row is above 900s, 75% of the runner's 1200s per-suite cap =="
+echo "== LD7: no ledger row is above 900s, 75% of the 1200s cap the longest suites get =="
 # A suite near the cap is killed with no assertion failing as soon as a loaded
 # runner is slower than the ledger run. The control row is the real line from
 # green main run 40030573258 (shell-unit-shard 3): [PASS] scripts/test-adopt.sh (969s).

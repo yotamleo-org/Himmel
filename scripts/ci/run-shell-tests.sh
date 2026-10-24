@@ -402,6 +402,10 @@ _suite_timeout_for() {
       # floor). 1200s is about 2x the worst measured CI time; the global
       # default and SUITE_RUN_BUDGET runaway backstop stay unchanged.
       printf '1200' ;;
+    scripts/test-adopt-features.sh|*/scripts/test-adopt-features.sh)
+      # Split out of test-adopt.sh: 481s on Linux CI (run 40074354987), 80% of
+      # the 600s default, so it takes the same 1200s cap as the half it left.
+      printf '1200' ;;
     scripts/test-check-ci.sh|*/scripts/test-check-ci.sh)
       # ~110 cases, each spawning dozens of gh-stub processes, so
       # it is the most load-sensitive suite here: measured 1009s on a swept box
