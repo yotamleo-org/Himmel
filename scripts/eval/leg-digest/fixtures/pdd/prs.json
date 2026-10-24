@@ -28,5 +28,8 @@
    "commits": []},
   {"number": 21, "title": "feat(x): [HIMMEL-4] a DoD heading with nothing under it",
    "body": "RED: failed first.\nGREEN: passes now.\n",
+   "commits": [{"authoredDate": "2026-10-10T09:00:00Z"}]},
+  {"number": 22, "title": "feat(x): [HIMMEL-5] sections with a blank line under the heading",
+   "body": "RED: failed first.\nGREEN: passes now.\n",
    "commits": [{"authoredDate": "2026-10-10T09:00:00Z"}]}
 ]

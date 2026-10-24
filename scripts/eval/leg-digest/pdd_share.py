@@ -36,14 +36,18 @@ FRONT_RE = re.compile(r'^created:\s*"([^"]+)"', re.M)
 # A section is a heading line (bare or markdown) with something under it.
 # The line under it must be content: not another heading, not another section's bare name.
 CONTENT = r"[ \t]*(?!#|(?:DoD|Definition of Done|Proof|Plan|What|Why)[ \t]*:?[ \t]*$)\S"
-DOD_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?(?:DoD|Definition of Done)[ \t]*:?[ \t]*\n" + CONTENT, re.M | re.I)
-PROOF_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?Proof[ \t]*:?[ \t]*\n" + CONTENT, re.M | re.I)
+GAP = r"[ \t]*\n(?:[ \t]*\n)*"  # the heading line's end, then any blank lines
+DOD_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?(?:DoD|Definition of Done)[ \t]*:?" + GAP + CONTENT, re.M | re.I)
+PROOF_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?Proof[ \t]*:?" + GAP + CONTENT, re.M | re.I)
 # ponytail: the words stand for the evidence - real bodies write "RED first, ...", "RED before the implementation,
 # GREEN after:" and "## RED / GREEN", so a line-structured match loses 39 of 110 real RED mentions; a sentence that
 # only mentions the words still counts. Upgrade: require a result (a pass/fail count) on the RED and GREEN line.
 RED_RE = re.compile(r"\bRED\b")
 GREEN_RE = re.compile(r"\b(?:GREEN|[Gg]reen)\b")
-POOL_EXTRA = 40  # gh pr list orders by creation; the extra PRs make the mergedAt cut safe for PRs merged late
+# ponytail: the list is cut by updated time (a merge bumps it, so every PR merged after the cut-off is in), and the
+# extra PRs absorb older PRs touched later; more than POOL_EXTRA such PRs would push one out. Upgrade: page the
+# GraphQL search by `merged:` date.
+POOL_EXTRA = 40
 CR_BLOCK = "<!-- This is an auto-generated comment"
 
 
@@ -140,11 +144,11 @@ def gh_json(*args):
 
 
 def fetch(limit):
-    """The `limit` most recently merged PRs. `gh pr list` orders by creation, so the list over-fetches and is cut
-    by mergedAt; then one view per PR for its commits: asking the list for commits and their authors together
-    passes GitHub's GraphQL node limit above ~50 PRs."""
-    prs = gh_json("pr", "list", "--state", "merged", "--limit", str(limit + POOL_EXTRA), "--json",
-                  "number,title,body,mergedAt")
+    """The `limit` most recently merged PRs. `gh pr list` orders by creation, so the list is asked for updated-time
+    order, over-fetched and cut by mergedAt; then one view per PR for its commits: asking the list for commits and
+    their authors together passes GitHub's GraphQL node limit above ~50 PRs."""
+    prs = gh_json("pr", "list", "--state", "merged", "--search", "sort:updated-desc", "--limit",
+                  str(limit + POOL_EXTRA), "--json", "number,title,body,mergedAt")
     prs = sorted(prs, key=lambda p: p.get("mergedAt") or "", reverse=True)[:limit]
     for pr in prs:
         try:
