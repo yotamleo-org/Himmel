@@ -440,6 +440,8 @@ scripts/handover/test-bugs-dashboard.sh	local	behaviour suite, 0 catches in the 
 scripts/handover/test-bus-idle-waker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-cache-health-line.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-cap-reset-time.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-compound-distill.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/test-compound-extract.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-flush.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-friction-gate-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-generate-morning-briefing.sh	local	behaviour suite, 0 catches in the 400-PR audit window
