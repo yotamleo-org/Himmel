@@ -113,7 +113,7 @@
       "rows": [
         "node", "npm-less-node", "bun", "jq", "git", "python3", "uv", "shellcheck", "gitleaks", "pre-commit",
         "gh", "rtk", "doctor:C20-node", "probe-disagree:C20-node", "doctor:C39-gtimeout-darwin",
-        "doctor:C62-oxlint-runner"
+        "doctor:C62-oxlint-runner", "doctor:C73-bun-compiled"
       ]
     }
   ]

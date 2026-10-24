@@ -3354,6 +3354,41 @@ check_c72_design_mcp_auth() {
     fi
 }
 
+# --- C73-bun-compiled: a bun build --compile binary embeds a Bun older than .bun-version ---
+# A compiled binary carries its own Bun runtime, so bumping the system bun never
+# patches it (the CodeRabbit CLI embeds its own Bun, older than every pin).
+# Scans executable regular files over HIMMEL_DOCTOR_BUN_MIN_KB (default 10 MB) in
+# ~/.local/bin, ~/.bun/bin, ~/.himmel and /usr/local/bin at -maxdepth 3 for the
+# release URL a compiled binary embeds (bun/releases/download/bun-vX.Y.Z/) and
+# WARNs when the highest such version sorts below .bun-version. Report only: the
+# fix is a vendor build on the newer Bun, never a hand patch.
+# Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE.
+check_c73_bun_compiled() {
+    local vfile="${HIMMEL_DOCTOR_BUN_VERSION_FILE:-$REPO_ROOT/.bun-version}" pin dirs d f emb scanned=0 stale=0
+    local min_kb="${HIMMEL_DOCTOR_BUN_MIN_KB:-10240}" home="${HOME:-}"
+    local -a dirlist=()
+    pin="$(tr -d '[:space:]' < "$vfile" 2>/dev/null || true)"
+    if [ -z "$pin" ]; then emit INFO C73-bun-compiled "no .bun-version at $vfile -- nothing to compare compiled binaries against"; return 0; fi
+    case "$min_kb" in ''|*[!0-9]*) min_kb=10240 ;; esac
+    dirs="${HIMMEL_DOCTOR_BUN_SCAN_DIRS:-$home/.local/bin:$home/.bun/bin:$home/.himmel:/usr/local/bin}"
+    IFS=: read -r -a dirlist <<< "$dirs"
+    for d in "${dirlist[@]}"; do
+        [ -d "$d" ] || continue
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            emb="$(grep -ao 'bun/releases/download/bun-v[0-9]*\.[0-9]*\.[0-9]*' "$f" 2>/dev/null | sed 's/.*bun-v//' | sort -uV | tail -1)"
+            [ -n "$emb" ] || continue
+            scanned=$((scanned+1))
+            if [ "$emb" != "$pin" ] && [ "$(printf '%s\n%s\n' "$emb" "$pin" | sort -V | head -1)" = "$emb" ]; then
+                stale=$((stale+1))
+                emit WARN C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin (Bun advisories fixed in $pin do not reach it)" \
+                    "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and keep this warning"
+            fi
+        done < <(find "$d" -maxdepth 3 -type f -perm /111 -size "+${min_kb}k" 2>/dev/null)
+    done
+    [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
+}
+
 # --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs the pin ---
 # `himmelctl update` once rolled the station's qmd fork back to the pin with
 # nothing reporting it. Three values must agree: the fork clone's build-success
@@ -4638,6 +4673,7 @@ run_check C69 check_c69_qmd_cli_key
 run_check C70 check_c70_graph_semantic
 run_heavy C71 check_c71_verdict_scratch C71-verdict-scratch
 run_check C72 check_c72_design_mcp_auth
+run_check C73 check_c73_bun_compiled
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
