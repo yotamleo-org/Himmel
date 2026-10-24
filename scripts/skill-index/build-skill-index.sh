@@ -176,15 +176,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 mkdir -p "$OUT_DIR" || { echo "ERR build-skill-index: cannot create $OUT_DIR" >&2; exit 2; }
-# Dedup by qualified name; first-seen wins.
-declare -A seen 2>/dev/null || true
+# Dedup by qualified name; first-seen wins. A newline-delimited list, not an
+# associative array: macOS ships bash 3.2.
+seen=$'\n'
 written=0
 while IFS='|' read -r kind plugin qname src; do
     [ -z "$qname" ] && continue
-    if [ "${seen[$qname]:-0}" = "1" ]; then
-        continue
-    fi
-    seen[$qname]=1
+    case "$seen" in *$'\n'"$qname"$'\n'*) continue ;; esac
+    seen="$seen$qname"$'\n'
     safe_name=$(printf '%s' "$qname" | tr ':/' '__')
     out_file="$OUT_DIR/$safe_name.md"
     desc=$(extract_description "$src")

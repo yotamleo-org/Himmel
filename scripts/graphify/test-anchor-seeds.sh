@@ -99,7 +99,7 @@ out="$(run query "how does go.sh write a GO file")"; rc=$?
 calls="$(cat "$T/calls")"
 order="$(grep '^NODE ' <<<"$out" | sed 's/^NODE //; s/ \[src=.*//' | tr '\n' '|')"
 if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 4000" <<<"$calls" \
-  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" -eq 2 ]; then
   pass "A5 two graphify calls, half the budget each"
 else fail "A5 rc=$rc calls='$calls'"; fi
 if [ "$order" = "go.sh|write_go_file()|write_file()|" ] && grep -q "Start (given): \['go.sh'\] | Keyword start: \['write_file()', 'Write'\] | " <<<"$out" \
@@ -125,7 +125,7 @@ else fail "A7 calls='$calls'"; fi
 run query "how does go.sh write a GO file" --budget 0800 >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
 if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 400" <<<"$calls" \
-  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 400" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 400" <<<"$calls" && [ "$(wc -l < "$T/calls")" -eq 2 ]; then
   pass "A9 --budget 0800 halves to 400"
 else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
 

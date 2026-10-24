@@ -3025,10 +3025,14 @@ D_CLAUDE_PID=$!
 d_lock wrapped-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-wrapped-leg"
 ( exec -a node-wrapper bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-wrapped-leg ) &
 D_WRAPPED_PID=$!
-# And one that carries the doc only in its environment, never on argv.
-d_lock env-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-env-leg"
-( HIMMEL_5541_FIXTURE_DOC=HIMMEL-5541-fixture-env-leg exec sleep 60 ) &
-D_ENV_PID=$!
+# And one that carries the doc only in its environment, never on argv. Reading
+# another process's environment needs /proc, so macOS has no such lock to test.
+D_ENV_PID=""
+if [ -r /proc/self/environ ]; then
+    d_lock env-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-env-leg"
+    ( HIMMEL_5541_FIXTURE_DOC=HIMMEL-5541-fixture-env-leg exec sleep 60 ) &
+    D_ENV_PID=$!
+fi
 sleep 0.3
 out="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"; rc=$?
 if grepq "$out" "slug=dead-leg .*status=STALE-DEAD" && [ "$rc" -eq 20 ]; then
@@ -3051,7 +3055,7 @@ fi
 rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"; rrc=$?
 if [ ! -d "$D_QDIR/dead-leg.lock" ] && [ -d "$D_QDIR/alive-leg.lock" ] && [ -d "$D_QDIR/otherhost-leg.lock" ] \
     && [ -d "$D_QDIR/opaque-leg.lock" ] && [ -d "$D_QDIR/claude-leg.lock" ] \
-    && [ -d "$D_QDIR/wrapped-leg.lock" ] && [ -d "$D_QDIR/env-leg.lock" ]; then
+    && [ -d "$D_QDIR/wrapped-leg.lock" ] && { [ -z "$D_ENV_PID" ] || [ -d "$D_QDIR/env-leg.lock" ]; }; then
     pass "T99: --reap-dead releases only the provably dead lock (rc=$rrc)"
 else
     fail "T99: reap removed/kept the wrong locks (rc=$rrc out=$rout)"

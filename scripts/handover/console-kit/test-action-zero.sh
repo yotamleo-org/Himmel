@@ -182,12 +182,16 @@ check "a flagged sweep lists the lock" "1" "$(printf '%s\n' "$sout" | grep -c 's
 check "a flagged sweep prints no unavailable line" "0" "$(printf '%s\n' "$sout" | grep -c '^unavailable$')"
 
 # PROCS prints one short row per leg process: pid, command and session name.
+# Linux only: BSD pgrep -af prints the pid alone, so the console kit's procps
+# listing has no command column to parse on macOS.
+if [ "$(uname -s)" = Linux ]; then
 exec -a "claude --settings /very/long/settings.json --append-system-prompt-file /very/long/brief.md -n DEMOAZ-N1-leg-2026-10-21 --model x" sleep 30 &
 fake=$!
 pout="$(bash "$AZ" --doc "$DOC" --root "$ROOT" --prefix DEMOAZ 2>&1 | sed -n '/^== PROCS/,/^== C29/p')"
 kill "$fake" 2>/dev/null; wait "$fake" 2>/dev/null
 check "PROCS prints pid, command and session name" "1" "$(printf '%s\n' "$pout" | grep -cx "$fake claude DEMOAZ-N1-leg-2026-10-21")"
 check "PROCS drops the argv" "0" "$(printf '%s\n' "$pout" | grep -c 'settings.json')"
+fi
 
 # --acquire records the release token in the doc's step 8 block; --lock-only
 # runs the LOCK section alone (the successor's one call once next pre-computed
