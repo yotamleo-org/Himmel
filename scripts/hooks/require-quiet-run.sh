@@ -596,6 +596,9 @@ case "$suite_path" in scripts/ci/run-shell-tests.sh) suite_label=shell-unit ;; e
     printf 'only the literal labels "suite" and "shell-unit" are pre-approved, not a\n'
     printf 'derived name):\n\n'
     printf '  bash scripts/quiet-run.sh %s -- bash %s\n\n' "$suite_label" "$suite_path"
+    printf 'Append nothing to it: no > redirect, no 2>&1, no | pipe, no "; echo rc", no\n'
+    printf 'timeout/env prefix. quiet-run keeps the full log and prints its path on a\n'
+    printf 'failure; Read the log path for the failing assertion (RED-first included).\n\n'
     printf 'Bypass (streaming output genuinely needed): QUIET_RUN_BYPASS=1 <launching\n'
     printf 'shell>; a per-call prefix does not work.\n'
 } >&2
