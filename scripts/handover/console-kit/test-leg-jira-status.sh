@@ -443,6 +443,14 @@ else
     echo "skip - timeout/flock rows: no timeout or flock binary"
 fi
 
+# --- no flock: two events for one key move the status once --------------------------
+# Both runs reach the Jira read together (get.sleep), so an unlocked run moves twice.
+reset "To Do"; owned; echo 1 > "$FX/get.sleep"
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 &
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 &
+wait
+check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
+
 # --- worker states ------------------------------------------------------------------------
 ws() { # <marker> <lock rc> <lock age> -> state
     mkdoc "$DOC" "$1"; printf '%s\n' "$2" > "$FX/lock.rc"; printf '%s\n' "$3" > "$FX/lock.age"
