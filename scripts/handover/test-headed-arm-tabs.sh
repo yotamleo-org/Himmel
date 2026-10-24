@@ -35,7 +35,7 @@ cleanup() {
   local f p
   for f in "$tmp"/*/pids; do
     [ -f "$f" ] || continue
-    while read -r p; do kill -KILL "$p" 2>/dev/null; done < "$f"
+    while read -r p; do signal KILL "$p"; done < "$f"
   done
   rm -rf "$tmp"
 }
@@ -53,7 +53,11 @@ lacks() {
     *) echo "FAIL - $1: grep failed (rc $rc)"; fails=$((fails+1)) ;;
   esac
 }
-alive() { kill -0 "$1" 2>/dev/null && echo yes || echo no; }
+# A pid is only ever signalled when it is a number above 1: kill 0 or an
+# empty pid would hit the whole process group, this runner included.
+pid_ok() { case "$1" in ''|*[!0-9]*|0|1) return 1 ;; esac; }
+signal() { local s="$1" p; shift; for p; do pid_ok "$p" && kill "-$s" "$p" 2>/dev/null; done; return 0; }
+alive() { pid_ok "$1" && kill -0 "$1" 2>/dev/null && echo yes || echo no; }
 
 # mk_env <dir> - write the four stubs into <dir>.
 mk_env() {
@@ -185,8 +189,8 @@ lacks "2p tabs: the tab script is gone once the launch is confirmed" "$(ls "$d2/
 # --- 3. closing ONE worker (close-wrapped-leg TERMs the claude pid) leaves the
 # window and the other tabs alive.
 pa="$(pid_of "$d2" HIMMEL-2-N1-a)"; pb="$(pid_of "$d2" HIMMEL-2-N2-b)"; pc="$(pid_of "$d2" HIMMEL-2-N3-c)"
-kill -TERM "${pb:-0}" 2>/dev/null
-n=0; while kill -0 "${pb:-0}" 2>/dev/null && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
+signal TERM "$pb"
+n=0; while [ "$(alive "$pb")" = yes ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
 check "3a close one: the TERMed worker is gone" "$(alive "${pb:-0}")" no
 check "3b close one: the window survives" "$(alive "${w2a:-0}")" yes
 check "3c close one: tab 1 survives" "$(alive "${pa:-0}")" yes
@@ -194,8 +198,8 @@ check "3d close one: tab 3 survives" "$(alive "${pc:-0}")" yes
 
 # --- 4. a crashed tab (SIGKILL) does not take the window down: the window
 # survives and the next launch still lands in it as a tab.
-kill -KILL "${pc:-0}" 2>/dev/null
-n=0; while kill -0 "${pc:-0}" 2>/dev/null && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
+signal KILL "$pc"
+n=0; while [ "$(alive "$pc")" = yes ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
 check "4a crash: the window survives a killed tab" "$(alive "${w2a:-0}")" yes
 check "4b crash: tab 1 survives a killed tab" "$(alive "${pa:-0}")" yes
 arm "$d2" HIMMEL-2-N4-d HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc4=$?
@@ -213,7 +217,7 @@ check "5b other console: opens its own window" "$(konsole_count "$d2")" 2
 d6="$tmp/c6"; mk_env "$d6"
 arm "$d6" HIMMEL-6-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 w6a="$(window_of "$d6" HIMMEL-6-N1-a)"
-kill -KILL "${w6a:-0}" "$(pid_of "$d6" HIMMEL-6-N1-a)" 2>/dev/null; sleep 0.2
+signal KILL "$w6a" "$(pid_of "$d6" HIMMEL-6-N1-a)"; sleep 0.2
 arm "$d6" HIMMEL-6-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc6=$?
 arm "$d6" HIMMEL-6-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 w6b="$(window_of "$d6" HIMMEL-6-N2-b)"

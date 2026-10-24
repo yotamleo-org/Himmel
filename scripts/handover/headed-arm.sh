@@ -1547,7 +1547,7 @@ tab_launch() {
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
-    case "$wpid" in ''|*[!0-9]*) TAB_RECORD=1; return 1 ;; esac
+    case "$wpid" in ''|*[!0-9]*|0|1) TAB_RECORD=1; return 1 ;; esac
     kill -0 "$wpid" 2>/dev/null || { TAB_RECORD=1; return 1; }
     tab_sh="$LOCK/tab.sh"
     case "$tab_sh" in
