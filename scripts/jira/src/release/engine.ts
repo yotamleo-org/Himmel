@@ -238,8 +238,10 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
     const placement = placementOf(row);
     if (placement === undefined) return row;
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
+    const named = [o.from_v, o.to_v].filter((v) => v !== null);
     for (const r of latest.values()) {
-      if (pending(r) && o.keys.includes(r.key) && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
+      const overlaps = [r.from_v, r.to_v].some((v) => v !== null && named.includes(v));
+      if (pending(r) && o.keys.includes(r.key) && overlaps && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
         appendWithdrawal(ctx, l.k, r, row.id, `contradicts operator decision ${o.decision} (${row.id})`);
       }
     }

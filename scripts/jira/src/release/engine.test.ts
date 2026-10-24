@@ -815,4 +815,13 @@ describe('release withdraw (HIMMEL-7434)', () => {
     expect(claimed).toEqual([agrees.req, elsewhere.req]);
     expect(() => withdraw(ctx(), { req: out.req, reason: 'again' })).toThrow(new RegExp(`withdrawn:${o.id}`));
   });
+
+  it('a decision on one version leaves a request that names only another version open', async () => {
+    await setup();
+    const other = ask('K-2', 'INTAKE', null, 'v2');
+    const same = ask('K-2', 'REVERSION', 'v1', 'v2');
+    const o = decide(['K-2'], 'remove', 'v1', null);
+    expect(claim(ctx(rmEnv)).map((r) => r.req)).toEqual([other.req]);
+    expect(() => withdraw(ctx(), { req: same.req, reason: 'again' })).toThrow(new RegExp(`withdrawn:${o.id}`));
+  });
 });
