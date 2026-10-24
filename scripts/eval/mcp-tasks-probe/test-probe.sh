@@ -119,7 +119,9 @@ mkdir -p "$TMP/bin" "$TMP/bgwd"
 cat > "$TMP/bin/claude" <<'STUB'
 #!/usr/bin/env bash
 case "$1" in
-  agents) printf '[{"id":"mine","cwd":"%s"},{"id":"other","cwd":"/elsewhere"}]\n' "$PWD" ;;
+  agents) n=$(cat "$STOPLOG.n" 2>/dev/null || echo 0); echo $((n + 1)) > "$STOPLOG.n"
+          if [ "$n" -eq 0 ]; then printf '[{"id":"old","cwd":"%s"}]\n' "$PWD"
+          else printf '[{"id":"old","cwd":"%s"},{"id":"mine","cwd":"%s"},{"id":"other","cwd":"/elsewhere"}]\n' "$PWD" "$PWD"; fi ;;
   stop) echo "$2" >> "$STOPLOG" ;;
 esac
 exit 0
@@ -127,7 +129,17 @@ STUB
 chmod +x "$TMP/bin/claude"
 : > "$TMP/stoplog"
 (cd "$TMP/bgwd" && PATH="$TMP/bin:$PATH" STOPLOG="$TMP/stoplog" bash "$PROBE" run bg "$TMP/bgrun" --billed --timeout 1 > /dev/null 2>&1)
-eq "bg run: stops its own session only" "$(cat "$TMP/stoplog")" "mine"
+eq "bg run: stops the session it started, not an earlier one in the same directory" "$(cat "$TMP/stoplog")" "mine"
+
+# 9. an elicitation sent and never answered before the client ended is parked, not "not-called"
+printf '%s\n' '{"ev":"initialize","client":{"name":"stub","version":"0"},"caps":{"elicitation":{}}}' '{"ev":"elicit_sent","id":"probe-elicit-1"}' > "$TMP/sent.log"
+has "elicit sent, no answer: parked" "$(row sent)" "elicit=parked"
+
+# 10. a cancelled task stays cancelled
+{ init_line '{"tasks":{"requests":{"tools":{"call":{}}}}}'; call_line 2 probe_task '{"ttl":60000}'
+  printf '{"jsonrpc":"2.0","id":3,"method":"tasks/cancel","params":{"taskId":"probe-task-1"}}\n'; sleep 1
+  printf '{"jsonrpc":"2.0","id":4,"method":"tasks/get","params":{"taskId":"probe-task-1"}}\n'; } | run_server cancel 1000
+has "cancelled task: still cancelled after its completion delay" "$(tail -n 1 "$TMP/cancel.out")" '"status":"cancelled"'
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

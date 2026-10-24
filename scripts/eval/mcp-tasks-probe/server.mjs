@@ -39,7 +39,10 @@ function createTask(ttl, ext) {
   const task = { taskId, status: 'working', createdAt: now, lastUpdatedAt: now, ttl: ttl ?? 60000, pollInterval: 200, ext: ext || undefined };
   tasks.set(taskId, task);
   pending++;
-  setTimeout(() => { task.status = 'completed'; task.lastUpdatedAt = new Date().toISOString(); pending--; maybeExit(); }, 200);
+  setTimeout(() => {
+    if (task.status === 'working') { task.status = 'completed'; task.lastUpdatedAt = new Date().toISOString(); }
+    pending--; maybeExit();
+  }, 200);
   return task;
 }
 

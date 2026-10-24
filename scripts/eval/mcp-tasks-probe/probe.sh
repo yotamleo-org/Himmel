@@ -14,6 +14,8 @@
 # tier: paid. `run` is on-demand only (docs/internals/testing.md "Plugin evals (on-demand,
 # billed)"): never wired into CI, a cadence or run-shell-tests, and it refuses without --billed.
 # The unit suite (test-probe.sh) uses scripted clients and makes no model call.
+# A run is attended and operator-triggered, not an unattended site: the host-side bank
+# preflight (scripts/lib/bank-preflight.sh) is not run, the guest has no checkout to carry it.
 #
 # Credentials come from the environment of the call and are never written to disk:
 #   headed/bg/p/p-stream use whatever auth the claude client already has (or ANTHROPIC_API_KEY);
@@ -39,7 +41,7 @@ summarize() {
       + " polled=\(if (map(select(.ev == "tasks_get" or .ev == "tasks_result")) | length) > 0 then "yes" else "no" end)"
       + " elicit=\(
           if ($e | map(select(.ev == "elicit_result")) | length) > 0 then ($e | map(select(.ev == "elicit_result")) | last | .action)
-          elif ($e | map(select(.ev == "elicit_timeout")) | length) > 0 then "parked"
+          elif ($e | map(select(.ev == "elicit_timeout" or .ev == "elicit_sent")) | length) > 0 then "parked"
           elif ($e | map(select(.ev == "elicit_unavailable")) | length) > 0 then "not-offered"
           else "not-called" end)"
   ' "$log"
@@ -50,9 +52,11 @@ write_config() { # <dir> : MCP config naming the probe server and its log
     '{mcpServers: {probe: {command: "node", args: [$s], env: {MCP_PROBE_LOG: $l, MCP_PROBE_ELICIT_TIMEOUT_MS: "30000"}}}}' > "$1/mcp.json"
 }
 
-stop_bg() { # a --bg session outlives the launcher: stop every background session started from this directory
-  claude agents --json 2>/dev/null | jq -r --arg d "$PWD" '.[] | select(.cwd == $d) | .id' | while IFS= read -r id; do
-    claude stop "$id" > /dev/null 2>&1
+bg_ids() { claude agents --json 2>/dev/null | jq -r --arg d "$PWD" '.[] | select(.cwd == $d) | .id'; }
+
+stop_bg() { # <ids present before the launch> : a --bg session outlives the launcher, so stop each one the launch added from this directory
+  bg_ids | while IFS= read -r id; do
+    printf '%s\n' "$1" | grep -Fxq -- "$id" || claude stop "$id" > /dev/null 2>&1
   done
 }
 
@@ -61,13 +65,14 @@ run_mode() {
   mkdir -p "$dir" || return 2
   : > "$dir/server.log"
   write_config "$dir"
-  local base=(--mcp-config "$dir/mcp.json" --strict-mcp-config --allowedTools 'mcp__probe__*' --model "$model")
+  local base=(--mcp-config "$dir/mcp.json" --strict-mcp-config --allowedTools 'mcp__probe__*' --permission-mode default --model "$model")
   local rc=0 cmd
   case "$mode" in
     headed)     cmd=$(printf '%q ' timeout "$tmo" claude "${base[@]}" "$PROMPT")
                 script -qec "$cmd" /dev/null > "$dir/client.out" 2>&1 < /dev/null; rc=$? ;;
-    bg)         timeout "$tmo" claude --bg "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$?
-                sleep "$tmo"; stop_bg ;;
+    bg)         local before; before=$(bg_ids)
+                timeout "$tmo" claude --bg "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$?
+                sleep "$tmo"; stop_bg "$before" ;;
     p)          timeout "$tmo" claude -p "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$? ;;
     p-stream)   timeout "$tmo" claude -p --output-format stream-json --verbose "${base[@]}" "$PROMPT" > "$dir/client.out" 2>&1; rc=$? ;;
     openrouter) [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "probe.sh: OPENROUTER_API_KEY not set" >&2; return 2; }
