@@ -154,12 +154,13 @@ mk_site() { # mk_site <dir> <extra href for the generated page> <extra href for 
   printf '<a href="../page/#sec">ok</a> <a href="../page/">ok</a> %s\n' "$3" >"$1/guide/raw.html"
 }
 built_ok() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; }
+built_rc1() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 1 ]; }
 mk_site "$sweep_ctl/links-clean" "" "" || exit 1
 mk_site "$sweep_ctl/links-route" '<a href="/Himmel/no-such/">x</a>' "" || exit 1
 mk_site "$sweep_ctl/links-frag" '<a href="/Himmel/page/#gone">x</a>' "" || exit 1
 mk_site "$sweep_ctl/links-raw-route" "" '<a href="../setup/vm-mode.md">x</a>' || exit 1
 mk_site "$sweep_ctl/links-raw-frag" "" '<a href="../page/#gone">x</a>' || exit 1
-mk_site "$sweep_ctl/links-escape" '<a href="/elsewhere/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-escape" '<a href="/Others/page/#sec">x</a>' "" || exit 1
 mk_site "$sweep_ctl/links-pct" '<a href="/Himmel/my%20page/">x</a>' "" || exit 1
 mkdir "$sweep_ctl/links-pct/my page" && echo ok >"$sweep_ctl/links-pct/my page/index.html" || exit 1
 mk_site "$sweep_ctl/links-data" '<a data-href="/Himmel/no-such/" href="/Himmel/page/">x</a>' "" || exit 1
@@ -175,6 +176,8 @@ mk_site "$sweep_ctl/links-aname" '<a href="#legacy">x</a> <a name="legacy">L</a>
 mk_site "$sweep_ctl/links-sid" '<a href="#sid">x</a> <script id="sid">var s = 1;</script>' "" || exit 1
 mk_site "$sweep_ctl/links-bare" '<a href=/Himmel/no-such/>x</a>' "" || exit 1
 mk_site "$sweep_ctl/links-spaced" '<a href = "/Himmel/no-such/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-query" '<a href="/Himmel/page/?v=1#sec">x</a> <a href="../page/?v=1">y</a>' "" || exit 1
+mk_site "$sweep_ctl/links-proto" '<a href="//example.invalid/x">x</a>' "" || exit 1
 mkdir "$sweep_ctl/links-empty" || exit 1
 built_rc2() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 2 ]; }
 check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
@@ -183,17 +186,19 @@ check "built links: an anchor inside a comment or script is not a link" built_ok
 check "built links: an upper-case ID attribute with spaced equals is a fragment target" built_ok "$sweep_ctl/links-case"
 check "built links: a legacy name on an anchor is a fragment target" built_ok "$sweep_ctl/links-aname"
 check "built links: the id on a script element is a fragment target" built_ok "$sweep_ctl/links-sid"
-check "control: built links fails a fragment that only a meta name carries" fails built_ok "$sweep_ctl/links-meta"
-check "control: built links fails a dead unquoted href" fails built_ok "$sweep_ctl/links-bare"
-check "control: built links fails a dead href with spaced equals" fails built_ok "$sweep_ctl/links-spaced"
+check "control: built links fails a fragment that only a meta name carries" built_rc1 "$sweep_ctl/links-meta"
+check "control: built links fails a dead unquoted href" built_rc1 "$sweep_ctl/links-bare"
+check "control: built links fails a dead href with spaced equals" built_rc1 "$sweep_ctl/links-spaced"
 check "built links: a percent-encoded link to a spaced directory resolves" built_ok "$sweep_ctl/links-pct"
 check "built links: a data-href attribute is not a link" built_ok "$sweep_ctl/links-data"
-check "control: built links fails a relative link into a sibling directory sharing the dist prefix" fails built_ok "$sweep_ctl/links-sd"
-check "control: built links fails a dead generated-page route" fails built_ok "$sweep_ctl/links-route"
-check "control: built links fails a dead generated-page fragment" fails built_ok "$sweep_ctl/links-frag"
-check "control: built links fails a dead route in a passthrough page" fails built_ok "$sweep_ctl/links-raw-route"
-check "control: built links fails a dead fragment in a passthrough page" fails built_ok "$sweep_ctl/links-raw-frag"
-check "control: built links fails a root link outside the site base" fails built_ok "$sweep_ctl/links-escape"
+check "built links: a query string is not part of the route" built_ok "$sweep_ctl/links-query"
+check "built links: a protocol-relative link is external" built_ok "$sweep_ctl/links-proto"
+check "control: built links fails a relative link into a sibling directory sharing the dist prefix" built_rc1 "$sweep_ctl/links-sd"
+check "control: built links fails a dead generated-page route" built_rc1 "$sweep_ctl/links-route"
+check "control: built links fails a dead generated-page fragment" built_rc1 "$sweep_ctl/links-frag"
+check "control: built links fails a dead route in a passthrough page" built_rc1 "$sweep_ctl/links-raw-route"
+check "control: built links fails a dead fragment in a passthrough page" built_rc1 "$sweep_ctl/links-raw-frag"
+check "control: built links fails a root link outside the site base" built_rc1 "$sweep_ctl/links-escape"
 check "control: built links exits 2 on a dist with no pages" built_rc2 "$sweep_ctl/links-empty"
 
 if [ ! -d "$here/node_modules/astro" ]; then
