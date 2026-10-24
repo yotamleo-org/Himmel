@@ -13,6 +13,7 @@
 #
 # tier: paid. `run` is on-demand only (docs/internals/testing.md "Plugin evals (on-demand,
 # billed)"): never wired into CI, a cadence or run-shell-tests, and it refuses without --billed.
+# billed-opt-in: --billed
 # The unit suite (test-probe.sh) uses scripted clients and makes no model call.
 # A run is attended and operator-triggered, not an unattended site: the host-side bank
 # preflight (scripts/lib/bank-preflight.sh) is not run, the guest has no checkout to carry it.
