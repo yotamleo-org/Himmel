@@ -317,7 +317,7 @@ if [ -n "$(printf '%s' "$bad" | tr -d '\n')" ]; then
     exit 1
 fi
 
-# --- remove the moved lines, in place so .env keeps its mode ---
+# --- remove the moved lines; .env keeps its mode ---
 if ! cmp -s "$envfile" "$backup"; then
     echo "migrate-env: $envfile changed during the migration; no lines were removed from .env." >&2
     restore_hint
@@ -333,8 +333,17 @@ awk -v moved="$moved" '{ l = $0; sub(/\r$/, "", l) }
     restore_hint
     exit 1
 }
-if ! cat "$work/env.new" > "$envfile"; then
-    echo "migrate-env: could not rewrite $envfile; restore it from the backup." >&2
+# A copy beside .env (same mode) renamed over it, so a failed write leaves
+# .env whole; a symlinked .env is rewritten in place to keep the link.
+next="$envfile.migrate.$$" rewrote=0
+if [ -L "$envfile" ]; then
+    cat "$work/env.new" > "$envfile" && rewrote=1
+else
+    cp -p "$envfile" "$next" && cat "$work/env.new" > "$next" && mv -f "$next" "$envfile" && rewrote=1
+fi
+if [ "$rewrote" -eq 0 ]; then
+    [ -L "$envfile" ] || rm -f "$next"
+    echo "migrate-env: could not rewrite $envfile; check it, and restore it from the backup if it is not whole." >&2
     restore_hint
     exit 1
 fi

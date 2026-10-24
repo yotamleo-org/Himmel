@@ -162,8 +162,10 @@ release yet reads `n/a` and does not change the exit code. Then:
   `.env`. Make them agree, then run
   `bash ~/himmel/scripts/himmel-update.sh --only env_migration`.
 - **You want the old `.env` back.** Run the `restore:` command the migration
-  printed (`cp <backup> <your .env>`). The copies in `~/.himmel` can stay:
-  they hold the same values.
+  printed (`cp <backup> <your .env>`). After a move that passed its check,
+  the copies in `~/.himmel` can stay: they hold the same values. After a
+  `MISMATCH` on a value `~/.himmel` already held, restoring `.env` does not
+  change that value: make the two agree yourself.
 - **The pull refused a dirty tree.** Commit or stash, then re-run. To keep
   local tracked diffs on purpose, autostash them for one run:
   `HIMMEL_UPDATE_AUTOSTASH=1 bash ~/himmel/scripts/himmel-update.sh`. If the

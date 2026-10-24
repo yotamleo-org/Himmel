@@ -72,11 +72,16 @@ strip_ts() {
     node -e 'const m = require("node:module"); const fs = require("node:fs");
         process.stdout.write(m.stripTypeScriptTypes(fs.readFileSync(process.argv[1], "utf8")))' "$1" > "$2" 2>/dev/null
 }
-if ! strip_ts "$REPO/scripts/jira/src/handover-root.ts" "$FX/scripts/jira/dist/handover-root.js" \
-    || ! strip_ts "$REPO/scripts/jira/src/release/paths.ts" "$FX/scripts/jira/dist/release/paths.js"; then
+if ! node -e 'process.exit(typeof require("node:module").stripTypeScriptTypes === "function" ? 0 : 1)'; then
     echo "SKIP apply rows: this node cannot strip TypeScript types"
     [ "$FAILED" -eq 0 ] || { echo "test-migrate-env: $FAILED FAILED"; exit 1; }
     exit 0
+fi
+if ! strip_ts "$REPO/scripts/jira/src/handover-root.ts" "$FX/scripts/jira/dist/handover-root.js" \
+    || ! strip_ts "$REPO/scripts/jira/src/release/paths.ts" "$FX/scripts/jira/dist/release/paths.js"; then
+    echo "FAIL the Jira reader sources no longer strip to JavaScript"
+    echo "test-migrate-env: $((FAILED + 1)) FAILED"
+    exit 1
 fi
 printf '{"type":"module"}\n' > "$FX/scripts/jira/dist/package.json"
 # shellcheck disable=SC2016 # the fixture reader names the variable literally
@@ -170,6 +175,19 @@ out=$(bash "$SCRIPT" --env "$TMP/st/.env" 2>&1)
 envnow=$(cat "$TMP/st/.env")
 lacks "a behaviour key on the keep-list still moves" "HANDOVER_DIR=" "$envnow"
 lacks "the keep-list does not split the behaviour keys" "MISMATCH" "$out"
+
+# A symlinked .env stays a link, and the rewrite leaves no temporary file.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+printf 'HANDOVER_DIR=%s\nKEEP_LINE=1\n' "$TMP/handovers" > "$TMP/st/env.target"
+chmod 600 "$TMP/st/env.target"
+rm -f "$TMP/st/.env"
+ln -s "$TMP/st/env.target" "$TMP/st/.env"
+bash "$SCRIPT" --env "$TMP/st/.env" > /dev/null 2>&1
+if [ -L "$TMP/st/.env" ]; then pass "a symlinked .env stays a link"; else fail "the symlinked .env was replaced by a file"; fi
+lacks "the link's target lost the moved line" "HANDOVER_DIR=" "$(cat "$TMP/st/env.target")"
+n=$(find "$TMP/st" -name '.env.migrate.*' | wc -l | tr -d ' ')
+if [ "$n" = 0 ]; then pass "the rewrite leaves no temporary file"; else fail "the rewrite left $n temporary files"; fi
+rm -f "$TMP/st/.env"
 
 # --- 3. A reader that still reads .env only aborts ---
 fixture_env
