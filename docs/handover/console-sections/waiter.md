@@ -112,6 +112,11 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
 
+    **A hold wakes you once.** `WAKE tick changed=holds` means a worker entered the
+    `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for
+    `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
+    does not repeat while the hold stands.
+
     **Permission.** The tracked `.claude/settings.json` allows exactly the
     step-10 launch shape `bash scripts/handover/console-kit/console-wait.sh …`
     (`Bash(bash scripts/handover/console-kit/console-wait.sh:*)`) and nothing

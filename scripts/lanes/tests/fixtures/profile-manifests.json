@@ -109,11 +109,14 @@
     "enabled": [
       "anthropic-design-skills@himmel",
       "anydesign@himmel",
+      "hermes-artifact-design@himmel",
       "design-dna@himmel",
+      "design-md@himmel",
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
       "i-have-adhd@himmel",
+      "popular-web-designs@himmel",
       "qmd@himmel",
       "taste-skill-core@himmel"
     ],

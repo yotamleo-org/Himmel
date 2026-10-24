@@ -252,5 +252,41 @@ check "12: a doc with no accepted succession runs no adopt" "$(cat "$tmp/bus.log
 HIMMEL_BUS_NAME='' bash "$SCRIPT" "$d12" "LIVE unbound" >/dev/null 2>&1
 check "12: a leg with no bus identity runs no re-adopt" "$(cat "$tmp/bus.log")" ""
 
+# --- 13. adopt runs the anchor checkout's bus, not the leg worktree's own (possibly stale) copy ---
+# A leg cut before the stamp fix carries a bus whose adopt cannot honour a stamp; the
+# anchor's is current main's. The default resolution prefers the anchor and says which ran.
+anc13="$tmp/anchor13"
+mkdir -p "$anc13/scripts/handover/console-kit" "$anc13/scripts/lib" "$anc13/marketplace/plugins/himmel-bus/bin"
+for f13 in append-results.sh bucket-gitleaks.sh leg-doc-lock.sh; do cp "$HERE/$f13" "$anc13/scripts/handover/console-kit/$f13"; done
+cp "$HERE/../../lib/git-clean.sh" "$anc13/scripts/lib/git-clean.sh"
+# shellcheck disable=SC2016  # $2 expands in the stub, not here
+printf '#!/bin/sh\necho "adopted: legx console CON-A-console -> $2"\n' > "$anc13/marketplace/plugins/himmel-bus/bin/bus"
+chmod +x "$anc13/marketplace/plugins/himmel-bus/bin/bus"
+git13() { git -C "$anc13" -c user.name=t -c user.email=t@t -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
+git13 init -q
+git13 add -A
+git13 commit -q -m fixture
+wt13="$tmp/wt13"
+git13 worktree add -q "$wt13" -b leg13
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "bus: old console CON-A-console is not gone and sent no relay naming $2" >&2\nexit 1\n' > "$wt13/marketplace/plugins/himmel-bus/bin/bus"
+d13="$tmp/HIMMEL-9-N5-fixture-2026-10-21.md"
+printf '# leg\n\nYour RETASK token is X-5.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d13"
+rc=0; env -u APPEND_RESULTS_BUS bash "$wt13/scripts/handover/console-kit/append-results.sh" "$d13" "SUCCESSION accepted: CON-B-console replaces CON-A-console" >/dev/null 2>&1 || rc=$?
+check "13: the acknowledgement appends rc 0" "$rc" 0
+check "13: a stale worktree bus adopts through the anchor's" "$(grep -c '^- [0-9:]* bus-adopt: adopted: legx console CON-A-console → CON-B-console \[via anchor\]$' "$d13")" 1
+rm -f "$anc13/marketplace/plugins/himmel-bus/bin/bus"
+d13b="$tmp/HIMMEL-9-N6-fixture-2026-10-21.md"
+printf '# leg\n\nYour RETASK token is X-6.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d13b"
+rc=0; env -u APPEND_RESULTS_BUS bash "$wt13/scripts/handover/console-kit/append-results.sh" "$d13b" "SUCCESSION accepted: CON-B-console replaces CON-A-console" >/dev/null 2>&1 || rc=$?
+check "13: no anchor bus still appends rc 0" "$rc" 0
+check "13: no anchor bus falls back to the worktree copy and says so" "$(grep -c '^- [0-9:]* bus-adopt: refused (bus: old console CON-A-console is not gone and sent no relay naming CON-B-console) \[via worktree\]$' "$d13b")" 1
+d13c="$tmp/HIMMEL-9-N7-fixture-2026-10-21.md"
+printf '# leg\n\nYour RETASK token is X-7.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d13c"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "adopted: legx console old -> $2"\n' > "$tmp/bus"
+rc=0; bash "$wt13/scripts/handover/console-kit/append-results.sh" "$d13c" "SUCCESSION accepted: CON-B-console replaces CON-A-console" >/dev/null 2>&1 || rc=$?
+check "13: an explicit APPEND_RESULTS_BUS still wins and is not labelled" "$(grep -c '^- [0-9:]* bus-adopt: adopted: legx console old → CON-B-console$' "$d13c")" 1
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1

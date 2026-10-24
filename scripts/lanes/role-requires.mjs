@@ -18,7 +18,7 @@ export const ROLE_REQUIRES = {
   'design-diagram': ['diagram-design@himmel', 'builder-visual@himmel'],
   'design-slides': ['frontend-slides@himmel'],
   'design-reference': ['taste-skill-core@himmel', 'design-dna@himmel', 'anydesign@himmel',
-    'anthropic-design-skills@himmel'],
+    'anthropic-design-skills@himmel', 'popular-web-designs@himmel', 'design-md@himmel', 'hermes-artifact-design@himmel'],
   'design-trial': ['hallmark@himmel'],
   // typescript-lsp and pyright-lsp are enabled by `code` too but cannot be listed here: an LSP
   // plugin exposes no skill, command, agent or MCP server, so the coverage check could never see

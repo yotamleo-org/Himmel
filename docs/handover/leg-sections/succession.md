@@ -44,7 +44,10 @@ runs `bus adopt <new console>` for you, so the new chief has an edge to you
 (without it `bus send` to you is refused: `no edge to <you>`). Its printed line
 (`adopted: …`) or refusal text (`identity unbound`, or
 `old console … is not gone and sent no relay naming …`)
-lands as a `bus-adopt:` bullet just above. The outgoing chief stamps its
+lands as a `bus-adopt:` bullet just above, ending `[via anchor]` (the primary
+checkout's bus CLI, so a worktree cut before a bus fix still adopts with the
+fixed code) or `[via worktree]` (no primary checkout's CLI was found, so your own
+older copy ran). The outgoing chief stamps its
 successor on the bus (`chief.sh next` runs `bus succeed <successor>`), and
 `bus adopt` accepts a stamped hop while that chief is still live, so no
 per-leg relay record is needed. A pasted launch (no `--arm`) registers the

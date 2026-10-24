@@ -17,6 +17,8 @@
 #     TS_J_STATUS  the Jira status the derive saw; TS_HEADS the "<pr>:<head>" list
 #     TS_PR_STATE  "<pr>\t<head>\t<class>\t<red latch>" per open PR
 #     TS_WORKER_STATE  live | idle | IDLE-HELD | wrapped | unknown | none
+#     TS_OWNER_DOC the doc of another recorded leg that holds its lock while the
+#                  recorded owner has ended; "" otherwise
 #   status_event <k=v>...           one JSON row in status-events.jsonl
 #   ts_worker_comment <KEY> <status> <move>
 #                                   keeps the WORKER Jira comment current: edited in
@@ -41,6 +43,7 @@
 #   D4b no PR, a completes=yes merge row         no-write + miss stage=done-pending
 #   D5  no PR, an owner not provably ended       In Progress
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
+#       and no other recorded leg holds its lock
 #   D7  no PR, never owned                       no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), LEG_JIRA_CLI (the Jira
@@ -323,9 +326,9 @@ ts_done_pending() {
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }
 
 ts_derive() {
-    local key="$1" num head base rd class latch threads s rule best=9 r doc rc
+    local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none
-    TS_LOCK_HELD=""; TS_LOCK_SEEN=false; TS_GONE=0
+    TS_LOCK_HELD=""; TS_LOCK_SEEN=false; TS_GONE=0; TS_OWNER_DOC=""
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
     [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || { _ts_no_write skip D0; return 0; }
     [ "$TS_J_TYPE" != Epic ] || { _ts_no_write skip D0e; return 0; }
@@ -344,6 +347,16 @@ ts_derive() {
             [ "${TS_EVENT:-}" != sweep ] || TS_GONE=$((TS_GONE + 1))
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
+    fi
+    # A second leg on the key that still holds its lock keeps the ticket owned, so
+    # one leg's wrap never demotes a ticket another leg is working.
+    if [ "$TS_WORKER_STATE" = wrapped ]; then
+        while IFS= read -r other; do
+            [ -n "$other" ] && [ "$other" != "$doc" ] || continue
+            _ts_worker_state "$other"
+            [ "$TS_LOCK_HELD" != yes ] || { owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break; }
+        done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
+        TS_WORKER_STATE=${owner:-wrapped}
     fi
     ts_read_prs "$key" || { _ts_no_write miss "" "$TS_STAGE"; return 0; }
     if [ -n "$TS_PRS" ]; then
