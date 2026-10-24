@@ -4,7 +4,7 @@
 A PR is proof-first when both hold:
   1. its ticket's DoD and Proof existed before the PR's first commit: the ticket (Jira mirror) has a DoD
      section and a Proof section, and was created before the first commit's authored time;
-  2. its body shows a RED line, and a GREEN line after it.
+  2. its body names RED, and then GREEN, the evidence words, on one line or two.
 The row is one eval-runs row, eval "pdd-share": the share with its 95 % Wilson range over the n PRs that could
 be read, plus the two halves on their own. It reads existing data only: no model call.
 
@@ -112,6 +112,8 @@ def read_pr(pr, mirror):
     first = first_commit_ts(pr)
     if not found:
         return "skip", "not_in_mirror"
+    if pr.get("commits") is None:
+        return "skip", "commits_unreadable"
     if first is None:
         return "skip", "no_commits"
     return "ok", bool(proof_ts and proof_ts < first), red_then_green(pr.get("body"))
@@ -134,9 +136,9 @@ def build(prs, mirror, min_n):
             ci[key + ".pct"] = wilson(k, n)
     return eval_runs.make_row("pdd-share", "scripts/eval/leg-digest/pdd_share.py",
                               {"pdd_v": PDD_SCHEMA, "prs": len(prs), "min_n": min_n}, m, n=n, ci=ci,
-                              ci_level=0.95, ci_method="wilson", status="ok" if n >= min_n else "partial",
+                              ci_level=0.95, ci_method="wilson", status="ok" if n >= min_n and "commits_unreadable" not in skipped else "partial",
                               meta={"skipped": skipped, "prs_seen": len(prs),
-                                    "def": "ticket DoD and Proof before the first commit, and a RED line then a GREEN line in the PR body"})
+                                    "def": "ticket DoD and Proof before the first commit, and RED then GREEN named in the PR body"})
 
 
 def gh_json(*args):
@@ -154,7 +156,7 @@ def fetch(limit):
         try:
             pr["commits"] = gh_json("pr", "view", str(pr["number"]), "--json", "commits")["commits"]
         except (ValueError, KeyError, subprocess.SubprocessError):
-            pr["commits"] = []  # counted as skipped:no_commits
+            pr["commits"] = None  # counted as skipped:commits_unreadable, and the row is partial
     return prs
 
 

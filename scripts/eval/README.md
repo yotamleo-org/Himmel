@@ -404,14 +404,15 @@ hold:
    section, and was created before the PR's first commit. The mirror keeps no
    description history, so the created time stands for when the sections
    existed;
-2. its body shows a `RED` line and a `GREEN` line after it. The CodeRabbit
-   block is ignored.
+2. its body names `RED` and then `GREEN`, the evidence words, in that order,
+   on one line or two. The CodeRabbit block is ignored.
 
 The row holds `pdd`, `ticket_first` (half 1 alone) and `red_green` (half 2
 alone), each as `.pct`, `.k` and `.n` with a 95 % Wilson range. A PR whose
 title names no ticket, whose ticket is not in the mirror, or that lists no
-commit is counted in `meta.skipped` and left out of n. Below `--min-n` (50)
-readable PRs the row is `partial` and the exit code is 3.
+commit is counted in `meta.skipped` and left out of n. A PR whose commit
+lookup failed is counted as `commits_unreadable` and makes the row `partial`.
+Below `--min-n` (50) readable PRs the row is `partial` and the exit code is 3.
 
 ```bash
 python3 scripts/eval/leg-digest/pdd_share.py --limit 120            # print the row

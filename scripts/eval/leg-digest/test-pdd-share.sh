@@ -33,6 +33,10 @@ check "five bodies show RED then GREEN (not GREEN-first, not only in the CodeRab
 echo "2. skipped PRs"
 check "no ticket, ticket outside the mirror and no commits are named in meta.skipped" 'jq -e ".meta.skipped == {\"no_ticket\": 1, \"not_in_mirror\": 1, \"no_commits\": 1} and .meta.prs_seen == 11" "$TMP/row.json" >/dev/null'
 
+jq '. + [(.[0] | .number = 99 | .commits = null)]' "$FX/prs.json" >"$TMP/unreadable.json"
+python3 -I "$PDD" --prs "$TMP/unreadable.json" --mirror "$FX/mirror" --min-n 5 >"$TMP/unreadable.out" 2>/dev/null; RC=$?
+check "a PR whose commit lookup failed is named, and makes the row partial with exit 3 even above --min-n" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 8 and .meta.skipped.commits_unreadable == 1" "$TMP/unreadable.out" >/dev/null'
+
 echo "3. the row"
 check "the share has a 95 % Wilson range around it" 'jq -e ".ci_method == \"wilson\" and .ci_level == 0.95 and .ci[\"pdd.pct\"].lo <= .metrics[\"pdd.pct\"] and .metrics[\"pdd.pct\"] <= .ci[\"pdd.pct\"].hi and .ci[\"pdd.pct\"].hi < 1" "$TMP/row.json" >/dev/null'
 pdd >"$TMP/small.json" 2>/dev/null; RC=$?
