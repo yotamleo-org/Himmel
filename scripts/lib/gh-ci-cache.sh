@@ -319,8 +319,9 @@ _cic_fetch_rest() {
     _cic_rest_endpoint checks "repos/$CIC_PR_REPO/commits/$CIC_HEAD/check-runs?per_page=100&filter=latest" || return 1
     _cic_rest_endpoint status "repos/$CIC_PR_REPO/commits/$CIC_HEAD/status?per_page=100" || return 1
     # filter=latest is per check suite, so the newest run of a name is only a
-    # rerun when it shares the event of the older one: a workflow_dispatch run at
-    # the same sha skips the PR-only gates and must not supersede their failure.
+    # rerun when it shares the event and workflow of the older one: a
+    # workflow_dispatch run at the same sha skips the PR-only gates, and another
+    # workflow may define the same check name; neither supersedes a failure.
     # The suite-to-event map is read only when one name+app spans several suites.
     need=$(printf '%s\n' "$CIC_REST_DATA" | jq -r '
         [.checks.body.check_runs | group_by([.name, (.app.id // "" | tostring)])[] |
@@ -339,7 +340,8 @@ _cic_fetch_rest() {
                  .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")
              else (.status == "queued" or .status == "in_progress" or .status == "pending" or
                    .status == "waiting" or .status == "requested") and .conclusion == null end);
-        ([.runs.body.workflow_runs[]? | .check_suite_id | tostring]) as $mapped |
+        def wf_ok: (.workflow_id | type == "number") and (.event | type == "string");
+        ([.runs.body.workflow_runs[]? | select(wf_ok) | .check_suite_id | tostring]) as $mapped |
         if (.checks.body.check_runs | type == "array") and
             (.checks.body | count_ok(.check_runs)) and all(.checks.body.check_runs[]; check_valid) and
             (.status.body.statuses | type == "array") and (.status.body | count_ok(.statuses)) and
@@ -347,7 +349,7 @@ _cic_fetch_rest() {
                 (.state == "success" or .state == "pending" or .state == "failure" or .state == "error")) and
             ($need != "1" or ((.runs.body.workflow_runs | type == "array") and (.runs.body | count_ok(.workflow_runs)) and
                 all(.checks.body.check_runs[] | select(.app.id == 15368); (.check_suite.id // "" | tostring) as $s | any($mapped[]; . == $s))))
-        then (if $need == "1" then [.runs.body.workflow_runs[] | {key: (.check_suite_id | tostring), value: .event}] | from_entries else {} end) as $ev |
+        then (if $need == "1" then [.runs.body.workflow_runs[] | select(wf_ok) | {key: (.check_suite_id | tostring), value: "\(.event)/\(.workflow_id)"}] | from_entries else {} end) as $ev |
             def gk: [.name, (.app.id // "" | tostring), ($ev[(.check_suite.id // "" | tostring)] // "")];
             [(.checks.body.check_runs as $runs | $runs[] |
                 select(. as $c | all($runs[]; gk != ($c | gk) or run_key <= ($c | run_key))) |

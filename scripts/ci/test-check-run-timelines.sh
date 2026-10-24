@@ -74,10 +74,10 @@ case " $* " in
         echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' > "$CASE/threads.json"
         emit "$CASE/threads.json"; exit 0 ;;
     *'/actions/runs?'*)
-        # Assumption: every recorded check suite is a pull_request workflow run.
+        # Assumption: every recorded check suite is a pull_request run of one workflow.
         case " $* " in *' --include '*) headers ;; esac
         jq '{total_count: ([.check_runs[].check_suite.id] | unique | length),
-            workflow_runs: [[.check_runs[].check_suite.id] | unique[] | {check_suite_id: ., event: "pull_request"}]}' \
+            workflow_runs: [[.check_runs[].check_suite.id] | unique[] | {check_suite_id: ., event: "pull_request", workflow_id: 1}]}' \
             "$CASE/check-runs-latest.json" > "$CASE/workflow-runs.json"
         emit "$CASE/workflow-runs.json"; exit 0 ;;
     *'/actions/runs/'[0-9]*'/jobs'*) emit "$CASE/jobs-$(printf '%s' "$*" | sed -n 's|.*/actions/runs/\([0-9]*\)/jobs.*|\1|p').json"; exit 0 ;;

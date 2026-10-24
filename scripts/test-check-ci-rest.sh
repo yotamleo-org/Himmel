@@ -27,13 +27,16 @@ case " $* " in
     *' rate_limit '*) printf '%s 1000003600 %s 1000003600\n' "${CORE:-5000}" "${GQL:-5000}"; exit 0 ;;
     *'/check-runs?'*) body='{"total_count":1,"check_runs":[{"id":1,"name":"unit","status":"completed","conclusion":"success"}]}' ;;
     *'/status?'*) body='{"total_count":1,"statuses":[{"context":"lint","state":"success"}]}' ;;
-    *'/actions/runs?'*) body='{"total_count":3,"workflow_runs":[{"id":901,"check_suite_id":10,"event":"pull_request"},{"id":902,"check_suite_id":20,"event":"workflow_dispatch"},{"id":903,"check_suite_id":30,"event":"pull_request"}]}' ;;
+    *'/actions/runs?'*) body='{"total_count":3,"workflow_runs":[{"id":901,"check_suite_id":10,"event":"pull_request","workflow_id":101},{"id":902,"check_suite_id":20,"event":"workflow_dispatch","workflow_id":101},{"id":903,"check_suite_id":30,"event":"pull_request","workflow_id":101}]}' ;;
     *) echo 'unexpected API call' >&2; exit 1 ;;
 esac
 [ "${REST_ERROR:-0}" = 0 ] || { echo 'REST unavailable' >&2; exit 1; }
 if [ "${RUNS_ERROR:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then echo 'runs unavailable' >&2; exit 1; fi
 if [ "${RUNS_PAGED:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":101,"workflow_runs":[]}'; fi
 if [ "${RUNS_EMPTY:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":0,"workflow_runs":[]}'; fi
+# Suites 10 and 30 belong to two different workflows that both run on pull_request and both define the same check name.
+if [ "${RUNS_OTHERWF:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":2,"workflow_runs":[{"id":901,"check_suite_id":10,"event":"pull_request","workflow_id":101},{"id":903,"check_suite_id":30,"event":"pull_request","workflow_id":202}]}'; fi
+if [ "${RUNS_NOWF:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":2,"workflow_runs":[{"id":901,"check_suite_id":10,"event":"pull_request"},{"id":903,"check_suite_id":30,"event":"pull_request","workflow_id":101}]}'; fi
 # Same check name, two suites: suite 10 is a pull_request run, suite 20 a workflow_dispatch run (ids rise with creation).
 if [ "${XEVENT:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":10},"status":"completed","conclusion":"failure"},{"id":2,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":20},"status":"completed","conclusion":"skipped"}]}'; fi
 # Both suites are pull_request runs (a rerun / edited-event run): the newer success supersedes the older failure.
@@ -67,7 +70,7 @@ new_case() {
     : > "$CASE/calls"; : > "$CASE/responses"; : > "$CASE/sleeps"
     printf '1000000000\n' > "$CASE/clock"
     export CIC_CLOCK_FILE="$CASE/clock" CHECK_CI_CACHE_DIR="$CASE/cache"
-    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP RUNS_ERROR RUNS_PAGED RUNS_EMPTY ACTUAL_GQL
+    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP RUNS_ERROR RUNS_PAGED RUNS_EMPTY RUNS_OTHERWF RUNS_NOWF ACTUAL_GQL
     cic_init 42 sha1 || exit 1
 }
 count() { grep -c -- "$1" "$CASE/calls" || true; }
@@ -191,6 +194,16 @@ new_case
 export XEVENT=1 RUNS_EMPTY=1
 cic_get 60; rc=$?
 if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ] && [ "$CIC_ROWS" = $'pass\tunit' ]; then ok 'a workflow-run list that maps none of the colliding suites falls back to GraphQL'; else bad "unmapped suites: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XSAME=1 RUNS_OTHERWF=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'fail\tcommit-lint\npass\tcommit-lint\npass\tlint' ]; then ok 'a newer pass of the same name and event from another workflow does not supersede a failure'; else bad "cross-workflow failure lost: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XSAME=1 RUNS_NOWF=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ] && [ "$CIC_ROWS" = $'pass\tunit' ]; then ok 'a workflow-run entry without a workflow id falls back to GraphQL'; else bad "missing workflow id: rc=$rc rows=$CIC_ROWS"; fi
 
 new_case
 cic_get 60; rc=$?
