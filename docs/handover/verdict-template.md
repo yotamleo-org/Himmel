@@ -40,7 +40,7 @@ A NO-GO vetoes whatever PR it names, since it only narrows.
 A GO is refused once a NO-GO exists for that head.
 When `<judge-name>.md` already holds a NO-GO for another head,
 the new ruling lands in `<judge-name>-<head>.md` beside it, so the veto
-survives the PR returning to that head. A console-judge call
+survives the PR returning to that head. A judge-ro call
 has no Write tool and the Bash guards refuse the verdict line typed by hand, so
 the writer is its only path.
 

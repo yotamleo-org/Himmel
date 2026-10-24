@@ -21,7 +21,7 @@ Join.
   candidate  an escape signal whose cause no caused-by on the PR already settles: a Bug created after the merge
              that cites the PR and has no caused-by line, or a failed main run on the merge commit
              (ci-selection); and a NO-GO overturned by a
-             GO at the same head. Each goes once to the adjudication queue; a console-judge-ro call
+             GO at the same head. Each goes once to the adjudication queue; a judge-ro call
              (opus, high) rules it S / P / N with `rule`, and a ruled id is never asked again.
   procedural a NO-GO that only buys a delta round; left out of every rate.
   overridden a NO-GO whose PR merged at that head with no GO for it: a console decision, never "wrong".
@@ -429,7 +429,7 @@ def main(argv=None):
     u.add_argument("id")
     u.add_argument("ruling")
     u.add_argument("--evidence", required=True)
-    u.add_argument("--by", default="console-judge-ro")
+    u.add_argument("--by", default="judge-ro")
     u.add_argument("--queue")
     a = ap.parse_args(argv)
     try:

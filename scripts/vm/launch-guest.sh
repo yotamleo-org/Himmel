@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: launcher into a test VM; the operator or console arming it is the billed act
 # scripts/vm/launch-guest.sh - start ONE claude session on a himmel test VM.
 #
 # The sanctioned guest launch for the leg-vm profile: the profile's

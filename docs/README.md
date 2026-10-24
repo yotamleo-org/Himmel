@@ -57,6 +57,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [orchestration-patterns.md](orchestration-patterns.md) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.
 - [internals/ci-image.md](internals/ci-image.md) — the prebuilt GHCR CI tooling image: contents, build, what ci.yml would change.
+- [internals/ci-merge-flow.md](internals/ci-merge-flow.md) — the CI and merge flow: no update-branch, a red main, quarantine, when a branch merges main in.
 - [internals/lane-parity.md](internals/lane-parity.md) — the living compatibility index across delegation lanes.
 - [internals/validation-gates.md](internals/validation-gates.md) — placement doctrine for validation/quality gates across workflows.
 - [internals/worker-spawn-matrix.md](internals/worker-spawn-matrix.md) — native Hermes subagents vs. external lane workers.

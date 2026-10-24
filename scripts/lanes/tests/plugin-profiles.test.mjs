@@ -661,7 +661,8 @@ const DESIGN_ADDONS = {
   'design-a11y': ['platform-design-skills@himmel'],
   'design-diagram': ['diagram-design@himmel', 'builder-visual@himmel'],
   'design-slides': ['frontend-slides@himmel'],
-  'design-reference': ['taste-skill-core@himmel', 'design-dna@himmel', 'anydesign@himmel', 'anthropic-design-skills@himmel'],
+  'design-reference': ['taste-skill-core@himmel', 'design-dna@himmel', 'anydesign@himmel', 'anthropic-design-skills@himmel',
+    'popular-web-designs@himmel', 'design-md@himmel', 'hermes-artifact-design@himmel'],
   'design-trial': ['hallmark@himmel'],
 };
 

@@ -127,15 +127,20 @@ if [ -n "$DOC$RESUME" ] && ts_record_read "$KEY"; then
     [[ "${DOC##*/}" =~ ^$KEY-(N[0-9]+)- ]] && leg="${BASH_REMATCH[1]}"
     rec=$(jq -c --arg k "$KEY" --arg d "$DOC" --arg l "$leg" --arg rb "$RESUME" '
         .key = $k
-        | if $d != "" then .doc = $d else . end
+        | if $d != "" then .docs = ((.docs // []) + [.doc // empty, $d] | unique) | .doc = $d else . end
         | if $l != "" then .leg = $l else . end
         | if $rb != "" then .resume_brief = $rb else . end' <<<"$TS_REC") \
         && ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot record the $KEY owner" >&2
 fi
 
 update_record() { # <Jira status now> [the move, "<from> -> <to>"]
-    local rec cid chash
+    local rec cid chash ol=""
     ts_record_read "$KEY" || return 0
+    # The record and the WORKER comment follow the leg that still holds the key.
+    if [ -n "$TS_OWNER_DOC" ]; then
+        [[ "${TS_OWNER_DOC##*/}" =~ ^$KEY-(N[0-9]+)- ]] && ol="${BASH_REMATCH[1]}"
+        TS_REC=$(jq -c --arg d "$TS_OWNER_DOC" --arg l "$ol" '.doc = $d | if $l != "" then .leg = $l else del(.leg) end' <<<"$TS_REC") || return 0
+    fi
     cid=$(jq -r '.comment_id // ""' <<<"$TS_REC") chash=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
     if ts_worker_comment "$KEY" "$1" "${2:-$(jq -r '.last_move // ""' <<<"$TS_REC")}"; then
         cid=$TS_CID chash=$TS_CHASH

@@ -98,6 +98,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 TASKS="$HERE/tasks"
 die() { echo "lane-quality: $*" >&2; exit 64; }
 usage() { sed -n '2,67p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+# billed-opt-in: HIMMEL_BILLED_OK
+need_billed() { [ "${HIMMEL_BILLED_OK:-}" = 1 ] || die "$1 makes real, billed model calls; set HIMMEL_BILLED_OK=1 (on-demand only)"; }
+has_arg() { local w=$1 a; shift; for a in "$@"; do if [ "$a" = "$w" ]; then return 0; fi; done; return 1; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] && basename "$d"; done; }
@@ -459,6 +462,7 @@ cmd_run() {
     esac
   done
   [ -n "$MODEL" ] || die "--model is required"
+  [ "$DRY_RUN" -eq 1 ] || need_billed "run"
   case "$LANE" in
     native|openrouter) ;;
     api)
@@ -731,7 +735,7 @@ case "$1" in
   run) shift; cmd_run "$@" ;;
   table) shift; cmd_table "$@" ;;
   pair) shift; cmd_pair "$@" ;;
-  calibration) shift; cmd_calibration "$@" ;;
+  calibration) shift; ! has_arg --judge2-model "$@" || need_billed "calibration --judge2-model"; cmd_calibration "$@" ;;
   materialize) shift; [ $# -ge 2 ] || die "materialize <task> <dir> [--reference]"; materialize "$@" ;;
   -h|--help) usage ;;
   *) die "unknown command '$1' (list|run|table|pair|calibration|materialize)" ;;

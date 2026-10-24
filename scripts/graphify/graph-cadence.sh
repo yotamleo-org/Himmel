@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # graph-cadence.sh — the recurring refresh+publish leg for himmel's own
 # graphify graph.
 #

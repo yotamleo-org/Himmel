@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # steering-cull-cadence.sh — weekly read-only steering-file cull run.
 #
 # WHY: steering files grow with every agent mistake and nobody deletes lines;

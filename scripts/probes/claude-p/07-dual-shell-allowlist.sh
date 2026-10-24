@@ -7,6 +7,8 @@
 # evidence of run-to-run shell nondeterminism and whether a single-shape
 # allowlist bleeds silent no-ops. Verify by ARTIFACT (file presence + which
 # tool_use entries appear in the stream), never rc.
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"

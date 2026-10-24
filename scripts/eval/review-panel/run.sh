@@ -41,6 +41,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$out" ] || { echo "run.sh: --out <dir> is required" >&2; exit 2; }
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "run.sh: draws codex bank per fixture; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 if [ ! -d "$fixtures" ] || [ ! -f "$key" ]; then
     echo "run.sh: no fixtures dir or key" >&2
     exit 2

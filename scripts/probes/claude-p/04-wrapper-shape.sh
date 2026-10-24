@@ -3,6 +3,8 @@
 # Probe 4: combined wrapper shape — stdin prompt,
 # --append-system-prompt-file, --output-format json --json-schema. Verify by
 # ARTIFACT: does the envelope carry a schema-conformant `structured_output`.
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"

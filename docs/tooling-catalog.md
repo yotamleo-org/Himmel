@@ -85,8 +85,23 @@ truth for presence; named profiles can still opt in. Full detail:
 | `frontend-slides` | HTML presentation generator, `git-subdir` path plugins/frontend-slides in the upstream repo, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
 | `design-dna` | Design DNA skill (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anydesign` | Capture a site into a design system, tag `v0.6.0` (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
+| `popular-web-designs` | Hermes-bundled skill: 54 brand design systems (Stripe, Linear, Vercel, ...) as HTML/CSS, from VoltAgent/awesome-design-md (MIT); `git-subdir` path skills/creative/popular-web-designs of NousResearch/hermes-agent, tag `v2026.9.24` (root-skill shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
+| `design-md` | Hermes-bundled skill: author/lint/export Google's DESIGN.md token spec (spec Apache-2.0); `git-subdir` path skills/creative/design-md of NousResearch/hermes-agent, tag `v2026.9.24` (root-skill shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
+| `hermes-artifact-design` | Hermes-bundled skill: one-off HTML design artifacts in CLI/API mode (BadTechBandit, MIT); `git-subdir` path skills/creative/claude-design of NousResearch/hermes-agent, tag `v2026.9.24` (root-skill shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anthropic-design-skills` | anthropics/skills: whole skills/ dir loads (design ones: theme-factory, brand-guidelines, canvas-design; a skills list cannot subset it) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `hallmark` | Nutlope/hallmark design skill (90 MB clone), opt-in trial | ON-DEMAND, `design-trial` profile; catalog id `@himmel` |
+
+Evaluated for the design kit and NOT added (HIMMEL-4016, static review only: the
+usage POC was not run, because external code runs VM-first and no VM was free):
+`alchaincyf/huashu-design` v3.0.0 (MIT; Chinese-language skill, HTML prototypes,
+decks and MP4/GIF/PPTX export that need Playwright, pptxgenjs and sharp installed;
+overlaps `impeccable`, `frontend-design` and `hermes-artifact-design`) and
+`alchaincyf/huashu-motion` v0.3.1 (MIT; motion-graphics skill whose `bin/om` runs
+the repo's own `cli/om.js`, needs Node 22, Chrome and ffmpeg, bundles GSAP under its
+no-charge licence, one unlicensed cartoon likeness, macOS-tested only; a `git-subdir`
+cache of `skills/huashu-motion` would lack `cli/` and fall back to an unpinned
+`npx --yes huashu-motion`, so it would need a whole-repo `url` source). Re-evaluate
+after a VM render POC shows value over `motion-lexicon` and the emil skills.
 
 `plugin-dev`, `agent-sdk-dev`, `hookify`, and `playground` are cached and
 available off by default, not absent. `atlassian@claude-plugins-official` is

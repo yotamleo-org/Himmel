@@ -80,7 +80,7 @@
         "plugin:lottie-motion-design@himmel", "plugin:motion-lexicon@himmel", "plugin:threejs-skills@himmel",
         "plugin:ai-image-prompts@himmel", "plugin:platform-design-skills@himmel", "plugin:diagram-design@himmel",
         "plugin:builder-visual@himmel", "plugin:frontend-slides@himmel", "plugin:design-dna@himmel",
-        "plugin:anydesign@himmel", "plugin:anthropic-design-skills@himmel", "plugin:hallmark@himmel",
+        "plugin:anydesign@himmel", "plugin:popular-web-designs@himmel", "plugin:design-md@himmel", "plugin:hermes-artifact-design@himmel", "plugin:anthropic-design-skills@himmel", "plugin:hallmark@himmel",
         "plugin:shadcn-mcp@himmel", "plugin:emilkowalski-skills@himmel", "plugin:himmel-bus@himmel",
         "plugin:humanizer@himmel", "plugin:domain-modeling@himmel",
         "doctor:C2-obsidian", "doctor:C6-mcp", "doctor:C15-plugins", "doctor:C15-plugins-ondemand",
@@ -113,7 +113,7 @@
       "rows": [
         "node", "npm-less-node", "bun", "jq", "git", "python3", "uv", "shellcheck", "gitleaks", "pre-commit",
         "gh", "rtk", "doctor:C20-node", "probe-disagree:C20-node", "doctor:C39-gtimeout-darwin",
-        "doctor:C62-oxlint-runner"
+        "doctor:C62-oxlint-runner", "doctor:C73-bun-compiled"
       ]
     }
   ]

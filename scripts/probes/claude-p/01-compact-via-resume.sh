@@ -8,6 +8,8 @@
 # "Not enough messages to compact." with NO compact_boundary message is a
 # valid measured negative (insufficient history), not a probe failure — in
 # that case we add one more exchange and retry /compact once.
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"

@@ -23,6 +23,7 @@ vendoring records name the upstream pins and carried deviations.
 | builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 20ff8a101fe8300e44cb3b2d570cb93c7580e1b9 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
+| design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f2f4d49ea8d632f17cf196ba26599277a93f767b |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
 | emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 2d228630ba1446365f614a108cb8252f1feda202 |
@@ -32,6 +33,7 @@ vendoring records name the upstream pins and carried deviations.
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
 | hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 13ac0ec7e148655948100b6396439e481361d690 |
 | handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | yotamleo | MIT | In-tree |
+| hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | himmel-bus | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-bus | yotamleo | MIT | In-tree |
 | himmel-guard | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-guard | yotamleo | MIT | In-tree |
 | himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | yotamleo | MIT | In-tree |
@@ -42,10 +44,11 @@ vendoring records name the upstream pins and carried deviations.
 | lottie-motion-design | https://github.com/lottiefiles/motion-design-skill | lottiefiles | MIT | f9a8a041b85185ee4881b3471d3415e939aac772 |
 | luna-correlate | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/luna-correlate | yotamleo | MIT | In-tree |
 | motion-lexicon | https://github.com/Ryan-yang125/motion-lexicon | Ryan-yang125 | MIT | v6.0.0 |
-| obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | 6eccc4d0a2e546be3f62d8881f72208bf43ad2b4 |
+| obsidian-second-brain | https://github.com/yotamleo-org/obsidian-second-brain | Eugeniu Ghelbur | MIT | e42dac7976cdf1466f4a6d90f2de96f92e41c1f4 |
 | obsidian-triage | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/obsidian-triage | yotamleo | MIT | In-tree |
 | plannotator-effective-html | https://github.com/plannotator/effective-html | plannotator | MIT | 975b047f6da6874e176db54f048c0c31c30e9f65 |
 | platform-design-skills | https://github.com/ehmo/platform-design-skills | ehmo | MIT | dc2be825d8b439caea78e9eaa8fb3ac23b0ff3e9 |
+| popular-web-designs | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | pstack | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/pstack/VENDORED.md) |
 | qmd | https://github.com/tobi/qmd | tobi (upstream) / yotamleo (fork) | MIT | [Fork pin](../scripts/lib/qmd-bin.sh) |
 | shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | MIT | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
@@ -88,7 +91,7 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 | yotamleo-org/graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs | Apache-2.0 | branch himmel-main; [pin site](../scripts/lib/graphify-bin.sh) | runtime-dependency |
 | yotamleo-org/hermes-agent | https://github.com/NousResearch/hermes-agent | NousResearch | MIT | branch main; [pin site](../scripts/upstreams.json) | dormant |
 | yotamleo-org/home-assistant.io | https://github.com/home-assistant/home-assistant.io | Home Assistant contributors | CC-BY-NC-SA-4.0 | branch current; no pin site registered | upstream-contribution |
-| yotamleo-org/obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | branch main; no pin site registered | dormant |
+| yotamleo-org/obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | branch main; [pin site](../marketplace/.claude-plugin/marketplace.json) | runtime-dependency |
 | yotamleo-org/obsidian-skills | https://github.com/kepano/obsidian-skills | Steph Ango | MIT | branch himmel-main; no pin site registered | runtime-dependency |
 | yotamleo-org/qmd | https://github.com/tobi/qmd | Tobi Lütke | MIT | branch main; [pin site](../scripts/lib/qmd-bin.sh) | runtime-dependency |
 | yotamleo-org/twitter-cli | https://github.com/public-clis/twitter-cli | public-clis | Apache-2.0 | branch himmel-main; [pin site](../scripts/upstreams.json) | runtime-dependency |

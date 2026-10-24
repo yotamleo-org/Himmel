@@ -21,6 +21,7 @@ _MOD_PATH = Path(__file__).resolve().parent / "enrich-chat-notes.py"
 _SPEC = importlib.util.spec_from_file_location("enrich_chat_notes", _MOD_PATH)
 mod = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(mod)
+os.environ["HIMMEL_BILLED_OK"] = "1"  # every network call here is a stub
 
 
 class _FakeDateTime:

@@ -102,9 +102,9 @@ git -C "$FX" commit -q -m "chore: base"
 
 # change <file> — append a line to <file>, commit, set $range to that commit.
 change() {
-    printf '# changed\n' >> "$FX/$1"
-    git -C "$FX" add -A
-    git -C "$FX" commit -q -m "fix: change $1"
+    printf '# changed\n' >> "$FX/$1" || return 1
+    git -C "$FX" add -A || return 1
+    git -C "$FX" commit -q -m "fix: change $1" || return 1
     range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
 }
 run_is() { ( cd "$FX" && bash "$IS" "$@" 2>/dev/null ); }
@@ -660,9 +660,13 @@ if [ "$rc" -eq 1 ] && grepq "$out" 'without a verdict'; then pass "--from-file e
 # --- 26. --from-file naming a genuinely empty file against a genuinely empty
 # impacted set is clean (rc0) — the case the runbook's own zero-candidate
 # instruction relies on. ------------------------------------------------------
-change docs/bar/other-26.md
-out="$( cd "$FX" && bash "$IS" --check "$range" --from-file "$FX/empty-25.txt" 2>&1 )"; rc=$?
-if [ "$rc" -eq 0 ] && grepq "$out" '0 impacted'; then pass "--from-file empty path with an empty impacted set -> rc0 '0 impacted'"; else fail "--from-file empty path against no impacted suites: rc=$rc out=$out"; fi
+mkdir -p "$FX/docs/bar"
+if change docs/bar/other-26.md; then
+    out="$( cd "$FX" && bash "$IS" --check "$range" --from-file "$FX/empty-25.txt" 2>&1 )"; rc=$?
+    if [ "$rc" -eq 0 ] && grepq "$out" '0 impacted'; then pass "--from-file empty path with an empty impacted set -> rc0 '0 impacted'"; else fail "--from-file empty path against no impacted suites: rc=$rc out=$out"; fi
+else
+    fail "fixture setup failed for section 26 (docs/bar/other-26.md)"
+fi
 
 # --- 27. Source closure. A suite that names only mid.sh must be
 # listed when far.sh (two source hops behind mid.sh) changes. -----------------
@@ -887,6 +891,33 @@ mkdir -p "$FX/.claude/commands"
 change .claude/commands/x.html
 out="$(run_is "$range")"
 if grepq "$out" "^${TERM}\$"; then pass "a .claude/commands/x.html -> test-check-cr-terminology.sh"; else fail "commands html row missed: $out"; fi
+
+# --- 33b. WS5 T13(b) scans every shipped (non-test) shell or JS source the diff
+# adds and names none of them: a one-file change to a scanned source selects it
+# (RED control: PR 2217 changed scripts/telegram/break-glass.sh and the suite
+# never ran), and the files its own scan skips do not. -------------------------
+WS5=scripts/parity/test-ws5-invariants\\.sh
+mkf scripts/parity/test-ws5-invariants.sh 'echo ws5'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: ws5 fixture"
+mkdir -p "$FX/scripts/telegram" "$FX/tools/ws5"
+for ws5_src in scripts/telegram/break-glass.sh tools/ws5/a.mjs tools/ws5/b.ts tools/ws5/c.js tools/ws5/d.cjs tools/ws5/e.bash tools/ws5/j.JS tools/ws5/k.SH; do
+  change "$ws5_src" || { fail "fixture setup failed for $ws5_src"; continue; }
+  out="$(run_is "$range")"
+  if grepq "$out" "^${WS5}\$"; then pass "a one-file change to $ws5_src selects test-ws5-invariants.sh"; else fail "WS5 not selected for $ws5_src: $out"; fi
+done
+for ws5_skip in scripts/telegram/test-break-glass.sh tools/ws5/data.tsv tools/ws5/f.test.ts tools/ws5/g.test.mjs tools/ws5/h.test.js tools/ws5/i.test.cjs; do
+  change "$ws5_skip" || { fail "fixture setup failed for $ws5_skip"; continue; }
+  out="$(run_is "$range")"
+  if ! grepq "$out" "^${WS5}\$"; then pass "$ws5_skip (skipped by WS5's own scan) does not select test-ws5-invariants.sh"; else fail "WS5 over-selected for $ws5_skip: $out"; fi
+done
+# the !test-* veto must not stop WS5 selecting itself when its own file changes
+if change scripts/parity/test-ws5-invariants.sh; then
+  out="$(run_is "$range")"
+  if grepq "$out" "^${WS5}\$"; then pass "a change to test-ws5-invariants.sh itself selects it (the test-* veto does not hide it)"; else fail "WS5 self-change not selected: $out"; fi
+else
+  fail "fixture setup failed for the WS5 self-change"
+fi
 
 # --- 34. A change to the CR guarded closure selects
 # test-cr-guarded-closure.sh (#1851: leg-jira-status.sh, reached from the
@@ -1138,7 +1169,9 @@ elif ! git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh
     fail "old-selector control setup: $OLD_IS_SHA is present but its selector could not be read"
 else
     old_out="$( cd "$FX" && bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
-    if [ "$old_out" = "$out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
+    # The WS5 scan_roots rows postdate that selector, so its row is not compared.
+    cmp_out="$(grep -vxF scripts/parity/test-ws5-invariants.sh <<< "$out")"
+    if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
