@@ -2,15 +2,15 @@
   "v": 1,
   "generator": "scripts/cr/evals-page-gen.py",
   "review": {
-    "as_of": "2026-10-25",
+    "as_of": "2026-10-24",
     "until": null,
     "command": "python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --as-of <date>",
     "pooled": {
-      "findings": 11605,
+      "findings": 11609,
       "prs": 2122,
       "agreed": 5950,
       "disproved": 1517,
-      "deferred": 3486,
+      "deferred": 3490,
       "unadjudicated": 652,
       "n": 7467,
       "precision_pct": 79.7,
@@ -27,11 +27,11 @@
     },
     "critics": {
       "codex:gpt-6.1-sol": {
-        "findings": 6992,
+        "findings": 6993,
         "prs": 1476,
         "agreed": 3937,
         "disproved": 1014,
-        "deferred": 2002,
+        "deferred": 2003,
         "unadjudicated": 39,
         "n": 4951,
         "precision_pct": 79.5,
@@ -127,11 +127,11 @@
         "last": "2026-09-05"
       },
       "coderabbit-outside": {
-        "findings": 228,
-        "prs": 115,
+        "findings": 230,
+        "prs": 116,
         "agreed": 65,
         "disproved": 54,
-        "deferred": 109,
+        "deferred": 111,
         "unadjudicated": 0,
         "n": 119,
         "precision_pct": 54.6,
@@ -398,6 +398,20 @@
         "first": "2026-10-22",
         "last": "2026-10-22"
       },
+      "opus": {
+        "findings": 3,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 3,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
       "self": {
         "findings": 3,
         "prs": 2,
@@ -484,20 +498,6 @@
         "bootstrap": null,
         "first": "2026-10-22",
         "last": "2026-10-22"
-      },
-      "opus": {
-        "findings": 2,
-        "prs": 1,
-        "agreed": 0,
-        "disproved": 0,
-        "deferred": 2,
-        "unadjudicated": 0,
-        "n": 0,
-        "precision_pct": null,
-        "wilson": null,
-        "bootstrap": null,
-        "first": "2026-10-24",
-        "last": "2026-10-24"
       },
       "claude-opus-5-5": {
         "findings": 1,
@@ -651,7 +651,7 @@
     "warm": 435,
     "cold": 15,
     "command": "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl > cache-probe.txt",
-    "scope": "this project's sessions from the three days to 2026-10-25",
-    "as_of": "2026-10-25"
+    "scope": "this project's sessions from the three days to 2026-10-24",
+    "as_of": "2026-10-24"
   }
 }

@@ -87,6 +87,8 @@ def read_cache(path):
     m = re.search(r"^read-ratio: ([0-9.]+)% over ([0-9]+) tokens$", text, re.M)
     if not m:
         die("no 'read-ratio: <pct>% over <n> tokens' line in " + path)
+    if int(m.group(2)) == 0:
+        die("the cache probe measured 0 tokens in " + path + ": no measurement to report")
     w = re.search(r"^verdict: \S+ warm=([0-9]+) cold=([0-9]+)", text, re.M)
     return {
         "read_ratio_pct": float(m.group(1)), "tokens": int(m.group(2)),
@@ -179,7 +181,8 @@ def render(d):
         "%s with fewer than %d ruled findings %s left out: too few to rank." % (
             "%d reviewers" % hidden if hidden != 1 else "One reviewer", MIN_RULED, "are" if hidden != 1 else "is"), "",
         "### Findings in, findings out", "",
-        "- In: %s findings raised, %s." % (num(p["findings"]), stamp(r["as_of"], p["findings"], "findings")),
+        "- In: %s findings raised, %s. Method: [review panel](review-panel.md)." % (
+            num(p["findings"]), stamp(r["as_of"], p["findings"], "findings")),
     ]
     for key, word in (("agreed", "agreed"), ("disproved", "disproved"), ("deferred", "deferred"),
                       ("unadjudicated", "no verdict")):

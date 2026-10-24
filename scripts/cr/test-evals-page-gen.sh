@@ -93,7 +93,8 @@ print(b is not None and 0 <= b["lo"] <= b["hi"] <= 100)' "$OUT")" "True"
 eq "meta: as-of date" "$(jget "$OUT" review/as_of)" "2026-10-25"
 
 # The counts are cr-scores.sh's counts: same ledger, same total and agreed share per model.
-CS="$(CR_LEDGER="$L" bash "$HERE/cr-scores.sh" 2>/dev/null)"
+CS="$(CR_LEDGER="$L" bash "$HERE/cr-scores.sh" 2>/dev/null)"; cs_rc=$?
+eq "parity: cr-scores.sh exits 0 on the fixture ledger" "$cs_rc" "0"
 a_row="$(printf '%s\n' "$CS" | awk '$1 == "alpha" { print $2, $3; exit }')"
 b_row="$(printf '%s\n' "$CS" | awk '$1 == "beta" { print $2, $3; exit }')"
 eq "parity: alpha total and agreed% match cr-scores.sh" "$a_row" "12 67%"
@@ -120,6 +121,7 @@ has "render: cache regenerate saves the probe output" "$(cat "$R")" "1. \`bash s
 has "render: cache regenerate then feeds the data step" "$(cat "$R")" "2. \`python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt"
 has "render: cache regenerate ends with the render step" "$(cat "$R")" "3. \`python3 scripts/cr/evals-page-gen.py render\`"
 has "render: cache figure says cache reads, not tokens omitted from a request" "$(cat "$R")" "were cache reads"
+has "render: findings-in line links its method page" "$(grep -F -- '- In:' "$R")" "(review-panel.md)"
 has "render: links the review panel method page" "$(cat "$R")" "(review-panel.md)"
 has "render: links the prompt cache method page" "$(cat "$R")" "(prompt-cache.md)"
 eq "render: no bare percentage" "$(bare_pct "$R")" ""
@@ -138,6 +140,9 @@ eq "data: a missing ledger is refused" "$rc" "2"
 printf 'nothing here\n' > "$TMP/junk.txt"
 python3 -I "$GEN" data --ledger "$L" --cache-probe "$TMP/junk.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
 eq "data: cache-probe output without a read-ratio is refused" "$rc" "2"
+printf 'cache-probe first-turn\nread-ratio: 0.0%% over 0 tokens\nverdict: inconclusive warm=0 cold=0\n' > "$TMP/zero.txt"
+python3 -I "$GEN" data --ledger "$L" --cache-probe "$TMP/zero.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
+eq "data: a zero-token cache probe is refused" "$rc" "2"
 
 # ── The committed page ───────────────────────────────────────────────────────
 eq "page: committed README is the render of the committed data file" \
