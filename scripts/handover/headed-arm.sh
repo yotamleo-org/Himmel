@@ -251,6 +251,13 @@
 # failure mode; only a caller that sets HEADED_ARM_RECORDER=1 pays for the
 # extra tty layer.
 #
+# HIMMEL_WORKER_SESSION_TABS=1 (operator switch, default off; "Worker tabs" in
+# docs/handover/running-a-console.md):
+# a worker arm whose HIMMEL_CONSOLE_NAME is set opens as a tab in that
+# console's one konsole window instead of a --separate window of its own; see
+# tab_launch below. HEADED_ARM_QDBUS (default qdbus6) pins the D-Bus client
+# that opens the tab, so a suite can shim it.
+#
 # --role: an optional
 # leading `--role console` flag, ahead of the positionals, for the console arm
 # path only. `console` clears HIMMEL_CONSOLE_RELAY from the child env (so a
@@ -516,6 +523,8 @@ unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HEADED_ARM_BUS_BIND_SECS
 # known. Read once and cleared, so it never rides into the launched session.
 WAKER="${HEADED_ARM_WAKER:-}"
 unset HEADED_ARM_WAKER
+QDBUS="${HEADED_ARM_QDBUS:-qdbus6}"
+unset HEADED_ARM_QDBUS
 SESSION_PID=""
 # A console session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
@@ -1484,35 +1493,104 @@ if [ "$RECORDER" = "1" ]; then
     # entrypoint) that works fine under plain exec.
     BASH_BIN="$(command -v bash || echo /bin/bash)"
     LAUNCH_CMD=$(printf '%q ' "${LAUNCH_ARGV[@]}")
-    # shellcheck disable=SC2086  # LAUNCHER_ENV is a deliberately
+    # shellcheck disable=SC2206  # LAUNCHER_ENV is a deliberately
     # word-split list of NAME=VALUE tokens (HEADED_ARM_LAUNCHER_ENV's
     # documented contract above), never a single value.
-    # shellcheck disable=SC2094  # script -a -f appends the terminal
-    # transcript to $LOG; the outer >> "$LOG" separately captures konsole's
-    # own launch stdout/stderr (spawn errors before script even starts) into
-    # the same file. -a is load-bearing: without it, `script
-    # -f` TRUNCATES $LOG on open, discarding whatever the outer >> already
-    # wrote there.
-    # shellcheck disable=SC2086  # ROLE_ENV_UNSET is either empty or the
+    # ROLE_ENV_UNSET is either empty or the
     # single literal token pair "-u HIMMEL_CONSOLE_RELAY" --
     # deliberately unquoted, same word-split contract as LAUNCHER_ENV above.
-    "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" \
-        -e env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
-            CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
-            script -q -a -f "$LOG" -c "$LAUNCH_CMD" \
-        >> "$LOG" 2>&1 &
+    # script -a -f appends the terminal transcript to $LOG; the outer
+    # >> "$LOG" on the konsole launch below separately captures konsole's own
+    # launch stdout/stderr (spawn errors before script even starts) into the
+    # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
+    # open, discarding whatever the outer >> already wrote there.
+    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH"
+        script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
-    # shellcheck disable=SC2086  # LAUNCHER_ENV word-split, same contract as
-    # the recorder branch above.
-    # shellcheck disable=SC2086  # ROLE_ENV_UNSET, same contract as the
-    # recorder branch above.
-    "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" \
-        -e env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
-            CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
-            "${LAUNCH_ARGV[@]}" \
-        >> "$LOG" 2>&1 &
+    # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
+    # word-split, same contract as the recorder branch above.
+    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH"
+        "${LAUNCH_ARGV[@]}")
 fi
-KPID=$!
+
+# tab_launch - HIMMEL_WORKER_SESSION_TABS=1: open this worker as a new tab in its
+# console's one window (konsole's D-Bus /Windows/1 newSession) instead of a
+# --separate window of its own, and point KPID at that window. The tab's
+# process is the worker itself (runCommand execs it over the tab's shell),
+# so closing a worker - close-wrapped-leg TERMs its claude pid - closes only
+# its tab, and a crashed worker leaves only its own tab dead.
+# Returns 1 to open a window instead: the switch is off, this is a console
+# arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
+# window recorded for the console yet (TAB_RECORD=1: the window this arm opens
+# becomes the console's window). A D-Bus failure also returns 1, with a WARN:
+# a worker is never lost to a tab.
+# The tab's shell inherits the WINDOW's environment (the first worker's), not
+# this arm's, so the tab runs a one-shot script that rebuilds this arm's env
+# with `env -i`, keeping only the tab's own terminal variables. That script
+# holds this env (secrets included) for the second it takes the tab to start:
+# it is written 0600 inside this arm's claim lock (under the validated 0700
+# lock root), deletes itself first thing, and goes with the lock either way.
+# ponytail: two concurrent first arms of one console can open two windows
+# (the record keeps the later one), a recycled window pid that is another
+# konsole would take the tab, /Windows/1 is assumed, and tick.sh's deadwin
+# sweep never closes a dead tab in a window that still has live ones; a
+# per-console flock and a konsole comm check are the upgrade path.
+TAB_SESSION=""
+TAB_WINDOW_FILE=""
+TAB_RECORD=0
+tab_launch() {
+    local wpid sid tab_sh kv
+    [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
+    [ "$ROLE" != "console" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
+    case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
+    TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
+    wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
+    case "$wpid" in ''|*[!0-9]*|0|1) TAB_RECORD=1; return 1 ;; esac
+    kill -0 "$wpid" 2>/dev/null || { TAB_RECORD=1; return 1; }
+    tab_sh="$LOCK/tab.sh"
+    case "$tab_sh" in
+        *[!A-Za-z0-9._/+-]*)
+            echo "$(date +%F_%T) WARN: tab launch for $NAME failed (lock path $tab_sh cannot be typed into a tab) - opening its own window" >> "$LOG"
+            return 1 ;;
+    esac
+    (
+        umask 077
+        # shellcheck disable=SC2016  # the $ lines are expanded by the tab's bash, not here
+        {
+            printf '#!/usr/bin/env bash\nrm -f "$0"\nkeep=()\n'
+            printf 'for v in TERM COLORTERM COLORFGBG WINDOWID SHELL_SESSION_ID KONSOLE_DBUS_SERVICE KONSOLE_DBUS_SESSION KONSOLE_DBUS_WINDOW KONSOLE_PROFILE_NAME KONSOLE_VERSION; do [ -n "${!v+x}" ] && keep+=("$v=${!v}"); done\n'
+            printf 'cd %q || exit 1\nexec env -i' "$REPO"
+            while IFS= read -r -d '' kv; do printf ' %q' "$kv"; done < <(env -0)
+            printf ' ${keep[@]+"${keep[@]}"}'
+            printf ' %q' "${TERM_ARGV[@]}"
+            printf '\n'
+        } > "$tab_sh"
+    ) || { rm -f "$tab_sh"; echo "$(date +%F_%T) WARN: tab launch for $NAME failed (could not write $tab_sh) - opening its own window" >> "$LOG"; return 1; }
+    sid="$("$QDBUS" "org.kde.konsole-$wpid" /Windows/1 newSession 2>>"$LOG")" || sid=""
+    case "$sid" in
+        ''|*[!0-9]*)
+            rm -f "$tab_sh"
+            echo "$(date +%F_%T) WARN: tab launch for $NAME failed (newSession on org.kde.konsole-$wpid: ${sid:-no session}) - opening its own window" >> "$LOG"
+            return 1 ;;
+    esac
+    "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" setTabTitleFormat 0 "$NAME" >> "$LOG" 2>&1
+    "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" setTabTitleFormat 1 "$NAME" >> "$LOG" 2>&1
+    # The leading space keeps the line out of the tab shell's history.
+    if ! "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" runCommand " exec bash $tab_sh" >> "$LOG" 2>&1; then
+        rm -f "$tab_sh"
+        echo "$(date +%F_%T) WARN: tab launch for $NAME failed (runCommand on /Sessions/$sid) - opening its own window" >> "$LOG"
+        return 1
+    fi
+    KPID="$wpid"
+    TAB_SESSION="$sid"
+}
+
+if ! tab_launch; then
+    "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" -e "${TERM_ARGV[@]}" >> "$LOG" 2>&1 &
+    KPID=$!
+fi
 
 # The arm log ($LOG) lives on tmpfs under /run/user and is gone
 # at the next reboot, and it is the only place a console's launch context was
@@ -1541,7 +1619,13 @@ sleep 0.3
 sv_alive=0
 if kill -0 "$KPID" 2>/dev/null; then
     sv_alive=1
-    echo "$(date +%F_%T) konsole launched pid=$KPID for $NAME" >> "$LOG"
+    echo "$(date +%F_%T) konsole launched pid=$KPID for $NAME${TAB_SESSION:+ tab=/Sessions/$TAB_SESSION}" >> "$LOG"
+    if [ "$TAB_RECORD" = "1" ]; then
+        if ! ( umask 077; printf '%s\n' "$KPID" > "$TAB_WINDOW_FILE.$$" && mv -f "$TAB_WINDOW_FILE.$$" "$TAB_WINDOW_FILE" ) 2>>"$LOG"; then
+            rm -f "$TAB_WINDOW_FILE.$$"
+            echo "$(date +%F_%T) WARN: tab window for $HIMMEL_CONSOLE_NAME not recorded - its next worker opens a window of its own" >> "$LOG"
+        fi
+    fi
     # Same stdout-report-not-error reasoning as arm-resume.sh's
     # context line -- report the resolved mode next to the launch record it
     # governs, not just at usage-error time.
@@ -1642,12 +1726,19 @@ if [ "$sv_seen" -eq 1 ]; then
         fi
         [ "$bus_tmp" = /dev/null ] || rm -f "$bus_tmp"
     fi
+    # A tab-mode worker shares its window, so it is tracked by its own pid:
+    # the window outlives it.
+    waker_pid="$KPID"
+    if [ -n "$TAB_WINDOW_FILE" ] && [ -n "$SESSION_PID" ]; then
+        waker_pid="$SESSION_PID"
+        echo "$(date +%F_%T) tab session pid=$SESSION_PID for $NAME" >> "$LOG"
+    fi
     # One waker per headed leg, detached from this script and the leg (own
     # session, no stdio held), bound to this konsole: it stops itself once the
-    # window's pid is gone. Best-effort like the bind above.
+    # window's pid (a tab's worker pid) is gone. Best-effort like the bind above.
     if [ -n "$WAKER" ] && [ "$sv_alive" -eq 1 ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] && [ -f "$WAKER" ]; then
         if command -v setsid >/dev/null 2>&1; then
-            setsid bash "$WAKER" --name "$NAME" --service "org.kde.konsole-$KPID" --session /Sessions/1 --pid "$KPID" \
+            setsid bash "$WAKER" --name "$NAME" --service "org.kde.konsole-$KPID" --session "/Sessions/${TAB_SESSION:-1}" --pid "$waker_pid" \
                 >> "$LOG" 2>&1 < /dev/null &
         else
             echo "$(date +%F_%T) WARN: no setsid, bus-idle-waker not started for $NAME" >> "$LOG"

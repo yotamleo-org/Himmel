@@ -21,7 +21,7 @@
 #  11. WRAPPED, absent from the manifest, window alive     -> close still asked; its
 #      refusal (rc 6, or 2 sessions rc 5) propagates, no pull, no bullet
 #  12. checkout path with a space: default close/board commands still run
-#  13. board failure -> rc 7;  14. append failure -> rc 6, board not run
+#  13. board failure -> rc 7;  14. append failure -> rc 6, the board still re-rendered
 #
 # Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs flock + jq).
 set -uo pipefail
@@ -131,6 +131,7 @@ WM_PR_STATE=OPEN run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "4: rc 3" "$rc" 3
 contains "4: names the step" "$out" "pr-state"
 lacks "4: close not called" "$calls" "close "
+lacks "4: an unmerged PR re-renders no board" "$calls" "board "
 check "4: console doc unchanged" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 
 # --- 5. close refusal propagates -----------------------------------------
@@ -140,6 +141,7 @@ check "5: close rc 4 propagates" "$rc" 4
 contains "5: names the step" "$out" "close-wrapped-leg"
 lacks "5: no pull" "$calls" "pull"
 check "5: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+contains "5: a failed step after a merged PR still re-renders the board" "$calls" "board --doc $CONSOLE --changed"
 
 # --- 6. re-run is idempotent ---------------------------------------------
 fixture
@@ -158,6 +160,9 @@ WM_PULL_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "7: rc 5" "$rc" 5
 contains "7: names the step" "$out" "pull"
 check "7: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+contains "7: the board is still re-rendered" "$calls" "board --doc $CONSOLE --changed"
+WM_PULL_RC=1 WM_BOARD_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "7: a failing board after a failed pull keeps the pull's rc" "$rc" 5
 
 # --- 9. a manifest failure inside close is a failure ----------------------
 fixture
@@ -233,14 +238,14 @@ check "13: rc 7" "$rc" 7
 contains "13: names the step" "$out" "board"
 contains "13: bullet was written first" "$(tail -n 1 "$CONSOLE")" "MERGED #777"
 
-# --- 14. append failure -> rc 6, board not run ------------------------------
+# --- 14. append failure -> rc 6, the board still re-rendered ----------------
 fixture
 chmod 444 "$CONSOLE"
 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 chmod 644 "$CONSOLE"
 check "14: rc 6" "$rc" 6
 contains "14: names the step" "$out" "append-results"
-lacks "14: board not run" "$calls" "board "
+contains "14: the board is still re-rendered" "$calls" "board --doc $CONSOLE --changed"
 
 # --- 15-18. tracker refresh ------------------------------------
 # On MERGED the wrap re-mirrors Jira, snapshots the versions and re-renders the
@@ -358,6 +363,17 @@ if command -v python3 >/dev/null 2>&1; then
     run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
     contains "23: no remaining-board: line prints remaining=skip" "$out" "remaining=skip"
     check "23: and the wrap still succeeds (rc 0)" "$rc" 0
+
+    # 23b. one writer per page: with focus-version: the FOCUS page is focus-refresh's alone
+    printf '#!/usr/bin/env bash\necho "focus $*" >> "$WM_CALLS"\necho focus=ok\n' > "$W/bin/focus-ok"; chmod +x "$W/bin/focus-ok"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+    printf '<title>v1.1.3 Tracker</title>\n' > "$W/roadmap-tracker.html"
+    WM_FOCUS="$W/bin/focus-ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    contains "23b: a focus-version console never renders the all-versions page" "$out" "tracker=skip:focus"
+    check "23b: the FOCUS page is left as focus-refresh wrote it" "<title>v1.1.3 Tracker</title>" "$(cat "$W/roadmap-tracker.html")"
+    contains "23b: the mirror is still refreshed" "$calls" "jira mirror --root $TMIR"
+    contains "23b: and handed to the focus refresh" "$calls" "focus --doc $CONSOLE --mirror-fresh $TMIR"
     unset TICK_TRACKER_MIRROR_DIR TRACKER_HANDOVERS_DIR
 else
     echo "skip - 15-18 tracker rows: no python3"
@@ -377,6 +393,16 @@ WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 contains "25: the happy path prints focus=ok" "$out" "focus=ok"
 contains "25: the refresh is asked with the console doc" "$calls" "focus --doc $CONSOLE"
 check "25: rc 0" "$rc" 0
+fixture
+printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+printf 'UNOWNED HIMMEL-1 x | writer=- | fix=y\nsdrift=1:0a1b2c3d\n' > "$W/focus-drift.txt"
+WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+contains "25b: a good refresh prints its drift rows" "$out" "drift: UNOWNED HIMMEL-1 x | writer=- | fix=y"
+contains "25b: and its drift line" "$out" "drift: sdrift=1:0a1b2c3d"
+WM_FOCUS_OUT="focus=FAILED:drift:budget" WM_FOCUS_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+contains "25b: a failed drift stage is printed with its reason" "$out" "focus=FAILED:drift:budget"
+lacks "25b: and no stale drift list" "$out" "drift: UNOWNED"
+rm -f "$W/focus-drift.txt"
 fixture
 printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
 WM_FOCUS_OUT="focus=FAILED:render" WM_FOCUS_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"

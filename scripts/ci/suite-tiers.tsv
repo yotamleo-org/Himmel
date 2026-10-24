@@ -448,6 +448,7 @@ scripts/handover/test-flush.sh	local	behaviour suite, 0 catches in the 400-PR au
 scripts/handover/test-friction-gate-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-generate-morning-briefing.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-handover-root-dotenv.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-headed-arm-tabs.sh	local	new since the audit, behaviour suite
 scripts/handover/test-headed-arm.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-hop.sh	local	new since the audit, behaviour suite
 scripts/handover/test-jira-dist-primary-4456.sh	local	behaviour suite, 0 catches in the 400-PR audit window
