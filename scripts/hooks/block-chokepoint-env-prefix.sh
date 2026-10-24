@@ -1950,9 +1950,11 @@ obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
     done
     # The model can run for minutes on a long heredoc command, so it gets a
     # bound well inside the chain's per-hook budget; past it the deny stands.
-    { [ -r "$lib" ] && command -v timeout >/dev/null 2>&1; } || return 1
+    # shellcheck source=../lib/timeout-bin.sh
+    { [ -r "$lib" ] && [ -r "$SCRIPT_DIR/../lib/timeout-bin.sh" ] && . "$SCRIPT_DIR/../lib/timeout-bin.sh"; } 2>/dev/null || return 1 # swallow-ok: no model or no resolver keeps the deny
+    [ -n "$_TIMEOUT_BIN" ] || return 1
     # shellcheck disable=SC2016 # $1/$2 expand in the child shell
-    pos=$(timeout 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
+    pos=$("$_TIMEOUT_BIN" 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
     [ "$(printf '%s' "$pos" | jq -r --arg vr "$vr" --arg hard "$hd" "$OBF_AST_JQ" 2>/dev/null)" = allow ] # swallow-ok: a jq error is not allow, so the deny stands
 }
 
