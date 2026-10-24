@@ -428,7 +428,7 @@ assert_contains "the live index still holds gemma after the abort" "$GEMMA" "$(s
 # swap_lock_stale is duplicated in the qmd plugin's ensure-qmd-daemon.sh (a
 # plugin copy cannot source this repo); both copies must classify a lock dir alike.
 PLUGIN_DAEMON="${QMD_DAEMON_SCRIPT:-$SCRIPT_DIR/../../marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh}"
-stale_verdicts() { # <script>: stale/live verdict per lock-dir shape
+stale_verdicts() { # <script> <sed range of the function>: stale/live verdict per lock-dir shape
     bash -c '
         eval "$(sed -n "$2" "$1")"
         d=$(mktemp -d) || exit 1; trap "rm -rf \"\$d\"" EXIT
@@ -437,11 +437,11 @@ stale_verdicts() { # <script>: stale/live verdict per lock-dir shape
         touch -t 200001010000 "$d/nopid-old" "$d/junk"
         for n in dead live nopid-fresh nopid-old junk; do
             if swap_lock_stale "$d/$n"; then echo "$n stale"; else echo "$n live"; fi
-        done' _ "$1" '/^swap_lock_stale() {/,/^}/p'
+        done' _ "$1" "$2"
 }
 want=$'dead stale\nlive live\nnopid-fresh live\nnopid-old stale\njunk stale'
 for copy in "$SCRIPT" "$PLUGIN_DAEMON"; do
-    got="$(stale_verdicts "$copy")"
+    got="$(stale_verdicts "$copy" '/^swap_lock_stale() {/,/^}/p')"
     if [ "$got" = "$want" ]; then pass "swap_lock_stale in $(basename "$copy") classifies lock dirs"
     else fail "swap_lock_stale in $(basename "$copy") classifies lock dirs" "got: $got"; fi
 done
