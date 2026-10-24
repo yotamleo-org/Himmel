@@ -42,7 +42,7 @@ fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2'"; fi; }
 has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; }
 
-unset HIMMEL_WORKER_SESSION_PROFILE 2>/dev/null || true
+unset HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEG_PROFILE 2>/dev/null || true
 
 # --- the whole line, pinned -------------------------------------------------
 out=$(bash "$BURN" "$FIXTURE"); rc=$?

@@ -7,7 +7,7 @@
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
 > **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a
-> leg into it with `WORKER_SESSION_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input <!-- old-term-ok: only the env name changed, prose is pre-existing -->
+> leg into it with `WORKER_SESSION_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input <!--old-term-ok:env-->
 > tokens in one turn, or 150 turns / 30 M cache-read**, whichever comes first. Report at MILESTONES only.
 
 ## ACTION ZERO — before anything else

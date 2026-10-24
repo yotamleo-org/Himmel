@@ -101,7 +101,7 @@
 # HEADED_ARM_WORKER_CLAUDEX_BIN, default ../../claude-codex), turns on the `script`
 # tty recorder (HEADED_ARM_RECORDER=1 - load-bearing: konsole -e output is
 # otherwise lost and a silent claudex death is undiagnosable), and exports
-# CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${LEG_EFFORT:-medium} into the
+# CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${WORKER_SESSION_EFFORT:-medium} into the
 # launched process via HEADED_ARM_LAUNCHER_ENV. An empty/omitted MODEL
 # defaults to gpt-6.1-sol for this lane (native's own --judge default,
 # claude-opus-5-5, is a Claude tier and would defeat the point of
@@ -177,7 +177,7 @@
 #
 # --relay: launches the Sonnet relay half of a split console.
 # Forces --profile console-relay (a real --profile conflicts, exit 2); an
-# empty MODEL defaults to claude-sonnet-5-5 and LEG_EFFORT defaults low, both
+# empty MODEL defaults to claude-sonnet-5-5 and WORKER_SESSION_EFFORT defaults low, both
 # only under this flag. Exports HIMMEL_CONSOLE_RELAY=1, the marker
 # inbox-send.sh's Guard C already refuses --token under and the Task 26
 # write-deny hook will key writes off - a distinct signal from the profile.
@@ -379,7 +379,7 @@ HEADLESS=0
 [ "${WORKER_SESSION_HEADLESS:-${LEG_HEADLESS:-}}" = "1" ] && HEADLESS=1
 LANE="${WORKER_SESSION_LANE:-${LEG_LANE:-native}}"
 # WORKER_SESSION_EFFORT is the new name of LEG_EFFORT and wins when set.
-[ -n "${WORKER_SESSION_EFFORT:-}" ] && LEG_EFFORT="$WORKER_SESSION_EFFORT"
+: "${WORKER_SESSION_EFFORT:=${LEG_EFFORT:-}}"
 PROFILE="${WORKER_SESSION_PROFILE:-${LEG_PROFILE:-}}"
 CHIEF_FLAG=""
 # the leg context guard is off unless the caller asks, by
@@ -832,14 +832,14 @@ if [ "$NO_PRIOR_ART_CHECK" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ]
 fi
 
 # --relay defaults MODEL to the Sonnet relay's own default (an explicit model
-# still wins, same precedence as --lane/--profile above); LEG_EFFORT defaults
+# still wins, same precedence as --lane/--profile above); WORKER_SESSION_EFFORT defaults
 # low for the same reason a relay runs plugin-less - it is not the implementor.
 # Gated on RELAY: a non-relay leg's model default is headed-arm.sh's own, and
 # must stay untouched (--dry-run's no-relay report is pinned byte-identical).
 if [ "$RELAY" -eq 1 ]; then
     [ -z "$MODEL" ] && MODEL=claude-sonnet-5-5
-    : "${LEG_EFFORT:=low}"
-    WORKER_SESSION_EFFORT="$LEG_EFFORT"
+    : "${WORKER_SESSION_EFFORT:=low}"
+    LEG_EFFORT="$WORKER_SESSION_EFFORT"
     export LEG_EFFORT WORKER_SESSION_EFFORT
 fi
 
@@ -857,7 +857,7 @@ fi
 # opus row (medium) instead. An explicit model still wins over the MODEL
 # default; Fable stays available as an explicit, tier-gated choice.
 #
-# CLAUDE_CODE_EFFORT_LEVEL/LEG_EFFORT are deliberately kept as
+# CLAUDE_CODE_EFFORT_LEVEL/WORKER_SESSION_EFFORT are deliberately kept as
 # ambient leg-process input further down (the scrub loop's exclusion list),
 # because a normal native leg's own effort resolver (below) needs a caller's
 # explicit value to win. But a judge is armed by a LEG, not only by a
@@ -1218,7 +1218,7 @@ unset -v _leg_env_scrub
 # headed-arm.sh directly, which is safe there because do_arm() never reads any
 # of these names as input. This wrapper DOES read six of them as deliberate,
 # tested ambient input (HANDOVER_DIR above; HIMMEL_CONSOLE_NAME,
-# CLAUDE_CODE_EFFORT_LEVEL, LEG_EFFORT and HEADED_ARM_UNAME further down;
+# CLAUDE_CODE_EFFORT_LEVEL, WORKER_SESSION_EFFORT and HEADED_ARM_UNAME further down;
 # HIMMEL_CONSOLE_LEG has a pinned caller-preset-wins override test, case 31b),
 # so scrubbing those here would destroy the exact feature they exist for -
 # they are excluded by name, not by re-deriving a second list. The three
@@ -1240,12 +1240,12 @@ unset -v _leg_env_scrub
 # shellcheck source=scripts/lib/chief-context.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/chief-context.sh"
-# LEG_EFFORT is excluded (not scrubbed) same as the other five
+# WORKER_SESSION_EFFORT is excluded (not scrubbed) same as the other five
 # names above, so it still passes through unchanged into a --judge launch as
-# a plain ambient var. Harmless today: a native judge never reads LEG_EFFORT
+# a plain ambient var. Harmless today: a native judge never reads WORKER_SESSION_EFFORT
 # back (only the claudex branch further down and the relay path do), so an
 # inherited value has nothing to affect here. It would matter the day a
-# judge itself arms a claudex leg and forwards LEG_EFFORT to it - watch for
+# judge itself arms a claudex leg and forwards WORKER_SESSION_EFFORT to it - watch for
 # that if the judge role ever grows a claudex-arming path.
 for _leg_env_scrub in $(console_context_leg_env_unset_names); do
     case "$_leg_env_scrub" in
@@ -1391,7 +1391,7 @@ if [ -n "$EFFORT_REC" ]; then
     else
         EFFORT_LINE="$(printf '%s' "$EFFORT_JSON" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).advisory||"")}catch(e){}})' 2>/dev/null)" || EFFORT_LINE=""
         if [ -n "$EFFORT_LINE" ]; then
-            echo "headed-arm-leg: advisory: recommended $EFFORT_LINE; launching LEG_EFFORT=${LEG_EFFORT:-<unset>}" >&2
+            echo "headed-arm-leg: advisory: recommended $EFFORT_LINE; launching WORKER_SESSION_EFFORT=${WORKER_SESSION_EFFORT:-<unset>}" >&2
         else
             EFFORT_WHY="effort-route output not parseable"
         fi
@@ -1586,7 +1586,7 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # instead of the registry's declared value. Mirrored rather than imported:
 # run.ts is TS/bun-only and off the leg's Do-not list to edit; jq is already
 # a direct dependency of this file (the --profile settings merge below).
-# Precedence: an explicit CLAUDE_CODE_EFFORT_LEVEL, then a valid LEG_EFFORT,
+# Precedence: an explicit CLAUDE_CODE_EFFORT_LEVEL, then a valid WORKER_SESSION_EFFORT,
 # then the registry row; the winner and its source print as one stderr line.
 # An explicit CLAUDE_CODE_EFFORT_LEVEL from the LAUNCHING shell always wins
 # over the registry - checked here, before the lookup, because
@@ -1616,10 +1616,10 @@ if [ "$LANE" = "native" ]; then
         EFFORT_SOURCE="CLAUDE_CODE_EFFORT_LEVEL"
         leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$CLAUDE_CODE_EFFORT_LEVEL"
     else
-        case "${LEG_EFFORT:-}" in
+        case "${WORKER_SESSION_EFFORT:-}" in
             low | medium | high | xhigh | max)
-                EFFORT_SOURCE="LEG_EFFORT"
-                leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$LEG_EFFORT"
+                EFFORT_SOURCE="WORKER_SESSION_EFFORT"
+                leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$WORKER_SESSION_EFFORT"
                 ;;
         esac
     fi
@@ -1646,13 +1646,13 @@ if [ "$LANE" = "native" ]; then
         EFFORT_SHOWN="${CLAUDE_CODE_EFFORT_LEVEL:-}"
     fi
     [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
-    # Asked equals effective: a valid LEG_EFFORT is what the leg must run at
+    # Asked equals effective: a valid WORKER_SESSION_EFFORT is what the leg must run at
     # unless an explicit CLAUDE_CODE_EFFORT_LEVEL or launcher token names the
     # override (the line above prints that source). Effective is read back from
     # the final token list, last token wins, as `env` applies it.
     EFFORT_ASKED=""
-    case "${LEG_EFFORT:-}" in
-        low | medium | high | xhigh | max) EFFORT_ASKED="$LEG_EFFORT" ;;
+    case "${WORKER_SESSION_EFFORT:-}" in
+        low | medium | high | xhigh | max) EFFORT_ASKED="$WORKER_SESSION_EFFORT" ;;
     esac
     EFFORT_EFFECTIVE="${CLAUDE_CODE_EFFORT_LEVEL:-}"
     set -f
@@ -1663,7 +1663,7 @@ if [ "$LANE" = "native" ]; then
     done
     set +f
     if [ -n "$EFFORT_ASKED" ] && [ "$EFFORT_SOURCE" != "CLAUDE_CODE_EFFORT_LEVEL" ] && [ "$EFFORT_SOURCE" != "HEADED_ARM_LAUNCHER_ENV" ] && [ "$EFFORT_EFFECTIVE" != "$EFFORT_ASKED" ]; then
-        echo "headed-arm-leg: refusing launch: asked effort=$EFFORT_ASKED (LEG_EFFORT) but the leg would run effort=$EFFORT_EFFECTIVE (source=${EFFORT_SOURCE:-none}); set CLAUDE_CODE_EFFORT_LEVEL explicitly if that is intended" >&2
+        echo "headed-arm-leg: refusing launch: asked effort=$EFFORT_ASKED (WORKER_SESSION_EFFORT) but the leg would run effort=$EFFORT_EFFECTIVE (source=${EFFORT_SOURCE:-none}); set CLAUDE_CODE_EFFORT_LEVEL explicitly if that is intended" >&2
         exit 2
     fi
 fi
@@ -1686,7 +1686,7 @@ if [ "$LANE" = "claudex" ]; then
     LANE_BIN="${LANE_BIN_OVERRIDE:-$HERE/../../$LANE_BIN_NAME}"
     export HEADED_ARM_LAUNCHER="$LANE_BIN"
     leg_propagate_env CLAUDEX_LANE_OK 1
-    leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${LEG_EFFORT:-medium}"
+    leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${WORKER_SESSION_EFFORT:-medium}"
     export HEADED_ARM_RECORDER=1
     [ -z "$MODEL" ] && MODEL="gpt-6.1-sol"
     # scripts/claude-codex reads only CODEX_MODEL; without this the positional
@@ -1715,7 +1715,7 @@ if [ "$LANE" = "openrouter" ]; then
     export HEADED_ARM_LAUNCHER="$LANE_BIN"
     leg_env_drop_token OPENROUTER_MODEL
     leg_propagate_env OPENROUTER_MODEL "$OR_MODEL"
-    leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${LEG_EFFORT:-medium}"
+    leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${WORKER_SESSION_EFFORT:-medium}"
     export HEADED_ARM_RECORDER=1
 fi
 
@@ -2284,8 +2284,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # the dry-run report stays byte-identical to today's, same guarantee shape
     # as the --profile line below.
     if [ "$RELAY" -eq 1 ]; then
-        printf 'headed-arm-leg: relay=%s HIMMEL_CONSOLE_RELAY=%s LEG_EFFORT=%s\n' \
-            "$RELAY" "$HIMMEL_CONSOLE_RELAY" "$LEG_EFFORT"
+        printf 'headed-arm-leg: relay=%s HIMMEL_CONSOLE_RELAY=%s WORKER_SESSION_EFFORT=%s\n' \
+            "$RELAY" "$HIMMEL_CONSOLE_RELAY" "$WORKER_SESSION_EFFORT"
     fi
     # Printed ONLY under --judge, same guarantee shape as --relay above.
     # preface-source names the FILE that will be concatenated into the per-leg

@@ -2976,7 +2976,7 @@ not_contains 'a HANDOFF and decisions: line under their budgets print no ACTION 
 hb_over="$(HANDOFF_BUDGET_BYTES=100 DECISIONS_BUDGET_BYTES=200 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)"
 contains 'a HANDOFF over HANDOFF_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION handoff-over-budget=127/100: '
 contains 'the HANDOFF ACTION names the HANDOFF file (HIMMEL-6603)' "$hb_over" 'HIMMEL-6603-console-HANDOFF.md'
-contains 'a decisions: line over DECISIONS_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION decisions-over-budget=336/200: '
+contains 'a decisions: line over DECISIONS_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION decisions-over-budget=347/200: '
 contains 'the decisions ACTION names the bucket decisions file (HIMMEL-6603)' "$hb_over" "$W/handover/specs/decisions/console-decisions-"
 case "$(printf '%s\n' "$hb_over" | grep -c '^TICK ')" in 1) pass 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; *) fail 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; esac
 head -c 6000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.md"

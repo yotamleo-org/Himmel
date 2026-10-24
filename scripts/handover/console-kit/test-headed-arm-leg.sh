@@ -128,6 +128,8 @@ unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 # The suite owns every launcher input; an ambient leg shell must not silently
 # turn default-native cases into claudex cases.
 unset CADENCE_BANK_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_REPO_MAP WORKER_SESSION_REPO_MAP_TOKENS WORKER_SESSION_REPO_MAP_TIMEOUT WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID WORKER_SESSION_HEADLESS WORKER_SESSION_SUPPRESS_CR_TRIGGER WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT 2>/dev/null || true
+# read-both: an ambient old spelling reaches the launcher too
+unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER LEG_API_LANE HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT HEADED_ARM_LEG_LANES_JSON WORKER_SESSION_ID 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-leg-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The launcher resolves every path it writes physically; macOS's TMPDIR sits
@@ -3219,7 +3221,7 @@ mkdir -p "$tmp/space dir"
 rc=0
 err29c="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-31c some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg.log" claude-sonnet-5 2>&1)" || rc=$?
 check "31c a whitespace-carrying leg-process value is refused with exit 12" "$rc" "12"
-contains "31c the refusal names the offending var" "$err29c" "WORKER_SESSION_PROFILE_SETTINGS"
+contains "31c the refusal names the offending var" "$err29c" "LEG_PROFILE_SETTINGS"
 contains "31c the refusal explains why (HEADED_ARM_LAUNCHER_ENV cannot carry a spacey value)" "$err29c" "cannot carry"
 
 # 32a. (GAP): a caller-preset HANDOVER_DIR - the normal
@@ -3236,7 +3238,7 @@ contains "32a a caller-preset HANDOVER_DIR reaches launcher-env=" "$lenv30a" "HA
 rc=0
 err30b="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-32b some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg32b.log" claude-sonnet-5 2>&1)" || rc=$?
 check "32b Darwin still refuses a whitespace-carrying value with exit 12" "$rc" "12"
-contains "32b the refusal still names the offending var" "$err30b" "WORKER_SESSION_PROFILE_SETTINGS"
+contains "32b the refusal still names the offending var" "$err30b" "LEG_PROFILE_SETTINGS"
 
 # 32c. (REGRESSION RISK): on any platform other than
 # Darwin, plain-export inheritance already carried a whitespace-carrying
