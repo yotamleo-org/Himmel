@@ -90,16 +90,20 @@ HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$ID" >"$TMP/send0.out" 2>&1
 eq "send without --yes exits 4" "$?" "4"
 ok_if "send without --yes never calls gh" "$([ ! -e "$GH_CALLS" ] && echo yes)"
 has "send without --yes says not sent" "$(cat "$TMP/send0.out")" "not sent"
-HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$ID" --yes >"$TMP/send1.out" 2>&1
-eq "send --yes exits 0" "$?" "0"
-eq "send --yes calls gh once" "$(wc -l <"$GH_CALLS" | tr -d ' ')" "1"
-has "send --yes targets the himmel repo" "$(cat "$GH_CALLS")" "issue create -R yotamleo-org/Himmel"
-hasnt "sent body: no AWS key" "$(cat "$GH_BODY")" "$AKIA"
-has "send --yes prints the issue url" "$(cat "$TMP/send1.out")" "issues/1"
 : >"$GH_CALLS"
 HIMMEL_REPORT_GITLEAKS="$TMP/no-such-gitleaks" HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$ID" --yes >"$TMP/send2.out" 2>&1
 eq "send --yes with gitleaks missing exits 3" "$?" "3"
 eq "send --yes with gitleaks missing never calls gh" "$(wc -c <"$GH_CALLS" | tr -d ' ')" "0"
+HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$ID" --yes >"$TMP/send1.out" 2>&1
+eq "send --yes exits 0" "$?" "0"
+eq "send --yes calls gh once" "$(wc -l <"$GH_CALLS" | tr -d ' ')" "1"
+HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "$ID" --yes >"$TMP/send3.out" 2>&1
+eq "a second send --yes exits 0" "$?" "0"
+eq "a second send --yes does not file a duplicate" "$(wc -l <"$GH_CALLS" | tr -d ' ')" "1"
+has "a second send --yes says it was already sent" "$(cat "$TMP/send3.out")" "already sent"
+has "send --yes targets the himmel repo" "$(cat "$GH_CALLS")" "issue create -R yotamleo-org/Himmel"
+hasnt "sent body: no AWS key" "$(cat "$GH_BODY")" "$AKIA"
+has "send --yes prints the issue url" "$(cat "$TMP/send1.out")" "issues/1"
 HIMMEL_REPORT_GH="$GH" python3 -I "$REPORT" send "nosuchid" --yes >/dev/null 2>&1
 eq "send of an unknown id exits 2" "$?" "2"
 
@@ -126,6 +130,10 @@ printf '%s\n' '{"ts":"2026-10-24T00:00:00Z","source":{"a":1},"class":"x","verdic
   '{"ts":"2026-10-24T00:00:00Z","source":"hook:h","class":["y"],"verdict":"user-over-deny"}' >"$BAD"
 python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-25T00:00:00Z --days 7 --projects "$TMP/noproj" --docs "$TMP/nodocs" \
   --reports "$BAD" --json "$TMP/bad.json" --md "$TMP/bad.md" >/dev/null 2>&1
+printf '\377\376 not utf-8\n' >"$TMP/binary-reports.jsonl"
+python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-25T00:00:00Z --days 7 --projects "$TMP/noproj" --docs "$TMP/nodocs" \
+  --reports "$TMP/binary-reports.jsonl" --json "$TMP/binary.json" --md "$TMP/binary.md" >/dev/null 2>&1
+eq "a non-utf-8 reports file does not abort the friction run" "$?" "0"
 eq "a report row with a non-string source or class is skipped" \
   "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["meta"]["user_reports"])' "$TMP/bad.json")" "0"
 eq "a report outside the window is not counted" \
@@ -159,6 +167,13 @@ printf 'some other refusal text, different bytes\n' >"$TMP/other.txt"
 HIMMEL_REPORT_GITLEAKS="$STUB" python3 -I "$REPORT" draft --text-file "$TMP/other.txt" >"$TMP/gl.out" 2>&1
 eq "a gitleaks hit exits 3" "$?" "3"
 eq "a gitleaks hit writes no draft" "$(nfiles "$HOME/.himmel/reports")" "$BEFORE"
+
+# two long reports that share their first 2000 characters are distinct reports
+LONG="$(yes 'refusal text' | head -n 200 | tr '\n' ' ')"
+printf '%sA\n' "$LONG" >"$TMP/long-a.txt"; printf '%sB\n' "$LONG" >"$TMP/long-b.txt"
+IDA="$(python3 -I "$REPORT" draft --text-file "$TMP/long-a.txt" 2>&1 | sed -n 's/^report-id: //p')"
+IDB="$(python3 -I "$REPORT" draft --text-file "$TMP/long-b.txt" 2>&1 | sed -n 's/^report-id: //p')"
+ok_if "long reports with a shared prefix get different ids" "$([ -n "$IDA" ] && [ "$IDA" != "$IDB" ] && echo yes)"
 
 # empty input is refused
 : >"$TMP/empty.txt"

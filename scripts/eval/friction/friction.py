@@ -456,7 +456,8 @@ def scan_reports(path, since, until=None):
     inside the window. A missing file is no reports; an unreadable line is skipped."""
     rows = []
     try:
-        lines = open(path).read().splitlines()
+        with open(path, errors='replace') as fh:
+            lines = fh.read().splitlines()
     except OSError:
         return rows
     for line in lines:

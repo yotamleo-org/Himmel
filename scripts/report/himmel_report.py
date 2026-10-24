@@ -165,7 +165,7 @@ def cmd_draft(a):
     if not raw.strip():
         print('himmel-report: empty input, nothing to report.', file=sys.stderr)
         return 2
-    text = redact(raw).strip()
+    text = full = redact(raw).strip()
     if len(text) > MAX_TEXT:
         text = text[:MAX_TEXT] + ' ...[truncated]'
     kind = a.kind
@@ -177,7 +177,7 @@ def cmd_draft(a):
     else:
         source, cls, auto_verdict, evidence = 'review-point', 'unclassified-review', 'unclear', 'a review finding'
     cls = re.sub(r'[^a-z0-9]+', '-', (a.cls or cls).lower()).strip('-') or 'unclassified'
-    rid = hashlib.sha1(('%s|%s|%s|%s' % (kind, source, cls, text)).encode()).hexdigest()[:10]
+    rid = hashlib.sha1(('%s|%s|%s|%s' % (kind, source, cls, full)).encode()).hexdigest()[:10]
     note = redact(a.note or '').strip()
     draft = build_draft(rid, kind, source, cls, auto_verdict, text, note)
     path = os.path.join(reports_dir(), rid + '.md')
@@ -224,13 +224,20 @@ def cmd_send(a):
     if not a.yes:
         print('not sent: send needs an explicit yes from the user (re-run with --yes).')
         return 4
+    sent = path + '.sent'
+    if os.path.exists(sent):
+        print('himmel-report: draft %s was already sent; not sending again.' % a.id)
+        return 0
     body = open(path).read()
     if not leak_check(body):
         print('himmel-report: gitleaks flagged the draft or is not installed; not sent.', file=sys.stderr)
         return 3
     title = body.splitlines()[0].lstrip('# ').strip()
     gh = os.environ.get('HIMMEL_REPORT_GH') or 'gh'
-    return subprocess.run([gh, 'issue', 'create', '-R', ISSUE_REPO, '--title', title, '--body-file', path]).returncode
+    rc = subprocess.run([gh, 'issue', 'create', '-R', ISSUE_REPO, '--title', title, '--body-file', path]).returncode
+    if rc == 0:
+        write_atomic(sent, '')
+    return rc
 
 
 def main(argv=None):
