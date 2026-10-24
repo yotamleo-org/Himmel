@@ -67,6 +67,8 @@ launch leg-k leg-impl $IN
 TS=2026-10-20T08:00:00.000Z transcript aaaaaaaa-0000-4000-8000-00000000000c leg-m 888888 0 0; launch leg-m leg-impl $IN
 # a launch that recorded a session_id whose transcript is missing, beside an older same-name transcript: not borrowed
 transcript aaaaaaaa-0000-4000-8000-00000000000b leg-l 999999 0 0; launch leg-l leg-impl $IN aaaaaaaa-0000-4000-8000-0000000000ff
+# a launch dated after --now: outside the requested window, not counted
+TS=2026-10-26T10:05:00.000Z transcript aaaaaaaa-0000-4000-8000-00000000000d leg-n 777777 0 0; launch leg-n leg-impl 2026-10-26T10:00:00Z
 
 J="$TMP/out.json"
 python3 -I "$RD" --launch-logs "$LOGS" --projects "$TMP/projects" --now $NOW --json >"$J" 2>"$TMP/err" || bad "the reader exits 0: $(head -c 300 "$TMP/err")"
@@ -76,6 +78,7 @@ check "leg-impl has n 3: by id, by name, by name" '[ "$(jq -r ".[] | select(.pro
 check "the opening is input + creation + read of the first request, not the later one" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .min" "$J")" = 50010 ]'
 check "a recorded session_id with no transcript does not fall back to a same-name transcript" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .n" "$J")" = 3 ] && [ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .max" "$J")" != 999999 ]'
 check "a same-name transcript that opened before the launch is not counted" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .n" "$J")" = 3 ] && [ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .max" "$J")" != 888888 ]'
+check "a launch dated after --now is not counted" '[ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .n" "$J")" = 3 ] && [ "$(jq -r ".[] | select(.profile==\"leg-impl\") | .max" "$J")" != 777777 ]'
 check "a synthetic and a sidechain row are skipped" '[ "$(jq -r ".[] | select(.profile==\"lane-impl\") | .median" "$J")" = 40000 ]'
 
 echo "2. what is left out"

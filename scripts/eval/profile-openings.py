@@ -14,6 +14,7 @@ custom-title, counting only a transcript whose first request is no earlier than 
 left out, as are a launch with profile=none and a composed list (a,b: no single budget to set). Per profile it prints n, the median opening, the range, and the
 contextBudget the median supports: the median rounded up to 1000 once n reaches --min-n, else "keep".
 --record appends one eval-runs row per profile (eval "profile-opening"). Without it nothing is written.
+The window is --since-days back from --now (default: the present) up to --now; a later launch is left out.
 Launch logs: $HIMMELCTL_CACHE_DIR/launch-logs, else ~/.claude/himmel/launch-logs.
 Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl.
 """
@@ -37,8 +38,8 @@ HEAD_LINES = 12
 SCAN_LINES = 2000
 
 
-def parse_launches(logs_dir, since, lane):
-    """{session name: {"profile", "lane", "sids": set, "launched"}} for launches at or after `since`.
+def parse_launches(logs_dir, since, until, lane):
+    """{session name: {"profile", "lane", "sids": set, "launched"}} for launches from `since` to `until`.
     A name whose in-window lines disagree on profile or lane is dropped."""
     out, dropped = {}, set()
     try:
@@ -60,7 +61,7 @@ def parse_launches(logs_dir, since, lane):
             if not m:
                 continue
             kv = dict(t.split("=", 1) for t in m.group(1).split() if "=" in t)
-            if kv.get("launched", "") < since:
+            if not since <= kv.get("launched", "") <= until:
                 continue
             seen.append(kv)
         profiles = {kv.get("profile") for kv in seen}
@@ -134,9 +135,9 @@ def opening_size(path):
     return None
 
 
-def collect(logs_dir, projects, since, lane):
+def collect(logs_dir, projects, since, until, lane):
     """{profile: {"sizes": [int], "lane": str}}: one size per distinct transcript."""
-    launches = parse_launches(logs_dir, since, lane)
+    launches = parse_launches(logs_dir, since, until, lane)
     since_epoch = datetime.strptime(since, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
     by_title, by_sid = index_transcripts(projects, since_epoch)
     prof, claimed = {}, set()
@@ -196,7 +197,8 @@ def main(argv=None):
     now = (datetime.strptime(a.now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) if a.now
            else datetime.now(timezone.utc))
     since = (now - timedelta(days=a.since_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = summarize(collect(a.launch_logs, a.projects, since, a.lane), a.min_n)
+    until = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = summarize(collect(a.launch_logs, a.projects, since, until, a.lane), a.min_n)
     if not rows:
         sys.stderr.write("profile-openings: no launch joined to a transcript since %s\n" % since)
         return 1
