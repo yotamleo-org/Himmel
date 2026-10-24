@@ -71,9 +71,11 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
   verifier records its `ran rc!=0` line as a NOTE, never as passed coverage.
 - **A ticket is required.** A quarantine entry's trailing comment carries the ticket ID
   and the reason. A quarantine without a ticket is a silent skip, which is not allowed.
-  `SKIP_LIST` also holds standing skips that are not quarantines: suites that need a real
-  VM, a live `claude` or the hermes runtime. Their comment names what they need, and
-  some also name where they are covered instead (the VM e2e, a dedicated `ci.yml` job).
+  `SKIP_LIST` also holds standing skips that are not quarantines, such as suites that need
+  something CI lacks (a real VM, a live `claude`, the hermes runtime, network access, an
+  Arch container) and a monolith its split wrappers already run. Their comment says why
+  the suite is skipped, and some also name where it is covered instead (the VM e2e, a
+  dedicated `ci.yml` job, the wrappers).
 - **Never silently.** A quarantined suite is "uncovered", never "CI verifies": a PR or
   handover that cites CI as evidence for a `SKIP_LIST` suite cites nothing.
   `bash scripts/handover/suite-coverage.sh <suite>...` answers per suite whether it runs
