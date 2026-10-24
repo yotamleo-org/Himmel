@@ -2018,7 +2018,7 @@ fi
 deadwin_tail=""; dw_closed=""
 dw_grace="${TICK_DEADWIN_GRACE:-30}"
 case "$dw_grace" in ""|*[!0-9]*) dw_grace=30 ;; esac
-dw_ps="$(ps -eo pid=,ppid=,etimes=,args= 2>/dev/null)" || dw_ps=""  # swallow-ok: an unreadable table reports no dead window, never a false one
+dw_ps="$(ps -ww -eo pid=,ppid=,etimes=,args= 2>/dev/null || ps -eo pid=,ppid=,etimes=,args= 2>/dev/null)" || dw_ps=""  # swallow-ok: an unreadable table reports no dead window, never a false one
 if [ -n "$dw_ps" ]; then
     # one awk pass: per konsole leg window "<pid> <etimes> <tabtitle> <haschild>"
     dw_rows="$(printf '%s\n' "$dw_ps" | awk '

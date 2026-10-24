@@ -39,7 +39,14 @@ STUB
 printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin/pgrep"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$W/bin/atq"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin/gh"
-printf '#!/usr/bin/env bash\ncat "$PS_FIXTURE"\n' > "$W/bin/ps"
+cat > "$W/bin/ps" <<'STUB'
+#!/usr/bin/env bash
+# like procps: a table read without -ww is cut to $COLUMNS
+case " $* " in
+  *' -ww '*) cat "$PS_FIXTURE" ;;
+  *) if [ -n "${COLUMNS:-}" ]; then cut -c "1-$COLUMNS" "$PS_FIXTURE"; else cat "$PS_FIXTURE"; fi ;;
+esac
+STUB
 printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin/bun"
 printf '%s\n' '    1     0 40-00:00:01 /sbin/init' > "$W/ps-none.txt"
 cp "$HERE/../../lanes/ceiling-conformance.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh"
@@ -109,6 +116,12 @@ export PS_FIXTURE="$W/ps4.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-dead
 out="$(run "$d_rel")"
 check 'a dead window with a live -r<n> relaunch is closed even while the lock is held' 'N811:closed' "$(field deadwin "$out")"
 check 'only the dead window pid is TERMed, not the relaunch' '5005' "$(tr -d '\n' < "$KILLLOG")"
+
+# a hook-inherited COLUMNS must not cut the tabtitle out of the table
+konsole 5014 "$dead" > "$W/ps9.txt"
+export PS_FIXTURE="$W/ps9.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
+out="$(COLUMNS=40 run "$d_free")"
+check 'a narrow COLUMNS still reads the dead window' 'N801:closed' "$(field deadwin "$out")"
 
 # a console tab with no child is not a leg window
 konsole 5008 "HIMMEL-nextleg-2026-10-17D-roadmap-console" > "$W/ps5.txt"
