@@ -548,6 +548,7 @@ grbad "a grant with a parent-relative path is refused" 'g["paths"]=["../x.sh"]' 
 grbad "a dot-prefixed spelling of a workflow path is refused" 'g["paths"]=["./.github/workflows/ci.yml"]' "literal repo-relative file path"
 grbad "a doubled-slash spelling of a trust path is refused" 'g["paths"]=["scripts/handover//console-kit/brief-lint.sh"]' "literal repo-relative file path"
 grbad "a grant path with a trailing slash is refused" 'g["paths"]=["scripts/"]' "literal repo-relative file path"
+grbad "a grant path naming the repo root is refused" 'g["paths"]=["."]' "literal repo-relative file path"
 grbad "a grant with a placeholder in its text is refused" 'g["text"]="edit <file>"' "no <placeholder>"
 grbad "a grant with an extra key is refused" 'g["why"]="x"' "exactly {text, paths}"
 
