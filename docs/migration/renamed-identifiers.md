@@ -1,8 +1,9 @@
 # Renamed identifiers (HIMMEL-5689): old names, new names, where they are used
 
 **This page is temporary.** It exists for the HIMMEL-5689 rename and is deleted with the removal step
-(HIMMEL-6647) once `git grep` finds none of the old names below outside this page, the changelog and
-the handover records (`handovers/`, which keep the history and are never rewritten).
+(HIMMEL-6647) once `git grep` finds none of the old names below outside this page, the glossary (its
+family map keeps the old names on purpose), the changelog and the handover records (`handovers/`,
+which keep the history and are never rewritten).
 
 **This migration is a known breaking change** (operator ruling 2026-10-24). From here on a rename PR
 leaves no read-both alias, no wrapper at the old path and no alias-pin test. A script, an `.env` file,
@@ -93,7 +94,7 @@ N01 to N36 keep the numbers of the first draft; N37 to N43 were missing from it.
 One PR per row. A rename PR changes the writer, every reader and every test of its names in the same
 PR, so no name is ever read under one spelling and written under the other. Each PR re-runs its
 patterns, renames the code, the tests and the docs that name it, and ends with `git grep` of its old
-names returning only this page, the changelog and the handover records. Names that live in
+names returning only this page, the glossary, the changelog and the handover records. Names that live in
 `.claude/settings.json` (hook registrations, allow rules) need an operator edit and go in the PR body
 as a paste.
 
