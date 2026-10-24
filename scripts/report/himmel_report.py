@@ -11,7 +11,8 @@ draft  redacts the text, writes ~/.himmel/reports/<id>.md (the issue draft), a l
 send   files the draft on the himmel issue tracker with `gh issue create` and only with --yes;
        without it exits 4 and sends nothing.
 
-Exit: 0 ok, 2 bad input, 3 the redacted draft still trips gitleaks, 4 send without --yes.
+Exit: 0 ok, 2 bad input, 3 the redacted draft still trips gitleaks (send also refuses when gitleaks is not
+installed), 4 send without --yes.
 """
 import argparse
 import datetime as dt
@@ -150,6 +151,15 @@ def add_lesson(kind, source, cls, evidence, text):
     write_atomic(path, json.dumps(db, indent=2) + '\n')
 
 
+def already_reported(rid):
+    """A report is done once its ledger row exists; the row is written last, so a failed lesson write retries."""
+    try:
+        with open(state_file()) as f:
+            return any('"id": "%s"' % rid in line for line in f)
+    except OSError:
+        return False
+
+
 def cmd_draft(a):
     raw = sys.stdin.read() if a.text_file == '-' else open(a.text_file).read()
     if not raw.strip():
@@ -183,9 +193,9 @@ def cmd_draft(a):
     os.makedirs(os.path.join(home(), '.himmel'), exist_ok=True)
     with open(os.path.join(home(), '.himmel', '.report.lock'), 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if os.path.exists(path):
+        if already_reported(rid):
             print('report-id: %s' % rid)
-            print(open(path).read())
+            print(open(path).read() if os.path.exists(path) else draft)
             print('already reported: %s; nothing new was written.' % rid)
         else:
             write_atomic(path, draft)

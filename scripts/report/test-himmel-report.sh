@@ -140,6 +140,18 @@ hasnt "review draft: no guard-override suggestion" "$OUT3" "launching shell"
 hasnt "review draft: token value redacted" "$OUT3" "abcdefghijklmnop1234"
 eq "lesson file now has two classes" "$(python3 -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["classes"]))' "$LESSONS")" "2"
 
+# a failed lesson write is retried: the report counts once the ledger row exists, not once the draft file does
+ROWS="$(wc -l <"$HOME/.himmel/state/user-reports.jsonl" | tr -d ' ')"
+cp "$LESSONS" "$TMP/lessons.bak"; printf '{' >"$LESSONS"
+printf 'a refusal whose lesson write fails\n' >"$TMP/retry.txt"
+if python3 -I "$REPORT" draft --text-file "$TMP/retry.txt" >/dev/null 2>&1; then fail "a corrupt lessons file fails the draft"; else pass "a corrupt lessons file fails the draft"; fi
+eq "a failed lesson write adds no ledger row" "$(wc -l <"$HOME/.himmel/state/user-reports.jsonl" | tr -d ' ')" "$ROWS"
+cp "$TMP/lessons.bak" "$LESSONS"
+python3 -I "$REPORT" draft --text-file "$TMP/retry.txt" >"$TMP/retry.out" 2>&1
+eq "the retry succeeds" "$?" "0"
+hasnt "the retry is not treated as already reported" "$(cat "$TMP/retry.out")" "already reported"
+eq "the retry adds the ledger row" "$(wc -l <"$HOME/.himmel/state/user-reports.jsonl" | tr -d ' ')" "$((ROWS + 1))"
+
 # fail closed: a gitleaks hit on the redacted draft refuses and writes nothing new
 STUB="$TMP/gitleaks-stub"; printf '#!/usr/bin/env bash\nexit 1\n' >"$STUB"; chmod +x "$STUB"
 BEFORE="$(nfiles "$HOME/.himmel/reports")"
