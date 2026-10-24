@@ -2154,6 +2154,31 @@ record_after_report_pending_marker() {
 # check-commit-msg) and the target status from reconcile-config.json, so
 # this and `reconcile-backlog.mjs` share one source of truth for "what
 # status does a closed ticket move to" per project.
+# _jira_fold_request <repo_root> <key> <version> <pr> <sha> <what failed> — a closed
+# ticket the merge could not place: print a WARN and file a Done-fold INTAKE into
+# <version> for the release manager. The outcome rides the audit line as fold-request=.
+# ponytail: the release is named after the version, upgrade path = a release lookup
+# in the CLI once a release declares several versions.
+_jira_fold_request() {
+    local repo_root="$1" key="$2" cur="$3" pr_num="$4" pr_sha="$5" what="$6" out rc=0 req
+    if [ -z "$cur" ]; then
+        echo "merge-on-green: WARN $key closed with no fixVersion ($what); no unreleased version to fold into: place it by hand" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=none"
+        return 0
+    fi
+    out=$(cd "$repo_root" && node scripts/jira/dist/index.js release request "$cur" --verb INTAKE --key "$key" --to "$cur" \
+        --why "merged in PR #$pr_num @ ${pr_sha:0:12}: Done folds into $cur, the merge could not place it" \
+        --evidence "{\"pr\":$pr_num,\"sha\":\"$pr_sha\"}" 2>&1) || rc=$?
+    req=$(printf '%s\n' "$out" | sed -n 's/^REQ //p' | head -n 1)
+    if [ "$rc" -eq 0 ] && [ -n "$req" ]; then
+        echo "merge-on-green: WARN $key closed unplaced ($what); Done-fold request $req filed into $cur" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=$req"
+    else
+        echo "merge-on-green: WARN $key closed unplaced ($what); the Done-fold request into $cur was NOT filed (rc=$rc): ${out//$'\n'/ }" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=failed"
+    fi
+}
+
 _jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
@@ -2282,7 +2307,8 @@ $remaining")
     local transition_out transition_rc=0
     transition_out=$(cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "$target_status" 2>&1) \
         || transition_rc=$?
-    if [ "$transition_rc" -eq 0 ]; then
+    # Exit 3: the ticket closed, but the transition would not stamp a frozen version it was deferred out of.
+    if [ "$transition_rc" -eq 0 ] || [ "$transition_rc" -eq 3 ]; then
         JIRA_AUTO_TRANSITION_RESULT="ok key=$key status=$target_status"
         # A closed ticket holds no future version: move it to the
         # current one (earliest unreleased by release date) when it sits in a
@@ -2307,7 +2333,10 @@ $remaining")
                 }
             } catch {}
         ' "$versions_out" 2>/dev/null)
-        if [ -n "$fold_to" ]; then
+        if [ "$transition_rc" -eq 3 ]; then
+            JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=failed"
+            _jira_fold_request "$repo_root" "$key" "${fold_to%%$'\n'*}" "$pr_num" "$pr_sha" "${transition_out//$'\n'/ }"
+        elif [ -n "$fold_to" ]; then
             # --fix-version replaces the whole set, so the versions the ticket
             # already holds outside the unreleased ones are re-added after it.
             local fold_cur fold_keep fold_rc=0
@@ -2332,6 +2361,7 @@ $remaining")
                     fold_keep=${fold_to#*$'\n'}
                     JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT keep=${fold_keep//$'\n'/,}"
                 fi
+                _jira_fold_request "$repo_root" "$key" "$fold_cur" "$pr_num" "$pr_sha" "the fixVersion edit to $fold_cur failed"
             fi
         fi
     else

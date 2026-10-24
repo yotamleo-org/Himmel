@@ -309,3 +309,54 @@ describe('jira release state admissions budget (HIMMEL-7153)', () => {
     expect(admissionBudget(undefined)).toBeUndefined();
   });
 });
+
+describe('jira release request refuses junk (HIMMEL-7434)', () => {
+  const vf = () => join(root, 'verbatim.txt');
+  const declared = () => run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf());
+  const ask = (mirror: string, ...a: string[]) => run('request', 'R1', '--mirror-root', mirror, ...a);
+
+  it('refuses a placeholder why', async () => {
+    await declared();
+    const mir = writeMirror();
+    for (const why of ['w', 'tbd', 'filed to the backlog: x', 'filed to the backlog: test']) {
+      await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', why)).rejects.toThrow(/placeholder/);
+    }
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: the console loses a leg');
+    expect(out.at(-1)).toBe('REQ Q-R1-0001');
+  });
+
+  it('refuses an INTAKE for a closed ticket outside the release', async () => {
+    await declared();
+    const mir = writeMirror({ key: 'K-77', fixVersions: ['v0.9'], status: 'Done' }, { key: 'K-1', fixVersions: [], status: 'Done' });
+    await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-77', '--to', 'v1', '--why', 'filed to the backlog: found work'))
+      .rejects.toThrow(/K-77 is closed .*outside R1/);
+    await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-1', '--to', 'v1', '--why', 'filed to the backlog: found work'))
+      .rejects.toThrow(/K-1 is closed/);
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-1', '--to', 'v1', '--why', 'merged in PR #12: Done folds into v1', '--evidence', '{"pr":12}');
+    expect(out.at(-1)).toBe('REQ Q-R1-0001');
+  });
+
+  it('refuses a REVERSION from a version the mirror does not hold the key in', async () => {
+    await declared();
+    const mir = writeMirror({ key: 'K-5', fixVersions: ['v2'] });
+    await expect(ask(mir, '--verb', 'REVERSION', '--key', 'K-5', '--from', 'v1', '--why', 'moves out of the version'))
+      .rejects.toThrow(/K-5 is in v2, not v1.*jira mirror/);
+    await ask(mir, '--verb', 'REVERSION', '--key', 'K-5', '--from', 'v2', '--why', 'moves out of the version');
+    expect(out.at(-1)).toBe('REQ Q-R1-0001');
+  });
+
+  it('withdraws a request from the CLI', async () => {
+    await declared();
+    const mir = writeMirror();
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
+    expect(out.at(-1)).toBe('WITHDRAWN Q-R1-0001 (withdrawn:console): junk from a test run');
+  });
+});
+
+describe('jira release under vitest (HIMMEL-7434)', () => {
+  it('refuses a release state dir outside the temp dir', async () => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '/srv/handovers/release');
+    await expect(run('state', 'R1')).rejects.toThrow(/outside the temp dir/);
+  });
+});

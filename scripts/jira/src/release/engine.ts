@@ -230,9 +230,53 @@ export function freeze(ctx: Ctx, o: { version: string; keys: string[]; decision:
 export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]; op: string; from_v: string | null; to_v: string | null; verbatim: string }): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
-  return locked(ctx, (l) => appendOperator(ctx, l.k, {
-    kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim,
-  }));
+  return locked(ctx, (l) => {
+    const row = appendOperator(ctx, l.k, {
+      kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim,
+    });
+    const placement = placementOf(row);
+    if (placement === undefined) return row;
+    const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
+    for (const r of latest.values()) {
+      if (pending(r) && o.keys.includes(r.key) && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
+        appendWithdrawal(ctx, l.k, r, row.id, `contradicts operator decision ${o.decision} (${row.id})`);
+      }
+    }
+    return row;
+  });
+}
+
+// Where an operator decision puts its keys; undefined for an op that places nothing.
+function placementOf(o: OperatorRow): string | null | undefined {
+  if (o.op === 'keep' || o.op === 'discharge') return o.from_v ?? null;
+  if (o.op === 'remove') return null;
+  if (o.op === 'add' || o.op === 'move') return o.to_v ?? null;
+  return undefined;
+}
+
+const pending = (r: RequestRow) => r.state === 'open' || r.state.startsWith('claimed:');
+
+function appendWithdrawal(ctx: Ctx, k: Buffer, r: RequestRow, by: string, reason: string): RequestRow {
+  const { prev: _p, mac: _m, ...rest } = r;
+  return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, ts: ts(ctx), state: `withdrawn:${by}`, reason });
+}
+
+// The console retires an open or claimed request with a reason; --by cites the
+// operator decision that settles it, which must cover the request's key.
+export function withdraw(ctx: Ctx, o: { req: string; reason: string; by?: string }): RequestRow {
+  operatorFence(ctx);
+  if (!o.reason.trim()) throw new Error('release withdraw: --reason is mandatory');
+  return locked(ctx, (l) => {
+    const r = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(o.req);
+    if (!r) throw new Error(`release withdraw: no request ${o.req}`);
+    if (!pending(r)) throw new Error(`release withdraw: ${o.req} is ${r.state.startsWith('ruled:') ? 'ruled' : r.state}; only an open or claimed request is withdrawn`);
+    if (o.by !== undefined) {
+      const d = l.operator.verified.find((x) => x.id === o.by && x.kind === 'decision');
+      if (!d) throw new Error(`release withdraw: ${o.by} is no verified decision row of ${ctx.release}`);
+      if (!d.keys?.includes(r.key)) throw new Error(`release withdraw: ${o.by} does not cover ${r.key}`);
+    }
+    return appendWithdrawal(ctx, l.k, r, o.by ?? 'console', o.reason.trim());
+  });
 }
 
 export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorRow {
@@ -312,7 +356,7 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the console writes requests; the RM claims them');
   return locked(ctx, (l) => {
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-    const dup = [...latest.values()].find((r) => !r.state.startsWith('ruled:') && r.key === o.key && r.verb === o.verb
+    const dup = [...latest.values()].find((r) => pending(r) && r.key === o.key && r.verb === o.verb
       && r.from_v === o.from_v && r.to_v === o.to_v);
     if (dup) return dup;
     const req = seq(`Q-${ctx.release}`, latest.keys());

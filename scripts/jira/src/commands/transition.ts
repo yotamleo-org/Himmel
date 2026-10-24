@@ -40,6 +40,7 @@ export function registerTransition(program: Command): void {
       // edits once Done cannot reject the stamp.
       // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
       // another Done-category status would need statusCategory from the transition payload.
+      let unstamped: string | undefined;
       if (options.version && match.name.toLowerCase() === 'done') {
         const fixVersions = (
           await request<{ fields: { fixVersions?: unknown[] } }>('GET', `/issue/${key}?fields=fixVersions`)
@@ -47,14 +48,15 @@ export function registerTransition(program: Command): void {
         if (!fixVersions || fixVersions.length === 0) {
           const versions = await fetchVersions(projectFromKey(key));
           const version = earliestUnreleased(versions);
-          // A frozen version takes only a ruled-in ticket: a frozen-set key or one whose
-          // latest ledger row is not a deferral or a removal; any other is closed unstamped, never leaked in.
+          // A frozen version takes a frozen-set key, a key with no ledger row (a
+          // Done-fold) or one whose latest row is not a deferral or a removal; a
+          // ruled-out key closes unstamped and the run fails loudly.
           const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
           const latest = frozen ? readAdmissions(version).filter((r) => r.key === key).pop() : undefined;
-          const ruledIn =
-            !frozen || frozen.keys.includes(key) || (latest !== undefined && latest.kind !== 'deferral' && latest.kind !== 'rm-remove');
-          if (version && !ruledIn) {
-            console.log(`${key} not stamped: ${version} is frozen and ${key} has no intake ruling`);
+          const ruledOut =
+            frozen !== undefined && !frozen.keys.includes(key) && (latest?.kind === 'deferral' || latest?.kind === 'rm-remove');
+          if (version && ruledOut) {
+            unstamped = `${version} is frozen and the latest ledger row for ${key} is a ${latest?.kind}`;
           } else if (version) {
             await setFixVersion(key, 'add', version);
             console.log(`${key} fixVersion +${version} (earliest unreleased; --no-version opts out)`);
@@ -82,5 +84,9 @@ export function registerTransition(program: Command): void {
       }
       writeJiraBreadcrumb(key);
       console.log(`${key} → ${match.name}`);
+      if (unstamped) {
+        console.error(`FAIL ${key} closed with no fixVersion: ${unstamped}; place it with version-defer --to or edit --fix-version`);
+        process.exitCode = 3;
+      }
     });
 }

@@ -27,6 +27,7 @@ import { registerRoadmap } from './commands/roadmap.js';
 import { registerRank } from './commands/rank.js';
 import { registerResolution } from './commands/resolution.js';
 import { registerRelease } from './commands/release.js';
+import { registerHistory } from './commands/history.js';
 
 const program = new Command();
 
@@ -63,6 +64,7 @@ registerRoadmap(program);
 registerRank(program);
 registerResolution(program);
 registerRelease(program);
+registerHistory(program);
 
 // Expose the CLI verbs over the Model Context Protocol on stdio.
 // The MCP SDK is heavy, so import it lazily inside the action — keeping it out

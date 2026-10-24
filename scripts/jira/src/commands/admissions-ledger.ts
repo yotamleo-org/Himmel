@@ -1,5 +1,5 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
-import { userInfo } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { handoverRoot } from '../handover-root.js';
 
@@ -22,9 +22,12 @@ export interface Admission {
 export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by' | 'ruling'>;
 
 function admissionsLedgerPath(): string {
-  const explicit = process.env['HIMMEL_ADMISSIONS_LEDGER'];
-  if (explicit) return explicit;
-  return join(handoverRoot(), 'admissions-ledger.jsonl');
+  const path = process.env['HIMMEL_ADMISSIONS_LEDGER'] || join(handoverRoot(), 'admissions-ledger.jsonl');
+  // A test run never writes the operator's live ledger.
+  if (process.env['VITEST'] && !path.startsWith(tmpdir())) {
+    throw new Error(`admissions ledger: ${path} is outside the temp dir under vitest; set HIMMEL_ADMISSIONS_LEDGER`);
+  }
+  return path;
 }
 
 export function appendAdmission(row: AdmissionInput): Admission {

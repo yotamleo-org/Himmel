@@ -15,7 +15,7 @@ import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link
 import { appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
-import { ctxFor } from './release.js';
+import { ctxFor, refuseRequest } from './release.js';
 import { request as releaseRequest } from '../release/engine.js';
 import { releaseRoot } from '../release/paths.js';
 
@@ -455,7 +455,9 @@ export function queueBacklogIntake(key: string, why: string): void {
       return;
     }
     release = declared[0];
-    const r = releaseRequest(ctxFor(release), {
+    const ctx = ctxFor(release);
+    refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why });
+    const r = releaseRequest(ctx, {
       verb: 'INTAKE', key, from_v: null, to_v: null, why, evidence: {}, from: 'console',
     });
     console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);

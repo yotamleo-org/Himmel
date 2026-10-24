@@ -28,6 +28,11 @@ describe('admissions ledger (HIMMEL-6776)', () => {
     expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('HIMMEL-1');
   });
 
+  it('refuses a ledger outside the temp dir under vitest (HIMMEL-7434)', () => {
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = '/srv/handovers/admissions-ledger.jsonl';
+    expect(() => appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' })).toThrow(/outside the temp dir/);
+  });
+
   it('HIMMEL_ADMISSIONS_LEDGER overrides the path', () => {
     process.env['HANDOVER_DIR'] = dir;
     process.env['HIMMEL_ADMISSIONS_LEDGER'] = join(dir, 'x.jsonl');

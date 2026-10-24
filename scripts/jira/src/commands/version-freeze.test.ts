@@ -44,13 +44,25 @@ interface World {
   blockers?: ReturnType<typeof issue>[];
   unfolded?: ReturnType<typeof issue>[];
   inVersion?: ReturnType<typeof issue>[];
+  fixVersions?: Record<string, string[]>;
 }
 
 // Routes the mocked REST calls by URL/JQL so each command sees one coherent Jira.
 function world(w: World): void {
-  mockRequest.mockImplementation(async (method: string, path: string) => {
+  mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: { fixVersions?: Array<Record<string, { name: string }>> } }) => {
     if (method === 'GET' && path === '/project/HIM/versions') {
-      return [{ id: '7', name: 'v1.1.3', description: w.description }];
+      return [{ id: '7', name: 'v1.1.3', description: w.description }, { id: '8', name: 'v1.1.4' }];
+    }
+    const fv = /^\/issue\/([A-Z]+-\d+)(\?fields=fixVersions)?$/.exec(path);
+    if (fv && w.fixVersions) {
+      const names = (w.fixVersions[fv[1]] ??= []);
+      if (method === 'GET' && fv[2]) return { fields: { fixVersions: names.map((name) => ({ name })) } };
+      for (const op of body?.update?.fixVersions ?? []) {
+        if (op.add) names.push(op.add.name);
+        const at = op.remove ? names.indexOf(op.remove.name) : -1;
+        if (at >= 0) names.splice(at, 1);
+      }
+      return {};
     }
     if (method === 'GET' && path.startsWith('/search/jql')) {
       const jql = decodeURIComponent(path.split('jql=')[1].split('&')[0]);
@@ -427,12 +439,35 @@ describe('version-freeze / version-ready / version-defer', () => {
   });
 
   it('version-defer labels the ticket deferred and writes a deferral ledger row', async () => {
-    world({ description: FROZEN_DESC });
+    world({ description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.3'] } });
     await run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--reason', 'moves to v1.1.4']);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIM-2', { update: { labels: [{ add: 'deferred' }] } });
     expect(mockAppend).toHaveBeenCalledWith(
       expect.objectContaining({ version: 'v1.1.3', key: 'HIM-2', kind: 'deferral', reason: 'moves to v1.1.4' }),
     );
+  });
+
+  it('version-defer takes the version off the ticket and reads it back', async () => {
+    const w = { description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.3'] } };
+    world(w);
+    await run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--reason', 'moves to v1.1.4']);
+    expect(w.fixVersions['HIM-2']).toEqual([]);
+  });
+
+  it('version-defer --to moves the ticket into the target version', async () => {
+    const w = { description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.3'] } };
+    world(w);
+    await run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--to', 'v1.1.4', '--reason', 'moves to v1.1.4']);
+    expect(w.fixVersions['HIM-2']).toEqual(['v1.1.4']);
+  });
+
+  it('version-defer fails loudly and writes no ledger row when the version stays on the ticket', async () => {
+    world({ description: FROZEN_DESC });
+    mockRequest.mockImplementation(async (method: string, path: string) =>
+      method === 'GET' && path === '/issue/HIM-2?fields=fixVersions' ? { fields: { fixVersions: [{ name: 'v1.1.3' }] } } : {},
+    );
+    await expect(run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--reason', 'moves to v1.1.4'])).rejects.toThrow(/was not changed/);
+    expect(mockAppend).not.toHaveBeenCalled();
   });
 
   it('version-defer without the console marker is refused before any write', async () => {

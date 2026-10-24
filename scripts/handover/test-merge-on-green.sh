@@ -715,6 +715,15 @@ case "\$1" in
             echo "jira transition failed" >&2
             exit 1
         fi
+        if [ "\${STUB_JIRA_TRANSITION_RC3:-0}" = "1" ] && [ "\$2" = "transition" ]; then
+            echo "FAIL HIMMEL-374 closed with no fixVersion: deferred out of frozen v1.1.3" >&2
+            exit 3
+        fi
+        if [ "\$2" = "release" ] && [ "\$3" = "request" ]; then
+            [ "\${STUB_JIRA_REQUEST_FAIL:-0}" = "1" ] && { echo "release request: refused" >&2; exit 1; }
+            echo "REQ Q-v1.1.3-0099"
+            exit 0
+        fi
         if [ "\${STUB_JIRA_FIX_FAIL:-0}" = "1" ] && [ "\$4" = "--fix-version" ]; then
             echo "jira fix-version failed" >&2
             exit 1
@@ -3863,6 +3872,21 @@ assert_audit_has "jira: unversioned stamp is recorded on the audit line" "jira-t
 STUB_JIRA_BUILD=1 STUB_JIRA_FIX_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: a failed unversioned stamp is a WARN, the merge still succeeds" -- --jira-transition
 assert_audit_has "jira: failed unversioned stamp is recorded" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=failed"
+# A closed ticket the merge could not place is a visible WARN and a Done-fold request for the release manager.
+assert_err_has "jira: a failed stamp prints a WARN (HIMMEL-7434)" "WARN HIMMEL-374 closed unplaced"
+assert_jira_log_has "jira: a failed stamp files a Done-fold INTAKE into the current version" "release request v1.1.3 --verb INTAKE --key HIMMEL-374 --to v1.1.3"
+assert_audit_has "jira: the Done-fold request rides the audit line" "fixversion=failed fold-request=Q-v1.1.3-0099"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIX_FAIL=1 STUB_JIRA_REQUEST_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a Done-fold request that cannot be filed still lets the merge succeed" -- --jira-transition
+assert_err_has "jira: an unfiled Done-fold request is said on stderr" "Done-fold request into v1.1.3 was NOT filed"
+assert_audit_has "jira: an unfiled Done-fold request is on the audit line" "fold-request=failed"
+
+# Transition exit 3: the ticket closed, but it was deferred out of the frozen version, so the merge does not stamp it.
+STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_RC3=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a transition that closes the ticket unstamped (exit 3) is a moved status" -- --jira-transition
+assert_audit_has "jira: exit 3 records the move and the failed placement" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=failed fold-request=Q-v1.1.3-0099"
+assert_jira_log_lacks "jira: exit 3 makes no fixVersion edit past the deferral" "edit HIMMEL-374"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: unversioned stamp with no dated version uses the first unreleased one" -- --jira-transition

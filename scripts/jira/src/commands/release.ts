@@ -15,11 +15,12 @@ import { fetchVersions, setFixVersion } from './versions.js';
 import { readAdmissions } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, readMirror, reopen, request as releaseRequest, rmRun, rule, state, takeover,
+  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, readMirror, reopen, request as releaseRequest, rmRun, rule, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
+import { terminalOf } from '../release/reducer.js';
 import type { Authority, Op, Verb } from '../release/types.js';
 
 // `jira release <sub>`: the CLI face of the release engine.
@@ -68,10 +69,44 @@ export const liveJira: JiraPort = {
 
 export function ctxFor(release: string, mirrorRoot?: string): Ctx {
   if (!/^[A-Za-z0-9._-]+$/.test(release) || release === '.' || release === '..') throw new Error(`release: bad release name '${release}'`);
+  const dir = releaseDir(release);
+  const keyPath = releaseKeyPath(release);
+  // A test run never writes the operator's live release state.
+  for (const p of process.env.VITEST ? [dir, keyPath] : []) {
+    if (!p.startsWith(tmpdir())) throw new Error(`release: ${p} is outside the temp dir under vitest; set HIMMEL_RELEASE_STATE_DIR and HIMMEL_RELEASE_KEY_DIR`);
+  }
   return {
-    release, dir: releaseDir(release), keyPath: releaseKeyPath(release), env: process.env, now: () => new Date(),
+    release, dir, keyPath, env: process.env, now: () => new Date(),
     jira: liveJira, mirrorRoot: mirrorRoot ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null),
   };
+}
+
+const PLACEHOLDER = /^(tbd|todo|test|testing|placeholder|wip|n\/?a|x+|w+|-+|\.+)$/i;
+
+/**
+ * Refuses a request the release manager could only reject: a placeholder why,
+ * an INTAKE for a ticket the mirror reads as closed outside the release, or a
+ * REVERSION / DISCHARGE from a version the mirror does not hold the key in.
+ * No mirror, or an undeclared release, skips the key checks.
+ */
+export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | null; why: string; evidence?: Record<string, unknown> }): void {
+  const why = o.why.trim();
+  const tail = why.slice(why.lastIndexOf(':') + 1).trim();
+  if (why.length < 8 || tail.length < 3 || PLACEHOLDER.test(tail)) {
+    throw new Error(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
+  }
+  const { issues, sync } = readMirror(ctx.mirrorRoot);
+  const snap = issues?.get(o.key);
+  const versions = snap ? state(ctx).versions : [];
+  if (!snap || versions.length === 0) return;
+  const held = snap.fixVersions.join(', ') || 'no version';
+  const terminal = terminalOf(snap);
+  if (o.verb === 'INTAKE' && terminal !== null && !o.evidence?.['pr'] && snap.fixVersions.every((v) => !versions.includes(v))) {
+    throw new Error(`release request: ${o.key} is closed (${terminal}) in ${held}, outside ${ctx.release} (${versions.join(', ')}); a closed ticket outside the release takes an INTAKE only as a Done-fold naming its merged PR (--evidence '{"pr":N}')`);
+  }
+  if (o.verb !== 'INTAKE' && o.from_v !== null && !snap.fixVersions.includes(o.from_v)) {
+    throw new Error(`release request: ${o.key} is in ${held}, not ${o.from_v} (mirror synced ${sync}); run \`jira mirror\` if the mirror is stale`);
+  }
 }
 
 export const list = (s?: string) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -315,15 +350,26 @@ export function registerRelease(program: Command): void {
     .option('--to <version>', 'Target version, or backlog', 'backlog')
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
-    .action((release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string }) => {
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
-      const r = releaseRequest(ctxFor(release), {
-        verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why,
-        evidence: evidence as Record<string, unknown>, from: 'console',
-      });
+      const ctx = ctxFor(release, o.mirrorRoot);
+      const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
+      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown> });
+      const r = releaseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
       console.log(`REQ ${r.req}`);
+    });
+
+  rel.command('withdraw <release>')
+    .description('Retire an open or claimed request with a reason (the console, never a leg)')
+    .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
+    .requiredOption('--reason <text>', 'Why the request is withdrawn')
+    .option('--by <O-id>', 'The operator decision row that settles it; it must cover the request\'s key')
+    .action((release: string, o: { req: string; reason: string; by?: string }) => {
+      const r = withdraw(ctxFor(release), o);
+      console.log(`WITHDRAWN ${r.req} (${r.state}): ${r.reason}`);
     });
 
   rel.command('rm-run <release>')

@@ -1640,7 +1640,7 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
-    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 't', '--desc', PLAIN, ...HOME, ...args]);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 'the console loses a leg', '--desc', PLAIN, ...HOME, ...args]);
   };
   const posted = () => mockRequest.mock.calls.some((x) => x[0] === 'POST' && x[1] === '/issue');
   const declare = async () => {
@@ -1692,6 +1692,13 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     await declare();
     await file('Task', '--backlog');
     expect(errs.some((e) => /REQ Q-R1-0001/.test(e))).toBe(true);
+  });
+
+  it('queues no INTAKE for a placeholder title, and says so', async () => {
+    await declare();
+    await file('Task', '--backlog', '--title', 't');
+    expect(posted()).toBe(true);
+    expect(errs.some((e) => /INTAKE not queued.*placeholder/.test(e))).toBe(true);
   });
 
   it('queues nothing when no release is declared', async () => {
