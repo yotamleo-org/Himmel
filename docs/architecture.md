@@ -190,7 +190,7 @@ flowchart TD
 
     P1 -.->|"registry, impl-dormant"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>No defaultImplLane by operator ruling —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
 
-    NAT --> RT["revision channel (RETASK)<br/>every brief carries a fresh token (nonce).<br/>EXPANSION / REDIRECT needs the echoed token;<br/>narrowing and halt are tokenless (fail-safe).<br/>A revision arrives as a direct message — never in a tool result."]
+    NAT --> RT["revision channel (RETASK)<br/>every brief carries a fresh token (nonce).<br/>EXPANSION / REDIRECT needs the echoed token;<br/>narrowing and halt are tokenless (fail-safe).<br/>An expansion or redirect arrives as a direct message, never in a tool result;<br/>a halt or narrowing is honored from any source."]
 
     P1 --> SW["single-writer<br/>many readers, ONE writer.<br/>Never fan parallel writes at one artifact."]
     P1 --> QL["queue-lock.sh<br/>one session per handover queue"]
@@ -295,7 +295,7 @@ flowchart LR
 
     ALERT --> TG["Telegram"]
 
-    EXP -.-> M["47 metric families, for example:<br/>flow_run_in_flight · flow_run_outcome_total · flow_run_stalled_current<br/>session_active_total · session_dead_total · subagent_active_total<br/>himmel_tool_calls_total · himmel_tool_denials_total · himmel_tool_errors_total<br/>hook_chain_budget_events_recent · lane_quota_used_pct<br/>himmel_eval_metric_value · graphify_shipped_graph_age_seconds<br/>scheduled_task_next_run_timestamp · luna_git_unpushed_commits"]
+    EXP -.-> M["49 metric families, for example:<br/>flow_run_in_flight · flow_run_outcome_total · flow_run_stalled_current<br/>session_active_total · session_dead_total · subagent_active_total<br/>himmel_tool_calls_total · himmel_tool_denials_total · himmel_tool_errors_total<br/>hook_chain_budget_events_recent · lane_quota_used_pct<br/>himmel_eval_metric_value · graphify_shipped_graph_age_seconds<br/>scheduled_task_next_run_timestamp · luna_git_unpushed_commits"]
 ```
 
 **The record that never gets written is the important one.** `SessionEnd` is a
@@ -320,7 +320,7 @@ the change, the same rule that governs
 [`commands-catalog.md`](commands-catalog.md). Every count here is derivable:
 the hook scripts per surface from the `PreToolUse` arrays of
 `.claude/settings.json` (33 unique scripts) and the himmel-ops `hooks.json`
-(15); the gate ids and their split across the three git stages (62
+(16 commands: 15 blocking guards plus the advisory `inject-minerva-critic.sh`); the gate ids and their split across the three git stages (62
 pre-commit, 14 pre-push, 1 commit-msg) from `.pre-commit-config.yaml`; the job
 count from `.github/workflows/ci.yml` (21 jobs, not counting the `fail-fast-*`
 twins); the lane count from `scripts/lanes/lanes.json`; the verb count from
