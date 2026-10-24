@@ -90,7 +90,7 @@ unset TRACKER JIRA_PROJECT_KEY
 # Pre-link bash + the tools preflight-adopter.sh needs into a hermetic stub
 # dir BEFORE scrubbing, then prepend that stub dir on every invocation below.
 mkdir -p "$work/bin"
-for _tool in bash dirname sed; do
+for _tool in bash dirname sed git; do
   link_hermetic_tool "$_tool"
 done
 tool_free_path=$(scrub_path "$PATH" uv pipx node npm bun)
@@ -170,6 +170,10 @@ if grepq "$out" 'not built'; then fail "starter: the Jira not-built warning must
 grepq "$out" '0 warnings' || fail "starter: missing '0 warnings' summary (got: $out)"
 out=$(TRACKER=none JIRA_PROJECT_KEY=ABC PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1)
 if grepq "$out" 'not built'; then fail "TRACKER=none must silence the Jira warning even with a project key (got: $out)"; fi
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=himmel.tracker GIT_CONFIG_VALUE_0=local JIRA_PROJECT_KEY=ABC PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1)
+if grepq "$out" 'not built'; then fail "git config himmel.tracker=local must silence the Jira warning even with a project key (got: $out)"; fi
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=himmel.tracker GIT_CONFIG_VALUE_0=jira JIRA_PROJECT_KEY=ABC PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1)
+grepq "$out" 'scripts/jira/dist/index.js not built' || fail "git config himmel.tracker=jira must keep the Jira warning (got: $out)"
 echo "ok: no Jira tracker -> no Jira not-built warning (E-02)"
 
 # ── 5c. E-02: the operator's Jira config (himmel.conf / JIRA_PROJECT_KEY) still warns ─

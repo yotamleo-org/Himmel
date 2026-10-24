@@ -83,6 +83,7 @@ preflight_cfg_value() {
 preflight_jira_enabled() {
   local t
   t=$(preflight_cfg_value TRACKER)
+  [ -n "$t" ] || t=$(git config --get himmel.tracker 2>/dev/null) || t=""
   if [ -n "$t" ]; then [ "$t" = jira ]; return; fi
   [ -n "$(preflight_cfg_value JIRA_PROJECT_KEY)" ]
 }

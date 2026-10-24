@@ -234,13 +234,15 @@ echo "ok: case5 frame-11 wording (starter help, operator hidden, no pluginSet, d
 # In a project on main the git gates refuse a plain commit; adopt.sh offers the
 # one allowed commit there (--commit-install), so the summary must not say "on a branch".
 gm="$work/gitmain"; mkdir -p "$gm"; git -C "$gm" init -q -b main
-out=$(cd "$gm" && run_wizard "$h5" --dry-run </dev/null)
+out=$(cd "$gm" && run_wizard "$h5" --dry-run </dev/null) \
+  || fail "case5b: wizard failed on main: $out"
 grepq "$out" 'commit these files on a branch' && fail "case5b: on main the summary must not send the user to a branch: $out"
 grepq "$out" 'next: .*main' || fail "case5b: the next line must name main: $out"
 grepq "$out" -- '--commit-install' || fail "case5b: the next line must give the --commit-install command: $out"
 grepq "$out" "$fixture/scripts/adopt.sh" || fail "case5b: the command must name the adopt.sh it runs: $out"
 git -C "$gm" checkout -q -b feat
-out=$(cd "$gm" && run_wizard "$h5" --dry-run </dev/null)
+out=$(cd "$gm" && run_wizard "$h5" --dry-run </dev/null) \
+  || fail "case5b: wizard failed on feature branch: $out"
 grepq "$out" 'commit these files on a branch' || fail "case5b: on a feature branch the plain line stays: $out"
 echo "ok: case5b E-03 on main the summary offers the one allowed commit; on a branch it stays plain"
 

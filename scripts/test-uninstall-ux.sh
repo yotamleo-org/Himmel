@@ -296,8 +296,12 @@ run_uninstall --dry-run --skip-plugins
 assert_rc "E06 dry-run on a host without schtasks" 0 "$rc"
 assert_not_has "E06 no Windows logon task on a host without schtasks" "logon task" "$out"
 assert_not_has "E06 the Windows task name is not named either" "HimmelTelegramBridge" "$out"
-if [ -e /opt/himmel ]; then pass "E06 /opt/himmel exists here, so the AUR row legitimately stays (skipped)"
-else assert_not_has "E06 no AUR payload row when /opt/himmel is absent" "/opt/himmel" "$out"; fi
+e06_aur="$FX/no-such-aur-prefix"
+awk -F'\t' -v OFS='\t' -v p="$e06_aur" '$1 == "aur-package" { $6 = p } { print }' "$MANIFEST" > "$FX/e06-manifest.tsv"
+out=$(cd "$FX_PROJ" && HOME="$FX_HOME" PATH="$STUB:$HBIN" HIMMEL_UNINSTALL_MANIFEST="$FX/e06-manifest.tsv" \
+    bash "$CLI" --dry-run --skip-plugins </dev/null 2>&1); rc=$?
+assert_rc "E06 dry-run with an AUR payload path that is absent" 0 "$rc"
+assert_not_has "E06 no AUR payload row when its path is absent" "$e06_aur" "$out"
 assert_has "E06 the scheduled-jobs row itself stays" "HIMMEL-Resume-*" "$out"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/schtasks"; chmod 755 "$STUB/schtasks"
 run_uninstall --dry-run --skip-plugins
