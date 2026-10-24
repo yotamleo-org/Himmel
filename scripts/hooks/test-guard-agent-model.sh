@@ -18,7 +18,7 @@ set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/guard-agent-model.sh"
-JUDGE="$HOOKS/../../.claude/agents/judge.md"
+JUDGE="$HOOKS/../../.claude/agents/judge-ro.md"
 [ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
@@ -88,9 +88,9 @@ silent "no model -> no output" "$(agent general-purpose '' 'x')"
 
 echo "== judge override off its frontmatter tier (opus) =="
 if grep -q '^model: opus$' "$JUDGE"; then
-    ok "judge frontmatter is still model: opus"
+    ok "judge-ro frontmatter is still model: opus"
 else
-    bad "judge frontmatter no longer model: opus - update the hook's tier"
+    bad "judge-ro frontmatter no longer model: opus - update the hook's tier"
 fi
 check "judge + sonnet -> deny" block "$(agent judge sonnet 'x')"
 check "judge + haiku -> deny" block "$(agent judge haiku 'x')"
