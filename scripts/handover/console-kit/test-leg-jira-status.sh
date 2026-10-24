@@ -451,6 +451,19 @@ PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 &
 wait
 check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
 
+# A lock dir the user cannot write makes mkdir fail and the lease stat fail, so the
+# lease must defer within the wait bound, not spin. Root writes anywhere: skip there.
+if [ -n "$_TIMEOUT_BIN" ] && [ "$(id -u)" != 0 ]; then
+    reset "To Do"; owned
+    mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks"; chmod 500 "$TICKET_STATUS_STATE_DIR/status-locks"
+    rc=0; TICKET_STATUS_LOCK_WAIT=1 "$_TIMEOUT_BIN" -k 2 15 env PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out" 2>&1 || rc=$?
+    chmod 700 "$TICKET_STATUS_STATE_DIR/status-locks"
+    check "no-flock: an unwritable lock dir defers within the wait bound (rc 0, not a hang)" "$rc" 0
+    check "no-flock: an unwritable lock dir logs deferred stage=lock" "$(row result)/$(row stage)" deferred/lock
+else
+    echo "skip - unwritable-lock row: no timeout binary, or running as root"
+fi
+
 # --- worker states ------------------------------------------------------------------------
 ws() { # <marker> <lock rc> <lock age> -> state
     mkdoc "$DOC" "$1"; printf '%s\n' "$2" > "$FX/lock.rc"; printf '%s\n' "$3" > "$FX/lock.age"

@@ -125,7 +125,6 @@ take_key_lease() {
         stamp=$(stat -c %Y "$lockdir/$KEY.lease.d" 2>/dev/null || stat -f %m "$lockdir/$KEY.lease.d" 2>/dev/null) || stamp=0
         if [ $(( $(date +%s) - stamp )) -ge 300 ]; then
             rmdir "$lockdir/$KEY.lease.d" 2>/dev/null || :
-            continue
         fi
         [ "$waited" -lt "$limit" ] || return 1
         sleep 1; waited=$((waited + 1))
