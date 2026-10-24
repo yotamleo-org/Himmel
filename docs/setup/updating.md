@@ -58,7 +58,11 @@ records it with your other install answers.
 
 The update acts on the himmel checkout that holds the script you run, not on
 your current directory: `bash ~/himmel/scripts/himmel-update.sh` updates
-`~/himmel` wherever you run it from. Before you update:
+`~/himmel` wherever you run it from. On this page `~/himmel` stands for your
+himmel root: the checkout, or the install root of a tarball
+(`~/.local/share/himmel/current`) or native package (for example
+`/usr/share/himmel`). The tree, branch and fork checks below apply to a git
+checkout only. Before you update:
 
 - **Which version is it on?** `himmelctl --version` prints the `VERSION` file,
   the `git describe` string and the commit ([detail](#is-this-station-up-to-date)).
@@ -73,15 +77,17 @@ your current directory: `bash ~/himmel/scripts/himmel-update.sh` updates
 
 ## Preview
 
-Both commands are read-only. They pull, rebuild and restart nothing:
+Neither command pulls, rebuilds, restarts or touches your working tree. Both
+fetch remote refs to compare against, which writes Git refs but never moves
+`HEAD`:
 
 ```bash
 bash ~/himmel/scripts/himmel-update.sh --check      # what each update step would do
 bash ~/himmel/scripts/himmel-update.sh --versions   # installed vs available, one row per component
 ```
 
-`--check` reports the chain without pulling (on a release channel it fetches
-tags first, which writes Git refs but never moves `HEAD`). On a tarball or
+`--check` reports the chain without pulling (on a release channel the fetch
+includes tags). On a tarball or
 package install it compares the `VERSION` file with the latest release tag
 instead. For a project-scope install, also preview what re-running the install
 would change in the project:
@@ -127,9 +133,10 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run   # prin
 bash ~/himmel/scripts/himmel-update.sh --versions
 ```
 
-Exit code `0` means every component is current, `1` means at least one is
-still behind, and `3` means none is behind but one could not be determined
-(for example offline). Then:
+Exit code `0` means no component is behind or undetermined, `1` means at
+least one is still behind, and `3` means none is behind but one could not be
+determined (for example offline). A component that is not installed or has no
+release yet reads `n/a` and does not change the exit code. Then:
 
 - **Hooks** take effect on the next tool call; no restart is needed.
 - **Plugins, slash commands and skills** load at session start: restart any

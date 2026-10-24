@@ -175,8 +175,9 @@ It splits what himmel installed into two classes, and the default is the
 conservative one:
 
 - **Code** (removed by default): the Claude plugins and marketplaces himmel
-  added, the repo's git hooks, the himmel keys in `~/.claude/settings.json`
-  (hooks and `env`), the `HIMMEL:working-principles` block install appended to
+  added, the repo's git hooks, the himmel keys (`statusLine`, hooks and `env`)
+  in `~/.claude/settings.json` and in the current project's
+  `.claude/settings.json`, the `HIMMEL:working-principles` block install appended to
   `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` (only that block is stripped;
   a file left empty by it is removed), the claude-hud config himmel wrote, the
   `HIMMEL-Resume-*` scheduled jobs, the Telegram bridge process and the
