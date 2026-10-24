@@ -432,6 +432,16 @@ else
   done
 fi
 
+# --- 9. PANEL -----------------------------------------------------------------
+# closePanel runs when the viewport narrows, so it must open the component's
+# native <details> first; otherwise the text the reader was reading vanishes.
+
+if python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); m=re.search(r"function closePanel\(\) \{(.*?)\n  \}", t, flags=re.S); sys.exit(0 if m and re.search(r"parentElement\.open = true", m.group(1)) else 1)' "$PAGE"; then
+  ok "closePanel opens the component's native <details> before it hides the panel"
+else
+  bad "closePanel must set the component's <details> open before hiding the panel (the text vanishes at narrow widths)"
+fi
+
 echo
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
