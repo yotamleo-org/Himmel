@@ -739,6 +739,7 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
     vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
     const errs: string[] = [];
     vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
     try {
