@@ -425,8 +425,9 @@ copy_recorded() {
     if [[ $DRY_RUN -eq 1 ]]; then
       cmp -s "$HIMMEL_ROOT/$f" "$dest" || echo "  would replace $f (backed up to $(prov_dir)/provenance-backups/)"
     else
-      # the ledger stores the physical path (/private/var on macOS), $dest the logical one: match the tail
-      bk="$(jq -r --arg p "/$f" 'select(.kind=="file" and (.path | endswith($p))) | .pre.backup // empty' "$(prov_ledger_path)" 2>/dev/null | tail -n 1)"
+      # the ledger stores the physical path (/private/var on macOS), $dest the logical one: match the physical path
+      phys="$(cd "$(dirname "$dest")" 2>/dev/null && pwd -P)/$(basename "$dest")"
+      bk="$(jq -r --arg p "$phys" 'select(.kind=="file" and .path==$p) | .pre.backup // empty' "$(prov_ledger_path)" 2>/dev/null | tail -n 1)"
       echo "  replaced $f (backed up to ${bk:-unknown})"
     fi
   fi
