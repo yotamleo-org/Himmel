@@ -10,7 +10,8 @@
 #                        [--priority-pool-only] [--workers-dir DIR] [--why]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
-# candidate is a To Do issue that is not an Epic/Sub-task, carries none of
+# candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
+# merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
 # blocked_by link (focus-chains-links.sh writes the console's chain order as
 # those links). Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
@@ -378,6 +379,9 @@ for i in issues.values():
         continue
     if i['type'] in ('Epic', 'Sub-task'):
         drop(i, 'type ' + i['type'])
+        continue
+    if i['key'] in done_pending:
+        drop(i, 'done-pending (a contract=yes merge row; the mirror lags)')
         continue
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
         drop(i, 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))

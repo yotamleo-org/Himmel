@@ -90,6 +90,8 @@ export interface RequestRow {
   why: string;
   evidence: unknown;
   state: string;
+  // Why a withdrawn:<by> row retired the request.
+  reason?: string;
   prev?: string;
   mac?: string;
 }
