@@ -35,7 +35,7 @@ t() { # t <name> <expected-exit> — runs launcher in the prepared sandbox.
 }
 
 setup() { # fresh sandbox: fake HOME with minimal ~/.claude, mock claude in BIN
-  unset OPENROUTER_MODEL OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS WORKER_SESSION_LANE
+  unset OPENROUTER_MODEL OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS LEG_LANE WORKER_SESSION_LANE
   FAKEHOME="$(mktemp -d)"; WORK="$(mktemp -d)"; BIN="$(mktemp -d)"
   MATRIX=""   # empty -> t() defaults to the REAL matrix (no openrouter cell)
   API_BASE="http://127.0.0.1:1/api/v1"   # fast-failing loopback -> credit UNKNOWN, no network

@@ -198,13 +198,15 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 # since misnaming one line's lane label is cosmetic, unlike misjudging the
 # cap.
 _fleet_lane_of() {
-  if tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -x 'CLAUDEX_LANE_OK=1' >/dev/null; then
+  local envtxt lane
+  envtxt=$(tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null)
+  if printf '%s\n' "$envtxt" | grep -x 'CLAUDEX_LANE_OK=1' >/dev/null; then
     echo claudex
-  elif tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -xE 'WORKER_SESSION_LANE=openrouter|LEG_LANE=openrouter' >/dev/null; then
-    echo openrouter
-  else
-    echo native
+    return
   fi
+  lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
+  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1)
+  if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 
 # atomic admission + reservation, closing the TOCTOU race where

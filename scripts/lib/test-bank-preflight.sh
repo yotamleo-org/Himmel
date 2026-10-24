@@ -712,7 +712,7 @@ check "OpenRouter lane, native bank 99 -> PROCEED" PROCEED \
        bash "$W/openrouter-repo/scripts/lib/usage-preflight.sh" </dev/null 2>"$W/err.log")"
 check "OpenRouter skips codex status read" absent "$(if [ -e "$W/or-status-calls" ]; then echo present; else echo absent; fi)"
 check "native lane without lane env, native bank 99 -> SKIPPED-BANK" SKIPPED-BANK \
-  "$(env -u WORKER_SESSION_LANE -u CADENCE_BANK_LANE CADENCE_BANK_CACHE="$W/c.json" \
+  "$(env -u WORKER_SESSION_LANE -u LEG_LANE -u CADENCE_BANK_LANE CADENCE_BANK_CACHE="$W/c.json" \
      CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" \
      FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_STATUS_CMD="$OR_STATUS" \
        bash "$SUT" </dev/null 2>"$W/err.log")"
@@ -728,6 +728,13 @@ check "fleet reports all three lanes and total" \
   "$(grep '^bank-preflight: FLEET ' "$W/err.log")"
 check "OpenRouter processes count toward fleet refusal" SKIPPED-FLEET \
   "$(fleet_verdict "$por" HIMMEL_FLEET_CAP=3 CADENCE_BANK_LANE=openrouter)"
+
+pnew="$W/psnewwins"; mk_ps_stub_environ "$pnew" \
+  '9001:claude:WORKER_SESSION_LANE=native,LEG_LANE=openrouter:--model claude-opus-5 -n HIMMEL-1000-leg load doc'
+fleet_verdict "$pnew" HIMMEL_FLEET_CAP=4 >/dev/null
+check "fleet census: the new lane name wins over the old one" \
+  'bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/4' \
+  "$(grep '^bank-preflight: FLEET ' "$W/err.log")"
 
 # usage-lift. An operator-set, expiring, account-bound lift skips
 # ONLY the seven_day comparison. USAGE_LIFT_FILE points into the scratch HOME.

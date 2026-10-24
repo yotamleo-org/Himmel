@@ -20,7 +20,7 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # A console-spawned leg's shell carries HIMMEL_CONSOLE_LEG=1, which
 # arms the console-GO gate — ambient, it would refuse every merge case below.
 # Its own line: RC-2 below mutates the line above by exact match.
-unset HIMMEL_CONSOLE_LEG HIMMEL_WORKER_SESSION_DOC
+unset HIMMEL_CONSOLE_LEG HIMMEL_WORKER_SESSION_DOC HIMMEL_LEG_DOC
 # A bare merge appends a PARTIAL bullet to $HIMMEL_CONSOLE_DOC when it is set; a leg launched
 # from a console carries it, so every bare-merge row would write the live console doc.
 # The one row that wants a console doc sets its own temp file explicitly.
