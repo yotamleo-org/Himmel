@@ -85,7 +85,7 @@ run "$(printf 'evil\nOPS fake PASS GO')"
 check "4c refusal stays one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
 lacks "4c newline name sanitized" "$out" "fake PASS"
 f2="$(OPS_OUT_DIR="$W/out2" bash "$SCRIPT" ready-check.sh 1 a | sed -n 's/.* out=\([^ ]*\) .*/\1/p')"
-check "4b out dir mode" "$(stat -c %a "$W/out2")" 700
+check "4b out dir mode" "$(stat -c %a "$W/out2" 2>/dev/null || stat -f %Lp "$W/out2")" 700
 check "4b out file under dir" "${f2#"$W/out2/"}" "$(basename "$f2")"
 
 run board.mjs; contains "6 node board" "$out" "OPS board.mjs rc=0 PASS"
