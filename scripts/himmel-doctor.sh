@@ -3376,7 +3376,7 @@ check_c73_bun_compiled() {
     for d in "${dirlist[@]}"; do
         [ -d "$d" ] || continue
         while IFS= read -r f; do
-            [ -n "$f" ] || continue
+            [ -n "$f" ] && [ -x "$f" ] || continue
             emb="$(grep -ao 'bun/releases/download/bun-v[0-9]*\.[0-9]*\.[0-9]*' "$f" 2>/dev/null | sed 's/.*bun-v//' | sort -uV | tail -1)"
             [ -n "$emb" ] || continue
             scanned=$((scanned+1))
@@ -3385,7 +3385,7 @@ check_c73_bun_compiled() {
                 emit WARN C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin (Bun advisories fixed in $pin do not reach it)" \
                     "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and keep this warning"
             fi
-        done < <(find -L "$d" -maxdepth 3 -type f -perm -u+x -size "+${min_kb}k" 2>/dev/null)
+        done < <(find -L "$d" -maxdepth 3 -type f -size "+${min_kb}k" 2>/dev/null)
     done
     [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
