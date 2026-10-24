@@ -618,6 +618,17 @@ reset "To Do"; logrow leg-jira-status "$K" disabled ""
 drift
 contains "3b: a disabled row is a HEALTH row, never clean" "$(drows HEALTH)" "disabled"
 
+reset "Done"
+for n in 1 2 3 4 5 6; do owned "HIMMEL-90$n"; jl "HIMMEL-90$n" Done; done
+drift
+check "3b: the statuses of all active keys are read in one search, no per-key get" "$(grep -c '^get ' "$STUB_LOG")" 0
+check "3b: and one extra search covers the key set" "$(grep -c '^list ' "$STUB_LOG")" 2
+contains "3b: a pass over Done tickets is clean" "$(dlast)" "sdrift=0:"
+reset "Done"
+owned "HIMMEL-901"; owned "HIMMEL-902"; jl "HIMMEL-901" Done
+drift
+check "3b: a key the search does not return is read by its own get" "$(grep -c '^get HIMMEL-902' "$STUB_LOG")" 1
+
 # --- 3c: the FOCUS refresh (focus-refresh.sh) ----------------------------------------
 FOCUS="$HERE/focus-refresh.sh"
 FR="$tmp/fr"
