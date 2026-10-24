@@ -33,6 +33,8 @@ if [ ! -d node_modules/astro ] || [ "$(cat "$stamp" 2>/dev/null)" != "$lock_sha"
   echo "$lock_sha" >"$stamp"
 fi
 npm run build >&2 || exit 1
+# a dead route or fragment is reported, not fatal: the preview is for reading the pages
+node "$repo/scripts/docs-site/check-built-links.mjs" dist /Himmel >&2 || echo "serve.sh: the built site has dead links (listed above)" >&2
 
 # the build takes seconds; a process may have claimed the port meanwhile
 check_port_free

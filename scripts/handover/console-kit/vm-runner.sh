@@ -44,7 +44,7 @@ chokepoint_seam_guard scripts/handover/console-kit/vm-runner.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
-REPO="${HIMMEL_CI_RUNNER_REPO:-yotamleo/Himmel}"
+REPO="${HIMMEL_CI_RUNNER_REPO:-yotamleo-org/Himmel}"  # env-literal-ok: the station repo identity, overridable
 VAR=HIMMEL_VM_RUNNER
 MAX_VMS=2
 UNIT_PREFIX=himmel-ci-runner

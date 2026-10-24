@@ -4259,6 +4259,23 @@ check_c71_verdict_scratch() {
 check_c70_graph_semantic() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
+    local slug cadence_out station_last cadence_last
+    graph_semantic_station_verdict
+    # the semantic cadence merges into its own worktree graph, not the station graph
+    slug="$(printf '%s' "$(basename "$REPO_ROOT")" | tr -c 'A-Za-z0-9._-' '-')"
+    cadence_out="${HIMMEL_DOCTOR_CADENCE_OUT:-$HOME/.claude/graph-cadence/$slug/graphify-out}"
+    [ "$cadence_out" != "$out" ] && [ -f "$cadence_out/semantic-runs.jsonl" ] && [ -f "$out/semantic-runs.jsonl" ] || return 0
+    station_last="$(bash "$check" --out "$out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
+    cadence_last="$(bash "$check" --out "$cadence_out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
+    if [ -n "$station_last" ] && [ -n "$cadence_last" ] && [ "$station_last" != "?" ] && [ "$cadence_last" != "?" ] && [[ "$cadence_last" > "$station_last" ]]; then
+        emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so legs read a frozen semantic layer (HIMMEL-7357)" \
+            "nothing to run here: the promote step is tracked in HIMMEL-7357; until it lands the station graph only gets structural (AST) refreshes"
+    fi
+}
+
+graph_semantic_station_verdict() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
+    local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
     local res rc=0 line fail_line stuck_line
     if [ ! -d "$out" ]; then
         emit OK C70-graph-semantic "no graphify-out at $out -- semantic freshness check skipped"
@@ -4285,6 +4302,28 @@ check_c70_graph_semantic() {
     fi
 }
 
+# The key probe runs in a command substitution so the key stays out of the
+# doctor's own environment. Its body is a function because bash 3.2 (macOS)
+# cannot parse a `case` with `)` patterns inside a multi-line $( ). It prints a
+# verdict word, never the key; tracing stays off so `bash -x` never prints it.
+_c69_probe_key() {  # t13b-ok: reads the key file and asks the provider, starts nothing
+    local cfg="$1" lib="$2" curl_bin="$3" url="$4" rc=0 sess_key code=""
+    set +x
+    # shellcheck disable=SC1090
+    . "$lib"  # t13b-ok: sources the key loader, starts nothing
+    sess_key="${QMD_OPENAI_API_KEY:-}"
+    qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
+    set +x
+    case "$rc" in
+        10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; return 0 ;;
+        11) # the CLI also accepts a session key when the file holds none
+            if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; return 0; fi ;;
+    esac
+    if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; return 0; fi
+    code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
+    echo "code:${code:-000}"
+}
+
 # --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
 # A key-less CLI call gets "401 No cookie auth credentials found" on every
 # generate and embed, while the daemon (which loads its own key) still answers,
@@ -4307,24 +4346,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
         emit INFO C69-qmd-cli-key "qmd-daemon-env.sh not found -- key check skipped"
         return
     fi
-    # the subshell keeps the key out of the doctor's own environment; it prints a
-    # verdict word, never the key; tracing stays off here so `bash -x` never prints it
-    out="$(
-        set +x
-        # shellcheck disable=SC1090
-        . "$lib"  # t13b-ok: sources the key loader, starts nothing
-        rc=0 sess_key="${QMD_OPENAI_API_KEY:-}"
-        qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
-        set +x
-        case "$rc" in
-            10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; exit 0 ;;
-            11) # the CLI also accepts a session key when the file holds none
-                if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; exit 0; fi ;;
-        esac
-        if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; exit 0; fi
-        code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
-        echo "code:${code:-000}"
-    )"
+    out="$(_c69_probe_key "$cfg" "$lib" "$curl_bin" "$url")"
     case "$out" in
         readable-by-others:*)
             emit FAIL C69-qmd-cli-key "the qmd provider key file ${out#*:} is readable by others -- qmd refuses to use it, every CLI vec query fails" \

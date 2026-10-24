@@ -7007,6 +7007,10 @@ out="$(c69_run C69_CODE=401)"
 if grepq "$out" -F 'C69-qmd-cli-key'; then fail "C69 local config should be silent -> $(printf '%s' "$out" | head -3)"; else pass "C69 local config -> silent"; fi
 rm -rf "$c69_t"
 
+echo "== C69: the key check has no multi-line command substitution (bash 3.2 cannot parse a case inside one) =="
+c69_body="$(sed -n -e '/^check_c69_qmd_cli_key() {/,/^}/p' -e '/^_c69_probe_key() {/,/^}/p' "$DOC")"
+if [ -n "$c69_body" ] && ! grep -qE '\$\([^)]*$' <<< "$c69_body"; then pass "C69 no unclosed command substitution in the key check or probe"; else fail "C69 unclosed command substitution in the key check or probe"; fi
+
 echo "== C70: graphify semantic freshness =="
 c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
 c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
@@ -7064,6 +7068,21 @@ if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 3'; then
 mkdir -p "$c70_t/root"; cp -R "$c70_out" "$c70_t/root/graphify-out"
 out="$(env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_ROOT="$c70_t/root" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
 if grepq "$out" -F "unstick --out $c70_t/root/graphify-out" && ! grepq "$out" -F "unstick --out $c70_out"; then pass "C70 default judges the root's graphify-out, not a graph under HOME"; else fail "C70 default root -> $(printf '%s' "$out" | head -3)"; fi
+# the cadence merges into its own worktree graph; a station graph whose semantic layer is older is a divergence
+c70_rows "" "" ""
+printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
+c70_div() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_ROOT="$c70_t/root" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= HIMMEL_DOCTOR_CADENCE_OUT="$c70_out" "$@" bash "$DOC" --no-color --only C70 2>&1; }
+out="$(c70_div)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F 'last=2026-10-19T02:00:00Z' && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
+cp "$c70_out/semantic-runs.jsonl" "$c70_t/root/graphify-out/semantic-runs.jsonl"
+out="$(c70_div)"
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi
+out="$(c70_div HIMMEL_DOCTOR_CADENCE_OUT="$c70_t/no-such-cadence")"
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 no cadence graph -> no divergence row"; else fail "C70 no cadence -> $(printf '%s' "$out" | head -4)"; fi
+printf '{"name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_out/semantic-runs.jsonl"
+printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
+out="$(c70_div LC_ALL=C)"
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 cadence last batch without a ts -> no divergence row"; else fail "C70 no ts -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="

@@ -64,6 +64,10 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
 - **Mechanism.** `SKIP_LIST` in `scripts/ci/run-shell-tests.sh` lists suites the runner
   does not run. A suite that fails only on a non-Linux host goes in `SKIP_LIST_NON_LINUX`
   instead, so Linux CI still runs it. One line per suite, full repo-relative path.
+- **Tier quarantine.** A `quarantine` row in `scripts/ci/suite-tiers.tsv` keeps the suite
+  running and reports a failure as `[QUARANTINE]` without failing the run, in every tier
+  mode: a PR, a schedule and a dispatch run alike. The shard-manifest
+  verifier records its `ran rc!=0` line as a NOTE, never as passed coverage.
 - **A ticket is required.** The entry's trailing comment carries the ticket ID and the
   reason. An entry without a ticket is a silent skip, which is not allowed.
 - **Never silently.** A quarantined suite is "uncovered", never "CI verifies": a PR or
@@ -71,9 +75,12 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
   `bash scripts/handover/suite-coverage.sh <suite>...` answers per suite whether it runs
   in PR CI, only nightly, or not at all. The quarantine PR also tells the chief, so the
   fix is dispatched in the same breath.
-- **Who lifts it.** The worker that fixes the ticket removes the `SKIP_LIST` entry in the
+- **Who lifts it.** The worker that fixes the ticket removes the `SKIP_LIST` entry, if any,
+  and changes the suite's `quarantine` tier in `scripts/ci/suite-tiers.tsv` to a
+  non-quarantine tier (the row stays: the table needs one row per tracked suite) in the
   fixing PR, so the suite runs again on that PR's own CI. The ticket is not done while the
-  entry is still there. Phased-CI intent applies: keep `SKIP_LIST` minimal and justified.
+  entry or the `quarantine` tier is still there. Phased-CI intent applies: keep `SKIP_LIST`
+  minimal and justified.
 - **What does not qualify.** A real bug stays red and takes the "real blocker" path.
   Quarantine is for a test, not for a product defect the test correctly caught.
 

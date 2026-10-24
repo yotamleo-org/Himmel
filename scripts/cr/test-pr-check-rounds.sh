@@ -41,6 +41,7 @@ cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guar
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
 cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
+cp "$HERE/../lib/go-gate.sh" "$fx/scripts/lib/go-gate.sh"
 chmod +x "$fx/scripts/cr/panel-first-pass.sh" "$fx/scripts/cr/ledger-append.sh" "$fx/scripts/cr/clear-review-marker.sh"
 SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 
@@ -135,8 +136,23 @@ fi
 # gets the fixture's verdict; any other branch is "identical" (a pushed PR branch
 # trivially contains its own head), which is what a retargeted local
 # origin/HEAD used to be able to exploit.
+# An early close asks for the repo and default branch, then trust_path_check
+# reads the default branch's trust list and the PR's head and file listing.
+if [ "${1:-}" = repo ] && [ "${2:-}" = view ]; then
+    printf '%s main\n' "${GH_NWO:-o/r}"
+    exit 0
+fi
 if [ "${1:-}" = api ]; then
     case "${2:-}" in
+        repos/*/contents/scripts/ci/ci-trust-paths.txt*)
+            cat "$GH_TRUST_LIST"
+            exit 0 ;;
+        repos/*/pulls/*/files)
+            printf '%s\n' "$GH_PR_FILES" | sed 's/$/\t/'
+            exit 0 ;;
+        repos/*/pulls/*)
+            printf '%s|%s\n' "$GH_PR_HEAD" "$(printf '%s\n' "$GH_PR_FILES" | wc -l | tr -d ' ')"
+            exit 0 ;;
         repos/*/compare/*)
             [ "${GH_COMPARE_RC:-0}" = 0 ] || exit "$GH_COMPARE_RC"
             _br="${2##*...}"
@@ -301,6 +317,69 @@ for recovery_failure in create-failed no-parent; do
         no-parent) assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "missing parent never invokes Jira" ;;
     esac
 done
+# The early close: a Suggestions-only count of 2 or 3 closes the loop on a
+# PR whose diff touches no pattern in the default branch's ci-trust-paths.txt.
+rm -f "$recovery_git/cr-review-rounds/recovery.delta"
+GH_TRUST_LIST="$HERE/../ci/ci-trust-paths.txt" GH_PR_HEAD="$recovery_head"
+export GH_TRUST_LIST GH_PR_HEAD
+early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
+early_run() { # early_run <round> <pr files> <ledger rows> <env assignment>
+    printf '%s\n' "$1" > "$recovery_git/cr-review-rounds/recovery.round"
+    printf '%s' "$3" > "$recovery_git/cr-critic-scores.jsonl"
+    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+    early_rc=0
+    early_out="$(cd "$recovery_repo" && env GH_PR_FILES="$2" "$4" \
+        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" --defer-to HIMMEL-9600 2>&1)" || early_rc=$?
+    early_ledger="$(cat "$recovery_git/cr-critic-scores.jsonl")"
+}
+early_sug="$(printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","class":"reader-allowlist"}' "$recovery_head")"$'\n'
+early_imp="$(printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-2","severity":"imp","class":"reader-allowlist"}' "$recovery_head")"$'\n'
+early_marker() { if [ -e "$recovery_git/cr-pending/recovery" ]; then printf kept; else printf cleared; fi; }
+for early_round in 2 3; do
+    early_run "$early_round" 'docs/guide/x.md' "$early_sug" GH_X=1
+    assert_eq "$early_rc" 0 "7345 a non-trust PR at round $early_round with only Suggestions closes the loop ($early_out)"
+    assert_has "$early_ledger" '"deferred_to":"HIMMEL-9600"' "7345 round $early_round early close defers the Suggestion to the follow-up ticket"
+    assert_has "$early_ledger" "\"reason\":\"$early_reason\"" "7345 round $early_round early close records the early-close reason"
+    assert_eq "$(early_marker)" cleared "7345 round $early_round early close clears the marker"
+done
+# trust_path_check answers a hit only from an anchor checkout at its origin's
+# HEAD, so the fixture anchor is one for this row.
+git -C "$fx" -c init.defaultBranch=main init -q
+git -C "$fx" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q --allow-empty -m anchor
+git -c init.defaultBranch=main init -q --bare "$tmp/fx-origin.git"
+git -C "$fx" remote add origin "$tmp/fx-origin.git"
+git -C "$fx" push -q origin main
+early_run 2 $'docs/guide/x.md\nscripts/cr/review-round.sh' "$early_sug" GH_X=1
+rm -rf "$fx/.git" "$tmp/fx-origin.git"
+assert_eq "$early_rc" 2 "7345 a round-2 Suggestions-only PR touching a trust path does not close early"
+assert_has "$early_out" 'a PR that touches no CI trust path, and PR #1 touches trust path scripts/cr/review-round.sh' "7345 the trust-path refusal comes from a trust-path hit and names the path ($early_out)"
+assert_lacks "$early_out" 'refused anchor' "7345 the trust-path row reaches the hit, not an anchor refusal"
+assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 a trust-path PR at round 2 writes no deferral"
+assert_eq "$(early_marker)" kept "7345 a trust-path PR at round 2 keeps the marker"
+early_crit="$(printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-3","severity":"crit","class":"reader-allowlist"}' "$recovery_head")"$'\n'
+early_run 2 'docs/guide/x.md' "$early_sug$early_imp" GH_X=1
+assert_eq "$early_rc" 4 "7345 a round-2 non-trust PR with an open Important does not close early ($early_out)"
+assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 an open Important at round 2 defers nothing"
+assert_eq "$(early_marker)" kept "7345 an open Important at round 2 keeps the marker"
+early_run 2 'docs/guide/x.md' "$early_sug$early_crit" GH_X=1
+assert_eq "$early_rc" 4 "7345 a round-2 non-trust PR with an open Critical does not close early ($early_out)"
+assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 an open Critical at round 2 defers nothing"
+assert_eq "$(early_marker)" kept "7345 an open Critical at round 2 keeps the marker"
+early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_NONE=1
+assert_eq "$early_rc" 2 "7345 a round-2 branch with no open PR does not close early"
+assert_has "$early_out" 'one open PR' "7345 the no-PR refusal says it needs an open PR"
+assert_eq "$(early_marker)" kept "7345 a round-2 branch with no open PR keeps the marker"
+early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_HEAD=0000000000000000000000000000000000000000
+assert_eq "$early_rc" 2 "7345 a PR whose head is not the reviewed head does not close early"
+assert_eq "$(early_marker)" kept "7345 a PR whose head moved keeps the marker"
+early_run 1 'docs/guide/x.md' "$early_sug" GH_X=1
+assert_eq "$early_rc" 2 "7345 round 1 never closes early"
+assert_eq "$(early_marker)" kept "7345 round 1 keeps the marker"
+early_ref="$(cat "$HERE/pr-check-ref/50-step5-decision.md")"
+assert_has "$early_ref" 'Fix the whole round in ONE commit and ONE push' "7345 the pr-check decision step says one commit and one push per round"
+assert_has "$(cat "$HERE/../../docs/handover/leg-preface.md")" 'One push per review round' "7345 the leg preface says one push per review round"
+assert_has "$early_ref" 'Suggestions-only round 2 or later' "7345 the pr-check decision step states the Suggestions-only early close"
+assert_has "$early_ref" 'ci-trust-paths.txt' "7345 the early close names the trust-path exclusion"
 if [ "${1:-}" = --residual-recovery-only ]; then
     printf 'residual recovery: %s failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]

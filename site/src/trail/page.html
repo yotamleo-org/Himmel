@@ -1,0 +1,308 @@
+<!doctype html>
+<!-- Built by site/src/trail/render.mjs from levels.json, page.html, trail.css, trail.js and site/src/styles/tokens.css. Edit those, then run: node site/src/trail/render.mjs -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The adoption trail · himmel</title>
+<meta name="description" content="What himmel is, what it changes on your machine, how to undo it, and how far to climb: a practice install and eight levels, each with its cost and its off switch.">
+<script>try { var t = localStorage.getItem('starlight-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<style>
+{{TOKENS}}
+{{CSS}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<header class="top">
+  <div class="wrap">
+    <a class="home" href=".">himmel docs</a>
+    <nav aria-label="Docs">
+      <a href="getting-started/">Getting started</a>
+      <a href="setup/install/">Install</a>
+      <a href="glossary/">Glossary</a>
+      <a href="https://github.com/yotamleo-org/Himmel">GitHub</a> <!-- env-literal-ok: the public repo link -->
+    </nav>
+  </div>
+</header>
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-h">
+  <svg class="contours" viewBox="0 0 560 360" preserveAspectRatio="xMaxYMid slice" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1">
+    <path d="M560 300 C470 290 420 250 380 220 S300 150 330 110 S450 60 560 70"/>
+    <path d="M560 260 C490 250 450 225 420 200 S370 150 390 125 S470 95 560 100"/>
+    <path d="M560 225 C510 215 480 200 460 180 S430 150 445 135 S500 120 560 125"/>
+    <path d="M560 195 C530 188 510 178 500 166 S488 150 498 144 S530 140 560 146"/>
+    <path d="M560 340 C440 335 360 300 320 260 S230 160 270 90 S420 10 560 25"/>
+    <path d="M540 360 C400 360 300 330 260 290 S160 170 210 80 S380 -20 560 -10"/>
+  </svg>
+  <div class="wrap hero-in">
+    <p class="eyebrow">himmel · for Claude Code</p>
+    <h1 id="hero-h">Ship more with Claude Code, <em>and keep every change reviewable.</em></h1>
+    <p class="sec-lede" style="margin-top:0">himmel puts Claude Code's work on a delivery graph. Each change is built in its own worktree, checked three ways at once, reviewed (by a second model too, once you add one) and merged through one gate. The guardrails apply to every session, including the ones you are not watching. For developers on Linux or macOS who use git.</p>
+    <ul class="proofs" aria-label="What it does">
+      <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree, then passes the tests, a review and one merge gate. No step can be skipped. When a check fails, the change goes back with the reason, so main only gets work that passed.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
+      <li><span class="ptitle">Guardrails that hold</span><span class="pdesc">Edits and commits on main, pushes to main, reads of secret files, <code>rm -rf</code>, hard resets and force pushes are refused before they run.</span><span class="ptag"><a href="#lvl-1">Level 1</a> · in your project</span></li>
+      <li><span class="ptitle">Cost you can see</span><span class="pdesc">Heavy work checks your remaining Claude usage first, and the fleet records the cost of what it merges.</span><span class="ptag"><a href="#lvl-5">Level 5</a></span></li>
+    </ul>
+    <p class="shipstat"><b>himmel is built this way.</b> Over 2,000 pull requests merged on its own main in 30 days (October 2026). <a href="guide/dev-graph.html">See the graph they went through</a></p>
+    <details class="learned">
+      <summary><b>A new project, shipping fast.</b> The rules that keep it fast.</summary>
+      <ul>
+        <li><b>Guards aimed at real damage.</b> Each guard targets a move that can hurt a project, and is replayed against real commands before it ships, so it stops what matters and lets the rest through.</li>
+        <li><b>Long tracks keep their pace.</b> Each session keeps its context small, so its answers stay sharp. When it fills, a worker hands off at a set point and the chief passes the shift to a successor, with everything written down, so a long track never starts over.</li>
+        <li><b>Every merge is earned.</b> A change merges through one gate only: CI green at its exact commit, every review point decided, and an approval signed for that commit.</li>
+        <li><b>Cleanup keeps every session fast.</b> Stale worktrees and open tickets slow down each session that has to step around them, so finished worktrees are cleared and tickets close when their change merges.</li>
+      </ul>
+    </details>
+    <div class="ctas">
+      <a class="btn-primary" href="#trial">Take a practice climb <span aria-hidden="true">→</span></a>
+      <a class="link-sec" href="#trail">See the whole trail</a>
+    </div>
+  </div>
+</section>
+
+<section class="sec-block" id="control" aria-labelledby="control-h">
+  <div class="wrap">
+    <h2 class="sec" id="control-h">What it is, and how you stay in control</h2>
+    <p class="sec-lede">himmel adds a delivery process to Claude Code. You decide how much of it runs, and where.</p>
+    <div class="qgrid">
+      <details class="qcard">
+        <summary><span class="qn">Question 1</span><span class="qh">What is it?</span><span class="qa">A delivery process for Claude Code: worktrees, git gates, a review (by a second model too, once you add one) and one merge gate, with guardrails that hold.</span></summary>
+        <div class="qbody">
+          <p>Small scripts fire automatically and refuse risky actions (edits and commits on your main branch, reads of your secret files, pushes to main), so the rules hold even when nobody remembers them.</p>
+          <h4>Five words you will see</h4>
+          <ul>
+            <li><b>Hook:</b> a script Claude Code runs before or after a tool; it can refuse the action.</li>
+            <li><b>Gate:</b> a check that must pass before a commit, push or merge.</li>
+            <li><b>Worktree:</b> a second working folder on its own branch, sharing the repo's history.</li>
+            <li><b>Handover:</b> a written note a later session resumes from.</li>
+            <li><b>Sector:</b> one region of your project's sky: a stable area of the work, the "where" of a ticket, so each area's progress shows on its own.</li>
+          </ul>
+          <p>Every other term is in the <a href="glossary/">glossary</a>.</p>
+          <h4>Who it is for</h4>
+          <p>Developers who use git and a terminal. Linux and macOS are supported.</p>
+        </div>
+      </details>
+      <details class="qcard" open>
+        <summary><span class="qn">Question 2</span><span class="qh">Who is in control?</span><span class="qa">You are. You choose what runs, you see the plan before anything is written, and you can switch any part off.</span></summary>
+        <div class="qbody">
+          <ul>
+            <li><b>You choose the starting point.</b> A starter install for one project, or more: a second brain, a second reviewer, a fleet. <a href="setup/profiles/">Install profiles</a></li>
+            <li><b>You see the plan first.</b> The installer lists everything it would add or change, and asks before it writes a thing.</li>
+            <li><b>Nothing runs on a schedule</b> until you arm it, one job at a time.</li>
+            <li><b>Every guardrail has an off switch</b> for one session, when you mean it.</li>
+            <li><b>One command takes it all back out.</b> <a href="#undo">How</a></li>
+          </ul>
+        </div>
+      </details>
+      <details class="qcard">
+        <summary><span class="qn">Question 3</span><span class="qh">What changes on my machine, and how do I undo it?</span><span class="qa">Files and settings in the project you install into, a few in your home folder, all recorded; one command takes them back out.</span></summary>
+        <div class="qbody">
+          <div class="pinned">
+            <h4>Read these four first</h4>
+            <ol>
+              <li><b>Helper scripts are copied into <code>scripts/</code>.</b> A file with the same name is replaced only after himmel has backed it up, and uninstall restores it. If the backup cannot be made, the file is left alone and the install says <code>not replaced … (cannot back up the existing file; left untouched)</code>. The preview lists every file it would replace.</li>
+              <li><b>Your <code>statusLine</code> is replaced</b> in <code>.claude/settings.json</code>, and <code>~/.claude/plugins/claude-hud/config.json</code> is rewritten. Both old values are backed up and uninstall restores them.</li>
+              <li><b>Commits and pushes to main are refused at once.</b> If your project has no <code>.pre-commit-config.yaml</code>, the install places himmel's own git gates. They refuse a commit on main, a direct push to main, and a commit message without a conventional type and a ticket reference such as <code>#1</code>. No tracker? Answer <code>none</code> to the installer's tracker question, or put <code>TICKET_ID_REQUIRED=0</code> in <code>~/.himmel/himmel.conf</code>; that file applies to every project on this machine.</li>
+              <li><b>The install itself starts uncommitted.</b> Main now refuses commits, so the installer offers to make the one allowed commit there (<code>chore: add himmel</code>), or prints the command that does. Until the install is committed, a new worktree has none of himmel's files, so Claude runs there without its hooks.</li>
+            </ol>
+          </div>
+          <h4>In the project folder</h4>
+          <ul>
+            <li>Three hook entries, a status line and <code>HIMMEL_REPO</code> in <code>.claude/settings.json</code>.</li>
+            <li>Three git hooks in <code>.git/hooks</code>. Existing ones are saved as <code>&lt;hook&gt;.himmel-backup</code> and still run after himmel's.</li>
+            <li>Claude Code plugins, recorded in <code>.claude/settings.json</code>; the preview names each one.</li>
+          </ul>
+          <h4>In your home folder</h4>
+          <ul>
+            <li>A <code>himmelctl</code> launcher in <code>~/.local/bin</code>, a cache in <code>~/.claude/himmel</code>.</li>
+            <li>A trust entry for the project in <code>~/.claude.json</code>.</li>
+          </ul>
+          <h4>Only if bun is installed</h4>
+          <ul><li>The qmd search tool, about 2.1 GB of search models, and an index of your himmel clone.</li></ul>
+          <h4>Left alone</h4>
+          <p>Your notes vault, scheduled jobs, the Telegram bridge and the second-model reviewers.</p>
+          <p>Every part the installer can add is one item of the install manifest, {{MANIFEST_N}} items in all, {{CORE_N}} of them in the starter install, and <code>himmelctl status</code> checks each one. The full reference: <a href="setup/install/">Install on your project</a>.</p>
+          <h4 id="undo">Undo</h4>
+          <p>From the project you installed into, <code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code> removes what the install added and restores what it replaced. Add <code>--dry-run</code> first to see the list; anything it cannot undo by itself is listed under <code>NEEDS YOU</code>.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="sec-block" id="trial" aria-labelledby="trial-h">
+  <div class="wrap">
+    <h2 class="sec" id="trial-h">Take a practice climb</h2>
+    <p class="sec-lede">Ten steps on a spare project you can delete afterwards. You install himmel, watch a guardrail stop a risky move, keep the install, make one change in its own worktree, and then remove everything again. Each output below comes from one real run on a clean machine; paths and commit hashes that differ on yours are shortened to "…".</p>
+    <p class="legend"><span><code>$</code> you type it in your terminal</span><span><code>›</code> you type it to Claude</span><span>dashed box: what you see</span><span>✓ what success looks like</span></p>
+    <ol class="steps">
+      <li class="step"><div>
+        <h3>Install the tools</h3>
+        <p>git, node with npm, jq, python3 and Claude Code. The installer stops and tells you if git, bash, jq, python3 or npm/bun is missing.</p>
+        <div class="tabs">
+          <input type="radio" name="os" id="os-linux" checked>
+          <input type="radio" name="os" id="os-mac">
+          <div class="tablist"><label for="os-linux">Linux</label><label for="os-mac">macOS</label></div>
+          <div class="tabpanel tp-linux">
+            <div class="io cmd"><span class="lab">Run · Debian or Ubuntu, needs sudo</span><pre><code><span class="p">$ </span>sudo apt-get update
+<span class="p">$ </span>sudo apt-get install -y nodejs npm git jq python3
+<span class="p">$ </span>curl -fsSL https://claude.ai/install.sh | bash</code></pre></div>
+            <p>Ubuntu's <code>nodejs</code> package ships without npm, hence the separate name.</p>
+          </div>
+          <div class="tabpanel tp-mac">
+            <div class="io cmd"><span class="lab">Run · with Homebrew</span><pre><code><span class="p">$ </span>brew install node git jq python bash uv
+<span class="p">$ </span>curl -fsSL https://claude.ai/install.sh | bash
+<span class="p">$ </span>uv tool install pre-commit</code></pre></div>
+            <p>The bash and python3 that macOS ships are too old for some himmel scripts.</p>
+          </div>
+        </div>
+        <p class="ok"><span><b>Success:</b> if <code>claude</code> is not found, open a new terminal and it will be.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Sign in to Claude Code</h3>
+        <p>Run <code>claude</code>, finish the sign-in in the browser it opens, leave with <code>/exit</code>. An account problem then shows up before himmel is involved.</p>
+        <div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>claude --version</code></pre></div>
+        <div class="io out"><span class="lab">Real output</span><pre><code>2.1.305 (Claude Code)</code></pre></div>
+        <p class="ok"><span><b>Success:</b> a version number followed by <code>(Claude Code)</code>.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Make a spare project</h3>
+        <p>One empty commit on <code>main</code>. No remote is needed: without one, himmel cuts worktrees from your local <code>main</code>.</p>
+        <div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>mkdir ~/himmel-trial
+<span class="p">$ </span>cd ~/himmel-trial
+<span class="p">$ </span>git init -b main
+<span class="p">$ </span>git commit --allow-empty -m "chore: initial commit"</code></pre></div>
+        <div class="io out"><span class="lab">Real output, at the end</span><pre><code>[main (root-commit) 02c1d2c] chore: initial commit</code></pre></div>
+        <p class="ok"><span><b>Success:</b> one empty commit on <code>main</code>, made before any himmel hook exists.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Download himmel next to your projects</h3>
+        <div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>git clone https://github.com/yotamleo-org/Himmel ~/himmel</code></pre></div> <!-- env-literal-ok: the public clone URL -->
+        <div class="io out"><span class="lab">Expected</span><pre><code>Cloning into '/home/you/himmel'...</code></pre></div> <!-- env-literal-ok: sample clone output for a user named you -->
+        <p class="ok"><span><b>Success:</b> git ends without an error.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Preview the install</h3>
+        <p>This writes nothing. It lists every file, setting and plugin the install would touch, then a summary. With <code>--scope project</code> the installer asks no questions; it uses the starter answers (<a href="setup/profiles/">install profiles</a> lists the questions a bare <code>install</code> asks). Inside the script the starter set is called "core".</p>
+        <div class="io cmd"><span class="lab">Run from the project</span><pre><code><span class="p">$ </span>cd ~/himmel-trial
+<span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js install --scope project --dry-run</code></pre></div>
+        <div class="io out"><span class="lab">Real output, abridged</span><pre><code>==&gt; himmel adopter preflight (check-only)
+WARN: scripts/jira/node_modules and scripts/jira/dist/index.js not built …
+preflight OK
+…
+would install (--dry-run — NOTHING below was executed):
+  + himmel (profile=starter, scope=project) — would run bash …/adopt.sh --profile core --scope project
+  + workspace trust — would run ensure-workspace-trust.sh for the install target
+…
+next: commit these files on a branch</code></pre></div>
+        <p>The Jira warning is harmless on a starter install: the Jira command line is only needed if you track work in Jira.</p>
+        <p class="ok"><span><b>Success:</b> the summary says <code>NOTHING below was executed</code>, and <code>git status</code> still shows a clean tree. In a real project, a <code>would replace …</code> line names each of your files the install would back up and replace.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Install</h3>
+        <div class="checklist">
+          <h4>Before you press Enter</h4>
+          <ul>
+            <li><code>git status</code> is clean. A same-named file in <code>scripts/</code> is backed up before it is replaced, and left alone if the backup fails; a clean tree also shows you exactly what changed.</li>
+            <li>You accept that your project <code>statusLine</code> is replaced; the old one is backed up.</li>
+            <li>You know that from now on commits and pushes to main are refused, and a commit message needs a type such as <code>feat:</code> and a ticket reference such as <code>#1</code>.</li>
+          </ul>
+        </div>
+        <div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js install --scope project</code></pre></div>
+        <div class="io out"><span class="lab">Real output, the lines that matter</span><pre><code>  .gitignore: added .claude/worktrees/
+  The install is uncommitted on main, which the git gates now refuse commits on.
+  Commit it once with: bash …/adopt.sh --scope project --target …/himmel-trial --commit-install
+…
+installed:
+  + himmel (profile=starter, scope=project) via bash …/adopt.sh --profile core --scope project
+  + workspace trusted: …/himmel-trial (hasTrustDialogAccepted written to ~/.claude.json)</code></pre></div>
+        <p>If your terminal asks <code>Commit the install on main now (the one allowed commit there)? [y/N]</code>, answer <code>y</code> and step 8 is already done. Otherwise the installer prints the command for step 8, as above, with the full path to your himmel clone, so it runs from your project as printed.</p>
+        <p class="ok"><span><b>Success:</b> both <code>+</code> lines are present. A note that <code>~/.local/bin</code> is not on your PATH is normal; add the line it prints.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Watch a guardrail refuse</h3>
+        <p>Start <code>claude</code> in the project and ask it to create <code>hello.txt</code>. The edit is refused because you are on the main branch.</p>
+        <div class="io say"><span class="lab">Type to Claude</span><pre><code><span class="p">› </span>Create hello.txt with the word hi in it.</code></pre></div>
+        <div class="io out"><span class="lab">Real output, first lines</span><pre><code>⛔ block-edit-on-main: refusing to edit `~/himmel-trial/hello.txt` — its repo is on main/master.
+…
+    bash scripts/worktree.sh feat/&lt;scope&gt;   # create the worktree</code></pre></div>
+        <p>The refusal names the command that fixes it, and that command is in your project now. Leave Claude with <code>/exit</code>. git refuses a commit on main the same way:</p>
+        <div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>git commit --allow-empty -m "chore: try main #1"</code></pre></div>
+        <div class="io out"><span class="lab">Real output</span><pre><code>ERROR: Committing directly on 'main' is not allowed.</code></pre></div>
+        <p class="ok"><span><b>Success:</b> the refusal appears and <code>hello.txt</code> does not exist.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Keep the install</h3>
+        <p>The install's files are still uncommitted, and main now refuses commits. The installer may make one commit there, and only for its own files:</p>
+        <div class="io cmd"><span class="lab">Run from ~/himmel-trial</span><pre><code><span class="p">$ </span>bash ~/himmel/scripts/adopt.sh --scope project --target ~/himmel-trial --commit-install</code></pre></div>
+        <div class="io out"><span class="lab">Real output, at the end</span><pre><code>  committed the install on main (chore: add himmel)
+──── Done ────</code></pre></div>
+        <p>The install also added <code>.claude/worktrees/</code> to <code>.gitignore</code>, so a later <code>git add -A</code> never stages a worktree. On a real project with a shared <code>main</code>, you can instead commit the install on a branch and merge it by pull request.</p>
+        <p class="ok"><span><b>Success:</b> <code>git log --oneline -1</code> shows <code>chore: add himmel</code>, and <code>git status</code> is clean.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Work in a worktree</h3>
+        <p>A worktree is a second folder on its own branch. It is cut from <code>main</code>, which now carries himmel's files, so the guardrails come with you.</p>
+        <div class="io cmd"><span class="lab">Run from ~/himmel-trial</span><pre><code><span class="p">$ </span>bash scripts/worktree.sh feat/try-himmel</code></pre></div>
+        <div class="io out"><span class="lab">Real output</span><pre><code>WARN new-worktree: uniqueness-vs-merged-PR check skipped (forge unreachable)
+WARN new-worktree: no 'origin' remote - branching from local 'main'
+OK new-worktree: feat/try-himmel → …/himmel-trial/.claude/worktrees/feat+try-himmel (log: …)</code></pre></div>
+        <p>Both warnings are normal for a project with no remote. Start <code>claude</code> inside the printed path and ask for <code>hello.txt</code> again; Claude Code asks your permission, as it always does for an edit. Then commit it. The commit rule wants a ticket reference:</p>
+        <div class="io cmd"><span class="lab">Run inside the worktree</span><pre><code><span class="p">$ </span>git add hello.txt
+<span class="p">$ </span>git commit -m "feat: add hello"
+<span class="p">$ </span>git commit -m "feat: add hello #1"
+<span class="p">$ </span>git log --oneline -1</code></pre></div>
+        <div class="io out"><span class="lab">Real output</span><pre><code>COMMIT REJECTED: no ticket reference matched: (^|[^0-9A-Za-z_])(#|LOCAL-)[0-9]+([^0-9A-Za-z_]|$)
+…
+66493de feat: add hello #1</code></pre></div>
+        <p class="ok"><span><b>Success:</b> the second commit goes through, and <code>ls scripts/hooks</code> in the worktree lists himmel's hooks, so the guardrails came with you.</span></p>
+      </div></li>
+      <li class="step"><div>
+        <h3>Check, then undo whenever you like</h3>
+        <div class="io cmd"><span class="lab">Run from ~/himmel-trial</span><pre><code><span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js status
+<span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run</code></pre></div>
+        <div class="io out"><span class="lab">Real output, abridged</span><pre><code>green  pre-commit-hooks  installed hook type(s): pre-commit, commit-msg, pre-push (…/.git/hooks)
+green  wiring-pretooluse  …/himmel-trial/.claude/settings.json; …
+…
+0 red, 0 degraded, 7 green, 42 n/a (4 of them desired but not set up: see the n/a rows above)
+…
+DRY: Reconcile report - ledger …, 96 units
+  reverted   82  (removed 82, restored 0, already-base 0, surgical 0)
+  NEEDS YOU   0</code></pre></div>
+        <p>To remove it for real, run the same command with <code>--yes</code> instead of <code>--dry-run</code>, then delete <code>~/himmel-trial</code>.</p>
+        <p class="ok"><span><b>Success:</b> 0 red in the status count, and the undo preview has nothing that needs you. A green row means "found", not "working"; the n/a rows are features a starter install does not turn on.</span></p>
+      </div></li>
+    </ol>
+    <p class="footnote">"…" marks a path or text that depends on your machine. Full reference: <a href="setup/install/">Install on your project</a> and <a href="getting-started/">Getting started</a>.</p>
+  </div>
+</section>
+
+<section class="sec-block" id="trail" aria-labelledby="trail-h">
+  <div class="wrap">
+    <h2 class="sec" id="trail-h">The trail</h2>
+    <p class="sec-lede">Eight levels, each optional. Base camp is a complete result on its own; climb only as far as it pays. Each level says what you get, what it costs, and how you turn it off.</p>
+{{TRAIL}}
+  </div>
+</section>
+
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>himmel is open source. Questions and bugs: the issue tracker on GitHub.</p>
+    <nav aria-label="More">
+      <a href="why-himmel/">Why himmel</a>
+      <a href="getting-started/">Getting started</a>
+      <a href="daily-loop/">The daily loop</a>
+      <a href="commands-catalog/">Commands</a>
+      <a href="glossary/">Glossary</a>
+      <a href="https://github.com/yotamleo-org/Himmel/issues">Issues</a> <!-- env-literal-ok: the public issue tracker -->
+    </nav>
+  </div>
+</footer>
+<script>
+{{JS}}
+</script>
+</body>
+</html>
