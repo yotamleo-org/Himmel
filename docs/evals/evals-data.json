@@ -1,0 +1,657 @@
+{
+  "v": 1,
+  "generator": "scripts/cr/evals-page-gen.py",
+  "review": {
+    "as_of": "2026-10-25",
+    "until": null,
+    "command": "python3 scripts/cr/evals-page-gen.py data --cache-probe <cache-probe output> --as-of <date>",
+    "pooled": {
+      "findings": 11602,
+      "prs": 2121,
+      "agreed": 5948,
+      "disproved": 1517,
+      "deferred": 3485,
+      "unadjudicated": 652,
+      "n": 7465,
+      "precision_pct": 79.7,
+      "wilson": {
+        "lo": 78.8,
+        "hi": 80.6
+      },
+      "bootstrap": {
+        "lo": 78.2,
+        "hi": 81.1
+      },
+      "first": "2026-09-04",
+      "last": "2026-10-24"
+    },
+    "critics": {
+      "codex:gpt-6.1-sol": {
+        "findings": 6990,
+        "prs": 1475,
+        "agreed": 3935,
+        "disproved": 1014,
+        "deferred": 2002,
+        "unadjudicated": 39,
+        "n": 4949,
+        "precision_pct": 79.5,
+        "wilson": {
+          "lo": 78.4,
+          "hi": 80.6
+        },
+        "bootstrap": {
+          "lo": 77.8,
+          "hi": 81.2
+        },
+        "first": "2026-09-29",
+        "last": "2026-10-24"
+      },
+      "codex:gpt-6-astra": {
+        "findings": 2435,
+        "prs": 362,
+        "agreed": 1099,
+        "disproved": 132,
+        "deferred": 697,
+        "unadjudicated": 507,
+        "n": 1231,
+        "precision_pct": 89.3,
+        "wilson": {
+          "lo": 87.4,
+          "hi": 90.9
+        },
+        "bootstrap": {
+          "lo": 86.1,
+          "hi": 92.0
+        },
+        "first": "2026-09-05",
+        "last": "2026-09-23"
+      },
+      "codex:gpt-6-sol": {
+        "findings": 873,
+        "prs": 169,
+        "agreed": 443,
+        "disproved": 184,
+        "deferred": 235,
+        "unadjudicated": 11,
+        "n": 627,
+        "precision_pct": 70.7,
+        "wilson": {
+          "lo": 67.0,
+          "hi": 74.1
+        },
+        "bootstrap": {
+          "lo": 64.8,
+          "hi": 76.2
+        },
+        "first": "2026-09-23",
+        "last": "2026-09-29"
+      },
+      "claude:claude-opus-5-5": {
+        "findings": 341,
+        "prs": 36,
+        "agreed": 93,
+        "disproved": 100,
+        "deferred": 138,
+        "unadjudicated": 10,
+        "n": 193,
+        "precision_pct": 48.2,
+        "wilson": {
+          "lo": 41.2,
+          "hi": 55.2
+        },
+        "bootstrap": {
+          "lo": 36.5,
+          "hi": 59.2
+        },
+        "first": "2026-10-19",
+        "last": "2026-10-24"
+      },
+      "codex:gpt-5.6-sol": {
+        "findings": 231,
+        "prs": 27,
+        "agreed": 95,
+        "disproved": 18,
+        "deferred": 35,
+        "unadjudicated": 83,
+        "n": 113,
+        "precision_pct": 84.1,
+        "wilson": {
+          "lo": 76.2,
+          "hi": 89.7
+        },
+        "bootstrap": {
+          "lo": 74.2,
+          "hi": 91.7
+        },
+        "first": "2026-09-04",
+        "last": "2026-09-05"
+      },
+      "coderabbit-outside": {
+        "findings": 227,
+        "prs": 114,
+        "agreed": 65,
+        "disproved": 54,
+        "deferred": 108,
+        "unadjudicated": 0,
+        "n": 119,
+        "precision_pct": 54.6,
+        "wilson": {
+          "lo": 45.7,
+          "hi": 63.3
+        },
+        "bootstrap": {
+          "lo": 43.3,
+          "hi": 64.7
+        },
+        "first": "2026-09-19",
+        "last": "2026-10-24"
+      },
+      "claude": {
+        "findings": 141,
+        "prs": 55,
+        "agreed": 24,
+        "disproved": 0,
+        "deferred": 117,
+        "unadjudicated": 0,
+        "n": 24,
+        "precision_pct": 100.0,
+        "wilson": {
+          "lo": 86.2,
+          "hi": 100.0
+        },
+        "bootstrap": {
+          "lo": 100.0,
+          "hi": 100.0
+        },
+        "first": "2026-09-17",
+        "last": "2026-10-24"
+      },
+      "codex": {
+        "findings": 113,
+        "prs": 8,
+        "agreed": 99,
+        "disproved": 3,
+        "deferred": 11,
+        "unadjudicated": 0,
+        "n": 102,
+        "precision_pct": 97.1,
+        "wilson": {
+          "lo": 91.7,
+          "hi": 99.0
+        },
+        "bootstrap": {
+          "lo": 90.0,
+          "hi": 100.0
+        },
+        "first": "2026-09-08",
+        "last": "2026-10-21"
+      },
+      "coderabbit": {
+        "findings": 85,
+        "prs": 51,
+        "agreed": 56,
+        "disproved": 5,
+        "deferred": 24,
+        "unadjudicated": 0,
+        "n": 61,
+        "precision_pct": 91.8,
+        "wilson": {
+          "lo": 82.2,
+          "hi": 96.4
+        },
+        "bootstrap": {
+          "lo": 82.6,
+          "hi": 100.0
+        },
+        "first": "2026-09-10",
+        "last": "2026-10-24"
+      },
+      "unlabelled": {
+        "findings": 47,
+        "prs": 10,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 46,
+        "unadjudicated": 1,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-09-16",
+        "last": "2026-10-24"
+      },
+      "sonnet": {
+        "findings": 24,
+        "prs": 1,
+        "agreed": 22,
+        "disproved": 1,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 23,
+        "precision_pct": 95.7,
+        "wilson": {
+          "lo": 79.0,
+          "hi": 99.2
+        },
+        "bootstrap": null,
+        "first": "2026-09-12",
+        "last": "2026-09-12"
+      },
+      "citation-guard": {
+        "findings": 15,
+        "prs": 15,
+        "agreed": 7,
+        "disproved": 6,
+        "deferred": 1,
+        "unadjudicated": 1,
+        "n": 13,
+        "precision_pct": 53.8,
+        "wilson": {
+          "lo": 29.1,
+          "hi": 76.8
+        },
+        "bootstrap": {
+          "lo": 30.8,
+          "hi": 76.9
+        },
+        "first": "2026-09-04",
+        "last": "2026-10-20"
+      },
+      "native-n3323": {
+        "findings": 15,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 15,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-23"
+      },
+      "disposition-carry-forward": {
+        "findings": 13,
+        "prs": 2,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 13,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-22"
+      },
+      "leg-n3424": {
+        "findings": 6,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 6,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "console": {
+        "findings": 4,
+        "prs": 3,
+        "agreed": 2,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 2,
+        "precision_pct": 100.0,
+        "wilson": {
+          "lo": 34.2,
+          "hi": 100.0
+        },
+        "bootstrap": {
+          "lo": 100.0,
+          "hi": 100.0
+        },
+        "first": "2026-09-23",
+        "last": "2026-10-24"
+      },
+      "judge": {
+        "findings": 4,
+        "prs": 2,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 4,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-23",
+        "last": "2026-10-24"
+      },
+      "console-judge": {
+        "findings": 3,
+        "prs": 2,
+        "agreed": 3,
+        "disproved": 0,
+        "deferred": 0,
+        "unadjudicated": 0,
+        "n": 3,
+        "precision_pct": 100.0,
+        "wilson": {
+          "lo": 43.9,
+          "hi": 100.0
+        },
+        "bootstrap": {
+          "lo": 100.0,
+          "hi": 100.0
+        },
+        "first": "2026-10-02",
+        "last": "2026-10-02"
+      },
+      "coverage-deferral": {
+        "findings": 3,
+        "prs": 3,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 3,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-21",
+        "last": "2026-10-24"
+      },
+      "gpt-6.1-sol": {
+        "findings": 3,
+        "prs": 2,
+        "agreed": 1,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 1,
+        "precision_pct": 100.0,
+        "wilson": {
+          "lo": 20.7,
+          "hi": 100.0
+        },
+        "bootstrap": null,
+        "first": "2026-10-18",
+        "last": "2026-10-22"
+      },
+      "native": {
+        "findings": 3,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 3,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-22"
+      },
+      "self": {
+        "findings": 3,
+        "prs": 2,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 3,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-21",
+        "last": "2026-10-21"
+      },
+      "self-adjudication": {
+        "findings": 3,
+        "prs": 1,
+        "agreed": 3,
+        "disproved": 0,
+        "deferred": 0,
+        "unadjudicated": 0,
+        "n": 3,
+        "precision_pct": 100.0,
+        "wilson": {
+          "lo": 43.9,
+          "hi": 100.0
+        },
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-22"
+      },
+      "leg": {
+        "findings": 2,
+        "prs": 2,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "leg-self": {
+        "findings": 2,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-23",
+        "last": "2026-10-23"
+      },
+      "n3083-leg": {
+        "findings": 2,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-21",
+        "last": "2026-10-21"
+      },
+      "n3211-self": {
+        "findings": 2,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-22"
+      },
+      "opus": {
+        "findings": 2,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 2,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "claude-opus-5-5": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-21",
+        "last": "2026-10-21"
+      },
+      "claude-session": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 1,
+        "disproved": 0,
+        "deferred": 0,
+        "unadjudicated": 0,
+        "n": 1,
+        "precision_pct": 100.0,
+        "wilson": {
+          "lo": 20.7,
+          "hi": 100.0
+        },
+        "bootstrap": null,
+        "first": "2026-10-21",
+        "last": "2026-10-21"
+      },
+      "console-DB": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-22"
+      },
+      "judge-opus": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "leg-N3273": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-22",
+        "last": "2026-10-22"
+      },
+      "leg-n3431": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "leg-n3439": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "leg-scope": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
+      "opus-judge": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-21",
+        "last": "2026-10-21"
+      },
+      "ready-check": {
+        "findings": 1,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 1,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      }
+    }
+  },
+  "cache": {
+    "read_ratio_pct": 98.5,
+    "tokens": 10315752980,
+    "sessions": 450,
+    "warm": 435,
+    "cold": 15,
+    "command": "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl",
+    "scope": "this project's sessions from the three days to 2026-10-25",
+    "as_of": "2026-10-25"
+  }
+}

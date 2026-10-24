@@ -245,6 +245,7 @@ scripts/cr/test-d1-verdict.sh	1
 scripts/cr/test-doc-freshness-advisory.sh	0
 scripts/cr/test-docs-audit-panel.sh	0
 scripts/cr/test-emit-gate-fail.sh	0
+scripts/cr/test-evals-page-gen.sh	1
 scripts/cr/test-failure-classify.sh	0
 scripts/cr/test-file-deferred-issues.sh	1
 scripts/cr/test-finding-reraise.sh	22

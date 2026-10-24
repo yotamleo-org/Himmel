@@ -221,6 +221,7 @@ scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in th
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-emit-gate-fail.sh	pr	trust-path
 scripts/cr/test-escape-classes.sh	pr	trust-path
+scripts/cr/test-evals-page-gen.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-failure-classify.sh	pr	trust-path
 scripts/cr/test-file-deferred-issues.sh	pr	trust-path
 scripts/cr/test-finding-reraise.sh	local	behaviour suite, 0 catches in the 400-PR audit window
