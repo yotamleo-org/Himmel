@@ -26,7 +26,7 @@ cat > "$T/launcher.sh" <<'EOF'
 #!/usr/bin/env bash
 doc="$6"
 echo "$*" >> "$LC_T/launched.log"
-pwd >> "$LC_T/cwd.log"
+pwd -P >> "$LC_T/cwd.log"
 case "$FAKE_MODE" in
     ok)     printf -- '- 16:51 LIVE — canary native first bullet\n- 16:51 WRAPPED — canary native done\n' >> "$doc" ;;
     wrapnolive) printf -- '- 16:51 WRAPPED — canary native done\n' >> "$doc" ;;

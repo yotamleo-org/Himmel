@@ -88,7 +88,7 @@ gather() {
     [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/marketplace/plugins" ] && sources+=("$REPO_ROOT/marketplace/plugins")
     [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/.claude" ] && sources+=("$REPO_ROOT/.claude")
 
-    for src in "${sources[@]}"; do
+    for src in ${sources[@]+"${sources[@]}"}; do
         # Commands: */commands/*.md
         find "$src" -path '*/commands/*.md' -type f 2>/dev/null | while read -r f; do
             local plugin name kind="command"
