@@ -112,7 +112,9 @@ def load_platform_re():
 PLATFORM_RE = load_platform_re()
 TRUST_PATHS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ci', 'ci-trust-paths.txt')
 GRANT_PATH_REFUSED_RE = re.compile(r'(^|/)[^/]*settings[^/]*\.json$|^\.github/')
-GRANT_TEXT_REFUSED_RE = re.compile(r'--no-verify|SKIP_CR|_OK=1|\bbypass|\bamend\b|force-push|--force\b', re.I)
+GRANT_TEXT_REFUSED_RE = re.compile(r'--no-verify|SKIP_CR|_OK=1|\bbypass|\bamend\b|force[- ]push|--force\b|\bpush\b.*\s-f\b', re.I)
+# A grant field is rendered inside a Markdown line and a code span.
+GRANT_FIELD_BAD_CHAR_RE = re.compile(r'[\x00-\x1f\x7f`]')
 
 
 def load_trust_res():
@@ -269,8 +271,8 @@ def validate_grants(leg, repo):
         if not isinstance(g, dict) or set(g) != {'text', 'paths'}:
             die('leg %s: grant %s must be exactly {text, paths}' % (leg['label'], gid))
         text, paths = g['text'], g['paths']
-        if not isinstance(text, str) or not text.strip() or '\n' in text or '\r' in text or re.search(r'<[^<>]+>', text):
-            die('leg %s: grant %s text must be non-blank single-line text with no <placeholder>' % (leg['label'], gid))
+        if not isinstance(text, str) or not text.strip() or GRANT_FIELD_BAD_CHAR_RE.search(text) or re.search(r'<[^<>]+>', text):
+            die('leg %s: grant %s text must be non-blank single-line text with no backtick, control character or <placeholder>' % (leg['label'], gid))
         m = GRANT_TEXT_REFUSED_RE.search(text)
         if m:
             die('leg %s: grant %s text names %r; a grant never carries a bypass, amend or force-push' % (leg['label'], gid, m.group(0)))
@@ -278,7 +280,7 @@ def validate_grants(leg, repo):
             die('leg %s: grant %s must name its paths (a non-empty list)' % (leg['label'], gid))
         for p in paths:
             # The refused patterns are anchored, so only the normalized spelling may pass.
-            if (not isinstance(p, str) or not p.strip() or p != p.strip() or '\n' in p or os.path.isabs(p)
+            if (not isinstance(p, str) or not p.strip() or p != p.strip() or GRANT_FIELD_BAD_CHAR_RE.search(p) or os.path.isabs(p)
                     or p != os.path.normpath(p) or p == '.' or re.search(r'[*?\[]', p) or '..' in p.split('/')
                     or os.path.isdir(os.path.join(repo, p))):
                 die('leg %s: grant %s path %r must be a literal repo-relative file path' % (leg['label'], gid, p))
