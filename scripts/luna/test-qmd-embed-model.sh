@@ -52,6 +52,12 @@ cat >"$STUBS/fake-smi" <<'EOF'
 [ -n "${FAKE_VRAM:-}" ] || exit 9
 echo "$FAKE_VRAM"
 EOF
+# uname stub: the capability rows model a Linux host, so an Apple-silicon runner
+# does not short-circuit to "build" before the nvidia-smi and meminfo seams.
+cat >"$STUBS/uname" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in -m) echo x86_64 ;; *) echo Linux ;; esac
+EOF
 # Fake qmd: `embed --force` rewrites every vector's model to the one the config
 # names, and records what it saw; a plain `embed` prints the all-clear.
 cat >"$STUBS/qmd" <<'EOF'

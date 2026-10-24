@@ -76,7 +76,7 @@ done
 
 if [ -n "${PR_STALL_NOW:-}" ]; then
     # swallow-ok: stderr only; a failed date exits through usage
-    now="$(date -u -d "$PR_STALL_NOW" +%s 2>/dev/null)" || usage
+    now="$(date -u -d "$PR_STALL_NOW" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$PR_STALL_NOW" +%s 2>/dev/null)" || usage  # gnu-ok: GNU -d paired with the BSD -j -f fallback
 else
     now="$(date -u +%s)"
 fi
