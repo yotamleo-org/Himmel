@@ -250,7 +250,7 @@ REPORT_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/git-test-env.sh"
 
-# The guard-override list + scrub_override_env. A console leg's
+# The guard-override list + scrub_override_env / scrub_session_env. A console leg's
 # shell exports INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK
 # and friends; without the scrub below they reach every suite and turn "override
 # UNSET, guard must fire" cases red (or vacuously green). Sourced only — the
@@ -789,17 +789,16 @@ scripts/testing/test-mock-consult-sandbox.sh  # HIMMEL-4412: needs the pinned cl
 scripts/testing/test-mock-hook-smoke.sh  # HIMMEL-4412: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/testing/test-mock-hook-live-turn.sh  # HIMMEL-5228: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
+scripts/test-adopt.sh                # HIMMEL-7300: quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it, or each suite it is split into, runs under 900 s on the Linux CI shard at the PR head and on 3 consecutive main runs (the HIMMEL-7300 DoD)
 "
 
 # Off-Linux skips: same format as SKIP_LIST, but appended to it
 # only when `uname -s` is not Linux (macOS "Darwin", Git-Bash "MINGW*"), so a
 # suite that is fine on the Linux CI runner is not blanket-quarantined
-# everywhere. test-adopt.sh measured ~61-62s on Linux (twice, 2026-09-19)
-# against the 600s per-suite cap; while it sat in SKIP_LIST CI never ran it,
-# which is how a fixture drift (rc=123) went unnoticed. The
-# non-Linux reason is unchanged from its SKIP_LIST days.
+# everywhere. When the test-adopt.sh quarantine above lifts, the suite comes
+# back here, not to an unconditional run: its off-Linux skip (the Windows cap
+# exceedance, never re-measured) still holds.
 SKIP_LIST_NON_LINUX="
-scripts/test-adopt.sh                # HIMMEL-3203: skipped off-Linux only — timing-heavy full adoption matrix exceeds the hermetic runner's per-suite cap on Windows (600s default since HIMMEL-2233; the exceedance was last measured against the older 180s cap and STILL has not been re-measured, HIMMEL-3580 — do not reinstate on Windows without one); runs on Linux CI (~62s uncontended, 2026-09-19; re-verified PASS at 197s under concurrent multi-lane load, 2026-09-24 — still well inside the 600s cap either way); runnable individually, no VM e2e coverage
 scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
@@ -876,7 +875,8 @@ esac
 # SUITE_TIER_MODE=pr reads scripts/ci/suite-tiers.tsv (path<TAB>tier<TAB>reason)
 # instead of the table above: a suite runs when it is impacted, when its tier is
 # pr, flow or quarantine, or when it has no row; a local suite runs only when
-# impacted. A quarantine suite that fails is reported and never fails the run.
+# impacted. A quarantine suite that fails is reported and never fails the run,
+# in every mode (the other modes read only its quarantine rows).
 # SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
 tiers_local_nl=""
 tiers_quarantine_nl=""
@@ -891,6 +891,17 @@ if [ "$SUITE_TIER_MODE" = "pr" ]; then
   tiers_local_nl="
 ${tiers_local_nl}
 "
+  tiers_quarantine_nl="
+${tiers_quarantine_nl}
+"
+elif [ -r "${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}" ]; then
+  # Every other mode forgives a quarantine failure too (a main push or a
+  # dispatch run is `all`); an unreadable file there quarantines nothing.
+  SUITE_TIERS_TSV="${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}"
+  if ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV"); then
+    printf 'ERROR: could not read %s.\n' "$SUITE_TIERS_TSV" >&2
+    exit 2
+  fi
   tiers_quarantine_nl="
 ${tiers_quarantine_nl}
 "
@@ -4448,6 +4459,8 @@ while IFS= read -r suite <&3; do
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
+    # Nor the caller's Claude session / harness env: a suite sees what CI sees.
+    scrub_session_env
     _live_env "$suite"
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
   suite_pid=$!
@@ -4538,7 +4551,7 @@ LIVEMSGS
   manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
-  if [ "$rc" -ne 0 ] && [ "$SUITE_TIER_MODE" = "pr" ]; then
+  if [ "$rc" -ne 0 ]; then
     case "$tiers_quarantine_nl" in
       *"
 ${suite_key#"$tier_repo_root"/}

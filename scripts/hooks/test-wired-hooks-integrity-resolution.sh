@@ -73,12 +73,30 @@ uncovered() {
   done < "$2"
 }
 
-# wired_scripts <root> -> repo-relative hook script paths, one per line, deduped
+# Wired commands that run no shell hook script this sweep can resolve (a node/bun
+# entry point, a PATH tool, an inline node). A command is skipped only when it
+# starts with one of these prefixes and names no .sh/.js script; any other
+# command that yields no script path fails the enumeration.
+# shellcheck disable=SC2016  # the commands keep a literal $CLAUDE_PROJECT_DIR
+WIRED_ALLOW='node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs"
+bun "$CLAUDE_PROJECT_DIR/scripts/observability/session-run-hook.ts"
+node "$CLAUDE_PROJECT_DIR/scripts/hooks/stop-queue.mjs" enqueue
+command -v graphify >/dev/null 2>&1 && exec graphify hook-guard search; exit 0
+node -e "(async()=>{const root=process.env.CLAUDE_PLUGIN_ROOT||process.env.PLUGIN_ROOT;if(root)await import(require('"'"'node:url'"'"').pathToFileURL(require('"'"'node:path'"'"').join(root,'"'"'hooks'"'"','"'"'always-on.mjs'"'"')).href)})().catch(()=>{})"'
+
+# wired_scripts <root> -> repo-relative hook script paths, one per line, deduped;
+# rc 4, naming each command, when a wired command yields no path and is not allowlisted
 wired_scripts() {
   # shellcheck disable=SC2016  # node source, not shell
-  node -e '
+  WIRED_ALLOW="$WIRED_ALLOW" node -e '
     const fs = require("fs"), path = require("path");
-    const root = process.argv[1], out = new Set();
+    const root = process.argv[1], out = new Set(), unparsed = [];
+    const allow = process.env.WIRED_ALLOW.split("\n").filter(Boolean);
+    // an allowlisted prefix exempts only a command whose remainder chains nothing (no control
+    // operator, redirect, backtick, newline or $( ), however a chained hook is spelled, and
+    // names no .sh/.js script
+    const allowed = (c) => allow.some((a) => c.startsWith(a) && !/[;&|<>`\n]|\$\(|\.(sh|js)\b/.test(c.slice(a.length)));
+    const found = (f, c, n) => { if (n === 0 && !allowed(c)) unparsed.push(f + ": " + c); };
     const cmds = (f) => {
       const p = path.join(root, f);
       if (!fs.existsSync(p)) { console.error("missing wiring file: " + f); process.exit(3); }
@@ -88,11 +106,15 @@ wired_scripts() {
       walk(j.hooks || j);
       return r;
     };
-    for (const c of cmds(".claude/settings.json"))
-      for (const m of c.matchAll(/\$\{?CLAUDE_PROJECT_DIR\}?\/([^"\s;]+\.(?:sh|js))/g)) out.add(m[1]);
+    for (const c of cmds(".claude/settings.json")) {
+      let n = 0;
+      for (const m of c.matchAll(/\$\{?CLAUDE_PROJECT_DIR\}?\/([^"\s;]+\.(?:sh|js))/g)) { out.add(m[1]); n++; }
+      found(".claude/settings.json", c, n);
+    }
     for (const c of cmds(".codex/hooks.json")) {
       const m = c.match(/run-hook\.sh\s+(?:--\S+\s+)*([A-Za-z0-9_.+-]+\.sh(?:\+[A-Za-z0-9_.+-]+\.sh)*)/);
       if (m) for (const n of m[1].split("+")) out.add("scripts/hooks/" + n);
+      found(".codex/hooks.json", c, m ? 1 : 0);
     }
     // HIMMEL-5085: plugin hooks.json commands. CLAUDE_PLUGIN_ROOT is the plugin dir,
     // marketplace/plugins/<name>, in this tree; CLAUDE_PROJECT_DIR is the project root.
@@ -101,9 +123,15 @@ wired_scripts() {
       const rel = "marketplace/plugins/" + name + "/hooks/hooks.json";
       if (!fs.existsSync(path.join(root, rel))) continue;
       for (const c of cmds(rel)) {
-        for (const m of c.matchAll(/\$\{?CLAUDE_PLUGIN_ROOT\}?\/([^"\s;]+\.(?:sh|js))/g)) out.add("marketplace/plugins/" + name + "/" + m[1]);
-        for (const m of c.matchAll(/\$\{?CLAUDE_PROJECT_DIR\}?\/([^"\s;]+\.(?:sh|js))/g)) out.add(m[1]);
+        let n = 0;
+        for (const m of c.matchAll(/\$\{?CLAUDE_PLUGIN_ROOT\}?\/([^"\s;]+\.(?:sh|js))/g)) { out.add("marketplace/plugins/" + name + "/" + m[1]); n++; }
+        for (const m of c.matchAll(/\$\{?CLAUDE_PROJECT_DIR\}?\/([^"\s;]+\.(?:sh|js))/g)) { out.add(m[1]); n++; }
+        found(rel, c, n);
       }
+    }
+    if (unparsed.length) {
+      console.error("wired command(s) yield no script path and are not on the WIRED_ALLOW list:\n" + unparsed.join("\n"));
+      process.exit(4);
     }
     console.log([...out].sort().join("\n"));
   ' "$1"
@@ -136,6 +164,47 @@ if [ "$(wired_scripts "$PX" 2>&1)" = "marketplace/plugins/p/hooks/a.sh" ]; then 
 printf 'marketplace/plugins/p/weird/x.sh\n' > "$FX/ppaths"
 if [ "$(uncovered "$ROOT" "$FX/ppaths")" = "marketplace/plugins/p/weird/x.sh" ]; then ok "a plugin hook in an unscanned dir is reported uncovered"; else bad "plugin hook in an unscanned dir passes coverage"; fi
 
+# A wired command that yields no script path must fail the enumeration (else its
+# hook drops out of the sweep and an uncovered source passes), unless it is on
+# the explicit allowlist in wired_scripts. The fx8 spellings: the quote closing
+# before the slash, and an absolute path.
+wire_fixture() { # <dir> <settings.json command|""> <plugin hooks.json command|""> [codex hooks.json command]
+  rm -rf "$1"; mkdir -p "$1/.claude" "$1/.codex" "$1/marketplace/plugins/p/hooks"
+  local f c
+  for f in ".claude/settings.json:$2" "marketplace/plugins/p/hooks/hooks.json:$3" ".codex/hooks.json:${4:-}"; do
+    c="${f#*:}"; f="${f%%:*}"
+    if [ -z "$c" ]; then printf '{"hooks":{}}\n' > "$1/$f" || return 1; continue; fi
+    node -e 'console.log(JSON.stringify({hooks:{PreToolUse:[{hooks:[{type:"command",command:process.argv[1]}]}]}}))' "$c" > "$1/$f" || return 1
+  done
+}
+UX="$FX/unparsed"
+# expect_unparsed <label> <needle> <settings cmd|""> <plugin cmd|""> [codex cmd]: the fixture
+# must write, and the enumeration must exit 4 (the unparsed-command refusal, not any
+# crash) with <needle> in its diagnostic
+expect_unparsed() {
+  local label="$1" needle="$2" rc=0
+  if ! wire_fixture "$UX" "$3" "$4" "${5:-}"; then bad "$label: fixture setup failed"; return; fi
+  ux_out="$(wired_scripts "$UX" 2>&1)" || rc=$?
+  if [ "$rc" -ne 4 ]; then bad "$label: expected rc 4, got rc $rc: $ux_out"; return; fi
+  case "$ux_out" in *"$needle"*) ok "$label" ;; *) bad "$label: the diagnostic does not name '$needle': $ux_out" ;; esac
+}
+# shellcheck disable=SC2016
+expect_unparsed "a plugin command with the quote closing before the slash fails the enumeration" 'hooks/x.sh' "" 'bash "${CLAUDE_PLUGIN_ROOT}"/hooks/x.sh'
+expect_unparsed "an absolute-path plugin command fails the enumeration" '/opt/plug/hooks/x.sh' "" 'bash /opt/plug/hooks/x.sh'
+# shellcheck disable=SC2016
+expect_unparsed "a settings.json command with the quote closing before the slash fails the enumeration, naming it" 'scripts/hooks/x.sh' 'bash "$CLAUDE_PROJECT_DIR"/scripts/hooks/x.sh' ""
+# shellcheck disable=SC2016
+wire_fixture "$UX" 'node "$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs" pre' "" || bad "fixture setup failed for the allowlisted command"
+if ux_out="$(wired_scripts "$UX" 2>&1)"; then ok "an allowlisted non-shell command does not fail the enumeration"; else bad "an allowlisted command failed the enumeration: $ux_out"; fi
+# an allowlisted prefix must not exempt a hook script chained after it, whatever the
+# chained hook is spelled (.sh, .bash, uppercase .SH, extensionless)
+for chain in '; bash /opt/hooks/x.sh' '&& bash /opt/hooks/x.bash' '| /opt/hooks/hook' '; /opt/hooks/X.SH'; do
+  # shellcheck disable=SC2016
+  expect_unparsed "an allowlisted prefix does not exempt a chained hook '$chain'" "$chain" "node \"\$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs\" pre $chain" ""
+done
+# the codex hooks.json commands are held to the same resolution rule
+expect_unparsed "an unparsable codex hooks.json command fails the enumeration, naming the file and command" '.codex/hooks.json: bash /opt/hooks/unparsable.sh' "" "" 'bash /opt/hooks/unparsable.sh'
+
 echo "== every wired hook script resolves"
 N=0
 CL="$FX/closure"; : > "$CL"; export CLOSURE_OUT="$CL"
@@ -151,7 +220,8 @@ while IFS= read -r rel; do
     *) continue ;;
   esac
   N=$((N + 1))
-  # No wired command uses --optional today, so a wired path with no file is a
+  # --optional (the himmel-ops plugin hooks) skips a missing script at run time,
+  # but this sweep runs on the full checkout, so a wired path with no file is a
   # defect (deleted or misspelled hook), not a no-op.
   if [ ! -f "$ROOT/$rel" ]; then bad "$rel (wired but not present)"; continue; fi
   if out="$(check_closure "$ROOT" "$ROOT/$rel" 2>&1)"; then

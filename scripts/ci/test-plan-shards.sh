@@ -25,7 +25,9 @@
 #   PS16 a root omitted before -- defaults to .
 #   PS20 n above the 64 cap is clamped to 64 with a message naming CI_MAX_SHARDS,
 #        at the planner and through ci.yml's own plan step
-#   PS22 ci.yml's plan step with an empty CI_MAX_SHARDS plans a full real-ledger sweep at 16
+#   PS22 ci.yml's plan step with an empty CI_MAX_SHARDS plans a full real-ledger sweep at 20
+#   PS23 ci.yml's plan step asks its --list under SUITE_TIER_MODE=pr, the shards' PR tier
+#   PS24 ci.yml's plan step asks its --list with a SUITE_MANIFEST, as the shards do
 #   PS21 n of 0 or a negative value is a usage error naming CI_MAX_SHARDS, and
 #        ci.yml's plan step then falls back to its empty output (8 legs)
 #
@@ -72,6 +74,8 @@ STUB
 cat > "$PS/run-shell-tests.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${RST_LOG:-/dev/null}"
+printf '%s\n' "${SUITE_TIER_MODE:-}" >> "${RST_TIER_LOG:-/dev/null}"
+printf '%s\n' "${SUITE_MANIFEST:+manifest}" >> "${RST_MANIFEST_LOG:-/dev/null}"
 [ "${1:-}" = --list ] || exit 1
 case "${STUB_LIST_MODE:-fail}" in fail) exit 1 ;; esac
 [ -n "${STUB_LIST:-}" ] && sed 's/^/[RUN ] /' "$STUB_LIST"
@@ -232,7 +236,7 @@ STUB_ARGS_LOG="$PS/args.log" STUB_ANSWERS="1=true 2=true" \
 if [ "$(sort "$PS/args.log")" = "$(printf '1/2 /some/root\n2/2 /some/root')" ]; then pass "PS17 no runner args, none passed to the probes"; else fail "PS17 none: $(cat "$PS/args.log")"; fi
 
 # PS18: the plan job's two plan-shards.sh calls take the cap from vars.CI_MAX_SHARDS
-# and plan at 16 without it. The run bodies are lifted from ci.yml itself and run against
+# and plan at 20 without it. The run bodies are lifted from ci.yml itself and run against
 # a stub planner that logs its args; an unset repository variable reaches the step as
 # the empty string.
 step_dir="$PS/step"
@@ -258,7 +262,7 @@ PY
   cat "$step_dir/args.log"
   return "$step_rc"
 }
-if got=$(run_plan_step shards "") && [ "$got" = "16 ." ]; then pass "PS18 shards: variable empty plans at 16"; else fail "PS18 shards empty: got [$got]"; fi
+if got=$(run_plan_step shards "") && [ "$got" = "20 ." ]; then pass "PS18 shards: variable empty plans at 20"; else fail "PS18 shards empty: got [$got]"; fi
 if got=$(run_plan_step shards 8) && [ "$got" = "8 ." ]; then pass "PS18 shards: variable 8 plans at 8"; else fail "PS18 shards 8: got [$got]"; fi
 
 # PS19: a plan at 16 lists at most 16 shards and shard_total is 16.
@@ -297,8 +301,20 @@ PY
 if got=$(run_real_step 500) && [ "$got" = 64 ]; then pass "PS20 ci.yml's plan step with CI_MAX_SHARDS=500 plans 64"; else fail "PS20 plan step 500: got [$got]"; fi
 
 # PS22: ci.yml's own plan step, empty variable, real planner and the real ledger (suites
-# timed on green main CI runs): a full sweep plans 16 shards, where it planned 8.
-if got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" run_real_step "") && [ "$got" = 16 ]; then pass "PS22 an empty CI_MAX_SHARDS plans a full real-ledger sweep at 16"; else fail "PS22 empty full sweep: got [$got]"; fi
+# timed on green main CI runs): a full sweep plans 20 shards, the first N whose longest
+# shard is the longest single suite.
+if got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" run_real_step "") && [ "$got" = 20 ]; then pass "PS22 an empty CI_MAX_SHARDS plans a full real-ledger sweep at 20"; else fail "PS22 empty full sweep: got [$got]"; fi
+
+# PS23: the plan sizes the selection the shards run, so its --list carries their PR tier.
+: > "$PS/tier.log"
+if STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" RST_TIER_LOG="$PS/tier.log" run_real_step "" >/dev/null \
+   && [ "$(sort -u "$PS/tier.log")" = pr ]; then pass "PS23 the plan step lists under SUITE_TIER_MODE=pr"; else fail "PS23 plan step failed or tier: got [$(cat "$PS/tier.log")] rc $(cat "$real_dir/step.rc")"; fi
+
+# PS24: a shard with SUITE_MANIFEST decides its selection even off a default-branch base
+# (no base -> mode full, every tier), so the plan's --list must carry one too.
+: > "$PS/manifest.log"
+if STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" RST_MANIFEST_LOG="$PS/manifest.log" run_real_step "" >/dev/null \
+   && [ "$(sort -u "$PS/manifest.log")" = manifest ]; then pass "PS24 the plan step lists with a SUITE_MANIFEST, like the shards"; else fail "PS24 plan step failed or no SUITE_MANIFEST: got [$(cat "$PS/manifest.log")] rc $(cat "$real_dir/step.rc")"; fi
 
 # PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
 # step swallows the refusal into an empty output, which the shard job reads as 8 legs.

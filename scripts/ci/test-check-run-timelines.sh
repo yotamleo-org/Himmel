@@ -73,6 +73,13 @@ case " $* " in
         esac
         echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' > "$CASE/threads.json"
         emit "$CASE/threads.json"; exit 0 ;;
+    *'/actions/runs?'*)
+        # Assumption: every recorded check suite is a pull_request run of one workflow.
+        case " $* " in *' --include '*) headers ;; esac
+        jq '{total_count: ([.check_runs[].check_suite.id] | unique | length),
+            workflow_runs: [[.check_runs[].check_suite.id] | unique[] | {check_suite_id: ., event: "pull_request", workflow_id: 1}]}' \
+            "$CASE/check-runs-latest.json" > "$CASE/workflow-runs.json"
+        emit "$CASE/workflow-runs.json"; exit 0 ;;
     *'/actions/runs/'[0-9]*'/jobs'*) emit "$CASE/jobs-$(printf '%s' "$*" | sed -n 's|.*/actions/runs/\([0-9]*\)/jobs.*|\1|p').json"; exit 0 ;;
     *'/actions/runs/'[0-9]*)
         emit "$CASE/run-$(printf '%s' "$*" | sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p').json"; exit 0 ;;
@@ -167,17 +174,11 @@ run_ready_check() {
 # line_of <n> -- ready-check's verdict line for item <n>.
 line_of() { printf '%s\n' "$RC_OUT" | grep -E "^\[(PASS|FAIL)\] $1\. " | head -n 1; }
 
-# Known gap: check-ci counts failed rows per check suite, not per check name,
-# so a head whose earlier suites failed and whose latest run is green still
-# exits 1. The row asserts today's behaviour (its label names the open ticket);
-# closing the gap flips it to the same assertion as every other incident.
-KNOWN_GAP_7045="3434-pr1079-fail-fail-success"
-
 # want_rc <incident> -- the exit code check-ci.sh gives today.
 want_rc() {
     case "$1" in
         3473-*) echo 6 ;;
-        3434-*) echo 1 ;;
+        3434-*) echo 0 ;;
         3588-*) echo 6 ;;
         3690-*) echo 0 ;;
         3788-*) echo 1 ;;
@@ -200,15 +201,7 @@ for dir in "$CORPUS"/[0-9]*/; do
 
     new_case "$inc"
     run_check_ci
-    if [ "$inc" = "$KNOWN_GAP_7045" ]; then
-        if [ "$RC" -eq 1 ]; then
-            ok "KNOWN-GAP HIMMEL-7045 check-ci $inc: recorded CLEAN, check-ci exits 1 on stale failed suites"
-        else
-            bad "KNOWN-GAP HIMMEL-7045 check-ci $inc: rc=$RC, the gap is closed: assert green_iff_clean and drop the gap row"
-        fi
-    else
-        green_iff_clean "check-ci $inc"
-    fi
+    green_iff_clean "check-ci $inc"
     w=$(want_rc "$inc")
     if [ "$RC" = "$w" ]; then ok "check-ci $inc: exit code $RC"; else bad "check-ci $inc: exit code $RC, want $w; stderr: $ERR"; fi
 

@@ -4,6 +4,8 @@
 # from a different cwd ($TEMP). CLI is 2.1.250; docs claim cross-directory
 # resume since 2.1.223. Verify by ARTIFACT: does the resumed call actually
 # produce a result (and does the JSONL show both turns), not just rc.
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"

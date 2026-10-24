@@ -93,7 +93,10 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     republished); without the stamp file the tick keeps reading plain `ok`.
 
     **What a version page shows.** Columns are the Jira statuses of the
-    version's open tickets (To Do, In Progress, In Review, IN CI), each split
+    version's open tickets (To Do, In Progress, In Review, IN CI), except that a
+    card with an open PR follows that PR's CI (red In Progress, running or green
+    IN CI; green keeps a card Jira holds In Review) and names its Jira status;
+    each column is split
     into the priority blocks of the plan's `priority:` line (a ticket on no
     block line sits in `rest of version`). A card carries its sector colour (the
     mirror's `sector:` frontmatter, written when `jira.sectorField` is set in
@@ -103,8 +106,8 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     after this ticket reads `direction?`), and its FAST-TRACK step when a merge
     chain names it. The merge chains and parallel waves of `--chains-file`
     (`[{name, note, steps: [{key, pr, label, state, owner}]}]`) render above the
-    board, a step whose ticket is Done reading merged; a page shows only the
-    chains with a step in its version. Each column header carries a parity line
+    board, a merged step left out and a chain with none left dropped (the header
+    counts them); a page shows only the chains with a step in its version. Each column header carries a parity line
     against one live JQL count of the version's open tickets (`Jira n · ok`, or
     `DRIFT` naming each differing key with both statuses), and stdout prints the
     same per column; a DRIFT right after a render usually means Jira moved since

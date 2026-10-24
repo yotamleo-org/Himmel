@@ -1,0 +1,46 @@
+name: ledger-drift
+
+# HIMMEL-6455: does scripts/ci/suite-durations.tsv still balance the shell-unit
+# shards? Packs the suite seconds measured in the last 3 green main ci.yml runs
+# with the committed ledger (scripts/ci/ledger-drift.sh) and goes red when the
+# slowest shard passes 1.3x the floor, which is how HIMMEL-4075 went unnoticed.
+# Scheduled and dispatch only: it reads other runs' logs, never a PR's, and a
+# red here is a reminder to refresh the ledger, not a merge gate.
+on:
+  schedule:
+    - cron: '53 10 * * *'   # daily, UTC, after ci.yml's 07:17 and 08:xx runs
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ledger-drift-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Measure the shard ledger against recent green main runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The script's exit code is the verdict (0 balanced / 1 drift / 2 no
+          # usable input); keep the report for the step summary either way.
+          set +e
+          bash scripts/ci/ledger-drift.sh > ledger-drift-report.txt 2>&1
+          rc=$?
+          set -e
+          cat ledger-drift-report.txt
+          {
+            echo '### Shard ledger drift'
+            echo '```'
+            cat ledger-drift-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

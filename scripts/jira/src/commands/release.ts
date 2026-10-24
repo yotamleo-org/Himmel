@@ -1,3 +1,4 @@
+// billed-exempt: the release manager rm-run judge; run by the console on purpose, bank-preflight gated
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

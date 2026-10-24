@@ -1,6 +1,6 @@
 ---
 name: gh-pr-review
-description: Submit a PR review verdict: approve/request-changes/comment ("approve PR 42"). Needs verdict. Not plain comments.
+description: 'Submit a PR review verdict: approve/request-changes/comment ("approve PR 42"). Needs verdict. Not plain comments.'
 ---
 
 # gh-pr-review

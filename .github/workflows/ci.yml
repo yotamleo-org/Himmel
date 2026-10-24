@@ -129,7 +129,7 @@ jobs:
           cat "$tools/plan.out"
           grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
       # HIMMEL-5649 / HIMMEL-5556: how many shell-unit shards (at most
-      # vars.CI_MAX_SHARDS, 16 unset) the selection needs, sized off the duration
+      # vars.CI_MAX_SHARDS, 20 unset) the selection needs, sized off the duration
       # ledger. Asked once, here, under
       # the SAME selection env the shards' run step gets, so a small selection
       # takes few runners and a shard with nothing to run never takes one. An
@@ -142,10 +142,12 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           CI_MAX_SHARDS: ${{ vars.CI_MAX_SHARDS }}
         run: |
-          # A pull_request is never the nightly: tier is always fast here.
-          export SUITE_TIER_MODE=fast GUARD_CORPUS_TIER=fast SUITE_CHANGED_SINCE="$PR_BASE_SHA"
+          # A pull_request is never the nightly: tier is always pr here. The
+          # shards' SUITE_MANIFEST makes their runner decide the selection even
+          # with no base (mode full runs every tier), so the list asks with one.
+          export SUITE_TIER_MODE=pr GUARD_CORPUS_TIER=fast SUITE_CHANGED_SINCE="$PR_BASE_SHA" SUITE_MANIFEST="$RUNNER_TEMP/plan-manifest.txt"
           if [ "$PR_BASE_REF" = "$DEFAULT_BRANCH" ]; then export SUITE_IMPACTED_FROM_BASE="$PR_BASE_SHA"; fi
-          bash scripts/ci/plan-shards.sh "${CI_MAX_SHARDS:-16}" . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
+          bash scripts/ci/plan-shards.sh "${CI_MAX_SHARDS:-20}" . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
 
@@ -502,7 +504,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1048,7 +1050,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1360,7 +1362,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1471,7 +1473,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1600,7 +1602,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1736,8 +1738,9 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         # shard: [1..N] fans run-shell-tests.sh across N runners (HIMMEL-2872).
-        # On a pull_request the plan sizes N (at most vars.CI_MAX_SHARDS, 16 unset,
-        # HIMMEL-6585);
+        # On a pull_request the plan sizes N (at most vars.CI_MAX_SHARDS, 20 unset,
+        # HIMMEL-6585; 20 is where a full pr-mode selection's longest shard is its
+        # longest suite, HIMMEL-6598);
         # without a plan (push, schedule, dispatch) N stays 8: those runs gate no
         # PR, and a list sized from the variable cannot be written as an expression.
         # The `8` fallbacks here, in the run
@@ -1770,7 +1773,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1967,9 +1970,10 @@ jobs:
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
       # artifact below — the inline tail is bounded, so without this the
       # failing assertion can be unrecoverable from Actions logs (HIMMEL-963).
-      # SUITE_TIER_MODE (HIMMEL-2166 / HIMMEL-6598): fast on a pull_request, all
-      # on every other run (the nightly, the main-sweep cron, a workflow_dispatch).
-      # The all sweeps are the soak the PR shards' later flip to pr waits on.
+      # SUITE_TIER_MODE (HIMMEL-2166 / HIMMEL-6598): pr on a pull_request (the
+      # suite-tiers.tsv floor plus the impacted suites), all on every other run
+      # (the nightly, the main-sweep cron, a workflow_dispatch). Rollback is this
+      # 'pr' back to 'fast' here, in the aggregator and in the plan step.
       # The aggregator below carries the same expression.
       # SUITE_CHANGED_SINCE: only on pull_request, where a base SHA exists —
       # a docs-only PR then skips the whole corpus (run-shell-tests.sh's own
@@ -1996,7 +2000,7 @@ jobs:
           HOME_CANARY_REQUIRE_ATIME: "1"
           HOME_CANARY_TIMEOUT: "3300"
           FAIL_LOG_DIR: failed-suite-logs
-          SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'fast' || 'all' }}
+          SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'all' }}
           SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
           # HIMMEL-4912: the shards (60 min) always run the fast guard-corpus
           # subset; the full replay runs in the schedule-only guard-corpus-full job.
@@ -2135,7 +2139,7 @@ jobs:
       - name: Every shard ran exactly the selection
         env:
           IMPACTED_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.base.sha || '' }}
-          SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'fast' || 'all' }}
+          SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'all' }}
           SUITE_CHANGED_SINCE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
           # HIMMEL-5649: shards the plan left out because they had no suite. Empty
           # off a pull_request (every shard runs), where the plan job is skipped.
@@ -2226,7 +2230,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:5ca5e590c1f3f8c2e9c31d443075e5f4dcf4f29b9668ab12c8d874e6996586af') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:090f080ba68efacc8bc815d2e37edab997cd0cbfd690150fe4faa9845309671e') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}

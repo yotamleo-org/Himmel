@@ -1,6 +1,7 @@
 # MCP server and client inventory
 
-Repository snapshot: 2026-10-07, slice 1 of the v2 migration. The migration target is
+Repository snapshot: 2026-10-07, slice 1 of the v2 migration; the tasks and
+elicitation section was added 2026-10-24. The migration target is
 protocol revision **2025-11-25** and the split TypeScript SDK at exact stable
 **2.3.1**. The parent ticket's alpha warning is stale: the npm registry lists
 stable 2.0.0 through 2.3.1. Protocol revision and SDK major are independent;
@@ -16,7 +17,7 @@ production implementations have source-derived counts instead.
 | Server / client | Owner and repository evidence | SDK version | Transport | Tool count | Migration risk / disposition |
 |---|---|---|---|---|---|
 | `luna-correlate` server | `marketplace/plugins/luna-correlate/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; pilot target: split server **2.3.1** | stdio, Bun | **5** | Low: low-level handlers retain JSON schemas, custom validation and text/error output. Exact pin; regression initializes, lists tools, calls offline `series.load`, rejects bad arguments/unknown tools and checks EOF. |
-| `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.3.1** (spec 2025-11-25) | stdio, Node | **13** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
+| `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.3.1** (spec 2025-11-25) | stdio, Node | **14** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
 | `telegram` server | `marketplace/plugins/telegram-himmel/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; now split server **2.3.1** | stdio, Bun; Telegram network I/O is not MCP transport | **4** | Migrated, low-level `Server` kept: tools, schemas, notifications, poller gate and EOF shutdown unchanged. `tests/stdio.test.ts` drives a non-owner session with a dummy token and a dead proxy, no live bot. |
 | Obsidian Local REST API embedded server | `templates/luna-second-brain/.obsidian/plugins/obsidian-local-rest-api/{main.js,manifest.json}`; plugin **5.4.0** | Already split `@modelcontextprotocol/server`, `core`, `node` bundle; exact SDK release **not recorded** | Streamable HTTP (`NodeStreamableHTTPServerTransport`), sessionful/sessionless | **17** base + **2** signed-URL tools + **1** event-listener tool when enabled; extensions can add more | Medium: already v2 API (`McpServer.registerTool`, Standard Schema adapter). Re-vendor upstream, do not codemod compiled bundle; unknown exact pin needs upstream evidence. |
 | `fake-mcp` test server | `scripts/testing/fixtures/fake-mcp-server.mjs` | **None**, handwritten JSON-RPC | newline-delimited stdio, Node | **1** (`fake_echo`) | No dependency migration. Credential-free fixture echoes requested protocol; default 2025-06-18 is not a supported-version negotiation implementation. |
@@ -40,7 +41,35 @@ production implementations have source-derived counts instead.
 | `claude_ai_Google_Drive` | Policy registry | Hosted SDK **unknown** | Connector transport not recorded | **11** policy entries | Provider-owned; sharing/deleting policy unchanged. |
 | `claude-in-chrome` | Policy registry | External SDK **unknown** | Browser integration; transport not pinned here | **11** policy entries | Operator browser and arbitrary-JS surface; no local source migration. |
 | `plugin_builder-visual_agent-native-dispatch` | Policy registry | Hosted Builder.io SDK **unknown** | Hosted transport not recorded | **Unknown**, unenumerated | Provider-owned; egress guard remains authoritative. |
-| Planned `himmel-bus` server | Design only; not implemented at this snapshot | Planned split server/client **2.3.1** | Planned stdio | **2** planned (`send`, `read`) | New-on-v2, not a remaining v1 migration. No edits in this slice. |
+| `himmel-bus` server | Implemented: `marketplace/plugins/himmel-bus/server/index.mjs` | Split server/client **2.3.1** (exact pin) | stdio, Node | **2** (`send`, `read`) | New-on-v2, not a remaining v1 migration. |
+
+## Tasks and elicitation (protocol 2026-07-28)
+
+Target row: protocol revision **2026-07-28** adds tasks and elicitation. The
+2026-10-24 audit recorded that tasks need a 2026-07-28 connection and a Claude
+Code client of **2.1.304** or later (this station runs 2.1.310); neither is
+verified against the specification here. The 2025-11-25 migration target above
+is unchanged; 2026-07-28 is the next target, not yet adopted. Nothing here is a
+live probe: a cell is **unverified** unless a source file is named. The "No"
+cells mean the inspected local source does not use tasks or the 2026-07-28
+input-required elicitation flow; external and hosted servers stay unverified.
+
+| Server | Tasks | Elicitation | Evidence |
+|---|---|---|---|
+| `qmd` (fork) | Possible: SDK 2.3.1 bundles 2026-07-28 code; not yet returned from a query | Unverified | A query returning a task is not yet verified |
+| `himmel-bus` | No: `send` and `read` are plain calls | No | `marketplace/plugins/himmel-bus/server/index.mjs`, SDK 2.3.1 |
+| `jira` MCP | No: 14 plain tool calls | No | `scripts/jira/src/mcp.ts`, SDK 2.3.1; not registered on this station |
+| `luna-correlate` | No: 5 plain tool calls | No | `marketplace/plugins/luna-correlate/server.ts`, SDK 2.3.1 |
+| `graphify` MCP | Unverified | Unverified | External Python server, SDK unknown |
+| `obsidian-vault` | Unverified; pins mcp 1.28.1 (v1), so unlikely | Unverified | External `mcp-obsidian` |
+| `context7` | Unverified | Unverified | Hosted service |
+| Atlassian | Unverified | Unverified | Hosted connector or plugin; prefer the Jira CLI |
+
+### Blockers
+
+- Per the audit, a subagent's MCP calls do not become tasks; whether a server may still create one depends on the client advertising task support and the server's decision, which is unverified here.
+- Per the audit, `claude -p` without `--output-format stream-json` gets no tasks; this is unverified against the Claude CLI reference.
+- `claude --bg` and third-party-provider sessions are pending the probe in HIMMEL-7304.
 
 ## Pilot migration
 

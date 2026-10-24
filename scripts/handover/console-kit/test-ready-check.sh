@@ -1096,9 +1096,12 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
 check "own-checkout .env: exit 0" "$rc" "0"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
-# --- 9. the plugin version bump is re-checked against the CURRENT
-# origin/main. Two PRs can each bump a plugin to the same version with different
-# content; mergeStateStatus stays CLEAN, so check 1 cannot see it. Fixture: a
+# --- 9. plugin versions change only in a release cut (a PR that changes
+# the root VERSION file). Any other PR must leave every version as it is at the
+# merge-base, so a version main moved since is never its problem; a release cut
+# is re-checked against the CURRENT origin/main, since two cuts can raise a
+# plugin to the same version with different content and mergeStateStatus stays
+# CLEAN, so check 1 cannot see it. Fixture: a
 # bare origin; WORK builds history and pushes each PR head to refs/pull/77/head;
 # CLONE (what run() cds into) is cloned BEFORE main moves, so its origin/main is
 # stale and has none of the PR objects — check 9 must fetch both.
@@ -1118,26 +1121,43 @@ write_plugin() {  # <version> <content>
     git -C "$WORK" add -A
     git -C "$WORK" commit -q -m "$3"
 }
+printf '1.0.0\n' > "$WORK/VERSION"
+mkdir -p "$WORK/marketplace/.claude-plugin"
+printf '{"plugins":[{"name":"demo","source":"./plugins/demo"}]}\n' > "$WORK/marketplace/.claude-plugin/marketplace.json"
 write_plugin 0.4.70 base "chore: base"
 git -C "$WORK" push -q origin main
 BASE_OID=$(git -C "$WORK" rev-parse HEAD)
 git clone -q "$ORIGIN" "$CLONE"
-pr_head() {  # <version> <content> -> commit on a branch off the base, pushed as the PR head
+pr_head() {  # <version> <content> [release] -> commit on a branch off the base, pushed as the PR head
     git -C "$WORK" checkout -q -B pr "$BASE_OID"
+    [ -z "${3:-}" ] || printf '1.1.0\n' > "$WORK/VERSION"
     write_plugin "$1" "$2" "fix: pr"
     git -C "$WORK" rev-parse HEAD
 }
 PR_SAME=$(pr_head 0.4.71 from-pr)
-PR_AHEAD=$(pr_head 0.4.72 from-pr)
 PR_UNBUMPED=$(pr_head 0.4.70 from-pr)
-PR_PRE=$(pr_head 0.4.71-alpha from-pr)
+PR_REL_SAME=$(pr_head 0.4.71 from-pr release)
+PR_REL_AHEAD=$(pr_head 0.4.72 from-pr release)
+PR_PRE=$(pr_head 0.4.71-alpha from-pr release)
 git -C "$WORK" checkout -q -B pr "$BASE_OID"
 git -C "$WORK" rm -rq "$PLUG"
+git -C "$WORK" commit -q -m "fix: pr removes the plugin, still listed"
+PR_DEL_LISTED=$(git -C "$WORK" rev-parse HEAD)
+printf '{"plugins":[]}\n' > "$WORK/marketplace/.claude-plugin/marketplace.json"
+git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "fix: pr removes the plugin"
 PR_DEL=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+git -C "$WORK" rm -q "$PLUG/.claude-plugin/plugin.json"
+git -C "$WORK" commit -q -m "fix: pr drops only the manifest"
+PR_MANIFEST_DEL=$(git -C "$WORK" rev-parse HEAD)
+pr_head 0.4.72 from-pr release >/dev/null
+git -C "$WORK" rm -q "$PLUG/.claude-plugin/plugin.json"
+git -C "$WORK" commit -q -m "fix: release cut drops only the manifest"
+PR_REL_MANIFEST_DEL=$(git -C "$WORK" rev-parse HEAD)
 # a second plugin whose manifest on main carries no version (unreadable there)
 BADP=marketplace/plugins/bad
-pr_head 0.4.72 from-pr >/dev/null
+pr_head 0.4.72 from-pr release >/dev/null
 mkdir -p "$WORK/$BADP/.claude-plugin"
 printf '{"name":"bad","version":"1.0.0"}\n' > "$WORK/$BADP/.claude-plugin/plugin.json"
 git -C "$WORK" add -A
@@ -1161,18 +1181,26 @@ run_bump() {  # <pr head> <files> -> sets rc/out
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 
-run_bump "$PR_SAME" "$PLUG/body.txt"
-check "plugin same-version-as-main: exit 1" "$rc" "1"
-contains "plugin same-version-as-main: check 9 fails" "$out" "[FAIL] 9."
-contains "plugin same-version-as-main: names the plugin" "$out" "demo"
-
+# RED: main moved the plugin to 0.4.71 after this PR branched; the PR edits the
+# plugin and leaves the version alone, so it passes with no merge of main.
 run_bump "$PR_UNBUMPED" "$PLUG/body.txt"
-check "plugin below main: exit 1" "$rc" "1"
-contains "plugin below main: check 9 fails" "$out" "[FAIL] 9."
+contains "plugin edit, version untouched, main moved: check 9 passes" "$out" "[PASS] 9."
+notcontains "plugin edit, version untouched, main moved: no check fails" "$out" "[FAIL]"
 
-run_bump "$PR_AHEAD" "$PLUG/body.txt"
-contains "plugin ahead of main: check 9 passes" "$out" "[PASS] 9."
-notcontains "plugin ahead of main: no check fails" "$out" "[FAIL]"
+run_bump "$PR_SAME" "$PLUG/body.txt"
+check "version change outside a release cut: exit 1" "$rc" "1"
+contains "version change outside a release cut: check 9 fails" "$out" "[FAIL] 9."
+contains "version change outside a release cut: names the plugin" "$out" "demo"
+contains "version change outside a release cut: says why" "$out" "outside a release cut"
+
+run_bump "$PR_REL_SAME" "$PLUG/body.txt"
+check "release cut same-version-as-main: exit 1" "$rc" "1"
+contains "release cut same-version-as-main: check 9 fails" "$out" "[FAIL] 9."
+contains "release cut same-version-as-main: names the plugin" "$out" "demo"
+
+run_bump "$PR_REL_AHEAD" "$PLUG/body.txt"
+contains "release cut ahead of main: check 9 passes" "$out" "[PASS] 9."
+notcontains "release cut ahead of main: no check fails" "$out" "[FAIL]"
 
 run_bump "$PR_PRE" "$PLUG/body.txt"
 check "prerelease PR version: exit 1" "$rc" "1"
@@ -1184,6 +1212,19 @@ contains "unreadable main manifest: check 9 fails" "$out" "[FAIL] 9."
 
 run_bump "$PR_DEL" "$PLUG/body.txt"
 contains "plugin removed by the PR: check 9 passes" "$out" "[PASS] 9."
+
+# Only a whole removal needs no version: a dropped manifest with the plugin's
+# files left, or a removed plugin marketplace.json still lists, fails, as
+# check-plugin-drift.sh --bump-required does.
+run_bump "$PR_MANIFEST_DEL" "$PLUG/.claude-plugin/plugin.json"
+check "manifest dropped, plugin files left: exit 1" "$rc" "1"
+contains "manifest dropped, plugin files left: check 9 fails" "$out" "[FAIL] 9."
+run_bump "$PR_REL_MANIFEST_DEL" "$PLUG/.claude-plugin/plugin.json"
+check "release cut drops the manifest, plugin files left: exit 1" "$rc" "1"
+contains "release cut drops the manifest, plugin files left: check 9 fails" "$out" "[FAIL] 9."
+run_bump "$PR_DEL_LISTED" "$PLUG/body.txt"
+check "plugin removed but still listed in marketplace.json: exit 1" "$rc" "1"
+contains "plugin removed but still listed in marketplace.json: check 9 fails" "$out" "[FAIL] 9."
 
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."

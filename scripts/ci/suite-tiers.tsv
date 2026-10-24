@@ -3,7 +3,7 @@
 # tier    pr | local | flow | quarantine
 # reason  pr: catch:<PR> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>; any other tier: free text
 # A trust-owned suite (its path, or a sibling of a file, under ci-trust-paths.txt) is never local.
-# No runner reads this file yet. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
+# scripts/ci/run-shell-tests.sh reads local rows in pr mode and quarantine rows in every mode. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
 # a suite with no row, a row with no suite (stale), a duplicate row, a malformed row (not three fields),
 # an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
@@ -133,6 +133,7 @@ scripts/ci/test-home-canary.sh	pr	trust-path
 scripts/ci/test-impacted-selection.sh	pr	trust-path
 scripts/ci/test-jira-cli-smoke.sh	pr	trust-path
 scripts/ci/test-knockout-gate.sh	pr	trust-path
+scripts/ci/test-ledger-drift.sh	pr	trust-path
 scripts/ci/test-lockfile-advisory-floor.sh	pr	trust-path
 scripts/ci/test-macos-breakage.sh	pr	trust-path
 scripts/ci/test-macos-cadence-workflow.sh	pr	trust-path
@@ -270,6 +271,7 @@ scripts/eval/leg-digest/test-failure-review.sh	local	behaviour suite, 0 catches 
 scripts/eval/leg-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/leg-digest/test-leg-digest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/leg-digest/test-leg-ledger.sh	pr	static-gate
+scripts/eval/mcp-tasks-probe/test-probe.sh	local	behaviour suite, new HIMMEL-7304; the probe it covers is on-demand and billed
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -318,6 +320,7 @@ scripts/graphify/test-refresh-graph-map-scratch.sh	pr	guard
 scripts/graphify/test-refresh-graph-map.sh	pr	guard
 scripts/graphify/test-repo-map.sh	pr	guard
 scripts/graphify/test-seed-claude-config.sh	pr	guard
+scripts/graphify/test-semantic-batch.sh	pr	guard
 scripts/graphify/test-semantic-seeds.sh	local	new since the audit, behaviour suite
 scripts/graphify/test-semantic-update.sh	pr	guard
 scripts/guardrails/test-check-git-env-scrub.sh	pr	guard
@@ -395,6 +398,7 @@ scripts/handover/console-kit/test-stuck-scan.sh	local	behaviour suite, backfille
 scripts/handover/console-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/console-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/console-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds= (HIMMEL-4949)
 scripts/handover/console-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-tick.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1111,3 +1115,4 @@ scripts/ci/test-snyk-weekly-workflow.sh	pr	trust-path
 scripts/lib/test-cr-first-release.sh	pr	trust-path
 scripts/himmelctl/test/test-install-ui-handoff.sh	pr	guard
 scripts/guardrails/test-settings-waiter-allow.sh	pr	guard
+scripts/ci/test-billed-optin.sh	pr	trust-path

@@ -34,7 +34,8 @@ Detail: `docs/internals/enforcement.md#claude-invocation-billing`.
 
 ### Subagent policy
 Delegate only what is independent and sizeable; never spawn a subagent to verify
-your own work. Brief every child fully — it inherits nothing. **Every dispatch
+your own work (reviewing a diff you did not author is independent review). Brief
+every child fully — it inherits nothing. **Every dispatch
 names an explicit model**; raise *effort* before tier. A specified edit list
 ending in a machine check names haiku at medium effort. Inline implementation
 on a top-tier parent is the anti-pattern. [enforced: orchestrator-inline-guard]

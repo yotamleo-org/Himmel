@@ -52,6 +52,8 @@ case "$1" in
             printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[]}}\n' \
                 "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)"
         fi ;;
+    list)
+        printf '%s\tTask\t%s\ttitle\n' "$(cat "$FX/list.key" 2>/dev/null)" "$(cat "$FX/status.cur")" ;;
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
         if [ -e "$FX/workflow" ] && [ -z "$(cut -f2 "$FX/workflow" | grep -xF "$3")" ]; then
@@ -74,6 +76,7 @@ case "$1 $2" in
         if [ -e "$FX/checks-$3.json" ]; then cat "$FX/checks-$3.json"; else echo "no checks reported on the 'x' branch" >&2; exit 1; fi ;;
     "api graphql")
         num=""; for a in "$@"; do case "$a" in number=*) num=${a#number=} ;; esac; done
+        if [ -z "$num" ] && [ -e "$FX/graphql-all.json" ]; then cat "$FX/graphql-all.json"; exit 0; fi
         t=$(cat "$FX/threads-$num" 2>/dev/null || echo 0)
         nodes=""; i=0; while [ "$i" -lt "$t" ]; do nodes="${nodes:+$nodes,}{\"isResolved\":false}"; i=$((i+1)); done
         more=false; [ -e "$FX/threads-more-$num" ] && more=true
@@ -91,7 +94,7 @@ esac
 EOS
 cat >"$tmp/lock-stub.sh" <<'EOS'
 #!/usr/bin/env bash
-rc=$(cat "$FX/lock.rc" 2>/dev/null || echo 0)
+rc=$(cat "$FX/lock.rc.${2##*/}" 2>/dev/null || cat "$FX/lock.rc" 2>/dev/null || echo 0)
 [ "$rc" = 0 ] && { echo free; exit 0; }
 age=$(cat "$FX/lock.age" 2>/dev/null || echo 0)
 now=$(date -u +%s)
@@ -146,6 +149,19 @@ reset "Done"; owned
 fn "$K" --event live
 check "D0: Done is never left" "$(ntrans)" 0
 check "D0: row rule" "$(row rule)" D0
+stale_live() { jq -c '.state = "live"' "$REC" > "$tmp/rec.t" && mv "$tmp/rec.t" "$REC"; }
+reset "Done"; owned WRAPPED; stale_live
+fn "$K" --event sweep
+check "D0: a Done ticket's live record is refreshed from a wrapped doc (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
+check "D0: the refresh moves no status (HIMMEL-7353)" "$(ntrans)" 0
+reset "Done"; owned LIVE; stale_live
+fn "$K" --event sweep
+check "D0: a Done ticket's record stays live while its doc is live (HIMMEL-7353)" "$(jq -r .state "$REC")" live
+reset "Done"; owned WRAPPED; stale_live
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "sweep: a Done ticket's stale live record is cleared by the sweep (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
 reset "Backlog"; owned
 fn "$K" --event live
 check "D0: an off-ladder status is never touched" "$(ntrans)" 0
@@ -268,6 +284,24 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D6: WRAPPED, no PR -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
+DOC2="$tmp/$K-N2-slug-2026-10-21.md"
+reset "In Progress"; owned LIVE 11 0
+fn "$K" --event live --doc "$DOC"
+mkdoc "$DOC2" WRAPPED; echo 0 > "$FX/lock.rc.${DOC2##*/}"
+fn "$K" --event wrapped --doc "$DOC2"
+check "no D6: the wrapped event was derived" "$(row event)" wrapped
+check "no D6: the record holds both legs" "$(jq -r '.docs | join(" ")' "$REC")" "$DOC $DOC2"
+check "no D6: one leg wraps with no PR while another holds a live lock" "$(ntrans)" 0
+check "no D6: the live leg keeps rule D5" "$(row rule)" D5
+check "no D6: the record follows the live leg" "$(jq -r '.doc + " " + .leg + " " + .state' "$REC")" "$DOC N1 live"
+reset "In Progress"; owned LIVE 11 0
+fn "$K" --event live --doc "$DOC"
+mkdoc "$DOC" WRAPPED; echo 0 > "$FX/lock.rc"
+mkdoc "$DOC2" WRAPPED
+fn "$K" --event wrapped --doc "$DOC2"
+check "D6: every recorded leg ended -> one move" "$(ntrans)" 1
+check "D6: every recorded leg ended -> To Do" "$(moved)" "transition $K To Do"
+check "D6: the move is the wrapped event's" "$(row event)/$(row rule)" wrapped/D6
 reset "In Progress"
 fn "$K" --event sweep
 check "D7: never owned -> no write" "$(ntrans)" 0

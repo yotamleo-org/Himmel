@@ -39,6 +39,7 @@ Seams: CLAUDE_BIN, BANK_PREFLIGHT, and retrieval-eval's RETRIEVAL_EVAL_QMD_CMD a
 RETRIEVAL_EVAL_GRAPH_CMD.
 Stdlib only.
 """
+# billed-opt-in: HIMMEL_BILLED_OK
 import argparse
 import importlib.util
 import json
@@ -272,6 +273,8 @@ def main(argv=None):
     try:
         a = p.parse_args(argv)
         if a.cmd == "run":
+            if os.environ.get("HIMMEL_BILLED_OK") != "1":
+                raise Usage("run makes real, billed model calls; set HIMMEL_BILLED_OK=1 (on-demand only)")
             return cmd_run(a)
         raise Usage("name a subcommand: run")
     except Usage as e:

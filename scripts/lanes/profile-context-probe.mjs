@@ -9,6 +9,7 @@
 // only the PURE functions below (parse/extract/evaluate/format) against a
 // checked-in fixture — no live spawn there.
 //
+// billed-opt-in: HIMMEL_BILLED_OK
 // node scripts/lanes/profile-context-probe.mjs [--profile <name>] [--ledger live|<path>] [--no-ledger]
 // node scripts/lanes/profile-context-probe.mjs --tool-bytes [--untrimmed] [--profile <name>]
 //
@@ -542,6 +543,7 @@ function runClaude(extraArgs, prompt = BASELINE_PROMPT, retriesLeft = 1) {
 // claude spawn's own CLAUDE_TIMEOUT_MS bound: a hung/slow preflight must degrade
 // to a skip (exit 3), never hang or crash this probe.
 function bankPreflightSkip() {
+  if (process.env.HIMMEL_BILLED_OK !== '1') return 'makes real, billed claude calls; set HIMMEL_BILLED_OK=1 (on-demand only)';
   const bash = resolveBash();
   if (!bash) return 'no usable bash found to run bank-preflight';
   const preflight = spawnSync(bash, ['scripts/lib/usage-preflight.sh'], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 30_000 });

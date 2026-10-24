@@ -8,12 +8,13 @@ file that enforces or reads each knob is named inline. Per-subsystem depth
 lives in the [deep-dive docs](#6-deep-dive-index); this doc is the one place
 that shows the whole control surface at once.
 
-Audience: an adopter who has finished [getting-started.md](getting-started.md)
-and wants to know what is running, what can act on its own, and where the off
-switches are. ([README.md](../README.md) has the pitch; this doc has the
-controls.)
+Start from [getting-started.md](getting-started.md); [README.md](../README.md)
+has the pitch, this doc has the controls. To change one thing, go straight to
+[Change one setting](#change-one-setting).
 
 **Contents**
+
+- [Change one setting](#change-one-setting) — the setting groups: plugins, review, auto-ship, scheduled jobs, commit rules, session switches, install answers
 
 1. [What himmel is](#1-what-himmel-is)
 2. [The chains](#2-the-chains) — delivery, gate decision, Telegram, lanes
@@ -24,63 +25,94 @@ controls.)
 
 ---
 
-## `.env` consumer boundaries
+## Change one setting
 
-Each loader names its keys explicitly. The shared shell
-`load_dotenv [--root DIR] KEY...` exports **nothing without a key list**;
-existing non-empty shell values still win. Jira/Bitbucket keep their existing
-nullish precedence (an exported empty string wins). Python credential readers
-keep live values and disable dotenv interpolation. These boundaries govern
-what a file adds, not credentials the launching shell already exported.
+Find the group for what you want to change, then the row. Each row says where
+the setting lives (its scope and the file or command that stores it), when it
+takes effect, how to confirm it did, how to undo it, and which file in this
+repo reads it. Paths are relative to the himmel checkout. A `.env` row means
+the `.env` at the root of the repo's primary checkout (copy
+[`.env.example`](../.env.example)); "bridged" means the reader loads that key
+from `.env` itself, while a value exported in the launching shell still wins.
+Which loader reads which `.env` keys is in
+[`.env` consumer boundaries](#env-consumer-boundaries); the numbered sections
+after this one are the full map.
 
-**Bun limitation:** Bun can auto-load the working directory's `.env` before
-any explicit reader runs. These consumer allowlists cannot prevent that
-runtime-level import. Auditing Bun launch sites and passing `--no-env-file`
-is tracked separately as a planned follow-up, outside this change. No Bun launch
-sites are changed here.
+### Plugins
 
-| Consumer | Keys loaded from its file |
-|---|---|
-| Jira / Confluence (`scripts/jira/src/client.ts`) | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `JIRA_SEVERITY_FIELD`, `JIRA_BOARD_ID`, `CONFLUENCE_EMAIL`, `CONFLUENCE_API_TOKEN` |
-| Bitbucket (`scripts/bitbucket/src/env.ts`) | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG` |
-| Codex launcher (bash/PowerShell), CLI proxy setup | `CLIPROXY_API_KEY` |
-| DeepSeek launcher (bash/PowerShell) | `DEEPSEEK_API_KEY` |
-| GLM launcher (bash/PowerShell), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
-| OpenRouter launcher (bash/PowerShell), `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
-| CR artifact critic / provider-selected panel credentials | `GLM_API_KEY`, `ZAI_API_KEY`, `Z_AI_API_KEY`; panel additionally `CLIPROXY_API_KEY` when Codex is selected |
-| CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
-| Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/legs, statusline, lane-cost rows | `HANDOVER_DIR`; hop, leg-timeline, auto-action and leg-relaunch additionally `USER_SLUG`; console additionally `JIRA_PROJECT_KEY` |
-| GO gate, user-slug setup probe | `USER_SLUG` (GO gate separately reads `HANDOVER_DIR`) |
-| Console ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
-| Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
-| Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` (old names `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` still read); freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
-| Bank preflight | `HIMMEL_FLEET_CAP` (default 4; also set from the config UI, Settings, "Fleet cap": a whole number from 1 to 50, written to the station `.env`; a value exported in the launching shell wins until that shell restarts) <!-- old-term-ok: existing row label --> |
-| Updater | `HIMMEL_UPDATE_AUTOSTASH`, `LUNA_VAULT_PATH` |
-| Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS` (only actions allow a process-env override) |
-| Telegram session-status / luna-sync-alert (dedicated bridge file) | `TELEGRAM_BOT_TOKEN`; notification shell hooks separately load repo `TELEGRAM_GROUP_CHAT_ID` |
-| Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_AFK` (and their old `_OVERNIGHT` names), `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| Upstream watcher | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| Alibaba quota probe | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK`, `ALIBABA_QUOTA_PROM_URL`, `ALIBABA_QUOTA_GRANTS` |
-| Alibaba monitoring-key setup | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK` (in-process lookup, not blanket export) |
-| VM SDK | The selected VM's registry `pass_env`, and `user_env` only without a literal user; station entries load none |
-| Cloud-init / Ubuntu provisioner | `ubuntu_vm_user`, `ubuntu_vm_pass` |
-| Windows provisioner | `windows_vm_user`, `windows_vm_pass` |
-| VM after-report | `himmel_github_token_vm` |
-| VM SDK clone (`vmsdk.py <vm> clone`) | `himmel_github_token_vm`, else `himmel_github_token_vm2` (first present wins) |
-| Read-only `gh` calls (tick, check-ci, ready-check, go.sh reads) | `himmel_github_token_vm2` (read-only token, loaded per call by `scripts/lib/gh-read.sh`; missing or exhausted falls back to the main token) |
-| Google Health pull cadence | `GOOGLE_HEALTH_REFRESH_TOKEN` |
-| Chat-note enrichment / graphmap provider selection | Only the selected provider's named key (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY`, or `ANTHROPIC_API_KEY` for chat-note enrichment) |
-| Fetch-health probe lookup | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`, `HIMMEL_FETCH_HEALTH_STATE`, `HIMMEL_FIRECRAWL_LEDGER`, `HIMMEL_IG_PROBE_CACHE`, `HIMMEL_IG_PROBE_TTL_S`, `IG_SCRAPLING_PYTHON`, `X_SCRAPLING_PYTHON`, `YT_SCRAPLING_PYTHON`, and the explicit `FETCH_HEALTH_REDDIT_URL`, `FETCH_HEALTH_FXTWITTER_URL`, `FETCH_HEALTH_INSTAGRAM_EMBED_URL`, `FETCH_HEALTH_INSTAGRAM_MEDIA_URL`, `FETCH_HEALTH_X_MEDIA_URL`, `FETCH_HEALTH_YOUTUBE_URL`, `FETCH_HEALTH_JINA_URL` overrides; file-derived config is not passed wholesale to children |
-| himmelctl privileged installer | `HIMMELCTL_SUDO_PASSWORD` (stdin only, never exported) |
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| Plugin profile, `lean` or `full` | user · `enabledPlugins` in `~/.claude/settings.json`, set with `/profile lean` or `/profile full` | next Claude session | `/profile list` | `/profile lean` | `scripts/machine-setup/plugin-profile.sh` |
+| One on-demand plugin | user · `~/.claude/settings.json`, set with `/profile enable <spec>` | next Claude session | `/profile list` shows it enabled | `/profile disable <spec>` | `scripts/machine-setup/plugin-profile.sh` |
+| Keep or drop one plugin across every reconcile | user · `enabledPlugins` in `~/.claude/settings.local.json` | next reconcile, then the next session | `bash scripts/machine-setup/reconcile-enabled-plugins.sh --dry-run` disables nothing you listed `true` | delete the entry | `scripts/machine-setup/reconcile-enabled-plugins.sh` |
+| Enforce the lean floor on every update | machine · `export HIMMEL_RECONCILE_PLUGINS=1` in your shell startup file (`~/.bashrc` or `~/.zshrc`) | next `/himmel-update` | the update's plugin-set reconcile step disables off-floor plugins instead of warning | remove the export | `scripts/himmel-update.sh` |
 
-Config-ui and himmelctl configuration/redaction readers intentionally inspect
-all entries **without exporting them**: filtering the redactor would expose
-otherwise unknown secret values in child output. Doctor **C57-dotenv-allowlists**
-warns on recognized blanket loaders or empty shell allowlists and lists unused
-key **names** at INFO severity, never values. Its source-pattern inventory is
-an advisory, not an interpreter: a new loader syntax needs a matching audit
-rule. An unused name can be intentional; `TEST_ANTHROPIC_API_KEY` is reserved
-for the future API lane and is not exported by these loaders.
+### Review by a second model
+
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| Critic tier: `none` (Claude only, no external spend), `free` or `paid` | repo · `CR_PROFILE=<tier>` in `.env` (bridged) | next `/pr-check` | `bash scripts/cr/critic-panel.sh --check` probes the critics of the selected tier | remove the line (tier `free`) | `scripts/cr/critic-panel.sh` |
+| Require at least one non-Claude critic | repo · `CR_REQUIRE_CROSS_MODEL=1` in `.env` (bridged) | next clear of the review-owed marker | a Claude-only review no longer clears the marker | remove the line | `scripts/cr/clear-review-marker.sh` |
+| Per-machine reviewer overlay (add, change or drop a reviewer row) | machine · `critics.local.json` in `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/`, else the primary checkout's `scripts/cr/` (gitignored) | next `/pr-check` and next merge-gate check | `bash scripts/cr/critic-panel.sh --check`; field rules in [Reviewer modes](#reviewer-modes) | delete the file | `scripts/lib/review-merge-gate.sh` |
+
+### Auto-ship steps
+
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| Steps a session runs unasked at a completion point (for example `execute,prcheck,pr`) | repo · `HIMMEL_INITIATIVE=<steps>` in `.env` (bridged) | next session start | the session opens with `HIMMEL_INITIATIVE is active. Active steps: …` | remove the line; for one repo only, `"env": { "HIMMEL_INITIATIVE": "" }` in its `.claude/settings.json` | `scripts/hooks/inject-initiative.sh` |
+| The unattended (AFK) step set | repo · `HIMMEL_AFK=1` plus `HIMMEL_INITIATIVE_AFK=<steps>` in `.env` (bridged) | next session start | the session opens with `HIMMEL_INITIATIVE_AFK is active. Active steps: …` | set `HIMMEL_AFK=0` or remove both lines | `scripts/hooks/inject-initiative.sh` |
+
+The step vocabulary and the AFK step set: **Initiative & autonomy** in
+[§4.1](#41-env--the-file-based-config); what can act without you:
+[§4.3](#43-autonomy--what-can-act-without-you).
+
+### Scheduled jobs
+
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| Recurring vault cadence (daily harvest and synthesize, weekly health), armed with `bash scripts/luna/pipeline-cadence.sh arm` | machine · the OS scheduler (cron; Task Scheduler on Windows) | the next scheduled slot | `bash scripts/luna/pipeline-cadence.sh status` | `bash scripts/luna/pipeline-cadence.sh disarm` | `scripts/luna/pipeline-cadence.sh` |
+| Cap watchdog that arms a resume before the usage cap (on by default) | session · `AUTO_ARM_DISABLE=1` in the shell that launches `claude` | sessions launched from that shell | `env` in that shell shows `AUTO_ARM_DISABLE=1` | launch `claude` without it | `scripts/hooks/auto-arm-on-cap.sh` |
+
+### Commit rules
+
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| Require a ticket ID in every commit subject (on by default) | repo · `TICKET_ID_REQUIRED=0` in `.env`, or a `TICKET_ID_REQUIRED=0 git commit …` prefix | next commit | a commit with no ticket reference is accepted | remove the line | `scripts/hooks/check-commit-msg.sh` |
+| Your own ticket ID shape | repo · `TICKET_ID_PATTERN=<extended regex>` in `.env` | next commit | a subject without a match is refused, one with a match passes | remove the line (back to `<KEY>-<number>`, or `#<number>` with no `JIRA_PROJECT_KEY`) | `scripts/hooks/check-commit-msg.sh` |
+| Ticket tracker: `jira`, `local` or `none` | repo · `git config himmel.tracker <tracker>` | next command that asks the resolver | `/himmel-doctor` row `C55-project-mode` | `git config --unset himmel.tracker` (back to detection) | `scripts/lib/project-mode.sh` |
+| Allow edits on the default branch in a single-writer repo | checkout · a `.single-writer` file at the repo root (gitignored) | next edit | an edit on `main` proceeds | delete the file | `scripts/hooks/block-edit-on-main.sh` |
+
+More tracker and forge keys: [Tracker and forge](#tracker-and-forge).
+
+### Session switches
+
+These are read by a hook, so they must be set in the shell that **launches**
+`claude`; a prefix on a command inside the session never reaches the hook.
+
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| A deliberate one-off edit on the default branch | session · `EDIT_ON_MAIN_OK=1 claude` | that session | an edit on `main` proceeds | quit and relaunch without it | `scripts/hooks/block-edit-on-main.sh` |
+| The update-available nudge at session start | session · `UPDATE_CHECK_DISABLE=1 claude` | that session | no update line at session start | launch without it | `scripts/hooks/check-update-available.sh` |
+| Skip writing the review-owed marker for one push | one push · `SKIP_CR=1 git push` (a git gate, so a per-command prefix works) | that push | no review-owed marker is written | push without it | `scripts/hooks/check-cr-before-push.sh` |
+
+Every off switch, by layer: [§5](#5-off-switches).
+
+### Install answers
+
+The installer records your answers in
+`${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/install-profile.json`, and the
+updater reads them back.
+
+| Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
+|---|---|---|---|---|---|
+| Release channel: `stable` or `pre` | machine · `channel` in `install-profile.json` (a new install records `stable`) | next update | `bash scripts/himmel-update.sh --check` reports the channel's newest tag | delete the `channel` key (plain `git pull --ff-only`) | `scripts/himmel-update.sh` |
+| Release channel for one run | session · `HIMMEL_UPDATE_CHANNEL=stable` or `=pre` before the command | that run | `--check` reports the channel's newest tag | omit it | `scripts/himmel-update.sh` |
+| Installation scope: `project` or `user` | machine · `node scripts/himmelctl/bin.js scope set <project\|user>` (`--dry-run` previews) | when the command finishes | `node scripts/himmelctl/bin.js scope get` | `scope set` to the other value | `scripts/himmelctl/bin.js` |
+| Your handle | machine · `USER_SLUG=<kebab-case>` in `.env` (bridged) | next handover or worktree command | new handover files land under your handle | remove the line (back to a slug of `git config user.name`) | `scripts/lib/user-slug.sh` |
+
+Release channel detail: [updating.md](setup/updating.md#release-channels).
+
+---
 
 ## 1. What himmel is
 
@@ -462,6 +494,64 @@ before reading — so a value sitting only in `.env` IS picked up, while a
 live-env value (shell export or `settings.json` `"env"`) still wins. The
 bridged set is inventoried in [`.env.example`](../.env.example)'s header, and
 each bridged var's own comment there names its bridging reader.
+
+#### `.env` consumer boundaries
+
+Each loader names its keys explicitly. The shared shell
+`load_dotenv [--root DIR] KEY...` exports **nothing without a key list**;
+existing non-empty shell values still win. Jira/Bitbucket keep their existing
+nullish precedence (an exported empty string wins). Python credential readers
+keep live values and disable dotenv interpolation. These boundaries govern
+what a file adds, not credentials the launching shell already exported.
+
+**Bun limitation:** Bun can auto-load the working directory's `.env` before
+any explicit reader runs. These consumer allowlists cannot prevent that
+runtime-level import. Auditing Bun launch sites and passing `--no-env-file`
+is tracked separately as a planned follow-up, outside this change. No Bun launch
+sites are changed here.
+
+| Consumer | Keys loaded from its file |
+|---|---|
+| Jira / Confluence (`scripts/jira/src/client.ts`) | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `JIRA_SEVERITY_FIELD`, `JIRA_BOARD_ID`, `CONFLUENCE_EMAIL`, `CONFLUENCE_API_TOKEN` |
+| Bitbucket (`scripts/bitbucket/src/env.ts`) | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG` |
+| Codex launcher (bash/PowerShell), CLI proxy setup | `CLIPROXY_API_KEY` |
+| DeepSeek launcher (bash/PowerShell) | `DEEPSEEK_API_KEY` |
+| GLM launcher (bash/PowerShell), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
+| OpenRouter launcher (bash/PowerShell), `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
+| CR artifact critic / provider-selected panel credentials | `GLM_API_KEY`, `ZAI_API_KEY`, `Z_AI_API_KEY`; panel additionally `CLIPROXY_API_KEY` when Codex is selected |
+| CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
+| Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/legs, statusline, lane-cost rows | `HANDOVER_DIR`; hop, leg-timeline, auto-action and leg-relaunch additionally `USER_SLUG`; console additionally `JIRA_PROJECT_KEY` | <!-- old-term-ok: existing row moved unchanged -->
+| GO gate, user-slug setup probe | `USER_SLUG` (GO gate separately reads `HANDOVER_DIR`) |
+| Console ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` | <!-- old-term-ok: existing row moved unchanged -->
+| Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
+| Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` (old names `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` still read); freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
+| Bank preflight | `HIMMEL_FLEET_CAP` (default 4; also set from the config UI, Settings, "Fleet cap": a whole number from 1 to 50, written to the station `.env`; a value exported in the launching shell wins until that shell restarts) <!-- old-term-ok: existing row label --> |
+| Updater | `HIMMEL_UPDATE_AUTOSTASH`, `LUNA_VAULT_PATH` |
+| Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS` (only actions allow a process-env override) |
+| Telegram session-status / luna-sync-alert (dedicated bridge file) | `TELEGRAM_BOT_TOKEN`; notification shell hooks separately load repo `TELEGRAM_GROUP_CHAT_ID` |
+| Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_AFK` (and their old `_OVERNIGHT` names), `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Upstream watcher | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Alibaba quota probe | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK`, `ALIBABA_QUOTA_PROM_URL`, `ALIBABA_QUOTA_GRANTS` |
+| Alibaba monitoring-key setup | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK` (in-process lookup, not blanket export) |
+| VM SDK | The selected VM's registry `pass_env`, and `user_env` only without a literal user; station entries load none |
+| Cloud-init / Ubuntu provisioner | `ubuntu_vm_user`, `ubuntu_vm_pass` |
+| Windows provisioner | `windows_vm_user`, `windows_vm_pass` |
+| VM after-report | `himmel_github_token_vm` |
+| VM SDK clone (`vmsdk.py <vm> clone`) | `himmel_github_token_vm`, else `himmel_github_token_vm2` (first present wins) |
+| Read-only `gh` calls (tick, check-ci, ready-check, go.sh reads) | `himmel_github_token_vm2` (read-only token, loaded per call by `scripts/lib/gh-read.sh`; missing or exhausted falls back to the main token) |
+| Google Health pull cadence | `GOOGLE_HEALTH_REFRESH_TOKEN` |
+| Chat-note enrichment / graphmap provider selection | Only the selected provider's named key (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY`, or `ANTHROPIC_API_KEY` for chat-note enrichment) |
+| Fetch-health probe lookup | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`, `HIMMEL_FETCH_HEALTH_STATE`, `HIMMEL_FIRECRAWL_LEDGER`, `HIMMEL_IG_PROBE_CACHE`, `HIMMEL_IG_PROBE_TTL_S`, `IG_SCRAPLING_PYTHON`, `X_SCRAPLING_PYTHON`, `YT_SCRAPLING_PYTHON`, and the explicit `FETCH_HEALTH_REDDIT_URL`, `FETCH_HEALTH_FXTWITTER_URL`, `FETCH_HEALTH_INSTAGRAM_EMBED_URL`, `FETCH_HEALTH_INSTAGRAM_MEDIA_URL`, `FETCH_HEALTH_X_MEDIA_URL`, `FETCH_HEALTH_YOUTUBE_URL`, `FETCH_HEALTH_JINA_URL` overrides; file-derived config is not passed wholesale to children |
+| himmelctl privileged installer | `HIMMELCTL_SUDO_PASSWORD` (stdin only, never exported) |
+
+Config-ui and himmelctl configuration/redaction readers intentionally inspect
+all entries **without exporting them**: filtering the redactor would expose
+otherwise unknown secret values in child output. Doctor **C57-dotenv-allowlists**
+warns on recognized blanket loaders or empty shell allowlists and lists unused
+key **names** at INFO severity, never values. Its source-pattern inventory is
+an advisory, not an interpreter: a new loader syntax needs a matching audit
+rule. An unused name can be intentional; `TEST_ANTHROPIC_API_KEY` is reserved
+for the future API lane and is not exported by these loaders.
 
 **Identity, handover, Jira & forge**
 
