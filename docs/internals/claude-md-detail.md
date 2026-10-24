@@ -43,6 +43,16 @@ subagent to verify your own work; both multiply cost without improving the
 result. (Reviewing a diff you did not author is independent review, not
 self-verification.) Brief every child fully — it inherits nothing.
 
+**A subagent earns its place by isolation, parallelism or a fresh view** —
+nothing else pays for its context, tokens and lossy hand-off. Signal to
+delegate: exploring ~10+ files you would otherwise read into your own context,
+or 3+ independent pieces. Keep in your own loop: steps that depend on each
+other's output, edits to the same file, and small tasks. Independent
+verification is structural, not self-spawned: the automated review and the
+chief's judge give the fresh view, while a verifier the author briefs inherits
+the author's framing. A recurring subagent class is kept only while an eval
+says the folded version scores worse (`lane-calibration.md` § Fold or delegate).
+
 **Every dispatch names an explicit model** (an unnamed one burns the scarcer parent quota); raise *effort* before tier. Tier semantics, effort and cost: `docs/internals/lane-calibration.md`; live inventory: `/lanes`.
 A brief that is a specified edit list, comment or rename sweep, fixture regeneration or scoped extraction, ending in a named machine check (gate script, test, schema validator), names haiku at medium effort, not sonnet.
 
