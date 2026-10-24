@@ -17,6 +17,8 @@ export interface JiraPort {
   setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
+  // The live snapshot of one issue, for a claimed key the mirror lacks or holds without a sector.
+  issue?(key: string): Promise<IssueSnap | null>;
 }
 
 export interface Ctx {
@@ -554,7 +556,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       const phaseOf = new Map(rows.verified.map((r) => [r.id, r.phase]));
       const superseded = rows.verified.some((s) => s.supersedes.includes(id) && ['applied', 'receipted'].includes(phaseOf.get(s.id) ?? ''));
       // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
-      if (!superseded && last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
+      // A REVERSION move into a version is an admission there too; readers ignore the row for an unfrozen version.
+      const admitted = last.verb === 'INTAKE' && last.outcome === 'ADMIT'
+        || last.verb === 'REVERSION' && last.op.kind === 'move';
+      if (!superseded && admitted && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
         if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
@@ -637,7 +642,14 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- rm-run: the release manager as one on-demand batch -------------------------------
 
-export interface Decision {
+// The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed.
+export interface HoldDecision {
+  req: string;
+  outcome: 'HOLD';
+  reason: string;
+}
+
+export interface RuledDecision {
   req: string;
   outcome: string;
   op: Op['kind'];
@@ -650,6 +662,10 @@ export interface Decision {
   authority?: Authority['kind'];
   ref?: string | null;
 }
+
+export type Decision = HoldDecision | RuledDecision;
+
+const isHold = (d: Decision): d is HoldDecision => d.outcome === 'HOLD';
 
 // Everything a ruling weighs, read from disk: a standing session kept nothing else that counts.
 export interface JudgeInput {
@@ -677,6 +693,22 @@ function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
   const last = new Map<string, RulingRow>();
   for (const r of rulings.verified) last.set(r.id, r);
   return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
+}
+
+// The mirror row when it names a sector; else the live snapshot (a ticket filed since the last mirror sync),
+// else whatever the mirror holds. A Jira that cannot answer, or not within LIVE_LOOKUP_MS, leaves the mirror's view.
+export const LIVE_LOOKUP_MS = 15_000;
+async function issueFor(ctx: Ctx, key: string, mirrored: IssueSnap | undefined): Promise<IssueSnap | undefined> {
+  if (mirrored?.sector || !ctx.jira.issue) return mirrored;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), LIVE_LOOKUP_MS); });
+    return (await Promise.race([ctx.jira.issue(key), deadline])) ?? mirrored;
+  } catch {
+    return mirrored;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
@@ -713,7 +745,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: now.operator.verified,
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
-          issues: [...keys].flatMap((k) => mirror.issues?.get(k) ?? []),
+          issues: (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []),
         });
       } catch (e) {
         if (e instanceof JudgeReplyError) {
@@ -727,6 +759,10 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
         try {
           const d = decisions.find((x) => x?.req === q.req);
           if (!d) throw new Error('the judge returned no decision');
+          if (isHold(d)) {
+            lines.push(`HELD ${q.req}: ${d.reason}`);
+            continue;
+          }
           id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
             ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],

@@ -14,7 +14,7 @@ check() { # name actual expected
 }
 
 FORKS="yotamleo-org/caveman yotamleo-org/claude-hud yotamleo-org/claude-obsidian yotamleo-org/claude-squad yotamleo-org/claude-statusline yotamleo-org/claude-video yotamleo-org/codex yotamleo-org/codex-plugin-cc yotamleo-org/core yotamleo-org/effective-html yotamleo-org/graphify yotamleo-org/hermes-agent yotamleo-org/home-assistant.io yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
-MERGE_TRUE="yotamleo-org/claude-video yotamleo-org/graphify yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
+MERGE_TRUE="yotamleo-org/claude-video yotamleo-org/graphify yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
 # the recorded output of `gh repo list yotamleo-org --fork --json name` (2026-10-19)
 FORK_LIST="$HERE/fixtures/himmel-adapters/yotamleo-org-forks.json"
 
