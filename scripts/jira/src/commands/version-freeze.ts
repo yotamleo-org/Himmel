@@ -303,13 +303,26 @@ export async function versionReady(
 // The fixVersion moves first, each change read back, so a failed move throws
 // before the label or the ledger row claims a deferral that did not happen.
 // The target goes on before the source comes off, so a refused target leaves
-// the ticket where it was.
+// the ticket where it was. A source that stays on takes the target off again;
+// a source that cannot be read back leaves both and says so.
 export async function deferTicket(key: string, version: string, reason: string | undefined, to?: string): Promise<string> {
   if (!hasConsoleMarker()) throw new Error('version-defer needs the console marker: only the console defers a frozen ticket');
   if (!reason?.trim()) throw new Error('version-defer: --reason is mandatory');
   if (to === version) throw new Error(`version-defer: --to ${to} is the version the ticket is deferred from`);
   if (to) await addFixVersionGated(key, to, {});
-  await setFixVersion(key, 'remove', version);
+  try {
+    await setFixVersion(key, 'remove', version);
+  } catch (e) {
+    if (!to) throw e;
+    const msg = (e as Error).message;
+    const got = await request<{ fields?: { fixVersions?: unknown } }>('GET', `/issue/${key}?fields=fixVersions`).catch(() => undefined);
+    const raw = got?.fields?.fixVersions;
+    if (!Array.isArray(raw)) throw new Error(`${msg} The ticket may hold both ${version} and ${to}: check it by hand.`);
+    if ((raw as Array<{ name?: string }>).some((v) => v.name === version)) {
+      await setFixVersion(key, 'remove', to);
+      throw new Error(`${msg} ${to} was taken off again, so the ticket stays in ${version}.`);
+    }
+  }
   await addLabel(key, 'deferred');
   appendAdmission({ version, key, kind: 'deferral', reason: reason.trim() });
   return `${key} deferred from ${version}${to ? ` to ${to}` : ''}: ${reason.trim()}`;

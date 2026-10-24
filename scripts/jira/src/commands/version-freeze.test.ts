@@ -471,6 +471,37 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(mockAppend).not.toHaveBeenCalled();
   });
 
+  it('version-defer --to takes the target off again when the source stays on the ticket', async () => {
+    const w = { description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.3'] } };
+    world(w);
+    const routed = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: { fixVersions?: Array<{ remove?: { name: string } }> } }) =>
+      method === 'PUT' && body?.update?.fixVersions?.[0]?.remove?.name === 'v1.1.3' ? {} : routed(method, path, body),
+    );
+    await expect(
+      run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--to', 'v1.1.4', '--reason', 'moves to v1.1.4']),
+    ).rejects.toThrow(/v1\.1\.4 was taken off again/);
+    expect(w.fixVersions['HIM-2']).toEqual(['v1.1.3']);
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('version-defer --to keeps the target and says so when the source cannot be read back', async () => {
+    const w = { description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.3'] } };
+    world(w);
+    const routed = mockRequest.getMockImplementation()!;
+    let removed = false;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: { fixVersions?: Array<{ remove?: { name: string } }> } }) => {
+      if (method === 'PUT' && body?.update?.fixVersions?.[0]?.remove?.name === 'v1.1.3') removed = true;
+      if (removed && method === 'GET' && path === '/issue/HIM-2?fields=fixVersions') return {};
+      return routed(method, path, body);
+    });
+    await expect(
+      run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--to', 'v1.1.4', '--reason', 'moves to v1.1.4']),
+    ).rejects.toThrow(/may hold both v1\.1\.3 and v1\.1\.4/);
+    expect(w.fixVersions['HIM-2']).toEqual(['v1.1.4']);
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
   it('version-defer fails loudly and writes no ledger row when the version stays on the ticket', async () => {
     world({ description: FROZEN_DESC });
     mockRequest.mockImplementation(async (method: string, path: string) =>
