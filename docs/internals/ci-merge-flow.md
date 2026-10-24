@@ -8,9 +8,12 @@ elsewhere: the suite runner in [testing.md](testing.md), the merge gate exits in
 
 ## CI on main, and why PRs never update-branch
 
-A PR runs CI on its own head (`pull_request`). Main runs the same workflow on a
-schedule: a sweep cron roughly every 7 h plus a nightly, and `workflow_dispatch` for a
-run at an exact sha. There is no `push` trigger (HIMMEL-5113): per-merge runs on main
+A PR runs `ci.yml` as a `pull_request` event, which can check out a merge ref rather than
+the PR head (the `plugin-version-bump` job pins the head sha explicitly for that reason),
+and some jobs run only for pull requests. Main runs `ci.yml` on a schedule, a sweep cron
+roughly every 7 h plus a nightly, with a different job set, and `workflow_dispatch` for a
+run on a selected ref; the completed run's `headSha` names the exact commit it covered.
+There is no `push` trigger (HIMMEL-5113): per-merge runs on main
 cost about 2,300 runner hours on the green ones alone and competed with PR runs for the
 account's runner slots. The price is that a break on main surfaces up to a nominal 7 h
 later and spans every merge since the previous run; the sweep prints that range and the
