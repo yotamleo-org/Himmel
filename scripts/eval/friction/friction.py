@@ -8,7 +8,7 @@ operator interrupts.  Output: JSON (machine) and Markdown (ranked table).
 
 usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR] [--reports FILE]
                    [--json OUT] [--md OUT] [--record [--eval-ledger P]]
---reports reads the user-reports ledger /himmel-report appends to (default ~/.himmel/state/user-reports.jsonl,
+--reports reads the user-reports ledger /himmel-report (scripts/report/himmel_report.py) appends to (default ~/.himmel/state/user-reports.jsonl,
 or $HIMMEL_USER_REPORTS): a third verdict source, user-reported over-deny, counted apart from the transcript verdicts
 and recorded as user_reported_over_deny and user_over_deny:<source>/<class>.
 --record also appends one eval-runs row (eval "friction": refusals, over_deny, true_positive,
