@@ -17,6 +17,7 @@
 # A run is attended and operator-triggered, not an unattended site: the host-side bank
 # preflight (scripts/lib/bank-preflight.sh) is not run, the guest has no checkout to carry it.
 #
+# launch-profile-ok-file: the probe measures what a plain claude session of each launch mode gets, so a leg profile would change the measured condition
 # Credentials come from the environment of the call and are never written to disk:
 #   headed/bg/p/p-stream use whatever auth the claude client already has (or ANTHROPIC_API_KEY);
 #   openrouter needs OPENROUTER_API_KEY and sets ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN itself.
