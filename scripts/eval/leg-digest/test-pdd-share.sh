@@ -25,18 +25,18 @@ pdd() { python3 -I "$PDD" --prs "$FX/prs.json" --mirror "$FX/mirror" "$@"; }
 
 echo "1. the halves, per PR"
 pdd --min-n 5 >"$TMP/row.json" 2>"$TMP/row.err"; RC=$?
-check "six readable PRs, exit 0 when n reaches --min-n" '[ "$RC" = 0 ] && jq -e ".n == 6 and .eval == \"pdd-share\" and .status == \"ok\"" "$TMP/row.json" >/dev/null'
-check "one PR is proof-first: DoD and Proof before the first commit, RED then GREEN" 'jq -e ".metrics | .[\"pdd.k\"] == 1 and .[\"pdd.n\"] == 6" "$TMP/row.json" >/dev/null'
-check "four tickets had DoD and Proof first (not the no-Proof ticket, not the late ticket)" 'jq -e ".metrics[\"ticket_first.k\"] == 4" "$TMP/row.json" >/dev/null'
-check "three bodies show RED then GREEN (not GREEN-first, not only in the CodeRabbit block, not GREEN-only)" 'jq -e ".metrics[\"red_green.k\"] == 3" "$TMP/row.json" >/dev/null'
+check "seven readable PRs, exit 0 when n reaches --min-n" '[ "$RC" = 0 ] && jq -e ".n == 7 and .eval == \"pdd-share\" and .status == \"ok\"" "$TMP/row.json" >/dev/null'
+check "one PR is proof-first: DoD and Proof before the first commit, RED then GREEN" 'jq -e ".metrics | .[\"pdd.k\"] == 1 and .[\"pdd.n\"] == 7" "$TMP/row.json" >/dev/null'
+check "four tickets had DoD and Proof first (not the no-Proof ticket, not the late ticket, not the empty-DoD ticket)" 'jq -e ".metrics[\"ticket_first.k\"] == 4" "$TMP/row.json" >/dev/null'
+check "four bodies show RED then GREEN (not GREEN-first, not only in the CodeRabbit block, not GREEN-only)" 'jq -e ".metrics[\"red_green.k\"] == 4" "$TMP/row.json" >/dev/null'
 
 echo "2. skipped PRs"
-check "no ticket, ticket outside the mirror and no commits are named in meta.skipped" 'jq -e ".meta.skipped == {\"no_ticket\": 1, \"not_in_mirror\": 1, \"no_commits\": 1} and .meta.prs_seen == 9" "$TMP/row.json" >/dev/null'
+check "no ticket, ticket outside the mirror and no commits are named in meta.skipped" 'jq -e ".meta.skipped == {\"no_ticket\": 1, \"not_in_mirror\": 1, \"no_commits\": 1} and .meta.prs_seen == 10" "$TMP/row.json" >/dev/null'
 
 echo "3. the row"
 check "the share has a 95 % Wilson range around it" 'jq -e ".ci_method == \"wilson\" and .ci_level == 0.95 and .ci[\"pdd.pct\"].lo <= .metrics[\"pdd.pct\"] and .metrics[\"pdd.pct\"] <= .ci[\"pdd.pct\"].hi and .ci[\"pdd.pct\"].hi < 1" "$TMP/row.json" >/dev/null'
 pdd >"$TMP/small.json" 2>/dev/null; RC=$?
-check "below the default --min-n 50 the row is partial and the exit code is 3" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 6" "$TMP/small.json" >/dev/null'
+check "below the default --min-n 50 the row is partial and the exit code is 3" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 7" "$TMP/small.json" >/dev/null'
 echo '[]' >"$TMP/none.json"
 python3 -I "$PDD" --prs "$TMP/none.json" --mirror "$FX/mirror" >/dev/null 2>&1; RC=$?
 check "no readable PR exits 1 with no row" '[ "$RC" = 1 ]'

@@ -25,5 +25,8 @@
    "commits": [{"authoredDate": "2026-10-10T09:00:00Z"}]},
   {"number": 19, "title": "feat(x): [HIMMEL-1] a PR with no commits listed",
    "body": "RED then GREEN\n",
-   "commits": []}
+   "commits": []},
+  {"number": 21, "title": "feat(x): [HIMMEL-4] a DoD heading with nothing under it",
+   "body": "RED: failed first.\nGREEN: passes now.\n",
+   "commits": [{"authoredDate": "2026-10-10T09:00:00Z"}]}
 ]
