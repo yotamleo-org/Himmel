@@ -47,7 +47,7 @@ try {
   // Keep Unix socket fixture paths below sockaddr_un's pathname limit: the root is under /tmp,
   // not os.tmpdir() (CI's TMPDIR is already /tmp/himmel-suite.XXXXXX deep).
   const scratch=path.join(root,String(passed+failed));
-  const r=cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash',path.join(repo,suite)],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
+  const r=sandbox(scratch,['bash',path.join(repo,suite)],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
   assert.strictEqual(r.status,0,'suite exit '+r.status+'; '+(r.error||'')+'\n'+r.stdout+'\n'+r.stderr);
   const left=dirs(scratch).filter(p=>path.basename(p).startsWith(prefix));
   assert.strictEqual(left.length,0,'left '+left.length+' directories: '+left.slice(0,5).join(', '));
@@ -62,7 +62,7 @@ printf fixture > "$TMPDIR/mog-run.readonly/locked/file"
 chmod 500 "$TMPDIR/mog-run.readonly/locked"
 exit 7
 `);
-  const r=cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash',script],{encoding:'utf8'});
+  const r=sandbox(scratch,['bash',script],{encoding:'utf8'});
   assert.strictEqual(r.status,7,'cleanup must preserve the original failure status');
   assert.strictEqual(dirs(scratch).filter(p=>path.basename(p).startsWith('mog-')).length,0,'read-only mog fixture leaked');
  });
