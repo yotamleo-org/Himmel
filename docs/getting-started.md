@@ -39,7 +39,7 @@ checks for them and stops with install hints if one is missing.
 ```bash
 # Debian or Ubuntu (needs sudo); Ubuntu's nodejs package ships without npm
 sudo apt-get update
-sudo apt-get install -y nodejs npm git jq python3
+sudo apt-get install -y nodejs npm git jq python3 curl
 curl -fsSL https://claude.ai/install.sh | bash
 
 # macOS with Homebrew; the bash and python3 macOS ships are too old for some scripts
@@ -114,9 +114,10 @@ These steps were run with project scope only. A `--scope user` install wires the
 harness for every project on the machine instead (see
 [setup/install.md](setup/install.md)); steps 8 to 10 are not written for it.
 
-You should see: `git status` lists `.claude/`, `scripts/` and `.gitignore` as
-**untracked**. The install is on disk but not yet in your project's history.
-That matters in step 9.
+You should see: in `~/try-himmel`, `git status` lists `.claude/`, `scripts/`
+and `.gitignore` as **untracked**. The install is on disk but not yet in your
+project's history. That matters in step 9. In your own repository, a path it
+already tracks shows as modified instead, or not at all.
 
 ### 7. See the harmless refusal
 
@@ -232,9 +233,10 @@ change, make a new worktree, `cd` into the path it prints and relaunch `claude`
 there before you edit. The hooks below only fire inside an active session. The
 throwaway project from step 3 has no remote, so the push and PR lines need a
 GitHub remote first (`git remote add origin <url>`); without one, stop after
-the commit. Once `origin` exists, worktrees, including the first one, are cut from `origin/main`,
-which lacks the install commit until you push `chore/install-himmel` and merge
-it there through a PR. The day-to-day loop is:
+the commit. The throwaway's first worktree was cut from local `main` and
+already has the install commit. Once `origin` exists, every new worktree is cut from
+`origin/main`, which lacks the install commit until you push
+`chore/install-himmel` and merge it there through a PR. The day-to-day loop is:
 
 ```bash
 bash scripts/worktree.sh feat/my-thing

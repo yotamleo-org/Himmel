@@ -52,7 +52,7 @@ inventory, and you can count it yourself:
 | PreToolUse hook entries (project scope; one entry can chain several scripts) | `.claude/settings.json` | `jq '[.hooks.PreToolUse[].hooks[]] \| length' .claude/settings.json` |
 | PreToolUse guards (himmel-ops plugin) | `marketplace/plugins/himmel-ops/hooks/hooks.json` | `jq '[.hooks.PreToolUse[].hooks[]] \| length' marketplace/plugins/himmel-ops/hooks/hooks.json` |
 | pre-commit, pre-push and commit-msg gates | `.pre-commit-config.yaml` | `grep -c -E '^[[:space:]]*- id:' .pre-commit-config.yaml` (gate ids, all stages) |
-| CI jobs | `.github/workflows/ci.yml` | the entries under `jobs:` |
+| CI jobs | `.github/workflows/ci.yml` | `sed -n '/^jobs:/,$p' .github/workflows/ci.yml \| grep -c -E '^  [A-Za-z0-9_-]+:[[:space:]]*$'` |
 
 Where each one fires, and how to get past it when it stops you for a good
 reason:
@@ -191,9 +191,11 @@ latest), not a current benchmark. The reasoning is written into
 
 Every mechanism above is traceable. On 2026-10-24 (main at `4daf5c89f`),
 himmel's `CHANGELOG.md` carried 1,070 distinct ticket references
-(`grep -o -E 'HIMMEL-[0-9]+' CHANGELOG.md | sort -u | wc -l`) and 1,421
-distinct pull-request references (the same command with `'#[0-9]+'`), and
-`scripts/ci/suite-tiers.tsv` listed 1,112 test suites run by 40 CI jobs.
+(`grep -o -E 'HIMMEL-[0-9]+' CHANGELOG.md | sort -u | wc -l`) and 1,405
+distinct pull-request references (the same command with `'\(#[0-9]+\)'`),
+`scripts/ci/suite-tiers.tsv` listed 1,112 test suites, and
+`.github/workflows/ci.yml` defined 40 CI jobs (counted with the command in the
+table above).
 These grow with every merge, so treat them as a dated snapshot and re-run the
 commands for today's numbers. Nearly every guardrail in the
 enforcement table was added *after* a specific failure, and the ticket that
