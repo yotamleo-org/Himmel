@@ -107,10 +107,13 @@ if case == "headings":
     else:
         if h2[0][0] == maint:
             bad.append("the first H2 is the maintainers heading, not a user task")
+        found = {"path heading": False, "placement table": False}
         for i, l in enumerate(lines):
             if (l.startswith("#") and "himmel/docs/luna/" in l) or l.startswith("| Artifact |"):
+                found["placement table" if l.startswith("|") else "path heading"] = True
                 if i < maint:
                     bad.append(f"line {i + 1} belongs under For maintainers: {l.strip()}")
+        bad += [f"the {k} is missing" for k, v in found.items() if not v]
 elif case == "skills":
     for _, c in commands():
         m = re.match(r"/([a-z][\w-]*)", c)
@@ -200,6 +203,11 @@ control() { # control <label> <case> <line to append above For maintainers>
   if ! out="$(check "$2" "$TMP/control-page.md")"; then bad "$1" "the checker itself failed"; return; fi
   if [ -n "$out" ]; then ok "$1"; else bad "$1" "the defect was not caught"; fi
 }
+python3 -I -c 'import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],"w").write(t.replace("| Artifact |", "| Thing |"))' \
+  "$TMP/README.md" "$TMP/no-table.md" || { echo "FAIL: could not write the no-table fixture" >&2; exit 1; }
+label="CONTROL: a missing placement table fails HEADINGS"
+if ! out="$(check headings "$TMP/no-table.md")"; then bad "$label" "the checker itself failed"
+elif [ -n "$out" ]; then ok "$label"; else bad "$label" "the defect was not caught"; fi
 control "CONTROL: a made-up /luna-ingest flag fails SKILLS" skills "Run \`/luna-ingest <url> --no-such-flag\`."
 control "CONTROL: a lone made-up flag after /luna-ingest fails SKILLS" skills "Run \`/luna-ingest <url>\`; add \`--no-such-flag\` to see more."
 control "CONTROL: a made-up skill fails SKILLS" skills "Run \`/luna-no-such-skill\`."
