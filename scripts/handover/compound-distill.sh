@@ -63,7 +63,7 @@ if [ "$APPLY" = 1 ]; then DEST="$OUTDIR"; else
   DEST="$REVDIR"
 fi
 for d in "$OUTDIR" "$DEST"; do
-  abs="$(python3 -I -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$d")"
+  abs="$(python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$d")"
   case "$abs" in
     */specs/lessons|*/specs/lessons/*) echo "compound-distill: '$d' is under specs/lessons, which only the operator or console writes" >&2; exit 2 ;;
   esac
@@ -202,13 +202,34 @@ if out["week"] != week:
 
 recs = [json.loads(l) for l in open(extract_f) if l.strip()]
 by_key = {r["key"]: r for r in recs}
-KEY = re.compile(r"(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*-[0-9]+")
+KEY = re.compile(r"(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*-[0-9]+(?![A-Za-z0-9_])")
 known = set(by_key)
 for t in glob.glob(os.path.join(outdir, "themes", "*.md")):
     known.update(KEY.findall(open(t, encoding="utf-8", errors="replace").read()))
+seen = set()
 for e in out["entries"]:
     if e["key"] not in by_key:
         die("entry key %s is not in this week's extract" % e["key"])
+    if e["key"] in seen:
+        die("two entries for %s" % e["key"])
+    seen.add(e["key"])
+
+
+def strings(v):
+    if isinstance(v, str):
+        yield v
+    elif isinstance(v, list):
+        for x in v:
+            yield from strings(x)
+    elif isinstance(v, dict):
+        for x in v.values():
+            yield from strings(x)
+
+
+for s in strings(out):
+    for k in KEY.findall(s):
+        if k not in known:
+            die("the text names %s, which is neither in the extract nor an existing theme" % k)
 for th in out["themes"]:
     for l in th["lessons"]:
         for k in l["keys"]:
@@ -230,7 +251,7 @@ for e in out["entries"]:
         lines.append("- decision: %s" % e["decision"])
     if e["lesson"]:
         lines.append("- lesson: %s" % e["lesson"])
-    pr, sha = r["pr"] or e.get("pr", ""), r["sha"] or e.get("sha", "")
+    pr, sha = r["pr"], r["sha"]
     if pr or sha:
         lines.append("- PR: %s sha: %s" % ("#" + pr.lstrip("#") if pr else "-", sha or "-"))
     lines.append("- docs: %s" % ", ".join(r["docs"]))
@@ -243,6 +264,9 @@ for th in out["themes"]:
         body.append("- %s (%s)" % (l["text"], ", ".join(l["keys"])))
     with open(os.path.join(dest, "themes", th["slug"] + ".md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(body) + "\n")
+prop_file = os.path.join(dest, "proposals-%s.md" % week)
+if not out["proposals"] and os.path.isfile(prop_file):
+    os.remove(prop_file)
 if out["proposals"]:
     body = ["---", "type: lesson-proposals", "week: %s" % week, "---", "",
             "# Lesson proposals %s" % week, "", "Proposals only: promote by hand to specs/lessons/.", ""]

@@ -159,7 +159,7 @@ def ticket_done(name):
 
 cited_keys = set()
 if cited_dir:
-    key_re = re.compile(r"(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*-[0-9]+")
+    key_re = re.compile(r"(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*-[0-9]+(?![A-Za-z0-9_])")
     for dp, _, fns in os.walk(cited_dir):
         for fn in fns:
             if fn.endswith(".md"):

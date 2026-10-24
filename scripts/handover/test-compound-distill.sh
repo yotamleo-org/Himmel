@@ -128,6 +128,30 @@ bad "a theme slug that could escape the dir" '{"week":"2026-W43","entries":[],"p
 bad "an entry for a key that is not in the extract" '{"week":"2026-W43","entries":[{"key":"HIMMEL-99","outcome":"x","decision":"","lesson":""}],"themes":[],"proposals":[]}'
 bad "a proposal citing a key that is not in the extract" '{"week":"2026-W43","entries":[],"themes":[],"proposals":[{"text":"t","keys":["HIMMEL-99"]}]}'
 bad "an error envelope" "$GOOD" true
+bad "an entry's prose naming a key that is not in the extract" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","outcome":"see HIMMEL-99","decision":"","lesson":""}],"themes":[],"proposals":[]}'
+bad "a lesson's prose naming a key that is not in the extract" '{"week":"2026-W43","entries":[],"proposals":[],"themes":[{"slug":"t","title":"t","lessons":[{"text":"as in HIMMEL-77","keys":["HIMMEL-1"]}]}]}'
+bad "a theme title naming a key that is not in the extract" '{"week":"2026-W43","entries":[],"proposals":[],"themes":[{"slug":"t","title":"HIMMEL-77 notes","lessons":[]}]}'
+bad "two entries for one key" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","outcome":"a","decision":"","lesson":""},{"key":"HIMMEL-1","outcome":"b","decision":"","lesson":""}],"themes":[],"proposals":[]}'
+
+# --- provenance comes from the extract only, never from the model -----------------------------------
+rm -rf "$REV"
+envelope "$W/env.json" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","outcome":"m","decision":"","lesson":""},{"key":"HIMMEL-2","outcome":"h","decision":"","lesson":"","pr":"555","sha":"cafef00d"}],"themes":[],"proposals":[]}'
+HIMMEL_BILLED_OK=1 run --review-dir "$REV" >/dev/null 2>&1
+check "a model-supplied PR for a key the extract has no PR for is dropped" no "$(has "$REV/2026-W43.md" '555')"
+check "and so is a model-supplied sha" no "$(has "$REV/2026-W43.md" 'cafef00d')"
+
+# --- a rerun with no proposals removes the previous proposals file ----------------------------------
+rm -rf "$REV"; envelope "$W/env.json" "$GOOD"
+HIMMEL_BILLED_OK=1 run --review-dir "$REV" >/dev/null 2>&1
+check "the first run wrote a proposals file" yes "$([ -f "$REV/proposals-2026-W43.md" ] && echo yes || echo no)"
+envelope "$W/env.json" '{"week":"2026-W43","entries":[],"themes":[],"proposals":[]}'
+HIMMEL_BILLED_OK=1 run --review-dir "$REV" >/dev/null 2>&1
+check "a rerun with zero proposals removes the stale file" no "$([ -f "$REV/proposals-2026-W43.md" ] && echo yes || echo no)"
+
+# --- a symlinked destination into specs/lessons is refused -----------------------------------------
+mkdir -p "$W/x/specs/lessons"; ln -s "$W/x/specs/lessons" "$W/lnk"
+HIMMEL_BILLED_OK=1 run --review-dir "$W/lnk" >/dev/null 2>&1
+check "a review dir that is a symlink into specs/lessons: exit 2" 2 "$?"
 
 # --- a fenced JSON result is accepted ---------------------------------------------------------------
 rm -rf "$REV"
