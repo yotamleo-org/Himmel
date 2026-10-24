@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
@@ -14,6 +15,9 @@ import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link
 import { appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
+import { ctxFor } from './release.js';
+import { request as releaseRequest } from '../release/engine.js';
+import { releaseRoot } from '../release/paths.js';
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
@@ -375,6 +379,7 @@ interface PlacementOptions {
   gate?: string;
   consoleOverride?: string;
   sector?: string;
+  followUpOf?: string;
 }
 
 /** Checks the gate, backlog and console-override flags before anything is filed; returns the override reason. */
@@ -390,22 +395,68 @@ function checkPlacementFlags(o: PlacementOptions): string | undefined {
 }
 
 /**
- * A Bug is placed at filing: Highest or gated takes the active version
- * (bugDefault), --backlog the backlog; with neither it is refused rather than
- * defaulted silently.
+ * A Bug, Task or Story is placed at filing. A Bug that is Highest or gated
+ * takes the active version (bugDefault); --backlog, --fix-version, --gate,
+ * --residual-of, --follow-up-of or a version inherited from a blocker place
+ * any of them; with none of these it is refused rather than defaulted silently.
  */
-function placeBug(
+function placeAtFiling(
   o: PlacementOptions,
   labels: string[] | undefined,
   residual: boolean,
 ): { labels: string[] | undefined; bugDefault: boolean } {
-  if (o.type.toLowerCase() !== 'bug' || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
+  const type = o.type.toLowerCase();
+  const isBug = type === 'bug';
+  if ((!isBug && type !== 'task' && type !== 'story') || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
   if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL])], bugDefault: false };
-  if (o.gate !== undefined || o.priority?.toLowerCase() === 'highest') return { labels, bugDefault: true };
+  if (isBug && (o.gate !== undefined || o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
+  if (o.gate !== undefined || o.followUpOf !== undefined) return { labels, bugDefault: false };
+  const sector = 'sector: ' + (o.sector ?? 'none given');
+  if (isBug) {
+    throw new Error(
+      `A Bug needs a placement (${sector}): pass --backlog to file it to the backlog if it blocks no open work, ` +
+        'or --fix-version <v> / --gate critical|regression / --priority Highest to file it into a version; ' +
+        'a Bug that blocks open work, such as a PR, goes into a version, then request INTAKE ' +
+        '(jira release request <release> --verb INTAKE --key <key> --why <why>)',
+    );
+  }
   throw new Error(
-    'A Bug needs a placement (sector: ' + (o.sector ?? 'none given') + '): pass --backlog to file it to the backlog, ' +
-      'or --fix-version <v> / --gate critical|regression / --priority Highest to file it into a version',
+    `A ${o.type} needs a placement (${sector}): pass --backlog to file it to the backlog, ` +
+      'or --fix-version <v> / --gate critical|regression / --residual-of <key> / --follow-up-of <key> to place it',
   );
+}
+
+function queueIntakeIfUnversioned(key: string, type: string, fields: Record<string, unknown>, title: string): void {
+  if (fields['fixVersions'] || !/^(bug|task|story)$/i.test(type)) return;
+  queueBacklogIntake(key, `filed to the backlog: ${title}`);
+}
+
+/**
+ * A ticket filed with no version waits in the backlog for the release
+ * manager: queue an INTAKE request when exactly one release is declared.
+ * Best effort: the ticket exists, so a failure only warns.
+ * ponytail: with several releases declared nothing is queued, upgrade path =
+ * a --release flag on create.
+ */
+export function queueBacklogIntake(key: string, why: string): void {
+  let release: string | undefined;
+  try {
+    const root = releaseRoot();
+    const declared = readdirSync(root).filter((d) => existsSync(join(root, d, 'release.json')));
+    if (declared.length === 0) return;
+    if (declared.length > 1) {
+      console.error(`jira: warning: INTAKE not queued for ${key}: ${declared.length} releases are declared (${declared.join(', ')})`);
+      return;
+    }
+    release = declared[0];
+    const r = releaseRequest(ctxFor(release), {
+      verb: 'INTAKE', key, from_v: null, to_v: null, why, evidence: {}, from: 'console',
+    });
+    console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);
+  } catch (e) {
+    if (release === undefined) return;
+    console.error(`jira: warning: INTAKE not queued for ${key} (release ${release}): ${(e as Error).message}`);
+  }
 }
 
 function recordAdmission(key: string, row: Omit<AdmissionInput, 'key'>): void {
@@ -524,7 +575,7 @@ export function registerCreate(program: Command): void {
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
-    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion (also places a Bug without --fix-version)')
+    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion (also places a Bug, Task or Story without --fix-version); queues an INTAKE request when one release is declared')
     .option(
       '--gate <reason>',
       'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
@@ -664,7 +715,7 @@ export function registerCreate(program: Command): void {
         const inherited = await residualInheritedVersion(options, residual);
         const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
         if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
-        const placed = placeBug(versionOptions, labels, residual !== undefined);
+        const placed = placeAtFiling(versionOptions, labels, residual !== undefined);
         labels = placed.labels;
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
         const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
@@ -705,6 +756,7 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
+        queueIntakeIfUnversioned(result.key, options.type, fields, resolveTitle(options));
         if (overrideReason !== undefined) {
           recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
         }
