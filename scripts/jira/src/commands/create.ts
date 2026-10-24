@@ -454,8 +454,9 @@ export function queueBacklogIntake(key: string, why: string): void {
     });
     console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);
   } catch (e) {
-    if (release === undefined) return;
-    console.error(`jira: warning: INTAKE not queued for ${key} (release ${release}): ${(e as Error).message}`);
+    const code = (e as NodeJS.ErrnoException).code;
+    if (release === undefined && (code === undefined || code === 'ENOENT')) return;
+    console.error(`jira: warning: INTAKE not queued for ${key} (release ${release ?? 'unknown'}): ${(e as Error).message}`);
   }
 }
 

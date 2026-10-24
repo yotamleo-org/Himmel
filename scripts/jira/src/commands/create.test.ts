@@ -1708,4 +1708,12 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     expect(posted()).toBe(true);
     expect(errs.some((e) => /INTAKE not queued/.test(e))).toBe(true);
   });
+
+  it('warns when the release state cannot be read, but stays silent when it does not exist', async () => {
+    writeFileSync(join(root, 'not-a-dir'), 'x');
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'not-a-dir'));
+    await file('Task', '--backlog');
+    expect(posted()).toBe(true);
+    expect(errs.some((e) => /INTAKE not queued/.test(e))).toBe(true);
+  });
 });
