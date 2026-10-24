@@ -4,9 +4,14 @@
 # Core generator and morning-report schema. Templates live
 # git/gh/jira/worktree state into the curated "🌅 Morning Report" schema and
 # writes a dated report to the handover root (`$HANDOVER_DIR`, Mode B) or
-# `<repo>/handovers/` (Mode A) — at ~zero Claude tokens by default. Sections:
+# `<repo>/handovers/` (Mode A) — at ~zero Claude tokens by default. Sections,
+# led by the four answers of v5 frame 16 (a field with no input says so):
 #
-#   ## TL;DR             — derived counts (heuristic; --llm enriches)
+#   ## ✅ What shipped    — merged PR / commit / Done counts
+#   ## ⏳ What waits on you — open PRs + stale worktrees to act on
+#   ## 💸 What it spent   — Claude usage (not available) + this report's cost
+#   ## ▶️ What runs next  — in-flight count + first suggested step
+#   ## TL;DR            — derived counts (heuristic; --llm enriches)
 #   ## ✅ Completed       — merged PRs (gh) + commits + Done cross-ref
 #   ## 🔴 In-flight WIP   — jira In Progress correlated to worktrees/open-PRs
 #   ## 🧹 Stale worktrees — worktrees on MERGED-PR branches
@@ -298,10 +303,11 @@ done_count=$(printf '%s\n' "$done_block" | grep -c . || true)
 
 tldr_default="**${inprog_count}** in-flight · **${stale_count}** stale worktrees · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
 
+open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
+
 order_default=$(
     n=1
     [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale worktree(s) (/clean).\n' "$n" "$stale_count"; n=$((n+1)); }
-    open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
     [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s) (/pr-check).\n' "$n" "$open_prs"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }
     [ "$backlog_total" -gt 0 ] && printf '%d. Pull from the %s-item backlog.\n' "$n" "$backlog_total"
@@ -380,6 +386,30 @@ EOF
         [ "$pr_map_ok" -eq 0 ] && printf 'gh PR state unavailable — Stale + PR correlation SKIPPED. '
         printf '\n\n'
     fi
+    # The four answers a reader back from a shift needs first (v5 frame 16);
+    # every older section follows unchanged. A field with no input says so.
+    printf '## ✅ What shipped\n\n'
+    printf '**%s** PRs merged to main · **%s** commits · **%s** Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
+        "$pr_count" "$commit_count" "$done_count"
+    printf '## ⏳ What waits on you\n\n'
+    if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+        printf -- '- **%s** open PR(s) to review/merge (/pr-check)\n' "$open_prs"
+    else
+        printf -- '- Open PRs: not available (gh PR state unavailable)\n'
+    fi
+    printf -- '- **%s** stale worktree(s) to prune (/clean)\n' "$stale_count"
+    printf -- '- Approvals, CI and review state, worker questions: not available (the generator reads no input for them)\n\n'
+    printf '## 💸 What it spent\n\n'
+    printf -- '- Claude usage of the shift: not available (the generator reads no usage input)\n'
+    if [ "$LLM" -eq 1 ]; then
+        printf -- '- This report: one bounded %s turn (--llm)\n\n' "$LLM_MODEL"
+    else
+        printf -- '- This report: no Claude usage (default run)\n\n'
+    fi
+    printf '## ▶️ What runs next\n\n'
+    printf -- '- **%s** In-Progress ticket(s) in flight. Detail: In-flight WIP, below\n' "$inprog_count"
+    printf -- '- Release progress: not available (the generator reads no release input)\n'
+    printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | sed -n '1p')"
     printf '## TL;DR\n\n%s\n\n' "$tldr_final"
     printf '## ✅ Completed (%s PRs merged to main)\n\n' "$pr_count"
     if [ -n "$pr_table" ]; then

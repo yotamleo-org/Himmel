@@ -496,6 +496,32 @@ file=$(cat "$OUT_CH1")
 assert_contains "cache line: ratio"     "cache: 7d read ratio 97.5%"                "$file"
 unset CACHE_HEALTH_STATE_DIR
 
+# The report leads with the frame 16 four answers; every older section stays below.
+echo "TEST: first four headings are the frame 16 answers, every older section kept below"
+OUT_F16="$TMP_ROOT/f16.md"
+out=$(FAKE_GH_PR_JSON='[{"number":42,"title":"feat(scope): HIMMEL-901 add A","mergedAt":"2026-05-25T00:00:00Z"}]' \
+    FAKE_GH_PR_ALL='[{"number":50,"state":"OPEN","headRefName":"feat/himmel-901-thing","title":"x"},{"number":51,"state":"OPEN","headRefName":"feat/random-slug","title":"y"}]' \
+    FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
+    FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' \
+    run_script --since "$MARKER" --out "$OUT_F16")
+file=$(cat "$OUT_F16")
+# Headings with the multibyte emoji stripped, so the match is ASCII-only.
+h2_ascii=$(grep -E '^## ' "$OUT_F16" | LC_ALL=C sed 's/[^ -~]//g' | tr -s ' ' || true)
+first_four=$(printf '%s\n' "$h2_ascii" | sed -n '1,4p')
+rest=$(printf '%s\n' "$h2_ascii" | sed -n '5,$p')
+want_first=$'## What shipped\n## What waits on you\n## What it spent\n## What runs next'
+if [ "$first_four" = "$want_first" ]; then pass "first four headings are the frame 16 ones, in order"; else fail "first four headings" "got: $(printf '%s' "$first_four" | tr '\n' '|')"; fi
+want_rest=$'## TL;DR\n## Completed (1 PRs merged to main)\n## In-flight WIP\n## Stale worktrees\n## Backlog (1 To Do)\n## Docs drift\n## Failure review\n## Prompt cache\n## Suggested order'
+if [ "$rest" = "$want_rest" ]; then pass "every pre-change section kept below, in order"; else fail "sections below the four" "got: $(printf '%s' "$rest" | tr '\n' '|')"; fi
+assert_contains "f16: commits subsection kept" "### Commits"                  "$file"
+assert_contains "f16: done subsection kept"    "Tickets transitioned to Done" "$file"
+# Fields with an input are computed; a field with none says so, never a guess.
+assert_contains "f16: shipped counts"          "**1** PRs merged"             "$file"
+assert_contains "f16: waits counts open PRs"   "**2** open PR(s)"             "$file"
+assert_contains "f16: spent gap is explicit"   "Claude usage of the shift: not available" "$file"
+assert_contains "f16: next counts in flight"   "**1** In-Progress"            "$file"
+assert_contains "f16: releases gap is explicit" "Release progress: not available" "$file"
+
 # Summary --------------------------------------------------------------
 
 echo
