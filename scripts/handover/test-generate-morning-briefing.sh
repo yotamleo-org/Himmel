@@ -16,6 +16,9 @@ set -euo pipefail
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
+# lead_of <report> — the four leading answers: everything before "## TL;DR".
+lead_of() { sed '/^## TL;DR/q' <<< "$1"; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/generate-morning-briefing.sh"
 
@@ -276,8 +279,8 @@ assert_contains "ticket keys listed in fallback" "HIMMEL-901" "$file"
 # A failed jira CLI must surface a reachability banner — a 0 count means
 # "unknown", not "none" (silent-failure-hunter HIGH).
 assert_contains "jira-down banner" "jira unavailable" "$file"
-assert_contains "jira-down: shipped Done gap"  "not available (jira unavailable) Done" "$file"
-assert_contains "jira-down: next in-flight gap" "In-Progress tickets: not available"   "$file"
+assert_contains "jira-down: shipped Done gap"  "not available (jira unavailable) Done" "$(lead_of "$file")"
+assert_contains "jira-down: next in-flight gap" "In-Progress tickets: not available"   "$(lead_of "$file")"
 
 # Test 7: --dry-run touches no files ----------------------------------
 
@@ -438,9 +441,9 @@ out=$( cd "$REPO"; GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
 file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
-assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"             "$file"
-assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$file"
-assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$bb_file"
+assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"             "$(lead_of "$file")"
+assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$(lead_of "$file")"
+assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$(lead_of "$bb_file")"
 
 echo "TEST: unparseable gh merged-PR list → count unknown, never 0"
 OUT_PRU="$TMP_ROOT/prunknown.md"
@@ -521,11 +524,12 @@ if [ "$rest" = "$want_rest" ]; then pass "every pre-change section kept below, i
 assert_contains "f16: commits subsection kept" "### Commits"                  "$file"
 assert_contains "f16: done subsection kept"    "Tickets transitioned to Done" "$file"
 # Fields with an input are computed; a field with none says so, never a guess.
-assert_contains "f16: shipped counts"          "**1** PRs merged"             "$file"
-assert_contains "f16: waits counts open PRs"   "**2** open PR(s)"             "$file"
-assert_contains "f16: spent gap is explicit"   "Claude usage of the shift: not available" "$file"
-assert_contains "f16: next counts in flight"   "**1** In-Progress"            "$file"
-assert_contains "f16: releases gap is explicit" "Release progress: not available" "$file"
+lead=$(lead_of "$file")
+assert_contains "f16: shipped counts"          "**1** PRs merged"             "$lead"
+assert_contains "f16: waits counts open PRs"   "**2** open PR(s)"             "$lead"
+assert_contains "f16: spent gap is explicit"   "Claude usage of the shift: not available" "$lead"
+assert_contains "f16: next counts in flight"   "**1** In-Progress"            "$lead"
+assert_contains "f16: releases gap is explicit" "Release progress: not available" "$lead"
 
 # Summary --------------------------------------------------------------
 
