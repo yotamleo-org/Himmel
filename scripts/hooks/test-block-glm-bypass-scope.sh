@@ -215,7 +215,7 @@ mkdir -p "$NOTO"
 for tool in bash jq git dirname basename tr awk date cat sed grep head tail cut sort wc mktemp uname env sh printf pwd sleep rm pkill; do
   src="$(command -v "$tool" 2>/dev/null)" && [ -x "$src" ] && ln -sf "$src" "$NOTO/$tool"
 done
-if PATH="$NOTO" command -v timeout >/dev/null 2>&1; then
+if (PATH="$NOTO"; hash -r; command -v timeout >/dev/null 2>&1); then
   bad "setup: timeout is still resolvable from the scratch PATH"
 else
   expect_refused "timeout missing from PATH: bypass refused (fail closed)" "$PIN_CMD" "$WT" "$WH" "$WT" sess-ok PATH="$NOTO"
