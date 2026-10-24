@@ -2,7 +2,7 @@
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, openAt, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Stage } from "./board-model";
+import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Rollup, type RollupCard, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
 const POLL_MS = 5_000;
@@ -33,6 +33,20 @@ export function useBoard(token: string, console: string | null): BoardState {
     return () => { live = false; clearTimeout(timer); };
   }, [token, console]);
   return st;
+}
+
+// The weekly roll-up for the Trends tab; null until it lands. A failed read is an absent roll-up, shown as "no data yet".
+export function useRollup(token: string): Rollup | null {
+  const [r, setR] = useState<Rollup | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch(ROLLUP_URL, { headers: { "X-Himmel-Token": token }, cache: "no-store" })
+      .then((x) => (x.ok ? (x.json() as Promise<Rollup>) : ({ state: "absent", reason: `the roll-up answered ${x.status}` } as Rollup)))
+      .catch(() => ({ state: "absent", reason: "the roll-up could not be read" }) as Rollup)
+      .then((v) => { if (live) setR(v); });
+    return () => { live = false; };
+  }, [token]);
+  return r;
 }
 
 // The page hands the board and the drawer opener down by context, so the fleet rows need no new props.
@@ -92,7 +106,30 @@ function Bar({ parts }: { parts: { n: number; color: string; title: string }[] }
   return <div className="bd-bar">{parts.map((p, i) => p.n > 0 && <i key={i} style={{ width: `${(p.n / total) * 100}%`, background: p.color }} title={`${p.title}: ${p.n}`} />)}</div>;
 }
 
-export function Trends({ board, onCard }: { board: Board; onCard: (c: CardId) => void }) {
+const signed = (n: number) => (n > 0 ? "+" : "") + n;
+function RollupSpark({ card }: { card: RollupCard }) {
+  const vs = card.spark.map((p) => p.value);
+  if (vs.length < 2) return null;
+  const lo = Math.min(...vs), hi = Math.max(...vs), W = 120, H = 28;
+  const pts = vs.map((v, i) => `${((i / (vs.length - 1)) * W).toFixed(1)},${(hi === lo ? H / 2 : H - 2 - ((v - lo) / (hi - lo)) * (H - 4)).toFixed(1)}`).join(" ");
+  return <svg className="bd-spark" width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${card.metric} by week`}><polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth={1.5} /></svg>;
+}
+
+// The roll-up's velocity, cost and health: sparkline by week, the stored deltas, one sentence. Nothing is recomputed here.
+export function RollupCards({ rollup }: { rollup: Rollup | null }) {
+  if (!rollup) return <p className="quiet">Loading the weekly roll-up…</p>;
+  if (rollup.state !== "ok") return <p className="quiet">no data yet</p>;
+  return <>{rollup.cards.map((c) => <section key={c.id} className="bd-card" aria-label={`${c.title} trend`}>
+    <header><h3>{c.title}</h3></header>
+    {c.state !== "ok" ? <p className="quiet">no data yet</p> : <>
+      <p className="bd-sub">{c.metric}</p><RollupSpark card={c} />
+      {c.week && <p className="bd-line">{`${c.week.key}: ${c.week.value} ${c.unit}`}</p>}
+      <div className="bd-row">{([["last week", c.week], ["last version", c.version]] as const).map(([than, x]) => x && x.delta !== null && <span key={than} className="bd-chip">{`${signed(x.delta)} vs ${than}`}</span>)}</div>
+      <p className="bd-rec">{c.sentence}</p></>}
+  </section>)}</>;
+}
+
+export function Trends({ board, rollup, onCard }: { board: Board; rollup: Rollup | null; onCard: (c: CardId) => void }) {
   const t = board.trends, cc = t.console_cost;
   const states = [...new Set(board.legs.map((l) => l.state))].map((s) => ({ s, n: board.legs.filter((l) => l.state === s).length }));
   const budget = (pct: number | null) => (pct === null ? "ok" : pct >= 85 ? "critical" : pct >= 70 ? "high" : "ok");
@@ -103,6 +140,7 @@ export function Trends({ board, onCard }: { board: Board; onCard: (c: CardId) =>
     <p className="bd-rec">{board.cards[id]?.recommendation ?? ""}</p>{body}</section>;
   return <div className="bd-trends">
     <Legend board={board} groups={["stage", "state", "ci", "budget", "failure"]} />
+    <RollupCards rollup={rollup} />
     {card("velocity", <Gantt board={board} />)}
     {card("health", <>
       <Bar parts={states.map(({ s, n }) => ({ n, color: tone(board, "state", s), title: label(board, "state", s) }))} />

@@ -40,6 +40,14 @@ the page.
 | Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
+The **Trends** section (HIMMEL-6969) is fed by `GET /api/rollup` (token-gated, GET
+only), which reads `~/.himmel/state/rollup/weekly.jsonl` (`$WEEKLY_ROLLUP_FILE`
+overrides) as written by `scripts/eval/weekly-rollup.py` and returns
+`{state: ok, cards: [velocity, cost, health]}` (each with the by-week sparkline, the
+stored week and version deltas and one sentence) or `{state: absent, reason}` when the
+file is missing. The deltas are the writer's; nothing is recomputed. The Fleet page's
+Trends tab shows the same cards.
+
 The **Usage windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
 probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,

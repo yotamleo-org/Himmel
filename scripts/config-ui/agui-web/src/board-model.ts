@@ -110,3 +110,12 @@ export function parseView(hash: string): { tab: "fleet" | "trends"; k: { leg: st
   const stage = m && (STAGES as readonly string[]).includes(m[2]) ? (m[2] as Stage) : null;
   return { tab: p.get("tab") === "trends" ? "trends" : "fleet", k: m && stage ? { leg: m[1], stage } : null };
 }
+
+// GET /api/rollup: the weekly roll-up as three cards (scripts/config-ui/rollup.ts); deltas and sentence are the server's.
+export const ROLLUP_URL = "/api/rollup";
+export type RollupCompared = { key: string; value: number; delta: number | null; partial: boolean };
+export type RollupCard = {
+  id: "velocity" | "cost" | "health"; title: string; metric: string; unit: string; state: "ok" | "nodata";
+  spark: { key: string; value: number }[]; week: RollupCompared | null; version: RollupCompared | null; sentence: string;
+};
+export type Rollup = { state: "ok"; cards: RollupCard[] } | { state: "absent"; reason: string };

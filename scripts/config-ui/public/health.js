@@ -121,6 +121,27 @@ function legsHtml(health) {
   return `<div class="card" id="legs"><h3>Worker sessions</h3>${body}</div>`;
 }
 
+// The weekly roll-up cards from GET /api/rollup, rendered as sent: the deltas and the sentence are the server's.
+const signed = (n) => (n > 0 ? "+" : "") + n;
+function sparkSvg(spark, label) {
+  if (!spark || spark.length < 2) return "";
+  const vs = spark.map((p) => p.value), lo = Math.min(...vs), hi = Math.max(...vs), W = 120, H = 28;
+  const pts = vs.map((v, i) => `${(i / (vs.length - 1) * W).toFixed(1)},${(hi === lo ? H / 2 : H - 2 - (v - lo) / (hi - lo) * (H - 4)).toFixed(1)}`).join(" ");
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} by week"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+}
+function trendCard(c) {
+  if (c.state !== "ok") return `<div class="card"><h3>${esc(c.title)}</h3>${nodata("no data yet")}</div>`;
+  const d = (x, than) => (x && x.delta !== null ? `<span class="kv">${esc(signed(x.delta))} vs ${than}</span> ` : "");
+  return `<div class="card trend"><h3>${esc(c.title)}</h3><div class="ro">${esc(c.metric)}</div>${sparkSvg(c.spark, c.metric)}
+    <div class="kv">${c.week ? `${esc(c.week.key)}: ${esc(c.week.value)} ${esc(c.unit)}` : ""}</div>
+    <div>${d(c.week, "last week")}${d(c.version, "last version")}</div><p class="sentence">${esc(c.sentence)}</p></div>`;
+}
+function trendsHtml(health) {
+  const r = health && health.rollup;
+  if (!r || r.state !== "ok") return nodata(r && r.reason ? `no data yet (${r.reason})` : "no data yet");
+  return r.cards.map(trendCard).join("");
+}
+
 function searchHtml(feed) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter((r) => r.bundle === "search");
@@ -134,6 +155,7 @@ export function renderHealth(feed, health) {
     section("broken", "What is broken, and what do I do", "Failing and drifting rows, worst first, with the fix to run in your terminal.", brokenHtml(feed, health)),
     section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),
     section("legs-bank", "Worker sessions and the subscription usage budget", "Read-only: the newest bank-preflight ledger row and each worker session's last marker.", bankHtml(health) + quotaHtml(health) + legsHtml(health)),
+    section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health)),
     section("search", "Search and graph freshness", "From the doctor's search rows.", searchHtml(feed)),
   ].join("\n");
 }

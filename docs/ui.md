@@ -109,7 +109,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   removed here; the always-on service refuses a save until the UI login ships, so use an
   ad-hoc `himmelctl ui` for secrets; plus the commit rules, tracker and ticket-id-required, each with a
   dry-run before it changes), `#/health` (one verdict:
-  All clear / Needs a look / Act now), `#/toolhealth` (tool-call failure and
+  All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
+  cards from the weekly roll-up, see below), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
   librarian, live from the Jira mirror; click a version for its kanban at
   `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
@@ -135,6 +136,14 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   Deep link: `&k=s.<leg>.<stage>`. `GET /api/agui/brief?leg=<doc name>` returns that
   leg's handover doc as redacted text. Both routes look a doc up by name under
   `HANDOVER_DIR`, never by a path from the request.
+- **Weekly roll-up trends.** The Health page's Trends section and the top of the Fleet page's
+  Trends tab show three cards: Velocity (merges), Cost (cost per ticket) and Health (red-main
+  incidents). Each has a sparkline by finished week, the change against the previous week and
+  the previous version, and one plain sentence such as "Faster than last week and costlier
+  than last version". The server serves the roll-up read-only at `GET /api/rollup` from
+  `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE` overrides), written by
+  `python3 scripts/eval/weekly-rollup.py write`; the browser recomputes nothing, and without
+  the file the section says "no data yet".
 
 Full reference, endpoints and environment overrides:
 [scripts/config-ui/README.md](../scripts/config-ui/README.md).
