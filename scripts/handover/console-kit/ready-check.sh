@@ -84,7 +84,12 @@
 #      changes is the same blob at that ancestor and at the head (the head only
 #      merges main forward), including the old path of every rename; the PASS
 #      line names the ancestor sha and run id.
-#      The PASS line carries the dispatch run ids. A changed workflow with no workflow_dispatch
+#      The PASS line carries the dispatch run ids. macos-cadence.yml also passes on a
+#      dispatch run at the head that names its suites (run-name `macos-cadence
+#      suites: <paths>`, the workflow's `suites` input) when the run's log shows
+#      `[PASS] <suite>` for EVERY named suite, however red the rest of the run is;
+#      the PASS line prints each suite. A named suite that failed or never ran
+#      FAILs and is named. A changed workflow with no workflow_dispatch
 #      trigger FAILs unless listed in WF_DISPATCH_EXEMPT below. Non-workflow
 #      PRs are unaffected.
 #  11. Added-but-unwired: every file the PR ADDS (status A only, so existing debt
@@ -743,6 +748,12 @@ if [ "$ONLY7" -eq 0 ]; then
 # trigger fires only on .github/ci-image/** paths, so a change to ci-image.yml
 # alone gets no push run: its proof is the weekly cron or a workflow_dispatch on
 # main. A listed workflow is skipped either way.
+# macos-cadence.yml also takes a per-suite proof: a dispatch run at the head whose title names suites
+# (`macos-cadence suites: <paths>`) passes when its log shows [PASS] for every named suite, however red
+# the rest of the run. That route replaces the whole-run proof only when the named suites cover every
+# test-*.sh the PR changes and the PR's macos-cadence.yml diff is the suites wiring alone; any other
+# workflow edit, or a changed suite left unnamed, still needs an unfiltered dispatch at the head (green,
+# or red only where main already is), and a suites run is never judged by the PRE-EXISTING comparison.
 # A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
 # to is not on the default branch, which GitHub requires to dispatch a workflow,
 # so neither can be dispatched before merge and both are skipped. A PR touching no workflow
@@ -795,6 +806,110 @@ else
         fi
         wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
     }
+    # wf_wiring_only <workflow path>: rc 0 when the PR's diff of that file is the macos-cadence `suites`
+    # wiring and nothing else. Every added line, trimmed, must be blank, a whole-line comment, or one of the
+    # exact lines the wiring consists of (the list below); an `if:` line may instead be an existing removed
+    # line plus a trailing ` && inputs.suites == ''`. Every removed line must be blank, a comment, one of the
+    # two lines the wiring rewrites, or the twin of such an `if:` line. Nothing is matched by substring, so a
+    # line that merely mentions "suites" is refused. rc 1 with wf_why naming the first other line, or the
+    # diff unreadable. A deliberate wiring edit updates this list in the same PR.
+    wf_wiring_only() {
+        local patch bad wiring_lines
+        wiring_lines=$(cat <<'LINES'
+run-name: "${{ inputs.suites != '' && format('macos-cadence suites: {0}', inputs.suites) || 'CI (os:macos cadence)' }}"
+inputs:
+suites:
+description: 'Space-separated repo-relative suite paths; set = run only these on one runner'
+required: false
+default: ''
+type: string
+shard: ${{ fromJSON(inputs.suites == '' && '[1, 2, 3, 4, 5, 6, 7, 8]' || '[1]') }}
+run: |
+if [ -n "$SUITES" ]; then
+set -f
+printf '%s\n' $SUITES > macos-suites.txt
+if grep -qvE '^[A-Za-z0-9_./-]+$' macos-suites.txt || grep -q '\.\.' macos-suites.txt; then
+echo "::error::suites must be plain repo-relative paths"
+exit 2
+fi
+bash scripts/ci/run-shell-tests.sh --only-list macos-suites.txt .
+else
+bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
+SUITES: ${{ inputs.suites }}
+LINES
+)
+        patch=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq ".[] | select(.filename == \"$1\") | .patch // empty" 2>/dev/null) || { wf_why="cannot read the diff of $1"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
+        [ -n "$patch" ] || { wf_why="the diff of $1 is not available"; return 1; }
+        bad=$(printf '%s\n' "$patch" | WF_WIRING_LINES="$wiring_lines" awk -v frag=" && inputs.suites == ''" '
+            function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+            function gained(s) { return length(s) > length(frag) && substr(s, length(s) - length(frag) + 1) == frag }
+            function inert(l) { return l == "" || l ~ /^#/ }
+            BEGIN {
+                n = split(ENVIRON["WF_WIRING_LINES"], w, "\n")
+                for (i = 1; i <= n; i++) ok[w[i]] = 1
+                old["shard: [1, 2, 3, 4, 5, 6, 7, 8]"] = 1
+                old["run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 ."] = 1
+            }
+            /^@@/ { next }
+            /^\+/ { added[++na] = trim(substr($0, 2)); next }
+            /^-/ { removed[++nr] = trim(substr($0, 2)); next }
+            END {
+                for (i = 1; i <= nr; i++) gone[removed[i]] = 1
+                for (i = 1; i <= na; i++) {
+                    l = added[i]
+                    if (gained(l) && substr(l, 1, length(l) - length(frag)) in gone) { twin[substr(l, 1, length(l) - length(frag))] = 1; continue }
+                    if (!inert(l) && !(l in ok)) { print "+" l; exit }
+                }
+                for (i = 1; i <= nr; i++)
+                    if (!inert(removed[i]) && !(removed[i] in old) && !(removed[i] in twin)) { print "-" removed[i]; exit }
+            }') || { wf_why="cannot judge the diff of $1"; return 1; }  # swallow-ok: a failed awk sets wf_why and returns 1
+        if [ -n "$bad" ]; then
+            wf_why="$1 changes more than the suites wiring (${bad}), so an unfiltered dispatch at the head is required"
+            return 1
+        fi
+    }
+    # wf_suites_proof <workflow file> <dispatch runs json>: macos-cadence only. rc 0 and wf_note set when a
+    # completed dispatch run at the head named its suites (displayTitle `macos-cadence suites: <paths>`),
+    # the named suites cover every test-*.sh the PR changes, the PR's macos-cadence.yml diff is the suites
+    # wiring only, and the run's log carries the runner's own `[PASS] <suite> (` for every named suite: the
+    # text right after the log's tab-separated timestamp field, so a failed suite's indented forwarded output
+    # cannot echo one. rc 1: no such run (the caller falls through to the whole-run rules). rc 2: such a run
+    # exists but is not proven; wf_why says why and the verdict is final, because the job-level PRE-EXISTING
+    # comparison says nothing about which named suite failed, and a run that proves too little stays refused.
+    wf_suites_proof() {
+        local wf_name="$1" row id title names s f log changed_suites pass="" bad="" uncovered=""
+        wf_why=""
+        wf_sp_id=""
+        [ "$1" = macos-cadence.yml ] || return 1
+        row=$(printf '%s' "$2" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and (.displayTitle // "" | startswith("macos-cadence suites:")))][0] | select(. != null) | "\(.databaseId) \(.displayTitle)"' 2>/dev/null)  # swallow-ok: unparsable runs read as no suites run, the caller fails closed
+        [ -n "$row" ] || return 1
+        id="${row%% *}"; title="${row#* }"; names="${title#macos-cadence suites:}"
+        # shellcheck disable=SC2086  # word-splitting the named paths IS the point (repo paths carry no whitespace)
+        set -- $names
+        if [ "$#" -eq 0 ]; then wf_why="run $id names no suites"; return 2; fi
+        wf_wiring_only ".github/workflows/$wf_name" || return 2
+        changed_suites=$(printf '%s\n' "$files_json" | grep -E '(^|/)test-[^/]*\.sh$' || true)  # swallow-ok: no changed suite is grep rc 1, and an empty set is the answer
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case " $* " in *" $f "*) ;; *) uncovered="$uncovered, $f" ;; esac
+        done <<EOF
+$changed_suites
+EOF
+        if [ -n "$uncovered" ]; then
+            wf_why="suites run $id does not name the suite(s) the PR changes: ${uncovered#, }"
+            return 2
+        fi
+        log=$("$GH" run view "$id" --repo "$nwo" --log 2>/dev/null) || { wf_why="cannot read the log of run $id"; return 2; }  # swallow-ok: a failed read sets wf_why and returns 2, which the caller reports as a failure
+        for s in "$@"; do
+            if printf '%s\n' "$log" | awk -F'\t' -v want="[PASS] $s (" 'NF >= 3 && $3 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z / { if (index(substr($3, index($3, " ") + 1), want) == 1) f = 1 } END { exit !f }'; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi
+        done
+        if [ -n "$bad" ]; then
+            wf_why="suites run $id: named suite(s) with no [PASS] line (failed or never ran): ${bad#, }"
+            return 2
+        fi
+        wf_sp_id="$id"
+        wf_note="PER-SUITE: $wf_name dispatch run $id, red or green overall, named $# suite(s) and every one passed: ${pass#, }"
+    }
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
     # wf_ancestor_preexisting <workflow file>: rc 0 with wf_note, wf_anc_id and wf_anc_sha set when a
     # failed dispatch run of the PR branch at an ANCESTOR of the head passes wf_preexisting and every
@@ -805,8 +920,8 @@ else
         local rows id anc f a_ent h_ent changed prev_files
         wf_why=""
         [ -n "$wf_branch" ] || return 1
-        rows=$("$GH" run list --repo "$nwo" --workflow "$1" --event workflow_dispatch --branch "$wf_branch" --json databaseId,event,status,conclusion,headSha,headBranch --limit 20 2>/dev/null) || { wf_why="cannot list the branch's dispatch runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
-        rows=$(printf '%s' "$rows" | jq -r --arg h "$SHA" --arg b "$wf_branch" '.[] | select(.event == "workflow_dispatch" and .status == "completed" and .conclusion == "failure" and .headBranch == $b and .headSha != $h) | "\(.databaseId) \(.headSha)"' 2>/dev/null)  # swallow-ok: unparsable runs read as none, which returns 1 on the next line
+        rows=$("$GH" run list --repo "$nwo" --workflow "$1" --event workflow_dispatch --branch "$wf_branch" --json databaseId,event,status,conclusion,headSha,headBranch,displayTitle --limit 20 2>/dev/null) || { wf_why="cannot list the branch's dispatch runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
+        rows=$(printf '%s' "$rows" | jq -r --arg h "$SHA" --arg b "$wf_branch" '.[] | select(.event == "workflow_dispatch" and .status == "completed" and .conclusion == "failure" and .headBranch == $b and .headSha != $h and ((.displayTitle // "") | startswith("macos-cadence suites:") | not)) | "\(.databaseId) \(.headSha)"' 2>/dev/null)  # swallow-ok: unparsable runs read as none, which returns 1 on the next line
         [ -n "$rows" ] || return 1
         # the file list shows a rename by its new path only; the old path must match at both commits too
         prev_files=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | .previous_filename // empty' 2>/dev/null) || { wf_why="cannot read the paths the PR renames from"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
@@ -869,19 +984,24 @@ EOF
                 wf_err="$wf_err; $wf has no workflow_dispatch trigger — add one, or list it in WF_DISPATCH_EXEMPT in ready-check.sh"
                 continue
             fi
-            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json databaseId,status,conclusion,headSha --limit 20 2>/dev/null); then
+            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json databaseId,status,conclusion,headSha,displayTitle --limit 20 2>/dev/null); then
                 wf_err="$wf_err; $wf run list failed"
                 continue
             fi
-            wf_ok_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "success")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no green run, the failure path then judges it
+            wf_ok_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "success" and ((.displayTitle // "") | startswith("macos-cadence suites:") | not))][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no green run, the failure path then judges it
             if [ -n "$wf_ok_id" ]; then
                 wf_ids="$wf_ids ${wf_base}=$wf_ok_id"
                 continue
             fi
             wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
             wf_head_runs=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h)] | length' 2>/dev/null) || wf_head_runs=1  # swallow-ok: an unreadable list counts the head as having a run, so the ancestor fallback is refused
-            wf_why=""
-            if [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
+            wf_why=""; wf_sp_rc=0
+            wf_suites_proof "$wf_base" "$wf_runs" || wf_sp_rc=$?
+            if [ "$wf_sp_rc" -eq 0 ]; then
+                wf_ids="$wf_ids ${wf_base}=$wf_sp_id"
+                wf_notes="$wf_notes
+       $wf_note"
+            elif [ "$wf_sp_rc" -eq 1 ] && [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
                 wf_notes="$wf_notes
        $wf_note"
