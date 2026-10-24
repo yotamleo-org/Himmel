@@ -163,13 +163,13 @@ test("?refresh=1 re-probes past the 30 s cache and answers the new report; a pla
 });
 
 test("?refresh=1 never joins a probe already in flight: it starts its own and the older run does not become the cached report", async () => {
-  const { port, runs } = boot({ STUB_FEED_SLEEP: "1500" }, { feedWaitMs: 200 });
+  const { port, runs } = boot({ STUB_FEED_SLEEP_FIRST: "2500", STUB_FEED_SLEEP: "100" }, { feedWaitMs: 200 });
   const get = (q = "") => fetch(`http://127.0.0.1:${port}/api/feed${q}`, { headers: H });
   expect((await get()).status).toBe(202); // run 1 in flight
   const until = async (q: string) => { for (;;) { const r = await get(q); if (r.status !== 202) return r.json(); q = ""; } };
   expect((await until("?refresh=1")).stubRun).toBe(2);
   expect(runs()).toBe(2);
-  await new Promise((r) => setTimeout(r, 1500)); // run 1 lands late: it must not overwrite the refreshed report
+  await sleep(2600); // run 1 lands after run 2: it must not overwrite the refreshed report
   expect((await get()).status).toBe(200);
   expect((await (await get()).json()).stubRun).toBe(2);
 }, 20_000);
