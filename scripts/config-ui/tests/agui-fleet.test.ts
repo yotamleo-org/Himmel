@@ -62,9 +62,9 @@ test("3 live sessions and 1 wrapped: roles, tickets, PR, state, activity, subage
 // shell-tool wrappers tick reports as orphans (orphan-loops.sh --list), and null when that inventory failed.
 test("marker, lastSeenAt and prUrl per row; process orphans for the fleet", async () => {
   const { port, dir } = boot();
-  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4242 owner=orphan age=95m\\nnot a row\\npid=4243 owner=${FLEET.leg.name} age=31m\\n'\n`);
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4242 owner=orphan age=95m\\nnot a row\\npid=4243 owner=${FLEET.wrapped.name} age=31m\\n'\n`);
   const b = await (await fleet(port)).json();
-  expect(b.processOrphans).toEqual([{ pid: 4242, owner: "orphan", ageMin: 95 }, { pid: 4243, owner: FLEET.leg.name, ageMin: 31 }]);
+  expect(b.processOrphans).toEqual([{ pid: 4242, owner: "orphan", ageMin: 95 }, { pid: 4243, owner: FLEET.wrapped.name, ageMin: 31 }]);
   const by = Object.fromEntries(b.sessions.map((s: any) => [s.name, s]));
   expect(by[FLEET.leg.name]).toMatchObject({ marker: "LIVE", prUrl: "https://github.com/acme/widgets/pull/1901" });
   expect(typeof by[FLEET.leg.name].lastSeenAt).toBe("number");
@@ -223,6 +223,45 @@ test("a free lock with no own wrap line is not live", async () => {
   writeFileSync(file, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n");
   const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
   expect(row).toMatchObject({ lock: "released", live: false, state: "unknown" });
+});
+
+// the doc shape /console next + action-zero.sh leave: the token sits in a fenced block under step 8, no backticked bullet
+const ACTION_ZERO_DOC = [
+  "# EQ — CONSOLE", "", "8. **The queue lock on THIS document.** Its release token is:", "", "   ```text", "   fixture-lock", "   ```", "",
+  "## Results", "", "- 06:46 EQ ACTION ZERO 06:5x — release-token fixture-lock (lock acquired, doc was free).", "",
+].join("\n");
+
+test("a console whose only lock evidence is the ACTION ZERO fenced token block reads held and live", async () => {
+  const s = boot();
+  const root = join(s.dir, "handover");
+  const file = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
+  writeFileSync(file, ACTION_ZERO_DOC);
+  execFileSync("bash", [join(import.meta.dir, "../../handover/queue-lock.sh"), "acquire", file], { env: { PATH: process.env.PATH, HOME: s.home, HANDOVER_DIR: root } });
+  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
+  expect(row).toMatchObject({ lock: "held", live: true, state: "running" });
+});
+
+test("a console doc whose token block still reads none yet is not a recorded lock", async () => {
+  const s = boot();
+  const file = join(s.dir, "handover", "yotam", "himmel", `${FLEET.console.name}.md`);
+  writeFileSync(file, ACTION_ZERO_DOC.replace("fixture-lock", "none yet — acquire your own").replace("release-token none yet — acquire your own", "release-token pending"));
+  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
+  expect(row.lock).toBe("unknown");
+});
+
+test("a wrapper whose owner is a live leg is not listed as a process orphan; one under a wrapped leg or no session still is", async () => {
+  const { port, dir } = boot();
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4242 owner=orphan age=95m\\npid=4243 owner=${FLEET.leg.name} age=31m\\npid=4244 owner=${FLEET.wrapped.name} age=40m\\n'\n`);
+  const b = await (await fleet(port)).json();
+  expect(b.processOrphans.map((p: any) => p.pid)).toEqual([4242, 4244]);
+});
+
+test("a console whose operating contract names --lane claudex still reads lane native", async () => {
+  const s = boot();
+  const file = join(s.dir, "handover", "yotam", "himmel", `${FLEET.console.name}.md`);
+  writeFileSync(file, `${ACTION_ZERO_DOC}\ndispatch the impl lane (headed-arm-leg.sh --lane claudex) for codex work\n`);
+  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
+  expect(row).toMatchObject({ lane: "native", laneFrom: "default" });
 });
 
 test("an unreadable lock is unknown and never live", async () => {

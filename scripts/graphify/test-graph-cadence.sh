@@ -1254,6 +1254,7 @@ for a in "$@"; do [ "$prev" = "--corpus-root" ] && root="$a"; prev="$a"; done
 manifest=absent; [ -f "$root/graphify-out/semantic-manifest.json" ] && manifest=present
 echo "args: $* manifest=$manifest" >> "$FAKE_SEM_LOG"
 mkdir -p "$root/graphify-out" && echo '{}' > "$root/graphify-out/semantic-manifest.json"
+[ -z "${FAKE_SEM_RUNS:-}" ] || echo "$FAKE_SEM_RUNS" >> "$root/graphify-out/semantic-runs.jsonl"
 [ -z "${FAKE_SEM_OUT:-}" ] || echo "$FAKE_SEM_OUT"
 exit "${FAKE_SEM_RC:-0}"
 FAKESEM
@@ -1427,6 +1428,78 @@ out=$(HIMMEL_API_LANE=off HIMMEL_API_ACCOUNT=A GRAPH_CADENCE_SEMANTIC_BACKEND=cl
 assert_eq "claude-api with the lane off refuses rc=1" "1" "$rc"
 assert_contains "lane-off refusal names HIMMEL_API_LANE" "HIMMEL_API_LANE" "$out"
 assert_eq "lane-off never calls semantic-update" "" "$(cat "$FAKE_SEM_LOG")"
+
+# =============================================================================
+# Test 10: a successful semantic step promotes the cadence worktree's merged
+# graph (graph.json, semantic-manifest.json, semantic-runs.jsonl) into the
+# PRIMARY checkout's graphify-out, which legs and the session-start advisory
+# read, under the same promote lock ast-update.sh takes -- including on the
+# retired-path fixture where publish/merge no-op.
+# =============================================================================
+echo "TEST: --semantic promotes the merged graph to the primary graphify-out under the AST promote lock"
+mk_primary() { # <tag> <nograph|graph> -- a primary whose graphify-out carries a STALE semantic layer
+    local tag="$1" kind="$2" repo="$TMP_ROOT/t9-$1-primary" bare="$TMP_ROOT/t9-$1-origin.git"
+    mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+    if [ "$kind" = graph ]; then
+        seed_repo "$repo" "$bare" 20
+    else
+        git init -q --bare "$bare" >/dev/null 2>&1
+        git init -q --initial-branch=main "$repo" 2>/dev/null || git init -q "$repo"
+        git -C "$repo" config user.email t@test.com
+        git -C "$repo" config user.name test
+        echo seed > "$repo/README.md"
+        git -C "$repo" add -A && git -C "$repo" commit -q -m "chore: seed, no graphify-out"
+        git -C "$repo" remote add origin "$bare" && git -C "$repo" push -q origin main
+    fi
+    mkdir -p "$repo/graphify-out"
+    printf '{"stale":1}' > "$repo/graphify-out/graph.json"
+    printf '{"ts":"2026-10-22T19:25:00Z"}\n' > "$repo/graphify-out/semantic-runs.jsonl"
+    printf '{"stale":1}' > "$repo/graphify-out/semantic-manifest.json"
+}
+wt_of() { printf '%s' "$TMP_ROOT/t9-$1-home/.claude/graph-cadence/$(corpus_slug_of "$TMP_ROOT/t9-$1-primary")"; }
+RUNS10='{"ts":"2026-10-24T06:35:00Z","merged":3}'
+for kind in nograph graph; do
+    tag="prom$kind"; mk_primary "$tag" "$kind"; PRIM10="$TMP_ROOT/t9-$tag-primary/graphify-out"
+    rc=0; out=$(FAKE_SEM_RUNS="$RUNS10" run_sem "$tag" --semantic) || rc=$?
+    assert_eq "[$kind] semantic run with a promote rc=0" "0" "$rc"
+    WT10=$(wt_of "$tag")
+    # The publish leg rewrites the worktree's graph.json after the promote, so the graph is
+    # recognised by what the fake graphify built (v2), not by comparing with the worktree's end state.
+    if grep -qF '"v":2' "$PRIM10/graph.json"; then pass "[$kind] primary graph.json is the cadence worktree's merged graph"; else fail "[$kind] primary graph.json was not promoted" "$(cat "$PRIM10/graph.json")"; fi
+    if cmp -s "$WT10/graphify-out/semantic-manifest.json" "$PRIM10/semantic-manifest.json"; then pass "[$kind] primary semantic-manifest.json promoted"; else fail "[$kind] primary semantic-manifest.json was not promoted" "$(cat "$PRIM10/semantic-manifest.json")"; fi
+    assert_eq "[$kind] primary semantic-runs.jsonl ends with the merge row" "$RUNS10" "$(tail -n1 "$PRIM10/semantic-runs.jsonl")"
+    if [ -e "$PRIM10/.promote.lock" ]; then fail "[$kind] the promote lock is released after the promote"; else pass "[$kind] the promote lock is released after the promote"; fi
+    assert_contains "[$kind] the promote is reported" "promoted the semantic graph to $PRIM10" "$out"
+done
+# A failed semantic step promotes nothing.
+tag=promfail; mk_primary "$tag" nograph; PRIM10="$TMP_ROOT/t9-$tag-primary/graphify-out"
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(FAKE_SEM_RC=2 FAKE_SEM_RUNS="$RUNS10" run_sem "$tag" --semantic) || rc=$?
+assert_eq "a failed semantic step fails the run rc=3" "3" "$rc"
+assert_contains "the failed semantic step actually ran the semantic updater" "--corpus-class himmel-code" "$(cat "$FAKE_SEM_LOG")"
+assert_eq "a failed semantic step leaves the primary graph.json alone" '{"stale":1}' "$(cat "$PRIM10/graph.json")"
+# A held lock (the hourly AST pass): the promote waits, writes nothing while it is held, then promotes.
+tag=promwait; mk_primary "$tag" nograph; PRIM10="$TMP_ROOT/t9-$tag-primary/graphify-out"
+mkdir "$PRIM10/.promote.lock"; printf 'ast-pass\n' > "$PRIM10/.promote.lock/owner"; date -u +%s > "$PRIM10/.promote.lock/acquired"
+WAIT_OUT="$TMP_ROOT/t9-$tag-run.out"
+FAKE_SEM_RUNS="$RUNS10" GRAPH_CADENCE_PROMOTE_LOCK_WAIT=120 run_sem "$tag" --semantic > "$WAIT_OUT" 2>&1 &
+WAIT_PID=$!
+for _ in $(seq 1 240); do grep -qF "waiting for promote lock" "$WAIT_OUT" 2>/dev/null && break; sleep 0.5; done
+assert_contains "the promote announces it is waiting on the held lock" "waiting for promote lock $PRIM10/.promote.lock" "$(cat "$WAIT_OUT")"
+sleep 2
+assert_eq "nothing is written to the primary while the AST pass holds the lock" '{"stale":1}' "$(cat "$PRIM10/graph.json")"
+rm -rf "$PRIM10/.promote.lock"
+rc=0; wait "$WAIT_PID" || rc=$?
+assert_eq "the waiting promote finishes rc=0 once the lock is released" "0" "$rc"
+if cmp -s "$(wt_of "$tag")/graphify-out/graph.json" "$PRIM10/graph.json"; then pass "the promote lands after the AST pass releases the lock"; else fail "the promote did not land after the lock was released" "$(cat "$PRIM10/graph.json")"; fi
+# A lock held past the wait: benign skip, the holder's lock and the primary are untouched.
+tag=promskip; mk_primary "$tag" nograph; PRIM10="$TMP_ROOT/t9-$tag-primary/graphify-out"
+mkdir "$PRIM10/.promote.lock"; printf 'ast-pass\n' > "$PRIM10/.promote.lock/owner"; date -u +%s > "$PRIM10/.promote.lock/acquired"
+rc=0; out=$(FAKE_SEM_RUNS="$RUNS10" GRAPH_CADENCE_PROMOTE_LOCK_WAIT=2 run_sem "$tag" --semantic) || rc=$?
+assert_eq "a lock held past the wait keeps the run rc=0" "0" "$rc"
+assert_contains "a lock held past the wait is reported as a skipped promote" "semantic promote SKIPPED" "$out"
+assert_eq "a skipped promote leaves the primary graph.json alone" '{"stale":1}' "$(cat "$PRIM10/graph.json")"
+assert_eq "a skipped promote leaves the holder's lock alone" "ast-pass" "$(cat "$PRIM10/.promote.lock/owner" 2>/dev/null)"
 
 # =============================================================================
 # Test 8: usage errors

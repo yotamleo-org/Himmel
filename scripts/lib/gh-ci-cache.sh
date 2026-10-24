@@ -311,16 +311,28 @@ _cic_rest_endpoint() {
 }
 
 _cic_fetch_rest() {
-    local data rows
+    local data rows need
     CIC_REST_DATA='{}'
     if [ -f "$CIC_FILE.rest" ]; then
         data=$(jq -ce --arg head "$CIC_HEAD" --arg repo "$CIC_PR_REPO" 'select(.head == $head and .repo == $repo) | .payload' "$CIC_FILE.rest" 2>/dev/null) && CIC_REST_DATA="$data"
     fi
     _cic_rest_endpoint checks "repos/$CIC_PR_REPO/commits/$CIC_HEAD/check-runs?per_page=100&filter=latest" || return 1
     _cic_rest_endpoint status "repos/$CIC_PR_REPO/commits/$CIC_HEAD/status?per_page=100" || return 1
-    rows=$(printf '%s\n' "$CIC_REST_DATA" | jq -er '
+    # filter=latest is per check suite, so the newest run of a name is only a
+    # rerun when it shares the event and workflow of the older one: a
+    # workflow_dispatch run at the same sha skips the PR-only gates, and another
+    # workflow may define the same check name; neither supersedes a failure.
+    # The suite-to-event-and-workflow map is read only when one name+app spans several suites.
+    need=$(printf '%s\n' "$CIC_REST_DATA" | jq -r '
+        [.checks.body.check_runs | group_by([.name, (.app.id // "" | tostring)])[] |
+            select(([.[].check_suite.id // "" | tostring] | unique | length) > 1)] | if length > 0 then "1" else "0" end' 2>/dev/null) || need=0
+    if [ "$need" = 1 ]; then
+        _cic_rest_endpoint runs "repos/$CIC_PR_REPO/actions/runs?head_sha=$CIC_HEAD&per_page=100" || return 1
+    fi
+    rows=$(printf '%s\n' "$CIC_REST_DATA" | jq -er --arg need "$need" '
         def name_ok: type == "string" and length > 0 and (test("[\\t\\r\\n]") | not);
         def count_ok($items): (.total_count | type == "number" and . >= 0 and . <= 100) and (.total_count == ($items | length));
+        def run_key: .id;
         def check_valid: (.name | name_ok) and
             (if .status == "completed" then
                 (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" or
@@ -328,12 +340,19 @@ _cic_fetch_rest() {
                  .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")
              else (.status == "queued" or .status == "in_progress" or .status == "pending" or
                    .status == "waiting" or .status == "requested") and .conclusion == null end);
+        def wf_ok: (.workflow_id | type == "number") and (.event | type == "string");
+        ([.runs.body.workflow_runs[]? | select(wf_ok) | .check_suite_id | tostring]) as $mapped |
         if (.checks.body.check_runs | type == "array") and
             (.checks.body | count_ok(.check_runs)) and all(.checks.body.check_runs[]; check_valid) and
             (.status.body.statuses | type == "array") and (.status.body | count_ok(.statuses)) and
             all(.status.body.statuses[]; (.context | name_ok) and
-                (.state == "success" or .state == "pending" or .state == "failure" or .state == "error"))
-        then [(.checks.body.check_runs[] |
+                (.state == "success" or .state == "pending" or .state == "failure" or .state == "error")) and
+            ($need != "1" or ((.runs.body.workflow_runs | type == "array") and (.runs.body | count_ok(.workflow_runs)) and
+                all(.checks.body.check_runs[] | select(.app.id == 15368); (.check_suite.id // "" | tostring) as $s | any($mapped[]; . == $s))))
+        then (if $need == "1" then [.runs.body.workflow_runs[] | select(wf_ok) | {key: (.check_suite_id | tostring), value: "\(.event)/\(.workflow_id)"}] | from_entries else {} end) as $ev |
+            def gk: [.name, (.app.id // "" | tostring), ($ev[(.check_suite.id // "" | tostring)] // "suite-\(.check_suite.id // "")")];
+            [(.checks.body.check_runs as $runs | $runs[] |
+                select(. as $c | all($runs[]; gk != ($c | gk) or run_key <= ($c | run_key))) |
                 [(if .status != "completed" then "pending" elif .conclusion == "success" then "pass"
                   elif .conclusion == "skipped" or .conclusion == "neutral" then "skipping"
                   elif .conclusion == "cancelled" then "cancel" else "fail" end), .name] | join("\t")),
