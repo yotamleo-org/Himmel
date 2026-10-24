@@ -161,9 +161,12 @@ trivial_descendant() {
     _td_ok=1
     _td_tests=0
     while IFS= read -r _td_p; do
-        if test_path_p "$_td_p"; then
+        if plugin_json_path "$_td_p"; then
+            # A manifest is never a test path, even under a plugin named tests.
+            version_bump_only "$1" "$2" "$_td_p" || { _td_ok=0; break; }
+        elif test_path_p "$_td_p"; then
             _td_tests=1
-        elif ! { plugin_json_path "$_td_p" && version_bump_only "$1" "$2" "$_td_p"; }; then
+        else
             _td_ok=0; break
         fi
     done <<EOF

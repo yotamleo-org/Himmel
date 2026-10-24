@@ -698,6 +698,22 @@ tvb_commit tvb-alone 0.1.1 fixture
 tvb_rc 1 "7266 a version bump alone stays refused"
 tvb_commit tvb-down 0.0.9 fixture test-tvb.sh
 tvb_rc 1 "7266 a version downgrade stays refused"
+# A plugin named "tests" puts its manifest under a tests/ path segment: it must
+# still be judged as a manifest, never counted as the test path.
+git -C "$repo" checkout -q -b tvb-t0 "$tvb_from"
+write_plugin tests 0.1.0 fixture
+git -C "$repo" commit -q -m "tvb-t0 plugin named tests"
+tvb_from="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" checkout -q -b tvb-t1 "$tvb_from"
+write_plugin tests 0.1.1 fixture
+git -C "$repo" commit -q -m "tvb-t1 delta"
+tvb_to="$(git -C "$repo" rev-parse HEAD)"
+tvb_rc 1 "7266 a version bump alone under a plugin named tests is no test path"
+git -C "$repo" checkout -q -b tvb-t2 "$tvb_from"
+write_plugin tests 0.1.0 other
+git -C "$repo" commit -q -m "tvb-t2 delta"
+tvb_to="$(git -C "$repo" rev-parse HEAD)"
+tvb_rc 1 "7266 a description change under a plugin named tests is no test path"
 if [ "${1:-}" = --ledger-hardening-only ]; then
     printf 'ledger hardening: %s failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]
