@@ -304,8 +304,15 @@ for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/
 process.stdout.write(out.join('|'));" "$(route_of getting-started.md)") || groups='<node failed>'
 check "IA: top-level sidebar groups equal the F1 list (got: $groups)" is "$groups" "Get started|Use it|Run many sessions|Reference|For contributors"
 home="$dist/index.html"
-check "IA: Home is the hero page, not the docs map" grep -q 'Let Claude Code work on its own' "$home"
-check "IA: Home carries the Try it on a throwaway project CTA" grep -q 'Try it on a throwaway project' "$home"
+check "IA: Home is the hero page with the v5 F2 headline" grep -qF 'Ship more with Claude Code, and keep every change reviewable.' "$home"
+check "IA: Home no longer carries the v4 headline" absent 'Let Claude Code work on its own' "$home"
+check "IA: Home proof 1 with its How a change ships tag" grep -qF '<strong>One road for every change.</strong>' "$home"
+check "IA: Home proof 2 with its reach tag" grep -qF 'Level 1 · in your project' "$home"
+check "IA: Home proof 3 with its reach tag" grep -qF 'Level 5</em>' "$home"
+check "IA: the review proof never claims it runs in your project" fails grep -qE 'One road for every change.*in your project' "$home"
+check "IA: Home leaves out the measured line" absent '2,000 pull requests' "$home"
+check "IA: Home primary CTA is Quickstart" grep -qE 'sl-link-button[^>]* primary [^>]*href="getting-started/">Quickstart' "$home"
+check "IA: Home secondary CTA is How a change ships" grep -qE 'sl-link-button[^>]* minimal [^>]*href="adoption-trail\.html">How a change ships' "$home"
 check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d ' ')" 1
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
 
