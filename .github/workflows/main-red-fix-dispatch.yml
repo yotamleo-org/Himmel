@@ -36,7 +36,7 @@ jobs:
             case " $PR_LABELS " in
               *" fixes-main-red "*) ;;
               *)
-                if ! printf '%s\n' "$PR_BODY" | grep -qiE '^[[:space:]]*Fixes-main-red:'; then
+                if ! grep -qiE '^[[:space:]]*Fixes-main-red:' <<<"$PR_BODY"; then
                   echo "PR #$PR_NUMBER carries no fixes-main-red label or Fixes-main-red: line; nothing to dispatch."
                   exit 0
                 fi ;;
