@@ -106,5 +106,17 @@ if ! { mkdir "$TMP/ch" && cp "$FX"/*.jsonl "$TMP/ch/" && sed -e 's/console\.sh n
 python3 "$HC" --dir "$TMP/ch" >"$TMP/ch.out" 2>&1; chrc=$?
 check "a chief.sh next call marks the handover the same as console.sh next" '[ "$chrc" = 0 ] && grep -q "^HANDOVER " "$TMP/ch.out"'
 
+echo "5. a quoted script path"
+if ! { mkdir "$TMP/qt" && cp "$FX"/*.jsonl "$TMP/qt/" && python3 - "$TMP/qt" <<'PYEOF'
+import sys
+p = sys.argv[1] + "/console-p.jsonl"
+src = open(p).read()
+# the JSONL carries the quote as an escaped \" between the script and "next"
+open(p, "w").write(src.replace("console.sh next", 'console.sh\\" next'))
+PYEOF
+}; then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
+LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/qt" >"$TMP/qt.out" 2>&1; qtrc=$?
+check "a console.sh next run through a quoted path marks the handover" '[ "$qtrc" = 0 ] && grep -q "^HANDOVER " "$TMP/qt.out"'
+
 echo "handover-cost: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

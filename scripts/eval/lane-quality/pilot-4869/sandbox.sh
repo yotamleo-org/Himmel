@@ -35,6 +35,8 @@
 set -u
 die() { echo "pilot-sandbox: $*" >&2; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../lib/canon-path.sh
+. "$HERE/../../../lib/canon-path.sh" || die "cannot source lib/canon-path.sh"
 
 mode="${1:-}"; envf="${2:-}"
 { [ -n "$mode" ] && [ -r "$envf" ]; } || die "usage: sandbox.sh argv|run|check|launch <row-env> [args...]"
@@ -168,9 +170,22 @@ else
   # HIMMEL-5200: every bind below comes AFTER the worktree's read-only bind, and a later bind
   # wins. One that is, sits under, or contains the worktree (at either jail path) would put it
   # back writable or hide the read-only mount, so such a row is refused, never launched.
+  # canon_path_partial keeps a not-yet-created tail as written, so a dot component there would dodge
+  # the comparison (realpath -m folded it): refuse it, and squeeze the slashes a tail can carry.
+  # An existing directory is canonicalised whole, so its own spelling cannot matter
+  canon_rw() {
+    local c
+    if [ -d "$1" ]; then
+      c="$(canon_path_native "$1")" || return 1
+    else
+      case "$1/" in */../*|*/./*) return 1 ;; esac
+      c="$(canon_path_partial "$1")" || return 1
+    fi
+    printf '%s\n' "$c" | tr -s /
+  }
   for rw in "$(dirname "$DOC")" "$RUN" "$ROWCONF" "$TX" "$GITDIR" "$GITOBJ"; do
-    rwp="$(realpath -m -- "$rw")" || die "cannot resolve $rw"
-    for wp in "$(realpath -m -- "$WT")" "$(realpath -m -- "$JWT")"; do
+    rwp="$(canon_rw "$rw")" || die "cannot resolve $rw"
+    for wp in "$(canon_rw "$WT")" "$(canon_rw "$JWT")"; do
       case "$rwp/" in "$wp"/*) die "$rw sits at or under the worktree $wp (its writable bind would undo the read-only worktree)" ;; esac
       case "$wp/" in "$rwp"/*) die "$rw contains the worktree $wp (its bind would hide the read-only worktree)" ;; esac
     done

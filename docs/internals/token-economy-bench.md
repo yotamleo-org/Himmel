@@ -42,7 +42,8 @@ the operator file already states them).
 ## Before the batch
 
 ```bash
-bash scripts/lib/bank-preflight.sh            # refuse to start on a depleted bank
+verdict="$(bash scripts/lib/usage-preflight.sh)"   # one token; always exits 0, so read stdout
+if [ "$verdict" != PROCEED ]; then echo "bench not started: usage verdict is $verdict" >&2; exit 1; fi
 git -C $HOME/h2038-bench/lean status --short   # clean (prints nothing)
 git -C $HOME/h2038-bench/fat  status --short   # clean too (the fat swap is committed)
 ```

@@ -336,7 +336,7 @@ out="$(run_notes_step "$WORKFLOW" v1.0.0 1 1 "$tags_list")"
 out="$(run_notes_step "$WORKFLOW" 'v1/../x' 1 0 "$tags_list")"
 [[ "$out" != *"rc=0"* && "$out" != *"--verify-tag"* ]] && ok "step: a malformed tag is refused (non-zero, no create)" || bad "step: malformed tag accepted" "got: $out"
 # RED controls: mutants that keep every token but break the flow must fail these rows.
-sed '/skipping create/{n;s/exit 0/true/}' "$WORKFLOW" > "$mut/no-exit.yml"
+sed '/skipping create/{n;s/exit 0/true/;}' "$WORKFLOW" > "$mut/no-exit.yml"
 check_not "the no-exit mutant really differs from the workflow" cmp -s "$WORKFLOW" "$mut/no-exit.yml"
 out="$(run_notes_step "$mut/no-exit.yml" v1.0.0 1 1 "$tags_list")"
 [[ "$out" == *"--verify-tag"* ]] && ok "RED: dropping the exists-skip 'exit 0' is caught (create still issued)" || bad "RED: no-exit mutant not caught"

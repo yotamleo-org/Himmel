@@ -8,6 +8,8 @@
 #   3 a bare <placeholder> renders as visible text
 #   4 mermaid blocks reach the page and the 3 standalone HTML pages are
 #     byte-identical
+#   5 every local route and #fragment in the built site resolves, passthrough
+#     pages included (check-built-links.mjs, with a broken-link control)
 # Needs `npm ci` in site/ (network); without site/node_modules it skips loudly.
 set -u
 repo=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
@@ -144,6 +146,61 @@ check "control: hit_ok fails a nonzero exit even when the text names the page" f
 check "control: hit_ok fails an empty result" fails hit_ok 0 ""
 check "control: a missing index under a stuck-playbook path fails the search, the path text is no hit" fails pf_run "$sweep_ctl/it's a stuck-playbook dist"
 
+# --- built links: scripts/docs-site/check-built-links.mjs fails on a dead route or fragment, passthrough pages included
+links_chk="$repo/scripts/docs-site/check-built-links.mjs"
+mk_site() { # mk_site <dir> <extra href for the generated page> <extra href for the passthrough page>
+  mkdir -p "$1/page" "$1/guide" || return 1
+  printf '<h2 id="sec">S</h2>\n<a href="/Himmel/page/#sec">ok</a> <a href="#sec">ok</a> <a href="https://example.invalid/x">ext</a> %s\n' "$2" >"$1/page/index.html"
+  printf '<a href="../page/#sec">ok</a> <a href="../page/">ok</a> %s\n' "$3" >"$1/guide/raw.html"
+}
+built_ok() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; }
+built_rc1() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 1 ]; }
+mk_site "$sweep_ctl/links-clean" "" "" || exit 1
+mk_site "$sweep_ctl/links-route" '<a href="/Himmel/no-such/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-frag" '<a href="/Himmel/page/#gone">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-raw-route" "" '<a href="../setup/vm-mode.md">x</a>' || exit 1
+mk_site "$sweep_ctl/links-raw-frag" "" '<a href="../page/#gone">x</a>' || exit 1
+mk_site "$sweep_ctl/links-escape" '<a href="/Others/page/#sec">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-pct" '<a href="/Himmel/my%20page/">x</a>' "" || exit 1
+mkdir "$sweep_ctl/links-pct/my page" && echo ok >"$sweep_ctl/links-pct/my page/index.html" || exit 1
+mk_site "$sweep_ctl/links-data" '<a data-href="/Himmel/no-such/" href="/Himmel/page/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-sd" "" '<a href="../../links-sd-extra/x/">x</a>' || exit 1
+mkdir -p "$sweep_ctl/links-sd-extra/x" && echo ok >"$sweep_ctl/links-sd-extra/x/index.html" || exit 1
+mk_site "$sweep_ctl/links-ent" '<a href="/Himmel/page/#a&amp;b">x</a> <a href="#a%26b">y</a>' "" || exit 1
+printf '<h2 id="a&amp;b">E</h2>\n' >>"$sweep_ctl/links-ent/page/index.html" || exit 1
+mk_site "$sweep_ctl/links-inert" '<!-- <a href="/Himmel/no-such/">x</a> --> <script>var s = '"'"'<a href="/Himmel/no-such/">x</a>'"'"';</script>' "" || exit 1
+mk_site "$sweep_ctl/links-case" '<a href="#up">x</a>' "" || exit 1
+printf '<h2 ID = "up">U</h2>\n' >>"$sweep_ctl/links-case/page/index.html" || exit 1
+mk_site "$sweep_ctl/links-meta" '<a href="#viewport">x</a> <meta name="viewport" content="w">' "" || exit 1
+mk_site "$sweep_ctl/links-aname" '<a href="#legacy">x</a> <a name="legacy">L</a>' "" || exit 1
+mk_site "$sweep_ctl/links-sid" '<a href="#sid">x</a> <script id="sid">var s = 1;</script>' "" || exit 1
+mk_site "$sweep_ctl/links-bare" '<a href=/Himmel/no-such/>x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-spaced" '<a href = "/Himmel/no-such/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-query" '<a href="/Himmel/page/?v=1#sec">x</a> <a href="../page/?v=1">y</a>' "" || exit 1
+mk_site "$sweep_ctl/links-proto" '<a href="//example.invalid/x">x</a>' "" || exit 1
+mkdir "$sweep_ctl/links-empty" || exit 1
+built_rc2() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 2 ]; }
+check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
+check "built links: an entity-escaped fragment and its percent-encoded form resolve" built_ok "$sweep_ctl/links-ent"
+check "built links: an anchor inside a comment or script is not a link" built_ok "$sweep_ctl/links-inert"
+check "built links: an upper-case ID attribute with spaced equals is a fragment target" built_ok "$sweep_ctl/links-case"
+check "built links: a legacy name on an anchor is a fragment target" built_ok "$sweep_ctl/links-aname"
+check "built links: the id on a script element is a fragment target" built_ok "$sweep_ctl/links-sid"
+check "control: built links fails a fragment that only a meta name carries" built_rc1 "$sweep_ctl/links-meta"
+check "control: built links fails a dead unquoted href" built_rc1 "$sweep_ctl/links-bare"
+check "control: built links fails a dead href with spaced equals" built_rc1 "$sweep_ctl/links-spaced"
+check "built links: a percent-encoded link to a spaced directory resolves" built_ok "$sweep_ctl/links-pct"
+check "built links: a data-href attribute is not a link" built_ok "$sweep_ctl/links-data"
+check "built links: a query string is not part of the route" built_ok "$sweep_ctl/links-query"
+check "built links: a protocol-relative link is external" built_ok "$sweep_ctl/links-proto"
+check "control: built links fails a relative link into a sibling directory sharing the dist prefix" built_rc1 "$sweep_ctl/links-sd"
+check "control: built links fails a dead generated-page route" built_rc1 "$sweep_ctl/links-route"
+check "control: built links fails a dead generated-page fragment" built_rc1 "$sweep_ctl/links-frag"
+check "control: built links fails a dead route in a passthrough page" built_rc1 "$sweep_ctl/links-raw-route"
+check "control: built links fails a dead fragment in a passthrough page" built_rc1 "$sweep_ctl/links-raw-frag"
+check "control: built links fails a root link outside the site base" built_rc1 "$sweep_ctl/links-escape"
+check "control: built links exits 2 on a dist with no pages" built_rc2 "$sweep_ctl/links-empty"
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
   printf '\n%d passed, %d failed (site build not run)\n' "$pass" "$fail"
@@ -251,6 +308,9 @@ check "IA: Home is the hero page, not the docs map" grep -q 'Let Claude Code wor
 check "IA: Home carries the Try it on a throwaway project CTA" grep -q 'Try it on a throwaway project' "$home"
 check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d ' ')" 1
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
+
+# --- built links: every local route and fragment in the built site (passthrough guides included) resolves
+check "built links: every local route and #fragment in dist resolves" built_ok "$dist"
 
 # --- J1: full site (one page per IA section, trail page, raw passthrough, search)
 for r in daily-loop handover/afk-mode glossary internals/stuck-playbook contributing; do

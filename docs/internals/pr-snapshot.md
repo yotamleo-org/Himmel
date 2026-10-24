@@ -14,13 +14,13 @@ Arguments are the repository, TTL in seconds (`0` forces refresh), and one or mo
 - Each entry is tagged with repository/host, PR number, observed head SHA and fetch time. Writes are private and atomic (temporary file then rename).
 - REST `pulls/<number>` head reads bracket every response, including cache hits. A changed or unreadable head refuses the old snapshot. A cache hit also requires valid data, the same head and age in `[0, TTL)`; future-dated entries are misses.
 - A repository-scoped atomic mkdir serializes fetches/cache writes. Contention fails closed rather than bypassing the lock. Exit/signal traps clean it up. If a process is killed with SIGKILL, an operator must confirm the recorded PID is no longer running before removing the abandoned lock. No age-based lock stealing occurs.
-- A TTL hit can contain earlier CI/review/body state **at the same head**, for at most the TTL. This is not a fresh approval or a merge authorization.
+- A TTL hit can contain earlier CI/review/body state **at the same head**, for at most the TTL. This is not a fresh approval or a merge authorization. `ready-check.sh` passes TTL 0, so it always reads the PR fresh (HIMMEL-7107, PR 3597).
 
 ## Query cost and pagination
 
 All misses in a batch share one aliased GraphQL query. Commits, check contexts and review threads follow continuation pages independently, with head binding, cursor-cycle detection and a 50-page ceiling. Pagination is never silently truncated; an incomplete/unreadable connection fails closed.
 
-A settled, one-page ready-check uses **2 GraphQL calls instead of 7**: repository resolution and the snapshot. Files remain a paginated REST read, and freshness checks use REST. Cache hits use only repository resolution in GraphQL. Existing UNKNOWN merge-state retries force fresh snapshots; retries and continuation pages necessarily add calls.
+A settled, one-page ready-check (TTL 0, so it always reads the PR fresh) uses **2 GraphQL calls instead of 7**: repository resolution and the snapshot. Files remain a paginated REST read, and freshness checks use REST. Cache hits use only repository resolution in GraphQL. Existing UNKNOWN merge-state retries force fresh snapshots; retries and continuation pages necessarily add calls.
 
 `ready-check.sh --only 7` retains its body-only lint path, without requiring unrelated CI/commit/thread data. The full ready-check consumes the shared snapshot for checks 1, 2, 3, 5, 6 and 7. An unreadable snapshot fails all those checks. CR-ledger check 4 remains local.
 

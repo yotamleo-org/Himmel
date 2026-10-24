@@ -99,10 +99,20 @@ macOS shell-unit is `.github/workflows/macos-cadence.yml` (`CI (os:macos
 cadence)`): Tuesday + Friday 05:43 UTC, the same 8-shard partition and
 `SUITE_TIER_MODE=all` corpus the nightly's macOS legs had. `ci.yml` contains no
 macOS job and no macOS health step, so a macOS red is a red of *that* workflow
-and never of `CI` or main. It is not on `pull_request`/`push`, and a red shard
-is not `continue-on-error`: it reddens the cadence run, which is the point.
+and never of `CI` or main. It is never on `push` and never on an unlabelled PR,
+and a red shard is not `continue-on-error`: it reddens the cadence run, which is
+the point.
+
+**Proving a macOS fix inside its PR: the `ci:macos` label.** A PR that fixes
+macOS code (or whose brief says macOS) gets the label before `READY`; the
+workflow then runs on the PR head when the label is added and on every later
+push, and both its jobs are skipped on a PR without the label (an unlabelled PR
+shows no macOS check at all, so the HIMMEL-3853 cost rule stands). A PR run
+never records breakages and never uploads `macos-breakage-record`: that record
+belongs to main's cadence runs.
 
 ```bash
+gh pr edit <pr> --add-label ci:macos             # run the macOS suites on this PR's head
 gh workflow run macos-cadence.yml --ref main     # dispatch (the file must be on the ref's default branch)
 gh run list --workflow macos-cadence.yml         # its runs, apart from the nightly `CI` runs
 ```

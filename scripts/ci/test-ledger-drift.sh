@@ -146,4 +146,21 @@ else
   fail "LD6: .github/workflows/ledger-drift.yml missing, not schedule/dispatch-only, does not run ledger-drift.sh, or a mutant (indented pull_request, path only in a comment) passed"
 fi
 
+echo "== LD7: no ledger row is above 900s, 75% of the 1200s cap the longest suites get =="
+# A suite near the cap is killed with no assertion failing as soon as a loaded
+# runner is slower than the ledger run. The control row is the real line from
+# green main run 40030573258 (shell-unit-shard 3): [PASS] scripts/test-adopt.sh (969s).
+LD7_CEILING=900
+ledger_over_ceiling() {
+  awk -F'\t' -v ceil="$LD7_CEILING" '/^[[:space:]]*(#|$)/ { next } $2 + 0 > ceil { print $1 "\t" $2; bad = 1 } END { exit bad }' "$1"
+}
+printf 'scripts/test-adopt.sh\t969\n' > "$SUITE_LOCK_SANDBOX/over-ceiling.tsv" || fail "LD7: cannot write the control ledger"
+if ledger_over_ceiling "$SUITE_LOCK_SANDBOX/over-ceiling.tsv" >/dev/null; then
+  fail "LD7: the control ledger (test-adopt.sh at 969s) was accepted"
+elif over=$(ledger_over_ceiling "$SRC_ROOT/scripts/ci/suite-durations.tsv"); then
+  pass "LD7: the control row is refused and the committed ledger has no row above ${LD7_CEILING}s"
+else
+  fail "LD7: committed ledger rows above ${LD7_CEILING}s: $over"
+fi
+
 rst_tally

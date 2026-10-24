@@ -20,11 +20,32 @@ s="$(strip "$WF")"
 if grep -q '^name: "CI (os:macos cadence)"$' <<< "$s"; then ok "workflow name carries os:macos"
 else bad "workflow name is not exactly \"CI (os:macos cadence)\""; fi
 
-# 2. triggers: schedule + workflow_dispatch only, never per-PR / per-push.
+# 2. triggers: schedule + workflow_dispatch + a labelled-PR run, never a bare
+# per-PR / per-push run. pull_request fires only for label / push events, and
+# the job-level guards in 2b keep an unlabelled PR from running anything.
 on_block="$(awk '/^on:/ {f=1; next} f && /^[a-z]/ {f=0} f' <<< "$s")"
 keys="$(sed -n 's/^  \([a-z_]*\):.*/\1/p' <<< "$on_block" | tr '\n' ' ')"
-if [ "$keys" = "workflow_dispatch schedule " ]; then ok "triggers are workflow_dispatch + schedule only"
-else bad "triggers are '$keys' (want workflow_dispatch + schedule; never pull_request/push)"; fi
+if [ "$keys" = "workflow_dispatch pull_request schedule " ]; then ok "triggers are workflow_dispatch + pull_request + schedule (no push)"
+else bad "triggers are '$keys' (want workflow_dispatch + pull_request + schedule; never push)"; fi
+types="$(sed -n 's/^    types: \[\(.*\)\]$/\1/p' <<< "$on_block" | tr -d ' ')"
+if [ "$types" = "labeled,synchronize" ]; then ok "pull_request fires only on labeled + synchronize"
+else bad "pull_request types are '$types' (want exactly labeled, synchronize)"; fi
+
+# 2b. an unlabelled PR runs no macOS job: both jobs carry the label guard, and
+# `summary` (always()) must not outlive a skipped `shell`.
+job_of() { awk -v n="$1" '$0 == "  " n ":" {f=1; next} f && /^  [a-z]/ {f=0} f' <<< "$s"; }
+for j in shell summary; do
+  jif="$(job_of "$j" | sed -n 's/^    if: //p' | head -1)"
+  if grep -q "contains(github.event.pull_request.labels.\*.name, 'ci:macos')" <<< "$jif" \
+     && grep -q "github.event_name != 'pull_request'" <<< "$jif"; then ok "job $j runs on a PR only when it carries ci:macos"
+  else bad "job $j has no ci:macos label guard (if: '$jif')"; fi
+done
+sum_if="$(job_of summary | sed -n 's/^    if: //p' | head -1)"
+if grep -q '^always() && ' <<< "$sum_if"; then ok "summary keeps always() so a red shard still gets its verdict"
+else bad "summary's if no longer starts with always(): '$sum_if'"; fi
+# 2c. the header must not promise the old per-PR ban.
+if grep -q 'never on an unlabelled PR' "$WF" && ! grep -q 'NOT on pull_request/push, ever' "$WF"; then ok "header says the macOS legs never run on an unlabelled PR"
+else bad "header still carries the old 'NOT on pull_request/push, ever' wording"; fi
 
 # 3. lower frequency than nightly: the cron's day-of-week field is restricted.
 cron="$(sed -n "s/^[[:space:]]*- cron: '\([^']*\)'.*/\1/p" <<< "$s")"
@@ -88,6 +109,12 @@ else bad "the record step has no 'shell: bash': a die in record is masked by | t
 if step_of "Upload breakage record" | grep -q 'if-no-files-found: error'; then ok "a missing record.json fails the upload"
 else bad "the record upload does not use if-no-files-found: error"; fi
 
+# 9b. a PR run never writes the main cadence breakage record.
+for st in "Record breakages" "Upload breakage record"; do
+  if step_of "$st" | grep -q "^        if: .*github.event_name != 'pull_request'"; then ok "'$st' is skipped on a pull_request run"
+  else bad "'$st' is not guarded by github.event_name != 'pull_request'"; fi
+done
+
 # 10. a shard without the completion sentinel (suites-from-logs rc 3)
 # uploads NO failed.txt, so `summary` sees a missing report (infra_suspect).
 lst="$(step_of "List failed suites")"
@@ -130,7 +157,8 @@ else bad "the tests step does not take the input through env SUITES into --only-
 if grep -q -- '--shard \${{ matrix.shard }}/8 \.' <<< "$tests_step"; then ok "an empty input still runs the unchanged --shard i/8 partition"
 else bad "the unfiltered --shard i/8 run is gone from the tests step"; fi
 rec="$(step_of "Record breakages")"; upl="$(step_of "Upload breakage record")"
-if grep -q "^        if: inputs.suites == ''$" <<< "$rec" && grep -q "^        if: always() && inputs.suites == ''$" <<< "$upl"; then
+if grep -q "^        if: github.event_name != 'pull_request' && inputs.suites == ''$" <<< "$rec" \
+   && grep -q "^        if: always() && github.event_name != 'pull_request' && inputs.suites == ''$" <<< "$upl"; then
   ok "a suites dispatch records no breakage metric (a partial run would read unlisted suites as fixed)"
 else bad "the breakage record/upload steps are not skipped for a suites dispatch"; fi
 

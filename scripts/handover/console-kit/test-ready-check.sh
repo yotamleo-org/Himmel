@@ -96,7 +96,7 @@ case "$args" in
     "run list"*)
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         w="${args#*--workflow }"; w="${w%% *}"
-        case "$args" in *"--branch main "*) w="$w.main" ;; *"--branch "*) w="$w.other-branch" ;; esac
+        case "$args" in *"--branch main "*) w="$w.main" ;; *"--branch ${STUB_PR_BRANCH:-@}"*) w="$w.pr-branch" ;; *"--branch "*) w="$w.other-branch" ;; esac
         f="${args#*--json }"; f="${f%% *}"
         if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then jq -c --arg f "$f" '($f | split(",")) as $k | map(with_entries(select(.key as $n | $k | index($n))))' "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
     "run view "*)
@@ -106,9 +106,16 @@ case "$args" in
             if [ -f "${STUB_RUNS_DIR:-/nonexistent}/log-$id.txt" ]; then cat "$STUB_RUNS_DIR/log-$id.txt"; exit 0; else exit 1; fi ;;
         esac
         if [ -f "${STUB_RUNS_DIR:-/nonexistent}/jobs-$id.json" ]; then cat "$STUB_RUNS_DIR/jobs-$id.json"; else exit 1; fi ;;
+    *"api --paginate"*"/files"*"previous_filename"*)
+        [ -z "${STUB_RENAMES_FAIL:-}" ] || exit 1
+        # STUB_RENAMES lines "new old": run the script's own --jq filter over a files array
+        printf '%s\n' "${STUB_RENAMES:-}" | jq -R -n '[inputs | select(length > 0) | split(" ") | {filename: .[0], previous_filename: .[1]}]' \
+            | jq -r "${args#*--jq }" ;;
     *"api --paginate"*"/files"*"filename"*)
         [ -n "${STUB_FILES_FAIL:-}" ] && exit 1
-        printf '%s\n' "${STUB_FILES:-README.md}" ;;
+        printf '%s\n' "${STUB_FILES:-README.md}"
+        [ -z "${STUB_FILES_PARTIAL:-}" ] || exit 1  # a --paginate that died after its first page
+        ;;
     *)
         echo "gh-stub: unhandled args: $args" >&2
         exit 1 ;;
@@ -198,7 +205,8 @@ run() {
         STUB_COMMITS="${STUB_COMMITS:-$GREEN_COMMITS}" \
         STUB_MERGE_OIDS="${STUB_MERGE_OIDS:-}" \
         STUB_FILES="${STUB_FILES:-$GREEN_FILES}" \
-        STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" \
+        STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" STUB_FILES_PARTIAL="${STUB_FILES_PARTIAL:-}" \
+        STUB_RENAMES="${STUB_RENAMES:-}" STUB_RENAMES_FAIL="${STUB_RENAMES_FAIL:-}" \
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
         STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
@@ -213,7 +221,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
     seed_ledger_ok
 }
 
@@ -1360,6 +1368,133 @@ wf_run ".github/workflows/ci.yml"
 check "main's newest run is green, an older one red: exit 1" "$rc" "1"
 notcontains "main's newest run is green, an older one red: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR/ci.yml.main.json" "$RUNDIR"/jobs-*.json
+
+# A merge-forward head carries no dispatch run of its own; its proof is a PRE-EXISTING-red dispatch
+# run at an ANCESTOR commit on the PR branch, accepted only when every file the PR changes is the
+# same blob at that ancestor and at the head. The run row is the shape `gh run list --workflow
+# macos-cadence.yml --event workflow_dispatch --branch <pr branch> --json
+# databaseId,status,conclusion,headSha,headBranch` printed for PR 3662 (headSha swapped for the
+# fixture's ancestor); the job names are that run's real failed jobs.
+ANC_WF=.github/workflows/macos-cadence.yml
+ANC_PRFILE=scripts/pr-file.sh
+ANC_OLD=scripts/old-name.sh
+ANC_NEW=scripts/new-name.sh
+ANC_BRANCH=fix/himmel-7245-macos-bsd-tools
+git -C "$WF_REPO_ROOT" show HEAD:"$ANC_WF" > "$WFDIR/macos-cadence.yml"
+anc_blob() { printf '%s\n' "$1" | git -C "$REPO" hash-object -w --stdin; }
+anc_commit() {  # <parent|-> <workflow blob> <pr file blob> <main file blob> [<renamed-from blob> [<renamed-to blob>]] -> commit sha
+    local idx="$tmp/anc.idx" tree
+    rm -f "$idx"
+    GIT_INDEX_FILE="$idx" git -C "$REPO" update-index --add --cacheinfo "100644,$2,$ANC_WF" --cacheinfo "100644,$3,$ANC_PRFILE" --cacheinfo "100644,$4,main-only.txt"
+    [ -z "${5:-}" ] || GIT_INDEX_FILE="$idx" git -C "$REPO" update-index --add --cacheinfo "100644,$5,$ANC_OLD"
+    [ -z "${6:-}" ] || GIT_INDEX_FILE="$idx" git -C "$REPO" update-index --add --cacheinfo "100644,$6,$ANC_NEW"
+    tree=$(GIT_INDEX_FILE="$idx" git -C "$REPO" write-tree)
+    if [ "$1" = - ]; then git -C "$REPO" commit-tree "$tree" -m "chore: fixture"; else git -C "$REPO" commit-tree "$tree" -p "$1" -m "chore: fixture"; fi
+}
+B_WF=$(anc_blob workflow-v1); B_WF2=$(anc_blob workflow-v2); B_PR1=$(anc_blob pr-file-v1); B_PR2=$(anc_blob pr-file-v2)
+B_MAIN1=$(anc_blob main-v1); B_MAIN2=$(anc_blob main-v2)
+ANC_BASE=$(anc_commit - "$B_WF" "$B_PR1" "$B_MAIN1")
+ANC_COMMIT=$(anc_commit "$ANC_BASE" "$B_WF2" "$B_PR2" "$B_MAIN1")
+ANC_HEAD_OK=$(anc_commit "$ANC_COMMIT" "$B_WF2" "$B_PR2" "$B_MAIN2")
+ANC_HEAD_WF=$(anc_commit "$ANC_COMMIT" "$B_WF" "$B_PR2" "$B_MAIN2")
+ANC_HEAD_PR=$(anc_commit "$ANC_COMMIT" "$B_WF2" "$B_PR1" "$B_MAIN2")
+ANC_SIDE=$(anc_commit "$ANC_BASE" "$B_WF2" "$B_PR2" "$B_MAIN2")
+# the PR renames old-name.sh to new-name.sh: a copy at the ancestor that the head deletes, and a rename done before the ancestor
+B_OLD=$(anc_blob old-name-v1)
+ANC_COPY=$(anc_commit "$ANC_BASE" "$B_WF2" "$B_PR2" "$B_MAIN1" "$B_OLD" "$B_OLD")
+ANC_COPY_HEAD=$(anc_commit "$ANC_COPY" "$B_WF2" "$B_PR2" "$B_MAIN2" "" "$B_OLD")
+ANC_MOVED=$(anc_commit "$ANC_BASE" "$B_WF2" "$B_PR2" "$B_MAIN1" "" "$B_OLD")
+ANC_MOVED_HEAD=$(anc_commit "$ANC_MOVED" "$B_WF2" "$B_PR2" "$B_MAIN2" "" "$B_OLD")
+anc_row() {  # <run id> <headSha> <headBranch> [<event>] -> a gh run list body
+    printf '[{"conclusion":"failure","databaseId":%s,"event":"%s","headBranch":"%s","headSha":"%s","status":"completed"}]' "$1" "${4:-workflow_dispatch}" "$3" "$2"
+}
+anc_run() {  # <head commit> [rename] -> rc/out, the PR changing the workflow and a script (and renaming one when asked)
+    ANC_REAL_SHA="$SHA"; SHA="$1"
+    reset_stubs
+    STUB_FILES="$ANC_WF
+$ANC_PRFILE"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"; STUB_PR_BRANCH="$ANC_BRANCH"
+    if [ -n "${2:-}" ]; then STUB_FILES="$STUB_FILES
+$ANC_NEW"; STUB_RENAMES="$ANC_NEW $ANC_OLD"; fi
+    rc=0; out="$(run)" || rc=$?
+    SHA="$ANC_REAL_SHA"
+}
+rm -f "$RUNDIR"/*.json
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 3)" > "$RUNDIR/jobs-40073661474.json"
+main_run schedule failure 39908051399 > "$RUNDIR/macos-cadence.yml.main.json"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 3)" "macos-cadence / shell (macos-latest, 4)" > "$RUNDIR/jobs-39908051399.json"
+anc_run "$ANC_HEAD_OK"
+check "merge-forward head, pre-existing-red dispatch at the ancestor: exit 0" "$rc" "0"
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: check 10 passes" "$out" "[PASS] 10."
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: names the ancestor" "$out" "$ANC_COMMIT"
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: names the run id" "$out" "40073661474"
+anc_run "$ANC_HEAD_WF"
+check "workflow file changed after the ancestor: exit 1" "$rc" "1"
+contains "workflow file changed after the ancestor: check 10 fails" "$out" "[FAIL] 10."
+notcontains "workflow file changed after the ancestor: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_run "$ANC_HEAD_PR"
+check "another PR file changed after the ancestor: exit 1" "$rc" "1"
+contains "another PR file changed after the ancestor: check 10 fails" "$out" "[FAIL] 10."
+notcontains "another PR file changed after the ancestor: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_SIDE" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_HEAD_OK"
+check "dispatch commit is not an ancestor of the head: exit 1" "$rc" "1"
+contains "dispatch commit is not an ancestor of the head: check 10 fails" "$out" "[FAIL] 10."
+notcontains "dispatch commit is not an ancestor of the head: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+real_run in_progress "" "$ANC_HEAD_OK" > "$RUNDIR/macos-cadence.yml.json"
+anc_run "$ANC_HEAD_OK"
+check "head has its own dispatch run still running: exit 1" "$rc" "1"
+contains "head has its own dispatch run still running: check 10 fails" "$out" "[FAIL] 10."
+notcontains "head has its own dispatch run still running: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+real_run completed cancelled "$ANC_HEAD_OK" > "$RUNDIR/macos-cadence.yml.json"
+anc_run "$ANC_HEAD_OK"
+check "head has its own cancelled dispatch run: exit 1" "$rc" "1"
+rm -f "$RUNDIR/macos-cadence.yml.json"
+anc_row 40073661474 "$ANC_COMMIT" some-other/branch > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_HEAD_OK"
+check "dispatch run is on another branch: exit 1" "$rc" "1"
+contains "dispatch run is on another branch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "dispatch run is on another branch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 9)" > "$RUNDIR/jobs-40073661474.json"
+anc_run "$ANC_HEAD_OK"
+check "ancestor dispatch fails a suite not red on main: exit 1" "$rc" "1"
+contains "ancestor dispatch fails a suite not red on main: check 10 fails" "$out" "[FAIL] 10."
+contains "ancestor dispatch fails a suite not red on main: names the run and main's run" "$out" "run 40073661474 failed on suites not red on main run 39908051399"
+notcontains "ancestor dispatch fails a suite not red on main: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 3)" > "$RUNDIR/jobs-40073661474.json"
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" push > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_HEAD_OK"
+check "ancestor run is not a workflow_dispatch run: exit 1" "$rc" "1"
+notcontains "ancestor run is not a workflow_dispatch run: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COPY" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_COPY_HEAD" rename
+check "renamed file was a copy at the ancestor, old path deleted at the head: exit 1" "$rc" "1"
+contains "renamed file was a copy at the ancestor, old path deleted at the head: check 10 fails" "$out" "[FAIL] 10."
+contains "renamed file was a copy at the ancestor, old path deleted at the head: names the old path" "$out" "$ANC_OLD"
+notcontains "renamed file was a copy at the ancestor, old path deleted at the head: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_MOVED" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_MOVED_HEAD" rename
+check "rename already done at the ancestor: exit 0" "$rc" "0"
+contains "rename already done at the ancestor: PRE-EXISTING line" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COPY" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+ANC_REAL_SHA="$SHA"; SHA="$ANC_COPY_HEAD"; reset_stubs
+STUB_FILES="$ANC_WF
+$ANC_PRFILE"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"; STUB_PR_BRANCH="$ANC_BRANCH"; STUB_RENAMES_FAIL=1
+rc=0; out="$(run)" || rc=$?; SHA="$ANC_REAL_SHA"
+check "renamed-from paths cannot be read: exit 1" "$rc" "1"
+notcontains "renamed-from paths cannot be read: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+ANC_REAL_SHA="$SHA"; SHA="$ANC_HEAD_OK"; reset_stubs
+STUB_FILES="$ANC_WF
+$ANC_PRFILE"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"; STUB_PR_BRANCH="$ANC_BRANCH"; STUB_FILES_PARTIAL=1
+rc=0; out="$(run)" || rc=$?; SHA="$ANC_REAL_SHA"
+check "PR file list dies mid-pagination: exit 1" "$rc" "1"
+contains "PR file list dies mid-pagination: says the file list cannot be read" "$out" "cannot read PR files"
+notcontains "PR file list dies mid-pagination: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR"/*.json
 
 real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"

@@ -39,7 +39,7 @@ opts=(-y --no-install-recommends -o DPkg::Lock::Timeout=60 -o "Dir::Cache::archi
 # ubuntu-24.04 runners point URIs: at `mirror+file:<list>`, so the host is the
 # first live URL in that list and the fallback must rewrite the list itself.
 live() { grep -Ev '^[[:space:]]*#' "$1"; }
-host_of() { grep -Eo 'https?://[^/[:space:]]+' | head -n 1 | sed 's#^https\?://##'; }
+host_of() { grep -Eo 'https?://[^/[:space:]]+' | head -n 1 | sed -E 's#^https?://##'; }
 primary=""; mlist=""
 for f in $SOURCES; do
   [ -f "$f" ] || continue
@@ -80,7 +80,11 @@ if [ -n "$mlist" ] && [ -f "$mlist" ]; then
 fi
 for f in $SOURCES; do
   [ -f "$f" ] || continue
-  $SUDO sed -i "/^[[:space:]]*#/! s#//${primary//./\\.}#//$ALT#g" "$f"
+  # no `sed -i`: its argument shape differs between GNU and BSD, and a fixed backup suffix
+  # would overwrite then delete an operator's own $f.bak
+  new="$(mktemp "${TMPDIR:-/tmp}/apt-sources.XXXXXX")" || { echo "apt-install: FAILED mirrors=$primary,$ALT packages=$* (temp file)" >&2; exit 1; }
+  sed "/^[[:space:]]*#/! s#//${primary//./\\.}#//$ALT#g" "$f" > "$new" && $SUDO cp "$new" "$f"
+  rm -f "$new"
 done
 if apt "$T_ALT" update -o Acquire::Retries=1 -o DPkg::Lock::Timeout=60 \
    && apt "$T_ALT" install "${opts[@]}" "$@"; then

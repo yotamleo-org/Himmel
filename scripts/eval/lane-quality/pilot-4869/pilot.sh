@@ -27,6 +27,9 @@ COHORT="$HERE/cohort.tsv"
 
 die() { echo "pilot: $*" >&2; exit 1; }
 
+# shellcheck source=../../../lib/canon-path.sh
+. "$HERE/../../../lib/canon-path.sh" || die "cannot source lib/canon-path.sh"
+
 REPO="${PILOT_REPO:-$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")}"
 BASE_SHA="${PILOT_BASE_SHA:-$(cat "$LQ/BASE_SHA")}"
 ROOT="${PILOT_ROOT:-$HOME/.himmel/eval/lane-quality/pilot-4869}"
@@ -243,9 +246,32 @@ cmd_prepare() {
 in_dir() { # $1 path, $2 dir -> 0 when $1 is a regular file, not a symlink, that resolves under $2
   local p d
   { [ -f "$1" ] && [ ! -L "$1" ]; } || return 1
-  p="$(realpath -e -- "$1")" && d="$(realpath -e -- "$2")" || return 1
+  p="$(canon_path "$(dirname -- "$1")")" || return 1
+  p="$p/$(basename -- "$1")"
+  d="$(canon_path "$2")" || return 1
   case "$p" in "$d"/*) return 0 ;; esac
   return 1
+}
+
+# The mv flag that replaces a symlink or file at the target instead of moving
+# into it: GNU -T, BSD -h. Probed once on a scratch symlink to a directory; a
+# host with neither has no safe rename, so the run stops.
+MV_NOFOLLOW=""
+mv_nofollow_probe() {
+  local d f
+  d="$(mktemp -d "$(dirname "$WT")/.mvprobe.XXXXXX")" || die "cannot probe mv" # prim-ok: beside the worktree so the probe shares its filesystem; removed below
+  mkdir "$d/dir" || die "cannot probe mv"
+  ln -s dir "$d/link" || die "cannot probe mv"
+  for f in -T -h; do
+    : >"$d/src"
+    if mv -f "$f" -- "$d/src" "$d/link" 2>/dev/null && [ -f "$d/link" ] && [ ! -L "$d/link" ] \
+        && [ -z "$(ls -A "$d/dir")" ]; then
+      MV_NOFOLLOW="$f"; break
+    fi
+    rm -f -- "$d/src"
+  done
+  rm -f -- "$d/link" "$d/src"; rmdir -- "$d/dir" "$d"
+  [ -n "$MV_NOFOLLOW" ] || die "mv has neither -T nor -h: no rename that leaves a symlink alone"
 }
 
 # The lane can rewrite its worktree's .git file, or give its git dir a
@@ -258,9 +284,13 @@ restore_git() {
   # The pointer is written beside the worktree (no jail binds it) and renamed
   # in: rename replaces whatever the lane put back in the gap and never follows
   # it, where a redirect follows a symlink to a FIFO or device even under noclobber.
+  # A plain mv would move INTO a directory or a symlink to one, so the rename
+  # is the no-follow form (GNU -T, BSD -h) with no look at the target first.
   local tmp
+  [ -n "$MV_NOFOLLOW" ] || mv_nofollow_probe
   tmp="$(mktemp "$(dirname "$WT")/.gitptr.XXXXXX")" || die "cannot stage the git pointer of $WT"
-  if ! { printf 'gitdir: %s\n' "$GITDIR" >"$tmp" && mv -T -- "$tmp" "$WT/.git"; }; then # gnu-ok: Linux-only kit
+  if ! { printf 'gitdir: %s\n' "$GITDIR" >"$tmp" \
+      && mv -f "$MV_NOFOLLOW" -- "$tmp" "$WT/.git" && [ -f "$WT/.git" ] && [ ! -L "$WT/.git" ]; }; then
     rm -f -- "$tmp"; die "cannot restore the git pointers of $WT"
   fi
 }
