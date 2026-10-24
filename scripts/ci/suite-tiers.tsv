@@ -639,6 +639,7 @@ scripts/hooks/test-check-security-reviewed.sh	pr	guard
 scripts/hooks/test-check-settings-portability.sh	pr	guard
 scripts/hooks/test-check-template-himmel-plugins.sh	pr	guard
 scripts/hooks/test-check-update-available.sh	pr	guard
+scripts/hooks/test-check-worktree-isolation.sh	pr	guard
 scripts/hooks/test-ci-doc-invariants.sh	pr	static-gate
 scripts/hooks/test-claude-glm-seed-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-cmdpos-clean.sh	local	behaviour suite, 0 catches in the 400-PR audit window
