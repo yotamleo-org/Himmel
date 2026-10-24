@@ -216,6 +216,49 @@ plain="$(tail -1 "$SENT")"
 case "$plain" in *"Cause: C33-graph-stale follows from the failing graph cadence"*". Do: bash scripts/graphify/graph-cadence.sh. Log: "*) pass "a knock-on C33 alone still gives C33's own step" ;; *) fail "a knock-on C33 alone still gives C33's own step (got: $plain)" ;; esac
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
 
+# 8c. many findings still make ONE message under Telegram's 4096-character limit; the overflow is a "+N more" tail.
+long_out() { # <count>: that many FAILs, each with a 300-character detail line
+    local i pad
+    pad="$(printf 'x%.0s' $(seq 1 300))"
+    { echo "himmel-doctor — Linux"; echo
+      for i in $(seq 1 "$1"); do echo "FAIL C$i-long: $pad"; echo "       → fix it"; done
+      echo; echo "Summary: $1 FAIL  0 WARN  0 INFO"; } > "$STUB_OUT"
+}
+rm -rf "$STATE"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad_ok "the many-findings baseline run"
+long_out 20; run_cad_ok "the 20-finding run"
+check "20 new findings send one message" 1 "$(sent_n)"
+big="$(tail -1 "$SENT")"
+[ "${#big}" -lt 4096 ] && pass "20 new findings fit one Telegram message (${#big} chars)" || fail "20 new findings fit one Telegram message (${#big} chars)"
+rm -rf "$STATE"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad_ok "the 60-finding baseline run"
+long_out 60; run_cad_ok "the 60-finding run"
+check "60 new findings send one message" 1 "$(sent_n)"
+big="$(tail -1 "$SENT")"
+[ "${#big}" -lt 4096 ] && pass "60 new findings fit one Telegram message (${#big} chars)" || fail "60 new findings fit one Telegram message (${#big} chars)"
+case "$big" in *"more, see $STATE/last-run.log"*) pass "the overflow is a '+N more, see <log>' tail" ;; *) fail "the overflow is a '+N more, see <log>' tail (got: ${big: -200})" ;; esac
+
+# 8d. a 300-character reason writes its dedupe sentinel without error, and still dedupes.
+reason300="$(printf 'r%.0s' $(seq 1 300))"
+rm -rf "$W/sent300"; : > "$SENT"
+err="$(CADENCE_ALERT_DEDUPE_DIR="$W/sent300" CADENCE_ALERT_FILE="$W/a300.log" bash "$P/scripts/luna/cadence-alert.sh" fail legx "$reason300" /x.log 2>&1)"
+check "a 300-character reason writes its sentinel without error" "" "$err"
+CADENCE_ALERT_DEDUPE_DIR="$W/sent300" CADENCE_ALERT_FILE="$W/a300.log" bash "$P/scripts/luna/cadence-alert.sh" fail legx "$reason300" /x.log 2>/dev/null
+check "a repeat of the 300-character reason sends once" 1 "$(sent_n)"
+
+# 8e. a failed send leaves the alert baseline alone, so the next run tells the operator.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$W/send-fail.sh"; chmod +x "$W/send-fail.sh"
+rm -rf "$STATE"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad_ok "the failed-send baseline run"
+before="$(cat "$STATE/alerted.tsv")"
+doctor_out "C55-new" "C99-base"
+CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" run_cad
+check "a failed send leaves the alert baseline unchanged" "$before" "$(cat "$STATE/alerted.tsv")"
+run_cad_ok "the retry run"
+check "the next run retries the undelivered alert" 1 "$(sent_n)"
+tail -1 "$SENT" | grep -q 'C55-new' && pass "the retried alert names the finding" || fail "the retried alert names the finding"
+case "$(cat "$STATE/alerted.tsv")" in *C55-new*) pass "a delivered send advances the baseline" ;; *) fail "a delivered send advances the baseline" ;; esac
+
 # 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).
 cat > "$W/jira" <<'SH'
