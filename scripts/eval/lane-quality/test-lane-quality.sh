@@ -12,6 +12,7 @@
 # check() evals its condition, so the single quotes and $R are deliberate.
 # shellcheck disable=SC2016,SC2034
 set -u
+export HIMMEL_BILLED_OK=1   # stubbed claude/codex only; the guarded script refuses a bare run
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUN="$HERE/run.sh"
 REAL_REPO="$(cd "$HERE/../../.." && pwd)"

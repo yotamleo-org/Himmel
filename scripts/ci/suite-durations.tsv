@@ -1092,3 +1092,4 @@ scripts/ci/test-snyk-weekly-workflow.sh	0
 scripts/lib/test-cr-first-release.sh	7
 scripts/himmelctl/test/test-install-ui-handoff.sh	1
 scripts/guardrails/test-settings-waiter-allow.sh	1
+scripts/ci/test-billed-optin.sh	10

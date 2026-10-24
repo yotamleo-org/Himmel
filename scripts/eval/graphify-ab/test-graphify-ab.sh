@@ -6,6 +6,7 @@
 # Platform guard: Linux/macOS bash; no .ps1 twin (the eval is operator-run on a
 # station, like scripts/eval/harness-run.py).
 set -uo pipefail
+export HIMMEL_BILLED_OK=1   # stubbed claude/codex only; the guarded script refuses a bare run
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 W="$(mktemp -d "${TMPDIR:-/tmp}/graphify-ab-test.XXXXXX")" || exit 1

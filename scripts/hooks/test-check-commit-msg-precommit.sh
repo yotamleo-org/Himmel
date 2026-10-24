@@ -133,8 +133,11 @@ build_repo() {
         plain)          printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$REPO/.env" ;;
         *) echo "FAIL: unknown env source $env_source" >&2; exit 1 ;;
     esac
-    ( cd "$REPO" && pre-commit install --hook-type commit-msg ) >/dev/null 2>&1 \
-        || { echo "FAIL: pre-commit install failed in the fixture" >&2; exit 1; }
+    install_out=$( cd "$REPO" && pre-commit install --hook-type commit-msg 2>&1 ) || {
+        install_rc=$?
+        echo "FAIL: pre-commit install failed in the fixture (rc=$install_rc): $install_out" >&2
+        exit 1
+    }
     [ -f "$REPO/.git/hooks/commit-msg" ] \
         || { echo "FAIL: pre-commit did not write .git/hooks/commit-msg" >&2; exit 1; }
 }
@@ -194,6 +197,28 @@ expect_committed() {
     fi
     pass "$label"
 }
+
+echo "== a failed pre-commit install prints pre-commit's own output and exit code =="
+FAIL_BIN="$TMP_ROOT/failbin"
+mkdir -p "$FAIL_BIN"
+printf '#!/bin/sh\necho "boom: cowardly refusing to install hooks" >&2\nexit 3\n' > "$FAIL_BIN/pre-commit"
+chmod +x "$FAIL_BIN/pre-commit"
+forced_out=$( PATH="$FAIL_BIN:$PATH" build_repo plain 2>&1 ); forced_rc=$?
+case "$forced_out" in
+    *"(rc=3): boom: cowardly refusing to install hooks"*)
+        if [ "$forced_rc" -ne 0 ]; then
+            pass "a forced pre-commit install failure prints pre-commit's stderr and exit code, and still fails"
+        else
+            fail "a forced pre-commit install failure printed its cause but did not fail"
+        fi ;;
+    *) fail "a forced pre-commit install failure hid its cause: $forced_out" ;;
+esac
+quiet_out=$( build_repo plain 2>&1 ); quiet_rc=$?
+if [ "$quiet_rc" -eq 0 ] && [ -z "$quiet_out" ]; then
+    pass "a passing pre-commit install stays quiet"
+else
+    fail "a passing pre-commit install was not quiet (rc=$quiet_rc): $quiet_out"
+fi
 
 echo "== real pre-commit commit-msg path, the CURRENTLY SHIPPED .env.example =="
 build_repo example

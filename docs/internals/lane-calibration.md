@@ -977,6 +977,38 @@ Known gap: the Windows `.bat`/WSL branch of `arm-resume.sh` still relaunches
 without `--settings` (the profile file lives in the WSL home); tracked as a
 follow-up.
 
+## Fold or delegate — the main-loop test
+
+Anthropic's guidance ("Building agents: when to fold subagents into your main
+agent loop", read with "Subagents in Claude Code") defaults to one agent loop
+and keeps a subagent only for measured context bloat, parallel work that wants
+a fresh window, or a fresh view. The rule-by-rule audit against this harness is
+in the state repo: `specs/research/HIMMEL-7329-fold-subagents-audit-2026-10-24.md`.
+
+**Why the worker fleet is not subagent sprawl.** The fleet is split by context,
+not by problem type: one ticket is one worker session, one worktree, one PR, and
+each worker session is a single main loop that implements its own ticket
+inline. The orchestrator-inline-guard's worker exemption keeps it that way; the
+guard only stops a top-tier parent from doing a worker's job.
+
+**Measured mix (himmel sessions, 3 days to 2026-10-24).** 408 subagents across
+434 sessions; judges were 343 (84 %) at ~44M input-token-equivalent, general-purpose
+61 (~18M: about 26 haiku board or tracker publishes, about 11 sonnet VM runs),
+Explore 4. Worker sessions rarely spawn. Judges change the chief's recorded prior in
+27 % of 831 verdicts (`flipped: y`), so they pass the fresh-view test; whether a
+cheaper tier rules the same is unmeasured.
+
+| Role / profile | Delegates | Verdict |
+|---|---|---|
+| chief | judges, haiku publisher, sonnet VM runner | right shape; judge tier and publisher failures unmeasured (HIMMEL-7330, HIMMEL-6825) |
+| leg-impl | rarely; implements inline | right; no live cost budget (HIMMEL-7331) |
+| consult / judge session | not measured (a consult has Edit/Write denied) | no evidence either way |
+| bare, telegram | not measured | no evidence either way |
+
+**Fold-vs-keep is an eval, not a habit** (HIMMEL-7330): per subagent class,
+≥10 golden tasks, ≥2 runs per task per arm, compare the tasks that flipped
+rather than the mean, keep the subagent only where folding scores worse.
+
 ## Cost posture
 
 Fable stays **conserved** (limited release) — the spread optimizes

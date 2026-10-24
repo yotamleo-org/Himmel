@@ -15,15 +15,16 @@
 #   5. a PLUGIN hook (himmel-ops, enabled only via the profile's enabledPlugins) fires
 # The user scope is a scratch home (CONSULT_SETTINGS_HOME) holding only that canary hook;
 # the project scope is the real one. It spends bank (headless claude draws the same bank
-# as interactive use: two runs), so it is SKIPPED unless CONSULT_SMOKE=1 and the bank
+# as interactive use: two runs), so it is SKIPPED unless HIMMEL_BILLED_OK=1 and the bank
 # preflight says PROCEED.
 #
-# Usage: CONSULT_SMOKE=1 bash scripts/handover/console-kit/smoke-consult-sandbox.sh
+# billed-opt-in: HIMMEL_BILLED_OK
+# Usage: HIMMEL_BILLED_OK=1 bash scripts/handover/console-kit/smoke-consult-sandbox.sh
 # Exit: 0 pass or skip, 1 fail, 3 bank preflight refused.
 set -u
 
-if [ "${CONSULT_SMOKE:-}" != 1 ]; then
-    echo "SKIP smoke-consult-sandbox: set CONSULT_SMOKE=1 to run the live check (spends bank)"
+if [ "${HIMMEL_BILLED_OK:-}" != 1 ]; then
+    echo "SKIP smoke-consult-sandbox: set HIMMEL_BILLED_OK=1 to run the live check (spends bank)"
     exit 0
 fi
 

@@ -177,6 +177,38 @@ OUT="$(TMPDIR="$SCRATCH/tmp" timeout 15 bash "$CANARY" --runner "$SCRATCH/fx/orp
 elapsed=$((SECONDS - start))
 [ "$RC" -eq 0 ] && [ "$elapsed" -lt 15 ] && ok "an orphan holding stdout does not hold the canary (${elapsed}s)" || bad "orphan stdout held the canary (rc=$RC, ${elapsed}s): $OUT"
 
+# --- 14. a `pip install --user` tool still runs under the swapped HOME ----------------
+# Fork-PR CI has no CI image, so pre-commit is a --user package whose Python user
+# site follows $HOME; with HOME swapped the launcher dies with ModuleNotFoundError.
+# The launcher below has the shape pip writes (shebang + `from <pkg>.main import
+# main`); the stub package stands in for pre_commit so the row reproduces on a host
+# that has the real one system-wide.
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import site, sys; sys.exit(0 if site.ENABLE_USER_SITE else 1)' >/dev/null 2>&1; then
+  INSTALL_HOME="$SCRATCH/install-home"
+  OTHER_HOME="$SCRATCH/other-home"
+  mkdir -p "$INSTALL_HOME/.local/bin" "$OTHER_HOME"
+  USER_SITE="$(HOME="$INSTALL_HOME" PYTHONUSERBASE='' python3 -c 'import site; print(site.getusersitepackages())')"
+  mkdir -p "$USER_SITE/himmel_stub_pc"
+  : > "$USER_SITE/himmel_stub_pc/__init__.py"
+  printf 'def main():\n    return 0\n' > "$USER_SITE/himmel_stub_pc/main.py"
+  printf '#!/usr/bin/env python3\nimport sys\nfrom himmel_stub_pc.main import main\nif __name__ == "__main__":\n    sys.exit(main())\n' > "$INSTALL_HOME/.local/bin/stub-tool"
+  chmod +x "$INSTALL_HOME/.local/bin/stub-tool"
+  mkfx usersite '"'"$INSTALL_HOME"'/.local/bin/stub-tool" || exit 7; exit 0'
+  OUT="$(HOME="$OTHER_HOME" PYTHONUSERBASE='' bash "$SCRATCH/fx/usersite.sh" 2>&1)"; RC=$?
+  if [ "$RC" -ne 0 ] && grep -q 'ModuleNotFoundError' <<< "$OUT"; then
+    ok "the --user launcher fixture dies under a different HOME (the fork-runner condition)"
+  else
+    bad "the --user launcher fixture does not reproduce the HOME-bound failure (rc=$RC): $OUT"
+  fi
+  OUT="$(HOME="$INSTALL_HOME" PYTHONUSERBASE='' TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/usersite.sh" 2>&1)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "a --user installed tool still runs under the canary's swapped HOME" || bad "a --user installed tool broke under the canary (rc=$RC): $OUT"
+  mkfx usersite-env '[ "$PYTHONUSERBASE" = "$EXPECTED_USER_BASE" ] || exit 7'
+  OUT="$(HOME="$INSTALL_HOME" PYTHONUSERBASE="$SCRATCH/elsewhere" EXPECTED_USER_BASE="$SCRATCH/elsewhere" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/usersite-env.sh" 2>&1)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "a caller-set PYTHONUSERBASE is kept, not overridden" || bad "the canary changed the caller's PYTHONUSERBASE (rc=$RC): $OUT"
+else
+  echo "skip - python3 absent or its user site disabled, the --user launcher rows need it"
+fi
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1

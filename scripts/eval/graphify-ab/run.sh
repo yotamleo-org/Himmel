@@ -14,6 +14,7 @@
 # Billing rule: bank-preflight before EVERY run and STOP on a refusal (the partial
 # result is still ingested), --output-format json, explicit --permission-mode.
 # Orders alternate by (rep + task index) parity so drift in load is not an arm effect.
+# billed-opt-in: HIMMEL_BILLED_OK
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -79,7 +80,7 @@ case "$sub" in
     done
     exit 0
     ;;
-  run) ;;
+  run) [ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "run.sh: run makes real, billed headless claude calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; } ;;
   *) echo "usage: run.sh run|plan [--reps N] [--out DIR] [--max-usd USD] [--tasks a,b] [--model M]" >&2; exit 2 ;;
 esac
 

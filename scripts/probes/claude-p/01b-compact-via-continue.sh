@@ -4,6 +4,8 @@
 # dispatched with --continue (same cwd, no session id), not --resume. Does
 # --continue expand slash commands where --resume (probe 1) did not? Verify
 # by ARTIFACT: session JSONL compact_boundary count, same as probe 1.
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"

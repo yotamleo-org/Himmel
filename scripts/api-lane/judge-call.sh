@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: API-lane judge bridge; a console sends one verdict question on purpose and the API-credit ledger meters it
 # Read-only judge-call bridge on the API lane.
 # A console sends ONE verdict-grade question to claude-api.sh instead of a native subagent and gets back a
 # bounded artifact; a valid verdict is recorded with write-verdict.sh, so the record go.sh reads is the same one

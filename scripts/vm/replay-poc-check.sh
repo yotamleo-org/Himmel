@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: POC check run by the VM queue; its record step is bank-doctor gated and replay is free
 # replay-poc-check.sh — POC: ONE model-driven check run through
 # record-once / replay-without-model (scripts/vm/lib/model-replay.sh), in the
 # fixed verify shape Launch -> Doctor -> Drive -> Evidence -> Cleanup.

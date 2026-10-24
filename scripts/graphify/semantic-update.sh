@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # semantic-update.sh — incremental semantic layer for one corpus.
 #
 # WHY: the armed graphmap cadence rebuilds only the AST graph (hourly/daily

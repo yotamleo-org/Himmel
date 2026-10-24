@@ -4,6 +4,8 @@
 # then a second bank snapshot + delta. Logs everything to tmp/run-all.log; each
 # probe's own artifacts land in tmp/ under its own prefix. This script does
 # not itself invoke claude in -p mode.
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed headless claude calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
