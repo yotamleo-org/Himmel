@@ -14,16 +14,16 @@ Precision here is agreed ÷ (agreed + disproved): of the findings the author rul
 
 ### All reviewers pooled
 
-- **79.7%** precision, 95% Wilson interval 78.8 to 80.6; bootstrap by PR 78.2 to 81.1, as of 2026-10-25, n = 7,465 ruled findings over 2,121 PRs. Method: [review panel](review-panel.md).
+- **79.7%** precision, 95% Wilson interval 78.8 to 80.6; bootstrap by PR 78.2 to 81.1, as of 2026-10-25, n = 7,467 ruled findings over 2,122 PRs. Method: [review panel](review-panel.md).
 
 ### Per reviewer
 
-- `codex:gpt-6.1-sol`: **79.5%** precision, 95% Wilson interval 78.4 to 80.6; bootstrap by PR 77.8 to 81.2, as of 2026-10-25, n = 4,949 ruled findings over 1,475 PRs. Method: [review panel](review-panel.md).
+- `codex:gpt-6.1-sol`: **79.5%** precision, 95% Wilson interval 78.4 to 80.6; bootstrap by PR 77.8 to 81.2, as of 2026-10-25, n = 4,951 ruled findings over 1,476 PRs. Method: [review panel](review-panel.md).
 - `codex:gpt-6-astra`: **89.3%** precision, 95% Wilson interval 87.4 to 90.9; bootstrap by PR 86.1 to 92.0, as of 2026-10-25, n = 1,231 ruled findings over 362 PRs. Method: [review panel](review-panel.md).
 - `codex:gpt-6-sol`: **70.7%** precision, 95% Wilson interval 67.0 to 74.1; bootstrap by PR 64.8 to 76.2, as of 2026-10-25, n = 627 ruled findings over 169 PRs. Method: [review panel](review-panel.md).
 - `claude:claude-opus-5-5`: **48.2%** precision, 95% Wilson interval 41.2 to 55.2; bootstrap by PR 36.5 to 59.2, as of 2026-10-25, n = 193 ruled findings over 36 PRs. Method: [review panel](review-panel.md).
 - `codex:gpt-5.6-sol`: **84.1%** precision, 95% Wilson interval 76.2 to 89.7; bootstrap by PR 74.2 to 91.7, as of 2026-10-25, n = 113 ruled findings over 27 PRs. Method: [review panel](review-panel.md).
-- `coderabbit-outside`: **54.6%** precision, 95% Wilson interval 45.7 to 63.3; bootstrap by PR 43.3 to 64.7, as of 2026-10-25, n = 119 ruled findings over 114 PRs. Method: [review panel](review-panel.md).
+- `coderabbit-outside`: **54.6%** precision, 95% Wilson interval 45.7 to 63.3; bootstrap by PR 43.3 to 64.7, as of 2026-10-25, n = 119 ruled findings over 115 PRs. Method: [review panel](review-panel.md).
 - `codex`: **97.1%** precision, 95% Wilson interval 91.7 to 99.0; bootstrap by PR 90.0 to 100.0, as of 2026-10-25, n = 102 ruled findings over 8 PRs. Method: [review panel](review-panel.md).
 - `coderabbit`: **91.8%** precision, 95% Wilson interval 82.2 to 96.4; bootstrap by PR 82.6 to 100.0, as of 2026-10-25, n = 61 ruled findings over 51 PRs. Method: [review panel](review-panel.md).
 
@@ -31,16 +31,20 @@ A reviewer is the panel slug plus the model that answered, so a model re-pin is 
 
 ### Findings in, findings out
 
-- In: 11,602 findings raised, as of 2026-10-25, n = 11,602 findings.
-- Out, agreed: 5,948 of 11,602, 51.3% `██████████░░░░░░░░░░`, as of 2026-10-25, n = 11,602 findings. Method: [review panel](review-panel.md).
-- Out, disproved: 1,517 of 11,602, 13.1% `███░░░░░░░░░░░░░░░░░`, as of 2026-10-25, n = 11,602 findings. Method: [review panel](review-panel.md).
-- Out, deferred: 3,485 of 11,602, 30.0% `██████░░░░░░░░░░░░░░`, as of 2026-10-25, n = 11,602 findings. Method: [review panel](review-panel.md).
-- Out, no verdict: 652 of 11,602, 5.6% `█░░░░░░░░░░░░░░░░░░░`, as of 2026-10-25, n = 11,602 findings. Method: [review panel](review-panel.md).
+- In: 11,605 findings raised, as of 2026-10-25, n = 11,605 findings.
+- Out, agreed: 5,950 of 11,605, 51.3% `██████████░░░░░░░░░░`, as of 2026-10-25, n = 11,605 findings. Method: [review panel](review-panel.md).
+- Out, disproved: 1,517 of 11,605, 13.1% `███░░░░░░░░░░░░░░░░░`, as of 2026-10-25, n = 11,605 findings. Method: [review panel](review-panel.md).
+- Out, deferred: 3,486 of 11,605, 30.0% `██████░░░░░░░░░░░░░░`, as of 2026-10-25, n = 11,605 findings. Method: [review panel](review-panel.md).
+- Out, no verdict: 652 of 11,605, 5.6% `█░░░░░░░░░░░░░░░░░░░`, as of 2026-10-25, n = 11,605 findings. Method: [review panel](review-panel.md).
 
-Regenerate: `python3 scripts/cr/evals-page-gen.py data --cache-probe <cache-probe output> --as-of <date>`, then `python3 scripts/cr/evals-page-gen.py render`.
+Regenerate: `python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --as-of <date>`, then `python3 scripts/cr/evals-page-gen.py render`.
 
 ## How much does caching save?
 
-- **98.5%** of prompt tokens were read from the cache instead of re-sent, as of 2026-10-25, n = 10,315,752,980 tokens over 450 sessions (this project's sessions from the three days to 2026-10-25). Method: [prompt cache](prompt-cache.md).
+- **98.5%** of input tokens were cache reads (served from the prompt cache) rather than uncached input or cache writes, as of 2026-10-25, n = 10,315,752,980 tokens over 450 sessions (this project's sessions from the three days to 2026-10-25). Method: [prompt cache](prompt-cache.md).
 
-Regenerate: `bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl`, then `python3 scripts/cr/evals-page-gen.py render`.
+Regenerate, in order:
+
+1. `bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl > cache-probe.txt`
+2. `python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --as-of <date>`
+3. `python3 scripts/cr/evals-page-gen.py render`

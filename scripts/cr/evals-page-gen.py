@@ -36,8 +36,8 @@ DATA_DEFAULT = os.path.join(HERE, "..", "..", "docs", "evals", "evals-data.json"
 Z95 = 1.959964
 BAR = 20
 MIN_RULED = 30
-REVIEW_CMD = "python3 scripts/cr/evals-page-gen.py data --cache-probe <cache-probe output> --as-of <date>"
-CACHE_CMD = "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl"
+REVIEW_CMD = "python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --as-of <date>"
+CACHE_CMD = "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl > cache-probe.txt"
 RENDER_CMD = "python3 scripts/cr/evals-page-gen.py render"
 
 
@@ -192,10 +192,11 @@ def render(d):
     out += [
         "", "Regenerate: `%s`, then `%s`." % (r["command"], RENDER_CMD), "",
         "## How much does caching save?", "",
-        "- **%s%%** of prompt tokens were read from the cache instead of re-sent, %s. "
+        "- **%s%%** of input tokens were cache reads (served from the prompt cache) rather than uncached input or cache writes, %s. "
         "Method: [prompt cache](prompt-cache.md)." % (
             c["read_ratio_pct"], stamp(c["as_of"], c["tokens"], "tokens" + sess + scope)),
-        "", "Regenerate: `%s`, then `%s`." % (c["command"], RENDER_CMD), "",
+        "", "Regenerate, in order:", "",
+        "1. `%s`" % c["command"], "2. `%s`" % r["command"], "3. `%s`" % RENDER_CMD, "",
     ]
     return "\n".join(out)
 

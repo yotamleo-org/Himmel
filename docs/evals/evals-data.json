@@ -4,15 +4,15 @@
   "review": {
     "as_of": "2026-10-25",
     "until": null,
-    "command": "python3 scripts/cr/evals-page-gen.py data --cache-probe <cache-probe output> --as-of <date>",
+    "command": "python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --as-of <date>",
     "pooled": {
-      "findings": 11602,
-      "prs": 2121,
-      "agreed": 5948,
+      "findings": 11605,
+      "prs": 2122,
+      "agreed": 5950,
       "disproved": 1517,
-      "deferred": 3485,
+      "deferred": 3486,
       "unadjudicated": 652,
-      "n": 7465,
+      "n": 7467,
       "precision_pct": 79.7,
       "wilson": {
         "lo": 78.8,
@@ -27,13 +27,13 @@
     },
     "critics": {
       "codex:gpt-6.1-sol": {
-        "findings": 6990,
-        "prs": 1475,
-        "agreed": 3935,
+        "findings": 6992,
+        "prs": 1476,
+        "agreed": 3937,
         "disproved": 1014,
         "deferred": 2002,
         "unadjudicated": 39,
-        "n": 4949,
+        "n": 4951,
         "precision_pct": 79.5,
         "wilson": {
           "lo": 78.4,
@@ -127,11 +127,11 @@
         "last": "2026-09-05"
       },
       "coderabbit-outside": {
-        "findings": 227,
-        "prs": 114,
+        "findings": 228,
+        "prs": 115,
         "agreed": 65,
         "disproved": 54,
-        "deferred": 108,
+        "deferred": 109,
         "unadjudicated": 0,
         "n": 119,
         "precision_pct": 54.6,
@@ -650,7 +650,7 @@
     "sessions": 450,
     "warm": 435,
     "cold": 15,
-    "command": "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl",
+    "command": "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl > cache-probe.txt",
     "scope": "this project's sessions from the three days to 2026-10-25",
     "as_of": "2026-10-25"
   }
