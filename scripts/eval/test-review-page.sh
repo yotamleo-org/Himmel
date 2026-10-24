@@ -165,6 +165,8 @@ eq "answers q3: share of the most used judge model, unknown left out" "$(pick q3
 eq "answers q4: CodeRabbit right 3 of 4 adjudicated" "$(pick q4.pct)" "0.75"
 eq "answers q4: the earlier figure stops at the cut" "$(pick q4.before.pct)" "0.6667"
 eq "answers q5: no Claude critic findings means no figure" "$(pick q5.pct)" "None"
+miss="$(python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/no-such-cr.jsonl" 2>&1 >/dev/null)"
+eq "answers: an unreadable CR ledger is named on stderr, not silently an empty sample" "$(printf '%s' "$miss" | grep -c 'coderabbit measurement unavailable')" "2"
 python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/cr.jsonl" --record >/dev/null 2>&1
 eq "answers --record appends one decision-158 row" "$(grep -c decision-158 "$TMP/ans-runs.jsonl")" "1"
 

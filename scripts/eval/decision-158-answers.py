@@ -12,7 +12,7 @@ sample behind it and the same number measured at an earlier cut (before), so the
   q4  CodeRabbit sample      share of CodeRabbit's adjudicated findings that were right
   q5  Claude as 3rd reviewer share of the Claude critic's adjudicated findings that were right
 
-  decision-158-answers.py [--ledger P] [--cr-ledger P] [--cut TS] [--record] [--json]
+  decision-158-answers.py [--ledger P] [--cr-ledger P] [--cut TS] [--record]
 
 --cut (default 2026-10-22T00:00:00Z, the evals open-questions audit) splits before from after. Without
 --record the row is printed, not appended. Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl;
@@ -84,7 +84,8 @@ def cr(path, until, critic):
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True).stdout
         return json.loads(out)["critics"].get(critic) or {}
-    except (subprocess.SubprocessError, ValueError, KeyError):
+    except (subprocess.SubprocessError, ValueError, KeyError) as e:
+        sys.stderr.write("decision-158-answers: %s measurement unavailable (%s)\n" % (critic, type(e).__name__))
         return {}
 
 
