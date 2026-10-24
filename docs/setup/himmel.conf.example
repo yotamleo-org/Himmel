@@ -37,3 +37,6 @@
 
 # Updates
 # HIMMEL_UPDATE_AUTOSTASH=1
+
+# Parallel sessions: how many worker sessions may run at once (default 4)
+# HIMMEL_FLEET_CAP=4
