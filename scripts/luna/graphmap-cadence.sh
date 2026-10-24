@@ -2007,7 +2007,7 @@ emit_runner() {
 cron_status() {
     cron_read
     echo "graphmap-cadence status:"
-    local name log entry sched
+    local name log entry sched n_entries dup
     for name in "$TASK_LUNA" "$TASK_HIMMEL" "$TASK_AST_LUNA" "$TASK_AST_HIMMEL" "$TASK_PUBLISH_HIMMEL" "$TASK_SEMANTIC_LUNA"; do
         case "$name" in
             "$TASK_LUNA")       log="$BAT_DIR/graphmap-luna.log" ;;
@@ -2020,7 +2020,10 @@ cron_status() {
         entry=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${name}\$" | head -1 || true)
         if [ -n "$entry" ]; then
             sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
-            echo "ARMED      $name (cron: $sched)$(task_summary "$name")"
+            n_entries=$(printf '%s\n' "$CRON_TAB" | grep -cE "# ${name}\$" || true)
+            dup=""
+            [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+            echo "ARMED      $name (cron: $sched)$dup$(task_summary "$name")"
         else
             echo "not armed  $name$(task_summary "$name")"
         fi

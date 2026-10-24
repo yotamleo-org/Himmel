@@ -321,6 +321,9 @@ if [ "$OWNER" = "lane" ]; then
   [ -n "$SESSION_ROOT" ] || die2 "lane '$LANE' has no dispatch.sessionRoot for session identification"
   [ -n "$SESSION_PREFIX" ] || die2 "lane '$LANE' has no dispatch.sessionPrefix for session identification"
   EXPECTED_ROOT="$BRIDGE/$SESSION_ROOT"
+  if [ "$SESSION_ROOT" = "claudex-sessions" ]; then
+    EXPECTED_ROOT="$(node "$REPO_ROOT/scripts/lanes/claudex-session-root.mjs" primary)" || die2 "could not resolve the claudex session root"
+  fi
   EXPECTED_SESSION_PREFIX="$SESSION_PREFIX$NAME-"
   for prior_session in "$EXPECTED_ROOT"/*; do
     [ -d "$prior_session" ] || continue

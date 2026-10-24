@@ -712,11 +712,13 @@ cron_status() {
     }
     cron_read
     echo "upstream-watch-cadence status:"
-    local entry sched
+    local entry sched n_entries dup=""
     entry=$(cron_existing | head -1)
     if [ -n "$entry" ]; then
         sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
-        echo "ARMED      $TASK_NAME (cron: $sched)"
+        n_entries=$(cron_existing | grep -c . || true)
+        [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+        echo "ARMED      $TASK_NAME (cron: $sched)$dup"
     else
         echo "not armed  $TASK_NAME"
     fi

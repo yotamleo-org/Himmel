@@ -2929,23 +2929,37 @@ function schedulerRegisteredSchedules(stdout) {
   return registered;
 }
 
-// Judges each REGISTERED task by its real runs, from the same `status` stdout:
-// one scheduler entry (cron_status flags extras with "[DUPLICATE: N ..."), a
-// run log written within twice its interval, and a last line that is not a
-// non-zero exit. A weekly schedule (a configured `day`) runs every 7 days,
-// every other schedule daily. A log that does not exist yet is not judged.
-const PIPELINE_RUN_LOG_FAILED = /^\[(?:exit rc=(?!0\])\d+|PIPELINE-LEG-FAILED\b[^\]]*)\]$/;
+// How often a five-field cron expression fires, in hours, or undefined when
+// the text is not one. A weekday or day-of-month field makes it weekly or
+// monthly, a stepped or starred hour field fires every N hours (hourly for
+// "*"), anything else once a day, and a stepped minute field every N minutes.
+function cronIntervalHours(expr) {
+  const f = expr.trim().split(/\s+/);
+  if (f.length !== 5 || !f.every((x) => /^[\d*,/-]+$/.test(x))) return undefined;
+  const [min, hour, dom, , dow] = f;
+  if (dow !== '*') return 168;
+  if (dom !== '*') return 744;
+  const minStep = /^\*\/(\d+)$/.exec(min);
+  if (hour === '*') return minStep ? Number(minStep[1]) / 60 : 1;
+  const hourStep = /\/(\d+)$/.exec(hour);
+  return hourStep ? Number(hourStep[1]) : 24;
+}
 
-function pipelineRunProblems(stdout, keys, schedules, nowMs) {
-  const keyOfTask = {};
-  for (const k of Object.keys(PIPELINE_TASK_NAME)) keyOfTask[PIPELINE_TASK_NAME[k]] = k;
-  const seen = {};
+// The shared reader of the common cadence `status` shape (ARMED / run log /
+// last line), used by the pipeline probe above and by every cadence-runs item.
+// parseCadenceStatus keys each scheduler task by its name: whether it is
+// armed, whether cron_status flagged extras ("[DUPLICATE: N ..."), the run
+// log's last write and its last line (the prev log's lines are skipped).
+function parseCadenceStatus(stdout) {
+  const tasks = {};
   let cur = null;
   let inPrev = false;
   for (const line of stdout.split('\n')) {
-    const head = /^(?:ARMED|UNHEALTHY|not armed)\s+(HIMMEL-Pipeline-\S+)/.exec(line);
+    const head = /^(ARMED|UNHEALTHY|not armed)\s+(\S+)/.exec(line);
     if (head) {
-      cur = keyOfTask[head[1]] ? (seen[keyOfTask[head[1]]] = { duplicate: line.includes('[DUPLICATE:') }) : null;
+      cur = tasks[head[2]] = { armed: head[1] !== 'not armed', duplicate: line.includes('[DUPLICATE:') };
+      const cron = /\((?:cron: )?([^()]+?)\)/.exec(line.slice(head[0].length));
+      if (cron) cur.intervalHours = cronIntervalHours(cron[1]);
       inPrev = false;
       continue;
     }
@@ -2956,21 +2970,53 @@ function pipelineRunProblems(stdout, keys, schedules, nowMs) {
     const l = /^\s+last line: (.*)$/.exec(line);
     if (l && !inPrev) cur.lastLine = l[1].trim();
   }
+  return tasks;
+}
+
+// A last line is a failed run when it is an exit stamp ("[exit rc=N]", or a
+// payload's own "[sweep exit rc=N]") that is not one of the row's success
+// codes (0, plus e.g. upstream-watch's rc=10 "delta found, handled"), or the
+// pipeline's own leg-failed stamp.
+function runLogFailed(lastLine, okRcs) {
+  const m = /^\[(?:[a-z]+ )?exit rc=(\d+)\]$/.exec(lastLine);
+  if (m) return !(okRcs || [0]).includes(Number(m[1]));
+  return /^\[PIPELINE-LEG-FAILED\b[^\]]*\]$/.test(lastLine);
+}
+
+function intervalLabel(hours) {
+  if (hours < 1) return `${Math.round(hours * 60)}m`;
+  return hours === 168 ? '7d' : `${hours}h`;
+}
+
+// Judges each given job ({ label, task, intervalHours, okRcs }), which must be
+// an ARMED task of `parsed`, by its real runs: one scheduler entry, a run log
+// written within twice its interval, and a last line that is not a failed run.
+// A log that does not exist yet is not judged.
+function cadenceRunProblems(parsed, jobs, nowMs) {
   const problems = { duplicate: [], failing: [], stale: [], clean: [] };
-  for (const k of keys) {
-    const t = seen[k];
+  for (const job of jobs) {
+    const t = parsed[job.task];
     if (!t) continue;
     const before = problems.duplicate.length + problems.failing.length + problems.stale.length;
-    if (t.duplicate) problems.duplicate.push(k);
-    if (t.lastLine && PIPELINE_RUN_LOG_FAILED.test(t.lastLine)) problems.failing.push(`${k} (last run: ${t.lastLine})`);
-    const day = schedules && schedules[k] && schedules[k].day;
-    const intervalMs = (day ? 7 : 1) * 24 * 3600 * 1000;
-    if (t.lastWrite !== undefined && nowMs - t.lastWrite > 2 * intervalMs) {
-      problems.stale.push(`${k} (last run ${Math.floor((nowMs - t.lastWrite) / 3600000)}h ago, expected every ${day ? '7d' : '24h'})`);
+    if (t.duplicate) problems.duplicate.push(job.label);
+    if (t.lastLine && runLogFailed(t.lastLine, job.okRcs)) problems.failing.push(`${job.label} (last run: ${t.lastLine})`);
+    if (t.lastWrite !== undefined && nowMs - t.lastWrite > 2 * job.intervalHours * 3600000) {
+      problems.stale.push(`${job.label} (last run ${Math.floor((nowMs - t.lastWrite) / 3600000)}h ago, expected every ${intervalLabel(job.intervalHours)})`);
     }
-    if (t.lastWrite !== undefined && problems.duplicate.length + problems.failing.length + problems.stale.length === before) problems.clean.push(k);
+    if (t.lastWrite !== undefined && problems.duplicate.length + problems.failing.length + problems.stale.length === before) problems.clean.push(job.label);
   }
   return problems;
+}
+
+// The pipeline's tasks, as jobs: a weekly schedule (a configured `day`) runs
+// every 7 days, every other schedule daily.
+function pipelineRunProblems(stdout, keys, schedules, nowMs) {
+  const jobs = keys.map((k) => ({
+    label: k,
+    task: PIPELINE_TASK_NAME[k],
+    intervalHours: schedules && schedules[k] && schedules[k].day ? 168 : 24,
+  }));
+  return cadenceRunProblems(parseCadenceStatus(stdout), jobs, nowMs);
 }
 
 function describeRunProblems(p) {
@@ -3050,6 +3096,69 @@ function probeCadenceCoherence(item, ctx) {
   issues.push(...runIssues);
   if (issues.length > 0) return { actual: 'degraded', detail: issues.join('; ') };
   return { actual: 'present', detail: `all ${scheduleKeys.length} luna cadence schedule(s) have a matching registered scheduler task` };
+}
+
+// ── cadence-runs ─────────────────────────────────────────────────────────
+
+// One item per cadence-registry.json row: runs the row's own `status` and
+// judges every ARMED task it lists (descriptor `tasks`: { task, intervalHours,
+// okRcs?, scheduleKey? }) with the shared reader above — one scheduler entry, a run log
+// written within twice the interval, a last run that exited with a success
+// code. A task that is not armed is not judged; a row with none armed is the
+// ordinary "never turned on" absence (cleanAbsence). `platform` marks a
+// Windows-only row, which reads n/a anywhere else.
+function probeCadenceRuns(item, ctx) {
+  const d = item.probe;
+  const platform = ctx.platform || process.platform;
+  if (d.platform && d.platform !== platform) {
+    return { actual: 'absent', detail: `n/a on this platform (${path.basename(d.script)} is ${d.platform}-only)`, cleanAbsence: true };
+  }
+  const scriptPath = path.resolve(ctx.repoRoot, d.script);
+  const name = path.basename(d.script);
+  const r = spawnBashProbe([scriptPath, 'status'], { env: ctx.env || process.env, encoding: 'utf8' });
+  if (r.timedOut) return { actual: 'degraded', detail: `${name} status probe timed out after ${probeTimeoutSecs(r)}s` };
+  if (r.error) return { actual: 'degraded', detail: `spawn error: ${r.error.message}` };
+  if (r.status !== 0) {
+    return { actual: 'degraded', detail: `${name} status could not verify scheduler state (rc=${r.status}): ${(r.stderr || '').trim() || 'no stderr captured'}` };
+  }
+  const parsed = parseCadenceStatus(r.stdout || '');
+  // Not one expected task named in an rc=0 answer means the output is not the
+  // shape this reads, which must never pass for "nothing armed".
+  if (!d.tasks.some((t) => parsed[t.task])) {
+    return { actual: 'degraded', detail: `${name} status named none of the expected tasks (${d.tasks.map((t) => t.task).join(', ')}) — its output shape changed or it printed nothing` };
+  }
+  // A task with a `scheduleKey` runs on the operator's own luna.cadence
+  // schedule (weekly when it carries a `day`, daily otherwise), so its interval
+  // is read from that config; any other task is judged on the cron the status
+  // reports, and the manifest's `intervalHours` is only the fallback for a
+  // scheduler line that carries no cron.
+  let schedules = {};
+  if (d.tasks.some((t) => t.scheduleKey)) {
+    try {
+      const config = scopeConfigPathToCtx(ctx, () => lunaConfig.load());
+      schedules = (config.luna && config.luna.cadence && config.luna.cadence.schedules) || {};
+    } catch (e) {
+      return { actual: 'degraded', detail: `cannot read luna config: ${e.message}` };
+    }
+  }
+  const armed = d.tasks.filter((t) => parsed[t.task] && parsed[t.task].armed).map((t) => ({
+    ...t,
+    label: t.task,
+    intervalHours: t.scheduleKey && schedules[t.scheduleKey]
+      ? (schedules[t.scheduleKey].day ? 168 : 24)
+      : parsed[t.task].intervalHours || t.intervalHours,
+  }));
+  if (armed.length === 0) {
+    return { actual: 'absent', detail: `no scheduler task is armed for ${name}`, cleanAbsence: true };
+  }
+  const problems = cadenceRunProblems(parsed, armed, Date.now());
+  const issues = describeRunProblems(problems);
+  if (issues.length > 0) return { actual: 'degraded', detail: issues.join('; ') };
+  const unrun = armed.filter((t) => !problems.clean.includes(t.label)).map((t) => t.label);
+  if (unrun.length > 0) {
+    return { actual: 'present', detail: `${armed.length}/${d.tasks.length} ${name} task(s) armed, ${armed.length - unrun.length} with a recent clean run; no run log yet for ${unrun.join(', ')}` };
+  }
+  return { actual: 'present', detail: `${armed.length}/${d.tasks.length} ${name} task(s) armed, each with a recent clean run` };
 }
 
 // ── phi-coherence ────────────────────────────────────────────────────────
@@ -4254,6 +4363,7 @@ const PROBES = {
   'distinct-tokens': probeDistinctTokens,
   'luna-sources': probeLunaSources,
   'cadence-coherence': probeCadenceCoherence,
+  'cadence-runs': probeCadenceRuns,
   'phi-coherence': probePhiCoherence,
   'engine-allowlist': probeEngineAllowlist,
   'bridge-health': probeBridgeHealth,

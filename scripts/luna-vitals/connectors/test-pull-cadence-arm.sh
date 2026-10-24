@@ -134,6 +134,12 @@ echo "== test: status (armed) =="
 out=$(run_cadence "$state" status 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "status: rc=0"; else fail "status: expected rc=0 got rc=$rc"; fi
 assert_has "$out" "ARMED" "status: reports ARMED"
+case "$out" in *DUPLICATE*) fail "status: single entry flagged duplicate" ;; *) pass "status: single entry not flagged" ;; esac
+cp "$state/tab" "$state/tab.single"
+grep -F 'HIMMEL-LunaVitalsPull' "$state/tab.single" | head -1 >>"$state/tab"
+out=$(run_cadence "$state" status 2>&1)
+assert_has "$out" "[DUPLICATE: 2 cron entries]" "status: flags a doubled entry with its count"
+cp "$state/tab.single" "$state/tab"
 
 echo "== test: arm again — dedup =="
 assert_rc 3 "dedup: re-arm without --force" run_cadence "$state" arm --time 08:00

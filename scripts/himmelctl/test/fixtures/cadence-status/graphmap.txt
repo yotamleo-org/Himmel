@@ -1,0 +1,30 @@
+graphmap-cadence status:
+not armed  HIMMEL-GraphMap-Luna -> refresh-graph-map luna (weekly, semantic, configured: claude-cli)
+  run log    ~/.claude/graphmap-cadence/graphmap-luna.log (rotated — see .log.prev; no run since last rotation)
+  prev log   ~/.claude/graphmap-cadence/graphmap-luna.log.prev (last write: 2026-08-16 14:22)
+             last line: refresh-graph-map: published ~/Documents/luna/60-Maps/graphify-luna-map.md
+             run summary: 1,562,049 in / 102,107 out, est. cost (~claude-cli): $0.0000 | last chunk 6/6 | 7 hollow responses
+not armed  HIMMEL-GraphMap-Himmel -> refresh-graph-map himmel (weekly, semantic, configured: claude-cli)
+  run log    ~/.claude/graphmap-cadence/graphmap-himmel.log (rotated — see .log.prev; no run since last rotation)
+  prev log   ~/.claude/graphmap-cadence/graphmap-himmel.log.prev (last write: 2026-08-16 13:26)
+             last line: refresh-graph-map: published ~/Documents/luna/60-Maps/graphify-himmel-map.md
+             run summary: 144,540 in / 10,669 out, est. cost (~claude-cli): $0.0000 | last chunk 1/1 | 0 hollow responses
+ARMED      HIMMEL-GraphMapAst-Luna (cron: 05 00 * * *) -> graphify update luna (daily, structural, free)
+  run log    ~/.claude/graphmap-cadence/graphmap-ast-luna.log (last write: 2026-10-24 00:10)
+             last line: [exit rc=0]
+  prev log   ~/.claude/graphmap-cadence/graphmap-ast-luna.log.prev (last write: 2026-10-23 00:11)
+             last line: [exit rc=0]
+ARMED      HIMMEL-GraphMapAst-Himmel (cron: 15 * * * *) -> graphify update himmel (hourly, structural, free)
+  run log    ~/.claude/graphmap-cadence/graphmap-ast-himmel.log (last write: 2026-10-24 22:15)
+             last line:   warning: 164 code file(s) yielded no symbols (0.31 MB) — a data file, or source this extractor models no symbols for: marketplace/plugins/claude-hud/tests/effort.test.js, marketplace/plugins/claude-hud/tests/i18n.test.js, marketplace/plugins/claude-hud/tests/memory-coverage.test.js, marketplace/plugins/claude-hud/tests/memory.test.js, marketplace/plugins/claude-hud/tests/truncate.test.js (+159 more)
+  prev log   ~/.claude/graphmap-cadence/graphmap-ast-himmel.log.prev (last write: 2026-10-24 21:15)
+             last line: [exit rc=0]
+ARMED      HIMMEL-GraphPublish-Himmel (cron: 35 */2 * * *) -> graph-cadence publish himmel (auto-merge; interval = cron schedule; --publish-semantic adds a billed claude-api pass)
+  run log    ~/.claude/graphmap-cadence/graphmap-publish-himmel.log (last write: 2026-10-24 20:35)
+             last line: [exit rc=3]
+             run summary: 574,001 in / 249,235 out, est. cost: $0.0000 | last chunk 14/14 | 0 hollow responses
+  prev log   ~/.claude/graphmap-cadence/graphmap-publish-himmel.log.prev (last write: 2026-10-24 18:35)
+             last line: [exit rc=0]
+             run summary: NO tokens summary (run did not finish) | last chunk 14/14 | 0 hollow responses
+not armed  HIMMEL-GraphSemantic-Luna -> semantic-update luna (every 2h, billed claude-api, capped; pause marker semantic-luna.paused)
+  run log    ~/.claude/graphmap-cadence/graphmap-semantic-luna.log (absent — task has not fired yet)

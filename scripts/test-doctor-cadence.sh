@@ -402,6 +402,21 @@ grep -c 'HIMMEL-Doctor' "$FAKE_CRON" | grep -qx 1 && pass "arm writes one cronta
 bash "$P/scripts/doctor-cadence.sh" arm >/dev/null 2>&1; check "re-arm without --force is refused (rc 3)" 3 $?
 st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
 case "$st" in ARMED*) pass "status reports ARMED" ;; *) fail "status reports ARMED ($st)" ;; esac
+case "$st" in *DUPLICATE*) fail "a single entry is not flagged duplicate" ;; *) pass "a single entry is not flagged duplicate" ;; esac
+case "$st" in *"run log    $W/runner/doctor-cadence.log (absent"*) pass "status says the run log is absent before the runner has run" ;; *) fail "status says the run log is absent before the runner has run ($st)" ;; esac
+cp "$FAKE_CRON" "$FAKE_CRON.single"
+grep -F '# HIMMEL-Doctor' "$FAKE_CRON.single" | head -1 >> "$FAKE_CRON"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *'[DUPLICATE: 2 cron entries]'*) pass "a doubled entry is flagged with its count" ;; *) fail "a doubled entry is flagged with its count ($st)" ;; esac
+check "a doubled entry prints one ARMED line" 1 "$(printf '%s\n' "$st" | grep -c '^ARMED')"
+cp "$FAKE_CRON.single" "$FAKE_CRON"
+doctor_out "" ""
+"$W/runner/doctor-cadence.sh" >/dev/null 2>&1; check "the generated runner exits 0 on a clean doctor" 0 $?
+check "the runner stamps the exit code as the log's last line" "[exit rc=0]" "$(tail -n 1 "$W/runner/doctor-cadence.log")"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *"run log    $W/runner/doctor-cadence.log (last write: "*) pass "status names the run log and its last write" ;; *) fail "status names the run log and its last write ($st)" ;; esac
+case "$st" in *'last line: [exit rc=0]'*) pass "status shows the run log's last line" ;; *) fail "status shows the run log's last line ($st)" ;; esac
+case "$st" in *'last run   '*) pass "status keeps the doctor's own last-run line" ;; *) fail "status keeps the doctor's own last-run line ($st)" ;; esac
 bash "$P/scripts/doctor-cadence.sh" disarm >/dev/null 2>&1; check "disarm exits 0" 0 $?
 grep -q 'HIMMEL-Doctor' "$FAKE_CRON"; rc=$?
 check "disarm removes the entry (grep: 1 = absent from a readable file)" 1 "$rc"

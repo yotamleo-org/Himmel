@@ -1,0 +1,4 @@
+ARMED      HIMMEL-Doctor (30 5 * * *)
+  run log    ~/.claude/doctor-cadence/doctor-cadence.log (last write: 2026-10-24 05:30)
+             last line: [exit rc=0]
+  last run   fail=1 warn=10 (2026-10-24 05:30)

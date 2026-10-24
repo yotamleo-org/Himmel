@@ -1,0 +1,9 @@
+drift-fix-cadence status:
+ARMED      HIMMEL-DriftFix (cron: 0 3 * * *)
+  runner     ~/.claude/drift-fix-cadence/drift-fix.sh
+  run log    ~/.claude/drift-fix-cadence/drift-fix.log (last write: 2026-10-24 03:00)
+             last line: [exit rc=0]
+ARMED      HIMMEL-ForkResync (cron: 30 3 * * *)
+  runner     ~/.claude/drift-fix-cadence/fork-resync.sh
+  run log    ~/.claude/drift-fix-cadence/fork-resync.log (last write: 2026-10-24 03:30)
+             last line: [exit rc=0]

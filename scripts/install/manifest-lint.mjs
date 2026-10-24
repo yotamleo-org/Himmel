@@ -237,7 +237,7 @@ const KINDS = ['hook', 'plugin', 'dep', 'wiring', 'vault', 'scheduler', 'lane', 
 // INSTALL_TARGETS so its install descriptor can dispatch to install-stack.ps1
 // (win32-only in Phase A — install-engine.js's buildEntry() 'observability'
 // case).
-const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana'];
+const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'cadence-runs', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana']; // t13b-ok: probe type names only, qmd-daemon is a manifest probe id
 const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
 // Optional schema-v2 consumer keys. Permitted by the
 // exact-key check but not required — items authored under schemaVersion:1
@@ -517,6 +517,29 @@ function checkProbeShape(probe, label, errors) {
       if (typeof probe.envVar !== 'string') errors.push(`${label}: probe type 'cadence-coherence' requires 'envVar' (string)`);
       if (typeof probe.defaultSubdir !== 'string') errors.push(`${label}: probe type 'cadence-coherence' requires 'defaultSubdir' (string)`);
       reportExtra(['envVar', 'defaultSubdir']);
+      break;
+    }
+    case 'cadence-runs': {
+      if (typeof probe.script !== 'string') errors.push(`${label}: probe type 'cadence-runs' requires 'script' (string)`);
+      if (Object.prototype.hasOwnProperty.call(probe, 'platform') && typeof probe.platform !== 'string') {
+        errors.push(`${label}: probe type 'cadence-runs' field 'platform', when present, must be a string`);
+      }
+      if (!Array.isArray(probe.tasks) || probe.tasks.length === 0) {
+        errors.push(`${label}: probe type 'cadence-runs' requires 'tasks' (non-empty array)`);
+      } else {
+        probe.tasks.forEach((t, i) => {
+          const ok = t && typeof t === 'object' && typeof t.task === 'string' && typeof t.intervalHours === 'number' && t.intervalHours > 0
+            && (t.okRcs === undefined || (Array.isArray(t.okRcs) && t.okRcs.every(Number.isInteger)))
+            && (t.scheduleKey === undefined || typeof t.scheduleKey === 'string');
+          if (!ok) {
+            errors.push(`${label}: probe type 'cadence-runs' tasks[${i}] must be {task: string, intervalHours: number > 0, okRcs?: integer[], scheduleKey?: string}`);
+          } else {
+            const extraTaskKeys = Object.keys(t).filter((k) => !['task', 'intervalHours', 'okRcs', 'scheduleKey'].includes(k));
+            if (extraTaskKeys.length > 0) errors.push(`${label}: probe type 'cadence-runs' tasks[${i}] has unexpected field(s) [${extraTaskKeys.join(', ')}]`);
+          }
+        });
+      }
+      reportExtra(['script', 'platform', 'tasks']);
       break;
     }
     case 'phi-coherence': {
