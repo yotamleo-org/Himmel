@@ -983,6 +983,7 @@ scripts/telegram/test-break-glass.sh	local	behaviour suite, 0 catches in the 400
 scripts/telegram/test-dispatch-lane.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/telegram/test-phi-egress-guard-parity.sh	pr	static-gate
 scripts/telegram/test-restart-bridge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-adopt-features.sh	local	behaviour suite, the second half of test-adopt.sh split for the per-suite time cap (HIMMEL-7300)
 scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
