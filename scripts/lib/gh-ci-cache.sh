@@ -321,6 +321,7 @@ _cic_fetch_rest() {
     rows=$(printf '%s\n' "$CIC_REST_DATA" | jq -er '
         def name_ok: type == "string" and length > 0 and (test("[\\t\\r\\n]") | not);
         def count_ok($items): (.total_count | type == "number" and . >= 0 and . <= 100) and (.total_count == ($items | length));
+        def run_key: [(if .status != "completed" then "~" else (.started_at // .completed_at // "") end), .id];
         def check_valid: (.name | name_ok) and
             (if .status == "completed" then
                 (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" or
@@ -334,7 +335,7 @@ _cic_fetch_rest() {
             all(.status.body.statuses[]; (.context | name_ok) and
                 (.state == "success" or .state == "pending" or .state == "failure" or .state == "error"))
         then [(.checks.body.check_runs as $runs | $runs[] |
-                select(. as $c | all($runs[]; .name != $c.name or [(.started_at // .completed_at // ""), .id] <= [($c.started_at // $c.completed_at // ""), $c.id])) |
+                select(. as $c | all($runs[]; .name != $c.name or run_key <= ($c | run_key))) |
                 [(if .status != "completed" then "pending" elif .conclusion == "success" then "pass"
                   elif .conclusion == "skipped" or .conclusion == "neutral" then "skipping"
                   elif .conclusion == "cancelled" then "cancel" else "fail" end), .name] | join("\t")),
