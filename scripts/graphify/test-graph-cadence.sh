@@ -1473,7 +1473,10 @@ for kind in nograph graph; do
 done
 # A failed semantic step promotes nothing.
 tag=promfail; mk_primary "$tag" nograph; PRIM10="$TMP_ROOT/t9-$tag-primary/graphify-out"
-rc=0; out=$(FAKE_SEM_RC=2 FAKE_SEM_RUNS="$RUNS10" run_sem "$tag" --semantic) || rc=$?
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(FAKE_SEM_RC=2 FAKE_SEM_RUNS="$RUNS10" run_sem "$tag" --semantic) || rc=$?
+assert_eq "a failed semantic step fails the run rc=3" "3" "$rc"
+assert_contains "the failed semantic step actually ran the semantic updater" "--corpus-class himmel-code" "$(cat "$FAKE_SEM_LOG")"
 assert_eq "a failed semantic step leaves the primary graph.json alone" '{"stale":1}' "$(cat "$PRIM10/graph.json")"
 # A held lock (the hourly AST pass): the promote waits, writes nothing while it is held, then promotes.
 tag=promwait; mk_primary "$tag" nograph; PRIM10="$TMP_ROOT/t9-$tag-primary/graphify-out"

@@ -1016,7 +1016,7 @@ ACTION="refreshed"
 # retired-path no-op below, so that no-op never skips it.
 _promote_semantic_to_primary() {
     local src="$WORKTREE_DIR/graphify-out" dest="$HIMMEL_ROOT/graphify-out"
-    local wait_s="${GRAPH_CADENCE_PROMOTE_LOCK_WAIT:-300}" waited=0 f
+    local wait_s="${GRAPH_CADENCE_PROMOTE_LOCK_WAIT:-300}" waited=0 gone=0 f
     case "$wait_s" in ''|*[!0-9]*) wait_s=300 ;; esac
     if [ ! -f "$src/graph.json" ]; then
         echo "graph-cadence: WARN semantic promote skipped -- $src/graph.json does not exist" >&2
@@ -1025,7 +1025,12 @@ _promote_semantic_to_primary() {
     mkdir -p "$dest" || _fail "semantic promote: could not create $dest"
     # prim-ok: the lock must be the mkdir directory ast-update.sh and semantic-update.sh take; with_lock's flock record would not exclude them
     until mkdir "$SEM_PROMOTE_LOCK" 2>/dev/null; do
-        [ -d "$SEM_PROMOTE_LOCK" ] || _fail "semantic promote: could not create the promote lock $SEM_PROMOTE_LOCK (not held by another refresh)"
+        if [ ! -d "$SEM_PROMOTE_LOCK" ]; then
+            # the holder released between our mkdir and this check: contention, retry; a few misses in a row is a filesystem fault
+            gone=$((gone + 1))
+            [ "$gone" -lt 3 ] || _fail "semantic promote: could not create the promote lock $SEM_PROMOTE_LOCK (not held by another refresh)"
+            continue
+        fi
         if [ "$waited" -eq 0 ]; then
             echo "graph-cadence: waiting for promote lock $SEM_PROMOTE_LOCK (held by another graph refresh), up to ${wait_s}s"
         fi
