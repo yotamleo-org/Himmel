@@ -187,6 +187,9 @@ export HIMMEL_DOCTOR_TMP_DF="$FAKEROOT/no-such-df"
 # Same for C71-verdict-scratch: never size the operator's real judge cache;
 # an absent dir is an OK skip, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_VERDICT_CACHE="$FAKEROOT/no-such-verdict-cache"
+# Same for C73-bun-compiled: never scan the operator's real ~/.local/bin; an
+# absent dir is an OK skip, dedicated cases point at a fixture.
+export HIMMEL_DOCTOR_BUN_SCAN_DIRS="$FAKEROOT/no-such-bin"
 # Same for C49-qmd-embed-model: never read the operator's real
 # qmd index; an absent index makes C48 silent, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_QMD_INDEX="$FAKEROOT/no-such-index.sqlite"
@@ -7117,5 +7120,40 @@ rm -f "$c72_t/claude/.credentials.json"
 out="$(c72_run)"
 if grepq "$out" 'C72-design-mcp-auth'; then fail "C72 no file -> $(printf '%s' "$out" | grep -A1 C72)"; else pass "C72 no credentials file -> silent"; fi
 rm -rf "$c72_t"
+
+# --- C73-bun-compiled: a bun build --compile binary embedding a Bun older than .bun-version ---
+# The stub carries the string a real compiled binary holds: the URL form below is
+# copied from the station's coderabbit 0.9.0 (grep -ao around the first match).
+echo "== C73-bun-compiled: embedded Bun older than the pin / equal / newer / not executable / too deep =="
+c73_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c73.XXXXXX")" || { fail "C73 mktemp -d failed"; exit 1; }
+mkdir -p "$c73_t/home" "$c73_t/claude" "$c73_t/bin" "$c73_t/deep/a/b/c"
+printf '1.4.4\n' > "$c73_t/.bun-version"
+c73_stub() { printf 'en\0N\0\0\0\0\0\0\0https://github.com/oven-sh/bun/releases/download/bun-v%s/bun-linux-x64.zip\0\0\0\0.js.tsvm\n' "$2" > "$1"; chmod +x "$1"; }
+c73_run() { env HOME="$c73_t/home" CLAUDE_DIR="$c73_t/claude" HIMMEL_DOCTOR_BUN_VERSION_FILE="$c73_t/.bun-version" HIMMEL_DOCTOR_BUN_MIN_KB=0 HIMMEL_DOCTOR_BUN_SCAN_DIRS="$1" bash "$DOC" --no-color --only C73 2>&1; }
+c73_stub "$c73_t/bin/stale-tool" 1.4.2
+out="$(c73_run "$c73_t/bin")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/bin/stale-tool" && grepq "$out" -F 'Bun 1.4.2' && grepq "$out" -F '1.4.4'; then pass "C73 bun-v1.4.2 vs pin 1.4.4 -> WARN naming the binary and both versions"; else fail "C73 stale -> $(printf '%s' "$out" | head -3)"; fi
+rm -f "$c73_t/bin/stale-tool"
+c73_stub "$c73_t/bin/ok-tool" 1.4.4
+out="$(c73_run "$c73_t/bin")"
+if grepq "$out" -F 'OK   C73-bun-compiled' && ! grepq "$out" -F 'WARN C73'; then pass "C73 bun-v1.4.4 equals the pin -> OK"; else fail "C73 equal -> $(printf '%s' "$out" | head -3)"; fi
+c73_stub "$c73_t/bin/ok-tool" 1.4.10
+out="$(c73_run "$c73_t/bin")"
+if grepq "$out" -F 'OK   C73-bun-compiled' && ! grepq "$out" -F 'WARN C73'; then pass "C73 bun-v1.4.10 is newer than 1.4.4 (numeric, not lexical) -> OK"; else fail "C73 newer -> $(printf '%s' "$out" | head -3)"; fi
+rm -f "$c73_t/bin/ok-tool"
+c73_stub "$c73_t/bin/not-exec" 1.4.2; chmod -x "$c73_t/bin/not-exec"
+out="$(c73_run "$c73_t/bin")"
+if grepq "$out" -F 'OK   C73-bun-compiled' && ! grepq "$out" -F 'WARN C73'; then pass "C73 a non-executable file with a stale string is not a binary -> OK"; else fail "C73 non-exec -> $(printf '%s' "$out" | head -3)"; fi
+c73_stub "$c73_t/deep/a/b/c/stale-tool" 1.4.2
+out="$(c73_run "$c73_t/deep")"
+if grepq "$out" -F 'OK   C73-bun-compiled' && ! grepq "$out" -F 'WARN C73'; then pass "C73 a binary below maxdepth 3 is out of scope -> OK"; else fail "C73 depth -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c73_t/real" "$c73_t/links"
+c73_stub "$c73_t/real/stale-tool" 1.4.2
+ln -s "$c73_t/real/stale-tool" "$c73_t/links/stale-link"
+out="$(c73_run "$c73_t/links")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/links/stale-link"; then pass "C73 an executable symlink is followed to its stale target -> WARN"; else fail "C73 symlink -> $(printf '%s' "$out" | head -3)"; fi
+out="$(c73_run "$c73_t/no-such-dir")"
+if grepq "$out" -F 'OK   C73-bun-compiled'; then pass "C73 absent scan dir -> OK"; else fail "C73 absent -> $(printf '%s' "$out" | head -3)"; fi
+rm -rf "$c73_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
