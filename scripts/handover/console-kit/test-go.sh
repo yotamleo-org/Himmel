@@ -702,7 +702,7 @@ averdict() {
   # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
   printf '# VERDICT %s - judge\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 88\n%smodel: m\neffort: e\n\nreason\n' "$2" "$SHA" "${3:+$3
 }" > "$vf"
-  vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" judge' _ "$HERE/../../lib/go-gate.sh" "$1" "$2" < "$vf")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
+  vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" judge' _ "$HERE/../../lib/go-gate.sh" "$1" "$2" < "$vf")" || { echo "FAIL - cannot sign $vf"; fails=$((fails+1)); return 1; }
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
 printf '[{"nwo":"acme/widget","merge_allowed":true},{"nwo":"acme/off","merge_allowed":false}]\n' > "$A23_ADOPTED"

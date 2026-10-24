@@ -850,8 +850,10 @@ rc=0; verdict_rc q25 "$SHA_A" acme/Wid.get || rc=$?
 check "25: go_trust_verdict accepts it for that repo" "$rc" 0
 rc=0; verdict_rc q25 "$SHA_A" acme/other || rc=$?
 check "25: go_trust_verdict refuses it for another repo" "$rc" 2
-wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a-b/c >/dev/null 2>&1
-wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a/b-c >/dev/null 2>&1
+rc=0; wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a-b/c >/dev/null 2>&1 || rc=$?
+check "25: --repo a-b/c write rc 0" "$rc" 0
+rc=0; wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a/b-c >/dev/null 2>&1 || rc=$?
+check "25: --repo a/b-c write rc 0" "$rc" 0
 check "25: a-b/c and a/b-c get two buckets" "$(find "$root" -path '*/q25c/judge.md' | wc -l | tr -d ' ')" 2
 for bad_repo in a a/b/c /a a/ 'a b/c' ../x a/.. -a/b; do
     rc=0; wv q25b GO "$SHA_A" --evidence-file "$ev" --repo "$bad_repo" >/dev/null 2>&1 || rc=$?
