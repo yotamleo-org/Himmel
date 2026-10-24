@@ -31,6 +31,11 @@ Read on demand: `leg-preface.md` names this file when a command is refused or be
 - **Never pipe into a gate script.** Write the input to a file with `Write`,
   then pass it as an argument if the script takes one; otherwise pipe into
   the bare unquoted literal only — never `printf ... | bash "..."`.
+- **Editing or searching a file that merely names a seam variable** (an
+  `unset` or `-u` beside a `scripts/` path in the command text) is refused by
+  `block-chokepoint-env-prefix` as if it were an env prefix. Use the Edit
+  tool, or `Write` the script to your scratchpad and run it as
+  `python3 -I <file>`; do not reshape the refused command.
 - Where the `/pr-check` skill itself prints a command to run, its spelling
   wins over this section — it is kept in sync with its own allow rules.
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
@@ -112,7 +117,8 @@ throwaway tmp directory.
 of `origin/main` when set) and prints that range to stderr, and an explicit `<base sha>..HEAD` works the same. Run those and name them with their counts, each as one literal
 `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>` — nothing
 appended: no `>`, no `2>&1`, no `; echo`, no `sleep N;` prefix, no `| tail`.
-`quiet-run` already captures the output. The label is always the literal
+`quiet-run` already captures the output; to see the failing assertion (a
+RED-first run included) Read the log path it prints. The label is always the literal
 `suite`, the only one the allow list pre-approves; any other
 label, or a suite outside the enumerated directories, goes to the classifier
 by design.
