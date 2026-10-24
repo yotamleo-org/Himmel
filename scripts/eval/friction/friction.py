@@ -102,7 +102,7 @@ HOOK_CLASSES = {
          'over-deny', 'the luna vault is committed on main by design; its handover docs are written in place'),
         (r'on main/master\.\s+\(command:\s+cd\s+\S*/\.claude/projects/', 'claude-projects-write-read-as-main',
          'over-deny', 'a write under ~/.claude/projects (memory, tool results) is no repo write'),
-        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*(?:[>;&]|\|(?!\s*(?:head|tail|wc|sort|uniq|cut|grep|rg|tr)\b)))|'
+        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*(?:[>;&]|\|(?!\s*(?:head|tail|wc|sort(?![^|(]*\s(?:-o|--output)\b)|uniq|cut|grep|rg|tr)\b)))|'
          r'timeout \d+ (?:bash|sh) -c .until)',
          'read-only-command-read-as-write', 'over-deny', 'grep/rg/printf/until-poll read as write-shaped'),
         (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
@@ -644,7 +644,7 @@ def main(argv=None):
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))
         return 0
-    table = aggregate(tx, docs)
+    table = aggregate([r for r in tx if r['source'] != 'ci-wait'], docs)
     meta = {'days': a.days, 'since': since.isoformat(), 'tx_rows': len(tx), 'doc_rows': len(docs),
             **refusal_totals(tx)}
     if a.json:

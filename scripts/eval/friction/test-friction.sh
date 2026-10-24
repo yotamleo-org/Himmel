@@ -70,6 +70,8 @@ eq "an invalid --now is rejected" "$?" "2"
 OUT3="$TMP/out3.json"
 python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 \
   --projects "$FIX/proj3" --docs "$FIX/docs" --json "$OUT3" --md "$TMP/out3.md" >/dev/null 2>&1
+eq "the classes run exits 0" "$?" "0"
+eq "ci-wait stays out of the per-class table" "$(python3 -I -c 'import json,sys; print(sum(1 for c in json.load(open(sys.argv[1]))["by_class"] if c["source"]=="ci-wait"))' "$OUT3")" "0"
 field3() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$OUT3" "$1"; }
 while IFS="$(printf '\t')" read -r src cls verdict; do
   eq "named class $src / $cls" \
@@ -92,6 +94,7 @@ esac
 OUT4="$TMP/out4.json"; L4="$TMP/runs4.jsonl"
 python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 --projects "$FIX/proj3" --docs "$FIX/docs" \
   --record --eval-ledger "$L4" --json "$OUT4" --md "$TMP/out4.md" >/dev/null 2>&1
+eq "the record run exits 0" "$?" "0"
 eq "ledger row: refusals exclude ci-wait" \
   "$(python3 -I -c 'import json,sys; m=json.loads(open(sys.argv[1]).readline())["metrics"]; print([m["refusals"], m["ci_wait"], m["hook_unclear"], m["hook_refusals"]])' "$L4")" \
   "[$NROWS, 1, $NUNC, $NROWS]"
