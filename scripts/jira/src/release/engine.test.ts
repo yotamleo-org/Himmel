@@ -70,6 +70,15 @@ const admit = (req: string, extra: Partial<Parameters<typeof rule>[1]> = {}) => 
   ground: 'regression', reason: 'breaks the console', supersedes: [], authority: { kind: 'rm', ref: null }, ...extra,
 });
 
+// Applies a ruling with Jira failing before the receipt, then replays it from the applied phase.
+async function applyThenReplay(id: string) {
+  const post = jira.addComment.bind(jira);
+  jira.addComment = async () => { throw new Error('jira down before the receipt'); };
+  await expect(apply(ctx(rmEnv), id)).rejects.toThrow('jira down');
+  jira.addComment = post;
+  return apply(ctx(rmEnv), id);
+}
+
 const savedLedger = process.env.HIMMEL_ADMISSIONS_LEDGER;
 
 beforeEach(() => {
@@ -159,20 +168,32 @@ describe('release engine (HIMMEL-6796)', () => {
     ]);
   });
 
-  it('a REVERSION MOVE into a frozen version appends the destination rm-admit and the source rm-remove, and its replay adds none (HIMMEL-7059)', async () => {
+  it.each([
+    ['frozen', 'v2', 'v1'],
+    ['unfrozen', 'v1', 'v2'],
+  ])('a REVERSION MOVE into a %s version appends the destination rm-admit and the source rm-remove, and an applied-phase replay adds none (HIMMEL-7059)', async (_kind, from, to) => {
     await setup();
     const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-    jira.fv.set('K-2', ['v2']);
-    const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v2', to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    jira.fv.set('K-2', [from]);
+    const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: from, to_v: to, why: 'w', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));
-    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v2', to_v: 'v1' } });
-    await apply(ctx(rmEnv), r.id);
-    await apply(ctx(rmEnv), r.id);
-    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: from, to_v: to } });
+    expect((await applyThenReplay(r.id)).phase).toBe('receipted');
+    expect(jira.fv.get('K-2')).toEqual([to]);
     expect(rows().map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([
-      ['rm-admit', 'K-2', 'v1', r.id],
-      ['rm-remove', 'K-2', 'v2', r.id],
+      ['rm-admit', 'K-2', to, r.id],
+      ['rm-remove', 'K-2', from, r.id],
     ]);
+  });
+
+  it('an INTAKE ADMIT replayed from the applied phase appends no second rm-admit row (HIMMEL-7059)', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    expect((await applyThenReplay(r.id)).phase).toBe('receipted');
+    const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    expect(rows.map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([['rm-admit', 'K-2', 'v1', r.id]]);
   });
 
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {
