@@ -80,7 +80,7 @@ case "$sub" in
     done
     exit 0
     ;;
-  run) [ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "run.sh: run makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; } ;;
+  run) [ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "run.sh: run makes real, billed headless claude calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; } ;;
   *) echo "usage: run.sh run|plan [--reps N] [--out DIR] [--max-usd USD] [--tasks a,b] [--model M]" >&2; exit 2 ;;
 esac
 
