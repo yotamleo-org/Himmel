@@ -7072,9 +7072,9 @@ out="$(c70_div)"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F 'last=2026-10-19T02:00:00Z' && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
 cp "$c70_out/semantic-runs.jsonl" "$c70_t/root/graphify-out/semantic-runs.jsonl"
 out="$(c70_div)"
-if ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi
 out="$(c70_div HIMMEL_DOCTOR_CADENCE_OUT="$c70_t/no-such-cadence")"
-if ! grepq "$out" -F 'cadence graph'; then pass "C70 no cadence graph -> no divergence row"; else fail "C70 no cadence -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 no cadence graph -> no divergence row"; else fail "C70 no cadence -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="
