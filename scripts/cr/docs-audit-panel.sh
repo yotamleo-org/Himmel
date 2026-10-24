@@ -156,7 +156,7 @@ if [ "$docs_audit_require_cross_model" = "1" ]; then
                 cat >&2 <<'PINABORT'
 /pr-check ABORT - docs-audit critic-panel.sh exit 7: the checkout or the diff
 base moved since step 1, so the review inputs no longer match the branch/SHA/base
-the ledger would stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed and
+the ledger would stamp. Nothing was reviewed and
 nothing was recorded. Re-run /pr-check from step 1.
 PINABORT
                 exit 7

@@ -12,7 +12,7 @@ Usage: artifact-critic.sh --artifact <file> --charter <file> --model <m> [--slug
 
 Runs critic-first-pass.sh in artifact mode, reading the artifact from stdin and
 using the charter file as the reviewer role. Exit codes pass through from the
-underlying first-pass critic (incl. 4 = all findings dropped, HIMMEL-1915); 2 = usage error.
+underlying first-pass critic (incl. 4 = all findings dropped); 2 = usage error.
 
 PROSE ARTIFACTS ONLY (specs, plans, design docs). To review a unified DIFF, use
 critic-first-pass.sh in diff mode instead:

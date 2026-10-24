@@ -111,7 +111,7 @@ usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--b
   --base-sha <sha>         pin the DIFF BASE to the caller's captured base SHA
                            (7-64 hex chars): exit 7 unless <base> still resolves
                            to it, so a base branch that moved between capture and
-                           review cannot change the reviewed diff (HIMMEL-1984)
+                           review cannot change the reviewed diff
   --check [--all-tiers]    probe registry health without reviewing a diff
 exit 2: usage error, or mktemp temp-file failure - check free space in TMPDIR
 exit 3: --worktree path is not a git worktree
@@ -1114,7 +1114,7 @@ if [ -n "${_keepone_dropped_raw:-}" ]; then
     printf '%s\n' "$_keepone_dropped_raw" | while IFS=$'\t' read -r _ko_slug _ko_rest; do
         [ -n "$_ko_slug" ] || continue
         echo "panel-availability: $_ko_slug unavailable (trivial-diff keep-one cap) reason=keep-one-skipped" >&2
-        _queue_avail "$_ko_slug" unavailable "" keep-one-skipped "cheapest external critic kept instead (HIMMEL-1950)"
+        _queue_avail "$_ko_slug" unavailable "" keep-one-skipped "cheapest external critic kept instead"
     done
 fi
 

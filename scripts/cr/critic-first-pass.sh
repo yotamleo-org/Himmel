@@ -332,8 +332,8 @@ if [ "$artifact_mode" -eq 1 ] && [ ! -s "$headings_file" ]; then
     fi
     cat >&2 <<'EOF'
 critic-first-pass.sh: artifact mode found no extractable headings - every
-citation would fail validation and the review would falsely report 0 findings
-(HIMMEL-1915). Refusing before the model call. Either:
+citation would fail validation and the review would falsely report 0 findings.
+Refusing before the model call. Either:
   - add an ATX heading (# Title) to the artifact - setext headings (a title
     underlined with ==== or ----) are NOT extracted; or
   - review a unified diff in diff mode instead: drop --artifact-mode and pipe
@@ -916,10 +916,10 @@ END {
     # callers while every other caller still sees a nonzero, not-clean rc.
     gate = 0
     if (blockparsed > 0 && blockkept == 0) {
-        print "critic-first-pass.sh: all " blockparsed " parsed BLOCKING (Critical/Important) findings were dropped by citation validation (" kept[3] + 0 " Suggestions survived) - refusing to report a blocker-free review (HIMMEL-1915)" > "/dev/stderr"
+        print "critic-first-pass.sh: all " blockparsed " parsed BLOCKING (Critical/Important) findings were dropped by citation validation (" kept[3] + 0 " Suggestions survived) - refusing to report a blocker-free review" > "/dev/stderr"
         gate = 1
     } else if (parsed > 0 && keptall == 0) {
-        print "critic-first-pass.sh: all " parsed " parsed findings were dropped by citation validation - refusing to report a clean review (HIMMEL-1915)" > "/dev/stderr"
+        print "critic-first-pass.sh: all " parsed " parsed findings were dropped by citation validation - refusing to report a clean review" > "/dev/stderr"
         gate = 1
     }
     print "# " slug " First-Pass Review" (trunc ? " (truncated input)" : "")

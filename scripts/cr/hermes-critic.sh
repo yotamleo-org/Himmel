@@ -65,7 +65,7 @@ the diff. Routing is by implementer:
 
   no --implementer and no CRITIC_ROUTE
       -> HERMES reviewer with no --model: defaults to the critics.json-pinned
-         gpt-6.1-sol (HIMMEL-2059) — NOT the himmel_agent profile default.
+         gpt-6.1-sol — NOT the himmel_agent profile default.
          Spends no Claude bank (it spends the OpenAI Codex bank instead).
   hermes (any hermes-driven dev plan, incl. ox-alpha)
       -> CLAUDE CLI reviewer (claude print-mode; opt-in bank spend);
@@ -81,7 +81,7 @@ cross-family guarantee (e.g. --route hermes on a hermes-implemented diff).
 --model applies to WHICHEVER route runs, and the hermes reviewer's family is
 inferred from its resolved model id (gpt-*/o<N>*/codex* => codex, claude-* =>
 claude, empty => the profile default, unreachable in practice since the
-hermes route always resolves a model — see HIMMEL-2059 default above).
+hermes route always resolves a model — see the default above).
 HERMES_CRITIC_FAMILY overrides that inference — use it when --model names a
 claude-route model, or when the id does not match these patterns.
 

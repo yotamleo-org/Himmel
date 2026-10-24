@@ -832,7 +832,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       // bucket every branch checks, defeating this ticket's isolation fix for
       // every finding this batch writes.
       if(!spec.branch){
-        process.stderr.write("ledger-append.sh: batch row "+sid+" has an empty branch - refusing this row (HIMMEL-2405).\n");
+        process.stderr.write("ledger-append.sh: batch row "+sid+" has an empty branch - refusing this row.\n");
         anyFail=true; continue;
       }
       const positiveInteger=(v)=>(typeof v==="number"&&Number.isInteger(v)&&v>0)
@@ -998,7 +998,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       process.stderr.write("ledger-append.sh: amend --branch "+e.BRANCH+" does not match finding "+e.ID
         +" at head "+e.HEAD_+", which is recorded on branch(es): "+named.join(", ")
         +" - an amend stamped with another branch is never read back. NOTHING was written.\n"
-        +"  Pass the finding's own branch, or omit --branch to inherit it (HIMMEL-3467).\n");
+        +"  Pass the finding's own branch, or omit --branch to inherit it.\n");
       process.exit(3);
     }
     if(e.BRANCH===""){
@@ -1014,7 +1014,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       } else if(e.CALLER_BRANCH){
         e.BRANCH=e.CALLER_BRANCH;
       } else {
-        process.stderr.write("ledger-append.sh: amend requires --branch when the current checkout is not on a branch (detached HEAD) and no finding row with a branch of its own exists to infer one from (HIMMEL-2405).\n");
+        process.stderr.write("ledger-append.sh: amend requires --branch when the current checkout is not on a branch (detached HEAD) and no finding row with a branch of its own exists to infer one from.\n");
         process.exit(2);
       }
     }
@@ -1382,7 +1382,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     } else {
       process.stderr.write("ledger-append.sh: avail record for "+e.MODEL+" at head "
         +String(e.HEAD_).slice(0,8)+" would DOWNGRADE status "+priorAvail.status+"->"+e.STATUS
-        +" - refusing (an avail record may only improve unavailable->ok, never regress; HIMMEL-1613). Nothing written.\n");
+        +" - refusing (an avail record may only improve unavailable->ok, never regress). Nothing written.\n");
       process.exit(0);
     }
   }

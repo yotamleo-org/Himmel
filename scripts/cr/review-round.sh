@@ -490,13 +490,13 @@ try {
     // record, so an unreadable history never drops an earlier NO-GO.
     const anc = cp.spawnSync("git", ["merge-base", "--is-ancestor", r.head, e.WANT]);
     if (anc.status === 1) continue;
-    if (anc.status !== 0) console.error(`review-round: ancestry check could not run for ${r.head} (${anc.error ? anc.error.message : anc.signal || "git exit " + anc.status}) - keeping its NO-GO record (HIMMEL-4945)`);
+    if (anc.status !== 0) console.error(`review-round: ancestry check could not run for ${r.head} (${anc.error ? anc.error.message : anc.signal || "git exit " + anc.status}) - keeping its NO-GO record`);
     prior.push(r);
   }
   const repeated = [...new Set(prior.flatMap(r => r.classes).filter(c => classes.has(c)))];
   if (repeated.length) {
-    const lacks = current.some(r => r.malformed) ? " - a layer-decision line is present but lacks a layer keyword, so it is not honoured (HIMMEL-5109)" : "";
-    console.error(`review-round: repeated NO-GO class ${repeated.join(", ")} across heads of this PR - delta round refused (HIMMEL-4885); record layer-decision: text|os|classifier|accept <reason> in the candidate evidence${lacks}`);
+    const lacks = current.some(r => r.malformed) ? " - a layer-decision line is present but lacks a layer keyword, so it is not honoured" : "";
+    console.error(`review-round: repeated NO-GO class ${repeated.join(", ")} across heads of this PR - delta round refused; record layer-decision: text|os|classifier|accept <reason> in the candidate evidence${lacks}`);
     process.exit(8);
   }
 } catch (err) {
@@ -1035,7 +1035,7 @@ ci_red_record() {
 # last reviewed head is a third trigger, checked even once the delta was used;
 # it sets delta_verdict.
 delta_check() {
-    full_note="a 4th full round is refused (HIMMEL-4600)"
+    full_note="a 4th full round is refused"
     delta_reuse=0
     delta_free=0
     delta_used=""

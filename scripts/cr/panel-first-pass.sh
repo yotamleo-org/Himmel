@@ -237,7 +237,7 @@ else
         cat >&2 <<'PINABORT'
 /pr-check ABORT - critic-panel.sh exit 7: the checkout or the diff base moved since
 step 1, so the review inputs no longer match the branch/SHA/base the ledger would
-stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed and nothing was recorded.
+stamp. Nothing was reviewed and nothing was recorded.
 Re-run /pr-check from step 1.
 PINABORT
         exit 7
@@ -271,7 +271,7 @@ PINABORT
                     cat >&2 <<'PINABORTRETRY'
 /pr-check ABORT - critic-panel.sh exit 7 on the rtk retry: the checkout or the
 diff base moved mid-run, so the review inputs no longer match the branch/SHA/base
-the ledger would stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed. Re-run
+the ledger would stamp. Nothing was reviewed. Re-run
 /pr-check from step 1.
 PINABORTRETRY
                     exit 7
