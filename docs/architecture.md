@@ -185,7 +185,7 @@ flowchart TD
     CON -->|"SendMessage / ListAgents"| P2["worker<br/>one ticket · one worktree · one PR"]
     CON -.->|"a parallel wave: started together,<br/>collision-checked, capped by HIMMEL_FLEET_CAP"| P2
 
-    P1 --> GD{"scripts/hooks/guard-implementor-dispatch.sh<br/>refuses native Agent dispatch when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD)"}
+    P1 --> GD{"scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"}
     GD --> NAT["native subagents — the default fleet<br/>haiku · sonnet · opus · fable<br/>every dispatch names its model"]
 
     P1 -.->|"registry, impl-dormant"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>No defaultImplLane by operator ruling —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
