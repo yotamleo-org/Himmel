@@ -953,10 +953,11 @@ if [ "$solo_set" = 1 ]; then
     [ ! -e "$pr_repo_root/scripts/handover/console-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
     # The cwd is the caller's to choose, so a checkout posing as the PR's repo
     # must not make a himmel PR solo: an anchor carrying go.sh is the himmel
-    # clone of this PR unless its origin positively names another github.com
-    # repo. An unreadable origin or an SSH host alias proves nothing and refuses.
+    # clone of this PR unless its origin, read from its own config only,
+    # positively names another github.com repo. An unreadable origin or an SSH
+    # host alias proves nothing and refuses.
     if [ -e "$himmel_repo/scripts/handover/console-kit/go.sh" ]; then
-        solo_origin=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$himmel_repo" config --get remote.origin.url) || solo_origin=""
+        solo_origin=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$himmel_repo" config --local --get remote.origin.url) || solo_origin=""
         solo_origin=${solo_origin%/}; solo_origin=${solo_origin%.git}
         case "$solo_origin" in
             https://github.com/*) solo_origin=${solo_origin#https://github.com/} ;;
@@ -1412,7 +1413,8 @@ sr_run() {
     fi
     return 0
 }
-# sr_other_repo — rc 0 only when the anchor's origin POSITIVELY names a github.com
+# sr_other_repo — rc 0 only when the anchor's origin (its own config, never a
+# global one) POSITIVELY names a github.com
 # repo other than $nwo (the same test as go-gate's trust check). The recheck runs
 # the harness's own registries on a merge fetched from the anchor's origin, so it
 # has nothing to say about a PR on another repo; an origin that cannot prove it
@@ -1420,7 +1422,7 @@ sr_run() {
 sr_other_repo() {
     local url
     case "$nwo" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
-    url=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" config --get remote.origin.url) || return 1
+    url=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" config --local --get remote.origin.url) || return 1
     url=${url%/}; url=${url%.git}
     case "$url" in
         https://github.com/*) url=${url#https://github.com/} ;;

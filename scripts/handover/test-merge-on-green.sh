@@ -4778,6 +4778,28 @@ MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHO
 assert_audit_has "7390-c: audited as the himmel clone" "phase=solo-himmel-clone"
 no_merge_call "7390-c: no merge call"
 
+# 7390-d / 7390-e — the anchor's origin is read from its own config only: a
+# global remote.origin.url naming another repo stands in for a missing one
+# neither for solo nor for the static re-check's other-repo skip.
+# The global origin is written after the anchor is built, whose own
+# `remote add origin` it would otherwise collide with.
+SOLO_GLOBAL_CFG=$(mktemp "${TMPDIR:-/tmp}/mog-solo-gitconfig.XXXXXX") || { echo "FAIL: mktemp failed" >&2; exit 1; }
+anchor_noorigin_setup() {
+    git -C "$1" remote remove origin \
+        && printf '[remote "origin"]\n\turl = %s\n' "$SOLO_HIMMEL_URL" > "$SOLO_GLOBAL_CFG"
+}
+himmel_clone_noorigin_setup() { himmel_clone_setup "$1" && anchor_noorigin_setup "$1"; }
+: > "$SOLO_GLOBAL_CFG"
+GIT_CONFIG_GLOBAL="$SOLO_GLOBAL_CFG" MOG_CWD="$SOLO_ADOPTED" HANDOVER_DIR="$SOLO_HANDOVER" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=himmel_clone_noorigin_setup STUB_SHA="solo7390d" \
+    run_mog 17 "7390-d: solo cwd, himmel-clone anchor with no origin of its own, global origin names another repo → exit 17"
+assert_audit_has "7390-d: audited as the himmel clone" "phase=solo-himmel-clone"
+no_merge_call "7390-d: no merge call"
+: > "$SOLO_GLOBAL_CFG"
+MERGE_STATIC_RECHECK=1 GIT_CONFIG_GLOBAL="$SOLO_GLOBAL_CFG" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=anchor_noorigin_setup STUB_SHA="solo7390e" \
+    run_mog 24 "7390-e: anchor with no origin of its own, global origin names another repo → re-check runs, refuses (exit 24)"
+assert_audit_lacks "7390-e: the static re-check is not skipped as another repo" "STATIC-RECHECK skipped reason=other-repo"
+rm -rf "$SOLO_ADOPTED" "$SOLO_HANDOVER" "$SOLO_GLOBAL_CFG"
+
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
