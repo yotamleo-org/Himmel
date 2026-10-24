@@ -338,8 +338,8 @@ touch "$STUB/needs-git-cwd"
 check "a router run from a cwd outside any git repo still searches and files" '[ "$(decs "$F15/log" | jq -r "select(.class == \"denied/guard-seven\") | .decision")" = filed ]'
 rm -f "$STUB/needs-git-cwd"
 k7="$(decs "$F15/log" | jq -r 'select(.class == "denied/guard-seven") | .ticket')"
-check "a filed class sends ONE console summary line naming its key and class" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep "^console " "$STUB/notify.log" | grep -q "$k7" && grep "^console " "$STUB/notify.log" | grep -q "denied/guard-seven"'
-check "a filed class asks for its release-manager INTAKE" 'grep -q "^intake $k7 " "$STUB/notify.log" && grep "^intake $k7 " "$STUB/notify.log" | grep -q "denied/guard-seven"'
+check "a filed class sends ONE console summary line naming its key and class" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*$k7 .*denied/guard-seven" "$STUB/notify.log"'
+check "a filed class asks for its release-manager INTAKE" 'grep -q "^intake $k7 .*denied/guard-seven" "$STUB/notify.log"'
 check "the two filed classes sent two intakes and still one console line" '[ "$(grep -c "^intake " "$STUB/notify.log")" = 2 ] && [ "$(grep -c "^console " "$STUB/notify.log")" = 1 ]'
 F16="$TMP/f16"; mkdir -p "$F16"
 SAVE="$LED"; LED="$F16/l.jsonl"
@@ -358,7 +358,7 @@ LED="$SAVE"
 printf 'HIMMEL-9500\tTask\tTo Do\tlegs retype past guard-ten\n' >"$STUB/list.fl-denied-guard-ten"
 : >"$STUB/notify.log"
 python3 "$FR" route --ledger "$F17/l.jsonl" --state "$F17/s.json" --log "$F17/log" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F17/out" 2>&1
-check "a commented class reaches the console with its key and no INTAKE" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep "^console " "$STUB/notify.log" | grep -q "HIMMEL-9500" && ! grep -q "^intake " "$STUB/notify.log"'
+check "a commented class reaches the console with its key and no INTAKE" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*HIMMEL-9500" "$STUB/notify.log" && ! grep -q "^intake " "$STUB/notify.log"'
 : >"$STUB/notify.log"
 python3 "$FR" route --dry-run --ledger "$F17/l.jsonl" --state "$F17/s2.json" --log "$F17/log2" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 check "a dry run notifies nobody" '[ ! -s "$STUB/notify.log" ]'

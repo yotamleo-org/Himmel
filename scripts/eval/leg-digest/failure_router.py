@@ -488,7 +488,7 @@ def route(a):
             if dec == "filed":
                 notify(a, "intake", ticket, "the daily failure review filed it: class %s recurred in distinct legs" % cls)
         if sent:
-            notify(a, "console", "failure-router: " + ", ".join("%s %s (%s)" % t for t in sent))
+            notify(a, "console", "failure-router: " + ", ".join("%s %s (%s)" % (dec, ticket, cls) for dec, cls, ticket in sent))
         if not a.dry_run:
             print("failure-router: decisions=%d" % decisions)
         return 0

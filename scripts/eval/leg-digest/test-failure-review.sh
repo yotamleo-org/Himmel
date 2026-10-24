@@ -132,7 +132,8 @@ C3e="$TMP/c3e"; mkdir -p "$C3e"; cp "$C2/ledger.jsonl" "$C3e/ledger.jsonl"
 echo "JIRA_BASE_URL is not set" >"$STUB/list.fail"
 review "$C3e" --live >"$C3e/run.out" 2>&1
 rm -f "$STUB/list.fail"
-check "the digest names the search error and its cause once" 'digest "$C3e" | grep -q "^- skipped, search-error: JIRA_BASE_URL is not set: denied/guard-pr-check-literal$"'
+dig3e="$(digest "$C3e")"
+check "the digest names the search error and its cause once" 'grep -q "^- skipped, search-error: JIRA_BASE_URL is not set: denied/guard-pr-check-literal$" <<<"$dig3e"'
 
 echo "3. --live routes through the router and sends one line"
 C3="$TMP/c3"; mkdir -p "$C3"; cp "$C2/ledger.jsonl" "$C3/ledger.jsonl"
