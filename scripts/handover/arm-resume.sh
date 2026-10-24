@@ -6243,7 +6243,7 @@ fi"
                 at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE
 "
                 # same always-clear for the launch-seam vars a
-                # leg or consult carries (LEG_PROFILE_NO_SETTING_SOURCES, the
+                # leg or consult carries (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES, the
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(console_context_launch_seam_env_names | tr '\n' ' ')
 "

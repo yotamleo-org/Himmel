@@ -127,7 +127,7 @@ unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 . "$HERE/../../lib/timeout-bin.sh"
 # The suite owns every launcher input; an ambient leg shell must not silently
 # turn default-native cases into claudex cases.
-unset CADENCE_BANK_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_REPO_MAP WORKER_SESSION_REPO_MAP_TOKENS WORKER_SESSION_REPO_MAP_TIMEOUT WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID WORKER_SESSION_HEADLESS WORKER_SESSION_SUPPRESS_CR_TRIGGER WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT 2>/dev/null || true
+unset CADENCE_BANK_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_REPO_MAP WORKER_SESSION_REPO_MAP_TOKENS WORKER_SESSION_REPO_MAP_TIMEOUT WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_HEADLESS WORKER_SESSION_SUPPRESS_CR_TRIGGER WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT 2>/dev/null || true
 # read-both: an ambient old spelling reaches the launcher too
 unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER LEG_API_LANE HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT HEADED_ARM_LEG_LANES_JSON WORKER_SESSION_ID 2>/dev/null || true
 
@@ -3011,7 +3011,7 @@ check "29p settings env: HANDOVER_DIR mirrored" "$(env29 HANDOVER_DIR)" "$HANDOV
 check "29q settings env: HIMMEL_INITIATIVE set" "$(env29 HIMMEL_INITIATIVE)" "execute,prcheck,pr,ticket,merge,public,handover"
 check "29r settings env: daemon-injected hook-integrity bypass blanked" "$(env29 HIMMEL_HOOK_INTEGRITY_BYPASS_OK)" ""
 check "29s settings env: stale console doc from the daemon blanked" "$(env29 HIMMEL_CONSOLE_DOC)" ""
-check "29t settings env: stale LEG_* from the daemon blanked" "$(env29 WORKER_SESSION_STALE_MARK)" ""
+check "29t settings env: stale WORKER_SESSION_* from the daemon blanked" "$(env29 WORKER_SESSION_STALE_MARK)" ""
 check "29t2 settings env: daemon CHIEF_CONTEXT=1m blanked" "$(env29 CHIEF_CONTEXT)" ""
 check "29t3 settings env: daemon CONSOLE_CONTEXT=1m blanked (old name)" "$(env29 CONSOLE_CONTEXT)" ""
 check "29u settings env: secret-named daemon var blanked, never copied" "$(env29 HIMMEL_STALE_TOKEN)" ""
@@ -3221,7 +3221,7 @@ mkdir -p "$tmp/space dir"
 rc=0
 err29c="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-31c some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg.log" claude-sonnet-5 2>&1)" || rc=$?
 check "31c a whitespace-carrying leg-process value is refused with exit 12" "$rc" "12"
-contains "31c the refusal names the offending var" "$err29c" "LEG_PROFILE_SETTINGS"
+contains "31c the refusal names the offending var" "$err29c" "WORKER_SESSION_PROFILE_SETTINGS"
 contains "31c the refusal explains why (HEADED_ARM_LAUNCHER_ENV cannot carry a spacey value)" "$err29c" "cannot carry"
 
 # 32a. (GAP): a caller-preset HANDOVER_DIR - the normal
@@ -3238,7 +3238,7 @@ contains "32a a caller-preset HANDOVER_DIR reaches launcher-env=" "$lenv30a" "HA
 rc=0
 err30b="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg-32b some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg32b.log" claude-sonnet-5 2>&1)" || rc=$?
 check "32b Darwin still refuses a whitespace-carrying value with exit 12" "$rc" "12"
-contains "32b the refusal still names the offending var" "$err30b" "LEG_PROFILE_SETTINGS"
+contains "32b the refusal still names the offending var" "$err30b" "WORKER_SESSION_PROFILE_SETTINGS"
 
 # 32c. (REGRESSION RISK): on any platform other than
 # Darwin, plain-export inheritance already carried a whitespace-carrying
@@ -4473,15 +4473,15 @@ check "43a two launches record two session ids" "$(printf '%s' "$sids43" | grep 
 check "43b the doc body is untouched" "$(sed '1,/^---$/d' "$doc43" | sed '1,/^---$/d')" "$body43"
 check "43c the front matter still opens on line 1" "$(head -n 1 "$doc43")" "---"
 sid43_2="$(printf '%s' "$sids43" | grep -oE "$uuid_re" | tail -n 1)"
-contains "43d the second launch hands its own uuid to the shim" "$(cat "$tmp/c43-2/record" 2>/dev/null)" "LEG_SESSION_ID=$sid43_2"
+contains "43d the second launch hands its own uuid to the shim" "$(cat "$tmp/c43-2/record" 2>/dev/null)" "WORKER_SESSION_ID=$sid43_2"
 nodoc43="$tmp/HIMMEL-43-N44-nofm.md"
 printf '# no front matter\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n## Results\n- 10:00 LIVE x\n' > "$nodoc43"
 nodoc43_body="$(cat "$nodoc43")"
 d43n="$tmp/c43-n"; mk_launch_stubs "$d43n" "HIMMEL-43-nofm"
-LEG_SESSION_ID=11111111-1111-1111-1111-111111111111 some_doc="$nodoc43" run_leg "$d43n" "$tmp/repo43" "HIMMEL-43-nofm" "claude-sonnet-5" >/dev/null 2>&1 || true
+WORKER_SESSION_ID=11111111-1111-1111-1111-111111111111 some_doc="$nodoc43" run_leg "$d43n" "$tmp/repo43" "HIMMEL-43-nofm" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d43n" || true
 check "43e0 the no-front-matter launch reached the launcher" "$([ -s "$d43n/record" ] && echo yes)" "yes"
-not_contains "43e a doc without front matter gets no id, and an inherited one is scrubbed" "$(cat "$d43n/record" 2>/dev/null)" "LEG_SESSION_ID="
+not_contains "43e a doc without front matter gets no id, and an inherited one is scrubbed" "$(cat "$d43n/record" 2>/dev/null)" "WORKER_SESSION_ID="
 check "43f a doc without front matter is left byte-identical" "$(cat "$nodoc43")" "$nodoc43_body"
 shim43="$tmp/shim43-claude"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@"\n' > "$shim43"; chmod 755 "$shim43"
@@ -4751,16 +4751,32 @@ check "memcap: --consult never execs a PATH-shadowed systemd-run" "$([ -e "$tmp/
 # Real environment: the argv the wrapper built, run against the real
 # systemd-run, must land the process in a cgroup whose memory.max is the cap.
 real_xdg="/run/user/$(id -u)"  # the suite pins XDG_RUNTIME_DIR to a tmp dir; the real bus lives here
-if [ "$(uname -s)" = "Linux" ] && XDG_RUNTIME_DIR="$real_xdg" /usr/bin/systemd-run --user --scope --quiet true >/dev/null 2>&1; then
-  read -r -a sysd_argv <<< "$sysd6119"
-  sysd_cap_argv=()
-  for a in "${sysd_argv[@]}"; do [ "$a" = "--" ] && break; sysd_cap_argv+=("$a"); done
-  # shellcheck disable=SC2016  # the $(...) must expand inside the scope, not here
-  real_cap="$(XDG_RUNTIME_DIR="$real_xdg" /usr/bin/systemd-run "${sysd_cap_argv[@]}" -- bash -c 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"' 2>/dev/null || true)"
-  check "memcap: real scope enforces memory.max (256M)" "$real_cap" "268435456"
-else
-  echo "ok - memcap: real scope row skipped (no systemd user bus)"
-fi
+# real_scope_row RECORDING SYSD_BIN: an empty or user-less recording must never
+# reach the system bus (a bare systemd-run prompts for a root password).
+real_scope_row() {
+  local recording="$1" sysd_bin="$2" sysd_argv sysd_cap_argv a real_cap
+  case "$recording" in
+    *"--user --scope"*) ;;
+    *) echo "ok - memcap: real scope row skipped (no user-scope argv recorded)"; return 0 ;;
+  esac
+  if [ "$(uname -s)" = "Linux" ] && XDG_RUNTIME_DIR="$real_xdg" "$sysd_bin" --user --scope --quiet true >/dev/null 2>&1; then
+    read -r -a sysd_argv <<< "$recording"
+    sysd_cap_argv=()
+    for a in "${sysd_argv[@]}"; do [ "$a" = "--" ] && break; sysd_cap_argv+=("$a"); done
+    # shellcheck disable=SC2016  # the $(...) must expand inside the scope, not here
+    real_cap="$(XDG_RUNTIME_DIR="$real_xdg" "$sysd_bin" "${sysd_cap_argv[@]}" -- bash -c 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"' 2>/dev/null || true)"
+    check "memcap: real scope enforces memory.max (256M)" "$real_cap" "268435456"
+  else
+    echo "ok - memcap: real scope row skipped (no systemd user bus)"
+  fi
+}
+# RED control: an empty recording skips and never invokes systemd-run.
+mkdir -p "$tmp/loud-sysd"
+printf '#!%s\n: > "%s/loud-sysd/called"\nexit 99\n' "$(command -v bash)" "$tmp" > "$tmp/loud-sysd/systemd-run"; chmod 755 "$tmp/loud-sysd/systemd-run"
+empty_row_out="$(real_scope_row "" "$tmp/loud-sysd/systemd-run")"
+contains "memcap: an empty recording skips the real scope row" "$empty_row_out" "real scope row skipped (no user-scope argv recorded)"
+check "memcap: an empty recording never invokes systemd-run" "$([ -e "$tmp/loud-sysd/called" ] && echo called || echo not-called)" "not-called"
+real_scope_row "$sysd6119" /usr/bin/systemd-run
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

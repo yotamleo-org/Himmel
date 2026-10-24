@@ -210,8 +210,8 @@ export TICK_STATE_DIR="$W/state"
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
 export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
-unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
-export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
+unset HIMMEL_LEG_FAILURES_LEDGER # old name, read both ways
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
 # fails= ~<k> reads the digest step's skips.jsonl under this dir.
@@ -2357,7 +2357,7 @@ printf '%s\n' '# console' > "$d4670_free"
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
 fails_of() { TOKEN='' bash "$SUT" --doc "$1" 2>/dev/null | sed -n -E 's/.* fails=([^ ]*).*/\1/p'; }
 frow() { printf '{"v":1,"ts":"%s","leg":"%s","class":"%s","failure":"denied","count":%s,"recovered":%s}\n' "$1" "$2" "$3" "$4" "${5:-null}"; }
-rm -f "$HIMMEL_LEG_FAILURES_LEDGER" "$HIMMEL_EVAL_RUNS_LEDGER" "$HIMMEL_FAILURE_ROUTES_LOG"
+rm -f "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$HIMMEL_EVAL_RUNS_LEDGER" "$HIMMEL_FAILURE_ROUTES_LOG"
 same 'fails= is absent when no ledger exists yet' "$(fails_of "$d4670")" ''
 same 'fails=? when the console lock has no readable start (HIMMEL-4670)' "$(fails_of "$d4670_free")" '?'
 {
@@ -2366,7 +2366,7 @@ same 'fails=? when the console lock has no readable start (HIMMEL-4670)' "$(fail
     frow 2026-10-07T03:06:00Z N2 denied/guard-a 3 false
     frow 2026-10-07T03:07:00Z N2 suite/test-x.sh 7
     printf 'not json\n'
-} > "$HIMMEL_LEG_FAILURES_LEDGER"
+} > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'fails= counts this shift only: rows, distinct legs, top class by legs (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2'
 {
     printf '%s\n' '{"ts":"2026-10-07T03:08:00Z","class":"denied/guard-a","legs":2,"decision":"filed","ticket":"HIMMEL-9001"}'
@@ -2382,14 +2382,16 @@ printf '%s\n' '{"ts":"2026-10-07T03:30:00Z","eval":"leg-trajectory","status":"ok
 same 'a later good digest clears fails=? (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2!2'
 printf '%s\n' '{"ts":"2026-10-07T02:30:00Z","eval":"leg-trajectory","status":"inconclusive","meta":{"digest_error":"crash"}}' > "$HIMMEL_EVAL_RUNS_LEDGER"
 same 'a failed digest from before this shift does not read ? (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2!2'
-rm -f "$HIMMEL_LEG_FAILURES_LEDGER"; mkdir -p "$HIMMEL_LEG_FAILURES_LEDGER"
+rm -f "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"; mkdir -p "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'fails=? when the ledger is unreadable (HIMMEL-4670)' "$(fails_of "$d4670")" '?'
-rmdir "$HIMMEL_LEG_FAILURES_LEDGER"
-mkdir -p "$W/fl-new-dir"
-same 'fails=? reads HIMMEL_WORKER_SESSION_FAILURES_LEDGER before the old name' "$(HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-new-dir" fails_of "$d4670")" '?'
-rmdir "$W/fl-new-dir"
-frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_LEG_FAILURES_LEDGER"
+rmdir "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
+frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
+mkdir -p "$W/fl-old-dir"
+same 'fails= reads HIMMEL_WORKER_SESSION_FAILURES_LEDGER before the old name' "$(HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old-dir" fails_of "$d4670")" '1/1@error/Edit*1' # old name, read both ways
+rmdir "$W/fl-old-dir"
+cp "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$W/fl-old.jsonl"
+same 'fails= still reads the old name alone' "$(unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER; HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old.jsonl" fails_of "$d4670")" '1/1@error/Edit*1' # old name, read both ways
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= remains visible when OpenRouter is skipped' "$f4670" ' fails=1/1@error/Edit*1'
 contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'
@@ -2595,7 +2597,7 @@ contains 'an empty cache is not an all-clear, so the tick reads afresh (HIMMEL-6
 case "$(find "$TICK_STATE_DIR" -name 'tick-wt-orphans-*.*' 2>/dev/null)" in '') pass 'the cache write leaves no temp file behind (HIMMEL-6584)' ;; *) fail 'the cache write leaves no temp file behind (HIMMEL-6584)' ;; esac
 rm -f "$wto_cache_f"
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
-printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
+printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'
 # ~<k> = legs whose wrap digest was skipped this shift (the step's
 # skips.jsonl, distinct docs), so an undigested wrap is no longer silent.
@@ -2606,12 +2608,12 @@ same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(f
     printf '%s\n' '{"ts":"2026-10-07T02:00:00Z","doc":"C.md","reason":"no-chain"}'
 } > "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"
 same 'fails= ~<k> counts docs whose digest was skipped this shift (HIMMEL-4786)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1~2'
-rm -f "$HIMMEL_LEG_FAILURES_LEDGER"
+rm -f "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'fails=none~<k> when skips are the only signal (HIMMEL-4786)' "$(fails_of "$d4670")" 'none~2'
 rm -f "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"; mkdir -p "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"
 same 'fails=? when the skips log is unreadable (HIMMEL-4786)' "$(fails_of "$d4670")" '?'
 rmdir "$WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl"
-rm -f "$HIMMEL_LEG_FAILURES_LEDGER" "$HIMMEL_EVAL_RUNS_LEDGER" "$HIMMEL_FAILURE_ROUTES_LOG"
+rm -f "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$HIMMEL_EVAL_RUNS_LEDGER" "$HIMMEL_FAILURE_ROUTES_LOG"
 
 # --- flakes=<rows>/<suites>@<top-suite>*<k> ---------------------------
 # This shift = suite-flake rows for this repo id with ts >= the console lock's

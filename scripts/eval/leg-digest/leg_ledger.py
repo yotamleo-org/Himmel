@@ -64,7 +64,7 @@ import eval_runs  # noqa: E402
 
 SOURCE = "scripts/eval/leg-digest/leg_ledger.py"
 LEDGER_ENV = "HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
-LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"
+LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"  # old name, read both ways
 EVAL_ID = "leg-trajectory"
 METRICS = ("tool_calls", "subagents", "turns", "fail_denied", "fail_suite", "fail_blocked", "fail_error",
            "run_errors", "interrupts", "red_before_green", "denial_recovery", "identical_denied_retries",
@@ -285,7 +285,7 @@ def launch_lane(digest, who):
                       and (not leg or re.search(r"\b" + re.escape(leg) + r"\b", line))]
             text = titles[0] if titles else ""
             hit = re.search(r"\bWORKER_SESSION_LANE[=:]\s*(native|claudex|codex|openrouter|cloud)\b", text)
-            hit = hit or re.search(r"\b(?:LEG_LANE[=:]\s*|lane:\s*)(native|claudex|codex|openrouter|cloud)\b", text)
+            hit = hit or re.search(r"\b(?:LEG_LANE[=:]\s*|lane:\s*)(native|claudex|codex|openrouter|cloud)\b", text)  # old name
             hit = hit or re.search(r"\b(native|claudex|codex|openrouter|cloud)\s+lane\b", text)
             hit = hit or re.search(r",\s*(native|claudex|codex|openrouter|cloud)\)", text)
             if hit:
@@ -493,7 +493,7 @@ def run_digest(journal, session, denials):
     try:
         # Backfill's launcher is not the historical leg's launcher.
         r = subprocess.run(cmd, capture_output=True, timeout=DIGEST_TIMEOUT, check=False,
-                           env=dict(os.environ, LEG_LANE="unknown"))
+                           env=dict(os.environ, WORKER_SESSION_LANE="unknown"))
         if r.returncode == 0:
             return json.loads(r.stdout)
     except (OSError, subprocess.TimeoutExpired, ValueError):

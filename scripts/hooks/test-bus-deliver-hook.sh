@@ -94,7 +94,7 @@ ctx() { printf '%s' "$out" | node -e 'let s="";process.stdin.on("data",d=>s+=d).
 h register con console
 h register leg1 leg con
 h register judge1 judge con leg1
-LEG_PID="$(start_session leg1)"; h bind leg1 "$LEG_PID"
+WORKER_SESSION_PID="$(start_session leg1)"; h bind leg1 "$WORKER_SESSION_PID"
 CON_PID="$(start_session con)"; h bind con "$CON_PID"
 start_session stranger >/dev/null   # a claude that is never bound
 

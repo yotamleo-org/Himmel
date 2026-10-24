@@ -91,10 +91,10 @@
 # --lane: native (default), claudex,
 # openrouter or deepseek (see lane_registry below; glm refuses).
 # OpenRouter uses HEADED_ARM_WORKER_OPENROUTER_BIN (default ../../claude-openrouter),
-# the same recorder/profile shim, a pinned Sonnet 5.5 slug and LEG_LANE=openrouter.
+# the same recorder/profile shim, a pinned Sonnet 5.5 slug and WORKER_SESSION_LANE=openrouter.
 # Its backend credit floor replaces subscription-bank admission, not fleet admission.
 # --lane claudex (or
-# LEG_LANE=claudex in the launching shell - the flag wins if both are
+# WORKER_SESSION_LANE=claudex in the launching shell - the flag wins if both are
 # given) routes the leg through scripts/claude-codex on the codex weekly
 # bank instead of the Claude subscription bank: it routes headed-arm.sh's
 # HEADED_ARM_LAUNCHER through the preface shim to the claudex binary (seam:
@@ -168,7 +168,7 @@
 # second or third "profile by skill set" would resolve to the same manifest -
 # see the _comment in plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
-# profile flags, then execs scripts/claude-codex via LEG_CLAUDE_BIN. The
+# profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The
 # backend and its guarded argument screen remain in the launch path.
 # Seams: HEADED_ARM_WORKER_PROFILES overrides the plugin-profiles.mjs resolver
 # path, HEADED_ARM_WORKER_PREFACE the preface file, HEADED_ARM_WORKER_SHIM the
@@ -290,9 +290,10 @@ _leg_propagate_one() {
     unset -v _leg_prop_name _leg_prop_value _leg_prop_tok
 }
 
-# leg_env_twin NAME - the worker-session name a leg env name is mirrored
-# to, or nothing. The leg reads both names (the new one wins), so every set
-# and every drop below covers the pair.
+# leg_env_twin NAME - the other name of a worker-session env name (old name
+# for the new one, new for the old), or nothing. The leg reads both names
+# (the new one wins), so every set and every drop below covers the pair;
+# callers pass the new name.
 leg_env_twin() {
     case "$1" in
         HIMMEL_LEG_CONTEXT_MODE) echo HIMMEL_WORKER_SESSION_CONTEXT_MODE ;;
@@ -306,6 +307,16 @@ leg_env_twin() {
         HIMMEL_LEG_PROFILE) echo HIMMEL_WORKER_SESSION_PROFILE ;;
         LEG_CLAUDE_BIN) echo WORKER_SESSION_CLAUDE_BIN ;;
         HIMMEL_LEAN_LEG) echo HIMMEL_LEAN_WORKER_SESSION ;;
+        HIMMEL_WORKER_SESSION_CONTEXT_MODE) echo HIMMEL_LEG_CONTEXT_MODE ;;
+        HIMMEL_WORKER_SESSION_AUTOCOMPACT) echo HIMMEL_LEG_AUTOCOMPACT ;;
+        WORKER_SESSION_LANE) echo LEG_LANE ;;
+        WORKER_SESSION_PROFILE_SETTINGS) echo LEG_PROFILE_SETTINGS ;;
+        WORKER_SESSION_PROFILE_PREFACE) echo LEG_PROFILE_PREFACE ;;
+        WORKER_SESSION_PROFILE_MCP_CONFIG) echo LEG_PROFILE_MCP_CONFIG ;;
+        WORKER_SESSION_PROFILE_NO_SETTING_SOURCES) echo LEG_PROFILE_NO_SETTING_SOURCES ;;
+        WORKER_SESSION_ID) echo LEG_SESSION_ID ;;
+        HIMMEL_WORKER_SESSION_PROFILE) echo HIMMEL_LEG_PROFILE ;;
+        WORKER_SESSION_CLAUDE_BIN) echo LEG_CLAUDE_BIN ;;
     esac
 }
 
@@ -384,9 +395,9 @@ PROFILE="${WORKER_SESSION_PROFILE:-${LEG_PROFILE:-}}"
 CHIEF_FLAG=""
 # the leg context guard is off unless the caller asks, by
 # --context-guard or a HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name
-# HIMMEL_LEG_CONTEXT_MODE) in the launching env (the flag wins).
+# HIMMEL_WORKER_SESSION_CONTEXT_MODE) in the launching env (the flag wins).
 CONTEXT_GUARD="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-${HIMMEL_LEG_CONTEXT_MODE:-}}"
-case "$CONTEXT_GUARD" in ''|none) CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-$CONTEXT_GUARD}" ;; esac
+case "$CONTEXT_GUARD" in ''|none) CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-$CONTEXT_GUARD}" ;; esac # old name, read both ways
 FLEET_MANIFEST=""
 while :; do
     case "${1:-}" in
@@ -558,7 +569,7 @@ if [ "$CONSULT" -eq 1 ]; then
     for _consult_pair in "HEADED_ARM_WORKER_TARGET ../headed-arm.sh" "HEADED_ARM_WORKER_PROFILES ../../lanes/plugin-profiles.mjs"; do
         _consult_var="${_consult_pair%% *}"; _consult_rel="${_consult_pair#* }"
         _consult_val="${!_consult_var:-}"
-        _consult_old="HEADED_ARM_LEG_${_consult_var#HEADED_ARM_WORKER_}"
+        _consult_old="HEADED_ARM_LEG_${_consult_var#HEADED_ARM_WORKER_}" # old name, read both ways
         [ -n "$_consult_val" ] || _consult_val="${!_consult_old:-}"
         _consult_want="$(cd -P "$_consult_kit/$(dirname "$_consult_rel")" && pwd -P)/$(basename "$_consult_rel")"
         # Unset = the in-repo default, pinned to the same canonical
@@ -1118,7 +1129,7 @@ AB_REASON=""
 _ab_in="${WORKER_SESSION_AUTOCOMPACT_AB:-${LEG_AUTOCOMPACT_AB:-}}"
 unset -v WORKER_SESSION_AUTOCOMPACT_AB LEG_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT
 leg_env_drop_token WORKER_SESSION_AUTOCOMPACT_AB
-leg_env_drop_token LEG_AUTOCOMPACT_AB
+leg_env_drop_token LEG_AUTOCOMPACT_AB # old name, read both ways
 leg_env_drop_token HEADED_ARM_AB_AUTOCOMPACT
 case "$_ab_in" in
     '') ;;
@@ -1183,29 +1194,30 @@ unset -v _leg_env_scrub
 
 # (#1334 CR follow-up) A different reason than the CHIEF_CONTEXT scrub above
 # but the same shape: this wrapper's own process may itself BE a leg that is
-# now arming a SIBLING leg, and LEG_PROFILE_SETTINGS/LEG_PROFILE_PREFACE/
-# LEG_PROFILE_MCP_CONFIG - both the plain env var and the
+# now arming a SIBLING leg, and WORKER_SESSION_PROFILE_SETTINGS/WORKER_SESSION_PROFILE_PREFACE/
+# WORKER_SESSION_PROFILE_MCP_CONFIG - both the plain env var and the
 # HEADED_ARM_LAUNCHER_ENV token leg-1's own launch added - are still live in
 # that shell. Unlike CHIEF_CONTEXT these three names DO belong on a leg, so
 # this is not a "must never reach a leg" scrub - it is "must be recomputed by
 # THIS leg, never inherited from a sibling". Dropping the token only where a
 # name is re-propagated is not enough: a path that does NOT touch a given name
 # this run (no --profile; a profile with mcpServers: null skips
-# LEG_PROFILE_MCP_CONFIG entirely) would otherwise leave that sibling's stale
+# WORKER_SESSION_PROFILE_MCP_CONFIG entirely) would otherwise leave that sibling's stale
 # value live - the plain var read at
-# real-launch time (LEG_PROFILE_MCP_CONFIG's write-if-set check further down)
+# real-launch time (WORKER_SESSION_PROFILE_MCP_CONFIG's write-if-set check further down)
 # and the token forwarded to the actually-launched leg. Scrubbing both, once,
 # before any branch, means every path starts clean and the existing
 # leg_propagate_env calls are the only thing that can set them again.
-# LEG_PROFILE_NO_SETTING_SOURCES rides the same scrub: only --consult sets it.
-# LEG_SESSION_ID too: a sibling's id reused here would collide.
+# WORKER_SESSION_PROFILE_NO_SETTING_SOURCES rides the same scrub: only --consult sets it.
+# WORKER_SESSION_ID too: a sibling's id reused here would collide.
 # Each worker-session twin rides the same scrub.
-for _leg_env_scrub in LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID \
+_leg_env_scrub_old="LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID" # old names, read both ways
+for _leg_env_scrub in $_leg_env_scrub_old \
     WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID; do
     unset -v "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"
 done
-unset -v _leg_env_scrub
+unset -v _leg_env_scrub _leg_env_scrub_old
 
 # same "this wrapper's own process may itself BE a leg" hazard as
 # the WORKER_SESSION_PROFILE_* scrub above, but for the rest of the names a leg sets on
@@ -1224,15 +1236,15 @@ unset -v _leg_env_scrub
 # they are excluded by name, not by re-deriving a second list. The three
 # WORKER_SESSION_PROFILE_* names are excluded because the loop above already scrubbed
 # them; HEADED_ARM_LAUNCHER_ENV is excluded because it is the container being
-# cleaned, not a name inside it. LEG_CLAUDE_BIN is NOT excluded:
+# cleaned, not a name inside it. WORKER_SESSION_CLAUDE_BIN is NOT excluded:
 # unlike the six
-# names above, this wrapper never reads LEG_CLAUDE_BIN back as deliberate
+# names above, this wrapper never reads WORKER_SESSION_CLAUDE_BIN back as deliberate
 # input on this native lane - only the claudex branch and the
 # HEADED_ARM_WORKER_CLAUDE_BIN test seam below ever set it again, both via a
 # fresh `leg_propagate_env` call after this point. Scrubbing var+token here
-# closes the leak: a claudex leg's own `LEG_CLAUDE_BIN=<claude-codex>`
+# closes the leak: a claudex leg's own `WORKER_SESSION_CLAUDE_BIN=<claude-codex>`
 # inherited into a native --judge/--profile launch would otherwise reach
-# leg-claude-launcher.sh's `CLAUDE_BIN="${LEG_CLAUDE_BIN:-claude}"` (see
+# leg-claude-launcher.sh's `CLAUDE_BIN="${WORKER_SESSION_CLAUDE_BIN:-claude}"` (see
 # leg-claude-launcher.sh:63) and exec the wrong binary. Every remaining name
 # is set-only, so unsetting it early and letting the existing
 # leg_propagate_env/export calls below re-set it is a no-op for a normal
@@ -1253,7 +1265,7 @@ for _leg_env_scrub in $(console_context_leg_env_unset_names); do
         HIMMEL_CONSOLE_LEG) continue ;;
         # the console's chosen context mode is launch input, read below.
         HIMMEL_LEG_CONTEXT_MODE|HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
-        LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG) continue ;;
+        LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG) continue ;; # old names, read both ways
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
     esac
@@ -1263,19 +1275,19 @@ done
 unset -v _leg_env_scrub
 
 if [ -n "$PROFILE" ]; then
-    leg_propagate_env HIMMEL_LEG_PROFILE "$PROFILE"
+    leg_propagate_env HIMMEL_WORKER_SESSION_PROFILE "$PROFILE"
 fi
 
-# the scrub above just dropped any inherited LEG_CLAUDE_BIN, var
+# the scrub above just dropped any inherited WORKER_SESSION_CLAUDE_BIN, var
 # and token, unconditionally. test-headed-arm-leg.sh's --headless suite
 # (run_headless(), case 29) needs a way to point leg-claude-launcher.sh's
-# `CLAUDE_BIN="${LEG_CLAUDE_BIN:-claude}"` (leg-claude-launcher.sh:63) at a
+# `CLAUDE_BIN="${WORKER_SESSION_CLAUDE_BIN:-claude}"` (leg-claude-launcher.sh:63) at a
 # stub, without reintroducing the leak the scrub just closed - a plain
-# LEG_CLAUDE_BIN in this wrapper's own process env is now indistinguishable
+# WORKER_SESSION_CLAUDE_BIN in this wrapper's own process env is now indistinguishable
 # from a stale sibling leak, so the suite gets its own dedicated seam name
 # instead. A real caller never sets this; only a test does. Scoped to the
 # native lane so it can never race the claudex branch's own
-# `leg_propagate_env LEG_CLAUDE_BIN "$CLAUDEX_BIN"` further down - no
+# `leg_propagate_env WORKER_SESSION_CLAUDE_BIN "$CLAUDEX_BIN"` further down - no
 # existing or new caller combines the two.
 #
 # The seam name itself is unset right after use (var + any launcher-env
@@ -1289,7 +1301,7 @@ if [ "$LANE" = "native" ] && [ -n "${HEADED_ARM_WORKER_CLAUDE_BIN:-${HEADED_ARM_
 fi
 unset -v HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_LEG_CLAUDE_BIN
 leg_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
-leg_env_drop_token HEADED_ARM_LEG_CLAUDE_BIN
+leg_env_drop_token HEADED_ARM_LEG_CLAUDE_BIN # old name, read both ways
 
 # a leg's ceiling is the resolved CLI pair, not the absence of a
 # model suffix. Fail before dry-run reporting or preflight when context already
@@ -1549,15 +1561,15 @@ case "$CONTEXT_GUARD" in
         exit 2
         ;;
 esac
-leg_env_drop_token HIMMEL_LEG_CONTEXT_MODE
+leg_env_drop_token HIMMEL_WORKER_SESSION_CONTEXT_MODE
 if [ -n "$CONTEXT_GUARD" ]; then
-    leg_propagate_env HIMMEL_LEG_CONTEXT_MODE "$CONTEXT_GUARD"
+    leg_propagate_env HIMMEL_WORKER_SESSION_CONTEXT_MODE "$CONTEXT_GUARD"
 else
     unset -v HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
 fi
 unset -v CONTEXT_GUARD
-leg_env_drop_token HIMMEL_LEG_AUTOCOMPACT
-leg_propagate_env HIMMEL_LEG_AUTOCOMPACT "$RESOLVED_AUTOCOMPACT"
+leg_env_drop_token HIMMEL_WORKER_SESSION_AUTOCOMPACT
+leg_propagate_env HIMMEL_WORKER_SESSION_AUTOCOMPACT "$RESOLVED_AUTOCOMPACT"
 # HIMMEL_READ_CLAMP_LINES: raises read-clamp.sh's
 # whole-file limit for a judge - independent reading is the job. 4000 is a
 # judgment call (no source document names a number): ~10x the leg default of
@@ -1674,10 +1686,10 @@ fi
 # so a propagated new name would override an inline CADENCE_BANK_LANE in the leg.
 # Both names are still dropped. Native launches keep their environment unchanged.
 if [ "$LANE" != "native" ]; then
-    leg_env_drop_token LEG_LANE
+    leg_env_drop_token WORKER_SESSION_LANE
     leg_env_drop_token CADENCE_BANK_LANE
     leg_env_drop_token CADENCE_USAGE_LANE
-    leg_propagate_env LEG_LANE "$LANE"
+    leg_propagate_env WORKER_SESSION_LANE "$LANE"
     leg_propagate_env CADENCE_BANK_LANE "$LANE_BANK_GATE"
 fi
 
@@ -1745,7 +1757,7 @@ if [ -n "$PROFILE" ]; then
     PROFILES_MJS="${HEADED_ARM_WORKER_PROFILES:-${HEADED_ARM_LEG_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}}"
     WORKER_SESSION_SHIM="${HEADED_ARM_WORKER_SHIM:-${HEADED_ARM_LEG_SHIM:-$HERE/../../lanes/leg-claude-launcher.sh}}"
     # A consult is confined only by the shim mapping
-    # LEG_PROFILE_NO_SETTING_SOURCES=1 to `--setting-sources ""`, so a shim
+    # WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 to `--setting-sources ""`, so a shim
     # override pointing anywhere else would load the scopes unconfined: refuse it.
     # What is exported as the launcher is the CANONICAL path, not
     # the caller's spelling, which a symlinked directory could retarget after this.
@@ -1961,7 +1973,7 @@ if [ -n "$PROFILE" ]; then
                 ;;
         esac
         # The consult launches with `--setting-sources ""` (the shim maps
-        # LEG_PROFILE_NO_SETTING_SOURCES=1 to it), so Claude Code loads NO user, project or
+        # WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 to it), so Claude Code loads NO user, project or
         # local scope: none of their additionalDirectories, Edit allows or sandbox keys can
         # become a sandbox write root. Proven live by smoke-consult-sandbox.sh. Those scopes'
         # hooks, deny/ask rules and env are CARRIED into the consult's own settings instead,
@@ -2153,15 +2165,15 @@ EOF_CS_FILES
     # `-e env -u ...` (Linux) and `open -a`'s fresh environment (macOS).
     # (#1334) The early scrub above already dropped any sibling-leg token/var
     # for this exact name, so this is a plain fresh add, never a clash.
-    leg_propagate_env LEG_PROFILE_SETTINGS "$PROFILE_SETTINGS"
+    leg_propagate_env WORKER_SESSION_PROFILE_SETTINGS "$PROFILE_SETTINGS"
     # Per-leg path, like PROFILE_SETTINGS above - the claudex
     # lane below overrides this to the same shape for its own coordination
     # preface; content is written only at real-launch time further down.
-    LEG_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.leg-preface.md"
-    leg_propagate_env LEG_PROFILE_PREFACE "$LEG_PROFILE_PREFACE"
+    WORKER_SESSION_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.leg-preface.md"
+    leg_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     # The consult loads no user/project/local scope: the shim turns this into
     # `--setting-sources ""`, which only narrows. Its hooks, deny/ask and env were carried above.
-    [ "$CONSULT" -eq 1 ] && leg_propagate_env LEG_PROFILE_NO_SETTING_SOURCES 1
+    [ "$CONSULT" -eq 1 ] && leg_propagate_env WORKER_SESSION_PROFILE_NO_SETTING_SOURCES 1
     export HEADED_ARM_LAUNCHER="$WORKER_SESSION_SHIM"
     # A consult's launcher is the entry beside the canonical shim:
     # an absolute `#!/bin/bash -p` that strips the bash startup variables and
@@ -2175,7 +2187,7 @@ EOF_CS_FILES
     # mcpServers allowlist: resolved (and, on an unknown name,
     # REFUSED) here so a typo'd server name fails the same way under --dry-run
     # and for real, same reasoning as the settings JSON above. "null" (the
-    # field is absent) is a deliberate no-op: no file, no LEG_PROFILE_MCP_CONFIG,
+    # field is absent) is a deliberate no-op: no file, no WORKER_SESSION_PROFILE_MCP_CONFIG,
     # the shim adds nothing.
     if ! MCP_NAMES_JSON="$(cd "$_leg_resolve_cwd" && node "$PROFILES_MJS" "$PROFILE" --mcp-servers 2>&1)"; then
         echo "headed-arm-leg: --profile $PROFILE: mcp-servers resolution failed: $MCP_NAMES_JSON" >&2
@@ -2187,7 +2199,7 @@ EOF_CS_FILES
             exit 2
         fi
         PROFILE_MCP_CONFIG="$(dirname "$LOG")/$NAME.leg-mcp.json"
-        leg_propagate_env LEG_PROFILE_MCP_CONFIG "$PROFILE_MCP_CONFIG"
+        leg_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG "$PROFILE_MCP_CONFIG"
     fi
 fi
 
@@ -2197,7 +2209,7 @@ fi
 if [ "$LANE_CHANNEL" = "file" ]; then
     CLAUDEX_PREFACE="$HERE/../../../docs/handover/leg-preface-$LANE_PREFACE.md"
     export HEADED_ARM_LAUNCHER="${HEADED_ARM_WORKER_SHIM:-${HEADED_ARM_LEG_SHIM:-$HERE/../../lanes/leg-claude-launcher.sh}}"
-    leg_propagate_env LEG_CLAUDE_BIN "$LANE_BIN"
+    leg_propagate_env WORKER_SESSION_CLAUDE_BIN "$LANE_BIN"
     for _leg_need in "$CLAUDEX_PREFACE" "$HEADED_ARM_LAUNCHER"; do
         if [ ! -f "$_leg_need" ]; then
             echo "headed-arm-leg: --lane claudex: required file missing: $_leg_need" >&2
@@ -2205,11 +2217,11 @@ if [ "$LANE_CHANNEL" = "file" ]; then
         fi
     done
     if [ -n "$PROFILE" ]; then
-        LEG_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.leg-preface.md"
-        leg_propagate_env LEG_PROFILE_PREFACE "$LEG_PROFILE_PREFACE"
+        WORKER_SESSION_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.leg-preface.md"
+        leg_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     else
-        LEG_PROFILE_PREFACE="$CLAUDEX_PREFACE"
-        leg_propagate_env LEG_PROFILE_PREFACE "$LEG_PROFILE_PREFACE"
+        WORKER_SESSION_PROFILE_PREFACE="$CLAUDEX_PREFACE"
+        leg_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     fi
 fi
 
@@ -2278,7 +2290,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
         "$WORKER_SESSION_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
-        "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
+        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
         "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
@@ -2289,7 +2301,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     fi
     # Printed ONLY under --judge, same guarantee shape as --relay above.
     # preface-source names the FILE that will be concatenated into the per-leg
-    # preface (LEG_PROFILE_PREFACE, in the --profile line below, is the
+    # preface (WORKER_SESSION_PROFILE_PREFACE, in the --profile line below, is the
     # generated per-leg copy - this is the one place the SOURCE choice is
     # directly observable in --dry-run).
     if [ "$JUDGE" -eq 1 ]; then
@@ -2309,7 +2321,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
         "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}" \
         "$WORKER_SESSION_MEMORY_MAX" "$([ "${#WORKER_SESSION_SCOPE[@]}" -gt 0 ] && echo yes || echo no)"
     if [ "$LANE_CHANNEL" = "file" ]; then
-        printf ' exec-target=%s preface=%s recorder=%s' "$LEG_CLAUDE_BIN" "$LEG_PROFILE_PREFACE" "$HEADED_ARM_RECORDER"
+        printf ' exec-target=%s preface=%s recorder=%s' "$WORKER_SESSION_CLAUDE_BIN" "$WORKER_SESSION_PROFILE_PREFACE" "$HEADED_ARM_RECORDER"
     fi
     printf '\n'
     # Printed ONLY under --profile: with the flag omitted this whole line is
@@ -2317,8 +2329,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # one, matching the argv guarantee it describes.
     if [ -n "$PROFILE" ]; then
         printf 'headed-arm-leg: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s\n' \
-            "$PROFILE" "$PROFILE_SETTINGS" "$LEG_PROFILE_PREFACE" "$PROFILE_CONTRACT" "$HIMMEL_LEAN_LEG" \
-            "$MCP_NAMES_JSON" "${LEG_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT"
+            "$PROFILE" "$PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_PREFACE" "$PROFILE_CONTRACT" "$HIMMEL_LEAN_LEG" \
+            "$MCP_NAMES_JSON" "${WORKER_SESSION_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT"
     fi
     # Printed ONLY for an Opus/Fable model that cleared the tier gate above;
     # absent for Sonnet/Haiku, matching the argv-report guarantee pattern above.
@@ -2350,11 +2362,11 @@ if [ -n "$PROFILE" ]; then
     fi
     chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     if [ "$LANE_CHANNEL" = "file" ]; then
-        if ! cat "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$LEG_PROFILE_PREFACE"; then
-            echo "headed-arm-leg: --lane $LANE: cannot write preface to $LEG_PROFILE_PREFACE" >&2
+        if ! cat "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
+            echo "headed-arm-leg: --lane $LANE: cannot write preface to $WORKER_SESSION_PROFILE_PREFACE" >&2
             exit 2
         fi
-        chmod 600 "$LEG_PROFILE_PREFACE" 2>/dev/null || true
+        chmod 600 "$WORKER_SESSION_PROFILE_PREFACE" 2>/dev/null || true
     else
         # Native lane: the leg preface stays the standing
         # rule set only. The brief's own contract (up to the Results tail) is
@@ -2363,11 +2375,11 @@ if [ -n "$PROFILE" ]; then
         # in the preface. awk stops at the Results tail (or never, printing
         # the whole file) rather than mapfile, for bash 3.2 (macOS ships 3.2;
         # see the Platform guard above).
-        if ! cat "$WORKER_SESSION_PREFACE" > "$LEG_PROFILE_PREFACE"; then
-            echo "headed-arm-leg: --profile $PROFILE: cannot write preface to $LEG_PROFILE_PREFACE" >&2
+        if ! cat "$WORKER_SESSION_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
+            echo "headed-arm-leg: --profile $PROFILE: cannot write preface to $WORKER_SESSION_PROFILE_PREFACE" >&2
             exit 2
         fi
-        chmod 600 "$LEG_PROFILE_PREFACE" 2>/dev/null || true
+        chmod 600 "$WORKER_SESSION_PROFILE_PREFACE" 2>/dev/null || true
         if ! awk '/^## Results/{exit} {print}' "$DOC" > "$PROFILE_CONTRACT"; then
             echo "headed-arm-leg: --profile $PROFILE: cannot write contract to $PROFILE_CONTRACT" >&2
             exit 2
@@ -2391,24 +2403,24 @@ if [ -n "$PROFILE" ]; then
             && _rm_common="$(git -C "${HEADED_ARM_REPO:-$HERE/../../..}" rev-parse --path-format=absolute --git-common-dir)" \
             && _rm_graph="$(dirname "$_rm_common")/graphify-out/graph.json" \
             && _rm_map="$("$_TIMEOUT_BIN" -k 5 "$_rm_timeout" "$REPO_MAP_CMD" --graph "$_rm_graph" --max-tokens "${WORKER_SESSION_REPO_MAP_TOKENS:-${LEG_REPO_MAP_TOKENS:-2000}}")" \
-            && { printf '%s\n\n' "$_rm_map"; cat "$LEG_PROFILE_PREFACE"; } > "$LEG_PROFILE_PREFACE.map" \
-            && mv "$LEG_PROFILE_PREFACE.map" "$LEG_PROFILE_PREFACE"; then
+            && { printf '%s\n\n' "$_rm_map"; cat "$WORKER_SESSION_PROFILE_PREFACE"; } > "$WORKER_SESSION_PROFILE_PREFACE.map" \
+            && mv "$WORKER_SESSION_PROFILE_PREFACE.map" "$WORKER_SESSION_PROFILE_PREFACE"; then
             echo "$(date +%F_%T) headed-arm-leg: repo-map=on graph=$_rm_graph tokens=${WORKER_SESSION_REPO_MAP_TOKENS:-${LEG_REPO_MAP_TOKENS:-2000}}" >> "$LOG"
         else
             _rm_rc=$?
             _rm_why="rc=$_rm_rc"
             [ "$_rm_rc" = 124 ] && _rm_why="timed out after ${_rm_timeout}s"
             [ -n "${_TIMEOUT_BIN:-}" ] || _rm_why="no GNU timeout to bound the generator"
-            rm -f "$LEG_PROFILE_PREFACE.map"
+            rm -f "$WORKER_SESSION_PROFILE_PREFACE.map"
             echo "$(date +%F_%T) headed-arm-leg: WARN repo-map not injected (graph=$_rm_graph, $_rm_why); launching without it" >> "$LOG"
         fi
     fi
-    if [ -n "${LEG_PROFILE_MCP_CONFIG:-}" ]; then
-        if ! printf '%s\n' "$MCP_CONFIG_JSON" > "$LEG_PROFILE_MCP_CONFIG"; then
-            echo "headed-arm-leg: --profile $PROFILE: cannot write mcp config to $LEG_PROFILE_MCP_CONFIG" >&2
+    if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
+        if ! printf '%s\n' "$MCP_CONFIG_JSON" > "$WORKER_SESSION_PROFILE_MCP_CONFIG"; then
+            echo "headed-arm-leg: --profile $PROFILE: cannot write mcp config to $WORKER_SESSION_PROFILE_MCP_CONFIG" >&2
             exit 2
         fi
-        chmod 600 "$LEG_PROFILE_MCP_CONFIG" 2>/dev/null || true
+        chmod 600 "$WORKER_SESSION_PROFILE_MCP_CONFIG" 2>/dev/null || true
     fi
 fi
 
@@ -2488,7 +2500,7 @@ if [ "$LANE" = "native" ] && [ -n "$PROFILE" ] && [ "$HEADLESS" -eq 0 ] && [ "$C
     _leg_sid="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"
     _leg_sid="$(printf '%s' "$_leg_sid" | tr 'A-F' 'a-f')"
     if leg_doc_add_session_id "$DOC" "$_leg_sid"; then
-        leg_propagate_env LEG_SESSION_ID "$_leg_sid"
+        leg_propagate_env WORKER_SESSION_ID "$_leg_sid"
     else
         echo "$(date +%F_%T) headed-arm-leg: WARN session id NOT recorded in $DOC (the digest step falls back to its name search)" >> "$LOG"
     fi

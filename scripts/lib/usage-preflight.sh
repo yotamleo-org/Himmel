@@ -205,7 +205,7 @@ _fleet_lane_of() {
     return
   fi
   lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
-  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1)
+  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
   if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 

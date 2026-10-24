@@ -68,7 +68,7 @@ SESSION_ID="test-session-himmel-3144"
 CHIEF_DOC="$HANDOVER_DIR/FIXTURE-nextleg-console.md"
 printf 'fixture console doc\n' > "$CHIEF_DOC"
 
-LEG_DOC="$HANDOVER_DIR/FIXTURE-leg-N1.md"
+WORKER_SESSION_DOC="$HANDOVER_DIR/FIXTURE-leg-N1.md"
 
 RELEASE_TOKEN=""
 cleanup() {
@@ -82,7 +82,7 @@ cleanup() {
     rmdir "$HANDOVER_DIR/.locks/queue" 2>/dev/null
     rmdir "$HANDOVER_DIR/.locks" 2>/dev/null
     rm -f "$CHIEF_DOC" 2>/dev/null
-    rm -f "$LEG_DOC" 2>/dev/null
+    rm -f "$WORKER_SESSION_DOC" 2>/dev/null
     rmdir "$HANDOVER_DIR" 2>/dev/null
     for f in "$XDG_RUNTIME_DIR/himmel-queue-lock"/*; do rm -f "$f" 2>/dev/null; done
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" 2>/dev/null
@@ -109,7 +109,7 @@ RELEASE_TOKEN="$(printf '%s\n' "$lock_out" | sed -n 's/^release-token: `\(.*\)`$
 
 CHIEF_PAYLOAD="$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$SESSION_ID")"
 CHIEF_PAYLOAD_ACTIVE="$(printf '{"session_id":"%s","stop_hook_active":true,"hook_event_name":"Stop"}' "$SESSION_ID")"
-LEG_PAYLOAD='{"session_id":"a-leg-session-not-a-console","stop_hook_active":false,"hook_event_name":"Stop"}'
+WORKER_SESSION_PAYLOAD='{"session_id":"a-leg-session-not-a-console","stop_hook_active":false,"hook_event_name":"Stop"}'
 
 is_block() { local out; out="$(printf '%s' "$1" | grep '"decision":"block"')"; [ -n "$out" ]; }
 
@@ -152,7 +152,7 @@ out="$(run_guard "$CHIEF_PAYLOAD_ACTIVE")"
 if is_block "$out"; then bad "(b) stop_hook_active=true -> expected allow, got: $out"; else ok "(b) stop_hook_active=true -> allow"; fi
 
 # --- (c) a leg's stop payload (no console lock held) -> allow -------------
-out="$(run_guard "$LEG_PAYLOAD")"
+out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
 if is_block "$out"; then bad "(c) leg stop -> expected allow, got: $out"; else ok "(c) leg stop -> allow"; fi
 
 # --- (d)(i) induced fault: the held lock's owner.json is unreadable -------
@@ -225,15 +225,15 @@ else
     skip "HIMMEL-3148 setup: could not extract the pre-fix hook from $PREDICATE_BASE_SHA — RED control skipped"
 fi
 
-if ! leg_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="leg-fixture-session" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$LEG_DOC" 2>&1)"; then
+if ! leg_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="leg-fixture-session" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
     echo "setup: could not acquire the fixture leg lock: $leg_lock_out" >&2
     exit 1
 fi
-LEG_LOCKDIR="$HANDOVER_DIR/.locks/queue/FIXTURE-leg-N1.lock"
-[ -d "$LEG_LOCKDIR" ] || { echo "setup: fixture leg lock dir not found at $LEG_LOCKDIR" >&2; exit 1; }
+WORKER_SESSION_LOCKDIR="$HANDOVER_DIR/.locks/queue/FIXTURE-leg-N1.lock"
+[ -d "$WORKER_SESSION_LOCKDIR" ] || { echo "setup: fixture leg lock dir not found at $WORKER_SESSION_LOCKDIR" >&2; exit 1; }
 # shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
-LEG_RELEASE_TOKEN="$(printf '%s\n' "$leg_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
-[ -n "$LEG_RELEASE_TOKEN" ] || { echo "setup: leg acquire printed no release token" >&2; exit 1; }
+WORKER_SESSION_RELEASE_TOKEN="$(printf '%s\n' "$leg_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+[ -n "$WORKER_SESSION_RELEASE_TOKEN" ] || { echo "setup: leg acquire printed no release token" >&2; exit 1; }
 
 # (e)-(h) isolate the leg count, so a live waiter is armed throughout
 # (without one the stop blocks whatever the leg count).
@@ -268,7 +268,7 @@ if is_block "$out"; then bad "(f) console + leg held -> expected allow, got: $ou
 # all three platforms via _ql_epoch_of_iso's GNU/BSD/python fallbacks.
 stale_hb="2000-01-01T00:00:00Z"
 printf '{"session":"leg-fixture-session","host":"h","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
-    "$LEG_DOC" "$stale_hb" "$stale_hb" > "$LEG_LOCKDIR/owner.json"
+    "$WORKER_SESSION_DOC" "$stale_hb" "$stale_hb" > "$WORKER_SESSION_LOCKDIR/owner.json"
 sweep_check="$(bash "$REPO/scripts/handover/queue-lock.sh" status --sweep "$HANDOVER_DIR" 2>/dev/null)"
 case "$sweep_check" in
     *'FIXTURE-leg-N1'*'IDLE-HELD?'*) ok "(g) precondition: fixture sweep shows the leg lock as IDLE-HELD?" ;;
@@ -285,7 +285,7 @@ if is_block "$out"; then bad "(g) stale/IDLE-HELD? leg lock -> expected allow, g
 # overwrote owner.json's session field to the fabricated "leg-fixture-session"
 # identity, which no longer matches the real acquire token -- force the
 # release rather than re-deriving a token for an identity the test invented.
-if ! release_out="$(QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" "$LEG_RELEASE_TOKEN" 2>&1)"; then
+if ! release_out="$(QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" "$WORKER_SESSION_RELEASE_TOKEN" 2>&1)"; then
     bad "(h) setup: could not release the fixture leg lock: $release_out"
 fi
 out="$(run_guard "$CHIEF_PAYLOAD")"
@@ -297,32 +297,32 @@ if is_block "$out"; then ok "(h) paired control: leg lock removed -> block again
 # an owner pid that is ALIVE (this test shell) still allows, whatever its age.
 dead_pid_sh="$(sh -c 'echo $$')"   # the shell exits at once: a pid that is gone
 fixture_host="$(hostname 2>/dev/null)"
-if ! leg_lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" acquire "$LEG_DOC" 2>&1)"; then
+if ! leg_lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
     echo "setup: could not acquire the dead-owner fixture lock: $leg_lock_out" >&2
     exit 1
 fi
-rm -f "$LEG_LOCKDIR/liveness"
+rm -f "$WORKER_SESSION_LOCKDIR/liveness"
 printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
-    "$fixture_host" "$dead_pid_sh" "$fixture_host" "$LEG_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$LEG_LOCKDIR/owner.json"
+    "$fixture_host" "$dead_pid_sh" "$fixture_host" "$WORKER_SESSION_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$WORKER_SESSION_LOCKDIR/owner.json"
 out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then ok "(DEAD) past-TTL leg lock with a dead owner is not counted as held -> block"; else bad "(DEAD) dead-owner leg lock -> expected block, got: $out"; fi
 printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
-    "$fixture_host" "$$" "$fixture_host" "$LEG_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$LEG_LOCKDIR/owner.json"
+    "$fixture_host" "$$" "$fixture_host" "$WORKER_SESSION_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$WORKER_SESSION_LOCKDIR/owner.json"
 out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then bad "(ALIVE) past-TTL leg lock with a live owner pid -> expected allow, got: $out"; else ok "(ALIVE) past-TTL leg lock with a live owner pid is still held -> allow"; fi
-QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" >/dev/null 2>&1
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" >/dev/null 2>&1
 
 # --- no live console-wait.sh waiter blocks, whatever the legs --
 # console-wait.sh is the console's one wake source and exits after each WAKE,
 # so a console that ends its turn without re-arming it stays deaf even with
 # legs held. A leg lock is held for every case below, so the pre-fix hook
 # allows all of them; only the waiter heartbeat varies.
-if ! leg_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="leg-fixture-session-2" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$LEG_DOC" 2>&1)"; then
+if ! leg_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="leg-fixture-session-2" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
     echo "setup: could not re-acquire the fixture leg lock: $leg_lock_out" >&2
     exit 1
 fi
 # shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
-LEG_RELEASE_TOKEN="$(printf '%s\n' "$leg_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+WORKER_SESSION_RELEASE_TOKEN="$(printf '%s\n' "$leg_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
 
 # A pid that is certainly dead: a finished, reaped child of this shell.
 ( exit 0 ) &
@@ -399,10 +399,10 @@ case "$out" in
     *console-wait.sh*) ok "(o) the no-waiter reason names console-wait.sh" ;;
     *) bad "(o) the no-waiter reason does not name console-wait.sh — got: $out" ;;
 esac
-out="$(run_guard "$LEG_PAYLOAD")"
+out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
 if is_block "$out"; then bad "(p) non-console stop with no waiter -> expected allow, got: $out"; else ok "(p) non-console stop with no waiter -> allow"; fi
 
-QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" "$LEG_RELEASE_TOKEN" >/dev/null 2>&1
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" "$WORKER_SESSION_RELEASE_TOKEN" >/dev/null 2>&1
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"

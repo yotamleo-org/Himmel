@@ -118,7 +118,7 @@ this shift (HIMMEL-4786, leg-digest-step.sh's skips.jsonl; none~<k> with only
 skips). fails=none with no rows, fails=? when a ledger or the lock start is
 unreadable or the latest wrap digest failed, skip with no --doc. Advisory: not in
 console-wait's action key, so it wakes nothing. Env seams:
-HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
+HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
 WORKER_SESSION_DIGEST_STATE_DIR.
 
 gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from

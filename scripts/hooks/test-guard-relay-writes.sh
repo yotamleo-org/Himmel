@@ -111,7 +111,7 @@ combined_output() {
 }
 
 INBOX_X="$ROOT/inbox/X.md"
-LEG_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-a-legN9-2026-09-12-RESUME.md"
+WORKER_SESSION_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-a-legN9-2026-09-12-RESUME.md"
 RUNDIR_LOG="/run/user/1000/himmel-console/s/inbox-sent.log"
 OWN_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-relay-2026-09-12-RESUME.md"
 EXTERNAL_LEG_DOC="/home/u/luna/handovers/a-legN3-2026-09-12-RESUME.md"
@@ -130,7 +130,7 @@ ROWS_NAME=(row1 row2 row3 row4 row5 row6 row7 row8 row9 row10a row10b row10c row
     write-dd write-abs-rm write-sudo-rm write-rmdir write-cpio write-ddrescue write-xargs-rm write-paren-cp write-semi-mv write-sed-i write-tee write-install write-rsync write-chown write-chmod write-truncate write-newline-rm chief-session-name)
 ROWS_JSON=(
     "$(write_payload Write "$INBOX_X")"
-    "$(write_payload Edit "$LEG_DOC")"
+    "$(write_payload Edit "$WORKER_SESSION_DOC")"
     "$(write_payload Write "$RUNDIR_LOG")"
     "$(write_payload Edit "$OWN_DOC")"
     "$(bash_payload "echo x >> $ROOT/inbox/X.md")"

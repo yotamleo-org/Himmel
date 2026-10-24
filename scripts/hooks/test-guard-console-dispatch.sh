@@ -83,8 +83,8 @@ combined_output() {
 CHIEF_TRANSCRIPT="$TMP/leg-console.md-loaded.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/leg-console.md — resume from there."}}' > "$CHIEF_TRANSCRIPT"
 
-LEG_TRANSCRIPT="$TMP/leg-w1-normal.jsonl"
-printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/HIMMEL-2323-w1.md — implement the guard."}}' > "$LEG_TRANSCRIPT"
+WORKER_SESSION_TRANSCRIPT="$TMP/leg-w1-normal.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/HIMMEL-2323-w1.md — implement the guard."}}' > "$WORKER_SESSION_TRANSCRIPT"
 
 MISSING_TRANSCRIPT="$TMP/does-not-exist.jsonl"
 
@@ -209,7 +209,7 @@ assert_rc "CR round 4 codex-1: mission doc loaded first, console leg's doc only 
 RC_TWO_MISSION_DOCS=$(run_hook two-mission-docs-not-console "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$TWO_MISSION_DOCS_TRANSCRIPT")")
 assert_rc "two non-console handover docs named, no console anywhere — NOT console" 0 "$RC_TWO_MISSION_DOCS"
 
-RC_ENV_WINS_OVER_MISSION=$(run_hook env-console-wins-over-mission-doc "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$LEG_TRANSCRIPT")" HIMMEL_SESSION_ROLE=console)
+RC_ENV_WINS_OVER_MISSION=$(run_hook env-console-wins-over-mission-doc "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$WORKER_SESSION_TRANSCRIPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "HIMMEL_SESSION_ROLE=console still wins over a transcript whose first user turn loads a MISSION (non-console) doc" 2 "$RC_ENV_WINS_OVER_MISSION"
 
 RC_SELFREF=$(run_hook self-reference-not-console "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$SELF_REFERENCE_TRANSCRIPT")")
@@ -218,7 +218,7 @@ assert_rc "transcript quoting this hook's own *-console.md prose is NOT console-
 RC_BAREFILE=$(run_hook bare_filename-not-console "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$BARE_FILENAME_TRANSCRIPT")")
 assert_rc "bare notes-console.md filename mention (no handover path) is NOT console-shaped" 0 "$RC_BAREFILE"
 
-RC4=$(run_hook not-console-full-shipflow "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$LEG_TRANSCRIPT")")
+RC4=$(run_hook not-console-full-shipflow "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$WORKER_SESSION_TRANSCRIPT")")
 assert_rc "NOT console (non-console transcript) + full ship-flow prompt stays frictionless" 0 "$RC4"
 assert_empty "armed leg dispatch is silent" "$(combined_output not-console-full-shipflow)"
 

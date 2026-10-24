@@ -851,10 +851,10 @@ printf '{"used_percentage":90,"remaining_percentage":10,"context_window_size":20
     "$(date +%s)" > "$LCX/cfg/plugins/claude-hud/context-cache/$LCX_SHA.json"
 CRLF_TP="$LCX_TR"
 check guard-leg-context-handoff Bash 2 "ls -la" "deny ordinary work at 90 %" \
-    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_LEG_CONTEXT_MODE=compact \
+    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
 check guard-leg-context-handoff Bash 0 "bash scripts/handover/wrap-subtree-check.sh" "allow a hand-off command at 90 %" \
-    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_LEG_CONTEXT_MODE=compact \
+    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
 CRLF_TP=""
 check retrieval-nudge Bash 0 "gi""t status" "advisory hook exits 0 on a plain command"

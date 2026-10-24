@@ -27,9 +27,10 @@
 #      (one carrying a <status>) or a TaskStop result (toolUseResult.task_id).
 #   5. HIMMEL_RELEASE_MANAGER is not 1: a release manager's STANDBY is exempt.
 #
-# The keepalive bound is HIMMEL_LEG_CACHE_KEEPALIVE_SECS (launch env, default
-# 3000 = 50 min, 60-3300 accepted, anything else = the default); the refusal
-# names it so the wait the leg arms returns before the TTL.
+# The keepalive bound is HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS (old name
+# HIMMEL_LEG_CACHE_KEEPALIVE_SECS, read both ways, the new one wins; launch
+# env, default 3000 = 50 min, 60-3300 accepted, anything else = the default);
+# the refusal names it so the wait the leg arms returns before the TTL.
 #
 # ponytail: the hook sees that a background task is running, not when it will
 # return, so an armed but unbounded wait still passes (N2741's watch on
@@ -121,7 +122,7 @@ running="$(jq -R -r '
 case "$running" in ''|*[!0-9]*) exit 0 ;; esac
 [ "$running" -eq 0 ] || exit 0
 
-bound="${HIMMEL_LEG_CACHE_KEEPALIVE_SECS:-3000}"
+bound="${HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS:-${HIMMEL_LEG_CACHE_KEEPALIVE_SECS:-3000}}" # old name, read both ways
 case "$bound" in ''|*[!0-9]*) bound=3000 ;; esac
 if [ "${#bound}" -gt 5 ] || [ "$bound" -lt 60 ] || [ "$bound" -gt 3300 ]; then bound=3000; fi
 

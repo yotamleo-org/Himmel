@@ -591,6 +591,45 @@ check "exact names above the prefixes that swallow them ($ORDER)" "" "$ORDER"
 check "HIMMEL_WORKER is do-not-rename" "do-not-rename keep" "$(awk -F'\t' '$1 == "HIMMEL_WORKER" { print $3 " " $4 }' "$REG")"
 check "HIMMEL_CONSOLE_ is do-not-rename" "do-not-rename keep" "$(awk -F'\t' '$1 == "HIMMEL_CONSOLE_" { print $3 " " $4 }' "$REG")"
 
+# --- slice V4a-3: no old worker-session env name is left in code, except the read-both
+# fallbacks (the line also names the new name, or says old name / old-term-ok), the
+# read-both tests, the registry itself and the name lists that carry each old name
+# beside its new one (chief-context, override-env, the bypass registry); a name found
+# without its own V4a row fails ---
+ROOT="$(cd "$HERE/../.." && pwd)"
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  V4A_MAP="$FT/v4a-map.tsv"
+  printf '%s\n' "$ROWS" | awk -F'\t' '$6 == "V4a" && ($4 == "identifier" || $4 == "env" || $4 == "env-prefix") { print $2 "\t" $3 }' > "$V4A_MAP"
+  LEFT="$(git -C "$ROOT" grep -nE '(HIMMEL_LEG_|HEADED_ARM_LEG_|LEG_)[A-Z0-9_]*' -- . \
+    ':!*.md' \
+    ':!scripts/lib/rename-aliases.tsv' ':!scripts/lib/test-rename-aliases.sh' \
+    ':!scripts/docs/check-old-terms.sh' ':!scripts/docs/test-check-old-terms.sh' \
+    ':!scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh' \
+    ':!scripts/hooks/test-guard-leg-context-handoff.sh' \
+    ':!scripts/handover/console-kit/fixtures/*' \
+    ':!scripts/lib/chief-context.sh' ':!scripts/lib/override-env.sh' ':!scripts/lib/test-override-env.sh' \
+    ':!scripts/himmelctl/lib/bypass-flags.json' \
+    ':!scripts/handover/console/test-console.sh' 2>/dev/null | awk -F'\t' -v map="$V4A_MAP" '
+    BEGIN { while ((getline l < map) > 0) { split(l, p, "\t"); nw[p[1]] = p[2] } }
+    {
+      i = index($0, ":"); path = substr($0, 1, i - 1); rest = substr($0, i + 1)
+      j = index(rest, ":"); no = substr(rest, 1, j - 1); line = substr(rest, j + 1)
+      if (line ~ /old-term-ok|old name|old names|still read|read both|read-both|both names/) next
+      s = line; bad = ""; ok = 0
+      while (match(s, /(HIMMEL_LEG_|HEADED_ARM_LEG_|LEG_)[A-Z0-9_]*/)) {
+        tok = substr(s, RSTART, RLENGTH)
+        pre = (RSTART > 1) ? substr(s, RSTART - 1, 1) : ""
+        s = substr(s, RSTART + RLENGTH)
+        if (pre ~ /[A-Za-z0-9_]/) continue
+        if (!(tok in nw)) { bad = bad " " tok "(no row)"; continue }
+        if (index(line, nw[tok]) > 0) ok = 1; else bad = bad " " tok
+      }
+      if (bad != "" && !ok) print path ":" no ":" bad
+    }' | sort -u | head -n 40 | tr '\n' ' ')"
+  rm -f "$V4A_MAP"
+  check "no old worker-session env name outside the read-both lines ($LEFT)" "" "$LEFT"
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo "test-rename-aliases: $FAIL failed, $PASS passed" >&2
   exit 1

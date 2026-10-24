@@ -40,13 +40,13 @@ mkdir -p "$HANDOVER_DIR" "$XDG_RUNTIME_DIR"
 export HANDOVER_DIR XDG_RUNTIME_DIR
 
 SESSION_ID="test-session-himmel-6527"
-LEG_DOC="$HANDOVER_DIR/HIMMEL-1-N1-fixture-leg.md"
-printf 'fixture leg doc\n' > "$LEG_DOC"
+WORKER_SESSION_DOC="$HANDOVER_DIR/HIMMEL-1-N1-fixture-leg.md"
+printf 'fixture leg doc\n' > "$WORKER_SESSION_DOC"
 
 RELEASE_TOKEN=""
 release_lock() {
     [ -n "$RELEASE_TOKEN" ] || return 0
-    QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" "$RELEASE_TOKEN" >/dev/null 2>&1
+    QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" "$RELEASE_TOKEN" >/dev/null 2>&1
     RELEASE_TOKEN=""
 }
 cleanup() {
@@ -55,7 +55,7 @@ cleanup() {
     for d in "$HANDOVER_DIR"/.locks/queue/*.lock; do rmdir "$d" 2>/dev/null; done
     rm -f "$HANDOVER_DIR/.locks/queue/takeovers.log" 2>/dev/null
     rmdir "$HANDOVER_DIR/.locks/queue" "$HANDOVER_DIR/.locks" 2>/dev/null
-    rm -f "$LEG_DOC" 2>/dev/null
+    rm -f "$WORKER_SESSION_DOC" 2>/dev/null
     rmdir "$HANDOVER_DIR" 2>/dev/null
     for f in "$XDG_RUNTIME_DIR/himmel-queue-lock"/*; do rm -f "$f" 2>/dev/null; done
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" "$XDG_RUNTIME_DIR" 2>/dev/null
@@ -65,7 +65,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$LEG_DOC")" \
+lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC")" \
     || { echo "setup: could not acquire the fixture leg lock" >&2; exit 1; }
 # shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
 RELEASE_TOKEN="$(printf '%s\n' "$lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
@@ -142,11 +142,15 @@ expect_block "background task completed (task-notification status) -> block"
 run_guard "$(payload "$T_STOP")"
 expect_block "Monitor stopped by TaskStop -> block"
 
-run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1800; out="$OUT"
-case "$out" in *'--max-wait 1800'*) ok "bound is config: HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1800 is named" ;; *) bad "bound 1800 not named — got: $out" ;; esac
-run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=7200; out="$OUT"
+run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=1800; out="$OUT"
+case "$out" in *'--max-wait 1800'*) ok "bound is config: HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=1800 is named" ;; *) bad "bound 1800 not named — got: $out" ;; esac
+run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1900; out="$OUT" # old name, read both ways
+case "$out" in *'--max-wait 1900'*) ok "the old name HIMMEL_LEG_CACHE_KEEPALIVE_SECS is still read" ;; *) bad "old-name bound 1900 not named — got: $out" ;; esac
+run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=1800 HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1900; out="$OUT" # old name, read both ways
+case "$out" in *'--max-wait 1800'*) ok "the new name wins over the old one" ;; *) bad "new name did not win — got: $out" ;; esac
+run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=7200; out="$OUT"
 case "$out" in *'--max-wait 3000'*) ok "bound past the TTL margin (7200) falls back to 3000" ;; *) bad "bound 7200 did not fall back — got: $out" ;; esac
-run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=junk; out="$OUT"
+run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=junk; out="$OUT"
 case "$out" in *'--max-wait 3000'*) ok "junk bound falls back to 3000" ;; *) bad "junk bound did not fall back — got: $out" ;; esac
 
 # --- allowed ------------------------------------------------------------------

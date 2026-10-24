@@ -18,8 +18,8 @@ const real = (s: string | undefined): Lane | null => ((REAL as readonly string[]
 export function laneOf(launch: Record<string, string>, doc: string): { lane: Lane; laneFrom: LaneFrom } {
   const worker = real(launch.WORKER_SESSION_LANE);
   if (worker) return { lane: worker, laneFrom: "WORKER_SESSION_LANE" };
-  const leg = real(launch.LEG_LANE);
-  if (leg) return { lane: leg, laneFrom: "LEG_LANE" };
+  const leg = real(launch.LEG_LANE); // old name, read both ways
+  if (leg) return { lane: leg, laneFrom: "LEG_LANE" }; // old name
   const launcher = real(launch.HIMMEL_SESSION_LANE);
   if (launcher) return { lane: launcher, laneFrom: "launcher" };
   const dir = (launch.CLAUDE_CONFIG_DIR ?? "").replace(/\/+$/, "").split("/").pop();

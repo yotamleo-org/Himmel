@@ -36,7 +36,8 @@ B="$W/bucket"
 mkdir -p "$B" "$W/bin" "$W/repo"
 # the failures panel reads these ledgers; never the operator's own.
 unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
-export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
+export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" # old name, read both ways
+export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 # the usage lift row reads the lift's `show` output through this stub,
 # never the operator's lift file or account. USAGE_LIFT_STUB_OUT is a fixture file
 # of `show` output; unset prints the no-lift output.
@@ -814,7 +815,7 @@ mrun >/dev/null; rc=$?
 same 'failures panel: no lock start, rc 0' "$rc" "0"
 contains 'failures panel: no lock start reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
 mkdir -p "$W/fl-dir"
-QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_LEG_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
+QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_LEG_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$? # old name, read both ways
 same 'failures panel: unreadable ledger, rc 0' "$rc" "0"
 contains 'failures panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
 rm -f "$M/board.html"

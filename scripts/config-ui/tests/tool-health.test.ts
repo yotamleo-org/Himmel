@@ -31,7 +31,7 @@ function seed() {
     expect(r.exitCode).toBe(0);
   }
   const config = join(dir, "claude-config"); mkdirSync(config);
-  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_LEG_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
+  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
 }
 const read = (env: object, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"));
 
@@ -139,7 +139,7 @@ test("the trend heading names the since window, not the days switch", async () =
 test("v2 text-only subagent failures do not poison complete tool denominators", () => {
   const env = seed();
   const textFailure = { session: "48160000-0000-4000-8000-000000000000", agent: { ...agent, id: "child" }, class: "blocked/report", failure: "blocked", count: 1, recovered: null };
-  writeFileSync(env.HIMMEL_LEG_FAILURES_LEDGER, readFileSync(env.HIMMEL_LEG_FAILURES_LEDGER, "utf8") + JSON.stringify(textFailure) + "\n");
+  writeFileSync(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER, readFileSync(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER, "utf8") + JSON.stringify(textFailure) + "\n");
   const data = read(env);
   expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: 50, rate: 0.16 });
   expect(data.hooks[0]).toMatchObject({ calls: 50, rate: 0.1 });
@@ -170,12 +170,18 @@ test("out-of-range numeric timestamps skip malformed rows instead of throwing", 
 
 test("the worker-session failures ledger name wins over the old one", () => {
   const env = seed();
-  const worker = { HIMMEL_EVAL_RUNS_LEDGER: env.HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: env.HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_LEG_FAILURES_LEDGER: "/no/failures" };
+  const worker = { HIMMEL_EVAL_RUNS_LEDGER: env.HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_LEG_FAILURES_LEDGER: "/no/failures" }; // old name, read both ways
   expect(read(worker)).toEqual(read(env));
 });
 
+test("the old failures ledger name is still read", () => {
+  const env = seed();
+  const old = { HIMMEL_EVAL_RUNS_LEDGER: env.HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_LEG_FAILURES_LEDGER: env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER }; // old name, read both ways
+  expect(read(old)).toEqual(read(env));
+});
+
 test("missing ledgers degrade to no data", () => {
-  expect(read({ HIMMEL_EVAL_RUNS_LEDGER: "/no/evals", HIMMEL_LEG_FAILURES_LEDGER: "/no/failures" })).toMatchObject({ state: "absent", tools: [] });
+  expect(read({ HIMMEL_EVAL_RUNS_LEDGER: "/no/evals", HIMMEL_WORKER_SESSION_FAILURES_LEDGER: "/no/failures" })).toMatchObject({ state: "absent", tools: [] });
 });
 
 test("authenticated read-only route renders the seeded rates and session drilldown", async () => {
