@@ -8,6 +8,8 @@
 #   3 a bare <placeholder> renders as visible text
 #   4 mermaid blocks reach the page and the 3 standalone HTML pages are
 #     byte-identical
+#   5 every local route and #fragment in the built site resolves, passthrough
+#     pages included (check-built-links.mjs, with a broken-link control)
 # Needs `npm ci` in site/ (network); without site/node_modules it skips loudly.
 set -u
 repo=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
@@ -144,6 +146,28 @@ check "control: hit_ok fails a nonzero exit even when the text names the page" f
 check "control: hit_ok fails an empty result" fails hit_ok 0 ""
 check "control: a missing index under a stuck-playbook path fails the search, the path text is no hit" fails pf_run "$sweep_ctl/it's a stuck-playbook dist"
 
+# --- built links: scripts/docs-site/check-built-links.mjs fails on a dead route or fragment, passthrough pages included
+links_chk="$repo/scripts/docs-site/check-built-links.mjs"
+mk_site() { # mk_site <dir> <extra href for the generated page> <extra href for the passthrough page>
+  mkdir -p "$1/page" "$1/guide" || return 1
+  printf '<h2 id="sec">S</h2>\n<a href="/Himmel/page/#sec">ok</a> <a href="#sec">ok</a> <a href="https://example.invalid/x">ext</a> %s\n' "$2" >"$1/page/index.html"
+  printf '<a href="../page/#sec">ok</a> <a href="../page/">ok</a> %s\n' "$3" >"$1/guide/raw.html"
+}
+built_ok() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; }
+mk_site "$sweep_ctl/links-clean" "" "" || exit 1
+mk_site "$sweep_ctl/links-route" '<a href="/Himmel/no-such/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-frag" '<a href="/Himmel/page/#gone">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-raw-route" "" '<a href="../setup/vm-mode.md">x</a>' || exit 1
+mk_site "$sweep_ctl/links-raw-frag" "" '<a href="../page/#gone">x</a>' || exit 1
+mk_site "$sweep_ctl/links-escape" '<a href="/elsewhere/">x</a>' "" || exit 1
+check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
+check "control: built links fails a dead generated-page route" fails built_ok "$sweep_ctl/links-route"
+check "control: built links fails a dead generated-page fragment" fails built_ok "$sweep_ctl/links-frag"
+check "control: built links fails a dead route in a passthrough page" fails built_ok "$sweep_ctl/links-raw-route"
+check "control: built links fails a dead fragment in a passthrough page" fails built_ok "$sweep_ctl/links-raw-frag"
+check "control: built links fails a root link outside the site base" fails built_ok "$sweep_ctl/links-escape"
+check "control: built links fails on a dist with no pages" fails built_ok "$sweep_ctl/no-such-dist"
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
   printf '\n%d passed, %d failed (site build not run)\n' "$pass" "$fail"
@@ -251,6 +275,9 @@ check "IA: Home is the hero page, not the docs map" grep -q 'Let Claude Code wor
 check "IA: Home carries the Try it on a throwaway project CTA" grep -q 'Try it on a throwaway project' "$home"
 check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d ' ')" 1
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
+
+# --- built links: every local route and fragment in the built site (passthrough guides included) resolves
+check "built links: every local route and #fragment in dist resolves" built_ok "$dist"
 
 # --- J1: full site (one page per IA section, trail page, raw passthrough, search)
 for r in daily-loop handover/afk-mode glossary internals/stuck-playbook contributing; do
