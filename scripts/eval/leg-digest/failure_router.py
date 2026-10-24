@@ -79,7 +79,13 @@ KEYS = re.compile(r"^(none|[A-Z][A-Z0-9]+-\d+(, [A-Z][A-Z0-9]+-\d+)*)$")
 PRS = re.compile(r"^(none|#\d+(, #\d+)*)$")
 TICKET = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 PROJECT = re.compile(r"^[A-Z][A-Z0-9]+$")
-HEADS = ("Failure-loop recurrence (HIMMEL-4670 router).", "Failure-loop recurrence update.", "")
+SHAPE = ("## Impact", "Legs lost time to the same failure class, so the harness repeats a defect.",
+         "## What", "The daily failure review found this class recurring in distinct legs.",
+         "## Why", "A failure that recurs across legs is a harness defect, not one leg's mistake.",
+         "## Plan", "1. Find the cause of the recurring failure class and fix it at the source.",
+         "## DoD", "- The class stops recurring in the failure review.",
+         "## Agent detail")
+HEADS = ("Failure-loop recurrence (HIMMEL-4670 router).", "Failure-loop recurrence update.", "") + SHAPE
 INBOX_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2} (denied|suite|blocked|error|run_error|traj)/%s legs=\d+ "
                         r"topic=[a-z0-9-]+\.md: candidate line, classifier denials recurred, check the allow-rule shape$"
                         % SUB)
@@ -200,8 +206,13 @@ def check_body(text, table=None):
 def build_body(table, t, cls, legs, counted, update):
     tickets = sorted({r["ticket"] for r in counted if r["ticket"]})
     prs = sorted({r["pr"] for r in counted if r["pr"]})
-    out = [HEADS[1] if update else HEADS[0], "",
-           "- class: %s" % cls,
+    out = [HEADS[1], ""]
+    if not update:
+        out = []
+        for line in SHAPE:
+            out += [line] if line.startswith("## ") else [line, ""]
+        out += [HEADS[0], ""]
+    out += ["- class: %s" % cls,
            "- distinct legs (%d d): %d" % (table["window_days"], len(legs)),
            "- legs: %s" % ", ".join(legs)]
     if not update:
@@ -344,6 +355,7 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
 
     intent(kind) logs the send before it happens and returns False when the log write failed:
     no Jira write is made without it."""
+    global JIRA_ERR
     n = len(legs)
     if not state_ok:
         return "skipped:state-unreadable", None
@@ -394,11 +406,14 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
         return "skipped:alphabet", None
     if not intent("file"):
         return "skipped:log-error", None
+    sector = ["--sector", table["sector"]] if table.get("sector") else []
     out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", title, "--desc-file", f,
-                                                 "--labels", "failure-loop,fl-%s" % slug(cls),
-                                                 "--project", project]))
+                                                 "--labels", "failure-loop,fl-%s,standalone" % slug(cls)]
+                                         + sector + ["--project", project]))
     m = re.search(r"^Created ([A-Z][A-Z0-9]+-\d+)$", out or "", re.M)
     if not m:
+        if out is not None:
+            JIRA_ERR = "unexpected output: " + excerpt(out)
         return "skipped:jira-error", None
     state["created"]["n"] += 1
     c["ticket"] = m.group(1)
@@ -480,7 +495,7 @@ def route(a):
                 save_state(a.state, state)
             decisions += 1
             print("failure-router: %s legs=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))
-            if dec == "skipped:search-error" and JIRA_ERR:
+            if dec in ("skipped:search-error", "skipped:jira-error") and JIRA_ERR:
                 print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
             if dec in ("filed", "commented"):
                 sent.append((dec, cls, ticket))

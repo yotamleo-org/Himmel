@@ -52,7 +52,23 @@ case "$op" in
   list) if [ -f "$d/needs-git-cwd" ] && ! git rev-parse --git-dir >/dev/null 2>&1; then echo "JIRA_BASE_URL is not set" >&2; exit 1; fi
         [ -f "$d/list.err" ] && cat "$d/list.err" >&2
         lbl="$(printf '%s' "$*" | sed -n 's/.*labels = "\([^"]*\)".*/\1/p')"; [ -f "$d/list.$lbl" ] && cat "$d/list.$lbl"; exit "$(cat "$d/list.rc" 2>/dev/null || echo 0)" ;;
-  create) grab "$@"; n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
+  create) grab "$@"
+        # What the real CLI refuses: a body without the six sections (a real Plan and DoD line), a Task with neither
+        # a parent nor the standalone label, a missing Sector.
+        f=""; lbl=""; sec=""
+        while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; *) shift ;; esac; done
+        [ -f "$d/create.err" ] && { cat "$d/create.err" >&2; exit 1; }
+        for h in Impact What Why Plan DoD "Agent detail"; do
+          grep -q "^## $h\$" "$f" || { echo "jira: refused: ticket body lacks the ticket shape: missing \"## $h\"" >&2; exit 1; }
+        done
+        for h in Plan DoD; do
+          awk -v h="## $h" '$0 == h {s = 1; next} /^## / {s = 0} s && /^([-*]|[0-9]+[.)]) [^<]/ {ok = 1} END {exit !ok}' "$f" \
+            || { echo "jira: refused: \"## $h\" has no bullet or numbered line" >&2; exit 1; }
+        done
+        case ",$lbl," in *,standalone,*) ;; *) echo "jira: refused: a Task needs --parent or --labels standalone" >&2; exit 1 ;; esac
+        [ -n "$sec" ] || { echo "jira: refused: no Sector, pass --sector" >&2; exit 1; }
+        printf '%s\n' "$sec" >>"$d/sectors.log"
+        n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) grab "$@"; echo "Comment added to $1" ;;
   *) exit 9 ;;
 esac
@@ -111,6 +127,8 @@ check "a label search ran before the create, over every status" 'grep -q "^list 
 check "the create carries the two labels, Task, no fixVersion" 'grep -q -- "^create .*--type Task" "$STUB/calls.log" && grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal" "$STUB/calls.log" &&! grep -q -- "--fix-version" "$STUB/calls.log"'
 body="$(ls "$STUB"/body.create.* 2>/dev/null | head -n 1)"
 check "the ticket body passes the alphabet check" '[ -n "$body" ] && python3 "$FR" check-body "$body" >/dev/null'
+check "HIMMEL-7354: the body carries the six ticket sections" '[ "$(grep -c "^## " "$body")" = 6 ]'
+check "HIMMEL-7354: the create names the standalone label and the table sector" 'grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal,standalone" "$STUB/calls.log" && grep -q -F -- "--sector Quality & proof" "$STUB/calls.log" && [ "$(cat "$STUB/sectors.log")" = "Quality & proof" ]'
 check "the body names the class, the leg count and both legs" 'grep -q "denied/guard-pr-check-literal" "$body" && grep -q "distinct legs (14 d): 2" "$body" && grep -q "N100, N200" "$body"'
 check "no canary in the body, the call log, the state or the decision log" '! grep -q "$CANARY" "$body" "$STUB/calls.log" "$ST" "$LOG"'
 check "one filed line, carrying the ticket" '[ "$(dlines "$LOG")" = 1 ] && decs "$LOG" | jq -e "select(.class == \"denied/guard-pr-check-literal\") | .decision == \"filed\" and .ticket == \"HIMMEL-9001\" and .legs == 2 and (.ts | test(\"^2026-10-07T12:00:00\"))" >/dev/null'
@@ -370,6 +388,17 @@ check "a commented class reaches the console with its key and no INTAKE" '[ "$rc
 python3 "$FR" route --dry-run --ledger "$F17/l.jsonl" --state "$F17/s2.json" --log "$F17/log2" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 rc17d=$?
 check "a dry run notifies nobody" '[ "$rc17d" -eq 0 ] && [ ! -s "$STUB/notify.log" ]'
+F18="$TMP/f18"; mkdir -p "$F18"
+SAVE="$LED"; LED="$F18/l.jsonl"
+row N1 denied/guard-eleven 1; row N2 denied/guard-eleven 1
+LED="$SAVE"
+: >"$STUB/notify.log"
+echo 'jira: refused: ticket body lacks the ticket shape: missing "## Impact"' >"$STUB/create.err"
+python3 "$FR" route --ledger "$F18/l.jsonl" --state "$F18/s.json" --log "$F18/log" --inbox "$F18/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F18/out" 2>&1
+rc18=$?
+rm -f "$STUB/create.err"
+check "HIMMEL-7354: a refused create says why, after the skipped line" '[ "$rc18" -eq 0 ] && grep -q "^failure-router: denied/guard-eleven legs=2 skipped:jira-error$" "$F18/out" && grep -q "^failure-router: denied/guard-eleven reason: jira: refused: ticket body lacks the ticket shape: missing \"## Impact\"$" "$F18/out"'
+check "a refused create sends nothing to the console or the release manager" '[ ! -s "$STUB/notify.log" ]'
 
 echo "HIMMEL-7354: failure-route-notify.sh reaches the newest live console and files the INTAKE request"
 N="$HERE/failure-route-notify.sh"; N1="$TMP/n1"; mkdir -p "$N1"
