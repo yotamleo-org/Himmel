@@ -2955,15 +2955,23 @@ cat > "$sb29/scripts/test-capstuck.sh" <<'SHEOF'
 echo run >> "$CAP29_DIR/stuck.runs"
 sleep 30
 SHEOF
-chmod +x "$sb29/scripts/test-capslow.sh" "$sb29/scripts/test-capstuck.sh"
+# test-capskip.sh overruns the cap on its first attempt and exits 0 through a SKIP line on the second.
+cat > "$sb29/scripts/test-capskip.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP29_DIR/skip.runs"
+[ "$(wc -l < "$CAP29_DIR/skip.runs")" -ge 2 ] && { echo "SKIP: nothing to run here"; exit 0; }
+sleep 30
+SHEOF
+chmod +x "$sb29/scripts/test-capslow.sh" "$sb29/scripts/test-capstuck.sh" "$sb29/scripts/test-capskip.sh"
 # Real run 40035630814 (shell-unit-shard 3, main, 2026-10-24) printed:
 #   [CAP EXCEEDED] scripts/test-adopt.sh (ran 1203s, cap 1200s) — killed by the runner's watchdog at the cap, no exit status observed
 real29='\[CAP EXCEEDED\] [^ ]*test-capstuck\.sh \(ran [0-9]+s, cap 2s\) — killed by the runner.s watchdog at the cap, no exit status observed'
 
-mkdir -p "$sb29/slowdir" "$sb29/stuckdir"
+mkdir -p "$sb29/slowdir" "$sb29/stuckdir" "$sb29/skipdir"
 cp "$sb29/scripts/test-capslow.sh" "$sb29/slowdir/"
 cp "$sb29/scripts/test-capstuck.sh" "$sb29/stuckdir/"
-out29a=$(CAP29_DIR="$sb29" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb29/slowdir" 2>&1); rc29a=$?
+cp "$sb29/scripts/test-capskip.sh" "$sb29/skipdir/"
+out29a=$(CAP29_DIR="$sb29" SUITE_FLAKE_LEDGER="$sb29/flake-ledger.jsonl" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb29/slowdir" 2>&1); rc29a=$?
 runs29a=$(wc -l < "$sb29/slow.runs" 2>/dev/null | tr -d ' ')
 if [ "$rc29a" -eq 0 ] && [ "$runs29a" = 2 ] && grepq "$out29a" '\[FLAKE\] .*test-capslow\.sh'; then
   pass "29a: a suite that overran its cap and finished on the rerun is a FLAKE, rc 0, run twice"
@@ -2982,6 +2990,13 @@ if grepq "$out29b" -E "$real29"; then
   pass "29c: the final CAP EXCEEDED line keeps the shape CI printed for test-adopt.sh"
 else
   fail "29c: no CAP EXCEEDED line in the real CI shape: $out29b"
+fi
+
+out29d=$(CAP29_DIR="$sb29" SUITE_FLAKE_LEDGER="$sb29/flake-ledger.jsonl" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb29/skipdir" 2>&1); rc29d=$?
+if [ "$rc29d" -eq 1 ] && grepq "$out29d" '\[CAP EXCEEDED\] [^ ]*test-capskip\.sh' && grepq "$out29d" 'TIMED OUT: 1'; then
+  pass "29d: a rerun that only SKIPs keeps the first attempt's CAP EXCEEDED and TIMED OUT count"
+else
+  fail "29d: rc=$rc29d (want rc 1, a [CAP EXCEEDED] line and TIMED OUT: 1) output: $out29d"
 fi
 rm -rf "$sb29"
 fi

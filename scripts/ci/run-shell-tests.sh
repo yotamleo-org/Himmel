@@ -4544,6 +4544,7 @@ LIVEMSGS
     tail -n 40 "$log" | sed 's/^/    /'
     echo '--------------------------'
     first_rc=$rc
+    first_capped=$capped
     first_log="$log"
     _attempt=2
     continue
@@ -4558,6 +4559,10 @@ LIVEMSGS
   if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_skip_line "$log"; then
     printf '[RETRY-SKIP] %s retry exited 0 only through a SKIP line; keeping the first failure (rc=%s)\n' "$suite" "$first_rc"
     rc=$first_rc
+    if [ "$first_capped" -eq 1 ]; then
+      capped=1
+      timed_out=$((timed_out + 1))
+    fi
   fi
   ran=$((ran + 1))
   manifest_add "ran $rc ${mf_rel:-}"
