@@ -239,6 +239,7 @@ check "a first-seen WARN files no ticket" 0 "$(jira_n create)"
 run_cad
 check "the same WARN in a 2nd consecutive run files one ticket" 1 "$(jira_n create)"
 grep '^create.*C77-stuck' "$JIRA_LOG" >/dev/null && pass "the ticket names the check id" || fail "the ticket names the check id"
+grep -e '--sector Visibility --backlog' "$JIRA_LOG" >/dev/null && pass "the ticket is placed in the backlog" || fail "the ticket is placed in the backlog"
 run_cad
 check "a 3rd run does not file a second ticket" 1 "$(jira_n create)"
 # an existing open ticket for the id is extended, not re-filed

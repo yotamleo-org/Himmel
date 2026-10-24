@@ -452,6 +452,22 @@ bash "$APPEND" "$d8" "LIVE — x" >/dev/null 2>&1
 # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 contains "a key with a digit in the project part is extracted" "$(head -n 1 "$STUB_LOG")" "AB2-7"
 
+# --- wiring: a release manager's doc never moves its ticket -------------------------------------
+reset "To Do"; mkdoc "$DOC"
+HIMMEL_RELEASE_MANAGER=1 bash "$APPEND" "$DOC" "LIVE — rm" >/dev/null 2>&1
+check "RM: a LIVE bullet makes no transition" "$(ntrans)" 0
+check "RM: the ticket stays To Do" "$(cat "$FX/status.cur")" "To Do"
+check "RM: the skip is logged" "$(row result)/$(row rule)" skip/RM
+check "RM: no owner record is written" "$([ -e "$REC" ] && echo yes || echo no)" no
+reset "In Progress"; mkdoc "$DOC" WRAPPED
+HIMMEL_RELEASE_MANAGER=1 bash "$APPEND" "$DOC" "WRAPPED — rm" >/dev/null 2>&1
+check "RM: the WRAPPED append succeeds" "$?" 0
+check "RM: a WRAPPED bullet makes no transition" "$(ntrans)" 0
+check "RM: the WRAPPED skip is logged" "$(row result)/$(row rule)" skip/RM
+reset "To Do"; mkdoc "$DOC"
+HIMMEL_RELEASE_MANAGER=0 bash "$APPEND" "$DOC" "LIVE — leg" >/dev/null 2>&1
+check "RM: HIMMEL_RELEASE_MANAGER=0 is a leg, it moves" "$(moved)" "transition $K In Progress"
+
 # --- wiring: the WRAPPED bullet ---------------------------------------------------------------
 reset "In Review"; owned LIVE 0
 bash "$APPEND" "$DOC" "WRAPPED — done" >/dev/null 2>&1

@@ -733,6 +733,32 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     expect(put.body.update?.['fixVersions']).toBeUndefined();
   });
 
+  it('a residual dropped to the backlog queues an INTAKE under a declared release (HIMMEL-7152)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'edit-intake-'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
+    const errs: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    try {
+      writeFileSync(join(root, 'verbatim.txt'), 'R1 = v1.1.3\n');
+      const { registerRelease } = await import('./release.js');
+      const rp = new Command();
+      rp.exitOverride();
+      registerRelease(rp);
+      await rp.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R1', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(root, 'verbatim.txt')]);
+      issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
+      issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
+      await run('HIMMEL-901', '--residual-of', 'HIMMEL-900');
+      expect(errs.some((e) => /REQ Q-R1-0001/.test(e))).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('a depth-1 parent stamps residual-depth-2 and removes the fixVersions', async () => {
     issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
     issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };

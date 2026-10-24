@@ -5,7 +5,7 @@ import { markdownToAdf } from '../adf.js';
 import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
-import { nextResidualDepth } from './create.js';
+import { nextResidualDepth, queueBacklogIntake } from './create.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
@@ -419,6 +419,7 @@ export function registerEdit(program: Command): void {
         }
         if (mismatches.length > 0) throw new Error(mismatches.join('\n'));
       }
+      if (dropFixVersions.length > 0) queueBacklogIntake(key, 'a residual of depth 2 or more dropped its version to the backlog');
       writeJiraBreadcrumb(key);
       console.log(`${key} edited`);
     });

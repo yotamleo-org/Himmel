@@ -274,7 +274,7 @@ while IFS= read -r id; do
     if [ "$new_ticket" -eq 1 ]; then
         write_ticket_body "$id" "$W/body.md"
         if ! created=$(jira_run create --type Task --title "Restructure finding class ${id}: remove the class, not one more instance" \
-                --labels "restructure-class-${id},restructure-trigger,standalone" --sector 'Ship loop' --parent "$EPIC" \
+                --labels "restructure-class-${id},restructure-trigger,standalone" --sector 'Ship loop' --parent "$EPIC" --backlog \
                 --project "$PROJECT" --desc-file "$W/body.md" 2>"$W/err"); then
             echo "FAILED create for ${id}: $(cat "$W/err")" >&2; failed=$((failed+1)); continue
         fi

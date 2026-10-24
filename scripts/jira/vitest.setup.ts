@@ -6,3 +6,7 @@ import { join } from 'node:path';
 // (jira.sectorField) never leaks into a test.
 process.env.HOME = mkdtempSync(join(tmpdir(), 'jira-test-home-'));
 delete process.env.JIRA_SECTOR_FIELD;
+
+// A --backlog filing queues an INTAKE under a declared release: keep every test
+// off the operator's real release state.
+process.env.HIMMEL_RELEASE_STATE_DIR = mkdtempSync(join(tmpdir(), 'jira-test-release-'));
