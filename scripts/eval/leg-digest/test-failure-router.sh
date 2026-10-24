@@ -61,6 +61,10 @@ chmod +x "$STUB/jira"
 # The stub notifier: the router's only door to the console inbox and the release manager. Never the real one.
 cat >"$STUB/notify" <<'EOF2'
 #!/usr/bin/env bash
+case "${1:-}:$#" in
+  console:2|intake:3) ;;
+  *) exit 64 ;;
+esac
 printf '%s\n' "$*" >>"$(dirname "$0")/notify.log"
 EOF2
 chmod +x "$STUB/notify"
@@ -335,7 +339,8 @@ LED="$SAVE"
 touch "$STUB/needs-git-cwd"
 : >"$STUB/notify.log"
 ( cd "$F15" && python3 "$FR" route --ledger "$F15/l.jsonl" --state "$F15/s.json" --log "$F15/log" --inbox "$F15/inbox" --now "$NOW" --jira-bin "$STUB/jira" ) >"$F15/out" 2>&1
-check "a router run from a cwd outside any git repo still searches and files" '[ "$(decs "$F15/log" | jq -r "select(.class == \"denied/guard-seven\") | .decision")" = filed ]'
+rc15=$?
+check "a router run from a cwd outside any git repo still searches and files" '[ "$rc15" -eq 0 ] && [ "$(decs "$F15/log" | jq -r "select(.class == \"denied/guard-seven\") | .decision")" = filed ]'
 rm -f "$STUB/needs-git-cwd"
 k7="$(decs "$F15/log" | jq -r 'select(.class == "denied/guard-seven") | .ticket')"
 check "a filed class sends ONE console summary line naming its key and class" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*$k7 .*denied/guard-seven" "$STUB/notify.log"'
@@ -348,8 +353,9 @@ LED="$SAVE"
 : >"$STUB/notify.log"
 echo "boom: connection refused" >"$STUB/list.err"; echo 1 >"$STUB/list.rc"
 python3 "$FR" route --ledger "$F16/l.jsonl" --state "$F16/s.json" --log "$F16/log" --inbox "$F16/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F16/out" 2>&1
+rc16=$?
 rm -f "$STUB/list.err" "$STUB/list.rc"
-check "a search error says why: the stderr excerpt follows the skipped line" 'grep -q "^failure-router: denied/guard-eight reason: boom: connection refused$" "$F16/out"'
+check "a search error says why: the stderr excerpt follows the skipped line" '[ "$rc16" -eq 0 ] && grep -q "^failure-router: denied/guard-eight reason: boom: connection refused$" "$F16/out"'
 check "a skipped class sends nothing to the console or the release manager" '[ ! -s "$STUB/notify.log" ]'
 F17="$TMP/f17"; mkdir -p "$F17"
 SAVE="$LED"; LED="$F17/l.jsonl"
@@ -358,10 +364,12 @@ LED="$SAVE"
 printf 'HIMMEL-9500\tTask\tTo Do\tlegs retype past guard-ten\n' >"$STUB/list.fl-denied-guard-ten"
 : >"$STUB/notify.log"
 python3 "$FR" route --ledger "$F17/l.jsonl" --state "$F17/s.json" --log "$F17/log" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F17/out" 2>&1
-check "a commented class reaches the console with its key and no INTAKE" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*HIMMEL-9500" "$STUB/notify.log" && ! grep -q "^intake " "$STUB/notify.log"'
+rc17=$?
+check "a commented class reaches the console with its key and no INTAKE" '[ "$rc17" -eq 0 ] && [ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*HIMMEL-9500" "$STUB/notify.log" && ! grep -q "^intake " "$STUB/notify.log"'
 : >"$STUB/notify.log"
 python3 "$FR" route --dry-run --ledger "$F17/l.jsonl" --state "$F17/s2.json" --log "$F17/log2" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
-check "a dry run notifies nobody" '[ ! -s "$STUB/notify.log" ]'
+rc17d=$?
+check "a dry run notifies nobody" '[ "$rc17d" -eq 0 ] && [ ! -s "$STUB/notify.log" ]'
 
 echo "HIMMEL-7354: failure-route-notify.sh reaches the newest live console and files the INTAKE request"
 N="$HERE/failure-route-notify.sh"; N1="$TMP/n1"; mkdir -p "$N1"
