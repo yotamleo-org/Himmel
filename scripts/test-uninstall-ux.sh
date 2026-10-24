@@ -289,6 +289,21 @@ assert_has "D1 lists the settings keys it would remove" "env.HIMMEL_REPO" "$out"
 assert_not_has "D1 never lists a foreign hook as removed" "$HOOK_FOREIGN" "$out"
 assert_has "D1 says it is a dry run" "dry-run" "$out"
 
+# ── E06 — the preview names only items that exist on this machine ─────────────
+# A Linux/macOS starter install has no Windows logon task and no AUR payload.
+fixture e06
+run_uninstall --dry-run --skip-plugins
+assert_rc "E06 dry-run on a host without schtasks" 0 "$rc"
+assert_not_has "E06 no Windows logon task on a host without schtasks" "logon task" "$out"
+assert_not_has "E06 the Windows task name is not named either" "HimmelTelegramBridge" "$out"
+if [ -e /opt/himmel ]; then pass "E06 /opt/himmel exists here, so the AUR row legitimately stays (skipped)"
+else assert_not_has "E06 no AUR payload row when /opt/himmel is absent" "/opt/himmel" "$out"; fi
+assert_has "E06 the scheduled-jobs row itself stays" "HIMMEL-Resume-*" "$out"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/schtasks"; chmod 755 "$STUB/schtasks"
+run_uninstall --dry-run --skip-plugins
+rm -f "$STUB/schtasks"
+assert_has "E06 a host with schtasks still lists the logon task" "HimmelTelegramBridge logon task" "$out"
+
 # ── S1 — DEFAULT uninstall removes himmel's code, keeps operator state ─────
 # no --skip-tasks here (unlike the other scenarios) — the cadence
 # runner dirs are gated on it the same as cadence-jobs (removing a runner dir

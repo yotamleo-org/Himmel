@@ -70,6 +70,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# No tracker config reaches the scenarios from the real machine: an empty HOME
+# (no ~/.himmel/himmel.conf) and no TRACKER / JIRA_PROJECT_KEY in the environment.
+export HOME="$work/home"; mkdir -p "$HOME"
+unset TRACKER JIRA_PROJECT_KEY
+
 # shellcheck source=lib/hermetic-path.sh
 # shellcheck disable=SC1091
 . "$repo_root/scripts/lib/hermetic-path.sh"
@@ -152,17 +157,36 @@ echo "ok: node-without-npm WARNs and exits 0 (non-strict)"
 c5bin="$work/c5bin"; mkdir -p "$c5bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$c5bin/uv"; chmod +x "$c5bin/uv"
 # real_jira_dist / real_jira_node_modules stay absent (moved-aside baseline).
-out=$(PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1); rc=$?
+# E-02: only an install that tracks work in Jira has the gap.
+out=$(TRACKER=jira JIRA_PROJECT_KEY=ABC PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1); rc=$?
 [ "$rc" -eq 0 ] || fail "jira-dist gap: non-strict should exit 0, got $rc"
 grepq "$out" 'scripts/jira/dist/index.js not built' || fail "jira-dist gap: missing WARN text (got: $out)"
-echo "ok: jira dist+node_modules absent WARNs and exits 0 (non-strict)"
+echo "ok: jira dist+node_modules absent WARNs and exits 0 (non-strict) when Jira is the tracker"
+
+# ── 5b. E-02: a starter install (no tracker config) gets no Jira warning ─────
+out=$(PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1); rc=$?
+[ "$rc" -eq 0 ] || fail "starter jira-dist: expected exit 0, got $rc"
+if grepq "$out" 'not built'; then fail "starter: the Jira not-built warning must not print without a Jira tracker (got: $out)"; fi
+grepq "$out" '0 warnings' || fail "starter: missing '0 warnings' summary (got: $out)"
+out=$(TRACKER=none JIRA_PROJECT_KEY=ABC PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1)
+if grepq "$out" 'not built'; then fail "TRACKER=none must silence the Jira warning even with a project key (got: $out)"; fi
+echo "ok: no Jira tracker -> no Jira not-built warning (E-02)"
+
+# ── 5c. E-02: the operator's Jira config (himmel.conf / JIRA_PROJECT_KEY) still warns ─
+mkdir -p "$HOME/.himmel"; printf 'TRACKER=jira\nJIRA_PROJECT_KEY=ABC\n' > "$HOME/.himmel/himmel.conf"
+out=$(PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1)
+grepq "$out" 'scripts/jira/dist/index.js not built' || fail "himmel.conf TRACKER=jira must keep the Jira warning (got: $out)"
+rm -f "$HOME/.himmel/himmel.conf"
+out=$(JIRA_PROJECT_KEY=ABC PATH="$c5bin:$work/bin:$tool_free_path" bash "$preflight" 2>&1)
+grepq "$out" 'scripts/jira/dist/index.js not built' || fail "JIRA_PROJECT_KEY alone must keep the Jira warning (got: $out)"
+echo "ok: Jira configured -> the not-built warning stays (E-02, operator profile)"
 
 # ── 6. --strict with a WARN present -> exit 1 ─────────────────────────────────
 # real_jira_dist/node_modules absent -> the jira-dist gap alone trips --strict.
 c6bin="$work/c6bin"; mkdir -p "$c6bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$c6bin/uv"; chmod +x "$c6bin/uv"
 set +e
-out=$(PATH="$c6bin:$work/bin:$tool_free_path" bash "$preflight" --strict 2>&1); rc=$?
+out=$(TRACKER=jira JIRA_PROJECT_KEY=ABC PATH="$c6bin:$work/bin:$tool_free_path" bash "$preflight" --strict 2>&1); rc=$?
 set -e
 [ "$rc" -eq 1 ] || fail "--strict with a WARN present should exit 1, got $rc"
 grepq "$out" 'Re-run with --strict' || true  # informational only when warns==0; not asserted here

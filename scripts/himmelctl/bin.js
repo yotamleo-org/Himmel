@@ -4215,6 +4215,24 @@ async function printContributorProfile(answers, derived, dryRun) {
 // non-repo target, so the two no longer collapse to one return shape. An
 // unverifiable state is reported as unverifiable — silently suppressing the
 // warning is the failure mode this whole function exists to remove.
+// The project-scope target when it sits on main/master, where the git gates
+// refuse a plain commit and adopt.sh offers the one allowed commit
+// (--commit-install). null for any other branch, scope or a non-repo.
+function commitOnMainState(answers, dryRun) {
+  if ((answers.scope || 'project') !== 'project') return null;
+  const target = projectTargetDir();
+  if (!fs.existsSync(path.join(target, '.git'))) return null;
+  const b = spawnSync('git', ['symbolic-ref', '--short', '-q', 'HEAD'], { cwd: target, encoding: 'utf8' });
+  const branch = b.status === 0 ? b.stdout.trim() : '';
+  if (branch !== 'main' && branch !== 'master') return null;
+  const q = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const command = `bash ${q(path.join(repoRoot(), 'scripts', 'adopt.sh'))} --scope project --target ${q(target)} --commit-install`;
+  // a preview ran nothing, so there is nothing committed yet
+  if (dryRun) return { branch, command, committed: false };
+  const st = spawnSync('git', ['status', '--porcelain', '--', '.claude/settings.json', '.gitignore', 'scripts'], { cwd: target, encoding: 'utf8' });
+  return { branch, command, committed: st.status === 0 && st.stdout.trim() === '' };
+}
+
 function gitGateHooksState() {
   const target = process.cwd();
   // Mirrors adopt.sh's own `[[ ! -e "$TARGET/.git" ]]` guard: a non-repo
@@ -4437,6 +4455,7 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
     // ~/.claude.json (this epilogue also renders the PREVIEW, before adopt.sh
     // has been spawned at all, same reasoning as gitHooks/userSlug above).
     workspaceTrust: dryRun ? null : applyWorkspaceTrust(),
+    commitOnMain: commitOnMainState(answers, dryRun),
   });
   for (const line of adopterProfileLib.summaryLines(summary)) console.log(line);
 }
