@@ -22,7 +22,8 @@
 # (its window is already gone), which is only counted; then
 # `sweeps: manifests=<n> failed=<n> gone=<n>`.
 #
-# Exit: 0 every sweep ran; 1 a sweep failed; 2 usage, or no bucket resolved.
+# Exit: 0 every sweep ran; 1 a sweep failed; 2 usage, no bucket resolved, or
+# the bucket's manifests could not be listed.
 #
 # Platform guard: Linux bash 3.2+, same as close-wrapped-leg.sh (no .ps1 twin).
 set -u
