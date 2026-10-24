@@ -1304,6 +1304,18 @@ def column_parity(version, cols):
     return out
 
 
+def ci_column(jira, prs):
+    """The column a card sits in: Jira's status, moved by its open PRs' CI. A red PR is In Progress, a running one is
+    IN CI, a green one is IN CI unless Jira already holds the card in In Review (review state is not read here); no PR
+    leaves Jira's status. The page then shows the card under Jira's status as a note, and the parity line flags it."""
+    cis = {ci for _, ci, _ in prs}
+    if 'red' in cis:
+        return 'In Progress'
+    if 'running' in cis or ('green' in cis and jira != 'In Review'):
+        return 'IN CI'
+    return jira
+
+
 def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
@@ -1312,6 +1324,18 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     its sector. Each column ends its header with a parity line against a live JQL count. A card whose ticket has a
     worker record in `workers` carries a worker line. The fingerprint covers what a reader acts on (tickets, priority
     blocks, chain steps, worker owner, state and open-PR heads), never a CI badge, an age or a timestamp."""
+    def step_state(st):
+        k = st.get('key', '')
+        if not KEY_RE.fullmatch(k):
+            return st.get('state', 'next')
+        if k not in mir:
+            return 'unknown'
+        if bucket(mir[k]) == 'done':
+            return 'merged'
+        if 'held' in mir[k].get('labels', []):
+            return 'held'
+        return 'work' if mir[k]['sn'] in ('In Progress', 'In Review', 'IN CI') else 'next'
+
     workers = workers or {}
     base = base.strip().rstrip('/') if re.match(r'^https?://', base.strip()) else ''
     opn = {num(k): m for k, m in mir.items() if version in m['fv'] and bucket(m) not in ('done', 'wont')}
@@ -1320,10 +1344,15 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     block = {k: n for n in names for k in rows[n]}
     order = {k: i for i, k in enumerate(k for n in names for k in rows[n])}
     cols = {c: [] for c in VCOLS}
+    jcol = {k: opn[k]['sn'] or opn[k]['cat'] for k in opn}
+    ecol = {k: ci_column(jcol[k], (prs or {}).get(k, [])) for k in opn}
     for k in sorted(opn, key=order.get):
-        cols.setdefault(opn[k]['sn'] or opn[k]['cat'], []).append(k)
+        cols.setdefault(ecol[k], []).append(k)
     par = column_parity(version, cols)
     chains = [ch for ch in chains if any(version in mir.get(st.get('key', ''), {}).get('fv', []) for st in ch['steps'])]
+    merged = sum(1 for ch in chains for st in ch['steps'] if step_state(st) == 'merged')
+    chains = [dict(ch, steps=[st for st in ch['steps'] if step_state(st) != 'merged']) for ch in chains]
+    chains = [ch for ch in chains if ch['steps']]
     inchain = {}
     for ch in chains:
         for i, st in enumerate(ch['steps'], 1):
@@ -1346,9 +1375,10 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         dirq = ['HIMMEL-%d' % b for b, st in bl if st == 'direction?']
         shut = ['HIMMEL-%d (%s)' % (b, st) for b, st in bl if st in ('done', 'wont')]
         ft = inchain.get('HIMMEL-%d' % k)
-        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s<div>%s</div>%s%s%s%s%s'
+        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s<div>%s</div>%s%s%s%s%s%s'
                 '<span class="sec" style="--s:%s">%s</span></div>\n'
                 % (' isblocked' if live else '', ' isft' if ft else '', sc, k, esc(block[k]), key_html(k), badges, esc(clip(m['title'], 120)),
+                   '<div class="dirq">Jira %s, PR CI says %s</div>' % (esc(jcol[k]), esc(ecol[k])) if jcol[k] != ecol[k] else '',
                    '<div class="wk">%s</div>' % esc(worker_line(workers[k])) if k in workers else '',
                    '<div class="ft">FAST-TRACK · %s</div>' % esc(ft) if ft else '',
                    '<div class="blk">BLOCKED by open %s</div>' % ', '.join(live) if live else '',
@@ -1374,18 +1404,6 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
                        % (esc(c), esc(c), len(ks), pl, ''.join(parts) or '<div class="empty">none</div>'))
     parline = 'parity %s: %s' % (version, ', '.join(tally) if par is not None else 'unavailable')
 
-    def step_state(st):
-        k = st.get('key', '')
-        if not KEY_RE.fullmatch(k):
-            return st.get('state', 'next')
-        if k not in mir:
-            return 'unknown'
-        if bucket(mir[k]) == 'done':
-            return 'merged'
-        if 'held' in mir[k].get('labels', []):
-            return 'held'
-        return 'work' if mir[k]['sn'] in ('In Progress', 'In Review', 'IN CI') else 'next'
-
     def step(st):
         state = step_state(st)
         k = st.get('key', '')
@@ -1401,13 +1419,14 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
                         for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))
     upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
     html = VERSION_TEMPLATE.format(
-        v=esc(version), n=len(opn), d=done, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
+        v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
         prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
         chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
         legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml))
     fp = json.dumps({
         'v': version,
         'done': done,
+        'merged': merged,
         'tickets': [[k, opn[k]['sn'], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
                     for k in sorted(opn)],
         'chains': [[ch['name'], [[st.get('key', ''), st.get('label', ''), step_state(st), st.get('pr'), st.get('owner')]
@@ -1460,7 +1479,7 @@ a{{color:var(--acc);text-decoration:none}}
 .b0{{--c:var(--p0)}}.b1{{--c:var(--p1)}}.b2{{--c:var(--p2)}}.b3{{--c:var(--p3)}}.b4{{--c:var(--p4)}}.b5{{--c:var(--p5)}}.b6{{--c:var(--p6)}}.b7{{--c:var(--p7)}}
 </style></head><body>
 <h1>{v} tracker</h1>
-<div class="sub">{n} open · {d} Done. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, each split into the
+<div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, each split into the
 approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
 state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}</div>
 {chains}

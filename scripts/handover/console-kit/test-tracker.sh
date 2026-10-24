@@ -989,11 +989,11 @@ contains 'an open ticket of the version is a card (HIMMEL-6769)' "$vhtml" 'vp to
 not_contains 'a ticket of another version is no card (HIMMEL-6769)' "$vhtml" 'vp next version'
 not_contains 'a Done ticket is no card (HIMMEL-6769)' "$vhtml" 'vpdone ticket'
 not_contains 'a Closed ticket is no card (HIMMEL-6769)' "$vhtml" 'vp closed'
-contains 'a column per status with its count (HIMMEL-6769)' "$vhtml" 'data-col="To Do"><h2>To Do <span class="n">4</span></h2>'
+contains 'a column per status with its count (HIMMEL-6769)' "$vhtml" 'data-col="To Do"><h2>To Do <span class="n">2</span></h2>'
 contains 'the IN CI column counts its card (HIMMEL-6769)' "$vhtml" 'data-col="IN CI"><h2>IN CI <span class="n">1</span></h2>'
 contains 'the header counts the Done tickets of the version (HIMMEL-6769)' "$vhtml" '1 Done'
-contains 'each column carries a Jira parity line (HIMMEL-6769)' "$vhtml" '<div class="parity ok">Jira 4 · ok</div>'
-contains 'stdout prints the per-column parity (HIMMEL-6769)' "$vstdout" 'parity v1.1.3: To Do 4/4 ok, In Progress 1/1 ok, In Review 1/1 ok, IN CI 1/1 ok'
+contains 'a column that matches Jira carries an ok parity line (HIMMEL-6769)' "$vhtml" '<div class="parity ok">Jira 1 · ok</div>'
+contains 'stdout prints the per-column parity (HIMMEL-6769)' "$vstdout" 'parity v1.1.3: To Do 2/4 DRIFT, In Progress 3/1 DRIFT, In Review 1/1 ok, IN CI 1/1 DRIFT'
 contains 'parity asks Jira for the open tickets of the version (HIMMEL-6769)' "$(cat "$W/vp-jira-args" 2>/dev/null)" \
     'project = HIMMEL AND fixVersion = "v1.1.3" AND statusCategory != Done'
 contains 'a card sits in its plan priority block (HIMMEL-6769, 6735)' "$(card 400)" 'data-block="0 critical"'
@@ -1011,13 +1011,13 @@ contains 'a contradicted link reads direction?, not BLOCKED (HIMMEL-6769, 6749)'
 not_contains 'a contradicted link does not hold the card (HIMMEL-6769, 6749)' "$(card 409)" 'BLOCKED'
 contains 'the card key links to Jira (HIMMEL-6769)' "$(card 400)" 'href="https://jira.example.test/browse/HIMMEL-400"'
 contains 'a chain step renders (HIMMEL-6769)' "$vhtml" 'chain step two'
-contains 'a chain step whose ticket is Done reads merged (HIMMEL-6769)' "$(grep -F 'chain step one' "$vout")" '<b>merged</b>'
-contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 2 · N9'
+not_contains 'a chain step whose ticket is Done is not listed (HIMMEL-6769, 7353)' "$vhtml" 'chain step one'
+contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 1 · N9'
 if [ ! -e "$vout.fp" ]; then pass 'a --version page without --plan-dir writes no .fp (HIMMEL-6769)'; else fail 'a --version page without --plan-dir wrote a .fp'; fi
 # a column that differs from Jira reads DRIFT and names the key.
 printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\nHIMMEL-411\tTask\tBlocked\tx\n' > "$W/vp-jira.tsv"
 vstdout="$(vrender)"
-contains 'a column Jira counts differently reads DRIFT (HIMMEL-6769)' "$vstdout" 'In Progress 1/2 DRIFT, In Review 1/0 DRIFT'
+contains 'a column Jira counts differently reads DRIFT (HIMMEL-6769)' "$vstdout" 'In Progress 3/2 DRIFT, In Review 1/0 DRIFT'
 contains 'the DRIFT line names the key and its Jira status (HIMMEL-6769)' "$(cat "$vout")" 'HIMMEL-402 Jira In Progress'
 contains 'a status only Jira holds gets a DRIFT column on the page (HIMMEL-6769)' "$(cat "$vout")" \
     'data-col="Blocked"><h2>Blocked <span class="n">0</span></h2><div class="parity drift">Jira 1 · DRIFT: HIMMEL-411 page (absent)'
@@ -1082,7 +1082,7 @@ contains 'a held keyed step reads held, not its hand-written state (HIMMEL-6829)
 contains 'an In Progress keyed step reads work, not its hand-written next (HIMMEL-6829)' "$(step 'prog step')" '<li class="st-work"><b>work</b>'
 contains 'a To Do keyed step reads next, not its hand-written work (HIMMEL-6829)' "$(step 'todo step')" '<li class="st-next"><b>next</b>'
 contains 'a keyed step missing from the mirror reads unknown (HIMMEL-6829)' "$(step 'missing step')" '<li class="st-unknown"><b>unknown</b>'
-contains 'a Done keyed step reads merged, not its hand-written next (HIMMEL-6829)' "$(step 'done step')" '<li class="st-merged"><b>merged</b>'
+not_contains 'a Done keyed step is not listed (HIMMEL-6829, 7353)' "$(cat "$v2out")" 'done step'
 contains 'a keyless step keeps its hand-written state (HIMMEL-6829)' "$(step 'keyless step')" '<li class="st-work"><b>work</b>'
 contains 'a worker line shows the leg, state, open PR, head, CI and age (HIMMEL-6829)' "$(wcard 401)" 'worker N3096 · live · #500 @abc1234 · CI red · 5 min'
 not_contains 'a closed PR of the record is not on the worker line (HIMMEL-6829)' "$(wcard 401)" '#499'
@@ -1145,6 +1145,29 @@ vfp_is differ 'a priority change moves the focus fingerprint (HIMMEL-6829)'
 sed 's/labels: \["held"\]/labels: []/' "$vp/HIMMEL-420.md" > "$W/h420.md" && cp "$W/h420.md" "$vp/HIMMEL-420.md"
 v2render >/dev/null
 vfp_is differ 'releasing a hold moves the focus fingerprint (HIMMEL-6829)'
+
+# --- open work only, columns follow the PR's CI.
+cat > "$W/vp-chains4.json" <<'EOF'
+[{"name":"w4","steps":[{"key":"HIMMEL-405","label":"merged step"},{"key":"HIMMEL-401","label":"open step"}]},
+ {"name":"w4done","steps":[{"key":"HIMMEL-405","label":"all merged step"}]}]
+EOF
+v4out="$W/vp-v4.html"
+v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
+v4="$(cat "$v4out" 2>/dev/null)"
+colof() {
+    python3 -I -c 'import re,sys; t=open(sys.argv[1]).read(); i=t.find("data-key=\"HIMMEL-%s\"" % sys.argv[2]); m=re.findall(r"data-col=\"([^\"]*)\"", t[:i]); print(m[-1] if m and i >= 0 else "")' "$v4out" "$1"
+}
+not_contains 'a merged chain step is not listed (HIMMEL-7353)' "$v4" 'merged step'
+not_contains 'a chain whose steps all merged is not listed (HIMMEL-7353)' "$v4" 'w4done'
+contains 'an unmerged chain step is still listed (HIMMEL-7353)' "$v4" 'open step'
+contains 'the header counts the hidden merged chain steps (HIMMEL-7353)' "$v4" '2 merged chain steps hidden'
+contains 'a To Do card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 400)" 'In Progress'
+contains 'an In Progress card whose PR CI is green sits in IN CI (HIMMEL-7353)' "$(colof 401)" 'IN CI'
+contains 'an In Review card with no PR stays in In Review (HIMMEL-7353)' "$(colof 402)" 'In Review'
+contains 'an IN CI card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 403)" 'In Progress'
+contains 'a To Do card with no PR stays in To Do (HIMMEL-7353)' "$(colof 407)" 'To Do'
+contains 'a card whose column differs from Jira names its Jira status (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-400"' "$v4out")" 'Jira To Do'
+not_contains 'a card whose column matches Jira has no Jira note (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-402"' "$v4out")" 'Jira In Review'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
