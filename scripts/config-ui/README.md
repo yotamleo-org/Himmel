@@ -52,7 +52,8 @@ The **How good are our reviewers?** section (HIMMEL-7385) is fed by `GET /api/re
 only), which returns `{state: ok, text, writtenAt}` from `~/.himmel/state/review-page/review-page.md`
 (`REVIEW_PAGE_FILE` overrides) as rendered by `scripts/eval/review-page.py` (the weekly
 `judge-accuracy-cadence.sh` writes it) or `{state: absent, reason}` when the file is missing. The browser
-shows the text as is.
+shapes the Markdown: `##` and `###` headings become small headings, the H1 is dropped, `- ` lines become
+list items, other lines become paragraphs, and a "Written <date>" footer is added.
 
 The **Usage windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a

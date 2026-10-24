@@ -108,6 +108,7 @@ has "answers: a falling figure reads as down" "$out" "was 40 % before, down 10 p
 has "answers: a question with no earlier figure says so" "$out" "no earlier figure yet"
 has "answers: a question with no data says not measured" "$out" "Is CodeRabbit right often enough to keep? Not measured yet"
 has "answers: the note rides along" "$out" "verdicts by one judge model"
+has "answers: the judge question counts merged PRs, not verdicts" "$out" "matter? 90 % (likely between 60 % and 98 %) of 10 merged PRs"
 
 # CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
 python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
@@ -136,7 +137,8 @@ rows = [row("leg-trajectory", "2026-10-20T00:00:00Z", {"red_before_green": 1}),
         row("leg-trajectory", "2026-10-21T01:00:00Z", {"red_before_green": None}),
         row("leg-trajectory", "2026-10-23T00:00:00Z", {"red_before_green": 1}),
         row("leg-trajectory", "2026-10-23T01:00:00Z", {"red_before_green": 1}),
-        row("friction", "2026-10-21T12:00:00Z", {"refusals": 100, "unclear": 40}),
+        row("leg-trajectory", "2026-10-22T00:00:00Z", {"red_before_green": 1}),
+        row("friction", "2026-10-22T00:00:00Z", {"refusals": 100, "unclear": 40}),
         row("friction", "2026-10-24T12:00:00Z", {"refusals": 100, "unclear": 30}),
         row("judge-accuracy", "2026-10-24T12:00:00Z", {"model.claude-opus-5-5.n": 9, "model.sonnet.n": 1, "model.unknown.n": 4})]
 with open(sys.argv[2], "w") as fh:
@@ -156,9 +158,9 @@ PY
 ans="$(python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/cr.jsonl" --cut 2026-10-22T00:00:00Z 2>&1)"; rc=$?
 eq "answers: exit 0" "$rc" "0"
 pick() { printf '%s' "$ans" | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["metrics"].get(sys.argv[1]))' "$1"; }
-eq "answers q1: sessions that ran a test, no-test sessions left out" "$(pick q1.n)" "4"
-eq "answers q1: test-first count" "$(pick q1.k)" "3"
-eq "answers q1: the earlier figure stops at the cut" "$(pick q1.before.n)" "2"
+eq "answers q1: sessions that ran a test, no-test sessions left out" "$(pick q1.n)" "5"
+eq "answers q1: test-first count" "$(pick q1.k)" "4"
+eq "answers q1: the earlier figure includes a row at the cut, like the others" "$(pick q1.before.n)" "3"
 eq "answers q2: unclear share of the newest window" "$(pick q2.pct)" "0.3"
 eq "answers q2: the window at the cut" "$(pick q2.before.pct)" "0.4"
 eq "answers q3: share of the most used judge model, unknown left out" "$(pick q3.pct)" "0.9"
@@ -169,6 +171,20 @@ miss="$(python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl
 eq "answers: an unreadable CR ledger is named on stderr, not silently an empty sample" "$(printf '%s' "$miss" | grep -c 'coderabbit measurement unavailable')" "2"
 python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/cr.jsonl" --record >/dev/null 2>&1
 eq "answers --record appends one decision-158 row" "$(grep -c decision-158 "$TMP/ans-runs.jsonl")" "1"
+eq "answers --record of a complete measurement is an ok row" "$(grep decision-158 "$TMP/ans-runs.jsonl" | grep -c '"status":"ok"')" "1"
+cp "$TMP/ans-runs.jsonl" "$TMP/ans-partial.jsonl"
+python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-partial.jsonl" --cr-ledger "$TMP/no-such-cr.jsonl" --record >/dev/null 2>&1; rc=$?
+eq "answers --record with an unreadable CR ledger exits 3" "$rc" "3"
+eq "answers --record with an unreadable CR ledger writes a partial row that names the gap" "$(grep decision-158 "$TMP/ans-partial.jsonl" | tail -n 1 | grep -c '"status":"partial".*coderabbit')" "1"
+# The default CR ledger is found from the script's own checkout, not from the caller's directory (cron runs from $HOME).
+dflt="$(cd "$TMP" && env -u CR_LEDGER python3 -I -c '
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("d158", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+p = m.default_cr_ledger()
+print("ok" if p and os.path.isabs(p) and os.path.basename(p) == "cr-critic-scores.jsonl" and os.path.isdir(os.path.dirname(p)) else "bad:%s" % p)' "$HERE/decision-158-answers.py" 2>&1)"
+eq "answers: with CR_LEDGER unset and the caller outside any repo, the CR ledger path is still found" "$dflt" "ok"
 
 # No raw field name: no metric or interval key from the fixture rows, no dotted or snake_case identifier.
 leak="$(printf '%s' "$out" | python3 -I -c 'import json, re, sys

@@ -55,7 +55,8 @@ cmd_run() {
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/judge-accuracy-cadence.XXXXXX")" || return 1  # prim-ok: cron scratch dir, removed by the RETURN trap below
     # shellcheck disable=SC2064  # $tmp is expanded now on purpose
     trap "rm -rf '$tmp'" RETURN
-    if ! (cd "$ROOT" && "$GH_BIN" pr list --state all --limit 3000 --json number,state,mergedAt,headRefOid,mergeCommit >"$tmp/prs.json") ||
+    # gh pages through --limit, so a high bound keeps the oldest PRs in the list
+    if ! (cd "$ROOT" && "$GH_BIN" pr list --state all --limit 10000 --json number,state,mergedAt,headRefOid,mergeCommit >"$tmp/prs.json") ||
        ! (cd "$ROOT" && "$GH_BIN" run list --branch main --limit 1000 --json databaseId,headSha,conclusion,createdAt >"$tmp/runs.json"); then
         echo "judge-accuracy-cadence: gh could not read PR or main-run state" >&2
         alert_fail "gh failed"

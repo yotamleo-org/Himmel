@@ -11,8 +11,8 @@ carries no metric names: a number with no sentence here is not shown.
 
 Ledgers: $HIMMEL_EVAL_RUNS_LEDGER / $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/. Prints the page, or
 writes it to --out. Exit 0. Stdlib only; no network, no model call.
-ponytail: the page is rendered on demand, by the weekly judge-accuracy cadence and by scripts/config-ui's
-/api/reviewers; it is not live-updating, upgrade path a push from the ledger append.
+ponytail: the page is rendered by the weekly judge-accuracy cadence into the file scripts/config-ui's
+/api/reviewers serves; it is not live-updating, upgrade path a push from the ledger append.
 """
 import argparse
 import os
@@ -41,7 +41,7 @@ CHANGES = {"prompt": "%s prompt", "cr-config": "%s settings", "learning": "%s no
            "impacted-suites": "the rule that picks which tests CI runs"}
 ANSWERS = [("q1", "Do agents write the failing test before the code?", "sessions"),
            ("q2", "How many hook and gate refusals are left unsorted?", "refusals"),
-           ("q3", "Does the judge model and effort matter?", "judge verdicts"),
+           ("q3", "Does the judge model and effort matter?", "merged PRs"),
            ("q4", "Is CodeRabbit right often enough to keep?", "findings"),
            ("q5", "Is the Claude critic worth a third review?", "findings")]
 VERDICTS = {"improved": "it helped", "regressed": "it made things worse", "flat": "no real change"}

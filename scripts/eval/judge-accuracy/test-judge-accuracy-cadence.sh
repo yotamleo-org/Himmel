@@ -14,6 +14,7 @@ export HIMMEL_EVAL_CHANGES_LEDGER="$TMP/changes.jsonl"
 export HIMMEL_JUDGE_ADJUDICATION="$TMP/queue.jsonl"
 export REVIEW_PAGE_FILE="$TMP/page/review-page.md"
 export CR_LEDGER="$TMP/cr-critic-scores.jsonl"
+: >"$CR_LEDGER"
 export CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/alert-send-failed"
 
 PASS=0; FAIL=0
@@ -80,6 +81,17 @@ touch "$TMP/gh-fail"
 bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run2.out" 2>&1; rc=$?
 rm -f "$TMP/gh-fail"
 check "run: a failing gh is a non-zero exit, no second row, an alert raised" '[ "$rc" != 0 ] && [ "$(grep -c "\"eval\":\"judge-accuracy\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ] && grep -q "judge-accuracy" "$CADENCE_ALERT_FILE"'
+
+# A step that fails after the judge row is a non-zero exit with an alert, never a clean run: a CodeRabbit
+# measurement that cannot be read and a page that cannot be written. Each runs on its own ledger.
+rm -rf "$CADENCE_ALERT_DEDUPE_DIR"; : >"$CADENCE_ALERT_FILE"
+HIMMEL_EVAL_RUNS_LEDGER="$TMP/runs-cr.jsonl" CR_LEDGER="$TMP/no-such-cr.jsonl" bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run3.out" 2>&1; rc=$?
+check "run: an unreadable CodeRabbit ledger is a non-zero exit with an alert" '[ "$rc" != 0 ] && grep -q "failed (exit" "$CADENCE_ALERT_FILE"'
+check "run: that run records a partial answer row, not a complete one" '[ "$(grep -c "\"eval\":\"decision-158\"" "$TMP/runs-cr.jsonl")" = 1 ] && grep "\"eval\":\"decision-158\"" "$TMP/runs-cr.jsonl" | grep -q "\"status\":\"partial\""'
+rm -rf "$CADENCE_ALERT_DEDUPE_DIR"; : >"$CADENCE_ALERT_FILE"
+: >"$TMP/afile"
+HIMMEL_EVAL_RUNS_LEDGER="$TMP/runs-page.jsonl" REVIEW_PAGE_FILE="$TMP/afile/page/review-page.md" bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run4.out" 2>&1; rc=$?
+check "run: a page that cannot be written is a non-zero exit with an alert" '[ "$rc" != 0 ] && grep -q "failed (exit" "$CADENCE_ALERT_FILE"'
 
 bash "$CAD" disarm >/dev/null 2>&1
 check "disarm removes the entry and the runner" '! grep -q "HIMMEL-JudgeAccuracy" "$CR/tab" && [ ! -f "$TMP/runner/judge-accuracy-cadence.sh" ]'

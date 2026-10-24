@@ -8,15 +8,17 @@ sample behind it and the same number measured at an earlier cut (before), so the
   q1  test-first record      share of agent sessions that ran a failing test before the implementation
                              (sessions with no test run are left out, not counted as misses)
   q2  unsorted refusals      share of hook and gate refusals the classifier leaves unclear
-  q3  judge model and effort share of judge verdicts written by the most used judge model
+  q3  judge model and effort share of merged PRs whose last GO came from the most used judge model
   q4  CodeRabbit sample      share of CodeRabbit's adjudicated findings that were right
   q5  Claude as 3rd reviewer share of the Claude critic's adjudicated findings that were right
 
   decision-158-answers.py [--ledger P] [--cr-ledger P] [--cut TS] [--record]
 
---cut (default 2026-10-22T00:00:00Z, the evals open-questions audit) splits before from after. Without
---record the row is printed, not appended. Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl;
-CR ledger: $CR_LEDGER, else <git common dir>/cr-critic-scores.jsonl.
+--cut (default 2026-10-22T00:00:00Z, the evals open-questions audit) splits before from after; the before
+figure counts everything at or before the cut. Without --record the row is printed, not appended.
+Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl; CR ledger: $CR_LEDGER, else
+<git common dir of this script's checkout>/cr-critic-scores.jsonl, whatever the caller's directory.
+A CR measurement that cannot be read makes the row "partial" and the exit code 3: a gap is never a clean run.
 """
 import argparse
 import json
@@ -53,9 +55,9 @@ def q1(rows, cut, m, ci, notes):
     seen = [(r["ts"], r["metrics"].get("red_before_green")) for r in rows if r["eval"] == "leg-trajectory"]
     seen = [(t, 1 if v in (1, True) else 0) for t, v in seen if v is not None]
     put(m, ci, "q1", sum(v for t, v in seen), len(seen))
-    early = [v for t, v in seen if t < cut]
+    early = [v for t, v in seen if t <= cut]
     put(m, ci, "q1.before", sum(early), len(early))
-    notes["q1"] = "every session that ran a test; the before figure stops at the cut"
+    notes["q1"] = "every session that ran a test; the before figure is every session at or before the cut"
 
 
 def q2(rows, cut, m, ci, notes):
@@ -76,42 +78,59 @@ def q3(rows, cut, m, ci, notes):
         if per:
             top = max(per, key=per.get)
             put(m, ci, "q3", per[top], sum(per.values()))
-            notes["q3"] = "verdicts by %s; watching cannot compare judge models, a designed replay can" % top
+            notes["q3"] = "merged PRs whose last GO was by %s; watching cannot compare judge models, a designed replay can" % top
 
 
-def cr(path, until, critic):
-    cmd = [sys.executable, "-I", CR_EVAL, "--json"] + (["--ledger", path] if path else []) + (["--until", until] if until else [])
+def default_cr_ledger():
+    """The CR ledger of this script's own checkout, or None: the caller's directory plays no part (cron runs from $HOME)."""
+    try:
+        common = subprocess.run(["git", "-C", HERE, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return os.path.join(common, "cr-critic-scores.jsonl") if common else None
+
+
+def cr(path, until, critic, gaps):
+    """One critic's counts from the CR ledger; a measurement that cannot be read is recorded in gaps, never an empty sample."""
+    if not path:
+        sys.stderr.write("decision-158-answers: %s measurement unavailable (no CR ledger path)\n" % critic)
+        gaps.add(critic)
+        return {}
+    cmd = [sys.executable, "-I", CR_EVAL, "--json", "--ledger", path] + (["--until", until] if until else [])
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True).stdout
         return json.loads(out)["critics"].get(critic) or {}
     except (subprocess.SubprocessError, ValueError, KeyError) as e:
         sys.stderr.write("decision-158-answers: %s measurement unavailable (%s)\n" % (critic, type(e).__name__))
+        gaps.add(critic)
         return {}
 
 
-def q45(cr_ledger, cut, m, ci, notes):
+def q45(cr_ledger, cut, m, ci, notes, gaps):
     for q, critic in (("q4", "coderabbit"), ("q5", "claude:claude-opus-5-5")):
         for tag, until in (("", None), (".before", cut)):
-            c = cr(cr_ledger, until, critic)
+            c = cr(cr_ledger, until, critic, gaps)
             put(m, ci, q + tag, c.get("agreed", 0), c.get("agreed", 0) + c.get("disproved", 0))
-        notes[q] = "adjudicated findings (agreed or disproved) of %s; the before figure stops at the cut" % critic
+        notes[q] = "adjudicated findings (agreed or disproved) of %s; the before figure is every finding at or before the cut" % critic
 
 
 def build(rows, cr_ledger, cut):
-    m, ci, notes = {}, {}, {}
+    m, ci, notes, gaps = {}, {}, {}, set()
     for fn in (q1, q2, q3):
         fn(rows, cut, m, ci, notes)
-    q45(cr_ledger, cut, m, ci, notes)
+    q45(cr_ledger, cut, m, ci, notes, gaps)
     n = sum(v for k, v in m.items() if k.endswith(".n") and ".before" not in k)
     return eval_runs.make_row("decision-158", "scripts/eval/decision-158-answers.py",
                               {"answers_v": 1, "cut": cut}, m, n=n, ci=ci, ci_level=0.95, ci_method="wilson",
-                              meta={"cut": cut, "notes": notes})
+                              status="partial" if gaps else "ok",
+                              meta={"cut": cut, "notes": notes, "unavailable": sorted(gaps)})
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ledger")
-    ap.add_argument("--cr-ledger", default=os.environ.get("CR_LEDGER"))
+    ap.add_argument("--cr-ledger", default=os.environ.get("CR_LEDGER") or default_cr_ledger())
     ap.add_argument("--cut", default=CUT)
     ap.add_argument("--record", action="store_true")
     a = ap.parse_args(argv)
@@ -125,7 +144,7 @@ def main(argv=None):
         eval_runs.append_row(row, path)
     else:
         print(json.dumps(row, indent=1, sort_keys=True))
-    return 0
+    return 3 if row["status"] == "partial" else 0
 
 
 if __name__ == "__main__":

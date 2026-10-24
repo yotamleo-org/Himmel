@@ -149,7 +149,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   cadence renders: how often the codex critic, CodeRabbit and the judges are right, with ranges, the
   five open evals questions and each change with its before and after. The server serves it read-only at
   `GET /api/reviewers` from `~/.himmel/state/review-page/review-page.md` (`REVIEW_PAGE_FILE` overrides); without the
-  file the section says "no data yet".
+  file the section says "No data: no review page yet (arm scripts/eval/judge-accuracy/judge-accuracy-cadence.sh)".
 
 Full reference, endpoints and environment overrides:
 [scripts/config-ui/README.md](../scripts/config-ui/README.md).
