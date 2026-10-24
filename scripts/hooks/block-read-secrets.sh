@@ -875,13 +875,23 @@ g4_segments() {
     hs=()
     # here-string targets (`<<< "$TOKEN"`) are redirect targets, so
     # guard_unwrap's segment words leave them out; collect the live-`$` ones.
-    # A command that defines a function or alias may give a reader's name to
-    # code, so no reader's operands are data (g4shadow).
+    # A command that defines a function or alias (or evals text that may) can
+    # give a reader's name to code, so no reader's operands are data
+    # (g4shadow). The same word as a reader's own operand defines nothing.
     k=0
     while [ "$k" -lt "${ST_N:-0}" ]; do
         case "${ST_RO[k]:-}" in *'<<<') if [ "${ST_X[k]:-0}" = 1 ]; then hs[${#hs[@]}]=$k; fi ;; esac
         if [ "${ST_Q[k]:-1}" = 0 ]; then
-            case "${ST_W[k]}" in alias | function | '{' | '}' | *'()'*) g4shadow=1 ;; esac
+            case "${ST_W[k]}" in
+                alias | function | eval | '{' | '}' | *'()'*)
+                    read -r -a idx <<<"${GU_SW[ST_S[k]]:-}"
+                    n=${idx[0]:-$k}
+                    case "$n:${ST_Q[n]}${ST_W[n]}" in
+                        "$k:"*) g4shadow=1 ;;
+                        *:0grep | *:0egrep | *:0fgrep | *:0cat | *:0head | *:0tail | *:0wc | *:0ls | *:0nl | *:0cut | *:0tr | *:0sed) ;;
+                        *) g4shadow=1 ;;
+                    esac ;;
+            esac
         fi
         k=$((k + 1))
     done

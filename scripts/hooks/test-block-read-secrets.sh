@@ -1313,6 +1313,8 @@ assert_rc "7366 ctl a function shadows a reader"            2 "$(run_case "$(j_b
 # shellcheck disable=SC2016 # literal $1 in the command under test
 assert_rc "7366 ctl a function keyword shadows a reader"    2 "$(run_case "$(j_bash 'function grep { set -o "$1"; }; grep xtrace')")"
 assert_rc "7366 ctl an alias shadows a reader"              2 "$(run_case "$(j_bash "alias head='set -o'; head xtrace")")"
+assert_rc "7366 ctl eval defines a function shadowing a reader" 2 "$(run_case "$(j_bash "eval 'tail() { set -o \"\$1\"; }'; tail xtrace")")"
+assert_rc "7366 grep for the word alias in a file named with the word" 0 "$(run_case "$(j_bash 'grep -n alias docs/xtrace.md')")"
 
 # --- an env NAME=value operand the shfmt model unwraps past still reaches the
 # regex reader: the model only proves a shifted-cwd glob safe, never allows
