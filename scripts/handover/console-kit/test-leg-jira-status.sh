@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-append-results.sh
 # scripts/handover/console-kit/test-leg-jira-status.sh - Hermetic
 # tests for the derive-and-set funnel (leg-jira-status.sh, scripts/lib/ticket-status.sh)
-# and its append-results.sh wiring. A stubbed Jira CLI (LEG_JIRA_CLI), a stubbed
+# and its append-results.sh wiring. A stubbed Jira CLI (WORKER_SESSION_JIRA_CLI), a stubbed
 # gh on PATH and a stubbed queue lock (TICKET_STATUS_QUEUE_LOCK) read fixture
 # files, so no real ticket, PR or lock is touched.
 #   D0-D7      one row per rule, plus D4b done-pending
@@ -103,7 +103,7 @@ printf '{\n  "session": "s",\n  "heartbeat": "%s"\n}\nstatus: FRESH\n' "$hb"
 exit "$rc"
 EOS
 chmod +x "$tmp/jira-stub.sh" "$tmp/bin/gh" "$tmp/lock-stub.sh"
-export LEG_JIRA_CLI="$tmp/jira-stub.sh"
+export WORKER_SESSION_JIRA_CLI="$tmp/jira-stub.sh"
 export TICKET_STATUS_QUEUE_LOCK="$tmp/lock-stub.sh"
 export PATH="$tmp/bin:$PATH"
 
@@ -460,10 +460,10 @@ check "WRAPPED: row event" "$(row event)" wrapped
 
 # --- opt-out and bad keys ----------------------------------------------------------------------
 reset "To Do"; owned
-LEG_JIRA_STATUS=0 bash "$APPEND" "$DOC" "LIVE — y" >/dev/null 2>&1
+WORKER_SESSION_JIRA_STATUS=0 bash "$APPEND" "$DOC" "LIVE — y" >/dev/null 2>&1
 # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 check "opt-out via append: no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
-LEG_JIRA_STATUS=0 fn "$K" --event live
+WORKER_SESSION_JIRA_STATUS=0 fn "$K" --event live
 # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 check "opt-out direct: no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 check "opt-out direct: a disabled row" "$(row result)" disabled

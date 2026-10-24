@@ -3,7 +3,7 @@
 #
 # Source this file; it defines functions and runs nothing. close-wrapped-leg.sh
 # appends the row at wrap; the ledger lives at
-# <handover root>/.ledger/leg-cost.jsonl (override: LEG_COST_LEDGER).
+# <handover root>/.ledger/leg-cost.jsonl (override: WORKER_SESSION_COST_LEDGER).
 #
 #   leg_cost_ledger_path [doc|stem]  prints the ledger path (under the doc's root)
 #   leg_cost_row <transcript> <leg doc path | leg stem>
@@ -12,7 +12,7 @@
 #                                    `profile:` front-matter lines are read only
 #                                    when the second arg is a readable file.
 #
-# The meter is leg-burn.sh --raw (override: LEG_BURN_BIN, for tests). cost_eq is
+# The meter is leg-burn.sh --raw (override: WORKER_SESSION_BURN_BIN, for tests). cost_eq is
 # recomputed from its exact integers with lib/burn-weights.sh, because --raw
 # keeps cost-eq itself in the rounded 560.0k form.
 # Leg class: shepherd | impl | investigation | judge. Derived from the stem
@@ -52,7 +52,7 @@ EOF
 # HANDOVER_DIR unset) never writes into that repo's handovers/ stub
 # handovers/ stub. No doc, or one no known root holds: handover_root.
 leg_cost_ledger_path() {
-    if [ -n "${LEG_COST_LEDGER:-}" ]; then printf '%s\n' "$LEG_COST_LEDGER"; return 0; fi
+    if [ -n "${WORKER_SESSION_COST_LEDGER:-${LEG_COST_LEDGER:-}}" ]; then printf '%s\n' "${WORKER_SESSION_COST_LEDGER:-${LEG_COST_LEDGER:-}}"; return 0; fi
     # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$_LCR_HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
@@ -76,7 +76,7 @@ _lcr_front() {
 leg_cost_row() {
     local transcript="$1" ref="$2" stem raw calls comp out cr cc inp cost model
     local label ticket pr="" class="" profile="" burn
-    burn="${LEG_BURN_BIN:-$_LCR_HERE/../leg-burn.sh}"
+    burn="${WORKER_SESSION_BURN_BIN:-${LEG_BURN_BIN:-$_LCR_HERE/../leg-burn.sh}}"
     raw=$(bash "$burn" --raw "$transcript") || { echo "leg-burn failed on $transcript" >&2; return 1; }
     _lcr_field() { printf '%s' "$raw" | sed -nE "s/.* $1=([0-9]+).*/\\1/p"; }
     calls=$(_lcr_field calls); comp=$(_lcr_field compactions); out=$(_lcr_field out)
@@ -86,7 +86,7 @@ leg_cost_row() {
         case "$v" in ''|*[!0-9]*) echo "leg-burn output unparseable: $raw" >&2; return 1 ;; esac
     done
     cost=$(awk -v i="$inp" -v cr="$cr" -v cc="$cc" -v o="$out" \
-        -v wi="$LEG_BURN_W_INPUT" -v wcr="$LEG_BURN_W_CACHE_READ" -v wcc="$LEG_BURN_W_CACHE_CREATE" -v wo="$LEG_BURN_W_OUTPUT" \
+        -v wi="$WORKER_SESSION_BURN_W_INPUT" -v wcr="$WORKER_SESSION_BURN_W_CACHE_READ" -v wcc="$WORKER_SESSION_BURN_W_CACHE_CREATE" -v wo="$WORKER_SESSION_BURN_W_OUTPUT" \
         'BEGIN { printf "%.10g", i*wi + cr*wcr + cc*wcc + o*wo }')
     model=$(jq -r 'select(.type == "assistant") | .message.model // empty' "$transcript" 2>/dev/null \
         | grep -v '^<' | tail -n 1)

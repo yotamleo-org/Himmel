@@ -56,7 +56,7 @@ _TIMEOUT_BIN=""
 
 FROM="$REPO"
 KEEP=0
-LEG_TIMEOUT=180
+WORKER_SESSION_TIMEOUT=180
 RUN_CODEX=1
 RUN_CLAUDE=1
 
@@ -87,7 +87,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --from) FROM="${2:-}"; shift 2 || { usage >&2; exit 2; } ;;
         --keep) KEEP=1; shift ;;
-        --timeout) LEG_TIMEOUT="${2:-}"; shift 2 || { usage >&2; exit 2; } ;;
+        --timeout) WORKER_SESSION_TIMEOUT="${2:-}"; shift 2 || { usage >&2; exit 2; } ;;
         --codex-only) RUN_CLAUDE=0; shift ;;
         --claude-only) RUN_CODEX=0; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -98,8 +98,8 @@ done
 # Positive, not merely numeric: GNU `timeout 0` DISABLES the bound, so a 0 here
 # would quietly turn a hung leg into an indefinite stall - the opposite of what
 # a timeout flag is for.
-case "$LEG_TIMEOUT" in ''|*[!0-9]*) LEG_TIMEOUT=0 ;; esac
-[ "$LEG_TIMEOUT" -ge 1 ] 2>/dev/null || { echo "hook-smoke-demo: --timeout must be a positive integer" >&2; exit 2; }
+case "$WORKER_SESSION_TIMEOUT" in ''|*[!0-9]*) WORKER_SESSION_TIMEOUT=0 ;; esac
+[ "$WORKER_SESSION_TIMEOUT" -ge 1 ] 2>/dev/null || { echo "hook-smoke-demo: --timeout must be a positive integer" >&2; exit 2; }
 # Per-hook bound for the claude-replay leg; 30s is the largest timeout any entry
 # in .claude/settings.json declares. Overridable so the pinning suite can prove
 # the bound without a 30s sleep.
@@ -306,7 +306,7 @@ assert_agent_leg() {
 
 # ============================================================ codex-exec =====
 if [ "$RUN_CODEX" = "1" ] && command -v codex >/dev/null 2>&1; then
-    echo "hook-smoke-demo: codex-exec leg (timeout ${LEG_TIMEOUT}s)"
+    echo "hook-smoke-demo: codex-exec leg (timeout ${WORKER_SESSION_TIMEOUT}s)"
     CX_LOG="$DEMO/.smoke-codex.log"
     CX_REPLY="$DEMO/.smoke-codex-reply.txt"
     : > "$CX_REPLY"
@@ -319,7 +319,7 @@ if [ "$RUN_CODEX" = "1" ] && command -v codex >/dev/null 2>&1; then
     # just cloned ourselves from the checkout under test, which is precisely
     # the "automation that already vets hook sources" the flag documents.
     # The sandbox stays read-only regardless.
-    env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$LEG_TIMEOUT"} \
+    env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$WORKER_SESSION_TIMEOUT"} \
         codex exec --skip-git-repo-check -C "$DEMO" -s read-only \
         --dangerously-bypass-hook-trust -o "$CX_REPLY" "$PROMPT" \
         > "$CX_LOG" 2>&1
@@ -433,7 +433,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
     if [ "$PIN_OK" != "1" ]; then
         row claude-print SKIP - 0 0 "native-auth pin unavailable"
     elif [ "$BANK" = "PROCEED" ] || [ "$BANK" = "BANK-UNKNOWN" ]; then
-        echo "hook-smoke-demo: claude-print leg (bank=$BANK, timeout ${LEG_TIMEOUT}s)"
+        echo "hook-smoke-demo: claude-print leg (bank=$BANK, timeout ${WORKER_SESSION_TIMEOUT}s)"
         CL_LOG="$DEMO/.smoke-claude.log"
         CL_START=$(date +%s)
         # The demo dir is a workspace Claude has never trusted, so it prints
@@ -449,7 +449,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
             if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
                 # launch-profile-ok: the demo proves the PreToolUse hook chain fires; a profile would change what it measures
                 # hook-chain smoke demo; bank-gated above, --model haiku, one read-only turn
-                env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$LEG_TIMEOUT"} claude -p "$PROMPT" \
+                env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$WORKER_SESSION_TIMEOUT"} claude -p "$PROMPT" \
                     --model haiku --permission-mode default --output-format json
             else
                 exit 2

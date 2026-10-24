@@ -110,7 +110,7 @@ RESOLVED_ROOT 2026-08-03T01:35:00Z via-handover-root
 EOF
 
 # Common env overrides for the script, one VAR=val per array entry.
-ENVOFF=("LEG_TIMELINE_WORKER_GLM=$ROOT/glm-sessions" "LEG_TIMELINE_WORKER_CLAUDEX=$ROOT/claudex-sessions" "LEG_TIMELINE_CR_LEDGER=$ROOT/cr-critic-scores.jsonl" "LEG_TIMELINE_CHAIN_LEDGER=$ROOT/chain-ledger.md")
+ENVOFF=("WORKER_SESSION_TIMELINE_WORKER_GLM=$ROOT/glm-sessions" "WORKER_SESSION_TIMELINE_WORKER_CLAUDEX=$ROOT/claudex-sessions" "WORKER_SESSION_TIMELINE_CR_LEDGER=$ROOT/cr-critic-scores.jsonl" "WORKER_SESSION_TIMELINE_CHAIN_LEDGER=$ROOT/chain-ledger.md")
 
 # run_lt: invoke leg-timeline.sh against the full-source fixtures. ENVOFF is an
 # array so fixture paths containing spaces stay intact.
@@ -155,10 +155,10 @@ not_contains "no-ts ledger line not emitted"  "$out" "must be skipped"
 # Resolve the default chain-ledger path through handover_root + USER_SLUG.
 echo "--- 1b. handover-root chain ledger resolution ---"
 out=$(env HANDOVER_DIR="$ROOT/state" USER_SLUG=tester \
-          LEG_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/claudex-sessions" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/cr-critic-scores.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="" \
+          WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/claudex-sessions" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/cr-critic-scores.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "handover-root resolution exit 0" "$rc" "0"
 contains "chain ledger resolved via handover_root" "$out" "RESOLVED_ROOT"
@@ -166,10 +166,10 @@ contains "chain ledger resolved via handover_root" "$out" "RESOLVED_ROOT"
 # A failed pure resolution is a reported source gap, not a fatal error.
 echo "--- 1c. unresolved handover root degradation ---"
 out=$(env HANDOVER_DIR="$ROOT/no-state" USER_SLUG=tester \
-          LEG_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/claudex-sessions" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/cr-critic-scores.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="" \
+          WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/claudex-sessions" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/cr-critic-scores.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "unresolved handover root still exit 0" "$rc" "0"
 contains "reports unresolved chain ledger" "$out" "chain ledger unresolved via handover_root"
@@ -185,10 +185,10 @@ cat > "$ROOT/redispatch-sessions/session-two/meta.json" <<'EOF'
 {"status":"done","started_at":"2026-08-03T04:00:00Z","lane":"codex","task_name":"round-two","shared_branch":"fix/shared","exit_code":0}
 EOF
 set_mtime "$ROOT/redispatch-sessions/session-two/meta.json" "2026-08-03T04:07:00Z"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/redispatch-sessions" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/redispatch-sessions" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "same-branch re-dispatch exit 0" "$rc" "0"
 matches "first session pairs with its own land" "$out" 'fix/shared \[session-one\] +3m00s'
@@ -199,10 +199,10 @@ matches "second session pairs with its own land" "$out" 'fix/shared \[session-tw
 # script's only mktemp input, so pointing it at a path whose parent does not
 # exist is the cheap injection — no scaffolding required.
 echo "--- 1e. mktemp failure is fatal ---"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
           TMPDIR="$ROOT/nonexistent-tmpdir" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 # Contract is "nonzero", not specifically 1 (the script's `exit 1` is incidental).
@@ -218,10 +218,10 @@ contains "mktemp failure error message" "$out" "mktemp failed"
 #    The script must report the gap and still run over worker + ledger sources.
 # ===========================================================================
 echo "--- 2. missing-source degradation ---"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/claudex-sessions" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/does-not-exist.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/chain-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/claudex-sessions" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/does-not-exist.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/chain-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "missing source still exit 0" "$rc" "0"
 contains "reports missing CR ledger"   "$out" "CR ledger missing:"
@@ -231,10 +231,10 @@ not_contains "gate source absent"      "$out" "avail codex"
 
 # All three sources missing -> still exit 0, gap report lists all three, no crash.
 echo "--- 2b. all sources missing ---"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "all-missing still exit 0" "$rc" "0"
 contains "all-missing reports glm dir"    "$out" "worker(glm) dir missing"
@@ -255,10 +255,10 @@ EOF
 set_mtime "$ROOT/utf8-glm/u1/meta.json" "2026-08-03T01:41:00Z"
 printf '# utf8 ledger fixture\n' > "$ROOT/utf8-ledger.md"
 node -e 'const fs=require("fs"); const b=Buffer.concat([Buffer.from("ONLY "),Buffer.from([255,254]),Buffer.from(" line 2026-08-03T01:50:00Z survives\n")]); fs.appendFileSync(process.argv[1], b);' "$ROOT/utf8-ledger.md"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/utf8-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/utf8-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/utf8-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/utf8-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "non-utf8 ledger exit 0" "$rc" "0"
 contains "non-utf8 ledger event survives" "$out" "08-03 01:50"
@@ -309,10 +309,10 @@ cat > "$ROOT/prewin-sessions/fresh/meta.json" <<'EOF'
 {"status":"done","started_at":"2026-08-03T01:00:00Z","lane":"glm","task_name":"fresh","exit_code":0}
 EOF
 set_mtime "$ROOT/prewin-sessions/fresh/meta.json" "2026-08-03T01:05:00Z"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/prewin-sessions" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/prewin-sessions" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "pre-window pairing exit 0" "$rc" "0"
 contains "handed-over appears in dispatch->land" "$out" "handed-over"
@@ -336,10 +336,10 @@ cat > "$ROOT/lowz-sessions/lowz-1/meta.json" <<'EOF'
 {"status":"done","started_at":"2026-08-03T01:00:00z","lane":"glm","task_name":"lowz","exit_code":0}
 EOF
 set_mtime "$ROOT/lowz-sessions/lowz-1/meta.json" "2026-08-03T01:05:00Z"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/lowz-sessions" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/lowz-sessions" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "lowercase-z exit 0" "$rc" "0"
 # The lowercase-z dispatch at 01:00:00z normalizes to 01:00:00Z and is shown
@@ -361,10 +361,10 @@ matches "lowercase-z worker pairs lowz [lowz-1] land 5m00s" "$out" 'lowz \[lowz-
 echo "--- 7. fractional-second offset honored ---"
 printf '# fractional-second offset fixture\n' > "$ROOT/frac-ledger.md"
 printf 'FRAC_OFFSET 2026-08-03T13:40:00.5+02:00 honors-offset\n' >> "$ROOT/frac-ledger.md"
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/frac-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/frac-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "fractional-offset exit 0" "$rc" "0"
 contains "fractional-offset event shown (prefix survives)" "$out" "FRAC_OFFSET"
@@ -383,10 +383,10 @@ cat > "$ROOT/at-cr.jsonl" <<'EOF'
 {"kind":"avail","ts":"2026-08-03T02:01:00Z","branch":"feat/x@y","head":"ABC1234","model":"codex","status":"ok"}
 {"kind":"finding","ts":"2026-08-03T02:02:00Z","branch":"feat/x@y","head":"ABC1234","model":"codex","finding_id":"c1","severity":"imp","file":"f","line":1,"verdict":"agreed"}
 EOF
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/at-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/at-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "'@'-branch exit 0" "$rc" "0"
 contains "gate avail row for '@'-branch" "$out" "avail codex"
@@ -402,10 +402,10 @@ mkdir -p "$ROOT/at-claudex/at-1"
 cat > "$ROOT/at-claudex/at-1/meta.json" <<'EOF'
 {"status":"done","started_at":"2026-08-03T02:00:00Z","lane":"codex","task_name":"at-1","shared_branch":"feat/x@y","exit_code":0}
 EOF
-out=$(env LEG_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
-          LEG_TIMELINE_WORKER_CLAUDEX="$ROOT/at-claudex" \
-          LEG_TIMELINE_CR_LEDGER="$ROOT/at-cr.jsonl" \
-          LEG_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
+          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/at-claudex" \
+          WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/at-cr.jsonl" \
+          WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "'@'-branch worker exit 0" "$rc" "0"
 matches "'@'-branch worker wait-to-first = 1m00s" "$out" 'feat/x@y.*wait-to-first=1m00s'
@@ -440,7 +440,7 @@ echo "--- 9. run_lt env overrides survive spaced fixture paths ---"
 sp="$ROOT/sp ace"
 mkdir -p "$sp"
 cp -rp "$ROOT/glm-sessions" "$ROOT/claudex-sessions" "$ROOT/cr-critic-scores.jsonl" "$ROOT/chain-ledger.md" "$sp/"
-out=$(ENVOFF=("LEG_TIMELINE_WORKER_GLM=$sp/glm-sessions" "LEG_TIMELINE_WORKER_CLAUDEX=$sp/claudex-sessions" "LEG_TIMELINE_CR_LEDGER=$sp/cr-critic-scores.jsonl" "LEG_TIMELINE_CHAIN_LEDGER=$sp/chain-ledger.md")
+out=$(ENVOFF=("WORKER_SESSION_TIMELINE_WORKER_GLM=$sp/glm-sessions" "WORKER_SESSION_TIMELINE_WORKER_CLAUDEX=$sp/claudex-sessions" "WORKER_SESSION_TIMELINE_CR_LEDGER=$sp/cr-critic-scores.jsonl" "WORKER_SESSION_TIMELINE_CHAIN_LEDGER=$sp/chain-ledger.md")
       run_lt 2026-08-03T00:00 2>&1); rc=$?
 check "spaced-path run_lt exit 0" "$rc" "0"
 contains "spaced-path worker land row" "$out" "land done rc=0"

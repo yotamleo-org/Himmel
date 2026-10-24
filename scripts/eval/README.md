@@ -12,6 +12,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm | `table.tsv`, `results.jsonl` (no ledger row) |
 | `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; ledger row `weekly-rollup`) |
+| `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
 ## The eval-runs ledger
@@ -337,7 +338,7 @@ ledger's `meta.tool_health`, with the session's first timestamp in
 `meta.started_ts`. No new ledger or writer is introduced. The recorder stamps
 the persisted digest and its tool rows with launch provenance: explicit
 `--lane`, else the assigned leg's title in the leg doc, else the extractor's
-`LEG_LANE`; missing provenance is `unknown`. Canonical environment lanes are
+`WORKER_SESSION_LANE`; missing provenance is `unknown`. Canonical environment lanes are
 native, claudex, openrouter, cloud and unknown; the recorder normalizes the
 historical codex label in explicit recorder input or document titles to claudex.
 Backfill never borrows its own launcher's lane or guesses from a model.
@@ -359,14 +360,14 @@ The config-ui Tool health page and console board share this reader. The
 page shows 7/30-day trends, top classes and session/tool-call-id drill-down,
 plus per-lane comparisons and deltas relative to native. All rate math stays
 on the server; the page is read-only. Overrides are
-`HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_LEG_FAILURES_LEDGER`.
+`HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
 ## leg_ledger: digests into the leg ledgers
 
 `leg-digest/leg_ledger.py` writes one digest as:
 
 1. one `leg-failures` row per digest failures row
-   (`$HIMMEL_LEG_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
+   (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
    row carries closed-list categories only; unknown keys are refused, so no
    journal text can ride in;
 2. one eval-runs row, `eval: leg-trajectory`, `run_id` = the session uuid,

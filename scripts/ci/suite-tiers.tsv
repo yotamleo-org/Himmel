@@ -292,6 +292,7 @@ scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR au
 scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/eval/test-harness-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-judge-cache-row.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/test-review-page.sh	local	behaviour suite, new HIMMEL-6943
 scripts/eval/test-session-retro.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window

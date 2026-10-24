@@ -110,9 +110,11 @@ def discover(root):
             for pm in re.finditer(r"pip install\b[^\n]*", text):
                 for m in re.finditer(r"(?<![\w.=-])([A-Za-z0-9_.-]+)==(\d+(?:\.\d+)*)(?![\w.+!-])", pm.group(0)):
                     add("pypi", m.group(1), m.group(2), r)
-            if "gitleaks/gitleaks/releases/download" in text:
-                for m in re.finditer(r"^\s*ver=(\d+\.\d+\.\d+)\s*$", text, re.M):
-                    add("gh", "gitleaks/gitleaks", "v" + m.group(1), r)
+            # Only a `ver=` whose own step downloads gitleaks: the next `ver=` (another tool's) ends the search.
+            for m in re.finditer(
+                r"^[ \t]*ver=(\d+\.\d+\.\d+)[ \t]*\n(?:(?![ \t]*ver=).*\n)*?.*gitleaks/gitleaks/releases/download", text, re.M
+            ):
+                add("gh", "gitleaks/gitleaks", "v" + m.group(1), r)
         elif r.startswith("scripts/hooks/") and name.endswith(".sh"):
             for m in re.finditer(r"^OXLINT_VERSION=(\d+\.\d+\.\d+)\s*$", open(p).read(), re.M):
                 add("npm", "oxlint", m.group(1), r)

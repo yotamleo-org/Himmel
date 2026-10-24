@@ -69,7 +69,7 @@ ds_balance() { # the launcher's own balance read, no inference
 
 bank_five() { # five_hour used % from the bank preflight, "?" if unread
   local l="$1" out
-  out="$(LEG_LANE="$l" CADENCE_USAGE_LANE="$l" bash "$PREFLIGHT" 2>&1)"
+  out="$(WORKER_SESSION_LANE="$l" CADENCE_USAGE_LANE="$l" bash "$PREFLIGHT" 2>&1)"
   printf '%s\n' "$out" | sed -n 's/.*five_hour=\([0-9.?]*\).*/\1/p' | tail -1 | grep . || echo '?'
 }
 
@@ -223,7 +223,7 @@ cmd_prepare() {
     "$ROOT/repo" "$ROOT/gitobj/$row" "$gitdir" >"$ROOT/rows/$row.env"
   prefix=""
   [ "$lane" = deepseek ] && prefix="HIMMEL_DEEPSEEK_INFERENCE_OK=1 "
-  [ "$lane" = deepseek ] || prefix="${prefix}LEG_EFFORT=$(printf %q "$effort") "
+  [ "$lane" = deepseek ] || prefix="${prefix}WORKER_SESSION_EFFORT=$(printf %q "$effort") "
   # deepseek and claudex rows run in the bubblewrap jail (sandbox.sh); native
   # rows run unsandboxed.
   if [ "$lane" != native ]; then
@@ -231,11 +231,11 @@ cmd_prepare() {
     printf '#!/usr/bin/env bash\nexec bash %q launch %q "$@"\n' "$HERE/sandbox.sh" "$ROOT/rows/$row.env" >"$ROOT/rows/$row.sandbox"
     chmod +x "$ROOT/rows/$row.sandbox"
     bash "$HERE/sandbox.sh" argv "$ROOT/rows/$row.env" >/dev/null || die "no sandbox for $row; not launchable"
-    prefix="${prefix}HEADED_ARM_LEG_$(printf %s "$lane" | tr '[:lower:]' '[:upper:]')_BIN=$(printf %q "$ROOT/rows/$row.sandbox") "
+    prefix="${prefix}HEADED_ARM_WORKER_$(printf %s "$lane" | tr '[:lower:]' '[:upper:]')_BIN=$(printf %q "$ROOT/rows/$row.sandbox") "
   fi
   # The row's whole launch, sandbox prefix included, lives in one wrapper, so
   # the console's line carries nothing that could be dropped from it.
-  printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q LEG_REPO=%q exec bash %q --lane %q --profile console-relay --console %q %q %q %q 1 %q %q\n' \
+  printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q WORKER_SESSION_REPO=%q exec bash %q --lane %q --profile console-relay --console %q %q %q %q 1 %q %q\n' \
     "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/console-kit/headed-arm-leg.sh" "$lane" "$PILOT_CONSOLE" \
     "HIMMEL-4869-pilot-$row" "$doc" "$ROOT/rows/$row.signal" "$run/$row.log" "$model" >"$ROOT/rows/$row.launch"
   chmod +x "$ROOT/rows/$row.launch"

@@ -181,7 +181,7 @@ const LABEL_RE = /^N\d+[a-z]*$/;
 // The legs: block, read by tick.sh's grammar (mirrored in board.mjs): an entry is a
 // backtick span of exactly four non-empty colon fields <label>:<nonce>:<lock>:<pid>.
 // Only the label and the pid are kept; the nonce picks the doc, and is never rendered.
-const LEG_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
+const WORKER_SESSION_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
 const parseLive = (text) => {
     const live = sectionOf(text.split('\n'), '## Live state', true);
     const entries = [];
@@ -192,7 +192,7 @@ const parseLive = (text) => {
         if (!inBlock) continue;
         for (const m of l.matchAll(/`([^`]*)`/g)) {
             const f = m[1].split(':');
-            if (/\s/.test(m[1]) || f.length !== 4 || f.some((x) => !x) || !LEG_LABEL_CLASS.test(f[0])) continue;
+            if (/\s/.test(m[1]) || f.length !== 4 || f.some((x) => !x) || !WORKER_SESSION_LABEL_CLASS.test(f[0])) continue;
             entries.push({ stem: f[0], nonce: f[1], pid: /^\d+$/.test(f[3]) ? Number(f[3]) : null });
         }
     }

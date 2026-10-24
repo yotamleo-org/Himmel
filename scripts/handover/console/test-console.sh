@@ -1877,7 +1877,7 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     LEG_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_PREFACE=/leaked-66/preface.md \
     LEG_PROFILE_MCP_CONFIG=/leaked-66/mcp.json LEG_CLAUDE_BIN=/leaked-66/claude \
     HIMMEL_LEAN_LEG=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=leaked-console-66 \
-    LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
+    WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
     LEG_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
     CR_TRIGGER_SUPPRESS=1 IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HIMMEL_READ_CLAMP_LINES=4000 \
     HIMMEL_CONSOLE_RELAY=1 \
@@ -1981,7 +1981,7 @@ out68d="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
 # 68d: the console session itself stays
 # in the himmel checkout -- --project is data recorded in the doc, never an
 # exported HEADED_ARM_REPO for the ARMED CONSOLE (a leg for the project is
-# dispatched separately via LEG_REPO). RED against the imported commit (which
+# dispatched separately via WORKER_SESSION_REPO). RED against the imported commit (which
 # exported HEADED_ARM_REPO=$proj68 here), GREEN after the fix.
 check "68d --project --arm does NOT export HEADED_ARM_REPO for the console" \
     "$(printf '%s\n' "$out68d" | grep -c "^stub-arm-68: HEADED_ARM_REPO=<unset>\$")" "1"
@@ -2723,10 +2723,10 @@ check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
 # predecessor's line (and of any decisions file that line names) is found
 # verbatim in the outgoing line or the file(s) it names; else DECISIONS-DROP.
 # The entries are copied from a live console's decisions: line.
-p87='OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.'
+p87='OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; WORKER_SESSION_EFFORT high on claudex legs.'
 e87_3='(3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched.'
 e87_4='(4) qmd fork: version with tags + main (bump main too, tag releases).'
-e87_5='(6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.'
+e87_5='(6) Use more fleet + Claude API + claudex budget; WORKER_SESSION_EFFORT high on claudex legs.'
 f87='specs/decisions/console-decisions-2026-10-20.md'
 o87="$f87 holds #3-#4; active: $e87_5"
 # mk87 <bucket> <file body|-> [pred-line]; "-" = no decisions file.

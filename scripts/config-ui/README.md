@@ -86,7 +86,7 @@ recovery outcomes are excluded; trend gaps have no denominator. Day-level
 cohorts cannot certify an intraday shift cutoff, so those denominators stay
 unknown. Lane comes only from launch metadata, never from a model name;
 a document fallback reads the assigned worker's title, not sibling mentions. Ledger overrides:
-`HIMMEL_EVAL_RUNS_LEDGER`, `HIMMEL_LEG_FAILURES_LEDGER`.
+`HIMMEL_EVAL_RUNS_LEDGER`, `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
 ## Roadmap page (`#/roadmap`)
 

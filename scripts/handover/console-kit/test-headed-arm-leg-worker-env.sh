@@ -27,7 +27,9 @@ unset HIMMEL_CONSOLE_DOC CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFF
     WORKER_SESSION_LANE WORKER_SESSION_EFFORT HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT \
     WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG \
     WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_CLAUDE_BIN \
-    HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEAN_WORKER_SESSION 2>/dev/null || true
+    HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_REPO WORKER_SESSION_AUTOCOMPACT_AB LEG_AUTOCOMPACT_AB \
+    HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_LEG_CLAUDE_BIN HEADED_ARM_WORKER_SYSTEMD_RUN HEADED_ARM_LEG_SYSTEMD_RUN \
+    HEADED_ARM_WORKER_TARGET HEADED_ARM_LEG_TARGET HEADED_ARM_WORKER_PROFILES HEADED_ARM_WORKER_SHIM HEADED_ARM_LEG_SHIM 2>/dev/null || true
 
 FAILED=0
 check() {
@@ -86,6 +88,32 @@ for p in worker-vm leg-vm; do
     rc=0; out="$(bash "$SCRIPT" --dry-run --profile "$p" HIMMEL-9999-leg "$T/doc.md" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
     check "W7 --profile $p with no VM in the brief refuses (exit 2)" "$rc" "2"
     contains "W7 --profile $p names the VM refusal" "$out" "refusing a leg-vm launch"
+done
+
+# W8. the renamed repo and A/B seams: an old name alone still works, a set new name wins.
+mkdir -p "$T/oldrepo" "$T/newrepo"
+out="$(LEG_REPO="$T/oldrepo" dry)"
+contains "W8 LEG_REPO alone still picks the repo" "$out" "HEADED_ARM_REPO=$T/oldrepo"
+out="$(WORKER_SESSION_REPO="$T/newrepo" dry)"
+contains "W8 WORKER_SESSION_REPO alone picks the repo" "$out" "HEADED_ARM_REPO=$T/newrepo"
+out="$(WORKER_SESSION_REPO="$T/newrepo" LEG_REPO="$T/oldrepo" dry)"
+contains "W8 a set WORKER_SESSION_REPO wins over LEG_REPO" "$out" "HEADED_ARM_REPO=$T/newrepo"
+not_contains "W8 the old repo is not launched" "$out" "HEADED_ARM_REPO=$T/oldrepo"
+rc=0; out="$(LEG_AUTOCOMPACT_AB=300000 dry)" || rc=$?
+check "W8 LEG_AUTOCOMPACT_AB alone is still validated (exit 2)" "$rc" "2"
+contains "W8 the validation sees the old name's value" "$out" "got: 300000"
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=300000 LEG_AUTOCOMPACT_AB=200000 dry)" || rc=$?
+check "W8 a set WORKER_SESSION_AUTOCOMPACT_AB wins over the old one (exit 2)" "$rc" "2"
+contains "W8 the winning value is the new name's" "$out" "got: 300000"
+
+# W9. a consult refuses the old spellings of its caller-chosen seams too.
+mkdir -p "$T/repo9"
+printf '# HIMMEL-9999 consult brief\n' >"$T/consult.md"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$T/other.sh"
+for seam9 in HEADED_ARM_LEG_CLAUDE_BIN HEADED_ARM_LEG_SYSTEMD_RUN HEADED_ARM_LEG_TARGET HEADED_ARM_LEG_PROFILES; do
+    rc=0; out="$(env "$seam9=$T/other.sh" WORKER_SESSION_REPO="$T/repo9" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-9999-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+    check "W9 a consult with $seam9 refuses (exit 2)" "$rc" "2"
+    contains "W9 the $seam9 refusal says so" "$out" "--consult refuses"
 done
 
 echo "---"

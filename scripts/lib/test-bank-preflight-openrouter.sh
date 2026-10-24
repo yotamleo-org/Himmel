@@ -35,6 +35,6 @@ check 'invalid floor falls back to three' SKIPPED-BANK OPENROUTER_MIN_CREDIT_USD
 check 'unknown balance refuses honestly' BANK-UNKNOWN OR_READING='balance=? spend=?'
 check 'negative balance refuses' SKIPPED-BANK OR_READING='balance=-0.50:credit spend=?'
 check 'malformed balance is unknown' BANK-UNKNOWN OR_READING='balance=3.0.0:credit spend=?'
-check 'leg lane marker selects OpenRouter without explicit lane' SKIPPED-BANK CADENCE_BANK_LANE= LEG_LANE=openrouter OR_READING='balance=0.50:key-limit_remaining spend=?'
+check 'leg lane marker selects OpenRouter without explicit lane' SKIPPED-BANK CADENCE_BANK_LANE= WORKER_SESSION_LANE=openrouter OR_READING='balance=0.50:key-limit_remaining spend=?'
 printf 'test-bank-preflight-openrouter: %s failures\n' "$fails"
 [ "$fails" -eq 0 ]

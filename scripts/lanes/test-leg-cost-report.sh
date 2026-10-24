@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/test-leg-cost-report.sh - suite for leg-cost-report.sh.
-# Hermetic: a fixture ledger in a scratch dir (LEG_COST_LEDGER), never the live
+# Hermetic: a fixture ledger in a scratch dir (WORKER_SESSION_COST_LEDGER), never the live
 # handover root.
 set -uo pipefail
 
@@ -27,7 +27,7 @@ row() { # row <date> <class> <model> <ticket> <cost>
     printf 'not json at all\n'
 } > "$L"
 
-run() { LEG_COST_LEDGER="$L" bash "$SUT" "$@" 2>&1; }
+run() { WORKER_SESSION_COST_LEDGER="$L" bash "$SUT" "$@" 2>&1; }
 # cells <group> - the tab-separated cells of that group's line, after its name
 cell_line() { printf '%s\n' "$1" | grep -F -e "$2	" | cut -f2- | tr '\t' ' '; }
 
@@ -44,10 +44,10 @@ out=$(run --since 2026-10-01)
 check "default grouping is class" "$(cell_line "$out" impl)" "2 2000 3000 3000 4000"
 rc=0; run --by bogus >/dev/null || rc=$?
 check "bad --by is a usage error (rc 2)" "$rc" "2"
-rc=0; LEG_COST_LEDGER="$W/none.jsonl" bash "$SUT" >/dev/null 2>&1 || rc=$?
+rc=0; WORKER_SESSION_COST_LEDGER="$W/none.jsonl" bash "$SUT" >/dev/null 2>&1 || rc=$?
 check "absent ledger is an error (rc 1)" "$rc" "1"
 mkdir "$W/dir.jsonl"
-rc=0; LEG_COST_LEDGER="$W/dir.jsonl" bash "$SUT" >/dev/null 2>&1 || rc=$?
+rc=0; WORKER_SESSION_COST_LEDGER="$W/dir.jsonl" bash "$SUT" >/dev/null 2>&1 || rc=$?
 check "unreadable ledger (a directory) is an error, not an empty report" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
 
 if [ "$fails" -eq 0 ]; then echo "PASS - test-leg-cost-report.sh"; exit 0; fi

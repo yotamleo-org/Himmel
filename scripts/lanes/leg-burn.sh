@@ -14,7 +14,7 @@
 #                                                      # out=/cache-read=/
 #                                                      # cache-create=/input=
 #                                                      # as exact integers
-#                                                      # (LEG_BURN_RAW=1 is
+#                                                      # (WORKER_SESSION_BURN_RAW=1 is
 #                                                      # the env equivalent)
 #
 # A bare name is resolved by scanning the Claude Code project transcripts for a
@@ -59,9 +59,9 @@
 #   compaction-rewarm compactions * the mean context of the first call after
 #                    each compact_boundary - the re-warm cost compactions add.
 #   profile          optional final field from --profile <name> or
-#                    HIMMEL_LEG_PROFILE; omitted when neither is set.
+#                    HIMMEL_WORKER_SESSION_PROFILE; omitted when neither is set.
 #
-# --raw / LEG_BURN_RAW=1: out=, cache-read=, cache-create= and
+# --raw / WORKER_SESSION_BURN_RAW=1: out=, cache-read=, cache-create= and
 # input= print as plain integers instead of the %.1fk-rounded default, so a
 # caller that sums across sessions (agg-burn.sh) can sum exact tokens instead
 # of compounding per-session 0.1k rounding. Default stdout is unchanged.
@@ -70,12 +70,12 @@
 # transcript holds no assistant calls at all (an arm that never ran - a real
 # and easily-missed outcome, so it gets its own code rather than 0/0/0).
 #
-# Seam: LEG_BURN_PROJECTS_DIR overrides the transcript root that a bare session
+# Seam: WORKER_SESSION_BURN_PROJECTS_DIR overrides the transcript root that a bare session
 # name is resolved against (default: ~/.claude/projects).
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq, and the
 # thing it reads is a Claude Code transcript, which is the same JSONL on every
 # platform - it runs under git bash unchanged; only the default transcript root
-# is Linux/macOS-shaped, and LEG_BURN_PROJECTS_DIR overrides that.
+# is Linux/macOS-shaped, and WORKER_SESSION_BURN_PROJECTS_DIR overrides that.
 set -u
 
 usage() {
@@ -83,7 +83,7 @@ usage() {
 }
 
 RAW=0
-PROFILE="${HIMMEL_LEG_PROFILE:-}"
+PROFILE="${HIMMEL_WORKER_SESSION_PROFILE:-${HIMMEL_LEG_PROFILE:-}}"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --raw) RAW=1; shift ;;
@@ -97,7 +97,7 @@ case "$PROFILE" in
     *[!A-Za-z0-9._,-]*) echo "leg-burn: invalid profile name: $PROFILE" >&2; exit 2 ;;
 esac
 PROFILE_FIELD="${PROFILE:+ profile=$PROFILE}"
-[ "${LEG_BURN_RAW:-0}" = "1" ] && RAW=1
+[ "${WORKER_SESSION_BURN_RAW:-${LEG_BURN_RAW:-0}}" = "1" ] && RAW=1
 
 if [ "$#" -ne 1 ] || [ -z "${1:-}" ]; then
     usage
@@ -106,12 +106,12 @@ fi
 
 command -v jq >/dev/null 2>&1 || { echo "leg-burn: jq is required" >&2; exit 2; }
 
-LEG_BURN_HERE="$(cd "$(dirname "$0")" && pwd)"
+WORKER_SESSION_BURN_HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/burn-weights.sh
-. "$LEG_BURN_HERE/lib/burn-weights.sh"
+. "$WORKER_SESSION_BURN_HERE/lib/burn-weights.sh"
 
 ARG="$1"
-PROJECTS="${LEG_BURN_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}"
+PROJECTS="${WORKER_SESSION_BURN_PROJECTS_DIR:-${LEG_BURN_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}}"
 
 if [ -f "$ARG" ]; then
     TRANSCRIPT="$ARG"
@@ -122,7 +122,7 @@ else
             exit 2 ;;
     esac
     if [ ! -d "$PROJECTS" ]; then
-        echo "leg-burn: no transcript root to search: $PROJECTS (set LEG_BURN_PROJECTS_DIR)" >&2
+        echo "leg-burn: no transcript root to search: $PROJECTS (set WORKER_SESSION_BURN_PROJECTS_DIR)" >&2
         exit 2
     fi
     # Newest match wins: a resumed leg leaves several transcripts under one
@@ -202,12 +202,12 @@ AVG=$((CTX / CALLS))
 k() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%d"), (n >= 1000 ? n / 1000 : n) }'; }
 kf() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%.0f"), (n >= 1000 ? n / 1000 : n) }'; }
 # The four cost-eq inputs go through kr() instead of k()/kf()
-# directly, so --raw/LEG_BURN_RAW=1 can swap in the exact integer while the
+# directly, so --raw/WORKER_SESSION_BURN_RAW=1 can swap in the exact integer while the
 # default path (RAW=0) delegates to the same formatter as before.
 kr() { if [ "$RAW" -eq 1 ]; then awk -v n="$1" 'BEGIN { printf "%.0f", n }'; else "$2" "$1"; fi; }
 
 COST_EQ=$(awk -v i="$INP" -v cr="$CR" -v cc="$CC" -v o="$OUT" \
-    -v wi="$LEG_BURN_W_INPUT" -v wcr="$LEG_BURN_W_CACHE_READ" -v wcc="$LEG_BURN_W_CACHE_CREATE" -v wo="$LEG_BURN_W_OUTPUT" \
+    -v wi="$WORKER_SESSION_BURN_W_INPUT" -v wcr="$WORKER_SESSION_BURN_W_CACHE_READ" -v wcc="$WORKER_SESSION_BURN_W_CACHE_CREATE" -v wo="$WORKER_SESSION_BURN_W_OUTPUT" \
     'BEGIN { printf "%.10g", i*wi + cr*wcr + cc*wcc + o*wo }')
 FLOOR_SHARE=$(awk -v first="$FIRST" -v calls="$CALLS" -v cr="$CR" \
     'BEGIN { printf "%.1f", (cr > 0 ? first * calls / cr * 100 : 0) }')

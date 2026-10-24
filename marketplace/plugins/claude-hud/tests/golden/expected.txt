@@ -217,6 +217,10 @@
 \e[0m\e[36m[Opus 5.5]\e[0m │ \e]8;;file://<BASE>/home/user/my-project\e\\e[33mmy-project\e[0m\e]8;;\e\
 \e[0m\e[2mContext\e[0m \e[32m█████\e[2m░░░░░\e[0m \e[32m45%\e[0m │ \e[2mUsage\e[0m \e[94m███\e[2m░░░░░░░\e[0m \e[94m25%\e[0m (resets in 1h 30m)
 
+### option/elementOrder+cost
+\e[0m\e[36m[Opus 5.5]\e[0m │ \e]8;;file://<BASE>/home/user/my-project\e\\e[33mmy-project\e[0m\e]8;;\e\
+\e[0m\e[2mContext\e[0m \e[32m█████\e[2m░░░░░\e[0m \e[32m45%\e[0m │ \e[2mUsage\e[0m \e[94m███\e[2m░░░░░░░\e[0m \e[94m25%\e[0m (resets in 1h 30m) │ \e[2mCost $1.23\e[0m
+
 ### option/projectLineOrder
 \e[0m\e]8;;file://<BASE>/home/user/my-project\e\\e[33mmy-project\e[0m\e]8;;\e\ │ \e[36m[Opus 5.5]\e[0m │ \e[2mCost $1.23\e[0m
 \e[0m\e[2mContext\e[0m \e[32m█████\e[2m░░░░░\e[0m \e[32m45%\e[0m │ \e[2mUsage\e[0m \e[94m███\e[2m░░░░░░░\e[0m \e[94m25%\e[0m (resets in 1h 30m)
@@ -542,6 +546,15 @@
 \e[0m\e[33m◐\e[0m \e[35mgeneral-purpose\e[0m\e[2m: Review the diff\e[0m \e[2m(2m 0s)\e[0m
 \e[0m\e[32m✓\e[0m \e[35mExplore\e[0m \e[2m[haiku]\e[0m\e[2m: Find callers\e[0m \e[2m(30s)\e[0m
 \e[0m\e[32m✓\e[0m All todos complete \e[2m(2/2)\e[0m
+
+### activity/deleted-tasks
+\e[0m\e[36m[Opus 5.5]\e[0m │ \e]8;;file://<BASE>/home/user/my-project\e\\e[33mmy-project\e[0m\e]8;;\e\
+\e[0m\e[2mContext\e[0m \e[32m█████\e[2m░░░░░\e[0m \e[32m45%\e[0m │ \e[2mUsage\e[0m \e[94m███\e[2m░░░░░░░\e[0m \e[94m25%\e[0m (resets in 1h 30m)
+\e[0m\e[33m▸\e[0m Ship fix \e[2m(1/2)\e[0m
+
+### activity/deleted-tasks-compact
+\e[0m\e[36m[Opus 5.5]\e[0m \e[32m█████\e[2m░░░░░\e[0m \e[32m45%\e[0m | \e[33mmy-project\e[0m | \e[2mUsage\e[0m \e[94m███\e[2m░░░░░░░\e[0m \e[94m25%\e[0m (1h 30m / 5h)
+\e[0m\e[33m▸\e[0m Ship fix \e[2m(1/2)\e[0m
 
 ### default/typical@30
 \e[0m\e[36m[Opus 5.5]\e[0m │ \e]8;;file://<BASE>/home/user/my-project\e\\e[33mmy-project\e[0m\e]8;;\e\

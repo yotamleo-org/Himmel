@@ -2952,7 +2952,7 @@ EOF2
 export TICKET_STATUS_FUNNEL="$STUBDIR/funnel" STUBDIR_JIRA_LOG="$STUBDIR/jira.log"
 export GH_STUB_TITLE="fix(x): [HIMMEL-9430] follows [HIMMEL-9431]"
 : > "$STUBDIR/jira.log"
-export LEG_JIRA_STATUS=1
+export WORKER_SESSION_JIRA_STATUS=1
 run cr-completed --grace 30
 assert_rc 0 "6430-a checks green with a ticket-tagged PR -> exit 0"
 funnel_eq "6430-a the wait starts with a ci-start event for the first key" \
@@ -2971,7 +2971,7 @@ RULES_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"
 : > "$STUBDIR/jira.log"
 run cr-completed --threads-only
 check_eq "6430-b --threads-only never calls the funnel" "0" "$(wc -c < "$STUBDIR/jira.log" | tr -d ' ')"
-unset TICKET_STATUS_FUNNEL STUBDIR_JIRA_LOG GH_STUB_TITLE LEG_JIRA_STATUS
+unset TICKET_STATUS_FUNNEL STUBDIR_JIRA_LOG GH_STUB_TITLE WORKER_SESSION_JIRA_STATUS
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"

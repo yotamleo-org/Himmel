@@ -164,6 +164,10 @@ const options = {
   'mergeGroups=[]': { display: { mergeGroups: [] } },
   'mergeGroups=project+context+usage': { display: { mergeGroups: [['project', 'context', 'usage']] } },
   'rightAlign=context': { display: { mergeGroups: [['project', 'context', 'usage']], rightAlign: ['context'] } },
+  'elementOrder+cost': {
+    elementOrder: ['project', 'context', 'usage', 'cost'],
+    display: { showCost: true, mergeGroups: [['context', 'usage', 'cost']] },
+  },
   'projectLineOrder': {
     projectLineOrder: ['project', 'model', 'cost'],
     display: { showCost: true },
@@ -229,6 +233,12 @@ add('compact/usageCompact', { stdin: typical, config: { lineLayout: 'compact', d
 const ACTIVITY = { display: { showTools: true, showAgents: true, showTodos: true } };
 add('activity/expanded', { stdin: typical, config: ACTIVITY, transcript: 'transcript-activity.jsonl' });
 add('activity/compact', { stdin: typical, config: { ...ACTIVITY, lineLayout: 'compact' }, transcript: 'transcript-activity.jsonl' });
+add('activity/deleted-tasks', { stdin: typical, config: { display: { showTodos: true } }, transcript: 'transcript-deleted-tasks.jsonl' });
+add('activity/deleted-tasks-compact', {
+  stdin: typical,
+  config: { lineLayout: 'compact', display: { showTodos: true } },
+  transcript: 'transcript-deleted-tasks.jsonl',
+});
 add('default/typical@30', { stdin: typical, columns: 30 });
 add('default/cjk-path@40', { stdin: typical, projectName: '我的项目', columns: 40 });
 add('default/cjk-path+zh-Hans@40', { stdin: typical, projectName: '我的项目', config: { language: 'zh-Hans' }, columns: 40 });

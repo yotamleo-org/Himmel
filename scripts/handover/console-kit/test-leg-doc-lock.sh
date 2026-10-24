@@ -18,7 +18,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB="$HERE/leg-doc-lock.sh"
 APPEND="$HERE/append-results.sh"
-export LEG_JIRA_STATUS=0
+export WORKER_SESSION_JIRA_STATUS=0
 
 if ! command -v flock >/dev/null 2>&1; then
     echo "SKIP: flock not installed - the lock under test is flock"

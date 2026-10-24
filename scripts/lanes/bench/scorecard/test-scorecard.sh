@@ -227,7 +227,7 @@ check "agg-burn TOTAL: price-weighted cost-eq line" "$BURN_TOTAL" \
 # env override: output weight 5 -> 1 must move cost-eq (pins the weight is
 # read from env in agg-burn.sh too, not just leg-burn.sh)
 # 11000*1 + 0*0.1 + 0*1.25 + 550*1 = 11550 -> "11.6k"
-BURN_TOTAL_OVERRIDE=$(LEG_BURN_W_OUTPUT=1 "$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null | grep -o 'cost-eq=[^ ]*$')
+BURN_TOTAL_OVERRIDE=$(WORKER_SESSION_BURN_W_OUTPUT=1 "$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null | grep -o 'cost-eq=[^ ]*$')
 check "agg-burn TOTAL: output weight override changes cost-eq" \
     "$BURN_TOTAL_OVERRIDE" "cost-eq=11.6k"
 
