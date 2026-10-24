@@ -1297,7 +1297,7 @@ fi
 # satisfy this seam again - only the immediate caller of THIS invocation may
 # set it.
 if [ "$LANE" = "native" ] && [ -n "${HEADED_ARM_WORKER_CLAUDE_BIN:-${HEADED_ARM_LEG_CLAUDE_BIN:-}}" ]; then
-    leg_propagate_env LEG_CLAUDE_BIN "${HEADED_ARM_WORKER_CLAUDE_BIN:-$HEADED_ARM_LEG_CLAUDE_BIN}"
+    leg_propagate_env WORKER_SESSION_CLAUDE_BIN "${HEADED_ARM_WORKER_CLAUDE_BIN:-$HEADED_ARM_LEG_CLAUDE_BIN}"
 fi
 unset -v HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_LEG_CLAUDE_BIN
 leg_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
