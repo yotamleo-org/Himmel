@@ -2,7 +2,7 @@
 # test-console-wait-pool.sh — The underfilled wake of console-wait.sh re-wakes
 # when the dispatchable pool changes during one idle streak:
 # a pool that grows from empty, or whose key set changes, wakes once per change
-# on a bounded re-probe cadence; an unchanged, shrunk or failed probe never wakes.
+# on a bounded re-probe cadence; an unchanged pool, an emptied pool or a failed probe never wakes.
 # Also pins that the wake block carries next-dispatchable.sh's output verbatim,
 # drop summary included. tick.sh, the bank verdict and the dispatch command are
 # stubbed (CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE / CHIEF_WAIT_DISPATCH). bash 3.2-safe.
@@ -125,6 +125,27 @@ check "(rp) a pool that empties does not wake (rc 124)" "124" "$rc"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 arm "$I" "$WORK/rp9.out" 6
 check "(rp) and regrowing from that empty pool wakes again (rc 0)" "0" "$rc"
+
+# --- (rp-cad) the re-probe cadence: a young marker is not probed, a due probe restarts the clock ----
+I="$(new_inbox rpcad)"
+CHIEF_WAIT_UNDERFILL_REPOOL_SEC=3600 arm "$I" "$WORK/rpcad1.out" 6
+check "(rp-cad) the streak's first sample wakes at once (rc 0)" "0" "$rc"
+printf 'LOCAL\tHIMMEL-9004\tMedium\tv1\tfourth\tfiles=d.sh\n' > "$STUB/pool.rows"
+c0="$(calls)"
+CHIEF_WAIT_UNDERFILL_REPOOL_SEC=3600 arm "$I" "$WORK/rpcad2.out" 6
+check "(rp-cad) a changed pool under a young marker does not wake (rc 124)" "124" "$rc"
+check "(rp-cad) and the pool was not probed before the cadence is due" "0" "$(( $(calls) - c0 ))"
+arm "$I" "$WORK/rpcad3.out" 6
+check "(rp-cad) the same change wakes once the marker is due (rc 0)" "0" "$rc"
+
+I="$(new_inbox rptouch)"
+CHIEF_WAIT_UNDERFILL_REPOOL_SEC=4 arm "$I" "$WORK/rptouch1.out" 6
+c0="$(calls)"
+CHIEF_WAIT_UNDERFILL_REPOOL_SEC=4 arm "$I" "$WORK/rptouch2.out" 9
+n="$(( $(calls) - c0 ))"
+check "(rp-cad) an unchanged pool never wakes (rc 124)" "124" "$rc"
+check "(rp-cad) a due probe with no change restarts the clock: probed at least once" "yes" "$([ "$n" -ge 1 ] && echo yes)"
+check "(rp-cad) and not on every tick of the next 9 s (at most 3 probes, got $n)" "yes" "$([ "$n" -le 3 ] && echo yes)"
 
 # --- (rp-ok) capacity back to ok ends the streak: the next streak wakes at once --------------
 sed 's/ capacity=[^ ]*/ capacity=ok/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
