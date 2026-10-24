@@ -28,16 +28,17 @@
 set -uo pipefail
 set -f
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)" || exit 0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/git-clean.sh
 # shellcheck disable=SC1091
-[ -r "$SCRIPT_DIR/../lib/git-clean.sh" ] && . "$SCRIPT_DIR/../lib/git-clean.sh" || exit 0
+{ [ -r "$SCRIPT_DIR/../lib/git-clean.sh" ] && . "$SCRIPT_DIR/../lib/git-clean.sh"; } 2>/dev/null || exit 0  # swallow-ok: fail-open allow hook, no decision on error
 git_env_scrub
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 
-input=$(cat 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
+input=''
+IFS= read -r -d '' input 2>/dev/null || true  # swallow-ok: read -d '' ends at EOF with rc 1, and fd 0 closed must not hang
 [ -n "$input" ] || exit 0
 
 tool=$(jq -r '.tool_name // "Bash"' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
