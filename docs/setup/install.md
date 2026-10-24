@@ -137,12 +137,14 @@ on a PR branch is never read); add any file that guards your project, such as
 deploy scripts or release config. Inside a Claude session, a PR touching a
 listed path needs a trust-reviewed GO. A himmel chief signs one for your repo
 with `go.sh --repo <owner/name> --trust-reviewed` once the repo has exactly one
-row in `scripts/guardrails/himmel-adopted.json` on your himmel download's
-default branch, and that row sets `merge_allowed: true`; a row with
-`merge_allowed: false` signs nothing. In solo mode, or before that row exists,
-nobody can sign that GO, so
-such a PR does not merge from a session: the operator merges it in the forge
-web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
+row in `scripts/guardrails/himmel-adopted.json`, and that row sets
+`merge_allowed: true`; a row with `merge_allowed: false` signs nothing. The row
+is read through the GitHub API from the default branch of the repo your himmel
+download's `origin` remote names, so it counts only once it is merged there; an
+edit in your local copy does not count. In solo mode, or before that row
+exists, nobody can sign that GO, so such a PR does not merge from a session:
+the operator merges it in the forge web UI or with a raw `gh pr merge`, which
+bypass `merge-on-green.sh`.
 
 The install seeds the list with himmel's core lines, copied from
 `scripts/ci/ci-trust-paths-core.txt` in your himmel download. Keep every one of
