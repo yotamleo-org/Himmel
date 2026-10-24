@@ -13,7 +13,8 @@
 #       skipped name differs from its required context
 #   G4  on the go run every required non-matrix context is written by exactly one
 #       job under its literal name
-#   G5  schedule, merge_group and workflow_dispatch each run every heavy job
+#   G5  schedule, merge_group and workflow_dispatch each run every heavy and cheap job
+#       (plan and plugin-version-bump are pull_request-only before this gate)
 #   G6  on a go run no required name resolves for two jobs
 #   G7  gate off: a push runs every job as today and a label event runs none
 #   G8  the go run shares the PR's concurrency group, an unrelated label gets its own
@@ -44,6 +45,7 @@ CHEAP = {"plan", "ci-quick", "secret-scan", "bwk-awk-mktemp-gate", "unchecked-mk
 HEAVY = {"leak-classes", "git-env-scrub", "lanes-and-trust-suites", "bun-suites",
          "node-suites", "security-scan", "shell-unit-shard", "shell-unit"}
 EXEMPT = {"guard-corpus-full"}
+PR_ONLY = {"plan", "plugin-version-bump"}  # their base condition already names pull_request
 
 fails = 0
 def ok(m): print("ok - " + m)
@@ -56,7 +58,7 @@ def strip_comment(s):
     return re.sub(r"\s+#.*$", "", s)
 
 # ---- parse jobs ----
-jobs, cur, in_jobs = {}, None, False
+jobs, cur, in_jobs, mat = {}, None, False, False
 for ln in lines:
     if ln == "jobs:":
         in_jobs = True
@@ -66,7 +68,8 @@ for ln in lines:
     m = re.match(r"^  ([A-Za-z0-9_-]+):\s*(#.*)?$", ln)
     if m:
         cur = m.group(1)
-        jobs[cur] = {"if": None, "name": None, "matrix": False}
+        jobs[cur] = {"if": None, "name": None, "matrix": False, "mvals": set()}
+        mat = False
         continue
     if cur is None:
         continue
@@ -75,6 +78,16 @@ for ln in lines:
         jobs[cur][m.group(1)] = strip_comment(m.group(2)).strip()
     if re.match(r"^      matrix:", ln):
         jobs[cur]["matrix"] = True
+        mat = True
+        continue
+    if mat:
+        body = strip_comment(ln)
+        if body.strip() and len(body) - len(body.lstrip()) <= 6:
+            mat = False
+        else:
+            kv = re.match(r"^\s*(?:-\s*)?[A-Za-z0-9_-]+:\s*(.+)$", body)
+            if kv:
+                jobs[cur]["mvals"].update(v.strip() for v in kv.group(1).strip("[] ").split(","))
 for j in jobs:
     if j.startswith("fail-fast-"):
         EXEMPT.add(j)
@@ -162,7 +175,7 @@ nongo = [event("pull_request", "labeled", "bug", g) for g in ("on", "off", "")]
 nongo += [event("pull_request", "labeled", "ci:go", "off"), event("pull_request", "labeled", "ci:go", "")]
 bad2 = []
 for ctx in nongo:
-    for j in sorted(classified & set(jobs)):
+    for j in sorted(jobs):
         if runs(j, ctx):
             bad2.append("%s runs on a non-go label event" % j)
         elif name_of(j, ctx) in required:
@@ -206,6 +219,8 @@ for g in (go, go_custom):
         if jobs.get(job, {}).get("matrix"):
             if not runs(job, g):
                 bad4.append("%r: matrix job %s does not run on the go run" % (ctx, job))
+            elif ctx[len(job) + 2:-1] not in jobs[job]["mvals"]:
+                bad4.append("%r: no %r entry in the %s matrix" % (ctx, ctx[len(job) + 2:-1], job))
             continue
         if names.get(ctx) != [ctx]:
             bad4.append("%r is written by %r on the go run" % (ctx, names.get(ctx)))
@@ -223,13 +238,13 @@ bad5 = []
 for evn in ("schedule", "merge_group", "workflow_dispatch"):
     for gate in ("on", "off", ""):
         ctx = event(evn, "", "", gate)
-        for j in sorted(HEAVY & set(jobs)):
+        for j in sorted((HEAVY | CHEAP) & set(jobs) - PR_ONLY):
             if not runs(j, ctx):
                 bad5.append("%s skipped on %s (gate %r)" % (j, evn, gate))
 if bad5:
     bad("G5 " + "; ".join(sorted(set(bad5))))
 else:
-    ok("G5 schedule, merge_group and workflow_dispatch run every heavy job")
+    ok("G5 schedule, merge_group and workflow_dispatch run every heavy and cheap job")
 
 # ---- G7 ----
 bad7 = []
