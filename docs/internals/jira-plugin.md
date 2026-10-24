@@ -36,7 +36,7 @@ For Jira ops in this repo, default to the local CLI at
 | Comments    | `... comments HIMMEL-N [--last N]` (read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
 | History     | `... history HIMMEL-N [--field <name>] [--json]` (the changelog, oldest first, one `<created>  <author>  <field>: <from> → <to>` line per changed field; `--field` keeps one field, e.g. `status` or `Fix Version`) | (none — MCP has no changelog read) |
 | Attach      | `... attach HIMMEL-N file.png`                                              | (none — MCP has no attach)                                       |
-| Transition  | `... transition HIMMEL-N Done`                                              | `getTransitionsForJiraIssue` + `transitionJiraIssue` (two calls) |
+| Transition  | `... transition HIMMEL-N Done` (exit 0 moved, 1 refused or failed, 3 closed but left with no fixVersion: a key deferred out of a frozen version, `FAIL` on stderr; `merge-on-green.sh` counts 3 as moved and files a Done-fold request) | `getTransitionsForJiraIssue` + `transitionJiraIssue` (two calls) |
 | Transitions | `... transitions HIMMEL-N` (id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
 | Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--dry-run]` (close source + create target + copy comments) | (none — Jira Cloud REST API has no direct project-change endpoint) |
 | Projects    | `... projects` / `... project-create ...`                                   | `getVisibleJiraProjects` / no equivalent for create              |
