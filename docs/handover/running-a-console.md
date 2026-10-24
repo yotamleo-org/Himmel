@@ -310,6 +310,30 @@ whose launcher refuses on its bank (exit 11, for example OpenRouter credit under
 `OPENROUTER_MIN_CREDIT_USD`) reports FAIL, not SKIP: read the detail column
 before treating it as a lane defect.
 
+**Worker tabs** (off by default): launch the chief with `HIMMEL_WORKER_SESSION_TABS=1`
+in its environment, for example `HIMMEL_WORKER_SESSION_TABS=1 claude`, and every worker
+session it dispatches opens as a tab in one Konsole window per chief instead
+of a separate window each. The switch passes to successor chiefs through the
+environment. Unset, every launch is unchanged.
+
+- The first worker opens the window. `headed-arm.sh` records that window's pid
+  in its lock directory as `tabs-<chief session name>.window`. Each later
+  worker opens as a new tab in it over Konsole's D-Bus (`qdbus6`
+  `/Windows/1 newSession`), titled with the worker's session name.
+- The tab's process is the worker itself, so closing a worker
+  (`close-wrapped-leg.sh` stops its claude process) closes only its tab. A
+  crashed worker leaves only its own tab dead. The window and the other tabs
+  stay up either way.
+- A worker falls back to a window of its own, never lost, when the recorded
+  window is gone (that new window becomes the chief's window), when D-Bus
+  fails (a `WARN: tab launch` line in its launch log), on macOS, for chief
+  arms, and when `HIMMEL_CONSOLE_NAME` is unset.
+- The window keeps the first worker's `HIMMEL-` tab title, so the KWin rule
+  that places new `HIMMEL-` windows still matches it.
+- Limits: two workers dispatched at the same instant before any window exists
+  can open two windows. The tick's dead-window sweep closes a window only when
+  nothing runs in it, so a dead tab beside live ones stays until you close it.
+
 ## Claudex legs: the inbox is the only channel
 
 A `--lane claudex` worker session (`headed-arm-leg.sh`) runs under
