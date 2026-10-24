@@ -16,6 +16,9 @@ set -euo pipefail
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
+# lead_of <report> — the four leading answers: everything before "## TL;DR".
+lead_of() { sed '/^## TL;DR/q' <<< "$1"; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/generate-morning-briefing.sh"
 
@@ -122,6 +125,21 @@ OUT
 exit 0
 FAKE
 chmod +x "$FAKE_CLAUDE_PARTIAL"
+
+# ORDER block whose first line is blank: the lead's next step is the first nonblank line.
+FAKE_CLAUDE_BLANK="$TMP_ROOT/claude-blank-order.sh"
+cat >"$FAKE_CLAUDE_BLANK" <<'FAKE'
+#!/usr/bin/env bash
+cat <<'OUT'
+<<<ORDER_BEGIN>>>
+
+1. FIRST NONBLANK STEP
+2. second
+<<<ORDER_END>>>
+OUT
+exit 0
+FAKE
+chmod +x "$FAKE_CLAUDE_BLANK"
 
 # Failing gh fake: the all-state PR query (no --search) exits non-zero, to
 # exercise the pr_map_ok=0 reachability path (gh down != clean garden).
@@ -276,6 +294,8 @@ assert_contains "ticket keys listed in fallback" "HIMMEL-901" "$file"
 # A failed jira CLI must surface a reachability banner — a 0 count means
 # "unknown", not "none" (silent-failure-hunter HIGH).
 assert_contains "jira-down banner" "jira unavailable" "$file"
+assert_contains "jira-down: shipped Done gap"  "not available (jira unavailable) Done" "$(lead_of "$file")"
+assert_contains "jira-down: next in-flight gap" "In-Progress tickets: not available"   "$(lead_of "$file")"
 
 # Test 7: --dry-run touches no files ----------------------------------
 
@@ -392,6 +412,14 @@ out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="/no/such/
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_LLF" --llm ) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "llm failure did not abort"; else fail "llm failure aborted rc=$rc"; fi
 assert_contains "fallback tldr heuristic" "in-flight" "$(cat "$OUT_LLF")"
+assert_contains "llm failed: spend line says failed" "turn (--llm) failed; heuristic used" "$(lead_of "$(cat "$OUT_LLF")")"
+if grepq "$(lead_of "$(cat "$OUT_LLF")")" -F -- "one bounded"; then fail "failed llm run reported as a bounded turn"; else pass "failed llm run not reported as a bounded turn"; fi
+
+echo "TEST: ORDER block starting with a blank line → next step is the first nonblank line"
+OUT_BLK="$TMP_ROOT/blankorder.md"
+out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_BLANK" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_BLK" --llm )
+assert_contains "blank-first order: next step" "Next step: 1. FIRST NONBLANK STEP" "$(lead_of "$(cat "$OUT_BLK")")"
 
 # Test 16: --llm per-block fail-open (only TLDR present) --------------
 
@@ -436,6 +464,18 @@ out=$( cd "$REPO"; GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
 file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
+assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"             "$(lead_of "$file")"
+assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$(lead_of "$file")"
+assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$(lead_of "$bb_file")"
+
+echo "TEST: gh missing → merged-PR count and open PRs read not available, never 0"
+OUT_GHM="$TMP_ROOT/ghmissing.md"
+out=$( cd "$REPO"; GH_CMD="/no/such/gh" JIRA_CMD="$FAKE_JIRA" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_GHM" )
+file=$(cat "$OUT_GHM")
+assert_contains "gh-missing: shipped count gap" "not available PRs merged to main" "$(lead_of "$file")"
+assert_contains "gh-missing: waits open PRs gap" "Open PRs: not available"        "$(lead_of "$file")"
+if grepq "$(lead_of "$file")" -F -- "**0** PRs merged"; then fail "gh-missing rendered the shipped count as 0"; else pass "gh-missing did not render the shipped count as 0"; fi
 
 echo "TEST: unparseable gh merged-PR list → count unknown, never 0"
 OUT_PRU="$TMP_ROOT/prunknown.md"
@@ -443,6 +483,7 @@ out=$( cd "$REPO"; FAKE_GH_PR_JSON="not json" GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_PRU" )
 file=$(cat "$OUT_PRU")
 assert_contains "pr count rendered unknown" "Completed (unknown PRs merged" "$file"
+assert_contains "unparseable: shipped count gap" "not available PRs merged to main" "$(lead_of "$file")"
 if grepq "$file" -F -- "Completed (0 PRs merged"; then fail "unparseable list rendered as 0 PRs"; else pass "unparseable list not rendered as 0 PRs"; fi
 
 echo "TEST: valid JSON that is not an array → count unknown, never 0"
@@ -495,6 +536,33 @@ run_script --since "$MARKER" --out "$OUT_CH1" >/dev/null
 file=$(cat "$OUT_CH1")
 assert_contains "cache line: ratio"     "cache: 7d read ratio 97.5%"                "$file"
 unset CACHE_HEALTH_STATE_DIR
+
+# The report leads with the frame 16 four answers; every older section stays below.
+echo "TEST: first four headings are the frame 16 answers, every older section kept below"
+OUT_F16="$TMP_ROOT/f16.md"
+out=$(FAKE_GH_PR_JSON='[{"number":42,"title":"feat(scope): HIMMEL-901 add A","mergedAt":"2026-05-25T00:00:00Z"}]' \
+    FAKE_GH_PR_ALL='[{"number":50,"state":"OPEN","headRefName":"feat/himmel-901-thing","title":"x"},{"number":51,"state":"OPEN","headRefName":"feat/random-slug","title":"y"}]' \
+    FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
+    FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' \
+    run_script --since "$MARKER" --out "$OUT_F16")
+file=$(cat "$OUT_F16")
+# Headings with the multibyte emoji stripped, so the match is ASCII-only.
+h2_ascii=$(grep -E '^## ' "$OUT_F16" | LC_ALL=C sed 's/[^ -~]//g' | tr -s ' ' || true)
+first_four=$(printf '%s\n' "$h2_ascii" | sed -n '1,4p')
+rest=$(printf '%s\n' "$h2_ascii" | sed -n '5,$p')
+want_first=$'## What shipped\n## What waits on you\n## What it spent\n## What runs next'
+if [ "$first_four" = "$want_first" ]; then pass "first four headings are the frame 16 ones, in order"; else fail "first four headings" "got: $(printf '%s' "$first_four" | tr '\n' '|')"; fi
+want_rest=$'## TL;DR\n## Completed (1 PRs merged to main)\n## In-flight WIP\n## Stale worktrees\n## Backlog (1 To Do)\n## Docs drift\n## Failure review\n## Prompt cache\n## Suggested order'
+if [ "$rest" = "$want_rest" ]; then pass "every pre-change section kept below, in order"; else fail "sections below the four" "got: $(printf '%s' "$rest" | tr '\n' '|')"; fi
+assert_contains "f16: commits subsection kept" "### Commits"                  "$file"
+assert_contains "f16: done subsection kept"    "Tickets transitioned to Done" "$file"
+# Fields with an input are computed; a field with none says so, never a guess.
+lead=$(lead_of "$file")
+assert_contains "f16: shipped counts"          "**1** PRs merged"             "$lead"
+assert_contains "f16: waits counts open PRs"   "**2** open PR(s)"             "$lead"
+assert_contains "f16: spent gap is explicit"   "Claude usage of the shift: not available" "$lead"
+assert_contains "f16: next counts in flight"   "**1** In-Progress"            "$lead"
+assert_contains "f16: releases gap is explicit" "Release progress: not available" "$lead"
 
 # Summary --------------------------------------------------------------
 

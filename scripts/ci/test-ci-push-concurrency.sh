@@ -36,7 +36,7 @@ cancel="$(sed -n 's/^  cancel-in-progress:[[:space:]]*//p' <<< "$block")"
 # A pull_request run groups on its PR number (so a leg's newer push meets its own
 # older run, and nothing else)...
 case "$group" in
-  *"github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)"*)
+  *"github.event_name == 'pull_request' && (("*"&& format('pr-{0}', github.event.pull_request.number)"*)
     ok "pull_request runs are grouped per PR number" ;;
   *) bad "pull_request runs are not grouped per PR number; group='$group'" ;;
 esac
@@ -80,11 +80,12 @@ def evaluate(expr, ctx):
     prefix, inner = (m.group(1), m.group(2)) if m else ("", expr)
     inner = re.sub(r"format\('([^']*)\{0\}',\s*([^)]*)\)", r"('\1' + str(\2))", inner)
     inner = inner.replace("&&", " and ").replace("||", " or ")
-    return prefix + str(eval(inner, {"__builtins__": {}, "str": str}, ctx)) if m else str(eval(inner, {"__builtins__": {}}, ctx))
+    env = {"__builtins__": {}, "str": str, "vars": NS(CI_GO_LABEL="", CI_GO_GATE="")}
+    return prefix + str(eval(inner, env, ctx)) if m else str(eval(inner, env, ctx))
 
 def ctx(event, run_id, ref="refs/heads/x", pr=None):
     return {"github": NS(event_name=event, run_id=run_id, ref=ref,
-                         event=NS(pull_request=NS(number=pr)))}
+                         event=NS(action="synchronize", label=NS(name=""), pull_request=NS(number=pr)))}
 
 group, cancel = sys.argv[1], sys.argv[2]
 runs = {
@@ -134,7 +135,7 @@ print(c.get("cancel-in-progress"))
 print("push" in on)
 PY
 )"
-  want="ci-\${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  want="ci-\${{ github.event_name == 'pull_request' && ((github.event.action != 'labeled' || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && format('pr-{0}', github.event.pull_request.number) || format('label-{0}', github.run_id)) || github.run_id }}
 \${{ github.event_name == 'pull_request' }}
 False"
   if [ "$parsed" = "$want" ]; then ok "parsed YAML: group, cancel-in-progress match and there is no push trigger"
@@ -166,7 +167,7 @@ else
   bad "debounce sleep is not guarded by \"github.event.action != 'opened'\"; if='$sleep_if'"
 fi
 case "$plan_job" in
-  *"if: github.event_name == 'pull_request'"*) ok "plan job stays PR-only, so cron and dispatch runs never sleep" ;;
+  *"if: \${{ github.event_name == 'pull_request' && ("*) ok "plan job stays PR-only, so cron and dispatch runs never sleep" ;;
   *) bad "plan job lost its pull_request-only guard" ;;
 esac
 

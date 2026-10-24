@@ -17,14 +17,18 @@
 # the run and prints `focus=FAILED:<stage>` (exit 1):
 #   mirror    jira mirror, then versions, each staged and moved into place
 #             (--mirror-fresh <dir> names a mirror the caller just refreshed and skips both)
-#   sweep     status-sweep.sh, so Jira and the worker records are current
+#   sweep     status-sweep.sh, so Jira and the worker records are current; it keeps
+#             its PR, check and thread snapshot in the stage for the drift pass
 #   prs       one `gh pr list` snapshot, staged
 #   render    tracker.py --version, staged
-#   drift     status-drift.sh, staged (report only)
-#   publish   the page and its fingerprint (.vfp) replace the old ones only when the
-#             fingerprint changed, then focus-state is written
+#   drift     status-drift.sh over the sweep's snapshot, staged (report only). It fails as
+#             drift:<why>: timeout, rc<n>, budget (its own cut-off), gh, jira, no-sdrift, unknown
+#   publish   the page and its fingerprint (.vfp) replace the old ones unless the page on
+#             disk already carries `<meta name="himmel-focus" content="<version> <fp>">`
+#             for this version and fingerprint, then focus-state is written
 # `focus=ok` (exit 0) means all of it ran. A page whose fingerprint did not move is
-# left alone, so the republish stamp is not disturbed.
+# left alone, so the republish stamp is not disturbed; a page another writer
+# replaced is restored.
 #
 # focus-state (<doc dir>/focus-state, key=value): status (ok|FAILED), stage, gen,
 # dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift
@@ -196,7 +200,7 @@ else
     mv -f "$stage/versions.tsv" "$MIR.versions.tsv" || failed versions
 fi
 
-sweep_out=$(bounded 90 "${SWEEP[@]}" --repo "$REPO" 2>&1) || failed sweep
+sweep_out=$(bounded 90 "${SWEEP[@]}" --repo "$REPO" --snapshot-out "$stage/snap" 2>&1) || failed sweep
 case "$sweep_out" in *"status-sweep: unknown"*) failed sweep ;; esac
 moved=$(printf '%s\n' "$sweep_out" | sed -n 's/.* moved=\([0-9][0-9]*\).*/\1/p' | tail -n 1)
 if [ "${moved:-0}" -gt 0 ]; then
@@ -215,13 +219,23 @@ bounded 120 "${TRACKER[@]}" "$@" >/dev/null 2>&1 || failed render
 { [ -f "$stage/page.html" ] && [ -f "$stage/page.html.vfp" ]; } || failed render
 vfp=$(cat "$stage/page.html.vfp")
 
-bounded 120 "${DRIFT[@]}" --repo "$REPO" > "$stage/drift.txt" 2>/dev/null || failed drift
+rc=0
+bounded 120 "${DRIFT[@]}" --repo "$REPO" --snapshot "$stage/snap" > "$stage/drift.txt" 2>/dev/null || rc=$?
+case "$rc" in 0) ;; 124 | 137) failed drift:timeout ;; *) failed "drift:rc$rc" ;; esac
 sdrift=$(tail -n 1 "$stage/drift.txt")
-case "$sdrift" in sdrift=unknown | sdrift=) failed drift ;; sdrift=*) ;; *) failed drift ;; esac
+case "$sdrift" in
+    sdrift=unknown)
+        case "$(grep -m 1 '^HEALTH - ' "$stage/drift.txt")" in
+            'HEALTH - drift:'*) failed drift:budget ;;
+            'HEALTH - gh:'*) failed drift:gh ;;
+            'HEALTH - jira:'*) failed drift:jira ;;
+            *) failed drift:unknown ;;
+        esac ;;
+    sdrift=?*) ;;
+    *) failed drift:no-sdrift ;;
+esac
 
-oldvfp=""
-[ ! -f "$OUT.vfp" ] || oldvfp=$(cat "$OUT.vfp")
-if [ ! -f "$OUT" ] || [ "$oldvfp" != "$vfp" ]; then
+if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev/null; then
     mv -f "$stage/page.html" "$OUT" || failed publish
     mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
 fi

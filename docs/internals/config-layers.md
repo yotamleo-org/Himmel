@@ -82,6 +82,13 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `TRACKER`. Their meanings and defaults are unchanged; `.env.example`
 documents each one.
 
+Every reader of these keys follows the same order as `load_dotenv`: the
+process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
+default. A reader that opens only `.env`, or only the process env, misses a
+key the operator has moved; the shell, the Jira CLI
+(`scripts/jira/src/handover-root.ts`), the lane resolver, the profile capture
+and the config UI all resolve it that way.
+
 Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
 
@@ -189,9 +196,9 @@ move without writing.
    prompt: it reads the value from `.env` and writes it into
    `~/.himmel/config.json`, so the value is never shown.
 4. Start a session. When no `DEPRECATED` notice appears, delete the moved
-   lines from `.env`, except `HANDOVER_DIR`: the Jira CLI (`scripts/jira`)
-   still reads the handover root from the process env or `.env` only, not
-   from `himmel.conf`, so keep that line until it does.
+   lines from `.env`. Rebuild the Jira CLI first (`scripts/jira/dist` is not
+   tracked): an older build reads `HANDOVER_DIR` from the process env or
+   `.env` only, not from `himmel.conf`.
 
 The `.env` fallback for non-secret keys is removed one release after setup,
 adopt and `himmelctl` read the new files.

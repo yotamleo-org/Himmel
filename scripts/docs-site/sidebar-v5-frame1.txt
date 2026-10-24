@@ -1,0 +1,50 @@
+# The docs sidebar, copied from frame 1 of docs-mockup-v5.html (decision 132); test-site-build.sh compares the built sidebar with it.
+# A group label starts the line; each of its entries follows, indented two spaces, in order.
+# [pending] marks an entry whose page has not landed: the page's PR adds the page and its nav entry and drops the marker.
+Get started
+  What himmel is
+  Quickstart
+  The adoption trail
+  Install on your project
+  What changes on your machine [pending]
+  Install profiles
+  Updating, or undoing the install
+  Moving from an older install
+Use it
+  The daily loop
+  The development graph
+  Slash commands
+  The himmelctl command
+  Settings & configuration
+  Scheduled jobs
+  The local dashboard
+  Review by a second model [pending]
+  Telegram bridge
+  Second brain (notes vault)
+  Plugins
+Run many sessions
+  AFK (unattended) runs
+  The chief and its workers
+  Meet the team [pending]
+  Working with the team [pending]
+  Add a team member [pending]
+  Handover notes
+  Usage and cost
+Reference
+  Every guardrail and gate
+  When a guardrail stops you
+  What data leaves your machine
+  Running without a terminal
+  Using it from Codex
+  Jira integration
+  Evals [pending]
+  Troubleshooting [pending]
+  Glossary
+For contributors
+  Contributing
+  How himmel is built
+  Security review
+  Testing
+  Releases & licenses
+  Credits
+  Internals…

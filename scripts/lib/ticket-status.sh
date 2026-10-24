@@ -42,6 +42,7 @@
 #       (several open PRs: the least advanced wins)
 #   D4b no PR, a completes=yes merge row         no-write + miss stage=done-pending
 #   D5  no PR, an owner not provably ended       In Progress
+#   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded leg holds its lock
 #   D7  no PR, never owned                       no-write
@@ -311,6 +312,15 @@ _ts_worker_state() {
     esac
 }
 
+# ts_partial_merge <KEY> — rc 0 when the key's latest merge row is completes=no.
+ts_partial_merge() {
+    local log
+    log="$(ts_state_dir)/status-events.jsonl"
+    [ -r "$log" ] || return 1
+    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge")] | last
+        | select(. != null and .contract == "no") | 1' "$log" 2>/dev/null)" ]
+}
+
 # ts_done_pending <KEY> — the key's latest merge row is completes=yes and its
 # Done did not land (result neither moved nor noop).
 # rc 0 = pending, 1 = none, 2 = the log is unreadable.
@@ -387,8 +397,9 @@ ts_derive() {
         _ts_no_write skip D7
         return 0
     fi
-    if [ "$TS_WORKER_STATE" = wrapped ]; then TS_DERIVED="To Do"; TS_RULE=D6
-    else TS_DERIVED="In Progress"; TS_RULE=D5
+    if [ "$TS_WORKER_STATE" != wrapped ]; then TS_DERIVED="In Progress"; TS_RULE=D5
+    elif ts_partial_merge "$key"; then TS_DERIVED="In Progress"; TS_RULE=D5c
+    else TS_DERIVED="To Do"; TS_RULE=D6
     fi
 }
 

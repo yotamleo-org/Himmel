@@ -1918,6 +1918,7 @@
         "tick": "generic action-key change: shown as the tick node",
         "tick-fail": "monitor health: operational",
         "tracker-stale": "tracker housekeeping: operational",
+        "board-stale": "board housekeeping: operational",
         "predecessor-open": "succession housekeeping: operational",
         "succession partial": "succession progress report: operational",
         "relay-on-live": "succession relay housekeeping: operational",

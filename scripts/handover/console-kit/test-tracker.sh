@@ -985,6 +985,7 @@ vhtml="$(cat "$vout" 2>/dev/null)"
 card() { grep -F "data-key=\"HIMMEL-$1\"" "$vout" 2>/dev/null; }
 if [ "$vrc" -eq 0 ]; then pass '--version renders and exits 0 (HIMMEL-6769)'; else fail "--version exited $vrc: $vstdout"; fi
 contains 'the page is titled by its version (HIMMEL-6769)' "$vhtml" '<title>v1.1.3 Tracker</title>'
+contains 'the page carries its version and focus fingerprint (HIMMEL-7433)' "$vhtml" "<meta name=\"himmel-focus\" content=\"v1.1.3 $(cat "$vout.vfp" 2>/dev/null)\">"
 contains 'an open ticket of the version is a card (HIMMEL-6769)' "$vhtml" 'vp todo in group'
 not_contains 'a ticket of another version is no card (HIMMEL-6769)' "$vhtml" 'vp next version'
 not_contains 'a Done ticket is no card (HIMMEL-6769)' "$vhtml" 'vpdone ticket'

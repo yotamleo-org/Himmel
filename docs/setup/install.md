@@ -107,7 +107,7 @@ Where those plain hooks run, the commit-msg gate rejects a message with no
 ticket reference. When
 `JIRA_PROJECT_KEY` is unset it accepts `#<number>` (or `LOCAL-<number>`), as
 above. On a repository with no ticket convention, switch the requirement off with
-`TICKET_ID_REQUIRED=0 git commit …` (or set it in the repo's `.env`). On a repository with a branch-protected
+`TICKET_ID_REQUIRED=0 git commit …` (or set it in `~/.himmel/himmel.conf`, which applies to every project on this machine). On a repository with a branch-protected
 default branch, push the branch and merge it through a PR instead of the
 fast-forward. If the project has an `origin`, the worktree helper cuts new
 worktrees from `origin/main`, so the install commit must reach it first, and
@@ -134,10 +134,30 @@ merge gate, your hooks, your CI checks and the list itself. A change to one can
 switch a safety check off, so the agent that wrote it may not approve it. The
 list lives in `scripts/ci/ci-trust-paths.txt` on your default branch (the copy
 on a PR branch is never read); add any file that guards your project, such as
-deploy scripts or release config. Inside a Claude session, a PR touching a
-listed path needs a trust-reviewed GO, and a project that adopted himmel has no
-signer for that GO yet, so such a PR does not merge from a session: the
-operator merges it in the forge web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
+deploy scripts or release config. You may add lines but never remove one that
+himmel's core list (`scripts/ci/ci-trust-paths-core.txt` in your himmel download)
+holds. A new list is seeded with every core line; an existing list is left as it
+is, and a re-install never rewrites it. So check that it holds them, and after a
+himmel update compare it with the core file, because a PR touching a core path
+your list lacks is refused (`list core-missing <pattern>`); copy the missing line
+back from the core file. A list deleted from the default branch refuses every
+merge, including the one that brings it back: restore your last full list from
+git history, so your own lines come back too, add any core line it lacks, and
+land that commit outside Claude, in the forge web UI or with a raw `gh pr merge`.
+
+Inside a Claude session, a PR touching a listed path needs a trust-reviewed GO.
+Only a himmel chief signs one for your repo, and only once your repo has exactly
+one row in `scripts/guardrails/himmel-adopted.json`, that row sets
+`"merge_allowed": true` (a row with `false` signs nothing), and an independent
+judge has recorded its verdict on that head with
+`write-verdict.sh --repo <owner/name>`; the chief then runs
+`go.sh --repo <owner/name> --trust-reviewed <judge-qid> <pr> <head>`. The file
+ships empty and is read through the GitHub API from the default branch of the
+himmel repo that the signing chief's himmel download names as its `origin`
+remote (your own download only when you are that chief), so a row counts only
+once it is merged there; an edit in a local copy does not count. In solo mode, or
+until then, such a PR does not merge from a session: the operator merges it in
+the forge web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
 
 These checks run only inside Claude sessions (the hooks) and in himmel's merge
 script (`merge-on-green.sh`) wherever it is run.
