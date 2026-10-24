@@ -82,6 +82,7 @@ test('buildCtx reads a behaviour key from himmel.conf: process env > himmel.conf
   assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: 'from-proc' }).env.CR_PROFILE, 'from-proc', 'process env wins');
   writeFileSync(`${conf}.local`, 'CR_PROFILE=\n');
   assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'an empty conf line reads as unset');
+  assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: '' }).env.CR_PROFILE, 'from-conf', 'an empty process value reads as unset, as in load_dotenv');
 });
 test('buildCtx installed.hermes accepts only a real interpreter, matching resolve-hermes-py.sh', () => {
   const repo = makeTmpDir('lanes-repo-');

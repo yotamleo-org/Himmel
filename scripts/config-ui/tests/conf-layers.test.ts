@@ -38,6 +38,7 @@ test("the health mode row reads TRACKER from himmel.conf, with himmel.conf.local
   writeFileSync(`${s.conf}.local`, "TRACKER=none\n");
   expect((await getJson(boot(s, { FORGE: "none" }), "/api/health")).mode).toMatchObject({ state: "ok", tracker: "none" });
   expect((await getJson(boot(s, { FORGE: "none", TRACKER: "local" }), "/api/health")).mode).toMatchObject({ state: "ok", tracker: "local" });
+  expect((await getJson(boot(s, { FORGE: "none", TRACKER: "" }), "/api/health")).mode).toMatchObject({ state: "ok", tracker: "none" });
 });
 
 test("trackerSources lists github when TRACKER=github is set only in himmel.conf", async () => {

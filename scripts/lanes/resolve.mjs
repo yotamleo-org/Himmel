@@ -244,7 +244,8 @@ export function buildCtx(repoRoot, procEnv) {
   for (const file of ['himmel.conf', 'himmel.conf.local']) {
     for (const [k, v] of Object.entries(parseDotenv(join(confDir, file)))) if (v !== '') conf[k] = v;
   }
-  const env = { ...dotenv, ...conf, ...procEnv };
+  const set = Object.fromEntries(Object.entries(procEnv).filter(([, v]) => v !== ''));   // an empty process value reads as unset, as in load_dotenv
+  const env = { ...dotenv, ...conf, ...set };
   const pathHas = pathHasFactory(env);
   // installed.hermes must mean "dispatch will find an interpreter", so it probes
   // exactly what invoke.sh consults (resolve-hermes-py.sh: HERMES_PY, then the
