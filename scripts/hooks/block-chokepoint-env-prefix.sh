@@ -1876,7 +1876,7 @@ pobf_relief() {
 # run a program from a fixed set: data tools that run no nested program
 # (sort without --compress-program or a prefix of it, gh only through a fixed list of
 # subcommands, never an alias or extension; the model already marks
-# find -exec opaque); git running only a read-only subcommand from a fixed
+# find -exec opaque); git with literal words only, running a read-only subcommand from a fixed
 # list, with no global option but -C, --no-pager or -P and no pager, exec or
 # output option, long or abbreviated, in a command whose every other
 # position runs a read-only program and writes no file (a written hook or
@@ -1951,7 +1951,7 @@ def git_ok:
   | ($a[1:$s] | all(.[]; lit) and (map(wv) | . as $g
       | all(range(0; length); ($g[.] | isin(["-C", "--no-pager", "-P"])) or (. > 0 and $g[. - 1] == "-C"))))
   and (($a[$s] // {t: "lit", v: ""}) | lit and (wv | isin(gitro)))
-  and ($a[$s:] | all(.[]; (lit | not) or (((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd|--upload-pack|--receive-pack|--output)"))
+  and ($a[$s:] | all(.[]; lit and (((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd|--upload-pack|--receive-pack|--output)"))
        or lopt(["open-files-in-pager", "exec", "extcmd", "upload-pack", "receive-pack", "output", "ext-diff", "textconv", "filters"]; 1)) | not)));
 def pos_ok($vr):
   (.opaque == null)

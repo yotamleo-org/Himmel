@@ -2596,6 +2596,8 @@ assert_deny "7130 control: node --env-file-if-exists can set a preload before in
 assert_deny "7130 control: python -W imports the warning category module before inline code" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -Wignore::m7130.X -c 'print(1)'")"
 assert_allow "7130: node --no-warnings inline code reading the env clear text from a pipe" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | node --no-warnings -e 'console.log(1)'")"
 assert_allow "7130: python -I inline code reading the env clear text from a pipe" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -I -c 'print(1)'")"
+assert_deny "7130 control: an expanded git argument can be an output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=--output=.git/hooks/x; git log \$o")"
+assert_deny "7130 control: a quoted expanded git argument can be a pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=-O/tmp/p7130; git grep \"\$o\" x")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
