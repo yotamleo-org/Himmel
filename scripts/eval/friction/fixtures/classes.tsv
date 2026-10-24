@@ -78,3 +78,4 @@ hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
 hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
 hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
 hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:block-edit-live-settings	live-settings-named	true-positive
