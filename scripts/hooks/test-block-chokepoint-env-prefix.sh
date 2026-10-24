@@ -2557,6 +2557,9 @@ assert_deny "7130 control: printf -v writes a variable beside a glob path" "$(j 
 assert_deny "7130 control: printf beside a hard (double-slash) path keeps the deny" "$(j "printf '%s' scripts//hooks/x.sh; read -r y")"
 assert_deny "7130 control: read at command position beside a glob path" "$(j "read -r PAGER < scripts/hooks/x*.sh")"
 assert_deny "7130 control: an uppercase assignment ahead of git beside a glob path" "$(j "PAGER='env -i sh' git log -- scripts/hooks/*.sh")"
+assert_deny "7130 control: python dynamic import builds a spawn beside a glob path" "$(j "python3 -c '__import__(\"os\").__dict__[\"sys\"+\"tem\"](\"env -i bash scripts/hooks/x*.sh\")'")"
+assert_deny "7130 control: node dynamic require beside a glob path" "$(j "node -e 'require(\"child\"+\"_process\")[\"exec\"+\"Sync\"](\"env -i bash scripts/hooks/x*.sh\")'")"
+assert_deny "7130 control: python getattr spawn beside a glob path" "$(j "python3 -c 'import os; getattr(os, \"sys\"+\"tem\")(\"env -i sh scripts/hooks/x*.sh\")'")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then

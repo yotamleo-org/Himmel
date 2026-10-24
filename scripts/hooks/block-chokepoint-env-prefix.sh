@@ -1874,18 +1874,23 @@ pobf_relief() {
 # the program word, no env or exec wrapper), assign only lowercase or
 # one- and two-letter names (an uppercase one can be PAGER or EDITOR), and
 # run a program from a fixed set: data tools; git without -c, a pager or an
-# exec option; python or node whose code names no process spawn and no
-# environment; sed, awk, perl or ruby whose literal code holds no verb word;
-# or a shell or .sh script none of whose words is a verb or a shell name, in
-# a command that writes no file and feeds no heredoc. A verb at command
-# position (printf, read) keeps the scan, and so does a heredoc written to a
-# file, since the file can be run later. A command that names a
+# exec option; inline python or node code (-c, -e or a heredoc, never a
+# script file) that names no process spawn, no environment and no dynamic
+# lookup a spawn name could be built through (getattr, __dict__, globals,
+# require of anything but fs or path, ...); sed, awk, perl or ruby whose
+# literal code holds no verb word; printf with no option beside no hard path
+# word; or a shell or .sh script none of whose words is a verb or a shell
+# name, in a command that writes no file and feeds no heredoc. read at
+# command position keeps the scan, and so does a heredoc written to a file,
+# since the file can be run later. A command that names a
 # seam variable, startup state or a clear the text sees (declare +x,
 # export -n, exec -, ${!) never gets relief; neither does one the model
 # cannot load or parse within its bound.
 # ponytail: an unknown program word keeps the deny, and so does a runner the
 # model does not flag (rtk proxy, npm run); upgrade path = a runner table in
-# bash-ast.jq.
+# bash-ast.jq. The python and node scan is a token list, not a proof: code
+# that reaches a spawn through a primitive missing from it gets the relief;
+# upgrade path = an interpreter AST walk.
 IFS= read -r -d '' OBF_AST_JQ <<'OBF_AST_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
 def lit: .t == "lit";
 def wv: .v // "";
@@ -1902,7 +1907,11 @@ def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
   "realpath", "readlink", "stat", "file", "test", "[", "true", "false",
   "sleep", "tee", "mktemp", "seq", "du", "df", "find", "gh", "shellcheck",
   "shfmt", "tree"];
-def spawn: "subprocess|environ|putenv|unsetenv|os\\.(system|exec|spawn|popen|fork)|pty|Popen|commands\\.|ctypes|child_process|exec(Sync|File)|spawn|process\\.env|Bun\\.|Deno\\.|(^|[^[:alnum:]_.])(system|exec|fork|popen)[[:space:]]*\\(";
+def pyspawn: "subprocess|environ|putenv|unsetenv|system|popen|fork|exec|spawn|Popen|commands\\.|__import__|__dict__|__builtins__|__getattribute__|__subclasses__|__globals__|__class__|__loader__|getattr|attrgetter|methodcaller|getmembers|modules|globals|locals|vars[[:space:]]*\\(|dir[[:space:]]*\\(|eval|compile|\\b(pty|ctypes|cffi|importlib|inspect|marshal|pickle|shelve|runpy|timeit|doctest|pdb|bdb|cProfile|profile|trace|code|codeop|webbrowser)\\b";
+def jsspawn: "child_process|exec|spawn|fork|process(?!\\.(argv|stdout|stderr|exitCode|exit|cwd)\\b)|Bun|Deno|eval|Function|constructor|__proto__|prototype|globalThis|Reflect|Proxy|import[[:space:]]*\\(|worker_threads|\\b(global|this|module|arguments|vm)\\b|require(?![[:space:]]*\\([[:space:]]*[\"'](node:)?(fs|path)[\"'][[:space:]]*\\))";
+def inline: (.argv[1:] | map(select(lit) | wv)) as $w
+  | if .prog == "node" then ($w | any(.[]; isin(["-e", "-p", "--eval", "--print"]))) or ($w == ["-"])
+    else ($w | any(.[]; . == "-c" or test("^-[A-Za-z]*c$"))) or (($w | map(select(. == "-" or (startswith("-") | not))) | .[0]) == "-") end;
 def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
 def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
   and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
@@ -1923,7 +1932,8 @@ def pos_ok($vr):
   and (if .prog == null then true
        elif .prog == "printf" then $hard == "0" and ((.argv[1] // {t: "lit", v: ""}) | lit and ((wv | startswith("-")) | not))
        elif .prog == "git" then git_ok
-       elif .prog | isin(["python3", "python", "node"]) then code_ok(spawn)
+       elif .prog | isin(["python3", "python"]) then inline and code_ok(pyspawn)
+       elif .prog == "node" then inline and code_ok(jsspawn)
        elif .prog | isin(["sed", "awk", "gawk", "perl", "ruby"]) then code_ok($vr)
        elif .prog | isin(data) then true
        elif (.prog | isin(shells)) or (.prog | endswith(".sh")) then (.argv[1:] | all(.[]; (lit | not) or ((wv | isin(verbs)) | not)))
