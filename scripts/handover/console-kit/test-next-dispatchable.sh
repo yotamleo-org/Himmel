@@ -733,5 +733,26 @@ has "archived: the pool row is the v1.1.3 operator-directed ticket" "$f6" "HIMME
 lacks "archived: the first live version's ticket is not parked as NEXT-TIER" "$f6" "NEXT-TIER	HIMMEL-740"
 lacks "archived: a later live version's operator-directed ticket is not in the pool" "$f6" "HIMMEL-741	"
 
+# --- a 'Never edit' / 'Do NOT touch' fence and a 'Touches <dir>, a trust-path pattern' note are not write scope ---
+M25="$WORK/jira-mirror25/HIMMEL"; mkdir -p "$M25"
+M_SAVE="$M"; M="$M25"
+mk HIMMEL-750 "To Do" Medium '[]' '["v1.0.1"]' '[]' "inside a Never edit tree" "Edit scripts/ci/nd-never-a.sh only."
+mk HIMMEL-751 "To Do" Medium '[]' '["v1.0.1"]' '[]' "inside a Do NOT touch tree" "Edit scripts/hooks/nd-never-b.sh only."
+mk HIMMEL-752 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a tree named only in a Touches note" "Edit scripts/ci/nd-touch-c.sh only."
+mk HIMMEL-753 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the leg's own file" "Edit scripts/handover/nd-own.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror25/HIMMEL.versions.tsv"
+LEGN="$WORK/HIMMEL-95-N5-never.md"
+LEGT="$WORK/HIMMEL-94-N4-touches.md"
+# shellcheck disable=SC2016  # the backticks are literal doc text
+printf '# never\n> **Scope / do not:** writes confined to Writes confined to the suite files `scripts/handover/nd-own.sh`. Never edit: .github/workflows/*, scripts/ci/*, scripts/lib/*. Do NOT touch scripts/hooks/*. Fix shape: stat. completes-ticket: yes. Stay off those.\n\n## Results\n- 10:00 LIVE - go\n' > "$LEGN"
+printf '# touches\n> **Scope / do not:** writes confined to Writes confined to scripts/handover/nd-own.sh, and two rows each in scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv. Never edit scripts/hooks/, scripts/lib/, .github/. Impacted suites: scripts/ci/test-suite-tiers.sh. Touches scripts/ci/, a ci-trust-paths pattern: say so in READY (trust-reviewed GO). completes-ticket: no. Stay off those.\n\n## Results\n- 10:00 LIVE - go\n' > "$LEGT"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N5"},{"doc":"%s","label":"N4"}]}\n' "$LEGN" "$LEGT" > "$WORK/fleet25.json"
+f25="$(NEXT_DISPATCH_MIRROR="$M25" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --legs-from "$WORK/fleet25.json" 2>/dev/null)"
+has "never-edit: a ticket inside a 'Never edit' tree is offered (HIMMEL-7358)" "$f25" "HIMMEL-750	"
+has "never-edit: a ticket inside a 'Do NOT touch' tree is offered" "$f25" "HIMMEL-751	"
+has "never-edit: a ticket inside a tree named only in a 'Touches <dir>, a trust-path pattern' note is offered" "$f25" "HIMMEL-752	"
+lacks "never-edit: a ticket on the leg's own named file stays held" "$f25" "HIMMEL-753	"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
