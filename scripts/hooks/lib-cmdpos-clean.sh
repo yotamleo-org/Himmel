@@ -398,11 +398,51 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
 }
 # <<< END cmdpos <<<
 
+# cp_git_readonly <git word index> <segment end> - true when the git call has
+# no global option but -C <dir>, --no-pager or -P, runs a literal read-only
+# subcommand, and passes no pager, exec or output option, long or abbreviated:
+# the git model of block-chokepoint-env-prefix.sh's AST relief (gitro, git_ok).
+CP_GITRO=' status log diff show grep ls-files ls-tree rev-parse rev-list blame
+cat-file describe shortlog merge-base name-rev for-each-ref show-ref diff-tree
+diff-files diff-index count-objects check-ignore '
+cp_git_readonly() {
+    local j=$(( $1 + 1 )) w n o sub=''
+    while [ "$j" -lt "$2" ]; do
+        if [ -n "${ST_RO[j]}" ]; then j=$((j + 1)); continue; fi
+        w=${ST_W[j]}
+        [ "${ST_X[j]}${ST_G[j]}" = 00 ] || return 1
+        if [ -z "$sub" ]; then
+            [ "${ST_Q[j]}" = 0 ] || return 1
+            case "$w" in
+                -C) [ "$((j + 1))" -lt "$2" ] && [ "${ST_X[j + 1]}${ST_G[j + 1]}" = 00 ] || return 1
+                    j=$((j + 1)) ;;
+                --no-pager | -P) ;;
+                -*) return 1 ;;
+                *) case "$CP_GITRO" in *[[:space:]]"$w"[[:space:]]*) sub=$w ;; *) return 1 ;; esac ;;
+            esac
+        else
+            ! short_cluster_has_O "$w" "$sub" || return 1
+            case "$w" in
+                -x | -O* | --open-files-in-pager* | --exec* | --extcmd* | \
+                    --upload-pack* | --receive-pack* | --output*) return 1 ;;
+                --?*) n=${w#--}; n=${n%%=*}
+                    for o in open-files-in-pager exec extcmd upload-pack receive-pack output ext-diff textconv filters; do
+                        case "$o" in "$n"*) return 1 ;; esac
+                    done ;;
+            esac
+        fi
+        j=$((j + 1))
+    done
+    [ -n "$sub" ]
+}
+
 # The predicate above knows guard-pr-check-literal.sh's targets only. A git
-# that is neither pathspec-only nor `git commit` can still run a script one of
-# its words names (`git submodule foreach '<script>'`, an alias), so for the
-# caller's own scripts, named by <names-fn> <word>, such a git segment is not
-# clean. A backslash-newline beside a heredoc can split its terminator or a
+# that is neither pathspec-only nor `git commit` can still run a program that
+# one of its words names (`git submodule foreach '<script>'`, an alias) or that
+# a config write beside it plants (a pager, an alias, core.fsmonitor or a hooks
+# path the next git call runs). Such a git segment is clean only when it is
+# read-only (cp_git_readonly) and no word names one of the caller's own
+# scripts, named by <names-fn> <word>. A backslash-newline beside a heredoc can split its terminator or a
 # `$(` inside its body, which the tokenizer reads as body text, so such a
 # command is not clean either, and nor is an unquoted heredoc with any `$`
 # from its first body line on: `${_@P}` or an arithmetic subscript re-expands
@@ -439,9 +479,12 @@ cmdpos_clean_for() { # cmdpos_clean_for <names-fn> <command>
             case "${ST_W[cw]}" in
                 git | /usr/bin/git)
                     # `git commit` (a literal builtin right after git, which no
-                    # alias can shadow) takes no option that runs a program.
+                    # alias can shadow) takes no option that runs a program,
+                    # and every other git here is read-only, so none planted
+                    # a hooks path for it.
                     if [ "${ST_W[cw + 1]:-}${ST_Q[cw + 1]:-1}" != commit0 ] \
                         && ! git_mentions_only "$cw"; then
+                        cp_git_readonly "$cw" "$ek" || rc=1
                         w=$((cw + 1))
                         while [ "$w" -lt "$ek" ]; do
                             ! "$1" "${ST_W[w]}" || rc=1

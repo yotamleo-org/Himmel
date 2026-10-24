@@ -2608,6 +2608,22 @@ assert_deny "7130 control: gh repo clone forwards a core.sshCommand beside the e
 assert_deny "7130 control: an expanded git argument can be an output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=--output=.git/hooks/x; git log \$o")"
 assert_deny "7130 control: a quoted expanded git argument can be a pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=-O/tmp/p7130; git grep \"\$o\" x")"
 
+# 7366: the mention-only exemption (lib-cmdpos-clean.sh) takes the same
+# read-only git model as the 7130 relief: beside echo, cd, jq or grep only, a
+# git call that is not pathspec-only, not a literal `git commit` and not a
+# read-only subcommand under -C, --no-pager or -P keeps the scan.
+assert_deny "7366 control: echo then git config sets a pager a later git log runs" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git config core.pager /tmp/p7366; git log -1")"
+assert_deny "7366 control: echo then git config sets a shell alias a later git call runs" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git config alias.x7366 '!sh /tmp/p7366' && git x7366")"
+assert_deny "7366 control: cd then git -C config sets core.fsmonitor git status runs" "$(j "cd . && echo 'env -i bash scripts/hooks/x*.sh'; git -C . config core.fsmonitor /tmp/p7366 && git status")"
+assert_deny "7366 control: git config sets a hooks path a later git commit runs" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git config core.hooksPath /tmp/h7366 && git commit -m x")"
+assert_deny "7366 control: grep pipe then git --git-dir reads another repo's config" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | grep -c env; git --git-dir=/tmp/g7366 log -1")"
+assert_deny "7366 control: git clone -u names an upload-pack program" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git clone -u /tmp/p7366 /tmp/r7366 /tmp/c7366")"
+assert_deny "7366 control: jq then git config writes an alias naming the env clear" "$(j "jq -n '1'; git config alias.y7366 '!env -i bash scripts/hooks/x*.sh'")"
+assert_deny "7366 control: echo then git submodule foreach runs the env clear" "$(j "echo x; git submodule foreach 'env -i bash scripts/hooks/x*.sh'")"
+assert_allow "7366: echo then a read-only git call under -C keeps the relief" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git -C . log -1 --oneline")"
+assert_allow "7366: a literal git commit message mentioning the env clear keeps the relief" "$(j "git commit -m 'drop env -i bash scripts/hooks/x*.sh'")"
+assert_allow "7366: a git push beside a grep keeps the relief" "$(j "grep -c x /dev/null; git push -u origin HEAD")"
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"
