@@ -4622,6 +4622,7 @@ MOG_BUMP_NOPULL=1 bp_run 23 "5188-d: PR head unfetchable → exit 23"
 # 5188-e — fail closed: the fetched head is not the certified head.
 MOG_BUMP_MOVED=1 MOG_BUMP_REL=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
     bp_run 23 "5188-e: fetched PR head differs from the certified head → exit 23"
+assert_audit_has "5188-e: audited as a plugin-bump refusal" "REFUSED reason=plugin-bump"
 assert_audit_has "5188-e: audited as a head-moved refusal" "phase=head-moved"
 # 5188-f — a PR that touches no plugin file never reaches git (unchanged).
 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \

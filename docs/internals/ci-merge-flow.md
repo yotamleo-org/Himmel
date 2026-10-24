@@ -93,9 +93,9 @@ A sibling's plugin bump is not a reason. Plugin versions change only in the rele
 the PR that changes the root `VERSION` file; a feature PR never changes a `plugin.json`
 version, so two PRs editing one plugin from the same base both pass
 `plugin-version-bump` and neither needs a merge of main. The merge-on-green recheck runs
-the base-tip checker against the live base and refuses a plugin version change outside a
-release cut, and a release cut not strictly above the base's, so one version never names
-two contents.
+the base-tip checker against the live base. It refuses a plugin version change outside a
+release cut, and a release cut that leaves a plugin it changes at or below the base's
+version, so two release cuts never ship different contents under one version.
 
 Each merge-in costs a full round: a fresh CI run (PR median about 22 min, p90 about 36),
 a CodeRabbit delta on the new range, a fresh `READY` and a fresh `GO` at the new head.

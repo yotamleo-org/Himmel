@@ -603,7 +603,7 @@ current_out="$(run_current_job 2>&1)"; current_rc=$?
 if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'went 0.4.60 -> 0.4.61 outside a release cut'; then ok "current-base job rejects a feature PR that changes a plugin version"; else bad "current-base job accepted a feature-PR bump (rc=$current_rc): $current_out"; fi
 # Two release cuts from the same base both raise himmel-ops to 0.4.61 with
 # different content: once the first lands, the second must go above it, so
-# one version never names two contents.
+# two release cuts never ship two contents under one version.
 (
   set -e
   cd "$W_CURRENT"
