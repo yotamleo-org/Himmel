@@ -67,6 +67,28 @@ scrub_override_env() {
   return 0
 }
 
+# scrub_session_env -- unset the Claude Code session, harness and credential
+# environment a console or leg shell exports, so a suite run from one sees what
+# it sees on a CI runner (where none of these is set). Kept: the names CI or the
+# runner set (CLAUDE_CLI_VERSION, JIRA_PROJECT_KEY, HIMMEL_SUITE_*, ...) and the
+# live-state names the runner's _live_env points at sentinels (CLAUDE_CONFIG_DIR,
+# HIMMEL_CONSOLE_*, HIMMEL_INBOX*). Like scrub_override_env, call it only inside
+# a test suite or a runner subshell.
+scrub_session_env() {
+  local _v
+  for _v in $(compgen -e); do
+    case "$_v" in
+      CLAUDE_CLI_VERSION | CLAUDE_CONFIG_DIR | HIMMEL_SUITE_* | HIMMEL_TEST_FIXTURE | HIMMEL_GIT_TEST_ENV* \
+        | HIMMEL_REQUIRE_* | HIMMEL_VM_* | HIMMEL_CI_RUNNER_* | HIMMEL_CONSOLE_* | HIMMEL_INBOX* \
+        | HIMMEL_RUNTIME_PREFLIGHT) ;;
+      CLAUDECODE | CLAUDE_* | HIMMEL_* | LEG_* | WORKER_SESSION_* | HEADED_ARM_* | CADENCE_* | CLAUDEX_* \
+        | ANTHROPIC_* | OPENROUTER_* | USER_SLUG | LUNA_VAULT_PATH | *_PERSONAL_ACCESS_TOKEN | *_API_KEY)
+        unset "$_v" ;;
+    esac
+  done
+  return 0
+}
+
 # override_env_undeclared <file>... -- print (sorted, unique) every shell expansion or
 # JS process-env read (dot or quoted-bracket notation) of an _OK name in the given
 # files that is in neither the override

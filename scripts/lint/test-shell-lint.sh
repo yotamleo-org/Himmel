@@ -30,6 +30,9 @@
 #  18. self-check: shell-lint reports no findings against this
 #      suite's own file (its fixtures/assertions are exempted from advisory
 #      checks the same way shell-lint.sh exempts its own source).
+#  23. [kill-after]: the pre-fix bulk-call kill_tree (fixed sleep before
+#      KILL) fires; the bounded kill -0 poll and a kill-after-ok line do not.
+#      `--kill-after` runs this case alone.
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe; shellcheck-clean.
 
@@ -144,8 +147,89 @@ PRIMEOF
     done
 }
 
+# [kill-after]: a soft kill, a fixed sleep, then KILL. 23a is kill_tree from
+# scripts/api-lane/bulk-call.sh at 30b42d7e verbatim (the 10-23 main red);
+# 23b is the bounded kill -0 poll that replaced it.
+_test_kill_after() {
+    local bad="$TMP_ROOT/ka_bad.sh" good="$TMP_ROOT/ka_good.sh" ok="$TMP_ROOT/ka_ok.sh" one="$TMP_ROOT/ka_one.sh" out ec
+    printf '\nCase 23: kill-after detection\n'
+    cat > "$bad" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+# TERM the whole tree, then KILL whatever ignored it after a short grace
+# shellcheck disable=SC2329 # invoked from the TERM trap string below
+kill_tree() {
+  local pids p
+  pids="$(tree_pids "$1")"
+  for p in $pids; do kill -TERM "$p" 2>/dev/null; done
+  sleep 2
+  for p in $pids; do kill -KILL "$p" 2>/dev/null; done
+}
+EOF
+    out="$(bash "$LINT" "$bad" 2>&1)"; ec=$?
+    if [ "$ec" -eq 1 ]; then pass "23a exit 1 on the pre-fix bulk-call kill_tree"; else fail "23a expected exit 1, got $ec" "$out"; fi
+    assert_contains "23a [kill-after] cites the fixed sleep" "[kill-after] line 9" "$out"
+    cat > "$good" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+kill_tree() {
+  local pids p i=0 live=1
+  pids="$(tree_pids "$1")"
+  for p in $pids; do kill -TERM "$p" 2>/dev/null; done
+  # the call's own pid is this shell's child and stays a zombie until the wait below, so it is not polled
+  while [ "$live" -eq 1 ] && [ "$i" -lt 100 ]; do
+    live=0
+    for p in $pids; do [ "$p" = "$1" ] || ! kill -0 "$p" 2>/dev/null || live=1; done
+    [ "$live" -eq 0 ] || { sleep 0.1; i=$((i + 1)); }
+  done
+  for p in $pids; do kill -KILL "$p" 2>/dev/null; done
+}
+EOF
+    out="$(bash "$LINT" "$good" 2>&1)"; ec=$?
+    if [ "$ec" -eq 0 ]; then pass "23b exit 0 on the bounded poll"; else fail "23b expected exit 0, got $ec" "$out"; fi
+    assert_not_contains "23b bounded kill -0 poll before KILL is clean" "[kill-after]" "$out"
+    cat > "$ok" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+kill "$1" 2>/dev/null
+sleep 1 # kill-after-ok: the stub ignores TERM by design
+kill -9 "$1" 2>/dev/null
+EOF
+    out="$(bash "$LINT" "$ok" 2>&1)"; ec=$?
+    if [ "$ec" -eq 0 ]; then pass "23c exit 0 on the exempted sequence"; else fail "23c expected exit 0, got $ec" "$out"; fi
+    assert_not_contains "23c # kill-after-ok exempts" "[kill-after]" "$out"
+    cat > "$one" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+kill "$1"; sleep 1; kill -9 "$1"
+kill -s TERM "$1"
+sleep 3
+kill -s KILL "$1"
+kill -0 "$1" && kill -TERM "$1"
+sleep 2
+kill -KILL "$1"
+kill "$1"; sleep 2
+kill -9 "$1"
+kill "$1"
+sleep 2; kill -9 "$1"
+EOF
+    out="$(bash "$LINT" "$one" 2>&1)"
+    assert_contains "23d one-line form flagged" "[kill-after] line 3" "$out"
+    assert_contains "23d kill -s TERM / -s KILL form flagged" "[kill-after] line 5" "$out"
+    assert_contains "23d a kill -0 probe beside the TERM does not hide it" "[kill-after] line 8" "$out"
+    assert_contains "23d soft kill and sleep on one line, KILL on the next" "[kill-after] line 10" "$out"
+    assert_contains "23d soft kill, then sleep and KILL on one line" "[kill-after] line 13" "$out"
+    out="$(bash "$LINT" --help 2>&1)"
+    assert_contains "23e --help documents [kill-after]" "[kill-after]" "$out"
+}
+
 if [ "${1:-}" = --prim-probes ]; then
     _test_prim_probes
+    printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
+    [ "$FAIL" -eq 0 ]; exit "$?"
+fi
+if [ "${1:-}" = --kill-after ]; then
+    _test_kill_after
     printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
     [ "$FAIL" -eq 0 ]; exit "$?"
 fi
@@ -1551,6 +1635,8 @@ for _v in 0.9.0 0.11.0; do
         if [ "$EC22H" -eq 0 ]; then pass "22h step passes when shellcheck $_v is the pinned 0.11.0.1"; else fail "22h step failed with the pinned shellcheck" "$OUT22H"; fi
     fi
 done
+
+_test_kill_after
 
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'

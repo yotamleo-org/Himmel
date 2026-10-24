@@ -51,6 +51,8 @@
 #   22. --shard <i>/<n> partitions the run list.
 #   27. SUITE_TIER_MODE=pr reads suite-tiers.tsv: a local suite runs only when
 #       impacted, an unlisted suite runs, a quarantine failure does not fail the run.
+#   28. A session env leaked from the caller (LEG_*, HIMMEL_WORKER_*) never
+#       reaches a suite; the runner-set HIMMEL_TEST_FIXTURE still does.
 #
 # Usage: bash scripts/ci/test-run-shell-tests.sh
 #
@@ -2359,15 +2361,17 @@ rm -rf "$sb24"
 fi
 
 # --------------------------------------------------------------------------
-# Case 25 — SKIP_LIST_NON_LINUX: scripts/test-adopt.sh runs on
-#   Linux and stays [SKIP]ped off-Linux. The real table entry is driven with a
-#   sentinel-writing stub at scripts/test-adopt.sh; `uname` is stubbed on PATH
-#   so every host exercises the Darwin / MINGW branches deterministically.
-#     a. uname -s = Linux   -> [PASS] scripts/test-adopt.sh, stub ran
-#     b. uname -s = Darwin  -> [SKIP] with the off-Linux reason, stub never ran
-#     c. uname -s = MINGW64_NT-10.0 -> same skip
+# Case 25 — SKIP_LIST vs SKIP_LIST_NON_LINUX. The real table entries are
+#   driven with sentinel-writing stubs at scripts/test-adopt.sh (SKIP_LIST,
+#   quarantined) and scripts/vm/test-vm-clone-lib.sh (SKIP_LIST_NON_LINUX);
+#   `uname` is stubbed on PATH so every host exercises the Linux / Darwin /
+#   MINGW branches deterministically.
+#     a. every uname -> test-adopt.sh [SKIP]ped with the quarantine reason, never run
+#     b. uname -s = Linux  -> test-vm-clone-lib.sh RUNS and passes, rc 0
+#     c. uname -s = Darwin / MINGW64_NT-10.0 -> test-vm-clone-lib.sh [SKIP]ped
+#        with its off-Linux reason, never run; nothing ran, so rc 1
 # --------------------------------------------------------------------------
-echo "== Case 25 (HIMMEL-3203): test-adopt.sh runs on Linux, skipped off-Linux =="
+echo "== Case 25 (HIMMEL-7300): test-adopt.sh quarantined everywhere, off-Linux skips still Linux-only =="
 sb25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25.XXXXXX") || { fail "25: mktemp failed"; sb25=""; }
 fakebin25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25-fakebin.XXXXXX") || { fail "25: fakebin mktemp failed"; fakebin25=""; }
 [ -n "$sb25" ] && [ -z "$fakebin25" ] && { rm -rf "$sb25"; sb25=""; }
@@ -2381,6 +2385,14 @@ exit 0
 SHEOF
 chmod +x "$sb25/scripts/test-adopt.sh"
 sentinel25="$sb25/scripts/adopt-ran.sentinel"
+mkdir -p "$sb25/scripts/vm"
+cat > "$sb25/scripts/vm/test-vm-clone-lib.sh" <<'SHEOF'
+#!/usr/bin/env bash
+touch "$(dirname "$0")/vmclone-ran.sentinel"
+exit 0
+SHEOF
+chmod +x "$sb25/scripts/vm/test-vm-clone-lib.sh"
+vmsentinel25="$sb25/scripts/vm/vmclone-ran.sentinel"
 
 for os25 in Linux Darwin MINGW64_NT-10.0; do
   cat > "$fakebin25/uname" <<SHEOF
@@ -2388,20 +2400,24 @@ for os25 in Linux Darwin MINGW64_NT-10.0; do
 echo "$os25"
 SHEOF
   chmod +x "$fakebin25/uname"
-  rm -f "$sentinel25"
+  rm -f "$sentinel25" "$vmsentinel25"
   out25=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$fakebin25:$PATH" bash "$RUNNER" "$sb25/scripts" 2>&1); rc25=$?
+  if [ ! -f "$sentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-adopt\.sh .*HIMMEL-7300: quarantined'; then
+    pass "25a: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-7300 reason, not run"
+  else
+    fail "25a: uname=$os25 -> expected loud HIMMEL-7300 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+  fi
   if [ "$os25" = "Linux" ]; then
-    if [ -f "$sentinel25" ] && grepq "$out25" -F '[PASS] ' && grepq "$out25" -F 'test-adopt.sh' && ! grepq "$out25" -F '[SKIP]'; then
-      pass "25a: uname=Linux -> scripts/test-adopt.sh RUNS and passes"
+    if [ "$rc25" -eq 0 ] && [ -f "$vmsentinel25" ] && grepq "$out25" -E '\[PASS\] .*test-vm-clone-lib\.sh' && ! grepq "$out25" -E '\[SKIP\] .*test-vm-clone-lib\.sh'; then
+      pass "25b: uname=Linux -> scripts/vm/test-vm-clone-lib.sh RUNS and passes, rc=0"
     else
-      fail "25a: uname=Linux -> expected test-adopt.sh to run; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+      fail "25b: uname=Linux -> expected test-vm-clone-lib.sh to run, rc=0; rc=$rc25 sentinel=$([ -f "$vmsentinel25" ] && echo yes || echo no); out: $out25"
     fi
   else
-    # rc is 1 by design: the only suite in the sandbox is skipped, so nothing ran.
-    if [ ! -f "$sentinel25" ] && grepq "$out25" -F '[SKIP] ' && grepq "$out25" -F 'HIMMEL-3203'; then
-      pass "25b: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-3203 reason, not run"
+    if [ "$rc25" -eq 1 ] && [ ! -f "$vmsentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-vm-clone-lib\.sh .*skipped off-Linux only'; then
+      pass "25c: uname=$os25 -> scripts/vm/test-vm-clone-lib.sh SKIPped with its off-Linux reason, not run, rc=1"
     else
-      fail "25b: uname=$os25 -> expected loud HIMMEL-3203 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+      fail "25c: uname=$os25 -> expected loud off-Linux skip, rc=1; rc=$rc25 sentinel=$([ -f "$vmsentinel25" ] && echo yes || echo no); out: $out25"
     fi
   fi
 done
@@ -2415,7 +2431,8 @@ fi
 # drifted to a 2800s slowest shard against a 2304s floor. The
 # fixture below is copied from the real CI log of green main run 39180908042
 # (shell-unit-shard 1..8): every suite that ran >= 10s, with its measured
-# seconds. The sandbox holds a stub for each, the runner packs them with the
+# seconds, minus scripts/test-adopt.sh while SKIP_LIST quarantines it.
+# The sandbox holds a stub for each, the runner packs them with the
 # committed ledger, and the measured seconds of each shard are summed.
 # The slowest shard cannot beat the heaviest single suite, so the bound is that
 # floor plus 5%.
@@ -2561,7 +2578,6 @@ scripts/qmd/test-ensure-qmd-daemon.sh	49
 scripts/qmd/test-qmd-jina-gate.sh	13
 scripts/telegram/test-dispatch-lane.sh	36
 scripts/telegram/test-restart-bridge.sh	64
-scripts/test-adopt.sh	692
 scripts/test-check-ci-cache.sh	14
 scripts/test-check-ci-run.sh	12
 scripts/test-check-plugin-drift.sh	46
@@ -2861,6 +2877,35 @@ else
   fail "27i: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
 fi
 rm -rf "$sb27"
+fi
+
+echo "== Case 28: a leaked session env never reaches a suite =="
+sb28=$(mktemp -d -t himmel-suite-envleak.XXXXXX) || { fail "28: mktemp failed"; sb28=""; }
+if [ -n "$sb28" ]; then
+mkdir -p "$sb28/scripts"
+cat > "$sb28/scripts/test-envleak.sh" <<'SHEOF'
+#!/usr/bin/env bash
+printf 'leg=%s profile=%s fixture=%s\n' "${LEG_SESSION_ID-unset}" \
+  "${HIMMEL_WORKER_SESSION_PROFILE-unset}" "${HIMMEL_TEST_FIXTURE-unset}" > "$ENVLEAK_LOG"
+exit 0
+SHEOF
+chmod +x "$sb28/scripts/test-envleak.sh"
+
+# Control: the leak does reach the suite when the runner is not in the way.
+LEG_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/direct.log" \
+  env -u HIMMEL_TEST_FIXTURE bash "$sb28/scripts/test-envleak.sh"
+LEG_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/runner.log" \
+  env -u SUITE_TIER_MODE bash "$RUNNER" "$sb28/scripts" >/dev/null 2>&1
+rc28=$?
+direct28=$(cat "$sb28/direct.log" 2>/dev/null)
+runner28=$(cat "$sb28/runner.log" 2>/dev/null)
+if [ "$direct28" = "leg=leaked-28 profile=leaked-28 fixture=unset" ] \
+   && [ "$rc28" -eq 0 ] && [ "$runner28" = "leg=unset profile=unset fixture=1" ]; then
+  pass "28: the runner scrubs the leaked session env and keeps HIMMEL_TEST_FIXTURE"
+else
+  fail "28: rc=$rc28 direct=[$direct28] runner=[$runner28] (want 0, the leak in direct only, fixture=1 via the runner)"
+fi
+rm -rf "$sb28"
 fi
 
 rst_tally
