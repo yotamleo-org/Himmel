@@ -2624,6 +2624,20 @@ assert_allow "7366: echo then a read-only git call under -C keeps the relief" "$
 assert_allow "7366: a literal git commit message mentioning the env clear keeps the relief" "$(j "git commit -m 'drop env -i bash scripts/hooks/x*.sh'")"
 assert_allow "7366: a git push beside a grep keeps the relief" "$(j "grep -c x /dev/null; git push -u origin HEAD")"
 
+# 7366: a glob that can expand to an option (a planted file named like one)
+# before `--`, file -C writing a file beside git, and python under an
+# inherited PYTHONINSPECT keep the deny in the 7130 relief.
+assert_deny "7366 control: a bare glob can expand to a git grep pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git grep -n env *")"
+assert_deny "7366 control: a dash glob can expand to a git log output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git log -1 --o*")"
+assert_deny "7366 control: a bare glob can expand to sed -i, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p *")"
+assert_deny "7366 control: a bare glob can expand to sort -o, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sort ?")"
+assert_deny "7366 control: file -C writes a file beside a git call and the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; file -C -m /tmp/m7366; git status")"
+assert_deny "7366 control: python inline code under an inherited PYTHONINSPECT reads piped code" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -c 'import sys; print(sys.stdin.read())'")" PYTHONINSPECT=1
+assert_allow "7366: a glob after -- is a pathspec, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git grep -n env -- *")"
+assert_allow "7366: a glob under a directory prefix cannot be an option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git log -1 -- docs/*.md; grep -c env docs/*.md")"
+assert_allow "7366: sed over a directory glob or a glob after -- keeps the relief" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p docs/*.md; sed -n p -- *")"
+assert_allow "7366: file without -C beside a git call and the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; file README.md; git status")"
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"
