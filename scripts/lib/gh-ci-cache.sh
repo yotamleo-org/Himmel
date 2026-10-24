@@ -321,7 +321,7 @@ _cic_fetch_rest() {
     rows=$(printf '%s\n' "$CIC_REST_DATA" | jq -er '
         def name_ok: type == "string" and length > 0 and (test("[\\t\\r\\n]") | not);
         def count_ok($items): (.total_count | type == "number" and . >= 0 and . <= 100) and (.total_count == ($items | length));
-        def run_key: [(if .status != "completed" then "~" else (.started_at // .completed_at // "") end), .id];
+        def run_key: .id;
         def check_valid: (.name | name_ok) and
             (if .status == "completed" then
                 (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" or

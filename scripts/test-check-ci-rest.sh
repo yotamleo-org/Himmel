@@ -36,6 +36,7 @@ if [ "${BIG:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body=$(jq -nc '
 if [ "${BADJSON:-0}" = 1 ]; then body='{not json'; fi
 if [ "${RERUN:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"unit","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:01:00Z"},{"id":2,"name":"unit","status":"completed","conclusion":"success","started_at":"2026-01-01T00:05:00Z","completed_at":"2026-01-01T00:06:00Z"}]}'; fi
 if [ "${QUEUED:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"unit","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:01:00Z"},{"id":2,"name":"unit","status":"queued","conclusion":null,"started_at":null,"completed_at":null}]}'; fi
+if [ "${STALEQ:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"unit","status":"queued","conclusion":null,"started_at":null,"completed_at":null},{"id":2,"name":"unit","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:01:00Z"}]}'; fi
 case " $* " in
     *'If-None-Match:'*) printf 'HTTP/2.0 304 Not Modified\r\nETag: "v1"\r\n\r\n'; printf '304\n' >> "$CASE/responses" ;;
     *) printf 'HTTP/2.0 200 OK\r\nETag: "v1"\r\n\r\n%s\n' "$body"; printf '200\n' >> "$CASE/responses" ;;
@@ -54,7 +55,7 @@ new_case() {
     : > "$CASE/calls"; : > "$CASE/responses"; : > "$CASE/sleeps"
     printf '1000000000\n' > "$CASE/clock"
     export CIC_CLOCK_FILE="$CASE/clock" CHECK_CI_CACHE_DIR="$CASE/cache"
-    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED ACTUAL_GQL
+    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ ACTUAL_GQL
     cic_init 42 sha1 || exit 1
 }
 count() { grep -c -- "$1" "$CASE/calls" || true; }
@@ -138,6 +139,11 @@ new_case
 export QUEUED=1
 cic_get 60; rc=$?
 if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'pending\tunit\npass\tlint' ]; then ok 'a queued rerun with no timestamps beats an older completed run of its name'; else bad "queued rerun lost: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export STALEQ=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$CIC_ROWS" = $'pass\tunit\npass\tlint' ]; then ok 'an older queued run does not outrank a newer completed run of its name'; else bad "stale queued run kept: rc=$rc rows=$CIC_ROWS"; fi
 
 # Startup snapshot: an EMPTY reviewDecision (no review yet) must not collapse the
 # tab-separated read and shift head/base out of their fields.
