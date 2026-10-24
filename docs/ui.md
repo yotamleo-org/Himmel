@@ -40,8 +40,8 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 `CR_FLOOR_FALLBACK`) are shown with their current value and default, and are set in `.env` or the launching shell.
 
 The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
-secret store only and is never shown, logged or returned), and a save is refused while the page runs
-as the always-on service (open `himmelctl ui` instead). Each secret form shows an example value under it (a shape, never a working value).
+secret store only and is never shown, logged or returned). The always-on service saves one only after
+you log in at `/login`; an ad-hoc `himmelctl ui` needs no login. Each secret form shows an example value under it (a shape, never a working value).
 
 The Setup page also has a CodeRabbit step. It says what CodeRabbit is, that it is an optional add-on (himmel
 works without it), and the steps to install the GitHub App on the repo and arm the gates
@@ -56,7 +56,7 @@ through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card wh
 Session switches and Your install answers are shown, never written:
 session switches are set when you start Claude.
 
-Every write is a `POST` behind the per-launch token, a same-origin check and a JSON-only body.
+Every write is a `POST` behind the per-launch token or a login session, a same-origin check and a JSON-only body.
 This is the full set, each mapped to the code that handles it:
 
 | Action | Route | Handled in |
