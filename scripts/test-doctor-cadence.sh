@@ -256,8 +256,15 @@ CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" run_cad
 check "a failed send leaves the alert baseline unchanged" "$before" "$(cat "$STATE/alerted.tsv")"
 run_cad_ok "the retry run"
 check "the next run retries the undelivered alert" 1 "$(sent_n)"
-tail -1 "$SENT" | grep -q 'C55-new' && pass "the retried alert names the finding" || fail "the retried alert names the finding"
+case "$(tail -1 "$SENT")" in *C55-new*) pass "the retried alert names the finding" ;; *) fail "the retried alert names the finding" ;; esac
 case "$(cat "$STATE/alerted.tsv")" in *C55-new*) pass "a delivered send advances the baseline" ;; *) fail "a delivered send advances the baseline" ;; esac
+# the sender exits 0 on a failed send unless the caller opts in to the delivery status.
+CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" CADENCE_ALERT_DEDUPE_DIR="$W/sent-rc" CADENCE_ALERT_FILE="$W/a-rc.log" bash "$P/scripts/luna/cadence-alert.sh" fail legy why /x.log 2>/dev/null
+check "a failed send exits 0 by default" 0 "$?"
+CADENCE_ALERT_EXIT_ON_SEND_FAIL=1 CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" CADENCE_ALERT_DEDUPE_DIR="$W/sent-rc" CADENCE_ALERT_FILE="$W/a-rc.log" bash "$P/scripts/luna/cadence-alert.sh" fail legy why /x.log 2>/dev/null
+check "a failed send exits 1 when the caller opts in" 1 "$?"
+CADENCE_ALERT_EXIT_ON_SEND_FAIL=1 CADENCE_ALERT_DEDUPE_DIR="$W/sent-rc" CADENCE_ALERT_FILE="$W/a-rc.log" bash "$P/scripts/luna/cadence-alert.sh" fail legy why /x.log 2>/dev/null
+check "a delivered send exits 0 when the caller opts in" 0 "$?"
 
 # 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).
