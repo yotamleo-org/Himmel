@@ -13,6 +13,8 @@ blocks every merge, so classify it first, using steps 1-3 below:
 
 The first cause you name has to be the right one.
 
+The full CI and merge flow, with the quarantine and main-red rules, is in [`ci-merge-flow.md`](../../internals/ci-merge-flow.md).
+
 **1. Name the failing case from the CI log, before naming any cause.** Take the
 failed job from `gh run view <run> --json jobs`, then its log:
 `gh api --allow-escape-sequences repos/<o>/<r>/actions/jobs/<job-id>/logs`

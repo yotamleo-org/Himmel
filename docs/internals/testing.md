@@ -369,6 +369,7 @@ The obsidian-triage suites need `js-yaml`/`playwright` from `tools/node_modules`
 CI installs them with `marketplace/plugins/obsidian-triage/tools/ensure-deps.sh` before
 the shards, and locally run that once (it exits non-zero on any npm/network failure).
 Suites that fail under the runner are quarantined on `SKIP_LIST` with a ticket ID — never silently.
+The CI and merge flow, including when to quarantine and when main-red holds the fleet, is in [`ci-merge-flow.md`](ci-merge-flow.md).
 
 **A `SKIP_LIST` suite is "uncovered", never "CI verifies".** CI does
 not run it, so a PR or handover that cites CI as its evidence is citing nothing.
