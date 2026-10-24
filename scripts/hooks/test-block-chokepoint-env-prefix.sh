@@ -2564,6 +2564,8 @@ assert_deny "7130 control: find -exec runs a nested env clear beside a glob path
 assert_deny "7130 control: find -okdir runs a nested env clear beside a glob path" "$(j "find . -maxdepth 0 -okdir env -i bash scripts/hooks/x*.sh \\;")"
 assert_deny "7130 control: sort --compress-program runs a nested program beside a glob path" "$(j "sort --compress-program=env -i scripts/hooks/x*.sh")"
 assert_deny "7130 control: a gh alias runs a nested shell beside a glob path" "$(j "gh alias set x '!env -i bash scripts/hooks/x*.sh' --shell")"
+assert_deny "7130 control: git fetch --upload-pack runs a nested env clear beside a glob path" "$(j "git fetch --upload-pack='env -i bash scripts/hooks/x*.sh' .")"
+assert_deny "7130 control: git push --receive-pack runs a nested env clear beside a glob path" "$(j "git push --receive-pack='env -i bash scripts/hooks/x*.sh' . HEAD")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then

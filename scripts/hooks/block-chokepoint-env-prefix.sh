@@ -1932,7 +1932,7 @@ def git_ok:
   | ($a[1:$s] | all(.[]; lit and ((wv | test("^(-c|--config-env|--exec-path)")) | not)))
   and (($a[$s] // {t: "lit", v: ""}) | lit
        and ((wv | isin(["filter-branch", "bisect", "submodule", "difftool", "mergetool", "rebase"])) | not))
-  and ($a[$s:] | all(.[]; (lit | not) or ((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd)")) | not)));
+  and ($a[$s:] | all(.[]; (lit | not) or ((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd|--upload-pack|--receive-pack)")) | not)));
 def pos_ok($vr):
   (.opaque == null)
   and ((.via // []) | all(.[]; . != "env" and . != "exec"))
