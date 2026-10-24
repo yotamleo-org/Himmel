@@ -1368,6 +1368,15 @@ not_contains "legs --check: a leg whose window is already gone is counted, not p
 not_contains "legs --check: a manifest older than the age window is not swept" "$out" "$MS_OLD"
 not_contains "legs --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls
+rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run "$MS_PRED_M" --check 2>&1) || rc=$?
+check "legs: --check after a manifest -> rc 0" "$rc" "0"
+contains "legs: --check after a manifest still checks the leg" "$out" "sweep: would close $MS_PRED"
+contains "legs: --check after a manifest is not swept as a manifest" "$out" "sweeps: manifests=1 failed=0"
+not_contains "legs: --check after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
+rc=0; CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run "$MS_PRED_M" --bogus >/dev/null 2>&1 || rc=$?
+check "legs: an unknown flag after a manifest -> rc 2" "$rc" "2"
+not_contains "legs: an unknown flag after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
+reset_calls
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-legs.sh" run "$W/no-such.fleet.json" "$MS_PRED_M" "$MS_CUR_M" 2>&1) || rc=$?
 check "legs: a failed sweep is reported -> rc 1" "$rc" "1"
 contains "legs: a failed sweep does not stop the others" "$out" "sweeps: manifests=3 failed=1 gone=1"

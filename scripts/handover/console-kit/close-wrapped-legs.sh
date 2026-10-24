@@ -31,12 +31,15 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 check=""
-if [ "${1:-}" = --check ]; then
-    check="--check"; shift
-fi
-case "${1:-}" in
-    -*) echo "usage: close-wrapped-legs.sh [--check] [<manifest>...]" >&2; exit 2 ;;
-esac
+manifests=()
+for a in "$@"; do
+    case "$a" in
+        --check) check="--check" ;;
+        -*) echo "usage: close-wrapped-legs.sh [--check] [<manifest>...]" >&2; exit 2 ;;
+        *) manifests+=("$a") ;;
+    esac
+done
+set -- ${manifests[@]+"${manifests[@]}"}
 
 if [ "$#" -eq 0 ]; then
     bucket="${HIMMEL_BUCKET_DIR:-}"
