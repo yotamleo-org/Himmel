@@ -60,10 +60,11 @@ if [ "$#" -eq 0 ]; then
         bucket="$root/$slug/$(basename "$(dirname "$common")")"
     fi
     [ -d "$bucket" ] || { echo "close-wrapped-legs: no bucket dir $bucket" >&2; exit 2; }
+    found=$(find "$bucket" -maxdepth 1 -type f -name '*.fleet.json' -mmin "-${CLOSE_WRAPPED_LEGS_MAX_AGE_MIN:-1440}" | sort) # gnu-ok: BSD find has -maxdepth and -mmin too
     while IFS= read -r m; do
         [ -n "$m" ] && set -- "$@" "$m"
     done <<EOF
-$(find "$bucket" -maxdepth 1 -type f -name '*.fleet.json' -mmin "-${CLOSE_WRAPPED_LEGS_MAX_AGE_MIN:-1440}" | sort)
+$found
 EOF
 fi
 
