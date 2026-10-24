@@ -661,6 +661,10 @@ case "$verb" in
                 [ "${n:-1}" -gt 1 ] && ph="${STUB_PR_HEAD_SECOND:-$ph}"
                 cf="${STUB_PR_CHANGED_FILES:-$(printf '%s' "${STUB_PR_FILES_JSON:-$def_files}" | jq length)}"
                 printf '{"head":{"sha":"%s"},"changed_files":%s}' "$ph" "$cf" | jq -r "$jqexpr" ;;
+            */contents/.claude/settings.json\?ref=*)
+                # The repo's settings, read when its trust list is missing:
+                # none here, so the repo has not adopted himmel.
+                echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
             *) echo "gh stub: unhandled 'api' path: $api_path" >&2; exit 90 ;;
         esac
         ;;
@@ -3297,6 +3301,9 @@ MERGE_STATIC_RECHECK=1 STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
     tp_run 0 "3895-g: no trust list on a non-harness repo → merged"
 assert_audit_has "3895-g: not-adopted is audited" "trust=not-adopted"
 assert_audit_has "3895-g: the static re-check is skipped for another repo" "STATIC-RECHECK skipped reason=other-repo"
+# The anchor has no core file; not-adopted still rests on the repo's settings
+# read (404 here), never on the anchor.
+assert_gh_has "3895-g: the repo's settings are read" "contents/.claude/settings.json"
 # 3895-h — an origin that does not positively name another github.com repo (an
 # SSH host alias) cannot prove the 404 is off the harness's own repo: refuse.
 MOG_ANCHOR_URL=git@gh-alias:owner/repo.git STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
