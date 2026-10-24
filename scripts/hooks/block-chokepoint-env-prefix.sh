@@ -1881,7 +1881,7 @@ pobf_relief() {
 # output option, long or abbreviated, in a command whose every other
 # position runs a read-only program and writes no file (a written hook or
 # config is run by the git call beside it); inline python or node code (-c, -e or a heredoc, in the
-# options before any script word; never a script file or a preload) that names no process spawn, no environment and no dynamic
+# options before any script word, each from a fixed set; never a script file, a preload, an env file or a warning filter) that names no process spawn, no environment and no dynamic
 # lookup a spawn name could be built through (getattr, __dict__, globals,
 # require of anything but fs or path, ...); sed, awk, perl or ruby whose
 # literal code holds no verb word, and no other position carries a verb
@@ -1921,9 +1921,10 @@ def inline: .argv[1:] as $a
   | first(range(0; ($a | length) + 1) as $i | select(($a[$i] == null) or (($a[$i] | optw) | not)) | $i) as $n
   | ($a[:$n] | map(wv)) as $o
   | if .prog == "node" then (($o | any(.[]; isin(["-e", "-p", "--eval", "--print"])))
-      and ($o | any(.[]; test("^(-r|--require|--import|--loader|--experimental-loader)(=|$)")) | not))
+      and ($o | all(.[]; isin(["-e", "-p", "--eval", "--print", "--no-warnings"]) or test("^--input-type=(module|commonjs)$"))))
       or (($a | map(select(lit) | wv)) == ["-"])
-    else ($o | any(.[]; test("^-[bBdEhiIOPqsSuvRx]*c$"))) or (($a[$n] // null) | . != null and lit and wv == "-") end;
+    else ($o | all(.[]; test("^-[bBdEhiIOPqsSuvRx]*c?$")))
+      and (($o | any(.[]; test("^-[bBdEhiIOPqsSuvRx]*c$"))) or (($a[$n] // null) | . != null and lit and wv == "-")) end;
 def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
 def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
   and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));

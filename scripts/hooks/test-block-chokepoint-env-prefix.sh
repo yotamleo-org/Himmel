@@ -2591,6 +2591,11 @@ assert_deny "7130 control: a python write beside a git call and the env clear te
 assert_deny "7130 control: a node write beside a git call and the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; node -e 'require(\"fs\").writeFileSync(\".git/config\",\"x\")'; git log -1")"
 assert_allow "7130: a read-only git call beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git -C . log -1 --oneline && git diff --stat")"
 assert_allow "7130: a write with no git position beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' > /tmp/o7130.txt")"
+assert_deny "7130 control: node --env-file can set a preload before inline code" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | node --env-file=/tmp/e7130 -e 'console.log(1)'")"
+assert_deny "7130 control: node --env-file-if-exists can set a preload before inline code" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | node --env-file-if-exists=/tmp/e7130 -e 'console.log(1)'")"
+assert_deny "7130 control: python -W imports the warning category module before inline code" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -Wignore::m7130.X -c 'print(1)'")"
+assert_allow "7130: node --no-warnings inline code reading the env clear text from a pipe" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | node --no-warnings -e 'console.log(1)'")"
+assert_allow "7130: python -I inline code reading the env clear text from a pipe" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -I -c 'print(1)'")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
