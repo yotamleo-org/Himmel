@@ -399,6 +399,7 @@ scripts/handover/console-kit/test-station-sync.sh	3
 scripts/handover/console-kit/test-status-drift.sh	10
 scripts/handover/console-kit/test-succession-tracker.sh	0
 scripts/handover/console-kit/test-tick-deadwin.sh	5
+scripts/handover/console-kit/test-tick-holds.sh	3
 scripts/handover/console-kit/test-tick-nolive.sh	9
 scripts/handover/console-kit/test-tick.sh	128
 scripts/handover/console-kit/test-tracker.sh	5

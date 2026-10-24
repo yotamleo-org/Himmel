@@ -92,6 +92,13 @@ the auto-mode confirmation dialog, which its fresh lock heartbeat hides. Names o
 wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
+holds=<leg>:<age>m[,...] (HIMMEL-4949) follows acts= and is ABSENT unless a leg's newest
+Results marker is BLOCKED (or a FINDING whose bullet says it awaits a ruling, a hold, or what
+the console owes) and its doc has not been written for TICK_HOLD_MIN minutes (default 20): a
+leg parked on a ruling the console may not know it owes, which a repeated BLOCKED bullet never
+shows in tails=. console-wait.sh keys on the names only, so each leg ENTERING the set wakes
+the console once; the age growing or a leg leaving never does.
+
 tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
 (default 80) or more. Read-only, never reaps, and not in console-wait's action
@@ -575,6 +582,9 @@ nolive_min=$((10#$nolive_min))
 go_stale_min="${TICK_GO_STALE_MIN:-30}"
 case "$go_stale_min" in ''|*[!0-9]*) go_stale_min=30 ;; esac
 go_stale_min=$((10#$go_stale_min))
+hold_min="${TICK_HOLD_MIN:-20}"
+case "$hold_min" in ''|*[!0-9]*) hold_min=20 ;; esac
+hold_min=$((10#$hold_min))
 
 # launch_dir_default: the console work dir the <name>.launch.log files live in.
 launch_dir_default() {
@@ -694,6 +704,7 @@ leg_effort_mismatch() {
 legs_summary=""
 tails_summary=""
 acts_summary=""
+holds_summary=""
 effort_summary=""
 cachettl_summary=""
 leg_docmap=""
@@ -747,6 +758,25 @@ for leg in $LEGS_SPLIT; do
         # RESOLVED or SUCCESSION bullet cannot bury it, and a repeat of the same marker moves it
         act_status="$(leg_actionable_status "$leg_doc")"
         [ -z "$act_status" ] || acts_summary="$(csv_add "$acts_summary" "$label:$act_status")"
+        # a BLOCKED tail, or a FINDING that awaits a ruling, in a doc nobody has written to
+        # for $hold_min minutes is a hold the console may not know it owes.
+        # ponytail: hold age is the leg doc's mtime (a held leg is idle, so its marker
+        # bullet is the last write); upgrade = parse the bullet's HH:MM if a touched doc
+        # ever hides an old hold.
+        hold_age=""
+        case "$tail_status" in
+            BLOCKED) hold_age=1 ;;
+            FINDING) leg_actionable_bullet "$leg_doc" | grep -qiE 'awaiting|waiting|holding|ruling|console owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
+        esac
+        if [ -n "$hold_age" ]; then
+            hold_age=""
+            hold_m="$(stat -c %Y "$leg_doc" 2>/dev/null)" || hold_m=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable mtime leaves no hold, tails= still shows the BLOCKED
+            case "$hold_m" in
+                ''|*[!0-9]*) ;;
+                *) [ $(( $(date +%s) - hold_m )) -lt $(( hold_min * 60 )) ] || hold_age=$(( ( $(date +%s) - hold_m ) / 60 )) ;;
+            esac
+            [ -z "$hold_age" ] || holds_summary="$(csv_add "$holds_summary" "$label:${hold_age}m")"
+        fi
         # a LIVE bullet that says the leg is holding at READY (`holding at READY`, or
         # `READY <pr> <full head>`) is a READY: a claudex leg cannot SendMessage, so
         # this bullet is its only channel. Only LIVE is promoted; any other leading
@@ -2400,6 +2430,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session tails: %s\n' "$tails_summary"
     [ -z "$cachettl_summary" ] || printf 'cachettl: %s\n' "$cachettl_summary"
     printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
+    [ -z "$holds_summary" ] || printf 'worker-session holds: %s\n' "$holds_summary"
     printf 'inbox size/cursor: %s\n' "$inbox_summary"
     printf 'tick monitor: %s\n' "$tick_status"
     # Printed only under --burn, so a plain --verbose tick is unchanged. An if,
@@ -2477,6 +2508,7 @@ else
     compact_field tails "$tails_summary"
     compact_field cachettl "$cachettl_summary"
     compact_field acts "$acts_summary"
+    compact_field holds "$holds_summary"
     compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"

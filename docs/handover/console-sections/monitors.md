@@ -27,6 +27,14 @@ order, even at defaults: `legs`, `livestate`, `prs`, `tails`, `legset`, `board`,
 `unowned-prs=none` and non-stale `tracker=` must stay present to clear the
 waiter's persisted streaks. The compact format needs no reader change.
 
+`holds=<label>:<age>m[,...]` is conditional too, and `console-wait.sh` reads it: a
+worker whose newest marker is `BLOCKED` (or a `FINDING` that awaits a ruling) and whose
+doc has sat untouched for `TICK_HOLD_MIN` minutes (default 20) is a ruling you may
+owe. A repeated `BLOCKED` bullet never moves `tails=`, so this is the one signal for
+it. The waiter keys on the names, so each worker entering the set wakes you once
+(`WAKE tick changed=holds`); the age growing, a worker leaving and the set emptying wake
+nothing. Absent when no worker holds.
+
 `busedge=MISSING:<label>[,...]` is conditional too: a held leg (lock FRESH or
 STALE) whose himmel-bus peer record is missing or names another chief (never
 adopted) has no edge to the live chief. It is

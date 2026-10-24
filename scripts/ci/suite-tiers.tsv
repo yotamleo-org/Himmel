@@ -395,7 +395,8 @@ scripts/handover/console-kit/test-stuck-scan.sh	local	behaviour suite, backfille
 scripts/handover/console-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/console-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/console-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/console-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds= (HIMMEL-4949)
+scripts/handover/console-kit/test-tick-nolive.sh	localbehaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-tick.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-vault-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
