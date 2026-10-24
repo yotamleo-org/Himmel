@@ -431,7 +431,7 @@ wrap_subtree_gate() {
     fi
     for pid in $kills; do
         # a recycled pid must not be TERMed: only a live console-wait.sh process is
-        if ps -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
+        if ps -ww -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
             # its whole subtree first, deepest-first, each pid confirmed gone, so
             # no descendant outlives it as an orphan the re-check below can no
             # longer see
@@ -439,7 +439,7 @@ wrap_subtree_gate() {
                 # a gone pid is skipped; a live one whose argv no longer matches its
                 # snapshot row (reused pid, or an exec) is never signalled, and the
                 # wrap is refused with the waiter left running
-                now=$(ps -o args= -p "$sp" 2>/dev/null) || now=""
+                now=$(ps -ww -o args= -p "$sp" 2>/dev/null) || now=""
                 [ -n "$now" ] || continue
                 # an empty snapshot cmd would match any live process at that pid
                 case "$now" in "$cmd"*) [ -n "$cmd" ] || { err "wrap refused: descendant $sp of the console-wait waiter has no recorded command - waiter left running, re-run"; exit 5; } ;; *)
@@ -1727,6 +1727,14 @@ carried_live_state() {
     done
 }
 
+# The predecessor doc's `residual-must <KEY>` rulings, each once, as bare lines
+# without the `- HH:MM` bullet prefix. next-dispatchable.sh reads them from the
+# console doc, and the successor starts without the predecessor's Results.
+# Arg: predecessor doc.
+carried_residual_must() {
+    sed -nE 's/^[[:space:]]*([-*][[:space:]]+)?([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(residual-must[[:space:]]+(HIMMEL-)?[0-9]{3,5}([^0-9].*)?)$/\3/p' "$1" | awk '!seen[$0]++'
+}
+
 # One per-shift Live-state field of the predecessor, without its `<field>:`
 # prefix: for `legs:`, the whole block tick.sh reads (the wrapped lines up to
 # a blank, `word:`, list-marker, `>` or `#` line). Absent field -> empty.
@@ -1969,7 +1977,7 @@ cmd_next() {
         RELEASE_TOKEN "none yet — acquire your own at ACTION ZERO and record it here" \
         BOARD_URL "$predecessor_board" \
         TRACKER_URL "$predecessor_tracker" \
-        CARRIED_LIVE_STATE "$(carried_live_state "$predecessor_live_state" "$(dirname "$doc")" "$predecessor_base")" \
+        CARRIED_LIVE_STATE "$(carried_live_state "$predecessor_live_state" "$(dirname "$doc")" "$predecessor_base"; carried_residual_must "$predecessor_doc")" \
         CARRIED_DIRECTION "$predecessor_direction" \
         MODEL "$model" \
         PROJECT "$project_doc_value"

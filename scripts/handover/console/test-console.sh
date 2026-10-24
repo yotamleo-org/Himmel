@@ -2718,6 +2718,29 @@ printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signa
 rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
 check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
 
+# --- 86b. next carries the predecessor's residual-must rulings -----------------
+# next-dispatchable.sh admits a depth-1 residual only while --doc holds its
+# `residual-must <KEY>` line, bare or as an append-results bullet; the successor
+# doc starts without the predecessor's Results, so the lines are copied across,
+# once each, without the bullet's `- HH:MM` prefix.
+console new --bucket rmsrc >/dev/null
+doc86bA="$root/tester/rmsrc/DEMO-nextleg-${today}A-console.md"
+doc86bB="$root/tester/rmdst/DEMO-nextleg-${today}B-console.md"
+printf '%s\n' '- 07:12 residual-must HIMMEL-302 (security)' 'residual-must HIMMEL-303 (data loss)' \
+    '- 07:40 residual-must HIMMEL-302 (security)' '- 08:01 LIVE — said residual-must HIMMEL-304 in prose' \
+    'docs name a residual-must <KEY> line' >> "$doc86bA"
+rc86b=0
+console next --bucket rmdst --doc "$doc86bA" >/dev/null 2>&1 || rc86b=$?
+check "86b next succeeds against a doc carrying residual-must lines" "$rc86b" "0"
+check "86b the timestamped residual-must bullet reaches the successor as a bare line" \
+    "$(grep -Fxc 'residual-must HIMMEL-302 (security)' "$doc86bB" 2>/dev/null)" "1"
+check "86b the bare residual-must line reaches the successor" \
+    "$(grep -Fxc 'residual-must HIMMEL-303 (data loss)' "$doc86bB" 2>/dev/null)" "1"
+check "86b a prose mention of residual-must is not carried" \
+    "$(grep -c 'HIMMEL-304' "$doc86bB" 2>/dev/null)" "0"
+check "86b the successor lines are read by next-dispatchable's regex" \
+    "$(grep -cE '^[[:space:]]*([-*][[:space:]]+)?([0-9]{1,2}:[0-9]{2}[[:space:]]+)?residual-must[[:space:]]+(HIMMEL-)?[0-9]{3,5}\b' "$doc86bB" 2>/dev/null)" "2"
+
 # --- 87. a shorter decisions: line that points at a bucket decisions file ----
 # It passes only when the file exists and every numbered "(N) " entry of the
 # predecessor's line (and of any decisions file that line names) is found
