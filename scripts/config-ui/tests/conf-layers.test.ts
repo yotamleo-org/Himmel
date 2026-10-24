@@ -4,6 +4,7 @@ import { test, expect, afterEach } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readConfLayers } from "../conf-layers";
 import { startServer } from "../server";
 import { trackerSources } from "../tracker-sources";
 
@@ -39,6 +40,12 @@ test("the health mode row reads TRACKER from himmel.conf, with himmel.conf.local
   expect((await getJson(boot(s, { FORGE: "none" }), "/api/health")).mode).toMatchObject({ state: "ok", tracker: "none" });
   expect((await getJson(boot(s, { FORGE: "none", TRACKER: "local" }), "/api/health")).mode).toMatchObject({ state: "ok", tracker: "local" });
   expect((await getJson(boot(s, { FORGE: "none", TRACKER: "" }), "/api/health")).mode).toMatchObject({ state: "ok", tracker: "none" });
+});
+
+test("readConfLayers returns only the behaviour keys, as load_dotenv does", () => {
+  const s = scratch();
+  writeFileSync(s.conf, "TRACKER=local\nZAI_API_KEY=leaked\nCR_REQUIRE_CROSS_MODEL=0\n");
+  expect(readConfLayers({ HOME: s.home })).toEqual({ TRACKER: "local" });
 });
 
 test("trackerSources lists github when TRACKER=github is set only in himmel.conf", async () => {
