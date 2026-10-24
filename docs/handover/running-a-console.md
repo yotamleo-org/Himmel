@@ -111,7 +111,7 @@ The template's first section. The supervisor session runs it before anything els
 writes the result as its first Results bullet: who is alive (`ListAgents`),
 what locks are held **at the handover root** (not just its own bucket; a
 bucket sweep reports a false "no held locks"), the primary's head and remote,
-`bank-preflight.sh`, the live worker session processes, host load, and the kit path. Then
+`usage-preflight.sh`, the live worker session processes, host load, and the kit path. Then
 it records the lock token `new` printed (confirming with `queue-lock.sh
 status` that the lock is held, and acquiring one only if it reports `free`)
 and tells its predecessor it is live.
@@ -567,13 +567,13 @@ early can be undone before you finish. **Cancel last:** after the worker session
 parked and as the final action of the session, or from a plain terminal.
 
 **3. After the switch, refresh the usage cache.** The cache is stamped with the
-account that wrote it; `bank-preflight.sh` reports `BANK-UNKNOWN` while the
+account that wrote it; `usage-preflight.sh` reports `BANK-UNKNOWN` while the
 stamp does not match the logged-in account. Force
 one re-derive, then confirm the new numbers:
 
 ```bash
 USAGE_FORCE_REFRESH=1 bash scripts/statusline/usage-cache-producer.sh <<< '{}'
-bash scripts/lib/bank-preflight.sh
+bash scripts/lib/usage-preflight.sh
 ```
 
 Pass: `bank-preflight` prints the new account's `five_hour` / `seven_day` and

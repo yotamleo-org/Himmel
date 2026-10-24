@@ -34,7 +34,7 @@ Run these, in order, and write the result as the first bullet under
 3. **Head + remote:** `git -C "{{REPO}}" log -1 --format=%H` and
    `git -C "{{REPO}}" remote -v`, in the first bullet verbatim: every leg is cut
    from that head and remote.
-4. **Bank:** `bash "{{REPO}}/scripts/lib/bank-preflight.sh"` — never dispatch
+4. **Bank:** `bash "{{REPO}}/scripts/lib/usage-preflight.sh"` — never dispatch <!-- old-term-ok: existing bank label, not renamed by HIMMEL-7123 -->
    past a refusal.
 5. **Leg processes:** `pgrep -af 'claude .*-n {{PREFIX}}-'` against step 1, then
    `bash "{{REPO}}/scripts/himmel-doctor.sh" | grep C29`: **if it names YOU, your
@@ -131,7 +131,7 @@ rows run inside the step-10 waiter, never as `Monitor` loops.
 | Monitor | Cadence | What it is |
 |---|---|---|
 | tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here.** `tick.sh` args: `--doc "<this file>" --token <your token> --legs "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"` (absolute paths: a bare leg doc name resolves against the handover ROOT and reads `NOTFOUND`). One batched line; leg states and fields: `console-sections/monitors.md` |
-| bank | 300 s | poll `bank-preflight.sh`, emit on a state-word change |
+| bank | 300 s | poll `usage-preflight.sh`, emit on a state-word change <!-- old-term-ok: existing bank row label --> |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit newly-completed runs |
 | notes repo | 300 s | the vault is the tick's `vault=`; only a second state repo needs a loop |
 | telegram | 1 s, event-driven | **Runs inside the step-10 waiter.** The waiter drains `{{INBOX}}` with `inbox-follow.sh --once` (cursor: no gap, no replay) and wakes you with `WAKE telegram` (step 11) |

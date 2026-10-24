@@ -42,7 +42,7 @@ the operator file already states them).
 ## Before the batch
 
 ```bash
-bash scripts/lib/bank-preflight.sh            # refuse to start on a depleted bank
+bash scripts/lib/usage-preflight.sh            # refuse to start on a depleted bank
 git -C $HOME/h2038-bench/lean status --short   # clean (prints nothing)
 git -C $HOME/h2038-bench/fat  status --short   # clean too (the fat swap is committed)
 ```
