@@ -126,6 +126,21 @@ exit 0
 FAKE
 chmod +x "$FAKE_CLAUDE_PARTIAL"
 
+# ORDER block whose first line is blank: the lead's next step is the first nonblank line.
+FAKE_CLAUDE_BLANK="$TMP_ROOT/claude-blank-order.sh"
+cat >"$FAKE_CLAUDE_BLANK" <<'FAKE'
+#!/usr/bin/env bash
+cat <<'OUT'
+<<<ORDER_BEGIN>>>
+
+1. FIRST NONBLANK STEP
+2. second
+<<<ORDER_END>>>
+OUT
+exit 0
+FAKE
+chmod +x "$FAKE_CLAUDE_BLANK"
+
 # Failing gh fake: the all-state PR query (no --search) exits non-zero, to
 # exercise the pr_map_ok=0 reachability path (gh down != clean garden).
 FAKE_GH_FAIL="$TMP_ROOT/gh-fail.sh"
@@ -397,6 +412,14 @@ out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="/no/such/
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_LLF" --llm ) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "llm failure did not abort"; else fail "llm failure aborted rc=$rc"; fi
 assert_contains "fallback tldr heuristic" "in-flight" "$(cat "$OUT_LLF")"
+assert_contains "llm failed: spend line says failed" "turn (--llm) failed; heuristic used" "$(lead_of "$(cat "$OUT_LLF")")"
+if grepq "$(lead_of "$(cat "$OUT_LLF")")" -F -- "one bounded"; then fail "failed llm run reported as a bounded turn"; else pass "failed llm run not reported as a bounded turn"; fi
+
+echo "TEST: ORDER block starting with a blank line → next step is the first nonblank line"
+OUT_BLK="$TMP_ROOT/blankorder.md"
+out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_BLANK" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_BLK" --llm )
+assert_contains "blank-first order: next step" "Next step: 1. FIRST NONBLANK STEP" "$(lead_of "$(cat "$OUT_BLK")")"
 
 # Test 16: --llm per-block fail-open (only TLDR present) --------------
 
@@ -445,12 +468,22 @@ assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"      
 assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$(lead_of "$file")"
 assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$(lead_of "$bb_file")"
 
+echo "TEST: gh missing → merged-PR count and open PRs read not available, never 0"
+OUT_GHM="$TMP_ROOT/ghmissing.md"
+out=$( cd "$REPO"; GH_CMD="/no/such/gh" JIRA_CMD="$FAKE_JIRA" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_GHM" )
+file=$(cat "$OUT_GHM")
+assert_contains "gh-missing: shipped count gap" "not available PRs merged to main" "$(lead_of "$file")"
+assert_contains "gh-missing: waits open PRs gap" "Open PRs: not available"        "$(lead_of "$file")"
+if grepq "$(lead_of "$file")" -F -- "**0** PRs merged"; then fail "gh-missing rendered the shipped count as 0"; else pass "gh-missing did not render the shipped count as 0"; fi
+
 echo "TEST: unparseable gh merged-PR list → count unknown, never 0"
 OUT_PRU="$TMP_ROOT/prunknown.md"
 out=$( cd "$REPO"; FAKE_GH_PR_JSON="not json" GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_PRU" )
 file=$(cat "$OUT_PRU")
 assert_contains "pr count rendered unknown" "Completed (unknown PRs merged" "$file"
+assert_contains "unparseable: shipped count gap" "not available PRs merged to main" "$(lead_of "$file")"
 if grepq "$file" -F -- "Completed (0 PRs merged"; then fail "unparseable list rendered as 0 PRs"; else pass "unparseable list not rendered as 0 PRs"; fi
 
 echo "TEST: valid JSON that is not an array → count unknown, never 0"
