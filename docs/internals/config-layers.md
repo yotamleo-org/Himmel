@@ -189,7 +189,9 @@ move without writing.
    prompt: it reads the value from `.env` and writes it into
    `~/.himmel/config.json`, so the value is never shown.
 4. Start a session. When no `DEPRECATED` notice appears, delete the moved
-   lines from `.env`.
+   lines from `.env`, except `HANDOVER_DIR`: the Jira CLI (`scripts/jira`)
+   still reads the handover root from the process env or `.env` only, not
+   from `himmel.conf`, so keep that line until it does.
 
 The `.env` fallback for non-secret keys is removed one release after setup,
 adopt and `himmelctl` read the new files.
