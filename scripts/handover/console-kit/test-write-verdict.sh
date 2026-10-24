@@ -854,12 +854,12 @@ rc=0; wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a-b/c >/dev/null 2>&1 || 
 check "25: --repo a-b/c write rc 0" "$rc" 0
 rc=0; wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a/b-c >/dev/null 2>&1 || rc=$?
 check "25: --repo a/b-c write rc 0" "$rc" 0
-check "25: a-b/c and a/b-c get two buckets" "$(find "$root" -path '*/q25c/judge.md' | wc -l | tr -d ' ')" 2
+check "25: a-b/c and a/b-c get two buckets" "$(find "$tmp" -path '*/q25c/judge.md' | wc -l | tr -d ' ')" 2
 for bad_repo in a a/b/c /a a/ 'a b/c' ../x a/.. -a/b; do
     rc=0; wv q25b GO "$SHA_A" --evidence-file "$ev" --repo "$bad_repo" >/dev/null 2>&1 || rc=$?
     check "25: --repo '$bad_repo' refused rc 2" "$rc" 2
 done
-check "25: refused --repo writes nothing" "$(find "$root" -path '*/q25b*' | wc -l | tr -d ' ')" 0
+check "25: refused --repo writes nothing" "$(find "$tmp" -path '*/q25b*' | wc -l | tr -d ' ')" 0
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"
