@@ -1119,6 +1119,8 @@ write_plugin() {  # <version> <content>
     git -C "$WORK" commit -q -m "$3"
 }
 printf '1.0.0\n' > "$WORK/VERSION"
+mkdir -p "$WORK/marketplace/.claude-plugin"
+printf '{"plugins":[{"name":"demo","source":"./plugins/demo"}]}\n' > "$WORK/marketplace/.claude-plugin/marketplace.json"
 write_plugin 0.4.70 base "chore: base"
 git -C "$WORK" push -q origin main
 BASE_OID=$(git -C "$WORK" rev-parse HEAD)
@@ -1136,8 +1138,20 @@ PR_REL_AHEAD=$(pr_head 0.4.72 from-pr release)
 PR_PRE=$(pr_head 0.4.71-alpha from-pr release)
 git -C "$WORK" checkout -q -B pr "$BASE_OID"
 git -C "$WORK" rm -rq "$PLUG"
+git -C "$WORK" commit -q -m "fix: pr removes the plugin, still listed"
+PR_DEL_LISTED=$(git -C "$WORK" rev-parse HEAD)
+printf '{"plugins":[]}\n' > "$WORK/marketplace/.claude-plugin/marketplace.json"
+git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "fix: pr removes the plugin"
 PR_DEL=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+git -C "$WORK" rm -q "$PLUG/.claude-plugin/plugin.json"
+git -C "$WORK" commit -q -m "fix: pr drops only the manifest"
+PR_MANIFEST_DEL=$(git -C "$WORK" rev-parse HEAD)
+pr_head 0.4.72 from-pr release >/dev/null
+git -C "$WORK" rm -q "$PLUG/.claude-plugin/plugin.json"
+git -C "$WORK" commit -q -m "fix: release cut drops only the manifest"
+PR_REL_MANIFEST_DEL=$(git -C "$WORK" rev-parse HEAD)
 # a second plugin whose manifest on main carries no version (unreadable there)
 BADP=marketplace/plugins/bad
 pr_head 0.4.72 from-pr release >/dev/null
@@ -1195,6 +1209,19 @@ contains "unreadable main manifest: check 9 fails" "$out" "[FAIL] 9."
 
 run_bump "$PR_DEL" "$PLUG/body.txt"
 contains "plugin removed by the PR: check 9 passes" "$out" "[PASS] 9."
+
+# Only a whole removal needs no version: a dropped manifest with the plugin's
+# files left, or a removed plugin marketplace.json still lists, fails, as
+# check-plugin-drift.sh --bump-required does.
+run_bump "$PR_MANIFEST_DEL" "$PLUG/.claude-plugin/plugin.json"
+check "manifest dropped, plugin files left: exit 1" "$rc" "1"
+contains "manifest dropped, plugin files left: check 9 fails" "$out" "[FAIL] 9."
+run_bump "$PR_REL_MANIFEST_DEL" "$PLUG/.claude-plugin/plugin.json"
+check "release cut drops the manifest, plugin files left: exit 1" "$rc" "1"
+contains "release cut drops the manifest, plugin files left: check 9 fails" "$out" "[FAIL] 9."
+run_bump "$PR_DEL_LISTED" "$PLUG/body.txt"
+check "plugin removed but still listed in marketplace.json: exit 1" "$rc" "1"
+contains "plugin removed but still listed in marketplace.json: check 9 fails" "$out" "[FAIL] 9."
 
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."

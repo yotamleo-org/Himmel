@@ -643,6 +643,13 @@ else
     plug_manifest_ver() {  # <ref> <plugin> — prints the manifest "version", empty when absent
         git show "$1:marketplace/plugins/$2/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty' 2>/dev/null
     }
+    plug_removed() {  # <ref> <plugin> — true only when nothing is tracked at the plugin path and marketplace.json no longer lists it
+        local left listed
+        left=$(git ls-tree -r --name-only "$1" -- "marketplace/plugins/$2" 2>/dev/null) || return 1  # swallow-ok: a failed read counts as not removed
+        [ -z "$left" ] || return 1
+        listed=$(git show "$1:marketplace/.claude-plugin/marketplace.json" 2>/dev/null | jq -r --arg n "$2" '[.plugins[] | select(.name == $n or ((.source // "") | tostring | rtrimstr("/") | endswith("/" + $n)))] | length' 2>/dev/null)  # swallow-ok: unreadable counts as listed
+        [ "$listed" = "0" ]
+    }
     if ! git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null; then
         bump_err="cannot fetch origin/main"
     elif ! git cat-file -e "$SHA^{commit}" 2>/dev/null \
@@ -655,7 +662,7 @@ else
     elif [ -z "$plug_rel" ]; then
         for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
             main_path="marketplace/plugins/$plug/.claude-plugin/plugin.json"
-            # absent at the merge-base = new plugin, absent at the head = removed:
+            # absent at the merge-base = new plugin, removed whole at the head:
             # nothing to compare; a failed tree read = FAIL
             if ! mb_ls=$(git ls-tree --name-only "$plug_mb" -- "$main_path" 2>/dev/null); then  # swallow-ok: rc checked, a failure FAILs check 9
                 bump_err="$bump_err; $plug cannot read the merge-base tree"
@@ -665,7 +672,8 @@ else
                 bump_err="$bump_err; $plug cannot read the PR tree"
                 continue
             fi
-            { [ -n "$mb_ls" ] && [ -n "$pr_ls" ]; } || continue
+            [ -n "$mb_ls" ] || continue
+            if [ -z "$pr_ls" ] && plug_removed "$SHA" "$plug"; then continue; fi
             mb_ver=$(plug_manifest_ver "$plug_mb" "$plug")
             pr_ver=$(plug_manifest_ver "$SHA" "$plug")
             if [ "$mb_ver" != "$pr_ver" ]; then
@@ -686,7 +694,7 @@ else
                 bump_err="$bump_err; $plug cannot read the PR tree"
                 continue
             fi
-            [ -n "$pr_ls" ] || continue  # plugin removed by the PR — nothing to bump
+            if [ -z "$pr_ls" ] && plug_removed "$SHA" "$plug"; then continue; fi  # removed whole — nothing to bump
             main_ver=$(plug_manifest_ver refs/remotes/origin/main "$plug")
             pr_ver=$(plug_manifest_ver "$SHA" "$plug")
             if ! printf '%s\n' "$main_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' \
