@@ -638,7 +638,9 @@ check 'finish never renames the pointer into a symlinked directory' '[ -z "$(ls 
 check 'finish replaces a symlink-to-directory at .git and scores the row' '[ "$rc" = 0 ] && [ -f "$TMP/root/results/p05.json" ]'
 LANE_DONE="$TMP/lane.done11" LANE_PLANT=dir PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish p11 >/dev/null 2>&1; rc=$? # gnu-ok: Linux-only kit
 check 'finish plants the gap directory case' '[ -e "$TMP/lane.done11" ] && [ "$rc" != 124 ]'
-check 'finish never renames the pointer into a directory put at .git' '[ "$(ls -A "$WT11/.git")" = keep ]'
+# GNU -T refuses the directory; BSD -h only spares a symlink and moves the pointer
+# into the lane's own directory, where it is no .git file: either way finish stops.
+check 'finish stops when a directory is put at .git and leaves it a directory' '[ "$rc" != 0 ] && [ -d "$WT11/.git" ] && [ ! -L "$WT11/.git" ] && [ -e "$WT11/.git/keep" ]'
 
 echo
 echo "test-pilot: $PASS passed, $FAIL failed"
