@@ -1866,6 +1866,155 @@ pobf_relief() {
     return 0
 }
 
+# obf_ast_relief <raw text> -- rc 0 when the command-position model
+# (scripts/lib/bash-ast.sh) shows the command writes no seam and clears no
+# environment, so a trigger word the text layer matched is data: a word in a
+# quoted grep pattern, a heredoc body read by python, or `-i` given to grep.
+# Every position must be readable (no opaque runner, no glob or expansion as
+# the program word, no env or exec wrapper), assign only lowercase or
+# one- and two-letter names (an uppercase one can be PAGER or EDITOR), and
+# run a program from a fixed set: data tools that run no nested program
+# (sort without --compress-program or a prefix of it, gh only through a fixed list of
+# subcommands, never an alias or extension; the model already marks
+# find -exec opaque); git with literal words only, running a read-only subcommand from a fixed
+# list, with no global option but -C, --no-pager or -P and no pager, exec or
+# output option, long or abbreviated, in a command whose every other
+# position runs a read-only program and writes no file (a written hook or
+# config is run by the git call beside it); inline python or node code (-c, -e or a heredoc, in the
+# options before any script word, each from a fixed set; never a script file, a preload, an env file or a warning filter) that names no process spawn, no environment and no dynamic
+# lookup a spawn name could be built through (getattr, __dict__, globals,
+# require of anything but fs or path, ...); sed, awk, perl or ruby whose
+# literal code holds no verb word, and no other position carries a verb
+# word or an expansion they could read and run (awk system, sed e); printf with no option beside no hard path
+# word; or a shell or .sh script none of whose words is a verb or a shell
+# name, in a command that writes no file and feeds no heredoc. read at
+# command position keeps the scan, and so does a heredoc written to a file,
+# since the file can be run later. A command that names a
+# seam variable, startup state or a clear the text sees (declare +x,
+# export -n, exec -, ${!) never gets relief; neither does one the model
+# cannot load or parse within its bound.
+# ponytail: an unknown program word keeps the deny, and so does a runner the
+# model does not flag (rtk proxy, npm run); upgrade path = a runner table in
+# bash-ast.jq. The python and node scan is a token list, not a proof: code
+# that reaches a spawn through a primitive missing from it gets the relief;
+# upgrade path = an interpreter AST walk.
+IFS= read -r -d '' OBF_AST_JQ <<'OBF_AST_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
+def lit: .t == "lit";
+def wv: .v // "";
+def isin($s): . as $x | $s | any(. == $x);
+def shells: ["bash", "sh", "zsh", "dash", "ksh", "mksh"];
+def verbs: ["export", "env", "exec", "eval", "declare", "typeset", "readonly",
+  "local", "let", "unset", "source", ".", "getopts",
+  "alias", "set", "shopt", "enable", "trap"] + shells;
+def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
+  "tr", "sort", "uniq", "nl", "jq", "grep", "egrep", "fgrep", "diff", "cmp",
+  "comm", "paste", "column", "fold", "fmt", "base64", "od", "xxd",
+  "hexdump", "sha256sum", "sha1sum", "md5sum", "cksum", "mkdir", "cp", "mv",
+  "rm", "rmdir", "chmod", "touch", "ln", "date", "basename", "dirname",
+  "realpath", "readlink", "stat", "file", "test", "[", "true", "false",
+  "sleep", "tee", "mktemp", "seq", "du", "df", "find", "gh", "shellcheck",
+  "shfmt", "tree"];
+def pyspawn: "subprocess|environ|putenv|unsetenv|system|popen|fork|exec|spawn|Popen|commands\\.|__import__|__dict__|__builtins__|__getattribute__|__subclasses__|__globals__|__class__|__loader__|getattr|attrgetter|methodcaller|getmembers|modules|globals|locals|vars[[:space:]]*\\(|dir[[:space:]]*\\(|eval|compile|\\b(pty|ctypes|cffi|importlib|inspect|marshal|pickle|shelve|runpy|timeit|doctest|pdb|bdb|cProfile|profile|trace|code|codeop|webbrowser)\\b";
+def jsspawn: "child_process|exec|spawn|fork|process(?!\\.(argv|stdout|stderr|exitCode|exit|cwd)\\b)|Bun|Deno|eval|Function|constructor|__proto__|prototype|globalThis|Reflect|Proxy|import[[:space:]]*\\(|worker_threads|\\b(global|this|module|arguments|vm)\\b|require(?![[:space:]]*\\([[:space:]]*[\"'](node:)?(fs|path)[\"'][[:space:]]*\\))";
+def optw: lit and (wv | startswith("-") and . != "-" and . != "--");
+def hdin: (.redirs // []) as $r
+  | ($r | all(.[]; ((.fd // "0") | test("^[0-9]+$")) and (((.op // "") | isin(["<&", ">&", "<>"])) | not)))
+  and ($r | map(select((((.fd // "0") | tonumber) == 0) and (.hdoc or ((.op // "") | startswith("<")))))
+    | length > 0 and (last | .hdoc));
+def inline: .argv[1:] as $a
+  | first(range(0; ($a | length) + 1) as $i | select(($a[$i] == null) or (($a[$i] | optw) | not)) | $i) as $n
+  | ($a[:$n] | map(wv)) as $o
+  | if .prog == "node" then (($o | any(.[]; isin(["-e", "-p", "--eval", "--print"])))
+      and ($o | all(.[]; isin(["-e", "-p", "--eval", "--print", "--no-warnings"]) or test("^--input-type=(module|commonjs)$"))))
+      or ((($a | map(select(lit) | wv)) == ["-"]) and hdin)
+    else ($o | all(.[]; test("^-[bBdEhIOPqsSuvRx]*c?$")))
+      and (($o | any(.[]; test("^-[bBdEhIOPqsSuvRx]*c$"))) or ((($a[$n] // null) | . != null and lit and wv == "-") and hdin)) end;
+def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
+def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
+  and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
+def lopt($names; $min): lit and (wv | startswith("--")
+  and ((ltrimstr("--") | split("=")[0]) as $n | ($n | length) >= $min and ($names | any(.[]; startswith($n)))));
+def runs_none:
+  if .prog == "sort" then (.argv[1:] | all(.[]; lit and (lopt(["compress-program"]; 2) | not)))
+  elif .prog == "gh" then ((.argv[1] // {t: "lit", v: ""}) | lit
+    and (wv | isin(["pr", "issue", "run", "api", "repo", "release", "workflow", "search", "label", "status", "cache"])))
+    and (.argv[1:] | all(.[]; lit and wv != "--"))
+  else true end;
+def gitro: ["status", "log", "diff", "show", "grep", "ls-files", "ls-tree",
+  "rev-parse", "rev-list", "blame", "cat-file", "describe", "shortlog",
+  "merge-base", "name-rev", "for-each-ref", "show-ref", "diff-tree",
+  "diff-files", "diff-index", "count-objects", "check-ignore"];
+def rdonly: ["git", "cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls",
+  "cut", "tr", "nl", "jq", "grep", "egrep", "fgrep", "diff", "cmp", "comm",
+  "paste", "column", "fold", "fmt", "basename", "dirname", "realpath",
+  "readlink", "stat", "file", "test", "[", "true", "false", "seq", "du",
+  "df", "date", "sleep", "printf", "shellcheck"];
+def git_ok:
+  .argv as $a
+  | ({i: 1} | until(($a[.i] == null) or (($a[.i] | wv) | startswith("-") | not);
+      if ($a[.i] | wv) == "-C" then .i += 2 else .i += 1 end) | .i) as $s
+  | ($a[1:$s] | all(.[]; lit) and (map(wv) | . as $g
+      | all(range(0; length); ($g[.] | isin(["-C", "--no-pager", "-P"])) or (. > 0 and $g[. - 1] == "-C"))))
+  and (($a[$s] // {t: "lit", v: ""}) | lit and (wv | isin(gitro)))
+  and ($a[$s:] | all(.[]; lit and (((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd|--upload-pack|--receive-pack|--output)"))
+       or lopt(["open-files-in-pager", "exec", "extcmd", "upload-pack", "receive-pack", "output", "ext-diff", "textconv", "filters"]; 1)) | not)));
+def pos_ok($vr):
+  (.opaque == null)
+  and ((.via // []) | all(.[]; . != "env" and . != "exec"))
+  and ((.assigns // []) | all(.[]; plainname))
+  and (.argv[0] == null or (.argv[0] | lit and (.g | not)))
+  and (if .prog == null then true
+       elif .prog == "printf" then $hard == "0" and ((.argv[1] // {t: "lit", v: ""}) | lit and ((wv | startswith("-")) | not))
+       elif .prog == "git" then git_ok
+       elif .prog | isin(["python3", "python"]) then inline and code_ok(pyspawn)
+       elif .prog == "node" then inline and code_ok(jsspawn)
+       elif .prog | isin(["sed", "awk", "gawk", "perl", "ruby"]) then code_ok($vr)
+       elif .prog | isin(data) then runs_none
+       elif (.prog | isin(shells)) or (.prog | endswith(".sh")) then (.argv[1:] | all(.[]; (lit | not) or ((wv | isin(verbs)) | not)))
+       else false end);
+def shellish: (.prog // "") as $p | ($p | isin(shells)) or ($p | endswith(".sh"));
+def outs: (.redirs // []) | map(select(((.op // "") | isin([">", ">>", ">|", "&>", "&>>"]))
+  and ((.w // {}) | (lit and wv == "/dev/null") | not)));
+def hdoc_to_file: ((.redirs // []) | any(.[]; .hdoc)) and ((outs | length) > 0 or .prog == "tee");
+def carries($vr): ((.argv // []) | any(.[]; (lit | not) or (wv | test($vr))))
+  or ((.redirs // []) | any(.[]; .hdoc and (((.text // null) == null) or (.text | test($vr)))));
+def nocarry($vr): [to_entries[] | select(.value | carries($vr)) | .key] as $c
+  | all(to_entries[] | select(.value.prog // "" | isin(["sed", "awk", "gawk", "perl", "ruby"])) | .key;
+      . as $r | $c | all(.[]; . == $r));
+def rdpos: (.prog == null) or (.prog | isin(rdonly))
+  or ((.argv[1:] | all(.[]; lit)) and ((.argv[1:] | map(wv)) as $w
+     | if .prog == "sed" then ($w | all(.[]; test("^-[[:alnum:]]*i|^--in|[wW]") | not))
+       elif .prog == "sort" then ($w | all(.[]; test("^-[[:alnum:]]*o|^--o") | not))
+       elif .prog == "uniq" then ($w | map(select(startswith("-") | not)) | length) <= 1
+       else false end));
+def gitsafe: (any(.[]; .prog == "git") | not)
+  or all(.[]; rdpos and ((outs | length) == 0));
+if all(.[]; pos_ok($vr)) and ((any(.[]; shellish) and any(.[]; (outs | length) > 0 or ((.redirs // []) | any(.[]; .hdoc)))) | not)
+   and (any(.[]; hdoc_to_file) | not) and nocarry($vr) and gitsafe
+then "allow" else "legacy" end
+OBF_AST_EOF
+obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
+    local t="$1" vr="$2" hd="$3" u v pos lib="$SCRIPT_DIR/../lib/bash-ast.sh"
+    local nl="(^|[^[:alnum:]_])" nr="([^[:alnum:]_]|$)"
+    local clr='(declare|typeset|local)[[:space:]]+(.*[[:space:]])?\+[[:alnum:]]*x|(^|[^[:alnum:]_-])exec[[:space:]]+-|\$\{!|(^|[^[:alnum:]_-])export[[:space:]]+-[[:alnum:]]*n'
+    [ "$tool" = Bash ] || return 1
+    [[ $t =~ $clr ]] && return 1
+    u=${t//[\'\"\\]/}
+    case "$u" in *BASH_FUNC_*) return 1 ;; esac
+    for v in $ALL_SEAM_VARS BASH_ENV ENV SHELLOPTS BASHOPTS extdebug HIMMEL_CONSOLE_LEG; do
+        case "$v" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+        [[ $u =~ ${nl}${v}${nr} ]] && return 1
+    done
+    # The model can run for minutes on a long heredoc command, so it gets a
+    # bound well inside the chain's per-hook budget; past it the deny stands.
+    # shellcheck source=../lib/timeout-bin.sh
+    { [ -r "$lib" ] && [ -r "$SCRIPT_DIR/../lib/timeout-bin.sh" ] && . "$SCRIPT_DIR/../lib/timeout-bin.sh"; } 2>/dev/null || return 1 # swallow-ok: no model or no resolver keeps the deny
+    [ -n "$_TIMEOUT_BIN" ] || return 1
+    # shellcheck disable=SC2016 # $1/$2 expand in the child shell
+    pos=$("$_TIMEOUT_BIN" 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
+    [ "$(printf '%s' "$pos" | jq -r --arg vr "$vr" --arg hard "$hd" "$OBF_AST_JQ" 2>/dev/null)" = allow ] # swallow-ok: a jq error is not allow, so the deny stands
+}
+
 # raw_obfuscated <raw text> -- text layer, run on the UNTOUCHED
 # command. Deny-leaning and parse-free on purpose: every special-case parse
 # rule in a guard became a bypass (PR 1494/1501/1508), so this is a plain scan.
@@ -2023,6 +2172,7 @@ raw_obfuscated() {
             pobf_relief "$t" && { set +f; return 0; }
             set +f
         fi
+        obf_ast_relief "$raw_cmd" "$wv" "$hard" && return 0
         deny_text_layer "names a seam or clears the environment beside a path with a glob or grouping in a segment"
     fi
     # ponytail: HIMMEL-4135 -- the verb scan also matches inside a quoted argument value
@@ -2084,6 +2234,10 @@ raw_obfuscated() {
         pobf_relief "$t" && { set +f; return 0; }
         set +f
     fi
+    # A trigger word the command-position model shows is data does not
+    # count (obf_ast_relief); everything the model cannot prove keeps the
+    # deny.
+    obf_ast_relief "$raw_cmd" "$wv" "$hard" && return 0
     deny_text_layer "writes a seam variable beside an obfuscated (glob, brace, ANSI-C or \$var) path under scripts/ (it matched $tw)"
 }
 

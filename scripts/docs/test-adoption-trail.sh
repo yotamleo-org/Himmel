@@ -1,33 +1,62 @@
 #!/usr/bin/env bash
-# Suite for docs/adoption-trail.html and the Pages docs that point at it.
+# Suite for docs/adoption-trail.html, the level data file it is built from, and
+# the Pages docs that point at it.
 #
-# The trail is a static page served by GitHub Pages, so nothing else ever loads
-# it in CI: a dead href, a detail chip whose panel text was deleted, or a claim
-# that drifted from the tree ships silently. Every case here is mechanical and
+# The trail is a static page served by GitHub Pages, built by
+# site/src/trail/render.mjs from site/src/trail/levels.json. Nothing else loads
+# it in CI: a dead href, a component whose detail only a script shows, or a
+# claim that drifted from the tree ships silently. Every case is mechanical and
 # derives its expected value from the tree, not from a number typed into the
-# test — the cadence count comes from cadence-registry.json, so adding a
-# registry row without touching the page fails here.
+# test: the cadence rows come from cadence-registry.json and the plugin ids
+# from plugin-profiles.json, so adding a registry row without touching the
+# data file fails here.
 #
-#   1. LINKS    — every relative href/src resolves under docs/; every
-#                 data-detail id has a panel entry in the page's D table.
-#   2. PAGES    — no "once Pages is enabled" phrasing survives (Pages is live),
+#   1. SYNC     — the page is exactly what render.mjs builds from the data file.
+#   2. NOJS     — with every script removed, each level is a <details id="lvl-N">
+#                 and each component's detail text sits inside its own
+#                 <details>; a copy missing its first component block fails.
+#   3. LINKS    — every relative href/src resolves: a file under docs/, or a site
+#                 route whose page is in site/allowlist.txt; every #fragment is
+#                 an id on the page.
+#   4. PAGES    — no "once Pages is enabled" phrasing survives (Pages is live),
 #                 and docs/README.md documents how the site is served.
-#   3. CURRENCY — claims that were verified against the tree and later drifted:
-#                 the cadence count, the lanes menu, the claude-obsidian
-#                 provenance, where --skip-hooks lives, and the leg/lane split.
+#   5. CURRENCY — the cadences shown plus the ones left out are exactly the
+#                 registry rows, the page shows the shown ones and their count,
+#                 every plugin id is in the catalog, the manifest count matches,
+#                 and the claims that drifted before stay fixed.
+#   6. NO THIRD-PARTY REQUEST — the page loads nothing from another host.
+#   7. FIRST PROTECTED PROJECT — the install is committed before the first
+#                 worktree, the undo and the ticket opt-out are named, and no
+#                 first-run page promises an unmeasured time.
+#   8. WIDTH    — at 360 px the document does not scroll sideways (a headless
+#                 Chromium measurement when one is installed), and the CSS lets
+#                 only code scroll inside its own box.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus grep/sed/jq, so it runs
-# unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (gitbash-only): POSIX bash 3.2+ plus grep/sed/jq/perl/python3
+# and node, so it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
 #
-# Usage: bash scripts/docs/test-adoption-trail.sh
+# Usage: bash scripts/docs/test-adoption-trail.sh [--registry <cadence-registry.json>]
+#        (--registry checks the data file against another registry, such as an
+#        edited copy, to show the CURRENCY case fails on a new row)
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 PAGE="$ROOT/docs/adoption-trail.html"
+DATA="$ROOT/site/src/trail/levels.json"
+RENDER="$ROOT/site/src/trail/render.mjs"
 DOCS_README="$ROOT/docs/README.md"
 REGISTRY="$ROOT/scripts/himmelctl/lib/cadence-registry.json"
+# shellcheck source=../lib/timeout-bin.sh
+. "$ROOT/scripts/lib/timeout-bin.sh"
+CATALOG="$ROOT/scripts/lanes/plugin-profiles.json"
+MANIFEST="$ROOT/scripts/install/manifest.json"
+ALLOW="$ROOT/site/allowlist.txt"
+
+if [ "${1:-}" = "--registry" ]; then
+  REGISTRY="${2:?--registry needs a path}"
+fi
 
 pass=0
 fail=0
@@ -36,25 +65,87 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '
 
 [ -f "$PAGE" ] || { echo "FAIL: $PAGE missing" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required" >&2; exit 1; }
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/adoption-trail.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
 
-# --- 1. LINKS -----------------------------------------------------------------
+have_data=1
+if [ -f "$DATA" ] && jq -e '.levels | length > 0' "$DATA" >/dev/null 2>&1; then
+  ok "the level data file exists and lists levels"
+else
+  have_data=0
+  bad "site/src/trail/levels.json must exist and list the trail's levels"
+fi
+
+# --- 1. SYNC ------------------------------------------------------------------
+
+if [ "$have_data" = 1 ] && [ -f "$RENDER" ] && sync_out="$(node "$RENDER" --check 2>&1)"; then
+  ok "docs/adoption-trail.html is what render.mjs builds from levels.json"
+else
+  bad "docs/adoption-trail.html differs from the render of levels.json (run: node site/src/trail/render.mjs)" "${sync_out:-render.mjs or levels.json missing}"
+fi
+
+# --- 2. NOJS ------------------------------------------------------------------
+
+# Prints one line per level or component whose text a reader without JavaScript
+# would not see (empty = all present).
+nojs_missing() {
+  python3 -I - "$1" "$2" <<'PY'
+import html, json, re, sys
+page = open(sys.argv[1], encoding="utf-8").read()
+data = json.load(open(sys.argv[2], encoding="utf-8"))
+page = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+page = re.sub(r"<(script|style|template)\b.*?</\1\s*>", "", page, flags=re.S | re.I)
+def text(s):
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
+blocks = [text(b) for b in re.findall(r'<details class="comp"[^>]*>(.*?)</details>', page, flags=re.S)]
+for lvl in data["levels"]:
+    if not re.search(r'<details\b[^>]*\bid="lvl-%d"' % lvl["n"], page):
+        print("level %d is not a <details id=\"lvl-%d\">" % (lvl["n"], lvl["n"]))
+    for c in lvl.get("components", []):
+        name, detail = text(c["name"]), text(c["detail"])
+        if not any(b.startswith(name) and detail in b for b in blocks):
+            print("level %d component %r: detail not in a <details> block" % (lvl["n"], name))
+PY
+}
+
+if [ "$have_data" = 1 ]; then
+  n_comp="$(jq '[.levels[].components[]?] | length' "$DATA")"
+  missing="$(nojs_missing "$PAGE" "$DATA")"
+  if [ "$n_comp" -gt 0 ] && [ -z "$missing" ]; then
+    ok "without JavaScript every level is a <details> and all $n_comp component details are in the page"
+  else
+    bad "text a reader without JavaScript cannot see (components in data: $n_comp)" "$(printf '%s\n' "$missing" | head -5)"
+  fi
+  python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); print(re.sub(r"<details class=\"comp\".*?</details>", "", t, count=1, flags=re.S), end="")' "$PAGE" > "$tmp/nojs.html"
+  if [ -n "$(nojs_missing "$tmp/nojs.html" "$DATA")" ]; then
+    ok "control: the page without its first component block is reported"
+  else
+    bad "control: the NOJS check accepted a page missing a component block"
+  fi
+fi
+
+# --- 3. LINKS -----------------------------------------------------------------
 
 dead=""
 while IFS= read -r ref; do
   case "$ref" in
-    http://*|https://*|'#'*|mailto:*|data:*) continue ;;
+    http://*|https://*|mailto:*|data:*) continue ;;
+    '#'*)
+      grep -q -F "id=\"${ref#\#}\"" "$PAGE" || dead="$dead $ref"
+      continue ;;
   esac
-  [ -e "$ROOT/docs/${ref%%#*}" ] || dead="$dead $ref"
-done < <(grep -o -E '(href|src)="[^"]+"' "$PAGE" | sed -E 's/^(href|src)="//; s/"$//' | sort -u)
-if [ -z "$dead" ]; then ok "every relative href/src resolves under docs/"; else bad "dead relative links" "$dead"; fi
+  path="${ref%%#*}"
+  case "$path" in
+    */)
+      route="${path%/}"
+      grep -q -x -F -e "$route.md" -e "$route/README.md" "$ALLOW" || dead="$dead $ref" ;;
+    *)
+      [ -e "$ROOT/docs/$path" ] || dead="$dead $ref" ;;
+  esac
+done < <(perl -0777 -pe 's/<script\b.*?<\/script>//gs' "$PAGE" | grep -o -E '(href|src)="[^"]+"' | sed -E 's/^(href|src)="//; s/"$//' | sort -u)
+if [ -z "$dead" ]; then ok "every relative href/src resolves to a docs file, a built site route or an id on the page"; else bad "dead relative links" "$dead"; fi
 
-undefined=""
-while IFS= read -r id; do
-  grep -q -E "^[[:space:]]+'$id': \{ t:" "$PAGE" || undefined="$undefined $id"
-done < <(grep -o -E 'data-detail="[^"]+"' "$PAGE" | sed -E 's/^data-detail="//; s/"$//' | sort -u)
-if [ -z "$undefined" ]; then ok "every data-detail id has a panel entry"; else bad "data-detail ids with no panel entry" "$undefined"; fi
-
-# --- 2. PAGES -----------------------------------------------------------------
+# --- 4. PAGES -----------------------------------------------------------------
 
 stale_pages='once (GitHub )?Pages is enabled|until then, open it from your clone'
 for f in "$PAGE" "$DOCS_README"; do
@@ -73,32 +164,52 @@ else
   bad "docs/README.md must name the Pages source (pages.yml on docs/**), .nojekyll and a local preview (http.server)"
 fi
 
-# --- 3. CURRENCY ----------------------------------------------------------------
+# --- 5. CURRENCY ----------------------------------------------------------------
 
-n_cad="$(jq '.cadences | length' "$REGISTRY")"
-chip_n="$(grep -o -E 'Cadences \([0-9]+' "$PAGE" | grep -o -E '[0-9]+' | sort -u | tr '\n' ' ' | sed 's/ $//')"
-if [ "$chip_n" = "$n_cad" ]; then ok "cadence count on the page ($chip_n) = registry rows ($n_cad)"; else bad "cadence count on the page is '$chip_n', registry has $n_cad"; fi
+if [ "$have_data" = 1 ]; then
+  reg_ids="$(jq -r '.cadences[].id' "$REGISTRY" | sort)"
+  shown_ids="$(jq -r '.cadences.shown[].id' "$DATA" | sort)"
+  out_ids="$(jq -r '.cadences.left_out[].id' "$DATA" | sort)"
+  both="$(comm -12 <(printf '%s\n' "$shown_ids") <(printf '%s\n' "$out_ids") | tr '\n' ' ')"
+  union="$(printf '%s\n%s\n' "$shown_ids" "$out_ids" | grep -v '^$' | sort)"
+  if [ -n "$both" ]; then
+    bad "cadences both shown and left out in levels.json" "$both"
+  elif [ "$union" = "$reg_ids" ]; then
+    ok "levels.json shows or leaves out each of the $(printf '%s\n' "$reg_ids" | grep -c .) registry cadences, once"
+  else
+    bad "levels.json cadences (shown + left out) differ from the registry" "only in registry: $(comm -23 <(printf '%s\n' "$reg_ids") <(printf '%s\n' "$union") | tr '\n' ' ')  only in levels.json: $(comm -13 <(printf '%s\n' "$reg_ids") <(printf '%s\n' "$union") | tr '\n' ' ')"
+  fi
 
-# The prose spells the count out ("eight cadences", "eight rows"): derive the
-# word from the registry too, so every count the page displays is checked.
-case "$n_cad" in
-  1) n_word=one ;; 2) n_word=two ;; 3) n_word=three ;; 4) n_word=four ;; 5) n_word=five ;;
-  6) n_word=six ;; 7) n_word=seven ;; 8) n_word=eight ;; 9) n_word=nine ;; 10) n_word=ten ;;
-  11) n_word=eleven ;; 12) n_word=twelve ;; *) n_word="" ;;
-esac
-if [ -z "$n_word" ]; then
-  bad "registry has $n_cad cadences; extend the number-word table in this suite"
-elif grep -q -F "pick which of the $n_word <b>cadences</b>" "$PAGE" && grep -q -F "— $n_word rows:" "$PAGE"; then
-  ok "spelled-out cadence counts on the page ($n_word) = registry rows ($n_cad)"
-else
-  bad "the page's prose cadence counts ('pick which of the N cadences', 'N rows:') must read '$n_word' (registry has $n_cad)"
+  no_why="$(jq -r '.cadences.left_out[] | select((.why // "") | length == 0) | .id' "$DATA" | tr '\n' ' ')"
+  if [ -z "$no_why" ]; then ok "every left-out cadence says why"; else bad "left-out cadences with no reason" "$no_why"; fi
+
+  win_shown=""
+  for id in $shown_ids; do
+    req="$(jq -r --arg id "$id" '.cadences[] | select(.id == $id) | .requires' "$REGISTRY")"
+    case "$req" in platform:windows) win_shown="$win_shown $id" ;; esac
+  done
+  if [ -z "$win_shown" ]; then ok "no shown cadence needs a dropped platform"; else bad "shown cadences that need platform:windows" "$win_shown"; fi
+
+  n_shown="$(printf '%s\n' "$shown_ids" | grep -c .)"
+  table="$(sed -n '/<table class="cadtbl">/,/<\/table>/p' "$PAGE")"
+  rows="$(printf '%s\n' "$table" | grep -o -E '<tr><td><code>[a-z-]+</code></td>' | sed -E 's/.*<code>([a-z-]+)<\/code>.*/\1/' | sort)"
+  if [ "$rows" = "$shown_ids" ]; then ok "the page's cadence table lists exactly the $n_shown shown cadences"; else bad "the page's cadence table rows differ from levels.json's shown cadences" "page: $(printf '%s' "$rows" | tr '\n' ' ')"; fi
+  if grep -q -F "Scheduled jobs: pick from $n_shown<" "$PAGE"; then ok "the cadence count on the page ($n_shown) = shown cadences"; else bad "the page must say 'Scheduled jobs: pick from $n_shown'"; fi
+
+  bad_plugins=""
+  for p in $(jq -r '[.levels[].components[]?.plugin // empty] | unique[]' "$DATA"); do
+    jq -e --arg p "$p" '.catalog | index($p) != null' "$CATALOG" >/dev/null || bad_plugins="$bad_plugins $p"
+  done
+  n_plugins="$(jq '[.levels[].components[]?.plugin // empty] | unique | length' "$DATA")"
+  if [ "$n_plugins" -gt 0 ] && [ -z "$bad_plugins" ]; then ok "all $n_plugins plugin ids in levels.json are in the plugin-profiles.json catalog"; else bad "plugin ids in levels.json not in the plugin-profiles.json catalog (named: $n_plugins)" "$bad_plugins"; fi
+
+  bad_status="$(jq -r '.levels[].components[]? | select(.status | IN("shipped","beta","roadmap") | not) | .name' "$DATA" | tr '\n' ' ')"
+  if [ -z "$bad_status" ]; then ok "every component status is shipped, beta or roadmap"; else bad "components with an unknown status" "$bad_status"; fi
 fi
 
-missing=""
-for id in $(jq -r '.cadences[].id' "$REGISTRY"); do
-  grep -q -E "<b>$id</b>" "$PAGE" || missing="$missing $id"
-done
-if [ -z "$missing" ]; then ok "every registry cadence is named in the cadences panel"; else bad "registry cadences missing from the page" "$missing"; fi
+all_n="$(jq '.items | length' "$MANIFEST")"
+page_items="$(grep -o -E 'install manifest, [0-9]+ items' "$PAGE" | grep -o -E '[0-9]+' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+if [ "$page_items" = "$all_n" ]; then ok "manifest count on the page ($page_items) = scripts/install/manifest.json ($all_n)"; else bad "the page's install-manifest count is '$page_items', the manifest has $all_n items"; fi
 
 if grep -q -i -E 'ollama|copilot' "$PAGE"; then
   bad "the wizard's lanes menu is codex + hermes only; page still mentions ollama/copilot" "$(grep -n -i -E 'ollama|copilot' "$PAGE" | head -3)"
@@ -112,37 +223,14 @@ else
   ok "claude-obsidian is not described as a himmel fork"
 fi
 
-text="$(tr '\n' ' ' <"$PAGE" | sed -E 's/<[^>]*>//g; s/[[:space:]]+/ /g')"
-skip_hooks_hit="$(printf '%s' "$text" | grep -o -E 'skip-hooks.{0,120}adopt\.sh')"
-if [ -n "$skip_hooks_hit" ]; then
-  ok "--skip-hooks is attributed to scripts/adopt.sh"
-else
-  bad "--skip-hooks is an adopt.sh flag; himmelctl install rejects unknown flags, page must say where it lives"
-fi
-
 if grep -q -E '<b>lane</b>|Parallel lanes' "$PAGE"; then
   bad "Level 7 defines 'lane' as a work session; docs/glossary.md calls that a leg" "$(grep -n -E '<b>lane</b>|Parallel lanes' "$PAGE" | head -3)"
 else
-  ok "Level 7 uses the glossary's 'leg' for a work session"
+  ok "Level 7 uses the glossary's words for a work session"
 fi
 
-# ponytail: the wizard's questions are asked by an imperative flow in
-# scripts/himmelctl/bin.js (no question table to count), so the expected 7 /
-# 22 / 15 are pinned here from the verified read, not derived. The pin fails
-# on removal or a changed number, but a wizard that gains a question still
-# needs this line and the page updated by hand.
-if grep -q -i -E 'up to eighteen|up to eleven' "$PAGE"; then
-  bad "question counts are stale (7 always + up to 15 conditional = 22)" "$(grep -n -i -E 'up to eighteen|up to eleven' "$PAGE" | head -2)"
-elif grep -q -F 'Seven questions are always asked, and up to twenty-two in total' "$PAGE" \
-     && grep -q -F 'up to fifteen more' "$PAGE"; then
-  ok "wizard question counts on the page are seven always / twenty-two total / fifteen conditional"
-else
-  bad "the page must state the wizard question counts (seven always, up to twenty-two in total, up to fifteen conditional)"
-fi
-
-# adopt.sh's install_precommit_hooks runs for every profile, so the
-# git gates are no longer roadmap; a "Gates for every profile" roadmap chip or
-# panel would contradict the page's own "wired by the install" sentence.
+# adopt.sh's install_precommit_hooks runs for every profile, so the git gates
+# are not roadmap work.
 gates_roadmap='rm-gates|Gates for every profile|roadmap gates item|arrive with the developer setup'
 if grep -q -i -E "$gates_roadmap" "$PAGE"; then
   bad "the commit/push gates install for every profile (adopt.sh install_precommit_hooks); the page still lists them as roadmap" "$(grep -n -i -E "$gates_roadmap" "$PAGE" | head -3)"
@@ -150,85 +238,9 @@ else
   ok "the git gates are not listed as roadmap work"
 fi
 
-# An uninstall leaves a few settings.json keys behind on purpose (the
-# claude CLI's empty enabledPlugins / extraKnownMarketplaces objects, an empty hooks
-# object, and the HUD gate key when no install record says himmel wrote it). The
-# "Removed" list says only himmel's own wiring goes, so the "Kept on purpose" list
-# must name each one — a reader cannot otherwise tell it is himmel's.
-kept="$(sed -n '/<h4>Kept on purpose<\/h4>/,/<\/ul>/p' "$PAGE" | tr '\n' ' ' | sed -E 's/<[^>]*>//g; s/[[:space:]]+/ /g')"
-kept_missing=""
-for key in CLAUDE_HUD_ALLOW_EXTRA_CMD enabledPlugins extraKnownMarketplaces 'hooks'; do
-  grep -q -F -- "$key" <<< "$kept" || kept_missing="$kept_missing $key"
-done
-if [ -z "$kept_missing" ]; then
-  ok "the Kept-on-purpose list names the settings.json residue an uninstall leaves"
-else
-  bad "the Kept-on-purpose list must name the settings.json residue (HIMMEL-3329)" "missing:$kept_missing"
-fi
-
-# qmd is ledger-decided (kept by default; --purge-state
-# removes only units this install's own record shows it created), and the
-# plugin-cache stub patch is a separate, permanent keep that is never
-# reverted even under --purge-state. Both must be named where a reader
-# would look: the Kept-on-purpose list and the qmd detail panel.
-if grep -q -F -- '--purge-state' <<< "$kept" && grep -q -i -F 'qmd fork checkout' <<< "$kept"; then
-  ok "the Kept-on-purpose list states qmd's ledger-decided default-keep / --purge-state rule"
-else
-  bad "the Kept-on-purpose list must state qmd is kept by default and removed only under --purge-state for units this install created"
-fi
-if grep -q -i -F 'stub' <<< "$kept" && grep -q -F -- '--purge-state' <<< "$kept"; then
-  ok "the Kept-on-purpose list names the qmd plugin-cache stub patch as a permanent keep"
-else
-  bad "the Kept-on-purpose list must name the qmd plugin-cache stub patch as never reverted"
-fi
-
-qmd_panel="$(sed -n "/^    'qmd': { t:/,/' },\$/p" "$PAGE" | tr '\n' ' ' | sed -E 's/<[^>]*>//g; s/[[:space:]]+/ /g')"
-if grep -q -F -- '--purge-state' <<< "$qmd_panel"; then
-  ok "the qmd detail panel states the --purge-state keep/remove rule"
-else
-  bad "the qmd detail panel must state the --purge-state keep/remove rule"
-fi
-
-# --- 4. FRESH-USER ----------------------------------------------------
-
-# The three first questions (what is this / what will it do to my machine /
-# how do I undo it) must be answered before the reader meets the first
-# command that actually invokes the installer -- otherwise a fresh reader can
-# copy-paste an install before they know how to undo it. It is not enough to
-# check that the install command comes after the Question 3 HEADING: it must
-# come after the undo guidance is fully stated, and it must still be part of
-# Question 3's own answer (not have drifted into a later section). Find the
-# line where the "undo" answer div actually closes by depth-counting <div>
-# tags from its opening tag, then require the install command to fall on or
-# before that close (inside Question 3) and after the div opened (after the
-# undo guidance).
-q3_line="$(grep -n -F 'qno">Question 3' "$PAGE" | head -1 | cut -d: -f1)"
-q3_end_line="$(awk '
-  /id="undo"/ { instart=1 }
-  instart {
-    line=$0
-    opens = gsub(/<div /,"<div ", line)
-    closes = gsub(/<\/div>/,"<\/div>", line)
-    depth += opens - closes
-    if (depth <= 0) { print NR; exit }
-  }
-' "$PAGE")"
-q3_last_p_line="$(awk -v s="$q3_line" -v e="$q3_end_line" 'NR>=s && NR<=e && /<p[ >]/ { last=NR } END { print last+0 }' "$PAGE")"
-install_cmd_line="$(grep -n -E 'adopt\.sh --profile|himmelctl/bin\.js install' "$PAGE" | head -1 | cut -d: -f1)"
-if [ -n "$q3_line" ] && [ -n "$q3_end_line" ] && [ "$q3_last_p_line" -gt 0 ] && [ -n "$install_cmd_line" ] && [ "$install_cmd_line" -gt "$q3_last_p_line" ] && [ "$install_cmd_line" -le "$q3_end_line" ]; then
-  ok "the three first questions are answered above the first install command, which stays inside question 3 and after its last paragraph of prose"
-else
-  bad "an install command appears before question 3's undo prose is fully stated, or outside its answer" "question3=line $q3_line, last undo paragraph=line $q3_last_p_line, question3 answer ends=line $q3_end_line, first install command=line $install_cmd_line"
-fi
-
-# No internal ticket key in reader-facing prose. A code comment
-# (<!-- ... -->) or a data attribute is fine; strip both before checking, as
-# the LINKS section above already strips markup for its own checks. A greedy
-# same-line sed match (`<!--.*-->`) can span two separate comments on one
-# line and eat the visible text between them, and it cannot see a comment
-# that spans multiple lines at all; use a non-greedy, whole-file match
-# instead so each comment is removed independently.
-reader_text="$(perl -0777 -pe 's/<!--.*?-->//gs' "$PAGE" | sed -E 's/<[a-zA-Z][^>]*>//g')"
+# No internal ticket key in reader-facing text. A comment or an attribute is
+# fine; strip both (non-greedy, whole file) before checking.
+reader_text="$(perl -0777 -pe 's/<!--.*?-->//gs; s/<script\b.*?<\/script>//gs; s/<style\b.*?<\/style>//gs' "$PAGE" | sed -E 's/<[a-zA-Z][^>]*>//g')"
 ticket_hits="$(printf '%s' "$reader_text" | grep -o -E 'HIMMEL-[0-9]+' | sort -u | tr '\n' ' ')"
 if [ -z "$ticket_hits" ]; then
   ok "no internal ticket key in reader-facing text"
@@ -236,12 +248,21 @@ else
   bad "internal ticket key(s) in reader-facing text" "$ticket_hits"
 fi
 
-# --- 5. NO THIRD-PARTY REQUEST ---------------------------------------------------
+# The control question (what will it do, how do I undo it) is answered before
+# the reader meets the first command that installs.
+ctl_line="$(grep -n -m1 -F 'Who is in control?' "$PAGE" | cut -d: -f1)"
+install_cmd_line="$(grep -n -m1 -E 'adopt\.sh --profile|himmelctl/bin\.js install' "$PAGE" | cut -d: -f1)"
+if [ -n "$ctl_line" ] && [ -n "$install_cmd_line" ] && [ "$ctl_line" -lt "$install_cmd_line" ]; then
+  ok "who is in control (and how to undo) is answered above the first install command"
+else
+  bad "the control question must come before the first install command" "control=line ${ctl_line:-none}, first install command=line ${install_cmd_line:-none}"
+fi
+
+# --- 6. NO THIRD-PARTY REQUEST ---------------------------------------------------
 
 # Opening the page must not contact any other host: a stylesheet, script, font,
-# image, media or object on an external origin discloses the visit (the page used
-# to pull Google Fonts). Anchor hrefs are navigation, not loads, so they are not checked.
-# The font-family rules carry local fallback stacks, so nothing needs fetching.
+# image, media or object on an external origin discloses the visit. Anchor hrefs
+# are navigation, not loads, so they are not checked.
 find_ext_loads() {
   perl -0777 -ne '
     while (/<([a-z][a-z0-9:-]*)\b((?:[^>"\x27]|"[^"]*"|\x27[^\x27]*\x27)*)>/gi) {
@@ -302,37 +323,37 @@ else
   bad "the page requests a third-party resource when opened (fonts.googleapis.com, gstatic, a CDN)" "$ext_loads"
 fi
 
-# --- 4. FIRST PROTECTED PROJECT ----------------------------------------------
-# The quickstart, the trial and the install guide are one sequence.
-# On a clean machine the install leaves its files untracked, so a worktree cut
-# before the install is committed lacks the hooks and the edit guard. The order
-# is pinned here, counts come from the install manifest, and no page promises
-# a wall-clock time nobody measured.
+# --- 7. FIRST PROTECTED PROJECT ----------------------------------------------
+# The quickstart, the trial and the install guide are one sequence. On a clean
+# machine the install leaves its files untracked, so a worktree cut before the
+# install is committed lacks the hooks and the edit guard.
 GS="$ROOT/docs/getting-started.md"
 INST="$ROOT/docs/setup/install.md"
-MANIFEST="$ROOT/scripts/install/manifest.json"
 
 core_n="$(jq '[.items[] | select(.profiles | index("core"))] | length' "$MANIFEST")"
-all_n="$(jq '.items | length' "$MANIFEST")"
 if grep -q -E "\b${core_n} items\b" "$INST" && grep -q -E "all.{0,2} \(${all_n} items\)" "$INST"; then
   ok "install.md profile counts match the manifest (core ${core_n}, all ${all_n})"
 else
   bad "install.md profile counts drifted from scripts/install/manifest.json (core ${core_n}, all ${all_n})"
 fi
 
-# first line number of a pattern in a file, 0 when absent
+# first line number of a pattern in a file, empty when absent
 line_of() { grep -n -E -m1 -e "$1" "$2" | cut -d: -f1; }
-for pg in "$GS" "$PAGE"; do
-  name="$(basename "$pg")"
-  k="$(line_of 'git commit -m "chore: install himmel' "$pg")"
-  c="$(line_of 'git merge --ff-only' "$pg")"
-  w="$(line_of 'scripts/worktree\.sh feat/try-himmel' "$pg")"
-  if [ -n "$k" ] && [ -n "$c" ] && [ -n "$w" ] && [ "$k" -lt "$c" ] && [ "$c" -lt "$w" ]; then
-    ok "$name commits and merges the install before it creates the worktree"
-  else
-    bad "$name must commit, merge, then create the worktree (commit line '${k:-none}', merge line '${c:-none}', worktree line '${w:-none}')"
-  fi
-done
+k="$(line_of 'git commit -m "chore: install himmel' "$GS")"
+c="$(line_of 'git merge --ff-only' "$GS")"
+w="$(line_of 'scripts/worktree\.sh feat/try-himmel' "$GS")"
+if [ -n "$k" ] && [ -n "$c" ] && [ -n "$w" ] && [ "$k" -lt "$c" ] && [ "$c" -lt "$w" ]; then
+  ok "getting-started.md commits and merges the install before it creates the worktree"
+else
+  bad "getting-started.md must commit, merge, then create the worktree (commit line '${k:-none}', merge line '${c:-none}', worktree line '${w:-none}')"
+fi
+k="$(line_of 'adopt\.sh --scope project --target [^ ]+ --commit-install' "$PAGE")"
+w="$(line_of 'bash scripts/worktree\.sh feat/try-himmel' "$PAGE")"
+if [ -n "$k" ] && [ -n "$w" ] && [ "$k" -lt "$w" ]; then
+  ok "adoption-trail.html commits the install (--commit-install) before it creates the worktree"
+else
+  bad "adoption-trail.html must commit the install with --commit-install, then create the worktree (commit line '${k:-none}', worktree line '${w:-none}')"
+fi
 
 for pg in "$GS" "$INST" "$PAGE"; do
   name="$(basename "$pg")"
@@ -355,13 +376,60 @@ fi
 if ! printf 'The setup takes about 15 minutes\n' | grep -q -E "$time_re"; then
   bad "the time-promise matcher misses a plain-text about 15 minutes promise"
 fi
-promised="$(grep -n -E "$time_re" "$GS" "$PAGE")" && grep_rc=0 || grep_rc=$?
+time_files=("$GS" "$PAGE")
+[ -f "$DATA" ] && time_files+=("$DATA")
+promised="$(grep -n -E "$time_re" "${time_files[@]}")" && grep_rc=0 || grep_rc=$?
 if [ "$grep_rc" -gt 1 ]; then
   bad "grep failed (rc=$grep_rc) while scanning for time promises"
 elif [ "$grep_rc" -eq 0 ]; then
   bad "unmeasured time promises on first-run pages" "$(printf '%s\n' "$promised" | cut -c1-110)"
 else
   ok "no first-run page promises an unmeasured elapsed time"
+fi
+
+# --- 8. WIDTH -------------------------------------------------------------------
+# Only code may scroll sideways, inside its own box; the page must not hide a
+# too-wide document by clipping it either.
+css="$(perl -0777 -ne 'print $1 while /<style\b[^>]*>(.*?)<\/style>/gs' "$PAGE")"
+css="$(printf '%s' "$css" | tr '\n' ' ')"
+pre_scroll="$(printf '%s' "$css" | grep -E 'pre[^{]*\{[^}]*overflow-x:[[:space:]]*auto')"
+doc_clip="$(printf '%s' "$css" | grep -E '(^|[},])[[:space:]]*(html|body)[[:space:]]*(,[^{]*)?\{[^}]*overflow(-x)?:[[:space:]]*(hidden|clip)')"
+if [ -n "$pre_scroll" ] && [ -z "$doc_clip" ]; then
+  ok "the CSS scrolls code inside its box and does not clip the document"
+else
+  bad "the CSS must give pre overflow-x:auto and must not set overflow hidden/clip on html or body"
+fi
+
+chrome=""
+for b in chromium chromium-browser google-chrome-stable google-chrome; do
+  command -v "$b" >/dev/null 2>&1 && { chrome="$b"; break; }
+done
+if [ -z "$chrome" ]; then
+  echo "SKIP 360 px measurement: no headless Chromium on PATH (the CSS assertion above still ran)"
+elif [ -z "$_TIMEOUT_BIN" ]; then
+  echo "SKIP 360 px measurement: no timeout or gtimeout to bound Chromium (the CSS assertion above still ran)"
+else
+  # Chromium's headless window is never narrower than 500 px, so the page is
+  # measured inside a 360 px iframe. Every <details> is opened first, so a
+  # closed card cannot hide a too-wide line.
+  printf '%s\n' '<!doctype html><html><body><iframe id="f" src="w.html" style="width:360px;height:800px;border:0"></iframe><script>' \
+    'f.addEventListener("load",()=>{const d=f.contentDocument;for(const x of d.querySelectorAll("details"))x.open=true;document.body.setAttribute("data-sw",d.documentElement.scrollWidth+"/"+d.documentElement.clientWidth)})' \
+    '</script></body></html>' > "$tmp/wrap.html"
+  for mode in js nojs; do
+    if [ "$mode" = nojs ]; then
+      perl -0777 -pe 's/<script\b.*?<\/script>//gs' "$PAGE" > "$tmp/w.html"
+    else
+      cp "$PAGE" "$tmp/w.html"
+    fi
+    sw="$("$_TIMEOUT_BIN" 60 "$chrome" --headless --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --user-data-dir="$tmp/chrome" --virtual-time-budget=3000 --dump-dom "file://$tmp/wrap.html" 2>/dev/null | grep -o -E 'data-sw="[0-9]+/[0-9]+"' | grep -o -E '[0-9]+/[0-9]+')"
+    if [ -z "$sw" ]; then
+      bad "360 px ($mode): the headless measurement returned nothing"
+    elif [ "${sw%/*}" -le "${sw#*/}" ]; then
+      ok "360 px ($mode): no document-level horizontal scroll (scrollWidth/clientWidth $sw)"
+    else
+      bad "360 px ($mode): the document scrolls sideways (scrollWidth/clientWidth $sw)"
+    fi
+  done
 fi
 
 echo

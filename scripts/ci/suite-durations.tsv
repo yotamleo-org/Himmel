@@ -14,6 +14,9 @@
 #   2301s mean in proportion to each part's case count (249/239/269/261 of 1018).
 #   With that suite no longer the floor, the 22w balance check sees the stale
 #   test-stop-worker.sh row (117s here, 317s measured); it is refreshed to 317.
+#   test-adopt.sh ran 969s on green main run 40030573258 (shard 3); HIMMEL-7300 split it
+#   into test-adopt.sh and test-adopt-features.sh, the 969s shared in proportion to their
+#   local times (479s / 427s) as 512 / 457.
 # The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -440,6 +443,8 @@ scripts/handover/test-bugs-dashboard.sh	0
 scripts/handover/test-bus-idle-waker.sh	8
 scripts/handover/test-cache-health-line.sh	0
 scripts/handover/test-cap-reset-time.sh	3
+scripts/handover/test-compound-distill.sh	2
+scripts/handover/test-compound-extract.sh	1
 scripts/handover/test-flush.sh	2
 scripts/handover/test-friction-gate-docs.sh	0
 scripts/handover/test-generate-morning-briefing.sh	4
@@ -974,11 +979,12 @@ scripts/telegram/test-dispatch-lane.sh	37
 scripts/telegram/test-phi-egress-guard-parity.sh	0
 scripts/telegram/test-restart-bridge.sh	64
 # Merge-gate estimate: focused install row measured 41s; hook behavior pending VM timing.
+scripts/test-adopt-features.sh	457
 scripts/test-adopt-merge-gate.sh	120
 scripts/test-adopt-only-hooks.sh	1
 scripts/test-adopt-portable-libs.sh	0
 scripts/test-adopt-user-claude-md.sh	0
-scripts/test-adopt.sh	648
+scripts/test-adopt.sh	512
 scripts/test-check-ci-cache.sh	15
 scripts/test-check-ci-rest.sh	1
 scripts/test-check-ci-run.sh	12

@@ -7,6 +7,12 @@
 # because no real Bug carries a found-by label yet. No gh write verb is ever served.
 set -uo pipefail
 
+# Platform guard: escape-report.sh is Linux-only (header :8) and exits 2 on a date without -d (:49).
+if [ "$(uname -s)" = Darwin ]; then
+  echo "SKIP - escape-report.sh needs GNU date and refuses BSD date by design (escape-report.sh:8, :49); HIMMEL-7116"
+  exit 0
+fi
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/ci/escape-report.sh"
 REAL="$ROOT/scripts/ci/test-escape-report-fixtures"

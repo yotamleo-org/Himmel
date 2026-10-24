@@ -21,7 +21,22 @@ function remove(dir) {
  for(const entry of fs.readdirSync(dir,{withFileTypes:true}))if(entry.isDirectory())remove(path.join(dir,entry.name));
  fs.rmSync(dir,{recursive:true,force:true});
 }
+// clean-sandbox's PATH is fixed, so a node installed elsewhere (macOS: Homebrew, the toolcache) would be
+// invisible to the suite and the GO writer's ledger and disposition steps would die on it. Link the
+// tools into root/bin and append that dir inside the sandbox, after the system dirs.
+function sandbox(scratch,argv,opts,tools=[['node',process.execPath]]) {
+ const bin=path.join(root,'bin');fs.mkdirSync(bin,{recursive:true});
+ for(const [name,exe] of tools)if(!fs.existsSync(path.join(bin,name)))fs.symlinkSync(exe,path.join(bin,name));
+ return cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash','-c','PATH="$PATH:$1"; shift; exec "$@"','_',bin,...argv],opts);
+}
 try {
+ test('a sandboxed suite reaches a tool installed outside the sandbox PATH',()=>{
+  const fake=path.join(root,'himmel-fx-tool');
+  fs.writeFileSync(fake,'#!/bin/sh\necho fx-tool-ran\n',{mode:0o755});
+  const r=sandbox(path.join(root,'tool'),['himmel-fx-tool'],{encoding:'utf8'},[['himmel-fx-tool',fake]]);
+  assert.strictEqual(r.status,0,'tool exit '+r.status+'; '+r.stderr);
+  assert(r.stdout.includes('fx-tool-ran'),'tool not run: '+r.stdout);
+ });
  for(const [suite,prefix] of [
   ['scripts/lib/test-git-test-env.sh','himmel-git-empty-template.'],
   ['scripts/hooks/test-trigger-cr-on-pr-create.sh','himmel-git-empty-template.'],
@@ -29,10 +44,15 @@ try {
   ['scripts/handover/test-merge-on-green.sh','mog-'],
   ['scripts/test-lane-mirror-seed.sh','clean-sandbox.']
  ])test(suite+' EXIT removes every '+prefix+' fixture',()=>{
+  // test-lane-mirror-seed.sh opens its own clean-sandbox, which resets PATH, so a node outside the fixed sandbox dirs is out of its reach.
+  if(suite==='scripts/test-lane-mirror-seed.sh'&&cp.spawnSync('env',['-i','PATH=/usr/local/bin:/usr/bin:/bin','sh','-c','command -v node'],{stdio:'ignore'}).status!==0){
+   console.log('skip: '+suite+' needs node on the fixed sandbox PATH, and this host keeps node elsewhere');
+   return;
+  }
   // Keep Unix socket fixture paths below sockaddr_un's pathname limit: the root is under /tmp,
   // not os.tmpdir() (CI's TMPDIR is already /tmp/himmel-suite.XXXXXX deep).
   const scratch=path.join(root,String(passed+failed));
-  const r=cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash',path.join(repo,suite)],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
+  const r=sandbox(scratch,['bash',path.join(repo,suite)],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
   assert.strictEqual(r.status,0,'suite exit '+r.status+'; '+(r.error||'')+'\n'+r.stdout+'\n'+r.stderr);
   const left=dirs(scratch).filter(p=>path.basename(p).startsWith(prefix));
   assert.strictEqual(left.length,0,'left '+left.length+' directories: '+left.slice(0,5).join(', '));
@@ -47,7 +67,7 @@ printf fixture > "$TMPDIR/mog-run.readonly/locked/file"
 chmod 500 "$TMPDIR/mog-run.readonly/locked"
 exit 7
 `);
-  const r=cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash',script],{encoding:'utf8'});
+  const r=sandbox(scratch,['bash',script],{encoding:'utf8'});
   assert.strictEqual(r.status,7,'cleanup must preserve the original failure status');
   assert.strictEqual(dirs(scratch).filter(p=>path.basename(p).startsWith('mog-')).length,0,'read-only mog fixture leaked');
  });

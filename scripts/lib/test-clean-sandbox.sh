@@ -200,6 +200,25 @@ printf '%s\n' '#!/bin/sh' 'exit 1' > "$TMP/shasum-bin/shasum"
 h_broken=$(PATH="$TMP/shasum-bin"; prov_state "$TMP/fixture-prov")
 assert_eq "T12b a hasher that fails on a present file is UNHASHABLE" UNHASHABLE "$h_broken"
 
+# T13: node lives off the system dirs on a macOS runner (setup-node toolcache),
+# so `#!/usr/bin/env node` died with 'env: node: No such file or directory'.
+mkdir -p "$TMP/node-bin"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$TMP/node-bin/node"
+chmod +x "$TMP/node-bin/node"
+out13=$(env "PATH=$TMP/node-bin:/usr/bin:/bin" bash "$SB" --scratch "$TMP/s13" -- printenv PATH 2>/dev/null)
+assert_eq "T13 the caller's node dir is appended to the sandbox PATH" "/usr/local/bin:/usr/bin:/bin:$TMP/node-bin" "$out13"
+
+# T13b: a node directly under / has the directory "" - the PATH entry must be /, never the empty
+# entry that means the current directory. Needs a jail where / is writable-by-mount; skipped without bwrap.
+if command -v bwrap >/dev/null 2>&1 && bwrap --ro-bind / / true 2>/dev/null; then
+    out13b=$(bwrap --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 \
+        --ro-bind "$TMP/node-bin/node" /node --ro-bind "$SB" /sb.sh --dev /dev --tmpfs /tmp --setenv PATH /:/usr/bin:/bin \
+        bash /sb.sh --scratch /tmp/s13b -- printenv PATH 2>/dev/null)
+    assert_eq "T13b a node under / adds / to the sandbox PATH, not an empty entry" "/usr/local/bin:/usr/bin:/bin:/" "$out13b"
+else
+    echo "  skip T13b (no usable bwrap)"
+fi
+
 echo "----"
 echo "clean-sandbox: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

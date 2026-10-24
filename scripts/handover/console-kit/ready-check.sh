@@ -78,8 +78,13 @@
 #      `gh workflow run` command. A dispatch run that FAILED at the head still
 #      passes, as a PRE-EXISTING line, when every one of its failed jobs also
 #      failed in the default branch's latest completed scheduled/push run of the
-#      same workflow; a job red only on the PR still FAILs and is named. The
-#      PASS line carries the dispatch run ids. A changed workflow with no workflow_dispatch
+#      same workflow; a job red only on the PR still FAILs and is named. A head
+#      with no dispatch run of its own passes the same way on a failed dispatch
+#      run of the PR branch at an ANCESTOR of the head, when every file the PR
+#      changes is the same blob at that ancestor and at the head (the head only
+#      merges main forward), including the old path of every rename; the PASS
+#      line names the ancestor sha and run id.
+#      The PASS line carries the dispatch run ids. A changed workflow with no workflow_dispatch
 #      trigger FAILs unless listed in WF_DISPATCH_EXEMPT below. Non-workflow
 #      PRs are unaffected.
 #  11. Added-but-unwired: every file the PR ADDS (status A only, so existing debt
@@ -367,7 +372,7 @@ fi
 
 # ── commits (shared by checks 5 and 6) ──────────────────────────────────────
 commits_json=$(printf '%s' "$snapshot" | jq -c '.[0].commits' 2>/dev/null)
-files_json=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null)
+files_json=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null) || files_json=""  # swallow-ok: a failed or partial read is an empty list, which checks 5, 9, 10 and 11 fail closed on
 
 if [ -z "$commits_json" ] || [ "$commits_json" = "null" ]; then
     echo "[FAIL] 5. cannot read PR commits (gh pr view --json commits failed)"
@@ -791,6 +796,61 @@ else
         wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
     }
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
+    # wf_ancestor_preexisting <workflow file>: rc 0 with wf_note, wf_anc_id and wf_anc_sha set when a
+    # failed dispatch run of the PR branch at an ANCESTOR of the head passes wf_preexisting and every
+    # file the PR changes is the same blob at that ancestor and at the head, so the head only merges
+    # main forward. That run's check runs sit on the ancestor commit, not the head. Otherwise rc 1 and
+    # wf_why says why (empty when the branch has no such run).
+    wf_ancestor_preexisting() {
+        local rows id anc f a_ent h_ent changed prev_files
+        wf_why=""
+        [ -n "$wf_branch" ] || return 1
+        rows=$("$GH" run list --repo "$nwo" --workflow "$1" --event workflow_dispatch --branch "$wf_branch" --json databaseId,event,status,conclusion,headSha,headBranch --limit 20 2>/dev/null) || { wf_why="cannot list the branch's dispatch runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
+        rows=$(printf '%s' "$rows" | jq -r --arg h "$SHA" --arg b "$wf_branch" '.[] | select(.event == "workflow_dispatch" and .status == "completed" and .conclusion == "failure" and .headBranch == $b and .headSha != $h) | "\(.databaseId) \(.headSha)"' 2>/dev/null)  # swallow-ok: unparsable runs read as none, which returns 1 on the next line
+        [ -n "$rows" ] || return 1
+        # the file list shows a rename by its new path only; the old path must match at both commits too
+        prev_files=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | .previous_filename // empty' 2>/dev/null) || { wf_why="cannot read the paths the PR renames from"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
+        if ! git cat-file -e "$SHA^{commit}" 2>/dev/null \
+            && { ! git fetch -q origin "refs/pull/$PR/head" 2>/dev/null || ! git cat-file -e "$SHA^{commit}" 2>/dev/null; }; then  # swallow-ok: a failed fetch is reported through wf_why on the next line
+            wf_why="cannot fetch PR head $SHA to compare it with an earlier dispatch"
+            return 1
+        fi
+        while IFS=' ' read -r id anc; do
+            [ -n "$id" ] || continue
+            if ! git cat-file -e "$anc^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$anc" "$SHA" 2>/dev/null; then  # swallow-ok: rc is the answer, not an ancestor skips the run
+                wf_why="dispatch run $id is at $anc, not an ancestor of the head"
+                continue
+            fi
+            changed=""
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                if ! a_ent=$(git --literal-pathspecs ls-tree "$anc" -- "$f" 2>/dev/null) || ! h_ent=$(git --literal-pathspecs ls-tree "$SHA" -- "$f" 2>/dev/null); then  # swallow-ok: rc checked, an unreadable tree skips the run
+                    changed="$f (unreadable)"
+                    break
+                fi
+                if [ "$a_ent" != "$h_ent" ]; then
+                    changed="$f"
+                    break
+                fi
+            done <<EOF
+$files_json
+$prev_files
+EOF
+            if [ -n "$changed" ]; then
+                wf_why="dispatch run $id at $anc is stale: $changed differs between it and the head"
+                continue
+            fi
+            if wf_preexisting "$1" "$id"; then
+                wf_anc_id="$id"; wf_anc_sha="$anc"
+                wf_note="$wf_note — run is at ancestor $anc, and every file the PR changes is identical there and at the head"
+                return 0
+            fi
+            wf_why="${wf_why:-dispatch run $id at $anc is not pre-existing}"
+        done <<EOF
+$rows
+EOF
+        return 1
+    }
     wf_undispatchable_ok=1
     wf_undispatchable=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "removed" or .status == "added" or .status == "renamed") | .filename' 2>/dev/null) || wf_undispatchable_ok=0
     if [ "$wf_undispatchable_ok" -eq 0 ]; then
@@ -819,9 +879,14 @@ else
                 continue
             fi
             wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
+            wf_head_runs=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h)] | length' 2>/dev/null) || wf_head_runs=1  # swallow-ok: an unreadable list counts the head as having a run, so the ancestor fallback is refused
             wf_why=""
             if [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
+                wf_notes="$wf_notes
+       $wf_note"
+            elif [ -z "$wf_fail_id" ] && [ "$wf_head_runs" = 0 ] && wf_ancestor_preexisting "$wf_base"; then
+                wf_ids="$wf_ids ${wf_base}=$wf_anc_id@$wf_anc_sha"
                 wf_notes="$wf_notes
        $wf_note"
             else

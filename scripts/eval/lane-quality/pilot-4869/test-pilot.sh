@@ -17,6 +17,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 P="$HERE/pilot.sh"
 LQ="$(cd "$HERE/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/pilot-4869-test.XXXXXX")" || { echo "test-pilot: mktemp -d failed" >&2; exit 1; }
+TMP="$(cd "$TMP" && pwd -P)" || exit 1
 trap 'git -C "$TMP/repo" worktree prune >/dev/null 2>&1; rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
@@ -72,7 +73,8 @@ echo "1. frozen hashes"
 check 'verify passes on the committed tree' 'bash "$P" verify >/dev/null 2>&1'
 # A copy keeps the scripts/ layout: FROZEN.sha256 also hashes the bench T4 fixture.
 C="$TMP/copy/scripts"
-mkdir -p "$C/eval" "$C/lanes/bench/fixtures"
+mkdir -p "$C/eval" "$C/lanes/bench/fixtures" "$C/lib"
+cp "$LQ/../../lib/canon-path.sh" "$C/lib/canon-path.sh"
 cp -R "$LQ" "$C/eval/lane-quality"; cp -R "$LQ/../../lanes/bench/fixtures/T4" "$C/lanes/bench/fixtures/T4"
 check 'verify passes on an unchanged copy (control)' 'bash "$C/eval/lane-quality/pilot-4869/pilot.sh" verify >/dev/null 2>&1'
 echo drift >>"$C/eval/lane-quality/tasks/shell-red-green/prompt.md"
@@ -134,10 +136,17 @@ echo '{"model":"x","enabledPlugins":{"qmd@himmel":true},"mcpServers":{"q":{}},"e
 hargv="$(HOME="$TMP/home" bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" 2>&1)"
 check 'the jail user settings carry no plugin or MCP server' 'jq -e "keys == [\"model\"]" "$TMP/root/run/p01/user-settings.json" >/dev/null && printf "%s\n" "$hargv" | grep -A2 -x -- --ro-bind | grep -qxF "$TMP/home/.claude/settings.json"'
 check 'the jail binds the seeded plugin files, never plugins/data' 'printf "%s\n" "$hargv" | grep -qxF "$TMP/home/.claude/plugins/marketplaces" && ! printf "%s\n" "$hargv" | grep -qE "^$TMP/home/.claude/plugins(/data.*)?$"'
+# macOS realpath (macos-cadence run 39954171036): only -q, 'usage: realpath [-q] [path ...]'
+mkdir -p "$TMP/bsdbin"
+printf '%s\n' '#!/bin/sh' \
+  'case "${1:-}" in -?*) [ "$1" = -- ] || { echo "realpath: illegal option -- ${1#-}" >&2; echo "usage: realpath [-q] [path ...]" >&2; exit 1; } ;; esac' \
+  'exec /usr/bin/realpath "$@"' >"$TMP/bsdbin/realpath"
+chmod +x "$TMP/bsdbin/realpath"
+check 'sandbox argv resolves its binds with a realpath that has no -e or -m' 'PATH="$TMP/bsdbin:$PATH" HOME="$TMP/home" bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" >"$TMP/bsd-argv" 2>&1 && ! grep -q "illegal option" "$TMP/bsd-argv"'
 argv="$(LEAK_TOKEN=leak LEAK_PLAIN=x DEEPSEEK_API_KEY=k bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" 2>&1)"
 after() { printf '%s\n' "$argv" | grep -A"$2" -x -- "$1"; } # $1 flag, $2 operand count
 check 'sandbox drops a credential and an unlisted variable, keeps PATH and the lane key' 'after --unsetenv 1 | grep -qx LEAK_TOKEN && after --unsetenv 1 | grep -qx LEAK_PLAIN && ! after --unsetenv 1 | grep -qxE "PATH|DEEPSEEK_API_KEY"'
-check 'sandbox hides /home, /tmp, /run and /var/log' '(for d in /home /tmp /run /var/log; do after --tmpfs 1 | grep -qxF "$d" || exit 1; done)'
+check 'sandbox hides /home, /tmp, /run and /var/log' '(for d in /home /tmp /run /var/log; do [ -d "$d" ] || continue; after --tmpfs 1 | grep -qxF "$d" || exit 1; done)'
 check 'sandbox has its own network namespace, entered through the tunnel' 'printf "%s\n" "$argv" | grep -qx -- --net && after --unshare-all 0 | grep -q . && printf "%s\n" "$argv" | grep -qx -- --share-net && [ "$(printf "%s\n" "$argv" | grep -x -A1 tunnel | tail -1)" = 443 ]'
 check 'sandbox binds the worktree read-only, lq-work and the row doc dir read-write' 'after --ro-bind 2 | grep -qxF "$wt" && after --bind 2 | grep -qxF "$wt/lq-work" && after --bind 2 | grep -qxF "$(dirname "$doc")"'
 check 'sandbox maps the worktree under the repo, where the lane launcher accepts its corpus' 'after --ro-bind 2 | grep -A1 -xF "$wt" | grep -qxF "$TMP/repo/.claude/worktrees/lq-pilot-p01"'
@@ -287,6 +296,18 @@ for v in DOC TX ROWCONF; do
     check "a row whose $v is $val is refused (its writable bind would undo or hide the read-only worktree)" '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-$v.env" >/dev/null 2>&1'
   done
 done
+# a missing directory spelled through ".." reaches the worktree once created: the overlap test must not compare it as written
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/nowhere/missing/../../root/wt|" "$TMP/row5183.env" >"$TMP/row5200-dots.env"
+check 'a row whose ROWCONF climbs back into the worktree through a missing .. is refused' 'grep -qxF "ROWCONF=$TMP/nowhere/missing/../../root/wt" "$TMP/row5200-dots.env" && ! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dots.env" >/dev/null 2>&1'
+# a dot component is only unresolvable in a not-yet-created tail: an existing directory spelled with one is
+# canonicalised and judged on where it lands
+mkdir -p "$TMP/dotroot/rc"
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/dotroot/./rc|" "$TMP/row5183.env" >"$TMP/row5200-dotok.env"
+check 'a row whose ROWCONF is an existing directory spelled with a dot component still builds its jail' 'grep -qxF "ROWCONF=$TMP/dotroot/./rc" "$TMP/row5200-dotok.env" && HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dotok.env" >/dev/null 2>&1'
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/root/./wt|" "$TMP/row5183.env" >"$TMP/row5200-dotwt.env"
+check 'a dot-spelled ROWCONF that is the worktree itself is refused' 'grep -qxF "ROWCONF=$TMP/root/./wt" "$TMP/row5200-dotwt.env" && ! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dotwt.env" >/dev/null 2>&1'
+sed "s|^ROWCONF=.*|ROWCONF=$TMP/nowhere2/./x|" "$TMP/row5183.env" >"$TMP/row5200-dotmiss.env"
+check 'a missing ROWCONF tail with a dot component is still refused' 'grep -qxF "ROWCONF=$TMP/nowhere2/./x" "$TMP/row5200-dotmiss.env" && ! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-dotmiss.env" >/dev/null 2>&1'
 check 'control, the unmodified row env still builds its jail' 'HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 if bwrap --ro-bind / / true 2>/dev/null; then
   jw() { "${R5[@]}" sh -c "$1" 2>/dev/null; }
@@ -541,7 +562,7 @@ echo "6. a native row scores only the sessions its launcher recorded"
 wt2="$(. "$TMP/root/rows/p02.env"; echo "$WT")"; doc2="$(. "$TMP/root/rows/p02.env"; echo "$DOC")"
 slug2="$(printf %s "$wt2" | sed 's#[^A-Za-z0-9]#-#g')"
 sid1=11111111-1111-4111-8111-111111111111; sid2=22222222-2222-4222-8222-222222222222
-sed -i "2i session_ids: $sid1,$sid2" "$doc2"
+awk -v l="session_ids: $sid1,$sid2" 'NR==2{print l}1' "$doc2" >"$doc2.new" && mv "$doc2.new" "$doc2"
 mkdir -p "$TMP/transcripts/$slug2"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"n1","name":"Read","input":{}}]}}\n' >"$TMP/transcripts/$slug2/$sid1.jsonl"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"n2","name":"Read","input":{"file_path":"/home/x/Documents/salus/x"}}]}}\n' >"$TMP/transcripts/$slug2/$sid2.jsonl"
@@ -598,6 +619,28 @@ LANE_FIFO="$TMP/lane.fifo" PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish
 check 'finish never follows a .git symlink put back in the gap' '[ -e "$TMP/lane.fifo.done" ] && [ "$rc" != 124 ]'
 check 'finish creates no file at a planted symlink target' '[ -z "$(ls -A "$V" | grep -vx dir)" ] && [ -z "$(ls -A "$V/dir")" ]'
 check 'finish still scores the row' '[ -f "$TMP/root/results/p03.json" ]'
+# The gap that matters is between the last look at .git and the rename itself:
+# an mv shim plays the lane putting a directory, or a symlink to one, at .git
+# right before the real mv runs. A rename that follows it moves the pointer INTO
+# that directory; the no-follow rename replaces the symlink and refuses the directory.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'for a; do case "$a" in */.git) [ -e "$LANE_DONE" ] || { : >"$LANE_DONE"; case "$LANE_PLANT" in' \
+  '  dir) mkdir "$a" && : >"$a/keep" ;; dirlink) ln -s "$LANE_DIR" "$a" ;; esac; } ;; esac; done' \
+  'command -p mv "$@"' >"$TMP/lanebin/mv"
+chmod +x "$TMP/lanebin/mv"
+bash "$P" prepare p05 >/dev/null 2>&1
+bash "$P" prepare p11 >/dev/null 2>&1
+WT11="$(. "$TMP/root/rows/p11.env"; echo "$WT")"
+mkdir -p "$TMP/linkdest"
+LANE_DONE="$TMP/lane.done5" LANE_PLANT=dirlink LANE_DIR="$TMP/linkdest" PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish p05 >/dev/null 2>&1; rc=$? # gnu-ok: Linux-only kit
+check 'finish plants the gap symlink-to-directory case' '[ -e "$TMP/lane.done5" ] && [ "$rc" != 124 ]'
+check 'finish never renames the pointer into a symlinked directory' '[ -z "$(ls -A "$TMP/linkdest")" ]'
+check 'finish replaces a symlink-to-directory at .git and scores the row' '[ "$rc" = 0 ] && [ -f "$TMP/root/results/p05.json" ]'
+LANE_DONE="$TMP/lane.done11" LANE_PLANT=dir PATH="$TMP/lanebin:$PATH" timeout 60 bash "$P" finish p11 >/dev/null 2>&1; rc=$? # gnu-ok: Linux-only kit
+check 'finish plants the gap directory case' '[ -e "$TMP/lane.done11" ] && [ "$rc" != 124 ]'
+# GNU -T refuses the directory; BSD -h only spares a symlink and moves the pointer
+# into the lane's own directory, where it is no .git file: either way finish stops.
+check 'finish stops when a directory is put at .git and leaves it a directory' '[ "$rc" != 0 ] && [ -d "$WT11/.git" ] && [ ! -L "$WT11/.git" ] && [ -e "$WT11/.git/keep" ]'
 
 echo
 echo "test-pilot: $PASS passed, $FAIL failed"
