@@ -45,13 +45,16 @@ const dead = [];
 for (const file of htmlFiles) {
   const rel = path.relative(dist, file);
   const html = fs.readFileSync(file, 'utf8');
-  for (const m of html.matchAll(/<a\s[^>]*?\bhref=(?:"([^"]*)"|'([^']*)')/gi)) {
-    const href = (m[1] ?? m[2]).trim();
+  for (const m of html.matchAll(/<a\s(?:[^>]*?\s)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) {
+    const href = (m[1] ?? m[2] ?? m[3]).trim();
     if (href === '' || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) continue;
     checked++;
     const hash = href.indexOf('#');
     const frag = hash >= 0 ? href.slice(hash + 1) : '';
-    const target = (hash >= 0 ? href.slice(0, hash) : href).split('?')[0];
+    let target = (hash >= 0 ? href.slice(0, hash) : href).split('?')[0];
+    try {
+      target = decodeURIComponent(target);
+    } catch {}
     let abs;
     if (target === '') abs = file;
     else if (target.startsWith('/')) {
@@ -61,7 +64,8 @@ for (const file of htmlFiles) {
       }
       abs = path.join(dist, target.slice(base.length));
     } else abs = path.resolve(path.dirname(file), target);
-    if (!abs.startsWith(dist)) {
+    const inside = path.relative(dist, abs);
+    if (inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
       dead.push(`${rel}: dead route ${href} (escapes the site)`);
       continue;
     }

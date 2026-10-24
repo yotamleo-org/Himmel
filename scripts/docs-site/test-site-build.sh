@@ -160,7 +160,15 @@ mk_site "$sweep_ctl/links-frag" '<a href="/Himmel/page/#gone">x</a>' "" || exit 
 mk_site "$sweep_ctl/links-raw-route" "" '<a href="../setup/vm-mode.md">x</a>' || exit 1
 mk_site "$sweep_ctl/links-raw-frag" "" '<a href="../page/#gone">x</a>' || exit 1
 mk_site "$sweep_ctl/links-escape" '<a href="/elsewhere/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-pct" '<a href="/Himmel/my%20page/">x</a>' "" || exit 1
+mkdir "$sweep_ctl/links-pct/my page" && echo ok >"$sweep_ctl/links-pct/my page/index.html" || exit 1
+mk_site "$sweep_ctl/links-data" '<a data-href="/Himmel/no-such/" href="/Himmel/page/">x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-sd" "" '<a href="../../links-sd-extra/x/">x</a>' || exit 1
+mkdir -p "$sweep_ctl/links-sd-extra/x" && echo ok >"$sweep_ctl/links-sd-extra/x/index.html" || exit 1
 check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
+check "built links: a percent-encoded link to a spaced directory resolves" built_ok "$sweep_ctl/links-pct"
+check "built links: a data-href attribute is not a link" built_ok "$sweep_ctl/links-data"
+check "control: built links fails a relative link into a sibling directory sharing the dist prefix" fails built_ok "$sweep_ctl/links-sd"
 check "control: built links fails a dead generated-page route" fails built_ok "$sweep_ctl/links-route"
 check "control: built links fails a dead generated-page fragment" fails built_ok "$sweep_ctl/links-frag"
 check "control: built links fails a dead route in a passthrough page" fails built_ok "$sweep_ctl/links-raw-route"
