@@ -4534,6 +4534,8 @@ LIVEMSGS
   # a defect, and one rerun in the same job costs less than a red main.
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
     if [ "$capped" -eq 1 ]; then
+      # The rerun counts it again if it overruns again: one suite, one TIMED OUT.
+      timed_out=$((timed_out - 1))
       printf '[RETRY] %s exceeded its %ss cap; re-running it once\n' "$suite" "$suite_timeout"
     else
       printf '[RETRY] %s failed (rc=%s); re-running it once\n' "$suite" "$rc"
