@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: a /pr-check stage the PR leg runs deliberately; bank-preflight gated
 # scripts/cr/critic-first-pass.sh — generic model-parametrized first-pass CR reviewer.
 #
 # Reads a unified diff on stdin, reviews it via the hermes chokepoint

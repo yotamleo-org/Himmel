@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # graph-cadence.sh — the recurring refresh+publish leg for himmel's own
 # graphify graph.
 #
@@ -49,7 +50,10 @@
 #      no CodeRabbit review -- this cadence must not wait for one; it doesn't.
 #   8. One ledger row (this script's own JSONL, see LEDGER below) plus the
 #      standard flow-run-ledger start/end pair every other cadence writes,
-#      so cadence-audit/staleness tooling is not blind to this leg.
+#      so cadence-audit/staleness tooling is not blind to this leg. Under
+#      --semantic with GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api the row also carries batch_id,
+#      batch_state (submitted|pending|merged), batch_requests and batch_cost_usd,
+#      read from the `semantic-update: BATCH …` line; null on a run with no batch.
 #
 # WHY A DEDICATED WORKTREE, NOT THE PRIMARY CHECKOUT: graph-publish.sh runs
 # `git checkout -B chore/graph-publish-<corpus> ...` in whatever repo it is
@@ -521,6 +525,12 @@ PR_REF=""
 GRAPH_HEAD=""
 MERGES_BEHIND=""
 FINAL_RC=0
+# The Message Batches API batch the semantic step submitted or merged this run (from its
+# `semantic-update: BATCH id=… state=… requests=… cost_usd=…` line); empty when the run used no batch.
+BATCH_ID=""
+BATCH_STATE=""
+BATCH_REQUESTS=""
+BATCH_COST=""
 
 # _write_ledger — one JSONL line to LEDGER_FILE (this script's own ledger)
 # PLUS the standard flow-run-ledger end row every sibling cadence writes.
@@ -532,7 +542,9 @@ _write_ledger() {
     end_ts=$(date -u +%s)
     dur=$(( end_ts - START_TS ))
     local line
-    line=$(printf '{"ts":%s,"head":%s,"graph_head":%s,"merges_behind":%s,"action":%s,"pr":%s,"duration_s":%s,"error":%s}' \
+    local batch_cost_json=null
+    case "$BATCH_COST" in '' | *[!0-9.]* | *.*.*) ;; *) batch_cost_json=$BATCH_COST ;; esac
+    line=$(printf '{"ts":%s,"head":%s,"graph_head":%s,"merges_behind":%s,"action":%s,"pr":%s,"duration_s":%s,"error":%s,"batch_id":%s,"batch_state":%s,"batch_requests":%s,"batch_cost_usd":%s}' \
         "$(_fr_json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" \
         "$(_fr_json_null_str "$head_sha")" \
         "$(_fr_json_null_str "$GRAPH_HEAD")" \
@@ -540,7 +552,11 @@ _write_ledger() {
         "$(_fr_json_str "$ACTION")" \
         "$(_fr_json_null_str "$PR_REF")" \
         "$(_fr_json_int "$dur")" \
-        "$(_fr_json_null_str "$ERROR")")
+        "$(_fr_json_null_str "$ERROR")" \
+        "$(_fr_json_null_str "$BATCH_ID")" \
+        "$(_fr_json_null_str "$BATCH_STATE")" \
+        "$(_fr_json_int "$BATCH_REQUESTS")" \
+        "$batch_cost_json")
     local _ledger_append_rc=0
     printf '%s\n' "$line" >> "$LEDGER_FILE" || _ledger_append_rc=$?
 
@@ -968,17 +984,32 @@ ACTION="refreshed"
 
 # --- 6 (cont). semantic step (--semantic only) -----------------
 if [ "$SEMANTIC" -eq 1 ]; then
+    # The file this run's output lands in (the cadence runner redirects it); LOG_FILE only when stdout is no file.
+    _run_log=$(readlink "/proc/$$/fd/1" 2>/dev/null)
+    [ -f "$_run_log" ] || _run_log=$(lsof -a -p "$$" -d 1 -Fn 2>/dev/null | sed -n 's/^n//p')
+    [ -f "$_run_log" ] || _run_log="$LOG_FILE"
     _sem_leg="graph-semantic-$CORPUS_SLUG"
     _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
         --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
     _sem_rc=$?
     printf '%s\n' "$_sem_out"
+    _batch_line=$(printf '%s\n' "$_sem_out" | grep '^semantic-update: BATCH ' | tail -n 1)
+    for _tok in $_batch_line; do
+        case "$_tok" in
+            id=*) BATCH_ID=${_tok#id=} ;;
+            state=*) BATCH_STATE=${_tok#state=} ;;
+            requests=*) case "${_tok#requests=}" in '' | *[!0-9]*) ;; *) BATCH_REQUESTS=${_tok#requests=} ;; esac ;;
+            cost_usd=*) BATCH_COST=${_tok#cost_usd=} ;;
+        esac
+    done
     # A file the merge backed off is not retried until it changes: say so once, on its own leg, whatever the
     # exit (the merge prints it before the steps that can still fail). A clean run with no new back-off
     # re-arms that leg, so the next back-off alerts again.
     _sem_backoff=0
     case "$_sem_out" in *'BACKED OFF'*) _sem_backoff=1 ;; esac
-    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
+    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" \
+        "a file was skipped after repeated semantic failures; it is retried when it changes" "$_run_log" \
+        "its semantic extraction failed on every attempt" "nothing, unless it stays skipped after an edit"
     case "$_sem_rc" in
         0)
             bash "$CADENCE_ALERT" clear "$_sem_leg"
@@ -989,7 +1020,24 @@ if [ "$SEMANTIC" -eq 1 ]; then
         # run. An existing alert is left standing: a skip is not a recovery.
         3|4) echo "graph-cadence: semantic step skipped (rc=$_sem_rc, benign: next fire retries)" ;;
         *)
-            bash "$CADENCE_ALERT" fail "$_sem_leg" "semantic-update-rc-$_sem_rc" "$LOG_FILE"
+            _sem_result="the semantic update failed (exit $_sem_rc)" _sem_cause="" _sem_do=""
+            _sem_cap=$(printf '%s\n' "$_sem_out" | grep -c 'chunk [0-9]*/[0-9]* failed:.*run spend cap reached')
+            if [ "$_sem_cap" -gt 0 ]; then
+                _sem_total=$(printf '%s\n' "$_sem_out" | sed -n 's|.*chunk [0-9]*/\([0-9]*\) failed:.*run spend cap reached.*|\1|p' | head -n 1)
+                _sem_spent=$(printf '%s\n' "$_sem_out" | sed -n 's|.*run spend cap reached (spent \([0-9.]*\) of \([0-9.]*\) USD).*|\1 of \2|p' | head -n 1)
+                _sem_spent=$(printf '%s' "$_sem_spent" | awk '{printf "%.2f of %s", $1, $3}')
+                _sem_all=$(printf '%s\n' "$_sem_out" | grep -c 'chunk [0-9]*/[0-9]* failed:')
+                _sem_cause="the claude-api run hit its spend cap (spent $_sem_spent USD)"
+                if [ "$_sem_all" -gt "$_sem_cap" ]; then
+                    _sem_result="$_sem_all of $_sem_total chunks failed, $_sem_cap stopped by the run spend cap"
+                    _sem_cause="$_sem_cause; the other chunks failed for another reason"
+                    _sem_do="read the log for the other chunk failures"
+                else
+                    _sem_result="$_sem_cap of $_sem_total chunks stopped by the run spend cap; next run retries"
+                    _sem_do="nothing"
+                fi
+            fi
+            bash "$CADENCE_ALERT" fail "$_sem_leg" "$_sem_result" "$_run_log" "$_sem_cause" "$_sem_do"
             _fail "semantic-update.sh exited $_sem_rc: $(printf '%s' "$_sem_out" | tail -n 3 | tr '\n' ' ')"
             ;;
     esac

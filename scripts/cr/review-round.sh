@@ -12,7 +12,9 @@
 # delta was used. Consumed records are kept in <branch>.verdicts.
 # A CLEAN merge of the base (conflict-free, the PR's own diff
 # unchanged), or one whose only resolution is a plugin.json version bump above
-# both parents, is admitted past the cap without spending the one delta round.
+# both parents, is admitted past the cap without spending the one delta round,
+# only while the round count is below free_round_cap, and only when each merge
+# has the reviewed head as first parent and a newer point on the base second.
 # Any other conflict-resolving merge needs a judge GO carrying `delta-scope:
 # merge-resolution` and `delta-from:`, bound like the scope records.
 # Every verdict record read here (NO-GO delta, layer-decision,
@@ -74,9 +76,73 @@ test_path_p() {
     return 1
 }
 
+# plugin_json_path <path>: a marketplace plugin's manifest. plugin_version,
+# semver_gt and version_bump_only sit up here because the trivial-descendant
+# verb below runs before the rest of the file is defined.
+plugin_json_path() {
+    case "$1" in
+        marketplace/plugins/*/.claude-plugin/plugin.json) ;;
+        *) return 1 ;;
+    esac
+    _pj_name="${1#marketplace/plugins/}"
+    _pj_name="${_pj_name%/.claude-plugin/plugin.json}"
+    case "$_pj_name" in ''|*/*) return 1 ;; esac
+    return 0
+}
+# plugin_version <file>: prints the one "version" value, which must sit alone
+# on its line as plain X.Y.Z; fails on any other shape or a second version key.
+# The key must also be the file's top-level one, not nested.
+# shellcheck disable=SC2016  # JavaScript source is literal here
+plugin_version() {
+    [ "$(awk '/"version"[[:space:]]*:/ { n++ } END { print n + 0 }' "$1")" = "1" ] || return 1
+    _pv_v="$(sed -n -E 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9})"[[:space:]]*,?[[:space:]]*$/\1/p' "$1")"
+    [ -n "$_pv_v" ] || return 1
+    PV_FILE="$1" PV_WANT="$_pv_v" node -e '
+const fs = require("fs"), e = process.env;
+const o = JSON.parse(fs.readFileSync(e.PV_FILE, "utf8"));
+process.exit(o && typeof o === "object" && !Array.isArray(o) && o.version === e.PV_WANT ? 0 : 1);
+' 2>/dev/null || return 1
+    printf '%s\n' "$_pv_v"
+}
+# semver_gt <a> <b>: a > b for two plain X.Y.Z values.
+semver_gt() {
+    _sg_a="$1"; _sg_b="$2"
+    for _sg_i in 1 2 3; do
+        _sg_x="${_sg_a%%.*}"; _sg_y="${_sg_b%%.*}"
+        _sg_a="${_sg_a#*.}"; _sg_b="${_sg_b#*.}"
+        [ "$((10#$_sg_x))" -gt "$((10#$_sg_y))" ] && return 0
+        [ "$((10#$_sg_x))" -lt "$((10#$_sg_y))" ] && return 1
+    done
+    return 1
+}
+# version_bump_only <from> <to> <path> succeeds when <path> is a plain-file
+# plugin.json in both commits whose only difference is a strictly higher
+# "version" value: the bump plugin-version-bump-required forces on a plugin PR.
+version_bump_only() {
+    _vb_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1  # prim-ok: the same idiom version_only_merge uses; this script does not source prim.sh
+    _vb_ok=1
+    for _vb_side in "$1:old" "$2:new"; do
+        _vb_c="${_vb_side%:*}"; _vb_n="${_vb_side##*:}"
+        if [ "$(git ls-tree "$_vb_c" -- "$3" 2>/dev/null | cut -c1-6)" != "100644" ] \
+            || ! git cat-file blob "$_vb_c:$3" > "$_vb_tmp/$_vb_n" 2>/dev/null \
+            || ! plugin_version "$_vb_tmp/$_vb_n" > "$_vb_tmp/$_vb_n.v" \
+            || ! sed -E 's/^([[:space:]]*"version"[[:space:]]*:[[:space:]]*")[0-9.]*"/\1"/' \
+                "$_vb_tmp/$_vb_n" > "$_vb_tmp/$_vb_n.n"; then
+            _vb_ok=0; break
+        fi
+    done
+    if [ "$_vb_ok" -eq 1 ]; then
+        semver_gt "$(cat "$_vb_tmp/new.v")" "$(cat "$_vb_tmp/old.v")" \
+            && cmp -s "$_vb_tmp/old.n" "$_vb_tmp/new.n" || _vb_ok=0
+    fi
+    rm -rf "$_vb_tmp"
+    [ "$_vb_ok" -eq 1 ]
+}
+
 # trivial_descendant <from> <to> succeeds when <to> is a strict
 # descendant of <from> and <from>..<to> changes only test paths (the
-# judge_scope_record rule) or only comment lines. A judge often reviews a head
+# judge_scope_record rule, plus a version-only plugin.json bump beside at
+# least one test path) or only comment lines. A judge often reviews a head
 # after such a commit, which never got its own panel round. Also the one
 # classifier console-kit/write-verdict.sh --bind-reviewed asks, through the
 # `trivial-descendant` verb below, so the writer and the gate cannot disagree.
@@ -93,12 +159,21 @@ trivial_descendant() {
     _td_paths="$(git -c core.quotepath=off diff --no-renames --name-only "$1" "$2" 2>/dev/null)" || return 1
     [ -n "$_td_paths" ] || return 1
     _td_ok=1
+    _td_tests=0
     while IFS= read -r _td_p; do
-        test_path_p "$_td_p" || { _td_ok=0; break; }
+        if plugin_json_path "$_td_p"; then
+            # A manifest is never a test path, even under a plugin named tests.
+            version_bump_only "$1" "$2" "$_td_p" || { _td_ok=0; break; }
+        elif test_path_p "$_td_p"; then
+            _td_tests=1
+        else
+            _td_ok=0; break
+        fi
     done <<EOF
 $_td_paths
 EOF
-    [ "$_td_ok" -eq 0 ] || return 0
+    # A hook-forced plugin version bump rides along with tests, never alone.
+    [ "$_td_ok" -eq 0 ] || [ "$_td_tests" -eq 0 ] || return 0
     # --tests-only drops the comment branch for the clear-cr-marker
     # fallback, which clears with no critic review of from..to.
     [ "${_td_tests_only:-0}" -eq 0 ] || return 1
@@ -229,6 +304,9 @@ verdict_state="$git_dir/cr-review-rounds/$branch.verdicts"
 head_state="$git_dir/cr-review-rounds/$branch.head"
 # "<from> <to> <failing check names>" once the CI-red unlock was used.
 cired_state="$git_dir/cr-review-rounds/$branch.cired"
+# Clean and version-only merge-forwards are admitted free of the delta round
+# only below this round count.
+free_round_cap=8
 state_dir="$(dirname "$state")"
 mkdir -p "$state_dir" || {
     echo "review-round: cannot create state directory $state_dir" >&2
@@ -304,42 +382,6 @@ else if ([...verdicts].some(([id, v]) => !settled.has(id) && (v === "" || v === 
 # is strictly above the version in both <ours> and <theirs>, and whose other
 # bytes are exactly the clean three-way merge once the version values are set
 # aside. Anything else fails, so the caller keeps refusing it.
-plugin_json_path() {
-    case "$1" in
-        marketplace/plugins/*/.claude-plugin/plugin.json) ;;
-        *) return 1 ;;
-    esac
-    _pj_name="${1#marketplace/plugins/}"
-    _pj_name="${_pj_name%/.claude-plugin/plugin.json}"
-    case "$_pj_name" in ''|*/*) return 1 ;; esac
-    return 0
-}
-# plugin_version <file>: prints the one "version" value, which must sit alone
-# on its line as plain X.Y.Z; fails on any other shape or a second version key.
-# The key must also be the file's top-level one, not nested.
-# shellcheck disable=SC2016  # JavaScript source is literal here
-plugin_version() {
-    [ "$(awk '/"version"[[:space:]]*:/ { n++ } END { print n + 0 }' "$1")" = "1" ] || return 1
-    _pv_v="$(sed -n -E 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9})"[[:space:]]*,?[[:space:]]*$/\1/p' "$1")"
-    [ -n "$_pv_v" ] || return 1
-    PV_FILE="$1" PV_WANT="$_pv_v" node -e '
-const fs = require("fs"), e = process.env;
-const o = JSON.parse(fs.readFileSync(e.PV_FILE, "utf8"));
-process.exit(o && typeof o === "object" && !Array.isArray(o) && o.version === e.PV_WANT ? 0 : 1);
-' 2>/dev/null || return 1
-    printf '%s\n' "$_pv_v"
-}
-# semver_gt <a> <b>: a > b for two plain X.Y.Z values.
-semver_gt() {
-    _sg_a="$1"; _sg_b="$2"
-    for _sg_i in 1 2 3; do
-        _sg_x="${_sg_a%%.*}"; _sg_y="${_sg_b%%.*}"
-        _sg_a="${_sg_a#*.}"; _sg_b="${_sg_b#*.}"
-        [ "$((10#$_sg_x))" -gt "$((10#$_sg_y))" ] && return 0
-        [ "$((10#$_sg_x))" -lt "$((10#$_sg_y))" ] && return 1
-    done
-    return 1
-}
 version_only_merge() {
     _vo_out="$(git merge-tree --write-tree --name-only --no-messages "$1" "$2" 2>/dev/null)"
     _vo_rc=$?
@@ -648,17 +690,27 @@ EOF_SNAP
 
 # merge_forward_shape <from> <to> succeeds when <to> merges the
 # captured base into <from> and nothing else: at least one merge, every
-# non-merge commit it brought already on the base. Sets mf_merged_base.
+# non-merge commit it brought already on the base, and every merge a plain
+# two-parent merge whose first parent descends from <from> (not on the base)
+# and whose second parent is a point on the base newer than the base point
+# <from> had. Sets mf_merged_base.
 merge_forward_shape() {
     [ -n "$base_sha" ] || return 1
-    [ -n "$(git rev-list --merges "$1..$2" 2>/dev/null)" ] || return 1
+    [ -n "$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
     [ -z "$(git rev-list --no-merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
-    for _mf_m in $(git rev-list --merges "$1..$2" 2>/dev/null); do
-        _mf_ok=0
-        for _mf_p in $(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-); do
-            ! git merge-base --is-ancestor "$_mf_p" "$base_sha" 2>/dev/null || _mf_ok=1
-        done
-        [ "$_mf_ok" = 1 ] || return 1
+    _mf_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
+    [ -n "$_mf_old" ] || return 1
+    for _mf_m in $(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null); do
+        _mf_p1="" _mf_p2="" _mf_p3=""
+        read -r _mf_p1 _mf_p2 _mf_p3 <<EOF
+$(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-)
+EOF
+        [ -n "$_mf_p2" ] && [ -z "$_mf_p3" ] || return 1
+        git merge-base --is-ancestor "$1" "$_mf_p1" 2>/dev/null || return 1
+        ! git merge-base --is-ancestor "$_mf_p1" "$base_sha" 2>/dev/null || return 1
+        git merge-base --is-ancestor "$_mf_p2" "$base_sha" 2>/dev/null || return 1
+        [ "$_mf_p2" != "$_mf_old" ] || return 1
+        git merge-base --is-ancestor "$_mf_old" "$_mf_p2" 2>/dev/null || return 1
     done
     mf_merged_base="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
     [ -n "$mf_merged_base" ]
@@ -1077,16 +1129,27 @@ EOF
     # Clean and version-only merge-forwards are admitted without spending the
     # one delta round, whether or not it was already used. Check before the
     # fix trigger: neither carries a fix, so neither must spend the round.
-    if clean_merge_forward "$delta_from" "$delta_to"; then
-        delta_trigger="clean-merge"
-        delta_free=1
-        return 0
-    fi
-    if merge_forward_shape "$delta_from" "$delta_to" \
-        && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
-        delta_trigger="version-merge"
-        delta_free=1
-        return 0
+    # The round count still grows by one per free round, so the free
+    # admissions stop at free_round_cap; a merge past it needs the delta round
+    # or a judge record.
+    # ponytail: the cap is one flat count of all rounds, not of free ones only,
+    # upgrade path is a separate free-round counter in the round state.
+    if [ "$round" -ge "$free_round_cap" ]; then
+        if merge_forward_shape "$delta_from" "$delta_to"; then
+            echo "review-round: $branch is at round $round, the free merge-forward cap ($free_round_cap) - a clean or version-only merge no longer buys a free round" >&2
+        fi
+    else
+        if clean_merge_forward "$delta_from" "$delta_to"; then
+            delta_trigger="clean-merge"
+            delta_free=1
+            return 0
+        fi
+        if merge_forward_shape "$delta_from" "$delta_to" \
+            && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
+            delta_trigger="version-merge"
+            delta_free=1
+            return 0
+        fi
     fi
     if [ -z "$delta_used" ]; then
         if [ "$(ledger_query finding "$delta_from")" = "finding" ]; then
@@ -1100,11 +1163,8 @@ EOF
         # new head's tree is exactly a clean merge of the reviewed head with the
         # base point it merged - so a merge carrying its own edits or conflict
         # resolutions is new work, not a merge-forward.
-        if [ -n "$base_sha" ] \
-            && [ -n "$(git rev-list --merges "$delta_from..$delta_to" 2>/dev/null)" ] \
-            && [ -z "$(git rev-list --no-merges "$delta_from..$delta_to" "^$base_sha" 2>/dev/null)" ] \
-            && merged_base="$(git merge-base "$delta_to" "$base_sha" 2>/dev/null)"; then
-            if clean_tree="$(git merge-tree --write-tree "$delta_from" "$merged_base" 2>/dev/null)" \
+        if merge_forward_shape "$delta_from" "$delta_to"; then
+            if clean_tree="$(git merge-tree --write-tree "$delta_from" "$mf_merged_base" 2>/dev/null)" \
                 && [ "$clean_tree" = "$(git rev-parse "$delta_to^{tree}" 2>/dev/null)" ]; then
                 delta_trigger="merge-forward"
                 return 0

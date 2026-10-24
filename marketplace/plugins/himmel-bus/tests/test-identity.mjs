@@ -268,6 +268,70 @@ test('adopt refuses a chain whose intermediate console is still live, relay or n
   assert.equal((await identity.loadPeers(root)).leg.console, 'con');
 });
 
+// A console stamps its successor at handover (`bus succeed`), so a
+// hop passes on the stamp, live or not, with no per-leg relay record.
+async function allLive(t, root) {
+  await chained(t, root);
+  const all = await fakeProc(t, [P(1, 0, 'init', 1), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+  await identity.bind(root, 'mid', 150, { proc: all });
+  return fakeProc(t, [P(1, 0, 'init', 1), P(100, 1, 'claude', 1000), P(200, 1, 'claude', 2000), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+}
+
+test('adopt passes a chain of live consoles that each stamped their successor', async t => {
+  const { root } = await fixture(t);
+  const live = await allLive(t, root);
+  await identity.succeed(root, 'con', 'mid');
+  await identity.succeed(root, 'mid', 'new');
+  await identity.adopt(root, 'leg', 'new', { proc: live });
+  assert.equal((await identity.loadPeers(root)).leg.console, 'new');
+});
+
+test('adopt still refuses a live intermediate console that never stamped', async t => {
+  const { root } = await fixture(t);
+  const live = await allLive(t, root);
+  await identity.succeed(root, 'con', 'mid');
+  await assert.rejects(identity.adopt(root, 'leg', 'new', { proc: live }), /console mid on the chain to new is still live/);
+  assert.equal((await identity.loadPeers(root)).leg.console, 'con');
+});
+
+test('adopt refuses a stamp that names a different successor', async t => {
+  const { root } = await fixture(t);
+  const live = await allLive(t, root);
+  await identity.register(root, 'other', { role: 'console', predecessor: 'mid' });
+  await identity.succeed(root, 'con', 'mid');
+  await identity.succeed(root, 'mid', 'other');
+  await assert.rejects(identity.adopt(root, 'leg', 'new', { proc: live }), /console mid on the chain to new is still live/);
+  assert.equal((await identity.loadPeers(root)).leg.console, 'con');
+});
+
+test('adopt passes a single live-old-console hop on its stamp alone', async t => {
+  const { root } = await fixture(t);
+  const live = await fakeProc(t, chain);
+  await bound(root, live);
+  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await assert.rejects(identity.adopt(root, 'leg', 'new', { proc: live }), /not gone/);
+  await identity.succeed(root, 'con', 'new');
+  await identity.adopt(root, 'leg', 'new', { proc: live });
+  assert.equal((await identity.loadPeers(root)).leg.console, 'new');
+});
+
+test('succeed: only a console naming its own registered successor, once', async t => {
+  const { root } = await fixture(t);
+  const live = await fakeProc(t, chain);
+  await bound(root, live);
+  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'stranger', { role: 'console' });
+  await identity.register(root, 'rival', { role: 'console', predecessor: 'con' });
+  await assert.rejects(identity.succeed(root, 'leg', 'new'), /not a console/);
+  await assert.rejects(identity.succeed(root, 'con', 'stranger'), /does not succeed con/);
+  await assert.rejects(identity.succeed(root, 'con', 'ghost'), /unknown session: ghost/);
+  await assert.rejects(identity.succeed(root, 'con', 'leg'), /not a console/);
+  await identity.succeed(root, 'con', 'new');
+  await identity.succeed(root, 'con', 'new');
+  await assert.rejects(identity.succeed(root, 'con', 'rival'), /already stamped new/);
+  assert.equal((await identity.loadPeers(root)).con.successor, 'new');
+});
+
 test('adopt onto the console already held is a no-op', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);

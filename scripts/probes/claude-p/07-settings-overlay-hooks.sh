@@ -26,7 +26,9 @@
 # set for consistency with every other headless call in this repo).
 #
 # ONE measured pass. Do not loop or retry this probe — record what happened.
+# billed-opt-in: HIMMEL_BILLED_OK
 set -uo pipefail
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "${0##*/}: makes real, billed claude -p calls; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 
 PROBE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="$PROBE_DIR/tmp/07"

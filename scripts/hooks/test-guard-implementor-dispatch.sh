@@ -305,11 +305,8 @@ RC_RETIRED=$(run_hook retired-reviewer "$REG_CLAUDEX" "$(payload "$RETIRED_REVIE
 assert_rc "retired reviewer name does not bypass implementation routing" 2 "$RC_RETIRED"
 assert_contains "retired reviewer refusal names the claudex dispatcher" "bun scripts/telegram/spawn-claudex.ts" "$(combined_output retired-reviewer)"
 
-RC1JR=$(run_hook impl-judge-ro "$REG_CLAUDEX" "$(payload console-judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
-assert_rc "HIMMEL-5180: console-judge-ro (tools Read/Grep/Glob/Bash only) is lane-exempt like Explore even on an implementation-shaped brief" 0 "$RC1JR"
-
 RC1JN=$(run_hook impl-judge-ro-new "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
-assert_rc "judge-ro (new id, tools Read/Grep/Glob/Bash only) is lane-exempt like console-judge-ro" 0 "$RC1JN"
+assert_rc "judge-ro (new id, tools Read/Grep/Glob/Bash only) is lane-exempt like Explore even on an implementation-shaped brief" 0 "$RC1JN"
 
 RC1JX=$(run_hook impl-x-judge-ro "$REG_CLAUDEX" "$(payload x-judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
 assert_rc "x-judge-ro does not match the judge-ro exemption" 2 "$RC1JX"
@@ -320,14 +317,11 @@ mkdir -p "$JRW_ROOT/scripts/hooks" "$JRW_ROOT/scripts/lib" "$JRW_ROOT/.claude/ag
 cp "$HOOK" "$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
 cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$REPO_ROOT/scripts/lib/env-alias.sh" "$JRW_ROOT/scripts/lib/"
 printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash, Write\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/judge-ro.md"
-printf -- '---\nname: console-judge-ro\ntools: Read, Write, Grep, Glob, Bash\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/console-judge-ro.md"
 REAL_HOOK="$HOOK"
 HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
 RC1JW=$(run_hook impl-judge-ro-write "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
-RC1JO=$(run_hook impl-console-judge-ro-write "$REG_CLAUDEX" "$(payload console-judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
 HOOK="$REAL_HOOK"
 assert_rc "judge-ro whose agent file declares Write is not lane-exempt" 2 "$RC1JW"
-assert_rc "console-judge-ro whose agent file declares Write is not lane-exempt" 2 "$RC1JO"
 
 RC2=$(run_hook impl-glm "$REG_GLM" "$(payload claude sonnet 'Fix the failing shell test' 'Land the fix.')")
 assert_rc "implementation + glm available refuses" 2 "$RC2"

@@ -650,6 +650,70 @@ replace_rc=0
 (cd "$repo" && bash "$RR" trivial-descendant --tests-only "$replace_from" "$replace_tip" >/dev/null 2>&1) || replace_rc=$?
 assert_eq "$replace_rc" 1 "trivial-descendant ignores replacement objects"
 git -C "$repo" replace -d "$replace_tip" >/dev/null
+
+# 7266: a hook-forced plugin version bump beside test files keeps a delta
+# tests-only; any other plugin.json change, a non-test file, or a bump alone
+# does not.
+write_plugin() {
+    mkdir -p "$repo/marketplace/plugins/$1/.claude-plugin"
+    # plugin_nested=1 nests the only version key under "meta".
+    if [ -n "${plugin_nested:-}" ]; then
+        printf '{\n  "name": "%s",\n  "meta": {\n    "version": "%s"\n  },\n  "description": "%s"\n}\n' \
+            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
+    else
+        printf '{\n  "name": "%s",\n  "version": "%s",\n  "description": "%s"\n}\n' \
+            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
+    fi
+    git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
+}
+three_rounds tvb clean 0.1.0
+tvb_from="$cap_r3_head"
+tvb_commit() { # tvb_commit <branch> <plugin version> <description> [file...]
+    tvb_branch="$1"
+    git -C "$repo" checkout -q -b "$tvb_branch" "$tvb_from"
+    write_plugin tvb "$2" "$3"
+    shift 3
+    for f in "$@"; do printf '%s\n' "$f" > "$repo/$f"; git -C "$repo" add "$f"; done
+    git -C "$repo" commit -q -m "$tvb_branch delta"
+    tvb_to="$(git -C "$repo" rev-parse HEAD)"
+}
+tvb_rc() { # tvb_rc <expected rc> <label>
+    tvb_got=0
+    (cd "$repo" && bash "$RR" trivial-descendant --tests-only "$tvb_from" "$tvb_to" >/dev/null 2>&1) || tvb_got=$?
+    assert_eq "$tvb_got" "$1" "$2"
+}
+tvb_commit tvb-ok 0.1.1 fixture test-tvb.sh
+tvb_rc 0 "7266 a test file plus a version-only plugin.json bump is tests-only"
+git -C "$repo" checkout -q tvb
+git -C "$repo" merge -q --ff-only tvb-ok
+tvb_ev_rc=0
+(cd "$repo" && bash "$RR" evidence --branch tvb --head "$tvb_to" >/dev/null 2>&1) || tvb_ev_rc=$?
+assert_eq "$tvb_ev_rc" 0 "7266 evidence accepts a test file plus a version-only bump"
+assert_has "$(cat "$git_dir/cr-critic-scores.jsonl")" "\"branch\":\"tvb\",\"head\":\"$tvb_to\",\"status\":\"ok\",\"source\":\"evidence\"" "7266 evidence records its ledger row"
+tvb_commit tvb-field 0.1.1 other test-tvb.sh
+tvb_rc 1 "7266 a plugin.json change beyond the version stays refused"
+tvb_commit tvb-code 0.1.1 fixture test-tvb.sh tvb-code.txt
+tvb_rc 1 "7266 a version bump beside a non-test file stays refused"
+tvb_commit tvb-alone 0.1.1 fixture
+tvb_rc 1 "7266 a version bump alone stays refused"
+tvb_commit tvb-down 0.0.9 fixture test-tvb.sh
+tvb_rc 1 "7266 a version downgrade stays refused"
+# A plugin named "tests" puts its manifest under a tests/ path segment: it must
+# still be judged as a manifest, never counted as the test path.
+git -C "$repo" checkout -q -b tvb-t0 "$tvb_from"
+write_plugin tests 0.1.0 fixture
+git -C "$repo" commit -q -m "tvb-t0 plugin named tests"
+tvb_from="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" checkout -q -b tvb-t1 "$tvb_from"
+write_plugin tests 0.1.1 fixture
+git -C "$repo" commit -q -m "tvb-t1 delta"
+tvb_to="$(git -C "$repo" rev-parse HEAD)"
+tvb_rc 1 "7266 a version bump alone under a plugin named tests is no test path"
+git -C "$repo" checkout -q -b tvb-t2 "$tvb_from"
+write_plugin tests 0.1.0 other
+git -C "$repo" commit -q -m "tvb-t2 delta"
+tvb_to="$(git -C "$repo" rev-parse HEAD)"
+tvb_rc 1 "7266 a description change under a plugin named tests is no test path"
 if [ "${1:-}" = --ledger-hardening-only ]; then
     printf 'ledger hardening: %s failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]
@@ -910,18 +974,6 @@ assert_eq "$(cat "$git_dir/cr-review-rounds/evilmerge.round")" "3" "a refused ev
 # plugin-version-bump-required makes a plugin PR bump its
 # plugin.json version inside the merge of main, so that merge never equals a
 # clean merge tree. Only a version-only resolution above both parents passes.
-write_plugin() {
-    mkdir -p "$repo/marketplace/plugins/$1/.claude-plugin"
-    # plugin_nested=1 nests the only version key under "meta".
-    if [ -n "${plugin_nested:-}" ]; then
-        printf '{\n  "name": "%s",\n  "meta": {\n    "version": "%s"\n  },\n  "description": "%s"\n}\n' \
-            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
-    else
-        printf '{\n  "name": "%s",\n  "version": "%s",\n  "description": "%s"\n}\n' \
-            "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
-    fi
-    git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
-}
 # plugin_case <branch> <main version> <branch version> [main-bumps [file [spent]]]:
 # plugin.json at 0.1.0 on main, three rounds on a branch at <branch version>,
 # optionally spending the delta round on a fix before main moves (a plugin
@@ -2354,6 +2406,124 @@ git -C "$repo" reset -q --hard "$co_m"
 scope_judge co-1 "$co_m" merge-resolution "$co_b"
 co_rc=0; start_round "$co_m" clean cmoff >/dev/null || co_rc=$?
 assert_eq "$co_rc" "8" "a merge-resolution record cannot admit a merge with no parent on main"
+
+# The merge shape is the reviewed head first and a NEWER point on main second:
+# swapped parents, a second parent older than the merged base point, or a
+# second parent that forks main instead of being on it are not a merge-forward.
+# mfs_build <branch> <spent|fresh> <swap|stale|fork|ok> <clean|resolved>
+# commits the merge on <branch>; mfs_from is the reviewed head, mfs_head the merge.
+mfs_build() {
+    mfs_b="$1"
+    if [ "$2" = spent ]; then
+        three_rounds "$mfs_b" suggestion
+        fix_commit "$mfs_b"
+        start_round "$cap_fix_head" clean "$mfs_b" >/dev/null || fail "$mfs_b delta setup"
+    else
+        three_rounds "$mfs_b" clean
+    fi
+    mfs_from="$(git -C "$repo" rev-parse "$mfs_b")"
+    mfs_old="$(git -C "$repo" merge-base "$mfs_from" main)"
+    main_commit "$mfs_b-main.txt" one
+    mfs_main="$(git -C "$repo" rev-parse main)"
+    mfs_other="$mfs_main"
+    case "$3" in
+        swap) mfs_p1="$mfs_main"; mfs_p2="$mfs_from" ;;
+        stale) mfs_p1="$mfs_from"; mfs_p2="$(git -C "$repo" rev-parse "$mfs_old~1")"; mfs_other="$mfs_p2" ;;
+        fork)
+            git -C "$repo" checkout -q -b "$mfs_b-fork" main
+            printf 'fork\n' > "$repo/$mfs_b-fork.txt"
+            git -C "$repo" add "$mfs_b-fork.txt"
+            git -C "$repo" commit -q -m "$mfs_b fork"
+            mfs_p2="$(git -C "$repo" rev-parse HEAD)"
+            git -C "$repo" checkout -q "$mfs_b"
+            mfs_p1="$mfs_from"; mfs_other="$mfs_p2" ;;
+        *) mfs_p1="$mfs_from"; mfs_p2="$mfs_main" ;;
+    esac
+    mfs_tree="$(git -C "$repo" merge-tree --write-tree "$mfs_from" "$mfs_other")" || fail "$mfs_b merge tree"
+    if [ "$4" = resolved ]; then
+        mfs_blob="$(printf 'resolved\n' | git -C "$repo" hash-object -w --stdin)"
+        mfs_tree="$(GIT_INDEX_FILE="$tmp/$mfs_b.idx" git -C "$repo" read-tree "$mfs_tree" \
+            && GIT_INDEX_FILE="$tmp/$mfs_b.idx" git -C "$repo" update-index --add --cacheinfo "100644,$mfs_blob,$mfs_b-edit.txt" \
+            && GIT_INDEX_FILE="$tmp/$mfs_b.idx" git -C "$repo" write-tree)" || fail "$mfs_b resolved tree"
+    fi
+    mfs_head="$(git -C "$repo" commit-tree "$mfs_tree" -p "$mfs_p1" -p "$mfs_p2" -m "$mfs_b merge")" \
+        || { fail "$mfs_b merge commit"; return 1; }
+    git -C "$repo" reset -q --hard "$mfs_head" \
+        || { fail "$mfs_b reset to merge"; return 1; }
+}
+for mfs_case in swap stale fork; do
+    for mfs_delta in spent fresh; do
+        if [ "$mfs_case" != swap ] && [ "$mfs_delta" = fresh ]; then continue; fi
+        # a stale second parent adds nothing, so only a resolution can carry it
+        if [ "$mfs_case" = stale ]; then mfs_content=resolved; else mfs_content=clean; fi
+        mfs_build "mfs-$mfs_case-$mfs_delta" "$mfs_delta" "$mfs_case" "$mfs_content"
+        mfs_rc=0; start_round "$mfs_head" clean "mfs-$mfs_case-$mfs_delta" >/dev/null || mfs_rc=$?
+        if [ "$mfs_case" = stale ]; then
+            # a clean merge cannot be stale; a resolution without a record is refused as before
+            assert_eq "$mfs_rc" "8" "$mfs_case/$mfs_delta: a resolving merge without a record gets no round"
+        else
+            assert_eq "$mfs_rc" "8" "$mfs_case/$mfs_delta: a merge with a $mfs_case second parent gets no round"
+        fi
+    done
+    # the merge-resolution record cannot admit the same shape either
+    mfs_build "mfs-$mfs_case-rec" spent "$mfs_case" resolved
+    scope_judge "mfs-$mfs_case" "$mfs_head" merge-resolution "$mfs_from"
+    mfs_rc=0; start_round "$mfs_head" clean "mfs-$mfs_case-rec" >/dev/null || mfs_rc=$?
+    assert_eq "$mfs_rc" "8" "$mfs_case: a merge-resolution record cannot admit that merge shape"
+done
+# control: the proper shape, first parent the reviewed head and second a newer
+# point on main, is still admitted free and still admitted by a record.
+mfs_build mfs-ok-clean spent ok clean
+mfs_rc=0; start_round "$mfs_head" clean mfs-ok-clean >/dev/null || mfs_rc=$?
+assert_eq "$mfs_rc" "0" "control: a first-parent reviewed head plus newer main second parent is admitted"
+mfs_build mfs-ok-rec spent ok resolved
+scope_judge mfs-ok "$mfs_head" merge-resolution "$mfs_from"
+mfs_rc=0; start_round "$mfs_head" clean mfs-ok-rec >/dev/null || mfs_rc=$?
+assert_eq "$mfs_rc" "0" "control: a merge-resolution record admits the proper merge shape"
+
+# control: two merges of main in one delta (each first parent is the previous
+# merge, each second parent a newer point on main) are one merge-forward.
+three_rounds mfchain clean
+main_commit mfchain-1.txt one
+git -C "$repo" merge -q --no-edit main
+main_commit mfchain-2.txt two
+git -C "$repo" merge -q --no-edit main
+mfc_rc=0; start_round "$(git -C "$repo" rev-parse mfchain)" clean mfchain >/dev/null || mfc_rc=$?
+assert_eq "$mfc_rc" "0" "control: a chain of two merges of main is admitted free"
+if [ -e "$git_dir/cr-review-rounds/mfchain.delta" ]; then fail "control: a chain of clean merges leaves the delta round unspent"; else pass "control: a chain of clean merges leaves the delta round unspent"; fi
+
+# control: a merge commit that main itself gained (a side branch merged with
+# --no-ff) comes in with the merge-forward; it is on main, not part of the shape.
+three_rounds mfbasemerge clean
+git -C "$repo" checkout -q -b mfbasemerge-side main
+printf 'side\n' > "$repo/mfbasemerge-side.txt"
+git -C "$repo" add mfbasemerge-side.txt
+git -C "$repo" commit -q -m "mfbasemerge side"
+git -C "$repo" checkout -q main
+git -C "$repo" merge -q --no-ff -m "main merges the side branch" mfbasemerge-side
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q mfbasemerge
+git -C "$repo" merge -q --no-edit main
+mfb_rc=0; start_round "$(git -C "$repo" rev-parse mfbasemerge)" clean mfbasemerge >/dev/null || mfb_rc=$?
+assert_eq "$mfb_rc" "0" "a merge-forward that imports a merge commit main gained is admitted free"
+
+# Clean merges are free of the delta round but not of the round count: after
+# the delta was spent they stop at the free-round cap and need a judge record.
+three_rounds mfcap suggestion
+fix_commit mfcap
+start_round "$cap_fix_head" clean mfcap >/dev/null || fail "mfcap delta setup"
+mfcap_n=0
+mfcap_last=0
+while [ "$mfcap_n" -lt 8 ]; do
+    main_commit "mfcap-$mfcap_n.txt" "$mfcap_n"
+    git -C "$repo" merge -q --no-edit main
+    mfcap_last=0; start_round "$(git -C "$repo" rev-parse mfcap)" clean mfcap >/dev/null || mfcap_last=$?
+    [ "$mfcap_last" -eq 0 ] || break
+    mfcap_n=$((mfcap_n + 1))
+done
+assert_eq "$mfcap_n" "4" "clean merges after the spent delta stop at the free-round cap"
+assert_eq "$mfcap_last" "8" "the clean merge past the cap is refused"
+assert_eq "$(cat "$git_dir/cr-review-rounds/mfcap.round")" "8" "the cap counts the free rounds in the round state"
 
 # An inherited delta_reuse never skips the counter bump on a
 # round before the cap (delta_reuse was only initialised inside delta_check).

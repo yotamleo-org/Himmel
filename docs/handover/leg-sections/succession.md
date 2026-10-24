@@ -44,8 +44,19 @@ runs `bus adopt <new console>` for you, so the new chief has an edge to you
 (without it `bus send` to you is refused: `no edge to <you>`). Its printed line
 (`adopted: …`) or refusal text (`identity unbound`, or
 `old console … is not gone and sent no relay naming …`)
-lands as a `bus-adopt:` bullet just above. A refusal is a recorded fact, not a
-reason to park: once the old chief is gone,
+lands as a `bus-adopt:` bullet just above, ending `[via anchor]` (the primary
+checkout's bus CLI, so a worktree cut before a bus fix still adopts with the
+fixed code) or `[via worktree]` (no primary checkout's CLI was found, so your own
+older copy ran). The outgoing chief stamps its
+successor on the bus (`chief.sh next` runs `bus succeed <successor>`), and
+`bus adopt` accepts a stamped hop while that chief is still live, so no
+per-leg relay record is needed. A pasted launch (no `--arm`) registers the
+successor only when it is pasted, so there the outgoing chief runs
+`bus succeed <successor>` itself once the successor has registered. A refusal
+is a recorded fact, not a reason to park: its text names the refused hop, a
+chief on the chain that never stamped this successor or stamped a different
+one (an unstamped live chief is still refused, also after the old chief is
+gone); once every unstamped chief on the chain but the target is gone,
 run `bus adopt <new console>` as the leg yourself. <!-- old-term-ok: the phrase test-bus-idle-waker.sh asserts --> Write
 `- SUCCESSION accepted: <new console session> replaces <old>` under
 `## Results` (names and grammar only, no token), with **nothing after it on that

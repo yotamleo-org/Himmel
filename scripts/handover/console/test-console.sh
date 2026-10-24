@@ -2303,12 +2303,17 @@ STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
-[ -z "${BUS79_FAIL:-}" ]
+if [ -n "${BUS79_FAIL:-}" ] && { [ -z "${BUS79_FAIL_VERB:-}" ] || [ "$1" = "$BUS79_FAIL_VERB" ]; }; then
+  echo "stub bus: $1 refused" >&2
+  exit 1
+fi
+exit 0
 STUB
 for v79 in in out; do
   if [ "$v79" = in ]; then n79='["qmd","himmel-bus"]'; else n79='["qmd"]'; fi
   printf "console.log('%s');\n" "$n79" > "$bus79/profiles-$v79.mjs"
 done
+printf "process.exit(3);\n" > "$bus79/profiles-broken.mjs"
 chmod +x "$bus79/arm.sh" "$bus79/bus"
 run79() { # <variant> <cmd> <bucket> [extra env...]
   local variant="$1" cmd="$2" bucket="$3"; shift 3
@@ -2323,10 +2328,15 @@ session79a="DEMO-nextleg-${today}A-bus79-console"
 check "79 opted-in new: register --role console, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
 check "79 opted-in new: armed env carries only the registered name + the bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
+check "79 opted-in new: the launch log records the registration" \
+    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as console\$")" "1"
 rm -f "$bus79/calls"
 out79b="$(run79 in next bus79in)"
 session79b="DEMO-nextleg-${today}B-bus79-console"
-check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a"
+check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a
+succeed $session79b"
+check "79 opted-in next: the launch log records the registration and the stamp" \
+    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as console, stamped successor of $session79a\$")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79b.md" "$(token_of "$out79b")" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79a.md" "$(token_of "$out79a")" >/dev/null 2>&1
 rm -f "$bus79/calls"
@@ -2340,7 +2350,29 @@ rm -f "$bus79/calls"
 out79d="$(run79 in new bus79fail BUS79_FAIL=1)"
 check "79 failed register: console still arms" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "1"
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
+check "79 failed register: the warning lands in the launch log" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-console".log 2>/dev/null | grep -c 'WARN: bus register failed for .* launching unbound')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79d")" >/dev/null 2>&1
+# a successor whose register works but whose stamp fails still arms, bound, and says so in the launch log
+rm -f "$bus79/calls"
+out79e="$(run79 in new bus79stamp)"
+out79f="$(run79 in next bus79stamp BUS79_FAIL=1 BUS79_FAIL_VERB=succeed)"
+session79f="DEMO-nextleg-${today}B-bus79-console"
+check "79 failed succeed: console still arms" "$(printf '%s\n' "$out79f" | grep -c '^armed: ')" "1"
+check "79 failed succeed: warned on stderr" "$(printf '%s\n' "$out79f" | grep -c 'WARN bus succeed failed')" "1"
+check "79 failed succeed: the warning lands in the launch log" \
+    "$(cat "$tmp/work79"/*/launch-"$session79f".log 2>/dev/null | grep -c 'WARN: bus succeed failed for .* legs adopt only once')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/$session79f.md" "$(token_of "$out79f")" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79e")" >/dev/null 2>&1
+# a profile probe that errors is not "opted out": the console arms unbound and the launch log says why
+rm -f "$bus79/calls"
+out79g="$(run79 broken new bus79probe)"
+check "79 broken profile probe: console still arms" "$(printf '%s\n' "$out79g" | grep -c '^armed: ')" "1"
+check "79 broken profile probe: bus never called" "$([ -e "$bus79/calls" ] && echo called || echo none)" "none"
+check "79 broken profile probe: warned on stderr" "$(printf '%s\n' "$out79g" | grep -c 'WARN bus profile probe failed')" "1"
+check "79 broken profile probe: the warning lands in the launch log" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-console".log 2>/dev/null | grep -c 'WARN: bus profile probe failed')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79probe/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79g")" >/dev/null 2>&1
 
 # --- 80. wrap refuses while a non-harness process is alive -------------------
 # wrap-subtree-check.sh and live-subagents.sh are stubbed through their seams;
@@ -2785,6 +2817,14 @@ paste88 "$out88d" BUS88_FAIL=1
 check "88 failed register: no bind, claude starts unbound" \
     "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
+# a broken profile probe is not an opt-out: the printed line runs claude unbound and chief.sh says so
+out88e="$(print88 broken new bus88probe)"
+paste88 "$out88e"
+check "88 broken profile probe: chief.sh warns the printed line runs unbound" \
+    "$(printf '%s\n' "$out88e" | grep -c 'the printed console line runs claude unbound')" "1"
+check "88 broken profile probe: bus never called, claude still starts" \
+    "$([ -e "$b88/calls" ] && echo called || echo none)|$([ -s "$b88/seen" ] && echo started || echo not-started)" "none|started"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88probe/$s88a.md" "$(token_of "$out88e")" >/dev/null 2>&1
 
 # --- 89: the pasted line never hangs on the bus: a bus call stuck past
 # BUS_EXEC_SECS is killed and claude starts unbound; and a line whose

@@ -377,6 +377,9 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:frontend-slides | — | — | MIT | — |
 | plugin:design-dna | — | — | MIT | — |
 | plugin:anydesign | — | — | MIT | — |
+| plugin:popular-web-designs | — | — | MIT | — |
+| plugin:design-md | — | — | MIT | — |
+| plugin:hermes-artifact-design | — | — | MIT | — |
 | plugin:anthropic-design-skills | — | — | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | — |
 | plugin:hallmark | — | — | MIT | — |
 | plugin:shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | — | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |

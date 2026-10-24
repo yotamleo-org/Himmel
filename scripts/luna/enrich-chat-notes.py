@@ -23,6 +23,7 @@ literal is truthful even before the gate/ledger run.
 Usage:
   python scripts/luna/enrich-chat-notes.py --vault <vault-dir> [--limit N] [--dry-run]
 """
+# billed-opt-in: HIMMEL_BILLED_OK
 import argparse
 import json
 import os
@@ -623,6 +624,10 @@ def main(argv=None):
         print("enrich-chat-notes: nothing to do (0 enriched:false notes)")
         return 0
 
+    if os.environ.get("HIMMEL_BILLED_OK") != "1":
+        print("enrich-chat-notes: makes real, billed model calls; set HIMMEL_BILLED_OK=1 "
+              "(on-demand only; --dry-run is free)", file=sys.stderr)
+        return 2
     script_dir = Path(__file__).resolve().parent
     root = primary_root(script_dir)
     # Policy is read from the PRIMARY checkout, not this worktree: a worktree

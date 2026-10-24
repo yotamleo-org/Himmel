@@ -1637,6 +1637,8 @@ if [ "$sv_seen" -eq 1 ]; then
             bus_out="$(cat "$bus_tmp" 2>/dev/null)"
             [ "$bus_timed_out" -eq 1 ] && bus_out="timed out after ${BUS_BIND_SECS}s: $bus_out"
             echo "$(date +%F_%T) WARN: bus bind of $NAME to pid $SESSION_PID failed - session stays unbound: $bus_out" >> "$LOG"
+        else
+            echo "$(date +%F_%T) bus: bound $NAME to pid $SESSION_PID" >> "$LOG"
         fi
         [ "$bus_tmp" = /dev/null ] || rm -f "$bus_tmp"
     fi
@@ -1653,6 +1655,7 @@ if [ "$sv_seen" -eq 1 ]; then
     fi
     exit 0
 fi
+[ "$BUS_BIND" = "1" ] && echo "$(date +%F_%T) WARN: bus bind of $NAME skipped - no session confirmed, it stays unbound" >> "$LOG"
 # Only reached once session_confirmed has ALSO never found a
 # real claude process within the whole post-launch budget - see the note
 # above the poll. A dead pid alone is no longer sufficient on its own.

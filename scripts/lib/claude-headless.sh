@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: the headless-dispatch wrapper; each caller carries its own opt-in
 # claude-headless.sh — the P1 chokepoint wrapper for `claude` `-p` dispatch
 # (Chain 2a). ONE headless claude invocation site; every other
 # script that needs a headless worker calls this one instead of shelling out

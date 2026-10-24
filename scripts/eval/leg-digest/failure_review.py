@@ -176,6 +176,38 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     return "\n".join(out) + "\n", new, n, len(fails), routed, boxed
 
 
+TOP_NEW = 3
+
+
+def count(n, one, many):
+    return "%d %s" % (n, one if n == 1 else many)
+
+
+def plain_line(day, live, n, k, filed, pending, fresh, rows, done, digest):
+    """The one Telegram line: '<cadence>: <result>. Cause: <why>. Do: <step>. Log: <path>'."""
+    result = "%s in %s over 24 h; %s" % (count(n, "failure", "failures"), count(k, "class", "classes"),
+                                         "%s filed" % count(filed, "ticket", "tickets") if live else
+                                         "dry run, nothing filed (%d would be)" % filed)
+    if pending:
+        result += "; undelivered earlier: %s" % ", ".join(pending)
+    if fresh:
+        top = sorted(fresh, key=lambda c: (-len(rows.get(c, [])), c))[:TOP_NEW]
+        cause = "%s first seen today (a class is tool/kind of failure): %s%s" % (
+            count(len(fresh), "new class", "new classes"),
+            ", ".join("%s (%s)" % (c, count(len(rows.get(c, [])), "failure", "failures")) for c in top),
+            " and %d more" % (len(fresh) - len(top)) if len(fresh) > len(top) else "")
+        step = ("open the digest and triage what the router filed" if live and filed else
+                "open the digest and file a ticket for any class that matters, else nothing")
+    elif done:
+        cause = "recurring classes reached the filing threshold"
+        step = "triage the new tickets named in the digest" if live else "nothing"
+    else:
+        cause = "an earlier alert was not delivered"
+        step = "nothing"
+    return "failure review %s (%s): %s. Cause: %s. Do: %s. Log: %s" % (
+        day, "live" if live else "dry-run", result, cause, step, digest)
+
+
 def friction_part(a):
     """The friction subsection (HIMMEL-4926): refusals by source and class with the 7-day trend, from
     scripts/eval/friction/friction.py. FAILURE_REVIEW_FRICTION_CMD overrides the command (an empty value
@@ -354,11 +386,8 @@ def main(argv=None):
         pending = [p for p in ns["pending"] if p not in done and p not in ["new %s" % c for c in fresh]]
         line = None
         if done or fresh or pending:
-            line = "failure review %s (%s): %d failures in %d classes; %s %d%s%s" % (
-                day, "live" if a.live else "dry-run", n, k, "routed" if a.live else "would route",
-                len(routed) if a.live else len([d for d in decisions if d["decision"] in ROUTED]),
-                "; undelivered earlier: %s" % ", ".join(pending) if pending else "",
-                "; new: %s" % ", ".join(fresh) if fresh else "")
+            line = plain_line(day, a.live, n, k, len([d for d in decisions if d["decision"] in ("filed", "would-file")]),
+                              pending, fresh, rows, bool(done), os.path.join(a.out_dir, "failure-review-%s.md" % day))
             # Saved as soon as the router returns: a run that dies before or during the send leaves its line.
             ns["pending"] = pending + done + ["new %s" % c for c in fresh]
             ns["sent"] = sent

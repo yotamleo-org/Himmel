@@ -20,6 +20,9 @@
 #   installs; a timeout (124, or 137 after timeout -k) and the runner's refused
 #   or aborted codes (2-6, 96) still fail.
 #   The sandbox is removed on every exit path.
+#   PYTHONUSERBASE is pinned to the real home's Python user base before the swap,
+#   so a `pip install --user` tool (pre-commit on a fork-PR runner, which has no CI
+#   image) keeps its packages; a caller-set PYTHONUSERBASE is kept as is.
 # Exit: 0 clean; 1 leak, runner failure or timeout; 2 usage / setup error.
 #
 # ponytail: only $HOME and $USERPROFILE are redirected, so a suite that reads a
@@ -79,9 +82,16 @@ else
 fi
 env_atime_before="$(atime_of "$FAKE_HOME/.env")"
 
+# Python's user site follows $HOME; resolve it before the swap or a --user launcher on
+# PATH dies with ModuleNotFoundError.
+USER_BASE="${PYTHONUSERBASE:-}"
+if [ -z "$USER_BASE" ] && command -v python3 >/dev/null 2>&1; then
+  USER_BASE="$(python3 -m site --user-base 2>/dev/null)" || USER_BASE="" # swallow-ok: empty leaves PYTHONUSERBASE unset, the pre-fix behaviour
+fi
+
 # Output goes to a file, not a pipe: an orphaned suite child holding a pipe open would
 # keep the step alive past the timeout. The redacted log is printed after the run.
-timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" bash "$RUNNER" "$@" > "$LOG" 2>&1
+timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" ${USER_BASE:+PYTHONUSERBASE="$USER_BASE"} bash "$RUNNER" "$@" > "$LOG" 2>&1
 rc=$?
 sed "s/$TOKEN/<honeytoken>/g" "$LOG"
 

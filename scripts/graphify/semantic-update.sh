@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # semantic-update.sh — incremental semantic layer for one corpus.
 #
 # WHY: the armed graphmap cadence rebuilds only the AST graph (hourly/daily
@@ -57,6 +58,18 @@
 # go on; only the API refusing for lack of credit stops a chunk, and the finished chunks still merge. The run
 # row carries the summed cost (`cost_usd`), the backend and the cap.
 #
+# claude-api goes through the Message Batches API at half price (GRAPHIFY_API_BATCH=0 keeps the synchronous lane
+# path). Nothing waits on a graph refresh, so a run is two-phase: graphify extract runs once with the record shim
+# (semantic-batch-shim.mjs as `claude`), semantic-batch.mjs submits the recorded chunk prompts as ONE batch, and
+# the run ends with the graph untouched. The plan, the frozen scratch corpus and batch.json wait in
+# <out>/semantic-batch/. A later run polls that batch and never resubmits it: still in progress = graph untouched;
+# ended = the results are replayed through the same graphify extract (the replay shim answers each chunk prompt from
+# its result by hash), then merged and hardened as usual. A chunk the batch did not answer fails like any failed
+# chunk: its files stay unstamped and ride the next batch. The account follows HIMMEL_API_ACCOUNT (auto picks by
+# the lane's credit state); a credit-exhausted answer marks the account and an auto route retries once on the other.
+# The batch cost is not gated (decision 229); it lands in the run row. Every run prints one
+# `semantic-update: BATCH id=… state=submitted|pending|merged requests=N cost_usd=…` line for the cadence ledger.
+#
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
 #       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
@@ -69,7 +82,7 @@
 # run it once on a corpus whose graph already carries a semantic pass, or the
 # first run treats every file as changed.
 #
-# Exit: 0 ok / no-op; 1 usage or IO; 2 fence deny, graphify or merge failure;
+# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
 # 3 bank at/over threshold (nothing touched); 4 promote lock held.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
@@ -120,6 +133,12 @@ if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
 fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
+BATCH_MODE=0 RESUME=0 PENDING="$OUT_DIR/semantic-batch"
+if [ "$BACKEND" = "claude-api" ] && [ "${GRAPHIFY_API_BATCH:-1}" != 0 ]; then BATCH_MODE=1; fi
+if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi
+if [ "$BACKEND" = "claude-api" ] && [ "$BATCH_MODE" -eq 0 ] && [ -f "$PENDING/batch.json" ]; then
+  echo "semantic-update: refusing a synchronous claude-api run: a batch is pending in $PENDING; finish it (run without GRAPHIFY_API_BATCH=0) or remove that directory -- nothing extracted" >&2; exit 2
+fi
 if [ "$BACKEND" = "claude-api" ]; then
   case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
   case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
@@ -231,7 +250,9 @@ fi
 
 PLAN="$WORK/plan.json"
 plan_or_noop() {
-  "${MERGE[@]}" plan --root "$CORPUS_ROOT" --out "$OUT_DIR" --max-files "$MAX_FILES" --plan "$PLAN"
+  # A pending batch is merged against the plan it was submitted with, never a fresh one.
+  if [ "$RESUME" -eq 1 ]; then cp "$PENDING/plan.json" "$PLAN"
+  else "${MERGE[@]}" plan --root "$CORPUS_ROOT" --out "$OUT_DIR" --max-files "$MAX_FILES" --plan "$PLAN"; fi
   read -r N_BATCH N_DELETED < <(python3 -c 'import json,sys;p=json.load(open(sys.argv[1]));print(len(p["batch"]),len(p["deleted"]))' "$PLAN")
   if [ "$N_BATCH" -eq 0 ] && [ "$N_DELETED" -eq 0 ]; then
     echo "semantic-update: corpus '$NAME' unchanged since the last semantic pass -- no-op"
@@ -239,7 +260,7 @@ plan_or_noop() {
   fi
 }
 plan_or_noop
-if [ "$BACKEND" = "claude-api" ]; then
+if [ "$BACKEND" = "claude-api" ] && [ "$RESUME" -eq 0 ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
   # each cut re-plans, so the estimate is recomputed on the files that remain (a prefix of large files can still be over)
@@ -278,18 +299,63 @@ if [ "$BACKEND" = "claude-api" ]; then
     || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- nothing copied, no claude-cli fallback" >&2; exit 2; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] \
     || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
-  [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
+  [ "$BATCH_MODE" -eq 1 ] || [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
     || { echo "semantic-update: refusing claude-api: scripts/api-lane/claude-api.sh is missing -- nothing copied" >&2; exit 2; }
 fi
 acquire_promote_lock
 # Re-plan under the lock: another run may have promoted (or the corpus moved)
 # while we waited, and the pre-lock plan would re-extract a stale batch.
+# A run that waited may also find the batch the lock holder submitted (or no batch any more).
+RESUME=0
+if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi
 plan_or_noop
 
 TOKENS_IN=0 TOKENS_OUT=0 FAILED_CHUNKS="" START="$(date +%s)"
 # Summed verified cost of the lane calls so far (0 off the claude-api path, which never writes the file).
 spent_usd() { if [ -f "$WORK/spend.log" ]; then awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$WORK/spend.log"; else echo 0; fi; }
 SCRATCH="$WORK/corpus"
+# A batch run's scratch lives beside its batch.json, so the replay extracts from the very path the record run did.
+[ "$BATCH_MODE" -eq 0 ] || SCRATCH="$PENDING/corpus"
+BATCH_CLIENT="$HERE/semantic-batch.mjs"
+batch_field() { python3 -c 'import json,sys; v = json.load(open(sys.argv[1])).get(sys.argv[2]); print("" if v is None else v)' "$PENDING/batch.json" "$1"; }
+batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 requests=$(batch_field request_count) cost_usd=${2:--}"; }
+# Submit the recorded prompts as one batch. A credit-exhausted answer marks the account (the lane's own marker) and an
+# auto route retries once on the other account; a pinned account is not rotated.
+batch_submit() {
+  local acct pick rc tried=0
+  while :; do
+    acct="$HIMMEL_API_ACCOUNT"
+    if [ "$acct" = auto ]; then
+      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET")"
+      case "$pick" in *'"verdict":"PROCEED"'*) ;; *) echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;; esac
+      acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([AB]\)".*/\1/p')"
+      [ -n "$acct" ] || { echo "semantic-update: refusing the batch: auto routing returned no account" >&2; return 2; }
+    fi
+    rc=0
+    node "$BATCH_CLIENT" submit --dir "$PENDING" --prompts "$WORK/prompts" --account "$acct" \
+      --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" >&2 || rc=$?
+    [ "$rc" -eq 5 ] || return "$rc"
+    HIMMEL_API_ACCOUNT="$acct" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" exhausted >/dev/null 2>&1 \
+      || echo "semantic-update: account $acct credit exhausted, but the marker was not saved" >&2
+    if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$tried" -eq 0 ]; then
+      tried=1; echo "semantic-update: account $acct credit exhausted; retrying the batch on the other account" >&2; continue
+    fi
+    return 5
+  done
+}
+if [ "$RESUME" -eq 1 ]; then
+  rc=0; node "$BATCH_CLIENT" poll --dir "$PENDING" >&2 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "semantic-update: polling batch $(batch_field batch_id) failed (rc $rc) -- graph untouched; if the batch is gone for good, remove $PENDING to resubmit" >&2; exit 2
+  fi
+  if [ "$(batch_field status)" != ended ]; then
+    echo "semantic-update: batch $(batch_field batch_id) is still in progress -- graph untouched, the next run resumes it" >&2
+    batch_line pending; exit 0
+  fi
+  node "$BATCH_CLIENT" results --dir "$PENDING" --out "$PENDING/results" >&2 \
+    || { echo "semantic-update: reading the results of batch $(batch_field batch_id) failed -- graph untouched, the next run retries" >&2; exit 2; }
+  export GRAPHIFY_BATCH_MODE=replay GRAPHIFY_BATCH_DIR="$PENDING/results"
+fi
 if [ "$N_BATCH" -gt 0 ]; then
   case "$BACKEND" in
     claude|claude-cli)
@@ -325,6 +391,9 @@ if [ "$N_BATCH" -gt 0 ]; then
     # its own dir from PATH, so the lane finds the real claude. The prompt stays on stdin.
     GRAPHIFY_BACKEND="claude-cli"
     mkdir -p "$WORK/bin"
+    if [ "$BATCH_MODE" -eq 1 ]; then
+      ln -s "$HERE/semantic-batch-shim.mjs" "$WORK/bin/claude"
+    else
     cat > "$WORK/bin/claude" <<'SHIM'
 #!/usr/bin/env bash
 # graphify claude-cli -> API lane shim (written by semantic-update.sh)
@@ -372,6 +441,7 @@ cat "$out"; rm -f "$out" "$err"
 exit "$rc"
 SHIM
     chmod +x "$WORK/bin/claude"
+    fi
     cat > "$WORK/addendum.txt" <<'ADD'
 ADDITIONAL REQUIREMENTS (these override the optional-rationale rule above for every node that is not a code symbol):
 - Every document, concept or rationale node MUST carry a non-empty `rationale`: one sentence of WHY, the reason, trade-off, constraint or intent behind what the node says. If the source never states a reason, give the reason it implies and prefix it with "implied: ". Never null, never a restatement of the label.
@@ -385,20 +455,30 @@ ADD
     export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET" GRAPHIFY_SEMANTIC_LANE_EFFORT="$API_EFFORT"
     export PATH="$WORK/bin:$PATH"
   fi
-  mkdir -p "$SCRATCH/graphify-out/cache"
-  python3 - "$PLAN" "$CORPUS_ROOT" "$SCRATCH" <<'PY'
+  # The claude-api prompt differs from graphify's own, whose cache stamp would not notice: keep its entries apart.
+  CACHE_SUB="semantic"
+  if [ "$BACKEND" = "claude-api" ]; then CACHE_SUB="semantic-r1"; fi
+  # A resumed batch extracts from the scratch frozen when it was submitted, so its chunk prompts hash identically.
+  if [ "$RESUME" -eq 0 ]; then
+    # No batch.json means nothing was submitted: whatever an interrupted run left here is garbage.
+    [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
+    mkdir -p "$SCRATCH/graphify-out/cache"
+    python3 - "$PLAN" "$CORPUS_ROOT" "$SCRATCH" <<'PY'
 import json, os, shutil, sys
 plan, src, dst = sys.argv[1:4]
 for rel in json.load(open(plan))["batch"]:
     os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True)
     shutil.copy2(os.path.join(src, rel), os.path.join(dst, rel))
 PY
-  [ ! -f "$CORPUS_ROOT/.graphifyignore" ] || cp "$CORPUS_ROOT/.graphifyignore" "$SCRATCH/"
-  # The claude-api prompt differs from graphify's own, whose cache stamp would not notice: keep its entries apart.
-  CACHE_SUB="semantic"
-  if [ "$BACKEND" = "claude-api" ]; then CACHE_SUB="semantic-r1"; fi
-  [ ! -d "$OUT_DIR/cache/$CACHE_SUB" ] || cp -R "$OUT_DIR/cache/$CACHE_SUB" "$SCRATCH/graphify-out/cache/semantic"
-  printf '%s\n' "$CORPUS_CLASS" > "$SCRATCH/.graphify-corpus"
+    [ ! -f "$CORPUS_ROOT/.graphifyignore" ] || cp "$CORPUS_ROOT/.graphifyignore" "$SCRATCH/"
+    [ ! -d "$OUT_DIR/cache/$CACHE_SUB" ] || cp -R "$OUT_DIR/cache/$CACHE_SUB" "$SCRATCH/graphify-out/cache/semantic"
+    printf '%s\n' "$CORPUS_CLASS" > "$SCRATCH/.graphify-corpus"
+    # The record run caches its placeholder answers in the scratch: keep a pristine copy for the replay.
+    if [ "$BATCH_MODE" -eq 1 ]; then
+      cp -R "$SCRATCH" "$PENDING/corpus.orig"
+      export GRAPHIFY_BATCH_MODE=record GRAPHIFY_BATCH_DIR="$WORK/prompts"
+    fi
+  fi
   EXTRA=()
   # One request at a time: the local model holds the whole GPU.
   if [ "$BACKEND" = "ollama" ]; then EXTRA=(--max-concurrency 1); fi
@@ -421,14 +501,30 @@ PY
     "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc "$rc" || true
     echo "semantic-update: graphify extract exited $rc${REFUSED:+ (refused: ${REFUSED:0:80})} -- graph and manifest untouched" >&2; exit 2
   fi
+  if [ "$BATCH_MODE" -eq 1 ] && [ "$RESUME" -eq 0 ] && compgen -G "$WORK/prompts/*.txt" >/dev/null; then
+    # The record run's graph is placeholders: discard it, submit what it recorded, leave the live graph as it was.
+    rm -rf "$SCRATCH"; mv "$PENDING/corpus.orig" "$SCRATCH"; cp "$PLAN" "$PENDING/plan.json"
+    rc=0; batch_submit || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      rm -rf "$PENDING"
+      echo "semantic-update: submitting the batch failed (rc $rc) -- nothing submitted, graph and manifest untouched" >&2; exit 2
+    fi
+    echo "semantic-update: batch $(batch_field batch_id) submitted ($(batch_field request_count) requests) -- graph untouched, the next run polls it" >&2
+    batch_line submitted; exit 0
+  fi
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
 fi
 
 # A failed or refused file's cache entry is evicted from both copies, or the cp-back below would restore it.
-EVICT=()
+EVICT=() BATCH_ARGS=()
+if [ "$RESUME" -eq 1 ]; then
+  BATCH_ARGS=(--batch-id "$(batch_field batch_id)" --batch-requests "$(batch_field request_count)")
+  # the batch cost joins the spend the run row sums
+  batch_field cost_usd >> "$WORK/spend.log"
+fi
 [ -z "${CACHE_SUB:-}" ] || EVICT=(--evict-cache "$SCRATCH/graphify-out/cache/semantic" --evict-cache "$OUT_DIR/cache/$CACHE_SUB")
-"${MERGE[@]}" merge --name "$NAME" --out "$OUT_DIR" --scratch "$SCRATCH" --plan "$PLAN" ${EVICT[@]+"${EVICT[@]}"} \
+"${MERGE[@]}" merge --name "$NAME" --out "$OUT_DIR" --scratch "$SCRATCH" --plan "$PLAN" ${EVICT[@]+"${EVICT[@]}"} ${BATCH_ARGS[@]+"${BATCH_ARGS[@]}"} \
   --runtime-s "$(( $(date +%s) - START ))" --tokens-in "$TOKENS_IN" --tokens-out "$TOKENS_OUT" \
   --backend "$BACKEND" --cost-usd "$(spent_usd)" --cap-usd "$([ "$BACKEND" = "claude-api" ] && echo "$RUN_CAP" || echo 0)" \
   || {
@@ -442,6 +538,8 @@ if [ -d "$SCRATCH/graphify-out/cache/semantic" ]; then
 fi
 python3 "$HERE/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
   || echo "semantic-update: WARN harden-graph.py failed; the merged graph stands, the next refresh re-hardens it" >&2
+if [ "$RESUME" -eq 1 ]; then batch_line merged "$(batch_field cost_usd)"; fi
+[ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
 # The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a
 # loop on the exit code stops instead of re-billing the same failure.
 if [ -n "$FAILED_CHUNKS" ]; then

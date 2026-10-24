@@ -6,7 +6,7 @@
   {"nwo": "yotamleo-org/twitter-cli", "upstream": "public-clis/twitter-cli", "himmel_branch": "himmel-main", "pin_site": "scripts/upstreams.json", "role": "runtime-dependency", "merge_allowed": true},
   {"nwo": "yotamleo-org/claude-obsidian", "upstream": "AgriciDaniel/claude-obsidian", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
   {"nwo": "yotamleo-org/codex-plugin-cc", "upstream": "openai/codex-plugin-cc", "himmel_branch": "main", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
-  {"nwo": "yotamleo-org/obsidian-second-brain", "upstream": "eugeniughelbur/obsidian-second-brain", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo-org/obsidian-second-brain", "upstream": "eugeniughelbur/obsidian-second-brain", "himmel_branch": "main", "pin_site": "marketplace/.claude-plugin/marketplace.json", "role": "runtime-dependency", "merge_allowed": true},
   {"nwo": "yotamleo-org/effective-html", "upstream": "plannotator/effective-html", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
   {"nwo": "yotamleo-org/claude-hud", "upstream": "jarrodwatts/claude-hud", "himmel_branch": "main", "pin_site": "scripts/upstreams.json", "role": "vendored-source", "merge_allowed": false},
   {"nwo": "yotamleo-org/claude-statusline", "upstream": "nilbuild/claude-statusline", "himmel_branch": "main", "pin_site": "scripts/statusline/VENDORED.md", "role": "dormant", "merge_allowed": false},

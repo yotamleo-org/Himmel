@@ -79,7 +79,10 @@ check "the dry run moved nothing" yes "$([ -e "$H/u/himmel/HIMMEL-9-x-2026-01-01
 HANDOVER_DIR="$W/nowhere" bash "$R" >/dev/null 2>&1
 check "a failed fire logs a nonzero exit" 1 "$(grep -c '^\[exit rc=[1-9]' "$LIBRARIAN_RUNNER_DIR/librarian.log")"
 check "and appends one alert line" 1 "$(grep -c ' librarian rc-' "$CADENCE_ALERT_FILE")"
-check "and sends one Telegram message" 1 "$(grep -c 'cadence leg failed: librarian' "$W/sent.log")"
+check "and sends one Telegram message, whole plain shape" 1 "$(grep -c "^librarian: rc-[1-9][0-9]*\. Cause: unknown, see log\. Do: read the log\. Log: $LIBRARIAN_RUNNER_DIR/librarian\.log\$" "$W/sent.log")"
+check "no command lists the optional cause and next-step arguments" "usage: cadence-alert.sh fail <leg> <reason> <log> [<cause> [<do>]] | clear <leg>" "$(bash "$REPO/scripts/luna/cadence-alert.sh" 2>&1)"
+CADENCE_ALERT_FILE="$W/ml-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$W/ml-sent" bash "$REPO/scripts/luna/cadence-alert.sh" fail multiline why "$W/x.log" $'one\ntwo' $'step\nnext'
+check "a multi-line cause and next step stay on one alert line" "multiline: why. Cause: one two. Do: step next. Log: $W/x.log" "$(tail -n 1 "$W/sent.log")"
 check "and an error flow-run row" 1 "$(grep -c '"outcome":"error"' "$HIMMEL_FLOW_RUNS_LEDGER" 2>/dev/null)"
 HANDOVER_DIR="$H" bash "$R" >/dev/null 2>&1
 check "a later good fire clears the alert dedupe" 0 "$(find "$W/alert-sent" -type f 2>/dev/null | wc -l | tr -d ' ')"

@@ -406,6 +406,8 @@ def cmd_merge(a):
         "cost_eq_usd": round(a.tokens_in / 1e6 * PRICE_IN + a.tokens_out / 1e6 * PRICE_OUT, 4),
         "backend": a.backend, "cost_usd": round(a.cost_usd, 6), "cap_usd": a.cap_usd,
     }
+    if a.batch_id:
+        run["batch_id"], run["batch_requests"] = a.batch_id, a.batch_requests
     with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
         f.write(json.dumps(run) + "\n")
     print("merge: " + json.dumps(run))
@@ -442,6 +444,8 @@ def main():
     m.add_argument("--backend", default="")
     m.add_argument("--cost-usd", type=float, default=0.0)
     m.add_argument("--cap-usd", type=float, default=0.0)
+    m.add_argument("--batch-id", default="")
+    m.add_argument("--batch-requests", type=int, default=0)
     m.add_argument("--evict-cache", action="append", default=[])
     f = sub.add_parser("failrow")
     f.add_argument("--name", required=True)

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: operator-run single measured call, its whole purpose; never scheduled
 # operator-run, ONE measured Haiku call through claude-api.sh, to show
 # which balance a print-mode call under a linked-org API key draws from.
 # The key never passes through argv, a log or a model context: this script reads

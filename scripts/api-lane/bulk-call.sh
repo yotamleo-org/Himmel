@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: API-lane bridge; the console or a leg invokes it for one class sweep and the API-credit ledger meters it
 # Haiku bulk-child process bridge on the API lane, for ONE task class: read-only class-sweep site
 # enumeration. The caller gives a defect-class description and absolute file paths; one Haiku call returns the
 # sites (file:line) where the class occurs, as a bounded JSON artifact. It is a trusted-dispatch caller of

@@ -4,6 +4,7 @@
 # finding parser + matcher on canned critic outputs, the eval-runs row, and
 # run.sh driven by a stub panel. No model call, no codex, no live ledger.
 set -u
+export HIMMEL_BILLED_OK=1   # stub panel only; run.sh refuses a bare run
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCORE="$HERE/score.py"
