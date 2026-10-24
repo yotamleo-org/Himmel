@@ -192,7 +192,9 @@ assert_rc "direct taskkill proxy"        2 "$(run_case "$(j_bash 'taskkill /F /I
 assert_rc "direct schtasks /end proxy"   2 "$(run_case "$(j_bash 'schtasks /end /tn cli-proxy-api')")"
 # Structural: the guard must not name the deleted cli-proxy-lane.ps1 carve-out.
 # Before the removal this reads 2 (the name is present); after, 0.
-if grep -q 'cli-proxy-lane[.]ps1' "$HOOK"; then _cp_named=2; else _cp_named=0; fi
+_cp_named=0
+grep -q 'cli-proxy-lane[.]ps1' "$HOOK"; _cp_rc=$?
+case $_cp_rc in 0) _cp_named=2 ;; 1) ;; *) _cp_named=3 ;; esac
 assert_rc "guard names no deleted cli-proxy-lane.ps1" 0 "$_cp_named"
 
 # --- per-rule equivalence corpus ---
