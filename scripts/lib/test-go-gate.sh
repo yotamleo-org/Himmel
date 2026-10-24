@@ -508,6 +508,71 @@ got=$(GH="$ROOT/gh404" tpc o/r 7 "$PINSHA" "$GA")
 [ "$got" = "2:list scripts/ci/ci-trust-paths.txt is missing on o/r@main, and the harness anchor's origin does not prove it is another repo" ] \
     || fail "9i: github 404 with this repo's anchor was not refused as before: $got"
 
+# 9k. An adopted repo (its default branch's .claude/settings.json sets
+# env.HIMMEL_REPO) is judged by the anchor's core list too: a deleted list or a
+# list missing a core line refuses. The anchor is a himmel stand-in carrying the
+# core file; a stub gh serves acme/widget from a local repo.
+CA="$ROOT/coreanchor"; mkdir -p "$CA/scripts/ci"; lg -C "$CA" init -q
+lg -C "$CA" remote add origin https://github.com/yotamleo-org/Himmel.git
+cp "$HERE/../ci/ci-trust-paths-core.txt" "$CA/scripts/ci/ci-trust-paths-core.txt"
+AW="$ROOT/acmewidget"; mkdir -p "$AW/.claude" "$AW/scripts/ci"; lg -C "$AW" init -q -b main
+printf 'a\n' > "$AW/README.md"; lg -C "$AW" add -A && lg -C "$AW" commit -q -m init
+cat > "$ROOT/ghaw" <<STUB
+#!/usr/bin/env bash
+g() { git -C "$AW" "\$@"; }
+case "\$2" in
+    repos/acme/widget/contents/*\?ref=main)
+        f=\${2#repos/acme/widget/contents/}; f=\${f%%\?ref=main}
+        g show "main:\$f" 2>/dev/null || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
+    repos/acme/widget/pulls/7) printf '%s|%s\n' "\$(g rev-parse pr)" "\$(g diff --name-only main...pr | wc -l | tr -d ' ')" ;;
+    repos/acme/widget/pulls/7/files) g diff --name-only main...pr | sed 's/\$/\t/' ;;
+    *) echo "unexpected gh: \$*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$ROOT/ghaw"
+aw_main() {  # <settings json or ''> <trust list or '-' for none>: rewrite main's tip
+    lg -C "$AW" checkout -q main
+    if [ -n "$1" ]; then printf '%s\n' "$1" > "$AW/.claude/settings.json"; else rm -f "$AW/.claude/settings.json"; fi
+    if [ "$2" = - ]; then rm -f "$AW/scripts/ci/ci-trust-paths.txt"; else printf '%s\n' "$2" > "$AW/scripts/ci/ci-trust-paths.txt"; fi
+    lg -C "$AW" add -A && lg -C "$AW" commit -q --allow-empty -m main
+}
+aw_pr() {  # <file>: a PR branch off main touching <file>
+    lg -C "$AW" checkout -q -B pr main; mkdir -p "$AW/$(dirname "$1")"
+    printf 'pr\n' >> "$AW/$1"; lg -C "$AW" add -A && lg -C "$AW" commit -q -m pr
+    lg -C "$AW" checkout -q main; lg -C "$AW" rev-parse pr
+}
+ADOPTED='{"env":{"HIMMEL_REPO":"/opt/himmel"}}'
+CORE_NO_SETTINGS=$(grep -Ev '^(#|$)' "$CA/scripts/ci/ci-trust-paths-core.txt" | grep -vxF '^[.]claude/settings[.]json$')
+# R1: adopted, list deleted on main, PR touches .claude/settings.json.
+aw_main "$ADOPTED" -
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@main"*adopted*) ;; *) fail "9k R1: an adopted repo with no list was not refused: $got" ;; esac
+# A repo with no himmel provenance and no list stays not-adopted.
+aw_main '{"env":{}}' -
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+[ "$got" = "0:not-adopted" ] || fail "9k: a repo without env.HIMMEL_REPO and no list is not not-adopted: $got"
+# R2: adopted, list lacks the core line for .claude/settings.json, same PR.
+aw_main "$ADOPTED" "$CORE_NO_SETTINGS"
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+[ "$got" = '2:list core-missing ^[.]claude/settings[.]json$' ] || fail "9k R2: a list missing a core line was not refused core-missing: $got"
+# R5 (control): the same trimmed list, PR touches only README.md.
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr README.md)" "$CA")
+[ "$got" = "0:none" ] || fail "9k R5: an undeclared README.md is not none: $got"
+# A repo that is not adopted keeps its own list, core lines or not.
+aw_main '' '^deploy/'
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+[ "$got" = "0:none" ] || fail "9k: a non-adopted repo's list was judged against the core: $got"
+# local-git: the same two refusals read from git.
+LA="$ROOT/lgadopted"; mkdir -p "$LA/.claude" "$LA/scripts/ci"; lg -C "$LA" init -q -b main
+printf '%s\n' "$ADOPTED" > "$LA/.claude/settings.json"; lg -C "$LA" add -A && lg -C "$LA" commit -q -m adopted
+lg -C "$LA" checkout -q -b feat/s; printf 'x\n' >> "$LA/.claude/settings.json"; lg -C "$LA" add -A && lg -C "$LA" commit -q -m s
+LAH=$(lg -C "$LA" rev-parse HEAD); LAID="local:$(cd "$LA/.git" && pwd -P)"; lg -C "$LA" checkout -q main
+got=$(tpc "$LAID" br-feat-s "$LAH" "$CA")
+case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on main in "*adopted*) ;; *) fail "9k: a local-git adopted repo with no list was not refused: $got" ;; esac
+printf '%s\n' "$CORE_NO_SETTINGS" > "$LA/scripts/ci/ci-trust-paths.txt"; lg -C "$LA" add -A && lg -C "$LA" commit -q -m list
+got=$(tpc "$LAID" br-feat-s "$LAH" "$CA")
+[ "$got" = '2:list core-missing ^[.]claude/settings[.]json$' ] || fail "9k: a local-git list missing a core line was not refused core-missing: $got"
+
 # 9j. scripts/lib/fixtures/ready-lines.tsv: parse_ready_line and fleet.mjs agree with the fixture.
 TSV="$HERE/fixtures/ready-lines.tsv"
 want=$(grep -v '^#' "$TSV" | grep -v '^$' | cut -f2-4)

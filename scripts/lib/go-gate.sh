@@ -333,6 +333,14 @@ go_trust_verdict() {
 #     anchor's repo it refuses. On a match the anchor must contain the default
 #     branch's tip (its own repo) or origin's HEAD (another repo). The github
 #     body below is untouched.
+# Core list: <anchor>/scripts/ci/ci-trust-paths-core.txt, read from the anchor,
+#     never the PR's repo. In an adopted repo (its default branch's
+#     .claude/settings.json sets env.HIMMEL_REPO) the list may add to the core
+#     but never shrink it: a changed file matching a core line the list lacks
+#     refuses `list core-missing <pattern>`, and a missing list refuses instead
+#     of `not-adopted`. A list holding every core line is already the union.
+#     ponytail: an anchor without the core file (a test fixture, a partial
+#     tree) runs list-only as before; refuse there once every fixture carries it.
 # rc 0 prints one line: `none`, `not-adopted`, or `hit <first matching path>`.
 # rc 2 prints `<phase> <reason>` (phase: tmp, list, files or anchor) — refused.
 # gh is ${GH:-gh}. The body is a subshell, so its temp-file trap, its helper
@@ -363,6 +371,52 @@ trust_path_check() (
         case "$url" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
         [ "$(printf '%s' "$url" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$tp_nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]
     }
+    core="$anchor/scripts/ci/ci-trust-paths-core.txt"
+    # settings_adopted <settings.json text> — rc 0 when it sets env.HIMMEL_REPO;
+    # unparseable settings refuse.
+    settings_adopted() {
+        local v
+        v=$(printf '%s' "$1" | jq -r 'if (.env.HIMMEL_REPO // "") == "" then "no" else "yes" end' 2>/dev/null) \
+            || refuse list "cannot parse .claude/settings.json on $tp_branch"
+        [ "$v" = yes ]
+    }
+    # adopted — rc 0 when the PR's repo is adopted, judged from its default branch.
+    adopted() {
+        local s r=0
+        case "$tp_pr" in
+            br-*)
+                lg_git cat-file -e "$lg_base:.claude/settings.json" 2>/dev/null || return 1
+                s=$(lg_git show "$lg_base:.claude/settings.json" 2>/dev/null) \
+                    || refuse list "cannot read .claude/settings.json from $tp_branch in $lg_dir" ;;
+            *)
+                s=$("$gh_bin" api "repos/$tp_nwo/contents/.claude/settings.json?ref=$tp_branch" \
+                    -H 'Accept: application/vnd.github.raw' 2>&1) || r=$?
+                if [ "$r" -ne 0 ]; then
+                    case "$s" in *"HTTP 404"*) return 1 ;; esac
+                    refuse list "cannot read .claude/settings.json from $tp_nwo@$tp_branch (gh exit $r)"
+                fi ;;
+        esac
+        settings_adopted "$s"
+    }
+    # core_check <changed files, one per line> — with no list hit, a file
+    # matching a core line the list lacks refuses in an adopted repo.
+    core_check() {
+        local pats p
+        [ -e "$core" ] || return 0
+        pats=$(tr -d '\r' < "$core" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -Ev '^(#|$)') \
+            || refuse list "cannot read the core list $core"
+        while IFS= read -r p; do
+            grep -qxF -e "$p" "$tmp" && continue
+            grep -qE -e "$p" <<< "$1"
+            case $? in
+                0) adopted && refuse list "core-missing $p"; return 0 ;;
+                1) ;;
+                *) refuse list "the core list $core has an invalid pattern" ;;
+            esac
+        done <<EOF
+$pats
+EOF
+    }
     tmp=$(mktemp "${TMPDIR:-/tmp}/mog-trust.XXXXXX") || refuse tmp "cannot create a temp file"
     trap 'rm -f "$tmp"' EXIT
     case "$tp_pr" in
@@ -382,6 +436,8 @@ trust_path_check() (
                 # Only a repo positively other than the anchor's is "not adopted";
                 # an unresolvable anchor is not proof, so it refuses (fail closed).
                 if [ -n "$lg_anchor" ] && [ "$lg_anchor" != "$lg_dir" ]; then
+                    [ -e "$core" ] && adopted \
+                        && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_branch in $lg_dir, an adopted repo (its .claude/settings.json sets env.HIMMEL_REPO)"
                     printf 'not-adopted\n'
                     exit 0
                 fi
@@ -409,6 +465,7 @@ trust_path_check() (
             esac
             hit=$(printf '%s\n' "$files" | grep -v '^$' | grep -E -f "$tmp" | head -n 1)
             if [ -z "$hit" ]; then
+                core_check "$files"
                 printf 'none\n'
                 exit 0
             fi
@@ -430,6 +487,8 @@ trust_path_check() (
         case "$raw" in
             *"HTTP 404"*)
                 other_repo || refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, and the harness anchor's origin does not prove it is another repo"
+                [ -e "$core" ] && adopted \
+                    && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, an adopted repo (its .claude/settings.json sets env.HIMMEL_REPO)"
                 printf 'not-adopted\n'
                 exit 0 ;;
             *) refuse list "cannot read scripts/ci/ci-trust-paths.txt from $tp_nwo@$tp_branch (gh exit $rc)" ;;
@@ -459,6 +518,7 @@ trust_path_check() (
     [ "${meta%%|*}" = "$tp_sha" ] || refuse files "PR #$tp_pr's head moved while its files were listed"
     hit=$(printf '%s\n' "$files" | tr '\t' '\n' | grep -v '^$' | grep -E -f "$tmp" | head -n 1)
     if [ -z "$hit" ]; then
+        core_check "$(printf '%s\n' "$files" | tr '\t' '\n')"
         printf 'none\n'
         exit 0
     fi
