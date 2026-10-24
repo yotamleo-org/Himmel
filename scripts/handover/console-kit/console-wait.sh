@@ -21,7 +21,11 @@
 #   TICK ...                    bank-preflight verdict word the key carries.
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
-#   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
+#   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; on the streak's first sample, and
+#                               again once each time the pool's key set changes (re-probed
+#                               every CHIEF_WAIT_UNDERFILL_REPOOL_SEC, default 1800; a pool
+#                               that grows from empty counts, a failed probe or an emptied
+#                               pool does not), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
 #                               the pool, then a second pass without it lists the
@@ -620,25 +624,49 @@ page_denials() {
 }
 
 # capacity=UNDERFILLED:<n> (tick.sh already folds TICK_UNDERFILL_MIN
-# into it) wakes once per streak. The marker file outlives the waiter, so a
-# re-arm inside the same streak stays quiet; capacity=ok removes it.
+# into it) wakes on the streak's first sample. The marker file outlives the waiter, so a
+# re-arm inside the same streak stays quiet; capacity=ok removes it. Its first line is the
+# pool's dispatchable key set at the last wake; once the marker is
+# CHIEF_WAIT_UNDERFILL_REPOOL_SEC old (default 1800) the pool is probed again and a changed,
+# non-empty key set wakes once more (a pool that grew from empty, or moved): the first
+# probe may have read a transient empty pool, and the streak never re-woke on it.
 underfill_file="$inbox.wait.underfill"
 unowned_file="$inbox.wait.unowned"
 unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
-underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
-    printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
+pool_probe() { # sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
+    pool_lf=(); pool_out=""; pool_sig=""
     [ -r "$dispatch_cmd" ] || return 0
-    local lf=() out  # free slots fill from the operator's priority pool first
-    case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
-    [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
-    [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    out="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${lf[@]}" </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: a failed dispatch leaves out empty, the wake block still prints
-    [ -z "$out" ] || printf '%s\n' "$out"
+    case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
+    [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
+    [ -z "$legs_from" ] || pool_lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
+    pool_out="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: a failed dispatch leaves out empty, the wake block still prints
+    pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
+}
+underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
+    printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
+    [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
     # an empty pool leaves the slots idle: a second pass without --priority-pool-only lists the version backlog
-    case $'\n'"$out"$'\n' in *$'\nPOOL-EMPTY\n'*)
-        timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
+    case $'\n'"$pool_out"$'\n' in *$'\nPOOL-EMPTY\n'*)
+        timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
     esac
+}
+# underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
+# and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
+# never counts; every due probe restarts the cadence clock.
+underfill_repool() {
+    local age saved_sig
+    age=$(( $(date +%s) - $(stat -c %Y "$underfill_file" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: a failed stat reads epoch 0, so the probe is simply due
+    [ "$age" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ] || return 1
+    saved_sig="$(sed -n 1p "$underfill_file" 2>/dev/null)"  # swallow-ok: an unreadable marker reads no saved set, so a non-empty pool wakes
+    pool_probe
+    if [ -n "$pool_out" ] && [ "$pool_sig" != "$saved_sig" ]; then
+        printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
+        [ -n "$pool_sig" ] && return 0
+        return 1
+    fi
+    touch "$underfill_file" 2>/dev/null
+    return 1
 }
 
 # unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is
@@ -1067,7 +1095,11 @@ while :; do
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then
-                        : > "$underfill_file" 2>/dev/null
+                        pool_probe
+                        printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
+                        underfill_wake
+                        exit_reason='wake-underfilled'; exit 0
+                    elif underfill_repool; then
                         underfill_wake
                         exit_reason='wake-underfilled'; exit 0
                     fi ;;
