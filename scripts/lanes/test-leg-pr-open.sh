@@ -110,7 +110,17 @@ esac
 STUB
 chmod +x "$GH_STUB"
 
+# The SUT opens a PR only for a head /pr-check reviewed: an `avail ... ok` row
+# at that head in <git-common-dir>/cr-critic-scores.jsonl. stamp_review writes
+# that row; run_sut stamps the current head unless REVIEW_ROW=0.
+LEDGER="$REPO/.git/cr-critic-scores.jsonl"
+stamp_review() {  # <head> [status]
+    printf '{"kind":"avail","ts":"2026-10-25T00:00:00Z","branch":"feat/himmel-3031-x","head":"%s","model":"codex","status":"%s","artifact":"diff","perspective":"off"}\n' \
+        "$1" "${2:-ok}" >> "$LEDGER"
+}
+
 run_sut() {  # args passed straight through to the SUT
+    if [ "${REVIEW_ROW:-1}" != 0 ]; then stamp_review "$(git -C "$REPO" rev-parse HEAD)"; fi
     (
         cd "$REPO" || exit 99
         # JIRA_PROJECT_KEY drives check-commit-msg.sh's ticket
@@ -398,6 +408,41 @@ assert_eq "PR open fires a pr-open event for the title's ticket" \
 : > "$JIRA_LOG"
 WORKER_SESSION_JIRA_STATUS=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null
 assert_eq "WORKER_SESSION_JIRA_STATUS=0 makes no Jira call" "0" "$(wc -c < "$JIRA_LOG" | tr -d ' ')"
+
+# ── a PR opens only for a head /pr-check reviewed ──────────────
+echo "TEST: refuses to open a PR for a head with no pr-check record"
+: > "$ARGV_LOG"
+unset STUB_OPEN_PR 2>/dev/null || true
+: > "$LEDGER"
+head_r=$(git -C "$REPO" rev-parse HEAD)
+err_r=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_r=$?
+assert_eq "unreviewed head refused (rc=1)" "1" "$rc_r"
+contains "refusal is an ERR leg-pr-open line" "$err_r" "ERR leg-pr-open:"
+contains "refusal names /pr-check" "$err_r" "/pr-check"
+contains "refusal names the head" "$err_r" "$head_r"
+not_contains "no PR is created for an unreviewed head" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: a record at another head, or a non-ok record, does not count"
+stamp_review "$(git -C "$REPO" rev-parse HEAD~1)"
+stamp_review "$head_r" unavailable
+REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_r2=$?
+assert_eq "other-head and unavailable rows do not satisfy the gate (rc=1)" "1" "$rc_r2"
+
+echo "TEST: a pr-check record at the head lets the PR open"
+: > "$ARGV_LOG"
+stamp_review "$head_r"
+out_r3=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE"); rc_r3=$?
+assert_eq "reviewed head opens (rc=0)" "0" "$rc_r3"
+assert_eq "reviewed head prints the success line" \
+    "PR 9 https://github.com/owner/repo/pull/9 $head_r" "$out_r3"
+contains "reviewed head reaches pr create" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: the gate is for opening; an existing PR's body update is not gated"
+: > "$ARGV_LOG"
+: > "$LEDGER"
+STUB_OPEN_PR=42 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_r4=$?
+assert_eq "update path without a record still exits 0" "0" "$rc_r4"
+contains "update path edits the PR" "$(cat "$ARGV_LOG")" "pr edit 42"
 
 echo
 echo "===================================="

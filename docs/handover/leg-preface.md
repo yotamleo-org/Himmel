@@ -120,9 +120,11 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
 - **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
-- **One push per review round**, one commit batching every fix; title, body and
-  `## Ticket coverage` edits ride that same push. [prose]
-- Push → PR → review → `/pr-check` (at the head you will `READY`) → one foreground
+- **Order: commit → local `/pr-check` → push → open the PR.** `leg-pr-open.sh`
+  refuses to open a PR for a head with no `/pr-check` record. [prose]
+- **One push per review round** (CodeRabbit or `/pr-check`), one commit batching every
+  fix; title, body and `## Ticket coverage` edits ride that same push. [prose]
+- After the PR is open: `/pr-check` (at the head you will `READY`) → one foreground
   `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a
   background poll → `READY <pr> <full head> GREEN`. [prose]
 - **Lint `## Ticket coverage` before `READY`:**

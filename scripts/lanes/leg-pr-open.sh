@@ -19,8 +19,9 @@
 # Idempotent: finds an open PR for the current branch (forge_pr_find_open)
 # and updates its body instead of opening a second one.
 #
-# Refuses (exit 1): on `main`, when the branch has no upstream, or on an
-# empty body file. No retry logic — a classifier denial of THIS invocation is
+# Refuses (exit 1): on `main`, when the branch has no upstream, on an empty
+# body file, or when opening (not updating) a PR for a head with no /pr-check
+# record (an `avail ... ok` ledger row at that head). No retry logic — a classifier denial of THIS invocation is
 # the stuck-playbook Stage 2 / Out-of-Place rows' territory, not this
 # script's.
 #
@@ -226,6 +227,16 @@ rm -f "$find_open_err"
 existing_pr=$(printf '%s\n' "$existing_pr" | head -n 1)
 
 if [ -z "$existing_pr" ]; then
+    # Opening a PR needs the review /pr-check already records: an `avail ... ok`
+    # row at this head in the CR ledger (the evidence clear-review-marker.sh
+    # gate 3 reads). The ledger path is fixed, never an env seam. An existing
+    # PR's body update is not an open and is not gated.
+    ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
+    if ! [ -f "$ledger" ] || ! awk -v h="\"head\":\"$head_sha\"" \
+        'index($0, "\"kind\":\"avail\"") && index($0, "\"status\":\"ok\"") && index($0, h) { found = 1; exit } END { exit !found }' "$ledger"; then
+        echo "ERR leg-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (commit, /pr-check, push, then open)" >&2
+        exit 1
+    fi
     # Capture stdout (the PR URL) and stderr (diagnostics, plus the
     # CodeRabbit-trigger confirmation) into SEPARATE streams —
     # merging them with `2>&1` let a stderr line race the URL for "first
