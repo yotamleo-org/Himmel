@@ -115,6 +115,7 @@ mkdir -p "$c/home/.himmel/state"; tokC=$(printf 'c%.0s' $(seq 1 64)); printf '%s
 run_install /dev/null DISPLAY=:0 --
 [ "$rc" -eq 0 ] || fail "C: install rc=$rc: $out"
 grep -qF "http://127.0.0.1:47391/#t=$tokC&page=setup" <<< "$out" || fail "C: the always-on UI's Setup link is missing: $out"
+grep -qF "bun $repo_root/scripts/config-ui/server.ts --set-login" <<< "$out" || fail "C: the --set-login command is not an absolute path: $out"
 [ "$(wc -l < "$c/launches")" -eq 0 ] || fail "C: a server was started next to the always-on unit"
 echo "ok: C always-on unit running -> its Setup link, no second server"
 

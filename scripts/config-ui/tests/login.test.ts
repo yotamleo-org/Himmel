@@ -121,7 +121,7 @@ test("with no login set the login answers 404 and says how to set one", async ()
   const b = boot({ password: null });
   const r = await b.login(USER, "anything");
   expect(r.status).toBe(404);
-  expect(await r.text()).toContain("--set-login");
+  expect(await r.text()).toContain(`bun ${join(import.meta.dir, "..", "server.ts")} --set-login`);
 });
 
 test("in service mode a logged-in session may save a secret, the launch token alone may not", async () => {

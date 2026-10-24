@@ -4883,7 +4883,8 @@ async function installUiHandoff(answers) {
     const svc = uiServiceLib.url('setup');
     if (svc.ok) {
       console.log(`${label}: ${svc.lines[0]}`);
-      console.log('That always-on UI saves a secret after you log in at /login (set the login with `bun scripts/config-ui/server.ts --set-login <user>`); `himmelctl ui` opens one that needs no login.');
+      const serverTs = path.join(himmelRoot(), 'scripts', 'config-ui', 'server.ts');
+      console.log(`That always-on UI saves a secret after you log in at /login (set the login with \`bun ${serverTs} --set-login <user>\`); \`himmelctl ui\` opens one that needs no login.`);
       return;
     }
   }

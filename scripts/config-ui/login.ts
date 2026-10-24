@@ -1,7 +1,7 @@
 // The UI login: one operator user whose password is kept as a scrypt hash, sessions held in memory.
 // ponytail: the hash lives in a mode-600 file (~/.himmel/state/ui-login, the same rules as token-file.ts), upgrade path is the keyring vault backend, HIMMEL-7147.
 import { closeSync, constants, fstatSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { readPrivateFile } from "./token-file";
 
@@ -59,7 +59,7 @@ export function createAuth(path: string, now: () => number) {
       if (fails.length >= MAX_FAILS) return { status: 429, retryAfterS: Math.ceil((fails[0] + FAIL_WINDOW_MS - t) / 1000), error: "too many failed logins; wait and retry" };
       let l: Login | null;
       try { l = readLogin(path); } catch (e) { return { status: 500, error: (e as Error).message }; }
-      if (!l) return { status: 404, error: "no login is set; run `bun scripts/config-ui/server.ts --set-login <user>` from your own terminal" };
+      if (!l) return { status: 404, error: `no login is set; run \`bun ${join(import.meta.dir, "server.ts")} --set-login <user>\` from your own terminal` };
       if (typeof user !== "string" || typeof password !== "string" || !matches(l, user, password)) {
         fails.push(t);
         return { status: 401, error: "wrong user or password" };
