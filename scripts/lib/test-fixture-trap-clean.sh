@@ -21,7 +21,22 @@ function remove(dir) {
  for(const entry of fs.readdirSync(dir,{withFileTypes:true}))if(entry.isDirectory())remove(path.join(dir,entry.name));
  fs.rmSync(dir,{recursive:true,force:true});
 }
+// clean-sandbox's PATH is fixed, so a node installed elsewhere (macOS: Homebrew, the toolcache) would be
+// invisible to the suite and the GO writer's ledger and disposition steps would die on it. Link the
+// tools into root/bin and append that dir inside the sandbox, after the system dirs.
+function sandbox(scratch,argv,opts,tools=[['node',process.execPath]]) {
+ const bin=path.join(root,'bin');fs.mkdirSync(bin,{recursive:true});
+ for(const [name,exe] of tools)if(!fs.existsSync(path.join(bin,name)))fs.symlinkSync(exe,path.join(bin,name));
+ return cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash','-c','PATH="$PATH:$1"; shift; exec "$@"','_',bin,...argv],opts);
+}
 try {
+ test('a sandboxed suite reaches a tool installed outside the sandbox PATH',()=>{
+  const fake=path.join(root,'himmel-fx-tool');
+  fs.writeFileSync(fake,'#!/bin/sh\necho fx-tool-ran\n',{mode:0o755});
+  const r=sandbox(path.join(root,'tool'),['himmel-fx-tool'],{encoding:'utf8'},[['himmel-fx-tool',fake]]);
+  assert.strictEqual(r.status,0,'tool exit '+r.status+'; '+r.stderr);
+  assert(r.stdout.includes('fx-tool-ran'),'tool not run: '+r.stdout);
+ });
  for(const [suite,prefix] of [
   ['scripts/lib/test-git-test-env.sh','himmel-git-empty-template.'],
   ['scripts/hooks/test-trigger-cr-on-pr-create.sh','himmel-git-empty-template.'],
