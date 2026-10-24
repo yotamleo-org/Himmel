@@ -26,7 +26,7 @@
 # ponytail: the token check is "appears on a non-comment line", not "guards the first call";
 # the refusal rows below run each marked script without the opt-in and prove it, upgrade path
 # is a per-script row for every new guard.
-# shellcheck disable=SC2016,SC2094  # fixture bodies are literal text; the list is only read
+# shellcheck disable=SC1003,SC2016,SC2094  # fixture bodies are literal text; the list is only read
 set -uo pipefail
 
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -38,6 +38,14 @@ HDR_RE='^[[:space:]]*(#|//)[[:space:]]*billed-(opt-in|exempt):'
 NONCOMMENT_RE='^[[:space:]]*(#|//|\*)'
 
 noncomment() { grep -v -E "$NONCOMMENT_RE" "$1"; }
+
+# <n>:<text> per logical line, backslash continuations joined, n = its first physical line
+logical() {
+  awk '{ if (cur == "") start = NR; line = $0
+         if (line ~ /\\$/ && line !~ /^[ \t]*(#|\/\/|\*)/) { sub(/\\$/, " ", line); cur = cur line; next }
+         print start ":" cur line; cur = "" }
+       END { if (cur != "") print start ":" cur }' "$1"
+}
 
 lint() { # <root> <tracked-list>
   local root=$1 list=$2 bad=0 f base hdr hit kind val tok ok c
@@ -52,7 +60,7 @@ lint() { # <root> <tracked-list>
     case "$base" in
       test-*-live.sh) hit="1" ;;
       test-*|*.test.*) ;;
-      *) hit=$(grep -n -E "$RE" "$root/$f" | grep -v -E '^[0-9]+:[[:space:]]*(#|//|\*)' | head -1 | cut -d: -f1) ;;
+      *) hit=$(logical "$root/$f" | grep -E "$RE" | grep -v -E '^[0-9]+:[[:space:]]*(#|//|\*)' | head -1 | cut -d: -f1) ;;
     esac
     if [ -z "$hdr" ]; then
       if [ -n "$hit" ]; then echo "FAIL unmarked billed call: $f:$hit"; bad=1; fi
@@ -138,6 +146,8 @@ put scripts/x/exempt.sh '#!/usr/bin/env bash' '# billed-exempt: wrapper, callers
 put scripts/x/exempt-empty.sh '#!/usr/bin/env bash' '# billed-exempt:' 'claude -p "$@"'
 put scripts/x/comment-only.sh '#!/usr/bin/env bash' '# runs claude -p in the real thing' 'echo done'
 put scripts/x/opt-before-p.sh '#!/usr/bin/env bash' 'claude --model haiku -p "hi"'
+put scripts/x/continued.sh '#!/usr/bin/env bash' 'claude \' '  --model haiku \' '  -p "hi"'
+put scripts/x/comment-cont.sh '#!/usr/bin/env bash' '# a comment ending in a backslash \' 'claude -p "hi"'
 put scripts/x/py-argv.py '#!/usr/bin/env python3' 'argv = ["claude", "-p", "hi"]'
 put scripts/x/js-spawn.mjs 'const r = spawnSync("claude", ["-p"]);'
 put scripts/x/api.sh '#!/usr/bin/env bash' 'curl https://api.anthropic.com/v1/messages -d x'
@@ -171,6 +181,8 @@ frow "billed-exempt with a reason" 0 "" scripts/x/exempt.sh
 frow "RED: billed-exempt with no reason" 1 "billed-exempt needs a reason: scripts/x/exempt-empty.sh" scripts/x/exempt-empty.sh
 frow "a comment mentioning claude -p is not a call" 0 "" scripts/x/comment-only.sh
 frow "RED: options between claude and -p are caught" 1 "unmarked billed call: scripts/x/opt-before-p.sh:2" scripts/x/opt-before-p.sh
+frow "RED: a call split over backslash continuations is caught" 1 "unmarked billed call: scripts/x/continued.sh:2" scripts/x/continued.sh
+frow "RED: a call after a comment ending in a backslash is caught" 1 "unmarked billed call: scripts/x/comment-cont.sh:3" scripts/x/comment-cont.sh
 frow "RED: a python argv call is caught" 1 "unmarked billed call: scripts/x/py-argv.py:2" scripts/x/py-argv.py
 frow "RED: a node spawn call is caught" 1 "unmarked billed call: scripts/x/js-spawn.mjs:1" scripts/x/js-spawn.mjs
 frow "RED: a direct API url is caught" 1 "unmarked billed call: scripts/x/api.sh:2" scripts/x/api.sh
