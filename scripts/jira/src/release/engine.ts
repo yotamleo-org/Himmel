@@ -232,12 +232,11 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
   return locked(ctx, (l) => {
+    const placement = placementOf(o);
+    const latest = placement === undefined ? new Map<string, RequestRow>() : latestRequests(l.requests);
     const row = appendOperator(ctx, l.k, {
       kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim,
     });
-    const placement = placementOf(row);
-    if (placement === undefined) return row;
-    const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
     const named = [o.from_v, o.to_v].filter((v) => v !== null);
     for (const r of latest.values()) {
       const overlaps = [r.from_v, r.to_v].some((v) => v !== null && named.includes(v));
@@ -250,7 +249,7 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
 }
 
 // Where an operator decision puts its keys; undefined for an op that places nothing.
-function placementOf(o: OperatorRow): string | null | undefined {
+function placementOf(o: { op?: string; from_v?: string | null; to_v?: string | null }): string | null | undefined {
   if (o.op === 'keep' || o.op === 'discharge') return o.from_v ?? null;
   if (o.op === 'remove') return null;
   if (o.op === 'add' || o.op === 'move') return o.to_v ?? null;

@@ -816,6 +816,17 @@ describe('release withdraw (HIMMEL-7434)', () => {
     expect(() => withdraw(ctx(), { req: out.req, reason: 'again' })).toThrow(new RegExp(`withdrawn:${o.id}`));
   });
 
+  it('a requests chain that does not verify refuses the decision before its row is written', async () => {
+    await setup();
+    ask('K-2', 'REVERSION', 'v1', null);
+    const reqs = join(ctx().dir, 'requests.jsonl');
+    writeFileSync(reqs, readFileSync(reqs, 'utf8').replace('found work', 'found wark'));
+    const ops = join(ctx().dir, 'operator.jsonl');
+    const before = readFileSync(ops, 'utf8');
+    expect(() => decide(['K-2'], 'keep', 'v1', 'v1')).toThrow(/requests.jsonl does not verify/);
+    expect(readFileSync(ops, 'utf8')).toBe(before);
+  });
+
   it('a decision on one version leaves a request that names only another version open', async () => {
     await setup();
     const other = ask('K-2', 'INTAKE', null, 'v2');
