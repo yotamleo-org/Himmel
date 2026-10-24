@@ -64,6 +64,10 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
 - **Mechanism.** `SKIP_LIST` in `scripts/ci/run-shell-tests.sh` lists suites the runner
   does not run. A suite that fails only on a non-Linux host goes in `SKIP_LIST_NON_LINUX`
   instead, so Linux CI still runs it. One line per suite, full repo-relative path.
+- **Tier quarantine.** A `quarantine` row in `scripts/ci/suite-tiers.tsv` keeps the suite
+  running and reports a failure as `[QUARANTINE]` without failing the run, in every tier
+  mode: a PR, a schedule and a dispatch run alike. The shard-manifest
+  verifier records its `ran rc!=0` line as a NOTE, never as passed coverage.
 - **A ticket is required.** The entry's trailing comment carries the ticket ID and the
   reason. An entry without a ticket is a silent skip, which is not allowed.
 - **Never silently.** A quarantined suite is "uncovered", never "CI verifies": a PR or
@@ -71,9 +75,12 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
   `bash scripts/handover/suite-coverage.sh <suite>...` answers per suite whether it runs
   in PR CI, only nightly, or not at all. The quarantine PR also tells the chief, so the
   fix is dispatched in the same breath.
-- **Who lifts it.** The worker that fixes the ticket removes the `SKIP_LIST` entry in the
+- **Who lifts it.** The worker that fixes the ticket removes the `SKIP_LIST` entry, if any,
+  and changes the suite's `quarantine` tier in `scripts/ci/suite-tiers.tsv` to a
+  non-quarantine tier (the row stays: the table needs one row per tracked suite) in the
   fixing PR, so the suite runs again on that PR's own CI. The ticket is not done while the
-  entry is still there. Phased-CI intent applies: keep `SKIP_LIST` minimal and justified.
+  entry or the `quarantine` tier is still there. Phased-CI intent applies: keep `SKIP_LIST`
+  minimal and justified.
 - **What does not qualify.** A real bug stays red and takes the "real blocker" path.
   Quarantine is for a test, not for a product defect the test correctly caught.
 
@@ -82,17 +89,20 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
 Strict is off, so a branch merges main in only for a reason. Each reason below is a
 deliberate merge commit, never a rebase and never a force-push.
 
-1. **The plugin-version-bump race.** The `plugin-version-bump` job in `ci.yml` requires
-   every changed `marketplace/plugins/<p>/` file to bump that plugin's `plugin.json`
-   version above the **main tip** it fetches at run time. When a sibling PR merges a bump
-   for the same plugin first, your bump is no longer above the tip and the job goes red
-   until you merge main in and re-bump.
-2. **Real conflicts.** Git cannot merge the branch cleanly.
-3. **A needed fix on main.** Your PR is red from a break it inherited and main has since
+1. **Real conflicts.** Git cannot merge the branch cleanly.
+2. **A needed fix on main.** Your PR is red from a break it inherited and main has since
    fixed it. Merge-forward cures **only** an inherited red, never one your own change
    introduced (rule and proof script: `docs/handover/leg-sections/ci-red.md`).
-4. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
+3. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
    gate or e2e proof pinned to a sha) is re-taken after the merge.
+
+A sibling's plugin bump is not a reason. Plugin versions change only in the release cut,
+the PR that changes the root `VERSION` file; a feature PR never changes a `plugin.json`
+version, so two PRs editing one plugin from the same base both pass
+`plugin-version-bump` and neither needs a merge of main. The merge-on-green recheck runs
+the base-tip checker against the live base. It refuses a plugin version change outside a
+release cut, and a release cut that leaves a plugin it changes at or below the base's
+version, so two release cuts never ship different contents under one version.
 
 Each merge-in costs a full round: a fresh CI run (PR median about 22 min, p90 about 36),
 a CodeRabbit delta on the new range, a fresh `READY` and a fresh `GO` at the new head.

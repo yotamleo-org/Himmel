@@ -162,21 +162,27 @@ if [ "${1:-}" = "--manifest-only" ]; then
   exit $?
 fi
 
-# check_bump_required — the --bump-required check. A commit (or
-# PR range) that changes any file under marketplace/plugins/<p>/ must also bump
-# that plugin's plugin.json "version", so `claude plugin update` actually picks
-# the change up (an unbumped local-directory source falls back to the
-# checkout's HEAD sha — see check_manifest_versions above — but only on a
-# COMMIT boundary; between commits `claude plugin update` compares versions and
-# reports "already at the latest" against stale cached content).
+# check_bump_required — the --bump-required check. Plugin versions change
+# only at the release cut: a commit (or PR range) that is not a release cut
+# must leave every marketplace/plugins/<p>/.claude-plugin/plugin.json "version"
+# as it was. A release cut is a change to the root VERSION file, which only the
+# release-cut PR makes; there every plugin version it changes must go strictly
+# above the base, so two release cuts never ship two contents under one
+# version. Feature PRs never edit a version line, so two of them that touch the
+# same plugin from the same base neither collide nor need a merge of main.
+# A station's directory marketplace loads its plugins in place at every session
+# start, so it follows main without a version change; installs that copy into
+# the version-keyed cache (github source, codex) pick a change up at the next
+# release. The manifest keeps its "version" field (check_manifest_versions).
 #
 # Two modes, both git-diff based (never DRIFT_PLUGINS_DIR — that override
 # exists for the network-free class above; this check is inherently
 # range-based, so its fixtures are throwaway git repos, not bare directories):
 #   - no arg:      staged diff (`git diff --cached`) — the pre-commit shape.
-#   - <base-ref>:  <base-ref>...HEAD selects the PR's changes, but versions
-#                  compare <base-ref> to HEAD (the current-base CI shape).
-#                  Base-only plugin changes must not demand a bump in this PR.
+#   - <base-ref>:  <base-ref>...HEAD selects the PR's changes and versions
+#                  compare the merge-base to HEAD, so a version change that
+#                  landed on the base is never this PR's; a release cut also
+#                  compares against <base-ref> itself (the current-base CI shape).
 #
 # No marketplace.json entry currently pins a "version" field for a
 # directory-sourced (local) plugin — only the two git-remote plugins
@@ -187,6 +193,14 @@ fi
 # check above (the `gh api` sweep) is what catches THEIR staleness. If a future
 # local plugin's marketplace.json entry ever gains a "version" key, extend this
 # check then; today it would be dead code.
+manifest_version() {  # <git object spec> — prints its "version", empty when absent or unreadable
+  git show "$1" 2>/dev/null | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("version",""))
+except Exception:
+    print("")' 2>/dev/null
+}
+
 check_bump_required() {
   local base_ref="${1:-}" old_ref="HEAD"
   if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
@@ -194,14 +208,19 @@ check_bump_required() {
     return 1
   fi
   local rel="marketplace/plugins"
-  local changed
-  local diff_rc
+  local changed release
+  local diff_rc rel_rc
   if [ -n "$base_ref" ]; then
     if ! git rev-parse --verify --quiet "$base_ref" >/dev/null 2>&1; then
       echo "ERR check-plugin-drift --bump-required: cannot resolve base ref '$base_ref'" >&2
       return 1
     fi
+    if ! old_ref="$(git merge-base "$base_ref" HEAD 2>/dev/null)" || [ -z "$old_ref" ]; then
+      echo "ERR check-plugin-drift --bump-required: no merge-base between '$base_ref' and HEAD" >&2
+      return 1
+    fi
     changed="$(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=ACMRD "${base_ref}...HEAD" -- "$rel")"; diff_rc=$?
+    release="$(git diff --no-renames --name-only "${base_ref}...HEAD" -- VERSION)"; rel_rc=$?
   else
     # Mid-merge (GH #2205): the staged diff against HEAD carries everything the
     # merged-in parent brought, so count only what the merge result adds over
@@ -219,9 +238,10 @@ check_bump_required() {
       done
     fi
     changed="$(git -c core.quotePath=false diff --cached --no-renames --name-only --diff-filter=ACMRD "$old_ref" -- "$rel")"; diff_rc=$?
+    release="$(git diff --cached --no-renames --name-only "$old_ref" -- VERSION)"; rel_rc=$?
   fi
-  if [ "$diff_rc" -ne 0 ]; then
-    echo "ERR check-plugin-drift --bump-required: git diff failed (rc=$diff_rc) — cannot determine changed plugin files" >&2
+  if [ "$diff_rc" -ne 0 ] || [ "$rel_rc" -ne 0 ]; then
+    echo "ERR check-plugin-drift --bump-required: git diff failed (rc=$diff_rc/$rel_rc) — cannot determine changed plugin files" >&2
     return 1
   fi
   # quotePath=false still C-quotes names holding a quote, backslash, TAB or LF;
@@ -244,16 +264,18 @@ check_bump_required() {
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     local manifest="$rel/$name/.claude-plugin/plugin.json"
-    # A plugin removed whole needs no bump: nothing is tracked at its path on
+    # A plugin removed whole needs no version: nothing is tracked at its path on
     # the new side (no trailing slash, so a symlink swapped in still counts)
     # AND marketplace.json no longer lists it (a move out stays listed).
-    local remaining mjson listed
+    local remaining mjson listed new_spec
     if [ -n "$base_ref" ]; then
       remaining="$(git ls-tree -r --name-only HEAD -- "$rel/$name")"
       mjson="$(git show "HEAD:marketplace/.claude-plugin/marketplace.json" 2>/dev/null)"
+      new_spec="HEAD:$manifest"
     else
       remaining="$(git ls-files -- "$rel/$name")"
       mjson="$(git show ":marketplace/.claude-plugin/marketplace.json" 2>/dev/null)"
+      new_spec=":$manifest"
     fi
     # Unreadable or unparsable marketplace.json counts as listed: fail closed.
     listed="$(printf '%s' "$mjson" | python3 -c 'import json,sys
@@ -264,51 +286,41 @@ try:
 except Exception:
     print("1")' "$name" 2>/dev/null)"
     if [ -z "$remaining" ] && [ "$listed" = "0" ]; then
-      echo "check-plugin-drift --bump-required: $name removed — no version bump needed"
+      echo "check-plugin-drift --bump-required: $name removed — no version needed"
       continue
     fi
-    if ! grep -qxF -e "$manifest" <<<"$changed"; then
-      echo "ERR check-plugin-drift --bump-required: $name changed under $rel/$name/ but $manifest was not bumped (HIMMEL-3551)" >&2
+    local old_ver new_ver tip_ver
+    if [ -z "$release" ]; then
+      if ! grep -qxF -e "$manifest" <<<"$changed"; then
+        continue  # plugin.json untouched, so its version is too
+      fi
+      if ! git cat-file -e "$old_ref:$manifest" 2>/dev/null; then
+        continue  # plugin.json newly introduced — nothing to compare against
+      fi
+      old_ver="$(manifest_version "$old_ref:$manifest")"
+      new_ver="$(manifest_version "$new_spec")"
+      if [ "$old_ver" = "$new_ver" ]; then
+        continue
+      fi
+      echo "ERR check-plugin-drift --bump-required: $name's plugin.json version went ${old_ver:-<none>} -> ${new_ver:-<none>} outside a release cut — plugin versions change only in the release-cut PR, the one that changes the root VERSION file; leave the version as it is" >&2
       bad=1
       continue
     fi
-    local old_ver new_ver
-    if [ -n "$base_ref" ]; then
-      old_ver="$(git show "${base_ref}:$manifest" 2>/dev/null | python3 -c 'import json,sys
-try:
-    print(json.load(sys.stdin).get("version",""))
-except Exception:
-    print("")' 2>/dev/null)"
-      new_ver="$(git show "HEAD:$manifest" 2>/dev/null | python3 -c 'import json,sys
-try:
-    print(json.load(sys.stdin).get("version",""))
-except Exception:
-    print("")' 2>/dev/null)"
-    else
-      old_ver="$(git show "$old_ref:$manifest" 2>/dev/null | python3 -c 'import json,sys
-try:
-    print(json.load(sys.stdin).get("version",""))
-except Exception:
-    print("")' 2>/dev/null)"
-      new_ver="$(git show ":$manifest" 2>/dev/null | python3 -c 'import json,sys
-try:
-    print(json.load(sys.stdin).get("version",""))
-except Exception:
-    print("")' 2>/dev/null)"
+    # A release cut raises every plugin it touches above the base tip.
+    local tip_ref="$old_ref"
+    if [ -n "$base_ref" ] && git cat-file -e "$base_ref:$manifest" 2>/dev/null; then
+      tip_ref="$base_ref"
     fi
-    if [ -z "$old_ver" ]; then
+    if ! git cat-file -e "$tip_ref:$manifest" 2>/dev/null; then
       continue  # plugin.json newly introduced — nothing to compare against
     fi
-    if [ "$old_ver" = "$new_ver" ]; then
-      echo "ERR check-plugin-drift --bump-required: $name's plugin.json changed but \"version\" is still $old_ver — bump it (HIMMEL-3551)" >&2
-      bad=1
-      continue
-    fi
-    if ! python3 -c 'import sys
+    tip_ver="$(manifest_version "$tip_ref:$manifest")"
+    new_ver="$(manifest_version "$new_spec")"
+    if [ -z "$new_ver" ] || ! python3 -c 'import sys
 def key(v):
     return [int(p) if p.isdigit() else p for p in v.replace("-", ".").split(".")]
-sys.exit(0 if key(sys.argv[2]) > key(sys.argv[1]) else 1)' "$old_ver" "$new_ver" 2>/dev/null; then
-      echo "ERR check-plugin-drift --bump-required: $name's plugin.json version went $old_ver -> $new_ver, which is not a bump (HIMMEL-3551)" >&2
+sys.exit(0 if key(sys.argv[2]) > key(sys.argv[1]) else 1)' "$tip_ver" "$new_ver" 2>/dev/null; then
+      echo "ERR check-plugin-drift --bump-required: release cut: $name's plugin.json version ${new_ver:-<none>} is not above ${tip_ver:-<none>} on the base, so two contents would ship under one version — raise it" >&2
       bad=1
     fi
   done <<< "$names"
@@ -316,7 +328,11 @@ sys.exit(0 if key(sys.argv[2]) > key(sys.argv[1]) else 1)' "$old_ver" "$new_ver"
   if [ "$bad" -ne 0 ]; then
     return 1
   fi
-  echo "check-plugin-drift --bump-required: every changed plugin bumped its version"
+  if [ -n "$release" ]; then
+    echo "check-plugin-drift --bump-required: release cut: every changed plugin version is above the base"
+  else
+    echo "check-plugin-drift --bump-required: no plugin version changed outside a release cut"
+  fi
   return 0
 }
 

@@ -175,3 +175,14 @@ test("mode: the resolver's tracker and forge, and its refusal as an error sectio
   expect(m.state).toBe("error");
   expect(m.reason).toContain("invalid TRACKER='bogus'");
 });
+
+// the server runs from the station checkout, whose .env holds JIRA_PROJECT_KEY; the CLI loads that file, so the card must too.
+test("mode: JIRA_PROJECT_KEY only in the checkout .env resolves tracker=jira; the server env wins over the file", async () => {
+  const checkout = mkdtempSync(join(tmpdir(), "health-checkout-"));
+  cleanups.push(() => rmSync(checkout, { recursive: true, force: true }));
+  writeFileSync(join(checkout, ".env"), "JIRA_PROJECT_KEY=HIMMEL\n");
+  const s = boot({ FORGE: "none" }, { root: checkout });
+  expect((await body(s.port)).mode).toEqual({ state: "ok", tracker: "jira", forge: "none", idRequired: "1" });
+  const over = boot({ FORGE: "none", TRACKER: "none" }, { root: checkout });
+  expect((await body(over.port)).mode.tracker).toBe("none");
+});

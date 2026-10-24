@@ -1736,8 +1736,8 @@ fi
 
 read_round || exit $?
 
-if [ "$round" -lt 4 ]; then
-    echo "review-round: $branch is at round $round; automatic deferral starts at round 4" >&2
+if [ "$round" -lt 2 ]; then
+    echo "review-round: $branch is at round $round; automatic deferral starts at round 2 on a PR that touches no CI trust path, round 4 otherwise" >&2
     exit 2
 fi
 if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
@@ -1749,23 +1749,69 @@ if [ ! -f "$ledger" ]; then
     echo "review-round: CR ledger is missing at $ledger" >&2
     exit 5
 fi
+# Rounds 2 and 3 close early only on the branch's one open PR, headed at
+# --head, whose diff matches no pattern in the default branch's
+# ci-trust-paths.txt (trust_path_check, the question merge-on-green asks).
+# Any other answer, a refusal included, leaves the round-4 cap in force.
+if [ "$round" -lt 4 ]; then
+    early_refuse() {
+        echo "review-round: $branch is at round $round; an early close needs $1 - automatic deferral starts at round 4" >&2
+        exit 2
+    }
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+        --json number -q 'if length == 1 then .[0].number else "" end' 2>/dev/null)" || early_pr=""
+    case "$early_pr" in
+        ''|*[!0-9]*) early_refuse "the branch's one open PR, and none was found" ;;
+    esac
+    early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh repo view --json owner,name,defaultBranchRef \
+        --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)" || early_repo=""
+    early_nwo="${early_repo%% *}"
+    early_default="${early_repo#* }"
+    case "$early_repo" in
+        *" "*) ;;
+        *) early_refuse "the repository and its default branch, and gh could not read them" ;;
+    esac
+    [ -n "$early_nwo" ] && [ -n "$early_default" ] \
+        || early_refuse "the repository and its default branch, and gh could not read them"
+    unset -f trust_path_check 2>/dev/null || true
+    # shellcheck source=scripts/lib/go-gate.sh
+    # shellcheck disable=SC1091
+    if ! . "$HIMMEL_ROOT/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_path_check >/dev/null 2>&1; then
+        early_refuse "the trust-path check, and scripts/lib/go-gate.sh could not be loaded"
+    fi
+    early_trust="$(trust_path_check "$early_nwo" "$early_pr" "$full_head" "$early_default" "$HIMMEL_ROOT")" || early_trust="refused ${early_trust:-with no reason}"
+    case "$early_trust" in
+        none) ;;
+        "hit "*) early_refuse "a PR that touches no CI trust path, and PR #$early_pr touches trust path ${early_trust#hit }" ;;
+        *) early_refuse "a trust-path answer of none for PR #$early_pr, and the check said: $early_trust" ;;
+    esac
+fi
 cap_reason='Suggestion deferred after the three-round /pr-check cap.'
 delta_reason='Finding deferred in the one delta round after the three-round /pr-check cap.'
+early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
 # --head is the head the one delta round reviewed.
 delta_mode=0
-if [ -f "$delta_state" ]; then
+if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
     delta_reviewed="$(awk '{print $2; exit}' "$delta_state" 2>/dev/null)" || delta_reviewed=""
     [ "$delta_reviewed" = "$full_head" ] && delta_mode=1
 fi
+amend_why='deferred by review-round.sh after the three-round cap'
 if [ "$delta_mode" -eq 1 ]; then
     defer_reason="$delta_reason"
     round_label="the delta round"
+elif [ "$round" -lt 4 ]; then
+    defer_reason="$early_reason"
+    round_label="round $round"
+    amend_why='deferred by review-round.sh: a Suggestions-only round closes the loop on a non-trust PR'
 else
     defer_reason="$cap_reason"
     round_label="round $round"
 fi
 
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
@@ -1841,7 +1887,7 @@ for (const o of findings.values()) {
     class: typeof o.class === "string" ? o.class.trim() : ""
   });
   else if ((severity === "sug" || severity === "nit") && trackedDeferred &&
-           reason === e.CAP_REASON) {
+           reason === e.DEFER_REASON) {
     capDeferred.push({id, ticket});
   }
   else if (!verdict) blocking.push(id);
@@ -1988,7 +2034,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         --artifact "$artifact" --perspective "$perspective" \
         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" ${fu_why:+--set "fu_why=$fu_why"} \
         --set class=unattributed --set "reason=$defer_reason" \
-        --reason 'deferred by review-round.sh after the three-round cap'; then
+        --reason "$amend_why"; then
         amend_rc=5
         break
     fi

@@ -445,7 +445,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Test suites run through `quiet-run` | `require-quiet-run`, `block-tail-pipe-on-gates` | — | `require-quiet-run` | — | — | — |
 | Dependency supply chain | — | — | — | pc `lockfile-integrity`, `uv-lock-integrity`, `pip-hashes`; pp `npm-audit`, `npm-licenses`, `npm-audit-signatures` | `security-scan` (same scripts, `pip-hashes` excepted) | — |
 | Generated docs match their sources | — | — | — | pc `agents-md-fresh`, `debrand-coverage`, `lanes-inventory-guard`, `commands-catalog-drift`, `secrets-doc-drift`, `skill-description-cap`, `doc-guard`; pp `doc-guard-push` | `doc-invariants` (same checks over the staged tree, plus `doc-guard` over the PR range) | — |
-| Plugin edits bump the version | — | — | — | pc `plugin-version-bump-required` | `plugin-version-bump` | — |
+| Plugin versions change only in the release cut | — | — | — | pc `plugin-version-bump-required` | `plugin-version-bump` | — |
 
 ### Overlaps worth a look
 

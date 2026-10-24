@@ -31,8 +31,9 @@
 # classes look at the last 500 rows only. The whole pass is cut off at
 # TICKET_STATUS_DRIFT_BUDGET seconds (default 90).
 #
-# ponytail: the derive runs per key (live gh and Jira reads, no shared
-# snapshot), upgrade path = the batched TS_SNAPSHOT_DIR the sweep builds.
+# ponytail: the Jira reads are batched (100 keys per search) but the derive still
+# reads gh live per key that has a ladder status, upgrade path = the batched
+# TS_SNAPSHOT_DIR the sweep builds.
 #
 # Env: TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); the rest is
 # read by the lib.
@@ -174,6 +175,29 @@ if [ -z "$DOCS" ]; then DOCS=$(handover_root 2>/dev/null) || DOCS=""; fi # swall
 [ -z "$DOCS" ] || [ ! -d "$DOCS" ] || docs_all=$(find "$DOCS" -maxdepth 4 -type f -name '*-N*.md' 2>/dev/null) # swallow-ok: an unreadable tree narrows the TWO-OWNERS scan only
 
 is_owner_state() { case "$1" in live|idle|IDLE-HELD) return 0 ;; *) return 1 ;; esac; }
+
+# The status and type of every active key in a few JQL searches, not one `jira get`
+# per key. A key the batch lacks (or a failed chunk) is still read by its own get.
+jbatch=""
+while IFS= read -r chunk; do
+    [ -n "$chunk" ] || continue
+    # swallow-ok: a failed chunk leaves its keys to the per-key get
+    jrows=$(ts_jira list --jql "key in ($chunk)" --limit 300 2>/dev/null) || continue
+    jbatch="$jbatch$jrows"$'\n'
+done <<<"$(printf '%s\n' "$keys" | awk 'NF { printf "%s%s", (n++ % 100 ? "," : (n > 1 ? "\n" : "")), $0 } END { print "" }')"
+jbatch=$(printf '%s\n' "$jbatch" | awk -F'\t' '$1 ~ /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/ && NF >= 3 { print $1 "\t" $2 "\t" $3 }')
+eval "$(declare -f ts_read_jira | sed '1s/^ts_read_jira/_ts_read_jira_get/')"
+ts_read_jira() { # <KEY> - the batch row, else the lib's own get
+    local row
+    row=$(printf '%s\n' "$jbatch" | awk -F'\t' -v k="$1" '$1 == k { print $2 "\t" $3; exit }')
+    if [ -n "$row" ]; then
+        TS_J_TYPE=${row%%$'\t'*}
+        TS_J_STATUS=${row#*$'\t'}
+        [ -n "$TS_J_STATUS" ] && [ -n "$TS_J_TYPE" ]
+        return
+    fi
+    _ts_read_jira_get "$1"
+}
 
 # --- per key -----------------------------------------------------------------------
 while IFS= read -r key; do

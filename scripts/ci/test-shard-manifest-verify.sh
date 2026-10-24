@@ -38,6 +38,8 @@
 #   MV34  pr, impacted: a floor suite listed RUN never ran      -> rc 1
 #   MV35  pr, impacted: a shard `skip`s a selected local suite  -> rc 1
 #   MV36  pr, full: a shard `skip`s a local suite               -> rc 1; ran -> rc 0
+#   MV37  REAL manifests, one suite ran rc 1 and is quarantined -> rc 0 in all and pr mode;
+#         the same failure with no quarantine row                -> rc 1
 #   MV38  pr, impacted: the list capability-skips a pr-tier suite the shard ran -> rc 0;
 #         a shard that did not run it -> rc 1; a local-tier suite or not pr mode -> rc 1
 #
@@ -98,7 +100,7 @@ disc() {
 }
 
 # MV_TIER is the aggregator step's SUITE_TIER_MODE.
-# MV_TSV is the suite-tiers.tsv the verifier reads for its pr rows.
+# MV_TSV is the suite-tiers.tsv the verifier reads for its quarantine and pr rows.
 verify() { SUITE_TIER_MODE="${MV_TIER:-}" SUITE_TIERS_TSV="${MV_TSV:-}" bash "$VERIFY" --dir "$1/m" --shards "$2" --selection "$1/sel.txt" --discovered "$1/disc.txt" 2>&1; }
 
 # expect <label> <want-rc> <dir> <n> [<grep-ERE the output must match>]
@@ -393,6 +395,20 @@ MV_TIER="pr" expect "MV36: pr, full: a shard that skips a local suite is refused
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'ran 0 scripts/test-l.sh'
 MV_TIER="pr" expect "MV36: pr, full: the local suite ran on a shard" 0 "$d" 1 '^OK'
 
+# --- MV37: a quarantined suite that ran red is a NOTE, never passed coverage -----
+# The real PR 2617 manifests again, one `ran 0` line turned into `ran 1`, which is
+# the line a failing quarantined suite leaves (the runner records its rc).
+d=$(case_dir mv37); cp "$FIXDIR"/manifest-shard*.txt "$d/m/"
+grep -E '^(mode|reason|base|head|selector|changed|suite) ' "$d/m/manifest-shard1.txt" > "$d/sel.txt"
+sed -n 's/^ran [0-9]* \(.*\)$/[RUN ] \1/p' "$d"/m/manifest-shard*.txt > "$d/disc.txt"
+q37=$(sed -n 's/^ran 0 \(.*\)$/\1/p' "$d/m/manifest-shard1.txt" | head -n 1)
+sed "s#^ran 0 $q37\$#ran 1 $q37#" "$d/m/manifest-shard1.txt" > "$d/m/shard1.new" && mv "$d/m/shard1.new" "$d/m/manifest-shard1.txt"
+printf '# fixture tiers\n%s\tquarantine\tflake\n' "$q37" > "$d/tiers.tsv"
+printf '# fixture tiers\nscripts/test-other.sh\tpr\tx\n' > "$d/tiers-none.tsv"
+MV_TSV="$d/tiers.tsv" expect "MV37: all mode, a quarantined suite that ran rc 1 is a NOTE" 0 "$d" 8 'NOTE: .*quarantine'
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV37: pr mode, a quarantined suite that ran rc 1 is a NOTE" 0 "$d" 8 'NOTE: .*quarantine'
+MV_TSV="$d/tiers-none.tsv" expect "MV37: the same rc 1 with no quarantine row is refused" 1 "$d" 8 'ran on shard1 with rc 1'
+MV_TSV="$d/missing.tsv" expect "MV37: an unreadable tiers file forgives nothing" 1 "$d" 8 'ran on shard1 with rc 1'
 # --- MV38: the aggregator lacks a tool the shards install ------------------------
 # The aggregator's own `--list .` capability-skips a pr-tier suite (no bun, no
 # gitleaks, ... on that runner) while the shards, which install them, ran it.

@@ -137,9 +137,9 @@ async function post(path, body) {
 // The server answers 202 while its one background report runs (it can take
 // minutes); keep asking, with the token each time, until a terminal answer.
 // a 202 answers as soon as the probe step changes; onWait gets its body ({ elapsedMs, progress }).
-async function fetchFeed(onWait) {
-  for (;;) {
-    const r = await fetch("/api/feed", { headers: { "X-Himmel-Token": token } });
+async function fetchFeed(onWait, force) {
+  for (let first = true; ; first = false) {
+    const r = await fetch(force && first ? "/api/feed?refresh=1" : "/api/feed", { headers: { "X-Himmel-Token": token } }); // only the first request forces; the polls wait on that run
     if (r.status !== 202) return r;
     let j = {};
     try { j = await r.json(); } catch (_) { /* progress text only */ }
@@ -150,14 +150,14 @@ async function fetchFeed(onWait) {
 
 // Only the newest call may paint: an older report can land after a newer one.
 let feedGen = 0;
-async function loadFeed() {
+async function loadFeed(force) {
   const gen = ++feedGen;
   const say = (j) => {
     const s = Math.round((j.elapsedMs || 0) / 1000), p = j.progress;
     return p ? `re-probing ${p.source} (${p.i} of ${p.n})… ${s}s` : `re-probing… ${s}s`;
   };
   try {
-    const r = await fetchFeed((j) => { if (gen === feedGen) toast(say(j)); });
+    const r = await fetchFeed((j) => { if (gen === feedGen) toast(say(j)); }, force);
     if (r.ok) { const f = await r.json(); if (gen === feedGen) { feed = f; paint(); } }
     else if (gen === feedGen) toast(`re-probe failed (${r.status})`);
   } catch (_) { if (gen === feedGen) toast("re-probe failed: server unreachable"); }
@@ -434,7 +434,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
   if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
-  if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(); } // the verdict reads the doctor feed too
+  if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") {
     state.filt = { health: null, kind: null, q: b.dataset.id, problems: false };
     location.hash = "#/config";

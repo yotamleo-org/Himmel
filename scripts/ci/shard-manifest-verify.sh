@@ -20,7 +20,9 @@
 #
 # Refuses (rc 1): a missing manifest; a manifest whose head, header or shard
 # line differs from what this job computed (a manifest from another sha, or a
-# shard that decided differently); any `unrun`; any `ran` with rc != 0; a suite
+# shard that decided differently); any `unrun`; any `ran` with rc != 0 (except a
+# suite scripts/ci/suite-tiers.tsv quarantines, a NOTE in every mode: the runner
+# forgave it, it is uncovered and never counted as passed); a suite
 # ran more than once; a suite <list> names to RUN that no shard ran (in
 # impacted mode: a SELECTED one); and in impacted mode a suite ran that was not
 # selected, or a selected suite no shard ran that <list> does not account for.
@@ -41,6 +43,9 @@
 # PATH`) is the same: the aggregator runner lacks tools the shards install, so
 # the shards run it and must, as for any floor suite. An unreadable tiers file
 # lists no pr suite, so no capability skip is excused.
+#
+# SUITE_TIERS_TSV (env) overrides the suite-tiers.tsv next to this script; an
+# unreadable file quarantines nothing, so no failure is forgiven.
 #
 # --absent-ok "<k> ...": shards the plan job left out because they had no suite
 # Only THEIR missing manifests are excused (one that exists is
@@ -78,6 +83,8 @@ if [ ! -r "$selection" ] || ! grep -qE '^mode (full|impacted)$' "$selection"; th
   exit 2
 fi
 tiers_tsv="${SUITE_TIERS_TSV:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/suite-tiers.tsv}"
+quar_lines=""
+[ -r "$tiers_tsv" ] && quar_lines=$(awk -F'\t' '!/^#/ && $2 == "quarantine" { print "quar " $1 }' "$tiers_tsv")
 pr_lines=""
 [ -r "$tiers_tsv" ] && pr_lines=$(awk -F'\t' '!/^#/ && $2 == "pr" { print "ptier " $1 }' "$tiers_tsv")
 disc_lines=""
@@ -162,6 +169,7 @@ done
 acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
           [ -z "$pr_lines" ] || printf '%s\n' "$pr_lines"
           printf '%s\n' "$disc_lines"
+          [ -z "$quar_lines" ] || printf '%s\n' "$quar_lines"
           printf '%s' "$bodies"; } | awk -v mode="$mode" -v tier="${SUITE_TIER_MODE:-}" '
   $1 == "sel"   { sel[$2] = 1; order[++nsel] = $2; next }
   $1 == "ptier" { ptier[$2] = 1; next }
@@ -171,8 +179,9 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
   $1 == "dlocal" && tier == "pr" && mode == "full" { drun[$2] = 1; dorder[++ndisc] = $2; next }
   $1 == "dlocal" { if (tier == "pr") dlocal[$2] = 1; else dskip[$2] = 1; next }
   $1 == "dskip" { dskip[$2] = 1; next }
+  $1 == "quar"  { quar[$2] = 1; next }
   NF < 3 { next }
-  $2 == "ran"      { runs[$4]++; if ($3 != "0") printf "FAIL: %s ran on shard%s with rc %s\n", $4, $1, $3; else nran++; next }
+  $2 == "ran"      { runs[$4]++; if ($3 == "0") nran++; else if ($4 in quar) printf "NOTE: %s ran on shard%s with rc %s, quarantined in suite-tiers.tsv (uncovered)\n", $4, $1, $3; else printf "FAIL: %s ran on shard%s with rc %s\n", $4, $1, $3; next }
   $2 == "unrun"    { printf "FAIL: %s was assigned to shard%s but left unrun\n", $3, $1; next }
   $2 == "skip"     { skipped[$3] = 1; next }
   $2 == "notfound" { missing[$3] = 1; next }

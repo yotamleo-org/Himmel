@@ -168,6 +168,13 @@
 # graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
 # that leg's alert. semantic-update.sh rc 3 (bank at/over threshold) and rc 4
 # (promote lock held) are benign skips: no alert, run stays green. Without the flag nothing changes for an armed cadence.
+# After a successful semantic step (rc 0) the merged graph (graph.json,
+# semantic-manifest.json, semantic-runs.jsonl) is PROMOTED from the worktree's
+# graphify-out into the primary checkout's graphify-out -- the directory legs and
+# the session-start advisory read -- under the promote lock ast-update.sh takes
+# there, waited for (GRAPH_CADENCE_PROMOTE_LOCK_WAIT seconds, default 300; still
+# held at the deadline = benign skip, the next fire retries). It runs whether or
+# not origin/main tracks a graph, so the retired-path no-op never skips it.
 #
 # THRESHOLD DEFAULT = 15 commits behind. Justified against the measured
 # numbers: the shipped graph was 36 commits behind
@@ -734,9 +741,25 @@ if [ -n "${GRAPH_CADENCE_HIMMEL_ROOT:-}" ]; then
         *) PIPELINE_LOCK_HEARTBEAT_SECONDS="$GRAPH_CADENCE_LOCK_HEARTBEAT_SECONDS" ;;
     esac
 fi
+# The semantic promote's lock on the PRIMARY graphify-out (step 6, --semantic):
+# the same $OUT/.promote.lock ast-update.sh takes. Released by the EXIT trap too,
+# so a killed run never leaves the hourly AST pass skipping behind it.
+SEM_PROMOTE_LOCK="$HIMMEL_ROOT/graphify-out/.promote.lock"
+SEM_PROMOTE_LOCK_HELD=0
+SEM_PROMOTE_LOCK_TOKEN=""
+_sem_promote_lock_release() {
+    local cur=""
+    [ "$SEM_PROMOTE_LOCK_HELD" -eq 1 ] || return 0
+    SEM_PROMOTE_LOCK_HELD=0
+    cur=$(cat "$SEM_PROMOTE_LOCK/owner" 2>/dev/null) || cur=""
+    # Never remove a lock another refresh took over.
+    [ "$cur" = "$SEM_PROMOTE_LOCK_TOKEN" ] && rm -rf "$SEM_PROMOTE_LOCK" 2>/dev/null
+    return 0
+}
 # shellcheck disable=SC2329,SC2317  # invoked only via `trap ... EXIT` below
 _pipeline_lock_release() {
     local cur=""
+    _sem_promote_lock_release
     if [ -n "$PIPELINE_LOCK_HEARTBEAT_PID" ]; then
         kill "$PIPELINE_LOCK_HEARTBEAT_PID" 2>/dev/null || true
         wait "$PIPELINE_LOCK_HEARTBEAT_PID" 2>/dev/null || true
@@ -982,6 +1005,59 @@ if [ "$_ast_rc" -ne 0 ]; then
 fi
 ACTION="refreshed"
 
+# shellcheck source=../lib/prim.sh
+. "$REPO_ROOT/scripts/lib/prim.sh" || exit 2
+# _promote_semantic_to_primary -- copy the merged graph the semantic step built in
+# the dedicated worktree into the primary checkout's graphify-out, the directory
+# legs and the session-start advisory read. It takes the promote lock the hourly
+# AST pass (ast-update.sh) takes, WAITING for it (bounded) so the two never write
+# at once; a lock still held at the deadline is a benign skip, the next fire
+# retries. A promote that cannot be written fails the run. Runs before the
+# retired-path no-op below, so that no-op never skips it.
+_promote_semantic_to_primary() {
+    local src="$WORKTREE_DIR/graphify-out" dest="$HIMMEL_ROOT/graphify-out"
+    local wait_s="${GRAPH_CADENCE_PROMOTE_LOCK_WAIT:-300}" waited=0 gone=0 f
+    case "$wait_s" in ''|*[!0-9]*) wait_s=300 ;; esac
+    if [ ! -f "$src/graph.json" ]; then
+        echo "graph-cadence: WARN semantic promote skipped -- $src/graph.json does not exist" >&2
+        return 0
+    fi
+    mkdir -p "$dest" || _fail "semantic promote: could not create $dest"
+    # prim-ok: the lock must be the mkdir directory ast-update.sh and semantic-update.sh take; with_lock's flock record would not exclude them
+    until mkdir "$SEM_PROMOTE_LOCK" 2>/dev/null; do
+        if [ ! -d "$SEM_PROMOTE_LOCK" ]; then
+            # the holder released between our mkdir and this check: contention, retry; a few misses in a row is a filesystem fault
+            gone=$((gone + 1))
+            [ "$gone" -lt 3 ] || _fail "semantic promote: could not create the promote lock $SEM_PROMOTE_LOCK (not held by another refresh)"
+            continue
+        fi
+        if [ "$waited" -eq 0 ]; then
+            echo "graph-cadence: waiting for promote lock $SEM_PROMOTE_LOCK (held by another graph refresh), up to ${wait_s}s"
+        fi
+        if [ "$waited" -ge "$wait_s" ]; then
+            echo "graph-cadence: WARN semantic promote SKIPPED -- promote lock $SEM_PROMOTE_LOCK still held after ${wait_s}s; the primary graphify-out keeps its previous graph and the next fire retries" >&2
+            return 0
+        fi
+        sleep 1; waited=$((waited + 1))
+    done
+    SEM_PROMOTE_LOCK_TOKEN="$$-$RANDOM"
+    SEM_PROMOTE_LOCK_HELD=1
+    if ! { printf '%s\n' "$SEM_PROMOTE_LOCK_TOKEN" > "$SEM_PROMOTE_LOCK/owner" \
+           && date -u +%s > "$SEM_PROMOTE_LOCK/acquired"; } 2>/dev/null; then
+        _sem_promote_lock_release
+        _fail "semantic promote: could not stamp the promote lock $SEM_PROMOTE_LOCK"
+    fi
+    for f in graph.json semantic-manifest.json semantic-runs.jsonl; do
+        [ -f "$src/$f" ] || continue
+        if ! atomic_write "$dest/$f" < "$src/$f" 2>/dev/null; then
+            _sem_promote_lock_release
+            _fail "semantic promote: could not write $dest/$f from $src/$f"
+        fi
+    done
+    _sem_promote_lock_release
+    echo "graph-cadence: promoted the semantic graph to $dest (graph.json, semantic-manifest.json, semantic-runs.jsonl)"
+}
+
 # --- 6 (cont). semantic step (--semantic only) -----------------
 if [ "$SEMANTIC" -eq 1 ]; then
     # The file this run's output lands in (the cadence runner redirects it); LOG_FILE only when stdout is no file.
@@ -1014,6 +1090,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
         0)
             bash "$CADENCE_ALERT" clear "$_sem_leg"
             [ "$_sem_backoff" -eq 1 ] || bash "$CADENCE_ALERT" clear "$_sem_leg-backoff"
+            _promote_semantic_to_primary
             ;;
         # 3 = bank at/over threshold, 4 = promote lock held. Nothing
         # was touched and the next fire retries, so neither alerts nor fails the

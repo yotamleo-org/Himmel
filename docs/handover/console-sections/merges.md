@@ -66,6 +66,16 @@ cannot be added or edited after the fact, and a push after it needs a fresh
 trust-reviewed GO. A trust-path PR also refuses while the anchor checkout is
 behind `origin` (pull the primary first), so the gate it runs is current.
 
+Plugin versions change only in the release cut, the PR that changes the root
+`VERSION` file; `check-plugin-drift.sh --bump-required`, ready-check item 9
+and the merge-on-green recheck refuse a version change in any other PR. The
+release-cut PR raises the version of every plugin changed since the last tag
+(`git diff --name-only <last tag> HEAD -- marketplace/plugins/`), each strictly
+above `main`'s, in the same commit as the `VERSION` change (the pre-commit hook
+sees one commit at a time); the gates check that every plugin the cut touches
+is raised above `main`, not that every plugin changed since the last tag is in
+the cut, so the cut's author lists them.
+
 To cut a pre-release tag yourself, run
 `bash scripts/handover/console-kit/cut-tag.sh <version> <sha>` (`--dry-run`
 first to see the plan) — it creates the tag through the GitHub API, never
