@@ -1137,7 +1137,8 @@ function applyCommitRulesStep(answers) {
   const file = commitRulesPath();
   try {
     // Each key lands in the layer that wins for it; a key the answers omit is
-    // dropped from every layer so no stale value survives in either.
+    // dropped from every layer, the legacy .env included (still read as the
+    // fallback), so no stale value survives in any.
     const entries = commitRulesEntries(answers.commitRules);
     const omitted = ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN'].filter((k) => !entries.some(([ek]) => ek === k));
     const byFile = new Map([[file, []]]);
@@ -1147,6 +1148,8 @@ function applyCommitRulesStep(answers) {
     }
     const local = behaviourConfigLib.confLocalPath();
     if (!byFile.has(local) && fs.existsSync(local)) byFile.set(local, []);
+    const env = envFilePath();
+    if (omitted.some((k) => behaviourConfigLib.layersSetting(k, env).includes(env))) byFile.set(env, []);
     for (const [target, list] of byFile) behaviourConfigLib.upsertConfEntries(target, list, omitted);
   } catch (e) {
     console.error(`himmelctl: could not write commit rules to ${file}: ${e.message}`);
