@@ -183,7 +183,7 @@ elapsed=$((SECONDS - start))
 # The launcher below has the shape pip writes (shebang + `from <pkg>.main import
 # main`); the stub package stands in for pre_commit so the row reproduces on a host
 # that has the real one system-wide.
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import site, sys; sys.exit(0 if site.ENABLE_USER_SITE else 1)' >/dev/null 2>&1; then
   INSTALL_HOME="$SCRATCH/install-home"
   OTHER_HOME="$SCRATCH/other-home"
   mkdir -p "$INSTALL_HOME/.local/bin" "$OTHER_HOME"
@@ -205,7 +205,7 @@ if command -v python3 >/dev/null 2>&1; then
   OUT="$(HOME="$INSTALL_HOME" PYTHONUSERBASE="$SCRATCH/elsewhere" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/usersite.sh" 2>&1)"; RC=$?
   [ "$RC" -ne 0 ] && ok "a caller-set PYTHONUSERBASE is kept, not overridden" || bad "the canary overrode the caller's PYTHONUSERBASE"
 else
-  echo "skip - python3 absent, the --user launcher rows need it"
+  echo "skip - python3 absent or its user site disabled, the --user launcher rows need it"
 fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
