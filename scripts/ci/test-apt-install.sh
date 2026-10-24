@@ -142,6 +142,46 @@ run_case c8 STUB_HANG=1 STUB_HANG_SECS=8 APT_T_PLAIN=1
 [ "$rc" -eq 0 ] && [ ! -e "$TMP/c8/log.survived" ] && [ "$SECONDS" -lt 6 ] \
   && ok "hung install is killed by the timeout (not waited out)" || bad "timeout (rc=$rc elapsed=${SECONDS}s survived=$([ -e "$TMP/c8/log.survived" ] && echo yes || echo no))"
 
+# 9. BSD sed (the macos-cadence runner) reads `sed -i EXPR file` as suffix EXPR and
+#    script FILE: 'extra characters at the end of h command'. The rewrite must not
+#    edit in place at all (the -i argument shape differs, and a fixed suffix would
+#    clobber an operator's own .bak), so the shim rejects every -i form.
+mkdir -p "$TMP/bsdsed" "$TMP/c9"
+REAL_SED="$(command -v sed)"
+cat > "$TMP/bsdsed/sed" <<STUB
+#!/bin/sh
+case "\$1" in -i*) echo "sed: 1: \"\$3\": extra characters at the end of h command" >&2; exit 1 ;; esac
+exec "$REAL_SED" "\$@"
+STUB
+chmod +x "$TMP/bsdsed/sed"
+echo operator-backup > "$TMP/c9/ubuntu.sources.bak"
+run_case c9 PATH="$TMP/bsdsed:$PATH"
+[ "$rc" -eq 0 ] && grep -q alt.example <<<"$src" && ! grep -q 'extra characters' <<<"$out" \
+  && [ "$(cat "$TMP/c9/ubuntu.sources.bak" 2>/dev/null)" = operator-backup ] \
+  && ok "mirror rewrite avoids in-place sed and leaves an existing .bak untouched" || bad "BSD sed rewrite (rc=$rc src=$src out=$out)"
+
+# 10. BSD sed takes `\?` literally (a GNU BRE extension), so a host parse written with
+#     it keeps `http://` on the host and the rewrite never matches (macos-cadence log:
+#     'http://primary.example failed or stalled'). The shim turns `\?` into a literal `?`.
+mkdir -p "$TMP/bsdre" "$TMP/c10"
+{
+  echo '#!/bin/sh'
+  echo "REAL_SED='$REAL_SED'"
+  cat <<'STUB'
+n=$#
+while [ "$n" -gt 0 ]; do
+  a="$1"; shift
+  case "$a" in *'\?'*) a="$(printf '%s' "$a" | "$REAL_SED" 's/\\?/?/g')" ;; esac
+  set -- "$@" "$a"; n=$((n - 1))
+done
+exec "$REAL_SED" "$@"
+STUB
+} > "$TMP/bsdre/sed"
+chmod +x "$TMP/bsdre/sed"
+run_case c10 PATH="$TMP/bsdre:$PATH"
+[ "$rc" -eq 0 ] && grep -q alt.example <<<"$src" && ! grep -q 'http://primary' <<<"$out" \
+  && ok "host parse works without GNU-only sed regex (BSD literal \\?)" || bad "BSD sed regex (rc=$rc src=$src out=$out)"
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1
