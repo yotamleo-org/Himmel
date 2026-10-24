@@ -141,8 +141,9 @@ is, and a re-install never rewrites it. So check that it holds them, and after a
 himmel update compare it with the core file, because a PR touching a core path
 your list lacks is refused (`list core-missing <pattern>`); copy the missing line
 back from the core file. A list deleted from the default branch refuses every
-merge: restore your last full list from git history, so your own lines come back
-too, then add any core line it lacks.
+merge, including the one that brings it back: restore your last full list from
+git history, so your own lines come back too, add any core line it lacks, and
+land that commit outside Claude, in the forge web UI or with a raw `gh pr merge`.
 
 Inside a Claude session, a PR touching a listed path needs a trust-reviewed GO.
 Only a himmel chief signs one for your repo, and only once your repo has exactly
