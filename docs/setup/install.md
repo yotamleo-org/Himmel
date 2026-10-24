@@ -152,8 +152,9 @@ judge has recorded its verdict on that head with
 `write-verdict.sh --repo <owner/name>`; the chief then runs
 `go.sh --repo <owner/name> --trust-reviewed <judge-qid> <pr> <head>`. The file
 ships empty and is read through the GitHub API from the default branch of the
-himmel repo your download's `origin` remote names, so a row counts only once it
-is merged there; an edit in your local copy does not count. In solo mode, or
+himmel repo that the signing chief's himmel download names as its `origin`
+remote (your own download only when you are that chief), so a row counts only
+once it is merged there; an edit in a local copy does not count. In solo mode, or
 until then, such a PR does not merge from a session: the operator merges it in
 the forge web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
 
