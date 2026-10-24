@@ -26,6 +26,11 @@
 # agent session (CLAUDECODE set) it prints the plan and the command for the
 # operator, and writes nothing (exit 3), since an agent may not write
 # ~/.himmel/config.json.
+#
+# Exit: 0 moved, nothing to move, no .env or a dry run; 1 a step failed: no
+# node, or the backup, copy or verify failed (no line removed from .env), or
+# the final rewrite of .env failed (restore it from the printed backup);
+# 2 usage; 3 an agent session, nothing written.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +46,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { echo "migrate-env: --env needs a value" >&2; exit 2; }
             envfile="$2"; shift 2 ;;
         --dry-run) dry=1; shift ;;
-        -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
         *) echo "migrate-env: unknown argument: $1" >&2; exit 2 ;;
     esac
 done

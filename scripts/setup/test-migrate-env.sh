@@ -42,7 +42,7 @@ rc=$?
 if [ "$rc" = 0 ]; then pass "real-template dry run exits 0"; else fail "real-template dry run exited $rc"; fi
 missing=""
 for k in $names NOT_READ_BY_HIMMEL_ZZQ; do
-    printf '%s\n' "$out" | grep -q "^  $k " || missing="$missing $k"
+    case "$out" in *$'\n'"  $k "*) ;; *) missing="$missing $k" ;; esac
 done
 if [ -z "$missing" ]; then pass "the report lists every .env key"; else fail "the report misses:$missing"; fi
 has "a behaviour key goes to himmel.conf" "  HANDOVER_DIR → ~/.himmel/himmel.conf" "$out"
@@ -196,6 +196,27 @@ rc=$?
 if [ "$rc" = 3 ]; then pass "an agent session cannot apply (exit 3)"; else fail "an agent session apply exited $rc"; fi
 has "the refusal names the operator command" "bash $SCRIPT" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig" && [ ! -e "$HOME/.himmel" ]; then pass "the refusal writes nothing"; else fail "the refusal wrote something"; fi
+
+# --- 7. The update's step: --check previews, the apply moves and reports ---
+fixture_env
+cp -p "$TMP/st/.env" "$FX/.env"
+awk '/^run_env_migration\(\) \{/,/^\}$/' "$REPO/scripts/himmel-update.sh" > "$TMP/run-env-migration.sh"
+update_step() {
+    # shellcheck disable=SC2034 # read by the sourced run_env_migration
+    (ROOT="$FX"
+     # shellcheck source=/dev/null
+     . "$TMP/run-env-migration.sh"
+     STATUS_env_migration=""
+     run_env_migration "$1"
+     echo "rc=$? status=$STATUS_env_migration") 2>&1
+}
+out=$(update_step check)
+has "the update check marks the migration pending" "rc=0 status=pending" "$out"
+if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "the update check writes nothing"; else fail "the update check changed .env"; fi
+out=$(update_step apply)
+has "the update apply reports the migration done" "rc=0 status=updated" "$out"
+lacks "the update apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
+no_canary "the update step prints no value" "$out"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
