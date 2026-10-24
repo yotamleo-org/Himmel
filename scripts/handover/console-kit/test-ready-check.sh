@@ -96,7 +96,7 @@ case "$args" in
     "run list"*)
         [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
         w="${args#*--workflow }"; w="${w%% *}"
-        case "$args" in *"--branch main "*) w="$w.main" ;; *"--branch "*) w="$w.other-branch" ;; esac
+        case "$args" in *"--branch main "*) w="$w.main" ;; *"--branch ${STUB_PR_BRANCH:-@}"*) w="$w.pr-branch" ;; *"--branch "*) w="$w.other-branch" ;; esac
         f="${args#*--json }"; f="${f%% *}"
         if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then jq -c --arg f "$f" '($f | split(",")) as $k | map(with_entries(select(.key as $n | $k | index($n))))' "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
     "run view "*)
@@ -1357,6 +1357,81 @@ wf_run ".github/workflows/ci.yml"
 check "main's newest run is green, an older one red: exit 1" "$rc" "1"
 notcontains "main's newest run is green, an older one red: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR/ci.yml.main.json" "$RUNDIR"/jobs-*.json
+
+# A merge-forward head carries no dispatch run of its own; its proof is a PRE-EXISTING-red dispatch
+# run at an ANCESTOR commit on the PR branch, accepted only when every file the PR changes is the
+# same blob at that ancestor and at the head. The run row is the shape `gh run list --workflow
+# macos-cadence.yml --event workflow_dispatch --branch <pr branch> --json
+# databaseId,status,conclusion,headSha,headBranch` printed for PR 3662 (headSha swapped for the
+# fixture's ancestor); the job names are that run's real failed jobs.
+ANC_WF=.github/workflows/macos-cadence.yml
+ANC_PRFILE=scripts/pr-file.sh
+ANC_BRANCH=fix/himmel-7245-macos-bsd-tools
+git -C "$WF_REPO_ROOT" show HEAD:"$ANC_WF" > "$WFDIR/macos-cadence.yml"
+anc_blob() { printf '%s\n' "$1" | git -C "$REPO" hash-object -w --stdin; }
+anc_commit() {  # <parent|-> <workflow blob> <pr file blob> <main file blob> -> commit sha
+    local idx="$tmp/anc.idx" tree
+    rm -f "$idx"
+    GIT_INDEX_FILE="$idx" git -C "$REPO" update-index --add --cacheinfo "100644,$2,$ANC_WF" --cacheinfo "100644,$3,$ANC_PRFILE" --cacheinfo "100644,$4,main-only.txt"
+    tree=$(GIT_INDEX_FILE="$idx" git -C "$REPO" write-tree)
+    if [ "$1" = - ]; then git -C "$REPO" commit-tree "$tree" -m "chore: fixture"; else git -C "$REPO" commit-tree "$tree" -p "$1" -m "chore: fixture"; fi
+}
+B_WF=$(anc_blob workflow-v1); B_WF2=$(anc_blob workflow-v2); B_PR1=$(anc_blob pr-file-v1); B_PR2=$(anc_blob pr-file-v2)
+B_MAIN1=$(anc_blob main-v1); B_MAIN2=$(anc_blob main-v2)
+ANC_BASE=$(anc_commit - "$B_WF" "$B_PR1" "$B_MAIN1")
+ANC_COMMIT=$(anc_commit "$ANC_BASE" "$B_WF2" "$B_PR2" "$B_MAIN1")
+ANC_HEAD_OK=$(anc_commit "$ANC_COMMIT" "$B_WF2" "$B_PR2" "$B_MAIN2")
+ANC_HEAD_WF=$(anc_commit "$ANC_COMMIT" "$B_WF" "$B_PR2" "$B_MAIN2")
+ANC_HEAD_PR=$(anc_commit "$ANC_COMMIT" "$B_WF2" "$B_PR1" "$B_MAIN2")
+ANC_SIDE=$(anc_commit "$ANC_BASE" "$B_WF2" "$B_PR2" "$B_MAIN2")
+anc_row() {  # <run id> <headSha> <headBranch> -> a gh run list body
+    printf '[{"conclusion":"failure","databaseId":%s,"headBranch":"%s","headSha":"%s","status":"completed"}]' "$1" "$3" "$2"
+}
+anc_run() {  # <head commit> -> rc/out, the PR changing the workflow and a script
+    ANC_REAL_SHA="$SHA"; SHA="$1"
+    reset_stubs
+    STUB_FILES="$ANC_WF
+$ANC_PRFILE"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"; STUB_PR_BRANCH="$ANC_BRANCH"
+    rc=0; out="$(run)" || rc=$?
+    SHA="$ANC_REAL_SHA"
+}
+rm -f "$RUNDIR"/*.json
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 3)" > "$RUNDIR/jobs-40073661474.json"
+main_run schedule failure 39908051399 > "$RUNDIR/macos-cadence.yml.main.json"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 3)" "macos-cadence / shell (macos-latest, 4)" > "$RUNDIR/jobs-39908051399.json"
+anc_run "$ANC_HEAD_OK"
+check "merge-forward head, pre-existing-red dispatch at the ancestor: exit 0" "$rc" "0"
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: check 10 passes" "$out" "[PASS] 10."
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: names the ancestor" "$out" "$ANC_COMMIT"
+contains "merge-forward head, pre-existing-red dispatch at the ancestor: names the run id" "$out" "40073661474"
+anc_run "$ANC_HEAD_WF"
+check "workflow file changed after the ancestor: exit 1" "$rc" "1"
+contains "workflow file changed after the ancestor: check 10 fails" "$out" "[FAIL] 10."
+notcontains "workflow file changed after the ancestor: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_run "$ANC_HEAD_PR"
+check "another PR file changed after the ancestor: exit 1" "$rc" "1"
+contains "another PR file changed after the ancestor: check 10 fails" "$out" "[FAIL] 10."
+notcontains "another PR file changed after the ancestor: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_SIDE" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_HEAD_OK"
+check "dispatch commit is not an ancestor of the head: exit 1" "$rc" "1"
+contains "dispatch commit is not an ancestor of the head: check 10 fails" "$out" "[FAIL] 10."
+notcontains "dispatch commit is not an ancestor of the head: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COMMIT" some-other/branch > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_run "$ANC_HEAD_OK"
+check "dispatch run is on another branch: exit 1" "$rc" "1"
+contains "dispatch run is on another branch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "dispatch run is on another branch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_row 40073661474 "$ANC_COMMIT" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+jobs_json "macos-cadence / shell (macos-latest, 6)" "macos-cadence / shell (macos-latest, 9)" > "$RUNDIR/jobs-40073661474.json"
+anc_run "$ANC_HEAD_OK"
+check "ancestor dispatch fails a suite not red on main: exit 1" "$rc" "1"
+contains "ancestor dispatch fails a suite not red on main: check 10 fails" "$out" "[FAIL] 10."
+contains "ancestor dispatch fails a suite not red on main: names the run and main's run" "$out" "run 40073661474 failed on suites not red on main run 39908051399"
+notcontains "ancestor dispatch fails a suite not red on main: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR"/*.json
 
 real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"
