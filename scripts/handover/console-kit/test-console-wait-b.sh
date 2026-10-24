@@ -468,6 +468,28 @@ CHIEF_WAIT_TRACKER_STALE_MIN=08 start "$I" "$WORK/ts5.out" --legs "N1.md"
 wait_exit "$WPID"
 check "(ts5) a leading-zero threshold (08) is decimal, not an octal error" "WAKE tracker-stale tracker=STALE:3h" "$(head -n1 "$WORK/ts5.out")"
 
+# --- (bs): a board that STAYS stale re-wakes once per streak, like (ts) ---
+# <inbox>.wait.boardstale holds the epoch the streak was first seen; it wakes once
+# past CHIEF_WAIT_BOARD_STALE_MIN (default 10) and clears when board leaves STALE.
+reset_stub; tick_line "N1:FRESH" "STALE:2h"
+I="$(new_inbox bs1)"
+printf '%s\n' "$(( $(date +%s) - 900 ))" > "$I.wait.boardstale"
+start "$I" "$WORK/bs1.out" --legs "N1.md"
+wait_exit "$WPID"
+check "(bs1) a board STALE for 15 min wakes (rc 0)" "0" "$rc"
+check "(bs1) the wake names board-stale" "WAKE board-stale board=STALE:2h" "$(head -n1 "$WORK/bs1.out")"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/bs1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(bs2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/bs1b.out")"
+check "(bs2) and is still waiting (rc 124)" "124" "$rc"
+reset_stub; tick_line "N1:FRESH" "STALE:1m"
+I="$(new_inbox bs3)"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/bs3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(bs3) a board first seen STALE does not re-wake yet" "" "$(cat "$WORK/bs3.out")"
+check "(bs3) but the streak is recorded" "present" "$([ -e "$I.wait.boardstale" ] && echo present)"
+reset_stub
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/bs4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(bs4) board back to ok clears the streak marker" "absent" "$([ -e "$I.wait.boardstale" ] && echo present || echo absent)"
+
 # --- (pc): the waiter closes a wrapped predecessor console -------
 # The console doc's first line names its predecessor (`successor to <doc>.md`). The
 # waiter runs close-wrapped-leg.sh --console on it once, logs a Results bullet; exit

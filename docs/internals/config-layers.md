@@ -82,6 +82,13 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `TRACKER`. Their meanings and defaults are unchanged; `.env.example`
 documents each one.
 
+Every reader of these keys follows the same order as `load_dotenv`: the
+process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
+default. A reader that opens only `.env`, or only the process env, misses a
+key the operator has moved; the shell, the Jira CLI
+(`scripts/jira/src/handover-root.ts`), the lane resolver, the profile capture
+and the config UI all resolve it that way.
+
 Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
 

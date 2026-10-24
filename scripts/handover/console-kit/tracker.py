@@ -1419,11 +1419,6 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     seclegend = ''.join('<span class="sec" style="--s:%s">%s %d</span>' % (c, esc(n), sum(1 for m in opn.values() if m['sector'] == n))
                         for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))
     upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
-    html = VERSION_TEMPLATE.format(
-        v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
-        prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
-        chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
-        legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml))
     fp = json.dumps({
         'v': version,
         'done': done,
@@ -1435,12 +1430,19 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
         'workers': [[k, r.get('leg'), r.get('state'), open_worker_prs(r)] for k, r in sorted(workers.items()) if k in opn]},
         sort_keys=True)
-    return html, parline, hashlib.sha256(fp.encode('utf-8')).hexdigest()[:16]
+    vfp = hashlib.sha256(fp.encode('utf-8')).hexdigest()[:16]
+    html = VERSION_TEMPLATE.format(
+        v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
+        prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
+        chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
+        legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml), vfp=vfp)
+    return html, parline, vfp
 
 
 VERSION_TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{v} Tracker</title>
+<meta name="himmel-focus" content="{v} {vfp}">
 <style>
 :root{{--bg:#f5f5f4;--panel:#fff;--fg:#1c1917;--muted:#78716c;--line:#e7e5e4;--acc:#2563eb;
 --p0:#dc2626;--p1:#ea580c;--p2:#ca8a04;--p3:#16a34a;--p4:#0891b2;--p5:#2563eb;--p6:#7c3aed;--p7:#a8a29e}}

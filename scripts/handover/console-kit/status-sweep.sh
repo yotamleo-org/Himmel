@@ -4,7 +4,12 @@
 # no event announced: a PR closed or reopened in the UI, a worker whose lock
 # vanished. It never writes a status or the worker record itself.
 #
-# Usage: status-sweep.sh [--repo <owner/repo>]   (default this checkout's origin)
+# Usage: status-sweep.sh [--repo <owner/repo>] [--snapshot-out <dir>]   (default this checkout's origin)
+#
+# --snapshot-out <dir> keeps the sweep's snapshot files (prs.json, threads.tsv,
+# rows-<pr>.tsv, prows-<pr>.tsv, jira.tsv) in <dir> once all of them were read, so a
+# status-drift.sh --snapshot pass after it makes no PR call of its own. An unknown or
+# busy sweep keeps none.
 #
 # A ticket whose recorded open PR is not in that repo (a fork PR) is left as it is,
 # never moved back to In Progress or To Do.
@@ -47,11 +52,12 @@ command -v jq >/dev/null 2>&1 || { echo "status-sweep: jq not found (continuing;
 export LC_ALL=C
 # The sweep reads one repo: every gh call (this script's and the lib's) resolves
 # it from GH_REPO, so a cwd that is a fork checkout cannot change what is swept.
-REPO=""
+REPO="" SNAP_OUT=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --repo) [ "$#" -ge 2 ] || { echo "status-sweep: --repo needs a value" >&2; exit 2; }; REPO="$2"; shift 2 ;;
-        *) echo "usage: status-sweep.sh [--repo <owner/repo>]" >&2; exit 2 ;;
+        --snapshot-out) [ "$#" -ge 2 ] || { echo "status-sweep: --snapshot-out needs a value" >&2; exit 2; }; SNAP_OUT="$2"; shift 2 ;;
+        *) echo "usage: status-sweep.sh [--repo <owner/repo>] [--snapshot-out <dir>]" >&2; exit 2 ;;
     esac
 done
 # shellcheck source=../../lib/env-value.sh
@@ -78,7 +84,7 @@ GRACE="${TICKET_STATUS_SWEEP_GRACE:-60}"
 case "$GRACE" in ''|*[!0-9]*) GRACE=60 ;; esac
 if [ -z "${TICKET_STATUS_SWEEP_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     rc=0
-    TICKET_STATUS_SWEEP_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 $((BUDGET + GRACE)) bash "${BASH_SOURCE[0]}" --repo "$REPO" || rc=$?
+    TICKET_STATUS_SWEEP_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 $((BUDGET + GRACE)) bash "${BASH_SOURCE[0]}" --repo "$REPO" ${SNAP_OUT:+--snapshot-out "$SNAP_OUT"} || rc=$?
     case "$rc" in
         124|137)
             status_event event=sweep key=- result=miss stage=timeout
@@ -98,7 +104,8 @@ if command -v flock >/dev/null 2>&1; then
 fi
 
 snap="$(tmpdir)" || { echo "status-sweep: mktemp failed (continuing; nothing swept)" >&2; exit 0; }
-trap 'rm -rf "$snap"' EXIT
+SNAP_OK=""
+trap '[ -z "$SNAP_OK" ] || { mkdir -p "$SNAP_OUT" && cp "$snap"/* "$SNAP_OUT"/; } 2>/dev/null; rm -rf "$snap"' EXIT
 T0=$SECONDS
 
 # bounded <seconds> <cmd...> - the command under the timeout binary when there is one.
@@ -109,7 +116,7 @@ bounded() {
 }
 
 # outside_repo <KEY> - rc 0 when a PR the record holds open is not provably this
-# repo's: with no open PR in the snapshot, D5/D6 would read a fork PR as gone.
+# repo's: with no open PR in the snapshot, D5/D5c/D6 would read a fork PR as gone.
 # A PR this repo shows with the key in its title is genuinely closed.
 outside_repo() {
     local n t
@@ -120,14 +127,14 @@ outside_repo() {
     return 1
 }
 
-# done_record_stale <KEY> - rc 0 when a Done ticket's worker record reads live or idle
+# done_record_stale <KEY> - rc 0 when a Done ticket's worker record reads live, idle or IDLE-HELD
 # while its doc/lock says the leg ended: the funnel skips a Done ticket's move but
 # refreshes that record.
 done_record_stale() {
     local doc rstate
     ts_record_read "$1" || return 1
     rstate=$(jq -r '.state // ""' <<<"$TS_REC")
-    { [ "$rstate" = live ] || [ "$rstate" = idle ]; } || return 1
+    case "$rstate" in live|idle|IDLE-HELD) ;; *) return 1 ;; esac
     doc=$(jq -r '.doc // ""' <<<"$TS_REC")
     [ -n "$doc" ] || return 1
     case "$(ts_worker_state "$doc")" in wrapped|unknown) return 0 ;; esac
@@ -223,6 +230,7 @@ jql="project = ${JIRA_PROJECT_KEY:-HIMMEL} AND status in (\"In Progress\",\"In R
 ts_jira list --jql "$jql" --limit 300 2>/dev/null | awk -F'\t' '$1 ~ /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/ && NF >= 3 { print $1 "\t" $2 "\t" $3 }' > "$snap/jira.tsv"
 [ "${PIPESTATUS[0]}${PIPESTATUS[1]}" = 00 ] || unknown jira
 [ "$(wc -l < "$snap/jira.tsv")" -lt 300 ] || unknown jira-limit
+[ -z "$SNAP_OUT" ] || SNAP_OK=1
 
 ladder=$(awk -F'\t' '$3 == "In Progress" || $3 == "In Review" || $3 == "IN CI" { print $1 }' "$snap/jira.tsv" | sort -u)
 owned_ladder=$(printf '%s\n%s\n' "$rec_all" "$logged" | grep -E "$KEY_RE" | sort -u | comm -12 - <(printf '%s\n' "$ladder"))
@@ -257,7 +265,7 @@ while IFS= read -r key; do
     want="$state_now"$'\t'"$TS_LOCK_SEEN"$'\t'"$TS_GONE"
     TS_SNAPSHOT_DIR="" TS_EVENT=""
     if [ "$derived" = "$jstatus" ] && [ "$rec_view" = "$want" ]; then continue; fi
-    if { [ "$TS_RULE" = D5 ] || [ "$TS_RULE" = D6 ]; } && outside_repo "$key"; then continue; fi
+    case "$TS_RULE" in D5|D5c|D6) ! outside_repo "$key" || continue ;; esac
     funnel=$((funnel + 1))
     before=0
     [ ! -e "$LOG" ] || before=$(wc -l < "$LOG")

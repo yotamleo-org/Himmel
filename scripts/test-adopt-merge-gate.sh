@@ -161,6 +161,12 @@ STUB
   HOME="$home" git -C "$anchor" init -q || exit 1
   HOME="$home" git -C "$anchor" remote add origin https://github.com/yotamleo-org/Himmel.git || exit 1
   cp "$repo_root/scripts/ci/ci-trust-paths-core.txt" "$anchor/scripts/ci/" || exit 1
+  # A local bare origin stands in for GitHub, so a trust-path hit passes the
+  # anchor-current check without the network; remote.origin.url stays github.com.
+  HOME="$home" git -C "$anchor" add -A && HOME="$home" git -C "$anchor" -c user.name=fixture \
+    -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -q -m anchor || exit 1
+  HOME="$home" git clone -q --bare "$anchor" "$work/core-anchor-origin.git" || exit 1
+  HOME="$home" git -C "$anchor" config "url.$work/core-anchor-origin.git.insteadOf" https://github.com/yotamleo-org/Himmel.git || exit 1
   cat > "$work/core-gh" <<STUB || exit 1
 #!/usr/bin/env bash
 g() { git -C "$target" "\$@"; }
@@ -185,6 +191,25 @@ STUB
   jq -e '.env.HIMMEL_REPO | type == "string" and length > 0' "$settings" >/dev/null \
     || fail "HIMMEL-7391: core/project did not record env.HIMMEL_REPO"
   HOME="$home" git -C "$target" add .claude/settings.json || exit 1
+  # R6: the adopter declares its own trust path on the default branch.
+  printf '^deploy/\n' >> "$trust" && mkdir -p "$target/deploy" "$target/src" \
+    && printf 'deploy\n' > "$target/deploy/prod.sh" && printf 'app\n' > "$target/src/app.sh" \
+    && HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt deploy src \
+    && HOME="$home" git -C "$target" -c commit.gpgsign=false commit -q -m 'chore: declare deploy/ a trust path' || exit 1
+  sha=$(core_pr deploy/prod.sh) || exit 1
+  rc=0; out=$(core_check "$sha") || rc=$?
+  [ "$rc:$out" = '0:hit deploy/prod.sh' ] \
+    || fail "HIMMEL-6995 R6: an adopter-declared path is not a trust-path hit (rc=$rc): $out"
+  # R7 (control): an undeclared path stays none.
+  sha=$(core_pr src/app.sh) || exit 1
+  rc=0; out=$(core_check "$sha") || rc=$?
+  [ "$rc:$out" = '0:none' ] || fail "HIMMEL-6995 R7: an undeclared src/app.sh is not none (rc=$rc): $out"
+  # R8 (control): the added line does not displace a core path.
+  sha=$(core_pr .claude/settings.json) || exit 1
+  rc=0; out=$(core_check "$sha") || rc=$?
+  [ "$rc:$out" = '0:hit .claude/settings.json' ] \
+    || fail "HIMMEL-6995 R8: a core path is not a hit beside an adopter line (rc=$rc): $out"
+  echo "ok: HIMMEL-6995 an adopter-declared path is a trust-path hit; an undeclared path stays none; core paths still hit"
   # R2: the list lacks the core line for .claude/settings.json.
   grep -vxF '^[.]claude/settings[.]json$' "$trust" > "$work/core-trimmed" && cp "$work/core-trimmed" "$trust" || exit 1
   HOME="$home" git -C "$target" add scripts/ci/ci-trust-paths.txt || exit 1
