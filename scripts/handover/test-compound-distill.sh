@@ -2,6 +2,7 @@
 # test-compound-distill.sh — hermetic: a stub claude and a stub preflight; no paid or live run.
 # A scratch handover bucket, a scratch Jira mirror and scratch output dirs.
 set -uo pipefail
+unset HIMMEL_BILLED_OK
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/handover/compound-distill.sh"
 PASS=0; FAIL=0
