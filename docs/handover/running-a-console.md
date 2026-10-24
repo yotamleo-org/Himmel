@@ -234,7 +234,7 @@ merge-block alert (`scripts/lib/merge-block-alert.sh`) route to
 the supervisor session's own inbox instead of DMing the operator.
 
 **Idle capacity is the supervisor session's duty.** `tick.sh` appends `fleet=<live>/<cap>`
-(bank-preflight's own census: native + claudex + reserved, `HIMMEL_FLEET_CAP`)
+(usage-preflight's own census: native + claudex + reserved, `HIMMEL_FLEET_CAP`)
 and `capacity=`. On `capacity=UNDERFILLED:<slack>` (live below cap and no worker session
 launched for `TICK_UNDERFILL_MIN` minutes, default 10), pull dispatchable work
 from the Jira backlog, not only the held queue, and launch up to `<slack>` worker sessions.
@@ -576,7 +576,7 @@ USAGE_FORCE_REFRESH=1 bash scripts/statusline/usage-cache-producer.sh <<< '{}'
 bash scripts/lib/usage-preflight.sh
 ```
 
-Pass: `bank-preflight` prints the new account's `five_hour` / `seven_day` and
+Pass: `usage-preflight` prints the new account's `five_hour` / `seven_day` and
 `PROCEED` (or `SKIPPED-BANK` if that account is genuinely high). `BANK-UNKNOWN`
 means the cache is still the old account's; refresh again, or check the login.
 
