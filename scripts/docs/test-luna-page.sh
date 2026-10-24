@@ -18,10 +18,11 @@
 #   5. IMAGE    — the star map is embedded with alt text, the SVG has a title
 #                 and a description, a text caption follows it, and neither
 #                 the page nor the SVG names a home or vault path.
-#   6. CONTROL  — fixture pages with a made-up skill flag, an unchecked
-#                 command and a vault path fail cases 2, 4 and 5, so none of
-#                 them can pass vacuously; a made-up qmd flag fails case 3
-#                 when qmd is installed.
+#   6. CONTROL  — fixture pages with a made-up skill flag (also in a span that
+#                 wraps a line), an unchecked command and a vault path fail
+#                 cases 2, 4 and 5, so none of them can pass vacuously; a
+#                 made-up qmd flag fails case 3 and a real lone qmd flag passes
+#                 it when qmd is installed.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ plus python3, so it runs
 # unchanged under Git Bash on Windows. No .ps1 twin needed.
@@ -76,25 +77,35 @@ user = lines[:maint] if maint is not None else lines
 
 def commands():
     """(kind, text) for every command a user is shown above the maintainers part."""
-    out, fence, last = [], False, None
+    out, fence, para = [], False, []
+
+    def flush():
+        # A span may wrap across lines, so search a whole paragraph or list item.
+        last = None
+        for span in re.findall(r"`([^`]+)`", " ".join(para)):
+            span = " ".join(span.split())
+            if re.match(r"(/[a-z][\w-]*|qmd)(\s|$)", span):
+                out.append(("span", span))
+                last = span
+            elif re.match(r"--?[A-Za-z][\w-]*$", span):
+                # A lone flag belongs to the last command of its paragraph.
+                out.append(("span", f"{last} {span}" if last else span))
+        para.clear()
+
     for l in user:
         if l.lstrip().startswith("```"):
+            flush()
             fence = not fence
             continue
         if fence:
             s = l.split(" #", 1)[0].strip()
             if s:
                 out.append(("block", s))
-        else:
-            if not l.strip() or re.match(r"\s*(\d+\.|[-*])\s", l):
-                last = None
-            for span in re.findall(r"`([^`]+)`", l):
-                if re.match(r"(/[a-z][\w-]*|qmd)(\s|$)", span):
-                    out.append(("span", span))
-                    last = span.split()[0]
-                elif re.match(r"--?[A-Za-z][\w-]*$", span):
-                    # A lone flag belongs to the last command of its paragraph.
-                    out.append(("span", f"{last} {span}" if last else span))
+            continue
+        if not l.strip() or re.match(r"\s*(\d+\.|[-*]|#+)\s", l):
+            flush()
+        para.append(l)
+    flush()
     return out
 
 def flags(cmd):
@@ -193,7 +204,7 @@ run_case "IMAGE: star map with alt text, title, description and caption; no vaul
 
 # --- controls: each fixture carries one defect its case must catch
 cp "$PAGE" "$TMP/README.md"
-control() { # control <label> <case> <line to append above For maintainers>
+control() { # control <label> <case> <line to append above For maintainers> [clean]
   local out
   rm -f "$TMP/control-page.md"
   if ! python3 -I -c 'import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],"w").write(t.replace("\n## For maintainers", "\n" + sys.argv[3] + "\n\n## For maintainers", 1))' \
@@ -201,7 +212,9 @@ control() { # control <label> <case> <line to append above For maintainers>
     bad "$1" "could not write the fixture page"; return
   fi
   if ! out="$(check "$2" "$TMP/control-page.md")"; then bad "$1" "the checker itself failed"; return; fi
-  if [ -n "$out" ]; then ok "$1"; else bad "$1" "the defect was not caught"; fi
+  if [ "${4:-}" = clean ]; then
+    if [ -z "$out" ]; then ok "$1"; else bad "$1" "$out"; fi
+  elif [ -n "$out" ]; then ok "$1"; else bad "$1" "the defect was not caught"; fi
 }
 python3 -I -c 'import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],"w").write(t.replace("| Artifact |", "| Thing |"))' \
   "$TMP/README.md" "$TMP/no-table.md" || { echo "FAIL: could not write the no-table fixture" >&2; exit 1; }
@@ -210,11 +223,13 @@ if ! out="$(check headings "$TMP/no-table.md")"; then bad "$label" "the checker 
 elif [ -n "$out" ]; then ok "$label"; else bad "$label" "the defect was not caught"; fi
 control "CONTROL: a made-up /luna-ingest flag fails SKILLS" skills "Run \`/luna-ingest <url> --no-such-flag\`."
 control "CONTROL: a lone made-up flag after /luna-ingest fails SKILLS" skills "Run \`/luna-ingest <url>\`; add \`--no-such-flag\` to see more."
+control "CONTROL: a made-up flag in a span that wraps a line fails SKILLS" skills $'Run `/luna-ingest <url>\n--no-such-flag` to see more.'
 control "CONTROL: a made-up skill fails SKILLS" skills "Run \`/luna-no-such-skill\`."
 control "CONTROL: an unchecked command fails OTHER" other $'```bash\nrm -rf notes\n```'
 control "CONTROL: a vault path fails IMAGE" image 'Your notes live in ~/Documents/luna.'
 if [ -s "$QMD_HELP" ]; then
   control "CONTROL: a made-up qmd flag fails QMD" qmd "Run \`qmd query 'x' --no-such-flag\`."
+  control "CONTROL: a real lone flag after a qmd command passes QMD" qmd "Run \`qmd query 'x'\`; add \`--full\` for the whole note." clean
 fi
 
 printf '\n%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
