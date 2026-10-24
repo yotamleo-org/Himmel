@@ -268,7 +268,7 @@ chmod 755 "$LOCK_DIR"
 DOC_PERM="$WORK/perm.md"
 printf '# Leg\n## Console Rulings\n- existing\n' > "$DOC_PERM"
 bash "$SCRIPT" perm-leg 'perm ruling' --doc "$DOC_PERM" >/dev/null
-lock_mode="$(stat -c '%a' "$LOCK_DIR")"
+lock_mode="$(stat -c '%a' "$LOCK_DIR" 2>/dev/null || stat -f '%Lp' "$LOCK_DIR")"
 if [ "$lock_mode" = "700" ]; then
     pass "pre-existing lock directory is tightened to 700"
 else
