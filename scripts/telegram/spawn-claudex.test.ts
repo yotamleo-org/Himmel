@@ -1,6 +1,7 @@
 // scripts/telegram/spawn-claudex.test.ts
 import { expect, test, spyOn } from "bun:test";
 import { homedir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { appendFileSync, existsSync, mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { GIT_TEST_TIMEOUT_MS as CX_GIT_TEST_TIMEOUT_MS, fixtureDir, initHermeticRepo, makeSharedFixtureRepo, removeFixture } from "./fixture-repo";
@@ -2328,12 +2329,19 @@ test("composeWorkerSettings: a POSIX session dir is granted as a `//`-rooted abs
 
 test("claudex session root: default is outside any .claude dir (a worker cannot Write under one), keeps the old root as a legacy fallback, and an explicit BRIDGE_ROOT has none (HIMMEL-6426)", async () => {
   const { claudexSessionRoots } = await import("../lanes/claudex-session-root.mjs");
-  const def = claudexSessionRoots(undefined, "/home/u");
-  expect(def.primary).toBe("/home/u/.himmel/bridge/claudex-sessions");
-  expect(def.primary).not.toContain("/.claude/");
-  expect(def.legacy).toBe("/home/u/.claude/handover/bridge/claudex-sessions");
-  expect(claudexSessionRoots("/x/b", "/home/u")).toEqual({ primary: "/x/b/claudex-sessions", legacy: null });
   const prev = process.env.BRIDGE_ROOT;
   delete process.env.BRIDGE_ROOT;
-  try { expect(claudexSessionRoot()).toBe(claudexSessionRoots().primary); } finally { if (prev !== undefined) process.env.BRIDGE_ROOT = prev; }
+  try {
+    const def = claudexSessionRoots(undefined, "/home/u");
+    expect(def.primary).toBe("/home/u/.himmel/bridge/claudex-sessions");
+    expect(def.primary).not.toContain("/.claude/");
+    expect(def.legacy).toBe("/home/u/.claude/handover/bridge/claudex-sessions");
+    expect(claudexSessionRoots("/x/b", "/home/u")).toEqual({ primary: "/x/b/claudex-sessions", legacy: null });
+    expect(claudexSessionRoot()).toBe(claudexSessionRoots().primary);
+    // --no-env ignores a BRIDGE_ROOT in the environment (stop-worker's chokepoint)
+    const cli = join(import.meta.dir, "../lanes/claudex-session-root.mjs");
+    const out = (args: string[]) => execFileSync("node", [cli, ...args], { env: { ...process.env, BRIDGE_ROOT: "/x/env" }, encoding: "utf8" }).trim();
+    expect(out(["primary"])).toBe("/x/env/claudex-sessions");
+    expect(out(["primary", "--no-env"])).toBe(claudexSessionRoots().primary);
+  } finally { if (prev !== undefined) process.env.BRIDGE_ROOT = prev; }
 });

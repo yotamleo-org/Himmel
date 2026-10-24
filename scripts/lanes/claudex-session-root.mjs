@@ -25,7 +25,7 @@ if (isMain(import.meta.url)) {
   const argv = process.argv.slice(2);
   const mode = argv[0];
   const i = argv.indexOf("--bridge-root");
-  const explicit = i >= 0 ? argv[i + 1] : argv.includes("--no-env") ? undefined : process.env.BRIDGE_ROOT;
+  const explicit = i >= 0 ? argv[i + 1] : argv.includes("--no-env") ? null : process.env.BRIDGE_ROOT;
   if (mode !== "primary" && mode !== "all") {
     console.error("usage: claudex-session-root.mjs primary|all [--bridge-root <dir>] [--no-env]");
     process.exit(2);
