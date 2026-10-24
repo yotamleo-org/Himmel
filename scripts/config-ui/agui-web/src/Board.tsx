@@ -106,7 +106,8 @@ function Bar({ parts }: { parts: { n: number; color: string; title: string }[] }
   return <div className="bd-bar">{parts.map((p, i) => p.n > 0 && <i key={i} style={{ width: `${(p.n / total) * 100}%`, background: p.color }} title={`${p.title}: ${p.n}`} />)}</div>;
 }
 
-const signed = (n: number) => (n > 0 ? "+" : "") + n;
+const compact = (n: number) => { const a = Math.abs(n); return a >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : a >= 1e4 ? `${Math.round(n / 1e3)}k` : String(Math.round(n * 100) / 100); };
+const signed = (n: number) => (n > 0 ? "+" : "") + compact(n);
 function RollupSpark({ card }: { card: RollupCard }) {
   const vs = card.spark.map((p) => p.value);
   if (vs.length < 2) return null;
@@ -123,7 +124,7 @@ export function RollupCards({ rollup }: { rollup: Rollup | null }) {
     <header><h3>{c.title}</h3></header>
     {c.state !== "ok" ? <p className="quiet">no data yet</p> : <>
       <p className="bd-sub">{c.metric}</p><RollupSpark card={c} />
-      {c.week && <p className="bd-line">{`${c.week.key}: ${c.week.value} ${c.unit}`}</p>}
+      {c.week && <p className="bd-line">{`${c.week.key}: ${compact(c.week.value)} ${c.unit}`}</p>}
       <div className="bd-row">{([["last week", c.week], ["last version", c.version]] as const).map(([than, x]) => x && x.delta !== null && <span key={than} className="bd-chip">{`${signed(x.delta)} vs ${than}`}</span>)}</div>
       <p className="bd-rec">{c.sentence}</p></>}
   </section>)}</>;

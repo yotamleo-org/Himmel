@@ -122,7 +122,8 @@ function legsHtml(health) {
 }
 
 // The weekly roll-up cards from GET /api/rollup, rendered as sent: the deltas and the sentence are the server's.
-const signed = (n) => (n > 0 ? "+" : "") + n;
+const compact = (n) => { const a = Math.abs(n); return a >= 1e6 ? (n / 1e6).toFixed(1) + "M" : a >= 1e4 ? Math.round(n / 1e3) + "k" : String(Math.round(n * 100) / 100); };
+const signed = (n) => (n > 0 ? "+" : "") + compact(n);
 function sparkSvg(spark, label) {
   if (!spark || spark.length < 2) return "";
   const vs = spark.map((p) => p.value), lo = Math.min(...vs), hi = Math.max(...vs), W = 120, H = 28;
@@ -133,7 +134,7 @@ function trendCard(c) {
   if (c.state !== "ok") return `<div class="card"><h3>${esc(c.title)}</h3>${nodata("no data yet")}</div>`;
   const d = (x, than) => (x && x.delta !== null ? `<span class="kv">${esc(signed(x.delta))} vs ${than}</span> ` : "");
   return `<div class="card trend"><h3>${esc(c.title)}</h3><div class="ro">${esc(c.metric)}</div>${sparkSvg(c.spark, c.metric)}
-    <div class="kv">${c.week ? `${esc(c.week.key)}: ${esc(c.week.value)} ${esc(c.unit)}` : ""}</div>
+    <div class="kv">${c.week ? `${esc(c.week.key)}: ${esc(compact(c.week.value))} ${esc(c.unit)}` : ""}</div>
     <div>${d(c.week, "last week")}${d(c.version, "last version")}</div><p class="sentence">${esc(c.sentence)}</p></div>`;
 }
 function trendsHtml(health) {
