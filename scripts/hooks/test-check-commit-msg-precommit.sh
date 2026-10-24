@@ -63,8 +63,28 @@ trap cleanup EXIT
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1" >&2; FAIL=$((FAIL+1)); }
 
+# `command -v pre-commit` finding a launcher does not mean it runs. A
+# `pip install --user` launcher imports pre_commit from Python's user site, which
+# is derived from $HOME; under home-canary.sh's sandbox HOME (fork-PR CI, where
+# there is no CI image) it dies with ModuleNotFoundError. The launcher's own
+# <base>/bin location names the user base it was installed under, so retry with
+# PYTHONUSERBASE pointing there and keep it for every later pre-commit call.
+ensure_pre_commit_runs() {
+    local bin base out
+    out=$(pre-commit --version 2>&1) && return 0
+    bin=$(command -v pre-commit)
+    base=$(dirname "$(dirname "$bin")")
+    if PYTHONUSERBASE="$base" pre-commit --version >/dev/null 2>&1; then
+        export PYTHONUSERBASE="$base"
+        return 0
+    fi
+    echo "FAIL: pre-commit at $bin is not runnable: $out" >&2
+    return 1
+}
+
 command -v pre-commit >/dev/null 2>&1 || { echo "SKIP: pre-commit not installed"; exit 0; }
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not installed"; exit 0; }
+ensure_pre_commit_runs || exit 1
 for required in "$HOOK" "$LOADER" "$CONFIG" "$ENV_EXAMPLE"; do
     [ -f "$required" ] || { echo "FAIL: missing fixture input $required" >&2; exit 1; }
 done
@@ -133,8 +153,11 @@ build_repo() {
         plain)          printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$REPO/.env" ;;
         *) echo "FAIL: unknown env source $env_source" >&2; exit 1 ;;
     esac
-    ( cd "$REPO" && pre-commit install --hook-type commit-msg ) >/dev/null 2>&1 \
-        || { echo "FAIL: pre-commit install failed in the fixture" >&2; exit 1; }
+    install_out=$( cd "$REPO" && pre-commit install --hook-type commit-msg 2>&1 ) || {
+        install_rc=$?
+        echo "FAIL: pre-commit install failed in the fixture (rc=$install_rc): $install_out" >&2
+        exit 1
+    }
     [ -f "$REPO/.git/hooks/commit-msg" ] \
         || { echo "FAIL: pre-commit did not write .git/hooks/commit-msg" >&2; exit 1; }
 }
@@ -194,6 +217,76 @@ expect_committed() {
     fi
     pass "$label"
 }
+
+echo "== a pre-commit launcher that only runs under the HOME it was installed for =="
+# Fork-PR CI runs on the bare runner (no CI image), where pre-commit is a
+# `pip install --user` package, and home-canary.sh swaps HOME for a sandbox: the
+# launcher is still on PATH (`command -v` finds it) but Python's user site moved
+# with HOME, so it dies with ModuleNotFoundError. The launcher below is the shape
+# pip writes (shebang + `from <pkg>.main import main`); the stub package stands in
+# for pre_commit so the case reproduces on a host that has the real one system-wide.
+INSTALL_HOME="$TMP_ROOT/install-home"
+OTHER_HOME="$TMP_ROOT/other-home"
+mkdir -p "$INSTALL_HOME" "$OTHER_HOME"
+USER_SITE=$(HOME="$INSTALL_HOME" PYTHONUSERBASE='' python3 -c 'import site; print(site.getusersitepackages())' 2>/dev/null)
+if [ -z "$USER_SITE" ]; then
+    fail "python3 could not report its user site, the launcher fixture cannot be built"
+else
+    mkdir -p "$USER_SITE/himmel_stub_pc" "$INSTALL_HOME/.local/bin"
+    : > "$USER_SITE/himmel_stub_pc/__init__.py"
+    printf 'def main():\n    print("pre-commit stub")\n    return 0\n' > "$USER_SITE/himmel_stub_pc/main.py"
+    {
+        printf '#!/usr/bin/env python3\n'
+        printf 'import sys\n'
+        printf 'from himmel_stub_pc.main import main\n'
+        printf "if __name__ == '__main__':\n"
+        printf '    sys.exit(main())\n'
+    } > "$INSTALL_HOME/.local/bin/pre-commit"
+    chmod +x "$INSTALL_HOME/.local/bin/pre-commit"
+    STUB_PATH="$INSTALL_HOME/.local/bin:$PATH"
+
+    # PYTHONUSERBASE may already be exported by ensure_pre_commit_runs (the real
+    # fork-runner run); it would redirect the user site and hide the condition.
+    own_out=$(HOME="$INSTALL_HOME" PATH="$STUB_PATH" PYTHONUSERBASE='' pre-commit --version 2>&1); own_rc=$?
+    other_out=$(HOME="$OTHER_HOME" PATH="$STUB_PATH" PYTHONUSERBASE='' pre-commit --version 2>&1); other_rc=$?
+    if [ "$own_rc" -eq 0 ] && [ "$other_rc" -ne 0 ] && printf '%s' "$other_out" | grep -q 'ModuleNotFoundError'; then
+        pass "the fixture launcher runs under its install HOME and dies with ModuleNotFoundError under another (the fork-runner condition)"
+    else
+        fail "the fixture does not reproduce the HOME-bound launcher (own rc=$own_rc: $own_out; other rc=$other_rc: $other_out)"
+    fi
+
+    # shellcheck disable=SC2030,SC2031  # the PATH/HOME change is meant to stay inside the subshell
+    recover_out=$( export HOME="$OTHER_HOME" PATH="$STUB_PATH" PYTHONUSERBASE=''; ensure_pre_commit_runs && pre-commit --version 2>&1 ) 2>&1
+    recover_rc=$?
+    if [ "$recover_rc" -eq 0 ] && [ "$recover_out" = "pre-commit stub" ]; then
+        pass "a launcher bound to another HOME is made runnable instead of failing the fixture"
+    else
+        fail "the HOME-bound launcher was not recovered (rc=$recover_rc): $recover_out"
+    fi
+fi
+
+echo "== a failed pre-commit install prints pre-commit's own output and exit code =="
+FAIL_BIN="$TMP_ROOT/failbin"
+mkdir -p "$FAIL_BIN"
+printf '#!/bin/sh\necho "boom: cowardly refusing to install hooks" >&2\nexit 3\n' > "$FAIL_BIN/pre-commit"
+chmod +x "$FAIL_BIN/pre-commit"
+# shellcheck disable=SC2031  # PATH is only meant to change inside this subshell
+forced_out=$( PATH="$FAIL_BIN:$PATH" build_repo plain 2>&1 ); forced_rc=$?
+case "$forced_out" in
+    *"(rc=3): boom: cowardly refusing to install hooks"*)
+        if [ "$forced_rc" -ne 0 ]; then
+            pass "a forced pre-commit install failure prints pre-commit's stderr and exit code, and still fails"
+        else
+            fail "a forced pre-commit install failure printed its cause but did not fail"
+        fi ;;
+    *) fail "a forced pre-commit install failure hid its cause: $forced_out" ;;
+esac
+quiet_out=$( build_repo plain 2>&1 ); quiet_rc=$?
+if [ "$quiet_rc" -eq 0 ] && [ -z "$quiet_out" ]; then
+    pass "a passing pre-commit install stays quiet"
+else
+    fail "a passing pre-commit install was not quiet (rc=$quiet_rc): $quiet_out"
+fi
 
 echo "== real pre-commit commit-msg path, the CURRENTLY SHIPPED .env.example =="
 build_repo example
