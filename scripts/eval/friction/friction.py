@@ -6,8 +6,11 @@ classifies each refusal into source x class x verdict, and aggregates per class:
 count, distinct legs (sessions), median recovery minutes, console turns,
 operator interrupts.  Output: JSON (machine) and Markdown (ranked table).
 
-usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR]
+usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR] [--reports FILE]
                    [--json OUT] [--md OUT] [--record [--eval-ledger P]]
+--reports reads the user-reports ledger /himmel-report appends to (default ~/.himmel/state/user-reports.jsonl,
+or $HIMMEL_USER_REPORTS): a third verdict source, user-reported over-deny, counted apart from the transcript verdicts
+and recorded as user_reported_over_deny and user_over_deny:<source>/<class>.
 --record also appends one eval-runs row (eval "friction": refusals, over_deny, true_positive,
 unclear, over_deny_share and over_deny:<source>/<class> per class), so the eval feedback step
 (scripts/eval/lib/eval_feedback.py) can raise a change on it and re-measure it on the next run.
@@ -30,6 +33,7 @@ import eval_runs  # noqa: E402
 HOME = os.path.expanduser('~')
 DEFAULT_PROJECTS = [HOME + '/.claude/projects', HOME + '/.claude-codex/projects']
 DEFAULT_DOCS = os.environ.get('HANDOVER_DIR', HOME + '/Documents/luna/handovers') + '/' + os.environ.get('USER_SLUG', 'yotamleo') + '/himmel'
+DEFAULT_REPORTS = os.environ.get('HIMMEL_USER_REPORTS') or HOME + '/.himmel/state/user-reports.jsonl'
 RECOVERY_CAP_S = 1800
 
 # git run as a command (line start or after a separator, past VAR= and wrapper words), not git as a search term
@@ -447,6 +451,37 @@ def scan_docs(docs_dir, since, names):
     return rows
 
 
+def scan_reports(path, since, until=None):
+    """Rows /himmel-report appended (a third verdict source: the user called a refusal or review point wrong),
+    inside the window. A missing file is no reports; an unreadable line is skipped."""
+    rows = []
+    try:
+        lines = open(path).read().splitlines()
+    except OSError:
+        return rows
+    for line in lines:
+        try:
+            r = json.loads(line)
+            ts = parse_ts(r['ts'])
+            src, cls = r['source'], r['class']
+        except (ValueError, KeyError, TypeError):
+            continue
+        if ts is None or r.get('verdict') != 'user-over-deny':
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=dt.timezone.utc)
+        if ts < since or (until is not None and ts > until):
+            continue
+        rows.append({'source': src, 'class': cls})
+    return rows
+
+
+def user_report_counts(reports):
+    return [{'source': s, 'class': c, 'count': n}
+            for (s, c), n in sorted(collections.Counter((r['source'], r['class']) for r in reports).items(),
+                                    key=lambda kv: (-kv[1], kv[0]))]
+
+
 def refusal_totals(tx):
     """ci-wait rows are CI re-polls, not refusals: they get their own count and stay out of every refusal total.
     hook_unclear_share is the unclear share of hook refusals."""
@@ -550,6 +585,11 @@ def render_md(agg, meta):
         lines.append('| %d | %s | %s | %d | %d | %s | %s | %s | %s |' % (
             i, r['source'], r['class'], r['count'], r['distinct_sessions'], r['retries_per_session'],
             '-' if r['median_recovery_min'] is None else r['median_recovery_min'], v, ln))
+    if agg.get('user_reports'):
+        lines += ['', '## C. User-reported over-denies (/himmel-report)', '',
+                  '| # | source | class | reports |', '|---|---|---|---|']
+        for i, r in enumerate(agg['user_reports'], 1):
+            lines.append('| %d | %s | %s | %d |' % (i, r['source'], r['class'], r['count']))
     return '\n'.join(lines) + '\n'
 
 
@@ -600,7 +640,7 @@ def render_section(tx, prior_tx, docs, days, top=5):
     return '\n'.join(out) + '\n'
 
 
-def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0):
+def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0, user_reports=()):
     """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class.
     An explicit --projects scope joins the config, so a run over other transcripts is its own series. A scan
     that could not open every transcript is "partial", never a baseline."""
@@ -617,6 +657,10 @@ def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0
     for (src, cls), n in collections.Counter((r['source'], r['class']) for r in tx
                                              if r['verdict'] == 'over-deny').items():
         metrics['over_deny:%s/%s' % (src, cls)] = n
+    if user_reports:
+        metrics['user_reported_over_deny'] = len(user_reports)
+        for r in user_report_counts(user_reports):
+            metrics['user_over_deny:%s/%s' % (r['source'], r['class'])] = r['count']
     config = {'friction_v': 1, 'days': days}
     if projects:
         config['projects'] = projects
@@ -633,6 +677,7 @@ def main(argv=None):
     ap.add_argument('--now', default=None)
     ap.add_argument('--projects', action='append')
     ap.add_argument('--docs', default=DEFAULT_DOCS)
+    ap.add_argument('--reports', default=DEFAULT_REPORTS, help='user reports ledger written by /himmel-report')
     ap.add_argument('--repo', default=os.getcwd())
     ap.add_argument('--json')
     ap.add_argument('--md')
@@ -650,15 +695,17 @@ def main(argv=None):
     unreadable = []
     tx = scan_all(projects, since, now, unreadable)
     docs = scan_docs(a.docs, since, names)
+    reports = scan_reports(a.reports, since, now)
     if a.record:
-        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects, len(unreadable))
+        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects, len(unreadable), reports)
     if a.section:
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))
         return 0
     table = aggregate([r for r in tx if r['source'] != 'ci-wait'], docs)
+    table['user_reports'] = user_report_counts(reports)
     meta = {'days': a.days, 'since': since.isoformat(), 'tx_rows': len(tx), 'doc_rows': len(docs),
-            **refusal_totals(tx)}
+            'user_reports': len(reports), **refusal_totals(tx)}
     if a.json:
         with open(a.json, 'w') as f:
             json.dump({'meta': meta, **table}, f, indent=1)

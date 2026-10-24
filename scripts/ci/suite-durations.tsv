@@ -957,6 +957,7 @@ scripts/release/test-check-version-tag.sh	0
 scripts/release/test-followup-report.sh	1
 scripts/release/test-gen-release-notes.sh	0
 scripts/release/test-tarball-vs-clone.sh	3
+scripts/report/test-himmel-report.sh	1
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	2
 scripts/security/test-snyk-scan.sh	1
