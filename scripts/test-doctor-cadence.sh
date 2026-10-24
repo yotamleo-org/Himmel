@@ -19,6 +19,8 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')"; fi; }
 
 W="$(mktemp -d)" || exit 1
+# the script under test reports physical paths; macOS's $TMPDIR sits behind the /var symlink
+W="$(cd "$W" && pwd -P)"
 trap 'rm -rf "$W"' EXIT
 export HOME="$W/home"; mkdir -p "$HOME"
 unset HIMMEL_DOCTOR_STATE_DIR CADENCE_ALERT_FILE CADENCE_ALERT_DEDUPE_DIR

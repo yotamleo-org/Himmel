@@ -25,6 +25,10 @@ GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/block-unresolved-cr-merge.sh"
+# stock macOS has no `timeout`; the hook's bounded `gh repo view` needs one on PATH
+# shellcheck source=../lib/portable-timeout.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/portable-timeout.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
