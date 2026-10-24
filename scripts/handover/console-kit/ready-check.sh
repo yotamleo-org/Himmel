@@ -875,12 +875,13 @@ EOF
                 continue
             fi
             wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
+            wf_head_runs=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h)] | length' 2>/dev/null) || wf_head_runs=1  # swallow-ok: an unreadable list counts the head as having a run, so the ancestor fallback is refused
             wf_why=""
             if [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
                 wf_notes="$wf_notes
        $wf_note"
-            elif [ -z "$wf_fail_id" ] && wf_ancestor_preexisting "$wf_base"; then
+            elif [ -z "$wf_fail_id" ] && [ "$wf_head_runs" = 0 ] && wf_ancestor_preexisting "$wf_base"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_anc_id@$wf_anc_sha"
                 wf_notes="$wf_notes
        $wf_note"
