@@ -253,7 +253,7 @@ EOF
 total="$(printf '%s\n' "$entries" | awk 'NF' | wc -l | tr -d ' ')"
 if [ -f "$manifest" ]; then
     total=0
-    mrows="$(jq -r '.legs[] | select(.lockless == true | not) | [.label, (.lane // ""), .doc] | @tsv' "$manifest" 2>/dev/null)"
+    mrows="$(jq -r '.legs[] | select(.lockless == true | not) | [.label, ((.lane // "") | if . == "" then "unknown" else . end), .doc] | @tsv' "$manifest" 2>/dev/null)"
     while IFS=$'\t' read -r mlabel mlane mdoc; do
         [ -n "$mlabel" ] || continue
         if wrapped "$mdoc"; then continue; fi

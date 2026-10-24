@@ -312,5 +312,10 @@ check "a refused bus record falls back to the SendMessage for a Live-state leg" 
 check "a refused bus record leaves an off-Live-state leg for a hand relay" "1" "$(printf '%s\n' "$out18" | grep -c '^NOT-IN-LIVE-STATE N61 ')"
 check "an off-Live-state leg is never printed a token-less SendMessage" "0" "$(printf '%s\n' "$out18" | grep -c '^SENDMESSAGE to=DEMO-16-')"
 check "the fallback tally counts only the printed relay" "1" "$(printf '%s\n' "$out18" | grep -c '^RELAYED 1 of 3$')"
+# a manifest row with no lane keeps its doc in the doc field (tab-separated empty fields do not collapse)
+LEGL="$WORK/DEMO-18-N63-nolane-2026-10-24.md"; : > "$LEGL"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N63"}]}\n' "$LEGA" "$LEGL" > "${DOC10%.md}.fleet.json"
+out19="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"
+check "a lane-less off-Live-state leg is reported with its own doc" "1" "$(printf '%s\n' "$out19" | grep -cF "NOT-IN-LIVE-STATE N63 ($LEGL)")"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
