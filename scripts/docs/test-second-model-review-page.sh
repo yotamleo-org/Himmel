@@ -59,7 +59,7 @@ page_text() {
   python3 -I -c 'import re,sys; sys.stdout.write(re.sub(r"<!--.*?-->", "", open(sys.argv[1], encoding="utf-8").read(), flags=re.S))' "$1"
 }
 
-has_for_now() { page_text "$1" | grep -qi 'for now'; }
+has_for_now() { local t; t=$(page_text "$1"); grep -qi 'for now' <<< "$t"; }
 
 # The PORTABLE_FILES array of scripts/adopt.sh, one path per line.
 portable_files() {
@@ -85,23 +85,23 @@ portable=$(portable_files)
 text=$(page_text "$PAGE" | tr -s ' \n' '  ')
 missing=""
 for f in scripts/hooks/block-unresolved-cr-merge.sh scripts/lib/review-merge-gate.sh scripts/cr/critics.json; do
-  printf '%s\n' "$portable" | grep -qxF "$f" || missing="$missing $f"
+  grep -qxF "$f" <<< "$portable" || missing="$missing $f"
 done
-if ! printf '%s' "$text" | grep -qF '**In your own project.**'; then
+if ! grep -qF '**In your own project.**' <<< "$text"; then
   bad "REACH: the page states the in-project reach"
 elif [ -n "$missing" ]; then
   bad "REACH: the merge gate's reviewer check is copied into a project" "not in adopt.sh PORTABLE_FILES:$missing"
 else
   ok "REACH: the merge gate's reviewer check is copied into a project"
 fi
-if ! printf '%s' "$text" | grep -qF 'ships with the himmel checkout, not your project'; then
+if ! grep -qF 'ships with the himmel checkout, not your project' <<< "$text"; then
   bad "REACH: the page says /pr-check stays in the himmel checkout"
-elif printf '%s\n' "$portable" | grep -qxF .claude/commands/pr-check.md; then
+elif grep -qxF .claude/commands/pr-check.md <<< "$portable"; then
   bad "REACH: /pr-check is not copied into a project" "adopt.sh now copies .claude/commands/pr-check.md: rewrite 'Where it runs'"
 else
   ok "REACH: /pr-check is not copied into a project"
 fi
-if ! printf '%s' "$text" | grep -qF 'HIMMEL_REPO'; then
+if ! grep -qF 'HIMMEL_REPO' <<< "$text"; then
   bad "REACH: the page names the HIMMEL_REPO anchor"
 elif grep -qF 'anchor_lane=adopter' "$ROOT/scripts/cr/pr-check-context.sh"; then
   ok "REACH: pr-check-context.sh reviews another repo through the anchor"
