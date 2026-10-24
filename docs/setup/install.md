@@ -137,12 +137,14 @@ on a PR branch is never read); add any file that guards your project, such as
 deploy scripts or release config. Inside a Claude session, a PR touching a
 listed path needs a trust-reviewed GO, and a project that adopted himmel has no
 signer for that GO yet, so such a PR does not merge from a session: the
-operator merges it outside Claude, in the forge web UI or their own terminal.
+operator merges it in the forge web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
 
-These checks run only inside Claude sessions. A merge made outside Claude
-(the forge web UI, your own terminal) is not checked by them. To enforce the
-list on the forge too, turn on the optional branch rules (CODEOWNERS and a
-required review for the listed paths; tracked in HIMMEL-3897).
+These checks run only inside Claude sessions (the hooks) and in himmel's merge
+script (`merge-on-green.sh`) wherever it is run.
+A merge made another way, in the forge web UI or with a raw
+`gh pr merge`, bypasses them and is not checked. To enforce the list on the
+forge too, turn on the optional branch rules (CODEOWNERS and a required review
+for the listed paths; tracked in HIMMEL-3897).
 
 ## Verify
 
