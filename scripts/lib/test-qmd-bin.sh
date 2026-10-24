@@ -56,12 +56,12 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge commit of fork PR #42" \
-  test "$default_ref" = "ba4605fb880c2e6d72b09a1ffe9a4d9c845358aa"
+assert "default QMD_FORK_REF is the fork main tip carrying fork PR #43" \
+  test "$default_ref" = "72d0dbb8c72c50f1ebb95e82da539c852218bb96"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
-assert "the pin comment names fork PR #42 and HIMMEL-5952" \
-  bash -c 'grep -q "fork PR #42" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+assert "the pin comment names fork PRs #42 and #43 and HIMMEL-5952" \
+  bash -c 'grep -q "fork PR #42" "$1" && grep -q "fork PR #43" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
 # The pinned fork commit must carry the fixed MCP server (2.3.0+ clears the HTTP
 # transport advisories). The fixture is the real bun.lock lines of the fork at the
 # pinned commit, copied from the fork, headed by the commit it came from.
