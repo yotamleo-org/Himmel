@@ -802,7 +802,8 @@ else
     }
     # wf_suites_proof <workflow file> <dispatch runs json>: macos-cadence only. rc 0 and wf_note set when a
     # completed dispatch run at the head named its suites (displayTitle `macos-cadence suites: <paths>`)
-    # and its log carries `[PASS] <suite> (` for every one. rc 1: no such run (the caller falls through to the
+    # and its log carries the runner's own `<timestamp>Z [PASS] <suite> (` for every one (a failed suite's
+    # forwarded output is indented, so its echo of a PASS line does not match). rc 1: no such run (the caller falls through to the
     # whole-run rules). rc 2: such a run exists but is not proven; wf_why says why and the verdict is final,
     # because the job-level PRE-EXISTING comparison says nothing about which named suite failed.
     wf_suites_proof() {
@@ -818,7 +819,7 @@ else
         if [ "$#" -eq 0 ]; then wf_why="run $id names no suites"; return 2; fi
         log=$("$GH" run view "$id" --repo "$nwo" --log 2>/dev/null) || { wf_why="cannot read the log of run $id"; return 2; }  # swallow-ok: a failed read sets wf_why and returns 2, which the caller reports as a failure
         for s in "$@"; do
-            if printf '%s\n' "$log" | grep -qF "[PASS] $s ("; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi
+            if printf '%s\n' "$log" | grep -qF "Z [PASS] $s ("; then pass="$pass, PASS $s"; else bad="$bad, $s"; fi
         done
         if [ -n "$bad" ]; then
             wf_why="suites run $id: named suite(s) with no [PASS] line (failed or never ran): ${bad#, }"
@@ -905,7 +906,7 @@ EOF
                 wf_err="$wf_err; $wf run list failed"
                 continue
             fi
-            wf_ok_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "success")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no green run, the failure path then judges it
+            wf_ok_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "success" and ((.displayTitle // "") | startswith("macos-cadence suites:") | not))][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no green run, the failure path then judges it
             if [ -n "$wf_ok_id" ]; then
                 wf_ids="$wf_ids ${wf_base}=$wf_ok_id"
                 continue
