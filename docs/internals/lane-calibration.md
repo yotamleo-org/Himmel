@@ -828,7 +828,7 @@ fleet-wide halt. `scripts/lib/bank-preflight.sh` now counts live worker
 sessions (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-console` — supervisor sessions are not worker sessions) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
-`HIMMEL_FLEET_CAP` (env, else `himmel.conf.local`, `himmel.conf`, `.env`, default **4**). Wired at ARM time in
+`HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in
 both `scripts/handover/console-kit/headed-arm-leg.sh` and
 `scripts/handover/arm-resume.sh`, so a new worker session is refused before the
 scheduler entry (or the konsole window) is ever created — cheaper than
@@ -838,13 +838,11 @@ refusing after a signal/deadline wait. Off switch: `FLEET_CAP_OK=1` in the
 
 `load_dotenv` resolves the PRIMARY checkout's `.env` even when
 `HEADED_ARM_REPO` is a linked worktree (the gitignored file lives only in the
-primary), and it reads `~/.himmel/himmel.conf.local` and `~/.himmel/himmel.conf`
-ahead of it, but only a value actually set in one of those counts: if the
-launcher's environment does not export `HIMMEL_FLEET_CAP` and neither
-`himmel.conf` file nor the primary `.env` sets it, the cap falls to 4 and the
-fifth worker session is refused with a full-looking census. Set it in
-`~/.himmel/himmel.conf` (the config UI writes it there), or put it on the
-launcher line to override the file for one launch.
+primary), but only a value actually set there counts: if the launcher's
+environment does not export `HIMMEL_FLEET_CAP` and the primary `.env` does
+not set it, the cap falls to 4 and the fifth worker session is refused with a
+full-looking census. Put `HIMMEL_FLEET_CAP` on the launcher line itself
+rather than relying on the file.
 
 **Why 4, not some other number.** 4 is a provisional operational cap, not a
 derived sustainability figure — no session's own measured burn rate or duty

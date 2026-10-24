@@ -100,6 +100,12 @@ describe('handoverRoot (HIMMEL-6917)', () => {
     expect(handoverRoot({}, dotenv)).toBe(legacy);
   });
 
+  it('behaviourKey follows the HOME of the env it is given, not the process HOME', () => {
+    writeFileSync(join(confDir, 'himmel.conf'), 'USER_SLUG=confslug\n');
+    process.env.HOME = join(dir, 'elsewhere');
+    expect(behaviourKey('USER_SLUG', { HOME: join(dir, 'home') }, join(dir, 'absent.env'))).toBe('confslug');
+  });
+
   it('behaviourKey resolves USER_SLUG from himmel.conf when the env lacks it', () => {
     writeFileSync(join(confDir, 'himmel.conf'), 'USER_SLUG=confslug\n');
     expect(behaviourKey('USER_SLUG', {}, join(dir, 'absent.env'))).toBe('confslug');

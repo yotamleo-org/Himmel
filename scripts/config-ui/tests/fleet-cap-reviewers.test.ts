@@ -1,8 +1,8 @@
-// Settings shows the fleet cap and each reviewer's model and effort. The cap is written to himmel.conf
+// Settings shows the fleet cap and each reviewer's model and effort. The cap is written to the station .env
 // only, the model and effort to the critics.local.json overlay only; the committed critics.json is never opened for write.
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -24,7 +24,6 @@ let dir = "";
 let base = "";
 let local = "";
 let envFile = "";
-let conf = "";
 let stop: (() => void) | null = null;
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const realBaseSha = sha(REAL_BASE);
@@ -36,8 +35,6 @@ beforeEach(() => {
   base = join(dir, "critics.json");
   local = join(dir, "critics.local.json");
   envFile = join(dir, "station", ".env");
-  mkdirSync(join(dir, "home", ".himmel"));
-  conf = join(dir, "home", ".himmel", "himmel.conf");
   writeFileSync(base, JSON.stringify(BASE, null, 2) + "\n");
 });
 afterEach(() => {
@@ -68,66 +65,36 @@ test("GET /api/fleet-cap shows 4 as the default when nothing sets it", async () 
   expect(j).toMatchObject({ cap: 4, default: 4, source: "default", min: 1, max: 50 });
 });
 
-test("a cap written round-trips, lands in himmel.conf only, and keeps the other lines", async () => {
-  writeFileSync(conf, "# keep\nHANDOVER_DIR=/x\n");
-  writeFileSync(envFile, "JIRA_PROJECT_KEY=HIMMEL\n");
+test("a cap written round-trips, lands in the station .env only, and keeps the other lines", async () => {
+  writeFileSync(envFile, "# keep\nJIRA_PROJECT_KEY=HIMMEL\n");
   const port = boot();
   const r = await post(port, "/api/fleet-cap", { cap: 6 });
   expect(r.status).toBe(200);
-  expect(await r.json()).toMatchObject({ cap: 6, source: "himmel.conf", file: conf });
-  expect(readFileSync(conf, "utf8")).toBe("# keep\nHANDOVER_DIR=/x\nHIMMEL_FLEET_CAP=6\n");
-  expect(readFileSync(envFile, "utf8")).toBe("JIRA_PROJECT_KEY=HIMMEL\n");
-  expect(await (await get(port, "/api/fleet-cap")).json()).toMatchObject({ cap: 6, source: "himmel.conf" });
+  expect(await r.json()).toMatchObject({ cap: 6, source: ".env" });
+  expect(readFileSync(envFile, "utf8")).toBe("# keep\nJIRA_PROJECT_KEY=HIMMEL\nHIMMEL_FLEET_CAP=6\n");
+  expect(await (await get(port, "/api/fleet-cap")).json()).toMatchObject({ cap: 6, source: ".env" });
 });
 
 test("writing the cap again replaces the line instead of adding a second one", async () => {
-  writeFileSync(conf, "HIMMEL_FLEET_CAP=3\nOTHER=1\n");
+  writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\nOTHER=1\n");
   const port = boot();
   expect((await post(port, "/api/fleet-cap", { cap: 8 })).status).toBe(200);
-  expect(readFileSync(conf, "utf8")).toBe("HIMMEL_FLEET_CAP=8\nOTHER=1\n");
+  expect(readFileSync(envFile, "utf8")).toBe("HIMMEL_FLEET_CAP=8\nOTHER=1\n");
 });
 
-test("a new himmel.conf is created owner-only", async () => {
+test("a new .env is created owner-only", async () => {
   expect((await post(boot(), "/api/fleet-cap", { cap: 5 })).status).toBe(200);
-  expect(statSync(conf).mode & 0o777).toBe(0o600);
+  expect(statSync(envFile).mode & 0o777).toBe(0o600);
 });
 
 test("a symlink planted at the temporary name is replaced, never written through", async () => {
   const victim = join(dir, "victim.txt");
   writeFileSync(victim, "untouched\n");
-  writeFileSync(conf, "OTHER=1\n");
-  symlinkSync(victim, `${conf}.tmp-${process.pid}`);
+  writeFileSync(envFile, "OTHER=1\n");
+  symlinkSync(victim, `${envFile}.tmp-${process.pid}`);
   expect((await post(boot(), "/api/fleet-cap", { cap: 5 })).status).toBe(200);
   expect(readFileSync(victim, "utf8")).toBe("untouched\n");
-  expect(readFileSync(conf, "utf8")).toBe("OTHER=1\nHIMMEL_FLEET_CAP=5\n");
-});
-
-test("a himmel.conf that is a symlink (a luna install) is written through and stays a link", async () => {
-  const real = join(dir, "vault-himmel.conf");
-  writeFileSync(real, "OTHER=1\n");
-  symlinkSync(real, conf);
-  expect((await post(boot(), "/api/fleet-cap", { cap: 7 })).status).toBe(200);
-  expect(lstatSync(conf).isSymbolicLink()).toBe(true);
-  expect(readFileSync(real, "utf8")).toBe("OTHER=1\nHIMMEL_FLEET_CAP=7\n");
-});
-
-test("the cap is read from himmel.conf, with himmel.conf.local over it and the legacy .env under it", async () => {
-  writeFileSync(envFile, "HIMMEL_FLEET_CAP=2\n");
-  const port = boot();
-  expect(await (await get(port, "/api/fleet-cap")).json()).toMatchObject({ cap: 2, source: ".env" });
-  writeFileSync(conf, "HIMMEL_FLEET_CAP=11\n");
-  expect(await (await get(port, "/api/fleet-cap")).json()).toMatchObject({ cap: 11, source: "himmel.conf", fileValue: 11 });
-  writeFileSync(`${conf}.local`, "HIMMEL_FLEET_CAP=13\n");
-  expect(await (await get(port, "/api/fleet-cap")).json()).toMatchObject({ cap: 13, source: "himmel.conf.local" });
-});
-
-test("a write lands in himmel.conf.local when that file sets the cap, so the saved value takes effect", async () => {
-  writeFileSync(`${conf}.local`, "HIMMEL_FLEET_CAP=13\n");
-  writeFileSync(conf, "HIMMEL_FLEET_CAP=11\n");
-  const port = boot();
-  expect(await (await post(port, "/api/fleet-cap", { cap: 9 })).json()).toMatchObject({ cap: 9, source: "himmel.conf.local" });
-  expect(readFileSync(`${conf}.local`, "utf8")).toBe("HIMMEL_FLEET_CAP=9\n");
-  expect(readFileSync(conf, "utf8")).toBe("HIMMEL_FLEET_CAP=11\n");
+  expect(readFileSync(envFile, "utf8")).toBe("OTHER=1\nHIMMEL_FLEET_CAP=5\n");
 });
 
 test("a symlink planted at the overlay's temporary name is replaced, never written through", async () => {
@@ -142,7 +109,7 @@ test("a symlink planted at the overlay's temporary name is replaced, never writt
 test("a cap the launching shell sets wins over .env and is reported as such", async () => {
   writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
   const j = await (await get(boot({ HIMMEL_FLEET_CAP: "9" }), "/api/fleet-cap")).json();
-  expect(j).toMatchObject({ cap: 9, source: "env", fileValue: 3, fileSource: ".env" });
+  expect(j).toMatchObject({ cap: 9, source: "env", fileValue: 3 });
 });
 
 test("a shell value the preflight would use is shown as the effective cap, even past the UI's own range", async () => {
@@ -155,27 +122,27 @@ test("a non-numeric shell value is shown as the 4 the preflight falls back to, n
   expect(await (await get(boot({ HIMMEL_FLEET_CAP: "many" }), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "env", fileValue: 3 });
 });
 
-test("a cap write waits out the station write lock instead of racing another config writer", async () => {
-  writeFileSync(conf, "OTHER=1\n");
+test("a cap write waits out the station write lock instead of racing another .env writer", async () => {
+  writeFileSync(envFile, "OTHER=1\n");
   const port = boot();
   const held = acquireLock(join(dir, "home", ".himmel", "state", "config-ui", "write.lock"));
   expect("busy" in held).toBe(false);
   const r = await post(port, "/api/fleet-cap", { cap: 6 });
   expect(r.status).toBe(409);
-  expect(readFileSync(conf, "utf8")).toBe("OTHER=1\n");
+  expect(readFileSync(envFile, "utf8")).toBe("OTHER=1\n");
   (held as { release(): void }).release();
   expect((await post(port, "/api/fleet-cap", { cap: 6 })).status).toBe(200);
 });
 
-test("an invalid cap is refused with a plain message and himmel.conf is untouched", async () => {
-  writeFileSync(conf, "OTHER=1\n");
+test("an invalid cap is refused with a plain message and .env is untouched", async () => {
+  writeFileSync(envFile, "OTHER=1\n");
   const port = boot();
   for (const cap of [0, -1, 51, 2.5, "abc", "4; rm -rf /", "", null, true, [4]]) {
     const r = await post(port, "/api/fleet-cap", { cap });
     expect(r.status, JSON.stringify(cap)).toBe(400);
     expect((await r.json()).error).toMatch(/whole number from 1 to 50/);
   }
-  expect(readFileSync(conf, "utf8")).toBe("OTHER=1\n");
+  expect(readFileSync(envFile, "utf8")).toBe("OTHER=1\n");
 });
 
 test("the cap route needs the token and a same-origin json body", async () => {
@@ -273,18 +240,17 @@ test("the draft carries a model for a dispatched reviewer, an effort for the Cla
 });
 
 test("the fleet cap card shows the cap, its default and where it is set, with a save button", () => {
-  const html: string = renderFleetCap({ data: { cap: 6, default: 4, min: 1, max: 50, source: "himmel.conf", fileValue: 6, file: "/x/himmel.conf" }, error: null, draft: 6, msg: null });
+  const html: string = renderFleetCap({ data: { cap: 6, default: 4, min: 1, max: 50, source: ".env", fileValue: 6, envFile: "/x/.env" }, error: null, draft: 6, msg: null });
   expect(html).toContain('<section id="fleet-cap"');
   expect(html).toContain('data-fc="cap"');
   expect(html).toContain('value="6"');
   expect(html).toMatch(/default[^<]*4/);
-  expect(html).toContain("/x/himmel.conf");
+  expect(html).toContain("/x/.env");
   expect(html).toContain('data-act="fleet-cap-save"');
 });
 
-test("the fleet cap card says when the launching shell overrides the saved cap, and shows the loading and error states", () => {
-  const html: string = renderFleetCap({ data: { cap: 9, default: 4, min: 1, max: 50, source: "env", fileValue: 3, fileSource: "himmel.conf.local", file: "/x/himmel.conf" }, error: null, draft: 9, msg: null });
-  expect(html).toContain("saved in himmel.conf.local: 3");
+test("the fleet cap card says when the launching shell overrides .env, and shows the loading and error states", () => {
+  const html: string = renderFleetCap({ data: { cap: 9, default: 4, min: 1, max: 50, source: "env", fileValue: 3, envFile: "/x/.env" }, error: null, draft: 9, msg: null });
   expect(html).toMatch(/launching shell/);
   expect(html).toContain("until the UI restarts without it");
   expect(html).not.toContain("until that shell restarts");

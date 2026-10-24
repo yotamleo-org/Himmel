@@ -29,7 +29,7 @@ export function behaviourKey(
   dotenvPath?: string,
 ): string | undefined {
   if (env[key]) return env[key];
-  const confDir = join(homedir(), '.himmel');
+  const confDir = join(env.HOME || homedir(), '.himmel');
   for (const file of [join(confDir, 'himmel.conf.local'), join(confDir, 'himmel.conf')]) {
     const value = readDotenvKey(file, key);
     if (value) return value;
