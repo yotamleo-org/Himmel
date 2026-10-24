@@ -1308,6 +1308,11 @@ assert_rc "7366 ctl grep then set -o in the next clause"    2 "$(run_case "$(j_b
 assert_rc "7366 ctl cat piped to a shell with the word"     2 "$(run_case "$(j_bash 'cat f | bash -o xtrace')")"
 assert_rc "7366 ctl grep with a substitution setting it"    2 "$(run_case "$(j_bash "grep \"\$(set -o xtrace; :)\" f")")"
 assert_rc "7366 ctl SHELLOPTS prefix on a reader"           2 "$(run_case "$(j_bash 'SHELLOPTS=xtrace grep x f')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function shadows a reader"            2 "$(run_case "$(j_bash 'cat() { set -o "$1"; }; cat xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function keyword shadows a reader"    2 "$(run_case "$(j_bash 'function grep { set -o "$1"; }; grep xtrace')")"
+assert_rc "7366 ctl an alias shadows a reader"              2 "$(run_case "$(j_bash "alias head='set -o'; head xtrace")")"
 
 # --- an env NAME=value operand the shfmt model unwraps past still reaches the
 # regex reader: the model only proves a shifted-cwd glob safe, never allows

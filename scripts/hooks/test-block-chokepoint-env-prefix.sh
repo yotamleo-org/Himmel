@@ -2630,6 +2630,7 @@ assert_allow "7366: a git push beside a grep keeps the relief" "$(j "grep -c x /
 assert_deny "7366 control: a bare glob can expand to a git grep pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git grep -n env *")"
 assert_deny "7366 control: a dash glob can expand to a git log output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git log -1 --o*")"
 assert_deny "7366 control: a bare glob can expand to sed -i, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p *")"
+assert_deny "7366 control: a brace word can expand to sed -e e, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p {-e,e}")"
 assert_deny "7366 control: a bare glob can expand to sort -o, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sort ?")"
 assert_deny "7366 control: file -C writes a file beside a git call and the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; file -C -m /tmp/m7366; git status")"
 assert_deny "7366 control: python inline code under an inherited PYTHONINSPECT reads piped code" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -c 'import sys; print(sys.stdin.read())'")" PYTHONINSPECT=1

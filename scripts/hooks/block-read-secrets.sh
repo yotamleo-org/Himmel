@@ -870,14 +870,19 @@ g4_clause() {
 }
 
 g4_segments() {
-    local s=0 k n g4raw=0
+    local s=0 k n g4raw=0 g4shadow=0
     local -a idx g4w g4g g4k g4hs hs
     hs=()
     # here-string targets (`<<< "$TOKEN"`) are redirect targets, so
     # guard_unwrap's segment words leave them out; collect the live-`$` ones.
+    # A command that defines a function or alias may give a reader's name to
+    # code, so no reader's operands are data (g4shadow).
     k=0
     while [ "$k" -lt "${ST_N:-0}" ]; do
         case "${ST_RO[k]:-}" in *'<<<') if [ "${ST_X[k]:-0}" = 1 ]; then hs[${#hs[@]}]=$k; fi ;; esac
+        if [ "${ST_Q[k]:-1}" = 0 ]; then
+            case "${ST_W[k]}" in alias | function | '{' | '}' | *'()'*) g4shadow=1 ;; esac
+        fi
         k=$((k + 1))
     done
     while [ "$s" -lt "$ST_NSEG" ]; do
@@ -988,7 +993,7 @@ g4_scan() {
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
             cmd="${d##*/}"; cmd="${cmd%.exe}"
             # Tokenized only: a raw clause can hold a pipe into a shell.
-            if [ "$g4raw" = 0 ]; then
+            if [ "$g4raw" = 0 ] && [ "${g4shadow:-0}" = 0 ]; then
                 case "$w" in
                     grep | egrep | fgrep | cat | head | tail | wc | ls | nl | cut | tr) rdr=1 ;;
                     sed) if st_sed_args "${g4k[i]}" 0; then rdr=1; fi ;;
