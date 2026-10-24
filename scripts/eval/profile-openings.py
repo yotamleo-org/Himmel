@@ -10,7 +10,7 @@ is input + cache-creation + cache-read tokens. It reads local files only: no mod
                       [--launch-logs D] [--projects D] [--ledger P] [--now ISO]
 
 The join key is session_id= when the line has it, else the session name against the transcript's
-custom-title. A name whose launch lines disagree on the profile (a refused duplicate of a live name) is
+custom-title, counting only a transcript whose first request is no earlier than the launch. A name whose launch lines disagree on the profile (a refused duplicate of a live name) is
 left out, as are a launch with profile=none and a composed list (a,b: no single budget to set). Per profile it prints n, the median opening, the range, and the
 contextBudget the median supports: the median rounded up to 1000 once n reaches --min-n, else "keep".
 --record appends one eval-runs row per profile (eval "profile-opening"). Without it nothing is written.
@@ -109,7 +109,7 @@ def index_transcripts(projects, since_epoch):
 
 
 def opening_size(path):
-    """Tokens of the first real assistant request, or None."""
+    """(tokens, timestamp) of the first real assistant request, or None."""
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for _, line in zip(range(SCAN_LINES), fh):
@@ -128,7 +128,7 @@ def opening_size(path):
                 total = sum(u.get(k) or 0 for k in ("input_tokens", "cache_creation_input_tokens",
                                                     "cache_read_input_tokens"))
                 if total > 0:
-                    return total
+                    return total, str(o.get("timestamp") or "")
     except OSError:
         return None
     return None
@@ -146,8 +146,11 @@ def collect(logs_dir, projects, since, lane):
         for path in paths:
             if path in claimed:
                 continue
-            size = opening_size(path)
-            if size is None:
+            opening = opening_size(path)
+            if opening is None:
+                continue
+            size, ts = opening
+            if not rec["sids"] and ts[:19] < rec["launched"][:19]:
                 continue
             claimed.add(path)
             entry = prof.setdefault(rec["profile"], {"sizes": [], "lane": rec["lane"]})
