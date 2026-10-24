@@ -100,12 +100,20 @@ function upsertConfEntries(link, entries, dropKeys) {
   }
 }
 
-// The path a write to FILE must replace: FILE's resolved target when it is a
-// link (dangling included), else FILE itself.
+// The path a write to FILE must replace: the end of FILE's link chain (a
+// dangling chain included), else FILE itself.
 function linkTarget(file) {
   try { return fs.realpathSync(file); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  try { return path.resolve(path.dirname(file), fs.readlinkSync(file)); } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'EINVAL') throw e; }
-  return file;
+  let target = file;
+  for (let hops = 0; hops < 40; hops += 1) {
+    let next;
+    try { next = fs.readlinkSync(target); } catch (e) {
+      if (e.code === 'ENOENT' || e.code === 'EINVAL') return target;
+      throw e;
+    }
+    target = path.resolve(path.dirname(target), next);
+  }
+  throw Object.assign(new Error(`too many links: ${file}`), { code: 'ELOOP' });
 }
 
 module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, writeTarget, upsertConfEntries };
