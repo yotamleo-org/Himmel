@@ -238,12 +238,13 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
 3. `touch` the signal path from step 1 and hand your live legs to the successor.
 4. **Re-brief every live worker before you release, never by hand.** On
    `WAKE relay-on-live` (set by `next` for a bus chief) or by running
-   `relay-batch.sh <this doc> --successor <it>`: a bus record relays each worker,
-   plus the claudex relays; a failed or absent one prints a `SENDMESSAGE`
-   (successor, worker's token): send each from **your own session**. That run is the
-   relay; never re-run it (a retry resends claudex inbox relays). It carries no fresh
-   token: a rotating successor adds it by hand to a native line (claudex workers are
-   not rotated on a bus succession). Wait for each worker's quote-back.
+   `relay-batch.sh <this doc> --successor <it>`: a bus record relays each native
+   worker, an inbox relay each claudex one. A failed or absent record prints
+   `SENDMESSAGE` (successor, worker's token) for a Live-state worker,
+   `NOT-IN-LIVE-STATE` for one not in it: relay each from **your own session**.
+   Never re-run it (a retry resends inbox relays). It carries no fresh token:
+   native and claudex workers are not rotated on a bus succession. Wait for each
+   quote-back.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any legs that
    did not quote back, and why. Then wrap with

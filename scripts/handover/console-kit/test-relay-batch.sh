@@ -320,5 +320,14 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%
 out19="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"; rc19=$?
 check "a relay with a lane-less manifest leg exits 0" "0" "$rc19"
 check "a lane-less off-Live-state leg is reported with its own doc" "1" "$(printf '%s\n' "$out19" | grep -cF "NOT-IN-LIVE-STATE N63 ($LEGL)")"
+# a live claudex leg missing from Live state gets no bus relay: its relay is the inbox, which needs its token
+LEGC="$WORK/DEMO-19-N64-cdx-2026-10-24.md"; : > "$LEGC"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N64","lane":"claudex"}]}\n' "$LEGA" "$LEGC" > "${DOC10%.md}.fleet.json"
+census DEMO-15-N60-in-2026-10-24 DEMO-19-N64-cdx-2026-10-24
+printf '%s\n' "$LOGBUS" > "$BUS"; : > "$WORK/bus.log"
+out20="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-console bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-console 2>&1)"; rc20=$?
+check "a relay with an off-Live-state claudex leg exits 0" "0" "$rc20"
+check "an off-Live-state claudex leg is sent no bus relay" "0" "$(grep -c 'DEMO-19-N64' "$WORK/bus.log")"
+check "an off-Live-state claudex leg is left for a hand relay" "1" "$(printf '%s\n' "$out20" | grep -c '^NOT-IN-LIVE-STATE N64 ')"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
