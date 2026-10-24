@@ -52,6 +52,7 @@ import fcntl
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -66,6 +67,8 @@ TABLE = os.path.join(HERE, "failure-routes.table.json")
 PLAYBOOK = os.path.join(HERE, "..", "..", "..", "docs", "internals", "stuck-playbook.md")
 LOG_ENV, STATE_ENV, INBOX_ENV = "HIMMEL_FAILURE_ROUTES_LOG", "HIMMEL_FAILURE_ROUTES_STATE", "HIMMEL_FAILURE_INBOX"
 SOURCE = "scripts/eval/leg-digest/failure_router.py"
+NOTIFY_ENV = "FAILURE_ROUTER_NOTIFY_CMD"
+NOTIFY = os.path.join(HERE, "failure-route-notify.sh")
 DONE = ("done", "closed", "resolved", "won't do", "cancelled", "canceled")
 JIRA_TIMEOUT = 60
 
@@ -216,24 +219,49 @@ def build_body(table, t, cls, legs, counted, update):
     return "\n".join(out) + "\n"
 
 
-def default_jira():
+def primary_root():
     try:
         common = subprocess.run(["git", "-C", HERE, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                 capture_output=True, text=True, timeout=15, check=True).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None
-    cli = os.path.join(os.path.dirname(common), "scripts", "jira", "dist", "index.js")
+    return os.path.dirname(common) or None
+
+
+def default_jira():
+    root = primary_root()
+    cli = os.path.join(root, "scripts", "jira", "dist", "index.js") if root else ""
     return ["node", cli] if os.path.isfile(cli) else None
 
 
+def excerpt(text):
+    """The first non-empty line of a failure, cut so it fits one digest line."""
+    for line in (text or "").splitlines():
+        if line.strip():
+            return line.strip()[:120]
+    return ""
+
+
+JIRA_ERR = ""
+
+
 def jira(argv, args):
+    """stdout on rc 0, else None with JIRA_ERR holding why. The CLI finds its .env through the cwd's git
+    repo, and cron starts in $HOME, so it always runs from the primary checkout."""
+    global JIRA_ERR
+    JIRA_ERR = ""
     if not argv:
+        JIRA_ERR = "no jira CLI found"
         return None
     try:
-        r = subprocess.run(argv + args, capture_output=True, text=True, timeout=JIRA_TIMEOUT)
-    except (OSError, subprocess.SubprocessError):
+        r = subprocess.run(argv + args, capture_output=True, text=True, timeout=JIRA_TIMEOUT, cwd=primary_root())
+    except (OSError, subprocess.SubprocessError) as e:
+        JIRA_ERR = excerpt(str(e))
         return None
-    return r.stdout if r.returncode == 0 else None
+    if r.returncode != 0:
+        JIRA_ERR = excerpt(r.stderr) or excerpt(r.stdout) or "exit %d" % r.returncode
+        return None
+    return r.stdout
 
 
 def with_file(text, fn):
@@ -276,7 +304,21 @@ def append_inbox(path, line):
         fh.write(line + "\n")
 
 
+def notify(a, *args):
+    """Run the notifier (console <text> | intake <key> <why>); a failure is said on stderr, never fatal."""
+    cmd = shlex.split(a.notify_cmd) if a.notify_cmd else ["bash", NOTIFY]
+    try:
+        r = subprocess.run(cmd + list(args), capture_output=True, text=True, timeout=JIRA_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as e:
+        print("failure-router: notify %s failed: %s" % (args[0], excerpt(str(e))), file=sys.stderr)
+        return
+    if r.returncode != 0:
+        print("failure-router: notify %s failed: %s" % (args[0], excerpt(r.stderr) or "exit %d" % r.returncode),
+              file=sys.stderr)
+
+
 def search(jbin, project, cls):
+    global JIRA_ERR
     out = jira(jbin, ["list", "--jql", 'project = %s AND labels = "fl-%s"' % (project, slug(cls)), "--limit", "5"])
     if out is None:
         return None
@@ -286,6 +328,7 @@ def search(jbin, project, cls):
             continue
         f = line.split("\t")
         if len(f) < 3 or not TICKET.match(f[0]):
+            JIRA_ERR = "unexpected output: " + excerpt(line)
             return None  # the CLI prints only ticket rows (nothing on zero hits): anything else is an error
         hits.append((f[0], f[2].strip().lower()))
     return hits
@@ -391,6 +434,7 @@ def route(a):
         for k in set(by) | set(state["classes"] if state_ok else ()):
             slugs.setdefault(slug(k), set()).add(k)
         decisions = 0
+        sent = []
         fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
         # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
         for cls in sorted((c for c in fires if fires[c]), key=lambda c: (-len(fires[c][1]), c)):
@@ -436,6 +480,15 @@ def route(a):
                 save_state(a.state, state)
             decisions += 1
             print("failure-router: %s legs=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))
+            if dec == "skipped:search-error" and JIRA_ERR:
+                print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
+            if dec in ("filed", "commented"):
+                sent.append((dec, cls, ticket))
+        for dec, cls, ticket in sent:
+            if dec == "filed":
+                notify(a, "intake", ticket, "the daily failure review filed it: class %s recurred in distinct legs" % cls)
+        if sent:
+            notify(a, "console", "failure-router: " + ", ".join("%s %s (%s)" % t for t in sent))
         if not a.dry_run:
             print("failure-router: decisions=%d" % decisions)
         return 0
@@ -458,6 +511,7 @@ def main(argv=None):
     r.add_argument("--table", default=TABLE)
     r.add_argument("--now")
     r.add_argument("--jira-bin")
+    r.add_argument("--notify-cmd", default=os.environ.get(NOTIFY_ENV))
     b = sub.add_parser("check-body")
     b.add_argument("file")
     a = ap.parse_args(argv)
