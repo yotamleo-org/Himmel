@@ -7147,6 +7147,11 @@ if grepq "$out" -F 'OK   C73-bun-compiled' && ! grepq "$out" -F 'WARN C73'; then
 c73_stub "$c73_t/deep/a/b/c/stale-tool" 1.4.2
 out="$(c73_run "$c73_t/deep")"
 if grepq "$out" -F 'OK   C73-bun-compiled' && ! grepq "$out" -F 'WARN C73'; then pass "C73 a binary below maxdepth 3 is out of scope -> OK"; else fail "C73 depth -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c73_t/real" "$c73_t/links"
+c73_stub "$c73_t/real/stale-tool" 1.4.2
+ln -s "$c73_t/real/stale-tool" "$c73_t/links/stale-link"
+out="$(c73_run "$c73_t/links")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/links/stale-link"; then pass "C73 an executable symlink is followed to its stale target -> WARN"; else fail "C73 symlink -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c73_run "$c73_t/no-such-dir")"
 if grepq "$out" -F 'OK   C73-bun-compiled'; then pass "C73 absent scan dir -> OK"; else fail "C73 absent -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c73_t"

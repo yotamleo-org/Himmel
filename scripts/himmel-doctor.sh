@@ -3359,7 +3359,8 @@ check_c72_design_mcp_auth() {
 # patches it (the CodeRabbit CLI embeds its own Bun, older than every pin).
 # Scans executable regular files over HIMMEL_DOCTOR_BUN_MIN_KB (default 10 MB) in
 # ~/.local/bin, ~/.bun/bin, ~/.himmel and /usr/local/bin at -maxdepth 3 for the
-# release URL a compiled binary embeds (bun/releases/download/bun-vX.Y.Z/) and
+# release URL a compiled binary embeds (bun/releases/download/bun-vX.Y.Z/; a
+# symlink is followed to its target) and
 # WARNs when the highest such version sorts below .bun-version. Report only: the
 # fix is a vendor build on the newer Bun, never a hand patch.
 # Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE.
@@ -3384,7 +3385,7 @@ check_c73_bun_compiled() {
                 emit WARN C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin (Bun advisories fixed in $pin do not reach it)" \
                     "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and keep this warning"
             fi
-        done < <(find "$d" -maxdepth 3 -type f -perm -u+x -size "+${min_kb}k" 2>/dev/null)
+        done < <(find -L "$d" -maxdepth 3 -type f -perm -u+x -size "+${min_kb}k" 2>/dev/null)
     done
     [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
