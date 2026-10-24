@@ -461,7 +461,9 @@ check "RM: the skip is logged" "$(row result)/$(row rule)" skip/RM
 check "RM: no owner record is written" "$([ -e "$REC" ] && echo yes || echo no)" no
 reset "In Progress"; mkdoc "$DOC" WRAPPED
 HIMMEL_RELEASE_MANAGER=1 bash "$APPEND" "$DOC" "WRAPPED — rm" >/dev/null 2>&1
+check "RM: the WRAPPED append succeeds" "$?" 0
 check "RM: a WRAPPED bullet makes no transition" "$(ntrans)" 0
+check "RM: the WRAPPED skip is logged" "$(row result)/$(row rule)" skip/RM
 reset "To Do"; mkdoc "$DOC"
 HIMMEL_RELEASE_MANAGER=0 bash "$APPEND" "$DOC" "LIVE — leg" >/dev/null 2>&1
 check "RM: HIMMEL_RELEASE_MANAGER=0 is a leg, it moves" "$(moved)" "transition $K In Progress"

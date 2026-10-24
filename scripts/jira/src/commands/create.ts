@@ -347,7 +347,7 @@ async function applyVersions(
       if (redirect) {
         console.error(
           `jira: ${st.current} is over its cap (${st.open}/${st.cap} open); ` +
-            (st.next ? `the Bug goes to ${st.next}` : 'no later version, filing the Bug with no fixVersion') +
+            (st.next ? `the ${options.type} goes to ${st.next}` : `no later version, filing the ${options.type} with no fixVersion`) +
             `; --over-cap <reason> files it into ${st.current}`,
         );
       }
@@ -363,9 +363,9 @@ async function applyVersions(
     // A cap redirect already said where the Bug went.
     if (redirected) return overCapReason;
     if (defaultVersion) {
-      console.error(`jira: Bug defaults to fixVersion ${defaultVersion}; --fix-version overrides`);
+      console.error(`jira: ${options.type} defaults to fixVersion ${defaultVersion}; --fix-version overrides`);
     } else {
-      console.error('jira: no unreleased version found; filing the Bug with no fixVersion');
+      console.error(`jira: no unreleased version found; filing the ${options.type} with no fixVersion`);
     }
   }
   return overCapReason;
@@ -395,7 +395,7 @@ function checkPlacementFlags(o: PlacementOptions): string | undefined {
 }
 
 /**
- * A Bug, Task or Story is placed at filing. A Bug that is Highest or gated
+ * A Bug, Task or Story is placed at filing. A gated one, or a Highest Bug,
  * takes the active version (bugDefault); --backlog, --fix-version, --gate,
  * --residual-of, --follow-up-of or a version inherited from a blocker place
  * any of them; with none of these it is refused rather than defaulted silently.
@@ -409,8 +409,8 @@ function placeAtFiling(
   const isBug = type === 'bug';
   if ((!isBug && type !== 'task' && type !== 'story') || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
   if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL])], bugDefault: false };
-  if (isBug && (o.gate !== undefined || o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
-  if (o.gate !== undefined || o.followUpOf !== undefined) return { labels, bugDefault: false };
+  if (o.gate !== undefined || (isBug && o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
+  if (o.followUpOf !== undefined) return { labels, bugDefault: false };
   const sector = 'sector: ' + (o.sector ?? 'none given');
   if (isBug) {
     throw new Error(

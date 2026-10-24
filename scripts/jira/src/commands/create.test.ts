@@ -1369,6 +1369,11 @@ describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
     expect(ledger()).toEqual([]);
   });
 
+  it('a gated Task with no --fix-version takes the earliest unreleased version, so --gate places it', async () => {
+    await file('Task', '--gate', 'critical');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
   it('admits a Task with --gate must:98 and writes a ledger row', async () => {
     await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
