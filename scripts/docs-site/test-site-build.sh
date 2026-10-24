@@ -309,7 +309,15 @@ check "IA: Home no longer carries the v4 headline" absent 'Let Claude Code work 
 check "IA: Home proof 1 with its How a change ships tag" grep -qF '<strong>One road for every change.</strong>' "$home"
 check "IA: Home proof 2 with its reach tag" grep -qF 'Level 1 · in your project' "$home"
 check "IA: Home proof 3 with its reach tag" grep -qF 'Level 5</em>' "$home"
-check "IA: the review proof never claims it runs in your project" fails grep -qE 'One road for every change.*in your project' "$home"
+review_proof_clean() { # review_proof_clean <html>: the One road list item exists and never says "in your project"
+  local p
+  p=$(node -e "const m = require('fs').readFileSync(process.argv[1], 'utf8').match(/<li><strong>One road for every change\.<\/strong>[\s\S]*?<\/li>/); if (!m) process.exit(2); process.stdout.write(m[0]);" "$1") || return 1
+  case "$p" in *'in your project'*) return 1 ;; esac
+}
+printf '<li><strong>One road for every change.</strong> x<br><em>Level 1 · in your project</em></li>' >"$ctl/proof-claim"
+check "control: review_proof_clean fails a review proof that claims in your project" fails review_proof_clean "$ctl/proof-claim"
+check "control: review_proof_clean fails a page with no review proof" fails review_proof_clean "$ctl/page"
+check "IA: the review proof never claims it runs in your project" review_proof_clean "$home"
 check "IA: Home leaves out the measured line" absent '2,000 pull requests' "$home"
 check "IA: Home primary CTA is Quickstart" grep -qE 'sl-link-button[^>]* primary [^>]*href="getting-started/">Quickstart' "$home"
 check "IA: Home secondary CTA is How a change ships" grep -qE 'sl-link-button[^>]* minimal [^>]*href="adoption-trail\.html">How a change ships' "$home"
