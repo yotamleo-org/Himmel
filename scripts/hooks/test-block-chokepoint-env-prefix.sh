@@ -2539,6 +2539,25 @@ else
     echo "SKIP 7009 U+3000 heredoc-tag row: no UTF-8 locale installed"
 fi
 
+# 7130: a trigger word the command-position model shows is data (a grep
+# pattern, a flag given to grep, a python heredoc that only reads) is not a
+# seam write beside a glob path. The allow rows are live denials from the
+# 14-day window; the first two are the audit's Q7 shapes 3 and 4.
+assert_allow "7130 git grep: a pattern holding env beside a glob path list" "$(j "git grep -n -e 'env \\\$' -- scripts/hooks/test-*.sh | head; git grep -n -e '_cmd_refs_lift \"' -- scripts/hooks scripts/lib")"
+assert_allow "7130 git grep -i: -i is a grep flag, not an environment drop" "$(j "git grep -h -i \"linux-only\" -- 'scripts/*.sh' | sed 's/^[# ]*//' | sort | uniq -c | sort -rn | head -8; git grep -n \"Linux-only\" -- scripts/lint scripts/cr | head")"
+assert_allow "7130 grep -i beside a glob path in a git diff stage" "$(j "grep -n -i 'ponytail' scripts/lint/check-history-comments.sh | head -20; git diff -U0 HEAD -- scripts/hooks/block-bare-q*y.sh | sed -n '1,30p' | grep -n ponytail")"
+assert_allow "7130 printf in a quoted grep pattern over a glob path" "$(j "git grep -n -e 'cr-pending' 6c8588ba -- scripts/hooks/*.sh .githooks 2>/dev/null | grep -iE 'write|printf|> *\"\\\$' | head -10")"
+assert_allow "7130 python heredoc that only reads the glob-matched files" "$(j "python3 - scripts/hooks/*.sh <<'EOF2'"$'\n'"import sys"$'\n'"for p in sys.argv[1:]: print(p, open(p).read().count('export'))"$'\n'"EOF2")"
+assert_deny "7130 control: a registered chokepoint env prefix beside a grep pattern still denies" "$(j "grep -n 'eval' scripts/hooks/*.sh; HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN")"
+assert_deny "7130 control: env -i behind a runner the model does not read still denies" "$(j "rtk proxy env -i bash scripts/hooks/*.sh")"
+assert_deny "7130 control: sed e runs a command beside a glob path" "$(j "sed -n '1e env -i sh' scripts/hooks/*.sh")"
+assert_deny "7130 control: node that spawns a process beside a glob path" "$(j "node -e 'require(\"child_process\").execSync(\"env -i sh\")' scripts/hooks/*.sh")"
+assert_deny "7130 control: a heredoc written to a script then run still denies" "$(j "cat > /tmp/p7130.sh <<'EOF2'"$'\n'"export X=1"$'\n'"EOF2"$'\n'"bash /tmp/p7130.sh scripts/hooks/*.sh")"
+assert_deny "7130 control: printf -v writes a variable beside a glob path" "$(j "printf -v PAGER '%s' scripts/hooks/*.sh")"
+assert_deny "7130 control: printf beside a hard (double-slash) path keeps the deny" "$(j "printf '%s' scripts//hooks/x.sh; read -r y")"
+assert_deny "7130 control: read at command position beside a glob path" "$(j "read -r PAGER < scripts/hooks/x*.sh")"
+assert_deny "7130 control: an uppercase assignment ahead of git beside a glob path" "$(j "PAGER='env -i sh' git log -- scripts/hooks/*.sh")"
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"

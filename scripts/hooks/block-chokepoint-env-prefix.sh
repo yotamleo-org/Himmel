@@ -1866,6 +1866,96 @@ pobf_relief() {
     return 0
 }
 
+# obf_ast_relief <raw text> -- rc 0 when the command-position model
+# (scripts/lib/bash-ast.sh) shows the command writes no seam and clears no
+# environment, so a trigger word the text layer matched is data: a word in a
+# quoted grep pattern, a heredoc body read by python, or `-i` given to grep.
+# Every position must be readable (no opaque runner, no glob or expansion as
+# the program word, no env or exec wrapper), assign only lowercase or
+# one- and two-letter names (an uppercase one can be PAGER or EDITOR), and
+# run a program from a fixed set: data tools; git without -c, a pager or an
+# exec option; python or node whose code names no process spawn and no
+# environment; sed, awk, perl or ruby whose literal code holds no verb word;
+# or a shell or .sh script none of whose words is a verb or a shell name, in
+# a command that writes no file and feeds no heredoc. A verb at command
+# position (printf, read) keeps the scan, and so does a heredoc written to a
+# file, since the file can be run later. A command that names a
+# seam variable, startup state or a clear the text sees (declare +x,
+# export -n, exec -, ${!) never gets relief; neither does one the model
+# cannot load or parse within its bound.
+# ponytail: an unknown program word keeps the deny, and so does a runner the
+# model does not flag (rtk proxy, npm run); upgrade path = a runner table in
+# bash-ast.jq.
+IFS= read -r -d '' OBF_AST_JQ <<'OBF_AST_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
+def lit: .t == "lit";
+def wv: .v // "";
+def isin($s): . as $x | $s | any(. == $x);
+def shells: ["bash", "sh", "zsh", "dash", "ksh", "mksh"];
+def verbs: ["export", "env", "exec", "eval", "declare", "typeset", "readonly",
+  "local", "let", "unset", "source", ".", "getopts",
+  "alias", "set", "shopt", "enable", "trap"] + shells;
+def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
+  "tr", "sort", "uniq", "nl", "jq", "grep", "egrep", "fgrep", "diff", "cmp",
+  "comm", "paste", "column", "fold", "fmt", "base64", "od", "xxd",
+  "hexdump", "sha256sum", "sha1sum", "md5sum", "cksum", "mkdir", "cp", "mv",
+  "rm", "rmdir", "chmod", "touch", "ln", "date", "basename", "dirname",
+  "realpath", "readlink", "stat", "file", "test", "[", "true", "false",
+  "sleep", "tee", "mktemp", "seq", "du", "df", "find", "gh", "shellcheck",
+  "shfmt", "tree"];
+def spawn: "subprocess|environ|putenv|unsetenv|os\\.(system|exec|spawn|popen|fork)|pty|Popen|commands\\.|ctypes|child_process|exec(Sync|File)|spawn|process\\.env|Bun\\.|Deno\\.|(^|[^[:alnum:]_.])(system|exec|fork|popen)[[:space:]]*\\(";
+def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
+def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
+  and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
+def git_ok:
+  .argv as $a
+  | ({i: 1} | until(($a[.i] == null) or (($a[.i] | wv) | startswith("-") | not);
+      if ($a[.i] | wv) | isin(["-C", "--git-dir", "--work-tree", "--namespace"])
+      then .i += 2 else .i += 1 end) | .i) as $s
+  | ($a[1:$s] | all(.[]; lit and ((wv | test("^(-c|--config-env|--exec-path)")) | not)))
+  and (($a[$s] // {t: "lit", v: ""}) | lit
+       and ((wv | isin(["filter-branch", "bisect", "submodule", "difftool", "mergetool", "rebase"])) | not))
+  and ($a[$s:] | all(.[]; (lit | not) or ((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd)")) | not)));
+def pos_ok($vr):
+  (.opaque == null)
+  and ((.via // []) | all(.[]; . != "env" and . != "exec"))
+  and ((.assigns // []) | all(.[]; plainname))
+  and (.argv[0] == null or (.argv[0] | lit and (.g | not)))
+  and (if .prog == null then true
+       elif .prog == "printf" then $hard == "0" and ((.argv[1] // {t: "lit", v: ""}) | lit and ((wv | startswith("-")) | not))
+       elif .prog == "git" then git_ok
+       elif .prog | isin(["python3", "python", "node"]) then code_ok(spawn)
+       elif .prog | isin(["sed", "awk", "gawk", "perl", "ruby"]) then code_ok($vr)
+       elif .prog | isin(data) then true
+       elif (.prog | isin(shells)) or (.prog | endswith(".sh")) then (.argv[1:] | all(.[]; (lit | not) or ((wv | isin(verbs)) | not)))
+       else false end);
+def shellish: (.prog // "") as $p | ($p | isin(shells)) or ($p | endswith(".sh"));
+def outs: (.redirs // []) | map(select(((.op // "") | isin([">", ">>", ">|", "&>", "&>>"]))
+  and ((.w // {}) | (lit and wv == "/dev/null") | not)));
+def hdoc_to_file: ((.redirs // []) | any(.[]; .hdoc)) and ((outs | length) > 0 or .prog == "tee");
+if all(.[]; pos_ok($vr)) and ((any(.[]; shellish) and any(.[]; (outs | length) > 0 or ((.redirs // []) | any(.[]; .hdoc)))) | not)
+   and (any(.[]; hdoc_to_file) | not)
+then "allow" else "legacy" end
+OBF_AST_EOF
+obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
+    local t="$1" vr="$2" hd="$3" u v pos lib="$SCRIPT_DIR/../lib/bash-ast.sh"
+    local nl="(^|[^[:alnum:]_])" nr="([^[:alnum:]_]|$)"
+    local clr='(declare|typeset|local)[[:space:]]+(.*[[:space:]])?\+[[:alnum:]]*x|(^|[^[:alnum:]_-])exec[[:space:]]+-|\$\{!|(^|[^[:alnum:]_-])export[[:space:]]+-[[:alnum:]]*n'
+    [ "$tool" = Bash ] || return 1
+    [[ $t =~ $clr ]] && return 1
+    u=${t//[\'\"\\]/}
+    case "$u" in *BASH_FUNC_*) return 1 ;; esac
+    for v in $ALL_SEAM_VARS BASH_ENV ENV SHELLOPTS BASHOPTS extdebug HIMMEL_CONSOLE_LEG; do
+        case "$v" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+        [[ $u =~ ${nl}${v}${nr} ]] && return 1
+    done
+    # The model can run for minutes on a long heredoc command, so it gets a
+    # bound well inside the chain's per-hook budget; past it the deny stands.
+    { [ -r "$lib" ] && command -v timeout >/dev/null 2>&1; } || return 1
+    # shellcheck disable=SC2016 # $1/$2 expand in the child shell
+    pos=$(timeout 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
+    [ "$(printf '%s' "$pos" | jq -r --arg vr "$vr" --arg hard "$hd" "$OBF_AST_JQ" 2>/dev/null)" = allow ] # swallow-ok: a jq error is not allow, so the deny stands
+}
+
 # raw_obfuscated <raw text> -- text layer, run on the UNTOUCHED
 # command. Deny-leaning and parse-free on purpose: every special-case parse
 # rule in a guard became a bypass (PR 1494/1501/1508), so this is a plain scan.
@@ -2023,6 +2113,7 @@ raw_obfuscated() {
             pobf_relief "$t" && { set +f; return 0; }
             set +f
         fi
+        obf_ast_relief "$raw_cmd" "$wv" "$hard" && return 0
         deny_text_layer "names a seam or clears the environment beside a path with a glob or grouping in a segment"
     fi
     # ponytail: HIMMEL-4135 -- the verb scan also matches inside a quoted argument value
@@ -2084,6 +2175,10 @@ raw_obfuscated() {
         pobf_relief "$t" && { set +f; return 0; }
         set +f
     fi
+    # A trigger word the command-position model shows is data does not
+    # count (obf_ast_relief); everything the model cannot prove keeps the
+    # deny.
+    obf_ast_relief "$raw_cmd" "$wv" "$hard" && return 0
     deny_text_layer "writes a seam variable beside an obfuscated (glob, brace, ANSI-C or \$var) path under scripts/ (it matched $tw)"
 }
 
