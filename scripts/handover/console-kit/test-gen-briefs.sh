@@ -71,6 +71,7 @@ has "brief 1 teaches the quiet-run RED shape and the log-path Read" "$B1" "with 
 has "brief 1 names the quiet-run log path to Read" "$B1" "Read the log path its ERR line prints"
 has "brief 1 teaches the Edit tool / python3 -I <file> shape" "$B1" "run as \`python3 -I <file>\`"
 has "brief 1 teaches the SWEEP record at the agreed/fixed mark" "$B1" "write its \`SWEEP [<id>@<head>]"
+has "brief 1 teaches the single-site search form for a one-site finding" "$B1" ":: single-site search=git grep"
 
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
 has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
