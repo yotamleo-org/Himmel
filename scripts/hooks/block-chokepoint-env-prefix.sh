@@ -1874,11 +1874,13 @@ pobf_relief() {
 # the program word, no env or exec wrapper), assign only lowercase or
 # one- and two-letter names (an uppercase one can be PAGER or EDITOR), and
 # run a program from a fixed set: data tools that run no nested program
-# (sort without --compress-program, gh only through a fixed list of
+# (sort without --compress-program or a prefix of it, gh only through a fixed list of
 # subcommands, never an alias or extension; the model already marks
-# find -exec opaque); git
-# without -c, a pager or an
-# exec option; inline python or node code (-c, -e or a heredoc, in the
+# find -exec opaque); git running only a read-only subcommand from a fixed
+# list, with no global option but -C, --no-pager or -P and no pager, exec or
+# output option, long or abbreviated, in a command whose every other
+# position runs a read-only program and writes no file (a written hook or
+# config is run by the git call beside it); inline python or node code (-c, -e or a heredoc, in the
 # options before any script word; never a script file or a preload) that names no process spawn, no environment and no dynamic
 # lookup a spawn name could be built through (getattr, __dict__, globals,
 # require of anything but fs or path, ...); sed, awk, perl or ruby whose
@@ -1925,20 +1927,31 @@ def inline: .argv[1:] as $a
 def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
 def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
   and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
+def lopt($names; $min): lit and (wv | startswith("--")
+  and ((ltrimstr("--") | split("=")[0]) as $n | ($n | length) >= $min and ($names | any(.[]; startswith($n)))));
 def runs_none:
-  if .prog == "sort" then (.argv[1:] | all(.[]; lit and ((wv | test("^--compress")) | not)))
+  if .prog == "sort" then (.argv[1:] | all(.[]; lit and (lopt(["compress-program"]; 2) | not)))
   elif .prog == "gh" then ((.argv[1] // {t: "lit", v: ""}) | lit
     and (wv | isin(["pr", "issue", "run", "api", "repo", "release", "workflow", "search", "label", "status", "cache"])))
   else true end;
+def gitro: ["status", "log", "diff", "show", "grep", "ls-files", "ls-tree",
+  "rev-parse", "rev-list", "blame", "cat-file", "describe", "shortlog",
+  "merge-base", "name-rev", "for-each-ref", "show-ref", "diff-tree",
+  "diff-files", "diff-index", "count-objects", "check-ignore"];
+def rdonly: ["git", "cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls",
+  "cut", "tr", "nl", "jq", "grep", "egrep", "fgrep", "diff", "cmp", "comm",
+  "paste", "column", "fold", "fmt", "basename", "dirname", "realpath",
+  "readlink", "stat", "file", "test", "[", "true", "false", "seq", "du",
+  "df", "date", "sleep", "printf", "shellcheck"];
 def git_ok:
   .argv as $a
   | ({i: 1} | until(($a[.i] == null) or (($a[.i] | wv) | startswith("-") | not);
-      if ($a[.i] | wv) | isin(["-C", "--git-dir", "--work-tree", "--namespace"])
-      then .i += 2 else .i += 1 end) | .i) as $s
-  | ($a[1:$s] | all(.[]; lit and ((wv | test("^(-c|--config-env|--exec-path)")) | not)))
-  and (($a[$s] // {t: "lit", v: ""}) | lit
-       and ((wv | isin(["filter-branch", "bisect", "submodule", "difftool", "mergetool", "rebase"])) | not))
-  and ($a[$s:] | all(.[]; (lit | not) or ((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd|--upload-pack|--receive-pack)")) | not)));
+      if ($a[.i] | wv) == "-C" then .i += 2 else .i += 1 end) | .i) as $s
+  | ($a[1:$s] | all(.[]; lit) and (map(wv) | . as $g
+      | all(range(0; length); ($g[.] | isin(["-C", "--no-pager", "-P"])) or (. > 0 and $g[. - 1] == "-C"))))
+  and (($a[$s] // {t: "lit", v: ""}) | lit and (wv | isin(gitro)))
+  and ($a[$s:] | all(.[]; (lit | not) or (((wv | test("^(-O|--open-files-in-pager|--exec|-x$|--extcmd|--upload-pack|--receive-pack|--output)"))
+       or lopt(["open-files-in-pager", "exec", "extcmd", "upload-pack", "receive-pack", "output", "ext-diff", "textconv", "filters"]; 1)) | not)));
 def pos_ok($vr):
   (.opaque == null)
   and ((.via // []) | all(.[]; . != "env" and . != "exec"))
@@ -1962,8 +1975,16 @@ def carries($vr): ((.argv // []) | any(.[]; (lit | not) or (wv | test($vr))))
 def nocarry($vr): [to_entries[] | select(.value | carries($vr)) | .key] as $c
   | all(to_entries[] | select(.value.prog // "" | isin(["sed", "awk", "gawk", "perl", "ruby"])) | .key;
       . as $r | $c | all(.[]; . == $r));
+def rdpos: (.prog == null) or (.prog | isin(rdonly))
+  or ((.argv[1:] | all(.[]; lit)) and ((.argv[1:] | map(wv)) as $w
+     | if .prog == "sed" then ($w | all(.[]; test("^-[[:alnum:]]*i|^--in|[wW]") | not))
+       elif .prog == "sort" then ($w | all(.[]; test("^-[[:alnum:]]*o|^--o") | not))
+       elif .prog == "uniq" then ($w | map(select(startswith("-") | not)) | length) <= 1
+       else false end));
+def gitsafe: (any(.[]; .prog == "git") | not)
+  or all(.[]; rdpos and ((outs | length) == 0));
 if all(.[]; pos_ok($vr)) and ((any(.[]; shellish) and any(.[]; (outs | length) > 0 or ((.redirs // []) | any(.[]; .hdoc)))) | not)
-   and (any(.[]; hdoc_to_file) | not) and nocarry($vr)
+   and (any(.[]; hdoc_to_file) | not) and nocarry($vr) and gitsafe
 then "allow" else "legacy" end
 OBF_AST_EOF
 obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
