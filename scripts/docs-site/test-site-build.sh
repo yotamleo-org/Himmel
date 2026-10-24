@@ -170,12 +170,22 @@ printf '<h2 id="a&amp;b">E</h2>\n' >>"$sweep_ctl/links-ent/page/index.html" || e
 mk_site "$sweep_ctl/links-inert" '<!-- <a href="/Himmel/no-such/">x</a> --> <script>var s = '"'"'<a href="/Himmel/no-such/">x</a>'"'"';</script>' "" || exit 1
 mk_site "$sweep_ctl/links-case" '<a href="#up">x</a>' "" || exit 1
 printf '<h2 ID = "up">U</h2>\n' >>"$sweep_ctl/links-case/page/index.html" || exit 1
+mk_site "$sweep_ctl/links-meta" '<a href="#viewport">x</a> <meta name="viewport" content="w">' "" || exit 1
+mk_site "$sweep_ctl/links-aname" '<a href="#legacy">x</a> <a name="legacy">L</a>' "" || exit 1
+mk_site "$sweep_ctl/links-sid" '<a href="#sid">x</a> <script id="sid">var s = 1;</script>' "" || exit 1
+mk_site "$sweep_ctl/links-bare" '<a href=/Himmel/no-such/>x</a>' "" || exit 1
+mk_site "$sweep_ctl/links-spaced" '<a href = "/Himmel/no-such/">x</a>' "" || exit 1
 mkdir "$sweep_ctl/links-empty" || exit 1
 built_rc2() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 2 ]; }
 check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
 check "built links: an entity-escaped fragment and its percent-encoded form resolve" built_ok "$sweep_ctl/links-ent"
 check "built links: an anchor inside a comment or script is not a link" built_ok "$sweep_ctl/links-inert"
 check "built links: an upper-case ID attribute with spaced equals is a fragment target" built_ok "$sweep_ctl/links-case"
+check "built links: a legacy name on an anchor is a fragment target" built_ok "$sweep_ctl/links-aname"
+check "built links: the id on a script element is a fragment target" built_ok "$sweep_ctl/links-sid"
+check "control: built links fails a fragment that only a meta name carries" fails built_ok "$sweep_ctl/links-meta"
+check "control: built links fails a dead unquoted href" fails built_ok "$sweep_ctl/links-bare"
+check "control: built links fails a dead href with spaced equals" fails built_ok "$sweep_ctl/links-spaced"
 check "built links: a percent-encoded link to a spaced directory resolves" built_ok "$sweep_ctl/links-pct"
 check "built links: a data-href attribute is not a link" built_ok "$sweep_ctl/links-data"
 check "control: built links fails a relative link into a sibling directory sharing the dist prefix" fails built_ok "$sweep_ctl/links-sd"

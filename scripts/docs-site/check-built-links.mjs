@@ -30,14 +30,18 @@ const unescapeHtml = (s) =>
     return code <= 0x10ffff ? String.fromCodePoint(code) : all;
   });
 
-const withoutInert = (html) => html.replace(/<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
+// comments and the text inside script/style are not markup; the script/style opening tag stays
+const withoutInert = (html) => html.replace(/<!--[\s\S]*?-->/g, ' ').replace(/(<(script|style)\b[^>]*>)[\s\S]*?<\/\2\s*>/gi, '$1');
 
+const attrValue = '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>"\']+))';
 const idCache = new Map();
 const idsOf = (file) => {
   if (!idCache.has(file)) {
     const ids = new Set();
-    for (const m of withoutInert(fs.readFileSync(file, 'utf8')).matchAll(/\s(?:id|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/gi)) {
-      ids.add(unescapeHtml(m[1] ?? m[2] ?? m[3]));
+    const html = withoutInert(fs.readFileSync(file, 'utf8'));
+    // an id names any element; the legacy name names only an anchor
+    for (const re of [new RegExp(`\\sid${attrValue}`, 'gi'), new RegExp(`<a\\s(?:[^>]*?\\s)?name${attrValue}`, 'gi')]) {
+      for (const m of html.matchAll(re)) ids.add(unescapeHtml(m[1] ?? m[2] ?? m[3]));
     }
     idCache.set(file, ids);
   }
