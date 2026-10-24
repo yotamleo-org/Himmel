@@ -47,7 +47,9 @@ HOOK_CLASSES = {
          'leg cd-ed before a relative gate path; the preface forbids cd && (run the literal relative shape)'),
         (r'git execution/config options or ambiguous option-value', 'git-option-beside-gate-mention', 'over-deny',
          'read-only grep/sed/loop that names a gate script; the guard cannot prove the mention is a pathspec'),
-        (r'(?s)-m ["\'].*a value git or the shell it spawns will execute', 'git-message-value-with-bracket',
+        (r'(?s)^(?!(?:(?!a value git).)*(?:\bGIT_\w+=|\b(?:EDITOR|VISUAL|PAGER)=|\s-c\s|\sconfig\s|'
+         r'--(?:exec|config-env|upload-pack))).*?-m (["\'])[^"\']*[$`*?\[{\\][^"\']*\1.*?a value git or the shell',
+         'git-message-value-with-bracket',
          'over-deny', 'a commit/merge message with [TICKET] reads as an executable git option value'),
         (r'a value git or the shell it spawns will execute', 'git-exec-value-with-expansion-char', 'unclear',
          'GIT_*/EDITOR/PAGER or -c value with a shell expansion character; harmless or hostile by value'),
@@ -86,7 +88,8 @@ HOOK_CLASSES = {
          'over-deny', 'the luna vault is committed on main by design; its handover docs are written in place'),
         (r'on main/master\.\s+\(command:\s+cd\s+\S*/\.claude/projects/', 'claude-projects-write-read-as-main',
          'over-deny', 'a write under ~/.claude/projects (memory, tool results) is no repo write'),
-        (r'on main/master\.\s+\(command:\s+(grep|rg|printf|timeout \d+ (bash|sh) -c .until)',
+        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*[>;&])|'
+         r'timeout \d+ (?:bash|sh) -c .until)',
          'read-only-command-read-as-write', 'over-deny', 'grep/rg/printf/until-poll read as write-shaped'),
         (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
          r'cherry-pick|remote|config|tag|reset|stash)\b', 'git-rewrite-in-primary', 'true-positive',
@@ -125,7 +128,7 @@ HOOK_CLASSES = {
     ],
     'block-bare-qmd-query': [(r'.', 'bare-qmd-query', 'true-positive', 'qmd query without -c scope')],
     'block-edit-live-settings': [
-        (r'<<', 'settings-mention-in-heredoc', 'over-deny',
+        (r'(?s)^(?:(?!settings(?:\.local)?\.json).)*<<', 'settings-mention-in-heredoc', 'over-deny',
          'a heredoc whose text merely mentions settings.json (the guard names this case itself)'),
         (r'names a live settings', 'live-settings-named', 'true-positive',
          'a command naming the primary checkout or HOME settings file'),

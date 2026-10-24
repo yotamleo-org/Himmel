@@ -36,6 +36,9 @@ hook:guard-pr-check-literal	gate-script-as-assignment-value	true-positive
 hook:guard-pr-check-literal	wrapper-or-var-prefix-on-gate	true-positive
 hook:guard-pr-check-literal	cwd-not-worktree-root	true-positive
 hook:guard-pr-check-literal	git-env-config-executed	true-positive
+hook:block-edit-live-settings	live-settings-named	true-positive
+hook:block-write-into-main-checkout	write-shaped-command-on-main	unclear
+hook:guard-pr-check-literal	git-exec-value-with-expansion-char	unclear
 hook:guard-empty-expansion	expansion-holding-substitution	unclear
 hook:guard-unwrap	unreadable-quoting-nested-shell	unclear
 hook:auto-approve-safe-bash	root-find-without-maxdepth	true-positive
