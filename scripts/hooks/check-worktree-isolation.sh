@@ -16,7 +16,7 @@ rc=$?
 case "$rc" in
     0)
         echo "ERROR: Committing directly on 'main' is not allowed."
-        echo "       Create a worktree branch: 'git worktree add', or /worktree; then cd into it (see docs/internals/stuck-playbook.md)."
+        echo "       Create a worktree branch with 'git worktree add', then cd into it (skill himmel-ops:stuck-playbook, or https://yotamleo-org.github.io/Himmel/internals/stuck-playbook/)."  # env-literal-ok: the docs-site page an adopted project can open
         exit 1
         ;;
     1)

@@ -639,6 +639,7 @@ scripts/hooks/test-check-security-reviewed.sh	5
 scripts/hooks/test-check-settings-portability.sh	0
 scripts/hooks/test-check-template-himmel-plugins.sh	1
 scripts/hooks/test-check-update-available.sh	7
+scripts/hooks/test-check-worktree-isolation.sh	1
 scripts/hooks/test-ci-doc-invariants.sh	12
 scripts/hooks/test-claude-glm-seed-check.sh	0
 scripts/hooks/test-cmdpos-clean.sh	0
