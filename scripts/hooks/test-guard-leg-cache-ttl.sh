@@ -164,6 +164,10 @@ run_guard "$(payload "$T_IDLE" false other-session)"
 expect_allow "another session's stop (lock not ours) -> allow"
 OUT="$(printf '%s' "$(payload "$T_IDLE")" | env -u HIMMEL_CONSOLE_LEG bash "$HOOK")"; RC=$?
 expect_allow "not a console leg (HIMMEL_CONSOLE_LEG unset) -> allow"
+run_guard "$(payload "$T_IDLE")" HIMMEL_RELEASE_MANAGER=1
+expect_allow "release manager (HIMMEL_RELEASE_MANAGER=1) holding STANDBY, no background task -> allow"
+run_guard "$(payload "$T_IDLE")" HIMMEL_RELEASE_MANAGER=0
+expect_block "HIMMEL_RELEASE_MANAGER=0 is not a release manager -> block"
 run_guard "$(payload "$TMP/absent.jsonl")"
 expect_allow "missing transcript -> allow (fail open)"
 mkdir -p "$TMP/dir.jsonl"
