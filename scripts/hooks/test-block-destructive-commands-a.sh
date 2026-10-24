@@ -190,12 +190,12 @@ assert_rc "empty payload"              0 "$(run_case '{}')"
 # primitives are refused at command position. No exemption names a script.
 assert_rc "direct taskkill proxy"        2 "$(run_case "$(j_bash 'taskkill /F /IM cli-proxy-api.exe')")"
 assert_rc "direct schtasks /end proxy"   2 "$(run_case "$(j_bash 'schtasks /end /tn cli-proxy-api')")"
-# Structural: the guard must not name the deleted cli-proxy-lane.ps1 carve-out.
+# Structural: the guard must not name the deleted proxy-lane script carve-out.
 # Before the removal this reads 2 (the name is present); after, 0.
 _cp_named=0
 grep -q 'cli-proxy-lane[.]ps1' "$(dirname "$0")/block-destructive-commands.sh"; _cp_rc=$?
 case $_cp_rc in 0) _cp_named=2 ;; 1) ;; *) _cp_named=3 ;; esac
-assert_rc "guard names no deleted cli-proxy-lane.ps1" 0 "$_cp_named"
+assert_rc "guard names no deleted proxy-lane script" 0 "$_cp_named"
 
 # --- per-rule equivalence corpus ---
 # contains() moved from `printf | grep -Eq` (a fork pair per call, ~667 ms on
