@@ -68,6 +68,7 @@ case "$op" in
         case ",$lbl," in *,standalone,*) ;; *) echo "jira: refused: a Task needs --parent or --labels standalone" >&2; exit 1 ;; esac
         [ -n "$sec" ] || { echo "jira: refused: no Sector, pass --sector" >&2; exit 1; }
         printf '%s\n' "$sec" >>"$d/sectors.log"
+        [ "$(wc -c <"$f")" -gt 8000 ] && { echo "HTTP 400: The entered text is too long. It exceeds the allowed limit" >&2; exit 1; }
         n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) grab "$@"; echo "Comment added to $1" ;;
   *) exit 9 ;;
@@ -439,6 +440,17 @@ row N1 denied/guard-eleven 1; row N2 denied/guard-eleven 1
 LED="$SAVE"
 python3 "$FR" route --ledger "$F17/l.jsonl" --state "$F17/s.json" --log "$F17/log" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" --notify-cmd "'unterminated" >"$F17/out" 2>&1; rc17=$?
 check "a malformed --notify-cmd exits 0, still files, and names the failed notify" '[ "$rc17" = 0 ] && [ "$(decs "$F17/log" | jq -r "select(.class == \"denied/guard-eleven\") | .decision")" = filed ] && grep -q "notify intake failed" "$F17/out" && grep -q "notify console failed" "$F17/out"'
+
+echo "a class seen in over a thousand legs still files"
+F18="$TMP/f18"; mkdir -p "$F18"
+jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z", host:"h", source:"scripts/eval/leg-digest/leg_ledger.py", kind:"leg-failure",
+  session:("4670c1a5-0000-4000-8000-" + ($i | tostring | ("000000000000" + .)[-12:])), leg:("N" + ($i | tostring)), console:$c, ticket:"HIMMEL-4670", pr:1990,
+  agent:{id:"main", role:"leg", kind:$c, model:"claude-opus-5-5"}, class:"denied/guard-wide", failure:"denied", count:2, identical_retry:1,
+  recovered:false, first_ts:1, last_ts:2, tool_call_ids:[$c]}' >"$F18/l.jsonl"
+python3 "$FR" route --ledger "$F18/l.jsonl" --state "$F18/s.json" --log "$F18/log" --inbox "$F18/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F18/out" 2>&1
+check "HIMMEL-7004: the 1500-leg class files, not skipped:jira-error" '[ "$(decs "$F18/log" | jq -r "select(.class == \"denied/guard-wide\") | .decision")" = filed ]'
+b18="$(ls -t "$STUB"/body.create.* | head -n 1)"
+check "HIMMEL-7004: the body counts all 1500 legs and lists exactly 500 of them" 'grep -q "distinct legs (14 d): 1500" "$b18" && [ "$(grep "^- legs: " "$b18" | tr -cd N | wc -c)" -eq 500 ] && python3 "$FR" check-body "$b18" >/dev/null'
 
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'

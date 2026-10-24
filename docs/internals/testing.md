@@ -117,6 +117,27 @@ gh workflow run macos-cadence.yml --ref main     # dispatch (the file must be on
 gh run list --workflow macos-cadence.yml         # its runs, apart from the nightly `CI` runs
 ```
 
+**A macOS fix leg proves only its own suites (HIMMEL-7309).** A full run is 8
+shards and 70-110 min, and it is red from suites unrelated to the PR. Dispatch
+the PR branch with `suites` set instead: one runner runs just those suites
+(`run-shell-tests.sh --only-list`) in minutes.
+
+```bash
+gh workflow run macos-cadence.yml --ref <branch> -f suites="<path/test-a.sh> <path/test-b.sh>"
+```
+
+`suites` is space-separated repo-relative `test-*.sh` paths. The run is titled
+`macos-cadence suites: <paths>`, and `ready-check.sh` item 10 accepts it when
+the run's log shows `[PASS] <suite>` for every named suite, however red the rest
+is; a named suite that failed or never ran fails the check and is named. The
+route holds only when the named suites cover every `test-*.sh` the PR changes
+(an unnamed one fails the check and is named) and the PR's `macos-cadence.yml`
+diff is the `suites` wiring alone; any other workflow edit still needs an
+unfiltered dispatch at the head, green or red only where main already is. A
+filtered run records no breakage metric
+(a partial run would read the unlisted suites as fixed); empty `suites` is the
+unchanged full cadence.
+
 **Breakage metric.** Every cadence run's `summary` job records which suites are
 red now that were green on the previous completed cadence run
 (`scripts/ci/macos-breakage.sh`): a row in the run's job summary (both head
