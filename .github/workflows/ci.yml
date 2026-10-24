@@ -1026,7 +1026,7 @@ jobs:
   git-env-scrub:
     name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'git-env-scrub' || 'git-env-scrub (deferred)' }}
     needs: plan
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 207s; 2x = 7m, floor 10
     steps:
@@ -1036,8 +1036,11 @@ jobs:
           # Depth 2 keeps both parents of the PR merge commit, so HEAD^1 (the
           # current base tip) is reachable for the changed-file list below.
           fetch-depth: 2
+      # The plan's skip lives on the scan step, not the job: a skipped job reports
+      # its raw name expression, which would leave the required git-env-scrub
+      # context missing on a docs-only PR (test-ci-go-gate.sh G13).
       - name: git-env-scrub (PR changed files)
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
         # Fail closed: a checkout that is not a merge commit, a diff that cannot be
         # computed, or a change to the scanner, its baseline, the scrub helpers or
         # this workflow scans every trust-path file.

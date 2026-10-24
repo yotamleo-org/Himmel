@@ -26,6 +26,10 @@
 #   G12 against the real check-runs of scratch PR 3792: no job that is skipped on
 #       a pull_request event reports a name the cheap or go run wrote as a real
 #       result (live defect: ci-quick=failure then a label run's ci-quick=skipped)
+#   G13 a plan that succeeded and skipped every optional scan (docs-only change)
+#       never skips a required job: the job runs and its steps skip, so the
+#       required context is written (a skipped job reports its raw name
+#       expression, which satisfies nothing)
 #
 # The required-context list is a copy of the live ruleset
 # (gh api repos/yotamleo-org/Himmel/rules/branches/main). The PR 3792 check-runs
@@ -337,6 +341,30 @@ if bad11:
     bad("G11 " + "; ".join(sorted(set(bad11))))
 else:
     ok("G11 every required cheap job runs on a plain push when ci-quick passed every group")
+
+# ---- G13 ----
+class Planned:  # a plan that succeeded and skipped every optional scan; ci-quick passed every group
+    def __init__(self, job): self.job = job
+    def __getattr__(self, k):
+        if k == "result": return "success"
+        if k == "outputs": return Planned(self.job)
+        return "pass" if self.job == "ci_quick" else "false"
+class PlanNeeds:
+    def __getattr__(self, k): return Planned(k)
+req_jobs = sorted({c.split(" (")[0] for c in required
+                   if not c.startswith(("codeowner-review-gate", "pr-title-lint"))} & set(jobs))
+bad13 = []
+for label, ctx, want in [("the go run", go, req_jobs), ("a custom-label go run", go_custom, req_jobs),
+                         ("a plain push, gate on", event("pull_request", "synchronize", "", "on"),
+                          [j for j in req_jobs if j in CHEAP]),
+                         ("a plain push, gate off", event("pull_request", "synchronize", "", "off"), req_jobs)]:
+    for j in want:
+        if not runs(j, dict(ctx, needs=PlanNeeds())):
+            bad13.append("%s is skipped on %s when the plan skips every scan, leaving its required context missing" % (j, label))
+if bad13:
+    bad("G13 " + "; ".join(sorted(set(bad13))))
+else:
+    ok("G13 a plan that skips every optional scan never skips a required job (the job runs and its steps skip)")
 
 # ---- G12 ----
 real = {n for k, n, c in checks if k in ("cheap", "go") and c != "skipped" and "&&" not in n and "${{" not in n}
