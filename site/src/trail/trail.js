@@ -39,6 +39,11 @@
     });
   });
 
+  window.addEventListener('hashchange', function () {
+    var h = location.hash.slice(1);
+    if (/^lvl-[0-9]+$/.test(h)) openLevel(h, true);
+  });
+
   var hash = location.hash.slice(1);
   if (/^lvl-[0-9]+$/.test(hash)) {
     openLevel(hash, true);
