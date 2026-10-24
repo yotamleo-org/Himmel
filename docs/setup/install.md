@@ -136,9 +136,11 @@ list lives in `scripts/ci/ci-trust-paths.txt` on your default branch (the copy
 on a PR branch is never read); add any file that guards your project, such as
 deploy scripts or release config. Inside a Claude session, a PR touching a
 listed path needs a trust-reviewed GO. A himmel chief signs one for your repo
-with `go.sh --repo <owner/name> --trust-reviewed` once the repo has a row in
-`scripts/guardrails/himmel-adopted.json` on your himmel download's default
-branch. In solo mode, or before that row exists, nobody can sign that GO, so
+with `go.sh --repo <owner/name> --trust-reviewed` once the repo has exactly one
+row in `scripts/guardrails/himmel-adopted.json` on your himmel download's
+default branch, and that row sets `merge_allowed: true`; a row with
+`merge_allowed: false` signs nothing. In solo mode, or before that row exists,
+nobody can sign that GO, so
 such a PR does not merge from a session: the operator merges it in the forge
 web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
 
@@ -146,8 +148,10 @@ The install seeds the list with himmel's core lines, copied from
 `scripts/ci/ci-trust-paths-core.txt` in your himmel download. Keep every one of
 them; add your own lines below. A list missing a core line refuses any PR that
 touches that path (`core-missing <pattern>`), and a list deleted from the
-default branch refuses every merge. To fix either, copy the missing lines back
-from the core file. A re-install never rewrites your list, so after a himmel
+default branch refuses every merge. To fix a missing line, copy it back from
+the core file. To fix a deleted list, restore your last full list from git
+history, so your own lines come back too, then add any core line it lacks. A
+re-install never rewrites your list, so after a himmel
 update, compare it with the core file and add any new core line.
 
 These checks run only inside Claude sessions (the hooks) and in himmel's merge
