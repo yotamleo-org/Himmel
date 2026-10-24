@@ -115,7 +115,7 @@ src = open(p).read()
 open(p, "w").write(src.replace("console.sh next", 'console.sh\\" next'))
 PYEOF
 }; then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
-LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/qt" >"$TMP/qt.out" 2>&1; qtrc=$?
+WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/qt" >"$TMP/qt.out" 2>&1; qtrc=$?
 check "a console.sh next run through a quoted path marks the handover" '[ "$qtrc" = 0 ] && grep -q "^HANDOVER " "$TMP/qt.out"'
 
 echo "handover-cost: $PASS passed, $FAIL failed"
