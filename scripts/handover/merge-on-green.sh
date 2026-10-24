@@ -1118,7 +1118,8 @@ trust_out=$(trust_path_check "$nwo" "$pr_num" "$sha" "$default_branch" "$himmel_
 # stale anchor, and this file itself may have just changed on disk. A moved
 # HEAD is the only re-exec trigger, so the second pass cannot loop. A diverged
 # anchor, a dirty tree or an unreadable origin cannot move, so it still refuses.
-if [ "$trust_rc" -ne 0 ] && [ "${trust_out%% *}" = "anchor" ]; then
+# A dry run mutates nothing, so it skips the catch-up and reports the refusal.
+if [ "$trust_rc" -ne 0 ] && [ "${trust_out%% *}" = "anchor" ] && [ "$DRY_RUN" -eq 0 ]; then
     ff_before=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_before=""
     ff_msg=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_TERMINAL_PROMPT=0 \
         git -C "$himmel_repo" -c core.hooksPath=/dev/null pull -q --ff-only origin HEAD 2>&1) \

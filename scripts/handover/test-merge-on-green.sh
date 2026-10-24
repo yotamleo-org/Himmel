@@ -3341,6 +3341,10 @@ assert_audit_has "7474-a: the trust review rides the audit" "trust=judge-N9"
 rm -f "$TP_GO/77.$GO_SHA"
 MOG_ANCHOR_BEHIND=1 tp_run 21 "7474-b: anchor behind origin, trust-path PR with no GO → exit 21"
 no_merge_call "7474-b: no merge call"
+# A dry run mutates nothing: it does not fast-forward the anchor, it reports the refusal.
+tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
+MOG_ANCHOR_BEHIND=1 tp_run 21 "7474-c: dry-run, anchor behind origin, trust-path PR → exit 21" -- --dry-run
+assert_audit_lacks "7474-c: the anchor was not fast-forwarded" "ANCHOR fast-forwarded"
 tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
 MOG_ANCHOR_BEHIND=1 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' \
     tp_run 0 "3895-f10: anchor behind origin, non-trust PR → merged (unchanged)"
