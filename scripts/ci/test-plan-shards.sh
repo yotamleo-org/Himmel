@@ -27,6 +27,7 @@
 #        at the planner and through ci.yml's own plan step
 #   PS22 ci.yml's plan step with an empty CI_MAX_SHARDS plans a full real-ledger sweep at 20
 #   PS23 ci.yml's plan step asks its --list under SUITE_TIER_MODE=pr, the shards' PR tier
+#   PS24 ci.yml's plan step asks its --list with a SUITE_MANIFEST, as the shards do
 #   PS21 n of 0 or a negative value is a usage error naming CI_MAX_SHARDS, and
 #        ci.yml's plan step then falls back to its empty output (8 legs)
 #
@@ -74,6 +75,7 @@ cat > "$PS/run-shell-tests.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${RST_LOG:-/dev/null}"
 printf '%s\n' "${SUITE_TIER_MODE:-}" >> "${RST_TIER_LOG:-/dev/null}"
+printf '%s\n' "${SUITE_MANIFEST:+manifest}" >> "${RST_MANIFEST_LOG:-/dev/null}"
 [ "${1:-}" = --list ] || exit 1
 case "${STUB_LIST_MODE:-fail}" in fail) exit 1 ;; esac
 [ -n "${STUB_LIST:-}" ] && sed 's/^/[RUN ] /' "$STUB_LIST"
@@ -307,6 +309,12 @@ if got=$(STUB_LIST="$PS/all.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-le
 : > "$PS/tier.log"
 if STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" RST_TIER_LOG="$PS/tier.log" run_real_step "" >/dev/null \
    && [ "$(sort -u "$PS/tier.log")" = pr ]; then pass "PS23 the plan step lists under SUITE_TIER_MODE=pr"; else fail "PS23 plan step failed or tier: got [$(cat "$PS/tier.log")] rc $(cat "$real_dir/step.rc")"; fi
+
+# PS24: a shard with SUITE_MANIFEST decides its selection even off a default-branch base
+# (no base -> mode full, every tier), so the plan's --list must carry one too.
+: > "$PS/manifest.log"
+if STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger.tsv" RST_MANIFEST_LOG="$PS/manifest.log" run_real_step "" >/dev/null \
+   && [ "$(sort -u "$PS/manifest.log")" = manifest ]; then pass "PS24 the plan step lists with a SUITE_MANIFEST, like the shards"; else fail "PS24 plan step failed or no SUITE_MANIFEST: got [$(cat "$PS/manifest.log")] rc $(cat "$real_dir/step.rc")"; fi
 
 # PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
 # step swallows the refusal into an empty output, which the shard job reads as 8 legs.

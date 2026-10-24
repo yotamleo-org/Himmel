@@ -34,6 +34,8 @@
 # suite-tiers.tsv floor beside an impacted selection, and <list> is that floor.
 # In impacted mode every suite <list> names to RUN may run and must run, as in
 # full mode, and a selected suite <list> skips only for its local tier must run.
+# In full mode a shard runs every tier, so a suite <list> skips only for its
+# local tier must run too (<list> is asked without a selection).
 #
 # --absent-ok "<k> ...": shards the plan job left out because they had no suite
 # Only THEIR missing manifests are excused (one that exists is
@@ -154,6 +156,7 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
           printf '%s' "$bodies"; } | awk -v mode="$mode" -v tier="${SUITE_TIER_MODE:-}" '
   $1 == "sel"   { sel[$2] = 1; order[++nsel] = $2; next }
   $1 == "drun"  { drun[$2] = 1; dorder[++ndisc] = $2; next }
+  $1 == "dlocal" && tier == "pr" && mode == "full" { drun[$2] = 1; dorder[++ndisc] = $2; next }
   $1 == "dlocal" { if (tier == "pr") dlocal[$2] = 1; else dskip[$2] = 1; next }
   $1 == "dskip" { dskip[$2] = 1; next }
   NF < 3 { next }

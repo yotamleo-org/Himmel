@@ -37,6 +37,7 @@
 #   MV33  pr, impacted: the floor ran beside the selection      -> rc 0; under fast -> rc 1
 #   MV34  pr, impacted: a floor suite listed RUN never ran      -> rc 1
 #   MV35  pr, impacted: a shard `skip`s a selected local suite  -> rc 1
+#   MV36  pr, full: a shard `skip`s a local suite               -> rc 1; ran -> rc 0
 #
 # Platform guard: bash-only, no .ps1 twin; the aggregator runs on Linux.
 #
@@ -381,5 +382,12 @@ d=$(case_dir mv35); header impacted scripts/test-l.sh > "$d/sel.txt"
 disc "$d" LOCAL scripts/test-l.sh
 manifest "$d" 1 1 "$d/sel.txt" 'skip scripts/test-l.sh'
 MV_TIER="pr" expect "MV35: pr, a shard that skips a selected local suite is refused" 1 "$d" 1 'scripts/test-l\.sh'
+
+d=$(case_dir mv36); header full > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh LOCAL scripts/test-l.sh
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-l.sh'
+MV_TIER="pr" expect "MV36: pr, full: a shard that skips a local suite is refused" 1 "$d" 1 'scripts/test-l\.sh.*never ran'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'ran 0 scripts/test-l.sh'
+MV_TIER="pr" expect "MV36: pr, full: the local suite ran on a shard" 0 "$d" 1 '^OK'
 
 rst_tally
