@@ -4,6 +4,7 @@
   "doc": "spec 4.2 routing table, as data; failure_router.py reads it. Rows are tried in order: a row with `when` fires only when the rows its filter keeps reach its threshold in distinct legs, else the next row is tried; the first matching row without `when` decides the class. `summary` and `row` are the only template text a Jira body or summary may carry.",
   "window_days": 14,
   "daily_cap": 3,
+  "sector": "Quality & proof",
   "routes": [
     {"match": "traj/claim-unverified", "route": "signal-only",
      "row": "signal-only in v1 (Q11): written, shown and counted, never routed"},
