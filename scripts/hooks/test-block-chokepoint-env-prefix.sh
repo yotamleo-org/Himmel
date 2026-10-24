@@ -2566,6 +2566,15 @@ assert_deny "7130 control: sort --compress-program runs a nested program beside 
 assert_deny "7130 control: a gh alias runs a nested shell beside a glob path" "$(j "gh alias set x '!env -i bash scripts/hooks/x*.sh' --shell")"
 assert_deny "7130 control: git fetch --upload-pack runs a nested env clear beside a glob path" "$(j "git fetch --upload-pack='env -i bash scripts/hooks/x*.sh' .")"
 assert_deny "7130 control: git push --receive-pack runs a nested env clear beside a glob path" "$(j "git push --receive-pack='env -i bash scripts/hooks/x*.sh' . HEAD")"
+assert_deny "7130 control: python script file with a trailing -c argument is not inline code" "$(j "python3 /tmp/p7130.py -c 'env -i bash scripts/hooks/x*.sh'")"
+assert_deny "7130 control: node script file with a trailing -e argument is not inline code" "$(j "node /tmp/p7130.js -e 'env -i bash scripts/hooks/x*.sh'")"
+assert_deny "7130 control: node -r preloads a module ahead of -e, so the code is not inline-only" "$(j "node -r /tmp/p7130.js -e 'console.log(\"env -i bash scripts/hooks/x*.sh\")'")"
+assert_deny "7130 control: python -m names a module, so a later -c is the module's argument" "$(j "python3 -m p7130 -c 'env -i bash scripts/hooks/x*.sh'")"
+assert_deny "7130 control: echo pipes the env clear into awk system" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | awk '{system(\$0)}'")"
+assert_deny "7130 control: echo pipes the env clear into perl system" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | perl -ne 'system \$_'")"
+assert_deny "7130 control: echo pipes the env clear into sed e" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed e")"
+assert_allow "7130: python reading the env clear text from a pipe and printing it" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | python3 -c 'import sys; print(sys.stdin.read())'")"
+assert_allow "7130: python writing a file whose text names the env clear (the Write tool is not guarded either)" "$(j "python3 -c 'open(\"/tmp/a.md\",\"w\").write(\"env -i bash scripts/hooks/x*.sh\")'")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then

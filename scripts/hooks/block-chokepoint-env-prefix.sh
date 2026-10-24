@@ -1878,11 +1878,12 @@ pobf_relief() {
 # subcommands, never an alias or extension; the model already marks
 # find -exec opaque); git
 # without -c, a pager or an
-# exec option; inline python or node code (-c, -e or a heredoc, never a
-# script file) that names no process spawn, no environment and no dynamic
+# exec option; inline python or node code (-c, -e or a heredoc, in the
+# options before any script word; never a script file or a preload) that names no process spawn, no environment and no dynamic
 # lookup a spawn name could be built through (getattr, __dict__, globals,
 # require of anything but fs or path, ...); sed, awk, perl or ruby whose
-# literal code holds no verb word; printf with no option beside no hard path
+# literal code holds no verb word, and no other position carries a verb
+# word or an expansion they could read and run (awk system, sed e); printf with no option beside no hard path
 # word; or a shell or .sh script none of whose words is a verb or a shell
 # name, in a command that writes no file and feeds no heredoc. read at
 # command position keeps the scan, and so does a heredoc written to a file,
@@ -1913,9 +1914,14 @@ def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
   "shfmt", "tree"];
 def pyspawn: "subprocess|environ|putenv|unsetenv|system|popen|fork|exec|spawn|Popen|commands\\.|__import__|__dict__|__builtins__|__getattribute__|__subclasses__|__globals__|__class__|__loader__|getattr|attrgetter|methodcaller|getmembers|modules|globals|locals|vars[[:space:]]*\\(|dir[[:space:]]*\\(|eval|compile|\\b(pty|ctypes|cffi|importlib|inspect|marshal|pickle|shelve|runpy|timeit|doctest|pdb|bdb|cProfile|profile|trace|code|codeop|webbrowser)\\b";
 def jsspawn: "child_process|exec|spawn|fork|process(?!\\.(argv|stdout|stderr|exitCode|exit|cwd)\\b)|Bun|Deno|eval|Function|constructor|__proto__|prototype|globalThis|Reflect|Proxy|import[[:space:]]*\\(|worker_threads|\\b(global|this|module|arguments|vm)\\b|require(?![[:space:]]*\\([[:space:]]*[\"'](node:)?(fs|path)[\"'][[:space:]]*\\))";
-def inline: (.argv[1:] | map(select(lit) | wv)) as $w
-  | if .prog == "node" then ($w | any(.[]; isin(["-e", "-p", "--eval", "--print"]))) or ($w == ["-"])
-    else ($w | any(.[]; . == "-c" or test("^-[A-Za-z]*c$"))) or (($w | map(select(. == "-" or (startswith("-") | not))) | .[0]) == "-") end;
+def optw: lit and (wv | startswith("-") and . != "-" and . != "--");
+def inline: .argv[1:] as $a
+  | first(range(0; ($a | length) + 1) as $i | select(($a[$i] == null) or (($a[$i] | optw) | not)) | $i) as $n
+  | ($a[:$n] | map(wv)) as $o
+  | if .prog == "node" then (($o | any(.[]; isin(["-e", "-p", "--eval", "--print"])))
+      and ($o | any(.[]; test("^(-r|--require|--import|--loader|--experimental-loader)(=|$)")) | not))
+      or (($a | map(select(lit) | wv)) == ["-"])
+    else ($o | any(.[]; test("^-[bBdEhiIOPqsSuvRx]*c$"))) or (($a[$n] // null) | . != null and lit and wv == "-") end;
 def plainname: test("^([a-z_][a-z0-9_]*|[A-Za-z_][A-Za-z0-9_]?)$");
 def code_ok($rx): ((.argv[1:] | all(.[]; lit and ((wv | test($rx)) | not)))
   and ((.redirs // []) | all(.[]; (.hdoc | not) or ((.text // null) != null and ((.text | test($rx)) | not)))));
@@ -1951,8 +1957,13 @@ def shellish: (.prog // "") as $p | ($p | isin(shells)) or ($p | endswith(".sh")
 def outs: (.redirs // []) | map(select(((.op // "") | isin([">", ">>", ">|", "&>", "&>>"]))
   and ((.w // {}) | (lit and wv == "/dev/null") | not)));
 def hdoc_to_file: ((.redirs // []) | any(.[]; .hdoc)) and ((outs | length) > 0 or .prog == "tee");
+def carries($vr): ((.argv // []) | any(.[]; (lit | not) or (wv | test($vr))))
+  or ((.redirs // []) | any(.[]; .hdoc and (((.text // null) == null) or (.text | test($vr)))));
+def nocarry($vr): [to_entries[] | select(.value | carries($vr)) | .key] as $c
+  | all(to_entries[] | select(.value.prog // "" | isin(["sed", "awk", "gawk", "perl", "ruby"])) | .key;
+      . as $r | $c | all(.[]; . == $r));
 if all(.[]; pos_ok($vr)) and ((any(.[]; shellish) and any(.[]; (outs | length) > 0 or ((.redirs // []) | any(.[]; .hdoc)))) | not)
-   and (any(.[]; hdoc_to_file) | not)
+   and (any(.[]; hdoc_to_file) | not) and nocarry($vr)
 then "allow" else "legacy" end
 OBF_AST_EOF
 obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
