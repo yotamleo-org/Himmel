@@ -70,7 +70,7 @@ has "brief 1 limits local runs to the RED rows of the item built" "$B1" "Locally
 has "brief 1 teaches the exact quiet-run RED command, nothing inside the backticks after the suite" "$B1" "run it as \`bash scripts/quiet-run.sh suite -- bash <test-*.sh>\` with nothing appended"
 has "brief 1 names the quiet-run log path to Read" "$B1" "Read the log path its ERR line prints"
 has "brief 1 teaches the Edit tool / python3 -I <file> shape" "$B1" "run as \`python3 -I <file>\`"
-has "brief 1 teaches the SWEEP record grammar and its write command" "$B1" "write its \`SWEEP [<id>@<head>] class=… :: sites=…\` line (a one-site finding: \`:: single-site search=git grep …\`) with \`write-verdicts.sh sweep --branch <b> --from-file <f>\`"
+has "brief 1 teaches the SWEEP record grammar and its write command" "$B1" "write its \`SWEEP [<id>@<head>] class=… :: sites=…\` line (a one-site finding: \`:: single-site search=git grep …\`) with \`bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>\`"
 has "brief 1 teaches the single-site search form for a one-site finding" "$B1" ":: single-site search=git grep"
 
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
