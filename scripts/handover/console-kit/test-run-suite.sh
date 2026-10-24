@@ -16,6 +16,14 @@ check() { # <name> <expected> <actual>
     if [ "$2" = "$3" ]; then echo "PASS: $1"; else echo "FAIL: $1 (want '$2' got '$3')"; fails=$((fails + 1)); fi
 }
 
+relpath_from() { # <from-dir> <target>: target's physical path relative to from-dir, bash only (BSD has no realpath --relative-to)
+    local from to up=""
+    from="$(cd "$1" && pwd -P)" || return 1
+    to="$(cd "$(dirname "$2")" && pwd -P)/$(basename "$2")" || return 1
+    while [ "${to#"$from"/}" = "$to" ]; do from="${from%/*}"; up="../$up"; done
+    printf '%s%s\n' "$up" "${to#"$from"/}"
+}
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/run-suite-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
 
@@ -72,7 +80,7 @@ check "top: the top-level suite is not skipped" "0" "$(grep -c 'test-top.sh' "$C
 check "top: no suite is run outside the runner" "0" "$(grep -c '^scripts/test-top.sh$' "$CALLS")"
 
 : > "$CALLS"
-out="$(cd "$REPO/scripts/alpha" && bash "$(python3 -c 'import os,sys; print(os.path.relpath(os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])))' "$RS" "$REPO/scripts/alpha")" --runner "$WORK/runner.sh" scripts/alpha 2>&1)"; rc=$?
+out="$(cd "$REPO/scripts/alpha" && bash "$(relpath_from "$REPO/scripts/alpha" "$RS")" --runner "$WORK/runner.sh" scripts/alpha 2>&1)"; rc=$?
 check "a relative \$0 from a subdirectory still runs" "0" "$rc"
 check "a relative \$0 from a subdirectory reaches the runner" "scripts/alpha" "$(head -1 "$CALLS")"
 
