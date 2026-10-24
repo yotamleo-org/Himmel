@@ -1907,7 +1907,7 @@ fi
 # Telegram; the marker line is `<UTC iso-ts> <cadence> <reason>`. ABSENT when no marker
 # exists (the next delivered alert removes it). A file read only.
 alertfail_tail=""
-alertfail_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-${HOME:-/nonexistent}/.himmel/state/cadence-alert-send-failed}"
+alertfail_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-${HOME:-}/.himmel/state/cadence-alert-send-failed}"
 if [ -s "$alertfail_mark" ]; then
     read -r af_ts af_leg _ < <(tail -n 1 "$alertfail_mark" 2>/dev/null | tr -d '\r') || true  # swallow-ok: an unreadable marker leaves no field
     af_epoch="$(date -u -d "${af_ts:-}" +%s 2>/dev/null)" || af_epoch=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unparsable stamp reads as age ?
