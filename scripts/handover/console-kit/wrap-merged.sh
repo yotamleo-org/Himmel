@@ -7,7 +7,8 @@
 # Usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]
 #
 # Steps, in order; the first failure stops the run, names the step on stderr and
-# exits with the rc shown:
+# exits with the rc shown. A failure after pr-state proved the merge still re-renders
+# the board (its rc ignored), so a stopped wrap never leaves the board stale:
 #   1. pr-state   `gh pr view <n>` must be MERGED (rc 3 if not; rc 2 if no PR can
 #                 be found). <n> is --pr, else the newest `READY <n>` / `PR <n>`
 #                 in the leg doc. The sha recorded is mergeCommit.oid - never
@@ -33,13 +34,16 @@
 #                 `tracker:` line, jira mirror + jira versions (snapshot next to the
 #                 mirror) + tracker.py render, each under WM_TRACKER_TIMEOUT (120 s).
 #                 Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip. Publishing the
-#                 artifact stays the console's job. Seam: WM_TRACKER_PY.
+#                 artifact stays the console's job. Seam: WM_TRACKER_PY. With a
+#                 `focus-version:` line the page belongs to focus-refresh.sh (step 5c):
+#                 mirror + versions still run, the render does not (tracker=skip:focus).
 #   5b. remaining the console doc's `remaining-board: <version>` line renders that version's open tickets,
 #                 grouped by the plan's priority line, to <doc dir>/roadmap-remaining-<version>.md from the
 #                 mirror step 5 just refreshed. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
 #   5c. focus     best effort, never fails the wrap: the console doc's `focus-version:` line runs
 #                 focus-refresh.sh under WM_FOCUS_TIMEOUT (300 s) and prints focus=ok|busy|DIRTY:<age>|
-#                 FAILED:<stage>|skip. Seam: WM_FOCUS.
+#                 FAILED:<stage>|skip. Seam: WM_FOCUS. After focus=ok each line of
+#                 <doc dir>/focus-drift.txt is printed as `drift: <line>`.
 #   6. board      (as above)
 # A re-run therefore finishes whatever an earlier run stopped before, and writes
 # nothing twice. Calls the existing console-kit scripts and modifies none.
@@ -61,7 +65,12 @@ if [ -n "${WM_TRACKER_PY:-}" ]; then TRACKER=("$WM_TRACKER_PY"); else TRACKER=(p
 if [ -n "${WM_FOCUS:-}" ]; then FOCUS=("$WM_FOCUS"); else FOCUS=(bash "$HERE/focus-refresh.sh"); fi
 
 usage() { echo "usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]" >&2; exit 2; }
-fail()  { echo "wrap-merged: step $1 failed: $2" >&2; exit "$3"; }
+BOARD_ON_FAIL=""
+fail()  {
+    echo "wrap-merged: step $1 failed: $2" >&2
+    [ -z "$BOARD_ON_FAIL" ] || "${BOARD[@]}" --doc "$DOC" --changed >&2 || true
+    exit "$3"
+}
 
 DOC=""; FLEET=""; LEG=""; PR=""
 while [ "$#" -gt 0 ]; do
@@ -97,6 +106,7 @@ state="$(printf '%s' "$view" | jq -r '.state // empty' 2>/dev/null)"
 sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 { [ "$state" = MERGED ] && [ -n "$sha" ]; } || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
 sha8="${sha:0:8}"
+BOARD_ON_FAIL=1
 
 base="${LEG##*/}"
 ticket=""; label=""
@@ -142,9 +152,10 @@ fi
 # snapshot the versions, re-render when the page's fingerprint moved. Artifact
 # publishing stays the console's job. Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip.
 tracker_refresh() {
-    local url dir plan out tmo mir rc want durl furl out_done out_future split
+    local url dir plan out tmo mir rc want durl furl out_done out_future split focus
     url="$(sed -n 's/^tracker:[[:space:]]*//p' "$DOC" | head -n 1)"
     case "$url" in ''|none*) echo "tracker=skip"; return 0 ;; esac
+    focus="$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)"
     dir="${DOC%/*}"
     plan="$(sed -n 's/^tracker-plan:[[:space:]]*//p' "$DOC" | head -n 1)"
     [ -n "$plan" ] || plan="$dir/specs/plan/HIMMEL-3882"
@@ -162,6 +173,8 @@ tracker_refresh() {
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
     mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
     MIRROR_FRESH="$mir"
+    # one writer per page: a focus-version console's page is focus-refresh's
+    case "$focus" in ''|none*) ;; *) echo "tracker=skip:focus"; return 0 ;; esac
     set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
     split=""
     if [ -n "$durl" ] || [ -n "$furl" ]; then
@@ -219,9 +232,12 @@ focus_refresh() {
     case "$rc" in 124|137) echo "focus=FAILED:timeout"; return 0 ;; esac
     got="$(printf '%s\n' "$got" | tail -n 1)"
     case "$got" in focus=*) echo "$got" ;; *) echo "focus=FAILED:rc$rc" ;; esac
+    [ "$got" = focus=ok ] || return 0
+    sed 's/^/drift: /' "${DOC%/*}/focus-drift.txt" 2>/dev/null
     return 0
 }
 focus_refresh
 
 # 6. board
+BOARD_ON_FAIL=""
 "${BOARD[@]}" --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7

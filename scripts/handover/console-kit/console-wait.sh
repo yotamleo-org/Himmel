@@ -34,6 +34,8 @@
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
 #                               per streak (the class-change wake fires only once).
+#   WAKE board-stale board=<STALE:..>  the same for board=, past
+#                               CHIEF_WAIT_BOARD_STALE_MIN (default 10).
 #   WAKE predecessor-open rc=<n>  with --doc <console doc> whose first line says
 #                               `successor to <doc>.md`: the waiter runs
 #                               close-wrapped-leg.sh --console on that wrapped,
@@ -707,21 +709,27 @@ unowned_wake() {
 # streak passes CHIEF_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
 tracker_stale_file="$inbox.wait.trackerstale"
-tracker_stale_wake() {
-    local since
+tracker_stale_wake() { stale_streak_wake "$1" "$tracker_stale_file" "${CHIEF_WAIT_TRACKER_STALE_MIN:-30}" 30; }
+# board_stale_wake: <board= value> — the same for a board that stays stale, marker
+# <inbox>.wait.boardstale, threshold CHIEF_WAIT_BOARD_STALE_MIN (default 10).
+board_stale_file="$inbox.wait.boardstale"
+board_stale_wake() { stale_streak_wake "$1" "$board_stale_file" "${CHIEF_WAIT_BOARD_STALE_MIN:-10}" 10; }
+# stale_streak_wake: <value> <marker> <minutes> <default minutes>
+stale_streak_wake() {
+    local since stale_min
     case "$1" in
         STALE*) ;;
         '') return 1 ;;
-        *) rm -f "$tracker_stale_file"; return 1 ;;
+        *) rm -f "$2"; return 1 ;;
     esac
-    if [ ! -e "$tracker_stale_file" ]; then date +%s > "$tracker_stale_file" 2>/dev/null; return 1; fi
-    [ "$(sed -n 2p "$tracker_stale_file" 2>/dev/null)" = woke ] && return 1
-    since="$(sed -n 1p "$tracker_stale_file" 2>/dev/null)"
+    if [ ! -e "$2" ]; then date +%s > "$2" 2>/dev/null; return 1; fi
+    [ "$(sed -n 2p "$2" 2>/dev/null)" = woke ] && return 1
+    since="$(sed -n 1p "$2" 2>/dev/null)"
     case "$since" in ''|*[!0-9]*) return 1 ;; esac
-    stale_min="${CHIEF_WAIT_TRACKER_STALE_MIN:-30}"
-    case "$stale_min" in ''|*[!0-9]*) stale_min=30 ;; esac
+    stale_min="$3"
+    case "$stale_min" in ''|*[!0-9]*) stale_min="$4" ;; esac
     [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
-    printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
+    printf '%s\nwoke\n' "$since" > "$2" 2>/dev/null
     return 0
 }
 
@@ -1126,6 +1134,10 @@ while :; do
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
                 exit_reason='wake-tracker-stale'; exit 0
+            fi
+            if board_stale_wake "$(field board "$tick_line")"; then
+                printf 'WAKE board-stale board=%s\n%s\n' "$(field board "$tick_line")" "$tick_line"
+                exit_reason='wake-board-stale'; exit 0
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi
