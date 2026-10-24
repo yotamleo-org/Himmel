@@ -101,7 +101,8 @@ for line in open(sys.argv[2]):
     keys.add(json.loads(line)["metric"])
 hits = sorted(k for k in keys if re.search(r"(?<![\w.-])%s(?![\w-])" % re.escape(k), page))
 hits += re.findall(r"\b[a-z]+(?:[._][a-z0-9-]+)+\b", page)
-print(" ".join(hits))' "$TMP/runs.jsonl" "$TMP/changes.jsonl")"
+print(" ".join(hits))' "$TMP/runs.jsonl" "$TMP/changes.jsonl")"; rc=$?
+eq "the field-name check ran" "$rc" "0"
 eq "no raw field names on the page" "$leak" ""
 case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans on the page";; esac
 
