@@ -278,6 +278,7 @@ out=$(run --merged-file "$MERGED"); rc=$?
 assert_eq "closed member exits 0" "0" "$rc"
 assert_not_contains "the closed member is not labelled" "$(cat "$JLOG")" "edit TST-5061 --add-labels"
 assert_contains "a new ticket carries the member's class" "$(grep '^create' "$JLOG")" "restructure-class-eval-tokenizer-split"
+assert_contains "a new ticket is placed in the backlog (HIMMEL-7152)" "$(grep '^create' "$JLOG")" "--backlog"
 
 echo "TEST: a residual left unfolded beside a folded sibling is retried"
 reset

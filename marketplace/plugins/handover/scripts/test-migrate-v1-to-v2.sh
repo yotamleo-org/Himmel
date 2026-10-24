@@ -138,6 +138,7 @@ for b in "$TMP4"/bodies/*.body; do
 done
 # Both call sites ran (parented task, unparented standalone) and left no temp body behind.
 if grep -q -e '--parent HIMMEL-15' "$TMP4"/bodies/*.args; then pass=$((pass+1)); else echo "FAIL: no parented create"; fail=$((fail+1)); fi
+if grep -q -e '--backlog' "$TMP4"/bodies/*.args; then pass=$((pass+1)); else echo "FAIL: create not placed in the backlog"; fail=$((fail+1)); fi
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
