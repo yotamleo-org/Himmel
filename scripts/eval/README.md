@@ -393,3 +393,30 @@ the journals only. It refuses a journal whose cwd sits under a salus root (a
 `.salus` marker on an ancestor, or a root in `~/.config/claude-glm/phi-roots`
 or `egress-denylist`). Every ledger and the state directory take a flag, so a
 trial backfill can write to scratch copies.
+
+## pdd_share: the proof-first share of merged PRs
+
+`leg-digest/pdd_share.py` reads the last merged PRs and writes one eval-runs
+row, `eval: pdd-share`. It makes no model call. A PR is proof-first when both
+hold:
+
+1. its ticket (read from the Jira mirror) has a DoD section and a Proof
+   section, and was created before the PR's first commit. The mirror keeps no
+   description history, so the created time stands for when the sections
+   existed;
+2. its body shows a `RED` line and a `GREEN` line after it. The CodeRabbit
+   block is ignored.
+
+The row holds `pdd`, `ticket_first` (half 1 alone) and `red_green` (half 2
+alone), each as `.pct`, `.k` and `.n` with a 95 % Wilson range. A PR whose
+title names no ticket, whose ticket is not in the mirror, or that lists no
+commit is counted in `meta.skipped` and left out of n. Below `--min-n` (50)
+readable PRs the row is `partial` and the exit code is 3.
+
+```bash
+python3 scripts/eval/leg-digest/pdd_share.py --limit 120            # print the row
+python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record   # append it to the eval-runs ledger
+```
+
+`--prs FILE` reads `gh pr list --json number,title,body,commits` output
+instead of asking gh; `--mirror DIR` and `--ledger P` point at scratch copies.
