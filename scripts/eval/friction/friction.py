@@ -202,7 +202,7 @@ HOOK_CLASSES = {
                     'a release manager writes only through the release CLI, its doc and scratch')],
     'block-git-stash': [(r'.', 'git-stash-mutation', 'true-positive', 'refs/stash is shared by every worktree')],
     'block-rogue-claude-schedule': [(r'.', 'raw-scheduler-arm', 'true-positive', 'hand-rolled scheduler job for claude')],
-    'block-rogue-codex-exec': [(r'.', 'raw-codex-exec', 'true-positive', 'codex exec outside the dispatch chokepoint')],
+    'block-rogue-codex-exec': [(r'.', 'raw-codex-exec', 'true-positive', 'raw codex dispatch outside the chokepoint')],
     'block-infra-destroy': [(r'.', 'infra-destroy', 'true-positive', 'SQL/infra/docker destroy in one step')],
     'block-docker-privesc': [(r'.', 'root-equivalent-container-access', 'true-positive',
                               'docker run with root-equivalent access')],
