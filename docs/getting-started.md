@@ -7,7 +7,7 @@ instead, that contributor path is in
 [setup/new-machine.md](setup/new-machine.md#4-himmel-repo).
 
 The ten steps below are the same sequence as the
-[adoption trail's practice climb](adoption-trail.html#first-project), and that
+[adoption trail's practice climb](adoption-trail.html#trial), and that
 sequence is the canonical one. On 2026-10-23 it was run end to end on a clean
 Linux virtual machine with a sandboxed home folder: install, commit, worktree
 and undo. The editor refusal in step 7 was checked by calling the edit hook
@@ -95,7 +95,8 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run
 ```
 
 You should see: both change nothing. The first prints a summary of what the
-install would run, ending in `NOTHING below was executed`; the second prints
+install would run, its list headed
+`would install (--dry-run — NOTHING below was executed):`; the second prints
 one `DRY:` line for each file and setting it would write. `git status` is
 still clean. Node-less machine? Run
 `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first.
