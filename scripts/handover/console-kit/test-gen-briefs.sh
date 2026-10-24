@@ -549,6 +549,8 @@ grbad "a dot-prefixed spelling of a workflow path is refused" 'g["paths"]=["./.g
 grbad "a doubled-slash spelling of a trust path is refused" 'g["paths"]=["scripts/handover//console-kit/brief-lint.sh"]' "literal repo-relative file path"
 grbad "a grant path with a trailing slash is refused" 'g["paths"]=["scripts/"]' "literal repo-relative file path"
 grbad "a grant path naming the repo root is refused" 'g["paths"]=["."]' "literal repo-relative file path"
+mkdir -p "$REPO/grantdir"
+grbad "a grant path naming an existing directory is refused" 'g["paths"]=["grantdir"]' "literal repo-relative file path"
 grbad "a grant with a placeholder in its text is refused" 'g["text"]="edit <file>"' "no <placeholder>"
 grbad "a grant with an extra key is refused" 'g["why"]="x"' "exactly {text, paths}"
 

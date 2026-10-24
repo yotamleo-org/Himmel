@@ -200,7 +200,7 @@ def validate_rm(leg, i):
         die('rm leg %s: effort %r must be one of %s' % (label, leg.get('effort'), '|'.join(EFFORTS)))
 
 
-def validate(leg, i):
+def validate(leg, i, repo):
     if leg.get('kind') == 'rm':
         return validate_rm(leg, i)
     if leg.get('kind') is not None:
@@ -254,10 +254,10 @@ def validate(leg, i):
     if re.search(r'<[^<>\s]+>', leg['prior']) or leg['prior'].strip().lower().rstrip('.') == 'none':
         die('leg %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % leg['label'])
     if 'grants' in leg:
-        validate_grants(leg)
+        validate_grants(leg, repo)
 
 
-def validate_grants(leg):
+def validate_grants(leg, repo):
     # A grant is scope a later ruling may select, so it must be bounded by paths and
     # never reach what the scope line forbids every leg.
     grants = leg['grants']
@@ -279,7 +279,8 @@ def validate_grants(leg):
         for p in paths:
             # The refused patterns are anchored, so only the normalized spelling may pass.
             if (not isinstance(p, str) or not p.strip() or p != p.strip() or '\n' in p or os.path.isabs(p)
-                    or p != os.path.normpath(p) or p == '.' or re.search(r'[*?\[]', p) or '..' in p.split('/')):
+                    or p != os.path.normpath(p) or p == '.' or re.search(r'[*?\[]', p) or '..' in p.split('/')
+                    or os.path.isdir(os.path.join(repo, p))):
                 die('leg %s: grant %s path %r must be a literal repo-relative file path' % (leg['label'], gid, p))
             if GRANT_PATH_REFUSED_RE.search(p) or any(r.search(p) for r in trust):
                 die('leg %s: grant %s path %s is a settings, CI-workflow or trust path; widen scope for it by a re-brief, never a grant' % (leg['label'], gid, p))
@@ -518,7 +519,7 @@ def main():
     if not isinstance(legs, list) or not legs:
         die('%s must be a non-empty JSON list' % a.legs, 2)
     for i, l in enumerate(legs):
-        validate(l, i)
+        validate(l, i, a.repo)
     labels = [l['label'] for l in legs]
     if len(set(labels)) != len(labels):
         die('duplicate leg labels')
