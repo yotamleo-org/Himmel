@@ -184,9 +184,9 @@ go_fixred_gate() {
 # basename of the anchor's PRIMARY checkout (the parent of its git-common-dir, so
 # a linked worktree names its repo, not its own directory) — the same bucket
 # convention console.sh derives. Given <owner/name> (an adopted repo, which has
-# no checkout under the anchor), <bucket> is the slugified <owner/name> instead
-# (acme/widget gives acme-widget, so two owners' same-named repos never share
-# one). Both must be a plain path segment
+# no checkout under the anchor), <bucket> is `<owner>--<name>` lowercased, not
+# slugified: a GitHub owner never contains `--`, so no two repos share a bucket,
+# and no harness bucket (a slug, never `--`) equals one. Both must be a plain path segment
 # ([A-Za-z0-9][A-Za-z0-9._-]*, no `..`); anything unresolved prints nothing and
 # returns 1 (fail closed — never a glob over every bucket). Read-only.
 go_verdict_scope() (
@@ -206,12 +206,14 @@ go_verdict_scope() (
     load_dotenv --root "$(_load_dotenv_primary_for "$1" 2>/dev/null)" USER_SLUG >/dev/null 2>&1 || true
     slug=$(cd "$1" 2>/dev/null && user_slug 2>/dev/null) || exit 1
     if [ -n "${2:-}" ]; then
-        case "$2" in */*/*|*/) exit 1 ;; ?*/?*) reponame=$2 ;; *) exit 1 ;; esac
+        case "$2" in */*/*|*/) exit 1 ;; ?*/?*) ;; *) exit 1 ;; esac
+        case "${2%%/*}" in *[!A-Za-z0-9-]*|-*|*-|*--*) exit 1 ;; esac
+        bucket=$(printf '%s--%s' "${2%%/*}" "${2#*/}" | LC_ALL=C tr '[:upper:]' '[:lower:]')
     else
         common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
         reponame=$(basename "$(dirname "$common")")
+        bucket=$(printf '%s' "$reponame" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
     fi
-    bucket=$(printf '%s' "$reponame" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
     for seg in "$slug" "$bucket"; do
         case "$seg" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*|*..*) exit 1 ;; esac
     done

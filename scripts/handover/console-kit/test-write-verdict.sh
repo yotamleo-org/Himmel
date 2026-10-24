@@ -838,18 +838,21 @@ rc=0; out=$(wv q24i NO-GO "$SHA_A" --evidence-file "$evd/forged.md" 2>&1) || rc=
 check "24: evidence carrying a model: line is refused" "$rc" 2
 
 # --- 25. --repo writes an adopted repo's record ----------------------------
-# The record lands in that repo's bucket (<user>/<slug of owner/name>) and names
-# it in a signed repo: line after pr:, so go.sh --repo reads it and the
-# harness's own lookup does not.
+# The record lands in that repo's bucket (<user>/<owner>--<name>, lowercased)
+# and names it in a signed repo: line after pr:, so go.sh --repo reads it and
+# the harness's own lookup does not.
 rc=0; out=$(wv q25 GO "$SHA_A" --evidence-file "$ev" --repo acme/Wid.get 2>&1) || rc=$?
 check "25: --repo write rc 0" "$rc" 0
-f25="$root/tuser/acme-wid-get/verdicts/q25/judge.md"
+f25="$root/tuser/acme--wid.get/verdicts/q25/judge.md"
 check "25: written in the adopted repo's bucket" "$([ -f "$f25" ] && echo yes)" yes
 check "25: the repo line follows the pr line" "$(grep -A1 '^pr: 501$' "$f25" 2>/dev/null | tail -n 1)" "repo: acme/Wid.get"
 rc=0; verdict_rc q25 "$SHA_A" acme/Wid.get || rc=$?
 check "25: go_trust_verdict accepts it for that repo" "$rc" 0
 rc=0; verdict_rc q25 "$SHA_A" acme/other || rc=$?
 check "25: go_trust_verdict refuses it for another repo" "$rc" 2
+wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a-b/c >/dev/null 2>&1
+wv q25c GO "$SHA_A" --evidence-file "$ev" --repo a/b-c >/dev/null 2>&1
+check "25: a-b/c and a/b-c get two buckets" "$(find "$root" -path '*/q25c/judge.md' | wc -l | tr -d ' ')" 2
 for bad_repo in a a/b/c /a a/ 'a b/c' ../x a/.. -a/b; do
     rc=0; wv q25b GO "$SHA_A" --evidence-file "$ev" --repo "$bad_repo" >/dev/null 2>&1 || rc=$?
     check "25: --repo '$bad_repo' refused rc 2" "$rc" 2

@@ -667,7 +667,7 @@ check "22: the reserved qid writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA
 # trust path ^deploy/ gets `go.sh --repo acme/widget --trust-reviewed <q>`: the
 # GO signs acme/widget, and go_trust_gate - merge-on-green's predicate on a
 # trust-path hit - accepts it. The judge record lives in acme/widget's own
-# bucket (u/acme-widget) and names the repo in a signed repo: line. R4: a plain GO
+# bucket (u/acme--widget) and names the repo in a signed repo: line. R4: a plain GO
 # for that PR stays refused. The allowlist fails closed on every bad shape.
 ROOT23="$tmp/root23"; mkdir -p "$ROOT23"
 A23_BIN="$tmp/a23-bin"; mkdir -p "$A23_BIN"
@@ -706,7 +706,7 @@ averdict() {
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
 printf '[{"nwo":"acme/widget","merge_allowed":true},{"nwo":"acme/off","merge_allowed":false}]\n' > "$A23_ADOPTED"
-averdict u/acme-widget W1 "repo: acme/widget"
+averdict u/acme--widget W1 "repo: acme/widget"
 rc=0; out="$(a23 --repo acme/widget --trust-reviewed W1 88 "$SHA" 2>&1)" || rc=$?
 check    "7392 R3: adopted repo trust-reviewed GO -> exit 0" "$rc" "0"
 GO23="$ROOT23/.locks/go/88.$SHA"
@@ -715,7 +715,7 @@ rc=0; out=$(go_trust_gate 88 "$SHA" "$ROOT23" acme/widget) || rc=$?
 check    "7392 R3: go_trust_gate accepts it for acme/widget" "$rc:$out" "0:W1"
 rc=0; go_trust_gate 88 "$SHA" "$ROOT23" o/r >/dev/null || rc=$?
 check    "7392 R3: the GO signs acme/widget, not the harness repo" "$rc" "2"
-REC23="$ROOT23/u/acme-widget/verdicts/go-pr-88/console-go-$SHA.md"
+REC23="$ROOT23/u/acme--widget/verdicts/go-pr-88/console-go-$SHA.md"
 contains "7392 R3: the persisted GO record names the repo" "$(cat "$REC23" 2>/dev/null)" "repo: acme/widget"
 # R4: the same PR on a plain GO stays refused - go.sh will not write one, and
 # a plain GO signed for acme/widget fails the trust gate.
@@ -753,9 +753,9 @@ A23_BASE=dev t23 "a PR not based on the default branch" 7 --repo acme/widget --t
 # only acme/widget's own bucket counts, and its record must name acme/widget
 averdict "$VSCOPE" W2 ""
 t23 "a judge GO in the harness bucket" 5 --repo acme/widget --trust-reviewed W2 88 "$SHA"
-averdict u/acme-widget W3 ""
+averdict u/acme--widget W3 ""
 t23 "a record naming no repo" 5 --repo acme/widget --trust-reviewed W3 88 "$SHA"
-averdict u/acme-widget W4 "repo: other/widget"
+averdict u/acme--widget W4 "repo: other/widget"
 t23 "a record naming another repo" 5 --repo acme/widget --trust-reviewed W4 88 "$SHA"
 averdict u/widget W5 "repo: acme/widget"
 t23 "a record in a bucket another owner's widget shares" 5 --repo acme/widget --trust-reviewed W5 88 "$SHA"

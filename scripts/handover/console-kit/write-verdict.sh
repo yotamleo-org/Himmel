@@ -10,7 +10,7 @@
 # Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--repo <owner/name>] [--model <id>] [--effort <level>]
 #
 # --repo <owner/name> rules on a PR of that adopted repo instead of this
-# checkout's: the record goes under <user>/<slug of owner/name> and carries a
+# checkout's: the record goes under <user>/<owner>--<name> and carries a
 # `repo: <owner/name>` header line, the line go.sh --repo checks.
 #
 # --model / --effort name the judge that ruled and are recorded as `model:` and
