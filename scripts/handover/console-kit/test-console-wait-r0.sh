@@ -307,5 +307,88 @@ wait_exit "$WPID"
 check "(hd5) the set emptying does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (rv) a leg whose newest marker is BLOCKED resolve wakes the console -----
+# The wake names the leg, the PR and the thread ids; any other newest marker
+# (another BLOCKED, a later RESOLVED, FINDING, LIVE) wakes no resolve.
+reset_stub
+fleet rv
+start "$I" "$WORK/rv.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv) no baseline heartbeat"
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_kwDOAb-1 PRRT_kwDOAb_2 — classifier denied the resolve\n' >> "$L"
+tick_line "N1:BLOCKED" "N1:BLOCKED#1"
+wait_exit "$WPID"
+check "(rv) a BLOCKED resolve ends the wait" "0" "$rc"
+check "(rv) the wake names leg, PR and thread ids" "WAKE resolve N1 pr=3628 threads=PRRT_kwDOAb-1,PRRT_kwDOAb_2" "$(head -n 1 "$WORK/rv.out")"
+check "(rv) then the tick line" "$(cat "$STUB/tick.line")" "$(sed -n 2p "$WORK/rv.out")"
+start "$I" "$WORK/rv2.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv) no re-arm heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(rv) a re-arm does not wake for the same bullet" "running" "$rc"
+printf -- '- 10:20 BLOCKED resolve 3628 PRRT_kwDOAb-1 — denied again\n' >> "$L"
+wait_exit "$WPID"
+check "(rv) a later BLOCKED resolve bullet wakes again" "0" "$rc"
+check "(rv) naming its own thread" "WAKE resolve N1 pr=3628 threads=PRRT_kwDOAb-1" "$(head -n 1 "$WORK/rv2.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# (rv-neg) none of these newest markers is a resolve wake
+for neg in 'BLOCKED permission prompt on gh pr merge' 'BLOCKED resolve-later nothing' 'FINDING resolve 3628 PRRT_abc' 'LIVE — BLOCKED resolve 3628 PRRT_abc' 'WRAPPED'; do
+    reset_stub
+    fleet rvn
+    start "$I" "$WORK/rvn.out" --doc "$D" --legs-from "$M"
+    wait_hb "$I" || fail "(rv-neg) no baseline heartbeat"
+    printf -- '- 10:00 %s\n' "$neg" >> "$L"
+    tick_line "N1:LIVE"
+    sleep 2.5
+    wait_exit "$WPID"
+    lacks "(rv-neg) '$neg' is no resolve wake" "$(cat "$WORK/rvn.out")" "WAKE resolve"
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+done
+
+# a BLOCKED resolve the leg already retired with a later marker wakes no resolve
+reset_stub
+fleet rvr
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:10 RESOLVED — ruling received, see console message\n' >> "$L"
+start "$I" "$WORK/rvr.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-retired) no baseline heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(rv-retired) a retired BLOCKED resolve does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# a BLOCKED resolve followed by a MERGED bullet is retired too
+reset_stub
+fleet rvm
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:30 MERGED #3628 abc1234 — merged\n' >> "$L"
+start "$I" "$WORK/rvm.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-merged) no baseline heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(rv-merged) a BLOCKED resolve before a MERGED bullet does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# a later PARKED-USAGE bullet retires a BLOCKED resolve
+reset_stub
+fleet rvp
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:40 PARKED-USAGE — weekly cap\n' >> "$L"
+start "$I" "$WORK/rvp.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-parked) no baseline heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(rv-parked) a BLOCKED resolve before a PARKED-USAGE bullet does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# a later line that only starts like a marker (BLOCKED2) is no marker and hides nothing
+reset_stub
+fleet rvb
+start "$I" "$WORK/rvb.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-boundary) no baseline heartbeat"
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:10 BLOCKED2 stray note\n' >> "$L"
+tick_line "N1:BLOCKED" "N1:BLOCKED#1"
+wait_exit "$WPID"
+check "(rv-boundary) a BLOCKED2 line does not hide a BLOCKED resolve" "0" "$rc"
+check "(rv-boundary) the wake names the resolve" "WAKE resolve N1 pr=3628 threads=PRRT_abc" "$(head -n 1 "$WORK/rvb.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

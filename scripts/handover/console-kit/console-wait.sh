@@ -50,6 +50,11 @@
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
 #                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` when
 #                               the relay absorbed anything, and the digest clears.
+#   WAKE resolve <leg> pr=<n> threads=<id,...>  with --legs-from: a leg doc whose newest
+#                               marker bullet is `BLOCKED resolve <pr> <PRRT_ ids>` (its
+#                               resolve call was denied). Once per bullet; the console
+#                               resolves each thread itself, never the operator. The
+#                               tick line follows and its key is saved.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <console doc>
 #   <tracker output>            (the successor's waiter): every inherited leg quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -869,6 +874,33 @@ EOF
     return 1
 }
 
+# resolve_wake: with --legs-from, a leg doc whose NEWEST marker-bearing bullet is
+# `BLOCKED resolve <pr> <thread ids>` wakes the console once per bullet (a leg whose
+# resolve call was denied: the console resolves the threads itself, never the
+# operator). Prints the WAKE block and returns 0; the bullet's line number and text
+# go in $resolve_file, so a re-arm or a repeat of the same bullet stays quiet. Only
+# the PR number and PRRT_ ids are read out of the bullet; the denial text is not echoed.
+resolve_file="$inbox.wait.resolve"
+resolve_wake() {
+    local label ldoc bullet rest pr ids
+    [ -n "$legs_from" ] || return 1
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -f "$ldoc" ] || continue
+        bullet="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$ldoc" | tail -n 1)"
+        rest="$(printf '%s\n' "${bullet#*:}" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
+        [[ $rest =~ ^BLOCKED\ resolve\ ([0-9]+)\ (PRRT_[A-Za-z0-9_-]+([\ ,]+PRRT_[A-Za-z0-9_-]+)*) ]] || continue
+        pr="${BASH_REMATCH[1]}"
+        ids="$(printf '%s\n' "${BASH_REMATCH[2]}" | tr -s ' ,' ',')"
+        grep -qxF -- "$label $bullet" "$resolve_file" 2>/dev/null && continue
+        printf '%s\n' "$label $bullet" >> "$resolve_file"
+        printf 'WAKE resolve %s pr=%s threads=%s\n' "$label" "$pr" "$ids"
+        return 0
+    done <<EOF
+$(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
+EOF
+    return 1
+}
+
 # r0_fold_key: <saved key> <new key> <absorbed words> — the baseline after the relay
 # absorbed those legs' wraps (words: labels and #<pr>). A field whose only difference
 # is absorbed tokens (`<word>`, `<word>:…`; `none` counts as empty) takes the new
@@ -1025,6 +1057,8 @@ while :; do
             # the leg-event wake carries the tick line and saves its key, so a re-arm
             # does not wake again on the same tails=/acts= move
             if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-leg-event'; exit 0; fi
+            # a denied thread resolve is the console's job; its acts= move is folded like the leg-event wake's
+            if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi
             # a wrap the relay absorbed folds only that leg into the baseline
             if [ -n "$saved" ] && { [ -n "$r0_handled" ] || [ -n "$r0_refold" ]; }; then
                 saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"

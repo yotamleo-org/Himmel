@@ -301,7 +301,7 @@ if [ "$rc" -ne 0 ]; then
     echo "    2. JIRA_PROJECT_KEY   — gives PROJECT-123, if set" >&2
     echo "    3. #123               — himmel's own enumeration, the default when neither is set" >&2
     echo "  Get an #N from '/handover new-epic' or '/handover new-task' (it allocates the next free number)." >&2
-    echo "  Opt out entirely with TICKET_ID_REQUIRED=0 in the repo's .env or the environment." >&2
+    echo "  Opt out entirely with TICKET_ID_REQUIRED=0 in ~/.himmel/himmel.conf (every project on this machine) or the environment." >&2
     echo "  Merge commits, revert commits, and TICKET_ID_EXEMPT_AUTHORS are exempt." >&2
   fi
   exit 1

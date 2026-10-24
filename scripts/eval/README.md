@@ -12,6 +12,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm | `table.tsv`, `results.jsonl` (no ledger row) |
 | `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; ledger row `weekly-rollup`) |
+| `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
 ## The eval-runs ledger

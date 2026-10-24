@@ -142,9 +142,9 @@ It also carries, for the terminal lint (HIMMEL-4375):
   so name it there.
 
 **Choose the written-design size yourself.** At its brainstorming step "Size
-the Work", pick brainstorming step "A project with a written design" and say so;
-never let it settle on a quick task or a small change, and never take its
-skip-the-questions opt-out. Those end with no document, and the Stage-2 gate
+the Work", pick brainstorming step "A project" (the full written design) and say so;
+never let it settle on a small change or take its short design, and never take its
+skip-the-questions opt-out. Those end without the full document, and the Stage-2 gate
 and the terminal lint both read the written spec.
 
 **Optional, non-trivial designs only: base and graft.** Use it when the 1a grill

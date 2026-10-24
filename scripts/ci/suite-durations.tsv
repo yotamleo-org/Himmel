@@ -311,6 +311,7 @@ scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
+scripts/eval/test-review-page.sh	1
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0
 scripts/eval/test-weekly-rollup.sh	1
@@ -554,6 +555,7 @@ scripts/himmelctl/test/test-wizard-uninstall-converge.sh	2
 scripts/himmelctl/test/test-wizard-uninstall.sh	2
 scripts/himmelctl/test/test-wizard-update.sh	0
 scripts/himmelctl/test/test-wizard-vm-mode.sh	6
+scripts/hooks/test-allow-thread-resolve.sh	1
 scripts/hooks/test-auto-approve-safe-bash.sh	44
 scripts/hooks/test-auto-arm-on-cap.sh	7
 scripts/hooks/test-auto-arm-on-subagent-cap.sh	4
@@ -639,6 +641,7 @@ scripts/hooks/test-check-security-reviewed.sh	5
 scripts/hooks/test-check-settings-portability.sh	0
 scripts/hooks/test-check-template-himmel-plugins.sh	1
 scripts/hooks/test-check-update-available.sh	7
+scripts/hooks/test-check-worktree-isolation.sh	1
 scripts/hooks/test-ci-doc-invariants.sh	12
 scripts/hooks/test-claude-glm-seed-check.sh	0
 scripts/hooks/test-cmdpos-clean.sh	0

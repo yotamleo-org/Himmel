@@ -1746,7 +1746,21 @@ function buildSummary(answers, laneRows, opts) {
     planned: dryRun ? actions : [],
     skipped: skipped,
     manual: manual,
+    // { branch, command, committed } for a project on main/master, else null
+    commitOnMain: o.commitOnMain || null,
   };
+}
+
+// The last line has to match what adopt.sh offers: on main the git gates
+// refuse a plain commit, so adopt.sh offers the one allowed commit there.
+function nextLines(summary) {
+  const cm = summary.commitOnMain;
+  if (!cm) return ['next: commit these files on a branch'];
+  if (cm.committed) return [`next: the install is already committed on ${cm.branch}`];
+  return [
+    `next: commit the install on ${cm.branch} (the git gates refuse every other commit there) with the one allowed commit:`,
+    `  ${cm.command}`,
+  ];
 }
 
 function summaryLines(summary) {
@@ -1782,7 +1796,7 @@ function summaryLines(summary) {
     }
   }
   lines.push('');
-  lines.push('next: commit these files on a branch');
+  for (const l of nextLines(summary)) lines.push(l);
   lines.push('');
   return lines;
 }

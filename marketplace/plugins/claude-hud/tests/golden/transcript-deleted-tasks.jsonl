@@ -1,0 +1,6 @@
+{"type":"assistant","timestamp":"2026-10-01T11:00:00.000Z","message":{"content":[{"type":"tool_use","id":"c1","name":"TaskCreate","input":{"subject":"Discarded draft"}}]}}
+{"type":"assistant","timestamp":"2026-10-01T11:00:00.000Z","message":{"content":[{"type":"tool_use","id":"c2","name":"TaskCreate","input":{"subject":"Ship fix"}}]}}
+{"type":"assistant","timestamp":"2026-10-01T11:00:00.000Z","message":{"content":[{"type":"tool_use","id":"c3","name":"TaskCreate","input":{"subject":"Verify tests"}}]}}
+{"type":"assistant","timestamp":"2026-10-01T11:00:00.000Z","message":{"content":[{"type":"tool_use","id":"u0","name":"TaskUpdate","input":{"taskId":"2","status":"in_progress"}}]}}
+{"type":"assistant","timestamp":"2026-10-01T11:00:00.000Z","message":{"content":[{"type":"tool_use","id":"u1","name":"TaskUpdate","input":{"taskId":"3","status":"completed"}}]}}
+{"type":"assistant","timestamp":"2026-10-01T11:00:00.000Z","message":{"content":[{"type":"tool_use","id":"u2","name":"TaskUpdate","input":{"taskId":"1","status":"deleted"}}]}}

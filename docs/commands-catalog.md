@@ -79,7 +79,7 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > [marketplace/plugins/lean-skills/README.md](../marketplace/plugins/lean-skills/README.md)
 > and its `VENDORED.md` instead. This carve-out covers every companion file
 > under a vendored skill's own directory too (e.g. `executing-plans/scripts/`,
-> `subagent-driven-development/scripts/`, `brainstorming/builder-check-prompt.md`) — an upstream re-vendor
+> `subagent-driven-development/scripts/`, `subagent-driven-development/references/`, `writing-skills/references/`, `brainstorming/builder-check-prompt.md`) — an upstream re-vendor
 > can add or remove one without a catalog edit, since none of them are himmel
 > slash commands.
 

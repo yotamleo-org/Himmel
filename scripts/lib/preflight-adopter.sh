@@ -59,6 +59,35 @@ preflight_check_npm_invocable() {
   return 0
 }
 
+# preflight_cfg_value <KEY> — KEY from the environment, else the last KEY= line
+# of ~/.himmel/himmel.conf.local, ~/.himmel/himmel.conf or $HIMMEL_ROOT/.env
+# (first file that has one); empty when unset. Builtins only.
+preflight_cfg_value() {
+  local key="$1" f line v
+  v="${!key:-}"
+  if [ -z "$v" ]; then
+    for f in "$HOME/.himmel/himmel.conf.local" "$HOME/.himmel/himmel.conf" "${HIMMEL_ROOT:-}/.env"; do
+      [ -f "$f" ] || continue
+      while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in "$key="*) v="${line#"$key="}"; v="${v//\"/}"; v="${v//\'/}" ;; esac
+      done < "$f"
+      [ -n "$v" ] && break
+    done
+  fi
+  printf '%s' "$v"
+}
+
+# Jira is enabled when the tracker resolves to jira: TRACKER=jira, or no
+# TRACKER and a JIRA_PROJECT_KEY (scripts/lib/project-mode.sh's rule).
+preflight_jira_enabled() {
+  local t
+  t=$(preflight_cfg_value TRACKER)
+  [ -n "$t" ] || t=$(git config --get himmel.tracker 2>/dev/null) || t=""
+  if [ -n "$t" ]; then [ "$t" = jira ]; return; fi
+  [ -n "$(preflight_cfg_value JIRA_PROJECT_KEY)" ]
+}
+
 # scripts/jira/dist/index.js AND scripts/jira/node_modules are gitignored
 # build artifacts — a fresh clone bootstrapped via adopt.sh hits
 # MODULE_NOT_FOUND without dist/ (CLAUDE.md's "worktrees lack dist/" warning is
@@ -75,6 +104,8 @@ preflight_check_jira_dist() {
     preflight_warn "HIMMEL_ROOT not set — jira-dist check skipped (caller bug)"
     return 1
   fi
+  # A starter install tracks no work in Jira, so an unbuilt Jira CLI is no gap.
+  preflight_jira_enabled || return 0
   local jira_dir="$HIMMEL_ROOT/scripts/jira"
   local gap=""
   if [ ! -d "$jira_dir/node_modules" ] && [ ! -f "$jira_dir/dist/index.js" ]; then

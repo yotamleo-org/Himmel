@@ -75,6 +75,16 @@ expect_rc "malformed conventional commit still rejects" 1 "not conventional"
 expect_rc "garbage rejected under explicit opt-out" 1 "not conventional" TICKET_ID_REQUIRED=0
 expect_rc "garbage rejected under Jira posture" 1 "not conventional" \
   TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=ACME
+# The opt-out hint names the file a starter install writes
+# (~/.himmel/himmel.conf), not a repo .env a newcomer does not have.
+optout_out=$(run_gate "chore: no ticket id here" 2>&1)
+case "$optout_out" in
+  *"Opt out entirely with TICKET_ID_REQUIRED=0 in ~/.himmel/himmel.conf"*)
+    printf '  PASS  %s\n' "ticket opt-out hint names ~/.himmel/himmel.conf" ;;
+  *)
+    printf '  FAIL  %s\n' "ticket opt-out hint names ~/.himmel/himmel.conf"
+    failures=$((failures + 1)) ;;
+esac
 expect_rc "strict Jira mode rejects missing ticket" 1 "feat: add feature" \
   TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=ACME
 expect_rc "strict Jira mode accepts PROJECT-N" 0 "feat: ACME-42 add feature" \

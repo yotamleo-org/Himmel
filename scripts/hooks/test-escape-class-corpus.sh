@@ -64,6 +64,7 @@ guard-relay-writes.sh|||deny|||HIMMEL_CONSOLE_RELAY=1 HANDOVER_DIR=@@T@@/ho|||-|
 read-clamp.sh|||exempt|||-|||-|||-
 require-quiet-run.sh|||exempt|||-|||-|||-
 check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
+allow-thread-resolve.sh|||exempt|||-|||-|||-
 '
 # Exempt rows (each is printed as EXEMPT on every run, never skipped silently):
 #   read-clamp.sh, require-quiet-run.sh — workflow NUDGES, not security fences;
@@ -72,6 +73,9 @@ check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
 #     "an unrecognised Bash shape". The fail-closed policy applies to fences.
 #   check-cr-marker-on-pr-create.sh — its deny needs a branch CR marker written
 #     by the pre-push hook; the fixture for that is a follow-up.
+#   allow-thread-resolve.sh — an allow-only hook: it never denies, and any shape
+#     but its one anchored resolve command gets no decision, so there is no
+#     protected action to wrap in a splitter-misreading construct.
 
 # <hook> <shape-id> <ticket> — a shape the guard allows today; one Bug per guard.
 KNOWN_FAILURES='
