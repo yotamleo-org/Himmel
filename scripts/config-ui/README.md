@@ -365,7 +365,7 @@ imports, so its suite runs in CI without an install.
   rules offer no switch, a switch previews its dry-run first, and Roadmap and
   Kanban follow the tracker source.
 - Fleet cap and reviewer settings (`fleet-cap.ts`, `review-gate.ts`; `GET` and `POST
-  /api/fleet-cap`, `/api/review-gate`): the cap goes to the station `.env`, a reviewer's
+  /api/fleet-cap`, `/api/review-gate`): the cap is read through the himmel.conf order and goes to `~/.himmel/himmel.conf`, a reviewer's
   model and effort to the `critics.local.json` overlay only. Tests:
   `tests/fleet-cap-reviewers.test.ts` (route, write, lock and overlay rows).
 - Setup e2e (`setup.e2e.ts`, same opt-in suite): the page is `public/setup.js`,

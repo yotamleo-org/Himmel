@@ -54,13 +54,25 @@ NOW="$(date +%s)"
 printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}' "$NOW" > "$W/c.json"
 
 out="$W/out"; err="$W/err.log"
-( cd "$foreign/nested/bucket" && env HIMMEL_FLEET_CAP= FLEET_PS_CMD="$p0/ps" FLEET_PROC="$p0/proc" \
+( cd "$foreign/nested/bucket" && env HOME="$W/home0" HIMMEL_FLEET_CAP= FLEET_PS_CMD="$p0/ps" FLEET_PROC="$p0/proc" \
     HIMMEL_FLEET_SLOTS="$W/slots" CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
     CADENCE_BANK_LEDGER="$W/ledger.jsonl" bash "$SUT" </dev/null > "$out" 2>"$err" )
 
 fleet_line="$(grep -o 'FLEET .*total=[0-9]*/[0-9]*' "$err" || true)"
 cap="${fleet_line##*/}"
 check "cap resolves from the SUT's own checkout's .env (15), not the foreign CWD repo's default (4) -- fleet line: $fleet_line" "15" "$cap"
+
+# --- the cap is a behaviour key. With no cap in .env, the value in
+# ~/.himmel/himmel.conf must win over the default of 4, and the .env still
+# works when himmel.conf lacks it.
+: > "$own/.env"
+mkdir -p "$W/home1/.himmel"
+printf 'HIMMEL_FLEET_CAP=11\n' > "$W/home1/.himmel/himmel.conf"
+( cd "$foreign/nested/bucket" && env HOME="$W/home1" HIMMEL_FLEET_CAP= FLEET_PS_CMD="$p0/ps" FLEET_PROC="$p0/proc" \
+    HIMMEL_FLEET_SLOTS="$W/slots" CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
+    CADENCE_BANK_LEDGER="$W/ledger.jsonl" bash "$SUT" </dev/null > "$out" 2>"$err" )
+fleet_line="$(grep -o 'FLEET .*total=[0-9]*/[0-9]*' "$err" || true)"
+check "cap resolves from ~/.himmel/himmel.conf (11) when .env has none -- fleet line: $fleet_line" "11" "${fleet_line##*/}"
 
 echo "=== $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ]

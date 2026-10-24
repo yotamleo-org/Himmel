@@ -27,6 +27,7 @@ import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { readGate, writeGate } from "./review-gate";
+import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 import { secretWrite, setupState } from "./setup";
@@ -481,7 +482,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         ]);
         let raw = "";
         try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...env }) })); // as the CLI: the checkout's .env, the process env winning
+        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...env }) })); // as the CLI: the checkout's .env, himmel.conf, the process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {
@@ -563,7 +564,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
       // the review gate: reviewers, order, mode and required, read through the one resolver; a write edits the critics.local.json overlay only.
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
-      // the fleet cap: HIMMEL_FLEET_CAP read from the launching shell and the station .env; a write replaces that one .env line.
+      // the fleet cap: HIMMEL_FLEET_CAP read from the launching shell, himmel.conf.local, himmel.conf and the station .env; a write replaces that one himmel.conf line.
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
       if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });

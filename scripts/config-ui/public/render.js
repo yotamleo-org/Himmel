@@ -189,18 +189,18 @@ export function renderVm(vm) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
 }
 
-// the fleet cap card. fc = { data: GET /api/fleet-cap, error, draft: the cap as typed, msg }. The server validates and writes the one .env line.
+// the fleet cap card. fc = { data: GET /api/fleet-cap, error, draft: the cap as typed, msg }. The server validates and writes the one himmel.conf line.
 export function renderFleetCap(fc) {
   const head = `<h2 id="h-fleet-cap">Fleet cap</h2><p class="sub">How many legs may run at once. Launching one more than this is refused.</p>`;
   if (!fc || (!fc.data && !fc.error)) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="empty">loading…</div></section>`;
   if (!fc.data) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="nodata">${esc(fc.error)}</div></section>`;
   const d = fc.data, v = fc.draft === undefined || fc.draft === null ? d.cap : fc.draft;
-  const over = d.source === "env" ? `<div class="nodata" role="status">the launching shell sets HIMMEL_FLEET_CAP=${esc(d.cap)}, which wins over .env until the UI restarts without it${d.fileValue !== null ? ` (saved in .env: ${esc(d.fileValue)})` : ""}</div>` : "";
+  const over = d.source === "env" ? `<div class="nodata" role="status">the launching shell sets HIMMEL_FLEET_CAP=${esc(d.cap)}, which wins over himmel.conf until the UI restarts without it${d.fileValue !== null ? ` (saved in himmel.conf: ${esc(d.fileValue)})` : ""}</div>` : "";
   const msg = fc.msg ? `<div class="${fc.msg.ok ? "ro" : "nodata"}" role="status">${esc(fc.msg.text)}</div>` : "";
   return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="card">
     <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">whole number from ${esc(d.min)} to ${esc(d.max)}</span>
     <span class="slot"><label>cap <input type="text" inputmode="numeric" data-fc="cap" value="${esc(v)}" aria-label="fleet cap"></label></span></div>
-    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · saved to <code>${esc(d.envFile)}</code>, read at the next leg launch</div></div>${over}
+    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · saved to <code>${esc(d.file)}</code>, read at the next leg launch</div></div>${over}
     <button class="btn" data-act="fleet-cap-save">save</button>${msg}</div></section>`;
 }
 

@@ -67,6 +67,22 @@ test('buildCtx pathHas does real PATH/PATHEXT lookup (HIMMEL-780 follow-through)
   }
   assert.equal(pathHas('missing-cli'), false);
 });
+test('buildCtx reads a behaviour key from himmel.conf: process env > himmel.conf.local > himmel.conf > .env', () => {
+  const repo = makeTmpDir('lanes-repo-');
+  const home = makeTmpDir('lanes-home-');
+  mkdirSync(join(home, '.himmel'));
+  const conf = join(home, '.himmel', 'himmel.conf');
+  writeFileSync(join(repo, '.env'), 'CR_PROFILE=from-dotenv\nZAI_API_KEY=k\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-dotenv', 'legacy .env still read');
+  writeFileSync(conf, 'CR_PROFILE=from-conf\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'himmel.conf over .env');
+  assert.equal(buildCtx(repo, { HOME: home }).env.ZAI_API_KEY, 'k', 'a .env-only key is untouched');
+  writeFileSync(`${conf}.local`, 'CR_PROFILE=from-local\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-local', 'himmel.conf.local over himmel.conf');
+  assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: 'from-proc' }).env.CR_PROFILE, 'from-proc', 'process env wins');
+  writeFileSync(`${conf}.local`, 'CR_PROFILE=\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'an empty conf line reads as unset');
+});
 test('buildCtx installed.hermes accepts only a real interpreter, matching resolve-hermes-py.sh', () => {
   const repo = makeTmpDir('lanes-repo-');
   const home = makeTmpDir('lanes-hermes-');

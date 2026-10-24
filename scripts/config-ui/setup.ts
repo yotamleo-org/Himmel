@@ -2,10 +2,10 @@
 // write path for a secret value. The value is held in a local for the write only: it is never logged, audited,
 // returned, or put in an error.
 import { execFile, execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { promisify } from "node:util";
 import * as store from "../himmelctl/lib/secret-store.js";
+import { readConfLayers } from "./conf-layers";
 import manifest from "../himmelctl/lib/secrets-manifest.json";
 
 const execFileAsync = promisify(execFile);
@@ -34,15 +34,9 @@ const gitCheckIgnore = (file: string): boolean => {
 };
 const ctxOf = (o: SetupOpts) => ({ home: o.home, himmelRoot: o.himmelRoot, projectRoot: o.projectRoot, env: o.env, gitCheckIgnore });
 
-// ~/.himmel/himmel.conf, where the wizard writes the commit rules; null for a key it does not carry.
+// ~/.himmel/himmel.conf (himmel.conf.local over it), where the wizard writes the commit rules; null for a key it does not carry.
 function commitRules(home: string) {
-  const kv: Record<string, string> = {};
-  try {
-    for (const l of readFileSync(join(home, ".himmel", "himmel.conf"), "utf8").split("\n")) {
-      const m = /^(TRACKER|TICKET_ID_REQUIRED)=(.*)$/.exec(l);
-      if (m && !(m[1] in kv)) kv[m[1]] = m[2];
-    }
-  } catch { /* no conf yet */ }
+  const kv = readConfLayers({ HOME: home });
   return { tracker: kv.TRACKER ?? null, ticketIdRequired: kv.TICKET_ID_REQUIRED === "1" ? true : kv.TICKET_ID_REQUIRED === "0" ? false : null };
 }
 

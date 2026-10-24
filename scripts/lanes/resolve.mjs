@@ -238,7 +238,13 @@ export function buildCtx(repoRoot, procEnv) {
   // .env precedence: main-checkout .env (base) < worktree .env < process env (wins).
   const mainRoot = mainCheckoutRoot(repoRoot);
   const dotenv = { ...(mainRoot ? parseDotenv(join(mainRoot, '.env')) : {}), ...parseDotenv(join(repoRoot, '.env')) };
-  const env = { ...dotenv, ...procEnv };
+  // Behaviour keys (CR_PROFILE) also live in ~/.himmel/himmel.conf{,.local} (config-layers.md); an empty line reads as unset.
+  const confDir = join(procEnv.HOME || homedir(), '.himmel');
+  const conf = {};
+  for (const file of ['himmel.conf', 'himmel.conf.local']) {
+    for (const [k, v] of Object.entries(parseDotenv(join(confDir, file)))) if (v !== '') conf[k] = v;
+  }
+  const env = { ...dotenv, ...conf, ...procEnv };
   const pathHas = pathHasFactory(env);
   // installed.hermes must mean "dispatch will find an interpreter", so it probes
   // exactly what invoke.sh consults (resolve-hermes-py.sh: HERMES_PY, then the

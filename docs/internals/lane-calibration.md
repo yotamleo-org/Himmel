@@ -828,7 +828,7 @@ fleet-wide halt. `scripts/lib/bank-preflight.sh` now counts live worker
 sessions (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-console` — supervisor sessions are not worker sessions) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
-`HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in
+`HIMMEL_FLEET_CAP` (env, else `himmel.conf.local`, `himmel.conf`, `.env`, default **4**). Wired at ARM time in
 both `scripts/handover/console-kit/headed-arm-leg.sh` and
 `scripts/handover/arm-resume.sh`, so a new worker session is refused before the
 scheduler entry (or the konsole window) is ever created — cheaper than

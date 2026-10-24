@@ -74,8 +74,15 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `HIMMEL_WHERE_ARE_WE_STALE_HOURS`, `HIMMEL_WORKTREE_NUDGE`,
 `HIMMEL_UPDATE_AUTOSTASH`, `CR_PROFILE`, `CR_CLAUDE_AGENTS`,
 `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`,
-`TRACKER`. Their meanings and defaults are unchanged; `.env.example`
-documents each one.
+`TRACKER`, `HIMMEL_FLEET_CAP`. Their meanings and defaults are unchanged;
+`.env.example` documents each one.
+
+Every reader of these keys follows the same order as `load_dotenv`: the
+process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
+default. A reader that opens only `.env`, or only the process env, misses a
+key the operator has moved; the shell, the Jira CLI
+(`scripts/jira/src/handover-root.ts`), the lane resolver, the profile capture
+and the config UI all resolve it that way.
 
 Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
@@ -129,9 +136,10 @@ the fleet manifest.
 Example: the fleet size cap. The rule "a chief never runs more workers than
 the cap" stays in the chief template and its enforcing script. The number
 itself is a tunable knob, so it belongs in configuration, not prose. Raising
-it loosens a safety limit, so its home is the policy section of
-`config.json`, not `himmel.conf`; until it joins that list it stays a
-guarded process-env variable (`HIMMEL_FLEET_CAP`). Which workers are live right
+it loosens a safety limit, so it may later join the policy section of
+`config.json`; until then it is behaviour config in `himmel.conf`
+(`HIMMEL_FLEET_CAP`), and a value exported in the launching shell still wins.
+Which workers are live right
 now is state, so it stays in the fleet manifest.
 
 ## Why this route

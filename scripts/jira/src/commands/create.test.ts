@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -1725,6 +1726,10 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
   it('warns when no release state root can be resolved', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
     vi.stubEnv('USER_SLUG', '');
+    // no himmel.conf and no primary-checkout .env to supply USER_SLUG
+    vi.stubEnv('HOME', join(root, 'home'));
+    execFileSync('git', ['init', '-q', join(root, 'repo')]);
+    vi.stubEnv('GIT_DIR', join(root, 'repo', '.git'));
     await file('Task', '--backlog');
     expect(posted()).toBe(true);
     expect(errs.some((e) => /INTAKE not queued.*USER_SLUG/.test(e))).toBe(true);
