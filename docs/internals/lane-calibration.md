@@ -993,7 +993,7 @@ guard only stops a top-tier parent from doing a worker's job.
 
 **Measured mix (himmel sessions, 3 days to 2026-10-24).** 408 subagents across
 434 sessions; judges were 343 (84 %) at ~44M input-token-equivalent, general-purpose
-61 (~18M: about 25 haiku board or tracker publishes, about 13 sonnet VM runs),
+61 (~18M: about 26 haiku board or tracker publishes, about 11 sonnet VM runs),
 Explore 4. Worker sessions rarely spawn. Judges change the chief's recorded prior in
 27 % of 831 verdicts (`flipped: y`), so they pass the fresh-view test; whether a
 cheaper tier rules the same is unmeasured.
@@ -1002,8 +1002,8 @@ cheaper tier rules the same is unmeasured.
 |---|---|---|
 | chief | judges, haiku publisher, sonnet VM runner | right shape; judge tier and publisher failures unmeasured (HIMMEL-7330, HIMMEL-6825) |
 | leg-impl | rarely; implements inline | right; no live cost budget (HIMMEL-7331) |
-| consult / judge session | never (writes denied) | right |
-| bare, telegram | never | right |
+| consult / judge session | not measured (a consult has Edit/Write denied) | no evidence either way |
+| bare, telegram | not measured | no evidence either way |
 
 **Fold-vs-keep is an eval, not a habit** (HIMMEL-7330): per subagent class,
 ≥10 golden tasks, ≥2 runs per task per arm, compare the tasks that flipped
