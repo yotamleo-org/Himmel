@@ -21,6 +21,8 @@ They compose: a new WS7 gate *mechanism* is itself a tool and must pass WS6's
 measurement bar (license gate first, then measured delta) before adoption.
 Nothing here redefines WS6's bar.
 
+`pre-commit run --all-files` must exit 0 on main; a red there is a regression, not a baseline (HIMMEL-2716).
+
 ## 1. The lane gate (D1 — unquarantine gate for GLM/Codex)
 
 **Placement:** between a cheap-lane worker branch and PR creation — a
