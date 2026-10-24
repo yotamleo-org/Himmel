@@ -120,6 +120,7 @@ esac
 CLAUDE="${COMPOUND_CLAUDE:-$(command -v claude 2>/dev/null)}"  # swallow-ok: empty means claude is not on PATH, refused on the next line
 [ -n "$CLAUDE" ] || { echo "compound-distill: claude is not on PATH" >&2; exit 1; }
 
+# launch-profile-ok: a tool-free summarizer (--tools ""), so no tool profile applies
 "$CLAUDE" -p "Distill the week from the input on stdin. Reply with the JSON object only." \
   --model sonnet --output-format json --permission-mode plan --tools "" \
   < "$WORK/input.txt" > "$WORK/envelope.json" 2> "$WORK/claude.err"
