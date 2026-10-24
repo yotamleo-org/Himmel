@@ -72,7 +72,7 @@ bump merges while the host still runs the old build.
 
 - **cli-proxy-api host roll** — compares the machine's version stamp against the
   `VERSION` pin in `scripts/setup/cli-proxy-lane.sh` and runs
-  `--roll` **only when the stamp is strictly OLDER than the pin**. A
+  `cli-proxy-lane.sh --roll` **only when the stamp is strictly OLDER than the pin**. A
   host at or ahead of the pin is left alone (himmel-update never downgrades), and
   a version that cannot be compared at all — no `python3`, or a stamp like
   `custom` that is not a version — is also left alone, with the manual roll
