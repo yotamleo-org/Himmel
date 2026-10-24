@@ -20,7 +20,7 @@ has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; 
 command -v python3 >/dev/null 2>&1 || { echo "SKIP test-review-page: python3 not on PATH"; exit 0; }
 
 # A review-panel series of two runs (same config), one judge-accuracy run, one measured change.
-python3 -I - "$HERE/lib" "$TMP/runs.jsonl" "$TMP/changes.jsonl" <<'PY'
+python3 -I - "$HERE/lib" "$TMP/runs.jsonl" "$TMP/changes.jsonl" <<'PY' || { echo "test-review-page: writing the fixture ledgers failed" >&2; exit 1; }
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import eval_runs
@@ -51,7 +51,7 @@ judge_ci = {"flip_rate": {"lo": 0.07, "hi": 0.2}, "escape_rate": {"lo": 0.007, "
 rows = [panel("rp-1", 0.4, 0.0), panel("rp-2", 0.6, 0.5),
         eval_runs.make_row("judge-accuracy", "scripts/eval/judge-accuracy/judge_accuracy.py",
                            {"judge_accuracy_v": 1, "days": 28}, judge_m, n=140, run_id="ja-1", status="partial",
-                           ci=judge_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40,
+                           ci=judge_ci, ci_level=0.9, ci_method="wilson", gitsha="0" * 40,
                            meta={"since": "2026-09-26T00:00:00Z", "until": "2026-10-24T00:00:00Z"})]
 rows[0]["ts"], rows[1]["ts"], rows[2]["ts"] = "2026-10-17T10:00:00Z", "2026-10-24T10:00:00Z", "2026-10-24T11:00:00Z"
 with open(sys.argv[2], "w") as fh:
@@ -74,6 +74,9 @@ PY
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/changes.jsonl" 2>&1)"; rc=$?
 eq "page: exit 0" "$rc" "0"
+has "critics: the range level comes from the run" "$out" "Ranges are 95 % ranges."
+has "judges: the range level comes from the run" "$out" "Ranges are 90 % ranges."
+case "$out" in *"is the 95 % range"*) fail "no fixed range level in the header";; *) pass "no fixed range level in the header";; esac
 has "critic: planted bugs caught, as a count and a percentage" "$out" "The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %)"
 has "critic: trend since the last run" "$out" "up 20 points since the last run (40 %)"
 has "critic: right N times in M" "$out" "The codex critic was right 7 times in 10"

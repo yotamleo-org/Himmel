@@ -54,6 +54,11 @@ def day(ts):
         return "an unknown day"
 
 
+def level(row):
+    lv = row.get("ci_level")
+    return " Ranges are %d %% ranges." % pct(lv) if eval_runs._num(lv) else ""
+
+
 def plain(name):
     return name.replace("-", " ").replace("_", " ").replace(".", " ")
 
@@ -128,7 +133,7 @@ def critic_lines(cur, prev):
 def judge_lines(cur, prev):
     m = cur["metrics"]
     meta = cur.get("meta") or {}
-    out = ["Verdicts written from %s to %s." % (day(meta.get("since")), day(meta.get("until"))), ""]
+    out = ["Verdicts written from %s to %s.%s" % (day(meta.get("since")), day(meta.get("until")), level(cur)), ""]
     s = rate(cur, prev, "flip_rate", lower_better=True)
     if s and count(m, "flip_n"):
         out.append("- The judges changed their first answer %d times in %d%s." %
@@ -202,14 +207,14 @@ def change_lines(changes):
 
 def page(rows, changes):
     out = ["# How good are our reviewers?", "",
-           "Each number comes from the newest run. \"Likely between\" is the 95 % range: given how much "
+           "Each number comes from the newest run. \"Likely between\" is a range: given how much "
            "a run measured, the true rate is likely inside it.", "",
            "## The critics on planted bugs", ""]
     cur, prev = latest(rows, "review-panel")
     if cur is None:
         out.append("No run yet.")
     else:
-        out += ["Run of %s, %d test changes." % (day(cur["ts"]), cur["n"] or 0), ""] + critic_lines(cur, prev)
+        out += ["Run of %s, %d test changes.%s" % (day(cur["ts"]), cur["n"] or 0, level(cur)), ""] + critic_lines(cur, prev)
     out += ["", "## The judges", ""]
     cur, prev = latest(rows, "judge-accuracy")
     out += ["No run yet."] if cur is None else judge_lines(cur, prev)
