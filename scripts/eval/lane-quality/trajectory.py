@@ -46,7 +46,7 @@ import sys
 
 FIELDS = ("red_before_green", "denial_recovery", "identical_denied_retries", "verify_before_claim")
 # Bumped when a field's definition changes, so an eval-runs series never mixes two meanings.
-TRAJECTORY_SCHEMA = 1
+TRAJECTORY_SCHEMA = 2
 
 # A hook or permission refusal: the tool never ran. A result that starts with
 # "Exit code" is a command that ran and failed, whatever its output says.
@@ -405,10 +405,8 @@ def score_calls(calls, texts, report=None):
     impl = [(pos, mid) for pos, p, mid in writes if is_impl_path(p)]
 
     # red_before_green
-    if not runs and not impl:
-        rbg = None
-    elif not impl:
-        rbg = False
+    if not impl:
+        rbg = None  # a session that writes no code has no test-first to score
     else:
         # A run sent in the write's own message may finish on either side of it.
         w, wm = impl[0]

@@ -237,8 +237,9 @@ The fields:
 
 - **`red_before_green`:** true when a test run failed before the first
   implementation write and a test run passed after it. False when either run
-  is missing, or when there was a test run but no implementation write. Null
-  when there was neither a test run nor an implementation write.
+  is missing. Null when there was no implementation write, whatever test runs
+  there were: a session that writes no code has no test-first to score
+  (`trajectory_v` 2; v1 scored a test run without a write false).
 - **`denial_recovery`:** the fraction of denials recovered from. A denial is
   recovered when the next call issued after its result is not identical to the
   denied call, or when no call follows. Calls sent in parallel with the denied
