@@ -414,14 +414,20 @@ cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
 FAKE_PID=$!
 sleep 1
 kill -0 "$FAKE_PID" 2>/dev/null || bad "(x) fixture worker did not start; the count below would not prove the fix"
+base_out="$(run_guard "$CHIEF_PAYLOAD")"
 out="$(run_guard "$CHIEF_PAYLOAD" COLUMNS=20)"
+pkill -P "$FAKE_PID" 2>/dev/null
 kill "$FAKE_PID" 2>/dev/null
 rm -f "$FAKE_CLAUDE" 2>/dev/null
-case "$out" in
-    *'FLEET native=0 '*) bad "(x) COLUMNS=20 in the hook env -> census read native=0 with a live worker: $out" ;;
-    *'FLEET native='*) ok "(x) COLUMNS=20 in the hook env -> census still counts the live worker" ;;
-    *) bad "(x) no FLEET native= line in the reason: $out" ;;
-esac
+base_n="$(printf '%s\n' "$base_out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+cols_n="$(printf '%s\n' "$out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+if [ -z "$cols_n" ] || [ -z "$base_n" ]; then
+    bad "(x) no FLEET native= line in the reason: base=$base_out cols=$out"
+elif [ "$base_n" -ge 1 ] && [ "$cols_n" -ge "$base_n" ]; then
+    ok "(x) COLUMNS=20 in the hook env -> census counts the same live workers as without it (native=$cols_n vs $base_n)"
+else
+    bad "(x) COLUMNS=20 in the hook env -> census read native=$cols_n against native=$base_n without it"
+fi
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
