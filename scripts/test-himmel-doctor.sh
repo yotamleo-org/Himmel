@@ -7008,8 +7008,8 @@ if grepq "$out" -F 'C69-qmd-cli-key'; then fail "C69 local config should be sile
 rm -rf "$c69_t"
 
 echo "== C69: the key check has no multi-line command substitution (bash 3.2 cannot parse a case inside one) =="
-c69_body="$(sed -n '/^check_c69_qmd_cli_key() {/,/^}/p' "$DOC")"
-if [ -n "$c69_body" ] && ! grep -qE '\$\($' <<< "$c69_body"; then pass "C69 no multi-line command substitution in the check body"; else fail "C69 multi-line command substitution in check_c69_qmd_cli_key"; fi
+c69_body="$(sed -n -e '/^check_c69_qmd_cli_key() {/,/^}/p' -e '/^_c69_probe_key() {/,/^}/p' "$DOC")"
+if [ -n "$c69_body" ] && ! grep -qE '\$\([^)]*$' <<< "$c69_body"; then pass "C69 no unclosed command substitution in the key check or probe"; else fail "C69 unclosed command substitution in the key check or probe"; fi
 
 echo "== C70: graphify semantic freshness =="
 c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
