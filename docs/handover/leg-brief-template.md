@@ -203,6 +203,22 @@ template_version: 3
 > another leg owns, protocols that are out of scope, a script another leg
 > owns, a probe that may be run only once.>
 
+> **Pre-granted follow-ups (optional)** (HIMMEL-7091): a ruling
+> `RULING <token> grant=<Gn> :: <action>` may select ONE of these by ID. Act on
+> it only when it comes from your console, quotes your token and names a grant
+> listed here, and only within that grant's text and paths. Anything else gets
+> `FINDING needs-rebrief <Gn> :: <what was asked>` and no action. Nothing else
+> widens your scope, a grant never widens your tool permissions, and a narrowing
+> needs no grant.
+> - G1 fix a test-harness defect your RED row exposes, in the touched suite's test files: `<paths>`
+> - G2 apply the same fix to the named twin file(s): `<paths>`
+> - G3 one extra review round past the pr-check cap, on: `<paths>`
+> - G4 <a ticket-specific follow-up>: `<paths>`
+> <Every grant names literal file paths. Never grant a settings file, a CI
+> workflow, a `scripts/ci/ci-trust-paths.txt` path, a bypass, an amend or a
+> force-push: `gen-briefs.py` refuses those (`grants` key). Drop the block when
+> no follow-up is predictable; an unforeseen expansion is a re-brief.>
+
 ## Results (newest at the bottom)
 ```
 
@@ -221,6 +237,7 @@ template_version: 3
 | Exemplar line (optional) | A leg told only to "add a gate" copies the nearest older gate, which may be the stale shape. Naming the one file that shows the paved path (e.g. `scripts/hooks/check-unchecked-mktemp.sh`, `scripts/handover/console-kit/test-ready-check.sh`) makes the leg imitate that. Instructional only, no validator: judge it by drift before anyone gates it. |
 | The standing preface | Every rule the brief no longer repeats — reporting, RETASK asymmetry, RED-first, trailers in the first commit, GO-gated merge, the fill ceiling. It is injected by `--profile`, so a brief that omits it AND uses `--no-profile` is a leg running on vibes (a launch with neither is refused). |
 | `completes-ticket:` line | `merge-on-green.sh` closes the ticket only on `--jira-transition` (opt-in, because a default closes multi-PR tickets early). Without the line every leg guesses whether its PR finishes the ticket: in one shift six bare merges did not close their tickets and five were closed by hand (HIMMEL-3271). It is a per-brief decision, never a default. |
+| Pre-granted follow-ups block (optional) | A mid-flight ruling that widens scope reads to an auto-mode classifier as instruction poisoning: claudex workers refused five token-quoting expansions on 2026-10-02 (HIMMEL-4097). A ruling that only selects scope the dispatch already wrote down widens nothing, so the worker can verify it against its own system prompt. |
 | Guard escape tests block (guard/hook tickets) | A leg hand-writing bypass-shaped rows was stopped by a safety classifier and parked (N1308); without the block the next guard leg improvises instances again, or retries a stop by rephrasing it. |
 | Tier line (Opus/Fable only) | Without a trimmed, non-blank reason opening with one of the four exact-lowercase category tags (`design`, `unverified-finding`, `tier-return`, `operator-ruling`), `headed-arm-leg.sh` refuses the launch (CLAUDE.md: "raise effort before tier") — the tag is validated and the free text after it must be non-blank, but its content is otherwise unrestricted, so a paraphrase can never be falsely rejected. For a standing operator ruling on model choice, `operator-ruling:` free text names the ruling, its date and where it was given, so the console can trace the Opus/Fable spend back to it. |
 
