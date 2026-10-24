@@ -627,7 +627,7 @@ HOME="$h9" bash "$adopt" --profile core --scope user --target "$work/ign9" >/dev
 s9="$h9/.claude/settings.json"
 aa=$(jq -r '.hooks.PreToolUse[].hooks[].command | select(test("auto-approve-safe-bash"))' "$s9")
 [ -n "$aa" ] || fail "hookpath: auto-approve hook missing after re-wire"
-[ "$(printf '%s\n' "$aa" | wc -l)" = "1" ] || fail "hookpath: expected exactly ONE auto-approve entry (got: $aa)"
+[ "$(printf '%s\n' "$aa" | wc -l)" -eq 1 ] || fail "hookpath: expected exactly ONE auto-approve entry (got: $aa)"
 # shellcheck disable=SC1003  # '\' is a literal-backslash glob pattern, not a quote escape
 case "$aa" in *'\'*) fail "hookpath: auto-approve command still contains a backslash: $aa" ;; esac
 # the wired command now guards a missing script (if [ -f ]; then

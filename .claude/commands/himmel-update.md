@@ -72,7 +72,7 @@ bump merges while the host still runs the old build.
 
 - **cli-proxy-api host roll** — compares the machine's version stamp against the
   `VERSION` pin in `scripts/setup/cli-proxy-lane.sh` and runs
-  `--roll` **only when the stamp is strictly OLDER than the pin**. A
+  `cli-proxy-lane.sh --roll` **only when the stamp is strictly OLDER than the pin**. A
   host at or ahead of the pin is left alone (himmel-update never downgrades), and
   a version that cannot be compared at all — no `python3`, or a stamp like
   `custom` that is not a version — is also left alone, with the manual roll
@@ -82,8 +82,9 @@ bump merges while the host still runs the old build.
   (`+build17`) carries no ordering and reads as equal. When it does roll, `cli-proxy-lane.sh` owns the dangerous parts: it
   is pin-aware, refuses to bounce the proxy while a codex-lane client is actively
   connected, stages the swap with a rollback copy, and
-  health-gates on `/v1/models`. A refused bounce is a correct refusal, not a
-  failure — re-run when idle.
+  health-gates on `/v1/models`. A refused bounce is a correct safety refusal,
+  but it exits nonzero: himmel-update prints a `warn:` that the roll did not
+  complete and carries on, and `--only cli_proxy` exits nonzero — re-run when idle.
 - **installed-marketplaces catch-up** —
   `scripts/upstreams/update-marketplaces.sh` re-syncs the `mkt-manual`
   marketplaces (`autoUpdate` off) that nothing else updates. `himmel` is

@@ -57,7 +57,7 @@ test('buildCtx pathHas does real PATH/PATHEXT lookup (HIMMEL-780 follow-through)
   writeFileSync(join(bin, 'copilot.cmd'), '@echo off\n');
   writeFileSync(join(bin, 'agy'), '#!/bin/sh\n');
   const repo = makeTmpDir('lanes-repo-');
-  const { pathHas } = buildCtx(repo, { PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' });
+  const { pathHas } = buildCtx(repo, { HOME: repo, PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' });
   if (process.platform === 'win32') {
     assert.equal(pathHas('copilot'), true, 'PATHEXT .cmd shim should resolve on Windows');
     assert.equal(pathHas('agy'), false, 'bare extensionless file is not executable on Windows');
@@ -67,6 +67,33 @@ test('buildCtx pathHas does real PATH/PATHEXT lookup (HIMMEL-780 follow-through)
   }
   assert.equal(pathHas('missing-cli'), false);
 });
+test('buildCtx reads a behaviour key from himmel.conf: process env > himmel.conf.local > himmel.conf > .env', () => {
+  const repo = makeTmpDir('lanes-repo-');
+  const home = makeTmpDir('lanes-home-');
+  mkdirSync(join(home, '.himmel'));
+  const conf = join(home, '.himmel', 'himmel.conf');
+  writeFileSync(join(repo, '.env'), 'CR_PROFILE=from-dotenv\nZAI_API_KEY=k\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-dotenv', 'legacy .env still read');
+  writeFileSync(conf, 'CR_PROFILE=from-conf\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'himmel.conf over .env');
+  assert.equal(buildCtx(repo, { HOME: home }).env.ZAI_API_KEY, 'k', 'a .env-only key is untouched');
+  writeFileSync(`${conf}.local`, 'CR_PROFILE=from-local\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-local', 'himmel.conf.local over himmel.conf');
+  assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: 'from-proc' }).env.CR_PROFILE, 'from-proc', 'process env wins');
+  writeFileSync(`${conf}.local`, 'CR_PROFILE=\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'an empty conf line reads as unset');
+  assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: '' }).env.CR_PROFILE, 'from-conf', 'an empty process value reads as unset, as in load_dotenv');
+});
+test('buildCtx reads only the behaviour keys from himmel.conf, as load_dotenv does', () => {
+  const repo = makeTmpDir('lanes-repo-');
+  const home = makeTmpDir('lanes-home-');
+  mkdirSync(join(home, '.himmel'));
+  writeFileSync(join(home, '.himmel', 'himmel.conf'), 'ZAI_API_KEY=leaked\nCR_REQUIRE_CROSS_MODEL=0\nCR_PROFILE=from-conf\n');
+  const { env } = buildCtx(repo, { HOME: home });
+  assert.equal(env.ZAI_API_KEY, undefined, 'a secret key in himmel.conf is not read');
+  assert.equal(env.CR_REQUIRE_CROSS_MODEL, undefined, 'a policy key in himmel.conf is not read');
+  assert.equal(env.CR_PROFILE, 'from-conf', 'a behaviour key is read');
+});
 test('buildCtx installed.hermes accepts only a real interpreter, matching resolve-hermes-py.sh', () => {
   const repo = makeTmpDir('lanes-repo-');
   const home = makeTmpDir('lanes-hermes-');
@@ -75,24 +102,24 @@ test('buildCtx installed.hermes accepts only a real interpreter, matching resolv
   // too -- otherwise the lane resolves and dispatch exits 3 after provisioning.
   const dir = join(home, 'a-directory');
   mkdirSync(dir);
-  assert.equal(buildCtx(repo, { HERMES_PY: dir, HERMES_HOME: home }).installed.hermes, false,
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_PY: dir, HERMES_HOME: home }).installed.hermes, false,
     'a directory is not an interpreter');
 
   const plain = join(home, 'not-executable');
   writeFileSync(plain, 'x');
   if (process.platform !== 'win32') {
     chmodSync(plain, 0o644);
-    assert.equal(buildCtx(repo, { HERMES_PY: plain, HERMES_HOME: home }).installed.hermes, false,
+    assert.equal(buildCtx(repo, { HOME: home, HERMES_PY: plain, HERMES_HOME: home }).installed.hermes, false,
       'a non-executable file is not an interpreter');
   }
 
   const real = join(home, process.platform === 'win32' ? 'python.exe' : 'python');
   writeFileSync(real, '#!/bin/sh');
   chmodSync(real, 0o755);
-  assert.equal(buildCtx(repo, { HERMES_PY: real, HERMES_HOME: home }).installed.hermes, true,
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_PY: real, HERMES_HOME: home }).installed.hermes, true,
     'an executable regular file is an interpreter');
 
-  assert.equal(buildCtx(repo, { HERMES_HOME: home }).installed.hermes, false,
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_HOME: home }).installed.hermes, false,
     'no HERMES_PY and no venv under HERMES_HOME means the lane is unavailable');
 
   // Pins the round-10 removal: a hermes/hermes-agent shim on PATH must NOT make
@@ -102,7 +129,7 @@ test('buildCtx installed.hermes accepts only a real interpreter, matching resolv
     writeFileSync(join(bin, nm), 'shim');
     chmodSync(join(bin, nm), 0o755);
   }
-  const shimEnv = { PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD', HERMES_HOME: makeTmpDir('lanes-empty-') };
+  const shimEnv = { HOME: home, PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD', HERMES_HOME: makeTmpDir('lanes-empty-') };
   const shimCtx = buildCtx(repo, shimEnv);
   assert.equal(shimCtx.pathHas('hermes'), true, 'fixture must really put a shim on PATH');
   assert.equal(shimCtx.installed.hermes, false, 'a PATH shim is not an interpreter');
@@ -112,18 +139,19 @@ test('buildCtx installed.hermes accepts a PM-managed install (.hermes/bin/hermes
   const home = makeTmpDir('lanes-hermes-pm-');
   const bin = join(home, 'hermes-agent', '.hermes', 'bin');
   mkdirSync(bin, { recursive: true });
-  assert.equal(buildCtx(repo, { HERMES_HOME: home }).installed.hermes, false, 'no launcher yet');
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_HOME: home }).installed.hermes, false, 'no launcher yet');
   const launcher = join(bin, 'hermes');
   writeFileSync(launcher, `#!/bin/sh\necho '${JSON.stringify([process.execPath, 'run'])}'\n`);
   chmodSync(launcher, 0o755);
-  assert.equal(buildCtx(repo, { HERMES_HOME: home }).installed.hermes, true,
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_HOME: home }).installed.hermes, true,
     'resolve-hermes-py.sh resolves through the launcher, so the lane is available');
   writeFileSync(launcher, `#!/bin/sh\necho '${JSON.stringify([join(home, 'gone', 'python3'), 'run'])}'\n`);
-  assert.equal(buildCtx(repo, { HERMES_HOME: home }).installed.hermes, false,
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_HOME: home }).installed.hermes, false,
     'a launcher whose runtime interpreter is gone, with no venv, is not installed (resolver would exit 1)');
 });
 test('every "installed" probe names a tool buildCtx actually populates (HIMMEL-780 lockstep guard)', () => {
-  const populated = Object.keys(buildCtx(makeTmpDir('lanes-ctx-'), {}).installed);
+  const ctxDir = makeTmpDir('lanes-ctx-');
+  const populated = Object.keys(buildCtx(ctxDir, { HOME: ctxDir }).installed);
   for (const l of REG.lanes) {
     if (l.probe?.kind !== 'installed') continue;
     assert.ok(populated.includes(l.probe.tool),

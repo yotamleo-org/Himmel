@@ -21,15 +21,24 @@
 #   TICK ...                    bank-preflight verdict word the key carries.
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
-#   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
+#   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; on the streak's first sample, and
+#                               again once each time the pool's key set changes (re-probed
+#                               every CHIEF_WAIT_UNDERFILL_REPOOL_SEC, default 1800; a pool
+#                               that grows from empty counts, a failed probe or an emptied
+#                               pool does not), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
-#                               the pool, then a second pass without it lists the
-#                               version backlog) (CHIEF_WAIT_DISPATCH
+#                               the pool); a LOW or empty pool adds a second pass
+#                               without it, its rows not already in the pool under
+#                               `# version backlog`, and the wake line then carries
+#                               dispatchable=<n>, the count of dispatchable To Do
+#                               rows (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
 #                               per streak (the class-change wake fires only once).
+#   WAKE board-stale board=<STALE:..>  the same for board=, past
+#                               CHIEF_WAIT_BOARD_STALE_MIN (default 10).
 #   WAKE predecessor-open rc=<n>  with --doc <console doc> whose first line says
 #                               `successor to <doc>.md`: the waiter runs
 #                               close-wrapped-leg.sh --console on that wrapped,
@@ -620,25 +629,62 @@ page_denials() {
 }
 
 # capacity=UNDERFILLED:<n> (tick.sh already folds TICK_UNDERFILL_MIN
-# into it) wakes once per streak. The marker file outlives the waiter, so a
-# re-arm inside the same streak stays quiet; capacity=ok removes it.
+# into it) wakes on the streak's first sample. The marker file outlives the waiter, so a
+# re-arm inside the same streak stays quiet; capacity=ok removes it. Its first line is the
+# pool's dispatchable key set at the last wake; once the marker is
+# CHIEF_WAIT_UNDERFILL_REPOOL_SEC old (default 1800) the pool is probed again and a changed,
+# non-empty key set wakes once more (a pool that grew from empty, or moved): the first
+# probe may have read a transient empty pool, and the streak never re-woke on it.
 underfill_file="$inbox.wait.underfill"
 unowned_file="$inbox.wait.unowned"
 unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
-underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
-    printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
+pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
+    local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}"
+    pool_lf=(); pool_out=""; pool_sig=""
     [ -r "$dispatch_cmd" ] || return 0
-    local lf=() out  # free slots fill from the operator's priority pool first
-    case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
-    [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
-    [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    out="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${lf[@]}" </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: a failed dispatch leaves out empty, the wake block still prints
-    [ -z "$out" ] || printf '%s\n' "$out"
-    # an empty pool leaves the slots idle: a second pass without --priority-pool-only lists the version backlog
-    case $'\n'"$out"$'\n' in *$'\nPOOL-EMPTY\n'*)
-        timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
-    esac
+    case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
+    [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
+    [ -z "$legs_from" ] || pool_lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
+    pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
+    pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
+}
+underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
+    local back="" extra="" count=""
+    # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
+    # backlog (tier 4 included); its rows already in the pool are printed once, under their own heading
+    if printf '%s\n' "$pool_out" | grep -Eq '^(# pool=[0-9]+/[0-9]+,LOW|POOL-EMPTY)$'; then
+        heartbeat sampling
+        back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
+        extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" '
+            BEGIN { n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 } }
+            $0 == "" || seen[$2] { next }
+            { print }')"
+        count="$(printf '%s\n%s\n' "$pool_out" "$back" | awk -F'\t' '$1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { k[$2] = 1 } END { n = 0; for (i in k) n++; print n }')"
+    fi
+    printf 'WAKE underfilled capacity=%s%s\n%s\n' "$cap_val" "${count:+ dispatchable=$count}" "$tick_line"
+    [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
+    [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
+}
+# underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
+# and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
+# never counts; every due probe restarts the cadence clock. The probe blocks the Telegram path
+# and the heartbeat like a tick does, so it gets CHIEF_WAIT_REPOOL_TIMEOUT (default 120), well
+# inside the five-minute stale-heartbeat window.
+underfill_repool() {
+    local age saved_sig
+    age=$(( $(date +%s) - $(stat -c %Y "$underfill_file" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: a failed stat reads epoch 0, so the probe is simply due
+    [ "$age" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ] || return 1
+    saved_sig="$(sed -n 1p "$underfill_file" 2>/dev/null)"  # swallow-ok: an unreadable marker reads no saved set, so a non-empty pool wakes
+    heartbeat sampling
+    pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
+    if [ -n "$pool_out" ] && [ "$pool_sig" != "$saved_sig" ]; then
+        printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
+        [ -n "$pool_sig" ] && return 0
+        return 1
+    fi
+    touch "$underfill_file" 2>/dev/null
+    return 1
 }
 
 # unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is
@@ -675,21 +721,27 @@ unowned_wake() {
 # streak passes CHIEF_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
 tracker_stale_file="$inbox.wait.trackerstale"
-tracker_stale_wake() {
-    local since
+tracker_stale_wake() { stale_streak_wake "$1" "$tracker_stale_file" "${CHIEF_WAIT_TRACKER_STALE_MIN:-30}" 30; }
+# board_stale_wake: <board= value> — the same for a board that stays stale, marker
+# <inbox>.wait.boardstale, threshold CHIEF_WAIT_BOARD_STALE_MIN (default 10).
+board_stale_file="$inbox.wait.boardstale"
+board_stale_wake() { stale_streak_wake "$1" "$board_stale_file" "${CHIEF_WAIT_BOARD_STALE_MIN:-10}" 10; }
+# stale_streak_wake: <value> <marker> <minutes> <default minutes>
+stale_streak_wake() {
+    local since stale_min
     case "$1" in
         STALE*) ;;
         '') return 1 ;;
-        *) rm -f "$tracker_stale_file"; return 1 ;;
+        *) rm -f "$2"; return 1 ;;
     esac
-    if [ ! -e "$tracker_stale_file" ]; then date +%s > "$tracker_stale_file" 2>/dev/null; return 1; fi
-    [ "$(sed -n 2p "$tracker_stale_file" 2>/dev/null)" = woke ] && return 1
-    since="$(sed -n 1p "$tracker_stale_file" 2>/dev/null)"
+    if [ ! -e "$2" ]; then date +%s > "$2" 2>/dev/null; return 1; fi
+    [ "$(sed -n 2p "$2" 2>/dev/null)" = woke ] && return 1
+    since="$(sed -n 1p "$2" 2>/dev/null)"
     case "$since" in ''|*[!0-9]*) return 1 ;; esac
-    stale_min="${CHIEF_WAIT_TRACKER_STALE_MIN:-30}"
-    case "$stale_min" in ''|*[!0-9]*) stale_min=30 ;; esac
+    stale_min="$3"
+    case "$stale_min" in ''|*[!0-9]*) stale_min="$4" ;; esac
     [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
-    printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
+    printf '%s\nwoke\n' "$since" > "$2" 2>/dev/null
     return 0
 }
 
@@ -1067,7 +1119,11 @@ while :; do
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then
-                        : > "$underfill_file" 2>/dev/null
+                        pool_probe
+                        printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
+                        underfill_wake
+                        exit_reason='wake-underfilled'; exit 0
+                    elif underfill_repool; then
                         underfill_wake
                         exit_reason='wake-underfilled'; exit 0
                     fi ;;
@@ -1090,6 +1146,10 @@ while :; do
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
                 exit_reason='wake-tracker-stale'; exit 0
+            fi
+            if board_stale_wake "$(field board "$tick_line")"; then
+                printf 'WAKE board-stale board=%s\n%s\n' "$(field board "$tick_line")" "$tick_line"
+                exit_reason='wake-board-stale'; exit 0
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi

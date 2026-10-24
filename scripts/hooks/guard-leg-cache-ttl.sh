@@ -25,6 +25,7 @@
 #      background Bash (toolUseResult.backgroundTaskId) and Monitor
 #      (toolUseResult.taskId) started has a terminal <task-notification>
 #      (one carrying a <status>) or a TaskStop result (toolUseResult.task_id).
+#   5. HIMMEL_RELEASE_MANAGER is not 1: a release manager's STANDBY is exempt.
 #
 # The keepalive bound is HIMMEL_LEG_CACHE_KEEPALIVE_SECS (launch env, default
 # 3000 = 50 min, 60-3300 accepted, anything else = the default); the refusal
@@ -46,6 +47,9 @@
 set -uo pipefail
 
 [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0
+# A release manager's STANDBY is the only hold its preface allows (docs/handover/rm-preface.md):
+# the chief's REQ message wakes it, so the cache-TTL refusal does not apply.
+[ "${HIMMEL_RELEASE_MANAGER:-0}" != "1" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

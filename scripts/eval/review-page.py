@@ -11,8 +11,8 @@ carries no metric names: a number with no sentence here is not shown.
 
 Ledgers: $HIMMEL_EVAL_RUNS_LEDGER / $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/. Prints the page, or
 writes it to --out. Exit 0. Stdlib only; no network, no model call.
-ponytail: Markdown on stdout only, no config-ui route; serve it from scripts/config-ui when the page
-needs to be live.
+ponytail: the page is rendered by the weekly judge-accuracy cadence into the file scripts/config-ui's
+/api/reviewers serves; it is not live-updating, upgrade path a push from the ledger append.
 """
 import argparse
 import os
@@ -39,6 +39,11 @@ BUG_CLASSES = {
 CHANGES = {"prompt": "%s prompt", "cr-config": "%s settings", "learning": "%s notes",
            "routing": "%s routing", "tool-ruling": "%s tool rules",
            "impacted-suites": "the rule that picks which tests CI runs"}
+ANSWERS = [("q1", "Do agents write the failing test before the code?", "sessions"),
+           ("q2", "How many hook and gate refusals are left unsorted?", "refusals"),
+           ("q3", "Does the judge model and effort matter?", "merged PRs"),
+           ("q4", "Is CodeRabbit right often enough to keep?", "findings"),
+           ("q5", "Is the Claude critic worth a third review?", "findings")]
 VERDICTS = {"improved": "it helped", "regressed": "it made things worse", "flat": "no real change"}
 
 
@@ -127,6 +132,35 @@ def critic_lines(cur, prev):
             said.append("%s's weakest kind of bug: %s, caught %d of %d." %
                         (name, BUG_CLASSES.get(cls, plain(cls)), round(classes[cls] * cn), cn))
         out += ["- " + x for x in said]
+    if "coderabbit" not in who:
+        out.append("- CodeRabbit is not measured yet: it needs a scratch pull request.")
+    return out
+
+
+def answer_lines(cur):
+    """One line per decision-158 question: percentage, range, sample, and the move since the earlier cut."""
+    m, ci, notes = cur["metrics"], cur["ci"], (cur.get("meta") or {}).get("notes") or {}
+    out = []
+    for q, text, unit in ANSWERS:
+        x = m.get(q + ".pct")
+        if not eval_runs._num(x):
+            out.append("- %s Not measured yet." % text)
+            continue
+        line = "- %s %d %%" % (text, pct(x))
+        b = ci.get(q + ".pct")
+        if b:
+            line += " (likely between %d %% and %d %%)" % (pct(b["lo"]), pct(b["hi"]))
+        line += " of %d %s" % (count(m, q + ".n"), unit)
+        old = m.get(q + ".before.pct")
+        if eval_runs._num(old):
+            d = pct(x) - pct(old)
+            line += ", was %d %% before, %s" % (pct(old), "no change" if d == 0 else "%s %d points" % ("up" if d > 0 else "down", abs(d)))
+        else:
+            line += ", no earlier figure yet"
+        line += "."
+        if notes.get(q):
+            line += " (%s.)" % notes[q].rstrip(".")
+        out.append(line)
     return out
 
 
@@ -221,6 +255,9 @@ def page(rows, changes):
     out += ["", "## The judges", ""]
     cur, prev = latest(rows, "judge-accuracy")
     out += ["No run yet."] if cur is None else judge_lines(cur, prev)
+    out += ["", "## The five open questions", ""]
+    cur, _ = latest(rows, "decision-158")
+    out += ["No run yet."] if cur is None else answer_lines(cur)
     out += ["", "## What we changed, and whether it helped", ""]
     out += change_lines(changes) or ["No change yet."]
     return "\n".join(out) + "\n"

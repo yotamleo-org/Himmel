@@ -123,7 +123,7 @@ esac
 # a reviewer outage's clothes, at exit 0. Same class as the panel's own pin
 # mismatch, so the same exit: 7, ABORT.
 if ! git rev-parse --verify --quiet "$head^{commit}" >/dev/null 2>&1; then
-    echo "docs-audit-panel ABORT - --head $head does not resolve to a commit in this repo (HIMMEL-2542). This is an input-pin failure, NOT a critic outage: nothing was reviewed and nothing was recorded. Re-check the SHA step 0 printed and re-run /pr-check from step 1." >&2
+    echo "docs-audit-panel ABORT - --head $head does not resolve to a commit in this repo. This is an input-pin failure, NOT a critic outage: nothing was reviewed and nothing was recorded. Re-check the SHA step 0 printed and re-run /pr-check from step 1." >&2
     exit 7
 fi
 docs_audit_head=$(git rev-parse "$head")
@@ -156,7 +156,7 @@ if [ "$docs_audit_require_cross_model" = "1" ]; then
                 cat >&2 <<'PINABORT'
 /pr-check ABORT - docs-audit critic-panel.sh exit 7: the checkout or the diff
 base moved since step 1, so the review inputs no longer match the branch/SHA/base
-the ledger would stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed and
+the ledger would stamp. Nothing was reviewed and
 nothing was recorded. Re-run /pr-check from step 1.
 PINABORT
                 exit 7

@@ -92,7 +92,7 @@
       "id": "schedules",
       "title": "Schedules",
       "rows": [
-        "scheduler-backend", "cadence-armed", "doctor-cadence",
+        "scheduler-backend", "cadence-armed", "cadence-runs-*", "doctor-cadence",
         "doctor:C8-cadence", "doctor:C9-scheduler", "probe-disagree:C9-scheduler",
         "doctor:C24-cadence-registry"
       ]

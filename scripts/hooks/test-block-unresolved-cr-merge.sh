@@ -19,12 +19,22 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # own dedicated cases further down, each setting HIMMEL_CONSOLE_LEG itself.
 unset HIMMEL_CONSOLE_LEG
 
+# HIMMEL_REPO names the harness checkout the GO gates anchor on when the hook
+# copy sits in another repo (an adopter). An ambient value (a leg's own env)
+# would re-anchor every scratch-anchor row below on the real checkout; the R8
+# rows set it themselves.
+unset HIMMEL_REPO
+
 # an empty /tmp/.git kept appearing on this host. Record which of
 # these already exist so the end-of-suite guard fails if THIS suite creates one.
 GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && GIT_LEAK_PRE="$GIT_LEAK_PRE $_p"; done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/block-unresolved-cr-merge.sh"
+# stock macOS has no `timeout`; the hook's bounded `gh repo view` needs one on PATH
+# shellcheck source=../lib/portable-timeout.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/portable-timeout.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
@@ -140,6 +150,9 @@ case "$1 $2" in
       list-404)  echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
     esac
     printf '# trust paths\n^scripts/ci/\n' ;;
+  # GH_STUB_SETTINGS is the default branch's .claude/settings.json (default {}).
+  "api repos/o/r/contents/.claude/settings.json"*)
+    printf '%s\n' "${GH_STUB_SETTINGS:-"{}"}" ;;
   # Any other name (another repo, or a `github.com/o/r` spelling) has no list.
   "api repos/"*"/contents/scripts/ci/ci-trust-paths.txt"*)
     echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
@@ -710,8 +723,8 @@ fi
 grep -qi "cannot resolve this repo" "$TMP/err-leg-nwo-timeout-blocks" || { echo "FAIL leg-nwo-timeout-blocks reason missing"; fail=$((fail+1)); }
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# ── the case above still has a REAL `timeout`/`gtimeout` on
-# PATH. Strip both (shadow them with a stub whose `--version` fails, so
+# ── the case above ran with the portable shim (or a real `timeout`) on
+# PATH. Strip both `timeout` and `gtimeout` (shadow them with a stub whose `--version` fails, so
 # timeout-bin.sh's resolver finds neither and leaves `_TIMEOUT_BIN` empty —
 # the exact host shape the ticket is about) and prove the hook still bounds
 # a hanging `gh repo view`, not just the GNU-timeout-present path.
@@ -1496,6 +1509,49 @@ if [ "$tp_rc" -eq 2 ] && case "$tp_out" in "list "*"does not prove it is another
 else
     fail=$((fail+1)); echo "FAIL trust-lib-noncanonical-nwo-404-refuses rc=$tp_rc out=$tp_out"
 fi
+
+# R8: in an adopted repo the hook copy anchors on $HIMMEL_REPO, the harness
+# checkout go.sh signs from, so gate 4 resolves the GO root merge-on-green
+# reads (go_resolve_root "$himmel_repo"), not the adopter tree's own. The
+# adopter tree is TRUST_ANCHOR (the hook copy, no .env); HARNESS carries the
+# libs, a .env naming ROOT_B and an origin whose HEAD it contains. The trust
+# GO sits only in ROOT_B, and HANDOVER_DIR is unset, as in a session that
+# never exported it.
+HARNESS="$TMP/harness"; ROOT_B="$TMP/root-b"
+mkdir -p "$HARNESS/scripts" "$ROOT_B/.locks/go"
+cp -R "$SCRIPT_DIR/../lib" "$HARNESS/scripts/lib"
+cp_crgate_deps "$HARNESS/scripts/lib"
+printf 'HANDOVER_DIR=%s\n' "$ROOT_B" > "$HARNESS/.env"
+git -C "$HARNESS" init -q
+git -C "$HARNESS" add -A
+git -C "$HARNESS" -c user.name=t -c user.email=t@t commit -qm harness
+git clone -q --bare "$HARNESS" "$TMP/harness-origin.git"
+git -C "$HARNESS" remote add origin https://github.com/h/himmel.git
+git -C "$HARNESS" config "url.$TMP/harness-origin.git.insteadOf" https://github.com/h/himmel.git
+rm -f "$TRUST_GO"
+printf 'pr=42\nhead=abc123\nby=test\nat=now\ntrust-reviewed=judge-3910\nmac=%s\n' "$TRUST_MAC_42" > "$ROOT_B/.locks/go/42.abc123"
+r8_hd=${HANDOVER_DIR-}; r8_hd_set=${HANDOVER_DIR+1}
+unset HANDOVER_DIR
+HIMMEL_REPO="$HARNESS" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
+    t r8-adopted-hook-reads-the-harness-go-root 0 Bash "$PIN"
+# Control: without HIMMEL_REPO the copy anchors on its own tree, which holds no GO.
+GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
+    t r8-no-harness-anchor-finds-no-go 2 Bash "$PIN"
+# HARNESS carries no core list. An adopted repo with no trust list still
+# refuses: that rests on its own settings, not on the anchor's core file.
+HIMMEL_REPO="$HARNESS" GH_STUB_MODE=clean GH_STUB_TRUST=list-404 \
+    GH_STUB_SETTINGS='{"env":{"HIMMEL_REPO":"/h"}}' \
+    t r8-adopted-missing-list-refuses-without-core 2 Bash "$PIN"
+grep -q "an adopted repo" "$TMP/err-r8-adopted-missing-list-refuses-without-core" \
+    || { fail=$((fail+1)); echo "FAIL r8-adopted-missing-list-refuses-without-core: reason missing"; }
+r8_root=$(bash -c '. "$1/scripts/lib/handover-path.sh"; . "$1/scripts/lib/go-gate.sh"; go_resolve_root "$1"' _ "$HARNESS" 2>/dev/null)
+if [ "$r8_root" = "$ROOT_B" ]; then
+    pass=$((pass+1)); echo "ok   r8-merge-on-green-root-is-the-harness-env-root"
+else
+    fail=$((fail+1)); echo "FAIL r8-merge-on-green-root-is-the-harness-env-root got '$r8_root' want '$ROOT_B'"
+fi
+[ -z "$r8_hd_set" ] || export HANDOVER_DIR="$r8_hd"
+rm -f "$ROOT_B/.locks/go/42.abc123"
 HOOK="$MAIN_HOOK"
 
 # passthrough cases must not touch gh at all (coderabbit: assert EVERY one)

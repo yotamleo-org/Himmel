@@ -159,7 +159,7 @@ rm -f "$out_json" || die "cannot clear $out_json" 1
 # contract this script parses. Its model: line picks the model.
 awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$AGENT_MD" > "$work/system.md"
 model=$(awk 'NR==1 && $0!="---" {exit} NR>1 && $0=="---" {exit} /^model:/ {sub(/^model:[[:space:]]*/, ""); print; exit}' "$AGENT_MD")
-[ -n "$model" ] || die "the reviewer agent frontmatter names no model: — claude-headless.sh requires one (HIMMEL-2198)" 1
+[ -n "$model" ] || die "the reviewer agent frontmatter names no model: — claude-headless.sh requires one" 1
 cat >> "$work/system.md" <<'EOF'
 
 ## Floor-review output contract

@@ -92,7 +92,7 @@ usage() {
 Usage: pr-check-env.sh [VAR ...]
 
 Resolves /pr-check's CR_* / HIMMEL_DOC_FRESHNESS flags via load-dotenv.sh,
-pinned to the primary checkout's .env (HIMMEL-2035). Prints one
+pinned to the primary checkout's .env. Prints one
 "pr-check-env: NAME=value" line per requested variable, in order. No args =
 the runbook's default set (CR_PROFILE CR_CLAUDE_AGENTS CR_REQUIRE_CROSS_MODEL
 HIMMEL_DOC_FRESHNESS).

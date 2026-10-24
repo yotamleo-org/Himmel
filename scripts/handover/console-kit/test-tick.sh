@@ -201,6 +201,8 @@ export TICK_TMPDIR="$W"
 export TICK_STALL_PROBE="$W/no-stall-probe" TICK_STALL_CACHE="$W/stall.cache"
 # station= reads this state file; never the real ~/.himmel one.
 export TICK_STATION_STATE="$W/station-sync.state"
+# alert-fail= reads this marker; never the real ~/.himmel one.
+export CADENCE_ALERT_SEND_FAILED_MARK="$W/cadence-alert-send-failed"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
@@ -2176,12 +2178,12 @@ STUB
     contains '--verbose labels the plan index (HIMMEL-4051)' "$(t4051 --verbose)" 'plan-index: ok'
     n4051="$(wc -l < "$p4051_calls")"
     t4051 >/dev/null
-    [ "$(wc -l < "$p4051_calls")" = "$n4051" ] && pass 'an unchanged index never relaunches qmd (HIMMEL-4051)' || fail 'ok tick called qmd (HIMMEL-4051)'
+    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'an unchanged index never relaunches qmd (HIMMEL-4051)' || fail 'ok tick called qmd (HIMMEL-4051)'
 
     # a mirror change inside the minimum interval: stale but not yet due
     echo two >> "$p4051_mir/HIMMEL-111.md"
     contains 'stale but inside the minimum interval reads plan-index=ok:pending (HIMMEL-4051)' "$(t4051)" ' plan-index=ok:pending'
-    [ "$(wc -l < "$p4051_calls")" = "$n4051" ] && pass 'ok:pending launches no refresh (HIMMEL-4051)' || fail 'pending tick called qmd (HIMMEL-4051)'
+    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'ok:pending launches no refresh (HIMMEL-4051)' || fail 'pending tick called qmd (HIMMEL-4051)'
     rm -f "$p4051_out/.last-run"
     contains 'stale and due (interval 0) reads plan-index=REFRESHING (HIMMEL-4051)' "$(TICK_PLAN_INDEX_MIN_SECS=0 t4051)" ' plan-index=REFRESHING'
     wait4051
@@ -2195,7 +2197,7 @@ STUB
     contains 'a failed refresh reads plan-index=FAIL: (HIMMEL-4051)' "$(t4051)" ' plan-index=FAIL:'
     n4051="$(wc -l < "$p4051_calls")"
     t4051 >/dev/null; sleep 0.3
-    [ "$(wc -l < "$p4051_calls")" = "$n4051" ] && pass 'a recent failure is not relaunched (HIMMEL-4051)' || fail 'failure relaunched inside the backoff (HIMMEL-4051)'
+    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a recent failure is not relaunched (HIMMEL-4051)' || fail 'failure relaunched inside the backoff (HIMMEL-4051)'
 
     # a slow qmd never holds the tick: it returns while the refresh is still running
     echo four >> "$p4051_mir/HIMMEL-111.md"
@@ -2219,7 +2221,7 @@ STUB
     wrap4059="$(dirname "$SUT")/plan-index-launch.sh"
     [ -f "$wrap4059" ] && pass 'the launch wrapper is its own script (HIMMEL-4059)' || fail 'plan-index-launch.sh is missing (HIMMEL-4059)'
     bash "$wrap4059" "$p4051_out" bash -c 'echo clobbered > "$1/.last-run"' _ "$p4051_out"
-    [ -f "$wrap4059" ] && [ "$(cat "$p4051_out/.last-run")" = 77 ] && [ "$(wc -l < "$p4051_calls")" = "$n4051" ] && pass 'a held launch lock blocks a duplicate refresh (HIMMEL-4051)' || fail 'duplicate refresh ran past .launch (HIMMEL-4051)'
+    [ -f "$wrap4059" ] && [ "$(cat "$p4051_out/.last-run")" = 77 ] && [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a held launch lock blocks a duplicate refresh (HIMMEL-4051)' || fail 'duplicate refresh ran past .launch (HIMMEL-4051)'
     rmdir "$p4051_out/.launch"
     # a free .launch: the wrapper runs the command, records rc, and releases the lock
     bash "$wrap4059" "$p4051_out" bash -c 'exit 5'
@@ -2788,6 +2790,14 @@ printf 'BEHIND:luna_template,codex\n' > "$TICK_STATION_STATE"
 same 'station= names the behind components (HIMMEL-5945)' "$(station_of)" 'BEHIND:luna_template,codex'
 contains 'verbose labels the behind station (HIMMEL-5945)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'station: BEHIND:luna_template,codex'
 rm -f "$TICK_STATION_STATE"
+
+# --- alert-fail=<cadence>:<age>: cadence-alert.sh could not deliver a failure alert
+alertfail_of() { bash "$SUT" --legs 'HIMMEL-333-legN70' 2>/dev/null | sed -n -E 's/.* alert-fail=([^ ]*).*/\1/p'; }
+same 'alert-fail= is absent with no marker (HIMMEL-7419)' "$(alertfail_of)" ''
+printf '%s focus-refresh exit-1\n' "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)" > "$CADENCE_ALERT_SEND_FAILED_MARK"  # gnu-ok: console kit is Linux-only
+same 'alert-fail= names the cadence and its age (HIMMEL-7419)' "$(alertfail_of)" 'focus-refresh:3h'
+contains 'verbose labels the failed alert (HIMMEL-7419)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'alert-fail: focus-refresh:3h'
+rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
 
 # --- orphans-wip=: In Progress / In Review tickets with no leg and no open PR.
 OW="$W/ow-mirror/HIMMEL"; mkdir -p "$OW"

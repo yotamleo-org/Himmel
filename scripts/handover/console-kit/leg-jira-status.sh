@@ -23,7 +23,7 @@
 # TICKET_STATUS_BUDGET seconds (default 20), and a run cut off logs
 # miss stage=timeout.
 #
-# Env: WORKER_SESSION_JIRA_STATUS=0 opts out (a disabled row). TICKET_STATUS_LOCK_WAIT
+# Env: WORKER_SESSION_JIRA_STATUS=0 opts out (a disabled row); HIMMEL_RELEASE_MANAGER=1 skips (a skip rule=RM row). TICKET_STATUS_LOCK_WAIT
 # (default 10) bounds the flock wait. The rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
@@ -84,6 +84,13 @@ row() {
 
 if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" = 0 ]; then
     row result=disabled
+    exit 0
+fi
+
+# A release manager (HIMMEL_RELEASE_MANAGER=1, exported by its launch) owns no ticket: its doc
+# is named for the ticket that planned it, and moving that ticket would misreport the work.
+if [ "${HIMMEL_RELEASE_MANAGER:-0}" = 1 ]; then
+    row result=skip rule=RM
     exit 0
 fi
 

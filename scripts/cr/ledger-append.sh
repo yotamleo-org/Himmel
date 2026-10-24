@@ -185,7 +185,7 @@ fi
 # One definition, shared with clear-cr-marker gate 4.
 valid_ticket() { printf '%s' "$1" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; }
 if [ -n "$deferred_to" ] && ! valid_ticket "$deferred_to"; then
-  echo "ledger-append.sh: --deferred-to must be a ticket key like HIMMEL-1294 (got '$deferred_to')" >&2
+  echo "ledger-append.sh: --deferred-to must be a ticket key like PROJ-123 (got '$deferred_to')" >&2
   exit 2
 fi
 
@@ -203,7 +203,7 @@ if [ -n "$fu_class" ] && ! valid_fu_class "$fu_class"; then
   exit 2
 fi
 if [ "$kind" = "finding" ] && [ -z "$batch_file" ] && { [ -n "$deferred_to" ] || [ "$verdict" = "deferred" ]; } && [ -z "$fu_class" ]; then
-  echo "ledger-append.sh: a deferral needs --fu-class escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
+  echo "ledger-append.sh: a deferral needs --fu-class escape|hardening|polish (see docs/release/follow-up-triage.md) - NOTHING was written" >&2
   exit 2
 fi
 if [ -n "$fu_why" ] && ! valid_fu_why "$fu_why"; then
@@ -356,7 +356,7 @@ if [ "$kind" = "amend" ]; then
     case "$_pair" in
       deferred_to=*)
         if ! valid_ticket "${_pair#deferred_to=}"; then
-          echo "ledger-append.sh: --set deferred_to= must be a ticket key like HIMMEL-1294 (got '${_pair#deferred_to=}')" >&2
+          echo "ledger-append.sh: --set deferred_to= must be a ticket key like PROJ-123 (got '${_pair#deferred_to=}')" >&2
           exit 2
         fi ;;
       fu_class=*)
@@ -403,7 +403,7 @@ if [ "$kind" = "amend" ]; then
   done <<< "$set_pairs"
   # An amend that makes a finding a deferral must classify it.
   if printf '%s' "$set_pairs" | grep -qE '^(verdict=deferred|deferred_to=)' && ! printf '%s' "$set_pairs" | grep -q '^fu_class='; then
-    echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
+    echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (see docs/release/follow-up-triage.md) - NOTHING was written" >&2
     exit 2
   fi
   if grep -qx 'fu_class=hardening' <<< "$set_pairs" && ! grep -q '^fu_why=' <<< "$set_pairs"; then
@@ -832,7 +832,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       // bucket every branch checks, defeating this ticket's isolation fix for
       // every finding this batch writes.
       if(!spec.branch){
-        process.stderr.write("ledger-append.sh: batch row "+sid+" has an empty branch - refusing this row (HIMMEL-2405).\n");
+        process.stderr.write("ledger-append.sh: batch row "+sid+" has an empty branch - refusing this row.\n");
         anyFail=true; continue;
       }
       const positiveInteger=(v)=>(typeof v==="number"&&Number.isInteger(v)&&v>0)
@@ -998,7 +998,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       process.stderr.write("ledger-append.sh: amend --branch "+e.BRANCH+" does not match finding "+e.ID
         +" at head "+e.HEAD_+", which is recorded on branch(es): "+named.join(", ")
         +" - an amend stamped with another branch is never read back. NOTHING was written.\n"
-        +"  Pass the finding's own branch, or omit --branch to inherit it (HIMMEL-3467).\n");
+        +"  Pass the finding's own branch, or omit --branch to inherit it.\n");
       process.exit(3);
     }
     if(e.BRANCH===""){
@@ -1014,7 +1014,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       } else if(e.CALLER_BRANCH){
         e.BRANCH=e.CALLER_BRANCH;
       } else {
-        process.stderr.write("ledger-append.sh: amend requires --branch when the current checkout is not on a branch (detached HEAD) and no finding row with a branch of its own exists to infer one from (HIMMEL-2405).\n");
+        process.stderr.write("ledger-append.sh: amend requires --branch when the current checkout is not on a branch (detached HEAD) and no finding row with a branch of its own exists to infer one from.\n");
         process.exit(2);
       }
     }
@@ -1382,7 +1382,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     } else {
       process.stderr.write("ledger-append.sh: avail record for "+e.MODEL+" at head "
         +String(e.HEAD_).slice(0,8)+" would DOWNGRADE status "+priorAvail.status+"->"+e.STATUS
-        +" - refusing (an avail record may only improve unavailable->ok, never regress; HIMMEL-1613). Nothing written.\n");
+        +" - refusing (an avail record may only improve unavailable->ok, never regress). Nothing written.\n");
       process.exit(0);
     }
   }

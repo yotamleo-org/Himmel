@@ -44,28 +44,11 @@ git_t() { git -c user.email=t@t -c user.name=t "$@"; }
 
 # The hook bounds every git call with `timeout` and fails CLOSED without it, which
 # is right. Stock macOS ships no `timeout`, so on such a host every honoured-bypass
-# row would see a refusal. Give the suite a bounded stand-in on PATH there; the
+# row would see a refusal. Put the shared GNU-semantics fallback on PATH there; the
 # "timeout missing from PATH" row below still builds its own scratch PATH without it.
-# ponytail: stand-in handles only `timeout <secs> cmd...`, exits 143 (not 124) on expiry; HIMMEL-3699 swaps in coreutils gtimeout once macOS runners install it.
-if ! command -v timeout >/dev/null 2>&1; then
-  TSHIM="$T/tshim"
-  mkdir -p "$TSHIM"
-  REAL_SLEEP="$(command -v sleep)"
-  cat > "$TSHIM/timeout" <<EOF
-#!/bin/sh
-secs="\$1"; shift
-"\$@" &
-pid=\$!
-( "$REAL_SLEEP" "\$secs"; kill "\$pid" ) >/dev/null 2>&1 </dev/null &
-wd=\$!
-wait "\$pid"
-rc=\$?
-kill "\$wd" >/dev/null 2>&1
-exit "\$rc"
-EOF
-  chmod +x "$TSHIM/timeout"
-  PATH="$TSHIM:$PATH"
-fi
+# shellcheck source=../lib/portable-timeout.sh
+# shellcheck disable=SC1091
+. "$HOOKS_DIR/../lib/portable-timeout.sh"
 
 # ---- fixture: a primary checkout that tracks the hook, one remote, two linked worktrees
 PRIMARY="$T/primary"
@@ -229,10 +212,10 @@ expect_refused "a timed-out git refuses the anchor fence's bypass too" "$ANCHOR_
 # holds only the tools the hook needs, so the control proves it is otherwise usable.
 NOTO="$T/notimeout"
 mkdir -p "$NOTO"
-for tool in bash jq git dirname basename tr awk date cat sed grep head tail cut sort wc mktemp uname env sh printf pwd; do
+for tool in bash jq git dirname basename tr awk date cat sed grep head tail cut sort wc mktemp uname env sh printf pwd sleep rm pkill; do
   src="$(command -v "$tool" 2>/dev/null)" && [ -x "$src" ] && ln -sf "$src" "$NOTO/$tool"
 done
-if PATH="$NOTO" command -v timeout >/dev/null 2>&1; then
+if (PATH="$NOTO"; hash -r; command -v timeout >/dev/null 2>&1); then
   bad "setup: timeout is still resolvable from the scratch PATH"
 else
   expect_refused "timeout missing from PATH: bypass refused (fail closed)" "$PIN_CMD" "$WT" "$WH" "$WT" sess-ok PATH="$NOTO"

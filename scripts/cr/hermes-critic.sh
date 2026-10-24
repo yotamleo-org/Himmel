@@ -65,7 +65,7 @@ the diff. Routing is by implementer:
 
   no --implementer and no CRITIC_ROUTE
       -> HERMES reviewer with no --model: defaults to the critics.json-pinned
-         gpt-6.1-sol (HIMMEL-2059) — NOT the himmel_agent profile default.
+         gpt-6.1-sol — NOT the himmel_agent profile default.
          Spends no Claude bank (it spends the OpenAI Codex bank instead).
   hermes (any hermes-driven dev plan, incl. ox-alpha)
       -> CLAUDE CLI reviewer (claude print-mode; opt-in bank spend);
@@ -81,7 +81,7 @@ cross-family guarantee (e.g. --route hermes on a hermes-implemented diff).
 --model applies to WHICHEVER route runs, and the hermes reviewer's family is
 inferred from its resolved model id (gpt-*/o<N>*/codex* => codex, claude-* =>
 claude, empty => the profile default, unreachable in practice since the
-hermes route always resolves a model — see HIMMEL-2059 default above).
+hermes route always resolves a model — see the default above).
 HERMES_CRITIC_FAMILY overrides that inference — use it when --model names a
 claude-route model, or when the id does not match these patterns.
 
@@ -312,7 +312,7 @@ run_claude_review() {
     # token at all, which must not block an adopter who does not ship one.
     bank="$(CADENCE_USAGE_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null)"
     if [ "$bank" = "SKIPPED-BANK" ]; then
-        echo "hermes-critic.sh: claude route refused — bank preflight returned $bank (HIMMEL-128); fall back to another review route" >&2
+        echo "hermes-critic.sh: claude route refused — bank preflight returned $bank; fall back to another review route" >&2
         return 1
     fi
     # Ambient proxy exports must not silently redirect this subscription launch
@@ -349,7 +349,7 @@ run_claude_review() {
     # the floor-only `bare` profile instead of the operator's full plugin set.
     local critic_settings
     if ! critic_settings="$(bash "$SCRIPT_DIR/../lanes/profile-settings.sh" bare)" || [ -z "$critic_settings" ]; then
-        echo "hermes-critic.sh: could not resolve the bare plugin profile — refusing the claude route (HIMMEL-4013)" >&2
+        echo "hermes-critic.sh: could not resolve the bare plugin profile — refusing the claude route" >&2
         rm -rf "$scratch_dir"
         return 1
     fi

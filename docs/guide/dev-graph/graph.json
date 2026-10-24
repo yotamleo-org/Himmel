@@ -210,6 +210,28 @@
       }
     },
     {
+      "id": "l.ticket",
+      "lane": "leg",
+      "phase": "dispatch",
+      "label": "Ticket",
+      "summary": "Reads its ticket first. leg-jira-status.sh is the one writer of the ticket's Jira status: LIVE, the PR, CI, the merge and WRAPPED each make it re-derive the status from the PRs",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/leg-jira-status.sh",
+          "anchor": "leg-jira-status.sh - the ONE writer of a"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 328,
+          "y": 462
+        },
+        "narrow": {
+          "y": 640
+        }
+      }
+    },
+    {
       "id": "l.live",
       "lane": "leg",
       "phase": "build",
@@ -398,6 +420,50 @@
       }
     },
     {
+      "id": "g.coderabbit",
+      "lane": "gates",
+      "phase": "review",
+      "label": "CodeRabbit",
+      "summary": "The GitHub App reviews the PR and posts threads and a commit status; coderabbit-signal.sh is the one reader. Best-effort as shipped: absent, skipped or rate limited prints a NOTE, and its threads still need resolving before the merge",
+      "sources": [
+        {
+          "file": "scripts/lib/coderabbit-signal.sh",
+          "anchor": "coderabbit-signal.sh — the ONE reader for"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 728,
+          "y": 706
+        },
+        "narrow": {
+          "y": 1440
+        }
+      }
+    },
+    {
+      "id": "g.reviewgate",
+      "lane": "gates",
+      "phase": "review",
+      "label": "Review gate",
+      "summary": "Every hard reviewer passes at the head; a best-effort one passes or is relaxed when unavailable. No hard reviewer left without review: no_code_review is a config error and blocks",
+      "sources": [
+        {
+          "file": "scripts/lib/review-merge-gate.sh",
+          "anchor": "cr_reviewer_gate() {"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 728,
+          "y": 762
+        },
+        "narrow": {
+          "y": 1460
+        }
+      }
+    },
+    {
       "id": "l.pr",
       "lane": "leg",
       "phase": "review",
@@ -438,6 +504,28 @@
         },
         "narrow": {
           "y": 1520
+        }
+      }
+    },
+    {
+      "id": "g.release",
+      "lane": "gates",
+      "phase": "verify",
+      "label": "CI release (planned)",
+      "summary": "Planned: the heavy CI jobs do not listen to ci:go yet. With CI_GO_GATE on, cr-first-release.sh adds ci:go once the review gate passes and the cheap run is green; off or unset, it stays quiet and CI runs on every push",
+      "sources": [
+        {
+          "file": "scripts/lib/cr-first-release.sh",
+          "anchor": "cr_first_release() {"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 928,
+          "y": 706
+        },
+        "narrow": {
+          "y": 1480
         }
       }
     },
@@ -618,6 +706,28 @@
       }
     },
     {
+      "id": "l.close",
+      "lane": "leg",
+      "phase": "merge",
+      "label": "Close ticket (if done)",
+      "summary": "Conditional: only when the brief says completes-ticket: yes does merge-on-green.sh --jira-transition close the PR title's first ticket. Otherwise the flag stays off and the ticket keeps its status. Either way the leg re-reads the ticket and posts the PR and merge sha on it",
+      "sources": [
+        {
+          "file": "scripts/handover/merge-on-green.sh",
+          "anchor": "--jira-transition  opt IN to auto-transitioning the ticket on this merge"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 1128,
+          "y": 518
+        },
+        "narrow": {
+          "y": 2367
+        }
+      }
+    },
+    {
       "id": "g.mergehook",
       "lane": "gates",
       "phase": "merge",
@@ -654,7 +764,7 @@
       "pos": {
         "wide": {
           "x": 1128,
-          "y": 518
+          "y": 574
         },
         "narrow": {
           "y": 2420
@@ -778,7 +888,7 @@
     {
       "id": "e.arm.ok",
       "from": "c.arm",
-      "to": "l.live",
+      "to": "l.ticket",
       "kind": "decision",
       "condition": "bank PROCEED, fleet below cap, Tier line valid, no un-acked denial page",
       "sources": [
@@ -788,7 +898,7 @@
         }
       ],
       "path": {
-        "wide": "M403,240 H428 V462 H453"
+        "wide": "M328,274 V442"
       }
     },
     {
@@ -1074,6 +1184,38 @@
       }
     },
     {
+      "id": "e.release.go",
+      "from": "g.release",
+      "to": "g.ci",
+      "kind": "decision",
+      "condition": "CR-FIRST RELEASE: the review gate passes at the head and the cheap run is green, so ci:go starts the heavy jobs",
+      "sources": [
+        {
+          "file": "scripts/lib/cr-first-release.sh",
+          "anchor": "CR-FIRST RELEASE <reason>"
+        }
+      ],
+      "path": {
+        "wide": "M928,686 V670"
+      }
+    },
+    {
+      "id": "e.release.hold",
+      "from": "g.release",
+      "to": "g.release",
+      "kind": "loop",
+      "condition": "CR-FIRST HOLD: a hard reviewer has not passed, the cheap run is not green, or CodeRabbit is still reviewing; the next review event checks again",
+      "sources": [
+        {
+          "file": "scripts/lib/cr-first-release.sh",
+          "anchor": "CR-FIRST HOLD <reason> <age>"
+        }
+      ],
+      "path": {
+        "wide": "M1003,702 H1028 V710 H1003"
+      }
+    },
+    {
       "id": "e.cired.fix",
       "from": "l.cired",
       "to": "l.commit",
@@ -1293,7 +1435,7 @@
     {
       "id": "e.mog.ok",
       "from": "l.merge",
-      "to": "l.wrap",
+      "to": "l.close",
       "kind": "decision",
       "exit": 0,
       "condition": "squash merge pinned to the head",
@@ -1320,7 +1462,7 @@
         }
       ],
       "path": {
-        "wide": "M1203,508 H1228 V514 H1203"
+        "wide": "M1203,564 H1228 V570 H1203"
       }
     },
     {
@@ -1466,6 +1608,17 @@
       }
     },
     {
+      "id": "f.l.ticket.l.live",
+      "from": "l.ticket",
+      "to": "l.live",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": [],
+      "path": {
+        "wide": "M403,462 H453"
+      }
+    },
+    {
       "id": "f.l.commit.g.prepush",
       "from": "l.commit",
       "to": "g.prepush",
@@ -1488,14 +1641,36 @@
       }
     },
     {
-      "id": "f.l.pr.g.ci",
+      "id": "f.l.pr.g.coderabbit",
       "from": "l.pr",
-      "to": "g.ci",
+      "to": "g.coderabbit",
       "kind": "flow",
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M803,511 H813 V657 H853"
+        "wide": "M803,511 H813 V699 H803"
+      }
+    },
+    {
+      "id": "f.g.coderabbit.g.reviewgate",
+      "from": "g.coderabbit",
+      "to": "g.reviewgate",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": [],
+      "path": {
+        "wide": "M728,726 V742"
+      }
+    },
+    {
+      "id": "f.g.reviewgate.g.release",
+      "from": "g.reviewgate",
+      "to": "g.release",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": [],
+      "path": {
+        "wide": "M803,762 H928 V726"
       }
     },
     {
@@ -1528,7 +1703,18 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M1203,522 H1218 V142 H1203"
+        "wide": "M1203,578 H1218 V142 H1203"
+      }
+    },
+    {
+      "id": "f.l.close.l.wrap",
+      "from": "l.close",
+      "to": "l.wrap",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": [],
+      "path": {
+        "wide": "M1128,538 V554"
       }
     },
     {
@@ -1587,6 +1773,10 @@
           "caption": "Bank PROCEED, fleet below cap, Tier line valid"
         },
         {
+          "at": "l.ticket",
+          "caption": "Reads the ticket it ships"
+        },
+        {
           "at": "l.live",
           "caption": "Queue lock taken, LIVE bullet written"
         },
@@ -1615,6 +1805,18 @@
           "caption": "Marker cleared, PR opens"
         },
         {
+          "at": "g.coderabbit",
+          "caption": "CodeRabbit reviews the PR"
+        },
+        {
+          "at": "g.reviewgate",
+          "caption": "Every hard reviewer passed at the head"
+        },
+        {
+          "at": "g.release",
+          "caption": "ci:go released (planned)"
+        },
+        {
           "at": "g.ci",
           "caption": "check-ci exit 0"
         },
@@ -1633,6 +1835,10 @@
         {
           "at": "l.merge",
           "caption": "Squash merge pinned to the head"
+        },
+        {
+          "at": "l.close",
+          "caption": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
@@ -1690,6 +1896,18 @@
           "caption": "PR is already open: push"
         },
         {
+          "at": "g.coderabbit",
+          "caption": "CodeRabbit reviews the PR"
+        },
+        {
+          "at": "g.reviewgate",
+          "caption": "Every hard reviewer passed at the head"
+        },
+        {
+          "at": "g.release",
+          "caption": "ci:go released (planned)"
+        },
+        {
           "at": "g.ci",
           "caption": "Green again"
         },
@@ -1721,6 +1939,10 @@
         {
           "at": "l.merge",
           "caption": "The trust-path gate passes (exit 21 avoided)"
+        },
+        {
+          "at": "l.close",
+          "caption": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
@@ -1762,6 +1984,18 @@
           "caption": "PR opens"
         },
         {
+          "at": "g.coderabbit",
+          "caption": "CodeRabbit reviews the PR"
+        },
+        {
+          "at": "g.reviewgate",
+          "caption": "Every hard reviewer passed at the head"
+        },
+        {
+          "at": "g.release",
+          "caption": "ci:go released (planned)"
+        },
+        {
           "at": "g.ci",
           "caption": "check-ci exit 1",
           "state": "refused"
@@ -1799,6 +2033,18 @@
           "caption": "Push to the open PR"
         },
         {
+          "at": "g.coderabbit",
+          "caption": "CodeRabbit reviews the PR"
+        },
+        {
+          "at": "g.reviewgate",
+          "caption": "Every hard reviewer passed at the head"
+        },
+        {
+          "at": "g.release",
+          "caption": "ci:go released (planned)"
+        },
+        {
           "at": "g.ci",
           "caption": "Green"
         },
@@ -1817,6 +2063,10 @@
         {
           "at": "l.merge",
           "caption": "Merge"
+        },
+        {
+          "at": "l.close",
+          "caption": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
@@ -1918,6 +2168,7 @@
         "tick": "generic action-key change: shown as the tick node",
         "tick-fail": "monitor health: operational",
         "tracker-stale": "tracker housekeeping: operational",
+        "board-stale": "board housekeeping: operational",
         "predecessor-open": "succession housekeeping: operational",
         "succession partial": "succession progress report: operational",
         "relay-on-live": "succession relay housekeeping: operational",
@@ -1943,12 +2194,26 @@
         "PARKED-BANK": "leg status: bank park, no graph decision",
         "RESUMED": "leg status: resume, no graph decision"
       }
+    },
+    "scripts/lib/cr-first-release.sh": {
+      "table": "release",
+      "floor": 6,
+      "mapped": {
+        "RELEASE": "e.release.go",
+        "HOLD": "e.release.hold"
+      },
+      "unmapped": {
+        "ERROR": "config error, missing ci:go label or failed label write: operational, the next event retries",
+        "ALERT": "a hard reviewer is unavailable: an alert printed beside its HOLD, not a separate transition",
+        "MANUAL-RELEASE": "a ci:go set by hand: reported once, the heavy run has already started",
+        "PENDING-RELEASE": "the read-only preview ready-check.sh prints: writes nothing"
+      }
     }
   },
   "view": {
     "wide": {
       "w": 1464,
-      "h": 744,
+      "h": 800,
       "box": [
         150,
         40
@@ -1975,7 +2240,7 @@
         ],
         "gates": [
           612,
-          132
+          188
         ]
       },
       "phases": [

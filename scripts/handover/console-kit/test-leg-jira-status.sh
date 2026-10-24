@@ -162,6 +162,11 @@ printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
 check "sweep: a Done ticket's stale live record is cleared by the sweep (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
+reset "Done"; owned WRAPPED; jq -c '.state = "IDLE-HELD"' "$REC" > "$tmp/rec.t" && mv "$tmp/rec.t" "$REC"
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "sweep: a Done ticket's stale IDLE-HELD record is cleared by the sweep too" "$(jq -r .state "$REC")" wrapped
 reset "Backlog"; owned
 fn "$K" --event live
 check "D0: an off-ladder status is never touched" "$(ntrans)" 0
@@ -273,7 +278,25 @@ reset "In Progress"; owned WRAPPED 0
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result":"miss","stage":"transition"}\n' "$K" >> "$LOG"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
-check "D4b: only the latest merge row counts -> D6" "$(row rule)" D6
+check "D4b: only the latest merge row counts -> D5c" "$(row rule)" D5c
+
+# --- D5c: a contract=no last merge keeps a wrapped ticket In Progress ---------------
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5c: a partial merge then WRAPPED is never To Do" "$(ntrans)" 0
+check "D5c: rule" "$(row rule)" D5c
+fn "$K" --event sweep
+check "D5c: nor does the next sweep demote it" "$(ntrans)" 0
+reset "To Do"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"moved"}\n' "$K" >> "$LOG"
+fn "$K" --event sweep
+check "D5c: a partial left in To Do goes back to In Progress" "$(moved)" "transition $K In Progress"
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5c: a later completes=yes merge row wins -> D6" "$(row rule)" D6
 
 # --- D5 / D6 / D7 ------------------------------------------------------------------
 reset "To Do"; owned LIVE 11 0
@@ -281,7 +304,7 @@ fn "$K" --event live --doc "$DOC"
 check "D5: a live owner, no PR -> In Progress" "$(moved)" "transition $K In Progress"
 reset "In Review"; owned WRAPPED 0
 fn "$K" --event wrapped --doc "$DOC"
-check "D6: WRAPPED, no PR -> To Do" "$(moved)" "transition $K To Do"
+check "D6: WRAPPED, no PR and no merge row -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
 DOC2="$tmp/$K-N2-slug-2026-10-21.md"
@@ -451,6 +474,22 @@ d8="$tmp/AB2-7-N1-slug-2026-10-21.md"; mkdoc "$d8"; : > "$STUB_LOG"
 bash "$APPEND" "$d8" "LIVE — x" >/dev/null 2>&1
 # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 contains "a key with a digit in the project part is extracted" "$(head -n 1 "$STUB_LOG")" "AB2-7"
+
+# --- wiring: a release manager's doc never moves its ticket -------------------------------------
+reset "To Do"; mkdoc "$DOC"
+HIMMEL_RELEASE_MANAGER=1 bash "$APPEND" "$DOC" "LIVE — rm" >/dev/null 2>&1
+check "RM: a LIVE bullet makes no transition" "$(ntrans)" 0
+check "RM: the ticket stays To Do" "$(cat "$FX/status.cur")" "To Do"
+check "RM: the skip is logged" "$(row result)/$(row rule)" skip/RM
+check "RM: no owner record is written" "$([ -e "$REC" ] && echo yes || echo no)" no
+reset "In Progress"; mkdoc "$DOC" WRAPPED
+HIMMEL_RELEASE_MANAGER=1 bash "$APPEND" "$DOC" "WRAPPED — rm" >/dev/null 2>&1
+check "RM: the WRAPPED append succeeds" "$?" 0
+check "RM: a WRAPPED bullet makes no transition" "$(ntrans)" 0
+check "RM: the WRAPPED skip is logged" "$(row result)/$(row rule)" skip/RM
+reset "To Do"; mkdoc "$DOC"
+HIMMEL_RELEASE_MANAGER=0 bash "$APPEND" "$DOC" "LIVE — leg" >/dev/null 2>&1
+check "RM: HIMMEL_RELEASE_MANAGER=0 is a leg, it moves" "$(moved)" "transition $K In Progress"
 
 # --- wiring: the WRAPPED bullet ---------------------------------------------------------------
 reset "In Review"; owned LIVE 0

@@ -37,7 +37,7 @@ paths = [
 # The luna template's gitleaks regression test embeds the loopback-only local
 # CLIProxyAPI token (Authorization Bearer) plus a deliberate suffixed near-miss
 # as FIXTURES. That token is a documented, loopback-only shared constant checked
-# into himmel (scripts/setup/cli-proxy-lane.ps1), not a credential. Scope the
+# into himmel, not a credential. Scope the
 # exception to those exact constants (anchored) rather than path-allowlisting the
 # whole test file, so real secrets in it are still scanned (CR #1239). Anchored
 # ^…$ avoids the substring-bypass hole (HIMMEL-1055) — each fixture is listed as

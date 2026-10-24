@@ -25,7 +25,7 @@
 // session — Claude Code gives each subagent/session its own context, so
 // there is no v2-subagent-history-copy and no fast-mode toggle to carry or
 // disable here; nothing to implement for that requirement.
-import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, chmodSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { spawn } from "bun";
@@ -50,9 +50,13 @@ import { parseAddPlugins } from "../lanes/plugin-profiles.mjs";
 import { parseLaneArgs, type FlagTable } from "./lane-args";
 import { CODEX_BANK_PROBE_REMEDY, readCodexBankCache } from "../lanes/bank-status-core.mjs";
 import { resolveFundedMaxPct } from "../lanes/funded-max-pct.mjs";
+import { claudexSessionRoots } from "../lanes/claudex-session-root.mjs";
 
+// The root lives outside any `.claude` directory: Claude Code denies a
+// worker's Write under one and no allow rule overrides it. Resolution is shared
+// with the shell readers in ../lanes/claudex-session-root.mjs.
 export function claudexSessionRoot(): string {
-  return join(process.env.BRIDGE_ROOT ?? join(homedir(), ".claude", "handover", "bridge"), "claudex-sessions");
+  return claudexSessionRoots().primary;
 }
 
 // ── worker prompt (twin of spawn-glm's composeWorkerPrompt/composePointerPrompt) ──
@@ -1465,7 +1469,8 @@ async function main(): Promise<void> {
       onSetupFail?.();
       throw e;
     }
-    mkdirSync(sessionDir, { recursive: true });
+    mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
+    chmodSync(claudexSessionRoot(), 0o700);
     const metaPath = join(sessionDir, "meta.json");
     const started_at = new Date().toISOString();
     // worker_worktree is what stop-worker.sh's

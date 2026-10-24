@@ -7,7 +7,11 @@
 # generates that line itself; the judge's prose comes from a file it wrote to
 # its scratch, so the command a judge types names nothing the guards key on.
 #
-# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--model <id>] [--effort <level>]
+# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--repo <owner/name>] [--model <id>] [--effort <level>]
+#
+# --repo <owner/name> rules on a PR of that adopted repo instead of this
+# checkout's: the record goes under <user>/<owner>--<name> and carries a
+# `repo: <owner/name>` header line, the line go.sh --repo checks.
 #
 # --model / --effort name the judge that ruled and are recorded as `model:` and
 # `effort:` header lines (inside the signed body); a verdict without both is
@@ -31,6 +35,7 @@
 #     **GO** for head `<head>`.
 #
 #     pr: <n>                   (absent for a GO written with --branch and no --pr)
+#     repo: <owner/name>        (only when --repo is given)
 #     branch: <name>            (only when --branch is given)
 #     prior: <GO|NO-GO>         (only when --prior is given)
 #     flipped: <y|n>            (with prior: y when it differs from the answer)
@@ -121,7 +126,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]" >&2
     exit 2
 }
 seg_ok() {
@@ -131,7 +136,7 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT=""
+EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --model) [ "$#" -ge 2 ] || usage; MODEL=$2; shift 2 ;;
@@ -142,6 +147,7 @@ while [ "$#" -gt 0 ]; do
             BIND=$2; shift 2 ;;
         --residual-of) [ "$#" -ge 2 ] || usage; RESIDUAL_OF=$2; shift 2 ;;
         --pr) [ "$#" -ge 2 ] || usage; PR=$2; shift 2 ;;
+        --repo) [ "$#" -ge 2 ] || usage; VREPO=$2; VREPO_SET=1; shift 2 ;;
         --branch) [ "$#" -ge 2 ] || usage; BRANCH=$2; shift 2 ;;
         --prior) [ "$#" -ge 2 ] || usage; PRIOR=$2; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE=$2; shift 2 ;;
@@ -151,6 +157,13 @@ while [ "$#" -gt 0 ]; do
 done
 seg_ok "$QID" || { echo "write-verdict: qid '$QID' is not a path segment ([A-Za-z0-9][A-Za-z0-9._-]*)" >&2; exit 2; }
 seg_ok "$NAME" || { echo "write-verdict: judge name '$NAME' is not a path segment ([A-Za-z0-9][A-Za-z0-9._-]*)" >&2; exit 2; }
+if [ "$VREPO_SET" -eq 1 ]; then
+    case "$VREPO" in */*/*) VREPO_OK=0 ;; */*) VREPO_OK=1 ;; *) VREPO_OK=0 ;; esac
+    if [ "$VREPO_OK" -ne 1 ] || ! seg_ok "${VREPO%%/*}" || ! seg_ok "${VREPO#*/}"; then
+        echo "write-verdict: --repo '$VREPO' is not an owner/name of two path segments ([A-Za-z0-9][A-Za-z0-9._-]* each)" >&2
+        exit 2
+    fi
+fi
 case "$ANSWER" in GO|NO-GO) ;; *) echo "write-verdict: the answer must be GO or NO-GO (got '$ANSWER')" >&2; exit 2 ;; esac
 case "$HEAD" in *[!0123456789abcdef]*) HEAD_OK=0 ;; *) HEAD_OK=1 ;; esac
 if [ "$HEAD_OK" -ne 1 ] || [ "${#HEAD}" -ne 40 ]; then
@@ -352,7 +365,7 @@ fi
 . "$HERE/../../lib/handover-path.sh" || { echo "write-verdict: cannot load scripts/lib/handover-path.sh" >&2; exit 3; }
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
 ROOT=$(go_resolve_root "$ANCHOR") || { echo "write-verdict: cannot resolve the handover root go.sh reads" >&2; exit 3; }
-SCOPE=$(go_verdict_scope "$ANCHOR") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
+SCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
 [ -d "$ROOT" ] || { echo "write-verdict: handover root '$ROOT' is not a directory" >&2; exit 3; }
 
 # the judged head must be a strict descendant of the reviewed head
@@ -474,6 +487,7 @@ if ! {
     printf 'written-at: %s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" &&
     printf '## Verdict\n\n**%s** for head `%s`.\n\n' "$ANSWER" "$HEAD" &&
     { [ -z "$PR" ] || printf 'pr: %s\n' "$PR"; } &&
+    { [ -z "$VREPO" ] || printf 'repo: %s\n' "$VREPO"; } &&
     { [ -z "$BRANCH" ] || printf 'branch: %s\n' "$BRANCH"; } &&
     { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
     printf 'model: %s\neffort: %s\n' "$MODEL" "$EFFORT" &&

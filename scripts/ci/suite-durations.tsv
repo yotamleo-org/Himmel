@@ -277,6 +277,7 @@ scripts/docs/test-adoption-trail.sh	0
 scripts/docs/test-check-doc-terms.sh	1
 scripts/docs/test-check-llms-links.sh	1
 scripts/docs/test-generate-credits.sh	1
+scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
 scripts/docs/test-site-guides.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
@@ -284,6 +285,7 @@ scripts/eval/friction/test-friction.sh	1
 scripts/eval/graphify-ab/test-graphify-ab.sh	5
 scripts/eval/guard-corpus/test-guard-corpus.sh	173
 scripts/eval/judge-accuracy/test-judge-accuracy.sh	1
+scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	2
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	38
 scripts/eval/lane-quality/test-lane-quality.sh	25
 scripts/eval/lane-quality/test-trajectory.sh	5
@@ -363,6 +365,7 @@ scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1
 scripts/handover/console-kit/test-console-kit-e2e.sh	14
 scripts/handover/console-kit/test-console-wait-b.sh	265
+scripts/handover/console-kit/test-console-wait-pool.sh	55
 scripts/handover/console-kit/test-console-wait-r0.sh	26
 scripts/handover/console-kit/test-console-wait.sh	283
 scripts/handover/console-kit/test-cut-tag.sh	2
@@ -450,6 +453,7 @@ scripts/handover/test-flush.sh	2
 scripts/handover/test-friction-gate-docs.sh	0
 scripts/handover/test-generate-morning-briefing.sh	4
 scripts/handover/test-handover-root-dotenv.sh	5
+scripts/handover/test-headed-arm-tabs.sh	8
 scripts/handover/test-headed-arm.sh	120
 scripts/handover/test-jira-dist-primary-4456.sh	1
 scripts/handover/test-konsole-macos.sh	17
@@ -1102,3 +1106,4 @@ scripts/lib/test-cr-first-release.sh	7
 scripts/himmelctl/test/test-install-ui-handoff.sh	1
 scripts/guardrails/test-settings-waiter-allow.sh	1
 scripts/ci/test-billed-optin.sh	10
+scripts/ci/test-ci-go-gate.sh	1

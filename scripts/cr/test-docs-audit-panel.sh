@@ -146,7 +146,7 @@ check "$rc" "7" "T6 rc"
 check "$(cat "$stdout_file")" "" "T6 stdout"
 expect_abort="/pr-check ABORT - docs-audit critic-panel.sh exit 7: the checkout or the diff
 base moved since step 1, so the review inputs no longer match the branch/SHA/base
-the ledger would stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed and
+the ledger would stamp. Nothing was reviewed and
 nothing was recorded. Re-run /pr-check from step 1."
 check "$(cat "$stderr_file")" "$expect_abort" "T6 stderr exact ABORT block"
 [ -e "$STUB_MARKER" ] || { echo "FAIL: T6 stub was never invoked"; fail=1; }

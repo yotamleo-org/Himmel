@@ -822,6 +822,8 @@ scripts/handover/console-kit/test-wrap-merged.sh     # HIMMEL-7101: skipped off-
 scripts/handover/console-kit/test-close-wrapped-leg.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-leg.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
 scripts/handover/console-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
 scripts/handover/console-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; precedent HIMMEL-3699
+scripts/handover/console-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it drives tick.sh and console-wait.sh, both on the kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
 scripts/handover/console-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in
@@ -4530,12 +4532,21 @@ LIVEMSGS
     exit 2
   fi
 
-  if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
-    printf '[RETRY] %s failed (rc=%s); re-running it once\n' "$suite" "$rc"
+  # A cap overrun is retried too: on a loaded runner it is as likely slowness as
+  # a defect, and one rerun in the same job costs less than a red main.
+  if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
+    if [ "$capped" -eq 1 ]; then
+      # The rerun counts it again if it overruns again: one suite, one TIMED OUT.
+      timed_out=$((timed_out - 1))
+      printf '[RETRY] %s exceeded its %ss cap; re-running it once\n' "$suite" "$suite_timeout"
+    else
+      printf '[RETRY] %s failed (rc=%s); re-running it once\n' "$suite" "$rc"
+    fi
     echo '----- first attempt, last 40 lines -----'
     tail -n 40 "$log" | sed 's/^/    /'
     echo '--------------------------'
     first_rc=$rc
+    first_capped=$capped
     first_log="$log"
     _attempt=2
     continue
@@ -4550,6 +4561,10 @@ LIVEMSGS
   if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_skip_line "$log"; then
     printf '[RETRY-SKIP] %s retry exited 0 only through a SKIP line; keeping the first failure (rc=%s)\n' "$suite" "$first_rc"
     rc=$first_rc
+    if [ "$first_capped" -eq 1 ]; then
+      capped=1
+      timed_out=$((timed_out + 1))
+    fi
   fi
   ran=$((ran + 1))
   manifest_add "ran $rc ${mf_rel:-}"

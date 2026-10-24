@@ -1091,13 +1091,16 @@ cron_status() {
     }
     cron_read
     echo "drift-fix-cadence status:"
-    local leg slug entry sched
+    local leg slug entry sched n_entries dup
     for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         slug=$(leg_slug "$leg")
         entry=$(leg_existing "$leg" | head -1)
         if [ -n "$entry" ]; then
             sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
-            echo "ARMED      $leg (cron: $sched)"
+            n_entries=$(leg_existing "$leg" | grep -c . || true)
+            dup=""
+            [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+            echo "ARMED      $leg (cron: $sched)$dup"
         else
             echo "not armed  $leg"
         fi

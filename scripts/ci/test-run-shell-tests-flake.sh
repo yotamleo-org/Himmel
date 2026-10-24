@@ -16,7 +16,7 @@
 #   F4  second flake inside the window  -> the ticket line
 #   F5  an old prior flake              -> no ticket line
 #   F6  a flake beside a real failure   -> rc 1 (the flake does not mask FAIL)
-#   F7  a suite killed at its cap       -> not retried
+#   F7  a suite killed at its cap       -> retried once, TIMED OUT counted once
 #   F8  a retry of a no-retry suite that would have passed stays FAIL
 #   F9  a leading-zero SUITE_FLAKE_WINDOW_DAYS reads as decimal
 #   F10 a flake is a ::warning and a step-summary section on CI
@@ -202,7 +202,7 @@ rm -rf "$sb"
 fi
 
 # --- F7 -------------------------------------------------------------------------
-echo "== F7: a suite killed at its cap is not retried =="
+echo "== F7: a suite killed at its cap is retried once =="
 sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-flake7.XXXXXX") || { fail "F7: mktemp failed"; sb=""; }
 if [ -n "$sb" ]; then
 mkdir -p "$sb/scripts"
@@ -210,8 +210,9 @@ printf '#!/usr/bin/env bash\ncnt="$(dirname "$0")/slow.count"\nn=$(cat "$cnt" 2>
 printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/scripts/test-pass.sh"
 chmod +x "$sb/scripts/test-slow.sh" "$sb/scripts/test-pass.sh"
 run_flake "$sb" SUITE_TIMEOUT=2
-if [ "$rc" -eq 1 ] && [ "$(cat "$sb/scripts/slow.count" 2>/dev/null || echo 0)" = 1 ] && grepq "$out" -F 'CAP EXCEEDED'; then
-  pass "F7: a capped suite ran once and renders CAP EXCEEDED"
+if [ "$rc" -eq 1 ] && [ "$(cat "$sb/scripts/slow.count" 2>/dev/null || echo 0)" = 2 ] && grepq "$out" -F 'CAP EXCEEDED' \
+    && grepq "$out" -F ' TIMED OUT: 1 (counted in FAIL)'; then
+  pass "F7: a capped suite ran twice, renders CAP EXCEEDED and counts TIMED OUT once"
 else
   fail "F7: rc=$rc runs=$(cat "$sb/scripts/slow.count" 2>&1) out: $out"
 fi

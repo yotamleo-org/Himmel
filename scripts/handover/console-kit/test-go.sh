@@ -661,6 +661,109 @@ check "22: --trust-reviewed go-pr-78 -> exit 2" "$rc" "2"
 contains "22: the refusal names the reserved namespace" "$out" "go-pr-"
 check "22: the reserved qid writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA" && echo yes || echo no)" "no"
 
+# --- 23. an adopted repo gets a trust-reviewed GO for its own PRs ----------
+# R3: an operator-adopted repo (scripts/guardrails/himmel-adopted.json on the
+# harness's default branch, merge_allowed true) whose PR touches its declared
+# trust path ^deploy/ gets `go.sh --repo acme/widget --trust-reviewed <q>`: the
+# GO signs acme/widget, and go_trust_gate - merge-on-green's predicate on a
+# trust-path hit - accepts it. The judge record lives in acme/widget's own
+# bucket (u/acme--widget) and names the repo in a signed repo: line. R4: a plain GO
+# for that PR stays refused. The allowlist fails closed on every bad shape.
+ROOT23="$tmp/root23"; mkdir -p "$ROOT23"
+A23_BIN="$tmp/a23-bin"; mkdir -p "$A23_BIN"
+A23_ORIGIN=$(git -C "$HERE" remote get-url origin | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##')
+export A23_ORIGIN A23_ADOPTED="$tmp/a23-adopted.json" A23_HEAD="$SHA"
+cat > "$A23_BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+    "repo view")
+        case "$*" in
+            *defaultBranchRef*) printf 'main' ;;
+            *) printf '%s' "${STUB_NWO:-o/r}" ;;
+        esac ;;
+    "api repos/"*)
+        case "$2" in
+            "repos/$A23_ORIGIN/contents/scripts/guardrails/himmel-adopted.json?ref=main") cat "$A23_ADOPTED" 2>/dev/null || exit 1 ;;
+            *) exit 1 ;;
+        esac ;;
+    "pr view")
+        printf '{"state":"OPEN","headRefOid":"%s","mergeable":"MERGEABLE","baseRefName":"%s","mergeStateStatus":"CLEAN","statusCheckRollup":[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}\n' "$A23_HEAD" "${A23_BASE:-main}" ;;
+    "api graphql")
+        printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}\n' ;;
+    *) exit 91 ;;
+esac
+STUB
+chmod +x "$A23_BIN/gh"
+a23() { PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT23" bash "$SCRIPT" "$@"; }
+# averdict <scope> <qid> <repo line or empty> - a signed GO record for PR 88 at $SHA.
+averdict() {
+  local vf="$ROOT23/$1/verdicts/$2/judge.md" vmac
+  mkdir -p "$ROOT23/$1/verdicts/$2"
+  # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+  printf '# VERDICT %s - judge\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 88\n%smodel: m\neffort: e\n\nreason\n' "$2" "$SHA" "${3:+$3
+}" > "$vf"
+  vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" judge' _ "$HERE/../../lib/go-gate.sh" "$1" "$2" < "$vf")" || { echo "FAIL - cannot sign $vf"; fails=$((fails+1)); return 1; }
+  printf 'mac: %s\n' "$vmac" >> "$vf"
+}
+printf '[{"nwo":"acme/widget","merge_allowed":true},{"nwo":"acme/off","merge_allowed":false}]\n' > "$A23_ADOPTED"
+averdict u/acme--widget W1 "repo: acme/widget"
+rc=0; out="$(a23 --repo acme/widget --trust-reviewed W1 88 "$SHA" 2>&1)" || rc=$?
+check    "7392 R3: adopted repo trust-reviewed GO -> exit 0" "$rc" "0"
+GO23="$ROOT23/.locks/go/88.$SHA"
+contains "7392 R3: the GO carries the judge's qid" "$(cat "$GO23" 2>/dev/null)" "trust-reviewed=W1"
+rc=0; out=$(go_trust_gate 88 "$SHA" "$ROOT23" acme/widget) || rc=$?
+check    "7392 R3: go_trust_gate accepts it for acme/widget" "$rc:$out" "0:W1"
+rc=0; go_trust_gate 88 "$SHA" "$ROOT23" o/r >/dev/null || rc=$?
+check    "7392 R3: the GO signs acme/widget, not the harness repo" "$rc" "2"
+REC23="$ROOT23/u/acme--widget/verdicts/go-pr-88/console-go-$SHA.md"
+contains "7392 R3: the persisted GO record names the repo" "$(cat "$REC23" 2>/dev/null)" "repo: acme/widget"
+# R4: the same PR on a plain GO stays refused - go.sh will not write one, and
+# a plain GO signed for acme/widget fails the trust gate.
+rm -f "$GO23"
+rc=0; a23 --repo acme/widget 88 "$SHA" >/dev/null 2>&1 || rc=$?
+check    "7392 R4: --repo without --trust-reviewed -> exit 2" "$rc" "2"
+mkdir -p "$ROOT23/.locks/go"
+{ printf 'pr=88\nhead=%s\nby=t\nat=t\n' "$SHA"; printf 'mac=%s\n' "$(go_mac 88 "$SHA" acme/widget "")"; } > "$GO23"
+rc=0; out=$(go_trust_gate 88 "$SHA" "$ROOT23" acme/widget) || rc=$?
+check    "7392 R4: a plain GO for the adopted PR fails the trust gate" "$rc" "2"
+rm -f "$GO23"
+# t23 <label> <want rc> <args...> - a refusal that writes no GO
+t23() {
+  local label="$1" want="$2" rc=0; shift 2
+  a23 "$@" >/dev/null 2>&1 || rc=$?
+  check "7392: $label -> exit $want" "$rc" "$want"
+  check "7392: $label -> no GO written" "$(test -e "$GO23" && echo yes || echo no)" "no"
+}
+t23 "merge_allowed false" 6 --repo acme/off --trust-reviewed W1 88 "$SHA"
+t23 "a repo not on the list" 6 --repo acme/other --trust-reviewed W1 88 "$SHA"
+printf '[{"nwo":"acme/widget","merge_allowed":"true"}]\n' > "$A23_ADOPTED"
+t23 "merge_allowed a string" 6 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+printf '[{"nwo":"acme/widget","merge_allowed":true},{"nwo":"acme/widget","merge_allowed":true}]\n' > "$A23_ADOPTED"
+t23 "a duplicate nwo" 6 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+printf 'not json\n' > "$A23_ADOPTED"
+t23 "invalid JSON" 6 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+printf '{"nwo":"acme/widget","merge_allowed":true}\n' > "$A23_ADOPTED"
+t23 "an object, not an array" 6 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+rm -f "$A23_ADOPTED"
+t23 "a missing allowlist" 6 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+printf '[{"nwo":"%s","merge_allowed":true}]\n' "$A23_ORIGIN" > "$A23_ADOPTED"
+t23 "the harness repo itself" 6 --repo "$A23_ORIGIN" --trust-reviewed W1 88 "$SHA"
+printf '[{"nwo":"acme/widget","merge_allowed":true}]\n' > "$A23_ADOPTED"
+A23_BASE=dev t23 "a PR not based on the default branch" 7 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+# only acme/widget's own bucket counts, and its record must name acme/widget
+averdict "$VSCOPE" W2 ""
+t23 "a judge GO in the harness bucket" 5 --repo acme/widget --trust-reviewed W2 88 "$SHA"
+averdict u/acme--widget W3 ""
+t23 "a record naming no repo" 5 --repo acme/widget --trust-reviewed W3 88 "$SHA"
+averdict u/acme--widget W4 "repo: other/widget"
+t23 "a record naming another repo" 5 --repo acme/widget --trust-reviewed W4 88 "$SHA"
+averdict u/widget W5 "repo: acme/widget"
+t23 "a record in a bucket another owner's widget shares" 5 --repo acme/widget --trust-reviewed W5 88 "$SHA"
+# the harness path refuses a record written for an adopted repo
+averdict "$VSCOPE" W5 "repo: acme/$VBUCKET"
+rc=0; go_trust_verdict "$ROOT23" W5 "$SHA" "$HERE/../../.." 88 >/dev/null || rc=$?
+check    "7392: the harness lookup refuses an adopted repo's record" "$rc" "2"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-go.sh"

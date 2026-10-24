@@ -796,8 +796,13 @@ function capture(strict = true) {
   if (strict && cadenceRegistryIds === null) {
     throw new Error('capture-operator-profile: cannot capture cadences: cadence-registry.json read failed (scripts/himmelctl/lib/cadence-registry.json) — refusing to fabricate the registry-scoped profile.cadences filter');
   }
-  const handover = captureHandover(primaryEnv, configDir);
-  const vault = captureVault(primaryEnv);
+  // HANDOVER_DIR and LUNA_VAULT_PATH are behaviour keys: himmel.conf.local, then himmel.conf, then the legacy .env (config-layers.md).
+  const behaviourEnv = { ...primaryEnv };
+  for (const file of ['himmel.conf', 'himmel.conf.local']) {
+    for (const [k, v] of Object.entries(parseDotenv(join(home, '.himmel', file)))) if (v) behaviourEnv[k] = v;
+  }
+  const handover = captureHandover(behaviourEnv, configDir);
+  const vault = captureVault(behaviourEnv);
   const envKeys = captureEnvKeys(REPO_ROOT, primaryEnvKeys);
   const hud = captureHud(configDir);
   const observability = captureObservability();

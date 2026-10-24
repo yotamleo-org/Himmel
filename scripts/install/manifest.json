@@ -449,6 +449,106 @@
       "offboard": "advise"
     },
     {
+      "id": "cadence-runs-pipeline",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["luna", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/pipeline-cadence.sh", "tasks": [{"task": "HIMMEL-Pipeline-FetchHealth", "scheduleKey": "fetchHealth", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Harvest", "scheduleKey": "harvest", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Synthesize", "scheduleKey": "synthesize", "intervalHours": 24}, {"task": "HIMMEL-Pipeline-Health", "scheduleKey": "health", "intervalHours": 168}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-qmd",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["luna", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/qmd-cadence.sh", "tasks": [{"task": "HIMMEL-Qmd-Reindex", "intervalHours": 2}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-graphmap",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["luna", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/graphmap-cadence.sh", "tasks": [{"task": "HIMMEL-GraphMap-Luna", "intervalHours": 168}, {"task": "HIMMEL-GraphMap-Himmel", "intervalHours": 168}, {"task": "HIMMEL-GraphMapAst-Luna", "intervalHours": 24}, {"task": "HIMMEL-GraphMapAst-Himmel", "intervalHours": 1}, {"task": "HIMMEL-GraphPublish-Himmel", "intervalHours": 2}, {"task": "HIMMEL-GraphSemantic-Luna", "intervalHours": 2}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-codex-sweep",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/cleanup/codex-sweep-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-CodexOrphanSweep", "intervalHours": 4}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-drift-fix",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/upstreams/drift-fix-cadence.sh", "tasks": [{"task": "HIMMEL-DriftFix", "intervalHours": 24}, {"task": "HIMMEL-ForkResync", "intervalHours": 24}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-upstream-watch",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/upstreams/upstream-watch-cadence.sh", "tasks": [{"task": "HIMMEL-UpstreamWatch", "intervalHours": 24, "okRcs": [0, 10]}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-doctor",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/doctor-cadence.sh", "tasks": [{"task": "HIMMEL-Doctor", "intervalHours": 24}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-repo-sync",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/sync/repo-sync-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-RepoSync", "intervalHours": 24}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-pull-cadence",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/luna-vitals/connectors/pull-cadence.sh", "tasks": [{"task": "HIMMEL-LunaVitalsPull", "intervalHours": 24}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-vault-stall",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["luna", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/vault-stall-cadence.sh", "tasks": [{"task": "HIMMEL-VaultStall", "intervalHours": 0.25}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "luna-sources",
       "kind": "vault",
       "scopes": ["user"],

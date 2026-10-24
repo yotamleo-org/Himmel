@@ -257,6 +257,7 @@ scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
 scripts/docs/test-generate-credits.sh	pr	static-gate
+scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
@@ -264,6 +265,7 @@ scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 4
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
 scripts/eval/guard-corpus/test-guard-corpus.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new HIMMEL-6943
+scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	local	behaviour suite, new HIMMEL-7385
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -349,6 +351,7 @@ scripts/handover/console-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/console-kit/test-console-budget.sh	pr	static-gate
 scripts/handover/console-kit/test-console-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-console-wait-b.sh	quarantine	cap-exceeded flakes, HIMMEL-6547; second half of test-console-wait.sh, HIMMEL-6742
+scripts/handover/console-kit/test-console-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in console-wait.sh, HIMMEL-7386
 scripts/handover/console-kit/test-console-wait-r0.sh	local	behaviour suite, the script relay (R0) of console-wait.sh, HIMMEL-6538
 scripts/handover/console-kit/test-console-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
 scripts/handover/console-kit/test-cr-disposition.sh	pr	trust-path
@@ -447,6 +450,7 @@ scripts/handover/test-flush.sh	local	behaviour suite, 0 catches in the 400-PR au
 scripts/handover/test-friction-gate-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-generate-morning-briefing.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-handover-root-dotenv.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-headed-arm-tabs.sh	local	new since the audit, behaviour suite
 scripts/handover/test-headed-arm.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-hop.sh	local	new since the audit, behaviour suite
 scripts/handover/test-jira-dist-primary-4456.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1122,3 +1126,4 @@ scripts/lib/test-cr-first-release.sh	pr	trust-path
 scripts/himmelctl/test/test-install-ui-handoff.sh	pr	guard
 scripts/guardrails/test-settings-waiter-allow.sh	pr	guard
 scripts/ci/test-billed-optin.sh	pr	trust-path
+scripts/ci/test-ci-go-gate.sh	pr	trust-path

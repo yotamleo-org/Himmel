@@ -81,8 +81,8 @@ while [ $# -gt 0 ]; do
             echo "panel-first-pass: unknown arg: $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$HEAD_SHA" ] || { echo "panel-first-pass: --head is required (step 1's captured SHA, HIMMEL-1175)" >&2; exit 2; }
-[ -n "$BRANCH" ]   || { echo "panel-first-pass: --branch is required (step 1's captured branch, HIMMEL-1175)" >&2; exit 2; }
+[ -n "$HEAD_SHA" ] || { echo "panel-first-pass: --head is required (step 1's captured SHA)" >&2; exit 2; }
+[ -n "$BRANCH" ]   || { echo "panel-first-pass: --branch is required (step 1's captured branch)" >&2; exit 2; }
 # the round counter and ledger are per-branch shared state; only
 # the branch checked out in cwd may be written (review-round.sh refuses too).
 current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
@@ -103,7 +103,7 @@ fi
 # so it never competes with the rc=128 fail-open, which keeps its own job
 # (a diff that fails for some reason OTHER than an unresolvable pin).
 if ! git rev-parse --verify --quiet "$HEAD_SHA^{commit}" >/dev/null 2>&1; then
-    echo "panel-first-pass ABORT - --head $HEAD_SHA does not resolve to a commit in this repo (HIMMEL-2542). This is an input-pin failure, NOT a critic outage: nothing was reviewed and nothing was recorded. Re-check the SHA step 1 printed (never expand a short hash by hand) and re-run /pr-check from step 1." >&2
+    echo "panel-first-pass ABORT - --head $HEAD_SHA does not resolve to a commit in this repo. This is an input-pin failure, NOT a critic outage: nothing was reviewed and nothing was recorded. Re-check the SHA step 1 printed (never expand a short hash by hand) and re-run /pr-check from step 1." >&2
     exit 7
 fi
 
@@ -214,7 +214,7 @@ else
                 exit 5
             fi
             printf 'pr-check: delta round %s on %s (from %s)\n' "$review_round" "$BRANCH" "$delta_from"
-            echo "delta round blocking set: Critical or escape-class only - every other finding is deferred at step 4.9 (HIMMEL-4600)."
+            echo "delta round blocking set: Critical or escape-class only - every other finding is deferred at step 4.9."
             ;;
         *)
             printf 'pr-check: round %s of 3 on %s\n' "$review_round" "$BRANCH"
@@ -237,7 +237,7 @@ else
         cat >&2 <<'PINABORT'
 /pr-check ABORT - critic-panel.sh exit 7: the checkout or the diff base moved since
 step 1, so the review inputs no longer match the branch/SHA/base the ledger would
-stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed and nothing was recorded.
+stamp. Nothing was reviewed and nothing was recorded.
 Re-run /pr-check from step 1.
 PINABORT
         exit 7
@@ -271,7 +271,7 @@ PINABORT
                     cat >&2 <<'PINABORTRETRY'
 /pr-check ABORT - critic-panel.sh exit 7 on the rtk retry: the checkout or the
 diff base moved mid-run, so the review inputs no longer match the branch/SHA/base
-the ledger would stamp (HIMMEL-1175, HIMMEL-1984). Nothing was reviewed. Re-run
+the ledger would stamp. Nothing was reviewed. Re-run
 /pr-check from step 1.
 PINABORTRETRY
                     exit 7
@@ -287,7 +287,7 @@ PINABORTRETRY
                 # write failed there is nothing to hold, so ABORT instead.
                 case "$panel_avail_lines" in
                 *"could not record certify-refused"*)
-                    echo "/pr-check ABORT - critic-panel.sh exit 6 and the refusal could not be recorded on the CR ledger (HIMMEL-1932), so nothing would hold the CR marker closed. Fix the ledger path and re-run /pr-check from step 1." >&2
+                    echo "/pr-check ABORT - critic-panel.sh exit 6 and the refusal could not be recorded on the CR ledger, so nothing would hold the CR marker closed. Fix the ledger path and re-run /pr-check from step 1." >&2
                     exit 7
                     ;;
                 esac

@@ -67,6 +67,11 @@ CAUSED_BY = re.compile(r"caused-by:\s*#?(\d+|unknown)\b", re.I)
 CITE = re.compile(r"(?:#|/pull/)(\d+)\b")
 
 
+# ponytail: one alias, opus -> claude-opus-5-5 (decision 194: two spellings, one model row); a family
+# table is the upgrade path when a second alias shows up in the verdicts.
+MODEL_ALIAS = {"opus": "claude-opus-5-5"}
+
+
 def queue_path(path=None):
     return path or os.environ.get(QUEUE_ENV) or os.path.expanduser("~/.himmel/eval/judge-accuracy/adjudication.jsonl")
 
@@ -111,7 +116,7 @@ def parse_verdict(path):
         "qid": os.path.basename(os.path.dirname(path)), "name": name, "verdict": m.group(1), "head": m.group(2),
         "pr": int(pr) if pr and pr.isdigit() else None,
         "prior": prior if prior in ("GO", "NO-GO") else None,
-        "model": None if model in (None, "", "unknown") else model,
+        "model": None if model in (None, "", "unknown") else MODEL_ALIAS.get(model, model),
         "effort": None if effort in (None, "", "unknown") else effort,
         "classes": sorted(classes - {"", "none", "n/a"}),
         "at": when(header(text, "written-at") or ""),

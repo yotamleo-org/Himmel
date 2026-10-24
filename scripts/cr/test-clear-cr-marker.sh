@@ -2699,6 +2699,9 @@ if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep'; then pass;
 if grepq "$LAST_CLEAR_OUT" -F "r1@$_r1" && grepq "$LAST_CLEAR_OUT" -F "r2@${_tip:0:8}"; then pass; else
     fail "8g must name every finding missing a sweep as <id>@<head>: $LAST_CLEAR_OUT"; fi
 if marker_exists "$tmp"; then pass; else fail "8g: marker must REMAIN"; fi
+# 7372: the refusal explains the reason tag after an id and the allowed single-site search options.
+if grepq "$LAST_CLEAR_OUT" -F 'names why that record failed' && grepq "$LAST_CLEAR_OUT" -F 'sites= form'; then pass; else
+    fail "8g must teach the reason tag and the sites= fallback: $LAST_CLEAR_OUT"; fi
 # 8h. --dry-run refuses the same way (gate 4d is read-only).
 run_clear "$tmp" 14 "8h --dry-run also refuses a missing variant-sweep record" --dry-run
 rm -rf "$tmp"
@@ -3530,6 +3533,12 @@ STUB
     cat > "$tmp/bin/sleep" <<'STUB'
 #!/usr/bin/env bash
 D="$(dirname "$0")/.."
+# A short sleep is a timeout wrapper's poll (the macOS fallback `timeout` sleeps
+# the whole bound): run it for real, or the bounded ls-remote reads as timed out.
+case "$1" in
+    ''|*[!0-9]*) ;;
+    *) if [ "$1" -lt 30 ]; then PATH="${PATH#"$(dirname "$0")":}" exec sleep "$1"; fi ;;
+esac
 echo "$1" >> "$D/sleeps.log"
 touch "$D/woke"
 STUB

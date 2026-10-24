@@ -29,7 +29,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
-| Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a value set in the launching shell wins until the UI restarts without it | the next worker launch |
+| Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a `HIMMEL_FLEET_CAP` exported in the shell that launches a worker wins over the `.env` line for that launch, and it takes any whole number, outside 1 to 50 too; and the page shows a notice while the shell that started the UI sets one | the next worker launch |
 | VM mode (Settings) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
 | Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
@@ -109,7 +109,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   removed here; the always-on service refuses a save until the UI login ships, so use an
   ad-hoc `himmelctl ui` for secrets; plus the commit rules, tracker and ticket-id-required, each with a
   dry-run before it changes), `#/health` (one verdict:
-  All clear / Needs a look / Act now), `#/toolhealth` (tool-call failure and
+  All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
+  cards from the weekly roll-up, see below), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
   librarian, live from the Jira mirror; click a version for its kanban at
   `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
@@ -135,6 +136,20 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   Deep link: `&k=s.<leg>.<stage>`. `GET /api/agui/brief?leg=<doc name>` returns that
   leg's handover doc as redacted text. Both routes look a doc up by name under
   `HANDOVER_DIR`, never by a path from the request.
+- **Weekly roll-up trends.** The Health page's Trends section and the top of the Fleet page's
+  Trends tab show three cards: Velocity (merges), Cost (cost per ticket) and Health (red-main
+  incidents). Each has a sparkline by finished week, the change against the previous week and
+  the previous version, and one plain sentence such as "Faster than last week and costlier
+  than last version". The server serves the roll-up read-only at `GET /api/rollup` from
+  `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE` overrides), written by
+  `python3 scripts/eval/weekly-rollup.py write`; the browser recomputes nothing, and without
+  the file the section says "no data yet".
+
+- **How good are our reviewers?** The Health page shows the reviewer page the weekly judge-accuracy
+  cadence renders: how often the codex critic, CodeRabbit and the judges are right, with ranges, the
+  five open evals questions and each change with its before and after. The server serves it read-only at
+  `GET /api/reviewers` from `~/.himmel/state/review-page/review-page.md` (`REVIEW_PAGE_FILE` overrides); without the
+  file the section says "No data: no review page yet (arm scripts/eval/judge-accuracy/judge-accuracy-cadence.sh)".
 
 Full reference, endpoints and environment overrides:
 [scripts/config-ui/README.md](../scripts/config-ui/README.md).

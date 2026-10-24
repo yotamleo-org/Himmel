@@ -1121,6 +1121,32 @@ else
   pass "case ii: LUNA_VAULT_PATH quote-stripping verified with handover"
 fi
 
+# ── case ii2: HANDOVER_DIR and LUNA_VAULT_PATH are behaviour keys; with
+# the .env holding neither, ~/.himmel/himmel.conf (and himmel.conf.local over it) decides. ──
+FIX_REPO_CONF="$work/repo-conf-keys"
+cp -r "$FIX_REPO" "$FIX_REPO_CONF"
+: > "$FIX_REPO_CONF/.env"
+git -C "$FIX_REPO_CONF" config user.email "fixture@test.local"
+git -C "$FIX_REPO_CONF" config user.name "fixture"
+git -C "$FIX_REPO_CONF" add -A
+git -C "$FIX_REPO_CONF" commit -q -m "fixture"
+mkdir -p "$HOME/.himmel"
+printf 'HANDOVER_DIR=/fake/conf/handover\nLUNA_VAULT_PATH=/fake/conf/vault\n' > "$HOME/.himmel/himmel.conf"
+confOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_CONF")" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
+confCheck=$("$node_bin" -e "
+const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const problems = [];
+if (j.profile.handover.mode !== 'external') problems.push('handover.mode should be external (himmel.conf), got ' + j.profile.handover.mode);
+if (j.profile.vault.mode !== 'existing') problems.push('vault.mode should be existing (himmel.conf), got ' + j.profile.vault.mode);
+console.log(problems.join('|'));
+" <<< "$confOut")
+if [ -z "$confCheck" ]; then
+  pass "case ii2: HANDOVER_DIR / LUNA_VAULT_PATH set only in himmel.conf read as external / existing"
+else
+  fail "case ii2: himmel.conf behaviour keys" "$confCheck"
+fi
+rm -rf "$HOME/.himmel"
+
 # ── case jj: normalizeDotenvValue — the single dotenv value-grammar parser
 # closing the class of corner cases CR rounds kept finding
 # one at a time: quoted-empty, quoted-whitespace, a bare

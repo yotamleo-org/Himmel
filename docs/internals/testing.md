@@ -106,8 +106,9 @@ the point.
 **Proving a macOS fix inside its PR: the `ci:macos` label.** A PR that fixes
 macOS code (or whose brief says macOS) gets the label before `READY`; the
 workflow then runs on the PR head when the label is added and on every later
-push, and both its jobs are skipped on a PR without the label (an unlabelled PR
-shows no macOS check at all, so the HIMMEL-3853 cost rule stands). A PR run
+push, and both its jobs are skipped on a PR without the label (after a push an unlabelled PR
+lists its two `macos-cadence` checks as skipped, which use no macOS runner, so
+the HIMMEL-3853 cost rule stands). A PR run
 never records breakages and never uploads `macos-breakage-record`: that record
 belongs to main's cadence runs.
 
@@ -369,6 +370,7 @@ The obsidian-triage suites need `js-yaml`/`playwright` from `tools/node_modules`
 CI installs them with `marketplace/plugins/obsidian-triage/tools/ensure-deps.sh` before
 the shards, and locally run that once (it exits non-zero on any npm/network failure).
 Suites that fail under the runner are quarantined on `SKIP_LIST` with a ticket ID — never silently.
+The CI and merge flow, including when to quarantine and when main-red holds the fleet, is in [`ci-merge-flow.md`](ci-merge-flow.md).
 
 **A `SKIP_LIST` suite is "uncovered", never "CI verifies".** CI does
 not run it, so a PR or handover that cites CI as its evidence is citing nothing.

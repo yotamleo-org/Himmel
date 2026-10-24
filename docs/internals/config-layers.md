@@ -49,6 +49,11 @@ agent writes to those files yet.
 Secrets are read from `.env` only. A secret key planted in `himmel.conf` is
 never loaded.
 
+A policy key exported from a shell profile (for example a sourced
+`~/.config/himmel/env`) is process env too, so it is ignored with the same
+notice. Move it into `config.json` `.policy`; a behaviour key exported there
+still wins, as the list above says.
+
 The directory is always `$HOME/.himmel`. No environment variable moves it
 (`HIMMEL_LUNA_CONFIG_PATH`, which `himmelctl` honours for its own fields, is
 not consulted for policy).
@@ -77,6 +82,13 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `TRACKER`. Their meanings and defaults are unchanged; `.env.example`
 documents each one.
 
+Every reader of these keys follows the same order as `load_dotenv`: the
+process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
+default. A reader that opens only `.env`, or only the process env, misses a
+key the operator has moved; the shell, the Jira CLI
+(`scripts/jira/src/handover-root.ts`), the lane resolver, the profile capture
+and the config UI all resolve it that way.
+
 Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
 
@@ -94,6 +106,11 @@ behaviour config until the commit-message hook reads them through
 `load_policy`.
 
 ## Example files
+
+Tracked templates to copy: `docs/setup/himmel.conf.example` (every behaviour
+key, commented out) and `docs/setup/himmel-config.example.json` (the policy
+section, every key `null`, which reads as unset). `scripts/lib/test-load-config.sh`
+checks that each template names only keys of its own class.
 
 `~/.himmel/himmel.conf` uses the same `KEY=value` form as `.env`. It is
 parsed, never executed:
@@ -179,7 +196,9 @@ move without writing.
    prompt: it reads the value from `.env` and writes it into
    `~/.himmel/config.json`, so the value is never shown.
 4. Start a session. When no `DEPRECATED` notice appears, delete the moved
-   lines from `.env`.
+   lines from `.env`. Rebuild the Jira CLI first (`scripts/jira/dist` is not
+   tracked): an older build reads `HANDOVER_DIR` from the process env or
+   `.env` only, not from `himmel.conf`.
 
 The `.env` fallback for non-secret keys is removed one release after setup,
 adopt and `himmelctl` read the new files.

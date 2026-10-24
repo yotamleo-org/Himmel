@@ -80,7 +80,7 @@ contains "plan change reaches the doc" "$(cat "$out/docs/HIMMEL-111.md")" "why-c
 before="$(plan_sum)"
 run --refresh --force >/dev/null 2>&1
 [ "$before" = "$(plan_sum)" ] && pass "source plan dir content untouched by refresh" || fail "plan dir changed"
-[ "$(find "$plan" -type f | wc -l)" = 4 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
+[ "$(find "$plan" -type f | wc -l)" -eq 4 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
 
 echo three >> "$mir/HIMMEL-111.md"; cp "$out/.fp" "$W/fp.keep"
 r="$(QMD_FAIL=1 run --refresh 2>&1)"; rc=$?
@@ -121,7 +121,7 @@ r="$(ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$W/plan2" --out 
 cp -r "$plan" "$W/plan3"
 sed -i.bak 's/Knowledge substrate/Guard-safety/' "$W/plan3/stage1/C01.tsv"; rm -f "$W/plan3/stage1/C01.tsv.bak"
 ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$W/plan3" --out "$W/out3" >/dev/null 2>&1
-[ "$(find "$W/out3/docs" -name 'theme-*.md' | wc -l)" = 2 ] && pass "slug collision: both theme docs kept" || fail "slug collision overwrote a theme doc"
+[ "$(find "$W/out3/docs" -name 'theme-*.md' | wc -l)" -eq 2 ] && pass "slug collision: both theme docs kept" || fail "slug collision overwrote a theme doc"
 
 # --out inside/over the plan dir never deletes the plan
 cp -r "$plan" "$W/plan4"; before4="$(cd "$W/plan4" && find . -type f | sort | xargs sha256sum | sha256sum)"

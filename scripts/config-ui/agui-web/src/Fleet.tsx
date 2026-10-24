@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { chainKey, cloudPhase, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
-import { BoardContext, cardOf, DrawerView, Legend, StageDots, StateChip, Swatch, Trends, useBoard, useBoardCtx, useDrawerKeys, type BoardCtx, type Panel } from "./Board";
+import { BoardContext, cardOf, DrawerView, Legend, StageDots, StateChip, Swatch, Trends, RollupCards, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
 import { joinBoard, needsShown, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
 type Node = { row: Row; kids: Node[] };
@@ -137,6 +137,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   // the console board: the named console, else the newest live one. The page works without it (its fetch may fail).
   const boardConsole = selected ?? all.filter((r) => r.role === "console" && r.live !== false && r.state !== "wrapped").sort((a, b) => (b.runtime?.startedAt ?? 0) - (a.runtime?.startedAt ?? 0))[0]?.name ?? null;
   const { board, error: boardError } = useBoard(token, boardConsole);
+  const rollup = useRollup(token);
   const joined = useMemo(() => (board ? joinBoard(all, board) : []), [all, board]);
   const needs = useMemo(() => needsShown(joined, all, filters), [joined, all, filters]);
   const [tab, setTab] = useState(() => parseView(location.hash).tab);
@@ -185,8 +186,8 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
           {(["fleet", "trends"] as const).map((t) => <button key={t} type="button" aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{t === "fleet" ? "Fleet" : "Trends"}</button>)}
           {boardError && <span className="quiet" role="status">{`board: ${boardError}`}</span>}
         </nav>}
-        {tab === "trends" && board && <Trends board={board} onCard={(card) => setPanel({ kind: "card", card })} />}
-        {tab === "trends" && !board && <p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p>}
+        {tab === "trends" && board && <Trends board={board} rollup={rollup} onCard={(card) => setPanel({ kind: "card", card })} />}
+        {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
         {(s.attention.length > 0 || needs.length > 0) && <Section id="attention" title="Needs attention" count={counts.attention + needs.length} initial={true} className="fleet-attention">

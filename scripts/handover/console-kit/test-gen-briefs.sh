@@ -66,6 +66,13 @@ has "brief 1 routes VM-only checks through the VM queue" "$B1" "VM queue"
 has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never run run-shell-tests.sh full or sharded locally"
 has "brief 1 limits local runs to the RED rows of the item built" "$B1" "Locally run only the RED rows of the item you build"
 
+# the three most-refused shapes are taught where the leg first meets them (7370, 7371, 7372)
+has "brief 1 teaches the exact quiet-run RED command, nothing inside the backticks after the suite" "$B1" "run it as \`bash scripts/quiet-run.sh suite -- bash <test-*.sh>\` with nothing appended"
+has "brief 1 names the quiet-run log path to Read" "$B1" "Read the log path its ERR line prints"
+has "brief 1 teaches the Edit tool / python3 -I <file> shape" "$B1" "run as \`python3 -I <file>\`"
+has "brief 1 teaches the SWEEP record grammar and its write command" "$B1" "write its \`SWEEP [<id>@<head>] class=… :: sites=…\` line (a one-site finding: \`:: single-site search=git grep …\`) with \`bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>\`"
+has "brief 1 teaches the single-site search form for a one-site finding" "$B1" ":: single-site search=git grep"
+
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
 has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
 has "brief 2 wrap command passes --queue-doc with its own doc" "$(cat "$D2")" "wrap-subtree-check.sh --queue-doc $D2"
@@ -421,7 +428,7 @@ done
 # Every leg and console pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
-for budget in "leg-preface.md:12288" "console-template.md:16384"; do
+for budget in "leg-preface.md:12352" "console-template.md:16384"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"

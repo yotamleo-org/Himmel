@@ -20,12 +20,15 @@ import { readQuota } from "./quota-sources";
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
+import { readRollup } from "./rollup";
+import { readReviewers } from "./reviewers";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { readGate, writeGate } from "./review-gate";
+import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 import { secretWrite, setupState } from "./setup";
@@ -480,12 +483,22 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         ]);
         let raw = "";
         try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...env }) })); // as the CLI: the checkout's .env, the process env winning
+        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) }) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readQuota(env, now())));
+      }
+      // the weekly roll-up as three trend cards, read from the file weekly-rollup.py wrote. Never recomputed here.
+      if (path === "/api/rollup") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(redactOut(readRollup(env)));
+      }
+      // the review page (critics and judges on planted bugs and merged PRs), read from the file the weekly judge-accuracy cadence wrote.
+      if (path === "/api/reviewers") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(redactOut(readReviewers(env)));
       }
       // the tracker sources the rail gates Roadmap and Kanban on.
       if (path === "/api/sources") {

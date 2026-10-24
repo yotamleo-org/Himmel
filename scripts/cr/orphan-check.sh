@@ -102,7 +102,7 @@ if [ -s "$prior_file" ]; then
     printf '%s\n' "$orphan_out" | while read -r oline; do
         case "$oline" in
             ORPHAN_COUNT=*) ;;
-            ?*) echo "orphan phase-A candidate: $oline -- no matching aggregate VERDICT line; treating as unaddressed (fail-closed, HIMMEL-1219)" >&2 ;;
+            ?*) echo "orphan phase-A candidate: $oline -- no matching aggregate VERDICT line; treating as unaddressed (fail-closed)" >&2 ;;
         esac
     done
 fi

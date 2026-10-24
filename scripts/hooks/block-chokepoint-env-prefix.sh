@@ -1028,6 +1028,11 @@ deny_text_layer() {  # deny_text_layer <reason constant> -- OUR text only
     himmel's rule: set env overrides in the LAUNCHING shell, never per call;
     run the chokepoint bare with a literal path.
 
+    Only EDITING or searching a file that merely names a seam variable,
+    unset or -u beside a scripts/ path? Use the Edit tool, or Write the
+    script to a file and run it as: python3 -I <file>. The command text
+    then carries no seam word beside a path, so this layer stays quiet.
+
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the
     shell that launched Claude Code (a per-call prefix does not reach a
     hook process); restart without it to re-enable the guard."

@@ -8,10 +8,12 @@ blocks every merge, so classify it first, using steps 1-3 below:
   test is fine): quarantine the case and file its ticket at once. The fleet
   keeps merging.
 - **Real blocker** (main's code is broken): HOLD merges until the fix lands.
-- **Complex** (no clear class, or more than one cause): escalate to the
-  chief.
+- **Complex** (no clear class, or more than one cause): escalate to a
+  higher tier, a judge or the operator.
 
 The first cause you name has to be the right one.
+
+The full CI and merge flow, with the quarantine and main-red rules, is in [`ci-merge-flow.md`](../../internals/ci-merge-flow.md).
 
 **1. Name the failing case from the CI log, before naming any cause.** Take the
 failed job from `gh run view <run> --json jobs`, then its log:

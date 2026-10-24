@@ -4,9 +4,10 @@
 #
 # ponytail: binds structure, not caption meaning. A node's anchor must still
 # occur exactly once in its file and every exit code / WAKE kind / check / marker
-# of a covered table must be mapped or listed unmapped with a reason; whether a
-# summary still describes the behaviour stays a reviewer's call. Table parsers
-# read the scripts' comment headers and printf shapes, floors live in graph.json
+# / CR-FIRST outcome of a covered table must be mapped or listed unmapped with a
+# reason; whether a summary still describes the behaviour stays a reviewer's
+# call. Table parsers read the scripts' comment headers and printf / echo
+# shapes, floors live in graph.json
 # (visible in the diff that lowers one); an AST or a generated table is the upgrade.
 #
 # Usage: check-dev-graph.sh [--graph <file>] [--root <dir>] [--suite <file>] [--table]
@@ -126,6 +127,9 @@ codes_checks() {
 codes_wake() {
   grep -oE "printf 'WAKE [a-z-]+( (complete|partial))?" "$1" | sed "s/^printf 'WAKE //"
 }
+codes_release() {
+  grep -oE '"CR-FIRST [A-Z][A-Z-]*[A-Z]' "$1" | sed 's/^"CR-FIRST //'
+}
 codes_markers() {
   # shellcheck disable=SC2016
   awk '/starting with `LIVE`/ { on = 1 } on { print } on && /RESUMED/ { exit }' "$1" | grep -oE '`[A-Z][A-Z-]+`' | tr -d '`'
@@ -139,7 +143,7 @@ while IFS= read -r cf; do
   floor=$(jq -r --arg f "$cf" '.coverage[$f].floor // 0' "$GRAPH")
   if [ ! -f "$ROOT/$cf" ]; then fail "coverage $cf: source file missing"; continue; fi
   case $table in
-    exit|checks|wake|markers) ;;
+    exit|checks|wake|release|markers) ;;
     *) fail "coverage $cf: unknown table kind '$table'"; continue ;;
   esac
   case $floor in ''|*[!0-9]*) fail "coverage $cf: floor is not a number"; continue ;; esac

@@ -192,9 +192,9 @@ process_item() {
       pending="true"
       new_name="$n_slug"
     else
-      local jtype="Story" parent=""
+      local jtype="Story" parent="" bl="--backlog"
       case "$type" in
-        epic) jtype="Epic" ;;
+        epic) jtype="Epic"; bl="" ;;
         task)
           jtype="Task"
           local epic_dir
@@ -234,13 +234,13 @@ The v2 handover layout names every item after its Jira key.
 Created by migrate-v1-to-v2.sh from $dir. No further work is expected beyond the rename.
 BODY
         if [ -n "$parent" ]; then
-          out="$(jira create --type "$jtype" --parent "$parent" --sector "Planning & tracking" --title "$slug" --desc-file "$body" 2>&1)" || {
+          out="$(jira create --type "$jtype" --parent "$parent" --sector "Planning & tracking" ${bl:+"$bl"} --title "$slug" --desc-file "$body" 2>&1)" || {
             rm -f "$body"
             echo "ERR: jira create failed for $dir: $out" >&2
             return 2
           }
         else
-          out="$(jira create --type "$jtype" --sector "Planning & tracking" --labels standalone --title "$slug" --desc-file "$body" 2>&1)" || {
+          out="$(jira create --type "$jtype" --sector "Planning & tracking" --labels standalone ${bl:+"$bl"} --title "$slug" --desc-file "$body" 2>&1)" || {
             rm -f "$body"
             echo "ERR: jira create failed for $dir: $out" >&2
             return 2

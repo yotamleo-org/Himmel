@@ -19,6 +19,8 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')"; fi; }
 
 W="$(mktemp -d)" || exit 1
+# the script under test reports physical paths; macOS's $TMPDIR sits behind the /var symlink
+W="$(cd "$W" && pwd -P)" || exit 1
 trap 'rm -rf "$W"' EXIT
 export HOME="$W/home"; mkdir -p "$HOME"
 unset HIMMEL_DOCTOR_STATE_DIR CADENCE_ALERT_FILE CADENCE_ALERT_DEDUPE_DIR
@@ -214,6 +216,58 @@ plain="$(tail -1 "$SENT")"
 case "$plain" in *"Cause: C33-graph-stale follows from the failing graph cadence"*". Do: bash scripts/graphify/graph-cadence.sh. Log: "*) pass "a knock-on C33 alone still gives C33's own step" ;; *) fail "a knock-on C33 alone still gives C33's own step (got: $plain)" ;; esac
 rm -f "$HOME/.himmel/state/cadence-alert-sent/graph-semantic-himmel.x"
 
+# 8c. many findings still make ONE message under Telegram's 4096-character limit; the overflow is a "+N more" tail.
+long_out() { # <count>: that many FAILs, each with a 300-character detail line
+    local i pad
+    pad="$(printf 'x%.0s' $(seq 1 300))"
+    { echo "himmel-doctor — Linux"; echo
+      for i in $(seq 1 "$1"); do echo "FAIL C$i-long: $pad"; echo "       → fix it"; done
+      echo; echo "Summary: $1 FAIL  0 WARN  0 INFO"; } > "$STUB_OUT"
+}
+rm -rf "$STATE"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad_ok "the many-findings baseline run"
+long_out 20; run_cad_ok "the 20-finding run"
+check "20 new findings send one message" 1 "$(sent_n)"
+big="$(tail -1 "$SENT")"
+[ "${#big}" -lt 4096 ] && pass "20 new findings fit one Telegram message (${#big} chars)" || fail "20 new findings fit one Telegram message (${#big} chars)"
+case "$big" in *"; +3 more, see $STATE/last-run.log"*) pass "20 findings name the 3 omitted" ;; *) fail "20 findings name the 3 omitted (got: ${big: -200})" ;; esac
+rm -rf "$STATE"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad_ok "the 60-finding baseline run"
+long_out 60; run_cad_ok "the 60-finding run"
+check "60 new findings send one message" 1 "$(sent_n)"
+big="$(tail -1 "$SENT")"
+[ "${#big}" -lt 4096 ] && pass "60 new findings fit one Telegram message (${#big} chars)" || fail "60 new findings fit one Telegram message (${#big} chars)"
+case "$big" in *"; +43 more, see $STATE/last-run.log"*) pass "the overflow is a '+N more, see <log>' tail" ;; *) fail "the overflow is a '+N more, see <log>' tail (got: ${big: -200})" ;; esac
+
+# 8d. a 300-character reason writes its dedupe sentinel without error, and still dedupes.
+reason300="$(printf 'r%.0s' $(seq 1 300))"
+rm -rf "$W/sent300"; : > "$SENT"
+err="$(CADENCE_ALERT_DEDUPE_DIR="$W/sent300" CADENCE_ALERT_FILE="$W/a300.log" bash "$P/scripts/luna/cadence-alert.sh" fail legx "$reason300" /x.log 2>&1)"
+check "a 300-character reason writes its sentinel without error" "" "$err"
+CADENCE_ALERT_DEDUPE_DIR="$W/sent300" CADENCE_ALERT_FILE="$W/a300.log" bash "$P/scripts/luna/cadence-alert.sh" fail legx "$reason300" /x.log 2>/dev/null
+check "a repeat of the 300-character reason sends once" 1 "$(sent_n)"
+
+# 8e. a failed send leaves the alert baseline alone, so the next run tells the operator.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$W/send-fail.sh"; chmod +x "$W/send-fail.sh"
+rm -rf "$STATE"; : > "$SENT"
+doctor_out "" "C99-base"; run_cad_ok "the failed-send baseline run"
+before="$(cat "$STATE/alerted.tsv")"
+doctor_out "C55-new" "C99-base"
+CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" run_cad
+check "a failed send makes the run exit 1" 1 "$?"
+check "a failed send leaves the alert baseline unchanged" "$before" "$(cat "$STATE/alerted.tsv")"
+run_cad_ok "the retry run"
+check "the next run retries the undelivered alert" 1 "$(sent_n)"
+case "$(tail -1 "$SENT")" in *C55-new*) pass "the retried alert names the finding" ;; *) fail "the retried alert names the finding" ;; esac
+case "$(cat "$STATE/alerted.tsv")" in *C55-new*) pass "a delivered send advances the baseline" ;; *) fail "a delivered send advances the baseline" ;; esac
+# the sender exits 0 on a failed send unless the caller opts in to the delivery status.
+CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" CADENCE_ALERT_DEDUPE_DIR="$W/sent-rc" CADENCE_ALERT_FILE="$W/a-rc.log" bash "$P/scripts/luna/cadence-alert.sh" fail legy why /x.log 2>/dev/null
+check "a failed send exits 0 by default" 0 "$?"
+CADENCE_ALERT_EXIT_ON_SEND_FAIL=1 CADENCE_ALERT_SEND_CMD="$W/send-fail.sh" CADENCE_ALERT_DEDUPE_DIR="$W/sent-rc" CADENCE_ALERT_FILE="$W/a-rc.log" bash "$P/scripts/luna/cadence-alert.sh" fail legy why /x.log 2>/dev/null
+check "a failed send exits 1 when the caller opts in" 1 "$?"
+CADENCE_ALERT_EXIT_ON_SEND_FAIL=1 CADENCE_ALERT_DEDUPE_DIR="$W/sent-rc" CADENCE_ALERT_FILE="$W/a-rc.log" bash "$P/scripts/luna/cadence-alert.sh" fail legy why /x.log 2>/dev/null
+check "a delivered send exits 0 when the caller opts in" 0 "$?"
+
 # 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).
 cat > "$W/jira" <<'SH'
@@ -239,6 +293,7 @@ check "a first-seen WARN files no ticket" 0 "$(jira_n create)"
 run_cad
 check "the same WARN in a 2nd consecutive run files one ticket" 1 "$(jira_n create)"
 grep '^create.*C77-stuck' "$JIRA_LOG" >/dev/null && pass "the ticket names the check id" || fail "the ticket names the check id"
+grep -e '--sector Visibility --backlog' "$JIRA_LOG" >/dev/null && pass "the ticket is placed in the backlog" || fail "the ticket is placed in the backlog"
 run_cad
 check "a 3rd run does not file a second ticket" 1 "$(jira_n create)"
 # an existing open ticket for the id is extended, not re-filed
@@ -347,6 +402,21 @@ grep -c 'HIMMEL-Doctor' "$FAKE_CRON" | grep -qx 1 && pass "arm writes one cronta
 bash "$P/scripts/doctor-cadence.sh" arm >/dev/null 2>&1; check "re-arm without --force is refused (rc 3)" 3 $?
 st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
 case "$st" in ARMED*) pass "status reports ARMED" ;; *) fail "status reports ARMED ($st)" ;; esac
+case "$st" in *DUPLICATE*) fail "a single entry is not flagged duplicate" ;; *) pass "a single entry is not flagged duplicate" ;; esac
+case "$st" in *"run log    $W/runner/doctor-cadence.log (absent"*) pass "status says the run log is absent before the runner has run" ;; *) fail "status says the run log is absent before the runner has run ($st)" ;; esac
+cp "$FAKE_CRON" "$FAKE_CRON.single"
+grep -F '# HIMMEL-Doctor' "$FAKE_CRON.single" | head -1 >> "$FAKE_CRON"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *'[DUPLICATE: 2 cron entries]'*) pass "a doubled entry is flagged with its count" ;; *) fail "a doubled entry is flagged with its count ($st)" ;; esac
+check "a doubled entry prints one ARMED line" 1 "$(printf '%s\n' "$st" | grep -c '^ARMED')"
+cp "$FAKE_CRON.single" "$FAKE_CRON"
+doctor_out "" ""
+"$W/runner/doctor-cadence.sh" >/dev/null 2>&1; check "the generated runner exits 0 on a clean doctor" 0 $?
+check "the runner stamps the exit code as the log's last line" "[exit rc=0]" "$(tail -n 1 "$W/runner/doctor-cadence.log")"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *"run log    $W/runner/doctor-cadence.log (last write: "*) pass "status names the run log and its last write" ;; *) fail "status names the run log and its last write ($st)" ;; esac
+case "$st" in *'last line: [exit rc=0]'*) pass "status shows the run log's last line" ;; *) fail "status shows the run log's last line ($st)" ;; esac
+case "$st" in *'last run   '*) pass "status keeps the doctor's own last-run line" ;; *) fail "status keeps the doctor's own last-run line ($st)" ;; esac
 bash "$P/scripts/doctor-cadence.sh" disarm >/dev/null 2>&1; check "disarm exits 0" 0 $?
 grep -q 'HIMMEL-Doctor' "$FAKE_CRON"; rc=$?
 check "disarm removes the entry (grep: 1 = absent from a readable file)" 1 "$rc"

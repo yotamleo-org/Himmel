@@ -407,6 +407,12 @@ out=$(cron_env bash "$CADENCE" status 2>&1)
 assert_has "$out" "ARMED" "status reports ARMED"
 assert_has "$out" "HIMMEL-DriftFix" "status names the drift leg"
 assert_has "$out" "HIMMEL-ForkResync" "status names the resync leg"
+case "$out" in *DUPLICATE*) fail "status flags a single entry as duplicate" ;; *) pass "status does not flag single entries" ;; esac
+cp "$state/tab" "$state/tab.single"
+grep -F "# HIMMEL-DriftFix" "$state/tab.single" | head -1 >>"$state/tab"
+out=$(cron_env bash "$CADENCE" status 2>&1)
+assert_has "$out" "[DUPLICATE: 2 cron entries]" "status flags a doubled drift leg with its count"
+cp "$state/tab.single" "$state/tab"
 out=$(cron_env bash "$CADENCE" disarm --dry-run 2>&1)
 assert_has "$out" "DRY" "disarm --dry-run is a preview"
 if [ -f "$state/bat/drift-fix.sh" ] && [ -f "$state/bat/fork-resync.sh" ]; then

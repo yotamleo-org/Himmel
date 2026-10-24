@@ -95,7 +95,7 @@ describe('--affects-version (HIMMEL-6236)', () => {
 
   describe('create', () => {
     const create = (extra: string[]) =>
-      run(registerCreate, ['create', '--desc', PLAIN, '--type', 'Task', '--title', 't', ...extra, ...HOME]);
+      run(registerCreate, ['create', '--desc', PLAIN, '--type', 'Task', '--backlog', '--title', 't', ...extra, ...HOME]);
     const posted = () => call('POST') as { fields: { versions?: unknown } } | undefined;
 
     it('validates then sets versions', async () => {

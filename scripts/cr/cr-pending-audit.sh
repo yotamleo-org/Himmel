@@ -70,7 +70,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 if [ -n "$ticket" ] && ! printf '%s' "$ticket" | grep -qE '^[A-Za-z][A-Za-z0-9]*-[0-9]+$'; then
-    echo "cr-pending-audit: --ticket must be a key like HIMMEL-1519 (got '$ticket')" >&2
+    echo "cr-pending-audit: --ticket must be a key like PROJ-123 (got '$ticket')" >&2
     exit 2
 fi
 
@@ -233,7 +233,7 @@ else
 fi
 
 if [ "$needs_action" -gt 0 ]; then
-    echo "cr-pending-audit: every class above is NEEDS-ACTION — a pending CR marker is NEVER a terminal block (HIMMEL-1519/1553). Do not record a branch as blocked/unopenable unless you RAN the named remedy and can cite its refusal output."
+    echo "cr-pending-audit: every class above is NEEDS-ACTION — a pending CR marker is NEVER a terminal block. Do not record a branch as blocked/unopenable unless you RAN the named remedy and can cite its refusal output."
     exit 1
 fi
 exit 0

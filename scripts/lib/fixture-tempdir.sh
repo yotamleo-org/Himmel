@@ -36,7 +36,9 @@ fixture_mktemp_dir() {
         echo "FAIL: fixture temp directory is inside an existing git repository" >&2
         return 1
     fi
-    printf '%s\n' "$dir"
+    # physical path: macOS's /tmp and /var are symlinks, and the scripts under
+    # test print the resolved form
+    (cd "$dir" && pwd -P)
 }
 
 fixture_enter_git_init_dir() {
