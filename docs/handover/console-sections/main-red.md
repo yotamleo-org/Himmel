@@ -1,9 +1,17 @@
 # Chief section — triaging a red main run
 
 Read on demand: the CI row of `monitors.md` names this file when a main run
-completes red, and a worker's `MAIN-RED` message lands here too. Every red main
-blocks every merge until the real cause is found, so the first cause you name
-has to be the right one.
+completes red, and a worker's `MAIN-RED` message lands here too. A red main
+blocks every merge, so classify it first, using steps 1-3 below:
+
+- **Test-only red** (a flake, a cap timeout, a fragile case; the code under
+  test is fine): quarantine the case and file its ticket at once. The fleet
+  keeps merging.
+- **Real blocker** (main's code is broken): HOLD merges until the fix lands.
+- **Complex** (no clear class, or more than one cause): escalate to the
+  chief.
+
+The first cause you name has to be the right one.
 
 **1. Name the failing case from the CI log, before naming any cause.** Take the
 failed job from `gh run view <run> --json jobs`, then its log:
@@ -47,9 +55,11 @@ in the 30 days to 10-23:
   with a bounded poll on the condition itself.
 - **Caller environment.** The case reads `HOME`, `HIMMEL_REPO`,
   `JIRA_PROJECT_KEY` or another variable the runner did not pin. The runner
-  calls `scrub_session_env` (`scripts/lib/override-env.sh`), so a leaked
-  session variable no longer reaches a suite, but a suite run outside the
-  runner still sees one.
+  calls `scrub_session_env` (`scripts/lib/override-env.sh`), which removes only
+  its listed Claude, harness and credential namespaces. It keeps
+  `JIRA_PROJECT_KEY` and never touches `HOME`, so those still reach a suite
+  unless the runner sets them. It is no substitute for pinning in the runner.
+  A suite run outside the runner sees every inherited value.
 
 **5. Only then message a worker, or dispatch one,** with the run id, the job, the
 case, the class, and the exact reproduction command.

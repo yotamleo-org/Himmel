@@ -2361,15 +2361,17 @@ rm -rf "$sb24"
 fi
 
 # --------------------------------------------------------------------------
-# Case 25 — SKIP_LIST: scripts/test-adopt.sh is quarantined and
-#   [SKIP]ped on every platform. The real table entry is driven with a
-#   sentinel-writing stub at scripts/test-adopt.sh; `uname` is stubbed on PATH
-#   so every host exercises the Linux / Darwin / MINGW branches deterministically.
-#     a. uname -s = Linux   -> [SKIP] with the quarantine reason, stub never ran
-#     b. uname -s = Darwin  -> same skip
-#     c. uname -s = MINGW64_NT-10.0 -> same skip
+# Case 25 — SKIP_LIST vs SKIP_LIST_NON_LINUX. The real table entries are
+#   driven with sentinel-writing stubs at scripts/test-adopt.sh (SKIP_LIST,
+#   quarantined) and scripts/vm/test-vm-clone-lib.sh (SKIP_LIST_NON_LINUX);
+#   `uname` is stubbed on PATH so every host exercises the Linux / Darwin /
+#   MINGW branches deterministically.
+#     a. every uname -> test-adopt.sh [SKIP]ped with the quarantine reason, never run
+#     b. uname -s = Linux  -> test-vm-clone-lib.sh RUNS and passes, rc 0
+#     c. uname -s = Darwin / MINGW64_NT-10.0 -> test-vm-clone-lib.sh [SKIP]ped
+#        with its off-Linux reason, never run; nothing ran, so rc 1
 # --------------------------------------------------------------------------
-echo "== Case 25 (HIMMEL-7300): test-adopt.sh quarantined on every platform =="
+echo "== Case 25 (HIMMEL-7300): test-adopt.sh quarantined everywhere, off-Linux skips still Linux-only =="
 sb25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25.XXXXXX") || { fail "25: mktemp failed"; sb25=""; }
 fakebin25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25-fakebin.XXXXXX") || { fail "25: fakebin mktemp failed"; fakebin25=""; }
 [ -n "$sb25" ] && [ -z "$fakebin25" ] && { rm -rf "$sb25"; sb25=""; }
@@ -2383,6 +2385,14 @@ exit 0
 SHEOF
 chmod +x "$sb25/scripts/test-adopt.sh"
 sentinel25="$sb25/scripts/adopt-ran.sentinel"
+mkdir -p "$sb25/scripts/vm"
+cat > "$sb25/scripts/vm/test-vm-clone-lib.sh" <<'SHEOF'
+#!/usr/bin/env bash
+touch "$(dirname "$0")/vmclone-ran.sentinel"
+exit 0
+SHEOF
+chmod +x "$sb25/scripts/vm/test-vm-clone-lib.sh"
+vmsentinel25="$sb25/scripts/vm/vmclone-ran.sentinel"
 
 for os25 in Linux Darwin MINGW64_NT-10.0; do
   cat > "$fakebin25/uname" <<SHEOF
@@ -2390,13 +2400,25 @@ for os25 in Linux Darwin MINGW64_NT-10.0; do
 echo "$os25"
 SHEOF
   chmod +x "$fakebin25/uname"
-  rm -f "$sentinel25"
+  rm -f "$sentinel25" "$vmsentinel25"
   out25=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$fakebin25:$PATH" bash "$RUNNER" "$sb25/scripts" 2>&1); rc25=$?
-  # rc is 1 by design: the only suite in the sandbox is skipped, so nothing ran.
-  if [ ! -f "$sentinel25" ] && grepq "$out25" -F '[SKIP] ' && grepq "$out25" -F 'HIMMEL-7300: quarantined'; then
-    pass "25: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-7300 reason, not run"
+  if [ ! -f "$sentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-adopt\.sh .*HIMMEL-7300: quarantined'; then
+    pass "25a: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-7300 reason, not run"
   else
-    fail "25: uname=$os25 -> expected loud HIMMEL-7300 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+    fail "25a: uname=$os25 -> expected loud HIMMEL-7300 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+  fi
+  if [ "$os25" = "Linux" ]; then
+    if [ "$rc25" -eq 0 ] && [ -f "$vmsentinel25" ] && grepq "$out25" -E '\[PASS\] .*test-vm-clone-lib\.sh' && ! grepq "$out25" -E '\[SKIP\] .*test-vm-clone-lib\.sh'; then
+      pass "25b: uname=Linux -> scripts/vm/test-vm-clone-lib.sh RUNS and passes, rc=0"
+    else
+      fail "25b: uname=Linux -> expected test-vm-clone-lib.sh to run, rc=0; rc=$rc25 sentinel=$([ -f "$vmsentinel25" ] && echo yes || echo no); out: $out25"
+    fi
+  else
+    if [ "$rc25" -eq 1 ] && [ ! -f "$vmsentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-vm-clone-lib\.sh .*skipped off-Linux only'; then
+      pass "25c: uname=$os25 -> scripts/vm/test-vm-clone-lib.sh SKIPped with its off-Linux reason, not run, rc=1"
+    else
+      fail "25c: uname=$os25 -> expected loud off-Linux skip, rc=1; rc=$rc25 sentinel=$([ -f "$vmsentinel25" ] && echo yes || echo no); out: $out25"
+    fi
   fi
 done
 rm -rf "$sb25" "$fakebin25"
