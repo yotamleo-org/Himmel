@@ -151,7 +151,7 @@ const LEDGER = [
   { ts: "2026-10-05T02:30:00Z", leg: "claudex", verdict: "PROCEED", five_hour: "", seven_day: "", age: "", degraded: false },
 ];
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
-const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Search and graph freshness"];
+const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Trends", "Search and graph freshness"];
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
@@ -183,7 +183,7 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
   await expect(page.locator("#bank, #legs").first()).not.toContainText("loading");
 });
 
-test("health: the five sections appear in spec order", async ({ page }) => {
+test("health: the six sections appear in spec order", async ({ page }) => {
   await openHealth(page);
   expect(await page.locator("main h2").allTextContents()).toEqual(SECTIONS);
 });
