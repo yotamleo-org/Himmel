@@ -6,6 +6,8 @@ each one has a wired reason (a per-suite cwd rule, a quiet reporter, a runner
 that both runs suites and reports the plan) — so this doc states them once,
 here, rather than re-deriving them per session.
 
+<!-- ci:go live POC head 1 -->
+
 ## Writing or reviewing a test
 
 Use the `test-audit` skill (`.claude/skills/test-audit/SKILL.md`, adapted from
