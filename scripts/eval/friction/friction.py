@@ -658,10 +658,9 @@ def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0
     for (src, cls), n in collections.Counter((r['source'], r['class']) for r in tx
                                              if r['verdict'] == 'over-deny').items():
         metrics['over_deny:%s/%s' % (src, cls)] = n
-    if user_reports:
-        metrics['user_reported_over_deny'] = len(user_reports)
-        for r in user_report_counts(user_reports):
-            metrics['user_over_deny:%s/%s' % (r['source'], r['class'])] = r['count']
+    metrics['user_reported_over_deny'] = len(user_reports)
+    for r in user_report_counts(user_reports):
+        metrics['user_over_deny:%s/%s' % (r['source'], r['class'])] = r['count']
     config = {'friction_v': 1, 'days': days}
     if projects:
         config['projects'] = projects
