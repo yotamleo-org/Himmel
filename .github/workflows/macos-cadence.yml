@@ -80,12 +80,15 @@ jobs:
         run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
         run: python -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
-      # The suites run `python3 -I` (no user site), so PyYAML has to be in the
-      # interpreter `python3` names, which the step above does not promise.
-      - name: PyYAML for python3 (scripts/cr/test-coderabbit-yaml-carveouts.sh)
+      # The suites run `python3 -I` (no user site) and the runner's python3 is
+      # Homebrew's, which refuses pip installs (externally-managed). A venv first
+      # on PATH gives `python3` a PyYAML without touching the system interpreter.
+      - name: PyYAML for python3 (the coderabbit-yaml-carveouts suite)
         run: |
-          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
-          python3 -I -c 'import yaml'
+          python3 -m venv "$RUNNER_TEMP/py3"
+          "$RUNNER_TEMP/py3/bin/python" -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
+          echo "$RUNNER_TEMP/py3/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/py3/bin/python" -I -c 'import yaml'
       # The write-fence hooks parse commands with shfmt and refuse without it, so
       # on a runner that lacks it every allow-row of those suites goes red. The
       # SAME release ci.yml puts on Linux (HIMMEL-6548), darwin_arm64 build,
