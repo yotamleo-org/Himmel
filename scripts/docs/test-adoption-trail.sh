@@ -391,6 +391,7 @@ fi
 # Only code may scroll sideways, inside its own box; the page must not hide a
 # too-wide document by clipping it either.
 css="$(perl -0777 -ne 'print $1 while /<style\b[^>]*>(.*?)<\/style>/gs' "$PAGE")"
+css="$(printf '%s' "$css" | tr '\n' ' ')"
 pre_scroll="$(printf '%s' "$css" | grep -E 'pre[^{]*\{[^}]*overflow-x:[[:space:]]*auto')"
 doc_clip="$(printf '%s' "$css" | grep -E '(^|[},])[[:space:]]*(html|body)[[:space:]]*(,[^{]*)?\{[^}]*overflow(-x)?:[[:space:]]*(hidden|clip)')"
 if [ -n "$pre_scroll" ] && [ -z "$doc_clip" ]; then
