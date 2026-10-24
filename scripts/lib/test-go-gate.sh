@@ -551,6 +551,10 @@ case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@m
 aw_main '{"env":{}}' -
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
 [ "$got" = "0:not-adopted" ] || fail "9k: a repo without env.HIMMEL_REPO and no list is not not-adopted: $got"
+# A blank settings.json is unparseable, never read as not adopted.
+aw_main ' ' -
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+[ "$got" = "2:list cannot parse .claude/settings.json on main" ] || fail "9k: a blank settings.json did not refuse: $got"
 # R2: adopted, list lacks the core line for .claude/settings.json, same PR.
 aw_main "$ADOPTED" "$CORE_NO_SETTINGS"
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")

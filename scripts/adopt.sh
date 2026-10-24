@@ -254,9 +254,13 @@ seed_merge_trust_paths() {
   fi
   mkdir -p "$(dirname "$dest")"
   # The gate refuses an adopted list missing any core line, so seed them all.
-  (set -C; grep -Ev '^(#|$)' "$HIMMEL_ROOT/scripts/ci/ci-trust-paths-core.txt" > "$dest") || {
-    rm -f "$dest"
-    echo "  error: cannot seed $dest from $HIMMEL_ROOT/scripts/ci/ci-trust-paths-core.txt" >&2
+  local core="$HIMMEL_ROOT/scripts/ci/ci-trust-paths-core.txt" lines
+  lines=$(grep -Ev '^(#|$)' "$core") || {
+    echo "  error: cannot read the core trust list $core" >&2
+    return 1
+  }
+  (set -C; printf '%s\n' "$lines" > "$dest") || {
+    echo "  error: cannot seed $dest" >&2
     return 1
   }
   prov_record create file "$dest" --scope project --class code --row adopter-scripts \

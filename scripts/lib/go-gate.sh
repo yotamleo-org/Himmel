@@ -376,9 +376,12 @@ trust_path_check() (
     # unparseable settings refuse.
     settings_adopted() {
         local v
-        v=$(printf '%s' "$1" | jq -r 'if (.env.HIMMEL_REPO // "") == "" then "no" else "yes" end' 2>/dev/null) \
-            || refuse list "cannot parse .claude/settings.json on $tp_branch"
-        [ "$v" = yes ]
+        v=$(printf '%s' "$1" | jq -r 'if (.env.HIMMEL_REPO // "") == "" then "no" else "yes" end' 2>/dev/null) || v=
+        case "$v" in
+            yes) return 0 ;;
+            no) return 1 ;;
+            *) refuse list "cannot parse .claude/settings.json on $tp_branch" ;;
+        esac
     }
     # adopted — rc 0 when the PR's repo is adopted, judged from its default branch.
     adopted() {
