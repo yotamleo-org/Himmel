@@ -63,4 +63,6 @@ hook:block-rogue-claude-schedule	raw-scheduler-arm	true-positive
 hook:block-rogue-codex-exec	raw-codex-exec	true-positive
 hook:block-infra-destroy	infra-destroy	true-positive
 hook:block-docker-privesc	root-equivalent-container-access	true-positive
+hook:guard-pr-check-literal	git-exec-option-beside-gate-script	unclear
+hook:block-write-into-main-checkout	write-shaped-command-on-main	unclear
 hook:agent-model-deny	judge-model-override	true-positive

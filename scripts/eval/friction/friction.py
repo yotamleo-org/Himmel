@@ -53,9 +53,10 @@ HOOK_CLASSES = {
          r'(?:grep|log|show|blame|ls-files|cat-file|rev-parse|diff|status)\b).*?\(HIMMEL-[^)]*\): git execution/config',
          'git-read-command-beside-gate-mention', 'over-deny',
          'a read-only git grep/log/show/diff that names a gate script and carries no exec option'),
-        (r'(?s)^(?=(?:(?!\(HIMMEL-).)*--output=\S*(?:/scratchpad|/tmp/))(?!(?:(?!\(HIMMEL-).)*\bhook\b).*?\(HIMMEL-[^)]*\): '
+        (r'(?s)^(?=(?:(?!\(HIMMEL-).)*--output=\S*(?:/scratchpad|/tmp/))(?!(?:(?!\(HIMMEL-).)*(?:\bhook\b|\barchive\b|\s-c\s|--open-files-in-pager|--ext-diff|'
+         r'--textconv|--exec|--config-env|\bGIT_\w+=)).*?\(HIMMEL-[^)]*\): '
          r'git execution/config', 'git-output-to-scratch', 'over-deny',
-         'git diff/archive --output into the session scratchpad; the output option is the only thing the guard saw'),
+         'git diff --output into the session scratchpad with no exec option; the output option is the only thing the guard saw'),
         (r'(?s)^(?:(?!\(HIMMEL-).)*\bgit\b(?:\s+-C\s+\S+)?\s+hook\s+run\b.*?\(HIMMEL-[^)]*\): git execution/config',
          'git-hook-run', 'true-positive', 'git hook run executes the repo hook; the guard blocks program-running git options'),
         (r'git execution/config options or ambiguous option-value', 'git-exec-option-beside-gate-script', 'unclear',
@@ -101,7 +102,7 @@ HOOK_CLASSES = {
          'over-deny', 'the luna vault is committed on main by design; its handover docs are written in place'),
         (r'on main/master\.\s+\(command:\s+cd\s+\S*/\.claude/projects/', 'claude-projects-write-read-as-main',
          'over-deny', 'a write under ~/.claude/projects (memory, tool results) is no repo write'),
-        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*[>;&])|'
+        (r'on main/master\.\s+\(command:\s+(?:(?:grep|rg|printf)\b(?!(?:(?!\(target token).)*(?:[>;&]|\|(?!\s*(?:head|tail|wc|sort|uniq|cut|grep|rg|tr)\b)))|'
          r'timeout \d+ (?:bash|sh) -c .until)',
          'read-only-command-read-as-write', 'over-deny', 'grep/rg/printf/until-poll read as write-shaped'),
         (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
