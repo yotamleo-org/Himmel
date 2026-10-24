@@ -106,11 +106,11 @@ HOOK_CLASSES = {
          r'timeout \d+ (?:bash|sh) -c .until)',
          'read-only-command-read-as-write', 'over-deny', 'grep/rg/printf/until-poll read as write-shaped'),
         (r'(?s)on main/master\..*\(git subcommand: (add|commit|checkout|merge|pull|rebase|branch|mv|apply|'
-         r'cherry-pick|remote|config|tag|reset|stash)\b', 'git-rewrite-in-primary', 'true-positive',
+         r'cherry-pick|remote|config|tag|reset|stash)(?![-\w])', 'git-rewrite-in-primary', 'true-positive',
          'a git subcommand that rewrites the primary tree, index, HEAD, refs or config'),
-        (r'(?s)on main/master\..*\(git subcommand: (clone|init|merge-tree|patch-id|hash-object|commit-tree|'
+        (r'(?s)on main/master\..*\(git subcommand: (merge-tree|patch-id|hash-object|commit-tree|'
          r'grep|show|log|diff)\b', 'git-object-only-command-flagged-as-write', 'over-deny',
-         'clone/archive/init/merge-tree/hash-object: object-database or new-directory work, the primary tree is untouched'),
+         'merge-tree/patch-id/hash-object/commit-tree and read-only git: object-database work, the primary tree is untouched'),
         (r'(?s)on main/master\..*\(git subcommand: ', 'git-subcommand-in-primary', 'unclear',
          'git fetch (refs only) against the primary; true for a leg, over-deny for the console'),
         (r'on main/master', 'write-shaped-command-on-main', 'unclear',

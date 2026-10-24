@@ -29,6 +29,7 @@ hook:block-write-into-main-checkout	luna-vault-write-read-as-main	over-deny
 hook:block-write-into-main-checkout	claude-projects-write-read-as-main	over-deny
 hook:block-write-into-main-checkout	git-rewrite-in-primary	true-positive
 hook:block-write-into-main-checkout	git-object-only-command-flagged-as-write	over-deny
+hook:block-write-into-main-checkout	git-subcommand-in-primary	unclear
 hook:block-edit-live-settings	primary-claude-dir-write	true-positive
 hook:block-destructive-commands	destructive-git-filter-branch	true-positive
 hook:guard-pr-check-literal	unparseable-line-with-expansion-char	unclear
