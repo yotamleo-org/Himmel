@@ -380,17 +380,13 @@ export function composeWorkerSettings(pluginSettingsJson: string | undefined, wo
     `Edit(${p})`, `Edit(${p}/*)`, `Edit(${p}/**)`,
     `Read(${p})`, `Read(${p}/*)`, `Read(${p}/**)`,
   ]);
-  // The Write tool creating a NEW file is not covered by the Edit rules above
-  // under dontAsk: grant Write on exactly the worker's own context.md, no
-  // wildcard, so nothing else in the session dir widens.
-  const contextWrite = `Write(${sd}/context.md)`;
   const existingAllow: string[] = Array.isArray(base.permissions?.allow) ? base.permissions.allow : [];
   return JSON.stringify({
     ...base,
     permissions: {
       ...(base.permissions ?? {}),
       defaultMode: "dontAsk",
-      allow: [...existingAllow, ...pathAllow, contextWrite, ...WORKER_BASH_ALLOW],
+      allow: [...existingAllow, ...pathAllow, ...WORKER_BASH_ALLOW],
     },
   });
 }
