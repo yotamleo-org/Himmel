@@ -4302,6 +4302,28 @@ graph_semantic_station_verdict() {
     fi
 }
 
+# The key probe runs in a command substitution so the key stays out of the
+# doctor's own environment. Its body is a function because bash 3.2 (macOS)
+# cannot parse a `case` with `)` patterns inside a multi-line $( ). It prints a
+# verdict word, never the key; tracing stays off so `bash -x` never prints it.
+_c69_probe_key() {  # t13b-ok: reads the key file and asks the provider, starts nothing
+    local cfg="$1" lib="$2" curl_bin="$3" url="$4" rc=0 sess_key code=""
+    set +x
+    # shellcheck disable=SC1090
+    . "$lib"  # t13b-ok: sources the key loader, starts nothing
+    sess_key="${QMD_OPENAI_API_KEY:-}"
+    qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
+    set +x
+    case "$rc" in
+        10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; return 0 ;;
+        11) # the CLI also accepts a session key when the file holds none
+            if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; return 0; fi ;;
+    esac
+    if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; return 0; fi
+    code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
+    echo "code:${code:-000}"
+}
+
 # --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
 # A key-less CLI call gets "401 No cookie auth credentials found" on every
 # generate and embed, while the daemon (which loads its own key) still answers,
@@ -4324,24 +4346,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
         emit INFO C69-qmd-cli-key "qmd-daemon-env.sh not found -- key check skipped"
         return
     fi
-    # the subshell keeps the key out of the doctor's own environment; it prints a
-    # verdict word, never the key; tracing stays off here so `bash -x` never prints it
-    out="$(
-        set +x
-        # shellcheck disable=SC1090
-        . "$lib"  # t13b-ok: sources the key loader, starts nothing
-        rc=0 sess_key="${QMD_OPENAI_API_KEY:-}"
-        qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
-        set +x
-        case "$rc" in
-            10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; exit 0 ;;
-            11) # the CLI also accepts a session key when the file holds none
-                if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; exit 0; fi ;;
-        esac
-        if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; exit 0; fi
-        code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
-        echo "code:${code:-000}"
-    )"
+    out="$(_c69_probe_key "$cfg" "$lib" "$curl_bin" "$url")"
     case "$out" in
         readable-by-others:*)
             emit FAIL C69-qmd-cli-key "the qmd provider key file ${out#*:} is readable by others -- qmd refuses to use it, every CLI vec query fails" \
