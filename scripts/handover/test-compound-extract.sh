@@ -144,7 +144,7 @@ check "--since-days 0 takes every finished doc (adds HIMMEL-6)" "HIMMEL-1 HIMMEL
 check "a Done ticket with a non-wrapped tail counts as finished" yes \
   "$(printf '# t\n\n## Results\n\n- 10:00 FINDING — q\n' > "$B/HIMMEL-7-done-open-2026-10-22.md"; age 2 "$B/HIMMEL-7-done-open-2026-10-22.md"
      printf -- '---\nkey: "HIMMEL-7"\nstatusCategory: "Done"\n---\n\n# HIMMEL-7: x\n' > "$MIR/HIMMEL-7.md"
-     run 2>/dev/null | grep -q '"key": "HIMMEL-7"' && echo yes || echo no)"
+     [ "$(run 2>/dev/null | grep -c '"key": "HIMMEL-7"')" = 1 ] && echo yes || echo no)"
 
 # --- bounded bullet ---------------------------------------------------------------
 LONG="$(python3 -I -c 'print("x"*5000)')"
