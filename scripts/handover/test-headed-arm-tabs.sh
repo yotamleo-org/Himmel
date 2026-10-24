@@ -114,7 +114,8 @@ for c in "$d"/proc/*/cmdline; do
   [ -f "$c" ] || continue
   p="$(basename "$(dirname "$c")")"
   kill -0 "$p" 2>/dev/null || continue
-  if tr '\0' ' ' < "$c" | grep -Eq -- "$pat"; then echo "$p"; hit=0; fi
+  line="$(tr '\0' ' ' < "$c")"
+  if grep -Eq -- "$pat" <<<"$line"; then echo "$p"; hit=0; fi
 done
 exit "$hit"
 EOF
