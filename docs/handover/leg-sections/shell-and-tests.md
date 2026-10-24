@@ -20,8 +20,10 @@ Read on demand: `leg-preface.md` names this file when a command is refused or be
   `JIRA_BASE_URL=` / `JIRA_BOARD_ID=` target) is not a retry — ask the console.
 - **Resolving a review thread** (fixed, deferred or rejected) goes through the
   one sanctioned path, one literal call per thread, never a loop:
-  `node plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <sha>"`
-  (or `--reason "followup HIMMEL-<n>"` / `--reason "rejected <why>"`). It
+  `node <anchor>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <sha>"`
+  (or `--reason "followup HIMMEL-<n>"` / `--reason "rejected <why>"`).
+  `<anchor>` is the primary checkout's absolute path; that exact spelling is
+  auto-allowed for `yotamleo-org/Himmel`, a branch copy of the CLI is not. It
   refuses without a valid reason, posts the reason as a thread reply, and
   resolves only after the reply lands. If a single call is denied, send the
   console `BLOCKED resolve <pr> <thread ids>` and do not retry: the console

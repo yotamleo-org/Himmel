@@ -2549,6 +2549,7 @@ const ADVISORY_CHAIN_MEMBERS = new Map([
   ['require-quiet-run.sh', 'fail-open nudge by design (J1310O F1)'],
   ['guard-identical-denied-retry.sh', 'fail-open by design: it may only deny the precisely counted third identical command'],
   ['guard-bus-store.sh', 'speed bump, not a fence (HIMMEL-4829): a starved skip is acceptable'],
+  ['allow-thread-resolve.sh', 'allow-only, never denies: a starved skip leaves no decision, which is the default'],
 ]);
 
 function findPluginHooksJsonFiles(repoRoot) {

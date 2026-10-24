@@ -551,6 +551,7 @@ scripts/himmelctl/test/test-wizard-uninstall-converge.sh	2
 scripts/himmelctl/test/test-wizard-uninstall.sh	2
 scripts/himmelctl/test/test-wizard-update.sh	0
 scripts/himmelctl/test/test-wizard-vm-mode.sh	6
+scripts/hooks/test-allow-thread-resolve.sh	1
 scripts/hooks/test-auto-approve-safe-bash.sh	44
 scripts/hooks/test-auto-arm-on-cap.sh	7
 scripts/hooks/test-auto-arm-on-subagent-cap.sh	4

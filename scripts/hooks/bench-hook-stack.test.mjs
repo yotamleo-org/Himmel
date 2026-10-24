@@ -357,7 +357,10 @@ for (const config of CONFIGS) {
     // because raising it would undo exactly the pricing this tier
     // sets. It sits ON the headroom floor asserted below (1000 * 3 / 1000),
     // so it is the smallest tier this policy can ever admit.
-    const ALLOWED = [3, 10, 15, 20, 30, 60];
+    //
+    // 61s is the Bash chain: the launcher budget (50s) plus 21 members x the
+    // 500ms floor is 60.5s, and an entry under that is SIGKILLed mid-chain.
+    const ALLOWED = [3, 10, 15, 20, 30, 60, 61];
     const outOfBand = hooks.filter((h) => !ALLOWED.includes(h.timeout));
     assert.deepEqual(outOfBand.map((h) => `${labelFor(h.command)}=${h.timeout}s`), []);
     // And the floor still has to clear the headroom rule the SLO implies.

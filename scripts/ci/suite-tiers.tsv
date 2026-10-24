@@ -555,6 +555,7 @@ scripts/himmelctl/test/test-wizard-uninstall-converge.sh	local	behaviour suite, 
 scripts/himmelctl/test/test-wizard-uninstall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-wizard-update.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-wizard-vm-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/hooks/test-allow-thread-resolve.sh	pr	guard
 scripts/hooks/test-auto-approve-safe-bash.sh	pr	guard
 scripts/hooks/test-auto-arm-on-cap.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-auto-arm-on-subagent-cap.sh	local	behaviour suite, 0 catches in the 400-PR audit window
