@@ -35,7 +35,7 @@ RECOVERY_CAP_S = 1800
 # git run as a command (line start or after a separator, past VAR= and wrapper words), not git as a search term
 GIT_INVOCATION = (r'(?:^|[;&|(`]|\b(?:then|do|else|if|while))\s*'
                   r'(?:(?:env|time|timeout|xargs|sudo|rtk|command|exec|nice)(?:\s+-{1,2}\w[\w-]*(?:[= ]\w+)?)*'
-                  r'(?:\s+\d+[smhd]?)?\s+|\w+=\S*\s+)*git\b')
+                  r'(?:\s+\d+(?:\.\d+)?[smhd]?)?\s+|\w+=\S*\s+)*git\b')
 
 # (regex on reason text, class slug, verdict, evidence) per hook; first match wins.
 HOOK_CLASSES = {
