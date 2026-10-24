@@ -542,6 +542,9 @@ check "3b: a later noop row for the same key and PR clears it" "$(dcount MISSED)
 reset "To Do"; logrow check-ci-exit "$K" miss 7; logrow check-ci-exit "$K" moved 8
 drift
 contains "3b: a later moved row for another PR does not clear it" "$(drows MISSED)" "MISSED $K"
+reset "Done"; logrow merge "$K" miss 7 yes
+drift
+check "3b: a miss on a ticket that is Done now is not MISSED (re-derived)" "$(dcount MISSED)" 0
 
 reset "In Progress"; owned "$K" WRAPPED '{"state":"live"}'; jl "$K" "In Progress"
 drift
@@ -632,6 +635,26 @@ check "3b: a fallback pass exits 0" "$rc" 0
 check "3b: a key the search does not return is read by its own get" "$(grep -c '^get HIMMEL-902' "$STUB_LOG")" 1
 contains "3b: and the status that get returned is used, so the pass is clean" "$(dlast)" "sdrift=0:"
 
+# the drift pass reads the sweep's snapshot instead of gh per key, and falls back to gh without one
+reset "In Progress"; owned "$K"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 pass
+rm -rf "$tmp/snap"
+bash "$SWEEP" --snapshot-out "$tmp/snap" >/dev/null 2>&1
+check "3b: the sweep keeps its snapshot where it is asked to" "$([ -f "$tmp/snap/prs.json" ] && [ -f "$tmp/snap/threads.tsv" ] && echo kept || echo none)" kept
+printf '%s\n' "In Progress" > "$FX/status.$K"
+drift
+live=$(grep -v '^sdrift=' "$tmp/dout")
+: > "$STUB_LOG"
+bash "$DRIFT" --docs-dir "$tmp/docs" --snapshot "$tmp/snap" >"$tmp/dout" 2>&1
+check "3b: a drift pass over the snapshot finds what the live pass finds" "$(grep -v '^sdrift=' "$tmp/dout")" "$live"
+check "3b: and reads no PR checks or per-key PR search from gh" "$(grep -cE '^gh pr (checks|list --state open --search)' "$STUB_LOG")" 0
+: > "$STUB_LOG"
+bash "$DRIFT" --docs-dir "$tmp/docs" --snapshot "$tmp/nosnap" >"$tmp/dout" 2>&1
+check "3b: a missing snapshot falls back to the live reads" "$(grep -c '^gh pr checks' "$STUB_LOG")" 1
+check "3b: and finds the same rows" "$(grep -v '^sdrift=' "$tmp/dout")" "$live"
+reset "To Do"; touch "$FX/pr-list.fail"; rm -rf "$tmp/snap"
+bash "$SWEEP" --snapshot-out "$tmp/snap" >/dev/null 2>&1
+check "3b: an unknown sweep keeps no snapshot" "$([ -e "$tmp/snap/prs.json" ] && echo kept || echo none)" none
+
 # --- 3c: the FOCUS refresh (focus-refresh.sh) ----------------------------------------
 FOCUS="$HERE/focus-refresh.sh"
 FR="$tmp/fr"
@@ -645,7 +668,7 @@ exit 0
 EOS
 cat >"$tmp/frbin/sweep" <<'EOS'
 #!/usr/bin/env bash
-echo "sweep" >> "$FX/fr.log"
+echo "sweep $*" >> "$FX/fr.log"
 case "$(cat "$FX/fr.fail" 2>/dev/null)" in
     sweep) exit 1 ;;
     sweep-unknown) echo "status-sweep: unknown (gh unreadable) keys=0 sig=x wake=1"; exit 0 ;;
@@ -658,20 +681,23 @@ echo "tracker $*" >> "$FX/fr.log"
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = render ] && exit 1
 [ -e "$FX/fr.sleep" ] && sleep "$(cat "$FX/fr.sleep")"
 [ -e "$FX/fr.again" ] && date +%s > "$(cat "$FX/fr.again")"
-out=""; prev=""
-for a in "$@"; do [ "$prev" = --out ] && out="$a"; prev="$a"; done
+out=""; ver=""; prev=""
+for a in "$@"; do [ "$prev" = --out ] && out="$a"; [ "$prev" = --version ] && ver="$a"; prev="$a"; done
 n=$(( $(cat "$FX/render.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/render.n"
-echo "render $n" > "$out"
-cat "$FX/vfp" 2>/dev/null > "$out.vfp" || echo vfp1 > "$out.vfp"
+v=$(cat "$FX/vfp" 2>/dev/null || echo vfp1)
+printf 'render %s\n<meta name="himmel-focus" content="%s %s">\n' "$n" "$ver" "$v" > "$out"
+echo "$v" > "$out.vfp"
 EOS
 cat >"$tmp/frbin/drift" <<'EOS'
 #!/usr/bin/env bash
-echo "drift" >> "$FX/fr.log"
-[ "$(cat "$FX/fr.fail" 2>/dev/null)" = drift ] && exit 1
-if [ "$(cat "$FX/fr.fail" 2>/dev/null)" = drift-unknown ]; then
-    echo "sdrift=unknown"
-    exit 0
-fi
+echo "drift $*" >> "$FX/fr.log"
+case "$(cat "$FX/fr.fail" 2>/dev/null)" in
+    drift) exit 1 ;;
+    drift-unknown) echo "sdrift=unknown"; exit 0 ;;
+    drift-budget) echo "HEALTH - drift: the pass was cut off after 90s | writer=- | fix=x"; echo "sdrift=unknown"; exit 0 ;;
+    drift-gh) echo "HEALTH - gh: the open-PR list is unreadable | writer=gh | fix=x"; echo "sdrift=unknown"; exit 0 ;;
+    drift-none) echo "UNOWNED HIMMEL-1 x | writer=- | fix=y"; exit 0 ;;
+esac
 echo "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 echo "sdrift=1:0a1b2c3d"
 EOS
@@ -705,7 +731,7 @@ fr
 check "3c: a full refresh prints ok" "$(frout)" "focus=ok"
 check "3c: and exits 0" "$(frrc)" 0
 check "3c: the steps run in order: mirror, versions, sweep, render, drift" "$(frseq)" "jira,jira,sweep,tracker,drift"
-check "3c: the page is written" "$(cat "$PAGE")" "render 1"
+check "3c: the page is written" "$(head -n 1 "$PAGE")" "render 1"
 check "3c: the state records status ok" "$(fst status)" ok
 check "3c: the state records generation 1" "$(fst gen)" 1
 contains "3c: the state records the drift line" "$(fst sdrift)" "1:0a1b2c3d"
@@ -719,11 +745,19 @@ contains "3c: the render reads the mirror it was given" "$trk" "--mirror-dir $FR
 check "3c: the drift rows are kept beside the page" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 fr
 check "3c: a second refresh is generation 2" "$(fst gen)" 2
-check "3c: an unchanged fingerprint leaves the page alone" "$(cat "$PAGE")" "render 1"
+check "3c: an unchanged fingerprint leaves the page alone" "$(head -n 1 "$PAGE")" "render 1"
 echo vfp2 > "$FX/vfp"
 fr
-check "3c: a changed fingerprint replaces the page" "$(cat "$PAGE")" "render 3"
+check "3c: a changed fingerprint replaces the page" "$(head -n 1 "$PAGE")" "render 3"
 check "3c: and the stored fingerprint follows" "$(cat "$PAGE.vfp")" vfp2
+printf '<title>Himmel Roadmap</title>\n' > "$PAGE"
+fr
+check "3c: a page another writer overwrote under an unchanged .vfp is restored" "$(head -n 1 "$PAGE")" "render 4"
+printf 'render 4\n<meta name="himmel-focus" content="v1.1.2 vfp2">\n' > "$PAGE"
+fr
+check "3c: a page of another version under an unchanged .vfp is restored" "$(head -n 1 "$PAGE")" "render 5"
+contains "3c: the sweep keeps its snapshot in the stage" "$(grep '^sweep ' "$FX/fr.log" | tail -n 1)" "--snapshot-out $FR/doc/.focus-stage."
+contains "3c: the drift pass reads that snapshot" "$(grep '^drift ' "$FX/fr.log" | tail -n 1)" "--snapshot $FR/doc/.focus-stage."
 
 fr_reset
 mkdir -p "$FR/m2"
@@ -731,11 +765,11 @@ fr --mirror-fresh "$FR/m2"
 check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift"
 contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
 
-for stage in mirror versions sweep render drift; do
+for stage in mirror versions sweep render drift:rc1; do
     fr_reset
     fr
     echo "page-before" > "$PAGE"
-    printf '%s\n' "$stage" > "$FX/fr.fail"
+    printf '%s\n' "${stage%%:*}" > "$FX/fr.fail"
     : > "$FX/fr.log"
     fr
     check "3c: a failed $stage step prints FAILED:$stage" "$(frout)" "focus=FAILED:$stage"
@@ -743,15 +777,26 @@ for stage in mirror versions sweep render drift; do
     check "3c: the state records the stage" "$(fst stage)" "$stage"
     check "3c: the state records FAILED" "$(fst status)" FAILED
     check "3c: the generation is not advanced" "$(fst gen)" 1
-    check "3c: the published page is untouched" "$(cat "$PAGE")" "page-before"
+    check "3c: the published page is untouched" "$(head -n 1 "$PAGE")" "page-before"
 done
 fr_reset; echo sweep-unknown > "$FX/fr.fail"
 fr
 check "3c: an unknown sweep is FAILED:sweep" "$(frout)" "focus=FAILED:sweep"
 fr_reset; echo drift-unknown > "$FX/fr.fail"
 fr
-check "3c: an unknown drift pass is FAILED:drift" "$(frout)" "focus=FAILED:drift"
+check "3c: an unknown drift pass with no reason is FAILED:drift:unknown" "$(frout)" "focus=FAILED:drift:unknown"
 check "3c: and the page is not published" "$([ -e "$PAGE" ] && echo set || echo none)" none
+fr_reset; echo drift-budget > "$FX/fr.fail"
+fr
+check "3c: a drift pass cut off by its budget is FAILED:drift:budget" "$(frout)" "focus=FAILED:drift:budget"
+fr --status
+check "3c: and --status names the reason" "$(frout)" "focus=FAILED:drift:budget"
+fr_reset; echo drift-gh > "$FX/fr.fail"
+fr
+check "3c: a drift pass that could not read the PRs is FAILED:drift:gh" "$(frout)" "focus=FAILED:drift:gh"
+fr_reset; echo drift-none > "$FX/fr.fail"
+fr
+check "3c: a drift pass with no sdrift line is FAILED:drift:no-sdrift" "$(frout)" "focus=FAILED:drift:no-sdrift"
 fr_reset; echo 2 > "$FX/sweep.moved"
 fr
 check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift"
@@ -762,7 +807,7 @@ check "3c: a failed re-read after a move is FAILED:mirror" "$(frout)" "focus=FAI
 fr_reset
 ( cd "$FR/doc" && bash "$FOCUS" --doc console.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
 check "3c: a bare doc filename resolves beside the doc" "$(frout)" "focus=ok"
-check "3c: and the page lands beside the doc" "$(cat "$PAGE")" "render 1"
+check "3c: and the page lands beside the doc" "$(head -n 1 "$PAGE")" "render 1"
 fr_reset; touch "$FX/pr-list.fail"
 fr
 check "3c: an unreadable PR snapshot is FAILED:prs" "$(frout)" "focus=FAILED:prs"

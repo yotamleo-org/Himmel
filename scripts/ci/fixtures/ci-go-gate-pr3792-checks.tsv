@@ -1,0 +1,122 @@
+# real check-runs of scratch PR 3792, copied from gh api commits/<sha>/check-runs (kind, name, conclusion)
+# cheap = run 40122519990 (suite 108752100721), go = run 40122468635 (suite 108751970142), label = run 40122866927 (suite 108753010811)
+cheap	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)'	skipped
+cheap	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'doc-invariants' || 'doc-invariants (deferred)'	skipped
+cheap	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)'	skipped
+cheap	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'secret-scan' || 'secret-scan (deferred)'	skipped
+cheap	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'unchecked-mktemp-range' || 'unchecked-mktemp-range (deferred)'	skipped
+cheap	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'git-env-scrub' || 'git-env-scrub (deferred)'	skipped
+cheap	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'lanes-and-trust-suites' || 'lanes-and-trust-suites (deferred)'	skipped
+cheap	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'leak-classes' || 'leak-classes (deferred)'	skipped
+cheap	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'security-scan' || 'security-scan (deferred)'	skipped
+cheap	bun-suites	skipped
+cheap	bwk-awk-mktemp-gate	skipped
+cheap	ci-quick	failure
+cheap	commit-lint	cancelled
+cheap	fail-fast-bun-suites	skipped
+cheap	fail-fast-bwk-awk-mktemp-gate	skipped
+cheap	fail-fast-ci-quick	cancelled
+cheap	fail-fast-claude-startup	skipped
+cheap	fail-fast-commit-lint	cancelled
+cheap	fail-fast-doc-invariants	skipped
+cheap	fail-fast-git-env-scrub	skipped
+cheap	fail-fast-guardrail-matrices	skipped
+cheap	fail-fast-jira-cli-smoke	skipped
+cheap	fail-fast-lanes-and-trust-suites	skipped
+cheap	fail-fast-leak-classes	skipped
+cheap	fail-fast-lint	cancelled
+cheap	fail-fast-node-suites	skipped
+cheap	fail-fast-plan	skipped
+cheap	fail-fast-plugin-version-bump	skipped
+cheap	fail-fast-secret-scan	skipped
+cheap	fail-fast-security-scan	skipped
+cheap	fail-fast-shell-unit-shard	skipped
+cheap	fail-fast-unchecked-mktemp-range	skipped
+cheap	guard-corpus-full	skipped
+cheap	jira-cli-smoke	skipped
+cheap	lint	cancelled
+cheap	node-suites	skipped
+cheap	plan	success
+cheap	plugin-version-bump	success
+cheap	shell-unit${{ (((github.event_name == 'workflow_dispatch') && ' (dispatch verify)') || '') }} (${{ matrix.os }})	skipped
+cheap	shell-unit-shard	skipped
+go	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)'	cancelled
+go	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'commit-lint' || 'commit-lint (deferred)'	cancelled
+go	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'doc-invariants' || 'doc-invariants (deferred)'	cancelled
+go	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)'	cancelled
+go	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'secret-scan' || 'secret-scan (deferred)'	cancelled
+go	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'unchecked-mktemp-range' || 'unchecked-mktemp-range (deferred)'	cancelled
+go	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'git-env-scrub' || 'git-env-scrub (deferred)'	cancelled
+go	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'security-scan' || 'security-scan (deferred)'	cancelled
+go	bun-suites (ubuntu-latest)	cancelled
+go	bwk-awk-mktemp-gate	cancelled
+go	ci-quick	cancelled
+go	fail-fast-bun-suites	cancelled
+go	fail-fast-bwk-awk-mktemp-gate	cancelled
+go	fail-fast-ci-quick	cancelled
+go	fail-fast-claude-startup	cancelled
+go	fail-fast-commit-lint	cancelled
+go	fail-fast-doc-invariants	cancelled
+go	fail-fast-git-env-scrub	cancelled
+go	fail-fast-guardrail-matrices	cancelled
+go	fail-fast-jira-cli-smoke	cancelled
+go	fail-fast-lanes-and-trust-suites	cancelled
+go	fail-fast-leak-classes	cancelled
+go	fail-fast-lint	cancelled
+go	fail-fast-node-suites	cancelled
+go	fail-fast-plan	cancelled
+go	fail-fast-plugin-version-bump	cancelled
+go	fail-fast-secret-scan	cancelled
+go	fail-fast-security-scan	cancelled
+go	fail-fast-shell-unit-shard	cancelled
+go	fail-fast-unchecked-mktemp-range	cancelled
+go	guard-corpus-full	skipped
+go	jira-cli-smoke	cancelled
+go	lanes-and-trust-suites	cancelled
+go	leak-classes	cancelled
+go	lint	cancelled
+go	node-suites	cancelled
+go	plan	cancelled
+go	plugin-version-bump	cancelled
+go	shell-unit (ubuntu-latest)	failure
+go	shell-unit-shard	cancelled
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)'	skipped
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'commit-lint' || 'commit-lint (deferred)'	skipped
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'doc-invariants' || 'doc-invariants (deferred)'	skipped
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)'	skipped
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'lint' || 'lint (deferred)'	skipped
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'secret-scan' || 'secret-scan (deferred)'	skipped
+label	(!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'unchecked-mktemp-range' || 'unchecked-mktemp-range (deferred)'	skipped
+label	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'git-env-scrub' || 'git-env-scrub (deferred)'	skipped
+label	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'lanes-and-trust-suites' || 'lanes-and-trust-suites (deferred)'	skipped
+label	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'leak-classes' || 'leak-classes (deferred)'	skipped
+label	(github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'security-scan' || 'security-scan (deferred)'	skipped
+label	bun-suites	skipped
+label	bwk-awk-mktemp-gate	skipped
+label	ci-quick	skipped
+label	fail-fast-bun-suites	skipped
+label	fail-fast-bwk-awk-mktemp-gate	skipped
+label	fail-fast-ci-quick	skipped
+label	fail-fast-claude-startup	skipped
+label	fail-fast-commit-lint	skipped
+label	fail-fast-doc-invariants	skipped
+label	fail-fast-git-env-scrub	skipped
+label	fail-fast-guardrail-matrices	skipped
+label	fail-fast-jira-cli-smoke	skipped
+label	fail-fast-lanes-and-trust-suites	skipped
+label	fail-fast-leak-classes	skipped
+label	fail-fast-lint	skipped
+label	fail-fast-node-suites	skipped
+label	fail-fast-plan	skipped
+label	fail-fast-plugin-version-bump	skipped
+label	fail-fast-secret-scan	skipped
+label	fail-fast-security-scan	skipped
+label	fail-fast-shell-unit-shard	skipped
+label	fail-fast-unchecked-mktemp-range	skipped
+label	guard-corpus-full	skipped
+label	jira-cli-smoke	skipped
+label	node-suites	skipped
+label	plan	skipped
+label	plugin-version-bump	skipped
+label	shell-unit${{ (((github.event_name == 'workflow_dispatch') && ' (dispatch verify)') || '') }} (${{ matrix.os }})	skipped
+label	shell-unit-shard	skipped

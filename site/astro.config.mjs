@@ -78,7 +78,7 @@ export default defineConfig({
       title: 'himmel',
       // tokens.css is the canonical palette (the console serves a byte copy); the map points Starlight's --sl-* at it.
       customCss: ['./src/styles/tokens.css', './src/styles/starlight-map.css'],
-      // Top-level groups are the F1 frame of docs-mockup-v4-agreed.html; test-site-build.sh asserts the list.
+      // The tree is frame 1 of docs-mockup-v5.html; test-site-build.sh compares it with scripts/docs-site/sidebar-v5-frame1.txt.
       sidebar: [
         {
           label: 'Get started',
@@ -88,8 +88,7 @@ export default defineConfig({
             { label: 'The adoption trail', link: '/adoption-trail.html' },
             { label: 'Install on your project', slug: 'setup/install' },
             { label: 'Install profiles', slug: 'setup/profiles' },
-            'setup/new-machine',
-            { label: 'Updating & uninstalling', slug: 'setup/updating' },
+            { label: 'Updating, or undoing the install', slug: 'setup/updating' },
             { label: 'Moving from an older install', slug: 'setup/migrating' },
           ],
         },
@@ -103,16 +102,6 @@ export default defineConfig({
             { label: 'Settings & configuration', slug: 'configuration' },
             { label: 'Scheduled jobs', slug: 'cadences' },
             { label: 'The local dashboard', slug: 'ui' },
-            {
-              label: 'Lanes & launchers',
-              items: [
-                { label: 'Launchers and lanes', slug: 'launchers' },
-                { label: 'Running under Codex', slug: 'setup/codex' },
-                { label: 'CLIProxyAPI codex lane', slug: 'setup/cli-proxy-lane' },
-                { label: 'Hermes runbook', slug: 'hermes-runbook' },
-              ],
-            },
-            { label: 'Cloud sessions', slug: 'setup/cloud-environment' },
             { label: 'Telegram bridge', slug: 'telegram-bridge' },
             {
               label: 'Second brain (notes vault)',
@@ -126,18 +115,9 @@ export default defineConfig({
               ],
             },
             {
-              label: 'Optional subsystems',
-              items: [
-                { label: 'Jarvis subsystems', slug: 'jarvis-subsystems' },
-                { label: 'himmel-bus (early)', slug: 'himmel-bus' },
-                { label: 'Voice (beta)', slug: 'voice' },
-              ],
-            },
-            {
               label: 'Plugins',
               items: [
                 { label: 'himmel-guard', link: `${REPO_URL}/tree/main/marketplace/plugins/himmel-guard` },
-                { label: 'shadcn-mcp', link: `${REPO_URL}/tree/main/marketplace/plugins/shadcn-mcp` },
                 { label: 'handover', link: `${REPO_URL}/tree/main/marketplace/plugins/handover` },
               ],
             },
@@ -146,10 +126,9 @@ export default defineConfig({
         {
           label: 'Run many sessions',
           items: [
-            { label: 'Unattended runs', slug: 'handover/afk-mode' },
-            { label: 'Supervisor sessions', slug: 'handover/running-a-console' },
+            { label: 'AFK (unattended) runs', slug: 'handover/afk-mode' },
+            { label: 'The chief and its workers', slug: 'handover/running-a-console' },
             { label: 'Handover notes', slug: 'internals/handover-system' },
-            { label: 'Orchestration patterns', slug: 'orchestration-patterns' },
             { label: 'Usage and cost', slug: 'token-economy' },
           ],
         },
@@ -180,11 +159,12 @@ export default defineConfig({
                 { label: 'Versioning scheme', slug: 'release/versioning-scheme' },
                 { label: 'License audit', slug: 'license-audit' },
                 { label: 'Third-party licenses', slug: 'third-party-licenses' },
-                { label: 'Credits', slug: 'credits' },
               ],
             },
+            { label: 'Credits', slug: 'credits' },
             {
-              label: 'Internals',
+              label: 'Internals…',
+              collapsed: true,
               items: [
                 { label: 'Architecture diagrams', slug: 'architecture' },
                 { label: 'Context architecture', slug: 'internals/context-architecture' },
@@ -196,29 +176,49 @@ export default defineConfig({
                 { label: 'Config layers', slug: 'internals/config-layers' },
                 { label: 'MCP servers', slug: 'internals/mcp-servers' },
                 { label: 'The ponytail convention', slug: 'internals/ponytail-convention' },
-              ],
-            },
-            {
-              label: 'Security policies',
-              items: [
-                { label: 'npm policy', slug: 'security/npm-policy' },
-                { label: 'Python policy', slug: 'security/python-policy' },
-              ],
-            },
-            {
-              label: 'Tool adoption',
-              items: [
-                { label: 'Rubric', slug: 'tool-adoption/rubric' },
-                { label: 'Registry', slug: 'tool-adoption/registry' },
-                { label: 'Telemetry', slug: 'tool-adoption/telemetry' },
-                { label: 'Lane adoption playbook', slug: 'tool-adoption/lane-adoption-playbook' },
-              ],
-            },
-            {
-              label: 'Evals',
-              items: [
-                { label: 'Prompt cache', slug: 'evals/prompt-cache' },
-                { label: 'Review panel', slug: 'evals/review-panel' },
+                'setup/new-machine',
+                {
+                  label: 'Lanes & launchers',
+                  items: [
+                    { label: 'Launchers and lanes', slug: 'launchers' },
+                    { label: 'Running under Codex', slug: 'setup/codex' },
+                    { label: 'CLIProxyAPI codex lane', slug: 'setup/cli-proxy-lane' },
+                    { label: 'Hermes runbook', slug: 'hermes-runbook' },
+                  ],
+                },
+                { label: 'Cloud sessions', slug: 'setup/cloud-environment' },
+                {
+                  label: 'Optional subsystems',
+                  items: [
+                    { label: 'Jarvis subsystems', slug: 'jarvis-subsystems' },
+                    { label: 'himmel-bus (early)', slug: 'himmel-bus' },
+                    { label: 'Voice (beta)', slug: 'voice' },
+                  ],
+                },
+                { label: 'Orchestration patterns', slug: 'orchestration-patterns' },
+                {
+                  label: 'Security policies',
+                  items: [
+                    { label: 'npm policy', slug: 'security/npm-policy' },
+                    { label: 'Python policy', slug: 'security/python-policy' },
+                  ],
+                },
+                {
+                  label: 'Tool adoption',
+                  items: [
+                    { label: 'Rubric', slug: 'tool-adoption/rubric' },
+                    { label: 'Registry', slug: 'tool-adoption/registry' },
+                    { label: 'Telemetry', slug: 'tool-adoption/telemetry' },
+                    { label: 'Lane adoption playbook', slug: 'tool-adoption/lane-adoption-playbook' },
+                  ],
+                },
+                {
+                  label: 'Evals',
+                  items: [
+                    { label: 'Prompt cache', slug: 'evals/prompt-cache' },
+                    { label: 'Review panel', slug: 'evals/review-panel' },
+                  ],
+                },
               ],
             },
           ],

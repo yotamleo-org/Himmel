@@ -54,7 +54,7 @@ For Jira ops in this repo, default to the local CLI at
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
 | Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
 | Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
-| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> --sector S --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/` (HIMMEL-6796); the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
+| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> [--sector S] --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/` (HIMMEL-6796); the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
 
 **Use MCP only when the plugin lacks the operation** (custom-field
 discovery, account-ID lookup via `lookupJiraAccountId`). Confluence now has
@@ -284,7 +284,13 @@ five minutes), not from a list in code. `jira sector setup [--dry-run] [--yes]
 [--sectors "A,B,C"]` explains what a sector is, proposes a default nine, creates
 the single-select field with its options, adds it to the default screen and
 prints the `jira.sectorField` config.json snippet (it never writes the file;
-config.json writes are operator-only); `--opt-out` prints the `none` snippet. Code:
+config.json writes are operator-only); `--opt-out` prints the `none` snippet. With no
+Sector configured the release manager's prompt allows a null sector, a ruling without one carries
+`sector=none` and applies; `release rule --sector` (and the MCP `sector`) is optional unless a field
+is configured (HIMMEL-7417). Configured, a ruling
+without a sector is refused (`REFUSED <req>: release rule: a ruling without a sector refuses`, the request
+stays claimed) and the judge HOLDs a sectorless request. A missing config.json or an absent
+`jira.sectorField` means sectors are off; malformed JSON or a non-string value throws instead. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
 **Bug placement (HIMMEL-6776).** `create --type Bug` without `--fix-version` is

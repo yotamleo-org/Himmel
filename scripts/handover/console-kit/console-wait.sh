@@ -28,12 +28,17 @@
 #                               pool does not), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
-#                               the pool, then a second pass without it lists the
-#                               version backlog) (CHIEF_WAIT_DISPATCH
+#                               the pool); a LOW or empty pool adds a second pass
+#                               without it, its rows not already in the pool under
+#                               `# version backlog`, and the wake line then carries
+#                               dispatchable=<n>, the count of dispatchable To Do
+#                               rows (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
 #                               per streak (the class-change wake fires only once).
+#   WAKE board-stale board=<STALE:..>  the same for board=, past
+#                               CHIEF_WAIT_BOARD_STALE_MIN (default 10).
 #   WAKE predecessor-open rc=<n>  with --doc <console doc> whose first line says
 #                               `successor to <doc>.md`: the waiter runs
 #                               close-wrapped-leg.sh --console on that wrapped,
@@ -645,12 +650,21 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
 }
 underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
+    local back="" extra="" count=""
+    # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
+    # backlog (tier 4 included); its rows already in the pool are printed once, under their own heading
+    if printf '%s\n' "$pool_out" | grep -Eq '^(# pool=[0-9]+/[0-9]+,LOW|POOL-EMPTY)$'; then
+        heartbeat sampling
+        back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
+        extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" '
+            BEGIN { n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 } }
+            $0 == "" || seen[$2] { next }
+            { print }')"
+        count="$(printf '%s\n%s\n' "$pool_out" "$back" | awk -F'\t' '$1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { k[$2] = 1 } END { n = 0; for (i in k) n++; print n }')"
+    fi
+    printf 'WAKE underfilled capacity=%s%s\n%s\n' "$cap_val" "${count:+ dispatchable=$count}" "$tick_line"
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
-    # an empty pool leaves the slots idle: a second pass without --priority-pool-only lists the version backlog
-    case $'\n'"$pool_out"$'\n' in *$'\nPOOL-EMPTY\n'*)
-        timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
-    esac
+    [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
 # and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
@@ -707,21 +721,27 @@ unowned_wake() {
 # streak passes CHIEF_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
 tracker_stale_file="$inbox.wait.trackerstale"
-tracker_stale_wake() {
-    local since
+tracker_stale_wake() { stale_streak_wake "$1" "$tracker_stale_file" "${CHIEF_WAIT_TRACKER_STALE_MIN:-30}" 30; }
+# board_stale_wake: <board= value> — the same for a board that stays stale, marker
+# <inbox>.wait.boardstale, threshold CHIEF_WAIT_BOARD_STALE_MIN (default 10).
+board_stale_file="$inbox.wait.boardstale"
+board_stale_wake() { stale_streak_wake "$1" "$board_stale_file" "${CHIEF_WAIT_BOARD_STALE_MIN:-10}" 10; }
+# stale_streak_wake: <value> <marker> <minutes> <default minutes>
+stale_streak_wake() {
+    local since stale_min
     case "$1" in
         STALE*) ;;
         '') return 1 ;;
-        *) rm -f "$tracker_stale_file"; return 1 ;;
+        *) rm -f "$2"; return 1 ;;
     esac
-    if [ ! -e "$tracker_stale_file" ]; then date +%s > "$tracker_stale_file" 2>/dev/null; return 1; fi
-    [ "$(sed -n 2p "$tracker_stale_file" 2>/dev/null)" = woke ] && return 1
-    since="$(sed -n 1p "$tracker_stale_file" 2>/dev/null)"
+    if [ ! -e "$2" ]; then date +%s > "$2" 2>/dev/null; return 1; fi
+    [ "$(sed -n 2p "$2" 2>/dev/null)" = woke ] && return 1
+    since="$(sed -n 1p "$2" 2>/dev/null)"
     case "$since" in ''|*[!0-9]*) return 1 ;; esac
-    stale_min="${CHIEF_WAIT_TRACKER_STALE_MIN:-30}"
-    case "$stale_min" in ''|*[!0-9]*) stale_min=30 ;; esac
+    stale_min="$3"
+    case "$stale_min" in ''|*[!0-9]*) stale_min="$4" ;; esac
     [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
-    printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
+    printf '%s\nwoke\n' "$since" > "$2" 2>/dev/null
     return 0
 }
 
@@ -1126,6 +1146,10 @@ while :; do
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
                 exit_reason='wake-tracker-stale'; exit 0
+            fi
+            if board_stale_wake "$(field board "$tick_line")"; then
+                printf 'WAKE board-stale board=%s\n%s\n' "$(field board "$tick_line")" "$tick_line"
+                exit_reason='wake-board-stale'; exit 0
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi

@@ -2577,7 +2577,7 @@ check "81 refusal writes no HANDOFF" "$([ -f "$root/tester/dec81c/DEMO-nextleg-$
 mk81 dec81d "rename ruling 00:05; keep N2" "keep N2" "- 10:00 FINDING — DECISIONS-DROP: rename ruling superseded by the 10:00 ruling"; run81 dec81d
 check "81 shorter line plus DECISIONS-DROP bullet passes" "$rc81" "0"
 mk81 dec81d2 "rename ruling 00:05; keep N2" "keep N2"; printf -- '- DECISIONS-DROP: not in Results\n' >> "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md"
-sed -i 's/^## Results$/## Other/' "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md"; run81 dec81d2
+sed 's/^## Results$/## Other/' "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md" > "$root/tester/dec81d2.n" && mv "$root/tester/dec81d2.n" "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md" || { echo "FAIL: 81 fixture rewrite dec81d2"; exit 1; }; run81 dec81d2
 check "81 DECISIONS-DROP bullet outside Results does not exempt" "$rc81" "1"
 mk81 dec81d3 "rename ruling 00:05; keep N2" "keep N2" "- 10:00 FINDING — DECISIONS-DROP: <reason>"; run81 dec81d3
 check "81 DECISIONS-DROP with a placeholder reason does not exempt" "$rc81" "1"
@@ -2591,7 +2591,7 @@ mk81 dec81h "none" "-"; run81 dec81h
 check "81 predecessor with placeholder decisions passes" "$rc81" "0"
 mk81 dec81i "-" "-"; run81 dec81i
 check "81 predecessor without a decisions line passes" "$rc81" "0"
-mk81 dec81j "rename ruling 00:05" "-"; sed -i '1s/successor to .*/successor to none (fill signal 70 %)/' "$root/tester/dec81j/DEMO-nextleg-${today}B-console.md"; run81 dec81j
+mk81 dec81j "rename ruling 00:05" "-"; sed '1s/successor to .*/successor to none (fill signal 70 %)/' "$root/tester/dec81j/DEMO-nextleg-${today}B-console.md" > "$root/tester/dec81j.n" && mv "$root/tester/dec81j.n" "$root/tester/dec81j/DEMO-nextleg-${today}B-console.md" || { echo "FAIL: 81 fixture rewrite dec81j"; exit 1; }; run81 dec81j
 check "81 doc with no predecessor passes" "$rc81" "0"
 mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-console.md"; run81 dec81k
 check "81 predecessor doc absent passes" "$rc81" "0"
@@ -2763,6 +2763,41 @@ run81 dec87i
 check "87 a longer line that drops its predecessor's decisions file refuses" "$rc81" "1"
 mk87 dec87j "$(printf '%s\n%s' "$e87_3" "$e87_4 Only on Sundays.")"; run81 dec87j
 check "87 pointer line whose file extended an entry refuses" "$rc81" "1"
+
+# --- 87b. next spills an oversize decisions: line to a bucket decisions file ----
+# The successor doc carries a one-line pointer instead; the file holds the line
+# byte for byte, and the successor's own handover still finds every ruling.
+big87='decisions: OPERATOR 10-17 (BINDING, carry verbatim to every successor) —'
+for i87 in $(seq 1 60); do big87="$big87 ($i87) ruling $i87 keeps the fleet at its cap and fills free slots from the priority pool."; done
+mk81 dec87s "${big87#decisions: }" "${big87#decisions: }"; run81 dec87s
+check "87b next with an oversize decisions: line succeeds" "$rc81" "0"
+spill87="$(ls "$root/tester/dec87s/specs/decisions/"console-decisions-*.md 2>/dev/null)"
+check "87b the oversize line is spilled to one bucket decisions file" "$(printf '%s\n' "$spill87" | grep -c 'console-decisions-[0-9-]*\.md$')" "1"
+check "87b the spill file holds the line byte for byte" "$(printf '%s\n' "$big87" | cmp - "$spill87" >/dev/null 2>&1 && echo same || echo differs)" "same"
+ptr87="$(grep -m 1 '^decisions:' "$root/tester/dec87s/DEMO-nextleg-${today}C-console.md" 2>/dev/null)"
+check "87b the successor doc carries a pointer naming the spill file" "$(printf '%s\n' "$ptr87" | grep -cF "specs/decisions/$(basename "$spill87")")" "1"
+check "87b the pointer is one short line" "$([ -n "$ptr87" ] && [ "${#ptr87}" -lt 400 ] && echo short || echo long)" "short"
+mk81 dec87t "${big87#decisions: }" "${ptr87#decisions: }"
+mkdir -p "$root/tester/dec87t/specs/decisions"; cp "$spill87" "$root/tester/dec87t/specs/decisions/"; run81 dec87t
+check "87b the successor's handover keeps every ruling through the pointer" "$rc81" "0"
+# An unnumbered oversize line is kept the same way: through the pointer, then with the pointer carried unchanged.
+big87u='decisions: OPERATOR 10-17 (BINDING) —'
+for i87 in $(seq 1 60); do big87u="$big87u ruling $i87 keeps the fleet at its cap and fills free slots from the priority pool;"; done
+mk81 dec87u "${big87u#decisions: }" "${big87u#decisions: }"; run81 dec87u
+check "87b next with an unnumbered oversize decisions: line succeeds" "$rc81" "0"
+spill87u="$(ls "$root/tester/dec87u/specs/decisions/"console-decisions-*.md 2>/dev/null)"
+ptr87u="$(grep -m 1 '^decisions:' "$root/tester/dec87u/DEMO-nextleg-${today}C-console.md" 2>/dev/null)"
+mk81 dec87v "${big87u#decisions: }" "${ptr87u#decisions: }"
+mkdir -p "$root/tester/dec87v/specs/decisions"; cp "$spill87u" "$root/tester/dec87v/specs/decisions/"; run81 dec87v
+check "87b an unnumbered spilled line is kept through the pointer" "$rc81" "0"
+mk81 dec87w "${ptr87u#decisions: }" "${ptr87u#decisions: }"
+mkdir -p "$root/tester/dec87w/specs/decisions"; cp "$spill87u" "$root/tester/dec87w/specs/decisions/"; run81 dec87w
+check "87b a pointer carried unchanged keeps an unnumbered spilled line" "$rc81" "0"
+# The match is found while far more decisions text still follows it.
+mk81 dec87x "${big87u#decisions: }" "${ptr87u#decisions: }"
+mkdir -p "$root/tester/dec87x/specs/decisions"; cp "$spill87u" "$root/tester/dec87x/specs/decisions/"
+seq 1 40000 | sed 's/^/decisions: filler line /' >> "$root/tester/dec87x/specs/decisions/$(basename "$spill87u")"; run81 dec87x
+check "87b a spilled line found before more decisions text is kept" "$rc81" "0"
 
 # --- 88: the pasted launch line binds the console on the bus, as the armed
 # path does: the console profile's opt-in registers the session as a console

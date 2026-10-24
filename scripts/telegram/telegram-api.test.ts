@@ -126,6 +126,16 @@ test("sendMessage fully redacts one- and two-digit chat ids in logs, including s
     ]);
   } finally { error.mockRestore(); }
 });
+test("sendMessage reports a too-long message as not delivered and logs Telegram's status and reason", async () => {
+  const fakeFetch = mock(async () => new Response(JSON.stringify({ ok:false, error_code:400, description:"Bad Request: message is too long" }), {status:400}));
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const ok = await sendMessage("T", 123, "x".repeat(5000), fakeFetch as any);
+    expect(ok).toBe(false);
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith("[telegram] sendMessage 400 chat=***23: Bad Request: message is too long");
+  } finally { error.mockRestore(); }
+});
 // --- getFile + downloadFile ---
 import { getFile, downloadFile } from "./telegram-api";
 import { mkdtempSync, readFileSync } from "node:fs";

@@ -4,9 +4,14 @@
 # Core generator and morning-report schema. Templates live
 # git/gh/jira/worktree state into the curated "🌅 Morning Report" schema and
 # writes a dated report to the handover root (`$HANDOVER_DIR`, Mode B) or
-# `<repo>/handovers/` (Mode A) — at ~zero Claude tokens by default. Sections:
+# `<repo>/handovers/` (Mode A) — at ~zero Claude tokens by default. Sections,
+# led by the four answers of v5 frame 16 (a field with no input says so):
 #
-#   ## TL;DR             — derived counts (heuristic; --llm enriches)
+#   ## ✅ What shipped    — merged PR / commit / Done counts
+#   ## ⏳ What waits on you — open PRs + stale worktrees to act on
+#   ## 💸 What it spent   — Claude usage (not available) + this report's cost
+#   ## ▶️ What runs next  — in-flight count + first suggested step
+#   ## TL;DR            — derived counts (heuristic; --llm enriches)
 #   ## ✅ Completed       — merged PRs (gh) + commits + Done cross-ref
 #   ## 🔴 In-flight WIP   — jira In Progress correlated to worktrees/open-PRs
 #   ## 🧹 Stale worktrees — worktrees on MERGED-PR branches
@@ -203,8 +208,10 @@ while IFS= read -r _line; do ticket_keys+=("$_line"); done < <(printf '%s\n' "$c
 # Merged PRs via gh (best-effort) — GitHub only (date-ranged `--search`).
 pr_table=""
 pr_count=0
+pr_count_ok=0
 if [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&1; then
     if pr_json=$($GH_CMD pr list --state merged --search "merged:>=$SINCE_DATE" --limit 100 --json number,title,mergedAt 2>/dev/null); then
+        pr_count_ok=1
         if command -v jq >/dev/null 2>&1; then
             pr_table=$(printf '%s' "$pr_json" | jq -r '
                 .[] | "| #\(.number) | \(.title | capture("(?<key>[A-Z][A-Z0-9]+-[0-9]+)").key // "—") | \(.title | sub("^[a-z]+(\\([^)]+\\))?:[[:space:]]*"; "")) |"' 2>/dev/null || true)
@@ -239,11 +246,12 @@ fi
 # bound on total PRs scanned for branch correlation (a different axis from the
 # jira-limit knob).
 pr_map=""
-if [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&1; then
-    if all_json=$($GH_CMD pr list --state all --limit 500 --json number,state,headRefName,title 2>/dev/null); then
-        if command -v jq >/dev/null 2>&1; then
-            pr_map=$(printf '%s' "$all_json" | jq -r '.[] | "\(.state)\t\(.headRefName)\t\(.number)"' 2>/dev/null || true)
-        fi
+if [ "$briefing_forge" = "github" ]; then
+    if ! command -v "${GH_CMD%% *}" >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        pr_map_ok=0
+    elif all_json=$($GH_CMD pr list --state all --limit 500 --json number,state,headRefName,title 2>/dev/null); then
+        pr_map=$(printf '%s' "$all_json" | jq -r '.[] | "\(.state)\t\(.headRefName)\t\(.number)"' 2>/dev/null) ||
+            { pr_map=""; pr_map_ok=0; }
     else
         pr_map_ok=0
         echo "WARNING: briefing: gh PR-state query failed — stale + PR correlation skipped" >&2
@@ -298,10 +306,11 @@ done_count=$(printf '%s\n' "$done_block" | grep -c . || true)
 
 tldr_default="**${inprog_count}** in-flight · **${stale_count}** stale worktrees · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
 
+open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
+
 order_default=$(
     n=1
     [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale worktree(s) (/clean).\n' "$n" "$stale_count"; n=$((n+1)); }
-    open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
     [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s) (/pr-check).\n' "$n" "$open_prs"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }
     [ "$backlog_total" -gt 0 ] && printf '%d. Pull from the %s-item backlog.\n' "$n" "$backlog_total"
@@ -314,6 +323,7 @@ order_default=$(
 
 tldr_final="$tldr_default"
 order_final="$order_default"
+llm_status=""   # ok | failed | unresolved; empty when --llm did not run
 backlog_block_final=""   # empty => template uses the deterministic backlog render
 
 # extract_block RAW NAME → text between <<<NAME_BEGIN>>>/<<<NAME_END>>> (exclusive).
@@ -351,12 +361,15 @@ In-Progress:
 ${inprogress_raw}"
     # a text-in/text-out summary needs no plugins beyond the floor.
     if ! llm_settings=$(bash "$(dirname "${BASH_SOURCE[0]}")/../lanes/profile-settings.sh" bare); then
+        llm_status="unresolved"
         echo "WARNING: --llm plugin profile 'bare' did not resolve; using heuristic" >&2
     elif llm_out=$($CLAUDE_CMD --settings "$llm_settings" --model "$LLM_MODEL" "$llm_prompt" </dev/null 2>/dev/null); then
+        llm_status="ok"
         t=$(extract_block "$llm_out" TLDR);    if [ -n "$t" ]; then tldr_final="$t"; else echo "WARNING: --llm TLDR block empty; using heuristic" >&2; fi
         o=$(extract_block "$llm_out" ORDER);   if [ -n "$o" ]; then order_final="$o"; else echo "WARNING: --llm ORDER block empty; using heuristic" >&2; fi
         b=$(extract_block "$llm_out" BACKLOG); if [ -n "$b" ]; then backlog_block_final="$b"; fi
     else
+        llm_status="failed"
         echo "WARNING: --llm: '$CLAUDE_CMD' failed; using deterministic heuristics" >&2
     fi
 fi
@@ -380,6 +393,38 @@ EOF
         [ "$pr_map_ok" -eq 0 ] && printf 'gh PR state unavailable — Stale + PR correlation SKIPPED. '
         printf '\n\n'
     fi
+    # The four answers a reader back from a shift needs first (v5 frame 16);
+    # every older section follows unchanged. A field with no input says so.
+    printf '## ✅ What shipped\n\n'
+    if [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"; else done_shown="not available (jira unavailable)"; fi
+    if [ "$pr_count_ok" -eq 1 ] && [ "$pr_count" != "unknown" ]; then pr_shown="**$pr_count**"; else pr_shown="not available"; fi
+    printf '%s PRs merged to main · **%s** commits · %s Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
+        "$pr_shown" "$commit_count" "$done_shown"
+    printf '## ⏳ What waits on you\n\n'
+    if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+        printf -- '- **%s** open PR(s) to review/merge (/pr-check)\n' "$open_prs"
+        printf -- '- **%s** stale worktree(s) to prune (/clean)\n' "$stale_count"
+    else
+        printf -- '- Open PRs: not available (gh PR state unavailable)\n'
+        printf -- '- Stale worktrees: not available (gh PR state unavailable)\n'
+    fi
+    printf -- '- Approvals, CI and review state, worker questions: not available (the generator reads no input for them)\n\n'
+    printf '## 💸 What it spent\n\n'
+    printf -- '- Claude usage of the shift: not available (the generator reads no usage input)\n'
+    case "$llm_status" in
+        ok)         printf -- '- This report: one bounded %s turn (--llm)\n\n' "$LLM_MODEL" ;;
+        failed)     printf -- '- This report: one %s turn (--llm) failed; heuristic used\n\n' "$LLM_MODEL" ;;
+        unresolved) printf -- '- This report: no Claude turn (--llm plugin profile did not resolve)\n\n' ;;
+        *)          printf -- '- This report: no Claude usage (default run)\n\n' ;;
+    esac
+    printf '## ▶️ What runs next\n\n'
+    if [ "$jira_ok" -eq 1 ]; then
+        printf -- '- **%s** In-Progress ticket(s) in flight. Detail: In-flight WIP, below\n' "$inprog_count"
+    else
+        printf -- '- In-Progress tickets: not available (jira unavailable)\n'
+    fi
+    printf -- '- Release progress: not available (the generator reads no release input)\n'
+    printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | awk 'NF{print; exit}')"
     printf '## TL;DR\n\n%s\n\n' "$tldr_final"
     printf '## ✅ Completed (%s PRs merged to main)\n\n' "$pr_count"
     if [ -n "$pr_table" ]; then

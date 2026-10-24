@@ -2,7 +2,7 @@
 # scripts/handover/leg-timeline.sh
 #
 # Reconstruct a per-leg critical-path timeline from data that already exists:
-#   - worker dispatches : ~/.claude/handover/bridge/{glm,claudex}-sessions/*/meta.json
+#   - worker dispatches : ~/.claude/handover/bridge/glm-sessions/*/meta.json, claudex-sessions/*/meta.json (see lanes/claudex-session-root.mjs)
 #                         (started_at = dispatch; meta.json mtime = exit/land stamp,
 #                          since NO meta.json carries an explicit end timestamp —
 #                          verified across every session; the file's mtime is the
@@ -64,7 +64,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
 glm_dir="${WORKER_SESSION_TIMELINE_WORKER_GLM:-${LEG_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}}"
-claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-${LEG_TIMELINE_WORKER_CLAUDEX:-$HOME/.claude/handover/bridge/claudex-sessions}}"
+claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-${LEG_TIMELINE_WORKER_CLAUDEX:-}}"
+claudex_legacy=""
+if [ -z "$claudex_dir" ]; then
+  claudex_roots=$(node "$SCRIPT_DIR/../lanes/claudex-session-root.mjs" all) || claudex_roots=""
+  claudex_dir=$(printf '%s\n' "$claudex_roots" | sed -n 1p)
+  claudex_legacy=$(printf '%s\n' "$claudex_roots" | sed -n 2p)
+fi
 WORKER_SESSION_TIMELINE_CHAIN_LEDGER="${WORKER_SESSION_TIMELINE_CHAIN_LEDGER:-${LEG_TIMELINE_CHAIN_LEDGER:-}}"
 if [ -n "${WORKER_SESSION_TIMELINE_CHAIN_LEDGER:-}" ]; then
   chain_ledger="$WORKER_SESSION_TIMELINE_CHAIN_LEDGER"
@@ -195,7 +201,7 @@ gather_workers() {
         }
       }
     }
-  ' -- "$glm_dir" "$claudex_dir"
+  ' -- "$glm_dir" "$claudex_dir" "$claudex_legacy"
 }
 
 # --- source 2: gate renders (jq over the CR ledger JSONL) ---
@@ -248,7 +254,7 @@ gather_ledger() {
 # Track which sources contributed (for the summary's gap report).
 w_glm=0; w_claudex=0; w_gate=0; w_ledger=0; w_gate_malformed=0
 [ -d "$glm_dir" ]     && w_glm=1
-[ -d "$claudex_dir" ] && w_claudex=1
+{ [ -d "$claudex_dir" ] || { [ -n "$claudex_legacy" ] && [ -d "$claudex_legacy" ]; }; } && w_claudex=1
 [ -f "$cr_ledger" ]   && w_gate=1
 [ -f "$chain_ledger" ] && w_ledger=1
 

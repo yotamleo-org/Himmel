@@ -4616,6 +4616,7 @@ if [ "$1" = "-l" ]; then
         for f in "$STATE"/tasks/*; do
             [ -e "$f" ] || continue
             printf '0 0 * * * /bin/true # %s\n' "$(basename "$f")"
+            if [ "$(cat "$f")" = dup ]; then printf '0 0 * * * /bin/true # %s\n' "$(basename "$f")"; fi
         done
     fi
     exit 0
@@ -4711,6 +4712,59 @@ echo "$outCCunq" | jq -e '.detail | contains("scheduler")' >/dev/null \
   || fail "cadence-coherence: unqueryable-scheduler detail should name the limitation (got: $outCCunq)"
 echo "ok: cadence-coherence — a scheduler that refuses every query reads a loud degraded naming the limitation, never assumed-healthy"
 rm -f "$cc_sched_state/fail-query"
+
+# ── the doctor judges a job by its REAL runs, not its flag ──
+# Fixture crontab + run logs through the same seams as above (PIPELINE_CRONTAB /
+# PIPELINE_BAT_DIR); the logs live in $cc_bat, never the real ~/.claude.
+cc_tasks="HIMMEL-Pipeline-FetchHealth HIMMEL-Pipeline-Harvest HIMMEL-Pipeline-Synthesize HIMMEL-Pipeline-Health"
+cc_logs="pipeline-fetch-health pipeline-harvest pipeline-synthesize pipeline-health"
+cc_arm_all() { for t in $cc_tasks; do : > "$cc_sched_state/tasks/$t"; done; }
+cc_disarm_all() { for t in $cc_tasks; do rm -f "$cc_sched_state/tasks/$t"; done; }
+cc_fresh_logs() { for l in $cc_logs; do echo '[exit rc=0]' > "$cc_bat/$l.log"; done; }
+cc_age_log() { "$node_bin" -e "const t=(Date.now()-$2*1000)/1000;require('fs').utimesSync('$(winpath "$cc_bat")/$1.log',t,t)"; }
+cc_clean() { cc_disarm_all; rm -f "$cc_bat"/*.log "$cc_bat"/*.bat; }
+
+# (a) flag false + all armed + fresh exit-0 logs: config is stale, set the flag; never disarm.
+cc_arm_all; cc_fresh_logs
+outCCa=$(run_cc "$cc_cfg_missing")
+echo "$outCCa" | jq -e '.actual == "degraded" and (.cleanAbsence // false) == false' >/dev/null \
+  || fail "cadence real-runs (a): flag false + armed + fresh exit-0 logs should read degraded (got: $outCCa)"
+echo "$outCCa" | jq -e '.detail | test("config.*stale"; "i") and contains("luna.cadence.enabled") and (test("disarm"; "i") | not)' >/dev/null \
+  || fail "cadence real-runs (a): detail must say config-stale with the set-flag remedy and never suggest disarm (got: $outCCa)"
+echo "ok: cadence real-runs (a) — flag false with healthy armed jobs reads config-stale (set the flag), never disarm"
+cc_clean
+
+# (b) flag true + armed + last run older than twice the interval: stale.
+cc_arm_all; cc_fresh_logs; cc_age_log pipeline-harvest 432000
+outCCb=$(run_cc "$work/cc-enabled.json")
+echo "$outCCb" | jq -e '.actual == "degraded" and (.detail | test("stale"; "i") and contains("harvest"))' >/dev/null \
+  || fail "cadence real-runs (b): a daily job whose log is 5 days old should read degraded/stale naming harvest (got: $outCCb)"
+echo "ok: cadence real-runs (b) — armed but last run older than twice the interval reads stale"
+cc_clean
+
+# (c) flag true + armed + last log line is a non-zero exit: failing.
+cc_arm_all; cc_fresh_logs; echo '[exit rc=1]' > "$cc_bat/pipeline-fetch-health.log"
+outCCc=$(run_cc "$work/cc-enabled.json")
+echo "$outCCc" | jq -e '.actual == "degraded" and (.detail | test("failing"; "i") and contains("rc=1"))' >/dev/null \
+  || fail "cadence real-runs (c): a last line of [exit rc=1] should read degraded/failing (got: $outCCc)"
+echo "ok: cadence real-runs (c) — armed but the last run exited non-zero reads failing"
+cc_clean
+
+# (d) two scheduler entries for one task: duplicate.
+cc_arm_all; cc_fresh_logs; echo dup > "$cc_sched_state/tasks/HIMMEL-Pipeline-Harvest"
+outCCd=$(run_cc "$work/cc-enabled.json")
+echo "$outCCd" | jq -e '.actual == "degraded" and (.detail | test("duplicate"; "i") and contains("harvest"))' >/dev/null \
+  || fail "cadence real-runs (d): two crontab entries for one task should read degraded/duplicate (got: $outCCd)"
+echo "ok: cadence real-runs (d) — two scheduler entries for one task reads duplicate"
+cc_clean
+
+# control: flag true + armed + fresh exit-0 logs stays present.
+cc_arm_all; cc_fresh_logs
+outCCg=$(run_cc "$work/cc-enabled.json")
+echo "$outCCg" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence real-runs control: flag true + armed + fresh exit-0 logs should read present (got: $outCCg)"
+echo "ok: cadence real-runs — healthy armed jobs with the flag set still read present"
+cc_clean
 
 # ── phi-coherence — status item S3 ──────────────────────
 phi_vault="$work/phi-vault"; mkdir -p "$phi_vault"

@@ -212,6 +212,11 @@ station=BEHIND:<component>,... (HIMMEL-5945) appears only when the last station-
 run left a component behind main (state file TICK_STATION_STATE, default
 ~/.himmel/state/station-sync.state); it clears on the next sync. Follows parked=.
 
+alert-fail=<cadence>:<age> (HIMMEL-7419) appears only while cadence-alert.sh's send-failed
+marker exists (CADENCE_ALERT_SEND_FAILED_MARK, default
+~/.himmel/state/cadence-alert-send-failed): the newest cadence whose failure alert could
+not reach Telegram, and how long ago. A delivered alert removes the marker. Follows station=.
+
 vault=<ok|STALL:<age>,<n>|PUSH-LAG:<age>|skip|unknown> (HIMMEL-4911) is the luna
 vault's commit health, from vault-status.sh (git plumbing only, fail-soft): STALL =
 <n> staged/modified files, the oldest <age> old (the vault's auto-commit is stuck;
@@ -1898,6 +1903,26 @@ if [ -r "$station_state" ]; then
     station_val="$(head -n 1 "$station_state" 2>/dev/null)" || station_val=""
     case "$station_val" in BEHIND:*[!A-Za-z0-9._,:-]*) ;; BEHIND:*) station_tail=" station=$station_val" ;; esac
 fi
+# alert-fail=<cadence>:<age>: cadence-alert.sh could not deliver a failure alert to
+# Telegram; the marker line is `<UTC iso-ts> <cadence> <reason>`. ABSENT when no marker
+# exists (the next delivered alert removes it). A file read only.
+alertfail_tail=""
+alertfail_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-${HOME:-}/.himmel/state/cadence-alert-send-failed}"
+if [ -s "$alertfail_mark" ]; then
+    read -r af_ts af_leg _ < <(tail -n 1 "$alertfail_mark" 2>/dev/null | tr -d '\r') || true  # swallow-ok: an unreadable marker leaves no field
+    af_epoch="$(date -u -d "${af_ts:-}" +%s 2>/dev/null)" || af_epoch=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unparsable stamp reads as age ?
+    case "${af_leg:-}" in
+        ""|*[!A-Za-z0-9._-]*) ;;
+        *)
+            if [ -n "$af_epoch" ]; then
+                af_age=$(( $(date +%s) - af_epoch )); [ "$af_age" -ge 0 ] || af_age=0
+                if [ "$af_age" -ge 86400 ]; then af_age="$((af_age / 86400))d"
+                elif [ "$af_age" -ge 3600 ]; then af_age="$((af_age / 3600))h"
+                else af_age="$((af_age / 60))m"; fi
+            else af_age="?"; fi
+            alertfail_tail=" alert-fail=$af_leg:$af_age" ;;
+    esac
+fi
 # stall=<pr>:<class>[,...]: open PRs pr-stall.sh calls stuck (conflict, no-ci,
 # ci-slow, idle). ABSENT when none is stuck. A failed probe or STALL-UNKNOWN reads as the last
 # cached value, else `?` (unknown, never "none"): the waiter keeps its saved set on `?`. The
@@ -2476,6 +2501,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
+    [ -z "$alertfail_tail" ] || printf 'alert-fail: %s\n' "${alertfail_tail# alert-fail=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
@@ -2539,7 +2565,7 @@ else
     compact_field leaks "$leaks_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"

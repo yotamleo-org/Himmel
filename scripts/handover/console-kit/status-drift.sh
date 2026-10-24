@@ -6,15 +6,20 @@
 # comment. It never writes Jira, a record or the outcome log; the sweep
 # (status-sweep.sh) is the fixer.
 #
-# Usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>]
+# Usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>] [--snapshot <dir>]
 #   --docs-dir is where leg docs are scanned for a second owner (default the
 #   handover root).
+#   --snapshot is a status-sweep.sh --snapshot-out dir: the derive takes the PRs,
+#   their checks and threads from it instead of gh per key. A dir without prs.json
+#   and threads.tsv is ignored (live reads). Jira is still read fresh.
 #
 # One row per finding, `CLASS KEY detail | writer=<script> | fix=<command>`:
 #   DERIVE-MISMATCH   Jira differs from derive(now); names the D rule and direction
 #   MERGE-MISMATCH    a contract-yes merge row, but the ticket is not Done
 #   DONE-WITH-OPEN-PR Done, but a PR whose title's first [KEY] is the key is open
-#   MISSED            a miss with no later moved or noop row for the same key and PR
+#   MISSED            a miss with no later moved or noop row for the same key and PR,
+#                     unless a derive now settles the key (Done or off the ladder, or
+#                     Jira already at the derived status)
 #   WORKER-STALE      the record says live or idle, but the lock is released or the doc ended
 #   WORKER-COMMENT    the WORKER comment hash differs from the one the record's class gives
 #   TWO-OWNERS        two live docs claim one key
@@ -31,9 +36,8 @@
 # classes look at the last 500 rows only. The whole pass is cut off at
 # TICKET_STATUS_DRIFT_BUDGET seconds (default 90).
 #
-# ponytail: the Jira reads are batched (100 keys per search) but the derive still
-# reads gh live per key that has a ladder status, upgrade path = the batched
-# TS_SNAPSHOT_DIR the sweep builds.
+# ponytail: without --snapshot the derive reads gh live per key that has a ladder
+# status (~4 s a key), upgrade path = always pass the sweep's snapshot.
 #
 # Env: TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); the rest is
 # read by the lib.
@@ -60,13 +64,14 @@ export LC_ALL=C
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh"
 
-usage() { echo "usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>]" >&2; exit 2; }
-REPO="" DOCS=""
+usage() { echo "usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>] [--snapshot <dir>]" >&2; exit 2; }
+REPO="" DOCS="" SNAP=""
 while [ "$#" -gt 0 ]; do
     [ "$#" -ge 2 ] || usage
     case "$1" in
         --repo) REPO="$2" ;;
         --docs-dir) DOCS="$2" ;;
+        --snapshot) SNAP="$2" ;;
         *) usage ;;
     esac
     shift 2
@@ -82,7 +87,7 @@ BUDGET="${TICKET_STATUS_DRIFT_BUDGET:-90}"
 case "$BUDGET" in ''|*[!0-9]*) BUDGET=90 ;; esac
 if [ -z "${TICKET_STATUS_DRIFT_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     rc=0
-    TICKET_STATUS_DRIFT_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$BUDGET" bash "${BASH_SOURCE[0]}" --repo "$REPO" ${DOCS:+--docs-dir "$DOCS"} || rc=$?
+    TICKET_STATUS_DRIFT_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$BUDGET" bash "${BASH_SOURCE[0]}" --repo "$REPO" ${DOCS:+--docs-dir "$DOCS"} ${SNAP:+--snapshot "$SNAP"} || rc=$?
     case "$rc" in
         124|137)
             echo "HEALTH - drift: the pass was cut off after ${BUDGET}s | writer=- | fix=bash scripts/handover/console-kit/status-drift.sh"
@@ -196,13 +201,16 @@ ts_read_jira() { # <KEY> - the batch row, else the lib's own get
         [ -n "$TS_J_STATUS" ] && [ -n "$TS_J_TYPE" ]
         return
     fi
-    _ts_read_jira_get "$1"
+    TS_SNAPSHOT_DIR='' _ts_read_jira_get "$1"
 }
+{ [ -f "$SNAP/prs.json" ] && [ -f "$SNAP/threads.tsv" ]; } 2>/dev/null || SNAP=""
 
 # --- per key -----------------------------------------------------------------------
 while IFS= read -r key; do
     [ -n "$key" ] || continue
-    unset TS_SNAPSHOT_DIR TS_EVENT
+    unset TS_EVENT
+    # shellcheck disable=SC2034  # read by ticket-status.sh
+    if [ -n "$SNAP" ]; then TS_SNAPSHOT_DIR="$SNAP"; else unset TS_SNAPSHOT_DIR; fi
     ts_derive "$key"
     jstatus="$TS_J_STATUS" derived="$TS_DERIVED" rule="$TS_RULE" result="$TS_RESULT" stage="$TS_STAGE"
     wstate_derive="$TS_WORKER_STATE" pr_state="$TS_PR_STATE"
@@ -278,6 +286,9 @@ if [ -n "$logtail" ]; then
     done <<<"$mkeys"
     while IFS=$'\t' read -r k p ev st; do
         [ -n "$k" ] || continue
+        ts_derive "$k"
+        [ "$TS_RULE" != D0 ] || continue
+        [ "$TS_DERIVED" = no-write ] || [ "$TS_DERIVED" != "$TS_J_STATUS" ] || continue
         add MISSED "$k" "${p:+pr=$p }event=$ev${st:+ stage=$st} has no later moved or noop row" "$FUNNEL" "bash scripts/handover/console-kit/leg-jira-status.sh $k --event sweep"
     done < <(jq -rs '[.[] | select(.key != null and .key != "-")] | group_by([.key, (.pr // "")])[]
         | . as $g | ([range(0; length)] | map(select($g[.].result == "miss")) | last) as $m
