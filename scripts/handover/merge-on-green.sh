@@ -147,8 +147,9 @@
 #       file than that GO (another PR or head, or a missing file); (2) any caller
 #       passed --go and it fails the same checks; (3) solo mode (git config
 #       himmel.mergeMode) is set to a value other than 'solo', or to 'solo' under
-#       HIMMEL_CONSOLE_LEG or in the himmel clone (anchor carries
-#       console-kit/go.sh) — checked after check-ci, before any merge
+#       HIMMEL_CONSOLE_LEG or in the himmel clone (the PR's repo carries
+#       console-kit/go.sh, or the anchor does and its origin does not name
+#       another github.com repo) — checked after check-ci, before any merge
 #       call, on --dry-run too (see the solo-mode and console-GO gates below). Before
 #       this code also carried the GitHub-blocked refusals now reported as 18.
 #   18  GitHub-blocked — refused once, alerted once, never retried:
@@ -913,19 +914,25 @@ fi
 
 # Solo mode. An adopted project with one person and no console selects it with
 # the project's own git config, `git config himmel.mergeMode solo`, read from the
-# anchor's local config only. It relaxes no gate that can run in an adopted
+# local config of the PR's repo (the same-repo guard bound it to this checkout;
+# its primary checkout, never the anchor, which in an adopted project is the
+# himmel clone). It relaxes no gate that can run in an adopted
 # project: the green gate above, the trust path, main-red and privacy gates all
 # still run; the one skip is a static re-check whose script the merge result does
 # not carry, audited per check (see the static re-check gate). No GO file is asked for
 # because only a console leg or an explicit --go is ever bound to one. What it
 # adds is a refusal wherever a GO is the rule — a console leg, or the himmel
-# clone (the anchor carries console-kit/go.sh) — and an unknown value fails
+# clone (the PR's repo, or an anchor that is not another repo's harness, carries
+# console-kit/go.sh) — and an unknown value fails
 # closed, so the config can never quietly stand in for a GO.
 SOLO_TAG=""
 solo_cfg=""
 solo_set=0
-if git -C "$himmel_repo" rev-parse --git-dir >/dev/null 2>&1; then
-    solo_cfg=$(git -C "$himmel_repo" config --local --get himmel.mergeMode) && solo_set=1
+pr_repo_root=""
+# swallow-ok: outside a git checkout there is no PR repo config, so solo stays off.
+if solo_common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+    pr_repo_root=$(dirname "$solo_common")
+    solo_cfg=$(git -C "$pr_repo_root" config --local --get himmel.mergeMode) && solo_set=1
 fi
 if [ "$solo_set" = 1 ]; then
     solo_refuse() {
@@ -943,7 +950,25 @@ if [ "$solo_set" = 1 ]; then
             || solo_refuse solo-console-leg "the console-leg marker cannot be read"
         ! console_leg || solo_refuse solo-console-leg "a console leg merges only on its console's GO"
     fi
-    [ ! -e "$himmel_repo/scripts/handover/console-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
+    [ ! -e "$pr_repo_root/scripts/handover/console-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
+    # The cwd is the caller's to choose, so a checkout posing as the PR's repo
+    # must not make a himmel PR solo: an anchor carrying go.sh is the himmel
+    # clone of this PR unless its origin positively names another github.com
+    # repo. An unreadable origin or an SSH host alias proves nothing and refuses.
+    if [ -e "$himmel_repo/scripts/handover/console-kit/go.sh" ]; then
+        solo_origin=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$himmel_repo" config --get remote.origin.url) || solo_origin=""
+        solo_origin=${solo_origin%/}; solo_origin=${solo_origin%.git}
+        case "$solo_origin" in
+            https://github.com/*) solo_origin=${solo_origin#https://github.com/} ;;
+            ssh://git@github.com/*) solo_origin=${solo_origin#ssh://git@github.com/} ;;
+            git@github.com:*) solo_origin=${solo_origin#git@github.com:} ;;
+            *) solo_origin="" ;;
+        esac
+        case "$solo_origin" in */*/*|*[!A-Za-z0-9._/-]*) solo_origin="" ;; ?*/?*) ;; *) solo_origin="" ;; esac
+        [ -n "$solo_origin" ] \
+            && [ "$(printf '%s' "$solo_origin" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ] \
+            || solo_refuse solo-himmel-clone "the anchor carries console-kit/go.sh and its origin does not name a github.com repo other than $nwo, so this is the himmel clone, which merges only on a GO"
+    fi
     SOLO_TAG=" mode=solo"
 fi
 
