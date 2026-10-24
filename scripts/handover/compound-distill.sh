@@ -226,19 +226,37 @@ def strings(v):
             yield from strings(x)
 
 
-for s in strings(out):
-    for k in KEY.findall(s):
-        if k not in known:
-            die("the text names %s, which is neither in the extract nor an existing theme" % k)
+slugs = set()
+for th in out["themes"]:
+    if th["slug"] in slugs:
+        die("two themes with the slug %s" % th["slug"])
+    slugs.add(th["slug"])
+structured = set(seen)
 for th in out["themes"]:
     for l in th["lessons"]:
         for k in l["keys"]:
             if k not in known:
                 die("theme %s cites %s, which is neither in the extract nor an existing theme" % (th["slug"], k))
+            structured.add(k)
 for p in out["proposals"]:
     for k in p["keys"]:
         if k not in known:
             die("a proposal cites %s, which is neither in the extract nor an existing theme" % k)
+        structured.add(k)
+for s in strings(out):
+    for k in KEY.findall(s):
+        if k not in structured:
+            die("the text names %s, which no entry, lesson or proposal backs" % k)
+
+LESSONS = re.compile(r"(^|/)specs/lessons(/|$)")
+prop_file = os.path.join(dest, "proposals-%s.md" % week)
+targets = [dest, os.path.join(dest, "themes"), os.path.join(dest, week + ".md"), prop_file]
+targets += [os.path.join(dest, "themes", th["slug"] + ".md") for th in out["themes"]]
+for t in targets:
+    if os.path.islink(t):
+        die("%s is a symlink; refusing to write through it" % t)
+    if LESSONS.search(os.path.realpath(t)):
+        die("%s resolves under specs/lessons, which only the operator or console writes" % t)
 
 os.makedirs(os.path.join(dest, "themes"), exist_ok=True)
 lines = ["---", "type: compounded-week", "week: %s" % week, "source: compound-distill.sh (HIMMEL-6915)", "---", "",
@@ -264,7 +282,6 @@ for th in out["themes"]:
         body.append("- %s (%s)" % (l["text"], ", ".join(l["keys"])))
     with open(os.path.join(dest, "themes", th["slug"] + ".md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(body) + "\n")
-prop_file = os.path.join(dest, "proposals-%s.md" % week)
 if not out["proposals"] and os.path.isfile(prop_file):
     os.remove(prop_file)
 if out["proposals"]:
@@ -272,7 +289,7 @@ if out["proposals"]:
             "# Lesson proposals %s" % week, "", "Proposals only: promote by hand to specs/lessons/.", ""]
     for p in out["proposals"]:
         body.append("- %s (%s)" % (p["text"], ", ".join(p["keys"])))
-    with open(os.path.join(dest, "proposals-%s.md" % week), "w", encoding="utf-8") as fh:
+    with open(prop_file, "w", encoding="utf-8") as fh:
         fh.write("\n".join(body) + "\n")
 
 u = env.get("usage") or {}

@@ -131,6 +131,8 @@ bad "an error envelope" "$GOOD" true
 bad "an entry's prose naming a key that is not in the extract" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","outcome":"see HIMMEL-99","decision":"","lesson":""}],"themes":[],"proposals":[]}'
 bad "a lesson's prose naming a key that is not in the extract" '{"week":"2026-W43","entries":[],"proposals":[],"themes":[{"slug":"t","title":"t","lessons":[{"text":"as in HIMMEL-77","keys":["HIMMEL-1"]}]}]}'
 bad "a theme title naming a key that is not in the extract" '{"week":"2026-W43","entries":[],"proposals":[],"themes":[{"slug":"t","title":"HIMMEL-77 notes","lessons":[]}]}'
+bad "a theme title naming an extracted key that no entry or lesson backs" '{"week":"2026-W43","entries":[],"proposals":[],"themes":[{"slug":"t","title":"HIMMEL-1 notes","lessons":[]}]}'
+bad "two themes with one slug" '{"week":"2026-W43","entries":[],"proposals":[],"themes":[{"slug":"t","title":"a","lessons":[{"text":"x","keys":["HIMMEL-1"]}]},{"slug":"t","title":"b","lessons":[{"text":"y","keys":["HIMMEL-2"]}]}]}'
 bad "two entries for one key" '{"week":"2026-W43","entries":[{"key":"HIMMEL-1","outcome":"a","decision":"","lesson":""},{"key":"HIMMEL-1","outcome":"b","decision":"","lesson":""}],"themes":[],"proposals":[]}'
 
 # --- provenance comes from the extract only, never from the model -----------------------------------
@@ -152,6 +154,11 @@ check "a rerun with zero proposals removes the stale file" no "$([ -f "$REV/prop
 mkdir -p "$W/x/specs/lessons"; ln -s "$W/x/specs/lessons" "$W/lnk"
 HIMMEL_BILLED_OK=1 run --review-dir "$W/lnk" >/dev/null 2>&1
 check "a review dir that is a symlink into specs/lessons: exit 2" 2 "$?"
+mkdir -p "$W/out2"; ln -s "$W/x/specs/lessons" "$W/out2/themes"; envelope "$W/env.json" "$GOOD"
+HIMMEL_BILLED_OK=1 COMPOUND_CLAUDE="$W/bin/claude-stub" COMPOUND_PREFLIGHT_CMD="$W/bin/pf-ok" bash "$SUT" --root "$R" --bucket "$B" --mirror "$MIR" --since-days 0 --week 2026-W43 --out-dir "$W/out2" --apply >/dev/null 2>&1
+check "a themes dir that is a symlink into specs/lessons: exit 1" 1 "$?"
+check "and nothing was written through it" 0 "$(find "$W/x/specs/lessons" -type f | wc -l | tr -d ' ')"
+check "and nothing else was written either" no "$([ -e "$W/out2/2026-W43.md" ] && echo yes || echo no)"
 
 # --- a fenced JSON result is accepted ---------------------------------------------------------------
 rm -rf "$REV"
