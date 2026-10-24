@@ -389,15 +389,17 @@ EOF
     # The four answers a reader back from a shift needs first (v5 frame 16);
     # every older section follows unchanged. A field with no input says so.
     printf '## ✅ What shipped\n\n'
-    printf '**%s** PRs merged to main · **%s** commits · **%s** Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
-        "$pr_count" "$commit_count" "$done_count"
+    if [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"; else done_shown="not available (jira unavailable)"; fi
+    printf '**%s** PRs merged to main · **%s** commits · %s Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
+        "$pr_count" "$commit_count" "$done_shown"
     printf '## ⏳ What waits on you\n\n'
     if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
         printf -- '- **%s** open PR(s) to review/merge (/pr-check)\n' "$open_prs"
+        printf -- '- **%s** stale worktree(s) to prune (/clean)\n' "$stale_count"
     else
         printf -- '- Open PRs: not available (gh PR state unavailable)\n'
+        printf -- '- Stale worktrees: not available (gh PR state unavailable)\n'
     fi
-    printf -- '- **%s** stale worktree(s) to prune (/clean)\n' "$stale_count"
     printf -- '- Approvals, CI and review state, worker questions: not available (the generator reads no input for them)\n\n'
     printf '## 💸 What it spent\n\n'
     printf -- '- Claude usage of the shift: not available (the generator reads no usage input)\n'
@@ -407,7 +409,11 @@ EOF
         printf -- '- This report: no Claude usage (default run)\n\n'
     fi
     printf '## ▶️ What runs next\n\n'
-    printf -- '- **%s** In-Progress ticket(s) in flight. Detail: In-flight WIP, below\n' "$inprog_count"
+    if [ "$jira_ok" -eq 1 ]; then
+        printf -- '- **%s** In-Progress ticket(s) in flight. Detail: In-flight WIP, below\n' "$inprog_count"
+    else
+        printf -- '- In-Progress tickets: not available (jira unavailable)\n'
+    fi
     printf -- '- Release progress: not available (the generator reads no release input)\n'
     printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | sed -n '1p')"
     printf '## TL;DR\n\n%s\n\n' "$tldr_final"

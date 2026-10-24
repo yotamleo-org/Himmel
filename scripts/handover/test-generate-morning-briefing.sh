@@ -276,6 +276,8 @@ assert_contains "ticket keys listed in fallback" "HIMMEL-901" "$file"
 # A failed jira CLI must surface a reachability banner — a 0 count means
 # "unknown", not "none" (silent-failure-hunter HIGH).
 assert_contains "jira-down banner" "jira unavailable" "$file"
+assert_contains "jira-down: shipped Done gap"  "not available (jira unavailable) Done" "$file"
+assert_contains "jira-down: next in-flight gap" "In-Progress tickets: not available"   "$file"
 
 # Test 7: --dry-run touches no files ----------------------------------
 
@@ -436,6 +438,9 @@ out=$( cd "$REPO"; GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
 file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
+assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"             "$file"
+assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$file"
+assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$bb_file"
 
 echo "TEST: unparseable gh merged-PR list → count unknown, never 0"
 OUT_PRU="$TMP_ROOT/prunknown.md"
