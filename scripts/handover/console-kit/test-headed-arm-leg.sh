@@ -4581,7 +4581,7 @@ bus45_toks() { sed -n 's/^LAUNCHER_ENV=//p' "$bus45/seen" | tr ' ' '\n' | grep '
 rc=0; run45 in HIMMEL-45-in || rc=$?
 check "45a opted-in launch: exit 0" "$rc" "0"
 peer45="$bus45/state/himmel/bus/peers/HIMMEL-45-in.json"
-check "45b opted-in: peer file written 0600" "$(stat -c %a "$peer45" 2>/dev/null || echo none)" "600"
+check "45b opted-in: peer file written 0600" "$(stat -c %a "$peer45" 2>/dev/null || stat -f %Lp "$peer45" 2>/dev/null || echo none)" "600"
 check "45c opted-in: peer is a leg of the console, no secret field" \
   "$(jq -c '[.n, .role, .console, (keys | join(","))]' "$peer45" 2>/dev/null)" \
   '["HIMMEL-45-in","leg","HIMMEL-console-45","console,launched,n,role"]'

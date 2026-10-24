@@ -49,13 +49,42 @@ op="$1"; shift
 case "$op" in create|comment) [ -n "${LOGPROBE:-}" ] && { grep -c route-intent "$LOGPROBE" 2>/dev/null; true; } >>"$d/intent-seen.log" ;; esac
 grab() { while [ $# -gt 0 ]; do case "$1" in --desc-file|--comment-file) cp "$2" "$d/body.$op.$(wc -l <"$d/calls.log")"; shift 2 ;; *) shift ;; esac; done; }
 case "$op" in
-  list) lbl="$(printf '%s' "$*" | sed -n 's/.*labels = "\([^"]*\)".*/\1/p')"; [ -f "$d/list.$lbl" ] && cat "$d/list.$lbl"; exit "$(cat "$d/list.rc" 2>/dev/null || echo 0)" ;;
-  create) grab "$@"; n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
+  list) if [ -f "$d/needs-git-cwd" ] && ! git rev-parse --git-dir >/dev/null 2>&1; then echo "JIRA_BASE_URL is not set" >&2; exit 1; fi
+        [ -f "$d/list.err" ] && cat "$d/list.err" >&2
+        lbl="$(printf '%s' "$*" | sed -n 's/.*labels = "\([^"]*\)".*/\1/p')"; [ -f "$d/list.$lbl" ] && cat "$d/list.$lbl"; exit "$(cat "$d/list.rc" 2>/dev/null || echo 0)" ;;
+  create) grab "$@"
+        # What the real CLI refuses: a body without the six sections (a real Plan and DoD line), a Task with neither
+        # a parent nor the standalone label, a missing Sector.
+        f=""; lbl=""; sec=""
+        while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; *) shift ;; esac; done
+        [ -f "$d/create.err" ] && { cat "$d/create.err" >&2; exit 1; }
+        for h in Impact What Why Plan DoD "Agent detail"; do
+          grep -q "^## $h\$" "$f" || { echo "jira: refused: ticket body lacks the ticket shape: missing \"## $h\"" >&2; exit 1; }
+        done
+        for h in Plan DoD; do
+          awk -v h="## $h" '$0 == h {s = 1; next} /^## / {s = 0} s && /^([-*]|[0-9]+[.)]) [^<]/ {ok = 1} END {exit !ok}' "$f" \
+            || { echo "jira: refused: \"## $h\" has no bullet or numbered line" >&2; exit 1; }
+        done
+        case ",$lbl," in *,standalone,*) ;; *) echo "jira: refused: a Task needs --parent or --labels standalone" >&2; exit 1 ;; esac
+        [ -n "$sec" ] || { echo "jira: refused: no Sector, pass --sector" >&2; exit 1; }
+        printf '%s\n' "$sec" >>"$d/sectors.log"
+        n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) grab "$@"; echo "Comment added to $1" ;;
   *) exit 9 ;;
 esac
 EOF
 chmod +x "$STUB/jira"
+# The stub notifier: the router's only door to the console inbox and the release manager. Never the real one.
+cat >"$STUB/notify" <<'EOF2'
+#!/usr/bin/env bash
+case "${1:-}:$#" in
+  console:2|intake:3) ;;
+  *) exit 64 ;;
+esac
+printf '%s\n' "$*" >>"$(dirname "$0")/notify.log"
+EOF2
+chmod +x "$STUB/notify"
+export FAILURE_ROUTER_NOTIFY_CMD="$STUB/notify"
 
 LED="$TMP/ledger.jsonl"; ST="$TMP/state.json"; LOG="$TMP/routes.log.jsonl"; INBOX="$TMP/inbox.md"
 calls() { if [ -f "$STUB/calls.log" ]; then grep -c "^$1 " "$STUB/calls.log"; else echo 0; fi; }
@@ -98,6 +127,8 @@ check "a label search ran before the create, over every status" 'grep -q "^list 
 check "the create carries the two labels, Task, no fixVersion" 'grep -q -- "^create .*--type Task" "$STUB/calls.log" && grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal" "$STUB/calls.log" &&! grep -q -- "--fix-version" "$STUB/calls.log"'
 body="$(ls "$STUB"/body.create.* 2>/dev/null | head -n 1)"
 check "the ticket body passes the alphabet check" '[ -n "$body" ] && python3 "$FR" check-body "$body" >/dev/null'
+check "HIMMEL-7354: the body carries the six ticket sections" '[ "$(grep -c "^## " "$body")" = 6 ]'
+check "HIMMEL-7354: the create names the standalone label and the table sector" 'grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal,standalone" "$STUB/calls.log" && grep -q -F -- "--sector Quality & proof" "$STUB/calls.log" && [ "$(cat "$STUB/sectors.log")" = "Quality & proof" ]'
 check "the body names the class, the leg count and both legs" 'grep -q "denied/guard-pr-check-literal" "$body" && grep -q "distinct legs (14 d): 2" "$body" && grep -q "N100, N200" "$body"'
 check "no canary in the body, the call log, the state or the decision log" '! grep -q "$CANARY" "$body" "$STUB/calls.log" "$ST" "$LOG"'
 check "one filed line, carrying the ticket" '[ "$(dlines "$LOG")" = 1 ] && decs "$LOG" | jq -e "select(.class == \"denied/guard-pr-check-literal\") | .decision == \"filed\" and .ticket == \"HIMMEL-9001\" and .legs == 2 and (.ts | test(\"^2026-10-07T12:00:00\"))" >/dev/null'
@@ -316,6 +347,98 @@ check "the dry run prints every other firing class as would-cap" '[ "$(jq -r "se
 n14="$(calls create)"
 python3 "$FR" route --ledger "$F14/l.jsonl" --state "$F14/s.json" --log "$F14/log" --inbox "$F14/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 check "a live run files exactly the 3 widest classes" '[ "$(calls create)" = "$((n14 + 3))" ] && [ "$(decs "$F14/log" | jq -r "select(.decision == \"filed\") | .class" | sort | paste -sd, -)" = "error/Zwide7,error/Zwide8,error/Zwide9" ]'
+
+echo "HIMMEL-7354: the search runs from the primary checkout, says why it fails, and a filed class reaches the console and the release manager"
+F15="$TMP/f15"; mkdir -p "$F15"
+SAVE="$LED"; LED="$F15/l.jsonl"
+row N1 denied/guard-seven 1; row N2 denied/guard-seven 1
+row N1 denied/guard-nine 1; row N2 denied/guard-nine 1
+LED="$SAVE"
+touch "$STUB/needs-git-cwd"
+: >"$STUB/notify.log"
+( cd "$F15" && python3 "$FR" route --ledger "$F15/l.jsonl" --state "$F15/s.json" --log "$F15/log" --inbox "$F15/inbox" --now "$NOW" --jira-bin "$STUB/jira" ) >"$F15/out" 2>&1
+rc15=$?
+check "a router run from a cwd outside any git repo still searches and files" '[ "$rc15" -eq 0 ] && [ "$(decs "$F15/log" | jq -r "select(.class == \"denied/guard-seven\") | .decision")" = filed ]'
+rm -f "$STUB/needs-git-cwd"
+k7="$(decs "$F15/log" | jq -r 'select(.class == "denied/guard-seven") | .ticket')"
+check "a filed class sends ONE console summary line naming its key and class" '[ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*$k7 .*denied/guard-seven" "$STUB/notify.log"'
+check "a filed class asks for its release-manager INTAKE" 'grep -q "^intake $k7 .*denied/guard-seven" "$STUB/notify.log"'
+check "the two filed classes sent two intakes and still one console line" '[ "$(grep -c "^intake " "$STUB/notify.log")" = 2 ] && [ "$(grep -c "^console " "$STUB/notify.log")" = 1 ]'
+F16="$TMP/f16"; mkdir -p "$F16"
+SAVE="$LED"; LED="$F16/l.jsonl"
+row N1 denied/guard-eight 1; row N2 denied/guard-eight 1
+LED="$SAVE"
+: >"$STUB/notify.log"
+echo "boom: connection refused" >"$STUB/list.err"; echo 1 >"$STUB/list.rc"
+python3 "$FR" route --ledger "$F16/l.jsonl" --state "$F16/s.json" --log "$F16/log" --inbox "$F16/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F16/out" 2>&1
+rc16=$?
+rm -f "$STUB/list.err" "$STUB/list.rc"
+check "a search error says why: the stderr excerpt follows the skipped line" '[ "$rc16" -eq 0 ] && grep -q "^failure-router: denied/guard-eight reason: boom: connection refused$" "$F16/out"'
+check "a skipped class sends nothing to the console or the release manager" '[ ! -s "$STUB/notify.log" ]'
+F17="$TMP/f17"; mkdir -p "$F17"
+SAVE="$LED"; LED="$F17/l.jsonl"
+row N1 denied/guard-ten 1; row N2 denied/guard-ten 1
+LED="$SAVE"
+printf 'HIMMEL-9500\tTask\tTo Do\tlegs retype past guard-ten\n' >"$STUB/list.fl-denied-guard-ten"
+: >"$STUB/notify.log"
+python3 "$FR" route --ledger "$F17/l.jsonl" --state "$F17/s.json" --log "$F17/log" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F17/out" 2>&1
+rc17=$?
+check "a commented class reaches the console with its key and no INTAKE" '[ "$rc17" -eq 0 ] && [ "$(grep -c "^console " "$STUB/notify.log")" = 1 ] && grep -q "^console .*HIMMEL-9500" "$STUB/notify.log" && ! grep -q "^intake " "$STUB/notify.log"'
+: >"$STUB/notify.log"
+python3 "$FR" route --dry-run --ledger "$F17/l.jsonl" --state "$F17/s2.json" --log "$F17/log2" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+rc17d=$?
+check "a dry run notifies nobody" '[ "$rc17d" -eq 0 ] && [ ! -s "$STUB/notify.log" ]'
+F18="$TMP/f18"; mkdir -p "$F18"
+SAVE="$LED"; LED="$F18/l.jsonl"
+row N1 denied/guard-eleven 1; row N2 denied/guard-eleven 1
+LED="$SAVE"
+: >"$STUB/notify.log"
+echo 'jira: refused: ticket body lacks the ticket shape: missing "## Impact"' >"$STUB/create.err"
+python3 "$FR" route --ledger "$F18/l.jsonl" --state "$F18/s.json" --log "$F18/log" --inbox "$F18/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F18/out" 2>&1
+rc18=$?
+rm -f "$STUB/create.err"
+check "HIMMEL-7354: a refused create says why, after the skipped line" '[ "$rc18" -eq 0 ] && grep -q "^failure-router: denied/guard-eleven legs=2 skipped:jira-error$" "$F18/out" && grep -q "^failure-router: denied/guard-eleven reason: jira: refused: ticket body lacks the ticket shape: missing \"## Impact\"$" "$F18/out"'
+check "a refused create sends nothing to the console or the release manager" '[ ! -s "$STUB/notify.log" ]'
+
+echo "HIMMEL-7354: failure-route-notify.sh reaches the newest live console and files the INTAKE request"
+N="$HERE/failure-route-notify.sh"; N1="$TMP/n1"; mkdir -p "$N1"
+cat >"$N1/sweep" <<'EOF2'
+slug=u__himmel__old-console session=s1 host=h age=900s status=IDLE-HELD?
+slug=u__himmel__HIMMEL-1-N1-leg-2026 session=s2 host=h age=5s status=OK
+slug=u__himmel__newest-console session=s3 host=h age=30s status=OK
+slug=u__himmel__dead-console session=s4 host=h age=1s status=STALE
+EOF2
+printf '#!/usr/bin/env bash\ncat "%s/sweep"\n' "$N1" >"$N1/sweep.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >>"%s/sent.log"\n' "$N1" >"$N1/inbox-send.sh"
+cat >"$N1/jira" <<'EOF2'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$(dirname "$0")/jira.log"
+case "$1" in
+  versions) printf 'v1.0.0\ttrue\t2026-09-09\tfalse\nv1.1.3\tfalse\t2026-10-22\tfalse\nv1.1.4\tfalse\t\tfalse\n' ;;
+  release) [ -f "$(dirname "$0")/release.fail" ] && { echo "release: set USER_SLUG" >&2; exit 1; }; echo "REQ R-1" ;;
+esac
+EOF2
+chmod +x "$N1/sweep.sh" "$N1/inbox-send.sh" "$N1/jira"
+export CADENCE_ALERT_FILE="$N1/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$N1/alert-sent" CADENCE_ALERT_SEND_CMD="$STUB/notify" CADENCE_ALERT_SEND_FAILED_MARK="$N1/send-failed"
+FAILURE_ROUTE_SWEEP_CMD="$N1/sweep.sh" FAILURE_ROUTE_INBOX_SEND="$N1/inbox-send.sh" bash "$N" console "failure-router: filed HIMMEL-1 (denied/x)" >/dev/null 2>&1
+check "the console line goes to the newest held *-console lock, not a leg or a stale lock" '[ "$(cat "$N1/sent.log")" = "newest-console|failure-router: filed HIMMEL-1 (denied/x)" ]'
+: >"$N1/sweep"
+FAILURE_ROUTE_SWEEP_CMD="$N1/sweep.sh" FAILURE_ROUTE_INBOX_SEND="$N1/inbox-send.sh" bash "$N" console "failure-router: filed HIMMEL-2 (denied/y)" >/dev/null 2>&1; rcn=$?
+check "no live console: exit 1, nothing sent, one cadence alert naming the line" '[ "$rcn" = 1 ] && [ "$(grep -c . "$N1/sent.log")" = 1 ] && grep -q "failure-review-route .*HIMMEL-2" "$N1/alerts.log"'
+FAILURE_ROUTE_JIRA="$N1/jira" bash "$N" intake HIMMEL-5 "the daily failure review filed it" >/dev/null 2>&1
+check "the INTAKE request is backlog to the earliest unreleased version, for the key" 'grep -q "^release request v1.1.3 --verb INTAKE --key HIMMEL-5 --from backlog --to v1.1.3 --why the daily failure review filed it$" "$N1/jira.log"'
+touch "$N1/release.fail"
+FAILURE_ROUTE_JIRA="$N1/jira" bash "$N" intake HIMMEL-6 "why" >/dev/null 2>&1; rci=$?
+check "a failed INTAKE request exits 1 and alerts with the cause" '[ "$rci" = 1 ] && grep -q "failure-review-route .*HIMMEL-6" "$N1/alerts.log"'
+rm -f "$N1/release.fail"
+
+echo "HIMMEL-7354: an unparseable notify command is said on stderr and never fails the run"
+F17="$TMP/f17"; mkdir -p "$F17"
+SAVE="$LED"; LED="$F17/l.jsonl"
+row N1 denied/guard-eleven 1; row N2 denied/guard-eleven 1
+LED="$SAVE"
+python3 "$FR" route --ledger "$F17/l.jsonl" --state "$F17/s.json" --log "$F17/log" --inbox "$F17/inbox" --now "$NOW" --jira-bin "$STUB/jira" --notify-cmd "'unterminated" >"$F17/out" 2>&1; rc17=$?
+check "a malformed --notify-cmd exits 0, still files, and names the failed notify" '[ "$rc17" = 0 ] && [ "$(decs "$F17/log" | jq -r "select(.class == \"denied/guard-eleven\") | .decision")" = filed ] && grep -q "notify intake failed" "$F17/out" && grep -q "notify console failed" "$F17/out"'
 
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'

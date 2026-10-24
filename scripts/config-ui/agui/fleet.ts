@@ -147,7 +147,8 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
 
 // the shell-tool wrappers tick reports as orphans, from the console kit's own inventory (`--list`: one
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
-async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }): Promise<ProcessOrphan[] | null> {
+// a wrapper owned by a live session is that session's own long-running call, not an orphan.
+async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set()): Promise<ProcessOrphan[] | null> {
   const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/console-kit/orphan-loops.sh");
   return new Promise((ok) => {
     execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => {
@@ -155,7 +156,7 @@ async function processOrphansOf(opts: { script: string; env: Record<string, stri
       ok(stdout.split("\n").flatMap((l) => {
         const m = /^pid=(\d+) owner=(\S+) age=(\d+)m$/.exec(l.trim());
         const owner = m && plain(m[2]);
-        return m && owner ? [{ pid: Number(m[1]), owner, ageMin: Number(m[3]) }] : [];
+        return m && owner && !live.has(owner) ? [{ pid: Number(m[1]), owner, ageMin: Number(m[3]) }] : [];
       }));
     });
   });
@@ -236,6 +237,10 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
   return { edges: [...edges.values()], of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
 
+// where a console doc records its release token: a backticked lock bullet, or the fenced block ACTION ZERO fills in
+// under "Its release token is:" (a block still reading `none yet — …` has spaces, so it is no token)
+const RECORDED_LOCK = [/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m, /release token is:\s*\n\s*```[^\n]*\n\s*[^\s`]+\s*\n\s*```/i];
+
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
   /-console$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
 
@@ -313,7 +318,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   const banks = { codex };
   if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts), banks };
   const lockOf = (file: string, doc: string): Promise<FleetRow["lock"]> => {
-    if (!/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m.test(doc)) return Promise.resolve("unknown");
+    if (!RECORDED_LOCK.some((re) => re.test(doc))) return Promise.resolve("unknown");
     return new Promise((ok) => {
       // The lock owner resolves legacy keys and distinguishes free from corrupt or unreadable.
       execFile("bash", [join(dirname(opts.script), "../handover/queue-lock.sh"), "status", file],
@@ -363,14 +368,15 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     }
     let doc = "", docAt = opts.now;
     if (c.doc) try { doc = await readFile(c.doc, "utf8"); docAt = (await stat(c.doc)).mtimeMs; } catch { /* moved or gone: no doc */ }
-    const { lane, laneFrom } = laneOf(launch, doc);
+    // A session started without -n still has the name the harness gave it.
+    const name = c.name || (typeof rec.name === "string" ? rec.name : "") || `pid ${c.pid}`;
+    const role = roleOf(name, c.doc);
+    // a console's doc is its operating contract and names other lanes in prose: only its launch record says its lane
+    const { lane, laneFrom } = laneOf(launch, role === "console" ? "" : doc);
     const backendModel = backendModelOf(lane, launch, c.model || null);
     const tools = view ? Object.values(view.tools).sort((a, b) => b.start - a.start) : [];
     const subs = view ? view.agentOrder.filter((id) => id !== "main") : [];
     const t0 = view?.t0;
-    // A session started without -n still has the name the harness gave it.
-    const name = c.name || (typeof rec.name === "string" ? rec.name : "") || `pid ${c.pid}`;
-    const role = roleOf(name, c.doc);
     const ticket = /^([A-Z][A-Z0-9]+-\d+)\b/.exec(name)?.[1] ?? null;
     // A wrapped leg's window is closed: its codex price must not grow with later account usage (priced only while live).
     const ids = { session: run ?? `pid ${c.pid}`, leg: name, ticket, model: backendModel };
@@ -431,5 +437,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   const slug = await repoSlugOf(join(dirname(opts.script), "../.."), opts.env);
   const bus = await busOf(busRootOf(opts.env, opts.home));
   for (const r of sessions) { r.prUrl = prUrlOf(slug, r.pr); r.bus = bus.of(r.name); }
-  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts), banks };
+  // orphan-loops.sh names an owner with every character outside [A-Za-z0-9_.-] turned into `_`
+  const liveOwners = new Set(sessions.filter((r) => r.live && r.role !== "cloud").map((r) => r.name.replace(/[^A-Za-z0-9_.-]/g, "_")));
+  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts, liveOwners), banks };
 }

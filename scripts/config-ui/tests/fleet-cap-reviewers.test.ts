@@ -252,6 +252,8 @@ test("the fleet cap card shows the cap, its default and where it is set, with a 
 test("the fleet cap card says when the launching shell overrides .env, and shows the loading and error states", () => {
   const html: string = renderFleetCap({ data: { cap: 9, default: 4, min: 1, max: 50, source: "env", fileValue: 3, envFile: "/x/.env" }, error: null, draft: 9, msg: null });
   expect(html).toMatch(/launching shell/);
+  expect(html).toContain("until the UI restarts without it");
+  expect(html).not.toContain("until that shell restarts");
   expect(renderFleetCap(null)).toContain("loading");
   expect(renderFleetCap({ data: null, error: "boom" })).toContain("boom");
 });

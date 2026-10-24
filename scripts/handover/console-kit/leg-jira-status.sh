@@ -162,6 +162,20 @@ update_record() { # <Jira status now> [the move, "<from> -> <to>"]
     ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot write the $KEY worker record" >&2
 }
 
+# A Done ticket is never moved, but its worker record still follows the doc/lock,
+# so a leg that wrapped after the merge does not read live forever.
+refresh_done_record() {
+    local doc rec
+    ts_record_read "$KEY" || return 0
+    doc=$(jq -r '.doc // ""' <<<"$TS_REC")
+    [ -n "$doc" ] || return 0
+    _ts_worker_state "$doc"
+    [ "$(jq -r '.state // ""' <<<"$TS_REC")" != "$TS_WORKER_STATE" ] || return 0
+    rec=$(jq -c --arg ev "$EVENT" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ws "$TS_WORKER_STATE" \
+        '.last_event = $ev | .last_event_ts = $ts | .state = $ws' <<<"$TS_REC") || return 0
+    ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot write the $KEY worker record" >&2
+}
+
 # Derive, then re-read Jira and the PR heads before the write: Jira has no
 # conditional transition, so a change in between re-derives once, and a second
 # change leaves the write to the next event.
@@ -172,6 +186,7 @@ while :; do
     ts_derive "$KEY"
     if [ "$TS_DERIVED" = no-write ]; then
         if [ "$TS_RESULT" = miss ]; then miss "$TS_STAGE"; fi
+        if [ "$TS_RULE" = D0 ] && [ "$TS_J_STATUS" = Done ]; then refresh_done_record; fi
         row result=skip rule="$TS_RULE" from="${TS_J_STATUS:-}"
         exit 0
     fi

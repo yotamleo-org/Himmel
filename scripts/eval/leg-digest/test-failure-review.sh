@@ -60,7 +60,7 @@ d="$(dirname "$0")"
 printf '%s\n' "$*" >>"$d/calls.log"
 op="$1"; shift
 case "$op" in
-  list) cat "$d/list.out" 2>/dev/null; exit 0 ;;
+  list) [ -f "$d/list.fail" ] && { cat "$d/list.fail" >&2; exit 1; }; cat "$d/list.out" 2>/dev/null; exit 0 ;;
   create) n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) echo "Comment added to $1" ;;
   *) exit 9 ;;
@@ -70,7 +70,13 @@ cat >"$STUB/notify" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$(dirname "$0")/notify.log"
 EOF
-chmod +x "$STUB/jira" "$STUB/notify"
+cat >"$STUB/route-notify" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$(dirname "$0")/route-notify.log"
+EOF
+chmod +x "$STUB/jira" "$STUB/notify" "$STUB/route-notify"
+# The router's console line and INTAKE request: never the real notifier.
+export FAILURE_ROUTER_NOTIFY_CMD="$STUB/route-notify"
 calls() { if [ -f "$STUB/calls.log" ]; then grep -c "^$1 " "$STUB/calls.log"; else echo 0; fi; }
 sends() { if [ -f "$STUB/notify.log" ]; then grep -c . "$STUB/notify.log"; else echo 0; fi; }
 
@@ -120,6 +126,15 @@ check "the digest names the mode dry-run" 'digest "$C2" | grep -q "mode: dry-run
 check "the digest shows the would-be routing" 'digest "$C2" | grep -q "would-file denied/guard-pr-check-literal"'
 check "the top classes list the class with its legs" 'digest "$C2" | grep -q "denied/guard-pr-check-literal: 2 rows, legs N100, N200"'
 check "the header names the 24 h window and the routing names the 14 d one" 'digest "$C2" | grep -q "^- window: .* (24 h), mode: dry-run" && digest "$C2" | grep -q "would-file denied/guard-pr-check-literal (legs 2 in 14 d)"'
+
+echo "HIMMEL-7354: a live search error is said with its cause in the digest"
+C3e="$TMP/c3e"; mkdir -p "$C3e"; cp "$C2/ledger.jsonl" "$C3e/ledger.jsonl"
+echo "JIRA_BASE_URL is not set" >"$STUB/list.fail"
+review "$C3e" --live >"$C3e/run.out" 2>&1
+rc3e=$?
+rm -f "$STUB/list.fail"
+dig3e="$(digest "$C3e")"
+check "the digest names the search error and its cause once" '[ "$rc3e" -eq 0 ] && grep -q "^- skipped, search-error: JIRA_BASE_URL is not set: denied/guard-pr-check-literal$" <<<"$dig3e"'
 
 echo "3. --live routes through the router and sends one line"
 C3="$TMP/c3"; mkdir -p "$C3"; cp "$C2/ledger.jsonl" "$C3/ledger.jsonl"

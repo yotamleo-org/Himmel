@@ -52,6 +52,8 @@ case "$1" in
             printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[]}}\n' \
                 "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)"
         fi ;;
+    list)
+        printf '%s\tTask\t%s\ttitle\n' "$(cat "$FX/list.key" 2>/dev/null)" "$(cat "$FX/status.cur")" ;;
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
         if [ -e "$FX/workflow" ] && [ -z "$(cut -f2 "$FX/workflow" | grep -xF "$3")" ]; then
@@ -74,6 +76,7 @@ case "$1 $2" in
         if [ -e "$FX/checks-$3.json" ]; then cat "$FX/checks-$3.json"; else echo "no checks reported on the 'x' branch" >&2; exit 1; fi ;;
     "api graphql")
         num=""; for a in "$@"; do case "$a" in number=*) num=${a#number=} ;; esac; done
+        if [ -z "$num" ] && [ -e "$FX/graphql-all.json" ]; then cat "$FX/graphql-all.json"; exit 0; fi
         t=$(cat "$FX/threads-$num" 2>/dev/null || echo 0)
         nodes=""; i=0; while [ "$i" -lt "$t" ]; do nodes="${nodes:+$nodes,}{\"isResolved\":false}"; i=$((i+1)); done
         more=false; [ -e "$FX/threads-more-$num" ] && more=true
@@ -146,6 +149,19 @@ reset "Done"; owned
 fn "$K" --event live
 check "D0: Done is never left" "$(ntrans)" 0
 check "D0: row rule" "$(row rule)" D0
+stale_live() { jq -c '.state = "live"' "$REC" > "$tmp/rec.t" && mv "$tmp/rec.t" "$REC"; }
+reset "Done"; owned WRAPPED; stale_live
+fn "$K" --event sweep
+check "D0: a Done ticket's live record is refreshed from a wrapped doc (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
+check "D0: the refresh moves no status (HIMMEL-7353)" "$(ntrans)" 0
+reset "Done"; owned LIVE; stale_live
+fn "$K" --event sweep
+check "D0: a Done ticket's record stays live while its doc is live (HIMMEL-7353)" "$(jq -r .state "$REC")" live
+reset "Done"; owned WRAPPED; stale_live
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "sweep: a Done ticket's stale live record is cleared by the sweep (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
 reset "Backlog"; owned
 fn "$K" --event live
 check "D0: an off-ladder status is never touched" "$(ntrans)" 0
