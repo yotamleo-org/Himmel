@@ -7162,7 +7162,7 @@ for cr_id in $cr_ids; do
     || fail "cadence-runs: registry row $cr_id needs a manifest item cadence-runs-$cr_id of probe type cadence-runs on $cr_script"
   mkdir -p "$cr_root/$(dirname "$cr_script")"
   # shellcheck disable=SC2016  # the stub's own $CR_STATUS_FILE must stay literal
-  printf '#!/usr/bin/env bash\ncat "$CR_STATUS_FILE"\n' > "$cr_root/$cr_script"
+  printf '#!/usr/bin/env bash\n[ "$1" = status ] || exit 2\ncat "$CR_STATUS_FILE"\n' > "$cr_root/$cr_script"
   case "$cr_id" in
     codex-sweep|repo-sync)
       is_win32 && continue
@@ -7212,7 +7212,7 @@ echo "ok: cadence-runs-qmd — an unreadable status reads degraded"
 
 # an rc=0 status that names none of the row's tasks (empty, or an output shape the parser does not know) is degraded, not "nothing armed".
 # shellcheck disable=SC2016  # the stub's own $CR_STATUS_FILE must stay literal
-printf '#!/usr/bin/env bash\ncat "$CR_STATUS_FILE"\n' > "$cr_root/scripts/luna/qmd-cadence.sh"
+printf '#!/usr/bin/env bash\n[ "$1" = status ] || exit 2\ncat "$CR_STATUS_FILE"\n' > "$cr_root/scripts/luna/qmd-cadence.sh"
 for cr_junk in '' 'something unexpected'; do
   printf '%s' "$cr_junk" > "$cr_cur"
   outCRj=$(run_cr qmd)

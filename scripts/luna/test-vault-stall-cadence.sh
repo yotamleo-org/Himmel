@@ -312,6 +312,7 @@ grep -F "# HIMMEL-VaultStall" "$TMP/cron.tab.single" | head -1 >>"$TMP/cron.tab"
 assert_has "T12 a doubled entry is flagged with its count" "[DUPLICATE: 2 cron entries]" "$(cadence status)"
 cp "$TMP/cron.tab.single" "$TMP/cron.tab"
 HOME="$TMP/home" VAULT_STALL_STATE_DIR="$TMP/state-t12" "$TMP/runner/vault-stall-cadence.sh" >/dev/null 2>&1
+assert_eq "T12 the runner returns the stamped exit code" "0" "$?"
 assert_eq "T12 the runner stamps its exit code as the log's last line" "[exit rc=0]" "$(tail -n 1 "$TMP/runner/vault-stall-cadence.log")"
 st="$(cadence status)"
 assert_has "T12 status names the run log and its last write" "run log    $TMP/runner/vault-stall-cadence.log (last write: " "$st"
