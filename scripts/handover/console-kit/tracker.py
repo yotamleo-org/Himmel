@@ -80,7 +80,7 @@ def plan_globs():
 
 # a ticket is in progress when a live leg works it. A leg doc is HIMMEL-<n>-N<k>-*.md in the
 # bucket; it is live while its queue lock is held and fresh and its newest marker is not WRAPPED / HALTED.
-LEG_RE = re.compile(r'^HIMMEL-(\d+)-(N\d+[a-z]?)-.*\.md$')
+WORKER_SESSION_RE = re.compile(r'^HIMMEL-(\d+)-(N\d+[a-z]?)-.*\.md$')
 MARK_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)(?:[^A-Za-z0-9_].*)?$')
 PR_RE = re.compile(r'\b(?:PR|READY|GO)\s+#?(\d{3,5})\b')
 
@@ -153,7 +153,7 @@ def manifest_docs():
             continue
         for lg in legs:
             d = lg.get('doc') if isinstance(lg, dict) else None
-            if isinstance(d, str) and LEG_RE.match(os.path.basename(d)) and os.path.isfile(d):
+            if isinstance(d, str) and WORKER_SESSION_RE.match(os.path.basename(d)) and os.path.isfile(d):
                 out.append(d)
     return sorted(out, key=lambda x: (os.path.getmtime(x), x))
 
@@ -161,16 +161,16 @@ def manifest_docs():
 def live_legs():
     """{ticket number: [leg label, marker, pr or None]} for live legs; the newest doc wins per ticket."""
     held, out = held_docs(), {}
-    docs = [p for p in glob.glob(os.path.join(HANDOVERS, 'HIMMEL-*-N*-*.md')) if LEG_RE.match(os.path.basename(p))]
+    docs = [p for p in glob.glob(os.path.join(HANDOVERS, 'HIMMEL-*-N*-*.md')) if WORKER_SESSION_RE.match(os.path.basename(p))]
     for p in sorted(docs, key=lambda x: (os.path.getmtime(x), x)):
         if os.path.realpath(p) not in held:
             continue
         mk, pr = leg_marker(p)
-        n, lab = LEG_RE.match(os.path.basename(p)).groups()
+        n, lab = WORKER_SESSION_RE.match(os.path.basename(p)).groups()
         out[int(n)] = [lab, mk, pr]
     for p in reversed(manifest_docs()):
         mk, pr = leg_marker(p)
-        n, lab = LEG_RE.match(os.path.basename(p)).groups()
+        n, lab = WORKER_SESSION_RE.match(os.path.basename(p)).groups()
         out.setdefault(int(n), [lab, mk, pr])
     return {n: v for n, v in out.items() if v[1] not in ('WRAPPED', 'HALTED')}
 
@@ -224,7 +224,7 @@ def actuals():
     out = {}
     ACT_NEWEST = 0.0
     for p in leg_docs():
-        m = LEG_RE.match(os.path.basename(p))
+        m = WORKER_SESSION_RE.match(os.path.basename(p))
         if not m or leg_marker(p)[0] != 'WRAPPED':
             continue
         try:
@@ -262,7 +262,7 @@ def filings():
     """({spawned ticket number: filing leg's ticket number}, {operator-directed ticket numbers}) from the handover docs."""
     leg, op = {}, set()
     for p in leg_docs():
-        m = LEG_RE.match(os.path.basename(p))
+        m = WORKER_SESSION_RE.match(os.path.basename(p))
         if not m:
             continue
         n = int(m.group(1))

@@ -20,7 +20,7 @@ FR="$HERE/failure_router.py"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/failure-router-test.XXXXXX")" || { echo "test-failure-router: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 # Never the live files, whatever a case forgets to pass.
-export HIMMEL_LEG_FAILURES_LEDGER="$TMP/never-ledger.jsonl"
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$TMP/never-ledger.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$TMP/never-log.jsonl"
 export HIMMEL_FAILURE_ROUTES_STATE="$TMP/never-state.json"
 export HIMMEL_FAILURE_INBOX="$TMP/never-inbox.md"

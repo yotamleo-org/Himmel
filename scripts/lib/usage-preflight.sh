@@ -79,7 +79,7 @@ LAUNCH_INTENT="${CADENCE_USAGE_LAUNCH:-}"
 # codex weekly bank instead (scripts/lanes/usage-status.ts's "claudex" row) —
 # a claudex leg must never be refused by the Claude subscription bank, a
 # different bucket entirely.
-LANE="${CADENCE_USAGE_LANE:-${LEG_LANE:-native}}"
+LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}"
 
 is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) return 0 ;; *) return 1 ;; esac; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
@@ -198,13 +198,15 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 # since misnaming one line's lane label is cosmetic, unlike misjudging the
 # cap.
 _fleet_lane_of() {
-  if tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -x 'CLAUDEX_LANE_OK=1' >/dev/null; then
+  local envtxt lane
+  envtxt=$(tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null)
+  if printf '%s\n' "$envtxt" | grep -x 'CLAUDEX_LANE_OK=1' >/dev/null; then
     echo claudex
-  elif tr '\0' '\n' < "${FLEET_PROC:-/proc}/$1/environ" 2>/dev/null | grep -x 'LEG_LANE=openrouter' >/dev/null; then
-    echo openrouter
-  else
-    echo native
+    return
   fi
+  lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
+  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1)
+  if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 
 # atomic admission + reservation, closing the TOCTOU race where

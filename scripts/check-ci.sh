@@ -1287,8 +1287,8 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
     # title's first [KEY]; the funnel, not this script, picks the status.
     # Best-effort: the funnel warns and exits 0 on any Jira failure, each call
     # is bounded by a fixed 30s timeout and skipped when no timeout binary
-    # exists, and the verdict exit code is unchanged. LEG_JIRA_STATUS=0 opts out.
-    if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+    # exists, and the verdict exit code is unchanged. WORKER_SESSION_JIRA_STATUS=0 opts out.
+    if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
         # shellcheck source=scripts/lib/ticket-status.sh
         # shellcheck disable=SC1091
         . "$(dirname "$0")/lib/ticket-status.sh"

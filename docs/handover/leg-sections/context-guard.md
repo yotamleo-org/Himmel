@@ -5,7 +5,7 @@ Read on demand: `leg-preface.md` names this file when the context guard denies a
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
 is on:** checkpoint or hand off. The guard (`guard-leg-context-handoff.sh`) is **off by default**: it runs only when your console
 launched you with `--context-guard compact|handoff`, which sets
-`HIMMEL_LEG_CONTEXT_MODE`; you cannot change it in-session. The one reference is
+`HIMMEL_WORKER_SESSION_CONTEXT_MODE`; you cannot change it in-session. The one reference is
 `docs/internals/leg-context-guard.md`. The threshold is 75 % of the ceiling, not
 of the window: an opus leg pinned at 200000 runs on a 1000000-token window, so it
 fires at 15 % fill (150k tokens), 7k before the earliest observed compaction

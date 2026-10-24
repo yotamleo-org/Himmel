@@ -236,7 +236,7 @@ export function parseDecisions(stdout: string): Decision[] {
 export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) =>
     !['CLAUDECODE', 'AI_AGENT', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE_PROJECT_DIR', 'HIMMEL_RELEASE_MANAGER'].includes(k)
-    && !['HIMMEL_CONSOLE_', 'HIMMEL_RM_', 'HIMMEL_LEG_'].some((p) => k.startsWith(p))
+    && !['HIMMEL_CONSOLE_', 'HIMMEL_RM_', 'HIMMEL_LEG_', 'HIMMEL_WORKER_SESSION_'].some((p) => k.startsWith(p))
     && !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p))));
 }
 

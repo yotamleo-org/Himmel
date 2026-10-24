@@ -36,10 +36,10 @@
 #
 # Env (set by headed-arm-leg.sh --profile, exported so it survives konsole's
 # `-e env -u ...` line, which only unsets three vars):
-#   LEG_PROFILE_SETTINGS   path to the resolved settings JSON  -> --settings
-#   LEG_PROFILE_PREFACE    path to docs/handover/leg-preface.md
+#   WORKER_SESSION_PROFILE_SETTINGS   path to the resolved settings JSON  -> --settings
+#   WORKER_SESSION_PROFILE_PREFACE    path to docs/handover/leg-preface.md
 #                                                   -> --append-system-prompt-file
-#   LEG_PROFILE_MCP_CONFIG path to the resolved MCP-server
+#   WORKER_SESSION_PROFILE_MCP_CONFIG path to the resolved MCP-server
 #                           allowlist JSON, set only when the profile declares
 #                           one -> --mcp-config <file> --strict-mcp-config.
 #                           --strict-mcp-config makes that file the ONLY
@@ -48,13 +48,13 @@
 #                           ~/.claude.json user-level ones this exists to cut,
 #                           which is exactly why the file is never hand-typed
 #                           (see plugin-profiles.mjs's collectMcpServerDefs).
-#   LEG_PROFILE_NO_SETTING_SOURCES exactly 1 -> --setting-sources ""
+#   WORKER_SESSION_PROFILE_NO_SETTING_SOURCES exactly 1 -> --setting-sources ""
 #                           (an empty list: no user, project or local settings
 #                           scope loads, only --settings and managed policy).
 #                           Set only by headed-arm-leg.sh --consult, whose
 #                           sandbox those scopes' write roots would widen. It
 #                           only ever loads LESS (clause 4).
-# Seam: LEG_CLAUDE_BIN overrides the `claude` binary this execs (default:
+# Seam: WORKER_SESSION_CLAUDE_BIN overrides the `claude` binary this execs (default:
 # `claude` from PATH). headed-arm-leg.sh sets it to scripts/claude-codex on
 # the claudex lane so all profile flags reach that backend;
 # suites can point it at a recording stub.
@@ -66,7 +66,11 @@
 # HEADED_ARM_LAUNCHER, and that script is Linux/KDE-only (konsole).
 set -u
 
-CLAUDE_BIN="${LEG_CLAUDE_BIN:-claude}"
+CLAUDE_BIN="${WORKER_SESSION_CLAUDE_BIN:-${LEG_CLAUDE_BIN:-claude}}"
+WORKER_SESSION_PROFILE_SETTINGS="${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}"
+WORKER_SESSION_PROFILE_PREFACE="${WORKER_SESSION_PROFILE_PREFACE:-${LEG_PROFILE_PREFACE:-}}"
+WORKER_SESSION_PROFILE_MCP_CONFIG="${WORKER_SESSION_PROFILE_MCP_CONFIG:-${LEG_PROFILE_MCP_CONFIG:-}}"
+WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}"
 
 # Under a consult the caller's PATH must not pick the binary: a
 # foreign `claude` first on PATH could ignore `--setting-sources ""`. Resolve it
@@ -74,14 +78,14 @@ CLAUDE_BIN="${LEG_CLAUDE_BIN:-claude}"
 # passwd entry, not the caller-set $HOME). A consult reaches here through
 # leg-claude-launcher-consult.sh, which already ran this on an absolute
 # `bash -p` with the startup variables and exported functions stripped, so
-# `type -P` below is a plain PATH search. LEG_CLAUDE_BIN stays the suite's
+# `type -P` below is a plain PATH search. WORKER_SESSION_CLAUDE_BIN stays the suite's
 # seam: headed-arm-leg.sh scrubs it (var + token) and refuses its
-# HEADED_ARM_LEG_CLAUDE_BIN source before a consult launches, so no consult
+# HEADED_ARM_WORKER_CLAUDE_BIN source before a consult launches, so no consult
 # reaches here with it set. The ponytail for the pinned dirs is in consult-env.sh.
-if [ "${LEG_PROFILE_NO_SETTING_SOURCES:-}" = 1 ] && [ -z "${LEG_CLAUDE_BIN:-}" ]; then
+if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ] && [ -z "${WORKER_SESSION_CLAUDE_BIN:-${LEG_CLAUDE_BIN:-}}" ]; then
     # shellcheck source=consult-env.sh
     if ! . "${BASH_SOURCE[0]%/*}/consult-env.sh"; then
-        echo "leg-claude-launcher: refusing to launch: LEG_PROFILE_NO_SETTING_SOURCES=1 (a consult) but consult-env.sh did not load" >&2
+        echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 (a consult) but consult-env.sh did not load" >&2
         exit 2
     fi
     _pin_path="$(consult_pin_path)"
@@ -90,7 +94,7 @@ if [ "${LEG_PROFILE_NO_SETTING_SOURCES:-}" = 1 ] && [ -z "${LEG_CLAUDE_BIN:-}" ]
     case "$CLAUDE_BIN" in
         /*) ;;
         *)
-            echo "leg-claude-launcher: refusing to launch: LEG_PROFILE_NO_SETTING_SOURCES=1 (a consult) but no claude on the pinned PATH ($_pin_path); a consult never runs the caller's PATH claude" >&2
+            echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 (a consult) but no claude on the pinned PATH ($_pin_path); a consult never runs the caller's PATH claude" >&2
             exit 2 ;;
     esac
     # An npm-installed claude is a `#!/usr/bin/env node` script, and claude
@@ -103,37 +107,38 @@ fi
 
 PRE=()
 
-if [ -n "${LEG_PROFILE_SETTINGS:-}" ]; then
-    if [ ! -f "$LEG_PROFILE_SETTINGS" ]; then
-        echo "leg-claude-launcher: refusing to launch: LEG_PROFILE_SETTINGS is set but missing: $LEG_PROFILE_SETTINGS" >&2
+if [ -n "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
+    if [ ! -f "$WORKER_SESSION_PROFILE_SETTINGS" ]; then
+        echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_SETTINGS is set but missing: $WORKER_SESSION_PROFILE_SETTINGS" >&2
         echo "leg-claude-launcher: launching without it would silently give this leg the FULL plugin set and a floor the ticket cannot measure." >&2
         exit 2
     fi
-    PRE+=(--settings "$LEG_PROFILE_SETTINGS")
+    PRE+=(--settings "$WORKER_SESSION_PROFILE_SETTINGS")
 fi
 
-if [ -n "${LEG_PROFILE_PREFACE:-}" ]; then
-    if [ ! -f "$LEG_PROFILE_PREFACE" ]; then
-        echo "leg-claude-launcher: refusing to launch: LEG_PROFILE_PREFACE is set but missing: $LEG_PROFILE_PREFACE" >&2
+if [ -n "${WORKER_SESSION_PROFILE_PREFACE:-${LEG_PROFILE_PREFACE:-}}" ]; then
+    if [ ! -f "$WORKER_SESSION_PROFILE_PREFACE" ]; then
+        echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_PREFACE is set but missing: $WORKER_SESSION_PROFILE_PREFACE" >&2
         echo "leg-claude-launcher: the preface carries the invariant leg rules the brief no longer repeats; a leg without it is under-briefed." >&2
         exit 2
     fi
-    PRE+=(--append-system-prompt-file "$LEG_PROFILE_PREFACE")
+    PRE+=(--append-system-prompt-file "$WORKER_SESSION_PROFILE_PREFACE")
 fi
 
-if [ -n "${LEG_PROFILE_MCP_CONFIG:-}" ]; then
-    if [ ! -f "$LEG_PROFILE_MCP_CONFIG" ]; then
-        echo "leg-claude-launcher: refusing to launch: LEG_PROFILE_MCP_CONFIG is set but missing: $LEG_PROFILE_MCP_CONFIG" >&2
+if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-${LEG_PROFILE_MCP_CONFIG:-}}" ]; then
+    if [ ! -f "$WORKER_SESSION_PROFILE_MCP_CONFIG" ]; then
+        echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_MCP_CONFIG is set but missing: $WORKER_SESSION_PROFILE_MCP_CONFIG" >&2
         echo "leg-claude-launcher: launching without it under --strict-mcp-config would start the leg with NO MCP servers at all, silently breaking whatever this profile's allowlist promised it." >&2
         exit 2
     fi
-    PRE+=(--mcp-config "$LEG_PROFILE_MCP_CONFIG" --strict-mcp-config)
+    PRE+=(--mcp-config "$WORKER_SESSION_PROFILE_MCP_CONFIG" --strict-mcp-config)
 fi
 
 # headed-arm-leg.sh minted this id and already recorded it in the
 # leg doc's front matter, so the digest step finds the session by id.
-[ -z "${LEG_SESSION_ID:-}" ] || PRE+=(--session-id "$LEG_SESSION_ID")
-if [ "${LEG_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
+_session_id="${WORKER_SESSION_ID:-${LEG_SESSION_ID:-}}"
+[ -z "$_session_id" ] || PRE+=(--session-id "$_session_id")
+if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ]; then
     PRE+=(--setting-sources "")
     # The consult is confined only if the FINAL argv carries
     # `--setting-sources ""` and nothing after it names the flag again (the
@@ -142,7 +147,7 @@ if [ "${LEG_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     for _nss_arg in "$@"; do
         case "$_nss_arg" in
             --setting-sources|--setting-sources=*)
-                echo "leg-claude-launcher: refusing to launch: LEG_PROFILE_NO_SETTING_SOURCES=1 (a consult) but the caller's argv names --setting-sources again, which would override the empty list and load the user/project/local scopes" >&2
+                echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 (a consult) but the caller's argv names --setting-sources again, which would override the empty list and load the user/project/local scopes" >&2
                 exit 2 ;;
         esac
     done

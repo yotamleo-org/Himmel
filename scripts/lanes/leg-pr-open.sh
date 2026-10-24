@@ -131,7 +131,7 @@ compute_leg_burn_line() {
         fi
     fi
 
-    local profile="${HIMMEL_LEG_PROFILE:-}"
+    local profile="${HIMMEL_WORKER_SESSION_PROFILE:-${HIMMEL_LEG_PROFILE:-}}"
     case "$profile" in
         ''|*[!A-Za-z0-9._,-]*) profile=unknown ;;
     esac
@@ -272,9 +272,9 @@ fi
 
 # An open PR asks the status funnel to re-derive the title's first [KEY].
 # Best-effort: the funnel warns and exits 0 on any Jira failure;
-# LEG_JIRA_STATUS=0 opts out. Its stdout is kept off this script's one-line
+# WORKER_SESSION_JIRA_STATUS=0 opts out. Its stdout is kept off this script's one-line
 # `PR ...` contract.
-if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
     # shellcheck source=../lib/ticket-status.sh
     # shellcheck disable=SC1091
     . "$HERE/../lib/ticket-status.sh"

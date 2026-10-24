@@ -131,13 +131,13 @@ SYNTH_GATE="$HIMMEL_ROOT/scripts/luna/synth-input-check.sh"
 CADENCE_ALERT="$HIMMEL_ROOT/scripts/luna/cadence-alert.sh"
 
 # The marker line a runner writes to its log when a gate refused the leg. The
-# sibling of LEG_DONE_MARKER: DONE means the session ran and finished, SKIPPED
+# sibling of WORKER_SESSION_DONE_MARKER: DONE means the session ran and finished, SKIPPED
 # means no session was ever launched. Distinct words on purpose — a skipped
 # night must not read as a parked one.
-LEG_SKIPPED_MARKER="PIPELINE-LEG-SKIPPED"
+WORKER_SESSION_SKIPPED_MARKER="PIPELINE-LEG-SKIPPED"
 # The log line a runner writes when a launched leg failed: a
-# non-zero rc, or a zero rc without LEG_DONE_MARKER (a no-op is not green).
-LEG_FAILED_MARKER="PIPELINE-LEG-FAILED"
+# non-zero rc, or a zero rc without WORKER_SESSION_DONE_MARKER (a no-op is not green).
+WORKER_SESSION_FAILED_MARKER="PIPELINE-LEG-FAILED"
 
 # CLAUDE.md § billing: every scheduled claude launch declares an
 # explicit --permission-mode instead of inheriting the operator's saved default
@@ -210,7 +210,7 @@ DRY_RUN=0
 DAILY_CHAIN="/harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich"
 # The bare completion marker the leg prompt asks for; flow_run_classify treats
 # a zero exit WITHOUT this line in the log tail as `parked`.
-LEG_DONE_MARKER="PIPELINE-LEG-DONE"
+WORKER_SESSION_DONE_MARKER="PIPELINE-LEG-DONE"
 COMPLETION_INSTRUCTIONS="Run every command in the foreground. Never background a command or wait for a notification. Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation. If it was blocked, parked, or bailed early, do not print the marker."
 HARVEST_PROMPT=""
 SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run (HIMMEL-255) - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
@@ -745,7 +745,7 @@ emit_bat() {
     # or prints nothing, a zero-rc run is `parked` (no proof of completion),
     # a non-zero run `error` -- never `complete` by default.
     printf 'set "FLOW_RUN_OUTCOME="\r\n'
-    printf '"%s" "%s" --classify "%%FLOW_RUN_RC%%" "%s" "" "%s" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$log_win_esc" "$LEG_DONE_MARKER"
+    printf '"%s" "%s" --classify "%%FLOW_RUN_RC%%" "%s" "" "%s" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$log_win_esc" "$WORKER_SESSION_DONE_MARKER"
     printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_OUTCOME=<"%%FLOW_RUN_TMP%%"\r\n'
     printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
     printf 'if "%%FLOW_RUN_OUTCOME%%"=="" if "%%FLOW_RUN_RC%%"=="0" set "FLOW_RUN_OUTCOME=parked"\r\n'
@@ -799,7 +799,7 @@ emit_bat() {
     # executes, and a label cmd.exe never jumps to costs nothing.
     if [ -n "$bank_lib_m_esc" ] || [ -n "$gate_lib_m_esc" ]; then
         printf ':pipeline_skipped\r\n'
-        printf 'echo [%s %%PIPELINE_SKIP_REASON%%] >> "%s" 2>&1\r\n' "$LEG_SKIPPED_MARKER" "$log_win_esc"
+        printf 'echo [%s %%PIPELINE_SKIP_REASON%%] >> "%s" 2>&1\r\n' "$WORKER_SESSION_SKIPPED_MARKER" "$log_win_esc"
         printf 'set "FLOW_RUN_ID="\r\n'
         printf '"%s" "%s" --append-start "%s" "" "%%COMPUTERNAME%%" "claude" "%s" "%s" "%s" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$model_esc" "$task_name_esc" "$log_win_esc"
         printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"\r\n'
@@ -1805,7 +1805,7 @@ emit_runner() {
     # A runner that dies here never reaches the alert below, so it
     # alerts on this path itself.
     if [ -n "$q_alert_lib" ]; then
-        printf '    cd %s || { echo "[%s cd-vault]"; %s fail %s cd-vault "$log" || true; exit 1; }\n' "$q_vault" "$LEG_FAILED_MARKER" "$q_alert_lib" "$q_flow"
+        printf '    cd %s || { echo "[%s cd-vault]"; %s fail %s cd-vault "$log" || true; exit 1; }\n' "$q_vault" "$WORKER_SESSION_FAILED_MARKER" "$q_alert_lib" "$q_flow"
     else
         printf '    cd %s || exit 1\n' "$q_vault"
     fi
@@ -1818,7 +1818,7 @@ emit_runner() {
     if [ -n "$q_gate_lib" ]; then
         printf '    _gate=$(%s .) || _gate=\n' "$q_gate_lib"
         printf '    if [ "$_gate" = NONE ]; then\n'
-        printf '        echo "[%s no-new-input]"\n' "$LEG_SKIPPED_MARKER"
+        printf '        echo "[%s no-new-input]"\n' "$WORKER_SESSION_SKIPPED_MARKER"
         printf '        _sid=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _sid=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
         printf '        test "$_sid" != "" && %s --append-end %s "$_sid" "" 0 skipped 0 no-new-input >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
         printf '        exit 0\n'
@@ -1830,11 +1830,11 @@ emit_runner() {
     if [ -n "$q_bank_lib" ]; then
         printf '    _bank=$(CADENCE_USAGE_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
         printf '    if [ "$_bank" = SKIPPED-BANK ]; then\n'
-        printf '        echo "[%s bank-at-threshold]"\n' "$LEG_SKIPPED_MARKER"
+        printf '        echo "[%s bank-at-threshold]"\n' "$WORKER_SESSION_SKIPPED_MARKER"
         # One skipped night is the guard working; two running is
         # a leg that has silently stopped. The previous night's log is $log.prev.
         if [ -n "$q_alert_lib" ]; then
-            printf '        if grep -qF "[%s bank-at-threshold]" "$log.prev" 2>/dev/null; then %s fail %s bank-skip-2-nights "$log" || true; fi\n' "$LEG_SKIPPED_MARKER" "$q_alert_lib" "$q_flow"
+            printf '        if grep -qF "[%s bank-at-threshold]" "$log.prev" 2>/dev/null; then %s fail %s bank-skip-2-nights "$log" || true; fi\n' "$WORKER_SESSION_SKIPPED_MARKER" "$q_alert_lib" "$q_flow"
         fi
         printf '        _sid=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _sid=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
         printf '        test "$_sid" != "" && %s --append-end %s "$_sid" "" 0 skipped 0 bank-at-threshold >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
@@ -1855,7 +1855,7 @@ emit_runner() {
     printf '        _rc=0; %s --model %s --permission-mode %s --settings %s %s < /dev/null || _rc=$?\n' "$q_claude" "$q_model" "$CADENCE_PERMISSION_MODE" "$q_settings" "$q_prompt"
     # Fail-closed fallback (coderabbit #1762): classifier unavailable/silent ->
     # parked on rc 0, error otherwise -- never complete by default.
-    printf '        _flow_outcome=$(%s --classify "$_rc" "$log" "" %s 2>/dev/null) || _flow_outcome=\n' "$q_flow_lib" "$LEG_DONE_MARKER"
+    printf '        _flow_outcome=$(%s --classify "$_rc" "$log" "" %s 2>/dev/null) || _flow_outcome=\n' "$q_flow_lib" "$WORKER_SESSION_DONE_MARKER"
     printf '        if [ "$_flow_outcome" = "" ]; then if [ "$_rc" = 0 ]; then _flow_outcome=parked; else _flow_outcome=error; fi; fi\n'
     printf '        test "$_flow_run_id" != "" && %s --append-end %s "$_flow_run_id" "" "$_rc" "$_flow_outcome" "" "attempt=$_attempt/%s" >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow" "$RETRY_MAX_ATTEMPTS"
     # Retry ONLY a non-zero exit whose own attempt log carries the transient
@@ -1874,8 +1874,8 @@ emit_runner() {
     printf '    echo "[exit rc=$_rc]"\n'
     # A failed leg says so in its log and in the alert sink; a
     # completed one re-arms the sink's dedupe.
-    printf '    if [ "$_rc" != 0 ]; then _fail="rc-$_rc"; echo "[%s rc=$_rc]"\n' "$LEG_FAILED_MARKER"
-    printf '    elif [ "$_flow_outcome" != complete ]; then _fail=no-completion-marker; echo "[%s no-completion-marker]"\n' "$LEG_FAILED_MARKER"
+    printf '    if [ "$_rc" != 0 ]; then _fail="rc-$_rc"; echo "[%s rc=$_rc]"\n' "$WORKER_SESSION_FAILED_MARKER"
+    printf '    elif [ "$_flow_outcome" != complete ]; then _fail=no-completion-marker; echo "[%s no-completion-marker]"\n' "$WORKER_SESSION_FAILED_MARKER"
     printf '    else _fail=; fi\n'
     if [ -n "$q_alert_lib" ]; then
         printf '    if [ "$_fail" != "" ]; then %s fail %s "$_fail" "$log" || true; else %s clear %s || true; fi\n' "$q_alert_lib" "$q_flow" "$q_alert_lib" "$q_flow"

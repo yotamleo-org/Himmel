@@ -72,7 +72,7 @@ if ! host_modes_stick; then
   exit 0
 fi
 # Copied/mutant renderers get a sibling resolver like the real tree; ambient
-# HEADED_ARM_LEG_PROFILES is deliberately ignored by direct console arms.
+# HEADED_ARM_WORKER_PROFILES is deliberately ignored by direct console arms.
 fixture_profiles() {
   mkdir -p "$1/lanes"
   cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/"
@@ -393,12 +393,12 @@ check "at the floor: armed launch proceeds (exit 0)" "$rcfl" "0"
 
 # Ambient leg profiles cannot override a console opt-down.
 for ambient in profile resolver both stale; do
-  ambient_env=(-u HEADED_ARM_CONTEXT_PROFILE -u HEADED_ARM_LEG_PROFILES -u HEADED_ARM_CONTEXT_PID)
+  ambient_env=(-u HEADED_ARM_CONTEXT_PROFILE -u HEADED_ARM_WORKER_PROFILES -u HEADED_ARM_CONTEXT_PID)
   case "$ambient" in
     profile) ambient_env+=(HEADED_ARM_CONTEXT_PROFILE=design) ;;
-    resolver) ambient_env+=(HEADED_ARM_LEG_PROFILES=/nonexistent/ambient-resolver.mjs) ;;
-    both) ambient_env+=(HEADED_ARM_CONTEXT_PROFILE=design HEADED_ARM_LEG_PROFILES="$HERE/../lanes/plugin-profiles.mjs") ;;
-    stale) ambient_env+=(HEADED_ARM_CONTEXT_PROFILE=design HEADED_ARM_LEG_PROFILES="$HERE/../lanes/plugin-profiles.mjs" HEADED_ARM_CONTEXT_PID=1) ;;
+    resolver) ambient_env+=(HEADED_ARM_WORKER_PROFILES=/nonexistent/ambient-resolver.mjs) ;;
+    both) ambient_env+=(HEADED_ARM_CONTEXT_PROFILE=design HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs") ;;
+    stale) ambient_env+=(HEADED_ARM_CONTEXT_PROFILE=design HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" HEADED_ARM_CONTEXT_PID=1) ;;
   esac
   rc=0
   out="$(env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT "${ambient_env[@]}" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
@@ -419,7 +419,7 @@ ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag>
     stale)  pidx='export HEADED_ARM_CONTEXT_PID=1' ;;
     *)      pidx=':' ;;
   esac
-  env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT HEADED_ARM_CONTEXT_PROFILE=leg-impl HEADED_ARM_LEG_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
+  env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT HEADED_ARM_CONTEXT_PROFILE=leg-impl HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
     HEADED_ARM_AB_AUTOCOMPACT="$val" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
     bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-leg" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" claude-sonnet-5 "$ctx" 2>&1
 }
@@ -1620,11 +1620,11 @@ chmod 755 "$d36d/konsole"
 rc36d=0
 KONSOLE_CMD="$d36d/konsole" PGREP_CMD="$d36d/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36d/proc" \
   HEADED_ARM_LOCK_DIR="$d36d/locks" \
-  HEADED_ARM_LAUNCHER_ENV="LEG_PROFILE_SETTINGS=/parent/settings.json" \
+  HEADED_ARM_LAUNCHER_ENV="WORKER_SESSION_PROFILE_SETTINGS=/parent/settings.json" \
   bash "$SCRIPT" "HIMMEL-launcher4" "doc36d.md" "$d36d/signal-never" "$PAST" "$d36d/log" >/dev/null 2>&1 || rc36d=$?
 wait_record "$d36d" || true
 check "36d LAUNCHER_ENV: exit 0" "$rc36d" "0"
-contains "36d LAUNCHER_ENV: the tokens still reach the konsole argv" "$(cat "$d36d/record" 2>/dev/null || true)" "LEG_PROFILE_SETTINGS=/parent/settings.json"
+contains "36d LAUNCHER_ENV: the tokens still reach the konsole argv" "$(cat "$d36d/record" 2>/dev/null || true)" "WORKER_SESSION_PROFILE_SETTINGS=/parent/settings.json"
 check "36d LAUNCHER_ENV: konsole (and so the leg) does not inherit HEADED_ARM_LAUNCHER_ENV" "$(cat "$d36d/launcher-env" 2>/dev/null || echo MISSING)" "UNSET"
 
 d36b="$tmp/c36b"; mk_stub "$d36b" 1 alive "HIMMEL-launcher2"
@@ -2256,7 +2256,7 @@ contains "42b explicit KONSOLE_CMD: the util-linux script(1) wrapper still reach
 # HEADED_ARM_HEADLESS=1 argv rebuild used to drop --settings.
 d43="$tmp/c43"; mkdir -p "$d43"
 rc43=0
-out43=$(HEADED_ARM_HEADLESS=1 LEG_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
+out43=$(HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
   KONSOLE_CMD="$d43/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43/locks" HEADED_ARM_PROC="$d43/proc" \
   bash "$SCRIPT" --dry-run --role console "HIMMEL-hl43" "doc43.md" "$d43/signal-never" "$PAST" "$d43/log" 2>&1) || rc43=$?
 check "43 headless console --dry-run: exit 0" "$rc43" "0"
@@ -2270,7 +2270,7 @@ for _m43 in headed headless; do
   d43b="$tmp/c43b-$_m43"; mk_stub "$d43b" 1 alive
   _hl43=0; [ "$_m43" = headless ] && _hl43=1
   rc43b=0
-  out43b=$(HEADED_ARM_HEADLESS="$_hl43" LEG_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
+  out43b=$(HEADED_ARM_HEADLESS="$_hl43" WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
     KONSOLE_CMD="$d43b/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43b/locks" HEADED_ARM_PROC="$d43b/proc" \
     bash "$SCRIPT" --dry-run --role console "HIMMEL-mc43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1) || rc43b=$?
   check "43b $_m43 console --dry-run: exit 0" "$rc43b" "0"

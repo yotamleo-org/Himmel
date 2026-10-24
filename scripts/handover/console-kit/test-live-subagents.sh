@@ -124,7 +124,7 @@ export WRAP_SUBTREE_CHECK_BIN="$W/subtree-ok.sh"
 reset_session
 launch j1 toolu_J1 background 2026-10-09T01:00:00.000Z
 wrap() {
-    HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" CLAUDE_CODE_SESSION_ID="$SID" LEG_JIRA_STATUS=0 \
+    HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" CLAUDE_CODE_SESSION_ID="$SID" WORKER_SESSION_JIRA_STATUS=0 \
         bash "$CONSOLE" wrap "$@"
 }
 rc=0; out=$(wrap "$DOC" "$TOKEN" "handed to B" 2>&1) || rc=$?
@@ -134,7 +134,7 @@ check "wrap: refused -> no WRAPPED written" "$(grep -c WRAPPED "$DOC")" "0"
 rc=0; HANDOVER_DIR="$ROOT" bash "$QL" status "$DOC" >/dev/null 2>&1 || rc=$?
 check "wrap: refused -> lock still held" "$([ "$rc" -ne 0 ] && echo held)" "held"
 
-rc=0; out=$(HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" LEG_JIRA_STATUS=0 env -u CLAUDE_CODE_SESSION_ID bash "$CONSOLE" wrap "$DOC" "$TOKEN" "x" 2>&1) || rc=$?
+rc=0; out=$(HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" WORKER_SESSION_JIRA_STATUS=0 env -u CLAUDE_CODE_SESSION_ID bash "$CONSOLE" wrap "$DOC" "$TOKEN" "x" 2>&1) || rc=$?
 check "wrap: no session id (cannot prove idle) -> refused rc 4" "$rc" "4"
 
 notify j1 toolu_J1 2026-10-09T01:00:00.010Z

@@ -160,11 +160,11 @@ export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_BANK_CACHE="$W/bank.json" CAD
 export CADENCE_BANK_LEDGER=/dev/null
 export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/routes.jsonl" SUITE_FLAKE_LEDGER="$W/flake.jsonl" SUITE_FLAKE_REPO_ID=dra
-export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
-export LEG_DIGEST_STATE_DIR="$W/digest" LEG_DIGEST_SETTLE_MAX=0 LEG_DIGEST_SETTLE_QUIET=0
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
+export WORKER_SESSION_DIGEST_STATE_DIR="$W/digest" WORKER_SESSION_DIGEST_SETTLE_MAX=0 WORKER_SESSION_DIGEST_SETTLE_QUIET=0
 export BOARD_TRANSCRIPTS="$W/tx" CR_LEDGER="$W/no-cr" BOARD_MIRROR="$W/no-mirror"
 export CLOSE_WRAPPED_LEG_PROJECTS_DIR="$W/projects" CLOSE_WRAPPED_LEG_SESSIONS_DIR="$W/sessions"
-export LEG_JIRA_STATUS=0
+export WORKER_SESSION_JIRA_STATUS=0
 export DRA_TICK_STUB="$W/bin/tickstub" DRA_TMP="$W/out" DRA_READERS="$READERS"
 
 # ---- the console template: one REAL console.sh new --------------------------

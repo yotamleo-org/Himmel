@@ -100,7 +100,7 @@ mk_raw fixture_plain '# fixture brief' '## Results'
 mk_raw fixture_plain_ok '---' 'description: a plain fixture brief' '---' '# fixture brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' '## Results'
 run_leg() { # doc args...
     local doc="$1"; shift
-    HEADED_ARM_LEG_PREFLIGHT="$tmp/preflight.sh" LEG_REPO="$tmp" \
+    HEADED_ARM_WORKER_PREFLIGHT="$tmp/preflight.sh" WORKER_SESSION_REPO="$tmp" \
         bash "$LEG" --dry-run "$@" "HIMMEL-9999-x" "$doc" "$tmp/signal" 9999999999 "$tmp/log" claude-sonnet-5-5 2>&1
 }
 rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --profile leg-impl)" || rc=$?

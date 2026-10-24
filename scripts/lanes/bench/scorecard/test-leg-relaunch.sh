@@ -143,9 +143,9 @@ check "leg-spellings: parsed rises to 4 and the non-leg doc is still skipped wit
 export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/sort-order"
 SORT_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "sort-order: exits 0" "$?" "0"
-LEG_ORDER=$(printf '%s\n' "$SORT_OUT" | grep -oE '^legN[0-9]+' | tr '\n' ',')
+WORKER_SESSION_ORDER=$(printf '%s\n' "$SORT_OUT" | grep -oE '^legN[0-9]+' | tr '\n' ',')
 check "sort-order: legs are ordered numerically by leg number, not lexicographically" \
-    "$LEG_ORDER" "legN9,legN10,legN207,legN1000,"
+    "$WORKER_SESSION_ORDER" "legN9,legN10,legN207,legN1000,"
 
 # --- (n) portability guard: GNU-only `sort -V` must not appear in a script
 # whose header declares POSIX bash 3.2+

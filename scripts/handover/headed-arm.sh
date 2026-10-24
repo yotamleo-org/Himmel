@@ -342,7 +342,7 @@ _context_profiles="$(dirname "$0")/../lanes/plugin-profiles.mjs"
 # a direct console arm into 1m. This guards ambient leakage, not a hostile shell.
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _context_profile="${HEADED_ARM_CONTEXT_PROFILE:-console}"
-    _context_profiles="${HEADED_ARM_LEG_PROFILES:-$_context_profiles}"
+    _context_profiles="${HEADED_ARM_WORKER_PROFILES:-${HEADED_ARM_LEG_PROFILES:-$_context_profiles}}"
 fi
 # The audited 400k A/B arm marker, set only by headed-arm-leg.sh.
 # Same PID pairing as above, so an ambient value from another process is ignored.
@@ -350,7 +350,7 @@ _ab_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _ab_autocompact="${HEADED_ARM_AB_AUTOCOMPACT:-}"
 fi
-unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_LEG_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
+unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
 if ! _context_json="$(node "$_context_profiles" "$_context_profile" --context)" \
     || ! _profile_mode="$(printf '%s' "$_context_json" | jq -er '.contextMode | select(. == "standard" or . == "1m")')" \
     || ! _profile_autocompact="$(printf '%s' "$_context_json" | jq -er '.autocompact | select(type == "number" and . >= 200000 and . <= 1000000 and floor == .)')"; then
@@ -686,8 +686,8 @@ case "$DEADLINE" in
     ''|*[!0-9]*) echo "headed-arm: deadline must be an epoch second, got '$DEADLINE'" >&2; exit 2 ;;
 esac
 if [ "$HEADLESS" = "1" ]; then
-    if [ -z "${LEG_PROFILE_SETTINGS:-}" ]; then
-        echo "headed-arm: a headless launch needs LEG_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-leg.sh --headless --profile <name>" >&2
+    if [ -z "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
+        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-leg.sh --headless --profile <name>" >&2
         exit 2
     fi
     for _hl_need in "$CLAUDE_CLI" jq; do
@@ -727,7 +727,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: launcher=%s recorder=%s konsole=%s pgrep=%s repo=%s\n' \
         "$LAUNCHER" "$RECORDER" "$KONSOLE" "$PGREP" "$REPO"
     if [ "$HEADLESS" = "1" ]; then
-        printf 'headed-arm: headless=1 claude-cli=%s settings=%s\n' "$CLAUDE_CLI" "$LEG_PROFILE_SETTINGS"
+        printf 'headed-arm: headless=1 claude-cli=%s settings=%s\n' "$CLAUDE_CLI" "${WORKER_SESSION_PROFILE_SETTINGS:-$LEG_PROFILE_SETTINGS}"
     fi
     exit 0
 fi
@@ -964,7 +964,7 @@ fi
 # secret-named vars are never copied into the file.
 _hl_leg_var() {
     case "$1" in
-        HIMMEL_*|LEG_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
+        HIMMEL_*|LEG_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
     return 1
 }
@@ -1026,7 +1026,7 @@ headless_fail() { # headless_fail <rc> <message>
 # the CLAUDE_PID / CLAUDE_CODE_SESSION_ID a headed launch clears with env -u -
 # still reaches the leg from the daemon.
 headless_launch() {
-    local name val tok pid pids pg_rc settings="$LEG_PROFILE_SETTINGS" tmp_settings pair
+    local name val tok pid pids pg_rc settings="${WORKER_SESSION_PROFILE_SETTINGS:-$LEG_PROFILE_SETTINGS}" tmp_settings pair
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
         _hl_leg_var "$name" || continue
@@ -1480,7 +1480,7 @@ if [ "$RECORDER" = "1" ]; then
     # force-wrapped in `bash` - the default/non-recorder
     # branch below execs it directly via its own shebang, and forcing
     # `bash "$LAUNCHER"` here only for the recorder path broke a non-bash-script
-    # HEADED_ARM_LEG_CLAUDEX_BIN override (e.g. a compiled binary or a python
+    # HEADED_ARM_WORKER_CLAUDEX_BIN override (e.g. a compiled binary or a python
     # entrypoint) that works fine under plain exec.
     BASH_BIN="$(command -v bash || echo /bin/bash)"
     LAUNCH_CMD=$(printf '%q ' "${LAUNCH_ARGV[@]}")

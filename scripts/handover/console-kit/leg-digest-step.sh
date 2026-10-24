@@ -20,7 +20,7 @@
 #       doc's `resume_cwd` with the close's own matcher (leg-transcripts.sh). A journal is a member when
 #       it matches the leg's names, its first `cwd` is `resume_cwd`, and its
 #       first timestamp falls in the doc's first-LIVE .. last-WRAPPED window
-#       (date from the doc name; LEG_DIGEST_CHAIN_SLACK_MIN minutes before LIVE,
+#       (date from the doc name; WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN minutes before LIVE,
 #       default 30, because a session starts before it writes its LIVE bullet).
 #       Every member is digested, one line each, prefixed with its session id.
 #
@@ -32,16 +32,16 @@
 #                              write itself failed (ledger), or the digest came
 #                              back inconclusive (inconclusive)
 #   digest=skipped:<reason>    nothing digested; the only write is one row in
-#                              $LEG_DIGEST_STATE_DIR/skips.jsonl, which
+#                              $WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl, which
 #                              tick.sh's fails= counts
 # Always exits 0 (2 on a usage error): the caller's rc never depends on it.
 # Idempotence and write order belong to leg_ledger.py (per-session flock,
 # marker last), so a re-run or a racing backfill appends nothing new.
 #
-# Seams: LEG_DIGEST_BIN (replaces `bun leg-digest.ts`), LEG_DIGEST_STATE_DIR,
-# LEG_DIGEST_TIMEOUT (60), LEG_DIGEST_SETTLE_MAX (15), LEG_DIGEST_SETTLE_QUIET
+# Seams: WORKER_SESSION_DIGEST_BIN (replaces `bun leg-digest.ts`), WORKER_SESSION_DIGEST_STATE_DIR,
+# WORKER_SESSION_DIGEST_TIMEOUT (60), WORKER_SESSION_DIGEST_SETTLE_MAX (15), WORKER_SESSION_DIGEST_SETTLE_QUIET
 # (5), CLAUDE_SESSIONS_PROC (/proc). Ledgers follow leg_ledger.py's own env
-# (HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
+# (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
 #
 # Platform guard: Linux bash 3.2+ (console kit; /proc, GNU date and timeout;
 # no .ps1 twin - Windows is parked).
@@ -49,7 +49,7 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LD_DIR="$HERE/../../eval/leg-digest"
-STATE_DIR="${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}"
+STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}}"
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
@@ -136,7 +136,7 @@ snapshot() {
       find "${1%.jsonl}" -name '*.jsonl' -exec stat -c '%n %Y %s' {} + 2>/dev/null; } | sort
 }
 settle() {
-    local pid="$1" j="$2" max="${LEG_DIGEST_SETTLE_MAX:-15}" need="${LEG_DIGEST_SETTLE_QUIET:-5}" i=0 quiet=0 snap prev="-"
+    local pid="$1" j="$2" max="${WORKER_SESSION_DIGEST_SETTLE_MAX:-${LEG_DIGEST_SETTLE_MAX:-15}}" need="${WORKER_SESSION_DIGEST_SETTLE_QUIET:-${LEG_DIGEST_SETTLE_QUIET:-5}}" i=0 quiet=0 snap prev="-"
     while :; do
         snap="$(snapshot "$j")"
         if [ "$snap" = "$prev" ]; then quiet=$((quiet + 1)); else quiet=0; prev="$snap"; fi
@@ -174,10 +174,10 @@ digest_one() { # digest_one <sid> <journal> <pid-or-empty> <wait:0|1>
     local sid="$1" j="$2" pid="$3" settled=1 rc status
     if [ -z "$j" ] || [ ! -f "$j" ]; then failed_digest "$sid" no-journal; return; fi
     if [ "$4" = 1 ] && ! settle "$pid" "$j"; then settled=0; fi
-    if [ -n "${LEG_DIGEST_BIN:-}" ]; then
-        nice -n 10 timeout -k 5 "${LEG_DIGEST_TIMEOUT:-60}" "$LEG_DIGEST_BIN" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
+    if [ -n "${WORKER_SESSION_DIGEST_BIN:-${LEG_DIGEST_BIN:-}}" ]; then
+        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-${LEG_DIGEST_TIMEOUT:-60}}" "${WORKER_SESSION_DIGEST_BIN:-$LEG_DIGEST_BIN}" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
     else
-        nice -n 10 timeout -k 5 "${LEG_DIGEST_TIMEOUT:-60}" bun "$LD_DIR/leg-digest.ts" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
+        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-${LEG_DIGEST_TIMEOUT:-60}}" bun "$LD_DIR/leg-digest.ts" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
     fi
     rc=$?
     case "$rc" in
@@ -281,7 +281,7 @@ done <<EOF
 $(grep -E '^- [0-9]{2}:[0-9]{2} ' "$DOC")
 EOF
 [ -n "$hi" ] || hi="$(date -d "$day $wrapped" +%s)"
-lo=$(( lo - ${LEG_DIGEST_CHAIN_SLACK_MIN:-30} * 60 ))
+lo=$(( lo - ${WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN:-${LEG_DIGEST_CHAIN_SLACK_MIN:-30}} * 60 ))
 hi=$(( hi + 60 ))
 ident="$(leg_identity "$DOC")"
 candidates="$(printf '%s\n%s\n' "${ident#*$'\t'}" "$(basename "$DOC" .md)" | tr ',' '\n' | sed '/^$/d')"

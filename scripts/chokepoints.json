@@ -27,7 +27,7 @@
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT"]
   },
   "scripts/handover/console-kit/headed-arm-leg.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_LEG_PREFLIGHT"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT"]
   },
   "scripts/lib/claude-headless.sh": {
     "seam_env_vars": ["NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK", "HIMMEL_DISPATCH_MAX_CONCURRENT", "HIMMEL_DISPATCH_ROW_TTL_SECS", "HIMMEL_HEADLESS_SEAM_DIR", "HIMMEL_HEADLESS_NO_FLOCK"]
