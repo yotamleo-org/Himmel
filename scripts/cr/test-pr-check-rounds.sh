@@ -342,15 +342,29 @@ for early_round in 2 3; do
     assert_has "$early_ledger" "\"reason\":\"$early_reason\"" "7345 round $early_round early close records the early-close reason"
     assert_eq "$(early_marker)" cleared "7345 round $early_round early close clears the marker"
 done
+# trust_path_check answers a hit only from an anchor checkout at its origin's
+# HEAD, so the fixture anchor is one for this row.
+git -C "$fx" -c init.defaultBranch=main init -q
+git -C "$fx" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q --allow-empty -m anchor
+git -c init.defaultBranch=main init -q --bare "$tmp/fx-origin.git"
+git -C "$fx" remote add origin "$tmp/fx-origin.git"
+git -C "$fx" push -q origin main
 early_run 2 $'docs/guide/x.md\nscripts/cr/review-round.sh' "$early_sug" GH_X=1
+rm -rf "$fx/.git" "$tmp/fx-origin.git"
 assert_eq "$early_rc" 2 "7345 a round-2 Suggestions-only PR touching a trust path does not close early"
-assert_has "$early_out" 'trust path scripts/cr/review-round.sh' "7345 the trust-path refusal names the trust path"
+assert_has "$early_out" 'a PR that touches no CI trust path, and PR #1 touches trust path scripts/cr/review-round.sh' "7345 the trust-path refusal comes from a trust-path hit and names the path ($early_out)"
+assert_lacks "$early_out" 'refused anchor' "7345 the trust-path row reaches the hit, not an anchor refusal"
 assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 a trust-path PR at round 2 writes no deferral"
 assert_eq "$(early_marker)" kept "7345 a trust-path PR at round 2 keeps the marker"
+early_crit="$(printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-3","severity":"crit","class":"reader-allowlist"}' "$recovery_head")"$'\n'
 early_run 2 'docs/guide/x.md' "$early_sug$early_imp" GH_X=1
 assert_eq "$early_rc" 4 "7345 a round-2 non-trust PR with an open Important does not close early ($early_out)"
 assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 an open Important at round 2 defers nothing"
 assert_eq "$(early_marker)" kept "7345 an open Important at round 2 keeps the marker"
+early_run 2 'docs/guide/x.md' "$early_sug$early_crit" GH_X=1
+assert_eq "$early_rc" 4 "7345 a round-2 non-trust PR with an open Critical does not close early ($early_out)"
+assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 an open Critical at round 2 defers nothing"
+assert_eq "$(early_marker)" kept "7345 an open Critical at round 2 keeps the marker"
 early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_NONE=1
 assert_eq "$early_rc" 2 "7345 a round-2 branch with no open PR does not close early"
 assert_has "$early_out" 'one open PR' "7345 the no-PR refusal says it needs an open PR"
