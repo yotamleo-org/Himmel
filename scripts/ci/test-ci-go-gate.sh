@@ -293,11 +293,13 @@ else:
         bad("G8 groups: push=%r go=%r other-label=%r schedule=%r" % (g_push, g_go, g_other, g_sched))
 
 # ---- G11 ----
-class AllPass:
-    def __getattr__(self, k): return self
-    def __eq__(self, o): return o == "pass"
-    def __ne__(self, o): return o != "pass"
-    def __str__(self): return "pass"
+class PassOutputs:
+    def __getattr__(self, k): return "pass"
+class AllPass:  # a needs entry whose job succeeded: result 'success', every group output 'pass'
+    def __getattr__(self, k):
+        if k == "outputs": return PassOutputs()
+        if k == "result": return "success"
+        return self
 bad11 = []
 for gate in ("on", "off", ""):
     for a in ("opened", "synchronize", "reopened"):
@@ -305,6 +307,8 @@ for gate in ("on", "off", ""):
         for j in sorted(CHEAP & required & set(jobs)):
             if not runs(j, ctx):
                 bad11.append("%s is skipped on %s with the gate %r while ci-quick passed" % (j, a, gate))
+            elif name_of(j, ctx) != j:
+                bad11.append("%s is named %r on %s with the gate %r" % (j, name_of(j, ctx), a, gate))
 if bad11:
     bad("G11 " + "; ".join(sorted(set(bad11))))
 else:

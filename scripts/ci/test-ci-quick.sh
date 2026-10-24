@@ -59,8 +59,7 @@ for g in $GROUPS_FOLDED; do
   esac
   if printf '%s\n' "$b" | grep -qxF "    needs: ci-quick" \
      && printf '%s\n' "$b" | grep -qxF "$want_if" \
-     && printf '%s\n' "$b" | grep -qxF -- "$(printf '%s\n' "$want_step" | head -n 1)" \
-     && printf '%s\n' "$b" | grep -qxF -- "$(printf '%s\n' "$want_step" | tail -n 1)" \
+     && printf '%s\n' "$b" | grep -xF -A1 -- "$(printf '%s\n' "$want_step" | head -n 1)" | grep -qxF -- "$(printf '%s\n' "$want_step" | tail -n 1)" \
      && printf '%s\n' "$b" | grep -qE '^    timeout-minutes: [0-9]+' \
      && ! printf '%s\n' "$b" | grep -qE 'actions/checkout|success\(\)'; then
     ok "Q1 $g is a fail-unless-pass sentinel on ci-quick"
