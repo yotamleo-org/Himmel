@@ -4,7 +4,8 @@
 # WHY: judge_accuracy.py (the weekly judge-outcome job) and review-page.py (the readable page) were
 # built to run weekly, but nothing ran them. This is the weekly run. It draws no model and no bank:
 # gh reads PR and main-run state, judge_accuracy.py appends one ledger row and queues new
-# adjudication candidates for a judge-ro call to rule, and review-page.py writes the page the
+# adjudication candidates for a judge-ro call to rule, decision-158-answers.py appends the answer row
+# for the five open questions, and review-page.py writes the page the
 # config-ui serves at GET /api/reviewers.
 #
 #   judge-accuracy-cadence.sh run --verdicts DIR [--mirror DIR]   one pass (what cron fires)
@@ -63,6 +64,9 @@ cmd_run() {
     local args=(run --verdicts "$verdicts" --prs "$tmp/prs.json" --main-runs "$tmp/runs.json")
     [ -n "$mirror" ] && args+=(--mirror "$mirror")
     python3 "$SCRIPT_DIR/judge_accuracy.py" "${args[@]}"; rc=$?
+    if [ "$rc" -eq 0 ]; then
+        python3 "$ROOT/scripts/eval/decision-158-answers.py" --record; rc=$?
+    fi
     if [ "$rc" -eq 0 ]; then
         mkdir -p "$(dirname "$PAGE")" && python3 "$ROOT/scripts/eval/review-page.py" --out "$PAGE.tmp" && mv -f "$PAGE.tmp" "$PAGE"; rc=$?
     fi

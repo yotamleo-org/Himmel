@@ -13,6 +13,7 @@ export HIMMEL_EVAL_RUNS_LEDGER="$TMP/runs.jsonl"
 export HIMMEL_EVAL_CHANGES_LEDGER="$TMP/changes.jsonl"
 export HIMMEL_JUDGE_ADJUDICATION="$TMP/queue.jsonl"
 export REVIEW_PAGE_FILE="$TMP/page/review-page.md"
+export CR_LEDGER="$TMP/cr-critic-scores.jsonl"
 export CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/alert-send-failed"
 
 PASS=0; FAIL=0
@@ -69,6 +70,7 @@ check "status shows it armed" 'bash "$CAD" status | grep -q "^ARMED .*HIMMEL-Jud
 bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run.out" 2>&1; rc=$?
 check "run: exit 0" '[ "$rc" = 0 ]'
 check "run: one judge-accuracy row in the ledger" '[ "$(grep -c "\"eval\":\"judge-accuracy\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
+check "run: one decision-158 answer row in the ledger" '[ "$(grep -c "\"eval\":\"decision-158\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: the page is written and names the judges" 'grep -q "^## The judges" "$REVIEW_PAGE_FILE" && grep -q "A bug got past a GO on 0 of 1 merged PRs" "$REVIEW_PAGE_FILE"'
 touch "$TMP/gh-fail"
 bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run2.out" 2>&1; rc=$?
