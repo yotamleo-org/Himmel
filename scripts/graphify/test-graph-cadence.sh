@@ -1302,6 +1302,25 @@ fi
 # (c) second --semantic fire on the same worktree: the manifest survived the clean.
 : > "$FAKE_SEM_LOG"; rc=0; out=$(run_sem on --semantic) || rc=$?
 assert_contains "semantic manifest survives the per-run clean under --semantic" "manifest=present" "$(cat "$FAKE_SEM_LOG")"
+# (c2) a batch the semantic step submitted lands in the ledger row: id, state, request count, cost.
+tag="batch"; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+rc=0; out=$(FAKE_SEM_OUT="semantic-update: BATCH id=msgbatch_01Abc state=merged requests=14 cost_usd=0.412300" run_sem "$tag" --semantic) || rc=$?
+assert_eq "a merged batch keeps the run rc=0" "0" "$rc"
+batch_row=$(tail -n1 "$TMP_ROOT/t9-$tag-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)
+assert_contains "ledger row carries the batch id" '"batch_id":"msgbatch_01Abc"' "$batch_row"
+assert_contains "ledger row carries the batch state" '"batch_state":"merged"' "$batch_row"
+assert_contains "ledger row carries the request count" '"batch_requests":14' "$batch_row"
+assert_contains "ledger row carries the batch cost" '"batch_cost_usd":0.412300' "$batch_row"
+# (c3) a submitted batch has no cost yet ("-"): the cost is null, the id is still recorded.
+tag=batchpend; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+rc=0; out=$(FAKE_SEM_OUT="semantic-update: BATCH id=msgbatch_01Abc state=submitted requests=14 cost_usd=-" run_sem "$tag" --semantic) || rc=$?
+batch_row=$(tail -n1 "$TMP_ROOT/t9-$tag-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)
+assert_eq "a submitted batch keeps the run rc=0" "0" "$rc"
+assert_contains "a submitted batch is ledgered with its id and state" '"batch_id":"msgbatch_01Abc","batch_state":"submitted","batch_requests":14,"batch_cost_usd":null' "$batch_row"
+# (c4) a run with no batch line carries null batch fields.
+assert_contains "a run without a batch ledgers null batch fields" '"batch_id":null,"batch_state":null,"batch_requests":null,"batch_cost_usd":null' "$(tail -n1 "$TMP_ROOT/t9-on-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)"
 # (d) a failing semantic step: alert + failed run.
 : > "$FAKE_SEM_LOG"; : > "$FAKE_SEND_LOG"; rc=0
 out=$(FAKE_SEM_RC=2 run_sem bad --semantic) || rc=$?
