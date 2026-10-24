@@ -45,6 +45,7 @@ chmod +x "$WORK/bin/gh"
 # Recording inbox-send stand-in: one log line per call.
 cat > "$WORK/inbox-send" <<'STUB'
 #!/usr/bin/env bash
+[ -z "${STUB_SEND_SLEEP:-}" ] || sleep "$STUB_SEND_SLEEP"
 printf '%s\n' "$*" >> "$STUB_SENT_LOG"
 STUB
 chmod +x "$WORK/inbox-send"
@@ -96,6 +97,35 @@ run --notify > /dev/null
 run --notify > /dev/null
 check "--notify twice sends once (2887 only; 9003 has no leg)" "1" "$(wc -l < "$WORK/sent.log" | tr -d ' ')"
 has "notify targets the leg session and names the action" '^HIMMEL-5969-N2362-succession-wake-once-2026-10-16 .*merge' "$(cat "$WORK/sent.log")"
+
+# Removing the fallback lock must let both overlapping runs reach the sender.
+mkdir -p "$WORK/noflock"
+for cmd in bash cat cut date dirname grep jq mkdir rm rmdir sed sleep stat; do
+    ln -s "$(command -v "$cmd")" "$WORK/noflock/$cmd"
+done
+ln -s "$WORK/bin/gh" "$WORK/noflock/gh"
+check "isolated PATH has no flock" "1" "$(PATH="$WORK/noflock" command -v flock >/dev/null 2>&1; printf '%s' "$?")"
+rm -f "$XDG_RUNTIME_DIR/himmel-console/pr-stall.sent"
+: > "$WORK/sent.log"
+PATH="$WORK/noflock" STUB_SEND_SLEEP=1 run --notify > "$WORK/notify-1" &
+p1=$!
+PATH="$WORK/noflock" STUB_SEND_SLEEP=1 run --notify > "$WORK/notify-2" &
+p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock concurrent notifying runs exit 0" "0:0" "$r1:$r2"
+check "no-flock concurrent notifying runs send exactly once" "1" "$(wc -l < "$WORK/sent.log" | tr -d ' ')"
+check "no-flock notify releases its lock" "no" "$([ -d "$XDG_RUNTIME_DIR/himmel-console/pr-stall.lock.d" ] && printf yes || printf no)"
+for lease in "$$.$(date -u +%s)" "2147483647.$(date -u +%s)" "$$.0"; do
+    rm -f "$XDG_RUNTIME_DIR/himmel-console/pr-stall.sent"
+    : > "$WORK/sent.log"
+    mkdir -p "$XDG_RUNTIME_DIR/himmel-console/pr-stall.lock.d"
+    : > "$XDG_RUNTIME_DIR/himmel-console/pr-stall.lock.d/$lease"
+    PATH="$WORK/noflock" run --notify > /dev/null
+    want=1; case "$lease" in "$$."*) [ "${lease#*.}" = 0 ] || want=0 ;; esac
+    check "no-flock notify respects live leases and takes dead/expired leases ($lease)" "$want" "$(wc -l < "$WORK/sent.log" | tr -d ' ')"
+    rm -rf "$XDG_RUNTIME_DIR/himmel-console/pr-stall.lock.d"
+done
 
 printf '# leg\n- PR: feat/himmel-5969-succession-wake-once-b-extra\n' > "$DOC"
 out="$(run)"

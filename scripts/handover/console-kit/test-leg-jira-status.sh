@@ -69,6 +69,7 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr list")
+        [ ! -e "$FX/pr-list.sleep" ] || sleep "$(cat "$FX/pr-list.sleep")"
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         n=$(( $(cat "$FX/pr-list.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/pr-list.n"
         if [ -e "$FX/pr-list.$n.json" ]; then cat "$FX/pr-list.$n.json"; else cat "$FX/pr-list.json"; fi ;;
@@ -167,6 +168,37 @@ printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
 check "sweep: a Done ticket's stale IDLE-HELD record is cleared by the sweep too" "$(jq -r .state "$REC")" wrapped
+
+# Without a single-instance lock both runs take the snapshot and enter the funnel.
+mkdir -p "$tmp/noflock"
+for cmd in awk bash cat cksum comm cp cut date dirname git grep head jq mkdir mktemp mv rm rmdir sed sleep sort stat tail tr wc; do
+    ln -s "$(command -v "$cmd")" "$tmp/noflock/$cmd"
+done
+ln -s "$tmp/bin/gh" "$tmp/noflock/gh"
+check "sweep: isolated PATH has no flock" "$(PATH="$tmp/noflock" command -v flock >/dev/null 2>&1; printf '%s' "$?")" 1
+reset "Done"; owned WRAPPED; stale_live
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+echo 1 > "$FX/pr-list.sleep"
+PATH="$tmp/noflock" bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/sweep-1" 2>&1 &
+p1=$!
+PATH="$tmp/noflock" bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/sweep-2" 2>&1 &
+p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "sweep: no-flock concurrent runs exit 0" "$r1:$r2" "0:0"
+check "sweep: no-flock concurrent runs admit exactly one snapshot" "$(grep -c '^gh pr list ' "$STUB_LOG")" 1
+check "sweep: no-flock concurrent runs report one busy sweep" "$(grep -l 'status-sweep: busy' "$tmp/sweep-1" "$tmp/sweep-2" | wc -l | tr -d ' ')" 1
+check "sweep: no-flock run releases its lock" "$([ -d "$TICKET_STATUS_STATE_DIR/sweep/lock.d" ] && printf yes || printf no)" no
+for lease in "$$.$(date -u +%s)" "2147483647.$(date -u +%s)" "$$.0"; do
+    : > "$STUB_LOG"
+    mkdir -p "$TICKET_STATUS_STATE_DIR/sweep/lock.d"
+    : > "$TICKET_STATUS_STATE_DIR/sweep/lock.d/$lease"
+    PATH="$tmp/noflock" bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+    want=1; case "$lease" in "$$."*) [ "${lease#*.}" = 0 ] || want=0 ;; esac
+    check "sweep: no-flock respects live leases and takes dead/expired leases ($lease)" "$(grep -c '^gh pr list ' "$STUB_LOG")" "$want"
+    rm -rf "$TICKET_STATUS_STATE_DIR/sweep/lock.d"
+done
 reset "Backlog"; owned
 fn "$K" --event live
 check "D0: an off-ladder status is never touched" "$(ntrans)" 0
