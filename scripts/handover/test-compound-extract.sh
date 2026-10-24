@@ -155,6 +155,18 @@ printf '# t\n\n## Results\n\n- 10:00 WRAPPED — %s\n' "$LONG" > "$B/HIMMEL-8-lo
 run > "$W/long.jsonl" 2>/dev/null
 check "a very long bullet is capped" yes "$(rec "$W/long.jsonl" HIMMEL-8 '"yes" if len(r["bullets"][0]) <= 700 else "no"')"
 
+# --- group lock: a dotted doc name is its own group, a locked dot sibling holds its primary ----------
+G="$W/g"; GB="$G/u/himmel"; mkdir -p "$GB" "$G/.locks/queue"
+printf '# t\n\n## Results\n\n- 10:00 WRAPPED — v1\n' > "$GB/HIMMEL-11-api.v1-2026-10-21.md"
+printf '# t\n\n## Results\n\n- 10:00 WRAPPED — v2\n' > "$GB/HIMMEL-11-api.v2-2026-10-22.md"
+mkdir -p "$G/.locks/queue/u__himmel__HIMMEL-11-api-v1-2026-10-21.lock"
+printf '# t\n\n## Results\n\n- 10:00 WRAPPED — primary\n' > "$GB/HIMMEL-12-d-2026-10-22.md"
+printf '# t\n\n## Results\n\n- 10:00 WRAPPED — side\n' > "$GB/HIMMEL-12-d-2026-10-22.notes.md"
+mkdir -p "$G/.locks/queue/u__himmel__HIMMEL-12-d-2026-10-22-notes.lock"
+bash "$SUT" --root "$G" --bucket "$GB" --mirror "$MIR" --since-days 0 > "$W/g.jsonl" 2>/dev/null
+check "a locked HIMMEL-11 v1 doc does not hold the v2 doc of the same key" "HIMMEL-11-api.v2-2026-10-22.md" "$(rec "$W/g.jsonl" HIMMEL-11 '" ".join(r["docs"])')"
+check "a locked dot sibling holds its primary: HIMMEL-12 is not extracted" 0 "$(grep -c '"key": "HIMMEL-12"' "$W/g.jsonl")"
+
 # --- usage ------------------------------------------------------------------------
 bash "$SUT" --root "$W/nope" --bucket "$B" >/dev/null 2>&1; check "missing root exits 2" 2 "$?"
 bash "$SUT" --bogus >/dev/null 2>&1; check "unknown flag exits 2" 2 "$?"

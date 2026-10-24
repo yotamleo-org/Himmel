@@ -124,7 +124,13 @@ def comments(text):
 
 def group_locked(name):
     m = re.match(r"(.+?)-(?:RESUME|HANDOFF|judge-)", name)
-    stem = m.group(1) if m else name.split(".", 1)[0]
+    stem = m.group(1) if m else name[:-3]
+    if not m:
+        parts = stem.split(".")
+        for i in range(len(parts) - 1, 0, -1):
+            if os.path.exists(os.path.join(bucket, ".".join(parts[:i]) + ".md")):
+                stem = ".".join(parts[:i])
+                break
     for f in os.listdir(bucket):
         if f.endswith(".md") and (f.startswith((stem + "-RESUME", stem + "-HANDOFF", stem + "-judge-", stem + "."))):
             if locked(os.path.join(bucket, f)):
