@@ -545,6 +545,9 @@ grbad "a grant whose text names a bypass is refused" 'g["text"]="skip review wit
 grbad "a grant whose text names an amend is refused" 'g["text"]="amend the first commit"' "never carries a bypass"
 grbad "a grant with a glob path is refused" 'g["paths"]=["scripts/*.sh"]' "literal repo-relative file path"
 grbad "a grant with a parent-relative path is refused" 'g["paths"]=["../x.sh"]' "literal repo-relative file path"
+grbad "a dot-prefixed spelling of a workflow path is refused" 'g["paths"]=["./.github/workflows/ci.yml"]' "literal repo-relative file path"
+grbad "a doubled-slash spelling of a trust path is refused" 'g["paths"]=["scripts/handover//console-kit/brief-lint.sh"]' "literal repo-relative file path"
+grbad "a grant path with a trailing slash is refused" 'g["paths"]=["scripts/"]' "literal repo-relative file path"
 grbad "a grant with a placeholder in its text is refused" 'g["text"]="edit <file>"' "no <placeholder>"
 grbad "a grant with an extra key is refused" 'g["why"]="x"' "exactly {text, paths}"
 

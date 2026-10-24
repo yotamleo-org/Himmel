@@ -277,8 +277,9 @@ def validate_grants(leg):
         if not isinstance(paths, list) or not paths:
             die('leg %s: grant %s must name its paths (a non-empty list)' % (leg['label'], gid))
         for p in paths:
+            # The refused patterns are anchored, so only the normalized spelling may pass.
             if (not isinstance(p, str) or not p.strip() or p != p.strip() or '\n' in p or os.path.isabs(p)
-                    or p.endswith('/') or re.search(r'[*?\[]', p) or '..' in p.split('/')):
+                    or p != os.path.normpath(p) or re.search(r'[*?\[]', p) or '..' in p.split('/')):
                 die('leg %s: grant %s path %r must be a literal repo-relative file path' % (leg['label'], gid, p))
             if GRANT_PATH_REFUSED_RE.search(p) or any(r.search(p) for r in trust):
                 die('leg %s: grant %s path %s is a settings, CI-workflow or trust path; widen scope for it by a re-brief, never a grant' % (leg['label'], gid, p))
