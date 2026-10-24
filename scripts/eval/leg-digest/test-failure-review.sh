@@ -144,7 +144,7 @@ check "exactly one create through the stub" '[ "$(calls create)" = 1 ]'
 check "the digest says what was filed" 'digest "$C3" | grep -q "filed denied/guard-pr-check-literal HIMMEL-9001"'
 check "the digest names the mode live" 'digest "$C3" | grep -q "mode: live"'
 check "one Telegram line, naming the routing" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 ticket filed"'
-check "the line is one line" '[ "$(tail -n 1 "$STUB/notify.log" | wc -l)" = 1 ]'
+check "the line is one line" '[ "$(tail -n 1 "$STUB/notify.log" | wc -l)" -eq 1 ]'
 check "a class the router just filed is triaged, not filed again" 'tail -n 1 "$STUB/notify.log" | grep -q "Do: open the digest and triage what the router filed" && ! tail -n 1 "$STUB/notify.log" | grep -q "file a ticket"'
 review "$C3" --live >/dev/null 2>&1
 check "a rerun routes nothing new: no second ticket, routed none" '[ "$(calls create)" = 1 ] && digest "$C3" | grep -q "routed: none"'
@@ -346,7 +346,7 @@ review "$C9d" >"$C9d/run.out" 2>&1; rc=$?
 check "a non-string pending entry is an unreadable state, not a crash" '[ "$rc" = 0 ] && ls "$C9d"/state.json.notify.json.unreadable.* >/dev/null 2>&1 && ! grep -q Traceback "$C9d/run.out"'
 echo 'still not json' >"$C9c/state.json.notify.json"
 review "$C9c" >/dev/null 2>&1
-check "a second unreadable state does not overwrite the first one kept aside" '[ "$(ls "$C9c"/state.json.notify.json.unreadable.* | wc -l)" = 2 ]'
+check "a second unreadable state does not overwrite the first one kept aside" '[ "$(ls "$C9c"/state.json.notify.json.unreadable.* | wc -l)" -eq 2 ]'
 C9e="$TMP/c9e"; mkdir -p "$C9e"
 row "$C9e/ledger.jsonl" N050 denied/guard-kill 1 2026-10-03T08:00:00Z
 row "$C9e/ledger.jsonl" N100 denied/guard-kill 1

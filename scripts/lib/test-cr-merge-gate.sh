@@ -841,7 +841,8 @@ cfg "$TMP/anchor-wt/scripts/cr/critics.json" '{"panel":[{"slug":"codex","provide
 anc_out=$(env -u CRITICS_BASE_JSON -u CRITICS_JSON CRITICS_LOCAL_JSON="$TMP/no-overlay.json" \
   bash -c '. "$1/scripts/lib/critics-config.sh" && critics_config_resolve' _ "$TMP/anchor-wt" 2>&1) || true
 anc_got=$(printf '%s' "$anc_out" | jq -r '[.files.base, (.panel[] | select(.slug == "codex") | .mode)] | join(" ")' 2>/dev/null || true)
-if [ "$anc_got" = "$anc/scripts/cr/critics.json@main hard" ]; then pass=$((pass+1)); echo "ok   base-critics-json-anchored-to-main"
+anc_real="$(cd "$anc" && pwd -P)"
+if [ "$anc_got" = "$anc_real/scripts/cr/critics.json@main hard" ]; then pass=$((pass+1)); echo "ok   base-critics-json-anchored-to-main"
 else fail=$((fail+1)); echo "FAIL base-critics-json-anchored-to-main (got [$anc_got]; out: $anc_out)"; fi
 # A trivial-descendant carry row reads the reviewed head's critic states. As
 # clear-review-marker.sh writes it (#3311): ONE row, model claude, for the whole

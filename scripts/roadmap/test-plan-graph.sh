@@ -115,7 +115,7 @@ else
 fi
 
 [ "$before" = "$(plan_sum)" ] && pass "source plan dir untouched" || fail "plan dir changed"
-[ "$(find "$plan" -type f | wc -l)" = 3 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
+[ "$(find "$plan" -type f | wc -l)" -eq 3 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
 [ -z "$(find "$plan" "$out" -name graphify-out)" ] && pass "no graphify-out under plan or out" || fail "graphify-out appeared"
 
 # a failed graph emit fails the whole refresh and the fingerprint does not move
