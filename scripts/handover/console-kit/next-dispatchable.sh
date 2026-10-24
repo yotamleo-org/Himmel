@@ -145,7 +145,7 @@ def write_scope(line):
             m = SCOPE_END_RE.search(rest)
             rest = rest[:m.start()] if m else rest
             rest = re.sub(r'(?i:Do not|Never) (?:touch|edit|change)\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)', ' ', rest)  # a fence, not a write scope
-            rest = re.sub(r'Touches\b(?:[^.]|\.(?!\s|$))*?\bci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
+            rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
             # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
             def expand(g):
                 parts = [p.strip() for p in g.group(2).split(',')]
