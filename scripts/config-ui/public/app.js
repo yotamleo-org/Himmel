@@ -504,7 +504,7 @@ document.addEventListener("keydown", (e) => {
   try {
     // the probe status (step, n of N, a progress bar) replaces #status on a page that waits for the feed.
     const r = await fetchFeed((j) => { const el = $("#status"); if (el && currentPage.needsFeed !== false) el.outerHTML = renderProbe(j); });
-    if (r.status === 401) { setStatus("Not authorised: open the URL printed by `himmelctl ui` (it carries the session token)."); return; }
+    if (r.status === 401) { setStatus("Not authorised: open the URL printed by `himmelctl ui` (it carries the session token), or log in at /login."); return; }
     if (!r.ok) {
       let why = "";
       try { why = (await r.json()).reason || ""; } catch (_) { /* status only */ }

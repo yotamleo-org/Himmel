@@ -32,6 +32,7 @@ import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 import { secretWrite, setupState } from "./setup";
+import { clearedCookie, createAuth, sessionCookie, writeLogin } from "./login";
 
 const LOOPBACK = "127.0.0.1";
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
@@ -73,6 +74,8 @@ const STATIC: Record<string, [string, string]> = {
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
   "/workflow.js": ["workflow.js", "application/javascript; charset=utf-8"],
   "/setup.js": ["setup.js", "application/javascript; charset=utf-8"],
+  "/login": ["login.html", "text/html; charset=utf-8"],
+  "/login.js": ["login.js", "application/javascript; charset=utf-8"],
   "/app.css": ["app.css", "text/css; charset=utf-8"],
   // the rail and theme the AG-UI pages share (agui-web bundles its own copy at build time).
   "/nav.js": ["nav.js", "application/javascript; charset=utf-8"],
@@ -203,6 +206,9 @@ function sameToken(a: string | null, b: string): boolean {
   return d === 0;
 }
 
+// the login file next to the service-mode token.
+export const loginPath = (env: Env) => join(env.HOME || homedir(), ".himmel", "state", "ui-login");
+
 // Operator override CONFIG_UI_HIMMELCTL: replaces the himmelctl
 // entry the server shells for the feed, the re-probe and every himmelctl action.
 // Deliberately read from the production env, not gated: ci.yml and the
@@ -280,6 +286,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const stateDir = join(env.HOME || homedir(), ".himmel", "state", "config-ui");
   const lockPath = join(stateDir, "write.lock");
   const auditPath = join(stateDir, "actions.jsonl");
+  const auth = createAuth(loginPath(env), now);
   const reprobeMs = opts.reprobeBudgetMs ?? REPROBE_BUDGET_MS;
   // Operator override HIMMEL_REPORT_CADENCE_ROOT (shared with
   // `report`, so the feed and the actions agree): the tree the cadence scripts
@@ -388,11 +395,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   }
 
   // The value is in `b` only until secretWrite returns: the audit line and the answer carry the name and the outcome.
-  function setupSecretRoute(b: Record<string, unknown>): Response {
+  function setupSecretRoute(b: Record<string, unknown>, session: boolean): Response {
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     let r;
-    try { r = secretWrite(b, { ...setupOpts, serviceMode: !!opts.noIdle }); } finally { lock.release(); }
+    try { r = secretWrite(b, { ...setupOpts, serviceMode: !!opts.noIdle, session }); } finally { lock.release(); }
     if (r.audit) {
       try {
         appendAudit(auditPath, { time: new Date(now()).toISOString(), action: r.audit.action, target: r.audit.target, value: null, argv: [], rc: r.audit.ok ? 0 : 1,
@@ -401,6 +408,31 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     }
     if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; }
     return json(r.body, r.status);
+  }
+
+  // POST /api/login {user, password} and POST /api/logout: same-origin JSON only, the password never answered or audited.
+  async function loginRoute(req: Request, path: string, origin: string): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
+    if (path === "/api/logout") {
+      auth.logout(req.headers.get("cookie"));
+      const r = json({ ok: true });
+      r.headers.set("set-cookie", clearedCookie());
+      return r;
+    }
+    if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
+    let b: Record<string, unknown>;
+    try { b = JSON.parse(await req.text()); } catch { return json({ error: "bad json" }, 400); }
+    if (!b || typeof b !== "object") return json({ error: "bad json" }, 400);
+    const l = auth.login(b.user, b.password);
+    if (l.status !== 200) {
+      const r = json({ error: l.error }, l.status);
+      if (l.status === 429) r.headers.set("retry-after", String(l.retryAfterS));
+      return r;
+    }
+    const r = json({ ok: true });
+    r.headers.set("set-cookie", sessionCookie(l.session));
+    return r;
   }
 
   let idle: ReturnType<typeof setTimeout> | undefined;
@@ -462,8 +494,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const origin = `http://${LOOPBACK}:${server.port}`;
     if (req.headers.get("host") !== `${LOOPBACK}:${server.port}`) return new Response("bad host", { status: 403 });
     const path = new URL(req.url).pathname;
+    if (path === "/api/login" || path === "/api/logout") return loginRoute(req, path, origin);
     if (path.startsWith("/api/")) {
-      if (!sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
+      // the launch token (automation, the printed URL) or a login session (the Setup page's secret writes in service mode)
+      const session = auth.session(req.headers.get("cookie")) !== null;
+      if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
       if (req.method === "GET" && path === "/api/feed") {
@@ -592,7 +627,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       }
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
-      if (path === "/api/setup/secret") return setupSecretRoute(b as Record<string, unknown>);
+      if (path === "/api/setup/secret") return setupSecretRoute(b as Record<string, unknown>, session);
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });
@@ -641,6 +676,35 @@ export function rebuildAguiIfStale(log: (m: string) => void, dist = AGUI_DIST, w
   log("himmelctl: ui: rebuilding the AG-UI page");
   if (!existsSync(join(web, "node_modules"))) execFileSync("bun", ["install"], { cwd: web, stdio: ["ignore", 2, 2] });
   execFileSync("bun", ["run", "build"], { cwd: web, stdio: ["ignore", 2, 2] });
+}
+
+// The password for --set-login: one stdin line, echo off on a terminal and asked twice there.
+async function readPassword(): Promise<string> {
+  const tty = process.stdin.isTTY;
+  const ask = async (prompt: string) => {
+    if (tty) process.stderr.write(prompt);
+    for await (const line of console) return line;
+    return "";
+  };
+  if (tty) execFileSync("stty", ["-echo"], { stdio: "inherit" });
+  try {
+    const pw = await ask("password: ");
+    if (tty) { process.stderr.write("\n"); if ((await ask("again: ")) !== pw) throw new Error("the two passwords differ"); process.stderr.write("\n"); }
+    return pw;
+  } finally { if (tty) execFileSync("stty", ["echo"], { stdio: "inherit" }); }
+}
+
+if (import.meta.main && process.argv.includes("--set-login")) {
+  // --set-login <user>: writes the UI login (user + scrypt hash) and exits; a running server reads it on the next login.
+  const user = process.argv[process.argv.indexOf("--set-login") + 1] ?? "";
+  try {
+    writeLogin(loginPath(process.env), user, await readPassword());
+    console.error(`himmelctl: ui: login set for ${user}`);
+    process.exit(0);
+  } catch (e) {
+    console.error(`himmelctl: ui: ${(e as Error).message}`);
+    process.exit(1);
+  }
 }
 
 if (import.meta.main) {

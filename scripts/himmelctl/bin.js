@@ -4869,7 +4869,7 @@ function browserReachable() {
 }
 
 // Reuse the always-on UI, else a UI an earlier install started, else start a token-bound one, and print the Setup link.
-// The always-on UI refuses a secret write until the UI login ships, so it only gets the link plus how to reach one that can.
+// The always-on UI saves a secret only from a login session, so its link comes with how to log in.
 // No reachable browser (or no bun) types the secrets in the terminal instead, unless the wizard's own walk already did.
 async function installUiHandoff(answers) {
   const label = 'Finish setup in the UI';
@@ -4883,7 +4883,7 @@ async function installUiHandoff(answers) {
     const svc = uiServiceLib.url('setup');
     if (svc.ok) {
       console.log(`${label}: ${svc.lines[0]}`);
-      console.log('That always-on UI cannot save a secret yet; `himmelctl ui` opens one that can.');
+      console.log('That always-on UI saves a secret after you log in at /login (set the login with `bun scripts/config-ui/server.ts --set-login <user>`); `himmelctl ui` opens one that needs no login.');
       return;
     }
   }

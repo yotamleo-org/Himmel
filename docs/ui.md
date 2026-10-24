@@ -106,8 +106,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   items, doctor checks, scheduled jobs, lanes, flags and secrets by presence;
   Roadmap and Kanban only appear when the UI can read a tracker), `#/setup`
   (which secrets are set, never their values; a file-stored secret can be saved or
-  removed here; the always-on service refuses a save until the UI login ships, so use an
-  ad-hoc `himmelctl ui` for secrets; plus the commit rules, tracker and ticket-id-required, each with a
+  removed here; the always-on service saves one only after you log in at `/login`
+  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, each with a
   dry-run before it changes), `#/health` (one verdict:
   All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
   cards from the weekly roll-up, see below), `#/toolhealth` (tool-call failure and
