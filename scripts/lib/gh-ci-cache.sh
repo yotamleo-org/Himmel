@@ -339,12 +339,14 @@ _cic_fetch_rest() {
                  .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")
              else (.status == "queued" or .status == "in_progress" or .status == "pending" or
                    .status == "waiting" or .status == "requested") and .conclusion == null end);
+        ([.runs.body.workflow_runs[]? | .check_suite_id | tostring]) as $mapped |
         if (.checks.body.check_runs | type == "array") and
             (.checks.body | count_ok(.check_runs)) and all(.checks.body.check_runs[]; check_valid) and
             (.status.body.statuses | type == "array") and (.status.body | count_ok(.statuses)) and
             all(.status.body.statuses[]; (.context | name_ok) and
                 (.state == "success" or .state == "pending" or .state == "failure" or .state == "error")) and
-            ($need != "1" or ((.runs.body.workflow_runs | type == "array") and (.runs.body | count_ok(.workflow_runs))))
+            ($need != "1" or ((.runs.body.workflow_runs | type == "array") and (.runs.body | count_ok(.workflow_runs)) and
+                all(.checks.body.check_runs[] | select(.app.id == 15368); (.check_suite.id // "" | tostring) as $s | any($mapped[]; . == $s))))
         then (if $need == "1" then [.runs.body.workflow_runs[] | {key: (.check_suite_id | tostring), value: .event}] | from_entries else {} end) as $ev |
             def gk: [.name, (.app.id // "" | tostring), ($ev[(.check_suite.id // "" | tostring)] // "")];
             [(.checks.body.check_runs as $runs | $runs[] |

@@ -33,6 +33,7 @@ esac
 [ "${REST_ERROR:-0}" = 0 ] || { echo 'REST unavailable' >&2; exit 1; }
 if [ "${RUNS_ERROR:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then echo 'runs unavailable' >&2; exit 1; fi
 if [ "${RUNS_PAGED:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":101,"workflow_runs":[]}'; fi
+if [ "${RUNS_EMPTY:-0}" = 1 ] && [[ " $* " == *"/actions/runs?"* ]]; then body='{"total_count":0,"workflow_runs":[]}'; fi
 # Same check name, two suites: suite 10 is a pull_request run, suite 20 a workflow_dispatch run (ids rise with creation).
 if [ "${XEVENT:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body='{"total_count":2,"check_runs":[{"id":1,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":10},"status":"completed","conclusion":"failure"},{"id":2,"name":"commit-lint","app":{"id":15368},"check_suite":{"id":20},"status":"completed","conclusion":"skipped"}]}'; fi
 # Both suites are pull_request runs (a rerun / edited-event run): the newer success supersedes the older failure.
@@ -66,7 +67,7 @@ new_case() {
     : > "$CASE/calls"; : > "$CASE/responses"; : > "$CASE/sleeps"
     printf '1000000000\n' > "$CASE/clock"
     export CIC_CLOCK_FILE="$CASE/clock" CHECK_CI_CACHE_DIR="$CASE/cache"
-    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP RUNS_ERROR RUNS_PAGED ACTUAL_GQL
+    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON RERUN QUEUED STALEQ XEVENT XSAME XFAIL XAPP RUNS_ERROR RUNS_PAGED RUNS_EMPTY ACTUAL_GQL
     cic_init 42 sha1 || exit 1
 }
 count() { grep -c -- "$1" "$CASE/calls" || true; }
@@ -185,6 +186,11 @@ new_case
 export XEVENT=1 RUNS_PAGED=1
 cic_get 60; rc=$?
 if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ] && [ "$CIC_ROWS" = $'pass\tunit' ]; then ok 'a truncated workflow-run list falls back to GraphQL instead of deduping by name alone'; else bad "truncated runs list: rc=$rc rows=$CIC_ROWS"; fi
+
+new_case
+export XEVENT=1 RUNS_EMPTY=1
+cic_get 60; rc=$?
+if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ] && [ "$CIC_ROWS" = $'pass\tunit' ]; then ok 'a workflow-run list that maps none of the colliding suites falls back to GraphQL'; else bad "unmapped suites: rc=$rc rows=$CIC_ROWS"; fi
 
 new_case
 cic_get 60; rc=$?
