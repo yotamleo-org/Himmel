@@ -734,6 +734,10 @@ case "\$1" in
             req_verb="" req_key="" req_why=""
             while [ \$# -gt 0 ]; do
                 case "\$1" in
+                    --verb|--key|--why)
+                        case "\${2:-}" in ""|--*) echo "release request: \$1 needs a value" >&2; exit 1 ;; esac ;;
+                esac
+                case "\$1" in
                     --verb) req_verb="\$2" ;;
                     --key) req_key="\$2" ;;
                     --why) req_why="\$2" ;;
