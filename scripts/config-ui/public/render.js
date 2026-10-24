@@ -195,7 +195,7 @@ export function renderFleetCap(fc) {
   if (!fc || (!fc.data && !fc.error)) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="empty">loading…</div></section>`;
   if (!fc.data) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="nodata">${esc(fc.error)}</div></section>`;
   const d = fc.data, v = fc.draft === undefined || fc.draft === null ? d.cap : fc.draft;
-  const over = d.source === "env" ? `<div class="nodata" role="status">the launching shell sets HIMMEL_FLEET_CAP=${esc(d.cap)}, which wins over himmel.conf until the UI restarts without it${d.fileValue !== null ? ` (saved in himmel.conf: ${esc(d.fileValue)})` : ""}</div>` : "";
+  const over = d.source === "env" ? `<div class="nodata" role="status">the launching shell sets HIMMEL_FLEET_CAP=${esc(d.cap)}, which wins over himmel.conf until the UI restarts without it${d.fileValue !== null ? ` (saved in ${esc(d.fileSource || "himmel.conf")}: ${esc(d.fileValue)})` : ""}</div>` : "";
   const msg = fc.msg ? `<div class="${fc.msg.ok ? "ro" : "nodata"}" role="status">${esc(fc.msg.text)}</div>` : "";
   return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="card">
     <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">whole number from ${esc(d.min)} to ${esc(d.max)}</span>

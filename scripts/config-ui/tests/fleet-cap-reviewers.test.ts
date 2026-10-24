@@ -142,7 +142,7 @@ test("a symlink planted at the overlay's temporary name is replaced, never writt
 test("a cap the launching shell sets wins over .env and is reported as such", async () => {
   writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
   const j = await (await get(boot({ HIMMEL_FLEET_CAP: "9" }), "/api/fleet-cap")).json();
-  expect(j).toMatchObject({ cap: 9, source: "env", fileValue: 3 });
+  expect(j).toMatchObject({ cap: 9, source: "env", fileValue: 3, fileSource: ".env" });
 });
 
 test("a shell value the preflight would use is shown as the effective cap, even past the UI's own range", async () => {
@@ -283,8 +283,8 @@ test("the fleet cap card shows the cap, its default and where it is set, with a 
 });
 
 test("the fleet cap card says when the launching shell overrides the saved cap, and shows the loading and error states", () => {
-  const html: string = renderFleetCap({ data: { cap: 9, default: 4, min: 1, max: 50, source: "env", fileValue: 3, file: "/x/himmel.conf" }, error: null, draft: 9, msg: null });
-  expect(html).toContain("saved in himmel.conf: 3");
+  const html: string = renderFleetCap({ data: { cap: 9, default: 4, min: 1, max: 50, source: "env", fileValue: 3, fileSource: "himmel.conf.local", file: "/x/himmel.conf" }, error: null, draft: 9, msg: null });
+  expect(html).toContain("saved in himmel.conf.local: 3");
   expect(html).toMatch(/launching shell/);
   expect(html).toContain("until the UI restarts without it");
   expect(html).not.toContain("until that shell restarts");

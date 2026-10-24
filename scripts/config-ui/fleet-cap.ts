@@ -50,7 +50,7 @@ export function readCap(envFile: string, env: Env): CapResult {
   const fromEnv = shell !== "" ? (/^[0-9]+$/.test(shell) ? Number(shell) : DEFAULT_CAP) : null;
   const cap = fromEnv ?? fromFile ?? DEFAULT_CAP;
   const source = fromEnv !== null ? "env" : layer ? layer.source : "default";
-  return { status: 200, body: { cap, default: DEFAULT_CAP, min: MIN_CAP, max: MAX_CAP, source, fileValue: fromFile, file: writeTarget(env) } };
+  return { status: 200, body: { cap, default: DEFAULT_CAP, min: MIN_CAP, max: MAX_CAP, source, fileValue: fromFile, fileSource: layer ? layer.source : null, file: writeTarget(env) } };
 }
 
 export function writeCap(envFile: string, env: Env, b: Record<string, unknown>): CapResult {
