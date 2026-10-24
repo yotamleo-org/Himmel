@@ -497,6 +497,10 @@ lacks "residual-depth: with no --doc, depth 1 is excluded" "$r3" "HIMMEL-302"
 printf '# console\n\n- residual-must HIMMEL-303 (data loss)\n' > "$RDOC"
 r4="$(rdrun --doc "$RDOC")"
 has "residual-depth: a residual-must ruling releases a depth-2 ticket too" "$r4" "HIMMEL-303"
+printf '# console\n\n## Results\n\n- 07:12 residual-must HIMMEL-302 (security)\n' > "$RDOC"
+r5="$(rdrun --doc "$RDOC")"
+has "residual-depth: an append-results timestamped residual-must bullet admits its ticket" "$r5" "HIMMEL-302"
+lacks "residual-depth: a timestamped residual-must bullet does not release another ticket" "$r5" "HIMMEL-303"
 
 # --- classify only up to --top: a batch never classifies more keys than the slots left ---
 M14="$WORK/jira-mirror14/HIMMEL"; mkdir -p "$M14"

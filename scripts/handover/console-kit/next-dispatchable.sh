@@ -33,7 +33,7 @@
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
-# line of its own (security, data loss or a broken operator flow only), or the
+# line of its own, bare or as an append-results bullet (`- HH:MM residual-must <KEY>`) (security, data loss or a broken operator flow only), or the
 # admissions ledger (HIMMEL_ADMISSIONS_LEDGER, else <handover root>/admissions-ledger.jsonl)
 # admitted it into the earliest unreleased version: its latest row there is an
 # `rm-admit` or `override` row (any other kind, or none, admits nothing). No label
@@ -281,7 +281,7 @@ def read_residual_must(path):
     keys = set()
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
-            m = re.match(r'^\s*(?:[-*]\s+)?residual-must\s+(?:HIMMEL-)?(\d{3,5})\b', line)
+            m = re.match(r'^\s*(?:[-*]\s+)?(?:\d{1,2}:\d{2}\s+)?residual-must\s+(?:HIMMEL-)?(\d{3,5})\b', line)
             if m:
                 keys.add('HIMMEL-' + m.group(1))
     except OSError:
