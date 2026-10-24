@@ -202,8 +202,9 @@ if command -v python3 >/dev/null 2>&1 && python3 -c 'import site, sys; sys.exit(
   fi
   OUT="$(HOME="$INSTALL_HOME" PYTHONUSERBASE='' TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/usersite.sh" 2>&1)"; RC=$?
   [ "$RC" -eq 0 ] && ok "a --user installed tool still runs under the canary's swapped HOME" || bad "a --user installed tool broke under the canary (rc=$RC): $OUT"
-  OUT="$(HOME="$INSTALL_HOME" PYTHONUSERBASE="$SCRATCH/elsewhere" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/usersite.sh" 2>&1)"; RC=$?
-  [ "$RC" -ne 0 ] && ok "a caller-set PYTHONUSERBASE is kept, not overridden" || bad "the canary overrode the caller's PYTHONUSERBASE"
+  mkfx usersite-env '[ "$PYTHONUSERBASE" = "$EXPECTED_USER_BASE" ] || exit 7'
+  OUT="$(HOME="$INSTALL_HOME" PYTHONUSERBASE="$SCRATCH/elsewhere" EXPECTED_USER_BASE="$SCRATCH/elsewhere" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/usersite-env.sh" 2>&1)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "a caller-set PYTHONUSERBASE is kept, not overridden" || bad "the canary changed the caller's PYTHONUSERBASE (rc=$RC): $OUT"
 else
   echo "skip - python3 absent or its user site disabled, the --user launcher rows need it"
 fi
