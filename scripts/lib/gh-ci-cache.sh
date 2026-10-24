@@ -322,7 +322,7 @@ _cic_fetch_rest() {
     # rerun when it shares the event and workflow of the older one: a
     # workflow_dispatch run at the same sha skips the PR-only gates, and another
     # workflow may define the same check name; neither supersedes a failure.
-    # The suite-to-event map is read only when one name+app spans several suites.
+    # The suite-to-event-and-workflow map is read only when one name+app spans several suites.
     need=$(printf '%s\n' "$CIC_REST_DATA" | jq -r '
         [.checks.body.check_runs | group_by([.name, (.app.id // "" | tostring)])[] |
             select(([.[].check_suite.id // "" | tostring] | unique | length) > 1)] | if length > 0 then "1" else "0" end' 2>/dev/null) || need=0
