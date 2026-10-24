@@ -49,7 +49,7 @@ flowchart TD
         TC["Claude tool call<br/>Bash · Edit · Read · Agent · MCP"]
         H1[".claude/settings.json — 33 PreToolUse hook scripts,<br/>run as ONE chained dispatch per matcher; the first refusal wins<br/>block-edit-on-main · block-read-secrets · block-destructive-commands<br/>block-git-stash · block-jira-compound-write · block-tail-pipe-on-gates<br/>block-rogue-claude-schedule · block-chokepoint-env-prefix<br/>block-edit-live-settings · block-write-into-main-checkout<br/>require-quiet-run · read-clamp · guard-pr-check-literal<br/>orchestrator-inline-guard · guard-memory-capture · guard-agent-model<br/>block-backend-tier · mcp-policy · check-cr-marker-on-pr-create<br/>auto-approve-safe-bash · auto-arm-on-cap · …"]
         H2["marketplace/plugins/himmel-ops/hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-console-dispatch<br/>guard-subagent-model · guard-console-foreground · guard-judge-writes · guard-rm-writes"]
-        HG["marketplace/plugins/himmel-guard/hooks/hooks.json<br/>block-destructive-commands for adopter projects<br/>(off in the settings template; opt in per project)"]
+        HG["marketplace/plugins/himmel-guard/hooks/hooks.json<br/>block-destructive-commands for adopter projects<br/>(on in the settings template, so adopter projects get it by default)"]
         H3["scripts/hooks/guardrail-block.mjs<br/>installs 3 of them into USER scope (~/.claude/settings.json):<br/>auto-approve-safe-bash · block-edit-on-main · block-read-secrets<br/>so they still fire outside a himmel checkout"]
         H4["passive taps — record, never block<br/>scripts/trust/shadow-ledger.mjs<br/>scripts/observability/session-run-hook.ts"]
         TC --> H1
@@ -197,7 +197,7 @@ flowchart TD
 
     NAT --> WORK["a worker commits on its own branch;<br/>the chief owns approval and merge"]
     WORK --> CRL["/pr-check → review-owed marker cleared → READY"]
-    CRL --> GO["the chief's GO file<br/>scripts/handover/console-kit/go.sh<br/>signed for one PR and one head; a worker never writes its own"]
+    CRL --> GO["the chief's GO file<br/>&lt;handover root&gt;/.locks/go/&lt;pr&gt;.&lt;head&gt;, written by scripts/handover/console-kit/go.sh<br/>signed for one PR and one head; a worker never writes its own"]
     GO --> MOG["scripts/handover/merge-on-green.sh<br/>merge gate → squash merge"]
 ```
 
@@ -243,9 +243,11 @@ flowchart TD
     CLI -.->|"jira mcp"| SELF["the same verbs re-exposed over MCP on stdio,<br/>lazily imported so the SDK stays off the hot path"]
 ```
 
-**The gate asks the CLI.** It keeps no hand-maintained list of blocked MCP
-tools; it asks the CLI what verbs it has. Adding a verb tightens the gate
-automatically; removing one loosens it. `block-backend-tier.sh` generalised the
+**The gate maps, then asks the CLI.** `block-backend-tier.sh` keeps a
+hard-coded verb-to-method map for Jira and for Confluence; an MCP method with no
+map entry is allowed. A mapped method is blocked only while the CLI still lists
+that verb, so removing a verb loosens the gate on its own, but a new verb
+tightens it only once its MCP methods are added to the map. It generalised the
 older Jira-only `block-mcp-when-plugin-exists.sh` to the services in
 `scripts/backends.json` that have an MCP prefix: Jira and Confluence. GitHub and
 Bitbucket are registered there with no MCP prefix, so this gate does not route
@@ -269,7 +271,7 @@ flowchart LR
         HK["scripts/observability/session-run-hook.ts<br/>SessionStart · SessionEnd · PreToolUse/PostToolUse on Agent"]
         SL["session-run-ledger.ts<br/>fixed field order, single O_APPEND write,<br/>rotates at 10MB, never blocks the hook"]
         LED["~/.himmel/session-runs.jsonl"]
-        FLOW["~/.himmel/flow-runs.jsonl<br/>the pipeline-cadence runs"]
+        FLOW["~/.himmel/flow-runs.jsonl<br/>flow runs: pipeline and other cadences,<br/>codex and hermes dispatch, lane verify-return"]
         HK --> SL --> LED
     end
 
