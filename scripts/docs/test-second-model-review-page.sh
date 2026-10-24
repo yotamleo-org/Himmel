@@ -33,7 +33,7 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 required" >&2; exit 
 
 # Prints one problem per line; prints nothing when every citation holds.
 cite_problems() {
-  python3 -I - "$1" "$ROOT" <<'PY'
+  python3 -I - "$1" "$ROOT" <<'PY' || echo "could not read $1"
 import os, re, sys
 page, root = sys.argv[1], sys.argv[2]
 text = open(page, encoding="utf-8").read()
@@ -59,7 +59,8 @@ page_text() {
   python3 -I -c 'import re,sys; sys.stdout.write(re.sub(r"<!--.*?-->", "", open(sys.argv[1], encoding="utf-8").read(), flags=re.S))' "$1"
 }
 
-has_for_now() { local t; t=$(page_text "$1"); grep -qi 'for now' <<< "$t"; }
+# An unreadable page counts as carrying the tag, so NOW never passes on no text.
+has_for_now() { local t; t=$(page_text "$1") || return 0; grep -qi 'for now' <<< "$t"; }
 
 # The PORTABLE_FILES array of scripts/adopt.sh, one path per line.
 portable_files() {
