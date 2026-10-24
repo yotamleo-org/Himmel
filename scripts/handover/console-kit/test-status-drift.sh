@@ -620,14 +620,17 @@ contains "3b: a disabled row is a HEALTH row, never clean" "$(drows HEALTH)" "di
 
 reset "Done"
 for n in 1 2 3 4 5 6; do owned "HIMMEL-90$n"; jl "HIMMEL-90$n" Done; done
-drift
+drift; rc=$?
+check "3b: a batched pass exits 0" "$rc" 0
 check "3b: the statuses of all active keys are read in one search, no per-key get" "$(grep -c '^get ' "$STUB_LOG")" 0
 check "3b: and one extra search covers the key set" "$(grep -c '^list ' "$STUB_LOG")" 2
 contains "3b: a pass over Done tickets is clean" "$(dlast)" "sdrift=0:"
 reset "Done"
 owned "HIMMEL-901"; owned "HIMMEL-902"; jl "HIMMEL-901" Done
-drift
+drift; rc=$?
+check "3b: a fallback pass exits 0" "$rc" 0
 check "3b: a key the search does not return is read by its own get" "$(grep -c '^get HIMMEL-902' "$STUB_LOG")" 1
+contains "3b: and the status that get returned is used, so the pass is clean" "$(dlast)" "sdrift=0:"
 
 # --- 3c: the FOCUS refresh (focus-refresh.sh) ----------------------------------------
 FOCUS="$HERE/focus-refresh.sh"
