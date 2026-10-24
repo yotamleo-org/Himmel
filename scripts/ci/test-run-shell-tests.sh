@@ -2938,4 +2938,52 @@ fi
 rm -rf "$sb28"
 fi
 
+echo "== Case 29: a suite that overran its cap is rerun exactly once before it counts =="
+sb29=$(mktemp -d -t himmel-suite-caprerun.XXXXXX) || { fail "29: mktemp failed"; sb29=""; }
+if [ -n "$sb29" ]; then
+mkdir -p "$sb29/scripts"
+# test-capslow.sh overruns the 2 s cap on its first attempt and finishes on the second.
+cat > "$sb29/scripts/test-capslow.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP29_DIR/slow.runs"
+[ "$(wc -l < "$CAP29_DIR/slow.runs")" -ge 2 ] && exit 0
+sleep 30
+SHEOF
+# test-capstuck.sh overruns the cap on every attempt.
+cat > "$sb29/scripts/test-capstuck.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP29_DIR/stuck.runs"
+sleep 30
+SHEOF
+chmod +x "$sb29/scripts/test-capslow.sh" "$sb29/scripts/test-capstuck.sh"
+# Real run 40035630814 (shell-unit-shard 3, main, 2026-10-24) printed:
+#   [CAP EXCEEDED] scripts/test-adopt.sh (ran 1203s, cap 1200s) — killed by the runner's watchdog at the cap, no exit status observed
+real29='\[CAP EXCEEDED\] [^ ]*test-capstuck\.sh \(ran [0-9]+s, cap 2s\) — killed by the runner.s watchdog at the cap, no exit status observed'
+
+mkdir -p "$sb29/slowdir" "$sb29/stuckdir"
+cp "$sb29/scripts/test-capslow.sh" "$sb29/slowdir/"
+cp "$sb29/scripts/test-capstuck.sh" "$sb29/stuckdir/"
+out29a=$(CAP29_DIR="$sb29" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb29/slowdir" 2>&1); rc29a=$?
+runs29a=$(wc -l < "$sb29/slow.runs" 2>/dev/null | tr -d ' ')
+if [ "$rc29a" -eq 0 ] && [ "$runs29a" = 2 ] && grepq "$out29a" '\[FLAKE\] .*test-capslow\.sh'; then
+  pass "29a: a suite that overran its cap and finished on the rerun is a FLAKE, rc 0, run twice"
+else
+  fail "29a: rc=$rc29a runs=$runs29a (want rc 0, 2 runs, a [FLAKE] line) output: $out29a"
+fi
+
+out29b=$(CAP29_DIR="$sb29" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb29/stuckdir" 2>&1); rc29b=$?
+runs29b=$(wc -l < "$sb29/stuck.runs" 2>/dev/null | tr -d ' ')
+if [ "$rc29b" -eq 1 ] && [ "$runs29b" = 2 ]; then
+  pass "29b: a suite that overruns its cap on both attempts runs exactly twice and fails the run"
+else
+  fail "29b: rc=$rc29b runs=$runs29b (want rc 1 and exactly 2 runs) output: $out29b"
+fi
+if grepq "$out29b" -E "$real29"; then
+  pass "29c: the final CAP EXCEEDED line keeps the shape CI printed for test-adopt.sh"
+else
+  fail "29c: no CAP EXCEEDED line in the real CI shape: $out29b"
+fi
+rm -rf "$sb29"
+fi
+
 rst_tally

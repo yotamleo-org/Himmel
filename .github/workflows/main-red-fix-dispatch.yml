@@ -1,0 +1,47 @@
+name: Main Red Fix Dispatch
+
+# HIMMEL-7343. Main has no push run (ci.yml: HIMMEL-5113), so after a fix for a
+# red main merges, the next proof is the next cron sweep, hours later, and the
+# fleet waits on it. A merged PR that carries the `fixes-main-red` label, or a
+# `Fixes-main-red:` line in its body, dispatches ci.yml on main at once.
+#
+# Trust: pull_request_target always runs the DEFAULT branch's copy of this file
+# and nothing here checks out or runs PR code. The PR body reaches the shell only
+# as an environment value, never as script text.
+on:
+  pull_request_target:
+    types: [closed]
+  # Manual: the same dispatch with no PR (`gh workflow run main-red-fix-dispatch.yml`).
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-main-ci:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch ci.yml on main when the merged PR fixes a red main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -eu
+          if [ "$EVENT" != workflow_dispatch ]; then
+            case " $PR_LABELS " in
+              *" fixes-main-red "*) ;;
+              *)
+                if ! printf '%s\n' "$PR_BODY" | grep -qiE '^[[:space:]]*Fixes-main-red:'; then
+                  echo "PR #$PR_NUMBER carries no fixes-main-red label or Fixes-main-red: line; nothing to dispatch."
+                  exit 0
+                fi ;;
+            esac
+          fi
+          gh workflow run ci.yml --ref main
+          echo "Dispatched ci.yml on main${PR_NUMBER:+ after PR #$PR_NUMBER merged}."
