@@ -182,6 +182,12 @@ writes to it.
 
 ## Migrating an existing install
 
+The update runs the whole migration as one step: a backup, the copy, a check
+with the real readers, and only then the removal of the moved lines from
+`.env` ([updating.md](../setup/updating.md#the-env-migration)). Preview it with
+`bash scripts/setup/migrate-env.sh --dry-run`. The steps below are the manual
+route for behaviour and policy keys.
+
 Setup, adopt and `himmelctl` read and write the behaviour keys in
 `~/.himmel/himmel.conf` (a key already set in `.env` is still read as a
 fallback), so the migration can run at any time. `--dry-run` lists what would

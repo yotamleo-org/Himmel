@@ -966,6 +966,7 @@ scripts/setup/test-cli-proxy-lane.sh	1
 scripts/setup/test-ensure-tools.sh	0
 scripts/setup/test-fill-env.sh	0
 scripts/setup/test-migrate-env-config.sh	0
+scripts/setup/test-migrate-env.sh	2
 scripts/setup/test-onboard-telegram.sh	0
 scripts/setup/test-setup-preflight.sh	0
 scripts/skill-index/test-ensure-skill-index.sh	5
