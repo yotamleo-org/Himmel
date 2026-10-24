@@ -75,7 +75,7 @@ user = lines[:maint] if maint is not None else lines
 
 def commands():
     """(kind, text) for every command a user is shown above the maintainers part."""
-    out, fence = [], False
+    out, fence, last = [], False, None
     for l in user:
         if l.lstrip().startswith("```"):
             fence = not fence
@@ -85,9 +85,15 @@ def commands():
             if s:
                 out.append(("block", s))
         else:
+            if not l.strip() or re.match(r"\s*(\d+\.|[-*])\s", l):
+                last = None
             for span in re.findall(r"`([^`]+)`", l):
                 if re.match(r"(/[a-z][\w-]*|qmd)(\s|$)", span):
                     out.append(("span", span))
+                    last = span.split()[0]
+                elif re.match(r"--?[A-Za-z][\w-]*$", span):
+                    # A lone flag belongs to the last command of its paragraph.
+                    out.append(("span", f"{last} {span}" if last else span))
     return out
 
 def flags(cmd):
@@ -165,7 +171,7 @@ PY
 
 run_case() { # run_case <label> <case> <page>
   local out
-  out="$(check "$2" "$3")"
+  if ! out="$(check "$2" "$3")"; then bad "$1" "the checker itself failed"; return; fi
   if [ -z "$out" ]; then ok "$1"; else bad "$1" "$out"; fi
 }
 
@@ -186,9 +192,12 @@ cp "$PAGE" "$TMP/README.md"
 control() { # control <label> <case> <line to append above For maintainers>
   python3 -I -c 'import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],"w").write(t.replace("\n## For maintainers", "\n" + sys.argv[3] + "\n\n## For maintainers", 1))' \
     "$TMP/README.md" "$TMP/control-page.md" "$3"
-  if [ -n "$(check "$2" "$TMP/control-page.md")" ]; then ok "$1"; else bad "$1" "the defect was not caught"; fi
+  local out
+  if ! out="$(check "$2" "$TMP/control-page.md")"; then bad "$1" "the checker itself failed"; return; fi
+  if [ -n "$out" ]; then ok "$1"; else bad "$1" "the defect was not caught"; fi
 }
 control "CONTROL: a made-up /luna-ingest flag fails SKILLS" skills "Run \`/luna-ingest <url> --no-such-flag\`."
+control "CONTROL: a lone made-up flag after /luna-ingest fails SKILLS" skills "Run \`/luna-ingest <url>\`; add \`--no-such-flag\` to see more."
 control "CONTROL: a made-up skill fails SKILLS" skills "Run \`/luna-no-such-skill\`."
 control "CONTROL: an unchecked command fails OTHER" other $'```bash\nrm -rf notes\n```'
 control "CONTROL: a vault path fails IMAGE" image 'Your notes live in ~/Documents/luna.'
