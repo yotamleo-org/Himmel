@@ -283,7 +283,7 @@ step4="$(printf '%s\n' "$handing" | awk '/^4\. \*\*/ { f = 1 } /^5\. \*\*/ { f =
 absent 'Handing over step 4 does not say the successor always hands over a fresh token' "$step4" "$stale_rotate"
 absent 'Handing over step 4 does not tell a successor to add a token to a native line by hand' "$step4" 'by hand to a native'
 contains 'Handing over step 4: native and claudex workers are not rotated on a bus succession' "$(flat "$step4")" 'native and claudex workers are not rotated'
-contains 'Handing over step 4: a failed record for a worker missing from Live state prints NOT-IN-LIVE-STATE' "$(flat "$step4")" 'for one not in it'
+contains 'Handing over step 4: a failed record for a worker missing from Live state prints NOT-IN-LIVE-STATE' "$(flat "$step4")" "worker, \`NOT-IN-LIVE-STATE\` for one not in it: relay each **yourself**."
 contains 'Handing over step 4: a claudex worker gets a bus notice beside its inbox relay' "$(flat "$step4")" 'an inbox relay plus a bus notice each claudex one'
 
 absent 'running-a-console Handing over does not say the successor always hands over a fresh token' "$running" "$stale_rotate"
@@ -294,10 +294,11 @@ contains 'running-a-console Handing over: a bus record relays each native worker
 contains 'running-a-console Handing over: BUS-RELAY ok does not prove delivery' "$(flat "$running")" 'not that the worker session saw it'
 contains 'running-a-console Handing over: WAKE succession partial is the backstop' "$(flat "$running")" 'is the backstop for one that never quotes back'
 contains 'running-a-console Handing over: native and claudex workers are not rotated on a bus succession' "$(flat "$running")" 'native and claudex worker sessions are not rotated'
-contains 'running-a-console Handing over: a failed claudex notice prints only BUS-RELAY-FAIL' "$(flat "$running")" 'claudex notice record prints only'
-contains 'running-a-console Handing over: a claudex worker with a failed notice already has its inbox relay' "$(flat "$running")" 'already has its inbox relay'
-contains 'running-a-console Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" 'when the chief has no bus identity, when it is a claudex worker session, or when its session does not resolve'
-contains 'running-a-console Handing over: SKIPPED, UNRESOLVED and UNRESOLVED-LANE need a hand relay' "$(flat "$running")" 'sent nothing: each needs a relay by hand'
+contains 'running-a-console Handing over: a failed claudex notice prints only BUS-RELAY-FAIL, as the inbox relay already went' "$(flat "$running")" "A failed claudex notice record prints only \`BUS-RELAY-FAIL\`: that worker session already has its inbox relay. A worker session in the fleet manifest"
+notice="$(flat "$running")"; notice="${notice#*A failed claudex notice record}"; notice="${notice%%A worker session in the fleet manifest*}"
+absent 'running-a-console Handing over: a failed claudex notice names no SendMessage fallback' "$notice" 'sendmessage'
+contains 'running-a-console Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" "missing from Live state prints \`NOT-IN-LIVE-STATE\` when its record fails, when the chief has no bus identity, when it is a claudex worker session, or when its session does not resolve: relay it by hand if it is live."
+contains 'running-a-console Handing over: SKIPPED, UNRESOLVED and UNRESOLVED-LANE need a hand relay' "$(flat "$running")" "\`SKIPPED\`, \`UNRESOLVED\` and \`UNRESOLVED-LANE\` lines sent nothing: each needs a relay by hand."
 
 absent 'handoff "How starts" does not tell the successor to rotate nonces' "$starts" "$stale_rotate"
 contains 'handoff "How starts": a relay MAY keep the leg token' "$(flat "$starts")" 'MAY keep'
