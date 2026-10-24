@@ -55,7 +55,7 @@ Usage: git diff origin/HEAD...HEAD | critic-first-pass.sh --model <name> [--slug
 
 Reads a unified diff on stdin, runs the first-pass review via hermes, prints
 findings in the /pr-check heading contract (stable [<slug>-N] IDs). The review
-prompt is adapted to the model FAMILY (HIMMEL-473): gpt/codex, open, claude.
+prompt is adapted to the model FAMILY: gpt/codex, open, claude.
 --print-prompt builds + prints the family-adapted prompt and exits WITHOUT
 invoking hermes (tests/debug).
 Exit: 0 = findings emitted (or prompt printed); 1 = invoke failed/malformed

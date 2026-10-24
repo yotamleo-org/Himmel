@@ -1699,7 +1699,7 @@ process.stdout.write(JSON.stringify({malformed: 0}));
                     --branch "$row_branch" --head "$row_head" --id "$id" \
                     --artifact "$row_artifact" --perspective "$row_perspective" \
                     --set verdict=fixed \
-                    --reason "Promoted from agreed: no re-raise at clean round head $head8 (HIMMEL-2911)"; then
+                    --reason "Promoted from agreed: no re-raise at clean round head $head8"; then
                     write_fail=1
                     break
                 fi

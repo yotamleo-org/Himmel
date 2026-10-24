@@ -20,8 +20,8 @@ critic-first-pass.sh in diff mode instead:
   bash scripts/cr/critic-first-pass.sh --model <m> --slug <s> < the.diff
 
 Artifact mode validates every citation against ATX markdown headings extracted
-from the artifact, and critic-first-pass.sh itself enforces that contract
-(HIMMEL-1915): an artifact with zero extractable headings (any diff, headingless
+from the artifact, and critic-first-pass.sh itself enforces that contract:
+an artifact with zero extractable headings (any diff, headingless
 prose) is refused before the model call, and a run whose findings are all
 dropped by citation validation exits nonzero instead of reporting "0 found".
 EOF
