@@ -139,9 +139,9 @@ send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
 # one notifying run at a time, so check-send-record below cannot double-send
 # ponytail: no flock binary (stock macOS) notifies unlocked, so two concurrent runs can
 # double-send; upgrade path = a mkdir lock.
-if [ "$notify" = 1 ] && command -v flock >/dev/null 2>&1; then
+if [ "$notify" = 1 ]; then
     # prim-ok: a blocking lock held on fd 9 until the script exits; with_lock wraps one command
-    if ! { mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && flock 9; }; then
+    if ! { mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && { ! command -v flock >/dev/null 2>&1 || flock 9; }; }; then
         printf 'pr-stall: cannot take the notify lock, listing without --notify\n' >&2
         notify=0
     fi
