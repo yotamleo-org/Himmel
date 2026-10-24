@@ -146,6 +146,9 @@ case "$1 $2" in
       list-404)  echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
     esac
     printf '# trust paths\n^scripts/ci/\n' ;;
+  # GH_STUB_SETTINGS is the default branch's .claude/settings.json (default {}).
+  "api repos/o/r/contents/.claude/settings.json"*)
+    printf '%s\n' "${GH_STUB_SETTINGS:-"{}"}" ;;
   # Any other name (another repo, or a `github.com/o/r` spelling) has no list.
   "api repos/"*"/contents/scripts/ci/ci-trust-paths.txt"*)
     echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
@@ -1530,6 +1533,13 @@ HIMMEL_REPO="$HARNESS" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
 # Control: without HIMMEL_REPO the copy anchors on its own tree, which holds no GO.
 GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t r8-no-harness-anchor-finds-no-go 2 Bash "$PIN"
+# HARNESS carries no core list. An adopted repo with no trust list still
+# refuses: that rests on its own settings, not on the anchor's core file.
+HIMMEL_REPO="$HARNESS" GH_STUB_MODE=clean GH_STUB_TRUST=list-404 \
+    GH_STUB_SETTINGS='{"env":{"HIMMEL_REPO":"/h"}}' \
+    t r8-adopted-missing-list-refuses-without-core 2 Bash "$PIN"
+grep -q "an adopted repo" "$TMP/err-r8-adopted-missing-list-refuses-without-core" \
+    || { fail=$((fail+1)); echo "FAIL r8-adopted-missing-list-refuses-without-core: reason missing"; }
 r8_root=$(bash -c '. "$1/scripts/lib/handover-path.sh"; . "$1/scripts/lib/go-gate.sh"; go_resolve_root "$1"' _ "$HARNESS" 2>/dev/null)
 if [ "$r8_root" = "$ROOT_B" ]; then
     pass=$((pass+1)); echo "ok   r8-merge-on-green-root-is-the-harness-env-root"

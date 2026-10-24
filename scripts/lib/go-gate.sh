@@ -359,7 +359,8 @@ go_trust_verdict() {
 #     refuses `list core-missing <pattern>`, and a missing list refuses instead
 #     of `not-adopted`. A list holding every core line is already the union.
 #     ponytail: an anchor without the core file (a test fixture, a partial
-#     tree) runs list-only as before; refuse there once every fixture carries it.
+#     tree) skips the core-line check; refuse there once every fixture carries
+#     it. A missing list in an adopted repo refuses either way.
 # rc 0 prints one line: `none`, `not-adopted`, or `hit <first matching path>`.
 # rc 2 prints `<phase> <reason>` (phase: tmp, list, files or anchor) — refused.
 # gh is ${GH:-gh}. The body is a subshell, so its temp-file trap, its helper
@@ -458,7 +459,7 @@ EOF
                 # Only a repo positively other than the anchor's is "not adopted";
                 # an unresolvable anchor is not proof, so it refuses (fail closed).
                 if [ -n "$lg_anchor" ] && [ "$lg_anchor" != "$lg_dir" ]; then
-                    [ -e "$core" ] && adopted \
+                    adopted \
                         && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_branch in $lg_dir, an adopted repo (its .claude/settings.json sets env.HIMMEL_REPO)"
                     printf 'not-adopted\n'
                     exit 0
@@ -509,7 +510,7 @@ EOF
         case "$raw" in
             *"HTTP 404"*)
                 other_repo || refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, and the harness anchor's origin does not prove it is another repo"
-                [ -e "$core" ] && adopted \
+                adopted \
                     && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, an adopted repo (its .claude/settings.json sets env.HIMMEL_REPO)"
                 printf 'not-adopted\n'
                 exit 0 ;;
