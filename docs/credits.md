@@ -20,6 +20,9 @@ vendoring records name the upstream pins and carried deviations.
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | dbd4588f9e1033efb41dad4bef2f7947c8993d44 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
+| popular-web-designs | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
+| design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
+| hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 20ff8a101fe8300e44cb3b2d570cb93c7580e1b9 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |

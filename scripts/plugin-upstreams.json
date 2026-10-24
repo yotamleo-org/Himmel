@@ -31,6 +31,21 @@
     "track": "release",
     "synced_base": "v2.1.0"
   },
+  "popular-web-designs": {
+    "upstream_repo": "NousResearch/hermes-agent",
+    "track": "release",
+    "synced_base": "v2026.9.24"
+  },
+  "design-md": {
+    "upstream_repo": "NousResearch/hermes-agent",
+    "track": "release",
+    "synced_base": "v2026.9.24"
+  },
+  "hermes-artifact-design": {
+    "upstream_repo": "NousResearch/hermes-agent",
+    "track": "release",
+    "synced_base": "v2026.9.24"
+  },
   "anydesign": {
     "upstream_repo": "uxKero/anydesign",
     "track": "release",

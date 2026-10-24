@@ -70,6 +70,9 @@
     "frontend-slides@himmel": false,
     "design-dna@himmel": false,
     "anydesign@himmel": false,
+    "popular-web-designs@himmel": false,
+    "design-md@himmel": false,
+    "hermes-artifact-design@himmel": false,
     "anthropic-design-skills@himmel": false,
     "hallmark@himmel": false,
     "shadcn-mcp@himmel": false,
@@ -192,6 +195,15 @@
     },
     "anydesign@himmel": {
       "neededBy": "Design kit (HIMMEL-4012 PR2b) via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable anydesign@himmel`."
+    },
+    "popular-web-designs@himmel": {
+      "neededBy": "Design kit (HIMMEL-4016) via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable popular-web-designs@himmel`."
+    },
+    "design-md@himmel": {
+      "neededBy": "Design kit (HIMMEL-4016) via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable design-md@himmel`."
+    },
+    "hermes-artifact-design@himmel": {
+      "neededBy": "Design kit (HIMMEL-4016) via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable hermes-artifact-design@himmel`."
     },
     "anthropic-design-skills@himmel": {
       "neededBy": "Design kit (HIMMEL-4012 PR2b) via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable anthropic-design-skills@himmel`."
