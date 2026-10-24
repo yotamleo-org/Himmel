@@ -17,6 +17,9 @@ Steps:
   2. arms     each screened question is answered once per arm:
                 none       no retrieval (re-asked, so the baseline is measured, not assumed)
                 grep       retrieval-eval's grep arm
+                grep-rtk   retrieval-eval's grep-rtk arm: the same files as a session reads
+                           them through rtk; skipped, with the reason printed, when rtk is
+                           not on PATH
                 pathident  the path arm and the ident-grep arm, both outputs
                 graphify   graphify query
                 fused      grep + qmd-hybrid + graphify outputs, as the combined arm reads them
@@ -52,7 +55,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
-ARMS = ["none", "grep", "pathident", "graphify", "fused"]
+ARMS = ["none", "grep", "grep-rtk", "pathident", "graphify", "fused"]
 PER_RUN_USD = 1.0
 MAX_NAMED = 3
 SYSTEM = ("You answer questions about a software repository. Reply briefly. "
@@ -165,6 +168,8 @@ def retrieve(ev, a, q, repo, need):
     out = {}
     if {"grep", "fused"} & need:
         out["grep"] = ev.arm_grep(q["q"], repo, to, k)[1]
+    if "grep-rtk" in need:
+        out["grep-rtk"] = ev.arm_grep_rtk(q["q"], repo, to, k)[1]
     if "pathident" in need:
         out["pathident"] = "%s\n%s" % (ev.arm_path(q["q"], repo, to, k)[1], ev.arm_ident_grep(q["q"], repo, to, k)[1])
     if {"graphify", "fused"} & need:
@@ -205,6 +210,12 @@ def cmd_run(a):
         if x not in ARMS:
             raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS)))
     ev = load_eval()
+    skipped = ev.skip_rtk(arms)
+    for x, why in skipped.items():
+        print("answer-ab: skipping %s: %s" % (x, why), file=sys.stderr)
+    arms = [x for x in arms if x not in skipped]
+    if not arms:
+        raise Usage("no arm left to run")
     qs = [q for q in ev.load_questions(a.questions) if q.get("gold")]
     if not qs:
         raise Usage("no question with a gold file in %s" % a.questions)
