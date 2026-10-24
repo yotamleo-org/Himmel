@@ -1169,11 +1169,13 @@ emit_runner() {
 cron_status() {
     cron_read
     echo "qmd-cadence status:"
-    local entry sched
+    local entry sched n_entries dup=""
     entry=$(printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_REINDEX" | head -1 || true)
     if [ -n "$entry" ]; then
         sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
-        echo "ARMED      $TASK_REINDEX (cron: $sched)$(task_summary "$TASK_REINDEX")"
+        n_entries=$(printf '%s\n' "$CRON_TAB" | grep -cF "# $TASK_REINDEX" || true)
+        [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+        echo "ARMED      $TASK_REINDEX (cron: $sched)$dup$(task_summary "$TASK_REINDEX")"
     else
         echo "not armed  $TASK_REINDEX$(task_summary "$TASK_REINDEX")"
     fi

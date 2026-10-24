@@ -106,7 +106,7 @@ if [ "$sub" = query ] && [ "$has_seed" = 0 ] && [ -n "$question" ] && command -v
        { read -r conf score file
          while read -r sid; do
            [ -n "$sid" ] || continue
-           case " ${seeds[*]} " in *" $sid "*) ;; *) seeds+=(--seed "$sid") ;; esac
+           case " ${seeds[*]-} " in *" $sid "*) ;; *) seeds+=(--seed "$sid") ;; esac
          done; } < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/semantic-seeds.py" scored "$graph" "$question")
        if [ "$conf" = weak ] && [ "$anchored" = 0 ] && [ "$has_budget" = 0 ]; then
          budget=$WEAK_BUDGET

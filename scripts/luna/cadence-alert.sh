@@ -27,7 +27,9 @@
 # CADENCE_ALERT_SEND_CMD (default vault-stall-alert.sh; called with one
 # argument, the message).
 #
-# Always exits 0: alerting must never change a runner's own exit status.
+# Always exits 0: alerting must never change a runner's own exit status. The one
+# opt-in is CADENCE_ALERT_EXIT_ON_SEND_FAIL=1, which makes `fail` exit 1 when
+# the send was attempted and not delivered, for a caller that must retry it.
 set -u
 
 _here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +43,9 @@ send_failed_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-$state/cadence-alert-send-fa
 # No `.` survives, so `<leg>.<reason>` splits unambiguously and `clear a`
 # cannot match leg `a.b`'s sentinels.
 _slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_'; }
+# A reason can run to thousands of characters, past the 255-byte file-name limit:
+# the sentinel carries a fixed-length hash of it instead.
+_hash() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null || cksum; } | cut -d' ' -f1 | cut -c1-16; }
 
 # Writes the sentinel only after a delivered send, so a failed send retries the
 # DM on the next failure; an unwritable sentinel still counts as delivered.
@@ -53,12 +58,13 @@ send_then_mark() { # <sentinel> <message>
 case "${1:-}" in
     fail)
         leg="${2:-unknown}" reason="${3:-unknown}" log="${4:-}"
+        send_rc=0
         cause="${5:-unknown, see log}" todo="${6:-read the log}"
         cause="${cause//$'\n'/ }" todo="${todo//$'\n'/ }"
         mkdir -p "$(dirname "$alert_file")" "$dedupe_dir" 2>/dev/null
         printf '%s %s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" "$log" >> "$alert_file" \
             || echo "cadence-alert: could not append to $alert_file" >&2
-        sentinel="$dedupe_dir/$(_slug "$leg").$(_slug "$reason")"
+        sentinel="$dedupe_dir/$(_slug "$leg").$(_hash "$reason")"
         # The sentinel is written only AFTER a delivered send: an unwritable
         # dedupe dir, a failed send or an interrupted one never suppresses the
         # next alert. Two concurrent failures of one leg could both send; one
@@ -67,6 +73,7 @@ case "${1:-}" in
             if send_then_mark "$sentinel" "$leg: $reason. Cause: $cause. Do: $todo. Log: $log"; then
                 rm -f "$send_failed_mark" 2>/dev/null
             else
+                send_rc=1
                 echo "cadence-alert: Telegram send failed for $leg $reason" >&2
                 mkdir -p "$(dirname "$send_failed_mark")" 2>/dev/null
                 printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$leg" "$reason" > "$send_failed_mark" 2>/dev/null \
@@ -82,4 +89,5 @@ case "${1:-}" in
         echo "usage: cadence-alert.sh fail <leg> <reason> <log> [<cause> [<do>]] | clear <leg>" >&2
         ;;
 esac
+[ "${CADENCE_ALERT_EXIT_ON_SEND_FAIL:-0}" = 1 ] && exit "${send_rc:-0}"
 exit 0

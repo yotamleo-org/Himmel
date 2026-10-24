@@ -73,9 +73,12 @@ OUT=$(BURST_PROC_ROOT="$TMP/g" bash "$SCRIPT" --idle 0 -- cp "$TMP/g.next" "$TMP
 eq "guest cpu not double-counted" "$(printf '%s\n' "$OUT" | grep '^| burst ' | awk -F'|' '{gsub(/ /, "", $7); print $7}')" "50.0"
 
 # Live: 200 external /bin/true spawns must show at least 200 forks in the burst row.
-OUT=$(bash "$SCRIPT" --idle 0 -- bash -c 'for i in $(seq 200); do /bin/true; done' 2>&1)
-FORKS=$(printf '%s\n' "$OUT" | grep '^| burst ' | awk -F'|' '{gsub(/ /, "", $4); print $4}')
-if [ "${FORKS:-0}" -ge 200 ]; then pass "live /proc: 200-spawn burst counted ($FORKS forks)"; else fail "live /proc: expected >=200 forks, got '$FORKS'"; fi
+# macOS has no /proc; the fake-proc rows above cover the parser there.
+if [ -r /proc/stat ]; then
+  OUT=$(bash "$SCRIPT" --idle 0 -- bash -c 'for i in $(seq 200); do /bin/true; done' 2>&1)
+  FORKS=$(printf '%s\n' "$OUT" | grep '^| burst ' | awk -F'|' '{gsub(/ /, "", $4); print $4}')
+  if [ "${FORKS:-0}" -ge 200 ]; then pass "live /proc: 200-spawn burst counted ($FORKS forks)"; else fail "live /proc: expected >=200 forks, got '$FORKS'"; fi
+fi
 
 echo "burst-cost: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -263,16 +263,18 @@ async function loadHealth() {
   const gen = ++healthGen;
   let j;
   try {
-    const [r, qr, rr] = await Promise.all([
+    const [r, qr, rr, vr] = await Promise.all([
       fetch("/api/health", { headers: { "X-Himmel-Token": token } }),
       fetch("/api/bank", { headers: { "X-Himmel-Token": token } }).catch(() => null), // the panel degrades alone
       fetch("/api/rollup", { headers: { "X-Himmel-Token": token } }).catch(() => null),
+      fetch("/api/reviewers", { headers: { "X-Himmel-Token": token } }).catch(() => null),
     ]);
     j = r.ok ? await r.json() : null;
     if (!j) toast(`health sources failed (${r.status})`);
     else {
       if (qr && qr.ok) j.quota = await qr.json().catch(() => undefined); // a bad bank body must not drop the health cards
       if (rr && rr.ok) j.rollup = await rr.json().catch(() => undefined);
+      if (vr && vr.ok) j.reviewers = await vr.json().catch(() => undefined);
     }
   } catch (_) { j = null; toast("health sources: server unreachable"); }
   if (gen !== healthGen) return;

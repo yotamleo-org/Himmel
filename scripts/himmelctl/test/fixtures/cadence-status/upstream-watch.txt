@@ -1,0 +1,6 @@
+upstream-watch-cadence status:
+ARMED      HIMMEL-UpstreamWatch (cron: 00 06 * * *)
+  runner     ~/.claude/upstream-watch-cadence/upstream-watch.sh
+  run log    ~/.claude/upstream-watch-cadence/upstream-watch.log (last write: 2026-10-24 06:00)
+             last line: [exit rc=10]
+  prev log   ~/.claude/upstream-watch-cadence/upstream-watch.log.prev (last write: 2026-10-23 06:01)

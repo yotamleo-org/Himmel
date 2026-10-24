@@ -695,6 +695,14 @@ echo "TEST: cron status reflects the armed entry"
 out=$(run_cron status)
 assert_contains "cron reindex armed" "ARMED      HIMMEL-Qmd-Reindex" "$out"
 assert_contains "cron status surfaces run log state" "run log" "$out"
+assert_not_contains "a single cron entry is not flagged duplicate" "DUPLICATE" "$out"
+
+echo "TEST: cron status flags a doubled scheduler entry"
+cp "$CSTATE/crontab" "$CSTATE/crontab.single"
+grep -F "# HIMMEL-Qmd-Reindex" "$CSTATE/crontab.single" | head -1 >>"$CSTATE/crontab"
+out=$(run_cron status)
+assert_contains "doubled entry is flagged with its count" "[DUPLICATE: 2 cron entries]" "$out"
+cp "$CSTATE/crontab.single" "$CSTATE/crontab"
 
 # Test C8: re-arm without --force -> dedup block -------------------------------
 

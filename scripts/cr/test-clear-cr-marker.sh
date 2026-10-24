@@ -3533,6 +3533,12 @@ STUB
     cat > "$tmp/bin/sleep" <<'STUB'
 #!/usr/bin/env bash
 D="$(dirname "$0")/.."
+# A short sleep is a timeout wrapper's poll (the macOS fallback `timeout` sleeps
+# the whole bound): run it for real, or the bounded ls-remote reads as timed out.
+case "$1" in
+    ''|*[!0-9]*) ;;
+    *) if [ "$1" -lt 30 ]; then PATH="${PATH#"$(dirname "$0")":}" exec sleep "$1"; fi ;;
+esac
 echo "$1" >> "$D/sleeps.log"
 touch "$D/woke"
 STUB

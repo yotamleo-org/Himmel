@@ -727,4 +727,25 @@ set -e
 grep -qE '^TRACKER=jira$' "$_vQ4/.himmel/himmel.conf" || fail "caseQ4: the chain's end file should carry TRACKER=jira"
 echo "ok: caseQ4 a write through a dangling two-hop chain keeps both links"
 
+# Q5: an unmigrated clone .env (the shipped .env.example plus live commit-rule
+# lines) still feeds the read fallback, so tracker none must drop its
+# TICKET_ID_* lines too; every other line and the file mode survive.
+fxQ5="$work/fixtureQ5"; build_fixture "$fxQ5"
+cp "$repo_root/.env.example" "$fxQ5/.env"
+cp "$fxQ5/.env" "$work/envQ5.expected"
+printf 'TICKET_ID_REQUIRED=1\nTICKET_ID_PATTERN=^Q5-[0-9]+$\n' >> "$fxQ5/.env"
+chmod 600 "$fxQ5/.env"
+_hQ5="$work/home-Q5-$$-$RANDOM"; mkdir -p "$_hQ5"
+set +e
+CFG_OUT=$(HOME="$_hQ5" USERPROFILE="$(winpath "$_hQ5")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ5.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ5.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ5")" JIRA_PROJECT_KEY='' \
+  "$node_bin" "$wizard" config set commit.tracker none 2>&1)
+CFG_RC=$?
+set -e
+[ "$CFG_RC" -eq 0 ] || fail "caseQ5: set commit.tracker none should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^[[:space:]]*TICKET_ID_(REQUIRED|PATTERN)=' "$fxQ5/.env" && fail "caseQ5: tracker none must drop the legacy .env TICKET_ID_* lines"
+cmp -s "$work/envQ5.expected" "$fxQ5/.env" || fail "caseQ5: every other legacy .env line must survive unchanged"
+_mQ5=$(stat -c %a "$fxQ5/.env" 2>/dev/null || stat -f %Lp "$fxQ5/.env")
+[ "$_mQ5" = 600 ] || fail "caseQ5: the legacy .env must keep mode 600 (got $_mQ5)"
+echo "ok: caseQ5 tracker none drops the legacy .env ticket keys and keeps the rest"
+
 echo "PASS"

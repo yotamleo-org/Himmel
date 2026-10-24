@@ -21,6 +21,7 @@ import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
+import { readReviewers } from "./reviewers";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
@@ -493,6 +494,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/rollup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readRollup(env)));
+      }
+      // the review page (critics and judges on planted bugs and merged PRs), read from the file the weekly judge-accuracy cadence wrote.
+      if (path === "/api/reviewers") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(redactOut(readReviewers(env)));
       }
       // the tracker sources the rail gates Roadmap and Kanban on.
       if (path === "/api/sources") {

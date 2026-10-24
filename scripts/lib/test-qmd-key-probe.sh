@@ -36,7 +36,7 @@ printf '%s\n' "$TOKEN" > "$TMP/token"
 chmod 600 "$TMP/token"
 
 cat > "$TMP/stub.py" <<'PY'
-import http.server, json, signal, sys, time
+import http.server, json, signal, socketserver, sys, time
 signal.alarm(120)
 mode, portfile, body401, want = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 n = 0
@@ -84,7 +84,12 @@ class H(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def log_message(self, *a): pass
-s = http.server.HTTPServer(('127.0.0.1', 0), H)
+class Srv(http.server.HTTPServer):
+    # HTTPServer.server_bind calls getfqdn(), a reverse lookup that stalls for seconds on a macOS runner.
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = '127.0.0.1', self.server_address[1]
+s = Srv(('127.0.0.1', 0), H)
 open(portfile, 'w').write(str(s.server_address[1]))
 s.serve_forever()
 PY
@@ -95,7 +100,7 @@ start_stub() {
     rm -f "$pf"
     python3 -I "$TMP/stub.py" "$mode" "$pf" "$REAL_401" "$TOKEN" >/dev/null 2>&1 &
     SRV_PIDS+=("$!")
-    while [ ! -s "$pf" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    while [ ! -s "$pf" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
     URL="http://127.0.0.1:$(cat "$pf")/mcp"
 }
 

@@ -509,17 +509,25 @@ that `next --arm` printed and hand your live worker sessions over by name.
 **Re-brief your live worker sessions before you release**. Each
 worker session's brief names *you* as its supervisor session, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
-you send each worker session, from your own session, a message naming the successor and
-quoting the worker session's current token, never by hand: `next` leaves a chief with a
-bus identity a `WAKE relay-on-live` (or run `console-kit/relay-batch.sh <this doc> --successor
-<it>`), which sends the bus record each worker session's `bus adopt` needs, delivers the claudex
-relays and prints the `SENDMESSAGE` line for each other worker session. The worker session's quote-back is the `SUCCESSION
-accepted` Results bullet in its own doc (the successor's waiter tallies it); it sends a
-`SendMessage` only on a timeout or a decline. That run is the relay: never re-run it (a retry
-resends the claudex inbox relays). It never carries a fresh token, and a relay with none is
-complete (the worker session keeps its own). A successor that rotates appends the fresh token by
-hand to a native `SENDMESSAGE` line, and the worker session quotes it back; claudex workers are
-not rotated on a bus succession.
+you relay each worker session to it from your own session, never by hand: `next` leaves a
+chief with a bus identity a `WAKE relay-on-live` (or run `console-kit/relay-batch.sh <this doc>
+--successor <it>`). That run sends each native worker session one himmel-bus relay record naming
+the successor (the bus proves you sent it, so the record carries no token), and each claudex
+worker session its inbox relay plus the bus record its `bus adopt` needs. A native record that
+fails, or a chief with no bus identity, prints a `SENDMESSAGE` line quoting the worker session's
+token for a worker session in Live state: send it from your own session. A failed claudex
+notice record prints only `BUS-RELAY-FAIL`: that worker session already has its inbox relay. A
+worker session in the fleet manifest but missing from Live state prints `NOT-IN-LIVE-STATE` when
+its record fails, when the chief has no bus identity, when it is a claudex worker session, or
+when its session does not resolve: relay it by hand if it is live. `SKIPPED`, `UNRESOLVED` and
+`UNRESOLVED-LANE` lines sent nothing: each needs a relay by hand. `BUS-RELAY <label> ok` means the bus stored the record, not that the
+worker session saw it: delivery needs the worker session's `HIMMEL_BUS_NAME` hooks, so the
+successor's `WAKE succession partial` is the backstop for one that never quotes back. The worker
+session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc (the successor's
+waiter tallies it); it sends a `SendMessage` only on a timeout or a decline. That run is the
+relay: never re-run it (a retry resends the claudex inbox relays). It never carries a fresh
+token, and a relay with none is complete (the worker session keeps its own): native and claudex
+worker sessions are not rotated on a bus succession.
 A successor that arrives after you have left can prove itself only with the
 two-token chain form; a worker session that cannot verify that is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's

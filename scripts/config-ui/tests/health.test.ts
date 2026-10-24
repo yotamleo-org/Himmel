@@ -43,10 +43,10 @@ test("renderHealth escapes every feed, ledger, legs and alert string", () => {
   expect(html).toContain("&lt;img");
 });
 
-test("renderHealth with no feed and no health still renders all six sections", () => {
+test("renderHealth with no feed and no health still renders all seven sections", () => {
   const html = renderHealth(null, null);
   expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(
-    ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Trends", "Search and graph freshness"]);
+    ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Trends", "How good are our reviewers?", "Search and graph freshness"]);
   expect(html).toContain("No data");
 });
 

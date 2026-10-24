@@ -26,9 +26,12 @@
 # operator every standing WARN. A doctor that prints no Summary line (crashed)
 # alerts and leaves the state alone.
 #
-# ponytail: the diff baseline advances even when the Telegram send fails (the
-# sender's own result is not visible here), so a lost DM is not retried,
-# upgrade path: have cadence-alert.sh return the delivery status.
+# The diff baseline advances only after the sender reports a delivered alert; a
+# failed send leaves it, so the next run alerts on the same findings again.
+#
+# ponytail: "delivered" means the sender handed the message on: the bridge's
+# outbox send is asynchronous and does not report a later Telegram refusal,
+# upgrade path: have the poller's outbox flush keep an entry its send refused.
 #
 # Seams (tests): HIMMEL_DOCTOR_STATE_DIR, DOCTORCAD_CRONTAB, DOCTORCAD_RUNNER_DIR.
 # Platform: cron (Linux/macOS). Windows development is parked.
@@ -113,7 +116,7 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() (
-    local root out keys new="" k sev lock_rc id detail="" new_n=0 knock_on=0 todo="" cause="" graph_alerts=""
+    local root out keys new="" k sev lock_rc id detail="" item new_n=0 shown=0 knock_on=0 todo="" cause="" graph_alerts="" delivered=1
     local sent_dir="${CADENCE_ALERT_DEDUPE_DIR:-${HOME:-}/.himmel/state/cadence-alert-sent}"
     root="$(resolve_primary)" || { echo "doctor-cadence: cannot resolve the primary checkout" >&2; return 2; }
     mkdir -p "$STATE_DIR" || return 2
@@ -157,8 +160,14 @@ cmd_run() (
         new="${new:+$new, }$k"
         new_n=$((new_n + 1))
         id="${k#* }"
-        detail="${detail:+$detail; }$k: $(sed -n -E "s/^$sev +$id: *//p" "$out" | head -n 1 | cut -c1-200)"
-        [ -n "$todo" ] || todo="$(grep -A1 -E "^$sev +$id:" "$out" | sed -n -E '2s/^ *→ *//p' | sed -E 's/ +#.*//')"
+        # Telegram refuses a message over 4096 characters: each finding is cut to 120,
+        # the list stops at 2400, and the rest is counted in a "+N more" tail.
+        item="$k: $(sed -n -E "s/^$sev +$id: *//p" "$out" | head -n 1 | cut -c1-120)"
+        if [ $((${#detail} + ${#item} + 2)) -le 2400 ]; then
+            detail="${detail:+$detail; }$item"
+            shown=$((shown + 1))
+        fi
+        [ -n "$todo" ] || todo="$(grep -A1 -E "^$sev +$id:" "$out" | sed -n -E '2s/^ *→ *//p' | sed -E 's/ +#.*//' | cut -c1-300)"
         # a standing graph-*-backoff alert is a skipped file on a run that succeeded, so it does not explain a stale graph
         if [ "$id" = C33-graph-stale ]; then
             graph_alerts=$(compgen -G "$sent_dir/graph-*" | grep -v -- '-backoff[.]')
@@ -170,14 +179,16 @@ cmd_run() (
         # clear first: the sender's per-reason dedupe must not mute a key that
         # went away and came back; THIS script's prev-diff is the dedupe.
         bash "$root/scripts/luna/cadence-alert.sh" clear himmel-doctor
-        bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor "$new_n new finding$([ "$new_n" -eq 1 ] || echo s): $detail" "$out" \
+        [ "$shown" -lt "$new_n" ] && detail="$detail; +$((new_n - shown)) more, see $out"
+        CADENCE_ALERT_EXIT_ON_SEND_FAIL=1 bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor "$new_n new finding$([ "$new_n" -eq 1 ] || echo s): $detail" "$out" \
             "${cause:-a doctor check reports a problem it did not at the previous run}" \
-            "${todo:-run bash scripts/himmel-doctor.sh and read the lines for the ids above}"
+            "${todo:-run bash scripts/himmel-doctor.sh and read the lines for the ids above}" || delivered=0
     fi
     # alerted.tsv is still the PREVIOUS run here: a WARN in both is persisting.
     [ "$first" -eq 0 ] && file_persisting_warns "$root" "$keys" "$out"
-    # advance the baseline only after the alert step; a disappeared finding
+    # advance the baseline only after a delivered alert; a disappeared finding
     # leaves it, so one that comes back alerts again.
+    if [ "$delivered" -eq 0 ]; then rm -f "$kf"; return 1; fi
     mv -f "$kf" "$STATE_DIR/alerted.tsv"
     return 0
 )
@@ -233,6 +244,7 @@ cmd_arm() {
         printf 'log=%q\n' "$RUNNER_DIR/doctor-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
         printf '%q %q run >> "$log" 2>&1\n' "$bash_bin" "$root/scripts/doctor-cadence.sh"
+        printf '_rc=$?\necho "[exit rc=$_rc]" >> "$log"\nexit "$_rc"\n'
     } > "$runner" || { echo "ERR doctor-cadence: cannot write the runner $runner" >&2; return 4; }
     chmod +x "$runner" || { echo "ERR doctor-cadence: cannot chmod the runner $runner" >&2; return 4; }
     { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
@@ -240,10 +252,29 @@ cmd_arm() {
     echo "doctor-cadence ARMED: daily $time — $runner (status: bash scripts/doctor-cadence.sh status)"
 }
 
+status_log() { # <log>: the run log's last write and last line, in the shape every cadence prints
+    local log="$1" mtime last
+    if [ -f "$log" ]; then
+        mtime=$(date -r "$log" '+%Y-%m-%d %H:%M' 2>/dev/null \
+            || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log" 2>/dev/null \
+            || echo '?')
+        last=$(tail -n 1 "$log" 2>/dev/null | tr -d '\r' || true)  # read-sink-ok: $log is the cadence runner's own log path, never argv or env
+        echo "  run log    $log (last write: $mtime)"
+        [ -z "$last" ] || echo "             last line: $last"
+    else
+        echo "  run log    $log (absent — task has not fired yet)"
+    fi
+}
+
 cmd_status() {
-    local m stamp=""
+    local m stamp="" entry n_entries dup=""
     cron_read || return 1
-    if [ -n "$(cron_entry)" ]; then echo "ARMED      $TASK_NAME ($(cron_entry | awk '{print $1, $2, $3, $4, $5}'))"
+    entry="$(cron_entry | head -1)"
+    if [ -n "$entry" ]; then
+        n_entries="$(cron_entry | grep -c . || true)"
+        [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
+        echo "ARMED      $TASK_NAME ($(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}'))$dup"
+        status_log "$RUNNER_DIR/doctor-cadence.log"
     else echo "not armed  $TASK_NAME"; fi
     if [ -f "$STATE_DIR/counts" ]; then
         m="$(stat -c %Y "$STATE_DIR/counts" 2>/dev/null || stat -f %m "$STATE_DIR/counts" 2>/dev/null || true)"

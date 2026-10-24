@@ -35,7 +35,7 @@ check "every class is result, retry, refusal or error, every rc a number with a 
   'jq -e "[.scripts[].codes | to_entries[] | select((.key | test(\"^[0-9]{1,3}\$\") | not) or (.value.class | IN(\"result\",\"retry\",\"refusal\",\"error\") | not) or ((.value.meaning // \"\") == \"\"))] | length == 0" "$REG" >/dev/null'
 check "every seeded script exists" '[ -z "$(jq -r ".scripts | keys[]" "$REG" | while read -r s; do [ -f "$REPO/$s" ] || echo "$s"; done)" ]'
 check "basenames are unique (the digest looks scripts up by basename)" \
-  '[ "$(jq -r ".scripts | keys[] | split(\"/\") | last" "$REG" | sort | uniq -d | wc -l)" = 0 ]'
+  '[ "$(jq -r ".scripts | keys[] | split(\"/\") | last" "$REG" | sort | uniq -d | wc -l)" -eq 0 ]'
 
 echo "lint"
 out=$(lint "$REG"); rc=$?

@@ -7123,4 +7123,134 @@ echo "$outDLclamp" | jq -e '.actual == "degraded"' >/dev/null \
 [ "$dl_elapsed" -lt 5 ] || fail "HIMMEL-2309: the spawn budget must be clamped to the time left before the deadline, not the full per-probe budget (took ${dl_elapsed}s against a resolver that sleeps 6s)"
 echo "ok: HIMMEL-2309 — a probe running when the deadline passes is clamped to the remaining budget"
 
+# ── cadence-runs (cadence-runs-<registry row>) — every registry row is judged by its real runs ──
+# Each row's item runs the row's own `status` and reads the shared ARMED / run log / last line shape:
+# one scheduler entry, a run log written within twice the interval, a last run that exited 0. The
+# stub below stands in for the script and replays a status output copied from the real subcommand
+# (fixtures/cadence-status/<row>.txt); only dates and exit stamps are rewritten per variant.
+cr_fix="$repo_root/scripts/himmelctl/test/fixtures/cadence-status"
+cr_reg="$repo_root/scripts/himmelctl/lib/cadence-registry.json"
+cr_root="$work/cr-root"; cr_cur="$work/cr-current.txt"
+cr_fresh=$("$node_bin" -e "const d=new Date(Date.now()-300000);const p=(n)=>String(n).padStart(2,'0');console.log(d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()))")
+
+cr_variant() { # <fixture> <healthy|stale|failing|duplicate|unarmed>
+  case "$2" in
+    healthy)   sed -E "s/\(last write: [0-9-]+ [0-9:]+\)/(last write: $cr_fresh)/; s/\[exit rc=3\]/[exit rc=0]/" "$1" ;;
+    stale)     sed -E "s/\(last write: [0-9-]+ [0-9:]+\)/(last write: 2020-01-01 00:00)/; s/\[exit rc=3\]/[exit rc=0]/" "$1" ;;
+    failing)   sed -E "s/\(last write: [0-9-]+ [0-9:]+\)/(last write: $cr_fresh)/; s/\[exit rc=[0-9]+\]/[exit rc=1]/" "$1" ;;
+    duplicate) cr_variant "$1" healthy | awk '/^ARMED/ && !d { sub(/\)/, ") [DUPLICATE: 2 cron entries]"); d = 1 } { print }' ;;
+    unarmed)   cr_variant "$1" healthy | sed -E 's/^ARMED /not armed /' ;;
+  esac
+}
+
+run_cr() { # <row id>
+  CR_STATUS_FILE="$cr_cur" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'cadence-runs-$1');
+if (!item) { console.log(JSON.stringify({ actual: 'degraded', detail: 'no manifest item cadence-runs-$1' })); process.exit(0); }
+const ctx = { repoRoot: '$(winpath "$cr_root")', targetPath: '$(winpath "$cr_root")', scope: 'user', env: { ...process.env, HIMMEL_LUNA_CONFIG_PATH: '$(winpath "$cr_luna_cfg")' } };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+
+cr_luna_cfg="$work/cr-luna-config.json"   # absent = the defaults; never the real ~/.himmel/config.json
+cr_ids=$(jq -r '.cadences[].id' "$cr_reg")
+for cr_id in $cr_ids; do
+  cr_script=$(jq -r --arg id "$cr_id" '.cadences[] | select(.id == $id) | .script' "$cr_reg")
+  jq -e --arg id "cadence-runs-$cr_id" --arg s "$cr_script" '.items[] | select(.id == $id) | .probe | .type == "cadence-runs" and .script == $s' "$manifest_path" >/dev/null \
+    || fail "cadence-runs: registry row $cr_id needs a manifest item cadence-runs-$cr_id of probe type cadence-runs on $cr_script"
+  mkdir -p "$cr_root/$(dirname "$cr_script")"
+  # shellcheck disable=SC2016  # the stub's own $CR_STATUS_FILE must stay literal
+  printf '#!/usr/bin/env bash\n[ "$1" = status ] || exit 2\ncat "$CR_STATUS_FILE"\n' > "$cr_root/$cr_script"
+  case "$cr_id" in
+    codex-sweep|repo-sync)
+      is_win32 && continue
+      printf '#!/usr/bin/env bash\necho "ERR: Windows-only" >&2\nexit 2\n' > "$cr_root/$cr_script"
+      outCR=$(run_cr "$cr_id")
+      echo "$outCR" | jq -e '.actual == "absent" and .cleanAbsence == true and (.detail | contains("n/a on this platform"))' >/dev/null \
+        || fail "cadence-runs-$cr_id: a Windows-only row must read absent/cleanAbsence 'n/a on this platform' off Windows (got: $outCR)"
+      echo "ok: cadence-runs-$cr_id — Windows-only row reads n/a on this platform"
+      continue ;;
+  esac
+  [ -f "$cr_fix/$cr_id.txt" ] || fail "cadence-runs-$cr_id: missing fixture $cr_fix/$cr_id.txt"
+  for cr_v in healthy stale failing duplicate unarmed; do
+    cr_variant "$cr_fix/$cr_id.txt" "$cr_v" > "$cr_cur"
+    outCR=$(run_cr "$cr_id")
+    case "$cr_v" in
+      healthy)   cr_want='.actual == "present"' ;;
+      stale)     cr_want='.actual == "degraded" and (.detail | contains("stale"))' ;;
+      failing)   cr_want='.actual == "degraded" and (.detail | contains("failing"))' ;;
+      duplicate) cr_want='.actual == "degraded" and (.detail | contains("duplicate"))' ;;
+      unarmed)   cr_want='.actual == "absent" and .cleanAbsence == true' ;;
+    esac
+    echo "$outCR" | jq -e "$cr_want" >/dev/null \
+      || fail "cadence-runs-$cr_id: $cr_v variant should satisfy [$cr_want] (got: $outCR)"
+  done
+  echo "ok: cadence-runs-$cr_id — healthy present, stale/failing/duplicate degraded, unarmed absent"
+done
+
+# upstream-watch's own success code for "delta found, handled" is rc=10: the captured output (rc=10) must read present.
+cr_variant "$cr_fix/upstream-watch.txt" healthy > "$cr_cur"
+grep -q '\[exit rc=10\]' "$cr_cur" || fail "cadence-runs-upstream-watch: the fixture must carry the real rc=10 stamp"
+run_cr upstream-watch | jq -e '.actual == "present"' >/dev/null || fail "cadence-runs-upstream-watch: rc=10 is success and must read present"
+echo "ok: cadence-runs-upstream-watch — rc=10 (delta found, handled) reads present"
+
+# the captured graphmap output carries a real failing publish run (rc=3): only that task is named, the healthy ones are not.
+sed -E "s/\(last write: [0-9-]+ [0-9:]+\)/(last write: $cr_fresh)/" "$cr_fix/graphmap.txt" > "$cr_cur"
+outCRg=$(run_cr graphmap)
+echo "$outCRg" | jq -e '.actual == "degraded" and (.detail | contains("HIMMEL-GraphPublish-Himmel")) and ((.detail | contains("HIMMEL-GraphMapAst-Himmel")) | not)' >/dev/null \
+  || fail "cadence-runs-graphmap: the real rc=3 publish run must be named and the healthy tasks must not (got: $outCRg)"
+echo "ok: cadence-runs-graphmap — the real failing publish run is named alone"
+
+# a status that cannot be read is degraded, never a quiet green.
+printf '#!/usr/bin/env bash\necho "crontab: denied" >&2\nexit 1\n' > "$cr_root/scripts/luna/qmd-cadence.sh"
+outCRe=$(run_cr qmd)
+echo "$outCRe" | jq -e '.actual == "degraded" and (.detail | contains("rc=1"))' >/dev/null \
+  || fail "cadence-runs-qmd: a failing status must read degraded naming the rc (got: $outCRe)"
+echo "ok: cadence-runs-qmd — an unreadable status reads degraded"
+
+# an rc=0 status that names none of the row's tasks (empty, or an output shape the parser does not know) is degraded, not "nothing armed".
+# shellcheck disable=SC2016  # the stub's own $CR_STATUS_FILE must stay literal
+printf '#!/usr/bin/env bash\n[ "$1" = status ] || exit 2\ncat "$CR_STATUS_FILE"\n' > "$cr_root/scripts/luna/qmd-cadence.sh"
+for cr_junk in '' 'something unexpected'; do
+  printf '%s' "$cr_junk" > "$cr_cur"
+  outCRj=$(run_cr qmd)
+  echo "$outCRj" | jq -e '.actual == "degraded" and (.detail | contains("none of the expected tasks"))' >/dev/null \
+    || fail "cadence-runs-qmd: an rc=0 status naming no task ('$cr_junk') must read degraded (got: $outCRj)"
+done
+echo "ok: cadence-runs-qmd — an rc=0 status that names no task reads degraded"
+
+# an armed task with no run log yet is present but never claims a recent clean run it cannot see.
+grep -v -E '^ +(run log|last line)' "$cr_fix/doctor.txt" > "$cr_cur"
+outCRu=$(run_cr doctor)
+echo "$outCRu" | jq -e '.actual == "present" and (.detail | contains("no run log yet"))' >/dev/null \
+  || fail "cadence-runs-doctor: an armed task with no run log must read present without claiming a clean run (got: $outCRu)"
+echo "ok: cadence-runs-doctor — an armed task with no run log is not called clean"
+
+# a pipeline schedule the operator made weekly (a `day` in luna.cadence.schedules) is judged on a 7-day interval, not the daily default.
+cr_3d=$("$node_bin" -e "const d=new Date(Date.now()-72*3600000);const p=(n)=>String(n).padStart(2,'0');console.log(d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()))")
+cr_variant "$cr_fix/pipeline.txt" healthy | sed -E "s/(pipeline-harvest\.log \(last write: )[0-9-]+ [0-9:]+\)/\1$cr_3d)/" > "$cr_cur"
+outCRd=$(run_cr pipeline)
+echo "$outCRd" | jq -e '.actual == "degraded" and (.detail | contains("HIMMEL-Pipeline-Harvest"))' >/dev/null \
+  || fail "cadence-runs-pipeline: a 3-day-old daily run must read stale (got: $outCRd)"
+printf '{"luna":{"cadence":{"enabled":true,"schedules":{"harvest":{"time":"02:00","day":"MON"}}}}}' > "$cr_luna_cfg"
+outCRw=$(run_cr pipeline)
+rm -f "$cr_luna_cfg"
+echo "$outCRw" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-pipeline: a schedule configured weekly must be judged on 7 days, so a 3-day-old run is healthy (got: $outCRw)"
+echo "ok: cadence-runs-pipeline — the interval follows the operator's own schedule"
+
+# qmd armed daily (its default) and graphmap publish armed every 6h (its default) run less often than the manifest's fallback: the interval is read from the armed cron, so a 10h-old run is healthy for both.
+cr_10h=$("$node_bin" -e "const d=new Date(Date.now()-10*3600000);const p=(n)=>String(n).padStart(2,'0');console.log(d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()))")
+cr_variant "$cr_fix/qmd.txt" healthy | sed -E "s/\(cron: [^)]*\)/(cron: 00 05 * * *)/; s/(qmd-reindex\.log \(last write: )[0-9-]+ [0-9:]+\)/\1$cr_10h)/" > "$cr_cur"
+outCRq=$(run_cr qmd)
+echo "$outCRq" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-qmd: a daily-armed reindex last run 10h ago is healthy (got: $outCRq)"
+cr_variant "$cr_fix/graphmap.txt" healthy | sed -E "s|(HIMMEL-GraphPublish-Himmel \(cron: [0-9]+ )[^ ]+|\1*/6|; s/(graphmap-publish-himmel\.log \(last write: )[0-9-]+ [0-9:]+\)/\1$cr_10h)/" > "$cr_cur"
+outCRp=$(run_cr graphmap)
+echo "$outCRp" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-graphmap: a publish armed every 6h last run 10h ago is not stale (got: $outCRp)"
+echo "ok: cadence-runs — the interval follows the armed cron, not the manifest default"
+
 echo "PASS"

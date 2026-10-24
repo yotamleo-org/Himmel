@@ -54,6 +54,14 @@ rows = [panel("rp-1", 0.4, 0.0), panel("rp-2", 0.6, 0.5),
                            ci=judge_ci, ci_level=0.9, ci_method="wilson", gitsha="0" * 40,
                            meta={"since": "2026-09-26T00:00:00Z", "until": "2026-10-24T00:00:00Z"})]
 rows[0]["ts"], rows[1]["ts"], rows[2]["ts"] = "2026-10-17T10:00:00Z", "2026-10-24T10:00:00Z", "2026-10-24T11:00:00Z"
+d158 = {"q1.pct": 0.75, "q1.k": 3, "q1.n": 4, "q1.before.pct": 0.5, "q1.before.k": 1, "q1.before.n": 2,
+        "q2.pct": 0.3, "q2.k": 30, "q2.n": 100, "q2.before.pct": 0.4, "q2.before.k": 40, "q2.before.n": 100,
+        "q3.pct": 0.9, "q3.k": 9, "q3.n": 10}
+d158_ci = {"q1.pct": {"lo": 0.3, "hi": 0.95}, "q2.pct": {"lo": 0.22, "hi": 0.4}, "q3.pct": {"lo": 0.6, "hi": 0.98}}
+rows.append(eval_runs.make_row("decision-158", "scripts/eval/decision-158-answers.py", {"answers_v": 1}, d158, n=114,
+                               run_id="d158-1", ci=d158_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40,
+                               meta={"notes": {"q3": "verdicts by one judge model"}}))
+rows[3]["ts"] = "2026-10-24T12:00:00Z"
 with open(sys.argv[2], "w") as fh:
     for r in rows:
         fh.write(json.dumps(r) + "\n")
@@ -94,6 +102,90 @@ has "change: what was changed, and whether it helped" "$out" "Changed the codex 
 has "change: re-measured delta" "$out" "from 0 % to 50 %, up 50 points: it helped"
 case "$out" in *friction*) fail "change: a change to an eval that is not a reviewer is left off";; *) pass "change: a change to an eval that is not a reviewer is left off";; esac
 
+has "answers: a question with its percentage, range and sample" "$out" "Do agents write the failing test before the code? 75 % (likely between 30 % and 95 %) of 4 sessions"
+has "answers: the earlier figure and the move" "$out" "was 50 % before, up 25 points"
+has "answers: a falling figure reads as down" "$out" "was 40 % before, down 10 points"
+has "answers: a question with no earlier figure says so" "$out" "no earlier figure yet"
+has "answers: a question with no data says not measured" "$out" "Is CodeRabbit right often enough to keep? Not measured yet"
+has "answers: the note rides along" "$out" "verdicts by one judge model"
+has "answers: the judge question counts merged PRs, not verdicts" "$out" "matter? 90 % (likely between 60 % and 98 %) of 10 merged PRs"
+
+# CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
+python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+m = {"codex.recall": 0.6, "codex.precision": 0.7, "codex.findings": 10, "codex.class.logic.recall": 0.6, "codex.class.logic.n": 5}
+row = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"critics": ["codex"]}, m, n=5,
+                         run_id="rp-c", gitsha="0" * 40)
+open(sys.argv[2], "w").write(json.dumps(row) + "\n")
+PY
+out2="$(python3 -I "$PAGE" --ledger "$TMP/codex-only.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"
+has "CodeRabbit: not measured yet, needs a scratch pull request" "$out2" "CodeRabbit is not measured yet: it needs a scratch pull request"
+
+# The answers script: five questions from fixture ledgers, before and after a cut.
+python3 -I - "$HERE/lib" "$TMP/ans-runs.jsonl" "$TMP/cr.jsonl" <<'PY' || { echo "test-review-page: writing the answers fixtures failed" >&2; exit 1; }
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+def row(ev, ts, m, **kw):
+    r = eval_runs.make_row(ev, "t", {"k": 1}, m, n=kw.pop("n", 1), gitsha="0" * 40, **kw)
+    r["ts"] = ts
+    return r
+rows = [row("leg-trajectory", "2026-10-20T00:00:00Z", {"red_before_green": 1}),
+        row("leg-trajectory", "2026-10-21T00:00:00Z", {"red_before_green": 0}),
+        row("leg-trajectory", "2026-10-21T01:00:00Z", {"red_before_green": None}),
+        row("leg-trajectory", "2026-10-23T00:00:00Z", {"red_before_green": 1}),
+        row("leg-trajectory", "2026-10-23T01:00:00Z", {"red_before_green": 1}),
+        row("leg-trajectory", "2026-10-22T00:00:00Z", {"red_before_green": 1}),
+        row("friction", "2026-10-22T00:00:00Z", {"refusals": 100, "unclear": 40}),
+        row("friction", "2026-10-24T12:00:00Z", {"refusals": 100, "unclear": 30}),
+        row("judge-accuracy", "2026-10-24T12:00:00Z", {"model.claude-opus-5-5.n": 9, "model.sonnet.n": 1, "model.unknown.n": 4})]
+with open(sys.argv[2], "w") as fh:
+    for r in rows:
+        fh.write(json.dumps(r) + "\n")
+def fin(ts, fid, verdict, br):
+    return [{"kind": "finding", "ts": ts, "branch": br, "head": "h", "model": "coderabbit", "finding_id": fid, "severity": "imp",
+             "file": "a", "line": 1, "verdict": "", "artifact": "diff", "perspective": "off", "text": fid},
+            {"kind": "amend", "ts": ts, "branch": br, "target_head": "h", "finding_id": fid, "artifact": "diff",
+             "perspective": "off", "set": {"verdict": verdict}, "reason": "r"}]
+cr = fin("2026-10-10T00:00:00Z", "c1", "fixed", "b1") + fin("2026-10-11T00:00:00Z", "c2", "fixed", "b2") + \
+    fin("2026-10-12T00:00:00Z", "c3", "disproved", "b3") + fin("2026-10-23T00:00:00Z", "c4", "fixed", "b4")
+with open(sys.argv[3], "w") as fh:
+    for r in cr:
+        fh.write(json.dumps(r) + "\n")
+PY
+ans="$(python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/cr.jsonl" --cut 2026-10-22T00:00:00Z 2>&1)"; rc=$?
+eq "answers: exit 0" "$rc" "0"
+pick() { printf '%s' "$ans" | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["metrics"].get(sys.argv[1]))' "$1"; }
+eq "answers q1: sessions that ran a test, no-test sessions left out" "$(pick q1.n)" "5"
+eq "answers q1: test-first count" "$(pick q1.k)" "4"
+eq "answers q1: the earlier figure includes a row at the cut, like the others" "$(pick q1.before.n)" "3"
+eq "answers q2: unclear share of the newest window" "$(pick q2.pct)" "0.3"
+eq "answers q2: the window at the cut" "$(pick q2.before.pct)" "0.4"
+eq "answers q3: share of the most used judge model, unknown left out" "$(pick q3.pct)" "0.9"
+eq "answers q4: CodeRabbit right 3 of 4 adjudicated" "$(pick q4.pct)" "0.75"
+eq "answers q4: the earlier figure stops at the cut" "$(pick q4.before.pct)" "0.6667"
+eq "answers q5: no Claude critic findings means no figure" "$(pick q5.pct)" "None"
+miss="$(python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/no-such-cr.jsonl" 2>&1 >/dev/null)"
+eq "answers: an unreadable CR ledger is named on stderr, not silently an empty sample" "$(printf '%s' "$miss" | grep -c 'coderabbit measurement unavailable')" "2"
+python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-runs.jsonl" --cr-ledger "$TMP/cr.jsonl" --record >/dev/null 2>&1
+eq "answers --record appends one decision-158 row" "$(grep -c decision-158 "$TMP/ans-runs.jsonl")" "1"
+eq "answers --record of a complete measurement is an ok row" "$(grep decision-158 "$TMP/ans-runs.jsonl" | grep -c '"status":"ok"')" "1"
+cp "$TMP/ans-runs.jsonl" "$TMP/ans-partial.jsonl"
+python3 -I "$HERE/decision-158-answers.py" --ledger "$TMP/ans-partial.jsonl" --cr-ledger "$TMP/no-such-cr.jsonl" --record >/dev/null 2>&1; rc=$?
+eq "answers --record with an unreadable CR ledger exits 3" "$rc" "3"
+eq "answers --record with an unreadable CR ledger writes a partial row that names the gap" "$(grep decision-158 "$TMP/ans-partial.jsonl" | tail -n 1 | grep -c '"status":"partial".*coderabbit')" "1"
+# The default CR ledger is found from the script's own checkout, not from the caller's directory (cron runs from $HOME).
+dflt="$(cd "$TMP" && env -u CR_LEDGER python3 -I -c '
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("d158", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+p = m.default_cr_ledger()
+print("ok" if p and os.path.isabs(p) and os.path.basename(p) == "cr-critic-scores.jsonl" and os.path.isdir(os.path.dirname(p)) else "bad:%s" % p)' "$HERE/decision-158-answers.py" 2>&1)"
+eq "answers: with CR_LEDGER unset and the caller outside any repo, the CR ledger path is still found" "$dflt" "ok"
+
 # No raw field name: no metric or interval key from the fixture rows, no dotted or snake_case identifier.
 leak="$(printf '%s' "$out" | python3 -I -c 'import json, re, sys
 page = sys.stdin.read()
@@ -112,7 +204,7 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-eq "no ledger: both sections say there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "2"
+eq "no ledger: every section says there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "3"
 
 cp "$TMP/changes.jsonl" "$TMP/bad-changes.jsonl"
 printf '%s\n' '{"status":"measured"}' '{"status":"open","eval":"review-panel","metric":null}' '7' >> "$TMP/bad-changes.jsonl"

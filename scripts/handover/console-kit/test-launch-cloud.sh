@@ -38,6 +38,11 @@ while [ "$#" -gt 0 ]; do
 done
 exit 1
 EOF
+# setsid: absent on macOS; the stub only has to run its command.
+cat > "$BIN/setsid" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
 # script(1): script -q -c <cmd> <logfile>
 cat > "$BIN/script" <<'EOF'
 #!/usr/bin/env bash
@@ -57,7 +62,7 @@ cat > "$BIN/claude" <<'EOF'
 printf '%s\n' "$@" > "$CLAUDE_ARGV"
 printf 'Created cloud session session_01ABCxyz\nView: https://claude.ai/code/session_01ABCxyz\n'
 EOF
-chmod +x "$BIN/konsole" "$BIN/script" "$BIN/claude"
+chmod +x "$BIN/konsole" "$BIN/setsid" "$BIN/script" "$BIN/claude"
 
 export PATH="$BIN:$PATH"
 export HIMMEL_BUCKET_DIR="$BUCKET"

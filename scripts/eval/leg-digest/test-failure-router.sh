@@ -159,7 +159,7 @@ echo "c + d. the daily cap and the memory-inbox candidate"
 row N100 suite/test-board.sh 0 false leg 2026-10-06T10:00:00Z true; row N200 suite/test-board.sh 0 false leg 2026-10-06T10:00:00Z true
 row N100 denied/permission-prompt; row N200 denied/permission-prompt
 route >/dev/null 2>&1
-check "two more classes file (3 today)" '[ "$(calls create)" = 3 ] && [ "$(decs "$LOG" | jq -r "select(.decision == \"filed\") | .class" | sort -u | wc -l)" = 3 ]'
+check "two more classes file (3 today)" '[ "$(calls create)" = 3 ] && [ "$(decs "$LOG" | jq -r "select(.decision == \"filed\") | .class" | sort -u | wc -l)" -eq 3 ]'
 row N100 denied/classifier:merge-without-review; row N200 denied/classifier:merge-without-review
 route >"$TMP/c.out" 2>&1 || bad "route exits 0 on the capped day"
 check "c. the 4th class files nothing and writes one capped line" '[ "$(calls create)" = 3 ] && [ "$(decs "$LOG" | jq -r "select(.class == \"denied/classifier:merge-without-review\") | .decision")" = capped ]'

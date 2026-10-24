@@ -79,7 +79,7 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 # S4: with no anchor, leg-graph.sh runs a given-seed query from the semantic file plus the keyword query.
 out="$(run query "how does a console hand work to a leg")"; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && [ "$(wc -l < "$T/calls")" = 2 ] \
+if [ "$rc" = 0 ] && [ "$(wc -l < "$T/calls")" -eq 2 ] \
   && grep -qx -- "query how does a console hand work to a leg --rationale --seed glossary --seed runc --seed go_sh --budget 4000" <<<"$calls" \
   && grep -qx -- "query how does a console hand work to a leg --rationale --budget 4000" <<<"$calls"; then
   pass "S4 semantic seed passed to graphify query"

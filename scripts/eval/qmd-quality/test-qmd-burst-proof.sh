@@ -66,6 +66,10 @@ class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 class S(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
+    # HTTPServer.server_bind calls getfqdn(), a reverse lookup that stalls for seconds on a macOS runner.
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = '127.0.0.1', self.server_address[1]
 s = S(('127.0.0.1', 0), H)
 open(portfile, 'w').write(str(s.server_address[1]))
 s.serve_forever()
@@ -77,7 +81,7 @@ start_stub() {
     rm -f "$pf"
     python3 -I "$TMP/stub.py" "$2" "$pf" >/dev/null 2>&1 &
     SRV_PIDS+=("$!")
-    while [ ! -s "$pf" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    while [ ! -s "$pf" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
     URL="http://127.0.0.1:$(cat "$pf")/mcp" # read-sink-ok: $pf is this suite's own mktemp port file
     AUTHFILE="$pf.auth"
 }

@@ -26,7 +26,7 @@ cat > "$T/launcher.sh" <<'EOF'
 #!/usr/bin/env bash
 doc="$6"
 echo "$*" >> "$LC_T/launched.log"
-pwd >> "$LC_T/cwd.log"
+pwd -P >> "$LC_T/cwd.log"
 case "$FAKE_MODE" in
     ok)     printf -- '- 16:51 LIVE — canary native first bullet\n- 16:51 WRAPPED — canary native done\n' >> "$doc" ;;
     wrapnolive) printf -- '- 16:51 WRAPPED — canary native done\n' >> "$doc" ;;
@@ -35,6 +35,13 @@ case "$FAKE_MODE" in
     silent) sleep 30 ;;
 esac
 EOF
+# macOS has no setsid; the runner only needs the launcher to run.
+if ! command -v setsid >/dev/null 2>&1; then
+    mkdir -p "$T/stubbin"
+    printf '#!/bin/sh\nexec "$@"\n' > "$T/stubbin/setsid"
+    chmod +x "$T/stubbin/setsid"
+    PATH="$T/stubbin:$PATH"
+fi
 printf '#!/usr/bin/env bash\necho "$1" >> "$LC_T/closed.log"\n' > "$T/closer.sh"
 printf '#!/usr/bin/env bash\ncase "$1" in status) echo free ;; release) echo "$2" >> "$LC_T/released.log" ;; esac\n' > "$T/lock.sh"
 printf '#!/usr/bin/env bash\nprintf -- "- 12:00 %%s\\n" "$2" >> "$1"\n' > "$T/append.sh"

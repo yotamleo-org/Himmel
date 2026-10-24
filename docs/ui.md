@@ -145,6 +145,12 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `python3 scripts/eval/weekly-rollup.py write`; the browser recomputes nothing, and without
   the file the section says "no data yet".
 
+- **How good are our reviewers?** The Health page shows the reviewer page the weekly judge-accuracy
+  cadence renders: how often the codex critic, CodeRabbit and the judges are right, with ranges, the
+  five open evals questions and each change with its before and after. The server serves it read-only at
+  `GET /api/reviewers` from `~/.himmel/state/review-page/review-page.md` (`REVIEW_PAGE_FILE` overrides); without the
+  file the section says "No data: no review page yet (arm scripts/eval/judge-accuracy/judge-accuracy-cadence.sh)".
+
 Full reference, endpoints and environment overrides:
 [scripts/config-ui/README.md](../scripts/config-ui/README.md).
 

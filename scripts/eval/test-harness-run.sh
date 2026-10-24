@@ -10,6 +10,11 @@
 # (PR_SET_CHILD_SUBREAPER, /proc), like the judge harnesses it wraps.
 set -uo pipefail
 
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP - harness-run.py is Linux-only by design (prctl PR_SET_CHILD_SUBREAPER, /proc); HIMMEL-7101"
+    exit 0
+fi
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${HARNESS_RUN_SUT:-$HERE/harness-run.py}"
 W="$(mktemp -d "${TMPDIR:-/tmp}/harness-run-test.XXXXXX")" || exit 1

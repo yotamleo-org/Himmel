@@ -689,6 +689,15 @@ assert_contains "cron himmel armed" "ARMED      HIMMEL-GraphMap-Himmel" "$out"
 assert_contains "cron ast-luna armed"   "ARMED      HIMMEL-GraphMapAst-Luna"   "$out"
 assert_contains "cron ast-himmel armed" "ARMED      HIMMEL-GraphMapAst-Himmel" "$out"
 assert_contains "cron status surfaces run log state" "run log" "$out"
+assert_not_contains "single entries are not flagged duplicate" "DUPLICATE" "$out"
+
+echo "TEST: cron status flags a doubled scheduler entry"
+cp "$CSTATE/crontab" "$CSTATE/crontab.single"
+grep -E "# HIMMEL-GraphMapAst-Himmel\$" "$CSTATE/crontab.single" | head -1 >>"$CSTATE/crontab"
+out=$(run_cron status)
+assert_contains "doubled ast-himmel entry is flagged with its count" "[DUPLICATE: 2 cron entries]" "$out"
+assert_rc "only the doubled task is flagged" 1 "$(grep -cF DUPLICATE <<<"$out")"
+cp "$CSTATE/crontab.single" "$CSTATE/crontab"
 
 # Test C5b: status summarises a run log --------------------
 #

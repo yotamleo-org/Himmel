@@ -17,6 +17,8 @@ _fail() { printf 'FAIL  %s\n  -> %s\n' "$1" "$2"; FAIL=$(( FAIL + 1 )); }
 
 TMPBASE="${TMPDIR:-/tmp}/test-nwc-$$"
 mkdir -p "$TMPBASE"
+# git lists worktrees by physical path; macOS $TMPDIR sits behind a /var symlink
+TMPBASE="$(cd "$TMPBASE" && pwd -P)"
 # shellcheck disable=SC2064
 trap 'rm -rf "$TMPBASE"' EXIT
 
