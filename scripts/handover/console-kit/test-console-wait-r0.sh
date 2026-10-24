@@ -367,5 +367,28 @@ wait_exit "$WPID"
 check "(rv-merged) a BLOCKED resolve before a MERGED bullet does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# a later PARKED-USAGE bullet retires a BLOCKED resolve
+reset_stub
+fleet rvp
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:40 PARKED-USAGE — weekly cap\n' >> "$L"
+start "$I" "$WORK/rvp.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-parked) no baseline heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(rv-parked) a BLOCKED resolve before a PARKED-USAGE bullet does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# a later line that only starts like a marker (BLOCKED2) is no marker and hides nothing
+reset_stub
+fleet rvb
+start "$I" "$WORK/rvb.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(rv-boundary) no baseline heartbeat"
+printf -- '- 10:00 BLOCKED resolve 3628 PRRT_abc — denied\n- 10:10 BLOCKED2 stray note\n' >> "$L"
+tick_line "N1:BLOCKED" "N1:BLOCKED#1"
+wait_exit "$WPID"
+check "(rv-boundary) a BLOCKED2 line does not hide a BLOCKED resolve" "0" "$rc"
+check "(rv-boundary) the wake names the resolve" "WAKE resolve N1 pr=3628 threads=PRRT_abc" "$(head -n 1 "$WORK/rvb.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
