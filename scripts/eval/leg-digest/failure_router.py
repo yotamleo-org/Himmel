@@ -71,6 +71,7 @@ NOTIFY_ENV = "FAILURE_ROUTER_NOTIFY_CMD"
 NOTIFY = os.path.join(HERE, "failure-route-notify.sh")
 DONE = ("done", "closed", "resolved", "won't do", "cancelled", "canceled")
 JIRA_TIMEOUT = 60
+MAX_BODY_LEGS = 500  # Jira refuses a body past its text limit; the count line still names every leg
 
 CLASS = re.compile(r"^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$")
 SUB = r"[A-Za-z0-9._:+-]{1,80}"
@@ -214,7 +215,7 @@ def build_body(table, t, cls, legs, counted, update):
         out += [HEADS[0], ""]
     out += ["- class: %s" % cls,
            "- distinct legs (%d d): %d" % (table["window_days"], len(legs)),
-           "- legs: %s" % ", ".join(legs)]
+           "- legs: %s" % ", ".join(legs[:MAX_BODY_LEGS])]
     if not update:
         out += ["- tickets: %s" % (", ".join(tickets) or "none"),
                 "- PRs: %s" % (", ".join("#%d" % n for n in prs) or "none")]
