@@ -11,8 +11,9 @@
 # random, and the denied resolve stalled the PR. This hook allows exactly that
 # shape as ONE literal command so the classifier never sees it: no chaining, no
 # redirect, no substitution, no extra flag, our owner and repo only, a PRRT_ thread id, and a CLI path that is the
-# PRIMARY checkout's copy (git's answer about the cwd), never a branch copy whose
-# bytes a branch controls. Any other command gets no decision (silent exit 0),
+# PRIMARY checkout's copy of the repo THIS HOOK lives in (git's answer about the
+# hook's own directory, never the payload's cwd, which any repo can be), not a
+# branch copy whose bytes a branch controls. Any other command gets no decision (silent exit 0),
 # so the permission layer decides as before. The CLI posts its reason on GitHub
 # before it resolves, so every resolve stays auditable.
 #
@@ -20,8 +21,8 @@
 # (the chain only merges allow decisions after every member has run).
 #
 # FAILURE DIRECTION: FAIL OPEN to "no decision" - this hook can only ADD an
-# allow for the one shape, so a missing jq or git, an unreadable payload or an
-# unreadable cwd leaves the call to the permission layer. The shape check is
+# allow for the one shape, so a missing jq or git, an unreadable payload or a
+# hook dir outside a git checkout leaves the call to the permission layer. The shape check is
 # this file's text scan; the test table in test-allow-thread-resolve.sh holds
 # the same rows.
 set -uo pipefail
@@ -42,9 +43,7 @@ input=$(cat 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decis
 tool=$(jq -r '.tool_name // "Bash"' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
 [ "$tool" = Bash ] || exit 0
 cmd=$(jq -r '.tool_input.command // ""' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
-cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
 [ -n "$cmd" ] || exit 0
-case "$cwd" in /*) ;; *) exit 0 ;; esac
 
 LC_ALL=C
 case "$cmd" in *$'\n'*|*$'\r'*|*..*) exit 0 ;; esac
@@ -58,7 +57,7 @@ RE="$RE --reason \"(fixed $SHA|followup $KEY|rejected $WHY)\"\$"
 [[ "$cmd" =~ $RE ]] || exit 0
 root="${BASH_REMATCH[1]}"
 
-common=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
+common=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
 case "$common" in /*/.git) ;; *) exit 0 ;; esac
 [ "$root" = "${common%/.git}" ] || exit 0
 

@@ -13,7 +13,7 @@
 #   1 - at least one case failed
 set -uo pipefail
 
-HOOK="$(cd "$(dirname "$0")" && pwd)/allow-thread-resolve.sh"
+REAL_HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
@@ -29,8 +29,11 @@ PRIMARY="$TMP/himmel"
 WT="$TMP/wt"
 OTHER="$TMP/other"
 g init -q "$PRIMARY" || exit 1
-echo x >"$PRIMARY/f"
-g -C "$PRIMARY" add f && g -C "$PRIMARY" commit -q -m init || exit 1
+mkdir -p "$PRIMARY/scripts/hooks" "$PRIMARY/scripts/lib" || exit 1
+cp "$REAL_HOOK_DIR/allow-thread-resolve.sh" "$PRIMARY/scripts/hooks/" || exit 1
+cp "$REAL_HOOK_DIR/../lib/git-clean.sh" "$PRIMARY/scripts/lib/" || exit 1
+HOOK="$PRIMARY/scripts/hooks/allow-thread-resolve.sh"
+g -C "$PRIMARY" add scripts && g -C "$PRIMARY" commit -q -m init || exit 1
 g -C "$PRIMARY" worktree add -q "$WT" -b leg || exit 1
 g init -q "$OTHER" || exit 1
 
@@ -106,8 +109,12 @@ expect_none 'branch-relative cli path' "$WT" "node plugins/himmel-gh/lib/thread-
 expect_none 'cli path outside the primary' "$WT" "node $TMP/evil/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
 expect_none 'the worktree copy of the cli' "$WT" "node $WT/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
 expect_none 'dot-dot in cli path' "$WT" "node $PRIMARY/x/../plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
-expect_none 'cwd in an unrelated repo' "$OTHER" "$GOOD"
-expect_none 'cwd not a repo' "$TMP_ROOT" "$GOOD"
+expect_none 'unrelated repo carrying its own cli, cwd there' "$OTHER" "node $OTHER/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+expect_allow 'cwd not a repo (the cwd is not the trust anchor)' "$TMP_ROOT" "$GOOD"
+HOOK_SAVED="$HOOK"; HOOK="$WT/scripts/hooks/allow-thread-resolve.sh"
+expect_allow 'the worktree copy of the hook, same primary cli' "$WT" "$GOOD"
+expect_none 'the worktree copy of the hook, worktree cli' "$WT" "node $WT/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+HOOK="$HOOK_SAVED"
 expect_none 'other node script' "$WT" "node $PRIMARY/plugins/himmel-gh/lib/thread-reply-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
 expect_none 'other mutation' "$WT" "gh pr merge 3628"
 expect_none 'empty command' "$WT" ""
@@ -122,7 +129,7 @@ OUT="$(printf 'not json' | bash "$HOOK" 2>/dev/null)"; RC=$?
 if [ "$RC" -eq 0 ] && [ -z "$OUT" ]; then echo "PASS none:  unparseable stdin"; else echo "FAIL none:  unparseable stdin (rc=$RC out=$OUT)"; FAILED=1; fi
 
 # the hook is registered: wirer inventory and the settings Bash chain both name it
-REPO="$(cd "$(dirname "$HOOK")/../.." && pwd)"
+REPO="$(cd "$REAL_HOOK_DIR/../.." && pwd)"
 if grep -q "'allow-thread-resolve.sh'" "$REPO/scripts/hooks/wire-hook-bash.mjs" \
     && [ "$(grep -c 'run-hook-with-bash.js\\" --chain .*scripts/hooks/allow-thread-resolve.sh' "$REPO/.claude/settings.json")" -ge 1 ] \
     && (cd "$REPO" && node scripts/hooks/wire-hook-bash.mjs --check >/dev/null 2>&1); then
