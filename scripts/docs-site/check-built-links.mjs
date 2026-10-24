@@ -30,11 +30,13 @@ const unescapeHtml = (s) =>
     return code <= 0x10ffff ? String.fromCodePoint(code) : all;
   });
 
+const withoutInert = (html) => html.replace(/<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
+
 const idCache = new Map();
 const idsOf = (file) => {
   if (!idCache.has(file)) {
     const ids = new Set();
-    for (const m of fs.readFileSync(file, 'utf8').matchAll(/\s(?:id|name)=(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/g)) {
+    for (const m of withoutInert(fs.readFileSync(file, 'utf8')).matchAll(/\s(?:id|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/gi)) {
       ids.add(unescapeHtml(m[1] ?? m[2] ?? m[3]));
     }
     idCache.set(file, ids);
@@ -52,7 +54,7 @@ let checked = 0;
 const dead = [];
 for (const file of htmlFiles) {
   const rel = path.relative(dist, file);
-  const html = fs.readFileSync(file, 'utf8');
+  const html = withoutInert(fs.readFileSync(file, 'utf8'));
   for (const m of html.matchAll(/<a\s(?:[^>]*?\s)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) {
     const href = unescapeHtml(m[1] ?? m[2] ?? m[3]).trim();
     if (href === '' || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) continue;

@@ -167,10 +167,15 @@ mk_site "$sweep_ctl/links-sd" "" '<a href="../../links-sd-extra/x/">x</a>' || ex
 mkdir -p "$sweep_ctl/links-sd-extra/x" && echo ok >"$sweep_ctl/links-sd-extra/x/index.html" || exit 1
 mk_site "$sweep_ctl/links-ent" '<a href="/Himmel/page/#a&amp;b">x</a> <a href="#a%26b">y</a>' "" || exit 1
 printf '<h2 id="a&amp;b">E</h2>\n' >>"$sweep_ctl/links-ent/page/index.html" || exit 1
+mk_site "$sweep_ctl/links-inert" '<!-- <a href="/Himmel/no-such/">x</a> --> <script>var s = '"'"'<a href="/Himmel/no-such/">x</a>'"'"';</script>' "" || exit 1
+mk_site "$sweep_ctl/links-case" '<a href="#up">x</a>' "" || exit 1
+printf '<h2 ID = "up">U</h2>\n' >>"$sweep_ctl/links-case/page/index.html" || exit 1
 mkdir "$sweep_ctl/links-empty" || exit 1
 built_rc2() { node "$links_chk" "$1" /Himmel >/dev/null 2>&1; [ $? -eq 2 ]; }
 check "built links: a clean fixture site passes" built_ok "$sweep_ctl/links-clean"
 check "built links: an entity-escaped fragment and its percent-encoded form resolve" built_ok "$sweep_ctl/links-ent"
+check "built links: an anchor inside a comment or script is not a link" built_ok "$sweep_ctl/links-inert"
+check "built links: an upper-case ID attribute with spaced equals is a fragment target" built_ok "$sweep_ctl/links-case"
 check "built links: a percent-encoded link to a spaced directory resolves" built_ok "$sweep_ctl/links-pct"
 check "built links: a data-href attribute is not a link" built_ok "$sweep_ctl/links-data"
 check "control: built links fails a relative link into a sibling directory sharing the dist prefix" fails built_ok "$sweep_ctl/links-sd"
