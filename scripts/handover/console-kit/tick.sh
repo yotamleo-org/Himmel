@@ -119,7 +119,7 @@ skips). fails=none with no rows, fails=? when a ledger or the lock start is
 unreadable or the latest wrap digest failed, skip with no --doc. Advisory: not in
 console-wait's action key, so it wakes nothing. Env seams:
 HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
-LEG_DIGEST_STATE_DIR.
+WORKER_SESSION_DIGEST_STATE_DIR.
 
 gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from
 the X-Ratelimit-* headers of ONE `gh api -i graphql` call
@@ -688,14 +688,14 @@ leg_cachettl() {
 }
 
 # leg_effort_mismatch <doc> <label>: succeeds only when the effort the
-# console asked for (the LEG_EFFORT export in the launch-<label>.sh gen-briefs.py
+# console asked for (the WORKER_SESSION_EFFORT export in the launch-<label>.sh gen-briefs.py
 # writes beside the leg doc) differs from the effort= token on the leg's newest LIVE
 # bullet. A missing launcher, export or token leaves nothing to compare, so no flag.
 leg_effort_mismatch() {
     local doc="$1" label="$2" launch asked live
     launch="${doc%/*}/launch-$label.sh"
     [ -r "$launch" ] || return 1
-    asked="$(sed -nE 's/^export LEG_EFFORT=(low|medium|high|xhigh|max)$/\1/p' "$launch" | tail -n 1)"  # pipefail-ok: tail reads sed to EOF
+    asked="$(sed -nE 's/^export (WORKER_SESSION|LEG)_EFFORT=(low|medium|high|xhigh|max)$/\2/p' "$launch" | tail -n 1)"  # pipefail-ok: tail reads sed to EOF
     live="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' "$doc" 2>/dev/null | tail -n 1 \
         | sed -nE 's/^(.*[[:space:]])?effort=(low|medium|high|xhigh|max)([^A-Za-z0-9_].*)?$/\2/p')"  # pipefail-ok: tail reads grep to EOF
     [ -n "$asked" ] && [ -n "$live" ] && [ "$asked" != "$live" ]
@@ -898,7 +898,7 @@ legs_label_shaped() {
 # legs_line_spans <entries|malformed> <legs: line> -- classify every backtick
 # span on the line. `entries` prints each well-formed
 # `<label>:<nonce>:<lock-token>:<pid>` span, one per line, backticks stripped
-# (exactly four non-empty fields, first one all LEG_LABEL_CLASS). `malformed`
+# (exactly four non-empty fields, first one all WORKER_SESSION_LABEL_CLASS). `malformed`
 # prints the LABEL of each label-shaped span that has a colon but is not that
 # (a truncated or padded real entry) -- the label only, since the span carries a
 # nonce and a lock token. Everything else is prose and is ignored: a span with
@@ -914,7 +914,7 @@ legs_line_spans() {
         f1="${span%%:*}"
         [ "$f1" != "$span" ] || continue
         case "$f1" in
-            ''|*[!$LEG_LABEL_CLASS]*) continue ;;
+            ''|*[!$WORKER_SESSION_LABEL_CLASS]*) continue ;;
         esac
         colons="${span//[!:]/}"
         entry=0
@@ -958,7 +958,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         # Each leg is one backtick span `<label>:<nonce>:<lock-token>:<pid>`
         # (Delta 2's format) -- take the label, the text before the first
         # colon inside the span. The label class is leg-identity.sh's own
-        # (LEG_LABEL_CLASS, which includes "-" and "."): a narrower class here
+        # (WORKER_SESSION_LABEL_CLASS, which includes "-" and "."): a narrower class here
         # rejected every hyphenated label, so a span naming a leg by anything
         # but a bare N<k> never parsed and read as absent.
         # Prose on the line is tolerated: a backticked token is
@@ -1827,7 +1827,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
               end' 2>/dev/null)" || fl_counts=""
         # ~<k> = distinct docs whose wrap digest was skipped this
         # shift (leg-digest-step.sh's skips.jsonl); unreadable reads ? too.
-        fl_skips_log="${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}/skips.jsonl"
+        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}}/skips.jsonl"
         fl_skips=""
         fl_ok "$fl_skips_log" && { fl_skips="$(fl_rows "$fl_skips_log" | jq -s -r 'map(.doc) | unique | length' 2>/dev/null)" || fl_skips=""; }
         case "$fl_recur" in ''|*[!0-9]*) fl_counts="" ;; esac
@@ -2103,7 +2103,7 @@ fi
 fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # bank= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
-if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${LEG_LANE:-native}}}" = openrouter ]; then
+if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi

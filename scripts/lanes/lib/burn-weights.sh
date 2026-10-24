@@ -6,7 +6,7 @@
 # Override any of them via env for a later price change; sourced, not run.
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ arithmetic only; it
 # runs under git bash unchanged, same as leg-burn.sh, which sources it.
-: "${LEG_BURN_W_CACHE_READ:=0.1}"
-: "${LEG_BURN_W_CACHE_CREATE:=1.25}"
-: "${LEG_BURN_W_INPUT:=1}"
-: "${LEG_BURN_W_OUTPUT:=5}"
+: "${WORKER_SESSION_BURN_W_CACHE_READ:=${LEG_BURN_W_CACHE_READ:-0.1}}"
+: "${WORKER_SESSION_BURN_W_CACHE_CREATE:=${LEG_BURN_W_CACHE_CREATE:-1.25}}"
+: "${WORKER_SESSION_BURN_W_INPUT:=${LEG_BURN_W_INPUT:-1}}"
+: "${WORKER_SESSION_BURN_W_OUTPUT:=${LEG_BURN_W_OUTPUT:-5}}"

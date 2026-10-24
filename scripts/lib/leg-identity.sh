@@ -35,7 +35,7 @@
 
 # Characters a label may contain. tick.sh builds its `legs:` span parser from the
 # same class, so a label this file emits is always one the parser accepts.
-LEG_LABEL_CLASS='A-Za-z0-9_.-'
+WORKER_SESSION_LABEL_CLASS='A-Za-z0-9_.-'
 
 # leg_identity <leg doc path or stem>
 # Prints ONE line: <label><TAB><name>[,<name>...]
@@ -63,7 +63,7 @@ leg_identity() {
     else
         label="$stem"
     fi
-    label="$(printf '%s' "$label" | tr -c "$LEG_LABEL_CLASS" '_')"
+    label="$(printf '%s' "$label" | tr -c "$WORKER_SESSION_LABEL_CLASS" '_')"
     local names="$session"
     [ "$undated" = "$session" ] || names="$names,$undated"
     [ -z "$derived" ] || names="$names,$derived"

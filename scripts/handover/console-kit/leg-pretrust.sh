@@ -39,7 +39,7 @@ command -v node >/dev/null 2>&1 || { echo "leg-pretrust: node not on PATH" >&2; 
 # The trailing "x" keeps $(...) from eating a newline that is part of the directory name.
 abs="$(cd -P "$dir" 2>/dev/null && pwd -P && printf x)" || { echo "leg-pretrust: cannot resolve: $dir" >&2; exit 2; }
 abs="${abs%x}"; abs="${abs%$'\n'}"   # drop the x, then the one newline pwd added
-home="$(cd -P "${LEG_PRETRUST_HOME:-$HOME}" 2>/dev/null && pwd -P)" || { echo "leg-pretrust: cannot resolve HOME" >&2; exit 2; }  # LEG_PRETRUST_HOME: test seam
+home="$(cd -P "${WORKER_SESSION_PRETRUST_HOME:-${LEG_PRETRUST_HOME:-$HOME}}" 2>/dev/null && pwd -P)" || { echo "leg-pretrust: cannot resolve HOME" >&2; exit 2; }  # WORKER_SESSION_PRETRUST_HOME: test seam
 
 refuse() { echo "leg-pretrust: REFUSED $abs: $1" >&2; exit 3; }
 
@@ -72,37 +72,39 @@ case "$lane" in
 esac
 # Jailed rows: claude runs inside a bwrap jail where the
 # worktree is bound at another path and ~/.claude-<lane> is a per-row copy, so the
-# flag must land in THAT config under THAT path. LEG_PRETRUST_CONFIG names the
-# config file and LEG_PRETRUST_KEY the project key; the directory is still checked
+# flag must land in THAT config under THAT path. WORKER_SESSION_PRETRUST_CONFIG names the
+# config file and WORKER_SESSION_PRETRUST_KEY the project key; the directory is still checked
 # above. The jail can write the row's config dir, so in that mode nothing in it is
 # trusted: the config, its sidecar and its lock must not be symlinks (the host would
 # write through them), the dir must be ours, and the config must not be a real lane
 # config. The key is honoured only with the config, as <repo>/.claude/worktrees/<same
 # last component as the checked dir> with no empty or dot segment (the jail re-binds
 # the same worktree, it never trusts a different one).
-if [ -n "${LEG_PRETRUST_KEY:-}" ] && [ -z "${LEG_PRETRUST_CONFIG:-}" ]; then
-    refuse "LEG_PRETRUST_KEY is honoured only together with LEG_PRETRUST_CONFIG"
+WORKER_SESSION_PRETRUST_KEY="${WORKER_SESSION_PRETRUST_KEY:-${LEG_PRETRUST_KEY:-}}"
+WORKER_SESSION_PRETRUST_CONFIG="${WORKER_SESSION_PRETRUST_CONFIG:-${LEG_PRETRUST_CONFIG:-}}"
+if [ -n "${WORKER_SESSION_PRETRUST_KEY}" ] && [ -z "${WORKER_SESSION_PRETRUST_CONFIG}" ]; then
+    refuse "WORKER_SESSION_PRETRUST_KEY is honoured only together with WORKER_SESSION_PRETRUST_CONFIG"
 fi
-if [ -n "${LEG_PRETRUST_CONFIG:-}" ]; then
-    case "$LEG_PRETRUST_CONFIG" in
-        /*/.claude.json) cfg="$LEG_PRETRUST_CONFIG" ;;
-        *) echo "leg-pretrust: LEG_PRETRUST_CONFIG must be an absolute path ending in /.claude.json" >&2; exit 2 ;;
+if [ -n "${WORKER_SESSION_PRETRUST_CONFIG}" ]; then
+    case "$WORKER_SESSION_PRETRUST_CONFIG" in
+        /*/.claude.json) cfg="$WORKER_SESSION_PRETRUST_CONFIG" ;;
+        *) echo "leg-pretrust: WORKER_SESSION_PRETRUST_CONFIG must be an absolute path ending in /.claude.json" >&2; exit 2 ;;
     esac
     cfgdir="$(cd -P "$(dirname "$cfg")" 2>/dev/null && pwd -P)" || cfgdir=""
     [ -n "$cfgdir" ] || { echo "leg-pretrust: lane config dir absent (launcher not seeded yet): $(dirname "$cfg")" >&2; exit 4; }
     case "$cfgdir" in
-        "$home"|"$home/.claude-codex"|"$home/.claude-openrouter"|"$home/.claude-deepseek"|"$home/.claude-glm"|"$home/.claude-routed") refuse "LEG_PRETRUST_CONFIG is a real lane config" ;;
+        "$home"|"$home/.claude-codex"|"$home/.claude-openrouter"|"$home/.claude-deepseek"|"$home/.claude-glm"|"$home/.claude-routed") refuse "WORKER_SESSION_PRETRUST_CONFIG is a real lane config" ;;
     esac
-    [ -O "$cfgdir" ] || refuse "LEG_PRETRUST_CONFIG dir is not owned by the current user"
+    [ -O "$cfgdir" ] || refuse "WORKER_SESSION_PRETRUST_CONFIG dir is not owned by the current user"
     for f in "$cfg" "$cfg.lock" "$cfg.leg-pretrust.owner"; do
         [ ! -L "$f" ] || refuse "$f is a symlink (a jailed lane could point it outside the row)"
     done
 fi
-if [ -n "${LEG_PRETRUST_KEY:-}" ]; then
-    case "$LEG_PRETRUST_KEY" in
-        *$'\n'*|*/|*//*|*/./*|*/.|*/../*|*/..) refuse "LEG_PRETRUST_KEY has a newline, trailing /, empty or dot segment" ;;
-        /*/.claude/worktrees/"${abs##*/}") abs="$LEG_PRETRUST_KEY" ;;
-        *) refuse "LEG_PRETRUST_KEY must be <repo>/.claude/worktrees/${abs##*/}" ;;
+if [ -n "${WORKER_SESSION_PRETRUST_KEY}" ]; then
+    case "$WORKER_SESSION_PRETRUST_KEY" in
+        *$'\n'*|*/|*//*|*/./*|*/.|*/../*|*/..) refuse "WORKER_SESSION_PRETRUST_KEY has a newline, trailing /, empty or dot segment" ;;
+        /*/.claude/worktrees/"${abs##*/}") abs="$WORKER_SESSION_PRETRUST_KEY" ;;
+        *) refuse "WORKER_SESSION_PRETRUST_KEY must be <repo>/.claude/worktrees/${abs##*/}" ;;
     esac
 fi
 # Never create a lane config dir: the lane launcher seeds it, and a dir it did not
@@ -128,7 +130,7 @@ lock_reclaimable() {
     [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null && return 1
     return 0
 }
-tries="${LEG_PRETRUST_LOCK_TRIES:-150}"   # x 0.1 s; > a 10 s stale window. LEG_PRETRUST_LOCK_TRIES: test seam
+tries="${WORKER_SESSION_PRETRUST_LOCK_TRIES:-${LEG_PRETRUST_LOCK_TRIES:-150}}"   # x 0.1 s; > a 10 s stale window. WORKER_SESSION_PRETRUST_LOCK_TRIES: test seam
 waited=0
 until mkdir "$lock" 2>/dev/null; do
     # A reclaim that cannot remove the dir falls through to the timeout count below.
@@ -146,7 +148,7 @@ rm -f "$owner" 2>/dev/null
 # Release only a lock we still own: a reclaimed-then-retaken lock is the successor's.
 trap '[ "$(cat "$owner" 2>/dev/null)" = "$$" ] && { rm -f "$owner"; rmdir "$lock" 2>/dev/null; }; true' EXIT
 
-WT_KEY="$abs" WT_CONFIG="$cfg" WT_SEAM="${LEG_PRETRUST_CONFIG:+1}" WT_IMPORTS="$([ "$lane" = deepseek ] && echo 1)" node -e '
+WT_KEY="$abs" WT_CONFIG="$cfg" WT_SEAM="${WORKER_SESSION_PRETRUST_CONFIG:+1}" WT_IMPORTS="$([ "$lane" = deepseek ] && echo 1)" node -e '
 const fs = require("fs");
 const key = process.env.WT_KEY;
 // A symlinked config is written THROUGH (the link stays); the rename targets the real file.

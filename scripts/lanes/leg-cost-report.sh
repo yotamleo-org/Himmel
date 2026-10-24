@@ -3,7 +3,7 @@
 #
 # Usage: leg-cost-report.sh [--since YYYY-MM-DD] [--by class|model|ticket]
 #
-# Reads <handover root>/.ledger/leg-cost.jsonl (override: LEG_COST_LEDGER), the
+# Reads <handover root>/.ledger/leg-cost.jsonl (override: WORKER_SESSION_COST_LEDGER), the
 # one row per wrapped leg close-wrapped-leg.sh appends. Prints one tab-separated
 # line per group: group, n, median, p80, max, total - all cost-eq (token
 # equivalents, lib/burn-weights.sh), rounded to integers. Median of an even n is

@@ -53,12 +53,12 @@ model window.
 - **Ceiling.** The ceiling is resolved in this order:
   1. `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, when it is numeric (it outranks the
      flag).
-  2. `HIMMEL_LEG_AUTOCOMPACT`, which is the launcher's resolved
+  2. `HIMMEL_WORKER_SESSION_AUTOCOMPACT`, which is the launcher's resolved
      `--autocompact`. Unset means the 200000 pin, and `auto` means the window.
 
   The result is clamped to the window.
 - **Threshold % of the window.** It is `ceil(share × ceiling / window)`.
-- **Share.** The share is `HIMMEL_LEG_CONTEXT_SHARE`, from the launch env only.
+- **Share.** The share is `HIMMEL_WORKER_SESSION_CONTEXT_SHARE`, from the launch env only.
   Any value other than 1-100 gives 75.
 
 A worked example: an opus worker pinned at `--autocompact 200000` reports a
@@ -81,13 +81,13 @@ ceiling; that is an operator decision.
 The 200000 ceiling is the default for every worker. A measured A/B against 400000
 is opt-in and audited:
 
-- **Launch.** `LEG_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything
+- **Launch.** `WORKER_SESSION_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything
   else refuses) on `headed-arm-leg.sh`, with the brief line
   `> **Context:** ab-400k — operator-ruling: <reason>`. It needs the standard
-  context and is refused with `LEG_CONTEXT=1m`. `200000` is the control arm and
+  context and is refused with `WORKER_SESSION_CONTEXT=1m`. `200000` is the control arm and
   needs no line. `gen-briefs.py` writes both from a per-worker-session `ab_arm`
   (`200k` | `400k`) key.
-- **Threshold.** The launcher exports `HIMMEL_LEG_AUTOCOMPACT=400000`, so the
+- **Threshold.** The launcher exports `HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000`, so the
   guard's 75 % share is 300000 tokens (30 % of a 1000000 window).
 - **Record.** The arm goes in the launch log (`ab_arm=`), the arm log line and
   the fleet-manifest entry (`arm`).

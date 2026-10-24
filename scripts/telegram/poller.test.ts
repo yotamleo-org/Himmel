@@ -3517,7 +3517,7 @@ test("loadPluginProfilesModule serves the SAME cached import when the file's mti
 
 // The 10-05 incident, replayed under a running poller: a merge changes BOTH
 // plugin-profiles.json (a new leg-shaped profile with gateAllow) and the
-// validator (LEG_PROFILES learns its name). A poller still holding the OLD
+// validator (WORKER_SESSION_PROFILES learns its name). A poller still holding the OLD
 // validator fails every dispatch with "gateAllow is restricted to leg-shaped
 // profiles"; a fresh import validates and picks up the new registry.
 test("cold runFn: a registry + validator change under a running poller still validates, with no restart", async () => {

@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-leg-jira-status.sh
 # scripts/handover/console-kit/test-status-drift.sh - Hermetic tests for the
 # WORKER comment (2a) and the status sweep (2b). A stubbed Jira
-# CLI (LEG_JIRA_CLI), a stubbed gh on PATH and a stubbed queue lock
+# CLI (WORKER_SESSION_JIRA_CLI), a stubbed gh on PATH and a stubbed queue lock
 # (TICKET_STATUS_QUEUE_LOCK) read fixture files, so no real ticket, PR or lock
 # is touched.
 #   comment   the id is captured; edited in place, not re-posted; a 404 -> one
@@ -128,7 +128,7 @@ printf '{\n  "session": "s",\n  "heartbeat": "%s"\n}\nstatus: FRESH\n' "$hb"
 exit "$rc"
 EOS
 chmod +x "$tmp/jira-stub.sh" "$tmp/bin/gh" "$tmp/lock-stub.sh"
-export LEG_JIRA_CLI="$tmp/jira-stub.sh"
+export WORKER_SESSION_JIRA_CLI="$tmp/jira-stub.sh"
 export TICKET_STATUS_QUEUE_LOCK="$tmp/lock-stub.sh"
 export PATH="$tmp/bin:$PATH"
 

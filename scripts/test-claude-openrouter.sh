@@ -35,7 +35,7 @@ t() { # t <name> <expected-exit> — runs launcher in the prepared sandbox.
 }
 
 setup() { # fresh sandbox: fake HOME with minimal ~/.claude, mock claude in BIN
-  unset OPENROUTER_MODEL OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS LEG_LANE
+  unset OPENROUTER_MODEL OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS LEG_LANE WORKER_SESSION_LANE
   FAKEHOME="$(mktemp -d)"; WORK="$(mktemp -d)"; BIN="$(mktemp -d)"
   MATRIX=""   # empty -> t() defaults to the REAL matrix (no openrouter cell)
   API_BASE="http://127.0.0.1:1/api/v1"   # fast-failing loopback -> credit UNKNOWN, no network
@@ -478,7 +478,7 @@ fi
 setup; KEY="or-test-123"
 write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 for lane in standalone openrouter; do
-  LEG_LANE="$lane" OPENROUTER_MODEL=anthropic/claude-sonnet-5 t "independent tiers ($lane)" 0
+  WORKER_SESSION_LANE="$lane" OPENROUTER_MODEL=anthropic/claude-sonnet-5 t "independent tiers ($lane)" 0
   for pair in \
     'ANTHROPIC_MODEL=anthropic/claude-sonnet-5' \
     'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5' \
@@ -489,13 +489,13 @@ for lane in standalone openrouter; do
   for tier in HAIKU SONNET OPUS; do
     # Cross-family overrides are intentional: the operator chooses the slug.
     export "OPENROUTER_$tier=anthropic/claude-sonnet-4.6"
-    LEG_LANE="$lane" t "$tier override ($lane)" 0
+    WORKER_SESSION_LANE="$lane" t "$tier override ($lane)" 0
     grep -qxF "ANTHROPIC_DEFAULT_${tier}_MODEL=anthropic/claude-sonnet-4.6" "$WORK/child-env.txt" || { echo "FAIL: $tier override lost"; FAILS=$((FAILS+1)); }
     grep -qxF "ANTHROPIC_DEFAULT_${tier}_MODEL_NAME=anthropic/claude-sonnet-4.6" "$WORK/child-env.txt" || { echo "FAIL: $tier override label wrong"; FAILS=$((FAILS+1)); }
     for bad in anthropic/claude-not-listed 'anthropic/claude-sonnet-5.5:batch' 'anthropic/claude-sonnet-5.5:extended' ' sonnet' 'Anthropic/claude-sonnet-5.5' 'anthropic/claude-sonnet-5.5;exit'; do
       export "OPENROUTER_$tier=$bad"
       rm -f "$WORK/child-env.txt"
-      LEG_LANE="$lane" t "$tier invalid slug ($lane): $bad" 2
+      WORKER_SESSION_LANE="$lane" t "$tier invalid slug ($lane): $bad" 2
       grep -q "unknown or malformed OPENROUTER_$tier" "$WORK/out.txt" || { echo "FAIL: $tier refusal lacks diagnostic"; FAILS=$((FAILS+1)); }
       [ ! -f "$WORK/child-env.txt" ] || { echo "FAIL: invalid tier launched claude"; FAILS=$((FAILS+1)); }
     done

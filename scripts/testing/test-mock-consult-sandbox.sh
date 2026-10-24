@@ -74,9 +74,9 @@ printf 'claude\0--model\0x\0-n\0MOCK-consult\0load doc and continue\0' >"$WORK/p
 printf '{}' >"$WORK/home/.claude/settings.json"
 
 IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' CONSULT_SETTINGS_HOME="$WORK/home" \
-HEADED_ARM_LEG_TARGET="$REPO/scripts/handover/headed-arm.sh" \
+HEADED_ARM_WORKER_TARGET="$REPO/scripts/handover/headed-arm.sh" \
 KONSOLE_CMD="$WORK/konsole" PGREP_CMD="$WORK/pgrep" \
-LEG_REPO="$PRIMARY" HEADED_ARM_LOCK_DIR="$WORK/locks" HEADED_ARM_PROC="$WORK/proc" \
+WORKER_SESSION_REPO="$PRIMARY" HEADED_ARM_LOCK_DIR="$WORK/locks" HEADED_ARM_PROC="$WORK/proc" \
   bash "$REPO/scripts/handover/console-kit/headed-arm-leg.sh" --consult --profile design-motion --console MOCK-console \
     MOCK-consult "$DOC" "$WORK/signal-never" "$(( $(date +%s) - 100 ))" "$WORK/log" >"$WORK/launch.out" 2>&1 &
 lp=$!

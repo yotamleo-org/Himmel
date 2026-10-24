@@ -4051,10 +4051,10 @@ reference: [`leg-context-guard.md`](leg-context-guard.md).
 
 **Threshold — 75 % of the autocompact ceiling, not of the window.** The ceiling
 is `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when numeric (it outranks the flag), else
-`HIMMEL_LEG_AUTOCOMPACT` (the launcher's resolved `--autocompact`; unset = the
+`HIMMEL_WORKER_SESSION_AUTOCOMPACT` (the launcher's resolved `--autocompact`; unset = the
 200000 pin, `auto` = the window, junk = the window with a warning), clamped to
 the window; threshold % = ceil(share × ceiling / window), share =
-`HIMMEL_LEG_CONTEXT_SHARE` (1-100, else 75). An opus worker session pinned at 200000
+`HIMMEL_WORKER_SESSION_CONTEXT_SHARE` (1-100, else 75). An opus worker session pinned at 200000
 reports a 1000000-token window, so the ceiling is 20 % fill and a flat 75 % of
 the window never fired; it now fires at 15 % (150k). Headroom: compactions were
 observed from 157k of 200k (HIMMEL-4089), so 75 % leaves 7k tokens for the
@@ -5757,12 +5757,12 @@ on the credit.
 rc 5 unless `HIMMEL_API_LANE=on` is in the caller's environment, and a per-call
 env prefix is refused by the guards, so legs never reached it and the PR critic
 (`critic-first-pass.sh`) was skipped. `headed-arm-leg.sh` now reads an opt-in seam
-from the LAUNCHING shell: `LEG_API_LANE=on` puts `HIMMEL_API_LANE=on` and
+from the LAUNCHING shell: `WORKER_SESSION_API_LANE=on` puts `HIMMEL_API_LANE=on` and
 `HIMMEL_API_ACCOUNT=auto` into the leg's environment (`--dry-run` prints both).
 Default OFF: unset or any other value launches a leg with neither. The wrapper
 strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT` (both are in
 `console_context_leg_env_unset_names`), so the seam is the only way in. The
-console makes it the standing default by exporting `LEG_API_LANE=on` in its own
+console makes it the standing default by exporting `WORKER_SESSION_API_LANE=on` in its own <!-- old-term-ok: only the env name changed, prose is pre-existing -->
 launch environment. The switch does not bypass spend control: `claude-api.sh`
 still applies the API credit guard (`~/.himmel/state/api-credit`) and account
 routing per call, and `bank-preflight.sh` still gates the launch itself.

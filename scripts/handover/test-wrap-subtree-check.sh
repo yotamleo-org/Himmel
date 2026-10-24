@@ -183,7 +183,7 @@ FIX
 } > "$W/mixed.txt"
 
 MCP_PIDS='120 121 122 123 124'
-LEG_PIDS='203 205 208 209'
+WORKER_SESSION_PIDS='203 205 208 209'
 names_all() { # names_all <out> <label> <pid…>: every pid is a withheld row
     local o="$1" p; shift
     for p in "$@"; do case "$o" in *"  pid=$p ppid="*) ;; *) return 1 ;; esac; done
@@ -209,7 +209,7 @@ eq 'mixed run (MCP servers + leg-left loop): rc 1 (3265)' 1 "$rc"
 contains 'mixed run withholds exactly the four leg-spawned processes (3265)' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
 lacks 'a withheld run never prints CLOSABLE (3265)' "$out" 'CLOSABLE:'
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
-if names_all "$out" $LEG_PIDS; then pass 'mixed run names the leg-left loop, its child, the late direct child and the early wrapper'; else fail "mixed run must name every leg-spawned pid ($LEG_PIDS): $out"; fi
+if names_all "$out" $WORKER_SESSION_PIDS; then pass 'mixed run names the leg-left loop, its child, the late direct child and the early wrapper'; else fail "mixed run must name every leg-spawned pid ($WORKER_SESSION_PIDS): $out"; fi
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
 if names_none "$out" $MCP_PIDS; then pass 'mixed run does not list any MCP server as a withheld process'; else fail "mixed run listed a harness MCP server as withheld: $out"; fi
 for p in $MCP_PIDS; do contains "mixed run still reports ignored MCP pid $p" "$out" "ignored pid=$p "; done
@@ -502,7 +502,7 @@ lacks 'a withheld run never prints CLOSABLE (fx3)' "$out" 'CLOSABLE:'
 # and lose the leg-left loop for the specific reason — a check that merely
 # crashes would "fail" every assertion and prove nothing.
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
-leg_loop_kept() { names_all "$1" $LEG_PIDS && ! case "$1" in *'CLOSABLE:'*) true ;; *) false ;; esac; }
+leg_loop_kept() { names_all "$1" $WORKER_SESSION_PIDS && ! case "$1" in *'CLOSABLE:'*) true ;; *) false ;; esac; }
 out="$(run "$W/mixed.txt" 101 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ] && leg_loop_kept "$out"; then pass 'control baseline: the real check keeps the leg-left loop'; else fail 'control baseline broken'; fi
 

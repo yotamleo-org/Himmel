@@ -26,7 +26,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/failure-review-test.XXXXXX")" || { echo "test-
 trap 'rm -rf "$TMP"' EXIT
 export TZ=UTC
 # Never the live files, whatever a case forgets to pass.
-export HIMMEL_LEG_FAILURES_LEDGER="$TMP/never-ledger.jsonl"
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$TMP/never-ledger.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$TMP/never-log.jsonl"
 export HIMMEL_FAILURE_ROUTES_STATE="$TMP/never-state.json"
 export HIMMEL_FAILURE_INBOX="$TMP/never-inbox.md"
@@ -291,18 +291,18 @@ bash "$CAD" disarm >/dev/null 2>&1
 check "disarm removes the entry and the runner" '! grep -q "HIMMEL-FailureReview" "$CR/tab" && [ ! -f "$TMP/runner/failure-review-cadence.sh" ]'
 printf '#!/usr/bin/env bash\necho SKIPPED-BANK\n' >"$STUB/preflight"; chmod +x "$STUB/preflight"
 C8="$TMP/c8"; mkdir -p "$C8"
-FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" HIMMEL_LEG_FAILURES_LEDGER="$C2/ledger.jsonl" \
+FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
   timeout "$BOUND" bash "$CAD" run >"$C8/run.out" 2>&1; rc=$?
 hung "$rc" "cadence run (skipped-bank)"
 check "a SKIPPED-BANK preflight skips the run, rc 0, no digest" '[ "$rc" = 0 ] && grep -q "SKIPPED-BANK" "$C8/run.out" && [ ! -d "$C8/out" ]'
 printf '#!/usr/bin/env bash\necho PROCEED\n' >"$STUB/preflight"
-FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" HIMMEL_LEG_FAILURES_LEDGER="$C2/ledger.jsonl" \
+FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
   HIMMEL_FAILURE_ROUTES_STATE="$C8/state.json" timeout "$BOUND" bash "$CAD" run >"$C8/run2.out" 2>&1; rc=$?
 hung "$rc" "cadence run (proceed)"
 check "a PROCEED preflight runs the review dry-run" '[ "$rc" = 0 ] && ls "$C8/out"/failure-review-*.md >/dev/null 2>&1 && [ ! -e "$C8/state.json" ]'
 # a failed Telegram send (rc 3) leaves the digest written: the alert says only the send failed.
 C8n="$TMP/c8n"; mkdir -p "$C8n"; row "$C8n/ledger.jsonl" N900 error/Notify 0 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/notify-fail" HIMMEL_FAILURE_REVIEW_DIR="$C8n/out" HIMMEL_LEG_FAILURES_LEDGER="$C8n/ledger.jsonl" \
+FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/notify-fail" HIMMEL_FAILURE_REVIEW_DIR="$C8n/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C8n/ledger.jsonl" \
   HIMMEL_FAILURE_ROUTES_STATE="$C8n/state.json" timeout "$BOUND" bash "$CAD" run >"$C8n/run.out" 2>&1; rc=$?
 hung "$rc" "cadence run (send fails)"
 check "a failed Telegram send is its own alert: digest written, only the send failed" '[ "$rc" = 3 ] && ls "$C8n/out"/failure-review-*.md >/dev/null 2>&1 && tail -n 1 "$STUB/notify.log" | grep -q "Telegram message was not delivered (exit 3)\. Cause: the digest is written; only the send failed\. Do: nothing, the undelivered line is sent again at the next run"'

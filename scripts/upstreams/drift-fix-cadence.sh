@@ -35,7 +35,7 @@
 # and before the workday, so the drift leg's PR is already waiting when the
 # operator checks (the resync leg's unattended run opens nothing — see
 # above). StartWhenAvailable=true: a fire missed because the machine was
-# off/asleep catches up when it is next on. See the LEG_DRIFT/LEG_RESYNC
+# off/asleep catches up when it is next on. See the WORKER_SESSION_DRIFT/WORKER_SESSION_RESYNC
 # block below for why this is two tasks in one script rather than one task or
 # two scripts.
 #
@@ -147,8 +147,8 @@ FORCE=0
 # arm/status/disarm/dedup/rollback machinery below is the part that is hard to
 # get right (locale-independent query classification, StartWhenAvailable XML,
 # fail-closed crontab reads), and a copy of it would drift from this one.
-LEG_DRIFT="HIMMEL-DriftFix"
-LEG_RESYNC="HIMMEL-ForkResync"
+WORKER_SESSION_DRIFT="HIMMEL-DriftFix"
+WORKER_SESSION_RESYNC="HIMMEL-ForkResync"
 
 # Payload prompts. ASCII-only on purpose: the .bat is parsed by cmd.exe under
 # the OEM codepage, where UTF-8 punctuation mojibakes. One line each, same
@@ -160,13 +160,13 @@ PROMPT_RESYNC="Run /fork-resync to completion. This is the scheduled nightly car
 # leg_prompt / leg_log / leg_runner <task-name> — the per-leg lookups, kept as
 # functions rather than an associative array (bash 3.2 has none; macOS ships 3.2).
 leg_prompt() {
-    if [ "$1" = "$LEG_RESYNC" ]; then printf '%s' "$PROMPT_RESYNC"; else printf '%s' "$PROMPT_DRIFT"; fi
+    if [ "$1" = "$WORKER_SESSION_RESYNC" ]; then printf '%s' "$PROMPT_RESYNC"; else printf '%s' "$PROMPT_DRIFT"; fi
 }
 leg_slug() {
-    if [ "$1" = "$LEG_RESYNC" ]; then printf 'fork-resync'; else printf 'drift-fix'; fi
+    if [ "$1" = "$WORKER_SESSION_RESYNC" ]; then printf 'fork-resync'; else printf 'drift-fix'; fi
 }
 leg_time() {
-    if [ "$1" = "$LEG_RESYNC" ]; then printf '%s' "$RESYNC_TIME"; else printf '%s' "$FIRE_TIME"; fi
+    if [ "$1" = "$WORKER_SESSION_RESYNC" ]; then printf '%s' "$RESYNC_TIME"; else printf '%s' "$FIRE_TIME"; fi
 }
 
 usage() {
@@ -564,7 +564,7 @@ query_task() {
 # (rc 2) keeps the shim for the same fail-safe reason; disarm removes both.
 win_rollback_both() {
     local leg rc
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         run_schtasks /delete /tn "$leg" /f >/dev/null 2>&1 || true
         rc=0
         query_task "$leg" 2>/dev/null || rc=$?
@@ -596,7 +596,7 @@ cmd_arm() {
     # the replacement happen atomically AFTER all prep below has succeeded —
     # deleting first would leave no cadence at all if a later step failed.
     local leg leg_rc dedup_names=""
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         leg_rc=0
         query_task "$leg" || leg_rc=$?
         case "$leg_rc" in
@@ -674,7 +674,7 @@ cmd_arm() {
     # .bat, creates the task, and verifies it — rolling back BOTH legs on any
     # failure so arm never leaves one leg live and the other missing.
     local slug time bat_file vbs_file bat_win log_file log_win prompt_esc log_esc err_file verify_rc
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         slug=$(leg_slug "$leg")
         time=$(leg_time "$leg")
         bat_file="$BAT_DIR/$slug.bat"
@@ -784,7 +784,7 @@ cmd_status() {
     }
     echo "drift-fix-cadence status:"
     local leg slug rc next status_rc=0
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         slug=$(leg_slug "$leg")
         rc=0
         query_task "$leg" || rc=$?
@@ -808,7 +808,7 @@ cmd_disarm() {
         exit 2
     }
     local leg slug rc any_armed=0 err_file
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         slug=$(leg_slug "$leg")
         rc=0
         query_task "$leg" || rc=$?
@@ -952,7 +952,7 @@ cron_arm() {
 
     cron_read
     local leg existing dedup_names=""
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         existing=$(leg_existing "$leg")
         if [ -n "$existing" ]; then
             if [ "$FORCE" -eq 1 ]; then
@@ -983,7 +983,7 @@ cron_arm() {
 
     local slug time runner q_prompt q_log hh mm entry_line
     if [ "$DRY_RUN" -eq 1 ]; then
-        for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+        for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
             slug=$(leg_slug "$leg")
             time=$(leg_time "$leg")
             runner="$BAT_DIR/$slug.sh"
@@ -1011,7 +1011,7 @@ cron_arm() {
     # disarm's equivalent rewrite below never did. Symmetric with cron_disarm.
     local newtab
     newtab=$(mktemp -t drift-fix-cadence.cron.XXXXXX)
-    printf '%s\n' "$CRON_TAB" | grep -vF "# $LEG_DRIFT" | grep -vF "# $LEG_RESYNC" > "$newtab" || true
+    printf '%s\n' "$CRON_TAB" | grep -vF "# $WORKER_SESSION_DRIFT" | grep -vF "# $WORKER_SESSION_RESYNC" > "$newtab" || true
 
     # Snapshot any PRE-EXISTING runner content before overwriting it, so a
     # failed cron_install below can restore it byte-identical (CR codex-1;
@@ -1040,7 +1040,7 @@ cron_arm() {
     # cron_install) so the discipline is identical whichever one fires.
     restore_runner_snapshots() {
         local _leg _slug
-        for _leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+        for _leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
             _slug=$(leg_slug "$_leg")
             if [ -f "$snap_dir/$_slug.sh" ]; then
                 cp "$snap_dir/$_slug.sh" "$BAT_DIR/$_slug.sh"
@@ -1049,7 +1049,7 @@ cron_arm() {
         done
     }
 
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         slug=$(leg_slug "$leg")
         time=$(leg_time "$leg")
         runner="$BAT_DIR/$slug.sh"
@@ -1079,8 +1079,8 @@ cron_arm() {
         exit 4
     fi
     rm -rf "$snap_dir"
-    cadence_prov_record "$LEG_DRIFT"
-    cadence_prov_record "$LEG_RESYNC"
+    cadence_prov_record "$WORKER_SESSION_DRIFT"
+    cadence_prov_record "$WORKER_SESSION_RESYNC"
     arm_summary "crontab entry"
 }
 
@@ -1092,7 +1092,7 @@ cron_status() {
     cron_read
     echo "drift-fix-cadence status:"
     local leg slug entry sched
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         slug=$(leg_slug "$leg")
         entry=$(leg_existing "$leg" | head -1)
         if [ -n "$entry" ]; then
@@ -1113,20 +1113,20 @@ cron_disarm() {
     }
     cron_read
     local leg existing any_existing=0
-    for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
         existing=$(leg_existing "$leg")
         [ -n "$existing" ] && any_existing=1
     done
     if [ "$any_existing" -eq 0 ]; then
         # Trusted-empty read (cron_read exits 2 otherwise) — safe to sweep.
         if [ "$DRY_RUN" -eq 0 ]; then
-            rm -f "$BAT_DIR/$(leg_slug "$LEG_DRIFT").sh" "$BAT_DIR/$(leg_slug "$LEG_RESYNC").sh"
+            rm -f "$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").sh" "$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").sh"
         fi
         echo "drift-fix-cadence: nothing armed — disarm is a no-op"
         return 0
     fi
     if [ "$DRY_RUN" -eq 1 ]; then
-        for leg in "$LEG_DRIFT" "$LEG_RESYNC"; do
+        for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
             existing=$(leg_existing "$leg")
             [ -n "$existing" ] && printf '%s\n' "$existing" | sed 's/^/DRY drift-fix-cadence: would remove crontab entry: /'
         done
@@ -1135,12 +1135,12 @@ cron_disarm() {
     fi
     local newtab
     newtab=$(mktemp -t drift-fix-cadence.cron.XXXXXX)
-    printf '%s\n' "$CRON_TAB" | grep -vF "# $LEG_DRIFT" | grep -vF "# $LEG_RESYNC" > "$newtab" || true
+    printf '%s\n' "$CRON_TAB" | grep -vF "# $WORKER_SESSION_DRIFT" | grep -vF "# $WORKER_SESSION_RESYNC" > "$newtab" || true
     # Ordering invariant: the install must succeed BEFORE the runners are
     # removed — a failed install leaves the entries live and they must keep
     # pointing at files that exist.
     cron_install "$newtab" || exit 4
-    rm -f "$BAT_DIR/$(leg_slug "$LEG_DRIFT").sh" "$BAT_DIR/$(leg_slug "$LEG_RESYNC").sh"
+    rm -f "$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").sh" "$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").sh"
     echo "drift-fix-cadence: cadence disarmed"
 }
 
@@ -1149,16 +1149,16 @@ cron_disarm() {
 arm_summary() {
     local kind="$1" ext runner_drift runner_resync log_drift log_resync
     if [ "$PLATFORM" = "windows" ]; then ext="bat"; else ext="sh"; fi
-    runner_drift="$BAT_DIR/$(leg_slug "$LEG_DRIFT").$ext"
-    runner_resync="$BAT_DIR/$(leg_slug "$LEG_RESYNC").$ext"
-    log_drift="$BAT_DIR/$(leg_slug "$LEG_DRIFT").log"
-    log_resync="$BAT_DIR/$(leg_slug "$LEG_RESYNC").log"
+    runner_drift="$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").$ext"
+    runner_resync="$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").$ext"
+    log_drift="$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").log"
+    log_resync="$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").log"
     cat <<EOF
 ================================================================
 drift-fix-cadence ARMED (HIMMEL-1323)
 
-  $LEG_DRIFT   daily $FIRE_TIME local   — $kind — runner: $runner_drift
-  $LEG_RESYNC  daily $RESYNC_TIME local — $kind — runner: $runner_resync
+  $WORKER_SESSION_DRIFT   daily $FIRE_TIME local   — $kind — runner: $runner_drift
+  $WORKER_SESSION_RESYNC  daily $RESYNC_TIME local — $kind — runner: $runner_resync
   Model:  $MODEL
   Repo:   $HIMMEL_ROOT
   Logs:   $log_drift
@@ -1166,11 +1166,11 @@ drift-fix-cadence ARMED (HIMMEL-1323)
           (one prior run kept as .log.prev, per leg)
 
   Each night:
-    - $LEG_DRIFT runs /drift-fix: upgrade the installed vendor CLIs whose
+    - $WORKER_SESSION_DRIFT runs /drift-fix: upgrade the installed vendor CLIs whose
       registry entry is marked upgrade.unattended:true, bump every repo
       pin apply-drift-bump.sh can bump, then open an ordinary PR against
       origin and STOP.
-    - $LEG_RESYNC runs /fork-resync: rebase every BEHIND registry fork
+    - $WORKER_SESSION_RESYNC runs /fork-resync: rebase every BEHIND registry fork
       against upstream and audit it — a no-op most nights. The unattended
       run ALWAYS stops after each audit (clean, conflicted, or deliberately
       non-additive alike): it never pushes or opens anything, leaving that

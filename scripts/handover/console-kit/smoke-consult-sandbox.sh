@@ -74,7 +74,7 @@ doc="$(cd -P "$scratch" && pwd -P)/consult.md"; sibling="$(cd -P "$scratch" && p
 mkdir -p "$work/proc/9001"
 cat > "$work/konsole" <<'EOF'
 #!/usr/bin/env bash
-env | grep '^LEG_PROFILE_NO_SETTING_SOURCES=' > "$(dirname "$0")/nss"
+env | grep '^WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=' > "$(dirname "$0")/nss"
 : > "$(dirname "$0")/confirmable"
 sleep 3
 EOF
@@ -88,9 +88,9 @@ echo claude > "$work/proc/9001/comm"
 printf 'claude\0--model\0x\0-n\0SMOKE-consult\0load doc and continue\0' > "$work/proc/9001/cmdline"
 
 IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' CONSULT_SETTINGS_HOME="$work/home" \
-HEADED_ARM_LEG_TARGET="$HERE/../headed-arm.sh" \
+HEADED_ARM_WORKER_TARGET="$HERE/../headed-arm.sh" \
 KONSOLE_CMD="$work/konsole" PGREP_CMD="$work/pgrep" \
-LEG_REPO="$primary" HEADED_ARM_LOCK_DIR="$work/locks" HEADED_ARM_PROC="$work/proc" \
+WORKER_SESSION_REPO="$primary" HEADED_ARM_LOCK_DIR="$work/locks" HEADED_ARM_PROC="$work/proc" \
     bash "$HERE/headed-arm-leg.sh" --consult --profile design-motion --console SMOKE-console \
         SMOKE-consult "$doc" "$work/signal-never" "$(( $(date +%s) - 100 ))" "$work/log" >"$work/launch.out" 2>&1 &
 launch_pid=$!
@@ -100,8 +100,8 @@ if [ ! -s "$settings" ]; then
     echo "FAIL smoke-consult-sandbox: launcher wrote no settings (see $work/launch.out)"; cat "$work/launch.out"; exit 1
 fi
 wait "$launch_pid" 2>/dev/null || true
-if [ "$(cat "$work/nss" 2>/dev/null)" != "LEG_PROFILE_NO_SETTING_SOURCES=1" ]; then
-    echo "FAIL smoke-consult-sandbox: the launcher did not hand the shim LEG_PROFILE_NO_SETTING_SOURCES=1"; exit 1
+if [ "$(cat "$work/nss" 2>/dev/null)" != "WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1" ]; then
+    echo "FAIL smoke-consult-sandbox: the launcher did not hand the shim WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1"; exit 1
 fi
 if [ "$(jq -c --arg c "$canary_cmd" '[.hooks.PreToolUse[]?.hooks[]?.command | select(. == $c)] | length' "$settings")" != 1 ]; then
     echo "FAIL smoke-consult-sandbox: the canary user-scope hook was not carried into the consult settings"; exit 1
@@ -116,7 +116,7 @@ jq '.permissions.allow += ["Bash(python3 -c:*)"]' "$settings" > "$work/probe-set
 ctl_prompt="Run exactly this one command as a single Bash call, do not retry or work around any failure, then reply with its exact stdout/stderr text:
 python3 -c \"open('$sibling','a').write('pwned')\""
 # opt-in live check of the consult Bash sandbox; bank preflight above, explicit --permission-mode, parsed --output-format json
-( cd "$primary" && LEG_CLAUDE_BIN=claude LEG_PROFILE_SETTINGS="$work/probe-settings.json" LEG_PROFILE_NO_SETTING_SOURCES='' \
+( cd "$primary" && WORKER_SESSION_CLAUDE_BIN=claude WORKER_SESSION_PROFILE_SETTINGS="$work/probe-settings.json" WORKER_SESSION_PROFILE_NO_SETTING_SOURCES='' \
     bash "$SHIM" -p --model claude-sonnet-5-5 --permission-mode default --output-format json "$ctl_prompt" ) > "$work/control.json" 2> "$work/control.err" || true
 if [ "$(cat "$sibling")" = "untouched" ]; then
     echo "FAIL - RED control: without --setting-sources the sibling write did NOT land, so this smoke cannot catch a leak (vacuous): $(jq -r '.result // ""' "$work/control.json" 2>/dev/null | head -c 400)"
@@ -132,9 +132,9 @@ prompt="Run exactly these three commands, each as its own separate Bash call, in
 # (python3 -c, not a shell redirect: the project's block-write-into-main-checkout hook
 # refuses redirect-shaped writes before the sandbox is ever reached - the control run showed it.)
 
-# The confined run: exactly what the shim builds for a consult (LEG_PROFILE_NO_SETTING_SOURCES=1).
+# The confined run: exactly what the shim builds for a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1).
 # opt-in live check of the consult Bash sandbox; bank preflight above, explicit --permission-mode, parsed --output-format json
-( cd "$primary" && LEG_CLAUDE_BIN=claude LEG_PROFILE_SETTINGS="$work/probe-settings.json" LEG_PROFILE_NO_SETTING_SOURCES=1 \
+( cd "$primary" && WORKER_SESSION_CLAUDE_BIN=claude WORKER_SESSION_PROFILE_SETTINGS="$work/probe-settings.json" WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
     HIMMEL_HOOK_INTEGRITY_DIR="$work/plugin-canary" \
     bash "$SHIM" -p --model claude-sonnet-5-5 --permission-mode default --output-format json "$prompt" ) > "$work/claude.json" 2> "$work/claude.err" || true
 

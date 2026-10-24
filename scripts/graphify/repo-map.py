@@ -5,7 +5,7 @@ Collapses the graph to files (an edge between nodes of two different files is an
 edge between those files), ranks the files with PageRank, and prints the
 highest-ranked files with their most-referenced symbols until the token cap.
 Legs rarely call the graph tool, so the map is meant to ride the system prompt
-at session start (headed-arm-leg.sh, LEG_REPO_MAP=1).
+at session start (headed-arm-leg.sh, WORKER_SESSION_REPO_MAP=1).
 
 Usage: repo-map.py --graph <graph.json> [--max-tokens 2000] [--exclude archive/]
                    [--order path|rank]

@@ -29,7 +29,7 @@ function fixture(t, reg = registry()) {
   writeFileSync(join(dir, 'brief.md'), BRIEF_HEAD + '# Hermetic fixture\n');
   return { dir, env: { PATH: process.env.PATH, HOME: dir, CLAUDE_CONFIG_DIR: join(dir, 'config'),
     PLUGIN_PROFILES_REGISTRY: join(dir, 'registry.json'), HANDOVER_DIR: join(dir, 'handovers'),
-    LEG_REPO: dir, HEADED_ARM_REPO: dir, HIMMELCTL_CACHE_DIR: join(dir, 'cache'),
+    WORKER_SESSION_REPO: dir, HEADED_ARM_REPO: dir, HIMMELCTL_CACHE_DIR: join(dir, 'cache'),
     HIMMEL_DENIAL_ACK_DIR: join(dir, 'acks'), XDG_RUNTIME_DIR: dir } };
 }
 function launch(f, profile, extra = {}) {
@@ -80,19 +80,19 @@ test('brief explanation alone does not elevate a standard profile', (t) => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=200000/);
 });
-test('LEG_CONTEXT plus a brief explanation permits the sanctioned override', (t) => {
+test('WORKER_SESSION_CONTEXT plus a brief explanation permits the sanctioned override', (t) => {
   const f = fixture(t);
   writeFileSync(join(f.dir, 'brief.md'), BRIEF_HEAD + '> **Context:** 1m — operator-ruling: fixture authorization\n');
-  const result = launch(f, 'leg-impl', { LEG_CONTEXT: '1m' });
+  const result = launch(f, 'leg-impl', { WORKER_SESSION_CONTEXT: '1m' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=auto/);
 });
-test('a design profile still refuses LEG_CONTEXT without a brief explanation', (t) => {
-  const result = launch(fixture(t), 'design', { LEG_CONTEXT: '1m' });
+test('a design profile still refuses WORKER_SESSION_CONTEXT without a brief explanation', (t) => {
+  const result = launch(fixture(t), 'design', { WORKER_SESSION_CONTEXT: '1m' });
   assert.equal(result.status, 2, result.stdout + result.stderr);
 });
-test('bare LEG_CONTEXT=1m on a standard profile remains refused', (t) => {
-  const result = launch(fixture(t), 'leg-impl', { LEG_CONTEXT: '1m' });
+test('bare WORKER_SESSION_CONTEXT=1m on a standard profile remains refused', (t) => {
+  const result = launch(fixture(t), 'leg-impl', { WORKER_SESSION_CONTEXT: '1m' });
   assert.equal(result.status, 2, result.stdout + result.stderr);
 });
 test('leg launcher refuses malformed autocompact even on dry-run', (t) => {
@@ -103,7 +103,7 @@ test('leg launcher refuses malformed autocompact even on dry-run', (t) => {
 });
 for (const extra of [
   { HEADED_ARM_CONTEXT_PROFILE: 'design' },
-  { HEADED_ARM_CONTEXT_PROFILE: 'design', HEADED_ARM_LEG_PROFILES: join(ROOT, 'scripts/lanes/plugin-profiles.mjs') },
+  { HEADED_ARM_CONTEXT_PROFILE: 'design', HEADED_ARM_WORKER_PROFILES: join(ROOT, 'scripts/lanes/plugin-profiles.mjs') },
 ]) {
   test(`direct console ignores ambient profile inputs ${JSON.stringify(extra)}`, (t) => {
     const f = fixture(t);
