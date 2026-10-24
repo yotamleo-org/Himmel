@@ -440,8 +440,14 @@ function queueIntakeIfUnversioned(key: string, type: string, fields: Record<stri
  */
 export function queueBacklogIntake(key: string, why: string): void {
   let release: string | undefined;
+  let root: string;
   try {
-    const root = releaseRoot();
+    root = releaseRoot();
+  } catch (e) {
+    console.error(`jira: warning: INTAKE not queued for ${key}: ${(e as Error).message}`);
+    return;
+  }
+  try {
     const declared = readdirSync(root).filter((d) => existsSync(join(root, d, 'release.json')));
     if (declared.length === 0) return;
     if (declared.length > 1) {
