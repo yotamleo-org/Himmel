@@ -72,6 +72,10 @@ check "run: exit 0" '[ "$rc" = 0 ]'
 check "run: one judge-accuracy row in the ledger" '[ "$(grep -c "\"eval\":\"judge-accuracy\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: one decision-158 answer row in the ledger" '[ "$(grep -c "\"eval\":\"decision-158\"" "$HIMMEL_EVAL_RUNS_LEDGER")" = 1 ]'
 check "run: the page is written and names the judges" 'grep -q "^## The judges" "$REVIEW_PAGE_FILE" && grep -q "A bug got past a GO on 0 of 1 merged PRs" "$REVIEW_PAGE_FILE"'
+timeout 5 bash "$CAD" run --verdicts >/dev/null 2>&1; rc=$?
+check "run: a trailing --verdicts is a usage error (rc 1), not a hang" '[ "$rc" = 1 ]'
+timeout 5 bash "$CAD" run --verdicts "$TMP/v" --mirror >/dev/null 2>&1; rc=$?
+check "run: a trailing --mirror is a usage error (rc 1), not a hang" '[ "$rc" = 1 ]'
 touch "$TMP/gh-fail"
 bash "$CAD" run --verdicts "$TMP/v" --mirror "$TMP/mirror" >"$TMP/run2.out" 2>&1; rc=$?
 rm -f "$TMP/gh-fail"

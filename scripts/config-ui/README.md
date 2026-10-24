@@ -49,7 +49,7 @@ file is missing. The deltas are the writer's; nothing is recomputed. The Fleet p
 Trends tab shows the same cards.
 
 The **How good are our reviewers?** section (HIMMEL-7385) is fed by `GET /api/reviewers` (token-gated, GET
-only), which returns `{state: ok, markdown}` from `~/.himmel/state/review-page/review-page.md`
+only), which returns `{state: ok, text, writtenAt}` from `~/.himmel/state/review-page/review-page.md`
 (`REVIEW_PAGE_FILE` overrides) as rendered by `scripts/eval/review-page.py` (the weekly
 `judge-accuracy-cadence.sh` writes it) or `{state: absent, reason}` when the file is missing. The browser
 shows the text as is.

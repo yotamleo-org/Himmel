@@ -46,8 +46,8 @@ cmd_run() {
     local verdicts="" mirror="" tmp rc
     while [ $# -gt 0 ]; do
         case "$1" in
-            --verdicts) verdicts="${2:-}"; shift 2 ;;
-            --mirror) mirror="${2:-}"; shift 2 ;;
+            --verdicts|--mirror) [ $# -ge 2 ] || { echo "ERR judge-accuracy-cadence: $1 needs a value" >&2; return 1; }
+                    if [ "$1" = "--verdicts" ]; then verdicts="$2"; else mirror="$2"; fi; shift 2 ;;
             *) echo "ERR judge-accuracy-cadence: unknown arg: $1" >&2; return 1 ;;
         esac
     done
