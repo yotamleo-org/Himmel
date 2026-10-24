@@ -987,7 +987,10 @@ launch_cmd() {
     # No launcher binds a pasted console on the bus, so the line runs claude
     # through console-bus-exec.sh, which registers and binds it first; a line
     # pasted after that file is gone runs claude directly.
-    if console_bus_opted_in; then
+    local bus_opt=0
+    console_bus_opted_in || bus_opt=$?
+    [ "$bus_opt" -ne 2 ] || err "WARN the console bus profile probe failed ($bus_probe_out); the printed console line runs claude unbound"
+    if [ "$bus_opt" -eq 0 ]; then
         local bus_exec
         bus_exec="$(printf 'bash %q %q ' "$HERE/console-bus-exec.sh" "$1")"
         [ -z "$CHIEF_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CHIEF_BUS_PREDECESSOR")"

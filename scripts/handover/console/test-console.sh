@@ -2817,6 +2817,14 @@ paste88 "$out88d" BUS88_FAIL=1
 check "88 failed register: no bind, claude starts unbound" \
     "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
+# a broken profile probe is not an opt-out: the printed line runs claude unbound and chief.sh says so
+out88e="$(print88 broken new bus88probe)"
+paste88 "$out88e"
+check "88 broken profile probe: chief.sh warns the printed line runs unbound" \
+    "$(printf '%s\n' "$out88e" | grep -c 'the printed console line runs claude unbound')" "1"
+check "88 broken profile probe: bus never called, claude still starts" \
+    "$([ -e "$b88/calls" ] && echo called || echo none)|$([ -s "$b88/seen" ] && echo started || echo not-started)" "none|started"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88probe/$s88a.md" "$(token_of "$out88e")" >/dev/null 2>&1
 
 # --- 89: the pasted line never hangs on the bus: a bus call stuck past
 # BUS_EXEC_SECS is killed and claude starts unbound; and a line whose
