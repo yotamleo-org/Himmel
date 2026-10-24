@@ -187,7 +187,7 @@ echo "T10: doctrinal footer rides every NEEDS-ACTION report"
 make_repo || exit 1
 write_marker "$tmp" feat/x "0000000000000000000000000000000000000000"
 out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
-grepq "$out" "NEVER a terminal block" && pass || fail "T10 out=$out"
+grepq "$out" "NEVER a terminal block" && ! grepq "$out" -E "HIMMEL-[0-9]+" && pass || fail "T10 out=$out"
 rm -rf "$tmp"
 
 echo "T11: malformed --ticket refused (exit 2)"
