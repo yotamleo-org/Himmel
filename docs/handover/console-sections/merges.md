@@ -72,8 +72,9 @@ and the merge-on-green recheck refuse a version change in any other PR. The
 release-cut PR raises the version of every plugin changed since the last tag
 (`git diff --name-only <last tag> HEAD -- marketplace/plugins/`), each strictly
 above `main`'s, in the same commit as the `VERSION` change (the pre-commit hook
-sees one commit at a time); the gates check that each raised version is above `main`, not
-that every changed plugin was raised, so the cut's author lists them.
+sees one commit at a time); the gates check that every plugin the cut touches
+is raised above `main`, not that every plugin changed since the last tag is in
+the cut, so the cut's author lists them.
 
 To cut a pre-release tag yourself, run
 `bash scripts/handover/console-kit/cut-tag.sh <version> <sha>` (`--dry-run`

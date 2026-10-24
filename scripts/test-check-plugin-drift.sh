@@ -331,6 +331,11 @@ if [ "$staged_rel_rc" -eq 0 ] && grepq "$staged_rel_out" "release cut: every cha
 (cd "$W_BUMP" && printf '{"name": "plugin-a", "version": "0.0.9"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json && git add -A)
 staged_low_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_low_rc=$?
 if [ "$staged_low_rc" -ne 0 ] && grepq "$staged_low_out" "is not above 0.1.0"; then ok "--bump-required (staged): a release cut that lowers a version fails"; else bad "--bump-required (staged): lowered release-cut version passed (rc=$staged_low_rc): $staged_low_out"; fi
+# A release cut that edits a plugin but leaves its version alone fails, as
+# ready-check item 9 does: the cut raises every plugin it touches.
+(cd "$W_BUMP" && printf '{"name": "plugin-a", "version": "0.1.0"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json && git add -A)
+staged_same_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_same_rc=$?
+if [ "$staged_same_rc" -ne 0 ] && grepq "$staged_same_out" "plugin-a's plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a release cut that edits a plugin without raising it fails"; else bad "--bump-required (staged): release cut with an unraised edited plugin passed (rc=$staged_same_rc): $staged_same_out"; fi
 (cd "$W_BUMP" && printf '{"name": "plugin-a", "version": "0.1.1"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json && git add -A && git commit -q -m 'chore(release): VERSION 1.1.0, plugin-a 0.1.1')
 
 # Range: a later commit edits a plugin file and leaves the version alone.

@@ -289,27 +289,33 @@ except Exception:
       echo "check-plugin-drift --bump-required: $name removed — no version needed"
       continue
     fi
-    if ! grep -qxF -e "$manifest" <<<"$changed"; then
-      continue  # plugin.json untouched, so its version is too
-    fi
-    if ! git cat-file -e "$old_ref:$manifest" 2>/dev/null; then
-      continue  # plugin.json newly introduced — nothing to compare against
-    fi
     local old_ver new_ver tip_ver
-    old_ver="$(manifest_version "$old_ref:$manifest")"
-    new_ver="$(manifest_version "$new_spec")"
-    if [ "$old_ver" = "$new_ver" ]; then
-      continue
-    fi
     if [ -z "$release" ]; then
+      if ! grep -qxF -e "$manifest" <<<"$changed"; then
+        continue  # plugin.json untouched, so its version is too
+      fi
+      if ! git cat-file -e "$old_ref:$manifest" 2>/dev/null; then
+        continue  # plugin.json newly introduced — nothing to compare against
+      fi
+      old_ver="$(manifest_version "$old_ref:$manifest")"
+      new_ver="$(manifest_version "$new_spec")"
+      if [ "$old_ver" = "$new_ver" ]; then
+        continue
+      fi
       echo "ERR check-plugin-drift --bump-required: $name's plugin.json version went ${old_ver:-<none>} -> ${new_ver:-<none>} outside a release cut — plugin versions change only in the release-cut PR, the one that changes the root VERSION file; leave the version as it is" >&2
       bad=1
       continue
     fi
-    tip_ver="$old_ver"
+    # A release cut raises every plugin it touches above the base tip.
+    local tip_ref="$old_ref"
     if [ -n "$base_ref" ] && git cat-file -e "$base_ref:$manifest" 2>/dev/null; then
-      tip_ver="$(manifest_version "$base_ref:$manifest")"
+      tip_ref="$base_ref"
     fi
+    if ! git cat-file -e "$tip_ref:$manifest" 2>/dev/null; then
+      continue  # plugin.json newly introduced — nothing to compare against
+    fi
+    tip_ver="$(manifest_version "$tip_ref:$manifest")"
+    new_ver="$(manifest_version "$new_spec")"
     if [ -z "$new_ver" ] || ! python3 -c 'import sys
 def key(v):
     return [int(p) if p.isdigit() else p for p in v.replace("-", ".").split(".")]
