@@ -2603,6 +2603,8 @@ assert_deny "7130 control: a python stdin script whose stdin is duped back to th
 assert_deny "7130 control: a node stdin script whose stdin is duped back to the pipe after the heredoc" "$(j "echo 'require(\"child_process\").execSync(\"env -i bash scripts/hooks/x*.sh\")' | node - 3<&0 <<'EOF' 0>&3"$'\n'"console.log(1)"$'\n'"EOF")"
 assert_deny "7130 control: a python stdin script whose stdin is duped through a zero-padded fd" "$(j "echo 'import os; os.system(\"env -i bash scripts/hooks/x*.sh\")' | python3 - 3<&0 <<'EOF' 00<&3"$'\n'"print(1)"$'\n'"EOF")"
 assert_deny "7130 control: a python stdin script read from a file through a zero-padded fd" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; python3 - <<'EOF' 00</tmp/p7130.py"$'\n'"print(1)"$'\n'"EOF")"
+assert_deny "7130 control: gh repo clone forwards an upload-pack program to git" "$(j "gh repo clone o/r d -- --upload-pack='env -i bash scripts/hooks/x*.sh'")"
+assert_deny "7130 control: gh repo clone forwards a core.sshCommand beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; gh repo clone o/r d -- -c core.sshCommand=/tmp/p7130")"
 assert_deny "7130 control: an expanded git argument can be an output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=--output=.git/hooks/x; git log \$o")"
 assert_deny "7130 control: a quoted expanded git argument can be a pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; o=-O/tmp/p7130; git grep \"\$o\" x")"
 

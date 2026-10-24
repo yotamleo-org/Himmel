@@ -1938,6 +1938,7 @@ def runs_none:
   if .prog == "sort" then (.argv[1:] | all(.[]; lit and (lopt(["compress-program"]; 2) | not)))
   elif .prog == "gh" then ((.argv[1] // {t: "lit", v: ""}) | lit
     and (wv | isin(["pr", "issue", "run", "api", "repo", "release", "workflow", "search", "label", "status", "cache"])))
+    and (.argv[1:] | all(.[]; lit and wv != "--"))
   else true end;
 def gitro: ["status", "log", "diff", "show", "grep", "ls-files", "ls-tree",
   "rev-parse", "rev-list", "blame", "cat-file", "describe", "shortlog",
