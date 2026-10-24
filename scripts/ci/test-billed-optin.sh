@@ -32,7 +32,7 @@ set -uo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-RE='(^|[^A-Za-z0-9_./-])claude[[:space:]]+(-p|--print|--bg)([[:space:]]|$)|"?\$\{?[A-Za-z_]*CLAUDE[A-Za-z_]*\}?"?[[:space:]]+(-p|--print|--bg)([[:space:]]|$)|["'"'"']claude["'"'"'],[[:space:]]*["'"'"'](-p|--print|--bg)|(^|[^A-Za-z0-9_./-])codex[[:space:]]+exec([[:space:]]|$)|["'"'"']codex["'"'"'],[[:space:]]*["'"'"']exec|(spawn|spawnSync|execFile|execFileSync)\([[:space:]]*["'"'"']claude["'"'"']|api\.anthropic\.com/v1/messages|openrouter\.ai/api/v1/(chat|completions|responses)|claude-api\.sh|claude-headless\.sh|llm-backend\.sh|claude-lane\.sh'
+RE='(^|[^A-Za-z0-9_./-])claude[[:space:]]+(-p|--print|--bg)([[:space:]]|$)|(^|[^A-Za-z0-9_./-])claude[[:space:]]+-[^|;&#]*[[:space:]](-p|--print|--bg)([[:space:]]|$)|"?\$\{?[A-Za-z_]*CLAUDE[A-Za-z_]*\}?"?[[:space:]]+(-p|--print|--bg)([[:space:]]|$)|["'"'"']claude["'"'"'],[[:space:]]*["'"'"'](-p|--print|--bg)|(^|[^A-Za-z0-9_./-])codex[[:space:]]+exec([[:space:]]|$)|["'"'"']codex["'"'"'],[[:space:]]*["'"'"']exec|(spawn|spawnSync|execFile|execFileSync)\([[:space:]]*["'"'"']claude["'"'"']|api\.anthropic\.com/v1/messages|openrouter\.ai/api/v1/(chat|completions|responses)|claude-api\.sh|claude-headless\.sh|llm-backend\.sh|claude-lane\.sh'
 SKIP_RE='(^|/)(fixtures|node_modules|dist)/|^docs/|^graphify-out/|^scripts/hooks/|claude-hud|\.test\.'
 HDR_RE='^[[:space:]]*(#|//)[[:space:]]*billed-(opt-in|exempt):'
 NONCOMMENT_RE='^[[:space:]]*(#|//|\*)'
@@ -41,6 +41,7 @@ noncomment() { grep -v -E "$NONCOMMENT_RE" "$1"; }
 
 lint() { # <root> <tracked-list>
   local root=$1 list=$2 bad=0 f base hdr hit kind val tok ok c
+  [ -r "$list" ] || { echo "FAIL tracked list unreadable: $list"; return 1; }
   while IFS= read -r f; do
     case "$f" in *.sh|*.py|*.mjs|*.js|*.ts) ;; *) continue ;; esac
     printf '%s\n' "$f" | grep -q -E "$SKIP_RE" && continue
@@ -136,6 +137,7 @@ put scripts/x/unknown-token.sh '#!/usr/bin/env bash' '# billed-opt-in: --yes' 'c
 put scripts/x/exempt.sh '#!/usr/bin/env bash' '# billed-exempt: wrapper, callers carry the marker' 'claude -p "$@"'
 put scripts/x/exempt-empty.sh '#!/usr/bin/env bash' '# billed-exempt:' 'claude -p "$@"'
 put scripts/x/comment-only.sh '#!/usr/bin/env bash' '# runs claude -p in the real thing' 'echo done'
+put scripts/x/opt-before-p.sh '#!/usr/bin/env bash' 'claude --model haiku -p "hi"'
 put scripts/x/py-argv.py '#!/usr/bin/env python3' 'argv = ["claude", "-p", "hi"]'
 put scripts/x/js-spawn.mjs 'const r = spawnSync("claude", ["-p"]);'
 put scripts/x/api.sh '#!/usr/bin/env bash' 'curl https://api.anthropic.com/v1/messages -d x'
@@ -168,6 +170,7 @@ frow "RED: an unknown token" 1 "unknown token (--yes): scripts/x/unknown-token.s
 frow "billed-exempt with a reason" 0 "" scripts/x/exempt.sh
 frow "RED: billed-exempt with no reason" 1 "billed-exempt needs a reason: scripts/x/exempt-empty.sh" scripts/x/exempt-empty.sh
 frow "a comment mentioning claude -p is not a call" 0 "" scripts/x/comment-only.sh
+frow "RED: options between claude and -p are caught" 1 "unmarked billed call: scripts/x/opt-before-p.sh:2" scripts/x/opt-before-p.sh
 frow "RED: a python argv call is caught" 1 "unmarked billed call: scripts/x/py-argv.py:2" scripts/x/py-argv.py
 frow "RED: a node spawn call is caught" 1 "unmarked billed call: scripts/x/js-spawn.mjs:1" scripts/x/js-spawn.mjs
 frow "RED: a direct API url is caught" 1 "unmarked billed call: scripts/x/api.sh:2" scripts/x/api.sh
@@ -184,6 +187,9 @@ for opt in --root --tracked; do
   bash "$SELF" --lint "$opt" > "$tmp/out" 2>&1; rc=$?
   if [ "$rc" -eq 2 ] && grep -qF -- usage "$tmp/out"; then pass "RED: $opt with no value -> usage, exit 2"; else fail "$opt with no value -> rc=$rc, expected usage and exit 2"; fi
 done
+
+bash "$SELF" --lint --root "$fx" --tracked "$tmp/no-such-list" > "$tmp/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && grep -qF -- "tracked list unreadable" "$tmp/out"; then pass "RED: an unreadable --tracked list fails the lint"; else fail "an unreadable --tracked list -> rc=$rc, expected a failure naming the list"; fi
 
 echo "== refusal rows: a marked script run WITHOUT the opt-in makes no call"
 stubs="$tmp/stubs"; mkdir -p "$stubs" "$tmp/home"
@@ -208,6 +214,7 @@ refuse scripts/probes/claude-p/05-cross-cwd-resume.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/probes/claude-p/07-dual-shell-allowlist.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/probes/claude-p/07-settings-overlay-hooks.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/eval/lane-quality/run.sh bash 64 "HIMMEL_BILLED_OK" run --lane native --model m
+refuse scripts/eval/lane-quality/run.sh bash 64 "HIMMEL_BILLED_OK" run --note "x --dry-run y" --lane native --model m
 refuse scripts/eval/graphify-ab/run.sh bash 2 "HIMMEL_BILLED_OK" run
 refuse scripts/eval/retrieval-eval/answer-ab.py python3 64 "HIMMEL_BILLED_OK" run --questions q.jsonl --out o
 refuse scripts/eval/review-panel/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/rp"
