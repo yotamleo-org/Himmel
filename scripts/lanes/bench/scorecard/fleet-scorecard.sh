@@ -37,7 +37,8 @@
 # escapes.py's signals over the PRs and bugs dated up to that day.
 # Fleet management: launch (the manifest's added) to the first LIVE and the first READY;
 # chief interventions = FINDING asks + nudges + EXPANSION / REDIRECT requests + rulings
-# beyond the asks (a ruling that answers an ask is not a second intervention); protocol
+# beyond the asks (a ruling that answers an ask is not a second intervention; a nudge,
+# request or prompt seen in both the worker doc and the chief doc counts once); protocol
 # misses (LIVE shape, READY shape, unmarked or coined bullets, a relay with no SUCCESSION
 # quote-back, a merge with no WRAPPED); delivery (a chief entry in the doc = inbox, a bus
 # record = bus, else message); stalls (BLOCKED / HALTED / PARKED-BANK bullets, chief-doc idle
@@ -140,11 +141,18 @@ def args():
 
 
 def zone(name):
+    from zoneinfo import ZoneInfo
     if not name:
-        return datetime.now().astimezone().tzinfo
+        # a real zone, so a cohort that crosses a DST change keeps its local times
+        try:
+            if os.environ.get("TZ"):
+                return ZoneInfo(os.environ["TZ"])
+            with open("/etc/localtime", "rb") as fh:
+                return ZoneInfo.from_file(fh)
+        except Exception:
+            return datetime.now().astimezone().tzinfo
     if name.upper() == "UTC":
         return timezone.utc
-    from zoneinfo import ZoneInfo
     try:
         return ZoneInfo(name)
     except Exception:
@@ -325,7 +333,7 @@ def score(leg, ctx):
             q[k] = reason
         for k in ("live", "ready", "interventions", "breakdown", "protocol", "delivery", "stalls", "denials", "cost"):
             f[k] = reason
-        return q, f, {"in_flight": True}
+        return q, f, {"merged": False, "in_flight": True}
     worker = [b for b in bullets if not b["chief"]]
     chief_entries = [b for b in bullets if b["chief"]]
     mine = leg_prs(leg, bullets, ctx["prs"])
@@ -337,9 +345,13 @@ def score(leg, ctx):
         q["PR"] = na("no --prs")
     else:
         q["PR"] = ", ".join(str(p["number"]) for p in sorted(mine, key=lambda p: p["number"])) or "none"
-    q["state"] = "merged" if merged else ("wrapped unmerged" if wrapped else "in flight")
-    v["merged"] = bool(merged)
-    v["in_flight"] = q["state"] == "in flight"
+    if mine is None:
+        q["state"] = na("no --prs")
+        v["merged"] = v["in_flight"] = None
+    else:
+        q["state"] = "merged" if merged else ("wrapped unmerged" if wrapped else "in flight")
+        v["merged"] = bool(merged)
+        v["in_flight"] = q["state"] == "in flight"
     nopr = na("no --prs") if mine is None else (na("no PR") if not mine else None)
     if nopr:
         q["judge"] = nopr
@@ -377,8 +389,9 @@ def score(leg, ctx):
     label = re.compile(r"\b%s\b" % re.escape(leg["label"]))
     stem = os.path.splitext(os.path.basename(leg["doc"]))[0]
     chief_lines = [ln for ln in ctx["chief_text"].splitlines() if label.search(ln)] if ctx["chief_text"] else []
-    nudges += sum(1 for ln in chief_lines if NUDGE.search(ln))
-    expands += sum(1 for ln in chief_lines if not NUDGE.search(ln) and EXPAND.search(ln))
+    # one intervention may be logged in both docs, so take the larger count, never the sum
+    nudges = max(nudges, sum(1 for ln in chief_lines if NUDGE.search(ln)))
+    expands = max(expands, sum(1 for ln in chief_lines if not NUDGE.search(ln) and EXPAND.search(ln)))
     if ctx["chief_text"]:
         v["interventions"] = asks + nudges + expands + max(0, rulings - asks)
         f["interventions"] = str(v["interventions"])
@@ -408,7 +421,7 @@ def score(leg, ctx):
     via = [w for w, hit in (("inbox", chief_entries), ("bus", [b for b in worker if b["bus"]])) if hit]
     f["delivery"] = "+".join(via) or "message"
     blocked = sum(1 for b in worker if b["word"] in ("BLOCKED", "HALTED", "PARKED-BANK"))
-    prompt = sum(1 for b in worker if PROMPT.search(b["text"])) + sum(1 for ln in chief_lines if PROMPT.search(ln))
+    prompt = max(sum(1 for b in worker if PROMPT.search(b["text"])), sum(1 for ln in chief_lines if PROMPT.search(ln)))
     stalls = ["blocked %d" % blocked] if blocked else []
     if ctx["chief_text"]:
         idle = sum(1 for ln in ctx["chief_text"].splitlines() if "slug=" in ln and stem in ln and IDLE.search(ln))
@@ -452,6 +465,9 @@ def lane_rows(scored):
         vals = [x for x in vals if x is not None]
         return num(sum(vals)) if vals else "n/a"
 
+    def count(flags):
+        return "n/a" if None in flags else str(sum(1 for x in flags if x))
+
     def median(vals, unit=""):
         vals = [x for x in vals if x is not None]
         return (num(statistics.median(vals)) + unit) if vals else "n/a"
@@ -460,8 +476,8 @@ def lane_rows(scored):
         vs = lanes[lane]
         j = [v.get("judge") for v in vs]
         cost = [v.get("cost") for v in vs if v.get("cost") is not None]
-        out.append([lane, str(len(vs)), str(sum(1 for v in vs if v.get("merged"))),
-                    str(sum(1 for v in vs if v.get("in_flight"))),
+        out.append([lane, str(len(vs)), count([v.get("merged") for v in vs]),
+                    count([v.get("in_flight") for v in vs]),
                     total([x[0] for x in j if x]), total([x[1] for x in j if x]),
                     total([x[2] for x in j if x]), total([x[3] for x in j if x]),
                     total([v.get("cr") for v in vs]), median([v.get("rounds") for v in vs]),
@@ -511,15 +527,20 @@ def main():
     ctx["chief_text"] = "\n".join(read(c) for c in found)
     ctx["denials_path"] = a.denials or os.path.expanduser("~/.himmel/state/classifier-denials.jsonl")
     ctx["denials"] = None
+    ctx["denials_bad"] = 0
     if os.path.isfile(ctx["denials_path"]):
         ctx["denials"] = []
         for line in read(ctx["denials_path"]).splitlines():
+            if not line.strip():
+                continue
             try:
                 row = json.loads(line)
             except ValueError:
-                continue
+                row = None
             if isinstance(row, dict):
                 ctx["denials"].append(row)
+            else:
+                ctx["denials_bad"] += 1
     mirror = a.mirror or judge_accuracy.MIRROR
     try:
         ctx["bugs"] = judge_accuracy.load_bugs(mirror)
@@ -554,7 +575,9 @@ def main():
            "- verdicts: %s" % (ctx["vdir"] if ctx["recs"] is not None else na("absent: " + ctx["vdir"])),
            "- CR ledger: %s" % (ledger if ctx["ledger_rows"] is not None else na("absent: " + ledger)),
            "- PRs: %s" % (a.prs or na("no --prs")),
-           "- denials: %s" % (ctx["denials_path"] if ctx["denials"] is not None else na("absent: " + ctx["denials_path"])),
+           "- denials: %s%s" % (ctx["denials_path"] if ctx["denials"] is not None else na("absent: " + ctx["denials_path"]),
+                                " (%d unreadable row%s)" % (ctx["denials_bad"], "" if ctx["denials_bad"] == 1 else "s")
+                                if ctx["denials_bad"] else ""),
            "- Jira mirror: %s" % (mirror if ctx["bugs"] is not None else na("absent: " + mirror)), ""]
     report = "\n".join(out)
     if a.out:

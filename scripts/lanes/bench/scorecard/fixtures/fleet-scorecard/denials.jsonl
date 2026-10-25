@@ -2,3 +2,4 @@
 {"ts":"2026-10-25T16:41:00Z","session_id":"fixture-9001","session_title":"feat+himmel-9001-planted-nogo","cwd":"/fixture/himmel/.claude/worktrees/feat+himmel-9001-planted-nogo","tool":"Bash","reason_tag":"[Interfere With Workloads]","input_sha":"01","input_head":"kill 4 5"}
 {"ts":"2026-10-25T16:20:00Z","session_id":"fixture-9003","session_title":"feat+himmel-9003-native-merged","cwd":"/fixture/himmel/.claude/worktrees/feat+himmel-9003-native-merged","tool":"Bash","reason_tag":"[Merge Without Review]","input_sha":"02","input_head":"bash scripts/handover/chief-kit/append-results.sh"}
 {"ts":"2026-10-25T16:20:00Z","session_id":"fixture-other","session_title":"feat+himmel-1-other","cwd":"/fixture/himmel/.claude/worktrees/feat+himmel-1-other","tool":"Bash","reason_tag":"[Merge Without Review]","input_sha":"03","input_head":"gh pr merge 1"}
+{"ts":"2026-10-25T16:45:00Z","session_id":"fixture-9001","session_title":"feat+himmel-9001-pl

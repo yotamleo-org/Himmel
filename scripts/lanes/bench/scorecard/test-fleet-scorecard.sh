@@ -45,7 +45,8 @@ check "runs over the fixture cohort (exit 0)" "$RC" "0"
 
 # --- (a) the DoD RED control: a planted claudex leg with one judge NO-GO and
 # two chief interventions (a FINDING ask and a nudge; the ruling that answers
-# the ask is not a third)
+# the ask is not a third, and the nudge logged both in the doc and in the chief
+# doc counts once)
 check "(a) planted leg is on the claudex lane" "$(cell "$OUT" "Output quality" N9001 3)" "claudex"
 check "(a) planted leg judge cell shows NO-GO=1 with its blocker and major" \
     "$(cell "$OUT" "Output quality" N9001 7)" "GO 1, NO-GO 1 (blocker 1, major 1)"
@@ -72,6 +73,8 @@ check "(b) a chief entry in the doc is inbox delivery" "$(cell "$OUT" "Fleet man
 check "(b) stalls read the BLOCKED bullets and the chief idle ticks" \
     "$(cell "$OUT" "Fleet management" N9001 10) / $(cell "$OUT" "Fleet management" N9004 10)" "idle 1 / blocked 1"
 check "(b) guard denials joined by worktree" "$(cell "$OUT" "Fleet management" N9001 11)" "2"
+check "(b) an unreadable denial row is reported, not dropped" \
+    "$(printf '%s\n' "$OUT" | grep '^- denials:')" "- denials: $FX/denials.jsonl (1 unreadable row)"
 check "(b) cost-eq per merged PR from the leg-burn line" "$(cell "$OUT" "Fleet management" N9001 12)" "1200.0k"
 check "(b) an in-flight leg is marked" "$(cell "$OUT" "Output quality" N9004 6)" "in flight"
 check "(b) a leg with no PR has n/a judge, not 0" "$(cell "$OUT" "Output quality" N9004 7)" "n/a (no PR)"
@@ -84,6 +87,9 @@ check "(b) a missing CR ledger leaves rounds n/a" "$(cell "$NOLEDGER" "Output qu
 NOPRS=$("$FLEET" --manifest "$FX/FT-roadmap-chief.fleet.json" --cr-ledger "$FX/cr-ledger.jsonl" \
     --verdicts "$FX/verdicts" --denials "$FX/absent-denials.jsonl" --mirror "$FX/mirror" --tz UTC 2>/dev/null)
 check "(b) without --prs the PR column is n/a with its reason" "$(cell "$NOPRS" "Output quality" N9001 5)" "n/a (no --prs)"
+check "(b) without --prs the state is n/a, not unmerged" "$(cell "$NOPRS" "Output quality" N9001 6)" "n/a (no --prs)"
+check "(b) without --prs the lane merged and in-flight totals are n/a" \
+    "$(cell "$NOPRS" "Per lane" claudex 4) / $(cell "$NOPRS" "Per lane" claudex 5)" "n/a / n/a"
 check "(b) a missing denial log is n/a with its reason" \
     "$(cell "$NOPRS" "Fleet management" N9001 11)" "n/a (no denial log: $FX/absent-denials.jsonl)"
 
