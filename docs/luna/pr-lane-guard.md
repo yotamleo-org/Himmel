@@ -79,8 +79,8 @@ git restore --staged docs/probe.md && rm docs/probe.md
 
 ## Caveats
 
-- The hook needs bash (Git for Windows ships it; pre-commit resolves the
-  `#!/usr/bin/env bash` shebang for `language: script` hooks).
+- The hook needs bash (pre-commit resolves the `#!/usr/bin/env bash`
+  shebang for `language: script` hooks).
 - pre-commit caches the himmel clone keyed by `(repo, rev)`, so gate fixes in
   himmel reach luna only after bumping `rev`.
 - `main` is hardcoded as the protected branch (shared

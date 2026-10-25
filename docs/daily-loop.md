@@ -231,7 +231,7 @@ require them, the full commit looks like:
 ```
 fix(scripts): PROJ-42 correct bash exit code
 
-Platforms tested: linux, windows
+Platforms tested: linux, macos
 Security reviewed: manual
 
 Co-Authored-By: Claude <noreply@anthropic.com>

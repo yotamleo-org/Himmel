@@ -54,7 +54,7 @@ thereby enabled in a cloud session, so the brief must not assume it:
 Probed from a cloud session started in a `--with-plugins` environment:
 `CLAUDE_CODE_REMOTE=true`, `HOME=/root`, `CLAUDE_PROJECT_DIR=/home/user/Himmel`,
 `HIMMEL_REPO` unset. Plugins install at user scope (`/root/.claude/plugins`,
-himmel-ops 0.4.22, lean-skills 0.2.2).
+at the marketplace versions at HEAD).
 
 - **SessionStart plugin hooks fire.** `record-hook-integrity` and
   `record-primary-baseline` wrote

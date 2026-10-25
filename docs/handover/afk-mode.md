@@ -80,7 +80,7 @@ For work that will need mid-flight decisions or will outlive one context window,
 7. **Automated re-review:** re-run `/pr-check` on the fixed head (same matrix; the Claude agents again only under `CR_CLAUDE_AGENTS=1`). Loop fix → re-review until 0 Critical remain.
 8. **PR open + push:** `gh pr create --body-file <path>`. Write the body to a file first to avoid shell-interpretation surprises (heredocs, `$()` substitutions, multi-line content with quotes). **Attestation trailers go in the FIRST commit, never a reactive amend**; see "Auto-mode classifier & attestation" below. Before the first `git commit` of any shippable change, after you have genuinely run tests + `/pr-check`, write the gate trailers directly into that commit body:
    ```text
-   Platforms tested: <linux|windows|gitbash|…>   # only when the diff touches shell/scripts
+   Platforms tested: <linux|macos>   # only when the diff touches shell/scripts
    Security reviewed: <pr-review-toolkit|manual|claude-code-security-review>   # only for non-docs code
    ```
    Then the push passes the `platforms-tested` / security-reviewed gates first-try with no amend. **Do NOT commit first, hit the gate, then `git commit --amend` to add the trailer**: the auto-mode classifier flags that reactive amend as security-gate circumvention and HARD-blocks it (uncleable, even with operator approval).
@@ -152,10 +152,10 @@ the `<total_tokens>` spend budget, which is a different, much larger
 allowance and was routinely conflated with fill before this ticket.
 
 **Safety-classifier reroute is not a failure.** ~5% of Fable sessions trip
-a (trigger-happy) safety classifier and route to Opus 4.8 **with a
-notification** (community-measured, @PawelHuryn). This is a different
-layer from the auto-mode classifier below: nothing was blocked, the floor
-is Opus 4.8, and the run should simply continue. Do not halt, retry, or
+a (trigger-happy) safety classifier and route to Opus **with a
+notification** (observed on Opus 4.8, community-measured, @PawelHuryn).
+This is a different layer from the auto-mode classifier below: nothing was
+blocked, and the run should simply continue. Do not halt, retry, or
 escalate to the operator over a reroute notice.
 
 **A zero is not evidence without a positive control.** Any
@@ -451,9 +451,9 @@ launch**. `arm-resume.sh` enforces this: it refuses `--channels` (rc=5) while
 the bridge is live. Keep the bun bridge up; relaunch plain. Full rationale:
 [`docs/internals/telegram-bridge.md`](../internals/telegram-bridge.md).
 
-## Auto-mode classifier & attestation (Opus 4.8+)
+## Auto-mode classifier & attestation
 
-Opus 4.8 runs a model-based **auto-mode classifier** on every tool call in autonomous/auto-accept sessions. It is a SEPARATE layer from the `.claude/settings.json` permission allow-list. Crucially, **a generic catch-all allow-rule does NOT authorize a semantically-risky action; only a SPECIFIC, tool-named rule does**. Observed: a Jira write invoked as `node scripts/jira/dist/index.js …` matched only the generic `Bash(node *)` and was **blocked**, whereas the same write invoked as `jira …` matched the specific `Bash(jira *)` and **ran**. The classifier sorts actions into two tiers:
+Claude Code runs a model-based **auto-mode classifier** on every tool call in autonomous/auto-accept sessions. It is a SEPARATE layer from the `.claude/settings.json` permission allow-list. Crucially, **a generic catch-all allow-rule does NOT authorize a semantically-risky action; only a SPECIFIC, tool-named rule does**. Observed: a Jira write invoked as `node scripts/jira/dist/index.js …` matched only the generic `Bash(node *)` and was **blocked**, whereas the same write invoked as `jira …` matched the specific `Bash(jira *)` and **ran**. The classifier sorts actions into two tiers:
 
 - **HARD vetoes — uncleable by any setting OR by operator approval** (this is the prompt-injection defense that makes unattended overnight runs safe):
   - **Security-gate circumvention:** e.g. `git commit --amend` to add a `Security reviewed:` / `Platforms tested:` trailer *after* a push gate already failed. The reactive amend reads as "fabricate an attestation to bypass the gate."
@@ -521,9 +521,7 @@ Non-obvious gotchas that surfaced during the proof-of-concept run; carry forward
 - **Lock target must be a FILE not a directory.** Pass a real file path to `lockfile.lock()`, e.g. `<tDir>/.lock`, touched into existence first (see the `// B2:` comment block in `scripts/himmel-run/src/run.ts`). `proper-lockfile` v4 then creates the lock artifact at `<target>.lock` (so `<tDir>/.lock.lock` here) as a sibling **directory**, not a file, as verified by the `mkdirSync(lockPath)` line in the `'recovers from stale lockfile'` test at `scripts/himmel-run/tests/lock.test.ts`. To clean a stale lock: `rm -rf <target>.lock` (or `rmdir <target>.lock` since the dir is empty in v4). POSIX `rm` without `-r` refuses directories; that is the failure mode if you treat the artifact as a file.
 - **`lastIndexOf('--')` not `indexOf('--')`** in arg parsers: the user can write `--` inside earlier flag values.
 - **Init flow must collect ALL required env vars upfront.** The reference run missed `JIRA_BASE_URL` and had to re-init. Enumerate from the runner config.
-- **Skill markdown body should be a single command line.** ALL retry/fallback/recovery logic lives in the runner; skills cannot enforce branching deterministically.
-- **Log/cache paths need Windows variants** in skill markdown (`%LOCALAPPDATA%` vs `$XDG_CACHE_HOME`).
-- **`gh api graphql` uses `-F query=@file.gql`** (capital F), verified during the reference run's automated review.
+- **Skill markdown body should be a single command line.** ALL retry/fallback/recovery logic lives in the runner; skills cannot enforce branching deterministically.- **`gh api graphql` uses `-F query=@file.gql`** (capital F), verified during the reference run's automated review.
 - **Heavy automated review catches 30+ Critical/Important issues** on a fresh runner. Budget ~2 rounds of fix-then-review minimum.
 
 ## Reference run

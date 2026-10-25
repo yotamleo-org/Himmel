@@ -126,7 +126,7 @@ UNDER**, never a consumer of it.
 
 **PARKED until GA.** Agent Teams remains experimental/flag-gated
 (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), token cost scales linearly per active
-teammate, and on Windows it is in-process only. **Opt-in trigger:** the operator
+teammate. **Opt-in trigger:** the operator
 names a debugging-competing-hypotheses case AND accepts the experimental flag;
 the pilot mechanics (single session, ≤3 teammates, explicit token cap)
 instantiate only then. **No WS3 machinery depends on Teams**; everything rides
