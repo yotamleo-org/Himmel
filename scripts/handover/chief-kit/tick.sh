@@ -1552,12 +1552,23 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         [ -n "$tracker_plan" ] || tracker_plan="$tracker_dir/specs/plan/HIMMEL-3882"
         tracker_file="$tracker_dir/roadmap-tracker.html"
         tracker_class=''
+        # a focus-owned page (the same rule as wrap-merged.sh focus_owned) is written by focus-refresh.sh, which records
+        # its fingerprint as <page>.vfp and sha8 in focus-state and never writes the all-versions .fp: compare those
+        # two. No .vfp or no sha8 falls back to the .fp comparison.
+        tracker_focus_sha=''
+        tracker_fv="$(sed -n 's/^focus-version:[[:space:]]*//p' "$console_doc" | head -n 1)"
+        tracker_rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" | head -n 1)"
+        case "$tracker_fv" in none*) tracker_fv=skip ;; '') case "$tracker_rel" in ''|none*) tracker_fv=skip ;; esac ;; esac
+        if [ "$tracker_fv" != skip ] && [ -f "$tracker_file.vfp" ] && [ -f "$tracker_dir/focus-state" ]; then
+            tracker_focus_sha="$(sed -n 's/^sha8=//p' "$tracker_dir/focus-state" | head -n 1)"
+        fi
         tracker_want="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$tracker_plan" --out "$tracker_file" --luna-map "$tracker_dir/roadmap-luna-map.json" ${TICK_TRACKER_MIRROR_DIR:+--mirror-dir "$TICK_TRACKER_MIRROR_DIR"} 2>/dev/null)" || tracker_want=""
         if [ ! -f "$tracker_file" ]; then
             tracker_summary=MISSING
         elif [ -z "$tracker_want" ]; then
             tracker_summary=skip  # cannot derive the reference (no python3, bad plan dir): no verdict
-        elif [ "$(cat "$tracker_file.fp" 2>/dev/null)" = "$tracker_want" ]; then
+        elif { [ -n "$tracker_focus_sha" ] && [ "$(cut -c1-8 "$tracker_file.vfp" | head -n 1)" = "$tracker_focus_sha" ]; } \
+            || { [ -z "$tracker_focus_sha" ] && [ "$(cat "$tracker_file.fp" 2>/dev/null)" = "$tracker_want" ]; }; then
             tracker_summary=ok
             # The console touches <page>.published after each Artifact publish; a page newer than that stamp is
             # rendered but not republished. No stamp file, no verdict.

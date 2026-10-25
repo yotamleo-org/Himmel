@@ -154,7 +154,7 @@ failed() { # <stage> - the run stops here; the page and the generation stay as t
 BUDGET="${FOCUS_REFRESH_BUDGET:-240}"
 case "$BUDGET" in '' | *[!0-9]*) BUDGET=240 ;; esac
 
-MIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
+MIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}"
 mkdir -p "${MIR%/*}" 2>/dev/null # swallow-ok: an unwritable mirror parent fails the mirror step by name
 
 # the supervising process takes the lock before the budgeted child starts, so a killed child never frees it early
