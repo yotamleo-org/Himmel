@@ -37,14 +37,16 @@ set -uo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/run-shell-tests-fixture.sh"
 
 # mk_suite <dir> <name> <tenths of a second> [rc] — a fixture suite that marks
-# itself running, appends "<name> <suites running at its start>" to peak.log,
-# sleeps, then unmarks itself.
+# itself running, appends "<name> <suites running at its start>" to peak.log
+# (and its name to beside-alone.log when a *-alone.sh suite is running), sleeps,
+# then unmarks itself.
 mk_suite() {
   local _d="$1" _n="$2" _t="$3" _rc="${4:-0}"
   cat > "$_d/scripts/$_n" <<SHEOF
 #!/usr/bin/env bash
 : > "$_d/run.$_n"
 _c=0; for _f in "$_d"/run.*; do [ -e "\$_f" ] && _c=\$((_c + 1)); done
+for _f in "$_d"/run.*-alone.sh; do [ -e "\$_f" ] && [ "\$_f" != "$_d/run.$_n" ] && printf '%s\n' "$_n" >> "$_d/beside-alone.log"; done
 printf '%s %s\n' "$_n" "\$_c" >> "$_d/peak.log"
 sleep $((_t / 10)).$((_t % 10))
 rm -f "$_d/run.$_n"
@@ -60,6 +62,10 @@ peak_of() { sed -n "s/^$2 //p" "$1/peak.log" 2>/dev/null; }
 # pair_peaks <dir> <name> <name> — "<lower> <higher>" running counts the two
 # saw, so a check does not depend on which of two launched suites ran first.
 pair_peaks() { printf '%s\n%s\n' "$(peak_of "$1" "$2")" "$(peak_of "$1" "$3")" | sort -n | paste -sd' ' -; }
+
+# overlapped <dir> <name> <name> — the two ran at once: one saw the other, or
+# both marked themselves running before either counted.
+overlapped() { case "$(pair_peaks "$@")" in "1 2"|"2 2") return 0 ;; esac; return 1; }
 
 # max_peak <dir> — the highest running count any suite saw.
 max_peak() { sort -n -k2 "$1/peak.log" 2>/dev/null | tail -n 1 | cut -d' ' -f2; }
@@ -101,13 +107,13 @@ if sb=$(mk_sandbox); then
   mk_suite "$sb" test-e.sh 15
   printf '# fixture deny-list\n*/scripts/test-c-alone.sh  fixture: must run alone\n' > "$sb/deny.txt"
   out=$(SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
-  pc=$(peak_of "$sb" test-c-alone.sh); pde=$(pair_peaks "$sb" test-d.sh test-e.sh)
-  if [ "$rc" -eq 0 ] && [ "$pc" = 1 ] && [ "$pde" = "1 2" ]; then
+  pc=$(peak_of "$sb" test-c-alone.sh)
+  if [ "$rc" -eq 0 ] && [ "$pc" = 1 ] && [ ! -s "$sb/beside-alone.log" ]; then
     pass "P2: test-c-alone.sh started with nothing else running, and the next suite only after it ended"
   else
-    fail "P2: expected rc 0, running count 1 for test-c-alone.sh and 1 2 for test-d.sh/test-e.sh, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+    fail "P2: expected rc 0, running count 1 for test-c-alone.sh and no suite started beside it, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log") beside-alone.log=$(tr '\n' ' ' < "$sb/beside-alone.log" 2>/dev/null); out: $out"
   fi
-  if [ "$(pair_peaks "$sb" test-a.sh test-b.sh)" = "1 2" ] && [ "$pde" = "1 2" ]; then
+  if overlapped "$sb" test-a.sh test-b.sh && overlapped "$sb" test-d.sh test-e.sh; then
     pass "P2: the suites around it still ran in parallel"
   else
     fail "P2: expected test-a.sh/test-b.sh and test-d.sh/test-e.sh to overlap; peak.log=$(tr '\n' ' ' < "$sb/peak.log")"
@@ -248,19 +254,21 @@ echo "== P9: a runner terminated mid-run leaves no parallel suite running =="
 if sb=$(mk_sandbox); then
   printf '#!/usr/bin/env bash\necho $$ > "%s/long.pid"\nexec sleep 30\n' "$sb" > "$sb/scripts/test-long.sh"
   chmod +x "$sb/scripts/test-long.sh"
-  mk_suite "$sb" test-b.sh 300
+  printf '#!/usr/bin/env bash\necho $$ > "%s/b.pid"\nexec sleep 30\n' "$sb" > "$sb/scripts/test-b.sh"
+  chmod +x "$sb/scripts/test-b.sh"
   SUITE_JOBS=2 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" > "$sb/out" 2>&1 &
   rpid=$!
-  for _w in $(seq 1 100); do [ -s "$sb/long.pid" ] && break; sleep 0.1; done
-  lpid=$(cat "$sb/long.pid" 2>/dev/null)
+  for _w in $(seq 1 100); do [ -s "$sb/long.pid" ] && [ -s "$sb/b.pid" ] && break; sleep 0.1; done
+  lpid=$(cat "$sb/long.pid" 2>/dev/null); bpid=$(cat "$sb/b.pid" 2>/dev/null)
   kill -TERM "$rpid" 2>/dev/null
   wait "$rpid" 2>/dev/null
   sleep 1
-  if [ -n "$lpid" ] && ! kill -0 "$lpid" 2>/dev/null; then
-    pass "P9: the suite a lane was running ended with the runner"
+  if [ -n "$lpid" ] && [ -n "$bpid" ] && ! kill -0 "$lpid" 2>/dev/null && ! kill -0 "$bpid" 2>/dev/null; then
+    pass "P9: the suites both lanes were running ended with the runner"
   else
-    fail "P9: expected the lane's suite (pid ${lpid:-none}) to end with the runner; out: $(cat "$sb/out")"
+    fail "P9: expected both lanes' suites (pids ${bpid:-none} ${lpid:-none}) to end with the runner; out: $(cat "$sb/out")"
     [ -z "$lpid" ] || kill "$lpid" 2>/dev/null
+    [ -z "$bpid" ] || kill "$bpid" 2>/dev/null
   fi
   rm -rf "$sb"
 else
