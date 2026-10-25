@@ -36,8 +36,9 @@ Claude Code every day. It is a bootstrap harness that you install on top of
 Claude Code's own harness, and it adds to that harness without replacing it.
 It wraps Claude Code in hooks, guardrails, slash commands, a local Jira CLI and
 a handover system, so the work follows a worktree-isolated, PR-gated,
-Jira-tracked workflow without anyone having to remember the rules. On top of that it runs as a software factory: a fleet of
-sessions that turns tickets into reviewed, merged PRs.
+Jira-tracked workflow without anyone having to remember the rules. On top of
+that it runs as a software factory: a fleet of sessions that turns tickets
+into reviewed, merged PRs.
 
 Runs on Claude Code today; under Codex the guardrails fire through the hook
 adapter and AGENTS.md; other harnesses are audited, not ported.
