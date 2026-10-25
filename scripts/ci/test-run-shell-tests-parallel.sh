@@ -15,6 +15,7 @@
 #       the waiting suite from starting.
 #   P8. The deny-list matches a suite however the scan root is spelled (a
 #       symlink to the suites' directory).
+#   P9. A runner terminated mid-run leaves no parallel suite running.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -58,8 +59,8 @@ max_peak() { sort -n -k2 "$1/peak.log" 2>/dev/null | tail -n 1 | cut -d' ' -f2; 
 
 mk_sandbox() {
   local _d
-  _d=$(mktemp -d "${TMPDIR:-/tmp}/rst-par.XXXXXX") || return 1
-  mkdir -p "$_d/scripts" || return 1
+  _d=$(mktemp -d "$SUITE_LOCK_SANDBOX/rst-par.XXXXXX") || return 1
+  mkdir -p "$_d/scripts" || { rm -rf "$_d"; return 1; }
   : > "$_d/peak.log"
   printf '%s' "$_d"
 }
@@ -232,6 +233,29 @@ if sb=$(mk_sandbox); then
   rm -rf "$sb"
 else
   fail "P8: mktemp failed"
+fi
+
+echo "== P9: a runner terminated mid-run leaves no parallel suite running =="
+if sb=$(mk_sandbox); then
+  printf '#!/usr/bin/env bash\necho $$ > "%s/long.pid"\nexec sleep 30\n' "$sb" > "$sb/scripts/test-long.sh"
+  chmod +x "$sb/scripts/test-long.sh"
+  mk_suite "$sb" test-b.sh 300
+  SUITE_JOBS=2 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" > "$sb/out" 2>&1 &
+  rpid=$!
+  for _w in $(seq 1 100); do [ -s "$sb/long.pid" ] && break; sleep 0.1; done
+  lpid=$(cat "$sb/long.pid" 2>/dev/null)
+  kill -TERM "$rpid" 2>/dev/null
+  wait "$rpid" 2>/dev/null
+  sleep 1
+  if [ -n "$lpid" ] && ! kill -0 "$lpid" 2>/dev/null; then
+    pass "P9: the suite a lane was running ended with the runner"
+  else
+    fail "P9: expected the lane's suite (pid ${lpid:-none}) to end with the runner; out: $(cat "$sb/out")"
+    [ -z "$lpid" ] || kill "$lpid" 2>/dev/null
+  fi
+  rm -rf "$sb"
+else
+  fail "P9: mktemp failed"
 fi
 
 rst_tally

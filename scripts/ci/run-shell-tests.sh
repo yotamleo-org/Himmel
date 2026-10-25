@@ -4668,14 +4668,33 @@ ${suite_key#"$tier_repo_root"/}
   [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 }
 
+# _lane_worker_stop — inside a lane: end the suite's and the watchdog's
+# process groups, which a TERM to the lane itself does not reach.
+# shellcheck disable=SC2317,SC2329  # invoked from the lane's TERM trap
+_lane_worker_stop() {
+  local _g _n=0 _alive
+  for _g in ${watch_pid:-} ${suite_pid:-}; do kill -TERM -"$_g" 2>/dev/null; done
+  while [ "$_n" -lt 30 ]; do
+    _alive=0
+    for _g in ${watch_pid:-} ${suite_pid:-}; do proc_tree_group_alive "$_g" && _alive=1; done
+    [ "$_alive" -eq 1 ] || break
+    sleep 0.1
+    _n=$((_n + 1))
+  done
+  for _g in ${watch_pid:-} ${suite_pid:-}; do kill -KILL -"$_g" 2>/dev/null; done
+  [ -z "${suite_tmp:-}" ] || rm -rf "$suite_tmp" 2>/dev/null
+  [ -z "${log:-}" ] || rm -f "$log" "$log.rc"
+}
 # _lane_launch <lane> — run the current suite's attempts in the background in
-# that lane. Its output is held in a file and printed when the parent reaps it,
-# so a suite's lines stay together; its result comes back as a sourced file.
+# that lane. Its output is held in a private directory and printed when the
+# parent reaps it, so a suite's lines stay together; its result comes back as
+# a sourced file there.
 _lane_launch() {
   local _i="$1"
   # prim-ok: anchored at literal /tmp like the suite temp roots
-  lane_out[_i]=$(mktemp "/tmp/himmel-lane.XXXXXX") || { echo "run-shell-tests.sh: mktemp failed for a parallel lane" >&2; _lanes_stop; exit 2; }
-  ( live_root="${lane_root[_i]}"
+  lane_out[_i]=$(mktemp -d "/tmp/himmel-lane.XXXXXX") || { echo "run-shell-tests.sh: mktemp failed for a parallel lane" >&2; _lanes_stop; exit 2; }
+  ( trap '_lane_worker_stop; exit 143' TERM
+    live_root="${lane_root[_i]}"
     _w_t0=$timed_out
     _suite_attempts
     { for _v in rc capped _attempt first_rc first_capped first_log log start suite_end suite_timeout \
@@ -4683,22 +4702,21 @@ _lane_launch() {
         printf '%s=%q\n' "$_v" "${!_v:-}"
       done
       printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
-    } > "${lane_out[_i]}.res" ) > "${lane_out[_i]}" 2> "${lane_out[_i]}.err" &
+    } > "${lane_out[_i]}/res" ) > "${lane_out[_i]}/out" 2> "${lane_out[_i]}/err" &
   lane_pid[_i]=$!
 }
 # _lane_reap <lane> — collect a finished lane: print its output, restore its
 # result, account for it. A worker that left no result exits the run with 2.
 _lane_reap() {
-  local _i="$1" _res="${lane_out[$1]}.res"
+  local _i="$1" _res="${lane_out[$1]}/res"
   # The loop's own suite variables belong to the suite about to launch.
   local _s="$suite" _r="$relpath" _k="$suite_key" _m="${mf_rel:-}"
   wait "${lane_pid[_i]}" 2>/dev/null
   lane_pid[_i]=""
-  cat "${lane_out[_i]}"
-  cat "${lane_out[_i]}.err" >&2
-  rm -f "${lane_out[_i]}" "${lane_out[_i]}.err"
+  cat "${lane_out[_i]}/out"
+  cat "${lane_out[_i]}/err" >&2
   if [ ! -s "$_res" ]; then
-    rm -f "$_res"
+    rm -rf "${lane_out[_i]}"
     echo "run-shell-tests.sh: a parallel suite worker ended without a result — refusing to run more suites" >&2
     _lanes_stop
     exit 2
@@ -4706,23 +4724,24 @@ _lane_reap() {
   _w_timed_out=0
   # shellcheck disable=SC1090  # written by _lane_launch above
   . "$_res"
-  rm -f "$_res"
+  rm -rf "${lane_out[_i]}"
   timed_out=$((timed_out + _w_timed_out))
   _suite_account
   suite="$_s" relpath="$_r" suite_key="$_k" mf_rel="$_m"
 }
-# _lane_free — set lane_free to an idle lane, reaping finished ones; bash
-# reaps a background child itself, so a kill -0 that fails means it is done.
+# _lane_free — reap every finished lane, then set lane_free to an idle one;
+# bash reaps a background child itself, so a kill -0 that fails means it is
+# done. Reaping all of them first accounts every finished suite before the
+# caller's stop check.
 _lane_free() {
   local _i
   while :; do
     for (( _i = 0; _i < suite_jobs; _i++ )); do
+      [ -n "${lane_pid[_i]:-}" ] || continue
+      kill -0 "${lane_pid[_i]}" 2>/dev/null || _lane_reap "$_i"
+    done
+    for (( _i = 0; _i < suite_jobs; _i++ )); do
       if [ -z "${lane_pid[_i]:-}" ]; then lane_free=$_i; return 0; fi
-      if ! kill -0 "${lane_pid[_i]}" 2>/dev/null; then
-        _lane_reap "$_i"
-        lane_free=$_i
-        return 0
-      fi
     done
     sleep 0.2
   done
@@ -4735,13 +4754,17 @@ _lanes_drain() {
     _lane_reap "$_i"
   done
 }
-# _lanes_stop — terminate every running lane, for an exit 2 mid-run.
+# _lanes_stop — terminate every running lane, for an exit mid-run. Each lane
+# ends its own suite's process groups on TERM (_lane_worker_stop).
 _lanes_stop() {
   local _i
   for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -z "${lane_pid[_i]:-}" ] || kill -TERM "${lane_pid[_i]}" 2>/dev/null
+  done
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
     [ -n "${lane_pid[_i]:-}" ] || continue
-    proc_tree_terminate "${lane_pid[_i]}" >/dev/null 2>&1
-    rm -f "${lane_out[_i]}" "${lane_out[_i]}.res" "${lane_out[_i]}.err"
+    wait "${lane_pid[_i]}" 2>/dev/null
+    rm -rf "${lane_out[_i]}"
     lane_pid[_i]=""
   done
 }
