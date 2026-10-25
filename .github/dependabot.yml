@@ -17,8 +17,8 @@
 # within hours never reaches a PR. Dependabot security updates ignore the cooldown.
 # Not watched here on purpose: bun (.bun-version is a version file Dependabot's
 # bun ecosystem does not read; bun.lock is covered by the npm entries), the
-# claude CLI lock (.github/claude-cli: bumped by hand together with CLAUDE_CLI_VERSION),
-# the vendored marketplace/plugins/claude-hud (its VENDORED.md) and the benchmark
+# claude CLI (native binary pinned in scripts/machine-setup/installer-pins.sh, bumped
+# together with CLAUDE_CLI_VERSION), the vendored marketplace/plugins/claude-hud (its VENDORED.md) and the benchmark
 # fixtures under scripts/lanes/bench/fixtures. scripts/ci/check-manifest-coverage.sh
 # fails on any other tracked manifest without an entry (HIMMEL-7173).
 #

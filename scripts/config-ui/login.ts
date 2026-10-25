@@ -1,6 +1,6 @@
 // The UI login: one operator user whose password is kept as a scrypt hash, sessions held in memory.
 // ponytail: the hash lives in a mode-600 file (~/.himmel/state/ui-login, the same rules as token-file.ts), upgrade path is the keyring vault backend, HIMMEL-7147.
-import { closeSync, constants, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
+import { closeSync, constants, fchmodSync, fstatSync, linkSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { readPrivateFile } from "./token-file";
@@ -14,7 +14,10 @@ const HEX = /^[0-9a-f]+$/;
 
 export type Login = { user: string; salt: string; hash: string };
 
-export function writeLogin(path: string, user: string, password: string): void {
+export const LOGIN_EXISTS = "a login is already set";
+
+// createOnly publishes with link(2), so a login written meanwhile (--set-login takes no lock) is never replaced.
+export function writeLogin(path: string, user: string, password: string, o: { createOnly?: boolean } = {}): void {
   if (!user || /[\s\x00-\x1f]/.test(user)) throw new Error("the user name must be non-empty with no spaces or control characters");
   if (password.length < 8) throw new Error("the password must be at least 8 characters");
   const salt = randomBytes(16).toString("hex");
@@ -27,7 +30,10 @@ export function writeLogin(path: string, user: string, password: string): void {
     fchmodSync(fd, 0o600);
     writeSync(fd, JSON.stringify({ user, salt, hash }) + "\n");
   } finally { closeSync(fd); }
-  renameSync(tmp, path);
+  if (!o.createOnly) return renameSync(tmp, path);
+  try { linkSync(tmp, path); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new Error(LOGIN_EXISTS); throw err; }
+  finally { unlinkSync(tmp); }
 }
 
 // null when no login is set; throws on a file that could have been planted or read by others.

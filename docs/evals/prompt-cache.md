@@ -14,7 +14,7 @@ A prompt-cache claim counts only once a probe shows it. The probe is
 (`input`, `cache_read`, `cache_creation`) and timestamps from Claude Code
 session transcripts (JSONL), and prints a deterministic report and a verdict
 exit code. It makes **no model call**, so a run costs nothing from the
-subscription bank. It needs bash 3.2+ and `jq`.
+subscription usage budget. It needs bash 3.2+ and `jq`.
 
 - Rows are deduplicated by `message.id` (one message streams as several rows
   that repeat one usage object) and sorted by timestamp.
@@ -32,7 +32,7 @@ subscription bank. It needs bash 3.2+ and `jq`.
 
 | Probe | Question | Verdict | Exit codes |
 |---|---|---|---|
-| `invalidation --event <time>` | Did an event (an edit, a bank reset) rewrite the cache of sessions live across it? Only the first turn after the event is judged. | `not-invalidated` / `invalidated` / `inconclusive` | 0 / 1 / 2 |
+| `invalidation --event <time>` | Did an event (an edit, a usage reset) rewrite the cache of sessions live across it? Only the first turn after the event is judged. | `not-invalidated` / `invalidated` / `inconclusive` | 0 / 1 / 2 |
 | `idle-gap` | Does an idle gap at or past the TTL re-pay the prefix, and a shorter one not? | `ttl-consistent` / `ttl-inconsistent` / `inconclusive` | 0 / 1 / 2 |
 | `first-turn` | Does a session's first request read a warm shared prefix, or start cold? | `warm-start` / `cold-start` | 0 / 1 (2 = no sessions) |
 | `scripts/eval/harness-run.py` | Does a judge or differential harness leave **no** descendant process behind, under a hard deadline? (Not a cache probe: it shares the `scripts/eval/` home and the "no claim without a check" rule.) | fixture suite pass/fail | 124 deadline, 125 survivor |
@@ -49,7 +49,7 @@ content is in this repo; the probe prints only ids, counts and token totals.
 |---|---|---|
 | `first-turn` | `first-turn <all sessions>` | `warm-start warm=1966 cold=19`, read-ratio 98.3 % |
 | `idle-gap` | `idle-gap <all sessions>` | `ttl-consistent`: cold-expected=172, cold-rewrote=155; warm-expected=25056, warm-rewrote=46; read-ratio 98.3 % |
-| `invalidation` | `--event 2026-10-05T16:00:00Z <all sessions>` (a weekly-bank reset at 100 %, same account) | `not-invalidated kept=2 invalidated=0 compacted=0 ttl=0 inconclusive=0`, read-ratio 98.1 % |
+| `invalidation` | `--event 2026-10-05T16:00:00Z <all sessions>` (a weekly usage reset at 100 %, same account) | `not-invalidated kept=2 invalidated=0 compacted=0 ttl=0 inconclusive=0`, read-ratio 98.1 % |
 | `test-cache-probe.sh` | fixture suite | 59 passed, 0 failed |
 | `test-harness-run.sh` | fixture suite | PASS |
 
@@ -67,7 +67,7 @@ How to read it (the 2026-10-22 audit below recounts these and adds intervals):
 - The read-ratio is one number per run, the token-weighted ratio over every
   counted turn of every file. The `first-turn` and `idle-gap` rows share it
   because they read the same files, not because it is a first-turn figure.
-- The 2026-10-05 bank reset did not invalidate the two sessions live across it
+- The 2026-10-05 usage reset did not invalidate the two sessions live across it
   (317.5k to 319.5k read over a 2,101 s gap; 155.0k to 119.1k read with a 15.8k
   write over 1,605 s, still above half).
 - Compared with the 2026-09-29 run in the internals doc, the counts grew with
@@ -117,7 +117,7 @@ Findings:
   the TTL" count leaves out the 89 % of gaps that are under 60 s, and the
   1,985 first turns leave out the 1.7 % of transcripts with no usable turn.
   The figures themselves are unchanged.
-- **The bank-reset row reproduces.** The 2026-10-05T16:00:00Z event, over the
+- **The usage-reset row reproduces.** The 2026-10-05T16:00:00Z event, over the
   transcripts live across it: 317,534 to 319,536 read over 2,101 s, and
   154,984 to 119,075 read with a 15,783 write over 1,605 s, both `kept`,
   read-ratio 98.1 %.
@@ -137,9 +137,9 @@ recorded in the eval-runs ledger as eval `cache-probe`.
 
 Zero model calls. `cache-probe.sh` and both fixture suites read local files
 only; a probe over all 2,019 transcripts took roughly one to two minutes per mode on one
-core, and the fixture suites take under 10 s. Bank preflight
+core, and the fixture suites take under 10 s. Usage preflight
 (`bash scripts/lib/usage-preflight.sh`) printed `PROCEED` at 18 % of the 5-hour
-and 45 % of the weekly bank before the runs, which only matters for the other
+and 45 % of the weekly usage budget before the runs, which only matters for the other
 evals in this directory that do call a model.
 
 ## Limitations

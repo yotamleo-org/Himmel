@@ -10,7 +10,7 @@ it):
 |------|--------------|--------|
 | **CR critic** | Independent model-family reviewer over a branch diff, wired into `/pr-check` (`scripts/cr/hermes-critic.sh` + `critic-first-pass.sh` → `scripts/hermes/invoke.sh`). No free critic is registered (`scripts/cr/critics.json`); the panel defaults straight to the paid `codex`/`gpt-6.1-sol` anchor — set `CR_PROFILE=none` for claude-only. A second paid row, `claude` (`claude-opus-5-5`, effort `medium`), runs the official claude binary read-only, not hermes: provider `claude-api` (default, per-token key through `scripts/api-lane/claude-api.sh`) or `claude-subscription` (behind bank-preflight and the native-auth pin). A missing key, closed lane, exhausted credit or non-PROCEED usage is a clean skip (`critic-first-pass.sh` exit 5), never a red panel. It is same-family, so it never counts toward `CR_REQUIRE_CROSS_MODEL`. Tune with `CR_CLAUDE_CRITIC_EFFORT` / `CR_CLAUDE_CRITIC_MAX_USD`; turn it off with a `drop:true` row for slug `claude` in `critics.local.json`. Fail-closed verdict, fail-open transport. Routes + the proven invocation: [CR critic: routes + proven invocation](#cr-critic-routes--proven-invocation). | **Working — the production hermes lane today.** |
 | **Junior** | Chore-shaped work (vault inbox capture, summaries, note-taking) on free inference, behind a read-only `luna_vault_guard` write fence. | **Working.** |
-| **`himmel_agent` main tier** | A full-control orchestrator (Codex / GPT-5.5) carrying `parity_guard` instead of the junior fence. It does real engineering / research / vault work. | **Alpha - guard parity now tests green; still treat as experimental until more live mileage.** |
+| **`himmel_agent` main tier** | A full-control orchestrator (Codex / gpt-6.1-sol) carrying `parity_guard` instead of the junior fence. It does real engineering / research / vault work. | **Alpha - guard parity now tests green; still treat as experimental until more live mileage.** |
 
 See the registry row in [`docs/tool-adoption/registry.md`](tool-adoption/registry.md)
 (tool-adoption rubric) for the adoption rationale and trust posture. The rest of this
@@ -31,14 +31,14 @@ Use the official installer
 ([quickstart](https://hermes-agent.nousresearch.com/docs/getting-started/quickstart)):
 
 ```bash
-# Linux / macOS / WSL2 / Termux:
+# Linux / macOS:
 curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
 source ~/.bashrc            # or ~/.zshrc — reload PATH
 ```
 
 This installs a `hermes` CLI and a config home (upstream default `~/.hermes/`;
-this machine uses `%LOCALAPPDATA%\hermes`; see [Install layout](#install-layout-windows)
-below). Hermes requires a model with **≥64K context**.
+see [Install layout](#install-layout) below). Hermes requires a model with
+**≥64K context**.
 
 ### 2. Configure hermes (provider + keys)
 
@@ -70,14 +70,16 @@ Verify with `hermes doctor` (provider connectivity) and `hermes config check`
 
 ### 3. Point himmel at your hermes
 
-himmel's hermes scripts resolve the install **and default to Windows paths**, so
-on macOS/Linux (or any non-default location) export both vars in the shell that
-launches Claude:
+himmel's hermes scripts do not all fall back to the same install root, so
+export both vars in the shell that launches Claude:
 
-- **`HERMES_HOME`:** install root; used by `/himmel-update` and the profile
-  provisioner. Fallback: `%LOCALAPPDATA%\hermes` → `~/.local/share/hermes`.
+- **`HERMES_HOME`:** install root; used by `/himmel-update`, the profile
+  provisioner and `invoke.sh`'s profile lookup. Fallback: `~/.hermes` for
+  `/himmel-update` and the provisioner, `~/.local/share/hermes` for
+  `invoke.sh` and `parity_guard`.
 - **`HERMES_PY`:** the venv python; used by the CR lane (`scripts/hermes/invoke.sh`).
-  Fallback: `<home>/hermes-agent/venv/{Scripts/python.exe,bin/python}`.
+  Fallback: the interpreter the upstream launcher reports, else
+  `<home>/hermes-agent/venv/bin/python` (`scripts/lib/resolve-hermes-py.sh`).
 - **`HERMES_INVOKE_TIMEOUT`:** wall-clock watchdog budget in seconds for
   `invoke.sh` (default 1800; ceiling 86400). A parity_guard DENY is not
   terminal to hermes, so this bounds a stuck deny-retry loop and
@@ -108,16 +110,12 @@ the Claude/himmel path. It is not required for the CR-critic or junior tiers. If
 provision the additive profile per [Profiles](#profiles-your-default--himmels-himmel_agent-main-tier)
 below.
 
-## Install layout (Windows)
+## Install layout
 
-> Windows is unsupported. This section, and the `%LOCALAPPDATA%` and Git Bash
-> paths elsewhere on this page, are historical reference until HIMMEL-6813
-> replaces them.
-
-- Install root: `%LOCALAPPDATA%\hermes\`: config.yaml, SOUL.md,
+- Install root: `~/.hermes/` (or `HERMES_HOME`): config.yaml, SOUL.md,
   `agent-hooks/luna_vault_guard.py` (fail-closed vault write fence),
-  `.env` (API keys), venv at `hermes-agent\venv\Scripts\hermes`.
-- Hermes reads its OWN `.env` (`%LOCALAPPDATA%\hermes\.env`); shell
+  `.env` (API keys), and the `hermes-agent/` checkout.
+- Hermes reads its OWN `.env` (`~/.hermes/.env`); shell
   env and himmel's repo-root `.env` are irrelevant to it.
 
 ## Profiles: your `default` + himmel's `himmel_agent` main tier
@@ -140,7 +138,7 @@ main tier **without touching your existing setup**:
   `.env`. A fresh hermes with no `SOUL.md` uses hermes's own built-in identity.
 - **`himmel_agent`** is an **additive** profile provisioned on demand by
   `scripts/hermes/install-himmel-profile.sh`. It is himmel's
-  main-tier orchestrator (Codex / GPT-5.5): a generalist that does real
+  main-tier orchestrator (Codex / gpt-6.1-sol): a generalist that does real
   engineering, research, vault, and writing work: the "main puller" when
   Claude capacity is scarce. It carries `agent-hooks/parity_guard.py` instead
   of the junior `luna_vault_guard.py`: the write/repo fence and routine
@@ -180,7 +178,7 @@ open PRs) is risky, and the pre-tool guard can't tell at call time which model
 will answer. So couple them structurally instead:
 
 - The **`himmel_agent`** (full control) runs on the **trusted premium model
-  only** (Codex / GPT-5.5) with **no free fallback** (`fallback_providers: []`).
+  only** (Codex / gpt-6.1-sol) with **no free fallback** (`fallback_providers: []`).
   If the premium model is rate-limited, the main tier simply pauses; it does
   not degrade into a powerful agent backed by a free model.
 - The **free tier lives on the read-only junior** (your `default` /
@@ -224,18 +222,18 @@ profile default moves and that inference stops holding; pin the model itself
 with `HERMES_CRITIC_MODEL` (`--provider openai-codex` is then applied only for
 codex-family ids).
 
-**Proven invocation** (historical: Windows / Git Bash, unsupported; live-verified 2026-08-22 with a real
-JSON verdict, exit 1, no `rc=3`):
+**Invocation** (the route was live-verified 2026-08-22 with a real JSON
+verdict, exit 1, no `rc=3`):
 
 ```bash
-HERMES_PY="$LOCALAPPDATA/hermes/hermes-agent/venv/Scripts/python.exe" \
-PATH="/c/nvm4w/nodejs:$PATH" \
+HERMES_PY="$HOME/.hermes/hermes-agent/venv/bin/python" \
   timeout 300 bash scripts/cr/hermes-critic.sh \
     --repo . --base origin/main --goal "review this diff"
 ```
 
-- `HERMES_PY`: the hermes venv interpreter; `invoke.sh` needs it on Windows.
-- `node` must be on `PATH` (the verdict parser); `/c/nvm4w/nodejs` on this box.
+- `HERMES_PY`: the hermes venv interpreter; needed when
+  `resolve-hermes-py.sh` cannot find it under `HERMES_HOME`.
+- `node` must be on `PATH` (the verdict parser).
 - Exit `0` pass / `1` findings / `2` usage / `3` transport (fail-open: fall
   back to another review route). `rc=3` also logs the first ~300 chars of the
   raw model response to stderr, which is what makes a dead-model default
@@ -263,7 +261,7 @@ resolution. It is **identity-only**: project specifics stay in each context's
 `luna_vault_guard` profile from the tier-coupling section above):
 
 ```bash
-# <home> = your hermes config home (this machine: %LOCALAPPDATA%\hermes)
+# <home> = your hermes config home (upstream default: ~/.hermes)
 cp scripts/hermes/assets/free-tier.SOUL.md <home>/profiles/<your-junior-profile>/SOUL.md
 hermes gateway restart   # pick up the new identity, when no session is running
 ```
@@ -296,7 +294,7 @@ himmel `git pull` never updates it. `/himmel-update` (and `/himmel-update-all`)
 now pulls that checkout and re-runs the editable install as one of its steps;
 `/himmel-update --check` reports whether a hermes update is available without
 applying it. The step resolves the install root from `HERMES_HOME` (else
-`%LOCALAPPDATA%\hermes`) and operates on its `hermes-agent/` subdir; it skips
+`~/.hermes`) and operates on its `hermes-agent/` subdir; it skips
 cleanly and never fails the himmel update when hermes isn't installed. After an
 update, **restart the hermes gateway** (`hermes gateway restart`, when no
 session is running) to pick up changes. On Linux, `/himmel-update` now does
@@ -363,8 +361,8 @@ discarding orphaned upstream commits safe.
 
 ## Provider routes (wired 2026-06-12)
 
-> **SUPERSEDED 2026-06-24: the live route is now Codex / `gpt-5.5` via the
-> `openai-codex` provider** (the impl/junior profiles; the CR critic pins its
+> **SUPERSEDED: since 2026-06-24 the live route is Codex via the
+> `openai-codex` provider, today `gpt-6.1-sol`** (the impl/junior profiles; the CR critic pins its
 > own model, `gpt-6.1-sol`, independently; see the tier table above), not the
 > NVIDIA/OpenRouter chain documented below. The Nemotron block is kept for history; a full re-doc of
 > the current routing is tracked. Verify the live model with
@@ -385,10 +383,10 @@ Operational rule: every lane that can be triggered as its own model/provider
 must carry its own verified maximum context window, not inherit the parent
 lane's expectation.
 
-- `himmel_agent` main tier: `openai-codex` + `gpt-5.5` is currently a **272K
-  Codex window**. This is expected even though the direct OpenAI API slug is
-  larger.
-- GLM / Z.ai lanes: request the explicit long-context model id
+- `himmel_agent` main tier: `openai-codex` + `gpt-5.5` was a **272K Codex
+  window** when measured on 2026-07-07. This is expected even though the
+  direct OpenAI API slug is larger.
+- GLM / Z.ai lanes (GLM lane dormant, HIMMEL-1967): request the explicit long-context model id
   `glm-5.2[1m]` on Claude Code-compatible launchers. Bare `glm-5.2` can run
   capped below the advertised maximum, so it is not the desired full-control
   lane.
@@ -404,7 +402,7 @@ Verification snippets (zero/near-zero inference):
 hermes --profile himmel_agent profile show himmel_agent
 "<hermes-venv-python>" - <<'PY'
 from agent.model_metadata import get_model_context_length
-print(get_model_context_length('gpt-5.5', provider='openai-codex',
+print(get_model_context_length('gpt-6.1-sol', provider='openai-codex',
     base_url='https://chatgpt.com/backend-api/codex', api_key=''))
 print(get_model_context_length('glm-5.2[1m]', provider='custom',
     base_url='https://api.z.ai/api/anthropic', api_key=''))
@@ -468,7 +466,7 @@ is a PAYG 90-day trial with **per-model** free quotas (not every model gets
 
 A `403 AccessDenied.Unpurchased` from the API means **the Model Studio
 service has not been activated**. It is not an identity, key, URL, or region
-problem. Fix it in the Singapore-pinned console
+problem. Fix it in the Singapore-pinned Model Studio console <!-- old-term-ok: Alibaba Cloud product console -->
 (`https://modelstudio.console.alibabacloud.com/ap-southeast-1`):
 
 1. Accept the service agreement; this auto-activates the service **and**
@@ -483,7 +481,7 @@ After that, the **same key + URL** that returned 403 returns HTTP 200.
 hermes ships an `alibaba-coding-plan` provider, so no new provider code is needed.
 Key env vars (read in order): `ALIBABA_CODING_PLAN_API_KEY`, then
 `DASHSCOPE_API_KEY`; base override: `ALIBABA_CODING_PLAN_BASE_URL` (set in
-`%LOCALAPPDATA%/hermes/.env`).
+`~/.hermes/.env`).
 
 > **Workspace-endpoint caveat.** The provider's built-in default base
 > `https://coding-intl.dashscope.aliyuncs.com/v1` does **not** work with a
@@ -499,7 +497,7 @@ hermes's `-z` one-shot path **auto-detects** the provider from `-m` and
 **overrides** the config default; a bare model name like `qwen3-coder-plus`
 is **not** auto-detected and would fall through to the default (codex) and
 fail. There is **no** provider-qualified `-m` syntax. `model_aliases:` in
-`%LOCALAPPDATA%/hermes/config.yaml` is checked **first**, before auto-detect,
+`~/.hermes/config.yaml` is checked **first**, before auto-detect,
 so wire aliases as a **top-level** block (do **not** touch
 `model.default` / `model.provider`):
 
@@ -543,7 +541,7 @@ free quotas exhaust, record the swap in the gitignored
 `scripts/cr/critics.local.json` overlay (auto-picked-up);
 do not edit the shipped registry for account state (an earlier change did, and was reverted).
 Free-quota exhaustion is why a quota guard is tracked
-separately — it needs a dynamic API pull (console screenshots are not
+separately — it needs a dynamic API pull (dashboard screenshots are not
 automatable).
 
 ## Verify after a rebuild (zero inference cost)
@@ -568,8 +566,7 @@ automatically (`ensurepip`) before the refresh; to repair by hand (older
 checkout, or the gateway is misbehaving after a pull):
 
 ```
-# <venv-py> = …/hermes/hermes-agent/venv/Scripts/python.exe  (Windows)
-#             …/hermes/hermes-agent/venv/bin/python           (macOS/Linux)
+# <venv-py> = …/hermes/hermes-agent/venv/bin/python
 "<venv-py>" -m ensurepip --upgrade      # restore pip into the venv
 cd …/hermes/hermes-agent
 "<venv-py>" -m pip install -e .          # editable reinstall (picks up pulled code)

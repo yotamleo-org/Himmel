@@ -1,6 +1,6 @@
 # Local macOS test lane (Docker-OSX)
 
-A supervisor-session-owned way to get a real macOS proof for BSD-userland, `ps`/`stat`/`sed`,
+A chief-owned way to get a real macOS proof for BSD-userland, `ps`/`stat`/`sed`,
 `sandbox-exec`, Keychain and launchd/cron fixes, on the Linux station. It is a
 **local repro lane only**: it is **not** wired into GitHub CI (EULA; a
 self-hosted runner on a public repo is a risk — the GitHub macOS dispatch in
@@ -32,7 +32,7 @@ macOS runners (a nightly os-verify macOS run), which is the CI path named above.
 pinned to **Monterey (12)** for the disk build (the most-exercised path; macOS 12
 is old enough that bash 3.2 + BSD tools match what macOS users run, and Homebrew
 still supports it as tier 3). Reason: it has a documented SSH mode once a disk
-exists, which is what a supervisor-session-driven runner needs; the disk itself comes from a
+exists, which is what a chief-driven runner needs; the disk itself comes from a
 one-time interactive install (see Status). Staleness is the accepted risk — the
 lane only needs the container to boot an image we already own. If it stops booting,
 `dockur/macos` is the fallback, but it needs a manual first install and an SSH
@@ -56,7 +56,7 @@ setup inside the guest. **Re-verify the flags below on the first real run.**
 - Per-run wall clock: boot to SSH ~3-6 min (600 s budget), sync ~1 min, then the suites.
 - Do not start it while the fleet is near the RAM ceiling; the chief decides.
 
-## One-time setup (needs the operator go; run from a supervisor session shell, never a worker session)
+## One-time setup (needs the operator go; run from a chief shell, never a worker)
 
 1. `export HIMMEL_MACOS_LANE_OK=1` in the launching shell.
 2. Pull `sickcodes/docker-osx:latest`; produce `mac_hdd_ng.img` under

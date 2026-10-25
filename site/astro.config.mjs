@@ -150,6 +150,7 @@ export default defineConfig({
             { label: 'Using it from Codex', slug: 'internals/harness-compat' },
             { label: 'Jira integration', slug: 'internals/jira-plugin' },
             { label: 'Evals', slug: 'evals' },
+            { label: 'Troubleshooting', slug: 'troubleshooting' },
             { label: 'Glossary', slug: 'glossary' },
           ],
         },

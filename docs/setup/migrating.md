@@ -200,14 +200,6 @@ changes neither leaves the caches alone, so converging a machine that is
 already on this clone costs a live session nothing. The hud rebuilds whatever
 it dropped on the next render.
 
-## Windows
-
-**Windows is EXPERIMENTAL in v1** and migrating is no exception. Run every
-command above under **Git Bash**; the PowerShell twins exist but are not part
-of the v1 support claim. The scheduler-backed items converge through `schtasks`
-and are the least exercised part of any of these paths. If `ensure` leaves one
-red on Windows, that is the expected rough edge, not a signal to reinstall.
-
 ## Where to go next
 
 - [install.md](install.md) — the full install guide and the adaptation

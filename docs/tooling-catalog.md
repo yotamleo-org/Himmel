@@ -1,6 +1,6 @@
 # Tooling Catalog
 
-All tools, scripts, plugins, skills, hooks, and integrations in active use. Includes Windows-specific notes.
+All tools, scripts, plugins, skills, hooks, and integrations in active use.
 
 ---
 
@@ -46,7 +46,7 @@ truth for presence; named profiles can still opt in. Full detail:
 |--------|-------------|------|
 | `lean-skills` | himmel's vendored subset of `superpowers` + `mattpocock-skills` workflow skills — 11 of superpowers' 14 (the reference closure of the 4 himmel invokes: brainstorming, writing-plans, systematic-debugging, verification-before-completion) plus `grilling` from mattpocock/skills. Replaces both fat upstream plugins in the base profiles; their dormant installs remain available, off by default — see `marketplace/plugins/lean-skills/README.md` | ALWAYS |
 | `i-have-adhd` | Vendored (`ayghri/i-have-adhd` MIT, pinned commit) output-shaping skill for an ADHD reader: action first, numbered steps, one next action. `disable-model-invocation`, so 0 listing tokens; one SessionStart hook injects it (~1.75k tokens once per session) only when `~/.claude/.i-have-adhd-always` exists, which the installer and updater create unless `HIMMEL_NO_ADHD_ALWAYS=1` — see `marketplace/plugins/i-have-adhd/README.md` | ALWAYS |
-| `pstack` | Seven vendored opt-in skills from `cursor/plugins` pstack (pinned `99743e9c`, MIT): `/correct`, `/blast-radius`, `/create-verification-skill`, `/maintain-verification-skill`, `/benchmark-checklist`, `principle-explain-the-number`, `/in-your-own-words`. All `disable-model-invocation`, no hooks or agents. Off in every leg profile; remove with `claude plugin disable pstack@himmel` — see `marketplace/plugins/pstack/README.md` | ON in the interactive `user` profile only |
+| `pstack` | Seven vendored opt-in skills from `cursor/plugins` pstack (pinned `99743e9c`, MIT): `/correct`, `/blast-radius`, `/create-verification-skill`, `/maintain-verification-skill`, `/benchmark-checklist`, `principle-explain-the-number`, `/in-your-own-words`. All `disable-model-invocation`, no hooks or agents. Off in every worker profile; remove with `claude plugin disable pstack@himmel` — see `marketplace/plugins/pstack/README.md` | ON in the interactive `user` profile only |
 | `humanizer` | One vendored opt-in skill from `blader/humanizer` (pinned `225a6f39`, MIT): `/humanizer` rewrites AI-sounding prose. `disable-model-invocation`, no hooks, agents or scripts. In no profile; on-demand tier (installed, disabled): enable with `/profile enable humanizer@himmel`, remove with `claude plugin disable humanizer@himmel` — see `marketplace/plugins/humanizer/README.md` | OFF everywhere until the operator enables it |
 | `domain-modeling` | One vendored skill from `mattpocock/skills` (pinned `49dd158d`, MIT): keeps `docs/glossary.md` to one definition per term, aliases pointing at the canonical term. No hooks, agents or scripts; listing about 40 tokens. ON-DEMAND, `design` profile only (the profile that does design and docs work); remove with `claude plugin disable domain-modeling@himmel` — see `marketplace/plugins/domain-modeling/README.md` | ON-DEMAND — `design` profile only |
 | `context7` | Fetches current library/framework docs on demand (MCP server) | ON-DEMAND |
@@ -68,7 +68,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.7.0` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `lane-content` and `telegram` profiles (plus the operator profile); off in lean worker sessions and the supervisor session; catalog id `obsidian-second-brain@himmel` |
+| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `lane-content` and `telegram` profiles (plus the operator profile); off in lean workers and the chief; catalog id `obsidian-second-brain@himmel` |
 | `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `b5e81de845092694ba1bfc5af15400f319c89b6d` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
@@ -115,7 +115,7 @@ implemented profiles or permission to enable a plugin. The existing resolver's
 live installed-ID overlay leaves all four off in managed profiles; operator is
 the existing unmanaged sentinel. This change does not restore dormant IDs to
 `plugin-profiles.json`: doing that also requires updating the old catalog-absence
-assertions in its test (the supervisor session deferred that scope). Until that follow-up,
+assertions in its test (the chief deferred that scope). Until that follow-up,
 these names are documentation candidates, not `--add-plugins` catalog members.
 Pins are refreshed adoption targets, **not** claims that the local install was
 updated. `scripts/plugin-upstreams.json` tracks these standalone targets in the
@@ -445,7 +445,7 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 ### himmel (local directory marketplace)
 
-**Source:** `<himmel-path>/marketplace/` (typically `C:\Users\<user>\Documents\github\himmel\marketplace\`)
+**Source:** `<himmel-path>/marketplace/`
 **Registered via:** `extraKnownMarketplaces.himmel` in `~/.claude/settings.json`
 **Plugins:**
 
@@ -551,15 +551,15 @@ check no longer does).
 **Cadence runner format twins are platform-specific:**
 `cadence_runner_stamp` (`scripts/lib/cadence-format.sh`, shared by C8 above and
 `himmel-update`'s post-pull STALE nudge) reads only the runner extension the
-CURRENT platform actually executes — `.sh` on Linux/macOS, `.bat` on Windows —
-never the other twin. A cadence copied between stations leaves a dormant,
+CURRENT platform actually executes — `.sh` on Linux/macOS; the `.bat` twin is a
+leftover of the dropped Windows support (HIMMEL-5729) and is never read. A cadence copied between stations leaves a dormant,
 never-regenerated twin on whichever platform doesn't arm it; that twin is
 invisible to the staleness probe on purpose, so it can never pin a false-stale
 floor on the platform that actually runs the cadence. `codex-sweep-cadence`
-only ever arms on Windows (`scripts/cleanup/codex-sweep-cadence.sh` refuses
-`arm` elsewhere by design), so the advisory reports it `Windows-only, n/a on
-this platform` on other platforms instead of a `bash ... arm --force` recipe
-that would itself refuse.
+is Windows-only (`scripts/cleanup/codex-sweep-cadence.sh` refuses `arm` on
+Linux and macOS by design), so the advisory reports it `Windows-only, n/a on
+this platform` instead of a `bash ... arm --force` recipe that would itself
+refuse.
 
 Prints a severity-grouped report (FAIL/WARN/INFO); `--file-issue
 [--repo owner/name]` files ONE deduped consolidated public GitHub issue (resolves
@@ -623,9 +623,9 @@ through the forge seam (`forge_pr_find_open` / `forge_pr_create` /
 existing open PR's body instead of opening a second one), refuses on `main`,
 with no upstream, or with an empty body file, and prints exactly one line on
 success: `PR <number> <url> <head-sha>`. The point (ruling H2):
-a worker session's Bash command is always this same short two-file-path literal no
+a worker's Bash command is always this same short two-file-path literal no
 matter what the PR body says, so the body text — the thing the auto-mode
-classifier reacts to — never appears in the command a worker session
+classifier reacts to — never appears in the command a worker
 types; it only ever reaches `gh`/`bb` as an argv element of the child process
 the forge seam execs. No retry logic (that's the stuck-playbook's job). Tests:
 `scripts/lanes/test-leg-pr-open.sh` (hermetic — a `GH_CMD` stub records argv
@@ -637,8 +637,8 @@ utility's own two-file-path invocation).
 ## auto-arm scheduler backend (`scripts/lib/scheduler-backend.sh`)
 
 Pure, sourceable, bash-3.2-safe detection/remediation lib whose status mirrors
-what `arm-resume.sh` actually selects (windows=schtasks, linux=`at`+atd else
-crontab, macos=crontab) so the usage-cap auto-resume can't silently no-op on a
+what `arm-resume.sh` actually selects (linux=`at`+atd else crontab,
+macos=crontab) so the usage-cap auto-resume can't silently no-op on a
 missing/dead backend. `scheduler_backend_os` / `_status` (`ok|ok-cron|disabled|
 missing`) / `_remediation`. Consumed by `/himmel-doctor` C9 and the installers.
 Enable lives in installers (needs sudo): `ubuntu.sh` installs+enables `at`/atd;
@@ -652,12 +652,9 @@ idempotent `scripts/lib/register-auto-arm-hook.sh`. Tests:
 
 ## Shared home/vault resolution (`scripts/lib/resolve-user-home.sh`)
 
-Sourced-only, bash-3.2-safe lib exporting `resolve_user_home` (cross-platform
-user-home: on Windows Git-Bash prefers `USERPROFILE` via `cygpath -u`
-**before** `$HOME`, since `$HOME` can be the MSYS home while Claude Code's
-config and the luna vault live under the Windows profile; POSIX hosts have
-`USERPROFILE` unset and fall through to `$HOME`, then `/tmp` as the last
-resort) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
+Sourced-only, bash-3.2-safe lib exporting `resolve_user_home` (the user home:
+`$HOME`, then `/tmp` as the last resort; a `USERPROFILE` branch left from the
+dropped Windows support, HIMMEL-5729, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
 `adopt.sh` persists and `himmel-doctor` probes — else `<home>/Documents/luna`
 via the resolver above; an explicit `--vault` always overrides at the caller).
 Extracted **verbatim** from `scripts/luna/pipeline-cadence.sh` (Stage 1 PR-A, spec A16), which now sources it instead of carrying its own
@@ -694,6 +691,9 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 
 ## claude-glm (`scripts/claude-glm`)
 
+> **Dormant:** the GLM lane was dropped by operator ruling 2026-08-19
+> (HIMMEL-1967); the lane registry offers it only when `GLM_LANE_OK` is set.
+
 **What:** Thin launcher that runs Claude Code against the Z.ai GLM
 Anthropic-compatible endpoint instead of the Anthropic API — a flat-rate
 **overflow lane** for when the Anthropic usage cap is hit. This buys *overflow
@@ -721,7 +721,7 @@ env from `settings.json`-injected env — don't put the key in `settings.json`
 (that hands it to every session); use per-launch shell env or the repo `.env`.
 
 **Isolated config dir (`$HOME/.claude-glm`):** seeded from `~/.claude` on first
-launch (or `--reseed`/`-Reseed`), and **auto-refreshed** on any
+launch (or `--reseed`), and **auto-refreshed** on any
 plain launch when `~/.claude/settings.json`, `plugins/installed_plugins.json`,
 or `plugins/known_marketplaces.json` is newer than the `.seeded` sentinel — or
 deleted while a lane copy remains (true mirror for those three files) — so
@@ -741,30 +741,27 @@ absolute `installPaths` in the seeded registry — no install step.
 copy/sanitize failure (e.g. `node` missing/broken) aborts with **exit 4** — a
 loud refusal that launches nothing and writes no sentinel, and the next launch
 re-seeds (self-heal) rather than running against a half-populated, unsanitized
-dir. A failed `--reseed`/`-Reseed` first clears the stale sentinel, so it can't
+dir. A failed `--reseed` first clears the stale sentinel, so it can't
 mask the failure and leave the next plain launch on the stale tree.
 
 **Tiered egress guard (gates the LAUNCH cwd only):**
 - **PHI tier** — a `.salus` marker file in cwd, or cwd under any `phi-roots`
   line → **REFUSED, exit 3, no override.** PHI never goes to a cloud GLM backend.
 - **Denylist tier** — cwd under any `egress-denylist` line → refused (exit 3)
-  **unless** `--force`/`-Force`, which proceeds after a stderr warning that
+  **unless** `--force`, which proceeds after a stderr warning that
   content WILL be sent to Z.ai.
 - Config at `~/.config/claude-glm/{phi-roots,egress-denylist}`, one path per
   line (trailing CR + trailing slash tolerated; blank lines skipped — a
   block-everything lone `/` root is not supported). A guard config that *exists
   but is not a readable regular file* (e.g. a directory) never silently allows
-  egress: bash refuses with **exit 3**; the PS twin fails closed via a
-  terminating error (exit 1).
+  egress: the launcher refuses with **exit 3**.
 - **Limitation — launch-scope only:** the guard checks the cwd *at launch*. A
   session that later `cd`s into a PHI-marked or denylisted directory is **not**
   re-checked. Launch from the right place.
 
-**Flags must LEAD:** launcher flags (`--reseed`/`--force`, `-Reseed`/`-Force`)
-must come **before** any `claude` args; the first non-flag argument stops flag
-parsing and everything from there passes to `claude` verbatim. (The PS twin is
-deliberately a plain script with no `param()` block, so real claude flags like
-`-p`/`-d`/`-v` aren't hijacked by PowerShell's automatic parameter binding.)
+**Flags must LEAD:** launcher flags (`--reseed`/`--force`) must come **before**
+any `claude` args; the first non-flag argument stops flag parsing and
+everything from there passes to `claude` verbatim.
 
 **`--settings` env-injection screen:** a `--settings <file|json>`
 arg passes through to `claude` (this is the plugin-profile injection channel —
@@ -781,9 +778,9 @@ GLM peak window (14:00–18:00 UTC+8); advisory only, changes no behavior.
 [`docs/setup/new-machine.md`](setup/new-machine.md) §1 and §4d.
 
 **Acceptance:** the hermetic launcher tests in
-`scripts/test-claude-glm.{sh,ps1}` cover the key gate, the seeder, the
+`scripts/test-claude-glm.sh` cover the key gate, the seeder, the
 PHI/egress guards, and the `--settings` env-injection screen against a mock
-`claude`; only the live-backend acceptance leg is manual — the **Task 8
+`claude`; only the live-backend acceptance check is manual — the **Task 8
 checklist**.
 
 ---
@@ -799,7 +796,7 @@ code kit; the content/research and ops kits follow separately.
 
 | Profile | Members | Listing cost | Use |
 |---------|---------|--------------|-----|
-| `code` | `typescript-lsp`, `pyright-lsp`, `code-simplifier` (all `@claude-plugins-official`) | ~0.2k | a worker session on a typed TS/Python repo; the language-server binary must exist on the machine |
+| `code` | `typescript-lsp`, `pyright-lsp`, `code-simplifier` (all `@claude-plugins-official`) | ~0.2k | a worker on a typed TS/Python repo; the language-server binary must exist on the machine |
 | `code-ui` | `playwright@claude-plugins-official` (MCP) | est 3-5k, unmeasured | browser-driven e2e, UI lanes only |
 
 CLI tools of the code kit (0 listing tokens, not plugins), installed by
@@ -823,9 +820,9 @@ dynamically discovered marketplace in the drift report, so they need no
 
 **What:** Named plugin profiles injected per-dispatch so a lane worker runs a
 **lean** plugin set while the operator's own `~/.claude` stays full. A lane worker
-resolves its plugin surface from the operator's config either way — `spawn-glm`
-shares `~/.claude` directly (no `CLAUDE_CONFIG_DIR`, so himmel hooks load), while
-the interactive `claude-glm` launcher runs against a seeded `$HOME/.claude-glm`
+resolves its plugin surface from the operator's config either way — the dormant
+`spawn-glm` (HIMMEL-1967) shares `~/.claude` directly (no `CLAUDE_CONFIG_DIR`, so himmel hooks load), while
+the interactive (dormant) `claude-glm` launcher runs against a seeded `$HOME/.claude-glm`
 **mirror** of `~/.claude` ([claude-glm](#claude-glm-scriptsclaude-glm) above) — so both would otherwise
 inherit the operator's entire (full) plugin catalog: duplicated plugin context +
 duplicate MCP invocations on every worker, and neither live-mutates the
@@ -865,7 +862,7 @@ changing which config dir loads, so hooks are unaffected).
   `lean-skills`), `lane-review` (automated review-only, same lean set),
   `lane-content` (impl + `obsidian-triage` + `obsidian-second-brain`), `telegram`
   (the Telegram bridge's lean set + `mcpServers: ["qmd"]`
-  allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-operator-console)).
+  allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-chief-profile)).
 
 **Resolver (`plugin-profiles.mjs`):** `resolveProfile(registry, name, {addPlugins,
 installed})` → `null` for `operator`, else `{enabledPlugins:{…}}`; the floor is
@@ -882,7 +879,7 @@ no opinion, unparseable layer = fail closed). CLI:
 the `--settings` JSON; `--validate` checks the floor/catalog invariants;
 `--list` lists profiles.
 
-**Dispatch flags (`spawn-glm` / `spawn-claudex`):** both inject the resolved
+**Dispatch flags (`spawn-claudex`, and the dormant `spawn-glm`):** both inject the resolved
 profile by default (`lane-impl`); override with `--profile <name>` and layer a
 per-dispatch overlay with `--add-plugins a@m,b@m` (repeatable; e.g. an obsidian
 task on the impl lane adds `claude-obsidian@himmel` for that one dispatch). An
@@ -921,7 +918,7 @@ subscription usage budget, and opens mixed subagent lanes that the plain codex C
 | `CODEX_MODEL` | `gpt-6.1-sol` by default |
 | `CODEX_HAIKU` | `$CODEX_MODEL` by default |
 | `CODEX_SUBAGENT_MODEL` | `$CODEX_MODEL` by default |
-| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (twin of `GLM_CONTEXT_WINDOW`). Without it Claude Code assumes its ~200k default for the unrecognized `gpt-5.6-sol` slug and compacts early. gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
+| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (twin of `GLM_CONTEXT_WINDOW`). Without it Claude Code assumes its ~200k default for the unrecognized `gpt-6.1-sol` slug and compacts early. The window was measured on gpt-5.6, not yet re-measured for gpt-6.1: gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
 | `CLIPROXY_API_KEY` | Must match an `api-keys` entry in `~/.cli-proxy-api/config.yaml` |
 | `CLAUDE_CONFIG_DIR` | `$HOME/.claude-codex` |
 
@@ -932,7 +929,7 @@ login `-claude-login`; never OpenRouter). When the default is not served the
 launcher prints one `WARNING` line naming the fallback and continues on the
 gateway classifier (`$CODEX_MODEL`); it never runs with no classifier
 (`CLAUDE_CODE_AUTO_MODE_SERVER=0` stays). `CLAUDEX_CLASSIFIER_MODEL=gateway` (or
-`--classifier-model gateway`, PowerShell `-ClassifierModel gateway`) opts out
+`--classifier-model gateway`) opts out
 explicitly and silently. `--classifier-model <alias>` /
 `CLAUDEX_CLASSIFIER_MODEL=<alias>` pick another alias the proxy serves
 (`claude-sonnet-5-5` is refused: the client logs that it cannot serve as the
@@ -952,10 +949,10 @@ The deny rules, not the classifier, are what stop destructive git: in the probe 
 **Guard files:** the lane uses `~/.config/claude-codex/phi-roots` and
 `~/.config/claude-codex/egress-denylist`, plus the launch-cwd `.salus` marker.
 A PHI-marked workspace is refused with no override; denylisted workspaces require
-`--force`/`-Force` and warn that content will be sent to OpenAI via the local
+`--force` and warn that content will be sent to OpenAI via the local
 proxy.
 
-**Seeding:** same lane-seed mechanism as `claude-glm`: an isolated
+**Seeding:** same lane-seed mechanism as the dormant `claude-glm`: an isolated
 `$HOME/.claude-codex` config dir is seeded from `~/.claude`, sanitized to strip
 model and `env.ANTHROPIC_*`, refreshed by the shared `CLAUDE_LANE_*` reseed and
 lock knobs, and never copies credentials or history.
@@ -979,7 +976,7 @@ OAuth) and `claude-codex` run side by side, even concurrently, because the lane'
 env applies only to its own invocation and its config dir (`~/.claude-codex`),
 guard dir, and seed lock are fully per-lane. Nothing in the codex lane touches
 the stock Claude Code install; it has the same isolation contract as
-`claude-glm`.
+the dormant `claude-glm`.
 
 **Effort mapping (verified 2026-07-14).** The launcher pins
 `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1`; Claude Code emits the effort as top-level
@@ -1018,7 +1015,7 @@ _Method: one bounded `claude -p` turn per tier through the live proxy with
 levels read from the proxy `main.log` `apply.go` lines. Feeds the
 per-lane effort/tier calibration._
 
-**Operating rules (from theo's gpt-5.6-sol post-mortem).** The lane
+**Operating rules (from theo's gpt-5.6-sol post-mortem, gpt-5.6 era).** The lane
 spends the codex weekly subscription usage budget, so GPT-5.6's token-burn mechanics apply. These are
 encoded where the lane runs (the launcher default + `lanes.json`), not just as
 vault prose; the full mechanics live in luna
@@ -1110,11 +1107,11 @@ APPLIED, one remains UNTESTED, not refuted:
 
 ### spawn-claudex dispatch path (`scripts/telegram/spawn-claudex.ts`)
 
-**What:** the codex-lane twin of `spawn-glm` —
+**What:** the codex-lane twin of the dormant `spawn-glm` —
 lets a parent Claude session hand a scoped implementation chunk to an inline
-gpt-5.6-sol worker running the FULL himmel harness (skills/hooks/guardrails/
+codex-lane worker (`gpt-6.1-sol` by default) running the FULL himmel harness (skills/hooks/guardrails/
 worktree) on the **codex weekly subscription usage budget**, with the same review/merge contract as
-the GLM lane. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
+the dormant GLM lane. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
 (`bash <primary-repo>/scripts/claude-codex --permission-mode <mode>
 <pointer-prompt>`, cwd = the minted worker worktree) rather than
 re-implementing any of its trust-boundary guarding — it sets NO `ANTHROPIC_*`
@@ -1203,7 +1200,7 @@ override/fail-open, `--effort` refusal branches, dispatch-command
 construction against `claude-codex` with no `ANTHROPIC_*` var, shared-branch
 lock lifecycle against a real temp repo + the real lock script).
 
-**Bash convenience shims:** `scripts/shell/himmel-offload-shims.sh` installs idempotent `cc-codex` / `cc-glm` functions into `~/.bashrc` for Git Bash and WSL.
+**Bash convenience shims:** `scripts/shell/himmel-offload-shims.sh` installs idempotent `cc-codex` / `cc-glm` functions into `~/.bashrc` (`cc-glm` launches the dormant GLM lane, HIMMEL-1967).
 
 ---
 
@@ -1237,6 +1234,9 @@ not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
 ---
 
 ## spawn-glm (`scripts/telegram/spawn-glm.ts`)
+
+> **Dormant:** the GLM lane was dropped by operator ruling 2026-08-19
+> (HIMMEL-1967); the lane registry offers it only when `GLM_LANE_OK` is set.
 
 **What:** Poller-free CLI that spawns an unattended GLM-lane Claude worker for
 the offload loop (spawn → inspect → validate → push-by-validator). It creates a
@@ -1340,23 +1340,25 @@ wrong (not on PATH) or bypasses the wrapper's guards (hook-blocked).
 
 ---
 
-## Superpowers (plugin: `superpowers@claude-plugins-official`)
+## lean-skills (plugin: `lean-skills@himmel`)
 
-**Tier:** ALWAYS — installed + enabled on every himmel machine.
+**Tier:** ALWAYS — installed + enabled on every himmel machine; it replaced
+`superpowers@claude-plugins-official` (HIMMEL-3064).
 **What:** Workflow orchestration skills. Invoked via `/skill` tool.
 
 Key skills used:
 
 | Skill | When to use |
 |-------|-------------|
-| `superpowers:writing-plans` | Before implementation — creates step-by-step plan with full code |
-| `superpowers:subagent-driven-development` | Executes a plan via fresh subagent per task + 2-stage review |
-| `superpowers:using-git-worktrees` | Ensures all feature work is in a worktree, never on main |
-| `superpowers:executing-plans` | Inline plan execution (alternative to subagent-driven) |
-| `superpowers:finishing-a-development-branch` | Wraps up a feature branch after all tasks complete |
+| `lean-skills:writing-plans` | Before implementation — creates step-by-step plan with full code |
+| `lean-skills:subagent-driven-development` | Executes a plan via fresh subagent per task + 2-stage review |
+| `lean-skills:using-git-worktrees` | Ensures all feature work is in a worktree, never on main |
+| `lean-skills:executing-plans` | Inline plan execution (alternative to subagent-driven) |
+| `lean-skills:finishing-a-development-branch` | Wraps up a feature branch after all tasks complete |
 
-Plans saved to: `docs/superpowers/plans/YYYY-MM-DD-feature.md`
-Specs saved to: `docs/superpowers/specs/YYYY-MM-DD-feature.md`
+Plans and specs go to the state repo bucket `specs/<type>/`, never himmel
+`docs/` (the vendored skill text still names the upstream `docs/superpowers/`
+path).
 
 ---
 
@@ -1427,15 +1429,6 @@ trim: `.claude/mcp-profiles/README.md`.
 ## jq
 
 **What:** JSON processor. Used in `statusline.sh` for parsing session JSON and transcript JSONL files.
-**Windows:** Available via Git Bash. Works identically to Linux.
-
----
-
-## Git Bash (MSYS2)
-
-**What:** Bash environment on Windows. All shell scripts run here.
-**Home path:** `/c/Users/<user>` (POSIX style) = `C:\Users\<user>` (Windows style).
-**Rule:** Always use POSIX paths in bash scripts. Never mix backslashes.
 
 ---
 
@@ -1551,7 +1544,7 @@ on demand; nothing here runs automatically.
   `github`, `bitbucket`, `firecrawl` (probes the free
   `/v2/team/credit-usage`, spends no credit, and ledgers credits 0 to
   `firecrawl-ledger.jsonl`), `jina-reader` (keyless). The full run (armed by `pipeline-cadence.sh`'s
-  fetch-health leg) probes every source, writes `~/.himmel/fetch-health.json`
+  fetch-health job) probes every source, writes `~/.himmel/fetch-health.json`
   (`last_success_timestamp` preserved per source across runs), and exits 0 iff
   every source is `ok`. `--probe <source>` (Task 2) runs exactly
   one probe through the SAME shared registry the full run uses — no separate
@@ -1592,7 +1585,7 @@ view into the vault — the bridge between the derived graph and the KB.
   hard-refuses). Hermetic test: `test-refresh-graph-map.sh` (stubs graphify).
 - **Cost + cadence:** a full ecosystem sync is ~$2 (measured 2026-07-09);
   `--update` is a fraction of that, so a **daily** off-peak run is affordable.
-  Schedule per corpus (example, Git Bash on Windows via schtasks or cron):
+  Schedule per corpus (example, via cron):
   `bash scripts/graphify/refresh-graph-map.sh --name luna --corpus-root <vault> --backend claude-cli --maps-dir <vault>/60-Maps --title "Graphify Luna Vault Map" --slug graphify-luna-map --corpus-tag luna`
   (`--backend claude-cli` is the default/sanctioned luna extraction provider —
   the operating-substrate `anthropic` cell, plain `allow` on luna-personal;
@@ -1616,13 +1609,13 @@ view into the vault — the bridge between the derived graph and the KB.
 - `scripts/luna/graphmap-cadence.sh` — the scheduler that arms this refresh
   (follow-up to the refresh script; cadence inverted since).
   A SEPARATE OS-scheduler sibling of `pipeline-cadence.sh` (deliberately not a
-  pipeline-cadence leg — that runner's invariant is "every task = a claude
+  pipeline-cadence job — that runner's invariant is "every task = a claude
   session", and a graph refresh is a deterministic script, no claude).
   `arm`/`status`/`disarm` register **five** tasks (a fifth, `HIMMEL-
   GraphPublish-Himmel`, was added later — refresh+publish+auto-merge
   himmel's OWN graphify graph on a cadence, every 6h; see
   [`docs/internals/graph-cadence.md`](internals/graph-cadence.md) for that
-  leg's own arm/inspect/remove, ledger shape, and failure-surfacing detail —
+  job's own arm/inspect/remove, ledger shape, and failure-surfacing detail —
   this entry covers the original four). The semantic pair
   (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
   staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired, operator ruling; claude-cli is the
@@ -1632,22 +1625,21 @@ view into the vault — the bridge between the derived graph and the KB.
   `refresh-graph-map.sh` for its corpus. The
   structural/AST pair (`HIMMEL-GraphMapAst-Luna` / `-Himmel`) is **asymmetric**
   since a later change: **himmel hourly** (:15 past), **luna daily** (00:05). Both
-  legs are free; the asymmetry is about the artifact, not cost — luna is a live
+  jobs are free; the asymmetry is about the artifact, not cost — luna is a live
   vault with an auto-committer, so an hourly in-place update meant ~24 commits a
   day of graph churn, while himmel has no auto-committer (`/graph-publish` owns
   shipping its graph). The same decision gitignores luna's **top-level**
   `graphify-out/`, so that vault's graph is now a per-machine artifact: a fresh
-  clone elsewhere has none until it refreshes there. Each leg fires
+  clone elsewhere has none until it refreshes there. Each job fires
   `scripts/graphify/ast-update.sh <abs-path>` — a thin
-  wrapper that takes the semantic leg's per-out-dir promote lock (skip-not-wait)
+  wrapper that takes the semantic job's per-out-dir promote lock (skip-not-wait)
   before running `graphify update <abs-path> --force` itself, so the free
   structural AST re-parse can never race the weekly semantic refresh's write to
   the same `graphify-out` (both sides resolve `GRAPHIFY_OUT` identically —
   `refresh-graph-map.sh` honours the relative form and refuses an
   absolute one, which its scratch-then-promote model cannot express): no LLM,
   no subscription usage budget, no `bank-preflight`, never shells
-  `claude` — and is **free**. schtasks (Windows, StartWhenAvailable XML) / crontab
-  (POSIX); dedup-guarded; hermetic test `test-graphmap-cadence.sh`. Arming is
+  `claude` — and is **free**. crontab (POSIX); dedup-guarded; hermetic test `test-graphmap-cadence.sh`. Arming is
   an operator flip (weekly `claude-cli` subscription usage budget draw on the semantic pair only —
   the AST pair costs nothing), not auto-armed. `arm` also FAILS FAST when
   `claude` is not resolvable on PATH at arm time (restoring the
@@ -1666,7 +1658,7 @@ view into the vault — the bridge between the derived graph and the KB.
   `--ast-only` arms/dedup-checks ONLY the two free structural
   (AST) tasks, skipping the weekly semantic pair (and its backend credential
   requirement) entirely — a pre-existing semantic pair, if any, is left
-  untouched. Lets the free legs re-arm independently of an operator ruling on
+  untouched. Lets the free jobs re-arm independently of an operator ruling on
   the semantic pair's backend/egress. To ADD a missing semantic pair later,
   re-arm WITHOUT `--ast-only` and WITH `--force` — a plain re-arm (no
   `--force`) dedup-blocks on the already-armed AST tasks instead of adding
@@ -1711,14 +1703,14 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   basis for not fencing today; if a fence is ever needed it belongs in the
   runner, not the scheduler. Hermetic test `test-qmd-reindex.sh` (stubs qmd).
 - `scripts/luna/qmd-cadence.sh` — the scheduler that arms it. Deterministic-script
-  shape (the graphmap sibling, NOT a pipeline-cadence leg): no claude session, no
+  shape (the graphmap sibling, NOT a pipeline-cadence job): no claude session, no
   NUL stdin, no `--settings` fragment, so the Claude invocation billing rule does not apply at all.
   `arm`/`status`/`disarm` register ONE daily task, `HIMMEL-Qmd-Reindex`
-  (default 05:00 local — AFTER the pipeline legs that WRITE to the vault
+  (default 05:00 local — AFTER the pipeline jobs that WRITE to the vault
   (Harvest 02:00, Synthesize 03:00, Health 04:00) so the reindex picks up what
   they wrote instead of racing them, and clear of the graphmap slots 13:00/13:20).
-  A full local refresh measured 16s + 24s, so daily is cheap. schtasks (Windows,
-  StartWhenAvailable + IgnoreNew XML) / crontab (POSIX); dedup-guarded; hermetic
+  A full local refresh measured 16s + 24s, so daily is cheap. crontab (POSIX);
+  dedup-guarded; hermetic
   test `test-qmd-cadence.sh`. Arming is an operator flip, never auto-armed:
   `bash scripts/luna/qmd-cadence.sh arm` (`--time` / `--force` / `--dry-run`).
   **Migration for already-armed receivers:** an already-armed receiver cadence keeps its
@@ -1870,17 +1862,17 @@ private repo has Actions off by design.
   `/drift-fix` step 2B. Test seams `DRIFT_KNOWN_MARKETPLACES` /
   `HIMMEL_UPDATE_CLAUDE_BIN`; hermetic test: `test-update-marketplaces.sh`.
 - `scripts/upstreams/drift-fix-cadence.sh arm|status|disarm` — arms TWO daily
-  local scheduled tasks (schtasks on Windows, crontab on Linux/macOS; sibling of
+  local scheduled tasks (crontab on Linux/macOS; sibling of
   `codex-sweep-cadence.sh` / `pipeline-cadence.sh`), each firing an INTERACTIVE
   `claude --model <M>` session (never `-p`/`--print`):
   `HIMMEL-DriftFix` at 05:00 on the `/drift-fix` runbook, and
-  `HIMMEL-ForkResync` at 05:30 on `/fork-resync`. Two legs rather than one
+  `HIMMEL-ForkResync` at 05:30 on `/fork-resync`. Two jobs rather than one
   because a fork re-sync can legitimately end "conflicted, a human must decide",
   and a stuck re-sync must not block routine pin bumps; ONE script rather than
   two because the arm/status/disarm machinery (locale-independent query
   classification, `StartWhenAvailable` XML, fail-closed crontab reads) is the
   part that is hard to get right and must not be copy-pasted. Flags (arm only):
-  `--time HH:MM` (drift leg, default 05:00), `--resync-time HH:MM` (default
+  `--time HH:MM` (drift job, default 05:00), `--resync-time HH:MM` (default
   05:30), `--model` (default sonnet), `--force`, `--dry-run`. Dedup-guarded;
   hermetic test `test-drift-fix-cadence.sh`. Arming is operator-invoked:
   `bash scripts/upstreams/drift-fix-cadence.sh arm`.
@@ -1916,8 +1908,8 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   `UPSTREAM_WATCH_STATE_DIR` / `UPSTREAM_WATCH_HIMMEL_ROOT`; hermetic test
   (7 cases): `test-upstream-watch.sh`.
 - `scripts/upstreams/upstream-watch-cadence.sh arm|status|disarm` — arms ONE
-  daily local scheduled task (schtasks on Windows, crontab on Linux/macOS;
-  structural sibling of `drift-fix-cadence.sh`, one leg instead of two because
+  daily local scheduled task (crontab on Linux/macOS;
+  structural sibling of `drift-fix-cadence.sh`, one job instead of two because
   `upstream-watch.sh` has no "conflicted, a human must decide" branch to
   isolate) that runs `bash scripts/upstreams/upstream-watch.sh` directly —
   never `claude`, no `--model` flag, so the Claude invocation billing rule does not apply even
@@ -1938,10 +1930,10 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   Flags: `--time HH:MM` (06:00 default), `--force`, `--dry-run`. Dedup-guarded;
   hermetic test: `test-upstream-watch-cadence.sh`.
   `--arm-on-delta` (an
-  interactive claude leg launched from the delta report) was deliberately
+  interactive claude worker launched from the delta report) was deliberately
   **not** implemented — deferred to a follow-up ticket rather than shipped as
   a dormant flag, since the launch surface (mission-doc generation, model pin,
-  workspace pre-trust) is real scope for an already-sized leg. Arming is
+  workspace pre-trust) is real scope for an already-sized worker. Arming is
   operator-invoked: `bash scripts/upstreams/upstream-watch-cadence.sh arm`.
 - `scripts/doctor-cadence.sh run|arm|status|disarm` — the daily
   `himmel-doctor` run, so a standing FAIL is seen in a day, not nine.
@@ -1956,7 +1948,7 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   first-ever run is a baseline (FAILs only); a doctor that prints no Summary
   line alerts too. `hud-custom-lines.sh` shows `himmel-doctor  N FAIL  M WARN` from
   `counts` (read-only, silent when absent or clean). Registered in
-  `cadence-registry.json` as `doctor`; cron only (Windows is parked).
+  `cadence-registry.json` as `doctor`; cron only.
   Report-only: repair is `himmel-update`'s drift pass. Arming is
   operator-invoked: `bash scripts/doctor-cadence.sh arm`. Test:
   `scripts/test-doctor-cadence.sh`.
@@ -2010,7 +2002,7 @@ Operator-invoked on demand via `/luna-upgrade-all` or directly.
   `PARTIAL\t<vault>`, `CONFLICT\t<vault>\t<sidecar>`, `RESTORED\t<vault>\t<ts>`.
   Primary surface: `/luna-upgrade-all` (skill: `obsidian-triage:luna-upgrade-all`
   — runbook at `marketplace/plugins/obsidian-triage/skills/luna-upgrade-all/SKILL.md`).
-  Bash 3.2-safe; cross-platform (Windows Git Bash + macOS + Linux).
+  Bash 3.2-safe; cross-platform (macOS + Linux).
 
 ---
 
@@ -2028,12 +2020,12 @@ on a dedicated public fork using free public runners.
   - **Whole-run budget** (`SUITE_RUN_BUDGET`, default 7200s) — stops between suites and names what did not run; a truncated run exits non-zero rather than reporting green. It was described here as a runaway backstop, but measurement showed otherwise: 397 suites are discovered, 381 run, and the 2026-08-29 reference run spent its whole 7200s on real work while reaching 174 of them, so on this hardware the budget bounds an *ordinary* run.
   - **Resume rotation** (`SUITE_ROTATE`, default 1) — discovery is sorted, so a truncated run used to drop the *same* 207-suite tail forever (all of `scripts/lib`, `scripts/luna`, `scripts/machine-setup`, `scripts/parity`, `scripts/statusline`, `scripts/upstreams`). A truncated run now records the first suite it did not reach; the next run over the same scan root starts there and wraps to the top, covering the whole ring across ~3 budget windows. It **reorders, never filters** — a single run's suite set is unchanged — and truncation still exits 1, so the blind spot becomes temporary without a partial run reading as a pass. Inert with no cursor on disk (so a fresh CI container is byte-identical to before); `SUITE_ROTATE=0` disables it, `SUITE_ROTATE_STATE` overrides the cursor path (default `$HOME/.himmel/himmel-shell-suite-<scan-slug>.cursor`, deliberately not `TMPDIR`, which `tmp-sweep.sh` clears).
   - **Stdin isolation** — suites run with stdin on `/dev/null` and the runner reads its list on fd 3, so no suite can block an unattended run on a prompt or consume the remaining suite list.
-  - **Visible wait** (`SUITE_LOCK_WAIT`, default `0`). The runner never used to wait at all: a held lock refused on sight, so worker sessions hand-rolled their own retry loops and a *queued* worker session became indistinguishable from a *parked* one (opposite remedies — patience vs a nudge — and getting it backwards is how a coordinator creates a second-writer race). Set it to a number of seconds and the run queues instead, printing a repeating `WAITING:` line every `SUITE_LOCK_WAIT_INTERVAL` seconds (default 60) that names the **current** holder's pid/host/elapsed hold plus how long this run has waited; `ACQUIRED:` on success, and the full `REFUSED` verdict plus exit 2 when the budget runs out. Every attempt is the unmodified acquire, so staleness/CAS/takeover behaviour is unchanged — this adds a cadence and a heartbeat, not a second way to get the lock. Default `0` keeps the historical refuse-on-sight *behaviour* — same decision, same exit 2, no waiting. The refusal TEXT is not byte-identical: it gains three lines naming `SUITE_LOCK_WAIT` as the way to queue instead, so anything asserting on the exact refusal output sees them.
+  - **Visible wait** (`SUITE_LOCK_WAIT`, default `0`). The runner never used to wait at all: a held lock refused on sight, so workers hand-rolled their own retry loops and a *queued* worker became indistinguishable from a *parked* one (opposite remedies — patience vs a nudge — and getting it backwards is how a coordinator creates a second-writer race). Set it to a number of seconds and the run queues instead, printing a repeating `WAITING:` line every `SUITE_LOCK_WAIT_INTERVAL` seconds (default 60) that names the **current** holder's pid/host/elapsed hold plus how long this run has waited; `ACQUIRED:` on success, and the full `REFUSED` verdict plus exit 2 when the budget runs out. Every attempt is the unmodified acquire, so staleness/CAS/takeover behaviour is unchanged — this adds a cadence and a heartbeat, not a second way to get the lock. Default `0` keeps the historical refuse-on-sight *behaviour* — same decision, same exit 2, no waiting. The refusal TEXT is not byte-identical: it gains three lines naming `SUITE_LOCK_WAIT` as the way to queue instead, so anything asserting on the exact refusal output sees them.
   - Other env: `SUITE_LOCK=0` (opt out of the lock), `SUITE_LOCK_DIR` (override the lock path), `SUITE_LOCK_TTL` (default 4h). Those durations must be positive integers; `0` is rejected, since for each of them it would disable the guard it configures. `SUITE_LOCK_WAIT` is the deliberate exception — a budget rather than a guard, where `0` legitimately means "do not queue" (a malformed value falls back to `0`, never to an unbounded wait).
   - **Per-suite temp root** — each suite runs with `TMPDIR`/`TMP`/`TEMP` pointed at its own `himmel-suite.XXXXXX` dir, which the runner deletes after the suite (or after the watchdog kills it). A terminated suite never runs its own cleanup traps, so without this it left every `mktemp` behind: /tmp on the dev box reached ~149,600 entries that way.
-- `scripts/ci/tmp-sweep.sh` — lean-invoke sweep of himmel's own leftover fixture trees out of `%TEMP%`/`$TMPDIR`. **Dry-run by default**; `--apply` deletes, `--older-than <hours>` (default 6) is the age floor, `--root <dir>` overrides the temp root, `--bytes` adds a (slow) reclaimable-size figure, `--include-bare-mktemp` opts into `tmp.XXXXXX` (coreutils mktemp's default template — not exclusively ours, so it is off by default). Matches only top-level entries whose name starts with one of a derived allow-list of our own `mktemp`/`mkdtempSync` prefixes; never follows or removes symlinks; resolves the root with `pwd -P` and refuses anything that is not at or under `$TMPDIR`/`$TEMP`/`$TMP`/`/tmp`/`/var/tmp`. Every allow-list entry is a complete `mktemp`/`mkdtempSync` template prefix, or the shared fixed part of a family of them (`bench-run-batch-`, `lane-bank-`) — never a bare family stem. Exit 2 on usage error or a refused root; exit 3 when `--apply` left matched entries behind (the survivor count is on stderr — dry-run never returns it). Suite: `scripts/ci/test-tmp-sweep.sh`.
-- `scripts/ci/orphan-census.sh` — **read-only** census of orphaned himmel suite/probe processes (dead parent + a command line naming a script inside *this* checkout + older than `--min-age`, default 10 min). The checkout anchor is the primary root, derived from the script's own location with any `.claude/worktrees/<name>` suffix stripped, so it covers the primary and every worktree. The script must be root-prefixed, or named relative to a `cd` into the root on the same line (`cd <root> && bash scripts/…`, the live shape), and in both cases actually run by an interpreter — an editor or scanner holding a suite file open is not a suite process; a same-layout foreign repo, a foreign absolute script that merely shares the line, and a bare relative invocation with the root nowhere on the line are all left unclassified. Windows via `Get-CimInstance Win32_Process`, POSIX via `ps`; `check-ci` / `merge-on-green` watchers are listed as `WATCHER` and never reaped. `--reap` exists but is **operator-run** — the destructive-command hook denies process termination from a Claude session. `--reap` re-reads each PID's creation time immediately before signalling and skips with a WARN if it changed, which narrows the PID-reuse window from minutes to the microseconds between that read and the signal — it does not close it (bash signals by PID, not by handle). `ORPHAN_CENSUS_INPUT=<file>` feeds the classifier a canned `pid|ppid|age|start|cmdline` table (test seam; refuses to combine with `--reap`). Suite: `scripts/ci/test-orphan-census.sh`.
-- `scripts/lib/proc-tree.sh` — terminates a background job **and its descendants** on POSIX and Git Bash: process-group TERM → grace → KILL, then verifies the group is actually empty and falls back to Windows `taskkill` for anything that survived. Callers must spawn under `set -m` so the job owns a process group. Used by the suite runner's per-suite cap; covered by `scripts/ci/test-suite-concurrency.sh`.
+- `scripts/ci/tmp-sweep.sh` — lean-invoke sweep of himmel's own leftover fixture trees out of `$TMPDIR`. **Dry-run by default**; `--apply` deletes, `--older-than <hours>` (default 6) is the age floor, `--root <dir>` overrides the temp root, `--bytes` adds a (slow) reclaimable-size figure, `--include-bare-mktemp` opts into `tmp.XXXXXX` (coreutils mktemp's default template — not exclusively ours, so it is off by default). Matches only top-level entries whose name starts with one of a derived allow-list of our own `mktemp`/`mkdtempSync` prefixes; never follows or removes symlinks; resolves the root with `pwd -P` and refuses anything that is not at or under `$TMPDIR`/`$TEMP`/`$TMP`/`/tmp`/`/var/tmp`. Every allow-list entry is a complete `mktemp`/`mkdtempSync` template prefix, or the shared fixed part of a family of them (`bench-run-batch-`, `lane-bank-`) — never a bare family stem. Exit 2 on usage error or a refused root; exit 3 when `--apply` left matched entries behind (the survivor count is on stderr — dry-run never returns it). Suite: `scripts/ci/test-tmp-sweep.sh`.
+- `scripts/ci/orphan-census.sh` — **read-only** census of orphaned himmel suite/probe processes (dead parent + a command line naming a script inside *this* checkout + older than `--min-age`, default 10 min). The checkout anchor is the primary root, derived from the script's own location with any `.claude/worktrees/<name>` suffix stripped, so it covers the primary and every worktree. The script must be root-prefixed, or named relative to a `cd` into the root on the same line (`cd <root> && bash scripts/…`, the live shape), and in both cases actually run by an interpreter — an editor or scanner holding a suite file open is not a suite process; a same-layout foreign repo, a foreign absolute script that merely shares the line, and a bare relative invocation with the root nowhere on the line are all left unclassified. It reads processes via `ps`; `check-ci` / `merge-on-green` watchers are listed as `WATCHER` and never reaped. `--reap` exists but is **operator-run** — the destructive-command hook denies process termination from a Claude session. `--reap` re-reads each PID's creation time immediately before signalling and skips with a WARN if it changed, which narrows the PID-reuse window from minutes to the microseconds between that read and the signal — it does not close it (bash signals by PID, not by handle). `ORPHAN_CENSUS_INPUT=<file>` feeds the classifier a canned `pid|ppid|age|start|cmdline` table (test seam; refuses to combine with `--reap`). Suite: `scripts/ci/test-orphan-census.sh`.
+- `scripts/lib/proc-tree.sh` — terminates a background job **and its descendants** on POSIX: process-group TERM → grace → KILL, then verifies the group is actually empty. Callers must spawn under `set -m` so the job owns a process group. Used by the suite runner's per-suite cap; covered by `scripts/ci/test-suite-concurrency.sh`.
 
 **Five jobs:** `secret-scan` (check-no-secrets), `lint` (shellcheck --severity=warning over `scripts/**/*.sh`), `node-suites` (npm matrix: jira/bitbucket/himmel-run), `bun-suites` (luna-vitals bun test), `shell-unit` (run-shell-tests.sh).
 
@@ -2082,88 +2074,7 @@ Rerun it on monitoring-key rotation — never reuse the master pair for polling.
 
 ## GLM ship lane (`scripts/glm/`)
 
+> **Dormant:** the GLM lane was dropped by operator ruling 2026-08-19
+> (HIMMEL-1967); the lane registry offers it only when `GLM_LANE_OK` is set.
+
 - `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the review-owed marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin).
-
----
-
-## Windows gotchas
-
-Bugs encountered and fixes applied when running bash scripts on Windows via Git Bash.
-
-### 1. `set -f` disables glob expansion globally
-
-**Script:** `scripts/statusline/bin/statusline.sh` line 2: `set -f`
-**Effect:** All glob patterns treated as literal strings. `cat "$HOME/.claude/projects"/*/*.jsonl` passes the literal `*/*.jsonl` to cat → no files → jq returns 0.
-**Fix:** Wrap glob with `set +f` / `set -f`:
-```bash
-set +f
-stats=$(cat "$HOME/.claude/projects"/*/*.jsonl 2>/dev/null | ...)
-set -f
-```
-**File:** `scripts/statusline/bin/statusline.sh`, `read_all_sessions_cache_stats()`
-
----
-
-### 2. `((VAR++))` fails under `set -e` when VAR=0
-
-**Context:** Bash arithmetic `((VAR++))` exits with code 1 when the result is 0 (before the increment). `set -e` kills the script.
-**Reproduces:** `set -e; PASS=0; ((PASS++))` — exits immediately.
-**Fix:** `VAR=$(( VAR + 1 ))` instead of `((VAR++))`.
-**File:** `test/test_cache.sh` — all counter increments.
-
----
-
-### 3. `date -d` / `date -r` cross-platform divergence
-
-**Context:** Converting ISO 8601 timestamps to Unix epoch.
-- Linux/Git Bash: `date -d "2026-05-16T15:04:31Z" +%s`
-- macOS/BSD: `-d` not supported; different invocation needed
-**Fix:** Try Linux form first, fall back with `||`. The original script already had this; replicated in tests.
-
----
-
-### 4. `stat` mtime flag differs by platform
-
-**Context:** Checking cache file age for the 30s TTL.
-- Linux: `stat -c %Y file`
-- macOS: `stat -f %m file`
-**Fix:**
-```bash
-cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null || echo 0)
-```
-
----
-
-### 5. Home path format
-
-`$HOME` in Git Bash = `/c/Users/<user>`. Windows tools expect `C:\Users\<user>`.
-**Rule:** All bash scripts use POSIX paths. Claude Code's `transcript_path` field uses `/c/` prefix.
-
----
-
-### 6. Testing statusline without touching global config
-
-`statusLine` in `~/.claude/settings.json` is global. To test a new script in isolation, create `.claude/settings.json` in the feature worktree:
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bash \"C:/path/to/test/bin/statusline.sh\""
-  }
-}
-```
-Claude Code picks up project-level settings when opened from that directory.
-
----
-
-### 7. `eval "$(sed ...)"` for sourcing partial script in tests
-
-`statusline.sh` starts with `input=$(cat)` which blocks stdin if sourced directly.
-**Fix:** Extract only the cache functions section with `sed` + `eval`:
-```bash
-eval "$(sed -n '/^# ── Cache metrics functions/,/^# ── End cache metrics functions/p' "$STATUSLINE")"
-if ! declare -f format_tokens >/dev/null 2>&1; then
-    echo "ERROR: failed to source cache functions" >&2; exit 1
-fi
-```
-Guard after `eval` catches silent failures if section markers are renamed.

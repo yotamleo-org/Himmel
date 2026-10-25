@@ -38,7 +38,7 @@ Reference
   Using it from Codex
   Jira integration
   Evals
-  Troubleshooting [pending]
+  Troubleshooting
   Glossary
 For contributors
   Contributing

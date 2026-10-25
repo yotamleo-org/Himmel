@@ -16,9 +16,6 @@ This guide is the operational checklist; that doc is the reference.
 
 - **`codex-cli`** installed and authenticated (`codex --version`; sign in per
   OpenAI's docs / your hermes OAuth).
-- **Git Bash** on Windows (`C:\Program Files\Git\bin\bash.exe`). himmel's
-  guardrails are bash; the Codex hook wrapper finds Git Bash explicitly and
-  **fails closed** if it's missing. NOT WSL `bash` (the System32 stub trap).
 - **`jq`** and **`gh`** on `PATH` (guards + handover flows need them).
 - A himmel checkout (clone the repo). Run Codex **from the primary checkout**.
   If you run from a git worktree, Codex resolves the project root to the main
@@ -53,12 +50,11 @@ files. See harness-compat.md §3.
 ## 4. Hooks — the PreToolUse guardrails
 
 himmel's guardrails are wired for Codex through a **tracked project
-`.codex/hooks.json`**. Each entry uses `command` to route Unix through
-`.codex/run-hook.sh` and `commandWindows` to route Windows through
-`.codex/run-hook.cmd`; both pass `--sandbox <guard>.sh`. The wrappers (1) derive
-`CLAUDE_PROJECT_DIR` from their own location (Codex injects it for neither plugin
-nor project hooks) and (2) delegate to `.codex/codex-hook-adapter.sh`. The
-Windows wrapper also finds Git Bash explicitly. The adapter translates himmel's
+`.codex/hooks.json`**. Each entry uses `command` to route through
+`.codex/run-hook.sh`, passing `--sandbox <guard>.sh`. The wrapper (1) derives
+`CLAUDE_PROJECT_DIR` from its own location (Codex injects it for neither plugin
+nor project hooks) and (2) delegates to `.codex/codex-hook-adapter.sh`. The
+adapter translates himmel's
 exit-2 block into the JSON `permissionDecision:"deny"` Codex acts on (Codex
 ignores bare exit 2). Wired guards include `auto-approve-safe-bash`,
 `block-edit-on-main`, `block-read-secrets`, `block-backend-tier`,

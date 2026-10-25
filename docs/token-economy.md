@@ -83,7 +83,8 @@ live bulk lane to sample until WS1 ships and the routing work defines the classe
 - **Lane compliance (2026-07-03, WS4 re-validation):** panel/router lanes
   terminate PER-TOKEN keys only; subscription lanes (Z.ai Coding Plan,
   ToS-restricted to officially supported tools) are launcher-only (WS1's
-  `claude-glm` is the compliant use; Claude Code qualifies).
+  `claude-glm` was the compliant use, and that GLM lane is now dormant,
+  HIMMEL-1967; Claude Code qualifies).
 
 ## Measured preload deltas
 

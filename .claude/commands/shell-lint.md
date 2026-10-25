@@ -13,8 +13,6 @@ the operator) runs on demand, not an always-on hook. It only reports — it neve
 modifies files.
 
 What it checks per shell file:
-- **[BOM]** — a UTF-8 byte-order mark at the file start (breaks the shebang; the
-  gate's shellcheck flags it as SC1082).
 - **[errexit]** — `set -e` / `-eu` / `-euo` / `-o errexit` in the prologue;
   errexit leaks into a sourcing shell, so himmel uses `set -uo pipefail`.
 - **[shellcheck]** — the same linter the pre-commit gate runs (when installed).

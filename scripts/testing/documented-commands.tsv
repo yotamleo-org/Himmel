@@ -35,6 +35,8 @@ F33	scripts/cr/pr-check-ref/50-step5-decision.md	wt	ask	bash "<himmel_dir>/scrip
 F34	scripts/cr/pr-check-ref/50-step5-decision.md	wt	ask	bash "<himmel_dir>/scripts/cr/cr-scores.sh" #1829888882	bash scripts/cr/cr-scores.sh
 F35	scripts/cr/pr-check-ref/70-step7-nits.md	wt	xfail:HIMMEL-6784	pr_num="" #2824756406	pr_num=""⏎if pr_status=$(gh pr list --state open --head '@BRANCH@' --json number --jq '.[0].number' 2>&1); then⏎    pr_num="$pr_status"   # empty when no PR yet⏎else⏎    echo "WARN /pr-check: gh pr list failed: $pr_status" >&2⏎fi⏎if [ -n "$pr_num" ]; then⏎    review_tmpfile=$(mktemp -t cr-review.XXXXXX.md)⏎    echo "$review_tmpfile"⏎fi
 F36	scripts/cr/pr-check-ref/70-step7-nits.md	wt	ask	bash "<himmel_dir>/scripts/cr/file-deferred-issues.sh" --pr <pr-num> --input '<review-tmpfile>' --dry-run #4263634063	bash scripts/cr/file-deferred-issues.sh --pr 1 --input '@SCRATCH@' --dry-run
+F37	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --head <head> --duration-secs <s> #2422875973	bash scripts/cr/ledger-append.sh blast --head @HEAD@ --duration-secs 90
+F38	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --head <head> --status off --reason '<why>' #3593067671	bash scripts/cr/ledger-append.sh blast --head @HEAD@ --status off --reason 'why'
 L37	docs/handover/leg-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/console-kit/append-results.sh @SCRATCH@ "LIVE — ok"
 L38	docs/handover/leg-preface.md	wt	ask	-	bash @WT@/scripts/handover/console-kit/append-results.sh @SCRATCH@ "LIVE — ok"
 L40	docs/handover/leg-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/queue-lock.sh acquire @SCRATCH@

@@ -363,7 +363,7 @@ Every feature has one doc that owns its detail; the full map is
 **Lifecycle and delegation**
 - `himmelctl` install, update and uninstall:
   [`docs/setup/updating.md`](docs/setup/updating.md)
-- Delegation across Claude model tiers, plus optional GLM and Codex lanes,
+- Delegation across Claude model tiers, plus an optional Codex lane,
   listed live by `/lanes`: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
 - Cloud lane (`claude --cloud` sessions on your fork):
   [`docs/setup/cloud-environment.md`](docs/setup/cloud-environment.md)

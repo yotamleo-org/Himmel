@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard (posix-bash): POSIX bash 3.2+.
 #
 # check-old-terms.sh [<base> | --staged | --auto] — refuse NEW old-term names in
 # the lines a change adds (slice R3 of the rename plan). Only added lines

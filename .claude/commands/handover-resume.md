@@ -49,7 +49,7 @@ skill path incurred. The script resolves the target repo + bucket from
    from the item's stop-point.
 
 4. **If the overnight flag was set** (e.g. `/handover-resume HIMMEL-1033 overnight`):
-   after loading the item, treat this as the overnight-mode trigger for that item's
+   after loading the item, treat this as the AFK-mode trigger for that item's
    latest `next-session-*.md` and run the autonomous pipeline per
    [`docs/handover/afk-mode.md`](../../docs/handover/afk-mode.md)
    without pausing between phases.
