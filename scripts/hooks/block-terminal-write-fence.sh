@@ -107,7 +107,7 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
         {
             echo "⛔ block-terminal-write-fence: $1"
             echo "    The codex-direct lane has no auto-mode classifier, so external-write"
-            echo "    shapes are hard-blocked (HIMMEL-745). Commit locally and deliver a"
+            echo "    shapes are hard-blocked. Commit locally and deliver a"
             echo "    branch diff; the operator / trusted lane pushes and opens PRs."
             echo "    Opt-in: set CODEX_EXTERNAL_WRITES_OK=1 in the launching shell."
         } >&2

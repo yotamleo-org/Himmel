@@ -153,8 +153,6 @@ if [ "${#violations[@]}" -gt 0 ]; then
         echo "    gemini --prompt \"\$prompt\""
         echo "For a multi-line call the marker may sit on any line from the one above"
         echo "the call's opening line through the reported (program) line."
-        echo ""
-        echo "Refs: HIMMEL-157."
     } >&2
     exit 1
 fi

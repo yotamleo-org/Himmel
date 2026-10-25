@@ -2045,12 +2045,12 @@ _bwimc_deny() {
         [ -n "$repo_root" ] && echo "    (repo: $repo_root)"
         if [ -n "${_BWIMC_GIT_SUB:-}" ]; then
             echo "    (git subcommand: $_BWIMC_GIT_SUB — rewrites a protected checkout's tree, index, HEAD,"
-            echo "     refs or config; HIMMEL-3401. Allowed there: read-only git, fetch <remote>,"
+            echo "     refs or config. Allowed there: read-only git, fetch <remote>,"
             echo "     pull --ff-only [<remote> [main|master]].)"
         fi
         echo ""
         echo "    Feature work belongs in a worktree per CLAUDE.md, not a write into the"
-        echo "    PRIMARY checkout from a Bash/PowerShell-mediated command (HIMMEL-2526) —"
+        echo "    PRIMARY checkout from a Bash/PowerShell-mediated command —"
         echo "    the destination-based twin of block-edit-on-main.sh, covering the"
         echo "    redirect/tee/sed -i/cp/mv/rm/touch/ln/git-commit surface that guard,"
         echo "    wired only on Edit|Write|MultiEdit|NotebookEdit, cannot see."
@@ -2981,7 +2981,7 @@ _bwimc_cwd_check_sourced() {
                 echo "    (cwd: $cwd)"
                 echo ""
                 echo "    Feature work belongs in a worktree per CLAUDE.md, not on the primary"
-                echo "    main checkout (write-on-main class, HIMMEL-745). To proceed:"
+                echo "    main checkout (write-on-main class). To proceed:"
                 echo "      - run the command from a type/slug worktree, or"
                 echo "      - touch \"$repo_root/.single-writer\" if this repo commits to main by design."
             } >&2

@@ -1018,11 +1018,11 @@ PINSCRIPTS
                 echo "⛔ block-glm-external-writes: refusing a Bash/PowerShell command that"
                 echo "    references the hook-integrity pin directory ($pin_dir_raw)."
                 echo "    A dispatched worker's shell must never touch a pin file there — doing"
-                echo "    so could forge the HIMMEL-1666 hook-integrity check (HIMMEL-2085)."
+                echo "    so could forge the hook-integrity check."
                 echo "    Legitimate mid-session hook-integrity work: set"
                 echo "    HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the LAUNCHING shell — honoured only"
                 echo "    inside a linked worktree of the session's recorded repo, and audited"
-                echo "    (HIMMEL-3396); in the primary checkout this fence stays on."
+                echo "    — in the primary checkout this fence stays on."
             } >&2
             exit 2
         fi
@@ -1569,7 +1569,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
                 echo "    refspec that WRITES a remote-tracking ref (refs/remotes/… or the"
                 echo "    <name>/<branch> shorthand), or a ref/remote-metadata rewrite (symbolic-ref,"
                 echo "    update-ref, remote set-url/set-head/add, insteadOf, remote.origin.url)."
-                echo "    HIMMEL-2528's hook-integrity re-pin trusts whatever"
+                echo "    the hook-integrity re-pin trusts whatever"
                 echo "    refs/remotes/origin/<default> currently resolves to as legitimately-"
                 echo "    committed hook content — this command shape could redefine that."
                 echo "    This is a command-TEXT fence, not closure: a .git/config edit followed"
@@ -1577,7 +1577,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
                 echo "    through a path this fence never sees spelled out, are NOT caught."
                 echo "    Legitimate mid-session work: set HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the"
                 echo "    LAUNCHING shell — honoured only inside a linked worktree of the session's"
-                echo "    recorded repo, and audited (HIMMEL-3396); in the primary checkout this"
+                echo "    recorded repo, and audited; in the primary checkout this"
                 echo "    fence stays on."
             } >&2
             exit 2
@@ -1595,7 +1595,7 @@ deny() {
     {
         echo "⛔ block-glm-external-writes: $1"
         echo "    This session runs on the GLM lane (ANTHROPIC_BASE_URL=api.z.ai), which has"
-        echo "    no auto-mode classifier — external writes are hard-blocked (HIMMEL-654)."
+        echo "    no auto-mode classifier — external writes are hard-blocked."
         echo "    Deliver results as a committed branch diff + your session outbox summary;"
         echo "    the parent Claude session / operator pushes and opens PRs."
         echo "    Operator bypass: GLM_EXTERNAL_WRITES_OK=1 in the spawning shell."
@@ -1618,7 +1618,7 @@ deny() {
 deny_recorded() {
     {
         echo "✅ block-glm-external-writes: guard recorded your report; the command is not"
-        echo "    executed — no further action needed (HIMMEL-1649)."
+        echo "    executed — no further action needed."
         echo "    The hook appended the outbox record itself and then denied the Bash call"
         echo "    BY DESIGN. Your report IS saved. Do not retry, reword, or find another way."
     } >&2

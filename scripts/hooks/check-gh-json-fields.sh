@@ -177,7 +177,7 @@ done
     echo
     echo "gh exits 1 on an unknown field, which callers report as a generic"
     echo "\"cannot evaluate\" — so the typo hides as a transient failure and the"
-    echo "guarded path silently never runs (HIMMEL-1288)."
+    echo "guarded path silently never runs."
     echo "List the real names with:  gh <subcommand> --json __bogus__"
 } >&2
 exit 1

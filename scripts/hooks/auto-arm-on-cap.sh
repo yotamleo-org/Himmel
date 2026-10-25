@@ -405,7 +405,7 @@ if [ "$cache_age" -gt "$MAX_CACHE_AGE" ]; then
     if [ "${AUTO_ARM_SAFETY_CHILD:-}" = "1" ]; then
         : > "$stale_marker" 2>/dev/null || true
         rm -f "$stale_count_file" 2>/dev/null || true
-        warn "STATUSLINE WEDGED again (cache frozen ${cache_age}s) and this session IS an auto-arm safety child (AUTO_ARM_SAFETY_CHILD=1) — NOT arming another resume (HIMMEL-812 depth limit). Wind down instead: verify/commit in-flight work, write a short operator briefing, then STOP. Do not start backlog work and do not arm."
+        warn "STATUSLINE WEDGED again (cache frozen ${cache_age}s) and this session IS an auto-arm safety child (AUTO_ARM_SAFETY_CHILD=1) — NOT arming another resume (depth limit). Wind down instead: verify/commit in-flight work, write a short operator briefing, then STOP. Do not start backlog work and do not arm."
         exit 1
     fi
 
@@ -503,7 +503,7 @@ PY
             echo "type: handover"
             echo "task: auto-arm SAFETY snapshot (statusline wedged, usage invisible)"
             echo "created: $ts"
-            echo "armed-by: auto-arm-on-cap hook stale-cache escalation (HIMMEL-275)"
+            echo "armed-by: auto-arm-on-cap hook stale-cache escalation"
             [ -n "$cwd_repo" ] && echo "resume_cwd: $cwd_repo"
             echo "---"
             echo
@@ -530,7 +530,7 @@ PY
             echo "This snapshot is a SAFETY arm off a wedged usage cache, not a work"
             echo "handover: nobody chose this resume and nobody knows what the bank had"
             echo "left. Resuming the backlog from it is how one leg became a chain of"
-            echo "self-arming +5h sessions (HIMMEL-812). Your whole job is to land what"
+            echo "self-arming +5h sessions. Your whole job is to land what"
             echo "is already in flight and stop."
             echo
             echo "1. Verify and COMMIT in-flight work: git status here and across"
@@ -572,7 +572,7 @@ PY
     # forwards --automerge, by design (fail-closed policy: a cap re-arm is
     # not the arm that asked). arm-resume.sh's own always-clear-first fix
     # backstops this even if the ambient env carried a grant.
-    warn "automerge grant NOT carried across automatic re-arm (per-arm opt-in, HIMMEL-1382)"
+    warn "automerge grant NOT carried across automatic re-arm (per-arm opt-in)"
     # --safety-child: marks the relaunch env so the child's own
     # stale escalation warns instead of arming — the chain stops at depth 1.
     arm_out=$(ARM_RESUME_SAFETY_ARM=1 bash "$ARM_BIN" --dedup-any --safety-child --time "$slot_hhmm" --handover "$snapshot" 2>&1)
@@ -598,7 +598,7 @@ PY
             rm -f "$stale_count_file" 2>/dev/null || true
             {
                 echo "auto-arm-on-cap: STATUSLINE WEDGED — usage cache frozen for ${cache_age}s (> ${STALE_ESCALATE_AGE}s) across ${stale_count} live checks."
-                echo "On this setup that is ROUTINE, not a freak failure: the statusline's stdin-rates path never rewrites the cache mid-session, so it freezes at session start and long sessions land here until the upstream statusline fix (HIMMEL-275)."
+                echo "On this setup that is ROUTINE, not a freak failure: the statusline's stdin-rates path never rewrites the cache mid-session, so it freezes at session start and long sessions land here until the upstream statusline fix."
                 echo "Usage is INVISIBLE: the cap can land with no warning — ${armed_word} (${slot_source})."
                 echo "Status snapshot: $snapshot"
                 echo "ACTION REQUIRED: write a full handover NOW (it will be picked up on resume),"
@@ -835,7 +835,7 @@ write_snapshot() {
         echo "type: handover"
         echo "task: auto-arm cap snapshot (usage ${util}% >= ${THRESHOLD}% on ${window})"
         echo "created: $ts"
-        echo "armed-by: auto-arm-on-cap hook (HIMMEL-220)"
+        echo "armed-by: auto-arm-on-cap hook"
         [ -n "$cwd_repo" ] && echo "resume_cwd: $cwd_repo"
         echo "---"
         echo
@@ -904,7 +904,7 @@ set +e
 # forwards --automerge, by design (fail-closed policy: a cap re-arm is not
 # the arm that asked). arm-resume.sh's own always-clear-first fix backstops
 # this even if the ambient env carried a grant.
-warn "automerge grant NOT carried across automatic re-arm (per-arm opt-in, HIMMEL-1382)"
+warn "automerge grant NOT carried across automatic re-arm (per-arm opt-in)"
 arm_out=$(ARM_RESUME_SAFETY_ARM=1 bash "$ARM_BIN" --dedup-any --time smart --handover "$snapshot" 2>&1)
 arm_rc=$?
 set -e

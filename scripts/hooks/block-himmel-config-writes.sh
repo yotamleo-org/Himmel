@@ -72,9 +72,9 @@ deny() {
         echo "block-himmel-config-writes: refusing - $1."
         echo
         echo "    ~/.himmel/config.json carries graphify.salus_ollama_cloud_ok, the persisted"
-        echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud (HIMMEL-4185), so"
-        echo "    changing it is operator-only (HIMMEL-4696). Remedy: the operator edits the"
-        echo "    file by hand at their own prompt (or uses the HIMMEL-4495 UI flow once it"
+        echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, so"
+        echo "    changing it is operator-only. Remedy: the operator edits the"
+        echo "    file by hand at their own prompt (or uses the UI flow once it"
         echo "    lands). Reading the file stays allowed. There is no env bypass."
     } >&2
     exit 2

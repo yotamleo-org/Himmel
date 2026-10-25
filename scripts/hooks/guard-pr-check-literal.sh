@@ -110,7 +110,7 @@ shown=""
 flat=""
 deny() {
     {
-        echo "guard-pr-check-literal: DENIED - \`$shown\` (HIMMEL-3383, HIMMEL-3495, HIMMEL-3437): $1"
+        echo "guard-pr-check-literal: DENIED - \`$shown\`: $1"
         echo "A relative spelling of a gate-allowed scripts/cr or scripts/handover/ writer is allowed"
         echo "only in a himmel checkout, at its worktree root, on a tree whose copy of what it runs"
         echo "equals the HIMMEL_REPO anchor's byte for byte and mode for mode (compared raw, so a CRLF"
@@ -132,7 +132,7 @@ deny() {
                 echo "$FENCE"
                 ;;
             *handover/merge-on-green*)
-                echo "Run the anchored spelling instead (HIMMEL-3491) - EVERY argument must be"
+                echo "Run the anchored spelling instead - EVERY argument must be"
                 echo "unquoted, with no ' or \\ anywhere in the command (the anchor prefix is"
                 echo "exempted only when the whole command carries neither):"
                 echo

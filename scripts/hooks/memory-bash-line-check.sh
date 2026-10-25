@@ -54,7 +54,7 @@ EOF
 [ -n "$bad" ] || exit 0
 
 {
-    printf 'MEMORY INDEX LINE TOO LONG (HIMMEL-4891): a Bash write left MEMORY.md with a routing line over %s chars.\n' "$LINE_MAX"
+    printf 'MEMORY INDEX LINE TOO LONG: a Bash write left MEMORY.md with a routing line over %s chars.\n' "$LINE_MAX"
     printf '%s' "$bad"
     printf 'The index routes; it does not store. Move the fact into its theme topic file and shorten the line\n'
     printf 'in place with the Edit tool (guard-memory-capture.sh checks that path). Bypass: MEMORY_CAPTURE_OK=1 in the launching shell.\n'
