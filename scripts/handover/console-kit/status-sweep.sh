@@ -213,6 +213,23 @@ unknown() { # <stage>
     finish "unknown (snapshot $1) keys=0"
 }
 
+# read_overflow_checks <pr> - rows-<pr>.tsv and prows-<pr>.tsv for a PR with more
+# check runs than one GraphQL page, read as the lib's live derive reads them: every
+# gh pr checks row and every page of the head's check runs. gh pr checks reads the
+# PR's current head, so the head is read again after both reads: a push since the
+# snapshot returns 1 rather than mix two commits' checks.
+read_overflow_checks() {
+    local head out
+    head=$(jq -r --argjson n "$1" '.[] | select(.number == $n) | .headRefOid // empty' "$snap/prs.json") || return 1
+    [ -n "$head" ] || return 1
+    out=$(bounded 30 gh pr checks "$1" --json bucket,name 2>&1) # swallow-ok: gh exits non-zero on a red or pending check; the JSON parse below is the check
+    jq -r '.[] | "\(.bucket)\t\(.name)"' <<<"$out" > "$snap/rows-$1.tsv" 2>/dev/null || return 1
+    out=$(bounded 30 gh api "repos/{owner}/{repo}/commits/$head/check-runs?per_page=100" --paginate 2>/dev/null) || return 1 # swallow-ok: stderr only; a failed read returns 1 and the caller marks the sweep unknown
+    jq -r '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' \
+        <<<"$out" > "$snap/prows-$1.tsv" 2>/dev/null || return 1
+    [ "$(bounded 30 gh pr view "$1" --json headRefOid -q .headRefOid 2>/dev/null)" = "$head" ] # swallow-ok: an unreadable head is a mismatch, so the caller marks the sweep unknown
+}
+
 # --- the snapshot ---------------------------------------------------------------
 bounded 30 gh pr list --state open --limit 300 \
     --json number,title,headRefOid,baseRefName,reviewDecision,statusCheckRollup > "$snap/prs.json" 2>/dev/null || unknown gh
@@ -223,14 +240,16 @@ case "$n" in ''|*[!0-9]*) unknown gh ;; esac
 # shellcheck disable=SC2016  # $owner/$name are GraphQL variables
 bounded 30 gh api graphql -F owner='{owner}' -F name='{repo}' -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{databaseId name checkSuite{app{databaseId}} status conclusion startedAt}}}}}}}}}}}' \
     > "$snap/graphql.json" 2>/dev/null || unknown gh
-# Any further page anywhere makes the count or the check list partial.
+# A further page of PRs or of a PR's threads makes the count partial; a PR whose
+# own check list overflows is re-read on its own below.
 jq -r '.data.repository.pullRequests as $p
-    | if ($p.pageInfo.hasNextPage != false) or ($p.nodes | any(
-        .reviewThreads.pageInfo.hasNextPage != false
-        or ((.commits.nodes[0].commit.statusCheckRollup.contexts.pageInfo.hasNextPage // false) != false)))
+    | if ($p.pageInfo.hasNextPage != false) or ($p.nodes | any(.reviewThreads.pageInfo.hasNextPage != false))
       then error("more pages")
       else $p.nodes[] | [.number, ([.reviewThreads.nodes[] | select(.isResolved | not)] | length)] | @tsv end' \
     "$snap/graphql.json" > "$snap/threads.tsv" 2>/dev/null || unknown gh
+over=$(jq -r '.data.repository.pullRequests.nodes[]
+    | select((.commits.nodes[0].commit.statusCheckRollup.contexts.pageInfo.hasNextPage // false) != false) | .number' \
+    "$snap/graphql.json" 2>/dev/null) || unknown gh
 
 # Per-PR check rows (gh pr checks buckets) from the rollup, and the producer rows
 # (state, name, app id, started, id) from the GraphQL check runs.
@@ -256,6 +275,7 @@ jq -r '.data.repository.pullRequests.nodes[] | .number as $n
        .name, (.checkSuite.app.databaseId // ""), (.startedAt // ""), .databaseId] | @tsv' "$snap/graphql.json" 2>/dev/null \
     | awk -F'\t' -v d="$snap" '{ f = d "/prows-" $1 ".tsv"; sub(/^[^\t]*\t/, ""); print >> f; close(f) }'
 [ "${PIPESTATUS[0]}${PIPESTATUS[1]}" = 00 ] || unknown gh
+for num in $over; do read_overflow_checks "$num" || unknown gh; done
 
 # --- the key set ------------------------------------------------------------------
 KEY_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'

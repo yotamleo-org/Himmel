@@ -1,0 +1,21 @@
+{
+  "id": "real-himmel-5461-2501",
+  "ticket": "HIMMEL-5461",
+  "pr": 2501,
+  "merge_sha": "daaec949b2d09c521a1c361c16a420ea78cc7e99",
+  "base_sha": "e9005eca36db5f02a06bbf129ccd30abd2a8ceab",
+  "set": "capability",
+  "source": "bug",
+  "why_hard": "2 code file(s), 177 changed lines; the hidden scripts/handover/test-merge-forward-check.sh must go from failing at the base to passing, checked by 21 named check(s)",
+  "tests": [
+    "scripts/handover/test-merge-forward-check.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/handover/test-merge-forward-check.sh"
+  ],
+  "scope": [
+    "docs/handover/",
+    "scripts/handover/"
+  ]
+}

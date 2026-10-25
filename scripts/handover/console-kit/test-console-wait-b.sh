@@ -732,6 +732,7 @@ EOF
 cat > "$STUB/focus.sh" <<'EOF'
 #!/usr/bin/env bash
 printf 'focus %s\n' "$*" >> "$STUB/focus.calls"
+case "$*" in *--status) ;; *) [ -e "$STUB/focus.sleep" ] && sleep "$(cat "$STUB/focus.sleep")" ;; esac
 cat "$STUB/focus.out"; exit 0
 EOF
 export WAIT_SWEEP_CMD="$STUB/sweep.sh" WAIT_FOCUS_CMD="$STUB/focus.sh" WAIT_SWEEP_SEC=60
@@ -803,6 +804,50 @@ reset_stub; I="$(new_inbox sw11)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.swe
 start "$I" "$WORK/sw11.out" --doc "$SWDOC" --legs "N1.md"
 wait_exit "$WPID"
 check "(sw11) DIRTY with no readable age wakes" "WAKE focus DIRTY:unknown" "$(head -n1 "$WORK/sw11.out")"
+# (fr) each tick starts one background refresh of a DIRTY or FAILED page (a status write marked it),
+# none while an earlier one runs, and wakes nothing; a recent sweep stamp keeps the sweep out of it
+launches() { grep -cx "focus --doc $SWDOC" "$STUB/focus.calls"; }
+fr_run() { # <inbox name> [--doc] - three seconds of waiting, about three ticks
+    reset_stub; : > "$STUB/focus.calls"; I="$(new_inbox "$1")"; date +%s > "$I.wait.sweep"
+    [ -z "${FR_PID:-}" ] || printf '%s\n' "$FR_PID" > "$I.wait.focus-pid"
+    if [ "${2:-}" = --doc ]; then
+        timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/$1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    else
+        timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/$1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    fi
+    sleep 0.3
+}
+printf 'focus=DIRTY:0m\n' > "$STUB/focus.out"
+fr_run fr1 --doc
+check "(fr1) a DIRTY page starts a background refresh for the console doc" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
+check "(fr1b) and wakes nothing" "124:" "$rc:$(cat "$WORK/fr1.out")"
+printf 'focus=FAILED:sweep:gh\n' > "$STUB/focus.out"
+fr_run fr2 --doc
+check "(fr2) a FAILED page is retried by a background refresh" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
+printf 'focus=ok\n' > "$STUB/focus.out"
+fr_run fr3 --doc
+check "(fr3) an ok page starts no refresh" "0" "$(launches)"
+printf 'focus=skip\n' > "$STUB/focus.out"
+fr_run fr4 --doc
+check "(fr4) a doc with no focus version starts no refresh" "0" "$(launches)"
+printf 'focus=DIRTY:0m\n' > "$STUB/focus.out"
+fr_run fr5
+check "(fr5) without --doc no refresh starts" "0" "$(wc -l < "$STUB/focus.calls" | tr -d ' ')"
+echo 4 > "$STUB/focus.sleep"
+fr_run fr6 --doc
+check "(fr6) a refresh still running is left alone: one start over three ticks" "1" "$(launches)"
+fpid="$(cat "$I.wait.focus-pid" 2>/dev/null)"
+[ -n "$fpid" ] && kill -- "-$fpid" 2>/dev/null
+rm -f "$STUB/focus.sleep"
+printf 'focus=DIRTY:0m\n' > "$STUB/focus.out"
+sleep 30 & stray=$!
+FR_PID=$stray fr_run fr7 --doc
+kill "$stray" 2>/dev/null
+check "(fr7) a pid file naming an unrelated process does not hold the refresh back" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
+bash -c 'sleep 30; :' "$WAIT_FOCUS_CMD" --doc "$WORK/other-console.md" & stray=$!
+FR_PID=$stray fr_run fr8 --doc
+kill "$stray" 2>/dev/null
+check "(fr8) a refresh still running for another doc does not hold this doc's refresh back" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 unset WAIT_SWEEP_SEC
 

@@ -544,6 +544,7 @@ out=$(TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" PATH="$HBIN" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc "bun-missing run halts with rc=2" 2 "$rc"
 assert_has "bun missing WARNs" "bun is not on PATH" "$out"
+assert_has "bun-missing recovery names both pidfile PIDs" "supervisor and poller PIDs" "$out"
 assert_has "bun-missing run skips state removal" "SKIPPED: step 1 could not stop the bridge" "$out"
 if [ -f "$CHANNEL/access.json" ]; then
     echo "PASS state preserved when bridge cannot be stopped"

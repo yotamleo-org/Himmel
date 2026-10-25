@@ -16,6 +16,7 @@
 #   14.   a .gitattributes -diff entry does not hide an added line (--staged, --range)
 #   15.   --range ignores unchanged output ids
 #   16.   a verbatim move (old path left as a symlink) adds no lines; an edited move is checked
+#   17.   a moved file with one edited line: its old comments are not judged, the edit is
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -242,6 +243,22 @@ printf 'echo a\n# %s-9 old history\n# round 2 note\n' "$H" > "$M/scripts/new/a.s
 git -C "$M" add -A; git -C "$M" commit -q -m edit
 OUT="$(cd "$M" && bash "$GATE" --range "$move_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/new/a.sh"; then pass "--range: a move that also edits the file is still checked"; else fail "range move+edit -> rc=$RC: $OUT"; fi
+
+echo "== 17. a moved file with one edited line judges only the edit =="
+E="$T/moveedit"; mkdir -p "$E/scripts/old"; git -C "$E" init -q
+git -C "$E" config user.email t@t; git -C "$E" config user.name t
+printf 'echo a\n# %s-9 old history\necho c\necho d\necho e\necho f\n' "$H" > "$E/scripts/old/a.sh"
+git -C "$E" add -A; git -C "$E" commit -q -m base || exit 1
+edit_base="$(git -C "$E" rev-parse HEAD)"
+git -C "$E" mv scripts/old scripts/new || exit 1
+printf 'echo b\n# %s-9 old history\necho c\necho d\necho e\necho f\n' "$H" > "$E/scripts/new/a.sh"
+git -C "$E" add -A; git -C "$E" commit -q -m move-edit || exit 1
+OUT="$(cd "$E" && bash "$GATE" --range "$edit_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ]; then pass "--range: moved file's old ticket comment is not judged"; else fail "moved+edited old comment -> rc=$RC: $OUT"; fi
+printf 'echo b\n# %s-9 old history\necho c\necho d\necho e\n# %s-10 added this guard\n' "$H" "$H" > "$E/scripts/new/a.sh"
+git -C "$E" add -A; git -C "$E" commit -q -m add-ticket || exit 1
+OUT="$(cd "$E" && bash "$GATE" --range "$edit_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && has "scripts/new/a.sh:6" && ! has "scripts/new/a.sh:2"; then pass "--range: the edited line adding a ticket comment is flagged alone"; else fail "moved+edited new comment -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

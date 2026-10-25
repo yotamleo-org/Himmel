@@ -64,6 +64,7 @@ marketplace/plugins/obsidian-triage/tests/test-luna-upgrade-skill.sh	local	behav
 marketplace/plugins/obsidian-triage/tests/test-migrate-clip-lifecycle.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-repo-security-scan.sh	pr	guard
+marketplace/plugins/obsidian-triage/tests/test-requirements-resolve.sh	pr	static-gate
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-scrape-backends.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-skillspector-scan.sh	pr	guard
@@ -273,6 +274,7 @@ scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new HI
 scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	local	behaviour suite, new HIMMEL-7385
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/lane-quality/test-mine-tasks.sh	local	behaviour suite, new, no audit-window history
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/leg-digest/test-failure-review.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/leg-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window

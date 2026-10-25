@@ -201,7 +201,6 @@ export default defineConfig({
                   items: [
                     { label: 'Jarvis subsystems', slug: 'jarvis-subsystems' },
                     { label: 'himmel-bus (early)', slug: 'himmel-bus' },
-                    { label: 'Voice (beta)', slug: 'voice' },
                   ],
                 },
                 { label: 'Orchestration patterns', slug: 'orchestration-patterns' },

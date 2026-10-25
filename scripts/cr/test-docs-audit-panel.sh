@@ -32,6 +32,16 @@ not_contains() {
 
 tmp="$(mktemp -d -t docs-audit-panel-test.XXXXXX)"; trap 'rm -rf "$tmp"' EXIT
 
+# A throwaway HOME: CR_REQUIRE_CROSS_MODEL is gate policy, read from
+# $HOME/.himmel/config.json .policy and never from the process env.
+export HOME="$tmp/home"
+mkdir -p "$HOME/.himmel"
+# set_policy <value> - write the policy file; "" leaves the key out.
+set_policy() {
+    if [ -n "$1" ]; then printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"%s"}}\n' "$1" > "$HOME/.himmel/config.json"
+    else printf '{"version":1,"policy":{}}\n' > "$HOME/.himmel/config.json"; fi
+}
+
 # --- Fixture toolroot: docs-audit-panel.sh (SUT) + the two real libs it
 # sources + a STUBBED critic-panel.sh, all under one throwaway HIMMEL_ROOT. ---
 root="$tmp/root"
@@ -109,6 +119,7 @@ check "$(cat "$stdout_file")" "" "T2 stdout"
 # 3. CR_REQUIRE_CROSS_MODEL unset/falsy: the whole lane is disabled, the
 # panel is NEVER invoked, no output on either stream, exit 0.
 unset CR_REQUIRE_CROSS_MODEL CR_PROFILE 2>/dev/null || true
+set_policy ""
 export STUB_OUT="SHOULD-NOT-APPEAR" STUB_ERR="panel-availability: fake ok" STUB_RC=0
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3 rc"
@@ -116,9 +127,26 @@ check "$(cat "$stdout_file")" "" "T3 stdout"
 check "$(cat "$stderr_file")" "" "T3 stderr"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3 stub was invoked with CR_REQUIRE_CROSS_MODEL unset"; fail=1; }
 
+# 3b. Policy unset in the file plus a truthy process-env value: the env is not
+# a policy source, so the lane stays disabled and the panel is never invoked.
+set_policy ""
+export CR_REQUIRE_CROSS_MODEL=1
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T3b rc"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3b stub was invoked by a process-env CR_REQUIRE_CROSS_MODEL"; fail=1; }
+unset CR_REQUIRE_CROSS_MODEL
+
+# 3c. An unreadable policy file fails closed: the lane runs, with a note.
+printf 'not json' > "$HOME/.himmel/config.json"
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T3c rc"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3c an unreadable policy file must run the cross-model lane"; fail=1; }
+contains "$(cat "$stderr_file")" "docs-audit-panel: could not read CR_REQUIRE_CROSS_MODEL" "T3c stderr note"
+set_policy ""
+
 # 4. CR_PROFILE=none wins even under CR_REQUIRE_CROSS_MODEL: prints the
 # claude-only note, panel never invoked, exit 0.
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 export CR_PROFILE=none
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T4 rc"
@@ -127,7 +155,7 @@ check "$(cat "$stderr_file")" "docs-audit: claude-only (CR_PROFILE=none) - cross
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T4 stub was invoked under CR_PROFILE=none"; fail=1; }
 
 # 5. Empty diff (head == base) prints the skip note, panel never invoked.
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 rc=$(run_sut --head "$head_main" --branch main)
 check "$rc" "0" "T5 rc"
@@ -138,7 +166,7 @@ check "$(cat "$stderr_file")" "docs-audit cross-model critic skipped: empty diff
 # 6. Stubbed panel exit 7 (input-pin mismatch): ABORT, exit 7, nothing on
 # stdout, the exact ABORT block on stderr and nothing else
 # (never a degrade).
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=7 STUB_OUT="should-be-discarded" STUB_ERR="panel-availability: fake unavailable (rc=7)"
 rc=$(run_sut --head "$head_feat" --branch feat)
@@ -153,7 +181,7 @@ check "$(cat "$stderr_file")" "$expect_abort" "T6 stderr exact ABORT block"
 
 # 7. Stubbed panel exit 1 (all critics failed): fail-OPEN degrade, not an
 # abort - findings discarded (stdout empty), a loud stderr message, exit 0.
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=1 STUB_OUT="should-be-discarded" STUB_ERR="panel-availability: fake unavailable (rc=1)"
 rc=$(run_sut --head "$head_feat" --branch feat)
@@ -165,7 +193,7 @@ contains "$(cat "$stderr_file")" "panel-availability: fake unavailable (rc=1)" "
 
 # 7b. panel exit 6 is the deliberate certify refusal, not a failed
 # panel: same fail-open degrade, but the message must say REFUSED.
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=6 STUB_OUT="should-be-discarded" STUB_ERR="panel-availability: fake unavailable (rc=6)"
 rc=$(run_sut --head "$head_feat" --branch feat)
@@ -176,7 +204,7 @@ case "$(cat "$stderr_file")" in *"all critics failed"*) echo "FAIL: T7b exit 6 m
 
 # 7c. panel exit 2 from a mktemp failure names it, never "all critics
 # failed"; a usage-error exit 2 does not claim mktemp.
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=2 STUB_OUT="should-be-discarded" STUB_ERR="critic-panel: mktemp failed"
 rc=$(run_sut --head "$head_feat" --branch feat)
@@ -190,7 +218,7 @@ case "$(cat "$stderr_file")" in *"mktemp"*) echo "FAIL: T7c usage-error exit 2 m
 
 # 8. Stubbed panel exit 0: findings land on stdout ONLY, panel-availability
 # lands on stderr ONLY - the two streams never merge.
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=0 STUB_OUT="[docsaudit-1] some finding" STUB_ERR="panel-availability: fake ok"
 rc=$(run_sut --head "$head_feat" --branch feat)
@@ -207,7 +235,7 @@ not_contains "$(cat "$stderr_file")" "docsaudit-1" "T8 stderr must not carry the
 # rc=128, and the lane reported "cross-model critic unavailable" at exit 0 -
 # a caller error wearing a reviewer outage's clothes.
 bogus_sha="0000000000000000000000000000000000000000"
-export CR_REQUIRE_CROSS_MODEL=1
+set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=0 STUB_OUT="MUST-NOT-REVIEW" STUB_ERR="panel-availability: fake ok"
 rc=$(run_sut --head "$bogus_sha" --branch feat)

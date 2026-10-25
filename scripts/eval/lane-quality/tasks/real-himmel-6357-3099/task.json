@@ -1,0 +1,21 @@
+{
+  "id": "real-himmel-6357-3099",
+  "ticket": "HIMMEL-6357",
+  "pr": 3099,
+  "merge_sha": "971ceaa294063898c8ba7deea473b47ed2a3c8a2",
+  "base_sha": "aee529f80d8b5fa5fe4aa0be6b40acc93257e7bb",
+  "set": "capability",
+  "source": "bug",
+  "why_hard": "1 code file(s), 50 changed lines; the hidden scripts/handover/test-friction-gate-docs.sh must go from failing at the base to passing, checked by 6 named check(s)",
+  "tests": [
+    "scripts/handover/test-friction-gate-docs.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/handover/test-friction-gate-docs.sh"
+  ],
+  "scope": [
+    "docs/handover/",
+    "scripts/handover/"
+  ]
+}

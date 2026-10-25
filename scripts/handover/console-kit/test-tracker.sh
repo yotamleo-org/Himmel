@@ -29,6 +29,9 @@ contains() {
 not_contains() {
     case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac
 }
+equals() {
+    if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi
+}
 
 if ! command -v python3 >/dev/null 2>&1; then
     printf 'skip - python3 not available\n'
@@ -962,7 +965,7 @@ printf '%s\n' '---' 'key: "HIMMEL-409"' 'statusCategory: "To Do"' 'status: "To D
 printf '%s\n' '' '## Description' '' 'Start after HIMMEL-409 merges.' >> "$vp/HIMMEL-410.md"
 printf '%s\n' 'priority: 400 | rest of v1.1.3 | 9999' > "$W/vp-plan.md"
 cat > "$W/vp-prs.json" <<'EOF'
-[{"number":500,"title":"feat: [HIMMEL-401] x","headRefName":"feat/himmel-401-x","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]},
+[{"number":500,"title":"feat: [HIMMEL-401] x","headRefName":"feat/himmel-401-x","headRefOid":"abc1234def5678","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]},
  {"number":501,"title":"fix: y","headRefName":"fix/himmel-403-y","isDraft":true,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"}]},
  {"number":503,"title":"feat: [HIMMEL-400] z","headRefName":"feat/z","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"COMPLETED","conclusion":"ACTION_REQUIRED"}]},
  {"number":504,"title":"feat: [HIMMEL-410] w","headRefName":"feat/w","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"STARTUP_FAILURE"}]}]
@@ -994,7 +997,9 @@ contains 'a column per status with its count (HIMMEL-6769)' "$vhtml" 'data-col="
 contains 'the IN CI column counts its card (HIMMEL-6769)' "$vhtml" 'data-col="IN CI"><h2>IN CI <span class="n">1</span></h2>'
 contains 'the header counts the Done tickets of the version (HIMMEL-6769)' "$vhtml" '1 Done'
 contains 'a column that matches Jira carries an ok parity line (HIMMEL-6769)' "$vhtml" '<div class="parity ok">Jira 1 · ok</div>'
-contains 'stdout prints the per-column parity (HIMMEL-6769)' "$vstdout" 'parity v1.1.3: To Do 2/4 DRIFT, In Progress 3/1 DRIFT, In Review 1/1 ok, IN CI 1/1 DRIFT'
+contains 'stdout prints the per-column parity of each card under its Jira column (HIMMEL-6769, 7513)' "$vstdout" 'parity v1.1.3: To Do 4/4 ok, In Progress 1/1 ok, In Review 1/1 ok, IN CI 1/1 ok'
+not_contains 'a card its PR CI moved off its Jira column is no parity DRIFT (HIMMEL-7513)' "$vhtml" 'parity drift'
+contains 'a CI-moved card keeps its CI column and its Jira note (HIMMEL-7513)' "$(card 401)" 'Jira In Progress, PR CI says IN CI'
 contains 'parity asks Jira for the open tickets of the version (HIMMEL-6769)' "$(cat "$W/vp-jira-args" 2>/dev/null)" \
     'project = HIMMEL AND fixVersion = "v1.1.3" AND statusCategory != Done'
 contains 'a card sits in its plan priority block (HIMMEL-6769, 6735)' "$(card 400)" 'data-block="0 critical"'
@@ -1018,7 +1023,7 @@ if [ ! -e "$vout.fp" ]; then pass 'a --version page without --plan-dir writes no
 # a column that differs from Jira reads DRIFT and names the key.
 printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\nHIMMEL-411\tTask\tBlocked\tx\n' > "$W/vp-jira.tsv"
 vstdout="$(vrender)"
-contains 'a column Jira counts differently reads DRIFT (HIMMEL-6769)' "$vstdout" 'In Progress 3/2 DRIFT, In Review 1/0 DRIFT'
+contains 'a column Jira counts differently reads DRIFT (HIMMEL-6769)' "$vstdout" 'In Progress 1/2 DRIFT, In Review 1/0 DRIFT'
 contains 'the DRIFT line names the key and its Jira status (HIMMEL-6769)' "$(cat "$vout")" 'HIMMEL-402 Jira In Progress'
 contains 'a status only Jira holds gets a DRIFT column on the page (HIMMEL-6769)' "$(cat "$vout")" \
     'data-col="Blocked"><h2>Blocked <span class="n">0</span></h2><div class="parity drift">Jira 1 · DRIFT: HIMMEL-411 page (absent)'
@@ -1090,6 +1095,9 @@ not_contains 'a closed PR of the record is not on the worker line (HIMMEL-6829)'
 contains 'a wrapped worker with no PR shows its state only (HIMMEL-6829)' "$(wcard 400)" 'worker N2 · wrapped'
 not_contains 'a card with no record has no worker line (HIMMEL-6829)' "$(wcard 407)" 'worker'
 not_contains 'an unreadable record adds no worker line (HIMMEL-6829)' "$(wcard 402)" 'worker'
+# the fingerprint baseline: a record with no CI, so the gh rollup places the card.
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2render >/dev/null
 vfp1="$(cat "$v2out.vfp" 2>/dev/null)"
 case "$vfp1" in
     [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) pass 'a --version page writes a 16-hex focus fingerprint (HIMMEL-6829)' ;;
@@ -1162,16 +1170,28 @@ not_contains 'a merged chain step is not listed (HIMMEL-7353)' "$v4" 'merged ste
 not_contains 'a chain whose steps all merged is not listed (HIMMEL-7353)' "$v4" 'w4done'
 contains 'an unmerged chain step is still listed (HIMMEL-7353)' "$v4" 'open step'
 contains 'the header counts the hidden merged chain steps (HIMMEL-7353)' "$v4" '2 merged chain steps hidden'
-contains 'a To Do card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 400)" 'In Progress'
-contains 'an In Progress card whose PR CI is green sits in IN CI (HIMMEL-7353)' "$(colof 401)" 'IN CI'
-contains 'an In Review card with no PR stays in In Review (HIMMEL-7353)' "$(colof 402)" 'In Review'
-contains 'an IN CI card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 403)" 'In Progress'
-contains 'a To Do card with no PR stays in To Do (HIMMEL-7353)' "$(colof 407)" 'To Do'
+equals 'a To Do card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 400)" 'In Progress'
+equals 'an In Progress card whose PR CI is green sits in IN CI (HIMMEL-7353)' "$(colof 401)" 'IN CI'
+equals 'an In Review card with no PR stays in In Review (HIMMEL-7353)' "$(colof 402)" 'In Review'
+equals 'an IN CI card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 403)" 'In Progress'
+equals 'a To Do card with no PR stays in To Do (HIMMEL-7353)' "$(colof 407)" 'To Do'
 contains 'a card whose column differs from Jira names its Jira status (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-400"' "$v4out")" 'Jira To Do'
 not_contains 'a card whose column matches Jira has no Jira note (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-402"' "$v4out")" 'Jira In Review'
 jq '. + [{"number":506,"title":"feat: [HIMMEL-407] mixed","headRefName":"feat/mixed","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"},{"status":"IN_PROGRESS","conclusion":""}]}]' "$W/vp-prs.json" > "$W/vp-prs-mixed.json"
 V2PRS="$W/vp-prs-mixed.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
-contains 'a PR with a failed and a running check puts its card in In Progress (HIMMEL-7353)' "$(colof 407)" 'In Progress'
+equals 'a PR with a failed and a running check puts its card in In Progress (HIMMEL-7353)' "$(colof 407)" 'In Progress'
+# the worker record's required-check CI places a card, as its Jira status does: a red latch over a running rollup is red.
+jq '.[0].statusCheckRollup = [{"status":"IN_PROGRESS","conclusion":""}]' "$W/vp-prs.json" > "$W/vp-prs-run.json"
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","ci":"pending","red_latch":true,"open":true}}}\n' > "$wk/HIMMEL-401.json"
+V2PRS="$W/vp-prs-run.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
+equals 'a red-latched worker PR puts its card in In Progress over a running rollup (HIMMEL-7513)' "$(colof 401)" 'In Progress'
+contains 'the card badge reads the worker record CI (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI red'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","ci":"pending","red_latch":false,"open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
+contains 'a pending worker PR reads running over a green rollup (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI running'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"0ld0ld0ld","ci":"pending","red_latch":true,"open":true}}}\n' > "$wk/HIMMEL-401.json"
+V2PRS="$W/vp-prs-run.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
+contains 'a worker record at an older head keeps the rollup CI (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI running'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

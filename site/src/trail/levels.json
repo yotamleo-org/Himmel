@@ -135,8 +135,7 @@
       "cost": ["Each message is one short Claude run on your usage."],
       "turn_off": "<code>bun supervisor.ts --kill</code> from <code>~/himmel/scripts/telegram</code> stops the bridge.",
       "docs": [
-        { "label": "Telegram bridge", "href": "telegram-bridge/" },
-        { "label": "Voice", "href": "voice/" }
+        { "label": "Telegram bridge", "href": "telegram-bridge/" }
       ]
     },
     {
