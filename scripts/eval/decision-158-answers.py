@@ -20,6 +20,7 @@ figure counts everything at or before the cut. Without --record the row is print
 Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl; CR ledger: $CR_LEDGER, else
 <git common dir of this script's checkout>/cr-critic-scores.jsonl, whatever the caller's directory.
 A CR measurement that cannot be read makes the row "partial" and the exit code 3: a gap is never a clean run.
+Shared interval module: scripts/eval/lib/wilson.py.
 """
 import argparse
 import json
