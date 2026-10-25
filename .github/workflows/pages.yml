@@ -57,7 +57,7 @@ jobs:
         working-directory: scripts/config-ui/tests/e2e
         run: |
           bun install --frozen-lockfile --ignore-scripts
-          ./node_modules/.bin/playwright install --with-deps chromium
+          ./node_modules/.bin/playwright install chromium
       # The J1 spec lives beside the docs site and borrows config-ui's pinned @playwright/test through NODE_PATH.
       - name: Run the J1 journey against astro preview
         env:
