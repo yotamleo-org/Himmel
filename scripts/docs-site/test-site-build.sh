@@ -223,7 +223,7 @@ PY
 # shellcheck disable=SC2016  # the backticks are literal Markdown, not a command substitution
 printf '# T\n\n<details>\n<summary>The judge</summary>\n\n- **Its job:** \xe2\x80\x9cRules on `one <q>` question.\xe2\x80\x9d\n\n</details>\n' >"$sweep_ctl/team.md" || exit 1
 printf '<p>x</p><details><summary>The judge</summary>\n<ul><li><strong>Its job:</strong> &#8220;Rules on <code>one &lt;q&gt;</code> question.&#8221;</li></ul></details>' >"$sweep_ctl/team.html" || exit 1
-printf '<p>x</p><p>The judge Its job: Rules on one &lt;q&gt; question.</p>' >"$sweep_ctl/team-flat.html" || exit 1
+printf '<p>x</p><p>The judge Its job: &#8220;Rules on one &lt;q&gt; question.&#8221;</p>' >"$sweep_ctl/team-flat.html" || exit 1
 check "team cards: a card's text inside a built <details> passes" team_cards "$sweep_ctl/team.md" "$sweep_ctl/team.html"
 check "control: team cards fails a card whose text is outside any <details>" fails team_cards "$sweep_ctl/team.md" "$sweep_ctl/team-flat.html"
 
