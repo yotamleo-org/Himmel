@@ -85,7 +85,7 @@ EOF
 pages=$(grep -v -e '^#' -e '^$' "$ROOT/site/allowlist.txt")
 for page in $pages; do
   case $page in release/*) continue ;; esac
-  [ -f "$ROOT/docs/$page" ] || continue
+  [ -f "$ROOT/docs/$page" ] || { bad "site/allowlist.txt names docs/$page, which does not exist"; continue; }
   [ -r "$ROOT/docs/$page" ] || { bad "docs/$page cannot be read"; continue; }
   found=$(hits "$page")
   if in_list "$page" "$PENDING"; then
