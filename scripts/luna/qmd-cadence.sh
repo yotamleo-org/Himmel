@@ -630,7 +630,7 @@ emit_runner() {
     printf 'exit "$_rc"\n'
 }
 
-cron_status() {
+cmd_status() {
     cron_read
     echo "qmd-cadence status:"
     local entry sched n_entries dup=""
@@ -646,7 +646,7 @@ cron_status() {
     status_log "$BAT_DIR/qmd-reindex.log"
 }
 
-cron_disarm() {
+cmd_disarm() {
     cron_read
     local existing
     existing=$(cron_existing)
@@ -676,7 +676,7 @@ cron_disarm() {
     echo "qmd-cadence: cadence disarmed"
 }
 
-cron_arm() {
+cmd_arm() {
     validate_arm_inputs
 
     # Resolve bash to an absolute path so the runner doesn't depend on cron's
@@ -804,7 +804,7 @@ EOF
 }
 
 case "$SUBCMD" in
-    arm)    cron_arm ;;
-    status) cron_status ;;
-    disarm) cron_disarm ;;
+    arm)    cmd_arm ;;
+    status) cmd_status ;;
+    disarm) cmd_disarm ;;
 esac

@@ -1029,7 +1029,7 @@ emit_runner() {
     printf '} >> "$log" 2>&1\n'
 }
 
-cron_status() {
+cmd_status() {
     cron_read
     echo "graphmap-cadence status:"
     local name log entry sched n_entries dup
@@ -1056,7 +1056,7 @@ cron_status() {
     done
 }
 
-cron_disarm() {
+cmd_disarm() {
     cron_read
     local existing
     existing=$(cron_existing)
@@ -1092,7 +1092,7 @@ cron_disarm() {
     echo "graphmap-cadence: cadence disarmed"
 }
 
-cron_arm() {
+cmd_arm() {
     validate_arm_inputs
 
     # Resolve bash to an absolute path so the runner doesn't depend on cron's
@@ -1459,7 +1459,7 @@ if [ "$SUBCMD" = "arm" ]; then
 fi
 
 case "$SUBCMD" in
-    arm)    cron_arm ;;
-    status) cron_status ;;
-    disarm) cron_disarm ;;
+    arm)    cmd_arm ;;
+    status) cmd_status ;;
+    disarm) cmd_disarm ;;
 esac

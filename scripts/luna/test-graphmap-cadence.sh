@@ -350,10 +350,10 @@ assert_contains "cron himmel not armed" "not armed  HIMMEL-GraphMap-Himmel" "$ou
 assert_contains "cron ast-luna not armed"   "not armed  HIMMEL-GraphMapAst-Luna"   "$out"
 assert_contains "cron ast-himmel not armed" "not armed  HIMMEL-GraphMapAst-Himmel" "$out"
 
-# Test C1b: cron_status must not report an
+# Test C1b: cmd_status must not report an
 # unrelated task's cron entry as an owned task being armed. cron_existing/
 # list_existing were scoped to exact/end-anchored matches against the four
-# owned names in a prior commit; cron_status's own `grep -F "# $name"` was
+# owned names in a prior commit; cmd_status's own `grep -F "# $name"` was
 # missed and still substring-matched -- a `# HIMMEL-GraphMapAst-LunaExtra`
 # entry would be reported as HIMMEL-GraphMapAst-Luna being armed.
 echo "TEST: cron status ignores an unrelated LunaExtra-suffixed entry"
@@ -1339,7 +1339,7 @@ run_cron3 disarm >/dev/null 2>&1
 
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/
-# cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
+# cron path. cmd_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE + HOME are
 # the only two hermetic seams needed to exercise the real Darwin branch
 # without a macOS machine -- this is a real control, not a stand-in for one
@@ -1405,7 +1405,7 @@ run_fda linux-gnu disarm >/dev/null 2>&1
 # the empty case is already covered above (the luna/himmel runner asserts
 # never see --out-root/GRAPHIFY_OUT= today, since no test here sets
 # GRAPHIFY_LUNA_OUT_ROOT), so this unit-tests the plumbing directly rather
-# than re-running the whole hermetic cron_arm harness a second time.
+# than re-running the whole hermetic cmd_arm harness a second time.
 echo "TEST: cron_payload / ast_cron_payload out-root wiring (HIMMEL-3718)"
 CP_SRC="$(sed -n '/^cron_payload()/,/^}/p' "$SCRIPT")"
 ACP_SRC="$(sed -n '/^ast_cron_payload()/,/^}/p' "$SCRIPT")"

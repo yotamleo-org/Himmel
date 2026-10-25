@@ -950,7 +950,7 @@ done
 
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/
-# cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
+# cron path. cmd_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE is the only
 # hermetic seam needed to exercise the real Darwin branch without a macOS
 # machine -- this is a real control, not a stand-in for one (the ticket's own

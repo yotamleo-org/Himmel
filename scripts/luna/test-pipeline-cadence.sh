@@ -173,7 +173,7 @@ chmod +x "$FAKE_WSH_POWERSHELL"
 export CADENCE_WSCRIPT_BIN="$FAKE_WSCRIPT"
 export CADENCE_WSH_POWERSHELL="$FAKE_WSH_POWERSHELL"
 
-# Redirect the workspace-trust pre-seed (cron_arm pre-trusts the
+# Redirect the workspace-trust pre-seed (cmd_arm pre-trusts the
 # vault) at a throwaway config so non-dry-run arm tests never
 # mutate the operator's real ~/.claude.json.
 export WORKSPACE_TRUST_CONFIG="$TMP_ROOT/claude-trust.json"
@@ -672,7 +672,7 @@ if command -v env >/dev/null 2>&1 && [ -x /bin/sh ]; then
     fake_node_dir="$TMP_ROOT/c4f-fake-node-bin"
     mkdir -p "$fake_node_dir"
 
-    # Snapshot PATH exactly as cron_arm computes it: the fixture ~/.local/bin
+    # Snapshot PATH exactly as cmd_arm computes it: the fixture ~/.local/bin
     # dir is on the arming PATH (as it would be for a real `uv tool install`),
     # node's dir is not — so the fix must fold node_dir in via
     # runner_path_snapshot while STILL carrying the fixture dir through.
@@ -858,7 +858,7 @@ do
 done
 
 # Test C4d: readability warnings for the two S2a/S2b cadence-scoped hooks ----
-# AUTO_APPROVE_HOOK gets a `[ -r ] || echo WARN` in cron_arm, and the two hooks
+# AUTO_APPROVE_HOOK gets a `[ -r ] || echo WARN` in cmd_arm, and the two hooks
 # emit_settings_fragment wires beside it (cadence-deny-background.sh,
 # cadence-approve-engines.sh) need the same check. A missing hook file at
 # fire time makes that hook process fail to start; Claude Code treats a
@@ -948,7 +948,7 @@ rm -f "$CRON_DIR/pipeline-synthesize.log.prev"
 # ARMED. A scheduler entry whose generated runner file is
 # gone fires-and-fails every time — status must distinguish that from the
 # intentional pre-pin case (which exists on disk and is silent).
-# model_suffix backs cron_status, so this covers the fix on every
+# model_suffix backs cmd_status, so this covers the fix on every
 # supported platform.
 
 echo "TEST: cron armed task with runner file deleted shows [runner missing]"
@@ -1114,7 +1114,7 @@ rm -f "$CSTATE/fail-write"
 run_cron disarm >/dev/null
 
 # Test C10b: --force re-arm with failing install leaves NO half-state ------------
-# Pins the stage-then-promote fix: cron_arm must NOT overwrite the live
+# Pins the stage-then-promote fix: cmd_arm must NOT overwrite the live
 # runners before cron_install succeeds — otherwise a failed install
 # leaves the OLD crontab live pointing at NEW-config runners, silently.
 
@@ -1702,7 +1702,7 @@ done
 
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/
-# cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
+# cron path. cmd_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE + HOME are
 # the only two hermetic seams needed to exercise the real Darwin branch
 # without a macOS machine -- this is a real control, not a stand-in for one

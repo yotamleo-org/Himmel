@@ -705,7 +705,7 @@ cron_read() {
 }
 
 # Install a new crontab from the given file (via stdin, the arm-resume
-# precedent). Returns 4 on failure (callers exit 4 — cron_arm sweeps its
+# precedent). Returns 4 on failure (callers exit 4 — cmd_arm sweeps its
 # staged temp runners first); the rejected tab is kept for forensics.
 cron_install() {
     local tab_file="$1" err_file
@@ -914,7 +914,7 @@ emit_fetch_health_runner() {
     printf '} >> "$log" 2>&1\n'
 }
 
-cron_status() {
+cmd_status() {
     cron_read
     echo "pipeline-cadence status:"
     local name log entry sched n_entries dup
@@ -939,7 +939,7 @@ cron_status() {
     done
 }
 
-cron_disarm() {
+cmd_disarm() {
     cron_read
     local existing
     existing=$(cron_existing)
@@ -972,7 +972,7 @@ cron_disarm() {
     echo "pipeline-cadence: cadence disarmed"
 }
 
-cron_arm() {
+cmd_arm() {
     validate_arm_inputs
 
     # Resolve claude to an absolute path so the cron entry doesn't
@@ -1183,7 +1183,7 @@ EOF
 }
 
 case "$SUBCMD" in
-    arm)    cron_arm ;;
-    status) cron_status ;;
-    disarm) cron_disarm ;;
+    arm)    cmd_arm ;;
+    status) cmd_status ;;
+    disarm) cmd_disarm ;;
 esac
