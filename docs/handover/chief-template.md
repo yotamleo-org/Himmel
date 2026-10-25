@@ -6,7 +6,7 @@
 > `{{REPO}}/docs/handover/console-sections/`. Session: **`{{SESSION_NAME}}`**.
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
-> **`{{REPO}}`**. The project this chief is FOR is **`{{PROJECT}}`**: dispatch a
+> **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a <!-- old-term-ok: tick.sh, board.mjs and chief.sh parse this phrase -->
 > worker into it with `WORKER_SESSION_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input
 > tokens per turn, or 150 turns / 30 M cache-read**, whichever first. Report at MILESTONES only.
 
