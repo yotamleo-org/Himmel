@@ -655,7 +655,7 @@ cr_merge_gate() {
     # status or thread query) is remembered and fails open only at the end,
     # when nothing blocked: a broken query is not evidence here (the release
     # check never fails open on it).
-    local crg_out crg_rc=0 crg_degraded=0
+    local crg_out crg_rc=0 crg_degraded=0 _CRG_RELEASE=0
     crg_out=$(_crg_eval "$cfg" "$owner" "$name" "$num" "$head") || crg_rc=$?
     case "$crg_rc" in
         1) printf '%s\n' "$crg_out" | sed 's/^HOLD: /BLOCK: /'; return 2 ;;

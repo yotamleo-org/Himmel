@@ -941,6 +941,11 @@ led "$(av "$JG_HEAD" codex unavailable timeout)" "${JG_ROW/\"status\":\"ok\"/\"s
 rgj J5-release-judge-go-not-ok-holds 1 --release
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-7","severity":"imp","verdict":""}' "$JG_HEAD")"
 rgj J6-release-judge-go-open-finding-holds 1 --release
+# J7 — an inherited _CRG_RELEASE=1 never loosens the merge gate: cr_merge_gate pins it.
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
+export _CRG_RELEASE=1
+t J7-merge-gate-ignores-inherited-release-flag 2
+unset _CRG_RELEASE
 unset GH_STUB_HEAD GH_STUB_BRANCH
 led "$CRIT_OK"
 # G4 — the release flag is scoped to the call: after a --release gate, whether it
