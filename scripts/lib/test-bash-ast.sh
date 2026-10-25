@@ -205,6 +205,7 @@ tmo=$(command -v timeout || command -v gtimeout)
 timed() {
     local t0 out rc el
     t0=$(ms_now)
+    # read-sink-ok: $2 is a command fixture this suite names, from its own fixtures dir or its own mktemp dir
     out=$("$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "$(cat "$2")"' _ "$LIB" "$2" 2>&1); rc=$?
     el=$(($(ms_now) - t0))
     if [ "$rc" = 0 ] && [ "$el" -lt 1000 ] && printf '%s' "$out" | jq -e "$3" >/dev/null 2>&1; then ok "$1 (${el}ms)"
