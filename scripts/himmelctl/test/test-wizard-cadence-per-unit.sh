@@ -278,4 +278,40 @@ grepq "$outE" -F -- '"pull-cadence":' \
   && fail "case e: pull-cadence must stay genuinely absent from cadences (requires env:GOOGLE_HEALTH_REFRESH_TOKEN, unset here) (got: $outE)"
 echo "ok: case e — vault=none still asks cadences (the requires:'none' rows always qualify); declining them all records every offered row off, with the vault-/env-gated rows genuinely absent"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# case f: a saved profile still naming the retired codex-sweep / repo-sync
+# rows loads; those ids are dropped with a notice, the rest still validate.
+# ═══════════════════════════════════════════════════════════════════════════
+
+homeF="$work/homeF"; mkdir -p "$homeF"
+profileF="$work/profileF.json"
+cat > "$profileF" <<JSON
+{
+  "schemaVersion": 2, "profile": "operator", "devOverlay": false, "tier": "standard", "scope": "user",
+  "vault": { "mode": "none", "path": "" },
+  "handover": { "mode": "inline", "path": "" },
+  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": true,
+  "cadences": { "doctor": "off", "codex-sweep": "armed", "repo-sync": "off" }
+}
+JSON
+
+set +e
+outF=$(HOME="$homeF" USERPROFILE="$(winpath "$homeF")" HIMMELCTL_INTERACTIVE=0 \
+  HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-f.json")" \
+  HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-f")" \
+  HIMMELCTL_BIN_DIR="$(winpath "$work/bin-f")" \
+  "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$profileF")" </dev/null 2>&1)
+rcF=$?
+set -e
+grepq "$outF" -F -- 'unknown cadence id' \
+  && fail "case f: a retired cadence id must not be rejected as unknown (got rc=$rcF: $outF)"
+[ "$rcF" -eq 0 ] || fail "case f: a profile naming retired cadences should load (got rc=$rcF): $outF"
+grepq "$outF" -F -- "dropping retired cadence 'codex-sweep'" \
+  || fail "case f: dropping codex-sweep should be announced (got: $outF)"
+grepq "$outF" -F -- "dropping retired cadence 'repo-sync'" \
+  || fail "case f: dropping repo-sync should be announced (got: $outF)"
+grepq "$outF" -F -- 'codex-sweep cadence arm' \
+  && fail "case f: a dropped cadence must never be armed (got: $outF)"
+echo "ok: case f — a profile naming the retired codex-sweep / repo-sync rows loads, with each drop announced"
+
 echo "PASS"

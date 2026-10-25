@@ -63,6 +63,7 @@ const secretPromptLib = require('./lib/secret-prompt.js');
 // rest — see the file's own $comment for why ggs-cadence.sh is excluded). The
 // wizard enumerates cadence UNITS from here, never a hardcoded list.
 const CADENCE_REGISTRY = require('./lib/cadence-registry.json').cadences;
+const RETIRED_CADENCE_IDS = ['codex-sweep', 'repo-sync'];
 
 // install provenance (lib/provenance.js; contract in
 // docs/internals/install-provenance.md). Recording is best-effort — a ledger
@@ -2373,6 +2374,12 @@ function loadProfile(p) {
     }
     const knownIds = CADENCE_REGISTRY.map((r) => r.id);
     for (const id of Object.keys(obj.cadences)) {
+      // Rows the wizard used to save before these cadences were removed.
+      if (RETIRED_CADENCE_IDS.indexOf(id) !== -1) {
+        console.error(`himmelctl: profile ${p}: dropping retired cadence '${id}' (no longer shipped)`);
+        delete obj.cadences[id];
+        continue;
+      }
       if (knownIds.indexOf(id) === -1) {
         profileError(p, `field 'cadences' contains unknown cadence id ${JSON.stringify(id)} (known: ${knownIds.join(', ')})`);
       }

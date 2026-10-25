@@ -56,7 +56,12 @@ mkrepo() {
     printf 'schtasks /query\n' > "$T/r/scripts/kept.sh"
     printf 'scripts/kept.sh\n' > "$T/base.txt"
 }
-commit() { git -C "$T/r" add -A && git -C "$T/r" -c user.name=t -c user.email=t@t commit -qm fixture; }
+# git grep reads only tracked files, so an untracked fixture would pass vacuously.
+commit() {
+    if ! { git -C "$T/r" add -A && git -C "$T/r" -c user.name=t -c user.email=t@t commit -qm fixture; }; then
+        echo "FAIL: fixture commit failed" >&2; exit 1
+    fi
+}
 
 echo "case 1: planted file not in the baseline"
 mkrepo
