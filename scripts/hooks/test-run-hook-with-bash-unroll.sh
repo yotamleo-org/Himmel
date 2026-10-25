@@ -79,6 +79,7 @@ keep 'a redirected loop' 'for x in a; do cat $x; done > out'
 keep 'a C-style loop' 'for ((i = 0; i < 1; i++)); do cat $i; done'
 keep 'an uppercase NAME' 'for X in a; do cat $X; done'
 keep 'a zsh special NAME' 'for path in /tmp/evil; do ls; done'
+keep 'a zsh module special NAME' 'for dirstack in /secret; do cat ~1/file; done'
 keep 'a NAME already in the environment' 'for unrollprobe in a; do cat $unrollprobe; done' unrollprobe=1
 keep 'no word list loops over "$@"' 'echo a; for x; do cat $x; done'
 keep '17 items, over the cap' 'for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17; do cat $x; done'

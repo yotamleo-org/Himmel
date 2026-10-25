@@ -940,9 +940,10 @@ function finishChain(st, sessionId) {
 // can prove equivalent, it never removes a deny.
 //
 // ponytail: equivalence is argued for bash and zsh with the default IFS, no
-// global aliases and no session function shadowing a name in UNROLL_COMMANDS;
-// a session that exported IFS, a zsh with `alias -g`, or a `cat` function sits
-// outside the proof. The upgrade path is unrolling inside the shell itself,
+// global aliases, no session function shadowing a name in UNROLL_COMMANDS and
+// no shell-local attribute on the loop name; a session that exported IFS, a
+// zsh with `alias -g`, a `cat` function, or a profile that ran `declare -i x`
+// sits outside the proof. The upgrade path is unrolling inside the shell itself,
 // which the guards cannot do statically.
 const UNROLL_MAX_ITEMS = 16;
 const UNROLL_MAX_BYTES = 8 * 1024;
@@ -953,12 +954,20 @@ const UNROLL_BUDGET_MS = 2000;
 const UNROLL_ITEM_RE = /^[A-Za-z0-9._/@%+:,-][A-Za-z0-9._/@%+=:,-]*$/;
 // Lowercase only: every variable bash itself reads (PATH, IFS, BASH_ENV, ...)
 // and the usual exported ones are uppercase. zsh ties these lowercase names
-// to behaviour, so a loop over one is not a plain variable.
+// to behaviour, so a loop over one is not a plain variable: every lowercase
+// special parameter of zsh 5.9 with all its modules loaded.
 const UNROLL_NAME_RE = /^[a-z][a-z0-9_]*$/;
 const UNROLL_SPECIAL_NAMES = new Set([
-  'aliases', 'argv', 'builtins', 'cdpath', 'commands', 'fignore', 'fpath', 'functions', 'histchars',
-  'mailpath', 'manpath', 'module_path', 'options', 'parameters', 'path', 'pipestatus', 'prompt',
-  'psvar', 'signals', 'status', 'watch',
+  'aliases', 'argv', 'builtins', 'cdpath', 'commands', 'dirstack', 'dis_aliases', 'dis_builtins',
+  'dis_functions', 'dis_functions_source', 'dis_galiases', 'dis_patchars', 'dis_reswords',
+  'dis_saliases', 'epochtime', 'errnos', 'fignore', 'fpath', 'funcfiletrace', 'funcsourcetrace',
+  'funcstack', 'functions', 'functions_source', 'functrace', 'galiases', 'histchars', 'history',
+  'historywords', 'jobdirs', 'jobstates', 'jobtexts', 'keymaps', 'langinfo', 'mailpath', 'manpath',
+  'mapfile', 'module_path', 'modules', 'nameddirs', 'options', 'parameters', 'patchars', 'path',
+  'pipestatus', 'prompt', 'psvar', 'reswords', 'saliases', 'signals', 'status', 'sysparams',
+  'termcap', 'terminfo', 'userdirs', 'usergroups', 'watch', 'widgets', 'zcurses_attrs',
+  'zcurses_colors', 'zcurses_keycodes', 'zcurses_windows', 'zsh_eval_context',
+  'zsh_scheduled_events',
 ]);
 // A body may hold only these node types. Anything else (arithmetic, `[[ ]]`,
 // declare, case, a function, a nested loop) can set a variable by a computed
