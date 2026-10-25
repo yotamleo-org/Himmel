@@ -318,7 +318,7 @@ exit 0
 SHEOF
   chmod +x "$sb/scripts/test-b-writer.sh"
   out=$(SUITE_JOBS=2 SUITE_LIVE_HARD='*/test-b-writer.sh' env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
-  if [ "$rc" -eq 1 ] && [ "$(pair_peaks "$sb" test-a-clean.sh test-b-writer.sh)" = "1 2" ] \
+  if [ "$rc" -eq 1 ] && overlapped "$sb" test-a-clean.sh test-b-writer.sh \
      && grepq "$out" -E '^\[LIVE-STATE\] .*/test-b-writer\.sh — .*HIMMEL_CONSOLE_DOC' \
      && grepq "$out" -E '^\[FAIL\] .*/test-b-writer\.sh ' \
      && grepq "$out" -F '[PASS] '"$sb"'/scripts/test-a-clean.sh (' \
