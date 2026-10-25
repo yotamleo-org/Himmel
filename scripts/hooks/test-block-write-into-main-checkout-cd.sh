@@ -683,5 +683,21 @@ check_both "95j cd wt/realsub after rm of an unrelated file allows" allow \
 check_both "95k cd -P wt/realsub (no symlink, no ..) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd -P $FIX/wt/realsub && echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 
+# 96: a cd target that does not exist YET (a session scratchpad
+# the harness creates after the hook runs, or `mkdir -p X && cd X`) lands on X
+# or stays at the payload cwd; both are checked instead of failing closed.
+check_both "96 fromW: cd wt/newscratch (not yet created) && echo x > a.txt allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt/newscratch && echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
+check_both "96b fromW: mkdir -p wt/newdir/logs && cd wt/newdir/logs && echo x > a.log allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"mkdir -p $FIX/wt/newdir/logs && cd $FIX/wt/newdir/logs && echo x > a.log\",\"cwd\":\"$FIX/wt\"}}"
+check_both "96c fromW: mkdir -p primary/newdir && cd primary/newdir && echo x > a.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"mkdir -p $FIX/primary/newdir && cd $FIX/primary/newdir && echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
+check_both "96d fromP: cd wt/newscratch; echo x > a.txt (the cd fails, the write lands in the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt/newscratch; echo x > a.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 96e: an earlier clause that is not mkdir/cd can make the missing target a
+# symlink into the primary, so the cd keeps failing closed.
+_deny_row "96e ln -s primary then cd the new link" "$FIX/primary/a.txt" "ln -s $FIX/primary $FIX/wt/plink; cd $FIX/wt/plink && echo x > a.txt"
+rm -f "$FIX/wt/plink"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
