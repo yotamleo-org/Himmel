@@ -155,7 +155,7 @@ while [ "$k" -le "$shards" ]; do
     echo "FAIL: shard$k: want 'shard $k/$shards', found '${got_shard:-no shard line}'"
     bad=1
   fi
-  ws_m=$(sed -n -e 's/^ran [^ ]* //p' -e 's/^\(skip\|unrun\|notfound\) //p' "$m" | grep -E '[[:space:]]' || true)
+  ws_m=$(sed -n -E -e 's/^ran [^ ]* //p' -e 's/^(skip|unrun|notfound) //p' "$m" | grep -E '[[:space:]]' || true)
   if [ -n "$ws_m" ]; then
     while IFS= read -r l; do echo "FAIL: shard$k: suite path contains whitespace ($l)"; done <<< "$ws_m"
     bad=1

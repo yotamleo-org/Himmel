@@ -48,7 +48,7 @@ resolve_hermes_py() {
         else
             out="$("$launcher" --print-runtime-command 2>/dev/null)" || out=""
         fi
-        rt="$(printf '%s\n' "$out" | sed -n '1s/^\["\(\([^"\\]\|\\.\)*\)".*/\1/p' | sed 's/\\\\/\\/g')"
+        rt="$(printf '%s\n' "$out" | sed -n -E '1s/^\["(([^"\\]|\\.)*)".*/\1/p' | sed 's/\\\\/\\/g')"
         if [ -n "$rt" ] && [ -x "$rt" ]; then printf '%s\n' "$rt"; return 0; fi
     fi
 
