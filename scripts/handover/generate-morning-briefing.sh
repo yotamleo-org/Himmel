@@ -179,18 +179,25 @@ fi
 . "$SCRIPT_DIR/../lib/load-dotenv.sh"
 no_tracker=0
 no_tracker_msg="No Jira tracker configured."
+JIRA_ARGV=()
 if [ -z "$JIRA_CMD" ]; then
     load_dotenv JIRA_PROJECT_KEY || true
     if run_or_unknown project_mode_tracker && [ "$RESULT_OUT" = "jira" ]; then
         # Resolve jira CLI (best-effort; absence is non-fatal).
         if [ -f "$repo_root/scripts/jira/dist/index.js" ] && command -v node >/dev/null 2>&1; then
-            JIRA_CMD="node $repo_root/scripts/jira/dist/index.js"
+            JIRA_ARGV=(node "$repo_root/scripts/jira/dist/index.js")
+            JIRA_CMD="${JIRA_ARGV[*]}"
         fi
     else
         no_tracker=1
         # rc 2 is a setting project-mode rejects (TRACKER invalid, jira without a key).
         [ "$RESULT_RC" = "2" ] && no_tracker_msg="The tracker setting is invalid (check TRACKER and JIRA_PROJECT_KEY)."
     fi
+fi
+
+# A JIRA_CMD override is a command line; the resolved CLI keeps its path as one word.
+if [ ${#JIRA_ARGV[@]} -eq 0 ] && [ -n "$JIRA_CMD" ]; then
+    read -r -a JIRA_ARGV <<<"$JIRA_CMD"
 fi
 
 briefing_forge=$(forge_detect 2>/dev/null || true)
@@ -265,7 +272,7 @@ fi
 # Done tickets via jira (best-effort) — cross-referenced against commit keys.
 done_block=""
 if [ -n "$JIRA_CMD" ]; then
-    if done_raw=$($JIRA_CMD list --status Done --limit "$JIRA_LIMIT" 2>/dev/null); then
+    if done_raw=$("${JIRA_ARGV[@]}" list --status Done --limit "$JIRA_LIMIT" 2>/dev/null); then
         if [ ${#ticket_keys[@]} -gt 0 ]; then
             done_block=$(printf '%s\n' "$done_raw" | awk -F'\t' -v keys="$(IFS='|'; echo "${ticket_keys[*]}")" '
                 BEGIN { split(keys, k, "|"); for (i in k) want[k[i]]=1 }
@@ -302,7 +309,7 @@ wt_branches=$(printf '%s\n' "$wt_porcelain" | awk '/^branch /{sub("refs/heads/",
 # In-Progress tickets.
 inprogress_raw=""
 if [ -n "$JIRA_CMD" ]; then
-    if ! inprogress_raw=$($JIRA_CMD list --status 'In Progress' --limit "$JIRA_LIMIT" 2>/dev/null); then
+    if ! inprogress_raw=$("${JIRA_ARGV[@]}" list --status 'In Progress' --limit "$JIRA_LIMIT" 2>/dev/null); then
         jira_ok=0; inprogress_raw=""
         echo "WARNING: briefing: jira 'In Progress' query failed — counts may be incomplete" >&2
     fi
@@ -327,7 +334,7 @@ EOF_WT
 # Backlog (To-Do) tickets.
 backlog_raw=""
 if [ -n "$JIRA_CMD" ]; then
-    if ! backlog_raw=$($JIRA_CMD list --status 'To Do' --limit "$JIRA_LIMIT" 2>/dev/null); then
+    if ! backlog_raw=$("${JIRA_ARGV[@]}" list --status 'To Do' --limit "$JIRA_LIMIT" 2>/dev/null); then
         jira_ok=0; backlog_raw=""
         echo "WARNING: briefing: jira 'To Do' query failed — counts may be incomplete" >&2
     fi
@@ -343,15 +350,17 @@ done_count=$(printf '%s\n' "$done_block" | grep -c . || true)
 
 open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
 
-if [ "$no_tracker" -eq 1 ]; then
-    if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
-        open_prs_shown="**${open_prs}** open PRs"
-    else
-        open_prs_shown="open PRs unavailable"
-    fi
-    tldr_default="${open_prs_shown} · **${stale_count}** stale worktrees · **${commit_count}** commits"
+if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+    open_prs_shown="**${open_prs}** open PRs"
+    stale_shown="**${stale_count}** stale worktrees"
 else
-    tldr_default="**${inprog_count}** in-flight · **${stale_count}** stale worktrees · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
+    open_prs_shown="open PRs unavailable"
+    stale_shown="stale worktrees unavailable"
+fi
+if [ "$no_tracker" -eq 1 ]; then
+    tldr_default="${open_prs_shown} · ${stale_shown} · **${commit_count}** commits"
+else
+    tldr_default="**${inprog_count}** in-flight · ${stale_shown} · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
 fi
 
 order_default=$(

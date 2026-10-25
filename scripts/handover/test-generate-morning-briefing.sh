@@ -464,6 +464,8 @@ out=$( cd "$REPO"; GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
 file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
+assert_contains "gh-down: TL;DR stale unavailable" "stale worktrees unavailable" "$file"
+if grepq "$file" -F -- "**0** stale worktrees"; then fail "gh-down: TL;DR never shows 0 stale"; else pass "gh-down: TL;DR never shows 0 stale"; fi
 assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"             "$(lead_of "$file")"
 assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$(lead_of "$file")"
 assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$(lead_of "$bb_file")"
@@ -588,17 +590,16 @@ OUT_AD="$TMP_ROOT/adopted-report.md"
 # Another project's digest in the shared state dir must not reach this report.
 mkdir -p "$HIMMEL_FAILURE_REVIEW_DIR"
 printf '## Failure review\n\n- failures: 9 rows\n' > "$HIMMEL_FAILURE_REVIEW_DIR/failure-review-$(date +%F).md"
-set +e
+rc=0
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GH_CMD="$FAKE_GH" \
     FAKE_GH_PR_JSON='[{"number":7,"title":"add widget","mergedAt":"2026-05-25T00:00:00Z"}]' \
     FAKE_GH_PR_ALL='[{"number":8,"state":"OPEN","headRefName":"feat/other","title":"z"}]' \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_AD" >"$TMP_ROOT/adopted.out" 2>&1 )
-rc=$?
-set -e
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_AD" >"$TMP_ROOT/adopted.out" 2>&1 ) || rc=$?
 if [ "$rc" -eq 0 ] && [ -f "$OUT_AD" ]; then pass "adopted run exits 0 and writes the report"; else fail "adopted run exits 0 and writes the report" "rc=$rc: $(head -3 "$TMP_ROOT/adopted.out")"; fi
 file=$(cat "$OUT_AD" 2>/dev/null || true)
 assert_contains "adopted: merged PR row"       "#7"                 "$file"
 assert_contains "adopted: own commit listed"   "feat: second widget" "$file"
+assert_contains "adopted: first commit listed (full short history)" "chore: first" "$file"
 assert_contains "adopted: open PR counted"     "**1** open PR(s)"   "$file"
 rm -rf "$HIMMEL_FAILURE_REVIEW_DIR"
 assert_contains "adopted: no tracker said so"  "No Jira tracker configured" "$file"
@@ -611,12 +612,10 @@ done
 
 echo "TEST: adopted project with a tracker prints the tracker sections"
 OUT_ADT="$TMP_ROOT/adopted-tracker.md"
-set +e
+rc=0
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" \
     FAKE_JIRA_TODO=$'ACME-3\tTask\tTo Do\tPolish' \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADT" >/dev/null 2>&1 )
-rc=$?
-set -e
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADT" >/dev/null 2>&1 ) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "adopted+tracker: run exits 0"; else fail "adopted+tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADT" 2>/dev/null || true)
 assert_contains "adopted+tracker: backlog row" "ACME-3" "$file"
@@ -624,11 +623,9 @@ if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "No Jira tracke
 
 echo "TEST: an invalid tracker setting is named, not called absent"
 OUT_ADI="$TMP_ROOT/adopted-invalid-tracker.md"
-set +e
+rc=0
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD TRACKER=jira GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADI" >/dev/null 2>&1 )
-rc=$?
-set -e
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADI" >/dev/null 2>&1 ) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "invalid tracker: run exits 0"; else fail "invalid tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADI" 2>/dev/null || true)
 assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$file"
