@@ -63,7 +63,7 @@ usage: claude-headless.sh [options] < prompt-on-stdin, or --prompt-file <path>
   --tools <list>             optional --tools value (the ONLY built-in tools the session gets)
   --isolated                 add --safe-mode --strict-mcp-config --no-session-persistence:
                              no CLAUDE.md, memory, skills, plugins, hooks or MCP reach the
-                             session, and it is never saved (HIMMEL-3107 context-free floor)
+                             session, and it is never saved (context-free floor)
   -h, --help                 show this help
 
 Env:

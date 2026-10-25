@@ -88,8 +88,8 @@ usage: stop-worker.sh [--list] [--dry-run] <session-id|branch>
 Resolves <session-id|branch> through the lane session registry under the
 CANONICAL root ~/.claude/handover/bridge: glm-sessions/ and claudex-sessions/.
 A raw pid is NOT accepted -- that is the point. Unlike the other BRIDGE_ROOT
-readers in this repo, a plain BRIDGE_ROOT env is IGNORED here (HIMMEL-1693
-CR): this is the sanctioned kill chokepoint, so its registry root must not be
+readers in this repo, a plain BRIDGE_ROOT env is IGNORED here:
+this is the sanctioned kill chokepoint, so its registry root must not be
 caller-controlled. Tests that need a fixture registry set
 STOP_WORKER_BRIDGE_ROOT_OVERRIDE=<path> explicitly.
 

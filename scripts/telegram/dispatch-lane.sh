@@ -123,7 +123,7 @@ usage: dispatch-lane.sh [options]
 Default lane precedence: --lane > HIMMEL_IMPL_LANE > lanes.local.json
 (defaultImplLane) > lanes.json defaultImplLane. A named unavailable lane is
 never substituted. lanes.json currently declares no defaultImplLane (impl
-routes to native Claude subagents only, HIMMEL-1967) — an unqualified
+routes to native Claude subagents only) — an unqualified
 dispatch (no --lane, no HIMMEL_IMPL_LANE) refuses; use the Agent tool inside
 the session (named model tier) instead of this dispatcher.
 USAGE

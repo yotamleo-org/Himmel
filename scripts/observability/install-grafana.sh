@@ -156,7 +156,7 @@ EOF
     ) || die "cannot write the contact point"
 
     cat > "$DATA/grafana.ini" <<EOF || die "cannot write grafana.ini"
-; Rendered by install-grafana.sh (HIMMEL-4289). Loopback only; telemetry off.
+; Rendered by install-grafana.sh. Loopback only; telemetry off.
 [paths]
 data = $DATA/data/grafana
 logs = $DATA/data/grafana/log
@@ -203,7 +203,7 @@ write_units() {
     mkdir -p "$UNIT_DIR" || die "cannot create $UNIT_DIR"
     cat > "$UNIT_DIR/$PROM_UNIT" <<EOF || die "cannot write $PROM_UNIT"
 [Unit]
-Description=himmel Prometheus (HIMMEL-4289)
+Description=himmel Prometheus
 
 [Service]
 Type=simple
@@ -216,7 +216,7 @@ WantedBy=default.target
 EOF
     cat > "$UNIT_DIR/$GRAF_UNIT" <<EOF || die "cannot write $GRAF_UNIT"
 [Unit]
-Description=himmel Grafana (HIMMEL-4289)
+Description=himmel Grafana
 After=$PROM_UNIT
 
 [Service]
@@ -232,7 +232,7 @@ WantedBy=default.target
 EOF
     cat > "$UNIT_DIR/$HOOK_UNIT" <<EOF || die "cannot write $HOOK_UNIT"
 [Unit]
-Description=himmel Grafana alert hook to cadence-alert (HIMMEL-4289)
+Description=himmel Grafana alert hook to cadence-alert
 
 [Service]
 Type=simple

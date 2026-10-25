@@ -173,8 +173,8 @@ usage() {
     cat <<'EOF'
 Usage: drift-fix-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the nightly upstream-drift REPAIR cadence
-(HIMMEL-1323): TWO daily tasks. HIMMEL-DriftFix fires an interactive claude
+Arm the OS scheduler with the nightly upstream-drift REPAIR cadence:
+TWO daily tasks. HIMMEL-DriftFix fires an interactive claude
 session on the /drift-fix runbook -- bump what is mechanically bumpable, open
 an ordinary PR against origin, and stop.
 HIMMEL-ForkResync fires one on the /fork-resync runbook -- rebase the carried
@@ -472,7 +472,7 @@ emit_task_xml() {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>himmel drift-fix-cadence (HIMMEL-1323)</Description>
+    <Description>himmel drift-fix-cadence</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -1158,7 +1158,7 @@ arm_summary() {
     log_resync="$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").log"
     cat <<EOF
 ================================================================
-drift-fix-cadence ARMED (HIMMEL-1323)
+drift-fix-cadence ARMED
 
   $WORKER_SESSION_DRIFT   daily $FIRE_TIME local   — $kind — runner: $runner_drift
   $WORKER_SESSION_RESYNC  daily $RESYNC_TIME local — $kind — runner: $runner_resync

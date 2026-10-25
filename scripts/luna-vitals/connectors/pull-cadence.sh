@@ -130,7 +130,7 @@ case "${1:-}" in
         cat <<'EOF'
 Usage: pull-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the daily Google Health connector pull (HIMMEL-3068):
+Arm the OS scheduler with the daily Google Health connector pull:
 ONE daily task that runs `bash pull-cadence.sh` (no args -- the connector-pull
 path in THIS same file) directly -- never an interactive claude session, never
 --model. A re-consent-needed pull (rc=75) is a real, actionable failure and
@@ -283,7 +283,7 @@ EOF
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>himmel pull-cadence (HIMMEL-3068)</Description>
+    <Description>himmel pull-cadence</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -741,7 +741,7 @@ cmd_disarm() {
         local kind="$1" runner="$2" log="$3"
         cat <<EOF
 ================================================================
-pull-cadence ARMED (HIMMEL-3068)
+pull-cadence ARMED
 
   $TASK_NAME   daily $FIRE_TIME local — $kind — runner: $runner
   Repo:   $HIMMEL_ROOT

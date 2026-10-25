@@ -155,7 +155,7 @@ usage() {
     cat <<'EOF'
 Usage: upstream-watch-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the daily upstream-watch cadence (HIMMEL-2367): ONE
+Arm the OS scheduler with the daily upstream-watch cadence: ONE
 daily task that runs `bash scripts/upstreams/upstream-watch.sh` directly --
 never an interactive claude session, never --model. The script itself decides
 whether anything changed (exit 0 = no delta, 10 = delta reported + telegram
@@ -327,7 +327,7 @@ emit_task_xml() {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>himmel upstream-watch-cadence (HIMMEL-2367)</Description>
+    <Description>himmel upstream-watch-cadence</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -873,7 +873,7 @@ arm_summary() {
     local kind="$1" runner="$2" log="$3"
     cat <<EOF
 ================================================================
-upstream-watch-cadence ARMED (HIMMEL-2367)
+upstream-watch-cadence ARMED
 
   $TASK_NAME   daily $FIRE_TIME local — $kind — runner: $runner
   Repo:   $HIMMEL_ROOT

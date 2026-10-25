@@ -85,7 +85,7 @@ usage() {
     cat <<'USAGE'
 Usage: bash scripts/lib/red-control-lint.sh [PATH...]
 
-Advisory lint (HIMMEL-2544): reports mutation controls whose only assertion is
+Advisory lint: reports mutation controls whose only assertion is
 an inequality or a bare file-existence test, with the mutant's exit status never
 compared -- the vacuous shape scripts/lib/red-control.sh exists to replace.
 

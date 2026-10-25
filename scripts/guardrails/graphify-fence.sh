@@ -450,7 +450,7 @@ GUARD_LIB="$SCRIPT_DIR/lib.sh"
 # and must not be echoed into a denial message.
 _gf_deny_on_endpoint_override() {
     [ -n "${_GF_ENDPOINT_OVERRIDE:-}" ] || return 0
-    deny "command-local endpoint-selector assignment ($_GF_ENDPOINT_OVERRIDE=...) in front of graphify - a per-call VAR=x prefix or env VAR=x changes which provider this extraction actually reaches, and this fence process's own environment cannot see it (HIMMEL-1085). Set it in the launching shell (export, or a persistent env) where fence classification can see it, or drop the prefix."
+    deny "command-local endpoint-selector assignment ($_GF_ENDPOINT_OVERRIDE=...) in front of graphify - a per-call VAR=x prefix or env VAR=x changes which provider this extraction actually reaches, and this fence process's own environment cannot see it. Set it in the launching shell (export, or a persistent env) where fence classification can see it, or drop the prefix."
 }
 
 # --- path helpers (pure bash, bash 3.2-safe) --------------------------------

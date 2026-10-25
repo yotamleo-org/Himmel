@@ -732,8 +732,8 @@ export function refuseNonPrimaryCwd(cwd: string, probe?: (cwd: string) => { gitD
   const r = probe ? detectNonPrimaryCwd(cwd, probe) : detectNonPrimaryCwd(cwd);
   if (r.ok) return undefined;
   return r.primaryPath
-    ? `spawn-glm: refusing to dispatch from ${cwd} — this is not the PRIMARY checkout (resolved primary: ${r.primaryPath}); cd there and retry (HIMMEL-1503).`
-    : `spawn-glm: refusing to dispatch from ${cwd} — this looks like a worktree cwd (path contains /.claude/worktrees/), not the PRIMARY checkout; cd to the primary checkout and retry (HIMMEL-1503).`;
+    ? `spawn-glm: refusing to dispatch from ${cwd} — this is not the PRIMARY checkout (resolved primary: ${r.primaryPath}); cd there and retry.`
+    : `spawn-glm: refusing to dispatch from ${cwd} — this looks like a worktree cwd (path contains /.claude/worktrees/), not the PRIMARY checkout; cd to the primary checkout and retry.`;
 }
 
 // ── real git probes for planSharedSpawn's injected deps ─────────
@@ -1532,7 +1532,7 @@ export async function runSharedDispatch(p: {
 }
 
 async function main(): Promise<void> {
-  const usage = "usage: spawn-glm [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--context big|small] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] (the prompt is the task brief, inline, or read verbatim from --brief-file — HIMMEL-1780; default --permission-mode: dontAsk; bypassPermissions is refused — HIMMEL-1378)";
+  const usage = "usage: spawn-glm [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--context big|small] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] (the prompt is the task brief, inline, or read verbatim from --brief-file; default --permission-mode: dontAsk; bypassPermissions is refused)";
   const rawArgv = process.argv.slice(2);
   // help short-circuit — before parseArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }

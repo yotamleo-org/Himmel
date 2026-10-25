@@ -146,7 +146,7 @@ usage() {
     cat <<'EOF'
 Usage: repo-sync-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the daily repo-sync cadence (HIMMEL-2115): ONE
+Arm the OS scheduler with the daily repo-sync cadence: ONE
 daily task that fires scripts/sync/repo-sync-runner.sh, which enumerates
 every git repo under --github-root (scanned fully/recursively) and
 --documents-root (scanned to depth 2, excluding the github-root subtree),
@@ -154,7 +154,7 @@ fetches each, and fast-forward-only pulls the default branch only when the
 repo is clean and checked out on it. Dirty/non-default/single-writer repos
 are fetch-only (benign skip); a diverged branch or any git failure is
 recorded as a failure -- NEVER a merge/rebase/resolve attempt. The same fire
-also runs a stale-wt cleanup pass (HIMMEL-2116): scratch worktree folders
+also runs a stale-wt cleanup pass: scratch worktree folders
 (linked-worktree checkouts, `wt-*`-named dirs) get deleted + pruned only
 when clean, fully pushed, and stale beyond --wt-stale-days -- anything else
 is an ALERT row, never a delete. A flow-run ledger row and a per-repo JSONL
@@ -365,7 +365,7 @@ emit_task_xml() {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>himmel repo-sync-cadence (HIMMEL-2115)</Description>
+    <Description>himmel repo-sync-cadence</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -665,7 +665,7 @@ cmd_arm() {
     cat <<EOF
 
 ================================================================
-  REPO-SYNC CADENCE ARMED (HIMMEL-2115)
+  REPO-SYNC CADENCE ARMED
   $TASK_NAME    daily $SYNC_TIME
     -> repo-sync-runner.sh --github-root $GITHUB_ROOT --documents-root $DOCUMENTS_ROOT
        fetch every repo; ff-only pull the default branch when clean +
