@@ -152,6 +152,10 @@ t=$(live claude-step-otherfile); cp "$FIX/claude-install-step.yml.txt" "$t/.gith
 sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude"|sudo install -m 0755 "$RUNNER_TEMP/other"|' "$t/.github/workflows/other.yml"
 expect "the step after pin_fetch installs a different file" 1 "$t"
 says "the unverified install is named" "installs a different file than pin_fetch verified"
+t=$(live claude-step-swapped); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install -m 0755 "$RUNNER_TEMP/other" "$RUNNER_TEMP/claude"|' "$t/.github/workflows/other.yml"
+expect "the verified file is the install target, not its source" 1 "$t"
 t=$(live claude-step-noinstall); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
 sed -i.bak '/sudo install -m 0755/d' "$t/.github/workflows/other.yml"
 expect "the step after pin_fetch is not an install at all" 1 "$t"
