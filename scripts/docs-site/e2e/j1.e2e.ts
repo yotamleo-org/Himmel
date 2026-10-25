@@ -41,14 +41,14 @@ test("J1. the standalone HTML pages are byte-identical at their docs/ paths", as
   }
 });
 
-// the local paths (under the site base, fragment dropped) an HTML body links to or loads.
+// the same-origin paths (fragment dropped) an HTML body links to or loads; a path outside the site base is kept so the crawl reports it.
 function localPaths(html: string, from: string): string[] {
   const out = new Set<string>();
-  for (const m of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
-    const raw = m[1];
+  for (const m of html.matchAll(/\b(?:href|src)=(?:"([^"]+)"|'([^']+)')/g)) {
+    const raw = m[1] ?? m[2];
     if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(raw)) continue;
     const u = new URL(raw, `http://site${from}`);
-    if (u.pathname.startsWith(BASE) && !NOT_SHIPPED.has(u.pathname)) out.add(u.pathname);
+    if (!NOT_SHIPPED.has(u.pathname)) out.add(u.pathname);
   }
   return [...out];
 }
