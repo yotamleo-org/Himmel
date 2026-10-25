@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard (posix-bash): POSIX bash 3.2+.
 #
 # check-history-comments.sh — refuse NEW history comments and ticket ids in output.
 # Agents copy the comments they read, so a ticket-citing or

@@ -318,7 +318,7 @@ scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
 scripts/graphify/test-leg-graph-rationale.sh	pr	guard
 scripts/graphify/test-leg-graph.sh	pr	guard
-scripts/graphify/test-no-windows-indexed.sh	pr	guard
+scripts/graphify/test-no-windows-indexed.sh	local	one-time Windows-drop check, run by hand
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard

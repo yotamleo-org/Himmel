@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # shell-lint.sh — Pre-emptive advisory shell lint.
 #
-# Runs shellcheck plus advisory byte/regex portability checks (BOM split by
-# file type, errexit leak, POSIX-ERE classes, mktemp template, bash-3.2 constructs, GNU-only
+# Runs shellcheck plus advisory byte/regex portability checks (errexit leak, POSIX-ERE classes, mktemp template, bash-3.2 constructs, GNU-only
 # flags, echo -e/-n) BEFORE the commit attempt, so the autonomous loop fixes
 # issues instead of bouncing off the real pre-commit gate mid-run. The
 # authoritative gate (.pre-commit-config.yaml) stays the source of truth and is
@@ -18,20 +17,6 @@
 #   bash scripts/lint/shell-lint.sh --help
 #
 # Checks:
-#   [BOM]          UTF-8 BOM (EF BB BF) at file start on a SHELL file (breaks
-#                  the shebang; SC1082). Never reported on *.ps1 — a BOM is
-#                  CORRECT there (Windows PowerShell 5.1 needs it to decode
-#                  UTF-8). A UTF-16/UTF-32 BOM is also valid on a
-#                  .ps1 (PS5.1 decodes those natively) and never reported.
-#   [PS1-NO-BOM]   a *.ps1 carrying non-ASCII bytes (>0x7F), NO recognized BOM,
-#                  whose bytes VALIDATE as UTF-8 (iconv) — PS5.1 mojibake-decodes
-#                  a no-BOM UTF-8 file as cp1252 and fails to parse. Add the BOM
-#                  (EF BB BF). A pure-ASCII .ps1 without a BOM is fine.
-#   [PS1-ENCODING] a *.ps1 carrying non-ASCII bytes, NO recognized BOM, whose
-#                  bytes do NOT validate as UTF-8 (or iconv is absent so it
-#                  cannot be verified) — unsupported/unknown encoding. Inspect
-#                  manually; do NOT prepend a UTF-8 BOM (that corrupts a
-#                  non-UTF-8 payload such as UTF-16).
 #   [parse]       the file does not parse (`bash -n`). A hook file is LIVE the
 #                 instant it is written, so a parse error denies EVERY command
 #                 fleet-wide before any commit gate can run. The commonest cause
@@ -79,12 +64,16 @@
 #
 # Baseline: rows of `path<TAB>tag<TAB>count`. A (file, tag) with at most `count`
 # findings is accepted; one above it reports every finding of that tag in the
-# file, so the gate lands green and refuses only NEW findings. [BOM], [PS1-*]
-# and [parse] are never baselined.
+# file, so the gate lands green and refuses only NEW findings. [parse]
+# is never baselined.
+# Growth: under --staged / --changed the baseline may not grow silently. A row above
+# its count at the base ref (HEAD, or the left side of the range), or a new row,
+# fails unless the row carries a 4th column holding a reason. A row that follows a
+# renamed file inherits the old row's count. [prim-*] growth only warns.
 # ponytail: a count cannot tell WHICH line of an over-budget tag is new; upgrade to per-line fingerprints if that bites.
 #
 # Exit: 0 = clean, 1 = findings, 2 = usage error.
-# bash 3.2-safe; shellcheck-clean; cross-platform (Git Bash / macOS / Linux).
+# bash 3.2-safe; shellcheck-clean; cross-platform (macOS / Linux).
 
 set -uo pipefail
 
@@ -109,41 +98,6 @@ _is_shell_file() {
         '#!'*sh*) return 0 ;;
     esac
     return 1
-}
-
-# Like _is_shell_file but also admits *.ps1 (the BOM policy covers PowerShell: a
-# BOM is correct there, and a non-ASCII no-BOM .ps1 is the trap). The
-# shell-specific checks below still gate on _is_shell_file, so a .ps1 only ever
-# reaches the BOM policy ([BOM] never fires on .ps1; [PS1-NO-BOM] may).
-_is_lint_target() {
-    case "$1" in
-        *.ps1) return 0 ;;
-    esac
-    _is_shell_file "$1"
-}
-
-# _bom_kind FILE -> echoes one of: utf8 | utf16le | utf16be | utf32le | utf32be,
-# or prints nothing (no recognized Unicode byte-order mark). The 4-byte UTF-32
-# forms are probed BEFORE the 2-byte UTF-16 forms: UTF-32LE (FF FE 00 00) shares
-# its first two bytes (FF FE) with UTF-16LE, so a 2-byte-first check would
-# mis-tag a UTF-32LE file. od -An -tx1 is byte-accurate and locale-independent;
-# head -c4 on a <4-byte file yields fewer bytes, so the prefix globs still match.
-# PowerShell 5.1 decodes BOM'd UTF-16/UTF-32 natively, so a .ps1 carrying any of
-# these is a VALID script — never a defect to mutate. Recognizing only EF BB BF
-# would send a UTF-16LE .ps1 (FF FE ...) down the no-BOM branch to be told to
-# "add a UTF-8 BOM", corrupting it.
-_bom_kind() {
-    local h4
-    h4="$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')"
-    case "$h4" in
-        0000feff) printf 'utf32be'; return ;;
-        fffe0000) printf 'utf32le'; return ;;
-    esac
-    case "$h4" in
-        feff*) printf 'utf16be'; return ;;
-        fffe*) printf 'utf16le'; return ;;
-        efbbbf*) printf 'utf8'; return ;;
-    esac
 }
 
 # Print "lineno: line" for every non-comment line in file $1 matching ERE $2.
@@ -405,10 +359,49 @@ if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
         case "$_f" in *$'\n'*) printf 'shell-lint: a path containing a newline cannot be linted; rename it\n' >&2; exit 2 ;; esac
         _abs="$_root/$_f"
         [ -f "$_abs" ] || continue
-        _is_lint_target "$_abs" && FILES="$FILES$_abs"$'\n'
+        _is_shell_file "$_abs" && FILES="$FILES$_abs"$'\n'
     done < <(_git_changed)
     [ "$_rc" = "rc=0" ] || { printf 'shell-lint: git diff failed (--staged or --changed %s)\n' "$CHANGED" >&2; exit 2; }
 fi
+
+# _baseline_growth — print each baseline row that grew past the base ref's version
+# without a reason (stdout); returns 1 if any did. [prim-*] growth prints a warning only.
+_baseline_growth() {
+    local ref rel old renames
+    if [ "$STAGED" -eq 1 ]; then ref=HEAD; else ref="${CHANGED%%..*}"; fi
+    [ -n "$ref" ] || ref=HEAD
+    case "$BASELINE" in
+        /*) rel="${BASELINE#"$_root"/}"; [ "$rel" != "$BASELINE" ] || return 0 ;;
+        *) rel="$(git rev-parse --show-prefix)${BASELINE#./}" ;;
+    esac
+    old="$(git show "$ref:$rel" 2>/dev/null)" || old=""
+    if [ "$STAGED" -eq 1 ]; then
+        renames="$(git -c core.quotePath=false diff --cached --name-status -M --diff-filter=R)"
+    else
+        renames="$(git -c core.quotePath=false diff --name-status -M --diff-filter=R "$CHANGED" --)"
+    fi
+    awk -v old="$old" -v ren="$renames" -v new="$BASE_TEXT" '
+    BEGIN {
+        n = split(old, o, "\n")
+        for (i = 1; i <= n; i++) { m = split(o[i], p, "\t"); if (m >= 3) before[p[1] SUBSEP p[2]] = p[3] + 0 }
+        n = split(ren, r, "\n")
+        for (i = 1; i <= n; i++) { m = split(r[i], p, "\t"); if (m == 3) from[p[3]] = p[2] }
+        n = split(new, w, "\n")
+        for (i = 1; i <= n; i++) {
+            m = split(w[i], p, "\t")
+            if (m < 3) continue
+            k = p[1] SUBSEP p[2]
+            if (!(k in before) && (p[1] in from) && ((from[p[1]] SUBSEP p[2]) in before)) prev = before[from[p[1]] SUBSEP p[2]]
+            else prev = (k in before) ? before[k] : 0
+            if (p[3] + 0 <= prev) continue
+            if (p[2] ~ /^prim-/) { printf "shell-lint: warn: prim baseline grew: %s\t%s\t%d -> %d\n", p[1], p[2], prev, p[3]; continue }
+            if (m >= 4 && p[4] ~ /[^[:space:]]/) continue
+            printf "shell-lint: baseline grew without a reason: %s\t%s\t%d -> %d (add a 4th column reason, or fix the finding)\n", p[1], p[2], prev, p[3]
+            bad = 1
+        }
+        exit bad
+    }'
+}
 
 # _baseline_filter KEY — stdin: a file's report. Drops each tag whose count is
 # within its baseline row; the rest print unchanged.
@@ -416,8 +409,8 @@ _baseline_filter() {
     awk -v key="$1" -v base="$BASE_TEXT" -v wr="$WRITE_BASELINE" '
     BEGIN {
         n = split(base, bl, "\n")
-        for (i = 1; i <= n; i++) { m = split(bl[i], p, "\t"); if (m == 3 && p[1] == key) allow[p[2]] = p[3] + 0 }
-        never["BOM"] = never["PS1-NO-BOM"] = never["PS1-ENCODING"] = never["parse"] = 1
+        for (i = 1; i <= n; i++) { m = split(bl[i], p, "\t"); if (m >= 3 && p[1] == key) allow[p[2]] = p[3] + 0 }
+        never["parse"] = 1
     }
     { line[NR] = $0
       if (match($0, /^  \[[A-Za-z0-9-]+\]/)) { cur = substr($0, 4, RLENGTH - 4); cnt[cur]++ }
@@ -433,10 +426,15 @@ _baseline_filter() {
 # _baseline_counts KEY — stdin: a file's report. Prints one baseline row per baselinable tag.
 _baseline_counts() {
     awk -v key="$1" '
-    BEGIN { never["BOM"] = never["PS1-NO-BOM"] = never["PS1-ENCODING"] = never["parse"] = 1 }
+    BEGIN { never["parse"] = 1 }
     match($0, /^  \[[A-Za-z0-9-]+\]/) { t = substr($0, 4, RLENGTH - 4); if (!(t in never)) c[t]++ }
     END { for (t in c) printf "%s\t%s\t%d\n", key, t, c[t] }'
 }
+
+GROWTH_FAIL=0
+if [ -n "$BASELINE" ] && [ "$WRITE_BASELINE" -eq 0 ] && { [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; }; then
+    _baseline_growth || GROWTH_FAIL=1
+fi
 
 command -v shellcheck >/dev/null 2>&1 && HAVE_SHELLCHECK=1 || HAVE_SHELLCHECK=0
 if [ "$HAVE_SHELLCHECK" -ne 1 ]; then
@@ -445,13 +443,8 @@ if [ "$HAVE_SHELLCHECK" -ne 1 ]; then
         printf 'shell-lint: shellcheck is required for --staged/--changed but is not on PATH\n' >&2
         exit 2
     fi
-    printf 'shell-lint: shellcheck not installed — running BOM + errexit checks only\n' >&2
+    printf 'shell-lint: shellcheck not installed — running errexit checks only\n' >&2
 fi
-# iconv validates a no-BOM .ps1's bytes as UTF-8 before prescribing a BOM add
-# Ships with Git Bash; when absent the .ps1 policy fails
-# SAFE (never prescribes an automated UTF-8-BOM add on unverified bytes).
-command -v iconv >/dev/null 2>&1 && HAVE_ICONV=1 || HAVE_ICONV=0
-
 CHECKED=0
 MISSING=0
 ISSUE_FILES=0
@@ -471,113 +464,7 @@ while IFS= read -r f; do
     file_issues=0
     file_report=""
 
-    # BOM policy is split by file type:
-    #   shell (.sh / sh shebang) — a UTF-8 BOM is an ERROR: it breaks the
-    #     shebang (shellcheck SC1082). Report it ([BOM]).
-    #   *.ps1 — a UTF-8 BOM is CORRECT and REQUIRED for non-ASCII content:
-    #     Windows PowerShell 5.1 decodes a no-BOM UTF-8 file as cp1252
-    #     (mojibake) and its parser then explodes on em-dashes etc. A UTF-8 BOM
-    #     is therefore NEVER reported on a .ps1. A UTF-16/UTF-32 BOM is ALSO
-    #     valid (PS5.1 decodes those natively) and never mutated. The trap is a
-    #     .ps1 carrying non-ASCII bytes (>0x7F) but NO recognized BOM — but only
-    #     prescribe adding a UTF-8 BOM when the bytes actually validate as
-    #     UTF-8; otherwise the payload is some other encoding and prepending
-    #     EF BB BF would corrupt it ([PS1-ENCODING], manual triage). A pure-ASCII
-    #     .ps1 without a BOM is fine (the BOM is optional there).
-    # Recognizing only EF BB BF would send a UTF-16LE .ps1 (FF FE ...) into the
-    # no-BOM branch, read as non-ASCII, and tell it to "add a UTF-8 BOM" —
-    # corrupting a valid script.
-    # No 2>/dev/null on od/head: a genuine failure should surface, not be
-    # absorbed into a false "no BOM".
-    bom="$(_bom_kind "$f")"
-    if [ -n "$bom" ]; then
-        # A recognized Unicode byte-order mark is present.
-        case "$bom" in
-            utf8)
-                case "$f" in
-                    *.ps1) : ;;  # UTF-8 BOM is correct for .ps1 — never report
-                    *)
-                        file_report="$file_report  [BOM] UTF-8 byte-order mark at file start — strip it (breaks the shebang; shellcheck SC1082)"$'\n'
-                        file_issues=$((file_issues + 1)) ;;
-                esac ;;
-            utf16le|utf16be|utf32le|utf32be)
-                # Split by file type exactly like the utf8 arm above:
-                #   *.ps1 — PowerShell 5.1 decodes BOM'd UTF-16/UTF-32 natively,
-                #     so a .ps1 carrying one is a VALID script, never a defect to
-                #     mutate.
-                #   everything else (shell) — the first two bytes MUST be the `#!`
-                #     shebang; ANY byte-order mark (UTF-16LE/BE or UTF-32LE/BE)
-                #     pushes `#!` off byte 0 and the kernel won't exec the file.
-                #     This is the SAME defect class as a UTF-8 BOM on a shell
-                #     script, so reuse the [BOM] tag. You cannot just strip the
-                #     mark: the whole payload is UTF-16/32, not only the signature,
-                #     so the file must be re-saved as UTF-8 WITHOUT a BOM.
-                #     (Blessing UTF-16/32 on EVERY file type would let a
-                #     UTF-16-BOM'd .sh pass the linter with an explicit clean
-                #     bill of health.)
-                case "$f" in
-                    *.ps1) : ;;
-                    *)
-                        case "$bom" in
-                            utf16le) bom_name='UTF-16LE' ;;
-                            utf16be) bom_name='UTF-16BE' ;;
-                            utf32le) bom_name='UTF-32LE' ;;
-                            utf32be) bom_name='UTF-32BE' ;;
-                        esac
-                        file_report="$file_report  [BOM] ${bom_name} byte-order mark at file start — a shell script cannot start with any BOM (breaks the shebang); convert the file to UTF-8 WITHOUT a BOM"$'\n'
-                        file_issues=$((file_issues + 1)) ;;
-                esac ;;
-        esac
-    else
-        # No recognized BOM. For .ps1, flag non-ASCII content that lacks the BOM
-        # it needs — but only prescribe adding a UTF-8 BOM when the bytes really
-        # are UTF-8; otherwise flag an unknown encoding (fail-safe: never mutate).
-        case "$f" in
-            *.ps1)
-                # Non-ASCII byte (>0x7F) present? tr deletes every 0x00-0x7F
-                # byte; any remaining byte means non-ASCII content (e.g. an
-                # em-dash) that PS5.1 would mojibake-decode without a BOM.
-                # LC_ALL=C forces BYTE-WISE processing on BOTH stages: an env
-                # prefix coats only the first pipeline command, so grep must be
-                # coated too. Otherwise, in a UTF-8 locale, '.' does not match a
-                # lone invalid-UTF-8 byte (0xA0/0xFF) and the non-ASCII check
-                # silently misses it — [PS1-ENCODING] never fired, reopening the
-                # very corruption path this policy exists to gate (without this
-                # test 16f goes red on a UTF-8 machine).
-                # Full-consuming probe: `tr | grep -q` under
-                # this script's own pipefail is the SIGPIPE class —
-                # grep -q exits on the first non-ASCII byte, tr takes SIGPIPE on
-                # a file larger than a pipe buffer, the pipeline reads nonzero,
-                # and a heavily non-ASCII .ps1 silently SKIPS the encoding
-                # guard. `wc -c` consumes everything, so the pipeline result is
-                # size-independent.
-                if [ "$(LC_ALL=C tr -d '\000-\177' < "$f" | wc -c)" -gt 0 ]; then
-                    if [ "$HAVE_ICONV" -eq 1 ] && iconv -f UTF-8 -t UTF-8 "$f" >/dev/null 2>&1; then
-                        file_report="$file_report  [PS1-NO-BOM] non-ASCII bytes present but no UTF-8 BOM — Windows PowerShell 5.1 decodes this as cp1252 mojibake and fails to parse; add a UTF-8 BOM (EF BB BF) (HIMMEL-1432)"$'\n'
-                    else
-                        # No recognized BOM AND not valid UTF-8 (or iconv absent
-                        # so it CANNOT be verified) — never prescribe an
-                        # automated UTF-8-BOM add; that would corrupt a
-                        # non-UTF-8 payload. Routing to operator-gated triage is
-                        # done by the [PS1-ENCODING] TAG: self-heal's classifier
-                        # has a dedicated manual-triage arm matching it, checked
-                        # BEFORE the generic lint match. (Avoiding the bare token
-                        # "BOM" does NOT route here — it only dodged _RE_ENCODING;
-                        # the report's "shell-lint" summary token still matched
-                        # _RE_LINT and dispatched a fix.)
-                        if [ "$HAVE_ICONV" -eq 1 ]; then
-                            file_report="$file_report  [PS1-ENCODING] non-ASCII bytes, no recognized byte-order signature, and the bytes are not valid UTF-8 — unsupported/unknown encoding; inspect manually. Do NOT prepend the EF BB BF UTF-8 signature (it corrupts a non-UTF-8 payload such as UTF-16). (HIMMEL-1432)"$'\n'
-                        else
-                            file_report="$file_report  [PS1-ENCODING] non-ASCII bytes, no recognized byte-order signature, encoding UNVERIFIED (iconv not installed) — inspect manually. Do NOT prepend the EF BB BF UTF-8 signature. (HIMMEL-1432)"$'\n'
-                        fi
-                    fi
-                    file_issues=$((file_issues + 1))
-                fi ;;
-        esac
-    fi
-
-    # The remaining checks are shell-specific; a .ps1 only reached the BOM policy
-    # above ([BOM] never fires on .ps1; [PS1-NO-BOM] may have).
+    # The checks below are shell-specific.
     if _is_shell_file "$f"; then
 
     # [errexit] — set -e / -eu / -euo / -o errexit in the prologue. A real
@@ -623,7 +510,7 @@ EOF
     # suite's fixtures/assertions, which embed the same patterns/tags on
     # purpose — would flag itself (the BASH32 pattern mentions `mapfile`; the
     # echo-e hint says `echo -e`). Skip them for these two files only —
-    # BOM/errexit/shellcheck still run on both.
+    # errexit/shellcheck still run on both.
     case "$f" in
         *scripts/lint/shell-lint.sh|*scripts/lint/test-shell-lint.sh) _skip_advisory=1 ;;
         *) _skip_advisory=0 ;;
@@ -704,7 +591,7 @@ EOF
 
     fi   # end advisory checks (_skip_advisory)
 
-    fi   # end shell-specific checks (gate on _is_shell_file; .ps1 hit BOM policy only)
+    fi   # end shell-specific checks (gate on _is_shell_file)
 
     if [ "$file_issues" -gt 0 ] && [ -n "$BASELINE" ]; then
         _key="${f#"$_root"/}"
@@ -742,5 +629,6 @@ if [ "$ISSUE_FILES" -gt 0 ]; then
     printf 'shell-lint: %d file(s) with issues — fix before committing (the pre-commit gate blocks otherwise)\n' "$ISSUE_FILES"
     exit 1
 fi
+[ "$GROWTH_FAIL" -eq 0 ] || exit 1
 printf 'shell-lint: clean (%d file(s) checked)\n' "$CHECKED"
 exit 0
