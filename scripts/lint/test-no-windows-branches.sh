@@ -32,14 +32,14 @@ scan() {
     listed="$(grep -v '^#' "$base" | grep -v '^$' | LC_ALL=C sort)"
     while IFS= read -r f; do
         [ -n "$f" ] || continue
-        printf '%s\n' "$listed" | grep -qxF -- "$f" && continue
+        grep -qxF -- "$f" <<< "$listed" && continue
         echo "new Windows scheduler code (not in the baseline): $f"; rc=1
     done <<EOF
 $hits
 EOF
     while IFS= read -r f; do
         [ -n "$f" ] || continue
-        printf '%s\n' "$hits" | grep -qxF -- "$f" && continue
+        grep -qxF -- "$f" <<< "$hits" && continue
         echo "stale baseline row (file no longer names schtasks): $f"; rc=1
     done <<EOF
 $listed
@@ -63,7 +63,7 @@ mkrepo
 printf 'if is_windows; then schtasks /create /tn X; fi\n' > "$T/r/scripts/planted.sh"
 commit
 out="$(scan "$T/r" "$T/base.txt")"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -qF 'scripts/planted.sh'; then pass "planted file fails, named"
+if [ "$rc" -eq 1 ] && grep -qF 'scripts/planted.sh' <<< "$out"; then pass "planted file fails, named"
 else fail "planted file should exit 1 naming it (rc=$rc, out=$out)"; fi
 
 echo "case 2: stale baseline row"
@@ -71,7 +71,7 @@ mkrepo
 commit
 printf 'scripts/gone.sh\n' >> "$T/base.txt"
 out="$(scan "$T/r" "$T/base.txt")"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -qF 'stale baseline row (file no longer names schtasks): scripts/gone.sh'; then pass "stale row fails, named"
+if [ "$rc" -eq 1 ] && grep -qF 'stale baseline row (file no longer names schtasks): scripts/gone.sh' <<< "$out"; then pass "stale row fails, named"
 else fail "stale row should exit 1 naming it (rc=$rc, out=$out)"; fi
 
 echo "case 3: archive/, docs/, *.md and *.html are out of scope"
