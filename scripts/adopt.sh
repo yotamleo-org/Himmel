@@ -238,6 +238,9 @@ PORTABLE_FILES=(
   .claude/commands/cr-scores.md
   .claude/commands/cr-tune.md
   .claude/commands/cr-learnings-refresh.md
+  .claude/commands/morning-report.md
+  scripts/handover/generate-morning-briefing.sh
+  scripts/lib/result.sh
   scripts/clean-garden.sh
   scripts/worktree.sh
   scripts/clean.sh
