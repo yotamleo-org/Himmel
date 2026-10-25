@@ -142,12 +142,12 @@ fi
 [ -z "${STUB_PR_FAIL:-}" ] || exit 1
 printf '%b' "${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
 STUB
-# orphans= reads `ps -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
+# orphans= reads `ps -ww -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
 # Answered from $PS_FIXTURE so the suite never reads the live process table;
 # any other ps argv falls through to the real ps.
 cat > "$W/bin/ps" <<'STUB'
 #!/usr/bin/env bash
-if [ "$*" = "-eo pid=,ppid=,etime=,args=" ]; then
+if [ "$*" = "-eo pid=,ppid=,etime=,args=" ] || [ "$*" = "-ww -eo pid=,ppid=,etime=,args=" ]; then
   cat "$PS_FIXTURE"
   exit 0
 fi
