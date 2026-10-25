@@ -609,10 +609,16 @@ _status_event() {
 }
 # _focus_mark_dirty — a status the merge wrote leaves the console's FOCUS page
 # behind: mark it dirty (HIMMEL_CONSOLE_DOC) so the waiter's next tick rebuilds
-# it; best-effort, never changes an exit code.
+# it. The mark is written here as focus-refresh.sh --mark-dirty writes it
+# (dirty=<epoch> in focus-state, plus focus-state.again), so the merge runs no
+# unguarded code; best-effort, never changes an exit code.
 _focus_mark_dirty() {
     [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || return 0
-    bash "$himmel_repo/scripts/handover/console-kit/focus-refresh.sh" --doc "$HIMMEL_CONSOLE_DOC" --mark-dirty >/dev/null 2>&1 || true
+    local st; st="$(dirname "$HIMMEL_CONSOLE_DOC")/focus-state"
+    { [ -f "$HIMMEL_CONSOLE_DOC" ] \
+        && { grep -q '^dirty=.' "$st" \
+            || { { grep -v '^dirty=' "$st"; echo "dirty=$(date +%s)"; } > "$st.tmp.$$" && mv -f "$st.tmp.$$" "$st"; }; } \
+        && date +%s > "$st.again"; } 2>/dev/null || true
 }
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).

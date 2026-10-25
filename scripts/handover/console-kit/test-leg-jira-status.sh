@@ -596,6 +596,7 @@ reset "To Do"; owned; fok
 HIMMEL_CONSOLE_DOC="$FDOC" fn "$K" --event live
 check "focus: the move lands" "$(moved)" "transition $K In Progress"
 check "focus: and marks the FOCUS page dirty, so the next tick rebuilds it" "$(fstat)" "focus=DIRTY"
+check "focus: and leaves the again marker for a running refresh" "$([ -s "${FDOC%/*}/focus-state.again" ] && echo yes)" yes
 reset "In Progress"; owned; fok
 HIMMEL_CONSOLE_DOC="$FDOC" fn "$K" --event live
 check "focus: no move leaves the page clean" "$(fstat)" "focus=ok"

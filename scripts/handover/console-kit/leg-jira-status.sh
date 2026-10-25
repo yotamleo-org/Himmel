@@ -210,10 +210,16 @@ refresh_done_record() {
 
 # A moved status leaves the console's FOCUS page behind: mark it dirty so the
 # waiter's next tick rebuilds it. HIMMEL_CONSOLE_DOC names the console doc (unset:
-# nothing to mark). A failed mark never fails the move.
+# nothing to mark). The mark is written here as focus-refresh.sh --mark-dirty
+# writes it (dirty=<epoch> in focus-state, plus focus-state.again), so this
+# script runs no unguarded code. A failed mark never fails the move.
 mark_focus_dirty() {
     [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || return 0
-    bash "$HERE/focus-refresh.sh" --doc "$HIMMEL_CONSOLE_DOC" --mark-dirty >/dev/null 2>&1 \
+    local st; st="$(dirname "$HIMMEL_CONSOLE_DOC")/focus-state"
+    { [ -f "$HIMMEL_CONSOLE_DOC" ] \
+        && { grep -q '^dirty=.' "$st" \
+            || { { grep -v '^dirty=' "$st"; echo "dirty=$(date +%s)"; } > "$st.tmp.$$" && mv -f "$st.tmp.$$" "$st"; }; } \
+        && date +%s > "$st.again"; } 2>/dev/null \
         || echo "WARN leg-jira-status: cannot mark the FOCUS page dirty (continuing; the move stands)" >&2
 }
 
