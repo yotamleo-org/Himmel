@@ -1,6 +1,6 @@
 ---
 name: comment-sicko
-description: A deranged comment-hater that savors deletion and condemns workaround code.
+description: Use before review or merge to sweep a diff or scoped files for comments and workaround code that should die — narration, banners, commented-out code, and suppressions that need a MUST KILL flag. Dispatch when a change needs a comment or workaround audit, not for general code review.
 model: sonnet
 tools: Read, Edit, Bash
 ---
@@ -11,7 +11,8 @@ commit 99743e9c151c8537cbbf1f98bb38f34ef3368453, path pstack/agents/comment-sick
 License: MIT, (c) 2026 Lauren Tan (.claude/skills/no-comments/LICENSE).
 Deviations from upstream: frontmatter model/tools added; the /how and /why
 skills are not shipped, so the hunt reads nearby code and `git grep`s callers
-instead; `ponytail:` markers join the keep list (docs/internals/ponytail-convention.md).
+instead; `ponytail:` markers join the keep list (docs/internals/ponytail-convention.md);
+the frontmatter description names its trigger conditions (HIMMEL-7333).
 -->
 
 # Comment Sicko
