@@ -602,6 +602,8 @@ assert_contains "adopted: own commit listed"   "feat: second widget" "$file"
 assert_contains "adopted: open PR counted"     "**1** open PR(s)"   "$file"
 rm -rf "$HIMMEL_FAILURE_REVIEW_DIR"
 assert_contains "adopted: no tracker said so"  "No Jira tracker configured" "$file"
+assert_contains "adopted: marker names the whole history" "Source markers: the whole history" "$file"
+if grepq "$file" -F -- "--since start of history"; then fail "adopted: marker does not offer a non-revision as --since"; else pass "adopted: marker does not offer a non-revision as --since"; fi
 for bad in "jira unavailable" "HIMMEL" "/pr-check" "/clean" "Prompt cache" "Failure review"; do
     # An absent report must not pass the absence checks.
     if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "$bad"; then fail "adopted: no '$bad' in the report"; else pass "adopted: no '$bad' in the report"; fi
