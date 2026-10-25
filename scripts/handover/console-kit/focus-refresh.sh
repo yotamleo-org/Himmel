@@ -7,8 +7,10 @@
 # Usage: focus-refresh.sh --doc <console doc> [--mirror-fresh <dir>] [--repo <owner/repo>]
 #        focus-refresh.sh --doc <console doc> --status
 #        focus-refresh.sh --doc <console doc> --mark-dirty
-# The console doc's `focus-version: <version>` line opts in (none, or no line:
-# `focus=skip`). `focus-plan: <file>` names the plan carrying the `priority:`
+# The console doc's `focus-version: <version>` line pins the page to that version;
+# `auto`, or no line beside a `release: <R>` line, follows the current (first)
+# version of release R (`release state`; a failed read is `focus=FAILED:release`).
+# `none`, or no line and no release: `focus=skip`. `focus-plan: <file>` names the plan carrying the `priority:`
 # line; <doc dir>/focus-chains.json holds the merge chains when present. The
 # page goes to <doc dir>/roadmap-tracker.html (the path the tick reads).
 #
@@ -84,8 +86,15 @@ done
 [ -f "$DOC" ] || { echo "focus-refresh: $DOC is not a file" >&2; exit 2; }
 
 VER=$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)
-case "$VER" in '' | none*) echo "focus=skip"; exit 0 ;; esac
-[[ "$VER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "focus-refresh: '$VER' is not a version name" >&2; exit 2; }
+REL=$(sed -n 's/^release:[[:space:]]*//p' "$DOC" | head -n 1)
+REL="${REL%%[[:space:]]*}"
+case "$REL" in none*) REL="" ;; esac
+case "$VER" in
+    none*) echo "focus=skip"; exit 0 ;;
+    '') [ -n "$REL" ] || { echo "focus=skip"; exit 0; }; VER=auto ;; # a declared release follows its current version
+    auto | auto[[:space:]]*) VER=auto ;;
+esac
+[ "$VER" = auto ] || [[ "$VER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "focus-refresh: '$VER' is not a version name" >&2; exit 2; }
 
 DIR=$(dirname "$DOC")
 STATEF="$DIR/focus-state"
@@ -183,6 +192,20 @@ bounded() {
     shift
     if [ -n "$_TIMEOUT_BIN" ]; then "$_TIMEOUT_BIN" -k 2 "$s" "$@"; else "$@"; fi
 }
+
+# focus-version: auto - the first version of the declared release (`release state <R> --json`;
+# exit 3 is the CLI's not-OK status and still prints the state). A failed read is loud, never a stale version.
+if [ "$VER" = auto ]; then
+    rel_fail() { echo "focus-refresh: WARN: focus-version: auto: $1; the page is not rendered" >&2; failed release; }
+    [[ "$REL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || rel_fail "no release: line in the console doc"
+    rc=0
+    # swallow-ok: stderr is dropped, the exit code is checked on the next line and rel_fail names it
+    rs=$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 60 "${JIRA[@]}" release state "$REL" --json 2>/dev/null) || rc=$?
+    case "$rc" in 0 | 3) ;; *) rel_fail "release state $REL failed (rc$rc)" ;; esac
+    # swallow-ok: unparseable output leaves VER empty and rel_fail names it
+    VER=$(printf '%s' "$rs" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["versions"][0])' 2>/dev/null)
+    [[ "$VER" =~ ^[A-Za-z0-9._-]+$ ]] || rel_fail "release $REL names no current version"
+fi
 
 load_state
 NEWGEN=$((S_gen + 1))
