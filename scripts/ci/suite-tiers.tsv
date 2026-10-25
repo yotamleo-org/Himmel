@@ -750,6 +750,7 @@ scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	loca
 scripts/lanes/bench/scorecard/test-agg-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-dead-parts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-extra-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/lanes/bench/scorecard/test-fleet-scorecard.sh	local	new since the audit, behaviour suite
 scripts/lanes/bench/scorecard/test-ledger-metrics.sh	pr	static-gate
 scripts/lanes/bench/scorecard/test-leg-over-by-day.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-leg-relaunch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
