@@ -202,7 +202,7 @@ export function entryKey(name, payload) {
 // their credentials come from a .env loaded inside the job at run time, never
 // from the session environment. The denylist is a second fence for the names
 // that do land in these namespaces and must never reach disk anyway.
-const ENV_PREFIXES = /^(HIMMEL_|CLAUDE_|VOICE_|WHERE_ARE_WE_|JIRA_NUDGE_|DETACH_)/;
+const ENV_PREFIXES = /^(HIMMEL_|CLAUDE_|WHERE_ARE_WE_|JIRA_NUDGE_|DETACH_)/;
 // Not a gate, but the same argument applies with more force: these decide WHICH
 // interpreter a job runs and where it looks for its state. Inheriting them from
 // whichever session happened to start the worker means a later session's job can
