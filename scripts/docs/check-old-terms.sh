@@ -97,14 +97,22 @@ fi
 is_exempt_path() {
     case "$1" in
         */fixtures/*|fixtures/*|*/fixture/*|fixture/*) return 0 ;;
-        scripts/lib/rename-aliases.tsv|scripts/lib/test-rename-aliases.sh) return 0 ;;
-        docs/glossary.md|docs/migration/*) return 0 ;;
+        scripts/lib/rename-aliases.tsv) return 0 ;;
+        docs/glossary.md) return 0 ;;
         scripts/eval/lane-quality/tasks/*|scripts/eval/graphify-ab/tasks.json|scripts/eval/graphify-ab/truth.py) return 0 ;;
         scripts/docs/check-old-terms.sh|scripts/docs/test-check-old-terms.sh) return 0 ;;
         scripts/docs/old-terms-baseline.txt|scripts/docs/test-check-old-terms-tree.sh) return 0 ;;
         CHANGELOG.md|*/CHANGELOG.md) return 0 ;;
     esac
     return 1
+}
+
+# --tree also skips the files that list old names on purpose; the range check still lints their added lines.
+is_tree_exempt_path() {
+    case "$1" in
+        scripts/lib/test-rename-aliases.sh|docs/migration/*) return 0 ;;
+    esac
+    is_exempt_path "$1"
 }
 
 if [ "$mode" = tree ]; then
@@ -117,11 +125,13 @@ if [ "$mode" = tree ]; then
     . "$here/../lib/prim.sh" || { echo "$me: cannot load prim.sh" >&2; exit 2; }
     work=$(tmpdir) || { echo "$me: mktemp failed" >&2; exit 2; }
     trap 'rm -rf "$work"' EXIT
-    git -c core.quotePath=false ls-files > "$work/files" || { echo "$me: git ls-files failed" >&2; exit 2; }
+    git ls-files -z > "$work/files.z" || { echo "$me: git ls-files failed" >&2; exit 2; }
+    tr '\000' '\n' < "$work/files.z" > "$work/files" || { echo "$me: tr failed" >&2; exit 2; }
     while IFS= read -r f; do
-        if is_exempt_path "$f"; then printf '%s\n' "$f"; fi
+        if is_tree_exempt_path "$f"; then printf '%s\n' "$f"; fi
     done < "$work/files" > "$work/exempt"
-    git -c core.quotePath=false ls-files --deleted >> "$work/exempt" || { echo "$me: git ls-files --deleted failed" >&2; exit 2; }
+    git ls-files -z --deleted > "$work/deleted.z" || { echo "$me: git ls-files --deleted failed" >&2; exit 2; }
+    tr '\000' '\n' < "$work/deleted.z" >> "$work/exempt" || { echo "$me: tr failed" >&2; exit 2; }
     git -c core.quotePath=false grep -z -I -n -E -e '(LEGS?|CONSOLE)' -e '--(legs?|console)' > "$work/hits.z"
     [ $? -le 1 ] || { echo "$me: git grep failed" >&2; exit 2; }
     tr '\000' '\001' < "$work/hits.z" > "$work/hits" || { echo "$me: tr failed" >&2; exit 2; }
@@ -134,7 +144,8 @@ if [ "$mode" = tree ]; then
         fi
         break
     done
-    awk -v registry="$registry" -v exemptf="$work/exempt" -v baselinef="$baseline_rel" -v basef="$work/base" \
+    [ "$have_base" -eq 1 ] || echo "$me: no $baseline_rel on origin/main or main, the shrink-only check is skipped" >&2
+    LC_ALL=C awk -v registry="$registry" -v exemptf="$work/exempt" -v baselinef="$baseline_rel" -v basef="$work/base" \
         -v have_base="$have_base" -v filesf="$work/files" -v hitsf="$work/hits" '
         function exempt_name(n,    i) {
             if (n in ok) return 1

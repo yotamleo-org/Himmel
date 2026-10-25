@@ -147,6 +147,8 @@ run_case "base_sha-pinned lane-quality task" 0 scripts/eval/lane-quality/tasks/t
 run_case "base_sha-pinned graphify-ab task set" 0 scripts/eval/graphify-ab/tasks.json '{"prompt": "mentions console-kit/go.sh"}' # old-term-ok: a fixture line
 run_case "base_sha-pinned graphify-ab truth" 0 scripts/eval/graphify-ab/truth.py 'needle = "console-kit/go.sh"' # old-term-ok: a fixture line
 run_case "moved path in another eval file is still refused" 1 scripts/eval/graphify-ab/run.sh 'needle=console-kit/go.sh' # old-term-ok: a fixture line
+run_case "identifier in a migration doc is still refused" 1 docs/migration/new.md 'Set `LEG_PROBE_UNREGISTERED` to tune it.'
+run_case "identifier in the registry suite is still refused" 1 scripts/lib/test-rename-aliases.sh 'LEG_PROBE_UNREGISTERED=40'
 run_case "the registry itself" 0 scripts/lib/rename-aliases.tsv 'LEG_PROBE_UNREGISTERED	pending-N2892	env	old-to-new	R0	pending-N2892'
 run_case "CI-matrix leg in testing.md" 0 docs/internals/testing.md 'Each leg of the matrix runs one shard.'
 run_case "CI-matrix leg in ci-image.md" 0 docs/internals/ci-image.md 'Each leg pulls the image.'

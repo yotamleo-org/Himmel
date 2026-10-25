@@ -3115,21 +3115,21 @@ the table.
 | `scripts/cr/cr-trigger-ledger.sh` | HIMMEL-6647 |
 | `scripts/cr/cr-tune.sh` | HIMMEL-6647 |
 | `scripts/eval/console-load-inventory.py` | HIMMEL-6647 |
-| `scripts/eval/leg-digest/leg_ledger.py` | HIMMEL-6647 |
-| `scripts/eval/leg-digest/test-leg-ledger.sh` | HIMMEL-6647 |
+| `scripts/eval/leg-digest/leg_ledger.py` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/eval/leg-digest/test-leg-ledger.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
 | `scripts/eval/sandbox-poc/settings.leg-sandbox.json` | HIMMEL-6647 |
 | `scripts/eval/test-console-load-inventory.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/console-budget.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/console-wait.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/cr-disposition.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/test-console-budget.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/test-console-kit-e2e.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/test-console-wait-b.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/test-console-wait-pool.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/test-console-wait-r0.sh` | HIMMEL-6647 |
-| `scripts/handover/console-kit/test-console-wait.sh` | HIMMEL-6647 |
-| `scripts/handover/console/console-bus-exec.sh` | HIMMEL-6647 |
-| `scripts/handover/console/test-console-handoff-roundtrip.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/console-budget.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/console-wait.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/cr-disposition.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/test-console-budget.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/test-console-kit-e2e.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/test-console-wait-b.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/test-console-wait-pool.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/test-console-wait-r0.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console-kit/test-console-wait.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console/console-bus-exec.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
+| `scripts/handover/console/test-console-handoff-roundtrip.sh` | HIMMEL-6647 <!-- old-term-ok: this page inventories the old names --> |
 | `scripts/handover/leg-resume-brief.sh` | HIMMEL-6647 |
 | `scripts/handover/leg-timeline.sh` | HIMMEL-6647 |
 | `scripts/handover/test-arm-resume-bank-refresh.sh` | HIMMEL-6647 |
