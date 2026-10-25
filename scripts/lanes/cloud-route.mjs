@@ -10,10 +10,11 @@
 //
 // Classes, first match wins:
 //   BLOCKED      ticket not To Do/Backlog/Open, the open-PR/held-file list or file tree is unknown, or a
-//                file it touches is held (one writer per file)
+//                file it touches is held (one writer per file); a directory it names collides only with an
+//                equal or enclosing held path, never with a held file under it (that is LOCAL-NATIVE below)
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
 //                integrity guard locks hook edits out of a normal leg)
-//   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a run-time need the
+//   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a directory it names with a held file in it, a run-time need the
 //                cloud lacks by design (luna, a vault, handover state, the state repo
 //                or its specs: private data never leaves the station), more than 3 asks, or no file
 //                named to scope a brief on. graphify and BM25 qmd over the repo
@@ -211,14 +212,20 @@ export function classifyTicket(t, ctx) {
   if (!/^(to do|backlog|open)$/i.test(t.status ?? '')) return v('BLOCKED', `status is '${t.status}', not To Do/Backlog/Open — already in flight or done`);
   // a run-time need (state-repo spec paths and the like) is the more specific LOCAL-NATIVE reason
   const strange = t.files?.length || needs.re.test(text) ? [] : unrecognisedPaths(text);
+  // a directory the ticket names is context: it collides with nothing but an equal or enclosing held path
+  const underDir = (f, x) => f.endsWith('/') && !x.file.endsWith('/') && x.file.startsWith(f);
+  let dirHold;
   for (const f of files) {
-    const h = (ctx.held ?? []).find((x) => overlaps(f, x.file));
+    const h = (ctx.held ?? []).find((x) => overlaps(f, x.file) && !underDir(f, x));
     if (h) return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
+    const u = (ctx.held ?? []).find((x) => underDir(f, x));
+    if (u && !dirHold) dirHold = { dir: f, held: u };
   }
   const hook = files.find((f) => HOOKS.test(f));
   if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
   if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO`);
+  if (dirHold) return v('LOCAL-NATIVE', `names the directory ${dirHold.dir} and ${dirHold.held.file} in it is held (${dirHold.held.why}) — a local leg scopes the files, a cloud brief cannot (pass files)`);
   if (strange.length) return v('LOCAL-NATIVE', `unrecognised path ${strange.join(', ')} — outside the known roots, so the hook, trust and held checks cannot be trusted (pass files)`);
   if (!files.length) return v('LOCAL-NATIVE', 'no file named in the ticket — nothing to scope a brief on (pass files)');
   const need = text.match(needs.re);

@@ -624,3 +624,18 @@ test('matrix: a matrix with no match rows has no run-time need', () => {
   const matrix = { rows: [{ id: 'note', state: 'does', evidence: 'x' }], max_asks: 3 };
   assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh. It reads the luna vault.' }), ctx({ matrix })).class, 'CLOUD-OK');
 });
+
+test('HIMMEL-7574: a ticket naming a directory is not BLOCKED by an open PR on another file in it', () => {
+  const dirTicket = tk({ description: 'Tidy the helpers under scripts/lanes/.' });
+  const v = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
+  assert.equal(v.class, 'LOCAL-NATIVE');
+  assert.match(v.reason, /scripts\/lanes\//);
+  assert.match(v.reason, /open PR 77/);
+  // the exact file a PR touches still blocks, even beside a directory the ticket names
+  const exact = classifyTicket(tk({ description: 'Tidy scripts/lanes/ and fix scripts/lanes/other.sh.' }), ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
+  assert.equal(exact.class, 'BLOCKED');
+  // a held directory (a live leg's tree) over a ticket's directory stays BLOCKED
+  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live leg' }] })).class, 'BLOCKED');
+  // nothing held under the directory: unchanged
+  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] })).class, 'CLOUD-OK');
+});

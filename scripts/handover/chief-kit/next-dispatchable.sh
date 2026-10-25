@@ -7,7 +7,7 @@
 #
 #   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
 #                        [--held FILE] [--no-classify] [--doc CHIEF_DOC]
-#                        [--priority-pool-only] [--workers-dir DIR] [--why]
+#                        [--priority-pool-only] [--workers-dir DIR] [--why] [--dispositions]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
 # candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
@@ -59,15 +59,31 @@
 # collides with nothing. Any other path collides with an equal held path; a concrete
 # file (one the repo holds, or a new one with a dotted basename) also collides with a
 # directory a leg's write scope or --held names above it; an open PR's diff is files,
-# compared exactly. Two listed tickets collide on an equal file only. When gh fails the
-# list is printed with an `open PRs unknown` header rather than silently trusting
-# an empty set.
+# compared exactly. Two listed tickets collide on an equal file only. A live leg's write
+# scope is the path list after `writes confined to` up to its first sentence break (a
+# `> **Writes:**` line is all of it); past the break only a concrete file holds, so a
+# directory the brief merely mentions holds nothing. Paths compare after the rename registry
+# (scripts/lib/rename-aliases.tsv, kind directory) maps a pre-rename spelling to its new one.
+# An open PR's files come from the paginated files API (`gh api --paginate`, filename and
+# previous_filename), one PR at a time: a PR whose read fails (HTTP 406 over 300 files by
+# `gh pr diff`, a timeout) is named in an `open PR files unknown` header and the other PRs
+# still hold their files. When the PR list itself fails the list is printed with an
+# `open PRs unknown` header rather than silently trusting an empty set.
 #
 # Drops: every To Do ticket of the earliest unreleased version that is not listed
 # is counted by reason on a `# dropped from <version>:` line (owned, collision,
 # blocker, type, label, platform, residual-depth, classification, below --top ...);
 # --why adds one `# drop <KEY> <reason>` line each, the collision naming the file and
-# its holder. --resume-only prints neither.
+# its holder. --dispositions adds `# disposition <KEY> <class> <holder, blocker or question>`
+# for EVERY open ticket of that version (To Do or in work), listed ones too (`listed LOCAL`,
+# `listed RESUME`), so no ticket is silent. --resume-only prints neither.
+#
+# Blockers: one the mirror shows open may be Done (the mirror lags). Its live status is read
+# once, bounded, and a Done blocker no longer drops the ticket; a live one is named
+# `blocker KEY (<status>, live)`. A classifier BLOCKED whose reason names other tickets (a
+# reservation `routed KEY`) is listed as LOCAL when every one of them is Done live; otherwise
+# the drop carries the classifier's reason. The live read runs with the real classifier, or
+# when NEXT_DISPATCH_JIRA_CMD is set; an unreadable key leaves the blocker open.
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
@@ -80,6 +96,7 @@
 #
 # Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`),
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
+# NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
 #
 # Exit: 0 printed (possibly nothing); 2 usage.
@@ -89,7 +106,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
-legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0
+legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -104,7 +121,8 @@ while [ "$#" -gt 0 ]; do
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
         --priority-pool-only) pool_only=1; shift ;;
         --why) why=1; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why]" >&2; exit 2 ;;
+        --dispositions) dispo=1; shift ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why] [--dispositions]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
@@ -116,7 +134,7 @@ if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
 
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_LEDGER="$ledger"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, time
 
@@ -173,6 +191,8 @@ def clean_scope(rest):
         return g.group(1)
     return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
 
+SENT_BREAK_RE = re.compile(r'(?<!\d)(?<!e\.g)(?<!i\.e)\.(?=\s|$)')  # the end of a sentence, not a list number or a dot inside a path
+
 def write_scope(line):
     # the leg's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
     if line.startswith(WRITES_LEAD):
@@ -182,16 +202,49 @@ def write_scope(line):
             return clean_scope(line.split(lead, 1)[1])
     return ''
 
+def scope_paths(line):
+    # the paths a leg holds. The "writes confined to" list (up to its first sentence break) holds whatever it names, a
+    # directory included; a path named later on the line holds only when it is a concrete file, since a directory a
+    # brief mentions there ("grep scripts/ci", "N3185 is the single writer in scripts/config-ui/") is context
+    text = write_scope(line)
+    m = SENT_BREAK_RE.search(text) if not line.startswith(WRITES_LEAD) and 'writes confined to' in line else None
+    inside, outside = (text[:m.start()], text[m.end():]) if m else (text, '')
+    later = [s for s in SENT_BREAK_RE.split(outside)]
+    return files_in(inside) + [f for s in later for f in files_in(s) if concrete(f) or WRITING_RE.search(s)]  # a later sentence that deletes or runs a command writes its directory too
+
+renames = []
+try:
+    for rline in open(os.path.join(repo, 'scripts/lib/rename-aliases.tsv'), encoding='utf-8', errors='replace'):
+        cols = rline.rstrip('\n').split('\t')
+        if len(cols) >= 3 and cols[2] == 'directory' and not rline.startswith('#') and cols[0].strip() and cols[1].strip():
+            renames.append((cols[0].strip().rstrip('/'), cols[1].strip().rstrip('/')))
+except OSError:
+    pass  # swallow-ok: no registry means no rename is resolved, so a pre-rename path compares as written
+
+def canon(p):
+    # a path as the rename registry spells it now: a stale pre-rename path and its new spelling are one path
+    slash = p.endswith('/')
+    t = p.rstrip('/')
+    for _ in range(3):
+        for old, new in renames:
+            if t == old or t.startswith(old + '/'):
+                t = new + t[len(old):]
+                break
+        else:
+            break
+    return t + ('/' if slash else '')
+
 def concrete(f):
     # a file, not a tree: a directory a ticket names is context and holds nothing
     if f.endswith('/'):
         return False
-    p = os.path.join(repo, f)
+    p = os.path.join(repo, canon(f))
     return os.path.isfile(p) or (not os.path.exists(p) and '.' in os.path.basename(f))
 
 def blocks(f, h, tree):
     # a candidate's concrete file is held by an equal path, or by a tree (a live leg's write scope, --held)
-    h = h.rstrip('/')
+    f = canon(f)
+    h = canon(h).rstrip('/')
     if f == h:
         return not os.path.isdir(os.path.join(repo, f))
     return tree and concrete(f) and f.startswith(h + '/')
@@ -398,6 +451,51 @@ try:
             done_pending.add(str(r.get('key', '')).upper())
 except OSError:
     pass
+
+# A blocker the mirror still shows open may be Done: the mirror lags. Its live status is read once, bounded (20 s a key,
+# 8 in parallel), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
+# jira CLI of the primary checkout. The real read runs only where the classifier is real too; an unreadable key
+# leaves the blocker open as the mirror shows it.
+DONE_STATES = ('Done', 'Closed')
+jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
+live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
+live_cache = {}
+
+def jira_argv(key):
+    if jira_cmd:
+        return [jira_cmd, 'get', key]
+    common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], cwd=repo, capture_output=True, text=True, timeout=20, check=True).stdout.strip()
+    return ['node', os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js'), 'get', key]
+
+def live_read(key):
+    try:
+        r = subprocess.run(jira_argv(key), capture_output=True, text=True, timeout=20, check=True, env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY', key.split('-')[0])))
+        cols = (r.stdout.splitlines() or [''])[0].split('\t')
+        return cols[2].strip() if len(cols) >= 3 and cols[0] == key else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+def live_fetch(keys):
+    fresh = sorted({k for k in keys if k not in live_cache})[:60]
+    if not (live_on and fresh):
+        return
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(8, len(fresh))) as pool:
+        for k, st in zip(fresh, pool.map(live_read, fresh)):
+            live_cache[k] = st
+
+def blocker_state(b):
+    # None when the blocker is resolved, else its status (live when read)
+    st = issues.get(b, {}).get('status')
+    if st in DONE_STATES:
+        return None
+    live = live_cache.get(b)
+    if live is not None:
+        return None if live in DONE_STATES else '%s, live' % live
+    return st or 'not in mirror'
+
+live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review') and i['type'] not in ('Epic', 'Sub-task')
+            for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
 skipped_platform = []
 cands = []
 for i in issues.values():
@@ -416,9 +514,9 @@ for i in issues.values():
         skipped_platform.append(i['key'])
         drop(i, 'platform (windows/wsl title)')
         continue
-    open_b = [b for b in i['blocked_by'] if issues.get(b, {}).get('status') != 'Done']
+    open_b = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
     if open_b:
-        drop(i, 'blocker ' + ', '.join('%s (%s)' % (b, issues.get(b, {}).get('status') or 'not in mirror') for b in open_b))
+        drop(i, 'blocker ' + ', '.join('%s (%s)' % bs for bs in open_b))
         continue
     if i['key'] in prio_cloud:
         drop(i, 'cloud-only on the priority line')
@@ -467,7 +565,7 @@ if legs_from and os.path.isfile(legs_from):
                 return text
             starts = [i for i, l in enumerate(lines) if l.startswith(WRITES_LEAD)]  # the one source; older briefs only have the scope line
             starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
-            mine = [f for i in starts for f in files_in(write_scope(block(i)))]
+            mine = [f for i in starts for f in scope_paths(block(i))]
             held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in mine]
             if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a leg that writes nothing
                 legs_unknown = True  # a scope that yields no paths could be hiding the leg's files
@@ -495,6 +593,7 @@ hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
 pr_unknown = False
+pr_files_unknown = []
 pr_keys = set()
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
@@ -502,13 +601,21 @@ try:
     nums = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=60, check=True).stdout.split()
     def pr_files(num):
-        return subprocess.run([gh, 'pr', 'diff', num, '--repo', gh_repo, '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
+        # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
+        try:
+            return subprocess.run([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
+                                  capture_output=True, text=True, timeout=120, check=True).stdout.splitlines()
+        except (OSError, subprocess.SubprocessError):
+            return None  # this PR's files are unknown; the rest are still read
     pr_nums = [] if resume_only else nums
     if pr_nums:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
             for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
-                held += [(f, 'open PR %s' % num, False) for f in d]  # a diff is files: compared exactly
+                if d is None:
+                    pr_files_unknown.append(num)
+                    continue
+                held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
     for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
@@ -561,7 +668,7 @@ for i in issues.values():
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
         continue
-    if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
+    if any(blocker_state(b) for b in i['blocked_by']):
         continue
     if held_hit(i):
         continue
@@ -578,6 +685,8 @@ for i in cands:
         drop(i, 'collision %s held by %s' % hit)
         continue
     free.append(i)
+
+reasons = {}  # the classifier's stated reason per key
 
 def classify(batch):
     cls = {}
@@ -596,13 +705,14 @@ def classify(batch):
             p = line.split('\t')
             if len(p) >= 2 and re.match(r'^[A-Z]+-\d+$', p[0]):
                 cls[p[0]] = p[1]
+                reasons[p[0]] = p[2].strip() if len(p) > 2 else ''
     except (OSError, subprocess.SubprocessError):
         pass
     if hfile:
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable, or a leg names no write scope)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable, or a leg names no write scope)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
@@ -615,6 +725,8 @@ def picked_hit(i):
                 return f, k
     return None
 emitted = []
+lane_of = {}  # key -> how a listed ticket was listed
+lifted = {}   # key -> why a classifier BLOCKED no longer holds
 
 def drop_summary():
     # every To Do ticket of the active version that is not listed, by reason (--why: one line each)
@@ -642,11 +754,29 @@ def drop_summary():
     if os.environ.get('ND_WHY') == '1':
         for k, r in rows:
             print('# drop %s %s' % (k, r))
+    if os.environ.get('ND_DISPO') == '1':
+        # one line for every open ticket of the version, listed or not: nothing is silent
+        dropped = dict(rows)
+        for i in sorted((i for i in issues.values() if i['status'] not in DONE_STATES and first_ver in i['ver']), key=lambda i: int(i['key'].split('-')[1])):
+            k = i['key']
+            if k in lane_of:
+                d = 'listed ' + lane_of[k]
+            elif k in dropped:
+                d = dropped[k]
+            elif i['type'] in ('Epic', 'Sub-task'):
+                d = 'type ' + i['type']
+            elif k in leg_keys or k in pr_keys:
+                d = 'in-flight owned by ' + owner.get(k, 'a live leg')
+            elif i['status'] == 'To Do':
+                d = 'unknown (no drop reason recorded)'
+            else:
+                d = 'unowned %s (no leg, no open PR; not listed: held, blocked, parked or unread)' % i['status']
+            print('# disposition %s %s' % (k, d))
 
 def warn_missing():
     # a named file that is not in the repo leaves the collision check blind for that ticket
     for i in emitted:
-        gone = [f for f in i['files'] if not os.path.exists(os.path.join(repo, f))]
+        gone = [f for f in i['files'] if not os.path.exists(os.path.join(repo, canon(f)))]
         if gone:
             print('# warn: %s names %s (not in the repo: a new file, or the collision check is blind)' % (i['key'], ', '.join(gone)))
 
@@ -656,6 +786,7 @@ def emit_resume(rows):
         if n >= top:
             break
         if i['merged']:
+            lane_of[i['key']] = 'MERGED-NOT-CLOSED'
             print('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
             n += 1
             continue
@@ -663,6 +794,7 @@ def emit_resume(rows):
             continue
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
+        lane_of[i['key']] = 'RESUME'
         print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])))
         n += 1
 
@@ -701,8 +833,15 @@ def emit_free(rows):
         for i in batch:
             c = cls_cache.get(i['key'])
             if classified:
+                if c == 'BLOCKED':
+                    # a BLOCKED reason that names other tickets (a file reserved by `routed KEY`) is re-checked against their live status
+                    named = [k for k in dict.fromkeys(re.findall(r'[A-Z]+-\d+', reasons.get(i['key'], ''))) if k != i['key']]
+                    live_fetch(named)
+                    if named and all(live_cache.get(k) in DONE_STATES for k in named):
+                        c = 'LOCAL-NATIVE'
+                        lifted[i['key']] = 'blocker %s Done (live)' % ', '.join(named)
                 if c is None or c == 'BLOCKED':
-                    drop(i, 'classification ' + (c or 'none (cloud-route gave no verdict)'))
+                    drop(i, 'classification ' + (('BLOCKED: ' + reasons.get(i['key'], '')[:160]).rstrip(': ') if c else 'none (cloud-route gave no verdict)'))
                     continue
                 lane = 'CLOUD' if c == 'CLOUD-OK' else 'LOCAL'
             else:
@@ -714,6 +853,7 @@ def emit_free(rows):
                 continue
             picked.extend((f, i['key']) for f in i['files'])
             emitted.append(i)
+            lane_of[i['key']] = lane + (' (%s)' % lifted[i['key']] if i['key'] in lifted else '')
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             n += 1
             if n >= top:
