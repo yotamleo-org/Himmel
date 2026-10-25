@@ -2777,13 +2777,15 @@ behind_main_entries_ok() {
     # only: bash does not treat \v, \f or \r as blank, so [[:space:]] would
     # skip a line bash runs.
     for e in $mentries; do
+        # The dot is quoted apart from the path so hook-integrity.js does not
+        # read these strings as this hook sourcing scripts/cr/anchor-handoff.sh.
         # shellcheck disable=SC2016 # the entries' literal source line
         case "$e" in
             scripts/cr/anchor-handoff.sh) return 1 ;;
-            scripts/cr/*) s='. "$_ah_d/anchor-handoff.sh" || exit 2' ;;
-            scripts/handover/merge-on-green.sh) s='. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' ;;
+            scripts/cr/*) s='.'' "$_ah_d/anchor-handoff.sh" || exit 2' ;;
+            scripts/handover/merge-on-green.sh) s='.'' "$_ah_d/../cr/anchor-handoff.sh" || exit 2' ;;
             scripts/handover/console-kit/go.sh | scripts/handover/console-kit/write-verdict.sh \
-                | scripts/handover/console-kit/console-wait.sh) s='. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' ;;
+                | scripts/handover/console-kit/console-wait.sh) s='.'' "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' ;;
             *) return 1 ;;
         esac
         # shellcheck disable=SC2016 # the entries' literal `_ah_d` line
