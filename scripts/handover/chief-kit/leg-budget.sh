@@ -77,8 +77,8 @@ else
   rm -f "$errf"
 fi
 
-calls="$(printf '%s\n' "$burn" | sed -n 's/.* calls=\([0-9]*\) .*/\1/p')"
-raw="$(printf '%s\n' "$burn" | sed -n 's/.* cost-eq=\([0-9.]*k\{0,1\}\) .*/\1/p')"
+calls="$(printf '%s\n' "$burn" | sed -n 's/.* calls=\([1-9][0-9]*\) .*/\1/p')"
+raw="$(printf '%s\n' "$burn" | sed -n 's/.* cost-eq=\([0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\}k\{0,1\}\) .*/\1/p')"
 if [ -z "$calls" ] || [ -z "$raw" ]; then echo "leg-budget: cannot parse leg-burn.sh output: $burn" >&2; exit 2; fi
 # leg-burn prints cost-eq as "<n>k" from 1000 up and as a bare number below; work in k
 cost_k="$(awk -v r="$raw" 'BEGIN { if (r ~ /k$/) { sub(/k$/, "", r); printf "%.1f", r } else printf "%.1f", r / 1000 }')"

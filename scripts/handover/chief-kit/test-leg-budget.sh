@@ -130,6 +130,12 @@ check    "8: a small line, rc 0" "$rc" 0
 rc=0; out="$(bash "$SCRIPT" --from-line 'leg-burn x.jsonl: calls=4 avg-ctx=128.1k first-turn=74.3k out=185 compactions=2 text-only=2' 2>&1)" || rc=$?
 check    "8: a line without cost-eq, rc 2" "$rc" 2
 lacks    "8: a line without cost-eq never says OK" "$out" "verdict=OK"
+rc=0; out="$(bash "$SCRIPT" --from-line 'leg-burn: calls=0 cost-eq=. profile=x' 2>&1)" || rc=$?
+check    "8: a malformed cost-eq, rc 2" "$rc" 2
+lacks    "8: a malformed cost-eq never says OK" "$out" "verdict=OK"
+rc=0; out="$(bash "$SCRIPT" --from-line 'leg-burn: calls=0 cost-eq=1.0k profile=x' 2>&1)" || rc=$?
+check    "8: zero calls, rc 2" "$rc" 2
+lacks    "8: zero calls never says OK" "$out" "verdict=OK"
 
 echo
 [ "$fails" -eq 0 ] && echo "all leg-budget checks passed" || { echo "$fails check(s) FAILED"; exit 1; }
