@@ -34,7 +34,10 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/hook-unroll.XXXXXX") || { echo "FAIL fixture: mktemp"; exit 1; }
 trap 'rm -rf "$SANDBOX"' EXIT
-mkdir -p "$SANDBOX/home"
+mkdir -p "$SANDBOX/home" "$SANDBOX/slow"
+# A shfmt that takes a second per call: three calls overrun the unroll budget.
+printf '#!/bin/sh\nsleep 1\nexec %s "$@"\n' "$(command -v shfmt)" > "$SANDBOX/slow/shfmt"
+chmod +x "$SANDBOX/slow/shfmt"
 
 # unrolled <command> [ENV=val ...] -> GOT (the unrolled text, or NULL)
 unrolled() {
@@ -89,6 +92,7 @@ keep 'a zsh subscript $x[1]' 'for x in a; do cat $x[1]; done'
 keep 'a zsh modifier "$x:h"' 'for x in a; do cat "$x:h"; done'
 keep 'an open tilde prefix ~$x' 'for x in a; do cat ~$x; done'
 keep 'a brace beside the reference' 'for x in a; do cat {$x,b}; done'
+keep 'an open tilde prefix inside a quoted $(...)' 'for x in a; do echo "$(cat ~$x)"; done'
 keep 'a heredoc in the body' "$(printf 'for x in a; do cat <<EOF\n$x\nEOF\ndone')"
 keep 'a backtick substitution' 'for x in a; do echo `cat $x`; done'
 keep 'an escaped \$x' 'for x in a; do echo \$x; done'
@@ -100,6 +104,7 @@ keep 'a command over 8 KiB' "$(printf 'for x in a; do cat $x; # %09000d\ndone' 0
 keep 'an unrolled text over 8 KiB' "for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16; do cat \$x /$(printf '%0600d' 0); done"
 keep 'an item that re-reads as an assignment' 'for x in X=1; do $x ls; done'
 keep 'an item that re-reads as a keyword' 'for x in time; do $x ls; done'
+keep 'shfmt calls past the unroll budget' 'for x in a; do cat $x; done' PATH="$SANDBOX/slow:$PATH"
 
 echo "== chain: the real Bash PreToolUse members =="
 MEMBERS=()

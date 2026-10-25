@@ -945,7 +945,8 @@ function finishChain(st, sessionId) {
 // which the guards cannot do statically.
 const UNROLL_MAX_ITEMS = 16;
 const UNROLL_MAX_BYTES = 8 * 1024;
-const UNROLL_SHFMT_TIMEOUT_MS = 2000;
+// One budget for every shfmt call of one command; the chain clock is running.
+const UNROLL_BUDGET_MS = 2000;
 // No quote, glob, brace, tilde, `$`, backslash or space; no leading `=` (zsh
 // expands `=cmd` to a path in the word list).
 const UNROLL_ITEM_RE = /^[A-Za-z0-9._/@%+:,-][A-Za-z0-9._/@%+=:,-]*$/;
@@ -966,11 +967,13 @@ const UNROLL_CONTEXT_TYPES = new Set([
 ]);
 const PARAM_EXP_OPERATORS = ['Excl', 'Length', 'Width', 'Index', 'Slice', 'Repl', 'Names', 'Exp'];
 
-function shfmt(args, input) {
+function shfmt(args, input, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return null;
   const result = spawnSync('shfmt', args, {
     input,
     encoding: 'utf8',
-    timeout: UNROLL_SHFMT_TIMEOUT_MS,
+    timeout: remaining,
     killSignal: 'SIGKILL',
     maxBuffer: MEMBER_MAX_BUFFER,
     windowsHide: true,
@@ -978,8 +981,8 @@ function shfmt(args, input) {
   return !result.error && result.status === 0 ? result.stdout : null;
 }
 
-function parseShell(text) {
-  const out = shfmt(['--to-json', '-ln', 'bash'], text);
+function parseShell(text, deadline) {
+  const out = shfmt(['--to-json', '-ln', 'bash'], text, deadline);
   return out === null ? null : parseJsonObject(out);
 }
 
@@ -1019,7 +1022,9 @@ function bodyRefs(body, name, src) {
     if (node.Type && !UNROLL_CONTEXT_TYPES.has(node.Type) && node.Type !== 'Lit') inner = false;
     for (const [key, value] of Object.entries(node)) {
       if (!value || typeof value !== 'object') continue;
-      if (key === 'Parts') visit(value, inner, quoted || node.Type === 'DblQuoted', value);
+      // A command substitution's words are not in the outer quotes.
+      if (node.Type === 'CmdSubst') visit(value, inner, false, siblings);
+      else if (key === 'Parts') visit(value, inner, quoted || node.Type === 'DblQuoted', value);
       else visit(value, inner, quoted, siblings);
     }
   };
@@ -1105,7 +1110,8 @@ function unrollCommand(command) {
   if (countWord(command, 'for') === 0 || countWord(command, 'done') === 0) return null;
   // A changed IFS splits an unquoted `$NAME` differently from the quoted word.
   if (countWord(command, 'IFS') !== 0) return null;
-  const tree = parseShell(command);
+  const deadline = Date.now() + UNROLL_BUDGET_MS;
+  const tree = parseShell(command, deadline);
   if (!tree || !Array.isArray(tree.Stmts)) return null;
   const src = Buffer.from(command, 'utf8');
   const pieces = [];
@@ -1118,7 +1124,7 @@ function unrollCommand(command) {
       continue;
     }
     const stmts = loop.words.flatMap((word) => substituteWord(loop.body, loop.name, word));
-    const printed = shfmt(['--from-json', '-ln', 'bash'], JSON.stringify({ Type: 'File', Stmts: stmts }));
+    const printed = shfmt(['--from-json', '-ln', 'bash'], JSON.stringify({ Type: 'File', Stmts: stmts }), deadline);
     if (printed === null) return null;
     pieces.push(src.subarray(cursor, stmt.Pos.Offset).toString('utf8'), printed);
     cursor = stmt.End.Offset;
@@ -1132,7 +1138,7 @@ function unrollCommand(command) {
   // to any unrolled NAME: a word that re-reads as an assignment, a keyword or a
   // different split is not the command that runs. The printer writes a
   // backtick substitution as `$(...)`, so a body with one never re-reads equal.
-  const check = parseShell(unrolled);
+  const check = parseShell(unrolled, deadline);
   if (!check || JSON.stringify(normalizeTree(check.Stmts)) !== JSON.stringify(normalizeTree(expected))) return null;
   return unrolled;
 }
