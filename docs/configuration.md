@@ -267,9 +267,11 @@ Security properties (all in `scripts/telegram/poller.ts` / `gate.ts` /
 ### 2.4 Lane routing & delegation
 
 Implementation work is delegated down the Claude tiers (native subagents).
-The external lanes reached through sanctioned spawn scripts, claudex and
-codex-exec (OpenAI Codex-side models), are dormant and run only when opted in;
-hermes runs the cross-model critic rows inside `/pr-check`. The
+The external lanes reached through sanctioned spawn scripts run OpenAI
+Codex-side models: claudex is a live lane, taken only when a dispatch names it
+and once its readiness gate has 5 verified passes; codex-exec is dormant and
+runs only when opted in. hermes runs the cross-model critic rows inside
+`/pr-check`. The
 lane *inventory* is data, not prose: `scripts/lanes/lanes.json` resolved
 against machine state by `/lanes` (`scripts/lanes/resolve.mjs`). A "subscription usage budget"
 below is a usage-quota window — the rolling 5-hour Claude window, or the
@@ -281,7 +283,7 @@ flowchart TD
     ROUTE --> GUARD{{"guard-implementor-dispatch.sh<br/>cost guard on native Agent dispatches only<br/>(blocks when the 5h Claude bank is ≥80% used<br/>or the weekly bank ≥85%;<br/>external-lane dispatch types are never deny-eligible)"}}
     GUARD --> TIER["Claude tiers — native subagents<br/>(haiku / sonnet / opus / fable,<br/>always available)"]
     ROUTE --> EXT{{"external lanes — available only if<br/>their probe passes (lanes.json)"}}
-    EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree · dormant, CLAUDEX_LANE_OK"]
+    EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree · live, named dispatch,<br/>5 verified passes"]
     EXT -->|"codex on PATH"| CDX["codex-exec<br/>(scripts/codex/dispatch-codex-exec.sh)<br/>dormant, CODEX_EXEC_LANE_OK"]
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
     CDX ~~~ HRM
@@ -293,12 +295,16 @@ flowchart TD
 ```
 
 **Dormancy (operator ruling 2026-08-19).** The diagram shows what
-each sanctioned script *does*, not what is currently routed to it. Every external
-impl lane in the registry is marked `dormant`, and `lanes.json` deliberately
-carries no `defaultImplLane` — so an unqualified impl dispatch refuses toward
-the native Claude-subagent path rather than silently picking a lane. Opting
-one in is per-dispatch and per-lane (`CLAUDEX_LANE_OK`, `CODEX_EXEC_LANE_OK`;
-`/lanes` prints each dormant lane's opt-in). The registry also keeps a dropped GLM lane, offered
+each sanctioned script *does*, not what is currently routed to it. `lanes.json`
+deliberately carries no `defaultImplLane`, so an unqualified impl dispatch
+refuses toward the native Claude-subagent path rather than silently picking a
+lane. claudex is the one live external impl lane: `dispatch-lane.sh --lane
+claudex` runs it once its readiness gate has 5 consecutive verified passes
+(`readiness.passesRequired`), and refuses until then. The other external impl
+lanes, codex-exec, hermes-oneshot and openrouter-claude, are marked `dormant`;
+opting one in is per-dispatch and per-lane (`CODEX_EXEC_LANE_OK`,
+`HERMES_ONESHOT_LANE_OK`, `OPENROUTER_CLAUDE_LANE_OK`; `/lanes` prints each
+dormant lane's opt-in). The registry also keeps a dropped GLM lane, offered
 only under `GLM_LANE_OK`. Hermes critic rows inside `/pr-check` are unaffected.
 `/lanes` is the live inventory; `internals/lane-calibration.md` is the status
 of record.
@@ -787,7 +793,7 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `CLIPROXY_API_KEY` | unset (lane absent) | `.env` | makes the `claudex` lane *detectable*; the registry marks it dormant, so dispatching it also needs `CLAUDEX_LANE_OK=1` |
+| `CLIPROXY_API_KEY` | unset (lane absent) | `.env` | makes the `claudex` lane *detectable*; it is a live lane, dispatched only when named (`--lane claudex`) and once its readiness gate has 5 verified passes |
 | `OPENROUTER_API_KEY` | unset (lane absent) | `.env` | enables the openrouter-free lane |
 | `scripts/lanes/lanes.local.json` | absent | `node scripts/lanes/set-lane-override.mjs <lane> <always\|never>` | per-machine forced lane override — the sanctioned way to turn a lane off (`never`) without touching the shared registry |
 | `LANES_REGISTRY` | unset | env | full registry-path override (test/CI; skips the local overlay) |
@@ -798,11 +804,14 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |
 | `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the codex-lane external-write fence (`scripts/hooks/block-terminal-write-fence.sh`) |
 
-Implementation chunks are dispatched by backgrounding
-`bash scripts/telegram/dispatch-lane.sh --brief-file <path> --name <slug>`
-with the Bash tool's `run_in_background: true`. The script resolves available
-impl lanes from the registry, enforces the lane timeout, and prints one final
-status/diff/outbox report; no wrapper subagent or polling loop is needed.
+Implementation chunks run as native subagents (the Agent tool, with a named
+model tier). The registry declares no default implementation lane, so
+`scripts/telegram/dispatch-lane.sh` without `--lane` or `HIMMEL_IMPL_LANE`
+refuses. To send a chunk to an external lane you have enabled, background
+`bash scripts/telegram/dispatch-lane.sh --lane <enabled-lane-id> --brief-file <path> --name <slug>`
+with the Bash tool's `run_in_background: true`. The script enforces the lane
+timeout and prints one final status/diff/outbox report; no wrapper subagent or
+polling loop is needed.
 
 **Telegram bridge** (all read at poller start — restart the bridge after any
 change; token and access config live *outside* the repo):
@@ -811,7 +820,7 @@ change; token and access config live *outside* the repo):
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | — | `~/.claude/channels/telegram/.env` (path override `TELEGRAM_ENV`) | bot auth. A *separate* copy in the repo `.env` feeds only the opt-in jira-nudge / session-status relays |
 | `access.json` (`TELEGRAM_ACCESS_PATH`) | — | `~/.claude/channels/telegram/access.json` | the allowlist: `allowFrom` (DM senders), `groups` (chat-id keys), per-group `allowFrom`/`vault`, `defaultVault`. Fails closed |
-| `TELEGRAM_AUTO_ACTIONS` | OFF | bridge .env *or* process env (process wins) | enables `/arm` (`arm-resume`), `/mergepub` (`merge-public`) and `/restart` (`restart`) per-op; `merge-public` must be named explicitly — `all` never enables it. Op names are exactly `arm-resume` / `merge-public` / `restart`; the whole-value aliases `1`/`all`/`on`/`yes` enable `arm-resume` + `restart` (the non-merge ops), and any other unrecognized token parses to nothing (the poller warns at startup, naming the dropped tokens) |
+| `TELEGRAM_AUTO_ACTIONS` | OFF | bridge .env *or* process env (process wins) | enables privileged bridge ops one by one, e.g. `/arm` (`arm-resume`), `/restart` (`restart`), `/mergepub` (`merge-public`) and the break-glass ops; the full op list is in the [bridge guide](telegram-bridge.md#slash-chief-requests-and-emergency-lockdown) and [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops). The whole-value aliases `1`/`all`/`on`/`yes` enable only `arm-resume` + `restart`; every other op, `merge-public` included, must be named explicitly. An unrecognized token parses to nothing (the poller warns at startup, naming the dropped tokens) |
 | `TELEGRAM_CLAUDE_MODEL` | `claude-opus-5-5` | own .env | model pin for bounded bridge runs (never inherits your default) |
 | `TELEGRAM_MAX_CONCURRENT_RUNS` / `TELEGRAM_RETRY_MS` / `TELEGRAM_MAX_RETRIES` / `RUN_TIMEOUT_MS` | 2 / 15min / 3 / 30min | own .env | run concurrency/retry/deadline |
 | `TELEGRAM_TRIAGE` (+ `_MODEL`, `_PROVIDER`, `_TIMEOUT_MS`) | on (`deepseek-v4-flash`) | own .env | cheap group-message triage classifier; `TELEGRAM_TRIAGE=off` disables |
@@ -986,7 +995,7 @@ tables; this is the layer level.)
 | Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "" }` in that repo's `.claude/settings.json` | session start |
 | Armed auto-merge | leave/unset `ARMAUTOMERGE` (default OFF) | per shell |
 | Cap watchdogs (auto-arm) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) | launching shell |
-| A scheduled resume | `scripts/handover/arm-resume.sh --dry-run` to inspect; delete the `HIMMEL-Resume-*` scheduled job (`at` / crontab) | OS scheduler |
+| A scheduled resume | find the job with `atq` then `at -c <job-id>` (look for `HIMMEL-Resume-`), or `crontab -l`; remove that one job with `atrm <job-id>`, or delete that one line with `crontab -e` | OS scheduler |
 | Recurring vault cadence | `scripts/luna/pipeline-cadence.sh disarm` | OS scheduler |
 | An overnight run in flight | `/stop` (graceful, marker-based; `--hard` also stops subagents) | marker file |
 | Telegram bridge | never started unless you start it; stop: `bun --cwd scripts/telegram supervisor.ts --kill` | process / scheduler |

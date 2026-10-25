@@ -163,7 +163,7 @@ Fields:
 
 Missing file → defaults applied (`enabled: true`, `dry_run: false`, `min_duration_seconds: 60`); `vault_path`/`vault` absent.
 
-> **Write this file as UTF-8 _without_ a BOM.** A leading byte-order mark makes the hook treat the config as invalid JSON and **fail closed: it silently stops capturing**. `/end-session-wiki-setup` and hand-edits in most editors are fine.
+> **The file must be one valid JSON object.** A syntax error, a comment, an empty file or a non-object value (`null`, an array, a string) makes the hook **fail closed: it skips capture** for this repo. A leading UTF-8 byte-order mark is tolerated; the hook strips it before parsing.
 
 ## Choosing the target vault
 
@@ -176,27 +176,29 @@ Your vault almost certainly does not live where the operator's does, and you may
 
 `vault_path` configures a path (renaming/moving the vault means updating that path). `vault` configures a name and each machine resolves the path, so the same committed value works everywhere: an operator either follows the `~/Documents/<name>` convention (zero extra config) or maps the name in their registry.
 
-**Set the target interactively** with the `/end-session-wiki-setup` command: run it from your code repo and it writes the value for you (any of the options above). The luna template setup (`templates/luna-second-brain/scripts/setup.sh`) prints the same options after a fresh install but doesn't write them. Or configure by hand:
+**Set the target interactively** with the `/end-session-wiki-setup` command: run it from your code repo and it writes the value for you (any of the options above). The luna template setup (`templates/luna-second-brain/scripts/setup.sh`) prints the same options after a fresh install but doesn't write them. Or configure by hand. Each file must be one valid JSON object (JSON has no comments); a `.claude/end-session-wiki.json` that is not valid JSON, or not an object, skips capture.
+
+`.claude/end-session-wiki.json`: capture this repo's sessions into a specific vault (absolute path):
 
 ```json
-// .claude/end-session-wiki.json — capture THIS repo's sessions into a specific vault (absolute path)
 { "vault_path": "~/Documents/my-vault" }
 ```
 
+`.claude/end-session-wiki.json`: route by vault name (distributable, safe to commit):
+
 ```json
-// .claude/end-session-wiki.json — distributable: route by vault NAME (safe to commit)
 { "vault": "salus" }
 ```
 
+`~/.claude/luna-vaults.json`: per-machine name→path map, needed only for vaults that don't live at `~/Documents/<name>`:
+
 ```json
-// ~/.claude/luna-vaults.json — per-machine name→path map (optional;
-// only needed for vaults that don't live at ~/Documents/<name>)
 { "vaults": { "salus": "~/Documents/salus" } }
 ```
 
+`~/.claude/settings.json`: global default vault for all repos (process env, applied at session start):
+
 ```json
-// ~/.claude/settings.json — global default vault for all repos (process env,
-// applied at session start)
 { "env": { "LUNA_VAULT_PATH": "/home/me/Documents/my-vault" } }
 ```
 

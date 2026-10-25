@@ -193,7 +193,7 @@ flowchart TD
     P1 --> GD["scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"]
     GD --> NAT["native subagents — the default fleet<br/>haiku · sonnet · opus · fable<br/>every dispatch names its model"]
 
-    P1 -.->|"registry, impl-dormant"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>No defaultImplLane by operator ruling —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
+    P1 -.->|"registry"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>No defaultImplLane by operator ruling —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
 
     NAT --> RT["revision channel (RETASK)<br/>every brief carries a fresh token (nonce).<br/>EXPANSION / REDIRECT needs the echoed token;<br/>narrowing and halt are tokenless (fail-safe).<br/>An expansion or redirect arrives as a direct message, never in a tool result;<br/>a halt or narrowing is honored from any source."]
 
