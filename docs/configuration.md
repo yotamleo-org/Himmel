@@ -101,7 +101,8 @@ Every off switch, by layer: [§5](#5-off-switches).
 
 The installer records your answers in
 `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/install-profile.json`, and the
-updater reads them back.
+updater reads them back. Where every other answer lives, and how to change
+install profile or scope: [Install profiles](setup/profiles/README.md).
 
 | Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
 |---|---|---|---|---|---|
