@@ -126,7 +126,6 @@ scripts/himmelctl/test/test-wizard-status-golden.sh
 
 # --- vm, parity, observability, luna, codex, telegram, lanes, others
 # portable-shell and path-form sensitive helpers that passed on macOS.
-scripts/cleanup/test-codex-sweep-cadence.sh
 scripts/codex/test-codex-hook-parity.sh
 scripts/codex/test-dispatch-codex-exec.sh
 scripts/chief/test-base-status.sh

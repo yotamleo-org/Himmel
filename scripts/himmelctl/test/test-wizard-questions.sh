@@ -142,7 +142,7 @@ set -e
 qs=$(count_questions "$out")
 # vault=none + no codex lane no longer means zero cadence rows
 # qualify — drift-fix/upstream-watch are requires:'none' and always offered
-# (repo-sync is requires:'platform:windows'), so the cadences
+# so the cadences
 # question is now asked (+1), and closed stdin
 # declines all three, which triggers the disarm-consent follow-up (+1) —
 # 6 main questions (pluginSet no longer asked) + those 2 = 8; the commit-rules prompts follow a bare "> " on closed stdin so this line-anchored count does not see them. See test-wizard-cadence-per-unit.sh case e
@@ -202,7 +202,7 @@ stub2b="$work/case2b"; mkdir -p "$stub2b"
 c2bpath=$(build_path "$stub2b" bash jq python3 npm -- )
 h2b="$work/h2b"; mkdir -p "$h2b"
 set +e
-outOp=$(PATH="$c2bpath" HOME="$h2b" USERPROFILE="$(winpath "$h2b")" HIMMELCTL_CACHE_DIR="$(winpath "$h2b.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h2b.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=win32 \
+outOp=$(PATH="$c2bpath" HOME="$h2b" USERPROFILE="$(winpath "$h2b")" HIMMELCTL_CACHE_DIR="$(winpath "$h2b.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h2b.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
       "$node_bin" "$wizard" install --dry-run --contribute 2>&1 <<< "operator"); rcOp=$?
 set -e
 [ "$rcOp" -eq 0 ] || fail "case2(operator): should succeed (got rc=$rcOp): $outOp"
@@ -212,21 +212,8 @@ grepq "$outOp" -F '? handover [inline|external] (default: external)' \
   || fail "case2(operator): should seed handover default=external (got: $outOp)"
 grepq "$outOp" -F '(default: yes)' \
   || fail "case2(operator): should seed alwaysOn default=yes (got: $outOp)"
-grepq "$outOp" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,doctor,repo-sync,vault-stall|none] (default: pipeline,qmd,graphmap)' \
+grepq "$outOp" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,doctor,vault-stall|none] (default: pipeline,qmd,graphmap)' \
   || fail "case2(operator): should seed cadences default=pipeline,qmd,graphmap, offering the HIMMEL-3068 requires:'none' rows too (got: $outOp)"
-# the run above pins HIMMELCTL_CADENCE_PLATFORM=win32 because
-# repo-sync is requires:'platform:windows'. The non-Windows twin: same
-# preset, linux host -> the same menu MINUS repo-sync, defaults unchanged.
-stub2c="$work/case2c"; mkdir -p "$stub2c"
-c2cpath=$(build_path "$stub2c" bash jq python3 npm -- )
-h2c="$work/h2c"; mkdir -p "$h2c"
-set +e
-outOpLinux=$(PATH="$c2cpath" HOME="$h2c" USERPROFILE="$(winpath "$h2c")" HIMMELCTL_CACHE_DIR="$(winpath "$h2c.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h2c.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=linux \
-      "$node_bin" "$wizard" install --dry-run --contribute 2>&1 <<< "operator"); rcOpLinux=$?
-set -e
-[ "$rcOpLinux" -eq 0 ] || fail "case2(operator, linux): should succeed (got rc=$rcOpLinux): $outOpLinux"
-grepq "$outOpLinux" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,doctor,vault-stall|none] (default: pipeline,qmd,graphmap)' \
-  || fail "case2(operator, linux): the operator preset on a linux host must offer the cadences menu WITHOUT repo-sync (got: $outOpLinux)"
 grepq "$outOp" -F '? configure the telegram bridge (voice/text ingestion)? [off|on] (default: on)' \
   || fail "case2(operator): should seed bridge default=on (got: $outOp)"
 # the operator preset seeds whisperModel=ggml-large-v3-turbo.bin
@@ -562,14 +549,10 @@ echo "ok: case6c --from-profile v2 with pluginSet=full -> exit 2 + message namin
 # Fixture repo root shared by case6d/e below — every --from-profile
 # invocation here gets it, even the exit-2 ones, so a future validator
 # regression that lets one of these fall through to the derived adopt.sh
-# shell-out hits a harmless stub instead of the real checkout. The
-# codex-sweep-cadence.sh stub is needed by case6d-asymmetry, which actually
-# arms the cadence (a rc=127 missing-script arm failure would fail the whole
-# install run, masking the validation assertion being made there).
-fixture6d="$work/case6d-fixture"; mkdir -p "$fixture6d/scripts/cleanup"
+# shell-out hits a harmless stub instead of the real checkout.
+fixture6d="$work/case6d-fixture"; mkdir -p "$fixture6d/scripts"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture6d/scripts/adopt.sh"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture6d/scripts/cleanup/codex-sweep-cadence.sh"
-chmod +x "$fixture6d/scripts/adopt.sh" "$fixture6d/scripts/cleanup/codex-sweep-cadence.sh"
+chmod +x "$fixture6d/scripts/adopt.sh"
 
 # a `requires:'vault'` cadence (pipeline/qmd/
 # graphmap) armed while vault.mode='none' validates the two fields
@@ -593,27 +576,6 @@ grepq "$outVaultCadence" -F -- 'pipeline' \
 grepq "$outVaultCadence" -i "vault" \
   || fail "case6d: should name the unmet vault requirement (got: $outVaultCadence)"
 echo "ok: case6d --from-profile with a requires:vault cadence armed while vault.mode=none -> exit 2 naming the cadence and vault"
-
-# an earlier fix Fix 1 (documented asymmetry, pinned so it is never
-# "fixed" into symmetry): a `requires:'lane:codex'` cadence (codex-sweep) is
-# NOT gated on whether 'codex' is actually in `lanes` -- naming it armed in a
-# hand-reviewed profile IS the consent, same principle as the existing lanes
-# comment above. vault.mode=none + cadences.codex-sweep=armed with codex
-# absent from lanes must VALIDATE (not exit 2) here; the end-to-end arm is
-# covered by test-wizard-cadence-per-unit.sh (needs a fixture repo/script).
-codexCadence="$work/codex-cadence-no-lane.json"
-cat > "$codexCadence" <<JSON
-{"schemaVersion":2,"profile":"custom","devOverlay":false,"tier":"standard","scope":"project","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false,"cadences":{"codex-sweep":"armed"}}
-JSON
-set +e
-outCodexCadence=$(PATH="$c6path" HOME="$h6" USERPROFILE="$(winpath "$h6")" HIMMELCTL_CACHE_DIR="$(winpath "$h6.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h6.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
-      HIMMELCTL_REPO_ROOT="$(winpath "$fixture6d")" \
-      "$node_bin" "$wizard" install --from-profile "$(winpath "$codexCadence")" \
-      </dev/null 2>&1); rcCodexCadence=$?
-set -e
-[ "$rcCodexCadence" -eq 0 ] \
-  || fail "case6d-asymmetry: vault=none + cadences.codex-sweep=armed with no codex lane should VALIDATE (exit 0) — requires:lane:codex is a consent surface, not enforced (got $rcCodexCadence): $outCodexCadence"
-echo "ok: case6d-asymmetry --from-profile with a requires:lane:codex cadence armed and codex absent from lanes VALIDATES (documented consent asymmetry, not a bug)"
 
 # the wizard never writes an empty top-level
 # `cadences: {}` -- resolveCadenceDispositions() treats ANY present

@@ -41,11 +41,9 @@ task silently vanishes.
 | `qmd` | `scripts/luna/qmd-cadence.sh` | a vault exists | Daily qmd update, embed and completeness assert over every configured collection, so the index never goes silently stale |
 | `graphmap` | `scripts/luna/graphmap-cadence.sh` | a vault exists | Hourly free structural (AST) refresh, weekly semantic refresh of the vault and himmel graphify graphs, plus a 6-hourly refresh, publish and auto-merge PR for himmel's own graph. Arming it commits to the hourly job. `arm --vault <path>` |
 | `vault-stall` | `scripts/luna/vault-stall-cadence.sh` | a vault exists | Every 15 minutes: detect a stalled vault auto-commit, remediate only the known-benign pre-commit refusals, alert on everything else without echoing the secret. `arm --vault <path>` |
-| `codex-sweep` | `scripts/cleanup/codex-sweep-cadence.sh` | the codex lane is selected | Recurring sweep of orphaned codex broker and MCP-fleet processes. Daily, default 09:00 local |
 | `drift-fix` | `scripts/upstreams/drift-fix-cadence.sh` | always | Nightly `/drift-fix` (bump auto-bumpable pins, open an ordinary PR) and `/fork-resync` (rebase carried forks, audit only). Stops at the PR or audit; never merges. Extra flag `--resync-time` |
 | `upstream-watch` | `scripts/upstreams/upstream-watch-cadence.sh` | always | Daily scan of himmel's open upstream PRs and issues for a delta. No Claude session; Telegram-notified only when something changed |
 | `doctor` | `scripts/doctor-cadence.sh` | always | Daily `himmel-doctor` run from the primary checkout. A FAIL or a new WARN goes to Telegram and the statusline shows the counts. Report only, fixes nothing. Cron only (Linux, macOS) |
-| `repo-sync` | `scripts/sync/repo-sync-cadence.sh` | Windows only | Daily fetch and fast-forward-only pull of every git repo under `--github-root` / `--documents-root`, plus a stale scratch-worktree cleanup pass. Uses `schtasks`; there is no crontab path |
 | `pull-cadence` | `scripts/luna-vitals/connectors/pull-cadence.sh` | `GOOGLE_HEALTH_REFRESH_TOKEN` is set | Daily Google Health connector pull to a review artifact. No Claude session. Setup: [luna/google-health-connector-setup.md](luna/google-health-connector-setup.md) |
 
 ## Cadences armed by hand (not in the wizard)

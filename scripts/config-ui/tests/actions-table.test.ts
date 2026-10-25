@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { buildTable, resolveAction, loadRegistries } from "../actions";
 
 // T4.0: the action table on its own, no server. Every path is a fixed fake root.
-const ctx = { root: "/R", cadenceRoot: "/C", himmelctl: "/H/bin.js", platform: "linux", plugins: ["a@m", "b@m"], lanes: ["l1"] };
+const ctx = { root: "/R", cadenceRoot: "/C", himmelctl: "/H/bin.js", plugins: ["a@m", "b@m"], lanes: ["l1"] };
 const table = buildTable(ctx);
 const H = ["node", "/H/bin.js"];
 
@@ -54,7 +54,6 @@ const refused: [string, string, string | undefined][] = [
   ["__proto__", "graphmap", undefined],
   ["constructor", "graphmap", undefined],
   ["cadence.arm", "nightly", undefined],
-  ["cadence.arm", "codex-sweep", undefined], // platform gate: linux
   ["plugin.disable", "handover@himmel", undefined], // floor, never a target
   ["plugin.enable", "c@m", undefined],
   ["plugin.enable", "-a@m", undefined],
@@ -93,11 +92,6 @@ for (const [action, target, value] of refused) {
     expect(() => resolveAction(table, action, target, value)).toThrow();
   });
 }
-
-test("the codex-sweep cadence is a target only on Windows", () => {
-  const win = buildTable({ ...ctx, platform: "win32" });
-  expect(resolveAction(win, "cadence.arm", "codex-sweep").argv).toEqual(["bash", "/C/scripts/cleanup/codex-sweep-cadence.sh", "arm"]);
-});
 
 test("the table is frozen", () => {
   expect(Object.isFrozen(table)).toBe(true);

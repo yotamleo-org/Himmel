@@ -504,7 +504,6 @@
     { id: 'pipeline', req: 'vault', d: 'daily fetch-health/harvest/synthesize + weekly health runs against the vault' },
     { id: 'qmd', req: 'vault', d: 'daily qmd update+embed+completeness assert over every configured collection' },
     { id: 'graphmap', req: 'vault', d: 'hourly free structural (AST) refresh + weekly semantic refresh of the luna/himmel graphify graphs' },
-    { id: 'codex-sweep', req: 'codex', d: 'recurring sweep of orphaned codex broker/MCP-fleet processes' },
     { id: 'drift-fix', req: 'none', d: 'nightly /drift-fix (bump auto-bumpable pins, open an ordinary PR)' },
     { id: 'upstream-watch', req: 'none', d: "daily scan of himmel's open upstream PRs/issues for a delta" },
     { id: 'doctor', req: 'none', d: 'daily himmel-doctor run from the primary checkout' },
@@ -513,7 +512,6 @@
   function offered() {
     return cadenceRows.filter(function (r) {
       if (r.req === 'vault') return p.vault !== 'none';
-      if (r.req === 'codex') return p.lanes.indexOf('codex') !== -1;
       return true;
     });
   }
@@ -568,7 +566,7 @@
       },
       means: function () {
         var x = p.lanes.length ? 'Selected: ' + p.lanes.join(' and ') + '. Review in /pr-check can include a non-Claude critic.' : 'No extra lanes. Review is Claude-only, which always runs; a policy that demands a second model family cannot be met.';
-        return { see: ['A note on what lanes change, printed once, then a multi-select. Enter means none.'], does: [x].concat(p.lanes.indexOf('codex') !== -1 ? ['The codex-sweep scheduled job becomes available later on.'] : []) };
+        return { see: ['A note on what lanes change, printed once, then a multi-select. Enter means none.'], does: [x] };
       } },
     // source: bin.js ALWAYS_ON_HELP
     { id: 'always', short: 'Always-on machine', sub: 'unattended runs', kind: 'ask',

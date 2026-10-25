@@ -8,7 +8,6 @@
     "whisperModel": "ggml-large-v3-turbo.bin"
   },
   "cadences": {
-    "codex-sweep": "armed",
     "graphmap": "off",
     "pipeline": "armed",
     "qmd": "armed"

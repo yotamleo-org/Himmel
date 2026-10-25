@@ -1390,7 +1390,7 @@ function buildSummary(answers, laneRows, opts) {
     // this branch used to return here,
     // reporting only the two legacy lines above and never reaching the
     // per-unit loop in the `else` branch below — a profile that requested
-    // qmd/graphmap/codex-sweep arming lost those rows entirely on a
+    // qmd/graphmap arming lost those rows entirely on a
     // config-load failure, silently dropping the request from the summary
     // instead of honestly saying it was not armed. `pipeline` is excluded:
     // the legacy "luna cadence" line above already covers it (same

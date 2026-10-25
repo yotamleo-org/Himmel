@@ -297,7 +297,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // `report`, so the feed and the actions agree): the tree the cadence scripts
   // run from, the checkout by default. Read from the production env, not gated:
   // the action tests and ci.yml rely on it (a stub tree).
-  const table = buildTable({ root, cadenceRoot: env.HIMMEL_REPORT_CADENCE_ROOT ?? root, himmelctl, platform: process.platform, ...loadRegistries(root) });
+  const table = buildTable({ root, cadenceRoot: env.HIMMEL_REPORT_CADENCE_ROOT ?? root, himmelctl, ...loadRegistries(root) });
   const previews = new Map<string, Preview>();
   const publicRoot = join(import.meta.dir, "public");
   let actionWorst = 0;

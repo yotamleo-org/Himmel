@@ -139,12 +139,6 @@ scripts/claude-glm	prim-lock	1
 scripts/claude-glm-seed-check.sh	mktemp	1
 scripts/clean-garden.sh	errexit	1
 scripts/clean.sh	errexit	1
-scripts/cleanup/codex-sweep-cadence.sh	errexit	1
-scripts/cleanup/codex-sweep-cadence.sh	gnu-flag	1
-scripts/cleanup/codex-sweep-cadence.sh	prim-atomic	2
-scripts/cleanup/test-codex-sweep-cadence.sh	errexit	1
-scripts/cleanup/test-codex-sweep-cadence.sh	gnu-flag	1
-scripts/cleanup/test-codex-sweep-cadence.sh	mktemp	1
 scripts/cleanup/test-reap-mcp-orphans.sh	mktemp	1
 scripts/cloud/setup-env.sh	prim-tmpdir	1
 scripts/codex/bump-codex-sessionend-timeout.sh	errexit	1
@@ -940,10 +934,6 @@ scripts/setup/test-onboard-telegram.sh	mktemp	1
 scripts/setup/test-setup-preflight.sh	mktemp	1
 scripts/skill-index/build-skill-index.sh	bash32	1
 scripts/skill-index/build-skill-index.sh	mktemp	1
-scripts/sync/repo-sync-cadence.sh	errexit	1
-scripts/sync/repo-sync-cadence.sh	prim-atomic	2
-scripts/sync/repo-sync-runner.sh	errexit	1
-scripts/sync/test-repo-sync-cadence.sh	errexit	1
 scripts/telegram/auto-action.sh	prim-canon	4
 scripts/telegram/dispatch-lane.sh	kill-after	1
 scripts/telegram/dispatch-lane.sh	prim-tmpdir	1

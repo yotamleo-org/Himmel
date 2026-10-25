@@ -808,21 +808,10 @@ sync_agent_clis() {
 # cadence_user_home (emitter parity — USERPROFILE via cygpath before $HOME on
 # Windows Git-Bash — a bare $HOME would probe the MSYS dir).
 report_cadence_stale() {
-    local label bat_dir rearm ver uh is_windows=0
+    local label bat_dir rearm ver uh
     uh="$(cadence_user_home)"
-    case "$(cadence_runner_platform_ext)" in bat) is_windows=1 ;; esac
     while IFS='|' read -r label bat_dir rearm; do
         [ -n "$label" ] || continue
-        # codex-sweep-cadence only ever arms on Windows (its own arm refuses
-        # elsewhere) — on any other platform a leftover .bat/.sh
-        # twin is n/a, never a recipe that would itself refuse.
-        if [ "$label" = "codex-sweep-cadence" ] && [ "$is_windows" -eq 0 ]; then
-            if [ -f "$bat_dir/codex-sweep.bat" ] || [ -f "$bat_dir/codex-sweep.sh" ]; then
-                echo ""
-                echo "==> codex-sweep-cadence: Windows-only, n/a on this platform"
-            fi
-            continue
-        fi
         ver="$(cadence_runner_stamp "$bat_dir")" || continue
         [ "$ver" -lt "$CADENCE_RUNNER_FORMAT_VERSION" ] || continue
         echo ""
@@ -831,7 +820,6 @@ report_cadence_stale() {
         echo "        $rearm"
     done <<EOF
 pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/luna/pipeline-cadence.sh arm --force
-codex-sweep-cadence|${SWEEP_BAT_DIR:-$uh/.claude/codex-sweep-cadence}|bash scripts/cleanup/codex-sweep-cadence.sh arm --force
 graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --force
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
