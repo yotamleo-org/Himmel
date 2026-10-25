@@ -104,8 +104,8 @@ elif case == "complete":
 elif case == "class":
     for r, cell in rows:
         c = klass.get(r)
-        if c == "state" and "--purge-state" not in cell:
-            print(f"{r} (state): Uninstall cell does not name --purge-state: {cell}")
+        if c == "state" and "`--purge-state` removes" not in cell:
+            print(f"{r} (state): Uninstall cell does not say --purge-state removes it: {cell}")
         elif c == "keep" and not re.match(r"(Kept|Never touched)", cell):
             print(f"{r} (keep): Uninstall cell does not start with Kept or Never touched: {cell}")
         elif c == "code" and re.match(r"(Kept|Never)", cell):
@@ -144,6 +144,10 @@ if [ -f "$PAGE" ]; then
 
   sed 's/--purge-state/--purge-nothing/g' "$PAGE" >"$TMP/page-nopurge.md"
   if [ -n "$(check class "$TMP/page-nopurge.md" "$MANIFEST")" ]; then ok "5c CONTROL: a state row without --purge-state fails case 3"; else bad "5c CONTROL: a state row without --purge-state passed case 3"; fi
+
+  tick='`'
+  sed "s/${tick}--purge-state${tick} removes/${tick}--purge-state${tick} never removes/g" "$PAGE" >"$TMP/page-negated.md"
+  if [ -n "$(check class "$TMP/page-negated.md" "$MANIFEST")" ]; then ok "5d CONTROL: a state row that negates --purge-state fails case 3"; else bad "5d CONTROL: a state row that negates --purge-state passed case 3"; fi
 else
   bad "5b/5c CONTROL: page missing: $PAGE"
 fi

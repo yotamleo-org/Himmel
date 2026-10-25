@@ -293,13 +293,16 @@ template ownership. It is destructive and fail-closed
 (a non-interactive run aborts without `--yes`). Invoke `uninstall.sh` directly
 for the manual or CI path; preview any run with `--dry-run`, and skip
 individual steps with `--skip-plugins` / `--skip-hooks` / `--skip-tasks` /
-`--skip-settings`:
+`--skip-settings`. A real run on a home folder that holds your Claude login,
+an SSH key or `~/.gitconfig` refuses (exit 3) unless
+`HIMMEL_UNINSTALL_REAL_HOME=1` is set, so a test can never sweep a real home;
+`himmelctl uninstall` sets it for you after you confirm:
 
 ```bash
 bash scripts/uninstall.sh --dry-run    # preview; nothing is executed
-bash scripts/uninstall.sh --yes        # remove code wiring, keep operator state
-bash scripts/uninstall.sh --yes --purge-state   # ...and remove operator state + the provenance ledger too
-bash scripts/uninstall.sh --yes --purge-state --keep-backups   # ...but keep the ledger's backup copies
+HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh --yes        # remove code wiring, keep operator state
+HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh --yes --purge-state   # ...and remove operator state + the provenance ledger too
+HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh --yes --purge-state --keep-backups   # ...but keep the ledger's backup copies
 ```
 
 The paths it acts on are listed in

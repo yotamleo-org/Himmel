@@ -17,7 +17,11 @@ How to read the columns:
 - **Owner:** *himmel* is himmel's own code and wiring; *you* is your data or
   your own settings; *another tool* is what another program wrote.
 - **Uninstall:** what `himmelctl uninstall` does with it. `--purge-state` is
-  the flag that also removes your data ([detail](updating.md#undo)).
+  the flag that also removes your data ([detail](updating.md#undo)). Each
+  cell is what a run that finishes does. When a step cannot finish, the item
+  stays and the run says so: for example a bridge unit with no `systemctl` to
+  disable it, a file you changed since the install, or a crontab the run
+  cannot read.
 - **Row:** the manifest row, so you can find it in the uninstaller's own
   preview.
 
@@ -86,8 +90,10 @@ let setup save your commit rules and other answers.
 | Your per-machine overrides of those settings | `~/.himmel/himmel.conf.local` | user | you | Kept; `--purge-state` removes it | `himmel-conf-local` |
 | The answers setup saves, such as the vault path and VM mode, and the shared gate policy | `~/.himmel/config.json` | user | you | Kept; `--purge-state` removes it, and a gate whose policy is gone then refuses | `himmel-config-json` |
 
-If you also say yes to the `.salus` marker, setup creates an empty `.salus`
-file in that vault. Uninstall leaves it there.
+If you also say yes to the `.salus` marker and the vault folder already
+exists, setup creates an empty `.salus` file in it. If the folder does not
+exist yet, setup still records the vault and tells you to create the marker
+yourself once the folder exists. Uninstall leaves the marker there.
 
 ## Never touched
 
