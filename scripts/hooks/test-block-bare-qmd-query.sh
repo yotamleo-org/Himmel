@@ -1282,7 +1282,7 @@ out=$(env PATH="$NOSH" QMD_UNBOUNDED_OK=1 bash "$HOOK" <<<"$(j_bash 'qmd query x
 case "$out" in *"rc=0") echo "PASS no shfmt: the bypass still allows" ;; *) echo "FAIL no shfmt: the bypass still allows - $out"; FAILED=$((FAILED + 1)) ;; esac
 
 # A command model that runs past its bound denies: a stub timeout stands in for the slow model.
-mkdir -p "$NOSH/slow-model" && printf '#!/bin/sh\nexit 124\n' >"$NOSH/slow-model/timeout" && chmod +x "$NOSH/slow-model/timeout"
+mkdir -p "$NOSH/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$NOSH/slow-model/timeout" && chmod +x "$NOSH/slow-model/timeout"
 # shellcheck disable=SC2069
 out=$(printf '%s' "$(j_bash 'qmd status')" | env -u QMD_UNBOUNDED_OK XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
 case "$out" in *"timed out"*"rc=2") echo "PASS a timed-out command model denies a command that names qmd" ;; *) echo "FAIL a timed-out command model denies a command that names qmd - $out"; FAILED=$((FAILED + 1)) ;; esac

@@ -210,10 +210,23 @@ out=$(printf '%s' "$(j_bash 'docker run --rm img sh')" | PATH="$NOSH" DOCKER_PRI
 case "$out" in *"rc=0") echo "PASS no shfmt: the bypass still allows" ;; *) echo "FAIL no shfmt: the bypass still allows - $out"; FAILED=$((FAILED + 1)) ;; esac
 
 # A command model that runs past its bound denies: a stub timeout stands in for the slow model.
-mkdir -p "$NOSH/slow-model" && printf '#!/bin/sh\nexit 124\n' >"$NOSH/slow-model/timeout" && chmod +x "$NOSH/slow-model/timeout"
+mkdir -p "$NOSH/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$NOSH/slow-model/timeout" && chmod +x "$NOSH/slow-model/timeout"
 # shellcheck disable=SC2069
 out=$(printf '%s' "$(j_bash 'docker ps')" | XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
 case "$out" in *"timed out"*"rc=2") echo "PASS a timed-out command model denies a docker command" ;; *) echo "FAIL a timed-out command model denies a docker command - $out"; FAILED=$((FAILED + 1)) ;; esac
+
+# The hook's entry timeout is 15 s and nothing bounds it from outside, so a command large enough to push the
+# model's own bound (10 s plus 1 s per KiB past 4 KiB) past that must still end in a deny inside 15 s.
+mkdir -p "$NOSH/stuck-jq" && printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) exec sleep 60 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$NOSH/stuck-jq/jq" && chmod +x "$NOSH/stuck-jq/jq"
+if command -v timeout >/dev/null 2>&1; then
+    t0=$(date +%s)
+    # shellcheck disable=SC2069
+    out=$(printf '%s' "$(j_bash "docker ps; echo $(head -c 12288 /dev/zero | tr '\0' x)")" | XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/stuck-jq:$PATH" timeout -k 2 30 bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+    el=$(($(date +%s) - t0))
+    case "$out" in *"timed out"*"rc=2") if [ "$el" -lt 15 ]; then echo "PASS a large docker command is denied inside the 15 s entry timeout (${el}s)"; else echo "FAIL a large docker command is denied inside the 15 s entry timeout - took ${el}s"; FAILED=$((FAILED + 1)); fi ;; *) echo "FAIL a large docker command is denied inside the 15 s entry timeout - ${el}s $out"; FAILED=$((FAILED + 1)) ;; esac
+else
+    echo "WARN large docker command row skipped: no timeout(1)"
+fi
 
 # --- BYPASS case (expect rc=0 with DOCKER_PRIVESC_OK=1) ---
 assert_rc "Bypass --privileged"                0 "$(run_case "$(j_bash 'docker run --privileged img sh')" "DOCKER_PRIVESC_OK=1")"

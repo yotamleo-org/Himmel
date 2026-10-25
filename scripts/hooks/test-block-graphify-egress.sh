@@ -13,7 +13,7 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/himmel-block-graphify-egress.XXXXXX")"
 trap 'rm -rf "$T"' EXIT
 PROJECT="$T/project"
 mkdir -p "$PROJECT/scripts/hooks" "$PROJECT/scripts/guardrails" "$PROJECT/scripts/lib" "$T/luna"
-cp "$HOOKS_DIR/../lib/bash-ast.sh" "$PROJECT/scripts/lib/bash-ast.sh"
+cp "$HOOKS_DIR/../lib/bash-ast.sh" "$HOOKS_DIR/../lib/timeout-bin.sh" "$PROJECT/scripts/lib/"
 : > "$T/luna/journal.md"
 # block-graphify-egress.sh resolves its fence relative to its OWN location
 # (${BASH_SOURCE[0]}), not $CLAUDE_PROJECT_DIR — so the hook AND lib.sh AND
@@ -468,9 +468,22 @@ out="$(run_hook_nosh "ls /tmp")"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "no shfmt: a command without graphify is not denied"; else bad "no shfmt ls: rc=$rc out=$out"; fi
 
 # A command model that runs past its bound denies: a stub timeout stands in for the slow model.
-mkdir -p "$T/slow-model" && printf '#!/bin/sh\nexit 124\n' >"$T/slow-model/timeout" && chmod +x "$T/slow-model/timeout"
+# shellcheck disable=SC2016 # $1/$5 belong to the stub
+mkdir -p "$T/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$T/slow-model/timeout" && chmod +x "$T/slow-model/timeout"
 out="$(jq -n --arg cmd "grep -rn graphify $T/luna" '{tool_name:"Bash",tool_input:{command:$cmd}}' | XDG_STATE_HOME="$T/state" PATH="$T/slow-model:$PATH" CLAUDE_PROJECT_DIR="$PROJECT" bash "$HOOK" 2>&1)"; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'timed out' <<<"$out"; then ok "a timed-out command model denies a command that mentions graphify"; else bad "timed-out model: rc=$rc out=$out"; fi
+
+# The hook's entry timeout is 15 s and nothing bounds it from outside, so a command large enough to push the
+# model's own bound (10 s plus 1 s per KiB past 4 KiB) past that must still end in a deny inside 15 s.
+mkdir -p "$T/stuck-jq" && printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) exec sleep 60 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$T/stuck-jq/jq" && chmod +x "$T/stuck-jq/jq"
+if command -v timeout >/dev/null 2>&1; then
+    t0=$(date +%s)
+    out="$(jq -n --arg cmd "grep -rn graphify $T/luna; echo $(head -c 12288 /dev/zero | tr '\0' x)" '{tool_name:"Bash",tool_input:{command:$cmd}}' | XDG_STATE_HOME="$T/state" PATH="$T/stuck-jq:$PATH" CLAUDE_PROJECT_DIR="$PROJECT" timeout -k 2 30 bash "$HOOK" 2>&1)"; rc=$?
+    el=$(($(date +%s) - t0))
+    if [ "$rc" -eq 2 ] && grep -q 'timed out' <<<"$out" && [ "$el" -lt 15 ]; then ok "a large command that mentions graphify is denied inside the 15 s entry timeout (${el}s)"; else bad "large command: rc=$rc ${el}s out=$out"; fi
+else
+    echo "WARN large graphify command row skipped: no timeout(1)"
+fi
 
 # A fence DENY must point a leg at the wrapper that works from a worktree.
 cat > "$PROJECT/scripts/guardrails/graphify-fence.sh" <<'FENCE_EOF'
