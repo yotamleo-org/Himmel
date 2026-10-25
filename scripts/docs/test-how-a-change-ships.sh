@@ -29,7 +29,8 @@
 #   check-worktree-isolation.sh check-commit-msg.sh block-edit-on-main.sh
 #   block-read-secrets.sh block-destructive-commands.sh auto-approve-safe-bash.sh
 #   check-push-target.sh check-no-force-push.sh check-cr-before-push.sh
-#   check-ci.sh pr-check.md panel-first-pass.sh clear-review-marker.sh
+#   check-platforms-tested.sh check-security-reviewed.sh
+#   check-ci.sh pr-check.md review-round.sh clear-review-marker.sh
 #   check-cr-marker-on-pr-create.sh review-merge-gate.sh ci-green-gate.sh
 #   go-gate.sh ready-check.sh go.sh merge-on-green.sh chief.sh relay-batch.sh
 #
@@ -235,12 +236,19 @@ if case == "page":
         for c in n["chains"]:
             want.append(c["title"])
             for r in c["rows"]:
-                want += [r["q"], r.get("by") or "", r["outcome"]["text"], r["next"]]
+                want += [r["q"], r.get("by") or ""]
                 if r.get("reach"):
                     want.append(r["reach"]["text"])
+                want += [r["outcome"]["text"], r["next"]]
+        pos = 0
         for w in want:
-            if w and norm(w) not in body:
-                out.append("node %s: text not on the page with JS off: %s" % (n["id"], norm(w)[:90]))
+            if not w:
+                continue
+            at = body.find(norm(w), pos)
+            if at < 0:
+                out.append("node %s: text not on the page with JS off, or out of order: %s" % (n["id"], norm(w)[:90]))
+                continue
+            pos = at + len(norm(w))
     for e in edges:
         if e["id"] not in drawn_ids:
             out.append("edge %s: not drawn in the graph" % e["id"])

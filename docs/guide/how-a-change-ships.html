@@ -59,6 +59,7 @@
           <path class="ge ge-back" id="e-sp" d="M905 444 C 985 360, 985 150, 602 150" marker-end="url(#ga)"/>
           <path class="ge ge-fix" id="e-fg" d="M180 334 C 120 280, 240 250, 386 250" marker-end="url(#gr)"/>
           <path class="ge ge-fix" id="e-fr" d="M820 334 C 880 280, 760 250, 614 250" marker-end="url(#gr)"/>
+          <path class="ge ge-fix" id="e-fc" d="M560 334 C 572 312, 560 294, 548 280" marker-end="url(#gr)"/>
           <text class="gel" x="955" y="300" text-anchor="middle" transform="rotate(90 955 300)">hand over · next ticket</text>
           <text class="gel gel-r" x="150" y="262" text-anchor="end">refused or red:</text>
           <text class="gel gel-r" x="150" y="278" text-anchor="end">fix, go round again</text>
@@ -162,6 +163,8 @@
             <li class="ck" data-k="main" data-src="scripts/hooks/check-push-target.sh:29"><span class="cq">Pushing to <code>main</code>?</span><span class="cby"><code>check-push-target.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext"><code>ERROR: Direct push to 'main' is not allowed.</code> There is no bypass: changes reach main through a pull request.</span></li>
             <li class="ck" data-k="force" data-src="scripts/hooks/check-no-force-push.sh:60"><span class="cq">A force push to <code>main</code>?</span><span class="cby"><code>check-no-force-push.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext"><code>ERROR: Force-push to 'main' is not allowed.</code> To another branch it goes through with a warning.</span></li>
             <li class="ck" data-k="owed" data-src="scripts/hooks/check-cr-before-push.sh:970"><span class="cq">Code changed since the last clean review?</span><span class="cby"><code>check-cr-before-push.sh</code> <span class="reach r-clone">from your himmel clone, for now</span></span><span class="oc o-allow">Allow, review owed</span><span class="cnext">The push goes through and leaves a review-owed marker, which the pull-request check reads.</span></li>
+            <li class="ck" data-k="platforms" data-src="scripts/hooks/check-platforms-tested.sh:216"><span class="cq">Script changes with no <code>Platforms tested:</code> line in a commit?</span><span class="cby"><code>check-platforms-tested.sh</code> <span class="reach r-clone">from your himmel clone, for now</span></span><span class="oc o-refuse">Refuse</span><span class="cnext">Name the systems you tested on, such as <code>Platforms tested: linux</code>, in the branch's first commit.</span></li>
+            <li class="ck" data-k="security" data-src="scripts/hooks/check-security-reviewed.sh:308"><span class="cq">Code changes with no <code>Security reviewed:</code> line in a commit?</span><span class="cby"><code>check-security-reviewed.sh</code> <span class="reach r-clone">from your himmel clone, for now</span></span><span class="oc o-refuse">Refuse</span><span class="cnext">Say how you checked it, such as <code>Security reviewed: manual — &lt;what you did&gt;</code>, in the branch's first commit.</span></li>
             <li class="ck end" data-k="ok"><span class="cq">Otherwise</span><span class="cby"></span><span class="oc o-allow">Allow</span><span class="cnext">The branch is on the remote.</span></li>
           </ol>
           <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="main">you push to main</button><button type="button" data-hit="force">you force-push to main</button><button type="button" data-hit="owed">you push your branch</button></p>
@@ -194,7 +197,7 @@
           <h4 class="gsubh">Each review round</h4>
           <ol class="chain">
             <li class="ck" data-k="find" data-src=".claude/commands/pr-check.md:32"><span class="cq">A blocking finding that you agree with?</span><span class="cby"><code>/pr-check</code></span><span class="oc o-refuse">Back to Build</span><span class="cnext">Fix it, push again, and a new review round starts.</span></li>
-            <li class="ck" data-k="cap" data-src="scripts/cr/panel-first-pass.sh:220"><span class="cq">Three full rounds used already?</span><span class="cby"><code>panel-first-pass.sh</code></span><span class="oc o-ask">Ask</span><span class="cnext">One diff-only round is left, and it blocks only on critical findings. A fourth full round needs a recorded ruling.</span></li>
+            <li class="ck" data-k="cap" data-src="scripts/cr/review-round.sh:6"><span class="cq">Three full rounds used already?</span><span class="cby"><code>review-round.sh</code></span><span class="oc o-ask">Ask</span><span class="cnext">One diff-only round is left, and it blocks only on critical findings. A fourth full round is refused.</span></li>
             <li class="ck end" data-k="clean" data-src="scripts/cr/clear-review-marker.sh:2028"><span class="cq">Clean</span><span class="cby"><code>clear-review-marker.sh</code></span><span class="oc o-allow">Allow</span><span class="cnext">The review-owed marker is cleared.</span></li>
           </ol>
           <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="find">the review finds a real bug</button><button type="button" data-hit="clean">nothing blocking is found</button></p>
@@ -209,17 +212,18 @@
       <details class="gnd" id="gn-gate" data-t="gate">
         <summary><span class="gnd-n">Merge gate</span><span class="reach">in your project</span></summary>
         <div class="gbody">
-          <p class="gwhat">One gate sees everything the earlier steps produced: CI on this exact commit and every review thread. Any <code>gh pr merge</code> Claude tries goes through it.</p>
+          <p class="gwhat">One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and every review thread. Any <code>gh pr merge</code> Claude tries goes through it.</p>
           <h3 class="gl-h"><b>2</b> The loop inside this step</h3>
-          <ol class="inner"><li>Claude asks to merge</li><li>The gate reads CI and threads</li><li>Any no: back to that step</li><li>All yes: on to your approval</li></ol>
+          <ol class="inner"><li>Claude asks to merge</li><li>The gate reads CI, the reviewers and threads</li><li>Any no: back to that step</li><li>All yes: on to your approval</li></ol>
           <h3 class="gl-h"><b>3</b> What decides each move</h3>
           <h4 class="gsubh">Every merge</h4>
           <ol class="chain">
+            <li class="ck" data-k="reviewer" data-src="scripts/lib/review-merge-gate.sh:489"><span class="cq">A required reviewer has not passed at this commit?</span><span class="cby"><code>review-merge-gate.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext">Re-run the review, or fix its findings.</span></li>
             <li class="ck" data-k="threads" data-src="scripts/lib/review-merge-gate.sh:373"><span class="cq">Unresolved CodeRabbit review threads?</span><span class="cby"><code>review-merge-gate.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext">Resolve them first.</span></li>
             <li class="ck" data-k="ci" data-src="scripts/lib/ci-green-gate.sh:109"><span class="cq">CI not green on this commit?</span><span class="cby"><code>ci-green-gate.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext">Back to Tests &amp; CI.</span></li>
             <li class="ck end" data-k="ok"><span class="cq">Otherwise</span><span class="cby"></span><span class="oc o-allow">Allow</span><span class="cnext">On to your approval; the merge runs once it is given, pinned to the checked commit.</span></li>
           </ol>
-          <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="threads">a review thread is still open</button><button type="button" data-hit="ok">threads resolved and CI green</button></p>
+          <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="reviewer">a required reviewer has not passed</button><button type="button" data-hit="threads">a review thread is still open</button><button type="button" data-hit="ok">reviewers passed, threads resolved and CI green</button></p>
         </div>
       </details>
       <details class="gnd" id="gn-approve" data-t="approve">
@@ -233,7 +237,7 @@
           <ol class="chain">
             <li class="ck" data-k="ci" data-src="scripts/check-ci.sh:94"><span class="cq">CI red, or threads open?</span><span class="cby"><code>check-ci.sh</code> <span class="reach">in your project</span></span><span class="oc o-refuse">Back to Build</span><span class="cnext">Same exits as Tests &amp; CI.</span></li>
             <li class="ck" data-k="ready" data-src="scripts/handover/chief-kit/ready-check.sh:539"><span class="cq">Does the chief's ready-check fail? (head, CI, threads, trailers, ticket coverage)</span><span class="cby"><code>ready-check.sh</code> <span class="reach r-clone">from your himmel clone, for now</span></span><span class="oc o-refuse">Refuse</span><span class="cnext">The worker fixes the one line that failed.</span></li>
-            <li class="ck" data-k="trust" data-src="scripts/handover/chief-kit/ready-check.sh:1087"><span class="cq">Does the change touch a trust path (guards, gates, CI)?</span><span class="cby"><code>ready-check.sh</code> <span class="reach r-clone">from your himmel clone, for now</span></span><span class="oc o-ask">Ask a judge</span><span class="cnext">A separate judge session rules GO or NO-GO on that exact commit.</span></li>
+            <li class="ck" data-k="trust" data-src="scripts/handover/chief-kit/go.sh:325"><span class="cq">Does the change touch a trust path (guards, gates, CI)?</span><span class="cby"><code>go.sh</code> <span class="reach r-clone">from your himmel clone, for now</span></span><span class="oc o-ask">Ask a judge</span><span class="cnext">A separate judge session rules GO or NO-GO on that exact commit.</span></li>
             <li class="ck end" data-k="ok"><span class="cq">Otherwise</span><span class="cby"></span><span class="oc o-allow">Allow</span><span class="cnext">The worker reports READY and waits. Waiting for approval is the only wait a worker is allowed.</span></li>
           </ol>
           <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="trust">the change edits a guard</button><button type="button" data-hit="ok">every check passes</button></p>
