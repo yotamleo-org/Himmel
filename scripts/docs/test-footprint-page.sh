@@ -12,13 +12,15 @@
 #   2. COMPLETE — every manifest id is on the page or in LEFT_OUT below, never
 #                 both, and every LEFT_OUT id is still a manifest row.
 #   3. CLASS    — each row's "Uninstall" cell agrees with the manifest class:
-#                 a state row names --purge-state, a keep row starts with
+#                 a state row says --purge-state removes it, them or what
+#                 the install created, a keep row starts with
 #                 "Kept" or "Never touched", a code row starts with neither.
 #   4. UNDO     — the page links to updating.md#undo, and updating.md carries
 #                 an id="undo" anchor.
 #   5. CONTROL  — a manifest with an extra row fails case 2, a page with an
-#                 unknown id fails case 1, and a state row whose cell drops
-#                 --purge-state fails case 3, so none can pass vacuously.
+#                 unknown id fails case 1, and a state row whose cell drops,
+#                 negates or empties --purge-state fails case 3, so none can
+#                 pass vacuously.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ plus python3, so it runs
 # unchanged under Git Bash on Windows. No .ps1 twin needed.
@@ -104,7 +106,7 @@ elif case == "complete":
 elif case == "class":
     for r, cell in rows:
         c = klass.get(r)
-        if c == "state" and "`--purge-state` removes" not in cell:
+        if c == "state" and not re.search(r"`--purge-state` removes (it|them|what)\b", cell):
             print(f"{r} (state): Uninstall cell does not say --purge-state removes it: {cell}")
         elif c == "keep" and not re.match(r"(Kept|Never touched)", cell):
             print(f"{r} (keep): Uninstall cell does not start with Kept or Never touched: {cell}")
@@ -148,6 +150,9 @@ if [ -f "$PAGE" ]; then
   tick='`'
   sed "s/${tick}--purge-state${tick} removes/${tick}--purge-state${tick} never removes/g" "$PAGE" >"$TMP/page-negated.md"
   if [ -n "$(check class "$TMP/page-negated.md" "$MANIFEST")" ]; then ok "5d CONTROL: a state row that negates --purge-state fails case 3"; else bad "5d CONTROL: a state row that negates --purge-state passed case 3"; fi
+
+  sed "s/${tick}--purge-state${tick} removes /${tick}--purge-state${tick} removes nothing, not /g" "$PAGE" >"$TMP/page-nothing.md"
+  if [ -n "$(check class "$TMP/page-nothing.md" "$MANIFEST")" ]; then ok "5e CONTROL: a state row saying --purge-state removes nothing fails case 3"; else bad "5e CONTROL: a state row saying --purge-state removes nothing passed case 3"; fi
 else
   bad "5b/5c CONTROL: page missing: $PAGE"
 fi
