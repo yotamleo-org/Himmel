@@ -1016,9 +1016,9 @@ contains 'a card with an open blocker is flagged (HIMMEL-6769)' "$(card 403)" 'B
 contains 'a contradicted link reads direction?, not BLOCKED (HIMMEL-6769, 6749)' "$(card 409)" 'direction? HIMMEL-410'
 not_contains 'a contradicted link does not hold the card (HIMMEL-6769, 6749)' "$(card 409)" 'BLOCKED'
 contains 'the card key links to Jira (HIMMEL-6769)' "$(card 400)" 'href="https://jira.example.test/browse/HIMMEL-400"'
-contains 'a chain step renders (HIMMEL-6769)' "$vhtml" 'chain step two'
-not_contains 'a chain step whose ticket is Done is not listed (HIMMEL-6769, 7353)' "$vhtml" 'chain step one'
-contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 1 · N9'
+contains 'a chain step renders its ticket title (HIMMEL-6769, 7621)' "$vhtml" '<li class="st-next"><b>next</b> <a href="https://jira.example.test/browse/HIMMEL-400">HIMMEL-400</a> vp todo in group'
+not_contains 'a chain step whose ticket is Done is not listed (HIMMEL-6769, 7353)' "$vhtml" 'browse/HIMMEL-405'
+contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 1'
 if [ ! -e "$vout.fp" ]; then pass 'a --version page without --plan-dir writes no .fp (HIMMEL-6769)'; else fail 'a --version page without --plan-dir wrote a .fp'; fi
 # a column that differs from Jira reads DRIFT and names the key.
 printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\nHIMMEL-411\tTask\tBlocked\tx\n' > "$W/vp-jira.tsv"
@@ -1082,13 +1082,13 @@ v2render() {
 v2stdout="$(v2render)"
 v2rc=$?
 if [ "$v2rc" -eq 0 ]; then pass '--workers-dir renders and exits 0 (HIMMEL-6829)'; else fail "--workers-dir exited $v2rc: $v2stdout"; fi
-step() { grep -F "$1" "$v2out" 2>/dev/null; }
+step() { grep -F "$1" "$v2out" 2>/dev/null | grep -F '<li'; }
 wcard() { grep -F "data-key=\"HIMMEL-$1\"" "$v2out" 2>/dev/null; }
-contains 'a held keyed step reads held, not its hand-written state (HIMMEL-6829)' "$(step 'held step')" '<li class="st-held"><b>held</b>'
-contains 'an In Progress keyed step reads work, not its hand-written next (HIMMEL-6829)' "$(step 'prog step')" '<li class="st-work"><b>work</b>'
-contains 'a To Do keyed step reads next, not its hand-written work (HIMMEL-6829)' "$(step 'todo step')" '<li class="st-next"><b>next</b>'
-contains 'a keyed step missing from the mirror reads unknown (HIMMEL-6829)' "$(step 'missing step')" '<li class="st-unknown"><b>unknown</b>'
-not_contains 'a Done keyed step is not listed (HIMMEL-6829, 7353)' "$(cat "$v2out")" 'done step'
+contains 'a held keyed step reads held, not its hand-written state (HIMMEL-6829)' "$(step 'vp held ticket')" '<li class="st-held"><b>held</b>'
+contains 'an In Progress keyed step reads work, not its hand-written next (HIMMEL-6829)' "$(step 'vp progress with pr')" '<li class="st-work"><b>work</b>'
+contains 'a To Do keyed step reads next, not its hand-written work (HIMMEL-6829)' "$(step 'vp todo in group')" '<li class="st-next"><b>next</b>'
+contains 'a keyed step missing from the mirror reads unknown (HIMMEL-6829)' "$(step 'not in the Jira mirror')" '<li class="st-unknown"><b>unknown</b>'
+not_contains 'a Done keyed step is not listed (HIMMEL-6829, 7353)' "$(cat "$v2out")" 'HIMMEL-405'
 contains 'a keyless step keeps its hand-written state (HIMMEL-6829)' "$(step 'keyless step')" '<li class="st-work"><b>work</b>'
 contains 'a worker line shows the leg, state, open PR, head, CI and age (HIMMEL-6829)' "$(wcard 401)" 'worker N3096 · live · #500 @abc1234 · CI red · 5 min'
 not_contains 'a closed PR of the record is not on the worker line (HIMMEL-6829)' "$(wcard 401)" '#499'
@@ -1126,7 +1126,7 @@ vfp_is differ 'a worker owner change moves the focus fingerprint (HIMMEL-6829)'
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","open":true}}}\n' > "$wk/HIMMEL-401.json"
 v2render >/dev/null
 vfp_is same 'the original worker record restores the focus fingerprint (HIMMEL-6829)'
-sed 's/prog step/prog step two/' "$W/vp-chains2.json" > "$W/vp-chains3.json"
+sed 's/keyless step/keyless step two/' "$W/vp-chains2.json" > "$W/vp-chains3.json"
 V2CH="$W/vp-chains3.json" v2render >/dev/null
 vfp_is differ 'a chain change moves the focus fingerprint (HIMMEL-6829)'
 cp "$vp/HIMMEL-420.md" "$W/h420-keep.md"
@@ -1166,9 +1166,9 @@ v4="$(cat "$v4out" 2>/dev/null)"
 colof() {
     python3 -I -c 'import re,sys; t=open(sys.argv[1]).read(); i=t.find("data-key=\"HIMMEL-%s\"" % sys.argv[2]); m=re.findall(r"data-col=\"([^\"]*)\"", t[:i]); print(m[-1] if m and i >= 0 else "")' "$v4out" "$1"
 }
-not_contains 'a merged chain step is not listed (HIMMEL-7353)' "$v4" 'merged step'
+not_contains 'a merged chain step is not listed (HIMMEL-7353)' "$v4" 'browse/HIMMEL-405'
 not_contains 'a chain whose steps all merged is not listed (HIMMEL-7353)' "$v4" 'w4done'
-contains 'an unmerged chain step is still listed (HIMMEL-7353)' "$v4" 'open step'
+contains 'an unmerged chain step is still listed (HIMMEL-7353)' "$v4" 'browse/HIMMEL-401">HIMMEL-401</a> vp progress with pr'
 contains 'the header counts the hidden merged chain steps (HIMMEL-7353)' "$v4" '2 merged chain steps hidden'
 equals 'a To Do card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 400)" 'In Progress'
 equals 'an In Progress card whose PR CI is green sits in IN CI (HIMMEL-7353)' "$(colof 401)" 'IN CI'
@@ -1192,6 +1192,50 @@ contains 'a pending worker PR reads running over a green rollup (HIMMEL-7513)' "
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"0ld0ld0ld","ci":"pending","red_latch":true,"open":true}}}\n' > "$wk/HIMMEL-401.json"
 V2PRS="$W/vp-prs-run.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
 contains 'a worker record at an older head keeps the rollup CI (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI running'
+
+# --- a chain row is its ticket's live state, never the hand-kept label.
+printf '%s\n' '---' 'key: "HIMMEL-430"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "In Progress"' 'status: "In Progress"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+    '---' '# HIMMEL-430: rowlive stale pr' > "$vp/HIMMEL-430.md"
+printf '%s\n' '---' 'key: "HIMMEL-431"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["operator-decision"]' 'type: "Task"' \
+    '---' '# HIMMEL-431: rowlive operator ask' > "$vp/HIMMEL-431.md"
+printf '%s\n' '---' 'key: "HIMMEL-432"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "In Progress"' 'status: "In Progress"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+    '---' '# HIMMEL-432: rowlive open pr' > "$vp/HIMMEL-432.md"
+cat > "$W/vp-chains7.json" <<'EOF'
+[{"name":"c7621","note":"hand note PR #1 in CI","steps":[{"key":"HIMMEL-430","label":"docs mockup: PR #777 in CI (decision 160)","state":"work","pr":777,"owner":"N3509"},
+ {"key":"HIMMEL-432","label":"hand label two","owner":"N1"}]},
+ {"name":"1 — Waiting on you (operator)","note":"Nothing else is blocked on the operator.","steps":[{"key":"HIMMEL-431","label":"nobody waits"}]}]
+EOF
+cat > "$W/vp-prs7.json" <<'EOF'
+[{"number":600,"title":"feat: [HIMMEL-432] live","headRefName":"feat/l","headRefOid":"fed1234beef","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]}]
+EOF
+mkdir -p "$W/wk7"
+printf '{"key":"HIMMEL-432","leg":"N77","state":"live","prs":{"600":{"head":"fed1234beef","open":true}}}\n' > "$W/wk7/HIMMEL-432.json"
+v7out="$W/vp-v7.html"
+v7render() {
+    TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --prs-file "$W/vp-prs7.json" --chains-file "$W/vp-chains7.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$v7out" 2>&1
+}
+touch -d '2026-09-01 00:00:00 UTC' "$W/vp-chains7.json"
+v7render >/dev/null
+v7="$(cat "$v7out" 2>/dev/null)"
+li() { grep -F "$1" "$v7out" 2>/dev/null | grep -F '<li' ; }
+not_contains 'a chain row does not print the hand label (HIMMEL-7621)' "$v7" 'in CI (decision 160)'
+not_contains 'a chain row whose PR is merged does not render in CI (HIMMEL-7621)' "$(li 'rowlive stale pr')" 'in CI'
+contains 'a chain row with no open PR says so and names the Jira status (HIMMEL-7621)' "$(li 'rowlive stale pr')" 'Jira In Progress · no open PR'
+contains 'a chain row shows its ticket title (HIMMEL-7621)' "$(li 'rowlive open pr')" 'rowlive open pr'
+contains 'a chain row shows its open PR and CI (HIMMEL-7621)' "$(li 'rowlive open pr')" '#600 · CI green'
+contains 'a chain row shows the owning worker from the fleet record (HIMMEL-7621)' "$(li 'rowlive open pr')" 'worker N77 · live'
+not_contains 'a chain row does not print the hand owner (HIMMEL-7621)' "$v7" 'N3509'
+not_contains 'a chain note is not printed (HIMMEL-7621)' "$v7" 'hand note PR #1'
+contains 'Waiting on you lists a ticket carrying an operator label (HIMMEL-7621)' "$(grep -F 'data-section="waiting"' "$v7out")" 'rowlive operator ask'
+not_contains 'the hand-kept Waiting on you chain is not printed (HIMMEL-7621)' "$v7" 'Nothing else is blocked on the operator'
+contains 'the header names the age of an out-of-date focus-chains.json (HIMMEL-7621)' "$v7" 'focus-chains.json last written 2026-09-01 00:00 UTC, older than the newest Jira update'
+touch "$W/vp-chains7.json"
+v7render >/dev/null
+not_contains 'a focus-chains.json newer than the Jira mirror adds no age note (HIMMEL-7621)' "$(cat "$v7out")" 'focus-chains.json last written'
+rm -f "$vp/HIMMEL-431.md"
+v7render >/dev/null
+contains 'Waiting on you says so when no ticket waits (HIMMEL-7621)' "$(grep -F 'data-section="waiting"' "$v7out")" 'nothing is waiting on you'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
