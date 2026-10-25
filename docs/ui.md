@@ -84,6 +84,7 @@ This is the full set, each mapped to the code that handles it:
 | Dry-run a switch, then run it after confirm | `/api/preview`, `/api/run` | `previewRoute` and `runRoute` in `scripts/config-ui/server.ts` |
 | Save or remove a file-stored secret | `/api/setup/secret` | `secretWrite` in `scripts/config-ui/setup.ts` |
 | Create the UI login once (Account step) | `/api/setup/account` | `accountCreate` in `scripts/config-ui/setup.ts` |
+| Run the doctor's read-only checks (Verify step) | `/api/setup/verify` | `verifyDoctor` in `scripts/config-ui/setup.ts` |
 | Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
