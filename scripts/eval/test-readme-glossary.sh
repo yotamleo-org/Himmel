@@ -24,7 +24,7 @@ check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 # display name <TAB> ledger key as the README writes it <TAB> producer <TAB> the code that writes the key
 # <TAB> where the key sits in its README cell (first, or any for a row that names it in a sentence)
 NUMBERS="$TMP/numbers.tsv"
-cat >"$NUMBERS" <<'EOF'
+cat >"$NUMBERS" <<'EOF' || { echo "test-readme-glossary: manifest write failed" >&2; exit 1; }
 pass@k	pass_at_k	scripts/eval/lib/eval_runs.py	"pass_at_k": _finite_mean(	first
 pass^k	pass_pow_k	scripts/eval/lib/eval_runs.py	"pass_pow_k": _finite_mean(	first
 cost per accepted run	cost_per_accepted	scripts/eval/lib/eval_runs.py	metrics["cost_per_accepted"] =	first
@@ -72,7 +72,7 @@ done <"$NUMBERS"
 
 echo "2. the README table has a row per number"
 check "the README has the heading \"$HEADING\"" 'grep -qxF -- "$HEADING" "$README"'
-misses "$README" >"$TMP/miss.txt"
+misses "$README" >"$TMP/miss.txt" || { echo "test-readme-glossary: the table check could not run" >&2; exit 1; }
 check "every number has a row with its display name and ledger key (missing: $(paste -sd, "$TMP/miss.txt"))" '[ ! -s "$TMP/miss.txt" ]'
 
 echo "3. the check catches a removed row, a reverted rename and a moved key, and only that row"
