@@ -59,12 +59,12 @@ ok() { pass=$((pass + 1)); echo "ok - $*"; }
 bad() { fail=$((fail + 1)); echo "not ok - $*"; }
 
 for sample in 'runs on Windows' 'under WSL2' 'pinned gpt-5.5' 'gpt-6-sol' 'claude-haiku-4-5' 'Opus 4.8' 'the WS5 index'; do
-  if ! printf '%s\n' "$sample" | grep -q -E "$PATTERN"; then
+  if ! grep -q -E "$PATTERN" <<< "$sample"; then
     bad "pattern misses its own sample '$sample'"
   fi
 done
 
-in_list() { printf '%s\n' "$2" | grep -q -x -F "$1"; }
+in_list() { grep -q -x -F "$1" <<< "$2"; }
 
 # hits <page>: the page's matching lines minus its ALLOW lines.
 hits() {
