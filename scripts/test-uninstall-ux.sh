@@ -643,6 +643,80 @@ else fail "DOC2 updating.md does not qualify --purge-state with the running-supe
 if grep -q 'still running' "$ROOT/docs/setup/install.md"; then pass "DOC2 install.md qualifies --purge-state"
 else fail "DOC2 install.md does not qualify --purge-state with the running-supervisor guard"; fi
 
+# ── C — the operator configuration files are state rows ────────────────────
+# ~/.himmel/himmel.conf, himmel.conf.local and config.json hold the operator's
+# behaviour config and gate policy: the footprint names them, a default
+# uninstall keeps them byte-identical, --purge-state removes them, and a
+# himmel.conf linked into a vault loses only the link.
+m1_want himmel-conf state file - 8 none
+m1_want himmel-conf-local state file - 8 none
+m1_want himmel-config-json state file - 8 none
+c_plant() { # plants the three files as regular files in the fixture HOME
+    printf 'HIMMEL_INITIATIVE=opt-in\n' > "$FX_HOME/.himmel/himmel.conf"
+    printf 'HIMMEL_INITIATIVE=off\n' > "$FX_HOME/.himmel/himmel.conf.local"
+    printf '{"graphify":{"salus_ollama_cloud_ok":false}}\n' > "$FX_HOME/.himmel/config.json"
+    for c_f in himmel.conf himmel.conf.local config.json; do
+        [ -f "$FX_HOME/.himmel/$c_f" ] && [ ! -L "$FX_HOME/.himmel/$c_f" ] || fail "C setup: $c_f was not planted as a regular file"
+    done
+}
+c_files() { printf '%s\n' "$FX_HOME/.himmel/himmel.conf" "$FX_HOME/.himmel/himmel.conf.local" "$FX_HOME/.himmel/config.json"; }
+c_sum() { c_files | while IFS= read -r c_f; do if [ -f "$c_f" ]; then cksum < "$c_f"; else echo "missing $c_f"; fi; done; }
+
+fixture c1
+c_plant
+run_uninstall --dry-run --skip-plugins
+assert_rc "C1 dry-run with the three config files planted" 0 "$rc"
+for c_f in himmel.conf himmel.conf.local config.json; do
+    assert_has "C1 footprint keeps $c_f by default" "KEEP    $FX_HOME/.himmel/$c_f — " "$out"
+done
+run_uninstall --dry-run --skip-plugins --purge-state
+for c_f in himmel.conf himmel.conf.local config.json; do
+    assert_has "C1 footprint removes $c_f under --purge-state" "REMOVE  $FX_HOME/.himmel/$c_f — " "$out"
+done
+
+fixture c2
+c_plant
+c2_before=$(c_sum)
+run_uninstall --yes --skip-plugins
+assert_rc "C2 default uninstall with the config files planted" 0 "$rc"
+if [ "$(c_sum)" = "$c2_before" ]; then pass "C2 the three config files are byte-identical after a default uninstall"
+else fail "C2 a default uninstall changed or removed a config file"; fi
+assert_has "C2 NOT touched report names himmel.conf" "$FX_HOME/.himmel/himmel.conf — " "$out"
+
+fixture c3
+c_plant
+run_uninstall --yes --skip-tasks --skip-plugins --purge-state
+assert_rc "C3 --purge-state uninstall with the config files planted" 0 "$rc"
+for c_f in himmel.conf himmel.conf.local config.json; do
+    assert_absent "C3 --purge-state removes $c_f" "$FX_HOME/.himmel/$c_f"
+    assert_has "C3 read-back reports $c_f absent" "verified: absent $FX_HOME/.himmel/$c_f" "$out"
+done
+
+fixture c4
+c_plant
+mkdir -p "$FX/vault/.himmel"
+printf 'HIMMEL_INITIATIVE=vault\n' > "$FX/vault/.himmel/himmel.conf"
+c4_sum=$(cksum < "$FX/vault/.himmel/himmel.conf")
+rm -f "$FX_HOME/.himmel/himmel.conf"
+ln -s "$FX/vault/.himmel/himmel.conf" "$FX_HOME/.himmel/himmel.conf"
+[ -L "$FX_HOME/.himmel/himmel.conf" ] && [ -f "$FX/vault/.himmel/himmel.conf" ] || fail "C4 setup: himmel.conf was not linked into the vault"
+run_uninstall --yes --skip-tasks --skip-plugins --purge-state
+assert_rc "C4 --purge-state with himmel.conf linked into a vault" 0 "$rc"
+assert_absent "C4 the himmel.conf link is removed" "$FX_HOME/.himmel/himmel.conf"
+assert_exists "C4 the vault target survives" "$FX/vault/.himmel/himmel.conf"
+if [ "$(cksum < "$FX/vault/.himmel/himmel.conf")" = "$c4_sum" ]; then pass "C4 the vault target is byte-identical"
+else fail "C4 the vault target changed"; fi
+
+fixture c5
+c_plant
+rm -f "$FX_HOME/.himmel/himmel.conf"
+ln -s "$FX/vault-gone/himmel.conf" "$FX_HOME/.himmel/himmel.conf"
+[ -L "$FX_HOME/.himmel/himmel.conf" ] && [ ! -e "$FX_HOME/.himmel/himmel.conf" ] || fail "C5 setup: himmel.conf is not a dangling link"
+run_uninstall --yes --skip-tasks --skip-plugins --purge-state
+assert_rc "C5 --purge-state with a dangling himmel.conf link" 0 "$rc"
+assert_absent "C5 the dangling link is removed" "$FX_HOME/.himmel/himmel.conf"
+assert_not_has "C5 no error for the dangling link" "ERROR" "$out"
+
 # ── DOC — the install doc and the README link the command ──────────────────
 if grep -Eq 'himmelctl.*uninstall.*--dry-run|uninstall --dry-run' "$ROOT/docs/setup/install.md"; then pass "DOC install.md documents uninstall --dry-run"
 else fail "DOC install.md does not document uninstall --dry-run"; fi

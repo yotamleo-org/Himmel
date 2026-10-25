@@ -37,6 +37,17 @@ it. The waiter keys on the names, so each worker entering the set wakes you once
 (`WAKE tick changed=holds`); the age growing, a worker leaving and the set emptying wake
 nothing. Absent when no worker holds.
 
+`focus=<state>` and `sdrift=<n>:<sig8>` are conditional too: both come from the
+`focus-state` file `focus-refresh.sh` writes beside your doc, so the tick makes no
+gh or Jira call for them. `focus=FAILED:<stage>` or `focus=DIRTY:<age>` means the
+FOCUS page is not current (re-run `focus-refresh.sh --doc <this file>`); `sdrift=` is
+the drift line of the last good refresh, `<n>` rows of status drift
+(`focus-drift.txt` beside your doc lists them). `focus=ok` and `sdrift=0:…` are left
+off the compact line, `--verbose` shows both, and both are absent with no state
+file or when `--status` reads `focus=skip` (no `focus-version:` and no `release:`
+line, or `focus-version: none`). `console-wait.sh` does not wake on them; it wakes on
+a FAILED refresh, or one DIRTY for 10 minutes, by its own `--status` read.
+
 `busedge=MISSING:<label>[,...]` is conditional too: a held worker (lock FRESH or
 STALE) whose himmel-bus peer record is missing or names another chief (never
 adopted) has no edge to the live chief. It is

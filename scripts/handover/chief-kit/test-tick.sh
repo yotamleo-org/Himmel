@@ -3112,6 +3112,60 @@ contains 'an unreadable runs list reads dispatch=? (HIMMEL-7479)' "$d_down" 'dis
 d_verbose="$(STUB_PR_ROWS="$d_pr_rows" LEGS='HIMMEL-111-legN61' STUB_DISPATCH_RUNS="4002\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 1470)\\n" STUB_DISPATCH_JOBS="9\\t1\\t$(d_iso 120)\\n" bash "$SUT" --verbose 2>/dev/null)"
 contains 'verbose labels dispatch (HIMMEL-7479)' "$d_verbose" 'dispatch: 4002:N61:24/120m:1/9@1111111'
 
+# focus= and sdrift= come from the focus-state file beside the console doc. The gh and jira
+# stubs log any call made under focus-refresh.sh, so the two fields provably read no network.
+f_dir="$W/focus6829"
+f_calls="$W/focus6829-calls.txt"
+mkdir -p "$f_dir" "$W/bin-focus6829"
+for f_tool in gh jira; do
+    {
+        printf '#!/usr/bin/env bash\n'
+        # shellcheck disable=SC2016  # the stub body expands at its own run time
+        printf 'p=$PPID; while [ "${p:-0}" -gt 1 ]; do\n'
+        # shellcheck disable=SC2016
+        printf '  case "$(tr "\\0" " " < /proc/$p/cmdline 2>/dev/null)" in *focus-refresh.sh*) echo "%s $*" >> %q ;; esac\n' "$f_tool" "$f_calls"
+        # shellcheck disable=SC2016
+        printf '  p=$(sed -n "s/^PPid:[[:space:]]*//p" /proc/$p/status 2>/dev/null)\n'
+        printf 'done\n'
+        if [ "$f_tool" = gh ]; then printf 'exec %q "$@"\n' "$W/bin/gh"; else printf 'exit 1\n'; fi
+    } > "$W/bin-focus6829/$f_tool"
+    chmod +x "$W/bin-focus6829/$f_tool"
+done
+f_doc() { printf '%s\n' '# console' ${1:+"focus-version: $1"} '' '## Results (newest at the bottom)' > "$f_dir/console.md"; }
+f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\nts=1\n' "$1" "$2" "$3" > "$f_dir/focus-state"; }
+f_tick() { PATH="$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/console.md" "$@" 2>/dev/null; }
+# positive control: a gh call under a script named focus-refresh.sh is logged
+: > "$f_calls"
+printf '#!/usr/bin/env bash\ngh probe\n' > "$W/bin-focus6829/focus-refresh.sh"
+PATH="$W/bin-focus6829:$PATH" bash "$W/bin-focus6829/focus-refresh.sh" >/dev/null 2>&1
+f_probe="$(cat "$f_calls")"
+: > "$f_calls"
+f_doc v1.0.1
+f_state FAILED drift 2:abcd1234
+f_out="$(f_tick)"
+contains 'a FAILED:drift focus state puts focus=FAILED:drift on the compact line (HIMMEL-6829)' "$f_out" ' focus=FAILED:drift'
+contains 'a drift line in the focus state puts sdrift= on the compact line (HIMMEL-6829)' "$f_out" ' sdrift=2:abcd1234'
+f_state ok '' 0:0f0f0f0f
+f_out="$(f_tick)"
+not_contains 'a healthy focus state leaves focus= off the compact line (HIMMEL-6829)' "$f_out" ' focus='
+not_contains 'a zero drift line leaves sdrift= off the compact line (HIMMEL-6829)' "$f_out" ' sdrift='
+f_out="$(f_tick --verbose)"
+contains '--verbose shows a healthy focus state (HIMMEL-6829)' "$f_out" 'focus: ok'
+contains '--verbose shows a zero drift line (HIMMEL-6829)' "$f_out" 'sdrift: 0:0f0f0f0f'
+f_doc ''
+f_state FAILED drift 2:abcd1234
+f_out="$(f_tick --verbose)"
+not_contains 'a doc with no focus-version: line shows no focus (HIMMEL-6829)' "$f_out" 'focus:'
+not_contains 'a doc with no focus-version: line shows no sdrift (HIMMEL-6829)' "$f_out" 'sdrift:'
+f_doc v1.0.1
+rm -f "$f_dir/focus-state"
+f_out="$(f_tick)"
+not_contains 'no focus-state file leaves focus= off the line (HIMMEL-6829)' "$f_out" ' focus='
+not_contains 'no focus-state file leaves sdrift= off the line (HIMMEL-6829)' "$f_out" ' sdrift='
+if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers (HIMMEL-6829)'
+elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
+elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

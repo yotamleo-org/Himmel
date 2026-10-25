@@ -262,7 +262,8 @@ load_manifest() {
       workspace-trust)  _want="file path 6" ;;
       marketplaces)     _want="marketplaces - 7" ;;
       himmelctl-cache)  _want="dir path 8" ;;
-      *)                _want="" ;;
+      himmel-conf|himmel-conf-local|himmel-config-json) _want="file path 8" ;;
+      *)              _want="" ;;
     esac
     if [ -n "$_want" ]; then
       read -r _wk _wp _ws <<< "$_want"
@@ -354,6 +355,9 @@ _ix_cadence_pipeline=$(m_index cadence-pipeline-dir) || exit 2
 _ix_cadence_qmd=$(m_index cadence-qmd-dir) || exit 2
 _ix_cadence_graphmap=$(m_index cadence-graphmap-dir) || exit 2
 _ix_obs=$(m_index observability-registry) || exit 2
+_ix_conf=$(m_index himmel-conf) || exit 2
+_ix_conf_local=$(m_index himmel-conf-local) || exit 2
+_ix_conf_json=$(m_index himmel-config-json) || exit 2
 
 CHANNEL_DIR="$(strip_trailing_slash "$(m_path "$_ix_channel")")"
 BRIDGE_ROOT="$(strip_trailing_slash "$(m_path "$_ix_bridge")")"
@@ -3763,6 +3767,27 @@ else
     fail_step "[8/8] observability registry: $OBSERVABILITY_REGISTRY could not be removed"
   fi
 fi
+# the operator's configuration files: state rows, so removed only under
+# --purge-state. `rm -f` unlinks a symlink (himmel.conf is a link into the luna
+# vault on a luna install) and never follows it, so the vault target stays.
+for _ix in "$_ix_conf" "$_ix_conf_local" "$_ix_conf_json"; do
+  _cf="$(m_path "$_ix")"
+  if [ "$HALTED" -eq 1 ]; then
+    STEPS_INCOMPLETE+=("[8/8] config file ${M_ID[$_ix]}: skipped — halted after an earlier failure")
+  elif ! class_removes "$_ix"; then
+    echo "  kept (manifest class ${M_CLASS[$_ix]}): $_cf"
+  elif suspicious_rm_path "$(dirname -- "$_cf")"; then
+    echo "  ERROR: refusing to remove suspicious path: '$_cf'" >&2
+    fail_step "[8/8] config file ${M_ID[$_ix]}: refused a suspicious path ('$_cf')"
+  elif [ ! -e "$_cf" ] && [ ! -L "$_cf" ]; then
+    echo "  absent, skipping: $_cf"
+  elif guarded run rm -f -- "$_cf"; then
+    [ "$DRY_RUN" -eq 0 ] && echo "  removed: $_cf"
+  else
+    echo "  ERROR: failed to remove $_cf — residue remains; remove it manually." >&2
+    fail_step "[8/8] config file ${M_ID[$_ix]}: $_cf could not be removed"
+  fi
+done
 echo ""
 
 # S8: `tool register` rows are docs-only — himmel records the tool
@@ -4336,7 +4361,10 @@ if [ "$DRY_RUN" -eq 0 ]; then
   # Footprint read-back: every manifest directory this run was
   # meant to remove is checked absent on disk — the file system, not the rc.
   for _mi in "${!M_ID[@]}"; do
-    [ "${M_KIND[$_mi]}" = "dir" ] || continue
+    case "${M_KIND[$_mi]}:${M_ID[$_mi]}" in
+      dir:*|file:himmel-conf|file:himmel-conf-local|file:himmel-config-json) ;;
+      *) continue ;;
+    esac
     class_removes "$_mi" || continue
     step_skipped "${M_STEP[$_mi]}" && continue
     _mp="$(strip_trailing_slash "$(m_path "$_mi")")"

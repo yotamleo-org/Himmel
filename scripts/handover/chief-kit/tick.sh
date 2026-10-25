@@ -99,6 +99,12 @@ leg parked on a ruling the console may not know it owes, which a repeated BLOCKE
 shows in tails=. console-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
+focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
+focus-state file sits beside the console doc and --status does not read skip: focus= is
+focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
+last good refresh. focus=ok and sdrift=0:* are elided; --verbose prints both. Read from
+the state file, no gh or Jira call. Advisory: not in console-wait's action key.
+
 tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
 (default 80) or more. Read-only, never reaps, and not in console-wait's action
@@ -1572,6 +1578,20 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     esac
 fi
 
+# focus=<state> and sdrift=<n>:<sig8> read the focus-state file beside the console doc
+# (focus-refresh.sh writes it, --status reads it with no gh or Jira call). Both are absent
+# with no state file or when --status reads focus=skip.
+focus_summary="" sdrift_summary=""
+if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
+    focus_summary="$(bash "$HERE/focus-refresh.sh" --doc "$console_doc" --status 2>/dev/null)" || focus_summary=""  # swallow-ok: an unreadable state leaves both advisory fields off the line
+    focus_summary="${focus_summary#focus=}"
+    if [ "$focus_summary" = skip ]; then
+        focus_summary=""
+    elif [ -n "$focus_summary" ]; then
+        sdrift_summary="$(sed -n 's/^sdrift=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no drift line leaves sdrift= off the line
+    fi
+fi
+
 # cloud=<ok|STALL:<ticket>[,...]|skip>. cloud-liveness.mjs owns the derivation
 # (cloud-sessions.tsv next to the console doc against ONE `gh pr list --state all` and one
 # `git ls-remote`); a missing node or helper, a missing tsv, or an unreadable forge reads
@@ -2551,6 +2571,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session set: %s\n' "$legset_summary"
     printf 'board: %s\n' "$board_summary"
     printf 'tracker: %s\n' "$tracker_summary"
+    [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
+    [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     printf 'denials: %s\n' "$denials_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
     printf 'ci guardrail: %s\n' "$ciguard_summary"
@@ -2590,7 +2612,8 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|\
+            focus=ok|sdrift=0:*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -2643,6 +2666,8 @@ else
     compact_field leaks "$leaks_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
+    compact_field focus "$focus_summary"
+    compact_field sdrift "$sdrift_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
