@@ -20,8 +20,9 @@
 # and updates its body instead of opening a second one.
 #
 # Refuses (exit 1): on `main`, when the branch has no upstream, on an empty
-# body file, or when opening (not updating) a PR for a head with no /pr-check
-# record (an `avail ... ok` ledger row at that head). No retry logic — a classifier denial of THIS invocation is
+# body file, or when opening (not updating) a PR before /pr-check finished: a
+# cr-pending marker still held, or no `avail ... ok` ledger row at that head.
+# No retry logic — a classifier denial of THIS invocation is
 # the stuck-playbook Stage 2 / Out-of-Place rows' territory, not this
 # script's.
 #
@@ -227,11 +228,18 @@ rm -f "$find_open_err"
 existing_pr=$(printf '%s\n' "$existing_pr" | head -n 1)
 
 if [ -z "$existing_pr" ]; then
-    # Opening a PR needs the review /pr-check already records: an `avail ... ok`
-    # row at this head in the CR ledger (the evidence clear-review-marker.sh
-    # gate 3 reads). The ledger path is fixed, never an env seam. An existing
-    # PR's body update is not an open and is not gated.
-    ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
+    # Opening a PR needs a finished /pr-check: an `avail ... ok` row at this head
+    # in the CR ledger (a critic responded) AND no pending cr-pending marker,
+    # which only clear-review-marker.sh removes once no finding blocks (the same
+    # marker check-cr-marker-on-pr-create.sh holds `gh pr create` on). Paths are
+    # fixed, never an env seam. An existing PR's body update is not an open and
+    # is not gated.
+    common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+    if [ -e "$common_dir/cr-pending/$branch" ]; then
+        echo "ERR leg-pr-open: /pr-check is still pending for branch '$branch' (cr-pending marker present) — finish /pr-check until it clears the marker, then open the PR" >&2
+        exit 1
+    fi
+    ledger="$common_dir/cr-critic-scores.jsonl"
     if ! [ -f "$ledger" ] || ! awk -v h="\"head\":\"$head_sha\"" \
         'index($0, "\"kind\":\"avail\"") && index($0, "\"status\":\"ok\"") && index($0, h) { found = 1; exit } END { exit !found }' "$ledger"; then
         echo "ERR leg-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (order: commit, push the branch, /pr-check, then open)" >&2

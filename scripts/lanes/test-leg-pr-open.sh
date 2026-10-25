@@ -437,6 +437,19 @@ assert_eq "reviewed head prints the success line" \
     "PR 9 https://github.com/owner/repo/pull/9 $head_r" "$out_r3"
 contains "reviewed head reaches pr create" "$(cat "$ARGV_LOG")" "pr create"
 
+echo "TEST: a pending cr-pending marker holds the open even with a record at the head"
+: > "$ARGV_LOG"
+MARKER="$REPO/.git/cr-pending/feat/himmel-3031-x"
+mkdir -p "$(dirname "$MARKER")"
+echo "2026-10-25T00:00:00Z | $head_r" > "$MARKER"
+err_m=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_m=$?
+assert_eq "pending marker refused (rc=1)" "1" "$rc_m"
+contains "refusal says /pr-check is pending" "$err_m" "still pending"
+not_contains "no PR is created while the marker is held" "$(cat "$ARGV_LOG")" "pr create"
+rm -f "$MARKER"
+REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_m2=$?
+assert_eq "cleared marker plus record opens (rc=0)" "0" "$rc_m2"
+
 echo "TEST: the gate is for opening; an existing PR's body update is not gated"
 : > "$ARGV_LOG"
 : > "$LEDGER"
