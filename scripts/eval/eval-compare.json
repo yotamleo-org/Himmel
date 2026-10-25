@@ -7,7 +7,20 @@
     "judge_missing": {"higher_is_better": false, "band": 0},
     "judge_*": {"higher_is_better": true, "band": 1.0},
     "peeked": {"higher_is_better": false, "band": 0},
-    "cost_usd": {"higher_is_better": false, "band_rel": 0.5}
+    "cost_usd": {"higher_is_better": false, "band_rel": 0.5},
+    "pass_at_k": {"higher_is_better": true, "band": 0.15},
+    "pass_pow_k": {"higher_is_better": true, "band": 0.25},
+    "cost_per_accepted": {"higher_is_better": false, "band_rel": 0.5},
+    "_headroom": {"metric": "accept_ok_rate", "at": 0.95, "target": ["cost_usd", "cost_per_accepted", "wall_s"]},
+    "_cases": {
+      "accept_ok": {"higher_is_better": true},
+      "accept_frac": {"higher_is_better": true},
+      "pass_pow_k": {"higher_is_better": true},
+      "cost_per_accepted": {"higher_is_better": false}
+    }
+  },
+  "review-panel": {
+    "_cases": {"hit": {"higher_is_better": true}, "fp": {"higher_is_better": false}}
   },
   "qmd-quality": {
     "*.mrr": {"higher_is_better": true, "band": 0.05},

@@ -18,6 +18,13 @@ in eval-compare.json. A metric with no direction there is printed as info and
 never gated.
 A candidate with meta.observational true (leg-trajectory, HIMMEL-4670) is
 listed as a series with no verdict, and exits 3.
+Against a single baseline row (not --best-of), each per-case metric named
+under "_cases" is also compared paired, case by case over the case ids both
+rows share, and the line states the detection floor: the smallest mean
+per-case change the case count can show. A paired regression gates like a
+metric one. "_headroom" {metric, at, target} prints a HEADROOM line when the
+baseline's metric is at or above "at": quality cannot show a gain there, so
+the comparison has to be on the target metrics (cost, latency).
 
 Exit: 0 no regression, 1 a regression, 2 usage error, 3 nothing to compare:
 no candidate, no ok baseline, a candidate that is not ok, no gated metric
@@ -80,6 +87,34 @@ def verdict(spec, base, cand, bci, cci):
     if cand != base and better(spec, cand, base):
         return "better", band
     return "ok", band
+
+
+def paired(spec, base_cases, cand_cases, metric):
+    """(verdict, n, mean, floor) of the per-case candidate-minus-baseline
+    differences of metric over the case ids both rows value, or None under two
+    shared cases. ponytail: a normal approximation (|mean| beyond 1.96 standard
+    errors, floor 2.8 standard errors for 80 % power at 5 %), loose on a dozen
+    0/1 cases; upgrade path is an exact sign or permutation test."""
+    diffs = []
+    for cid in sorted(set(base_cases or {}) & set(cand_cases or {})):
+        b, c = (base_cases[cid] or {}).get(metric), (cand_cases[cid] or {}).get(metric)
+        if eval_runs._num(b) or isinstance(b, bool):
+            if eval_runs._num(c) or isinstance(c, bool):
+                diffs.append(float(c) - float(b))
+    n = len(diffs)
+    if n < 2:
+        return None
+    mean = sum(diffs) / n
+    sd = (sum((d - mean) ** 2 for d in diffs) / (n - 1)) ** 0.5
+    se = sd / n ** 0.5
+    # A zero spread says nothing about the floor; 0.5 is the widest a 0/1 case can spread.
+    floor = 2.8 * (sd if sd else 0.5) / n ** 0.5
+    moved = abs(mean) > 1.96 * se + EPS if sd else abs(mean) > EPS
+    if not moved:
+        v = "ok"
+    else:
+        v = "better" if (mean > 0) == spec["higher_is_better"] else "REGRESSION"
+    return v, n, mean, floor
 
 
 def observational(eval_id, rows):
@@ -204,6 +239,22 @@ def main(argv=None):
         fmt = lambda x: "-" if x is None else "%.6g" % x  # noqa: E731
         delta = "-" if base is None or c is None else "%+.6g" % (c - base)
         print("%-28s %12s %12s %12s  %-10s %s" % (m, fmt(base), fmt(c), delta, v, band))
+    if base_of is None:
+        for m, spec in sorted((table.get("_cases") or {}).items()):
+            got = paired(spec, fixed.get("cases"), cand.get("cases"), m)
+            if got is None:
+                continue
+            v, n, mean, floor = got
+            regressions += v == "REGRESSION"
+            gated += 1
+            print("paired %s over %d cases: mean %+.3g  %-10s detection floor ±%.3g" % (m, n, mean, v, floor))
+    head = table.get("_headroom")
+    if head:
+        hrow = fixed if base_of is None else base_of.get(head["metric"])
+        hv = hrow["metrics"].get(head["metric"]) if hrow else None
+        if hv is not None and hv >= head["at"] - EPS:
+            print("eval-compare: HEADROOM: baseline %s %g is at or above %g: quality cannot show a gain here;"
+                  " compare on cost or latency (%s)" % (head["metric"], hv, head["at"], ", ".join(head["target"])))
     if regressions:
         print("eval-compare: %d REGRESSION(s) beyond the noise band" % regressions)
         return 1

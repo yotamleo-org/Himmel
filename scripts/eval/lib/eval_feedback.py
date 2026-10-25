@@ -5,7 +5,8 @@ change, and the next run of the same series re-measures it (HIMMEL-6942).
 Reads the eval-runs ledger (eval_runs.py) and the rules in scripts/eval/feedback-rules.json; writes the
 eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" row:
   1. MEASURE: every open change of the eval whose baseline row is older and has the same confighash gets
-     one "measured" record: before, after, delta and improved | regressed | flat.
+     one "measured" record: before, after, delta and improved | regressed | flat. On a split row the
+     verdict is keep | revert instead, by the train/test keep rule below.
   2. CHANGE: per critic (rules without one share the eval's slot), when that row is not yet the baseline
      of a change of that critic, the first rule (file order) with a metric worse than its threshold and no
      open change of the same confighash raises ONE "open" change record for the worst such metric.
@@ -13,16 +14,27 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
      (the HIMMEL-4670 loop's own learnings queue) when an inbox is given, once per change: each write leaves an
      "inbox" record, and a run given an inbox first delivers every open, unmeasured learning change whose latest
      inbox record is not inbox_written true (one opened without an inbox, or whose write failed).
+  A rule reads only a row's tuning metrics. A split row (review-panel seeds, score.py) carries
+  open.<metric> and sealed.<metric> beside the whole-set metric; its tuning metrics are the open half,
+  unprefixed, so no rule ever sees the sealed half or the whole set that contains it.
+  Keep rule (split rows): train is the open half, test the sealed half of the baseline and the new row. A
+  change is kept only when train and test both gain more than the rule's min_gain and run-to-run noise
+  (max - min of the train value over the ok runs of the same confighash up to the baseline, two or more)
+  is zero or below min_gain; otherwise it is reverted, and the reason names the first test it failed.
 
   Path: $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/eval-changes.jsonl.
 
 RULE  {eval, metric (fnmatch pattern), threshold, better "lower"|"higher", absent (value of a metric the
       row lacks, or null), change "learning"|"routing"|"tool-ruling"|"prompt"|"cr-config"|"impacted-suites",
-      target (inbox topic, route, tool or the file the change edits), critic (optional: the measured reviewer)}
+      target (inbox topic, route, tool or the file the change edits), critic (optional: the measured reviewer),
+      per (optional: a metric of the same row; the value judged is metric / per, a rate, so a count that
+      grows with volume alone fires nothing), min_gain (optional, default 0: the smallest gain worth keeping)}
 CHANGE ROW (v 1): v, ts, host, source, kind "eval-change", id "<baseline run_id>:<metric>", eval, metric,
   status "open" | "measured" | "inbox", then
-  open      value, threshold, better, absent, change, target, baseline_run_id, confighash, critic (null: none)
-  measured  before, after, delta, verdict, after_run_id
+  open      value, threshold, better, absent, change, target, baseline_run_id, confighash, critic (null: none),
+            per, min_gain (null: none)
+  measured  before, after, delta, verdict, after_run_id; on a split row also test_before, test_after,
+            test_delta, noise, min_gain and reason, with verdict keep | revert
   inbox     inbox_written (true: the line is in the inbox; false: the write failed and is due again)
 
   eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P]
@@ -59,7 +71,9 @@ def load_rules(path=None):
         rules = json.load(fh)["rules"]
     for r in rules:
         if r.get("better") not in ("lower", "higher") or r.get("change") not in KINDS \
-                or not eval_runs._num(r.get("threshold")):
+                or not eval_runs._num(r.get("threshold")) \
+                or ("min_gain" in r and not (eval_runs._num(r["min_gain"]) and r["min_gain"] >= 0)) \
+                or ("per" in r and not (isinstance(r["per"], str) and SAFE.match(r["per"]))):
             raise ValueError("bad rule: %s" % json.dumps(r, sort_keys=True))
     return rules
 
@@ -91,9 +105,61 @@ def worse(value, threshold, better):
     return value > threshold if better == "lower" else value < threshold
 
 
-def value_of(row, metric, absent):
-    v = row["metrics"].get(metric)
-    return v if eval_runs._num(v) else absent
+def split_view(row, split):
+    """One seed half of a split row, unprefixed: open.<m> or sealed.<m> as <m>."""
+    pre = split + "."
+    return {m[len(pre):]: v for m, v in row["metrics"].items() if m.startswith(pre)}
+
+
+def tuning_metrics(row):
+    """The metrics a rule may read: the open half of a split row, else every metric."""
+    if any(m.startswith("open.") for m in row["metrics"]):
+        return split_view(row, "open")
+    return row["metrics"]
+
+
+def rate(metrics, v, per):
+    """v, or v / metrics[per] under a rule with per; None when that is not a number above 0."""
+    if not per or v is None:
+        return v
+    d = metrics.get(per)
+    return v / d if eval_runs._num(d) and d > 0 else None
+
+
+def value_of(metrics, metric, absent, per=None):
+    v = metrics.get(metric)
+    return rate(metrics, v if eval_runs._num(v) else absent, per)
+
+
+def gain(before, after, better):
+    return after - before if better == "higher" else before - after
+
+
+def keep_rule(c, series, base, new, after):
+    """(verdict, fields) of the train/test keep rule for a change measured on split row new."""
+    per, min_gain = c.get("per"), c.get("min_gain") or 0
+    test_before = value_of(split_view(base, "sealed"), c["metric"], c["absent"], per) if base else None
+    test_after = value_of(split_view(new, "sealed"), c["metric"], c["absent"], per)
+    upto = series[:series.index(base) + 1] if base in series else []
+    train = [v for v in (value_of(tuning_metrics(r), c["metric"], c["absent"], per) for r in upto
+                         if r["confighash"] == c["confighash"]) if v is not None]
+    noise = round(max(train) - min(train), 6) if len(train) >= 2 else None
+    if test_before is None or test_after is None:
+        reason = "test half unmeasured"
+    elif gain(c["value"], after, c["better"]) <= min_gain:
+        reason = "train not up by more than min gain"
+    elif gain(test_before, test_after, c["better"]) <= min_gain:
+        reason = "train up, test flat or down"
+    elif noise is None:
+        reason = "noise unmeasured: under two runs before the change"
+    elif noise and noise >= min_gain:
+        reason = "noise not below min gain"
+    else:
+        reason = "train and test up by more than min gain, over the noise"
+    return ("keep" if reason.startswith("train and test") else "revert",
+            {"test_before": test_before, "test_after": test_after,
+             "test_delta": None if test_before is None or test_after is None else round(test_after - test_before, 6),
+             "noise": noise, "min_gain": min_gain, "reason": reason})
 
 
 def inbox_line(c):
@@ -122,6 +188,7 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
     path = changes_path(changes)
     runs = [r for r in eval_runs.read_rows(ledger) if r["status"] == "ok"]
     pos = {r["run_id"]: i for i, r in enumerate(runs)}
+    by_id = {r["run_id"]: r for r in runs}
     written = []
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path + ".lock", "a") as lock:
@@ -146,14 +213,19 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 if c["eval"] != ev or c["id"] in measured or c["confighash"] != new["confighash"] \
                         or pos.get(c["baseline_run_id"], len(runs)) >= pos[new["run_id"]]:
                     continue
-                after = value_of(new, c["metric"], c["absent"])
+                after = value_of(tuning_metrics(new), c["metric"], c["absent"], c.get("per"))
                 if after is None:
                     continue
                 delta = round(after - c["value"], 6)
-                # ponytail: a bare sign test, no noise band; eval-compare's bands/CI are the upgrade path.
-                verdict = "flat" if delta == 0 else "improved" if worse(c["value"], after, c["better"]) else "regressed"
+                extra = {}
+                if split_view(new, "open"):
+                    verdict, extra = keep_rule(c, series, by_id.get(c["baseline_run_id"]), new, after)
+                else:
+                    # ponytail: a bare sign test, no noise band; the split rows' keep rule is the upgrade path.
+                    verdict = "flat" if delta == 0 else "improved" if worse(c["value"], after, c["better"]) \
+                        else "regressed"
                 m = envelope(id=c["id"], eval=ev, metric=c["metric"], status="measured", before=c["value"],
-                             after=after, delta=delta, verdict=verdict, after_run_id=new["run_id"])
+                             after=after, delta=delta, verdict=verdict, after_run_id=new["run_id"], **extra)
                 append(path, m)
                 measured.add(c["id"])
                 written.append(m)
@@ -163,10 +235,11 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
             for critic in dict.fromkeys(r.get("critic") for r in ev_rules):
                 if any(c["baseline_run_id"] == new["run_id"] and c.get("critic") == critic for c in opened):
                     continue
+                tm = tuning_metrics(new)
                 for rule in [r for r in ev_rules if r.get("critic") == critic]:
-                    hits = [(m, v) for m, v in new["metrics"].items() if fnmatch.fnmatchcase(m, rule["metric"])
-                            and eval_runs._num(v) and m not in still_open
-                            and worse(v, rule["threshold"], rule["better"])]
+                    vals = [(m, rate(tm, v, rule.get("per"))) for m, v in tm.items()
+                            if fnmatch.fnmatchcase(m, rule["metric"]) and eval_runs._num(v) and m not in still_open]
+                    hits = [(m, v) for m, v in vals if v is not None and worse(v, rule["threshold"], rule["better"])]
                     if not hits:
                         continue
                     metric, value = sorted(hits, key=lambda h: (h[1] if rule["better"] == "higher" else -h[1],
@@ -174,7 +247,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                     c = envelope(id="%s:%s" % (new["run_id"], metric), eval=ev, metric=metric, status="open",
                                  value=value, threshold=rule["threshold"], better=rule["better"],
                                  absent=rule.get("absent"), change=rule["change"], target=rule["target"],
-                                 baseline_run_id=new["run_id"], confighash=new["confighash"], critic=critic)
+                                 baseline_run_id=new["run_id"], confighash=new["confighash"], critic=critic,
+                                 per=rule.get("per"), min_gain=rule.get("min_gain"))
                     append(path, c)
                     opened.append(c)
                     written.append(c)
@@ -188,8 +262,12 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
 
 def describe(r):
     if r["status"] == "measured":
-        return "measured %s %s before=%s after=%s delta=%s %s" % (r["eval"], r["metric"], r["before"], r["after"],
-                                                                   r["delta"], r["verdict"])
+        s = "measured %s %s before=%s after=%s delta=%s %s" % (r["eval"], r["metric"], r["before"], r["after"],
+                                                                r["delta"], r["verdict"])
+        if "reason" in r:
+            s += " (test %s -> %s, noise %s, min gain %s: %s)" % (r["test_before"], r["test_after"], r["noise"],
+                                                                  r["min_gain"], r["reason"])
+        return s
     return "change %s %s value=%s threshold=%s %s -> %s" % (r["eval"], r["metric"], r["value"], r["threshold"],
                                                            r["change"], r["target"])
 

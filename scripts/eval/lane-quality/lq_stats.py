@@ -6,7 +6,8 @@ Called by run.sh; no model call, stdlib only.
   lq_stats.py summary <runs.jsonl>...
       Markdown table per lane, model and task: the mean and a bootstrap 95% CI
       of the acceptance fraction and of each judge criterion over the task's
-      repeats, plus how many rows have no judge score (counted, not dropped).
+      repeats, pass@k and pass^k over its repeats and cost per accepted run,
+      plus how many rows have no judge score (counted, not dropped).
   lq_stats.py calibration [--judge2-label L] [--json] [--no-ledger] <run-dir>...
       How far the judge can be trusted. Judge vs hidden acceptance: AUC and
       point-biserial r of each criterion against accept_ok, with bootstrap 95%
@@ -99,6 +100,10 @@ def _cell(s):
     return "%.2f [%.2f, %.2f]" % (s["mean"], s["ci"]["lo"], s["ci"]["hi"])
 
 
+def _num_cell(x):
+    return "–" if x is None else "%.2f" % x
+
+
 def cmd_summary(paths):
     rows = [r for p in paths for r in read_rows(p)]
     groups = {}
@@ -108,13 +113,17 @@ def cmd_summary(paths):
             model += " (%s)" % r["effort"]
         groups.setdefault((r.get("lane") or "?", model), []).append(r)
     print("Per task over its repeats: mean [bootstrap 95% CI]; no CI below 2 repeats. "
-          "Judge means leave out the rows counted under `judge missing`.")
+          "Judge means leave out the rows counted under `judge missing`. "
+          "pass@k: at least one of k repeats accepted; pass^k: all k accepted; k is the fewest repeats "
+          "of any task in that lane and model. $/accepted: cost over accepted runs.")
     print()
-    print("| lane | model | task | n | accept | correctness | scope | tests | honesty | judge missing |")
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    print("| lane | model | task | n | accept | pass@k | pass^k | $/accepted | correctness | scope | tests | honesty "
+          "| judge missing |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for (lane, model), rs in sorted(groups.items()):
         for tid, s in eval_runs.lane_quality_stats(rs).items():
-            cells = [_cell(s["accept_frac"])] + [_cell(s["judge_" + c]) for c in CRITERIA]
+            cells = [_cell(s["accept_frac"])] + [_num_cell(s[k]) for k in ("pass_at_k", "pass_pow_k", "cost_per_accepted")] \
+                + [_cell(s["judge_" + c]) for c in CRITERIA]
             print("| %s | %s | %s | %d | %s | %d |" % (lane, model, tid, s["n"], " | ".join(cells), s["judge_missing"]))
     return 0
 

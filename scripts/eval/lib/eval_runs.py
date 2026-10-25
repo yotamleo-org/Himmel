@@ -33,7 +33,11 @@ ROW SCHEMA (v 1) -- one JSON object per eval RUN (not per case):
               compare (HIMMEL-4650), or null when the eval does not record them
   artifact    path to the run's own output (dir or file), or null
   meta        free descriptive fields NOT hashed into confighash (index path,
-              base/head specs, backfill provenance)
+              base/head specs, backfill provenance); make_row adds
+              cli_version (the claude CLI on PATH) and effort
+              ($CLAUDE_CODE_EFFORT_LEVEL) of the session writing the row unless
+              the caller sets them: an eval that calls a model records the
+              model's own effort in config
 
 Forward use without migration: HIMMEL-4648 fills reps, ci, ci_level, ci_method
 and adds calibration numbers as metrics; HIMMEL-4650 reads cases (or the
@@ -63,12 +67,15 @@ import json
 import math
 import os
 import random
+import re
+import shutil
 import socket
 import statistics
 import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 
 SCHEMA_VERSION = 1
 LEDGER_ENV = "HIMMEL_EVAL_RUNS_LEDGER"
@@ -116,6 +123,16 @@ def _num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
+@lru_cache(maxsize=1)
+def cli_version():
+    """The claude CLI version, read from its install path (.../versions/<x.y.z>)
+    rather than by running it; None when no claude is on PATH or the path names
+    no version."""
+    p = shutil.which("claude")
+    v = os.path.basename(os.path.realpath(p)) if p else ""
+    return v if re.match(r"^\d+(\.\d+)+$", v) else None
+
+
 def make_row(eval_id, source, config, metrics, n=None, model=None, lane=None, status="ok",
              run_id=None, ci=None, ci_level=None, ci_method=None, cases=None, artifact=None,
              meta=None, reps=1, repo=None, gitsha=None):
@@ -147,7 +164,8 @@ def make_row(eval_id, source, config, metrics, n=None, model=None, lane=None, st
         "ci_method": ci_method,
         "cases": cases,
         "artifact": artifact,
-        "meta": meta or {},
+        "meta": dict({"cli_version": cli_version(),
+                      "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or None}, **(meta or {})),
     }
 
 
@@ -381,17 +399,39 @@ def _lq_accept_rate(rows):
     return (sum(t.get("accept_passed") or 0 for t in rows) / tot) if tot else None
 
 
-def lane_quality_stats(tasks):
-    """Per task id: {"n", "judge_missing", "accept_frac", "accept_ok",
-    "scope_ok", "judge_<c>"...}, each score a {"mean", "ci"}. Repeats
+def pass_at_k(n, c, k):
+    """Chance that at least one of k repeats drawn from n (c accepted) passes;
+    the unbiased estimator 1 - C(n-c, k) / C(n, k). None unless 1 <= k <= n."""
+    return 1 - math.comb(n - c, k) / math.comb(n, k) if 1 <= k <= n else None
+
+
+def pass_pow_k(n, c, k):
+    """Chance that all k repeats drawn from n (c accepted) pass: C(c, k) / C(n, k).
+    None unless 1 <= k <= n."""
+    return math.comb(c, k) / math.comb(n, k) if 1 <= k <= n else None
+
+
+def lane_quality_stats(tasks, k=None):
+    """Per task id: {"n", "judge_missing", "pass_at_k", "pass_pow_k",
+    "cost_per_accepted", "accept_frac", "accept_ok", "scope_ok", "judge_<c>"...},
+    each score a {"mean", "ci"}, the first five plain numbers. Repeats
     (HIMMEL-4648) are rows sharing a task; a row with no judge score counts in
-    judge_missing and is left out of the judge means only."""
+    judge_missing and is left out of the judge means only. k (default: the
+    fewest repeats of any task) is the same for every task, so pass@k means one
+    thing across the table."""
     by = {}
     for t in tasks:
         by.setdefault(t["task"], []).append(t)
+    if k is None and by:
+        k = min(len(rows) for rows in by.values())
     out = {}
     for tid, rows in sorted(by.items()):
         s = {"n": len(rows), "judge_missing": sum(1 for t in rows if not isinstance(t.get("judge"), dict))}
+        accepted = sum(1 for t in rows if t.get("accept_ok"))
+        costs = [t.get("cost_usd") for t in rows]
+        s["pass_at_k"] = pass_at_k(len(rows), accepted, k)
+        s["pass_pow_k"] = pass_pow_k(len(rows), accepted, k)
+        s["cost_per_accepted"] = sum(costs) / accepted if accepted and all(_num(x) for x in costs) else None
         series = {
             "accept_frac": [(t["accept_passed"] / t["accept_total"]) if t.get("accept_total") else None for t in rows],
             "accept_ok": [1.0 if t.get("accept_ok") else 0.0 for t in rows],
@@ -399,9 +439,9 @@ def lane_quality_stats(tasks):
         }
         for c in LQ_CRITERIA:
             series["judge_" + c] = [_lq_judge(t, c) for t in rows]
-        for k, xs in series.items():
+        for name, xs in series.items():
             xs = [x for x in xs if _num(x)]
-            s[k] = {"mean": _finite_mean(xs), "ci": bootstrap_ci(xs)}
+            s[name] = {"mean": _finite_mean(xs), "ci": bootstrap_ci(xs)}
         out[tid] = s
     return out
 
@@ -426,6 +466,9 @@ def lane_quality_row(run_dir, run_id, judge_model=None, status="ok"):
         by.setdefault(t["task"], []).append(t)
     groups = [by[k] for k in sorted(by)]
     reps = max(len(g) for g in groups)
+    pass_k = min(len(g) for g in groups)
+    stats = lane_quality_stats(tasks, pass_k)
+    accepted = sum(1 for t in tasks if t.get("accept_ok"))
     run_stats = {
         "accept_rate": _lq_accept_rate,
         "accept_ok_rate": lambda rs: _finite_mean([1.0 if t.get("accept_ok") else 0.0 for t in rs]),
@@ -447,7 +490,12 @@ def lane_quality_row(run_dir, run_id, judge_model=None, status="ok"):
         "hook_denials": total("hook_denials"),
         "permission_denials": total("permission_denials"),
         "peeked": float(sum(1 for t in tasks if t.get("peeked") is True)),
+        "pass_k": float(pass_k),
+        "pass_at_k": _finite_mean([s["pass_at_k"] for s in stats.values()]),
+        "pass_pow_k": _finite_mean([s["pass_pow_k"] for s in stats.values()]),
     })
+    cost = metrics["cost_usd"]
+    metrics["cost_per_accepted"] = cost / accepted if cost is not None and accepted else None
     # Trajectory fields (scripts/eval/lane-quality/trajectory.py):
     # each rate counts only the rows where its field applies (not null), so a
     # run dir written before them gets null metrics, never a schema change.
@@ -457,8 +505,9 @@ def lane_quality_row(run_dir, run_id, judge_model=None, status="ok"):
     idr = [t.get("identical_denied_retries") for t in tasks if _num(t.get("identical_denied_retries"))]
     metrics["identical_denied_retries"] = float(sum(idr)) if idr else None
     cases = {}
-    for tid, s in lane_quality_stats(tasks).items():
+    for tid, s in stats.items():
         cases[tid] = {k: v["mean"] for k, v in s.items() if isinstance(v, dict)}
+        cases[tid].update({k: s[k] for k in ("pass_at_k", "pass_pow_k", "cost_per_accepted")})
         if reps > 1:
             metrics[tid + ".judge_missing"] = float(s["judge_missing"])
             for k in ["accept_frac"] + ["judge_" + c for c in LQ_CRITERIA]:
@@ -476,7 +525,10 @@ def lane_quality_row(run_dir, run_id, judge_model=None, status="ok"):
     return make_row("lane-quality", "scripts/eval/lane-quality/run.sh", config, metrics, n=len(by),
                     model=first.get("model"), lane=first.get("lane"), status=status, run_id=run_id,
                     ci=ci, ci_level=0.95 if ci else None, ci_method="bootstrap-percentile" if ci else None,
-                    cases=cases, artifact=os.path.abspath(path), reps=reps)
+                    cases=cases, artifact=os.path.abspath(path), reps=reps,
+                    # Each repeat, so pass@k and a per-repeat paired test survive the run dir.
+                    meta={"reps": {tid: [{"accept_ok": bool(t.get("accept_ok")), "cost_usd": t.get("cost_usd"),
+                                          "wall_s": t.get("wall_s")} for t in g] for tid, g in sorted(by.items())}})
 
 
 # --- CLI ----------------------------------------------------------------------

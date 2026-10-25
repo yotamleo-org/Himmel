@@ -7,12 +7,19 @@ row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
   score.py lint  [--fixtures DIR] [--key FILE]
   score.py score --outputs DIR --critics a,b [--fixtures DIR] [--key FILE]
                  [--only case-01,case-02] [--window N] [--json OUT]
-                 [--ledger PATH | --no-ledger] [--meta-json J]
+                 [--ledger PATH | --no-ledger] [--meta-json J] [--model M]
 
 Inputs. fixtures/case-NN.patch are the frozen diffs the panel reviews;
-key/seeds.json maps each case to its twin pair, kind (seeded | clean) and
-defects ({id, class, file, line}). <outputs>/case-NN.md is the panel's stdout
-for that case, <outputs>/case-NN.err its stderr (optional).
+key/seeds.json maps each case to its twin pair, kind (seeded | clean),
+split (open | sealed) and defects ({id, class, file, line}).
+<outputs>/case-NN.md is the panel's stdout for that case, <outputs>/case-NN.err
+its stderr (optional).
+
+Split (README "Open and sealed seeds"). Every metric is also reported per half
+as open.<metric> and sealed.<metric>, each with its own interval. Tuning
+(eval_feedback.py) reads the open half only; the sealed half only grades
+whether a change is kept. Lint refuses a case with no split, twins in
+different halves, and a class with no pair in one half.
 
 Matching (README "Matching rules"). A finding is a `- [<critic>-<n>]: <text>
 [<file>:<line>]` bullet under Critical / Important / Suggestions. It hits a
@@ -139,7 +146,7 @@ def lint(fixtures, key_path):
     if sorted(cases) != files:
         problems.append("fixtures and key disagree: only-fixture=%s only-key=%s"
                         % (sorted(set(files) - set(cases)), sorted(set(cases) - set(files))))
-    pairs = {}
+    pairs, splits, pair_classes = {}, {}, {}
     for cid in files:
         with open(os.path.join(fixtures, cid + ".patch"), encoding="utf-8") as fh:
             text = fh.read()
@@ -164,11 +171,26 @@ def lint(fixtures, key_path):
                 problems.append("%s: seed file %r is not the diff's %r" % (cid, d.get("file"), path))
             if d.get("line") not in added:
                 problems.append("%s: seed line %r is not an added line of its diff" % (cid, d.get("line")))
+        if c.get("split") not in ("open", "sealed"):
+            problems.append("%s: split must be open or sealed" % cid)
         pairs.setdefault(c.get("pair"), []).append((c.get("kind"), path))
+        splits.setdefault(c.get("pair"), set()).add(c.get("split"))
+        for d in c.get("defects", []):
+            pair_classes.setdefault(c.get("pair"), set()).add(d.get("class"))
     for pair, members in sorted(pairs.items()):
         kinds = sorted(k for k, _ in members)
         if kinds != ["clean", "seeded"] or len({p for _, p in members}) != 1:
             problems.append("pair %s: needs one seeded and one clean twin of the same file, got %s" % (pair, members))
+        if len(splits[pair]) != 1:
+            problems.append("pair %s: its twins are in different halves of the split" % pair)
+    halves = {}
+    for pair, classes in pair_classes.items():
+        for cls in classes:
+            for half in splits[pair]:
+                halves.setdefault(cls, set()).add(half)
+    for cls, got in sorted(halves.items()):
+        if not {"open", "sealed"} <= got:
+            problems.append("class %s: needs a pair in each half of the split, got %s" % (cls, sorted(map(str, got))))
     n_seeded = sum(1 for c in cases.values() if c.get("kind") == "seeded")
     return problems, n_seeded, len(cases) - n_seeded
 
@@ -277,6 +299,20 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
 
     metrics, ci, case_rows = {}, {}, {}
     n_defects = sum(len(cases[c]["defects"]) for c in ids)
+    member_metrics(members, per_case, cases, window, "", metrics, ci, case_rows)
+    for half in ("open", "sealed"):
+        part = {cid: v for cid, v in per_case.items() if cases[cid].get("split") == half}
+        if part:
+            member_metrics(members, part, cases, window, half + ".", metrics, ci, {})
+    metrics.update({"defects": n_defects, "cases": len(ids), "unscored": len(unscored),
+                    "leaked": len(leaks)})
+    status = "inconclusive" if (leaks or len(unscored) == len(ids)) else ("partial" if unscored else "ok")
+    return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows,
+            "leaks": leaks, "unscored": unscored, "critics": members[:-1], "window": window}
+
+
+def member_metrics(members, per_case, cases, window, prefix, metrics, ci, case_rows):
+    """Fill metrics and ci (names prefixed) and the panel's case_rows from the scored cases."""
     for who in members:
         hit = hit_loc = hit_gate = 0
         defects = true_f = all_f = clean_n = clean_fp = seeded_n = 0
@@ -315,22 +351,17 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
             "fp_rate": (clean_fp, clean_n),
         }
         for name, (k, n) in vals.items():
-            metrics["%s.%s" % (who, name)] = ratio(k, n)
+            metrics["%s%s.%s" % (prefix, who, name)] = ratio(k, n)
             b = wilson(k, n)
             if b:
-                ci["%s.%s" % (who, name)] = b
-        metrics["%s.findings" % who] = all_f
-        metrics["%s.seeded_scored" % who] = seeded_n
-        metrics["%s.clean_scored" % who] = clean_n
+                ci["%s%s.%s" % (prefix, who, name)] = b
+        metrics["%s%s.findings" % (prefix, who)] = all_f
+        metrics["%s%s.seeded_scored" % (prefix, who)] = seeded_n
+        metrics["%s%s.clean_scored" % (prefix, who)] = clean_n
         for cls, (k, n) in by_class.items():
             if n:
-                metrics["%s.class.%s.recall" % (who, cls)] = ratio(k, n)
-                metrics["%s.class.%s.n" % (who, cls)] = n
-    metrics.update({"defects": n_defects, "cases": len(ids), "unscored": len(unscored),
-                    "leaked": len(leaks)})
-    status = "inconclusive" if (leaks or len(unscored) == len(ids)) else ("partial" if unscored else "ok")
-    return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows,
-            "leaks": leaks, "unscored": unscored, "critics": members[:-1], "window": window}
+                metrics["%s%s.class.%s.recall" % (prefix, who, cls)] = ratio(k, n)
+                metrics["%s%s.class.%s.n" % (prefix, who, cls)] = n
 
 
 def fixture_set_hash(fixtures, key_path, ids):
@@ -383,6 +414,7 @@ def main(argv=None):
     ps.add_argument("--ledger")
     ps.add_argument("--no-ledger", action="store_true")
     ps.add_argument("--meta-json", default="{}")
+    ps.add_argument("--model", help="the critic model, recorded on the row and in its config")
     a = ap.parse_args(argv)
 
     if a.cmd == "lint":
@@ -417,8 +449,10 @@ def main(argv=None):
                   "classes": CLASSES, "gating": list(GATING),
                   "class_patterns": hashlib.sha256(json.dumps(
                       CLASS_PATTERNS, sort_keys=True).encode()).hexdigest()[:16]}
+        if a.model:
+            config["critic_model"] = a.model
         meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"])
-        row = eval_runs.make_row(EVAL_ID, SOURCE, config, res["metrics"], n=res["metrics"]["cases"],
+        row = eval_runs.make_row(EVAL_ID, SOURCE, config, res["metrics"], n=res["metrics"]["cases"], model=a.model,
                                  status=res["status"], ci=res["ci"], ci_level=0.95 if res["ci"] else None,
                                  ci_method="wilson" if res["ci"] else None, cases=res["cases"] or None,
                                  artifact=os.path.abspath(a.outputs), meta=meta, repo=HERE)
