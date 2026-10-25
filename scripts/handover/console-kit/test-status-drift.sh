@@ -664,6 +664,11 @@ cat >"$tmp/frbin/jira" <<'EOS'
 echo "jira $1" >> "$FX/fr.log"
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = "$1" ] && exit 1
 [ "$1" = versions ] && printf 'v1.1.3\tfalse\t-\n'
+if [ "$1" = release ]; then
+    echo "release $* pk=${JIRA_PROJECT_KEY:-}" >> "$FX/fr.rel.log"
+    cat "$FX/fr.release" 2>/dev/null
+    exit "$(cat "$FX/fr.release.rc" 2>/dev/null || echo 0)"
+fi
 exit 0
 EOS
 cat >"$tmp/frbin/sweep" <<'EOS'
@@ -758,6 +763,58 @@ fr
 check "3c: a page of another version under an unchanged .vfp is restored" "$(head -n 1 "$PAGE")" "render 5"
 contains "3c: the sweep keeps its snapshot in the stage" "$(grep '^sweep ' "$FX/fr.log" | tail -n 1)" "--snapshot-out $FR/doc/.focus-stage."
 contains "3c: the drift pass reads that snapshot" "$(grep '^drift ' "$FX/fr.log" | tail -n 1)" "--snapshot $FR/doc/.focus-stage."
+
+# focus-version: auto (or no line beside a release: line) follows the declared release's current version.
+fr_auto() { # <focus-version line or ''> <release line or ''> [versions json]
+    fr_reset
+    sed -i '/^focus-version:/d' "$FR/doc/console.md"  # gnu-ok: Linux-only kit
+    [ -z "$1" ] || printf '%s\n' "$1" >> "$FR/doc/console.md"
+    [ -z "$2" ] || printf '%s\n' "$2" >> "$FR/doc/console.md"
+    printf '{"release":"R","status":"OK","versions":%s}\n' "${3:-[\"v1.1.4\",\"v1.1.5\"]}" > "$FX/fr.release"
+    rm -f "$FX/fr.rel.log" "$FX/fr.release.rc"
+    fr
+}
+fr_auto "focus-version: auto" "release: R"
+check "3d: focus-version: auto prints ok" "$(frout)" "focus=ok"
+contains "3d: auto renders the release's first version" "$(grep '^tracker ' "$FX/fr.log")" "--version v1.1.4 "
+check "3d: auto asks one release state call" "$(cat "$FX/fr.rel.log" 2>/dev/null)" "release release state R --json pk=HIMMEL"
+fr_auto "" "release: R"
+contains "3d: no focus-version line beside a release: line renders the first version" "$(grep '^tracker ' "$FX/fr.log")" "--version v1.1.4 "
+fr_auto "focus-version: v1.1.3" "release: R"
+contains "3d: a pinned version still renders itself" "$(grep '^tracker ' "$FX/fr.log")" "--version v1.1.3 "
+check "3d: and a pin asks no release state" "$([ -e "$FX/fr.rel.log" ] && echo asked || echo none)" none
+fr_auto "focus-version: none" "release: R"
+check "3d: none still skips beside a release: line" "$(frout)" "focus=skip"
+fr_auto "" ""
+check "3d: no focus-version and no release: line still skips" "$(frout)" "focus=skip"
+fr_auto "focus-version: auto" "release: R" '["v1.1.4"]'
+printf '{"release":"R","status":"DEGRADED","versions":["v1.1.4","v1.1.5"]}\n' > "$FX/fr.release"; echo 3 > "$FX/fr.release.rc"
+fr
+contains "3d: a not-OK release state (exit 3) still names its version" "$(grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--version v1.1.4 "
+fr_reset; sed -i '/^focus-version:/d' "$FR/doc/console.md"; printf 'focus-version: auto\nrelease: ACME-R\n' >> "$FR/doc/console.md"  # gnu-ok: Linux-only kit
+printf '{"release":"ACME-R","versions":["a1.0"]}\n' > "$FX/fr.release"; rm -f "$FX/fr.rel.log"
+JIRA_PROJECT_KEY=ACME fr
+contains "3d: an adopted project renders its own current version" "$(grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--version a1.0 "
+check "3d: and reads its own release under its own project key" "$(cat "$FX/fr.rel.log" 2>/dev/null)" "release release state ACME-R --json pk=ACME"
+fr_auto "focus-version: auto" "release: R"
+rm -f "$FR/doc/focus-state"
+fr --status
+check "3d: --status of an auto doc is not skip" "$(frout)" "focus=DIRTY:unknown"
+for bad in read-fail empty null-version no-release; do
+    fr_auto "focus-version: auto" "release: R"
+    case "$bad" in
+        read-fail) echo 1 > "$FX/fr.release.rc" ;;
+        empty) printf '{"release":"R","versions":[]}\n' > "$FX/fr.release" ;;
+        null-version) printf '{"release":"R","versions":[null]}\n' > "$FX/fr.release" ;;
+        no-release) sed -i '/^release:/d' "$FR/doc/console.md" ;;  # gnu-ok: Linux-only kit
+    esac
+    echo "page-before" > "$PAGE"; : > "$FX/fr.log"
+    fr
+    check "3d: $bad is loud, FAILED:release" "$(frout)" "focus=FAILED:release"
+    contains "3d: $bad warns on stderr" "$(cat "$tmp/frerr")" "WARN"
+    check "3d: $bad renders nothing" "$(grep -c '^tracker ' "$FX/fr.log")" 0
+    check "3d: $bad leaves the published page alone" "$(head -n 1 "$PAGE")" "page-before"
+done
 
 fr_reset
 mkdir -p "$FR/m2"

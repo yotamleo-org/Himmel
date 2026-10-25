@@ -14,9 +14,9 @@
 # mapfile.
 #
 # Verdict rule, per live `-n <name>` claude session:
-#   - a leg (the real -n name contains -leg and does not end -console) must
+#   - a leg (the real -n name contains -leg and does not end -console or -chief) must
 #     carry --autocompact 200000; anything else is DRIFT.
-#   - a console (-n name ends -console) is exempt -- 1m/auto is its design.
+#   - a console (-n name ends -console or -chief) is exempt -- 1m/auto is its design.
 #   - anything else (an operator relaunch, any other -n name) is DRIFT if
 #     its ceiling is auto or unset.
 # A process with no -n token is not a tracked session and is skipped.
@@ -70,7 +70,7 @@ NF < 4 { next }
     ceiling = $4
     if (ceiling == "") ceiling = "unset"
 
-    is_console = (name ~ /-console$/)
+    is_console = (name ~ /-(console|chief)$/)
     is_leg = (name ~ /-leg/) && !is_console
 
     if (is_leg)          { drift = (ceiling != "200000") }

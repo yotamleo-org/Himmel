@@ -416,12 +416,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails acts holds legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
+    for f in legs livestate prs tails acts holds legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
@@ -447,6 +447,18 @@ sample() {
                 v="$(key_field stall "$saved")"
             else
                 v="$(printf '%s' "$v" | tr ',' '\n' | grep -E ':(conflict|no-ci)$' | LC_ALL=C sort | paste -sd, -)"  # swallow-ok: no match is the empty set
+            fi
+            [ -n "$v" ] || continue
+        fi
+        # dispatch= keeps one <run>:<flag> token per late, idle or orphan flag, sorted: the
+        # elapsed time and job counts grow every tick and must not wake, nor must stale-head
+        # (report-only), and a run losing a flag is no new token. A set with none is left out
+        # of the key; dispatch=? keeps the saved set.
+        if [ "$f" = dispatch ]; then
+            if [ "$v" = '?' ]; then
+                v="$(key_field dispatch "$saved")"
+            else
+                v="$(printf '%s' "$v" | tr ',' '\n' | awk -F: '{ for (i = 2; i <= NF; i++) if ($i == "late" || $i == "idle" || $i == "orphan") print $1 ":" $i }' | LC_ALL=C sort | paste -sd, -)"
             fi
             [ -n "$v" ] || continue
         fi
@@ -556,17 +568,17 @@ drop_denials_expiry() {
     done | paste -sd, -
 }
 
-# drop_stall_resolved: <changed csv> <old key> <new key> — stall= wakes only when the new
-# value holds a pr:class token the old one lacked; a stall resolving is not an event.
+# drop_stall_resolved: <changed csv> <old key> <new key> [field] — stall= (or dispatch=) wakes
+# only when the new value holds a token the old one lacked; a stall resolving is not an event.
 drop_stall_resolved() {
-    local old new tok fresh=""
-    old=",$(key_field stall "$2"),"; new="$(key_field stall "$3")"
+    local old new tok fresh="" fld="${4:-stall}"
+    old=",$(key_field "$fld" "$2"),"; new="$(key_field "$fld" "$3")"
     for tok in $(printf '%s' "$new" | tr ',' ' '); do
         case "$old" in *",$tok,"*) ;; *) fresh=1 ;; esac
     done
     if [ -n "$fresh" ]; then printf '%s\n' "$1"; return; fi
     printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
-        [ "$f" = stall ] && continue
+        [ "$f" = "$fld" ] && continue
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -1169,6 +1181,7 @@ while :; do
                 real_changed="$(drop_denials_expiry "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_holds_left "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
+                real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key" dispatch)"
                 if [ -z "$real_changed" ]; then
                     saved="$key"; save_key "$key"; pending=""
                 else

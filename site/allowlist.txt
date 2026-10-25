@@ -47,6 +47,7 @@ internals/egress-matrix.md
 internals/harness-compat.md
 internals/headless-modes.md
 internals/jira-plugin.md
+troubleshooting.md
 internals/testing.md
 internals/environment-gotchas.md
 internals/lane-calibration.md

@@ -6,7 +6,7 @@ transcripts and attributes every API request to a trigger class (the last
 non-tool-result user turn: a leg message, a task notification, the operator)
 and an action class (what its tool calls did), then costs it.
 
-  console-load-inventory.py [--projects DIR] [--suffix -roadmap-console]
+  console-load-inventory.py [--projects DIR] [--suffix -roadmap-chief,-roadmap-console]
                             [--match REGEX] [--last N] [--json]
 
 Cost per API request (deduped by message id; assistant entries are split per
@@ -173,7 +173,7 @@ def parse(path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--projects", default=os.path.expanduser("~/.claude/projects/-home-overlord-Documents-github-himmel"))
-    ap.add_argument("--suffix", default="-roadmap-console")
+    ap.add_argument("--suffix", default="-roadmap-chief,-roadmap-console")
     ap.add_argument("--match", default="")
     ap.add_argument("--last", type=int, default=0)
     ap.add_argument("--json", action="store_true")
@@ -182,7 +182,7 @@ def main(argv=None):
     sessions = []
     for f in glob.glob(os.path.join(a.projects, "*.jsonl")):
         t = title_of(f)
-        if t and t.endswith(a.suffix) and re.search(a.match, t):
+        if t and t.endswith(tuple(a.suffix.split(","))) and re.search(a.match, t):
             sessions.append((t, f))
     sessions.sort()
     if a.last:

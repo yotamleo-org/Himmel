@@ -473,6 +473,11 @@ if [ "$tool" != PowerShell ]; then
             echo "block-docker-privesc: shfmt not on PATH, so this command that names docker or podman cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with DOCKER_PRIVESC_OK=1." >&2
             exit 2
             ;;
+        5)
+            [ "${DOCKER_PRIVESC_OK:-0}" = "1" ] && exit 0
+            echo "block-docker-privesc: the command model timed out, so this command that names docker or podman cannot be read; refusing. Split the command, or bypass with DOCKER_PRIVESC_OK=1." >&2
+            exit 2
+            ;;
     esac
 fi
 

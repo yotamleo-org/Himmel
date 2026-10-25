@@ -390,12 +390,14 @@ document.addEventListener("change", (e) => {
 });
 
 // Two-step write: the dry-run binds a preview id; only confirm runs it.
-async function preview(b) {
-  const k = b.dataset.k;
-  const busy = state.plans[k];
-  if (busy && (busy.stage === "loading" || busy.stage === "running")) return; // one request per row at a time
+function preview(b) {
   const req ={ action: b.dataset.action, target: b.dataset.target };
   if (b.dataset.value) req.value = b.dataset.value;
+  return previewReq(b.dataset.k, req);
+}
+async function previewReq(k, req) {
+  const busy = state.plans[k];
+  if (busy && (busy.stage === "loading" || busy.stage === "running")) return; // one request per row at a time
   state.plans[k] = { stage: "loading" }; paint();
   const { ok, j } = await post("/api/preview", req);
   state.plans[k] = ok ? { stage: "plan", req, typed: "", ...j } : { stage: "error", error: j.error || "preview failed", output: j.output };
@@ -411,8 +413,28 @@ async function run(k) {
   paint();
   if (ok) { loadFeed(); if (currentPage.id === "setup") loadSetup(); }
 }
+// The password leaves its fields in this one request; both fields are cleared whatever the answer is.
+async function createAccount(f) {
+  const user = f.querySelector('[data-account="user"]').value;
+  const pw = f.querySelector('[data-account="password"]'), again = f.querySelector('[data-account="confirm"]');
+  const same = pw.value === again.value, password = pw.value;
+  pw.value = ""; again.value = "";
+  if (!same) { setupMsgs.account = "the two passwords differ"; return paint(); }
+  const { ok, j } = await post("/api/setup/account", { user, password });
+  setupMsgs.account = ok ? "login created" : (j.error || "failed");
+  paint();
+  if (ok) loadSetup();
+}
 document.addEventListener("submit", (e) => {
-  const f = e.target.closest && e.target.closest("[data-setup-form]");
+  const a = e.target.closest && e.target.closest("[data-account-form]");
+  if (a) { e.preventDefault(); return void createAccount(a); }
+  const pf = e.target.closest && e.target.closest("[data-path-form]");
+  if (pf) {
+    e.preventDefault();
+    const target = pf.dataset.target;
+    return void previewReq(`setup|${target}`, { action: "config.paths", target, value: pf.querySelector("input").value });
+  }
+  const f =e.target.closest && e.target.closest("[data-setup-form]");
   if (!f) return;
   e.preventDefault();
   void saveSecret(f.dataset.name, "set", f.querySelector("input"));

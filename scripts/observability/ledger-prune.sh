@@ -8,8 +8,8 @@
 # inline write to ~/.himmel/flow-runs.jsonl is classifier-blocked in auto mode
 # — it reads as an arbitrary write to a state file — and a bare
 # `curl 127.0.0.1:9877/metrics` read was ALSO blocked. This script is the
-# sanctioned single-purpose write path, same role restart-stack.sh and
-# scripts/cr/write-verdicts.sh play for their own state.
+# sanctioned single-purpose write path, same role scripts/cr/write-verdicts.sh
+# plays for its own state.
 #
 # Drops ONLY unpaired start rows (ev="start" with no matching ev="end"
 # run_id) older than --cutoff-hours (default 30h). Every end row, every

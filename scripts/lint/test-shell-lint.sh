@@ -4,9 +4,9 @@
 # Usage: bash scripts/lint/test-shell-lint.sh
 #
 # Cases:
-#   1. success criterion : staged .sh with unused var + BOM + set -e leak →
-#                          all three caught, exit 1
-#   2. clean file        : proper set -uo pipefail, no BOM, vars used → exit 0
+#   1. success criterion : staged .sh with unused var + set -e leak →
+#                          both caught, exit 1
+#   2. clean file        : proper set -uo pipefail, vars used → exit 0
 #   3. statusline exclude : a file under scripts/statusline/ is skipped (mirror gate)
 #   4. --staged mode      : lints staged shell files in a git repo, exit 1 on issue
 #   5. --help             : exits 0 and prints usage
@@ -15,12 +15,7 @@
 # 7-10. heredoc-body set -e, --staged-from-subdir, missing-file exit 2, set -Ee.
 # 11-17. CR-learnings advisory checks: regex-class,
 #        mktemp template, bash32 constructs, echo-e, gnu-flag (+BSD-fallback
-#        exclusion + gnu-ok exemption), BOM policy split by file type (.ps1:
-#        BOM clean / non-ASCII no-BOM = trap), --staged admits .ps1.
-# 16d-f. UTF-16LE/BE BOM'd .ps1 clean;
-#        non-UTF-8 no-BOM .ps1 = [PS1-ENCODING] (never an automated BOM add).
-# 16g. a UTF-16LE-BOM'd SHELL script is a [BOM] error (breaks the shebang);
-#        UTF-16/32 is not blessed on every file type.
+#        exclusion + gnu-ok exemption).
 #  19. [parse] + [quote-break]: an apostrophe in prose inside a
 #      single-quoted awk program; includes the parses-but-truncated shape
 #      that `bash -n` cannot see, a clean negative control, and a sweep of
@@ -77,12 +72,6 @@ assert_not_contains() {
 
 HAVE_SHELLCHECK=0
 command -v shellcheck >/dev/null 2>&1 && HAVE_SHELLCHECK=1
-# iconv backs the [PS1-NO-BOM] vs [PS1-ENCODING] split. The
-# [PS1-NO-BOM] assertion (valid UTF-8 + no BOM) is iconv-dependent: without
-# iconv the linter fails SAFE to [PS1-ENCODING] unverified, so guard it.
-HAVE_ICONV=0
-command -v iconv >/dev/null 2>&1 && HAVE_ICONV=1
-
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/shell-lint.XXXXXX")" || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 [ -n "$TMP_ROOT" ] || { echo "FATAL: mktemp -d returned empty" >&2; exit 1; }
 
@@ -234,20 +223,13 @@ if [ "${1:-}" = --kill-after ]; then
     [ "$FAIL" -eq 0 ]; exit "$?"
 fi
 
-# Write a UTF-8 BOM (EF BB BF) then the given body to $1.
-_write_bom_file() {
-    local path="$1"; shift
-    printf '\xEF\xBB\xBF' > "$path"
-    cat >> "$path"
-}
-
 # ---------------------------------------------------------------------------
-# Case 1: success criterion — unused var + BOM + set -e leak, all three caught
+# Case 1: success criterion — unused var + set -e leak, both caught
 # ---------------------------------------------------------------------------
-printf '\nCase 1: success criterion (unused var + BOM + set -e leak)\n'
+printf '\nCase 1: success criterion (unused var + set -e leak)\n'
 
 BAD="$TMP_ROOT/bad.sh"
-_write_bom_file "$BAD" <<'EOF'
+cat > "$BAD" <<'EOF'
 #!/usr/bin/env bash
 set -e
 unused_var="never referenced"
@@ -257,7 +239,6 @@ EOF
 OUT1="$(bash "$LINT" "$BAD" 2>&1)"; EC1=$?
 
 if [ "$EC1" -eq 1 ]; then pass "exit 1 on a file with issues"; else fail "expected exit 1, got $EC1" "$OUT1"; fi
-assert_contains "BOM detected" "BOM" "$OUT1"
 assert_contains "errexit (set -e) leak detected" "[errexit]" "$OUT1"
 if [ "$HAVE_SHELLCHECK" -eq 1 ]; then
     assert_contains "shellcheck unused-var (SC2034) surfaced" "SC2034" "$OUT1"
@@ -288,7 +269,7 @@ printf '\nCase 3: scripts/statusline/ excluded\n'
 
 mkdir -p "$TMP_ROOT/scripts/statusline"
 SL="$TMP_ROOT/scripts/statusline/vendored.sh"
-_write_bom_file "$SL" <<'EOF'
+cat > "$SL" <<'EOF'
 #!/usr/bin/env bash
 set -e
 unused_var="x"
@@ -597,152 +578,6 @@ if grepq "$OUT15W" -F '[prim-lock] line 4:'; then pass "15p a flock call sharing
 if grepq "$OUT15W" -F '[prim-canon] line 5:'; then pass "15p a realpath call sharing a line with its probe is flagged"; else fail "15p a realpath call sharing a line with its probe must be flagged" "$OUT15W"; fi
 
 _test_prim_probes
-
-# Case 16: BOM policy is split by file type. A BOM is CORRECT for
-# *.ps1 (PS5.1 needs it to decode UTF-8) -> [BOM] is never reported on a .ps1.
-# Instead a .ps1 with non-ASCII bytes (>0x7F) but NO BOM is the trap itself
-# ([PS1-NO-BOM]); a pure-ASCII .ps1 without a BOM is fine. Fixtures use printf
-# octal escapes (\303\251 = e-acute) so THIS test file stays pure-ASCII. A .ps1
-# still runs no shell-specific check.
-printf '\nCase 16: BOM policy split by file type (HIMMEL-1432)\n'
-
-# 16a: non-ASCII .ps1 WITH a BOM -> clean (the BOM is correct; the very content
-#      that is the trap without one is fine with one).
-PS1B="$TMP_ROOT/bom.ps1"
-printf '\xEF\xBB\xBF' > "$PS1B"
-printf 'Write-Output "caf\303\251"\n' >> "$PS1B"
-OUT16="$(bash "$LINT" "$PS1B" 2>&1)"; EC16=$?
-if [ "$EC16" -eq 0 ]; then pass "16a: non-ASCII .ps1 + BOM exits 0 (BOM is correct)"; else fail "16a: expected exit 0, got $EC16" "$OUT16"; fi
-assert_not_contains "16a: no [BOM] on a .ps1" "[BOM]" "$OUT16"
-assert_not_contains "16a: no [PS1-NO-BOM] when BOM present" "[PS1-NO-BOM]" "$OUT16"
-# grepq, not printf|grep -qE: this suite runs under pipefail and the sweep
-# converts single-producer grep -q pipelines.
-if grepq "$OUT16" -E '\[(errexit|shellcheck|regex-class|mktemp|bash32|gnu-flag|echo-e)\]'; then
-    fail "16a: .ps1 ran a shell-specific check" "$OUT16"
-else
-    pass "16a: .ps1 runs no shell-specific check"
-fi
-
-# 16b: non-ASCII .ps1 WITHOUT a BOM -> [PS1-NO-BOM] (the trap).
-PS1N="$TMP_ROOT/nobom.ps1"
-printf 'Write-Output "caf\303\251"\n' > "$PS1N"
-OUT16b="$(bash "$LINT" "$PS1N" 2>&1)"; EC16b=$?
-if [ "$EC16b" -eq 1 ]; then pass "16b: non-ASCII no-BOM .ps1 exits 1"; else fail "16b: expected exit 1, got $EC16b" "$OUT16b"; fi
-if [ "$HAVE_ICONV" -eq 1 ]; then
-    assert_contains "16b: [PS1-NO-BOM] fires on the trap (valid UTF-8, no BOM)" "[PS1-NO-BOM]" "$OUT16b"
-else
-    printf '  SKIP: iconv not installed — 16b [PS1-NO-BOM] assertion skipped (fail-safe emits [PS1-ENCODING] unverified)\n'
-fi
-assert_not_contains "16b: no [BOM] reported (BOM absent, not the issue)" "[BOM]" "$OUT16b"
-
-# 16b-big: the non-ASCII detector in
-# shell-lint.sh reads the WHOLE file (`tr -d '\000-\177' | wc -c`, not `grep -q`).
-# A `grep -q` detector exits on the first non-ASCII byte, SIGPIPEs `tr` under
-# pipefail, and the `if PIPELINE; then flag` wrapper then reads that PIPE failure
-# as "no non-ASCII" -> a heavily non-ASCII .ps1 SILENTLY SKIPS [PS1-NO-BOM].
-# This guards that regression with a fixture LARGER than any pipe buffer (>=1MB):
-# any early-exit detector SIGPIPEs at this size and the trap goes unflagged.
-# Fixture is generated at runtime (never commit a 1MB blob); octal escapes keep
-# THIS test file pure-ASCII (see Case 16 header).
-PS1BIG="$TMP_ROOT/big-nobom.ps1"
-_e_chunk="$TMP_ROOT/_e_chunk"
-# A 64KiB valid-UTF-8 non-ASCII chunk: 32768 e-acute pairs (C3 A9) = 65536 bytes.
-printf '\303\251%.0s' {1..32768} > "$_e_chunk"
-# 17 chunks -> 17 * 65536 = 1114112 bytes (~1.06 MiB), all valid UTF-8, no BOM.
-: > "$PS1BIG"
-for _ in {1..17}; do cat "$_e_chunk" >> "$PS1BIG"; done
-rm -f "$_e_chunk"
-OUT16big="$(bash "$LINT" "$PS1BIG" 2>&1)"; EC16big=$?
-if [ "$EC16big" -eq 1 ]; then pass "16b-big: >1MB non-ASCII no-BOM .ps1 exits 1 (detector read the whole file)"; else fail "16b-big: expected exit 1, got $EC16big" "$OUT16big"; fi
-if [ "$HAVE_ICONV" -eq 1 ]; then
-    assert_contains "16b-big: [PS1-NO-BOM] fires on a >1MB non-ASCII no-BOM .ps1 (no SIGPIPE short-circuit)" "[PS1-NO-BOM]" "$OUT16big"
-else
-    printf '  SKIP: iconv not installed — 16b-big [PS1-NO-BOM] assertion skipped\n'
-fi
-assert_not_contains "16b-big: no [BOM] reported (BOM absent)" "[BOM]" "$OUT16big"
-
-# 16c: pure-ASCII .ps1 WITHOUT a BOM -> clean (BOM is optional when ASCII-only).
-PS1A="$TMP_ROOT/ascii.ps1"
-printf 'Write-Output "hi"\n' > "$PS1A"
-OUT16c="$(bash "$LINT" "$PS1A" 2>&1)"; EC16c=$?
-if [ "$EC16c" -eq 0 ]; then pass "16c: pure-ASCII no-BOM .ps1 exits 0"; else fail "16c: expected exit 0, got $EC16c" "$OUT16c"; fi
-assert_not_contains "16c: no [PS1-NO-BOM] on ASCII-only .ps1" "[PS1-NO-BOM]" "$OUT16c"
-
-# 16d-16f: recognizing only EF BB BF would send a UTF-16/UTF-32 .ps1 down the
-# no-BOM branch to be told to "add a UTF-8 BOM" — corrupting a valid script.
-# These lock that in: a UTF-16/32 BOM'd
-# .ps1 is CLEAN, and a non-UTF-8 no-BOM .ps1 gets [PS1-ENCODING] (manual),
-# never an automated BOM add. Fixtures use printf byte escapes (not iconv) so
-# they build everywhere; NUL bytes go straight to the file via redirection.
-
-# 16d: UTF-16LE .ps1 (FF FE BOM + "hi" = 68 00 69 00) -> clean. PowerShell 5.1
-#      decodes BOM'd UTF-16 natively.
-PS1U16LE="$TMP_ROOT/u16le.ps1"
-printf '\xFF\xFE\x68\x00\x69\x00' > "$PS1U16LE"
-OUT16d="$(bash "$LINT" "$PS1U16LE" 2>&1)"; EC16d=$?
-if [ "$EC16d" -eq 0 ]; then pass "16d: UTF-16LE BOM .ps1 exits 0 (valid encoding)"; else fail "16d: expected exit 0, got $EC16d" "$OUT16d"; fi
-assert_not_contains "16d: no [PS1-NO-BOM] on a UTF-16LE .ps1" "[PS1-NO-BOM]" "$OUT16d"
-assert_not_contains "16d: no [PS1-ENCODING] on a UTF-16LE .ps1" "[PS1-ENCODING]" "$OUT16d"
-assert_not_contains "16d: no [BOM] on a UTF-16LE .ps1" "[BOM]" "$OUT16d"
-
-# 16e: UTF-16BE .ps1 (FE FF BOM + "hi" = 00 68 00 69) -> clean.
-PS1U16BE="$TMP_ROOT/u16be.ps1"
-printf '\xFE\xFF\x00\x68\x00\x69' > "$PS1U16BE"
-OUT16e="$(bash "$LINT" "$PS1U16BE" 2>&1)"; EC16e=$?
-if [ "$EC16e" -eq 0 ]; then pass "16e: UTF-16BE BOM .ps1 exits 0 (valid encoding)"; else fail "16e: expected exit 0, got $EC16e" "$OUT16e"; fi
-assert_not_contains "16e: no [PS1-NO-BOM] on a UTF-16BE .ps1" "[PS1-NO-BOM]" "$OUT16e"
-assert_not_contains "16e: no [PS1-ENCODING] on a UTF-16BE .ps1" "[PS1-ENCODING]" "$OUT16e"
-
-# 16f: non-UTF-8 no-BOM .ps1 -> [PS1-ENCODING], NOT [PS1-NO-BOM]. A raw 0xA0
-#      byte is invalid as a UTF-8 leading byte, so iconv rejects it; the linter
-#      must NOT prescribe adding a UTF-8 BOM (that would corrupt the file). This
-#      is the fail-safe that closes the corruption path. Robust without iconv:
-#      both the iconv-absent and invalid-UTF-8 paths emit [PS1-ENCODING].
-PS1BAD="$TMP_ROOT/badenc.ps1"
-printf 'Write-Output hi\n\xA0\xA0\n' > "$PS1BAD"
-OUT16f="$(bash "$LINT" "$PS1BAD" 2>&1)"; EC16f=$?
-if [ "$EC16f" -eq 1 ]; then pass "16f: non-UTF-8 no-BOM .ps1 exits 1"; else fail "16f: expected exit 1, got $EC16f" "$OUT16f"; fi
-assert_contains "16f: [PS1-ENCODING] on invalid-UTF-8 no-BOM .ps1" "[PS1-ENCODING]" "$OUT16f"
-assert_not_contains "16f: no [PS1-NO-BOM] (must not prescribe a BOM add on non-UTF-8)" "[PS1-NO-BOM]" "$OUT16f"
-
-# 16g: blessing UTF-16/32 on EVERY file type would let a UTF-16LE-BOM'd SHELL
-# script pass clean. A shell script's first
-# two bytes must be `#!`; ANY byte-order mark breaks the shebang, so the very
-# same UTF-16LE bytes that are CLEAN on a .ps1 (16d) must be a [BOM] ERROR on a
-# .sh. Fixture mirrors 16d (printf byte escapes — no iconv, builds everywhere).
-SHU16LE="$TMP_ROOT/u16le.sh"
-printf '\xFF\xFE\x68\x00\x69\x00' > "$SHU16LE"
-OUT16g="$(bash "$LINT" "$SHU16LE" 2>&1)"; EC16g=$?
-if [ "$EC16g" -eq 1 ]; then pass "16g: UTF-16LE BOM .sh exits 1 (breaks shebang)"; else fail "16g: expected exit 1, got $EC16g" "$OUT16g"; fi
-assert_contains "16g: [BOM] fires on a UTF-16LE .sh" "[BOM]" "$OUT16g"
-assert_contains "16g: [BOM] names the UTF-16LE kind" "UTF-16LE" "$OUT16g"
-assert_not_contains "16g: a .sh is never routed through the .ps1 policy" "[PS1-NO-BOM]" "$OUT16g"
-
-# Case 17: --staged admits *.ps1 and the new BOM policy applies there too. A
-# staged non-ASCII no-BOM .ps1 is flagged [PS1-NO-BOM] -> proves --staged gathers
-# .ps1 AND the trap fires under --staged.
-printf '\nCase 17: --staged lints a staged .ps1 (BOM policy split)\n'
-REPO2="$TMP_ROOT/repo2"
-mkdir -p "$REPO2"
-(
-    cd "$REPO2" || exit 1
-    git init -q
-    git config user.email t@t.t
-    git config user.name t
-    printf 'Write-Output "caf\303\251"\n' > staged.ps1
-    git add staged.ps1
-)
-OUT17="$(cd "$REPO2" && bash "$LINT" --staged 2>&1)"
-if [ "$HAVE_ICONV" -eq 1 ]; then
-    # grepq, not printf|grep -qF.
-    if grepq "$OUT17" -F 'staged.ps1' && grepq "$OUT17" -F '[PS1-NO-BOM]'; then
-        pass "--staged flags [PS1-NO-BOM] on a staged non-ASCII no-BOM .ps1"
-    else
-        fail "--staged should flag a staged non-ASCII no-BOM .ps1" "$OUT17"
-    fi
-else
-    printf '  SKIP: iconv not installed — Case 17 [PS1-NO-BOM] assertion skipped\n'
-fi
 
 # Case 18: shell-lint reports no findings against its own test file
 # — this suite's fixtures/assertions embed the same
@@ -1442,13 +1277,10 @@ x=$(mktemp)
 EOF
 OUT21E="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv bad.sh 2>&1)"; EC21E=$?
 if [ "$EC21E" -eq 1 ]; then pass "21e a finding above its baseline count fails"; else fail "21e expected exit 1, got $EC21E" "$OUT21E"; fi
-_write_bom_file "$GATE/bom.sh" <<'EOF'
-#!/usr/bin/env bash
-set -uo pipefail
-EOF
-printf 'bom.sh\tBOM\t1\n' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
-OUT21F="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv bom.sh 2>&1)"; EC21F=$?
-if [ "$EC21F" -eq 1 ]; then pass "21f a [BOM] row in the baseline is never honoured"; else fail "21f expected exit 1, got $EC21F" "$OUT21F"; fi
+printf '#!/usr/bin/env bash\nif then\n' > "$GATE/parse.sh"
+printf 'parse.sh\tparse\t1\n' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
+OUT21F="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv parse.sh 2>&1)"; EC21F=$?
+if [ "$EC21F" -eq 1 ]; then pass "21f a [parse] row in the baseline is never honoured"; else fail "21f expected exit 1, got $EC21F" "$OUT21F"; fi
 
 # --changed BASE..HEAD lints only files changed in the range
 (cd "$GATE" && git add bad.sh good.sh && git commit -q -m add) >/dev/null 2>&1
@@ -1505,9 +1337,9 @@ OUT21M="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scri
 if [ "$EC21M" -eq 1 ]; then pass "21m --staged lints a renamed file"; else fail "21m expected exit 1, got $EC21M" "$OUT21M"; fi
 
 # --write-baseline never launders a finding no baseline can accept, and fails loudly when it cannot write
-OUT21N="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/wb.txt" --write-baseline bom.sh 2>&1)"; EC21N=$?
-if [ "$EC21N" -eq 1 ]; then pass "21n --write-baseline still reports a [BOM] finding"; else fail "21n expected exit 1, got $EC21N" "$OUT21N"; fi
-assert_contains "21n reports [BOM]" "[BOM]" "$OUT21N"
+OUT21N="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/wb.txt" --write-baseline parse.sh 2>&1)"; EC21N=$?
+if [ "$EC21N" -eq 1 ]; then pass "21n --write-baseline still reports a [parse] finding"; else fail "21n expected exit 1, got $EC21N" "$OUT21N"; fi
+assert_contains "21n reports [parse]" "[parse]" "$OUT21N"
 OUT21O="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/no-such-dir/wb.txt" --write-baseline good.sh 2>&1)"; EC21O=$?
 if [ "$EC21O" -eq 2 ]; then pass "21o --write-baseline to an unwritable path exits 2"; else fail "21o expected exit 2, got $EC21O" "$OUT21O"; fi
 
@@ -1612,7 +1444,7 @@ OUT22E="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" --staged 2>&1)"; EC22
 if [ "$EC22E" -ne 0 ]; then pass "22e --staged without shellcheck exits non-zero ($EC22E)"; else fail "22e expected non-zero exit with no shellcheck, got 0" "$OUT22E"; fi
 assert_contains "22e says shellcheck is required" "shellcheck is required" "$OUT22E"
 OUT22F="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" ok.sh 2>&1)"; EC22F=$?
-if [ "$EC22F" -eq 0 ]; then pass "22f explicit FILE mode without shellcheck still runs BOM + errexit checks (exit 0)"; else fail "22f expected exit 0, got $EC22F" "$OUT22F"; fi
+if [ "$EC22F" -eq 0 ]; then pass "22f explicit FILE mode without shellcheck still runs errexit checks (exit 0)"; else fail "22f expected exit 0, got $EC22F" "$OUT22F"; fi
 (cd "$NOSC_REPO" && git commit -q -m init) >/dev/null 2>&1
 OUT22G="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" --changed "HEAD..HEAD" 2>&1)"; EC22G=$?
 if [ "$EC22G" -ne 0 ]; then pass "22g --changed without shellcheck exits non-zero ($EC22G)"; else fail "22g expected non-zero exit with no shellcheck, got 0" "$OUT22G"; fi
@@ -1637,6 +1469,167 @@ for _v in 0.9.0 0.11.0; do
 done
 
 _test_kill_after
+
+# ---------------------------------------------------------------------------
+# Case 24: the baseline cannot grow silently. A count above the base version's,
+# or a new row, needs a 4th-column reason; prim-* growth only warns.
+# ---------------------------------------------------------------------------
+printf '\nCase 24: baseline growth needs a reason\n'
+
+GR="$TMP_ROOT/growth"
+mkdir -p "$GR/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR/scripts/lint/"
+GRB=scripts/lint/shell-lint-baseline.tsv
+(
+    cd "$GR" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    cat > a.sh <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+tmp=$(mktemp)
+printf '%s\n' "$tmp"
+EOF
+    printf '#!/usr/bin/env bash\nset -uo pipefail\nprintf hi\n' > c.sh
+    printf 'a.sh\tmktemp\t1\nc.sh\tprim-canon\t1\n' > "$GRB"
+    git add -A
+    git commit -q -m seed
+) >/dev/null 2>&1
+_gr_lint() { (cd "$GR" && bash scripts/lint/shell-lint.sh "$@" --baseline "$GRB" 2>&1); }
+
+printf 'a.sh\tmktemp\t2\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add "$GRB") >/dev/null 2>&1
+OUT24A="$(_gr_lint --staged)"; EC24A=$?
+if [ "$EC24A" -eq 1 ]; then pass "24a a raised count with no reason fails"; else fail "24a expected exit 1, got $EC24A" "$OUT24A"; fi
+assert_contains "24a names the row and asks for a reason" "a.sh	mktemp" "$OUT24A"
+
+printf 'a.sh\tmktemp\t2\tfixture needs a bare mktemp\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add "$GRB") >/dev/null 2>&1
+OUT24B="$(_gr_lint --staged)"; EC24B=$?
+if [ "$EC24B" -eq 0 ]; then pass "24b a raised count with a reason passes"; else fail "24b expected exit 0, got $EC24B" "$OUT24B"; fi
+
+printf 'a.sh\tmktemp\t1\nb.sh\tmktemp\t1\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add "$GRB") >/dev/null 2>&1
+OUT24C="$(_gr_lint --staged)"; EC24C=$?
+if [ "$EC24C" -eq 1 ]; then pass "24c a new row with no reason fails"; else fail "24c expected exit 1, got $EC24C" "$OUT24C"; fi
+
+printf 'a.sh\tmktemp\t1\nc.sh\tprim-canon\t3\n' > "$GR/$GRB"
+(cd "$GR" && git add "$GRB") >/dev/null 2>&1
+OUT24D="$(_gr_lint --staged)"; EC24D=$?
+if [ "$EC24D" -eq 0 ]; then pass "24d prim-* growth without a reason does not fail"; else fail "24d expected exit 0, got $EC24D" "$OUT24D"; fi
+assert_contains "24d prim-* growth warns" "warn" "$OUT24D"
+
+printf 'a.sh\tmktemp\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add "$GRB") >/dev/null 2>&1
+OUT24E="$(_gr_lint --staged)"; EC24E=$?
+if [ "$EC24E" -eq 0 ]; then pass "24e a lowered count and a dropped row pass"; else fail "24e expected exit 0, got $EC24E" "$OUT24E"; fi
+
+printf 'a.sh\tmktemp\t1\ta reason on an accepted finding\n' > "$GR/$GRB"
+OUT24F="$(_gr_lint a.sh)"; EC24F=$?
+if [ "$EC24F" -eq 0 ]; then pass "24f a row with a reason column still accepts its findings"; else fail "24f expected exit 0, got $EC24F" "$OUT24F"; fi
+
+printf 'a.sh\tmktemp\t2\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add -A && git commit -q -m raise) >/dev/null 2>&1
+OUT24G="$(_gr_lint --changed HEAD~1..HEAD)"; EC24G=$?
+if [ "$EC24G" -eq 1 ]; then pass "24g --changed range: a raised count with no reason fails"; else fail "24g expected exit 1, got $EC24G" "$OUT24G"; fi
+
+(cd "$GR" && git reset -q --hard HEAD~1 && git mv a.sh moved.sh) >/dev/null 2>&1
+printf 'moved.sh\tmktemp\t1\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add -A) >/dev/null 2>&1
+OUT24H="$(_gr_lint --staged)"; EC24H=$?
+if [ "$EC24H" -eq 0 ]; then pass "24h a baseline row that follows a renamed file is not growth"; else fail "24h expected exit 0, got $EC24H" "$OUT24H"; fi
+
+printf 'moved.sh\tmktemp\t2\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+(cd "$GR" && git add "$GRB") >/dev/null 2>&1
+printf 'moved.sh\tmktemp\t2\ta reason added after staging\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+OUT24I="$(_gr_lint --staged)"; EC24I=$?
+if [ "$EC24I" -eq 1 ]; then pass "24i --staged reads the indexed baseline: an unstaged reason does not approve a staged raise"; else fail "24i expected exit 1, got $EC24I" "$OUT24I"; fi
+
+printf 'moved.sh\tmktemp\t1\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+cat >> "$GR/moved.sh" <<'EOF'
+y=$(mktemp)
+printf '%s\n' "$y"
+EOF
+(cd "$GR" && git add "$GRB" moved.sh) >/dev/null 2>&1
+printf 'moved.sh\tmktemp\t2\ta reason added after staging\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+OUT24J="$(_gr_lint --staged)"; EC24J=$?
+if [ "$EC24J" -eq 1 ]; then pass "24j --staged filters findings against the indexed baseline, not an unstaged allowance"; else fail "24j expected exit 1, got $EC24J" "$OUT24J"; fi
+
+GR3="$TMP_ROOT/untracked"
+mkdir -p "$GR3/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR3/scripts/lint/"
+(
+    cd "$GR3" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    printf 'seed\n' > seed.txt
+    git add seed.txt
+    git commit -q -m seed
+    cat > a.sh <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+tmp=$(mktemp)
+printf '%s\n' "$tmp"
+EOF
+    git add a.sh
+) >/dev/null 2>&1
+printf 'a.sh\tmktemp\t1\tuntracked allowance\n' > "$GR3/$GRB"
+OUT24K="$(cd "$GR3" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24K=$?
+if [ "$EC24K" -eq 1 ]; then pass "24k --staged ignores a baseline that is not in the index"; else fail "24k expected exit 1, got $EC24K" "$OUT24K"; fi
+
+GR4="$TMP_ROOT/threedot"
+mkdir -p "$GR4/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR4/scripts/lint/"
+(
+    cd "$GR4" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    git checkout -q -b main
+    cat > a.sh <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+tmp=$(mktemp)
+printf '%s\n' "$tmp"
+EOF
+    printf 'a.sh\tmktemp\t1\n' > "$GRB"
+    git add -A
+    git commit -q -m seed
+    git checkout -q -b side
+    printf 'a.sh\tmktemp\t2\n' > "$GRB"
+    git commit -q -am side-raise
+    git checkout -q main
+    printf 'a.sh\tmktemp\t2\ta reason landed on main\n' > "$GRB"
+    git commit -q -am main-raise
+    git checkout -q side
+) >/dev/null 2>&1
+OUT24L="$(cd "$GR4" && bash scripts/lint/shell-lint.sh --changed main...side --baseline "$GRB" 2>&1)"; EC24L=$?
+if [ "$EC24L" -eq 1 ]; then pass "24l --changed A...B compares against the merge base, not A"; else fail "24l expected exit 1, got $EC24L" "$OUT24L"; fi
+
+GR5="$TMP_ROOT/reuse"
+mkdir -p "$GR5/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR5/scripts/lint/"
+(
+    cd "$GR5" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    printf '#!/usr/bin/env bash\nset -uo pipefail\nprintf hi\n' > a.sh
+    printf 'a.sh\tmktemp\t3\tthe first reason\n' > "$GRB"
+    git add -A
+    git commit -q -m seed
+) >/dev/null 2>&1
+printf 'a.sh\tmktemp\t20\tthe first reason\n' > "$GR5/$GRB"
+(cd "$GR5" && git add "$GRB") >/dev/null 2>&1
+OUT24M="$(cd "$GR5" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24M=$?
+if [ "$EC24M" -eq 1 ]; then pass "24m a raised count that reuses the base row's reason fails"; else fail "24m expected exit 1, got $EC24M" "$OUT24M"; fi
+
+printf 'a.sh\tmktemp\t20\ta new reason for this raise\n' > "$GR5/$GRB"
+(cd "$GR5" && git add "$GRB") >/dev/null 2>&1
+OUT24N="$(cd "$GR5" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24N=$?
+if [ "$EC24N" -eq 0 ]; then pass "24n a raised count with a changed reason passes"; else fail "24n expected exit 0, got $EC24N" "$OUT24N"; fi
 
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'

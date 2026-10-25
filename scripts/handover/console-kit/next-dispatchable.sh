@@ -138,22 +138,48 @@ def files_in(text):
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 SCOPE_END_RE = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
+# read-only text an older scope line carries. Stripping fails open (a dropped path is a write nobody holds), so each
+# pattern removes only what is unmistakably read-only: a backticked command, a command with a flag, an impacted-suites
+# list, a trust-path note, a single-writer note that names ANOTHER holder
+SENT = r'(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)'
+Q = r'''(?:'[^']*'|"[^"]*")'''
+ARG = r'''[^\s`;,)'"]*[/.\d_-][^\s`;,)'"]*(?<![.])'''
+CMD_SPAN_RE = re.compile(r'`(?:git grep|grep|rg|find|sed -n|cat)\b[^`]*`')
+CMD_BARE_RE = re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+(?:%s|(?!-)%s))*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+(?!(?:in|to|from|for|the|a|an|and|or|of|on|at|with|by)\b)\w+(?![\w./-]))?|%s|%s))+' % (Q, ARG, Q, ARG))  # a command word with a flag, never a name inside a path
+CMD_PAREN_RE = re.compile(r'\((?:git grep|grep|rg|find|cat)\b(?:(?!\b(?:fix|edit|update|change|write|add|patch|replace|rename)\b)[^)])*\)')  # "(find what x uses)": a read aside, unless it says to change something
+WRITING_RE = re.compile(r'\s-(?:delete|exec|execdir|ok)\b')  # a find that deletes or runs a command is not a read
+IMPACTED_RE = re.compile(r'Impacted suites' + SENT)
+SINGLE_WRITER_RE = re.compile(r'SINGLE-WRITER' + SENT)
+OTHER_HOLDER_RE = re.compile(r'#\d+|\bN\d{3,}\b')
+OWN_WRITER_RE = re.compile(r'\bthis leg\b|\b(?:the )?(?:one|sole|only) writer\b', re.I)
+TRUST_RE = re.compile(r'Trust path\s*\([^)]*\)')
+WRITES_LEAD = '> **Writes:**'
+
+def clean_scope(rest):
+    m = SCOPE_END_RE.search(rest)
+    rest = rest[:m.start()] if m else rest
+    rest = re.sub(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b' + SENT, ' ', rest)  # a fence, not a write scope
+    rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
+    rest = IMPACTED_RE.sub(' ', rest)
+    rest = TRUST_RE.sub(' ', rest)
+    rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) and not OWN_WRITER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this leg is the one writer of y" is ours, even when it also names a PR
+    for rx in (CMD_SPAN_RE, CMD_PAREN_RE, CMD_BARE_RE):  # a path a quoted read-only command searches is not written
+        rest = rx.sub(lambda g: g.group(0) if WRITING_RE.search(g.group(0)) else ' ', rest)
+    # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
+    def expand(g):
+        parts = [p.strip() for p in g.group(2).split(',')]
+        if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
+            return ' '.join(g.group(1) + p for p in parts)
+        return g.group(1)
+    return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
+
 def write_scope(line):
-    # the leg's own write scope: after "writes confined to" (else after "Scope / do not:"), up to the boilerplate that follows
+    # the leg's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
+    if line.startswith(WRITES_LEAD):
+        return line[len(WRITES_LEAD):]  # a path list, never prose: nothing on it is cleaned away
     for lead in ('writes confined to', 'Scope / do not:'):
         if lead in line:
-            rest = line.split(lead, 1)[1]
-            m = SCOPE_END_RE.search(rest)
-            rest = rest[:m.start()] if m else rest
-            rest = re.sub(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)', ' ', rest)  # a fence, not a write scope
-            rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
-            # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
-            def expand(g):
-                parts = [p.strip() for p in g.group(2).split(',')]
-                if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
-                    return ' '.join(g.group(1) + p for p in parts)
-                return g.group(1)
-            return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
+            return clean_scope(line.split(lead, 1)[1])
     return ''
 
 def concrete(f):
@@ -432,9 +458,20 @@ if legs_from and os.path.isfile(legs_from):
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
                 leg_keys.add(k); owner.setdefault(k, 'live leg %s' % leg.get('label', '?'))
-            for line in lines:
-                if line.startswith('> **Scope / do not:**') or 'writes confined to' in line:
-                    held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in files_in(write_scope(line))]
+            def block(i):  # a wrapped line continues on the "> " lines under it, up to the next "> **" field or a blank
+                text = lines[i]
+                for nxt in lines[i + 1:]:
+                    if not nxt.startswith('> ') or nxt.startswith('> **'):
+                        break
+                    text += ' ' + nxt[2:]
+                return text
+            starts = [i for i, l in enumerate(lines) if l.startswith(WRITES_LEAD)]  # the one source; older briefs only have the scope line
+            starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
+            mine = [f for i in starts for f in files_in(write_scope(block(i)))]
+            held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in mine]
+            if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a leg that writes nothing
+                legs_unknown = True  # a scope that yields no paths could be hiding the leg's files
+                print('next-dispatchable: live leg %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (leg.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
     except (OSError, ValueError):
         legs_unknown = True
 if pool_only and not legs_from and not leg_keys:
@@ -565,7 +602,7 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable, or a leg names no write scope)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0

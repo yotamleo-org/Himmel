@@ -476,8 +476,8 @@ fi
 # The Claude-side positive control. Scope is deliberate and asymmetric with the
 # codex side: this leg replays the PreToolUse chain only - that is where every
 # guardrail lives, and it is the one event whose payload can be synthesised
-# without side effects (a Stop/SessionEnd replay would drive speak-reply and the
-# wiki writer against a fabricated session). The OTHER Claude events are not
+# without side effects (a Stop/SessionEnd replay would drive the wiki writer
+# against a fabricated session). The OTHER Claude events are not
 # untested: claude-print is a real session, so SessionStart, PostToolUse, Stop
 # and SessionEnd all fire there for real and any failure banner is caught by the
 # same scan. What this leg adds is determinism for the guardrail chain.

@@ -66,7 +66,7 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
-# live_console <repo>: print the session name of the newest held *-console queue
+# live_console <repo>: print the session name of the newest held *-chief / *-console queue
 # lock ("" if none). Lines look like `slug=<user>__<repo>__<session> ... age=<n>s
 # status=<TOKEN>`; a lock the sweep cannot vouch for is not live.
 live_console() {
@@ -76,7 +76,7 @@ live_console() {
         slug="${line#slug=}"; slug="${slug%% *}"
         age="${line#*age=}"; age="${age%%s *}"
         st="${line##*status=}"
-        case "$slug" in *-console) ;; *) continue ;; esac
+        case "$slug" in *-console|*-chief) ;; *) continue ;; esac
         case "$st" in OK|'IDLE-HELD?') ;; *) continue ;; esac
         [[ "$age" =~ ^[0-9]+$ ]] || continue
         if [ "$best_age" -lt 0 ] || [ "$age" -lt "$best_age" ]; then best="${slug##*__}"; best_age="$age"; fi

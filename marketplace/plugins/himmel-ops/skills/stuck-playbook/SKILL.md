@@ -61,8 +61,8 @@ a CLI flag) over a cleverer command.
   `--body-file` instead of inline; `git push` has no body flag, so retry the
   exact same command once — the delay and intervening read are themselves
   what make it non-identical, not a contrived alternate spelling. Any denial
-  after that one retry → stop, `BLOCKED` to the console with the exact text;
-  the console never runs it (laundering). **`[Out-of-Place Publication]` gets
+  after that one retry → stop, `BLOCKED` to the chief with the exact text;
+  the chief never runs it (laundering). **`[Out-of-Place Publication]` gets
   no retry at all**, first time seen or not — escalate immediately the same
   way. (HIMMEL-3020)
 

@@ -18,7 +18,7 @@ Tracks epics, tasks, and standalones across sessions. Multi-repo capable: state 
 ### Create / update items
 - **`new-epic <name>`** · **`new-task <epic-id> <name>`** · **`new-standalone <name>`** — create a tracked item (Jira auto-create gate + worktree + templates). → `references/new-item.md`
 - **`update-status`** — regenerate `status.md` + `roadmap.md` + `tech-debt.md` from filesystem state; run after any mutation, never ask. → `references/update-status.md`
-- **`end-session [id]`** — write the next append-only `next-session-N.md` (session summary + cold-start prompt + Jira transition); carries the overnight-mode trigger. → `references/end-session.md`
+- **`end-session [id]`** — write the next append-only `next-session-N.md` (session summary + cold-start prompt + Jira transition); carries the AFK-mode trigger. → `references/end-session.md`
 
 ### Move / link / configure items
 - **`/handover bucket <id> <bucket>`** (time-horizon OR source-repo move) · **`/handover priority <id> <priority>`** · **`/handover jira-link <id> [<key>]`** · **`/handover defaults <sub>`** → `references/item-ops.md`
@@ -63,7 +63,7 @@ When a fix is attempted during debugging and **fails**, append it to the active 
 - `references/resolution.md` — shared substrate: repo/bucket/registry resolution, ID derivation, worktree gate, template placeholders, No-ID picker, status values, supplementary files, file-path map
 - `references/new-item.md` — `new-epic` / `new-task` / `new-standalone`
 - `references/update-status.md` — `update-status` + roadmap.md / tech-debt.md generation
-- `references/end-session.md` — `end-session` + cold-start format + overnight mode
+- `references/end-session.md` — `end-session` + cold-start format + AFK mode
 - `references/item-ops.md` — `bucket` / `priority` / `jira-link` / `defaults`
 - `references/bug-ops.md` — `bug` / `bugs` / `lessons`
 - `references/resume.md` — `handover-resume` (script-driven via `scripts/handover/resume.sh`)
