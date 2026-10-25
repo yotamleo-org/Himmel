@@ -59,7 +59,7 @@ git_env_scrub
 GH="${WM_GH:-gh}"
 GIT="${WM_GIT:-git}"
 # arrays, so a checkout path with a space stays one word; a WM_* override is one executable
-if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-leg.sh"); fi
+if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-worker.sh"); fi
 if [ -n "${WM_BOARD:-}" ]; then BOARD=("$WM_BOARD"); else BOARD=(node "$HERE/board.mjs"); fi
 if [ -n "${WM_TRACKER_PY:-}" ]; then TRACKER=("$WM_TRACKER_PY"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${WM_FOCUS:-}" ]; then FOCUS=("$WM_FOCUS"); else FOCUS=(bash "$HERE/focus-refresh.sh"); fi

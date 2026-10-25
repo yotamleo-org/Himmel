@@ -116,6 +116,32 @@ eq "score: nothing leaked" "$(metric "$TMP/s1.json" leaked)" "0"
 has "score: a Wilson interval on recall" "$(jget "$TMP/s1.json" ci/codex.recall)" '"lo"'
 has "score: the table names n" "$(cat "$TMP/s1.txt")" "n="
 
+# --- the open/sealed split: tuning reads the open half, the sealed half only grades -------
+eq "split: 12 open and 12 sealed cases" "$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["cases"].values(); print("open=%d sealed=%d" % (sum(v.get("split")=="open" for v in c), sum(v.get("split")=="sealed" for v in c)))' "$KEY")" "open=12 sealed=12"
+eq "split: the key records the seed it was drawn with" "$(jget "$KEY" split/seed)" "7519"
+# setsplit <in> <out> <pair=split>... - a copy of the key with those pairs' splits set.
+setsplit() { python3 -c 'import json,sys
+k=json.load(open(sys.argv[1])); want=dict(a.split("=") for a in sys.argv[3:])
+for v in k["cases"].values():
+    if v["pair"] in want: v["split"]=want[v["pair"]]
+json.dump(k,open(sys.argv[2],"w"))' "$@"; }
+setsplit "$KEY" "$TMP/split.json" logic-a=open quoting-a=sealed toctou-a=sealed
+python3 "$SCORE" score --outputs "$O" --fixtures "$FIX" --key "$TMP/split.json" --critics codex --only "$LA,$QA,$TA,$LAc,$QAc" --no-ledger --json "$TMP/s1s.json" >/dev/null 2>&1
+eq "split: open-half recall scores the open cases only" "$(metric "$TMP/s1s.json" open.codex.recall)" "1.0"
+eq "split: sealed-half recall scores the sealed cases only" "$(metric "$TMP/s1s.json" sealed.codex.recall)" "0.5"
+eq "split: open-half fp_rate" "$(metric "$TMP/s1s.json" open.codex.fp_rate)" "1.0"
+eq "split: sealed-half fp_rate" "$(metric "$TMP/s1s.json" sealed.codex.fp_rate)" "0.0"
+eq "split: the whole-set recall is unchanged" "$(metric "$TMP/s1s.json" codex.recall)" "0.6667"
+has "split: each half carries its own interval" "$(jget "$TMP/s1s.json" ci/sealed.codex.recall)" '"lo"'
+python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); c=sorted(k["cases"])[0]; v=k["cases"][c]; v["split"]="open" if v["split"]=="sealed" else "sealed"; json.dump(k,open(sys.argv[2],"w"))' "$KEY" "$TMP/split-twins.json"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$TMP/split-twins.json" 2>&1); rc=$?
+eq "split lint: twins in different halves are refused" "$rc" "1"
+has "split lint: names the pair" "$out" "split"
+setsplit "$KEY" "$TMP/split-class.json" logic-a=open logic-b=open
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$TMP/split-class.json" 2>&1); rc=$?
+eq "split lint: a class with no sealed pair is refused" "$rc" "1"
+has "split lint: names the class" "$out" "logic"
+
 # Window edge: 4 lines off misses, 3 lines off hits (default window 3).
 O2="$TMP/out2"; mkdir -p "$O2"
 review "$O2/$LA.md" codex "imp:$la_file:$((la_line + 4)):off-by-one in the retention count"
@@ -223,6 +249,9 @@ eq "ledger: eval id" "$(python3 -c 'import json,sys; print(json.loads(open(sys.a
 eq "ledger: the meta carries the bank cost" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["meta"]["codex_bank_delta_pct"])' "$L")" "3"
 eq "ledger: per-case rows recorded" "$(python3 -c 'import json,sys; print(len(json.loads(open(sys.argv[1]).readline())["cases"]))' "$L")" "5"
 eq "ledger: the config fingerprints the class patterns" "$(python3 -c 'import json,sys; print(len(json.loads(open(sys.argv[1]).readline())["config"].get("class_patterns", "")))' "$L")" "16"
+python3 "$SCORE" score --outputs "$O" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA" --model gpt-6-astra --ledger "$TMP/model.jsonl" >/dev/null 2>&1
+eq "ledger: --model names the critic model on the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/model.jsonl" 2>/dev/null)" "gpt-6-astra"
+eq "ledger: the critic model is part of the series" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["config"]["critic_model"])' "$TMP/model.jsonl" 2>/dev/null)" "gpt-6-astra"
 eq "ledger: the live ledger was never touched" "$([ -e "$TMP/never.jsonl" ] && echo yes || echo no)" "no"
 
 # --- run.sh with a stub panel -----------------------------------------------------
@@ -241,13 +270,14 @@ printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 f
 EOF
 mkdir -p "$TMP/stublog"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run1" --ledger "$TMP/run-ledger.jsonl" --critics codex --tiers paid >"$TMP/run1.txt" 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run1" --ledger "$TMP/run-ledger.jsonl" --critics codex --tiers paid --model stub-critic >"$TMP/run1.txt" 2>&1; rc=$?
 eq "run: exit 0 on a stub panel" "$rc" "0"
 eq "run: one output per fixture" "$(find "$TMP/run1" -name 'case-*.md' | wc -l | tr -d ' ')" "24"
 eq "run: no stub refusal" "$(grep -c 'STUB:' "$TMP"/run1/*.err 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')" "0"
 eq "run: the tier set reaches the panel" "$(cat "$TMP/stublog/tiers" 2>/dev/null)" "paid"
 eq "run: triviality override on, known-findings off" "$(cat "$TMP/stublog/env" 2>/dev/null)" "full 0"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
+eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "stub-critic"
 eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["codex.recall"])' "$TMP/run-ledger.jsonl")" "0.0"
 # run.sh refuses before any panel call when the lint fails.
 mkdir -p "$TMP/badfix"; cp "$FIX"/case-*.patch "$TMP/badfix/"; printf '+# injected defect\n' >> "$TMP/badfix/case-05.patch"

@@ -934,6 +934,273 @@ function finishChain(st, sessionId) {
   return 0;
 }
 
+// ------------------------------------------------------ literal-loop unroll
+//
+// A loop variable is an expansion, and a guard that cannot resolve an
+// expansion statically denies it, so a read-only
+// `for d in A B; do cat "/abs/$d.md"; done` was refused. Before a PreToolUse
+// Bash chain runs, each top-level `for NAME in w1..wn` that passes every rule
+// in unrollableLoop() is rewritten FOR THE GUARDS ONLY into its n iterations,
+// each `$NAME` replaced by its word, so every guard judges
+// equivalent literal text. The command Claude Code runs is not changed. Any
+// other shape, a missing shfmt, or a parse failure leaves the payload
+// byte-for-byte as it came: the unroller only ever adds allows for loops it
+// can prove equivalent, it never removes a deny.
+//
+// ponytail: equivalence is argued for bash and zsh with the default IFS, no
+// global aliases, no session function shadowing a name in UNROLL_COMMANDS and
+// no shell-local attribute on the loop name; a session that exported IFS, a
+// zsh with `alias -g`, a `cat` function, or a profile that ran `declare -i x`
+// sits outside the proof. The upgrade path is unrolling inside the shell itself,
+// which the guards cannot do statically.
+const UNROLL_MAX_ITEMS = 16;
+const UNROLL_MAX_BYTES = 8 * 1024;
+// One budget for every shfmt call of one command; the chain clock is running.
+const UNROLL_BUDGET_MS = 2000;
+// No quote, glob, brace, tilde, `$`, backslash or space; no leading `=` (zsh
+// expands `=cmd` to a path in the word list).
+const UNROLL_ITEM_RE = /^[A-Za-z0-9._/@%+:,-][A-Za-z0-9._/@%+=:,-]*$/;
+// Lowercase only: the variables bash itself reads (PATH, IFS, BASH_ENV, ...)
+// and the usual exported ones are uppercase, except histchars and
+// auto_resume, listed below. zsh ties these lowercase names to behaviour, so
+// a loop over one is not a plain variable: every lowercase special parameter
+// of zsh 5.9 with all its modules loaded.
+const UNROLL_NAME_RE = /^[a-z][a-z0-9_]*$/;
+// zsh runs the functions named in a hook array (zshexit_functions,
+// chpwd_functions, ...), so any *_functions name is refused, listed or not.
+const UNROLL_HOOK_ARRAY_RE = /_functions$/;
+const UNROLL_SPECIAL_NAMES = new Set([
+  'aliases', 'argv', 'auto_resume', 'builtins', 'cdpath', 'commands', 'dirstack', 'dis_aliases', 'dis_builtins',
+  'dis_functions', 'dis_functions_source', 'dis_galiases', 'dis_patchars', 'dis_reswords',
+  'dis_saliases', 'epochtime', 'errnos', 'fignore', 'fpath', 'funcfiletrace', 'funcsourcetrace',
+  'funcstack', 'functions', 'functions_source', 'functrace', 'galiases', 'histchars', 'history',
+  'historywords', 'jobdirs', 'jobstates', 'jobtexts', 'keymaps', 'langinfo', 'mailpath', 'manpath',
+  'mapfile', 'module_path', 'modules', 'nameddirs', 'options', 'parameters', 'patchars', 'path',
+  'pipestatus', 'prompt', 'psvar', 'reswords', 'saliases', 'signals', 'status', 'sysparams',
+  'termcap', 'terminfo', 'userdirs', 'usergroups', 'watch', 'widgets', 'zcurses_attrs',
+  'zcurses_colors', 'zcurses_keycodes', 'zcurses_windows', 'zsh_eval_context',
+  'zsh_scheduled_events',
+]);
+// A body may hold only these node types. Anything else (arithmetic, `[[ ]]`,
+// declare, case, a function, a nested loop) can set a variable by a computed
+// name, so the loop is not unrolled.
+const UNROLL_BODY_TYPES = new Set([
+  'CallExpr', 'BinaryCmd', 'Block', 'Subshell', 'IfClause', 'CmdSubst', 'ProcSubst',
+  'Word', 'Lit', 'SglQuoted', 'DblQuoted', 'ParamExp',
+]);
+// The commands a body may run: programs, or builtins with no way to set a
+// shell variable or run text as code (no printf -v, read, eval, source).
+const UNROLL_COMMANDS = new Set([
+  'cat', 'cmp', 'cut', 'diff', 'du', 'echo', 'file', 'git', 'grep', 'head', 'jq', 'ls', 'readlink',
+  'realpath', 'rg', 'sort', 'stat', 'tail', 'uniq', 'wc',
+]);
+const PARAM_EXP_OPERATORS = ['Excl', 'Length', 'Width', 'Index', 'Slice', 'Repl', 'Names', 'Exp'];
+
+function shfmt(args, input, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return null;
+  const result = spawnSync('shfmt', args, {
+    input,
+    encoding: 'utf8',
+    timeout: remaining,
+    killSignal: 'SIGKILL',
+    maxBuffer: MEMBER_MAX_BUFFER,
+    windowsHide: true,
+  });
+  return !result.error && result.status === 0 ? result.stdout : null;
+}
+
+function parseShell(text, deadline) {
+  const out = shfmt(['--to-json', '-ln', 'bash'], text, deadline);
+  return out === null ? null : parseJsonObject(out);
+}
+
+function countWord(text, word) {
+  return (text.match(new RegExp(`(?<![A-Za-z0-9_])${word}(?![A-Za-z0-9_])`, 'g')) || []).length;
+}
+
+function isNameRef(node, name) {
+  return Boolean(node) && node.Type === 'ParamExp' && Boolean(node.Param) && node.Param.Value === name;
+}
+
+function isCommandName(word) {
+  const parts = (word && word.Parts) || [];
+  return parts.length === 1 && parts[0].Type === 'Lit' && UNROLL_COMMANDS.has(parts[0].Value);
+}
+
+// Every `$NAME` in the loop body, or null when the body holds anything that
+// could set NAME unseen, a heredoc, or a reference that is not plain. With a
+// null NAME it only checks the statements.
+function bodyRefs(body, name, src) {
+  const refs = [];
+  let ok = true;
+  const visit = (node, quoted, siblings) => {
+    if (!ok || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, quoted, siblings);
+      return;
+    }
+    if (node.Hdoc || (node.Type && !UNROLL_BODY_TYPES.has(node.Type))) { ok = false; return; }
+    if (node.Type === 'CallExpr' && ((node.Assigns && node.Assigns.length) || !isCommandName((node.Args || [])[0]))) { ok = false; return; }
+    if (node.Type === 'ParamExp') {
+      // An operator can assign (`${y:=v}`) or read arithmetic (a subscript).
+      if (PARAM_EXP_OPERATORS.some((key) => node[key])) { ok = false; return; }
+      // zsh reads `$d[1]` and `$d:h` as a subscript and a modifier, and an
+      // unquoted `$d{a,b}` brace-expands into other names first.
+      if (node.Short && '[:({'.includes(src.subarray(node.End.Offset, node.End.Offset + 1).toString('utf8'))) { ok = false; return; }
+    }
+    if (isNameRef(node, name)) {
+      // Unquoted, a brace or an open tilde prefix (`~$d`, no `/` yet) next to
+      // the reference expands before the variable in bash and after it in zsh,
+      // so the literal can read either way.
+      if (!quoted && siblings.some((part) => part.Type === 'Lit' && /[{}]|~[^/]*$/.test(part.Value))) { ok = false; return; }
+      refs.push(node);
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (!value || typeof value !== 'object') continue;
+      // A command substitution's words are not in the outer quotes.
+      if (node.Type === 'CmdSubst') visit(value, false, siblings);
+      else if (key === 'Parts') visit(value, quoted || node.Type === 'DblQuoted', value);
+      else visit(value, quoted, siblings);
+    }
+  };
+  visit(body, false, []);
+  return ok ? refs : null;
+}
+
+// The loop's NAME and words when the statement is a loop the guards may see
+// unrolled, else null. Each rule is a reason the unrolled text could differ
+// from what the shell runs.
+function unrollableLoop(stmt, src) {
+  const loop = stmt.Cmd;
+  if (!loop || loop.Type !== 'ForClause' || loop.Select) return null;
+  if (stmt.Negated || stmt.Background || (stmt.Redirs && stmt.Redirs.length)) return null;
+  const iter = loop.Loop;
+  if (!iter || iter.Type !== 'WordIter') return null;
+  const name = iter.Name.Value;
+  if (!UNROLL_NAME_RE.test(name) || UNROLL_SPECIAL_NAMES.has(name) || UNROLL_HOOK_ARRAY_RE.test(name)
+    || Object.hasOwn(process.env, name)) return null;
+  // No items is `for NAME; do`, which loops over the positional parameters.
+  const items = iter.Items || [];
+  if (items.length === 0 || items.length > UNROLL_MAX_ITEMS) return null;
+  const words = [];
+  for (const item of items) {
+    const parts = item.Parts || [];
+    if (parts.length !== 1 || parts[0].Type !== 'Lit' || !UNROLL_ITEM_RE.test(parts[0].Value)) return null;
+    words.push(parts[0].Value);
+  }
+  const body = loop.Do;
+  const bodyText = src.subarray(loop.DoPos.Offset + 2, loop.DonePos.Offset).toString('utf8');
+  const refs = bodyRefs(body, name, src);
+  // Every NAME in the body is one of those references: none in single quotes,
+  // escaped, assigned, read, exported, unset or looped over again.
+  if (refs === null || countWord(bodyText, name) !== refs.length) return null;
+  // ...and none outside the loop, before or after it.
+  const outside = src.subarray(0, stmt.Pos.Offset).toString('utf8') + src.subarray(stmt.End.Offset).toString('utf8');
+  if (countWord(outside, name) !== 0) return null;
+  return { name, words, body };
+}
+
+// A deep copy of the body for one word: no source positions (the printer then
+// lays the statements out itself), comments dropped, each `$NAME` replaced by
+// the word as a literal.
+function substituteWord(node, name, word) {
+  if (Array.isArray(node)) return node.map((child) => substituteWord(child, name, word));
+  if (!node || typeof node !== 'object') return node;
+  if (isNameRef(node, name)) return { Type: 'Lit', Value: word };
+  const copy = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== 'Comments' && !isPosition(value)) copy[key] = substituteWord(value, name, word);
+  }
+  return copy;
+}
+
+function isPosition(value) {
+  return Boolean(value) && typeof value === 'object' && 'Offset' in value && 'Line' in value;
+}
+
+// A tree in the form two parses of the same syntax share: positions and
+// comments dropped, adjacent literals joined into one.
+function normalizeTree(node) {
+  if (Array.isArray(node)) {
+    const out = [];
+    for (const child of node.map(normalizeTree)) {
+      const last = out[out.length - 1];
+      if (last && last.Type === 'Lit' && child && child.Type === 'Lit') out[out.length - 1] = { Type: 'Lit', Value: last.Value + child.Value };
+      else out.push(child);
+    }
+    return out;
+  }
+  if (!node || typeof node !== 'object') return node;
+  const copy = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== 'Comments' && !isPosition(value)) copy[key] = normalizeTree(value);
+  }
+  return copy;
+}
+
+// The command with every qualifying top-level loop unrolled, or null when
+// nothing qualified or the result fails its own re-check.
+function unrollCommand(command) {
+  if (typeof command !== 'string' || Buffer.byteLength(command) > UNROLL_MAX_BYTES) return null;
+  if (countWord(command, 'for') === 0 || countWord(command, 'done') === 0) return null;
+  const deadline = Date.now() + UNROLL_BUDGET_MS;
+  const tree = parseShell(command, deadline);
+  if (!tree || !Array.isArray(tree.Stmts)) return null;
+  const src = Buffer.from(command, 'utf8');
+  const pieces = [];
+  const expected = [];
+  let cursor = 0;
+  // A statement before a loop could define a function named like a command
+  // the body runs, or change IFS, so a loop unrolls only after statements that
+  // pass the same checks as a body.
+  let prefixChecked = true;
+  for (const stmt of tree.Stmts) {
+    const loop = prefixChecked ? unrollableLoop(stmt, src) : null;
+    if (!loop) {
+      if (prefixChecked && bodyRefs([stmt], null, src) === null) prefixChecked = false;
+      expected.push(stmt);
+      continue;
+    }
+    const stmts = loop.words.flatMap((word) => substituteWord(loop.body, loop.name, word));
+    const printed = shfmt(['--from-json', '-ln', 'bash'], JSON.stringify({ Type: 'File', Stmts: stmts }), deadline);
+    if (printed === null) return null;
+    pieces.push(src.subarray(cursor, stmt.Pos.Offset).toString('utf8'), printed);
+    cursor = stmt.End.Offset;
+    expected.push(...stmts);
+  }
+  if (pieces.length === 0) return null;
+  pieces.push(src.subarray(cursor).toString('utf8'));
+  const unrolled = pieces.join('');
+  if (Buffer.byteLength(unrolled) > UNROLL_MAX_BYTES) return null;
+  // The re-parse must be the substituted tree itself, so it holds no reference
+  // to any unrolled NAME: a word that re-reads as an assignment, a keyword or a
+  // different split is not the command that runs. The printer writes a
+  // backtick substitution as `$(...)`, so a body with one never re-reads equal.
+  const check = parseShell(unrolled, deadline);
+  if (!check || JSON.stringify(normalizeTree(check.Stmts)) !== JSON.stringify(normalizeTree(expected))) return null;
+  return unrolled;
+}
+
+// The payload the guards see: a PreToolUse Bash call whose command unrolls
+// gets the unrolled command, every other payload is passed on unchanged. A
+// throw is a failed unroll like any other: an uncaught one would exit 1, which
+// Claude Code treats as a non-blocking error and runs the call unguarded.
+function guardPayload(input, hookInput) {
+  if (!hookInput || hookInput.hook_event_name !== 'PreToolUse' || hookInput.tool_name !== 'Bash') return input;
+  const toolInput = hookInput.tool_input;
+  if (!toolInput || typeof toolInput !== 'object') return input;
+  let unrolled;
+  try {
+    unrolled = unrollCommand(toolInput.command);
+  } catch (_e) {
+    return input;
+  }
+  if (unrolled === null) return input;
+  return JSON.stringify({ ...hookInput, tool_input: { ...toolInput, command: unrolled } });
+}
+
 // Returns the exit code rather than calling process.exit(): on Windows a pipe
 // stdout is ASYNC, so exiting immediately after a write can truncate the very
 // JSON decision this exists to deliver. The caller sets process.exitCode and
@@ -961,7 +1228,7 @@ function runChain(members, lifecycle = false) {
   const chainStartedAt = Date.now();
   const ctx = {
     bash,
-    input,
+    input: guardPayload(input, hookInput),
     hookInput,
     sessionId,
     chainDeadline: chainStartedAt + chainBudgetMs(),
@@ -1089,6 +1356,7 @@ module.exports = {
   isUsable,
   mergeHookOutputs,
   resolveBash,
+  unrollCommand,
   windowsCandidates,
   // Re-exported from ./hook-integrity.js so the launcher's test surface is
   // unchanged by the module split.

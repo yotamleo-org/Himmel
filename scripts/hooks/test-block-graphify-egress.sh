@@ -479,11 +479,22 @@ echo "graphify-fence: DENY fake reason" >&2
 exit 2
 FENCE_EOF
 out="$(run_hook "cd $T/luna && graphify query q" 2>&1)"; rc=$?
-if [ "$rc" -eq 2 ] && grep -q 'DENY fake reason' <<<"$out" && grep -q 'scripts/graphify/leg-graph.sh query|explain' <<<"$out"; then
-    ok "a fence denial keeps its reason and names leg-graph.sh"
+if [ "$rc" -eq 2 ] && grep -q 'DENY fake reason' <<<"$out" && grep -q 'scripts/graphify/worker-graph.sh query|explain' <<<"$out"; then
+    ok "a fence denial keeps its reason and names worker-graph.sh"
 else
     bad "denial hint: rc=$rc out=$out"
 fi
+
+# The renamed wrapper and its old path both pass for a relative target after a cd: their program is bash, not graphify, so neither reaches the fence, and the deny hint names this wrapper as the route.
+for verb in "query q journal.md" "explain journal.md"; do
+    out="$(run_hook "cd $T/luna && bash scripts/graphify/leg-graph.sh $verb" 2>&1)"; rc_old=$?
+    out="$(run_hook "cd $T/luna && bash scripts/graphify/worker-graph.sh $verb" 2>&1)"; rc_new=$?
+    if [ "$rc_old" -eq 0 ] && [ "$rc_new" -eq 0 ]; then
+        ok "worker-graph.sh and leg-graph.sh both pass the hook after a cd ($verb)"
+    else
+        bad "wrapper parity ($verb): leg-graph rc=$rc_old worker-graph rc=$rc_new out=$out"
+    fi
+done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

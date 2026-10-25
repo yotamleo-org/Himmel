@@ -37,7 +37,7 @@
 #     ${HOME}/ expand to $HOME.
 # TRIP CONDITION, mode 2 (HIMMEL_RELEASE_MANAGER=1, on top of mode 1):
 #   Bash — the text names HIMMEL_RELEASE_MANAGER, leg-pr-open, merge-on-green,
-#     console-kit/go.sh, inbox-send or leg-jira-status; a mutating git verb; a
+#     console-kit/go.sh, inbox-send, leg-jira-status or worker-jira-status; a mutating git verb; a
 #     gh write verb or a gh api method/body flag (the judge guard's set); or a
 #     Jira CLI invocation (a word that is `jira`, ends in /jira, or names
 #     scripts/jira/) outside the allowlist:
@@ -391,6 +391,7 @@ EOF
             *console-kit/go.sh*) deny "go" "console-kit/go.sh" ;;
             *inbox-send*) deny "inbox-send" "inbox-send" ;;
             *leg-jira-status*) deny "jira-write" "leg-jira-status" ;;
+            *worker-jira-status*) deny "jira-write" "worker-jira-status" ;;
         esac
 
         words=$(printf '%s' "$bare" | tr ';|&()<>`\n\t\r' '          ')

@@ -17,7 +17,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SUT="$HERE/leg-jira-status.sh"
+SUT="$HERE/worker-jira-status.sh"
 APPEND="$HERE/append-results.sh"
 LIB="$HERE/../../lib/ticket-status.sh"
 # shellcheck source=../../lib/timeout-bin.sh

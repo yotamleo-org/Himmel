@@ -28,7 +28,7 @@ import truth as T  # noqa: E402
 
 # A tool call that really uses the graph: the CLI, the leg wrapper, or its output
 # dir. A bare mention of 'graphify' (e.g. grepping for graphify-bin.sh) is not use.
-GRAPH_USE = re.compile(r"leg-graph\.sh|graphify-out|(^|[^-\w/.])graphify\s+(query|explain|path)\b")
+GRAPH_USE = re.compile(r"(?:leg|worker)-graph\.sh|graphify-out|(^|[^-\w/.])graphify\s+(query|explain|path)\b")
 
 
 def task_rules():

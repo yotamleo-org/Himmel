@@ -79,7 +79,7 @@ fi
 . "$SCRIPT_DIR/lib/scorecard-lib.sh"
 # shellcheck source=../../../lib/leg-identity.sh
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/../../../lib/leg-identity.sh"
+. "$SCRIPT_DIR/../../../lib/worker-identity.sh"
 LIST=""
 trap 'rm -f "$LIST" "$SC_COV"' EXIT
 LIST=$(mktemp "${TMPDIR:-/tmp}/leg-relaunch-list.XXXXXX") || { echo "leg-relaunch: mktemp failed" >&2; exit 1; }

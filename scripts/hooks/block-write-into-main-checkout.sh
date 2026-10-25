@@ -2495,7 +2495,9 @@ _bwimc_unq_eq() {
 # _bwimc_chdir_model RAW: a wrapper chdir operand (`env -C RAW`)
 # moves _bwimc_ecwd like a `cd RAW` would. A non-literal operand (`$`, a
 # backtick, a glob, a backslash, an odd quote) or one that does not resolve
-# marks the cwd unresolved, so a relative write target behind it denies.
+# marks the cwd unresolved, so a relative write target behind it denies. A
+# relative operand after an earlier cd also marks it unresolved: that cd may
+# have failed or never run, so the modelled cwd is not where the shell is.
 _bwimc_chdir_model() {
     local raw="$1" carg r q="${1//[!\"]/}" a="${1//[!\']/}"
     case "$raw" in
@@ -2505,7 +2507,9 @@ _bwimc_chdir_model() {
     _bwimc_unqv "$raw"; carg=$_BWIMC_UNQ
     case "$carg" in
         /*|[A-Za-z]:/*|[A-Za-z]:\\*) ;;
-        *) [ "$_bwimc_ecwd_unres" = 0 ] || return 0 ;;
+        *) if [ "$_bwimc_ecwd_unres" = 1 ] || [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
+               _bwimc_ecwd_unres=1; return 0
+           fi ;;
     esac
     if r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd"); then
         _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0
@@ -2573,8 +2577,11 @@ _bwimc_jail_canon() {
 # CDPATH taint is set (the lookup may resolve elsewhere), or a target that is
 # not an existing, searchable directory. Args: ABS(0|1) TARGET BASECWD [EXTRA-TOKENS...];
 # a /dev/null redirection of fd 0-2 is no operand (a larger fd can be out of range). Fail direction: only ever narrows trust.
+# _BWIMC_CDW_MISSING=1 when the only reason is that nothing exists at the
+# target yet and its nearest existing ancestor is a directory.
 _bwimc_cd_would_fail() {
-    local cabs="$1" carg="$2" base="$3" x r
+    local cabs="$1" carg="$2" base="$3" x r a
+    _BWIMC_CDW_MISSING=0
     shift 3
     for x in "$@"; do
         case "$x" in
@@ -2592,8 +2599,14 @@ _bwimc_cd_would_fail() {
         esac
     fi
     r=$(_bwimc_resolve_abs "$carg" "$base") || return 1
-    [ -d "$r" ] && [ -x "$r" ] || return 0
-    return 1
+    [ -d "$r" ] && [ -x "$r" ] && return 1
+    case "/$carg/" in */../*|*/./*) return 0 ;; esac
+    a="$r"
+    while [ -n "$a" ] && [ ! -e "$a" ] && [ ! -L "$a" ]; do
+        case "$a" in */*) a="${a%/*}" ;; *) return 0 ;; esac
+    done
+    [ "$a" != "$r" ] && [ -d "${a:-/}" ] && _BWIMC_CDW_MISSING=1
+    return 0
 }
 # paths an earlier clause of THIS command removed, moved or
 # chmod-ed (newline-separated, canonical; a line `*` = unknown). The existence
@@ -2737,7 +2750,28 @@ _bwimc_ecwd_track() {
                             # operand, CDPATH lookup, missing directory) and
                             # the real cwd stays put - the target is no
                             # evidence of where a later relative write lands.
-                            _bwimc_ecwd_unres=1
+                            # A target that does not exist YET (a session
+                            # scratchpad created after the hook runs, `mkdir -p
+                            # X && cd X`) lands on X or stays put. When the cwd
+                            # is still the payload cwd and only mkdir ran
+                            # before, both are checked: the target here, the
+                            # payload cwd by _bwimc_cd_guard's fallback.
+                            # Any other earlier clause could plant a symlink
+                            # there (`ln -s P X`), and an earlier cd may have
+                            # been skipped by a failed `&&` clause (`cd P &&
+                            # mkdir W && cd W` with W existing stays in P), so
+                            # both keep failing closed.
+                            # ponytail: the missing part is read lexically, like
+                            # an absolute write target under a missing directory;
+                            # a symlink another process plants there between
+                            # hook and run is not seen.
+                            if [ "$_BWIMC_CDW_MISSING" = 1 ] && [ "${_bwimc_ecwd_pure:-0}" = 1 ] \
+                               && [ "$_bwimc_ecwd_unres" = 0 ] && [ "$_bwimc_ecwd" = "$_bwimc_cwd" ] \
+                               && r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd") && ! _bwimc_fsmut_hit "$r"; then
+                                _bwimc_ecwd="$r"
+                            else
+                                _bwimc_ecwd_unres=1
+                            fi
                         elif [ "$cdphys" = 1 ] && case "/$carg/" in */../*) true ;; *) false ;; esac; then
                             # `cd -P` resolves symlinks BEFORE
                             # `..`, so a link component then `..` lands in
@@ -2756,6 +2790,7 @@ _bwimc_ecwd_track() {
             ;;
         popd) _bwimc_ecwd_unres=1 ;;
     esac
+    case "$tu" in mkdir) ;; *) _bwimc_ecwd_pure=0 ;; esac
     _bwimc_fsmut_note "${toks[@]}"
     # a cd/pushd/popd reached across a `|`/`||` boundary may not
     # have run (or ran in a pipeline subshell) — whatever it modelled, the
@@ -5133,6 +5168,7 @@ _BWIMC_NLENC="${_bwimc_rmodes[$_bwimc_ri]}"
 _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
+_bwimc_ecwd_pure=1
 _bwimc_fsmut=""
 [ "$_bwimc_engine" = ast ] || _bwimc_redir_scan_text "$_bwimc_hb"
 
@@ -6835,6 +6871,7 @@ done < <(_bwimc_verb_clauses "$_bwimc_ghb")
 _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
+_bwimc_ecwd_pure=1
 _bwimc_fsmut=""
 _bwimc_spd_on=0
 _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0

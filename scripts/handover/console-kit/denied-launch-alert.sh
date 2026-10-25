@@ -71,7 +71,7 @@ reclaim_claim() { # <claim path>
     | jq -R -r --arg cutoff "$cutoff" 'fromjson?
         | select(type == "object" and (.ts // "") >= $cutoff and (.tool // "") == "Bash"
                  and ((.input_head // "") | type == "string")
-                 and ((.input_head // "") | test("headed-arm(-leg)?\\.sh")))
+                 and ((.input_head // "") | test("headed-arm(-leg|-worker)?\\.sh")))
         | [(.session_title // "unknown"), .tool,
            "\(.session_id // "")|\(.ts)|\(.input_sha // "")"] | @tsv' 2>/dev/null \
     | while IFS="$(printf '\t')" read -r leg tool rowid; do

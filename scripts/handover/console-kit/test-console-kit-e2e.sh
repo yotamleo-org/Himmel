@@ -180,13 +180,13 @@ check "nonces: a succession to another console reads UNCONFIRMED again" "$(tick_
 # ---- 3. a wrapped leg is closable -------------------------------------------
 bash "$AR" "$L1" "WRAPPED — done" >/dev/null
 tok1="$(bash "$QL" status "$L1" | sed -n 's/.*"session":"\([^"]*\)".*/\1/p')"
-out="$(bash "$CK/close-wrapped-leg.sh" "$L1" 2>&1)"; rc=$?
+out="$(bash "$CK/close-wrapped-worker.sh" "$L1" 2>&1)"; rc=$?
 check "close: a WRAPPED leg with its lock still held is refused (rc 3)" "$rc" 3
 if alive "$P1"; then pass "close: refused close left the session alive"; else fail "close: refused close killed pid $P1"; fi
 bash "$QL" release "$L1" "$tok1" >/dev/null 2>&1
 check "tails: N1 reads WRAPPED" "$(tick_field tails)" "N1:WRAPPED,N2:RESOLVED,N3:LIVE"
 contains "legs: a wrapped, subtree-clean leg reads CLOSABLE" "$(tick_field workers)" "N1:CLOSABLE"
-out="$(bash "$CK/close-wrapped-leg.sh" "$L1" 2>&1)"; rc=$?
+out="$(bash "$CK/close-wrapped-worker.sh" "$L1" 2>&1)"; rc=$?
 check "close: a wrapped leg closes (rc 0)" "$rc" 0
 contains "close: TERM went to the matched pid" "$out" "sent TERM to pid $P1"
 if gone "$P1"; then pass "close: the wrapped leg's session is gone"; else fail "close: pid $P1 still running"; fi
@@ -198,7 +198,7 @@ printf '{"sessionId":"%s"}\n' "$SID" > "$W/sessions/$P5.json"
 sleep 0.5
 K5="$(pgrep -P "$P5" -x sleep | head -n 1)"
 bash "$AR" "$L5" "WRAPPED — done" >/dev/null
-out="$(bash "$CK/close-wrapped-leg.sh" "$L5" 2>&1)"; rc=$?
+out="$(bash "$CK/close-wrapped-worker.sh" "$L5" 2>&1)"; rc=$?
 check "close: a live leg-spawned child refuses the close (rc 6)" "$rc" 6
 contains "close: the subtree check says WITHHELD" "$out" "WITHHELD"
 if alive "$P5"; then pass "close: the session with a live child was not killed"; else fail "close: pid $P5 was killed"; fi
@@ -208,12 +208,12 @@ if [ -n "$K5" ] && alive "$K5"; then pass "close: the live child was not killed 
 spawn_leg HIMMEL-9004-N4-delta$$-2026-10-11; P4="$SPAWNED"
 printf '{"sessionId":"%s"}\n' "$SID" > "$W/sessions/$P4.json"
 printf '%s\n' "- 10:00 WRAPPED — done" "- 10:05 LIVE — CHECKPOINT abc pushed" >> "$L4"
-out="$(bash "$CK/close-wrapped-leg.sh" "$L4" 2>&1)"; rc=$?
+out="$(bash "$CK/close-wrapped-worker.sh" "$L4" 2>&1)"; rc=$?
 check "close: a WRAPPED above a later LIVE bullet is refused (rc 4)" "$rc" 4
 contains "close: the refusal names the real tail" "$out" "last Results marker-bullet is 'LIVE'"
 if alive "$P4"; then pass "close: the misordered leg was not killed"; else fail "close: pid $P4 was killed"; fi
 bash "$AR" "$L4" "WRAPPED — done" >/dev/null
-out="$(bash "$CK/close-wrapped-leg.sh" "$L4" 2>&1)"; rc=$?
+out="$(bash "$CK/close-wrapped-worker.sh" "$L4" 2>&1)"; rc=$?
 check "close: append-results.sh's EOF WRAPPED makes it closable (rc 0)" "$rc" 0
 if gone "$P4"; then pass "close: the corrected leg's session is gone"; else fail "close: pid $P4 still running"; fi
 

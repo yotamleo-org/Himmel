@@ -112,7 +112,7 @@ const QUEUE_LOCK = process.env.FLEET_QUEUE_LOCK || join(repo, 'scripts', 'handov
 const BANK = process.env.FLEET_BANK || join(repo, 'scripts', 'lib', 'usage-preflight.sh');
 const GH = process.env.FLEET_GH || 'gh';
 const PROC = process.env.FLEET_PROC || '/proc';
-const LEGID = process.env.FLEET_LEGID || join(repo, 'scripts', 'lib', 'leg-identity.sh');
+const LEGID = process.env.FLEET_LEGID || join(repo, 'scripts', 'lib', 'worker-identity.sh');
 const AGENTS = process.env.FLEET_AGENTS ? [process.env.FLEET_AGENTS, []] : ['claude', ['agents', '--json']];
 
 // ---------------------------------------------------------------- redaction
