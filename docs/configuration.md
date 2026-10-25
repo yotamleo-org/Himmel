@@ -286,7 +286,10 @@ flowchart TD
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
     CDX ~~~ HRM
     GUARD ~~~ EXT
-    CLX --> BACK["worker commits on its own branch;<br/>parent session owns review + merge"]
+    CLX --> CLXBACK["claudex commits on its own branch,<br/>or on the --branch it was given"]
+    CDX --> CDXBACK["codex-exec result stays in<br/>the caller's worktree"]
+    CLXBACK --> BACK["parent session owns review + merge"]
+    CDXBACK --> BACK
 ```
 
 **Dormancy (operator ruling 2026-08-19).** The diagram shows what
