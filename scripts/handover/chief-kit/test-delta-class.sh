@@ -162,6 +162,26 @@ sed "s/$J/0000000000000000000000000000000000000000/" "$vf" > "$tmp/other.md"
 check "5: an explicit verdict file for another head fails closed -> trust" "$(bash "$SCRIPT" --verdict-file "$tmp/other.md" --ledger "$ledger" --trust-file "$trustf" "$J" "$N")" trust
 back
 
+mkv GO 'finding: src/a.txt:3-4'
+git config diff.noprefix true
+edit '$0==4{print "four"; next} {print}' src/a.txt; N=$(step noprefix)
+check "5: a prefix-less diff config does not hide a finding edit -> finding" "$(cls "$N")" finding
+check "5: an external diff driver does not hide a finding edit -> finding" "$(GIT_EXTERNAL_DIFF=true cls "$N")" finding
+git config --unset diff.noprefix
+back
+mkv GO 'finding: src/gone.txt:3-4'
+printf 'more\n' >> docs/c.md; N=$(step absent)
+check "5: a finding path absent at the judged head fails closed -> trust" "$(cls "$N")" trust
+back
+repo_trust="$HERE/../../ci/ci-trust-paths.txt"
+hit=no
+while IFS= read -r pat; do
+    case "$pat" in ''|'#'*) continue ;; esac
+    printf '%s\n' scripts/handover/chief-kit/delta-class.sh | grep -Eq -e "$pat" && hit=yes
+done < "$repo_trust"
+check "1: delta-class.sh is itself under a ci-trust-paths pattern" "$hit" yes
+mkv GO 'finding: src/a.txt:3-4'
+
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
 out=$(cls "$J"); check "7: an empty delta -> none, one word" "$out" none
 

@@ -148,7 +148,7 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
 [ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
 
 # Old-side line ranges the delta rewrites; an insertion counts as touching the line it follows and the next.
-git -c core.quotePath=false diff -U0 --no-renames --no-color "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
+git -c core.quotePath=false -c diff.noprefix=false -c diff.mnemonicPrefix=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
 awk '
     /^diff --git / { inh = 1; path = ""; next }
     inh && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); if (p ~ /^"/) bad = 1; if (p == "/dev/null") path = ""; else { sub(/^a\//, "", p); path = p }; next }
@@ -165,7 +165,7 @@ awk '
     END { exit bad ? 3 : 0 }' "$work/patch.txt" > "$work/hunks.tsv" || trust
 
 # A binary change has no hunks, so a finding on a path git reports as binary counts as touched.
-git -c core.quotePath=false diff --numstat -z --no-renames "$J" "$N" -- > "$work/numstat.z" 2>/dev/null || trust
+git -c core.quotePath=false diff --numstat -z --no-renames --no-ext-diff --no-textconv --no-relative "$J" "$N" -- > "$work/numstat.z" 2>/dev/null || trust
 : > "$work/binary.txt"
 while IFS= read -r -d '' rec; do
     case "$rec" in
@@ -175,6 +175,8 @@ done < "$work/numstat.z"
 
 while IFS=$'\t' read -r fp lo hi; do
     [ -n "$fp" ] || continue
+    # a finding on a path the judged head does not hold cannot be matched to any hunk
+    git cat-file -e "$J:$fp" 2>/dev/null || trust
     if [ -z "$lo" ]; then
         grep -qxF -- "$fp" "$work/names.txt" && fin finding
     fi

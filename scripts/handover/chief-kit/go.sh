@@ -317,18 +317,20 @@ fi
 # and a trust or finding delta (or any read error) refuses: it needs a real judge.
 if [ "$TRUST_SET" -eq 1 ]; then
     REAL=0 NOOPS=()
-    if NSCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO"); then
-        for vf in "$ROOT/$NSCOPE/verdicts/$TRUST"/*.md; do
-            [ -f "$vf" ] || continue
-            tr -d '\r' < "$vf" | grep -q "^\*\*GO\*\* for head \`$SHA\`" || continue
-            if grep -qx 'delta: no-op' "$vf"; then
-                NJ=$(sed -n 's/^delta-judged: //p' "$vf" | head -n 1)
-                NOOPS+=("${NJ:--}")
-            else
-                REAL=1
-            fi
-        done
+    if ! NSCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO"); then
+        echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - the verdict scope could not be resolved, so whether its verdict is a delta no-op cannot be checked. No GO written." >&2
+        exit 10
     fi
+    for vf in "$ROOT/$NSCOPE/verdicts/$TRUST"/*.md; do
+        [ -f "$vf" ] || continue
+        tr -d '\r' < "$vf" | grep -q "^\*\*GO\*\* for head \`$SHA\`" || continue
+        if grep -qx 'delta: no-op' "$vf"; then
+            NJ=$(sed -n 's/^delta-judged: //p' "$vf" | head -n 1)
+            NOOPS+=("${NJ:--}")
+        else
+            REAL=1
+        fi
+    done
     if [ "$REAL" -eq 0 ] && [ "${#NOOPS[@]}" -gt 0 ]; then
         for NJ in "${NOOPS[@]}"; do
             DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" "$NJ" "$SHA" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
