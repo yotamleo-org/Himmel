@@ -28,7 +28,11 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-    "pr view"*) [ -z "${STUB_PR_FAIL:-}" ] || exit 1; printf '%s\n' "$STUB_PR_JSON" ;;
+    "pr view"*)
+        [ -z "${STUB_PR_FAIL:-}" ] || exit 1
+        n=$(cat "$STUB_COUNT" 2>/dev/null || echo 0); echo $((n + 1)) > "$STUB_COUNT"
+        # STUB_PR_JSON_LATER is what every read after the first sees (a head that moved)
+        if [ "$n" -ge 1 ] && [ -n "${STUB_PR_JSON_LATER:-}" ]; then printf '%s\n' "$STUB_PR_JSON_LATER"; else printf '%s\n' "$STUB_PR_JSON"; fi ;;
     "repo view"*) printf 'o/r\n' ;;
     "api --paginate"*"/files"*previous_filename*) printf '%s\n' "${STUB_PREV:-}" ;;
     "api --paginate"*"/files"*) printf '%s\n' "$STUB_FILES" ;;
@@ -74,7 +78,8 @@ pr_json() { # pr_json <login> <state> <head> <changedFiles>
 }
 reset() {
     export STUB_PR_JSON; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1)"
-    export STUB_FILES="$FILE" STUB_PREV=""; unset STUB_PR_FAIL
+    export STUB_FILES="$FILE" STUB_PREV="" STUB_COUNT="$tmp/pr-view-count"; unset STUB_PR_FAIL STUB_PR_JSON_LATER
+    rm -f "$STUB_COUNT"
     : > "$LEDGER"
 }
 writer() { rc=0; out="$(bash "$WRITER" "$@" 2>&1)" || rc=$?; }
@@ -96,7 +101,7 @@ check    "1: a second run is a no-op" "$(rows)" "1"
 
 # a row of another kind or branch at this head must not stand in for the row
 reset
-printf '{"kind":"judge-go","ts":"t","branch":"%s","head":"%s","status":"ok","source":"judge:j1"}\n' "$BRANCH" "$SHA" > "$LEDGER"
+printf '{"kind":"judge-go","ts":"t","branch":"%s","head":"%s","status":"ok","source":"judge:j1","pr":%s}\n' "$BRANCH" "$SHA" "$PR" > "$LEDGER"
 printf '{"kind":"dependabot-go","ts":"t","branch":"other/branch","head":"%s","status":"ok","source":"judge:j1","pr":%s}\n' "$SHA" "$PR" >> "$LEDGER"
 writer "$PR" "$SHA" --judge j1
 check    "1: other-kind and other-branch rows do not suppress the row" "$(rows)" "3"
@@ -142,6 +147,12 @@ check    "2: a moved head appends nothing" "$(rows)" "0"
 reset; STUB_PR_JSON="$(pr_json app/dependabot CLOSED "$SHA" 1)"
 writer "$PR" "$SHA" --judge j1
 check    "2: a closed PR -> exit 2" "$rc" "2"
+
+reset; export STUB_PR_JSON_LATER; STUB_PR_JSON_LATER="$(pr_json app/dependabot OPEN "$OTHER" 1)"
+writer "$PR" "$SHA" --judge j1
+check    "2: a head that moves while the files are read -> exit 2" "$rc" "2"
+contains "2: says the head moved" "$out" "head moved"
+check    "2: a moved head appends nothing (late)" "$(rows)" "0"
 
 reset; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 3)"
 writer "$PR" "$SHA" --judge j1

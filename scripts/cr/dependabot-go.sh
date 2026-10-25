@@ -85,7 +85,12 @@ fi
 [ -n "$ROOT" ] || refuse "cannot resolve the handover root to read judge $QID's verdict"
 why=$(go_trust_verdict "$ROOT" "$QID" "$SHA" "$ANCHOR" "$PR") || refuse "judge $QID has no signed GO for this head: $why"
 
-if ! grep -qsF "\"branch\":\"$BRANCH\",\"head\":\"$SHA\",\"status\":\"ok\",\"source\":\"judge:$QID\",\"pr\":$PR}" "$LEDGER" 2>/dev/null; then  # swallow-ok: a missing ledger means no row yet
+# the files were read after the head check; a head that moved since is not the head the GO signed
+now=$("$GH" pr view "$PR" --json headRefOid 2>/dev/null | jq -r '.headRefOid // empty' 2>/dev/null) || now=""  # swallow-ok: empty fails the equality below
+[ "$now" = "$SHA" ] || refuse "PR #$PR's head moved to '${now:-unknown}' while its files were read"
+
+have=$(grep -F '"kind":"dependabot-go"' "$LEDGER" 2>/dev/null | grep -F "\"branch\":\"$BRANCH\",\"head\":\"$SHA\",\"status\":\"ok\",\"source\":\"judge:$QID\",\"pr\":$PR}" || true)  # swallow-ok: no matching row is grep rc 1, and an empty result means record it
+if [ -z "$have" ]; then
     printf '{"kind":"dependabot-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s","pr":%s}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$SHA" "$QID" "$PR" >> "$LEDGER" || exit 2
 fi
