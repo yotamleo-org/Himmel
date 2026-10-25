@@ -29,7 +29,7 @@ moves it, for tests and non-default installs.
 | What | Path | Where | Owner | Uninstall | Row |
 |---|---|---|---|---|---|
 | Three git hooks: pre-commit, commit-msg and pre-push | `.git/hooks/` | project | himmel | Removed | `git-hooks` |
-| Any hook of yours the install displaced, saved as `<hook>.himmel-backup` | `.git/hooks/` | project | you | Restored to `<hook>`, never deleted | `git-hook-backups` |
+| Any hook of yours the install displaced, saved as `<hook>.himmel-backup` | `.git/hooks/` | project | you | Restored to `<hook>` when that name is free, otherwise kept beside the current hook; never deleted | `git-hook-backups` |
 | himmel's hooks, status line and `env` keys | `.claude/settings.json` | project | himmel | Removed; keys himmel did not add stay | `project-settings` |
 | Helper scripts copied into the project (project scope) | `scripts/` | project | himmel | Kept, except the copies the install record lists, which are removed; drop the rest with git | `adopter-scripts` |
 | The Claude Code plugins of your plugin set | recorded in `.claude/settings.json`, or in `~/.claude/settings.json` at user scope | project or user | himmel | Removed, the ones the install record lists | `plugins` |
