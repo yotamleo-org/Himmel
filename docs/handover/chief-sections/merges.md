@@ -134,3 +134,13 @@ listing that fills `CANCEL_RUNS_LIMIT` (500), or the cancel cap, exits 1 after
 cancelling what it could: re-run until it exits 0. It refuses (exit 3) in a worker
 or relay. Never hand-roll a `gh run cancel` loop: the classifier denies it as
 Interfere With Workloads.
+
+## Docs PRs and the merged-docs list
+
+Docs PRs do not wait on the operator (decision 286). The docs worker runs the
+`docs-reviewer` skill before READY and quotes its findings and its
+`Code changes implied` section; the judge runs it again at the READY head.
+Keep a `## Merged docs changes` list in the chief doc, one line per merged docs
+PR (`#<n> <sha> <page> — <one line>`), and show it in every operator report for
+review after the fact. When the operator remarks on one, run the skill's learn
+step: one `candidate` row in its `remarks.tsv`, the quote verbatim.

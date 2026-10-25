@@ -92,7 +92,7 @@ Docs PRs do not wait on the operator (decision 286). In place of that gate:
    (`docs/handover/judge-brief-template.md`).
 3. The chief lists every merged docs change in its report for the operator's
    review after the fact, and runs the learn step on each remark the operator
-   makes there (`docs/handover/chief-template.md`).
+   makes there (`docs/handover/chief-sections/merges.md`).
 
 ## Measure
 

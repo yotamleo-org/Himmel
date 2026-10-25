@@ -176,20 +176,14 @@ gets no GO. The worker merges, reports `MERGED #<n> → <sha>`; pull the
 primary.
 
 The worker closes Jira per the brief's `completes-ticket: yes|no` line
-(`--jira-transition` for `yes`, omitted for `no`): set it in the
-brief. After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
+(`--jira-transition` only for `yes`). After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
 of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. A worker's
 `BLOCKED resolve`: verify, resolve, never the operator. **A PR whose diff
 matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review and
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
-tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `chief-sections/merges.md`.
-
-**Docs PRs do not wait on the operator** (decision 286). Keep a
-`## Merged docs changes` list in this doc, one line per merged docs PR
-(`#<n> <sha> <page> — <one line>`), and show it in every operator report for
-review after the fact. When the operator remarks on one, run the `docs-reviewer`
-skill's learn step: one `candidate` row in its `remarks.tsv`, the quote verbatim.
+tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
+merged-docs list: `chief-sections/merges.md`.
 
 ## Wrapping a worker
 
