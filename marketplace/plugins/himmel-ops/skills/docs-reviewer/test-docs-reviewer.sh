@@ -140,6 +140,11 @@ head -1 "$here/rules.tsv" >"$td/bad.tsv"
 printf 'R01\tactiv\tpattern\tx\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
 run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff" >/dev/null
 has "an unknown rule state is warned about" "R01 has unknown state" "$td/err"
+tail -n +2 "$here/rules.tsv" >"$td/headless.tsv"
+cp "$td/headless.tsv" "$td/headless.before"
+rc=$(run learn --rules "$td/headless.tsv" --pattern 'zzq' --rule 'r' --source 's' --quote 'q')
+check "learn on a rules file with no header exits 2" "$rc" 2
+check "a rules file with no header is left as it was" "$(cmp -s "$td/headless.tsv" "$td/headless.before" && echo same)" same
 
 # --- learn step: candidate until one confirmation ---
 cp "$here/rules.tsv" "$td/rules.tsv"

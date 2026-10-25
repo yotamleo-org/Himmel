@@ -37,6 +37,8 @@ def load_rules(path):
             lines = fh.read().splitlines()
     except OSError as exc:
         die(f"cannot read rules file {path}: {exc}")
+    if not lines or lines[0] != "\t".join(FIELDS):
+        die(f"{path}:1: want the header {' '.join(FIELDS)!r}, tab-separated")
     rules = []
     for n, line in enumerate(lines[1:], start=2):
         if not line.strip():
