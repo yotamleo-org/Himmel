@@ -20,8 +20,9 @@
 #  P11. A hard-listed suite that writes a live-state sentinel in one lane
 #       fails with [LIVE-STATE]; the clean suite in the other lane passes.
 #  P12. An unreadable deny-list runs a parallel run one suite at a time.
-#  P13. With no SUITE_JOBS, GitHub Actions uses the CPU count capped at 4,
-#       and a runner inside a suite (HIMMEL_TEST_FIXTURE=1) stays serial.
+#  P13. With no SUITE_JOBS, GitHub Actions uses the CPU count (2 or 4)
+#       capped at 4, and a runner inside a suite (HIMMEL_TEST_FIXTURE=1)
+#       stays serial.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -158,7 +159,11 @@ echo "== P4: no SUITE_JOBS outside CI keeps the runner serial =="
 if sb=$(mk_sandbox); then
   mk_suite "$sb" test-a.sh 10
   mk_suite "$sb" test-b.sh 10
-  out=$(env -u SUITE_JOBS -u GITHUB_ACTIONS -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  # A getconf reporting 4 CPUs, so only the GITHUB_ACTIONS check keeps this serial.
+  mkdir -p "$sb/bin"
+  printf '#!/usr/bin/env bash\necho 4\n' > "$sb/bin/getconf"
+  chmod +x "$sb/bin/getconf"
+  out=$(PATH="$sb/bin:$PATH" env -u SUITE_JOBS -u GITHUB_ACTIONS -u HIMMEL_TEST_FIXTURE -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
   if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 1 ]; then
     pass "P4: the default ran one suite at a time"
   else
@@ -357,6 +362,12 @@ if sb=$(mk_sandbox); then
     pass "P13: 4 CPUs ran 4 suites at once"
   else
     fail "P13: 4 CPUs: expected rc 0, 4 lanes and a running count of 4, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  p13_run 2 -
+  if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 2 ] && grepq "$out" -F 'parallel: up to 2 suites at once'; then
+    pass "P13: 2 CPUs ran 2 suites at once"
+  else
+    fail "P13: 2 CPUs: expected rc 0, 2 lanes and a running count of 2, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
   fi
   p13_run 16 -
   if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 4 ] && grepq "$out" -F 'parallel: up to 4 suites at once'; then
