@@ -151,7 +151,15 @@ shift
 exec "$@"
 SYSD_EOF
 chmod 755 "$SYSD_STUB"
+# Stock macOS has no setsid, so headed-arm.sh would never start the waker; a
+# pass-through stub on the same PATH dir keeps the waker rows host-independent.
+printf '#!%s\nexec "$@"\n' "$(command -v bash)" > "$tmp/sysd-bin/setsid"
+chmod 755 "$tmp/sysd-bin/setsid"
 PATH="$tmp/sysd-bin:$PATH"
+# The launch rows below assert the Linux launch shape (plain-export env, systemd
+# scope, waker started); a Darwin host takes the shim branch and fails them all.
+# The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
+export HEADED_ARM_UNAME=Linux
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A console-spawned leg exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-leg.sh); the case-26 e2e below runs the real
