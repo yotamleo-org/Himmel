@@ -54,7 +54,7 @@ const pending = (dir) => {
 // failed ps read proves nothing: only ESRCH from the signal means the pid is gone.
 const alive = (pid) => {
   try { process.kill(pid, 0); } catch (e) { return e.code === 'EPERM'; }
-  const st = spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim();
+  const st = (spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout ?? '').trim();
   return !st.startsWith('Z');
 };
 
