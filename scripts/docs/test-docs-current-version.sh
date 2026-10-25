@@ -117,6 +117,7 @@ for sample in 'Status: shipped' '(#873/#877)' 'until Phase 2' 'Name history.'; d
 done
 
 for page in $CURRENT_ONLY; do
+  in_list "$page" "$pages" || { bad "CURRENT_ONLY names $page, which is not a site page"; continue; }
   found=$(grep -n -E "$HISTORY" "$ROOT/docs/$page")
   if [ -n "$found" ]; then
     printf '%s\n' "$found" | sed "s|^|docs/$page:|"
