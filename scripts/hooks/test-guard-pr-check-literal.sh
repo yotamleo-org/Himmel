@@ -2616,9 +2616,13 @@ EOF" \
     'echo [[ $D ]]; bash scripts/cr/write-verdicts.sh' \
     'bash /tmp/e7130/scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
     'bash ./scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
-    'cd /tmp/e7130 && bash scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh'; do
+    'cd /tmp/e7130 && bash scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    "printf '%n' PATH; bash scripts/handover/console-kit/append-results.sh \$D 'scripts/cr/*'" \
+    "printf 'a%ln' PATH; bash scripts/handover/console-kit/append-results.sh \$D 'scripts/cr/*'"; do
     run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
+run "7130 class1 [printf with a newline escape] -> allow" 0 \
+    "$(payload "printf '%s\\n' scripts/cr/* | head -3" "$WT")" "$HR"
 run "7130 class1 [the anchor's bullet writer by absolute path] -> allow" 0 \
     "$(payload "bash $PRIMARY/scripts/handover/console-kit/append-results.sh /tmp/d7130.md 'scripts/cr/*'" "$WT")" "$HR"
 echo changed >>"$WT/scripts/handover/console-kit/append-results.sh"

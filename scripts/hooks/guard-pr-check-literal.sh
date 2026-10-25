@@ -2491,7 +2491,8 @@ fi
 # Arithmetic, [[ ]], ${x@P} and a subscripted expansion can run a
 # substitution the model does not list; a for/select loop variable is an
 # assignment it does not list either (only an upper-case name can be a
-# dangerous one); a command or process substitution's output is re-split and
+# dangerous one), and neither is a printf %n conversion, which assigns the
+# variable its argument names; a command or process substitution's output is re-split and
 # globbed; and a write to a file can hold text a later call runs. Each keeps
 # the text scan. The bullet writer is trusted only by the anchor's path, or
 # by the cwd-relative path with no cd and the cwd's copy byte-equal to the
@@ -2509,7 +2510,8 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
              (.argv[1] // null) as $a
              | $a != null and ($a | lit) and ($a.v == $ar or $a.v == $rel)
          elif .prog == "printf" then
-             (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not))
+             (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not)
+               and ($a.v | test("%[^a-zA-Z%]*[hlLqjzt]*n") | not))
          elif .prog == "sort" then
              all(.argv[1:][]; lit and ((.v | test("^-([bdfgiMnrRsuVz]+|k[0-9.,a-zA-Z]+|t.)$")) or (.v | startswith("-") | not)))
          elif .prog == "uniq" then
