@@ -12,8 +12,9 @@
 # --from-line judges a leg-burn line the caller already has (tick.sh --burn), with no transcript scan.
 # Session: CONTEXT_FILL_TRANSCRIPT, else --title (leg-burn.sh matches the newest
 # transcript whose customTitle is that name), else CLAUDE_CODE_SESSION_ID.
-# Exit: 0 OK, 4 SOFT, 3 HARD, 2 the transcript cannot be read or holds no
-# assistant call. Never prints verdict=OK for a transcript it could not measure.
+# Exit: 0 OK, 4 SOFT, 3 HARD, 2 anything unmeasurable: bad arguments, no session,
+# an unreadable transcript, no assistant call, a --from-line it cannot parse, or
+# no scratch file. Never prints verdict=OK for input it could not measure.
 #
 # Run it in an ordinary Bash call, not inside a Monitor (same as context-fill.sh).
 # Platform guard (gitbash-only): POSIX bash 3.2+, no mapfile.
