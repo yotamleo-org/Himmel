@@ -212,7 +212,8 @@ itself.
 
 **Kept on purpose:**
 
-- Telegram pairing and the install record (add `--purge-state`).
+- Telegram pairing, your settings in `~/.himmel` and the install record (add
+  `--purge-state`).
 - The himmel download, its `.env`, your worktrees and handover notes.
 - Copied scripts the install record cannot prove are its own.
 

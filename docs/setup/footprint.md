@@ -66,7 +66,8 @@ launcher back.
 ## Only when you turn it on
 
 A starter install leaves these off. Each appears once you set up the Telegram
-bridge, arm a scheduled job, or declare a personal or medical vault in setup.
+bridge, arm a scheduled job, declare a personal or medical vault in setup, or
+let setup save your commit rules and other answers.
 
 | What | Path | Where | Owner | Uninstall | Row |
 |---|---|---|---|---|---|
@@ -81,6 +82,9 @@ bridge, arm a scheduled job, or declare a personal or medical vault in setup.
 | The graph-map job's runner scripts | `~/.claude/graphmap-cadence/` | user | himmel | Removed | `cadence-graphmap-dir` |
 | The list of jobs a health check expects to see run | `~/.himmel/observability.json` | user | himmel | Removed | `observability-registry` |
 | The personal or medical vault you declare, so local guards keep it away from cloud backends | `~/.config/claude-glm/phi-roots` | user | himmel | Not removed yet: uninstall leaves these lines in place | `phi-roots` |
+| Your behaviour settings, such as the commit rules setup writes when you say yes; on a luna install it is a link into the vault | `~/.himmel/himmel.conf` | user | you | Kept; `--purge-state` removes it, and a link loses only the link, never its vault target | `himmel-conf` |
+| Your per-machine overrides of those settings | `~/.himmel/himmel.conf.local` | user | you | Kept; `--purge-state` removes it | `himmel-conf-local` |
+| The answers setup saves, such as the vault path and VM mode, and the shared gate policy | `~/.himmel/config.json` | user | you | Kept; `--purge-state` removes it, and a gate whose policy is gone then refuses | `himmel-config-json` |
 
 If you also say yes to the `.salus` marker, setup creates an empty `.salus`
 file in that vault. Uninstall leaves it there.
