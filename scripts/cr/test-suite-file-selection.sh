@@ -33,7 +33,6 @@ WHOLE_REPO = {
     'scripts/agents-md/test-pointers.sh': 'pointers.sh inventories every tracked path to find CLAUDE.md siblings',
     'scripts/ci/test-tier-replay.sh': 'tier-replay.sh inventories every tracked suite for its trust-tier floor',
     'scripts/claudex/test-probe-chunk.sh': 'reference stream reads the repository-wide tracked *.md pathspec',
-    'scripts/graphify/test-no-windows-indexed.sh': 'git inventory forbids tracked *.ps1 anywhere in the tree',
     'scripts/guardrails/test-leak-classes.sh': 'executed leak-classes.sh inventories the tracked git root in tree/ignore-removal modes; suite uses fixture repos',
     'scripts/himmelctl/test/test-versioned-layout.sh': 'fixture copies the tracked and untracked working tree',
     'scripts/hooks/test-check-npm-audit.sh': 'check-npm-audit.sh inventories *package.json throughout the repository',

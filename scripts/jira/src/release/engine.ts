@@ -637,7 +637,7 @@ export interface StateOut extends ReleaseState {
   /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
   admissions_today: Record<string, number>;
   lease: Omit<Lease, 'mac'> | null;
-  requests: { open: string[]; claimed: string[] };
+  requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
 }
 
@@ -653,7 +653,7 @@ function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
 
 export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
-  const empty = { admissions_today: {}, lease: null, requests: { open: [], claimed: [] }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
+  const empty = { admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
   const s = reduceLoaded(l, mirror);
@@ -665,10 +665,13 @@ export function state(ctx: Ctx): StateOut {
   }
   const open: string[] = [];
   const claimed: string[] = [];
+  let oldestOpen: string | null = null;
   if (l.requests.bad.length) s.integrity.push(...l.requests.bad.map((b) => `requests.jsonl ${b}`));
   for (const r of latestOrEmpty(l.requests).values()) {
-    if (r.state === 'open') open.push(r.req);
-    else if (r.state.startsWith('claimed:')) claimed.push(r.req);
+    if (r.state === 'open') {
+      open.push(r.req);
+      if (oldestOpen === null || r.ts < oldestOpen) oldestOpen = r.ts;
+    } else if (r.state.startsWith('claimed:')) claimed.push(r.req);
   }
   const { mac: _m, ...leaseOut } = lease ?? ({} as Lease);
   return {
@@ -676,7 +679,7 @@ export function state(ctx: Ctx): StateOut {
     status: lease ? s.status : 'UNKNOWN',
     admissions_today: admissionsToday(ctx, l),
     lease: lease ? leaseOut : null,
-    requests: { open, claimed },
+    requests: { open, claimed, oldest_open: oldestOpen },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
   };
 }

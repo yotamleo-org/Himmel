@@ -9,7 +9,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { judgeEnv, judgePrompt, parseDecisions, registerRelease, renderState } from './release.js';
+import { apiLaneEnv, judgeEnv, judgePrompt, parseDecisions, registerRelease, renderState } from './release.js';
 
 let out: string[];
 let root: string;
@@ -50,6 +50,7 @@ describe('jira release (HIMMEL-6796)', () => {
     ]);
     const s = JSON.parse(out[3]);
     expect(s).toMatchObject({ release: 'R1', mode: 'observe', versions: ['v1', 'v2'], requests: { open: ['Q-R1-0001'] } });
+    expect(s.requests.oldest_open).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(s.inputs.mirror).toBe('UNKNOWN');
     expect(s.burndown.v1.baseline).toBe(2);
   });
@@ -220,6 +221,18 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
       HIMMEL_CONSOLE_LEG: '1', HIMMEL_CONSOLE_DOC: '/d.md', HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: '/r.md', HIMMEL_LEG_ID: 'N1', // old-term-ok: a sample of the env prefix judgeEnv drops
       ANTHROPIC_API_KEY: 'k', anthropic_base_url: 'u', CLAUDE_CODE_USE_BEDROCK: '1', HIMMEL_RELEASE_STATE_DIR: '/s',
     })).toEqual({ PATH: '/bin', HOME: '/h', HIMMEL_RELEASE_STATE_DIR: '/s' });
+  });
+
+  it('the judge call runs on the API lane unless the caller says otherwise (decision 288)', () => {
+    expect(apiLaneEnv({ PATH: '/bin', CLAUDECODE: '1', ANTHROPIC_API_KEY: 'k' })).toEqual({
+      PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_CALL_TIMEOUT_S: '900', HIMMEL_API_TOOLS: '',
+    });
+    expect(apiLaneEnv({ HIMMEL_API_LANE: 'off', HIMMEL_API_ACCOUNT: 'B' })).toMatchObject({ HIMMEL_API_LANE: 'off', HIMMEL_API_ACCOUNT: 'B' });
+  });
+
+  it('the judge call is tool-free whatever tool grant the caller exported', () => {
+    expect(apiLaneEnv({ HIMMEL_API_TOOLS: 'Bash,Write' }).HIMMEL_API_TOOLS).toBe('');
+    expect(apiLaneEnv({ PATH: '/bin' }).HIMMEL_API_TOOLS).toBe('');
   });
 });
 

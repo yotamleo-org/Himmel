@@ -233,10 +233,10 @@ artifacts. **Emission points:**
 This is the ONE added emission this page places: today `file-deferred-issues.sh`
 captures ONLY deferred low-severity findings; blocking Critical/High/Important
 automated review fails are NOT persisted (they block the marker and get fixed in place), so
-the corpus was missing the failures that matter. The Jarvis self-improvement
-loop ([jarvis subsystems](../jarvis-subsystems.md)) consumes these ("failed
-traces become the next test cases"); this page places the emission points,
-the loop is Jarvis's. No new storage system (YAGNI) — session
+the corpus was missing the failures that matter. Nothing reads these records
+yet: this page places only the emission points, and the lessons loop
+([lesson-audit.md](lesson-audit.md)) samples lesson files, not this corpus.
+No new storage system (YAGNI) — session
 dirs + issues are the corpus v1, with the one added write above.
 
 ## 7. CI promotion path
@@ -295,9 +295,9 @@ Each default above is one knob; changing it touches only the named sentence.
 
 ## Not built yet
 
-- **Gate state in fleet-control:** the read-only dashboard
-  (`scripts/fleet-control/`, see [jarvis subsystems](../jarvis-subsystems.md))
-  shows fleet, escalation and quota but not gate verdicts or trust-tier state.
+- **Gate state on the Fleet page:** Mission Control's Fleet page
+  (see [Jarvis](../jarvis-subsystems.md#mission-control-the-surface)) shows
+  each worker's stage, but not gate verdicts or trust-tier state.
 - **Cross-model artifact critic:** when it exists, minerva Stage-2/4 chains
   gain a cross-model lane in the §2 spec/plan row.
 - **Codex work outside Claude Code:** the lane-gate rubric applies to any
