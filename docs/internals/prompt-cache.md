@@ -36,7 +36,7 @@ A packaged write-up (method, fresh results, limits) is in [`docs/evals/prompt-ca
 - A session's first request reads a warm shared prefix (system + tools).
 - An idle gap at or past the session's TTL re-pays the whole prefix on wake; a
   shorter gap does not. That, not "burning" anything while idle, is the cost of
-  a parked worker session.
+  a parked worker.
 - A full-prefix rewrite that coincides with an event is only evidence against
   the event once compaction and TTL expiry are ruled out — the probe does that.
 
@@ -52,7 +52,7 @@ TRUE / FALSE / UNVERIFIED, each with the eval scenario (a fixture in
 | 2 | "every graphify write invalidates Claude Code's prompt cache … full re-upload" (`.gitignore:24`) | **FALSE** — fixed (reworded as file-search/context hygiene) | live run L2: 14 sessions across the graph.json write (03:15:18), 14 kept / 0 invalidated | `no-invalidation` |
 | 3 | "exiting gives the relaunch a clean prompt cache" (`arm-resume.sh` self-resume note, `hop.sh` /exit banner) | **FALSE** — fixed (the real reason, avoiding two processes on one handover, stays) | live run L3: a new session's first turn is warm in 1199 of 1210 sessions | `first-turn-warm`, `first-turn-cold` |
 | 4 | "himmel has never measured its own read-ratio" (`docs/token-economy.md`) | **FALSE** (stale) — updated with the measured 98.2% | live run L3 | `first-turn-warm` |
-| 5 | an idle worker session re-primes cold when woken (`handover-system.md` § Operator-gated wrap; `*-next-session.md` clause) | **TRUE** — the wake re-pays the prefix; "burns" is figurative, an idle session costs nothing | live run L4: 113 of 126 gaps past the TTL rewrote, 41 of 14,659 shorter gaps did | `idle-ttl-5m`, `idle-ttl-1h`, `idle-none` |
+| 5 | an idle worker re-primes cold when woken (`handover-system.md` § Operator-gated wrap; `*-next-session.md` clause) | **TRUE** — the wake re-pays the prefix; "burns" is figurative, an idle session costs nothing | live run L4: 113 of 126 gaps past the TTL rewrote, 41 of 14,659 shorter gaps did | `idle-ttl-5m`, `idle-ttl-1h`, `idle-none` |
 | 6 | the statusline's per-tier cache-expiry countdown | **TRUE** — the TTL model holds on both tiers | live run L4; fixtures put a 10-minute gap warm on 1h and cold on 5m | `idle-ttl-5m`, `idle-ttl-1h`, `idle-ttl-violated` |
 | 7 | a cache-read collapse after a compaction or a long idle is not an external invalidation (the reading the probe applies) | **TRUE** — measured, not assumed | L1 classed 1 session `compacted`; fixtures | `compaction-lookalike`, `ttl-expiry`, `late-rewrite-unrelated`, `idle-compaction-lookalike` |
 | 8 | "the 76.5% read-ratio / `<40%` = structural issue" figures (`token-economy.md`) | **UNVERIFIED** — one-tweet heuristics from another workspace; himmel's measured 98.2% neither confirms nor refutes the threshold | — | none (no fixture: a threshold from elsewhere) |
@@ -72,7 +72,7 @@ Unrelated caches (gh, graphify, qmd, npm, `USAGE_CACHE_TTL`,
 | L2 | `invalidation --event @<primary>/graphify-out/graph.json` | `verdict: not-invalidated kept=14 invalidated=0`, read-ratio 99.0 % |
 | L3 | `first-turn` | `verdict: warm-start warm=1199 cold=11`, read-ratio 98.2 % |
 | L4 | `idle-gap` | `verdict: ttl-consistent cold-expected=126 cold-rewrote=113 warm-expected=14659 warm-rewrote=41` |
-| L5 | `invalidation --event 2026-10-05T16:00:00Z` (2026-10-05 weekly subscription usage budget reset at 100 %, same account, between ~15:55Z and ~16:16Z; events 15:55Z and 16:10Z give the same verdict) over the supervisor session and worker session N1182 transcripts | `verdict: not-invalidated kept=2 invalidated=0 compacted=0 ttl=0`, read-ratio 98.1 %; supervisor session 317.5k to 319.5k read across a 2101 s gap, N1182 155k to 119k read with a 15.8k write (1605 s gap, still above half). Both sessions survived the change |
+| L5 | `invalidation --event 2026-10-05T16:00:00Z` (2026-10-05 weekly subscription usage budget reset at 100 %, same account, between ~15:55Z and ~16:16Z; events 15:55Z and 16:10Z give the same verdict) over the chief and worker N1182 transcripts | `verdict: not-invalidated kept=2 invalidated=0 compacted=0 ttl=0`, read-ratio 98.1 %; chief 317.5k to 319.5k read across a 2101 s gap, N1182 155k to 119k read with a 15.8k write (1605 s gap, still above half). Both sessions survived the change |
 
 The probe reads only `usage` and timestamps; the runs put no transcript
 content in the repo.
@@ -123,13 +123,13 @@ the context size when an idle gap `g` lands:
 | Pattern | Gaps | Winner | Break-even / expected effect |
 |---|---|---|---|
 | short paper judge (under 5 min wall, reads files, no test run) | none over 300 s | **5m** | never breaks even; 1h costs +0.75 `W`, predicted +35 to 50 % of the judge's input-token-equivalent cost |
-| ~~judge that idles on a test run or CI wait over 5 min~~ | **retired 2026-10-11**: operator rule, judges never wait on CI or tests (the worker session's scripts do) | 5m | pattern no longer exists; was predicted 1h at a single late gap ≥ 65 % of context |
+| ~~judge that idles on a test run or CI wait over 5 min~~ | **retired 2026-10-11**: operator rule, judges never wait on CI or tests (the worker's scripts do) | 5m | pattern no longer exists; was predicted 1h at a single late gap ≥ 65 % of context |
 | long escape hunt (many files, long model turns) | gaps are model generation time, rarely over 300 s | **5m** unless a model turn plus its tool call exceeds 5 min | gap between message timestamps includes generation, so it is an upper bound on idle; unobserved over 300 s in the baseline (max 144 s) |
 | resumed judge (same agent messaged again after 5 to 60 min) | one gap of 300 s to 3600 s at full context | **1h** only if that gap lands at ≥ 65 % of final context | the one pattern that can still favour 1h; unobserved so far, so it stays a prediction |
 
 ### Baseline (2026-10-10 shift, 8 Explore judge subagents, all on 5m)
 
-Source: the 8 `agent-*.jsonl` under the supervisor session's `subagents/`. Rows
+Source: the 8 `agent-*.jsonl` under the chief's `subagents/`. Rows
 from `scripts/eval/judge-cache-row.sh` (usage rows deduped by message id).
 Counterfactual 1h cost = 2 × `cc` + 0.1 × `cr`, valid only because no gap
 passed 300 s (reads are identical on both tiers); actual 5m = 1.25 × `cc` +
@@ -182,14 +182,16 @@ so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
 break-even.
 
-## Leg keepalive or wrap
+<a id="leg-keepalive-or-wrap"></a>
 
-A console leg that waits past the 1 h TTL with nothing armed pays a cold
-rewrite on the next wake. Measured over 24 h on 2026-10-19 (148 leg sessions,
+## Worker keepalive or wrap
+
+A chief-launched worker that waits past the 1 h TTL with nothing armed pays a cold
+rewrite on the next wake. Measured over 24 h on 2026-10-19 (148 workers,
 `cache-probe.sh idle-gap`, verdict `ttl-consistent cold-expected=17
-cold-rewrote=17`): 17 cold wakes in 7 legs, 1,854,556 tokens written, all at
+cold-rewrote=17`): 17 cold wakes in 7 workers, 1,854,556 tokens written, all at
 gaps of 60 min or more (gaps of 30-59 min: 44, none cold). In 16 of the 17 the
-leg had no wait armed; the next console relay woke it. Waits: CI 7, another PR
+worker had no wait armed; the next chief relay woke it. Waits: CI 7, another PR
 5, the operator 4, `GO` 1.
 
 The cost rule:
@@ -204,12 +206,12 @@ The cost rule:
   another PR, a hold with no end in sight). Holding the slot for an unknown
   time costs more than one successor's cold start.
 
-Enforced by `scripts/hooks/guard-leg-cache-ttl.sh`, a Stop hook in the leg
-profile. It refuses, once per stop, the stop of a leg that holds its queue lock
+Enforced by `scripts/hooks/guard-leg-cache-ttl.sh`, a Stop hook in the worker
+profile. It refuses, once per stop, the stop of a worker that holds its queue lock
 while no background task or Monitor is running. Bound:
 `HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule: <!-- old-term-ok: only the env name changed, prose is pre-existing -->
 [`docs/handover/leg-sections/cache-keepalive.md`](../handover/leg-sections/cache-keepalive.md).
-Re-measure with the `idle-gap` command below over the leg transcripts of the
+Re-measure with the `idle-gap` command below over the worker transcripts of the
 24 h after it ships.
 
 ## Re-run
