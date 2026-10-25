@@ -304,9 +304,9 @@ check "6 handoff has no surviving placeholder" "$(grep -c '{{' "$handoff6A" 2>/d
 # The mechanical fields are pre-filled by handoff-facts.sh (the
 # bank and PR commands are stubbed above), so the console writes only judgement
 # notes; and `next` puts the predecessor's waiter in handover mode.
-check "6 handoff pre-fills the bank line" "$(grep -c '^\*\*Bank at write:\*\* 5-hour 9.0 %, 7-day 91.0 %' "$handoff6A")" "1"
+check "6 handoff pre-fills the usage line" "$(grep -c '^\*\*Usage at write:\*\* 5-hour 9.0 %, 7-day 91.0 %' "$handoff6A")" "1"
 check "6 handoff pre-fills the open PRs" "$(grep -c '^#5 \[DEMO-1\] stub pr' "$handoff6A")" "1"
-check "6 handoff keeps no sha/url placeholder" "$(grep -E '^\*\*(Head|Bank at write):\*\*' "$handoff6A" | grep -c '<sha>\|<origin url>\|<n> %')" "0"
+check "6 handoff keeps no sha/url placeholder" "$(grep -E '^\*\*(Head|Usage at write):\*\*' "$handoff6A" | grep -c '<sha>\|<origin url>\|<n> %')" "0"
 check "6 handoff carries a WRAPPED leg whose PR is still open (HIMMEL-5542)" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$handoff6A")" "1"
 check "6 handoff omits a WRAPPED leg whose PR is closed (HIMMEL-5542)" "$(grep -c '^- PR #77' "$handoff6A")" "0"
 check "6 handoff section tells the successor to disposition before dispatch (HIMMEL-5542)" "$(grep -c '^## Wrapped with open PR' "$handoff6A")" "1"

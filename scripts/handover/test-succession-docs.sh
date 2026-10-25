@@ -17,9 +17,9 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
-PREFACE="$DOCS/handover/leg-preface.md"
+PREFACE="$DOCS/handover/worker-preface.md"
 JUDGE="$DOCS/handover/judge-preface.md"
-CONSOLE="$DOCS/handover/console-template.md"
+CONSOLE="$DOCS/handover/chief-template.md"
 RUNNING="$DOCS/handover/running-a-console.md"
 HANDOFF="$DOCS/handover/console-handoff-template.md"
 RETASK="$DOCS/internals/retask-channel.md"
@@ -58,8 +58,8 @@ done
 
 # --- 1. leg-preface.md: the succession rule and its decision table ----------
 SUCCESSION="$DOCS/handover/leg-sections/succession.md"
-succ="$(section "$SUCCESSION" '^## Console succession')"
-if [ -n "$succ" ]; then pass 'leg-sections/succession.md has a "Console succession" section'; else fail 'leg-sections/succession.md has a "Console succession" section'; fi
+succ="$(section "$SUCCESSION" '^## Chief succession')"
+if [ -n "$succ" ]; then pass 'leg-sections/succession.md has a "Chief succession" section'; else fail 'leg-sections/succession.md has a "Chief succession" section'; fi
 contains 'leg-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'leg-sections/succession.md'
 flat() { printf '%s\n' "$1" | tr '\n' ' ' | tr -s ' '; }
 s1="$(flat "$(cat "$PREFACE")")"
@@ -71,12 +71,12 @@ contains 'leg-preface.md core: a console change without the token is ignored' "$
 contains 'leg-preface.md S1 fast path: no ListAgents call' "$s1" 'no `ListAgents`'
 contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$s1" 'very next tool batch'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$s1" '(`from` is your named console, quoting your current token,'
+contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$s1" '(`from` is your named chief, quoting your current token,'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface.md S1 fast path: bus adopt before the bullet' "$s1" '`bus adopt <new console>`'
 contains 'leg-preface.md S1 fast path: adopt a fresh token' "$s1" 'Adopt a fresh token if one came'
 contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$s1" 'SUCCESSION accepted: <new console session> replaces <old>'
-contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$s1" 'the console you last accepted'
+contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$s1" 'the chief you last accepted'
 contains 'leg-preface.md S1 fast path: by SendMessage, an inbox bullet is never S1' "$s1" 'quoting your current token, by SendMessage, not inbox)'
 contains 'succession.md: outside the claudex lane an inbox bullet is never a relay (1)' "$(flat "$succ")" 'inbox bullet is never a relay (1) outside the claudex lane'
 # shellcheck disable=SC2016  # literal backticks in the needle
@@ -84,15 +84,15 @@ contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further 
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: the sender rule binds to the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'carry `from=` the console you last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-sections/succession.md")")" 'the console you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
+contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-sections/succession.md")")" 'the chief you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
 
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: the console is the one last accepted, the brief'"'"'s until a change' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'the one you last accepted (your brief'"'"'s until a change)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the relay (1) sender is the console last accepted' "$(flat "$succ")" 'from the console you last accepted (the SendMessage `from` equals it)'
+contains 'succession.md: the relay (1) sender is the console last accepted' "$(flat "$succ")" 'from the chief you last accepted (the SendMessage `from` equals it)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the decision table header names the last accepted console' "$succ" '| # | Sender (`from`) | Quotes | Named console (last accepted) | Verdict |'
-contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$s1" 'the console you last accepted (your brief'"'"'s until a change)'
+contains 'succession.md: the decision table header names the last accepted console' "$succ" '| # | Sender (`from`) | Quotes | Named chief (last accepted) | Verdict |'
+contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$s1" 'the chief you last accepted (your brief'"'"'s until a change)'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$s1" 'a `bus-adopt:` refusal is no reason to park'
 contains 'leg-preface.md S1 fast path: after a bus-adopt refusal the leg runs bus adopt itself once the old console is gone' "$s1" 'once the old one is gone, run it yourself'
@@ -100,7 +100,7 @@ contains 'leg-preface.md S1 fast path: after a bus-adopt refusal the leg runs bu
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
 contains 'the security argument (replay) is preserved in the wording' "$succ" 'replay'
-contains 'the old token is the proof: only the leg and the outgoing console held it' "$succ" 'only the leg and the outgoing console'
+contains 'the old token is the proof: only the worker and the outgoing chief held it' "$succ" 'only the worker and the outgoing chief'
 contains 'the chain explanation says the named-sender check no longer binds (HIMMEL-3257)' "$succ" 'no longer binds'
 contains 'the chain explanation names the residual: a token reader can name a replacement' "$succ" 'can name a replacement'
 overclaim="$(printf '%s\n' "$succ" | tr '\n' ' ' | grep -iF -- 'cannot produce it')"
@@ -148,7 +148,7 @@ expect_verdict S8 ACCEPT 'a halt or narrowing, no token needed (semantics unchan
 # The verdict alone would stay green if someone loosened an ACCEPT row's
 # prerequisites, and the table IS the rule: pin the cells that make each row
 # accept or refuse (sender, quoted tokens, named-console state).
-contains 'S1 sender: the relay comes from the named console' "$(cell_of S1 3)" 'named console'
+contains 'S1 sender: the relay comes from the named chief' "$(cell_of S1 3)" 'named chief'
 contains 'S1 quotes: the leg current token' "$(cell_of S1 4)" 'current token'
 contains 'S1 named console: live and relaying' "$(cell_of S1 5)" 'live'
 contains 'S1 named console: or gone, the from-name at send time is the proof' "$(cell_of S1 5)" 'gone'
@@ -276,8 +276,8 @@ done
 absent 'ACTION ZERO step 9 does not tell the successor to mint a fresh token per leg' "$step9" "$stale_rotate"
 contains 'ACTION ZERO step 9: a relay MAY carry a fresh token but need not' "$(flat "$step9")" 'MAY also carry a fresh'
 contains 'ACTION ZERO step 9: rotation is not a precondition of succession' "$(flat "$step9")" 'rotation is not a precondition'
-contains 'ACTION ZERO step 9 defers to the preface as the authority' "$step9" 'leg-preface.md'
-contains 'ACTION ZERO step 9: only the chain form always rotates' "$(flat "$step9")" 'the chain always rotates'
+contains 'ACTION ZERO step 9 defers to the preface as the authority' "$step9" 'worker-preface.md'
+contains 'ACTION ZERO step 9: only the chain form always rotates' "$(flat "$step9")" 'the token chain always rotates'
 
 step4="$(printf '%s\n' "$handing" | awk '/^4\. \*\*/ { f = 1 } /^5\. \*\*/ { f = 0 } f')"
 absent 'Handing over step 4 does not say the successor always hands over a fresh token' "$step4" "$stale_rotate"
@@ -291,13 +291,13 @@ contains 'running-a-console Handing over: a relay with no fresh token is complet
 absent 'running-a-console Handing over does not print a SendMessage for every native worker' "$(flat "$running")" 'SENDMESSAGE` line for each other'
 absent 'running-a-console Handing over does not tell a successor to append a token by hand' "$(flat "$running")" 'appends the fresh token by hand'
 contains 'running-a-console Handing over: a bus record relays each native worker' "$(flat "$running")" 'one himmel-bus relay record'
-contains 'running-a-console Handing over: BUS-RELAY ok does not prove delivery' "$(flat "$running")" 'not that the worker session saw it'
+contains 'running-a-console Handing over: BUS-RELAY ok does not prove delivery' "$(flat "$running")" 'not that the worker saw it'
 contains 'running-a-console Handing over: WAKE succession partial is the backstop' "$(flat "$running")" 'is the backstop for one that never quotes back'
-contains 'running-a-console Handing over: native and claudex workers are not rotated on a bus succession' "$(flat "$running")" 'native and claudex worker sessions are not rotated'
-contains 'running-a-console Handing over: a failed claudex notice prints only BUS-RELAY-FAIL, as the inbox relay already went' "$(flat "$running")" "A failed claudex notice record prints only \`BUS-RELAY-FAIL\`: that worker session already has its inbox relay. A worker session in the fleet manifest"
-notice="$(flat "$running")"; notice="${notice#*A failed claudex notice record}"; notice="${notice%%A worker session in the fleet manifest*}"
+contains 'running-a-console Handing over: native and claudex workers are not rotated on a bus succession' "$(flat "$running")" 'native and claudex workers are not rotated'
+contains 'running-a-console Handing over: a failed claudex notice prints only BUS-RELAY-FAIL, as the inbox relay already went' "$(flat "$running")" "A failed claudex notice record prints only \`BUS-RELAY-FAIL\`: that worker already has its inbox relay. A worker in the fleet manifest"
+notice="$(flat "$running")"; notice="${notice#*A failed claudex notice record}"; notice="${notice%%A worker in the fleet manifest*}"
 absent 'running-a-console Handing over: a failed claudex notice names no SendMessage fallback' "$notice" 'sendmessage'
-contains 'running-a-console Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" "missing from Live state prints \`NOT-IN-LIVE-STATE\` when its record fails, when the chief has no bus identity, when it is a claudex worker session, or when its session does not resolve: relay it by hand if it is live."
+contains 'running-a-console Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" "missing from Live state prints \`NOT-IN-LIVE-STATE\` when its record fails, when the chief has no bus identity, when it is a claudex worker, or when its session does not resolve: relay it by hand if it is live."
 contains 'running-a-console Handing over: SKIPPED, UNRESOLVED and UNRESOLVED-LANE need a hand relay' "$(flat "$running")" "\`SKIPPED\`, \`UNRESOLVED\` and \`UNRESOLVED-LANE\` lines sent nothing: each needs a relay by hand."
 
 absent 'handoff "How starts" does not tell the successor to rotate nonces' "$starts" "$stale_rotate"

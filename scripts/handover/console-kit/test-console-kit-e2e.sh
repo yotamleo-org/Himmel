@@ -159,7 +159,7 @@ render_board() {
 # ---- 1. FINDING stays visible until RESOLVED --------------------------------
 check "tails: FINDING is N2's status" "$(tick_field tails)" "N1:LIVE,N2:FINDING,N3:LIVE"
 check "tails: FINDING persists across a second tick" "$(tick_field tails)" "N1:LIVE,N2:FINDING,N3:LIVE"
-check "legs: every held leg is FRESH" "$(tick_field legs)" "N1:FRESH,N2:FRESH,N3:FRESH"
+check "legs: every held leg is FRESH" "$(tick_field workers)" "N1:FRESH,N2:FRESH,N3:FRESH"
 contains "board: FINDING asks for a ruling" "$(render_board)" "FINDING — needs a ruling"
 bash "$AR" "$L2" "RESOLVED — ruling received, see console message" >/dev/null
 check "tails: RESOLVED retires the FINDING" "$(tick_field tails)" "N1:LIVE,N2:RESOLVED,N3:LIVE"
@@ -171,7 +171,7 @@ lacks "board: no ruling ask after RESOLVED" "$board_after" "FINDING — needs a 
 check "nonces: a previous console's letter reads UNCONFIRMED" "$(tick_field nonces)" "UNCONFIRMED:N3"
 bash "$AR" "$L3" "SUCCESSION accepted: HIMMEL-nextleg-2026-10-11DC-e2e-console replaces HIMMEL-nextleg-2026-10-11DB-old" >/dev/null
 check "nonces: the leg's SUCCESSION bullet reads RELAYED" "$(tick_field nonces)" "RELAYED:N3"
-check "legs: the relayed leg is still FRESH (lock kept)" "$(tick_field legs)" "N1:FRESH,N2:FRESH,N3:FRESH"
+check "legs: the relayed leg is still FRESH (lock kept)" "$(tick_field workers)" "N1:FRESH,N2:FRESH,N3:FRESH"
 check "tails: a SUCCESSION bullet is not a status marker" "$(tick_field tails)" "N1:LIVE,N2:RESOLVED,N3:LIVE"
 # a bullet naming a DIFFERENT console confirms nothing
 bash "$AR" "$L3" "SUCCESSION accepted: HIMMEL-nextleg-2026-10-11DZ-other replaces HIMMEL-nextleg-2026-10-11DC-e2e-console" >/dev/null
@@ -185,7 +185,7 @@ check "close: a WRAPPED leg with its lock still held is refused (rc 3)" "$rc" 3
 if alive "$P1"; then pass "close: refused close left the session alive"; else fail "close: refused close killed pid $P1"; fi
 bash "$QL" release "$L1" "$tok1" >/dev/null 2>&1
 check "tails: N1 reads WRAPPED" "$(tick_field tails)" "N1:WRAPPED,N2:RESOLVED,N3:LIVE"
-contains "legs: a wrapped, subtree-clean leg reads CLOSABLE" "$(tick_field legs)" "N1:CLOSABLE"
+contains "legs: a wrapped, subtree-clean leg reads CLOSABLE" "$(tick_field workers)" "N1:CLOSABLE"
 out="$(bash "$CK/close-wrapped-leg.sh" "$L1" 2>&1)"; rc=$?
 check "close: a wrapped leg closes (rc 0)" "$rc" 0
 contains "close: TERM went to the matched pid" "$out" "sent TERM to pid $P1"

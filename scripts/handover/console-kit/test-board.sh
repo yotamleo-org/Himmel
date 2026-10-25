@@ -1340,7 +1340,7 @@ contains 'board-tracker.md: the tracker publish goes to the same haiku subagent'
 contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
 contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
 contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
-contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first console publish that uses it records the parent-context delta'
+contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first chief publish that uses it records the parent-context delta'
 # shellcheck disable=SC2016  # literal backticks in the needle
 lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
 # shellcheck disable=SC2016  # literal backticks in the needle
