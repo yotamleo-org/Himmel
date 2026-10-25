@@ -98,7 +98,7 @@ grep -vE '^[[:space:]]*(#|$)' "$TRUSTF" > "$work/patterns.txt" 2>/dev/null
 [ -s "$work/patterns.txt" ] || trust
 
 # Changed paths (renames as delete + add, so both names are listed), one per line.
-git diff --name-only -z --no-renames "$J" "$N" -- > "$work/names.z" 2>/dev/null || trust
+git diff --name-only -z --no-renames --no-ext-diff --no-relative "$J" "$N" -- >"$work/names.z" 2>/dev/null || trust
 : > "$work/names.txt"
 while IFS= read -r -d '' p; do
     case "$p" in *$'\n'*) trust ;; esac
@@ -148,7 +148,7 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
 [ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
 
 # Old-side line ranges the delta rewrites; an insertion counts as touching the line it follows and the next.
-git -c core.quotePath=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ "$J" "$N" --> "$work/patch.txt" 2>/dev/null || trust
+git -c core.quotePath=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
 awk '
     /^diff --git / { inh = 1; path = ""; next }
     inh && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); if (p ~ /^"/) bad = 1; if (p == "/dev/null") path = ""; else { sub(/^a\//, "", p); path = p }; next }

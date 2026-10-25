@@ -179,6 +179,12 @@ done
 mkv GO 'finding: src'
 check "5: a finding that names a directory fails closed -> trust" "$(cls "$N")" trust
 back
+mkv GO 'finding: src/a.txt:3-4'
+git config diff.relative true
+echo "x3" > scripts/ci/x.sh; N=$(step relative)
+check "1: a trust-path change outside the cwd subtree is seen under diff.relative -> trust" "$(cd src && cls "$N")" trust
+git config --unset diff.relative
+back
 repo_trust="$HERE/../../ci/ci-trust-paths.txt"
 hit=no
 while IFS= read -r pat; do
