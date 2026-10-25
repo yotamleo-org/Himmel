@@ -779,7 +779,7 @@ test("refuseNonPrimaryCwd: undefined (no refusal) on the primary checkout", () =
   expect(refuseNonPrimaryCwd("/repo", probe)).toBeUndefined();
 });
 
-test("refuseNonPrimaryCwd: names the primary path + HIMMEL-1503 + the spawn-glm prefix", () => {
+test("refuseNonPrimaryCwd: names the primary path + the refusal text + the spawn-glm prefix", () => {
   const probe = () => ({ gitDir: "/repo/.git/worktrees/wt1", commonDir: "/repo/.git" });
   const msg = refuseNonPrimaryCwd("/repo/.claude/worktrees/glm+t1", probe);
   expect(msg).toContain("spawn-glm:");

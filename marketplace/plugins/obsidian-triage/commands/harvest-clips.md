@@ -66,7 +66,7 @@ Wherever `YYYY-MM-DD` or `TODAY` appears below, substitute `$(date +%Y-%m-%d)`. 
 
 ```bash
 if [ "${CLAUDECODE_HEADLESS:-0}" = "1" ] || [ "${CLAUDE_CODE_ENTRYPOINT:-}" = "cli-print" ]; then
-    echo "ERR harvest-clips: refusing to run under headless claude." >&2
+    echo "ERR harvest-clips: refusing to run under headless claude (separate billing bucket)." >&2
     exit 3
 fi
 ```
