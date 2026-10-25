@@ -319,9 +319,27 @@ def check_lane_reads(l, hroot):
 WRITE_PATH_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 
 
+_SENT = r'(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)'
+# the read-only text next-dispatchable.sh's clean_scope strips from an older scope line; the Writes line is read raw, so strip it here
+_READ_ONLY = [
+    re.compile(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b' + _SENT),
+    re.compile(r'Impacted suites' + _SENT),
+    re.compile(r'Trust path\s*\([^)]*\)'),
+    re.compile(r'`(?:git grep|grep|rg|find|sed -n|cat)\b[^`]*`'),
+    re.compile(r'\((?:git grep|grep|rg|find|cat)\b(?:(?!\b(?:fix|edit|update|change|write|add|patch|replace|rename)\b)[^)])*\)'),
+    re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+[^\s-][^\s]*)*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+\w+(?![\w.\/-]))?|[^\s`;,)]*[/.\d_-][^\s`;,)]*(?<![.])))+'),
+]
+_SCOPE_END = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
+
+
 def write_paths(scope):
     # The paths the scope names, and nothing else: the collision check holds every path on the
     # Writes line, so prose here ("find and fix the caller in x") must never reach it.
+    end = _SCOPE_END.search(scope)
+    scope = scope[:end.start()] if end else scope
+    for rx in _READ_ONLY:
+        scope = rx.sub(lambda g: g.group(0) if re.search(r'\s-(?:delete|exec|execdir|ok)\b', g.group(0)) else ' ', scope)
+
     def expand(g):  # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir
         parts = [p.strip() for p in g.group(2).split(',')]
         if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):

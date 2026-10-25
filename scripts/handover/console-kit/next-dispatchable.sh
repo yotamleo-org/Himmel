@@ -147,6 +147,7 @@ ARG = r'''[^\s`;,)'"]*[/.\d_-][^\s`;,)'"]*(?<![.])'''
 CMD_SPAN_RE = re.compile(r'`(?:git grep|grep|rg|find|sed -n|cat)\b[^`]*`')
 CMD_BARE_RE = re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+(?:%s|(?!-)%s))*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+\w+(?![\w./-]))?|%s|%s))+' % (Q, ARG, Q, ARG))  # a command word with a flag, never a name inside a path
 CMD_PAREN_RE = re.compile(r'\((?:git grep|grep|rg|find|cat)\b(?:(?!\b(?:fix|edit|update|change|write|add|patch|replace|rename)\b)[^)])*\)')  # "(find what x uses)": a read aside, unless it says to change something
+WRITING_RE = re.compile(r'\s-(?:delete|exec|execdir|ok)\b')  # a find that deletes or runs a command is not a read
 IMPACTED_RE = re.compile(r'Impacted suites' + SENT)
 SINGLE_WRITER_RE = re.compile(r'SINGLE-WRITER' + SENT)
 OTHER_HOLDER_RE = re.compile(r'#\d+|\bN\d{3,}\b')
@@ -161,9 +162,8 @@ def clean_scope(rest):
     rest = IMPACTED_RE.sub(' ', rest)
     rest = TRUST_RE.sub(' ', rest)
     rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this leg is the one writer of y" is ours
-    rest = CMD_SPAN_RE.sub(' ', rest)
-    rest = CMD_PAREN_RE.sub(' ', rest)
-    rest = CMD_BARE_RE.sub(' ', rest)  # a path a quoted read-only command searches is not written
+    for rx in (CMD_SPAN_RE, CMD_PAREN_RE, CMD_BARE_RE):  # a path a quoted read-only command searches is not written
+        rest = rx.sub(lambda g: g.group(0) if WRITING_RE.search(g.group(0)) else ' ', rest)
     # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
     def expand(g):
         parts = [p.strip() for p in g.group(2).split(',')]

@@ -792,6 +792,7 @@ mk HIMMEL-880 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a dir a flagged bare grep r
 mk HIMMEL-881 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path on the continuation of a wrapped Writes block" "Edit scripts/nd-i.sh only."
 mk HIMMEL-882 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path after a path segment named find" "Edit scripts/nd-y.sh only."
 mk HIMMEL-883 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir the description names without a command word" "Edit scripts/nd-fm-desc/nd-z.sh only."
+mk HIMMEL-884 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir a find -delete writes" "Edit scripts/nd-del/nd-q.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror26/HIMMEL.versions.tsv"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3543"},{"doc":"%s","label":"N3557"},{"doc":"%s","label":"N3578"},{"doc":"%s","label":"N3579"},{"doc":"%s","label":"N3580"},{"doc":"%s","label":"N3581"},{"doc":"%s","label":"N3582"},{"doc":"%s","label":"N3583"},{"doc":"%s","label":"N3584"},{"doc":"%s","label":"N3585"},{"doc":"%s","label":"N3586"}]}\n' \
@@ -823,6 +824,7 @@ has "held-paths: a bare 'grep -rl needle scripts/nd-read/' read holds nothing" "
 lacks "held-paths: a path on the continuation line of a wrapped Writes block is held" "$f26" "HIMMEL-881	"
 lacks "held-paths: a path after a path segment named find is held" "$f26" "HIMMEL-882	"
 has "held-paths: a path the front-matter description names (no command word before it) holds nothing" "$f26" "HIMMEL-883	"
+lacks "held-paths: a find -delete is a write, not a read: its dir is held" "$f26" "HIMMEL-884	"
 has "held-paths: a live leg that yields no held paths is named on stderr" "$(cat "$WORK/f26.err")" "live leg N3585 yields no held paths"
 
 printf '\n%d failure(s)\n' "$fails"
