@@ -785,12 +785,20 @@ mk HIMMEL-873 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the front-matter leg's real
 mk HIMMEL-874 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file whose name contains a command word" "Edit scripts/handover/nd-find-tool.sh only."
 mk HIMMEL-875 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the file listed after a command-word name" "Edit docs/nd-find.html only."
 mk HIMMEL-876 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a sibling the command-word name must not hold" "Edit scripts/handover/nd-sibling.sh only."
+mk HIMMEL-877 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path after a prose find on a scope line" "Edit scripts/nd-b.sh only."
+mk HIMMEL-878 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path after prose on a Writes line" "Edit scripts/nd-e.sh only."
+mk HIMMEL-879 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the file this leg's own SINGLE-WRITER note names" "Edit scripts/nd-d.sh only."
+mk HIMMEL-880 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a dir a flagged bare grep reads" "Edit scripts/nd-read/nd-x.sh only."
+mk HIMMEL-881 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path on the continuation of a wrapped Writes block" "Edit scripts/nd-i.sh only."
+mk HIMMEL-882 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path after a path segment named find" "Edit scripts/nd-y.sh only."
+mk HIMMEL-883 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir the description names without a command word" "Edit scripts/nd-fm-desc/nd-z.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror26/HIMMEL.versions.tsv"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3543"},{"doc":"%s","label":"N3557"},{"doc":"%s","label":"N3578"},{"doc":"%s","label":"N3579"},{"doc":"%s","label":"N3580"},{"doc":"%s","label":"N3581"}]}\n' \
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3543"},{"doc":"%s","label":"N3557"},{"doc":"%s","label":"N3578"},{"doc":"%s","label":"N3579"},{"doc":"%s","label":"N3580"},{"doc":"%s","label":"N3581"},{"doc":"%s","label":"N3582"},{"doc":"%s","label":"N3583"},{"doc":"%s","label":"N3584"},{"doc":"%s","label":"N3585"},{"doc":"%s","label":"N3586"}]}\n' \
     "$FX/HIMMEL-7377-N3558-adoption-trail-narrow-panel.md" "$FX/HIMMEL-3111-N3543-config-secrets-journey.md" "$FX/HIMMEL-7131-N3557-himmel-report-command.md" \
-    "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" "$FX/HIMMEL-7469-N3581-command-word-in-path.md" > "$WORK/fleet26.json"
-f26="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --legs-from "$WORK/fleet26.json" 2>/dev/null)"
+    "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" "$FX/HIMMEL-7469-N3581-command-word-in-path.md" \
+    "$FX/HIMMEL-7469-N3582-prose-before-path.md" "$FX/HIMMEL-7469-N3583-writes-line-prose.md" "$FX/HIMMEL-7469-N3584-writes-wrapped.md" "$FX/HIMMEL-7469-N3585-no-scope.md" "$FX/HIMMEL-7469-N3586-command-segment.md" > "$WORK/fleet26.json"
+f26="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --legs-from "$WORK/fleet26.json" 2>"$WORK/f26.err")"
 lacks "held-paths: N3558 still holds its one real file docs/adoption-trail.html" "$f26" "HIMMEL-860	"
 has "held-paths: N3558's quoted 'grep -rl adoption-trail scripts/' does not hold scripts/check-ci.sh" "$f26" "HIMMEL-861	"
 has "held-paths: N3543's 'Trust path (scripts/lib/)' note does not hold scripts/lib/" "$f26" "HIMMEL-862	"
@@ -808,6 +816,14 @@ lacks "held-paths: that leg still holds the file on its real scope line" "$f26" 
 lacks "held-paths: a file named nd-find-tool.sh is held, not read as a find command" "$f26" "HIMMEL-874	"
 lacks "held-paths: the file listed after a command-word name is still held" "$f26" "HIMMEL-875	"
 has "held-paths: a command-word name does not hold its whole directory" "$f26" "HIMMEL-876	"
+lacks "held-paths: a path after 'find and fix the caller in' prose on a scope line is held" "$f26" "HIMMEL-877	"
+lacks "held-paths: a Writes line is never cleaned: a path after prose on it is held" "$f26" "HIMMEL-878	"
+lacks "held-paths: this leg's own SINGLE-WRITER note holds the file it names" "$f26" "HIMMEL-879	"
+has "held-paths: a bare 'grep -rl needle scripts/nd-read/' read holds nothing" "$f26" "HIMMEL-880	"
+lacks "held-paths: a path on the continuation line of a wrapped Writes block is held" "$f26" "HIMMEL-881	"
+lacks "held-paths: a path after a path segment named find is held" "$f26" "HIMMEL-882	"
+has "held-paths: a path the front-matter description names (no command word before it) holds nothing" "$f26" "HIMMEL-883	"
+has "held-paths: a live leg that yields no held paths is named on stderr" "$(cat "$WORK/f26.err")" "live leg N3585 yields no held paths"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

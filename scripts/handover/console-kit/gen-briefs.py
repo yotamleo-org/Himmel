@@ -315,6 +315,27 @@ def check_lane_reads(l, hroot):
             die('leg %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
 
 
+# kept in step with FILE_RE in next-dispatchable.sh, which reads the line this feeds
+WRITE_PATH_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
+
+
+def write_paths(scope):
+    # The paths the scope names, and nothing else: the collision check holds every path on the
+    # Writes line, so prose here ("find and fix the caller in x") must never reach it.
+    def expand(g):  # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir
+        parts = [p.strip() for p in g.group(2).split(',')]
+        if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
+            return ' '.join(g.group(1) + p for p in parts)
+        return g.group(1)
+    scope = re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, scope)
+    out = []
+    for m in WRITE_PATH_RE.finditer(scope):
+        p = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
+        if p and p not in out:
+            out.append(p)
+    return ' '.join(out) or 'none named'
+
+
 def completes_line(scope):
     # The LAST completes-ticket value in the scope, as the one line the merge script
     # reads from the leg doc (--leg-doc / HIMMEL_WORKER_SESSION_DOC); none when the scope states neither.
@@ -421,7 +442,7 @@ template_version: 3
            branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
-           scope=l['scope'], scope_line=' '.join(l['scope'].split()), others=others, also=also,
+           scope=l['scope'], scope_line=write_paths(l['scope']), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
