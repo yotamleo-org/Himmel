@@ -326,7 +326,7 @@ touch -t 202001010000 "$T/g6/$SID.recorder"
 gone_run g6 "$T/g6"; rc=$?
 # The notice is a systemMessage on stdout (exit-0 stderr is shown to nobody),
 # merged into the hook's own JSON.
-if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("HIMMEL-5171")' "$T/g6.out" >/dev/null 2>&1 \
+if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g6.out" >/dev/null 2>&1 \
    && jq -e '.hookSpecificOutput.permissionDecision' "$T/g6.out" >/dev/null 2>&1; then
   ok "HIMMEL-5171: a 'started' marker older than any recorder can live (killed recorder) fails open with a systemMessage notice"
 else
@@ -346,7 +346,7 @@ touch -t 202001010000 "$T/g8/$SID.recorder"
 printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR="$T/g8" \
   node "$LAUNCHER" --chain "$GUARD" >"$T/g8.out" 2>"$T/g8.err"
 rc=$?
-if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("HIMMEL-5171")' "$T/g8.out" >/dev/null 2>&1; then
+if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g8.out" >/dev/null 2>&1; then
   ok "HIMMEL-5171: the chain path surfaces the fail-open notice as a systemMessage"
 else
   bad "HIMMEL-5171 chain notice: expected rc=0 + systemMessage, got rc=$rc out=$(cat "$T/g8.out") err=$(cat "$T/g8.err")"
@@ -366,7 +366,7 @@ else
   bad "HIMMEL-5171 plain output: expected rc=0, 'plain text', no notified flag, got rc=$rc out=$(cat "$T/g9.out") dir=$(ls "$T/g9")"
 fi
 gone_run g9 "$T/g9"; rc=$?
-if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("HIMMEL-5171")' "$T/g9.out" >/dev/null 2>&1; then
+if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g9.out" >/dev/null 2>&1; then
   ok "HIMMEL-5171: the notice is delivered by the next call whose output is JSON"
 else
   bad "HIMMEL-5171 deferred notice: expected systemMessage, got rc=$rc out=$(cat "$T/g9.out") err=$(cat "$T/g9.err")"
@@ -389,12 +389,12 @@ fi
 printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR="$T/g10" \
   node "$LAUNCHER" --chain "$GUARD" >"$T/g10.out" 2>"$T/g10.err"
 rc=$?
-if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("HIMMEL-5171")' "$T/g10.out" >/dev/null 2>&1; then
+if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g10.out" >/dev/null 2>&1; then
   ok "HIMMEL-5171: the next allowed chain call after a deny shows the notice"
 else
   bad "HIMMEL-5171 chain after deny: expected systemMessage, got rc=$rc out=$(cat "$T/g10.out") err=$(cat "$T/g10.err")"
 fi
-if grep -q 'HIMMEL-5171' "$T/g10.err"; then
+if grep -q 'ran UNVERIFIED' "$T/g10.err"; then
   ok "HIMMEL-5171: the notice is also written to stderr"
 else
   bad "HIMMEL-5171 stderr notice missing: $(cat "$T/g10.err")"
@@ -416,7 +416,7 @@ fi
 printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR="$T/g10b" \
   node "$LAUNCHER" --chain "$GUARD" >"$T/g10b.out" 2>"$T/g10b.err"
 rc=$?
-if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("HIMMEL-5171")' "$T/g10b.out" >/dev/null 2>&1; then
+if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g10b.out" >/dev/null 2>&1; then
   ok "HIMMEL-5171: the next clean chain call after an exit-1 shows the notice"
 else
   bad "HIMMEL-5171 chain after exit-1: expected systemMessage, got rc=$rc out=$(cat "$T/g10b.out") err=$(cat "$T/g10b.err")"
@@ -432,7 +432,7 @@ else
   bad "HIMMEL-5171 single deny: expected rc=2 and no notified flag, got rc=$rc dir=$(ls "$T/g11") err=$(cat "$T/g11.err")"
 fi
 gone_run g11 "$T/g11"; rc=$?
-if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("HIMMEL-5171")' "$T/g11.out" >/dev/null 2>&1; then
+if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g11.out" >/dev/null 2>&1; then
   ok "HIMMEL-5171: the next allowed single-path call after an exit-2 shows the notice"
 else
   bad "HIMMEL-5171 single after deny: expected systemMessage, got rc=$rc out=$(cat "$T/g11.out") err=$(cat "$T/g11.err")"
