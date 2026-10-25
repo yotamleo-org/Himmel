@@ -13,9 +13,9 @@ exists after a build (see "Keeping these accurate" below). The diagrams also con
 Words follow the [glossary](glossary.md): the **chief** is the session that
 runs a shift, and each **worker** owns one ticket, one worktree and one pull
 request. Many identifiers still carry the older names until their rename slice
-lands (HIMMEL-5689). The chief's command and script are already `/chief` and
-`chief.sh`, but its directories and markers say `console` (`chief-kit/`,
-`HIMMEL_CONSOLE_*`), and a worker's say `leg` (`headed-arm-leg.sh`,
+lands (HIMMEL-5689). The chief's command, script and directories are already
+`/chief`, `chief.sh` and `chief-kit/`, but its markers say `console`
+(`HIMMEL_CONSOLE_*`), and a worker's say `leg` (`headed-arm-leg.sh`,
 `HIMMEL_CONSOLE_LEG`). A box shows the new word first and the identifier as it
 is today.
 
