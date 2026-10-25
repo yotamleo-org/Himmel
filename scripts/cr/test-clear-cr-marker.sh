@@ -1141,6 +1141,23 @@ blast_case scripts/hooks/test-x.sh full 2026-11-01T10:00:00Z
 run_clear "$tmp" 0 "diff changes only a hook test file → exit 0"
 rm -rf "$tmp"
 
+# A rename out of scope still touches the guard: git's default rename
+# detection would list only the destination.
+make_repo || exit 1
+guard_tip "$tmp" scripts/hooks/guard-x.sh || fail "guard_tip scripts/hooks/guard-x.sh"
+_bl_base="$sha"
+if ! { mkdir -p "$tmp/docs" && git -C "$tmp" mv scripts/hooks/guard-x.sh docs/guard-x.sh \
+    && git -C "$tmp" commit -q -m move -- scripts/hooks/guard-x.sh docs/guard-x.sh && git -C "$tmp" push -q origin feat/x >/dev/null 2>&1; }; then
+    fail "rename fixture"
+fi
+sha=$(git -C "$tmp" rev-parse --verify HEAD)
+write_marker "$tmp" "$sha" full "" "$_bl_base"
+write_ledger "$tmp" "$(_pf_row 2026-09-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "guard file renamed out of scope, no blast row → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=missing-blast-radius'; then pass; else fail "a rename out of scope must refuse for the blast row: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
 blast_case scripts/hooks/guard-x.sh docs-audit 2026-11-01T10:00:00Z
 run_clear "$tmp" 0 "docs-audit lane owes no blast row → exit 0"
 rm -rf "$tmp"

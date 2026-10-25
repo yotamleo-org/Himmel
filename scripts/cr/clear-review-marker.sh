@@ -1346,7 +1346,7 @@ if [ -n "$blocking" ]; then
     _difffile="$(mktemp 2>/dev/null || true)"
     _bffile="$(mktemp 2>/dev/null || true)"
     if [ -n "$_difffile" ] && [ -n "$_bffile" ] \
-       && git diff --name-only -z "$marker_base...$tip" > "$_difffile" 2>/dev/null \
+       && git diff --no-renames --name-only -z "$marker_base...$tip" > "$_difffile" 2>/dev/null \
        && [ -s "$_difffile" ]; then
         printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const r of (JSON.parse(s).blockingFiles||[])) process.stdout.write(r.id+"\0"+r.file+"\0");})' > "$_bffile" 2>/dev/null
         _ood=""
@@ -1500,20 +1500,20 @@ fi
 
 # 4f. Blast-radius pass on guard and gate diffs (/pr-check step 3.5). A
 # lane=full marker whose marker_base...tip diff changes a non-test guard or
-# gate file needs a `blast` row stamped with this branch, at any head: one pass
-# per branch, and a row written late still counts. An `off` row with a reason
-# is the audited opt-out. The scope lives here only; the gate runs from the
-# anchor, so a branch cannot narrow the scope it is judged by. As in 4e, a
-# branch with no `score` row (no panel round ran) or whose first `score` row
-# predates BLAST_GATE_SINCE is exempt. Read-only, so it runs under --dry-run
-# too.
+# gate file (a rename counts at both paths) needs a `blast` row stamped with
+# this branch, at any head: one pass per branch, and a row written late still
+# counts. An `off` row with a reason is the audited opt-out. The scope lives
+# here only; the gate runs from the anchor, so a branch cannot narrow the
+# scope it is judged by. As in 4e, a branch with no `score` row (no panel
+# round ran) or whose first `score` row predates BLAST_GATE_SINCE (or carries
+# no ts) is exempt. Read-only, so it runs under --dry-run too.
 # ponytail: the row is self-attested, the same trust as `preflight`. Upgrade
 # path: run the pass as a context-free headless reviewer with a provenance
 # artifact, as claude-floor-review.sh does.
 if [ "$marker_lane" = "full" ]; then
     blast_verdict="error"
     _blastdiff="$(mktemp "${TMPDIR:-/tmp}/blast-diff.XXXXXX" 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
-    if [ -n "$_blastdiff" ] && git diff --name-only -z "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
+    if [ -n "$_blastdiff" ] && git diff --no-renames --name-only -z "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
         blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" node -e '
           const fs = require("fs"), e = process.env;
           const scope = [/^scripts\/hooks\//, /^scripts\/ci\/check-/, /^scripts\/cr\/clear-(cr|review)-marker\.sh$/,
