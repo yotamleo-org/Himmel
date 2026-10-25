@@ -142,6 +142,30 @@ t=$(live claude-wrongurl)
 sed -i.bak 's/\(pin_fetch "[^"]*\)\${CLAUDE_VERSION}/\1${OTHER_VERSION}/' "$t/.github/workflows/ci.yml"
 expect "the pin_fetch URL no longer names the pinned version" 1 "$t"
 
+# The install step copied verbatim from ci.yml (lines 709-721 at 1dc03b6c6): the
+# command after pin_fetch must install the file pin_fetch verified.
+t=$(live claude-step-real); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+expect "the real install step is accepted" 0 "$t"
+t=$(live claude-step-otherfile); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# the $... in the sed script below is workflow text, not shell
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude"|sudo install -m 0755 "$RUNNER_TEMP/other"|' "$t/.github/workflows/other.yml"
+expect "the step after pin_fetch installs a different file" 1 "$t"
+says "the unverified install is named" "installs a different file than pin_fetch verified"
+t=$(live claude-step-noinstall); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+sed -i.bak '/sudo install -m 0755/d' "$t/.github/workflows/other.yml"
+expect "the step after pin_fetch is not an install at all" 1 "$t"
+t=$(live claude-bunadd)
+# the ${...} below is workflow text, not shell
+# shellcheck disable=SC2016
+printf '        run: bun add --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"\n' >> "$t/.github/workflows/ci.yml"
+expect "claude-code installed by bun add" 1 "$t"
+says "bun add is named" "claude-code installed by name"
+t=$(live claude-npx); printf '        run: npx --yes @anthropic-ai/claude-code --version\n' >> "$t/.github/workflows/ci.yml"
+expect "claude-code run through npx" 1 "$t"
+t=$(live claude-bunx); printf '        run: bunx @anthropic-ai/claude-code --version\n' >> "$t/.github/workflows/ci.yml"
+expect "claude-code run through bunx" 1 "$t"
+
 # The pins equal the real release manifest (fixture: downloads.claude.ai
 # claude-code-releases/2.1.307/manifest.json, fetched verbatim 2026-10-25).
 mf="$FIX/claude-manifest-2.1.307.json"

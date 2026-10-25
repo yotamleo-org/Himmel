@@ -260,7 +260,7 @@ location, so invoking the worktree's copy edits the worktree's files.
 Per collected entry, one call:
 
 ```bash
-bash scripts/upstreams/apply-drift-bump.sh <name> <target-version>
+bash scripts/upstreams/apply-drift-bump.sh <name> <target-version> --published <the target release's published_at; rc 5 = younger than 72 h, skip it until it ages>
 ```
 
 An entry with `companion_pins` (cli-proxy-api: the Linux twin's `VERSION=` and
