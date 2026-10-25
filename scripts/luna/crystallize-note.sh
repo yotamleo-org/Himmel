@@ -42,29 +42,6 @@ RULES_FILE="${CRYSTALLIZE_RULES_FILE:-${3:-}}"
 export CLAUDE_END_SESSION_WIKI=0
 export HIMMEL_WHERE_ARE_WE=0
 
-# 0 = CLAUDE_CONFIG_DIR is ~/.claude, 1 = another dir, 2 = a path could not be resolved.
-is_native_claude_dir() {
-    local configured native
-    configured="$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" || return 2
-    native="$(cd "${HOME}/.claude" 2>/dev/null && pwd -P)" || return 2
-    [ "$configured" = "$native" ]
-}
-
-# Do not narrow this to also require ANTHROPIC_BASE_URL: a lane config dir has no
-# .credentials.json, so proceeding there fails silently below, while a false defer
-# is recovered by `backfill-sessions.sh --reheal`.
-if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
-    is_native_claude_dir
-    case $? in
-        0) ;;
-        1)
-            echo "crystallize-note: DEFERRED (not failed) - CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR is not ~/.claude; the mechanical note is still written and stays crystallized: false; backfill-sessions.sh --reheal picks it up later once running on native auth." >&2
-            exit 0
-            ;;
-        *) exit 0 ;;
-    esac
-fi
-
 HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 DEFAULT_MODEL="claude-opus-4-8"
 DEFAULT_BUDGET_USD="1.00"

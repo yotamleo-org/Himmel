@@ -103,23 +103,20 @@ mark_crystallized() { # <note>
     ' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
 }
 
-# --- Case 0: proxied lane config defers to native-auth reheal -----------------
-SB="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-note.XXXXXX")"
+# --- Case 0: a non-default CLAUDE_CONFIG_DIR no longer defers — the lane owns auth ---
+SB="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-note.XXXXXX")" || exit 1
 NOTE="$SB/note.md"; TR="$SB/t.jsonl"; MARK="$SB/marker.txt"
 write_note "$NOTE"; printf '{}\n' > "$TR"
 mkdir -p "$SB/home/.claude" "$SB/lane-config"
-SHA_BEFORE="$( { sha256sum "$NOTE" 2>/dev/null || shasum -a 256 "$NOTE"; } | awk '{print $1}')"
 STDERR_OUT="$SB/stderr.txt"
 RC=0
 env HOME="$SB/home" CLAUDE_CONFIG_DIR="$SB/lane-config" \
     CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success CRYSTALLIZE_MARKER="$MARK" \
     CRYSTALLIZE_PID_DIR="$SB/pids" bash "$CRYS" "$NOTE" "$TR" 2>"$STDERR_OUT" || RC=$?
-SHA_AFTER="$( { sha256sum "$NOTE" 2>/dev/null || shasum -a 256 "$NOTE"; } | awk '{print $1}')"
-if [ "$RC" = "0" ]; then pass "lane-config: exits 0 for deferred synthesis"; else fail "lane-config: exit was $RC"; fi
-if [ "$SHA_BEFORE" = "$SHA_AFTER" ]; then pass "lane-config: note stays byte-unchanged"; else fail "lane-config: note changed despite deferral"; fi
-if grep -q '^crystallized: false$' "$NOTE"; then pass "lane-config: crystallized stays false for reheal"; else fail "lane-config: crystallized flag changed"; fi
-if [ ! -s "$MARK" ]; then pass "lane-config: claude was not launched"; else fail "lane-config: claude launched into the proxy"; fi
-if grep -q 'crystallize-note: DEFERRED' "$STDERR_OUT" 2>/dev/null; then pass "lane-config: emits an explanatory deferral line"; else fail "lane-config: no deferral message on stderr"; fi
+if [ "$RC" = "0" ]; then pass "lane-config: exits 0"; else fail "lane-config: exit was $RC"; fi
+if [ -s "$MARK" ]; then pass "lane-config: the launcher ran despite a non-default config dir"; else fail "lane-config: still deferring on CLAUDE_CONFIG_DIR"; fi
+if grep -q '^crystallized: true$' "$NOTE"; then pass "lane-config: note crystallized"; else fail "lane-config: note not crystallized"; fi
+if ! grep -q 'crystallize-note: DEFERRED' "$STDERR_OUT" 2>/dev/null; then pass "lane-config: no deferral line"; else fail "lane-config: emitted a deferral line"; fi
 rm -rf "$SB"
 
 # --- Case L1: no model env — the crystallizer passes the chosen model ------------
@@ -259,7 +256,7 @@ NOTE_DIR_REAL="$(cd "$(dirname "$NOTE")" && pwd)"
 if grep -qF "cwd=$NOTE_DIR_REAL" "$ARGVD" 2>/dev/null; then pass "workspace: spawn cwd is the note's directory"; else fail "workspace: spawn cwd is NOT the note-dir (out-of-workspace edit risk)"; fi
 if grep -qxF 'arg=-p' "$ARGVD" 2>/dev/null; then pass "lane: print-mode call (-p)"; else fail "lane: not a -p call"; fi
 if ! grep -qxF 'arg=--add-dir' "$ARGVD" 2>/dev/null && ! grep -qxF 'arg=--settings' "$ARGVD" 2>/dev/null; then pass "lane: no --add-dir / --settings (the lane refuses both)"; else fail "lane: passes a flag the lane refuses"; fi
-if grep -qxF 'HIMMEL_API_TOOLS=Read,Edit' "$LANED" 2>/dev/null; then pass "lane: tool grant is exactly Read,Edit"; else fail "lane: tool grant is not Read,Edit ($(cat "$LANED" 2>/dev/null))"; fi
+if grep -qxF 'HIMMEL_API_TOOLS=Read,Edit' "$LANED" 2>/dev/null; then pass "lane: tool grant is exactly Read,Edit"; else fail "lane: tool grant is not Read,Edit ($(cat "$LANED" 2>/dev/null))"; fi # read-sink-ok: LANED is the suite's own temp dump
 if grep -qxF 'HIMMEL_API_KIND=bulk' "$LANED" 2>/dev/null; then pass "lane: run kind is bulk"; else fail "lane: run kind is not bulk"; fi
 BUDGET="$(awk '/^arg=/{if (prev=="arg=--max-budget-usd") print substr($0,5); prev=$0}' "$ARGVD")"
 if grep -Eq '^[0-9]+(\.[0-9]+)?$' <<< "$BUDGET"; then pass "lane: bounded --max-budget-usd ($BUDGET)"; else fail "lane: no numeric --max-budget-usd"; fi

@@ -893,6 +893,36 @@ else
 fi
 
 # ============================================================================
+# Case 12b: the API lane is off — a launcher is reachable but the crystallizer
+#           would refuse, so reheal takes the mechanical fallback instead
+# ============================================================================
+echo ""
+echo "Case 12b: reheal mechanical re-render (API lane off)"
+
+SB="$TMP_ROOT/case12b"
+VAULT12B="$SB/vault"
+PROJ_ROOT12B="$SB/projects"
+NOTE12B="$VAULT12B/sessions/2026/06/2026-06-20-0000-testrepo.md"
+mkdir -p "$VAULT12B" "$PROJ_ROOT12B"
+write_husk_note "$NOTE12B" "reheal-sess-lane-off"
+seed_named_transcript "$PROJ_ROOT12B" "reheal-sess-lane-off" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+out12b=$(env -u HIMMEL_API_LANE CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
+    CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --reheal \
+    --projects-dir "$PROJ_ROOT12B" \
+    --luna-vault-path "$VAULT12B" \
+    --state-file "$SB/state.json" \
+    --vault-registry /dev/null \
+    2>&1)
+assert_contains "reheal(lane-off): healed count reported" "healed=1" "$out12b"
+assert_not_contains "reheal(lane-off): no longer a husk" "_Transcript unavailable._" "$(cat "$NOTE12B" 2>/dev/null)"
+if grep -q '^crystallized: false$' "$NOTE12B"; then
+    pass "reheal(lane-off): mechanical render, stays crystallized: false"
+else
+    fail "reheal(lane-off): note was crystallized without the API lane"
+fi
+
+# ============================================================================
 # Case 13: reheal mechanical on a tool-only transcript (no prose turn) is a
 #          convergent no-op when claude is absent — a mechanical re-render can't
 #          clear the husk predicate (Raw Conversation stays "_Transcript
