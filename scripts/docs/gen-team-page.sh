@@ -77,7 +77,7 @@ ROLES = [
                    "docs/handover/leg-preface-claudex.md",
                    "docs/handover/leg-preface-openrouter.md"],
         "job": s("docs/handover/worker-preface.md", "You are a worker:"),
-        "tier": r(LANES, r"The Opus lane runs \*\*([^*]+)\*\* \(the chief and headed-arm default"),
+        "tier": r(LANES, r"\| (Sonnet [0-9.]+) \| [^|]*?(default implementor for [^|;]*?) \|"),
         "may": [s("docs/handover/worker-preface.md", "Order: commit"),
                 s(GLOSSARY, "an implementing worker (implements and ships)")],
         "never": [s("docs/handover/worker-preface.md", "Merge only on the chief's"),
@@ -175,7 +175,7 @@ def capture(path, pattern):
     if not m:
         problems.append(f"pattern not found in {path}: {pattern}")
         return None
-    return m.group(1)
+    return ", ".join(m.groups())
 
 def frontmatter(path, key):
     text = read(path)
