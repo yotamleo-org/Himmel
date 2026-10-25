@@ -224,6 +224,8 @@ user `himmel`:
   VM that name, or add your own registry entry and drive it through `vmsdk.py`.
 - The after-report clones (`himmel-ar-N`) are linked clones of the
   `ubuntu_new` VM; set `HIMMEL_VM_AR_SOURCE_VM` to clone a VM with another name.
+  The clones still log in with the user and password of the `ubuntu_new`
+  registry entry, so that VM's guest account must match them.
 - The desktop provisioner takes `--vm-name <name>` (default `ubuntu_new`).
 - `vm.mode` in `~/.himmel/config.json` says where the VM proof runs: `local`
   (the default) is `localhost:2222`; `remote` names an ssh target. See
