@@ -1244,6 +1244,15 @@ printf '%s\n' '---' 'key: "HIMMEL-433"' 'updated: "2026-09-30T10:00:00.000+0000"
     '---' '# HIMMEL-433: rowlive other version renamed' > "$vp/HIMMEL-433.md"
 v7render >/dev/null
 if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a retitled chain step of another version moves the focus fingerprint (HIMMEL-7621)'; else fail 'a retitled chain step of another version left the focus fingerprint unchanged'; fi
+cat > "$W/vp-chains7.json" <<'EOF'
+[{"name":"c7621","steps":[{"key":"HIMMEL-432"},{"key":"HIMMEL-433"},{"key":"HIMMEL-999"}]}]
+EOF
+printf '{"key":"HIMMEL-999","leg":"N88","state":"live"}\n' > "$W/wk7/HIMMEL-999.json"
+v7render >/dev/null
+vfp7a="$(cat "$v7out.vfp" 2>/dev/null)"
+printf '{"key":"HIMMEL-999","leg":"N88","state":"parked"}\n' > "$W/wk7/HIMMEL-999.json"
+v7render >/dev/null
+if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a worker change on a chain step missing from the mirror moves the focus fingerprint (HIMMEL-7621)'; else fail 'a worker change on a chain step missing from the mirror left the focus fingerprint unchanged'; fi
 vfp7a="$(cat "$v7out.vfp" 2>/dev/null)"
 printf '%s\n' '---' 'key: "HIMMEL-431"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["operator-present"]' 'type: "Task"' \
     '---' '# HIMMEL-431: rowlive operator ask' > "$vp/HIMMEL-431.md"

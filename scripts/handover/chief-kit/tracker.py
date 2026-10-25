@@ -1467,7 +1467,8 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
         if not KEY_RE.fullmatch(k):
             return None
         w = workers.get(num(k))
-        return [mir[k]['title'], mir[k]['sn'] or mir[k]['cat'], [w.get('leg'), w.get('state'), open_worker_prs(w)] if w else None] if k in mir else None
+        m = mir.get(k)
+        return [m['title'] if m else None, (m['sn'] or m['cat']) if m else None, [w.get('leg'), w.get('state'), open_worker_prs(w)] if w else None]
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
