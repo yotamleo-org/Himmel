@@ -713,7 +713,8 @@ _find_transcript() { # <session_id>
 # Can crystallize-note.sh launch?  It needs the API lane on (it refuses without it) and
 # a launcher: the test override or a `claude` binary.
 _claude_available() {
-    [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ] || return 1
+    [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
+    case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
     [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] && return 0
     command -v claude >/dev/null 2>&1 && return 0
     return 1

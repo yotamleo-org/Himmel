@@ -899,28 +899,32 @@ fi
 echo ""
 echo "Case 12b: reheal mechanical re-render (API lane off)"
 
-SB="$TMP_ROOT/case12b"
-VAULT12B="$SB/vault"
-PROJ_ROOT12B="$SB/projects"
-NOTE12B="$VAULT12B/sessions/2026/06/2026-06-20-0000-testrepo.md"
-mkdir -p "$VAULT12B" "$PROJ_ROOT12B"
-write_husk_note "$NOTE12B" "reheal-sess-lane-off"
-seed_named_transcript "$PROJ_ROOT12B" "reheal-sess-lane-off" "$TRANSCRIPT_FIXTURES/normal.jsonl"
-out12b=$(env -u HIMMEL_API_LANE CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
-    CRYSTALLIZE_PID_DIR="$SB/pids" \
-    bash "$BACKFILL" --reheal \
-    --projects-dir "$PROJ_ROOT12B" \
-    --luna-vault-path "$VAULT12B" \
-    --state-file "$SB/state.json" \
-    --vault-registry /dev/null \
-    2>&1)
-assert_contains "reheal(lane-off): healed count reported" "healed=1" "$out12b"
-assert_not_contains "reheal(lane-off): no longer a husk" "_Transcript unavailable._" "$(cat "$NOTE12B" 2>/dev/null)"
-if grep -q '^crystallized: false$' "$NOTE12B"; then
-    pass "reheal(lane-off): mechanical render, stays crystallized: false"
-else
-    fail "reheal(lane-off): note was crystallized without the API lane"
-fi
+reheal_lane_off() { # <label> <env-assignments...>
+    local label="$1"; shift
+    local sb="$TMP_ROOT/case12b-$label" vault proj note out
+    vault="$sb/vault"; proj="$sb/projects"
+    note="$vault/sessions/2026/06/2026-06-20-0000-testrepo.md"
+    mkdir -p "$vault" "$proj"
+    write_husk_note "$note" "reheal-sess-$label"
+    seed_named_transcript "$proj" "reheal-sess-$label" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+    out=$(env "$@" CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
+        CRYSTALLIZE_PID_DIR="$sb/pids" \
+        bash "$BACKFILL" --reheal \
+        --projects-dir "$proj" \
+        --luna-vault-path "$vault" \
+        --state-file "$sb/state.json" \
+        --vault-registry /dev/null \
+        2>&1)
+    assert_contains "reheal($label): healed count reported" "healed=1" "$out"
+    assert_not_contains "reheal($label): no longer a husk" "_Transcript unavailable._" "$(cat "$note" 2>/dev/null)"
+    if grep -q '^crystallized: false$' "$note"; then
+        pass "reheal($label): mechanical render, stays crystallized: false"
+    else
+        fail "reheal($label): note was crystallized without a usable API lane"
+    fi
+}
+reheal_lane_off "lane-off" -u HIMMEL_API_LANE
+reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid
 
 # ============================================================================
 # Case 13: reheal mechanical on a tool-only transcript (no prose turn) is a
