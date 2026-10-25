@@ -84,7 +84,8 @@ Both VM e2e scripts exit 3 (not 1) when the VM is unreachable.
 
 `python scripts/test-luna-upgrade-skill-vm.py` (`--help` for options) is the
 **dogfood path**: it drives the `/luna-upgrade` SKILL via an interactive
-`claude` session on the `ubuntu_new` VM against a scaffolded old-version vault
+`claude` session on the test VM (the `ubuntu_new` registry entry; see
+"Pointing himmel at your VM" below) against a scaffolded old-version vault
 and asserts the upgrade roundtrip on filesystem state. Where `test-luna-upgrade-vm.sh`
 invokes `upgrade.sh` directly (deterministic, no claude call), this probe exercises
 the full user-facing path: the same `/luna-upgrade` a real adopter hits. It
@@ -119,7 +120,7 @@ concern and is NOT replaced by this tool.
 
 `bash scripts/vm/provenance-roundtrip.sh <ref> [--expect-red] [--purge-state] [--profile core|all]`
 checks that an uninstall removes exactly what the install brought. It runs on
-the `himmel-ar-N` clone of `ubuntu_new`. It first takes a clone slot and the
+a `himmel-ar-N` linked clone of the test VM. It first takes a clone slot and the
 `vm-lock.sh` lock, then restores the clone to `suite-ready-v4` and stages the
 repo at `<ref>` into the guest. On the guest it then:
 
@@ -212,7 +213,35 @@ python and `ssh`, and does run in CI.
 
 ---
 
-## Ubuntu VM
+## Pointing himmel at your VM
+
+The VM scripts find a guest by its VirtualBox name, looked up in the registry
+`scripts/lib/vms.json` (ssh port, guest user, and the `.env` keys for user and
+password). The shipped Ubuntu entry is `ubuntu_new`, on host port `2222`, guest
+user `himmel`:
+
+- The skill-pass probe drives the VM named `ubuntu_new`, so give your VirtualBox
+  VM that name, or add your own registry entry and drive it through `vmsdk.py`.
+- The after-report clones (`himmel-ar-N`) are linked clones of the
+  `ubuntu_new` VM; set `HIMMEL_VM_AR_SOURCE_VM` to clone a VM with another name.
+- The desktop provisioner takes `--vm-name <name>` (default `ubuntu_new`).
+- `vm.mode` in `~/.himmel/config.json` says where the VM proof runs: `local`
+  (the default) is `localhost:2222`; `remote` names an ssh target. See
+  [vm-mode.md](vm-mode.md).
+- `scripts/lib/vbox.py` resolves `VBoxManage` via `PATH`; set
+  `VBOXMANAGE_PATH` when it is not on `PATH`. An explicit `VBOXMANAGE_PATH`
+  always wins.
+
+Keep NAT port forwards on loopback (`127.0.0.1`), set with `modifyvm` so they
+survive a power cycle. Run one VM at a time.
+
+Two guest types are supported: an Ubuntu **desktop** guest set up by
+`ubuntu-vm-setup.py`, and an Ubuntu **server** cloud image provisioned by
+cloud-init.
+
+---
+
+## Ubuntu desktop guest
 
 ### VirtualBox Configuration
 
@@ -221,8 +250,7 @@ python and `ssh`, and does run in CI.
 | Network | NAT |
 | Port forwarding | Host `2222` → Guest `22` |
 | Clipboard | Bidirectional (persistent via `modifyvm`) |
-| Guest Additions | `virtualbox-guest-utils` + `virtualbox-guest-x11` v7.0.20 |
-| Kernel | `6.14.0-37-generic` |
+| Guest Additions | `virtualbox-guest-utils` + `virtualbox-guest-x11` |
 | Display session | X11 (Wayland disabled — required for clipboard + full-screen) |
 
 ### Credentials
@@ -238,17 +266,14 @@ Generated at `~/.ssh/id_ed25519` (ED25519). Public key copied to VM's `~/.ssh/au
 ### Connect
 
 ```bash
-ssh -p 2222 osboxes@127.0.0.1
+ssh -p 2222 <ubuntu_vm_user>@127.0.0.1
 ```
 
-### Start / Show VM
+### Start VM
 
-```powershell
-# Start from off
-VBoxManage startvm "ubuntu_new" --type gui
-
-# Attach GUI to already-running headless VM
-& "C:\Program Files\Oracle\VirtualBox\VirtualBoxVM.exe" --startvm "ubuntu_new"
+```bash
+VBoxManage startvm "<vm>" --type gui        # with a window
+VBoxManage startvm "<vm>" --type headless   # no window
 ```
 
 Full-screen: `Right Ctrl + F`
@@ -271,11 +296,11 @@ client.connect("127.0.0.1", port=2222,
 # Key auth (after setup — no password needed)
 # client.connect("127.0.0.1", port=2222,
 #                username=os.environ["ubuntu_vm_user"],
-#                key_filename="C:/Users/<user>/.ssh/id_ed25519")
+#                key_filename=os.path.expanduser("~/.ssh/id_ed25519"))
 ```
 
-> Install: `pip install paramiko --user`
-> Python key paths must use Windows format: `C:/Users/...` not `/c/Users/...`
+> Install: `pip install paramiko python-dotenv` into a venv (see "vmsdk.py
+> Python environment" below).
 
 ---
 
@@ -318,20 +343,17 @@ systemctl status sleep.target   # verify: masked
 
 ---
 
-## Linux host
+## Ubuntu server cloud-init guest
 
-Provisioning path when the **himmel station itself runs Linux** (verified
-2026-09-04 on CachyOS, VirtualBox 7.2.16), with a different guest and workflow from
-the Windows-host `ubuntu_new` documented above under "Ubuntu VM". This guest is
-a Ubuntu **server** cloud image driven entirely by cloud-init; there is no
-desktop session, guest additions, or X11 on it.
+A Ubuntu **server** cloud image driven entirely by cloud-init; there is no
+desktop session, guest additions, or X11 on it. `<vm>` below is your VirtualBox
+VM name (see "Pointing himmel at your VM").
 
 ### VirtualBox Configuration
 
 | Setting | Value |
 |---------|-------|
-| Guest | `ubuntu_new` — Ubuntu 24.04 noble server cloud OVA (`noble-server-cloudimg-amd64.ova`) |
-| Resources | 4 CPU / 4 GB RAM |
+| Guest | Ubuntu 24.04 noble server cloud OVA (`noble-server-cloudimg-amd64.ova`) |
 | Network | NAT (`--nic1 nat`) |
 | Port forwarding | Host `2222` → Guest `22`, added in a **separate** `modifyvm` call (below) |
 | Provisioning | cloud-init NoCloud seed ISO, attached at IDE port 1 device 0 |
@@ -339,9 +361,9 @@ desktop session, guest additions, or X11 on it.
 ### Import + NIC
 
 ```bash
-VBoxManage import noble-server-cloudimg-amd64.ova --vsys 0 --vmname ubuntu_new
-VBoxManage modifyvm ubuntu_new --nic1 nat
-VBoxManage modifyvm ubuntu_new --natpf1 "ssh,tcp,127.0.0.1,2222,,22"
+VBoxManage import noble-server-cloudimg-amd64.ova --vsys 0 --vmname <vm>
+VBoxManage modifyvm <vm> --nic1 nat
+VBoxManage modifyvm <vm> --natpf1 "ssh,tcp,127.0.0.1,2222,,22"
 ```
 
 Keep the NIC and the `natpf1` rule in **two separate `modifyvm` calls**: a
@@ -350,9 +372,9 @@ re-run) and leaves the NIC on its prior (bridged) setting.
 
 ### Cloud-init seed
 
-The station has no `genisoimage` / `cloud-localds`, and installing either needs
-sudo, so the NoCloud seed ISO (`cidata.iso`) is built with `pycdlib` instead,
-via `scripts/machine-setup/make-cloudinit-seed.py` (run it from the
+The NoCloud seed ISO (`cidata.iso`) is built with `pycdlib`, so the host needs
+no `genisoimage` / `cloud-localds` (and no sudo to install them), via
+`scripts/machine-setup/make-cloudinit-seed.py` (run it from the
 `~/.himmel/vm-venv` venv; see "vmsdk.py Python environment" below). The
 primary checkout's `.env` already carries `ubuntu_vm_pass`, so this needs no
 password flag at all:
@@ -377,7 +399,7 @@ unless you also pass `--allow-password-ssh`. `--dry-run` prints the generated
 written ISO as a virtual DVD at IDE port 1 device 0:
 
 ```bash
-VBoxManage storageattach ubuntu_new --storagectl IDE --port 1 --device 0 \
+VBoxManage storageattach <vm> --storagectl IDE --port 1 --device 0 \
   --type dvddrive --medium /path/to/cidata.iso
 ```
 
@@ -388,7 +410,7 @@ VBoxManage storageattach ubuntu_new --storagectl IDE --port 1 --device 0 \
 - `clean-tools`: `clean` + `nodejs` installed afterwards via `apt`.
 
 ```bash
-VBoxManage snapshot ubuntu_new restore clean
+VBoxManage snapshot <vm> restore clean
 ```
 
 ### Connect
@@ -426,7 +448,7 @@ checking stays on, `accept-new`), and `vmsdk.py restore` deletes that VM's file
 after the snapshot readback succeeds. A restore done outside vmsdk (raw
 `VBoxManage snapshot restore`) leaves the stale file, so the next `sync_repo`
 fails loud with `REMOTE HOST IDENTIFICATION HAS CHANGED`; delete that one file.
-The station's own `~/.ssh/known_hosts` is never read or written for it.
+The host's own `~/.ssh/known_hosts` is never read or written for it.
 `scripts/test-install-symmetry-vm.sh` needs the user spelled out
 (`himmel@localhost 2222 ~/.ssh/id_ed25519`): its default host is a bare
 `localhost`, so ssh logs in as your local user, which the guest does not have.
@@ -435,9 +457,9 @@ off.
 
 ### vmsdk.py Python environment
 
-`vmsdk.py` needs `paramiko` + `python-dotenv`. The station's system python is
-externally-managed (PEP 668): `pip install` against it fails. Use a dedicated
-venv instead:
+`vmsdk.py` needs `paramiko` + `python-dotenv`. A distro system python is often
+externally-managed (PEP 668), so `pip install` against it fails. Use a
+dedicated venv instead:
 
 ```bash
 python3 -m venv ~/.himmel/vm-venv
@@ -446,13 +468,6 @@ python3 -m venv ~/.himmel/vm-venv
 
 Drive the guest with `~/.himmel/vm-venv/bin/python` (any script that imports
 `vmsdk`), not the bare system `python3`.
-
-### VBOXMANAGE_PATH
-
-On a Linux host `scripts/lib/vbox.py` now resolves `VBoxManage` via `PATH`
-(`shutil.which`) instead of hardcoding the Windows install path; no env var
-is needed once `VBoxManage` is on `PATH` (VirtualBox's Linux installer puts it
-there). An explicit `VBOXMANAGE_PATH` still wins over PATH resolution when set.
 
 ### Operator rule
 
@@ -463,7 +478,7 @@ inside this guest**: restore the `clean` snapshot first, never on a station.
 
 ## Quick Reference
 
-| VM | Port | User var | Pass var | Key |
-|----|------|----------|----------|-----|
-| Ubuntu | 2222 | `ubuntu_vm_user` | `ubuntu_vm_pass` | `~/.ssh/id_ed25519` |
-| Ubuntu (Linux host, `ubuntu_new` cloud guest) | 2222 | `himmel` (cloud-init, key-only) | — | `~/.ssh/id_ed25519` |
+| Guest | Port | User | Pass var | Key |
+|-------|------|------|----------|-----|
+| Ubuntu desktop | 2222 | `ubuntu_vm_user` | `ubuntu_vm_pass` | `~/.ssh/id_ed25519` |
+| Ubuntu server (cloud-init) | 2222 | `himmel` (cloud-init, key-only) | — | `~/.ssh/id_ed25519` |
