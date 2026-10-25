@@ -1876,17 +1876,20 @@ pobf_relief() {
 # environment, so a trigger word the text layer matched is data: a word in a
 # quoted grep pattern, a heredoc body read by python, or `-i` given to grep.
 # Every position must be readable (no opaque runner, no glob or expansion as
-# the program word, no env or exec wrapper), assign only lowercase or
+# the program word, no glob before `--` that can expand to an option, no env
+# or exec wrapper), assign only lowercase or
 # one- and two-letter names (an uppercase one can be PAGER or EDITOR), and
 # run a program from a fixed set: data tools that run no nested program
 # (sort without --compress-program or a prefix of it, gh only through a fixed list of
 # subcommands, never an alias or extension; the model already marks
-# find -exec opaque); git with literal words only, running a read-only subcommand from a fixed
+# find -exec opaque); git with unexpanded words (a glob that cannot expand to
+# an option counts), running a read-only subcommand from a fixed
 # list, with no global option but -C, --no-pager or -P and no pager, exec or
 # output option, long or abbreviated, in a command whose every other
-# position runs a read-only program and writes no file (a written hook or
+# position runs a read-only program (never file -C) and writes no file (a written hook or
 # config is run by the git call beside it); inline python or node code (-c, -e or a heredoc, in the
-# options before any script word, each from a fixed set; never a script file, a preload, an env file or a warning filter) that names no process spawn, no environment and no dynamic
+# options before any script word, each from a fixed set; never a script file, a preload, an env file or a warning filter;
+# python never under an inherited PYTHONINSPECT) that names no process spawn, no environment and no dynamic
 # lookup a spawn name could be built through (getattr, __dict__, globals,
 # require of anything but fs or path, ...); sed, awk, perl or ruby whose
 # literal code holds no verb word, and no other position carries a verb
@@ -1922,6 +1925,10 @@ def data: ["cd", "pwd", "echo", "cat", "head", "tail", "wc", "ls", "cut",
 def pyspawn: "subprocess|environ|putenv|unsetenv|system|popen|fork|exec|spawn|Popen|commands\\.|__import__|__dict__|__builtins__|__getattribute__|__subclasses__|__globals__|__class__|__loader__|getattr|attrgetter|methodcaller|getmembers|modules|globals|locals|vars[[:space:]]*\\(|dir[[:space:]]*\\(|eval|compile|\\b(pty|ctypes|cffi|importlib|inspect|marshal|pickle|shelve|runpy|timeit|doctest|pdb|bdb|cProfile|profile|trace|code|codeop|webbrowser)\\b";
 def jsspawn: "child_process|exec|spawn|fork|process(?!\\.(argv|stdout|stderr|exitCode|exit|cwd)\\b)|Bun|Deno|eval|Function|constructor|__proto__|prototype|globalThis|Reflect|Proxy|import[[:space:]]*\\(|worker_threads|\\b(global|this|module|arguments|vm)\\b|require(?![[:space:]]*\\([[:space:]]*[\"'](node:)?(fs|path)[\"'][[:space:]]*\\))";
 def optw: lit and (wv | startswith("-") and . != "-" and . != "--");
+def optglob: lit and .g and (wv | test("^[-*?\\[]"));
+def noptglob: (.argv // []) as $a
+  | ([range(1; $a | length) | select($a[.] | lit and (.g | not) and wv == "--")] | first // ($a | length)) as $e
+  | ($a[1:$e] | all(.[]; optglob | not));
 def hdin: (.redirs // []) as $r
   | ($r | all(.[]; ((.fd // "0") | test("^[0-9]+$")) and (((.op // "") | isin(["<&", ">&", "<>"])) | not)))
   and ($r | map(select((((.fd // "0") | tonumber) == 0) and (.hdoc or ((.op // "") | startswith("<")))))
@@ -1968,10 +1975,11 @@ def pos_ok($vr):
   and ((.via // []) | all(.[]; . != "env" and . != "exec"))
   and ((.assigns // []) | all(.[]; plainname))
   and (.argv[0] == null or (.argv[0] | lit and (.g | not)))
+  and noptglob
   and (if .prog == null then true
        elif .prog == "printf" then $hard == "0" and ((.argv[1] // {t: "lit", v: ""}) | lit and ((wv | startswith("-")) | not))
        elif .prog == "git" then git_ok
-       elif .prog | isin(["python3", "python"]) then inline and code_ok(pyspawn)
+       elif .prog | isin(["python3", "python"]) then $pyi == "" and inline and code_ok(pyspawn)
        elif .prog == "node" then inline and code_ok(jsspawn)
        elif .prog | isin(["sed", "awk", "gawk", "perl", "ruby"]) then code_ok($vr)
        elif .prog | isin(data) then runs_none
@@ -1986,7 +1994,9 @@ def carries($vr): ((.argv // []) | any(.[]; (lit | not) or (wv | test($vr))))
 def nocarry($vr): [to_entries[] | select(.value | carries($vr)) | .key] as $c
   | all(to_entries[] | select(.value.prog // "" | isin(["sed", "awk", "gawk", "perl", "ruby"])) | .key;
       . as $r | $c | all(.[]; . == $r));
-def rdpos: (.prog == null) or (.prog | isin(rdonly))
+def rdpos: (.prog == null)
+  or ((.prog | isin(rdonly)) and (.prog != "file"
+    or (.argv[1:] | all(.[]; lit and ((wv | test("^-[[:alnum:]]*C|^--c")) | not)))))
   or ((.argv[1:] | all(.[]; lit)) and ((.argv[1:] | map(wv)) as $w
      | if .prog == "sed" then ($w | all(.[]; test("^-[[:alnum:]]*i|^--in|[wW]") | not))
        elif .prog == "sort" then ($w | all(.[]; test("^-[[:alnum:]]*o|^--o") | not))
@@ -2017,7 +2027,7 @@ obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
     [ -n "$_TIMEOUT_BIN" ] || return 1
     # shellcheck disable=SC2016 # $1/$2 expand in the child shell
     pos=$("$_TIMEOUT_BIN" 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
-    [ "$(printf '%s' "$pos" | jq -r --arg vr "$vr" --arg hard "$hd" "$OBF_AST_JQ" 2>/dev/null)" = allow ] # swallow-ok: a jq error is not allow, so the deny stands
+    [ "$(printf '%s' "$pos" | jq -r --arg vr "$vr" --arg hard "$hd" --arg pyi "${PYTHONINSPECT:-}" "$OBF_AST_JQ" 2>/dev/null)" = allow ] # swallow-ok: a jq error is not allow, so the deny stands
 }
 
 # raw_obfuscated <raw text> -- text layer, run on the UNTOUCHED

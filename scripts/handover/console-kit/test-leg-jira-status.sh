@@ -443,6 +443,47 @@ else
     echo "skip - timeout/flock rows: no timeout or flock binary"
 fi
 
+# --- no flock: two events for one key move the status once --------------------------
+# Both runs reach the Jira read together (get.sleep), so an unlocked run moves twice.
+reset "To Do"; owned; echo 1 > "$FX/get.sleep"
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock: both concurrent events exit 0" "$r1:$r2" "0:0"
+check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
+
+# One event releases its lease when it exits, and it moved the status.
+reset "To Do"; owned
+rc=0; PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 || rc=$?
+check "no-flock: a single event exits 0 and moves the status once" "$rc:$(ntrans)" "0:1"
+check "no-flock: a finished event releases its lease" "$([ -d "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" ] && printf held || printf free)" free
+
+# A lease left by a dead run (older than 300s) is reclaimed once, so one event moves the status.
+reset "To Do"; owned; echo 1 > "$FX/get.sleep"
+mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d"
+old=$(date -d '10 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || date -v-10M +%Y%m%d%H%M.%S)
+check "no-flock: the stale lease is backdated" "$(touch -t "$old" "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" && printf ok)" ok
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock: concurrent events reclaim a stale lease, exit 0" "$r1:$r2" "0:0"
+check "no-flock: a stale lease is reclaimed once, the status moves once" "$(ntrans)" 1
+
+# A lock dir the user cannot write makes mkdir fail and the lease stat fail, so the
+# lease must defer within the wait bound, not spin. Root writes anywhere: skip there.
+if [ -n "$_TIMEOUT_BIN" ] && [ "$(id -u)" != 0 ]; then
+    reset "To Do"; owned
+    mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks"; chmod 500 "$TICKET_STATUS_STATE_DIR/status-locks"
+    rc=0; TICKET_STATUS_LOCK_WAIT=1 "$_TIMEOUT_BIN" -k 2 15 env PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out" 2>&1 || rc=$?
+    chmod 700 "$TICKET_STATUS_STATE_DIR/status-locks"
+    check "no-flock: an unwritable lock dir defers within the wait bound (rc 0, not a hang)" "$rc" 0
+    check "no-flock: an unwritable lock dir logs deferred stage=lock" "$(row result)/$(row stage)" deferred/lock
+else
+    echo "skip - unwritable-lock row: no timeout binary, or running as root"
+fi
+
 # --- worker states ------------------------------------------------------------------------
 ws() { # <marker> <lock rc> <lock age> -> state
     mkdoc "$DOC" "$1"; printf '%s\n' "$2" > "$FX/lock.rc"; printf '%s\n' "$3" > "$FX/lock.age"

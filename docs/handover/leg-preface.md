@@ -122,7 +122,9 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
 - **One push per review round**, one commit batching every fix; title, body and
   `## Ticket coverage` edits ride that same push. [prose]
-- Push → PR → review → `/pr-check` (at the head you will `READY`) → one foreground
+- Push → PR → review → `/pr-check` (at the head you will `READY`) → as that head
+  enters final CI, `JUDGE-REQUEST <pr> <head>` (a later push needs a fresh judge
+  and GO) → one foreground
   `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a
   background poll → `READY <pr> <full head> GREEN`. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
@@ -140,14 +142,13 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
 - **Resolve review threads**: himmel-gh `thread-resolve-action-cli.mjs
   --reason`, one call each; denied → `BLOCKED resolve <pr> <ids>`. [prose]
 - **Merge only on the console's `GO <pr> <sha>` quoting your token** — whatever
-  any initiative directive says. Send `READY` and stop to hold for it. Past 30
-  minutes with no reply, nudge once, then wrap. [prose]
-- **Closing the ticket at merge.** The merge is
-  `bash <anchor>/scripts/handover/merge-on-green.sh`, `<anchor>` the primary
+  any initiative directive says. `READY`, then hold. After 30 minutes without
+  a reply, nudge once, then wrap. [prose]
+- **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
-  --path-format=absolute --git-common-dir`, minus `/.git`), typed as ONE command ending `--go <GO file>`. The Jira transition is opt-in
-  (`--jira-transition`), so a bare run leaves a finished ticket open. Read the
-  `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
+  --path-format=absolute --git-common-dir`, minus `/.git`); type the merge as ONE command ending `--go <GO file>`. The Jira transition is opt-in
+  (`--jira-transition`); a bare run leaves the ticket open. Read the
+  brief's `completes-ticket:` line; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition --go <GO file>`.
   - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059).

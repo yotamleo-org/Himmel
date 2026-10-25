@@ -37,7 +37,7 @@ expect green-only         false null  0   true
 # (recovered), but still an identical retry.
 expect red-denied         false 1000  1   true
 expect denial-recovered   null  1000  0   null
-expect denial-repeated    false 333   2   true
+expect denial-repeated    null  333   2   true
 expect claim-unverified   false null  0   false
 expect claim-stale        false null  0   false
 expect no-claim           null  null  0   null
@@ -48,6 +48,8 @@ expect runner-named       false null  0   false
 expect runner-named-ok    false null  0   true
 expect not-a-run          false null  0   false
 expect runner-config      false null  0   true
+# a session that writes no code (docs only, with a passing test run) has no test-first to score
+expect docs-only          null  null  0   null
 
 echo "2. unreadable or empty input"
 : >"$TMP/empty.jsonl"
@@ -91,7 +93,7 @@ check "a retry after an intervening call still counts against the denial it repe
 check "the per-denial identical counts sum to identical_denied_retries on every fixture" '(for f in "$FX"/*.jsonl; do python3 "$TR" score "$f" --denials | jq -e "([.denials[].identical] | add // 0) == .identical_denied_retries" >/dev/null || exit 1; done)'
 check "without --denials the output keeps exactly the four fields (run.sh merges it into runs.jsonl)" 'python3 "$TR" score "$FX/denial-repeated.jsonl" | jq -e "keys == [\"denial_recovery\",\"identical_denied_retries\",\"red_before_green\",\"verify_before_claim\"]" >/dev/null'
 check "a missing transcript lists no denials" 'python3 "$TR" score "$TMP/nope.jsonl" --denials | jq -e ".denials == []" >/dev/null'
-check "--denials names the schema version the fields were scored under" 'python3 "$TR" score "$FX/red-green.jsonl" --denials | jq -e ".trajectory_v == 1" >/dev/null'
+check "--denials names the schema version the fields were scored under" 'python3 "$TR" score "$FX/red-green.jsonl" --denials | jq -e ".trajectory_v == 2" >/dev/null'
 # den <out> <n>: n denied Bash calls over 50 distinct commands, results batched
 # out of order in pairs, so every denial is retried and recovery varies.
 den() {

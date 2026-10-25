@@ -115,16 +115,41 @@ fi
 
 miss() { row result=miss rule="${TS_RULE:-}" stage="$1" from="${TS_J_STATUS:-}"; warn "$KEY not synced (stage $1)"; }
 
-# ponytail: no flock binary (stock macOS) runs unlocked, so two events for one
-# key can interleave; upgrade path = a mkdir lock.
+lockdir="$(ts_state_dir)/status-locks"
+mkdir -p "$lockdir" 2>/dev/null || warn "cannot create $lockdir"
+# ponytail: no flock binary (stock macOS) takes a mkdir lease for the key; it
+# expires after 300s even for a live owner; upgrade path = a heartbeat.
+# lease is script-level, not local: the EXIT trap runs after take_key_lease has returned.
+lease="$lockdir/$KEY.lease.d"
+take_key_lease() {
+    local limit="${TICKET_STATUS_LOCK_WAIT:-10}" waited=0 stamp got=0 reclaim="$lockdir/$KEY.reclaim.d"
+    # ponytail: the reclaim mutex is a mkdir held for microseconds; a process killed inside it leaves
+    # it behind for good. upgrade path = the owner-token lease of pr-stall.sh.
+    while [ "$got" = 0 ]; do
+        if mkdir "$lease" 2>/dev/null; then got=1; break; fi # prim-ok: this no-flock lease spans the whole event, not one with_lock command
+        # Reclaim under a mutex: check, rmdir and re-take happen as one step, so a second reclaimer
+        # never removes the lease a first one just took.
+        if mkdir "$reclaim" 2>/dev/null; then # prim-ok: the reclaim mutex covers the lease check only
+            stamp=$(stat -c %Y "$lease" 2>/dev/null || stat -f %m "$lease" 2>/dev/null) || stamp=0
+            if [ $(( $(date +%s) - stamp )) -ge 300 ]; then
+                rmdir "$lease" 2>/dev/null && mkdir "$lease" 2>/dev/null && got=1
+            fi
+            rmdir "$reclaim" 2>/dev/null || :
+            [ "$got" = 0 ] || break
+        fi
+        [ "$waited" -lt "$limit" ] || return 1
+        sleep 1; waited=$((waited + 1))
+    done
+    trap 'rmdir "$lease" 2>/dev/null || :' EXIT
+}
 if command -v flock >/dev/null 2>&1; then
-    lockdir="$(ts_state_dir)/status-locks"
-    mkdir -p "$lockdir" 2>/dev/null || warn "cannot create $lockdir"
     exec 9>>"$lockdir/$KEY" || warn "cannot open the $KEY status lock"
     if ! flock -w "${TICKET_STATUS_LOCK_WAIT:-10}" 9; then # prim-ok: a bounded wait that logs deferred; with_lock has no deadline
         row result=deferred stage=lock
         exit 0
     fi
+else
+    take_key_lease || { row result=deferred stage=lock; exit 0; }
 fi
 
 # An event that names the owner's doc or resume brief records it first, so the

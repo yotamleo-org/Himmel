@@ -2493,6 +2493,7 @@ fi
 # A symlinked doc is skipped: the mv would replace the link with a copy.
 # the rewrite is leg-doc-lock.sh's, under the lock every doc
 # writer shares, so a concurrent append-results.sh bullet is never lost.
+_leg_sid=""
 if [ "$LANE" = "native" ] && [ -n "$PROFILE" ] && [ "$HEADLESS" -eq 0 ] && [ "$CONSULT" -eq 0 ] \
     && [ ! -L "$DOC" ] && [ "$(head -n 1 "$DOC" 2>/dev/null)" = "---" ]; then
     # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
@@ -2502,6 +2503,7 @@ if [ "$LANE" = "native" ] && [ -n "$PROFILE" ] && [ "$HEADLESS" -eq 0 ] && [ "$C
     if leg_doc_add_session_id "$DOC" "$_leg_sid"; then
         leg_propagate_env WORKER_SESSION_ID "$_leg_sid"
     else
+        _leg_sid=""
         echo "$(date +%F_%T) headed-arm-leg: WARN session id NOT recorded in $DOC (the digest step falls back to its name search)" >> "$LOG"
     fi
 fi
@@ -2559,9 +2561,13 @@ if [ -n "$_ll_cache" ]; then
     [ "$CONSULT" -eq 1 ] && _ll_asker=" console=${CHIEF_FLAG:-unknown}"
     # an A/B arm launch also records its arm; every other line keeps its key set.
     [ -z "$AB_ARM" ] || _ll_asker="$_ll_asker ab_arm=$AB_ARM"
+    # the transcript is named by the session uuid, so the line carries it (when this launch
+    # minted one) beside profile and lane: the opening-size reader joins on it.
+    _ll_sid=""
+    [ -z "$_leg_sid" ] || _ll_sid=" session_id=$_leg_sid"
     if ! ( umask 077 && mkdir -p "$_ll_cache/launch-logs" && \
-        printf 'headed-arm-leg: profile=%s lane=%s model=%s role=%s session=%s launched=%s%s\n' \
-            "${PROFILE:-none}" "$LANE" "${MODEL:-default}" "$_ll_role" "$NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_ll_asker" \
+        printf 'headed-arm-leg: profile=%s lane=%s model=%s role=%s session=%s%s launched=%s%s\n' \
+            "${PROFILE:-none}" "$LANE" "${MODEL:-default}" "$_ll_role" "$NAME" "$_ll_sid" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_ll_asker" \
             >> "$_ll_cache/launch-logs/$NAME.log" ) 2>/dev/null; then
         echo "$(date +%F_%T) headed-arm-leg: WARN launch record NOT written under $_ll_cache/launch-logs (the cost cohort cannot see this launch)" >> "$LOG"
     fi
