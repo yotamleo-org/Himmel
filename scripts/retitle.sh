@@ -115,7 +115,7 @@ fi
 # Nothing to suggest (no usable branch and no ticket args) → rc 2.
 if [ -z "$final" ]; then
     echo "retitle: no usable git branch and no ticket args — nothing to infer." >&2
-    echo "  Pass ticket IDs (e.g. /retitle HIMMEL-123) or run the built-in /rename directly." >&2
+    echo "  Pass ticket IDs (e.g. /retitle PROJ-123) or run the built-in /rename directly." >&2
     exit 2
 fi
 
@@ -141,7 +141,7 @@ echo "  claude -n \"$final\""
 # Degraded: a name half only (no ticket part) → WARN + rc 3.
 if [ -z "$ticketpart" ]; then
     echo "retitle: WARN no ticket inferable from $srcdesc — suggestion has a name only." >&2
-    echo "  Pass ticket IDs (e.g. /retitle HIMMEL-123) for a ticket-anchored name." >&2
+    echo "  Pass ticket IDs (e.g. /retitle PROJ-123) for a ticket-anchored name." >&2
     exit 3
 fi
 exit 0
