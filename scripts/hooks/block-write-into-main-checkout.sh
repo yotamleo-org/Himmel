@@ -2749,11 +2749,14 @@ _bwimc_ecwd_track() {
                             # A target that does not exist YET (a session
                             # scratchpad created after the hook runs, `mkdir -p
                             # X && cd X`) lands on X or stays put. When the cwd
-                            # is still the payload cwd and only mkdir/cd ran
+                            # is still the payload cwd and only mkdir ran
                             # before, both are checked: the target here, the
                             # payload cwd by _bwimc_cd_guard's fallback.
                             # Any other earlier clause could plant a symlink
-                            # there (`ln -s P X`), so it keeps failing closed.
+                            # there (`ln -s P X`), and an earlier cd may have
+                            # been skipped by a failed `&&` clause (`cd P &&
+                            # mkdir W && cd W` with W existing stays in P), so
+                            # both keep failing closed.
                             # ponytail: the missing part is read lexically, like
                             # an absolute write target under a missing directory;
                             # a symlink another process plants there between
@@ -2783,7 +2786,7 @@ _bwimc_ecwd_track() {
             ;;
         popd) _bwimc_ecwd_unres=1 ;;
     esac
-    case "$tu" in cd|pushd|mkdir) ;; *) _bwimc_ecwd_pure=0 ;; esac
+    case "$tu" in mkdir) ;; *) _bwimc_ecwd_pure=0 ;; esac
     _bwimc_fsmut_note "${toks[@]}"
     # a cd/pushd/popd reached across a `|`/`||` boundary may not
     # have run (or ran in a pipeline subshell) — whatever it modelled, the

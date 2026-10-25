@@ -698,6 +698,10 @@ check_both "96d fromP: cd wt/newscratch; echo x > a.txt (the cd fails, the write
 # symlink into the primary, so the cd keeps failing closed.
 _deny_row "96e ln -s primary then cd the new link" "$FIX/primary/a.txt" "ln -s $FIX/primary $FIX/wt/plink; cd $FIX/wt/plink && echo x > a.txt"
 rm -f "$FIX/wt/plink"
+# 96f: an earlier cd may not have run (mkdir of an existing dir fails, so `&&`
+# skips the cd back), so the real cwd is the primary, not the payload cwd.
+check_both "96f fromW: cd primary && mkdir wt && cd wt; cd wt/newscratch; echo x > a.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && mkdir $FIX/wt && cd $FIX/wt; cd $FIX/wt/newscratch; echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
