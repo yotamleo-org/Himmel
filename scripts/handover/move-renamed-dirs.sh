@@ -106,7 +106,7 @@ rewrite() { perl -e "$REWRITE" "$1" "$tmp/rows"; }
 
 report() { # report <rewrite output file> - print it and a total, return 1 when it is not empty
   [ -s "$1" ] || return 0
-  cat "$1"
+  cat "$1" # read-sink-ok: callers pass only this script's own rewrite output under $tmp
   awk -F'\t' '{ n += $1 } END { printf "total: %d replacements in %d files\n", n, NR }' "$1"
   return 1
 }
