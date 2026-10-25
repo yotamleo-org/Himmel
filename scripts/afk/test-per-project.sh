@@ -86,10 +86,21 @@ key_a=$(inproj "$A" bash scripts/afk/project-state.sh key 2>&1)
 key_wt=$(inproj "$TMP_ROOT/alpha-wt" bash scripts/afk/project-state.sh key 2>&1)
 if [[ "$key_a" =~ ^alpha-[0-9]+$ ]] && [ "$key_a" = "$key_wt" ]; then pass "worktree key = primary key ($key_a)"; else fail "worktree key = primary key" "primary=$key_a worktree=$key_wt"; fi
 
+echo "TEST: two --separate-git-dir projects whose git dirs share a parent keep two keys"
+for p in sep1 sep2; do
+    mkdir -p "$TMP_ROOT/$p" "$TMP_ROOT/gitdirs"
+    git init -q -b main --separate-git-dir "$TMP_ROOT/gitdirs/$p.git" "$TMP_ROOT/$p"
+    cp -R "$A/scripts" "$TMP_ROOT/$p/"
+done
+key_s1=$(inproj "$TMP_ROOT/sep1" bash scripts/afk/project-state.sh key 2>&1)
+key_s2=$(inproj "$TMP_ROOT/sep2" bash scripts/afk/project-state.sh key 2>&1)
+if [[ "$key_s1" =~ ^sep1-[0-9]+$ ]] && [[ "$key_s2" =~ ^sep2-[0-9]+$ ]]; then pass "separate git dirs keep their own keys"; else fail "separate git dirs keep their own keys" "sep1=$key_s1 sep2=$key_s2"; fi
+
 echo "TEST: a stop in one adopted project does not halt the other"
 inproj "$A" bash scripts/afk/stop-marker.sh set >/dev/null 2>&1
 if inproj "$A" bash scripts/afk/stop-marker.sh check; then pass "alpha sees its own stop"; else fail "alpha sees its own stop"; fi
-if inproj "$B" bash scripts/afk/stop-marker.sh check; then fail "beta not stopped by alpha"; else pass "beta not stopped by alpha"; fi
+rc=0; inproj "$B" bash scripts/afk/stop-marker.sh check || rc=$?
+if [ "$rc" -eq 1 ]; then pass "beta not stopped by alpha"; else fail "beta not stopped by alpha" "rc=$rc"; fi
 
 echo "TEST: each adopted project writes its own morning report"
 printf 'AAA-1\tfeat/a\t1\tdone\tok\n' > "$TMP_ROOT/rows-a.tsv"

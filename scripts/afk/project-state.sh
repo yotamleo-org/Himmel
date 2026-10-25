@@ -28,7 +28,11 @@ afk_project_root() {
         echo "project-state: not inside a git repository" >&2
         return 2
     }
-    (cd "$common/.." && pwd -P)
+    case "$common" in
+        */.git) (cd "$common/.." && pwd -P) ;;
+        # a --separate-git-dir repository: the git dir's parent is not the checkout
+        *)      (cd "$(git rev-parse --show-toplevel)" && pwd -P) ;;
+    esac
 }
 
 # afk_legacy_paths — exit 0 where the shift keeps its original paths: the himmel
