@@ -8,17 +8,11 @@ host.
 ## Where it runs (read this first)
 
 The proxy is a **HOST** process on `127.0.0.1:8317`. **One instance per host**
-serves *all three* clients on that machine:
+serves every client on that machine: the bash launcher (`scripts/claude-codex`)
+and its `cc-codex` shell shim.
 
-- the host bash launcher (`scripts/claude-codex`),
-- that host's **WSL** (`cc-codex`), which reaches it over `127.0.0.1` via
-  mirrored networking.
-
-So: install/run it **on each host, never inside WSL, never per-launcher**. On an
-N-host fleet you run N proxies, not N×(hosts+WSLs).
-
-> `cc-codex` needs the proxy. `cc-glm` does **not**: it goes direct to z.ai and
-> only needs `ZAI_API_KEY` in `.env`.
+So: install/run it **once on each host, never per-launcher**. On an N-host
+fleet you run N proxies.
 
 ## The script
 
@@ -56,8 +50,6 @@ stop/install/restart sequence on a host that already has a proxy.
 ```shell
 # host:
 bash scripts/claude-codex -p "reply OK"
-# WSL (reaches the host proxy via mirrored 127.0.0.1):
-cc-codex -p "reply OK"
 ```
 
 ## Re-login when the codex token is invalidated

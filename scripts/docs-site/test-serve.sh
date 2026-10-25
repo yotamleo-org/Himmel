@@ -171,12 +171,22 @@ if printf '%s' "$page" | grep -q 'href="https://github.com/yotamleo-org/Himmel/b
 code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4321/Himmel/pagefind/pagefind.js)
 if [ "$code" = 200 ]; then ok "search index (pagefind) is served"; else ko "search index is served (got $code)"; fi
 
-# --- mermaid really renders, when a headless browser is present
+# --- pele draws every diagram block to an SVG, when a headless browser is present
 if command -v chromium >/dev/null 2>&1; then
-  dom=$(chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom http://127.0.0.1:4321/Himmel/architecture/ 2>/dev/null)
-  case "$dom" in *'data-processed="true"'*) ok "mermaid renders to SVG in a headless browser" ;; *) ko "mermaid renders to SVG in a headless browser" ;; esac
+  drawn_pages=0
+  while IFS= read -r f; do
+    case "$f" in *.md) ;; *) continue ;; esac
+    want=$(grep -c '^```mermaid' "$repo/docs/$f")
+    [ "$want" -gt 0 ] || continue
+    drawn_pages=$((drawn_pages + 1))
+    dom=$(chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom "http://127.0.0.1:4321/Himmel/${f%.md}/" </dev/null 2>/dev/null)
+    got=$(grep -o '<div class="pele-diagram"[^>]*><svg' <<<"$dom" | wc -l)
+    if [ "$got" -eq "$want" ]; then ok "$f: pele draws all $want diagrams to SVG in a headless browser"; else ko "$f: pele draws all diagrams to SVG in a headless browser (docs $want, drawn $got)"; fi
+    case "$dom" in *'<pre class="mermaid"'*) ko "$f: no diagram is left as source" ;; *) ok "$f: no diagram is left as source" ;; esac
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$repo/site/allowlist.txt")
+  if [ "$drawn_pages" -gt 0 ]; then ok "$drawn_pages diagram pages checked in a headless browser"; else ko "at least one diagram page checked in a headless browser"; fi
 else
-  echo "SKIP: no chromium; mermaid render not checked in a browser"
+  echo "SKIP: no chromium; diagram render not checked in a browser"
 fi
 
 # --- stop our own server, then the stranger must still be listening

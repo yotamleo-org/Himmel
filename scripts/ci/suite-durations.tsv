@@ -280,6 +280,7 @@ scripts/docs/test-check-llms-links.sh	1
 scripts/docs/test-generate-credits.sh	1
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
+scripts/docs/test-second-model-review-page.sh	0
 scripts/docs/test-site-guides.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
 scripts/eval/friction/test-friction.sh	1
@@ -294,6 +295,7 @@ scripts/eval/leg-digest/test-failure-review.sh	3
 scripts/eval/leg-digest/test-failure-router.sh	3
 scripts/eval/leg-digest/test-leg-digest.sh	4
 scripts/eval/leg-digest/test-leg-ledger.sh	3
+scripts/eval/leg-digest/test-pdd-share.sh	1
 scripts/eval/mcp-tasks-probe/test-probe.sh	6
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	0

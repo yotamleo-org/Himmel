@@ -71,7 +71,7 @@ check "identical_retry and recovered come from trajectory.py, joined by tool_cal
 check "a subagent row has no trajectory join (main agent only)" '[ "$(row denied/check-push-target sub01 | jq -c "[.identical_retry, .recovered]")" = "[null,null]" ]'
 check "identical_denied_retries >= 1 writes a traj/identical-retry row" '[ "$(row traj/identical-retry | jq -c "[.failure, .count]")" = "[\"traj\",1]" ]'
 check "metrics count the session" 'jq -e ".metrics | .turns == 3 and .subagents == 1 and .fail_denied == 10 and .fail_suite == 3 and .fail_blocked == 1 and .fail_error == 3 and .run_errors == 1 and .interrupts == 1 and .identical_denied_retries == 1" "$TMP/classes.json" >/dev/null'
-check "the digest names its versions and the main model" 'jq -e ".digest_v == 2 and .mapper_v == 1 and .trajectory_v == 1 and .model == \"claude-opus-5-5\" and .session == \"$SID\" and .status == \"ok\"" "$TMP/classes.json" >/dev/null'
+check "the digest names its versions and the main model" 'jq -e ".digest_v == 2 and .mapper_v == 1 and .trajectory_v == 2 and .model == \"claude-opus-5-5\" and .session == \"$SID\" and .status == \"ok\"" "$TMP/classes.json" >/dev/null'
 
 echo "4. the #1976 agents.jsonl fixture"
 cp "$REPO/scripts/config-ui/tests/fixtures/agui/agents.jsonl" "$TMP/agents.jsonl"

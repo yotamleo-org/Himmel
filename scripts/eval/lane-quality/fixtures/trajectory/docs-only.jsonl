@@ -1,0 +1,7 @@
+{"type":"queue-operation"}
+{"type":"user","message":{"role":"user","content":"update the docs"}}
+{"type":"assistant","message":{"id":"msg_01","role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Edit","input":{"file_path":"/work/lq-work/docs/guide.md","old_string":"a","new_string":"b"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"The file has been updated"}]}}
+{"type":"assistant","message":{"id":"msg_02","role":"assistant","content":[{"type":"tool_use","id":"toolu_02","name":"Bash","input":{"command":"bash lq-work/test-docs-links.sh"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"2 passed","is_error":false}]}}
+{"type":"assistant","message":{"id":"msg_03","role":"assistant","content":[{"type":"text","text":"Docs updated."}]}}
