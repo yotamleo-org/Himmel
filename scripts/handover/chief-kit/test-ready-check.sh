@@ -2235,6 +2235,9 @@ contains "dependabot: a dependabot-go row for another branch fails row 4" "$out"
 dep_fixture; seed_dependabot_go "$DEP_BRANCH" "$SHA" 78
 rc=0; out="$(run)" || rc=$?
 contains "dependabot: a dependabot-go row for another PR fails row 4" "$out" "[FAIL] 4."
+dep_fixture; seed_dependabot_go "$DEP_BRANCH" "$SHA" '"77"'
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a dependabot-go row with a string pr fails row 4" "$out" "[FAIL] 4."
 
 # one non-manifest file and the generated coverage is refused
 dep_fixture; STUB_FILES="$DEP_FILES

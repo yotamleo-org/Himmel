@@ -96,6 +96,7 @@ contains "1: the row is a dependabot-go row" "$(cat "$LEDGER")" '"kind":"dependa
 contains "1: the row names the PR's branch" "$(cat "$LEDGER")" "\"branch\":\"$BRANCH\""
 contains "1: the row names the head" "$(cat "$LEDGER")" "\"head\":\"$SHA\",\"status\":\"ok\",\"source\":\"judge:j1\""
 check    "1: the row parses as JSON" "$(jq -r '.pr' "$LEDGER")" "$PR"
+check    "1: the row's pr is a JSON number" "$(jq -r '.pr | type' "$LEDGER")" "number"
 writer "$PR" "$SHA" --judge j1
 check    "1: a second run is a no-op" "$(rows)" "1"
 

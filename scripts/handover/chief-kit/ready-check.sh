@@ -367,7 +367,7 @@ else
             select((.kind == "avail" and (.model | type) == "string" and .model != ""
                     and .model != "claude" and .model != "claude-floor" and .model != "codex-adv")
                 or ((.kind == "evidence" or .kind == "judge-go" or .kind == "dependabot-go") and $b != "" and .branch == $b
-                    and (.kind != "dependabot-go" or (.pr | tostring) == $p))) |
+                    and (.kind != "dependabot-go" or ((.pr | type) == "number" and (.pr | tostring) == $p)))) |
             .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
         if [ "${n:-0}" -ge 1 ]; then
             echo "[PASS] 4. CR ledger: $n row(s) for $SHA with status=ok"
