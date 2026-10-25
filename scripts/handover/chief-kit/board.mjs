@@ -529,7 +529,9 @@ const consoleName = basename(docPath, '.md');
 // --view user (frame 15): the same reads, three sections, written to its own file. A leg waits on
 // the user for a GO (READY with its PR) or a question (BLOCKED, or a FINDING tail); a leg that
 // needs only the supervisor session (a lost lock, an unopened PR, an open window) is not the
-// user's to act on. The operator board, its archive and its json are not touched.
+// user's to act on. A READY-TO-OPEN leg (no PR yet) and a PARKED-USAGE leg (waiting on the usage
+// budget) are in no section on purpose: neither is running, and neither is the user's to answer.
+// The operator board, its archive and its json are not touched.
 if (opt.view === 'user') {
     const prTitle = (n) => ((openByNum.get(n) || {}).title || '');
     const waitingLegs = legs.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED'

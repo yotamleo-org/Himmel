@@ -10,7 +10,8 @@ const esc = (s) => String(s)
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // A worker's prose may name its own leg: that id is operator-side, so it reads "a worker".
-const plain = (s, n) => esc(clip(redact(String(s)).replace(/\bN\d+[a-z]*\b/g, 'a worker'), n));
+// A home directory path names the operator's machine, so it reads "[path]".
+const plain = (s, n) => esc(clip(redact(String(s)).replace(/\bN\d+[a-z]*\b/g, 'a worker').replace(/(?:\/(?:home|Users)\/|[A-Za-z]:\\Users\\)\S*/g, '[path]'), n));
 
 // A PR title without its conventional-commit prefix and ticket keys: the goal in plain words.
 export const goalOf = (title) => redact(String(title || '').replace(/^[a-z]+(?:\([^)]*\))?!?:\s*/i, '').replace(/\[[A-Z][A-Z0-9]*-\d+\]\s*/g, ''));

@@ -1377,6 +1377,46 @@ run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?
 same '--changed with --view user is a usage error, not a bare path (HIMMEL-6879)' "rc=$rc" 'rc=2'
 run --view user --json "$W/user.json" --out "$W/user-json.html" >/dev/null 2>&1; rc=$?
 same '--json with --view user is a usage error, not a silent skip (HIMMEL-6879)' "rc=$rc" 'rc=2'
+# a READY-TO-OPEN leg (no PR yet) is in no section: not running, not the user's to answer.
+lacks 'a READY-TO-OPEN leg is in no user section (HIMMEL-6879)' "$uhtml" 'HIMMEL-3350'
+# a parked leg is in no section either: N7 leaves waiting, running is unchanged.
+for park in PARKED-USAGE PARKED-BANK; do
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-park" TICK_STUB_PARK="$park" TICK_ARGV_LOG="$W/argv-upark.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --view user --out "$W/user-park.html" >/dev/null 2>"$W/stderr.log"
+    phtml="$(cat "$W/user-park.html" 2>/dev/null)"
+    lacks "a $park leg is in no user section (HIMMEL-6879)" "$phtml" 'HIMMEL-3351'
+    same "a $park leg leaves waiting on you at 4 (HIMMEL-6879)" "$(printf '%s\n' "$phtml" | grep -o 'data-section="waiting" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '4'
+    same "a $park leg leaves running now at 8 (HIMMEL-6879)" "$(printf '%s\n' "$phtml" | grep -o 'data-section="running" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '8'
+done
+
+# --- the leaks the user view must strip: a COPY of the fixture whose user-read fields (a BLOCKED
+# bullet, a FINDING bullet, a decisions: line, an open PR title and a merged PR title) carry a
+# nonce, a lock token, a worker label and a home path. The main fixture stays untouched (the golden).
+cp -R "$B" "$W/leak"
+hu=somebody  # the home path is built, so the leak-class gate sees no literal home directory
+mkleg_leak() { printf '%s\n' '# leg' '## Results' "$2" > "$W/leak/$1-2026-09-21-RESUME.md"; }
+mkleg_leak HIMMEL-3351-N7-eta "- 12:00 BLOCKED — N3 and N12 clash, V-N7-ffff6666 lock cachyos-x8664-pid777777 in /home/$hu/leak/n7.log"
+mkleg_leak HIMMEL-3379-N12-xi "- 12:30 FINDING N3 clash, V-N12-aaaa1212 lock cachyos-x8664-pid121212 in /home/$hu/leak/n12.log"
+LDOC="$W/leak/$(basename "$DOC")"
+sed "s|^decisions: .*|decisions: ask N3 about V-N3-cccc3333 lock cachyos-x8664-pid333333 in /home/$hu/leak/d.md?; second one?|" "$DOC" > "$LDOC"  # gnu-ok: console kit is Linux-only
+sed "s|slice S3|slice S3 for N12 in /home/$hu/leak/o V-N12-aaaa1212 cachyos-x8664-pid121212|" "$W/open.json" > "$W/leak/open.json"  # gnu-ok: console kit is Linux-only
+sed "s|harden|harden N7 in /home/$hu/leak/m V-N7-ffff6666 cachyos-x8664-pid777777|" "$W/merged.json" > "$W/leak/merged.json"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-leak.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/leak/open.json" GH_MERGED="$W/leak/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$LDOC" --repo "$W/repo" --view user --out "$W/user-leak.html" >/dev/null 2>"$W/stderr.log"
+lhtml="$(cat "$W/user-leak.html" 2>/dev/null)"
+contains 'the leak page still shows a BLOCKED question (HIMMEL-6879)' "$lhtml" 'clash, '
+contains 'the leak page still shows the decision (HIMMEL-6879)' "$lhtml" 'ask a worker about'
+contains 'the leak page still shows the open PR goal (HIMMEL-6879)' "$lhtml" 'slice S3 for a worker in'
+contains 'the leak page still shows the merged PR goal (HIMMEL-6879)' "$lhtml" 'harden a worker in'
+contains 'a worker label in a user-read field reads "a worker" (HIMMEL-6879)' "$lhtml" 'a worker and a worker clash'
+same 'no worker label survives in the user view (HIMMEL-6879)' "$(printf '%s\n' "$lhtml" | grep -cE '\bN[0-9]+\b')" '0'
+for leak in ffff6666 aaaa1212 cccc3333 pid777777 pid121212 pid333333 x8664 "/home/$hu" 'V-N7-' 'V-N12-' 'V-N3-'; do
+    lacks "a planted $leak in a user-read field does not reach the user view (HIMMEL-6879)" "$lhtml" "$leak"
+done
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?
