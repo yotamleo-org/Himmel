@@ -132,6 +132,15 @@ printf 'jobs:\n  x:\n    steps:\n      - run: |\n' > "$t/.github/workflows/other
 grep 'pin_fetch "https://downloads.claude.ai/claude-code-releases' "$t/.github/workflows/ci.yml" >> "$t/.github/workflows/other.yml"
 sed -i.bak '/pin_fetch "https:\/\/downloads.claude.ai\/claude-code-releases/d' "$t/.github/workflows/ci.yml"
 expect "ci.yml no longer installs claude though another workflow does" 1 "$t"
+t=$(live claude-shaslot)
+# the sed script below holds workflow text, not shell
+# shellcheck disable=SC2016
+sed -i.bak 's/^\( *\)pin_fetch \("[^"]*"\) "\$CLAUDE_LINUX_X64_SHA256" \("[^"]*"\)$/\1pin_fetch \2 "0000000000000000000000000000000000000000000000000000000000000000" \3 "$CLAUDE_LINUX_X64_SHA256"/' "$t/.github/workflows/ci.yml"
+expect "the pinned sha256 sits in a slot pin_fetch ignores" 1 "$t"
+t=$(live claude-wrongurl)
+# shellcheck disable=SC2016
+sed -i.bak 's/\(pin_fetch "[^"]*\)\${CLAUDE_VERSION}/\1${OTHER_VERSION}/' "$t/.github/workflows/ci.yml"
+expect "the pin_fetch URL no longer names the pinned version" 1 "$t"
 
 # The pins equal the real release manifest (fixture: downloads.claude.ai
 # claude-code-releases/2.1.310/manifest.json, fetched verbatim 2026-10-25).
@@ -179,7 +188,7 @@ run_step() { # <source file>
   ( cd "$sb" && PATH="$sb/bin:$PATH" STEP_SRC="$1" RUNNER_TEMP="$sb/tmp" bash -e "$step" ) >"$tmp/step.out" 2>&1
 }
 run_step "$sb/genuine"; rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$sb/usr-local-bin/claude" ]; then pass "install step: genuine bytes install"; else fail "install step: genuine bytes rc=$rc"; sed -n '1,6p' "$tmp/step.out"; fi
+if [ "$rc" -eq 0 ] && cmp -s "$sb/genuine" "$sb/usr-local-bin/claude"; then pass "install step: genuine bytes install"; else fail "install step: genuine bytes rc=$rc"; sed -n '1,6p' "$tmp/step.out"; fi
 run_step "$sb/tampered"; rc=$?
 if [ "$rc" -ne 0 ] && [ ! -e "$sb/usr-local-bin/claude" ]; then pass "install step: a wrong sha256 fails the step and installs nothing"; else fail "install step: tampered bytes rc=$rc installed=$([ -e "$sb/usr-local-bin/claude" ] && echo yes || echo no)"; fi
 

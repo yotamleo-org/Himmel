@@ -118,6 +118,11 @@ npm_re='(^|[^[:alnum:]_.-])(npm[[:space:]]+(ci|install)|bun[[:space:]]+install)(
 claude_re='npm[[:space:]]+(i|install|add)[[:space:]].*@anthropic-ai/claude-code'
 claude_dl_re='claude-code-releases'
 claude_pipe_re='claude\.ai/install'
+# pin_fetch <url> <sha256> <dest>: the URL carries the pinned version and the
+# sha256 sits in the slot pin_fetch checks (the second argument). The ${...}
+# and $... below are workflow text, not shell.
+# shellcheck disable=SC2016
+claude_pin_re='^pin_fetch[[:space:]]+"[^"]*claude-code-releases/\$\{CLAUDE_VERSION\}/[^"]*"[[:space:]]+"\$CLAUDE_LINUX_X64_SHA256"[[:space:]]+"[^"]*"[[:space:]]*$'
 claude_verified=0
 while IFS=$'\t' read -r file line mark seg; do
   [ -n "$seg" ] || continue
@@ -152,7 +157,7 @@ while IFS=$'\t' read -r file line mark seg; do
   if [[ "$seg" =~ $claude_pipe_re ]]; then
     err "$rel: claude installed from the unpinned claude.ai installer; use pin_fetch with the pinned sha256: $seg"
   elif [[ "$seg" =~ $claude_dl_re ]]; then
-    if [[ "$seg" =~ ^pin_fetch[[:space:]] ]] && [[ "$seg" == *CLAUDE_LINUX_X64_SHA256* ]]; then
+    if [[ "$seg" =~ $claude_pin_re ]]; then
       [ "$file" = "$GH/workflows/ci.yml" ] && claude_verified=1
     else
       err "$rel: native claude binary downloaded without a sha256-verified pin_fetch: $seg"
