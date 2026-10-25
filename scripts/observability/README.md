@@ -329,8 +329,8 @@ run the three suites below, run `promtool check rules alerts.rules.yml` and
 `promtool test rules alerts.rules.test.yml` with a real promtool (the suites
 skip when it is absent), append a fixture row to the VM's ledger, and confirm
 `curl -s 127.0.0.1:<port>/metrics | grep himmel_eval_`. (2) Only after the
-operator's go: restart the exporter and reload Prometheus/Grafana per
-`restart-stack.sh`, then re-import `himmel-health.json`.
+operator's go: restart the exporter and reload Prometheus/Grafana, then
+re-import `himmel-health.json`.
 Suites: `flow-exporter.test.ts`, `test-promtool-validation.sh`,
 `test-dashboard-lint.sh`.
 
@@ -770,9 +770,8 @@ plain "what to do" sentence. An alert without one shows its raw name.
 **Provisioning is inert until an installer renders it.**
 `provisioning/dashboards/himmel-dashboards.yaml.tmpl` carries a
 `@HIMMEL_DASHBOARDS_DIR@` path. Grafana loads only `*.yaml`/`*.yml`, so the
-template does nothing as shipped. `restart-stack.sh` copies `provisioning/`
-wholesale, and a provider whose path is missing would break Grafana on the
-station. The Linux Grafana installer copies `dashboards/` to a
+template does nothing as shipped. A provider whose path is missing would
+break Grafana on the station. The Linux Grafana installer copies `dashboards/` to a
 machine-local dir, then renders the template into the machine-local
 provisioning copy. Until then, import the JSON by hand.
 

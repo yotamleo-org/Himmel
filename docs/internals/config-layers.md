@@ -136,7 +136,7 @@ HIMMEL_INITIATIVE=prcheck,pr,ticket,handover
 `himmelctl install` keeps the `policy` field untouched and names it in one
 `WARN` line, as it does for any field outside its own schema.
 
-## Console rules
+## Chief rules
 
 Prose and hooks stay where they are: the chief template, the worker and judge
 system prompts, and the hooks are code, reviewed in the himmel repo. A rule that is

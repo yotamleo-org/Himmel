@@ -1,0 +1,4 @@
+> **Scope / do not:** writes confined to docs/adoption-trail.html only, plus a test row in the suite that covers this page if one exists: find it with grep -rl adoption-trail scripts/. With no JS test harness, the proof is a short, exact description of the manual check in the PR body, plus a static test that closePanel sets the details element's open attribute. Impacted suites: every suite that references docs/adoption-trail.html, with a verdict per suite. completes-ticket: yes. Other live legs and their files: . Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the console first). Remove any fixture you create under the real HOME before you wrap.
+
+## Results
+- 10:00 LIVE - go

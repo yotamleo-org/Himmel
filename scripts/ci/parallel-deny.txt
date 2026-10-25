@@ -1,0 +1,19 @@
+# Suites run-shell-tests.sh runs alone when SUITE_JOBS > 1: nothing else is
+# running while one of these runs. One glob per line, matched against
+# "/<suite path>" with the scan root resolved (symlinks followed), then the
+# reason. A suite belongs here only for a shared resource its own temp root
+# cannot isolate (a fixed port, the CPU a tight wall-clock budget needs, or
+# repo-root state another suite can change), found by reading it.
+*/scripts/docs-site/test-serve.sh        binds the fixed port 4321
+*/scripts/vm/test-after-report.sh        binds fixed ports from 2231 (BASE_PORT_T*)
+*/scripts/vm/test-dry-run-restore.sh     binds the fixed ports 2281-2284
+*/scripts/hooks/test-guard-pr-check-literal.sh            times a 400-deep parse against a 5 s budget
+*/scripts/hooks/test-block-chokepoint-env-prefix.sh       times hook scans against 1-6 s budgets
+*/scripts/hooks/test-check-no-ticket-id-in-user-strings.sh times an 800-line scan against a 5 s budget
+*/scripts/hermes/test-parity-guard.sh                     times guard scans against 3-5 s budgets
+*/scripts/hooks/test-hook-chain-latency.sh                compares hook wall times at N and 4N against a 4.5x ratio
+*/scripts/hooks/test-hook-construct-scaling.sh            compares hook wall times at N and 8N, with a 10 s member budget
+*/scripts/hooks/test-block-bare-qmd-query.sh              times hook scans against 1 s budgets
+*/scripts/hooks/test-block-destructive-commands-c.sh      times hook scans against 4 s budgets
+*/scripts/hooks/test-block-edit-live-settings.sh          times hook scans against 2-3 s budgets
+*/scripts/handover/console-kit/test-close-wrapped-leg.sh  checks the repo root for a handovers/ dir another suite may create

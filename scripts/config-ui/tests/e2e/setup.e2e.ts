@@ -147,6 +147,50 @@ test("J5. remove drops the secret and the row reads not set", async ({ page }) =
   expect(await leaks(page, secret)).toEqual([]);
 });
 
+const loginFile = (): string => join(h.home, ".himmel", "state", "ui-login");
+
+// the fields are emptied before the request is sent, and the password is in no place the scan looks, during or after.
+test("J5. a created login empties the password fields and leaves the password nowhere", async ({ page }) => {
+  await open(page);
+  const pw = `pw-${randomBytes(12).toString("hex")}`;
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route("**/api/setup/account", async (route) => { await held; await route.continue(); });
+  const form = page.locator("form[data-account-form]");
+  await form.locator('[data-account="user"]').fill("op");
+  await form.locator('[data-account="password"]').fill(pw);
+  await form.locator('[data-account="confirm"]').fill(pw);
+  await form.locator('button[type="submit"]').click();
+  await expect(form.locator('[data-account="password"]')).toHaveValue("");
+  await expect(form.locator('[data-account="confirm"]')).toHaveValue("");
+  expect(await leaks(page, pw)).toEqual([]);
+  release();
+  await expect(page.locator("#main")).toContainText("The UI login is set for op");
+  await expect(page.locator("form[data-account-form]")).toHaveCount(0);
+  expect(statSync(loginFile()).mode & 0o777).toBe(0o600);
+  expect(readFileSync(loginFile(), "utf8")).not.toContain(pw);
+  expect(await leaks(page, pw)).toEqual([]);
+});
+
+test("J5. two different passwords send nothing and leave neither in the page", async ({ page }) => {
+  await open(page);
+  const a = `pw-${randomBytes(12).toString("hex")}`, b = `pw-${randomBytes(12).toString("hex")}`;
+  let sent = 0;
+  await page.route("**/api/setup/account", async (route) => { sent++; await route.continue(); });
+  const form = page.locator("form[data-account-form]");
+  await form.locator('[data-account="user"]').fill("op");
+  await form.locator('[data-account="password"]').fill(a);
+  await form.locator('[data-account="confirm"]').fill(b);
+  await form.locator('button[type="submit"]').click();
+  await expect(page.locator("#main")).toContainText("the two passwords differ");
+  await expect(page.locator('[data-account="password"]')).toHaveValue("");
+  await expect(page.locator('[data-account="confirm"]')).toHaveValue("");
+  expect(sent).toBe(0);
+  expect(existsSync(loginFile())).toBe(false);
+  expect(await leaks(page, a)).toEqual([]);
+  expect(await leaks(page, b)).toEqual([]);
+});
+
 test("J7. a commit-rules change shows its dry-run first and only confirm runs it", async ({ page }) => {
   await open(page, "TRACKER=jira\nTICKET_ID_REQUIRED=1\n");
   await page.locator('button[data-act="plan"][data-target="tracker"][data-value="local"]').click();
