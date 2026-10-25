@@ -3104,8 +3104,8 @@ stub_doc pred > "$root93f2/tester/b93/ACME-nextleg-${today}B-chief.md"
 root93f40="$tmp/root93f40"; mkdir -p "$root93f40/tester/b93"
 stub_doc pred > "$root93f40/tester/b93/ACME-nextleg-${today}B-chief.md"
 for _n in $(seq 10 49); do : > "$root93f40/tester/b93/ACME-nextleg-2026-09-${_n}A-other.md"; done
-: > "$stub93/basename.calls"; PATH="$stub93:$PATH" console_root "$root93f2" next --dry-run >/dev/null 2>&1; calls93a="$(wc -l < "$stub93/basename.calls")"
-: > "$stub93/basename.calls"; PATH="$stub93:$PATH" console_root "$root93f40" next --dry-run >/dev/null 2>&1; calls93b="$(wc -l < "$stub93/basename.calls")"
-check "93 the bare-next discovery forks no basename per doc (2 docs vs 42 docs)" "$calls93a" "$calls93b"
+rc93fa=0; : > "$stub93/basename.calls"; PATH="$stub93:$PATH" console_root "$root93f2" next --dry-run >/dev/null 2>&1 || rc93fa=$?; calls93a="$(wc -l < "$stub93/basename.calls")"
+rc93fb=0; : > "$stub93/basename.calls"; PATH="$stub93:$PATH" console_root "$root93f40" next --dry-run >/dev/null 2>&1 || rc93fb=$?; calls93b="$(wc -l < "$stub93/basename.calls")"
+check "93 the bare-next discovery forks no basename per doc (2 docs vs 42 docs, both runs rc 0)" "$rc93fa:$rc93fb:$calls93a" "0:0:$calls93b"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
