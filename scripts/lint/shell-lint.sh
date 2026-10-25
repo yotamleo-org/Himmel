@@ -305,6 +305,7 @@ CHANGED=""
 BASELINE=""
 WRITE_BASELINE=0
 BASE_TEXT=""
+BASE_REL=""
 WB_OUT=""
 EXPLICIT=0         # 1 once any explicit file path is given
 FILES=""           # newline-separated (bash 3.2-safe; avoids array edge cases)
@@ -337,6 +338,14 @@ fi
 if [ -n "$BASELINE" ] && [ "$WRITE_BASELINE" -eq 0 ]; then
     [ -f "$BASELINE" ] || { printf 'shell-lint: baseline file not found: %s\n' "$BASELINE" >&2; exit 2; }
     BASE_TEXT="$(cat "$BASELINE")" || { printf 'shell-lint: cannot read baseline: %s\n' "$BASELINE" >&2; exit 2; } # read-sink-ok: baseline path is operator/CI-supplied via the hook or workflow command line, never agent input; only counted, never executed
+    case "$BASELINE" in
+        /*) BASE_REL="${BASELINE#"$_root"/}"; [ "$BASE_REL" != "$BASELINE" ] || BASE_REL="" ;;
+        *) BASE_REL="$(git rev-parse --show-prefix)${BASELINE#./}" ;;
+    esac
+    # --staged judges the commit, so the baseline it reads is the indexed one, not an unstaged edit
+    if [ "$STAGED" -eq 1 ] && [ -n "$BASE_REL" ]; then
+        _indexed="$(git show ":$BASE_REL" 2>/dev/null)" && BASE_TEXT="$_indexed"
+    fi
 fi
 
 if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
@@ -367,22 +376,17 @@ fi
 # _baseline_growth — print each baseline row that grew past the base ref's version
 # without a reason (stdout); returns 1 if any did. [prim-*] growth prints a warning only.
 _baseline_growth() {
-    local ref rel old new renames
+    local ref old renames
     if [ "$STAGED" -eq 1 ]; then ref=HEAD; else ref="${CHANGED%%..*}"; fi
     [ -n "$ref" ] || ref=HEAD
-    case "$BASELINE" in
-        /*) rel="${BASELINE#"$_root"/}"; [ "$rel" != "$BASELINE" ] || return 0 ;;
-        *) rel="$(git rev-parse --show-prefix)${BASELINE#./}" ;;
-    esac
-    old="$(git show "$ref:$rel" 2>/dev/null)" || old=""
-    new="$BASE_TEXT"
+    [ -n "$BASE_REL" ] || return 0
+    old="$(git show "$ref:$BASE_REL" 2>/dev/null)" || old=""
     if [ "$STAGED" -eq 1 ]; then
-        new="$(git show ":$rel" 2>/dev/null)" || new=""
         renames="$(git -c core.quotePath=false diff --cached --name-status -M --diff-filter=R)"
     else
         renames="$(git -c core.quotePath=false diff --name-status -M --diff-filter=R "$CHANGED" --)"
     fi
-    awk -v old="$old" -v ren="$renames" -v new="$new" '
+    awk -v old="$old" -v ren="$renames" -v new="$BASE_TEXT" '
     BEGIN {
         n = split(old, o, "\n")
         for (i = 1; i <= n; i++) { m = split(o[i], p, "\t"); if (m >= 3) before[p[1] SUBSEP p[2]] = p[3] + 0 }

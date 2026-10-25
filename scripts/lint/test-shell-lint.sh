@@ -1546,6 +1546,16 @@ printf 'moved.sh\tmktemp\t2\ta reason added after staging\nc.sh\tprim-canon\t1\n
 OUT24I="$(_gr_lint --staged)"; EC24I=$?
 if [ "$EC24I" -eq 1 ]; then pass "24i --staged reads the indexed baseline: an unstaged reason does not approve a staged raise"; else fail "24i expected exit 1, got $EC24I" "$OUT24I"; fi
 
+printf 'moved.sh\tmktemp\t1\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+cat >> "$GR/moved.sh" <<'EOF'
+y=$(mktemp)
+printf '%s\n' "$y"
+EOF
+(cd "$GR" && git add "$GRB" moved.sh) >/dev/null 2>&1
+printf 'moved.sh\tmktemp\t2\ta reason added after staging\nc.sh\tprim-canon\t1\n' > "$GR/$GRB"
+OUT24J="$(_gr_lint --staged)"; EC24J=$?
+if [ "$EC24J" -eq 1 ]; then pass "24j --staged filters findings against the indexed baseline, not an unstaged allowance"; else fail "24j expected exit 1, got $EC24J" "$OUT24J"; fi
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
