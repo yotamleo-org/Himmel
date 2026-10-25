@@ -163,7 +163,7 @@ Fields:
 
 Missing file → defaults applied (`enabled: true`, `dry_run: false`, `min_duration_seconds: 60`); `vault_path`/`vault` absent.
 
-> **The file must be one valid JSON object.** A syntax error, a comment, an empty file or a non-object value (`null`, an array, a string) makes the hook **fail closed: it skips capture** for this repo. **Save it without a UTF-8 byte-order mark.** With a leading BOM the hook still reads `vault_path` / `vault`, but every other field falls back to its default, so `"enabled": false` and `"dry_run": true` are ignored and the session is captured.
+> **The file must be one valid JSON object.** A syntax error, a comment, an empty file or a non-object value (`null`, an array, a string) makes the hook **fail closed: it skips capture** for this repo. A leading UTF-8 byte-order mark is tolerated. With a `jq` that does not skip a BOM, every field except `vault_path` / `vault` falls back to its default, so `"enabled": false` and `"dry_run": true` would be ignored; save the file without one to be safe.
 
 ## Choosing the target vault
 
