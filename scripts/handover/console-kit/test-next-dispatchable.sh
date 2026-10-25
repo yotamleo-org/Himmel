@@ -200,7 +200,7 @@ mk HIMMEL-56 "To Do" Highest '[]' '[]' '[]' "plain to do" "Edit scripts/lib/r7.s
 mk HIMMEL-57 "In Progress" High '["blocked"]' '[]' '[]' "blocked label" "Edit scripts/lib/r8.sh."
 mk HIMMEL-58 "In Progress" High '[]' '[]' '["blocked by HIMMEL-56"]' "unresolved blocker" "Edit scripts/lib/r9.sh."
 M="$M_SAVE"
-LEG5="$WORK/HIMMEL-53-N9-live.md"; printf '# live\n' > "$LEG5"
+LEG5="$WORK/HIMMEL-53-N9-live.md"; printf '> **Writes:** none named\n# live\n' > "$LEG5"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N9"}]}\n' "$LEG5" > "$WORK/fleet5.json"
 rs="$(NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --legs-from "$WORK/fleet5.json" 2>/dev/null)"
 has "an In Progress ticket with no leg and no PR is listed as RESUME" "$rs" "RESUME	HIMMEL-50"
@@ -241,7 +241,7 @@ mk HIMMEL-74 "IN CI" Medium '[]' '[]' '[]' "in ci lookalike merged key only" "Ed
 mk HIMMEL-75 "IN CI" Medium '[]' '[]' '[]' "in ci story with a merged pr" "Edit scripts/lib/c6.sh."
 retype "$M6/HIMMEL-75.md" Story
 M="$M_SAVE"
-LEG6="$WORK/HIMMEL-73-N9-live.md"; printf '# live\n' > "$LEG6"
+LEG6="$WORK/HIMMEL-73-N9-live.md"; printf '> **Writes:** none named\n# live\n' > "$LEG6"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N9"}]}\n' "$LEG6" > "$WORK/fleet6.json"
 printf '4300\tfix(x): [HIMMEL-70] merged\tfix/himmel-70-m\n4301\tfix(x): [HIMMEL-73] merged\tfix/himmel-73-m\n4302\tfix(x): [HIMMEL-71] earlier\tfix/himmel-71-e\n4303\tfix(x): [HIMMEL-740] lookalike\tfix/himmel-740-l\n4304\tfix(x): [HIMMEL-75] story merged\tfix/himmel-75-m\n' > "$MERGED_TSV"
 printf '4310\tfix(x): [HIMMEL-71] open\tfix/himmel-71-o\n' > "$PRS_TSV"
@@ -402,7 +402,7 @@ mk HIMMEL-414 "To Do" Low '[]' '[]' '[]' "second number of a plus run" "Edit scr
 mk HIMMEL-415 "To Do" Low '[]' '[]' '[]' "bare number in a paren with no plus" "Edit scripts/lib/s15.sh only."
 mk HIMMEL-416 "To Do" Low '[]' '[]' '[]' "prefixed key inside a paren" "Edit scripts/lib/s16.sh only."
 M="$M_SAVE"
-LEG11="$WORK/HIMMEL-410-N11-live.md"; printf '# live\n' > "$LEG11"
+LEG11="$WORK/HIMMEL-410-N11-live.md"; printf '> **Writes:** none named\n# live\n' > "$LEG11"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N11"}]}\n' "$LEG11" > "$WORK/fleet11.json"
 run11() { NEXT_DISPATCH_MIRROR="$M11" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
 D11="$WORK/console-doc11.md"
@@ -782,7 +782,6 @@ mk HIMMEL-870 "To Do" Medium '[]' '["v1.0.1"]' '[]' "writes-line file" "Edit doc
 mk HIMMEL-871 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path only the scope line prose names" "Edit scripts/lib/nd-wl-reader.sh only."
 mk HIMMEL-872 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir the front-matter description quotes" "Edit scripts/lib/nd-fm-free.sh only."
 mk HIMMEL-873 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the front-matter leg's real file" "Edit docs/nd-frontmatter.html only."
-mk HIMMEL-874 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file whose name contains a command word" "Edit scripts/handover/nd-find-tool.sh only."
 mk HIMMEL-875 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the file listed after a command-word name" "Edit docs/nd-find.html only."
 mk HIMMEL-876 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a sibling the command-word name must not hold" "Edit scripts/handover/nd-sibling.sh only."
 mk HIMMEL-877 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path after a prose find on a scope line" "Edit scripts/nd-b.sh only."
@@ -793,6 +792,7 @@ mk HIMMEL-881 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path on the continuation 
 mk HIMMEL-882 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path after a path segment named find" "Edit scripts/nd-y.sh only."
 mk HIMMEL-883 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir the description names without a command word" "Edit scripts/nd-fm-desc/nd-z.sh only."
 mk HIMMEL-884 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir a find -delete writes" "Edit scripts/nd-del/nd-q.sh only."
+mk HIMMEL-885 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file after a flag and the word in" "Edit scripts/nd-p.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror26/HIMMEL.versions.tsv"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3543"},{"doc":"%s","label":"N3557"},{"doc":"%s","label":"N3578"},{"doc":"%s","label":"N3579"},{"doc":"%s","label":"N3580"},{"doc":"%s","label":"N3581"},{"doc":"%s","label":"N3582"},{"doc":"%s","label":"N3583"},{"doc":"%s","label":"N3584"},{"doc":"%s","label":"N3585"},{"doc":"%s","label":"N3586"}]}\n' \
@@ -814,7 +814,6 @@ lacks "held-paths: a leg with a Writes line holds the files on it" "$f26" "HIMME
 has "held-paths: a leg with a Writes line holds nothing the scope line prose names" "$f26" "HIMMEL-871	"
 has "held-paths: a front-matter description quoting 'writes confined to' holds nothing" "$f26" "HIMMEL-872	"
 lacks "held-paths: that leg still holds the file on its real scope line" "$f26" "HIMMEL-873	"
-lacks "held-paths: a file named nd-find-tool.sh is held, not read as a find command" "$f26" "HIMMEL-874	"
 lacks "held-paths: the file listed after a command-word name is still held" "$f26" "HIMMEL-875	"
 has "held-paths: a command-word name does not hold its whole directory" "$f26" "HIMMEL-876	"
 lacks "held-paths: a path after 'find and fix the caller in' prose on a scope line is held" "$f26" "HIMMEL-877	"
@@ -826,6 +825,12 @@ lacks "held-paths: a path after a path segment named find is held" "$f26" "HIMME
 has "held-paths: a path the front-matter description names (no command word before it) holds nothing" "$f26" "HIMMEL-883	"
 lacks "held-paths: a find -delete is a write, not a read: its dir is held" "$f26" "HIMMEL-884	"
 has "held-paths: a live leg that yields no held paths is named on stderr" "$(cat "$WORK/f26.err")" "live leg N3585 yields no held paths"
+has "held-paths: a live leg that yields no held paths makes the live legs unknown on the stdout header" "$f26" "live legs unknown"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N3587"}]}\n' "$FX/HIMMEL-7469-N3587-none-named.md" > "$WORK/fleet27.json"
+f27="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --legs-from "$WORK/fleet27.json" 2>/dev/null)"
+lacks "held-paths: an explicit 'Writes: none named' leg is a real empty scope, not unknown" "$f27" "live legs unknown"
+lacks "held-paths: a path after 'replace grep -P in' is a write, not a read" "$f26" "HIMMEL-885	"
+
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

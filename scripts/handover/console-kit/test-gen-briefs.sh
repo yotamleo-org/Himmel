@@ -293,9 +293,9 @@ ct_brief() { # <scope text> <bucket>
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
-wr_brief="$(ct_brief 'writes confined to scripts/wr/a.sh, docs/wr.md (find what scripts/wr-read/ uses). Find callers with grep -rl wr scripts/wr-grep/ and grep -rl "a needle" scripts/wr-quoted/. Impacted suites: scripts/wr/test-a.sh. SINGLE-WRITER: scripts/wr-sw.ts is held by open PR #3791 (N3537). Touches scripts/wr-ci/, a ci-trust-paths pattern. Also find and fix the caller in scripts/wr/b.sh. completes-ticket: no' "$WORK/wr1")"
+wr_brief="$(ct_brief 'writes confined to scripts/wr/a.sh, docs/wr.md (find what scripts/wr-read/ uses). Find callers with grep -rl wr scripts/wr-grep/ and grep -rl "a needle" scripts/wr-quoted/. Impacted suites: scripts/wr/test-a.sh. SINGLE-WRITER: scripts/wr-sw.ts is held by open PR #3791 (N3537). Touches scripts/wr-ci/, a ci-trust-paths pattern. Replace grep -E in scripts/wr/c.sh. SINGLE-WRITER: this leg is the one writer of scripts/wr/d.sh, which PR #3791 only reads. Also find and fix the caller in scripts/wr/b.sh. completes-ticket: no' "$WORK/wr1")"
 wr_line="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes:\*\* ')"
-[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/wr.md scripts/wr/b.sh" ] && pass "the Writes line is exactly the files the scope writes (HIMMEL-7469)" || fail "the Writes line keeps read-only text or drops a write: $wr_line"
+[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/wr.md scripts/wr/c.sh scripts/wr/d.sh scripts/wr/b.sh" ] && pass "the Writes line is exactly the files the scope writes (HIMMEL-7469)" || fail "the Writes line keeps read-only text or drops a write: $wr_line"
 lacks "the Writes line drops a read aside, a quoted-arg grep, another holder's SINGLE-WRITER and Touches boilerplate (HIMMEL-7469)" "$wr_line" "scripts/wr-"
 lacks "the Writes line drops an Impacted suites file (HIMMEL-7469)" "$wr_line" "test-a.sh"
 ct_count() { printf '%s\n' "$1" | grep -c '^> \*\*Completes ticket:\*\* '; }

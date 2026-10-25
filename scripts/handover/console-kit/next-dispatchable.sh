@@ -145,12 +145,13 @@ SENT = r'(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)'
 Q = r'''(?:'[^']*'|"[^"]*")'''
 ARG = r'''[^\s`;,)'"]*[/.\d_-][^\s`;,)'"]*(?<![.])'''
 CMD_SPAN_RE = re.compile(r'`(?:git grep|grep|rg|find|sed -n|cat)\b[^`]*`')
-CMD_BARE_RE = re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+(?:%s|(?!-)%s))*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+\w+(?![\w./-]))?|%s|%s))+' % (Q, ARG, Q, ARG))  # a command word with a flag, never a name inside a path
+CMD_BARE_RE = re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+(?:%s|(?!-)%s))*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+(?!(?:in|to|from|for|the|a|an|and|or|of|on|at|with|by)\b)\w+(?![\w./-]))?|%s|%s))+' % (Q, ARG, Q, ARG))  # a command word with a flag, never a name inside a path
 CMD_PAREN_RE = re.compile(r'\((?:git grep|grep|rg|find|cat)\b(?:(?!\b(?:fix|edit|update|change|write|add|patch|replace|rename)\b)[^)])*\)')  # "(find what x uses)": a read aside, unless it says to change something
 WRITING_RE = re.compile(r'\s-(?:delete|exec|execdir|ok)\b')  # a find that deletes or runs a command is not a read
 IMPACTED_RE = re.compile(r'Impacted suites' + SENT)
 SINGLE_WRITER_RE = re.compile(r'SINGLE-WRITER' + SENT)
 OTHER_HOLDER_RE = re.compile(r'#\d+|\bN\d{3,}\b')
+OWN_WRITER_RE = re.compile(r'\bthis leg\b|\b(?:the )?(?:one|sole|only) writer\b', re.I)
 TRUST_RE = re.compile(r'Trust path\s*\([^)]*\)')
 WRITES_LEAD = '> **Writes:**'
 
@@ -161,7 +162,7 @@ def clean_scope(rest):
     rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
     rest = IMPACTED_RE.sub(' ', rest)
     rest = TRUST_RE.sub(' ', rest)
-    rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this leg is the one writer of y" is ours
+    rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) and not OWN_WRITER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this leg is the one writer of y" is ours, even when it also names a PR
     for rx in (CMD_SPAN_RE, CMD_PAREN_RE, CMD_BARE_RE):  # a path a quoted read-only command searches is not written
         rest = rx.sub(lambda g: g.group(0) if WRITING_RE.search(g.group(0)) else ' ', rest)
     # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
@@ -468,8 +469,9 @@ if legs_from and os.path.isfile(legs_from):
             starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
             mine = [f for i in starts for f in files_in(write_scope(block(i)))]
             held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in mine]
-            if not mine:
-                print('next-dispatchable: live leg %s yields no held paths (no Writes line or scope clause in %s): it holds nothing' % (leg.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
+            if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a leg that writes nothing
+                legs_unknown = True  # a scope that yields no paths could be hiding the leg's files
+                print('next-dispatchable: live leg %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (leg.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
     except (OSError, ValueError):
         legs_unknown = True
 if pool_only and not legs_from and not leg_keys:
@@ -600,7 +602,7 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable, or a leg names no write scope)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
