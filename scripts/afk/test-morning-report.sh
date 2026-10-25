@@ -93,6 +93,12 @@ UNLANDED_EMPTY="$TMP_ROOT/unlanded-empty.tsv"
 : > "$UNLANDED_EMPTY"
 export UNLANDED_TSV="$UNLANDED_EMPTY"
 
+# Same for "## Review rounds per merged PR": without a seam every case would
+# shell out to gh. Dedicated tests below override REVIEW_ROUNDS_TXT per-case.
+REVIEW_ROUNDS_EMPTY="$TMP_ROOT/review-rounds-empty.txt"
+: > "$REVIEW_ROUNDS_EMPTY"
+export REVIEW_ROUNDS_TXT="$REVIEW_ROUNDS_EMPTY"
+
 # Same hermeticity problem for "## Changelog freshness": without
 # a seam every case below would shell out to the LIVE scripts/gen-changelog.sh
 # --check against THIS checkout's real, full git history — slow (repeated
@@ -593,6 +599,10 @@ _Current — CHANGELOG.md matches git history._
 ## READY claims contradicted
 
 _ready-mismatch scan unavailable._
+
+## Review rounds per merged PR
+
+_None — no merged PR in the window._
 GOLDEN
 export HANDOVER_DIR="$troot" UNLANDED_TSV="$tmpl_unlanded"
 unset MORNING_REPORT_TEMPLATE
@@ -675,6 +685,20 @@ report=$(HANDOVER_DIR="$TMP_ROOT/rm-root" USER_SLUG=slug MORNING_REPORT_READY_RE
 assert_contains "the default bucket is the handover root's user/himmel folder" "NO-GO at head: 0 of 0 judged (1 READY" "$report"
 report=$(MORNING_REPORT_READY_DIR="$TMP_ROOT/no-such-bucket" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "an unreadable bucket renders unavailable, not None" "ready-mismatch scan unavailable" "$report"
+
+# Review rounds per merged PR ----------------------------------------------
+
+RR_TXT="$TMP_ROOT/review-rounds.txt"
+printf '2026-10-24\tprs=3\tmedian=2\tp90=6\tmax=6\ttop=#13:6,#12:2,#11:1\tunmeasured=0\n2026-10-25\tprs=2\tmedian=3.5\tp90=4\tmax=4\ttop=#15:4,#14:3\tunmeasured=2\n' > "$RR_TXT"
+report=$(REVIEW_ROUNDS_TXT="$RR_TXT" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "review-rounds section has its heading" "## Review rounds per merged PR" "$report"
+assert_contains "review-rounds table header" "| Day | PRs | Median | p90 | Max | Most rounds | Unmeasured |" "$report"
+assert_contains "review-rounds day one row" "| 2026-10-24 | 3 | 2 | 6 | 6 | #13:6,#12:2,#11:1 | 0 |" "$report"
+assert_contains "review-rounds day two row" "| 2026-10-25 | 2 | 3.5 | 4 | 4 | #15:4,#14:3 | 2 |" "$report"
+report=$(bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "an empty window renders None" "no merged PR in the window" "$report"
+report=$(REVIEW_ROUNDS_TXT="$TMP_ROOT/no-such-review-rounds.txt" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "an unreadable scan renders unavailable, not None" "review-rounds scan unavailable" "$report"
 
 # Summary --------------------------------------------------------------
 

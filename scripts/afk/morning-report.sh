@@ -86,7 +86,8 @@ Environment overrides:
   HANDOVER_DIR       External handover root (Mode B).
   MORNING_REPORT_TEMPLATE  Section-order template (one id per line: header,
                      decisions, tickets, operator-actions, unlanded,
-                     changelog). Default: <handover-root>/morning-report.tmpl,
+                     changelog, ready_mismatch, review_rounds). Default:
+                     <handover-root>/morning-report.tmpl,
                      else morning-report.default.tmpl next to this script.
                      Operator actions are always appended if not listed.
   UNLANDED_TSV       Path to a pre-computed unlanded-work.sh --tsv file (test
@@ -433,6 +434,33 @@ sec_ready_mismatch() {
     printf '%s' "$body"
 }
 
+# "## Review rounds per merged PR": per-day distribution of the /pr-check rounds
+# each merged PR took, from scorecard/review-rounds.sh over the last 2 days.
+# REVIEW_ROUNDS_TXT is a test seam: a pre-computed review-rounds.sh output read
+# instead of shelling out to gh. A scan that cannot run renders "unavailable".
+sec_review_rounds() {
+    local out="" since body
+    body=$'## Review rounds per merged PR\n\n'
+    if [ -n "${REVIEW_ROUNDS_TXT:-}" ]; then
+        out="$(cat "$REVIEW_ROUNDS_TXT" 2>/dev/null)" || out=""
+        [ -f "$REVIEW_ROUNDS_TXT" ] || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
+    else
+        since="$(date -u -d '2 days ago' +%FT%TZ 2>/dev/null)" \
+            || since="$(date -u -v-2d +%FT%TZ)"  # gnu-ok: BSD/macOS fallback
+        out="$(bash "$SCRIPT_DIR/../lanes/bench/scorecard/review-rounds.sh" --since "$since" 2>/dev/null)" \
+            || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
+    fi
+    if [ -z "$out" ]; then
+        printf '%s_None — no merged PR in the window._' "$body"
+        return
+    fi
+    body="${body}| Day | PRs | Median | p90 | Max | Most rounds | Unmeasured |"$'\n'"|---|---|---|---|---|---|---|"$'\n'
+    printf '%s%s' "$body" "$(printf '%s\n' "$out" | awk -F'\t' '{
+        for (i = 2; i <= 7; i++) sub(/^[a-z0-9]+=/, "", $i)
+        printf "| %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7
+    }')"
+}
+
 # Assemble from the template ---------------------------------------------
 # Resolution: $MORNING_REPORT_TEMPLATE > <handover-root>/morning-report.tmpl >
 # the shipped default next to this script. One section id per line; blank
@@ -459,7 +487,7 @@ while IFS= read -r section_id || [ -n "$section_id" ]; do
     section_id=$(printf '%s' "$section_id" | tr -d '\r')
     case "$section_id" in ''|'#'*) continue ;; esac
     case "$section_id" in
-        header|decisions|tickets|unlanded|changelog|ready_mismatch) section=$("sec_$section_id") ;;
+        header|decisions|tickets|unlanded|changelog|ready_mismatch|review_rounds) section=$("sec_$section_id") ;;
         operator-actions) section=$(sec_actions); actions_placed=1 ;;
         *) echo "WARN morning-report: unknown template section '$section_id' — skipped" >&2; continue ;;
     esac
