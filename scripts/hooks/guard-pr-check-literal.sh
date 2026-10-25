@@ -2532,21 +2532,25 @@ elif any(.[]; (.prog == "bash" or .prog == "sh") and .argv[1].v == $rel) then
     (if any(.[]; .prog == "cd") then "legacy" else "data-rel" end)
 else "data" end'
 ast_data_only() {
-    local lib pos verdict here
+    local lib pos verdict here j
     local rel=scripts/handover/console-kit/append-results.sh anchor=${HIMMEL_REPO:-}
     anchor=${anchor%/}
     [ -n "$anchor" ] || return 1
+    # The shell joins a backslash-newline away before it reads `$\<nl>{`, so
+    # every pre-screen reads the joined text.
+    _c_join_continuations "$cmd"
+    j=$REPLY
     # shellcheck disable=SC2016 # literal patterns, never expanded
-    case "$cmd" in *'@P'* | *'(('* | *'$['* | *'[['* | *'$('* | *'`'* | *'<('* | *'>('*) return 1 ;; esac
+    case "$j" in *'@P'* | *'(('* | *'$['* | *'[['* | *'$('* | *'`'* | *'<('* | *'>('*) return 1 ;; esac
     # shellcheck disable=SC2016 # literal patterns, never expanded
-    case "$cmd" in *'*('* | *'?('* | *'+('* | *'@('* | *'!('* | *'${('* | *'${~'* | *'$~'*) return 1 ;; esac
-    [[ "$cmd" =~ [^[:space:]\;\&\|\<\>\(]\([^\)]*\)([[:space:]\;\&\|\<\>]|$) ]] && return 1
-    [[ "$cmd" =~ \$\{[^}]*\[ ]] && return 1
+    case "$j" in *'*('* | *'?('* | *'+('* | *'@('* | *'!('* | *'${('* | *'${~'* | *'$~'*) return 1 ;; esac
+    [[ "$j" =~ [^[:space:]\;\&\|\<\>\(]\([^\)]*\)([[:space:]\;\&\|\<\>]|$) ]] && return 1
+    [[ "$j" =~ \$\{[^}]*\[ ]] && return 1
     # shellcheck disable=SC2016 # literal pattern, never expanded
-    case "$cmd" in *'${!'*) return 1 ;; esac
-    [[ "$cmd" =~ \$\{[^}:]+:[^-=+?] ]] && return 1
-    [[ "$cmd" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
-    [[ "${cmd//$'\\\n'/}" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
+    case "$j" in *'${!'*) return 1 ;; esac
+    [[ "$j" =~ \$\{[^}:]+:[^-=+?] ]] && return 1
+    [[ "$j" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
+    [[ "$j" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh
     { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || return 1

@@ -2634,6 +2634,13 @@ EOF" \
     "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${?:y}; done" \
     "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${-:y}; done" \
     "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat < \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \$\\${NL}{s:y}; done" \
+    "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \$\\${NL}{!x}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \$\\${NL}{a[y]}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; cat <<EOF
+\$\\${NL}{s:y}
+EOF
+done" \
     "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat <<EOF
 \${\$:y}
 EOF
