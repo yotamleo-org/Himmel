@@ -242,7 +242,8 @@ def tracked_paths(root):
                              capture_output=True, check=True).stdout.decode("utf-8")
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
-    return {p for p in raw.split("\0") if p}
+    # --cached lists a file removed from the work tree until its deletion is staged
+    return {p for p in raw.split("\0") if p and os.path.lexists(os.path.join(root, p))}
 
 
 def src_key(item, root):
@@ -290,8 +291,6 @@ def prune_graph(g, gone, root):
             counts[k] = counts.get(k, 0) + 1
         else:
             keep.append(n)
-    if not dead_ids:
-        return counts, edges_removed, hyper_removed
     g["nodes"] = keep
     edges = [e for e in g.get(ekey) or [] if src_key(e, root) not in gone
              and e.get("source") not in dead_ids and e.get("target") not in dead_ids]
@@ -318,7 +317,7 @@ def cmd_prune(a):
     graph_path = os.path.join(a.out, "graph.json")
     g = load_json(graph_path)
     counts, edges, hyper = prune_graph(g, gone_sources(a.root, g), a.root)
-    if not counts:
+    if not (counts or edges or hyper):
         return
     write_json_atomic(graph_path, g)
     report_pruned("pruned", counts, edges, hyper)
@@ -379,7 +378,7 @@ def cmd_restore(a):
     pruned, pruned_e, pruned_h = prune_graph(g, gone, a.root) if gone else ({}, 0, 0)
     for f, c in pruned.items():
         declined[f] = declined.get(f, 0) + c
-    if not (restored_n or restored_e or restored_h or pruned):
+    if not (restored_n or restored_e or restored_h or pruned or pruned_e or pruned_h):
         if declined:
             report_pruned("dropped", declined, 0, 0)
         return

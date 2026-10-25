@@ -192,5 +192,28 @@ grep -q "REFUSING.*tracked.md" <<<"$out4" \
 [ "$(gcount "$C4/graphify-out/graph.json" "True")" = "65" ] \
   && pass "T4 the live graph was kept" || fail "T4 the live graph changed"
 
+echo "T5: a file removed from the work tree but not yet staged is pruned like a rename"
+C5="$WS/c5"; git_repo "$C5" "$OLD" scripts/telegram/poller.ts
+rm -f "$C5/$OLD"
+seed_graph "$C5"
+out5=$( PATH="$BIN:$PATH" bash "$AST" "$C5" 2>&1 ); rc5=$?
+[ "$rc5" -eq 0 ] && [ "$(gcount "$C5/graphify-out/graph.json" "n.get('source_file')=='$OLD'")" = "0" ] \
+  && pass "T5 zero nodes of the file deleted from the work tree" \
+  || fail "T5 (rc=$rc5) $(gcount "$C5/graphify-out/graph.json" "n.get('source_file')=='$OLD'") nodes of the deleted file survived: $out5"
+
+echo "T6: an edge that sits on a deleted file between two live nodes is pruned even when no node of the file is left"
+C6="$WS/c6"; git_repo "$C6" "$NEW" scripts/telegram/poller.ts
+seed_graph "$C6"
+python3 -I - "$C6/graphify-out/graph.json" "$OLD" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+ids = [n["id"] for n in g["nodes"] if n.get("source_file") == "scripts/telegram/poller.ts" and n.get("_origin") == "ast"][:2]
+g["links"].append({"source": ids[0], "target": ids[1], "relation": "calls", "_origin": "ast", "source_file": sys.argv[2]})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+out6=$( PATH="$BIN:$PATH" bash "$AST" "$C6" 2>&1 ); rc6=$?
+python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); sys.exit(0 if not any(e.get("source_file")==sys.argv[2] for e in g["links"]) else 1)' "$C6/graphify-out/graph.json" "$OLD" \
+  && [ "$rc6" -eq 0 ] && pass "T6 no edge of the deleted file remains" || fail "T6 (rc=$rc6) an edge of the deleted file remains: $out6"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
