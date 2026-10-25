@@ -84,6 +84,19 @@ git -C "$repo" add . && git -C "$repo" commit -q -m three
 git -C "$repo" commit -q -am four
 (cd "$repo" && python3 -I "$tool" check --range HEAD~1..HEAD) >"$td/out" 2>&1
 lacks "code added inside a fence opened above the hunk is not prose" "R09" "$td/out"
+mkdir -p "$repo/docs/archive"
+printf '# Old\nThe GLM lane.\n' >"$repo/docs/archive/old.md"
+git -C "$repo" add . && git -C "$repo" commit -q -m five
+git -C "$repo" mv docs/archive/old.md docs/moved.md && git -C "$repo" commit -q -m six
+(cd "$repo" && python3 -I "$tool" check --range HEAD~1..HEAD --whole-file) >"$td/out" 2>&1
+has "whole-file mode reviews a page renamed out of the archive" "docs/moved.md:2: R04" "$td/out"
+{
+  printf '%s\n' '--- /dev/null' '+++ b/docs/nested.md' '@@ -0,0 +1,17 @@' '+````markdown' '+```'
+  i=1; while [ "$i" -le 14 ]; do printf '+echo nested %s\n' "$i"; i=$((i + 1)); done
+  printf '%s\n' '+````'
+} >"$td/nested.diff"
+run check --diff "$td/nested.diff" >/dev/null
+lacks "a shorter fence inside a longer one does not close it" "R09" "$td/out"
 
 # --- learn step: candidate until one confirmation ---
 cp "$here/rules.tsv" "$td/rules.tsv"

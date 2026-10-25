@@ -52,10 +52,11 @@ platform, old model and workstream-code checks, which this skill does not repeat
 ## Learn a new remark
 
 When the operator makes a docs remark, in a PR or in a chief conversation,
-record it as a candidate rule in the same step, quoting the operator verbatim:
+record it as a candidate rule in the same step, quoting the operator verbatim.
+`--pattern` is a Python regular expression (`\s`, not `[[:space:]]`):
 
 ```bash
-python3 -I "$D/docs_review.py" learn --pattern '<ERE>' --rule '<the rule, one line>' \
+python3 -I "$D/docs_review.py" learn --pattern '<regex>' --rule '<the rule, one line>' \
   --source 'decision <n>' --quote '<the operator, verbatim>'
 python3 -I "$D/docs_review.py" learn --judgement --rule '…' --source '…' --quote '…'
 ```

@@ -2,7 +2,7 @@
 """docs_review.py: review a docs diff against the operator's own remarks.
 
   check   [--rules F] (--pr N | --range A..B | --diff FILE|-) [--whole-file]
-  learn   [--rules F] (--pattern ERE | --judgement) --rule TEXT --source TEXT --quote TEXT [--date D]
+  learn   [--rules F] (--pattern REGEX | --judgement) --rule TEXT --source TEXT --quote TEXT [--date D]
   confirm [--rules F] ID --by TEXT
   list    [--rules F]
 
@@ -22,6 +22,7 @@ DEFAULT_RULES = os.path.join(HERE, "rules.tsv")
 FIELDS = ["id", "state", "kind", "pattern", "rule", "date", "source", "quote"]
 EXEMPT = ("docs/archive/", "docs/release/")
 STRUCTURE = re.compile(r"^\s*([#|>*+<]|-|\d+[.)]\s|```|~~~)")
+FENCE = re.compile(r"^(`{3,}|~{3,})")
 HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
@@ -60,16 +61,19 @@ def git(*args):
     return out.stdout
 
 
-def diff_path(target):
-    """The new-side path of a `+++` header, or None for /dev/null.
+def unquote(path):
+    """Git quotes a path holding non-ASCII or special characters C-style:
+    `"b/docs/\\303\\251.md"`."""
+    path = path.strip()
+    if len(path) > 1 and path.startswith('"') and path.endswith('"'):
+        raw = path[1:-1].encode("utf-8").decode("unicode_escape")
+        path = raw.encode("latin-1").decode("utf-8", "replace")
+    return path
 
-    Git quotes a path holding non-ASCII or special characters C-style:
-    `"b/docs/\\303\\251.md"`.
-    """
-    target = target.strip()
-    if len(target) > 1 and target.startswith('"') and target.endswith('"'):
-        raw = target[1:-1].encode("utf-8").decode("unicode_escape")
-        target = raw.encode("latin-1").decode("utf-8", "replace")
+
+def diff_path(target):
+    """The new-side path of a `+++` header, or None for /dev/null."""
+    target = unquote(target)
     return target[2:] if target.startswith("b/") else None
 
 
@@ -77,7 +81,8 @@ def parse_diff(text):
     """Return {path: [(line_no, text), ...]} of the added lines.
 
     A hunk's line counts say where it ends, so an added line that itself
-    starts with `++ ` is content, not a file header.
+    starts with `++ ` is content, not a file header. A pure rename or copy
+    has no `+++` header; its `rename to` / `copy to` line names the page.
     """
     pages, path, line_no, old_left, new_left = {}, None, 0, 0, 0
     for raw in text.split("\n"):
@@ -99,6 +104,8 @@ def parse_diff(text):
             if path is not None:
                 pages.setdefault(path, [])
             continue
+        if raw.startswith(("rename to ", "copy to ")):
+            pages.setdefault(unquote(raw.split(" ", 2)[2]), [])
         hunk = HUNK.match(raw)
         if hunk:
             old_left = int(hunk.group(1) or 1)
@@ -114,7 +121,7 @@ def prose_runs(lines, threshold):
     code fence does, and fenced code is never prose. Line numbers must be
     contiguous for two lines to share a run.
     """
-    run, fenced, prev = [], False, None
+    run, fence, prev = [], "", None
     for line_no, text in lines + [(None, "#")]:
         if line_no is not None and prev is not None and line_no != prev + 1:
             if len(run) >= threshold:
@@ -122,11 +129,15 @@ def prose_runs(lines, threshold):
             run = []
         prev = line_no
         stripped = text.strip()
-        if stripped.startswith(("```", "~~~")):
-            fenced = not fenced
+        marker = FENCE.match(stripped)
+        in_fence = bool(fence)
+        if marker and not fence:
+            fence = marker.group(1)
+        elif marker and stripped == marker.group(1) and marker.group(1).startswith(fence):
+            fence = ""
         if not stripped:
             continue
-        if fenced or STRUCTURE.match(text) or line_no is None:
+        if in_fence or fence or STRUCTURE.match(text) or line_no is None:
             if len(run) >= threshold:
                 yield run[0], run[-1], len(run)
             run = []
