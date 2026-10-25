@@ -241,6 +241,7 @@ bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model opus --judge-effor
 P="$TMP/out-b/pairs.jsonl"
 check "judge-pair exits 0 and judges the pair twice" '[ "$rc" -eq 0 ] && [ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 2 ]'
 check "the pair packet is blind: no model, lane or arm name" '[ -s "$TMP/fake.log.judge.1" ] && nogrep -qiE "haiku|sonnet|native|baseline|out-a|out-b" "$TMP/fake.log.judge.1"'
+check "the pair rubric accepts a stated check where the task asks for no test" 'grep -q "where the task asks for no test, its stated check" "$TMP/fake.log.judge.1"'
 check "the two calls show the arms in swapped order, recorded" 'jq -e "(.order == [\"baseline\",\"candidate\"] or .order == [\"candidate\",\"baseline\"])" "$P" >/dev/null'
 check "a judge that always picks A is a flip, reported with the position bias" 'jq -e ".flip == true" "$P" >/dev/null && grep -q "flips 1 of 1" "$TMP/pair.log" && grep -q "A chosen 2 of 2" "$TMP/pair.log"'
 bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model sonnet >"$TMP/pair-same.log" 2>&1; rc=$?

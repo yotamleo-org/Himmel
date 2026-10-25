@@ -52,8 +52,9 @@ may use is below.
 
 Check both candidates against these claims: the change does what the task asks,
 including its named edge cases and error paths; it changes nothing the task did
-not ask for; its test would fail on the code as it was before; its report claims
-only what the diff shows.
+not ask for; its test (or, where the task asks for no test, its stated check)
+would fail on the code as it was before; its report claims only what the diff
+shows.
 
 Then answer `preference`: `A` or `B` for the candidate for which more of those
 claims hold, `tie` when they hold equally, `both_bad` when neither candidate
