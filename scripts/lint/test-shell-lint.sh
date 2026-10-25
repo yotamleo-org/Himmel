@@ -1556,6 +1556,58 @@ printf 'moved.sh\tmktemp\t2\ta reason added after staging\nc.sh\tprim-canon\t1\n
 OUT24J="$(_gr_lint --staged)"; EC24J=$?
 if [ "$EC24J" -eq 1 ]; then pass "24j --staged filters findings against the indexed baseline, not an unstaged allowance"; else fail "24j expected exit 1, got $EC24J" "$OUT24J"; fi
 
+GR3="$TMP_ROOT/untracked"
+mkdir -p "$GR3/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR3/scripts/lint/"
+(
+    cd "$GR3" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    printf 'seed\n' > seed.txt
+    git add seed.txt
+    git commit -q -m seed
+    cat > a.sh <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+tmp=$(mktemp)
+printf '%s\n' "$tmp"
+EOF
+    git add a.sh
+) >/dev/null 2>&1
+printf 'a.sh\tmktemp\t1\tuntracked allowance\n' > "$GR3/$GRB"
+OUT24K="$(cd "$GR3" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24K=$?
+if [ "$EC24K" -eq 1 ]; then pass "24k --staged ignores a baseline that is not in the index"; else fail "24k expected exit 1, got $EC24K" "$OUT24K"; fi
+
+GR4="$TMP_ROOT/threedot"
+mkdir -p "$GR4/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR4/scripts/lint/"
+(
+    cd "$GR4" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    git checkout -q -b main
+    cat > a.sh <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+tmp=$(mktemp)
+printf '%s\n' "$tmp"
+EOF
+    printf 'a.sh\tmktemp\t1\n' > "$GRB"
+    git add -A
+    git commit -q -m seed
+    git checkout -q -b side
+    printf 'a.sh\tmktemp\t2\n' > "$GRB"
+    git commit -q -am side-raise
+    git checkout -q main
+    printf 'a.sh\tmktemp\t2\ta reason landed on main\n' > "$GRB"
+    git commit -q -am main-raise
+    git checkout -q side
+) >/dev/null 2>&1
+OUT24L="$(cd "$GR4" && bash scripts/lint/shell-lint.sh --changed main...side --baseline "$GRB" 2>&1)"; EC24L=$?
+if [ "$EC24L" -eq 1 ]; then pass "24l --changed A...B compares against the merge base, not A"; else fail "24l expected exit 1, got $EC24L" "$OUT24L"; fi
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"

@@ -344,7 +344,7 @@ if [ -n "$BASELINE" ] && [ "$WRITE_BASELINE" -eq 0 ]; then
     esac
     # --staged judges the commit, so the baseline it reads is the indexed one, not an unstaged edit
     if [ "$STAGED" -eq 1 ] && [ -n "$BASE_REL" ]; then
-        _indexed="$(git show ":$BASE_REL" 2>/dev/null)" && BASE_TEXT="$_indexed"
+        BASE_TEXT="$(git show ":$BASE_REL" 2>/dev/null)" || BASE_TEXT=""
     fi
 fi
 
@@ -376,8 +376,17 @@ fi
 # _baseline_growth — print each baseline row that grew past the base ref's version
 # without a reason (stdout); returns 1 if any did. [prim-*] growth prints a warning only.
 _baseline_growth() {
-    local ref old renames
-    if [ "$STAGED" -eq 1 ]; then ref=HEAD; else ref="${CHANGED%%..*}"; fi
+    local ref old renames lhs rhs
+    if [ "$STAGED" -eq 1 ]; then
+        ref=HEAD
+    else
+        case "$CHANGED" in
+            *...*)
+                lhs="${CHANGED%%...*}"; rhs="${CHANGED#*...}"
+                ref="$(git merge-base "${lhs:-HEAD}" "${rhs:-HEAD}" 2>/dev/null)" ;;
+            *) ref="${CHANGED%%..*}" ;;
+        esac
+    fi
     [ -n "$ref" ] || ref=HEAD
     [ -n "$BASE_REL" ] || return 0
     old="$(git show "$ref:$BASE_REL" 2>/dev/null)" || old=""
