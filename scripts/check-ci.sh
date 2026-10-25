@@ -185,6 +185,11 @@
 # verdict line keeps the real status readable in any captured output.
 set -uo pipefail
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(cd "$(dirname "$0")" && pwd)/lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
+
 usage() {
     cat >&2 <<'EOF'
 usage: check-ci.sh [<pr-number|branch|url>] [--grace <sec>] [--settle <sec>] [--max-wait <sec>] [--threads-only]
@@ -1288,7 +1293,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
     # Best-effort: the funnel warns and exits 0 on any Jira failure, each call
     # is bounded by a fixed 30s timeout and skipped when no timeout binary
     # exists, and the verdict exit code is unchanged. WORKER_SESSION_JIRA_STATUS=0 opts out.
-    if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
+    if [ "${WORKER_SESSION_JIRA_STATUS:-1}" != "0" ]; then
         # shellcheck source=scripts/lib/ticket-status.sh
         # shellcheck disable=SC1091
         . "$(dirname "$0")/lib/ticket-status.sh"

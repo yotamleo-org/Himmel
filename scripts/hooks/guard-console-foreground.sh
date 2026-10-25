@@ -41,6 +41,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/env-alias.sh
 if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
     env_alias_permit CHIEF_FG_OK CONSOLE_FG_OK && exit 0
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    alias_env CHIEF_FG_LIST CONSOLE_FG_LIST
 fi
 
 command -v jq >/dev/null 2>&1 || exit 0
@@ -66,7 +68,7 @@ lib="$HERE/../lib/session-name.sh"
 sname=$(current_session_name 2>/dev/null) || exit 0
 case "$sname" in *-console|*-chief) ;; *) exit 0 ;; esac
 
-list="${CHIEF_FG_LIST:-${CONSOLE_FG_LIST:-$HERE/../handover/chief-kit/long-running.txt}}"
+list="${CHIEF_FG_LIST:-$HERE/../handover/chief-kit/long-running.txt}"
 [ -r "$list" ] || exit 0
 
 hit=""

@@ -838,6 +838,7 @@ scripts/lib/test-host-caps.sh	0
 scripts/lib/test-impacted-suites-runner.sh	0
 scripts/lib/test-initiative-legs.sh	0
 scripts/lib/test-leg-identity.sh	0
+scripts/lib/test-legacy-names.sh	1
 scripts/lib/test-llm-backend.sh	0
 scripts/lib/test-load-config.sh	1
 scripts/lib/test-load-dotenv.sh	0

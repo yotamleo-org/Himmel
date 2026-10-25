@@ -10,6 +10,11 @@ test-env_alias.py and test-env-alias.sh.
                                      and no set name is falsy (*_OK overrides,
                                      widening switches)
 
+  legacy_names_on(env)               False when HIMMEL_LEGACY_NAMES is falsy
+
+Legacy names off (scripts/lib/legacy-names.sh): restrict still reads both
+names; permit is granted by NEW only while a falsy OLD still vetoes.
+
 "Set" is non-empty; "truthy" is set and not 0, false, no or off (any case). A
 name outside [A-Z_][A-Z0-9_]* raises InvalidName, the shell's rc 2. env
 defaults to os.environ.
@@ -41,13 +46,22 @@ def _falsy(v):
     return v.lower() in _FALSY
 
 
+def legacy_names_on(env=None):
+    env = os.environ if env is None else env
+    return not _falsy(env.get("HIMMEL_LEGACY_NAMES") or "")
+
+
 def env_alias_restrict(new, old, env=None):
     return any(not _falsy(v) for v in _set_values(new, old, env))
 
 
 def env_alias_permit(new, old, env=None):
     values = _set_values(new, old, env)
-    return bool(values) and not any(_falsy(v) for v in values)
+    if any(_falsy(v) for v in values):
+        return False
+    if not legacy_names_on(env):
+        return bool((os.environ if env is None else env).get(new))
+    return bool(values)
 
 
 def main(argv):

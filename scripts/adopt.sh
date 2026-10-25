@@ -225,6 +225,7 @@ PORTABLE_FILES=(
   scripts/lib/bank-preflight.sh
   scripts/lib/chokepoint-seam-guard.sh
   scripts/lib/env-alias.sh
+  scripts/lib/legacy-names.sh
   scripts/lib/usage-lift.sh
   scripts/lib/usage-cache-identity.sh
   scripts/lib/fleet-reservation-key.sh

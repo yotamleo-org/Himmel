@@ -311,6 +311,11 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/merge-on-green.sh || exit 96
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$_csg_dir/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env HIMMEL_WORKER_SESSION_DOC HIMMEL_LEG_DOC
+
 GH="gh"
 # The ONE public repo armed auto-merge may target. Deliberately a
 # fixed literal, NOT environment-overridable: the GATE INTEGRITY paragraph above
@@ -337,7 +342,7 @@ DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
 GO_FLAG=""
 # ponytail: the leg doc is supplied by the caller (--leg-doc, else HIMMEL_WORKER_SESSION_DOC); the console must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
-WORKER_SESSION_DOC="${HIMMEL_WORKER_SESSION_DOC:-${HIMMEL_LEG_DOC:-}}"
+WORKER_SESSION_DOC="${HIMMEL_WORKER_SESSION_DOC:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;

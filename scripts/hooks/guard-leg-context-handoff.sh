@@ -117,15 +117,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/env-alias.sh
 if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
     env_alias_permit WORKER_SESSION_CONTEXT_HANDOFF_OK LEG_CONTEXT_HANDOFF_OK && exit 0
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    alias_env HIMMEL_WORKER_SESSION_CONTEXT_SHARE HIMMEL_LEG_CONTEXT_SHARE
+    alias_env HIMMEL_WORKER_SESSION_AUTOCOMPACT HIMMEL_LEG_AUTOCOMPACT
 fi
 
 CEILING_SHARE=75
-share="${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-${HIMMEL_LEG_CONTEXT_SHARE:-}}"
+share="${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-}"
 case "$share" in
     [1-9]|[1-9][0-9]|100) CEILING_SHARE="$share" ;;
 esac
 PIN_AUTOCOMPACT=200000
-autocompact="${HIMMEL_WORKER_SESSION_AUTOCOMPACT:-${HIMMEL_LEG_AUTOCOMPACT:-$PIN_AUTOCOMPACT}}"
+autocompact="${HIMMEL_WORKER_SESSION_AUTOCOMPACT:-$PIN_AUTOCOMPACT}"
 
 warn_allow() {
     printf 'guard-leg-context-handoff: allowing - %s (fail-open)\n' "$1" >&2

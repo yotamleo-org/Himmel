@@ -50,6 +50,11 @@ fi
 DOC="$1"
 TEXT="$2"
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
+
 if [ ! -f "$DOC" ] || [ ! -r "$DOC" ] || [ ! -w "$DOC" ]; then
     echo "append-results: cannot read/write doc '$DOC'" >&2
     exit 3
@@ -191,7 +196,7 @@ case "$TEXT" in
     LIVE|LIVE[!A-Za-z0-9]*) event=live ;;
     WRAPPED|WRAPPED[!A-Za-z0-9]*) event=wrapped ;;
 esac
-if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
+if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-1}" != "0" ]; then
     base="${DOC##*/}"
     if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
         bash "$(dirname "${BASH_SOURCE[0]}")/worker-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true

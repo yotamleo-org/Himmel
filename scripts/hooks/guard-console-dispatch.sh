@@ -103,7 +103,7 @@ input=$(cat 2>/dev/null || true)
 
 log_override() {
     local override="$1" log now session subagent log_dir
-    log="${CHIEF_DISPATCH_LOG:-${CONSOLE_DISPATCH_LOG:-${HOME:-}/.claude/console-dispatch-guard/overrides.jsonl}}"
+    log="${CHIEF_DISPATCH_LOG:-${HOME:-}/.claude/console-dispatch-guard/overrides.jsonl}"
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf 'unknown')
     session=""
     subagent=""
@@ -128,6 +128,9 @@ log_override() {
 alias_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/env-alias.sh"
 # shellcheck source=../lib/env-alias.sh
 if { [ -r "$alias_lib" ] && . "$alias_lib"; } 2>/dev/null; then
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    alias_env CHIEF_DISPATCH_LOG CONSOLE_DISPATCH_LOG
+    alias_env CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES
     for pair in "CHIEF_DISPATCH_OK CONSOLE_DISPATCH_OK" "CHIEF_DISPATCH_DISABLE CONSOLE_DISPATCH_DISABLE"; do
         new="${pair% *}" old="${pair#* }"
         if env_alias_permit "$new" "$old"; then
@@ -193,7 +196,7 @@ else
         # entry's own message text. A system prompt, a tool result, or an
         # assistant turn mentioning the path no longer counts. No user turn
         # in the bound, or an unparseable line, is NOT console (fail-open).
-        head_lines="${CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES:-${CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES:-40}}"
+        head_lines="${CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES:-40}"
         first_user_text=""
         while IFS= read -r line; do
             entry_type=$(printf '%s' "$line" | jq -r '.type // empty' 2>/dev/null || true)

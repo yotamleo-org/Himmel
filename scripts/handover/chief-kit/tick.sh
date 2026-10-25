@@ -37,6 +37,13 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 . "$HERE/../../lib/handover-path.sh"
 # shellcheck source=../../lib/leg-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CADENCE_USAGE_LANE CADENCE_BANK_LANE
+alias_env HIMMEL_WORKER_SESSION_FAILURES_LEDGER HIMMEL_LEG_FAILURES_LEDGER
+alias_env WORKER_SESSION_DIGEST_STATE_DIR LEG_DIGEST_STATE_DIR
+alias_env WORKER_SESSION_LANE LEG_LANE
 
 usage() {
     cat <<'USAGE'
@@ -2007,7 +2014,7 @@ fails_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fails_summary='?'
     fails_start="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$console_doc" 2>/dev/null | sed -n 's/.*"started":"\([0-9][0-9TZ:-]*\)".*/\1/p' | head -n 1)"
-    fl_ledger="${HIMMEL_WORKER_SESSION_FAILURES_LEDGER:-${HIMMEL_LEG_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}}"
+    fl_ledger="${HIMMEL_WORKER_SESSION_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}"
     fl_evals="${HIMMEL_EVAL_RUNS_LEDGER:-$HOME/.himmel/eval-runs.jsonl}"
     fl_routes="${HIMMEL_FAILURE_ROUTES_LOG:-$HOME/.himmel/state/failure-routes.log.jsonl}"
     # Readable-or-absent: an absent file is an empty one, anything else unreadable is ?.
@@ -2030,7 +2037,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
               end' 2>/dev/null)" || fl_counts=""
         # ~<k> = distinct docs whose wrap digest was skipped this
         # shift (leg-digest-step.sh's skips.jsonl); unreadable reads ? too.
-        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}}/skips.jsonl"
+        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}/skips.jsonl"
         fl_skips=""
         fl_ok "$fl_skips_log" && { fl_skips="$(fl_rows "$fl_skips_log" | jq -s -r 'map(.doc) | unique | length' 2>/dev/null)" || fl_skips=""; }
         case "$fl_recur" in ''|*[!0-9]*) fl_counts="" ;; esac
@@ -2326,7 +2333,7 @@ fi
 fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # usage= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
-if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}}" = openrouter ]; then
+if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi

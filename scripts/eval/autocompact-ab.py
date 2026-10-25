@@ -31,11 +31,13 @@
 # A/B has data worth that.
 import argparse, glob, json, os, re, subprocess, sys
 from datetime import datetime
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import env_alias
 
-W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1")))
-W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25")))
-W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1")))
-W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5")))
+W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1") if env_alias.legacy_names_on() else "0.1"))
+W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25") if env_alias.legacy_names_on() else "1.25"))
+W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1") if env_alias.legacy_names_on() else "1"))
+W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5") if env_alias.legacy_names_on() else "5"))
 
 BULLET = re.compile(r"^- (?:\d{2}:\d{2} )?([A-Z][A-Z-]*)\b")
 ARM_LINE = re.compile(r"^> \*\*Context:\*\* ab-(200k|400k) ")

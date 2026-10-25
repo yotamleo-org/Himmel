@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { estimateProfileListing } from './profile-listing.mjs';
+import { legacyNamesOn } from '../../lib/env-alias.mjs';
 
 export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -26,7 +27,7 @@ export function readToolHealth(env = process.env, query = new URLSearchParams(),
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
     : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing);
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || (legacyNamesOn(env) ? env.HIMMEL_LEG_FAILURES_LEDGER : undefined) || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing);
 }
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;

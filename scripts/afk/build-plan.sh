@@ -29,10 +29,14 @@
 #   3  no tickets matched (warn — operator can still proceed manually)
 set -euo pipefail
 
-PROJECT="${AFK_PROJECT:-${OVERNIGHT_PROJECT:-}}"
-STATUS="${AFK_STATUS:-${OVERNIGHT_STATUS:-To Do,In Progress}}"
-LIMIT="${AFK_LIMIT:-${OVERNIGHT_LIMIT:-5}}"
-PRIORITY="${AFK_PRIORITY:-${OVERNIGHT_PRIORITY:-key-desc}}"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+# shellcheck source=../lib/env-alias.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/env-alias.sh"
+for _an in PROJECT STATUS LIMIT PRIORITY; do alias_env "AFK_$_an" "OVERNIGHT_$_an"; done
+PROJECT="${AFK_PROJECT:-}"
+STATUS="${AFK_STATUS:-To Do,In Progress}"
+LIMIT="${AFK_LIMIT:-5}"
+PRIORITY="${AFK_PRIORITY:-key-desc}"
 OUT_FILE=""
 JIRA_CMD="${JIRA_CMD:-}"
 

@@ -8,7 +8,11 @@
 //                                    and no set name is falsy (*_OK overrides,
 //                                    widening switches)
 //
+//   legacyNamesOn(env)               false when HIMMEL_LEGACY_NAMES is falsy
+//
 // "Set" is non-empty; "truthy" is set and not 0, false, no or off (any case).
+// Legacy names off (scripts/lib/legacy-names.sh): restrict still reads both
+// names; permit is granted by NEW only while a falsy OLD still vetoes.
 // A name outside [A-Z_][A-Z0-9_]* throws an Error with code 2, the shell's rc 2.
 // env defaults to process.env.
 //
@@ -35,13 +39,19 @@ function setValues(newName, oldName, env) {
   return [env[newName], env[oldName]].filter((v) => typeof v === 'string' && v !== '');
 }
 
+export function legacyNamesOn(env = process.env) {
+  return !FALSY.test(env.HIMMEL_LEGACY_NAMES ?? '');
+}
+
 export function envAliasRestrict(newName, oldName, env = process.env) {
   return setValues(newName, oldName, env).some((v) => !FALSY.test(v));
 }
 
 export function envAliasPermit(newName, oldName, env = process.env) {
   const set = setValues(newName, oldName, env);
-  return set.length > 0 && !set.some((v) => FALSY.test(v));
+  if (set.some((v) => FALSY.test(v))) return false;
+  if (!legacyNamesOn(env)) return typeof env[newName] === 'string' && env[newName] !== '';
+  return set.length > 0;
 }
 
 function main(argv) {

@@ -35,6 +35,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEG_PROFILE
+alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_create / forge_pr_set_body
 # / forge_detect / forge_repo_nwo route to the github or bitbucket backend per
 # the repo's origin — never call gh/bb directly from here.
@@ -133,7 +138,7 @@ compute_leg_burn_line() {
         fi
     fi
 
-    local profile="${HIMMEL_WORKER_SESSION_PROFILE:-${HIMMEL_LEG_PROFILE:-}}"
+    local profile="${HIMMEL_WORKER_SESSION_PROFILE:-}"
     case "$profile" in
         ''|*[!A-Za-z0-9._,-]*) profile=unknown ;;
     esac
@@ -293,7 +298,7 @@ fi
 # Best-effort: the funnel warns and exits 0 on any Jira failure;
 # WORKER_SESSION_JIRA_STATUS=0 opts out. Its stdout is kept off this script's one-line
 # `PR ...` contract.
-if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
+if [ "${WORKER_SESSION_JIRA_STATUS:-1}" != "0" ]; then
     # shellcheck source=../lib/ticket-status.sh
     # shellcheck disable=SC1091
     . "$HERE/../lib/ticket-status.sh"

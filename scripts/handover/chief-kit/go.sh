@@ -116,6 +116,11 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/go.sh || exit 96
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$_csg_dir/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_SESSION_NAME CONSOLE_SESSION_NAME
+
 # The reads below (PR view, repo name) ride the read-only token via gh-read.sh
 # and a missing or refused read token falls back to the main one, so
 # a GO is never refused for it. Nothing here writes through it: the GO file is a
@@ -438,7 +443,7 @@ fi
 DIR="$ROOT/.locks/go"
 DEST="$DIR/$PR.$SHA"
 [ "$FIX_SET" -eq 0 ] || DEST=$(go_fixred_file "$ROOT" "$PR" "$SHA" "$FIXRUN")
-BY="${CHIEF_SESSION_NAME:-${CONSOLE_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostname 2>/dev/null || uname -n)}}"
+BY="${CHIEF_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostname 2>/dev/null || uname -n)}"
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

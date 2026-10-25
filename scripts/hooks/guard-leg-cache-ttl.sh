@@ -122,7 +122,12 @@ running="$(jq -R -r '
 case "$running" in ''|*[!0-9]*) exit 0 ;; esac
 [ "$running" -eq 0 ] || exit 0
 
-bound="${HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS:-${HIMMEL_LEG_CACHE_KEEPALIVE_SECS:-3000}}" # old name, read both ways
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+# shellcheck source=../lib/env-alias.sh
+if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS HIMMEL_LEG_CACHE_KEEPALIVE_SECS
+fi
+bound="${HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS:-3000}"
 case "$bound" in ''|*[!0-9]*) bound=3000 ;; esac
 if [ "${#bound}" -gt 5 ] || [ "$bound" -lt 60 ] || [ "$bound" -gt 3300 ]; then bound=3000; fi
 

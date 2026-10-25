@@ -18,6 +18,11 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-leg.sh || exit 96
+case "${HIMMEL_LEGACY_NAMES:-}" in
+  0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
+    echo "headed-arm-leg.sh was renamed to headed-arm-worker.sh; legacy names are off" >&2
+    exit 127 ;;
+esac
 
 echo "headed-arm-leg.sh is deprecated: use 'headed-arm-worker.sh' instead" >&2
 exec bash "$_csg_dir/headed-arm-worker.sh" "$@"

@@ -252,7 +252,7 @@ assert_rc "x-judge-ro does not match the judge-ro carve-out" 2 "$RC7F"
 FT="$TMP/tree"
 mkdir -p "$FT/scripts/hooks" "$FT/scripts/lib" "$FT/.claude/agents"
 cp "$HOOK" "$FT/scripts/hooks/"
-cp "$SCRIPT_DIR/../lib/env-alias.sh" "$FT/scripts/lib/"
+cp "$SCRIPT_DIR/../lib/env-alias.sh" "$SCRIPT_DIR/../lib/legacy-names.sh" "$FT/scripts/lib/"
 agent_md() { printf -- '---\nname: %s\ntools: %s\nmodel: opus\n---\n\nbody\n' "$1" "$2" > "$FT/.claude/agents/$1.md"; }
 run_tree() { HOOK="$FT/scripts/hooks/guard-console-dispatch.sh"; run_hook "$@"; }
 

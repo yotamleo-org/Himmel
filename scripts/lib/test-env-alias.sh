@@ -33,7 +33,7 @@ check() {
   fi
 }
 
-unset T_NEW T_OLD
+unset T_NEW T_OLD HIMMEL_LEGACY_NAMES
 
 # child <snippet>: runs the snippet in a strict child that sourced the helper;
 # prints what the snippet echoes, plus anything the helper printed by itself.
@@ -91,6 +91,32 @@ check "env_alias_any empty values: false" "no" \
 check "env_alias_any false does not abort a strict caller" "after" \
   "$(child 'env_alias_any T_NEW T_OLD || true; echo after')"
 
+# --- legacy names off (HIMMEL_LEGACY_NAMES=0): OLD supplies no value, but
+# a cap still narrows, so OFF never widens what a caller allows ---
+off() { HIMMEL_LEGACY_NAMES=0 child "$1"; }
+check "off: alias_env old only: NEW stays unset" "unset" \
+  "$(T_OLD=legacy off 'alias_env T_NEW T_OLD; echo "${T_NEW-unset}"')"
+check "off: alias_env new only: NEW kept" "fresh" \
+  "$(T_NEW=fresh off 'alias_env T_NEW T_OLD; echo "${T_NEW-unset}"')"
+check "off: alias_env returns 0" "0" \
+  "$(T_OLD=legacy off 'rc=0; alias_env T_NEW T_OLD || rc=$?; echo $rc')"
+check "off: alias_env invalid name still returns 2" "2" \
+  "$(off 'rc=0; alias_env bad-name T_OLD || rc=$?; echo $rc')"
+check "off: alias_env_cap old only: NEW takes OLD (a cap never widens)" "85" \
+  "$(T_OLD=85 off 'alias_env_cap T_NEW T_OLD; echo "${T_NEW-unset}"')"
+check "off: alias_env_cap both: a wider NEW narrows to OLD" "50" \
+  "$(T_NEW=99 T_OLD=50 off 'alias_env_cap T_NEW T_OLD; echo "${T_NEW-unset}"')"
+check "off: env_alias_any old only: false" "no" \
+  "$(T_OLD=1 off 'if env_alias_any T_NEW T_OLD; then echo yes; else echo no; fi')"
+check "off: env_alias_any new only: true" "yes" \
+  "$(T_NEW=1 off 'if env_alias_any T_NEW T_OLD; then echo yes; else echo no; fi')"
+check "off: env_alias_any invalid name still returns 2" "2" \
+  "$(T_OLD=1 off 'rc=0; env_alias_any bad-name T_OLD || rc=$?; echo $rc')"
+check "falsy knob spellings all switch alias_env off" "unset unset unset" \
+  "$(for v in false No OFF; do HIMMEL_LEGACY_NAMES=$v T_OLD=legacy child 'alias_env T_NEW T_OLD; printf "%s " "${T_NEW-unset}"'; done | sed 's/ $//')"
+check "an empty knob keeps alias_env on" "legacy" \
+  "$(HIMMEL_LEGACY_NAMES='' T_OLD=legacy child 'alias_env T_NEW T_OLD; echo "${T_NEW-unset}"')"
+
 # --- invalid names fail closed on every function (rc 2) ---
 for fn in alias_env env_alias_any; do
   check "$fn invalid NEW name: rc 2" "2" \
@@ -128,7 +154,7 @@ valid_name() {
   return 0
 }
 n=0
-while IFS=$'\t' read -r fn nn on nv ov want || [ -n "$fn" ]; do
+while IFS=$'\t' read -r fn nn on nv ov want want_off || [ -n "$fn" ]; do
   case "$fn" in ''|'#'*) continue ;; esac
   n=$((n + 1))
   [ "$nn" = "<empty>" ] && nn=""
@@ -147,6 +173,11 @@ while IFS=$'\t' read -r fn nn on nv ov want || [ -n "$fn" ]; do
     'set -euo pipefail; . "$1"; rc=0; "env_alias_$2" "$3" "$4" || rc=$?; echo "$rc"' \
     _ "$SCRIPT" "$fn" "$nn" "$on" 2>&1)
   check "row $n: $fn '$nn'=$nv '$on'=$ov" "$want" "$got"
+  # read-sink-ok: sources the script under test ($SCRIPT), not a host file; no allowlist applies
+  got=$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 ${args[@]+"${args[@]}"} bash -c \
+    'set -euo pipefail; . "$1"; rc=0; "env_alias_$2" "$3" "$4" || rc=$?; echo "$rc"' \
+    _ "$SCRIPT" "$fn" "$nn" "$on" 2>&1)
+  check "row $n off: $fn '$nn'=$nv '$on'=$ov" "$want_off" "$got"
 done < "$NOEOL"
 check "fixture has at least one row" "yes" "$([ "$n" -gt 0 ] && echo yes || echo no)"
 check "every declared row was read" "$want_rows" "$n"

@@ -95,6 +95,10 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_DIGEST_STEP_BIN LEG_DIGEST_STEP_BIN
 KILL="${KILL_BIN:-kill}"
 CLEAN_SH="${CLEAN_SH_BIN:-$HERE/../../clean.sh}"
 WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
@@ -432,7 +436,7 @@ reap_leg_scratch || echo "close-wrapped-leg: WARN /tmp reap errored - close cont
 # its rc is ignored, and a hard outer timeout bounds it, so a digest crash,
 # hang or missing journal changes no other output and never the close's rc.
 # It never writes the leg's doc, so its tail stays WRAPPED.
-digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT:-120}" bash "${WORKER_SESSION_DIGEST_STEP_BIN:-${LEG_DIGEST_STEP_BIN:-$HERE/worker-digest-step.sh}}" \
+digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT:-120}" bash "${WORKER_SESSION_DIGEST_STEP_BIN:-$HERE/worker-digest-step.sh}" \
     --session "$digest_sid" --transcript "$TRANSCRIPT" --doc "$DOC" --pid "$matched" --projects "$PROJECTS_DIR" 2>/dev/null \
     | grep -m 1 '^digest=')
 echo "${digest_line:-digest=failed:step}"

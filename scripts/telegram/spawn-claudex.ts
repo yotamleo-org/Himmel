@@ -31,6 +31,7 @@ import { join, resolve, dirname } from "node:path";
 import { spawn } from "bun";
 import { BASH_BIN, REPO_ROOT, killTree, detectContentFilter, NON_INTERACTIVE_EDITOR_ENV, type PermissionMode } from "./run";
 import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, gitCapture, ensureWorkspaceTrust, preflightWindowCheck, measureOverheadChars, finalMeta, resolveProfileSettings, teardownMintedWorktree, DEFAULT_LANE_PROFILE, mintRetaskNonce, mintSpawnStamp, composeRetaskBlock, STASH_BAN_LINE, composeBashShapeWarning, composeOutboxWriteHint, composeWorkerSettings, refuseBypassPermissions, refuseUnknownPermissionMode, isHelpFlag, writeLiveWorkerMeta, readBriefFile, armStartupWatchdog, resolveFailfastWindowMs } from "./spawn-glm";
 // symptom-brief loop breaker, two-stage — shared with spawn-glm
 // so both worker lanes carry one decision table: invariant required at the
@@ -452,7 +453,7 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 const CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches usage-status.ts
 
 export function codexBankCachePath(home: string, env: Record<string, string | undefined> = process.env): string {
-  return env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
+  return env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(home, ".himmel", "cache", "codex-bank.json");
 }
 
 export type CodexBankRead = { usedPct: number | null; reason: string | null };
@@ -493,10 +494,13 @@ export function parsePct(raw: string | undefined, fallback: number): number {
 }
 
 // CLAUDEX_USAGE_OK is the new name of CLAUDEX_BANK_OK: the override needs one of
-// them at 1, and either one set to anything else refuses it.
+// them at 1, and either one set to anything else refuses it. With legacy names
+// off only the new name grants; the old one still refuses.
 export function codexBankOverride(env: Record<string, string | undefined>): boolean {
-  const set = [env.CLAUDEX_USAGE_OK, env.CLAUDEX_BANK_OK].filter((v) => v !== undefined && v !== "");
-  return set.length > 0 && set.every((v) => v === "1");
+  const isSet = (v: string | undefined) => v !== undefined && v !== "";
+  const grants = [env.CLAUDEX_USAGE_OK, legacyNamesOn(env) ? env.CLAUDEX_BANK_OK : undefined].filter(isSet);
+  const set = [env.CLAUDEX_USAGE_OK, env.CLAUDEX_BANK_OK].filter(isSet);
+  return grants.length > 0 && set.every((v) => v === "1");
 }
 
 // CLAUDEX_USAGE_WARN_PCT beside the old CLAUDEX_BANK_WARN_PCT: the narrower counts.

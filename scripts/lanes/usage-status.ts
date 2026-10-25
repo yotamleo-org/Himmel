@@ -71,6 +71,7 @@ import {
 } from "../observability/quota-sources";
 import { ledgerPath as quotaGaugeLedgerPath } from "../telegram/quota-gauge";
 import { fundedMaxPctForBank } from "./funded-max-pct.mjs";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 import {
   CODEX_BANK_PROBE_REMEDY,
   formatMeasured,
@@ -93,9 +94,9 @@ const nowMs = Date.now();
 const env = process.env;
 const home = env.HOME ?? homedir();
 const claudeCache = defaultClaudeCachePath(env, process.platform);
-const codexBankCachePath = env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
+const codexBankCachePath = env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(home, ".himmel", "cache", "codex-bank.json");
 const codexBankTtlSeconds = positiveEnvNumber(env.CODEX_USAGE_CACHE_TTL_SECONDS)
-  ?? positiveEnvNumber(env.CODEX_BANK_CACHE_TTL_SECONDS) ?? CODEX_BANK_TTL_DEFAULT_SECONDS;
+  ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_CACHE_TTL_SECONDS : undefined) ?? CODEX_BANK_TTL_DEFAULT_SECONDS;
 const glmLedger = quotaGaugeLedgerPath(env);
 
 function positiveEnvNumber(v: string | undefined): number | null {
@@ -150,9 +151,9 @@ type DisplayResult =
 // cadence), so a station nobody reads stays stale until the next read; add an
 // LLM-free cron only if the doctor WARN keeps firing.
 const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BOX_MS)
-  ?? positiveEnvNumber(env.CODEX_BANK_REFRESH_BOX_MS) ?? 30_000;
+  ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_REFRESH_BOX_MS : undefined) ?? 30_000;
 const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BACKOFF_MS)
-  ?? positiveEnvNumber(env.CODEX_BANK_REFRESH_BACKOFF_MS) ?? 300_000;
+  ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_REFRESH_BACKOFF_MS : undefined) ?? 300_000;
 const REFRESH_LOCK_STALE_MS = REFRESH_BOX_MS + 30_000;
 
 function sleepMs(ms: number): void {
@@ -160,7 +161,7 @@ function sleepMs(ms: number): void {
 }
 
 function refreshCodexCache(cachePath: string): void {
-  if ((env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE) && !(env.CODEX_USAGE_PROBE_CMD || env.CODEX_BANK_PROBE_CMD)) return;
+  if ((env.CODEX_USAGE_CACHE || (legacyNamesOn(env) && env.CODEX_BANK_CACHE)) && !(env.CODEX_USAGE_PROBE_CMD || (legacyNamesOn(env) && env.CODEX_BANK_PROBE_CMD))) return;
   const lock = `${cachePath}.refresh.lock`;
   const stamp = `${cachePath}.refresh.attempt`;
   const deadline = Date.now() + REFRESH_BOX_MS;
