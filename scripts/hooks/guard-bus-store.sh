@@ -409,16 +409,18 @@ elif length > 0 and all(.[]; sink) then "allow"
 else "legacy" end
 BS_JQ_EOF
 
-# model_verdict <cmd>: deny, allow or legacy. The fail mode is the word walker's:
-# a missing lib or shfmt, a parse failure or a jq failure is "legacy".
+# model_verdict <cmd>: deny, allow, timeout or legacy. The fail mode is the word
+# walker's: a missing lib or shfmt, a parse failure or a jq failure is "legacy".
 model_verdict() {
-    local lib pos v
+    local lib pos v rc=0
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh
     if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
         echo legacy; return
     fi
-    pos=$(bash_ast_positions "$1" 2>/dev/null) || { echo legacy; return; } # swallow-ok: legacy hands the call to the unchanged word walker
+    pos=$(bash_ast_positions "$1" 2>/dev/null) || rc=$? # swallow-ok: the rc is read next
+    [ "$rc" = 5 ] && { echo timeout; return; }
+    [ "$rc" = 0 ] || { echo legacy; return; } # legacy hands the call to the unchanged word walker
     v=$(printf '%s' "$pos" | jq -r "$BS_JQ" 2>/dev/null) || v=legacy # swallow-ok: legacy hands the call to the unchanged word walker
     case "$v" in deny | allow) echo "$v" ;; *) echo legacy ;; esac
 }
@@ -480,6 +482,7 @@ case "$tool" in
             *bus*) case "$cmd_q" in *register* | *bind*) verdict=$(model_verdict "$cmd") ;; esac ;;
         esac
         [ "$verdict" = deny ] && deny "bus register|bind|rebind is the launcher's, not a session's"
+        [ "$verdict" = timeout ] && deny "the command model timed out, so this command that names bus and an identity verb cannot be read"
         if [ "$verdict" != allow ]; then
             verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
         fi

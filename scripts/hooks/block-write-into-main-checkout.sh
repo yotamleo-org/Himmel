@@ -3546,31 +3546,38 @@ def _seq($in):
   elif ($in | test("^(-?[0-9]+\\.\\.-?[0-9]+|[A-Za-z]\\.\\.[A-Za-z])(\\.\\.-?[0-9]+)?$")) then error("bash-ast: brace cap")
   else null end;
 
-def _brace:
-  def exp($n):
-    if $n > 64 then error("bash-ast: brace cap")
-    else
-      explode as $a
-      | (def find($i):
-           if $i >= ($a | length) then null
-           elif $a[$i] == 1 then find($i + 2)
-           elif $a[$i] == 123 then
-             (_bclose($a; $i)) as $m
-             | if $m == null then null
-               elif ($m.commas | length) > 0 then {open: $i} + $m
-               elif (($a[$i + 1:$m.close] | implode) as $in | ($in | test("\u0001") | not) and _seq($in) != null) then {open: $i} + $m
-               else find($i + 1) end
-           else find($i + 1) end;
-         find(0)) as $f
-      | if $f == null then [$a | implode]
-        else ($a[:$f.open] | implode) as $pre | ($a[$f.close + 1:] | implode) as $suf
-          | (if ($f.commas | length) > 0 then
-               [[$f.open] + $f.commas, $f.commas + [$f.close]] | transpose | map($a[.[0] + 1:.[1]] | implode)
-             else _seq($a[$f.open + 1:$f.close] | implode) end) as $alts
-          | [$alts[] | ($pre + . + $suf) | exp($n + ($alts | length))[]]
-        end
+# one word's first brace group expanded into its words, null when it has none
+def _bstep:
+  explode as $a
+  | (def find($i):
+       if $i >= ($a | length) then null
+       elif $a[$i] == 1 then find($i + 2)
+       elif $a[$i] == 123 then
+         (_bclose($a; $i)) as $m
+         | if $m == null then null
+           elif ($m.commas | length) > 0 then {open: $i} + $m
+           elif (($a[$i + 1:$m.close] | implode) as $in | ($in | test("\u0001") | not) and _seq($in) != null) then {open: $i} + $m
+           else find($i + 1) end
+       else find($i + 1) end;
+     find(0)) as $f
+  | if $f == null then null
+    else ($a[:$f.open] | implode) as $pre | ($a[$f.close + 1:] | implode) as $suf
+      | (if ($f.commas | length) > 0 then
+           [[$f.open] + $f.commas, $f.commas + [$f.close]] | transpose | map($a[.[0] + 1:.[1]] | implode)
+         else _seq($a[$f.open + 1:$f.close] | implode) end)
+      | map($pre + . + $suf)
     end;
-  exp(1) | if length > 64 then error("bash-ast: brace cap") else . end;
+
+# a worklist, so the 64-word cap bounds the whole expansion, not each path
+def _brace:
+  def go($done; $todo):
+    if ($todo | length) == 0 then $done
+    else ($todo[0] | _bstep) as $x
+      | if $x == null then go($done + [$todo[0]]; $todo[1:])
+        elif ($done | length) + ($x | length) + ($todo | length) - 1 > 64 then error("bash-ast: brace cap")
+        else go($done; $x + $todo[1:]) end
+    end;
+  go([]; [.]);
 
 def _glob_pfx:
   # the encoded text before the first live glob character, cut back to its

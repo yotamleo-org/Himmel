@@ -97,6 +97,9 @@ has "a hook leg's brief says it is launched with the bypass" "$b2" "hook-integri
 lacks "a plain leg's brief does not" "$b1" "hook-integrity bypass flag"
 has "a judge leg's brief announces the opus judge" "$b2" "console runs an opus judge"
 has "the other leg's scope is listed under 'other live legs'" "$b1" "N902 (h.sh)"
+has "the brief puts the write list on its own '> **Writes:**' line (HIMMEL-7469)" "$(grep -c '^> \*\*Writes:\*\* ' "$D1")" "1"
+[ "$(grep '^> \*\*Writes:\*\* ' "$D1")" = "> **Writes:** scripts/x/" ] && pass "the Writes line is the scope's paths only (HIMMEL-7469)" || fail "the Writes line is not exactly the scope's paths: $(grep '^> \*\*Writes:\*\* ' "$D1")"
+lacks "the Writes line carries no backtick prose (HIMMEL-7469)" "$(grep '^> \*\*Writes:\*\* ' "$D1")" '`'
 # a leg flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
 has "a flagged leg's brief requires a fixture copied from the real environment" "$b2" "copied from the real environment"
 lacks "an unflagged leg's brief does not" "$b1" "copied from the real environment"
@@ -290,6 +293,11 @@ ct_brief() { # <scope text> <bucket>
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
+wr_brief="$(ct_brief 'writes confined to scripts/wr/a.sh, docs/wr.md (find what scripts/wr-read/ uses). Find callers with grep -rl wr scripts/wr-grep/ and grep -rl "a needle" scripts/wr-quoted/. Impacted suites: scripts/wr/test-a.sh. SINGLE-WRITER: scripts/wr-sw.ts is held by open PR #3791 (N3537). Touches scripts/wr-ci/, a ci-trust-paths pattern. Replace grep -E in scripts/wr/c.sh. SINGLE-WRITER: this leg is the one writer of scripts/wr/d.sh, which PR #3791 only reads. Also find and fix the caller in scripts/wr/b.sh. completes-ticket: no' "$WORK/wr1")"
+wr_line="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes:\*\* ')"
+[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/wr.md scripts/wr/c.sh scripts/wr/d.sh scripts/wr/b.sh" ] && pass "the Writes line is exactly the files the scope writes (HIMMEL-7469)" || fail "the Writes line keeps read-only text or drops a write: $wr_line"
+lacks "the Writes line drops a read aside, a quoted-arg grep, another holder's SINGLE-WRITER and Touches boilerplate (HIMMEL-7469)" "$wr_line" "scripts/wr-"
+lacks "the Writes line drops an Impacted suites file (HIMMEL-7469)" "$wr_line" "test-a.sh"
 ct_count() { printf '%s\n' "$1" | grep -c '^> \*\*Completes ticket:\*\* '; }
 ct_no="$(ct_brief 'one PR. completes-ticket: no' "$WORK/ct1")"
 has "scope ending completes-ticket: no writes the no line" "$ct_no" "> **Completes ticket:** no"

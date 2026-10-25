@@ -201,6 +201,10 @@ commands:
                           set-only: commit.tracker <jira|local|none>,
                             commit.ticketIdRequired <on|off> (write the commit
                             rules to ~/.himmel/himmel.conf)
+                          set-only: handover.root <dir> (HANDOVER_DIR, created
+                            if missing), luna.vaultPath <dir> (LUNA_VAULT_PATH,
+                            an existing directory); an absolute path, written
+                            to ~/.himmel/himmel.conf
                           set-only: hooks.plugin.<name> (runs claude plugin
                             enable/disable). hooks.improveOnSubmit is a
                             launching-shell env var, not settable here; config
@@ -8211,8 +8215,31 @@ function cmdConfigSetCommit(rest, value, args) {
   return applyCommitRulesStep({ commitRules: cr }).rc;
 }
 
+// config set handover.root <dir> / luna.vaultPath <dir>: the Setup page's path writers. HANDOVER_DIR goes through
+// the wizard's own writer, which creates the directory; the vault must already be one, since the lane gate refuses
+// a LUNA_VAULT_PATH that does not resolve.
+const CONFIG_PATH_KEYS = { 'handover.root': 'HANDOVER_DIR', 'luna.vaultPath': 'LUNA_VAULT_PATH' };
+function cmdConfigSetPath(name, value, args) {
+  const key = CONFIG_PATH_KEYS[name];
+  if (!behaviourConfigLib.confPathOk(value)) {
+    console.error(`himmelctl: config set: ${name} must be an absolute path with no '.' or '..' part, quote, '#', '$', backslash or control character`);
+    return 2;
+  }
+  if (key === 'LUNA_VAULT_PATH') {
+    let isDir = false;
+    try { isDir = fs.statSync(value).isDirectory(); } catch (_e) { /* missing */ }
+    if (!isDir) {
+      console.error(`himmelctl: config set: luna.vaultPath ${value} is not a directory`);
+      return 2;
+    }
+  }
+  if (key === 'HANDOVER_DIR' && !args.dryRun) return writeHandoverDir(value) ? 0 : 1;
+  return writeConfigVar(key, value, args, [behaviourConfigLib.writeTarget(key)]) ? 0 : 1;
+}
+
 function cmdConfigSet(pathParts, value, args) {
   if (pathParts[0] === 'commit') return cmdConfigSetCommit(pathParts.slice(1), value, args);
+  if (Object.prototype.hasOwnProperty.call(CONFIG_PATH_KEYS, pathParts.join('.'))) return cmdConfigSetPath(pathParts.join('.'), value, args);
   if (value !== 'on' && value !== 'off') {
     console.error(`himmelctl: config set: value must be 'on' or 'off' (got '${value}')`);
     return 2;

@@ -70,7 +70,7 @@ PROXY_HOSTS=(
     github.com api.github.com codeload.github.com ghcr.io
     github-cloud.s3.amazonaws.com dependabot-actions.githubapp.com api.snapcraft.io
     .githubusercontent.com .pkg.github.com .blob.core.windows.net
-    registry.npmjs.org pypi.org files.pythonhosted.org nodejs.org
+    registry.npmjs.org pypi.org files.pythonhosted.org nodejs.org downloads.claude.ai
     archive.ubuntu.com security.ubuntu.com "$REGION.gce.archive.ubuntu.com"
 )
 GCP_HOSTS=(

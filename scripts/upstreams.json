@@ -190,7 +190,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.36",
+      "synced_base": "8.0.38",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "ASSET_SHA256=\"{sha256}\"" }
@@ -248,6 +248,30 @@
       },
       "tier": "A",
       "note": "bun version CI installs (HIMMEL-4258). Every setup-bun step reads the repo-root .bun-version (bun-version-file), an exact semver, so setup-bun builds the release URL directly instead of listing bun's tags through api.github.com (a 503 there killed jobs before any test ran). version_pin makes the nightly bump rewrite .bun-version and synced_base together; the template is the bare {version} because the file holds nothing else. Bun tags its releases `bun-v<version>` (plus a rolling `canary`), so tag_prefix strips the stream prefix and latest_source=release reads the maintainer's latest non-prerelease. pin-scan.py does not report this pin: setup-bun's `uses:` is the action, not the bun version, and .bun-version is not a workflow file."
+    },
+    {
+      "name": "claude-code",
+      "kind": "tag_release",
+      "mode": "base",
+      "tracked_repo": "anthropics/claude-code",
+      "synced_base": "2.1.307",
+      "latest_source": "release",
+      "version_pin": {
+        "file": "scripts/machine-setup/installer-pins.sh",
+        "template": "CLAUDE_VERSION=\"{version}\""
+      },
+      "companion_pins": [
+        {
+          "file": "scripts/machine-setup/installer-pins.sh",
+          "template": "CLAUDE_LINUX_X64_SHA256=\"{sha256}\""
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "template": "CLAUDE_CLI_VERSION: '{version}'"
+        }
+      ],
+      "tier": "A",
+      "note": "The native Claude Code binary (HIMMEL-7394). CI's claude-startup job and the Ubuntu installer both fetch downloads.claude.ai/claude-code-releases/<version>/linux-x64/claude through pin_fetch and check it against CLAUDE_LINUX_X64_SHA256 from installer-pins.sh; the replaced npm package lock under .github/claude-cli is gone. A bump moves three literals together: CLAUDE_VERSION and CLAUDE_LINUX_X64_SHA256 in installer-pins.sh and CLAUDE_CLI_VERSION in ci.yml (scripts/ci/check-ci-install-locks.sh fails when they differ). Pass --sha256 <the linux-x64 checksum in https://downloads.claude.ai/claude-code-releases/<version>/manifest.json>; run scripts/testing/test-fakekey-claude-startup.sh against the new version in the same PR."
     }
   ]
 }

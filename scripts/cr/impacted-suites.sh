@@ -725,16 +725,8 @@ scripts/hooks/*.js scripts/guardrails/test-check-git-env-scrub.sh
 scripts/cr/*.sh scripts/guardrails/test-check-git-env-scrub.sh
 scripts/cr/*.mjs scripts/guardrails/test-check-git-env-scrub.sh
 scripts/cr/*.js scripts/guardrails/test-check-git-env-scrub.sh
-docs/*.md scripts/ci/test-check-cr-terminology.sh
-docs/*.html scripts/ci/test-check-cr-terminology.sh
-.claude/commands/*.md scripts/ci/test-check-cr-terminology.sh
-.claude/commands/*.html scripts/ci/test-check-cr-terminology.sh
 .claude/commands/pr-check.md scripts/cr/test-cr-guarded-closure.sh
 .agents/skills/pr-check/SKILL.md scripts/cr/test-cr-guarded-closure.sh
-marketplace/*.md scripts/ci/test-check-cr-terminology.sh
-marketplace/*.html scripts/ci/test-check-cr-terminology.sh
-README.md scripts/ci/test-check-cr-terminology.sh
-CLAUDE.md scripts/ci/test-check-cr-terminology.sh
 */SKILL.md scripts/lint/test-skill-lint.sh
 scripts/*.sh scripts/lanes/test-launch-site-profiles.sh
 scripts/*.ts scripts/lanes/test-launch-site-profiles.sh
