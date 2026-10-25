@@ -56,24 +56,33 @@ $tracked
 EOF
 
 tiers="$root/scripts/ci/suite-tiers.tsv"
-if [ -f "$tiers" ]; then
+if [ -r "$tiers" ]; then
   while IFS="$(printf '\t')" read -r p t _; do
     case "$p" in
       "$HELPERS"*) flag "one-shot helper has a suite-tiers row (tier $t): $p" ;;
     esac
   done < "$tiers"
+else
+  flag "cannot read $tiers"
 fi
+
+# has <grep-flag> <text> <file>: 0 found, 1 not found; an unreadable file is a FAIL.
+has() {
+  grep -q"$1" -- "$2" "$3"; local rc=$?
+  [ "$rc" -le 1 ] || flag "cannot read $3 (grep rc=$rc)"
+  return "$rc"
+}
 
 wired="$(printf '%s\n' "$tracked" | grep -E '^(\.pre-commit-config\.yaml|\.github/workflows/[^/]+\.ya?ml)$')"
 while IFS= read -r p; do
   [ -n "$p" ] || continue
   b="${p##*/}"
-  if grep -qx '# selector: tree-scan' "$root/$p" 2>/dev/null; then
+  if has x '# selector: tree-scan' "$root/$p"; then
     flag "one-shot helper carries '# selector: tree-scan': $p"
   fi
   while IFS= read -r w; do
     [ -n "$w" ] || continue
-    if grep -qF -- "$b" "$root/$w" 2>/dev/null; then
+    if has F "$b" "$root/$w"; then
       flag "one-shot helper wired in $w: $p"
     fi
   done <<EOF

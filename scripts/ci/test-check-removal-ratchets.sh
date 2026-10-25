@@ -83,6 +83,12 @@ row "RED: a one-shot helper in a pre-commit hook" 1 "one-shot helper wired in .p
 mkrepo; printf '      - run: cd scripts/one-shot && bash check-no-oldterm.sh\n' >> "$R/.github/workflows/ci.yml"; commit
 row "RED: a one-shot helper in a workflow step (by basename)" 1 "one-shot helper wired in .github/workflows/ci.yml: $HELPER"
 
+mkrepo; commit; rm "$R/.github/workflows/ci.yml"
+row "RED: a tracked workflow the gate cannot read fails closed" 1 "cannot read $R/.github/workflows/ci.yml"
+
+mkrepo; rm "$R/scripts/ci/suite-tiers.tsv"; commit
+row "RED: a missing suite-tiers.tsv fails closed" 1 "cannot read $R/scripts/ci/suite-tiers.tsv"
+
 mkrepo; printf '#!/usr/bin/env bash\n' > "$R/scripts/lint/test-no-other.sh"
 row "GREEN: an untracked test-no-*.sh is not the tree's yet" 0 ""
 
