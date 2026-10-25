@@ -1346,7 +1346,7 @@ if [ -n "$blocking" ]; then
     _difffile="$(mktemp 2>/dev/null || true)"
     _bffile="$(mktemp 2>/dev/null || true)"
     if [ -n "$_difffile" ] && [ -n "$_bffile" ] \
-       && git diff --no-renames --name-only -z "$marker_base...$tip" > "$_difffile" 2>/dev/null \
+       && git diff --no-renames --name-only -z --end-of-options "$marker_base...$tip" > "$_difffile" 2>/dev/null \
        && [ -s "$_difffile" ]; then
         printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const r of (JSON.parse(s).blockingFiles||[])) process.stdout.write(r.id+"\0"+r.file+"\0");})' > "$_bffile" 2>/dev/null
         _ood=""
@@ -1504,17 +1504,19 @@ fi
 # this branch, at any head: one pass per branch, and a row written late still
 # counts. An `off` row with a reason is the audited opt-out. The scope lives
 # here only; the gate runs from the anchor, so a branch cannot narrow the
-# scope it is judged by. As in 4e, a branch with no `score` row (no panel
-# round ran) or whose first `score` row predates BLAST_GATE_SINCE (or carries
-# no ts) is exempt. Read-only, so it runs under --dry-run too.
+# scope it is judged by. A marker minted before BLAST_GATE_SINCE is exempt,
+# and, as in 4e, so is a branch whose first `score` row predates it (or
+# carries no ts); a branch with no `score` row at all (a Claude-floor-only
+# review) is not. Read-only, so it runs under --dry-run too.
 # ponytail: the row is self-attested, the same trust as `preflight`. Upgrade
 # path: run the pass as a context-free headless reviewer with a provenance
 # artifact, as claude-floor-review.sh does.
 if [ "$marker_lane" = "full" ]; then
     blast_verdict="error"
     _blastdiff="$(mktemp "${TMPDIR:-/tmp}/blast-diff.XXXXXX" 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
-    if [ -n "$_blastdiff" ] && git diff --no-renames --name-only -z "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
-        blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" node -e '
+    if [ -n "$_blastdiff" ] && git diff --no-renames --name-only -z --end-of-options "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
+        _marker_ts=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1; exit}' "$marker" 2>/dev/null || true) # swallow-ok: an empty ts parses as NaN and earns no exemption (fail-closed)
+        blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" MARKER_TS="$_marker_ts" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" node -e '
           const fs = require("fs"), e = process.env;
           const scope = [/^scripts\/hooks\//, /^scripts\/ci\/check-/, /^scripts\/cr\/clear-(cr|review)-marker\.sh$/,
                          /^scripts\/testing\/check-/, /^scripts\/handover\/console-kit\/ready-check\.sh$/];
@@ -1529,9 +1531,10 @@ if [ "$marker_lane" = "full" ]; then
               if (!r || r.branch !== e.BRANCH) continue;
               if (r.kind === "score") { const t = Date.parse(r.ts); firstScore = Math.min(firstScore, Number.isNaN(t) ? -Infinity : t); }
               else if (r.kind === "blast" && r.status === "ran") ran = true;
-              else if (r.kind === "blast" && r.status === "off" && String(r.reason || "").trim()) offReason = String(r.reason).replace(/\s+/g, " ").trim();
+              else if (r.kind === "blast" && r.status === "off" && String(r.reason || "").trim()) offReason = String(r.reason).replace(/\s+/g, " ").replace(/=/g, ":").trim();
           }
-          console.log(!touched || ran || firstScore === Infinity || firstScore < Date.parse(e.BLAST_GATE_SINCE) ? "ok"
+          const since = Date.parse(e.BLAST_GATE_SINCE);
+          console.log(!touched || ran || Date.parse(e.MARKER_TS) < since || firstScore < since ? "ok"
               : offReason ? "off " + offReason : "missing");' 2>/dev/null || echo "error")
     fi
     rm -f "$_blastdiff"

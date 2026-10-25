@@ -157,17 +157,17 @@ make_repo() {
     sha="$TEMPLATE_SHA"
 }
 
-# write_marker <tmp> <sha> [lane] [endpoint] [base]
+# write_marker <tmp> <sha> [lane] [endpoint] [base] [ts]
 # 7-field format (identity contract): endpoint defaults to the
 # repo-relative URL of make_repo's real test-origin bare (clear-cr-marker runs
 # with cwd=$tmp, so ls-remote resolves it); base defaults to the repo's main.
 write_marker() {
-    local tmp="$1" sha="$2" lane="${3:-full}" endpoint="${4:-.git/test-origin.git}" base="${5:-}"
+    local tmp="$1" sha="$2" lane="${3:-full}" endpoint="${4:-.git/test-origin.git}" base="${5:-}" ts="${6:-2026-07-16T10:00:00+02:00}"
     if [ -z "$base" ]; then
         base=$(git -C "$tmp" rev-parse --verify refs/heads/main 2>/dev/null || echo deadbeef)
     fi
     mkdir -p "$tmp/.git/cr-pending/feat"
-    printf '2026-07-16T10:00:00+02:00 | %s | %s | origin | refs/heads/feat/x | %s | %s\n' "$sha" "$lane" "$endpoint" "$base" > "$tmp/.git/cr-pending/feat/x"
+    printf '%s | %s | %s | origin | refs/heads/feat/x | %s | %s\n' "$ts" "$sha" "$lane" "$endpoint" "$base" > "$tmp/.git/cr-pending/feat/x"
 }
 
 # write_ledger <tmp> <jsonl-lines...>
@@ -1100,13 +1100,15 @@ guard_tip() {
         && sha=$(git -C "$1" rev-parse --verify HEAD)
 }
 # blast_case <path> <lane> <first-score-ts> <ledger-extra...> — a fixture
-# whose tip changes <path>, with an avail-ok row, a preflight row before the
-# first score row, and the extra rows given.
+# whose tip changes <path>, with a marker minted after the blast gate, an
+# avail-ok row, a preflight row before the first score row, and the extra
+# rows given.
+_bl_ts=2026-11-01T10:00:00+00:00
 blast_case() {
     local path="$1" lane="$2" score_ts="$3"; shift 3
     make_repo || exit 1
     guard_tip "$tmp" "$path" || { fail "guard_tip $path"; return 1; }
-    write_marker "$tmp" "$sha" "$lane"
+    write_marker "$tmp" "$sha" "$lane" "" "" "$_bl_ts"
     write_ledger "$tmp" "$(_pf_row 2026-09-01T09:00:00Z "$sha")" "$(_pf_score "$score_ts" "$sha")" "$(avail_ok "${sha:0:8}")" "$@"
     stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 }
@@ -1151,7 +1153,7 @@ if ! { mkdir -p "$tmp/docs" && git -C "$tmp" mv scripts/hooks/guard-x.sh docs/gu
     fail "rename fixture"
 fi
 sha=$(git -C "$tmp" rev-parse --verify HEAD)
-write_marker "$tmp" "$sha" full "" "$_bl_base"
+write_marker "$tmp" "$sha" full "" "$_bl_base" "$_bl_ts"
 write_ledger "$tmp" "$(_pf_row 2026-09-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "guard file renamed out of scope, no blast row → exit 14"
@@ -1166,11 +1168,29 @@ blast_case scripts/hooks/guard-x.sh full 2026-10-01T10:00:00Z
 run_clear "$tmp" 0 "first score row predates the blast gate → exit 0"
 rm -rf "$tmp"
 
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z
+write_marker "$tmp" "$sha" full "" "" 2026-10-01T10:00:00+00:00
+run_clear "$tmp" 0 "marker minted before the blast gate → exit 0"
+rm -rf "$tmp"
+
 make_repo || exit 1
 guard_tip "$tmp" scripts/hooks/guard-x.sh || fail "guard_tip scripts/hooks/guard-x.sh"
-write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+write_marker "$tmp" "$sha" full "" "" "$_bl_ts"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "guard diff on a branch with no score row (no panel round) → exit 0"
+run_clear "$tmp" 14 "guard diff on a branch with no score row (Claude floor only) → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=missing-blast-radius'; then pass; else fail "a floor-only guard diff must refuse for the blast row: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# A marker base that looks like a git option is a revision, never an option.
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z
+write_marker "$tmp" "$sha" full "" "--output=$tmp/owned" "$_bl_ts"
+run_clear "$tmp" 14 "marker base shaped like a git option → exit 14"
+if [ -z "$(find "$tmp" -maxdepth 1 -name 'owned*' -print -quit)" ]; then pass; else fail "a marker base must never be read as a git diff option"; fi
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 off 'rename only via=forged')"
+run_clear "$tmp" 0 "off row whose reason carries a key=value → exit 0"
+if grepq "$(cat "$tmp/.git/clear-cr-marker.log" 2>/dev/null)" -F 'via=forged'; then fail "an off reason must not add a field to the CLEARED audit line"; else pass; fi
 rm -rf "$tmp"
 
 # 4b. Empty ledger → no evidence /pr-check ever ran → refuse.
