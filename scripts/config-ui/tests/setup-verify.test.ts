@@ -124,6 +124,21 @@ test("a doctor that outlives the timeout answers a timeout, not a report", async
   expect(j.findings).toBeUndefined();
 });
 
+test("a doctor that dies after some rows is an error, never a green summary", async () => {
+  const j = JSON.parse((await boot({ STUB_CRASH: "1" }).verify()).text);
+  expect(j.state).toBe("error");
+  expect(j.error).toMatch(/did not finish its report/);
+  expect(j.ok).toBeUndefined();
+});
+
+test("an exit code that contradicts the rows is an error", async () => {
+  // a FAIL row with exit 0, and exit 3 (the doctor only ever exits 0 or 1)
+  for (const rc of ["0", "3"]) {
+    const j = JSON.parse((await boot({ STUB_RC: rc }).verify()).text);
+    expect([rc, j.state]).toEqual([rc, "error"]);
+  }
+});
+
 test("only a same-origin POST runs it", async () => {
   const { verify } = boot();
   expect((await verify("GET")).status).toBe(405);
