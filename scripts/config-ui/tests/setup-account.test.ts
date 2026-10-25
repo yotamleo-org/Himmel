@@ -2,9 +2,11 @@
 // The password is made at run time and must reach no answer, audit line or page markup.
 import { test, expect, afterEach } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { acquireLock } from "../lock";
+import { LOGIN_EXISTS, writeLogin } from "../login";
 import { startServer } from "../server";
 // @ts-ignore plain browser ES module, no types
 import { renderSetup } from "../public/setup.js";
@@ -35,8 +37,14 @@ function boot(extra: { noIdle?: boolean } = {}) {
     body: JSON.stringify(body),
   });
   const state = async () => (await (await fetch(base + "/api/setup", { headers: { "x-himmel-token": TOKEN } })).json()) as Record<string, any>;
-  return { loginFile, audit, post, state };
+  return { home, loginFile, audit, post, state };
 }
+
+// what a refusal must leave as it was: the entry itself (a link is not followed) and what it points at.
+const snapshot = (p: string) => {
+  const l = lstatSync(p);
+  return { link: l.isSymbolicLink() ? readlinkSync(p) : null, mode: l.mode, body: l.isSymbolicLink() ? null : readFileSync(p, "utf8") };
+};
 
 test("a fresh install creates the login once: mode 600, no password in the answer or the audit, and it logs in", async () => {
   const b = boot();
@@ -64,6 +72,58 @@ test("a login that exists is never replaced from the page", async () => {
   expect(r.status).toBe(409);
   expect(await r.text()).not.toContain(pw);
   expect(readFileSync(b.loginFile, "utf8")).toBe(before);
+});
+
+test("a login file that cannot be read (a symlink, mode 644, malformed) is refused as it is and never replaced", async () => {
+  const valid = JSON.stringify({ user: "op", salt: "ab".repeat(16), hash: "cd".repeat(64) }) + "\n";
+  const cases: [string, (p: string, dir: string) => void][] = [
+    ["a symlink", (p, dir) => { const t = join(dir, "elsewhere"); writeFileSync(t, valid, { mode: 0o600 }); symlinkSync(t, p); }],
+    ["mode 644", (p) => { writeFileSync(p, valid); chmodSync(p, 0o644); }],
+    ["malformed", (p) => { writeFileSync(p, "not a login\n", { mode: 0o600 }); }],
+  ];
+  for (const [label, plant] of cases) {
+    const b = boot();
+    mkdirSync(dirname(b.loginFile), { recursive: true });
+    plant(b.loginFile, b.home);
+    const before = snapshot(b.loginFile);
+    const target = before.link ? readFileSync(before.link, "utf8") : null;
+    expect([label, (await b.state()).account]).toMatchObject([label, { status: "unreadable", create: "terminal" }]);
+    const pw = canary();
+    const r = await b.post("/api/setup/account", { user: "intruder", password: pw });
+    const text = await r.text();
+    expect([label, r.status]).toEqual([label, 409]);
+    expect([label, JSON.parse(text).error]).toEqual([label, expect.stringContaining("the login file cannot be read")]);
+    expect(text).not.toContain(pw);
+    expect([label, snapshot(b.loginFile)]).toEqual([label, before]);
+    if (before.link) expect(readFileSync(before.link, "utf8")).toBe(target!);
+    expect(readdirSync(dirname(b.loginFile)).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  }
+});
+
+test("a create-only write never replaces a login that appeared after the check", () => {
+  const dir = mkdtempSync(join(tmpdir(), "login-create-only-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const p = join(dir, "ui-login");
+  writeLogin(p, "op", canary());
+  const before = readFileSync(p, "utf8");
+  expect(() => writeLogin(p, "intruder", canary(), { createOnly: true })).toThrow(LOGIN_EXISTS);
+  expect(readFileSync(p, "utf8")).toBe(before);
+  expect(readdirSync(dir)).toEqual(["ui-login"]);
+});
+
+test("a create while another write holds the lock answers busy and writes nothing", async () => {
+  const b = boot();
+  const held = acquireLock(join(b.home, ".himmel", "state", "config-ui", "write.lock"));
+  if ("busy" in held) throw new Error(held.busy);
+  try {
+    const pw = canary();
+    const r = await b.post("/api/setup/account", { user: "op", password: pw });
+    const text = await r.text();
+    expect(r.status).toBe(409);
+    expect(JSON.parse(text).error).toContain("another action is running");
+    expect(text).not.toContain(pw);
+    expect(existsSync(b.loginFile)).toBe(false);
+  } finally { held.release(); }
 });
 
 test("a service-mode server refuses, so its long-lived token cannot buy a login", async () => {

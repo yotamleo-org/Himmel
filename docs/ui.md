@@ -42,7 +42,9 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 The Setup page starts with an Account step. On a fresh install it creates the login the always-on UI asks
 for: a user name and a password of at least 8 characters, kept only as a hash. It does this once, from an
 ad-hoc `himmelctl ui` or the UI `himmelctl install` starts. The always-on service cannot create it, and a
-login that is already set changes only with `--set-login` in your own terminal.
+login that is already set changes only with `--set-login` in your own terminal. A login file the page
+cannot read (a symlink, not mode 600, or malformed) is left as it is, and the page sends you to
+`--set-login` too.
 
 The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
 secret store only and is never shown, logged or returned). The always-on service saves one only after

@@ -4,7 +4,7 @@
 import { execFile, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { readLogin, writeLogin } from "./login";
+import { LOGIN_EXISTS, readLogin, writeLogin } from "./login";
 import * as store from "../himmelctl/lib/secret-store.js";
 import { readConfLayers } from "./conf-layers";
 import manifest from "../himmelctl/lib/secrets-manifest.json";
@@ -102,11 +102,14 @@ export function accountCreate(b: Record<string, unknown>, o: AccountOpts): Secre
   if (o.serviceMode) return fail(403, `service mode: set the login with \`${SET_LOGIN}\` from your own terminal`);
   if (typeof b.user !== "string" || typeof b.password !== "string") return fail(400, "user and password required");
   const a = account(o);
-  if (a.status !== "not-set") return fail(409, `a login is already set; change it with \`${SET_LOGIN}\``);
-  try { writeLogin(o.loginPath, b.user, b.password); }
+  const exists = fail(409, `${LOGIN_EXISTS}; change it with \`${SET_LOGIN}\``);
+  if (a.status === "unreadable") return fail(409, `the login file cannot be read; set the login again with \`${SET_LOGIN}\``);
+  if (a.status !== "not-set") return exists;
+  try { writeLogin(o.loginPath, b.user, b.password, { createOnly: true }); }
   catch (err) {
     const msg = (err as Error).message;
     if (/^the (user name|password) must/.test(msg)) return fail(400, msg);
+    if (msg === LOGIN_EXISTS) return exists;
     return { status: 500, body: { error: "internal error" }, audit: { action: "login.create", target: "ui-login", ok: false } };
   }
   return { status: 200, body: { status: "set", user: b.user }, audit: { action: "login.create", target: "ui-login", ok: true } };
