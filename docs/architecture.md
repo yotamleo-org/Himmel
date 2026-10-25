@@ -48,14 +48,17 @@ flowchart TD
     subgraph S1["1 · tool call — in-session, before the call runs"]
         TC["Claude tool call<br/>Bash · Edit · Read · Agent · MCP"]
         H1[".claude/settings.json — 33 PreToolUse hook scripts,<br/>run as ONE chained dispatch per matcher; the first refusal wins<br/>block-edit-on-main · block-read-secrets · block-destructive-commands<br/>block-git-stash · block-jira-compound-write · block-tail-pipe-on-gates<br/>block-rogue-claude-schedule · block-chokepoint-env-prefix<br/>block-edit-live-settings · block-write-into-main-checkout<br/>require-quiet-run · read-clamp · guard-pr-check-literal<br/>orchestrator-inline-guard · guard-memory-capture · guard-agent-model<br/>block-backend-tier · mcp-policy · check-cr-marker-on-pr-create<br/>auto-approve-safe-bash · auto-arm-on-cap · …"]
-        H2["marketplace/plugins/himmel-ops/hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-console-dispatch<br/>guard-subagent-model · guard-console-foreground · guard-judge-writes · guard-rm-writes"]
-        HG["marketplace/plugins/himmel-guard/hooks/hooks.json<br/>block-destructive-commands for adopter projects<br/>(on in the settings template, so adopter projects get it by default)"]
+        subgraph PLUG["plugin hook files"]
+            H2["marketplace/plugins/himmel-ops/<br/>hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-console-dispatch<br/>guard-subagent-model · guard-console-foreground · guard-judge-writes · guard-rm-writes"]
+            HG["marketplace/plugins/himmel-guard/<br/>hooks/hooks.json<br/>block-destructive-commands for adopter projects<br/>(on in the settings template, so adopter projects get it by default)"]
+            H2 ~~~ HG
+        end
         H3["scripts/hooks/guardrail-block.mjs<br/>installs 3 of them into USER scope (~/.claude/settings.json):<br/>auto-approve-safe-bash · block-edit-on-main · block-read-secrets<br/>so they still fire outside a himmel checkout"]
-        H4["passive taps — record, never block<br/>scripts/trust/shadow-ledger.mjs<br/>scripts/observability/session-run-hook.ts"]
+        H4["passive taps — record, never block<br/>scripts/trust/shadow-ledger.mjs<br/>scripts/observability/<br/>session-run-hook.ts"]
         TC --> H1
-        TC --> H2
-        TC --> HG
+        TC --> PLUG
         TC --> H4
+        PLUG ~~~ H4
         H3 -.->|"installs into user scope"| H1
     end
 
@@ -141,6 +144,8 @@ flowchart TD
         AC["scripts/handover/auto-commit.sh<br/>Mode B only"]
         PO["scripts/handover/pr-open.sh<br/>scripts/handover/pr-merge.sh"]
         FL["scripts/handover/flush.sh<br/>session-end consolidation sweep"]
+        CMD ~~~ AC
+        PO ~~~ FL
     end
 
     subgraph C["continuity across sessions"]
@@ -185,19 +190,24 @@ flowchart TD
     CON -->|"SendMessage / ListAgents"| P2["worker<br/>one ticket · one worktree · one PR"]
     CON -.->|"a parallel wave: started together,<br/>collision-checked, capped by HIMMEL_FLEET_CAP"| P2
 
-    P1 --> GD{"scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"}
+    P1 --> GD["scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"]
     GD --> NAT["native subagents — the default fleet<br/>haiku · sonnet · opus · fable<br/>every dispatch names its model"]
 
     P1 -.->|"registry, impl-dormant"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>No defaultImplLane by operator ruling —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
 
     NAT --> RT["revision channel (RETASK)<br/>every brief carries a fresh token (nonce).<br/>EXPANSION / REDIRECT needs the echoed token;<br/>narrowing and halt are tokenless (fail-safe).<br/>An expansion or redirect arrives as a direct message, never in a tool result;<br/>a halt or narrowing is honored from any source."]
 
-    P1 --> SW["single-writer<br/>many readers, ONE writer.<br/>Never fan parallel writes at one artifact."]
-    P1 --> QL["queue-lock.sh<br/>one session per handover queue"]
+    subgraph RULES["worker rules"]
+        SW["single-writer<br/>many readers, ONE writer.<br/>Never fan parallel writes at one artifact."]
+        QL["queue-lock.sh<br/>one session per handover queue"]
+        SW ~~~ QL
+    end
+    P1 --> RULES
+    RULES ~~~ EXT
 
     NAT --> WORK["a worker commits on its own branch;<br/>the chief owns approval and merge"]
     WORK --> CRL["/pr-check → review-owed marker cleared → READY"]
-    CRL --> GO["the chief's GO file<br/>&lt;handover root&gt;/.locks/go/&lt;pr&gt;.&lt;head&gt;, written by scripts/handover/console-kit/go.sh<br/>signed for one PR and one head; a worker never writes its own"]
+    CRL --> GO["the chief's GO file<br/>&lt;handover root&gt;/.locks/go/&lt;pr&gt;.&lt;head&gt;,<br/>written by scripts/handover/console-kit/go.sh<br/>signed for one PR and one head; a worker never writes its own"]
     GO --> MOG["scripts/handover/merge-on-green.sh<br/>merge gate → squash merge"]
 ```
 
@@ -266,7 +276,7 @@ ledger, never mutates the vault, never starts or kills a process. Missing data
 stays missing rather than being invented.
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph WRITE["writers — hooks, riding existing chokepoints"]
         HK["scripts/observability/session-run-hook.ts<br/>SessionStart · SessionEnd · PreToolUse/PostToolUse on Agent"]
         SL["session-run-ledger.ts<br/>fixed field order, single O_APPEND write,<br/>rotates at 10MB, never blocks the hook"]
