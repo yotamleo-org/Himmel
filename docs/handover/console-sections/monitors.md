@@ -20,12 +20,14 @@ partial-line-only inboxes are omitted. Reading the snapshot never advances a
 cursor.
 
 All fields read by `console-wait.sh` or `board.mjs` retain their values and
-order, even at defaults: `legs`, `livestate`, `prs`, `tails`, `legset`, `board`,
-`tracker`, `vault`, `cloud`, `orphans-wip`, `vmrun`, `denials`, `bank`, `fleet`,
-`gql`, `capacity` and `unowned-prs`, plus the existing conditional `parked`,
-`closable` and `deadwin` alerts. In particular, `capacity=ok`,
+order, even at defaults: `workers`, `livestate`, `prs`, `tails`, `workerset`,
+`board`, `tracker`, `vault`, `cloud`, `orphans-wip`, `vmrun`, `denials`, `usage`,
+`fleet`, `gql`, `capacity` and `unowned-prs`, plus the existing conditional
+`parked`, `closable` and `deadwin` alerts. In particular, `capacity=ok`,
 `unowned-prs=none` and non-stale `tracker=` must stay present to clear the
-waiter's persisted streaks. The compact format needs no reader change.
+waiter's persisted streaks. From an older tick.sh, `console-wait.sh` also
+reads the old names `legs`, `legset` and `bank`, and `board.mjs` reads `legs`
+and `bank`.
 
 `holds=<label>:<age>m[,...]` is conditional too, and `console-wait.sh` reads it: a
 worker whose newest marker is `BLOCKED` (or a `FINDING` that awaits a ruling) and whose
