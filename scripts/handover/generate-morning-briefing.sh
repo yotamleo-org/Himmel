@@ -476,10 +476,10 @@ EOF
     printf '## 💸 What it spent\n\n'
     printf -- '- Claude usage of the shift: not available (the generator reads no usage input)\n'
     case "$llm_status" in
-        ok)         printf -- '- This report: one bounded %s turn (--llm)\n\n' "$LLM_MODEL" ;;
-        failed)     printf -- '- This report: one %s turn (--llm) failed; heuristic used\n\n' "$LLM_MODEL" ;;
-        unresolved) printf -- '- This report: no Claude turn (--llm plugin profile did not resolve)\n\n' ;;
-        *)          printf -- '- This report: no Claude usage (default run)\n\n' ;;
+        (ok)         printf -- '- This report: one bounded %s turn (--llm)\n\n' "$LLM_MODEL" ;;
+        (failed)     printf -- '- This report: one %s turn (--llm) failed; heuristic used\n\n' "$LLM_MODEL" ;;
+        (unresolved) printf -- '- This report: no Claude turn (--llm plugin profile did not resolve)\n\n' ;;
+        (*)          printf -- '- This report: no Claude usage (default run)\n\n' ;;
     esac
     printf '## ▶️ What runs next\n\n'
     if [ "$jira_ok" -eq 1 ]; then
