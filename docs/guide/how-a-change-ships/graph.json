@@ -1,12 +1,12 @@
 {
   "version": 1,
   "about": "The delivery graph on docs/guide/how-a-change-ships.html: Level 1 nodes and edges, each node's reach, its loop (Level 2) and the chains of checks that decide each move (Level 3). Every check cites the file and string it stands for; scripts/docs/test-how-a-change-ships.sh keeps the citations, the reach tags and the page in step with the tree.",
-  "cited_at": "9b3f96e9dc3445be18a262ae4d9f2a48c8ebceab",
+  "cited_at": "85b0d77e7b8dc2bbd2f75a6716acfacbdf8de709",
   "reach_kinds": {
     "project": "a starter install copies it into your project (scripts/adopt.sh PORTABLE_FILES)",
     "clone": "it runs from your himmel clone; a starter install does not copy it",
     "plugin": "a plugin the starter install turns on",
-    "human": "a person approves before anything moves on"
+    "human": "you, or the chief's GO; a judge only on trust paths"
   },
   "inputs": [
     {
@@ -218,7 +218,7 @@
             {
               "k": "ok",
               "q": "Otherwise",
-              "by": "from `origin/main`, or your local `main` when there is no remote",
+              "by": "from `origin/<default branch>`, or your local default branch when there is no remote",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow"
@@ -278,7 +278,7 @@
             },
             {
               "k": "ticket",
-              "q": "Does it name a ticket, such as `#1` or a Jira key like `ABC-123`?",
+              "q": "Does it name a ticket in your tracker's form: `#1` by default, or your Jira key such as `ABC-123`?",
               "by": "`check-commit-msg.sh`",
               "outcome": {
                 "kind": "refuse",
@@ -502,7 +502,7 @@
             },
             {
               "k": "platforms",
-              "q": "Script changes with no `Platforms tested:` line in a commit?",
+              "q": "Script changes with no `Platforms tested:` line in a commit or the PR body?",
               "by": "`check-platforms-tested.sh`",
               "outcome": {
                 "kind": "refuse",
@@ -521,7 +521,7 @@
             },
             {
               "k": "security",
-              "q": "Code changes with no `Security reviewed:` line in a commit?",
+              "q": "Code changes with no `Security reviewed:` line in a commit or the PR body?",
               "by": "`check-security-reviewed.sh`",
               "outcome": {
                 "kind": "refuse",
@@ -638,6 +638,21 @@
               }
             },
             {
+              "k": "wait",
+              "q": "Cannot tell yet? (exit 2)",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "ask",
+                "text": "Wait"
+              },
+              "next": "Run `check-ci.sh` again, or repair the read.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 101,
+                "text": "2 — cannot evaluate: no PR found / no checks registered"
+              }
+            },
+            {
               "k": "green",
               "q": "Green and resolved (exit 0)",
               "by": "`check-ci.sh`",
@@ -719,8 +734,8 @@
               "next": "One diff-only round is left, and it blocks only on critical findings. A fourth full round is refused.",
               "source": {
                 "file": "scripts/cr/review-round.sh",
-                "line": 6,
-                "text": "A 4th full round and a second delta are refused."
+                "line": 1038,
+                "text": "a 4th full round is refused"
               }
             },
             {
@@ -777,7 +792,7 @@
                 "kind": "allow",
                 "text": "Allow"
               },
-              "next": "The pull request opens. In a starter install it opens as it always did.",
+              "next": "The pull request opens. In a starter install this check is not installed, so it always opens.",
               "end": true
             }
           ],
@@ -808,12 +823,12 @@
         36,
         46
       ],
-      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and every review thread. Any `gh pr merge` Claude tries goes through it.",
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; a read that fails lets the merge through with a warning.",
       "loop": [
         "Claude asks to merge",
-        "The gate reads CI, the reviewers and threads",
+        "The gate reads CI, the reviewers and CodeRabbit's threads",
         "Any no: back to that step",
-        "All yes: on to your approval"
+        "All yes: on to approval"
       ],
       "chains": [
         {
@@ -851,7 +866,7 @@
             },
             {
               "k": "ci",
-              "q": "CI not green on this commit?",
+              "q": "A check failed or still running on this commit?",
               "by": "`ci-green-gate.sh`",
               "outcome": {
                 "kind": "refuse",
@@ -872,7 +887,7 @@
                 "kind": "allow",
                 "text": "Allow"
               },
-              "next": "On to your approval; the merge runs once it is given, pinned to the checked commit.",
+              "next": "On to approval; the merge runs once it is given, pinned to the checked commit.",
               "end": true
             }
           ],
@@ -895,11 +910,11 @@
     },
     {
       "id": "approve",
-      "label": "Your approval",
-      "sub": "human in the loop",
+      "label": "Approval",
+      "sub": "you, or the chief",
       "reach": {
         "kind": "human",
-        "text": "human in the loop"
+        "text": "approval: you, or the chief in a fleet"
       },
       "box": [
         628,
@@ -907,7 +922,7 @@
         164,
         52
       ],
-      "what": "Working alone, you approve the pull request. In a fleet, the worker reports READY and waits; the chief checks it and writes a signed approval for that one commit. A change to the guards themselves also needs a separate judge.",
+      "what": "Working alone, you decide when to merge: himmel does not require a GO for your own merges. In a fleet, the worker reports READY and waits; the chief, itself a Claude session, checks it and writes a signed approval, the GO, for that one commit. A judge is added only when the change touches a trust path such as a guard, a gate or CI.",
       "loop": [
         "READY, and wait",
         "The ready-check",
@@ -1047,7 +1062,7 @@
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Only the change the chief approves as the fix for main goes through.",
+              "next": "Only a change that declares itself the fix goes through: a `Fixes-main-red:` line in a commit, or the chief's fix approval.",
               "source": {
                 "file": "scripts/handover/merge-on-green.sh",
                 "line": 1202,
@@ -1097,7 +1112,7 @@
         146,
         52
       ],
-      "what": "The merge is a squash pinned to the commit that was checked. `/handover` writes what was done and what is next, so the next session, or the next shift of the chief, starts where this one stopped.",
+      "what": "The merge is pinned to the commit that was checked; `merge-on-green.sh` squashes it. `/handover` writes what was done and what is next, so the next session, or the next shift of the chief, starts where this one stopped.",
       "loop": [
         "Merge the checked commit",
         "Write the handover",
