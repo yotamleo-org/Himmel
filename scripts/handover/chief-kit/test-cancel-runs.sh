@@ -5,7 +5,7 @@
 # adds 5 protected runs (main, push, schedule, workflow_dispatch, a tag).
 # Runs happen inside a throwaway repo whose origin is o/r. bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-cancel-runs.sh
+# Run: bash scripts/handover/chief-kit/test-cancel-runs.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CR="${CANCEL_RUNS:-$HERE/cancel-runs.sh}"
@@ -217,10 +217,10 @@ check "the relay refusal cancels nothing" "" "$(cancelled)"
 has "the relay refusal names HIMMEL_CONSOLE_RELAY" "HIMMEL_CONSOLE_RELAY" "$out"
 
 # the leg check fails closed: a tree without scripts/lib/go-gate.sh refuses
-mkdir -p "$WORK/k/scripts/handover/console-kit" "$WORK/k/scripts/lib"
-cp "$CR" "$WORK/k/scripts/handover/console-kit/cancel-runs.sh"
+mkdir -p "$WORK/k/scripts/handover/chief-kit" "$WORK/k/scripts/lib"
+cp "$CR" "$WORK/k/scripts/handover/chief-kit/cancel-runs.sh"
 cp "$HERE/../../lib/git-clean.sh" "$WORK/k/scripts/lib/git-clean.sh"
-out="$(T_CR="$WORK/k/scripts/handover/console-kit/cancel-runs.sh" live --keep-pr 3221)"; rc=$?
+out="$(T_CR="$WORK/k/scripts/handover/chief-kit/cancel-runs.sh" live --keep-pr 3221)"; rc=$?
 check "a missing go-gate.sh refuses (fail closed), exit 1" "1" "$rc"
 check "the missing go-gate.sh cancels nothing" "" "$(cancelled)"
 

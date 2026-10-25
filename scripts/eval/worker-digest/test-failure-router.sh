@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-failure-router.sh - hermetic suite for the failure router (P5).
+# scripts/eval/worker-digest/test-failure-router.sh - hermetic suite for the failure router (P5).
 # Scratch state, log, inbox and a stub Jira only; never ~/.himmel, never a real Jira write. No model call.
 # The spec 7 row P5 proof, end to end over a fixture ledger:
 #  a. denied/guard-pr-check-literal with identical retry in 2 distinct legs files exactly ONE ticket,
@@ -98,7 +98,7 @@ row() {
   local id=main; [ "$role" = leg ] || id="agent-$SEQ"
   jq -nc --arg leg "$leg" --arg cls "$cls" --argjson ir "$ir" --argjson rec "$rec" --arg role "$role" --arg id "$id" \
     --arg ts "$ts" --arg fr "$fr" --arg sid "$(printf '4670c1a5-0000-4000-8000-%012d' "$SEQ")" --arg c "$CANARY" '
-    {v:1, ts:$ts, host:"h", source:"scripts/eval/leg-digest/leg_ledger.py", kind:"leg-failure", session:$sid,
+    {v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/leg_ledger.py", kind:"leg-failure", session:$sid,
      leg:(if $leg == "null" then null else $leg end), console:$c, ticket:"HIMMEL-4670", pr:1990,
      agent:{id:$id, role:$role, kind:$c, model:"claude-opus-5-5"}, class:$cls, failure:($cls | split("/")[0]),
      count:2, identical_retry:$ir, recovered:$rec, first_ts:1, last_ts:2, tool_call_ids:[$c]}
@@ -174,7 +174,7 @@ check "and it still writes no second inbox candidate" '[ "$(grep -c "^- " "$INBO
 
 echo "f. every decision has exactly one decision-log line"
 check "the log is 8 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 8 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed capped commented filed " ]'
-check "every line is the standard envelope plus {class,legs,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"legs\",\"source\",\"ticket\",\"ts\",\"v\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/leg-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
+check "every line is the standard envelope plus {class,legs,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"legs\",\"source\",\"ticket\",\"ts\",\"v\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/worker-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
 check "every route-intent line is the standard envelope plus {class,legs,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"legs\",\"source\",\"ts\",\"v\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
 
 echo "dry-run writes nothing and calls no Jira"
@@ -443,7 +443,7 @@ check "a malformed --notify-cmd exits 0, still files, and names the failed notif
 
 echo "a class seen in over a thousand legs still files"
 F18="$TMP/f18"; mkdir -p "$F18"
-jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z", host:"h", source:"scripts/eval/leg-digest/leg_ledger.py", kind:"leg-failure",
+jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z", host:"h", source:"scripts/eval/worker-digest/leg_ledger.py", kind:"leg-failure",
   session:("4670c1a5-0000-4000-8000-" + ($i | tostring | ("000000000000" + .)[-12:])), leg:("N" + ($i | tostring)), console:$c, ticket:"HIMMEL-4670", pr:1990,
   agent:{id:"main", role:"leg", kind:$c, model:"claude-opus-5-5"}, class:"denied/guard-wide", failure:"denied", count:2, identical_retry:1,
   recovered:false, first_ts:1, last_ts:2, tool_call_ids:[$c]}' >"$F18/l.jsonl"
@@ -454,7 +454,7 @@ check "HIMMEL-7004: the body counts all 1500 legs and lists exactly 500 of them"
 
 echo "HIMMEL-7420: a class whose ticket and PR lists are long still files, with the cut counted"
 F19="$TMP/f19"; mkdir -p "$F19"
-jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z", host:"h", source:"scripts/eval/leg-digest/leg_ledger.py", kind:"leg-failure",
+jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z", host:"h", source:"scripts/eval/worker-digest/leg_ledger.py", kind:"leg-failure",
   session:("4670c1a5-0000-4000-8000-" + ($i | tostring | ("000000000000" + .)[-12:])), leg:("N" + ($i | tostring)), console:$c, ticket:("HIMMEL-" + (10000 + $i | tostring)), pr:(1000 + $i),
   agent:{id:"main", role:"leg", kind:$c, model:"claude-opus-5-5"}, class:"error/Bash", failure:"error", count:2, identical_retry:1,
   recovered:false, first_ts:1, last_ts:2, tool_call_ids:[$c]}' >"$F19/l.jsonl"

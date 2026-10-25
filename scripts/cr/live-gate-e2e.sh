@@ -61,7 +61,7 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 TREE="$(cd "$SELF_DIR/../.." && pwd)"
 # shellcheck source=scripts/lib/prim.sh
 . "$SELF_DIR/../lib/prim.sh" || exit 2
-READY="$TREE/scripts/handover/console-kit/ready-check.sh"
+READY="$TREE/scripts/handover/chief-kit/ready-check.sh"
 WORK="${E2E_WORKDIR:-$TREE/.himmel-scratch/gate-e2e}"
 BRANCH="test/e2e-$(date +%Y%m%d-%H%M%S)"
 FAILS=0

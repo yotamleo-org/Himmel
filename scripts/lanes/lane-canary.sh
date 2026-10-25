@@ -32,7 +32,7 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF_REPO="$(cd "$HERE/../.." && pwd)"
-KIT="$SELF_REPO/scripts/handover/console-kit"
+KIT="$SELF_REPO/scripts/handover/chief-kit"
 
 LANES="native,claudex,openrouter,deepseek"
 TIMEOUT="${CANARY_TIMEOUT:-300}"

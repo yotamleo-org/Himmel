@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/leg-digest/pdd_share.py - the proof-first (PDD) share of merged PRs.
+"""scripts/eval/worker-digest/pdd_share.py - the proof-first (PDD) share of merged PRs.
 
 A PR is proof-first when both hold:
   1. its ticket's DoD and Proof existed before the PR's first commit: the ticket (Jira mirror) has a DoD
@@ -134,7 +134,7 @@ def build(prs, mirror, min_n):
                        ("red_green", sum(b for _, b in rows))):
             m[key + ".pct"], m[key + ".k"], m[key + ".n"] = round(k / n, 4), k, n
             ci[key + ".pct"] = wilson(k, n)
-    return eval_runs.make_row("pdd-share", "scripts/eval/leg-digest/pdd_share.py",
+    return eval_runs.make_row("pdd-share", "scripts/eval/worker-digest/pdd_share.py",
                               {"pdd_v": PDD_SCHEMA, "prs": len(prs), "min_n": min_n}, m, n=n, ci=ci,
                               ci_level=0.95, ci_method="wilson", status="ok" if n >= min_n and "commits_unreadable" not in skipped else "partial",
                               meta={"skipped": skipped, "prs_seen": len(prs),

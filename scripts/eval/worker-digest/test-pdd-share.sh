@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-pdd-share.sh - hermetic suite for the proof-first (PDD) share reader.
+# scripts/eval/worker-digest/test-pdd-share.sh - hermetic suite for the proof-first (PDD) share reader.
 # A fixture Jira mirror and a fixture merged-PR list under fixtures/pdd/; scratch ledger only, never ~/.himmel.
 # No model call, no network, no bank.
 #  1. each PR is judged on its two halves: ticket DoD and Proof before the first commit, RED then GREEN in the body;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-leg-jira-status.sh
-# scripts/handover/console-kit/test-status-drift.sh - Hermetic tests for the
+# scripts/handover/chief-kit/test-status-drift.sh - Hermetic tests for the
 # WORKER comment (2a) and the status sweep (2b). A stubbed Jira
 # CLI (WORKER_SESSION_JIRA_CLI), a stubbed gh on PATH and a stubbed queue lock
 # (TICKET_STATUS_QUEUE_LOCK) read fixture files, so no real ticket, PR or lock

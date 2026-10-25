@@ -6,7 +6,7 @@
 #
 # RUN_SUITE overrides the script under test (the RED control).
 #
-# Run: bash scripts/handover/console-kit/test-run-suite.sh
+# Run: bash scripts/handover/chief-kit/test-run-suite.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RS="${RUN_SUITE:-$HERE/run-suite.sh}"

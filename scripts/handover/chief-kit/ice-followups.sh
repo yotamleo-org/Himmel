@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/ice-followups.sh - HIMMEL keys cited as follow-ups in
+# scripts/handover/chief-kit/ice-followups.sh - HIMMEL keys cited as follow-ups in
 # the last N days of ticket comments that now live in ICE (the icebox project), so a
 # parked follow-up is visible instead of silent. Read-only, over the local Jira mirror.
 #

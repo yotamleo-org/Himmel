@@ -12,7 +12,7 @@
 # Split in two so each half runs well under the 600 s shard watchdog: this file
 # holds the cases up to (y4); test-console-wait-b.sh holds (vmrun) onward.
 #
-# Run: bash scripts/handover/console-kit/test-console-wait.sh
+# Run: bash scripts/handover/chief-kit/test-console-wait.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/console-wait.sh}}"

@@ -14,7 +14,7 @@ dispatch step from `docs/handover/afk-mode.md`.
    Run the build-plan helper with `$ARGUMENTS` forwarded as-is:
 
    ```bash
-   bash scripts/overnight/build-plan.sh $ARGUMENTS
+   bash scripts/afk/build-plan.sh $ARGUMENTS
    ```
 
    Default flags (when arguments are empty):
@@ -50,7 +50,7 @@ dispatch step from `docs/handover/afk-mode.md`.
    ticket:
 
    ```bash
-   if bash scripts/overnight/stop-marker.sh check; then
+   if bash scripts/afk/stop-marker.sh check; then
        echo "stop marker set — halting before any dispatch"
        exit 0
    fi
@@ -104,7 +104,7 @@ dispatch step from `docs/handover/afk-mode.md`.
    ticket list in order, issuing exactly one `Agent` call per iteration:
 
    ```bash
-   if bash scripts/overnight/stop-marker.sh check; then
+   if bash scripts/afk/stop-marker.sh check; then
        echo "stop marker set — halting before next dispatch: <KEY> and <N remaining> not started"
        exit 0
    fi
@@ -165,7 +165,7 @@ dispatch step from `docs/handover/afk-mode.md`.
       (reported, never auto-fixed — fail-safe):
 
       ```bash
-      bash scripts/overnight/self-heal.sh classify \
+      bash scripts/afk/self-heal.sh classify \
         --rows-in /tmp/overnight-ledger.tsv \
         --rows-out /tmp/overnight-rows.tsv \
         --dispatch-out /tmp/overnight-fix-plan.tsv
@@ -176,7 +176,7 @@ dispatch step from `docs/handover/afk-mode.md`.
       step 4 — HIMMEL-2724 lead 4):
 
       ```bash
-      if bash scripts/overnight/stop-marker.sh check; then
+      if bash scripts/afk/stop-marker.sh check; then
           echo "stop marker set — halting before next fix dispatch: <KEY> and remaining rows not started"
           break
       fi
@@ -197,7 +197,7 @@ dispatch step from `docs/handover/afk-mode.md`.
       (bounded — one auto-fix attempt, never a loop):
 
       ```bash
-      bash scripts/overnight/self-heal.sh reconcile \
+      bash scripts/afk/self-heal.sh reconcile \
         --plan /tmp/overnight-fix-plan.tsv \
         --fixed /tmp/overnight-fixed.tsv \
         --rows-in /tmp/overnight-rows.tsv \
@@ -252,9 +252,9 @@ dispatch step from `docs/handover/afk-mode.md`.
 
    ```bash
    # mechanical failures were dispatched + reconciled (step 5d ran):
-   bash scripts/overnight/morning-report.sh --rows /tmp/overnight-final.tsv
+   bash scripts/afk/morning-report.sh --rows /tmp/overnight-final.tsv
    # OR — no mechanical failures (steps 5c/5d skipped):
-   bash scripts/overnight/morning-report.sh --rows /tmp/overnight-rows.tsv
+   bash scripts/afk/morning-report.sh --rows /tmp/overnight-rows.tsv
    ```
 
    The script writes a single artifact (decisions-needed grouped at top,
@@ -311,9 +311,9 @@ dispatch step from `docs/handover/afk-mode.md`.
 ## Smoke test
 
 ```bash
-bash scripts/overnight/test-build-plan.sh
-bash scripts/overnight/test-morning-report.sh
-bash scripts/overnight/test-self-heal.sh
+bash scripts/afk/test-build-plan.sh
+bash scripts/afk/test-morning-report.sh
+bash scripts/afk/test-self-heal.sh
 ```
 
 24/24 + 35/35 + 43/43 pass on Git Bash.

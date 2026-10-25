@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/himmel-gate.sh - run a registered gate or ledger
+# scripts/handover/chief-kit/himmel-gate.sh - run a registered gate or ledger
 # writer by NAME from the HIMMEL_REPO anchor: the single exec path for them.
 #
-#   bash "$HIMMEL_REPO/scripts/handover/console-kit/himmel-gate.sh" <name> [args...]
+#   bash "$HIMMEL_REPO/scripts/handover/chief-kit/himmel-gate.sh" <name> [args...]
 #
 # WHY: the rule the guards enforce is "a gate script runs unmodified and its rc
 # reaches the caller". That is a property of how the script is executed, so
@@ -25,7 +25,7 @@
 # script reviews the caller's tree with the anchor's code and its rc is the
 # caller's rc.
 #
-# A relative entry (`bash scripts/handover/console-kit/himmel-gate.sh`) first
+# A relative entry (`bash scripts/handover/chief-kit/himmel-gate.sh`) first
 # hands off to the anchor's copy of this file through anchor-handoff.sh, like
 # every other gate entry.
 #
@@ -50,7 +50,7 @@ case "$name" in
         known-findings | ledger-append | orphan-check | panel-first-pass | pr-check-context | \
         pr-check-env | review-round | write-verdicts) rel="scripts/cr/$name.sh" ;;
     merge-on-green) rel=scripts/handover/merge-on-green.sh ;;
-    go) rel=scripts/handover/console-kit/go.sh ;;
+    go) rel=scripts/handover/chief-kit/go.sh ;;
     *) echo "himmel-gate: '$name' is not a registered gate" >&2; usage; exit 2 ;;
 esac
 
@@ -83,7 +83,7 @@ if ! (
         go) deps='scripts/lib/go-gate.sh scripts/lib/handover-path.sh' ;;
     esac
     # shellcheck disable=SC2086 # deps is a space-free path list
-    anchor_bytes_match "$repo" "$repo" "$rel" scripts/handover/console-kit/himmel-gate.sh scripts/cr/anchor-handoff.sh $deps
+    anchor_bytes_match "$repo" "$repo" "$rel" scripts/handover/chief-kit/himmel-gate.sh scripts/cr/anchor-handoff.sh $deps
 ); then
     echo "himmel-gate: the anchor's $rel (or this dispatcher, scripts/cr/anchor-handoff.sh, or a file $rel runs or sources) is not main's committed copy, or $repo is not on main - refusing" >&2
     exit 2

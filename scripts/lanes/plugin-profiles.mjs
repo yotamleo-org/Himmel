@@ -35,7 +35,7 @@ const ID_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 // suite basename can absorb a different executed program plus a fake tail.
 // cr-scores.sh (relative form, args vary per call site — see
 // docs/configuration.md, minerva SKILL.md) joins the wildcard-tail group.
-const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/console-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|clear-review-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
+const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/chief-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|clear-review-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
 // The /pr-check external-critic steps that take no arguments (or
 // exactly `--diff`) are exact literals — no `:*` tail, so nothing can be
 // appended to them. Step 0's himmel-lane entry (pr-check-context) hands a
@@ -46,7 +46,7 @@ const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/c
 // (bug-ops.md), so it joins this exact-literal group rather than
 // GATE_SCRIPT_RE's ':*' tail group.
 const GATE_EXACT_RE = /^Bash\(bash scripts\/(?:cr\/(?:(?:doc-freshness-advisory|pr-check-context)\.sh|known-findings\.sh --diff|pr-check-env\.sh CR_CLAUDE_AGENTS)|handover\/resolve-active-item\.sh)\)$/;
-const GATE_SUITE_RE = /^Bash\((?:SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.sh suite -- bash (?:scripts\/(?:handover\/console-kit\/|(?:handover|cr|git|hooks|guardrails|lib|luna|ci)\/)?|templates\/luna-second-brain\/scripts\/)test-\*\.sh\)$/;
+const GATE_SUITE_RE = /^Bash\((?:SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.sh suite -- bash (?:scripts\/(?:handover\/chief-kit\/|(?:handover|cr|git|hooks|guardrails|lib|luna|ci)\/)?|templates\/luna-second-brain\/scripts\/)test-\*\.sh\)$/;
 // The merge-gate ENTRY invocation runs from the $HIMMEL_REPO
 // anchor, not branch-controlled bytes, so it must carry a literal `$` the
 // generic ban below rejects. This is an EXACT-STRING exception for this one

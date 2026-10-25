@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-3. The three risk criteria go into docs/handover/console-sections/judge.md and judge-brief-template.md:
+3. The three risk criteria go into docs/handover/chief-sections/judge.md and judge-brief-template.md:

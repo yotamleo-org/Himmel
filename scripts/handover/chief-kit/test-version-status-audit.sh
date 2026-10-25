@@ -5,7 +5,7 @@
 # (VSA_GH_CMD): no real mirror, Jira or gh is touched. VSA overrides the script
 # under test (the RED control: a missing script fails every row). bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-version-status-audit.sh
+# Run: bash scripts/handover/chief-kit/test-version-status-audit.sh
 set -u
 unset LEGS_FROM
 HERE="$(cd "$(dirname "$0")" && pwd)"

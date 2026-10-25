@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/leg-digest/failure_router.py - the failure router (HIMMEL-4670 P5).
+"""scripts/eval/worker-digest/failure_router.py - the failure router (HIMMEL-4670 P5).
 
 Reads the leg-failures ledger (leg_ledger.py writes it), finds the class keys that
 recur across distinct legs, and routes each through failure-routes.table.json
@@ -66,7 +66,7 @@ import leg_ledger  # noqa: E402
 TABLE = os.path.join(HERE, "failure-routes.table.json")
 PLAYBOOK = os.path.join(HERE, "..", "..", "..", "docs", "internals", "stuck-playbook.md")
 LOG_ENV, STATE_ENV, INBOX_ENV = "HIMMEL_FAILURE_ROUTES_LOG", "HIMMEL_FAILURE_ROUTES_STATE", "HIMMEL_FAILURE_INBOX"
-SOURCE = "scripts/eval/leg-digest/failure_router.py"
+SOURCE = "scripts/eval/worker-digest/failure_router.py"
 NOTIFY_ENV = "FAILURE_ROUTER_NOTIFY_CMD"
 NOTIFY = os.path.join(HERE, "failure-route-notify.sh")
 DONE = ("done", "closed", "resolved", "won't do", "cancelled", "canceled")

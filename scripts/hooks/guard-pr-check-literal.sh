@@ -78,7 +78,7 @@ FULL_GUARDED='scripts/cr scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh'
 GUARDED=$FULL_GUARDED
 
 # the scripts/handover/ gate-writer entries the allow rules also pre-approve
-# as RELATIVE literals (merge-on-green.sh, console-kit/go.sh, himmel-gate.sh,
+# as RELATIVE literals (merge-on-green.sh, chief-kit/go.sh, himmel-gate.sh,
 # write-verdict.sh, console-wait.sh)
 # - outside scripts/cr/, so TARGETS above (and the derived/declared check in
 # the test suite, which is scoped to scripts/cr/ allow rows only) does not
@@ -116,7 +116,7 @@ deny() {
         echo "equals the HIMMEL_REPO anchor's byte for byte and mode for mode (compared raw, so a CRLF"
         echo "checkout differs): scripts/cr/, scripts/guardrails/lib.sh and scripts/lib/load-dotenv.sh"
         echo "for pr-check-context.sh / pr-check-env.sh; the script and scripts/cr/anchor-handoff.sh"
-        echo "for every other target, merge-on-green.sh and console-kit/go.sh included. A scripts/handover/"
+        echo "for every other target, merge-on-green.sh and chief-kit/go.sh included. A scripts/handover/"
         echo "entry the branch never changed may instead equal its merge-base with main's copy."
         echo "If the command only mentions the script (a message, a heredoc), move that text into a file."
         case "$flat" in
@@ -146,17 +146,17 @@ deny() {
             *console-kit/go* | *chief-kit/go*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/console-kit/go.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/go.sh\" <args>"
                 ;;
             *console-kit/write-verdict* | *chief-kit/write-verdict*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/console-kit/write-verdict.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/write-verdict.sh\" <args>"
                 ;;
             *console-kit/console-wait* | *chief-kit/console-wait*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/console-kit/console-wait.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/console-wait.sh\" <args>"
                 ;;
             *)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -748,7 +748,7 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     done
     # same prefix-stem match, keyed on each HTARGET's own
     # immediate parent directory (handover/ for merge-on-green.sh,
-    # console-kit/ for go.sh) rather than a fixed "cr/" marker.
+    # chief-kit/ for go.sh) rather than a fixed "cr/" marker.
     case "$1" in *[hH]andover/merge-on-green*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac

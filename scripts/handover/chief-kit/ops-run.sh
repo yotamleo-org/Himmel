@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/ops-run.sh - run ONE mechanical console-kit script
+# scripts/handover/chief-kit/ops-run.sh - run ONE mechanical chief-kit script
 # for the console and hand back ONE verdict line. The ops lane (the relay role,
 # docs/internals/console-ops-lane.md) runs this instead of the console running
 # the script in the foreground (blocks every leg message) or the background

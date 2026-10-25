@@ -21,6 +21,6 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/merge-on-green.sh, scripts/handover/console-kit/tracker.py and their tests.
+Files: scripts/handover/chief-kit/merge-on-green.sh, scripts/handover/chief-kit/tracker.py and their tests.
 Linked to HIMMEL-6132 (PR 3031). Done there: item 1 (merge-on-green.sh looks up versions with the ticket's own project), item 4 (done-in-future already covered every unreleased version; a guard row now pins it), item 5 (tracker.py whitespace nit). Re-scoped: this ticket stays open for items 2 and 3
 PR #3073 (yotamleo/Himmel) merged @ 93bcc5c0eaf4d975e0e93fc86ddcce3a9f77043a. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

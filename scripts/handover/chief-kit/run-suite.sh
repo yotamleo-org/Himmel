@@ -6,9 +6,9 @@
 # drained. The leg types each call as its own Bash command and follows `next=`.
 #
 # Usage:
-#   bash scripts/handover/console-kit/run-suite.sh --plan   # print the roots, run nothing
-#   bash scripts/handover/console-kit/run-suite.sh          # run the FIRST root
-#   bash scripts/handover/console-kit/run-suite.sh <root>   # run exactly that root
+#   bash scripts/handover/chief-kit/run-suite.sh --plan   # print the roots, run nothing
+#   bash scripts/handover/chief-kit/run-suite.sh          # run the FIRST root
+#   bash scripts/handover/chief-kit/run-suite.sh <root>   # run exactly that root
 #
 # Roots are the first-level directories under scripts/ holding a test-*.sh,
 # in sorted order, then the pseudo-root `top` (the scripts/test-*.sh files at

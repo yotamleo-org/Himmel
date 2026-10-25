@@ -21,7 +21,7 @@ links:
 
 ## Description
 
-Inventory check: for each old name in the docs/glossary.md alias tables, git grep lists the code hits, and the inventory table has one row per hit. Fails today: no table exists. Scope for the slice: docs/glossary.md, scripts/handover/console-kit, scripts/hooks. Each rename family then gets its own a
+Inventory check: for each old name in the docs/glossary.md alias tables, git grep lists the code hits, and the inventory table has one row per hit. Fails today: no table exists. Scope for the slice: docs/glossary.md, scripts/handover/chief-kit, scripts/hooks. Each rename family then gets its own a
 Sizing: Plan-first slice S: the identifier inventory. The rename PRs are not sized until the inventory lands, so the version figure is a floor for this ticket. Open question for the supervisor session: docs/glossary.md says repo identifiers (ids, env vars, file names, flags, command names) are never
 Operator ruling, 2026-10-15 (supervisor session AM): GO. The rename supersedes the docs/glossary.md rule that repo identifiers are never renamed, so this PR removes that rule. Dispatch only when the fleet is quiet, because the rename touches nearly every file.
 Step 1 (inventory) merged: PR #2726, merge sha 3216b410b004c673ca31bc2d3a4a981288dac785. Doc: docs/internals/identifier-rename-inventory.md. 15 families, 9 rename PRs (P0-P8); P0-P5 can start now, P6 waits on 5629, P7 on 5508, P8 on 5691. New names other than chief are PROPOSED pending operator ruli

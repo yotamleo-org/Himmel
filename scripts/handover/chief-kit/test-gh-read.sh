@@ -88,7 +88,7 @@ else
     fail "A2 control needs the helper"
 fi
 callers="$(cd "$REPO" && git grep -l 'gh-read.sh' -- scripts | tr '\n' ' ')"
-for w in scripts/handover/merge-on-green.sh scripts/lib/go-gate.sh scripts/handover/console-kit/write-verdict.sh scripts/cr/write-verdicts.sh; do
+for w in scripts/handover/merge-on-green.sh scripts/lib/go-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/cr/write-verdicts.sh; do
     lacks "A3 write path $w does not source the read helper" "$w " "$callers"
 done
 
@@ -102,12 +102,12 @@ done
 run_gh_read "$W/root" pr view 12
 lacks "B2 the token is not in argv" "$READTOK" "$(sed 's/^tok=[^ ]* //' "$GHLOG")"
 lacks "B2b the token is not in the stderr" "$READTOK" "$(cat "$W/err")"
-for f in scripts/check-ci.sh scripts/handover/console-kit/go.sh scripts/handover/console-kit/ready-check.sh scripts/handover/console-kit/tick.sh; do
+for f in scripts/check-ci.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/tick.sh; do
     if grep -q 'gh_read\|gh-read.sh\|GH_READ' "$REPO/$f"; then pass "B3 $f routes its reads through the helper"; else fail "B3 $f does not use the helper"; fi
 done
 # ready-check: its first read (repo view) rides the read token end to end
 : > "$GHLOG"
-GH_READ_ENV_ROOT="$W/root" bash "$REPO/scripts/handover/console-kit/ready-check.sh" --only 7 99 >/dev/null 2>&1
+GH_READ_ENV_ROOT="$W/root" bash "$REPO/scripts/handover/chief-kit/ready-check.sh" --only 7 99 >/dev/null 2>&1
 check "B4 ready-check's first read used the read token" "$READTOK" "$(sed -n '1p' "$GHLOG" | sed 's/^tok=\([^ ]*\) .*/\1/')"
 # check-ci: the first PR read rides the read token, and no merge/comment shape ever shows up
 : > "$GHLOG"
@@ -121,8 +121,8 @@ check "B5b check-ci made at least one read (B5 is not vacuous)" "yes" "$([ "$(gr
 # the watcher stays an exec'd gh so check-ci's recorded pid is the real gh, never a wrapper
 check "B5c check-ci's two --watch calls exec gh directly" "2" "$(grep -c 'exec gh pr checks .*--watch' "$REPO/scripts/check-ci.sh")"
 # go.sh: both of its reads (fork PR view, repo name) go through the helper variable
-check "B6 go.sh reads via the helper" "2" "$(grep -c '"\$GH_READ" \(pr\|repo\) view' "$REPO/scripts/handover/console-kit/go.sh")"
-check "B6b go.sh keeps a caller's GH override for the fork readiness read" "1" "$(grep -c 'GH="\${GH:-\$GH_READ}" go_fork_ready' "$REPO/scripts/handover/console-kit/go.sh")"
+check "B6 go.sh reads via the helper" "2" "$(grep -c '"\$GH_READ" \(pr\|repo\) view' "$REPO/scripts/handover/chief-kit/go.sh")"
+check "B6b go.sh keeps a caller's GH override for the fork readiness read" "1" "$(grep -c 'GH="\${GH:-\$GH_READ}" go_fork_ready' "$REPO/scripts/handover/chief-kit/go.sh")"
 
 # check-ci merges stderr into the data at three captures (required-check rules, classic
 # protection, the first PR snapshot); the fallback warning must stay off all three

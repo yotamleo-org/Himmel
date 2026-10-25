@@ -35,7 +35,7 @@ if [ -z "$best" ]; then
     exit 0
 fi
 
-docs=$(bash "$self/../handover/console-kit/fleet-manifest.sh" list "$best") || { echo "legs: fleet-manifest list failed for $best" >&2; exit 1; }
+docs=$(bash "$self/../handover/chief-kit/fleet-manifest.sh" list "$best") || { echo "legs: fleet-manifest list failed for $best" >&2; exit 1; }
 rows=""
 while IFS= read -r d; do
     [ -n "$d" ] || continue

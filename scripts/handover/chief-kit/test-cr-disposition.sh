@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
-# scripts/handover/console-kit/test-cr-disposition.sh - suite for
+# scripts/handover/chief-kit/test-cr-disposition.sh - suite for
 # cr-disposition.sh and the go.sh refusal it drives (exit 9): a Critical or
 # Important finding the leg deferred on its own never gets a GO.
 #   1. a leg-deferred Important (shaped like a real CR ledger row) -> exit 9.
@@ -44,7 +44,7 @@ chmod +x "$tmp/bin/gh" "$tmp/bin/jira"
 export PATH="$tmp/bin:$PATH"
 export JIRA_CMD="$tmp/bin/jira"
 
-# shellcheck source=scripts/handover/console-kit/testlib-ready-pass.sh
+# shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
 # shellcheck disable=SC1091
 . "$HERE/testlib-ready-pass.sh"
 ready_pass_bin "$tmp/ready-bin"

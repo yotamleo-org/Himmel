@@ -6,7 +6,7 @@
 # ignored. bash 3.2-safe.
 #
 # PLATFORM GUARD: no .ps1 twin — audits inbox-send.sh's Linux-only ledger.
-# Run: bash scripts/handover/console-kit/test-inbox-audit.sh
+# Run: bash scripts/handover/chief-kit/test-inbox-audit.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SEND="$HERE/inbox-send.sh"

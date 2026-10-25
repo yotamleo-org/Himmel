@@ -86,7 +86,7 @@ Explicit slash/control commands keep their own routing when sent as replies.
 Neither form starts a session. The bridge appends one line to that
 chief's inbox file, `<bridge root>/consoles/<session-name>.md` (default
 `~/.claude/handover/bridge/consoles/`), and the chief watches the file with
-the event waiter started in its ACTION ZERO (`console-kit/console-wait.sh`,
+the event waiter started in its ACTION ZERO (`chief-kit/console-wait.sh`,
 which reads it through `inbox-follow.sh --once` and a read cursor beside the
 file, so a line is never lost across a re-start).
 

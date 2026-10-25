@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/console/base-status.sh. Exit 0 if all
+# Unit test for scripts/chief/base-status.sh. Exit 0 if all
 # pass. GH_CMD stub seam (matches test-sweep-cr-threads.sh); no network.
 set -uo pipefail
 
@@ -562,7 +562,7 @@ cat > "$GH_STUB18" <<'STUB'
 case "$* " in
     *"repo view"*defaultBranchRef*) echo "main" ;;
     *"pr list"*"state merged"*)
-        echo '[{"number":507,"headRefOid":"ooo507","files":[{"path":"scripts/hooks/foo.sh"},{"path":"scripts/console/bar.sh"}]}]' ;;
+        echo '[{"number":507,"headRefOid":"ooo507","files":[{"path":"scripts/hooks/foo.sh"},{"path":"scripts/chief/bar.sh"}]}]' ;;
     *"pr view 507"*"comments"*)
         echo '{"comments":[{"body":"== Summary ==\n head: ooo507\n scope: scripts/hooks\n PASS: 5\n SKIP: 0\n FAIL: 0\n"}]}' ;;
     *) echo "stub: unhandled gh args: $*" >&2; exit 99 ;;
@@ -571,10 +571,10 @@ STUB
 chmod +x "$GH_STUB18"
 
 echo "TEST: a PR touching two fences with a report scoped to only one flags the other PENDING"
-out=$(GH_CMD="$GH_STUB18" "$BASE_STATUS" scripts/hooks scripts/console 2>"$TMP_ROOT/err19")
+out=$(GH_CMD="$GH_STUB18" "$BASE_STATUS" scripts/hooks scripts/chief 2>"$TMP_ROOT/err19")
 rc=$?
 m_covered=$(printf '%s\n' "$out" | grep -F "fence=scripts/hooks")
-m_uncovered=$(printf '%s\n' "$out" | grep -F "PENDING PR 507 fence=scripts/console")
+m_uncovered=$(printf '%s\n' "$out" | grep -F "PENDING PR 507 fence=scripts/chief")
 if [ "$rc" -eq 0 ] && [ -z "$m_covered" ] && [ -n "$m_uncovered" ]; then
     pass "second touched fence is flagged PENDING even though the first is covered"
 else

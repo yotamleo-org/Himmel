@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/cut-tag.sh - console-run pre-release tag cut
+# scripts/handover/chief-kit/cut-tag.sh - console-run pre-release tag cut
 # A console's `git -C <primary> tag` is refused by
 # block-write-into-main-checkout's arm (g) - this script never
 # calls `git tag` at all: the tag is created through the GitHub API

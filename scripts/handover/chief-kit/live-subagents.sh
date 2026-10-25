@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/live-subagents.sh - list a Claude
+# scripts/handover/chief-kit/live-subagents.sh - list a Claude
 # Code session's in-process subagents (Agent-tool children) that are still
 # running, from OUTSIDE that session, so a console never wraps, and a successor
 # never closes it, while a judge call's result is still in flight.

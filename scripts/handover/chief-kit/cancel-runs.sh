@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/cancel-runs.sh - console-run CI queue drain
+# scripts/handover/chief-kit/cancel-runs.sh - console-run CI queue drain
 # A console's own `gh run cancel` loop is refused by the auto-mode classifier
 # (Interfere With Workloads); this named verb is the console's gated way to drain
 # the hosted queue on an operator order.

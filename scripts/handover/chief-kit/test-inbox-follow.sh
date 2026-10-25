@@ -8,7 +8,7 @@
 # INBOX_FOLLOW overrides the script under test (used once, to show the plain
 # `tail -n0 -F` shape fails cases (a)/(b) — the RED control).
 #
-# Run: bash scripts/handover/console-kit/test-inbox-follow.sh
+# Run: bash scripts/handover/chief-kit/test-inbox-follow.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FOLLOW="${INBOX_FOLLOW:-$HERE/inbox-follow.sh}"

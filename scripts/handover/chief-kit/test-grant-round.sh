@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-write-verdict.sh
 # shellcheck disable=SC2012  # ls over fixture dirs whose names the suite chose
 # shellcheck disable=SC2031  # root is set once in the main shell; the scope subshell only reads
-# scripts/handover/console-kit/test-grant-round.sh - suite for grant-round.sh
+# scripts/handover/chief-kit/test-grant-round.sh - suite for grant-round.sh
 # the console's own one-round grant on a persisted judge record:
 #   1. no record for the qid refuses; a record for another head refuses; a
 #      hand-written (unsigned) record refuses; a record naming another PR or

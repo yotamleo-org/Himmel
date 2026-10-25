@@ -739,8 +739,8 @@ default subset:
 |---|---|---|---|
 | `HIMMEL_INITIATIVE` | OFF | `.env` (bridged) | interactive-profile auto-ship step set (above) |
 | `HIMMEL_AFK` + `HIMMEL_INITIATIVE_AFK` (old: `HIMMEL_OVERNIGHT` + `HIMMEL_INITIATIVE_OVERNIGHT`) | OFF | `.env` (bridged) | switches to the afk profile + its auto-ship step set; a set falsy `HIMMEL_AFK` wins over `HIMMEL_OVERNIGHT=1` |
-| `AFK_PROJECT` / `AFK_STATUS` / `AFK_LIMIT` / `AFK_PRIORITY` (old: `OVERNIGHT_*`) | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/afk-shift` ticket-plan defaults (`scripts/overnight/build-plan.sh`) |
-| `AFK_STOP_DIR` (old: `OVERNIGHT_STOP_DIR`) | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/overnight/stop-marker.sh`) |
+| `AFK_PROJECT` / `AFK_STATUS` / `AFK_LIMIT` / `AFK_PRIORITY` (old: `OVERNIGHT_*`) | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/afk-shift` ticket-plan defaults (`scripts/afk/build-plan.sh`) |
+| `AFK_STOP_DIR` (old: `OVERNIGHT_STOP_DIR`) | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/afk/stop-marker.sh`) |
 
 **Arming & scheduling** (`scripts/handover/arm-resume.sh` — schedules a
 `claude` relaunch via schtasks on Windows, `at`/`crontab` on Linux/macOS):

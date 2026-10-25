@@ -24,7 +24,7 @@ and an A2A peer is, at best, an unauthenticated remote.
 2. **The RETASK nonce and EXPANSION/REDIRECT stay out of band.** The renderer
    never adds one as a Message part of its own, a metadata value or an
    AgentCard field, and it redacts the body in code: `toA2AMessage` runs `b`
-   through `scripts/handover/console-kit/redact.mjs` (RETASK tokens, nonces,
+   through `scripts/handover/chief-kit/redact.mjs` (RETASK tokens, nonces,
    lock tokens, keys), so a token a sender wrote into a body does not leave the
    renderer. A2A cannot widen a worker's scope.
 3. **Outbound, `c` lives only under `metadata`.** The renderer emits no A2A

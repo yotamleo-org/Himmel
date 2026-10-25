@@ -18,9 +18,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
 PLUGIN="${PLUGIN:-$HERE/../../plugins/himmel-gh}"
 PREFACE="$DOCS/handover/leg-preface.md"
-SHELL_SECTION="$DOCS/handover/leg-sections/shell-and-tests.md"
+SHELL_SECTION="$DOCS/handover/worker-sections/shell-and-tests.md"
 CONSOLE="$DOCS/handover/console-template.md"
-MERGES="$DOCS/handover/console-sections/merges.md"
+MERGES="$DOCS/handover/chief-sections/merges.md"
 PLAYBOOK="$DOCS/internals/stuck-playbook.md"
 AFK="$DOCS/handover/afk-mode.md"
 RESOLVE_CMD="$PLUGIN/commands/gh-pr-resolve.md"
@@ -54,7 +54,7 @@ contains 'preface Shipping routes a denied resolve to the console' "$ship" 'BLOC
 work="$(section "$PREFACE" '^## How you work')"
 contains 'preface: a classifier denial on a loop shape is a shape denial' "$work" 'a denied loop is a shape denial'
 
-# --- 2. leg-sections/shell-and-tests.md: the full call --------------------
+# --- 2. worker-sections/shell-and-tests.md: the full call --------------------
 shell="$(cat "$SHELL_SECTION")"
 contains 'shell section spells the full resolve call' "$shell" 'thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id'
 contains 'shell section lists the followup reason' "$shell" 'followup HIMMEL-<n>'

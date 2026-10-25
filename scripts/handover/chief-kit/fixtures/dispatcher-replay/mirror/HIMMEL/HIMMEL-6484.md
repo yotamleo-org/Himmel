@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/next-dispatchable.sh (after PR 3199 HIMMEL-6261 and HIMMEL-6478, same file), scripts/handover/console-kit/tick.sh, tests. Can be folded into HIMMEL-6478 if that leg has not started.
+Files: scripts/handover/chief-kit/next-dispatchable.sh (after PR 3199 HIMMEL-6261 and HIMMEL-6478, same file), scripts/handover/chief-kit/tick.sh, tests. Can be folded into HIMMEL-6478 if that leg has not started.

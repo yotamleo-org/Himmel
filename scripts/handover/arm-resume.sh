@@ -238,7 +238,7 @@
 #      console lane is ALWAYS Fable). rc 0-19 were already taken by this
 #      script, so 20 is the first free code.
 #   21 base-not-verified refused — the handover's `fence:` frontmatter key
-#      (console ruling 66) names a fence scripts/console/base-status.sh
+#      (console ruling 66) names a fence scripts/chief/base-status.sh
 #      could not certify clean: it reported a PENDING/RED merged PR, OR it
 #      could not run at all (missing script, gh query error, a truncated
 #      merged-PR list) — a certification failure refuses exactly like a
@@ -441,7 +441,7 @@ Optional:
                      console/ordinary arm behavior.
   --provisional-base-ok
                      Arm anyway when the handover's `fence:` frontmatter
-                     key names a fence scripts/console/base-status.sh
+                     key names a fence scripts/chief/base-status.sh
                      could not certify clean — PENDING/RED, or the
                      certification itself failed (missing script, gh
                      query error, truncated list) — (HIMMEL-2383, ruling
@@ -2998,7 +2998,7 @@ _fm_fence="${_fm_fence#\'}" ; _fm_fence="${_fm_fence%\'}"
 _fm_fence="${_fm_fence#\"}" ; _fm_fence="${_fm_fence%\"}"
 
 if [ -n "$_fm_fence" ]; then
-    _base_status_sh="$SCRIPT_DIR/../console/base-status.sh"
+    _base_status_sh="$SCRIPT_DIR/../chief/base-status.sh"
     # Any of these three shapes means "the base cannot be certified clean":
     # the script is missing, it query-errored (gh down, rate-limited, a
     # truncated merged-PR list — base-status.sh now exits nonzero on all of
@@ -4601,7 +4601,7 @@ _arm_shipped_preflight() {
     # never has dist/ built, so a test exercising this branch has no other way
     # to point it at a fixture CLI.
     # Anchored to the PRIMARY checkout via the git common dir (same
-    # idiom as console-kit/leg-jira-status.sh): script-relative would run branch
+    # idiom as chief-kit/leg-jira-status.sh): script-relative would run branch
     # bytes, or find nothing, from a worktree. Outside git it stays script-relative.
     _jira="${ARM_JIRA_CLI:-}"
     if [ -z "$_jira" ]; then

@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/write-verdict.sh, next-dispatchable.sh, judge brief template. Sequence after the priority-pool ticket (same next-dispatchable.sh).
+Files: scripts/handover/chief-kit/write-verdict.sh, next-dispatchable.sh, judge brief template. Sequence after the priority-pool ticket (same next-dispatchable.sh).
 PR #3079 (yotamleo/Himmel) merged @ a2bbed50bea9b758414bdcc3717a6a3f59fdde80. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

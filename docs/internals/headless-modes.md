@@ -15,7 +15,7 @@ and are not restated here.
 |---|---|---|
 | One-shot scripted call, output parsed as JSON, a cron/pipeline step, a CI-adjacent check | `claude -p` | Exits when the turn budget or the prompt is exhausted; nothing is left running to confirm, track or clean up later. |
 | A long-lived worker that needs cross-session `SendMessage`, survives operator idle time, or must show up in `claude agents --json` / the fleet UI | `claude --bg` | `-p` has no inbox and no idle-survival story — it is a single invocation, not a session. |
-| Anything that genuinely needs a live TTY (an interactive prompt, a chief an operator is watching) | headed (konsole) | A session launched without a TTY exits at the first idle cross-session message ([`headed-arm-leg.sh` docstring](../../scripts/handover/console-kit/headed-arm-leg.sh) — see the `--headless` comment block); headed is the only shape where that isn't a problem because a human is attached. |
+| Anything that genuinely needs a live TTY (an interactive prompt, a chief an operator is watching) | headed (konsole) | A session launched without a TTY exits at the first idle cross-session message ([`headed-arm-leg.sh` docstring](../../scripts/handover/chief-kit/headed-arm-leg.sh) — see the `--headless` comment block); headed is the only shape where that isn't a problem because a human is attached. |
 
 ## `claude -p`
 
@@ -47,7 +47,7 @@ directly — one invocation site to audit instead of many
   `$HOME/.himmel/registry/live/<id>.json` (`claude-headless.sh:346-364`,
   header comment "Registry:" at line ~19).
 - **Fleet UI:** `fleet.mjs` models one row per *worker* — a handover doc, a
-  queue lock, a session name (`console-kit/fleet.mjs:1-5, 427-444`). A `-p`
+  queue lock, a session name (`chief-kit/fleet.mjs:1-5, 427-444`). A `-p`
   dispatch has none of those; it is a short-lived subprocess the wrapper
   itself tracks via the registry above, not a fleet row. **Unverified**:
   this is inferred from fleet.mjs's field model, not from an explicit
@@ -99,8 +99,8 @@ in the launching shell; the flag wins) — same profile injection, model and
 - **Fleet UI:** `fleet.mjs` derives `mode = 'headless'` from any of: the
   agents census showing the session running, the launch log's `headless=1`,
   or the process argv containing `--bg`/`--background`
-  (`console-kit/fleet.mjs:437-444`), and renders it in the per-worker-session row
-  (`console-kit/fleet.mjs:605`). Built specifically because headless workers have no konsole window for an operator
+  (`chief-kit/fleet.mjs:437-444`), and renders it in the per-worker-session row
+  (`chief-kit/fleet.mjs:605`). Built specifically because headless workers have no konsole window for an operator
   to see (`fleet.mjs:3-5`).
 
 ## Headed (konsole)

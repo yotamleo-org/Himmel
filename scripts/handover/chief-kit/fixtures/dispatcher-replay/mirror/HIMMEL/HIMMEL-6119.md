@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/headed-arm-leg.sh and its suite; qmd fork test/mcp-query-burst.test.ts. Detection of the dead window is HIMMEL-6118.
-- Step 1 (per-leg MemoryMax scope): on main at 03b5a1399 (PR 3083); suite rows at scripts/handover/console-kit/test-headed-arm-leg.sh:4290.
+Files: scripts/handover/chief-kit/headed-arm-leg.sh and its suite; qmd fork test/mcp-query-burst.test.ts. Detection of the dead window is HIMMEL-6118.
+- Step 1 (per-leg MemoryMax scope): on main at 03b5a1399 (PR 3083); suite rows at scripts/handover/chief-kit/test-headed-arm-leg.sh:4290.

@@ -34,5 +34,5 @@ created only when that line starts.
 ## Tooling
 
 The tracker treats every `v1.N.x` as the train and sorts minors numerically
-(`v1.2.0` before `v1.10.0`). See `scripts/handover/console-kit/tracker.py`
+(`v1.2.0` before `v1.10.0`). See `scripts/handover/chief-kit/tracker.py`
 (`TRAIN_RE`, `ver_key`).

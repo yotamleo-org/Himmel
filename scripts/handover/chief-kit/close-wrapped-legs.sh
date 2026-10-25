@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/close-wrapped-legs.sh - close every finished
+# scripts/handover/chief-kit/close-wrapped-legs.sh - close every finished
 # leg window, across fleet manifests, in one command.
 #
 # Usage: close-wrapped-legs.sh [--check] [<manifest>...]

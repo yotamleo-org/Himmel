@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/shepherd.sh — one deterministic pass over a
+# scripts/handover/chief-kit/shepherd.sh — one deterministic pass over a
 # CLOUD-DONE PR. Ten native shepherd legs cost ~$2 each,
 # almost all cache reads, for mechanical work with a clean panel every time.
 # This runs the mechanical part in one foreground pass and prints ONE block, so

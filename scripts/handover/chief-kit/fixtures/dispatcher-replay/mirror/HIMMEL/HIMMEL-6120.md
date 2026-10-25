@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/vm-runner.sh, the ci-runner VM provisioning, .github/workflows/ci.yml setup-bun step. Related: HIMMEL-6034 (vm-runner status).
+Files: scripts/handover/chief-kit/vm-runner.sh, the ci-runner VM provisioning, .github/workflows/ci.yml setup-bun step. Related: HIMMEL-6034 (vm-runner status).

@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-Files: the roadmap tracker renderer (tracker.py, find with grep "DRIFT page"), scripts/handover/console-kit/tick.sh, tests. Single-writer: tick.sh may be held by another leg; check open PRs first.
+Files: the roadmap tracker renderer (tracker.py, find with grep "DRIFT page"), scripts/handover/chief-kit/tick.sh, tests. Single-writer: tick.sh may be held by another leg; check open PRs first.

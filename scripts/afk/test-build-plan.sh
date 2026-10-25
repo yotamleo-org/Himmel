@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/overnight/build-plan.sh.
+# Smoke test for scripts/afk/build-plan.sh.
 #
 # Strategy: replace JIRA_CMD with a fake that emits canned TSV; assert
 # the plan structure + content.

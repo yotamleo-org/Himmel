@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-leg-event.sh - suite for leg-event.sh, the
+# scripts/handover/chief-kit/test-leg-event.sh - suite for leg-event.sh, the
 # marker router that sends a leg's MERGED / WRAPPED message to wrap-merged.sh
 # and escalates everything else. Hermetic: wrap-merged.sh and the manifest
 # listing are stubs (the LE_WRAP / LE_LIST seams).

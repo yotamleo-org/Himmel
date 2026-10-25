@@ -33,11 +33,11 @@
 {"id":"h033","query":"what does a console do first when it starts up","lex":"ACTION ZERO","collections":["himmel"],"expect":["himmel/docs/handover/running-a-console.md","himmel/docs/handover/console-template.md"]}
 {"id":"h034","query":"what status markers does a leg report to its console","lex":"LIVE FINDING RESOLVED READY BLOCKED markers","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
 {"id":"h035","query":"under what condition may a leg merge its own PR","lex":"merge GO token merge-on-green","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
-{"id":"h036","query":"what should a leg do when CI goes red on its pull request","lex":"CI red merge-forward suite coverage","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/ci-red.md"]}
-{"id":"h037","query":"how can a leg borrow a skill its profile does not have","lex":"CONSULT borrow skill","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/consult.md"]}
-{"id":"h038","query":"idle leg: keep the prompt cache warm or wrap up","lex":"cache keepalive wrap","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/cache-keepalive.md"]}
-{"id":"h039","query":"a shell command shape was refused, how do I retry it","lex":"refused shapes literal retry","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/shell-and-tests.md","himmel/docs/handover/console-sections/refused-shapes.md"]}
-{"id":"h040","query":"how does a leg accept a new console after a handover","lex":"succession relay adopt","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/succession.md"]}
+{"id":"h036","query":"what should a leg do when CI goes red on its pull request","lex":"CI red merge-forward suite coverage","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/ci-red.md"]}
+{"id":"h037","query":"how can a leg borrow a skill its profile does not have","lex":"CONSULT borrow skill","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/consult.md"]}
+{"id":"h038","query":"idle leg: keep the prompt cache warm or wrap up","lex":"cache keepalive wrap","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/cache-keepalive.md"]}
+{"id":"h039","query":"a shell command shape was refused, how do I retry it","lex":"refused shapes literal retry","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/shell-and-tests.md","himmel/docs/handover/chief-sections/refused-shapes.md"]}
+{"id":"h040","query":"how does a leg accept a new console after a handover","lex":"succession relay adopt","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/succession.md"]}
 {"id":"h041","query":"what rules must a judge session follow","lex":"judge preface verdict","collections":["himmel"],"expect":["himmel/docs/handover/judge-preface.md"]}
 {"id":"h042","query":"how do I write a judge brief that does not leak my opinion","lex":"judge brief template blind evidence","collections":["himmel"],"expect":["himmel/docs/handover/judge-brief-template.md"]}
 {"id":"h043","query":"which fields must a verdict file contain","lex":"verdict template VERDICT","collections":["himmel"],"expect":["himmel/docs/handover/verdict-template.md"]}
@@ -49,16 +49,16 @@
 {"id":"h049","query":"what may a console consult do and how does it answer","lex":"consult preface","collections":["himmel"],"expect":["himmel/docs/handover/consult-preface.md"]}
 {"id":"h050","query":"how do claudex legs talk to the console","lex":"claudex inbox wake","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface-claudex.md","himmel/docs/handover/running-a-console.md"]}
 {"id":"h051","query":"coordination rules for metered OpenRouter legs","lex":"OpenRouter coordination","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface-openrouter.md"]}
-{"id":"h052","query":"how does the console wait for events from legs","lex":"event waiter ACTION ZERO","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/waiter.md"]}
-{"id":"h053","query":"which monitors does a console run and how are they armed","lex":"monitors console section","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/monitors.md"]}
-{"id":"h054","query":"how does the console keep the roadmap board up to date","lex":"board roadmap tracker","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/board-tracker.md"]}
-{"id":"h055","query":"what is the format of an entry in the console live state","lex":"live state entry format","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/live-state.md"]}
-{"id":"h056","query":"how do I cut a pre-release tag when a trust-path PR merges","lex":"trust-path PRs pre-release tag","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/merges.md"]}
-{"id":"h057","query":"how does the console wrap a leg by hand","lex":"wrapping leg digest line","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/wrapping.md"]}
-{"id":"h058","query":"after the new console is live, what happens to the old one","lex":"successor LIVE close predecessor","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/successor-start.md"]}
-{"id":"h059","query":"what is the weekly standards duty of the chief","lex":"weekly standards duty","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/weekly-duty.md"]}
-{"id":"h060","query":"how does the console route a judge question and read the verdict","lex":"judge questions verdict files","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/judge.md"]}
-{"id":"h061","query":"how do release requests get routed to the release manager","lex":"release manager routing placement","collections":["himmel"],"expect":["himmel/docs/handover/console-sections/release-manager.md"]}
+{"id":"h052","query":"how does the console wait for events from legs","lex":"event waiter ACTION ZERO","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/waiter.md"]}
+{"id":"h053","query":"which monitors does a console run and how are they armed","lex":"monitors console section","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/monitors.md"]}
+{"id":"h054","query":"how does the console keep the roadmap board up to date","lex":"board roadmap tracker","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/board-tracker.md"]}
+{"id":"h055","query":"what is the format of an entry in the console live state","lex":"live state entry format","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/live-state.md"]}
+{"id":"h056","query":"how do I cut a pre-release tag when a trust-path PR merges","lex":"trust-path PRs pre-release tag","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/merges.md"]}
+{"id":"h057","query":"how does the console wrap a leg by hand","lex":"wrapping leg digest line","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/wrapping.md"]}
+{"id":"h058","query":"after the new console is live, what happens to the old one","lex":"successor LIVE close predecessor","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/successor-start.md"]}
+{"id":"h059","query":"what is the weekly standards duty of the chief","lex":"weekly standards duty","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/weekly-duty.md"]}
+{"id":"h060","query":"how does the console route a judge question and read the verdict","lex":"judge questions verdict files","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/judge.md"]}
+{"id":"h061","query":"how do release requests get routed to the release manager","lex":"release manager routing placement","collections":["himmel"],"expect":["himmel/docs/handover/chief-sections/release-manager.md"]}
 {"id":"h062","query":"how many phases does the unattended pipeline have","lex":"AFK unattended 11 phases","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
 {"id":"h063","query":"what are the different ways an unattended run can hang","lex":"five hang classes","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
 {"id":"h064","query":"when should an unattended run park instead of continuing","lex":"park protocol block-only criteria","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
@@ -190,7 +190,7 @@
 {"id":"h190","query":"which tool versions are pinned in the prebuilt CI image","lex":"CI image prebuilt tooling pinning","collections":["himmel"],"expect":["himmel/docs/internals/ci-image.md"]}
 {"id":"h191","query":"when may a ticket be moved to Done","lex":"live-proof test Done","collections":["himmel"],"expect":["himmel/docs/internals/live-proof-test.md"]}
 {"id":"h192","query":"what data may be sent to which remote provider","lex":"egress matrix corpus provider","collections":["himmel"],"expect":["himmel/docs/internals/egress-matrix.md"]}
-{"id":"h193","query":"how does the leg context guard decide when to compact","lex":"leg context guard threshold autocompact","collections":["himmel"],"expect":["himmel/docs/internals/leg-context-guard.md","himmel/docs/handover/leg-sections/context-guard.md"]}
+{"id":"h193","query":"how does the leg context guard decide when to compact","lex":"leg context guard threshold autocompact","collections":["himmel"],"expect":["himmel/docs/internals/leg-context-guard.md","himmel/docs/handover/worker-sections/context-guard.md"]}
 {"id":"h194","query":"what is the ponytail comment convention","lex":"ponytail ceiling upgrade path","collections":["himmel"],"expect":["himmel/docs/internals/ponytail-convention.md"]}
 {"id":"h195","query":"how do I security review a change and what bypasses exist","lex":"security review playbook bypass","collections":["himmel"],"expect":["himmel/docs/security-review.md"]}
 {"id":"h196","query":"what is the lockfile policy for npm and how is install enforced","lex":"npm lockfile policy install","collections":["himmel"],"expect":["himmel/docs/security/npm-policy.md"]}

@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/next-dispatchable.sh, console-wait.sh, gen-briefs.py, docs/handover/console-sections/. Collides with HIMMEL-6111 (PR 2998, same files): cut after 2998 merges.
+Files: scripts/handover/chief-kit/next-dispatchable.sh, console-wait.sh, gen-briefs.py, docs/handover/chief-sections/. Collides with HIMMEL-6111 (PR 2998, same files): cut after 2998 merges.
 PR #3032 (yotamleo/Himmel) merged @ 28228f89e0aee53c8bf21bad9338956a719bae76. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

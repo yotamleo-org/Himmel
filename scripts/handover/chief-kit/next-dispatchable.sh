@@ -335,7 +335,7 @@ def ranked(i):
 
 def load_platform_re():
     # The one pattern file gen-briefs.py reads too: its first non-blank, non-# line.
-    path = os.path.join(repo, 'scripts/handover/console-kit/platform-dropped.re')
+    path = os.path.join(repo, 'scripts/handover/chief-kit/platform-dropped.re')
     try:
         for line in open(path):
             if line.strip() and not line.startswith('#'):

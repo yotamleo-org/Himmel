@@ -65,7 +65,7 @@ if [ -z "$MOG_SUITE_TMP" ] || [ ! -d "$MOG_SUITE_TMP" ]; then echo "FAIL: mktemp
 trap 'chmod -R u+rwX "$MOG_SUITE_TMP"; rm -rf "$MOG_SUITE_TMP"' EXIT
 export TMPDIR="$MOG_SUITE_TMP"
 
-# console-kit/go.sh mints, and the console-GO gate verifies with,
+# chief-kit/go.sh mints, and the console-GO gate verifies with,
 # a key under $HOME/.config/himmel — a scratch HOME keeps every GO this suite
 # writes off the operator's real key.
 MOG_HOME=$(mktemp -d "${TMPDIR:-/tmp}/mog-home.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -255,14 +255,14 @@ mog_build_fixture() {
     # existing case that never sets it is unaffected.
     cp "${WT_INUSE_SRC:-$SCRIPT_DIR/../lib/worktree-inuse.sh}" "$tmp/scripts/lib/worktree-inuse.sh"
     # The PARTIAL report appends to the console doc through this sibling.
-    mkdir -p "$tmp/scripts/handover/console-kit"
-    cp "$SCRIPT_DIR/console-kit/append-results.sh" "$tmp/scripts/handover/console-kit/append-results.sh"
+    mkdir -p "$tmp/scripts/handover/chief-kit"
+    cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
     cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
-    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/chief-kit/leg-jira-status.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
@@ -3065,7 +3065,7 @@ GO_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-go.XXXXXX")
 GO_ROOT=$(cd "$GO_ROOT" && pwd)
 GO_SHA=0123456789abcdef0123456789abcdef01234567
 GO_OLD=fedcba9876543210fedcba9876543210fedcba98
-GO_WRITER="$SCRIPT_DIR/console-kit/go.sh"
+GO_WRITER="$SCRIPT_DIR/chief-kit/go.sh"
 # go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. The direct $GO_WRITER invocations below run outside run_mog's
 # own per-call fixture (which stubs gh only for merge-on-green.sh itself), so
@@ -3086,8 +3086,8 @@ chmod +x "$GO_WRITER_BIN/gh"
 # writer runs from a repo whose CR ledger holds an ok row for each head, under a
 # gh that answers ready-check green (anything else falls through to the stub
 # above). go_write <root> <go.sh args...> - the head is the last argument.
-# shellcheck source=console-kit/testlib-ready-pass.sh
-. "$SCRIPT_DIR/console-kit/testlib-ready-pass.sh"
+# shellcheck source=chief-kit/testlib-ready-pass.sh
+. "$SCRIPT_DIR/chief-kit/testlib-ready-pass.sh"
 GO_READY_REPO=$(mktemp -d "${TMPDIR:-/tmp}/mog-go-repo.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 git -C "$GO_READY_REPO" init -q
 ready_pass_bin "$GO_READY_REPO/.bin"
@@ -4755,8 +4755,8 @@ no_merge_call "5208-b: no merge call"
 # the mode relaxes no gate and is refused wherever a GO is the rule. -----------
 solo_cfg_setup() { git -C "$1" config --local himmel.mergeMode "${SOLO_CFG-solo}"; }
 solo_clone_setup() {
-    solo_cfg_setup "$1" && mkdir -p "$1/scripts/handover/console-kit" \
-        && : > "$1/scripts/handover/console-kit/go.sh"
+    solo_cfg_setup "$1" && mkdir -p "$1/scripts/handover/chief-kit" \
+        && : > "$1/scripts/handover/chief-kit/go.sh"
 }
 
 # 7001-a — solo config, no GO file: a green PR merges, pinned and audited as solo.
@@ -4785,7 +4785,7 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_
     run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"
 assert_audit_has "7001-c2: audited as solo" "mode=solo"
 
-# 7001-d — never in the himmel clone: an anchor carrying console-kit/go.sh
+# 7001-d — never in the himmel clone: an anchor carrying chief-kit/go.sh
 # refuses the config rather than ignoring it.
 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_clone_setup STUB_SHA="solo7001d" \
     run_mog 17 "7001-d: solo config in the himmel clone → exit 17"
@@ -4816,7 +4816,7 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=
 assert_audit_has "7001-g: still the console-GO refusal" "phase=console-go"
 
 # --- 7390. Solo mode in an adopted project: the anchor is the himmel clone
-# (it carries console-kit/go.sh) and the merge runs from the adopted repo, which
+# (it carries chief-kit/go.sh) and the merge runs from the adopted repo, which
 # holds the config. The mode is read from, and the clone test made on, the PR's
 # repo. -------------------------------------------------------------------------
 SOLO_ADOPTED=$(mktemp -d "${TMPDIR:-/tmp}/mog-solo-adopted.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -4824,7 +4824,7 @@ if ! git init -q "$SOLO_ADOPTED" || ! git -C "$SOLO_ADOPTED" config --local himm
     echo "FAIL: cannot build the adopted-repo fixture" >&2; exit 1
 fi
 himmel_clone_setup() {
-    mkdir -p "$1/scripts/handover/console-kit" && : > "$1/scripts/handover/console-kit/go.sh"
+    mkdir -p "$1/scripts/handover/chief-kit" && : > "$1/scripts/handover/chief-kit/go.sh"
 }
 SOLO_HANDOVER=$(mktemp -d "${TMPDIR:-/tmp}/mog-solo-ho.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The himmel clone's origin names the harness repo, not the PR's.

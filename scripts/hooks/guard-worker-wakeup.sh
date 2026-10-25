@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # guard-worker-wakeup.sh — PreToolUse hook (matcher "ScheduleWakeup"): denies
 # ScheduleWakeup for a console-spawned leg. A leg launched headed
-# by a console (scripts/handover/console-kit/headed-arm-leg.sh exports
+# by a console (scripts/handover/chief-kit/headed-arm-leg.sh exports
 # HIMMEL_CONSOLE_LEG=1 in the launching shell) has no reason to self-schedule a
 # polling wakeup: every wake re-reads the leg's whole context just to find "not
 # yet" (cost program), and a leg waits with ONE foreground blocking

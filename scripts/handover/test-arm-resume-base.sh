@@ -4,7 +4,7 @@
 # Console ruling 66: a leg must not be armed on a fence whose merged PRs
 # still have a pending or red after-report. arm-resume.sh reads the
 # handover's own `fence:` frontmatter key and, when present, shells out to
-# scripts/console/base-status.sh (through the REAL production script — it
+# scripts/chief/base-status.sh (through the REAL production script — it
 # has its own GH_CMD test seam, so this suite stubs `gh` via GH_CMD rather
 # than copying the script tree the way test-arm-resume-tier.sh's sibling
 # fable-tier guard does not need to).

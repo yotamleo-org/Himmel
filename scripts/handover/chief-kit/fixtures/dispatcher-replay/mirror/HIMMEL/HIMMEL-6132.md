@@ -22,4 +22,4 @@ links:
 ## Description
 
 PR #3031 (yotamleo/Himmel) merged @ 93c213d1f3439c128e0fdfe79f70a5e94357e83a. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.
-Finding [Important]: --remaining in scripts/handover/console-kit/tracker.py:1011 does not check that the mirror directory exists before read_mirror() globs it. A missing or mistyped mirror therefore yields a successful "0 open" board, which can overwrite a valid board with an empty state.
+Finding [Important]: --remaining in scripts/handover/chief-kit/tracker.py:1011 does not check that the mirror directory exists before read_mirror() globs it. A missing or mistyped mirror therefore yields a successful "0 open" board, which can overwrite a valid board with an empty state.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-himmel-gate.sh - suite for himmel-gate.sh,
+# scripts/handover/chief-kit/test-himmel-gate.sh - suite for himmel-gate.sh,
 # the single exec path for the registered gate and ledger writers.
 #   1. a registered name runs the ANCHOR's copy with argv, from the caller's
 #      cwd, and its rc is the caller's rc.
@@ -34,9 +34,9 @@ contains() { # contains <label> <haystack> <fixed-string>
 ORIGIN="$tmp/origin"
 ANCHOR="$tmp/anchor"
 WT="$tmp/wt"
-mkdir -p "$ORIGIN/scripts/cr" "$ORIGIN/scripts/lib" "$ORIGIN/scripts/hooks/lib" "$ORIGIN/scripts/handover/console-kit"
+mkdir -p "$ORIGIN/scripts/cr" "$ORIGIN/scripts/lib" "$ORIGIN/scripts/hooks/lib" "$ORIGIN/scripts/handover/chief-kit"
 g init -q "$ORIGIN"
-cp "$SRC/scripts/handover/console-kit/himmel-gate.sh" "$ORIGIN/scripts/handover/console-kit/"
+cp "$SRC/scripts/handover/chief-kit/himmel-gate.sh" "$ORIGIN/scripts/handover/chief-kit/"
 cp "$SRC/scripts/cr/anchor-handoff.sh" "$ORIGIN/scripts/cr/"
 cp "$SRC/scripts/lib/git-clean.sh" "$ORIGIN/scripts/lib/"
 cp "$SRC/scripts/hooks/lib/anchor-bytes.sh" "$ORIGIN/scripts/hooks/lib/"
@@ -45,7 +45,7 @@ cp "$SRC/scripts/hooks/lib/anchor-bytes.sh" "$ORIGIN/scripts/hooks/lib/"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "copy=anchor argv=$* cwd=$PWD"' 'exit "${GATE_RC:-0}"' >"$ORIGIN/scripts/cr/orphan-check.sh"
 # Gates that run or source more than themselves, and what they reach.
 mkdir -p "$ORIGIN/scripts/guardrails"
-for f in scripts/cr/pr-check-context.sh scripts/cr/pr-check-env.sh scripts/handover/console-kit/go.sh; do
+for f in scripts/cr/pr-check-context.sh scripts/cr/pr-check-env.sh scripts/handover/chief-kit/go.sh; do
     cp "$ORIGIN/scripts/cr/orphan-check.sh" "$ORIGIN/$f"
 done
 for f in scripts/cr/sibling.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh scripts/lib/go-gate.sh scripts/lib/handover-path.sh; do
@@ -55,7 +55,7 @@ g -C "$ORIGIN" add -A
 g -C "$ORIGIN" commit -qm base
 g clone -q "$ORIGIN" "$ANCHOR"
 g -C "$ANCHOR" worktree add -q -b feat/x "$WT" refs/remotes/origin/main
-GATE="$ANCHOR/scripts/handover/console-kit/himmel-gate.sh"
+GATE="$ANCHOR/scripts/handover/chief-kit/himmel-gate.sh"
 
 # runf <cwd> <command...> - run with stdout on a FILE, as the Bash tool does:
 # a $(...) capture is a pipe, which the dispatcher refuses. Sets out and rc.
@@ -109,7 +109,7 @@ contains "5. a piped lone --help runs" "$out" "argv=--help"
 # 6. relative entry from a worktree whose gate copy differs.
 # shellcheck disable=SC2016 # written verbatim into the fixture
 printf '%s\n' '#!/usr/bin/env bash' 'echo copy=branch' >"$WT/scripts/cr/orphan-check.sh"
-runf "$WT" env HIMMEL_REPO="$ANCHOR" bash scripts/handover/console-kit/himmel-gate.sh orphan-check 3
+runf "$WT" env HIMMEL_REPO="$ANCHOR" bash scripts/handover/chief-kit/himmel-gate.sh orphan-check 3
 check "6. relative entry runs" 0 "$rc"
 contains "6. relative entry runs the anchor's gate" "$out" "copy=anchor argv=3"
 case "$out" in *copy=branch*) echo "FAIL 6. the branch's gate ran"; FAILED=$((FAILED + 1)) ;; esac

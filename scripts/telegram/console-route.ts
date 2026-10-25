@@ -83,7 +83,7 @@ export async function armedConsoles(root: string, now = Date.now()): Promise<Arm
 
 const describeConsoles = (live: (LiveConsole & { busy?: boolean })[]) => live.map(c => `${c.name} — hb=${c.hb} (${new Date(c.hb * 1000).toISOString()}) bucket=${c.bucket} project=${c.project}${c.busy ? " (busy)" : ""}`).join("\n");
 
-// Same refusals as console-kit/inbox-send.sh (empty, path separator, `..`,
+// Same refusals as chief-kit/inbox-send.sh (empty, path separator, `..`,
 // whitespace) — the path is built from this value. The router's charset already
 // excludes `/` and whitespace; `..` and empty are what reach here.
 export function consoleInboxPath(root: string, name: string): string | null {

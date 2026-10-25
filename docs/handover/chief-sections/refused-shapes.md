@@ -6,7 +6,7 @@ Never reshape to dodge a guard that fired on purpose.
 
 | Refused | Why | Retry as ONE command |
 |---|---|---|
-| `D=<path>; bash scripts/…/append-results.sh $D "…"` (a variable, glob or `cd … &&` in front of a gate script) | `guard-pr-check-literal` cannot resolve the script by its text | the same command with the path typed out in full, no variable: `bash scripts/handover/console-kit/append-results.sh <abs doc> "<text>"` |
+| `D=<path>; bash scripts/…/append-results.sh $D "…"` (a variable, glob or `cd … &&` in front of a gate script) | `guard-pr-check-literal` cannot resolve the script by its text | the same command with the path typed out in full, no variable: `bash scripts/handover/chief-kit/append-results.sh <abs doc> "<text>"` |
 | `git -C <primary> fetch` / any git write aimed at the primary checkout | `block-write-into-main-checkout` | `git fetch origin main` from your own worktree (the object store is shared) |
 | `git hook run <hook> --to-stdin=…` or any option that runs a program | `guard-pr-check-literal` | `git hook run <hook>` with the options dropped, as its own command |
 | `grep -E '<path-a>\|<path-b>'` naming a guarded script | same | one literal `git grep -n <one path>` per call |

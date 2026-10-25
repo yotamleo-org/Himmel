@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-ops-run.sh - suite for ops-run.sh, the
+# scripts/handover/chief-kit/test-ops-run.sh - suite for ops-run.sh, the
 # allowlisted runner an ops session (the relay role) uses to run a mechanical
-# console-kit script and hand the console ONE verdict line. Hermetic: the kit
+# chief-kit script and hand the console ONE verdict line. Hermetic: the kit
 # dir is a stub dir (the OPS_KIT_DIR seam).
 #
 # Cases:

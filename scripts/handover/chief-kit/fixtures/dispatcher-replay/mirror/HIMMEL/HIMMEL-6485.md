@@ -23,4 +23,4 @@ links:
 
 Follow-up and side work flows into the current version with nothing stopping it: v1.1.3 has 839 counted tickets against a documented soft cap of about 40 per version (docs/glossary.md:177), and 14 of the 39 tickets created into v1.1.3 on 10-19 carry neither an operator-directed nor a residual label.
 OPERATOR 10-19 16:4x: "do we protect ourselves from rabbit holes that fold into the version and they shouldn't?". Audit (console R): the cap is display-only (board.mjs:750, :811); scripts/jira/src/commands/create.ts:141-143 accepts any --fix-version, and :149-163 defaults a versionless Bug into the
-Files: scripts/jira/src/commands/create.ts and tests, scripts/handover/console-kit/board.mjs, tick.sh. Leg + console briefs updated to use --follow-up-of. Related HIMMEL-6371, 6380.
+Files: scripts/jira/src/commands/create.ts and tests, scripts/handover/chief-kit/board.mjs, tick.sh. Leg + console briefs updated to use --follow-up-of. Related HIMMEL-6371, 6380.

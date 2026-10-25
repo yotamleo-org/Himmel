@@ -15,7 +15,7 @@ which they are read.
 | Adopter config | `~/.himmel/config.json`, other fields | `himmelctl install`; `jira.sectorField` by the operator | no | luna cadence, bridge, PHI declarations, the Jira Sector field id (`jira.sectorField`) |
 | Install profile | `~/.claude/himmel/install-profile.json` | `himmelctl install` | no | the wizard's answers, replayed by `--from-profile` |
 | Handover registry | `~/.claude/handover/registry.json` | `/handover` | no | handover repos, buckets, branch prefixes |
-| Plugin and lane profiles | `scripts/machine-setup/` profiles, console-kit `--profile` | himmel repo | yes | which plugins and tools a session loads |
+| Plugin and lane profiles | `scripts/machine-setup/` profiles, chief-kit `--profile` | himmel repo | yes | which plugins and tools a session loads |
 | Chief rules | chief template, worker and judge system prompts, hooks | himmel repo | yes | how chiefs and workers behave |
 | Per-chief state | the fleet manifest in the handover bucket | the chief | in the state repo | which workers are live, their docs and tokens |
 

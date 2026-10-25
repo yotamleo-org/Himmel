@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-close-wrapped-leg.sh - suite for
+# scripts/handover/chief-kit/test-close-wrapped-leg.sh - suite for
 # close-wrapped-leg.sh. Hermetic: a fake /proc root
 # (CLAUDE_SESSIONS_PROC) with real NUL-separated <pid>/cmdline files drives
 # claude_sessions() (same pattern as scripts/lanes/test-ceiling-conformance.sh),
@@ -901,7 +901,7 @@ check "reap-alive: tmp-reap never called" "$(wc -c < "$CALLS.reap" | tr -d ' ')"
 # --- 30-35: the failure-loop digest step --------------------
 # The real P1 digest (bun) and P2 writer over the P1 fixture journal, into
 # per-case scratch ledgers. The session id comes from the pid's sessions file.
-LD="$HERE/../../eval/leg-digest"
+LD="$HERE/../../eval/worker-digest"
 STEP="$HERE/leg-digest-step.sh"
 DG_SID=4670c3a0-0000-4000-8000-000000000001
 DG_PROJ="$W/dg-projects"; mkdir -p "$DG_PROJ/-w" "$W/sessions"

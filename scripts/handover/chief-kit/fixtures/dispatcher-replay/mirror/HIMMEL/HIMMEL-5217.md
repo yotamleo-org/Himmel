@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-The roadmap tracker page (scripts/handover/console-kit/tracker.py) was checked as it renders, version by version, at the operator's request (2026-10-11, DA console). It was rendered with headless chromium and the embedded data was run through the page's own logic. All 961 ticket rows were compared w
+The roadmap tracker page (scripts/handover/chief-kit/tracker.py) was checked as it renders, version by version, at the operator's request (2026-10-11, DA console). It was rendered with headless chromium and the embedded data was run through the page's own logic. All 961 ticket rows were compared w

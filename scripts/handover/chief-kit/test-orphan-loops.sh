@@ -67,10 +67,10 @@ cat > "$W/ps.txt" <<'FIX'
   206   101    99:00:00 bash -c echo 'ps | grep shell-snapshots/snapshot-zsh-x'
   300   101    46:00:00 /usr/bin/zsh
   207   300       45:00 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-5-e.sh && eval 'sleep 99999'
-  208   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-f.sh && eval 'bash scripts/handover/console-kit/console-wait.sh'
+  208   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-f.sh && eval 'bash scripts/handover/chief-kit/console-wait.sh'
   209   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-g.sh && eval 'echo console-wait.sh; sleep 99999'
-  210   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-h.sh && eval 'echo "eval '\''bash scripts/handover/console-kit/console-wait.sh"; sleep 99999'
-  211   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-i.sh && eval 'bash scripts/handover/console-kit/console-wait.sh.bak'
+  210   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-h.sh && eval 'echo "eval '\''bash scripts/handover/chief-kit/console-wait.sh"; sleep 99999'
+  211   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-i.sh && eval 'bash scripts/handover/chief-kit/console-wait.sh.bak'
   212   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-j.sh && eval 'bash /tmp/other-console-wait.sh'
   213   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-k.sh && eval "echo hi && eval 'bash /p/console-wait.sh'; sleep 99999"
   214   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-l.sh && eval 'bash /p/console-wait.sh ; sleep 99999'

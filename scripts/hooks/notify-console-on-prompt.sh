@@ -19,7 +19,7 @@
 # env: HIMMEL_PROMPT_ALERT_DIR (debounce state). The sender is always the
 # inbox-send.sh beside this hook; tests run a copy of the hook next to a stub.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only console-kit leg surface.
+# PLATFORM GUARD: no .ps1 twin, by design — Linux-only chief-kit leg surface.
 # Bash 3.2-compatible.
 set -uo pipefail
 trap 'exit 0' EXIT
@@ -49,7 +49,7 @@ if [ -f "$stamp" ]; then
 fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-sender="$here/../handover/console-kit/inbox-send.sh"
+sender="$here/../handover/chief-kit/inbox-send.sh"
 [ -r "$sender" ] || exit 0
 leg="$(basename "${cwd:-unknown}")"
 case "$leg" in ""|*[!0-9A-Za-z._+-]*) leg=unknown ;; esac

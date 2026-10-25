@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/overnight/stop-marker.sh.
+# Smoke test for scripts/afk/stop-marker.sh.
 #
 # Covers:
 #   1. set creates marker; check returns rc=0.

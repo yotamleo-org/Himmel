@@ -11,7 +11,7 @@
 # Today a single mechanical gate failure (a stray shellcheck finding, a BOM, a
 # diff-range slip) silently kills an overnight ticket and the operator nurses
 # each pipeline by morning. C2 sits UPSTREAM of the consolidated morning report
-# (scripts/overnight/morning-report.sh — reused UNCHANGED) and adds
+# (scripts/afk/morning-report.sh — reused UNCHANGED) and adds
 # a retry/triage stage between the fanout-return and the report:
 #
 #   classify : parse each subagent result; for a CLOSED ALLOW-LIST of

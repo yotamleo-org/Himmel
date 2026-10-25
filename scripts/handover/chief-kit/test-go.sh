@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-headed-arm-leg.sh
-# scripts/handover/console-kit/test-go.sh - suite for go.sh, the
+# scripts/handover/chief-kit/test-go.sh - suite for go.sh, the
 # console's GO-evidence writer that merge-on-green.sh's console-GO gate reads.
 # test-merge-on-green.sh drives the reader end to end with GO files written by
 # THIS script; this suite pins the writer's own contract:
@@ -62,7 +62,7 @@ export STUB_NWO="o/r"
 # go.sh runs ready-check.sh itself, so every write below runs from
 # a repo whose CR ledger has an ok row for the head, with a gh that answers
 # ready-check's queries green (testlib-ready-pass.sh). Section 14 breaks each.
-# shellcheck source=scripts/handover/console-kit/testlib-ready-pass.sh
+# shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
 # shellcheck disable=SC1091
 . "$HERE/testlib-ready-pass.sh"
 ready_pass_bin "$tmp/ready-bin"
@@ -216,7 +216,7 @@ check "no root: exit 1" "$rc" "1"
 # shellcheck disable=SC2016  # the literal line go.sh carries, not an expansion
 GO_ENTRY_SOURCE_LINE='. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2'
 mk_go_entry_tree() {  # <root> <label>
-  mkdir -p "$1/scripts/handover/console-kit" "$1/scripts/cr"
+  mkdir -p "$1/scripts/handover/chief-kit" "$1/scripts/cr"
   git init -q "$1"
   cp "$HERE/../../cr/anchor-handoff.sh" "$1/scripts/cr/anchor-handoff.sh"
   awk -v src="$GO_ENTRY_SOURCE_LINE" '{ print } $0 == src { exit }' "$SCRIPT" > "$1/head.tmp"
@@ -224,20 +224,20 @@ mk_go_entry_tree() {  # <root> <label>
     echo "FAIL - 3437 setup: go.sh no longer carries the expected hand-off sourcing line verbatim, control proves nothing" >&2
     fails=$((fails+1))
   fi
-  printf '%s\necho "RAN:%s"\n' "$(cat "$1/head.tmp")" "$2" > "$1/scripts/handover/console-kit/go.sh"
+  printf '%s\necho "RAN:%s"\n' "$(cat "$1/head.tmp")" "$2" > "$1/scripts/handover/chief-kit/go.sh"
   rm -f "$1/head.tmp"
 }
 G3437_WT="$tmp/g3437-wt"; G3437_ANCHOR="$tmp/g3437-anchor"
 mk_go_entry_tree "$G3437_WT" branch
 mk_go_entry_tree "$G3437_ANCHOR" anchor
 
-out=$(cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$G3437_ANCHOR" bash scripts/handover/console-kit/go.sh 2>/dev/null)
+out=$(cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$G3437_ANCHOR" bash scripts/handover/chief-kit/go.sh 2>/dev/null)
 check "3437: relative entry hands off" "$out" "RAN:anchor"
 
-out=$(cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$G3437_ANCHOR" bash "$G3437_WT/scripts/handover/console-kit/go.sh" 2>/dev/null)
+out=$(cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$G3437_ANCHOR" bash "$G3437_WT/scripts/handover/chief-kit/go.sh" 2>/dev/null)
 check "3437: absolute entry runs local" "$out" "RAN:branch"
 
-rc=0; (cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/console-kit/go.sh >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/chief-kit/go.sh >/dev/null 2>&1) || rc=$?
 check "3437: unset HIMMEL_REPO exits 2" "$rc" "2"
 
 # --- 10. go.sh writes where merge-on-green reads ---------
@@ -247,11 +247,11 @@ check "3437: unset HIMMEL_REPO exits 2" "$rc" "2"
 # go.sh + scripts/lib + anchor-handoff.sh, a handovers/ stub, and a .env
 # naming a real root outside it. go.sh runs by ABSOLUTE path (no hand-off).
 S10="$tmp/s10"; S10_REAL="$tmp/s10-real"
-mkdir -p "$S10/scripts/handover/console-kit" "$S10/scripts/cr" "$S10/handovers" "$S10_REAL"
+mkdir -p "$S10/scripts/handover/chief-kit" "$S10/scripts/cr" "$S10/handovers" "$S10_REAL"
 git init -q "$S10"
-cp "$SCRIPT" "$S10/scripts/handover/console-kit/go.sh"
-cp "$HERE/ready-check.sh" "$S10/scripts/handover/console-kit/ready-check.sh"
-cp "$HERE/cr-disposition.sh" "$S10/scripts/handover/console-kit/cr-disposition.sh"
+cp "$SCRIPT" "$S10/scripts/handover/chief-kit/go.sh"
+cp "$HERE/ready-check.sh" "$S10/scripts/handover/chief-kit/ready-check.sh"
+cp "$HERE/cr-disposition.sh" "$S10/scripts/handover/chief-kit/cr-disposition.sh"
 ready_pass_ledger "$S10" "$SHA"
 cp -R "$HERE/../../lib" "$S10/scripts/lib"
 cp "$HERE/../../cr/anchor-handoff.sh" "$S10/scripts/cr/anchor-handoff.sh"
@@ -260,14 +260,14 @@ printf 'HANDOVER_DIR=%s\n' "$S10_REAL" > "$S10/.env"
 S10_GO=".locks/go/77.$SHA"
 
 # 10a. HANDOVER_DIR unset: the GO lands in the configured root, not the stub.
-rc=0; out=$(cd "$S10" && env -u HANDOVER_DIR -u HIMMEL_REPO bash "$S10/scripts/handover/console-kit/go.sh" 77 "$SHA" 2>&1) || rc=$?
+rc=0; out=$(cd "$S10" && env -u HANDOVER_DIR -u HIMMEL_REPO bash "$S10/scripts/handover/chief-kit/go.sh" 77 "$SHA" 2>&1) || rc=$?
 check "3572: unset HANDOVER_DIR -> exit 0" "$rc" "0"
 check "3572: unset HANDOVER_DIR -> nothing under the repo stub" "$(find "$S10/handovers" -type f | wc -l | tr -d ' ')" "0"
 check "3572: unset HANDOVER_DIR -> GO in the .env-configured root" "$([ -f "$S10_REAL/$S10_GO" ] && echo yes)" "yes"
 rm -f "$S10_REAL/$S10_GO"
 
 # 10b. HANDOVER_DIR = the repo stub itself: same answer, the stub is skipped.
-rc=0; (cd "$S10" && env -u HIMMEL_REPO HANDOVER_DIR="$S10/handovers" bash "$S10/scripts/handover/console-kit/go.sh" 77 "$SHA" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$S10" && env -u HIMMEL_REPO HANDOVER_DIR="$S10/handovers" bash "$S10/scripts/handover/chief-kit/go.sh" 77 "$SHA" >/dev/null 2>&1) || rc=$?
 check "3572: HANDOVER_DIR=stub -> exit 0" "$rc" "0"
 check "3572: HANDOVER_DIR=stub -> nothing under the repo stub" "$(find "$S10/handovers" -type f | wc -l | tr -d ' ')" "0"
 check "3572: HANDOVER_DIR=stub -> GO in the .env-configured root" "$([ -f "$S10_REAL/$S10_GO" ] && echo yes)" "yes"
@@ -275,7 +275,7 @@ check "3572: HANDOVER_DIR=stub -> GO in the .env-configured root" "$([ -f "$S10_
 # 10c. The configured root is gone: refuse non-zero rather than fall back to
 # the stub the gate never reads.
 printf 'HANDOVER_DIR=%s\n' "$tmp/s10-missing" > "$S10/.env"
-rc=0; out=$(cd "$S10" && env -u HANDOVER_DIR -u HIMMEL_REPO bash "$S10/scripts/handover/console-kit/go.sh" 77 "$SHA" 2>&1) || rc=$?
+rc=0; out=$(cd "$S10" && env -u HANDOVER_DIR -u HIMMEL_REPO bash "$S10/scripts/handover/chief-kit/go.sh" 77 "$SHA" 2>&1) || rc=$?
 [ "$rc" -ne 0 ] && echo "ok - 3572: configured root missing -> non-zero ($rc)" || { echo "FAIL - 3572: configured root missing -> rc=0 (GO written where the gate cannot see it)"; fails=$((fails+1)); }
 check "3572: configured root missing -> nothing under the repo stub" "$(find "$S10/handovers" -type f | wc -l | tr -d ' ')" "0"
 

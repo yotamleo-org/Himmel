@@ -13,7 +13,7 @@
 # Linux-only: console-wait.sh has no .ps1 twin by design; this suite uses GNU
 # timeout and stat -c.
 #
-# Run: bash scripts/handover/console-kit/test-console-wait-pool.sh
+# Run: bash scripts/handover/chief-kit/test-console-wait-pool.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/console-wait.sh}}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-leg-ledger.sh - hermetic suite for the leg ledgers.
+# scripts/eval/worker-digest/test-leg-ledger.sh - hermetic suite for the leg ledgers.
 # Scratch ledgers only; never ~/.himmel. No model call, no bank.
 #  1. record writes one leg-failures row per digest class and one leg-trajectory eval-runs row; both validate;
 #  2. idempotence by session: a second run, and a run after a crash between writes, append only what is missing;
@@ -41,7 +41,7 @@ check "one leg-failures row per digest class" '[ "$(lines "$FL")" = "$(jq ".fail
 check "one eval-runs row" '[ "$(lines "$EL")" = 1 ]'
 check "validate passes on the leg-failures ledger" 'python3 "$LL" validate "$FL" >/dev/null'
 check "validate passes on the eval-runs ledger" 'python3 "$EVR" validate "$EL" >/dev/null'
-check "a leg-failures row carries the envelope and the leg fields" 'jq -e "select(.class == \"denied/guard-pr-check-literal\") | .v == 1 and .kind == \"leg-failure\" and .source == \"scripts/eval/leg-digest/leg_ledger.py\" and (.host | length > 0) and (.ts | length > 0) and .session == \"$SID\" and .leg == \"N1373\" and .ticket == \"HIMMEL-4670\" and .console == \"demo-console\" and .pr == 1990 and .count == 2 and .identical_retry == 1 and .recovered == false" "$FL" >/dev/null'
+check "a leg-failures row carries the envelope and the leg fields" 'jq -e "select(.class == \"denied/guard-pr-check-literal\") | .v == 1 and .kind == \"leg-failure\" and .source == \"scripts/eval/worker-digest/leg_ledger.py\" and (.host | length > 0) and (.ts | length > 0) and .session == \"$SID\" and .leg == \"N1373\" and .ticket == \"HIMMEL-4670\" and .console == \"demo-console\" and .pr == 1990 and .count == 2 and .identical_retry == 1 and .recovered == false" "$FL" >/dev/null'
 check "a suite row keeps final_red" 'jq -e "select(.class == \"suite/test-eval-runs.sh\") | .final_red == true" "$FL" >/dev/null'
 check "the eval-runs row is the observational leg-trajectory row keyed by session" 'jq -e ".eval == \"leg-trajectory\" and .run_id == \"$SID\" and .status == \"ok\" and .meta.observational == true and .meta.leg == \"N1373\" and .meta.pr == 1990 and .n == 3 and .reps == 1 and .cases == null and .config.digest_v == 2 and .model == \"claude-opus-5-5\"" "$EL" >/dev/null'
 check "its metrics are the digest metrics, booleans as 1/0" 'jq -e ".metrics | .fail_denied == 10 and .turns == 3 and .identical_denied_retries == 1 and has(\"red_before_green\") and has(\"verify_before_claim\")" "$EL" >/dev/null'

@@ -4,7 +4,7 @@
 # alert text that never carries the denied command or the denial reason.
 # Scratch dirs only (log, sentinel dir, sender seam); never the real ~/.himmel.
 #
-# Run: bash scripts/handover/console-kit/test-denied-launch-alert.sh
+# Run: bash scripts/handover/chief-kit/test-denied-launch-alert.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${DENIED_LAUNCH_ALERT:-$HERE/denied-launch-alert.sh}"
@@ -43,7 +43,7 @@ has() { grep -q "$@"; case $? in 0) echo yes ;; 1) echo no ;; *) echo error ;; e
 sent() { wc -l < "$SENT_LOG" | tr -d ' '; }
 
 # --- (a) a denied launch alerts once -----------------------------------------
-mkrow 2 feat+leg-a sid-a Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --token SECRETCMD' sha-a
+mkrow 2 feat+leg-a sid-a Bash 'bash scripts/handover/chief-kit/headed-arm-leg.sh --token SECRETCMD' sha-a
 bash "$SUT" >/dev/null 2>&1; rc=$?
 check "(a) the scan exits 0" "0" "$rc"
 check "(a) one alert for one denied launch" "1" "$(sent)"
@@ -59,18 +59,18 @@ bash "$SUT" >/dev/null 2>&1
 check "(b) a second scan of the same row sends nothing" "1" "$(sent)"
 
 # --- (c) a new denied launch alerts again; a non-launch denial does not -------
-mkrow 1 feat+leg-b sid-b Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --other' sha-b
+mkrow 1 feat+leg-b sid-b Bash 'bash scripts/handover/chief-kit/headed-arm-leg.sh --other' sha-b
 mkrow 1 feat+leg-c sid-c Bash 'git push origin main' sha-c
 bash "$SUT" >/dev/null 2>&1
 check "(c) the new launch alerts, the push denial does not" "2" "$(sent)"
 
 # --- (d) a launch denied before the window is not replayed --------------------
-mkrow 120 feat+leg-old sid-old Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --old' sha-old
+mkrow 120 feat+leg-old sid-old Bash 'bash scripts/handover/chief-kit/headed-arm-leg.sh --old' sha-old
 bash "$SUT" >/dev/null 2>&1
 check "(d) an out-of-window launch denial sends nothing" "2" "$(sent)"
 
 # --- (e) a failed send is retried by the next scan, never doubled -------------
-mkrow 1 feat+leg-e sid-e Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --e' sha-e
+mkrow 1 feat+leg-e sid-e Bash 'bash scripts/handover/chief-kit/headed-arm-leg.sh --e' sha-e
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/fail.sh"; chmod +x "$WORK/fail.sh"
 MERGE_BLOCK_ALERT_CMD="$WORK/fail.sh" bash "$SUT" >/dev/null 2>&1
 check "(e) a failed send records nothing sent" "2" "$(sent)"
@@ -87,7 +87,7 @@ check "(f) a missing log exits 0 and sends nothing" "0:3" "$rc:$(sent)"
 check "(g) the sentinel dir is 0700" "700" "$(stat -c %a "$HIMMEL_DENIAL_ALERT_DIR" 2>/dev/null)"  # gnu-ok: Linux-only kit
 
 # --- (h) a claim abandoned by a killed scan is reclaimed once it is stale ------
-mkrow 1 feat+leg-h sid-h Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --h' sha-h
+mkrow 1 feat+leg-h sid-h Bash 'bash scripts/handover/chief-kit/headed-arm-leg.sh --h' sha-h
 # shellcheck disable=SC2016  # the sender body expands when the sender runs
 printf '#!/usr/bin/env bash\nkill -9 "$(ps -o ppid= -p "$PPID" | tr -d " ")"\n' > "$WORK/kill.sh"; chmod +x "$WORK/kill.sh"
 MERGE_BLOCK_ALERT_CMD="$WORK/kill.sh" bash "$SUT" >/dev/null 2>&1
@@ -104,7 +104,7 @@ check "(h) and never again" "4" "$(sent)"
 # A find shim widens the window between the stale check and the reclaim: the first
 # caller waits 0.1s, the second 0.6s, so an unserialized second scan removes the
 # first one's fresh claim and both send.
-mkrow 1 feat+leg-i sid-i Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --i' sha-i
+mkrow 1 feat+leg-i sid-i Bash 'bash scripts/handover/chief-kit/headed-arm-leg.sh --i' sha-i
 MERGE_BLOCK_ALERT_CMD="$WORK/kill.sh" bash "$SUT" >/dev/null 2>&1
 find "$HIMMEL_DENIAL_ALERT_DIR" -type f -size 0 -exec touch -d '-10 minutes' {} + 2>/dev/null
 mkdir -p "$WORK/shim"

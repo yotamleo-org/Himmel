@@ -40,7 +40,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo "vm-runner.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
     exit 96
 fi
-chokepoint_seam_guard scripts/handover/console-kit/vm-runner.sh || exit 96
+chokepoint_seam_guard scripts/handover/chief-kit/vm-runner.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -339,7 +339,7 @@ cmd_doctor() {
     esac
     tok="$(tick_token)"
     case "$tok" in
-        DEAD|STUCK|FAILING|DISAGREE:*) printf 'FAIL\tC64-vm-runner\trunner %s (variable on): bash scripts/handover/console-kit/vm-runner.sh status\n' "$tok" ;;
+        DEAD|STUCK|FAILING|DISAGREE:*) printf 'FAIL\tC64-vm-runner\trunner %s (variable on): bash scripts/handover/chief-kit/vm-runner.sh status\n' "$tok" ;;
         unknown) printf 'WARN\tC64-vm-runner\trunner state unknown: the %s variable is unreadable (gh) and no unit is up\n' "$VAR" ;;
         *) printf 'OK\tC64-vm-runner\trunner %s\n' "$tok" ;;
     esac

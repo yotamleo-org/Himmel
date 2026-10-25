@@ -6,7 +6,7 @@
 # pr-9002 (unknown), pr-9003 (no-ci), pr-9004 (idle) are jq-derived from those two (no live PR held
 # those states at capture time). Clock pinned by PR_STALL_NOW. bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-pr-stall.sh
+# Run: bash scripts/handover/chief-kit/test-pr-stall.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PS="${PR_STALL:-$HERE/pr-stall.sh}"

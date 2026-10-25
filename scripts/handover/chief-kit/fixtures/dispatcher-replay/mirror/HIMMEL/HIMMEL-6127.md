@@ -21,8 +21,8 @@ links:
 
 ## Description
 
-Files: marketplace/plugins/himmel-bus (bin/bus, lib/edges.mjs, lib/identity.mjs), docs/handover/leg-sections/succession.md, scripts/handover/console/console.sh, the leg launcher, tick.sh. Related: HIMMEL-5966 (succession as a script).
-2. bash scripts/handover/console-kit/inbox-send.sh <session> 'bus waker live proof: reply with one LIVE bullet'
+Files: marketplace/plugins/himmel-bus (bin/bus, lib/edges.mjs, lib/identity.mjs), docs/handover/worker-sections/succession.md, scripts/handover/chief/console.sh, the leg launcher, tick.sh. Related: HIMMEL-5966 (succession as a script).
+2. bash scripts/handover/chief-kit/inbox-send.sh <session> 'bus waker live proof: reply with one LIVE bullet'
 3. bash scripts/handover/bus-idle-waker.sh --name <session> --service org.kde.konsole-<pid> --session /Sessions/1 --poll 2 --grace 20 --rewake 120 --max-polls 40
 Scratch-proof waker call (konsole 1045288 closed afterwards): bash scripts/handover/bus-idle-waker.sh --name <scratch> --service org.kde.konsole-1045288 --session /Sessions/1 --poll 2 --grace 5 --rewake 120 --max-polls 20
    ``    bash scripts/handover/bus-idle-waker.sh --name <leg-name> --service <konsole service> --session /Sessions/<n> --max-polls 30    `    - **Expected (idle input box):** one wake line, and the leg reads the ping.    - **Expected (wrong <leg-name>`):** rc=4 and no keystroke.

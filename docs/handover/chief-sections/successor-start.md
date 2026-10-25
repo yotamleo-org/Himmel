@@ -16,7 +16,7 @@ the relays below follow in the very next turn.
    `TaskStop` the waiter and re-arm it without `--succession`.
    **Then close the predecessor's window.** Once its doc's lock is
    free and its last Results bullet reads `WRAPPED`, run
-   `bash scripts/handover/console-kit/close-wrapped-leg.sh --console <predecessor doc>`
+   `bash scripts/handover/chief-kit/close-wrapped-leg.sh --console <predecessor doc>`
    (same checks as a leg: it refuses while the lock is held, the tail is not
    `WRAPPED`, or not exactly one live session carries its name; exit 6 means
    retry shortly; exit 7 means it still has a live subagent, a judge call

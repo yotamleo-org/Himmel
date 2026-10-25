@@ -330,7 +330,7 @@ run_case py-t13b-ok-marker-quoted FAIL src/start.py \
 # Real markers already on main (verbatim).
 # Pinned so the tightened rules keep accepting the genuine shapes that shipped
 # on other legs' branches, not just the synthetic fixture lines above.
-run_case real-1083-test-fleet-daemon-string PASS scripts/handover/console-kit/test-fleet.sh \
+run_case real-1083-test-fleet-daemon-string PASS scripts/handover/chief-kit/test-fleet.sh \
     "    '- 10:27 LIVE — background leg via the daemon'  # t13b-ok: literal fixture text for a mocked leg row, not real automation"
 # shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text, real argv-match line
 run_case real-1087-argv-match-marker PASS scripts/handover/headed-arm.sh \

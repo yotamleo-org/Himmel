@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-Related: HIMMEL-3724, HIMMEL-2563. Files: scripts/handover/console-kit/tick.sh and the console notify path. Fix version v1.1.3.
+Related: HIMMEL-3724, HIMMEL-2563. Files: scripts/handover/chief-kit/tick.sh and the console notify path. Fix version v1.1.3.

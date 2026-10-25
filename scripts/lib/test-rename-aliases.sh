@@ -321,7 +321,7 @@ while IFS= read -r want; do
 done <<EOF
 $V5A_ROWS
 EOF
-forwards bash scripts/handover/console console.sh chief.sh "$SH_STUB"
+forwards bash scripts/handover/chief console.sh chief.sh "$SH_STUB"
 # The launchers and the arm tests still source the old lib path, so it loads
 # the new file and stays silent.
 d="$FT/v5a-lib"
@@ -341,7 +341,7 @@ stub .claude/commands/console.md .claude/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
 for a in supervisor-session console; do
-  check ".claude/commands/$a.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/console/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/$a.md" && [ -f "$ROOT/scripts/handover/console/chief.sh" ] && echo yes || echo no)"
+  check ".claude/commands/$a.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/chief/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/$a.md" && [ -f "$ROOT/scripts/handover/chief/chief.sh" ] && echo yes || echo no)"
   check "himmel-ops $a.md runs /himmel-ops:chief" "yes" "$(grep -qF -- "\`/himmel-ops:chief \$ARGUMENTS\`" "$ROOT/marketplace/plugins/himmel-ops/commands/$a.md" && echo yes || echo no)"
 done
 
@@ -604,9 +604,9 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ':!*.md' \
     ':!scripts/lib/rename-aliases.tsv' ':!scripts/lib/test-rename-aliases.sh' \
     ':!scripts/docs/check-old-terms.sh' ':!scripts/docs/test-check-old-terms.sh' \
-    ':!scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh' \
+    ':!scripts/handover/chief-kit/test-headed-arm-leg-worker-env.sh' \
     ':!scripts/hooks/test-guard-leg-context-handoff.sh' \
-    ':!scripts/handover/console-kit/fixtures/*' \
+    ':!scripts/handover/chief-kit/fixtures/*' \
     ':!scripts/lib/chief-context.sh' ':!scripts/lib/override-env.sh' ':!scripts/lib/test-override-env.sh' \
     ':!scripts/himmelctl/lib/bypass-flags.json' 2>/dev/null | awk -F'\t' -v map="$V4A_MAP" '
     BEGIN { while ((getline l < map) > 0) { split(l, p, "\t"); nw[p[1]] = p[2] } }

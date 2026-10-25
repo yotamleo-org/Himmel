@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# scripts/handover/console/test-console.sh — RED/GREEN suite for console.sh
+# scripts/handover/chief/test-console.sh — RED/GREEN suite for console.sh
 #
 # Every case runs against a TEMP handover root AND a throwaway fixture
 # "repo" (a fresh `git init` holding REAL copies of scripts/handover,
@@ -91,7 +91,7 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
         *) ln -s "$_e" "$fixture_repo/docs/${_e##*/}" ;;
     esac
 done
-C="$fixture_repo/scripts/handover/console/chief.sh"
+C="$fixture_repo/scripts/handover/chief/chief.sh"
 
 root="$tmp/handovers"
 mkdir -p "$root"
@@ -1572,7 +1572,7 @@ check "60 successor doc itself was still written" "$([ -s "$doc60B" ] && echo ye
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/az60-doctor.sh"
 rc60z=0
 ACTION_ZERO_BANK="$tmp/facts-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az60-doctor.sh" \
-    bash "$fixture_repo/scripts/handover/console-kit/action-zero.sh" --doc "$doc60B" --root "$root" --repo "$fixture_repo" --render-legs >"$tmp/az60.out" 2>&1 || rc60z=$?
+    bash "$fixture_repo/scripts/handover/chief-kit/action-zero.sh" --doc "$doc60B" --root "$root" --repo "$fixture_repo" --render-legs >"$tmp/az60.out" 2>&1 || rc60z=$?
 check "60 action-zero.sh --render-legs on the seeded successor exits 0" "$rc60z" "0"
 check "60 the re-rendered legs line keeps the seeded nonce with the held lock's token" \
     "$(grep -Fc "\`N9:nonce-fixture-60:$leg60tok:" "$doc60B" 2>/dev/null)" "1"
@@ -1823,7 +1823,7 @@ printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\nJIRA_PROJECT_KEY=OWNKEY\n' "$own65/s
 foreign65="$tmp/foreign-repo-65"
 mkdir -p "$foreign65/nested"
 ( cd "$foreign65" && git init -q )
-out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CHIEF_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/chief.sh" new --name rec65-console --dry-run 2>&1)"
+out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CHIEF_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/chief/chief.sh" new --name rec65-console --dry-run 2>&1)"
 rc65=$?
 check "65 own-checkout .env resolves rc=0" "$rc65" "0"
 case "$out65" in
@@ -1922,13 +1922,13 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 # new leak (headed-arm-leg.sh is read-only here; this is the
 # contract's "a test that fails when it gains a var the strip list does not
 # name").
-propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | grep -oE 'leg_propagate_env [A-Z_][A-Z0-9_]*' | awk '{print $2}' | sort -u)"
+propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/chief-kit/headed-arm-leg.sh" | grep -oE 'leg_propagate_env [A-Z_][A-Z0-9_]*' | awk '{print $2}' | sort -u)"
 strip_list67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_leg_env_unset_names ) | sort -u)"
 missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_list67"))"
 check "67 every leg_propagate_env name in headed-arm-leg.sh is in the strip list" "$missing67" ""
 # leg_propagate_env also sets each name's worker-session twin, so every twin
 # must be stripped too, and a launch-seam name's twin must be seam as well.
-twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
+twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/chief-kit/headed-arm-leg.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
 check "67 headed-arm-leg.sh has a twin table" "$([ -n "$twins67" ] && echo found)" "found"
 want67='HIMMEL_LEAN_LEG HIMMEL_LEAN_WORKER_SESSION
 HIMMEL_LEG_AUTOCOMPACT HIMMEL_WORKER_SESSION_AUTOCOMPACT
@@ -2110,7 +2110,7 @@ foreign70="$tmp/foreign70"; mkdir -p "$foreign70"; git init -q "$foreign70"
 rc70a=0; out70a="$(console_from "$foreign70" new --bucket c1plain --dry-run 2>&1)" || rc70a=$?
 check "70a a plain foreign cwd still gets himmel's template (dry-run rc=0)" "$rc70a" "0"
 check "70a the kit is himmel's, not the foreign cwd's" \
-    "$(printf '%s\n' "$out70a" | grep -c "^would-kit: $fixture_repo/scripts/handover/console-kit\$")" "1"
+    "$(printf '%s\n' "$out70a" | grep -c "^would-kit: $fixture_repo/scripts/handover/chief-kit\$")" "1"
 # A foreign repo shipping its own template and a booby-trapped queue-lock: the
 # trap writes a sentinel if it is ever executed.
 evil70="$tmp/evil70"; mkdir -p "$evil70/docs/handover" "$evil70/scripts/handover"
@@ -2927,7 +2927,7 @@ out90a="$(console new --bucket az90)"
 token90a="$(token_of "$out90a")"
 doc90A="$root/tester/az90/DEMO-nextleg-${today}A-console.md"
 doc90B="$root/tester/az90/DEMO-nextleg-${today}B-console.md"
-ACTION_ZERO_SCRIPT="$fixture_repo/scripts/handover/console-kit/action-zero.sh" ACTION_ZERO_BANK="$tmp/az-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az-doctor.sh" \
+ACTION_ZERO_SCRIPT="$fixture_repo/scripts/handover/chief-kit/action-zero.sh" ACTION_ZERO_BANK="$tmp/az-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az-doctor.sh" \
     console next --bucket az90 >/dev/null
 block90="$(awk '/^### Pre-computed by chief.sh next/ {s = 1} s && /^## / {exit} s' "$doc90B")"
 check "90 next writes the pre-computed block" "$(printf '%s\n' "$block90" | grep -c '^### Pre-computed by chief.sh next at ')" "1"
@@ -3023,7 +3023,7 @@ cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-console-HANDOFF.md" <<'HDR'
 ## How DG starts
 
 Run ACTION ZERO from `HIMMEL-nextleg-2026-10-22DG-roadmap-console.md` unchanged; expect at the root sweep
-`<the locks the successor should find>`. Kit: `/example/himmel/scripts/handover/console-kit`.
+`<the locks the successor should find>`. Kit: `/example/himmel/scripts/handover/chief-kit`.
 HDR
 run91 hdr91
 check "91 an existing HANDOFF with a placeholder Operator line is reported" "$(printf '%s\n' "$out91" | grep -cF '**Operator:** `<at the station')" "1"

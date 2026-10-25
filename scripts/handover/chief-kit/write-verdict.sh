@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/write-verdict.sh - the sanctioned
+# scripts/handover/chief-kit/write-verdict.sh - the sanctioned
 # writer for a judge's verdict file. A console-judge CALL has no Write tool,
 # and the Bash text guards refuse the exact line go.sh --trust-reviewed needs
 # (`**GO** for head <sha>`), so before this a judge call could not record its
@@ -321,7 +321,7 @@ fi
 # every bullet under a Non-blocking / Follow-ups / Residuals heading names a
 # HIMMEL-<n> ticket or carries `no-ticket: <reason>`; an unticketed residual is
 # refused so it cannot live only as verdict prose.
-# shellcheck source=scripts/handover/console-kit/residual-lines.sh
+# shellcheck source=scripts/handover/chief-kit/residual-lines.sh
 . "$(dirname "$0")/residual-lines.sh"
 unfiled=$(unfiled_residual_section_lines "$EVIDENCE")
 if [ -n "$unfiled" ]; then

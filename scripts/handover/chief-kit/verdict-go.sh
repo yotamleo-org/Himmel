@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/verdict-go.sh - one call from a
+# scripts/handover/chief-kit/verdict-go.sh - one call from a
 # judge's verdict to the persisted verdict, the GO, the Results bullet and the
 # board. The console used to spend 8 to 9 full-context turns on that
 # bookkeeping per verdict; this runs the same sanctioned
@@ -72,7 +72,7 @@ if [ "$HEAD_OK" -ne 1 ] || [ "${#HEAD_SHA}" -ne 40 ]; then
     usage
 fi
 
-# shellcheck source=scripts/handover/console-kit/residual-lines.sh
+# shellcheck source=scripts/handover/chief-kit/residual-lines.sh
 . "$HERE/residual-lines.sh"
 if [ -r "$EVIDENCE" ]; then
     unfiled="$(unfiled_residual_section_lines "$EVIDENCE")"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/go.sh - write the console's GO for one PR head
+# scripts/handover/chief-kit/go.sh - write the console's GO for one PR head
 # The file IS the GO: merge-on-green.sh, run from a
 # console-spawned leg (HIMMEL_CONSOLE_LEG=1, exported by headed-arm-leg.sh),
 # refuses with exit 17 unless <handover_root>/.locks/go/<pr>.<head sha> exists
@@ -86,7 +86,7 @@
 #   9  refused: cr-disposition.sh check found a deferred Critical or Important
 #      finding on the PR's branch with no valid disposition at <head>
 #
-# A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
+# A relative entry (`bash scripts/handover/chief-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
 # copy before anything else runs - same reasoning as
 # merge-on-green.sh's own entry-script hand-off: a leg-writable worktree copy
@@ -110,7 +110,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo "go.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
     exit 96
 fi
-chokepoint_seam_guard scripts/handover/console-kit/go.sh || exit 96
+chokepoint_seam_guard scripts/handover/chief-kit/go.sh || exit 96
 
 # The reads below (PR view, repo name) ride the read-only token via gh-read.sh
 # and a missing or refused read token falls back to the main one, so

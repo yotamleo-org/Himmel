@@ -4,7 +4,7 @@
 # helpers). Scratch ack dir only (HIMMEL_DENIAL_ACK_DIR): never the real
 # ~/.himmel/state. bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-ack-denial.sh
+# Run: bash scripts/handover/chief-kit/test-ack-denial.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ACK="${ACK_DENIAL:-$HERE/ack-denial.sh}"

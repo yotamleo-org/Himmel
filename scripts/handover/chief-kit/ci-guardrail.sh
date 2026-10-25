@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/ci-guardrail.sh
+# scripts/handover/chief-kit/ci-guardrail.sh
 #
 # CI guardrail monitor for the console tick: are the fleet's GitHub Actions
 # runs starting to look abusive (plan section 1.3, operator decision 80)?

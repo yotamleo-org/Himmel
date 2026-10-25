@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the ok/bad reporting lines, as in test-headed-arm-leg.sh
-# scripts/handover/console-kit/test-brief-lint.sh - suite for brief-lint.sh
+# scripts/handover/chief-kit/test-brief-lint.sh - suite for brief-lint.sh
 # the arming-time check that a leg or judge brief carries a
 # filled `> **Prior art:**` line, plus the headed-arm-leg.sh call site that
 # refuses an arming with a failing brief unless --no-prior-art-check is passed.

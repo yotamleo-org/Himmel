@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-- Files: scripts/handover/console-kit/tick.sh, test-tick.sh, console-wait.sh (if it parses fields), and board.mjs (if it parses the tick).
+- Files: scripts/handover/chief-kit/tick.sh, test-tick.sh, console-wait.sh (if it parses fields), and board.mjs (if it parses the tick).
 PR #3049 (yotamleo/Himmel) merged @ e7c72fcf96d71b4e76bc0cdc87cd4b078f32a500. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

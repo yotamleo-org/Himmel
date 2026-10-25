@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check(); backtick spans are literal
-# scripts/handover/console-kit/test-live-state.sh - suite for live-state.sh
+# scripts/handover/chief-kit/test-live-state.sh - suite for live-state.sh
 # which renders a console doc's `## Live state` `legs:` entries
 # from its fleet manifest + the held leg locks:
 #   1. a held manifest leg gets `<label>:<nonce>:<lock-token>:<pid>`, the lock
@@ -143,13 +143,13 @@ bash "$FM" add "${con11%.md}.fleet.json" "$d1" >/dev/null 2>&1
 before11="$(cat "$con11")"
 cp -R "$HERE/.." "$tmp/kitcopy" 2>/dev/null
 printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/kitcopy/queue-lock.sh"
-bash "$tmp/kitcopy/console-kit/live-state.sh" "$con11" >/dev/null 2>&1; rc=$?
+bash "$tmp/kitcopy/chief-kit/live-state.sh" "$con11" >/dev/null 2>&1; rc=$?
 check '11. a lock status failure refuses' 1 "$rc"
 check '11. the refused run leaves the doc untouched' "$before11" "$(cat "$con11")"
 
 # 12. a held lock whose owner is unreadable refuses and leaves the doc untouched.
 printf '#!/usr/bin/env bash\necho garbage\nexit 11\n' > "$tmp/kitcopy/queue-lock.sh"
-bash "$tmp/kitcopy/console-kit/live-state.sh" "$con11" >/dev/null 2>&1; rc=$?
+bash "$tmp/kitcopy/chief-kit/live-state.sh" "$con11" >/dev/null 2>&1; rc=$?
 check '12. an unreadable lock owner refuses' 1 "$rc"
 check '12. the refused run leaves the doc untouched' "$before11" "$(cat "$con11")"
 
@@ -157,7 +157,7 @@ check '12. the refused run leaves the doc untouched' "$before11" "$(cat "$con11"
 for bad14 in 'a:b' 'a`b' 'a b'; do
     printf '{"session":"%s"}\n' "$bad14" > "$tmp/owner14.json"
     printf '#!/usr/bin/env bash\ncat "%s"\nexit 11\n' "$tmp/owner14.json" > "$tmp/kitcopy/queue-lock.sh"
-    err14="$(bash "$tmp/kitcopy/console-kit/live-state.sh" "$con11" 2>&1 >/dev/null)"; rc=$?
+    err14="$(bash "$tmp/kitcopy/chief-kit/live-state.sh" "$con11" 2>&1 >/dev/null)"; rc=$?
     check "14. owner session [$bad14] refuses" 1 "$rc"
     case "$err14" in *'span delimiter'*) r=guard ;; *) r="[$err14]" ;; esac
     check "14. owner session [$bad14] hits the delimiter guard" guard "$r"

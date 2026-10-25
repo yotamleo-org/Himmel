@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-Files: scripts/cr/review-round.sh, scripts/cr/clear-cr-marker.sh, scripts/handover/console-kit/ready-check.sh, docs for /pr-check, and the leg preface (docs/handover/leg-sections). These are trust paths: opus judge plus trust-reviewed GO. Collision: N2610 (HIMMEL-6279) owns review-round.sh and its t
+Files: scripts/cr/review-round.sh, scripts/cr/clear-cr-marker.sh, scripts/handover/chief-kit/ready-check.sh, docs for /pr-check, and the leg preface (docs/handover/worker-sections). These are trust paths: opus judge plus trust-reviewed GO. Collision: N2610 (HIMMEL-6279) owns review-round.sh and its t

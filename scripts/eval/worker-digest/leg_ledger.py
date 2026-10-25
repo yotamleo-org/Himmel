@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/leg-digest/leg_ledger.py - the leg ledgers writer (HIMMEL-4670 P2).
+"""scripts/eval/worker-digest/leg_ledger.py - the leg ledgers writer (HIMMEL-4670 P2).
 
 Turns one P1 digest (leg-digest.ts) into two ledger writes, then a marker:
   1. one leg-failures row per digest failures row (registered in
@@ -62,7 +62,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
 
-SOURCE = "scripts/eval/leg-digest/leg_ledger.py"
+SOURCE = "scripts/eval/worker-digest/leg_ledger.py"
 LEDGER_ENV = "HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"  # old name, read both ways
 EVAL_ID = "leg-trajectory"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/focus-refresh.sh - refresh the FOCUS page after a
+# scripts/handover/chief-kit/focus-refresh.sh - refresh the FOCUS page after a
 # ship event, so the page the console republishes shows what Jira, the PRs and
 # the worker records say now. Best effort for the caller: it prints one line and
 # the caller never fails on it.

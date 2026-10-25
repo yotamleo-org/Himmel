@@ -4,7 +4,7 @@
 # break-glass finding classes. Every path is a fixture. JUDGE_LADDER overrides the script under
 # test (the RED control: a missing script fails every row). bash 3.2-safe.
 #
-# Run: bash scripts/quiet-run.sh suite -- bash scripts/handover/console-kit/test-judge-ladder.sh
+# Run: bash scripts/quiet-run.sh suite -- bash scripts/handover/chief-kit/test-judge-ladder.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${JUDGE_LADDER:-$HERE/judge-ladder.sh}"

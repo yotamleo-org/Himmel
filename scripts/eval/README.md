@@ -149,7 +149,7 @@ named in `feedback-rules.json`, over that eval's newest `ok` row:
 
 Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else
 `~/.himmel/eval-changes.jsonl`). The daily failure review
-(`leg-digest/failure_review.py`) runs this step after the friction
+(`worker-digest/failure_review.py`) runs this step after the friction
 subsection and shows what it wrote under `### Eval feedback`. Its friction
 run passes `--record`, so `friction.py` appends one `eval: friction` row per
 run (refusals by verdict, `over_deny_share`, `over_deny:<source>/<class>`).
@@ -286,14 +286,14 @@ call against the most recent identical denial before it, so the counts sum to
 
 ## leg-digest: one leg session's failures as class keys
 
-`leg-digest/leg-digest.ts` (Bun) reads a leg's journal and its subagent
+`worker-digest/leg-digest.ts` (Bun) reads a worker's journal and its subagent
 transcripts, merged in the order the AG-UI page uses. It maps them with the
 AG-UI mapper and prints one digest JSON. It is read-only, makes no model call
 and writes nothing; `leg_ledger.py` (below) turns a digest into ledger rows.
 
 ```bash
-bun scripts/eval/leg-digest/leg-digest.ts --transcript ~/.claude/projects/<slug>/<session>.jsonl
-bun scripts/eval/leg-digest/leg-digest.ts --session <uuid>   # resolved under ~/.claude/projects
+bun scripts/eval/worker-digest/leg-digest.ts --transcript ~/.claude/projects/<slug>/<session>.jsonl
+bun scripts/eval/worker-digest/leg-digest.ts --session <uuid>   # resolved under ~/.claude/projects
 ```
 
 - **Class key** `<failure>/<sub>`. `<sub>` comes from closed vocabularies,
@@ -317,7 +317,7 @@ bun scripts/eval/leg-digest/leg-digest.ts --session <uuid>   # resolved under ~/
   `inconclusive` (no journal, or over 200 MB).
 - **Cross-check:** `stats.denial_divergence` lists the main-agent denials that
   only one detector saw. `test-leg-digest.sh` fails on any divergence not
-  enumerated in `leg-digest/denial-exceptions.txt`.
+  enumerated in `worker-digest/denial-exceptions.txt`.
 - **Cost:** measured 2026-10-06, 3 runs each:
   - 0.11–0.21 s wall on three recent leg journals of 3.6–6.5 MB;
   - 1.50 s wall on the station's largest journal (58 MB).
@@ -344,7 +344,7 @@ native, claudex, openrouter, cloud and unknown; the recorder normalizes the
 historical codex label in explicit recorder input or document titles to claudex.
 Backfill never borrows its own launcher's lane or guesses from a model.
 
-`leg-digest/tool-health.mjs` reads eval-runs and leg-failures and computes UTC
+`worker-digest/tool-health.mjs` reads eval-runs and leg-failures and computes UTC
 calendar-day rollups by model, lane and leg-vs-console role. Rates use summed
 counts, never averages of session percentages. Deny-hook rates divide by
 Bash calls across the selected population. Recovery is count-weighted over
@@ -365,7 +365,7 @@ on the server; the page is read-only. Overrides are
 
 ## leg_ledger: digests into the leg ledgers
 
-`leg-digest/leg_ledger.py` writes one digest as:
+`worker-digest/leg_ledger.py` writes one digest as:
 
 1. one `leg-failures` row per digest failures row
    (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
@@ -382,9 +382,9 @@ agent and class), and a later `ok` digest supersedes a `partial` or
 `inconclusive` one with one more eval-runs row.
 
 ```bash
-python3 scripts/eval/leg-digest/leg_ledger.py record --digest d.json --leg N1 --ticket PROJ-1 [--console C --pr N --doc D]
-python3 scripts/eval/leg-digest/leg_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
-python3 scripts/eval/leg-digest/leg_ledger.py validate ~/.himmel/leg-failures.jsonl
+python3 scripts/eval/worker-digest/leg_ledger.py record --digest d.json --leg N1 --ticket PROJ-1 [--console C --pr N --doc D]
+python3 scripts/eval/worker-digest/leg_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
+python3 scripts/eval/worker-digest/leg_ledger.py validate ~/.himmel/leg-failures.jsonl
 ```
 
 `backfill` digests every main journal whose first timestamp is on or after
@@ -396,7 +396,7 @@ trial backfill can write to scratch copies.
 
 ## pdd_share: the proof-first share of merged PRs
 
-`leg-digest/pdd_share.py` reads the last merged PRs and writes one eval-runs
+`worker-digest/pdd_share.py` reads the last merged PRs and writes one eval-runs
 row, `eval: pdd-share`. It makes no model call. A PR is proof-first when both
 hold:
 
@@ -415,8 +415,8 @@ lookup failed is counted as `commits_unreadable` and makes the row `partial`.
 Below `--min-n` (50) readable PRs the row is `partial` and the exit code is 3.
 
 ```bash
-python3 scripts/eval/leg-digest/pdd_share.py --limit 120            # print the row
-python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record   # append it to the eval-runs ledger
+python3 scripts/eval/worker-digest/pdd_share.py --limit 120            # print the row
+python3 scripts/eval/worker-digest/pdd_share.py --limit 120 --record   # append it to the eval-runs ledger
 ```
 
 `--prs FILE` reads `gh pr list --json number,title,body,commits` output

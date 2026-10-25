@@ -62,18 +62,18 @@ fi
 
 # 2. The exact step-10 command, rendered from the template line a console prints.
 # shellcheck disable=SC2016 # literal backticks in the doc line
-line=$(grep -m1 'bash scripts/handover/console-kit/console-wait.sh' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
+line=$(grep -m1 'bash scripts/handover/chief-kit/console-wait.sh' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
 if [ -z "$line" ]; then
   bad "console-template.md has no step-10 console-wait.sh command"
   exit 1
 fi
-kit="/srv/tester/himmel/scripts/handover/console-kit"
+kit="/srv/tester/himmel/scripts/handover/chief-kit"
 cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
   -e 's#{{SESSION_NAME}}#x-console#g' -e 's# \[--succession [^]]*\]##')
 cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
   -e 's#{{SESSION_NAME}}#x-console#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
 
-waiter_rule='Bash(bash scripts/handover/console-kit/console-wait.sh:*)'
+waiter_rule='Bash(bash scripts/handover/chief-kit/console-wait.sh:*)'
 if [ "$(jq --arg r "$waiter_rule" '[.permissions.allow[] | select(. == $r)] | length' "$SETTINGS")" = 1 ]; then
   ok "the specific waiter rule is in the allow list exactly once"
 else
@@ -97,16 +97,16 @@ esac
 # against ALL Bash allow rules.
 # shellcheck disable=SC2016 # $HIMMEL_REPO is the literal spelling under test
 for c in \
-  "bash scripts/handover/console-kit/leg-event.sh --fleet" \
-  "bash scripts/handover/console-kit/console-wait.sh.evil /tmp/x" \
+  "bash scripts/handover/chief-kit/leg-event.sh --fleet" \
+  "bash scripts/handover/chief-kit/console-wait.sh.evil /tmp/x" \
   "bash scripts/other/console-wait.sh /tmp/x" \
-  "sh scripts/handover/console-kit/console-wait.sh /tmp/x" \
-  "bash -x scripts/handover/console-kit/console-wait.sh /tmp/x" \
+  "sh scripts/handover/chief-kit/console-wait.sh /tmp/x" \
+  "bash -x scripts/handover/chief-kit/console-wait.sh /tmp/x" \
   "bash \"$kit/console-wait.sh\" /tmp/x" \
-  "bash -c \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
-  "bash \"-c\" \"id\" \"scripts/handover/console-kit/console-wait.sh\" /tmp/x" \
+  "bash -c \"id\" \"scripts/handover/chief-kit/console-wait.sh\" /tmp/x" \
+  "bash \"-c\" \"id\" \"scripts/handover/chief-kit/console-wait.sh\" /tmp/x" \
   "bash \"-c\" \"id\" \"$kit/console-wait.sh\" /tmp/x" \
-  "bash \"\$HIMMEL_REPO/scripts/handover/console-kit/console-wait.sh\" /tmp/x"; do
+  "bash \"\$HIMMEL_REPO/scripts/handover/chief-kit/console-wait.sh\" /tmp/x"; do
   m=$(matching_rules "$c")
   if [ -z "$m" ]; then
     ok "no allow rule matches: $c"

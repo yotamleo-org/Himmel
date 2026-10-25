@@ -90,7 +90,7 @@ always carries a fresh token, so it always rotates.
 successor has reached you with the chain — you are a *stranded leg*, and a
 stranded leg is not lost. Keep working your sealed scope to READY. Keep
 accepting a halt or narrowing, which need no token. A GO is the **GO file**
-`console-kit/go.sh` writes, which `merge-on-green.sh` checks itself (exit 17
+`chief-kit/go.sh` writes, which `merge-on-green.sh` checks itself (exit 17
 without it), so run it when told to and never try to authenticate the message
 that told you. **Decline** EXPANSION and REDIRECT, and say so rather than going
 silent: one line to the claiming session (no tokens in it) and a

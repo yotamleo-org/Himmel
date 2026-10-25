@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-ready-check.sh — suite for ready-check.sh
+# scripts/handover/chief-kit/test-ready-check.sh — suite for ready-check.sh
 # `gh` is a PATH stub (contract requirement — not GH_CMD, even
 # though the script also honors that override); `jq` and `git` are real.
 #
@@ -1087,8 +1087,8 @@ chmod 600 "$LEDGER"
 # repo with no .env of its own — and neither var exported by the caller.
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 own="$tmp/own-checkout"
-mkdir -p "$own/scripts/handover/console-kit" "$own/scripts/lib"
-cp "$SCRIPT" "$own/scripts/handover/console-kit/ready-check.sh"
+mkdir -p "$own/scripts/handover/chief-kit" "$own/scripts/lib"
+cp "$SCRIPT" "$own/scripts/handover/chief-kit/ready-check.sh"
 cp "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$own/scripts/lib/load-dotenv.sh"
 cp "$REPO_ROOT/scripts/lib/gh-pr-snapshot.sh" "$own/scripts/lib/gh-pr-snapshot.sh"
 cp "$REPO_ROOT/scripts/lib/go-gate.sh" "$own/scripts/lib/go-gate.sh"
@@ -1104,7 +1104,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
-    bash "$own/scripts/handover/console-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
 check "own-checkout .env: exit 0" "$rc" "0"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
@@ -1753,7 +1753,7 @@ check "a suites-titled red run of ANOTHER workflow gets no per-suite pass: exit 
 rm -f "$RUNDIR/macos-cadence.yml.json" "$RUNDIR"/log-*.txt "$RUNDIR/ci.yml.json" "$RUNDIR"/*.patch
 
 : > "$GH_LOG"
-wf_run "scripts/handover/console-kit/ready-check.sh"
+wf_run "scripts/handover/chief-kit/ready-check.sh"
 check "non-workflow PR: exit 0" "$rc" "0"
 contains "non-workflow PR: check 10 not applicable" "$out" "[PASS] 10."
 notcontains "non-workflow PR: no run list issued" "$(cat "$GH_LOG")" "run list"
@@ -2149,7 +2149,7 @@ rc=0; out="$(run)" || rc=$?
 contains "trust: scripts/lib/env-alias.sh diff (PR 2885 shape) prints yes whatever the body claims" "$out" "TRUST-PATH: yes"
 
 reset_stubs
-STUB_FILES="scripts/handover/console-kit/cr-disposition.sh"
+STUB_FILES="scripts/handover/chief-kit/cr-disposition.sh"
 rc=0; out="$(run)" || rc=$?
 contains "trust: cr-disposition.sh (go.sh signs and decides exit 9 through it) prints yes" "$out" "TRUST-PATH: yes"
 

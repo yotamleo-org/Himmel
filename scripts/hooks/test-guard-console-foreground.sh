@@ -6,7 +6,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/guard-console-foreground.sh"
-LIST="$SCRIPT_DIR/../handover/console-kit/long-running.txt"
+LIST="$SCRIPT_DIR/../handover/chief-kit/long-running.txt"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/himmel-console-fg.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
@@ -57,7 +57,7 @@ expect() {
 [ -f "$HOOK" ] || { bad "hook present: $HOOK"; echo "$pass passed, $fail failed"; exit 1; }
 [ -f "$LIST" ] || { bad "list present: $LIST"; echo "$pass passed, $fail failed"; exit 1; }
 
-K="bash scripts/handover/console-kit"
+K="bash scripts/handover/chief-kit"
 
 # --- the headline DoD rows
 expect "console, foreground wrap-merged.sh: denied" 2 \
@@ -86,19 +86,19 @@ done
 
 # --- invocation shapes
 expect "console, absolute path via bash: denied" 2 \
-    "$(run_hook yes "bash /repo/scripts/handover/console-kit/close-wrapped-leg.sh leg" absent)"
+    "$(run_hook yes "bash /repo/scripts/handover/chief-kit/close-wrapped-leg.sh leg" absent)"
 expect "console, node script (board.mjs): denied" 2 \
-    "$(run_hook yes "node scripts/handover/console-kit/board.mjs" absent)"
+    "$(run_hook yes "node scripts/handover/chief-kit/board.mjs" absent)"
 expect "console, direct path execution: denied" 2 \
-    "$(run_hook yes "scripts/handover/console-kit/ready-check.sh 12 abc" absent)"
+    "$(run_hook yes "scripts/handover/chief-kit/ready-check.sh 12 abc" absent)"
 expect "console, chained after another command: denied" 2 \
-    "$(run_hook yes "cd /x && bash scripts/handover/console-kit/verdict-go.sh a b" absent)"
+    "$(run_hook yes "cd /x && bash scripts/handover/chief-kit/verdict-go.sh a b" absent)"
 
 # --- a mention is not a run
 expect "console, git grep naming a listed script: allowed" 0 \
     "$(run_hook yes "git grep -n wrap-merged.sh -- scripts" absent)"
 expect "console, grep with an interpreter-named argument: allowed" 0 \
-    "$(run_hook yes "grep bash scripts/handover/console-kit/ready-check.sh" absent)"
+    "$(run_hook yes "grep bash scripts/handover/chief-kit/ready-check.sh" absent)"
 expect "console, longer name sharing a prefix: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh.bak" absent)"
 expect "console, unrelated command: allowed" 0 "$(run_hook yes "ls -la" absent)"
@@ -107,7 +107,7 @@ expect "console, unrelated command: allowed" 0 "$(run_hook yes "ls -la" absent)"
 expect "console, timeout 90 ready-check.sh: allowed" 0 \
     "$(run_hook yes "timeout 90 $K/ready-check.sh 12 abc" absent)"
 expect "console, timeout 90 node board.mjs: allowed" 0 \
-    "$(run_hook yes "timeout 90 node scripts/handover/console-kit/board.mjs" absent)"
+    "$(run_hook yes "timeout 90 node scripts/handover/chief-kit/board.mjs" absent)"
 expect "console, timeout 90s: allowed" 0 \
     "$(run_hook yes "timeout 90s $K/verdict-go.sh a b" absent)"
 expect "console, timeout 1.5m: allowed" 0 \
@@ -199,7 +199,7 @@ expect "console, deny names CHIEF_FG_OK as the bypass" 2 \
 bad_rows=0
 while IFS= read -r line; do
     case "$line" in ''|'#'*) continue ;; esac
-    if [ ! -f "$SCRIPT_DIR/../handover/console-kit/$line" ]; then
+    if [ ! -f "$SCRIPT_DIR/../handover/chief-kit/$line" ]; then
         bad "list names a missing script: $line"; bad_rows=$((bad_rows + 1))
     fi
 done < "$LIST"

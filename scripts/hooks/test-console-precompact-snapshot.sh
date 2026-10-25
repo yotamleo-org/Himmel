@@ -12,7 +12,7 @@ set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/console-precompact-snapshot.sh"
-CHECKER="$HOOKS/../handover/console-kit/compacted-check.sh"
+CHECKER="$HOOKS/../handover/chief-kit/compacted-check.sh"
 [ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/console-precompact-snapshot-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }

@@ -37,8 +37,8 @@ The rule is anchored, so a secret with a token prefix or suffix is still caught.
 | Site | Token |
 |---|---|
 | `scripts/handover/queue-lock.sh` (`_ql_default_session`) | release token `<host>-pid<N>` |
-| `scripts/handover/console-kit/gen-briefs.py` | worker RETASK nonce `<letters>-<label>-<hex8>` |
-| `scripts/handover/console-kit/gen-judge-brief.py` | judge nonce `<letters>-<qid>-<hex8>` |
+| `scripts/handover/chief-kit/gen-briefs.py` | worker RETASK nonce `<letters>-<label>-<hex8>` |
+| `scripts/handover/chief-kit/gen-judge-brief.py` | judge nonce `<letters>-<qid>-<hex8>` |
 | fresh-leg recovery and legacy nonces | `V-N236b-1d281f74`, `Y-N204-a68d71` |
 | briefs, GO and verdict lines | commit shas, sha256 digests |
 
@@ -49,7 +49,7 @@ The rule is anchored, so a secret with a token prefix or suffix is still caught.
   never by a hand edit.
 - `scripts/luna/vault-stall-cadence.sh` `CLOSED_SHAPES`: one `handover-token`
   row, a verbatim copy. The cadence re-adds the rule to a vault that lost it.
-- `scripts/handover/console-kit/bucket-gitleaks.sh`: scans with the vault's
+- `scripts/handover/chief-kit/bucket-gitleaks.sh`: scans with the vault's
   config. If the vault has none, it uses the template's.
   `append-results.sh` runs this scan on every bullet before it writes it, and
   refuses a finding with exit 7.
@@ -57,7 +57,7 @@ The rule is anchored, so a secret with a token prefix or suffix is still caught.
 ## Adding a token shape
 
 A new minting site must emit a token the rule already matches. Add a row for
-it to `scripts/handover/console-kit/test-handover-token-grammar.sh`. That
+it to `scripts/handover/chief-kit/test-handover-token-grammar.sh`. That
 suite mints every site's token, scans a bucket file quoting it with the
 template config, and keeps real secret shapes (AWS key, GitHub PAT, generic
 api key, grammar-prefixed secrets) failing. It also pins the toml rule,

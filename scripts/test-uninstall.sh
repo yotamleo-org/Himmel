@@ -1260,19 +1260,19 @@ fi
 #      otherwise exit 96 before writing the record.
 mk_cache
 REAL_SCRIPTS="$(dirname "$CLI")"
-LLD="$TMP/launch20c"; mkdir -p "$LLD/scripts/lib" "$LLD/scripts/handover/console-kit"
+LLD="$TMP/launch20c"; mkdir -p "$LLD/scripts/lib" "$LLD/scripts/handover/chief-kit"
 for _e in "$REAL_SCRIPTS"/*; do
     case "${_e##*/}" in lib|handover) ;; *) ln -s "$_e" "$LLD/scripts/${_e##*/}" ;; esac
 done
 for _e in "$REAL_SCRIPTS"/lib/*; do ln -s "$_e" "$LLD/scripts/lib/${_e##*/}"; done
 for _e in "$REAL_SCRIPTS"/handover/*; do
-    case "${_e##*/}" in console-kit) ;; *) ln -s "$_e" "$LLD/scripts/handover/${_e##*/}" ;; esac
+    case "${_e##*/}" in chief-kit) ;; *) ln -s "$_e" "$LLD/scripts/handover/${_e##*/}" ;; esac
 done
-for _e in "$REAL_SCRIPTS"/handover/console-kit/*; do ln -s "$_e" "$LLD/scripts/handover/console-kit/${_e##*/}"; done
-for _e in lib/chokepoint-seam-guard.sh handover/console-kit/headed-arm-leg.sh; do
+for _e in "$REAL_SCRIPTS"/handover/chief-kit/*; do ln -s "$_e" "$LLD/scripts/handover/chief-kit/${_e##*/}"; done
+for _e in lib/chokepoint-seam-guard.sh handover/chief-kit/headed-arm-leg.sh; do
     rm -f "$LLD/scripts/$_e"; cp "$REAL_SCRIPTS/$_e" "$LLD/scripts/$_e"
 done
-WORKER_SESSION_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
+WORKER_SESSION_SH="$LLD/scripts/handover/chief-kit/headed-arm-leg.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
 chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
 # the arming gate lints every brief (description + Prior art line).

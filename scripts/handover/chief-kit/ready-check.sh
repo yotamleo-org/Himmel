@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/ready-check.sh — mechanize the console's READY
+# scripts/handover/chief-kit/ready-check.sh — mechanize the console's READY
 # verification. Console A ran this same
 # checklist by hand ~12 times on 2026-09-18 with zero variance; the fleet cap
 # doubling (4 -> 8) doubles the READYs per hour, so it is worth a script.

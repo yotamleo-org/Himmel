@@ -11,7 +11,7 @@
 # session, so a console ruling reached them only via a handover-doc bullet
 # (never re-read by a running session) plus an operator paste. This hook
 # delivers a per-session file inbox (<handover root>/inbox/<name>.md,
-# scripts/handover/console-kit/inbox-send.sh appends to it) as
+# scripts/handover/chief-kit/inbox-send.sh appends to it) as
 # hookSpecificOutput.additionalContext, so the next tool result already
 # carries any ruling the console wrote — no paste, no lost rulings.
 #

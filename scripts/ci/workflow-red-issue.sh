@@ -91,7 +91,7 @@ esac
 
 # A red manual dispatch on a non-default branch is a proof run for a branch that
 # is about to merge and vanish: no later green run of that branch ever closes the
-# issue, so it is not opened (console-kit ready-check already gates a
+# issue, so it is not opened (chief-kit ready-check already gates a
 # PR on its own dispatch runs). A green one still falls through and closes any
 # issue left for the branch.
 if [ "$red" -eq 1 ] && [ "$EVENT" = "workflow_dispatch" ]; then

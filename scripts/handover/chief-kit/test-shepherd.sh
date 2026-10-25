@@ -3,7 +3,7 @@
 # ready-check / check-ci / impacted-suites, and a real scratch git repo (a bare
 # origin carrying refs/pull/7/head), in a scratch HOME. bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-shepherd.sh
+# Run: bash scripts/handover/chief-kit/test-shepherd.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SHEP="${SHEPHERD:-$HERE/shepherd.sh}"

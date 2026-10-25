@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console/base-status.sh — base verification.
+# scripts/chief/base-status.sh — base verification.
 #
 # Console ruling 66: arm a leg on a fence only when every merged PR that
 # touched it already carries its after-report SUMMARY comment. This lists the
@@ -46,7 +46,7 @@
 # not be resolved (fail-closed, same posture as sweep-cr-threads.sh).
 #
 # Env: GH_CMD overrides the `gh` binary (test seam, matches
-# scripts/console/sweep-cr-threads.sh). GH_TIMEOUT_SECS bounds each `gh`
+# scripts/chief/sweep-cr-threads.sh). GH_TIMEOUT_SECS bounds each `gh`
 # call (default 30s) so an unattended arm can't hang indefinitely on a
 # GitHub network stall; skipped when
 # `timeout` isn't on PATH rather than failing the call outright.

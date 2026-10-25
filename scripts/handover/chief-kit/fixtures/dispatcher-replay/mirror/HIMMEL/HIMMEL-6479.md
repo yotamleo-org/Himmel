@@ -24,4 +24,4 @@ links:
 Seen twice on 10-19 (console R). The relative spelling is refused by guard-pr-check-literal because the worktree's copy of merge-on-green.sh differs from the anchor (main moved on). The absolute spelling and the anchored spelling (the HIMMEL_REPO variable form in .claude/settings.json:61) are denied
 1. Investigate why the anchored allow rule in .claude/settings.json does not stop the classifier, and record the finding.
 3. Update the leg brief Ship step (docs/handover/leg-brief-template.md, gen-briefs.py) to name the one spelling that works.
-Files: scripts/hooks/guard-pr-check-literal.sh, scripts/handover/merge-on-green.sh, .claude/settings.json (allow rules, operator-reviewed), scripts/handover/console-kit/gen-briefs.py, docs/handover/leg-brief-template.md. Evidence: console R Results 10-19 16:1x-16:2x; N2715 doc 13:09 BLOCKED bullets.
+Files: scripts/hooks/guard-pr-check-literal.sh, scripts/handover/merge-on-green.sh, .claude/settings.json (allow rules, operator-reviewed), scripts/handover/chief-kit/gen-briefs.py, docs/handover/leg-brief-template.md. Evidence: console R Results 10-19 16:1x-16:2x; N2715 doc 13:09 BLOCKED bullets.

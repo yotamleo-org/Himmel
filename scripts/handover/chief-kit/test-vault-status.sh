@@ -4,7 +4,7 @@
 # skip | unknown); bucket-gitleaks.sh is the leg-side pre-check of a bucket
 # file. Fixture git repos under a scratch dir only: the real vault is never read.
 # PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only).
-# Run: bash scripts/handover/console-kit/test-vault-status.sh
+# Run: bash scripts/handover/chief-kit/test-vault-status.sh
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

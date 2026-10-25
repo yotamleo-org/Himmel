@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/residual-lines.sh - sourced by write-verdict.sh,
+# scripts/handover/chief-kit/residual-lines.sh - sourced by write-verdict.sh,
 # verdict-go.sh and leg-event.sh: the one definition of an unfiled residual, so
 # a deferred item cannot live only as verdict or wrap prose. Each function
 # prints the offending lines (CR stripped), nothing when all are filed.

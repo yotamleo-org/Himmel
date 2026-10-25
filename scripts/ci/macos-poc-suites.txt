@@ -59,7 +59,7 @@ scripts/lib/test-wire-luna-vault.sh
 scripts/lib/test-wire-pretooluse-hooks.sh
 scripts/lib/test-worktree-inuse.sh
 
-# --- handover + console-kit (scripts/handover)
+# --- handover + chief-kit (scripts/handover)
 # queue lock, merge gate and arm-resume are the load-bearing handover paths; flock is absent and /tmp is a symlink on macOS.
 scripts/handover/chief-kit/test-console-kit-e2e.sh
 scripts/handover/chief-kit/test-cut-tag.sh

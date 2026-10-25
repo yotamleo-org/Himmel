@@ -20,7 +20,7 @@ suite scripts/cr/test-anchor-handoff.sh
 suite scripts/cr/test-cr-guarded-closure.sh
 suite scripts/cr/test-pr-check-run.sh
 suite scripts/docs/test-check-llms-links.sh
-suite scripts/eval/leg-digest/test-failure-review.sh
+suite scripts/eval/worker-digest/test-failure-review.sh
 suite scripts/graphify/test-no-windows-indexed.sh
 suite scripts/himmelctl/test/test-report-deep.sh
 suite scripts/hooks/test-check-npm-audit.sh

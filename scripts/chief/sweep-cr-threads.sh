@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console/sweep-cr-threads.sh — fail-closed GraphQL review-thread
+# scripts/chief/sweep-cr-threads.sh — fail-closed GraphQL review-thread
 # sweep for a judge/console session.
 #
 # Freezes an ad-hoc sweep that shipped a false-clean verdict: it queried
@@ -13,8 +13,8 @@
 # fires.
 #
 # Usage:
-#   scripts/console/sweep-cr-threads.sh            # every OPEN PR in this repo
-#   scripts/console/sweep-cr-threads.sh 101 104     # only these PR numbers
+#   scripts/chief/sweep-cr-threads.sh            # every OPEN PR in this repo
+#   scripts/chief/sweep-cr-threads.sh 101 104     # only these PR numbers
 #
 # Repo slug: resolved via `gh repo view --json nameWithOwner` — NEVER
 # hardcoded (that hardcode is the exact bug this script exists to prevent).

@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-scripts/cr/clear-cr-marker.sh trivial-descendant path (HIMMEL-5416) gates on the reviewed head and writes no status=ok row to .git/cr-critic-scores.jsonl for the new head. scripts/handover/console-kit/ready-check.sh item 4 requires a status=ok row whose head equals the READY head. Found on PR 2773 (
+scripts/cr/clear-cr-marker.sh trivial-descendant path (HIMMEL-5416) gates on the reviewed head and writes no status=ok row to .git/cr-critic-scores.jsonl for the new head. scripts/handover/chief-kit/ready-check.sh item 4 requires a status=ok row whose head equals the READY head. Found on PR 2773 (
 PR #3074 (yotamleo/Himmel) merged @ 6c8588baab8b064c7dfac18d24e44a7660eaf28a. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

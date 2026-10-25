@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-Files: HANDOFF template, scripts/handover/console-kit/action-zero.sh. Coordinate with the HIMMEL-5969 author before changing the template. Source: HIMMEL-5970.
+Files: HANDOFF template, scripts/handover/chief-kit/action-zero.sh. Coordinate with the HIMMEL-5969 author before changing the template. Source: HIMMEL-5970.
 PR #3130 (yotamleo/Himmel) merged @ b813768feb4d2e1419962f396f51e502bb9b0628. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

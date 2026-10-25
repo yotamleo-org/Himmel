@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-leg-digest.sh - hermetic suite for the leg digest.
+# scripts/eval/worker-digest/test-leg-digest.sh - hermetic suite for the leg digest.
 # Synthetic fixtures only; no model call, no bank, no ledger write.
 #  1. every class key of spec section 2.2 comes out of fixtures/classes.jsonl;
 #  2. the classifier sub-class: ledger first, else the journal's bracket against the fixed list;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-live-subagents.sh - suite:
+# scripts/handover/chief-kit/test-live-subagents.sh - suite:
 # live-subagents.sh (the detector) and the wrap gate it backs,
 # `console.sh wrap`. The close gate's cases live in test-close-wrapped-leg.sh
 # beside the rest of that script's cases.
@@ -15,7 +15,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LS="$HERE/live-subagents.sh"
-CONSOLE="$HERE/../console/chief.sh"
+CONSOLE="$HERE/../chief/chief.sh"
 QL="$HERE/../queue-lock.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/lsa-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }

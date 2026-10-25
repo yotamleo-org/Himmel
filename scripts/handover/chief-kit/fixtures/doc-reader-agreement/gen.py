@@ -170,7 +170,7 @@ def bullet(rng, kind):
     if kind == "LIVE-TOKEN":
         return "LIVE — saw `N%d:DC-N%d-ab12:tok%d:%d` in the console doc" % (k, k, k, k), "LIVE", False, None
     if kind == "FINDING-CITE":
-        return "FINDING — see scripts/handover/console-kit/tick.sh:%d and docs/x.md:%d:%d" % (k, k, k % 90), "FINDING", False, None
+        return "FINDING — see scripts/handover/chief-kit/tick.sh:%d and docs/x.md:%d:%d" % (k, k, k % 90), "FINDING", False, None
     if kind == "UNMARKED-WRAPPED":
         return "Released lock `tok%d`, appended the WRAPPED bullet, ending turn" % k, "", True, None
     if kind == "UNMARKED":

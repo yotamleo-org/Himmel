@@ -307,7 +307,7 @@ BUS_N=0 run 2 0
 [ "$RUN_RC" -eq 0 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a healthy start clears a stale rc4 state" || fail "stale state kept: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
 
 echo "== succession doc =="
-if grep -q 'run `bus adopt <new console>` as the leg' "$REPO/docs/handover/leg-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi
+if grep -q 'run `bus adopt <new console>` as the leg' "$REPO/docs/handover/worker-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/worker-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi
 
 echo "bus-idle-waker: $failures failure(s)"
 exit "$failures"

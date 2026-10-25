@@ -1555,7 +1555,7 @@ PC_YAML="$REPO_ROOT/.pre-commit-config.yaml"
 
 # 22a-c: the pinned and the older shellcheck disagree on `[ a ] && [ b ] || continue`
 # (SC2015: the older one reports it, the pinned one does not). The fixture is the
-# shape PR 3049 failed CI on in scripts/handover/console-kit/tick.sh.
+# shape PR 3049 failed CI on in scripts/handover/chief-kit/tick.sh.
 PIN_REV="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$PC_YAML")"
 if [ -n "$PIN_REV" ]; then pass "22a pinned shellcheck-py rev read from .pre-commit-config.yaml ($PIN_REV)"; else fail "22a no shellcheck-py rev in .pre-commit-config.yaml"; fi
 SC15="$TMP_ROOT/sc2015.sh"

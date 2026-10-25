@@ -207,7 +207,7 @@ plan=$(
         echo
         echo "- Write the consolidated morning report (HIMMEL-258): one row per"
         echo "  ticket (ticket, branch, PR, status, outcome, decision) piped into"
-        echo "  \`scripts/overnight/morning-report.sh\` — decisions-needed grouped"
+        echo "  \`scripts/afk/morning-report.sh\` — decisions-needed grouped"
         echo "  at top; output path resolved via \`handover_root\`."
         echo "- Run \`/handover-flush\` to reconcile state across worktrees."
         echo "- Operator reads the ONE report, then drills into PRs"

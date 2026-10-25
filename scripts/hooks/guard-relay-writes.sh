@@ -15,7 +15,7 @@
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Not ported to native PowerShell — the console relay lane
-# (headed-arm-leg.sh --relay, scripts/handover/console-kit/) is Linux-only,
+# (headed-arm-leg.sh --relay, scripts/handover/chief-kit/) is Linux-only,
 # same as inbox-send.sh's own platform guard.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_RELAY=1 in this process's environment AND

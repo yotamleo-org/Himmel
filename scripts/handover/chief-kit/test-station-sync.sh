@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-station-sync.sh - suite for station-sync.sh,
+# scripts/handover/chief-kit/test-station-sync.sh - suite for station-sync.sh,
 # the post-merge step that brings the station back to main. Hermetic:
 # himmel-update.sh, the template upgrader and the qmd clone are stubs (the
 # SS_UPDATE / SS_UPGRADE / SS_QMD_CLONE seams); nothing here runs a real update.

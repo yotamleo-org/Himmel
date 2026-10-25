@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/append-results.sh - append a
+# scripts/handover/chief-kit/append-results.sh - append a
 # leg's marker bullet at a handover doc's true EOF, so it can never land
 # mid-doc. Twice in one shift a leg's WRAPPED bullet, written with the Edit
 # tool anchored on an earlier bullet, landed ABOVE later bullets instead of
@@ -165,7 +165,7 @@ fi
 # live-state.sh) finishes its mv first and this bullet lands on the new doc,
 # never on the replaced one. A lock that cannot be taken (rc 1) or no flock
 # (rc 3) appends unlocked, as before: the bullet matters more than the race.
-# shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
+# shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
 . "$(dirname "${BASH_SOURCE[0]}")/leg-doc-lock.sh"
 locked=0
 doc_lock "$DOC" append-results && locked=1

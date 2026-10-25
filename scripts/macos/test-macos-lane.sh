@@ -86,10 +86,10 @@ contains "sync: excludes .env" "$CALLS" "--exclude .env"
 contains "sync: target is himmel-work" "$CALLS" "user@127.0.0.1:himmel-work/"
 run sync-worktree "$W/nope"
 eq "sync: missing dir fails" 1 "$RC"
-run run-suites scripts/test-a.sh scripts/handover/console-kit/test-b.sh
+run run-suites scripts/test-a.sh scripts/handover/chief-kit/test-b.sh
 eq "run-suites: rc 0" 0 "$RC"
 contains "run-suites: first suite" "$CALLS" "bash scripts/test-a.sh"
-contains "run-suites: second suite" "$CALLS" "bash scripts/handover/console-kit/test-b.sh"
+contains "run-suites: second suite" "$CALLS" "bash scripts/handover/chief-kit/test-b.sh"
 contains "run-suites: ssh deadline leaves guest cleanup time" "$CALLS" "timeout 930"
 contains "run-suites: results dir reset per run" "$CALLS" "rm -rf himmel-results"
 contains "run-suites: guest-side deadline" "$CALLS" "alarm shift; exec @ARGV' 900 bash scripts/test-a.sh"

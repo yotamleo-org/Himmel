@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-digest-step.sh - the wrap step of the
+# scripts/handover/chief-kit/leg-digest-step.sh - the wrap step of the
 # failure loop: one leg session's P1 digest
-# (scripts/eval/leg-digest/leg-digest.ts) handed to the P2 ledger writer
-# (scripts/eval/leg-digest/leg_ledger.py record). Zero model calls.
+# (scripts/eval/worker-digest/leg-digest.ts) handed to the P2 ledger writer
+# (scripts/eval/worker-digest/leg_ledger.py record). Zero model calls.
 #
 # Usage:
 #   leg-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>]
@@ -48,7 +48,7 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LD_DIR="$HERE/../../eval/leg-digest"
+LD_DIR="$HERE/../../eval/worker-digest"
 STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}}"
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -92,7 +92,7 @@ skip() {
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh" 2>/dev/null || true
-# shellcheck source=scripts/handover/console-kit/leg-transcripts.sh
+# shellcheck source=scripts/handover/chief-kit/leg-transcripts.sh
 # shellcheck disable=SC1091
 . "$HERE/leg-transcripts.sh" || skip no-lib
 

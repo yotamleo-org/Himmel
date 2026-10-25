@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/status-sweep.sh - the drift net under the event
+# scripts/handover/chief-kit/status-sweep.sh - the drift net under the event
 # funnel. An event moves a ticket's Jira status at once; this sweep catches what
 # no event announced: a PR closed or reopened in the UI, a worker whose lock
 # vanished. It never writes a status or the worker record itself.

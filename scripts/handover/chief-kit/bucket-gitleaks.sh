@@ -3,7 +3,7 @@
 # BEFORE it is written/committed: the luna vault's pre-commit runs gitleaks, and
 # a generic-api-key false positive on prose stalls the vault's auto-commit for
 # every session until someone notices. Usage:
-#   bash scripts/handover/console-kit/bucket-gitleaks.sh [--config <toml>] <file>
+#   bash scripts/handover/chief-kit/bucket-gitleaks.sh [--config <toml>] <file>
 # Prints ONE line: `GITLEAKS ok` (exit 0) or `GITLEAKS FINDING <rule>[,<rule>]`
 # (exit 1; the rule ids only, never the matched text). Exit 2 = usage / file
 # missing / gitleaks absent or unusable (the line says why). Config: --config,

@@ -11,14 +11,14 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   `write-verdict.sh` (or `verdict-go.sh`) and the signed verdict file gets
   `prior:` and `flipped: y|n` lines; evidence carrying either line is refused.
 - **Every judge call persists its verdict, trust path or not**:
-  `bash scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
+  `bash scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
   --pr <n> --evidence-file <path> --model <id> --effort <level>` writes
   `verdicts/<qid>/`. `--model` and `--effort` are required and signed into the
   file; the values may come from the flags or from the environment
   (`HIMMEL_VERDICT_MODEL`; `HIMMEL_VERDICT_EFFORT`, then `CLAUDE_CODE_EFFORT_LEVEL`),
   and a write with no value for either is refused (exit 2). A verdict that
   lives only in your context dies with it; the file is what a successor reads.
-  Prefer `bash scripts/handover/console-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
+  Prefer `bash scripts/handover/chief-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
   --pr <n> --evidence-file <path> --doc <console doc>`: it runs `write-verdict.sh`,
   `go.sh`, the Results bullet and the board in one call and prints the message to
@@ -45,7 +45,7 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
 - **Convene at the cheapest tier that can rule** (HIMMEL-1864): start a judge call at
   Sonnet or Opus and escalate only when it returns above-my-tier
-  (`bash scripts/handover/console-kit/judge-ladder.sh next-tier <tier>`; Fable's next
+  (`bash scripts/handover/chief-kit/judge-ladder.sh next-tier <tier>`; Fable's next
   rung is the operator). Spend each convening with `judge-ladder.sh convene <seat>
   <tier>` first: a per-seat, per-window budget refuses (rc 3) once spent, because a
   dispute that triggers a convening mints work on the scarcest bank. A finding class of
@@ -56,7 +56,7 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any
   Critical/Important on the PR's branch is deferred with no valid row at that head.
   The judge rules one of two, which the console (never the leg) records with
-  `bash scripts/handover/console-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source judge:<qid>|console [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`:
+  `bash scripts/handover/chief-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source judge:<qid>|console [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`:
   (a) **fix-here**: fixed in this PR, so the finding's own ledger verdict must
   read fixed or disproved; (b) **follow-up:<KEY>**: merge now with the follow-up
   ticket already filed, and only if the merge cannot break main. The record must

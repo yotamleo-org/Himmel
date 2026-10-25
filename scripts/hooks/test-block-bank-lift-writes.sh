@@ -299,7 +299,7 @@ EOF
 row "echo mention"                 allow "echo 'run: bash scripts/lib/bank-lift.sh set'"
 row "echo mention to a file"       allow "echo \"see bank-lift.json\" > notes.txt"
 row "git grep the set text"        allow "git grep -n 'bank-lift.sh set'"
-row "Results bullet via append-results" allow "bash scripts/handover/console-kit/append-results.sh /tmp/doc.md 'LIVE — bank-lift.json write fence cut'"
+row "Results bullet via append-results" allow "bash scripts/handover/chief-kit/append-results.sh /tmp/doc.md 'LIVE — bank-lift.json write fence cut'"
 row "ticket title names the lift"  allow "node /x/jira/dist/index.js create --type Task --title 'bank-lift: hook-deny agent writes to ~/.himmel/state/bank-lift.json and bank-lift.sh set'"
 row "set -e then show"             allow "set -euo pipefail; bash $S show"
 row "test -f lift && echo"         allow "test -f ~/.himmel/state/bank-lift.json && echo yes"

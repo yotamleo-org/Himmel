@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-scripts/handover/console-kit/tick.sh ready_mismatch_scan (around 330-436). tick.sh is owned by open PR 3143 and is a trust path (HIMMEL-6307); fix after that PR merges. Related: HIMMEL-6074 (bound the scan by wall clock).
+scripts/handover/chief-kit/tick.sh ready_mismatch_scan (around 330-436). tick.sh is owned by open PR 3143 and is a trust path (HIMMEL-6307); fix after that PR merges. Related: HIMMEL-6074 (bound the scan by wall clock).

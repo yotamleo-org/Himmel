@@ -81,7 +81,7 @@ fleet_doc_for_name() {
 
 # fleet_doc_last_status <doc> — prints the status token (WRAPPED, READY,
 # ...) of the LAST `## Results` bullet in <doc> that carries one, matching
-# the same marker vocabulary console-kit/fleet.mjs's STATUS_RE reads.
+# the same marker vocabulary chief-kit/fleet.mjs's STATUS_RE reads.
 # Empty output (still rc 0) when no bullet carries a recognized marker.
 # Confined to text AFTER the first `## Results` heading, so an example
 # bullet in the brief/contract prose above it (which can legitimately show

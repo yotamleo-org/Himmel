@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-- Leaders: scripts/hooks fail-open in 56 PRs, scripts/hooks quoting in 49, and console-kit race in 20.
+- Leaders: scripts/hooks fail-open in 56 PRs, scripts/hooks quoting in 49, and chief-kit race in 20.
 - Files: either known-findings.sh --recurrence or a new scripts/cr/class-recurrence.sh. Both are trust paths. The slice runs after S1, which shares known-findings.sh.

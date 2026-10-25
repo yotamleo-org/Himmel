@@ -532,7 +532,7 @@ EOF_WIP
     if [ -f "$failure_review" ]; then
         sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$failure_review" | sed '/./,$!d'
     else
-        printf '_No failure review digest for %s (scripts/eval/leg-digest/failure-review-cadence.sh)._\n' "$today"
+        printf '_No failure review digest for %s (scripts/eval/worker-digest/failure-review-cadence.sh)._\n' "$today"
     fi
 
     # Prompt cache ------------------------------------------------------------

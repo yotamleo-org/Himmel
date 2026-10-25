@@ -21,7 +21,7 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/vm-runner.sh, scripts/himmel-doctor.sh, scripts/chokepoints.json, .github/workflows/ci.yml. Suites: test-vm-runner.sh, test-tick.sh, test-himmel-doctor.sh.
+Files: scripts/handover/chief-kit/vm-runner.sh, scripts/himmel-doctor.sh, scripts/chokepoints.json, .github/workflows/ci.yml. Suites: test-vm-runner.sh, test-tick.sh, test-himmel-doctor.sh.
 - (a) Register HIMMEL_VMRUN_PROBE and the vm-runner seams in scripts/chokepoints.json, especially HIMMEL_VM_RUNNER_VM_LIB, which sources a file.
 PR #2867 (yotamleo/Himmel) merged @ e2148be2f04ed905563c4b2bf6cd74eaa7b50e05. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.
 - L6: scripts/vm/ is not in scripts/ci/ci-trust-paths.txt, so changes there get no trust-path review.

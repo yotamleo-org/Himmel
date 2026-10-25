@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/ticket-status.sh — SOURCED. A ticket's Jira status DERIVED from
 # its current ship-flow state, plus the per-ticket worker record and the outcome
-# log. The funnel (scripts/handover/console-kit/leg-jira-status.sh) is the only
+# log. The funnel (scripts/handover/chief-kit/leg-jira-status.sh) is the only
 # writer of the status and of the record; everything here reads, except
 # ts_record_write and status_event, which the funnel calls under its per-key
 # flock.
@@ -27,7 +27,7 @@
 #                                   Sets TS_CID and TS_CHASH for the record.
 #
 # A caller that holds one batched snapshot sets TS_SNAPSHOT_DIR (the status sweep,
-# console-kit/status-sweep.sh): the readers then take Jira, the open PRs, their
+# chief-kit/status-sweep.sh): the readers then take Jira, the open PRs, their
 # checks and their review threads from files in it (jira.tsv, prs.json,
 # rows-<pr>.tsv, prows-<pr>.tsv, threads.tsv), so a derive over many keys makes no
 # per-key Jira or PR call. TS_EVENT=sweep lets a derive project the lock-gone count.

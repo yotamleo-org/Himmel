@@ -22,4 +22,4 @@ links:
 ## Description
 
 PR #3128 (yotamleo/Himmel) merged @ 463d1f279bbbe15f5b61d8fe196ace667d7d10ad. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.
-Part 3 merged: PR 3128, merge sha f68ac65e0702415fb75c772a63fd751b0d94b47d. Adds scripts/handover/console-kit/ice-followups.sh and an ice-followups=<n> field plus key list on the fleet board. Detection is read-only from the Jira mirror, so no per-key network call. A ticket moved to ICE without a mov
+Part 3 merged: PR 3128, merge sha f68ac65e0702415fb75c772a63fd751b0d94b47d. Adds scripts/handover/chief-kit/ice-followups.sh and an ice-followups=<n> field plus key list on the fleet board. Detection is read-only from the Jira mirror, so no per-key network call. A ticket moved to ICE without a mov

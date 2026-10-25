@@ -124,8 +124,8 @@ case "$out" in
     *) bad "reason lacks the bounded check-ci wait — got: $out" ;;
 esac
 case "$out" in
-    *'leg-sections/cache-keepalive.md'*) ok "reason names the wrap rule" ;;
-    *) bad "reason lacks leg-sections/cache-keepalive.md — got: $out" ;;
+    *'worker-sections/cache-keepalive.md'*) ok "reason names the wrap rule" ;;
+    *) bad "reason lacks worker-sections/cache-keepalive.md — got: $out" ;;
 esac
 case "$out" in
     *'HIMMEL-1-N1-fixture-leg.md'*) ok "reason names the held doc" ;;

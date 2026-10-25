@@ -205,7 +205,7 @@ The cloud column is one cloud run of the probe on this change's branch:
    whose first line is `CLOUD-DONE <session URL>`, then the head SHA and test
    results. A block it cannot resolve is posted as `CLOUD-BLOCKED <session URL>`.
 3. A **local shepherd** takes it from there: `bash
-   scripts/handover/console-kit/shepherd.sh <pr>` runs the coverage lint, the
+   scripts/handover/chief-kit/shepherd.sh <pr>` runs the coverage lint, the
    impacted suites, CI and the ready check; `/pr-check` and the CR gate run
    locally, and the chief merges on `GO`. The cloud session never merges and
    stops pushing once the shepherd comments.

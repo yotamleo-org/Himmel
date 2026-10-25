@@ -7,7 +7,7 @@
 # GEN_JUDGE_BRIEF overrides the script under test (the RED control: a missing script fails
 # every row). bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-gen-judge-brief.sh
+# Run: bash scripts/handover/chief-kit/test-gen-judge-brief.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${GEN_JUDGE_BRIEF:-$HERE/gen-judge-brief.py}"
@@ -137,7 +137,7 @@ has "generated brief names the sha-pinned tree read" "$gb" "git show $HEAD40:<pa
 has "generated brief forbids FETCH_HEAD" "$gb" "never FETCH_HEAD"
 lacks "generated brief has no FETCH_HEAD tree read" "$gb" "git show FETCH_HEAD"
 lacks "generated brief gives no refspec fetch" "$gb" "refs/judge/pr-"
-for f in .claude/agents/judge.md .claude/agents/judge-ro.md docs/handover/console-sections/judge.md docs/handover/judge-brief-template.md; do
+for f in .claude/agents/judge.md .claude/agents/judge-ro.md docs/handover/chief-sections/judge.md docs/handover/judge-brief-template.md; do
     c="$(cat "$REPO_ROOT/$f")"
     has "$f names the sha-pinned read" "$c" "git cat-file -t <sha>"
     lacks "$f gives no refspec fetch" "$c" "refs/judge/pr-"

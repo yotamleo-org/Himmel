@@ -149,7 +149,7 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
 // a wrapper owned by a live session is that session's own long-running call, not an orphan.
 async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set()): Promise<ProcessOrphan[] | null> {
-  const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/console-kit/orphan-loops.sh");
+  const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/chief-kit/orphan-loops.sh");
   return new Promise((ok) => {
     execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => {
       if (err) return ok(null);

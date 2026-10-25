@@ -3,7 +3,7 @@
 The document a console writes to dispatch a **judge session**
 (`headed-arm-leg.sh --judge`) for one verdict-grade question. File it in the
 console's bucket as `<PREFIX>-<ticket-slug>-judge-<qid>-<date>-RESUME.md`, and
-hand its path to `console-kit/headed-arm-leg.sh --judge` as the judge's
+hand its path to `chief-kit/headed-arm-leg.sh --judge` as the judge's
 handover doc.
 
 **A judge is a leg — a leg kind** (definition and the call-vs-session split:
@@ -371,11 +371,11 @@ gathering, per the rule below.>
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through
-> `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name> --model <your model id> --effort <your effort level>`
+> `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name> --model <your model id> --effort <your effort level>`
 > (`--pr` is required), which emits the exact line `go.sh --trust-reviewed` parses
 > and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, append a
 > closing bullet to your own doc with
-> `bash <primary checkout>/scripts/handover/console-kit/append-results.sh <your doc> "WRAPPED verdict written, lock released"`
+> `bash <primary checkout>/scripts/handover/chief-kit/append-results.sh <your doc> "WRAPPED verdict written, lock released"`
 > (the console's sweep closes only a window whose doc tail says `WRAPPED`), and **end
 > your turn.** Do not wait for an ack, do not open a PR, do not merge
 > anything. The console kills your window when it reads the verdict — a

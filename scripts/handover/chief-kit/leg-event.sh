@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-event.sh - route one leg message to the
+# scripts/handover/chief-kit/leg-event.sh - route one leg message to the
 # one-shot that handles it, or say ESCALATE. A script, never a model: the
 # console runs it once per leg message instead of spending the several
 # full-context turns the hand sequence takes.
@@ -38,7 +38,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=scripts/handover/console-kit/residual-lines.sh
+# shellcheck source=scripts/handover/chief-kit/residual-lines.sh
 . "$HERE/residual-lines.sh"
 if [ -n "${LE_WRAP:-}" ]; then WRAP=("$LE_WRAP"); else WRAP=(bash "$HERE/wrap-merged.sh"); fi
 if [ -n "${LE_CLOSE:-}" ]; then CLOSE=("$LE_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-leg.sh"); fi

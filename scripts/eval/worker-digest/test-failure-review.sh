@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/eval/leg-digest/test-failure-review.sh - hermetic suite for the daily failure review.
+# scripts/eval/worker-digest/test-failure-review.sh - hermetic suite for the daily failure review.
 # Scratch ledger, state, out dir, vault, a stub Jira, a stub notifier and a stub crontab only; never ~/.himmel,
 # never a real Jira write, never a real Telegram send, never the real crontab. No model call.
 #  1. a zero-failure day writes "no failures" and sends nothing;
@@ -86,7 +86,7 @@ row() {
   SEQ=$((SEQ + 1))
   jq -nc --arg leg "$2" --arg cls "$3" --argjson ir "${4:-0}" --arg ts "${5:-2026-10-07T08:00:00Z}" \
     --arg sid "$(printf '4713c1a5-0000-4000-8000-%012d' "$SEQ")" '
-    {v:1, ts:$ts, host:"h", source:"scripts/eval/leg-digest/leg_ledger.py", kind:"leg-failure", session:$sid,
+    {v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/leg_ledger.py", kind:"leg-failure", session:$sid,
      leg:$leg, console:"c", ticket:"HIMMEL-4713", pr:2030, agent:{id:"main", role:"leg", kind:"k", model:"claude-opus-5-5"},
      class:$cls, failure:($cls | split("/")[0]), count:1, identical_retry:$ir, recovered:false,
      first_ts:1, last_ts:2, tool_call_ids:["t"]}' >>"$1"

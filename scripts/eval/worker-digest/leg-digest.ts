@@ -1,6 +1,6 @@
 // leg-digest.ts — one leg session's failures as class keys. Read-only, zero model calls.
 //
-//   bun scripts/eval/leg-digest/leg-digest.ts (--transcript <journal.jsonl> | --session <uuid>)
+//   bun scripts/eval/worker-digest/leg-digest.ts (--transcript <journal.jsonl> | --session <uuid>)
 //       [--denials-ledger <classifier-denials.jsonl>] [--max-bytes N] [--profile <launch profile>]
 //
 // The journal and its subagent transcripts are merged in the order the AG-UI page uses (journal-merge.ts),

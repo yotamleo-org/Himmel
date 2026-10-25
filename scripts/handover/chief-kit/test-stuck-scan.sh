@@ -3,7 +3,7 @@
 # PATH-injected stub gh / pgrep / jira CLI. Clock pinned by STUCK_SCAN_NOW.
 # bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-stuck-scan.sh
+# Run: bash scripts/handover/chief-kit/test-stuck-scan.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SS="${STUCK_SCAN:-$HERE/stuck-scan.sh}"

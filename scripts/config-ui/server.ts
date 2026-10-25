@@ -575,7 +575,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const doc = await findDoc(env.HANDOVER_DIR || "", name);
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-        const r = (await readBoardFile(doc)) ?? await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/console-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
+        const r = (await readBoardFile(doc)) ?? await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/chief-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
         return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error)) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
       }
       if (path.startsWith("/api/agui/")) {

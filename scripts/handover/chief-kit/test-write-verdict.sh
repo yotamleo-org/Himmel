@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-append-results.sh
 # shellcheck disable=SC2012  # ls over fixture dirs whose names the suite chose
 # shellcheck disable=SC2030,SC2031  # verdict_rc's subshell is deliberate: its export must not leak
-# scripts/handover/console-kit/test-write-verdict.sh - suite for
+# scripts/handover/chief-kit/test-write-verdict.sh - suite for
 # write-verdict.sh, the sanctioned writer a console-judge call
 # uses for its verdict file:
 #   1. a GO verdict it writes is accepted by go-gate.sh's own go_trust_verdict
@@ -255,14 +255,14 @@ guard_rc() {  # guard_rc <hook basename> <command text>; stdout lands in $tmp/gu
 }
 # Some guards deny through stdout JSON at rc 0.
 denied_out() { grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' "$tmp/guard.out" && echo deny || echo none; }
-call="bash scripts/handover/console-kit/write-verdict.sh j1979-never-denies GO $SHA_A --pr 501 --evidence-file /tmp/claude-1000/j1979/evidence.md"
+call="bash scripts/handover/chief-kit/write-verdict.sh j1979-never-denies GO $SHA_A --pr 501 --evidence-file /tmp/claude-1000/j1979/evidence.md"
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 heredoc="cat > $scope_dir/j1979/verdict.md <<'EOF'
 ## Verdict
 
 **GO** for head \`$SHA_A\`.
 EOF"
-abs_call="bash $REPO/scripts/handover/console-kit/write-verdict.sh j1979-never-denies NO-GO $SHA_A --pr 501 --evidence-file /tmp/claude-1000/j1979/evidence.md --judge HIMMEL-4689-judge-j1979"
+abs_call="bash $REPO/scripts/handover/chief-kit/write-verdict.sh j1979-never-denies NO-GO $SHA_A --pr 501 --evidence-file /tmp/claude-1000/j1979/evidence.md --judge HIMMEL-4689-judge-j1979"
 for h in block-chokepoint-env-prefix guard-pr-check-literal block-edit-live-settings block-write-into-main-checkout guard-relay-writes; do
     # guard-pr-check-literal holds a relative writer call to the anchor byte
     # compare; test-guard-pr-check-literal.sh covers both outcomes.
@@ -275,7 +275,7 @@ for h in block-chokepoint-env-prefix guard-pr-check-literal block-edit-live-sett
     check "9: $h passes the absolute writer call" "$rc" 0
     check "9: $h emits no stdout deny for the absolute call" "$(denied_out)" none
 done
-rc=0; guard_rc block-chokepoint-env-prefix "HIMMEL_CONSOLE_LEG= bash scripts/handover/console-kit/go.sh 1 $SHA_A" || rc=$?
+rc=0; guard_rc block-chokepoint-env-prefix "HIMMEL_CONSOLE_LEG= bash scripts/handover/chief-kit/go.sh 1 $SHA_A" || rc=$?
 check "9: control - the stdout deny channel is seen" "$(denied_out)" deny
 rc=0; guard_rc guard-pr-check-literal "$heredoc" || rc=$?
 check "9: control - the heredoc GO line is denied" "$rc" 2

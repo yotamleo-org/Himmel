@@ -5,7 +5,7 @@
 # anything else is silent. A stub sender records calls.
 # env: HOOK overrides the hook under test (RED run against a tree without it).
 #
-# bash 3.2-safe. PLATFORM GUARD: Linux-only console-kit surface, no .ps1 twin.
+# bash 3.2-safe. PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -21,10 +21,10 @@ trap 'rm -rf "$T"' EXIT
 CALLS="$T/calls"
 # The hook always runs the inbox-send.sh beside it, so the suite installs a copy of the
 # hook next to a stub sender.
-mkdir -p "$T/inst/scripts/hooks" "$T/inst/scripts/handover/console-kit"
+mkdir -p "$T/inst/scripts/hooks" "$T/inst/scripts/handover/chief-kit"
 cp "$SRC_HOOK" "$T/inst/scripts/hooks/notify-console-on-prompt.sh" || exit 1
 HOOK="$T/inst/scripts/hooks/notify-console-on-prompt.sh"
-SEND="$T/inst/scripts/handover/console-kit/inbox-send.sh"
+SEND="$T/inst/scripts/handover/chief-kit/inbox-send.sh"
 cat > "$SEND" <<'EOS'
 #!/usr/bin/env bash
 printf '%s\t%s\n' "$1" "$2" >> "$CALLS_FILE"

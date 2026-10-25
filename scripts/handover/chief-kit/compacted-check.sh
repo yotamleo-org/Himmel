@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/compacted-check.sh - G11: prove a
+# scripts/handover/chief-kit/compacted-check.sh - G11: prove a
 # console's post-compaction COMPACTED bullet matches the snapshot the
 # PreCompact hook (scripts/hooks/console-precompact-snapshot.sh) took at the
 # moment of compaction.

@@ -49,7 +49,7 @@ cmd_console() {
         alert "no console is live to tell: $text" "no held *-console queue lock" "read the digest and the router log"
         return 1
     fi
-    if ! bash "${FAILURE_ROUTE_INBOX_SEND:-$ROOT/scripts/handover/console-kit/inbox-send.sh}" "$console" "$text"; then
+    if ! bash "${FAILURE_ROUTE_INBOX_SEND:-$ROOT/scripts/handover/chief-kit/inbox-send.sh}" "$console" "$text"; then
         alert "the console line to $console was not sent: $text" "inbox-send failed" "read the digest"
         return 1
     fi

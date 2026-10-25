@@ -5,7 +5,7 @@
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight — this tests
 # inbox-send.sh, itself Linux-only (see its header).
-# Run: bash scripts/handover/console-kit/test-inbox-send.sh
+# Run: bash scripts/handover/chief-kit/test-inbox-send.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/inbox-send.sh"

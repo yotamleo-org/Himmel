@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/station-sync.sh - bring the station back to main
+# scripts/handover/chief-kit/station-sync.sh - bring the station back to main
 # after a merge. Maps the merged diff's paths to himmel-update.sh --only steps,
 # runs them, then --versions; any component still behind is reported, and a
 # station-local edit against the shipped version is reported, never discarded.

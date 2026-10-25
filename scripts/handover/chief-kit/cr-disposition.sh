@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/cr-disposition.sh - the disposition record for a
+# scripts/handover/chief-kit/cr-disposition.sh - the disposition record for a
 # deferred Critical or Important CR finding, and the check go.sh runs on it.
 # A Critical or Important finding is never dropped: it ends fixed, disproved,
 # or deferred with a disposition a judge (or the console) recorded:

@@ -25,5 +25,5 @@ Seven-day transcript accounting (75,521 billed API calls, deduped by requestId) 
 - /console new|next (.claude/commands/console.md) documents the default and the opt-in; docs/handover/running-a-console.md §launch line updated.
 - Suite: scripts/handover/test-headed-arm.sh rows for the console path: default pin present; CONSOLE_CONTEXT=1m yields auto; refusal when neither.
 - scripts/handover/headed-arm.sh: [context] now defaults to standard (--autocompact 200000) instead of 1m/auto. CONSOLE_CONTEXT=1m set in the launching shell is the sole opt-in back to --autocompact auto; a bare positional 1m without that env is refused (exit 2, actionable message) before any lock/k
-- scripts/handover/console/console.sh: all four printed launch/would-launch lines mirror the resolved autocompact value (--autocompact 200000 by default).
+- scripts/handover/chief/console.sh: all four printed launch/would-launch lines mirror the resolved autocompact value (--autocompact 200000 by default).
 - Docs updated: docs/handover/running-a-console.md, .claude/commands/console.md.

@@ -1,6 +1,6 @@
 // roadmap.ts — the read-side behind GET /api/roadmap. The Jira mirror, the plan dir, the drift log and the
 // legs are read LIVE on every request; nothing here writes or executes anything. Semantics are a port of
-// scripts/handover/console-kit/tracker.py (read_mirror, read_versions, bucket, jira_view, drift_log), which stays the
+// scripts/handover/chief-kit/tracker.py (read_mirror, read_versions, bucket, jira_view, drift_log), which stays the
 // CLI/offline renderer and the drift log's only writer. legSync only PLANS Jira CLI argv: the console kit is the one writer.
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, readSync } from "node:fs";
 import { basename, join } from "node:path";

@@ -6,7 +6,7 @@
 # LAUNCH_CLOUD overrides the script under test (the RED control: a missing
 # script fails every case).
 #
-# Run: bash scripts/handover/console-kit/test-launch-cloud.sh
+# Run: bash scripts/handover/chief-kit/test-launch-cloud.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LAUNCH="${LAUNCH_CLOUD:-$HERE/launch-cloud.sh}"

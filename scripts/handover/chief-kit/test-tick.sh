@@ -562,7 +562,7 @@ not_contains 'a PR whose ticket has a live cloud session is not unowned' "$cloud
 # control (pre-fix tick.sh, this same two-leg fixture): the comma form printed
 # 'legs=N61.md,N65:MISSING' (one collapsed entry) while the space form printed
 # the correct 'legs=N61:FRESH,N65:FREE' -- confirmed manually against
-# scripts/handover/console-kit/tick.sh@8fa186e5 before this fix.
+# scripts/handover/chief-kit/tick.sh@8fa186e5 before this fix.
 comma_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61,HIMMEL-222-legN65')"; comma_rc=$?
 space_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61 HIMMEL-222-legN65')"; space_rc=$?
 if [ "$comma_rc" -eq 0 ] && [ "$space_rc" -eq 0 ] && [ "$comma_out" = "$space_out" ]; then
@@ -1003,7 +1003,7 @@ contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn
 # own RED control: two live
 # legs named this way used to report procs=0 models=none and an
 # unconditional livestate=DRIFT naming every leg twice -- confirmed against
-# scripts/handover/console-kit/tick.sh@6ac483e4 before this fix.
+# scripts/handover/chief-kit/tick.sh@6ac483e4 before this fix.
 mkcmdline 110 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3144-N1-console-idle-guard work
 mkcmdline 111 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3143-N2-merge-jira-optin work
 mk_pgrep_x "$W/bin-conv" 110 111
@@ -1402,7 +1402,7 @@ wrap_case 'prose bullets directly under legs: (no blank line) are not entries or
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 wrap_case 'a seeded stub with a decisions: pointer reads no MALFORMED (HIMMEL-6498)' 'livestate=ok ' \
     '> **Authority-bearing state, not a summary.** One `<leg>:<nonce>:<lock-token>:<pid>` span per leg.' \
-    '> Format and optional fields: `console-sections/live-state.md`.' '' \
+    '> Format and optional fields: `chief-sections/live-state.md`.' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120` `N192:J-N192-3d4e5f:tok-192:121`' \
     'queue: none' 'last GO: none' 'acked: none' 'board: none yet' 'tracker: none' \
     'decisions: specs/decisions/console-decisions-2026-10-20.md (latest #91)'
@@ -2543,12 +2543,12 @@ contains 'a tick on another --repo still prints the leaks ACTION line (HIMMEL-71
 lk_cli_of() { printf '%s\n' "$1" | sed -n 's/^ACTION leaks=[0-9]*: JIRA_PROJECT_KEY=[^ ]* node \([^ ]*\) release leaks .*/\1/p'; }
 lk_cli_three="$(lk_cli_of "$lk_three")"
 if [ -n "$lk_cli_three" ] && [ "$(lk_cli_of "$lk_other")" = "$lk_cli_three" ] && [ -e "${lk_cli_three%/scripts/jira/dist/index.js}/.git" ]; then pass 'the leaks ACTION line names the same primary-checkout CLI whatever --repo is (HIMMEL-7153)'; else fail "the leaks ACTION CLI is '$(lk_cli_of "$lk_other")' under --repo vs '$lk_cli_three' by default, want one primary checkout (HIMMEL-7153)"; fi
-lk_fix="$W/lk-fix"; mkdir -p "$lk_fix/scripts/handover/console-kit" "$lk_fix/scripts/lanes"
+lk_fix="$W/lk-fix"; mkdir -p "$lk_fix/scripts/handover/chief-kit" "$lk_fix/scripts/lanes"
 if env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$lk_fix"; then pass 'the missing-CLI fixture checkout initialised (HIMMEL-7153)'; else fail 'the missing-CLI fixture checkout failed git init, so its leaks=? row proves nothing (HIMMEL-7153)'; fi
-cp "$SUT" "$lk_fix/scripts/handover/console-kit/tick.sh"
+cp "$SUT" "$lk_fix/scripts/handover/chief-kit/tick.sh"
 cp -R "$HERE/../../lib" "$lk_fix/scripts/lib"
 cp -R "$HERE/../../lanes/lib" "$lk_fix/scripts/lanes/lib"
-lk_nodist="$(env -u TICK_LEAKS_PROBE NEXT_DISPATCH_MIRROR="$lk_m" TOKEN='' bash "$lk_fix/scripts/handover/console-kit/tick.sh" --doc "$d4670" 2>/dev/null)"
+lk_nodist="$(env -u TICK_LEAKS_PROBE NEXT_DISPATCH_MIRROR="$lk_m" TOKEN='' bash "$lk_fix/scripts/handover/chief-kit/tick.sh" --doc "$d4670" 2>/dev/null)"
 contains 'a tick whose primary checkout has no built Jira CLI reads leaks=? (HIMMEL-7153)' "$lk_nodist" ' leaks=?'
 not_contains 'a tick with no built Jira CLI prints no leaks ACTION line (HIMMEL-7153)' "$lk_nodist" 'ACTION leaks'
 lk_zero="$(lk_tick "$W/lk-probe-0.sh")"

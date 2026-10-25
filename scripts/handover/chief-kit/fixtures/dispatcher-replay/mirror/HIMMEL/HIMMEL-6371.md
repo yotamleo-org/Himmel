@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-Starting points: scripts/cr/review-round.sh, scripts/handover/console-kit/write-verdict.sh (--residual-of, residual-depth), next-dispatchable.sh, the cr-tune, cr-learnings-refresh and cr-scores skills, and the known-findings list. Plan with an opus-high design pass first and bring the plan to the op
+Starting points: scripts/cr/review-round.sh, scripts/handover/chief-kit/write-verdict.sh (--residual-of, residual-depth), next-dispatchable.sh, the cr-tune, cr-learnings-refresh and cr-scores skills, and the known-findings list. Plan with an opus-high design pass first and bring the plan to the op

@@ -1,6 +1,6 @@
 # HIMMEL-6479-N2789-behind-main-merge-spelling-2026-10-19.md
 
-> **Scope / do not:** writes confined to writes confined to scripts/hooks/guard-pr-check-literal.sh and its test, scripts/handover/merge-on-green.sh (entry/handoff only) and its test, scripts/handover/console-kit/gen-briefs.py (Ship step text) and its test, docs/handover/leg-brief-template.md. completes-ticket: yes. Other live legs and their files: . Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the console first). Remove any fixture you create under the real HOME before you wrap.
+> **Scope / do not:** writes confined to writes confined to scripts/hooks/guard-pr-check-literal.sh and its test, scripts/handover/merge-on-green.sh (entry/handoff only) and its test, scripts/handover/chief-kit/gen-briefs.py (Ship step text) and its test, docs/handover/leg-brief-template.md. completes-ticket: yes. Other live legs and their files: . Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the console first). Remove any fixture you create under the real HOME before you wrap.
 
 ## Results
 

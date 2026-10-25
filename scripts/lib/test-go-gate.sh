@@ -4,7 +4,7 @@
 #
 # Before go-gate.sh the HIMMEL_CONSOLE_LEG truthiness test was hand-copied at
 # three sites (merge-on-green.sh's _truthy(), block-unresolved-cr-merge.sh's
-# gate 3, console-kit/go.sh's inline check) with no shared source of truth --
+# gate 3, chief-kit/go.sh's inline check) with no shared source of truth --
 # nothing stopped one copy drifting from the other two. This suite is a single
 # table-driven test: one spellings list, checked directly against console_leg()
 # and, for the cheapest call site (go.sh, which only needs a HANDOVER_DIR
@@ -27,7 +27,7 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GO_GATE_SRC="${GO_GATE_SRC:-$HERE/go-gate.sh}"
-GO_SCRIPT="${GO_SCRIPT:-$HERE/../handover/console-kit/go.sh}"
+GO_SCRIPT="${GO_SCRIPT:-$HERE/../handover/chief-kit/go.sh}"
 MERGE_ON_GREEN_SRC="${MERGE_ON_GREEN_SRC:-$HERE/../handover/merge-on-green.sh}"
 BLOCK_CR_MERGE_SRC="${BLOCK_CR_MERGE_SRC:-$HERE/../hooks/block-unresolved-cr-merge.sh}"
 
@@ -151,8 +151,8 @@ export STUB_NWO="o/r"
 # go.sh refuses unless ready-check.sh passes, so it runs from a
 # repo whose CR ledger has an ok row for $SHA, under a gh answering ready-check
 # green (every other call falls through to the stub above).
-# shellcheck source=../handover/console-kit/testlib-ready-pass.sh
-. "$HERE/../handover/console-kit/testlib-ready-pass.sh"
+# shellcheck source=../handover/chief-kit/testlib-ready-pass.sh
+. "$HERE/../handover/chief-kit/testlib-ready-pass.sh"
 ready_pass_bin "$ROOT/ready-bin"
 export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
 git init -q "$ROOT/ready-repo"
@@ -585,7 +585,7 @@ shell_out=$(grep -v '^#' "$TSV" | grep -v '^$' | cut -f1 | while IFS= read -r l;
 done | sed "s/$(printf '\t')*\$//")
 [ "$shell_out" = "$want" ] || fail "9j: parse_ready_line disagrees with ready-lines.tsv: $(diff <(printf '%s\n' "$want") <(printf '%s\n' "$shell_out") | tr '\n' ' ')"
 if command -v node >/dev/null 2>&1; then
-    node_out=$(node "$HERE/../handover/console-kit/fleet.mjs" --ready-lines "$TSV" | sed "s/$(printf '\t')*\$//")
+    node_out=$(node "$HERE/../handover/chief-kit/fleet.mjs" --ready-lines "$TSV" | sed "s/$(printf '\t')*\$//")
     [ "$node_out" = "$want" ] || fail "9j: fleet.mjs disagrees with ready-lines.tsv: $(diff <(printf '%s\n' "$want") <(printf '%s\n' "$node_out") | tr '\n' ' ')"
 else
     fail "9j: node is missing, so fleet.mjs's parser cannot be checked"
@@ -660,7 +660,7 @@ lg -C "$TL" add -A && lg -C "$TL" commit -q -m list
 TLID="local:$(cd "$TL/.git" && pwd -P)"
 n=0
 for tp in scripts/hooks/block-x.sh scripts/hooks/read-clamp.sh scripts/hooks/check-cr-x.sh \
-    scripts/handover/console-kit/verdict-go.sh scripts/cr/write-verdicts.sh \
+    scripts/handover/chief-kit/verdict-go.sh scripts/cr/write-verdicts.sh \
     .codex/hooks.json marketplace/plugins/p/hooks/hooks.json; do
     n=$((n + 1))
     lg -C "$TL" checkout -q -b "feat/tp$n" main

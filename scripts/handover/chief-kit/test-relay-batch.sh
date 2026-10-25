@@ -5,7 +5,7 @@
 #
 # RELAY_BATCH overrides the script under test (the RED control).
 #
-# Run: bash scripts/handover/console-kit/test-relay-batch.sh
+# Run: bash scripts/handover/chief-kit/test-relay-batch.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RB="${RELAY_BATCH:-$HERE/relay-batch.sh}"

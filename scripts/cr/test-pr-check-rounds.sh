@@ -1646,12 +1646,12 @@ assert_eq "$promote_rc3" "1" "a malformed ledger row makes promote exit 1"
 assert_has "$(cat "$tmp/promote3.err")" "malformed CR ledger row" "malformed-ledger refusal names the reason"
 assert_eq "$promote_lines_after" "$((promote_lines_before + 1))" "malformed-ledger run appends nothing beyond the injected garbage line"
 
-# A judge NO-GO on the last reviewed head, as the console-kit
+# A judge NO-GO on the last reviewed head, as the chief-kit
 # verdict writer records it, buys exactly one delta round. The records are
 # written by the real writer from the fixture anchor, so the scope the writer
 # and review-round.sh resolve must agree.
-mkdir -p "$fx/scripts/handover/console-kit"
-cp "$HERE/../handover/console-kit/write-verdict.sh" "$fx/scripts/handover/console-kit/write-verdict.sh"
+mkdir -p "$fx/scripts/handover/chief-kit"
+cp "$HERE/../handover/chief-kit/write-verdict.sh" "$fx/scripts/handover/chief-kit/write-verdict.sh"
 for lib in go-gate.sh handover-path.sh user-slug.sh forge.sh forge-github.sh forge-bitbucket.sh; do
     cp "$HERE/../lib/$lib" "$fx/scripts/lib/$lib"
 done
@@ -1682,7 +1682,7 @@ trap 'rm -rf "$tmp" "$jev"' EXIT
 printf 'class: option-parsing\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
 judge() {
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4700 \
-        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$1" "$2" "$3" \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$1" "$2" "$3" \
         --pr 1 --evidence-file "$jev/judge-evidence.md" >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1 $2"
 }
 start_round() {
@@ -1775,7 +1775,7 @@ for pb_case in pb-accept pb-branch-ok pb-go pb-other-head pb-other-pr pb-no-pr-l
         pb-other-branch) pb_branch=some-other-branch ;;
     esac
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4632 \
-        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$pb_case" "$pb_word" "$pb_head" \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$pb_case" "$pb_word" "$pb_head" \
         --pr "$pb_pr" ${pb_branch:+--branch "$pb_branch"} --evidence-file "$jev/judge-evidence.md" \
         >/dev/null 2>"$tmp/judge-$pb_case.err" || fail "judge writes $pb_case"
     # A hand-copied exact-format record (no mac) or an edited one.
@@ -1815,7 +1815,7 @@ for pb_case in pv-bound pv-gh-fails pv-no-pr-line pv-other-pr pv-other-branch; d
     esac
     for pb_head in "$pb_anc" "$pb_r3"; do
         env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4632 \
-            bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$pb_case" NO-GO "$pb_head" \
+            bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$pb_case" NO-GO "$pb_head" \
             --pr "$pb_pr" ${pb_branch:+--branch "$pb_branch"} --evidence-file "$jev/judge-evidence.md" \
             >/dev/null 2>"$tmp/judge-$pb_case.err" || fail "judge writes $pb_case"
     done
@@ -1907,7 +1907,7 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
         # lift this PR's repeated-class stop.
         printf 'class: option-parsing\nlayer-decision: os signed for another PR\n\nforeign\n' > "$jev/judge-evidence.md"
         env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4700 \
-            bash "$fx/scripts/handover/console-kit/write-verdict.sh" "a-$class_case-next" NO-GO "$cc_second" \
+            bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "a-$class_case-next" NO-GO "$cc_second" \
             --pr 2 --evidence-file "$jev/judge-evidence.md" >/dev/null 2>"$tmp/judge-foreign.err" || fail "judge writes foreign-pr record"
     fi
     if [ "$class_case" = unreadable-sibling-fails-closed ]; then
@@ -2260,7 +2260,7 @@ for sx_case in sx-ok sx-unsigned sx-edited sx-other-pr sx-other-branch sx-nogo-b
         sx-other-branch) sx_branch=some-other-branch ;;
     esac
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4984 \
-        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$sx_case" GO "$sx_head" \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$sx_case" GO "$sx_head" \
         --pr "$sx_pr" ${sx_branch:+--branch "$sx_branch"} --evidence-file "$jev/judge-evidence.md" \
         >/dev/null 2>"$tmp/judge-$sx_case.err" || fail "judge writes $sx_case"
     case "$sx_case" in
@@ -2276,7 +2276,7 @@ for sx_case in sx-ok sx-unsigned sx-edited sx-other-pr sx-other-branch sx-nogo-b
             # A NO-GO written with --bind-reviewed still vetoes its judged head
             printf 'class: tool-defaults\n\na bound NO-GO for the same head\n' > "$jev/judge-evidence.md"
             (cd "$repo" && env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-5109 \
-                bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$sx_case-nogo" NO-GO "$sx_head" \
+                bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$sx_case-nogo" NO-GO "$sx_head" \
                 --pr 1 --evidence-file "$jev/judge-evidence.md" --bind-reviewed "$sx_r3") \
                 >/dev/null 2>"$tmp/judge-$sx_case-nogo.err" || fail "judge writes $sx_case-nogo bound" ;;
     esac
@@ -3037,7 +3037,7 @@ assert_eq "$jgo_vrc" "1" "6303 (g) no judge shortcut while a full round is still
 # below the delta and a GO at the delta, so a deleted check accepts it.
 jgo_rec() {
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-6303 \
-        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$1" "$2" "$3" \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$1" "$2" "$3" \
         --pr "$4" ${5:+--branch "$5"} --evidence-file "$jev/judge-evidence.md" \
         >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1"
 }
@@ -3079,7 +3079,7 @@ assert_has "$jgo_out" "cannot be written into a ledger row" "6303 (i) the refusa
 # (branch: line, no pr: line) clears that exact head; nothing else does.
 jgo_recb() {
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-6427 \
-        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$1" GO "$2" \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$1" GO "$2" \
         --branch "$3" --evidence-file "$jev/judge-evidence.md" \
         >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1 (branch-bound)"
 }

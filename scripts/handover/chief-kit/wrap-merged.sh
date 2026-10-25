@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/wrap-merged.sh - a leg's MERGED and
+# scripts/handover/chief-kit/wrap-merged.sh - a leg's MERGED and
 # WRAPPED in one call. Replaces the console's separate turns: check the merge,
 # close the window, drop the leg from the fleet, pull the primary, log it,
 # re-render the board.
@@ -46,7 +46,7 @@
 #                 <doc dir>/focus-drift.txt is printed as `drift: <line>`.
 #   6. board      (as above)
 # A re-run therefore finishes whatever an earlier run stopped before, and writes
-# nothing twice. Calls the existing console-kit scripts and modifies none.
+# nothing twice. Calls the existing chief-kit scripts and modifies none.
 #
 # Test seams (env): WM_GH WM_CLOSE WM_GIT WM_BOARD WM_JIRA WM_PRIMARY.
 # Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs flock + jq).

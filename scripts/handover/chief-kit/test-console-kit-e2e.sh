@@ -26,7 +26,7 @@
 set -uo pipefail
 
 if [ "$(uname -s)" != Linux ]; then
-    echo "skip - console-kit e2e is Linux-only (the kit reads /proc and pgrep)"
+    echo "skip - chief-kit e2e is Linux-only (the kit reads /proc and pgrep)"
     exit 0
 fi
 
@@ -221,4 +221,4 @@ if [ "$fails" -gt 0 ]; then
     printf '%s check(s) failed\n' "$fails"
     exit 1
 fi
-echo "all console-kit e2e checks passed"
+echo "all chief-kit e2e checks passed"

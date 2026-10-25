@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-cut-tag.sh - suite for cut-tag.sh
+# scripts/handover/chief-kit/test-cut-tag.sh - suite for cut-tag.sh
 # Hermetic: `gh` is stubbed via GH_BIN, `git` via a PATH
 # stub dir prepended ahead of the real git, both driven by env vars and both
 # logging every invocation to CALLS so a case can assert what was (and was

@@ -14,11 +14,11 @@ wake, or a chief armed without `--legs-from`.
 
 **One call per message.** Write the worker's `MERGED` or
 `WRAPPED` message to a file and run
-`bash scripts/handover/console-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`.
+`bash scripts/handover/chief-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`.
 It finds the leg doc by the message's `N<k>` label and runs
-`console-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
+`chief-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
 means done; `ESCALATE <reason>` means do the steps below by hand. After a `MERGED` it
-also starts `console-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
+also starts `chief-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
 `himmel-update.sh --only` steps for the paths the PR touched, then `--versions`. The line
 ends `station=pending log=<file>` at once; the tick carries the verdict as `station=`
 (`BEHIND:pending` while it runs, `BEHIND:<components>` when behind, nothing when current)
@@ -30,9 +30,9 @@ directly when you already hold the leg doc. The hand sequence below is the
 fallback, not the default: a measured console spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it (HIMMEL-5592).
 
-For a batch close, run `bash scripts/handover/console-kit/close-wrapped-leg.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
+For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-leg.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
 To close every finished window across chiefs, run
-`bash scripts/handover/console-kit/close-wrapped-legs.sh [--check] [<manifest>...]`.
+`bash scripts/handover/chief-kit/close-wrapped-legs.sh [--check] [<manifest>...]`.
 It runs that sweep once per manifest and goes on after a failed one. With no
 manifest it sweeps every `*.fleet.json` in the bucket changed in the last 24 h
 (`CLOSE_WRAPPED_LEGS_MAX_AGE_MIN`), predecessor chiefs' manifests included.
@@ -46,9 +46,9 @@ never a chain or a `VAR=` prefix:
 
 | Instead of | Hand the operator |
 |---|---|
-| closing wrapped windows one by one | `! bash scripts/handover/console-kit/close-wrapped-legs.sh` |
+| closing wrapped windows one by one | `! bash scripts/handover/chief-kit/close-wrapped-legs.sh` |
 | `HANDOVER_DIR=… JIRA_PROJECT_KEY=… node …/dist/index.js <op> …` | `! node <primary>/scripts/jira/dist/index.js <op> …`, run from any himmel checkout: the CLI resolves both keys itself from the primary checkout's config (its `.env` today) |
-| `for id in …; do gh run cancel $id; done` | `! bash scripts/handover/console-kit/cancel-runs.sh --keep-pr <n> --live` (or `--all --live`; a dry run without `--live`) |
+| `for id in …; do gh run cancel $id; done` | `! bash scripts/handover/chief-kit/cancel-runs.sh --keep-pr <n> --live` (or `--all --live`; a dry run without `--live`) |
 | `cd <worktree> && bash scripts/<x>.sh …` | `! bash <worktree>/scripts/<x>.sh …` (the script finds its own checkout) |
 | a scratchpad prune script for merged worktrees | `! bash scripts/clean.sh` |
 
@@ -56,7 +56,7 @@ A chain that skips a gate, such as a vault commit with `SKIP=gitleaks`, gets no
 wrapper: hand the operator the steps and the reason the gate refused.
 
 On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
-leg's window with `bash scripts/handover/console-kit/close-wrapped-leg.sh
+leg's window with `bash scripts/handover/chief-kit/close-wrapped-leg.sh
 <leg-doc>` — it verifies the lock is free and the doc's last
 Results marker is `WRAPPED`, signals the exactly-one live session that
 matches the leg (never a guess), and prunes ITS worktree once the PR is
@@ -69,7 +69,7 @@ candidate. A worktree reported "in use" immediately after a wrap is the leg's
 own end-of-session hook still writing — re-run `--only` on it shortly.
 
 After the signal the close also digests the leg's session into the
-failure-loop ledgers (`console-kit/leg-digest-step.sh`) and
+failure-loop ledgers (`chief-kit/leg-digest-step.sh`) and
 prints exactly one line about it. The line is informational: it never changes
 the close's exit code or any other output line, and it never delays the close
 past its hard timeout (`CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT`, default 120 s).
@@ -84,7 +84,7 @@ past its hard timeout (`CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT`, default 120 s).
 | `digest=skipped:no-session` | no session id could be read; nothing written |
 
 A leg closed without the script (or a failed digest you want retried) is
-digested afterwards with `bash scripts/handover/console-kit/leg-digest-step.sh
+digested afterwards with `bash scripts/handover/chief-kit/leg-digest-step.sh
 --doc <leg-doc>` (spec §1.2 fallback): it finds the leg's sessions by name,
 `resume_cwd` and the doc's LIVE..WRAPPED window and prints one
 `<session> digest=…` line per session, or `digest=skipped:no-chain`. The

@@ -14,7 +14,7 @@ cwd — see `marketplace/plugins/himmel-ops/commands/chief.md`.
 Run:
 
 ```bash
-bash scripts/handover/console/chief.sh $ARGUMENTS
+bash scripts/handover/chief/chief.sh $ARGUMENTS
 ```
 
 - `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-console.md`

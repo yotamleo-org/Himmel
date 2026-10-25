@@ -12,7 +12,7 @@
 #   5. RED rows: AWS key, GitHub PAT, generic api key, grammar-prefixed secrets
 #   6. one grammar: the toml rule, vault-stall CLOSED_SHAPES and the doc agree
 # Needs gitleaks; CI shards put the pinned binary on PATH. Run:
-#   bash scripts/handover/console-kit/test-handover-token-grammar.sh
+#   bash scripts/handover/chief-kit/test-handover-token-grammar.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"

@@ -7,7 +7,7 @@
 # fixture under a temp dir: no real doc, no send. SUCCESSION_TRACKER overrides the script
 # under test (the RED control: a missing script fails every row). bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-succession-tracker.sh
+# Run: bash scripts/handover/chief-kit/test-succession-tracker.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${SUCCESSION_TRACKER:-$HERE/succession-tracker.sh}"
@@ -124,7 +124,7 @@ man_before="$(cksum < "$MAN")"
 out="$(run)"; rc=$?
 eq "every leg quoted back: complete (rc 0)" "$rc" 0
 has "COMPLETE 2/2 is printed" "$out" "COMPLETE 2/2"
-has "the exact LIVE line is printed for append-results.sh" "$out" "bash scripts/handover/console-kit/append-results.sh $CDOC \"LIVE —"
+has "the exact LIVE line is printed for append-results.sh" "$out" "bash scripts/handover/chief-kit/append-results.sh $CDOC \"LIVE —"
 lacks "the LIVE bullet carries no > character" "$(printf '%s\n' "$out" | grep 'append-results.sh')" ">"
 eq "it only prints: the console doc is untouched" "$(cksum < "$CDOC")" "$sum_before"
 eq "and the manifest is untouched too" "$(cksum < "$MAN")" "$man_before"

@@ -4,7 +4,7 @@
 // clip, so a clip cannot split a token into a fragment the patterns miss.
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { redact } from '../../../../scripts/handover/console-kit/redact.mjs';
+import { redact } from '../../../../scripts/handover/chief-kit/redact.mjs';
 import * as store from './store.mjs';
 
 export const SUMMARY_CHARS = 120;

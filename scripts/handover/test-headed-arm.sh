@@ -34,7 +34,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 # claudex-launched leg exports these ambiently, which would silently flip
 # those rows green-from-default to green-from-override. Clear them so the
 # suite's own per-case overrides are the only source, same as
-# console-kit/test-headed-arm-leg.sh:40.
+# chief-kit/test-headed-arm-leg.sh:40.
 unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/null || true
 # A real macOS host reads uname=Darwin, which picks the macOS shim
 # and its ~7 minute session-visibility budget; every case that launches but
@@ -55,7 +55,7 @@ trap 'rm -rf "$tmp"' EXIT
 : > "$tmp/suite-start-marker"
 # headed-arm.sh writes a console arm's launch row to
 # ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs. Pin it under $tmp for
-# the whole suite, as console-kit/test-headed-arm-leg.sh does, so a --role console
+# the whole suite, as chief-kit/test-headed-arm-leg.sh does, so a --role console
 # case that forgets its own dir (38a-38l did) lands here, not in production data.
 # Cases 1e-1h still pass a per-case dir, which overrides this.
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
@@ -2202,7 +2202,7 @@ check "46 not_contains reports a grep error as a failure, not as absence" "$nc46
 
 # --- 42. the recorder branch uses util-linux
 # `script -f/-c`, which BSD script rejects ("illegal option -- f"). Since
-# console-kit/headed-arm-leg.sh exports HEADED_ARM_RECORDER=1 unconditionally
+# chief-kit/headed-arm-leg.sh exports HEADED_ARM_RECORDER=1 unconditionally
 # for --lane claudex, a Mac must refuse with the real reason rather than fail
 # as a mystery FAILED after the window is already open.
 #
@@ -2241,7 +2241,7 @@ contains "42 macOS + RECORDER=1: names BSD script as the reason" "$out42" "BSD s
 # case depends on: an explicit KONSOLE_CMD on a Mac is NOT refused. Those
 # cases hand the `script ...` argv to a recording stub that never executes it,
 # so refusing on the platform alone would turn a working launch into exit 2
-# (it did: 8 cases in console-kit/test-headed-arm-leg.sh).
+# (it did: 8 cases in chief-kit/test-headed-arm-leg.sh).
 d42b="$tmp/c42b"; mk_stub "$d42b" 1 alive "HIMMEL-rec42b"
 rc42b=0
 HEADED_ARM_RECORDER=1 HEADED_ARM_UNAME=Darwin KONSOLE_CMD="$d42b/konsole" PGREP_CMD="$d42b/pgrep" \

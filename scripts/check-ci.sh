@@ -1296,7 +1296,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
         jira_tb=$(. "$(dirname "$0")/lib/timeout-bin.sh" >/dev/null 2>&1; printf '%s' "${_TIMEOUT_BIN:-}")
         if [ -n "$jira_tb" ] && jira_key=$(ticket_key_from_title "$pr_title"); then
             _ticket_event() {
-                "$jira_tb" -k 5 30 bash "${TICKET_STATUS_FUNNEL:-$(dirname "$0")/handover/console-kit/leg-jira-status.sh}" \
+                "$jira_tb" -k 5 30 bash "${TICKET_STATUS_FUNNEL:-$(dirname "$0")/handover/chief-kit/leg-jira-status.sh}" \
                     "$jira_key" --event "$1" --pr "${initial_url##*/pull/}" --head "$initial_head" \
                     ${CHECK_CI_CACHE_REPO:+--repo "$CHECK_CI_CACHE_REPO"} >/dev/null 2>&1 || true
             }

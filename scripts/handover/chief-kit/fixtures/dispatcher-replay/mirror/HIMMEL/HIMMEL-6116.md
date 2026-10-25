@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-Files: scripts/handover/console/console.sh and its suite.
+Files: scripts/handover/chief/console.sh and its suite.
 PR #3010 (yotamleo/Himmel) merged @ 8a1c832d0ebde270b01a67946ea401c8122d1e60. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

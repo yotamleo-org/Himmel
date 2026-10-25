@@ -23,7 +23,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo "tick.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
     exit 96
 fi
-chokepoint_seam_guard scripts/handover/console-kit/tick.sh || exit 96
+chokepoint_seam_guard scripts/handover/chief-kit/tick.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # tick's gh reads (the PR list, the READY file lists) ride the read-only token
@@ -49,7 +49,7 @@ Relative DOC/LEGS resolve under the handover root; include the bucket prefix
 when HANDOVER_DIR names a global state root.
 
 --legs-from MANIFEST (HIMMEL-3748) reads the leg docs from a fleet manifest
-(console-kit/fleet-manifest.sh writes it) on every run, so a dispatch or wrap
+(chief-kit/fleet-manifest.sh writes it) on every run, so a dispatch or wrap
 edits that file and a waiter forwarding the same argv needs no restart. Its
 legs join any --legs ones (a doc on both is judged once). A manifest that is
 missing or not valid schema-1 JSON fails the tick (rc 1, no TICK line) -- never
@@ -320,7 +320,7 @@ when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000)
 `ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
 DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
 specs/decisions/console-decisions-<date>.md the superseded rulings move to verbatim
-(console-sections/live-state.md).
+(chief-sections/live-state.md).
 
 --burn adds a per-leg context-burn field (first-turn/avg-ctx, via
 scripts/lanes/leg-burn.sh) for every doc in --legs. OPT-IN because it scans
@@ -2572,7 +2572,7 @@ else
     done <<< "$crfirst_alerts"
     while IFS= read -r ciguard_line; do
         [ -n "$ciguard_line" ] || continue
-        printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (console-sections/monitors.md)\n' "${ciguard_line#ALERT }"
+        printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (chief-sections/monitors.md)\n' "${ciguard_line#ALERT }"
     done <<< "$ciguard_alerts"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
@@ -2588,10 +2588,10 @@ else
     fi
     decisions_file="${console_doc%/*}/specs/decisions/console-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
-        printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (console-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
+        printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (chief-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
     fi
     if [ "$decisions_bytes" -gt "$decisions_budget" ]; then
-        printf 'ACTION decisions-over-budget=%s/%s: move superseded rulings verbatim to %q and keep the active ones plus that path on the line (console-sections/live-state.md)\n' "$decisions_bytes" "$decisions_budget" "$decisions_file"
+        printf 'ACTION decisions-over-budget=%s/%s: move superseded rulings verbatim to %q and keep the active ones plus that path on the line (chief-sections/live-state.md)\n' "$decisions_bytes" "$decisions_budget" "$decisions_file"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

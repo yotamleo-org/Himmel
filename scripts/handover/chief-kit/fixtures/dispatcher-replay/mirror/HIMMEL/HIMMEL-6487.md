@@ -22,4 +22,4 @@ links:
 ## Description
 
 1. A drain step (scripts/ci/gcp-runners.sh drain, or in the off path of watch and of the autoscaler) that lists queued and orphaned in_progress jobs with the gcp label on same-repo runs, cancels those runs and reruns them (gh run cancel + gh run rerun --failed or a fresh rerun).
-Files: scripts/ci/gcp-runners.sh (owned by HIMMEL-6471 until it merges), scripts/ci/gcp-runner-autoscale.sh, scripts/handover/console-kit/tick.sh, tests. Related: HIMMEL-6482, HIMMEL-6431.
+Files: scripts/ci/gcp-runners.sh (owned by HIMMEL-6471 until it merges), scripts/ci/gcp-runner-autoscale.sh, scripts/handover/chief-kit/tick.sh, tests. Related: HIMMEL-6482, HIMMEL-6431.

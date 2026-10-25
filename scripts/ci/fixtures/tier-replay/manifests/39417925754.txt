@@ -11,7 +11,7 @@ suite scripts/ci/test-run-shell-tests.sh
 suite scripts/codex/test-install-himmel-codex.sh
 suite scripts/cr/test-cr-guarded-closure.sh
 suite scripts/cr/test-pr-check-run.sh
-suite scripts/handover/console-kit/test-station-sync.sh
+suite scripts/handover/chief-kit/test-station-sync.sh
 suite scripts/himmelctl/test/test-himmelctl-path-shim.sh
 suite scripts/himmelctl/test/test-update-autostash.sh
 suite scripts/himmelctl/test/test-version.sh

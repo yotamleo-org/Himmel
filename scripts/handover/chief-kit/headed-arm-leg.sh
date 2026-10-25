@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/headed-arm-leg.sh - versioned LEG launcher
+# scripts/handover/chief-kit/headed-arm-leg.sh - versioned LEG launcher
 # A thin wrapper around scripts/handover/headed-arm.sh that
 # pins every leg arm to the standard --autocompact 200000 ceiling - the window
 # itself measures 1M regardless (docs/internals/lane-calibration.md "What a
@@ -217,7 +217,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo "headed-arm-leg.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
     exit 96
 fi
-chokepoint_seam_guard scripts/handover/console-kit/headed-arm-leg.sh || exit 96
+chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-leg.sh || exit 96
 
 # HEADED_ARM_UNAME - same seam name and default-
 # expansion idiom headed-arm.sh itself defines; resolved again HERE because
@@ -920,7 +920,7 @@ HEADED_ARM="${HEADED_ARM_WORKER_TARGET:-${HEADED_ARM_LEG_TARGET:-$HERE/../headed
 # lib or record all launch: this only ever fails OPEN. Runs before --dry-run's
 # exit so a dry-run predicts the refusal, and before any real-launch write.
 if [ "$IGNORE_DENIALS" -eq 0 ] && [ -r "$HERE/denial-ack-lib.sh" ]; then
-    # shellcheck source=scripts/handover/console-kit/denial-ack-lib.sh
+    # shellcheck source=scripts/handover/chief-kit/denial-ack-lib.sh
     . "$HERE/denial-ack-lib.sh"
     for _den_label in "$NAME" "$(denial_doc_label "$DOC" 2>/dev/null)"; do
         [ -n "$_den_label" ] || continue
@@ -940,7 +940,7 @@ fi
 # handover root HERE, in this wrapper's own process (still running in the
 # CONSOLE's launching cwd - no konsole child exists yet), and export it
 # explicitly as HANDOVER_DIR so the leg's own handover_root() call binds to
-# the exact same root the console used to write its GO (console-kit/go.sh).
+# the exact same root the console used to write its GO (chief-kit/go.sh).
 # HANDOVER_DIR is already a registered seam var (scripts/lib/handover-path.sh)
 # read by every handover script; this widens nothing - it only makes each
 # launch's already-resolved root explicit instead of leaving a leg in a
@@ -1461,7 +1461,7 @@ fi
 # HIMMEL_CONSOLE_LEG=1: marks the launched process as a
 # console-spawned leg, both lanes - including --judge (design §3.2, "the
 # judge is a leg": this IS Guard E for a judge too). merge-on-green.sh then
-# merges only on the console's GO file (console-kit/go.sh), and go.sh refuses
+# merges only on the console's GO file (chief-kit/go.sh), and go.sh refuses
 # to run under it.
 leg_propagate_env HIMMEL_CONSOLE_LEG 1
 # HIMMEL_CONSOLE_JUDGE=1: guard-judge-writes.sh denies a judge
@@ -1852,7 +1852,7 @@ if [ -n "$PROFILE" ]; then
     # handover root is external (Mode B) or the doc's own root otherwise -
     # the auto-mode classifier inconsistently refuses those writes as
     # Out-of-Place Publication. Grant only the DOC's own directory, never the
-    # whole handover root: console-kit/go.sh's merge GO is authenticated only
+    # whole handover root: chief-kit/go.sh's merge GO is authenticated only
     # by the EXISTENCE of <handover_root>/.locks/go/<pr>.<sha> (go-gate.sh,
     # merge-on-green.sh), with no hook guarding that path today - widening a
     # leg's grant to the root would auto-approve its own Write there, letting
@@ -2121,7 +2121,7 @@ EOF_CS_FILES
             '.hooks = (reduce ((.hooks // {}) | to_entries[]) as $h ($c.hooks; .[$h.key] = ((.[$h.key] // []) + $h.value)))
              | .permissions.deny = ((.permissions.deny // []) + $c.deny + ["Edit","Write","NotebookEdit"] | unique)
              | if ($c.ask | length) > 0 then .permissions.ask = ((.permissions.ask // []) + $c.ask | unique) else . end
-             | .permissions.allow = ["Bash(bash scripts/handover/console-kit/append-results.sh " + $doc + ":*)"]
+             | .permissions.allow = ["Bash(bash scripts/handover/chief-kit/append-results.sh " + $doc + ":*)"]
              | del(.permissions.additionalDirectories)
              | .permissions.defaultMode = "auto"
              | .env = ($c.env + (.env // {}) + {CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "0"})
@@ -2150,7 +2150,7 @@ EOF_CS_FILES
             exit 2
         fi
         # Stop hook: an idle lock-holding leg keeps the prompt cache warm or
-        # wraps (docs/handover/leg-sections/cache-keepalive.md). A consult is
+        # wraps (docs/handover/worker-sections/cache-keepalive.md). A consult is
         # a read-only one-question session with its own lifecycle: no hook.
         if [ "$CONSULT" -eq 0 ]; then
             _leg_ttl_cmd="$(printf 'bash %q' "$(cd "$HERE/../../hooks" && pwd)/guard-leg-cache-ttl.sh")"
@@ -2496,7 +2496,7 @@ fi
 _leg_sid=""
 if [ "$LANE" = "native" ] && [ -n "$PROFILE" ] && [ "$HEADLESS" -eq 0 ] && [ "$CONSULT" -eq 0 ] \
     && [ ! -L "$DOC" ] && [ "$(head -n 1 "$DOC" 2>/dev/null)" = "---" ]; then
-    # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
+    # shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
     . "$HERE/leg-doc-lock.sh"
     _leg_sid="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"
     _leg_sid="$(printf '%s' "$_leg_sid" | tr 'A-F' 'a-f')"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-json-writers-final-newline.sh — every console-kit writer that puts a JSON
+# test-json-writers-final-newline.sh — every chief-kit writer that puts a JSON
 # file in the handover tree ends the file with a newline. The luna vault's
 # auto-commit runs end-of-file-fixer, which refuses a commit that stages a file
 # without one, so one such file stalls every vault sync behind it.
@@ -8,7 +8,7 @@
 # GEN_BRIEFS overrides the script under test (the RED control). Hermetic: temp
 # dir only, the worktree step is stubbed. bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-json-writers-final-newline.sh
+# Run: bash scripts/handover/chief-kit/test-json-writers-final-newline.sh
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines, as in test-gen-briefs.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"

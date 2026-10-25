@@ -43,7 +43,7 @@
 # delivered, but the console-side sent-record ledger write that follows it
 # failed (cannot secure/create the per-sender ledger directory, or cannot
 # write the ledger line). The message is delivered either way — this is not
-# a retry cue, it is the detection gap itself: scripts/handover/console-kit/
+# a retry cue, it is the detection gap itself: scripts/handover/chief-kit/
 # inbox-audit.sh will name this bullet as UNMATCHED on the next per-shift
 # audit, same as a genuinely forged one.
 #
@@ -202,7 +202,7 @@ if [ -n "$doc" ]; then
     # shared with append-results.sh, live-state.sh and the launcher's
     # session_ids: rewrite. Unlike those, a ruling is never mirrored unlocked:
     # no flock (rc 3) refuses, as before.
-    # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
+    # shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
     . "$HERE/leg-doc-lock.sh"
     lock_rc=0; doc_lock "$doc" inbox-send || lock_rc=$?
     if [ "$lock_rc" -ne 0 ]; then
@@ -269,7 +269,7 @@ printf '%s\n' "$bullet" >> "$inbox" || exit 2
 if [ -n "$token" ]; then
     ledger_base="${HIMMEL_CONSOLE_RUNDIR:-}"
     if [ -z "$ledger_base" ]; then
-        # Same per-uid convention as console.sh (scripts/handover/console/
+        # Same per-uid convention as console.sh (scripts/handover/chief/
         # console.sh lines 18-19, 430-440): prefer a systemd-provided,
         # already-owned XDG_RUNTIME_DIR, else the uid-qualified /tmp path.
         if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ]; then

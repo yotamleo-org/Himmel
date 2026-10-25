@@ -127,7 +127,7 @@ cmd_arm() {
         printf 'log=%q\n' "$RUNNER_DIR/failure-review-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
         printf 'echo "[fired $(date "+%%F %%T")]" >> "$log"\n'
-        printf '%q %q run --vault %q%s >> "$log" 2>&1\n' "$bash_bin" "$root/scripts/eval/leg-digest/failure-review-cadence.sh" \
+        printf '%q %q run --vault %q%s >> "$log" 2>&1\n' "$bash_bin" "$root/scripts/eval/worker-digest/failure-review-cadence.sh" \
             "$vault" "$([ "$live" -eq 1 ] && printf ' --live')"
     } > "$runner.new" || { rm -f "$runner.new"; echo "ERR failure-review-cadence: cannot write the runner $runner.new" >&2; return 4; }
     chmod +x "$runner.new" || { rm -f "$runner.new"; echo "ERR failure-review-cadence: cannot chmod the runner $runner.new" >&2; return 4; }

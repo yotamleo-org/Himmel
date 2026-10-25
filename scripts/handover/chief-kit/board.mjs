@@ -62,7 +62,7 @@ import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, r
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitClean } from '../../lanes/git-clean.mjs';
-import { readToolHealth } from '../../eval/leg-digest/tool-health.mjs';
+import { readToolHealth } from '../../eval/worker-digest/tool-health.mjs';
 import { redact } from './redact.mjs';
 import { collect as collectCloud } from './cloud-liveness.mjs';
 
@@ -1172,7 +1172,7 @@ const legRows = liveLegs.map((l) => ({ l, m: legModel(l) }));
 const needOf = ({ l, m }) => {
     const readyB = [...(legInfo.get(l.label)?.bullets || [])].reverse().find((b) => markerOf(b) === 'READY') || '';
     const head = (/READY\s+#?\d{2,}\s+([0-9a-f]{7,40})\b/.exec(readyB) || [])[1];
-    const [verb, action, command] = m.state === 'ready-for-go' ? ['go', `judge and GO PR #${l.prNum}`, head ? `bash scripts/handover/console-kit/go.sh ${l.prNum} ${head}` : null]
+    const [verb, action, command] = m.state === 'ready-for-go' ? ['go', `judge and GO PR #${l.prNum}`, head ? `bash scripts/handover/chief-kit/go.sh ${l.prNum} ${head}` : null]
         : m.state === 'blocked' ? ['unblock', 'clear the BLOCKED leg', null]
             : m.state === 'needs-decision' ? ['decide', 'rule on the FINDING', null]
                 : l.lostLock ? ['act', `lock ${l.lock.toLowerCase()}: re-arm or wrap the leg`, null]

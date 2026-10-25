@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-doc-reader-agreement.sh - the console-kit readers parse the same handover
+# test-doc-reader-agreement.sh - the chief-kit readers parse the same handover
 # docs independently (tick.sh, board.mjs, fleet.mjs, close-wrapped-leg.sh, the
 # shared leg-tail-status.sh), and test-console-kit-e2e.sh feeds them only
 # hand-written canonical bullets. This suite generates docs from a grammar
@@ -60,7 +60,7 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 GEN="$HERE/fixtures/doc-reader-agreement/gen.py"
 REPLAY="${DRA_READERS:-}"
 READERS="${DRA_READERS:-$REPO}"
-CK="$READERS/scripts/handover/console-kit"
+CK="$READERS/scripts/handover/chief-kit"
 SEED="${DRA_SEED:-20261020}"
 N_CONSOLE=24
 N_LEG=176
@@ -175,7 +175,7 @@ mkdir -p "$W/tpl"
     export HIMMELCTL_CACHE_DIR="$W/cache" HANDOVER_REGISTRY="$W/noreg.json" BRIDGE_ROOT="$W/bridge" \
         HANDOFF_FACTS_BANK="$W/facts-bank.sh" HANDOFF_FACTS_PRS="$W/facts-prs.sh" HANDOVER_DIR="$W/tpl" \
         USER_SLUG=u JIRA_PROJECT_KEY=HIMMEL CONSOLE_WORK_DIR="$W/work"
-    bash "$REPO/scripts/handover/console/chief.sh" new --name tpl-console --bucket himmel >/dev/null 2>&1
+    bash "$REPO/scripts/handover/chief/chief.sh" new --name tpl-console --bucket himmel >/dev/null 2>&1
 )
 tpl_rc=$?
 if [ "$tpl_rc" -ne 0 ]; then fail "console.sh new exited $tpl_rc"; echo "FAILED: $fails"; exit 1; fi

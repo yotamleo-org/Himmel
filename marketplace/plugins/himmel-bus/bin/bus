@@ -26,7 +26,7 @@ const MAX_BODY = 64 * 1024, INLINE_CAP = 1500, MAX_SUMMARY = 300;
 const GC_AGE_MS = 30 * 24 * 3600e3;
 const EXPIRY_MS = 4 * 3600e3;
 const WAIT_POLL_MS = 500, WAIT_DEFAULT_S = 300, WAIT_MAX_S = 86400, EXIT_TIMEOUT = 3;
-const INBOX_SEND = fileURLToPath(new URL('../../../../scripts/handover/console-kit/inbox-send.sh', import.meta.url));
+const INBOX_SEND = fileURLToPath(new URL('../../../../scripts/handover/chief-kit/inbox-send.sh', import.meta.url));
 
 const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 function ulid(now = Date.now()) {

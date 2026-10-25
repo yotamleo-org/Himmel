@@ -14,9 +14,9 @@ tickets not yet started are reported, never silently dropped.
 
 | Flag       | Behavior                                                                            |
 |------------|-------------------------------------------------------------------------------------|
-| _(no flag)_| Soft stop. `bash scripts/overnight/stop-marker.sh set` — touches the marker.        |
+| _(no flag)_| Soft stop. `bash scripts/afk/stop-marker.sh set` — touches the marker.        |
 | `--hard`   | Soft stop + invoke `TaskStop` on every running Task subagent in this session.       |
-| `--reset`  | `bash scripts/overnight/stop-marker.sh clear` — removes the marker.                 |
+| `--reset`  | `bash scripts/afk/stop-marker.sh clear` — removes the marker.                 |
 
 ## Workflow
 
@@ -24,8 +24,8 @@ tickets not yet started are reported, never silently dropped.
 2. Run the literal form for the parsed mode — no command substitution
    (HIMMEL-203 bash-shape rule: `$(…)` makes the permission matcher bail):
 
-   - No args (soft stop) or `--hard`: `bash scripts/overnight/stop-marker.sh set`
-   - `--reset`: `bash scripts/overnight/stop-marker.sh clear`
+   - No args (soft stop) or `--hard`: `bash scripts/afk/stop-marker.sh set`
+   - `--reset`: `bash scripts/afk/stop-marker.sh clear`
 
 3. **Only when `--hard` is passed:** after setting the marker, walk
    the current session's active Task tool agents (via `TaskList`) and
@@ -45,7 +45,7 @@ long-running dispatch loop (overnight-mode Phase 3's manual runbook,
 autonomous loops) MUST poll the marker the same way, between dispatches:
 
 ```bash
-if bash scripts/overnight/stop-marker.sh check; then
+if bash scripts/afk/stop-marker.sh check; then
     echo "stop marker set — halting before next dispatch"
     exit 0
 fi
@@ -56,12 +56,12 @@ exists, 1 when it doesn't. Cheap to call.
 
 ## Status inspection
 
-`bash scripts/overnight/stop-marker.sh status` prints human-readable
+`bash scripts/afk/stop-marker.sh status` prints human-readable
 state (SET with timestamp, or CLEAR) regardless of marker presence.
 Always exits 0.
 
 ## Smoke test
 
-`bash scripts/overnight/test-stop-marker.sh` — 9-scenario test (set,
+`bash scripts/afk/test-stop-marker.sh` — 9-scenario test (set,
 check, clear, aliases, idempotence, status, unknown-subcommand,
 filesystem-error). All pass.

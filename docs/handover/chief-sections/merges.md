@@ -33,7 +33,7 @@ at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
 classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
 the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
 judge or trust review the PR needs, then
-`console-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
+`chief-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
 `bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --leg-doc <leg doc>`. <!-- old-term-ok: console runbook wording -->
 Pass `--jira-transition` unless the leg doc's `Completes ticket:` line says no <!-- old-term-ok: console runbook wording -->
 (a brief whose scope states neither value has no such line and takes the yes
@@ -61,7 +61,7 @@ selector and shared libs, the merge gate and GO writer — the list is read
 from the default branch, never the PR head, so a PR cannot shrink it) does
 not merge through `merge-on-green.sh` on an ordinary GO: it exits 21. Such a
 PR needs an independent adversarial review first; only on the judge's GO for
-that exact head run `console-kit/go.sh --trust-reviewed <qid> <pr>
+that exact head run `chief-kit/go.sh --trust-reviewed <qid> <pr>
 <head>`, where `<qid>` is the judge question's id (`[A-Za-z0-9][A-Za-z0-9._-]*`).
 `go.sh` refuses with exit 5 unless `<root>/<user>/<bucket>/verdicts/<qid>/`
 holds a verdict whose first line under `## Verdict` is exactly
@@ -96,7 +96,7 @@ is raised above `main`, not that every plugin changed since the last tag is in
 the cut, so the cut's author lists them.
 
 To cut a pre-release tag yourself, run
-`bash scripts/handover/console-kit/cut-tag.sh <version> <sha>` (`--dry-run`
+`bash scripts/handover/chief-kit/cut-tag.sh <version> <sha>` (`--dry-run`
 first to see the plan) — it creates the tag through the GitHub API, never
 `git tag`, so it needs no operator `!` step. It refuses unless `<sha>` is an
 ancestor of `origin/main`, every check-run at `<sha>` is green, the commit's
@@ -109,7 +109,7 @@ itself, not hardcoded to any one release line, so `v0.3.0-pre.9` and a future
 `--version-override <reason>`).
 
 To drain the hosted CI queue on an operator order, run
-`bash scripts/handover/console-kit/cancel-runs.sh --keep-pr <n>` (repeat the
+`bash scripts/handover/chief-kit/cancel-runs.sh --keep-pr <n>` (repeat the
 flag, or add `--keep-sha <sha>`) — a dry run that prints the count; add `--live`
 to cancel. It cancels every non-completed run on the `origin` repo (not
 overridable: a `--repo` that differs from origin refuses, as does an origin on

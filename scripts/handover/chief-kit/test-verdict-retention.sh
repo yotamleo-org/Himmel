@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check()/contains(); the backticks are the verdict line's literal text
-# scripts/handover/console-kit/test-verdict-retention.sh - suite for
+# scripts/handover/chief-kit/test-verdict-retention.sh - suite for
 # verdict-retention.sh:
 #   1. archive is a dry run by default: it lists the one dir whose PR has been
 #      closed past the age and moves nothing, writes no ledger row

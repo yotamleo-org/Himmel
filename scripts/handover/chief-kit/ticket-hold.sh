@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/ticket-hold.sh - put a ticket on hold, or release
+# scripts/handover/chief-kit/ticket-hold.sh - put a ticket on hold, or release
 # it. A hold is the Jira label `held`, not a status: the derive ignores it, the
 # dispatcher (next-dispatchable.sh) excludes it and the FOCUS page shows the
 # chain step as `held`.

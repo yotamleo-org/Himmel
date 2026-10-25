@@ -348,7 +348,7 @@ def scan_transcript(path, lane, since, until=None):
 def known_names(repo):
     names = {}
     for kind, pat in (('hook', 'scripts/hooks/*.sh'), ('gate', 'scripts/cr/*.sh'),
-                      ('gate', 'scripts/handover/*.sh'), ('gate', 'scripts/handover/console-kit/*.sh')):
+                      ('gate', 'scripts/handover/*.sh'), ('gate', 'scripts/handover/chief-kit/*.sh')):
         for p in glob.glob(os.path.join(repo, pat)):
             n = os.path.basename(p)[:-3]
             if len(n) > 6 and not n.startswith('test-'):

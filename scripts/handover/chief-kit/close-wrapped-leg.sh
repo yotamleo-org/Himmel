@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/close-wrapped-leg.sh - console-run wrapped-leg
+# scripts/handover/chief-kit/close-wrapped-leg.sh - console-run wrapped-leg
 # window close. A console's `kill <konsole pid>` is
 # classifier-denied [Interfere With Workloads] when typed as a bare literal -
 # this script wraps the same TERM under a literal the classifier allowlists,
@@ -198,10 +198,10 @@ if ! . "$HERE/../../lanes/lib/claude-sessions.sh"; then
     echo "close-wrapped-leg: cannot load scripts/lanes/lib/claude-sessions.sh" >&2
     exit 1
 fi
-# shellcheck source=scripts/handover/console-kit/leg-transcripts.sh
+# shellcheck source=scripts/handover/chief-kit/leg-transcripts.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/leg-transcripts.sh"; then
-    echo "close-wrapped-leg: cannot load scripts/handover/console-kit/leg-transcripts.sh" >&2
+    echo "close-wrapped-leg: cannot load scripts/handover/chief-kit/leg-transcripts.sh" >&2
     exit 1
 fi
 

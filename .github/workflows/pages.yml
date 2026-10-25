@@ -11,7 +11,7 @@ name: Pages
 # build) with a read-only token and no persisted git credentials; `deploy`
 # holds the Pages write and OIDC permissions and runs no repo code.
 #
-# The workflow is deliberately NOT named `CI`: scripts/handover/console-kit/
+# The workflow is deliberately NOT named `CI`: scripts/handover/chief-kit/
 # cut-tag.sh reads the commit's workflow run named exactly `CI`.
 on:
   schedule:

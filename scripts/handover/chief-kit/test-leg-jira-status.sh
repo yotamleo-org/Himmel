@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-append-results.sh
-# scripts/handover/console-kit/test-leg-jira-status.sh - Hermetic
+# scripts/handover/chief-kit/test-leg-jira-status.sh - Hermetic
 # tests for the derive-and-set funnel (leg-jira-status.sh, scripts/lib/ticket-status.sh)
 # and its append-results.sh wiring. A stubbed Jira CLI (WORKER_SESSION_JIRA_CLI), a stubbed
 # gh on PATH and a stubbed queue lock (TICKET_STATUS_QUEUE_LOCK) read fixture

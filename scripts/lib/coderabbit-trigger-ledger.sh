@@ -73,7 +73,7 @@
 # CodeRabbit's "Review skipped: automatic reviews are disabled" status is
 # indistinguishable from a clean review to a gate reading only the status.
 # A default-off seam here would recreate that exact failure; a console must
-# deliberately set it per leg (scripts/handover/console-kit/headed-arm-leg.sh's
+# deliberately set it per leg (scripts/handover/chief-kit/headed-arm-leg.sh's
 # WORKER_SESSION_SUPPRESS_CR_TRIGGER, folded to this var the same way WORKER_SESSION_REPO folds to
 # HEADED_ARM_REPO).
 #

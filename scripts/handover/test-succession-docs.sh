@@ -57,10 +57,10 @@ for f in "$PREFACE" "$JUDGE" "$CONSOLE" "$RUNNING" "$HANDOFF" "$RETASK"; do
 done
 
 # --- 1. leg-preface.md: the succession rule and its decision table ----------
-SUCCESSION="$DOCS/handover/leg-sections/succession.md"
+SUCCESSION="$DOCS/handover/worker-sections/succession.md"
 succ="$(section "$SUCCESSION" '^## Console succession')"
-if [ -n "$succ" ]; then pass 'leg-sections/succession.md has a "Console succession" section'; else fail 'leg-sections/succession.md has a "Console succession" section'; fi
-contains 'leg-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'leg-sections/succession.md'
+if [ -n "$succ" ]; then pass 'worker-sections/succession.md has a "Console succession" section'; else fail 'worker-sections/succession.md has a "Console succession" section'; fi
+contains 'leg-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'worker-sections/succession.md'
 flat() { printf '%s\n' "$1" | tr '\n' ' ' | tr -s ' '; }
 s1="$(flat "$(cat "$PREFACE")")"
 s1="${s1#*'**S1 relay**'}"
@@ -84,7 +84,7 @@ contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further 
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: the sender rule binds to the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'carry `from=` the console you last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-sections/succession.md")")" 'the console you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
+contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/worker-sections/succession.md")")" 'the console you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
 
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: the console is the one last accepted, the brief'"'"'s until a change' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'the one you last accepted (your brief'"'"'s until a change)'
@@ -175,7 +175,7 @@ contains 'template Handing over: relay-batch carries no fresh token' "$(flat "$h
 if ! flat "$handing" | grep -iqF -- 'and the fresh one if the successor issued one'; then pass 'template Handing over: relay-batch is not said to carry the fresh token'; else fail 'template Handing over: relay-batch is not said to carry the fresh token (stale text present)'; fi
 before 'template Handing over: quote-backs are collected BEFORE the lock is released' "$handing" 'quote-back' 'release your lock'
 
-live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/console-sections/live-state.md")"
+live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/chief-sections/live-state.md")"
 contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 'only after'
 
 # --- 3. running-a-console.md: the mirror --------------------------------------
@@ -367,7 +367,7 @@ absent 'console template no longer says Four monitors' "$(cat "$CONSOLE")" 'Four
 
 # --- wake-once wiring: the console docs run the waiter's --succession ----
 step10="$(awk '/^10\. \*\*/ { f = 1 } /^11\. \*\*/ { f = 0 } f' "$CONSOLE")"
-waiter_doc="$(cat "$DOCS/handover/console-sections/waiter.md")"
+waiter_doc="$(cat "$DOCS/handover/chief-sections/waiter.md")"
 contains 'ACTION ZERO step 9 starts the waiter with --succession' "$step9" '--succession'
 before 'ACTION ZERO step 9: --succession is armed BEFORE LIVE is sent' "$step9" '--succession' '{{LETTER}} LIVE'
 contains 'ACTION ZERO step 9 acts on the complete wake' "$step9" 'WAKE succession complete'

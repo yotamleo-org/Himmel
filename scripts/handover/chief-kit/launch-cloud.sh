@@ -3,7 +3,7 @@
 # session in its own konsole window. `claude --cloud` creates the session,
 # prints its URL and exits; script(1) keeps a TTY and captures that output.
 #
-# Usage: bash scripts/handover/console-kit/launch-cloud.sh <ticket-number>
+# Usage: bash scripts/handover/chief-kit/launch-cloud.sh <ticket-number>
 #   e.g. 4757 -> reads <bucket>/cloud-brief-HIMMEL-4757.md, appends one
 #   tab-separated row to <bucket>/cloud-sessions.tsv.
 #

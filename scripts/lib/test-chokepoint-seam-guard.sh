@@ -247,7 +247,7 @@ gate() {
         bash -c '. "$1" && _csg_gate "$2" 20 "$3"' _ "$GA/scripts/lib/chokepoint-seam-guard.sh" "$proc" "$key" 2>"$TMP/gate.err"
     printf '%s' "$?"
 }
-GO=scripts/handover/console-kit/go.sh
+GO=scripts/handover/chief-kit/go.sh
 MOG=scripts/handover/merge-on-green.sh
 Q1="$TMP/gproc1"; mkclaude "$Q1" "$GA" PATH=/bin "HOME=$GH" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1
 assert_eq "G2 anchor copy, seams equal to launch -> ALLOW" "0" "$(gate "$Q1" "$GO" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1)"

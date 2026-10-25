@@ -9,7 +9,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 FB="$HERE/lib/eval_feedback.py"
 RUNS="$HERE/lib/eval_runs.py"
 FRICTION="$HERE/friction/friction.py"
-FRV="$HERE/leg-digest/failure_review.py"
+FRV="$HERE/worker-digest/failure_review.py"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/eval-feedback-test.XXXXXX")" || { echo "test-eval-feedback: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 # Never the live files, whatever a case forgets to pass.

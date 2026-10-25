@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # git-env-ok: test fixture; its only git call is `git -C` on a suite-owned temp repo
-# scripts/handover/console-kit/testlib-ready-pass.sh - shared fixture for the
+# scripts/handover/chief-kit/testlib-ready-pass.sh - shared fixture for the
 # suites that run go.sh for real. go.sh now runs ready-check.sh
 # itself and refuses unless it passes, so a suite that only needs a GO written
 # must make ready-check pass: a gh that answers ready-check's queries green, and

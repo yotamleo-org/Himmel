@@ -26,7 +26,7 @@ So the local shepherd stays mandatory: it runs `/pr-check`, the CR gate and the
 merge. The cloud session ships a PR and stops.
 
 The mechanical half of the shepherd is scripted:
-`bash scripts/handover/console-kit/shepherd.sh <pr>` makes a detached worktree of
+`bash scripts/handover/chief-kit/shepherd.sh <pr>` makes a detached worktree of
 the PR head, runs the coverage lint, the impacted shell suites, `check-ci.sh` and
 `ready-check.sh`, and prints one `SHEPHERD <pr> <head> READY-CANDIDATE|NEEDS-LEG
 <reasons>` block (exit 0 / 1; 2 = usage or infra). It skips `CLOUD-ACK` steering
@@ -250,7 +250,7 @@ claude --cloud "$(cat cloud-brief-HIMMEL-<n>.md)" --permission-mode auto
 
 A console launches it through the kit instead, which opens the session in its
 own konsole window and appends it to the bucket's `cloud-sessions.tsv`:
-`bash scripts/handover/console-kit/launch-cloud.sh <n>`.
+`bash scripts/handover/chief-kit/launch-cloud.sh <n>`.
 
 Steering a running session is headless (`claude -p "<msg>" --cloud <id>`) and
 draws the same bank as interactive use (see CLAUDE.md, "Claude invocation

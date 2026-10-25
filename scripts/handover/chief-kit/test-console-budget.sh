@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-compacted-check.sh
-# scripts/handover/console-kit/test-console-budget.sh - suite for console-budget.sh,
+# scripts/handover/chief-kit/test-console-budget.sh - suite for console-budget.sh,
 # the console's turn / cumulative cache-read handover budget:
 #   1. under both budgets                 -> rc 0, verdict=OK
 #   2. turns at the budget                -> rc 3, verdict=HANDOVER

@@ -21,4 +21,4 @@ links:
 
 ## Description
 
-files: scripts/handover/console-kit/{relay-batch.sh,succession-tracker.sh,action-zero.sh,console-wait.sh,live-state.sh}, scripts/handover/console/console.sh, docs/handover/leg-preface.md (succession section), docs/handover/console-sections/successor-start.md deliverable: a research note in the state
+files: scripts/handover/chief-kit/{relay-batch.sh,succession-tracker.sh,action-zero.sh,console-wait.sh,live-state.sh}, scripts/handover/chief/console.sh, docs/handover/leg-preface.md (succession section), docs/handover/chief-sections/successor-start.md deliverable: a research note in the state

@@ -7,7 +7,7 @@
 # suites that already run under Git Bash on Windows. No .ps1 twin needed.
 #
 # WHY: a console-spawned leg's shell exports guard overrides (INLINE_IMPL_OK,
-# IMPL_GUARD_OK, HIMMEL_CONSOLE_LEG by console-kit/headed-arm-leg.sh;
+# IMPL_GUARD_OK, HIMMEL_CONSOLE_LEG by chief-kit/headed-arm-leg.sh;
 # CLAUDE_CODE_CHILD_SESSION by claude itself; HIMMEL_HOOK_INTEGRITY_BYPASS_OK by
 # the operator for a hooks-touching leg). A hook suite that invokes the hook
 # under test with a plain `bash "$HOOK"` inherits them, so every case that means

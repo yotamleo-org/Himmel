@@ -1329,7 +1329,7 @@ contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
 # tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
 # send that first read+publish to a haiku subagent.
 DOCS="$HERE/../../../docs/handover"
-BT="$(tr '\n' ' ' < "$DOCS/console-sections/board-tracker.md" | tr -s ' ')"
+BT="$(tr '\n' ' ' < "$DOCS/chief-sections/board-tracker.md" | tr -s ' ')"
 CT="$(tr '\n' ' ' < "$DOCS/console-template.md" | tr -s ' ')"
 BT_BOARD="${BT%%Keep the roadmap tracker current*}"
 BT_TRACKER="${BT#*Keep the roadmap tracker current}"

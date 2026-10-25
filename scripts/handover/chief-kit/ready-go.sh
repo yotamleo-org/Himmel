@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/ready-go.sh - the console's whole mechanical READY
+# scripts/handover/chief-kit/ready-go.sh - the console's whole mechanical READY
 # turn in one call. A leg's READY used to cost the console a wake, a ready-check,
 # a trust-path look, a ticket read, a hand-built GO line and a ledger bullet;
 # the only judgement in it is GO or not. This prints everything that decision

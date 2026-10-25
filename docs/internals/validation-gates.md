@@ -284,7 +284,7 @@ protection.
 The live claudex implementation lane runs through the Claude Code harness
 ([lane calibration](lane-calibration.md#claudex-leg--implementor-default-operating-model)),
 with publication subject to its permission classifier. The chief's
-`scripts/handover/console-kit/ready-check.sh` separately refuses a head without
+`scripts/handover/chief-kit/ready-check.sh` separately refuses a head without
 an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
 not the historical GLM `d1_verdict` field.
 

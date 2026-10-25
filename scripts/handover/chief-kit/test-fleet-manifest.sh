@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-append-results.sh
-# scripts/handover/console-kit/test-fleet-manifest.sh - suite for
+# scripts/handover/chief-kit/test-fleet-manifest.sh - suite for
 # fleet-manifest.sh, the console's one writer for its fleet
 # manifest (the JSON `tick.sh --legs-from` reads every sample):
 #   1. add to a missing manifest creates it (schema 1, doc + N-label entry)

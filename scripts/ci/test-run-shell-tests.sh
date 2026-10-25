@@ -804,7 +804,7 @@ fi
 # runner dependency except that tool, so the verdict cannot depend on this host.
 sweep13g_rows="
 gitleaks scripts/guardrails/test-gitleaks-retired-org.sh
-flock scripts/handover/console-kit/test-leg-doc-lock.sh
+flock scripts/handover/chief-kit/test-leg-doc-lock.sh
 node scripts/hooks/test-check-hook-lib-suites.sh
 node scripts/observability/test-agent-runtime-census.sh
 jq scripts/hooks/test-check-hook-file-parse.sh
@@ -2466,7 +2466,7 @@ scripts/ci/test-suite-concurrency.sh	117
 scripts/ci/test-suite-lock-brand-gap.sh	70
 scripts/ci/test-suite-lock-orphan-reaper.sh	15
 scripts/codex/test-dispatch-codex-exec.sh	77
-scripts/console/test-base-status.sh	11
+scripts/chief/test-base-status.sh	11
 scripts/cr/test-clear-cr-marker.sh	120
 scripts/cr/test-critic-first-pass.sh	24
 scripts/cr/test-critic-panel-fallback.sh	16
@@ -2487,20 +2487,20 @@ scripts/graphify/test-semantic-update.sh	26
 scripts/guardrails/test-check-git-env-scrub.sh	10
 scripts/guardrails/test-graphify-fence.sh	35
 scripts/guardrails/test-lesson-write-fence.sh	98
-scripts/handover/console-kit/test-board.sh	16
-scripts/handover/console-kit/test-close-wrapped-leg.sh	20
-scripts/handover/console-kit/test-console-kit-e2e.sh	16
-scripts/handover/console-kit/test-console-wait-b.sh	238
-scripts/handover/console-kit/test-console-wait.sh	254
-scripts/handover/console-kit/test-go.sh	13
-scripts/handover/console-kit/test-headed-arm-leg.sh	126
-scripts/handover/console-kit/test-judge-ladder.sh	10
-scripts/handover/console-kit/test-leg-pretrust.sh	53
-scripts/handover/console-kit/test-ready-check.sh	34
-scripts/handover/console-kit/test-tick.sh	142
-scripts/handover/console-kit/test-wrap-merged.sh	36
-scripts/handover/console-kit/test-write-verdict.sh	22
-scripts/handover/console/test-console.sh	66
+scripts/handover/chief-kit/test-board.sh	16
+scripts/handover/chief-kit/test-close-wrapped-leg.sh	20
+scripts/handover/chief-kit/test-console-kit-e2e.sh	16
+scripts/handover/chief-kit/test-console-wait-b.sh	238
+scripts/handover/chief-kit/test-console-wait.sh	254
+scripts/handover/chief-kit/test-go.sh	13
+scripts/handover/chief-kit/test-headed-arm-leg.sh	126
+scripts/handover/chief-kit/test-judge-ladder.sh	10
+scripts/handover/chief-kit/test-leg-pretrust.sh	53
+scripts/handover/chief-kit/test-ready-check.sh	34
+scripts/handover/chief-kit/test-tick.sh	142
+scripts/handover/chief-kit/test-wrap-merged.sh	36
+scripts/handover/chief-kit/test-write-verdict.sh	22
+scripts/handover/chief/test-console.sh	66
 scripts/handover/test-arm-resume-bus-rebind.sh	13
 scripts/handover/test-arm-resume-context.sh	17
 scripts/handover/test-arm-resume-cron.sh	12

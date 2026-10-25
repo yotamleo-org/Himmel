@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # block-worker-askuserquestion.sh — PreToolUse hook (matcher "AskUserQuestion"):
 # denies AskUserQuestion for a console-spawned leg. A leg
-# launched headed by a console (scripts/handover/console-kit/headed-arm-leg.sh,
+# launched headed by a console (scripts/handover/chief-kit/headed-arm-leg.sh,
 # exports HIMMEL_CONSOLE_LEG=1 in the launching shell) runs in a
 # window nobody answers: two legs parked on an AskUserQuestion call on
 # 2026-09-10 — one 77 minutes with its diff already complete, the other

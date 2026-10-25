@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # SC2016: the case-12 stubs are written with literal $ for the stub to expand; SC2015: A && B || C is intentional in check()/the final line, as in test-append-results.sh
-# scripts/handover/console-kit/test-wrap-merged.sh - suite for wrap-merged.sh
+# scripts/handover/chief-kit/test-wrap-merged.sh - suite for wrap-merged.sh
 # the one-call MERGED + WRAPPED for a leg. Hermetic: gh, git,
 # close-wrapped-leg.sh, board.mjs and the Jira CLI are stubs (the WM_* seams);
 # fleet-manifest.sh and append-results.sh are real, against temp files.
@@ -221,11 +221,11 @@ check "11: 2 sessions: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE consol
 fixture
 SP="$W/sp ace"
 mkdir -p "$SP/scripts/handover" "$SP/scripts/lib"
-cp -R "$HERE" "$SP/scripts/handover/console-kit"
+cp -R "$HERE" "$SP/scripts/handover/chief-kit"
 cp -R "$HERE/../../lib/." "$SP/scripts/lib/"
-printf '#!/usr/bin/env bash\necho "close $*" >> "$WM_CALLS"\n' > "$SP/scripts/handover/console-kit/close-wrapped-leg.sh"
-printf 'import { appendFileSync } from "node:fs"\nappendFileSync(process.env.WM_CALLS, "board " + process.argv.slice(2).join(" ") + "\\n")\n' > "$SP/scripts/handover/console-kit/board.mjs"
-rc=0; out="$(env -u WM_CLOSE -u WM_BOARD -u WM_JIRA bash "$SP/scripts/handover/console-kit/wrap-merged.sh" --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG" 2>&1)" || rc=$?
+printf '#!/usr/bin/env bash\necho "close $*" >> "$WM_CALLS"\n' > "$SP/scripts/handover/chief-kit/close-wrapped-leg.sh"
+printf 'import { appendFileSync } from "node:fs"\nappendFileSync(process.env.WM_CALLS, "board " + process.argv.slice(2).join(" ") + "\\n")\n' > "$SP/scripts/handover/chief-kit/board.mjs"
+rc=0; out="$(env -u WM_CLOSE -u WM_BOARD -u WM_JIRA bash "$SP/scripts/handover/chief-kit/wrap-merged.sh" --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG" 2>&1)" || rc=$?
 calls="$(cat "$WM_CALLS")"
 check "12: space-path default commands rc 0" "$rc" 0
 contains "12: default close ran" "$calls" "close --fleet $MANIFEST $LEG"

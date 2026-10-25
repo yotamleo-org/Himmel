@@ -22,4 +22,4 @@ links:
 ## Description
 
 5. Warn when a ticket names a file path that does not exist (6034 names scripts/handover/tick.sh), since the collision check is then silently off.
-Files: scripts/handover/console-kit/next-dispatchable.sh, scripts/handover/console-kit/console-wait.sh, their tests. Single-writer: PR 3199 (HIMMEL-6261) also edits next-dispatchable.sh; start after it merges. Scratch evidence: nddbg.py and ndfix.py in console R's session scratchpad.
+Files: scripts/handover/chief-kit/next-dispatchable.sh, scripts/handover/chief-kit/console-wait.sh, their tests. Single-writer: PR 3199 (HIMMEL-6261) also edits next-dispatchable.sh; start after it merges. Scratch evidence: nddbg.py and ndfix.py in console R's session scratchpad.

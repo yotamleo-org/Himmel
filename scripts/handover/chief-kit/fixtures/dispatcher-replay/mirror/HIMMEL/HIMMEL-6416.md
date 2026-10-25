@@ -22,5 +22,5 @@ links:
 ## Description
 
 - scripts/jira/src/commands/transition*.ts plus its test (then bun run build for dist);
-- scripts/handover/console-kit/versionless-done.sh;
-- scripts/handover/console-kit/tick.sh and its test.
+- scripts/handover/chief-kit/versionless-done.sh;
+- scripts/handover/chief-kit/tick.sh and its test.

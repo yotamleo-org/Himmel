@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/leg-digest/failure_review.py - the daily failure review (HIMMEL-4713, P5b of HIMMEL-4670).
+"""scripts/eval/worker-digest/failure_review.py - the daily failure review (HIMMEL-4713, P5b of HIMMEL-4670).
 
 One LLM-free pass over the leg-failures ledger: run the failure router, summarise the last 24 h,
 write the digest, tell the operator in one Telegram line when something happened.

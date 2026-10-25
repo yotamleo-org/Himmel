@@ -14,8 +14,8 @@ one Bash call each, in order, and nothing else. Read no other file, touch no oth
 path, do not run the leg-preface ceremony beyond these steps.
 
 1. `bash scripts/handover/queue-lock.sh acquire "@DOC@"`
-2. `bash scripts/handover/console-kit/append-results.sh "@DOC@" "LIVE — canary @LANE@ first bullet"`
-3. `bash scripts/handover/console-kit/append-results.sh "@DOC@" "WRAPPED — canary @LANE@ done"`,
+2. `bash scripts/handover/chief-kit/append-results.sh "@DOC@" "LIVE — canary @LANE@ first bullet"`
+3. `bash scripts/handover/chief-kit/append-results.sh "@DOC@" "WRAPPED — canary @LANE@ done"`,
    then `bash scripts/handover/queue-lock.sh release "@DOC@"` (the token it printed at step 1 is
    persisted; pass it as the last argument if release asks for it), then stop.
 

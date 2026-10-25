@@ -21,6 +21,6 @@ links:
 
 ## Description
 
-1. Add an opt-in profile or config key read by scripts/handover/console-kit/headed-arm-leg.sh that puts both variables into the leg environment.
+1. Add an opt-in profile or config key read by scripts/handover/chief-kit/headed-arm-leg.sh that puts both variables into the leg environment.
 3. Document the switch in docs/internals/enforcement.md (Claude invocation billing).
-Files: scripts/handover/console-kit/headed-arm-leg.sh, launch-profile code; scripts/cr/critic-first-pass.sh read only. Follows HIMMEL-6475; re-arm HIMMEL-6419 after about 20 real runs.
+Files: scripts/handover/chief-kit/headed-arm-leg.sh, launch-profile code; scripts/cr/critic-first-pass.sh read only. Follows HIMMEL-6475; re-arm HIMMEL-6419 after about 20 real runs.

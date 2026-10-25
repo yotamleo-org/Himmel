@@ -15,7 +15,7 @@
 # Second half of the console-wait suite: the (vmrun) cases onward. The first
 # half is test-console-wait.sh (cases up to (y4)).
 #
-# Run: bash scripts/handover/console-kit/test-console-wait-b.sh
+# Run: bash scripts/handover/chief-kit/test-console-wait-b.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/console-wait.sh}}"

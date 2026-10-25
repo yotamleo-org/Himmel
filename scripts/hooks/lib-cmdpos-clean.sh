@@ -8,7 +8,7 @@
 # cmdpos_clean_for <names-fn> <command> is true when no segment of <command>
 # executes a script but the himmel-gate dispatcher by its anchored spelling:
 # every command word is a reader, an inert sed, a pathspec-only git, echo,
-# printf without -v, cd, or `bash "$HIMMEL_REPO/scripts/handover/console-kit/
+# printf without -v, cd, or `bash "$HIMMEL_REPO/scripts/handover/chief-kit/
 # himmel-gate.sh"`, with no VAR= word, substitution, $'…', comment or write
 # redirect. A guard whose rule is about how a script is EXECUTED (a seam var
 # beside it, its rc piped away) has nothing to judge in such a command, so a
@@ -78,7 +78,7 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     done
     # same prefix-stem match, keyed on each HTARGET's own
     # immediate parent directory (handover/ for merge-on-green.sh,
-    # console-kit/ for go.sh) rather than a fixed "cr/" marker.
+    # chief-kit/ for go.sh) rather than a fixed "cr/" marker.
     case "$1" in *[hH]andover/merge-on-green*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac

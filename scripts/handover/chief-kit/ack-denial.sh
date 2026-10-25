@@ -31,7 +31,7 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB="$HERE/denial-ack-lib.sh"
-# shellcheck source=scripts/handover/console-kit/denial-ack-lib.sh
+# shellcheck source=scripts/handover/chief-kit/denial-ack-lib.sh
 if ! { [ -r "$LIB" ] && . "$LIB"; } 2>/dev/null; then
     echo "ack-denial: cannot read $LIB" >&2
     exit 1

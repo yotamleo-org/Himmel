@@ -21,5 +21,5 @@ links:
 
 ## Description
 
-Files: scripts/handover/console-kit/tick.sh, close-wrapped-leg.sh, headed-arm-leg.sh and suites. Evidence: journalctl 2026-10-16 16:10:34 systemd-oomd; leg transcript 9146011b-6540-4ecc-a7e2-7f61d11734ec ends mid-Bash at 14:10Z.
+Files: scripts/handover/chief-kit/tick.sh, close-wrapped-leg.sh, headed-arm-leg.sh and suites. Evidence: journalctl 2026-10-16 16:10:34 systemd-oomd; leg transcript 9146011b-6540-4ecc-a7e2-7f61d11734ec ends mid-Bash at 14:10Z.
 PR #3015 (yotamleo/Himmel) merged @ 25bf428a876ee480ad706fa4913a272601a6dda2. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

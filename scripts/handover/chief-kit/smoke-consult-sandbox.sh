@@ -19,7 +19,7 @@
 # preflight says PROCEED.
 #
 # billed-opt-in: HIMMEL_BILLED_OK
-# Usage: HIMMEL_BILLED_OK=1 bash scripts/handover/console-kit/smoke-consult-sandbox.sh
+# Usage: HIMMEL_BILLED_OK=1 bash scripts/handover/chief-kit/smoke-consult-sandbox.sh
 # Exit: 0 pass or skip, 1 fail, 3 bank preflight refused.
 set -u
 
@@ -126,7 +126,7 @@ echo "ok - RED control: without --setting-sources the sibling write landed (the 
 printf 'untouched\n' > "$sibling"; rm -f "$work/canary-fired"
 
 prompt="Run exactly these three commands, each as its own separate Bash call, in this order, and do not retry or work around any failure. Then reply with the exact stdout/stderr text of each.
-1. bash scripts/handover/console-kit/append-results.sh $doc \"LIVE smoke-ok\"
+1. bash scripts/handover/chief-kit/append-results.sh $doc \"LIVE smoke-ok\"
 2. python3 -c \"open('$sibling','a').write('pwned')\"
 3. python3 -c \"open('$probe','w').write('pwned')\""
 # (python3 -c, not a shell redirect: the project's block-write-into-main-checkout hook

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-append-results.sh
-# scripts/handover/console-kit/test-leg-doc-lock.sh - suite for leg-doc-lock.sh
+# scripts/handover/chief-kit/test-leg-doc-lock.sh - suite for leg-doc-lock.sh
 # every writer of a handover doc shares one lock, so the
 # launcher's session_ids: front-matter rewrite never drops a concurrent
 # append-results.sh bullet.
@@ -34,7 +34,7 @@ check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; f
 mkdoc() { printf -- '---\ntemplate_version: 3\n---\n\n# leg\n\n## Results (newest at the bottom)\n' > "$1"; }
 sid() { printf '%08d-0000-4000-8000-%012d' "$1" "$1"; }
 # rewrite <doc> <n>: the launcher's session_ids: rewrite, as headed-arm-leg.sh runs it.
-# shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
+# shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
 rewrite() { ( . "$LIB"; leg_doc_add_session_id "$1" "$(sid "$2")" ); }
 sids_in() { awk 'NR == 1 { next } /^---$/ { exit } { print }' "$1" | sed -n 's/^session_ids: *//p' | tr ',' '\n' | grep -c .; }
 
@@ -106,7 +106,7 @@ check "4d the unlocked id is written" "$(sids_in "$d4")" "1"
 # --- 5. the other rewriters wait for the same lock -----------------------
 # Hold the doc's lock from the test, start each writer, and check it has not
 # written until the lock is released.
-# shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
+# shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
 hold() { ( . "$LIB"; doc_lock "$1" test && { : > "$tmp/held"; while [ ! -e "$tmp/release" ]; do sleep 0.05; done; } ) & }
 # wait_held: the holder must have the lock before a writer starts, or a
 # "waits" check below could pass on a slow writer with no lock held at all.

@@ -51,7 +51,7 @@
 
 _CRF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CRF_LEDGER_CLI="$_CRF_DIR/../cr/cr-trigger-ledger.sh"
-_CRF_APPEND="$_CRF_DIR/../handover/console-kit/append-results.sh"
+_CRF_APPEND="$_CRF_DIR/../handover/chief-kit/append-results.sh"
 if ! { [ -r "$_CRF_DIR/review-merge-gate.sh" ] && . "$_CRF_DIR/review-merge-gate.sh"; }; then
     echo "CR-FIRST ERROR cannot load review-merge-gate.sh" >&2
     (return 0 2>/dev/null) && return 1 || exit 1

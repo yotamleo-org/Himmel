@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
-# scripts/handover/console-kit/test-ready-go.sh - suite for ready-go.sh, the
+# scripts/handover/chief-kit/test-ready-go.sh - suite for ready-go.sh, the
 # console's one-call READY turn. One row per output line:
 #   1. usage: bad pr / sha / half a --to,--token pair -> exit 2.
 #   2. clean PR: ready-check lines, READY-GO PASS, COVERAGE, TRUST: none, TICKET,
@@ -35,7 +35,7 @@ lacks()    { printf '%s' "$2" | grep -qF -e "$3"; case $? in
                 *) echo "FAIL - $1: grep errored"; fails=$((fails+1)) ;;
             esac; }
 
-# shellcheck source=scripts/handover/console-kit/testlib-ready-pass.sh
+# shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
 # shellcheck disable=SC1091
 . "$HERE/testlib-ready-pass.sh"
 ready_pass_bin "$tmp/ready-bin"

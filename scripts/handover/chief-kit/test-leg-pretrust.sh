@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # SC2015: A && B || C is intentional in check(), as in test-headed-arm-leg.sh; SC2016: group 10 greps literal $VAR text
-# scripts/handover/console-kit/test-leg-pretrust.sh - suite for leg-pretrust.sh
+# scripts/handover/chief-kit/test-leg-pretrust.sh - suite for leg-pretrust.sh
 # the launcher's folder/hooks-trust pre-accept.
 #
 # Asserts:

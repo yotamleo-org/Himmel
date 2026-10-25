@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/observability/suite-flake-summary.sh — read the suite-flake
 # ledger scripts/ci/run-shell-tests.sh appends to and summarise this
-# repo's FLAKE rows. Used by console-kit tick.sh (flakes=) and board.mjs.
+# repo's FLAKE rows. Used by chief-kit tick.sh (flakes=) and board.mjs.
 #
 #   suite-flake-summary.sh [--since <epoch> | --days <n>] [--now <epoch>]
 #                          [--format tick|counts|detail]

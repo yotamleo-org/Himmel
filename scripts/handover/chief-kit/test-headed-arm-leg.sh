@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains()/ends_with()/not_contains(), as in scripts/handover/test-headed-arm.sh
-# scripts/handover/console-kit/test-headed-arm-leg.sh - suite for
+# scripts/handover/chief-kit/test-headed-arm-leg.sh - suite for
 # headed-arm-leg.sh: the versioned LEG launcher that
 # pins the standard --autocompact 200000 ceiling. WORKER_SESSION_CONTEXT=1m is refused:
 # absence of a [1m] suffix is not proof of the ceiling, because autocompact is
@@ -1730,7 +1730,7 @@ contains "full launch --profile: seeded settings deny EnterWorktree" \
 # sits outside the leg's working directories whenever the handover root is
 # external (Mode B) - the auto-mode classifier inconsistently denies those
 # writes as Out-of-Place Publication. additionalDirectories grants only the
-# DOC's own directory, never the whole handover root - console-kit/go.sh's
+# DOC's own directory, never the whole handover root - chief-kit/go.sh's
 # merge GO is authenticated only by the existence of a file under
 # <handover_root>/.locks/go/, unguarded by any hook, so widening the grant to
 # the root would let a leg mint its own GO via an auto-approved Write.
@@ -2493,7 +2493,7 @@ fi
 # leg's launch env - so a leg's later handover_root() call (run from a
 # linked worktree, whose `git rev-parse --show-toplevel` resolves to the
 # WORKTREE, not the console's checkout) binds to the SAME root the console
-# used to write its GO (console-kit/go.sh), instead of silently re-deriving
+# used to write its GO (chief-kit/go.sh), instead of silently re-deriving
 # (and missing) a different one. RED on today's code: no HANDOVER_DIR export
 # exists at all, so every assertion below fails.
 primary26="$tmp/primary26"
@@ -3381,16 +3381,16 @@ not_contains "34j the effort line does not claim effort=high" "$out34j" "effort=
 mk_launcher_tree() {
   local dst="$1" root e b
   root="$(cd "$HERE/../../.." && pwd)"
-  mkdir -p "$dst/scripts/handover/console-kit"
+  mkdir -p "$dst/scripts/handover/chief-kit"
   for e in "$root"/*; do b="$(basename "$e")"; [ "$b" = scripts ] || ln -s "$e" "$dst/$b"; done
   for e in "$root"/scripts/*; do b="$(basename "$e")"; [ "$b" = handover ] || ln -s "$e" "$dst/scripts/$b"; done
-  for e in "$root"/scripts/handover/*; do b="$(basename "$e")"; [ "$b" = console-kit ] || ln -s "$e" "$dst/scripts/handover/$b"; done
-  for e in "$root"/scripts/handover/console-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-leg.sh ] || ln -s "$e" "$dst/scripts/handover/console-kit/$b"; done
-  cp "$HERE/headed-arm-leg.sh" "$dst/scripts/handover/console-kit/headed-arm-leg.sh"
+  for e in "$root"/scripts/handover/*; do b="$(basename "$e")"; [ "$b" = chief-kit ] || ln -s "$e" "$dst/scripts/handover/$b"; done
+  for e in "$root"/scripts/handover/chief-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-leg.sh ] || ln -s "$e" "$dst/scripts/handover/chief-kit/$b"; done
+  cp "$HERE/headed-arm-leg.sh" "$dst/scripts/handover/chief-kit/headed-arm-leg.sh"
 }
 # mutate_launcher <tree> <sed args...> - rewrite the tree's launcher in place.
 mutate_launcher() {
-  local f="$1/scripts/handover/console-kit/headed-arm-leg.sh"; shift
+  local f="$1/scripts/handover/chief-kit/headed-arm-leg.sh"; shift
   sed "$@" "$f" > "$f.new" && mv "$f.new" "$f" && chmod 755 "$f"
 }
 
@@ -3399,7 +3399,7 @@ mutate_launcher() {
 mut6507="$tmp/revert-6507"; mk_launcher_tree "$mut6507"
 # shellcheck disable=SC2016  # the sed patterns hold a literal $.
 mutate_launcher "$mut6507" -e 's|^\( *\)EFFORT_SOURCE="WORKER_SESSION_EFFORT"$|\1:|' -e 's|^\( *\)leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "\$WORKER_SESSION_EFFORT"$|\1:|'
-mut6507_script="$mut6507/scripts/handover/console-kit/headed-arm-leg.sh"
+mut6507_script="$mut6507/scripts/handover/chief-kit/headed-arm-leg.sh"
 check "34k control: the reverted launcher differs from the real one in exactly the two resolver lines" "$(diff "$SCRIPT" "$mut6507_script" | grep -c '^>')" "2"
 rc34k=0
 out34k="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$mut6507_script" --dry-run --no-profile HIMMEL-9999-leg-34k "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34k.log" claude-opus-5-5 2>&1)" || rc34k=$?
@@ -3415,7 +3415,7 @@ check "34l a preset launcher token over WORKER_SESSION_EFFORT still launches (34
 mutmodel="$tmp/mutate-model"; mk_launcher_tree "$mutmodel"
 # shellcheck disable=SC2016  # the sed pattern holds a literal $.
 mutate_launcher "$mutmodel" -e 's|^export HEADED_ARM_REQUIRED_AUTOCOMPACT="\$RESOLVED_AUTOCOMPACT"$|&; MODEL=claude-haiku-5-5|'
-mutmodel_script="$mutmodel/scripts/handover/console-kit/headed-arm-leg.sh"
+mutmodel_script="$mutmodel/scripts/handover/chief-kit/headed-arm-leg.sh"
 check "34m control: the mutated launcher differs from the real one in exactly one line" "$(diff "$SCRIPT" "$mutmodel_script" | grep -c '^>')" "1"
 rc34m=0
 out34m="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$mutmodel_script" --dry-run --no-profile HIMMEL-9999-leg-34m some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m.log" claude-sonnet-5-5 2>&1)" || rc34m=$?
@@ -3487,7 +3487,7 @@ for e34n in "$HERE"/../../lib/*; do ln -s "$(cd "$(dirname "$e34n")" && pwd)/$(b
 rm "$tree34n/scripts/lib/chokepoint-seam-guard.sh"; cp "$HERE/../../lib/chokepoint-seam-guard.sh" "$tree34n/scripts/lib/chokepoint-seam-guard.sh"
 d34n="$tmp/c34n-explicit"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-explicit"
 rc34n=0
-CLAUDE_CODE_EFFORT_LEVEL=xhigh WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
+CLAUDE_CODE_EFFORT_LEVEL=xhigh WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/chief-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the launcher exits 0" "$rc34n" "0"
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the claude process gets xhigh" "$(e2e_effort "$d34n")" "xhigh"
 
@@ -3844,7 +3844,7 @@ check "41b consult settings carry the requested profile (design-motion id on)" "
 check "41b consult settings deny the file-edit tools" "$(printf '%s' "$cset41" | jq -c '[.permissions.deny[] | select(. == "Edit" or . == "Write" or . == "NotebookEdit")] | sort' 2>/dev/null)" '["Edit","NotebookEdit","Write"]'
 check "41b consult settings carry NO Edit/Write allow at all" "$(printf '%s' "$cset41" | jq '[(.permissions.allow // [])[] | select(startswith("Edit") or startswith("Write") or startswith("NotebookEdit"))] | length' 2>/dev/null)" "0"
 check "41b consult settings allow exactly one Bash call: append-results on the consult doc" "$(printf '%s' "$cset41" | jq -c '[(.permissions.allow // [])[] | select(startswith("Bash"))]' 2>/dev/null)" \
-  "[\"Bash(bash scripts/handover/console-kit/append-results.sh $some_doc_canon41:*)\"]"
+  "[\"Bash(bash scripts/handover/chief-kit/append-results.sh $some_doc_canon41:*)\"]"
 cenv41="$(cat "$d41c/env-record" 2>/dev/null || true)"
 not_contains "41b consult never gets IMPL_GUARD_OK" "$cenv41" "IMPL_GUARD_OK=1"
 contains "41b consult is still a leg for Guard E (HIMMEL_CONSOLE_LEG=1)" "$cenv41" "HIMMEL_CONSOLE_LEG=1"
@@ -3913,7 +3913,7 @@ for gp41 in lane-content design,lane-content; do
   wait_record "$dg41" || true
   gset41="$(cat "$dg41/HIMMEL-4014-g.leg-settings.json" 2>/dev/null || true)"
   check "41g $gp41: allow is exactly the one append rule" "$(printf '%s' "$gset41" | jq -c '.permissions.allow | length' 2>/dev/null)" "1"
-  check "41g $gp41: that rule is the append-results one" "$(printf '%s' "$gset41" | jq -r '.permissions.allow[0] | startswith("Bash(bash scripts/handover/console-kit/append-results.sh ")' 2>/dev/null)" "true"
+  check "41g $gp41: that rule is the append-results one" "$(printf '%s' "$gset41" | jq -r '.permissions.allow[0] | startswith("Bash(bash scripts/handover/chief-kit/append-results.sh ")' 2>/dev/null)" "true"
   check "41g $gp41: Edit/Write/NotebookEdit/EnterWorktree all denied" "$(printf '%s' "$gset41" | jq -c '[.permissions.deny[] | select(. == "Edit" or . == "Write" or . == "NotebookEdit" or . == "EnterWorktree")] | sort' 2>/dev/null)" '["Edit","EnterWorktree","NotebookEdit","Write"]'
 done
 # claudex lane fails closed; a derived (unset WORKER_SESSION_REPO) worktree path and a relative
@@ -3951,7 +3951,7 @@ check "41i-4118 a consult with a foreign HEADED_ARM_WORKER_SHIM refuses (exit 2)
 contains "41i-4118 the foreign-shim refusal names the seam" "$out" "refuses HEADED_ARM_WORKER_SHIM"
 # Counter-examples: the override naming the real shim (via a non-canonical spelling) still
 # passes, and a NON-consult profiled launch keeps honouring a foreign shim (test seam).
-rc=0; out="$(HEADED_ARM_WORKER_SHIM="$HERE/../console-kit/../../lanes/leg-claude-launcher.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_SHIM="$HERE/../chief-kit/../../lanes/leg-claude-launcher.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4118 a consult whose shim override resolves to the real shim passes (exit 0)" "$rc" "0"
 rc=0; out="$(HEADED_ARM_WORKER_SHIM="$tmp/other-shim41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 not_contains "41i-4118 a non-consult launch does not refuse a foreign shim" "$out" "refuses HEADED_ARM_WORKER_SHIM"
@@ -3974,7 +3974,7 @@ done
 rc=0; out="$(HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/other-claude41" HEADED_ARM_WORKER_TARGET="$tmp/other-target41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4142 a non-consult launch with foreign CLAUDE_BIN/TARGET still passes (exit 0)" "$rc" "0"
 not_contains "41i-4142 a non-consult launch refuses no seam" "$out" "--consult refuses"
-rc=0; out="$(HEADED_ARM_WORKER_TARGET="$HERE/../console-kit/../headed-arm.sh" HEADED_ARM_WORKER_PROFILES="$HERE/../console-kit/../../lanes/plugin-profiles.mjs" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_TARGET="$HERE/../chief-kit/../headed-arm.sh" HEADED_ARM_WORKER_PROFILES="$HERE/../chief-kit/../../lanes/plugin-profiles.mjs" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4142 a consult whose TARGET/PROFILES resolve to the in-repo files passes (exit 0)" "$rc" "0"
 # TOCTOU: an override reached through a symlinked directory passes the
 # canonical check, so what runs must be the CANONICAL path, never the retargetable spelling.

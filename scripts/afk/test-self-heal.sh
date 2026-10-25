@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/overnight/self-heal.sh.
+# Tests for scripts/afk/self-heal.sh.
 #
 # Covers:
 #   classify

@@ -5,7 +5,7 @@
 #
 # ACTION_ZERO overrides the script under test (the RED control).
 #
-# Run: bash scripts/handover/console-kit/test-action-zero.sh
+# Run: bash scripts/handover/chief-kit/test-action-zero.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/focus-chains-links.sh - write the step order of the
+# scripts/handover/chief-kit/focus-chains-links.sh - write the step order of the
 # console's focus-chains.json as Jira Blocks links, so the dispatcher reads the
 # chains from Jira instead of a file only the console keeps.
 #

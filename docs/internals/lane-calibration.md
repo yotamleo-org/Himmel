@@ -483,15 +483,15 @@ dispatch surfaces, both keyed off the same `lanes.json` `effort` field
   `run.ts:328-329` folds the row's `effort` into `CLAUDE_CODE_EFFORT_LEVEL` for
   the spawned session's env.
 - **Supervisor-session-launched native worker session** (`79b205218`):
-  `scripts/handover/console-kit/headed-arm-leg.sh:746-764` mirrors the same
+  `scripts/handover/chief-kit/headed-arm-leg.sh:746-764` mirrors the same
   match rule (exact model id, or `claude-<tier-id>-` prefix) for `LANE=native`
   — an explicit ambient `CLAUDE_CODE_EFFORT_LEVEL` always wins (checked before
   the lookup, `headed-arm-leg.sh:747-748`); otherwise it resolves the row via
-  `jq` against `lanes.json` and exports it. `scripts/handover/console-kit/
+  `jq` against `lanes.json` and exports it. `scripts/handover/chief-kit/
   test-headed-arm-leg.sh` carries 18 assertions on `CLAUDE_CODE_EFFORT_LEVEL`
   (including cases 34a-34c: tier-row export, no-row leaves it unset, ambient
   value survives the lookup), all passing on current main
-  (`bash scripts/quiet-run.sh suite -- bash scripts/handover/console-kit/
+  (`bash scripts/quiet-run.sh suite -- bash scripts/handover/chief-kit/
   test-headed-arm-leg.sh`).
 
 A third, related mechanism — the tier-reason gate that requires a sanctioned
@@ -764,8 +764,8 @@ does not reach subagents, since they carry no `-n` name.
 
 Worker sessions were already pinned to the standard (200k-autocompact) context mode by
 the table above — but the fact lived only in prose, one convention every
-ad-hoc console-kit copy of the worker session launcher had to remember correctly.
-`scripts/handover/console-kit/headed-arm-leg.sh` makes it structural: a thin
+ad-hoc chief-kit copy of the worker session launcher had to remember correctly.
+`scripts/handover/chief-kit/headed-arm-leg.sh` makes it structural: a thin
 wrapper around `headed-arm.sh` whose resolved worker session launch must carry the
 cost-driving `--autocompact 200000` pair. `WORKER_SESSION_CONTEXT=1m` now refuses with
 exit 2 instead of weakening the worker session ceiling; absence of a `[1m]` model suffix
@@ -774,7 +774,7 @@ still receiving `--autocompact auto`. Scheduled worker sessions opt into the sam
 guard with `arm-resume.sh --tier leg`; `--tier leg --context 1m` refuses before
 scheduler work. A caller that hands the headed wrapper an already-`[1m]`-
 suffixed model still gets it forwarded unchanged, and `headed-arm.sh` strips
-the literal suffix under standard mode (`scripts/handover/console-kit/
+the literal suffix under standard mode (`scripts/handover/chief-kit/
 test-headed-arm-leg.sh` asserts this end-to-end). The wrapper also adds the
 worker-session-only `IMPL_GUARD_OK=1` env and folds `WORKER_SESSION_REPO` onto `headed-arm.sh`'s own
 `HEADED_ARM_REPO` seam.
@@ -829,7 +829,7 @@ sessions (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-console` — supervisor sessions are not worker sessions) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
 `HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in
-both `scripts/handover/console-kit/headed-arm-leg.sh` and
+both `scripts/handover/chief-kit/headed-arm-leg.sh` and
 `scripts/handover/arm-resume.sh`, so a new worker session is refused before the
 scheduler entry (or the konsole window) is ever created — cheaper than
 refusing after a signal/deadline wait. Off switch: `FLEET_CAP_OK=1` in the
@@ -932,7 +932,7 @@ the doc rather than going quiet.
 
 **The one sanctioned park:** the READY → GO merge hold
 (`docs/handover/leg-preface-claudex.md`) does not violate "never park" — it is
-bounded by the file inbox channel (`scripts/handover/console-kit/inbox-send.sh`
+bounded by the file inbox channel (`scripts/handover/chief-kit/inbox-send.sh`
 writing, `scripts/hooks/claudex-inbox-hook.sh` delivering), observable (a READY
 bullet in the doc, held by one background Bash wait on the doc for the
 matching GO file (merge approval), with a 30-minute timeout, re-issued rather than open-ended), and

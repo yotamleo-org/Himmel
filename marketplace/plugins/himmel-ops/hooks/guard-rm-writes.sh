@@ -37,7 +37,7 @@
 #     ${HOME}/ expand to $HOME.
 # TRIP CONDITION, mode 2 (HIMMEL_RELEASE_MANAGER=1, on top of mode 1):
 #   Bash — the text names HIMMEL_RELEASE_MANAGER, leg-pr-open, merge-on-green,
-#     console-kit/go.sh, inbox-send or leg-jira-status; a mutating git verb; a
+#     chief-kit/go.sh, inbox-send or leg-jira-status; a mutating git verb; a
 #     gh write verb or a gh api method/body flag (the judge guard's set); or a
 #     Jira CLI invocation (a word that is `jira`, ends in /jira, or names
 #     scripts/jira/) outside the allowlist:

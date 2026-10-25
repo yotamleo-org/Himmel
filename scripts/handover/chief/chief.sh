@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console/chief.sh — start or hand over a console session
+# scripts/handover/chief/chief.sh — start or hand over a console session
 #
 # A console is a long-running headed Claude session that holds a queue lock
 # on its own handover document, runs monitors, dispatches implementation
@@ -362,7 +362,7 @@ do_arm() {
     # doc as data (see project_doc_value below) -- the console session
     # itself ALWAYS opens in the himmel checkout, never HEADED_ARM_REPO'd
     # into the project. Himmel's own project-scoped hooks (the GO-file merge
-    # gate, block-leg-askuserquestion) and the console-kit's relative paths
+    # gate, block-leg-askuserquestion) and the chief-kit's relative paths
     # only load there. Legs for the project are dispatched into it
     # explicitly with WORKER_SESSION_REPO=<project> (headed-arm-leg.sh), never by the
     # console inheriting a repo override.
@@ -478,7 +478,7 @@ cmd_wrap() {
         exit 1
     fi
     local doc="$1" token="$2" text="${3:-handed over}" out rc=0
-    out=$(bash "${LIVE_SUBAGENTS_BIN:-$HERE/../console-kit/live-subagents.sh}" 2>&1) || rc=$?
+    out=$(bash "${LIVE_SUBAGENTS_BIN:-$HERE/../chief-kit/live-subagents.sh}" 2>&1) || rc=$?
     if [ "$rc" -ne 0 ]; then
         printf '%s\n' "$out" >&2
         if [ "$rc" -eq 1 ]; then
@@ -493,7 +493,7 @@ cmd_wrap() {
     # the gate below never stops the waiter for a wrap that will be refused
     bash "$HERE/../queue-lock.sh" heartbeat "$doc" "$token" >/dev/null || exit 1
     wrap_subtree_gate
-    bash "$HERE/../console-kit/append-results.sh" "$doc" "WRAPPED — $text" || exit 1
+    bash "$HERE/../chief-kit/append-results.sh" "$doc" "WRAPPED — $text" || exit 1
     bash "$HERE/../queue-lock.sh" release "$doc" "$token" || exit 1
 }
 
@@ -501,7 +501,7 @@ cmd_wrap() {
 # subagents when `next` runs. Fails open to a note, like handoff-facts.sh.
 judge_calls_now() {
     local out rc=0
-    out=$(bash "$HERE/../console-kit/live-subagents.sh" 2>&1) || rc=$?
+    out=$(bash "$HERE/../chief-kit/live-subagents.sh" 2>&1) || rc=$?
     case "$rc" in
         0) echo "none running" ;;
         1) printf '%s\n' "$out" | sed -n 's/^LIVE-SUBAGENT /- /p' ;;
@@ -516,7 +516,7 @@ judge_calls_now() {
 # so a wrap that never names its PR is invisible here; the tick's unowned-prs= still
 # catches it. Open set = handoff-facts.sh prs, so it shares that field's seam and limit.
 wrapped_open_prs_section() { # <predecessor doc>
-    local doc="$1" manifest="${1%.md}.fleet.json" facts="$HERE/../console-kit/handoff-facts.sh"
+    local doc="$1" manifest="${1%.md}.fleet.json" facts="$HERE/../chief-kit/handoff-facts.sh"
     local open rows label ldoc n found=0 mtime lookup_failed=""
     printf '## Wrapped with open PR\n\n'
     printf 'The successor dispositions each entry below (relaunch, GO or close) BEFORE its first dispatch.\n\n'
@@ -1291,7 +1291,7 @@ deadline_epoch=$(( $(date +%s) + 10#$DEADLINE_MIN * 60 ))
 template_dir="${CHIEF_TEMPLATE_DIR:-$repo/docs/handover}"
 console_template="$template_dir/console-template.md"
 handoff_template="$template_dir/console-handoff-template.md"
-kit="$repo/scripts/handover/console-kit"
+kit="$repo/scripts/handover/chief-kit"
 
 # --- new --------------------------------------------------------------
 cmd_new() {
@@ -2001,7 +2001,7 @@ cmd_next() {
         # Every mechanically derivable field is filled here so the
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
-        local facts="$HERE/../console-kit/handoff-facts.sh"
+        local facts="$HERE/../chief-kit/handoff-facts.sh"
         local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
         hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"

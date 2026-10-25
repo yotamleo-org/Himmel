@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/brief-lint.sh <brief> - arming-time
+# scripts/handover/chief-kit/brief-lint.sh <brief> - arming-time
 # check that a leg or judge brief carries a filled `> **Prior art:**` line.
 #
 # The console fills the field at dispatch from one qmd query (jira-himmel +

@@ -3,7 +3,7 @@
 # One extended regex (grep -E) per line, matched against every path a PR
 # changes — both the new filename and, for a rename, the previous one. A PR
 # touching ANY match cannot merge through scripts/handover/merge-on-green.sh
-# without a trust-reviewed console GO (console-kit/go.sh --trust-reviewed).
+# without a trust-reviewed console GO (chief-kit/go.sh --trust-reviewed).
 #
 # merge-on-green reads THIS FILE FROM THE REPO'S DEFAULT BRANCH via the GitHub
 # API (never the PR head, the worktree or a local ref), so a PR that edits it

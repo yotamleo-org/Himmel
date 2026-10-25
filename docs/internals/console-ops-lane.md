@@ -21,7 +21,7 @@ already has the right authority shape: it holds no chief lock, cannot run
 and cannot write the inbox, a worker doc or the chief rundir (Guard D). Its
 escalation transport (`E-<relay>-<seq>`, ack, one re-send) is the hand-back
 channel. What it lacked was a bounded way to run a script and report. That is
-`console-kit/ops-run.sh`.
+`chief-kit/ops-run.sh`.
 
 A fresh judge-style child per script was rejected: the first-turn floor is paid
 every time, and the ops lane's context stays small (a verdict line per event).
@@ -80,7 +80,7 @@ what it means.
 
 ## Proof status
 
-Unit: `console-kit/test-ops-run.sh`. The live-flow claim (one chief turn per
+Unit: `chief-kit/test-ops-run.sh`. The live-flow claim (one chief turn per
 event instead of three) needs a VM run of a chief plus an ops session through
 one READY, check, GO and one wrap; reported as a FINDING before any change to
 the live flow lands.

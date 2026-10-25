@@ -79,12 +79,12 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > call per version per render; a failing or missing CLI reads `unavailable` and the
 > render still succeeds. The counts fold into `board.mjs --changed`, not into the
 > tick's `board=` (tick.sh never sees Jira).
-> `release: <R>` (a declared release, `console-sections/release-manager.md`) adds
+> `release: <R>` (a declared release, `chief-sections/release-manager.md`) adds
 > a `Release manager <R>` panel from one `jira release state <R> --json` call: M4
 > burn-down per version, the leaks and the M1 trend for the last 7 days; a failing
 > CLI reads `unavailable`. `rm: <session> <doc> epoch=<n>` names the live RM.
 > `focus-version: <v>|auto|none` picks the FOCUS tracker page's version
-> (`console-sections/board-tracker.md`): `auto`, or no line beside `release: <R>`,
+> (`chief-sections/board-tracker.md`): `auto`, or no line beside `release: <R>`,
 > follows R's current version.
 > `console.sh next` copies `epics:`, `decisions:`, `priority:`, `versions:`,
 > `tracker-plan:`, `release:`, `rm:`, `focus-version:` and `focus-plan:` verbatim into the successor's own Live state. It refuses to
@@ -93,7 +93,7 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > unless a Results bullet carries `DECISIONS-DROP: <reason>` or
 > `PRIORITY-DROP: <reason>` (or `PRIORITY-PRUNE: <keys>`).
 > **Prune closed keys** (tick prints `pool-closed=<closed>/<total>` when the Jira mirror
-> reads any key on your `priority:` line closed): `bash scripts/handover/console-kit/priority-prune.sh --doc <your doc>`
+> reads any key on your `priority:` line closed): `bash scripts/handover/chief-kit/priority-prune.sh --doc <your doc>`
 > prints the line without them, the rest in order; with an operator OK run it with
 > `--apply` and log `PRIORITY-PRUNE: <the dropped keys it names>` in Results.
 > **Bound `decisions:`** (tick prints `ACTION decisions-over-budget=<bytes>/<limit>`

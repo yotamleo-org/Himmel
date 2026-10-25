@@ -6,7 +6,7 @@
 # or worktree is touched. NEXT_DISPATCH overrides the script under test (the RED
 # control: a missing script fails every row). bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-next-dispatchable.sh
+# Run: bash scripts/handover/chief-kit/test-next-dispatchable.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${NEXT_DISPATCH:-$HERE/next-dispatchable.sh}"
@@ -39,7 +39,7 @@ retype() { # <fixture file> <type>: portable in-place edit (no sed -i: BSD and G
 mk HIMMEL-1 "To Do" Medium '[]' '["v1.0.2"]' '[]' "free later version" "Edit scripts/lib/alpha.sh only."
 mk HIMMEL-2 "To Do" Medium '[]' '["v1.0.1"]' '[]' "free earlier version" "Edit scripts/lib/beta.sh only."
 mk HIMMEL-3 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with an open PR" "Edit scripts/lib/pr-held.sh please."
-mk HIMMEL-4 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with a live leg" "Edit scripts/handover/console-kit/live-file.sh please."
+mk HIMMEL-4 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with a live leg" "Edit scripts/handover/chief-kit/live-file.sh please."
 mk HIMMEL-5 "To Do" High '["operator-decision"]' '["v1.0.1"]' '[]' "decision pending" "Edit scripts/lib/gamma.sh."
 mk HIMMEL-6 "To Do" High '["blocked"]' '["v1.0.1"]' '[]' "blocked label" "Edit scripts/lib/delta.sh."
 mk HIMMEL-7 "In Progress" High '[]' '["v1.0.1"]' '[]' "already started" "Edit scripts/lib/eps.sh."
@@ -78,7 +78,7 @@ printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfi
 
 LEG="$WORK/HIMMEL-99-N1-live.md"
 # shellcheck disable=SC2016  # the backticks are literal doc text, not a command substitution
-printf '# live\n> **Scope / do not:** writes confined to `scripts/handover/console-kit/live-file.sh` and its test.\n' > "$LEG"
+printf '# live\n> **Scope / do not:** writes confined to `scripts/handover/chief-kit/live-file.sh` and its test.\n' > "$LEG"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$LEG" > "$WORK/fleet.json"
 
 run() { NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" "$@" 2>/dev/null; }
@@ -327,9 +327,9 @@ pw0="$(run --legs-from "$WORK/fleet.json")"; pw0_rc=$?
 lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/console-kit"
-cp "$SUT" "$NF/scripts/handover/console-kit/next-dispatchable.sh"
-NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/console-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
+NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit"
+cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
+NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
 [ "$nf_rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$nf_rc"
 
 # Operator priority pool. One ticket per tier, keys shuffled against the tiers (a
@@ -607,7 +607,7 @@ has "fix3: plain earliest-version work is listed" "$f3b" "HIMMEL-726	"
 M23="$WORK/jira-mirror23/HIMMEL"; mkdir -p "$M23"
 M_SAVE="$M"; M="$M23"
 mk HIMMEL-730 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a ghost file" "Edit scripts/handover/tick-ghost-6478.sh only."
-mk HIMMEL-731 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a real file" "Edit scripts/handover/console-kit/next-dispatchable.sh only."
+mk HIMMEL-731 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a real file" "Edit scripts/handover/chief-kit/next-dispatchable.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror23/HIMMEL.versions.tsv"
 f5="$(NEXT_DISPATCH_MIRROR="$M23" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"
@@ -624,13 +624,13 @@ mk HIMMEL-803 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual 
 mk HIMMEL-808 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with an unknown ledger kind" "Edit scripts/lib/typo.sh only."
 mk HIMMEL-809 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with a plain admission row" "Edit scripts/lib/plain.sh only."
 mk HIMMEL-810 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a new extensionless file a leg holds" "Add scripts/lib/Brewfile only."
-mk HIMMEL-804 "To Do" Medium '[]' '["v1.0.1"]' '[]' "mentions trees a leg and a PR write in" "Read scripts/handover/console-kit/ and scripts/lib/ for context; edit scripts/lib/new-thing.sh."
+mk HIMMEL-804 "To Do" Medium '[]' '["v1.0.1"]' '[]' "mentions trees a leg and a PR write in" "Read scripts/handover/chief-kit/ and scripts/lib/ for context; edit scripts/lib/new-thing.sh."
 mk HIMMEL-805 "To Do" Medium '[]' '["v1.0.1"]' '[]' "first of two naming a tree" "See docs/guide/ then edit scripts/lib/d1.sh."
 mk HIMMEL-806 "To Do" Medium '[]' '["v1.0.1"]' '[]' "second of two naming a tree" "See docs/guide/ then edit scripts/lib/d2.sh."
 mk HIMMEL-807 "To Do" Medium '[]' '["v1.0.1"]' '[]' "an epic" "Edit scripts/lib/epic.sh."
 retype "$M30/HIMMEL-807.md" Epic
 mk HIMMEL-3 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with an open PR" "Edit scripts/lib/pr-held.sh please."
-mk HIMMEL-4 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with a live leg" "Edit scripts/handover/console-kit/live-file.sh please."
+mk HIMMEL-4 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with a live leg" "Edit scripts/handover/chief-kit/live-file.sh please."
 mk HIMMEL-5 "To Do" High '["operator-decision"]' '["v1.0.1"]' '[]' "decision pending" "Edit scripts/lib/gamma.sh."
 mk HIMMEL-8 "To Do" High '[]' '["v1.0.1"]' '["blocked by HIMMEL-801"]' "blocked by an open ticket" "Edit scripts/lib/zeta.sh."
 mk HIMMEL-10 "To Do" High '[]' '["v1.0.1"]' '[]' "refused by the classifier" "Edit scripts/lib/eta.sh."
@@ -654,7 +654,7 @@ lacks "collision: a concrete file equal to an open PR's file is still held" "$v1
 has "drops: a per-reason summary of the active version is printed" "$v1" "# dropped from v1.0.1:"
 w1="$(run30 --why)"
 has "why: a collision names the file and its holder" "$w1" "# drop HIMMEL-3 collision scripts/lib/pr-held.sh held by open PR 4242"
-has "why: a leg collision names the leg" "$w1" "# drop HIMMEL-4 collision scripts/handover/console-kit/live-file.sh held by live leg N1"
+has "why: a leg collision names the leg" "$w1" "# drop HIMMEL-4 collision scripts/handover/chief-kit/live-file.sh held by live leg N1"
 has "why: an open blocker is named" "$w1" "# drop HIMMEL-8 blocker HIMMEL-801"
 has "why: an exclusion label is named" "$w1" "# drop HIMMEL-5 label operator-decision"
 has "why: a type is named" "$w1" "# drop HIMMEL-807 type Epic"

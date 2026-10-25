@@ -14,7 +14,7 @@ Words follow the [glossary](glossary.md): the **chief** is the session that
 runs a shift, and each **worker** owns one ticket, one worktree and one pull
 request. Many identifiers still carry the older names until their rename slice
 lands (HIMMEL-5689). The chief's command and script are already `/chief` and
-`chief.sh`, but its directories and markers say `console` (`console-kit/`,
+`chief.sh`, but its directories and markers say `console` (`chief-kit/`,
 `HIMMEL_CONSOLE_*`), and a worker's say `leg` (`headed-arm-leg.sh`,
 `HIMMEL_CONSOLE_LEG`). A box shows the new word first and the identifier as it
 is today.
@@ -184,7 +184,7 @@ workers that must run in order, because each needs the one before it to merge.
 
 ```mermaid
 flowchart TD
-    OP["operator"] --> CON["the chief<br/>runs the shift; holds no worktree<br/>(chief.sh, console-kit/)"]
+    OP["operator"] --> CON["the chief<br/>runs the shift; holds no worktree<br/>(chief.sh, chief-kit/)"]
 
     CON -->|"SendMessage / ListAgents"| P1["worker<br/>one ticket · one worktree · one PR<br/>(launched by headed-arm-leg.sh)"]
     CON -->|"SendMessage / ListAgents"| P2["worker<br/>one ticket · one worktree · one PR"]
@@ -207,7 +207,7 @@ flowchart TD
 
     NAT --> WORK["a worker commits on its own branch;<br/>the chief owns approval and merge"]
     WORK --> CRL["/pr-check → review-owed marker cleared → READY"]
-    CRL --> GO["the chief's GO file<br/>&lt;handover root&gt;/.locks/go/&lt;pr&gt;.&lt;head&gt;,<br/>written by scripts/handover/console-kit/go.sh<br/>signed for one PR and one head; a worker never writes its own"]
+    CRL --> GO["the chief's GO file<br/>&lt;handover root&gt;/.locks/go/&lt;pr&gt;.&lt;head&gt;,<br/>written by scripts/handover/chief-kit/go.sh<br/>signed for one PR and one head; a worker never writes its own"]
     GO --> MOG["scripts/handover/merge-on-green.sh<br/>merge gate → squash merge"]
 ```
 

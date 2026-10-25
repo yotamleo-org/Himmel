@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/console/sweep-cr-threads.sh. Exit 0 if
+# Unit test for scripts/chief/sweep-cr-threads.sh. Exit 0 if
 # all pass. GH_CMD stub seam (matches scripts/lib/test-forge.sh); no network.
 set -uo pipefail
 

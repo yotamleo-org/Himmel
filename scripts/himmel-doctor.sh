@@ -3766,13 +3766,13 @@ check_c47_runaway_procs() {  # t13b-ok: doctor row that reads ps only, kills not
 }
 
 # --- C54-hook-copy-reaper: orphaned hook copies spinning a core ---
-# Runs scripts/handover/console-kit/hook-copy-reaper.sh REPORT-ONLY (never --kill):
+# Runs scripts/handover/chief-kit/hook-copy-reaper.sh REPORT-ONLY (never --kill):
 # rc 0 -> OK, rc 1 -> one WARN per pid=/age=/cpu=/script= row, any other rc -> WARN
 # naming the failure (never a silent OK). C47 matches hook.sh by name and misses
 # arbitrarily named /tmp/claude-*/ copies reparented to the user subreaper.
 # Seam: HIMMEL_DOCTOR_HOOK_REAPER (the reaper script; absent -> silent).
 check_c54_hook_copy_reaper() {  # t13b-ok: doctor row that runs the reaper report-only, kills nothing
-    local reaper="${HIMMEL_DOCTOR_HOOK_REAPER:-$REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh}"
+    local reaper="${HIMMEL_DOCTOR_HOOK_REAPER:-$REPO_ROOT/scripts/handover/chief-kit/hook-copy-reaper.sh}"
     local out rc line found=0 shown=0
     [ -f "$reaper" ] || return 0
     out="$(bash "$reaper" 2>&1)"; rc=$?
@@ -3784,12 +3784,12 @@ check_c54_hook_copy_reaper() {  # t13b-ok: doctor row that runs the reaper repor
                 found=$((found+1))
                 [ "$shown" -lt 5 ] || continue
                 shown=$((shown+1))
-                emit WARN C54-hook-copy-reaper "orphaned hook copy: ${line:0:200}" "report only, nothing is killed; inspect it, then: bash $REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh --kill"  # t13b-ok: doctor report text, kills nothing
+                emit WARN C54-hook-copy-reaper "orphaned hook copy: ${line:0:200}" "report only, nothing is killed; inspect it, then: bash $REPO_ROOT/scripts/handover/chief-kit/hook-copy-reaper.sh --kill"  # t13b-ok: doctor report text, kills nothing
             done <<< "$out"
             [ "$found" -le "$shown" ] || emit INFO C54-hook-copy-reaper "$((found - shown)) more orphaned hook copy(ies) not listed"
             [ "$found" -gt 0 ] || emit WARN C54-hook-copy-reaper "hook-copy-reaper.sh exited rc=1 but printed no pid= rows: ${out:0:160}"
             ;;
-        *) emit WARN C54-hook-copy-reaper "hook-copy-reaper.sh failed rc=$rc: ${out:0:160}" "run it by hand: bash $REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh" ;;
+        *) emit WARN C54-hook-copy-reaper "hook-copy-reaper.sh failed rc=$rc: ${out:0:160}" "run it by hand: bash $REPO_ROOT/scripts/handover/chief-kit/hook-copy-reaper.sh" ;;
     esac
 }
 
@@ -4238,7 +4238,7 @@ check_c71_verdict_scratch() {
     case "$kb" in ''|*[!0-9]*) emit INFO C71-verdict-scratch "could not size $dir"; return 0 ;; esac
     if [ "$kb" -gt "$limit_kb" ]; then
         emit WARN C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)" \
-            "run: bash $REPO_ROOT/scripts/handover/console-kit/verdict-retention.sh prune --unproven-older-than 14 (dry run lists what it would remove and why; plain prune frees only scratch whose PR is provably closed), then re-run it with --apply"
+            "run: bash $REPO_ROOT/scripts/handover/chief-kit/verdict-retention.sh prune --unproven-older-than 14 (dry run lists what it would remove and why; plain prune frees only scratch whose PR is provably closed), then re-run it with --apply"
     else
         emit OK C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)"
     fi
@@ -4440,7 +4440,7 @@ check_c63_claude_cli() {
 # policy still all_external_contributors, no DEAD/STUCK units. The probes live in
 # vm-runner.sh doctor (TSV: SEV, id, msg); skipped there when no VM exists.
 check_c64_vm_runner() {
-    local runner="${DOCTOR_VM_RUNNER:-$REPO_ROOT/scripts/handover/console-kit/vm-runner.sh}" rows sev id msg
+    local runner="${DOCTOR_VM_RUNNER:-$REPO_ROOT/scripts/handover/chief-kit/vm-runner.sh}" rows sev id msg
     if [ ! -f "$runner" ]; then
         emit INFO C64-vm-runner "vm-runner.sh not found — not checked"
         return
@@ -4455,8 +4455,8 @@ check_c64_vm_runner() {
     while IFS="$(printf '\t')" read -r sev id msg; do
         case "$sev" in
             OK|INFO) emit "$sev" C64-vm-runner "$msg" ;;
-            WARN) emit WARN C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh status" ;;
-            FAIL) emit FAIL C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh off, then fix and re-run on" ;;
+            WARN) emit WARN C64-vm-runner "$msg" "bash scripts/handover/chief-kit/vm-runner.sh status" ;;
+            FAIL) emit FAIL C64-vm-runner "$msg" "bash scripts/handover/chief-kit/vm-runner.sh off, then fix and re-run on" ;;
         esac
     done <<EOF_ROWS
 $rows

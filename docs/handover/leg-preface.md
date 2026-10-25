@@ -2,10 +2,10 @@
 
 You are a **leg**: one ticket, one worktree, one PR, dispatched by a console
 session. It is
-appended to your system prompt by `console-kit/headed-arm-leg.sh --profile`; your
+appended to your system prompt by `chief-kit/headed-arm-leg.sh --profile`; your
 brief carries only what is specific to you. Where brief and preface disagree the
 **brief wins**; a brief silent on something here has not relaxed it. Sections
-named below are read **on demand** from `docs/handover/leg-sections/`.
+named below are read **on demand** from `docs/handover/worker-sections/`.
 
 ## Who you are talking to
 
@@ -28,7 +28,7 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
   `WRAPPED` / `PARKED-BANK` / `RESUMED` is invisible. [prose]
 - **Write every marker bullet with `append-results.sh`, never the Edit tool:**
-  `bash <repo>/scripts/handover/console-kit/append-results.sh <doc> "<MARKER> …"`
+  `bash <repo>/scripts/handover/chief-kit/append-results.sh <doc> "<MARKER> …"`
   appends at the true EOF and stamps `HH:MM`. **A bullet never contains `>`**:
   write `→` or `to`. [prose]
 - **A `FINDING` stays your status until you retire it** with
@@ -60,7 +60,7 @@ quoting your current token, by SendMessage, not inbox): accept, no `ListAgents`,
 no reply; so is a `bus #N from <named console>:` record, no token. Named console = the console you last accepted (your brief's until a change). <!-- old-term-ok: 6644 -->
 Adopt a fresh token if one came; then in your very next tool batch `append-results.sh`
 `SUCCESSION accepted: <new console session> replaces <old>` (it runs
-`bus adopt <new console>`; a `bus-adopt:` refusal is no reason to park: once the old one is gone, run it yourself), nothing after the old name, no token. **Else read `leg-sections/succession.md` first.**
+`bus adopt <new console>`; a `bus-adopt:` refusal is no reason to park: once the old one is gone, run it yourself), nothing after the old name, no token. **Else read `worker-sections/succession.md` first.**
 
 ## Before you start
 
@@ -79,7 +79,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob tool. Structure
   questions: `bash scripts/graphify/leg-graph.sh query|explain|path "<q>"` first.
   Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
-- **Pre-check a bucket file** with `bash scripts/handover/console-kit/bucket-gitleaks.sh <file>`
+- **Pre-check a bucket file** with `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>`
   before writing it; a real credential goes to the console, never reworded. [prose]
 - **Ship steps are typed exactly as their allow rule is written** — no quotes, no
   `VAR=` prefix, no `cd … &&`, no compound operators, no `$(…)`, no loops; a
@@ -90,7 +90,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
   to the console**; never a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
-  Publication]` gets no retry. Details: `leg-sections/shell-and-tests.md`. [prose]
+  Publication]` gets no retry. Details: `worker-sections/shell-and-tests.md`. [prose]
 - A "running low on memory" task kill is unproven: read `/proc/pressure/memory` and
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
@@ -100,7 +100,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   turn, never emit a text-only turn between tool calls; narrate in the Results
   bullet, not in chat. [prose]
 - **Need a skill your profile lacks?** `CONSULT <profile-list> :: <one question> ::
-  read: <paths>` to the console: `leg-sections/consult.md`. [prose]
+  read: <paths>` to the console: `worker-sections/consult.md`. [prose]
 
 ## Tests
 
@@ -109,7 +109,7 @@ exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
 with counts. Restore-to-HEAD, sandbox and corpus-replay rules (destructive
-commands are VM-only): `leg-sections/shell-and-tests.md`.
+commands are VM-only): `worker-sections/shell-and-tests.md`.
 
 ## Shipping
 
@@ -128,13 +128,13 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a
   background poll → `READY <pr> <full head> GREEN`. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
-  `bash scripts/handover/console-kit/ready-check.sh --only 7 <pr>` until it prints
+  `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
 - **A red CI job on your PR is yours to triage; tell the console only if it is
   not the PR's fault** (`MAIN-RED <job> <failing case> caused-by: #<pr>`, or
   `caused-by: unknown`, once). Merge-forward
   (never past a red you introduced), `suite-coverage.sh` and the
-  loaded-budget rule: `leg-sections/ci-red.md`. [prose]
+  loaded-budget rule: `worker-sections/ci-red.md`. [prose]
 - On an agreed review finding **sweep the whole class** across every site and
   record it with `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
@@ -178,7 +178,7 @@ is on** (off by default; `--context-guard compact|handoff`;
 reference `docs/internals/leg-context-guard.md`): **`compact`:** commit,
 push, then append `LIVE — CHECKPOINT <full sha of HEAD> pushed` with
 `append-results.sh`. **`handoff`:** write `…legN<n>b-…-RESUME.md`, message the
-console, stop. Unlock: `leg-sections/context-guard.md`. Probe context fill after
+console, stop. Unlock: `worker-sections/context-guard.md`. Probe context fill after
 **every** step.
 
 ## How your turns end

@@ -7,7 +7,7 @@
 # as `himmelctl ui` runs) is found.
 #
 # Fixture: a scratch git repo laid out as a checkout (scripts/config-ui/legs.sh,
-# scripts/lib/*, scripts/handover/console-kit/fleet-manifest.sh copied verbatim)
+# scripts/lib/*, scripts/handover/chief-kit/fleet-manifest.sh copied verbatim)
 # so legs.sh's anchor resolution lands on it and reads its fixture .env only.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -18,10 +18,10 @@ trap 'rm -rf "$W"' EXIT
 check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "ok - $1"; else FAIL=$((FAIL+1)); echo "FAIL - $1: expected '$2' got '$3'"; fi; }
 
 co="$W/checkout"
-mkdir -p "$co/scripts/config-ui" "$co/scripts/lib" "$co/scripts/handover/console-kit"
+mkdir -p "$co/scripts/config-ui" "$co/scripts/lib" "$co/scripts/handover/chief-kit"
 cp "$REPO/scripts/config-ui/legs.sh" "$co/scripts/config-ui/legs.sh"
 for f in load-dotenv.sh handover-path.sh leg-tail-status.sh prim.sh canon-path.sh; do cp "$REPO/scripts/lib/$f" "$co/scripts/lib/$f"; done
-cp "$REPO/scripts/handover/console-kit/fleet-manifest.sh" "$co/scripts/handover/console-kit/fleet-manifest.sh"
+cp "$REPO/scripts/handover/chief-kit/fleet-manifest.sh" "$co/scripts/handover/chief-kit/fleet-manifest.sh"
 git -C "$co" init -q
 LEGS="$co/scripts/config-ui/legs.sh"
 

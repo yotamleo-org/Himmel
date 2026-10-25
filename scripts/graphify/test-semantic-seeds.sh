@@ -35,7 +35,7 @@ nodes = [
     node("need", "Need", "scripts/auth/need.ts"),
     node("pc", "prompt-cache.md", "docs/internals/prompt-cache.md", "document"),
     node("pc_test", "prompt-cache.test.js", "scripts/tests/prompt-cache.test.js"),
-    node("go_sh", "go.sh", "scripts/handover/console-kit/go.sh"),
+    node("go_sh", "go.sh", "scripts/handover/chief-kit/go.sh"),
 ]
 json.dump({"directed": False, "multigraph": False, "graph": {}, "nodes": nodes, "links": []}, open(sys.argv[1], "w"))
 PY
@@ -198,8 +198,8 @@ def node(i, label, src, ft="code", **kw):
     n.update(kw)
     return n
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/console-kit/headed-arm-leg.sh"),
-    node("arm_fn", "start_leg_session()", "scripts/handover/console-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
+    node("arm_fn", "start_leg_session()", "scripts/handover/chief-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
     node("preface", "leg-preface.md", "docs/handover/leg-preface.md", "document"),
     node("pf_rule", "Report to the console", "docs/handover/leg-preface.md", "concept", rationale="A leg reports a blocker to its console first."),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),

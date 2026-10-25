@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/status-drift.sh - the report-only drift check
+# scripts/handover/chief-kit/status-drift.sh - the report-only drift check
 # over the derive-and-set status funnel. It runs the derive dry for every active
 # key and compares the result with Jira, which covers every forward and
 # backward move, then checks worker records against locks, docs and the WORKER
@@ -90,7 +90,7 @@ if [ -z "${TICKET_STATUS_DRIFT_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     TICKET_STATUS_DRIFT_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$BUDGET" bash "${BASH_SOURCE[0]}" --repo "$REPO" ${DOCS:+--docs-dir "$DOCS"} ${SNAP:+--snapshot "$SNAP"} || rc=$?
     case "$rc" in
         124|137)
-            echo "HEALTH - drift: the pass was cut off after ${BUDGET}s | writer=- | fix=bash scripts/handover/console-kit/status-drift.sh"
+            echo "HEALTH - drift: the pass was cut off after ${BUDGET}s | writer=- | fix=bash scripts/handover/chief-kit/status-drift.sh"
             echo "sdrift=unknown" ;;
     esac
     exit 0
@@ -98,7 +98,7 @@ fi
 
 STATE="$(ts_state_dir)"
 LOG="$STATE/status-events.jsonl"
-SWEEP_FIX="bash scripts/handover/console-kit/status-sweep.sh"
+SWEEP_FIX="bash scripts/handover/chief-kit/status-sweep.sh"
 FUNNEL="leg-jira-status.sh"
 rows=""
 add() { # <class> <key> <detail> <writer> <fix>
@@ -242,7 +242,7 @@ while IFS= read -r key; do
         want=$(printf '%s|%s|%s|%s' "$leg" "$wstate_derive" "$heads" "$derived" | cksum | awk '{ print $1 }')
         have=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
         if [ "$want" != "$have" ]; then
-            add WORKER-COMMENT "$key" "record hash ${have:-none} vs class hash $want" "$FUNNEL" "bash scripts/handover/console-kit/leg-jira-status.sh $key --event sweep"
+            add WORKER-COMMENT "$key" "record hash ${have:-none} vs class hash $want" "$FUNNEL" "bash scripts/handover/chief-kit/leg-jira-status.sh $key --event sweep"
         fi
     fi
 
@@ -263,7 +263,7 @@ while IFS= read -r key; do
     if [ "$jstatus" != Done ] && { [ -n "$open_prs" ] || is_owner_state "$wstate"; }; then
         # swallow-ok: an unreadable ticket raises no HELD-IN-WORK row; the derive miss already raised a HEALTH row
         if jq -e '(.fields.labels // []) | index("held")' >/dev/null 2>&1 <<<"$(ts_jira get "$key" --json 2>/dev/null)"; then
-            add HELD-IN-WORK "$key" "held while ${open_prs:+PR $open_prs open}${open_prs:+${wstate:+ and }}owner $wstate" "ticket-hold.sh" "bash scripts/handover/console-kit/ticket-hold.sh $key --release"
+            add HELD-IN-WORK "$key" "held while ${open_prs:+PR $open_prs open}${open_prs:+${wstate:+ and }}owner $wstate" "ticket-hold.sh" "bash scripts/handover/chief-kit/ticket-hold.sh $key --release"
         fi
     fi
 done <<<"$keys"
@@ -289,7 +289,7 @@ if [ -n "$logtail" ]; then
         ts_derive "$k"
         [ "$TS_RULE" != D0 ] || continue
         [ "$TS_DERIVED" = no-write ] || [ "$TS_DERIVED" != "$TS_J_STATUS" ] || continue
-        add MISSED "$k" "${p:+pr=$p }event=$ev${st:+ stage=$st} has no later moved or noop row" "$FUNNEL" "bash scripts/handover/console-kit/leg-jira-status.sh $k --event sweep"
+        add MISSED "$k" "${p:+pr=$p }event=$ev${st:+ stage=$st} has no later moved or noop row" "$FUNNEL" "bash scripts/handover/chief-kit/leg-jira-status.sh $k --event sweep"
     done < <(jq -rs '[.[] | select(.key != null and .key != "-")] | group_by([.key, (.pr // "")])[]
         | . as $g | ([range(0; length)] | map(select($g[.].result == "miss")) | last) as $m
         | select($m != null)

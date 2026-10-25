@@ -5,7 +5,7 @@
 # PRIORITY_PRUNE overrides the script under test (the RED control: a missing
 # script fails every row). bash 3.2-safe.
 #
-# Run: bash scripts/handover/console-kit/test-priority-prune.sh
+# Run: bash scripts/handover/chief-kit/test-priority-prune.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${PRIORITY_PRUNE:-$HERE/priority-prune.sh}"

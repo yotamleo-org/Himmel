@@ -71,9 +71,9 @@ test('T8.3 no body key and no string over 200 chars under /bus/', async t => {
 
 test('T8.4 agui.mjs imports the shared redact and keeps no copy', async () => {
   const src = await readFile(aguiUrl, 'utf8');
-  assert.match(src, /import\s*\{[^}]*\bredact\b[^}]*\}\s*from\s*'[^']*console-kit\/redact\.mjs'/);
+  assert.match(src, /import\s*\{[^}]*\bredact\b[^}]*\}\s*from\s*'[^']*chief-kit\/redact\.mjs'/);
   assert.doesNotMatch(src, /(const|function)\s+redact\b/);
-  const board = await readFile(new URL('../../../../scripts/handover/console-kit/board.mjs', import.meta.url), 'utf8');
+  const board = await readFile(new URL('../../../../scripts/handover/chief-kit/board.mjs', import.meta.url), 'utf8');
   assert.match(board, /from '\.\/redact\.mjs'/);
   assert.doesNotMatch(board, /const redact = /);
 });

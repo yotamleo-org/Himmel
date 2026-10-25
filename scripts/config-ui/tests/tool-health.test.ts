@@ -27,7 +27,7 @@ function seed() {
       tool_health: [{ agent, lane: s.lane, tool: "Bash", calls: s.bash, failures: s.errors + s.denied, errors: s.errors, denials: s.denied }, { agent, lane: s.lane, tool: "Read", calls: s.read, failures: 0, errors: 0, denials: 0 }],
       failures: [row("denied/read-clamp", s.denied, s.recovered), ...(s.errors ? [row("error/Bash", s.errors, null)] : [])] };
     const file = join(dir, `digest${i}.json`); writeFileSync(file, JSON.stringify(digest));
-    const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/leg-digest/leg_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--leg", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
+    const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/leg_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--leg", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
     expect(r.exitCode).toBe(0);
   }
   const config = join(dir, "claude-config"); mkdirSync(config);
@@ -71,7 +71,7 @@ test("recorded leg-doc lane overrides extractor provenance and stamps every pers
   const env = seed(), dir = dirs[dirs.length - 1];
   const doc = join(dir, "leg.md"), file = join(dir, "digest0.json"), evals = join(dir, "doc-eval.jsonl"), state = join(dir, "doc-state");
   writeFileSync(doc, "> Sibling N2 uses native lane.\n# N1 (gpt-6.1-sol, cloud lane, headed)\n");
-  const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/leg-digest/leg_ledger.py"), "record", "--digest", file, "--doc", doc, "--leg", "N1", "--failures-ledger", join(dir, "doc-fail.jsonl"), "--eval-ledger", evals, "--state-dir", state]);
+  const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/leg_ledger.py"), "record", "--digest", file, "--doc", doc, "--leg", "N1", "--failures-ledger", join(dir, "doc-fail.jsonl"), "--eval-ledger", evals, "--state-dir", state]);
   expect(r.exitCode).toBe(0);
   const row = JSON.parse(readFileSync(evals, "utf8"));
   expect(row.lane).toBe("cloud");

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/verdict-retention.sh - retire verdict records and
+# scripts/handover/chief-kit/verdict-retention.sh - retire verdict records and
 # judge scratch.
 #
 # Usage:

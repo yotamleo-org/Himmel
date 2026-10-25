@@ -144,7 +144,7 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     (`--out-done`, `--out-future`, `tracker-done:`, `tracker-future:`) are retired;
     drop those URLs from `## Live state` at the next handover.
 
-- **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh --legs-from <fleet manifest>`
+- **Version-status audit:** `bash scripts/handover/chief-kit/version-status-audit.sh --legs-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released
   version and versionless started Tasks, Stories and Bugs (OWNED = a live leg or
   open PR holds it, RESET = move it to To Do with a reason comment). Run it after

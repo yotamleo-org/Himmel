@@ -8,5 +8,5 @@
 {"id":"v4-new","query":"what may merge in afk mode","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
 {"id":"v5-old","query":"what is a chain and a wave of legs","collections":["himmel"],"expect":["himmel/docs/glossary.md"]}
 {"id":"v5-new","query":"what is a dependency chain and a parallel wave of workers","collections":["himmel"],"expect":["himmel/docs/glossary.md"]}
-{"id":"v6-old","query":"how does a console hand over to the next console","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/succession.md","himmel/docs/handover/running-a-console.md"]}
-{"id":"v6-new","query":"how does a chief hand over to the next chief","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/succession.md","himmel/docs/handover/running-a-console.md"]}
+{"id":"v6-old","query":"how does a console hand over to the next console","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/succession.md","himmel/docs/handover/running-a-console.md"]}
+{"id":"v6-new","query":"how does a chief hand over to the next chief","collections":["himmel"],"expect":["himmel/docs/handover/worker-sections/succession.md","himmel/docs/handover/running-a-console.md"]}

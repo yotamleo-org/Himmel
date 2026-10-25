@@ -1449,7 +1449,7 @@ fi
 # `script -q -a -f "$LOG" -c "$LAUNCH_CMD"`, which is util-linux syntax. BSD
 # script (macOS) has neither -f nor -c ("illegal option -- f"; it takes the
 # file positionally and the command as trailing argv), so on a Mac the branch
-# dies in milliseconds. That is not a rare seam: console-kit/headed-arm-leg.sh
+# dies in milliseconds. That is not a rare seam: chief-kit/headed-arm-leg.sh
 # exports HEADED_ARM_RECORDER=1 unconditionally for --lane claudex. Refuse
 # with the real reason instead of letting the lane fail as a mystery FAILED.
 # Gated on KONSOLE_IS_RESOLVED_SHIM, not the platform: with an explicit

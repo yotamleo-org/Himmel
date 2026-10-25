@@ -375,7 +375,7 @@ worktree workflow.
 | Telegram (`scripts/telegram/`) | Remote dispatch and chat bridge | Absent without a bot token |
 | hermes (`scripts/hermes/`) | Free-inference junior and review lanes | Absent without API keys |
 | graphify (`scripts/graphify/`) | Knowledge-graph retrieval over a corpus | Optional; its data egress is fenced by [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json) |
-| AFK (unattended) mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
+| AFK (unattended) mode (`scripts/afk/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
 
 ## Lifecycle
 

@@ -162,7 +162,7 @@ if [ "$total" -eq 0 ]; then
 fi
 if [ "$ok" -eq "$total" ]; then
     echo "COMPLETE $ok/$total"
-    printf 'bash scripts/handover/console-kit/append-results.sh %q "LIVE — succession complete: all %s inherited legs quoted back to %s"\n' "$doc" "$total" "$successor"
+    printf 'bash scripts/handover/chief-kit/append-results.sh %q "LIVE — succession complete: all %s inherited legs quoted back to %s"\n' "$doc" "$total" "$successor"
     exit 0
 fi
 echo "INCOMPLETE $ok/$total (waiting on: $pending)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-jira-status.sh - the ONE writer of a
+# scripts/handover/chief-kit/leg-jira-status.sh - the ONE writer of a
 # ticket's Jira status and of its worker record. An event says only "look
 # again": the status written is derived from the ticket's present ship-flow
 # state (scripts/lib/ticket-status.sh, rules D0-D7), never from the event, so a
