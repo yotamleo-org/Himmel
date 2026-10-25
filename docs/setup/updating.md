@@ -195,9 +195,12 @@ node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run
 node ~/himmel/scripts/himmelctl/bin.js uninstall
 ```
 
-**Undo first, then delete the download:** the uninstaller lives in it. (The
+**Undo first, then delete the download:** the uninstaller lives in it. The
 install also keeps a copy in `~/.himmel/uninstall/`, so undo still works if
-the download is already gone.)
+the download is already gone. Run the copy from the same project folder:
+`node ~/.himmel/uninstall/standalone.js uninstall` (add `--dry-run` to
+preview). The `himmelctl` launcher on your `PATH` switches to that copy by
+itself.
 
 **Removed:**
 
