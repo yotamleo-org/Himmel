@@ -3100,6 +3100,10 @@ not_contains 'a stale head alone raises no ACTION dispatch-stall (HIMMEL-7479)' 
 d_other="$(d_tick "4006\\t$d_wf\\trelease/other\\t$d_head\\t$(d_iso 300)\\n" "9\\t1\\t$(d_iso 60)\\n")"
 not_contains 'a run on a branch no leg or PR owns is not listed (HIMMEL-7479)' "$d_other" 'dispatch='
 
+d_cap="$(TICK_DISPATCH_MAX=1 STUB_PR_ROWS="$d_pr_rows" d_tick "4010\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 300)\\n4011\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 6150)\\n" "9\\t3\\t$(d_iso 300)\\n")"
+contains 'under the per-tick cap the oldest run is read first, so a hung run is never crowded out by newer ones (HIMMEL-7479)' "$d_cap" 'dispatch=4011:'
+not_contains 'under the per-tick cap a newer run does not take the slot of an older one (HIMMEL-7479)' "$d_cap" '4010:'
+
 d_none="$(d_tick '' '')"
 not_contains 'no in-flight run leaves dispatch= out of the compact line (HIMMEL-7479)' "$d_none" 'dispatch='
 d_down="$(STUB_DISPATCH_RC=1 d_tick '' '')"
