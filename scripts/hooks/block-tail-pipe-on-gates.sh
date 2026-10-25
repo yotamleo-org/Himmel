@@ -1281,8 +1281,14 @@ if [ -z "$offender" ] && [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ] && [ -z "$_tp_varian
     _tp_hit=
     # shellcheck source=../lib/bash-ast.sh
     if { [ -r "$_tp_lib" ] && . "$_tp_lib"; } 2>/dev/null; then
+        _tp_rc=0
+        _tp_pos=$(bash_ast_positions "$cmd" 2>/dev/null) || _tp_rc=$? # swallow-ok: the rc is read next
+        if [ "$_tp_rc" = 5 ]; then
+            echo "block-tail-pipe-on-gates: the command model timed out, so this command that names a gate and tail/head cannot be read; refusing. Split the command." >&2
+            exit 2
+        fi
         # swallow-ok: the model only adds denies; a failed parse leaves the scanner verdict
-        _tp_hit=$(bash_ast_positions "$cmd" 2>/dev/null | jq -r --arg re "$GATE_RE" "$TP_JQ" 2>/dev/null)
+        _tp_hit=$(printf '%s' "$_tp_pos" | jq -r --arg re "$GATE_RE" "$TP_JQ" 2>/dev/null)
     fi
     if [ -n "$_tp_hit" ]; then
         offender=$_tp_hit
