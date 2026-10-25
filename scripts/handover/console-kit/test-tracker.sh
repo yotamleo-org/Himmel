@@ -29,6 +29,9 @@ contains() {
 not_contains() {
     case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac
 }
+equals() {
+    if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi
+}
 
 if ! command -v python3 >/dev/null 2>&1; then
     printf 'skip - python3 not available\n'
@@ -1167,21 +1170,21 @@ not_contains 'a merged chain step is not listed (HIMMEL-7353)' "$v4" 'merged ste
 not_contains 'a chain whose steps all merged is not listed (HIMMEL-7353)' "$v4" 'w4done'
 contains 'an unmerged chain step is still listed (HIMMEL-7353)' "$v4" 'open step'
 contains 'the header counts the hidden merged chain steps (HIMMEL-7353)' "$v4" '2 merged chain steps hidden'
-contains 'a To Do card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 400)" 'In Progress'
-contains 'an In Progress card whose PR CI is green sits in IN CI (HIMMEL-7353)' "$(colof 401)" 'IN CI'
-contains 'an In Review card with no PR stays in In Review (HIMMEL-7353)' "$(colof 402)" 'In Review'
-contains 'an IN CI card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 403)" 'In Progress'
-contains 'a To Do card with no PR stays in To Do (HIMMEL-7353)' "$(colof 407)" 'To Do'
+equals 'a To Do card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 400)" 'In Progress'
+equals 'an In Progress card whose PR CI is green sits in IN CI (HIMMEL-7353)' "$(colof 401)" 'IN CI'
+equals 'an In Review card with no PR stays in In Review (HIMMEL-7353)' "$(colof 402)" 'In Review'
+equals 'an IN CI card whose PR CI is red sits in In Progress (HIMMEL-7353)' "$(colof 403)" 'In Progress'
+equals 'a To Do card with no PR stays in To Do (HIMMEL-7353)' "$(colof 407)" 'To Do'
 contains 'a card whose column differs from Jira names its Jira status (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-400"' "$v4out")" 'Jira To Do'
 not_contains 'a card whose column matches Jira has no Jira note (HIMMEL-7353)' "$(grep -F 'data-key="HIMMEL-402"' "$v4out")" 'Jira In Review'
 jq '. + [{"number":506,"title":"feat: [HIMMEL-407] mixed","headRefName":"feat/mixed","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"},{"status":"IN_PROGRESS","conclusion":""}]}]' "$W/vp-prs.json" > "$W/vp-prs-mixed.json"
 V2PRS="$W/vp-prs-mixed.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
-contains 'a PR with a failed and a running check puts its card in In Progress (HIMMEL-7353)' "$(colof 407)" 'In Progress'
+equals 'a PR with a failed and a running check puts its card in In Progress (HIMMEL-7353)' "$(colof 407)" 'In Progress'
 # the worker record's required-check CI places a card, as its Jira status does: a red latch over a running rollup is red.
 jq '.[0].statusCheckRollup = [{"status":"IN_PROGRESS","conclusion":""}]' "$W/vp-prs.json" > "$W/vp-prs-run.json"
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","ci":"pending","red_latch":true,"open":true}}}\n' > "$wk/HIMMEL-401.json"
 V2PRS="$W/vp-prs-run.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
-contains 'a red-latched worker PR puts its card in In Progress over a running rollup (HIMMEL-7513)' "$(colof 401)" 'In Progress'
+equals 'a red-latched worker PR puts its card in In Progress over a running rollup (HIMMEL-7513)' "$(colof 401)" 'In Progress'
 contains 'the card badge reads the worker record CI (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI red'
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","ci":"pending","red_latch":false,"open":true}}}\n' > "$wk/HIMMEL-401.json"
 v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null

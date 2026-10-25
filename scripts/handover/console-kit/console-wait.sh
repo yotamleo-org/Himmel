@@ -820,13 +820,13 @@ sweep_wake() {
 
 # focus_rebuild: with --doc, each tick reads the FOCUS state and, when a status write marked it
 # DIRTY or the last refresh FAILED, starts one focus-refresh.sh in the background (detached, so
-# the waiter never blocks on it); a refresh still running from an earlier tick is left alone.
+# the waiter never blocks on it); a refresh of the same doc still running from an earlier tick is left alone.
 focus_pid_file="$inbox.wait.focus-pid"
 focus_rebuild() {
     local fstat pid
     [ -n "$console_doc" ] || return 0
     pid="$(cat "$focus_pid_file" 2>/dev/null)"  # swallow-ok: no pid file reads empty, so no refresh is running
-    case "$pid" in ''|*[!0-9]*) ;; *) ps -p "$pid" -o args= 2>/dev/null | grep -qF -- "$focus_cmd" && return 0 ;; esac
+    case "$pid" in ''|*[!0-9]*) ;; *) ps -ww -p "$pid" -o args= 2>/dev/null | grep -qxF -- "bash $focus_cmd --doc $console_doc" && return 0 ;; esac
     fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state starts nothing
     case "$fstat" in focus=DIRTY:* | focus=FAILED:*) ;; *) return 0 ;; esac
     setsid bash "$focus_cmd" --doc "$console_doc" </dev/null >/dev/null 2>&1 9>&- &

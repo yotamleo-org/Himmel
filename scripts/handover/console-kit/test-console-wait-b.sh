@@ -844,6 +844,10 @@ sleep 30 & stray=$!
 FR_PID=$stray fr_run fr7 --doc
 kill "$stray" 2>/dev/null
 check "(fr7) a pid file naming an unrelated process does not hold the refresh back" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
+bash -c 'sleep 30; :' "$WAIT_FOCUS_CMD" --doc "$WORK/other-console.md" & stray=$!
+FR_PID=$stray fr_run fr8 --doc
+kill "$stray" 2>/dev/null
+check "(fr8) a refresh still running for another doc does not hold this doc's refresh back" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 unset WAIT_SWEEP_SEC
 
