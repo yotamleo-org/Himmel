@@ -236,7 +236,7 @@ flowchart TD
     GATE -->|allowed| ROUTE{"router"}
     ROUTE -->|"work on TICKET / TICKET: text"| SESS["per-ticket bridge session —<br/>bounded, cold claude run<br/>(pinned model, never interactive)"]
     ROUTE -->|"plain text / voice / photo"| CHAT["chat session (voice → local whisper.cpp;<br/>files → attachments, ~20MB cap)"]
-    ROUTE -->|"/arm or /mergepub"| PRIV{{"privileged path:<br/>TELEGRAM_AUTO_ACTIONS enables the op<br/>+ sender is the global operator<br/>+ message not forwarded, not a caption"}}
+    ROUTE -->|"/arm · /mergepub · /restart<br/>and the other typed auto ops"| PRIV{{"privileged path:<br/>TELEGRAM_AUTO_ACTIONS enables the op<br/>+ sender is the global operator<br/>+ message not forwarded, not a caption"}}
     PRIV -->|refused| AUDIT["refused + audited"]
     PRIV -->|"/arm ticket"| ARM["auto-action.sh → arm-resume.sh<br/>(schedules a session relaunch)"]
     PRIV -->|"/mergepub pr sha12"| MPUB["merge-public-on-green.sh —<br/>SHA prefix-match, CI green, fresh re-verify,<br/>refuses if CLAUDECODE is set"]
@@ -275,12 +275,12 @@ Codex weekly allowance.
 ```mermaid
 flowchart TD
     WORK["work item in the parent session"] --> ROUTE{"route the dispatch"}
-    ROUTE --> GUARD{{"guard-implementor-dispatch.sh<br/>cost guard on native Agent dispatches only<br/>(blocks when the 5h Claude bank is ≥80% used;<br/>external-lane dispatch types are never deny-eligible)"}}
+    ROUTE --> GUARD{{"guard-implementor-dispatch.sh<br/>cost guard on native Agent dispatches only<br/>(blocks when the 5h Claude bank is ≥80% used<br/>or the weekly bank ≥85%;<br/>external-lane dispatch types are never deny-eligible)"}}
     GUARD --> TIER["Claude tiers — native subagents<br/>(haiku / sonnet / opus / fable,<br/>always available)"]
     ROUTE --> EXT{{"external lanes — available only if<br/>their probe passes (lanes.json)"}}
-    EXT -->|"ZAI_API_KEY set"| GLM["spawn-glm → branch glm/slug<br/>own worktree, push-url poisoned"]
-    EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree, push-url poisoned"]
-    EXT -->|"codex on PATH"| CDX["codex-exec"]
+    EXT -->|"ZAI_API_KEY set"| GLM["spawn-glm → branch glm/slug<br/>own worktree · dormant, GLM_LANE_OK<br/>(the GLM subscription is cancelled)"]
+    EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree · dormant, CLAUDEX_LANE_OK"]
+    EXT -->|"codex on PATH"| CDX["codex-exec<br/>(scripts/codex/dispatch-codex-exec.sh)<br/>dormant, CODEX_EXEC_LANE_OK"]
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
     CDX ~~~ HRM
     GUARD ~~~ EXT

@@ -77,7 +77,7 @@ flowchart TD
     end
 
     subgraph S5["5 · pull request + merge"]
-        CR["the review-owed marker (CR marker) — three scripts, three roles:<br/>WRITTEN at push by check-cr-before-push.sh<br/>gh pr create REFUSED while it exists<br/>(check-cr-marker-on-pr-create.sh)<br/>CLEARED only by a clean /pr-check<br/>(scripts/cr/clear-cr-marker.sh)"]
+        CR["the review-owed marker (CR marker) — three scripts, three roles:<br/>WRITTEN at push by check-cr-before-push.sh<br/>gh pr create REFUSED while it exists<br/>(check-cr-marker-on-pr-create.sh)<br/>CLEARED only by a clean /pr-check<br/>(scripts/cr/clear-review-marker.sh)"]
         MG["merge gate<br/>scripts/hooks/block-unresolved-cr-merge.sh<br/>consumes the CI result AND review state:<br/>CI green AND zero unresolved threads;<br/>a worker also needs the chief's GO file"]
         MOG["scripts/handover/merge-on-green.sh<br/>the sanctioned merge: squash pinned to the checked head"]
         CR --> MG
@@ -135,7 +135,7 @@ flowchart TD
     end
 
     subgraph L["layout"]
-        BUCKET["&lt;root&gt;/&lt;USER_SLUG&gt;/&lt;repo-bucket&gt;/<br/>cross · himmel · luna · luna_brain"]
+        BUCKET["&lt;root&gt;/&lt;USER_SLUG&gt;/&lt;repo-bucket&gt;/<br/>cross · himmel · luna · luna_brain (legacy)"]
         REG["~/.claude/handover/registry.json<br/>source of truth for tracked repos<br/>read/written only via /handover repos|register|init"]
     end
 
@@ -150,7 +150,7 @@ flowchart TD
 
     subgraph C["continuity across sessions"]
         QL["scripts/handover/queue-lock.sh<br/>ONE writer per queue.<br/>Lock is a DIRECTORY (atomic mkdir);<br/>release needs the printed release-token"]
-        AR["scripts/handover/arm-resume.sh<br/>a scheduled launch (arming) through at / crontab<br/>(schtasks on Windows); dedupes per handover,<br/>self-deletes its own slot"]
+        AR["scripts/handover/arm-resume.sh<br/>a scheduled launch (arming) through at / crontab;<br/>dedupes per handover, self-deletes its own slot"]
         RES["/handover-resume · /handover-resume-armed<br/>scripts/handover/resume*.sh"]
         NEXT["next session — reads the same markdown,<br/>resumes at the recorded stop point"]
         QL --> AR --> NEXT
@@ -243,7 +243,7 @@ flowchart TD
     BT -->|"an equivalent CLI verb exists"| DENY["DENIED — use the CLI"]
     BT -->|"that op has no CLI equivalent"| MCP["Atlassian MCP server"]
 
-    DENY --> CLI["scripts/jira/dist/index.js<br/>44 verbs: get create list transition comment edit<br/>link assign worklog sprint versions fix-version<br/>mirror roadmap rank resolution …<br/>(--list-commands prints them all)"]
+    DENY --> CLI["scripts/jira/dist/index.js<br/>45 verbs: get create list transition comment edit<br/>link assign worklog sprint versions fix-version<br/>mirror roadmap rank resolution …<br/>(--list-commands prints them all)"]
 
     CLI --> API["Atlassian REST<br/>JIRA_BASE_URL · JIRA_EMAIL · JIRA_API_TOKEN · JIRA_PROJECT_KEY"]
     MCP --> API
@@ -293,19 +293,19 @@ flowchart TD
 
     subgraph SCRAPE["scripts/observability/prometheus.yml"]
         PROM["Prometheus · scrape_interval 60s<br/>flow-exporter scrape_timeout 30s"]
-        WEXP["windows_exporter<br/>127.0.0.1:9182"]
+        WEXP["windows_exporter<br/>127.0.0.1:9182 · Windows only:<br/>install-grafana.sh strips the job on Linux"]
         EXP --> PROM
-        WEXP --> PROM
+        WEXP -.-> PROM
     end
 
     subgraph VIEW["Grafana"]
-        DASH["dashboards/war-room-system.json"]
+        DASH["dashboards/himmel-health.json<br/>dashboards/war-room-system.json"]
         ALERT["provisioning/alerting/rules.yaml<br/>unified alerting — the ONLY delivery path"]
         PROM --> DASH
         PROM --> ALERT
     end
 
-    ALERT --> TG["Telegram"]
+    ALERT --> TG["contact point: a webhook to<br/>grafana-cadence-hook.ts →<br/>scripts/luna/cadence-alert.sh → Telegram"]
 
     EXP -.-> M["49 metric families, for example:<br/>flow_run_in_flight · flow_run_outcome_total · flow_run_stalled_current<br/>session_active_total · session_dead_total · subagent_active_total<br/>himmel_tool_calls_total · himmel_tool_denials_total · himmel_tool_errors_total<br/>hook_chain_budget_events_recent · lane_quota_used_pct<br/>himmel_eval_metric_value · graphify_shipped_graph_age_seconds<br/>scheduled_task_next_run_timestamp · luna_git_unpushed_commits"]
 ```
@@ -336,7 +336,7 @@ the hook scripts per surface from the `PreToolUse` arrays of
 pre-commit, 14 pre-push, 1 commit-msg) from `.pre-commit-config.yaml`; the job
 count from `.github/workflows/ci.yml` (21 jobs, not counting the `fail-fast-*`
 twins); the lane count from `scripts/lanes/lanes.json`; the verb count from
-`node scripts/jira/dist/index.js --list-commands` (44 verbs plus `mcp`); the
+`node scripts/jira/dist/index.js --list-commands` (45 verbs plus `mcp`); the
 metric families from the `addFamily` calls in
 `scripts/observability/flow-exporter.ts`. Re-derive rather than trust them if
 a diagram and the code disagree.
