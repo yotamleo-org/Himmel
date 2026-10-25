@@ -445,7 +445,7 @@ fi
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' legset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown vmrun=off'
+expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -455,9 +455,9 @@ fi
 
 # Removing required/default reader fields would break a successful sample or
 # leave persisted underfill/unowned markers uncleared. Values stay literal.
-for kv in legs=N61:FRESH,N65:FREE livestate=skip prs=#2247,#2250 tails=N61:LIVE,N65:READY \
-    legset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip \
-    denials=none vmrun=off unowned-prs=none bank=5h30/wk28/codex=5h12/wk34; do
+for kv in workers=N61:FRESH,N65:FREE livestate=skip prs=#2247,#2250 tails=N61:LIVE,N65:READY \
+    workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip \
+    denials=none vmrun=off unowned-prs=none usage=5h30/wk28/codex=5h12/wk34; do
     contains "reader field stays byte-identical: $kv" " $out " " $kv "
 done
 compact_full="$(STUB_FLEET_LINE='bank-preflight: FLEET native=8 claudex=0 openrouter=0 reserved=0 total=8/8' bash "$SUT")"
@@ -488,7 +488,7 @@ rm -f "$W/handover/inbox/N66.md" "$W/handover/inbox/N66.md.cursor" "$W/handover/
 
 weekly_only="$(STUB_BANK_ROW='claudex funded measured weekly used=6% free=94% resets=2026-10-20T05:00:09.000Z' HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"
 case "$weekly_only" in
-    *' bank=5h30/wk28/codex=5hnone/wk6 '*) pass 'a weekly-only codex row reads as no 5h limit' ;;
+    *' usage=5h30/wk28/codex=5hnone/wk6 '*) pass 'a weekly-only codex row reads as no 5h limit' ;;
     *) fail "weekly-only codex row (out='$weekly_only')" ;;
 esac
 
@@ -568,10 +568,10 @@ not_contains 'a PR whose ticket has a live cloud session is not unowned' "$cloud
 # `for leg in $LEGS` word-splits on IFS whitespace only, so a comma-joined
 # value used to be one iteration over one nonexistent path -- the label was
 # derived from the tail of the whole blob, and every leg but the last vanished
-# from legs=/tails= while being reported as a single false MISSING. RED
+# from workers=/tails= while being reported as a single false MISSING. RED
 # control (pre-fix tick.sh, this same two-leg fixture): the comma form printed
-# 'legs=N61.md,N65:MISSING' (one collapsed entry) while the space form printed
-# the correct 'legs=N61:FRESH,N65:FREE' -- confirmed manually against
+# 'workers=N61.md,N65:MISSING' (one collapsed entry) while the space form printed
+# the correct 'workers=N61:FRESH,N65:FREE' -- confirmed manually against
 # scripts/handover/console-kit/tick.sh@8fa186e5 before this fix.
 comma_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61,HIMMEL-222-legN65')"; comma_rc=$?
 space_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61 HIMMEL-222-legN65')"; space_rc=$?
@@ -580,19 +580,19 @@ if [ "$comma_rc" -eq 0 ] && [ "$space_rc" -eq 0 ] && [ "$comma_out" = "$space_ou
 else
     fail "comma vs space --legs mismatch (comma='$comma_out' space='$space_out')"
 fi
-contains 'the comma-separated form resolves every leg, not just the last (HIMMEL-3130)' "$comma_out" 'legs=N61:FRESH,N65:FREE'
+contains 'the comma-separated form resolves every leg, not just the last (HIMMEL-3130)' "$comma_out" 'workers=N61:FRESH,N65:FREE'
 
-# legs= must never silently disagree with how
-# many docs --legs named -- the original bug's contradiction was legs= naming
+# workers= must never silently disagree with how
+# many docs --legs named -- the original bug's contradiction was workers= naming
 # ONE leg while procs= (a separately-scanned live table) reported more
 # processes alive, with nothing reconciling the two. Assert the leg-entry
 # count against the docs actually passed, independent of the process table.
-legs_field="$(printf '%s\n' "$comma_out" | grep -oE 'legs=[^ ]+' | cut -d= -f2)"
+legs_field="$(printf '%s\n' "$comma_out" | grep -oE 'workers=[^ ]+' | cut -d= -f2)"
 legs_count="$(printf '%s\n' "$legs_field" | awk -F',' '{print NF}')"
 if [ "$legs_count" = 2 ]; then
-    pass 'legs= names exactly as many entries as --legs docs were passed (HIMMEL-3130)'
+    pass 'workers= names exactly as many entries as --legs docs were passed (HIMMEL-3130)'
 else
-    fail "legs= entry count mismatch (legs_field='$legs_field' count=$legs_count, expected 2)"
+    fail "workers= entry count mismatch (legs_field='$legs_field' count=$legs_count, expected 2)"
 fi
 
 # --- --legs-from <fleet manifest> ------------------------------
@@ -611,18 +611,18 @@ if [ "$from_rc" -eq 0 ] && [ "$argv_rc" -eq 0 ] && [ "$from_out" = "$argv_out" ]
 else
     fail "--legs-from vs --legs mismatch (rc=$from_rc/$argv_rc from='$from_out' argv='$argv_out')"
 fi
-contains '--legs-from resolves every manifest leg (HIMMEL-3748)' "$from_out" ' legs=N61:FRESH,N65:FREE '
+contains '--legs-from resolves every manifest leg (HIMMEL-3748)' "$from_out" ' workers=N61:FRESH,N65:FREE '
 # The manifest is re-read on every run: editing it between two samples changes
 # the judged leg set with the same argv -- no waiter restart.
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"}]}\n' "$fm_n61" > "$fm"
-contains 'a manifest edit between two runs changes legs= with the same argv (HIMMEL-3748)' \
-    "$(LEGS='' bash "$SUT" --legs-from "$fm")" ' legs=N61:FRESH '
+contains 'a manifest edit between two runs changes workers= with the same argv (HIMMEL-3748)' \
+    "$(LEGS='' bash "$SUT" --legs-from "$fm")" ' workers=N61:FRESH '
 # A leg on both --legs and the manifest is judged once, not twice.
 contains '--legs and --legs-from union without duplicates (HIMMEL-3748)' \
-    "$(LEGS='' bash "$SUT" --legs "$fm_n61 $fm_n65" --legs-from "$fm")" ' legs=N61:FRESH,N65:FREE '
+    "$(LEGS='' bash "$SUT" --legs "$fm_n61 $fm_n65" --legs-from "$fm")" ' workers=N61:FRESH,N65:FREE '
 # The same doc spelled relative on --legs and absolute in the manifest is one leg.
 contains 'a relative --legs spelling and its absolute manifest entry are judged once (HIMMEL-3748)' \
-    "$(LEGS='' bash "$SUT" --legs HIMMEL-111-legN61 --legs-from "$fm")" ' legs=N61:FRESH '
+    "$(LEGS='' bash "$SUT" --legs HIMMEL-111-legN61 --legs-from "$fm")" ' workers=N61:FRESH '
 # An unreadable or invalid manifest is a failed tick (no TICK line, rc != 0),
 # never an empty fleet that reads as every leg gone.
 printf 'not json\n' > "$fm"
@@ -642,26 +642,26 @@ rm -f "$fm"
 
 # --- a lockless (eval/pilot) manifest row reads NOLOCK, not FREE,
 # and is judged by its tail marker alone. RED control (tick.sh before this
-# change): the lockless row below read legs=...P01:FREE, and an unstamped
-# `- WRAPPED —` bullet moved nothing in legs=. (The parser already read the
+# change): the lockless row below read workers=...P01:FREE, and an unstamped
+# `- WRAPPED —` bullet moved nothing in workers=. (The parser already read the
 # unstamped marker; tails= is pinned here so it cannot regress.)
 lk_doc="$W/handover/HIMMEL-4869-N90-pilot.md"
 printf '%s\n' '# pilot row' '- LIVE — working' > "$lk_doc"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61","lane":"native"},{"doc":"%s","label":"N90","lane":"deepseek","lockless":true}]}\n' "$fm_n61" "$lk_doc" > "$fm"
 lk_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"
-contains 'a lockless row reads NOLOCK, never FREE (HIMMEL-5074)' "$lk_out" ' legs=N61:FRESH,N90:NOLOCK '
+contains 'a lockless row reads NOLOCK, never FREE (HIMMEL-5074)' "$lk_out" ' workers=N61:FRESH,N90:NOLOCK '
 contains 'a lockless row is judged by its tail marker (HIMMEL-5074)' "$lk_out" ' tails=N61:LIVE,N90:LIVE '
 printf '%s\n' '- WRAPPED — done, no stamp' >> "$lk_doc"
 lk_out2="$(LEGS='' bash "$SUT" --legs-from "$fm")"
 contains 'an unstamped WRAPPED on a lockless row changes tails= (HIMMEL-5074)' "$lk_out2" ' tails=N61:LIVE,N90:WRAPPED '
-contains 'a wrapped lockless row stays NOLOCK, not FREE or WRAPPED-lock (HIMMEL-5074)' "$lk_out2" ' legs=N61:FRESH,N90:NOLOCK '
+contains 'a wrapped lockless row stays NOLOCK, not FREE or WRAPPED-lock (HIMMEL-5074)' "$lk_out2" ' workers=N61:FRESH,N90:NOLOCK '
 # A manifest row with no lockless key keeps its FREE verdict.
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"N90","lane":"deepseek"}]}\n' "$fm_n61" "$lk_doc" > "$fm"
-contains 'a row without the lockless key is still judged by its lock (HIMMEL-5074)' "$(LEGS='' bash "$SUT" --legs-from "$fm")" ' legs=N61:FRESH,N90:WRAPPED '
+contains 'a row without the lockless key is still judged by its lock (HIMMEL-5074)' "$(LEGS='' bash "$SUT" --legs-from "$fm")" ' workers=N61:FRESH,N90:WRAPPED '
 rm -f "$fm" "$lk_doc"
 
 # --- livestate= drift field --------------------------------
-# legs=N61:FRESH,N65:FREE above -- only N61 is actually held (the stub
+# workers=N61:FRESH,N65:FREE above -- only N61 is actually held (the stub
 # queue-lock only reports FRESH for a doc path containing "N61"). Each
 # sub-case below rewrites $W/handover/console.md's `## Live state` section
 # and re-runs the same --legs pair, so only the doc content changes between
@@ -864,7 +864,7 @@ esac
 
 # #1335 (ticket cause c): with no --legs armed at all, a census that
 # cannot run (pgrep itself broken, not merely lossy) must not render the
-# same legs=none a genuinely healthy empty fleet gets -- there is no way to
+# same workers=none a genuinely healthy empty fleet gets -- there is no way to
 # back up "no legs" when the instrument that would have caught an unarmed
 # live leg cannot run in the first place.
 mkdir -p "$W/bin-nopgrep"
@@ -874,16 +874,16 @@ exit 2
 STUB
 chmod +x "$W/bin-nopgrep/pgrep"
 unsupported_out="$(CLAUDE_SESSIONS_PROC="$W/no-such-proc" PATH="$W/bin-nopgrep:$PATH" bash "$SUT" --legs '')"
-contains 'no working census + no --legs reads legs=unsupported, not legs=none (#1335)' "$unsupported_out" 'legs=unsupported'
+contains 'no working census + no --legs reads workers=unsupported, not workers=none (#1335)' "$unsupported_out" 'workers=unsupported'
 case "$unsupported_out" in
-    *' legs=none '*) fail 'legs=none is not reused for an unsupported census' ;;
-    *) pass 'legs=none is not reused for an unsupported census' ;;
+    *' workers=none '*) fail 'workers=none is not reused for an unsupported census' ;;
+    *) pass 'workers=none is not reused for an unsupported census' ;;
 esac
 
-# The healthy empty-fleet legs=none meaning is unchanged: no --legs, and the
+# The healthy empty-fleet workers=none meaning is unchanged: no --legs, and the
 # census runs fine (finds nothing to contradict it).
 healthy_empty_out="$(bash "$SUT" --legs '')"
-contains 'a healthy, census-confirmed empty fleet still reads legs=none' "$healthy_empty_out" 'legs=none'
+contains 'a healthy, census-confirmed empty fleet still reads workers=none' "$healthy_empty_out" 'workers=none'
 
 # a leg process matched by the leg filter
 # but with no --model token at all must still show up (an "unknown" bucket),
@@ -976,9 +976,9 @@ fi
 # an unresolvable --legs entry is NOTFOUND, never MISSING --
 # MISSING is reserved for a lock that is genuinely gone, which a console
 # reads as "reclaim this leg's lock". RED control (pre-fix tick.sh, same
-# fixture): stdout printed 'legs=N61:FRESH,N66:MISSING' with an EMPTY stderr
+# fixture): stdout printed 'workers=N61:FRESH,N66:MISSING' with an EMPTY stderr
 # -- a bare, unwarned MISSING for a typo'd/unresolvable doc.
-contains 'unresolvable leg has NOTFOUND, not MISSING, as its lock status' "$out" 'legs=N61:FRESH,N66:NOTFOUND'
+contains 'unresolvable leg has NOTFOUND, not MISSING, as its lock status' "$out" 'workers=N61:FRESH,N66:NOTFOUND'
 contains 'unresolvable leg has an explicit tail status' "$out" 'tails=N61:LIVE,N66:?'
 contains 'an unresolvable leg doc emits a named warning on stderr' "$(cat "$W/notfound-stderr.txt")" 'tick: no such leg doc:'
 case "$out" in *MISSING*) fail 'an unresolvable leg doc never prints bare MISSING' ;; *) pass 'an unresolvable leg doc never prints bare MISSING' ;; esac
@@ -1024,7 +1024,7 @@ printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `N1:nonce1:tok1:110`, `N2:nonce2:tok2:111`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/console.md"
 conv_out="$(PATH="$W/bin-conv:$PATH" bash "$SUT" --legs 'HIMMEL-3144-N1-console-idle-guard HIMMEL-3143-N2-merge-jira-optin')"
-contains 'a current-convention leg label resolves to N<k> (HIMMEL-3145)' "$conv_out" 'legs=N1:FRESH,N2:FRESH'
+contains 'a current-convention leg label resolves to N<k> (HIMMEL-3145)' "$conv_out" 'workers=N1:FRESH,N2:FRESH'
 contains 'current-convention legs are counted in procs= (HIMMEL-3145)' "$conv_out" 'procs=2'
 contains 'current-convention legs are bucketed in models= (HIMMEL-3145)' "$conv_out" 'models=sonnet:2'
 contains 'current-convention legs compare like-with-like in livestate= (HIMMEL-3145)' "$conv_out" 'livestate=ok'
@@ -1037,7 +1037,7 @@ esac
 # OLD -legN<k>- spelling still resolves to N<k> -- leg_label() must recognise
 # both spellings in the same namespace, not just the new one.
 legacy_out="$(bash "$SUT" --legs 'HIMMEL-3064-legN12-old-console-format' 2>/dev/null)"
-contains 'a legacy -legN<k>- doc still resolves to N<k> (HIMMEL-3145 regression)' "$legacy_out" 'legs=N12:NOTFOUND'
+contains 'a legacy -legN<k>- doc still resolves to N<k> (HIMMEL-3145 regression)' "$legacy_out" 'workers=N12:NOTFOUND'
 
 # --- (ticket root cause 3 / acceptance): a field that cannot be
 # computed must say so. A fatal census scan (pgrep itself failing, rc>1 and
@@ -1217,7 +1217,7 @@ contains 'an unreadable process table reads orphans=? and never fails the tick (
 # = the <TICKET>-N<k>-<slug> the console passes headed-arm-leg.sh (this shift's
 # own pair: HIMMEL-3269-N191-scorecard-discovery, HIMMEL-3273-N192-stop-queue-race).
 # RED control (pre-fix tick.sh, this fixture): the old-template doc read
-# legs=<full stem>:FRESH, procs=0 and livestate=DRIFT with two live, held legs.
+# workers=<full stem>:FRESH, procs=0 and livestate=DRIFT with two live, held legs.
 l191='HIMMEL-3269-N191-scorecard-discovery-2026-09-20-RESUME'
 l192='HIMMEL-3273-stop-queue-race-leg192-2026-09-20-RESUME'
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/$l191.md"
@@ -1232,7 +1232,7 @@ printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/console.md"
 o3277="$(t3277 "$l191 $l192")"
-contains 'a template-pattern doc and a canonical doc both resolve to N<k> (HIMMEL-3277)' "$o3277" 'legs=N191:FRESH,N192:FRESH'
+contains 'a template-pattern doc and a canonical doc both resolve to N<k> (HIMMEL-3277)' "$o3277" 'workers=N191:FRESH,N192:FRESH'
 contains 'both live legs are counted in procs= (HIMMEL-3277)' "$o3277" 'procs=2'
 contains 'both live legs are bucketed in models= (HIMMEL-3277)' "$o3277" 'models=sonnet:2'
 contains 'a legs: line written per console-template.md reports no drift (HIMMEL-3277)' "$o3277" 'livestate=ok'
@@ -1253,14 +1253,14 @@ printf '%s\n' '# console' '' '## Live state' '' \
 contains 'a hyphenated label span parses, trailing backticked prose and all (HIMMEL-3277)' "$(t3277 'HIMMEL-9-odd-name-2026-09-20-RESUME')" 'livestate=ok'
 
 # A genuinely stale Live state still fires: N192 is held but unnamed (DRIFT). N199
-# is named but the arm does not cover it, so it reads legset=unarmed,
+# is named but the arm does not cover it, so it reads workerset=unarmed,
 # not DRIFT -- the tick has no lock for it. The fix must not make the check unable to fire.
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N199:J-N199-aaaaaa:tok-199:1`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/console.md"
 contains 'a genuinely stale Live state still reports DRIFT (HIMMEL-3277)' "$(t3277 "$l191 $l192")" 'livestate=DRIFT:N192 '
-contains 'a Live-state leg the arm omits reads legset=unarmed, not DRIFT (HIMMEL-3293)' "$(t3277 "$l191 $l192")" 'legset=STALE:unarmed=N199'
+contains 'a Live-state leg the arm omits reads workerset=unarmed, not DRIFT (HIMMEL-3293)' "$(t3277 "$l191 $l192")" 'workerset=STALE:unarmed=N199'
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `HIMMEL-9-odd-name-2026-09-20-RESUME:n:t:1`, `HIMMEL-8-gone-2026-09-20-RESUME:n:t:2`' 'queue: none' 'last GO: none' 'acked: none' \
@@ -1308,7 +1308,7 @@ printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N199:J-N199-aaaaaa:tok-199:1` (the `legs:` key)' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/console.md"
 contains 'a stale Live state with prose on the line is DRIFT naming only real legs (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'livestate=DRIFT:N192 '
-contains 'the unarmed leg is named, with no phantom leg beside it (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'legset=STALE:unarmed=N199'
+contains 'the unarmed leg is named, with no phantom leg beside it (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'workerset=STALE:unarmed=N199'
 
 # A malformed-but-entry-shaped span must be REPORTED, never dropped: dropping it
 # trades a phantom for a disappearance (the mirror-image failure facing the other
@@ -1345,7 +1345,7 @@ contains 'a malformed span and a stale leg both surface (HIMMEL-3280)' "$(t3277 
 # --- the legs: BLOCK is read, not just its first line ------------
 # The block is the legs: line(s) plus lines wrapped directly under them, up to
 # the first blank line or the next `field:` line. RED control (pre-fix tick.sh,
-# first fixture below): both legs' locks held (legs=N191:FRESH,N192:FRESH, same
+# first fixture below): both legs' locks held (workers=N191:FRESH,N192:FRESH, same
 # output line) and livestate=DRIFT:N192 -- the second line was never parsed.
 # The precondition is asserted on every fixture: a "DRIFT" from a lock that was
 # never held would be a vacuous control.
@@ -1354,7 +1354,7 @@ wrap_case() {  # wrap_case <desc> <expected livestate=...> <console doc line>...
     shift 2
     printf '%s\n' '# console' '' '## Live state' '' "$@" > "$W/handover/console.md"
     out="$(t3277 "$l191 $l192")"
-    contains "$desc: both locks are held (precondition)" "$out" 'legs=N191:FRESH,N192:FRESH'
+    contains "$desc: both locks are held (precondition)" "$out" 'workers=N191:FRESH,N192:FRESH'
     contains "$desc (HIMMEL-3281)" "$out" "$want"
 }
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
@@ -1380,7 +1380,7 @@ wrap_case 'a malformed span on a continuation line reads MALFORMED' 'livestate=M
     'legs: `N191:J-N191-0a1b2c:tok-191:120`' \
     '  `N192:J-N192-3d4e5f:tok-192`' 'queue: none' 'last GO: none' 'acked: none'
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
-wrap_case 'a leg on a continuation line the arm omits reads legset=unarmed' 'legset=STALE:unarmed=N199' \
+wrap_case 'a leg on a continuation line the arm omits reads workerset=unarmed' 'workerset=STALE:unarmed=N199' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' \
     '  `N199:J-N199-aaaaaa:tok-199:1`' 'queue: none' 'last GO: none' 'acked: none'
 # The block has an END, and that end reads loudly, not silently: a held leg whose
@@ -1418,7 +1418,7 @@ wrap_case 'a seeded stub with a decisions: pointer reads no MALFORMED (HIMMEL-64
     'decisions: specs/decisions/console-decisions-2026-10-20.md (latest #91)'
 # --- a `<name>.md:<line>` cite ON the legs: line is prose. RED
 # control (pre-fix tick.sh, first fixture below): both locks held
-# (legs=N191:FRESH,N192:FRESH, asserted by wrap_case) and
+# (workers=N191:FRESH,N192:FRESH, asserted by wrap_case) and
 # livestate=MALFORMED:stuck-playbook.md -- leg_label reduces the doc stem
 # `stuck-playbook.md` to `stuck-playbook`, so the cite read as a label-shaped
 # first field with a colon, an invented leg. The four shapes N199 pinned; only
@@ -1499,7 +1499,7 @@ printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/$l194.md"
 mkcmdline 123 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3277-N194-tick-leg-identity work
 mk_pgrep_x "$W/bin-3277-194" 123
 o194="$(PATH="$W/bin-3277-194:$PATH" bash "$SUT" --legs "$l194")"
-contains 'a -legN<k>- doc with -leg- in its slug resolves to N<k> and its session is counted (HIMMEL-3277)' "$o194" 'legs=N194:FRESH'
+contains 'a -legN<k>- doc with -leg- in its slug resolves to N<k> and its session is counted (HIMMEL-3277)' "$o194" 'workers=N194:FRESH'
 contains 'a -legN<k>- doc is counted in procs= against the <TICKET>-N<k>-<slug> session (HIMMEL-3277)' "$o194" 'procs=1 '
 # A leg whose session is live under a name no derivation yields is the same case.
 mkcmdline 122 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3269-worker-of-scorecard work
@@ -1550,8 +1550,8 @@ contains 'the row says why bare leg doc names fail (HIMMEL-3287)' "$tick3287" 'r
 mkdir -p "$W/handover/bucket3287"
 l3287='HIMMEL-3287-N287-bucketed-2026-09-20-RESUME.md'
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/bucket3287/$l3287"
-contains 'an absolute --legs path to a bucketed leg doc resolves, not NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$W/handover/bucket3287/$l3287")" 'legs=N287:FREE'
-contains 'a bare --legs name of a bucketed leg doc reads NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$l3287" 2>/dev/null)" 'legs=N287:NOTFOUND'
+contains 'an absolute --legs path to a bucketed leg doc resolves, not NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$W/handover/bucket3287/$l3287")" 'workers=N287:FREE'
+contains 'a bare --legs name of a bucketed leg doc reads NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$l3287" 2>/dev/null)" 'workers=N287:NOTFOUND'
 next3287="$(grep -F '/console next --arm' "$tpl3287")"
 contains "the /console next line quotes --model (HIMMEL-3287)" "$next3287" "--model '{{MODEL}}'"
 case "$next3287" in
@@ -1565,9 +1565,9 @@ esac
 # and live but were dispatched after the arm (not in --legs); N300 is wrapped (its
 # lock released, its last bullet WRAPPED) and is armed but already gone from Live
 # state. RED control (pre-fix tick.sh, this fixture) read:
-#   legs=N300:FREE,N301:FRESH livestate=DRIFT:N302,N303 procs=1 models=sonnet:1
+#   workers=N300:FREE,N301:FRESH livestate=DRIFT:N302,N303 procs=1 models=sonnet:1
 # -- a false DRIFT on two healthy legs, procs=1 beside three live legs, N302/N303
-# absent from legs=, and the wrapped leg indistinguishable from a lost lock.
+# absent from workers=, and the wrapped leg indistinguishable from a lost lock.
 w3293="HIMMEL-3300-N300-wrapped-2026-09-20-RESUME"
 a3293="HIMMEL-3301-N301-alpha-2026-09-20-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$w3293.md"
@@ -1588,9 +1588,9 @@ case "$o3293" in
     *DRIFT*) fail "a stale arm must not read as leg DRIFT (HIMMEL-3293) ($o3293)" ;;
     *) pass 'a stale arm must not read as leg DRIFT (HIMMEL-3293)' ;;
 esac
-contains 'the disagreement is reported as an input problem, both directions (HIMMEL-3293)' "$o3293" 'legset=STALE:unarmed=N302+N303;unlisted=N300'
+contains 'the disagreement is reported as an input problem, both directions (HIMMEL-3293)' "$o3293" 'workerset=STALE:unarmed=N302+N303;unlisted=N300'
 contains 'live legs outside the arm are surfaced in procs=, not dropped (HIMMEL-3293)' "$o3293" 'procs=1,unwatched=N302+N303 '
-contains 'a wrapped leg reads WRAPPED, distinct from a lost lock (HIMMEL-3293)' "$o3293" 'legs=N300:WRAPPED,N301:FRESH '
+contains 'a wrapped leg reads WRAPPED, distinct from a lost lock (HIMMEL-3293)' "$o3293" 'workers=N300:WRAPPED,N301:FRESH '
 p3293="$(printf '%s\n' "$o3293" | sed -E 's/.* procs=([^ ]*) .*/\1/')"
 case "$p3293" in
     *N301*|*N300*|*nextleg*|*console*) fail "the armed leg and the console must not read unwatched (HIMMEL-3293) ($p3293)" ;;
@@ -1604,7 +1604,7 @@ printf '%s\n' '# console' '' '## Live state' '' \
     > "$W/handover/console.md"
 d3293="$(t3293 "$W/handover/$w3293.md $W/handover/$a3293.md")"
 contains 'an armed wrapped leg Live state still names is DRIFT (HIMMEL-3293)' "$d3293" 'livestate=DRIFT:N300,N301 '
-contains 'a Live-state leg outside the arm is unarmed, not drift, beside real drift (HIMMEL-3293)' "$d3293" 'legset=STALE:unarmed=N302'
+contains 'a Live-state leg outside the arm is unarmed, not drift, beside real drift (HIMMEL-3293)' "$d3293" 'workerset=STALE:unarmed=N302'
 # A tick armed with no --legs at all (the Monitors row's own example) can see no
 # lock: every Live-state leg is unarmed, none is drift, and every live leg surfaces.
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
@@ -1613,17 +1613,17 @@ printf '%s\n' '# console' '' '## Live state' '' \
     > "$W/handover/console.md"
 n3293="$(PATH="$W/bin-3293:$PATH" bash "$SUT" --legs '')"
 contains 'no --legs: every Live-state leg is unarmed, none is DRIFT (HIMMEL-3293)' "$n3293" 'livestate=ok '
-contains 'no --legs: legset names all three as unarmed (HIMMEL-3293)' "$n3293" 'legset=STALE:unarmed=N301+N302+N303'
+contains 'no --legs: legset names all three as unarmed (HIMMEL-3293)' "$n3293" 'workerset=STALE:unarmed=N301+N302+N303'
 contains 'no --legs: procs=unknown still surfaces the live legs (HIMMEL-3293)' "$n3293" 'procs=unknown,unwatched=N301+N302+N303 '
-# An arm that agrees with Live state reports legset=ok; no Live state section is unknown.
+# An arm that agrees with Live state reports workerset=ok; no Live state section is unknown.
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `N301:J-N301-0a1b2c:tok-301:130`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/console.md"
-contains 'an arm that agrees with Live state reads legset=ok (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'legset=ok'
+contains 'an arm that agrees with Live state reads workerset=ok (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'workerset=ok'
 contains 'an agreeing arm still surfaces the live legs outside it (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'procs=1,unwatched=N302+N303 '
 printf '%s\n' '# console' '' 'no Live state section in this doc at all' > "$W/handover/console.md"
-contains 'a console doc with no Live state section reads legset=unknown (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'legset=unknown'
+contains 'a console doc with no Live state section reads workerset=unknown (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'workerset=unknown'
 
 # --- a resolved FINDING must read differently from an open one.
 # The ticket's case (leg N219, 2026-09-20): a leg raised a FINDING, the console
@@ -1726,20 +1726,20 @@ contains 'READY held then a newer plain LIVE bullet reads LIVE (HIMMEL-6154)' "$
 # --- a lock queue-lock can neither attribute to this doc nor rule
 # out (status `held -- UNVERIFIED`, rc 11) reads UNVERIFIED -- never FREE, which
 # the console reads as "reclaim it", and never folded into WRAPPED by the leg's
-# own tail. RED control (pre-fix tick.sh): legs=N380:UNKNOWN.
+# own tail. RED control (pre-fix tick.sh): workers=N380:UNKNOWN.
 u3290="HIMMEL-3380-N380-unverified-2026-09-22-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$u3290.md"
-contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIMMEL-3290)' "$(bash "$SUT" --legs "$W/handover/$u3290.md" 2>/dev/null)" 'legs=N380:UNVERIFIED '
+contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIMMEL-3290)' "$(bash "$SUT" --legs "$W/handover/$u3290.md" 2>/dev/null)" 'workers=N380:UNVERIFIED '
 
 # --- a past-TTL lock whose owner is provably dead (status
 # `STALE-DEAD`, rc 12) reads STALE-DEAD and is NOT a held leg: it must not
 # fold into the FRESH/STALE held set. RED control (pre-fix tick.sh):
-# legs=N390:STALE.
+# workers=N390:STALE.
 d5541="HIMMEL-5541-N390-stale-dead-2026-10-01-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' > "$W/handover/$d5541.md"
 out5541="$(bash "$SUT" --legs "$W/handover/$d5541.md" 2>/dev/null)"
-contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 'legs=N390:STALE-DEAD '
-not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'legs=N390:STALE '
+contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 'workers=N390:STALE-DEAD '
+not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'workers=N390:STALE '
 
 # --- board=<ok|STALE:<age>|MISSING|skip> -- the console's progress
 # board (console-board.html, written by board.mjs next to the console doc) must be
@@ -1765,7 +1765,7 @@ write_console3361() {  # write_console3361 <last GO value> [extra Results bullet
 t3361() { PATH="$W/bin-3361:$PATH" bash "$SUT" --legs "$W/handover/$b3361.md" "$@"; }
 write_console3361 none
 contains 'a console with no board file reads board=MISSING (HIMMEL-3361)' "$(t3361)" ' board=MISSING'
-# The default fixture has no console doc at all: nothing to check, like legset=skip.
+# The default fixture has no console doc at all: nothing to check, like workerset=skip.
 contains 'no console doc reads board=skip (HIMMEL-3361)' "$out" ' board=skip'
 contains '--verbose labels the board (HIMMEL-3361)' "$(t3361 --verbose)" 'board: MISSING'
 # --emit-fp is the seam board.mjs reads: the tick line, then the fingerprint.
@@ -1821,7 +1821,7 @@ if command -v node >/dev/null 2>&1; then
         '- detail `N6:J-N6-0a1b2c9d:cachyos-x8664-pid1006:1006` under the block' \
         'queue: none' 'last GO: none' 'acked: none' '' '## Results' '- 12:00 DISPATCH' \
         > "$W/handover/console.md"
-    tickset3366="$(PATH="$W/bin-3361:$PATH" bash "$SUT" --doc "$W/handover/console.md" | sed -n 's/.* legset=STALE:unarmed=\([^ ;]*\).*/\1/p' | tr '+' '\n' | sort)"
+    tickset3366="$(PATH="$W/bin-3361:$PATH" bash "$SUT" --doc "$W/handover/console.md" | sed -n 's/.* workerset=STALE:unarmed=\([^ ;]*\).*/\1/p' | tr '+' '\n' | sort)"
     PATH="$W/bin-3361:$PATH" BOARD_TICK="$SUT" node "$HERE/board.mjs" --doc "$W/handover/console.md" --repo "$REPO" >/dev/null 2>&1
     boardset3366="$(grep -o 'data-label="[^"]*"' "$W/handover/console-board.html" | sed 's/^data-label="//; s/"$//' | sort)"
     contains 'the tick reads a label with _ . - as a leg (HIMMEL-3366)' "$tickset3366" 'N3_x.y-z'
@@ -1843,7 +1843,7 @@ printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' 
 mkcmdline 140 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3747-N640-closable-2026-09-27 work
 mk_pgrep_x "$W/bin-3747a" 140
 o3747a="$(PATH="$W/bin-3747a:$PATH" bash "$SUT" --legs "$W/handover/$w3747a.md")"
-contains 'a WRAPPED leg whose session process is still alive reads CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747a" 'legs=N640:CLOSABLE'
+contains 'a WRAPPED leg whose session process is still alive reads CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747a" 'workers=N640:CLOSABLE'
 
 # Control: the same WRAPPED doc, but no live session anywhere in the census --
 # the normal end of a leg once its window is actually gone. Must stay WRAPPED.
@@ -1851,7 +1851,7 @@ w3747b="HIMMEL-3747-N641-gone-2026-09-27-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$w3747b.md"
 mk_pgrep_x "$W/bin-3747b"
 o3747b="$(PATH="$W/bin-3747b:$PATH" bash "$SUT" --legs "$W/handover/$w3747b.md")"
-contains 'a WRAPPED leg whose session process is gone stays WRAPPED, not CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747b" 'legs=N641:WRAPPED'
+contains 'a WRAPPED leg whose session process is gone stays WRAPPED, not CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747b" 'workers=N641:WRAPPED'
 
 # Control: a fatal census (pgrep itself failing) must never claim CLOSABLE --
 # fail closed to WRAPPED, since "session process alive" cannot be proven.
@@ -1865,7 +1865,7 @@ exit 2
 STUB
 chmod +x "$W/bin-3747c/pgrep"
 o3747c="$(PATH="$W/bin-3747c:$PATH" bash "$SUT" --legs "$W/handover/$w3747c.md")"
-contains 'a fatal census must not promote a live-looking leg to CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747c" 'legs=N642:WRAPPED'
+contains 'a fatal census must not promote a live-looking leg to CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747c" 'workers=N642:WRAPPED'
 
 # --- a relaunched leg (-r<N> session suffix) reads CLOSABLE too, and
 # closable=<n> counts CLOSABLE legs whose doc has sat untouched past TICK_CLOSABLE_MIN
@@ -1876,11 +1876,11 @@ mkcmdline 142 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-5923
 mk_pgrep_x "$W/bin-5923a" 142
 touch -d '20 minutes ago' "$W/handover/$w5923a.md"
 o5923a="$(PATH="$W/bin-5923a:$PATH" bash "$SUT" --legs "$W/handover/$w5923a.md")"
-contains 'a WRAPPED leg running as <name>-r1 reads CLOSABLE (HIMMEL-5923)' "$o5923a" 'legs=N650:CLOSABLE'
+contains 'a WRAPPED leg running as <name>-r1 reads CLOSABLE (HIMMEL-5923)' "$o5923a" 'workers=N650:CLOSABLE'
 contains 'an old CLOSABLE leg is counted in closable=1 (HIMMEL-5923)' "$o5923a" ' closable=1'
 touch "$W/handover/$w5923a.md"
 o5923b="$(PATH="$W/bin-5923a:$PATH" bash "$SUT" --legs "$W/handover/$w5923a.md")"
-contains 'a freshly WRAPPED CLOSABLE leg is still CLOSABLE (HIMMEL-5923)' "$o5923b" 'legs=N650:CLOSABLE'
+contains 'a freshly WRAPPED CLOSABLE leg is still CLOSABLE (HIMMEL-5923)' "$o5923b" 'workers=N650:CLOSABLE'
 case "$o5923b" in *' closable='*) fail 'a fresh CLOSABLE leg must not be counted in closable= (HIMMEL-5923)' ;; *) pass 'a fresh CLOSABLE leg is not counted in closable= (HIMMEL-5923)' ;; esac
 o5923c="$(PATH="$W/bin-3747b:$PATH" bash "$SUT" --legs "$W/handover/$w3747b.md")"
 case "$o5923c" in *' closable='*) fail 'no CLOSABLE leg: closable= must be absent (HIMMEL-5923)' ;; *) pass 'no CLOSABLE leg: closable= is absent (HIMMEL-5923)' ;; esac
@@ -2292,11 +2292,11 @@ contains 'verbose labels metered balance' \
   "$(STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT" --verbose)" 'OpenRouter: 7.50:key-limit_remaining'
 
 contains 'OpenRouter tick bank is the lane verdict, not subscription usage' \
-  "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' bank=openrouter:SKIPPED-BANK '
+  "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' usage=openrouter:SKIPPED-BANK '
 contains 'OpenRouter leg marker selects lane verdict' \
-  "$(CADENCE_BANK_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' bank=openrouter:BANK-UNKNOWN '
+  "$(CADENCE_BANK_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' usage=openrouter:BANK-UNKNOWN '
 contains 'OpenRouter funded verdict surfaces without changing raw balance' \
-  "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' bank=openrouter:PROCEED '
+  "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' usage=openrouter:PROCEED '
 
 # --- spare=<pct>@<h>h ---------------------------------------------
 # tick reads usage-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
@@ -3051,7 +3051,7 @@ contains 'tmp= carries ! at 80 (HIMMEL-4316)' "$(tmp_run 80)" ' tmp=80!'
 contains 'tmp= carries ! above 80 (HIMMEL-4316)' "$(tmp_run 97)" ' tmp=97!'
 contains 'verbose labels tmp (HIMMEL-4316)' "$(tmp_run 42 --verbose)" 'tmp: 42'
 not_contains 'tmp= is absent when the dir is unreadable (HIMMEL-4316)' "$(bash "$SUT")" ' tmp='
-cw_keys="$(grep -m1 'for f in legs livestate' "$HERE/console-wait.sh")"
+cw_keys="$(grep -m1 'for f in workers livestate' "$HERE/console-wait.sh")"
 contains "console-wait's wake key list was found" "$cw_keys" ' vmrun '
 not_contains "tmp= is not in console-wait's wake key (HIMMEL-4316)" "$cw_keys" ' tmp'
 

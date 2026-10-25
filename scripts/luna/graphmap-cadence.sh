@@ -1590,7 +1590,7 @@ cmd_arm() {
     # Atomic runner publication: every runner .bat
     # and .vbs shim is emitted to a staged temp BESIDE its final path (same dir
     # -> same filesystem -> `mv` is an atomic rename, not a copy) and promoted
-    # only once complete, mirroring codex-sweep-cadence's publish discipline.
+    # only once complete.
     # Redirecting straight onto the FINAL path let a task firing concurrently
     # with a re-arm read a half-written shim; after the rename the final path
     # only ever holds a complete file (old or new). Shims promote first (an

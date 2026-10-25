@@ -250,6 +250,19 @@ contains 'a READY-TO-OPEN leg awaits the console' "$html" 'data-need="N6"'
 # tail === 'FINDING' before lostLock, so the lock text never rendered.
 contains 'a FINDING leg with a lost lock still shows the lock (issue #1336)' "$html" '<b>N12</b> FINDING — needs a ruling · lock STALE — lost or stale'
 contains 'the Live-state decisions: line renders as open operator decisions' "$html" 'widen the fleet cap to 20?'
+# The tick names the usage budget usage= and the worker set workers=; the older bank=/legs= still read.
+cat > "$W/bin/tick-stub-new" <<'STUB'
+#!/usr/bin/env bash
+"$(dirname "$0")/tick-stub" "$@" | sed -e 's/ bank=/ usage=/' -e 's/ legs=/ workers=/'
+STUB
+chmod +x "$W/bin/tick-stub-new"
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-new" TICK_ARGV_LOG="$W/argv-new.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOC" --repo "$W/repo" --out "$W/new-board.html" >/dev/null 2>"$W/stderr.log"
+contains 'a usage= tick field renders the usage budget' "$(cat "$W/new-board.html")" 'subscription usage budget 5h8/wk42/codex=?'
+contains 'a bank= tick field still renders the usage budget' "$html" 'subscription usage budget 5h8/wk42/codex=?'
+contains 'a workers= tick field still names the workers' "$(cat "$W/new-board.html")" 'data-label="N3" data-phase="READY"'
 # orphans-wip=: in-work tickets nobody holds are listed under the supervisor panel.
 cat > "$W/bin/tick-stub-ow" <<'STUB'
 #!/usr/bin/env bash
@@ -1340,7 +1353,7 @@ contains 'board-tracker.md: the tracker publish goes to the same haiku subagent'
 contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
 contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
 contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
-contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first console publish that uses it records the parent-context delta'
+contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first chief publish that uses it records the parent-context delta'
 # shellcheck disable=SC2016  # literal backticks in the needle
 lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
 # shellcheck disable=SC2016  # literal backticks in the needle

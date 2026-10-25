@@ -11,7 +11,7 @@ export type Resolved = {
   argv: string[]; dryArgv: string[]; consent: Consent; cwd: string; timeoutMs: number;
   effect: string; bank: string; rowIds: string[];
 };
-export type Ctx = { root: string; cadenceRoot: string; himmelctl: string; platform: string; plugins: readonly string[]; lanes: readonly string[] };
+export type Ctx = { root: string; cadenceRoot: string; himmelctl: string; plugins: readonly string[]; lanes: readonly string[] };
 type Spec = {
   targets: readonly string[];
   argv: (t: string, v: string | null) => string[];
@@ -42,7 +42,6 @@ const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "scripts/luna/pipeline-cadence.sh",
   graphmap: "scripts/luna/graphmap-cadence.sh",
   qmd: "scripts/luna/qmd-cadence.sh",
-  "codex-sweep": "scripts/cleanup/codex-sweep-cadence.sh",
   doctor: "scripts/doctor-cadence.sh",
 });
 // Shown in the consent text (critic F3); mirrors config-feed.js CADENCES[].cost.
@@ -50,7 +49,6 @@ const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "runs Claude-backed harvest/synthesize and draws the subscription bank",
   graphmap: "weekly claude-cli extraction; draws the subscription bank",
   qmd: "none (local qmd reindex)",
-  "codex-sweep": "none",
   doctor: "none",
 });
 
@@ -75,7 +73,7 @@ export function loadRegistries(root: string): { plugins: string[]; lanes: string
 
 export function buildTable(ctx: Ctx): Table {
   const h = (...a: string[]) => ["node", ctx.himmelctl, ...a];
-  const cadences = Object.keys(CADENCE_PATH).filter((c) => c !== "codex-sweep" || ctx.platform === "win32");
+  const cadences = Object.keys(CADENCE_PATH);
   const none = () => "none";
   const cadence = (verb: string): Spec => ({
     targets: cadences, argv: (t) => ["bash", `${ctx.cadenceRoot}/${CADENCE_PATH[t]}`, verb], consent: "typed",

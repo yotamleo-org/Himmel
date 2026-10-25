@@ -12,7 +12,7 @@ import { startServer } from "../server";
 const TOKEN = "t".repeat(64);
 const CANARY = "ghp_" + "Z9y8".repeat(8);
 const CADENCES = ["scripts/luna/pipeline-cadence.sh", "scripts/luna/graphmap-cadence.sh", "scripts/luna/qmd-cadence.sh",
-  "scripts/cleanup/codex-sweep-cadence.sh", "scripts/doctor-cadence.sh"];
+  "scripts/doctor-cadence.sh"];
 let dir = "", repo = "", home = "", cad = "", state = "", argvFile = "";
 const stops: (() => void)[] = [];
 
@@ -104,11 +104,9 @@ const bad400: [string, Record<string, unknown>][] = [
   ["config.lanes without a value", { action: "config.lanes", target: "l1" }],
   ["config.lanes with a value outside on/off", { action: "config.lanes", target: "l1", value: "yes" }],
   ["non-string target", { action: "cadence.arm", target: ["graphmap"] }],
-  ["codex-sweep off Windows (T4.6)", { action: "cadence.arm", target: "codex-sweep" }],
 ];
 for (const [name, body] of bad400) {
   test(`preview refuses ${name} with 400 and runs nothing`, async () => {
-    if (name.includes("codex-sweep") && process.platform === "win32") return;
     const port = boot();
     expect((await preview(port, body)).status).toBe(400);
     expect(recorded()).toEqual([]);

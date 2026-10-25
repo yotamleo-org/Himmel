@@ -40,7 +40,6 @@ try {
  for(const [suite,prefix] of [
   ['scripts/lib/test-git-test-env.sh','himmel-git-empty-template.'],
   ['scripts/hooks/test-trigger-cr-on-pr-create.sh','himmel-git-empty-template.'],
-  ['scripts/sync/test-repo-sync-cadence.sh','himmel-git-empty-template.'],
   ['scripts/handover/test-merge-on-green.sh','mog-'],
   ['scripts/test-lane-mirror-seed.sh','clean-sandbox.']
  ])test(suite+' EXIT removes every '+prefix+' fixture',()=>{

@@ -305,7 +305,10 @@ if (!tickLine) fp = '';
 const field = {};
 for (const m of tickLine.matchAll(/(?:^|\s)([a-z]+)=(\S*)/g)) field[m[1]] = m[2];
 const pairs = (v) => new Map((v || '').split(',').map((p) => p.split(':')).filter((p) => /^N\d+[a-z]*$/.test(p[0] || '')).map((p) => [p[0], p.slice(1).join(':')]));
-const locks = pairs(field.legs);
+// workers=, or legs= from an older tick.sh.
+const locks = pairs(field.workers ?? field.legs);
+// usage=, or bank= from an older tick.sh.
+const usage = field.usage ?? field.bank;
 const tails = pairs(field.tails);
 const [fleetLive, fleetCap] = (field.fleet || '').split('/').map(Number);
 const fleetOk = Number.isFinite(fleetLive) && Number.isFinite(fleetCap) && fleetCap > 0;
@@ -1056,7 +1059,7 @@ ${labelFailure ? `<p class="banner" data-banner="labels-unavailable">leg labels 
 <section>
 <h2>Fleet</h2>
 ${fleetOk ? `<div class="fleet" data-fleet="${fleetLive}/${fleetCap}">${fleetLive}<small>/${fleetCap} legs live</small></div>${idle ? `<div class="idle" data-idle="${idle}">${idle} idle slot${idle === 1 ? '' : 's'} — underfilled</div>` : ''}` : '<p class="none">fleet unavailable</p>'}
-<p class="sub">subscription usage budget ${safe(field.bank || '?')} · gql ${safe(field.gql || '?')}</p>
+<p class="sub">subscription usage budget ${safe(usage || '?')} · gql ${safe(field.gql || '?')}</p>
 ${bankLiftLine}
 </section>
 <section>
@@ -1188,7 +1191,7 @@ const legsOut = legRows.map(({ m }) => m).sort((a, b) => (needSet.has(b.leg) - n
 const ciRows = (openPrs || []).map((p) => (!(p.statusCheckRollup || []).length ? 'no_checks' : ciOf(p) === 'failing' ? 'red' : ciOf(p)));
 const ciOut = { open: ciRows.length, green: 0, pending: 0, no_checks: 0, red: 0 };
 for (const c of ciRows) ciOut[c] += 1;
-const pct = (re) => { const m = re.exec(field.bank || ''); return m ? Number(m[1]) : null; };
+const pct = (re) => { const m = re.exec(usage || ''); return m ? Number(m[1]) : null; };
 const bankOut = { week_pct: pct(/wk(\d+)/), five_hour_pct: pct(/5h(\d+)/) };
 const todayKey = stamp.slice(0, 10);
 const mergedToday = (mergedPrs || []).filter((p) => p.mergedAt && isoOf(Date.parse(p.mergedAt))?.slice(0, 10) === todayKey).length;

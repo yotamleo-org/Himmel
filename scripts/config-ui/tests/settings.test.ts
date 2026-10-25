@@ -93,7 +93,7 @@ test("Commit rules and Session switches are display-only; their home is ~/.himme
 });
 
 // The command and effect text are written once for the page; this holds them to the action table the server runs.
-const ctx = { root: "/r", cadenceRoot: "/h", himmelctl: "/h/scripts/himmelctl/bin.js", platform: "linux", plugins: ["p@himmel"], lanes: ["codex"] };
+const ctx = { root: "/r", cadenceRoot: "/h", himmelctl: "/h/scripts/himmelctl/bin.js", plugins: ["p@himmel"], lanes: ["codex"] };
 const table = buildTable(ctx);
 
 test("settingsCommand spells exactly the argv the server runs, for every action in the table", () => {

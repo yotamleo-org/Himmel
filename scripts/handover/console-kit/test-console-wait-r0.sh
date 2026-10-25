@@ -173,7 +173,7 @@ tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 lacks "(r0c) a lock-held refusal is not a leg-event wake" "$(cat "$WORK/r0c.out")" "WAKE leg-event"
 check "(r0c) it was asked again on the next sample" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
-check "(r0c) the standing refusal falls back to the tick wake" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0c.out")"
+check "(r0c) the standing refusal falls back to the tick wake" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0c.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0h) the same refusal text on a non-10 rc (a timeout) wakes at once -----
@@ -211,7 +211,7 @@ wait_hb "$I" || fail "(r0e) no baseline heartbeat"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED"
 wait_exit "$WPID"
-check "(r0e) the tick change wakes as before" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0e.out")"
+check "(r0e) the tick change wakes as before" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0e.out")"
 check "(r0e) leg-event never ran" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
@@ -234,7 +234,7 @@ printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED,N2:BLOCKED"
 wait_exit "$WPID"
 check "(r0f) N2's change wakes (rc 0)" "0" "$rc"
-check "(r0f) as a tick wake on tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0f.out")"
+check "(r0f) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0f.out")"
 contains "(r0f) the absorbed N1 wrap is in the digest" "$(cat "$WORK/r0f.out")" "absorbed since last wake: wraps=1 (N1)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
@@ -249,7 +249,7 @@ printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED,N2:BLOCKED"
 wait_exit "$WPID"
 check "(r0g) N2's change wakes (rc 0)" "0" "$rc"
-check "(r0g) as a tick wake on tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
+check "(r0g) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
 check "(r0g) the relay dropped N1 from the manifest" "N2" "$(jq -r '.legs[].label' "$M")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
@@ -263,7 +263,7 @@ printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED,N2:LIVE"; printf '%s closable=1\n' "$(cat "$STUB/tick.line")" > "$STUB/tick.line.new"; mv "$STUB/tick.line.new" "$STUB/tick.line"
 wait_exit "$WPID"
 check "(r0i) the closable rise wakes (rc 0)" "0" "$rc"
-check "(r0i) as a tick wake on closable" "WAKE tick changed=closable bank=PROCEED" "$(head -n 1 "$WORK/r0i.out")"
+check "(r0i) as a tick wake on closable" "WAKE tick changed=closable usage=PROCEED" "$(head -n 1 "$WORK/r0i.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (hd) holds= wakes when a leg ENTERS the set, once per hold --------------
@@ -283,7 +283,7 @@ wait_hb "$I" || fail "(hd) no baseline heartbeat"
 holds_line "N1:25m"
 wait_exit "$WPID"
 check "(hd) a leg entering the holds set ends the wait" "0" "$rc"
-check "(hd) the wake names holds" "WAKE tick changed=holds bank=PROCEED" "$(head -n 1 "$WORK/hd.out")"
+check "(hd) the wake names holds" "WAKE tick changed=holds usage=PROCEED" "$(head -n 1 "$WORK/hd.out")"
 
 # a re-arm with the hold standing, the age growing: no second wake
 start "$I" "$WORK/hd2.out" --doc "$D" --legs-from "$M"
@@ -294,7 +294,7 @@ check "(hd2) the same hold ageing does not wake again" "running" "$rc"
 holds_line "N1:31m,N2:22m"
 wait_exit "$WPID"
 check "(hd3) a second leg entering wakes" "0" "$rc"
-check "(hd3) the wake names holds" "WAKE tick changed=holds bank=PROCEED" "$(head -n 1 "$WORK/hd2.out")"
+check "(hd3) the wake names holds" "WAKE tick changed=holds usage=PROCEED" "$(head -n 1 "$WORK/hd2.out")"
 
 # a leg leaving the set (N2 stays) wakes nothing; neither does the set emptying
 start "$I" "$WORK/hd4.out" --doc "$D" --legs-from "$M"

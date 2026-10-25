@@ -2171,14 +2171,20 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   TRACKED_LIST=""
   if git -C "$CORPUS_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     TRACKED_LIST="$SCRATCH/.graphify-tracked-list"
+    # The intersect below is python3, not awk: BSD awk reads RS='\0' as "" (paragraph
+    # mode) and any stand-in byte would split a tracked name that contains it.
     git -C "$CORPUS_ROOT" ls-files -z > "$TRACKED_LIST" \
       || { echo "refresh-graph-map: git ls-files failed in $CORPUS_ROOT" >&2; exit 1; }
   fi
   ( cd "$CORPUS_ROOT" && _verify_fs_id "corpus-root" "." "$CORPUS_ID" \
       && find . -type f -name '*.md' "${CORPUS_FIND_EXCLUDES[@]}" -print0 \
       | if [ -n "$TRACKED_LIST" ]; then
-          awk -v RS='\0' -v ORS='\0' -v list="$TRACKED_LIST" \
-            'BEGIN { while ((getline p < list) > 0) t[p] = 1 } (substr($0, 3) in t)'
+          python3 -c 'import sys
+t = set(open(sys.argv[1], "rb").read().split(b"\0"))
+out = sys.stdout.buffer
+for p in sys.stdin.buffer.read().split(b"\0"):
+    if p and p[2:] in t:
+        out.write(p + b"\0")' "$TRACKED_LIST"
         else cat; fi \
       | tar --null -T - -cf - ) | ( cd "$SCRATCH" && tar -xf - ) \
     || { echo "refresh-graph-map: corpus scan/copy failed or refused (see output above)" >&2; exit 1; }

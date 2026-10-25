@@ -96,10 +96,10 @@ EOF
 
 # cadence-registry.json fixture — mirrors the repo's
 # real scripts/himmelctl/lib/cadence-registry.json id set (pipeline/qmd/
-# graphmap/codex-sweep) so splitCadencesByRegistry() has a real registry to
+# graphmap) so splitCadencesByRegistry() has a real registry to
 # filter profile.cadences against instead of hitting the read-failure branch.
 cat > "$FIX_REPO/scripts/himmelctl/lib/cadence-registry.json" <<'EOF'
-{ "cadences": [ { "id": "pipeline" }, { "id": "qmd" }, { "id": "graphmap" }, { "id": "codex-sweep" } ] }
+{ "cadences": [ { "id": "pipeline" }, { "id": "qmd" }, { "id": "graphmap" } ] }
 EOF
 
 # is_himmel_dev_repo() fixture — the real scripts/guardrails/lib.sh is not
@@ -322,7 +322,7 @@ const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const c = j.profile.cadences;
 const problems = [];
 if (c.pipeline !== 'armed') problems.push('pipeline should be armed (FetchHealth present), got ' + c.pipeline);
-for (const id of ['graphmap','qmd','codex-sweep']) {
+for (const id of ['graphmap','qmd']) {
   if (c[id] !== 'off') problems.push(id + ' should be off, got ' + c[id]);
 }
 console.log(problems.join('|'));
@@ -331,7 +331,7 @@ if [ -z "$cadenceCheck" ]; then pass "case e: cadence armed/off reflects the stu
 
 # ── case oo: profile.cadences carries ONLY cadence-registry.json ids
 # — a non-registry cadence (drift-fix,
-# ggs, repo-sync) must never appear in profile.cadences even when armed; it
+# ggs) must never appear in profile.cadences even when armed; it
 # moves to delta.cadences.nonRegistryCadences instead, and determinism holds
 # (repeat capture -> identical nonRegistryCadences). ────────────────────────
 registryFilterCheck=$("$node_bin" -e "
@@ -339,17 +339,16 @@ const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const c = j.profile.cadences;
 const nrc = j.delta.cadences.nonRegistryCadences;
 const problems = [];
-for (const id of ['drift-fix','ggs','repo-sync']) {
+for (const id of ['drift-fix','ggs']) {
   if (id in c) problems.push(id + ' must not appear in profile.cadences (non-registry id), got ' + JSON.stringify(c));
 }
 if (nrc['drift-fix'] !== 'armed') problems.push('nonRegistryCadences[\"drift-fix\"] should be armed, got ' + nrc['drift-fix']);
 if (nrc['ggs'] !== 'off') problems.push('nonRegistryCadences[\"ggs\"] should be off, got ' + nrc['ggs']);
-if (nrc['repo-sync'] !== 'off') problems.push('nonRegistryCadences[\"repo-sync\"] should be off, got ' + nrc['repo-sync']);
 if (j.delta.cadences.registryReadFailed !== false) problems.push('registryReadFailed should be false when cadence-registry.json reads cleanly, got ' + j.delta.cadences.registryReadFailed);
 console.log(problems.join('|'));
 " <<< "$outA")
 if [ -z "$registryFilterCheck" ]; then
-  pass "case oo: profile.cadences carries ONLY registry ids; drift-fix/ggs/repo-sync move to delta.cadences.nonRegistryCadences"
+  pass "case oo: profile.cadences carries ONLY registry ids; drift-fix/ggs move to delta.cadences.nonRegistryCadences"
 else
   fail "case oo: cadence registry filter" "$registryFilterCheck"
 fi
@@ -674,14 +673,14 @@ fi
 commentedCronOut=$("$node_bin" --input-type=module -e "
 import { pathToFileURL } from 'node:url';
 const { matchCadenceGroups, filterCommentedLines, EXTRA_KNOWN_TASKS } = await import(pathToFileURL(process.env.CAPTURE_SCRIPT_PATH).href);
-const text = '# 0 3 * * * HIMMEL-DriftFix --disabled-comment\n  # 0 4 * * * HIMMEL-CodexOrphanSweep --indented-comment\n# HIMMEL-BootPreflight --commented-out-extra-task\n0 5 * * * HIMMEL-RepoSync\n0 6 * * * HIMMEL-ForkResync --active-extra-task\n';
+const text = '# 0 3 * * * HIMMEL-DriftFix --disabled-comment\n  # 0 4 * * * HIMMEL-Qmd-Reindex --indented-comment\n# HIMMEL-BootPreflight --commented-out-extra-task\n0 5 * * * HIMMEL-GraphMap-Refresh\n0 6 * * * HIMMEL-ForkResync --active-extra-task\n';
 const { cadences } = matchCadenceGroups(text);
 const activeLines = filterCommentedLines(text);
 const extraArmedTasks = EXTRA_KNOWN_TASKS.filter((n) => activeLines.some((line) => line.includes(n))).sort();
 const problems = [];
 if (cadences['drift-fix'] !== 'off') problems.push('drift-fix should be off (commented-out line), got ' + cadences['drift-fix']);
-if (cadences['codex-sweep'] !== 'off') problems.push('codex-sweep should be off (indented commented-out line), got ' + cadences['codex-sweep']);
-if (cadences['repo-sync'] !== 'armed') problems.push('repo-sync should be armed (a real active line), got ' + cadences['repo-sync']);
+if (cadences['qmd'] !== 'off') problems.push('qmd should be off (indented commented-out line), got ' + cadences['qmd']);
+if (cadences['graphmap'] !== 'armed') problems.push('graphmap should be armed (a real active line), got ' + cadences['graphmap']);
 if (extraArmedTasks.includes('HIMMEL-BootPreflight')) problems.push('HIMMEL-BootPreflight should not be in extraArmedTasks (commented-out line), got ' + JSON.stringify(extraArmedTasks));
 if (!extraArmedTasks.includes('HIMMEL-ForkResync')) problems.push('HIMMEL-ForkResync should be in extraArmedTasks (active line), got ' + JSON.stringify(extraArmedTasks));
 console.log(problems.join('|'));

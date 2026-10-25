@@ -18,7 +18,7 @@ import { loadRegistries } from "../actions";
 const CHECKOUT = resolve(import.meta.dir, "../../..");
 const BIN = join(CHECKOUT, "scripts/himmelctl/bin.js");
 const TOKEN = "t".repeat(64);
-const LINUX_CADENCES = ["pipeline", "qmd", "graphmap", "doctor"]; // codex-sweep is Windows-only: a read-only row elsewhere
+const LINUX_CADENCES = ["pipeline", "qmd", "graphmap", "doctor"];
 const CADENCE_SCRIPT: Record<string, string> = {
   pipeline: "scripts/luna/pipeline-cadence.sh", qmd: "scripts/luna/qmd-cadence.sh",
   graphmap: "scripts/luna/graphmap-cadence.sh", doctor: "scripts/doctor-cadence.sh",

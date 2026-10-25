@@ -2,10 +2,10 @@
 # scripts/lib/test-cadence-format.sh — unit tests for cadence-format.sh.
 #
 # Covers cadence_cmd_escape, the shared .bat value escaper the
-# four cadence emitters (pipeline / graphmap / qmd / codex-sweep) now share.
+# cadence emitters (pipeline / graphmap / qmd) share.
 # The per-emitter arm tests assert the escape end-to-end through a generated
 # .bat; this suite pins the transform itself, including the characters it must
-# deliberately LEAVE ALONE — that half is what the four deleted copies got
+# deliberately LEAVE ALONE — that half is what the deleted per-emitter copies got
 # wrong, and it is invisible in a test that only checks what changes.
 #
 # cadence_runner_stamp already has coverage in test-himmel-update-hermes.sh

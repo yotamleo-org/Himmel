@@ -119,7 +119,7 @@ summary() {
     [ "$FAIL" -gt 0 ] && exit 1 || exit 0
 }
 
-TMP_ROOT=$(mktemp -d)
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/graphmap-cadence-test.XXXXXX") || exit 1
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 # Arms record a provenance row; never into the operator's ledger.
 export HIMMEL_PROVENANCE_DIR="$TMP_ROOT/provenance"

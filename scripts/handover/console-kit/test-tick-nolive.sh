@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-tick-nolive.sh — tick.sh reads a leg that never went LIVE as
 # `<N>:NOLIVE` and a leg whose session transcript ends in a `continued-in`
-# record as `<N>:FORKED`; console-wait.sh then wakes on the legs= change.
+# record as `<N>:FORKED`; console-wait.sh then wakes on the workers= change.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.
 # Its own file because test-tick.sh is being edited by another open PR.
 #
@@ -86,18 +86,18 @@ run_from() { bash "$SUT" --legs-from "$1" 2>/dev/null; }
 old="$(mkleg 901-N901-old)"; young="$(mkleg 902-N902-young)"
 m="$(manifest "$old:20" "$young:2")"
 out="$(run_from "$m")"
-check 'a leg with no lock and no LIVE bullet 20 min after its manifest add reads NOLIVE' 'N901:NOLIVE,N902:FREE' "$(field legs "$out")"
+check 'a leg with no lock and no LIVE bullet 20 min after its manifest add reads NOLIVE' 'N901:NOLIVE,N902:FREE' "$(field workers "$out")"
 check 'tails= still says ? for the NOLIVE leg' 'N901:?,N902:?' "$(field tails "$out")"
 
 m="$(manifest "$old:11")"
-check 'past the 10 min default reads NOLIVE' 'N901:NOLIVE' "$(field legs "$(run_from "$m")")"
+check 'past the 10 min default reads NOLIVE' 'N901:NOLIVE' "$(field workers "$(run_from "$m")")"
 m="$(manifest "$old:9")"
-check 'under the 10 min default stays FREE' 'N901:FREE' "$(field legs "$(run_from "$m")")"
+check 'under the 10 min default stays FREE' 'N901:FREE' "$(field workers "$(run_from "$m")")"
 export TICK_NOLIVE_MIN=5
 m="$(manifest "$old:6")"
-check 'TICK_NOLIVE_MIN=5 moves the threshold (6 min is NOLIVE)' 'N901:NOLIVE' "$(field legs "$(run_from "$m")")"
+check 'TICK_NOLIVE_MIN=5 moves the threshold (6 min is NOLIVE)' 'N901:NOLIVE' "$(field workers "$(run_from "$m")")"
 m="$(manifest "$old:4")"
-check 'TICK_NOLIVE_MIN=5 (4 min is still FREE)' 'N901:FREE' "$(field legs "$(run_from "$m")")"
+check 'TICK_NOLIVE_MIN=5 (4 min is still FREE)' 'N901:FREE' "$(field workers "$(run_from "$m")")"
 unset TICK_NOLIVE_MIN
 
 # --- later states are never NOLIVE ------------------------------------------
@@ -108,17 +108,17 @@ bl="$(mkleg 906-N906-blocked '- 10:00 BLOCKED — q')"
 fresh="$(mkleg 910-N910-held)"
 m="$(manifest "$wr:30" "$rd:30" "$lv:30" "$bl:30" "$fresh:30")"
 out="$(run_from "$m")"
-check 'WRAPPED / READY / LIVE / BLOCKED / held-lock legs are never NOLIVE' 'N903:WRAPPED,N904:FREE,N905:FREE,N906:FREE,N910:FRESH' "$(field legs "$out")"
+check 'WRAPPED / READY / LIVE / BLOCKED / held-lock legs are never NOLIVE' 'N903:WRAPPED,N904:FREE,N905:FREE,N906:FREE,N910:FRESH' "$(field workers "$out")"
 
 # --- start time fallbacks: launch log armed line, then doc mtime ------------
 nm="$(mkleg 907-N907-nomanifest)"
 touch -d '30 minutes ago' "$nm"
-check 'no manifest, no launch log: the doc mtime starts the clock (old = NOLIVE)' 'N907:NOLIVE' "$(field legs "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
+check 'no manifest, no launch log: the doc mtime starts the clock (old = NOLIVE)' 'N907:NOLIVE' "$(field workers "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
 touch "$nm"
-check 'no manifest, no launch log: a fresh doc is still FREE' 'N907:FREE' "$(field legs "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
+check 'no manifest, no launch log: a fresh doc is still FREE' 'N907:FREE' "$(field workers "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
 ts="$(/bin/date -d '40 minutes ago' +%F_%T)"  # gnu-ok: Linux-only kit
 printf '%s armed: name=HIMMEL-9907-N907-nomanifest doc=%s signal=x deadline=y role=leg\n' "$ts" "$nm" > "$W/console-work/chain/a.launch.log"
-check 'the launch log armed: line (older than the fresh doc) starts the clock' 'N907:NOLIVE' "$(field legs "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
+check 'the launch log armed: line (older than the fresh doc) starts the clock' 'N907:NOLIVE' "$(field workers "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
 rm -f "$W/console-work/chain/a.launch.log"
 
 # --- FORKED ------------------------------------------------------------------
@@ -128,30 +128,30 @@ printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-9909-N909-notforked"
 # a transcript that only MENTIONS the name is not a custom-title link: never guessed
 printf '%s\n' '{"type":"user","text":"HIMMEL-9911-N911-notranscript"}' '{"type":"continued-in","sessionId":"s4"}' > "$W/projects/p/s4.jsonl"
 m="$(manifest "$fk:1" "$nf:1" "$nt:1")"
-check 'a leg whose custom-title transcript ends in continued-in reads FORKED at once; the others are untouched' 'N908:FORKED,N909:FREE,N911:FREE' "$(field legs "$(run_from "$m")")"
+check 'a leg whose custom-title transcript ends in continued-in reads FORKED at once; the others are untouched' 'N908:FORKED,N909:FREE,N911:FREE' "$(field workers "$(run_from "$m")")"
 m="$(manifest "$fk:30" "$nf:30" "$nt:30")"
-check 'FORKED wins over NOLIVE; a missing transcript is skipped (NOLIVE by age, never FORKED)' 'N908:FORKED,N909:NOLIVE,N911:NOLIVE' "$(field legs "$(run_from "$m")")"
+check 'FORKED wins over NOLIVE; a missing transcript is skipped (NOLIVE by age, never FORKED)' 'N908:FORKED,N909:NOLIVE,N911:NOLIVE' "$(field workers "$(run_from "$m")")"
 # a continuation under the same title that does not end in continued-in is alive
 printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-9908-N908-forked","sessionId":"s2"}' '{"type":"assistant","sessionId":"s2"}' > "$W/projects/p/s2.jsonl"
 touch -d '1 minute ago' "$W/projects/p/s1.jsonl"
-check 'the newest transcript under the title decides: a live continuation is not FORKED' 'N908:NOLIVE' "$(field legs "$(run_from "$(manifest "$fk:30")")")"
+check 'the newest transcript under the title decides: a live continuation is not FORKED' 'N908:NOLIVE' "$(field workers "$(run_from "$(manifest "$fk:30")")")"
 rm -f "$W/projects/p/s2.jsonl"
 # a forked leg that has since wrapped reads WRAPPED
 printf '%s\n' '- 10:00 WRAPPED — done' >> "$fk"
-check 'a wrapped leg is never FORKED' 'N908:WRAPPED' "$(field legs "$(run_from "$(manifest "$fk:30")")")"
+check 'a wrapped leg is never FORKED' 'N908:WRAPPED' "$(field workers "$(run_from "$(manifest "$fk:30")")")"
 
 # a leg that has written any marker bullet is never relabelled FORKED
 mk="$(mkleg 912-N912-markerfork '- 10:00 LIVE — working')"
 printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-9912-N912-markerfork","sessionId":"s5"}' '{"type":"continued-in","sessionId":"s5"}' > "$W/projects/p/s5.jsonl"
-check 'a LIVE leg whose transcript ended in continued-in is not relabelled FORKED' 'N912:FREE' "$(field legs "$(run_from "$(manifest "$mk:1")")")"
+check 'a LIVE leg whose transcript ended in continued-in is not relabelled FORKED' 'N912:FREE' "$(field workers "$(run_from "$(manifest "$mk:1")")")"
 # a resumed session appends records after continued-in: not forked
 rs="$(mkleg 913-N913-resumed)"
 printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-9913-N913-resumed","sessionId":"s6"}' '{"type":"continued-in","sessionId":"s6"}' '{"type":"assistant","sessionId":"s6"}' '{"type":"cost-state","sessionId":"s6"}' > "$W/projects/p/s6.jsonl"
-check 'a transcript that resumed after continued-in is not FORKED' 'N913:FREE' "$(field legs "$(run_from "$(manifest "$rs:1")")")"
+check 'a transcript that resumed after continued-in is not FORKED' 'N913:FREE' "$(field workers "$(run_from "$(manifest "$rs:1")")")"
 
 # --- threshold parsing and launch-log ordering --------------------------------
 export TICK_NOLIVE_MIN=08
-check 'a leading-zero TICK_NOLIVE_MIN is decimal, not an octal error (9 min is NOLIVE)' 'N901:NOLIVE' "$(field legs "$(run_from "$(manifest "$old:9")")")"
+check 'a leading-zero TICK_NOLIVE_MIN is decimal, not an octal error (9 min is NOLIVE)' 'N901:NOLIVE' "$(field workers "$(run_from "$(manifest "$old:9")")")"
 unset TICK_NOLIVE_MIN
 ln="$(mkleg 914-N914-logorder)"
 touch -d '30 minutes ago' "$ln"
@@ -159,7 +159,7 @@ touch -d '30 minutes ago' "$ln"
     printf '%s armed: name=HIMMEL-9914-N914-logorder doc=%s signal=x deadline=y role=leg\n' "$(/bin/date -d '40 minutes ago' +%F_%T)" "$ln"  # gnu-ok: Linux-only kit
     printf '%s armed: name=HIMMEL-9914-N914-logorder doc=%s signal=x deadline=y role=leg\n' "$(/bin/date -d '2 minutes ago' +%F_%T)" "$ln"  # gnu-ok: Linux-only kit
 } > "$W/console-work/chain/b.launch.log"
-check 'the newest armed: timestamp wins over an older one (2 min ago is FREE)' 'N914:FREE' "$(field legs "$(bash "$SUT" --legs "$ln" 2>/dev/null)")"
+check 'the newest armed: timestamp wins over an older one (2 min ago is FREE)' 'N914:FREE' "$(field workers "$(bash "$SUT" --legs "$ln" 2>/dev/null)")"
 rm -f "$W/console-work/chain/b.launch.log"
 
 # --- the waiter wakes when legs= moves FREE -> NOLIVE / FREE -> FORKED -------
@@ -187,9 +187,9 @@ waiter_case() { # <name> <baseline legs> <new legs>
     tick_line "$3"
     while [ "$n" -lt 80 ] && kill -0 "$pid" 2>/dev/null; do sleep 0.1; n=$((n+1)); done
     if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; fail "$1: waiter did not wake"; else wait "$pid"; fi
-    case "$(cat "$W/w.out")" in *'WAKE tick changed=legs'*) pass "$1" ;; *) fail "$1 (out: $(cat "$W/w.out"))" ;; esac
+    case "$(cat "$W/w.out")" in *'WAKE tick changed=workers'*) pass "$1" ;; *) fail "$1 (out: $(cat "$W/w.out"))" ;; esac
 }
-waiter_case 'the waiter wakes with changed=legs when a silent-baseline leg turns NOLIVE' 'N1:FREE' 'N1:NOLIVE'
+waiter_case 'the waiter wakes with changed=workers when a silent-baseline leg turns NOLIVE' 'N1:FREE' 'N1:NOLIVE'
 waiter_case 'the waiter wakes when a leg turns FORKED' 'N1:FREE' 'N1:FORKED'
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
