@@ -273,7 +273,8 @@ WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?
 kill "$WATCHDOG_PID" 2>/dev/null
-trap - TERM INT HUP
+# a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
+trap '' TERM INT HUP
 
 # --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---
 COST="$(node "$REPO/scripts/api-lane/outcome.mjs" "$OUT")"
