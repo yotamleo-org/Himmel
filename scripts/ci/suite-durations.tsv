@@ -324,6 +324,7 @@ scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
 scripts/eval/test-profile-openings.sh	0
+scripts/eval/test-readme-glossary.sh	0
 scripts/eval/test-review-page.sh	1
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0

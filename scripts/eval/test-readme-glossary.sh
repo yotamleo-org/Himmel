@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# scripts/eval/test-readme-glossary.sh - the "What each number means" table in scripts/eval/README.md
+# has a row for every number the evals report, under its display name and its unchanged ledger key.
+# No model call, no network, no bank.
+#  1. each ledger key is still written by its producer;
+#  2. the README table has a row per number: the display name in the first cell, the key in the second;
+#  3. the check fails on a README with one row removed, and on one where a renamed display name is reverted.
+#
+# check() evals its condition, so the single quotes are deliberate.
+# shellcheck disable=SC2016,SC2034
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
+README="$HERE/README.md"
+HEADING="## What each number means"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/readme-glossary-test.XXXXXX")" || { echo "test-readme-glossary: mktemp -d failed" >&2; exit 1; }
+trap 'rm -rf "$TMP"' EXIT
+PASS=0; FAIL=0
+ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
+bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
+check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
+
+# display name <TAB> ledger key as the README writes it <TAB> producer <TAB> the string the producer writes
+NUMBERS="$TMP/numbers.tsv"
+cat >"$NUMBERS" <<'EOF'
+pass@k	pass_at_k	scripts/eval/lib/eval_runs.py	"pass_at_k"
+pass^k	pass_pow_k	scripts/eval/lib/eval_runs.py	"pass_pow_k"
+cost per accepted run	cost_per_accepted	scripts/eval/lib/eval_runs.py	"cost_per_accepted"
+headroom	_headroom	scripts/eval/eval-compare.json	"_headroom"
+test-first adherence	red_before_green_rate	scripts/eval/lib/eval_runs.py	"red_before_green"
+claims-backed rate	verify_before_claim_rate	scripts/eval/lib/eval_runs.py	"verify_before_claim"
+denial recovery rate	denial_recovery_rate	scripts/eval/lib/eval_runs.py	"denial_recovery_rate"
+identical retries after a denial	identical_denied_retries	scripts/eval/lib/eval_runs.py	"identical_denied_retries"
+false-refusal share	over_deny_share	scripts/eval/friction/friction.py	'over_deny_share'
+detection rate	<critic>.recall	scripts/eval/review-panel/score.py	"recall"
+planted-bug precision	<critic>.precision	scripts/eval/review-panel/score.py	"precision"
+false-alarm rate	<critic>.fp_rate	scripts/eval/review-panel/score.py	"fp_rate"
+detection floor	paired	scripts/eval/eval-compare	detection floor
+escape rate	escape_rate	scripts/eval/escapes.py	"escape_rate"
+proof-first share (self-reported)	pdd.pct	scripts/eval/worker-digest/pdd_share.py	("pdd"
+Wilson interval	ci_method	scripts/eval/worker-digest/pdd_share.py	ci_method="wilson"
+review precision	precision_pct	scripts/cr/evals-page-gen.py	"precision_pct"
+cache read share	read_ratio_pct	scripts/cr/evals-page-gen.py	"read_ratio_pct"
+EOF
+
+# misses <readme>: prints one line per number with no row (display name in cell 1, `key` in cell 2).
+misses() {
+    awk -F'\t' -v h="$HEADING" '
+        FNR == NR { want[++n] = $1; key[n] = $2; next }
+        $0 == h { on = 1; next }
+        on && /^## / { on = 0 }
+        on && /^\|/ {
+            split($0, c, "|"); d = c[2]; gsub(/^ +| +$/, "", d)
+            have[d] = have[d] c[3]
+        }
+        END {
+            for (i = 1; i <= n; i++)
+                if (!(want[i] in have) || index(have[want[i]], "`" key[i] "`") == 0)
+                    print want[i] " (" key[i] ")"
+        }' "$NUMBERS" "$1"
+}
+
+echo "1. each ledger key is still written by its producer"
+while IFS=$'\t' read -r disp _ prod needle; do
+    check "$disp: $prod writes $needle" 'grep -qF -- "$needle" "$REPO/$prod"'
+done <"$NUMBERS"
+
+echo "2. the README table has a row per number"
+check "the README has the heading \"$HEADING\"" 'grep -qxF -- "$HEADING" "$README"'
+misses "$README" >"$TMP/miss.txt"
+check "every number has a row with its display name and ledger key (missing: $(paste -sd, "$TMP/miss.txt"))" '[ ! -s "$TMP/miss.txt" ]'
+
+echo "3. the check catches a removed row and a reverted rename"
+grep -vF -- '| false-refusal share |' "$README" >"$TMP/no-row.md"
+check "a README without the false-refusal share row is caught" 'misses "$TMP/no-row.md" | grep -qxF -- "false-refusal share (over_deny_share)"'
+sed 's/^| test-first adherence |/| red before green |/' "$README" >"$TMP/reverted.md"
+check "a README whose test-first adherence row is named red before green again is caught" 'misses "$TMP/reverted.md" | grep -qxF -- "test-first adherence (red_before_green_rate)"'
+
+echo "test-readme-glossary: $PASS passed, $FAIL failed"
+[ "$FAIL" = 0 ]
