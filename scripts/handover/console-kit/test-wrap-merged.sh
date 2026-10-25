@@ -415,5 +415,20 @@ printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
 WM_FOCUS="$W/bin/focus-hang" WM_FOCUS_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "26b: a hung focus refresh never fails the wrap" "$rc" 0
 contains "26b: it is cut at the timeout" "$out" "focus=FAILED:timeout"
+# 26c. focus-version: auto, or no line beside a release: line, hands the page to focus-refresh
+for opt in 'focus-version: auto' ''; do
+    fixture
+    printf 'tracker: https://example.invalid/t\nrelease: R1\n' >> "$CONSOLE"
+    [ -z "$opt" ] || printf '%s\n' "$opt" >> "$CONSOLE"
+    WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    contains "26c: [$opt] focus refresh runs" "$calls" "focus --doc $CONSOLE"
+    contains "26c: [$opt] prints focus=ok" "$out" "focus=ok"
+    contains "26c: [$opt] the all-versions page is not rendered" "$out" "tracker=skip:focus"
+done
+fixture
+printf 'tracker: https://example.invalid/t\nrelease: R1\nfocus-version: none\n' >> "$CONSOLE"
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+contains "26c: none beside a release: line still prints focus=skip" "$out" "focus=skip"
+lacks "26c: and runs nothing" "$calls" "focus --doc"
 unset WM_FOCUS
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }

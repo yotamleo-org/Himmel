@@ -37,30 +37,37 @@ const copyPassthrough = {
   },
 };
 
-// Mermaid blocks are emitted as <pre class="mermaid">; the renderer is a lazy chunk fetched only on pages that have one.
-// A render replaces the source with an SVG, so the source is kept on the node to redraw after a theme toggle.
-const mermaid = {
-  name: 'mermaid-inject',
+// pele's colours and font, pointed at Starlight's tokens. The tokens swap on [data-theme], so a theme toggle
+// recolours a drawn diagram without a redraw.
+const PELE_THEME = [
+  '--pele-bg: var(--sl-color-bg)',
+  '--pele-fg: var(--sl-color-text)',
+  '--pele-muted: var(--sl-color-gray-3)',
+  '--pele-line: var(--sl-color-gray-3)',
+  '--pele-surface: var(--sl-color-accent-low)',
+  '--pele-surface-alt: var(--sl-color-gray-6)',
+  '--pele-border: var(--sl-color-gray-5)',
+  '--pele-accent: var(--sl-color-accent)',
+  '--pele-font: var(--sl-font)',
+  '--pele-radius: 6px',
+].join(';');
+
+// Mermaid blocks are emitted as <pre class="mermaid">; pele is a lazy chunk fetched only on pages that have one.
+// Each block is swapped for a box pele draws into; on a render error the source goes back on the page.
+const diagrams = {
+  name: 'pele-inject',
   hooks: {
     'astro:config:setup': ({ injectScript }) => {
       injectScript('page', `
-if (document.querySelector('pre.mermaid')) import('mermaid').then(({ default: mermaid }) => {
-  const nodes = [...document.querySelectorAll('pre.mermaid')];
-  for (const n of nodes) n.dataset.src = n.textContent;
-  const isDark = () => {
-    const t = document.documentElement.dataset.theme;
-    return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  };
-  let queue = Promise.resolve();
-  const render = () => {
-    queue = queue.then(async () => {
-      for (const n of nodes) { n.textContent = n.dataset.src; n.removeAttribute('data-processed'); }
-      mermaid.initialize({ startOnLoad: false, theme: isDark() ? 'dark' : 'default' });
-      await mermaid.run({ nodes });
-    }).catch(console.error);
-  };
-  render();
-  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+const blocks = document.querySelectorAll('pre.mermaid');
+if (blocks.length) import('pele/lazy').then(({ mountAsync }) => {
+  for (const pre of blocks) {
+    const box = document.createElement('div');
+    box.className = 'pele-diagram';
+    box.style.cssText = ${JSON.stringify(PELE_THEME)};
+    pre.replaceWith(box);
+    mountAsync(box, pre.textContent).catch((e) => { box.replaceWith(pre); console.error(e); });
+  }
 });
 `);
     },
@@ -226,7 +233,7 @@ export default defineConfig({
         },
       ],
     }),
-    mermaid,
+    diagrams,
     copyPassthrough,
   ],
 });

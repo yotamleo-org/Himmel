@@ -10,13 +10,12 @@ Complete checklist for getting a new machine to full working state.
 | Tier | Platforms | What it promises |
 |---|---|---|
 | **Supported** | Linux, macOS | Linux is CI-gated on every PR (required check) — [green `bun-suites` runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain); adopter round trip verified on both. macOS CI runs on the nightly only (not a per-PR required check); its nightly is green — [macos-cadence nightly runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule) (8/8 shards, 0 red suites), with the [`macos-cadence`](../../.github/workflows/macos-cadence.yml) workflow as the ongoing check. |
-| **Not supported** | Windows (Git Bash), WSL | Code paths present but unverified, not CI-gated per-PR; unsupported. An operator-requested `os-verify` dispatch (`gh workflow run os-verify.yml --ref <branch> -f os=windows`; runs the impacted suites only — see [`docs/internals/testing.md`](../internals/testing.md)) remains available. Bug reports welcome; no guarantee. |
+| **Not supported** | Windows, WSL included | Dropped (HIMMEL-5729). |
 
 **Install channels:** release tarball (`himmel-<version>-linux.tar.gz` + `.sha256`, Linux): **supported**, steps in the [README](../../README.md#quickstart); `git clone` + `himmelctl install`: supported; plugin marketplace (`marketplace/plugins/*`): supported, through the Claude Code plugin marketplace (`claude plugin install/update/uninstall`), not `himmelctl`; AUR: **landed** (recipe in [`packaging/aur/`](../../packaging/aur/)); brew: not supported, reopens only if a shared macOS/Linux tap becomes worthwhile; nix / deb / rpm: not supported, reopen on user-driven demand. The tarball's fresh-guest run is green.
 
-Windows sections below are retained for reference, but Windows is not
-supported and nothing in them is CI-verified per-PR. See [`docs/internals/harness-compat.md`](../internals/harness-compat.md)
-for the same tiering applied to hook/skill/agent compatibility.
+See [`docs/internals/harness-compat.md`](../internals/harness-compat.md) for the
+same tiering applied to hook/skill/agent compatibility.
 
 ### Verified floors, by platform
 
@@ -29,7 +28,6 @@ value that isn't backed by one of these links.
 |---|---|---|---|---|---|---|
 | Linux (Ubuntu/Debian/Arch/Fedora) | bash 3.2+ | `unverified` — no minimum declared or enforced anywhere in the repo | **2.31**, not the declared 2.30 (`git rev-parse --path-format` needs 2.31+; correcting the declared floor in this doc and `scripts/install/deps.json` is a known follow-up) | node 18+ to build, 20.17+ to push · bun 1.0+ | tarball, `git clone` + `himmelctl install`, plugin marketplace, AUR | [green CI on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain) — per-PR required check |
 | macOS | bash 3.2 (4+ via `brew install bash`) | `unverified` | same real/declared gap as Linux | node 18+ / bun 1.0+ (same floors; not build-verified on this platform — see Proof) | `git clone` + `himmelctl install`, plugin marketplace (no tarball — Linux-only artifact) | [green macos-cadence nightly runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule) — 8/8 shards, 0 red suites, at `ba4192922` (earlier reds on 2026-09-24, 09-25 and 09-26). Floors above stay as declared: the run proves the suites pass, not a build-verified node/bun floor. |
-| Windows (Git Bash / WSL) — not supported | Git Bash 4.4+ | `unverified` | same real/declared gap as Linux | node 18+ / bun 1.0+ (same floors; not build-verified on this platform — see Proof) | `git clone` + `himmelctl install`, plugin marketplace | `unverified` — the nightly runs above show every Windows `shell-unit-shard`/`bun-suites` job as `failure`, masked by `continue-on-error` |
 
 ---
 
@@ -81,55 +79,10 @@ value that isn't backed by one of these links.
 | `coreutils` (for `gtimeout`) | `brew install coreutils` — macOS has no GNU `timeout`. Without `gtimeout`, `scripts/graphify/refresh-graph-map.sh` runs graph extraction with its run deadline DISABLED (unbounded) and skips the bounded pre-pull auto-commit/fetch. Homebrew installs it as `gtimeout`; no PATH change is needed. |
 | `bun` | `brew tap oven-sh/bun && brew install oven-sh/bun/bun` — bun is NOT in homebrew-core; the tap is still required (verified 2026-09 against github.com/oven-sh/homebrew-bun). `scripts/machine-setup/macos.sh` installs both `uv` and `bun` this way; it previously installed neither. |
 
-**Windows (Git Bash via Git for Windows):**
+#### Fleet CLIs — auxiliary post-install items
 
-| Tool | How |
-|---|---|
-| Git Bash 2.40+ | https://git-scm.com — includes bash 4.4+, `realpath -m`, `mktemp`, `cygpath`. |
-| `schtasks` | Built-in. Used by `scripts/handover/arm-resume.sh` for cron-armed Claude relaunches. **Always invoke under `MSYS_NO_PATHCONV=1`** to prevent Git Bash from mangling `/flag` args into Windows paths. |
-| `MSYS_NO_PATHCONV` awareness | Documented in CLAUDE.md handover section. |
-| WSL2 / Docker resource caps | If WSL or Docker Desktop is installed, cap them before multi-agent runs. Start with `%UserProfile%\.wslconfig` `memory=16GB`, `processors=8`, `swap=4GB` on a 48 GB / 32-logical-core class host, then tune after measuring. Docker gets separate Desktop/per-container caps. See [environment gotchas](../internals/environment-gotchas.md#windows-wsl--docker-resource-budget). |
-
-Windows is unsupported; himmel's operator-facing tooling needs bash.
-
-#### WSL on Windows — two readings, only one of them real
-
-"Use WSL instead of Git Bash" means two very different setups. The ADR
-evaluated both (a second Windows station, 2026-07-12):
-
-- **Shell swap (impossible, not just unsupported).** Keeping Claude Code on
-  native Windows and pointing its shell at WSL bash does not work, structurally:
-  the Bash tool binds Git Bash only (`CLAUDE_CODE_GIT_BASH_PATH` accepts a Git
-  Bash, not WSL); Windows `git.exe` runs commit/push gates under its bundled
-  MSYS bash regardless of the session shell; and WSL git cannot read
-  Windows-created worktrees (the `.git` pointer file carries a `C:/` absolute
-  path). There is no setting that makes this configuration exist.
-- **WSL station profile (supported).** Claude Code installed *inside* a WSL
-  distro, with repo clones on ext4 (never `/mnt/c`, see the
-  [/mnt/c performance cliff](../internals/environment-gotchas.md#wsl-the-mntc-performance-cliff)),
-  and the toolchain (node/jq/gh/bun/…) provisioned in-distro, is a supported,
-  documented Anthropic configuration. Effectively a Linux station that happens
-  to run on a Windows host; the Linux column of this doc applies. Windows-side
-  control-plane pieces (schtasks arming) remain reachable via interop
-  (`schtasks.exe` callable from WSL, ~70 ms overhead).
-  **Provisioning gate hooks:** in the in-distro himmel clone,
-  run `bash scripts/setup.sh` (it installs all three hook types), or if
-  installing manually, ALL THREE:
-  `pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push`.
-  A bare `pre-commit install` installs only the pre-commit hook type; the
-  commit-msg + pre-push gates (attestation trailers, review-owed marker write,
-  conventional-commit lint) are then silently absent and the first push
-  goes out ungated (a real workday hit exactly this).
-
-**Git Bash remains the tested default** for Windows stations until the
-WSL-station pilot reaches an ADOPT verdict. If you run WSL from Git
-Bash meanwhile, read the three measured WSL traps in
-[environment gotchas](../internals/environment-gotchas.md#wsl-wslexe-invoked-from-git-bash-mangles-mnt-args).
-
-#### WSL station — auxiliary post-install items
-
-Installing the CLI fleet in-distro (`claude`, `codex`, `hermes`, `copilot`,
-`grok`) leaves a set of one-time auxiliary steps that the plain
+Installing the CLI fleet on a new station (`claude`, `codex`, `hermes`,
+`copilot`, `grok`) leaves a set of one-time auxiliary steps that the plain
 installers do NOT cover. Calibrated on two stations, 2026-07-12:
 
 | Item | Step | Notes |
@@ -138,14 +91,12 @@ installers do NOT cover. Calibrated on two stations, 2026-07-12:
 | hermes profile | `bash scripts/hermes/install-himmel-profile.sh` (with `HERMES_HOME` set), then `hermes profile use himmel_agent` | Installs the senior-reviewer profile + parity_guard hook. |
 | hermes hooks | Approve the parity_guard hook once in a live hermes session | Hook approval is interactive; one-shots inherit it afterward. |
 | hermes channels | Keep chat channels (telegram etc.) `enabled: false` on stations | ONE poller per bot token, fleet-wide — the host's always-on bridge owns the channel. A station gateway that polls the same token 409-conflicts it. |
-| provider auth | Merge/verify the providers your lanes need in `~/.hermes/auth.json` (e.g. the `openai-codex` provider for gpt-5.x one-shots) | A fresh in-distro login may create fewer providers than your primary machine has. |
-| codex | `codex login` (ChatGPT OAuth), then `codex login status` | Sandbox-shell posture on Windows hosts is a known open item. |
+| provider auth | Merge/verify the providers your lanes need in `~/.hermes/auth.json` (e.g. the `openai-codex` provider for gpt-6.1-sol one-shots) | A fresh login may create fewer providers than your primary machine has. |
+| codex | `codex login` (ChatGPT OAuth), then `codex login status` | |
 | copilot | First run is interactive: login + approve the repo as a trusted folder | Config files alone (`config.json`/`settings.json`) are not sufficient. |
 | grok | `grok login` (browser OAuth) per machine | A non-authed station hangs at "Waiting for authorization…" on one-shots. |
 | jq | `sudo apt install -y jq` (Debian/Ubuntu; use your distro's package manager elsewhere) | Required by most himmel hooks; not preinstalled on minimal distros. |
-| claude settings | Ensure in-distro `~/.claude/settings.json` hooks use in-distro paths | Copied Windows settings carry `C:\` hook paths that fail every SessionEnd (noise, not fatal). |
 | pre-commit hooks (non-himmel clones) | `pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push` in any OTHER repo clone on the station | A bare `pre-commit install` leaves commit-msg + pre-push gates silently absent. The himmel checkout itself no longer needs this: `himmelctl install`/`scripts/setup.sh` place all three hook types by default. |
-| GLM wrapper | The `~/.claude-glm` config dir does not follow the fleet install — provision per machine if the GLM lane is used there | Provider API keys (GLM / DashScope / OpenRouter / NVIDIA) travel with the hermes `.env`; the wrapper dir does not. |
 
 ### Linux clean install, end to end (verified on Ubuntu 26.04, 2026-09-02)
 
@@ -206,8 +157,7 @@ fails (an unwritable `~/.claude.json`, say), the install summary's `still
 manual` section names it. Run `claude` interactively in the clone once and
 accept the trust dialog, or set `projects["<abs clone path>"].hasTrustDialogAccepted:
 true` in `~/.claude.json` yourself; the summary's remedy prints the exact key
-to use, which on Windows is the forward-slash `C:/Users/.../clone` form, not
-the backslashed path.
+to use.
 
 **Two rough edges you will hit on this path today.** Both are filed; both have
 a workaround that completes the install.
@@ -507,7 +457,7 @@ documented at the top of [`.env.example`](../../.env.example):
 | `JIRA_API_TOKEN` | Jira / Confluence CLI auth token. | id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_PROJECT_KEY` | Default project for `jira` ops. | Your Jira project key (e.g. `ACME`). |
 | `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the `getAccessibleAtlassianResources` API. |
-| `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` overflow launcher (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
+| `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` launcher of the GLM lane, which is dormant (HIMMEL-1967; the lane registry offers it only when `GLM_LANE_OK` is set) (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
 
 #### Jira Sector (optional)
 
@@ -540,7 +490,7 @@ code change.
 | `HIMMEL_REPO` | Path to your himmel checkout. | **Auto-set** by setup/adopt into `settings.json`; set explicitly only for a non-default clone path. |
 | `HANDOVER_DIR` | Handover state root (Mode B — external state repo). | Run `/handover-setup`. Bridged from `.env`. Unset = inline `<repo>/handovers/`. |
 | `LUNA_VAULT_PATH` | Luna vault root for end-session capture. | Your Obsidian vault path. **Not** bridged — export it. Unset → `~/Documents/luna`. |
-| `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-glm` re-seeds its isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
+| `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-codex` (and the dormant `claude-glm`) re-seeds its isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
 | `HIMMEL_INITIATIVE` | Drive-to-ship auto-ship steps (opt-in, default OFF). | Uncomment one line in `.env` (auto-ship step grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
 | `PERPLEXITY_API_KEY` | Perplexity Sonar — `/research`, `/research-deep`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | Perplexity API settings. Optional (blank = feature off). |
 | `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. |
@@ -557,7 +507,6 @@ pin, checked (advisory, never a hard fail) by `/himmel-doctor`.
 
 | OS | Set command |
 |---|---|
-| Windows | `setx OLLAMA_NO_CLOUD 1` (new shells only — restart your terminal/Claude Code session after) |
 | macOS | `launchctl setenv OLLAMA_NO_CLOUD 1` (current login session) — also add `export OLLAMA_NO_CLOUD=1` to your shell profile so it survives reboots |
 | Linux | Add `export OLLAMA_NO_CLOUD=1` to your shell profile, or if `ollama` runs as a systemd user service, a drop-in: `systemctl --user edit ollama.service` → `Environment=OLLAMA_NO_CLOUD=1` |
 
@@ -655,11 +604,6 @@ RTK is a token-saving CLI proxy that wraps common commands.
 # Install (Linux / macOS)
 cargo install rtk   # or download binary from releases
 
-# Install (Windows — single self-contained exe, no cargo needed)
-# Download rtk-x86_64-pc-windows-msvc.zip from
-# https://github.com/rtk-ai/rtk/releases for the current tag,
-# extract, and overwrite the binary at its existing PATH location.
-
 # Verify (must show rtk, NOT reachingforthejack/rtk)
 rtk --version
 rtk gain
@@ -731,7 +675,7 @@ the required-environment table.
 | secrets walk | `run` \| `skip` | vault≠`none` only. Default `skip`. Walks luna secrets interactively (instruction card + a probe per secret); himmelctl never harvests the secret value itself. Walks only the secrets whose `feature` tag (`scripts/himmelctl/lib/secrets-manifest.json`) matches what you actually selected elsewhere in this run — vault≠`none` for luna-source credentials, telegram bridge `on` for `TELEGRAM_BOT_TOKEN`/`WHISPER_MODEL`. A feature you declined (or never asked about) is skipped, with one line naming how many secrets and why; `.env.example`'s own generated block stays the full union for every adopter, reorganized into the same per-feature sections. |
 | telegram bridge | `off` \| `on` | vault≠`none` only. Default `off`. Configures the bridge for voice/text ingestion (see [§8.6](#86-telegram-bridge-onboarding)). |
 | bridge .env path / whisper CLI / whisper model | paths (blank = default/autodetect) | Asked only when the telegram-bridge answer above was `on`. Defaults: `~/.claude/channels/telegram/.env`, autodetect, `ggml-small.bin`. |
-| bridge persistence | `yes` \| `no` | Asked only when the bridge is `on` **and** this platform has an installer: a HimmelTelegramBridge scheduled task (Windows) or a systemd `--user` unit (`telegram-bridge.service`) + linger (Linux). Default `no`. On any other platform (macOS included) the question is skipped entirely and himmelctl prints a one-line notice to install/enable persistence by hand instead. |
+| bridge persistence | `yes` \| `no` | Asked only when the bridge is `on` **and** this platform has an installer: a systemd `--user` unit (`telegram-bridge.service`) + linger (Linux). Default `no`. On any other platform (macOS included) the question is skipped entirely and himmelctl prints a one-line notice to install/enable persistence by hand instead. |
 
 Flags: `--dry-run` prints the derived plan without executing; `--from-profile
 <path>` replays a saved answer profile non-interactively (the wizard caches your
@@ -795,10 +739,9 @@ mean the installer asserting something it cannot stand behind:
   `ready`. A lane whose
   CLI is already present is reported as binary already present and skipped (so a re-run is
   idempotent); a lane that is *absent* is listed under `still manual` with its
-  install command. Both that command and the follow-up setup step are chosen
-  per platform, so a Linux/macOS adopter is pointed at
+  install command. That command and the follow-up setup step point at
   `scripts/codex/install-himmel-codex.sh` and the POSIX branch of
-  `docs/hermes-runbook.md` rather than at PowerShell scripts. It is NOT
+  `docs/hermes-runbook.md`. It is NOT
   installed for you. An applied adopter install writes the top-level
   `profileAllowlist` and `profileAllowlistScope` fields to `lanes.local.json`;
   selected lanes keep their real base probes. It does **not** call
@@ -824,7 +767,7 @@ No `profileAllowlist` means the pre-profile resolver behaviour is unchanged.
 **Node-less (clean) machine?** `himmelctl install` itself needs node. Run the
 bootstrap shim first. It installs node (+ bun on macOS via brew; apt has no
 bun package, so Linux gets node + npm and bun stays an optional post-bootstrap
-step) via the platform package manager (brew/apt/winget) then hands off to
+step) via the platform package manager (brew/apt) then hands off to
 `himmelctl install` (himmelctl's own preflight covers every other tool):
 
 ```bash
@@ -891,12 +834,11 @@ for something never turned on:
 | `luna-sources` | each configured fetch-health source, via `fetch-health.py --probe <source>` |
 | `phi-coherence` | a `.salus` marker under the vault vs. its listing in `phi-roots` — reports `degraded` on a mismatch, **never red** |
 | `engine-allowlist` | armed cadence legs' required engines against `cadence-approve-engines.sh --print-engine-list` |
-| `bridge-health` | `access.json` + a live `getMe` call + exactly one `getUpdates` consumer (it counts `poller.ts` command lines anchored to THIS checkout, so a supervisor plus its poller child is one consumer, not two). Windows uses CIM; Linux/macOS prefer `systemctl --user show telegram-bridge.service` and walk its MainPID's children (`pgrep -f <poller path>` when no unit exists). Any other platform reports `degraded` naming process identity as unverified, never a silent pass |
+| `bridge-health` | `access.json` + a live `getMe` call + exactly one `getUpdates` consumer (it counts `poller.ts` command lines anchored to THIS checkout, so a supervisor plus its poller child is one consumer, not two). Linux/macOS prefer `systemctl --user show telegram-bridge.service` and walk its MainPID's children (`pgrep -f <poller path>` when no unit exists). Any other platform reports `degraded` naming process identity as unverified, never a silent pass |
 | `bridge-persistence` | whether bridge persistence will actually survive a restart |
 
 `bridge-persistence` is pass/warn/opt-in; it never reports a hard red once
-opted in. On Windows it reads `Get-ScheduledTask`'s culture-invariant `State`
-enum; a query that FAILS reports `degraded`/unknown, never absent: "not
+opted in. A query that FAILS reports `degraded`/unknown, never absent: "not
 there" and "could not ask" stay distinct results. On Linux it checks
 unit-installed + enabled + linger, each with its own `degraded` reason (a
 unit that installs but whose linger step fails is reported as a partial
@@ -1027,7 +969,7 @@ was merely absent or present-but-empty, only "not configured".
 -p ''`), never as a command-line argument (`ps`-visible to every user on
 the box), never logged, never printed in a `--dry-run` preview or an error
 message, and never present in the **child process's environment** either:
-`ensure` passes every apt/winget/brew primitive an explicit, scrubbed copy
+`ensure` passes every apt/brew primitive an explicit, scrubbed copy
 of its own environment with `HIMMELCTL_SUDO_PASSWORD` deleted. An
 inherited env var would otherwise be readable from `/proc/<pid>/environ` by
 any other process running as your user for the primitive's whole lifetime,
@@ -1064,9 +1006,7 @@ password there. A **custom** prefix, or an install directory with
 pre-existing permission problems, can still require elevation or fail
 outright. `HIMMELCTL_SUDO_PASSWORD` has no effect on brew either way (it's
 only ever consumed by the Linux `sudo -S apt-get` path), so a brew failure
-of that kind needs manual remediation. Windows dep installs go through
-`winget`, also non-interactive (`--silent --disable-interactivity
---accept-*-agreements`), no credential needed.
+of that kind needs manual remediation.
 
 The three generic guardrails (`auto-approve-safe-bash`, `block-edit-on-main`,
 `block-read-secrets`) can live at the **user** scope (protects every repo you
@@ -1229,7 +1169,6 @@ fires:
   off-by-default / SIP-fragile). Run `scripts/machine-setup/macos.sh` (**ALPHA**:
   validate it fires and file an issue). cron may need Full Disk Access on
   modern macOS.
-- **Windows:** `schtasks` is always present; nothing to do.
 
 Diagnose any existing install with `/himmel-doctor` (the **C9-scheduler** check
 reports OK / WARN + the exact per-OS remediation; it never runs a privileged
@@ -1237,7 +1176,8 @@ command).
 
 ### 4d. Optional — PHI vault marker for claude-glm
 
-If you use the `claude-glm` overflow launcher (Claude Code on the Z.ai GLM
+The GLM lane is dormant (HIMMEL-1967; the lane registry offers it only when
+`GLM_LANE_OK` is set). If you still use the `claude-glm` launcher (Claude Code on the Z.ai GLM
 flat-rate lane; see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
 drop a `.salus` marker file at the root of every PHI-bearing vault (e.g.
 `~/Documents/salus`). The launcher **refuses to start (exit 3, no override)**
@@ -1277,8 +1217,8 @@ and best-effort `qmd pull`; this section is the **manual bootstrap** if you
 skipped those or want the luna vault indexed too.
 
 ```bash
-# 1. Install the qmd CLI: clone the fork, build it with bun, then junction
-#    (Windows) / symlink (POSIX) it onto the bun-global @tobilu/qmd path —
+# 1. Install the qmd CLI: clone the fork, build it with bun, then symlink it
+#    onto the bun-global @tobilu/qmd path —
 #    scripts/lib/qmd-bin.sh is the single chokepoint (also used by adopt.sh/
 #    setup.sh); repo/ref/clone-dir are overridable via QMD_FORK_REPO /
 #    QMD_FORK_REF / QMD_FORK_DIR. Idempotent — re-run to update.
@@ -1315,15 +1255,11 @@ Notes:
   adopt) rewrites it to locate the bun-global install so plain `qmd` works everywhere.
 - Stop the shared daemon: `qmd mcp stop`. The index is sqlite+WAL read per query, so
   docs added by `qmd update` are live immediately; no daemon restart needed.
-- WSL Claude sessions need qmd installed and indexed separately inside WSL. The
-  fork is bun-built there, and its sqlite+WAL index must stay on the WSL
-  filesystem rather than being shared over `/mnt/c`; this differs from
-  graphify's plain-JSON store, which Windows and WSL can share.
 
 ### 4f. cc-codex / cc-glm offload shims
 
 `scripts/shell/himmel-offload-shims.sh` provides the `cc-codex` and `cc-glm`
-Bash functions in both Git Bash and WSL. `bash scripts/setup.sh` installs the
+Bash functions (`cc-glm` launches the dormant GLM lane, HIMMEL-1967). `bash scripts/setup.sh` installs the
 guarded source line in `~/.bashrc` best-effort; install it directly with:
 
 ```bash
@@ -1794,16 +1730,6 @@ registered graphify at user scope before this change keeps loading it by default
 until you run `claude mcp remove graphify -s user` and then the command above.
 
 Claude Code is the only agent graphify needs (no codex/other-CLI prerequisite).
-
-**Windows + WSL on one machine share ONE graph store.** Graph extraction is
-LLM-backed (real spend), so the WSL side must not regenerate what the Windows
-side already extracted. The store (`~/.graphify/`: plain JSON, no
-sqlite/WAL hazard) is shared automatically: `graphify_install` on WSL
-symlinks `~/.graphify` at the Windows user's store, only when that Windows
-store exists (manual: `bash scripts/lib/graphify-bin.sh share-store`). Both
-sides then read AND contribute to the same graphs. A WSL store that already
-has content is never replaced or auto-merged into the Windows one; how to
-merge pre-existing WSL data is your call.
 
 Graph refresh stays lean-invoke (`graphify <corpus-copy> --update`), never
 a hook; extraction backends are governed by the egress matrix; see the

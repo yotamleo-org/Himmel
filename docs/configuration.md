@@ -194,9 +194,9 @@ one push instead of a whole session.)
 ```mermaid
 flowchart TD
     TC["tool call (Bash, Edit, Read, Agent, MCP, …)"] --> H{"PreToolUse hooks<br/>(scripts/hooks/*)"}
+    H -->|no verdict| D{"settings deny list"}
     H -->|"any hook exits 2"| BLOCK["BLOCKED — reason on stderr;<br/>bypass only via its env var<br/>in the launching shell"]
     H -->|"auto-approve-safe-bash<br/>emits allow (safe read-only shapes)"| RUN["runs"]
-    H -->|no verdict| D{"settings deny list"}
     D -->|match| DENY["DENIED (force-push, rm -rf,<br/>.env edits, …)"]
     D -->|no match| A{"settings allow list<br/>(literal commands only)"}
     A -->|match| RUN
@@ -231,15 +231,17 @@ commands that are default-OFF. Detail: [telegram-bridge.md](telegram-bridge.md).
 
 ```mermaid
 flowchart TD
-    MSG["incoming Telegram message"] --> GATE{"allowlist gate<br/>(~/.claude/channels/telegram/access.json)<br/>fails CLOSED"}
+    MSG["incoming Telegram message"] --> GATE{{"allowlist gate<br/>(~/.claude/channels/telegram/access.json)<br/>fails CLOSED"}}
     GATE -->|not allowlisted| DROP["silently dropped"]
     GATE -->|allowed| ROUTE{"router"}
     ROUTE -->|"work on TICKET / TICKET: text"| SESS["per-ticket bridge session —<br/>bounded, cold claude run<br/>(pinned model, never interactive)"]
     ROUTE -->|"plain text / voice / photo"| CHAT["chat session (voice → local whisper.cpp;<br/>files → attachments, ~20MB cap)"]
-    ROUTE -->|"/arm or /mergepub"| PRIV{"privileged path:<br/>TELEGRAM_AUTO_ACTIONS enables the op<br/>+ sender is the global operator<br/>+ message not forwarded, not a caption"}
+    ROUTE -->|"/arm · /mergepub · /restart<br/>and the other typed auto ops"| PRIV{{"privileged path:<br/>TELEGRAM_AUTO_ACTIONS enables the op<br/>+ sender is the global operator<br/>+ message not forwarded, not a caption"}}
     PRIV -->|refused| AUDIT["refused + audited"]
     PRIV -->|"/arm ticket"| ARM["auto-action.sh → arm-resume.sh<br/>(schedules a session relaunch)"]
     PRIV -->|"/mergepub pr sha12"| MPUB["merge-public-on-green.sh —<br/>SHA prefix-match, CI green, fresh re-verify,<br/>refuses if CLAUDECODE is set"]
+    AUDIT ~~~ ARM
+    SESS ~~~ CHAT
     SESS --> OUT["replies via outbox"]
     CHAT --> OUT
 ```
@@ -273,13 +275,15 @@ Codex weekly allowance.
 ```mermaid
 flowchart TD
     WORK["work item in the parent session"] --> ROUTE{"route the dispatch"}
-    ROUTE --> GUARD{"guard-implementor-dispatch.sh<br/>cost guard on native Agent dispatches only<br/>(blocks when the 5h Claude bank is ≥80% used;<br/>external-lane dispatch types are never deny-eligible)"}
+    ROUTE --> GUARD{{"guard-implementor-dispatch.sh<br/>cost guard on native Agent dispatches only<br/>(blocks when the 5h Claude bank is ≥80% used<br/>or the weekly bank ≥85%;<br/>external-lane dispatch types are never deny-eligible)"}}
     GUARD --> TIER["Claude tiers — native subagents<br/>(haiku / sonnet / opus / fable,<br/>always available)"]
-    ROUTE --> EXT{"external lanes — available only if<br/>their probe passes (lanes.json)"}
-    EXT -->|"ZAI_API_KEY set"| GLM["spawn-glm → branch glm/slug<br/>own worktree, push-url poisoned"]
-    EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree, push-url poisoned"]
-    EXT -->|"codex on PATH"| CDX["codex-exec"]
+    ROUTE --> EXT{{"external lanes — available only if<br/>their probe passes (lanes.json)"}}
+    EXT -->|"ZAI_API_KEY set"| GLM["spawn-glm → branch glm/slug<br/>own worktree · dormant, GLM_LANE_OK<br/>(the GLM subscription is cancelled)"]
+    EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree · dormant, CLAUDEX_LANE_OK"]
+    EXT -->|"codex on PATH"| CDX["codex-exec<br/>(scripts/codex/dispatch-codex-exec.sh)<br/>dormant, CODEX_EXEC_LANE_OK"]
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
+    CDX ~~~ HRM
+    GUARD ~~~ EXT
     GLM --> BACK["worker commits on its own branch;<br/>parent session owns review + merge"]
     CLX --> BACK
 ```
