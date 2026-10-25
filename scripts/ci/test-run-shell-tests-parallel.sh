@@ -532,13 +532,14 @@ case "$(ps -o args= -p "$gp" 2>/dev/null)" in *run-shell-tests.sh*) kill -KILL "
 exit 0
 SHEOF
   chmod +x "$sb/scripts/test-a-orphan.sh"
-  # The watchdog's sleep carries the cap, so SUITE_TIMEOUT=4302 names it.
-  out=$(TMPDIR="$sb/tmp" SUITE_JOBS=2 SUITE_TIMEOUT=4302 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  # The watchdog's sleep carries the cap, so a per-run SUITE_TIMEOUT names only this run's watchdog.
+  cap=$((40000 + RANDOM % 20000))
+  out=$(TMPDIR="$sb/tmp" SUITE_JOBS=2 SUITE_TIMEOUT=$cap env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
   sleep 1
   orphan=$(cat "$sb/orphan.pid" 2>/dev/null); stmp=$(cat "$sb/suite-tmp.path" 2>/dev/null)
   leaks=""
   [ -n "$orphan" ] && ! kill -0 "$orphan" 2>/dev/null || leaks="$leaks suite-group-child(${orphan:-none})"
-  ! pgrep -f 'sleep 4302' >/dev/null 2>&1 || leaks="$leaks watchdog-sleep"
+  ! pgrep -f "sleep $cap\$" >/dev/null 2>&1 || leaks="$leaks watchdog-sleep"
   [ -n "$stmp" ] && [ ! -e "$stmp" ] || leaks="$leaks suite-tmp(${stmp:-none})"
   # The attempt log is the bare mktemp's tmp.XXXXXXXXXX and its .rc.
   for _f in "$sb"/tmp/tmp.*; do [ ! -e "$_f" ] || leaks="$leaks attempt-log(${_f##*/})"; done
@@ -548,7 +549,7 @@ SHEOF
     fail "P17: expected rc 2 and nothing left behind, got rc=$rc leaks:${leaks:- none}; out: $out"
   fi
   [ -z "$orphan" ] || kill "$orphan" 2>/dev/null
-  pkill -f 'sleep 4302' 2>/dev/null
+  pkill -f "sleep $cap\$" 2>/dev/null
   rm -rf "$sb" "${stmp:-/nonexistent}"
 else
   fail "P17: mktemp failed"
