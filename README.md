@@ -31,11 +31,25 @@ turn it off.
 
 ## What himmel is
 
-himmel is a development engine for a solo operator or a small team who works
-with Claude Code every day. It wraps Claude Code in hooks, guardrails, slash
+himmel is an agentic OS for a solo operator or a small team who works with
+Claude Code every day. It is a harness that sits on top of Claude Code's own
+harness and adds to it. It wraps Claude Code in hooks, guardrails, slash
 commands, a local Jira CLI and a handover system, so the work follows a
 worktree-isolated, PR-gated, Jira-tracked workflow without anyone having to
-remember the rules.
+remember the rules. On top of that it runs as a software factory: a fleet of
+sessions that turns tickets into reviewed, merged PRs.
+
+It has four layers, and each one works without the layers above it:
+
+1. **The guarded session.** Hooks and gates make one Claude Code session
+   follow the rules.
+2. **Handover and memory.** Plain markdown docs carry the work and its reasons
+   across sessions, with a search index on top.
+3. **Jarvis, the command layer.** The chief hands tickets to workers,
+   has each result judged and merges on GO. [Jarvis](docs/jarvis-subsystems.md)
+   describes it.
+4. **Mission Control, the surface.** The Fleet page, the chief's board,
+   Telegram and the statusline let you watch the fleet and steer the chief.
 
 The idea is simple: anything you would otherwise repeat by hand (checking a
 commit, reviewing a PR, writing down where you stopped, restarting after a

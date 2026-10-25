@@ -44,7 +44,8 @@ way, and lets work continue when the operator is away.
 
 **Non-goals**
 
-- It is not a general agent framework or a memory backend. Handover state is
+- It is not a general agent SDK or a memory backend: it is an agentic OS over
+  Claude Code's own harness, not a library for building agents. Handover state is
   readable markdown you can edit and diff; the search index over it is a derived
   view, rebuilt on demand.
 - It is not for workflows that commit straight to `main` by design. Most of the
