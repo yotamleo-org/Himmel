@@ -155,6 +155,7 @@ lane_refusal() { # <label> <env-assignments...>
 lane_refusal "lane-off" -u HIMMEL_API_LANE
 lane_refusal "lane-no-account" -u HIMMEL_API_ACCOUNT
 lane_refusal "lane-not-on" HIMMEL_API_LANE=off
+lane_refusal "lane-bad-account" HIMMEL_API_ACCOUNT=invalid
 
 # --- Case 1: success — sections filled, crystallized true, identity preserved --
 SB="$(mktemp -d)"
