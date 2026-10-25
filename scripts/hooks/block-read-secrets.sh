@@ -1053,8 +1053,8 @@ g4_scan() {
         if [ "$nargs" = 1 ] && [ "$nflags" = 0 ] && [ "$xt" = 0 ] && [ "$d" = "$a1" ]; then
             case "$d" in *[[:space:]\;]*) ;; *)
             case "$cmd:$d" in
-                bash:scripts/handover/queue-lock.sh|bash:*/scripts/handover/queue-lock.sh|bash:scripts/handover/console-kit/append-results.sh|bash:*/scripts/handover/console-kit/append-results.sh| \
-                bash:scripts/handover/chief-kit/append-results.sh|bash:*/scripts/handover/chief-kit/append-results.sh) dsc=1 ;;
+                bash:scripts/handover/queue-lock.sh|bash:*/scripts/handover/queue-lock.sh| \
+                bash:scripts/handover/console-kit/append-results.sh|bash:*/scripts/handover/console-kit/append-results.sh|bash:scripts/handover/chief-kit/append-results.sh|bash:*/scripts/handover/chief-kit/append-results.sh) dsc=1 ;;
             esac ;; esac
         fi
         case "$cmd" in

@@ -7,7 +7,8 @@
 # remove-at X is the removal release after v1.1.3, which deletes the read-both path.
 # kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
 # (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is), other-sense (a name that
-# already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it).
+# already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it), directory and path (a moved
+# directory and a short spelling of one, both with direction fail; see the slice M block at the end).
 # direction: old-to-new | keep for identifier, marker, do-not-rename and other-sense; warn | fail for prose; for env and env-prefix
 # the scripts/lib/env-alias.sh function that resolves OLD against NEW: restrict (env_alias_restrict, a guard ON switch),
 # permit (env_alias_permit, an *_OK override), value (alias_env, a path, model or timeout),
@@ -353,3 +354,16 @@ cr-signal.sh	coderabbit-signal.sh	identifier	old-to-new	V2	X
 cr-trigger-ledger.sh	coderabbit-trigger-ledger.sh	identifier	old-to-new	V2	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X
+# Slice M: the moved directories (kind directory: git mv and rewrite) and their short spellings (kind path: rewrite
+# only), applied by scripts/handover/move-renamed-dirs.sh. check-old-terms.sh fails an added line naming an old one.
+scripts/handover/console-kit	scripts/handover/chief-kit	directory	fail	M	never
+scripts/handover/console	scripts/handover/chief	directory	fail	M	never
+scripts/console	scripts/chief	directory	fail	M	never
+scripts/overnight	scripts/afk	directory	fail	M	never
+scripts/eval/leg-digest	scripts/eval/worker-digest	directory	fail	M	never
+docs/handover/console-sections	docs/handover/chief-sections	directory	fail	M	never
+docs/handover/leg-sections	docs/handover/worker-sections	directory	fail	M	never
+console-kit	chief-kit	path	fail	M	never
+console-sections	chief-sections	path	fail	M	never
+leg-sections	worker-sections	path	fail	M	never
+eval/leg-digest	eval/worker-digest	path	fail	M	never

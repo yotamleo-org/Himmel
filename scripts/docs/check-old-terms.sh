@@ -12,7 +12,7 @@
 #   --auto     the range when pre-commit runs a push (PRE_COMMIT_TO_REF set),
 #              else the index: what the pre-commit hook runs
 #
-# Two checks:
+# Three checks:
 #   (a) PROSE, markdown only. An added line outside code spans, link targets and
 #       fences that uses a word the operator renamed: leg(s), console(s), bank,
 #       overnight mode, CR marker, judge call, class sweep, sibling sweep, ticket
@@ -25,6 +25,10 @@
 #       SEQUENCE_, or HIMMEL_WORKER_ not followed by SESSION_, that is not in
 #       the registry scripts/lib/rename-aliases.tsv; and the name chief-judge.
 #       The kept HIMMEL_CONSOLE_ prefix is exempt.
+#   (c) MOVED PATHS, every file. An added line naming the old spelling of a
+#       registry row of kind directory or path (a moved directory) as a whole
+#       path run, the way scripts/handover/move-renamed-dirs.sh matches it,
+#       unless the line also names that row's new spelling.
 #
 # Skipped: the paths in is_exempt_path below, the CI-matrix sense of "leg" in
 # ci-image.md / testing.md, and a line carrying `old-term-ok: <reason>` (a
@@ -123,12 +127,26 @@ while IFS="$(printf '\t')" read -r file nums; do
                 if (line ~ /^[[:space:]]*(#|$)/) continue
                 split(line, f, "\t")
                 known[f[1]] = 1
+                if (f[3] == "directory" || f[3] == "path") { np++; pold[np] = f[1]; pnew[np] = f[2] }
             }
             close(registry)
             single["leg"] = single["legs"] = single["console"] = single["consoles"] = 1
             single["bank"] = single["banks"] = single["wave"] = single["waves"] = 1
             pair["overnight mode"] = pair["cr marker"] = pair["judge call"] = pair["judge calls"] = 1
             pair["class sweep"] = pair["sibling sweep"] = pair["ticket sequence"] = 1
+        }
+        # names_path(s, p): p occurs in s not preceded by a name character or a
+        # dot, and not followed by a name character or a dot and a name character.
+        function names_path(s, p,    at, k, b, a, a2) {
+            at = 0
+            while ((k = index(substr(s, at + 1), p)) > 0) {
+                at += k
+                b = (at > 1) ? substr(s, at - 1, 1) : ""
+                a = substr(s, at + length(p), 1)
+                a2 = substr(s, at + length(p) + 1, 1)
+                if (b !~ /[A-Za-z0-9_.-]/ && a !~ /[A-Za-z0-9_-]/ && !(a == "." && a2 ~ /[A-Za-z0-9_]/)) return 1
+            }
+            return 0
         }
         function fenceline(s) { return s ~ /^[[:space:]]*(```|~~~)/ }
         function report(kind, what, body) {
@@ -142,6 +160,13 @@ while IFS="$(printf '\t')" read -r file nums; do
 
             # (b) identifiers, every file
             if (body ~ /chief-judge/) report("old-term name", "chief-judge", body)
+
+            # (c) moved paths, every file
+            for (i = 1; i <= np; i++) {
+                if (index(body, pnew[i]) > 0 || !names_path(body, pold[i])) continue
+                report("old-term path", pold[i], body)
+                break
+            }
             rest = body
             while (match(rest, /[A-Za-z0-9_]+/)) {
                 tok = substr(rest, RSTART, RLENGTH)

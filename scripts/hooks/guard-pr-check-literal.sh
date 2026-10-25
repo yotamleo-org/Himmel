@@ -88,11 +88,11 @@ GUARDED=$FULL_GUARDED
 # mode-equal the anchor's. Full relative paths, not bare basenames: "go.sh" is
 # too common a stem to key on alone, and matching the full path is exact
 # rather than relying on a directory-marker substring.
-HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
-scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh
-scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/go.sh
-scripts/handover/chief-kit/himmel-gate.sh scripts/handover/chief-kit/write-verdict.sh
-scripts/handover/chief-kit/console-wait.sh'
+HTARGETS='scripts/handover/merge-on-green.sh
+scripts/handover/console-kit/go.sh scripts/handover/chief-kit/go.sh
+scripts/handover/console-kit/himmel-gate.sh scripts/handover/chief-kit/himmel-gate.sh
+scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-verdict.sh
+scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/console-wait.sh'
 # shellcheck disable=SC2016 # printed verbatim as the remedy, never expanded
 FENCE='if himmel_repo=$(printenv HIMMEL_REPO | grep .); then
     bash "$himmel_repo/scripts/cr/pr-check-context.sh"
@@ -1610,7 +1610,7 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     return "$rc"
 }
 
-GATE_REL=scripts/handover/console-kit/himmel-gate.sh
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
 GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
@@ -2179,9 +2179,9 @@ for word in $scan_flat; do
 done
 entries=""
 hentries=""
-KIT_OLD=scripts/handover/console-kit
+KIT_OLD=scripts/handover/console-kit # old-term-ok: the layout before the move
 KIT_NEW=scripts/handover/chief-kit
-kit_new_spelled=0
+kit_new_spelled=0 kit_old_spelled=0
 _c_ops_eq_to_nl "$scan_flat"
 for tok in $REPLY; do
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
@@ -2235,7 +2235,7 @@ for tok in $REPLY; do
         case " $HTARGETS " in
             *[[:space:]]"$rel"[[:space:]]*)
                 case "$rel" in
-                    "$KIT_OLD"/*) rel=$KIT_NEW/${rel#"$KIT_OLD"/} ;;
+                    "$KIT_OLD"/*) rel=$KIT_NEW/${rel#"$KIT_OLD"/}; kit_old_spelled=1 ;;
                     "$KIT_NEW"/*) kit_new_spelled=1 ;;
                 esac
                 case " $hentries " in *" $rel "*) ;; *) hentries="$hentries $rel" ;; esac ;;
@@ -2566,7 +2566,7 @@ esac
     || deny "the command runs the script through a wrapper or a VAR= prefix (BASH_ENV, PATH, ...), which can run other code or change what runs before the checked bytes do."
 [ "${edhook_pending:-0}" = 1 ] && edhook_deny
 
-for t in git awk sort find paste wc tr comm grep readlink; do
+for t in git awk sort find paste wc tr comm grep; do
     command -v "$t" >/dev/null 2>&1 \
         || deny "the hook's own tool '$t' is not on PATH, so the conditions cannot be evaluated."
 done
@@ -2629,20 +2629,15 @@ prefix=$(gitq rev-parse --show-prefix 2>/dev/null) \
 # can swap the bytes between this check and the exec (TOCTOU), not closed here.
 # kit_of <root> - print the directory <root> keeps the kit writers in: a real
 # console-kit/ with nothing named chief-kit beside it (the layout before the
-# move), or a real chief-kit/ with console-kit absent or a symlink whose text
-# is exactly "chief-kit". Any other shape fails, so neither spelling can run
-# bytes the manifest never hashed.
+# move), or a real chief-kit/ with nothing named console-kit beside it. Any
+# other shape (both, neither, or a symlink at either) fails, so neither
+# spelling can run bytes the manifest never hashed.
 kit_of() {
-    local h=$1/scripts/handover t
-    [ ! -L "$h/chief-kit" ] || return 1
-    if [ -L "$h/console-kit" ]; then
-        t=$(readlink "$h/console-kit" && echo .) || return 1
-        [ "$t" = "chief-kit"$'\n'. ] && [ -d "$h/chief-kit" ] || return 1
-        echo chief-kit
-    elif [ -d "$h/console-kit" ]; then
-        [ ! -e "$h/chief-kit" ] || return 1
-        echo console-kit
-    elif [ ! -e "$h/console-kit" ] && [ -d "$h/chief-kit" ]; then
+    local h=$1/scripts/handover
+    [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1 # old-term-ok: the layout before the move
+    if [ -d "$h/console-kit" ] && [ ! -e "$h/chief-kit" ]; then
+        echo console-kit # old-term-ok: the layout before the move
+    elif [ -d "$h/chief-kit" ] && [ ! -e "$h/console-kit" ]; then
         echo chief-kit
     else
         return 1
@@ -2660,7 +2655,7 @@ kit_words() {
 }
 # An awk canon(): a path under the old kit read as its chief-kit/ path, so the
 # manifests of two roots on different layouts compare path for path.
-KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }'
+KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }' # old-term-ok: the layout before the move
 manifest() { # manifest <root> <kit> - "<mode> <blob-id> <path>" per regular file, sorted
     local root=$1 kit=$2 odd files execs oids modes prune_dirs g
     # scripts/ and scripts/cr/ themselves must be real directories: a per-file
@@ -2672,7 +2667,7 @@ manifest() { # manifest <root> <kit> - "<mode> <blob-id> <path>" per regular fil
     prune_dirs='scripts scripts/cr'
     case " $GUARDED " in
         *" $KIT_NEW/"*)
-            [ -n "$kit" ] || { printf 'ODD %s\n' "scripts/handover/console-kit (neither a directory nor a symlink to a chief-kit directory)"; return 0; }
+            [ -n "$kit" ] || { printf 'ODD %s\n' "scripts/handover/chief-kit or console-kit (not exactly one real kit directory)"; return 0; }
             prune_dirs="$prune_dirs scripts/handover scripts/handover/$kit" ;;
         *' scripts/handover/merge-on-green.sh '*) prune_dirs="$prune_dirs scripts/handover" ;;
     esac
@@ -2707,6 +2702,8 @@ case " $GUARDED " in
 esac
 [ "$kit_new_spelled" = 0 ] || [ "$wkit" = chief-kit ] \
     || deny "the command spells scripts/handover/chief-kit/, but this tree keeps its kit writers in scripts/handover/console-kit/, so the chief-kit spelling runs bytes this check never hashed."
+[ "$kit_old_spelled" = 0 ] || [ "$wkit" != chief-kit ] \
+    || deny "the command spells scripts/handover/console-kit/, but this tree keeps its kit writers in scripts/handover/chief-kit/ and no console-kit path exists after the move: spell it scripts/handover/chief-kit/."
 if ! want=$(manifest "$repo" "$akit") || [ -z "$want" ]; then
     deny "the HIMMEL_REPO anchor's scripts/cr/ and sourced libs ($repo) cannot be read and hashed."
 fi
@@ -2738,7 +2735,7 @@ case "$have" in ODD\ *) deny "a non-regular file or a control-character name sit
 # scripts/guardrails/lib.sh or scripts/lib/load-dotenv.sh moved on main still
 # refuses at run time - merge main forward in that case.
 behind_main_entries_ok() {
-    local wt_head mb mkit=console-kit base e rest_have rest_want
+    local wt_head mb mkit=console-kit base e rest_have rest_want # old-term-ok: the layout before the move
     [ -z "$entries" ] && [ -n "$hentries" ] || return 1
     wt_head=$(gitq rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null) || return 1 # swallow-ok: a failure denies
     mb=$(GIT_GRAFT_FILE=/dev/null anchorq -c core.commitGraph=false merge-base refs/heads/main "$wt_head" 2>/dev/null) || return 1 # swallow-ok: a failure denies

@@ -105,7 +105,7 @@ while IFS= read -r want; do
 done <<EOF
 $V3_ROWS
 EOF
-LEFT="$(printf '%s\n' "$ROWS" | awk -F'\t' 'toupper($2) ~ /OVERNIGHT/ && $6 != "V3" { print $2 }' | tr '\n' ' ')"
+LEFT="$(printf '%s\n' "$ROWS" | awk -F'\t' 'toupper($2) ~ /OVERNIGHT/ && $6 != "V3" && $4 != "directory" { print $2 }' | tr '\n' ' ')"
 check "no overnight name left outside slice V3 ($LEFT)" "" "$LEFT"
 
 # --- slice V1a: every old name of the lift family names its usage successor ---

@@ -34,14 +34,14 @@ TARGETS='clear-cr-marker.sh clear-review-marker.sh cr-scores.sh
 doc-freshness-advisory.sh docs-audit-panel.sh impacted-suites.sh known-findings.sh
 ledger-append.sh orphan-check.sh panel-first-pass.sh pr-check-context.sh
 pr-check-env.sh review-round.sh write-verdicts.sh'
-HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
-scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh
-scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/go.sh
-scripts/handover/chief-kit/himmel-gate.sh scripts/handover/chief-kit/write-verdict.sh
-scripts/handover/chief-kit/console-wait.sh'
+HTARGETS='scripts/handover/merge-on-green.sh
+scripts/handover/console-kit/go.sh scripts/handover/chief-kit/go.sh
+scripts/handover/console-kit/himmel-gate.sh scripts/handover/chief-kit/himmel-gate.sh
+scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-verdict.sh
+scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/console-wait.sh'
 PR_READERS=' grep egrep fgrep cat head tail wc ls cut tr uniq nl jq '
 PR_GIT_UNSAFE=0 PR_TOKFAIL=0 PR_GIT_EXEC=0
-GATE_REL=scripts/handover/console-kit/himmel-gate.sh
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
 GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 _c_unquote() { local LC_ALL=C; REPLY=${1//[\'\"\\]/}; }

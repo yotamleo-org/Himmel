@@ -100,6 +100,16 @@ fine
 ```
 the console arms a leg'
 
+echo "== an old moved-directory spelling is refused =="
+run_case "an old directory path in a script" 1 scripts/mvd.sh 'bash scripts/overnight/self-heal.sh' # old-term-ok: a fixture line
+case "$LAST_OUT" in *'old-term path `scripts/overnight`'*) pass "finding names the old path" ;; *) fail "finding names the old path: $LAST_OUT" ;; esac # old-term-ok: a fixture line
+run_case "an absolute old kit path" 1 scripts/abs.sh 'bash "$HIMMEL_REPO/scripts/handover/console-kit/go.sh"' # old-term-ok: a fixture line
+run_case "an old short spelling in a doc link" 1 docs/mvd.md 'See [the waiter](console-sections/waiter.md).' # old-term-ok: a fixture line
+run_case "the new spelling passes" 0 scripts/afk.sh 'bash scripts/afk/self-heal.sh'
+run_case "a line naming both spellings passes" 0 scripts/both.sh 'case $p in scripts/handover/console-kit/*|scripts/handover/chief-kit/*) ;; esac'
+run_case "look-alikes pass" 0 scripts/look.sh 'bash scripts/overnight-shift.sh; ls my-console-kit scripts/console.md' # old-term-ok: a fixture line
+run_case "a marked old path passes" 0 scripts/mk.sh 'bash scripts/overnight/x.sh # old-term-ok: the old layout'
+
 echo "== prose rules apply to markdown only =="
 run_case "old word in a shell comment" 0 scripts/cmt.sh '# the console arms a leg'
 
