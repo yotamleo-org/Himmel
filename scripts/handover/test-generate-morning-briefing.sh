@@ -609,12 +609,27 @@ done
 
 echo "TEST: adopted project with a tracker prints the tracker sections"
 OUT_ADT="$TMP_ROOT/adopted-tracker.md"
+set +e
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" \
     FAKE_JIRA_TODO=$'ACME-3\tTask\tTo Do\tPolish' \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADT" >/dev/null 2>&1 ) || true
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADT" >/dev/null 2>&1 )
+rc=$?
+set -e
+if [ "$rc" -eq 0 ]; then pass "adopted+tracker: run exits 0"; else fail "adopted+tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADT" 2>/dev/null || true)
 assert_contains "adopted+tracker: backlog row" "ACME-3" "$file"
 if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "No Jira tracker configured"; then fail "adopted+tracker: not called trackerless"; else pass "adopted+tracker: not called trackerless"; fi
+
+echo "TEST: an invalid tracker setting is named, not called absent"
+OUT_ADI="$TMP_ROOT/adopted-invalid-tracker.md"
+set +e
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD TRACKER=jira GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADI" >/dev/null 2>&1 )
+rc=$?
+set -e
+if [ "$rc" -eq 0 ]; then pass "invalid tracker: run exits 0"; else fail "invalid tracker: run exits 0" "rc=$rc"; fi
+file=$(cat "$OUT_ADI" 2>/dev/null || true)
+assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$file"
 
 # Summary --------------------------------------------------------------
 

@@ -175,6 +175,7 @@ fi
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/load-dotenv.sh"
 no_tracker=0
+no_tracker_msg="No Jira tracker configured."
 if [ -z "$JIRA_CMD" ]; then
     load_dotenv JIRA_PROJECT_KEY || true
     if run_or_unknown project_mode_tracker && [ "$RESULT_OUT" = "jira" ]; then
@@ -184,6 +185,8 @@ if [ -z "$JIRA_CMD" ]; then
         fi
     else
         no_tracker=1
+        # rc 2 is a setting project-mode rejects (TRACKER invalid, jira without a key).
+        [ "$RESULT_RC" = "2" ] && no_tracker_msg="The tracker setting is invalid (check TRACKER and JIRA_PROJECT_KEY)."
     fi
 fi
 
@@ -338,7 +341,12 @@ done_count=$(printf '%s\n' "$done_block" | grep -c . || true)
 open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
 
 if [ "$no_tracker" -eq 1 ]; then
-    tldr_default="**${open_prs}** open PRs · **${stale_count}** stale worktrees · **${commit_count}** commits"
+    if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+        open_prs_shown="**${open_prs}** open PRs"
+    else
+        open_prs_shown="open PRs unavailable"
+    fi
+    tldr_default="${open_prs_shown} · **${stale_count}** stale worktrees · **${commit_count}** commits"
 else
     tldr_default="**${inprog_count}** in-flight · **${stale_count}** stale worktrees · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
 fi
@@ -489,7 +497,7 @@ EOF
     if [ -n "$done_block" ]; then
         printf '%s\n' "$done_block"
     elif [ "$no_tracker" -eq 1 ]; then
-        printf '_No Jira tracker configured._\n'
+        printf '_%s_\n' "$no_tracker_msg"
     elif [ ${#ticket_keys[@]} -eq 0 ]; then
         printf '_No ticket keys detected in commit messages._\n'
     else
@@ -523,7 +531,7 @@ EOF
 $wip_keys
 EOF_WIP
     elif [ "$no_tracker" -eq 1 ]; then
-        printf '_No Jira tracker configured._\n'
+        printf '_%s_\n' "$no_tracker_msg"
     else
         printf '_No In-Progress tickets._\n'
     fi
@@ -560,7 +568,7 @@ EOF_WIP
             printf '_…and %s more (raise --backlog-limit to see all)._\n' "$((backlog_total - BACKLOG_LIMIT))"
         fi
     elif [ "$no_tracker" -eq 1 ]; then
-        printf '_No Jira tracker configured._\n'
+        printf '_%s_\n' "$no_tracker_msg"
     else
         printf '_No To-Do tickets (or jira unavailable)._\n'
     fi
