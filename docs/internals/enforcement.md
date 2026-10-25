@@ -3622,7 +3622,8 @@ nightly-only gates key on `github.event.schedule`, not `event_name`), and by
 - **A merge with no run at its sha is unknown, neither red nor green.** The red
   signal is the newest completed cron or dispatch run on main
   (`main-sweep-red.yml` gates on event `schedule`/`workflow_dispatch`; the
-  nightly — recognised by a non-skipped guard-corpus-full —
+  nightly — recognised by a non-skipped guard-corpus-full (the script also
+  still matches a `windows-latest` job, which no longer runs) —
   is skipped entirely, because its tier=all `shell-unit` has the same job name as
   the fast sweep's and an extended-only red would otherwise be closed by the next
   fast sweep; extended reds go to `shell-extended-nightly-issue.sh`). The issue
