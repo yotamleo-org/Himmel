@@ -69,6 +69,7 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr list")
+        [ ! -e "$FX/pr-list.sleep" ] || sleep "$(cat "$FX/pr-list.sleep")"
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         n=$(( $(cat "$FX/pr-list.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/pr-list.n"
         if [ -e "$FX/pr-list.$n.json" ]; then cat "$FX/pr-list.$n.json"; else cat "$FX/pr-list.json"; fi ;;
@@ -167,6 +168,37 @@ printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
 check "sweep: a Done ticket's stale IDLE-HELD record is cleared by the sweep too" "$(jq -r .state "$REC")" wrapped
+
+# Without a single-instance lock both runs take the snapshot and enter the funnel.
+mkdir -p "$tmp/noflock"
+for cmd in awk bash cat cksum comm cp cut date dirname git grep head jq mkdir mktemp mv rm rmdir sed sleep sort stat tail tr wc; do
+    ln -s "$(command -v "$cmd")" "$tmp/noflock/$cmd"
+done
+ln -s "$tmp/bin/gh" "$tmp/noflock/gh"
+check "sweep: isolated PATH has no flock" "$(PATH="$tmp/noflock" command -v flock >/dev/null 2>&1; printf '%s' "$?")" 1
+reset "Done"; owned WRAPPED; stale_live
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+echo 1 > "$FX/pr-list.sleep"
+PATH="$tmp/noflock" bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/sweep-1" 2>&1 &
+p1=$!
+PATH="$tmp/noflock" bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/sweep-2" 2>&1 &
+p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "sweep: no-flock concurrent runs exit 0" "$r1:$r2" "0:0"
+check "sweep: no-flock concurrent runs admit exactly one snapshot" "$(grep -c '^gh pr list ' "$STUB_LOG")" 1
+check "sweep: no-flock concurrent runs report one busy sweep" "$(grep -l 'status-sweep: busy' "$tmp/sweep-1" "$tmp/sweep-2" | wc -l | tr -d ' ')" 1
+check "sweep: no-flock run releases its lock" "$([ -d "$TICKET_STATUS_STATE_DIR/sweep/lock.d" ] && printf yes || printf no)" no
+for lease in "$$.$(date -u +%s)" "2147483647.$(date -u +%s)" "$$.0"; do
+    : > "$STUB_LOG"
+    mkdir -p "$TICKET_STATUS_STATE_DIR/sweep/lock.d"
+    : > "$TICKET_STATUS_STATE_DIR/sweep/lock.d/$lease"
+    PATH="$tmp/noflock" bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+    want=1; case "$lease" in "$$."*) [ "${lease#*.}" = 0 ] || want=0 ;; esac
+    check "sweep: no-flock respects live leases and takes dead/expired leases ($lease)" "$(grep -c '^gh pr list ' "$STUB_LOG")" "$want"
+    rm -rf "$TICKET_STATUS_STATE_DIR/sweep/lock.d"
+done
 reset "Backlog"; owned
 fn "$K" --event live
 check "D0: an off-ladder status is never touched" "$(ntrans)" 0
@@ -409,6 +441,47 @@ if [ -n "$_TIMEOUT_BIN" ] && command -v flock >/dev/null 2>&1; then
     kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
 else
     echo "skip - timeout/flock rows: no timeout or flock binary"
+fi
+
+# --- no flock: two events for one key move the status once --------------------------
+# Both runs reach the Jira read together (get.sleep), so an unlocked run moves twice.
+reset "To Do"; owned; echo 1 > "$FX/get.sleep"
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock: both concurrent events exit 0" "$r1:$r2" "0:0"
+check "no-flock: two concurrent events move the status exactly once" "$(ntrans)" 1
+
+# One event releases its lease when it exits, and it moved the status.
+reset "To Do"; owned
+rc=0; PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 || rc=$?
+check "no-flock: a single event exits 0 and moves the status once" "$rc:$(ntrans)" "0:1"
+check "no-flock: a finished event releases its lease" "$([ -d "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" ] && printf held || printf free)" free
+
+# A lease left by a dead run (older than 300s) is reclaimed once, so one event moves the status.
+reset "To Do"; owned; echo 1 > "$FX/get.sleep"
+mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d"
+old=$(date -d '10 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || date -v-10M +%Y%m%d%H%M.%S)
+check "no-flock: the stale lease is backdated" "$(touch -t "$old" "$TICKET_STATUS_STATE_DIR/status-locks/$K.lease.d" && printf ok)" ok
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-1" 2>&1 & p1=$!
+PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out-2" 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+check "no-flock: concurrent events reclaim a stale lease, exit 0" "$r1:$r2" "0:0"
+check "no-flock: a stale lease is reclaimed once, the status moves once" "$(ntrans)" 1
+
+# A lock dir the user cannot write makes mkdir fail and the lease stat fail, so the
+# lease must defer within the wait bound, not spin. Root writes anywhere: skip there.
+if [ -n "$_TIMEOUT_BIN" ] && [ "$(id -u)" != 0 ]; then
+    reset "To Do"; owned
+    mkdir -p "$TICKET_STATUS_STATE_DIR/status-locks"; chmod 500 "$TICKET_STATUS_STATE_DIR/status-locks"
+    rc=0; TICKET_STATUS_LOCK_WAIT=1 "$_TIMEOUT_BIN" -k 2 15 env PATH="$tmp/noflock" bash "$SUT" "$K" --event live >"$tmp/out" 2>&1 || rc=$?
+    chmod 700 "$TICKET_STATUS_STATE_DIR/status-locks"
+    check "no-flock: an unwritable lock dir defers within the wait bound (rc 0, not a hang)" "$rc" 0
+    check "no-flock: an unwritable lock dir logs deferred stage=lock" "$(row result)/$(row stage)" deferred/lock
+else
+    echo "skip - unwritable-lock row: no timeout binary, or running as root"
 fi
 
 # --- worker states ------------------------------------------------------------------------

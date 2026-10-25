@@ -182,7 +182,8 @@
 #       the gate cannot prove the PR touches no trust path: the list unreadable,
 #       empty, invalid, or missing on the anchor's own repo; the file listing
 #       unreadable or short of changed_files; the head moving while listed; or,
-#       for a trust-path PR, the anchor behind origin. Checked after the
+#       for a trust-path PR, the anchor behind origin and unable to
+#       fast-forward to it (an anchor that can is pulled and the gate re-runs). Checked after the
 #       console-GO gate, before any mutation, on --dry-run too.
 #   22  main-red gate: the newest COMPLETED, non-cancelled run
 #       of the CI workflow on the default branch is red and the PR is not its
@@ -330,6 +331,7 @@ GH="gh"
 # this constant staying its own fixed literal is that decision holding.
 HIMMEL_PUBLIC_ORIGIN_NWO="yotamleo-org/Himmel"
 
+_mog_argv=("$@")
 selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
@@ -1111,6 +1113,23 @@ if ! . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_p
 fi
 trust_rc=0
 trust_out=$(trust_path_check "$nwo" "$pr_num" "$sha" "$default_branch" "$himmel_repo") || trust_rc=$?
+# An anchor merely behind origin catches up (fast-forward only) and the whole
+# gate re-runs from the fresh bytes: every helper above was sourced from the
+# stale anchor, and this file itself may have just changed on disk. A moved
+# HEAD is the only re-exec trigger, so the second pass cannot loop. A diverged
+# anchor, a dirty tree or an unreadable origin cannot move, so it still refuses.
+# A dry run mutates nothing, so it skips the catch-up and reports the refusal.
+if [ "$trust_rc" -ne 0 ] && [ "${trust_out%% *}" = "anchor" ] && [ "$DRY_RUN" -eq 0 ]; then
+    ff_before=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_before=""
+    ff_msg=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE GIT_TERMINAL_PROMPT=0 \
+        git -C "$himmel_repo" -c core.hooksPath=/dev/null pull -q --no-rebase --ff-only origin HEAD 2>&1) \
+        || echo "merge-on-green: anchor fast-forward failed: ${ff_msg:0:300}" >&2
+    ff_after=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_after=""
+    if [ -n "$ff_after" ] && [ "$ff_after" != "$ff_before" ]; then
+        audit "ANCHOR fast-forwarded repo=$nwo pr=#$pr_num from=${ff_before:0:12} to=${ff_after:0:12}"
+        exec "$BASH" "${BASH_SOURCE[0]}" ${_mog_argv[@]+"${_mog_argv[@]}"}
+    fi
+fi
 if [ "$trust_rc" -ne 0 ]; then
     [ -n "$trust_out" ] || trust_out="check trust_path_check exited $trust_rc with no reason"
     trust_refuse "${trust_out%% *}" "${trust_out#* }"
@@ -2154,6 +2173,31 @@ record_after_report_pending_marker() {
 # check-commit-msg) and the target status from reconcile-config.json, so
 # this and `reconcile-backlog.mjs` share one source of truth for "what
 # status does a closed ticket move to" per project.
+# _jira_fold_request <repo_root> <key> <version> <pr> <sha> <what failed> — a closed
+# ticket the merge could not place: print a WARN and file a Done-fold INTAKE into
+# <version> for the release manager. The outcome rides the audit line as fold-request=.
+# ponytail: the release is named after the version, upgrade path = a release lookup
+# in the CLI once a release declares several versions.
+_jira_fold_request() {
+    local repo_root="$1" key="$2" cur="$3" pr_num="$4" pr_sha="$5" what="$6" out rc=0 req
+    if [ -z "$cur" ]; then
+        echo "merge-on-green: WARN $key closed with no fixVersion ($what); no unreleased version to fold into: place it by hand" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=none"
+        return 0
+    fi
+    out=$(cd "$repo_root" && node scripts/jira/dist/index.js release request "$cur" --verb INTAKE --key "$key" --to "$cur" \
+        --why "merged in PR #$pr_num @ ${pr_sha:0:12}: Done folds into $cur, the merge could not place it" \
+        --evidence "{\"pr\":$pr_num,\"sha\":\"$pr_sha\"}" 2>&1) || rc=$?
+    req=$(printf '%s\n' "$out" | sed -n 's/^REQ //p' | head -n 1)
+    if [ "$rc" -eq 0 ] && [ -n "$req" ]; then
+        echo "merge-on-green: WARN $key closed unplaced ($what); Done-fold request $req filed into $cur" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=$req"
+    else
+        echo "merge-on-green: WARN $key closed unplaced ($what); the Done-fold request into $cur was NOT filed (rc=$rc): ${out//$'\n'/ }" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=failed"
+    fi
+}
+
 _jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
@@ -2282,16 +2326,22 @@ $remaining")
     local transition_out transition_rc=0
     transition_out=$(cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "$target_status" 2>&1) \
         || transition_rc=$?
-    if [ "$transition_rc" -eq 0 ]; then
+    # Exit 3: the ticket closed, but the transition would not stamp a frozen version it was deferred out of.
+    if [ "$transition_rc" -eq 0 ] || [ "$transition_rc" -eq 3 ]; then
         JIRA_AUTO_TRANSITION_RESULT="ok key=$key status=$target_status"
         # A closed ticket holds no future version: move it to the
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
         # An archived version is never current: `versions` prints archived as column 4.
-        local versions_out fold_to
+        local versions_out fold_to fold_json="$issue_type_json" fresh_json
+        # The transition may have stamped the current version itself, so the fold reads the ticket after it.
+        if [ "$transition_rc" -eq 0 ]; then
+            fresh_json=$(cd "$repo_root" && node scripts/jira/dist/index.js get "$key" --json 2>/dev/null) || fresh_json=""  # swallow-ok: an unread ticket keeps the pre-transition copy
+            [ -n "$fresh_json" ] && fold_json=$fresh_json
+        fi
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
-        fold_to=$(printf '%s' "$issue_type_json" | node -e '
+        fold_to=$(printf '%s' "$fold_json" | node -e '
             try {
                 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
                 const have = ((d.fields && d.fields.fixVersions) || []).map(v => v.name);
@@ -2307,7 +2357,10 @@ $remaining")
                 }
             } catch {}
         ' "$versions_out" 2>/dev/null)
-        if [ -n "$fold_to" ]; then
+        if [ "$transition_rc" -eq 3 ]; then
+            JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=failed"
+            _jira_fold_request "$repo_root" "$key" "${fold_to%%$'\n'*}" "$pr_num" "$pr_sha" "${transition_out//$'\n'/ }"
+        elif [ -n "$fold_to" ]; then
             # --fix-version replaces the whole set, so the versions the ticket
             # already holds outside the unreleased ones are re-added after it.
             local fold_cur fold_keep fold_rc=0
@@ -2332,6 +2385,7 @@ $remaining")
                     fold_keep=${fold_to#*$'\n'}
                     JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT keep=${fold_keep//$'\n'/,}"
                 fi
+                _jira_fold_request "$repo_root" "$key" "$fold_cur" "$pr_num" "$pr_sha" "the fixVersion edit to $fold_cur failed"
             fi
         fi
     else

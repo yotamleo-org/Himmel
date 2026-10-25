@@ -1,9 +1,14 @@
 # Environment & tool-delivery gotchas
 
-Platform and harness-tool traps that bite when running himmel — especially on
-Windows — or when authoring himmel shell scripts. These are generic (no
-machine-specific config); they reproduce on any WSL-enabled Windows box, any
-bash-5.1+ environment, or any Claude Code session. The Codex-specific hook
+> **Platform tier:** Windows is dropped (HIMMEL-5729) and its PowerShell twins are
+> removed. Linux and macOS are the **Supported**
+> tier, see the [README support matrix](../../README.md#support-matrix). Windows
+> content below is kept as history.
+
+Platform and harness-tool traps that bite when running himmel or when
+authoring himmel shell scripts. These are generic (no machine-specific
+config); they reproduce on any bash-5.1+ environment or any Claude Code
+session. The Codex-specific hook
 wiring trap lives in [`harness-compat.md`](harness-compat.md); guardrail-recovery
 escape hatches live in [`stuck-playbook.md`](stuck-playbook.md).
 
@@ -160,7 +165,7 @@ way" is wrong:
   command not found` line and the graph-context injection silently never firing.
   **This is the breakage you actually observe.**
 - **codex runs hook commands through cmd.exe**, not bash — via its
-  `.codex/run-hook.cmd` cmd wrapper (whose own comments note "bare `bash` via
+  `.codex/run-hook.cmd` cmd wrapper (removed, HIMMEL-5729; whose own comments note "bare `bash` via
   cmd.exe hits the WSL System32 stub"). cmd.exe does **not** eat backslashes, so
   `C:\Users\…\graphify.EXE …` runs there unchanged — the codex graphify hooks
   are **not** broken by the backslash path. Do **not** "fix" them by copying Claude's MSYS `/c/…` form: see

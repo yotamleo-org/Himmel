@@ -51,6 +51,8 @@ flowchart TD
     subgraph L2["Lane 2 — Clip pipeline (pipeline-cadence)"]
         CL["Clippings/ only"] --> CLP["harvest → triage → synthesize → archive"]
     end
+    L1 ~~~ L2
+    L2 ~~~ L3
     subgraph L3["Lane 3 — Memory-compound"]
         MEM["agent project_* memories"] --> SUB["luna substrate"]
     end

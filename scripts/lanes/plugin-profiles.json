@@ -147,7 +147,7 @@
     "himmel-guard@himmel",
     "domain-modeling@himmel"
   ],
-  "_comment_contextBudget": "HIMMEL-4021 calibration audit 2026-10-02: 813 merged PR bodies searched; 738 bodies contain numeric leg-burn (739 leg records, including two explicitly separate legs in #1113), none names its author's profile unambiguously. Every profile has n=0 attributable merged legs and retains contextBudget under the n<3 rule; user/design/design-* /lane-* /bare/console-relay/console-judge/console have no additional profile-specific observation here. leg-impl has one historical 70500 first-turn observation (HIMMEL-2935, #777); telegram has one 32541 observation (HIMMEL-2961, #680). These probes are not three measured legs. Sources/date range, aggregation and exclusions: docs/internals/lane-calibration.md, HIMMEL-4021 audit. Operator stays null and resolves standard/200000 by default. No child autocompact inheritance measurement was made: UNMEASURED.",
+  "_comment_contextBudget": "HIMMEL-4021 calibration audit 2026-10-02: 813 merged PR bodies searched; 738 bodies contain numeric leg-burn (739 leg records, including two explicitly separate legs in #1113), none names its author's profile unambiguously. Every profile has n=0 attributable merged legs and retains contextBudget under the n<3 rule; user/design/design-* /lane-* /bare/console-relay/console-judge/console have no additional profile-specific observation here. leg-impl has one historical 70500 first-turn observation (HIMMEL-2935, #777); telegram has one 32541 observation (HIMMEL-2961, #680). These probes are not three measured legs. Sources/date range, aggregation and exclusions: docs/internals/lane-calibration.md, HIMMEL-4021 audit. Operator stays null and resolves standard/200000 by default. No child autocompact inheritance measurement was made: UNMEASURED. HIMMEL-7132 2026-10-25: the launcher now records session_id beside profile and lane, and scripts/eval/profile-openings.py joins that to each transcript's first request (14 days to 2026-10-25, native lane, single-profile launches). Set from the median at n of 3 or more: leg-impl n=1745, leg-bus n=7, console-judge n=13 (per-profile comments). Keep, with n: release-manager n=1 (median 45888); n=0 for user, design, design-motion, design-3d, design-imagegen, design-a11y, design-diagram, design-slides, design-reference, design-trial, code, code-ui, lane-impl, lane-review, lane-content, leg-vm, leg-e2e, telegram, bare, console-relay and console (none was launched through headed-arm-leg.sh in the window, or its launches carry no profile of their own). Re-run the reader once they have n of 3 or more.",
   "profiles": {
     "operator": null,
     "user": {
@@ -314,10 +314,10 @@
       "enable": [],
       "drop": ["i-have-adhd@himmel"],
       "mcpServers": ["qmd", "himmel-bus"],
-      "contextBudget": 35000,
+      "contextBudget": 55000,
       "contextMode": "standard",
       "autocompact": 200000,
-      "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged legs in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
+      "_comment_contextBudget": "HIMMEL-7132 2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=1745, median first-request size 54149, range 26377-66366, rounded up to 55000. Was 35000 (HIMMEL-4021: n=0 attributable merged legs, kept under n<3)."
     },
     "leg-bus": {
       "gateAllow": true,
@@ -327,9 +327,10 @@
       "enable": [],
       "drop": ["i-have-adhd@himmel"],
       "mcpServers": ["qmd", "himmel-bus"],
-      "contextBudget": 35000,
+      "contextBudget": 53000,
       "contextMode": "standard",
-      "autocompact": 200000
+      "autocompact": 200000,
+      "_comment_contextBudget": "HIMMEL-7132 2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=7, median first-request size 52557, range 49808-63723, rounded up to 53000. Was 35000."
     },
     "leg-vm": {
       "gateAllow": true,
@@ -422,10 +423,10 @@
       "enable": [],
       "drop": ["lean-skills@himmel", "i-have-adhd@himmel"],
       "mcpServers": ["qmd"],
-      "contextBudget": 35000,
+      "contextBudget": 55000,
       "contextMode": "standard",
       "autocompact": 200000,
-      "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged legs in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
+      "_comment_contextBudget": "HIMMEL-7132 2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=13, median first-request size 54431, range 54424-54436, rounded up to 55000. Was 35000 (HIMMEL-4021: n=0 attributable merged legs, kept under n<3)."
     },
     "release-manager": {
       "_comment": "HIMMEL-6796: the release-manager session (headed-arm-leg.sh --profile release-manager). Judge-shaped: drops the implement/review plugins; no gateAllow; jira writes fenced by guard-rm-writes.sh. mcpServers qmd only.",

@@ -194,7 +194,7 @@ is_handoff_script_call() {
 
 # Either name on turns the guard on; a set new name decides the mode.
 MODE="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-}"
-case "$MODE" in ''|none) MODE="${HIMMEL_LEG_CONTEXT_MODE:-}" ;; esac
+case "$MODE" in ''|none) MODE="${HIMMEL_LEG_CONTEXT_MODE:-}" ;; esac # old name, read both ways
 case "$MODE" in
     ''|none) exit 0 ;;
     compact|handoff) ;;

@@ -1629,6 +1629,11 @@ check "60b successor doc carries the predecessor's focus-version: line" \
     "$(grep -Fxc 'focus-version: v9.9.9' "$doc60bB" 2>/dev/null)" "1"
 check "60b successor doc carries the predecessor's focus-plan: line" \
     "$(grep -Fxc "focus-plan: $focusplan60b" "$doc60bB" 2>/dev/null)" "1"
+sed -i 's/^focus-version: .*/focus-version: auto/' "$doc60bA"  # gnu-ok: Linux-only kit
+rm -f "$doc60bB"
+console next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1
+check "60b successor doc carries focus-version: auto" \
+    "$(grep -Fxc 'focus-version: auto' "$doc60bB" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 
 # --- 61: the console parent defaults to Opus, not Fable
@@ -1851,10 +1856,13 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
 # a text-scan of argv/output cannot tell "unset" from "set to a value that
 # happens not to print".
 {
-    printf 'LEG_PROFILE_SETTINGS=%s\n' "\${LEG_PROFILE_SETTINGS+set}"
-    printf 'HIMMEL_LEG_PROFILE=%s\n' "\${HIMMEL_LEG_PROFILE+set}"
+    printf 'WORKER_SESSION_PROFILE_SETTINGS=%s\n' "\${WORKER_SESSION_PROFILE_SETTINGS+set}"
+    printf 'LEG_PROFILE_SETTINGS=%s\n' "\${LEG_PROFILE_SETTINGS+set}" # old name, read both ways
+    printf 'HIMMEL_WORKER_SESSION_PROFILE=%s\n' "\${HIMMEL_WORKER_SESSION_PROFILE+set}"
+    printf 'HIMMEL_LEG_PROFILE=%s\n' "\${HIMMEL_LEG_PROFILE+set}" # old name, read both ways
     printf 'HIMMEL_CONSOLE_LEG=%s\n' "\${HIMMEL_CONSOLE_LEG+set}"
-    printf 'LEG_LANE=%s\n' "\${LEG_LANE+set}"
+    printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
+    printf 'LEG_LANE=%s\n' "\${LEG_LANE+set}" # old name, read both ways
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
 } > "$tmp/child-env-66.txt"
@@ -1873,17 +1881,19 @@ KONSOLE_STUB
 chmod +x "$tmp/konsole-66"
 
 out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    HIMMEL_LEG_PROFILE=leg-impl \
-    LEG_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_PREFACE=/leaked-66/preface.md \
-    LEG_PROFILE_MCP_CONFIG=/leaked-66/mcp.json LEG_CLAUDE_BIN=/leaked-66/claude \
+    HIMMEL_WORKER_SESSION_PROFILE=leg-impl HIMMEL_LEG_PROFILE=leg-impl \
+    WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_SETTINGS=/leaked-66/settings.json \
+    WORKER_SESSION_PROFILE_PREFACE=/leaked-66/preface.md LEG_PROFILE_PREFACE=/leaked-66/preface.md \
+    WORKER_SESSION_PROFILE_MCP_CONFIG=/leaked-66/mcp.json LEG_PROFILE_MCP_CONFIG=/leaked-66/mcp.json \
+    WORKER_SESSION_CLAUDE_BIN=/leaked-66/claude LEG_CLAUDE_BIN=/leaked-66/claude \
     HIMMEL_LEAN_LEG=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=leaked-console-66 \
     WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
-    LEG_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
+    WORKER_SESSION_LANE=openrouter LEG_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
     CR_TRIGGER_SUPPRESS=1 IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HIMMEL_READ_CLAMP_LINES=4000 \
     HIMMEL_CONSOLE_RELAY=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/leg-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
-    HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 LEG_PROFILE_SETTINGS=/leaked-66/settings.json" \
+    HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_SETTINGS=/leaked-66/settings.json" \
     HEADED_ARM_UNAME=Darwin \
     CHIEF_CONTEXT=1m \
     KONSOLE_CMD="$tmp/konsole-66" \
@@ -1897,8 +1907,9 @@ check "66 dry-run resolves the real launcher, not the leaked shim; recorder not 
     "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: launcher=claude recorder=0 ')" "1"
 check "66 no leaked leg-profile value reaches the armed console's argv/env" \
     "$(printf '%s\n' "$out66b" | grep -c 'leaked-66')" "0"
-check "66 armed child's OWN environment still lacks LEG_PROFILE_SETTINGS (not just unprinted)" \
-    "$(grep -c '^LEG_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks WORKER_SESSION_PROFILE_SETTINGS (not just unprinted)" \
+    "$(grep -c '^WORKER_SESSION_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks the old name LEG_PROFILE_SETTINGS (read both ways)" "$(grep -c '^LEG_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just unprinted)" \
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \
@@ -1941,12 +1952,14 @@ while read -r old67 new67; do
     grep -qx "$new67" <<< "$seam67" || seam_missing67="$seam_missing67 $new67"
 done <<< "$twins67"
 check "67 every launch-seam name's worker-session twin is launch seam too" "$seam_missing67" ""
-check "67 armed child's own environment strips LEG_LANE" \
-    "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips WORKER_SESSION_LANE" \
+    "$(grep -c '^WORKER_SESSION_LANE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips the old name LEG_LANE (read both ways)" "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips OPENROUTER_MODEL" \
     "$(grep -c '^OPENROUTER_MODEL=set$' "$tmp/child-env-66.txt")" "0"
-check "67 armed child's own environment strips HIMMEL_LEG_PROFILE" \
-    "$(grep -c '^HIMMEL_LEG_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips HIMMEL_WORKER_SESSION_PROFILE" \
+    "$(grep -c '^HIMMEL_WORKER_SESSION_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
+check "67 armed child's own environment strips the old name HIMMEL_LEG_PROFILE (read both ways)" "$(grep -c '^HIMMEL_LEG_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
 
 # --- 68: --project <dir> -- a console for a repo that is NOT this himmel
 # checkout (the himmel-ops plugin's /console, run from e.g. ~/Websites). The
@@ -2717,6 +2730,29 @@ printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signa
     > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
 rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
 check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
+
+# --- 86b. next carries the predecessor's residual-must rulings -----------------
+# next-dispatchable.sh admits a depth-1 residual only while --doc holds its
+# `residual-must <KEY>` line, bare or as an append-results bullet; the successor
+# doc starts without the predecessor's Results, so the lines are copied across,
+# once each, without the bullet's `- HH:MM` prefix.
+console new --bucket rmsrc >/dev/null
+doc86bA="$root/tester/rmsrc/DEMO-nextleg-${today}A-console.md"
+doc86bB="$root/tester/rmdst/DEMO-nextleg-${today}B-console.md"
+printf '%s\n' '- 07:12 residual-must HIMMEL-302 (security)' 'residual-must HIMMEL-303 (data loss)' \
+    '- 07:40 residual-must HIMMEL-302 (security)' '- 08:01 LIVE — said residual-must HIMMEL-304 in prose' \
+    'docs name a residual-must <KEY> line' >> "$doc86bA"
+rc86b=0
+console next --bucket rmdst --doc "$doc86bA" >/dev/null 2>&1 || rc86b=$?
+check "86b next succeeds against a doc carrying residual-must lines" "$rc86b" "0"
+check "86b the timestamped residual-must bullet reaches the successor as a bare line" \
+    "$(grep -Fxc 'residual-must HIMMEL-302 (security)' "$doc86bB" 2>/dev/null)" "1"
+check "86b the bare residual-must line reaches the successor" \
+    "$(grep -Fxc 'residual-must HIMMEL-303 (data loss)' "$doc86bB" 2>/dev/null)" "1"
+check "86b a prose mention of residual-must is not carried" \
+    "$(grep -c 'HIMMEL-304' "$doc86bB" 2>/dev/null)" "0"
+check "86b the successor lines are read by next-dispatchable's regex" \
+    "$(grep -cE '^[[:space:]]*([-*][[:space:]]+)?([0-9]{1,2}:[0-9]{2}[[:space:]]+)?residual-must[[:space:]]+(HIMMEL-)?[0-9]{3,5}\b' "$doc86bB" 2>/dev/null)" "2"
 
 # --- 87. a shorter decisions: line that points at a bucket decisions file ----
 # It passes only when the file exists and every numbered "(N) " entry of the

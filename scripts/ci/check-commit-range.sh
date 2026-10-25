@@ -78,13 +78,14 @@ fi
 
 # HIMMEL is a private Jira, so only internal committers (the
 # allowlist in scripts/ci/ticket-id-internal-authors.txt) must cite an ID. An
-# external PR author skips ONLY the ticket-ID requirement (TICKET_ID_REQUIRED=0
+# external PR author skips ONLY the ticket-ID requirement (--ticket-optional
 # makes check-commit-msg.sh return after the conventional-shape check); an empty
 # or unlisted-data login keeps it required.
 # shellcheck source=scripts/lib/ticket-id-internal.sh
 . "$SCRIPT_DIR/../lib/ticket-id-internal.sh"
+ticket_args=()
 if ticket_id_author_is_external "${TICKET_ID_TRUSTED_AUTHOR:-}"; then
-  export TICKET_ID_REQUIRED=0
+  ticket_args=(--ticket-optional)
 fi
 
 fails=0
@@ -95,7 +96,7 @@ for sha in $commits; do
   author="$(git log -1 --format='%an' "$sha")"
   git log -1 --format='%B' "$sha" > "$tmp"
   if ! TICKET_ID_AUTHOR="$author" TICKET_ID_TRUSTED_AUTHOR="${TICKET_ID_TRUSTED_AUTHOR:-}" \
-      bash "$CHECK_MSG" "$tmp" >/dev/null 2>&1; then
+      bash "$CHECK_MSG" ${ticket_args[@]+"${ticket_args[@]}"} "$tmp" >/dev/null 2>&1; then
     echo "FAIL ${sha} commit-message gate: ${subject}"
     fails=$((fails + 1))
   fi

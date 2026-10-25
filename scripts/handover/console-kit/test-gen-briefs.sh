@@ -286,7 +286,7 @@ python3 "$SUT" "$WORK/lane-opus.json" --base 4ccb59d --console BZ --bucket "$WOR
 # The scope's LAST completes-ticket value becomes one dedicated machine-readable
 # line (merge-on-green.sh reads it from the leg doc); a scope stating neither writes no line.
 ct_brief() { # <scope text> <bucket>
-    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]=sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ct.json" "$1"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]=sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ct.json" "$1" || { fail "completes-ticket fixture setup failed"; return 1; }
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
@@ -328,7 +328,7 @@ has "the no Ship step ends the merge with the --go GO file" "$ship_no" 'then `--
 # merge command anywhere in the brief, the console is named as the merger, and the leg waits
 # for MERGED. A native leg of the same scope keeps the merge step (asserted above).
 cx_brief() { # <completes value> <bucket>
-    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/cx.json" "$1"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/cx.json" "$1" || { fail "claudex ship fixture setup failed"; return 1; }
     python3 "$SUT" "$WORK/cx.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/cx.err" || fail "claudex ship generation rc=$?: $(cat "$WORK/cx.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
@@ -488,8 +488,8 @@ has "the rm launcher skips the prior-art lint an rm brief has no field for" "$RM
 has "the printed manifest line is native" "$rmout" "--lane native"
 rmbad() { # <name> <python edit> <stderr fragment>: refused, rc 1, nothing written
     local n="$1" edit="$2" frag="$3"
-    rm -rf "$WORK/rmbad"
-    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); d=l[0]; $edit; json.dump(l,open(sys.argv[2],'w'))" "$WORK/rm.json" "$WORK/rmbad.json"
+    rm -rf "$WORK/rmbad" "$WORK/rmbad.json"
+    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); d=l[0]; $edit; json.dump(l,open(sys.argv[2],'w'))" "$WORK/rm.json" "$WORK/rmbad.json" || { fail "$n (fixture setup failed)"; return; }
     python3 "$SUT" "$WORK/rmbad.json" --base 4ccb59d --console BZ --bucket "$WORK/rmbad" --repo "$REPO" --handover-root /h >/dev/null 2>"$WORK/rmbad.err"; rc=$?
     if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/rmbad.err" && ! ls "$WORK/rmbad"/* >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/rmbad.err"))"; fi
 }
@@ -513,6 +513,51 @@ has "a brief naming VM work says to drive the guest only through guest-exec.sh" 
 lacks "a brief that names no VM work does not carry the guest-exec line" "$VMB2" "guest-exec.sh"
 bash "$HERE/brief-lint.sh" "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/vmlint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the VM brief passes brief-lint.sh" || fail "vm brief brief-lint rc=$rc: $(cat "$WORK/vmlint.err")"
+
+# --- a grants list renders a Pre-granted follow-ups block; a grant reaching a forbidden path or a bypass is refused ---
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["grants"]=[{"text":"add the RED row to the harness suite","paths":["scripts/handover/console-kit/test-gen-briefs.sh"]},{"text":"mirror the change in the twin","paths":["scripts/a.sh","scripts/b.sh"]}]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/gr.json" || fail "grants fixture setup failed"
+python3 "$SUT" "$WORK/gr.json" --base 4ccb59d --console BZ --bucket "$WORK/gr" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/gr.err"; rc=$?
+[ "$rc" = 0 ] && pass "a leg with grants generates (rc 0)" || fail "grants rc=$rc: $(cat "$WORK/gr.err")"
+GR="$(cat "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+has "a brief with grants carries the Pre-granted follow-ups block" "$GR" "> **Pre-granted follow-ups** (HIMMEL-7091)"
+# shellcheck disable=SC2016 # literal backticks in the sed pattern
+GR_NONCE="$(sed -n 's/^> \*\*RETASK:\*\* your nonce is `\([^`]*\)`.*/\1/p' "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md)"
+if [ -n "$GR_NONCE" ]; then has "the grants block binds the ruling to the leg's own nonce" "$GR" "\`RULING $GR_NONCE grant=<Gn> :: <action>\`"; else fail "no RETASK nonce in the grants brief"; fi
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "G1 names its text and backticked path" "$GR" '> - G1 add the RED row to the harness suite: `scripts/handover/console-kit/test-gen-briefs.sh`'
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "G2 lists every path it names" "$GR" '> - G2 mirror the change in the twin: `scripts/a.sh`, `scripts/b.sh`'
+has "an off-grant ruling gets a needs-rebrief FINDING" "$GR" "FINDING needs-rebrief <Gn>"
+bash "$HERE/brief-lint.sh" "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/grlint.err"; rc=$?
+[ "$rc" = 0 ] && pass "the grants brief passes brief-lint.sh" || fail "grants brief brief-lint rc=$rc: $(cat "$WORK/grlint.err")"
+lacks "a leg without grants carries no grants block" "$ct_no" "Pre-granted follow-ups"
+grbad() { # <name> <python edit of the grant g> <stderr fragment>
+    rm -rf "$WORK/grbad" "$WORK/grbad.json"
+    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); g={'text':'fix the twin','paths':['scripts/a.sh']}; $2; l[0]['grants']=[g]; json.dump(l[:1],open(sys.argv[2],'w'))" "$WORK/legs.json" "$WORK/grbad.json" || { fail "$1 (fixture setup failed)"; return; }
+    python3 "$SUT" "$WORK/grbad.json" --base 4ccb59d --console BZ --bucket "$WORK/grbad" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/grbad.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q -- "$3" "$WORK/grbad.err" && ! ls "$WORK/grbad"/* >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$rc, err: $(cat "$WORK/grbad.err"))"; fi
+}
+grbad "a grant with no paths is refused" 'g["paths"]=[]' "must name its paths"
+grbad "a grant naming a settings file is refused" 'g["paths"]=[".claude/settings.json"]' "settings, CI-workflow or trust path"
+grbad "a grant naming a CI workflow is refused" 'g["paths"]=[".github/workflows/ci.yml"]' "settings, CI-workflow or trust path"
+grbad "a grant naming a ci-trust-paths file is refused" 'g["paths"]=["scripts/handover/console-kit/brief-lint.sh"]' "settings, CI-workflow or trust path"
+grbad "a grant whose text names a bypass is refused" 'g["text"]="skip review with SKIP_CR"' "never carries a bypass"
+grbad "a grant whose text names an amend is refused" 'g["text"]="amend the first commit"' "never carries a bypass"
+grbad "a grant with a glob path is refused" 'g["paths"]=["scripts/*.sh"]' "literal repo-relative file path"
+grbad "a grant with a parent-relative path is refused" 'g["paths"]=["../x.sh"]' "literal repo-relative file path"
+grbad "a dot-prefixed spelling of a workflow path is refused" 'g["paths"]=["./.github/workflows/ci.yml"]' "literal repo-relative file path"
+grbad "a doubled-slash spelling of a trust path is refused" 'g["paths"]=["scripts/handover//console-kit/brief-lint.sh"]' "literal repo-relative file path"
+grbad "a grant path with a trailing slash is refused" 'g["paths"]=["scripts/"]' "literal repo-relative file path"
+grbad "a grant path naming the repo root is refused" 'g["paths"]=["."]' "literal repo-relative file path"
+mkdir -p "$REPO/grantdir" || fail "grantdir fixture setup failed"
+grbad "a grant path naming an existing directory is refused" 'g["paths"]=["grantdir"]' "literal repo-relative file path"
+grbad "a grant path holding a backtick is refused" 'g["paths"]=["scripts/a`.sh"]' "literal repo-relative file path"
+grbad "a grant whose text names a short-flag force push is refused" 'g["text"]="git push -f origin main"' "never carries a bypass"
+grbad "a grant whose text names a spaced force push is refused" 'g["text"]="force push the branch"' "never carries a bypass"
+grbad "a grant whose text holds a backtick is refused" 'g["text"]="fix "+chr(96)+"x"' "<placeholder>"
+grbad "a grant whose text holds a control character is refused" 'g["text"]="fix\tthe twin"' "<placeholder>"
+grbad "a grant with a placeholder in its text is refused" 'g["text"]="edit <file>"' "<placeholder>"
+grbad "a grant with an extra key is refused" 'g["why"]="x"' "exactly {text, paths}"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"

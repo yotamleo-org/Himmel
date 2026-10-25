@@ -84,15 +84,15 @@ export async function setupState(o: SetupOpts) {
 const fail = (status: number, error: string): SecretResult => ({ status, body: { error }, audit: null });
 
 // POST /api/setup/secret {name, op: "set"|"remove", value?}.
-// ponytail: a service-mode server refuses set (the launch token alone is too weak for a write that takes a secret), upgrade path is a UI login, HIMMEL-4862.
-export function secretWrite(b: Record<string, unknown>, o: SetupOpts & { serviceMode: boolean }): SecretResult {
+// A service-mode server takes a set only from a login session: its launch token outlives the process, too weak alone for a write that takes a secret.
+export function secretWrite(b: Record<string, unknown>, o: SetupOpts & { serviceMode: boolean; session?: boolean }): SecretResult {
   const e = entries.find((x) => x.name === b.name);
   if (!e || e.collect !== "file") return fail(400, "not a secret this page can set");
   if (b.op !== "set" && b.op !== "remove") return fail(400, "op must be set or remove");
   const set = b.op === "set";
   if (set && typeof b.value !== "string") return fail(400, "value required");
   if (!set && b.value !== undefined) return fail(400, "remove takes no value");
-  if (set && o.serviceMode) return fail(403, "service mode: the always-on UI cannot save a secret until the UI login ships; run `himmelctl ui` for a window that can");
+  if (set && o.serviceMode && !o.session) return fail(403, "service mode: log in at /login to save a secret, or run `himmelctl ui` for a window that can");
   const action = set ? "secret.set" : "secret.remove";
   if (set) {
     const v = store.validate(e.name, b.value);

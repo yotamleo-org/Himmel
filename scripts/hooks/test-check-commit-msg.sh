@@ -419,6 +419,32 @@ case "$NOLIB_RC:$NOLIB_OUT" in
     ;;
 esac
 
+# --ticket-optional skips only the ticket requirement, whatever the env says,
+# so a caller exempting an external author needs no TICKET_ID_REQUIRED export.
+expect_flag_rc() {
+  local name="$1" want="$2" message="$3"
+  shift 3
+  local rc=0
+  printf '%s\n' "$message" > "$MSG"
+  ( cd "$R" && env -u TICKET_ID_REQUIRED -u TICKET_ID_PATTERN \
+      -u TICKET_ID_EXEMPT_AUTHORS -u TICKET_ID_AUTHOR -u TICKET_ID_TRUSTED_AUTHOR -u JIRA_PROJECT_KEY \
+      "$@" bash "$SCRIPT" --ticket-optional "$MSG" ) >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq "$want" ]; then
+    printf '  PASS  %s\n' "$name"
+  else
+    printf '  FAIL  %s (rc=%s, want %s)\n' "$name" "$rc" "$want"
+    failures=$((failures + 1))
+  fi
+}
+expect_flag_rc "--ticket-optional accepts a ticketless message under a required Jira posture" 0 \
+  "chore: no ticket id here" TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=HIMMEL
+expect_flag_rc "--ticket-optional accepts a ticketless message with tracker none forced on" 0 \
+  "chore: no ticket id here" TRACKER=none TICKET_ID_REQUIRED=1
+expect_flag_rc "--ticket-optional still rejects a non-conventional message" 1 \
+  "not conventional" TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=HIMMEL
+expect_rc "without the flag the same ticketless message is still rejected" 1 \
+  "chore: no ticket id here" TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=HIMMEL
+
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
   exit 0

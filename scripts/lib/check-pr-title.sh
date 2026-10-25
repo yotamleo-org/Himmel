@@ -57,15 +57,16 @@ fi
 # TICKET_ID_TRUSTED_AUTHOR keeps the ID required. See ticket-id-internal.sh.
 # shellcheck source=scripts/lib/ticket-id-internal.sh
 . "$HERE/ticket-id-internal.sh"
+ticket_args=()
 if ticket_id_author_is_external "${TICKET_ID_TRUSTED_AUTHOR:-}"; then
-    export TICKET_ID_REQUIRED=0
+    ticket_args=(--ticket-optional)
 fi
 
 TMP="$(mktemp "${TMPDIR:-/tmp}/check-pr-title.XXXXXX")" || { echo "check-pr-title: mktemp failed" >&2; exit 2; }
 trap 'rm -f "$TMP"' EXIT
 printf '%s\n' "$TITLE" > "$TMP"
 
-if ! OUT=$(bash "$CHECK_MSG" "$TMP" 2>&1); then
+if ! OUT=$(bash "$CHECK_MSG" ${ticket_args[@]+"${ticket_args[@]}"} "$TMP" 2>&1); then
     echo "check-pr-title: PR title fails the conventional-commit + ticket gate:" >&2
     printf '%s\n' "$OUT" >&2
     echo "  Got title: ${TITLE}" >&2

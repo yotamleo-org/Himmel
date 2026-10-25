@@ -52,7 +52,7 @@
 #   27. SUITE_TIER_MODE=pr reads suite-tiers.tsv: a local suite runs only when
 #       impacted, an unlisted suite runs, a quarantine failure does not fail the
 #       run, in pr mode and in all mode (and unset) alike.
-#   28. A session env leaked from the caller (LEG_*, HIMMEL_WORKER_*) never
+#   28. A session env leaked from the caller (WORKER_SESSION_*, HIMMEL_WORKER_*) never
 #       reaches a suite; the runner-set HIMMEL_TEST_FIXTURE still does.
 #
 # Usage: bash scripts/ci/test-run-shell-tests.sh
@@ -2915,16 +2915,16 @@ if [ -n "$sb28" ]; then
 mkdir -p "$sb28/scripts"
 cat > "$sb28/scripts/test-envleak.sh" <<'SHEOF'
 #!/usr/bin/env bash
-printf 'leg=%s profile=%s fixture=%s\n' "${LEG_SESSION_ID-unset}" \
+printf 'leg=%s profile=%s fixture=%s\n' "${WORKER_SESSION_ID-unset}" \
   "${HIMMEL_WORKER_SESSION_PROFILE-unset}" "${HIMMEL_TEST_FIXTURE-unset}" > "$ENVLEAK_LOG"
 exit 0
 SHEOF
 chmod +x "$sb28/scripts/test-envleak.sh"
 
 # Control: the leak does reach the suite when the runner is not in the way.
-LEG_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/direct.log" \
+WORKER_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/direct.log" \
   env -u HIMMEL_TEST_FIXTURE bash "$sb28/scripts/test-envleak.sh"
-LEG_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/runner.log" \
+WORKER_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG="$sb28/runner.log" \
   env -u SUITE_TIER_MODE bash "$RUNNER" "$sb28/scripts" >/dev/null 2>&1
 rc28=$?
 direct28=$(cat "$sb28/direct.log" 2>/dev/null)

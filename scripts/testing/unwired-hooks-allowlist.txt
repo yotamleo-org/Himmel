@@ -3,8 +3,6 @@
 # which fails on an unlisted unwired script AND on an entry that is now wired.
 #
 # Known unwired, tracked, NOT to be wired here (HIMMEL-5030):
-bus-deliver-hook.sh|HIMMEL-5030: bus delivery hook ships unwired by design until the bus receive path lands
-bus-deliver-sessionstart.sh|HIMMEL-5030: bus delivery SessionStart hook ships unwired by design until the bus receive path lands
 bus-deliver-run.js|HIMMEL-5030: node runner for the bus-deliver hooks, never wired on its own
 #
 # Called only from another script (the audit's "called only from other scripts"):

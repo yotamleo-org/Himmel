@@ -118,7 +118,7 @@ this shift (HIMMEL-4786, leg-digest-step.sh's skips.jsonl; none~<k> with only
 skips). fails=none with no rows, fails=? when a ledger or the lock start is
 unreadable or the latest wrap digest failed, skip with no --doc. Advisory: not in
 console-wait's action key, so it wakes nothing. Env seams:
-HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
+HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
 WORKER_SESSION_DIGEST_STATE_DIR.
 
 gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from
@@ -2018,7 +2018,7 @@ fi
 deadwin_tail=""; dw_closed=""
 dw_grace="${TICK_DEADWIN_GRACE:-30}"
 case "$dw_grace" in ""|*[!0-9]*) dw_grace=30 ;; esac
-dw_ps="$(ps -eo pid=,ppid=,etimes=,args= 2>/dev/null)" || dw_ps=""  # swallow-ok: an unreadable table reports no dead window, never a false one
+dw_ps="$(ps -ww -eo pid=,ppid=,etimes=,args= 2>/dev/null || ps -eo pid=,ppid=,etimes=,args= 2>/dev/null)" || dw_ps=""  # swallow-ok: an unreadable table reports no dead window, never a false one
 if [ -n "$dw_ps" ]; then
     # one awk pass: per konsole leg window "<pid> <etimes> <tabtitle> <haschild>"
     dw_rows="$(printf '%s\n' "$dw_ps" | awk '

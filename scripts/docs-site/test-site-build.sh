@@ -6,8 +6,8 @@
 #   2 relative .md links resolve to site routes, repo-path links point at the
 #     GitHub blob URL, a broken link fails the build
 #   3 a bare <placeholder> renders as visible text
-#   4 mermaid blocks reach the page and the 3 standalone HTML pages are
-#     byte-identical
+#   4 every page's diagram blocks reach it, drawn by a lazy pele chunk themed to
+#     Starlight (no mermaid.js bundled), and the standalone HTML pages are byte-identical
 #   5 every local route and #fragment in the built site resolves, passthrough
 #     pages included (check-built-links.mjs, with a broken-link control)
 # Needs `npm ci` in site/ (network); without site/node_modules it skips loudly.
@@ -273,19 +273,30 @@ case "$broken" in threw:*broken\ link*) ok "criterion 2: a broken link fails the
 check "criterion 3: bare <name> renders as visible text" grep -qE 'Console (&#x3C;|&lt;)name(>|&gt;) is live' "$(route_of telegram-bridge.md)"
 check "criterion 3: no <name> element swallowed into the DOM" absent 'Console <name>' "$(route_of telegram-bridge.md)"
 
-# --- criterion 4: mermaid + byte-identical standalone HTML
-want=$(grep -c '^```mermaid' "$repo/docs/architecture.md")
-got=$(grep -o '<pre class="mermaid"' "$(route_of architecture.md)" | wc -l)
-if [ "$want" -gt 0 ] && [ "$want" -eq "$got" ]; then ok "criterion 4: $got mermaid blocks reach the page"; else ko "criterion 4: mermaid blocks reach the page (docs $want, page $got)"; fi
-check "criterion 4: mermaid renderer is bundled" grep -rlq 'mermaid' "$dist/_astro"
+# --- criterion 4: every diagram block reaches its page, pele draws them + byte-identical standalone HTML
+diagram_pages=0
+for f in $allow; do
+  case "$f" in *.md) ;; *) continue ;; esac
+  want=$(grep -c '^```mermaid' "$repo/docs/$f")
+  [ "$want" -gt 0 ] || continue
+  diagram_pages=$((diagram_pages + 1))
+  got=$(grep -o '<pre class="mermaid"' "$(route_of "$f")" | wc -l)
+  if [ "$want" -eq "$got" ]; then ok "criterion 4: $f: $got diagram blocks reach the page"; else ko "criterion 4: $f: diagram blocks reach the page (docs $want, page $got)"; fi
+done
+check "control: at least one built page has a diagram block (got $diagram_pages)" test "$diagram_pages" -gt 0
+pins=$(node -e "const d = require(process.argv[1]).devDependencies || {}; process.stdout.write((d.pele || '') + '|' + (d.mermaid || ''))" "$here/package.json")
+check "criterion 4: site/package.json pins pele to an exact version and drops mermaid (got: $pins)" grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\|$' <<<"$pins"
+check "criterion 4: no mermaid.js is bundled" fails grep -rlq 'mermaidAPI' "$dist/_astro"
 # the shared page script may only import the vite preload helper statically; the renderer chunks load on demand
 page_js=$(grep -o '/_astro/page\.[^"]*\.js' "$(route_of glossary.md)" | head -1)
 page_js="$dist${page_js#/Himmel}"
 check "control: the page script was found" test -f "$page_js"
-check "criterion 4: mermaid loads on demand, not through a static import of the page script" is "$(grep -o 'from"\./[^"]*"' "$page_js" | grep -vc 'preload-helper')" 0
+check "criterion 4: the renderer loads on demand, not through a static import of the page script" is "$(grep -o 'from"\./[^"]*"' "$page_js" | grep -vc 'preload-helper')" 0
 check "criterion 4: the page script imports the renderer behind a diagram check" grep -q 'pre\.mermaid' "$page_js"
-check "criterion 4: the diagram theme follows data-theme" grep -q 'dataset\.theme' "$page_js"
-check "criterion 4: a data-theme change re-renders the diagrams" grep -q 'MutationObserver' "$page_js"
+check "criterion 4: the renderer is pele's lazy entry" grep -q '_astro/lazy\.[^"]*\.js' "$page_js"
+check "criterion 4: the lazy chunk is pele" grep -lq -- '--pele-bg' "$dist"/_astro/lazy.*.js
+check "criterion 4: pele's colours point at Starlight's tokens" grep -q -- '--pele-bg: var(--sl-color-bg)' "$page_js"
+check "criterion 4: pele's font points at Starlight's font" grep -q -- '--pele-font: var(--sl-font)' "$page_js"
 for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done

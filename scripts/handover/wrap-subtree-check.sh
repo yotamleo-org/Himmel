@@ -171,7 +171,8 @@ mkt_cwd_re='^(marketplaces|cache)(/[^ ]*)?$|^/tmp/claude-lsremote-[A-Za-z0-9]+$'
 mkt_home="${WRAP_SUBTREE_HOME:-${HOME:-}}"
 mkt_home="${mkt_home%/}"
 
-ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
+# -ww: a COLUMNS in the environment would otherwise cut every argv the harness test reads
+ps_out="$(ps -ww -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
 if [ -z "$ps_out" ]; then
     printf 'WITHHELD: cannot read the process table (ps failed) — not declaring CLOSABLE\n'
     exit 2

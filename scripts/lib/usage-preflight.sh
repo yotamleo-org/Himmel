@@ -205,7 +205,7 @@ _fleet_lane_of() {
     return
   fi
   lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
-  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1)
+  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
   if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 
@@ -631,8 +631,10 @@ _fleet_census() {
     _fleet_ps_cmd="$FLEET_PS_CMD"
     _fc_raw="$("$FLEET_PS_CMD" 2>&1)"
   else
-    _fleet_ps_cmd="ps -eo pid=,args="
-    _fc_raw="$(ps -eo pid=,args= 2>&1)"
+    # -ww: with COLUMNS in the environment (a console's Stop hook inherits it)
+    # a bare ps cuts every argv to that width and the `-n NAME` is lost.
+    _fleet_ps_cmd="ps -ww -eo pid=,args="
+    _fc_raw="$(ps -ww -eo pid=,args= 2>&1)" || { _fleet_ps_cmd="ps -eo pid=,args="; _fc_raw="$(ps -eo pid=,args= 2>&1)"; }
   fi
   _fleet_ps_rc=$?
   [ "$_fleet_ps_rc" -eq 0 ] || return 1

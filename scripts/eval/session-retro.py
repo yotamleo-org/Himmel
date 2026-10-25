@@ -27,7 +27,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 LEDGER_ENV = "HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
-LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"
+LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"  # old name, read both ways
 EXAMPLES = 3
 
 

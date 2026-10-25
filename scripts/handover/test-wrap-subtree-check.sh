@@ -26,11 +26,16 @@ mkdir -p "$W/bin"
 # The ONE argv the SUT may use, answered from $PS_FIXTURE; PS_FAIL=1 fails it.
 cat > "$W/bin/ps" <<'STUB'
 #!/usr/bin/env bash
-if [ "$*" = "-eo pid=,ppid=,etime=,args=" ]; then
-  [ "${PS_FAIL:-0}" -eq 0 ] || exit 1
-  cat "$PS_FIXTURE"
-  exit 0
-fi
+# like a real ps, a COLUMNS in the environment cuts every row unless -ww is given
+case "$*" in
+  "-eo pid=,ppid=,etime=,args="|"-ww -eo pid=,ppid=,etime=,args=")
+    [ "${PS_FAIL:-0}" -eq 0 ] || exit 1
+    case "$1" in
+      -ww) cat "$PS_FIXTURE" ;;
+      *) if [ -n "${COLUMNS:-}" ]; then cut -c1-"$COLUMNS" "$PS_FIXTURE"; else cat "$PS_FIXTURE"; fi ;;
+    esac
+    exit 0 ;;
+esac
 exec /bin/ps "$@"
 STUB
 chmod +x "$W/bin/ps"
@@ -80,6 +85,10 @@ run() { # run <fixture> [args...] — SUT under the hermetic seams, self = 901
 out="$(run "$W/clean.txt" 101 2>&1)"; rc=$?
 eq 'clean subtree (explicit pid): rc 0' 0 "$rc"
 contains 'clean subtree: CLOSABLE line, harness children counted' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (3 harness-owned children ignored)'
+
+out="$(WRAP_SUBTREE_START_WINDOW=0 COLUMNS=40 run "$W/clean.txt" 101 2>&1)"; rc=$?
+eq 'a COLUMNS in the environment does not truncate argv: clean subtree rc 0' 0 "$rc"
+contains 'a COLUMNS in the environment still recognizes the harness children' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (3 harness-owned children ignored)'
 
 out="$(run "$W/clean.txt" 2>&1)"; rc=$?
 eq 'clean subtree (session found by walking up from self): rc 0' 0 "$rc"

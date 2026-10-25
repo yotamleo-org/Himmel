@@ -14,8 +14,8 @@ const cache = (pct: number, at = NOW, resetsAt = NOW / 1000 + 86400) =>
   ] });
 
 test("lane precedence: WORKER_SESSION_LANE, then LEG_LANE, then the launcher's record, then the config dir, then the leg doc, else native", () => {
-  expect(laneOf({ LEG_LANE: "openrouter", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" });
-  expect(laneOf({ LEG_LANE: "bogus", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "claudex", laneFrom: "launcher" });
+  expect(laneOf({ LEG_LANE: "openrouter", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" }); // old name, read both ways
+  expect(laneOf({ LEG_LANE: "bogus", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "claudex", laneFrom: "launcher" }); // old name
   expect(laneOf({ WORKER_SESSION_LANE: "claudex", LEG_LANE: "openrouter" }, "")).toEqual({ lane: "claudex", laneFrom: "WORKER_SESSION_LANE" });
   expect(laneOf({ WORKER_SESSION_LANE: "bogus", LEG_LANE: "openrouter" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" });
   expect(laneOf({ CLAUDE_CONFIG_DIR: "/h/.claude-codex" }, "")).toEqual({ lane: "claudex", laneFrom: "config-dir" });

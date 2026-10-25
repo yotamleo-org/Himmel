@@ -1232,6 +1232,45 @@ report_pending_migrations() {
     return 0
 }
 
+# run_env_migration check|apply — move himmel's .env items to their config
+# layers (scripts/setup/migrate-env.sh: backup, copy, verify with the real
+# readers, then remove the moved lines). check prints the dry-run plan; apply
+# hands the terminal to migrate-env.sh, which prints the plan and moves the
+# keys only on a y typed there. With no terminal, or inside an agent session,
+# it applies nothing and prints the one command to apply. Key names only,
+# never values.
+run_env_migration() {
+    local script="$ROOT/scripts/setup/migrate-env.sh" envfile="$ROOT/.env" out rc=0
+    [ -f "$script" ] || return 0
+    echo ""
+    echo "==> .env migration"
+    out=$(bash "$script" --dry-run --env "$envfile" 2>&1) || rc=$?
+    case "$rc:$out" in
+        0:*"nothing to move"*) STATUS_env_migration="up-to-date" ;;
+        0:*"dry run: nothing written"*)
+            STATUS_env_migration="pending"; DETAIL_env_migration="apply: bash scripts/setup/migrate-env.sh" ;;
+        0:*) ;;
+        *)
+            printf '%s\n' "$out" | sed 's/^/    /'
+            STATUS_env_migration="failed"; DETAIL_env_migration=".env unchanged; see the report above"
+            return 1 ;;
+    esac
+    if [ "$1" != apply ] || [ "$STATUS_env_migration" != pending ]; then
+        printf '%s\n' "$out" | sed 's/^/    /'
+        return 0
+    fi
+    rc=0
+    bash "$script" --env "$envfile" || rc=$?
+    case "$rc" in
+        0) STATUS_env_migration="updated"; DETAIL_env_migration="backup in ~/.himmel/env-backups; remove it once happy" ;;
+        3) ;;
+        *)
+            STATUS_env_migration="failed"; DETAIL_env_migration="see the report above for .env and its backup"
+            return 1 ;;
+    esac
+    return 0
+}
+
 # ─── the full dependency chain ──────────────────────────────────
 # Six MANAGED items — the things this file already updates (or, for jira/qmd/
 # luna below, already has a real recipe for elsewhere in this repo that this
@@ -1258,6 +1297,9 @@ STATUS_luna_template="not-attempted"; DETAIL_luna_template=""
 # it has no fixed row: print_status_table adds one only when sync_graphify set
 # STATUS_graphify — today only for the uv-missing skip.
 STATUS_graphify="";                   DETAIL_graphify=""
+# The .env migration is not a chain item either: its row prints only when the
+# step ran and found a .env.
+STATUS_env_migration="";              DETAIL_env_migration=""
 # probe-mode station tools (rtk, twitter-cli, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
 # lines (written by sync_probe_tools, read back by print_status_table) instead of
@@ -1760,6 +1802,9 @@ EOF
     # to report, so a healthy run keeps the six-item table.
     if [ -n "$STATUS_graphify" ]; then
         printf '    %-14s %-14s %s\n' "graphify" "$STATUS_graphify" "$DETAIL_graphify"
+    fi
+    if [ -n "$STATUS_env_migration" ]; then
+        printf '    %-14s %-14s %s\n' "env_migration" "$STATUS_env_migration" "$DETAIL_env_migration"
     fi
     local pt_name pt_status pt_detail
     while IFS='|' read -r pt_name pt_status pt_detail; do
@@ -3227,7 +3272,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check env_migration" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3265,8 +3310,9 @@ if [ "${1:-}" = "--only" ]; then
         tools)         sync_probe_tools apply || only_rc=1 ;;
         drift)         report_drift apply ;;
         drift-check)   report_drift check ;;
+        env_migration) run_env_migration apply || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check env_migration" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -3357,6 +3403,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     sync_probe_tools check || true
     report_guardrail_block
     report_drift check
+    run_env_migration check || true
     print_status_table
     exit 0
 fi
@@ -3458,6 +3505,11 @@ if [ "$chain_rc" -eq 0 ]; then
     fi
 fi
 
+# After a clean chain only, so verify runs the readers this update just pulled
+# and rebuilt. A failed migration leaves .env as it was and stays advisory.
+if [ "$chain_rc" -eq 0 ]; then
+    run_env_migration apply || true
+fi
 
 # ─── dependency-readiness advisory ─────────────────────────────
 # Best-effort mirror of himmel-doctor's C17 (scripts/himmel-doctor.sh):

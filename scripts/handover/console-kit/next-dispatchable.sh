@@ -10,7 +10,8 @@
 #                        [--priority-pool-only] [--workers-dir DIR] [--why]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
-# candidate is a To Do issue that is not an Epic/Sub-task, carries none of
+# candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
+# merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
 # blocked_by link (focus-chains-links.sh writes the console's chain order as
 # those links). Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
@@ -33,7 +34,7 @@
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
-# line of its own (security, data loss or a broken operator flow only), or the
+# line of its own, bare or as an append-results bullet (`- HH:MM residual-must <KEY>`) (security, data loss or a broken operator flow only), or the
 # admissions ledger (HIMMEL_ADMISSIONS_LEDGER, else <handover root>/admissions-ledger.jsonl)
 # admitted it into the earliest unreleased version: its latest row there is an
 # `rm-admit` or `override` row (any other kind, or none, admits nothing). No label
@@ -281,7 +282,7 @@ def read_residual_must(path):
     keys = set()
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
-            m = re.match(r'^\s*(?:[-*]\s+)?residual-must\s+(?:HIMMEL-)?(\d{3,5})\b', line)
+            m = re.match(r'^\s*(?:[-*]\s+)?(?:\d{1,2}:\d{2}\s+)?residual-must\s+(?:HIMMEL-)?(\d{3,5})\b', line)
             if m:
                 keys.add('HIMMEL-' + m.group(1))
     except OSError:
@@ -378,6 +379,9 @@ for i in issues.values():
         continue
     if i['type'] in ('Epic', 'Sub-task'):
         drop(i, 'type ' + i['type'])
+        continue
+    if i['key'] in done_pending:
+        drop(i, 'done-pending (a contract=yes merge row; the mirror lags)')
         continue
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
         drop(i, 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))

@@ -1149,6 +1149,19 @@ assert_rc "5412 ctl bun Bun.env[PATH]"          0 "$(run_case "$(j_bash "bun -e 
 assert_rc "5412 ctl deno Deno.env.get(HOME)"    0 "$(run_case "$(j_bash "deno eval 'console.log(Deno.env.get(\"HOME\"))'")")"
 assert_rc "5412 ctl python environb[HOME]"      0 "$(run_case "$(j_bash "python3 -c 'import os; print(os.environb[b\"HOME\"])'")")"
 
+# A reader pipeline's pattern is not interpreter code: only the text an
+# interpreter could run is scanned for an environment dump.
+assert_rc "7366 git grep environ pattern then python" 0 "$(run_case "$(j_bash "git grep -n 'os.environ.get' -- '*.py' | head; python3 -c 'print(1)'")")"
+assert_rc "7366 grep environ pattern then node"       0 "$(run_case "$(j_bash "grep -rn 'print(os.environ)' docs && node -e '1'")")"
+assert_rc "7366 ctl reader piped into python"         2 "$(run_case "$(j_bash "grep -h 'print(os.environ)' notes.md | python3")")"
+assert_rc "7366 ctl reader writes a file python runs" 2 "$(run_case "$(j_bash "grep -h 'print(os.environ)' notes.md > x.py; python3 x.py")")"
+assert_rc "7366 ctl python dump beside a reader"      2 "$(run_case "$(j_bash "grep -n x f; python3 -c 'import os; print(os.environ)'")")"
+assert_rc "7366 ctl substitution feeds python"        2 "$(run_case "$(j_bash "python3 -c \"\$(grep -h 'print(os.environ)' notes.md)\"")")"
+assert_rc "7366 ctl git grep pager option runs python" 2 "$(run_case "$(j_bash "git grep --open-files-in-pager='python3 -c \"import os; print(os.environ)\"' x; python3 -c 1")")"
+assert_rc "7366 ctl git grep abbreviated pager option" 2 "$(run_case "$(j_bash "git grep --open='python3 -c \"import os; print(os.environ)\"' x; python3 -c 1")")"
+assert_rc "7366 ctl git grep glued -O in a cluster"    2 "$(run_case "$(j_bash "git grep -nO'python3 -c \"import os; print(os.environ)\"' x; python3 -c 1")")"
+assert_rc "7366 ctl git grep with an expanded option"  2 "$(run_case "$(j_bash "git grep \$P'import os; print(os.environ)' x; python3 -c 1")")"
+
 # shell tracing prints the inherited environment into the transcript.
 assert_rc "5484 bash -x script"                 2 "$(run_case "$(j_bash 'bash -x scripts/hooks/block-bank-lift-writes.sh < payload.json')")"
 assert_rc "5484 bash -xe script"                2 "$(run_case "$(j_bash 'bash -xe script.sh')")"
@@ -1283,6 +1296,38 @@ assert_rc "5659 git --config-env then commit -m word"      2 "$(run_case "$(j_ba
 assert_rc "5659 gh alias with -b carrying the word"        2 "$(run_case "$(j_bash "gh x -b xtrace")")"
 assert_rc "5659 gh pr create --body word still allows"     0 "$(run_case "$(j_bash "gh pr create -t T -b xtrace")")"
 assert_rc "5659 git -C dir commit -m word still allows"    0 "$(run_case "$(j_bash "git -C /tmp/some-dir commit -m xtrace")")"
+
+# The tracing word as an operand of a reader that runs no program is data; a
+# reader beside a trace switch, or carrying one in a substitution, still denies.
+assert_rc "7366 sed -n range over a file named with the word" 0 "$(run_case "$(j_bash "sed -n '1,20p' scripts/hooks/test-xtrace.sh")")"
+assert_rc "7366 grep -n for the word"                       0 "$(run_case "$(j_bash "grep -n 'xtrace' scripts/hooks/block-read-secrets.sh")")"
+assert_rc "7366 ls of a brace list spelling the word"       0 "$(run_case "$(j_bash 'ls docs/{xa,trace}')")"
+assert_rc "7366 grep -oiE over mockup html"                 0 "$(run_case "$(j_bash "grep -oiE 'box-[a-z]+|#[0-9a-f]{6}|transparent|space' docs/mock/index.html")")"
+assert_rc "7366 ctl sed with e command keeps the scan"      2 "$(run_case "$(j_bash "sed -n '1e set -o xtrace' f")")"
+assert_rc "7366 ctl grep then set -o in the next clause"    2 "$(run_case "$(j_bash "grep -n x f; set -o xtrace")")"
+assert_rc "7366 ctl cat piped to a shell with the word"     2 "$(run_case "$(j_bash 'cat f | bash -o xtrace')")"
+assert_rc "7366 ctl grep with a substitution setting it"    2 "$(run_case "$(j_bash "grep \"\$(set -o xtrace; :)\" f")")"
+assert_rc "7366 ctl SHELLOPTS prefix on a reader"           2 "$(run_case "$(j_bash 'SHELLOPTS=xtrace grep x f')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function shadows a reader"            2 "$(run_case "$(j_bash 'cat() { set -o "$1"; }; cat xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function keyword shadows a reader"    2 "$(run_case "$(j_bash 'function grep { set -o "$1"; }; grep xtrace')")"
+assert_rc "7366 ctl an alias shadows a reader"              2 "$(run_case "$(j_bash "alias head='set -o'; head xtrace")")"
+assert_rc "7366 ctl eval defines a function shadowing a reader" 2 "$(run_case "$(j_bash "eval 'tail() { set -o \"\$1\"; }'; tail xtrace")")"
+assert_rc "7366 grep for the word alias in a file named with the word" 0 "$(run_case "$(j_bash 'grep -n alias docs/xtrace.md')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with an if body shadows a reader" 2 "$(run_case "$(j_bash 'cat() if set -o "$1"; then :; fi; cat xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a for body shadows a reader" 2 "$(run_case "$(j_bash 'cat() for o in "$1"; do set -o "$o"; done; cat xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a while body shadows a reader" 2 "$(run_case "$(j_bash 'head() while set -o "$1"; do break; done; head xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a case body shadows a reader" 2 "$(run_case "$(j_bash 'tail() case $1 in *) set -o "$1";; esac; tail xtrace')")"
+# shellcheck disable=SC2016 # literal $1 in the command under test
+assert_rc "7366 ctl a function with a subshell body shadows a reader" 2 "$(run_case "$(j_bash 'wc() ( set -o "$1"; : ); wc xtrace')")"
+assert_rc "7366 ctl a dot-loaded file can define a reader"     2 "$(run_case "$(j_bash '. ./defs.sh; cat xtrace')")"
+assert_rc "7366 ctl a sourced file can define a reader"        2 "$(run_case "$(j_bash 'source defs.sh; grep xtrace')")"
+assert_rc "7366 a reader in a subshell keeps its data reading" 0 "$(run_case "$(j_bash '(grep -n alias docs/xtrace.md)')")"
 
 # --- an env NAME=value operand the shfmt model unwraps past still reaches the
 # regex reader: the model only proves a shifted-cwd glob safe, never allows

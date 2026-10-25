@@ -707,7 +707,7 @@ const explorationSection = (() => {
 })();
 
 // Failure classes this shift: the leg-failures
-// ledger (HIMMEL_LEG_FAILURES_LEDGER, the seam leg_ledger.py writes through) since
+// ledger (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, the seam leg_ledger.py writes through) since
 // the console lock's `started`, grouped by class -- distinct legs, events (sum of
 // count), recovered share, and the failure router's latest decision for the class
 // from its log (HIMMEL_FAILURE_ROUTES_LOG; "signal" until P5 routes one). At most 10

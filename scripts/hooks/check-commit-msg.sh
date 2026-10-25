@@ -17,6 +17,15 @@
 # nothing for months, so an unreadable message is now a rejection naming the
 # wiring, never a pass. The .git/COMMIT_EDITMSG fallback keeps the hook working
 # under any other wiring that invokes it with no argument.
+#
+# --ticket-optional (before the file) skips only the ticket requirement, as
+# TICKET_ID_REQUIRED=0 does, so a CI caller exempting an external author does
+# not depend on an environment value. git and pre-commit pass only the file.
+TICKET_OPTIONAL=0
+if [ "${1:-}" = --ticket-optional ]; then
+  TICKET_OPTIONAL=1
+  shift
+fi
 COMMIT_MSG_FILE="${1:-}"
 if [ -z "${COMMIT_MSG_FILE}" ]; then
   COMMIT_MSG_FILE=$(git rev-parse --git-path COMMIT_EDITMSG 2>/dev/null || true)
@@ -229,6 +238,9 @@ PM_PATTERN="${PM_PATTERN#TICKET_ID_PATTERN=}"
 # gate on Windows and rejected the commit as invalid config under bash. A
 # half-enumerated grammar is what diverged; normalizing closes it for every
 # spelling at once rather than adding two more arms.
+if [ "${TICKET_OPTIONAL}" = 1 ]; then
+  exit 0
+fi
 TICKET_REQUIRED_RAW="${PM_REQUIRED}"
 TICKET_REQUIRED=$(printf '%s' "${TICKET_REQUIRED_RAW}" | tr '[:upper:]' '[:lower:]')
 case "${TICKET_REQUIRED}" in

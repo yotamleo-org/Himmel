@@ -34,13 +34,7 @@ vault tooling, qmd search, the Telegram bridge, armed resume). No `node` on the
 machine yet? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first; it
 installs Node.
 
-> **Windows is EXPERIMENTAL in v1.** The installer, the git gates and the
-> worktree commands are exercised on Linux and macOS. On Windows they run under
-> **Git Bash** (`bash` 3.2+), and the PowerShell twins exist but are not part of
-> the v1 support claim. Treat a Windows install as opt-in and self-supported:
-> the Git Bash path is the one to prefer. Expect quoting and `PATH` differences
-> from a Linux shell, and open an issue for whatever breaks. That is how the
-> v1 support claim grows.
+> **Windows is not supported** (HIMMEL-5729). himmel runs on Linux and macOS.
 
 ## Preview
 
@@ -297,11 +291,6 @@ are easy to conflate: the unset row is what the resolver falls back to when
 *nothing* is recorded, while `install` on a new station records `stable`, so a
 fresh install tracks releases, and only a station whose channel was never
 written tracks the tip.
-
-> **The Windows row-note.** Every axis above is available on Windows and none of
-> them is covered by the v1 support claim. The scheduler-backed items in
-> particular (`cadence-armed`, the arming legs) use `schtasks` there and are the
-> least exercised.
 
 ### Minimal config
 

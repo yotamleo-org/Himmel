@@ -245,6 +245,7 @@ scripts/cr/test-d1-verdict.sh	1
 scripts/cr/test-doc-freshness-advisory.sh	0
 scripts/cr/test-docs-audit-panel.sh	0
 scripts/cr/test-emit-gate-fail.sh	0
+scripts/cr/test-evals-page-gen.sh	1
 scripts/cr/test-failure-classify.sh	0
 scripts/cr/test-file-deferred-issues.sh	1
 scripts/cr/test-finding-reraise.sh	22
@@ -279,6 +280,7 @@ scripts/docs/test-check-llms-links.sh	1
 scripts/docs/test-generate-credits.sh	1
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
+scripts/docs/test-second-model-review-page.sh	0
 scripts/docs/test-site-guides.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
 scripts/eval/friction/test-friction.sh	1
@@ -293,6 +295,7 @@ scripts/eval/leg-digest/test-failure-review.sh	3
 scripts/eval/leg-digest/test-failure-router.sh	3
 scripts/eval/leg-digest/test-leg-digest.sh	4
 scripts/eval/leg-digest/test-leg-ledger.sh	3
+scripts/eval/leg-digest/test-pdd-share.sh	1
 scripts/eval/mcp-tasks-probe/test-probe.sh	6
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	0
@@ -313,6 +316,7 @@ scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
+scripts/eval/test-profile-openings.sh	0
 scripts/eval/test-review-page.sh	1
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0
@@ -959,6 +963,7 @@ scripts/release/test-check-version-tag.sh	0
 scripts/release/test-followup-report.sh	1
 scripts/release/test-gen-release-notes.sh	0
 scripts/release/test-tarball-vs-clone.sh	3
+scripts/report/test-himmel-report.sh	1
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	2
 scripts/security/test-snyk-scan.sh	1
@@ -969,6 +974,7 @@ scripts/setup/test-cli-proxy-lane.sh	1
 scripts/setup/test-ensure-tools.sh	0
 scripts/setup/test-fill-env.sh	0
 scripts/setup/test-migrate-env-config.sh	0
+scripts/setup/test-migrate-env.sh	11
 scripts/setup/test-onboard-telegram.sh	0
 scripts/setup/test-setup-preflight.sh	0
 scripts/skill-index/test-ensure-skill-index.sh	5

@@ -81,9 +81,9 @@ sr_setup() {
     for f in bus-deliver-hook.sh bus-deliver-sessionstart.sh bus-deliver-run.js wired-hook.sh check-commit-msg.sh; do
         [ -e "$a/scripts/hooks/$f" ] || : > "$a/scripts/hooks/$f"
     done
-    printf 'bus-deliver-hook.sh|HIMMEL-5030 not wired yet\nbus-deliver-sessionstart.sh|HIMMEL-5030 not wired yet\nbus-deliver-run.js|HIMMEL-5030 not wired yet\n' \
+    printf 'bus-deliver-run.js|HIMMEL-5030 not wired yet\n' \
         > "$a/scripts/testing/unwired-hooks-allowlist.txt"
-    echo '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash scripts/hooks/wired-hook.sh"},{"command":"bash scripts/hooks/check-commit-msg.sh"}]}]}}' > "$a/.claude/settings.json"
+    echo '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash scripts/hooks/wired-hook.sh"},{"command":"bash scripts/hooks/check-commit-msg.sh"},{"command":"bash scripts/hooks/bus-deliver-hook.sh"},{"command":"bash scripts/hooks/bus-deliver-sessionstart.sh"}]}]}}' > "$a/.claude/settings.json"
     printf 'repos:\n  - repo: https://github.com/shellcheck-py/shellcheck-py\n    rev: %s\n    hooks:\n      - id: shellcheck\n' "${SR_PINREV:-$SR_PIN}" > "$a/.pre-commit-config.yaml"
     $SR_G -C "$a" add -A -- scripts docs .claude .pre-commit-config.yaml && $SR_G -C "$a" commit -qm base && $SR_G -C "$a" push -q origin HEAD:main || return 1
     b0="$($SR_G -C "$a" rev-parse HEAD)"

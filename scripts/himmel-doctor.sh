@@ -1677,7 +1677,7 @@ check_c25() {
         # POSIX: normalise pid/ppid/command into the same pid|ppid|cmdline
         # shape (the command column is last, so a | inside it survives the
         # field split below).
-        scan="$(ps -e -o pid=,ppid=,command= 2>/dev/null | sed -E 's/^ *([0-9]+) +([0-9]+) /\1|\2|/')" || rc=$?
+        scan="$({ ps -ww -e -o pid=,ppid=,command= || ps -e -o pid=,ppid=,command=; } 2>/dev/null | sed -E 's/^ *([0-9]+) +([0-9]+) /\1|\2|/')" || rc=$?
     fi
     if [ "$rc" -ne 0 ] || [ -z "$scan" ]; then
         # An empty table is a failed scan, not an empty machine -- never a

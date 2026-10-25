@@ -72,7 +72,7 @@ EXPANSION/REDIRECT arriving on a retired token, your chief included.
 
 ## 3. The RETASK block (verbatim dispatch-brief template)
 
-Every dispatch brief — native subagents and external lanes (GLM, claudex) —
+Every dispatch brief — native subagents and external lanes (claudex) —
 carries this block, with a fresh nonce substituted per dispatch:
 
 ```
@@ -139,7 +139,7 @@ be unconditionally safe to act on; expansion was always the only case that
 needs the token + a genuine channel).
 
 **In this repo:** `composeRetaskBlock`/`mintRetaskNonce` in
-`scripts/telegram/spawn-glm.ts` implement this template for the GLM lane;
+`scripts/telegram/spawn-glm.ts` implement this template for the GLM lane (dormant, HIMMEL-1967);
 `scripts/telegram/spawn-claudex.ts` imports and reuses them (lane-agnostic,
 byte-identical rules text) for the claudex lane. `scripts/telegram/bus.ts`'s
 `sendToSession` — the trusted A→B inter-session writer — stamps an `origin`
@@ -147,7 +147,7 @@ field on the inbox record it writes, so a session's poller-delivered inbox
 can distinguish a programmatically-sent (potential chief) message from
 a directly Telegram-relayed one.
 
-**Claudex file inbox:** a claudex worker (GPT-6 Astra via
+**Claudex file inbox:** a claudex worker (gpt-6.1-sol via
 `scripts/claude-codex`) cannot `ListAgents`/`SendMessage` a native session, so
 it has no A→B bus to receive a RETASK revision on. The file inbox
 (`<handover root>/inbox/<session-name>.md`, written by

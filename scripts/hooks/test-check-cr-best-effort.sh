@@ -58,7 +58,7 @@ if [ "$rc" -eq 0 ]; then pass "case 3 -> exit 0"; else fail "case 3 -> expected 
 echo "== Case 4: mixed files, one offending line -> exit 1 with one report =="
 cat > "$tmp/c4a.sh" <<'EOF'
 # CodeRabbit is one reviewer beside the panel; never a bottleneck.
-# LEG_SUPPRESS_CR_TRIGGER: opt-out for the CodeRabbit auto-trigger hooks.
+# WORKER_SESSION_SUPPRESS_CR_TRIGGER: opt-out for the CodeRabbit auto-trigger hooks.
 warn "not triggering CodeRabbit for this head; trigger manually once a slot is confirmed free"
 EOF
 out=$(run "$tmp/c2.md" "$tmp/c4a.sh"); rc=$?

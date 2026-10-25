@@ -137,13 +137,64 @@ sent_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-console"
 sent_file="$sent_dir/pr-stall.sent"
 send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
 # one notifying run at a time, so check-send-record below cannot double-send
-# ponytail: no flock binary (stock macOS) notifies unlocked, so two concurrent runs can
-# double-send; upgrade path = a mkdir lock.
+# ponytail: the no-flock lease expires after 300s even for a live pid; upgrade
+# path = a heartbeat for notifications that can take longer than five minutes.
+lock_dir="$sent_dir/pr-stall.lock.d"
+lock_owner=""
+release_mkdir_lock() {
+    [ -n "$lock_owner" ] || return 0
+    rm -f "$lock_dir/$lock_owner"
+    rmdir "$lock_dir" 2>/dev/null || : # another owner may have taken an expired lease
+}
+take_mkdir_lock() {
+    local owner pid stamp stale=0 clock
+    clock=$(date -u +%s) || return 1
+    lock_owner="$$.$clock"
+    # prim-ok: this no-flock lease spans the whole notifying run, not one with_lock command
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        # Remove only the observed owner's file: a concurrent takeover's new
+        # owner makes rmdir fail rather than letting us erase its live lock.
+        for owner in "$lock_dir"/*; do
+            [ -f "$owner" ] || continue
+            pid="${owner##*/}"; stamp="${pid#*.}"
+            [ "$pid" != "$stamp" ] || return 1
+            pid="${pid%%.*}"
+            case "$pid:$stamp" in *[!0-9:]*|:*|*:) return 1 ;; esac
+            [ "$pid" -gt 0 ] || return 1
+            if [ $((clock - 10#$stamp)) -lt 300 ] && kill -0 "$pid" 2>/dev/null; then return 1; fi
+            rm -f "$owner" || return 1
+            stale=1
+        done
+        if [ "$stale" = 0 ]; then
+            # A crash between mkdir and publishing the owner leaves an empty lock.
+            # swallow-ok: GNU/BSD stat fallback; an unreadable age refuses the lock
+            stamp=$(stat -c %Y "$lock_dir" 2>/dev/null || stat -f %m "$lock_dir" 2>/dev/null) || return 1
+            [ $((clock - stamp)) -ge 300 ] || return 1
+        fi
+        # prim-ok: atomic reacquisition after stale-owner cleanup, held until script exit
+        rmdir "$lock_dir" 2>/dev/null && mkdir "$lock_dir" 2>/dev/null || return 1
+    fi
+    printf '\n' > "$lock_dir/$lock_owner" || return 1
+    set -- "$lock_dir"/*
+    # An empty directory may have been reclaimed before we published our owner.
+    if [ "$#" -ne 1 ] || [ "$1" != "$lock_dir/$lock_owner" ]; then
+        release_mkdir_lock
+        return 1
+    fi
+}
 if [ "$notify" = 1 ]; then
-    # prim-ok: a blocking lock held on fd 9 until the script exits; with_lock wraps one command
-    if ! { mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && { ! command -v flock >/dev/null 2>&1 || flock 9; }; }; then
-        printf 'pr-stall: cannot take the notify lock, listing without --notify\n' >&2
+    if ! mkdir -p "$sent_dir"; then
         notify=0
+    elif command -v flock >/dev/null 2>&1; then
+        # prim-ok: a blocking lock held on fd 9 until the script exits; with_lock wraps one command
+        { exec 9>"$sent_dir/pr-stall.lock" && flock 9; } || notify=0
+    elif take_mkdir_lock; then
+        trap release_mkdir_lock EXIT
+    else
+        notify=0
+    fi
+    if [ "$notify" = 0 ]; then
+        printf 'pr-stall: cannot take the notify lock, listing without --notify\n' >&2
     fi
 fi
 

@@ -339,7 +339,7 @@ for supplied_profile in leg-impl design,design-motion '' 'bad profile' 'bad/prof
     : > "$ARGV_LOG"
     (
         cd "$REPO" || exit 99
-        unset CLAUDE_PID HIMMEL_LEG_PROFILE
+        unset CLAUDE_PID HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEG_PROFILE
         HIMMEL_WORKER_SESSION_PROFILE="$supplied_profile" CLAUDE_CODE_SESSION_ID="$FAKE_SID" CLAUDE_CONFIG_DIR="$FAKE_CLAUDE_HOME" \
             FORGE=github CR_APP=0 GH_CMD="$GH_STUB" ARGV_LOG="$ARGV_LOG" \
             HEAD_SHA_STUB="$HEAD_SHA" JIRA_PROJECT_KEY=HIMMEL \

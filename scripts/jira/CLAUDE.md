@@ -20,9 +20,9 @@ helpers (HIMMEL-437).
 - `transition` takes a status **NAME**, not an ID (no two-call lookup).
 - `transition <key> Done` adds the earliest unreleased fixVersion when the ticket
   has none and prints it; `--no-version` opts out. Closed / wont do never stamp
-  (HIMMEL-6416). A frozen version is stamped only for a frozen-set key or one
-  whose latest admission-ledger row is not a deferral or an `rm-remove`; any other
-  closes unstamped (HIMMEL-6796).
+  (HIMMEL-6416). A frozen version is stamped unless the key is outside the frozen
+  set and its latest admission-ledger row is a deferral or an `rm-remove`; that
+  key closes unstamped, prints `FAIL` on stderr and exits 3 (HIMMEL-6796, HIMMEL-7434).
 - `create --summary` is an alias for `create --title` (Jira's own field name
   is `summary`, so it's the natural reach). If both are given, `--title`
   wins; one of the two is required (HIMMEL-1188).
