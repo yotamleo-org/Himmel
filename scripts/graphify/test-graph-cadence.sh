@@ -1268,6 +1268,8 @@ echo "sent: $*" >> "$FAKE_SEND_LOG"
 FAKESEND
 chmod +x "$FAKE_SEND"
 FAKE_SEND_LOG="$TMP_ROOT/alert-send.log"
+# The launching shell's backend and lane settings must not reach the semantic rows.
+unset GRAPH_CADENCE_SEMANTIC_BACKEND HIMMEL_API_LANE HIMMEL_API_ACCOUNT
 run_sem() { # <tag> [run_gc args...] -- one fixture per tag, seams pinned
     local tag="$1"; shift
     FAKE_SEM_LOG="$FAKE_SEM_LOG" FAKE_SEND_LOG="$FAKE_SEND_LOG" \

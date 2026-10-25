@@ -164,6 +164,8 @@ chmod +x "$FAKE_CADENCE"
 # real vault (observed live). A test that uses a different vault ratifies it
 # with an env prefix on the call (TEST_LUNA_ROOT="$OTHER" run_refresh ...),
 # mirroring how an operator ratifies a non-conventional vault location.
+# The launching shell's lane settings must not reach the real-run rows.
+unset HIMMEL_API_LANE HIMMEL_API_ACCOUNT
 run_refresh() {
     GRAPH_REFRESH_RUNNER="$FAKE_RUNNER" GRAPH_REFRESH_CADENCE_SCRIPT="$FAKE_CADENCE" \
     LUNA_VAULT_PATH="${TEST_LUNA_ROOT:-$VAULT}" \
