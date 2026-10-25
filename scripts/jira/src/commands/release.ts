@@ -293,6 +293,7 @@ export function apiLaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     HIMMEL_API_ACCOUNT: env.HIMMEL_API_ACCOUNT ?? 'auto',
     HIMMEL_API_KIND: 'judge',
     HIMMEL_API_CALL_TIMEOUT_S: '900',
+    HIMMEL_API_TOOLS: '',
   };
 }
 

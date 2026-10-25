@@ -225,9 +225,14 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
 
   it('the judge call runs on the API lane unless the caller says otherwise (decision 288)', () => {
     expect(apiLaneEnv({ PATH: '/bin', CLAUDECODE: '1', ANTHROPIC_API_KEY: 'k' })).toEqual({
-      PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_CALL_TIMEOUT_S: '900',
+      PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_CALL_TIMEOUT_S: '900', HIMMEL_API_TOOLS: '',
     });
     expect(apiLaneEnv({ HIMMEL_API_LANE: 'off', HIMMEL_API_ACCOUNT: 'B' })).toMatchObject({ HIMMEL_API_LANE: 'off', HIMMEL_API_ACCOUNT: 'B' });
+  });
+
+  it('the judge call is tool-free whatever tool grant the caller exported', () => {
+    expect(apiLaneEnv({ HIMMEL_API_TOOLS: 'Bash,Write' }).HIMMEL_API_TOOLS).toBe('');
+    expect(apiLaneEnv({ PATH: '/bin' }).HIMMEL_API_TOOLS).toBe('');
   });
 });
 
