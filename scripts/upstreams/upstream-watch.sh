@@ -108,7 +108,7 @@ jq() { command jq "$@" | tr -d '\r'; }
 
 GH_BIN="${UPSTREAM_WATCH_GH:-gh}"
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/upstream-watch.XXXXXX")"
+TMP="$(tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 
 STATE_DIR="${UPSTREAM_WATCH_STATE_DIR:-$(cadence_user_home)/.himmel/upstream-watch}"

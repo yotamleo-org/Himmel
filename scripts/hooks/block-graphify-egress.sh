@@ -232,7 +232,8 @@ elif any(.[]; unread or viaenv) then "legacy"
 else "skip" end
 GA_JQ_EOF
     ast_rc=0
-    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    # a standalone hook has no runner bound, so cap the model at 10 s plus the 2 s kill grace, inside the 15 s entry timeout
+    pos=$(BASH_AST_MAX_S=10 bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
             # A position the model cannot read (a shell reading stdin, an eval or

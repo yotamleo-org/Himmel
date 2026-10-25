@@ -260,6 +260,7 @@ fi
 # "acquired" stamp -- neither is skipped).
 _lock_acquired=0
 for _lock_try in 1 2 3; do
+  # prim-ok: shared owner-token directory protocol with semantic refresh; with_lock would neither interoperate nor preserve skip-not-wait.
   if _lock_err=$(mkdir "$PROMOTE_LOCK" 2>&1 1>/dev/null); then
     _lock_acquired=1
     break
@@ -316,6 +317,7 @@ if [ "$_lock_acquired" -eq 0 ]; then
   # the same false verdict this probe exists to prevent, inverted. Same idiom
   # as the owner token below.
   _lock_probe="$PROMOTE_LOCK.probe.$$-$RANDOM"
+  # prim-ok: this probes directory writability, not lock ownership; with_lock cannot distinguish the filesystem failure.
   if mkdir "$_lock_probe" 2>/dev/null; then
     rmdir "$_lock_probe" 2>/dev/null || true
     echo "ast-update: structural refresh SKIPPED -- promote lock $PROMOTE_LOCK was contended and released repeatedly during acquire (the out dir is writable, so this is contention, not a filesystem failure); retried on this corpus's next scheduled structural run" >&2

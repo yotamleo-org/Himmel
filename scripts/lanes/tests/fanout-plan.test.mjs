@@ -1,19 +1,24 @@
 // scripts/lanes/tests/fanout-plan.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildFanoutPlan } from '../fanout-plan.mjs';
+
+// The claudex row comes from the real registry, so the roster carries
+// exactly the dormancy (none) that lanes.json declares for it.
+const REG = JSON.parse(readFileSync(new URL('../lanes.json', import.meta.url), 'utf8'));
+const CLAUDEX = REG.lanes.find((l) => l.id === 'claudex');
 
 const LIVE = [
   { id: 'haiku', label: 'Haiku', class: 'claude-tier' },
   { id: 'sonnet', label: 'Sonnet 5', class: 'claude-tier' },
   { id: 'opus', label: 'Opus 4.8', class: 'claude-tier' },
   { id: 'fable', label: 'Fable 5', class: 'claude-tier' },
-  { id: 'claudex', label: 'claudex lane', class: 'impl', dormant: { reason: 'dormant pending the lane rethink', optInEnv: 'CLAUDEX_LANE_OK' } },
+  { id: CLAUDEX.id, label: CLAUDEX.label, class: CLAUDEX.class, ...(CLAUDEX.dormant ? { dormant: CLAUDEX.dormant } : {}) },
   { id: 'glm', label: 'GLM lane', class: 'impl', dormant: { reason: 'lane dropped by operator ruling 2026-08-19', optInEnv: 'GLM_LANE_OK' } },
   { id: 'hermes-critics', label: 'hermes critics', class: 'critic' },
-  // A hypothetical ACTIVE (non-dormant) impl lane — none exist on the real
-  // registry today, but the class check must refuse this independently of
-  // dormancy: an impl-class lane id is
+  // An ACTIVE (non-dormant) impl lane: the class check must refuse this
+  // independently of dormancy: an impl-class lane id is
   // not a value the Agent tool's model param accepts, so /fanout must never
   // route implementation work there regardless of availability.
   { id: 'hypothetical-impl', label: 'hypothetical impl lane', class: 'impl' },
@@ -29,9 +34,8 @@ test('happy path — one item per type resolves to the invariant tier with an ex
   ];
   const { plan, errors } = buildFanoutPlan(items, LIVE);
   assert.deepEqual(errors, []);
-  // implementation defaults to Sonnet — impl routes to native Claude
-  // subagents only; the class:"impl"
-  // lanes on this machine are all dormant.
+  // implementation defaults to Sonnet — /fanout routes implementation to
+  // native Claude subagents only, never to a class:"impl" lane.
   assert.deepEqual(plan.map((p) => p.lane), ['fable', 'opus', 'sonnet', 'haiku', 'sonnet']);
   for (const p of plan) {
     assert.ok(p.model, `${p.id} must name an explicit model`);
@@ -94,11 +98,20 @@ test('an impl-class lane is refused for implementation work even when NOT dorman
 
 test('a dormant lane is refused even though it is present in the live roster (HIMMEL-1967)', () => {
   const { plan, errors } = buildFanoutPlan(
-    [{ id: 'x', type: 'implementation', lane: 'claudex' }],
+    [{ id: 'x', type: 'implementation', lane: 'glm' }],
     LIVE,
   );
   assert.deepEqual(plan, []);
   assert.match(errors[0], /is dormant/);
+});
+
+test('the live claudex lane is refused as an impl-class lane, not as a dormant one', () => {
+  const { plan, errors } = buildFanoutPlan(
+    [{ id: 'x', type: 'implementation', lane: 'claudex' }],
+    LIVE,
+  );
+  assert.deepEqual(plan, []);
+  assert.match(errors[0], /only routes to claude-tier lanes/);
 });
 
 test('bulk item requesting further spawning is refused — Haiku does not spawn', () => {

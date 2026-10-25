@@ -580,3 +580,95 @@ test("J2. the AG-UI rail's Docs link opens the public site in a new tab, no sess
   const panel = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--panel").trim());
   expect(panel).toMatch(/^#(fff|ffffff)$/i);
 });
+
+// beside the fixture's chief and worker: a second worker waiting for GO with two subagents, and a judge, both under the
+// chief. Each row's usage is distinct per column (priced with lane.ts's weights), so a dropped or swapped column shows.
+const WORKER2 = "HIMMEL-902-N9002-second-leg-2026-10-07", JUDGE = "HIMMEL-901-J9001-judge-2026-10-07";
+const usage = (calls: number, input: number, output: number, cacheRead: number, cacheCreate: number, ceiling: number, ceilingFrom: string, fill: number, costEq: number | null) =>
+  ({ calls, input, output, cacheRead, cacheCreate, costEq, resident: Math.round((fill / 100) * ceiling), ceiling, ceilingFrom, fill });
+async function withTeam(page: Page) {
+  await page.route("**/api/agui/fleet", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const leg = body.sessions.find((r: any) => r.name === FLEET.leg.name);
+    const under = { parent: FLEET.console.name, console: FLEET.console.name, run: null, pr: null, activity: null, failures: 0, runtime: null };
+    body.sessions.push(
+      { ...leg, ...under, name: WORKER2, pid: 4106, ticket: "HIMMEL-902", state: "waiting for GO", marker: "READY",
+        agents: [{ name: "correctness critic", role: "judge", state: "done" }, { name: "diff reader", role: "Explore", state: "running" }],
+        subagents: { total: 2, running: 1 }, usage: usage(7, 1200, 3400, 250_000, 18_000, 400_000, "autocompact", 62.5, 65_700) },
+      { ...leg, ...under, name: JUDGE, pid: 4107, role: "judge", ticket: "HIMMEL-901", state: "idle", marker: null,
+        agents: [], subagents: { total: 0, running: 0 }, usage: usage(2, 400, 900, 60_000, 4000, 200_000, "window", 81, 15_900) },
+    );
+    await route.fulfill({ response, json: body });
+  });
+}
+
+test("16. the tree under the operator: the chief, its two workers and its judge, each worker's subagents, and each row's context, tokens and cost-eq", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  await withTeam(page);
+  await page.goto(h.url);
+  const tree = page.locator(`details.fleet-console[aria-label="${FLEET.console.name}"] > .fleet-tree`);
+  await expect(tree.locator("> li > .fleet-row .fleet-line .fleet-name")).toHaveText(shortName(FLEET.console.name));
+  // siblings by state: running, then waiting for GO, then idle.
+  await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator("> li > .fleet-row > .fleet-line .fleet-name"))
+    .toHaveText([shortName(FLEET.leg.name), shortName(WORKER2), shortName(JUDGE)]);
+  for (const name of [FLEET.console.name, FLEET.leg.name, WORKER2, JUDGE]) await expand(page, name);
+  for (const name of [FLEET.leg.name, WORKER2, JUDGE])
+    await expect(card(page, name).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(name)}`);
+  await expect(card(page, JUDGE).locator(".fleet-role")).toHaveText("judge · opus · native usage budget");
+
+  // a subagent is an entry in its session's row; its calls count in that row (the leg's two main-thread calls and its subagent's one).
+  await expect(card(page, FLEET.leg.name).locator(".fleet-agent")).toHaveText(["subagent: census critic (running)"]);
+  await expect(card(page, FLEET.leg.name).locator(".fleet-usage")).toContainText(" · 3 calls · ");
+  await expect(card(page, WORKER2).locator(".fleet-agent")).toHaveText(["judge: correctness critic (done)", "Explore: diff reader (running)"]);
+  await expect(card(page, WORKER2).locator(".fleet-status .fleet-meta")).toContainText("1 of 2 subagents running");
+
+  const chief = card(page, FLEET.console.name);
+  await expect(chief.locator(".fleet-context")).toHaveText("context 4% of 1.0M");
+  await expect(chief.locator(".fleet-usage")).toHaveText("context 4% of 1.0M (model window) · 1 call · in 10 · out 100 · cache read 40.0k · cache write 0 · cost-eq 4.5k");
+  const worker = card(page, WORKER2);
+  await expect(worker.locator(".fleet-context")).toHaveText("context 62.5% of 400.0k");
+  await expect(worker.locator(".fleet-context .fleet-meter")).toHaveClass(/\bok\b/);
+  await expect(worker.locator(".fleet-context .fleet-meter i")).toHaveAttribute("style", "width: 62.5%;");
+  await expect(worker.locator(".fleet-usage")).toHaveText("context 62.5% of 400.0k (autocompact) · 7 calls · in 1.2k · out 3.4k · cache read 250.0k · cache write 18.0k · cost-eq 65.7k");
+  const judge = card(page, JUDGE);
+  await expect(judge.locator(".fleet-context")).toHaveText("context 81% of 200.0k");
+  await expect(judge.locator(".fleet-context .fleet-meter")).toHaveClass(/\bwarn\b/);
+  await expect(judge.locator(".fleet-usage")).toHaveText("context 81% of 200.0k (model window) · 2 calls · in 400 · out 900 · cache read 60.0k · cache write 4.0k · cost-eq 15.9k");
+});
+
+// the successor's "succeeds" link is live too: it jumps back to the chief it replaced.
+test("17. a live successor chief links back to its predecessor's row, and the predecessor names both sides", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  const next = "HIMMEL-nextleg-2026-10-07ZZZ-roadmap-console";
+  await page.route("**/api/agui/fleet", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const console = body.sessions.find((r: any) => r.name === FLEET.console.name);
+    body.sessions.push({ ...console, name: next, console: next, run: null, predecessor: FLEET.console.name });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(h.url);
+  await expand(page, next);
+  await expand(page, FLEET.console.name);
+  await expect(card(page, FLEET.console.name).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CONSOLE)} (not live) · succeeded by ${shortName(next)}`);
+  const back = card(page, next).locator(".fleet-succession");
+  await expect(back).toHaveText(`succeeds ${shortName(FLEET.console.name)}`);
+  await back.locator(".fleet-rel").click();
+  await expect(card(page, FLEET.console.name)).toBeFocused();
+});
+
+// a claudex worker's tokens are counted but not priced (the server sends a null cost-eq): the page says so, never "null".
+test("18. a claudex worker's cost-eq reads not priced", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  await page.route("**/api/agui/fleet", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const leg = body.sessions.find((r: any) => r.name === FLEET.leg.name);
+    Object.assign(leg, { lane: "claudex", usage: { ...leg.usage, costEq: null } });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(h.url);
+  await expand(page, FLEET.leg.name);
+  await expect(card(page, FLEET.leg.name).locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
+});

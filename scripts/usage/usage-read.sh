@@ -39,6 +39,7 @@ if [ ! -w "$STORE" ]; then
   FILE="$SNAP"
 else
   LOCK="$STORE/.lock"; n=0
+  # prim-ok: share usage-compute's directory lock and preserve the reader's 60-second refusal; with_lock would use another protocol.
   until mkdir "$LOCK" 2>/dev/null; do
     n=$((n + 1)); [ "$n" -lt 120 ] || { echo "usage-read: store locked: $LOCK (remove it if no run is active)" >&2; exit 1; }
     sleep 0.5

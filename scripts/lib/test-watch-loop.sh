@@ -41,11 +41,15 @@ fail() { printf 'FAIL %s\n' "$1"; FAILED=$((FAILED + 1)); }
 # liveness assertion built on kill -0 alone can read an already-dead pid as
 # still alive. `ps -o stat=` distinguishes a zombie (leading Z) from a live
 # process without /proc, so it works on bash 3.2 / macOS as well as Linux.
+#
+# An EMPTY ps read proves nothing (ps can fail on a loaded box, or race the
+# pid's exit): only kill -0 failing means the pid is gone.
 _alive() {
     local st
     st="$(ps -o stat= -p "$1" 2>/dev/null)"
     case "$st" in
-        '' | Z*) return 1 ;;
+        Z*) return 1 ;;
+        '') kill -0 "$1" 2>/dev/null; return $? ;;
         *) return 0 ;;
     esac
 }
@@ -77,6 +81,15 @@ cleanup() {
     rm -rf "$TMP"
 }
 trap cleanup EXIT
+
+# --- Liveness probe: sees a live pid alive, even when ps answers nothing -----
+echo "== probe: _alive reads this shell alive, with and without a ps answer =="
+if _alive "$$"; then pass "_alive sees this shell alive"; else fail "_alive does not see this shell alive"; fi
+mkdir -p "$TMP/nops"
+printf '#!/bin/sh\nexit 1\n' > "$TMP/nops/ps"
+chmod +x "$TMP/nops/ps"
+if PATH="$TMP/nops:$PATH" _alive "$$"; then pass "_alive reads an empty ps answer for a live pid as alive"
+else fail "_alive reads an empty ps answer for a live pid as dead"; fi
 
 # --- Case 1: killing the parent stops the loop within one interval ----------
 echo "== case 1: loop exits on its own after its parent pid is killed =="

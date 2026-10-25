@@ -75,6 +75,8 @@ done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../lib/prim.sh
+. "$HERE/../../../lib/prim.sh" || exit 1
 # shellcheck source=lib/scorecard-lib.sh
 . "$HERE/lib/scorecard-lib.sh"
 sc_roots_check dead-parts || exit 2
@@ -100,7 +102,7 @@ UNTIL_EPOCH_ARG="${UNTIL_EPOCH:-9999999999}"
 
 RUN=""
 trap 'rm -rf "$RUN" "$SC_COV"' EXIT
-RUN=$(mktemp -d "${TMPDIR:-/tmp}/dead-parts.XXXXXX") || { echo "dead-parts: mktemp failed" >&2; exit 1; }
+RUN=$(tmpdir) || { echo "dead-parts: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
 # --- discover entry points at --repo-root -----------------------------------

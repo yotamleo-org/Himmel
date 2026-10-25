@@ -35,9 +35,12 @@
 #   S0 is the starting cwd set (default [[]]); TAGS the starting `in`.
 #   rc 2 = shfmt or jq missing (the message says so; the caller fails closed),
 #   rc 3 = shfmt could not parse the command, rc 4 = the model failed, rc 5 =
-#   the model ran past its bound: BASH_AST_TIMEOUT_S (1-60) when set, else
+#   the model ran past its bound: BASH_AST_TIMEOUT_S (1-13) when set, else
 #   10 s plus 1 s per KiB of command past 4 KiB, at most 40 s, which stays 5 s
-#   inside the hook runner's member window. A timeout appends the command to
+#   inside the hook runner's member window; BASH_AST_MAX_S caps either (a
+#   standalone hook with a 15 s entry timeout sets it). One deadline covers the
+#   command and every nested body. The timeout comes from timeout-bin.sh. A
+#   timeout appends the command to
 #   $XDG_STATE_HOME/himmel/bash-ast-timeouts.log. Every caller denies on rc 5.
 #
 # Nav algebra: `a && b` runs b where a succeeded, `a || b` where a failed; a
@@ -596,9 +599,14 @@ def positions($home; $s0; $tags; $scope; $p0):
   | _w($s0; $tags; $env) | .pos;
 BASH_AST_POS_EOF
 
+_bash_ast_timed_out() { # _bash_ast_timed_out CMD SECS: say so and log the command, owner-only
+    local log="${XDG_STATE_HOME:-${HOME:-}/.local/state}/himmel/bash-ast-timeouts.log"
+    echo "bash-ast: the command model timed out after ${2}s, so the guard fails closed." >&2
+    case $log in /*) (umask 077 && mkdir -p "${log%/*}" && printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(printf '%s' "${1:0:4096}" | tr '\n\t' '  ')" >>"$log") 2>/dev/null ;; esac
+}
+
 bash_ast_positions() {
-    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tmo secs log over
-    local -a bound=()
+    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tb secs over
     if ! command -v shfmt >/dev/null 2>&1; then
         echo "bash-ast: shfmt not on PATH, so the command model cannot run and the guard fails closed. Install shfmt (a station install goes to a test VM first)." >&2
         return 2
@@ -611,22 +619,44 @@ bash_ast_positions() {
         echo "bash-ast: shfmt could not parse the command." >&2
         return 3
     }
-    tmo=$(command -v timeout || command -v gtimeout) || tmo=""
-    over=$(((${#cmd} - 4096) / 1024))
-    [ "$over" -gt 0 ] || over=0
-    [ "$over" -lt 30 ] || over=30
-    case ${BASH_AST_TIMEOUT_S:-} in [1-9] | [1-5][0-9] | 60) secs=$BASH_AST_TIMEOUT_S ;; *) secs=$((10 + over)) ;; esac
-    # --foreground keeps jq in the caller's process group, so the hook runner's group kill reaches it
-    [ -z "$tmo" ] || bound=("$tmo" --foreground -k 2 "$secs")
+    # The top call picks the bound once; the nested calls below it read these (bash scopes a local to its callees)
+    if [ "$depth" -eq 0 ]; then
+        local _ba_tmo="" _ba_deadline
+        local -a _ba_flags=()
+        tb=${BASH_SOURCE[0]%/*}/timeout-bin.sh
+        # swallow-ok: a copy without the resolver falls back to the first timeout on PATH, never to no bound
+        # shellcheck source=timeout-bin.sh
+        if [ -r "$tb" ]; then _ba_tmo=$(. "$tb" 2>/dev/null && printf '%s' "$_TIMEOUT_BIN")
+        else _ba_tmo=$(command -v timeout || command -v gtimeout) || _ba_tmo=""; fi
+        # --foreground keeps jq in the caller's process group, so the hook runner's group kill reaches it; a timeout without it is still a bound
+        if [ -z "$_ba_tmo" ]; then :
+        elif "$_ba_tmo" --foreground -k 2 1 true >/dev/null 2>&1; then _ba_flags=(--foreground -k 2)
+        elif "$_ba_tmo" -k 2 1 true >/dev/null 2>&1; then _ba_flags=(-k 2)
+        fi
+        over=$(((${#cmd} - 4096) / 1024))
+        [ "$over" -gt 0 ] || over=0
+        [ "$over" -lt 30 ] || over=30
+        case ${BASH_AST_TIMEOUT_S:-} in [1-9] | [1-5][0-9] | 60) secs=$BASH_AST_TIMEOUT_S ;; *) secs=$((10 + over)) ;; esac
+        # a pin stays inside the 15 s member window less the 2 s kill grace
+        [ -z "${BASH_AST_TIMEOUT_S:-}" ] || [ "$secs" -le 13 ] || secs=13
+        # a standalone hook, whose entry timeout is 15 s, caps the bound with BASH_AST_MAX_S
+        case ${BASH_AST_MAX_S:-} in [1-9] | [1-5][0-9]) [ "$secs" -le "$BASH_AST_MAX_S" ] || secs=$BASH_AST_MAX_S ;; esac
+        _ba_deadline=$(($(date +%s) + secs))
+    else
+        # whole seconds on both clocks: one less than the time left cannot outrun it
+        [ -z "$_ba_tmo" ] || secs=$((_ba_deadline - $(date +%s) - 1))
+    fi
+    if [ -n "$_ba_tmo" ] && [ "$secs" -lt 1 ]; then
+        _bash_ast_timed_out "$cmd" "$secs"
+        return 5
+    fi
     # shellcheck disable=SC2016  # the jq program's $names are jq variables
-    pos=$(printf '%s' "$tree" | ${bound[@]+"${bound[@]}"} jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
+    pos=$(printf '%s' "$tree" | ${_ba_tmo:+"$_ba_tmo"} ${_ba_flags[@]+"${_ba_flags[@]}"} ${_ba_tmo:+"$secs"} jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
         --arg scope "$scope" --argjson p0 "$p0" \
         "$_BASH_AST_JQ$_BASH_AST_POS_JQ"'positions($home; $s0; $tags; $scope; $p0)' 2>/dev/null) || {
         rc=$?
-        if [ -n "$tmo" ] && { [ "$rc" = 124 ] || [ "$rc" = 137 ]; }; then
-            echo "bash-ast: the command model timed out after ${secs}s, so the guard fails closed." >&2
-            log="${XDG_STATE_HOME:-${HOME:-}/.local/state}/himmel/bash-ast-timeouts.log"
-            case $log in /*) (umask 077 && mkdir -p "${log%/*}" && printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(printf '%s' "${cmd:0:4096}" | tr '\n\t' '  ')" >>"$log") 2>/dev/null ;; esac
+        if [ -n "$_ba_tmo" ] && { [ "$rc" = 124 ] || [ "$rc" = 137 ]; }; then
+            _bash_ast_timed_out "$cmd" "$secs"
             return 5
         else
             echo "bash-ast: the command model could not read the command." >&2
