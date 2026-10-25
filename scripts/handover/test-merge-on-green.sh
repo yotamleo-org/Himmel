@@ -3779,6 +3779,18 @@ else
     fail "jira: comment precedes transition (comment@${jira_comment_ln:-none} transition@${jira_transition_ln:-none})"
 fi
 
+# A status the merge wrote marks the console's FOCUS page dirty through the
+# anchor's focus-refresh.sh; a failing mark changes neither the exit nor the result.
+mog_focus_stub() { printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/focus.log"\nexit 42\n' "$1" > "$1/scripts/handover/console-kit/focus-refresh.sh"; }
+HIMMEL_CONSOLE_DOC=/nonexistent/console.md MOG_ANCHOR_SETUP=mog_focus_stub STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "focus: a failing mark-dirty never fails the merge" -- --jira-transition
+assert_audit_has "focus: the transition is still recorded ok" "jira-transition=ok key=HIMMEL-374 status=Done"
+if [ "$(cat "$LAST_TMP/focus.log" 2>/dev/null)" = "--doc /nonexistent/console.md --mark-dirty" ]; then pass
+else fail "focus: the transition marks the FOCUS page dirty (focus.log: $(cat "$LAST_TMP/focus.log" 2>/dev/null))"; fi
+MOG_ANCHOR_SETUP=mog_focus_stub STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "focus: a merge with no console doc" -- --jira-transition
+if [ -e "$LAST_TMP/focus.log" ]; then fail "focus: with no console doc nothing is marked"; else pass; fi
+
 # A failing Jira transition must never fail the merge itself (best-effort),
 # even when opted in.
 STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
