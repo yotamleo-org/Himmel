@@ -243,12 +243,14 @@ _suite_sem_try() {
 # _suite_sem_log_long_held <dir> <slot-number> <epoch> <age> -- best-effort,
 # once per slot, pid and started epoch; detail remains the last, free-text field.
 _suite_sem_log_long_held() {
-    local log="$1/long-held.log" slot="slot-$2" now="$3" age="$4"
-    if grep -qE "^[0-9]+ $slot pid=$SO_PID label=.* age=[0-9]+s started=$SO_STARTED detail=" "$log" 2>/dev/null; then
-        return 0
+    local log="$1/long-held.log" slot="slot-$2" now="$3" age="$4" guard="$1/slot-$2/long-held.lock"
+    # A per-slot guard serialises reports and disappears with the holder.
+    mkdir "$guard" 2>/dev/null || return 0
+    if ! grep -qE "^[0-9]+ $slot pid=$SO_PID label=.* age=[0-9]+s started=$SO_STARTED detail=" "$log" 2>/dev/null; then
+        { printf '%s %s pid=%s label=%s age=%s started=%s detail=%s\n' \
+            "$now" "$slot" "$SO_PID" "$SO_LABEL" "$age" "$SO_STARTED" "$SO_DETAIL" >>"$log"; } 2>/dev/null || true
     fi
-    { printf '%s %s pid=%s label=%s age=%s started=%s detail=%s\n' \
-        "$now" "$slot" "$SO_PID" "$SO_LABEL" "$age" "$SO_STARTED" "$SO_DETAIL" >>"$log"; } 2>/dev/null || true
+    rmdir "$guard" 2>/dev/null || true
     return 0
 }
 

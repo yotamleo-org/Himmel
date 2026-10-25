@@ -516,6 +516,35 @@ else
     fail "past-cap dedupe incorrectly suppressed a different holder start (rc=$RC)"
 fi
 
+# A delayed real grep exposes concurrent check-before-append races.
+new_sem
+mkdir -p "$SEM/slot-1"
+printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\n' \
+    "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
+REPORTERS=''
+for _reporter in 1 2; do
+    (
+        # shellcheck disable=SC2329  # invoked by the sourced busy reporter
+        grep() {
+            local rc=0
+            command grep "$@" || rc=$?
+            sleep 1
+            return "$rc"
+        }
+        export HIMMEL_SUITE_SLOT_CAP=1
+        _suite_sem_busy_report "$SEM" 1 retry >/dev/null 2>&1
+    ) &
+    REPORTERS="$REPORTERS $!"
+    BG_PIDS="$BG_PIDS $!"
+done
+for REPORTER_PID in $REPORTERS; do wait "$REPORTER_PID"; done
+if [ -f "$SEM/long-held.log" ] && [ "$(wc -l <"$SEM/long-held.log")" -eq 1 ] \
+    && [ ! -e "$SEM/slot-1/long-held.lock" ]; then
+    pass "concurrent busy reporters append one holder row and leave no logging guard"
+else
+    fail "concurrent busy reporters duplicated the holder row or leaked their logging guard"
+fi
+
 # --- 21: below-cap and invalid-cap controls never report a long-held slot. ---
 for CAP_VALUE in 1200 '' 0 00 bad -1; do
     new_sem
