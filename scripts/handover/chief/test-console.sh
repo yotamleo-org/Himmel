@@ -3067,4 +3067,22 @@ rc92f=0
 console next --bucket chief92f --doc "$root/tester/chief92f/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1 || rc92f=$?
 check "92 next refuses a successor letter a console-named doc already holds" "$rc92f:$([ -e "$root/tester/chief92f/DEMO-nextleg-${today}B-chief.md" ] && echo dup || echo none)" "1:none"
 
+# --- 93: a bare `next` (no --name/--doc/CHIEF_DOC/--bucket/--prefix) never
+# resolves an older doc of the default name when the bucket holds a NEWER
+# nextleg doc of another name: the live chain is named roadmap-chief, the
+# default name chief matches only the weeks-old bare -console doc.
+root93="$tmp/root93"; mkdir -p "$root93/tester/b93"
+stub_doc old > "$root93/tester/b93/ACME-nextleg-2026-10-01AG-console.md"
+stub_doc live > "$root93/tester/b93/ACME-nextleg-2026-10-25FY-roadmap-chief.md"
+rc93=0; out93="$(console_root "$root93" next --dry-run 2>&1)" || rc93=$?
+check "93 a bare next refuses when a newer doc of another name exists (rc 1)" "$rc93" "1"
+check "93 and never names the weeks-old doc as the predecessor" "$(printf '%s\n' "$out93" | grep -c '^would-doc:')" "0"
+check "93 the refusal lists the newer candidate" "$(printf '%s\n' "$out93" | grep -c 'ACME-nextleg-2026-10-25FY-roadmap-chief.md')" "1"
+check "93 the refusal says to pass --name or --doc" "$(printf '%s\n' "$out93" | grep -c 'pass --name or --doc')" "1"
+rc93n=0; out93n="$(console_root "$root93" next --name roadmap-chief --dry-run 2>&1)" || rc93n=$?
+check "93 --name roadmap-chief still resolves the live doc (rc 0)" "$rc93n" "0"
+check "93 --name names a roadmap-chief successor" "$(printf '%s\n' "$out93n" | grep -c '^would-doc: .*-nextleg-.*-roadmap-chief\.md$')" "1"
+rc93d=0; console_root "$root93" next --doc "$root93/tester/b93/ACME-nextleg-2026-10-01AG-console.md" --dry-run >/dev/null 2>&1 || rc93d=$?
+check "93 --doc keeps resolving exactly the doc it names (rc 0)" "$rc93d" "0"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

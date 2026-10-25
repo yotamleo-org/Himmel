@@ -74,8 +74,9 @@ case "$1 $2" in
     # keeps the default, and the statuses arm below matches on the "abc123"
     # PREFIX so both spellings reach the same fixtures.
     # GH_STUB_BRANCH_RC: the branch-only read prints its JSON, then fails.
-    case "$*" in *'--json headRefName') if [ -n "${GH_STUB_BRANCH_RC:-}" ]; then printf '{"headRefName":"%s"}\n' "${GH_STUB_BRANCH:-feat/x}"; exit "$GH_STUB_BRANCH_RC"; fi ;; esac
-    printf '{"number":42,"headRefOid":"%s","headRefName":"%s","url":"https://github.com/o/r/pull/42"}\n' "${GH_STUB_HEAD:-abc123}" "${GH_STUB_BRANCH:-feat/x}" ;;
+    # GH_STUB_AUTHOR: the PR author's login (a real PR 3861 read prints app/dependabot).
+    case "$*" in *'--json headRefName'*) if [ -n "${GH_STUB_BRANCH_RC:-}" ]; then printf '{"headRefName":"%s","author":{"login":"%s"}}\n' "${GH_STUB_BRANCH:-feat/x}" "${GH_STUB_AUTHOR:-yotamleo}"; exit "$GH_STUB_BRANCH_RC"; fi ;; esac
+    printf '{"number":42,"headRefOid":"%s","headRefName":"%s","author":{"login":"%s"},"url":"https://github.com/o/r/pull/42"}\n' "${GH_STUB_HEAD:-abc123}" "${GH_STUB_BRANCH:-feat/x}" "${GH_STUB_AUTHOR:-yotamleo}" ;;
   "api graphql")
     case "$GH_STUB_MODE" in
       api-error) exit 1 ;;
@@ -945,6 +946,38 @@ led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW" "$(printf '{"kind":"f
 rgj J6-release-judge-go-open-finding-holds 1 --release
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
 GH_STUB_BRANCH_RC=1 rgj J8-release-judge-go-failed-branch-read-holds 1 --release
+# D1-D9 — a dependabot-go row (scripts/cr/dependabot-go.sh: a signed judge GO at the
+# head on a Dependabot manifest-only PR) stands in for each hard reviewer that has not
+# passed, in the MERGE gate as well as the release, and only for that head, that
+# PR branch and an app/dependabot author. DG_ROW is the judge-go line above with the
+# kind the writer stamps and the PR number.
+DG_BRANCH=dependabot/pip/marketplace/plugins/obsidian-triage/tools/numpy-2.5.4
+DG_ROW=${JG_ROW/\"kind\":\"judge-go\"/\"kind\":\"dependabot-go\"}
+DG_ROW=${DG_ROW/$JG_BRANCH/$DG_BRANCH}
+DG_ROW=${DG_ROW/\"source\"/\"pr\":42,\"source\"}
+export GH_STUB_BRANCH=$DG_BRANCH GH_STUB_AUTHOR=app/dependabot
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
+rgj D1-merge-dependabot-go-stands-in 0
+has "$TMP/out-D1-merge-dependabot-go-stands-in" '^NOTE: .*Dependabot.*judge:jC3125f/judge' "D1 NOTE names the judge GO"
+rgj D2-release-dependabot-go-stands-in 0 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW//$JG_HEAD/0000000000000000000000000000000000000001}"
+rgj D3-dependabot-go-other-head-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
+GH_STUB_BRANCH=dependabot/other rgj D4-dependabot-go-other-branch-holds 1
+GH_STUB_AUTHOR=yotamleo rgj D5-dependabot-go-human-author-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"status\":\"ok\"/\"status\":\"refused\"}"
+rgj D6-dependabot-go-not-ok-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-7","severity":"imp","verdict":""}' "$JG_HEAD")"
+rgj D7-dependabot-go-open-finding-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
+GH_STUB_BRANCH_RC=1 rgj D8-dependabot-go-failed-read-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/dependabot-go/judge-go}"
+rgj D9-merge-judge-go-row-still-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"pr\":42/\"pr\":43}"
+rgj D10-dependabot-go-other-pr-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"pr\":42,/}"
+rgj D11-dependabot-go-no-pr-holds 1
+export GH_STUB_BRANCH=$JG_BRANCH; unset GH_STUB_AUTHOR
 # J7 — an inherited _CRG_RELEASE=1 never loosens the merge gate: cr_merge_gate pins it.
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
 export _CRG_RELEASE=1

@@ -3011,6 +3011,15 @@ MERGEPLANEOF
   #     orphaned external-import sweep, isolated-node pruning); a shrink at a
   #     CONSTANT version is the bug this guard exists to catch. Unknown/absent/
   #     unchanged all fall through to the normal comparison.
+  # Nodes of files the corpus no longer tracks (deleted, or renamed away) leave the staged graph, and
+  # the guard below counts the prior graph's nodes of them as an explained loss, not a shrink.
+  _gone_sources="$PROMOTE_STAGE/.graphify_gone_sources"
+  : > "$_gone_sources"
+  if ! python3 "$HERE/semantic-merge.py" prune --root "$CORPUS_ROOT" --out "$PROMOTE_STAGE" >&2; then
+    echo "refresh-graph-map: REFUSING to promote -- could not prune the staged graph of untracked source files (reason above); the existing graph at $OUT_DIR/graph.json was left in place" >&2
+    exit 2
+  fi
+  python3 "$HERE/semantic-merge.py" untracked --root "$CORPUS_ROOT" --graph "$OUT_DIR/graph.json" > "$_gone_sources" 2>/dev/null || : > "$_gone_sources"
   if [ "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" -gt 0 ]; then
     _prior_version=""
     if [ -f "$OUT_DIR/.graphify_promoted_version" ]; then
@@ -3030,6 +3039,12 @@ entries = []
 if len(sys.argv) > 4 and sys.argv[4]:
     with open(sys.argv[4], encoding="utf-8") as fh:
         entries = [l for l in fh.read().split("\n") if l]
+# Optional 5th arg: source files the prior graph holds that the corpus no longer tracks (a deleted or
+# renamed file), one per line. Their nodes are an explained loss, like an ignored path.
+gone = set()
+if len(sys.argv) > 5 and sys.argv[5]:
+    with open(sys.argv[5], encoding="utf-8") as fh:
+        gone = {l for l in fh.read().split("\n") if l}
 
 def links_of(data):
     v = data.get("links")
@@ -3060,9 +3075,11 @@ def rel(item):
         p = p[2:]
     return p
 
+def explained(p):
+    return p in gone or any(p == e or p.startswith(e + "/") for e in entries)
+
 def ignored(item):
-    p = rel(item)
-    return any(p == e or p.startswith(e + "/") for e in entries)
+    return explained(rel(item))
 
 def area_counts(nodes):
     areas = {}
@@ -3097,7 +3114,7 @@ prior_nodes, prior_links, prior_hyper = len(prior_data[0]), len(prior_data[1]), 
 # out, and so is a link of one (by its own source_file or by an endpoint).
 gone_ids = set()
 cmp_nodes, cmp_links = prior_nodes, prior_links
-if entries:
+if entries or gone:
     gone_ids = {n.get("id") for n in prior_data[0] if ignored(n)}
     cmp_nodes = prior_nodes - len(gone_ids)
     kept = [l for l in prior_data[1]
@@ -3118,11 +3135,24 @@ prior_areas, staged_areas = area_counts(prior_data[0]), area_counts(staged_data[
 for a in sorted(prior_areas):
     if staged_areas.get(a, 0) < prior_areas[a]:
         print("AREA %s %d %d" % (a, prior_areas[a], staged_areas.get(a, 0)))
+# Every source file that lost nodes, the biggest loss first: E = explained (the corpus no longer tracks
+# it, or it left the scope), U = unexplained. A refusal names the U files.
+prior_files, staged_files = {}, {}
+for counts, nodes in ((prior_files, prior_data[0]), (staged_files, staged_data[0])):
+    for n in nodes:
+        counts[rel(n)] = counts.get(rel(n), 0) + 1
+lost = sorted((p for p in prior_files if staged_files.get(p, 0) < prior_files[p]),
+              key=lambda p: (staged_files.get(p, 0) - prior_files[p], p))
+for p in lost[:200]:
+    print("FILE %d %d %s %s" % (prior_files[p], staged_files.get(p, 0), "E" if explained(p) else "U", p or "(no source_file)"))
+if len(lost) > 200:
+    print("FILE_MORE %d" % (len(lost) - 200))
 sys.exit(2 if shrunk else 0)
 PYEOF
       _scope_entries_file=""
       if [ "$_scope_changed" -eq 1 ]; then _scope_entries_file="$PROMOTE_STAGE/.graphify_scope_entries"; fi
-      _guard_out="$(python3 -c "$_guard_py" "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json" "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" "$_scope_entries_file")" || _rc=$?
+      _guard_out="$(python3 -c "$_guard_py" "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json" "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" "$_scope_entries_file" "$_gone_sources")" || _rc=$?
+      _unexplained="" _unexplained_n=0
       # The per-area drop goes to the refresh log (stderr), refused or not.
       while IFS= read -r _guard_line; do
         case "$_guard_line" in
@@ -3134,6 +3164,16 @@ PYEOF
             _guard_line="${_guard_line#AREA }"
             _guard_rest="${_guard_line% *}"
             echo "refresh-graph-map: area ${_guard_rest% *}: nodes ${_guard_rest##* } -> ${_guard_line##* }" >&2
+            ;;
+          FILE\ *)
+            read -r _guard_tag _file_prior _file_staged _file_kind _file_path <<< "$_guard_line"
+            if [ "$_file_kind" = "E" ]; then
+              echo "refresh-graph-map: file $_file_path: nodes $_file_prior -> $_file_staged (explained: the corpus no longer tracks it, or it left the scope)" >&2
+            else
+              echo "refresh-graph-map: file $_file_path: nodes $_file_prior -> $_file_staged (UNEXPLAINED)" >&2
+              _unexplained_n=$((_unexplained_n + 1))
+              if [ "$_unexplained_n" -le 10 ]; then _unexplained="$_unexplained $_file_path ($_file_prior -> $_file_staged);"; fi
+            fi
             ;;
         esac
       done <<< "$_guard_out"
@@ -3147,7 +3187,7 @@ PYEOF
           ;;
         SHRINK*)
           read -r _guard_tag _prior_n _prior_l _prior_h _staged_n _staged_l _staged_h <<< "$_guard_out"
-          echo "refresh-graph-map: REFUSING to promote -- staged graph is below ${GRAPHIFY_PROMOTE_MIN_RETAIN_PCT}% of the existing graph (nodes $_prior_n -> $_staged_n, links $_prior_l -> $_staged_l; override via GRAPHIFY_PROMOTE_MIN_RETAIN_PCT) -- the existing graph at $OUT_DIR/graph.json was left in place" >&2
+          echo "refresh-graph-map: REFUSING to promote -- staged graph is below ${GRAPHIFY_PROMOTE_MIN_RETAIN_PCT}% of the existing graph (nodes $_prior_n -> $_staged_n, links $_prior_l -> $_staged_l; override via GRAPHIFY_PROMOTE_MIN_RETAIN_PCT) -- the existing graph at $OUT_DIR/graph.json was left in place; unexplained loss in ${_unexplained_n} file(s):${_unexplained:- none listed}" >&2
           exit 2
           ;;
         NO_PRIOR*|OK*)

@@ -48,7 +48,7 @@ Run these, in order, and write the result as the first bullet under
    {{RELEASE_TOKEN}}
    ```
 
-   `/console new` acquires it and writes the real token above: adopt it, copy it
+   `/chief new` acquires it and writes the real token above: adopt it, copy it
    into your first bullet, never acquire again (`Work is owned elsewhere`).
    `/console next` never acquires one, so the block reads `none yet` and the lock is `free`: acquire your own and record that token. Check with
    `HANDOVER_DIR="{{HANDOVER_ROOT}}" bash "{{REPO}}/scripts/handover/queue-lock.sh" status "<this file>"`;
@@ -80,8 +80,8 @@ Run these, in order, and write the result as the first bullet under
     first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
     states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
-11. **Open your Telegram inbox.** The operator writes `/console {{SESSION_NAME}} <text>`;
-    the bridge appends to your inbox file only if it already exists. The waiter
+11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>` (alias `/console`);
+    the bridge appends only to an existing inbox file. The waiter
     (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
     The waiter reads it through `inbox-follow.sh --once` with a persisted
     cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
@@ -224,7 +224,7 @@ bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>`
 
 At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`**, hand over:
 
-1. `/console next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
+1. `/chief next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
    writes the successor stub and this chief's `-HANDOFF.md` skeleton and arms
    the successor. **Name your own document, bucket, prefix and model**, or `next`
    picks the wrong doc, bucket or model (continue on **{{MODEL}}**). The `armed:`

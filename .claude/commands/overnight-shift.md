@@ -1,6 +1,6 @@
 ---
 description: Alias of /afk-shift — auto-dispatch N tickets from Jira as parallel subagents.
-argument-hint: [--limit N] [--project HIMMEL|LUNA] [--status STATUS] [--priority ORDER]
+argument-hint: [--limit N] [--project KEY] [--status STATUS] [--priority ORDER]
 ---
 
 Alias of [`/afk-shift`](afk-shift.md); same arguments, same behaviour. Kept

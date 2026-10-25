@@ -6,7 +6,7 @@ relay, dependency chain, parallel wave, arming and side session *are* is defined
 [`../glossary.md`](../glossary.md); read that first if any of those words is
 new. This page is how to run one.
 
-`/console new` starts one. `/console next` hands it over to its successor.
+`/chief new` starts one. `/chief next` hands it over to its successor.
 For the sources, authors and licences behind the team's tools, see
 [Credits](../credits.md).
 
@@ -32,7 +32,7 @@ They look adjacent and are not interchangeable.
 | State | in-session | a handover document + a queue lock, survives the session |
 | Children | subagents, no window of their own | headed sessions with their own worktrees and PRs |
 | Rulings | none; the plan is fixed at fanout | RETASK channel, mid-flight, authenticated |
-| Handover | none | `/console next` writes the successor + a HANDOFF |
+| Handover | none | `/chief next` writes the successor + a HANDOFF |
 
 Reach for `/afk-shift` when you have a fixed list of well-scoped tickets
 and want them done unattended. Reach for a chief when the work will need
@@ -41,10 +41,10 @@ decisions you cannot pre-write, or will outlive one context window.
 ## Starting one
 
 ```bash
-/console new                      # writes the doc, takes the lock, prints the launch line
-/console new --name night         # a differently-named succession in the same bucket
-/console new --arm                # also arms it headed, on a signal file + deadline
-/console new --dry-run            # print what it would write, touch nothing
+/chief new                        # writes the doc, takes the lock, prints the launch line
+/chief new --name night           # a differently-named succession in the same bucket
+/chief new --arm                  # also arms it headed, on a signal file + deadline
+/chief new --dry-run              # print what it would write, touch nothing
 ```
 
 `new` resolves your handover root through the shared resolver (`HANDOVER_DIR`,
@@ -124,7 +124,7 @@ It also opens a **Telegram inbox**: it creates
 `chief-kit/console-wait.sh`, run with Bash `run_in_background` (no `Monitor` re-arm loop, so an idle chief takes no turns; a persisted read
 cursor means a line appended while no waiter ran is delivered on the next
 start; at-least-once, so a waiter killed mid-emit can repeat one line), so
-the operator's `/console <session> <text>` from
+the operator's `/chief <session> <text>` (or the older alias `/console`) from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
@@ -486,7 +486,7 @@ fresh GO.
 Chiefs hand over at **45 % context fill, or 90 k input tokens in one turn**.
 
 ```bash
-/console next --arm --doc <this console's own doc> --bucket <its bucket> --prefix <its prefix> --model <its model>
+/chief next --arm --doc <this console's own doc> --bucket <its bucket> --prefix <its prefix> --model <its model>
 ```
 
 **Name your own document, bucket, prefix and model explicitly.** Without

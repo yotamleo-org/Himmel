@@ -127,6 +127,9 @@ EOF
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/waker-record"
 EOF
+  # A real konsole's /proc comm is "konsole": a shebang straight at bash keeps the
+  # script's name as comm, where `env bash` would leave "bash".
+  { printf '#!%s\n' "$BASH"; sed 1d "$d/konsole"; } > "$d/konsole.new" && mv "$d/konsole.new" "$d/konsole"
   chmod 755 "$d/konsole" "$d/qdbus" "$d/claude" "$d/pgrep" "$d/waker"
 }
 
@@ -254,5 +257,46 @@ contains "9a waker: tab 2 gets its own session" "$(cat "$d9/waker-record" 2>/dev
   "--name HIMMEL-9-N2-b --service org.kde.konsole-$w9 --session /Sessions/2 --pid $(pid_of "$d9" HIMMEL-9-N2-b)"
 contains "9b waker: the window's first tab keeps /Sessions/1, bound to its worker" "$(cat "$d9/waker-record" 2>/dev/null)" \
   "--name HIMMEL-9-N1-a --service org.kde.konsole-$w9 --session /Sessions/1 --pid $(pid_of "$d9" HIMMEL-9-N1-a)"
+
+# --- 10. a successor chief (no window record of its own) adopts its predecessor's
+# live konsole window: its first worker is a tab there, never a second window.
+# The predecessor is the previous letter of the chief name's -nextleg-<date><LETTERS> part.
+NL=HIMMEL-nextleg-2026-10-25
+d10="$tmp/c10"; mk_env "$d10"
+arm "$d10" HIMMEL-10-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
+arm "$d10" HIMMEL-10-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc10=$?
+arm "$d10" HIMMEL-10-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief
+w10a="$(window_of "$d10" HIMMEL-10-N1-a)"
+check "10a successor: first worker exit 0" "$rc10" 0
+check "10b successor: no second window is opened" "$(konsole_count "$d10")" 1
+check "10c successor: its first worker is tracked in the predecessor's window" "$(window_of "$d10" HIMMEL-10-N2-b)" "${w10a:-unset}"
+contains "10d successor: newSession on the predecessor's window" "$(cat "$d10/qdbus-record" 2>/dev/null)" "org.kde.konsole-${w10a:-x} /Windows/1 newSession"
+check "10e successor: the window is recorded as the successor's own" "$(cat "$d10/locks/tabs-${NL}FY-roadmap-chief.window" 2>/dev/null)" "${w10a:-unset}"
+check "10f successor: its next worker is tracked in the same window" "$(window_of "$d10" HIMMEL-10-N3-c)" "${w10a:-unset}"
+
+# --- 11. the predecessor's window is gone: the successor opens a window of its own.
+d11="$tmp/c11"; mk_env "$d11"
+arm "$d11" HIMMEL-11-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
+signal KILL "$(window_of "$d11" HIMMEL-11-N1-a)" "$(pid_of "$d11" HIMMEL-11-N1-a)"; sleep 0.2
+arm "$d11" HIMMEL-11-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc11=$?
+check "11a dead predecessor window: exit 0" "$rc11" 0
+check "11b dead predecessor window: successor opens its own window" "$(konsole_count "$d11")" 2
+
+# --- 12. the predecessor's recorded pid is alive but is not a konsole: not adopted.
+d12="$tmp/c12"; mk_env "$d12"; mkdir -m 0700 "$d12/locks"
+sleep 60 & p12=$!; echo "$p12" >> "$d12/pids"
+printf '%s\n' "$p12" > "$d12/locks/tabs-${NL}FX-roadmap-chief.window"
+arm "$d12" HIMMEL-12-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc12=$?
+check "12a non-konsole predecessor pid: exit 0" "$rc12" 0
+check "12b non-konsole predecessor pid: successor opens its own window" "$(konsole_count "$d12")" 1
+check "12c non-konsole predecessor pid: qdbus never called" "$([ -e "$d12/qdbus-record" ] && echo called || echo none)" none
+
+# --- 13. the letter roll: AA's predecessor is Z, A has none.
+d13="$tmp/c13"; mk_env "$d13"
+arm "$d13" HIMMEL-13-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}Z-roadmap-chief
+arm "$d13" HIMMEL-13-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}AA-roadmap-chief
+arm "$d13" HIMMEL-13-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}A-roadmap-chief
+check "13a letter roll: AA adopts Z's window, A opens its own" "$(konsole_count "$d13")" 2
+check "13b letter roll: AA is tracked in Z's window" "$(window_of "$d13" HIMMEL-13-N2-b)" "$(window_of "$d13" HIMMEL-13-N1-a)"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

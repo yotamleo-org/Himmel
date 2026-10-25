@@ -139,8 +139,7 @@ Reopen trigger: any entry appearing in `hook-chain-skips.jsonl`.
   the suite passed.
 - **Build a probe harness, don't re-run the full suite per iteration.** Splice
   a suite's own setup plus 1–2 representative cases into a standalone script
-  under `scripts/` (not `/tmp` — see
-  [`environment-gotchas.md` § MSYS `/tmp`…](environment-gotchas.md#msys-tmp-is-the-windows-user-temp-dir--temp-cleaners-delete-it-under-you)),
+  under `scripts/` (not `/tmp`, which reboots and temp cleaners empty),
   and never edit a script while it's running.
 - **Load experiments respect the safety envelope** built into station-ops
   `sweep-contention`: avail ≥ 12 GiB, commit ≤ 80%, ≤ 250 bash processes,

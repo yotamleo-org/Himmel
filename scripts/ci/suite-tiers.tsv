@@ -218,6 +218,7 @@ scripts/cr/test-critic-panel-registry.sh	pr	static-gate
 scripts/cr/test-critic-panel-triviality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-critic-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-d1-verdict.sh	pr	trust-path
+scripts/cr/test-dependabot-go.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-emit-gate-fail.sh	pr	trust-path
@@ -258,6 +259,7 @@ scripts/docs/test-check-doc-terms.sh	pr	static-gate
 scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
+scripts/docs/test-docs-current-version.sh	pr	static-gate
 scripts/docs/test-generate-credits.sh	pr	static-gate
 scripts/docs/test-install-profiles-page.sh	pr	static-gate
 scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
@@ -320,6 +322,7 @@ scripts/graphify/test-check-graph-freshness.sh	pr	guard
 scripts/graphify/test-detect-duplicate-notes.sh	pr	guard
 scripts/graphify/test-graph-cadence.sh	pr	guard
 scripts/graphify/test-graph-out-root.sh	pr	guard
+scripts/graphify/test-graph-prune-deleted.sh	pr	guard
 scripts/graphify/test-graph-publish.sh	pr	guard
 scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
@@ -751,6 +754,7 @@ scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	loca
 scripts/lanes/bench/scorecard/test-agg-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-dead-parts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-extra-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/lanes/bench/scorecard/test-fleet-scorecard.sh	local	new since the audit, behaviour suite
 scripts/lanes/bench/scorecard/test-ledger-metrics.sh	pr	static-gate
 scripts/lanes/bench/scorecard/test-leg-over-by-day.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-leg-relaunch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -960,6 +964,7 @@ scripts/openrouter/test-free-watch.sh	local	behaviour suite, 0 catches in the 40
 scripts/afk/test-build-plan.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-dispatch-stop-poll.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-morning-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/afk/test-per-project.sh	local	behaviour suite, per-project afk-shift state
 scripts/afk/test-self-heal.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-stop-marker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/parity/test-guard-conformance.sh	pr	static-gate

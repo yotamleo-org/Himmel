@@ -963,6 +963,17 @@ matching GO file (merge approval), with a 30-minute timeout, re-issued rather th
 required because a merge is irreversible. See also `docs/internals/retask-channel.md` for the token
 discipline governing the GO itself. No other wait qualifies.
 
+**Measuring the split.** `scripts/lanes/bench/scorecard/fleet-scorecard.sh`
+compares claudex and native workers on real fleet work. It prints one row per
+worker in two halves: output quality (judge verdicts, CR findings, rounds to
+clean, pushes after READY, main reds, 7-day escapes) and fleet management
+(launch to LIVE and READY, chief interventions, protocol misses, stalls,
+denials, cost-eq per merged PR). A per-lane table gives totals and medians.
+Run it as `fleet-scorecard.sh --manifest <chief>.fleet.json [--manifest …]
+--since <ISO time> --prs <gh pr list --state all --json …>`. It reads local
+ledgers only and writes to stdout or a local `--out` path. Any source it
+cannot read prints `n/a (<reason>)`, never 0.
+
 ## Every launch path applies a role-matched plugin profile
 
 A claude session's plugin set is fixed at launch by `--settings <profile file>`
