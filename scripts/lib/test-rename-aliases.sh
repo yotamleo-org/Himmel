@@ -199,10 +199,12 @@ trap 'rm -rf "$FT"' EXIT
 forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
   local runner="$1" dir="$2" old="$3" new="$4" src="$5" d out rc err
   d="$FT/$old"
+  [ "$old" = headed-arm-leg.sh ] && d="$FT/$old/handover/console-kit"
   mkdir -p "$d"
   check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
   cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
   [ "$old" = bank-preflight.sh ] && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/"
+  [ "$old" = headed-arm-leg.sh ] && mkdir -p "$FT/$old/lib" && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$FT/$old/lib/"
   printf '%s\n' "$src" > "$d/$new"
   out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
   rc=$?
