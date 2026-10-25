@@ -164,8 +164,8 @@ plan=$(
         echo "- project: \`$PROJECT\`"
         echo "- status: \`$STATUS\`"
         echo "- limit: \`$LIMIT\`"
-        echo "- priority: \`$PRIORITY\` (v1: key-desc; jira CLI does not yet"
-        echo "  expose priority field for envification work)"
+        echo "- priority: \`$PRIORITY\` (v1: key-desc; the jira CLI does not yet"
+        echo "  expose the priority field)"
         echo
         echo "## Tickets"
         echo

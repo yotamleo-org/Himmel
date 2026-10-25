@@ -115,7 +115,7 @@ codex_filter_passthrough_args() {
                 prev="$a"
                 continue
                 ;;
-            --background|--background=*) echo "$self: --background refused - use the default wait behavior + companion-liveness.sh" >&2; return 1 ;;
+            --background|--background=*) echo "$self: --background refused (upstream silent-death) - use the default wait behavior + companion-liveness.sh" >&2; return 1 ;;
             -C*|--cd|--cd=*) echo "$self: workspace-redirect flag '$a' refused - the wrapper owns the $noun (pass it via $cflag)" >&2; return 1 ;;
             --add-dir|--add-dir=*) echo "$self: --add-dir refused - $adddir_hint" >&2; return 1 ;;
             --dangerously-bypass-approvals-and-sandbox|--yolo) echo "$self: sandbox-bypass flag '$a' refused - the lane guard requires a sandboxed run" >&2; return 1 ;;

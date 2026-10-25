@@ -570,7 +570,7 @@ for p in .env .claude/settings.local.json .himmel-dev; do
     _absence_rc=$?
     case "$_absence_rc" in
         1) ;;  # confirmed absent — the only case that lets the loop continue
-        0) fail "guest checkout carries '$p' — refusing to run the suite" ;;
+        0) fail "guest checkout carries '$p' — refusing to run the suite (a guest checkout must never carry host secrets or local settings)" ;;
         *) fail "could not verify '$p' is absent from the guest checkout (ssh exited $_absence_rc, not a confirmed 0/1 — likely a transport failure) — refusing to run the suite rather than assume it is safe" ;;
     esac
 done
@@ -680,7 +680,7 @@ $(printf ' TRUNCATED: yes (run budget expired — not every suite ran)')"
     summary_block="${summary_block}
 $(printf ' CHANGED-SINCE: origin/main (suites were conditionally filtered — not full scope coverage)')"
     summary_block="${summary_block}
-$(printf ' RAN-IN: VM clone %s' "$CLONE_NAME")"
+$(printf ' RAN-IN: VM clone %s (a separate host, not this machine'"'"'s lock domain)' "$CLONE_NAME")"
 else
     summary_block=$(printf 'DIED-BEFORE-SUMMARY: the guest run exited (rc=%s) before printing its own "== Summary ==" — no PASS/SKIP/FAIL verdict exists for this run.\n head: %s\n %s\n scope: %s\n RAN-IN: VM clone %s' \
         "$SUITE_RC" "$REPORT_HEAD" "$scanning_line" "scripts" "$CLONE_NAME")

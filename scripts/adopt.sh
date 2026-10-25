@@ -694,7 +694,7 @@ wire_handover_dir_luna() {
   if [[ -f "$settings" ]] && command -v jq >/dev/null 2>&1; then
     existing="$(jq -r '.env.HANDOVER_DIR // empty' "$settings" 2>/dev/null || true)"
     if [[ -n "$existing" ]]; then
-      echo "  env.HANDOVER_DIR already set in $settings ($existing) — leaving it"
+      echo "  env.HANDOVER_DIR already set in $settings ($existing) — leaving it (re-adopt reproduces, never resets)"
       # remember that this key was already here, so uninstall never
       # claims (and removes) an operator-chosen value. Best-effort, like every record.
       prov_record noop json-key "$settings" --unit /env/HANDOVER_DIR --scope "$SCOPE" --class code \
