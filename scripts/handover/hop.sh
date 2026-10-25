@@ -209,7 +209,7 @@ elif [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then hop_profile=console
 elif [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then hop_profile=leg-impl
 else hop_profile=user; fi
 hop_settings=$(bash "$(dirname "${BASH_SOURCE[0]}")/../lanes/profile-settings.sh" "$hop_profile") || {
-    echo "ERR hop: plugin profile '$hop_profile' did not resolve; refusing to hop into the full plugin set (HIMMEL-4013)" >&2
+    echo "ERR hop: plugin profile '$hop_profile' did not resolve; refusing to hop into the full plugin set" >&2
     exit 2
 }
 

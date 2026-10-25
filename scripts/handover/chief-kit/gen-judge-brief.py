@@ -64,12 +64,12 @@ def validate(s):
         die('spec missing: %s' % ', '.join(missing))
     # the label slot of the handover-token grammar (docs/internals/handover-token-grammar.md)
     if not isinstance(s['qid'], str) or not re.fullmatch(r'(?:[A-Za-z]{1,4}[0-9]{1,5}[A-Za-z]{0,2}|[A-Z]{2,8}-[0-9]{1,6})(?:_[a-z]{1,8})?', s['qid']):
-        die('qid %r must be up to 4 letters, 1-5 digits and up to 2 letters (j2599a) or a ticket key (HIMMEL-4999), optionally ending _<up to 8 lower-case letters>' % (s['qid'],))
+        die('qid %r must be up to 4 letters, 1-5 digits and up to 2 letters (j2599a) or a ticket key (PROJ-4999), optionally ending _<up to 8 lower-case letters>' % (s['qid'],))
     if s.get('tickets') is not None and not isinstance(s['tickets'], list):
         die('tickets must be a list of ticket keys')
     keys = [s['ticket']] + list(s.get('tickets') or [])
     if not all(isinstance(k, str) and re.fullmatch(r'[A-Z]+-\d+', k) for k in keys):
-        die('ticket keys must look like HIMMEL-123 (got %r)' % (keys,))
+        die('ticket keys must look like PROJ-123 (got %r)' % (keys,))
     for k in ('question', 'reason', 'prior'):
         if not isinstance(s[k], str) or not s[k].strip():
             die('%s must be non-blank text' % k)
