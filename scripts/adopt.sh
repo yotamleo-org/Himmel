@@ -240,6 +240,14 @@ PORTABLE_FILES=(
   .claude/commands/cr-learnings-refresh.md
   .claude/commands/morning-report.md
   scripts/handover/generate-morning-briefing.sh
+  .claude/commands/afk-shift.md
+  scripts/afk/build-plan.sh
+  scripts/afk/self-heal.sh
+  scripts/afk/stop-marker.sh
+  scripts/afk/morning-report.sh
+  scripts/afk/morning-report.default.tmpl
+  scripts/afk/project-state.sh
+  .claude/commands/stop.md
   scripts/lib/result.sh
   scripts/clean-garden.sh
   scripts/worktree.sh

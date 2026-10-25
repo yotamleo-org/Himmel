@@ -3,7 +3,12 @@ description: Graceful-halt marker for in-progress /afk-shift sessions.
 argument-hint: [--hard | --reset]
 ---
 
-Sets the `~/.claude/.overnight-stop` marker. `/afk-shift`'s dispatch
+Sets the current project's stop marker: `~/.claude/.overnight-stop` in the
+himmel clone, `~/.claude/afk/<project key>/.overnight-stop` in an adopted
+project, so a stop there halts only that project's shift. The clone's marker
+also halts every adopted project's shift, so `--reset` in an adopted project
+does not lift a stop set from the clone: run `/stop --reset` in the clone too.
+`/afk-shift`'s dispatch
 loop (`.claude/commands/afk-shift.md` step 4, and the fix-dispatch
 loop in step 5c) polls it before every subagent dispatch — HIMMEL-2724
 lead 4. When set, the dispatcher finishes the in-flight subagent(s) +
@@ -35,7 +40,10 @@ tickets not yet started are reported, never silently dropped.
 4. Report status to the operator:
    - Soft stop: `Soft stop armed. Current subagent will finish; no new dispatches.`
    - Hard stop: `Hard stop armed. N in-flight subagents stopped.`
-   - Reset: `Stop marker cleared. Next /afk-shift will run normally.`
+   - Reset: `Stop marker cleared. Next /afk-shift will run normally.` If
+     `bash scripts/afk/stop-marker.sh status` still shows the global marker
+     SET, say instead: `Project stop marker cleared, but the clone's global
+     stop is still set; run /stop --reset in the clone to lift it.`
 
 ## Dispatcher contract (consumers)
 
@@ -51,8 +59,8 @@ if bash scripts/afk/stop-marker.sh check; then
 fi
 ```
 
-`check` is silent (no stdout/stderr) and exits 0 when the marker
-exists, 1 when it doesn't. Cheap to call.
+`check` is silent (no stdout/stderr) and exits 0 when the project's
+marker or the clone's global marker exists, 1 when neither does. Cheap to call.
 
 ## Status inspection
 

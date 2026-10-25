@@ -262,11 +262,16 @@ fi
 # Test 13: Mode A default path lands under <repo>/handovers/ ------------
 
 echo "TEST: Mode A (HANDOVER_DIR unset) default path under <repo>/handovers/"
+# A himmel-clone-shaped repo (it has scripts/adopt.sh) keeps the report at the
+# root; a scratch HOME keeps ~/.himmel/himmel.conf from supplying HANDOVER_DIR.
+mode_a_home="$TMP_ROOT/mode-a-home"
+mkdir -p "$mode_a_home"
 repo_a="$TMP_ROOT/mode-a-repo"
-mkdir -p "$repo_a"
+mkdir -p "$repo_a/scripts"
 git -C "$repo_a" init -q
+: > "$repo_a/scripts/adopt.sh"
 printf '%s\n' $'HIMMEL-370\tfeat/HIMMEL-370-a\thttps://example.com/pr/7\tdone\tShipped A' > "$ROWS"
-out=$(cd "$repo_a" && env -u HANDOVER_DIR bash "$SCRIPT" --rows "$ROWS")
+out=$(cd "$repo_a" && env -u HANDOVER_DIR HOME="$mode_a_home" bash "$SCRIPT" --rows "$ROWS")
 expected_a="$repo_a/handovers/overnight-report-$(date -u +%F).md"
 if [ -f "$expected_a" ]; then
     pass "Mode A report written under <repo>/handovers/"
@@ -278,9 +283,10 @@ fi
 
 echo "TEST: Mode A --dry-run previews <repo>/handovers/ path, creates nothing"
 repo_dry="$TMP_ROOT/mode-a-dry-repo"
-mkdir -p "$repo_dry"
+mkdir -p "$repo_dry/scripts"
 git -C "$repo_dry" init -q
-out=$(cd "$repo_dry" && env -u HANDOVER_DIR bash "$SCRIPT" --rows "$ROWS" --dry-run)
+: > "$repo_dry/scripts/adopt.sh"
+out=$(cd "$repo_dry" && env -u HANDOVER_DIR HOME="$mode_a_home" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "dry-run still prints body" "HIMMEL-370" "$out"
 assert_contains "previews real <repo>/handovers/ path" "mode-a-dry-repo/handovers/overnight-report-" "$out"
 if grepq "$out" -F '<unresolved-handover-root>'; then
