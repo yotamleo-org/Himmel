@@ -97,10 +97,18 @@ traj_row() { # ts trajectory_v red_before_green
   traj_row 2026-10-24T10:00:00Z 1 true
   traj_row 2026-10-25T01:00:00Z 2 0
   traj_row 2026-10-25T02:00:00Z 2 null
+  mkrow 2026-10-24T19:25:56Z review-panel '{"critics":["beta"]}' \
+    '{"panel.recall":0.75,"defects":12,"cases":24}' '{"panel.recall":{"lo":0.4677,"hi":0.9111}}'
 } > "$E"
 
+# ── Fixture panel ───────────────────────────────────────────────────────────
+# beta is the required reviewer, delta:m9 runs where present but has no findings yet, coderabbit is best effort;
+# alpha is in the ledger but not the panel, so it is history.
+K="$TMP/critics.json"
+printf '{"panel":[{"slug":"beta","mode":"hard","required":true},{"slug":"delta","model":"m9","mode":"hard","required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}\n' > "$K"
+
 OUT="$TMP/data.json"
-python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT" > "$TMP/data.out" 2> "$TMP/data.err"; rc=$?
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT" > "$TMP/data.out" 2> "$TMP/data.err"; rc=$?
 eq "data: exit 0" "$rc" "0"
 
 # RED row: precision and Wilson interval to one decimal.
@@ -151,20 +159,39 @@ eq "pdd: red-green half" "$(jget "$OUT" proof_first/red_green/pct)" "57.5"
 # Test-first: trajectory version 2 rows with a verdict only, no share under the floor.
 eq "test-first: version 1 and verdict-less rows stay out of n" "$(jget "$OUT" test_first/n)" "1"
 eq "test-first: no share under the floor" "$(jget "$OUT" test_first/pct)" "null"
+# Planted bugs: the newest review-panel row, its own date.
+eq "planted: the panel's catch rate" "$(jget "$OUT" planted/pct)" "75.0"
+eq "planted: bugs caught" "$(jget "$OUT" planted/k)" "9"
+eq "planted: bugs planted" "$(jget "$OUT" planted/n)" "12"
+eq "planted: dated by its row" "$(jget "$OUT" planted/as_of)" "2026-10-24"
+# The current panel comes from the critics file; a ledger reviewer outside it is history.
+eq "panel: a panel reviewer is current" "$(jget "$OUT" review/critics/beta/panel)" "beta"
+eq "panel: a ledger reviewer outside the panel is history" "$(jget "$OUT" review/critics/alpha/panel)" "null"
 
 # Render.
 R="$TMP/page.md"
 python3 -I "$GEN" render --data "$OUT" --out "$R" > "$TMP/render.out" 2> "$TMP/render.err"; rc=$?
 eq "render: exit 0" "$rc" "0"
 lacks "render: no draft marker" "$(head -5 "$R")" "draft:"
-has "render: pooled figure" "$(cat "$R")" "88.3%"
+eq "render: bottom line first, then the current setup, then history" \
+  "$(grep -E '^## ' "$R" | head -4 | tr '\n' '|')" "## Bottom line|## Current setup|## History and what we learned|## Proof first and test first|"
+has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
+has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
+has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right |"
+has "render: bottom line says the pooled figure is not the headline" "$(cat "$R")" "not the all-reviewers pooled figure"
+has "render: current setup row with its role" "$(cat "$R")" "| \`beta\` | required: must pass before every merge | **90.0%** | 78.6 to 95.7 |"
+has "render: a panel reviewer with no findings yet" "$(cat "$R")" "| \`delta:m9\` | must pass where it runs; skipped on a machine without it | no ruled findings yet |"
+has "render: current setup links the options" "$(cat "$R")" "(../configuration.md#review-by-a-second-model)"
+has "render: pooled figure under history" "$(grep -F '| All reviewers pooled |' "$R")" "**88.3%**"
+has "render: a retired reviewer under the floor is counted out" "$(cat "$R")" "One reviewer with fewer than 30 ruled findings is left out"
+has "render: findings out as a table row" "$(cat "$R")" "| Agreed | 53 of 62 |"
 has "render: a How to read these numbers block" "$(cat "$R")" "## How to read these numbers"
 has "render: the block says who rules" "$(cat "$R")" "The PR author rules"
 has "render: the block explains the bootstrap by PR" "$(cat "$R")" "resamples whole PRs"
 has "render: the block explains as of" "$(cat "$R")" "**As of**"
 has "render: pdd figure" "$(cat "$R")" "**10.8%** of merged PRs were proof-first"
-has "render: pdd interval and n" "$(cat "$R")" "6.4 to 17.7, as of 2026-10-24, n = 120 merged PRs"
-has "render: test-first not measured yet" "$(cat "$R")" "Test first: not measured yet"
+has "render: pdd interval and n" "$(cat "$R")" "| 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |"
+has "render: test-first not measured yet" "$(grep -F '| Test first:' "$R")" "| not measured yet; it needs 30 |"
 has "render: test-first says how far from the floor" "$(cat "$R")" "n = 1 session scored under trajectory version 2"
 has "render: pdd regenerate moves the cut past the new row" "$(cat "$R")" "with --until and --as-of moved past the new row"
 has "render: interval printed" "$(cat "$R")" "77.8 to 94.2"
@@ -174,7 +201,6 @@ has "render: cache regenerate bounds the sample on both ends" "$(cat "$R")" "-ne
 has "render: cache regenerate then feeds the data step" "$(cat "$R")" "2. \`python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt"
 has "render: cache regenerate ends with the render step" "$(cat "$R")" "3. \`python3 scripts/cr/evals-page-gen.py render\`"
 has "render: cache figure says cache reads, not tokens omitted from a request" "$(cat "$R")" "were cache reads"
-has "render: findings-in line links its method page" "$(grep -F -- '- In:' "$R")" "(review-panel.md)"
 has "render: links the review panel method page" "$(cat "$R")" "(review-panel.md)"
 has "render: links the prompt cache method page" "$(cat "$R")" "(prompt-cache.md)"
 eq "render: no bare percentage" "$(bare_pct "$R")" ""
@@ -184,7 +210,7 @@ printf 'precision is 50%% overall\n' > "$TMP/bad.md"
 eq "checker: a bare percentage is reported" "$(bare_pct "$TMP/bad.md")" "precision is 50% overall"
 
 # Determinism: the same inputs give the same bytes.
-python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/data2.json" > /dev/null 2>&1
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/data2.json" > /dev/null 2>&1
 eq "data: byte-stable across runs" "$(cmp -s "$OUT" "$TMP/data2.json" && echo same || echo differ)" "same"
 
 # --until cuts the eval-runs rows too, and the regenerate command carries the cut and the cache scope.
@@ -209,7 +235,7 @@ eq "test-first: share" "$(jget "$TMP/q1.json" test_first/pct)" "66.7"
 eq "test-first: Wilson low" "$(jget "$TMP/q1.json" test_first/wilson/lo)" "48.8"
 eq "test-first: Wilson high" "$(jget "$TMP/q1.json" test_first/wilson/hi)" "80.8"
 python3 -I "$GEN" render --data "$TMP/q1.json" --out "$TMP/q1.md" > /dev/null 2>&1
-has "test-first: rendered with its interval" "$(cat "$TMP/q1.md")" "**66.7%** of agent sessions"
+has "test-first: rendered with its interval" "$(grep -F '| Test first:' "$TMP/q1.md")" "| **66.7%** | 48.8 to 80.8 |"
 
 # A bare slug beside the same slug with a model is labelled, never merged; a slug that never has a model stays bare.
 L2="$TMP/ledger-bare.jsonl"
@@ -221,12 +247,20 @@ while [ "$i" -lt 30 ]; do
 done
 printf '{"kind":"avail","ts":"2026-10-01T10:00:00Z","branch":"gm","head":"h1","model":"gamma","artifact":"diff","responding_model":"m1"}\n' >> "$L2"
 printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"gm","head":"h1","model":"gamma","finding_id":"gm-0","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","text":"t"}\n' >> "$L2"
-python3 -I "$GEN" data --ledger "$L2" --eval-runs "$E" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/bare.json" > /dev/null 2>&1
+# A ledger tag of a panel reviewer that pins no model (CodeRabbit's findings outside the diff) is current, beside it.
+i=0
+while [ "$i" -lt 30 ]; do
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"o%s","head":"h1","model":"coderabbit-outside","finding_id":"o-%s","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off","text":"t"}\n' "$((i % 3))" "$i" >> "$L2"
+  i=$((i + 1))
+done
+python3 -I "$GEN" data --ledger "$L2" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/bare.json" > /dev/null 2>&1
 python3 -I "$GEN" render --data "$TMP/bare.json" --out "$TMP/bare.md" > /dev/null 2>&1
 eq "label: the bare slug is kept apart from its named model" "$(jget "$TMP/bare.json" review/critics/gamma/n)" "30"
-has "label: a bare slug with a named sibling reads model not recorded" "$(cat "$TMP/bare.md")" "\`gamma\` (model not recorded): **100.0%**"
+has "label: a bare slug with a named sibling reads model not recorded" "$(grep -F "| \`gamma\` (model not recorded) |" "$TMP/bare.md")" "**100.0%**"
 has "label: one sentence says why those rows exist" "$(cat "$TMP/bare.md")" "names no answering model"
-has "label: a slug that never names a model stays bare" "$(cat "$TMP/bare.md")" "- \`beta\`: **90.0%**"
+has "label: a slug that never names a model stays bare" "$(cat "$TMP/bare.md")" "| \`beta\` | required"
+has "panel: a tag of a reviewer that pins no model sits beside it" "$(cat "$TMP/bare.md")" "| \`coderabbit-outside\` | part of \`coderabbit\`: findings on lines outside the diff | **100.0%** |"
+has "panel: two retired reviewers under the floor are counted out" "$(cat "$TMP/bare.md")" "2 reviewers with fewer than 30 ruled findings are left out"
 
 # write() replaces the output path, never writes through a symlink.
 printf 'keep\n' > "$TMP/target.md"

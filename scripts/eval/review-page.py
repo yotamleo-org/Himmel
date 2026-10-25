@@ -2,7 +2,8 @@
 """scripts/eval/review-page.py - the readable page over the reviewer evals (HIMMEL-6943).
 
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
-writes one Markdown page in plain words: how often the critics catch planted bugs and are right
+writes one Markdown page in plain words, its bottom line first (each eval's headline with its run day):
+how often the critics catch planted bugs and are right
 (review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share of
 merged PRs (pdd-share), the trend since the last
 run of the same series, and each change the feedback step made with its re-measured result. The page
@@ -259,12 +260,29 @@ def change_lines(changes):
     return out
 
 
+def bottom_lines(rows):
+    """Each eval's headline line with its run day: the whole panel's catch when it was scored (else the first
+    critic's), bugs past a GO, the proof-first share."""
+    out = []
+    for eval_id, build, mark in (("review-panel", critic_lines, " planted bugs: "),
+                                 ("judge-accuracy", judge_lines, "- A bug got past a GO"),
+                                 ("pdd-share", proof_lines, "- Proof first: ")):
+        cur, prev = latest(rows, eval_id)
+        hits = [x for x in build(cur, prev) if mark in x] if cur else []
+        whole = [x for x in hits if x.startswith("- " + CRITICS["panel"])]
+        if hits:
+            out.append("%s Run of %s." % ((whole or hits)[0], day(cur["ts"])))
+    return out
+
+
 def page(rows, changes):
     out = ["# How good are our reviewers?", "",
            "Each critic and judge number comes from the newest run, and a trend compares it with the run "
            "before. Each change's result comes from the run that re-measured it. \"Likely between\" is a range: given how much "
            "a run measured, the true rate is likely inside it.", "",
-           "## The critics on planted bugs", ""]
+           "## Bottom line", ""]
+    out += bottom_lines(rows) or ["No run yet."]
+    out += ["", "## The critics on planted bugs", ""]
     cur, prev = latest(rows, "review-panel")
     if cur is None:
         out.append("No run yet.")

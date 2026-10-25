@@ -123,18 +123,28 @@ has "proof first: the share as a count, a percentage and a range" "$out" "Proof 
 has "proof first: the ticket half on its own" "$out" "The ticket was written first: 23 of 120: 19 % (likely between 13 % and 27 %)"
 has "proof first: the RED-then-GREEN half on its own" "$out" "RED then GREEN named in the PR body: 71 of 120: 59 % (likely between 50 % and 68 %)"
 
+# Bottom line: the first section, each eval's headline with its run day.
+bottom="$(printf '%s\n' "$out" | awk '/^## /{n++} n==1')"
+eq "bottom line: the first section" "$(printf '%s\n' "$out" | grep -m1 '^## ')" "## Bottom line"
+has "bottom line: the planted-bug catch with its run day" "$bottom" "- The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %), up 20 points since the last run (40 %). Run of 24 Oct 2026."
+has "bottom line: bugs past a GO" "$bottom" "- A bug got past a GO on 3 of 150 merged PRs"
+has "bottom line: proof first" "$bottom" "- Proof first: 13 of 120 merged PRs: 11 %"
+eq "bottom line: one line per eval" "$(printf '%s\n' "$bottom" | grep -c '^- ')" "3"
+
 # CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
 python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import eval_runs
-m = {"codex.recall": 0.6, "codex.precision": 0.7, "codex.findings": 10, "codex.class.logic.recall": 0.6, "codex.class.logic.n": 5}
+m = {"codex.recall": 0.6, "codex.precision": 0.7, "codex.findings": 10, "codex.class.logic.recall": 0.6, "codex.class.logic.n": 5,
+     "panel.recall": 0.8, "panel.class.logic.recall": 0.8, "panel.class.logic.n": 5}
 row = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"critics": ["codex"]}, m, n=5,
                          run_id="rp-c", gitsha="0" * 40)
 open(sys.argv[2], "w").write(json.dumps(row) + "\n")
 PY
 out2="$(python3 -I "$PAGE" --ledger "$TMP/codex-only.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"
 has "CodeRabbit: not measured yet, needs a scratch pull request" "$out2" "CodeRabbit is not measured yet: it needs a scratch pull request"
+has "bottom line: the whole panel's catch when it was scored" "$(printf '%s\n' "$out2" | awk '/^## /{n++} n==1')" "- The whole panel caught 4 of 5 planted bugs"
 
 # The answers script: five questions from fixture ledgers, before and after a cut.
 python3 -I - "$HERE/lib" "$TMP/ans-runs.jsonl" "$TMP/cr.jsonl" <<'PY' || { echo "test-review-page: writing the answers fixtures failed" >&2; exit 1; }
@@ -220,7 +230,7 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-eq "no ledger: every section says there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "4"
+eq "no ledger: every section says there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "5"
 
 cp "$TMP/changes.jsonl" "$TMP/bad-changes.jsonl"
 printf '%s\n' '{"status":"measured"}' '{"status":"open","eval":"review-panel","metric":null}' '7' >> "$TMP/bad-changes.jsonl"
