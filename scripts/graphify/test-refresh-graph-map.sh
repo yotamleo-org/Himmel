@@ -4353,6 +4353,8 @@ STUB
 chmod +x "$MGBIN/graphify"
 mg_corpus() { # <dir> <ast-nodes> <semantic-nodes of tracked.md> — git corpus with a live graph
   git_corpus "$1"
+  printf 'x = 1\n' > "$1/code.py"; git -C "$1" add code.py >/dev/null 2>&1
+  git -C "$1" -c core.hooksPath=/dev/null commit -qm code >/dev/null 2>&1
   mkdir -p "$1/graphify-out"
   python3 - "$1/graphify-out/graph.json" "$2" "$3" <<'PY'
 import json, sys
@@ -4404,9 +4406,9 @@ MGS="$WS/mg-shrunk"; mg_corpus "$MGS" 5 0
 python3 - "$MGS/graphify-out" <<'PY2'
 import json, os, sys
 d = sys.argv[1]; p = os.path.join(d, "graph.json"); g = json.load(open(p))
-g["nodes"] += [{"id": "gone-%d" % i, "label": "g", "source_file": "gone.md", "_origin": "semantic"} for i in range(60)]
+g["nodes"] += [{"id": "gone-%d" % i, "label": "g", "source_file": "gone-notes", "_origin": "semantic"} for i in range(60)]
 json.dump(g, open(p, "w"))
-json.dump({"version": 1, "files": {"gone.md": "x"}}, open(os.path.join(d, "semantic-manifest.json"), "w"))
+json.dump({"version": 1, "files": {"gone-notes": "x"}}, open(os.path.join(d, "semantic-manifest.json"), "w"))
 PY2
 out=$(mg_run mgs "$MGS" --merge-into-live); rc=$?
 { [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$MGS/graphify-out/graph.json")" = 65 ]; } \

@@ -339,6 +339,7 @@ scripts/graphify/test-check-graph-freshness.sh	1
 scripts/graphify/test-detect-duplicate-notes.sh	0
 scripts/graphify/test-graph-cadence.sh	22
 scripts/graphify/test-graph-out-root.sh	0
+scripts/graphify/test-graph-prune-deleted.sh	4
 scripts/graphify/test-graph-publish.sh	1
 scripts/graphify/test-graph-refresh.sh	1
 scripts/graphify/test-harden-graph.sh	2

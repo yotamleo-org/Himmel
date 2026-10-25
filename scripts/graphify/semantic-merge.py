@@ -8,8 +8,11 @@
 #   plan  --root R --out O --max-files N --plan P   diff corpus vs manifest
 #   seed  --root R --out O                          stamp current hashes only
 #   merge --out O --scratch S --plan P --runtime-s T --tokens-in I --tokens-out J
-#   restore --out O --before B     put back the semantic items an AST rebuild
-#                                  (ast-update.sh) dropped from B's snapshot
+#   restore --out O --before B [--root R]  put back the semantic items an AST rebuild
+#                                  (ast-update.sh) dropped from B's snapshot; with --root,
+#                                  not those of files R no longer tracks, and drop those too
+#   prune --root R --out O         drop the nodes, edges and hyperedge members of files R no longer tracks
+#   untracked --root R --graph G   list G's source files R no longer tracks, one per line
 #   status --root R --out O        backed-off, unstamped and oldest-unstamped counts
 #   unstick --out O                drop every backed-off "stuck" record so the next plan retries it
 #
@@ -231,47 +234,166 @@ def edge_key(e):
     return (e.get("source"), e.get("target"), e.get("relation"), e.get("source_file"))
 
 
+def tracked_paths(root):
+    # Every file git knows in the work tree (tracked, or untracked and not ignored); None when the
+    # root is no git work tree, where tracked and deleted files cannot be told apart.
+    try:
+        raw = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                             capture_output=True, check=True).stdout.decode("utf-8")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return {p for p in raw.split("\0") if p}
+
+
+def src_key(item, root):
+    # The corpus-relative path of an item's source_file, or None for a source that is not a path.
+    s = norm_src(item.get("source_file"), root)
+    if not isinstance(s, str):
+        return None
+    while s.startswith("./"):
+        s = s[2:]
+    return s
+
+
+def is_file_path(s):
+    # ponytail: a source_file is a file path when it is relative, has an extension and no module-name shape (@scope, node:fs), so a module such as socket.io still reads as a path, add a type check if one is pruned.
+    return bool(s) and not s.startswith(("/", "../", "@")) and ":" not in s.split("/")[0] and os.path.splitext(s)[1] != ""
+
+
+def gone_sources(root, *graphs):
+    # The source files the graphs hold nodes of that the corpus at `root` no longer tracks.
+    tracked = tracked_paths(root)
+    gone = set()
+    if tracked is None:
+        return gone
+    for g in graphs:
+        for n in g.get("nodes", []):
+            k = src_key(n, root)
+            if is_file_path(k) and n.get("type") != "module" and k not in tracked:
+                gone.add(k)
+    return gone
+
+
+def prune_graph(g, gone, root):
+    # Remove the nodes of the `gone` sources, the edges that touch them or sit on them, and their
+    # hyperedge members (a hyperedge left with under two members goes). Returns per-file node counts,
+    # the edges removed and the hyperedges removed.
+    counts, edges_removed, hyper_removed = {}, 0, 0
+    if not gone:
+        return counts, edges_removed, hyper_removed
+    ekey = "edges" if "edges" in g and "links" not in g else "links"
+    dead_ids, keep = set(), []
+    for n in g.get("nodes", []):
+        k = src_key(n, root)
+        if k in gone and n.get("type") != "module":
+            dead_ids.add(n.get("id"))
+            counts[k] = counts.get(k, 0) + 1
+        else:
+            keep.append(n)
+    if not dead_ids:
+        return counts, edges_removed, hyper_removed
+    g["nodes"] = keep
+    edges = [e for e in g.get(ekey) or [] if src_key(e, root) not in gone
+             and e.get("source") not in dead_ids and e.get("target") not in dead_ids]
+    edges_removed = len(g.get(ekey) or []) - len(edges)
+    g[ekey] = edges
+    hyper = []
+    for h in g.get("hyperedges") or []:
+        h["nodes"] = [m for m in h.get("nodes", []) if m not in dead_ids]
+        if src_key(h, root) not in gone and len(h["nodes"]) >= 2:
+            hyper.append(h)
+    hyper_removed = len(g.get("hyperedges") or []) - len(hyper)
+    g["hyperedges"] = hyper
+    return counts, edges_removed, hyper_removed
+
+
+def report_pruned(verb, counts, edges, hyper):
+    print("semantic-merge: %s %d node(s), %d edge(s), %d hyperedge(s) of %d source file(s) the corpus no longer tracks"
+          % (verb, sum(counts.values()), edges, hyper, len(counts)), file=sys.stderr)
+    for f in sorted(counts):
+        print("semantic-merge:   %s: %d node(s)" % (f, counts[f]), file=sys.stderr)
+
+
+def cmd_prune(a):
+    graph_path = os.path.join(a.out, "graph.json")
+    g = load_json(graph_path)
+    counts, edges, hyper = prune_graph(g, gone_sources(a.root, g), a.root)
+    if not counts:
+        return
+    write_json_atomic(graph_path, g)
+    report_pruned("pruned", counts, edges, hyper)
+
+
+def cmd_untracked(a):
+    # The shrink guard reads this: the graph's source files the corpus no longer tracks, one per line.
+    try:
+        g = load_json(a.graph)
+    except (SystemExit, ValueError):
+        return
+    for f in sorted(gone_sources(a.root, g)):
+        print(f)
+
+
 def cmd_restore(a):
     # After an AST rebuild (`graphify update`, which re-extracts code files and
     # replaces their nodes): put back every semantic node, edge and hyperedge the
     # rebuilt graph lost. The AST pass owns `_origin: ast`; semantic items are
-    # never its to drop.
+    # never its to drop. With --root, the source files the corpus no longer
+    # tracks (deleted, or renamed away) are not put back, and their nodes already
+    # in the rebuilt graph go too.
     before = load_json(a.before)
     graph_path = os.path.join(a.out, "graph.json")
     g = load_json(graph_path)
     ekey = "edges" if "edges" in g and "links" not in g else "links"
     old_ekey = "edges" if "edges" in before and "links" not in before else "links"
     g.setdefault(ekey, [])
+    gone = gone_sources(a.root, before, g) if a.root else set()
+    declined = {}
     live_ids = {n.get("id") for n in g.get("nodes", [])}
     restored_n = restored_e = restored_h = 0
     for n in before.get("nodes", []):
         if n.get("_origin") == "semantic" and n.get("id") not in live_ids:
+            k = src_key(n, a.root) if a.root else None
+            if k in gone:
+                declined[k] = declined.get(k, 0) + 1
+                continue
             g["nodes"].append(n)
             live_ids.add(n.get("id"))
             restored_n += 1
     have = {edge_key(e) for e in g[ekey]}
     for e in before.get(old_ekey, []):
         if e.get("_origin") == "semantic" and edge_key(e) not in have \
-                and e.get("source") in live_ids and e.get("target") in live_ids:
+                and e.get("source") in live_ids and e.get("target") in live_ids \
+                and not (a.root and src_key(e, a.root) in gone):
             g[ekey].append(e)
             have.add(edge_key(e))
             restored_e += 1
     have_h = {h.get("id") for h in g.get("hyperedges") or []}
     for h in before.get("hyperedges") or []:
-        if h.get("_origin") == "semantic" and h.get("id") not in have_h:
+        if h.get("_origin") == "semantic" and h.get("id") not in have_h \
+                and not (a.root and src_key(h, a.root) in gone):
             members = [m for m in h.get("nodes", []) if m in live_ids]
             if len(members) >= 2:
                 g.setdefault("hyperedges", []).append(dict(h, nodes=members))
                 restored_h += 1
-    if not (restored_n or restored_e or restored_h):
+    pruned, pruned_e, pruned_h = prune_graph(g, gone, a.root) if gone else ({}, 0, 0)
+    for f, c in pruned.items():
+        declined[f] = declined.get(f, 0) + c
+    if not (restored_n or restored_e or restored_h or pruned):
+        if declined:
+            report_pruned("dropped", declined, 0, 0)
         return
     write_json_atomic(graph_path, g)
     run = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "name": "ast-update",
            "ast_restored_nodes": restored_n, "ast_restored_edges": restored_e, "ast_restored_hyperedges": restored_h}
+    if declined:
+        run["ast_pruned_nodes"] = sum(declined.values())
     with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
         f.write(json.dumps(run) + "\n")
     print("semantic-merge: restored %d semantic node(s), %d edge(s), %d hyperedge(s) the AST rebuild dropped"
           % (restored_n, restored_e, restored_h), file=sys.stderr)
+    if declined:
+        report_pruned("dropped", declined, pruned_e, pruned_h)
 
 
 def cmd_merge(a):
@@ -456,6 +578,13 @@ def main():
     r = sub.add_parser("restore")
     r.add_argument("--out", required=True)
     r.add_argument("--before", required=True)
+    r.add_argument("--root", default="")
+    pr = sub.add_parser("prune")
+    pr.add_argument("--root", required=True)
+    pr.add_argument("--out", required=True)
+    un = sub.add_parser("untracked")
+    un.add_argument("--root", required=True)
+    un.add_argument("--graph", required=True)
     st = sub.add_parser("status")
     st.add_argument("--root", required=True)
     st.add_argument("--out", required=True)
@@ -463,7 +592,7 @@ def main():
     u.add_argument("--out", required=True)
     a = ap.parse_args()
     {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore,
-     "status": cmd_status, "unstick": cmd_unstick}[a.cmd](a)
+     "prune": cmd_prune, "untracked": cmd_untracked, "status": cmd_status, "unstick": cmd_unstick}[a.cmd](a)
 
 
 if __name__ == "__main__":

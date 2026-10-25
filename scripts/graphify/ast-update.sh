@@ -374,7 +374,7 @@ if [ -f "$_pre_ast" ]; then
   # keep it under a name the next run does not delete.
   _kept="$OUT_DIR/graph.pre-ast.kept.json"
   if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ] \
-     && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast"; then
+     && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT"; then
     mv -f "$_pre_ast" "$_kept" 2>/dev/null || _kept="$_pre_ast"
     echo "ast-update: FAILED -- graphify update succeeded but restoring the semantic nodes it dropped failed (see above); the graph may have lost semantic nodes. The pre-rebuild graph is kept at $_kept. Exiting 5" >&2
     exit 5
