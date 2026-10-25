@@ -101,7 +101,7 @@ names who does what and why each hand-off exists.
    each change traces to a reason.
 2. **Dispatch.** The chief writes a brief and launches a worker. The dispatch
    carries a fresh worktree on a `type/slug` branch, a trimmed tool set, an
-   explicit model, a per-worker nonce for the RETASK channel, and a queue lock on
+   explicit model, a fresh RETASK nonce for each dispatch, and a queue lock on
    the worker's own handover document. Before launching, the chief checks the
    subscription usage budget and counts live workers against the fleet cap; over the cap, nothing
    launches.

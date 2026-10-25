@@ -18,7 +18,7 @@ Tracks epics, tasks, and standalones across sessions. Multi-repo capable: state 
 ### Create / update items
 - **`new-epic <name>`** · **`new-task <epic-id> <name>`** · **`new-standalone <name>`** — create a tracked item (Jira auto-create gate + worktree + templates). → `references/new-item.md`
 - **`update-status`** — regenerate `status.md` + `roadmap.md` + `tech-debt.md` from filesystem state; run after any mutation, never ask. → `references/update-status.md`
-- **`end-session [id]`** — write the next append-only `next-session-N.md` (session summary + cold-start prompt + Jira transition); carries the overnight-mode trigger. → `references/end-session.md`
+- **`end-session [id]`** — write the next append-only `next-session-N.md` (session summary + cold-start prompt + Jira transition); carries the AFK-mode trigger. → `references/end-session.md`
 
 ### Move / link / configure items
 - **`/handover bucket <id> <bucket>`** (time-horizon OR source-repo move) · **`/handover priority <id> <priority>`** · **`/handover jira-link <id> [<key>]`** · **`/handover defaults <sub>`** → `references/item-ops.md`

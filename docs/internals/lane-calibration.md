@@ -360,7 +360,7 @@ below already uses.
 | `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus quota | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
 | `ollama-local` — ollama (local models) | bulk | slow, small tasks | unverified/varies | none (dashboard-omitted); free, local wall-clock | calibrated — zero-egress guarantee is structural; the only salus-eligible backend |
 | `openrouter-free` — OpenRouter free models | bulk | simple tasks only; rate-limited | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; probe live availability before routing, route only for simple free-tier chores |
-| `ollama-cloud` — Ollama Cloud (free tier) | bulk | simple tasks; free-bank caps | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; egresses to ollama.com, an undeclared egress-matrix provider — vault corpora default-DENY (himmel-code only) until the operator declares a cell; route only for free-bank chores on non-vault corpora |
+| `ollama-cloud` — Ollama Cloud (free tier) | bulk | simple tasks; free-tier usage caps | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; egresses to ollama.com, an undeclared egress-matrix provider — vault corpora default-DENY (himmel-code only) until the operator declares a cell; route only for free-bank chores on non-vault corpora |
 
 **`claudex` chief reachability:** a claudex worker has no
 `ListAgents`/`SendMessage` path to a native session, so a chief ruling
@@ -542,7 +542,9 @@ not need. What is **not** in this change: the measured before/after (an effort
 sweep on real briefs) that the ticket also asks for — it belongs to the
 usage budget attribution table, which this change leaves untouched.
 
-## Bank-scarcity routing rule
+<a id="bank-scarcity-routing-rule"></a>
+
+## Usage-scarcity routing rule
 
 While the **Claude weekly subscription usage budget is the scarce bucket** (`bank-preflight.sh` now
 prints both usage budgets on its one line — `five_hour=… seven_day=… codex=5h<n>/wk<n>`,
@@ -797,8 +799,8 @@ to the resolved `auto`. The arm log and the `--dry-run` report both record
 
 **Worker checkpoint or handover is at 75% of the worker's `--autocompact` ceiling
 (150,000 input tokens of the 200k pin), with that ceiling as the backstop,
-when the launch turns the guard on.** Measured 2026-09-27..10-03 over 399 worker
-sessions: 349 compacted, 309 of those still reached WRAPPED after their last
+when the launch turns the guard on.** Measured 2026-09-27..10-03 over 399
+workers: 349 compacted, 309 of those still reached WRAPPED after their last
 compaction, and every compaction fired between 157k and 176k. The earlier 60%
 hand-off only added relaunches. A later change moved to 65% (27k of headroom),
 which stopped every opus worker at 13% fill; a further change set 75% (150k), 7k
@@ -824,8 +826,8 @@ general handover sessions, not workers.
 The context pin above answers *how much* window one worker burns; it says
 nothing about *how many* workers run at once. 2026-09-07: 9–11
 concurrent workers exhausted a WEEK's usage bucket in under 48 hours, forcing a
-fleet-wide halt. `scripts/lib/bank-preflight.sh` now counts live worker
-sessions (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
+fleet-wide halt. `scripts/lib/bank-preflight.sh` now counts live
+workers (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-console` — chiefs are not workers) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
 `HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in

@@ -173,7 +173,7 @@ red:
 - **Verifying a slice before the next cadence run** is optional and operator-
   requested only: the diagnostic `os-verify.yml` workflow
   dispatches the impacted suites on one OS. It is not a per-PR gate and no worker
-  session dispatches it unasked.
+  dispatches it unasked.
 
 `bash scripts/ci/run-shell-tests.sh --list [scan-root]` prints the run/skip
 plan without executing anything — use it to check what a change would trigger

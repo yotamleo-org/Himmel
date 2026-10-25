@@ -78,7 +78,7 @@ items on stderr. **Do not commit or quote a refused estimate; fix the input.**
 ## Alternatives considered (so a reviewer can challenge the choice)
 
 1. Keep the midpoint and widen the margin: a fixed margin cannot see a G1-heavy or wide-range version.
-2. Variant A, no floor: fits worse (sigma 0.77 vs 0.65), keeps the tickets-per-bank mismatch.
+2. Variant A, no floor: fits worse (sigma 0.77 vs 0.65), keeps the tickets-per-usage-window mismatch.
 3. PERT / three-point: needs a mode we do not collect; the tail is thinner than observed.
 4. Reference-class bootstrap of observed actual/estimate ratios: the target at n >= 60; same interface.
 5. Monte Carlo inside first-fit: too slow. Fenton-Wilkinson for the fast check, Monte Carlo as the cross-check.

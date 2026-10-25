@@ -55,7 +55,7 @@ Load latest session: <state-root>/{<bucket>/}<type-path>/#N-<slug>/next-session-
 
 ## AFK mode
 
-The handover system's `next-session-N.md` files include a `## Overnight Mode Trigger` section that points at `docs/handover/afk-mode.md`. If a user prompt includes the literal phrase **`overnight mode`** alongside a `next-session-*.md` path, the assistant is expected to read the canonical pipeline doc and execute the 11-phase autonomous workflow without pausing for confirmation between phases.
+The handover system's `next-session-N.md` files include a `## Overnight Mode Trigger` section that points at `docs/handover/afk-mode.md`. If a user prompt includes the literal phrase **`overnight mode`** (the trigger keeps its older name) alongside a `next-session-*.md` path, the assistant is expected to read the canonical pipeline doc and execute the 11-phase autonomous workflow without pausing for confirmation between phases.
 
 The trigger phrase is treated as a workflow signal, not a magic command — it is documented here so the assistant recognizes it from any session. Block-only criteria, budget estimates, and lessons-learned live in the canonical doc.
 

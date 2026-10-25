@@ -31,7 +31,7 @@ bash scripts/handover/console/chief.sh $ARGUMENTS
 - `--context 1m|standard` — on `new` or `next`, override the default and
   environment choice. `--context standard` (or `CONSOLE_CONTEXT=standard`
   in the launching shell) opts down to `--autocompact 200000`.
-  Non-console arms keep their standard default.
+  Non-chief arms keep their standard default.
 - `--dry-run` — print what it would write, prefixed `would-`, and touch nothing.
 - `--project <dir>` — a repo other than this himmel checkout: bucket/prefix
   derive from it instead of himmel's own repo basename/`JIRA_PROJECT_KEY`, and

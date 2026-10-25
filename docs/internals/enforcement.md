@@ -3853,7 +3853,7 @@ relaunchable, and dump their reports into parent context. This is the
 CLAUDE.md "second drift" escalation: the ruling stood verbatim in its own
 handover chain and still drifted twice.
 
-**Policy:** deny only when the session is SUPERVISOR-shaped AND the dispatch's
+**Policy:** deny only when the session is CHIEF-shaped AND the dispatch's
 `description`/`prompt` match markers from at least TWO DISTINCT ship-flow
 marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `git worktree`, `/worktree`, "create a worktree"), `pr-open` (`gh pr create`,
@@ -3879,7 +3879,7 @@ signal. Failing that, a bounded head-read of `transcript_path`'s first user
 turn, scoped to the FIRST handover-doc path named in it (the launch prompt
 loads exactly one doc, and it is the first path named — a later mention,
 e.g. a mission doc naming the chief's own doc further down the same
-turn, does not count): console-shaped only if that first path's basename
+turn, does not count): chief-shaped only if that first path's basename
 matches `*-console.md`.
 
 **Audited bypass:** `CHIEF_DISPATCH_OK=1` (deliberate carve-out) or
@@ -3986,7 +3986,7 @@ checkout workers branch from having pulled the merge. Spec:
 > arm (settings-chain entries are `Bash`/`PowerShell`-only), and a `--chain`
 > member cannot carry `--fail-closed-when`.
 
-### `block-worker-askuserquestion.sh` — console-spawned-leg AskUserQuestion deny (HIMMEL-2923)
+### `block-worker-askuserquestion.sh` — chief-spawned worker AskUserQuestion deny (HIMMEL-2923)
 
 The old path `block-leg-askuserquestion.sh` sources this file, so settings that
 still name it run the same hook.
@@ -4005,7 +4005,7 @@ marker feeds only `guard-judge-writes.sh`, below) — and
 correctly so: a judge is read-only and evidence-gathering, so it has no one
 to ask either.
 
-### `guard-worker-wakeup.sh` — console-spawned-leg ScheduleWakeup deny (HIMMEL-3034)
+### `guard-worker-wakeup.sh` — chief-spawned worker ScheduleWakeup deny (HIMMEL-3034)
 
 The old path `guard-leg-wakeup.sh` sources this file, so settings that still
 name it run the same hook.
@@ -4036,7 +4036,9 @@ input or a control character in the URL, and makes no network call. Bypass:
 tool, so there is no `.codex/hooks.json` twin. Suite:
 `scripts/hooks/test-redirect-webfetch-walled-hosts.sh`.
 
-### `guard-leg-context-handoff.sh` — console-spawned-leg context hand-off (HIMMEL-4569)
+<a id="guard-leg-context-handoffsh--console-spawned-leg-context-hand-off-himmel-4569"></a>
+
+### `guard-leg-context-handoff.sh` — chief-spawned worker context hand-off (HIMMEL-4569)
 
 Fires on every tool (`*`), keyed on `HIMMEL_CONSOLE_LEG=1` plus a non-empty
 `HIMMEL_CONSOLE_NAME` (both from `headed-arm-leg.sh`); anything else exits 0
@@ -4329,7 +4331,7 @@ utilization crosses `AUTO_ARM_THRESHOLD` (default 90%):
    cap-window+session, so retries overwrite in place (no file spam),
 2. arms a resume via `arm-resume.sh --time smart --handover <snapshot>`
    (rc=3 "already armed" counts as success — dedup with any
-   operator-armed or supervisor-armed job),
+   operator-armed or chief-armed job),
 3. blocks the in-flight tool call ONCE (exit 2) so the model is told to
    write a full handover and wind down. The fired marker is keyed per
    cap window AND per session (from the PreToolUse `session_id`), so

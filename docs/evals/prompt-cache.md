@@ -49,7 +49,7 @@ content is in this repo; the probe prints only ids, counts and token totals.
 |---|---|---|
 | `first-turn` | `first-turn <all sessions>` | `warm-start warm=1966 cold=19`, read-ratio 98.3 % |
 | `idle-gap` | `idle-gap <all sessions>` | `ttl-consistent`: cold-expected=172, cold-rewrote=155; warm-expected=25056, warm-rewrote=46; read-ratio 98.3 % |
-| `invalidation` | `--event 2026-10-05T16:00:00Z <all sessions>` (a weekly-bank reset at 100 %, same account) | `not-invalidated kept=2 invalidated=0 compacted=0 ttl=0 inconclusive=0`, read-ratio 98.1 % |
+| `invalidation` | `--event 2026-10-05T16:00:00Z <all sessions>` (a weekly usage reset at 100 %, same account) | `not-invalidated kept=2 invalidated=0 compacted=0 ttl=0 inconclusive=0`, read-ratio 98.1 % |
 | `test-cache-probe.sh` | fixture suite | 59 passed, 0 failed |
 | `test-harness-run.sh` | fixture suite | PASS |
 
@@ -117,7 +117,7 @@ Findings:
   the TTL" count leaves out the 89 % of gaps that are under 60 s, and the
   1,985 first turns leave out the 1.7 % of transcripts with no usable turn.
   The figures themselves are unchanged.
-- **The bank-reset row reproduces.** The 2026-10-05T16:00:00Z event, over the
+- **The usage-reset row reproduces.** The 2026-10-05T16:00:00Z event, over the
   transcripts live across it: 317,534 to 319,536 read over 2,101 s, and
   154,984 to 119,075 read with a 15,783 write over 1,605 s, both `kept`,
   read-ratio 98.1 %.

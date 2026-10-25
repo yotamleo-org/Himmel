@@ -1,5 +1,5 @@
 ---
-description: Arm/inspect/remove the recurring luna clip-pipeline cadence via schtasks or cron, per-leg --model pins.
+description: Arm/inspect/remove the recurring luna clip-pipeline cadence via schtasks or cron, per-job --model pins.
 argument-hint: arm|status|disarm [--harvest-time HH:MM] [--synth-time HH:MM] [--health-time HH:MM] [--harvest-model M] [--synth-model M] [--health-model M] [--vault PATH] [--force] [--dry-run]
 ---
 

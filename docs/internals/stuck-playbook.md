@@ -187,7 +187,7 @@ explicit in-session authorization.
    PR #N"). Do **NOT** retry the merge via a different command path — the
    classifier flags that as evasion and hardens the block (first
    principle: structural fix over workaround — here the structural fix is
-   *not emitting `--admin`*, already shipped in `pr-merge.sh` + overnight-mode
+   *not emitting `--admin`*, already shipped in `pr-merge.sh` + AFK-mode
    Phase 9).
 
 The model-based classifier is an Anthropic layer; it cannot be made to read a

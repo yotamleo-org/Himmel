@@ -122,8 +122,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   (`cd scripts/config-ui/agui-web && bun install && bun run build`); without it
   `himmelctl ui` prints the config page instead.
 - **The chief's board on the Fleet page.** Start `himmelctl ui` with `HANDOVER_DIR` set and open
-  `/agui/#t=<token>&console=<console doc name>`. The page then shows the supervisor
-  session's board (the `board.mjs --json` output, served read-only and redacted at the
+  `/agui/#t=<token>&console=<console doc name>`. The page then shows the
+  chief's board (the `board.mjs --json` output, served read-only and redacted at the
   token-gated `GET /api/agui/board?console=<name>`; built from the board JSON file when present, else cached 30 s). **Fleet** tab: verb-led
   rows for what needs you, and on each running row its goal, six stage dots (dispatch,
   live, PR, ready, go, merged) and a state chip. **Trends** tab (`&tab=trends`): four cards
