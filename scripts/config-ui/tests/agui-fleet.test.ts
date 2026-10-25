@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { CLOUD, fleetFixture, FLEET, PRIOR_CONSOLE } from "./agui-fleet-fixture";
+import { CLOUD, customConfig, fleetFixture, FLEET, PRIOR_CONSOLE } from "./agui-fleet-fixture";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -306,6 +306,16 @@ test("a custom launch config directory wins over an unrelated default PID record
   writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
   const b = await (await fleet(s.port)).json();
   expect(b.sessions.find((r: any) => r.pid === FLEET.leg.pid).run).toBe(FLEET.leg.run);
+});
+
+test("a custom config census reads usage and activity from its journal, not the default PID record", async () => {
+  const s = boot();
+  customConfig(s);
+  const b = await (await fleet(s.port)).json();
+  expect(b.sessions.find((r: any) => r.pid === FLEET.leg.pid)).toMatchObject({
+    run: FLEET.leg.run, activity: { tool: "Grep" }, usage: { calls: 3, input: 30, output: 300, cacheRead: 120000 },
+    subagents: { total: 1, running: 1 }, failures: 1,
+  });
 });
 
 // each row's place in the graph and its token usage, from the census's own sources.
