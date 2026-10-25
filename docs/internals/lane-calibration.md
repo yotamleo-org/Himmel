@@ -350,7 +350,7 @@ below already uses.
 
 | Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota bank | Calibration status |
 |---|---|---|---|---|---|
-| `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | calibrated |
+| `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | dormant (HIMMEL-1967) |
 | `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | launcher default `high`; `xhigh` rare; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | calibrated |
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default (ox-alpha stays reserved for `hermes-oneshot`/dispatch-trusted); not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
@@ -379,7 +379,7 @@ The `hermes-oneshot` lane takes its model from the `himmel_agent` hermes
 profile's default rather than from a pin in this repo. Hermes-routed critics do
 NOT ask for that profile by name — `hermes-critic.sh` passes no `-p`, so it
 gets whichever profile hermes has ACTIVE. The two land on the same model today
-only because `%LOCALAPPDATA%/hermes/active_profile` reads `himmel_agent`; that
+only because `~/.hermes/active_profile` reads `himmel_agent`; that
 coupling is a real gap, not a guarantee (last two notes below). The
 `himmel_agent` default is **`stealth/ox-alpha`** (provider `nous`,
 `https://inference-api.nousresearch.com/v1`) as of 2026-08-22 — **free,
@@ -430,7 +430,7 @@ Notes a future reader needs:
   `/pr-check` path today).
 - **The profile is what routes.** `hermes-critic.sh` does not pass `-p`; the
   no-`-p` path lands on ox-alpha only because
-  `%LOCALAPPDATA%/hermes/active_profile` reads `himmel_agent`. The hermes root
+  `~/.hermes/active_profile` reads `himmel_agent`. The hermes root
   config still defaults to `gpt-5.5`/`openai-codex`, so if the operator switches
   the active profile, hermes-routed critics silently change model. **Doctor
   advisory: `himmel-doctor.sh` check C21** WARNs when the active
@@ -869,7 +869,7 @@ to gate new arms, not reads.
 
 `headed-arm-leg.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker session arm
 through `scripts/claude-codex` — the Claude Code harness running against
-GPT-6 Sol via the local CLIProxyAPI service — drawing on the **codex weekly
+GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
 usage budget** (`bank-preflight.sh` parks a claudex worker session on
 `scripts/lanes/codex-bank-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
@@ -912,7 +912,7 @@ or message anything else running — it is not a substitute for:
   ambiguous ticket) belongs on a native tier that can actually escalate.
 
 **Operating model — claudex worker sessions cannot ask, so they never park.** A claudex
-worker session is `scripts/claude-codex` (Claude Code) talking to GPT-6 Sol through
+worker session is `scripts/claude-codex` (Claude Code) talking to GPT-6.1 Sol (`gpt-6.1-sol`) through
 CLIProxyAPI; it is not a peer session in this operator's `ListAgents`
 registry and structurally cannot see or message any native session —
 `ListAgents`/`SendMessage` simply do not reach it, and it cannot reach them.
@@ -1079,7 +1079,7 @@ fixture and passes on the reference.
 **Run a lane:**
 
 ```bash
-bash scripts/eval/lane-quality/run.sh run --lane native --model claude-haiku-4-5-20251001
+bash scripts/eval/lane-quality/run.sh run --lane native --model claude-haiku-5-5
 bash scripts/eval/lane-quality/run.sh table ~/.himmel/eval/lane-quality/<run-id>
 ```
 
@@ -1099,8 +1099,10 @@ launch). The alias resolves to the launcher's pinned OpenRouter slug. Other
 models are refused before launch until they get a price row. The judge still
 runs native.
 
-Claude Code does not recognize the gateway slug (`anthropic/claude-haiku-4.5`
-logs `unrecognized_model`, with `costBasis: unknown`), and its
+Claude Code does not recognize the gateway slug (measured on
+`anthropic/claude-haiku-4.5`, which logs `unrecognized_model` with
+`costBasis: unknown`; the launcher now pins `anthropic/claude-haiku-5.5`,
+which has its own `PRICES` row), and its
 `total_cost_usd` is exactly 5x list price, whatever the token mix. One task
 reported 2.09 USD where its tokens cost about 0.42 at list price. So on this lane `cost_usd` is repriced
 from `modelUsage` tokens at list prices (a `PRICES` table in `run.sh`), and
