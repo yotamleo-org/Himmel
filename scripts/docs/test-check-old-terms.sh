@@ -10,7 +10,7 @@ set -uo pipefail
 
 LINT="$(cd "$(dirname "$0")" && pwd)/check-old-terms.sh"
 
-unset PRE_COMMIT_TO_REF GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE
+unset PRE_COMMIT_TO_REF GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }

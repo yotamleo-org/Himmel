@@ -117,6 +117,7 @@ is_tree_exempt_path() {
 
 if [ "$mode" = tree ]; then
     top=$(git rev-parse --show-toplevel) || { echo "$me: --tree needs a git work tree" >&2; exit 2; }
+    case "$registry" in /*) ;; *) registry="$PWD/$registry" ;; esac
     cd "$top" || { echo "$me: cannot cd to $top" >&2; exit 2; }
     if [ -z "${OLD_TERMS_REGISTRY:-}" ] && [ -f scripts/lib/rename-aliases.tsv ]; then registry="$top/scripts/lib/rename-aliases.tsv"; fi
     baseline_rel=scripts/docs/old-terms-baseline.txt
@@ -135,15 +136,18 @@ if [ "$mode" = tree ]; then
     git -c core.quotePath=false grep -z -I -n -E -e '(LEGS?|CONSOLE)' -e '--(legs?|console)' > "$work/hits.z"
     [ $? -le 1 ] || { echo "$me: git grep failed" >&2; exit 2; }
     tr '\000' '\001' < "$work/hits.z" > "$work/hits" || { echo "$me: tr failed" >&2; exit 2; }
+    have_ref=0
     have_base=0
     for candidate in origin/main main; do
         git rev-parse --verify -q "$candidate^{commit}" >/dev/null || continue
+        have_ref=1
         if git cat-file -e "$candidate:$baseline_rel" 2>/dev/null; then
             git show "$candidate:$baseline_rel" > "$work/base" || { echo "$me: cannot read $candidate:$baseline_rel" >&2; exit 2; }
             have_base=1
         fi
         break
     done
+    [ "$have_ref" -eq 1 ] || { echo "$me: --tree needs origin/main or main for the shrink-only check" >&2; exit 2; }
     [ "$have_base" -eq 1 ] || echo "$me: no $baseline_rel on origin/main or main, the shrink-only check is skipped" >&2
     LC_ALL=C awk -v registry="$registry" -v exemptf="$work/exempt" -v baselinef="$baseline_rel" -v basef="$work/base" \
         -v have_base="$have_base" -v filesf="$work/files" -v hitsf="$work/hits" '

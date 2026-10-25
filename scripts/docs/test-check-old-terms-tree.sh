@@ -18,7 +18,7 @@ set -uo pipefail
 LINT="$(cd "$(dirname "$0")" && pwd)/check-old-terms.sh"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 
-unset PRE_COMMIT_TO_REF GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE OLD_TERMS_REGISTRY
+unset PRE_COMMIT_TO_REF GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY OLD_TERMS_REGISTRY
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -54,7 +54,11 @@ tree_case() {
 put() {
     mkdir -p "$repo/$(dirname "$1")" && printf '%s\n' "$2" > "$repo/$1" && git -C "$repo" add -A
 }
-fresh() { git -C "$repo" checkout -q -f -B case "$base" && git -C "$repo" clean -qfd; }
+fresh() {
+    if ! { git -C "$repo" checkout -q -f -B case "$base" && git -C "$repo" clean -qfd; }; then
+        echo "setup: fixture reset failed" >&2; exit 2
+    fi
+}
 
 echo "== a clean tree passes =="
 fresh
@@ -70,6 +74,8 @@ tree_case "a rename row does not exempt the path" 1
 printf 'console-probe.sh\tconsole-probe.sh\tidentifier\tkeep\tnone\tnever\n' > "$tmp/keep.tsv"
 { printf '%s\n' "$reg_head"; cat "$tmp/keep.tsv"; } > "$repo/scripts/lib/rename-aliases.tsv"
 tree_case "a keep row exempts the path" 0
+out=$(cd "$repo/scripts" && OLD_TERMS_REGISTRY=lib/rename-aliases.tsv bash "$LINT" --tree 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "a relative registry override is read from the caller's cwd (rc=$rc)"; else fail "relative registry override: want rc=0 got rc=$rc: $out"; fi
 git -C "$repo" checkout -q -- scripts/lib/rename-aliases.tsv
 printf 'path\tscripts/hooks/console-probe.sh\n' >> "$repo/scripts/docs/old-terms-baseline.txt"
 git -C "$repo" add -A
@@ -153,6 +159,9 @@ printf 'token\tLEGS_NEW_KNOB\n' >> "$repo/scripts/docs/old-terms-baseline.txt"
 git -C "$repo" add -A
 tree_case "a branch that adds a baseline line fails" 1
 case "$LAST_OUT" in *LEGS_NEW_KNOB*'only shrinks'*|*'only shrinks'*LEGS_NEW_KNOB*) pass "the grown line is named" ;; *) fail "the grown line is named: $LAST_OUT" ;; esac
+git -C "$repo" branch -m main nomain
+tree_case "no origin/main or main to compare against is a setup error" 2
+git -C "$repo" branch -m nomain main
 
 echo "== the real tree against the committed baseline =="
 out=$(cd "$REPO" && bash "$LINT" --tree 2>&1); rc=$?
