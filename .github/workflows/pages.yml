@@ -60,10 +60,9 @@ jobs:
           ./node_modules/.bin/playwright install --with-deps chromium
       # The J1 spec lives beside the docs site and borrows config-ui's pinned @playwright/test through NODE_PATH.
       - name: Run the J1 journey against astro preview
-        working-directory: scripts/docs-site/e2e
         env:
           NODE_PATH: ${{ github.workspace }}/scripts/config-ui/tests/e2e/node_modules
-        run: ../../config-ui/tests/e2e/node_modules/.bin/playwright test -c j1.config.ts
+        run: scripts/config-ui/tests/e2e/node_modules/.bin/playwright test -c scripts/docs-site/e2e/j1.config.ts scripts/docs-site/e2e/j1.e2e.ts
       - name: Serve llms.txt at the site root
         run: |
           cp llms.txt site/dist/llms.txt
