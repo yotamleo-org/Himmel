@@ -1552,11 +1552,11 @@ l3287='HIMMEL-3287-N287-bucketed-2026-09-20-RESUME.md'
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/bucket3287/$l3287"
 contains 'an absolute --legs path to a bucketed leg doc resolves, not NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$W/handover/bucket3287/$l3287")" 'workers=N287:FREE'
 contains 'a bare --legs name of a bucketed leg doc reads NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$l3287" 2>/dev/null)" 'workers=N287:NOTFOUND'
-next3287="$(grep -F '/console next --arm' "$tpl3287")"
-contains "the /console next line quotes --model (HIMMEL-3287)" "$next3287" "--model '{{MODEL}}'"
+next3287="$(grep -F '/chief next --arm' "$tpl3287")"
+contains "the /chief next line quotes --model (HIMMEL-3287)" "$next3287" "--model '{{MODEL}}'"
 case "$next3287" in
-    *'--model {{MODEL}}'*) fail 'the /console next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
-    *) pass 'the /console next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
+    *'--model {{MODEL}}'*) fail 'the /chief next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
+    *) pass 'the /chief next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
 esac
 
 # --- one leg set -- a stale --legs arm is an INPUT problem, never

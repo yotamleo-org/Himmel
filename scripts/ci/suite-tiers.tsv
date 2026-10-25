@@ -323,6 +323,7 @@ scripts/graphify/test-check-graph-freshness.sh	pr	guard
 scripts/graphify/test-detect-duplicate-notes.sh	pr	guard
 scripts/graphify/test-graph-cadence.sh	pr	guard
 scripts/graphify/test-graph-out-root.sh	pr	guard
+scripts/graphify/test-graph-prune-deleted.sh	pr	guard
 scripts/graphify/test-graph-publish.sh	pr	guard
 scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
