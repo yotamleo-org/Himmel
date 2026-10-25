@@ -1488,7 +1488,7 @@ contains "brief-preface: says to read the cgroup memory.events before believing 
 check "brief-preface: last section is the standing turn-ending instruction (HIMMEL-3479)" \
   "$(printf '%s\n' "$prefacecontent17b" | grep '^## ' | tail -1)" "## How your turns end"
 contains "brief-preface: holding for GO stays a sanctioned stop (HIMMEL-3479)" \
-  "$prefacecontent17b" "holding for the console's \`GO\` after \`READY\`"
+  "$prefacecontent17b" "holding for the chief's \`GO\` after \`READY\`"
 not_contains "brief-preface: does NOT carry the fixture's Contract line (HIMMEL-2990)" \
   "$prefacecontent17b" "**Contract:**"
 not_contains "brief-preface: does NOT carry the Results tail" "$prefacecontent17b" \
