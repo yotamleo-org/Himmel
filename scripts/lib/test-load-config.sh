@@ -43,6 +43,32 @@ reset() { rm -f "$HOME/.himmel/"* "$REPO/.env"; }
 # run <snippet> — source the loader in a subshell inside the fixture repo.
 run() { ( cd "$REPO" && . "$LIB" && eval "$1" ) 2>&1; }
 
+# Reclassifying only the named service identifiers makes the config layers usable.
+identifiers='JIRA_BASE_URL JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
+TELEGRAM_GROUP_CHAT_ID GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
+VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
+for k in $identifiers; do
+    reset
+    assert_eq "$k is config" "config" "$(run '_himmel_key_class "$k"')"
+    printf '%s=dummy-legacy\n' "$k" > "$REPO/.env"
+    printf '%s=dummy-config\n' "$k" > "$HOME/.himmel/himmel.conf"
+    out=$(run 'unset "$k"; load_dotenv "$k"; printf "[%s]" "${!k-}"')
+    assert_eq "$k loads from config before legacy .env" "[dummy-config]" "$out"
+    printf '%s=dummy-local\n' "$k" > "$HOME/.himmel/himmel.conf.local"
+    out=$(run 'unset "$k"; load_dotenv "$k"; printf "[%s]" "${!k-}"')
+    assert_eq "$k loads from local override before config" "[dummy-local]" "$out"
+    out=$(run 'export "$k=dummy-process"; load_dotenv "$k"; printf "[%s]" "${!k-}"')
+    assert_eq "$k preserves non-empty process env" "[dummy-process]" "$out"
+done
+for k in JIRA_API_TOKEN TELEGRAM_BOT_TOKEN GCP_SERVICE_ACCOUNT_KEY SNYK_TOKEN VERCEL_TOKEN ANTHROPIC_API_KEY CONFLUENCE_EMAIL; do
+    reset
+    assert_eq "$k remains secret" "secret" "$(run '_himmel_key_class "$k"')"
+    printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf"
+    printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf.local"
+    out=$(run 'unset "$k"; load_dotenv "$k"; printf "[%s]" "${!k-}"')
+    assert_eq "$k is never read from config" "[]" "$out"
+done
+
 # (a) A gate-policy key set in config.json is NOT overridden by the env.
 reset
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1","CR_FLOOR_FALLBACK":"off"}}\n' > "$HOME/.himmel/config.json"

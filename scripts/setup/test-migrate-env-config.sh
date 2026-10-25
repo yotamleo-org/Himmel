@@ -129,6 +129,33 @@ else
     fail "--vault did not link and fill the vault copy"
 fi
 
+# Service identifiers migrate by name; credentials remain in the legacy file.
+rm -rf "$HOME/.himmel"
+identifiers='JIRA_BASE_URL JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
+TELEGRAM_GROUP_CHAT_ID GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
+VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
+: > "$ENVF"
+for key in $identifiers; do
+    printf '%s=dummy-identifier\n' "$key" >> "$ENVF"
+done
+printf 'JIRA_API_TOKEN=dummy-secret\n' >> "$ENVF"
+before=$(cat "$ENVF")
+out=$(bash "$SCRIPT" --env "$ENVF" --dry-run 2>&1)
+for key in $identifiers; do
+    has "dry run names $key" "would move  $key" "$out"
+done
+lacks "dry run never prints identifier values" "dummy-identifier" "$out"
+lacks "dry run never lists credentials" "JIRA_API_TOKEN" "$out"
+if [ -e "$HOME/.himmel" ]; then fail "identifier dry run wrote config"; else pass "identifier dry run writes nothing"; fi
+out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
+for key in $identifiers; do
+    has "migration copies $key" "$key=dummy-identifier" "$conf"
+done
+lacks "identifier migration leaves credentials behind" "JIRA_API_TOKEN" "$conf"
+lacks "migration never prints identifier values" "dummy-identifier" "$out"
+if [ "$before" = "$(cat "$ENVF")" ]; then pass "migration leaves legacy .env unchanged"; else fail "migration changed legacy .env"; fi
+
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env-config: $FAILED FAILED"
     exit 1
