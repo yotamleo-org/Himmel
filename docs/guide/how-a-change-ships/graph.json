@@ -1,7 +1,7 @@
 {
   "version": 1,
   "about": "The delivery graph on docs/guide/how-a-change-ships.html: Level 1 nodes and edges, each node's reach, its loop (Level 2) and the chains of checks that decide each move (Level 3). Every check cites the file and string it stands for; scripts/docs/test-how-a-change-ships.sh keeps the citations, the reach tags and the page in step with the tree.",
-  "cited_at": "1dc03b6c66c39b194d58eb40f231fe9b9b5c4964",
+  "cited_at": "e538e340875adbff6287ddfec4d85007a99d8481",
   "reach_kinds": {
     "project": "a starter install copies it into your project (scripts/adopt.sh PORTABLE_FILES)",
     "clone": "it runs from your himmel clone; a starter install does not copy it",
@@ -773,9 +773,9 @@
       "what": "One gate sees everything the earlier steps produced: CI on this exact commit, every review thread, and the approval. Any `gh pr merge` Claude tries goes through it.",
       "loop": [
         "Claude asks to merge",
-        "The gate reads CI, threads and the approval",
+        "The gate reads CI and threads",
         "Any no: back to that step",
-        "All yes: the merge runs"
+        "All yes: on to your approval"
       ],
       "chains": [
         {
@@ -834,7 +834,7 @@
                 "kind": "allow",
                 "text": "Allow"
               },
-              "next": "Squash merge, pinned to the checked commit.",
+              "next": "On to your approval; the merge runs once it is given, pinned to the checked commit.",
               "end": true
             }
           ],

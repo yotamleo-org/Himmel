@@ -51,7 +51,7 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '
 
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 required" >&2; exit 1; }
 
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/how-a-change-ships.XXXXXX") || exit 2
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/how-a-change-ships.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
 # check <case> <root> [page]: prints one problem per line, nothing when clean.

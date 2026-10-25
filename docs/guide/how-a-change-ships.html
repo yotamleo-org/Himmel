@@ -37,7 +37,7 @@
     <!-- source: docs/guide/how-a-change-ships/graph.json, checked against the files it cites by scripts/docs/test-how-a-change-ships.sh -->
     <div class="gstage at1" id="gstage">
       <div class="glayer gl1" id="gl1">
-        <svg class="graph" id="graph" viewBox="0 0 1000 560" role="img" aria-labelledby="g-t g-d">
+        <svg class="graph" id="graph" viewBox="0 0 1000 560" role="group" aria-labelledby="g-t" aria-describedby="g-d">
           <title id="g-t">The delivery graph</title>
           <desc id="g-d">Three inputs (a ticket, your codebase, your rules) feed Plan and hand out. Plan feeds Build in a worktree. Build feeds three checks in parallel: Guardrails, Tests and CI, Second-model review. All three feed the Merge gate, then Your approval, then Ship and hand over, which loops back to Plan for the next ticket. A refusal or a red check loops back to Build.</desc>
           <defs>
@@ -211,14 +211,14 @@
         <div class="gbody">
           <p class="gwhat">One gate sees everything the earlier steps produced: CI on this exact commit, every review thread, and the approval. Any <code>gh pr merge</code> Claude tries goes through it.</p>
           <h3 class="gl-h"><b>2</b> The loop inside this step</h3>
-          <ol class="inner"><li>Claude asks to merge</li><li>The gate reads CI, threads and the approval</li><li>Any no: back to that step</li><li>All yes: the merge runs</li></ol>
+          <ol class="inner"><li>Claude asks to merge</li><li>The gate reads CI and threads</li><li>Any no: back to that step</li><li>All yes: on to your approval</li></ol>
           <h3 class="gl-h"><b>3</b> What decides each move</h3>
           <h4 class="gsubh">Every merge</h4>
           <ol class="chain">
             <li class="ck" data-k="threads" data-src="scripts/lib/review-merge-gate.sh:373"><span class="cq">Unresolved CodeRabbit review threads?</span><span class="cby"><code>review-merge-gate.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext">Resolve them first.</span></li>
             <li class="ck" data-k="ci" data-src="scripts/lib/ci-green-gate.sh:109"><span class="cq">CI not green on this commit?</span><span class="cby"><code>ci-green-gate.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext">Back to Tests &amp; CI.</span></li>
             <li class="ck" data-k="go" data-src="scripts/lib/go-gate.sh:86"><span class="cq">A worker merging without its chief's approval for this exact commit?</span><span class="cby"><code>go-gate.sh</code></span><span class="oc o-refuse">Refuse</span><span class="cnext">Only the chief writes the approval (see Your approval).</span></li>
-            <li class="ck end" data-k="ok"><span class="cq">Otherwise</span><span class="cby"></span><span class="oc o-allow">Allow</span><span class="cnext">Squash merge, pinned to the checked commit.</span></li>
+            <li class="ck end" data-k="ok"><span class="cq">Otherwise</span><span class="cby"></span><span class="oc o-allow">Allow</span><span class="cnext">On to your approval; the merge runs once it is given, pinned to the checked commit.</span></li>
           </ol>
           <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="threads">a review thread is still open</button><button type="button" data-hit="ok">threads resolved and CI green</button></p>
         </div>
