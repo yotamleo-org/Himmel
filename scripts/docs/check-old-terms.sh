@@ -127,6 +127,7 @@ if [ "$mode" = tree ]; then
     work=$(tmpdir) || { echo "$me: mktemp failed" >&2; exit 2; }
     trap 'rm -rf "$work"' EXIT
     git ls-files -z > "$work/files.z" || { echo "$me: git ls-files failed" >&2; exit 2; }
+    [ "$(tr -cd '\n' < "$work/files.z" | wc -c)" -eq 0 ] || { echo "$me: a tracked path holds a newline, --tree cannot check it" >&2; exit 2; }
     tr '\000' '\n' < "$work/files.z" > "$work/files" || { echo "$me: tr failed" >&2; exit 2; }
     while IFS= read -r f; do
         if is_tree_exempt_path "$f"; then printf '%s\n' "$f"; fi

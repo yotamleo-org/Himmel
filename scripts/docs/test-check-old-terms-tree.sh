@@ -109,6 +109,9 @@ fresh
 put 'scripts/a:b.sh' 'LEGS_SPLIT=2'
 tree_case "a token in a file name with a colon fails" 1
 fresh
+put "$(printf 'scripts/new\nscripts/docs/check-old-terms.sh')" 'CONSOLE_UNREGISTERED=1'
+tree_case "a tracked path with a newline is a setup error" 2
+fresh
 put scripts/b.sh 'export CACHE_HEALTH_CONSOLE=1'
 tree_case "a trailing _CONSOLE fails" 1
 fresh
