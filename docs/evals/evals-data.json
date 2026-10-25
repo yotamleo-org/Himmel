@@ -1,21 +1,21 @@
 {
-  "v": 1,
+  "v": 2,
   "generator": "scripts/cr/evals-page-gen.py",
   "review": {
-    "as_of": "2026-10-24",
-    "until": null,
-    "command": "python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --as-of <date>",
+    "as_of": "2026-10-25",
+    "until": "2026-10-25T00:00:00Z",
+    "command": "python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --cache-scope 'the sessions of this project modified from 2026-10-22 to 2026-10-25' --until 2026-10-25T00:00:00Z --as-of 2026-10-25",
     "pooled": {
-      "findings": 11609,
-      "prs": 2122,
-      "agreed": 5950,
-      "disproved": 1517,
-      "deferred": 3490,
-      "unadjudicated": 652,
-      "n": 7467,
+      "findings": 11637,
+      "prs": 2128,
+      "agreed": 5963,
+      "disproved": 1522,
+      "deferred": 3493,
+      "unadjudicated": 659,
+      "n": 7485,
       "precision_pct": 79.7,
       "wilson": {
-        "lo": 78.8,
+        "lo": 78.7,
         "hi": 80.6
       },
       "bootstrap": {
@@ -27,16 +27,16 @@
     },
     "critics": {
       "codex:gpt-6.1-sol": {
-        "findings": 6993,
-        "prs": 1476,
-        "agreed": 3937,
-        "disproved": 1014,
-        "deferred": 2003,
-        "unadjudicated": 39,
-        "n": 4951,
+        "findings": 7018,
+        "prs": 1482,
+        "agreed": 3949,
+        "disproved": 1019,
+        "deferred": 2004,
+        "unadjudicated": 46,
+        "n": 4968,
         "precision_pct": 79.5,
         "wilson": {
-          "lo": 78.4,
+          "lo": 78.3,
           "hi": 80.6
         },
         "bootstrap": {
@@ -106,6 +106,26 @@
         "first": "2026-10-19",
         "last": "2026-10-24"
       },
+      "coderabbit-outside": {
+        "findings": 232,
+        "prs": 118,
+        "agreed": 66,
+        "disproved": 54,
+        "deferred": 112,
+        "unadjudicated": 0,
+        "n": 120,
+        "precision_pct": 55.0,
+        "wilson": {
+          "lo": 46.1,
+          "hi": 63.6
+        },
+        "bootstrap": {
+          "lo": 43.5,
+          "hi": 65.0
+        },
+        "first": "2026-09-19",
+        "last": "2026-10-24"
+      },
       "codex:gpt-5.6-sol": {
         "findings": 231,
         "prs": 27,
@@ -125,26 +145,6 @@
         },
         "first": "2026-09-04",
         "last": "2026-09-05"
-      },
-      "coderabbit-outside": {
-        "findings": 230,
-        "prs": 116,
-        "agreed": 65,
-        "disproved": 54,
-        "deferred": 111,
-        "unadjudicated": 0,
-        "n": 119,
-        "precision_pct": 54.6,
-        "wilson": {
-          "lo": 45.7,
-          "hi": 63.3
-        },
-        "bootstrap": {
-          "lo": 43.3,
-          "hi": 64.7
-        },
-        "first": "2026-09-19",
-        "last": "2026-10-24"
       },
       "claude": {
         "findings": 141,
@@ -333,6 +333,20 @@
         "first": "2026-10-23",
         "last": "2026-10-24"
       },
+      "opus": {
+        "findings": 4,
+        "prs": 1,
+        "agreed": 0,
+        "disproved": 0,
+        "deferred": 4,
+        "unadjudicated": 0,
+        "n": 0,
+        "precision_pct": null,
+        "wilson": null,
+        "bootstrap": null,
+        "first": "2026-10-24",
+        "last": "2026-10-24"
+      },
       "console-judge": {
         "findings": 3,
         "prs": 2,
@@ -397,20 +411,6 @@
         "bootstrap": null,
         "first": "2026-10-22",
         "last": "2026-10-22"
-      },
-      "opus": {
-        "findings": 3,
-        "prs": 1,
-        "agreed": 0,
-        "disproved": 0,
-        "deferred": 3,
-        "unadjudicated": 0,
-        "n": 0,
-        "precision_pct": null,
-        "wilson": null,
-        "bootstrap": null,
-        "first": "2026-10-24",
-        "last": "2026-10-24"
       },
       "self": {
         "findings": 3,
@@ -644,14 +644,52 @@
       }
     }
   },
+  "proof_first": {
+    "as_of": "2026-10-24",
+    "pdd": {
+      "pct": 10.8,
+      "k": 13,
+      "n": 120,
+      "wilson": {
+        "lo": 6.4,
+        "hi": 17.7
+      }
+    },
+    "ticket_first": {
+      "pct": 19.2,
+      "k": 23,
+      "n": 120,
+      "wilson": {
+        "lo": 13.1,
+        "hi": 27.1
+      }
+    },
+    "red_green": {
+      "pct": 57.5,
+      "k": 69,
+      "n": 120,
+      "wilson": {
+        "lo": 48.6,
+        "hi": 66.0
+      }
+    }
+  },
+  "test_first": {
+    "pct": null,
+    "k": 0,
+    "n": 0,
+    "wilson": null,
+    "as_of": "2026-10-25",
+    "min_n": 30
+  },
   "cache": {
-    "read_ratio_pct": 98.5,
-    "tokens": 10315752980,
-    "sessions": 450,
-    "warm": 435,
+    "read_ratio_pct": 98.4,
+    "tokens": 11295855068,
+    "sessions": 489,
+    "warm": 474,
     "cold": 15,
-    "command": "bash scripts/eval/cache-probe.sh first-turn ~/.claude/projects/<project-dir>/*.jsonl > cache-probe.txt",
-    "scope": "this project's sessions from the three days to 2026-10-24",
-    "as_of": "2026-10-24"
+    "command": "bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 -name '*.jsonl' -newermt <first-day>) > cache-probe.txt",
+    "scope": "the sessions of this project modified from 2026-10-22 to 2026-10-25",
+    "as_of": "2026-10-25"
   }
 }
