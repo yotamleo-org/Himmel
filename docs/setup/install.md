@@ -188,7 +188,9 @@ previews first.
 ### Uninstalling
 
 `himmelctl uninstall` is the inverse of install, and it previews first with
-`--dry-run`. The commands, what it removes and what it keeps on purpose:
+`--dry-run`. Without a terminal, pass `uninstall --yes`: a run without it
+aborts and removes nothing. The commands, what it removes and what it keeps on
+purpose:
 [Undo the install](updating.md#undo). Every file, hook and setting an install
 writes, and what uninstall does with each one:
 [What changes on your machine](footprint.md).
