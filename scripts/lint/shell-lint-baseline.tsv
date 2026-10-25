@@ -891,8 +891,6 @@ scripts/measurements/test-prose-audit.sh	bash32	2
 scripts/measurements/test-prose-audit.sh	mktemp	1
 scripts/memory/test-audit-memory-capture.sh	mktemp	1
 scripts/observability/ledger-prune.sh	prim-atomic	1
-scripts/observability/restart-stack.sh	prim-atomic	1
-scripts/observability/restart-stack.sh	prim-lock	1
 scripts/observability/test-install-grafana.sh	gnu-flag	3
 scripts/observability/test-tool-call-census.sh	errexit	1
 scripts/observability/test-tool-call-census.sh	mktemp	1
