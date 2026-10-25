@@ -2274,7 +2274,7 @@ elif [ ! -f "$BRIDGE_ROOT/supervisor.pid" ]; then
 elif [ -f "$REPO_ROOT/scripts/telegram/supervisor.ts" ]; then
   if ! command -v bun >/dev/null 2>&1; then
     echo "  WARN: supervisor.pid exists but bun is not on PATH — cannot stop the bridge." >&2
-    echo "  Find the supervisor pid in $BRIDGE_ROOT/supervisor.pid and kill it manually." >&2
+    echo "  Find the supervisor and poller PIDs in $BRIDGE_ROOT/supervisor.pid and kill both manually." >&2
     fail_step "[1/8] telegram bridge: could not stop the supervisor"
   else
     run env BRIDGE_ROOT="$BRIDGE_ROOT" bun --cwd "$REPO_ROOT/scripts/telegram" supervisor.ts --kill
