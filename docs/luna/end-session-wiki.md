@@ -120,19 +120,13 @@ So: **`--reheal`** for husks (contentless-looking notes captured before the husk
 
 The hook writes diagnostic output to `~/.claude/logs/end-session-wiki/<project-slug>.log` and (during dry-run mode) the full rendered note including the `## Raw Conversation` callout that quotes the tail of your session transcript. Anything you typed into Claude (pasted credentials, API keys, secrets) can appear verbatim in those logs.
 
-The log lives outside any repo (per-machine, keyed by project; see [Logs](#logs) below), so it can never end up committed. If you copy it off-disk for debugging, redact secrets first. On POSIX, the .sh hook sets `umask 077` before creating anything, so the log directory/files are created owner-only (0700/0600) rather than inheriting a permissive shell umask.
+The log lives outside any repo (per-machine, keyed by project; see [Logs](#logs) below), so it can never end up committed. If you copy it off-disk for debugging, redact secrets first. The hook sets `umask 077` before creating anything, so the log directory/files are created owner-only (0700/0600) rather than inheriting a permissive shell umask.
 
 ## How to opt out
 
 There are two equivalent controls; pick whichever matches your scope.
 
 **Env var (per-shell or per-session):**
-
-```powershell
-# Disable for this Claude Code session only:
-$env:CLAUDE_END_SESSION_WIKI = "0"
-claude
-```
 
 ```bash
 # Disable for a one-off run:
@@ -162,14 +156,14 @@ Fields:
 | `dry_run` | bool | `false` | `true` → render note to log file instead of writing to vault |
 | `min_duration_seconds` | int | `60` | Sessions shorter than this are skipped (prevents capturing accidental opens) |
 | `crystallize` | bool | `true` | `false` → never spawn the LLM crystallizer; the mechanical note is the final note. See [Crystallization](#crystallization-llm-upgrade). |
-| `crystallize_model` | string | _(absent)_ | Default model for the crystallizer (e.g. `"claude-opus-4-8"`). Absent → the crystallizer's default model. A `CRYSTALLIZE_MODEL` env var set in the launching shell **overrides** the config value (per-session operator switch, e.g. `CRYSTALLIZE_MODEL=claude-sonnet-4-6 claude`). |
+| `crystallize_model` | string | _(absent)_ | Default model for the crystallizer (e.g. `"claude-opus-5-5"`). Absent → the crystallizer's default model. A `CRYSTALLIZE_MODEL` env var set in the launching shell **overrides** the config value (per-session operator switch, e.g. `CRYSTALLIZE_MODEL=claude-sonnet-5-5 claude`). |
 | `crystallize_rules` | string | _(absent)_ | Path (a leading `~/` is expanded) to an operator rules/context file whose content is appended to the crystallizer prompt ("Additionally apply these operator rules…"). The file is **trusted operator input**: its content is interpolated verbatim into the crystallizer prompt, so only point it at a file you control. The content is wrapped between the literal delimiter lines `--- begin operator rules ---` and `--- end operator rules ---`, so a rules file whose own body contains those exact lines could confuse the prompt framing. Unreadable/missing → the crystallizer proceeds with no rules block (fail-open; the hook logs `crystallize_rules not readable`). Exported to the crystallizer as `CRYSTALLIZE_RULES_FILE`. |
 | `vault_path` | string | `""` | Absolute path (a leading `~/` is expanded) to the Obsidian vault this repo's sessions are captured into. Empty → fall back to `vault`, then `LUNA_VAULT_PATH` env, then the default. See [Choosing the target vault](#choosing-the-target-vault) below. |
 | `vault` | string | _(absent)_ | Vault **name** (not a path), e.g. `"salus"`. Distributable/safe to commit; resolved to a path per-machine (registry, then the `~/Documents/<name>` convention). An invalid or unresolvable name **skips** the capture rather than misrouting it. See [Choosing the target vault](#choosing-the-target-vault). |
 
 Missing file → defaults applied (`enabled: true`, `dry_run: false`, `min_duration_seconds: 60`); `vault_path`/`vault` absent.
 
-> **Write this file as UTF-8 _without_ a BOM.** A leading byte-order mark makes the hook treat the config as invalid JSON and **fail closed: it silently stops capturing**. On Windows, PowerShell 5.1's `Set-Content -Encoding utf8` _adds_ a BOM; use `-Encoding utf8NoBOM` (PowerShell 7+) or an editor that omits it. `/end-session-wiki-setup` and hand-edits in most editors are fine.
+> **Write this file as UTF-8 _without_ a BOM.** A leading byte-order mark makes the hook treat the config as invalid JSON and **fail closed: it silently stops capturing**. `/end-session-wiki-setup` and hand-edits in most editors are fine.
 
 ## Choosing the target vault
 
@@ -177,12 +171,12 @@ Your vault almost certainly does not live where the operator's does, and you may
 
 1. **`vault_path` in `.claude/end-session-wiki.json`** (per-repo, absolute path): the most specific, highest priority. An absolute path is machine-specific, so prefer `vault` (below) for anything you commit and share.
 2. **`vault` name in `.claude/end-session-wiki.json`** (per-repo, **distributable**): a vault *name* instead of a path, so the same committed config works on every machine. Resolved per-machine: first the operator registry `~/.claude/luna-vaults.json`, else the convention `~/Documents/<name>`. The convention target must be a real vault (contain an `.obsidian/` folder); a name that resolves to no real vault, or fails validation (1–64 chars, must match `[A-Za-z0-9._-]`, start alphanumeric, no `/` or `..`), **skips the capture rather than misrouting it** (logged as `skipped: vault …`). A config file that exists but is **not valid JSON** also skips (fail-closed) rather than falling through to the default, so a malformed config can't silently leak a sensitive repo's sessions into the general vault.
-3. **`LUNA_VAULT_PATH` environment variable** (global): your default vault for everything that doesn't override it per-repo. The hook reads the **live process environment**, so set it in `~/.claude/settings.json`'s `env` block (what `/end-session-wiki-setup` and `scripts/adopt.sh` write, via `scripts/lib/wire-luna-vault.{sh,ps1}`) or export it from your shell profile. On Windows, always set it as a drive-qualified `C:/…` path, never the Git-Bash `/c/…` form (see the note under the examples below). Putting it in the repo-root `.env` does **nothing** for this hook; that key is not bridged (see `.env.example`). A `settings.json` `env` value is applied at session start, so it takes effect for **new** sessions.
-4. **Built-in default:** the `luna` vault: the `luna` entry in `~/.claude/luna-vaults.json` if you have one, else the `~/Documents/luna` (`$HOME`/`$USERPROFILE`) convention. The bare convention is honored **only when it is a real vault** (contains an `.obsidian/` folder), so a stock luna install works with zero config. With no configured vault **and** no real `~/Documents/luna`, the hook **skips** (logged `skipped: vault unresolved …`) rather than materializing a phantom vault for someone who never set luna up. An explicit `luna` registry entry is honored as-is (no existence check), like `vault_path`.
+3. **`LUNA_VAULT_PATH` environment variable** (global): your default vault for everything that doesn't override it per-repo. The hook reads the **live process environment**, so set it in `~/.claude/settings.json`'s `env` block (what `/end-session-wiki-setup` and `scripts/adopt.sh` write, via `scripts/lib/wire-luna-vault.sh`) or export it from your shell profile. Putting it in the repo-root `.env` does **nothing** for this hook; that key is not bridged (see `.env.example`). A `settings.json` `env` value is applied at session start, so it takes effect for **new** sessions.
+4. **Built-in default:** the `luna` vault: the `luna` entry in `~/.claude/luna-vaults.json` if you have one, else the `~/Documents/luna` convention. The bare convention is honored **only when it is a real vault** (contains an `.obsidian/` folder), so a stock luna install works with zero config. With no configured vault **and** no real `~/Documents/luna`, the hook **skips** (logged `skipped: vault unresolved …`) rather than materializing a phantom vault for someone who never set luna up. An explicit `luna` registry entry is honored as-is (no existence check), like `vault_path`.
 
 `vault_path` configures a path (renaming/moving the vault means updating that path). `vault` configures a name and each machine resolves the path, so the same committed value works everywhere: an operator either follows the `~/Documents/<name>` convention (zero extra config) or maps the name in their registry.
 
-**Set the target interactively** with the `/end-session-wiki-setup` command: run it from your code repo and it writes the value for you (any of the options above). The luna template setup (`templates/luna-second-brain/scripts/setup.{sh,ps1}`) prints the same options after a fresh install but doesn't write them. Or configure by hand:
+**Set the target interactively** with the `/end-session-wiki-setup` command: run it from your code repo and it writes the value for you (any of the options above). The luna template setup (`templates/luna-second-brain/scripts/setup.sh`) prints the same options after a fresh install but doesn't write them. Or configure by hand:
 
 ```json
 // .claude/end-session-wiki.json — capture THIS repo's sessions into a specific vault (absolute path)
@@ -203,18 +197,17 @@ Your vault almost certainly does not live where the operator's does, and you may
 ```json
 // ~/.claude/settings.json — global default vault for all repos (process env,
 // applied at session start)
-{ "env": { "LUNA_VAULT_PATH": "C:/Users/me/Documents/my-vault" } }
+{ "env": { "LUNA_VAULT_PATH": "/home/me/Documents/my-vault" } }
 ```
 
-**Windows: use the drive-qualified form (`C:/…`), never the Git-Bash MSYS form (`/c/…`)**: the PowerShell hook resolves a leading `/` under the current drive root, so an MSYS value sends captures to `\c\Users\…`. `~/Documents/my-vault` expands to the MSYS form under Git Bash, so pipe it through `cygpath -m` (absent on POSIX, where the path passes through unchanged). This applies to **every** way you set the variable, the helper and a direct export alike:
+Set the variable with the helper or a direct export:
 
 ```bash
 # write it into ~/.claude/settings.json with the helper (recommended)
-bash scripts/lib/wire-luna-vault.sh ~/.claude/settings.json \
-  "$(cygpath -m ~/Documents/my-vault 2>/dev/null || echo ~/Documents/my-vault)"
+bash scripts/lib/wire-luna-vault.sh ~/.claude/settings.json ~/Documents/my-vault
 
 # …or export it from your shell profile before launching claude (NOT the repo .env)
-export LUNA_VAULT_PATH="$(cygpath -m ~/Documents/my-vault 2>/dev/null || echo ~/Documents/my-vault)"
+export LUNA_VAULT_PATH=~/Documents/my-vault
 ```
 
 ## Logs
@@ -253,10 +246,6 @@ It regenerates `<vault>/sessions/_index.md` (links every session note → no orp
 ## Disabling per-session
 
 One-shot disable for a single Claude run, no config edit needed:
-
-```powershell
-$env:CLAUDE_END_SESSION_WIKI = "0"; claude
-```
 
 ```bash
 CLAUDE_END_SESSION_WIKI=0 claude

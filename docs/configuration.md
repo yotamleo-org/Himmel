@@ -70,7 +70,7 @@ The step vocabulary and the AFK step set: **Initiative & autonomy** in
 
 | Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
 |---|---|---|---|---|---|
-| Recurring vault cadence (daily harvest and synthesize, weekly health), armed with `bash scripts/luna/pipeline-cadence.sh arm` | machine · the OS scheduler (cron; Task Scheduler on Windows) | the next scheduled slot | `bash scripts/luna/pipeline-cadence.sh status` | `bash scripts/luna/pipeline-cadence.sh disarm` | `scripts/luna/pipeline-cadence.sh` |
+| Recurring vault cadence (daily harvest and synthesize, weekly health), armed with `bash scripts/luna/pipeline-cadence.sh arm` | machine · the OS scheduler (crontab) | the next scheduled slot | `bash scripts/luna/pipeline-cadence.sh status` | `bash scripts/luna/pipeline-cadence.sh disarm` | `scripts/luna/pipeline-cadence.sh` |
 | Cap watchdog that arms a resume before the usage cap (on by default) | session · `AUTO_ARM_DISABLE=1` in the shell that launches `claude` | sessions launched from that shell | `env` in that shell shows `AUTO_ARM_DISABLE=1` | launch `claude` without it | `scripts/hooks/auto-arm-on-cap.sh` |
 
 ### Commit rules
@@ -251,23 +251,25 @@ Security properties (all in `scripts/telegram/poller.ts` / `gate.ts` /
 `auto-action.ts`):
 
 - A non-allowlisted sender is dropped at ingest; allowlisting a **group**
-  trusts every member of that group for ordinary chat/dispatch — but `/arm`
-  and `/mergepub` additionally require the sender to be the globally
-  allowlisted operator.
-- Forwarded `/arm`/`/mergepub` messages are refused (injection kill-switch);
-  text arriving via media captions or voice transcripts is never
-  auto-executed.
-- `TELEGRAM_AUTO_ACTIONS` is default-OFF; `merge-public` is *explicit-only* —
-  even `TELEGRAM_AUTO_ACTIONS=all` does not enable it; you must name it.
+  trusts every member of that group for ordinary chat/dispatch — but every
+  typed auto op (`/arm`, `/mergepub`, `/restart` and the rest of the
+  `auto-action.ts` op table) additionally requires the sender to be the
+  globally allowlisted operator.
+- A forwarded auto op is refused (injection kill-switch); text arriving via
+  media captions or voice transcripts is never auto-executed.
+- `TELEGRAM_AUTO_ACTIONS` is default-OFF; `=1`/`all` enables only
+  `arm-resume` and `restart`. Every other op, `merge-public` included, is
+  *explicit-only*: you must name it.
 - `/mergepub` is the only *himmel-side* path to a public merge (the operator
   can always use the GitHub UI directly), and the script refuses to run if it
   detects it is inside a Claude session (`CLAUDECODE` env check).
 
 ### 2.4 Lane routing & delegation
 
-Work can be delegated: down the Claude tiers (native subagents), or out to
-external lanes through sanctioned spawn scripts — GLM (Z.ai's GLM coding models),
-claudex/codex (OpenAI Codex-side models via a local proxy), and hermes (a local multi-provider critic/junior runner). The
+Implementation work is delegated down the Claude tiers (native subagents).
+The external lanes reached through sanctioned spawn scripts, claudex and
+codex-exec (OpenAI Codex-side models), are dormant and run only when opted in;
+hermes runs the cross-model critic rows inside `/pr-check`. The
 lane *inventory* is data, not prose: `scripts/lanes/lanes.json` resolved
 against machine state by `/lanes` (`scripts/lanes/resolve.mjs`). A "subscription usage budget"
 below is a usage-quota window — the rolling 5-hour Claude window, or the
@@ -279,14 +281,12 @@ flowchart TD
     ROUTE --> GUARD{{"guard-implementor-dispatch.sh<br/>cost guard on native Agent dispatches only<br/>(blocks when the 5h Claude bank is ≥80% used<br/>or the weekly bank ≥85%;<br/>external-lane dispatch types are never deny-eligible)"}}
     GUARD --> TIER["Claude tiers — native subagents<br/>(haiku / sonnet / opus / fable,<br/>always available)"]
     ROUTE --> EXT{{"external lanes — available only if<br/>their probe passes (lanes.json)"}}
-    EXT -->|"ZAI_API_KEY set"| GLM["spawn-glm → branch glm/slug<br/>own worktree · dormant, GLM_LANE_OK<br/>(the GLM subscription is cancelled)"]
     EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree · dormant, CLAUDEX_LANE_OK"]
     EXT -->|"codex on PATH"| CDX["codex-exec<br/>(scripts/codex/dispatch-codex-exec.sh)<br/>dormant, CODEX_EXEC_LANE_OK"]
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
     CDX ~~~ HRM
     GUARD ~~~ EXT
-    GLM --> BACK["worker commits on its own branch;<br/>parent session owns review + merge"]
-    CLX --> BACK
+    CLX --> BACK["worker commits on its own branch;<br/>parent session owns review + merge"]
 ```
 
 **Dormancy (operator ruling 2026-08-19).** The diagram shows what
@@ -294,17 +294,18 @@ each sanctioned script *does*, not what is currently routed to it. Every externa
 impl lane in the registry is marked `dormant`, and `lanes.json` deliberately
 carries no `defaultImplLane` — so an unqualified impl dispatch refuses toward
 the native Claude-subagent path rather than silently picking a lane. Opting
-one in is per-dispatch and per-lane (`GLM_LANE_OK`, `CLAUDEX_LANE_OK` — see
-the env table in §4.1). Hermes critic rows inside `/pr-check` are unaffected.
+one in is per-dispatch and per-lane (`CLAUDEX_LANE_OK`, `CODEX_EXEC_LANE_OK`;
+`/lanes` prints each dormant lane's opt-in). The registry also keeps a dropped GLM lane, offered
+only under `GLM_LANE_OK`. Hermes critic rows inside `/pr-check` are unaffected.
 `/lanes` is the live inventory; `internals/lane-calibration.md` is the status
 of record.
 
 Key invariants (enforced or structural, not just prose): external workers
-commit on their **own** `glm/<slug>` / `claudex/<slug>` branches in isolated
+commit on their **own** `claudex/<slug>` branches in isolated
 worktrees (shared-branch mode `--branch <existing>` serializes through
 `scripts/lib/shared-branch-lock.sh` — single writer); the parent session owns
-review and merge; both the GLM and claudex worktrees get their push URL
-poisoned as a tripwire (`spawn-glm.ts` / `spawn-claudex.ts`).
+review and merge. `spawn-claudex.ts` leaves git config untouched, so the
+no-push rule is the worker's contract, not a git-level fence.
 
 ## 3. The gates
 
@@ -364,8 +365,8 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | Hook | Fires on | Class | Bypass (launching shell) |
 |---|---|---|---|
 | `block-edit-on-main` | Edit/Write on a repo that is on `main`, or in the primary checkout | auth-gated | `EDIT_ON_MAIN_OK=1`; per-repo: a gitignored `.single-writer` file at the repo root |
-| `block-read-secrets` | Read/Grep/Bash/PowerShell touching `.env`, keys, credentials | auth-gated | `READ_SECRETS_OK=1` |
-| `block-destructive-commands` | recursive `rm`, `schtasks` mutation, `taskkill`, forced git rewrites, `curl\|sh`, … | auth-gated | `DESTRUCTIVE_OK=1` |
+| `block-read-secrets` | Read/Grep/Bash touching `.env`, keys, credentials | auth-gated | `READ_SECRETS_OK=1` |
+| `block-destructive-commands` | recursive `rm`, `kill -9`, forced git rewrites, `curl\|sh`, … | auth-gated | `DESTRUCTIVE_OK=1` |
 | `block-rogue-claude-schedule` | one command that both registers a scheduler job and launches `claude` | auth-gated | `ROGUE_SCHEDULE_OK=1`; or use the sanctioned `arm-resume.sh` / `pipeline-cadence.sh` |
 | `block-rogue-codex-exec` | raw native `codex exec` outside the sanctioned dispatch script (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |
 | `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
@@ -378,7 +379,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-unresolved-cr-merge` | `gh pr merge` — two sub-gates: the reviewer set (each `critics.json` row by its mode, see [Reviewer modes](#reviewer-modes)), and CI not green | auth-gated | `CR_MERGE_GATE_OK=1` / `CI_MERGE_GATE_OK=1` (independent); `"review": "no_code_review"` (or `CR_PROFILE=none`) skips the reviewer sub-gate with a NOTE |
 | `guard-implementor-dispatch` | expensive implementor-shaped `Agent` dispatches while the 5h Claude subscription usage budget is hot | auth-gated cost guard (fail-open; blocks only at ≥80% of the usage budget + provably live window, warns at ≥65%) | `IMPL_GUARD_DISABLE=1` / `IMPL_GUARD_OK=1` |
 | `guard-console-dispatch` | a chief dispatching ship-flow-shaped `Agent` work (≥2 of worktree/pr-open/cr-gate marker families) as an in-process subagent | workflow fence (fail-open; chief-shaped AND ≥2-family match required) | `CHIEF_DISPATCH_DISABLE=1` / `CHIEF_DISPATCH_OK=1` (old names `CONSOLE_*` still read) |
-| `block-graphify-egress` + `scripts/guardrails/graphify-fence.sh` | any `graphify` run — corpus × provider egress policy | HARD (fail-closed EXIT trap) | none for hard-deny cells; narrow per-cell opt-ins only (`GRAPHIFY_SALUS_LOCAL_OK`, `GRAPHIFY_CLIPPINGS_GLM_OK`) |
+| `block-graphify-egress` + `scripts/guardrails/graphify-fence.sh` | any `graphify` run — corpus × provider egress policy | HARD (fail-closed EXIT trap) | none for hard-deny cells; narrow per-cell opt-ins only (`GRAPHIFY_SALUS_LOCAL_OK`) |
 | `block-agent-native-egress` (plugin-shipped) | an `mcp__*agent-native*` call (hosted Builder.io MCP) from a salus session, or with a payload naming salus or a PHI root | HARD (fail-closed) | none (salus × builder-io is a hard matrix cell) |
 | `auto-arm-on-cap` / `auto-arm-on-subagent-cap` | usage cap approaching / subagent hit a cap | watchdog (fail-open; blocks once to force a handover, after arming a resume) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) |
 | `auto-approve-safe-bash` | safe read-only Bash shapes | not a veto — only ever emits *allow* | comment out its stanza to disable |
@@ -472,10 +473,10 @@ groups describe **how each key reaches code**, which is the #1 trap:
 
 | Group | How it reaches code | Examples |
 |---|---|---|
-| TOOL-LOADED | a himmel CLI reads `.env` directly (via `scripts/lib/load-dotenv.sh`) — no export needed | `JIRA_*`, `BITBUCKET_*`, `ZAI_API_KEY` |
+| TOOL-LOADED | a himmel CLI reads `.env` directly (via `scripts/lib/load-dotenv.sh`) — no export needed | `JIRA_*`, `BITBUCKET_*` |
 | PROCESS-ENV | scripts read the **live environment**; a value only in `.env` is invisible unless the key is one of the explicitly bridged exceptions listed in the file's header (e.g. `HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the `HIMMEL_INITIATIVE` family) | `LUNA_VAULT_PATH`, `AFK_*` |
 | SESSION-ONLY | per-launch bypasses/opt-ins, inventoried in the file. For **Claude Code hook** bypasses, set in the shell that **launches** `claude` — a per-call prefix never reaches those hooks. The **git-gate** skips listed in the same section (`SKIP_CR`, `PLATFORMS_TESTED_OK`, …) run in your own shell, so a per-command prefix (`SKIP_CR=1 git push`) works and is the preferred, one-push scope | `EDIT_ON_MAIN_OK`, `READ_SECRETS_OK` |
-| EXTERNAL-TOOLS | the key lives in the tool's *own* `.env` (hermes: `%LOCALAPPDATA%/hermes/.env`; Telegram bridge: `~/.claude/channels/telegram/.env`) — setting it in the repo `.env` does nothing | `TELEGRAM_BOT_TOKEN` (bridge copy), hermes provider keys |
+| EXTERNAL-TOOLS | the key lives in the tool's *own* `.env` (hermes: `~/.hermes/.env`, or `$HERMES_HOME/.env`; Telegram bridge: `~/.claude/channels/telegram/.env`) — setting it in the repo `.env` does nothing | `TELEGRAM_BOT_TOKEN` (bridge copy), hermes provider keys |
 
 The loader (`scripts/lib/load-dotenv.sh`) resolves the **primary checkout's**
 `.env` even from a worktree, never `source`s the file, and never overrides a
@@ -519,10 +520,10 @@ sites are changed here.
 |---|---|
 | Jira / Confluence (`scripts/jira/src/client.ts`) | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `JIRA_SEVERITY_FIELD`, `JIRA_BOARD_ID`, `CONFLUENCE_EMAIL`, `CONFLUENCE_API_TOKEN` |
 | Bitbucket (`scripts/bitbucket/src/env.ts`) | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG` |
-| Codex launcher (bash/PowerShell), CLI proxy setup | `CLIPROXY_API_KEY` |
-| DeepSeek launcher (bash/PowerShell) | `DEEPSEEK_API_KEY` |
-| GLM launcher (bash/PowerShell), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
-| OpenRouter launcher (bash/PowerShell), `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
+| Codex launcher, CLI proxy setup | `CLIPROXY_API_KEY` |
+| DeepSeek launcher | `DEEPSEEK_API_KEY` |
+| GLM launcher (dropped lane), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
+| OpenRouter launcher, `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
 | CR artifact critic / provider-selected panel credentials | `GLM_API_KEY`, `ZAI_API_KEY`, `Z_AI_API_KEY`; panel additionally `CLIPROXY_API_KEY` when Codex is selected |
 | CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
 | Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/legs, statusline, lane-cost rows | `HANDOVER_DIR`; hop, leg-timeline, auto-action and leg-relaunch additionally `USER_SLUG`; console additionally `JIRA_PROJECT_KEY` | <!-- old-term-ok: existing row moved unchanged -->
@@ -540,7 +541,6 @@ sites are changed here.
 | Alibaba monitoring-key setup | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK` (in-process lookup, not blanket export) |
 | VM SDK | The selected VM's registry `pass_env`, and `user_env` only without a literal user; station entries load none |
 | Cloud-init / Ubuntu provisioner | `ubuntu_vm_user`, `ubuntu_vm_pass` |
-| Windows provisioner | `windows_vm_user`, `windows_vm_pass` |
 | VM after-report | `himmel_github_token_vm` |
 | VM SDK clone (`vmsdk.py <vm> clone`) | `himmel_github_token_vm`, else `himmel_github_token_vm2` (first present wins) |
 | Read-only `gh` calls (tick, check-ci, ready-check, go.sh reads) | `himmel_github_token_vm2` (read-only token, loaded per call by `scripts/lib/gh-read.sh`; missing or exhausted falls back to the main token) |
@@ -744,7 +744,7 @@ default subset:
 | `AFK_STOP_DIR` (old: `OVERNIGHT_STOP_DIR`) | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/afk/stop-marker.sh`) |
 
 **Arming & scheduling** (`scripts/handover/arm-resume.sh` — schedules a
-`claude` relaunch via schtasks on Windows, `at`/`crontab` on Linux/macOS):
+`claude` relaunch via `at`/`crontab`):
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
@@ -780,18 +780,16 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `ZAI_API_KEY` | unset (lane absent) | `.env` | makes the `glm` lane *detectable*; the registry marks it dormant, so dispatching it also needs `GLM_LANE_OK=1`. Legacy aliases `GLM_API_KEY`/`Z_AI_API_KEY` also accepted by the critic panel |
 | `CLIPROXY_API_KEY` | unset (lane absent) | `.env` | makes the `claudex` lane *detectable*; the registry marks it dormant, so dispatching it also needs `CLAUDEX_LANE_OK=1` |
 | `OPENROUTER_API_KEY` | unset (lane absent) | `.env` | enables the openrouter-free lane |
 | `scripts/lanes/lanes.local.json` | absent | `node scripts/lanes/set-lane-override.mjs <lane> <always\|never>` | per-machine forced lane override — the sanctioned way to turn a lane off (`never`) without touching the shared registry |
 | `LANES_REGISTRY` | unset | env | full registry-path override (test/CI; skips the local overlay) |
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |
-| `GLM_MODEL` / `GLM_CONTEXT_WINDOW` | `glm-5.2[1m]` / 1M | env | lane launcher tuning (`scripts/claude-glm`) |
-| `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-glm`, `~/.claude-codex`) auto-reseeding from `~/.claude` |
+| `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-codex`, `~/.claude-openrouter`, `~/.claude-deepseek`) auto-reseeding from `~/.claude` |
 | `CLAUDEX_USAGE_WARN_PCT` / `CLAUDEX_USAGE_REFUSE_PCT` / `CLAUDEX_USAGE_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override (the old `CLAUDEX_BANK_*` names are still read; with both set the narrower percentage counts); the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; every other usage source keeps 99) |
 | `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / … | env | implementor-dispatch cost-guard thresholds |
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |
-| `GLM_EXTERNAL_WRITES_OK` / `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the external-write fences on dispatched lane workers |
+| `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the codex-lane external-write fence (`scripts/hooks/block-terminal-write-fence.sh`) |
 
 Implementation chunks are dispatched by backgrounding
 `bash scripts/telegram/dispatch-lane.sh --brief-file <path> --name <slug>`
@@ -832,7 +830,7 @@ the statusline segment):
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `LUNA_VAULT_PATH` | `~/Documents/luna` | env (`~/.claude/settings.json` `env` block, or your shell profile) | which vault the luna tooling targets. `/end-session-wiki-setup` and `scripts/adopt.sh` persist it via `scripts/lib/wire-luna-vault.{sh,ps1}`. On Windows the value must be drive-qualified (`C:/…`) however it is set — a Git-Bash `/c/…` value resolves under `\c\Users\…` in the PowerShell hook; convert with `cygpath -m`. Exception: `/himmel-update`'s luna-template step (`scripts/himmel-update.sh`) bridges it from `.env` — every other reader needs a live-env value |
+| `LUNA_VAULT_PATH` | `~/Documents/luna` | env (`~/.claude/settings.json` `env` block, or your shell profile) | which vault the luna tooling targets. `/end-session-wiki-setup` and `scripts/adopt.sh` persist it via `scripts/lib/wire-luna-vault.sh`. Exception: `/himmel-update`'s luna-template step (`scripts/himmel-update.sh`) bridges it from `.env` — every other reader needs a live-env value |
 | `CLAUDE_END_SESSION_WIKI` | unset | env | `0` disables the SessionEnd vault capture hook |
 | `OBSIDIAN_API_KEY` | unset (on-disk fallback works) | `.env` | Obsidian REST plugin access |
 | `PERPLEXITY_API_KEY` | blank = feature off | `.env` | backs `/research`, `/research-deep` — **not adopted** (2026-07-29, no active subscription; see `docs/tooling-catalog.md`) |
@@ -841,7 +839,7 @@ the statusline segment):
 | `ALIBABA_OPENAI_BASE_URL` / `ALIBABA_ANTHROPIC_BASE_URL` / `ALIBABA_DASHSCOPE_BASE_URL` | blank | live env (export or `settings.json` `env`) | the three Alibaba Model Studio endpoint flavors (OpenAI-compatible, Anthropic-compatible, DashScope-native) used with `DASHSCOPE_API_KEY`; set the one your consumer needs |
 | `GRAFANA_TELEGRAM_BOT_TOKEN` / `GRAFANA_TELEGRAM_CHAT_ID` | unset | repo-root `.env` | the dedicated send-only alert bot and destination chat for the optional Grafana alerting stack. Separate from the Telegram bridge's token; a group chat id is negative |
 | `SKILL_INDEX_DIR`, `SKILL_TELEMETRY_DISABLE`/`_DIR` | `~/.claude/skill-index` / on | env / shell | skill index + telemetry |
-| `ubuntu_vm_user`/`ubuntu_vm_pass`, `windows_vm_user`/`windows_vm_pass` | — | `.env` | test-VM credentials (deliberately lower-case names) |
+| `ubuntu_vm_user`/`ubuntu_vm_pass` | — | `.env` | test-VM credentials (deliberately lower-case names) |
 | `HIMMEL_REPO` | auto-resolved | env | pin the himmel checkout used by `/himmel-update` and the hooks' `.env` bridge |
 | `HIMMEL_UPDATE_AUTOSTASH` | OFF | `.env` (bridged) | let `/himmel-update` stash a dirty checkout |
 
@@ -866,8 +864,8 @@ Two scopes, deliberately split (`docs/setup/new-machine.md`):
   scopes; a session-id dedup absorbs the double fire.
 
 The permission model in the project file: a literal-command **allow** list
-(git/gh/rtk/npm/node, the POSIX toolchain, `bash scripts/*`, the Jira CLI, a
-PowerShell mirror set, `Edit(.claude/worktrees/**)`), and a **deny** backstop
+(git/gh/rtk/npm/node, the POSIX toolchain, `bash scripts/*`, the Jira CLI,
+`Edit(.claude/worktrees/**)`), and a **deny** backstop
 (force-push variants, `git reset --hard`, recursive deletes, Edit on
 `.env*`/`.git/**` even inside worktrees). Denies always win.
 
@@ -981,7 +979,7 @@ tables; this is the layer level.)
 | Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "" }` in that repo's `.claude/settings.json` | session start |
 | Armed auto-merge | leave/unset `ARMAUTOMERGE` (default OFF) | per shell |
 | Cap watchdogs (auto-arm) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) | launching shell |
-| A scheduled resume | `scripts/handover/arm-resume.sh --dry-run` to inspect; delete the `HIMMEL-Resume-*` scheduled task (schtasks / `at` / crontab) | OS scheduler |
+| A scheduled resume | `scripts/handover/arm-resume.sh --dry-run` to inspect; delete the `HIMMEL-Resume-*` scheduled job (`at` / crontab) | OS scheduler |
 | Recurring vault cadence | `scripts/luna/pipeline-cadence.sh disarm` | OS scheduler |
 | An overnight run in flight | `/stop` (graceful, marker-based; `--hard` also stops subagents) | marker file |
 | Telegram bridge | never started unless you start it; stop: `bun --cwd scripts/telegram supervisor.ts --kill` | process / scheduler |

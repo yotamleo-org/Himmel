@@ -293,9 +293,7 @@ flowchart TD
 
     subgraph SCRAPE["scripts/observability/prometheus.yml"]
         PROM["Prometheus · scrape_interval 60s<br/>flow-exporter scrape_timeout 30s"]
-        WEXP["windows_exporter<br/>127.0.0.1:9182 · Windows only:<br/>install-grafana.sh strips the job on Linux"]
         EXP --> PROM
-        WEXP -.-> PROM
     end
 
     subgraph VIEW["Grafana"]
