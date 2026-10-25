@@ -1523,8 +1523,9 @@ fi
 # its tab, and a crashed worker leaves only its own tab dead.
 # Returns 1 to open a window instead: the switch is off, this is a console
 # arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
-# window recorded for the console yet (TAB_RECORD=1: the window this arm opens
-# becomes the console's window). A D-Bus failure also returns 1, with a WARN:
+# window recorded for the console or its predecessor chief yet (TAB_RECORD=1:
+# the window this arm opens, or adopts from a live konsole predecessor, becomes
+# the console's window). A D-Bus failure also returns 1, with a WARN:
 # a worker is never lost to a tab.
 # The tab's shell inherits the WINDOW's environment (the first worker's), not
 # this arm's, so the tab runs a one-shot script that rebuilds this arm's env
@@ -1536,19 +1537,56 @@ fi
 # (the record keeps the later one), a recycled window pid that is another
 # konsole would take the tab, /Windows/1 is assumed, and tick.sh's deadwin
 # sweep never closes a dead tab in a window that still has live ones; a
-# per-console flock and a konsole comm check are the upgrade path.
+# per-console flock is the upgrade path. A successor finds its predecessor by
+# the previous letter of the -nextleg-<date><LETTERS> name part only, so a
+# hand-over that changes the date or the naming opens a window; chief.sh next
+# exporting the predecessor's name is the upgrade path. The konsole check is
+# /proc comm (Linux), so it never adopts a recycled non-konsole pid.
 TAB_SESSION=""
 TAB_WINDOW_FILE=""
 TAB_RECORD=0
+# tab_predecessor_name <console name> - print the name of the chief this one
+# succeeded: the previous letter of its -nextleg-<date><LETTERS> part (FY -> FX,
+# AA -> Z), same date and suffix. Returns 1 when the name has no such part or
+# the letter is A (the first of the day has no predecessor).
+tab_predecessor_name() {
+    local re='^(.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2})([A-Z]{1,2})(-.*)?$' alpha=ABCDEFGHIJKLMNOPQRSTUVWXYZ letters before n i
+    [[ "$1" =~ $re ]] || return 1
+    letters="${BASH_REMATCH[2]}"; n=0
+    for ((i = 0; i < ${#letters}; i++)); do
+        before="${alpha%%"${letters:i:1}"*}"
+        n=$((n * 26 + ${#before} + 1))
+    done
+    n=$((n - 1))
+    [ "$n" -ge 1 ] || return 1
+    if [ "$n" -le 26 ]; then
+        letters="${alpha:n-1:1}"
+    else
+        letters="${alpha:(n-1)/26-1:1}${alpha:(n-1)%26:1}"
+    fi
+    printf '%s%s%s\n' "${BASH_REMATCH[1]}" "$letters" "${BASH_REMATCH[3]}"
+}
 tab_launch() {
-    local wpid sid tab_sh kv
+    local wpid sid tab_sh kv pred
     [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
     [ "$ROLE" != "console" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
-    case "$wpid" in ''|*[!0-9]*|0|1) TAB_RECORD=1; return 1 ;; esac
-    kill -0 "$wpid" 2>/dev/null || { TAB_RECORD=1; return 1; }
+    case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+    if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
+        # No live window of this console's own: a successor chief adopts its
+        # predecessor's live konsole window and records it as its own.
+        TAB_RECORD=1; wpid=""
+        if pred="$(tab_predecessor_name "$HIMMEL_CONSOLE_NAME")"; then
+            wpid="$(cat "$LOCKDIR/tabs-$pred.window" 2>/dev/null)"  # swallow-ok: no readable predecessor record means no window to adopt, so this arm opens one
+            case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+            if [ -n "$wpid" ]; then
+                case "$(cat "/proc/$wpid/comm" 2>/dev/null)" in konsole*) ;; *) wpid="" ;; esac  # swallow-ok: a pid with no readable comm is dead or not ours, so it is not adopted
+            fi
+        fi
+        [ -n "$wpid" ] || return 1
+    fi
     tab_sh="$LOCK/tab.sh"
     case "$tab_sh" in
         *[!A-Za-z0-9._/+-]*)
