@@ -37,7 +37,7 @@ Reference
   Running without a terminal
   Using it from Codex
   Jira integration
-  Evals [pending]
+  Evals
   Troubleshooting [pending]
   Glossary
 For contributors
