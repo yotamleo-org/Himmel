@@ -54,7 +54,7 @@ fixed code) or `[via worktree]` (no primary checkout's CLI was found, so your ow
 older copy ran). The outgoing chief stamps its
 successor on the bus (`chief.sh next` runs `bus succeed <successor>`), and
 `bus adopt` accepts a stamped hop while that chief is still live, so no
-per-leg relay record is needed. A pasted launch (no `--arm`) registers the
+per-worker relay record is needed. A pasted launch (no `--arm`) registers the
 successor only when it is pasted, so there the outgoing chief runs
 `bus succeed <successor>` itself once the successor has registered. A refusal
 is a recorded fact, not a reason to park: its text names the refused hop, a

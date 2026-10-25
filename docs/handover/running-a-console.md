@@ -500,7 +500,7 @@ filled in.
 its HANDOFF) and the predecessor's `-HANDOFF.md` skeleton, and arms the
 successor on a signal file. The letter rolls past Z in bijective base-26 (Z →
 AA → AB → … → ZZ, then refuses) instead of ever refusing at Z; pass `--date
-<YYYY-MM-DD>` to pre-mint tomorrow's first console (`A`) immediately, near
+<YYYY-MM-DD>` to pre-mint tomorrow's first chief (`A`) immediately, near
 midnight, instead of waiting for the date to roll over. Fill in the HANDOFF
 (head, what is in flight worker by worker with nonces and lock tokens, rulings made,
 the held queue in launch order, what wrapped), then `touch` the signal path

@@ -20,7 +20,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     the usage read is broken: fix it, then restart the waiter; it wakes once per
     failure streak), or, on a successor's first arm only (ACTION ZERO step 9,
     `--succession <your session> [--silent-min T]`), `WAKE succession complete
-    <k/n>` plus the printed LIVE command when every inherited leg's `SUCCESSION
+    <k/n>` plus the printed LIVE command when every inherited worker's `SUCCESSION
     accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
     naming the workers still out. Each fires once; **re-arm without `--succession`**
     (a re-arm that keeps it after a complete wake stays quiet). An outgoing

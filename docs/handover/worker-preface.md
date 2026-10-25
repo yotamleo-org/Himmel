@@ -99,7 +99,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   turn, never emit a text-only turn between tool calls; narrate in the Results
   bullet, not in chat. [prose]
 - **Need a skill your profile lacks?** `CONSULT <profile-list> :: <one question> ::
-  read: <paths>` to the console: `leg-sections/consult.md`. [prose]
+  read: <paths>` to the chief: `leg-sections/consult.md`. [prose]
 
 ## Tests
 

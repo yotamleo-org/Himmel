@@ -48,7 +48,7 @@ full shape.
 > **What you hold vs. what the chief holds.** You hold a lock on your OWN
 > relay doc only and never acquire the chief doc. **A judge is not the
 > chief** (per the lexicon in [`../glossary.md`](../glossary.md): the
-> chief alone holds the console-doc queue lock and the fleet's GO/RETASK
+> chief alone holds the chief doc's queue lock and the fleet's GO/RETASK
 > authority and mints every nonce; a judge holds nothing and is advisory). A
 > judge session holds only its own judge-doc lock, same as any worker — `go.sh`
 > refuses under the `HIMMEL_CONSOLE_LEG` marker regardless of who runs it, so

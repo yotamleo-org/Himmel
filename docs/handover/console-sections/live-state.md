@@ -2,7 +2,7 @@
 
 Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the template, whose two-line preamble points here.
 
-> **Authority-bearing state — not a summary.** Per-leg RETASK nonces, lock
+> **Authority-bearing state — not a summary.** Per-worker RETASK nonces, lock
 > release tokens, the held queue and the last GO live HERE, on disk, not only
 > in this context window: `SessionStart:compact` re-injects
 > exactly this section after an autocompact, and `<kit>/tick.sh` flags
@@ -12,7 +12,7 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `acked:` verbatim into the successor's own Live state (the HANDOFF holds only
 > the pointer `Live state: seeded into <successor doc>`, never a nonce), so a
 > stale line here is a stale line there too, and the successor's
-> `action-zero.sh --render-legs` keeps the seeded nonces. A per-leg detail line
+> `action-zero.sh --render-legs` keeps the seeded nonces. A per-worker detail line
 > past the `legs:` block is not seeded: put what the successor needs in the
 > HANDOFF's judgement notes. A worker's nonce is
 > updated **only after** that worker's quote-back (of the fresh nonce, when one
@@ -59,12 +59,12 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `acked:` — any line starting with a word and a colon) or the first list-marker
 > line (`- `, `* `, `+ `, `1. `, or a line starting `>` or `#`). A span anywhere
 > in that block is an entry, judged exactly as above. **A span past the block's
-> end is not an entry** — a per-leg detail bullet may quote a span freely — so a
+> end is not an entry** — a per-worker detail bullet may quote a span freely — so a
 > held worker named only there reads `DRIFT`. Put every worker's span in the block;
-> **the blank line before the per-leg detail is load-bearing**: a wrapped line
+> **the blank line before the per-worker detail is load-bearing**: a wrapped line
 > never starts with a list marker, so a marker ends the block, but prose
 > written straight under `legs:` without one is read as part of it.
-> `board:` is the published console-board artifact URL (ACTION ZERO step 12);
+> `board:` is the published chief board artifact URL (ACTION ZERO step 12);
 > `console.sh next` carries it to your successor with the rest of this section.
 > `tracker:` is the roadmap-tracker artifact URL; `none` (the
 > default) turns the tick's `tracker=` field off (`skip`), and `console.sh next`
