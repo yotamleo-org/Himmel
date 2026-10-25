@@ -188,6 +188,7 @@ else
 fi
 
 # 6. MOVE
+# shellcheck disable=SC2016  # the backticks in the python are markdown code spans
 move_problems() { # move_problems <page>
   python3 -I -c '
 import re, sys
@@ -203,6 +204,8 @@ else:
         print("the Change install profile section does not name the starter to luna move")
     if not re.search(r"test\s+VM", body, flags=re.I):
         print("the Change install profile section does not say the move ran on a test VM")
+    if "finished with exit code 0" not in body or "to `profile: \"luna\"`" not in body:
+        print("the Change install profile section does not report a successful move")
 ' "$1" || echo "could not check $1"
 }
 problems=$(move_problems "$PAGE")
@@ -219,6 +222,7 @@ open(out + "/wrong-seed.md", "w", encoding="utf-8").write(re.sub(r"^(- \*\*Notes
 open(out + "/extra-job.md", "w", encoding="utf-8").write(re.sub(r"^(- \*\*Scheduled jobs:\*\*) none picked", r"\1 `qmd` picked", text, count=1, flags=re.M))
 open(out + "/bad-command.md", "w", encoding="utf-8").write(text + "\n```bash\n  himmelctl --contribute profile wipe\n```\n")
 open(out + "/unverified-move.md", "w", encoding="utf-8").write(re.sub(r"(^### Change install profile\n)", r"\1\nNot yet verified: a second install over a starter install, switching to luna,\nhas not been run on a test machine yet.\n", text, count=1, flags=re.M))
+open(out + "/failed-move.md", "w", encoding="utf-8").write(text.replace("finished with exit code 0", "failed with exit code 1", 1).replace("to `profile: \"luna\"`", "to `profile: \"starter\"`", 1))
 ' "$PAGE" "$fx"; }; then
   bad "CONTROL: write the fixtures" "$fx"
   finish
@@ -228,5 +232,6 @@ case "$(check seeds "$fx/wrong-seed.md")" in *"operator: Notes vault seeds exist
 case "$(check seeds "$fx/extra-job.md")" in *"starter: Scheduled jobs seeds [], the bullet says ['qmd']"*) ok "CONTROL: an unseeded scheduled job fails SEEDS" ;; *) bad "CONTROL: an unseeded scheduled job fails SEEDS" ;; esac
 case "$(check commands "$fx/bad-command.md")" in *"sub-command not in --help: himmelctl --contribute profile wipe"*) ok "CONTROL: an unknown command fails COMMANDS" ;; *) bad "CONTROL: an unknown command fails COMMANDS" ;; esac
 case "$(move_problems "$fx/unverified-move.md")" in *"still says Not yet verified"*) ok "CONTROL: the unverified move text fails MOVE" ;; *) bad "CONTROL: the unverified move text fails MOVE" ;; esac
+case "$(move_problems "$fx/failed-move.md")" in *"does not report a successful move"*) ok "CONTROL: a failed move report fails MOVE" ;; *) bad "CONTROL: a failed move report fails MOVE" ;; esac
 
 finish
