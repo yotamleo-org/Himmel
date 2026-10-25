@@ -122,13 +122,17 @@ fi
 # 4. CONTROL
 fx=$(mktemp -d -t smr-page.XXXXXX) || { bad "CONTROL: mktemp"; printf '\n%d passed, %d failed\n' "$pass" "$fail"; exit 1; }
 trap 'rm -rf "$fx"' EXIT
-printf '## What a finding does\n\n- A rule. <!-- source: scripts/cr/no-such-script.sh -->\n\n## Next\n' >"$fx/cite.md"
-if [ -n "$(cite_problems "$fx/cite.md")" ]; then ok "CONTROL: a missing cited script fails CITES"; else bad "CONTROL: a missing cited script fails CITES"; fi
-printf '## What a finding does\n\n- A rule. <!-- source: %s -->\n\n## Next\n' "$fx/cite.md" >"$fx/outside.md"
-if [ -n "$(cite_problems "$fx/outside.md")" ]; then ok "CONTROL: a cited path outside the tree fails CITES"; else bad "CONTROL: a cited path outside the tree fails CITES"; fi
-printf 'It runs from your himmel clone, for now.\n' >"$fx/now.md"
+if ! { printf '## What a finding does\n\n- A rule. <!-- source: scripts/cr/no-such-script.sh -->\n\n## Next\n' >"$fx/cite.md" &&
+  printf '## What a finding does\n\n- A rule. <!-- source: %s -->\n\n## Next\n' "$fx/cite.md" >"$fx/outside.md" &&
+  printf 'It runs from your himmel clone, for now.\n' >"$fx/now.md" &&
+  printf '#   - NO MATCH -> anchor_lane=adopter.\n    # anchor_lane=adopter\n' >"$fx/lane.sh"; }; then
+  bad "CONTROL: write the fixtures" "$fx"
+  printf '\n%d passed, %d failed\n' "$pass" "$fail"
+  exit 1
+fi
+case "$(cite_problems "$fx/cite.md")" in *"cited file missing: scripts/cr/no-such-script.sh"*) ok "CONTROL: a missing cited script fails CITES" ;; *) bad "CONTROL: a missing cited script fails CITES" ;; esac
+case "$(cite_problems "$fx/outside.md")" in *"cited path outside the tree: $fx/cite.md"*) ok "CONTROL: a cited path outside the tree fails CITES" ;; *) bad "CONTROL: a cited path outside the tree fails CITES" ;; esac
 if has_for_now "$fx/now.md"; then ok "CONTROL: a 'for now' tag fails NOW"; else bad "CONTROL: a 'for now' tag fails NOW"; fi
-printf '#   - NO MATCH -> anchor_lane=adopter.\n    # anchor_lane=adopter\n' >"$fx/lane.sh"
 if has_adopter_lane "$fx/lane.sh"; then bad "CONTROL: a commented-out adopter lane fails REACH"; else ok "CONTROL: a commented-out adopter lane fails REACH"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
