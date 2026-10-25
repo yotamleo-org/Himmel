@@ -2629,7 +2629,15 @@ EOF" \
     "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${!x}; done" \
     "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s:y}; done" \
     "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s: y}; done" \
-    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do a[y]=1; done"; do
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do a[y]=1; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${?:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${-:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat < \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat <<EOF
+\${\$:y}
+EOF
+done"; do
     run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 run "7130 class1 [a quoted message with parentheses] -> allow" 0 \

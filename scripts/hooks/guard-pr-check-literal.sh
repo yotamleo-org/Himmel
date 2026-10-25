@@ -2544,7 +2544,7 @@ ast_data_only() {
     [[ "$cmd" =~ \$\{[^}]*\[ ]] && return 1
     # shellcheck disable=SC2016 # literal pattern, never expanded
     case "$cmd" in *'${!'*) return 1 ;; esac
-    [[ "$cmd" =~ \$\{[[:alnum:]_@*#]+:[^-=+?] ]] && return 1
+    [[ "$cmd" =~ \$\{[^}:]+:[^-=+?] ]] && return 1
     [[ "$cmd" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
     [[ "${cmd//$'\\\n'/}" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
