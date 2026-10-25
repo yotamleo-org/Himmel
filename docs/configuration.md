@@ -257,7 +257,7 @@ Security properties (all in `scripts/telegram/poller.ts` / `gate.ts` /
   globally allowlisted operator.
 - A forwarded auto op is refused (injection kill-switch); text arriving via
   media captions or voice transcripts is never auto-executed.
-- `TELEGRAM_AUTO_ACTIONS` is default-OFF; `=1`/`all` enables only
+- `TELEGRAM_AUTO_ACTIONS` is default-OFF; `=1`/`all`/`on`/`yes`/`true` enables only
   `arm-resume` and `restart`. Every other op, `merge-public` included, is
   *explicit-only*: you must name it.
 - `/mergepub` is the only *himmel-side* path to a public merge (the operator
@@ -820,7 +820,7 @@ change; token and access config live *outside* the repo):
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | — | `~/.claude/channels/telegram/.env` (path override `TELEGRAM_ENV`) | bot auth. A *separate* copy in the repo `.env` feeds only the opt-in jira-nudge / session-status relays |
 | `access.json` (`TELEGRAM_ACCESS_PATH`) | — | `~/.claude/channels/telegram/access.json` | the allowlist: `allowFrom` (DM senders), `groups` (chat-id keys), per-group `allowFrom`/`vault`, `defaultVault`. Fails closed |
-| `TELEGRAM_AUTO_ACTIONS` | OFF | bridge .env *or* process env (process wins) | enables privileged bridge ops one by one, e.g. `/arm` (`arm-resume`), `/restart` (`restart`), `/mergepub` (`merge-public`) and the break-glass ops; the full op list is in the [bridge guide](telegram-bridge.md#slash-chief-requests-and-emergency-lockdown) and [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops). The whole-value aliases `1`/`all`/`on`/`yes` enable only `arm-resume` + `restart`; every other op, `merge-public` included, must be named explicitly. An unrecognized token parses to nothing (the poller warns at startup, naming the dropped tokens) |
+| `TELEGRAM_AUTO_ACTIONS` | OFF | bridge .env *or* process env (process wins) | enables privileged bridge ops one by one, e.g. `/arm` (`arm-resume`), `/restart` (`restart`), `/mergepub` (`merge-public`) and the break-glass ops; the full op list is in the [bridge guide](telegram-bridge.md#slash-chief-requests-and-emergency-lockdown) and [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops). The whole-value aliases `1`/`all`/`on`/`yes`/`true` enable only `arm-resume` + `restart`; every other op, `merge-public` included, must be named explicitly. An unrecognized token parses to nothing (the poller warns at startup, naming the dropped tokens) |
 | `TELEGRAM_CLAUDE_MODEL` | `claude-opus-5-5` | own .env | model pin for bounded bridge runs (never inherits your default) |
 | `TELEGRAM_MAX_CONCURRENT_RUNS` / `TELEGRAM_RETRY_MS` / `TELEGRAM_MAX_RETRIES` / `RUN_TIMEOUT_MS` | 2 / 15min / 3 / 30min | own .env | run concurrency/retry/deadline |
 | `TELEGRAM_TRIAGE` (+ `_MODEL`, `_PROVIDER`, `_TIMEOUT_MS`) | on (`deepseek-v4-flash`) | own .env | cheap group-message triage classifier; `TELEGRAM_TRIAGE=off` disables |
