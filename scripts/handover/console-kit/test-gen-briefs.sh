@@ -97,6 +97,7 @@ has "a hook leg's brief says it is launched with the bypass" "$b2" "hook-integri
 lacks "a plain leg's brief does not" "$b1" "hook-integrity bypass flag"
 has "a judge leg's brief announces the opus judge" "$b2" "console runs an opus judge"
 has "the other leg's scope is listed under 'other live legs'" "$b1" "N902 (h.sh)"
+has "the brief puts the write list on its own '> **Writes:**' line (HIMMEL-7469)" "$(grep -c '^> \*\*Writes:\*\* ' "$D1")" "1"
 # a leg flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
 has "a flagged leg's brief requires a fixture copied from the real environment" "$b2" "copied from the real environment"
 lacks "an unflagged leg's brief does not" "$b1" "copied from the real environment"

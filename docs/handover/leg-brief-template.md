@@ -199,6 +199,12 @@ template_version: 3
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 
+> **Writes:** <exactly the files and directories THIS leg edits, on this one
+> line (HIMMEL-7469). The console's collision check holds a live leg's files
+> from this line alone; without it, it falls back to the "writes confined to"
+> clause and ignores a path after a quoted grep/find, an "Impacted suites"
+> list and a "Trust path" note. Name a file you only read nowhere on it.>
+
 > **Do not:** <the specific things THIS leg must not touch — adjacent files
 > another leg owns, protocols that are out of scope, a script another leg
 > owns, a probe that may be run only once.>

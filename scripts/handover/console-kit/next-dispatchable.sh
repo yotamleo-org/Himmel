@@ -138,22 +138,33 @@ def files_in(text):
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 SCOPE_END_RE = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
+# read-only text a scope carries: a quoted search command, an impacted-suites list, a trust-path or single-writer note
+CMD_RE = re.compile(r'`?\b(?:git grep|grep|rg|find|sed -n|cat)\b(?:[^.)`]|\.(?!\s|$))*`?')
+READ_ONLY_RE = re.compile(r'(?:Impacted suites|SINGLE-WRITER)\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)|Trust path\s*\([^)]*\)')
+WRITES_LEAD = '> **Writes:**'
+
+def clean_scope(rest):
+    m = SCOPE_END_RE.search(rest)
+    rest = rest[:m.start()] if m else rest
+    rest = re.sub(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)', ' ', rest)  # a fence, not a write scope
+    rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
+    rest = READ_ONLY_RE.sub(' ', rest)
+    rest = CMD_RE.sub(' ', rest)  # a path a quoted read-only command searches is not written
+    # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
+    def expand(g):
+        parts = [p.strip() for p in g.group(2).split(',')]
+        if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
+            return ' '.join(g.group(1) + p for p in parts)
+        return g.group(1)
+    return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
+
 def write_scope(line):
-    # the leg's own write scope: after "writes confined to" (else after "Scope / do not:"), up to the boilerplate that follows
+    # the leg's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
+    if line.startswith(WRITES_LEAD):
+        return clean_scope(line[len(WRITES_LEAD):])
     for lead in ('writes confined to', 'Scope / do not:'):
         if lead in line:
-            rest = line.split(lead, 1)[1]
-            m = SCOPE_END_RE.search(rest)
-            rest = rest[:m.start()] if m else rest
-            rest = re.sub(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)', ' ', rest)  # a fence, not a write scope
-            rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
-            # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
-            def expand(g):
-                parts = [p.strip() for p in g.group(2).split(',')]
-                if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
-                    return ' '.join(g.group(1) + p for p in parts)
-                return g.group(1)
-            return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
+            return clean_scope(line.split(lead, 1)[1])
     return ''
 
 def concrete(f):
@@ -432,9 +443,9 @@ if legs_from and os.path.isfile(legs_from):
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
                 leg_keys.add(k); owner.setdefault(k, 'live leg %s' % leg.get('label', '?'))
-            for line in lines:
-                if line.startswith('> **Scope / do not:**') or 'writes confined to' in line:
-                    held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in files_in(write_scope(line))]
+            writes = [l for l in lines if l.startswith(WRITES_LEAD)]  # the one source; older briefs only have the scope line
+            for line in writes or [l for l in lines if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]:  # not the front-matter description, which quotes the phrase
+                held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in files_in(write_scope(line))]
     except (OSError, ValueError):
         legs_unknown = True
 if pool_only and not legs_from and not leg_keys:
