@@ -138,7 +138,7 @@ eq "a written change is not retried" "$(rows "$IN5")" "1"
 D="$TMP/review"; mkdir -p "$D"
 : >"$D/ledger.jsonl"
 ok "review row" python3 -I "$RUNS" append --ledger "$D/runs.jsonl" --eval friction --source s \
-  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"refusals\":1000,\"over_deny\":500,\"$CLS\":500}"
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"refusals\":1000,\"tool_calls\":1000,\"over_deny\":500,\"$CLS\":500}"
 HIMMEL_EVAL_RUNS_LEDGER="$D/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$D/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
   JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$D/ledger.jsonl" --state "$D/state.json" --log "$D/log.jsonl" \
   --inbox "$D/inbox.md" --out-dir "$D/out" --now 2026-10-07T12:00:00Z --notify-cmd true >"$D/run.out" 2>&1
@@ -155,13 +155,13 @@ for i in 1 2; do
   eq "live review $i after a dry run: exit 0" "$?" "0"
   eq "live review $i after a dry run: the dry-run change is delivered once" "$(rows "$D/inbox.md")" "1"
 done
-has "the delivered line names the metric and topic" "$(cat "$D/inbox.md" 2>/dev/null)" "eval/friction $CLS value=0.5 threshold=0.05 topic=shell-and-gate-traps.md"
+has "the delivered line names the metric and topic" "$(cat "$D/inbox.md" 2>/dev/null)" "eval/friction $CLS value=0.5 threshold=0.1 topic=shell-and-gate-traps.md"
 
 # --- only a --live review writes the inbox line, once per opened change ---------------------------------
 E="$TMP/review-live"; mkdir -p "$E"
 : >"$E/ledger.jsonl"
 ok "live review row" python3 -I "$RUNS" append --ledger "$E/runs.jsonl" --eval friction --source s \
-  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"refusals\":1000,\"over_deny\":500,\"$CLS\":500}"
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"refusals\":1000,\"tool_calls\":1000,\"over_deny\":500,\"$CLS\":500}"
 for i in 1 2; do
   HIMMEL_EVAL_RUNS_LEDGER="$E/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$E/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
     JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$E/ledger.jsonl" --state "$E/state.json" --log "$E/log.jsonl" \
@@ -169,7 +169,7 @@ for i in 1 2; do
   eq "live review $i: exit 0" "$?" "0"
   eq "live review $i: exactly one memory-inbox line" "$(rows "$E/inbox.md")" "1"
 done
-has "live review: the line names the metric and topic" "$(cat "$E/inbox.md" 2>/dev/null)" "eval/friction $CLS value=0.5 threshold=0.05 topic=shell-and-gate-traps.md"
+has "live review: the line names the metric and topic" "$(cat "$E/inbox.md" 2>/dev/null)" "eval/friction $CLS value=0.5 threshold=0.1 topic=shell-and-gate-traps.md"
 
 # --- the shipped rules: a critic class below its threshold yields one improvement record per critic -----
 G="$TMP/critics"; mkdir -p "$G"
@@ -198,20 +198,20 @@ eq "judges rerun: ci-selection escapes come first" "$(field "$G/changes.jsonl" 4
 
 # --- a rule with `per` judges a rate, so a count that rises only with session volume fires nothing ------
 V="$TMP/per"; mkdir -p "$V"
-# vol <ledger> <refusals> <over-denials>: one friction row
+# vol <ledger> <tool calls> <over-denials>: refusal count stays fixed to isolate the call denominator.
 vol() { python3 -I "$RUNS" append --ledger "$1" --eval friction --source s --config-json '{"friction_v":1,"days":7}' \
-  --metrics-json "{\"refusals\":$2,\"$CLS\":$3}" >/dev/null 2>&1; }
-ok "volume row" vol "$V/runs.jsonl" 10000 300
+  --metrics-json "{\"refusals\":1000,\"tool_calls\":$2,\"$CLS\":$3}" >/dev/null 2>&1; }
+ok "volume row" vol "$V/runs.jsonl" 1000000 300
 ok "volume feedback" python3 -I "$FB" run --eval friction --ledger "$V/runs.jsonl" --changes "$V/c.jsonl" --rules "$HERE/feedback-rules.json"
-eq "per: 300 over-denials in 10000 refusals (3 %) opens no change under the shipped rule" "$(rows "$V/c.jsonl")" "0"
+eq "per: 300 over-denials in 1000000 tool calls opens no change under the shipped rule" "$(rows "$V/c.jsonl")" "0"
 ok "rate row" vol "$V/runs.jsonl" 1000 300
 ok "rate feedback" python3 -I "$FB" run --eval friction --ledger "$V/runs.jsonl" --changes "$V/c.jsonl" --rules "$HERE/feedback-rules.json"
-eq "per: the same 300 in 1000 refusals (30 %) opens one change" "$(rows "$V/c.jsonl")" "1"
+eq "per: the same 300 in 1000 tool calls opens one change" "$(rows "$V/c.jsonl")" "1"
 eq "per: the change's value is the rate" "$(field "$V/c.jsonl" 0 value)" "0.3"
-eq "per: the change names its denominator" "$(field "$V/c.jsonl" 0 per)" "refusals"
-ok "volume-up row" vol "$V/runs.jsonl" 10000 300
+eq "per: the change names its denominator" "$(field "$V/c.jsonl" 0 per)" "tool_calls"
+ok "volume-up row" vol "$V/runs.jsonl" 1000000 300
 ok "volume-up measure" python3 -I "$FB" run --eval friction --ledger "$V/runs.jsonl" --changes "$V/c.jsonl" --rules "$HERE/feedback-rules.json"
-eq "per: the re-measure reads the rate too" "$(field "$V/c.jsonl" 1 after)" "0.03"
+eq "per: the re-measure reads the rate too" "$(field "$V/c.jsonl" 1 after)" "0.0003"
 
 # --- a sealed split: rules tune on the open half only, and never read the sealed half ---------------
 # A split row carries open.<metric> and sealed.<metric> beside the whole-set metric (score.py).

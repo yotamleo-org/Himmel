@@ -114,6 +114,23 @@ A metric regresses when it moves the wrong way past its noise band:
 
 A metric with no direction in that table is printed as `info` and never gated.
 
+Against a single baseline (not `--best-of`), `_cases` in that table names
+per-case metrics to compare on the case IDs both rows share. At least two
+shared valued cases are needed. The paired line reports the mean
+candidate-minus-baseline change, an exact two-sided sign-test verdict (5 %
+over the cases that moved), and the **detection floor**: the estimated smallest
+mean change this case count can show (2.8 standard errors, a normal
+approximation at 80 % power and 5 % significance). With zero spread, binary
+scores use a conservative `2.8 / sqrt(n)` floor; a continuous score's floor
+is unmeasured. A paired regression gates just like a run-level one. A spec's
+`same` names a metric that must match on both rows, so pass@k at different k
+is not compared as the same quantity.
+
+`_headroom` holds `{metric, at, target}`. When the baseline metric is at or
+above `at`, a `HEADROOM` line points to the target metrics (such as cost and
+latency): quality near its ceiling cannot show much gain. The line is
+advisory; it does not skip regression checks.
+
 A candidate whose `meta.observational` is true (the `leg-trajectory` rows) is
 not compared at all: eval-compare lists the series (the latest `ok` row per
 `run_id`, same `confighash`) with runs, mean and latest per metric, prints no
@@ -154,7 +171,35 @@ Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else
 (`leg-digest/failure_review.py`) runs this step after the friction
 subsection and shows what it wrote under `### Eval feedback`. Its friction
 run passes `--record`, so `friction.py` appends one `eval: friction` row per
-run (refusals by verdict, `over_deny_share`, `over_deny:<source>/<class>`).
+run (`tool_calls`, refusals by verdict, `over_deny_share`,
+`over_deny:<source>/<class>`). `tool_calls` counts every `tool_result` in the
+same transcript window, including successful, failed and denied calls; it
+counts observed results, not outstanding calls with no result.
+
+A rule's optional `per` names a metric of that same row. Feedback judges
+`metric / per`, both when opening a change and when re-measuring it; a missing
+or zero denominator is unmeasured, not zero. The friction rule uses
+`per: tool_calls`, so the same over-denial count can fire with few calls but
+not with many. Its provisional threshold is `0.1`, half the fixture class's
+rate of 1 over-denial in 5 calls (`0.2`).
+
+**ponytail:** no recorded tool-call history yet; upgrade: re-derive the
+threshold once 4 weekly friction rows carry `tool_calls`.
+
+Split rows carry `open.<metric>` (train) and `sealed.<metric>` (test),
+beside any whole-set metric. Rules tune on the open half only, never on the
+sealed or whole-set values; a sealed-only row opens no change. A missing
+metric in either half stays unmeasured, even when the rule has `absent: 0`.
+
+The **train/test keep rule** replaces `improved` / `regressed` / `flat` with
+`keep` / `revert` when a change is re-measured on a split row. Keep requires
+both train and test to gain strictly more than `min_gain` (optional, default
+`0`, the smallest worthwhile gain), with run-to-run noise zero or strictly
+below `min_gain`. Noise is the spread (max minus min) of train values in at
+least two `ok` runs of the same `confighash` up to the baseline. Otherwise
+revert: the record's `reason` names the first failing check (unmeasured test,
+insufficient train or test gain, or unmeasured/excessive noise), beside the
+test before/after/delta, noise and `min_gain`.
 
 ## lane-quality: repeats and judge calibration
 
