@@ -119,6 +119,8 @@ bash scripts/handover/test-auto-commit.sh
 # etc.
 ```
 
+After editing a role definition (`.claude/agents/*.md`, `docs/handover/*-preface.md`, `docs/handover/chief-template.md`, `docs/guide/second-model-review.md` or `scripts/cr/critics.json`), run `bash scripts/docs/gen-team-page.sh` to rebuild the Meet the team page; `scripts/docs/test-team-page.sh` fails until you do.
+
 ## Where to find things
 
 | Concern                        | Doc                                                |
